@@ -303,6 +303,12 @@
   .sb-pt{background:linear-gradient(100deg,rgba(7,22,40,.92),rgba(23,63,95,.6)),url('img-pullup.jpg') right 12%/cover no-repeat}
   .sb-main,.sb-sub,.sb-icon{text-shadow:0 1px 8px rgba(0,0,0,.65)}
   .ob-hero{width:100%;border-radius:14px;margin:0 0 14px;display:block;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+
+  /* ---------- EXERCISE REFERENCE PHOTOS (V3.5) ---------- */
+  .demo-peek.with-photo{grid-template-columns:56px 88px minmax(0,1fr) 28px}
+  .demo-peek-photo{width:56px;height:56px;object-fit:cover;border-radius:8px;display:block}
+  #demo-photo{width:100%;border-radius:14px;margin:0 0 9px;display:block;border:1px solid #26334a}
+  @media(max-width:430px){.demo-peek.with-photo{grid-template-columns:48px 80px minmax(0,1fr) 26px}.demo-peek-photo{width:48px;height:52px}}
 </style>
 
 <link rel="manifest" href="manifest.webmanifest">
@@ -670,6 +676,7 @@
   <button class="modal-x" onclick="closeDemo()" aria-label="Close animated demonstration">×</button>
   <div class="demo-head"><div><div class="modal-title" id="demo-title">Exercise Demonstration</div><div class="modal-sub" id="demo-sub">Original offline vector animation</div></div><span class="demo-badge">Animated form</span></div>
   <div class="demo-stage"><canvas id="demo-canvas" width="1000" height="640" aria-label="Animated exercise demonstration"></canvas><div class="demo-stage-label" id="demo-stage-label">START POSITION</div><div class="demo-rep" id="demo-rep">LOOP 1</div></div>
+  <img id="demo-photo" style="display:none" alt="Reference photo of the exercise" loading="lazy">
   <div class="demo-controls"><button class="primary" id="demo-play" onclick="toggleDemoPlay()">Pause</button><select id="demo-speed" onchange="setDemoSpeed(this.value)" aria-label="Animation speed"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option></select><button onclick="speakDemoCue()">🔊 Hear Coaching</button><span class="spacer"></span><button id="demo-prev" onclick="demoMove(-1)">‹ Previous</button><span class="demo-queue" id="demo-queue">Technique loop</span><button id="demo-next" onclick="demoMove(1)">Next ›</button></div>
   <div class="demo-standard" id="demo-standard"><b>Current standard:</b> Use controlled, pain-free repetitions.</div>
   <div class="demo-info-grid"><div class="demo-info"><h4>Key execution cues</h4><ul id="demo-cues"></ul></div><div class="demo-info"><h4>Avoid these errors</h4><ul id="demo-mistakes"></ul></div></div>
@@ -1927,6 +1934,53 @@ loadVoices();try{if('speechSynthesis'in window)window.speechSynthesis.onvoicesch
   };
   const _renderToday=renderToday;
   renderToday=function(){_renderToday();try{renderShred()}catch(e){console.warn(e)}};
+
+  /* ---- 3b. Exercise reference photos (V3.5) ---- */
+  window.photoForName=function(name){
+    const n=String(name||'').toLowerCase();
+    const rules=[
+      ['y-t-w','ex-ytw'],['ytw','ex-ytw'],
+      ['archer','ex-archer-pushup'],
+      ['diamond','ex-diamond-pushup'],['close-grip','ex-diamond-pushup'],['close grip','ex-diamond-pushup'],['triceps extension','ex-diamond-pushup'],
+      ['handstand','ex-handstand'],
+      ['feet-elevated pike','ex-pike-elevated'],['pike','ex-pike-pushup'],
+      ['push-up','ex-pushup'],['push up','ex-pushup'],['pushup','ex-pushup'],
+      ['knee tuck','ex-kneeraise'],['knee raise','ex-kneeraise'],['knee-to-chest','ex-kneeraise'],
+      ['toes-to-bar','ex-legraise'],['leg raise','ex-legraise'],
+      ['dead hang','ex-deadhang'],['active hang','ex-deadhang'],['scapular','ex-deadhang'],
+      ['pull-up','ex-pullup'],['pull up','ex-pullup'],
+      ['support hold','ex-support-hold'],['dip','ex-dip'],
+      ['split squat','ex-splitsquat'],['lunge','ex-lunge'],['squat','ex-squat'],
+      ['bridge','ex-glutebridge'],
+      ['side plank','ex-sideplank'],['plank','ex-plank'],
+      ['hollow','ex-hollow'],['v-up','ex-hollow'],
+      ['dead bug','ex-deadbug'],
+      ['reverse crunch','ex-revcrunch'],['crunch','ex-revcrunch'],
+      ['bird dog','ex-birddog'],
+      ['superman','ex-superman'],['snow angel','ex-superman'],['swimmer','ex-superman'],['pull-down','ex-superman'],['prone w','ex-superman'],['prone pull','ex-superman'],
+      ['bear crawl','ex-bearcrawl'],
+      ['mountain climber','ex-mountainclimber'],
+      ['burpee','ex-burpee'],['circuit','ex-burpee'],
+      ['carry','ex-march'],['march','ex-march'],['ruck','ex-march'],['walk','ex-march']
+    ];
+    for(const [k,f] of rules){if(n.includes(k))return f+'.jpg'}
+    return null;
+  };
+  const _demoPeekHTML=demoPeekHTML;
+  demoPeekHTML=function(item){
+    let html=_demoPeekHTML(item);if(!html)return html;
+    const src=photoForName(itemName(item));
+    if(src)html=html.replace('class="demo-peek"','class="demo-peek with-photo"').replace('<canvas','<img class="demo-peek-photo" src="'+src+'" alt="" loading="lazy"><canvas');
+    return html;
+  };
+  const _paintDemoUI=paintDemoUI;
+  paintDemoUI=function(){
+    _paintDemoUI();
+    try{
+      const entry=demoState.queue[demoState.index],ph=document.getElementById('demo-photo');
+      if(ph){const src=entry?photoForName(entry.name):null;if(src){if(ph.getAttribute('src')!==src)ph.src=src;ph.style.display='block'}else{ph.style.display='none'}}
+    }catch(e){}
+  };
 
   /* ---- 4. Storage armor ---- */
   const MIRROR_DB='milCalStateMirror_v1',MIRROR_STORE='kv';

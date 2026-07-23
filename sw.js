@@ -1,7 +1,14 @@
 /* Military Calisthenics Command — offline service worker (V3.4) */
-const CACHE = 'milcal-v3.4.1';
+const CACHE = 'milcal-v3.5.0';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png',
-  './img-pushup.jpg', './img-pullup.jpg', './img-squat.jpg', './img-lunge.jpg'];
+  './img-pushup.jpg', './img-pullup.jpg', './img-squat.jpg', './img-lunge.jpg',
+  './ex-pushup.jpg','./ex-diamond-pushup.jpg','./ex-archer-pushup.jpg','./ex-pike-pushup.jpg',
+  './ex-pullup.jpg','./ex-deadhang.jpg','./ex-kneeraise.jpg','./ex-legraise.jpg',
+  './ex-dip.jpg','./ex-support-hold.jpg','./ex-handstand.jpg','./ex-pike-elevated.jpg',
+  './ex-squat.jpg','./ex-lunge.jpg','./ex-splitsquat.jpg','./ex-glutebridge.jpg',
+  './ex-plank.jpg','./ex-sideplank.jpg','./ex-hollow.jpg','./ex-deadbug.jpg',
+  './ex-revcrunch.jpg','./ex-birddog.jpg','./ex-superman.jpg','./ex-ytw.jpg',
+  './ex-bearcrawl.jpg','./ex-mountainclimber.jpg','./ex-burpee.jpg','./ex-march.jpg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
