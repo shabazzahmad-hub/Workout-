@@ -1,0 +1,16 @@
+{
+  "name": "Military Calisthenics Command",
+  "short_name": "MilCal Shred",
+  "description": "12-week military calisthenics program: fat loss, abs and chest strength, stamina and endurance. Offline, with durable saved progress.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0d13",
+  "theme_color": "#0a0d13",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
