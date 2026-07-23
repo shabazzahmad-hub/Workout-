@@ -293,6 +293,16 @@
   .shred-bar{height:10px;background:#212c3f;border-radius:10px;overflow:hidden}
   .shred-bar i{display:block;height:100%;border-radius:10px;background:linear-gradient(90deg,#e14e12,var(--orange));transition:width .35s}
   .shred-note{font-size:10px;color:var(--muted);margin-top:8px;line-height:1.45}
+
+  /* ---------- PHOTO SESSION BANNERS (V3.4.1) ---------- */
+  .session-banner{min-height:92px;position:relative}
+  .sb-strength{background:linear-gradient(100deg,rgba(120,40,12,.88),rgba(216,84,31,.55)),url('img-pullup.jpg') right 12%/cover no-repeat}
+  .sb-lower{background:linear-gradient(100deg,rgba(90,70,12,.88),rgba(200,163,59,.5)),url('img-squat.jpg') right 25%/cover no-repeat}
+  .sb-circuit{background:linear-gradient(100deg,rgba(50,30,80,.88),rgba(104,66,160,.55)),url('img-pushup.jpg') right 40%/cover no-repeat}
+  .sb-recovery{background:linear-gradient(100deg,rgba(10,70,45,.88),rgba(24,121,78,.55)),url('img-lunge.jpg') right 20%/cover no-repeat}
+  .sb-pt{background:linear-gradient(100deg,rgba(7,22,40,.92),rgba(23,63,95,.6)),url('img-pullup.jpg') right 12%/cover no-repeat}
+  .sb-main,.sb-sub,.sb-icon{text-shadow:0 1px 8px rgba(0,0,0,.65)}
+  .ob-hero{width:100%;border-radius:14px;margin:0 0 14px;display:block;box-shadow:0 8px 24px rgba(0,0,0,.4)}
 </style>
 
 <link rel="manifest" href="manifest.webmanifest">
@@ -327,6 +337,7 @@
     </div>
     <div class="ob-body">
       <section class="ob-step active" data-step="0">
+        <img class="ob-hero" src="img-pullup.jpg" alt="" loading="lazy">
         <h2 id="ob-title">Your mission, built around your current ability</h2>
         <p>This interview selects the correct starting variations, weekly battle rhythm, session length, impact level and equipment substitutions. Nothing is hidden: the app shows every progression rule.</p>
         <div class="ob-mission"><b>Primary mission:</b> build a strong and visibly developed core, reduce the waistline through training and daily movement, improve endurance, and develop balanced total-body fitness using bodyweight exercises.</div>
@@ -1585,7 +1596,15 @@ function fmtClock(s){s=Math.max(0,Math.round(s));const m=Math.floor(s/60),ss=s%6
 function paintRest(){const el=document.getElementById('rt-clock');el.textContent=fmtClock(rtRemain);el.classList.toggle('run',!!rtInt&&rtRemain>0)}
 function startRest(sec){stopRest();ensureAudio();rtRemain=sec;paintRest();rtInt=setInterval(()=>{rtRemain--;if(rtRemain<=0){clearInterval(rtInt);rtInt=null;rtRemain=0;paintRest();beepEnd();setTimeout(()=>speakTimerCue('Rest complete. Prepare for the next set.'),300)}else paintRest()},1000)}
 function stopRest(){if(rtInt){clearInterval(rtInt);rtInt=null}stopAlarm();paintRest()}
-function renderRestChips(session){const vals=[...new Set((session.items||[]).map(x=>x.rest).filter(Number.isFinite))].sort((a,b)=>a-b);const presets=(vals.length?vals:[45,60,90]).slice(0,4);document.getElementById('rt-chips').innerHTML=presets.map(s=>'<button class="rt-chip" onclick="startRest('+s+')">'+s+'s</button>').join('')+'<button class="rt-chip stop" onclick="stopRest()">Stop</button>'}
+function renderRestChips(session){
+  const title=document.querySelector('.rt-title');
+  if(session&&session.isPT){
+    if(title)title.textContent='Between-Event Rest · 3–5 min';
+    document.getElementById('rt-chips').innerHTML=[180,240,300].map(s=>'<button class="rt-chip" onclick="startRest('+s+')">'+(s/60)+' min</button>').join('')+'<button class="rt-chip stop" onclick="stopRest()">Stop</button>';
+    return;
+  }
+  if(title)title.textContent='Rest Timer';
+  const vals=[...new Set((session.items||[]).map(x=>x.rest).filter(Number.isFinite))].sort((a,b)=>a-b);const presets=(vals.length?vals:[45,60,90]).slice(0,4);document.getElementById('rt-chips').innerHTML=presets.map(s=>'<button class="rt-chip" onclick="startRest('+s+')">'+s+'s</button>').join('')+'<button class="rt-chip stop" onclick="stopRest()">Stop</button>'}
 
 let holdCtx=null,holdInt=null;
 function targetHold(item){const prev=item.key?latestLogForKey(item.key,viewDay):null;if(prev&&prev.values&&prev.values.length){const best=Math.min(...prev.values);return clamp(Math.round(best+5),item.min,item.max)}return item.min}

@@ -1,6 +1,7 @@
 /* Military Calisthenics Command — offline service worker (V3.4) */
-const CACHE = 'milcal-v3.4.0';
-const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
+const CACHE = 'milcal-v3.4.1';
+const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png',
+  './img-pushup.jpg', './img-pullup.jpg', './img-squat.jpg', './img-lunge.jpg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
