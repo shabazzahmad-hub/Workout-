@@ -1146,7 +1146,7 @@ STORAGE_KEY='militaryCalCoach_v3_'+INSTANCE_ID;
 let storageOK=true;
 function freshState(){
   const levels={},wins={};Object.keys(LADDERS).forEach(k=>{levels[k]=LADDERS[k].defaultLevel;wins[k]=0});
-  return {version:3.3,onboardingComplete:false,startDate:'',currentDay:0,dayComplete:new Array(TOTAL_DAYS).fill(false),dayModified:new Array(TOTAL_DAYS).fill(false),readiness:new Array(TOTAL_DAYS).fill('green'),exerciseDone:Array.from({length:TOTAL_DAYS},()=>({})),exerciseLogs:Array.from({length:TOTAL_DAYS},()=>({})),ptByDay:{},levels,advanceWins:wins,altPick:{},weekNotes:Array.from({length:NUM_WEEKS},()=>({weight:'',waist:'',steps:'',protein:'',sleep:'',notes:''})),cardio:[],profile:{name:'A Shabazz',sex:'male',age:47,height:'',weight:'',waist:'',weightUnit:'lb',waistUnit:'in',activity:'1.45',pushMax:15,pullMax:3,plankMax:45,squatMax:40,coreMax:8,daysPerWeek:4,duration:35,impact:'standard',cardioMode:'walk',equipment:{bar:true,dips:true,step:true,backpack:false},limitations:[],medicalFlag:false},cheerOn:true,instructor:'auto',timerVoice:false,autoRest:true,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),sourcePortableId:'',lastBackupAt:'',lastBackupDone:0,lastBackupKind:''};
+  return {version:3.3,onboardingComplete:false,startDate:'',currentDay:0,dayZeroAutoFillChecked:false,dayComplete:new Array(TOTAL_DAYS).fill(false),dayModified:new Array(TOTAL_DAYS).fill(false),readiness:new Array(TOTAL_DAYS).fill('green'),exerciseDone:Array.from({length:TOTAL_DAYS},()=>({})),exerciseLogs:Array.from({length:TOTAL_DAYS},()=>({})),ptByDay:{},levels,advanceWins:wins,altPick:{},weekNotes:Array.from({length:NUM_WEEKS},()=>({weight:'',waist:'',steps:'',protein:'',sleep:'',notes:''})),cardio:[],profile:{name:'A Shabazz',sex:'male',age:47,height:'',weight:'',waist:'',weightUnit:'lb',waistUnit:'in',activity:'1.45',pushMax:15,pullMax:3,plankMax:45,squatMax:40,coreMax:8,daysPerWeek:4,duration:35,impact:'standard',cardioMode:'walk',equipment:{bar:true,dips:true,step:true,backpack:false},limitations:[],medicalFlag:false},cheerOn:true,instructor:'auto',timerVoice:false,autoRest:true,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),sourcePortableId:'',lastBackupAt:'',lastBackupDone:0,lastBackupKind:''};
 }
 function loadState(){
   let local=null;try{const raw=localStorage.getItem(STORAGE_KEY);local=raw?JSON.parse(raw):null}catch(e){storageOK=false}
@@ -1169,7 +1169,18 @@ function normalizeState(s){
   out.weekNotes=arr(out.weekNotes,NUM_WEEKS,()=>({weight:'',waist:'',steps:'',protein:'',sleep:'',notes:''})).map(w=>Object.assign({weight:'',waist:'',steps:'',protein:'',sleep:'',notes:''},w||{}));
   if(!Array.isArray(out.cardio))out.cardio=[];out.cardio=out.cardio.filter(x=>x&&typeof x==='object');
   const incomingProfile=out.profile||{};out.profile=Object.assign({},f.profile,incomingProfile);out.profile.equipment=Object.assign({},f.profile.equipment,incomingProfile.equipment||{});out.profile.limitations=Array.isArray(incomingProfile.limitations)?incomingProfile.limitations.filter(Boolean):[];out.cheerOn=out.cheerOn!==false;out.instructor=(out.instructor==='auto'||INSTRUCTORS.some(i=>i.id===out.instructor))?out.instructor:'auto';out.timerVoice=!!out.timerVoice;out.autoRest=out.autoRest!==false;
-  if(typeof out.startDate!=='string')out.startDate='';out.currentDay=Math.max(0,Math.min(TOTAL_DAYS-1,parseInt(out.currentDay,10)||0));return out;
+  if(typeof out.startDate!=='string')out.startDate='';out.currentDay=Math.max(0,Math.min(TOTAL_DAYS-1,parseInt(out.currentDay,10)||0));
+  if(out.dayZeroAutoFillChecked!==true){
+    out.dayZeroAutoFillChecked=true;
+    const rec=out.ptByDay&&out.ptByDay[0];
+    if(rec&&typeof rec==='object'){
+      const p=out.profile||{},map={pushups:'pushMax',pullups:'pullMax',squats:'squatMax',kneeraises:'coreMax',plank:'plankMax'};
+      const matchesIntake=Object.keys(map).every(k=>String(rec[k]||'')===String(p[map[k]]==null?'':p[map[k]]));
+      const noOtherWork=!(out.exerciseDone[0]&&Object.values(out.exerciseDone[0]).some(Boolean));
+      if(matchesIntake&&noOtherWork){delete out.ptByDay[0];out.dayComplete[0]=false}
+    }
+  }
+  return out;
 }
 state=normalizeState(state);
 let saveFlashTimer=null;
