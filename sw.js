@@ -1,5 +1,5 @@
 /* Military Calisthenics Command — offline service worker (V3.4) */
-const CACHE = 'milcal-v4.0.6';
+const CACHE = 'milcal-v4.0.7';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png',
   './img-pushup.jpg', './img-pullup.jpg', './img-squat.jpg', './img-lunge.jpg',
   './ex-pushup.jpg','./ex-diamond-pushup.jpg','./ex-archer-pushup.jpg','./ex-pike-pushup.jpg',
