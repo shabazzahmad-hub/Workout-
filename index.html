@@ -309,17 +309,6 @@
   .demo-peek-photo{width:56px;height:56px;object-fit:cover;border-radius:8px;display:block}
   #demo-photo{width:100%;border-radius:14px;margin:0 0 9px;display:block;border:1px solid #26334a}
   @media(max-width:430px){.demo-peek.with-photo{grid-template-columns:48px 80px minmax(0,1fr) 26px}.demo-peek-photo{width:48px;height:52px}}
-
-  /* ---------- PHASE DIAGRAMS (V4.0.5) ---------- */
-  #demo-diagram{margin:0 0 9px}
-  #demo-diagram .dg-cap{font-size:10px;font-weight:900;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin:0 0 5px 2px}
-  .dg-frames{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;justify-content:center;background:#f4f6f8;border:1px solid #e1e6eb;border-radius:12px;padding:9px}
-  .dg-frame{flex:0 0 calc(50% - 4px);min-width:0}
-  .dg-frame svg{width:100%;display:block}
-  .dg-label{display:block;font-size:9px;font-weight:900;letter-spacing:.6px;color:#8a949e;text-transform:uppercase;margin:0 0 2px 2px}
-  .dg-chips{display:flex;gap:5px;flex-wrap:wrap;margin:7px 0 0}
-  .dg-chip{font-size:10px;font-weight:800;background:#eaf0f6;color:#3d5570;border-radius:20px;padding:3px 9px}
-  @media(prefers-color-scheme:dark){.dg-frames{background:#f4f6f8;border-color:#26334a}.dg-chip{background:rgba(255,255,255,.08);color:#c8d4e2}}
 </style>
 
 <link rel="manifest" href="manifest.webmanifest">
@@ -685,13 +674,12 @@
 
 <div class="overlay" id="demo-overlay" onclick="demoOverlayClick(event)"><div class="modal demo-modal" role="dialog" aria-modal="true" aria-labelledby="demo-title">
   <button class="modal-x" onclick="closeDemo()" aria-label="Close technique reference">×</button>
-  <div class="demo-head"><div><div class="modal-title" id="demo-title">Exercise Technique</div><div class="modal-sub" id="demo-sub">Photo, phase diagram & written standard</div></div><span class="demo-badge">Form guide</span></div>
+  <div class="demo-head"><div><div class="modal-title" id="demo-title">Exercise Technique</div><div class="modal-sub" id="demo-sub">Reference photo & written standard</div></div><span class="demo-badge">Form guide</span></div>
   <img id="demo-photo" style="display:none" alt="Reference photo of the exercise" loading="lazy">
-  <div id="demo-diagram" style="display:none"></div>
   <div class="demo-controls"><button class="primary" onclick="speakDemoCue()">🔊 Hear Coaching</button><span class="spacer"></span><button id="demo-prev" onclick="demoMove(-1)">‹ Previous</button><span class="demo-queue" id="demo-queue">Technique reference</span><button id="demo-next" onclick="demoMove(1)">Next ›</button></div>
   <div class="demo-standard" id="demo-standard"><b>Current standard:</b> Use controlled, pain-free repetitions.</div>
   <div class="demo-info-grid"><div class="demo-info"><h4>Key execution cues</h4><ul id="demo-cues"></ul></div><div class="demo-info"><h4>Avoid these errors</h4><ul id="demo-mistakes"></ul></div></div>
-  <div class="demo-note">Reference photos and phase diagrams illustrate the movement pattern; they are not medical advice. Match the written standard, use a pain-free range, and stop for sharp pain or instability.</div>
+  <div class="demo-note">Reference photos illustrate the movement pattern; they are not medical advice. Match the written standard, use a pain-free range, and stop for sharp pain or instability.</div>
 </div></div>
 
 <div class="overlay" id="cheer-overlay" onclick="hideCheer()"><div class="cheer-card"><div class="cheer-icon" id="cheer-icon">★</div><div class="cheer-head" id="cheer-head">Mission Complete</div><div class="cheer-text" id="cheer-text"></div><div class="cheer-who" id="cheer-who"></div><div class="cheer-tap">Tap to dismiss</div></div></div>
@@ -1383,305 +1371,6 @@ function relLabel(i){
    TECHNIQUE REFERENCE ENGINE — photo library + written standards
    (Vector stick-figure animation removed by owner directive.)
    ============================================================ */
-/* ---- Phase-diagram layer (original vector work, generated at runtime) ---- */
-var exDiagramHTML=(function(){
-const C={line:'#171c12',olive:'#6f7449',oliveD:'#565b39',skin:'#e0ad85',skinD:'#bc8963',
-         boot:'#413820',bootD:'#2f2915',hair:'#1d1b18',ground:'#c3cbd4'};
-const L={torso:44,neck:9,head:14,upper:25,fore:24,thigh:32,shin:28,foot:13};
-const RAD=Math.PI/180;
-function D(a){return [Math.cos(a*RAD),Math.sin(a*RAD)];}
-function add(a,b){return [a[0]+b[0],a[1]+b[1]];}
-function mul(u,s){return [u[0]*s,u[1]*s];}
-function unit(a,b){const dx=b[0]-a[0],dy=b[1]-a[1],l=Math.hypot(dx,dy)||1;return [dx/l,dy/l];}
-function perp(u){return [-u[1],u[0]];}
-function lerp(a,b,t){return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];}
-function ik(a,b,l1,l2,side){
-  const dx=b[0]-a[0],dy=b[1]-a[1];const d=Math.hypot(dx,dy)||0.001;
-  if(d>=l1+l2-0.02) return [a[0]+dx/d*l1,a[1]+dy/d*l1];
-  const x=(d*d+l1*l1-l2*l2)/(2*d), h=Math.sqrt(Math.max(0,l1*l1-x*x));
-  const ux=dx/d,uy=dy/d;
-  return [a[0]+ux*x-uy*h*side, a[1]+uy*x+ux*h*side];
-}
-function taper(a,b,wa,wb){
-  const u=unit(a,b),n=perp(u);
-  return 'M'+[a[0]+n[0]*wa/2,a[1]+n[1]*wa/2]+'L'+[b[0]+n[0]*wb/2,b[1]+n[1]*wb/2]+
-         'L'+[b[0]-n[0]*wb/2,b[1]-n[1]*wb/2]+'L'+[a[0]-n[0]*wa/2,a[1]-n[1]*wa/2]+'Z';
-}
-function disc(p,r){return 'M'+(p[0]-r)+' '+p[1]+'a'+r+' '+r+' 0 1 0 '+(2*r)+' 0a'+r+' '+r+' 0 1 0 '+(-2*r)+' 0Z';}
-function layer(paths,fill){
-  const d=paths.join(' ');
-  return '<path d="'+d+'" fill="'+C.line+'" stroke="'+C.line+'" stroke-width="5" stroke-linejoin="round"/>'+
-         '<path d="'+d+'" fill="'+fill+'" stroke="none"/>';
-}
-function seam(a,dirv,w){
-  const n=perp(dirv);
-  return '<path d="M'+[a[0]+n[0]*w/2,a[1]+n[1]*w/2]+'L'+[a[0]-n[0]*w/2,a[1]-n[1]*w/2]+
-         '" stroke="'+C.line+'" stroke-width="2.6" stroke-linecap="round"/>';
-}
-function figure(p){
-  const F=[]; const cuff=(sh,el)=>lerp(sh,el,0.52);
-  if(p.farKn){
-    F.push(layer([taper(p.hip,p.farKn,16.5,13),taper(p.farKn,p.farAn,13,9.5),disc(p.farKn,6.5),disc(p.hip,8.6)],C.oliveD));
-    F.push(layer([taper(p.farAn,p.farToe,10,8.4),disc(p.farAn,5.2),disc(p.farToe,4.2)],C.bootD));
-  }
-  if(p.farEl){
-    const cf=cuff(p.sh,p.farEl);
-    F.push(layer([taper(p.sh,cf,12,10.6),disc(p.sh,6.3)],C.oliveD));
-    F.push(layer([taper(cf,p.farEl,10.6,9.2),taper(p.farEl,p.farWr,9.2,7.2),disc(p.farEl,4.7),disc(p.farWr,4.4)],C.skinD));
-  }
-  if(p.kn){
-    F.push(layer([taper(p.hip,p.kn,18,14),taper(p.kn,p.an,14,10.5),disc(p.kn,7.1),disc(p.hip,9.4)],C.olive));
-    F.push(layer([taper(p.an,p.toe,10.5,8.6),disc(p.an,5.5),disc(p.toe,4.4)],C.boot));
-  }
-  F.push(layer([taper(p.sh,p.hip,30,24),disc(p.sh,15),disc(p.hip,12),taper(p.neck,p.sh,12,16)],C.olive));
-  const tu=unit(p.hip,p.sh);
-  F.push(seam(lerp(p.hip,p.sh,0.19),tu,25));
-  const hr=11.2;
-  const hu=unit(p.neck,p.hd), ang=Math.atan2(hu[1],hu[0])/RAD+90;
-  const fw=perp(hu), fd=(p.face||-1);
-  const HEAD=[
-    layer([disc(p.hd,hr),taper(p.neck,p.hd,11.5,12)],C.skin),
-    '<g transform="rotate('+ang+' '+p.hd[0]+' '+p.hd[1]+')"><path d="M'+(p.hd[0]-hr)+' '+(p.hd[1]-1.5)+
-      'a'+hr+' '+hr+' 0 0 1 '+(2*hr)+' 0Z" fill="'+C.hair+'"/></g>',
-    '<path d="'+disc([p.hd[0]+fd*fw[0]*5.0-hu[0]*1.2, p.hd[1]+fd*fw[1]*5.0-hu[1]*1.2],1.8)+'" fill="'+C.line+'"/>'
-  ];
-  const ARM=[];
-  if(p.el){
-    const cn=cuff(p.sh,p.el);
-    ARM.push(layer([taper(p.sh,cn,13.5,11.8),disc(p.sh,7)],C.olive));
-    ARM.push(layer([taper(cn,p.el,11.8,10),taper(p.el,p.wr,10,8),disc(p.el,5.2),disc(p.wr,4.9)],C.skin));
-  }
-  if(p.headTop){ F.push(ARM.join('')); F.push(HEAD.join('')); }
-  else { F.push(HEAD.join('')); F.push(ARM.join('')); }
-  return F.join('');
-}
-/* pose builder — angles in degrees, y grows downward, 0=right 90=down -90=up */
-function mk(o){
-  const tu=D(o.t), sh=add(o.hip,mul(tu,L.torso));
-  const hu=D(o.h===undefined?o.t:o.h);
-  const neck=add(sh,mul(tu,L.neck)), hd=add(neck,mul(hu,L.head));
-  const f={face:o.face||-1,headTop:o.headTop||0,hip:o.hip,sh:sh,neck:neck,hd:hd};
-  if(o.ah){f.el=ik(sh,o.ah,L.upper,L.fore,o.as===undefined?1:o.as);f.wr=o.ah;}
-  else if(o.a){f.el=add(sh,mul(D(o.a[0]),L.upper));f.wr=add(f.el,mul(D(o.a[1]),L.fore));}
-  if(o.fah){f.farEl=ik(sh,o.fah,L.upper,L.fore,o.fas===undefined?(o.as===undefined?1:o.as):o.fas);f.farWr=o.fah;}
-  else if(o.fa){f.farEl=add(sh,mul(D(o.fa[0]),L.upper));f.farWr=add(f.farEl,mul(D(o.fa[1]),L.fore));}
-  if(o.lp){f.kn=ik(o.hip,o.lp,L.thigh,L.shin,o.ls===undefined?-1:o.ls);f.an=o.lp;f.toe=add(o.lp,mul(D(o.ft===undefined?0:o.ft),L.foot));}
-  else if(o.l){f.kn=add(o.hip,mul(D(o.l[0]),L.thigh));f.an=add(f.kn,mul(D(o.l[1]),L.shin));f.toe=add(f.an,mul(D(o.l[2]),L.foot));}
-  if(o.flp){f.farKn=ik(o.hip,o.flp,L.thigh,L.shin,o.fls===undefined?(o.ls===undefined?-1:o.ls):o.fls);f.farAn=o.flp;f.farToe=add(o.flp,mul(D(o.fft===undefined?(o.ft===undefined?0:o.ft):o.fft),L.foot));}
-  else if(o.fl){f.farKn=add(o.hip,mul(D(o.fl[0]),L.thigh));f.farAn=add(f.farKn,mul(D(o.fl[1]),L.shin));f.farToe=add(f.farAn,mul(D(o.fl[2]),L.foot));}
-  return f;
-}
-/* annotations */
-function arw(x1,y1,x2,y2){return '<path d="M'+x1+' '+y1+'L'+x2+' '+y2+'" stroke="'+C.line+'" stroke-width="3" marker-end="url(#ah)" fill="none" stroke-linecap="round"/>';}
-function arc(x1,y1,x2,y2,b){const mx=(x1+x2)/2,my=(y1+y2)/2,dx=x2-x1,dy=y2-y1,l=Math.hypot(dx,dy)||1;
-  return '<path d="M'+x1+' '+y1+'Q'+(mx-dy/l*b)+' '+(my+dx/l*b)+' '+x2+' '+y2+'" stroke="'+C.line+'" stroke-width="3" marker-end="url(#ah)" fill="none" stroke-linecap="round"/>';}
-function gde(x1,y1,x2,y2){return '<path d="M'+x1+' '+y1+'L'+x2+' '+y2+'" stroke="#8a949e" stroke-width="2" stroke-dasharray="7 5" fill="none" stroke-linecap="round"/>';}
-function grd(x1,x2,y){return '<path d="M'+x1+' '+y+'L'+x2+' '+y+'" stroke="'+C.ground+'" stroke-width="3.4" stroke-linecap="round"/>';}
-function barh(x1,x2,y){return '<path d="M'+x1+' '+y+'L'+x2+' '+y+'" stroke="#6b7785" stroke-width="5" stroke-linecap="round"/>';}
-function boxr(x1,x2,y,h){return '<path d="M'+x1+' '+y+'H'+x2+'V'+(y+h)+'H'+x1+'Z" fill="#dde3ea" stroke="#9aa6b2" stroke-width="2.5"/>';}
-const AH='<defs><marker id="ah" viewBox="0 0 10 10" refX="7.5" refY="5" markerWidth="4.2" markerHeight="4.2" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="'+C.line+'"/></marker></defs>';
-const VBW=204;
-
-/* ===================== POSES ===================== */
-/* f: frame = {l:label, p:pose, ann:[...]}  ann: ['a',x1,y1,x2,y2] | ['c',..,bend] | ['g',..] */
-const POSE={
-
-'pushup':{floor:1,chips:['Body one line','Elbows ~90°'],f:[
-  {l:'Start',p:mk({face:-1,hip:[126,74],t:193,h:186,ah:[82,112],as:1,fah:[70,113],fas:1,l:[20,22,75],fl:[24,26,78]}),
-   ann:[['a',112,20,112,44]]},
-  {l:'Bottom',p:mk({face:-1,hip:[126,92],t:190,h:184,ah:[82,112],as:1,fah:[70,113],fas:1,l:[14,16,72],fl:[18,20,75]}),
-   ann:[['a',112,80,112,56]]}]},
-
-'diamond-pushup':{floor:1,chips:['Hands together under chest','Elbows brush ribs'],f:[
-  {l:'Start',p:mk({face:-1,hip:[126,74],t:193,h:186,ah:[96,112],as:1,fah:[92,113],fas:1,l:[20,22,75],fl:[24,26,78]}),
-   ann:[['a',118,20,118,44]]},
-  {l:'Bottom',p:mk({face:-1,hip:[126,90],t:191,h:185,ah:[96,112],as:1,fah:[92,113],fas:1,l:[15,17,73],fl:[19,21,76]}),
-   ann:[['a',118,80,118,56]]}]},
-
-'archer-pushup':{floor:1,chips:['One arm loads','Other stays straight'],f:[
-  {l:'Start',p:mk({face:-1,hip:[126,74],t:193,h:186,ah:[86,112],as:1,fah:[36,113],fas:1,l:[20,22,75],fl:[24,26,78]}),
-   ann:[['a',112,20,112,44]]},
-  {l:'Shift',p:mk({face:-1,hip:[126,92],t:190,h:184,ah:[92,112],as:1,fah:[32,113],fas:1,l:[14,16,72],fl:[18,20,75]}),
-   ann:[['a',96,72,116,52]]}]},
-
-'pike-pushup':{floor:1,chips:['Hips high','Head between hands'],f:[
-  {l:'Start',p:mk({face:-1,hip:[118,44],t:170,h:150,ah:[62,112],as:1,fah:[52,113],fas:1,l:[68,84,-10],fl:[72,88,-8]}),
-   ann:[['a',102,10,102,32]]},
-  {l:'Bottom',p:mk({face:-1,hip:[118,52],t:160,h:132,ah:[62,112],as:1,fah:[52,113],fas:1,l:[70,86,-10],fl:[74,90,-8]}),
-   ann:[['a',86,54,102,30]]}]},
-
-'pike-elevated':{floor:1,box:[152,206,104],chips:['Feet elevated','Vertical press path'],f:[
-  {l:'Start',p:mk({face:-1,hip:[128,36],t:172,h:150,ah:[64,112],as:1,fah:[54,113],fas:1,lp:[178,104],ls:-1,ft:-20,flp:[188,106],fft:-18}),
-   ann:[['a',104,4,104,26]]},
-  {l:'Bottom',p:mk({face:-1,hip:[128,44],t:162,h:132,ah:[64,112],as:1,fah:[54,113],fas:1,lp:[178,104],ls:-1,ft:-20,flp:[188,106],fft:-18}),
-   ann:[['a',88,48,104,24]]}]},
-
-'plank':{floor:1,chips:['Ribs down','Glutes squeezed'],f:[
-  {l:'Hold',p:mk({face:-1,headTop:1,hip:[126,86],t:190,h:184,a:[88,170],fa:[92,168],l:[18,20,74],fl:[22,24,77]}),
-   ann:[['g',42,64,198,100]]}]},
-
-'sideplank':{floor:1,chips:['Stack the shoulders','Hips lifted'],f:[
-  {l:'Hold',p:mk({face:-1,headTop:1,hip:[122,80],t:196,h:190,a:[-92,-92],fah:[68,112],fas:1,l:[12,14,72],fl:[15,17,74]}),
-   ann:[['g',44,56,192,96]]}]},
-
-'squat':{floor:1,chips:['Whole foot planted','Knees track toes'],f:[
-  {l:'Start',p:mk({face:1,hip:[70,56],t:-88,a:[95,92],fa:[86,88],l:[90,90,0],fl:[93,87,0]}),
-   ann:[['a',128,56,128,88]]},
-  {l:'Bottom',p:mk({face:1,hip:[52,86],t:-70,h:-76,a:[-6,-4],fa:[2,4],lp:[70,116],ls:-1,ft:0,flp:[62,116]}),
-   ann:[['a',132,100,132,68]]}]},
-
-'splitsquat':{floor:1,chips:['Torso tall','Front heel down'],f:[
-  {l:'Start',p:mk({face:1,hip:[74,54],t:-88,a:[100,96],fa:[80,84],lp:[104,116],ls:-1,ft:0,flp:[48,116],fft:0}),
-   ann:[['a',142,56,142,88]]},
-  {l:'Bottom',p:mk({face:1,hip:[72,80],t:-84,a:[104,100],fa:[76,80],lp:[104,116],ls:-1,ft:0,flp:[44,110],fft:-40}),
-   ann:[['a',146,96,146,66]]}]},
-
-'lunge':{floor:1,chips:['Step, then sink','Knee over ankle'],f:[
-  {l:'Start',p:mk({face:1,hip:[62,56],t:-88,a:[95,92],fa:[86,88],l:[90,90,0],fl:[93,87,0]}),
-   ann:[['a',106,58,144,58]]},
-  {l:'Lunge',p:mk({face:1,hip:[74,80],t:-86,a:[100,96],fa:[78,82],lp:[108,116],ls:-1,ft:0,flp:[46,112],fft:-40}),
-   ann:[['a',152,96,152,66]]}]},
-
-'glutebridge':{floor:1,chips:['Ribs down','Drive through heels'],f:[
-  {l:'Down',p:mk({face:1,hip:[118,104],t:174,h:178,a:[6,4],fa:[10,8],l:[-4,88,0],fl:[-8,92,0]}),
-   ann:[['a',128,92,128,68]]},
-  {l:'Top',p:mk({face:1,hip:[118,82],t:152,h:172,a:[12,8],fa:[16,12],l:[4,92,0],fl:[0,96,0]}),
-   ann:[['a',128,64,128,88]]}]},
-
-'hollow':{floor:1,chips:['Low back flat','Whole body braced'],f:[
-  {l:'Hold',p:mk({face:1,headTop:1,hip:[118,98],t:168,h:176,a:[208,210],fa:[213,215],l:[-8,-8,-40],fl:[-5,-5,-38]}),
-   ann:[['g',26,104,192,88]]}]},
-
-'deadbug':{floor:1,chips:['Back stays flat','Opposite limbs'],f:[
-  {l:'Hold',p:mk({face:1,hip:[120,106],t:180,a:[-88,-88],fa:[174,178],l:[-30,-95,-10],fl:[4,4,-45]}),
-   ann:[['g',30,112,188,112]]}]},
-
-'revcrunch':{floor:1,chips:['Curl the hips','No swinging'],f:[
-  {l:'Start',p:mk({face:1,hip:[120,106],t:180,a:[8,6],fa:[12,10],l:[-88,8,-8],fl:[-84,12,-6]}),
-   ann:[['a',166,80,132,58]]},
-  {l:'Curl',p:mk({face:1,hip:[116,96],t:176,a:[10,8],fa:[14,12],l:[-138,-28,-70],fl:[-134,-24,-68]}),
-   ann:[['a',110,44,146,62]]}]},
-
-'legraise':{floor:1,chips:['Low back pinned','Control the descent'],f:[
-  {l:'Down',p:mk({face:1,hip:[118,106],t:180,a:[6,4],fa:[10,8],l:[-4,-4,-40],fl:[-1,-1,-38]}),
-   ann:[['a',180,92,180,62]]},
-  {l:'Up',p:mk({face:1,hip:[118,106],t:180,a:[6,4],fa:[10,8],l:[-80,-82,-30],fl:[-77,-79,-28]}),
-   ann:[['a',168,44,168,76]]}]},
-
-'kneeraise':{bar:[78,146,10],chips:['No swing','Knees to hip height'],f:[
-  {l:'Hang',p:mk({face:-1,headTop:1,hip:[112,105],t:-92,h:-90,ah:[104,14],as:-1,fah:[118,16],fas:-1,l:[86,92,40],fl:[89,95,42]}),
-   ann:[['a',162,128,162,96]]},
-  {l:'Raise',p:mk({face:-1,headTop:1,hip:[112,105],t:-92,h:-90,ah:[104,14],as:-1,fah:[118,16],fas:-1,l:[185,120,140],fl:[188,124,142]}),
-   ann:[['a',162,100,162,132]]}]},
-
-'pullup':{bar:[76,148,10],chips:['Full hang to chin','No kipping'],f:[
-  {l:'Hang',p:mk({face:-1,headTop:1,hip:[112,105],t:-92,h:-90,ah:[104,14],as:-1,fah:[118,16],fas:-1,l:[88,94,40],fl:[91,97,42]}),
-   ann:[['a',156,84,156,52]]},
-  {l:'Top',p:mk({face:-1,headTop:1,hip:[112,89],t:-88,h:-88,ah:[104,14],as:-1,fah:[118,16],fas:-1,l:[100,60,-20],fl:[103,63,-18]}),
-   ann:[['a',158,60,158,92]]}]},
-
-'deadhang':{bar:[76,148,10],chips:['Shoulders active','Breathe steady'],f:[
-  {l:'Hold',p:mk({face:-1,headTop:1,hip:[112,105],t:-92,h:-90,ah:[104,14],as:-1,fah:[118,16],fas:-1,l:[88,92,40],fl:[91,95,42]}),
-   ann:[['g',146,26,146,168]]}]},
-
-'dip':{bar:[86,152,100],chips:['Chest tall','Elbows drive back'],f:[
-  {l:'Top',p:mk({face:-1,headTop:1,hip:[109,97],t:-86,h:-90,ah:[126,100],as:-1,fah:[118,102],fas:-1,l:[105,40,20],fl:[108,43,22]}),
-   ann:[['a',158,62,158,94]]},
-  {l:'Bottom',p:mk({face:-1,headTop:1,hip:[104,135],t:-80,h:-86,ah:[126,100],as:-1,fah:[118,102],fas:-1,l:[105,40,20],fl:[108,43,22]}),
-   ann:[['a',160,104,160,72]]}]},
-
-'support-hold':{bar:[86,152,100],chips:['Elbows locked','Shoulders down'],f:[
-  {l:'Hold',p:mk({face:-1,headTop:1,hip:[109,97],t:-88,h:-90,ah:[126,100],as:-1,fah:[118,102],fas:-1,l:[105,40,20],fl:[108,43,22]}),
-   ann:[['g',150,30,150,150]]}]},
-
-'handstand':{floor:1,chips:['Stack hips over hands','Ribs down'],f:[
-  {l:'Hold',p:mk({face:-1,headTop:1,hip:[110,58],t:90,h:84,ah:[128,150],as:-1,fah:[96,151],fas:-1,l:[-88,-90,-70],fl:[-85,-87,-68]}),
-   ann:[['g',150,-16,150,146]]}]},
-
-'superman':{floor:1,chips:['Lift from the back','Neck neutral'],f:[
-  {l:'Hold',p:mk({face:-1,headTop:1,hip:[120,102],t:186,h:196,a:[206,208],fa:[211,213],l:[-6,-7,-35],fl:[-3,-4,-33]}),
-   ann:[['a',54,84,54,62],['a',188,84,188,62]]}]},
-
-'birddog':{floor:1,chips:['Hips level','Reach long'],f:[
-  {l:'Hold',p:mk({face:-1,headTop:1,hip:[120,78],t:185,h:194,ah:[74,118],as:1,fa:[199,199],l:[76,172,176],fl:[-5,-5,-30]}),
-   ann:[['g',26,66,192,74]]}]},
-
-'bearcrawl':{floor:1,chips:['Knees off floor','Hips low'],f:[
-  {l:'Step 1',p:mk({face:-1,headTop:1,hip:[122,66],t:190,h:198,ah:[56,118],as:1,fah:[100,116],fas:1,lp:[156,118],ls:-1,ft:-30,flp:[112,116],fft:-28}),
-   ann:[['a',110,26,74,26]]},
-  {l:'Step 2',p:mk({face:-1,headTop:1,hip:[122,66],t:190,h:198,ah:[102,118],as:1,fah:[56,116],fas:1,lp:[112,118],ls:-1,ft:-30,flp:[156,116],fft:-28}),
-   ann:[['a',110,26,74,26]]}]},
-
-'mountainclimber':{floor:1,chips:['Hips steady','Fast switch'],f:[
-  {l:'Drive L',p:mk({face:-1,headTop:1,hip:[126,80],t:190,h:184,ah:[84,118],as:1,fah:[72,119],fas:1,l:[160,96,-20],fl:[16,18,72]}),
-   ann:[['a',124,44,88,44]]},
-  {l:'Drive R',p:mk({face:-1,headTop:1,hip:[126,80],t:190,h:184,ah:[84,118],as:1,fah:[72,119],fas:1,l:[16,18,72],fl:[158,94,-18]}),
-   ann:[['a',124,44,160,44]]}]},
-
-'burpee':{floor:1,chips:['Plant, then jump','Land soft'],f:[
-  {l:'Stand',p:mk({face:1,hip:[70,58],t:-88,a:[95,92],fa:[86,88],l:[90,90,0],fl:[93,87,0]}),
-   ann:[['a',114,70,114,96]]},
-  {l:'Plank',p:mk({face:-1,headTop:1,hip:[126,80],t:191,h:186,ah:[84,118],as:1,fah:[72,119],fas:1,l:[16,18,72],fl:[20,22,75]}),
-   ann:[['a',114,78,114,52]]},
-  {l:'Jump',p:mk({face:1,headTop:1,hip:[70,44],t:-90,h:-86,a:[-66,-70],fa:[-108,-104],l:[92,90,74],fl:[89,87,72]}),
-   ann:[['a',114,58,114,30]]}]},
-
-'march':{floor:1,chips:['Tall posture','Even cadence'],f:[
-  {l:'Left',p:mk({face:1,hip:[70,56],t:-88,a:[110,84],fa:[70,96],lp:[70,116],ls:-1,ft:0,fl:[-22,62,-30]}),
-   ann:[['a',114,58,144,58]]},
-  {l:'Right',p:mk({face:1,hip:[70,56],t:-88,a:[70,96],fa:[110,84],l:[-22,62,-30],flp:[70,116],fls:-1,fft:0}),
-   ann:[['a',114,58,144,58]]}]},
-
-'ytw':{floor:1,vbw:150,chips:['Thumbs up','Shoulder blades work'],f:[
-  {l:'Y — arms long',p:mk({face:-1,headTop:1,hip:[132,104],t:186,h:196,a:[212,214],fa:[217,219],l:[-4,-4,-32],fl:[-1,-1,-30]}),
-   ann:[['a',44,66,34,48]]},
-  {l:'W — elbows bent',p:mk({face:-1,headTop:1,hip:[132,104],t:186,h:196,a:[172,258],fa:[176,262],l:[-4,-4,-32],fl:[-1,-1,-30]}),
-   ann:[['a',57,73,49,53]]}]}
-};
-
-/* ===================== RENDER ===================== */
-const JOINTS=['hip','sh','neck','hd','el','wr','farEl','farWr','kn','an','toe','farKn','farAn','farToe'];
-const CONTACT=['wr','farWr','an','farAn','toe','farToe'];
-function bboxOf(f){
-  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
-  for(const k of JOINTS){const q=f.p[k];if(!q)continue;
-    x0=Math.min(x0,q[0]);y0=Math.min(y0,q[1]);x1=Math.max(x1,q[0]);y1=Math.max(y1,q[1]);}
-  y0=Math.min(y0,f.p.hd[1]-12);y1=Math.max(y1,f.p.hd[1]+12);
-  for(const a of (f.ann||[])){x0=Math.min(x0,a[1],a[3]);y0=Math.min(y0,a[2],a[4]);x1=Math.max(x1,a[1],a[3]);y1=Math.max(y1,a[2],a[4]);}
-  return [x0,y0,x1,y1];
-}
-function contactY(f){let y=-1e9;for(const k of CONTACT){const q=f.p[k];if(q)y=Math.max(y,q[1]);}return y;}
-function drawEx(key,ex){
-  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9,cy=-1e9;
-  ex.f.forEach(f=>{const b=bboxOf(f);
-    x0=Math.min(x0,b[0]);y0=Math.min(y0,b[1]);x1=Math.max(x1,b[2]);y1=Math.max(y1,b[3]);
-    cy=Math.max(cy,contactY(f));});
-  const floorY=cy+6.5;
-  if(ex.floor) y1=Math.max(y1,floorY);
-  if(ex.bar) y0=Math.min(y0,ex.bar[2]-4);
-  const vbw=Math.max(ex.vbw||VBW, x1-x0+26);
-  const vbh=Math.max(74, y1-y0+26);
-  const vx=(x0+x1)/2-vbw/2, vy=(y0+y1)/2-vbh/2;
-  const vb=[vx,vy,vbw,vbh].map(n=>Math.round(n*10)/10).join(' ');
-  let h='<div class="dg-frames">';
-  ex.f.forEach(f=>{
-    let body='';
-    if(ex.box) body+=boxr(ex.box[0],ex.box[1],ex.box[2],floorY-ex.box[2]);
-    if(ex.floor) body+=grd(vx+5,vx+vbw-5,floorY);
-    if(ex.bar) body+=barh(ex.bar[0],ex.bar[1],ex.bar[2]);
-    body+=figure(f.p);
-    for(const a of (f.ann||[])){
-      if(a[0]==='a') body+=arw(a[1],a[2],a[3],a[4]);
-      else if(a[0]==='c') body+=arc(a[1],a[2],a[3],a[4],a[5]);
-      else body+=gde(a[1],a[2],a[3],a[4]);
-    }
-    h+='<div class="dg-frame"><span class="dg-label">'+f.l+'</span><svg viewBox="'+vb+'">'+AH+body+'</svg></div>';
-  });
-  return h+'</div>';
-}
-return function(key){var ex=POSE[key];if(!ex)return '';
-return drawEx(key,ex)+'<div class="dg-chips">'+ex.chips.map(function(c){return '<span class="dg-chip">'+c+'</span>'}).join('')+'</div>';};
-})();
 let demoState={queue:[],index:0,open:false};
 function photoForName(name){
   const n=String(name||'').toLowerCase();
@@ -1716,18 +1405,18 @@ function photoForName(name){
   for(const [k,f] of rules){if(n.includes(k))return f+'.jpg'}
   return null;
 }
-function demoSpecForName(name){const n=String(name||'').trim();if(!n||/rest day honored|recovery preparation|daily movement target|sleep|breathing$|downshift breathing|mobility|ankle rocks|hip-flexor stretch|thoracic rotation/i.test(n))return null;const src=photoForName(n);if(!src)return null;const key=src.replace(/^ex-/,'').replace(/\.jpg$/,'');return {photo:src,diagram:key}}
+function demoSpecForName(name){const n=String(name||'').trim();if(!n||/rest day honored|recovery preparation|daily movement target|sleep|breathing$|downshift breathing|mobility|ankle rocks|hip-flexor stretch|thoracic rotation/i.test(n))return null;const src=photoForName(n);return src?{photo:src}:null}
 
 function demoExtraCues(name){const n=name.toLowerCase();if(/push-up|pushup/.test(n))return ['Brace glutes and abdomen so the body moves as one unit.','Use a repeatable chest depth and complete elbow lockout.'];if(/pull-up|pullup/.test(n))return ['Initiate by setting the shoulder blades before bending the elbows.','No kicking, swinging or neck craning over the bar.'];if(/dip/.test(n))return ['Keep shoulders down and away from the ears.','Use only a pain-free depth; do not bounce from the bottom.'];if(/squat/.test(n))return ['Keep the whole foot planted and knees tracking with the toes.','Maintain a tall, braced torso through the controlled depth.'];if(/lunge|split squat/.test(n))return ['Keep the front foot planted and lower the rear knee softly.','Drive through the whole front foot without collapsing inward.'];if(/knee raise|leg raise|toes-to-bar/.test(n))return ['Eliminate swing before every repetition.','Finish by curling the pelvis upward, not merely lifting the thighs.'];if(/plank/.test(n))return ['Squeeze glutes and keep ribs stacked over the pelvis.','Stop the set when spinal position changes.'];if(/bridge/.test(n))return ['Posteriorly tilt the pelvis before lifting.','Finish with the glutes rather than arching the lower back.'];if(/bear|bird dog|dead bug/.test(n))return ['Move slowly enough that the pelvis and ribs remain quiet.','Exhale through the difficult portion and avoid rotation.'];if(/walk|march|ruck|run/.test(n))return ['Use upright posture and controlled foot strikes.','Increase duration before adding speed or load.'];return ['Use controlled, pain-free range of motion.','Stop before technique deteriorates.']}
 function demoMistakes(name){const n=name.toLowerCase();if(/push-up|pushup/.test(n))return ['Hips sagging or piking.','Elbows flaring straight sideways.'];if(/pull-up|pullup/.test(n))return ['Kipping or swinging.','Partial descent and chin reaching.'];if(/squat/.test(n))return ['Heels lifting.','Knees collapsing inward.'];if(/lunge|split squat/.test(n))return ['Front heel lifting.','Torso collapsing forward.'];if(/plank|hollow/.test(n))return ['Lower back sagging or arching.','Holding breath and chasing time after form fails.'];if(/knee raise|leg raise/.test(n))return ['Using momentum.','Stopping without a pelvic curl.'];if(/bridge/.test(n))return ['Overarching the lower back.','Pelvis rotating on single-leg work.'];return ['Rushing the return phase.','Continuing through sharp pain or unstable form.']}
 function demoQueueFromItem(item){if(!item)return[];if(item.kind==='circuit')return(item.drills||[]).map(d=>{const spec=demoSpecForName(d[0]);return spec?{name:d[0],target:d[1],cue:'Complete the prescribed repetitions with strict form before moving to the next drill.',spec}:null}).filter(Boolean);const name=itemName(item),spec=demoSpecForName(name);return spec?[{name,target:itemPrescription(item),cue:itemCue(item),spec}]:[]}
-function demoPeekHTML(item){const q=demoQueueFromItem(item);if(!q.length)return'';const src=q[0].spec&&q[0].spec.photo;if(!src)return'';const label=item.kind==='circuit'?q.length+' technique references':'Photo, phase diagram & written standard';return '<button type="button" class="demo-peek" onclick="openDemo(\''+item.id+'\')" aria-label="View technique reference for '+esc(itemName(item))+'"><img src="'+src+'" alt="" loading="lazy" style="width:88px;height:56px;object-fit:cover;border-radius:8px;display:block"><span class="demo-peek-copy"><b style="white-space:nowrap">View</b></span><span class="demo-peek-play">▶</span></button>'}
+function demoPeekHTML(item){const q=demoQueueFromItem(item);if(!q.length)return'';const src=q[0].spec&&q[0].spec.photo;if(!src)return'';const label=item.kind==='circuit'?q.length+' technique references':'Reference photo & written standard';return '<button type="button" class="demo-peek" onclick="openDemo(\''+item.id+'\')" aria-label="View technique reference for '+esc(itemName(item))+'"><img src="'+src+'" alt="" loading="lazy" style="width:88px;height:56px;object-fit:cover;border-radius:8px;display:block"><span class="demo-peek-copy"><b style="white-space:nowrap">View</b></span><span class="demo-peek-play">▶</span></button>'}
 function renderDemoThumbnails(){}
 function setDemoQueue(queue){demoState.queue=queue||[];demoState.index=0;paintDemoUI()}
 function openDemo(id){const item=getItem(viewDay,id),q=demoQueueFromItem(item);if(!q.length){alert('A photo reference is not required for this action. Use the written standard shown in the exercise card.');return}setDemoQueue(q);demoState.open=true;document.getElementById('demo-overlay').classList.add('show');document.body.style.overflow='hidden';startDemoAnimation()}
 function openPTDemo(k){const eq=profileData().equipment||{},map={pullups:eq.bar?'Strict Pull-Up':'Prone Pull-Down',pushups:'Standard Push-Up',squats:'Bodyweight Squat',kneeraises:eq.bar?'Strict Hanging Knee Raise':'Reverse Crunch',plank:'Standard Forearm Plank',run:'Easy Aerobic Run'};const name=map[k];if(!name)return;const spec=demoSpecForName(name);if(!spec)return;setDemoQueue([{name,target:'PT standard',cue:'Use the same strict standard at every assessment.',spec}]);demoState.open=true;document.getElementById('demo-overlay').classList.add('show');document.body.style.overflow='hidden';startDemoAnimation()}
 function openLadderDemo(k){const l=LADDERS[k];if(!l)return;const name=l.levels[state.levels[k]].name,spec=demoSpecForName(name);if(!spec){alert('No photo reference is required for this selection. Use the written standard.');return}setDemoQueue([{name,target:'Current progression level',cue:l.levels[state.levels[k]].cue,spec}]);demoState.open=true;document.getElementById('demo-overlay').classList.add('show');document.body.style.overflow='hidden';startDemoAnimation()}
-function paintDemoUI(){const entry=demoState.queue[demoState.index];if(!entry)return;document.getElementById('demo-title').textContent=entry.name;document.getElementById('demo-sub').textContent=(entry.target?entry.target+' · ':'')+'Photo, phase diagram & written standard';document.getElementById('demo-standard').innerHTML='<b>Current standard:</b> '+esc(entry.cue||'Use controlled, pain-free military-standard repetitions.');const cues=demoExtraCues(entry.name),mistakes=demoMistakes(entry.name);document.getElementById('demo-cues').innerHTML=cues.map(x=>'<li>'+esc(x)+'</li>').join('');document.getElementById('demo-mistakes').innerHTML=mistakes.map(x=>'<li>'+esc(x)+'</li>').join('');document.getElementById('demo-queue').textContent=demoState.queue.length>1?(demoState.index+1)+' of '+demoState.queue.length:'Technique reference';document.getElementById('demo-prev').disabled=demoState.queue.length<2;document.getElementById('demo-next').disabled=demoState.queue.length<2;const ph=document.getElementById('demo-photo'),srcp=entry.spec&&entry.spec.photo;if(ph){if(srcp){if(ph.getAttribute('src')!==srcp)ph.src=srcp;ph.style.display='block'}else ph.style.display='none'}const dg=document.getElementById('demo-diagram'),dkey=entry.spec&&entry.spec.diagram;if(dg){var dhtml=dkey?exDiagramHTML(dkey):'';if(dhtml){dg.innerHTML='<div class="dg-cap">Movement phases &amp; form checks</div>'+dhtml;dg.style.display='block'}else{dg.innerHTML='';dg.style.display='none'}}}
+function paintDemoUI(){const entry=demoState.queue[demoState.index];if(!entry)return;document.getElementById('demo-title').textContent=entry.name;document.getElementById('demo-sub').textContent=(entry.target?entry.target+' · ':'')+'Reference photo & written standard';document.getElementById('demo-standard').innerHTML='<b>Current standard:</b> '+esc(entry.cue||'Use controlled, pain-free military-standard repetitions.');const cues=demoExtraCues(entry.name),mistakes=demoMistakes(entry.name);document.getElementById('demo-cues').innerHTML=cues.map(x=>'<li>'+esc(x)+'</li>').join('');document.getElementById('demo-mistakes').innerHTML=mistakes.map(x=>'<li>'+esc(x)+'</li>').join('');document.getElementById('demo-queue').textContent=demoState.queue.length>1?(demoState.index+1)+' of '+demoState.queue.length:'Technique reference';document.getElementById('demo-prev').disabled=demoState.queue.length<2;document.getElementById('demo-next').disabled=demoState.queue.length<2;const ph=document.getElementById('demo-photo'),srcp=entry.spec&&entry.spec.photo;if(ph){if(srcp){if(ph.getAttribute('src')!==srcp)ph.src=srcp;ph.style.display='block'}else ph.style.display='none'}}
 function startDemoAnimation(){paintDemoUI()}
 function closeDemo(){demoState.open=false;document.getElementById('demo-overlay').classList.remove('show');document.body.style.overflow=''}
 function demoMove(d){if(!demoState.queue.length)return;demoState.index=(demoState.index+d+demoState.queue.length)%demoState.queue.length;paintDemoUI()}
