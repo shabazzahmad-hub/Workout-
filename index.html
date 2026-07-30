@@ -631,12 +631,61 @@ function go(tab){
   window.scrollTo(0,0);
   render();
 }
-$$('.nav button').forEach(b=>b.addEventListener('click',()=>{haptic(10);go(b.dataset.tab);}));
+// User taps a bottom-nav tab -> record a history entry so the phone's Back
+// button steps back through tabs instead of closing the app.
+function navTo(tab){
+  if(tab===TAB){window.scrollTo(0,0);return;}
+  try{history.pushState({cf:'tab',tab:tab},'');}catch(e){}
+  go(tab);
+}
+$$('.nav button').forEach(b=>b.addEventListener('click',()=>{haptic(10);navTo(b.dataset.tab);}));
 
 /* ============================ SHEET ============================ */
-function openSheet(html){const s=$('#sheet');s.innerHTML='<div class="grab"></div>'+html;$('#scrim').classList.add('open');document.body.style.overflow='hidden';}
-function closeSheet(){$('#scrim').classList.remove('open');document.body.style.overflow='';stopTimer();}
+// Opening a sheet pushes a history entry so Back closes the sheet (not the app).
+// Re-calling openSheet while one is already open just swaps content (no new entry),
+// so multi-step flows (assessment, timers) don't stack up history.
+function openSheet(html){
+  const s=$('#sheet');s.innerHTML='<div class="grab"></div>'+html;
+  const already=$('#scrim').classList.contains('open');
+  $('#scrim').classList.add('open');document.body.style.overflow='hidden';
+  if(!already){try{history.pushState({cf:'sheet'},'');}catch(e){}}
+}
+function closeSheet(){
+  const wasOpen=$('#scrim').classList.contains('open');
+  $('#scrim').classList.remove('open');document.body.style.overflow='';stopTimer();
+  // If the app (a button/scrim) closed the sheet, retire its history entry too,
+  // so the counts stay balanced. The guard makes onPop ignore this self-pop.
+  if(wasOpen&&history.state&&history.state.cf==='sheet'){
+    _backGuard=true;try{history.back();}catch(e){_backGuard=false;}
+  }
+}
 $('#scrim').addEventListener('click',e=>{if(e.target.id==='scrim')closeSheet();});
+
+/* ---- Android / browser Back-button integration ----
+   Back: (1) close an open sheet, else (2) step back a tab, else
+   (3) on the Today home tab, require a confirming second press to exit. */
+let _backGuard=false,_exiting=false,_homeBackAt=0;
+function onPop(e){
+  if(_exiting)return;
+  if(_backGuard){_backGuard=false;return;}
+  if($('#scrim').classList.contains('open')){
+    $('#scrim').classList.remove('open');document.body.style.overflow='';stopTimer();return;
+  }
+  const st=e.state||{};
+  if(st.cf==='tab'){go(st.tab||'today');return;}
+  if(st.cf==='home'){go('today');return;}
+  // Reached the root: user is trying to leave from the home tab.
+  const now=(typeof Date!=='undefined')?Date.now():0;
+  if(now-_homeBackAt<2000){_exiting=true;try{history.back();}catch(e2){}return;}
+  _homeBackAt=now;
+  try{history.pushState({cf:'home',tab:'today'},'');}catch(e3){}
+  if(TAB!=='today')go('today');
+  toast('Press Back again to exit');
+}
+function initBackButton(){
+  try{history.replaceState({cf:'root'},'');history.pushState({cf:'home',tab:'today'},'');}catch(e){}
+  window.addEventListener('popstate',onPop);
+}
 
 /* ============================ RENDER ROUTER ============================ */
 function render(){
@@ -1456,6 +1505,7 @@ async function boot(){
   if(typeof STATE.settings.repTempo!=='number')STATE.settings.repTempo=3;
   // request durable storage so an installed PWA keeps data
   try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();}catch(e){}
+  initBackButton();   // make the phone's Back button navigate instead of closing the app
   render();
   // voice coach: populate the voice list now and again when the OS finishes loading it,
   // and unlock speech on the first user interaction (mobile autoplay policy)
