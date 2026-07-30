@@ -1,9 +1,14 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v1.3';
+const CACHE = 'coreforge-v2';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png',
-  './ex-plank.jpg','./ex-hollow.jpg','./ex-deadbug.jpg','./ex-revcrunch.jpg',
-  './ex-legraise.jpg','./ex-kneeraise.jpg','./ex-sideplank.jpg','./ex-glutebridge.jpg',
-  './ex-birddog.jpg','./ex-march.jpg','./ex-superman.jpg','./ex-mountainclimber.jpg'];
+  './ex-kneeplank.jpg','./ex-plank.jpg','./ex-longplank.jpg','./ex-planktap.jpg',
+  './ex-tuckhollow.jpg','./ex-hollow.jpg','./ex-hollowrock.jpg',
+  './ex-deadbug.jpg','./ex-revcrunch.jpg','./ex-legraise.jpg','./ex-kneeraise.jpg',
+  './ex-crunch.jpg','./ex-bicycle.jpg','./ex-tuckvup.jpg','./ex-vup.jpg',
+  './ex-kneeside.jpg','./ex-sideplank.jpg','./ex-sidedip.jpg','./ex-copenhagen.jpg',
+  './ex-seatedtwist.jpg','./ex-russiantwist.jpg','./ex-weightedtwist.jpg',
+  './ex-glutebridge.jpg','./ex-birddog.jpg','./ex-march.jpg','./ex-superman.jpg',
+  './ex-marchplace.jpg','./ex-mountainclimber.jpg','./ex-flutter.jpg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
