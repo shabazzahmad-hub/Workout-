@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v1.2';
+const CACHE = 'coreforge-v1.3';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png',
   './ex-plank.jpg','./ex-hollow.jpg','./ex-deadbug.jpg','./ex-revcrunch.jpg',
   './ex-legraise.jpg','./ex-kneeraise.jpg','./ex-sideplank.jpg','./ex-glutebridge.jpg',
