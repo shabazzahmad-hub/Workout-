@@ -492,7 +492,7 @@ const DEFAULT_STATE=()=>({
   measurements:[],          // {date,waist,weight}
   scoreHistory:[],          // {date,score,level}
   prs:{},                   // exId -> best (reps or seconds)
-  settings:{sound:true,vibrate:true,voice:true},
+  settings:{sound:true,vibrate:true,voice:true,voiceName:'',voicePitch:0.6,voiceRate:0.98},
 });
 let STATE=DEFAULT_STATE();
 
@@ -972,7 +972,15 @@ function levelBlurb(l){
 let COACH_VOICES=[], COACH_V=null, _voicePrimed=false;
 function loadCoachVoices(){
   try{COACH_VOICES=('speechSynthesis'in window)?speechSynthesis.getVoices():[];}catch(e){COACH_VOICES=[];}
-  COACH_V=pickDeepVoice();
+  COACH_V=resolveVoice();
+  // if the Guide/Settings tab is open, refresh so the picker fills in once the OS loads voices
+  try{if($('#v-guide')&&$('#v-guide').classList.contains('active'))renderGuide();}catch(e){}
+}
+function resolveVoice(){
+  if(!COACH_VOICES.length)return null;
+  const want=STATE.settings.voiceName;
+  if(want){const v=COACH_VOICES.find(x=>x.name===want);if(v)return v;}
+  return pickDeepVoice();
 }
 function pickDeepVoice(){
   if(!COACH_VOICES.length)return null;
@@ -996,7 +1004,9 @@ function coachSpeak(text,force){
     if(!COACH_VOICES.length)loadCoachVoices();
     const synth=speechSynthesis;synth.cancel();
     const u=new SpeechSynthesisUtterance(String(text||''));
-    u.lang='en-US';u.volume=1;u.rate=0.98;u.pitch=0.6; // low pitch = deeper voice
+    u.lang='en-US';u.volume=1;
+    u.rate=(typeof STATE.settings.voiceRate==='number')?STATE.settings.voiceRate:0.98;
+    u.pitch=(typeof STATE.settings.voicePitch==='number')?STATE.settings.voicePitch:0.6; // lower = deeper
     if(COACH_V)u.voice=COACH_V;
     synth.speak(u);return true;
   }catch(e){return false;}
@@ -1016,6 +1026,20 @@ function speakExerciseCues(exId){
   coachSpeak(`${ex.name}. ${ex.cues.join('. ')}.`,true);
 }
 function testVoice(){primeVoice();coachSpeak("Core Forge voice coach, ready. Brace your core, and let's get to work.",true);}
+function sampleVoice(){primeVoice();coachSpeak("Brace your core. Deep and steady. Let's work.",true);}
+/* Voice-picker + depth/speed helpers */
+function _ve(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function voiceOptionsHTML(){
+  if(!COACH_VOICES.length)return '<option value="">Tap "Test voice" to load voices…</option>';
+  const en=COACH_VOICES.filter(v=>/^en/i.test(v.lang));
+  const list=en.length?en:COACH_VOICES;
+  const sel=STATE.settings.voiceName||'';
+  return '<option value="">Auto — deepest available</option>'+
+    list.map(v=>`<option value="${_ve(v.name)}"${v.name===sel?' selected':''}>${_ve(v.name)} · ${_ve(v.lang)}</option>`).join('');
+}
+function setCoachVoice(name){STATE.settings.voiceName=name||'';COACH_V=resolveVoice();save();testVoice();}
+function setCoachPitch(v){STATE.settings.voicePitch=Math.max(0,Math.min(2,parseFloat(v)||0.6));save();}
+function setCoachRate(v){STATE.settings.voiceRate=Math.max(.5,Math.min(1.5,parseFloat(v)||0.98));save();}
 
 /* ============================ TIMERS ============================ */
 let timer=null;
@@ -1293,6 +1317,18 @@ function renderGuide(){
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Sound cues</span><button class="chip ${STATE.settings.sound?'on':''}" onclick="toggleSetting('sound')">${STATE.settings.sound?'On':'Off'}</button></div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Vibration</span><button class="chip ${STATE.settings.vibrate?'on':''}" onclick="toggleSetting('vibrate')">${STATE.settings.vibrate?'On':'Off'}</button></div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Voice coach <span class="tiny muted">· deep</span></span><button class="chip ${STATE.settings.voice!==false?'on':''}" onclick="toggleSetting('voice')">${STATE.settings.voice!==false?'On':'Off'}</button></div>
+    <div style="padding:6px 0 2px"><div class="tiny muted" style="margin-bottom:5px">Coach voice</div>
+      <select onchange="setCoachVoice(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px">${voiceOptionsHTML()}</select>
+      <div class="tiny muted" style="margin-top:5px">Pick a specific voice, or leave on Auto to use the deepest one your phone has.</div>
+    </div>
+    <div style="padding:8px 0 2px">
+      <div class="row" style="justify-content:space-between"><span class="tiny muted">Depth <span style="opacity:.7">(lower = deeper)</span></span><span class="tiny muted" id="pvLbl">${(typeof STATE.settings.voicePitch==='number'?STATE.settings.voicePitch:0.6).toFixed(2)}</span></div>
+      <input type="range" min="0.3" max="1.2" step="0.05" value="${typeof STATE.settings.voicePitch==='number'?STATE.settings.voicePitch:0.6}" oninput="$('#pvLbl').textContent=(+this.value).toFixed(2)" onchange="setCoachPitch(this.value);sampleVoice()" style="width:100%">
+    </div>
+    <div style="padding:8px 0 2px">
+      <div class="row" style="justify-content:space-between"><span class="tiny muted">Speed</span><span class="tiny muted" id="rvLbl">${(typeof STATE.settings.voiceRate==='number'?STATE.settings.voiceRate:0.98).toFixed(2)}×</span></div>
+      <input type="range" min="0.7" max="1.3" step="0.05" value="${typeof STATE.settings.voiceRate==='number'?STATE.settings.voiceRate:0.98}" oninput="$('#rvLbl').textContent=(+this.value).toFixed(2)+'×'" onchange="setCoachRate(this.value);sampleVoice()" style="width:100%">
+    </div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span class="muted sm">Hear a sample</span><button class="chip" onclick="testVoice()">▶ Test voice</button></div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Pull-up bar available</span><button class="chip ${STATE.profile.hasBar!==false?'on':''}" onclick="toggleSetting('hasBar')">${STATE.profile.hasBar!==false?'Yes':'No'}</button></div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Bench/chair available</span><button class="chip ${STATE.profile.hasBench!==false?'on':''}" onclick="toggleSetting('hasBench')">${STATE.profile.hasBench!==false?'Yes':'No'}</button></div>
@@ -1343,8 +1379,11 @@ function showInstallHint(){
 async function boot(){
   await idbOpen();
   await load();
-  // voice coach defaults on for existing installs that predate the setting
+  // voice coach defaults for existing installs that predate these settings
   if(STATE.settings.voice===undefined)STATE.settings.voice=true;
+  if(STATE.settings.voiceName===undefined)STATE.settings.voiceName='';
+  if(typeof STATE.settings.voicePitch!=='number')STATE.settings.voicePitch=0.6;
+  if(typeof STATE.settings.voiceRate!=='number')STATE.settings.voiceRate=0.98;
   // request durable storage so an installed PWA keeps data
   try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();}catch(e){}
   render();
