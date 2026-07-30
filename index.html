@@ -492,7 +492,7 @@ const DEFAULT_STATE=()=>({
   measurements:[],          // {date,waist,weight}
   scoreHistory:[],          // {date,score,level}
   prs:{},                   // exId -> best (reps or seconds)
-  settings:{sound:true,vibrate:true},
+  settings:{sound:true,vibrate:true,voice:true},
 });
 let STATE=DEFAULT_STATE();
 
@@ -770,7 +770,8 @@ function todayWorkoutHTML(){
   <div class="hero ${R}">
     <div class="htop"><div><div class="hlbl">Week ${wkNum} · Session ${sess.pos.dayInWeek+1}</div><h1>${sess.session.name}</h1><div class="hmeta">${sess.session.focus}</div></div><div class="hicon">${sess.session.icon}</div></div>
     <div class="hstats"><div class="hstat"><b>${totalCount}</b>exercises</div><div class="hstat"><b>~${vol.minutes}</b>minutes</div><div class="hstat"><b>${pct}%</b>done</div></div>
-  </div>`;
+  </div>
+  <button class="btn ghost" id="coachBrief" style="margin:2px 0 6px">🎙️ Coach brief</button>`;
   // progressive overload note vs previous week
   if(sess.pos.dayInWeek===0){
     h+=`<div class="note fire">📈 <b>Week ${wkNum} — load increased.</b> ${overloadNote(sess)}</div>`;
@@ -837,6 +838,7 @@ function wireToday(){
       };
     });
   });
+  const cb=$('#coachBrief');if(cb)cb.onclick=coachBrief;
   const fin=$('#finishSession');if(fin)fin.onclick=finishSession;
 }
 function ensureLog(){const p=STATE.progressPtr;if(!STATE.logs[p])STATE.logs[p]={date:todayISO(),ex:{},feel:null,done:false};return STATE.logs[p];}
@@ -962,6 +964,59 @@ function levelBlurb(l){
   return 'Strong core already. We\'ll use the toughest variations and high volume to force new adaptation.';
 }
 
+/* ============================ VOICE COACH ============================ */
+/* Deep-voiced spoken coaching: pre-workout brief, timer callouts, exercise cues.
+   Uses the Web Speech API with a low pitch (0.6) and a male/deep voice when the
+   device exposes one. Automatic callouts obey the Voice-coach setting; manual
+   buttons (brief / test / hear cues) always speak. */
+let COACH_VOICES=[], COACH_V=null, _voicePrimed=false;
+function loadCoachVoices(){
+  try{COACH_VOICES=('speechSynthesis'in window)?speechSynthesis.getVoices():[];}catch(e){COACH_VOICES=[];}
+  COACH_V=pickDeepVoice();
+}
+function pickDeepVoice(){
+  if(!COACH_VOICES.length)return null;
+  const en=COACH_VOICES.filter(v=>/^en/i.test(v.lang));
+  const pool=en.length?en:COACH_VOICES;
+  // Prefer voices whose names read as deep / male
+  const deep=['google uk english male','microsoft guy','microsoft david','microsoft mark','microsoft george','daniel','arthur','james','fred','aaron','albert','oliver','gordon','reed','rishi','deep','baritone','male'];
+  for(const hint of deep){const v=pool.find(x=>x.name&&x.name.toLowerCase().includes(hint));if(v)return v;}
+  // Otherwise skip obviously female-named voices
+  const female=/female|samantha|victoria|karen|moira|tessa|fiona|serena|zira|susan|allison|ava|zoe|catherine|amelie|anna|nicky|kate|hazel|linda|heera|veena/i;
+  return pool.find(x=>x.name&&!female.test(x.name))||pool[0];
+}
+function primeVoice(){
+  if(_voicePrimed)return;_voicePrimed=true;
+  try{loadCoachVoices();if('speechSynthesis'in window&&!COACH_VOICES.length){speechSynthesis.onvoiceschanged=loadCoachVoices;}}catch(e){}
+}
+function coachSpeak(text,force){
+  try{
+    if(!force&&STATE.settings.voice===false)return false;
+    if(!('speechSynthesis'in window))return false;
+    if(!COACH_VOICES.length)loadCoachVoices();
+    const synth=speechSynthesis;synth.cancel();
+    const u=new SpeechSynthesisUtterance(String(text||''));
+    u.lang='en-US';u.volume=1;u.rate=0.98;u.pitch=0.6; // low pitch = deeper voice
+    if(COACH_V)u.voice=COACH_V;
+    synth.speak(u);return true;
+  }catch(e){return false;}
+}
+function coachBrief(){
+  primeVoice();
+  const sess=buildSession(STATE.progressPtr);
+  const wkNum=(sess.cycle*WEEKS_PER_CYCLE)+sess.week;
+  const name=(STATE.profile.name||'').trim();
+  const who=name?name+', ':'';
+  const msg=`${who}welcome to week ${wkNum}. Today: ${sess.session.name}. ${sess.session.focus}. `+
+    `${sess.main.length+1} exercises. Brace every rep, control the tempo, and own the burn. Let's get to work.`;
+  coachSpeak(msg,true);
+}
+function speakExerciseCues(exId){
+  const ex=EX[exId];if(!ex)return;primeVoice();
+  coachSpeak(`${ex.name}. ${ex.cues.join('. ')}.`,true);
+}
+function testVoice(){primeVoice();coachSpeak("Core Forge voice coach, ready. Brace your core, and let's get to work.",true);}
+
 /* ============================ TIMERS ============================ */
 let timer=null;
 function stopTimer(){if(timer){clearInterval(timer.iv);timer=null;}}
@@ -972,19 +1027,23 @@ function openExerciseTimer(exId){
   if(m.unit==='time'){runTimer('hold',m.target,ex.name,m.rest,()=>markSetFromTimer(exId));}
   else{runTimer('rest',m.rest,ex.name+' — rest',0,null);}
 }
-function runTimer(mode,seconds,label,restAfter,onDone){
+function runTimer(mode,seconds,label,restAfter,onDone,quiet){
   let remain=seconds;const total=seconds;
   const isHold=mode==='hold';
   openSheet(timerHTML(label,remain,isHold,total));
+  primeVoice();
+  if(!quiet)coachSpeak(isHold?'Hold. Brace your core.':'Rest. '+seconds+' seconds.');
   const numEl=()=>$('#tnum');const ringEl=()=>$('#tring');
   const C=2*Math.PI*100;
   function tick(){
     remain--;
+    if(remain===3)coachSpeak('Three. Two. One.');
     if(remain<=3&&remain>0)beep(660,.08);
     if(remain<=0){
       beep(isHold?990:880,.25);haptic(30);clearInterval(timer.iv);
-      if(isHold&&restAfter>0){toast('Hold done! Resting '+restAfter+'s');setTimeout(()=>runTimer('rest',restAfter,label+' — rest',0,null),400);if(onDone)onDone();return;}
+      if(isHold&&restAfter>0){toast('Hold done! Resting '+restAfter+'s');coachSpeak('Time. Now rest '+restAfter+' seconds.');setTimeout(()=>runTimer('rest',restAfter,label+' — rest',0,null,true),400);if(onDone)onDone();return;}
       if(onDone)onDone();
+      coachSpeak(isHold?'Time. Strong hold.':'Rest over. Back to work.');
       $('#tnum')&&($('#tnum').textContent='Done');
       setTimeout(()=>closeSheet(),700);return;
     }
@@ -1046,7 +1105,8 @@ function openExerciseInfo(exId){
     <ul class="cuelist">${ex.cues.map(c=>`<li>${c}</li>`).join('')}</ul>
     <div class="section-label">Avoid these mistakes</div>
     <ul class="cuelist bad">${ex.mistakes.map(c=>`<li>${c}</li>`).join('')}</ul>
-    <button class="btn ghost" style="margin-top:14px" onclick="closeSheet()">Close</button>
+    <button class="btn ghost" style="margin-top:14px" onclick="speakExerciseCues('${exId}')">🔊 Hear coaching cues</button>
+    <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Close</button>
   `);
 }
 
@@ -1232,6 +1292,8 @@ function renderGuide(){
   h+=`<div class="section-label">Settings</div><div class="card pad">
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Sound cues</span><button class="chip ${STATE.settings.sound?'on':''}" onclick="toggleSetting('sound')">${STATE.settings.sound?'On':'Off'}</button></div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Vibration</span><button class="chip ${STATE.settings.vibrate?'on':''}" onclick="toggleSetting('vibrate')">${STATE.settings.vibrate?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Voice coach <span class="tiny muted">· deep</span></span><button class="chip ${STATE.settings.voice!==false?'on':''}" onclick="toggleSetting('voice')">${STATE.settings.voice!==false?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span class="muted sm">Hear a sample</span><button class="chip" onclick="testVoice()">▶ Test voice</button></div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Pull-up bar available</span><button class="chip ${STATE.profile.hasBar!==false?'on':''}" onclick="toggleSetting('hasBar')">${STATE.profile.hasBar!==false?'Yes':'No'}</button></div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Bench/chair available</span><button class="chip ${STATE.profile.hasBench!==false?'on':''}" onclick="toggleSetting('hasBench')">${STATE.profile.hasBench!==false?'Yes':'No'}</button></div>
   </div>`;
@@ -1281,9 +1343,15 @@ function showInstallHint(){
 async function boot(){
   await idbOpen();
   await load();
+  // voice coach defaults on for existing installs that predate the setting
+  if(STATE.settings.voice===undefined)STATE.settings.voice=true;
   // request durable storage so an installed PWA keeps data
   try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();}catch(e){}
   render();
+  // voice coach: populate the voice list now and again when the OS finishes loading it,
+  // and unlock speech on the first user interaction (mobile autoplay policy)
+  try{loadCoachVoices();if('speechSynthesis'in window)speechSynthesis.onvoiceschanged=loadCoachVoices;}catch(e){}
+  document.addEventListener('pointerdown',primeVoice,{once:true,passive:true});
   // service worker
   if('serviceWorker'in navigator){try{navigator.serviceWorker.register('sw.js');}catch(e){}}
 }
