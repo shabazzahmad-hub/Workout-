@@ -493,7 +493,7 @@ const DEFAULT_STATE=()=>({
   scoreHistory:[],          // {date,score,level}
   prs:{},                   // exId -> best (reps or seconds)
   adapt:1,                  // adaptive-overload multiplier: rises as you improve
-  settings:{sound:true,vibrate:true,voice:true,voiceName:'',voicePitch:0.6,voiceRate:0.98,repTempo:3,hype:true,coach:'drill'},
+  settings:{sound:true,vibrate:true,voice:true,voiceName:'',voicePitch:0.6,voiceRate:0.98,repTempo:3,hype:true,coach:'auto'},
 });
 let STATE=DEFAULT_STATE();
 
@@ -994,7 +994,7 @@ function stopBaselineTimer(){if(_bt){clearInterval(_bt.iv);_bt=null;}}
 function coachSay(txt){try{if(typeof coachSpeak==='function')coachSpeak(txt);}catch(e){}}
 function startBaselineTimer(){
   const t=TESTS[assessState.idx];const dur=t.dur||0; // dur>0 => count down; else count up
-  stopBaselineTimer();try{if(typeof primeVoice==='function')primeVoice();}catch(e){}
+  stopBaselineTimer();autoRoll();try{if(typeof primeVoice==='function')primeVoice();}catch(e){}
   openSheet(baselineTimerHTML(t));
   _bt={iv:setInterval(tick,1000),mode:'ready',ready:3,elapsed:0,dur:dur,tid:t.id};
   paintReady();coachSay('Get ready.');
@@ -1267,7 +1267,24 @@ const COACHES=[
    rest:["Recovery mode. Recharge.","Cooling systems. Standby.","Recalibrating. Breathe.","Energy restore in progress.","Standby for next sequence."],
    done:["Objective complete. Performance: excellent.","Workout protocol successful. Well done.","Target achieved. You have upgraded.","Data logged. Superior effort.","Sequence complete. Impressive, human."]},
 ];
-function currentPersona(){return COACHES.find(c=>c.id===STATE.settings.coach)||COACHES[0];}
+/* Auto mode ('auto'): rotate through a random coach each exercise, so the voice
+   changes from time to time without you picking one. _autoId holds the current pick. */
+let _autoId=null;
+function rollAutoPersona(){
+  const ids=COACHES.map(c=>c.id);
+  let id=ids[Math.floor(Math.random()*ids.length)];
+  if(ids.length>1&&id===_autoId)id=ids[(ids.indexOf(id)+1)%ids.length]; // avoid immediate repeat
+  _autoId=id;return id;
+}
+// Roll a new random coach for this exercise when in Auto mode. Call at each timer start.
+function autoRoll(){if(STATE.settings.coach==='auto')rollAutoPersona();}
+function currentPersona(){
+  if(STATE.settings.coach==='auto'){
+    if(!_autoId)rollAutoPersona();
+    return COACHES.find(c=>c.id===_autoId)||COACHES[0];
+  }
+  return COACHES.find(c=>c.id===STATE.settings.coach)||COACHES[0];
+}
 let _lastHype={};
 function pickVoiceByHint(hints){
   if(!COACH_VOICES||!COACH_VOICES.length)return COACH_V;
@@ -1302,11 +1319,12 @@ function motivate(kind,force){
   return hypeSpeak(lines[i],p);
 }
 function personaOptionsHTML(){
-  const sel=STATE.settings.coach||'drill';
-  return COACHES.map(c=>`<option value="${c.id}"${c.id===sel?' selected':''}>${c.emoji} ${_ve(c.name)}</option>`).join('');
+  const sel=STATE.settings.coach||'auto';
+  const auto=`<option value="auto"${sel==='auto'?' selected':''}>🎲 Auto — surprise me (rotates)</option>`;
+  return auto+COACHES.map(c=>`<option value="${c.id}"${c.id===sel?' selected':''}>${c.emoji} ${_ve(c.name)}</option>`).join('');
 }
-function setPersona(id){STATE.settings.coach=id;save();previewPersona();}
-function previewPersona(){try{primeVoice();}catch(e){}motivate('during',true);}
+function setPersona(id){STATE.settings.coach=id;if(id==='auto')rollAutoPersona();save();previewPersona();}
+function previewPersona(){try{primeVoice();}catch(e){}if(STATE.settings.coach==='auto')rollAutoPersona();motivate('during',true);}
 
 /* ============================ TIMERS ============================ */
 let timer=null;
@@ -1322,7 +1340,7 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet){
   let remain=seconds;const total=seconds;
   const isHold=mode==='hold';
   openSheet(timerHTML(label,remain,isHold,total));
-  primeVoice();
+  autoRoll();primeVoice();
   if(!quiet){ if(isHold){ if(!motivate('start'))coachSpeak('Hold. Brace your core.'); } else { coachSpeak('Rest. '+seconds+' seconds.'); } }
   const numEl=()=>$('#tnum');const ringEl=()=>$('#tring');
   const C=2*Math.PI*100;
@@ -1393,7 +1411,7 @@ function runRepCadence(reps,label,restAfter,onDone){
   const tempo=Math.max(1.5,Math.min(6,(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3));
   const C=2*Math.PI*100;
   openSheet(repHTML(label,total));
-  primeVoice();
+  autoRoll();primeVoice();
   coachSpeak('Guided set. '+total+' reps. Here we go.');
   function paint(){const nn=$('#rcNum');if(nn)nn.textContent=n;const rr=$('#rcRing');if(rr)rr.style.strokeDashoffset=C*(1-n/total);}
   const half=Math.ceil(total/2);
@@ -1674,7 +1692,7 @@ function renderGuide(){
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Motivator <span class="tiny muted">· hype during sets</span></span><button class="chip ${STATE.settings.hype!==false?'on':''}" onclick="toggleSetting('hype')">${STATE.settings.hype!==false?'On':'Off'}</button></div>
     <div style="padding:6px 0 2px"><div class="tiny muted" style="margin-bottom:5px">Coach persona</div>
       <select onchange="setPersona(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px">${personaOptionsHTML()}</select>
-      <div class="row" style="justify-content:space-between;margin-top:6px"><span class="tiny muted">Drill sergeant, Marine, Navy, SWAT, Ultra, or a friendly Hype coach — they push you <b>during</b> the exercise, not just at the end.</span></div>
+      <div class="row" style="justify-content:space-between;margin-top:6px"><span class="tiny muted"><b>Auto</b> rotates a random coach each exercise so the voice keeps changing — or pick one of the 16 (Drill Sergeant, Marine, Ultra, Viking, Cheer, A.I. Trainer, and more). They push you <b>during</b> the exercise, not just at the end.</span></div>
       <div class="row" style="justify-content:space-between;margin-top:8px"><span class="muted sm">Hear this coach</span><button class="chip" onclick="previewPersona()">▶ Preview</button></div>
     </div>
     <div class="divider" style="margin:10px 0"></div>
@@ -1735,7 +1753,9 @@ async function boot(){
   if(typeof STATE.settings.repTempo!=='number')STATE.settings.repTempo=3;
   if(typeof STATE.adapt!=='number')STATE.adapt=1;   // adaptive-overload multiplier
   if(STATE.settings.hype===undefined)STATE.settings.hype=true;   // motivator on by default
-  if(!STATE.settings.coach)STATE.settings.coach='drill';         // default persona
+  if(!STATE.settings.coach)STATE.settings.coach='auto';          // default persona
+  // one-time: switch existing installs to the new rotating Auto coach
+  if(!STATE.settings.autoIntro){STATE.settings.coach='auto';STATE.settings.autoIntro=true;}
   // request durable storage so an installed PWA keeps data
   try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();}catch(e){}
   initBackButton();   // make the phone's Back button navigate instead of closing the app
