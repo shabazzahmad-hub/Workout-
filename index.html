@@ -1269,12 +1269,16 @@ const COACHES=[
 ];
 /* Auto mode ('auto'): rotate through a random coach each exercise, so the voice
    changes from time to time without you picking one. _autoId holds the current pick. */
-let _autoId=null;
+let _autoId=null,_autoBag=[];
 function rollAutoPersona(){
-  const ids=COACHES.map(c=>c.id);
-  let id=ids[Math.floor(Math.random()*ids.length)];
-  if(ids.length>1&&id===_autoId)id=ids[(ids.indexOf(id)+1)%ids.length]; // avoid immediate repeat
-  _autoId=id;return id;
+  // Shuffle-bag: play through ALL coaches once (shuffled) before any repeats,
+  // so Auto is guaranteed to cycle through every one of them.
+  if(!_autoBag.length){
+    _autoBag=COACHES.map(c=>c.id);
+    for(let i=_autoBag.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));const t=_autoBag[i];_autoBag[i]=_autoBag[j];_autoBag[j]=t;}
+    if(_autoBag.length>1&&_autoBag[0]===_autoId){const t=_autoBag[0];_autoBag[0]=_autoBag[1];_autoBag[1]=t;} // no back-to-back across bags
+  }
+  _autoId=_autoBag.shift();return _autoId;
 }
 // Roll a new random coach for this exercise when in Auto mode. Call at each timer start.
 function autoRoll(){if(STATE.settings.coach==='auto')rollAutoPersona();}
