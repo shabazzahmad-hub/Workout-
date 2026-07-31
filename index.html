@@ -227,6 +227,8 @@
     <section id="v-program" class="view"></section>
     <!-- ===================== PROGRESS ===================== -->
     <section id="v-progress" class="view"></section>
+    <!-- ===================== FUEL (nutrition) ===================== -->
+    <section id="v-fuel" class="view"></section>
     <!-- ===================== GUIDE ===================== -->
     <section id="v-guide" class="view"></section>
   </main>
@@ -234,6 +236,7 @@
   <nav class="nav">
     <button data-tab="today" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v3M18 3v3M6 12l4 4 8-8"/><rect x="3" y="5" width="18" height="16" rx="3"/></svg>Today</button>
     <button data-tab="program"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>Program</button>
+    <button data-tab="fuel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3c0 1.5 1 2.5 1 4H8a4 4 0 0 0-4 4c0 5 3.5 9 8 9s8-4 8-9a4 4 0 0 0-4-4h-2c0-1.5 1-2.5 1-4a3 3 0 0 0-3-3z"/></svg>Fuel</button>
     <button data-tab="progress"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Progress</button>
     <button data-tab="guide"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 0-2 2z"/><path d="M19 3v18"/></svg>Guide</button>
   </nav>
@@ -493,6 +496,7 @@ const DEFAULT_STATE=()=>({
   scoreHistory:[],          // {date,score,level}
   prs:{},                   // exId -> best (reps or seconds)
   adapt:1,                  // adaptive-overload multiplier: rises as you improve
+  nutrition:{goal:'lose',sex:null,age:null,heightCm:null,activity:1.45,kcalTarget:null,days:{}}, // fuel module
   settings:{sound:true,vibrate:true,voice:true,voiceName:'',voicePitch:0.6,voiceRate:0.98,repTempo:3,hype:true,coach:'auto'},
 });
 let STATE=DEFAULT_STATE();
@@ -695,6 +699,7 @@ function render(){
   updatePill();
   if(TAB==='today')renderToday();
   else if(TAB==='program')renderProgram();
+  else if(TAB==='fuel')renderFuel();
   else if(TAB==='progress')renderProgress();
   else if(TAB==='guide')renderGuide();
 }
@@ -1641,6 +1646,131 @@ function totalTUT(){
   return mins;
 }
 
+/* ============================ FUEL (NUTRITION) VIEW ============================
+   Abs are revealed by fat loss + a strong core. This module gives concrete daily
+   fuel targets: protein (from bodyweight), a calorie target (Mifflin-St Jeor
+   calculator, moderate deficit), a hydration tracker, and a daily habit checklist
+   with its own streak. All stored locally by date. */
+const HABITS=[
+  {k:'protein',label:'Hit protein target',emoji:'🥩'},
+  {k:'cals',label:'Stayed in calorie deficit',emoji:'🔥'},
+  {k:'water',label:'Hit water goal',emoji:'💧'},
+  {k:'sleep',label:'7+ hours sleep',emoji:'😴'},
+  {k:'steps',label:'Walk / 7k+ steps',emoji:'🚶'},
+];
+function nut(){return STATE.nutrition||(STATE.nutrition={goal:'lose',sex:null,age:null,heightCm:null,activity:1.45,kcalTarget:null,days:{}});}
+function nutToday(){const n=nut();const d=todayISO();if(!n.days[d])n.days[d]={water:0,habits:{}};return n.days[d];}
+function latestWeightKg(){
+  const n=nut();
+  if(n.weightKg>0)return n.weightKg;
+  const ms=(STATE.measurements||[]).filter(m=>m.weight>0);
+  if(ms.length){const w=ms[ms.length-1].weight;return STATE.profile.unit==='in'?w*0.453592:w;} // imperial logs lb
+  return null;
+}
+function proteinTargetG(){const kg=latestWeightKg();if(!kg)return null;return Math.round(kg*1.8/5)*5;} // ~1.8 g/kg for fat loss
+function waterTargetCups(){const kg=latestWeightKg();if(!kg)return 8;return clamp(Math.round(kg*35/240),6,16);} // ~35 ml/kg, 240 ml/cup
+function nutritionStreak(){
+  const n=nut();const dates=Object.keys(n.days).sort();let streak=0;
+  for(let i=dates.length-1;i>=0;i--){const day=n.days[dates[i]];const hit=Object.values(day.habits||{}).filter(Boolean).length;
+    if(hit>=4)streak++;else break;}
+  return streak;
+}
+function renderFuel(){
+  const v=$('#v-fuel');const n=nut();const t=nutToday();
+  const kg=latestWeightKg();const prot=proteinTargetG();const wt=waterTargetCups();
+  let h=`<h2 class="vtitle">Fuel</h2><div class="vsub">Abs are built in the gym and revealed in the kitchen. Hit these daily.</div>`;
+  if(!kg){
+    h+=`<div class="note warn">Add your <b>body weight</b> so we can set your protein &amp; calorie targets. <button class="btn sm primary" style="width:auto;margin-top:8px" onclick="logMeasure()">+ Log weight</button></div>`;
+  }
+  // goal toggle
+  h+=`<div class="section-label">My goal</div><div class="daypick" style="margin:0 2px 14px">
+    ${[['lose','🔥 Lose fat'],['recomp','⚖️ Tone up'],['maintain','💪 Maintain']].map(([g,l])=>`<button class="${n.goal===g?'on':''}" onclick="setNutGoal('${g}')">${l}</button>`).join('')}</div>`;
+  // daily targets
+  h+=`<div class="section-label">Today's targets</div><div class="grid2">
+    <div class="stat"><div class="n" style="color:var(--fire-l)">${prot?prot+'g':'—'}</div><div class="l">Protein</div></div>
+    <div class="stat"><div class="n" style="color:var(--gold)">${n.kcalTarget?n.kcalTarget:'—'}</div><div class="l">Calories${n.kcalTarget?'':' (set below)'}</div></div>
+  </div>`;
+  if(!n.kcalTarget){h+=`<div class="note info" style="margin-top:12px">${n.goal==='maintain'?'Eat around maintenance and let the training sculpt your core.':'For fat loss, eat in a <b>~300–500 kcal/day deficit</b> — enough to lean out, slow enough to keep your strength. Tap the calculator below for your exact number.'}</div>`;}
+  // water tracker
+  const wc=t.water||0;const wpct=Math.min(100,Math.round(wc/wt*100));
+  h+=`<div class="section-label">Hydration</div><div class="card pad">
+    <div class="row" style="justify-content:space-between"><div><b>${wc} / ${wt} cups</b><div class="tiny muted">≈ ${(wt*0.24).toFixed(1)} L goal · helps control appetite &amp; reveal definition</div></div>
+      <div class="btnrow" style="flex:0 0 auto;gap:8px"><button class="btn sm ghost" onclick="logWater(-1)" style="width:44px">–</button><button class="btn sm primary" onclick="logWater(1)" style="width:44px">＋</button></div></div>
+    <div class="pbar" style="margin-top:12px"><i style="width:${wpct}%;background:linear-gradient(90deg,#3fd7e8,#12b5c9)"></i></div>
+  </div>`;
+  // habit checklist
+  const hitCount=Object.values(t.habits||{}).filter(Boolean).length;
+  h+=`<div class="section-label">Daily habits · <span style="color:var(--green)">${hitCount}/${HABITS.length}</span> · 🔥 ${nutritionStreak()}-day streak</div><div class="card">
+    ${HABITS.map(hb=>{const on=!!(t.habits&&t.habits[hb.k]);return `<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer;padding:13px 14px" onclick="toggleHabit('${hb.k}')">
+      <span>${hb.emoji} ${hb.label}</span>
+      <span class="ex-check" style="width:26px;height:26px;${on?'background:var(--green);border-color:var(--green)':''}"><svg viewBox="0 0 24 24" fill="none" stroke="#04220f" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;opacity:${on?1:0}"><path d="M20 6 9 17l-5-5"/></svg></span></button>`;}).join('')}
+  </div>`;
+  // calorie calculator
+  h+=`<div class="section-label">Calorie &amp; protein calculator</div><div class="card pad">
+    <p class="sm muted" style="margin-top:0">Get your personal daily calorie target (Mifflin-St Jeor, moderate deficit) plus a protein goal.</p>
+    <button class="btn primary" onclick="openTDEE()">${n.kcalTarget?'Update my targets':'Calculate my targets'}</button>
+    ${n.kcalTarget?`<div class="tiny muted" style="margin-top:8px;text-align:center">Current target: <b>${n.kcalTarget} kcal</b> · ${prot||'—'}g protein · goal: ${n.goal}</div>`:''}
+  </div>`;
+  // abs-in-the-kitchen guidance
+  h+=`<div class="section-label">Reveal your abs</div><div class="card pad">
+    <ul class="cuelist" style="margin-top:2px">
+      <li><b>Protein first</b> — ~1.6–2.2 g per kg keeps muscle while you lose fat and blunts hunger.</li>
+      <li><b>Modest deficit</b> — aim to lose ~0.5–1% of bodyweight per week; faster costs muscle.</li>
+      <li><b>Whole foods &amp; fibre</b> — veg, fruit, lean protein; they fill you up for fewer calories.</li>
+      <li><b>Cut liquid calories</b> — sodas, juice, alcohol hide a deficit fast.</li>
+      <li><b>Walk daily &amp; sleep 7–9h</b> — the quiet drivers of a shrinking waist.</li>
+    </ul>
+    <div class="note warn" style="margin-bottom:0">Spot-reduction isn't real: your core work builds the muscle, the deficit uncovers it. Track your <b>waist</b> weekly in Progress.</div>
+  </div>`;
+  v.innerHTML=h;
+}
+function setNutGoal(g){nut().goal=g;if(nut().kcalTarget)recalcKcalFromStored();save();renderFuel();}
+function logWater(d){const t=nutToday();t.water=clamp((t.water||0)+d,0,20);if(t.water>=waterTargetCups()){if(!t.habits)t.habits={};t.habits.water=true;}save();renderFuel();}
+function toggleHabit(k){const t=nutToday();if(!t.habits)t.habits={};t.habits[k]=!t.habits[k];save();haptic(10);renderFuel();}
+function mifflinBMR(sex,kg,cm,age){return 10*kg+6.25*cm-5*age+(sex==='female'?-161:5);}
+function recalcKcalFromStored(){
+  const n=nut();if(!(n.sex&&n.age&&n.heightCm&&n.weightKg))return;
+  const bmr=mifflinBMR(n.sex,n.weightKg,n.heightCm,n.age);const tdee=bmr*(n.activity||1.45);
+  let t=n.goal==='maintain'?tdee:(n.goal==='recomp'?tdee*0.9:tdee*0.8);
+  t=Math.max(t,bmr*1.1); // safety floor
+  n.kcalTarget=Math.round(t/10)*10;
+}
+function openTDEE(){
+  const n=nut();const imp=STATE.profile.unit==='in';
+  openSheet(`
+    <h3>Your calorie target</h3>
+    <div class="field"><label>Sex (for the formula)</label>
+      <div class="daypick"><button data-sx="male" class="${n.sex==='male'?'on':''}" onclick="tdeeSex('male',this)">Male</button><button data-sx="female" class="${n.sex==='female'?'on':''}" onclick="tdeeSex('female',this)">Female</button></div></div>
+    <div class="field"><label>Age</label><input id="td-age" type="number" inputmode="numeric" value="${n.age||''}" placeholder="e.g. 35"></div>
+    <div class="field"><label>Height (${imp?'in':'cm'})</label><input id="td-ht" type="number" inputmode="decimal" value="${n.heightCm?(imp?(n.heightCm/2.54).toFixed(0):n.heightCm):''}" placeholder="${imp?'e.g. 70':'e.g. 178'}"></div>
+    <div class="field"><label>Weight (${imp?'lb':'kg'})</label><input id="td-wt" type="number" inputmode="decimal" value="${n.weightKg?(imp?(n.weightKg/0.453592).toFixed(0):n.weightKg):(latestWeightKg()?(imp?(latestWeightKg()/0.453592).toFixed(0):latestWeightKg().toFixed(0)):'')}" placeholder="${imp?'e.g. 185':'e.g. 84'}"></div>
+    <div class="field"><label>Activity level</label>
+      <select id="td-act" style="width:100%;padding:12px;border-radius:12px;background:var(--card2);color:var(--ink);border:1.5px solid var(--line);font-size:16px">
+        <option value="1.2"${n.activity==1.2?' selected':''}>Mostly sitting</option>
+        <option value="1.375"${n.activity==1.375?' selected':''}>Lightly active</option>
+        <option value="1.45"${(!n.activity||n.activity==1.45)?' selected':''}>Moderately active</option>
+        <option value="1.6"${n.activity==1.6?' selected':''}>Very active</option>
+        <option value="1.75"${n.activity==1.75?' selected':''}>Extremely active</option>
+      </select></div>
+    <button class="btn primary" onclick="saveTDEE()">Calculate &amp; save</button>
+  `);
+}
+function tdeeSex(s,btn){$$('#sheet [data-sx]').forEach(b=>b.classList.remove('on'));btn.classList.add('on');openTDEE._sex=s;}
+function saveTDEE(){
+  const n=nut();const imp=STATE.profile.unit==='in';
+  const sex=openTDEE._sex||n.sex;const age=parseFloat($('#td-age').value);
+  let ht=parseFloat($('#td-ht').value);let wt=parseFloat($('#td-wt').value);
+  if(!(sex&&age>0&&ht>0&&wt>0)){toast('Fill in all fields');return;}
+  if(imp){ht=ht*2.54;wt=wt*0.453592;}
+  n.sex=sex;n.age=age;n.heightCm=Math.round(ht);n.weightKg=Math.round(wt*10)/10;n.activity=parseFloat($('#td-act').value)||1.45;
+  recalcKcalFromStored();
+  // also record the weight into measurements so waist/weight tracking stays in sync
+  const today=todayISO();const disp=imp?Math.round(wt/0.453592):Math.round(wt);
+  const ex=(STATE.measurements||[]).find(m=>m.date===today);
+  if(ex){ex.weight=disp;}else{(STATE.measurements=STATE.measurements||[]).push({date:today,waist:null,weight:disp});}
+  save();closeSheet();toast('Targets saved');renderFuel();
+}
+
 /* ============================ GUIDE VIEW ============================ */
 function renderGuide(){
   const v=$('#v-guide');
@@ -1756,6 +1886,8 @@ async function boot(){
   if(typeof STATE.settings.voiceRate!=='number')STATE.settings.voiceRate=0.98;
   if(typeof STATE.settings.repTempo!=='number')STATE.settings.repTempo=3;
   if(typeof STATE.adapt!=='number')STATE.adapt=1;   // adaptive-overload multiplier
+  if(!STATE.nutrition||typeof STATE.nutrition!=='object')STATE.nutrition={goal:'lose',sex:null,age:null,heightCm:null,activity:1.45,kcalTarget:null,days:{}};
+  if(!STATE.nutrition.days)STATE.nutrition.days={};
   if(STATE.settings.hype===undefined)STATE.settings.hype=true;   // motivator on by default
   if(!STATE.settings.coach)STATE.settings.coach='auto';          // default persona
   // one-time: switch existing installs to the new rotating Auto coach
