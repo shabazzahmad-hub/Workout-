@@ -492,7 +492,7 @@ const DEFAULT_STATE=()=>({
   measurements:[],          // {date,waist,weight}
   scoreHistory:[],          // {date,score,level}
   prs:{},                   // exId -> best (reps or seconds)
-  settings:{sound:true,vibrate:true,voice:true,voiceName:'',voicePitch:0.6,voiceRate:0.98,repTempo:3},
+  settings:{sound:true,vibrate:true,voice:true,voiceName:'',voicePitch:0.6,voiceRate:0.98,repTempo:3,hype:true,coach:'drill'},
 });
 let STATE=DEFAULT_STATE();
 
@@ -996,15 +996,19 @@ function startBaselineTimer(){
     if(_bt.mode==='ready'){
       _bt.ready--;
       if(_bt.ready>0){beep(660,.09);coachSay(String(_bt.ready));paintReady();}
-      else{beep(990,.14);haptic(20);coachSay('Go!');_bt.mode='run';_bt.elapsed=0;paintRun();}
+      else{beep(990,.14);haptic(20);if(!motivate('start'))coachSay('Go!');_bt.mode='run';_bt.elapsed=0;paintRun();}
       return;
     }
     _bt.elapsed++;
     if(dur){
       const left=dur-_bt.elapsed;
-      if(left===10)coachSay('Ten seconds left.');
+      if(left===10){if(!motivate('push'))coachSay('Ten seconds left.');}
+      else if(_bt.elapsed>0&&_bt.elapsed%10===0&&left>4)motivate('during');
       if(left<=3&&left>0)beep(660,.08);
-      if(left<=0){beep(880,.28);haptic(30);coachSay('Time. Enter your reps.');stopBaselineTimer();backToAssessStep(false);return;}
+      if(left<=0){beep(880,.28);haptic(30);if(!motivate('done'))coachSay('Time. Enter your reps.');stopBaselineTimer();backToAssessStep(false);return;}
+    }else{
+      // open-ended hold: push periodically the longer they hold
+      if(_bt.elapsed>0&&_bt.elapsed%10===0)motivate('during');
     }
     paintRun();
   }
@@ -1012,7 +1016,7 @@ function startBaselineTimer(){
 function baselineStop(){ // user tapped Stop
   const dur=_bt&&_bt.dur,elapsed=_bt?_bt.elapsed:0,running=_bt&&_bt.mode==='run';
   stopBaselineTimer();
-  if(running&&!dur){const t=TESTS[assessState.idx];assessState.results[t.id]=elapsed;coachSay('Time. Strong hold.');}
+  if(running&&!dur){const t=TESTS[assessState.idx];assessState.results[t.id]=elapsed;if(!motivate('done'))coachSay('Time. Strong hold.');}
   backToAssessStep(true);
 }
 function baselineCancel(){stopBaselineTimer();renderAssessStep();}
@@ -1150,6 +1154,91 @@ function setCoachPitch(v){STATE.settings.voicePitch=Math.max(0,Math.min(2,parseF
 function setCoachRate(v){STATE.settings.voiceRate=Math.max(.5,Math.min(1.5,parseFloat(v)||0.98));save();}
 function setRepTempo(v){STATE.settings.repTempo=Math.max(1,Math.min(6,parseFloat(v)||3));save();}
 
+/* ============================ MOTIVATOR / DRILL SERGEANT ============================
+   Spoken hype DURING the work — different military / ultra personas that push you
+   mid-exercise, not just at the end. Fires on the timers (baseline, holds, reps).
+   Obeys the Voice-coach setting plus its own Motivator toggle. Each persona has its
+   own pitch/rate (and picks a matching device voice when available) so they sound
+   distinct. Lines are original, PG, and in the spirit of each style. */
+const COACHES=[
+  {id:'drill',name:'Drill Sergeant',emoji:'🎖️',pitch:0.5,rate:1.0,hint:['david','guy','mark','daniel','male'],
+   start:["Listen up! On my count — GO!","Move, move, move! Start now!","Lock it in, recruit. Begin!"],
+   during:["Keep going! You can do it, soldier!","Do not quit on me! Push!","Outstanding! Hold that line!","Dig deep, recruit! Dig deep!","Is that all you got? Give me more!","Stay tight, stay strong, keep going!","Pain is weakness leaving the body. Push!","Eyes forward, core braced — keep going!"],
+   push:["Final push! Everything you've got — now!","Don't you dare stop! Finish strong!","This is where it's won! Go, go, go!","A few more seconds of pure grit! Push!"],
+   rest:["Breathe, recruit. Shake it out.","Recover fast. We go again.","Good work. Reset and refocus."],
+   done:["Outstanding work, soldier!","That's how it's done! Hooah!","You earned that one. Well done!"]},
+  {id:'marine',name:'Marine D.I.',emoji:'🦅',pitch:0.45,rate:1.06,hint:['guy','david','mark','male'],
+   start:["Oorah! Get after it — go!","On your feet and into it! Move!","No hesitation! Begin, devil dog!"],
+   during:["Oorah! Keep pushing, Marine!","Adapt and overcome! Keep going!","Pain is temporary — pride is forever! Push!","You stop when you're done, not when you're tired!","Semper Fi! Hold the line!","Earn it! Every second, earn it!","Gut it out, Marine! Gut it out!"],
+   push:["Push through! Improvise, adapt, finish!","Last stretch — make it count! Oorah!","Nobody said it'd be easy. Finish!"],
+   rest:["Catch your breath, Marine. Regroup.","Recover. Next round's coming.","Solid. Reset and lock in."],
+   done:["Oorah! Outstanding, Marine!","Mission complete. Well done!","That's the standard. Semper Fi!"]},
+  {id:'navy',name:'Navy Chief',emoji:'⚓',pitch:0.6,rate:0.95,hint:['daniel','arthur','david','male'],
+   start:["Steady now. Begin on my mark. Go.","Lock in and start. Smooth and strong.","Here we go, sailor. Start it up."],
+   during:["Steady breathing. Keep going, sailor.","Discipline over comfort. Hold strong.","Smooth and controlled — you've got this.","Anchor your core. Keep pushing.","Calm mind, strong body. Keep going.","Ride the burn. You're doing great.","Stay the course. Do not quit."],
+   push:["Bring it home, sailor. Finish strong.","Final stretch — steady and strong.","Almost there. Hold the line."],
+   rest:["Recover well, sailor. Slow breaths.","Good. Reset for the next one.","Ease down. We go again shortly."],
+   done:["Well executed, sailor.","That's discipline. Bravo Zulu!","Strong finish. Proud of that."]},
+  {id:'swat',name:'SWAT Commander',emoji:'🛡️',pitch:0.55,rate:1.0,hint:['mark','guy','david','male'],
+   start:["Go, go, go! Execute!","Move now. Full focus. Begin.","On my go — start!"],
+   during:["Stay locked in. Keep going.","Control the burn. Own it. Push.","Focus up. You do not break.","Tactical calm. Keep pushing.","Hold your position. Stay strong.","Every second counts. Keep going.","Total control. Drive through it."],
+   push:["Final objective — push through!","Close it out. Finish the mission!","Last effort. Execute and finish!"],
+   rest:["Reset. Controlled breathing.","Hold position. Recover.","Good work. Prep for the next."],
+   done:["Objective secured. Outstanding.","Mission complete. Excellent work.","Clean execution. Well done."]},
+  {id:'ultra',name:'Ultra Beast',emoji:'🔥',pitch:0.42,rate:1.06,hint:['guy','david','mark','male'],
+   start:["No excuses. Start now.","Time to go to work. Begin!","Get comfortable being uncomfortable. Go!"],
+   during:["Keep going! Your mind quits before your body does!","This is where you grow. Stay in it!","You want it? Then earn it! Push!","When it hurts — that's the one that counts!","Don't negotiate with the burn. Keep going!","Callus your mind. Push through it!","One more second, then one more. Never stop!","They're resting. You're working. Keep going!"],
+   push:["Take it back — finish!","Empty the tank. Everything, right now!","This is the moment. Do not quit!"],
+   rest:["Breathe. But don't get comfortable.","Recover. The work isn't done.","Reset. We're just getting started."],
+   done:["That's what discipline looks like. Done!","You didn't quit. Respect. Finished!","Stayed strong. That's the standard!"]},
+  {id:'hype',name:'Hype Coach',emoji:'💪',pitch:0.72,rate:1.0,hint:['daniel','david','male','guy'],
+   start:["Alright, let's go! You've got this!","Here we go, buddy! Start strong!","Let's do this together — begin!"],
+   during:["Keep going, buddy! You can do it!","You're doing great! Stay with it!","Looking strong! Keep it up!","I know you can do it! A little more!","Yes! That's it! Keep on going!","You've got more in you — let's go!","So proud of you — keep pushing!","Almost there, you're crushing it!"],
+   push:["Finish strong — you've got this!","Last bit! Leave it all out there!","Dig in — I believe in you! Go!"],
+   rest:["Nice work! Catch your breath.","Great set! Shake it out, buddy.","Awesome. Rest up for the next one."],
+   done:["Amazing work! So proud of you!","You crushed it! Well done, buddy!","That's a win. Great job!"]},
+];
+function currentPersona(){return COACHES.find(c=>c.id===STATE.settings.coach)||COACHES[0];}
+let _lastHype={};
+function pickVoiceByHint(hints){
+  if(!COACH_VOICES||!COACH_VOICES.length)return COACH_V;
+  const en=COACH_VOICES.filter(v=>/^en/i.test(v.lang));const pool=en.length?en:COACH_VOICES;
+  for(const h of (hints||[])){const v=pool.find(x=>x.name&&x.name.toLowerCase().includes(h));if(v)return v;}
+  return COACH_V||pool[0];
+}
+function hypeSpeak(text,persona){
+  try{
+    if(!('speechSynthesis'in window))return false;
+    if(!COACH_VOICES.length)loadCoachVoices();
+    const synth=speechSynthesis;synth.cancel();
+    const u=new SpeechSynthesisUtterance(String(text||''));
+    u.lang='en-US';u.volume=1;
+    u.rate=persona.rate||1;u.pitch=(persona.pitch!=null)?persona.pitch:0.5;
+    const v=pickVoiceByHint(persona.hint);if(v)u.voice=v;
+    synth.speak(u);return true;
+  }catch(e){return false;}
+}
+// Speak a random motivational line of the given kind (start|during|push|rest|done).
+function motivate(kind,force){
+  if(!force){
+    if(STATE.settings.voice===false)return false;
+    if(STATE.settings.hype===false)return false;
+  }
+  const p=currentPersona();const lines=p[kind]||p.during||[];
+  if(!lines.length)return false;
+  let i=Math.floor(Math.random()*lines.length);
+  if(lines.length>1&&_lastHype[kind]===i)i=(i+1)%lines.length; // avoid immediate repeat
+  _lastHype[kind]=i;
+  try{if(typeof primeVoice==='function')primeVoice();}catch(e){}
+  return hypeSpeak(lines[i],p);
+}
+function personaOptionsHTML(){
+  const sel=STATE.settings.coach||'drill';
+  return COACHES.map(c=>`<option value="${c.id}"${c.id===sel?' selected':''}>${c.emoji} ${_ve(c.name)}</option>`).join('');
+}
+function setPersona(id){STATE.settings.coach=id;save();previewPersona();}
+function previewPersona(){try{primeVoice();}catch(e){}motivate('during',true);}
+
 /* ============================ TIMERS ============================ */
 let timer=null;
 function stopTimer(){if(timer){clearInterval(timer.iv);timer=null;}if(typeof _bt!=='undefined'&&_bt){clearInterval(_bt.iv);_bt=null;}}
@@ -1165,19 +1254,26 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet){
   const isHold=mode==='hold';
   openSheet(timerHTML(label,remain,isHold,total));
   primeVoice();
-  if(!quiet)coachSpeak(isHold?'Hold. Brace your core.':'Rest. '+seconds+' seconds.');
+  if(!quiet){ if(isHold){ if(!motivate('start'))coachSpeak('Hold. Brace your core.'); } else { coachSpeak('Rest. '+seconds+' seconds.'); } }
   const numEl=()=>$('#tnum');const ringEl=()=>$('#tring');
   const C=2*Math.PI*100;
   function tick(){
     remain--;
-    if(!isHold&&remain===10&&total>13)coachSpeak('Ten seconds. Get ready.');
+    const el=total-remain;                         // seconds elapsed so far
+    if(isHold){
+      if(remain===10&&total>16){if(!motivate('push'))coachSpeak('Ten seconds. Hold strong.');}
+      else if(el>0&&el%10===0&&remain>4)motivate('during');   // periodic push through the hold
+    }else{
+      if(remain===10&&total>13)coachSpeak('Ten seconds. Get ready.');
+      else if(total>=24&&el===Math.round(total/2))motivate('rest');
+    }
     if(remain===3)coachSpeak('Three. Two. One.');
     if(remain<=3&&remain>0)beep(660,.08);
     if(remain<=0){
       beep(isHold?990:880,.25);haptic(30);clearInterval(timer.iv);
-      if(isHold&&restAfter>0){toast('Hold done! Resting '+restAfter+'s');coachSpeak('Time. Now rest '+restAfter+' seconds.');setTimeout(()=>runTimer('rest',restAfter,label+' — rest',0,null,true),400);if(onDone)onDone();return;}
+      if(isHold&&restAfter>0){toast('Hold done! Resting '+restAfter+'s');if(!motivate('done'))coachSpeak('Time. Now rest.');setTimeout(()=>runTimer('rest',restAfter,label+' — rest',0,null,true),700);if(onDone)onDone();return;}
       if(onDone)onDone();
-      coachSpeak(isHold?'Time. Strong hold.':'Rest over. Back to work.');
+      if(!motivate('done'))coachSpeak(isHold?'Time. Strong hold.':'Rest over. Back to work.');
       $('#tnum')&&($('#tnum').textContent='Done');
       setTimeout(()=>closeSheet(),700);return;
     }
@@ -1231,17 +1327,19 @@ function runRepCadence(reps,label,restAfter,onDone){
   primeVoice();
   coachSpeak('Guided set. '+total+' reps. Here we go.');
   function paint(){const nn=$('#rcNum');if(nn)nn.textContent=n;const rr=$('#rcRing');if(rr)rr.style.strokeDashoffset=C*(1-n/total);}
+  const half=Math.ceil(total/2);
   function step(){
     n++;
     beep(760,.06);haptic(14);
-    coachSpeak(String(n));
+    if(total>=8&&n===half){if(!motivate('during'))coachSpeak(String(n));}   // mid-set push
+    else coachSpeak(String(n));
     paint();
     if(n>=total){
       stopTimer();
       const tok=++_repTok,rest=restAfter,done=onDone,lbl=label;
       setTimeout(()=>{
         if(tok!==_repTok)return;               // cancelled or superseded
-        coachSpeak('Set complete. Strong work.');
+        if(!motivate('done'))coachSpeak('Set complete. Strong work.');
         if(done)done();
         if(rest>0)runTimer('rest',rest,lbl+' — rest',0,null);
         else{const nn=$('#rcNum');if(nn)nn.textContent='✓';setTimeout(closeSheet,700);}
@@ -1503,6 +1601,14 @@ function renderGuide(){
       <div class="tiny muted" style="margin-top:4px">How fast the coach counts your reps during a guided set.</div>
     </div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span class="muted sm">Hear a sample</span><button class="chip" onclick="testVoice()">▶ Test voice</button></div>
+    <div class="divider" style="margin:10px 0"></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Motivator <span class="tiny muted">· hype during sets</span></span><button class="chip ${STATE.settings.hype!==false?'on':''}" onclick="toggleSetting('hype')">${STATE.settings.hype!==false?'On':'Off'}</button></div>
+    <div style="padding:6px 0 2px"><div class="tiny muted" style="margin-bottom:5px">Coach persona</div>
+      <select onchange="setPersona(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px">${personaOptionsHTML()}</select>
+      <div class="row" style="justify-content:space-between;margin-top:6px"><span class="tiny muted">Drill sergeant, Marine, Navy, SWAT, Ultra, or a friendly Hype coach — they push you <b>during</b> the exercise, not just at the end.</span></div>
+      <div class="row" style="justify-content:space-between;margin-top:8px"><span class="muted sm">Hear this coach</span><button class="chip" onclick="previewPersona()">▶ Preview</button></div>
+    </div>
+    <div class="divider" style="margin:10px 0"></div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Pull-up bar available</span><button class="chip ${STATE.profile.hasBar!==false?'on':''}" onclick="toggleSetting('hasBar')">${STATE.profile.hasBar!==false?'Yes':'No'}</button></div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Bench/chair available</span><button class="chip ${STATE.profile.hasBench!==false?'on':''}" onclick="toggleSetting('hasBench')">${STATE.profile.hasBench!==false?'Yes':'No'}</button></div>
   </div>`;
@@ -1558,6 +1664,8 @@ async function boot(){
   if(typeof STATE.settings.voicePitch!=='number')STATE.settings.voicePitch=0.6;
   if(typeof STATE.settings.voiceRate!=='number')STATE.settings.voiceRate=0.98;
   if(typeof STATE.settings.repTempo!=='number')STATE.settings.repTempo=3;
+  if(STATE.settings.hype===undefined)STATE.settings.hype=true;   // motivator on by default
+  if(!STATE.settings.coach)STATE.settings.coach='drill';         // default persona
   // request durable storage so an installed PWA keeps data
   try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();}catch(e){}
   initBackButton();   // make the phone's Back button navigate instead of closing the app
