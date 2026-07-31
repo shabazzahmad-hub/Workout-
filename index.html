@@ -498,6 +498,7 @@ const DEFAULT_STATE=()=>({
   adapt:1,                  // adaptive-overload multiplier: rises as you improve
   nutrition:{goal:'lose',sex:null,age:null,heightCm:null,activity:1.45,kcalTarget:null,days:{}}, // fuel module
   photos:[],                // progress photos: {id,date,pose} (image bytes live in IndexedDB)
+  achievements:{},          // unlocked milestone badges: {id:date}
   settings:{sound:true,vibrate:true,voice:true,voiceName:'',voicePitch:0.6,voiceRate:0.98,repTempo:3,hype:true,coach:'auto'},
 });
 let STATE=DEFAULT_STATE();
@@ -535,7 +536,7 @@ function posOf(ptr){
 }
 function currentMaxes(cycle){
   // cycle 0 uses baseline; later cycles use reassessment if present, else baseline
-  if(cycle>0 && STATE.reassess[cycle]) return STATE.reassess[cycle].maxes;
+  if(cycle>0 && STATE.reassess[cycle] && STATE.reassess[cycle].maxes) return STATE.reassess[cycle].maxes;
   return (STATE.baseline&&STATE.baseline.maxes)||{plank:40,side:25,hollow:25,lower:12,dyn:20};
 }
 function levelOf(cycle){
@@ -956,8 +957,8 @@ function commitSession(feel){
   toast('Session logged · '+ (feel==='easy'?'load will rise':feel==='hard'?'load steady':'nice work'));
   // celebrate + move on
   const gate=reassessGate();
-  if(gate){go('today');return;}
   go('today');
+  setTimeout(checkAchievements,650);   // celebrate any new milestone after the view settles
 }
 
 /* ============================ ASSESSMENT FLOW ============================ */
@@ -1065,6 +1066,7 @@ function finishAssessment(){
   if(assessState.reassess){STATE.reassess[assessState.reassess]=rec;}
   else{STATE.baseline=rec;}
   STATE.scoreHistory.push({date:todayISO(),score:a.score,level:a.level});
+  setTimeout(checkAchievements,300);
   save();
   // results screen
   openSheet(`
@@ -1574,6 +1576,8 @@ function renderProgress(){
   </div>`;
   // progress photos
   h+=`<div class="section-label">Progress photos</div>${photosHTML()}`;
+  // achievements
+  h+=achievementsHTML();
   // PRs
   h+=`<div class="section-label">Personal bests</div>`;
   const prKeys=Object.keys(STATE.prs);
@@ -1632,7 +1636,7 @@ function saveMeasure(){
   if(existing){if(w>0)existing.waist=w;if(b>0)existing.weight=b;}
   else STATE.measurements.push({date:today,waist:w>0?w:null,weight:b>0?b:null});
   if(w>0&&!STATE.profile.startWaist)STATE.profile.startWaist=w;
-  save();closeSheet();toast('Measurement saved');renderProgress();
+  save();closeSheet();toast('Measurement saved');renderProgress();checkAchievements();
 }
 
 /* ============================ PROGRESS PHOTOS ============================
@@ -1679,7 +1683,7 @@ function onPhotoPicked(e){
       const id=todayISO()+'-'+(_pendingPose||'front')+'-'+(Object.keys(STATE.photos).length+ (STATE.photos.length))+'-'+Math.floor(performance.now());
       idbPut('ph_'+id,data);
       STATE.photos.push({id,date:todayISO(),pose:_pendingPose||'front'});
-      save();toast('Photo saved');renderProgress();
+      save();toast('Photo saved');renderProgress();checkAchievements();
     };
     img.onerror=()=>toast('Could not read that image');
     img.src=r.result;
@@ -1708,6 +1712,102 @@ function deletePhoto(id){
   idbDel('ph_'+id);
   STATE.photos=(STATE.photos||[]).filter(p=>p.id!==id);
   save();closeSheet();renderProgress();
+}
+
+/* ============================ ACHIEVEMENTS ============================
+   Milestone badges that celebrate meaningful wins (consistency, strength,
+   fat loss). Unlocked ids are stored in STATE.achievements {id:date}. */
+function bestHoldPR(){let m=0;Object.keys(STATE.prs||{}).forEach(k=>{const ex=EX[k];if(ex&&ex.unit==='time'&&STATE.prs[k]>m)m=STATE.prs[k];});return m;}
+function waistDrop(){const ms=(STATE.measurements||[]).filter(m=>m.waist>0);if(ms.length<2)return 0;return ms[0].waist-ms[ms.length-1].waist;}
+function scoreGain(){const s=STATE.scoreHistory||[];if(s.length<1)return 0;return s[s.length-1].score-s[0].score;}
+function sessionsDoneCount(){return Object.values(STATE.logs||{}).filter(l=>l.done).length;}
+function bestHabitDay(){let m=0;const d=(STATE.nutrition&&STATE.nutrition.days)||{};Object.values(d).forEach(x=>{const c=Object.values(x.habits||{}).filter(Boolean).length;if(c>m)m=c;});return m;}
+const ACHIEVEMENTS=[
+  {id:'first',emoji:'🎬',name:'First Rep',desc:'Complete your first workout',check:()=>sessionsDoneCount()>=1},
+  {id:'baseline',emoji:'📋',name:'Know Your Numbers',desc:'Finish the baseline assessment',check:()=>!!STATE.baseline},
+  {id:'streak3',emoji:'🔥',name:'On a Roll',desc:'3-day training streak',check:()=>computeStreak()>=3},
+  {id:'streak7',emoji:'⚡',name:'Week Warrior',desc:'7-day training streak',check:()=>computeStreak()>=7},
+  {id:'streak14',emoji:'🌟',name:'Unstoppable',desc:'14-day training streak',check:()=>computeStreak()>=14},
+  {id:'s10',emoji:'💪',name:'Ten Down',desc:'10 workouts completed',check:()=>sessionsDoneCount()>=10},
+  {id:'s25',emoji:'🏆',name:'Quarter Century',desc:'25 workouts completed',check:()=>sessionsDoneCount()>=25},
+  {id:'s50',emoji:'👑',name:'Core King',desc:'50 workouts completed',check:()=>sessionsDoneCount()>=50},
+  {id:'plank60',emoji:'🧱',name:'Solid Minute',desc:'A prescribed 60s+ hold',check:()=>bestHoldPR()>=60},
+  {id:'plank120',emoji:'🗿',name:'Two-Minute Titan',desc:'A prescribed 120s hold',check:()=>bestHoldPR()>=120},
+  {id:'block',emoji:'✅',name:'Block Complete',desc:'Finish a 6-week block',check:()=>STATE.progressPtr>=SESSIONS_PER_CYCLE},
+  {id:'retest',emoji:'📈',name:'Levelled Up',desc:'Complete a re-test',check:()=>Object.keys(STATE.reassess||{}).length>=1},
+  {id:'score10',emoji:'🚀',name:'Stronger Core',desc:'Core Score up 10+ from baseline',check:()=>scoreGain()>=10},
+  {id:'waist2',emoji:'📏',name:'Inches Down',desc:'Waist down 2 from start',check:()=>waistDrop()>=2},
+  {id:'waist5',emoji:'🎯',name:'Waist Winner',desc:'Waist down 5 from start',check:()=>waistDrop()>=5},
+  {id:'photo',emoji:'📸',name:'Picture Proof',desc:'Add your first progress photo',check:()=>(STATE.photos||[]).length>=1},
+  {id:'hydrate',emoji:'💧',name:'Hydrated',desc:'Hit your water goal in a day',check:()=>{const d=(STATE.nutrition&&STATE.nutrition.days)||{};return Object.values(d).some(x=>(x.water||0)>=waterTargetCups());}},
+  {id:'perfectday',emoji:'🥇',name:'Perfect Day',desc:'All 5 daily habits in one day',check:()=>bestHabitDay()>=5},
+];
+function checkAchievements(){
+  if(!STATE.achievements)STATE.achievements={};
+  const fresh=[];
+  ACHIEVEMENTS.forEach(a=>{try{if(!STATE.achievements[a.id]&&a.check()){STATE.achievements[a.id]=todayISO();fresh.push(a);}}catch(e){}});
+  if(fresh.length){save();celebrateAchievements(fresh);}
+  return fresh;
+}
+function celebrateAchievements(list){
+  const a=list[0];
+  openSheet(`
+    <div class="center" style="padding:10px 0 4px">
+      <div style="font-size:64px;line-height:1">${a.emoji}</div>
+      <h3 style="margin:10px 0 2px">Achievement unlocked!</h3>
+      <div style="font-size:18px;font-weight:900;color:var(--gold)">${a.name}</div>
+      <p class="sm muted" style="margin:6px 0 0">${a.desc}</p>
+      ${list.length>1?`<p class="tiny muted" style="margin-top:8px">+${list.length-1} more unlocked 🎉</p>`:''}
+    </div>
+    <button class="btn primary" style="margin-top:14px" onclick="closeSheet()">Let's keep going 💥</button>
+  `);
+  haptic(30);
+}
+function achievementsHTML(){
+  if(!STATE.achievements)STATE.achievements={};
+  const unlocked=ACHIEVEMENTS.filter(a=>STATE.achievements[a.id]).length;
+  return `<div class="section-label">Achievements · ${unlocked}/${ACHIEVEMENTS.length}</div>
+    <div class="card pad"><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+      ${ACHIEVEMENTS.map(a=>{const on=!!STATE.achievements[a.id];return `<div style="text-align:center;opacity:${on?1:.32}">
+        <div style="font-size:30px;line-height:1;filter:${on?'none':'grayscale(1)'}">${a.emoji}</div>
+        <div class="tiny" style="font-weight:800;margin-top:4px;line-height:1.15">${a.name}</div>
+        <div class="tiny muted" style="font-size:9.5px;line-height:1.1;margin-top:2px">${on?'✓ '+STATE.achievements[a.id].slice(5):a.desc}</div>
+      </div>`;}).join('')}
+    </div></div>`;
+}
+
+/* ============================ REMINDERS ============================
+   Best-effort local reminders: on a training day, if you haven't trained and
+   it's past your set time, CoreForge nudges you when the app opens (and fires a
+   local notification if you've granted permission). Reliable background push
+   would need a server; this keeps everything on-device. */
+function trainedToday(){return Object.values(STATE.logs||{}).some(l=>l.done&&l.completedAt===todayISO());}
+function isTrainingDay(){const days=STATE.profile.days||[];return days.includes(new Date().getDay());}
+function toggleReminders(){
+  if(STATE.settings.reminderOn){STATE.settings.reminderOn=false;save();renderGuide();return;}
+  if('Notification'in window&&Notification.permission!=='granted'){
+    Notification.requestPermission().then(p=>{STATE.settings.reminderOn=(p==='granted');save();renderGuide();
+      if(p==='granted')toast('Reminders on');else toast('Allow notifications to get reminders');});
+  }else{STATE.settings.reminderOn=true;save();toast('Reminders on');renderGuide();}
+}
+function setReminderTime(v){if(v){STATE.settings.reminderTime=v;save();}}
+function fireReminderNotif(){
+  const body="Time to train your core 💪 Keep your streak alive.";
+  try{
+    if(navigator.serviceWorker&&navigator.serviceWorker.ready){navigator.serviceWorker.ready.then(r=>r.showNotification('CoreForge',{body,icon:'icon-192.png',badge:'icon-192.png',tag:'coreforge-reminder'}));}
+    else if('Notification'in window){new Notification('CoreForge',{body,icon:'icon-192.png'});}
+  }catch(e){}
+}
+function checkReminder(){
+  const s=STATE.settings;if(!s||!s.reminderOn)return;
+  if(!('Notification'in window)||Notification.permission!=='granted')return;
+  if(!isTrainingDay()||trainedToday())return;
+  const [hh,mm]=(s.reminderTime||'18:00').split(':').map(Number);const now=new Date();
+  const past=now.getHours()>hh||(now.getHours()===hh&&now.getMinutes()>=mm);
+  if(!past)return;
+  if(STATE._remindedOn===todayISO())return;
+  STATE._remindedOn=todayISO();save();
+  fireReminderNotif();toast('⏰ Time to train — keep your streak!');
 }
 function computeStreak(){
   const dates=[...new Set(Object.values(STATE.logs).filter(l=>l.done&&l.completedAt).map(l=>l.completedAt))].sort();
@@ -1805,8 +1905,8 @@ function renderFuel(){
   v.innerHTML=h;
 }
 function setNutGoal(g){nut().goal=g;if(nut().kcalTarget)recalcKcalFromStored();save();renderFuel();}
-function logWater(d){const t=nutToday();t.water=clamp((t.water||0)+d,0,20);if(t.water>=waterTargetCups()){if(!t.habits)t.habits={};t.habits.water=true;}save();renderFuel();}
-function toggleHabit(k){const t=nutToday();if(!t.habits)t.habits={};t.habits[k]=!t.habits[k];save();haptic(10);renderFuel();}
+function logWater(d){const t=nutToday();t.water=clamp((t.water||0)+d,0,20);if(t.water>=waterTargetCups()){if(!t.habits)t.habits={};t.habits.water=true;}save();renderFuel();checkAchievements();}
+function toggleHabit(k){const t=nutToday();if(!t.habits)t.habits={};t.habits[k]=!t.habits[k];save();haptic(10);renderFuel();checkAchievements();}
 function mifflinBMR(sex,kg,cm,age){return 10*kg+6.25*cm-5*age+(sex==='female'?-161:5);}
 function recalcKcalFromStored(){
   const n=nut();if(!(n.sex&&n.age&&n.heightCm&&n.weightKg))return;
@@ -1883,6 +1983,9 @@ function renderGuide(){
   h+=`<div class="section-label">Settings</div><div class="card pad">
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Sound cues</span><button class="chip ${STATE.settings.sound?'on':''}" onclick="toggleSetting('sound')">${STATE.settings.sound?'On':'Off'}</button></div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Vibration</span><button class="chip ${STATE.settings.vibrate?'on':''}" onclick="toggleSetting('vibrate')">${STATE.settings.vibrate?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Workout reminders</span><button class="chip ${STATE.settings.reminderOn?'on':''}" onclick="toggleReminders()">${STATE.settings.reminderOn?'On':'Off'}</button></div>
+    ${STATE.settings.reminderOn?`<div class="row" style="justify-content:space-between;padding:6px 0"><span class="sm muted">Remind me at</span><input type="time" value="${STATE.settings.reminderTime||'18:00'}" onchange="setReminderTime(this.value)" style="background:var(--card2);color:var(--ink);border:1.5px solid var(--line);border-radius:10px;padding:8px 10px;font-size:15px"></div>
+    <div class="tiny muted" style="padding:2px 0 4px">Nudges you on your training days. Reminders appear when you open the app (a home-screen install makes them most reliable).</div>`:''}
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Voice coach <span class="tiny muted">· deep</span></span><button class="chip ${STATE.settings.voice!==false?'on':''}" onclick="toggleSetting('voice')">${STATE.settings.voice!==false?'On':'Off'}</button></div>
     <div style="padding:6px 0 2px"><div class="tiny muted" style="margin-bottom:5px">Coach voice</div>
       <select onchange="setCoachVoice(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px">${voiceOptionsHTML()}</select>
@@ -1969,6 +2072,9 @@ async function boot(){
   if(!STATE.nutrition||typeof STATE.nutrition!=='object')STATE.nutrition={goal:'lose',sex:null,age:null,heightCm:null,activity:1.45,kcalTarget:null,days:{}};
   if(!STATE.nutrition.days)STATE.nutrition.days={};
   if(!Array.isArray(STATE.photos))STATE.photos=[];
+  if(!STATE.achievements||typeof STATE.achievements!=='object')STATE.achievements={};
+  if(STATE.settings.reminderOn===undefined)STATE.settings.reminderOn=false;
+  if(!STATE.settings.reminderTime)STATE.settings.reminderTime='18:00';
   if(STATE.settings.hype===undefined)STATE.settings.hype=true;   // motivator on by default
   if(!STATE.settings.coach)STATE.settings.coach='auto';          // default persona
   // one-time: switch existing installs to the new rotating Auto coach
@@ -1981,11 +2087,12 @@ async function boot(){
   // and unlock speech on the first user interaction (mobile autoplay policy)
   try{loadCoachVoices();if('speechSynthesis'in window)speechSynthesis.onvoiceschanged=loadCoachVoices;}catch(e){}
   document.addEventListener('pointerdown',primeVoice,{once:true,passive:true});
+  try{checkReminder();}catch(e){}   // best-effort training-day nudge on open
   // service worker
   if('serviceWorker'in navigator){try{navigator.serviceWorker.register('sw.js');}catch(e){}}
 }
 window.addEventListener('load',boot);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden){/* keep timers honest if needed */}});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){try{checkReminder();}catch(e){}}});
 </script>
 </body>
 </html>
