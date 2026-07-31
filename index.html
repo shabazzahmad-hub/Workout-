@@ -474,7 +474,7 @@ const TESTS = [
    instr:'Hold a hollow body position (low back pinned) as long as you can keep the shape. Enter your best time.'},
   {id:'lower', name:'Reverse Crunches (max reps)', unit:'reps', ex:'revcrunch', bench:25,
    instr:'Do as many clean, controlled reverse crunches as you can in one set. Enter the number of good reps.'},
-  {id:'dyn', name:'Bicycle Crunches (60 sec)', unit:'reps', ex:'bicycle', bench:50,
+  {id:'dyn', name:'Bicycle Crunches (60 sec)', unit:'reps', ex:'bicycle', bench:50, dur:60,
    instr:'Do controlled bicycle crunches for 60 seconds (count each side). Enter your total good reps.'},
 ];
 
@@ -959,7 +959,8 @@ function renderAssessStep(){
     <h3>${t.name}</h3>
     ${ex.img?`<img class="exphoto" src="${ex.img}" alt="">`:emblemHTML(ex)}
     <div class="note info">${t.instr}</div>
-    <div class="field"><label>${t.unit==='time'?'Your best hold (seconds)':'Good reps completed'}</label>
+    ${(t.unit==='time'||t.dur)?`<button class="btn green" style="margin-bottom:12px" onclick="startBaselineTimer()">▶ ${t.dur?`Start ${t.dur}s timer`:'Start timer'}</button>`:''}
+    <div class="field"><label>${t.unit==='time'?'Your hold (seconds) — the timer fills this in':(t.dur?'Good reps in the 60 seconds':'Good reps completed')}</label>
       <div class="numrow">
         <button onclick="assessBump(-${t.unit==='time'?5:1})">–</button>
         <input id="assess-val" type="number" inputmode="numeric" value="${assessState.results[t.id]||''}" placeholder="0">
@@ -975,6 +976,60 @@ function renderAssessStep(){
   setTimeout(()=>{const inp=$('#assess-val');if(inp)inp.focus();},120);
 }
 function assessBump(d){const inp=$('#assess-val');inp.value=Math.max(0,(+inp.value||0)+d);}
+
+/* ---- Baseline test timer: Start -> 3·2·1 -> run -> Stop ----
+   Timed holds count UP until you stop (elapsed seconds = your result).
+   The 60s bicycle test counts DOWN and stops itself, then you enter reps. */
+let _bt=null;
+function stopBaselineTimer(){if(_bt){clearInterval(_bt.iv);_bt=null;}}
+function coachSay(txt){try{if(typeof coachSpeak==='function')coachSpeak(txt);}catch(e){}}
+function startBaselineTimer(){
+  const t=TESTS[assessState.idx];const dur=t.dur||0; // dur>0 => count down; else count up
+  stopBaselineTimer();try{if(typeof primeVoice==='function')primeVoice();}catch(e){}
+  openSheet(baselineTimerHTML(t));
+  _bt={iv:setInterval(tick,1000),mode:'ready',ready:3,elapsed:0,dur:dur,tid:t.id};
+  paintReady();coachSay('Get ready.');
+  function paintReady(){const b=$('#btBig');if(b){b.textContent=_bt.ready;b.className='tnum rest';}const l=$('#btLbl');if(l)l.textContent='GET READY';const h=$('#btHint');if(h)h.textContent='Get into position…';}
+  function paintRun(){const b=$('#btBig');if(b){b.textContent=dur?fmtTime(Math.max(0,dur-_bt.elapsed)):fmtTime(_bt.elapsed);b.className='tnum go';}const l=$('#btLbl');if(l)l.textContent=dur?'TIME LEFT':'HOLD — ELAPSED';const h=$('#btHint');if(h)h.textContent=dur?'Go! Count every rep.':'Hold your best form. Tap Stop when you break.';const a=$('#btAction');if(a){a.style.display='block';a.textContent=dur?'■ Stop early':'■ Stop & save';}}
+  function tick(){
+    if(!_bt)return;
+    if(_bt.mode==='ready'){
+      _bt.ready--;
+      if(_bt.ready>0){beep(660,.09);coachSay(String(_bt.ready));paintReady();}
+      else{beep(990,.14);haptic(20);coachSay('Go!');_bt.mode='run';_bt.elapsed=0;paintRun();}
+      return;
+    }
+    _bt.elapsed++;
+    if(dur){
+      const left=dur-_bt.elapsed;
+      if(left===10)coachSay('Ten seconds left.');
+      if(left<=3&&left>0)beep(660,.08);
+      if(left<=0){beep(880,.28);haptic(30);coachSay('Time. Enter your reps.');stopBaselineTimer();backToAssessStep(false);return;}
+    }
+    paintRun();
+  }
+}
+function baselineStop(){ // user tapped Stop
+  const dur=_bt&&_bt.dur,elapsed=_bt?_bt.elapsed:0,running=_bt&&_bt.mode==='run';
+  stopBaselineTimer();
+  if(running&&!dur){const t=TESTS[assessState.idx];assessState.results[t.id]=elapsed;coachSay('Time. Strong hold.');}
+  backToAssessStep(true);
+}
+function baselineCancel(){stopBaselineTimer();renderAssessStep();}
+function backToAssessStep(focus){
+  renderAssessStep();
+  if(focus)setTimeout(()=>{const inp=$('#assess-val');if(inp){inp.focus();inp.select&&inp.select();}},160);
+}
+function baselineTimerHTML(t){
+  return `
+  <div class="row" style="justify-content:space-between;margin-bottom:8px"><div class="tiny muted">${t.name}</div><button class="chip" onclick="baselineCancel()">Cancel</button></div>
+  <div class="timerbox" style="padding:22px 0 6px">
+    <div class="tt" id="btLbl">GET READY</div>
+    <div class="tnum rest" id="btBig" style="font-size:80px">3</div>
+    <div class="tiny muted" id="btHint" style="margin-top:2px">Get into position…</div>
+  </div>
+  <button class="btn primary" id="btAction" onclick="baselineStop()" style="display:none">■ Stop &amp; save</button>`;
+}
 function assessNav(dir){
   const t=TESTS[assessState.idx];const v=parseFloat($('#assess-val').value);
   if(dir>0){if(!(v>=0)||$('#assess-val').value===''){toast('Enter your result (0 is fine)');return;}assessState.results[t.id]=v;}
@@ -1097,7 +1152,7 @@ function setRepTempo(v){STATE.settings.repTempo=Math.max(1,Math.min(6,parseFloat
 
 /* ============================ TIMERS ============================ */
 let timer=null;
-function stopTimer(){if(timer){clearInterval(timer.iv);timer=null;}}
+function stopTimer(){if(timer){clearInterval(timer.iv);timer=null;}if(typeof _bt!=='undefined'&&_bt){clearInterval(_bt.iv);_bt=null;}}
 function beep(freq=880,dur=0.12){if(!STATE.settings.sound)return;try{const ac=beep._ac||(beep._ac=new (window.AudioContext||window.webkitAudioContext)());const o=ac.createOscillator(),g=ac.createGain();o.frequency.value=freq;o.connect(g);g.connect(ac.destination);g.gain.setValueAtTime(.18,ac.currentTime);g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+dur);o.start();o.stop(ac.currentTime+dur);}catch(e){}}
 function openExerciseTimer(exId){
   const sess=buildSession(STATE.progressPtr);const m=[...sess.main,sess.finisher].find(x=>x.exId===exId);
