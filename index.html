@@ -11,8 +11,8 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="manifest" href="manifest.webmanifest">
-<meta name="description" content="CoreForge — a 4-week (repeatable to 12) abs, core and oblique training program. Baseline assessment on day one, then an auto-generated, week-to-week progressive program that self-saves your progress. Offline-ready, installs to your home screen.">
-<title>CoreForge — 4-Week Abs & Core</title>
+<meta name="description" content="CoreForge — a 6-week (repeatable to 12) abs, core and oblique training program. Baseline assessment on day one, then an auto-generated, week-to-week progressive program that self-saves your progress. Offline-ready, installs to your home screen.">
+<title>CoreForge — 6-Week Abs & Core</title>
 <style>
   :root{
     --bg:#0a0d12; --bg2:#0f141c; --card:#141a24; --card2:#1a222e; --line:#242e3c;
@@ -247,11 +247,11 @@
 <script>
 "use strict";
 /* =========================================================================
-   CoreForge — 4-week (repeatable to 12) abs/core/oblique training PWA
+   CoreForge — 6-week (repeatable to 12) abs/core/oblique training PWA
    - Baseline assessment (day 1) -> Core Score + level + personal maxes
    - Auto-generated program, progressive overload week-to-week
    - Auto-regulating: adapts next week from how hard sessions felt
-   - Re-assessment each 4-week cycle -> keeps scaling for 12 weeks
+   - Re-assessment each 6-week block -> keeps scaling for 12 weeks
    - Self-saving: localStorage + IndexedDB mirror + persistent storage
    ========================================================================= */
 
@@ -516,8 +516,8 @@ async function load(){
 }
 
 /* ============================ PROGRESSION ENGINE ============================ */
-const SESSIONS_PER_WEEK=4, WEEKS_PER_CYCLE=4, SESSIONS_PER_CYCLE=SESSIONS_PER_WEEK*WEEKS_PER_CYCLE; // 16
-const TOTAL_CYCLES=3; // 12 weeks
+const SESSIONS_PER_WEEK=4, WEEKS_PER_CYCLE=6, SESSIONS_PER_CYCLE=SESSIONS_PER_WEEK*WEEKS_PER_CYCLE; // 24
+const TOTAL_CYCLES=2; // two 6-week blocks = 12 weeks
 
 function posOf(ptr){
   const cycle=Math.floor(ptr/SESSIONS_PER_CYCLE); // 0..2
@@ -542,8 +542,9 @@ const LEVEL_FACTOR={Beginner:0.8,Intermediate:1.0,Advanced:1.2};
 function rungIndex(ladder,cycle,week,level){
   const arr=LADDERS[ladder];
   let idx=LEVEL_TIER[level]||1;         // base off fitness level
-  idx+=cycle;                            // +1 rung each 4-week cycle
-  if(week>=3) idx+=1;                     // late-cycle progression
+  idx+=cycle;                            // +1 rung each 6-week block
+  if(week>=3) idx+=1;                     // mid-block progression
+  if(week>=5) idx+=1;                     // peak-weeks progression (harder variations)
   // don't push optional/equipment rungs unless clearly earned
   idx=clamp(idx,0,arr.length-1);
   return idx;
@@ -559,8 +560,8 @@ function weekAdjust(cycle,week){
   return clamp(Math.round(avg*2)/2*0.05,-0.08,0.08); // +/-8%
 }
 
-const TIME_FRAC=[0.55,0.62,0.70,0.80];   // % of tested max hold, by week
-const REP_FRAC =[0.60,0.72,0.84,0.95];   // % of tested max reps, by week
+const TIME_FRAC=[0.50,0.58,0.66,0.74,0.82,0.90];   // % of tested max hold, by week (1-6)
+const REP_FRAC =[0.55,0.64,0.73,0.82,0.91,1.00];   // % of tested max reps, by week (1-6)
 
 function prescribe(exId,pos){
   const ex=EX[exId];const {cycle,week}=pos;
@@ -571,14 +572,14 @@ function prescribe(exId,pos){
   let sets=3;
   if(ex.region==='dynamic') sets=1;                 // finisher = 1 timed round
   if(ex.region==='stability') sets=2;               // warm-up/accessory
-  if(week>=3 && ex.anchor && ex.region!=='stability') sets=(week===4?4:3);
+  if(week>=5 && ex.anchor && ex.region!=='stability') sets=4;   // peak weeks 5-6: extra set
   let target;
   if(ex.anchor && maxes[ex.anchor]){
     const frac=(ex.unit==='time'?TIME_FRAC:REP_FRAC)[week-1];
     target=maxes[ex.anchor]*frac*ex.hardness*(1+adj)*cycleBoost;
   }else{
     const base=(ex.unit==='time'?ex.base:ex.base);
-    const wk=[1,1.12,1.24,1.38][week-1];
+    const wk=[1,1.08,1.16,1.25,1.34,1.44][week-1];
     target=base*(LEVEL_FACTOR[level]||1)*wk*(1+adj)*cycleBoost;
   }
   if(ex.unit==='time'){target=Math.round(target/5)*5;target=clamp(target,15,150);}
@@ -731,7 +732,7 @@ function renderToday(){
 
 function onboardHTML(){
   return `
-  <div class="hero anterior"><div class="htop"><div><div class="hlbl">Welcome to</div><h1>CoreForge</h1><div class="hmeta">4 weeks to a stronger core — repeatable to 12</div></div><div class="hicon">🔥</div></div></div>
+  <div class="hero anterior"><div class="htop"><div><div class="hlbl">Welcome to</div><h1>CoreForge</h1><div class="hmeta">6 weeks to a stronger core — repeatable to 12</div></div><div class="hicon">🔥</div></div></div>
   <div class="note fire">This program is built <b>only</b> around abs, core and oblique training — the most proven exercises, nothing wasted. Day one is a quick <b>baseline assessment</b>. From your results the app builds a personalised program that <b>gets harder every week</b> automatically, and saves every rep for you.</div>
   <div class="card pad">
     <h3>Let's set you up</h3>
@@ -780,8 +781,8 @@ function baselineIntroHTML(){
 function reassessIntroHTML(cycle){
   const prev=cycle===1?STATE.baseline:STATE.reassess[cycle-1];
   return `
-  <div class="hero oblique"><div class="htop"><div><div class="hlbl">Cycle ${cycle+1} · re-test</div><h1>Progress Check</h1><div class="hmeta">4 weeks done — let's re-measure</div></div><div class="hicon">📈</div></div></div>
-  <div class="note fire">You've completed a full 4-week block. Re-take the 5 tests so the next block scales from your <b>new, stronger</b> numbers — this is what keeps results coming for the full 12 weeks.</div>
+  <div class="hero oblique"><div class="htop"><div><div class="hlbl">Cycle ${cycle+1} · re-test</div><h1>Progress Check</h1><div class="hmeta">6 weeks done — let's re-measure</div></div><div class="hicon">📈</div></div></div>
+  <div class="note fire">You've completed a full 6-week block. Re-take the 5 tests so the next block scales from your <b>new, stronger</b> numbers — this is what keeps results coming for the full 12 weeks.</div>
   <div class="card pad"><h3>Last result</h3>
     <div class="kv"><span>Core Score</span><b>${prev?prev.score:'-'}/100</b></div>
     <div class="kv"><span>Level</span><b>${prev?prev.level:'-'}</b></div>
@@ -789,9 +790,9 @@ function reassessIntroHTML(cycle){
   <button class="btn violet" id="startReassess">Start Re-Assessment</button>`;
 }
 function finishedHTML(){
-  const first=STATE.baseline,last=STATE.reassess[2]||STATE.reassess[1]||STATE.baseline;
+  const first=STATE.baseline,last=STATE.reassess[TOTAL_CYCLES-1]||STATE.reassess[1]||STATE.baseline;
   return `
-  <div class="hero anterior"><div class="htop"><div><div class="hlbl">12 weeks complete</div><h1>Forged 🏆</h1><div class="hmeta">You finished all 3 cycles</div></div><div class="hicon">🏆</div></div></div>
+  <div class="hero anterior"><div class="htop"><div><div class="hlbl">12 weeks complete</div><h1>Forged 🏆</h1><div class="hmeta">You finished all ${TOTAL_CYCLES} blocks</div></div><div class="hicon">🏆</div></div></div>
   <div class="grid2">
     <div class="stat"><div class="n">${first.score}→${last.score}</div><div class="l">Core Score</div></div>
     <div class="stat"><div class="n">${Object.keys(STATE.logs).length}</div><div class="l">Sessions done</div></div>
@@ -845,10 +846,13 @@ function todayWorkoutHTML(){
 function overloadNote(sess){
   const w=sess.week;
   if(w===1&&sess.cycle===0)return 'Establishing your baseline volumes — nail your form this week.';
-  if(w===2)return 'Reps and hold times step up ~12%. Same moves, more work.';
-  if(w===3)return 'Volume rises again and harder variations unlock. An extra set on key lifts.';
-  if(w===4)return 'Peak week — the highest load of the block. Then you re-test and climb higher.';
-  return 'Scaling from your latest re-test — every number is higher than last cycle.';
+  if(w===1)return 'Scaling from your latest re-test — every number starts higher than last block.';
+  if(w===2)return 'Reps and hold times step up ~8%. Same moves, more work.';
+  if(w===3)return 'Volume rises again and harder variations start to unlock.';
+  if(w===4)return 'Deeper into the build — targets climb and the tougher rungs kick in.';
+  if(w===5)return 'Peak weeks begin — an extra set on your key exercises. Push hard.';
+  if(w===6)return 'Final peak week — the highest load of the 6-week block. Then you re-test and climb higher.';
+  return 'Load increased. Keep pushing.';
 }
 function exCardHTML(m,log,idx){
   const ex=EX[m.exId];const st=log.ex[m.exId]||{sets:[],done:false};
@@ -1058,7 +1062,7 @@ function finishAssessment(){
     ${scoreDeltaHTML(a)}
     <div class="card pad" style="margin-top:6px"><h3 style="font-size:14px">What this means</h3>
       <p class="sm muted">${levelBlurb(a.level)}</p>
-      <p class="sm muted">Your program is now built from these numbers. Targets start sub-maximal for perfect form, then climb every week. You'll re-test after each 4-week block.</p>
+      <p class="sm muted">Your program is now built from these numbers. Targets start sub-maximal for perfect form, then climb every week. You'll re-test after each 6-week block.</p>
     </div>
     <button class="btn primary" onclick="closeSheet();go('today')">${assessState.reassess?'Continue training →':'Start Week 1 →'}</button>
   `);
@@ -1227,6 +1231,36 @@ const COACHES=[
    push:["Gather your energy — finish with focus.","Final breaths — stay centered, continue.","Complete the journey. Keep going.","Empty yourself into this last effort.","Finish with a calm, strong mind."],
    rest:["Breathe deeply. Restore your energy.","Return to calm. Recover.","Slow the breath. Be still.","Let the body settle. Recover.","Peace now. We continue soon."],
    done:["Well done. Honor your effort.","You met the moment. Strong work.","Balance and strength. Beautifully done.","The mind grew today. Well done.","Complete. Bow to your effort."]},
+  {id:'crossfit',name:'Box Coach',emoji:'🏋️',pitch:0.5,rate:1.06,hint:['guy','david','mark','male'],
+   start:["Three, two, one — go!","Time starts now. Get moving!","Hit it — go, go!","On the beep — work!","Chalk up and go!"],
+   during:["Keep moving! Don't stop the clock!","Grip it and rip it — keep going!","Unbroken! Stay on it!","Every rep counts — keep working!","Embrace the suck — keep going!","Chip away — one rep at a time!","Constantly varied, high intensity — push!","Don't put it down — keep going!","You against the clock — move!","Full send! Keep working!","Dig in — the box is watching!"],
+   push:["Sprint the finish — everything now!","Last reps — leave nothing! Go!","Beat the clock — push!","Empty the tank — finish strong!","Send it home — go!"],
+   rest:["Good work. Catch your breath.","Reset your grip. Recover.","Nice. Shake it out.","Breathe. Next round soon.","Chalk up and recover."],
+   done:["Time! Awesome work!","That's a solid score. Well done!","You crushed that WOD!","Unbroken effort — respect!","Great work in the box!"]},
+  {id:'viking',name:'Viking Jarl',emoji:'🪓',pitch:0.45,rate:1.0,hint:['david','guy','mark','male'],
+   start:["Raise your shield — begin!","To battle! Start now!","Odin watches — go!","Row hard, warrior — begin!","Sound the horn — go!"],
+   during:["Fight on, warrior! Keep going!","Strength of the north — push!","No surrender! Keep pushing!","Earn your place in the saga! Go!","Row through the storm — keep going!","The gods favor the bold — push!","Iron will, iron body — keep going!","Stand strong like the mountains!","Roar through it, warrior!","To Valhalla — do not yield!","Shoulder the burden — keep going!"],
+   push:["For glory — finish the battle!","One last charge — everything now!","Claim your victory — push!","Break the shield wall — go!","Finish strong, warrior!"],
+   rest:["Rest by the fire, warrior. Recover.","Sharpen your axe. Breathe.","Regain your strength. We sail on.","Steady the longship. Recover.","Well fought. Ready yourself."],
+   done:["Victory! The saga remembers you!","Well fought, warrior of the north!","Skål! A mighty effort!","You have earned Valhalla's respect!","A true Viking. Well done!"]},
+  {id:'mission',name:'Mission Control',emoji:'🚀',pitch:0.55,rate:0.98,hint:['mark','david','guy','male'],
+   start:["All systems go. Ignition — begin!","Cleared for launch. Go!","T-minus zero — start!","Liftoff! Begin the sequence!","Go for main engine start — begin!"],
+   during:["All systems nominal. Keep going!","Maintain thrust — push!","You are go for full power. Keep going!","Steady on trajectory — hold strong!","Telemetry looks strong — keep pushing!","Push to orbit — keep going!","Systems holding — drive through it!","Stay on mission — keep going!","Reaching escape velocity — push!","Copy that effort — keep going!","Full burn — hold it!"],
+   push:["Final burn — everything now!","Push to orbit — do not throttle down!","Last stage — finish the launch!","Punch it — go, go, go!","Bring it to orbit — push!"],
+   rest:["Systems cooldown. Breathe.","Recover. Stand by for next burn.","Telemetry recovering. Rest up.","Reset systems. Steady breathing.","Good burn. Recover for the next."],
+   done:["We have orbit! Outstanding!","Mission accomplished. Well done!","Touchdown confirmed — great work!","Flawless launch. Excellent!","Houston is proud. Superb work!"]},
+  {id:'cheer',name:'Cheer Captain',emoji:'📣',pitch:1.1,rate:1.08,hint:['zira','samantha','jenny','aria','female','susan'],
+   start:["Let's gooo! You've got this!","Ready? Okay — begin!","Bring the energy — start!","Here we go, superstar!","Light it up — begin!"],
+   during:["Go go go! You're amazing!","Yes! Keep it up, superstar!","You're on fire — keep going!","So strong! I'm cheering for you!","Woo! That's it — keep going!","You're unstoppable — push!","Big smile, big effort — go!","Almost there — you're crushing it!","Give me more — you've got it!","Shine bright — keep going!","Let's hear it — you rock! Push!"],
+   push:["Big finish — you've got this!","Last push — bring it home, star!","Everything you've got — go!","Finish strong — I believe in you!","One more — you're amazing!"],
+   rest:["Yay! Great job — catch your breath!","Amazing! Shake it out!","So proud — quick breather!","You're doing incredible — rest up!","Woo! Recover and go again!"],
+   done:["Yaaay! You did it! Amazing!","Superstar! That was incredible!","So so proud of you! Great job!","You totally crushed it! Woo!","Champion effort! Way to go!"]},
+  {id:'robot',name:'A.I. Trainer',emoji:'🤖',pitch:0.32,rate:0.98,hint:['david','mark','guy','male'],
+   start:["Initiating workout protocol. Begin.","Systems online. Commence exercise.","Executing. Begin now.","Protocol engaged. Start.","Training sequence initiated. Go."],
+   during:["Performance nominal. Continue.","Effort detected. Increase output.","Maintain form. Continue processing.","You are exceeding baseline. Continue.","Optimal range. Keep going.","Resistance is expected. Proceed.","Data shows you can do more. Continue.","Endurance subroutine engaged. Push.","Muscle activation confirmed. Continue.","Do not power down. Keep going.","Efficiency high. Maintain output."],
+   push:["Maximum output required. Now.","Final sequence. Deploy all energy.","Complete the objective. Push.","Overdrive engaged. Finish.","Full power. Execute final phase."],
+   rest:["Recovery mode. Recharge.","Cooling systems. Standby.","Recalibrating. Breathe.","Energy restore in progress.","Standby for next sequence."],
+   done:["Objective complete. Performance: excellent.","Workout protocol successful. Well done.","Target achieved. You have upgraded.","Data logged. Superior effort.","Sequence complete. Impressive, human."]},
 ];
 function currentPersona(){return COACHES.find(c=>c.id===STATE.settings.coach)||COACHES[0];}
 let _lastHype={};
@@ -1435,17 +1469,17 @@ function renderProgram(){
   const v=$('#v-program');
   if(!STATE.baseline){v.innerHTML=`<h2 class="vtitle">Program</h2><div class="note info">Complete your <b>baseline assessment</b> on the Today tab to generate your personalised 12-week program.</div>`;return;}
   const curPos=STATE.progressPtr<SESSIONS_PER_CYCLE*TOTAL_CYCLES?posOf(STATE.progressPtr):null;
-  const viewCycle=curPos?curPos.cycle:2;
-  let h=`<h2 class="vtitle">Your Program</h2><div class="vsub">4-week progressive block · repeated 3× for 12 weeks. Every week the load climbs.</div>`;
+  const viewCycle=curPos?curPos.cycle:TOTAL_CYCLES-1;
+  let h=`<h2 class="vtitle">Your Program</h2><div class="vsub">6-week progressive block · repeated ${TOTAL_CYCLES}× for 12 weeks. Every week the load climbs.</div>`;
   // overall progress
   const totalS=SESSIONS_PER_CYCLE*TOTAL_CYCLES;const done=Math.min(STATE.progressPtr,totalS);
   h+=`<div class="card pad"><div class="row" style="justify-content:space-between;margin-bottom:8px"><b>12-week progress</b><span class="muted sm">${done}/${totalS} sessions</span></div><div class="pbar"><i style="width:${done/totalS*100}%"></i></div>
-    <div class="tiny muted" style="margin-top:8px">Cycle ${viewCycle+1} of 3 · re-test after each block keeps you progressing</div></div>`;
+    <div class="tiny muted" style="margin-top:8px">Block ${viewCycle+1} of ${TOTAL_CYCLES} · re-test after each block keeps you progressing</div></div>`;
   // week-by-week for current cycle
   for(let wk=1;wk<=WEEKS_PER_CYCLE;wk++){
     const wkNum=viewCycle*WEEKS_PER_CYCLE+wk;
-    const phase=['Foundation','Build','Intensify','Peak'][wk-1];
-    h+=`<div class="section-label">Week ${wkNum} · ${phase} ${wk===4?'🔺':''}</div>`;
+    const phase=['Foundation','Build','Develop','Intensify','Peak','Peak+'][wk-1];
+    h+=`<div class="section-label">Week ${wkNum} · ${phase} ${wk>=5?'🔺':''}</div>`;
     h+=`<div class="cal">`;
     for(let d=0;d<SESSIONS_PER_WEEK;d++){
       const ptr=viewCycle*SESSIONS_PER_CYCLE+(wk-1)*SESSIONS_PER_WEEK+d;
@@ -1458,7 +1492,7 @@ function renderProgram(){
     }
     h+=`</div>`;
   }
-  h+=`<div class="note info" style="margin-top:16px"><b>How progression works:</b> Week 1 sets your baseline volumes. Weeks 2–4 raise reps &amp; hold times and unlock harder variations. The app also reads how each week <i>felt</i> and auto-adjusts. After 4 weeks you re-test, and everything scales up from your new numbers.</div>`;
+  h+=`<div class="note info" style="margin-top:16px"><b>How progression works:</b> Week 1 sets your baseline volumes. Weeks 2–6 raise reps &amp; hold times, unlock harder variations, and add a set in the peak weeks. The app also reads how each week <i>felt</i> and auto-adjusts. After 6 weeks you re-test, and everything scales up from your new numbers.</div>`;
   v.innerHTML=h;
 }
 function previewSession(ptr){
@@ -1585,7 +1619,7 @@ function renderGuide(){
   const v=$('#v-guide');
   let h=`<h2 class="vtitle">Guide</h2><div class="vsub">Exercise library, results tips & your data.</div>`;
   // results guidance
-  h+=`<div class="section-label">See results in 4 weeks</div>
+  h+=`<div class="section-label">See results in 6 weeks</div>
   <div class="card pad">
     <p class="sm" style="margin-top:0"><b>The muscle:</b> this program builds and strengthens your abs, obliques and deep core fast — you'll feel real strength and tightness within 2–3 weeks, and your waist measurement should start dropping.</p>
     <p class="sm"><b>The look:</b> visible abs = strong core muscle <i>plus</i> lower body fat. To reveal what you're building:</p>
@@ -1596,7 +1630,7 @@ function renderGuide(){
       <li>Track your <b>waist</b> weekly (Progress tab). A shrinking waist is the truest proof.</li>
       <li>Sleep 7–9 hrs — recovery is when the core rebuilds stronger.</li>
     </ul>
-    <div class="note warn" style="margin-bottom:0">Honest note: spot-reduction isn't real. This forges the strongest possible midsection; combined with the nutrition basics above, that's how you get substantial visible results in 4 weeks — and more over 12.</div>
+    <div class="note warn" style="margin-bottom:0">Honest note: spot-reduction isn't real. This forges the strongest possible midsection; combined with the nutrition basics above, that's how you get substantial visible results in 6 weeks — and more over 12.</div>
   </div>`;
   // exercise library
   h+=`<div class="section-label">Exercise library</div><div class="card"><div style="padding:4px 0">`;
