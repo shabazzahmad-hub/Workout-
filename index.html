@@ -492,6 +492,7 @@ const DEFAULT_STATE=()=>({
   measurements:[],          // {date,waist,weight}
   scoreHistory:[],          // {date,score,level}
   prs:{},                   // exId -> best (reps or seconds)
+  adapt:1,                  // adaptive-overload multiplier: rises as you improve
   settings:{sound:true,vibrate:true,voice:true,voiceName:'',voicePitch:0.6,voiceRate:0.98,repTempo:3,hype:true,coach:'drill'},
 });
 let STATE=DEFAULT_STATE();
@@ -569,6 +570,7 @@ function prescribe(exId,pos){
   const maxes=currentMaxes(cycle);
   const adj=weekAdjust(cycle,week);
   const cycleBoost=1+0.07*cycle;
+  const adapt=(typeof STATE.adapt==='number')?STATE.adapt:1;  // grows as you improve, eases if too hard
   let sets=3;
   if(ex.region==='dynamic') sets=1;                 // finisher = 1 timed round
   if(ex.region==='stability') sets=2;               // warm-up/accessory
@@ -576,11 +578,11 @@ function prescribe(exId,pos){
   let target;
   if(ex.anchor && maxes[ex.anchor]){
     const frac=(ex.unit==='time'?TIME_FRAC:REP_FRAC)[week-1];
-    target=maxes[ex.anchor]*frac*ex.hardness*(1+adj)*cycleBoost;
+    target=maxes[ex.anchor]*frac*ex.hardness*(1+adj)*cycleBoost*adapt;
   }else{
     const base=(ex.unit==='time'?ex.base:ex.base);
     const wk=[1,1.08,1.16,1.25,1.34,1.44][week-1];
-    target=base*(LEVEL_FACTOR[level]||1)*wk*(1+adj)*cycleBoost;
+    target=base*(LEVEL_FACTOR[level]||1)*wk*(1+adj)*cycleBoost*adapt;
   }
   if(ex.unit==='time'){target=Math.round(target/5)*5;target=clamp(target,15,150);}
   else{target=Math.round(target);target=clamp(target,6,40);}
@@ -938,7 +940,10 @@ function commitSession(feel){
   const p=STATE.progressPtr;const pos=posOf(p);const log=ensureLog();
   log.done=true;log.feel=feel;log.completedAt=todayISO();
   const key=pos.cycle+'-'+pos.week;(STATE.weekFeel[key]=STATE.weekFeel[key]||[]).push(feel);
-  // update streak-able measurement prompt at end of week 4
+  // Adaptive overload: every session nudges a persistent multiplier so targets
+  // keep rising as you get stronger (and ease off only if it's genuinely brutal).
+  const d=feel==='easy'?0.02:(feel==='hard'?-0.03:0.006);
+  STATE.adapt=clamp((typeof STATE.adapt==='number'?STATE.adapt:1)+d,0.9,1.30);
   STATE.progressPtr=p+1;
   closeSheet();save();
   toast('Session logged · '+ (feel==='easy'?'load will rise':feel==='hard'?'load steady':'nice work'));
@@ -1728,6 +1733,7 @@ async function boot(){
   if(typeof STATE.settings.voicePitch!=='number')STATE.settings.voicePitch=0.6;
   if(typeof STATE.settings.voiceRate!=='number')STATE.settings.voiceRate=0.98;
   if(typeof STATE.settings.repTempo!=='number')STATE.settings.repTempo=3;
+  if(typeof STATE.adapt!=='number')STATE.adapt=1;   // adaptive-overload multiplier
   if(STATE.settings.hype===undefined)STATE.settings.hype=true;   // motivator on by default
   if(!STATE.settings.coach)STATE.settings.coach='drill';         // default persona
   // request durable storage so an installed PWA keeps data
