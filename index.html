@@ -497,6 +497,7 @@ const DEFAULT_STATE=()=>({
   prs:{},                   // exId -> best (reps or seconds)
   adapt:1,                  // adaptive-overload multiplier: rises as you improve
   nutrition:{goal:'lose',sex:null,age:null,heightCm:null,activity:1.45,kcalTarget:null,days:{}}, // fuel module
+  photos:[],                // progress photos: {id,date,pose} (image bytes live in IndexedDB)
   settings:{sound:true,vibrate:true,voice:true,voiceName:'',voicePitch:0.6,voiceRate:0.98,repTempo:3,hype:true,coach:'auto'},
 });
 let STATE=DEFAULT_STATE();
@@ -506,6 +507,7 @@ let idb=null;
 function idbOpen(){return new Promise(res=>{try{const r=indexedDB.open('coreforge',1);r.onupgradeneeded=e=>{e.target.result.createObjectStore('kv');};r.onsuccess=e=>{idb=e.target.result;res(idb);};r.onerror=()=>res(null);}catch(e){res(null);}});}
 function idbPut(k,v){try{if(!idb)return;const tx=idb.transaction('kv','readwrite');tx.objectStore('kv').put(v,k);}catch(e){}}
 function idbGet(k){return new Promise(res=>{try{if(!idb)return res(null);const tx=idb.transaction('kv','readonly');const rq=tx.objectStore('kv').get(k);rq.onsuccess=()=>res(rq.result||null);rq.onerror=()=>res(null);}catch(e){res(null);}});}
+function idbDel(k){try{if(!idb)return;idb.transaction('kv','readwrite').objectStore('kv').delete(k);}catch(e){}}
 let saveT=null;
 function save(){
   STATE._saved=todayISO();
@@ -1570,6 +1572,8 @@ function renderProgress(){
     <div class="row" style="justify-content:space-between"><b>Waist (${unit})</b><button class="btn sm primary" onclick="logMeasure()">+ Log today</button></div>
     ${measureChartHTML()}
   </div>`;
+  // progress photos
+  h+=`<div class="section-label">Progress photos</div>${photosHTML()}`;
   // PRs
   h+=`<div class="section-label">Personal bests</div>`;
   const prKeys=Object.keys(STATE.prs);
@@ -1581,6 +1585,7 @@ function renderProgress(){
     h+=`<div class="section-label">Assessment history</div><div class="card pad">${STATE.scoreHistory.map((s,i)=>`<div class="kv"><span>${i===0?'Baseline':'Re-test '+i} · ${s.date}</span><b>${s.score}/100 · ${s.level}</b></div>`).join('')}</div>`;
   }
   v.innerHTML=h;
+  hydratePhotos();   // async-fill progress photos from IndexedDB
 }
 function ringHTML(score,label){
   const C=2*Math.PI*44;const off=C*(1-clamp(score,0,100)/100);
@@ -1628,6 +1633,81 @@ function saveMeasure(){
   else STATE.measurements.push({date:today,waist:w>0?w:null,weight:b>0?b:null});
   if(w>0&&!STATE.profile.startWaist)STATE.profile.startWaist=w;
   save();closeSheet();toast('Measurement saved');renderProgress();
+}
+
+/* ============================ PROGRESS PHOTOS ============================
+   Private, on-device only. Image bytes are downscaled to JPEG and stored in
+   IndexedDB (key ph_<id>); STATE.photos keeps just {id,date,pose}. Nothing is
+   uploaded. Rendered with placeholders that hydrate asynchronously. */
+let _pendingPose=null;
+function photosHTML(){
+  const ps=(STATE.photos||[]).slice().sort((a,b)=>a.id<b.id?-1:1);
+  let h=`<div class="card pad">
+    <div class="tiny muted" style="margin-top:0;margin-bottom:10px">Take a photo every 1–2 weeks in the same spot &amp; lighting. Private — stays on your phone.</div>
+    <div class="btnrow"><button class="btn sm ghost" style="width:100%" onclick="capturePhoto('front')">📷 Front</button><button class="btn sm ghost" style="width:100%" onclick="capturePhoto('side')">📷 Side</button></div>`;
+  if(ps.length>=2){
+    const a=ps[0],b=ps[ps.length-1];
+    h+=`<div class="section-label" style="margin:16px 3px 8px">Before → Now</div>
+      <div class="grid2" style="gap:8px">
+        <div><img class="ph-img" data-pid="${a.id}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;background:var(--card2)"><div class="tiny muted center" style="margin-top:4px">${a.date} · ${a.pose}</div></div>
+        <div><img class="ph-img" data-pid="${b.id}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;background:var(--card2)"><div class="tiny muted center" style="margin-top:4px">${b.date} · ${b.pose}</div></div>
+      </div>`;
+  }
+  if(ps.length){
+    h+=`<div class="section-label" style="margin:16px 3px 8px">All photos (${ps.length})</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+        ${ps.map(p=>`<div style="position:relative"><img class="ph-img" data-pid="${p.id}" onclick="viewPhoto('${p.id}')" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:10px;background:var(--card2);cursor:pointer"><div class="tiny muted" style="text-align:center;margin-top:2px">${p.date.slice(5)} ${p.pose[0].toUpperCase()}</div></div>`).join('')}
+      </div>`;
+  }else{
+    h+=`<div class="note info" style="margin-top:12px;margin-bottom:0">No photos yet — a front &amp; side shot today becomes your baseline. The mirror lies; photos don't.</div>`;
+  }
+  h+=`</div><input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" onchange="onPhotoPicked(event)">`;
+  return h;
+}
+function capturePhoto(pose){_pendingPose=pose;const inp=$('#photoInput');if(inp){inp.value='';inp.click();}}
+function onPhotoPicked(e){
+  const f=e.target.files&&e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    const img=new Image();
+    img.onload=()=>{
+      const MAX=1000;let{width:w,height:hh}=img;
+      if(w>MAX||hh>MAX){const s=MAX/Math.max(w,hh);w=Math.round(w*s);hh=Math.round(hh*s);}
+      const c=document.createElement('canvas');c.width=w;c.height=hh;
+      c.getContext('2d').drawImage(img,0,0,w,hh);
+      let data;try{data=c.toDataURL('image/jpeg',0.82);}catch(err){data=r.result;}
+      const id=todayISO()+'-'+(_pendingPose||'front')+'-'+(Object.keys(STATE.photos).length+ (STATE.photos.length))+'-'+Math.floor(performance.now());
+      idbPut('ph_'+id,data);
+      STATE.photos.push({id,date:todayISO(),pose:_pendingPose||'front'});
+      save();toast('Photo saved');renderProgress();
+    };
+    img.onerror=()=>toast('Could not read that image');
+    img.src=r.result;
+  };
+  r.readAsDataURL(f);
+}
+async function hydratePhotos(){
+  const imgs=$$('#v-progress .ph-img');
+  for(const el of imgs){
+    const id=el.getAttribute('data-pid');if(!id||el._loaded)continue;
+    const data=await idbGet('ph_'+id);if(data){el.src=data;el._loaded=true;}
+  }
+}
+async function viewPhoto(id){
+  const data=await idbGet('ph_'+id);const meta=(STATE.photos||[]).find(p=>p.id===id);
+  openSheet(`
+    <h3 style="text-transform:capitalize">${meta?meta.pose+' · '+meta.date:'Photo'}</h3>
+    <img src="${data||''}" style="width:100%;border-radius:14px;margin:6px 0 14px">
+    <button class="btn ghost" style="color:var(--pink)" onclick="deletePhoto('${id}')">Delete this photo</button>
+    <div style="height:8px"></div>
+    <button class="btn ghost" onclick="closeSheet()">Close</button>
+  `);
+}
+function deletePhoto(id){
+  if(!confirm('Delete this photo?'))return;
+  idbDel('ph_'+id);
+  STATE.photos=(STATE.photos||[]).filter(p=>p.id!==id);
+  save();closeSheet();renderProgress();
 }
 function computeStreak(){
   const dates=[...new Set(Object.values(STATE.logs).filter(l=>l.done&&l.completedAt).map(l=>l.completedAt))].sort();
@@ -1888,6 +1968,7 @@ async function boot(){
   if(typeof STATE.adapt!=='number')STATE.adapt=1;   // adaptive-overload multiplier
   if(!STATE.nutrition||typeof STATE.nutrition!=='object')STATE.nutrition={goal:'lose',sex:null,age:null,heightCm:null,activity:1.45,kcalTarget:null,days:{}};
   if(!STATE.nutrition.days)STATE.nutrition.days={};
+  if(!Array.isArray(STATE.photos))STATE.photos=[];
   if(STATE.settings.hype===undefined)STATE.settings.hype=true;   // motivator on by default
   if(!STATE.settings.coach)STATE.settings.coach='auto';          // default persona
   // one-time: switch existing installs to the new rotating Auto coach
