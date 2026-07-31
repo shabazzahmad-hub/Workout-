@@ -11,7 +11,7 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="manifest" href="manifest.webmanifest">
-<meta name="description" content="CoreForge — a 6-week (repeatable to 12) abs, core and oblique training program. Baseline assessment on day one, then an auto-generated, week-to-week progressive program that self-saves your progress. Offline-ready, installs to your home screen.">
+<meta name="description" content="CoreForge — a complete 12-week home program for a strong core, flat stomach and no love handles: abs & core training plus compound bodyweight strength and cardio HIIT for fat loss. Baseline assessment, week-to-week progression, self-saving. Offline-ready, installs to your home screen.">
 <title>CoreForge — 6-Week Abs & Core</title>
 <style>
   :root{
@@ -76,6 +76,8 @@
   .tag.lower{background:rgba(18,181,201,.18);color:#5fe0ef}
   .tag.stability{background:rgba(34,197,94,.16);color:#6ee7a0}
   .tag.dynamic{background:rgba(255,59,107,.18);color:#ff8aa8}
+  .tag.strength{background:rgba(34,197,94,.16);color:#6ee7a0}
+  .tag.cardio{background:rgba(245,196,81,.18);color:#f5d98a}
   /* Hero / session banner */
   .hero{border-radius:18px;padding:18px;color:#fff;position:relative;overflow:hidden;box-shadow:var(--shadow-lg);margin-bottom:16px}
   .hero.anterior{background:linear-gradient(135deg,#b83a10,#ff7e3a)}
@@ -83,6 +85,8 @@
   .hero.lower{background:linear-gradient(135deg,#0a6b78,#1fc3d6)}
   .hero.dynamic{background:linear-gradient(135deg,#b01340,#ff5c81)}
   .hero.rest{background:linear-gradient(135deg,#1b2536,#33465f)}
+  .hero.fullbody{background:linear-gradient(135deg,#14663a,#2ec76f)}
+  .hero.metcon{background:linear-gradient(135deg,#8a6d10,#f5c451)}
   .hero .htop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
   .hero .hlbl{font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;opacity:.86}
   .hero h1{font-size:25px;font-weight:900;margin:5px 0 2px;letter-spacing:.3px}
@@ -435,6 +439,58 @@ const EX = {
     steps:['Lie flat, hands under your glutes, legs straight and lifted slightly.','Press the lower back down into the floor.','Open the legs apart, then cross one over the other.','Alternate the crossing leg in a steady scissor rhythm.'],
     cues:['Keep the back pinned','Controlled crossing motion','Legs low for more burn'],
     mistakes:['Back lifting off the floor','Bending the knees']},
+  /* -- compound bodyweight strength (whole-body, burns more calories) -- */
+  squat:{name:'Bodyweight Squat',region:'strength',unit:'reps',img:null,anchor:null,hardness:1,base:16,rest:45,
+    why:'The biggest bang-for-buck lower-body move — recruits huge muscle to raise your metabolism and burn fat while you brace the core.',
+    steps:['Stand tall, feet shoulder-width, toes slightly out.','Brace your abs and push your hips back and down.','Lower until thighs are about parallel, chest up, knees tracking over toes.','Drive through your heels to stand, squeezing glutes at the top.'],
+    cues:['Chest proud, core braced','Knees track over the toes','Full depth, controlled tempo'],
+    mistakes:['Knees caving inward','Heels lifting off the floor','Rounding the back']},
+  reverselunge:{name:'Reverse Lunge',region:'strength',unit:'reps',img:null,anchor:null,hardness:1,base:12,rest:45,
+    why:'A single-leg builder that torches the legs and glutes while your core fights to keep you balanced. Count each side as a rep.',
+    steps:['Stand tall, hands at your chest, core braced.','Step one foot back and lower until both knees are ~90°.','Keep the front knee over the ankle, torso upright.','Drive through the front heel to stand, then switch legs.'],
+    cues:['Upright torso, braced core','Front knee over ankle','Control the descent'],
+    mistakes:['Leaning forward','Front knee caving in','Short, bouncy range']},
+  kneepushup:{name:'Knee Push-Up',region:'strength',unit:'reps',img:null,anchor:null,hardness:1.3,base:12,rest:45,
+    why:'Builds pressing strength and a braced plank position — the on-ramp to full push-ups while still working the whole trunk.',
+    steps:['Kneel and place hands slightly wider than shoulders, body straight from head to knees.','Brace your abs and glutes so your hips do not sag.','Lower your chest toward the floor with elbows ~45°.','Press back up, keeping the straight line.'],
+    cues:['Straight line head-to-knees','Ribs down, abs braced','Elbows ~45°, not flared'],
+    mistakes:['Hips sagging or piking','Half-range reps']},
+  pushup:{name:'Push-Up',region:'strength',unit:'reps',img:null,anchor:null,hardness:1,base:12,rest:50,
+    why:'A full-body compound press: chest, shoulders, triceps and a rock-solid plank core all at once. Great calorie burn, zero equipment.',
+    steps:['High plank, hands slightly wider than shoulders, body in a straight line.','Brace abs and glutes; no sagging.','Lower your chest toward the floor, elbows ~45°.','Press back up to a straight-arm plank.'],
+    cues:['Body stays one rigid line','Elbows ~45°, not flared out','Full range, chest to just above the floor'],
+    mistakes:['Hips sagging or butt up','Head dropping','Partial reps']},
+  /* -- cardio / conditioning (fat-loss circuits) -- */
+  jumpingjack:{name:'Jumping Jacks',region:'cardio',unit:'time',img:null,anchor:null,hardness:1,base:40,rest:25,
+    why:'A classic full-body cardio move to spike the heart rate and burn calories — the engine of fat loss that reveals your abs.',
+    steps:['Stand tall, arms at your sides, core lightly braced.','Jump your feet out wide while raising your arms overhead.','Jump back to the start in a smooth rhythm.','Keep a steady, springy pace for the time.'],
+    cues:['Soft, springy knees','Stay tall and light','Steady breathing rhythm'],
+    mistakes:['Stiff, heavy landings','Letting the pace collapse']},
+  highknees:{name:'High Knees',region:'cardio',unit:'time',img:null,anchor:null,hardness:1,base:30,rest:25,
+    why:'A running-in-place burner that drives the knees up hard — big cardio demand and constant lower-ab engagement.',
+    steps:['Stand tall, arms bent, core braced.','Drive one knee up toward hip height, then quickly switch.','Stay on the balls of your feet with a fast rhythm.','Punch the abs to lift each knee; keep the chest tall.'],
+    cues:['Knees to hip height','Fast feet, tall chest','Brace the core on each drive'],
+    mistakes:['Leaning back','Low, lazy knees']},
+  buttkick:{name:'Butt Kicks',region:'cardio',unit:'time',img:null,anchor:null,hardness:1.2,base:30,rest:25,
+    why:'A low-impact cardio option that raises the heart rate while sparing the knees — keeps the fat-loss engine running.',
+    steps:['Jog in place, kicking your heels up toward your glutes.','Keep your torso tall and core lightly braced.','Pump the arms as if running.','Hold a quick, steady rhythm for the time.'],
+    cues:['Heels to glutes','Tall posture','Quick, light feet'],
+    mistakes:['Hunching forward','Slow, heavy pace']},
+  skater:{name:'Skater Hops',region:'cardio',unit:'time',img:null,anchor:null,hardness:0.9,base:30,rest:25,
+    why:'Lateral bounds that build athletic power and blast calories while hammering the obliques and glutes — great for love handles.',
+    steps:['Stand on one leg, slight knee bend, core braced.','Bound sideways onto the other foot, landing softly.','Let the trailing leg sweep behind for balance.','Bound back and forth in a steady skating rhythm.'],
+    cues:['Soft, controlled landings','Push off the outside leg','Stay low and athletic'],
+    mistakes:['Landing stiff-legged','Losing balance / no control']},
+  squatthrust:{name:'Squat Thrust',region:'cardio',unit:'time',img:null,anchor:null,hardness:0.85,base:30,rest:30,
+    why:'A burpee without the jump — full-body conditioning that spikes the heart rate and strengthens the core through the plank kick-out.',
+    steps:['Stand, then squat and place your hands on the floor.','Jump or step both feet back into a strong plank.','Jump or step the feet back up to your hands.','Stand tall and repeat at a steady pace.'],
+    cues:['Strong plank — no sagging','Land feet softly','Keep a steady rhythm'],
+    mistakes:['Hips piking in the plank','Rushing and losing form']},
+  burpee:{name:'Burpee',region:'cardio',unit:'time',img:null,anchor:null,hardness:0.7,base:25,rest:35,
+    why:'The ultimate full-body fat-burner: squat, plank, push and jump in one. Maximum calorie burn and core demand, minimum equipment.',
+    steps:['From standing, squat and plant your hands on the floor.','Jump your feet back to a plank (add a push-up to make it harder).','Jump the feet back in toward your hands.','Explode up into a jump, reach tall, and land soft. Repeat.'],
+    cues:['Brace the core in the plank','Land softly from the jump','Pace it so form holds'],
+    mistakes:['Sagging hips in the plank','Sloppy, uncontrolled landings']},
 };
 
 /* ============================ SESSION TEMPLATES ============================
@@ -449,16 +505,22 @@ const LADDERS = {
   sideL:      ['kneeside','sideplank','sidedip','copenhagen'],
   rotL:       ['seatedtwist','russiantwist','weightedtwist'],
   finisherL:  ['marchplace','mountainclimber','flutter','scissors'],
+  // compound strength + cardio (fat-loss / complete-program)
+  legL:       ['squat','reverselunge'],
+  pushL:      ['kneepushup','pushup'],
+  cardioAL:   ['jumpingjack','highknees','skater'],
+  cardioBL:   ['buttkick','squatthrust','burpee'],
+  cardioFinL: ['jumpingjack','highknees','squatthrust','burpee'],
 };
 const SESSIONS = [
-  {key:'anterior', name:'Anterior Assault', icon:'🔥', focus:'Rectus abs & anti-extension',
-   slots:['plankL','hollowL','lowerL','dynL'], finisher:'finisherL'},
-  {key:'oblique', name:'Oblique Engine', icon:'🌀', focus:'Obliques, waist & rotation',
-   slots:['sideL','rotL','dynL','plankL'], finisher:'finisherL'},
-  {key:'lower', name:'Lower Core Control', icon:'⚙️', focus:'Lower abs & deep stability',
-   slots:['lowerL','hollowL','sideL','dynL'], finisher:'finisherL'},
-  {key:'total', name:'Total Core Circuit', icon:'⚡', focus:'Full midsection + conditioning',
-   slots:['plankL','sideL','lowerL','rotL'], finisher:'finisherL'},
+  {key:'anterior', name:'Core Crusher', icon:'🔥', focus:'Abs, deep core & anti-extension',
+   slots:['plankL','hollowL','lowerL','dynL'], finisher:'cardioFinL'},
+  {key:'fullbody', name:'Full-Body Burn', icon:'💪', focus:'Compound strength + core — burns fat, builds muscle',
+   slots:['legL','pushL','plankL','lowerL'], finisher:'cardioBL'},
+  {key:'oblique', name:'Obliques & Love Handles', icon:'🌀', focus:'Obliques, waist & rotation',
+   slots:['sideL','rotL','dynL','plankL'], finisher:'cardioFinL'},
+  {key:'metcon', name:'Metabolic HIIT', icon:'⚡', focus:'Cardio circuit for fat loss + core',
+   slots:['cardioAL','cardioBL','sideL','lowerL'], finisher:'finisherL'},
 ];
 const WARMUP = ['march','glutebridge','birddog'];      // ~3 min activation
 const COOLDOWN = [
@@ -611,8 +673,10 @@ function buildSession(ptr){
     }
     return {exId,...prescribe(exId,pos),slot:ladder};
   });
-  const finId=LADDERS[pos.session.finisher][clamp(rungIndex(pos.session.finisher,cycle,week,level),0,3)];
+  const finLad=LADDERS[pos.session.finisher];
+  const finId=finLad[clamp(rungIndex(pos.session.finisher,cycle,week,level),0,finLad.length-1)];
   const finisher={exId:finId,...prescribe(finId,pos),slot:pos.session.finisher};
+  finisher.sets=1;   // a finisher is always one all-out burnout round
   return {ptr,pos,cycle,week,session:pos.session,warmup:WARMUP,main,finisher,cooldown:COOLDOWN};
 }
 function sessionVolume(sess){
@@ -743,7 +807,7 @@ function renderToday(){
 function onboardHTML(){
   return `
   <div class="hero anterior"><div class="htop"><div><div class="hlbl">Welcome to</div><h1>CoreForge</h1><div class="hmeta">6 weeks to a stronger core — repeatable to 12</div></div><div class="hicon">🔥</div></div></div>
-  <div class="note fire">This program is built <b>only</b> around abs, core and oblique training — the most proven exercises, nothing wasted. Day one is a quick <b>baseline assessment</b>. From your results the app builds a personalised program that <b>gets harder every week</b> automatically, and saves every rep for you.</div>
+  <div class="note fire">A complete program to <b>burn fat and forge a strong core</b> — dedicated abs & oblique work for your belly and love handles, plus <b>compound bodyweight strength and cardio HIIT</b> to torch calories. Day one is a quick <b>baseline assessment</b>; from it the app builds a personalised plan that <b>gets harder every week</b> automatically and saves every rep. Pair it with the <b>Fuel</b> tab to reveal the results.</div>
   <div class="card pad">
     <h3>Let's set you up</h3>
     <div class="field"><label>Your name (optional)</label><input id="ob-name" placeholder="Athlete" autocomplete="off"></div>
@@ -1471,7 +1535,7 @@ function repHTML(label,total){
 
 /* ============================ EXERCISE INFO ============================ */
 function emblemHTML(ex){
-  const colors={anterior:['#ff9d4d','#ef4318'],oblique:['#9277ff','#5a3fd6'],lower:['#3fd7e8','#0c8fa0'],stability:['#4ade80','#16a34a'],dynamic:['#ff6a92','#e01f52']};
+  const colors={anterior:['#ff9d4d','#ef4318'],oblique:['#9277ff','#5a3fd6'],lower:['#3fd7e8','#0c8fa0'],stability:['#4ade80','#16a34a'],dynamic:['#ff6a92','#e01f52'],strength:['#34d477','#16a34a'],cardio:['#f5d98a','#d8a11f']};
   const c=colors[ex.region]||colors.anterior;
   return `<div class="emblem" style="background:linear-gradient(135deg,${c[0]},${c[1]})">
     <svg viewBox="0 0 120 90" width="150" style="opacity:.92"><g fill="rgba(255,255,255,.92)">
