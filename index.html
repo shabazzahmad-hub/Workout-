@@ -2378,6 +2378,8 @@ function renderProgress(){
   h+=`<div class="section-label">Progress photos</div>${photosHTML()}`;
   // achievements
   h+=achievementsHTML();
+  // strength trend charts (baseline + re-tests)
+  h+=strengthTrendHTML();
   h+=sessionHistoryHTML();
   // PRs
   h+=`<div class="section-label">Personal bests</div>`;
@@ -2407,16 +2409,15 @@ function scoreTrendHTML(){
 function measureChartHTML(){
   const ms=STATE.measurements.filter(m=>m.waist>0);
   if(ms.length<1)return `<div class="tiny muted" style="margin-top:10px">No measurements yet. Log your waist weekly — a shrinking waist is the clearest proof your core work is paying off.</div>`;
-  const vals=ms.map(m=>m.waist);const mn=Math.min(...vals),mx=Math.max(...vals);const range=(mx-mn)||1;
-  const first=ms[0].waist,last=ms[ms.length-1].waist;const change=(last-first);
-  let bars=`<div class="barmini" style="margin-top:12px">`;
-  ms.slice(-12).forEach(m=>{const hh=15+((mx-m.waist)/range)*85;bars+=`<i style="height:${hh}%" title="${m.date}: ${m.waist}"></i>`;});
-  bars+=`</div>`;
-  return `${bars}
-    <div class="row" style="justify-content:space-between;margin-top:10px">
-      <span class="tiny muted">Start ${first}${STATE.profile.unit}</span>
-      <span class="tiny" style="color:${change<=0?'var(--green)':'var(--muted)'};font-weight:800">${change<=0?'▼ ':'▲ +'}${Math.abs(change).toFixed(1)}${STATE.profile.unit}</span>
-      <span class="tiny muted">Now ${last}${STATE.profile.unit}</span>
+  const u=STATE.profile.unit;
+  const vals=ms.map(m=>m.waist),dates=ms.map(m=>m.date);
+  const first=vals[0],last=vals[vals.length-1],change=last-first;
+  const chart=ms.length>=2?lineChart(vals,dates,'var(--fire)',u):`<div class="center" style="margin-top:10px"><div style="font-size:26px;font-weight:900">${last}${u}</div></div>`;
+  return `${chart}
+    <div class="row" style="justify-content:space-between;margin-top:8px">
+      <span class="tiny muted">Start ${first}${u}</span>
+      <span class="tiny" style="color:${change<=0?'var(--green)':'var(--muted)'};font-weight:800">${change<=0?'▼ ':'▲ +'}${Math.abs(change).toFixed(1)}${u}</span>
+      <span class="tiny muted">Now ${last}${u}</span>
     </div>`;
 }
 function logMeasure(){
@@ -2670,13 +2671,64 @@ function waistGoalHTML(){
 function weightChartHTML(){
   const ms=(STATE.measurements||[]).filter(m=>m.weight>0);if(!ms.length)return '';
   const wu=STATE.profile.unit==='in'?'lb':'kg';
-  const vals=ms.map(m=>m.weight);const mn=Math.min(...vals),mx=Math.max(...vals);const range=(mx-mn)||1;
-  const first=ms[0].weight,last=ms[ms.length-1].weight;const change=last-first;
-  let bars=`<div class="barmini" style="margin-top:12px">`;
-  ms.slice(-12).forEach(m=>{const hh=15+((mx-m.weight)/range)*85;bars+=`<i style="height:${hh}%" title="${m.date}: ${m.weight}"></i>`;});
-  bars+=`</div>`;
-  return `<div class="divider" style="margin:14px 0"></div><b>Weight (${wu})</b>${bars}
-    <div class="row" style="justify-content:space-between;margin-top:10px"><span class="tiny muted">Start ${first}${wu}</span><span class="tiny" style="color:${change<=0?'var(--green)':'var(--muted)'};font-weight:800">${change<=0?'▼ ':'▲ +'}${Math.abs(change).toFixed(1)}${wu}</span><span class="tiny muted">Now ${last}${wu}</span></div>`;
+  const vals=ms.map(m=>m.weight),dates=ms.map(m=>m.date);
+  const first=vals[0],last=vals[vals.length-1];const change=last-first;
+  const chart=ms.length>=2?lineChart(vals,dates,'var(--teal)',wu):`<div class="center" style="margin-top:10px"><div style="font-size:26px;font-weight:900">${last}${wu}</div></div>`;
+  return `<div class="divider" style="margin:14px 0"></div><b>Weight (${wu})</b>${chart}
+    <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">Start ${first}${wu}</span><span class="tiny" style="color:${change<=0?'var(--green)':'var(--muted)'};font-weight:800">${change<=0?'▼ ':'▲ +'}${Math.abs(change).toFixed(1)}${wu}</span><span class="tiny muted">Now ${last}${wu}</span></div>`;
+}
+/* Reusable dated line graph (SVG). vals[i] plotted against dates[i]. */
+function lineChart(vals,dates,color,unit){
+  if(!vals||!vals.length)return '';
+  const W=320,H=132,padL=6,padR=6,padT=14,padB=22,n=vals.length;
+  const mn=Math.min(...vals),mx=Math.max(...vals),range=(mx-mn)||1;
+  const X=i=>padL+(n===1?(W-padL-padR)/2:i*(W-padL-padR)/(n-1));
+  const Y=v=>padT+(1-(v-mn)/range)*(H-padT-padB);
+  const line=vals.map((v,i)=>`${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+  const area=`${X(0).toFixed(1)},${(H-padB).toFixed(1)} ${line} ${X(n-1).toFixed(1)},${(H-padB).toFixed(1)}`;
+  const dots=vals.map((v,i)=>`<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="3.4" fill="${color}"/>`).join('');
+  const u=unit||'';
+  const xlab=(i,a)=>`<text x="${X(i).toFixed(1)}" y="${H-6}" fill="var(--dim)" font-size="9" text-anchor="${a}">${(dates[i]||'').slice(5)}</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="none" style="display:block;margin-top:10px;height:132px">
+    <polygon points="${area}" fill="${color}" opacity="0.10"/>
+    <polyline points="${line}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    ${dots}
+    <text x="${padL}" y="${padT-3}" fill="var(--dim)" font-size="9">${mx}${u}</text>
+    <text x="${padL}" y="${(H-padB+3).toFixed(1)}" fill="var(--dim)" font-size="9">${mn}${u}</text>
+    ${n>1?xlab(0,'start')+xlab(n-1,'end'):xlab(0,'middle')}
+  </svg>`;
+}
+/* Strength trends from the baseline + re-tests (the true benchmark tests). */
+const STRENGTH_METRICS=[
+  {k:'plank',label:'Plank',unit:'time'},{k:'side',label:'Side Plank',unit:'time'},
+  {k:'hollow',label:'Hollow',unit:'time'},{k:'lower',label:'Rev. Crunch',unit:'reps'},
+  {k:'dyn',label:'Bicycle',unit:'time'},
+];
+let strengthSel='plank';
+function setStrengthMetric(k){strengthSel=k;renderProgress();}
+function assessSeries(){
+  const list=[];
+  if(STATE.baseline&&STATE.baseline.maxes)list.push({date:STATE.baseline.date,maxes:STATE.baseline.maxes});
+  Object.keys(STATE.reassess||{}).map(Number).sort((a,b)=>a-b).forEach(k=>{const r=STATE.reassess[k];if(r&&r.maxes)list.push({date:r.date,maxes:r.maxes});});
+  return list;
+}
+function strengthTrendHTML(){
+  const series=assessSeries();if(!series.length)return '';
+  const m=STRENGTH_METRICS.find(x=>x.k===strengthSel)||STRENGTH_METRICS[0];
+  const disp=v=>m.unit==='time'?fmtTime(v):v+' reps';
+  const chips=STRENGTH_METRICS.map(x=>`<button class="chip ${x.k===strengthSel?'on':''}" onclick="setStrengthMetric('${x.k}')">${x.label}</button>`).join(' ');
+  const pts=series.map(s=>({date:s.date,v:(s.maxes&&s.maxes[m.k])||0})).filter(p=>p.v>0);
+  let body;
+  if(pts.length>=2){
+    const vals=pts.map(p=>p.v),dates=pts.map(p=>p.date);const first=vals[0],last=vals[vals.length-1],d=last-first;
+    body=lineChart(vals,dates,'var(--fire)',m.unit==='time'?'s':'')+
+      `<div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">${disp(first)}</span><span class="tiny" style="font-weight:800;color:${d>=0?'var(--green)':'var(--pink)'}">${d>=0?'▲ +':'▼ '}${m.unit==='time'?fmtTime(Math.abs(d)):Math.abs(d)+' reps'}</span><span class="tiny muted">${disp(last)}</span></div>`;
+  }else{
+    body=`<div class="center" style="margin-top:14px"><div style="font-size:30px;font-weight:900">${disp(pts[0].v)}</div><div class="tiny muted" style="margin-top:6px">Your baseline. Re-test after week 6 to chart your climb.</div></div>`;
+  }
+  return `<div class="section-label">Strength trends</div><div class="card pad">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">${chips}</div>${body}
+    <div class="tiny muted" style="margin-top:8px">From your baseline &amp; re-tests — the truest measure of core strength.</div></div>`;
 }
 function bmiLineHTML(){
   const n=STATE.nutrition||{};if(!(n.weightKg>0&&n.heightCm>0))return '';
