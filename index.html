@@ -45,6 +45,8 @@
   .brand-name{font-size:16px;font-weight:900;letter-spacing:.3px;line-height:1}
   .brand-sub{font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.6px;text-transform:uppercase;margin-top:3px}
   .pill{font-size:11px;font-weight:800;padding:6px 11px;border-radius:20px;background:var(--accSoft);border:1px solid rgba(255,90,31,.32);color:var(--fire-l);white-space:nowrap;text-align:right;line-height:1.25}
+  .gearbtn{width:34px;height:34px;border-radius:12px;background:var(--card2);border:1px solid var(--line);color:var(--muted);display:grid;place-items:center;flex:0 0 auto}
+  .gearbtn:active{transform:scale(.94)}
   .pill small{display:block;font-size:9px;color:var(--muted);font-weight:700;letter-spacing:.4px}
   main{padding:16px 14px calc(96px + env(safe-area-inset-bottom))}
   .view{display:none;animation:fade .25s ease}.view.active{display:block}
@@ -101,6 +103,35 @@
   .themerow{display:flex;gap:6px;padding:5px;background:var(--card2);border:1px solid var(--line);border-radius:999px;width:fit-content}
   .themechip{padding:8px 16px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:.4px;color:var(--muted);transition:.18s}
   .themechip.on{background:var(--fire);color:var(--accInk)}
+  /* Full-screen guided workout player */
+  .pl{position:fixed;inset:0;z-index:75;background:var(--bg);display:none;flex-direction:column;overflow:hidden}
+  .pl.open{display:flex}
+  .pl-bg{position:absolute;inset:0;background-size:cover;background-position:center top;opacity:.16;filter:saturate(.7)}
+  .pl-bg:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,9,11,.65),var(--bg) 74%)}
+  .pl-head{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;padding:calc(14px + env(safe-area-inset-top)) 16px 6px}
+  .pl-x{width:36px;height:36px;border-radius:12px;background:var(--card2);border:1px solid var(--line);color:var(--ink);font-size:15px;display:grid;place-items:center}
+  .pl-count{font-size:12px;font-weight:800;letter-spacing:1px;color:var(--muted)}
+  .pl-segs{position:relative;z-index:2;display:flex;gap:5px;padding:8px 16px 0}
+  .pl-seg{flex:1;height:5px;border-radius:3px;background:var(--card2)}
+  .pl-seg.done{background:var(--fire)}
+  .pl-seg.cur{background:var(--fire-l)}
+  .pl-body{position:relative;z-index:2;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:6px 22px calc(24px + env(safe-area-inset-bottom))}
+  .pl-region{margin-bottom:6px}
+  .pl-name{font-size:25px;font-weight:900;letter-spacing:.3px;line-height:1.12;margin-bottom:6px}
+  .pl-ring{position:relative;width:232px;height:232px;margin:8px auto;display:grid;place-items:center}
+  .pl-ring svg{position:absolute;inset:0;transform:rotate(-90deg)}
+  .pl-pulse{position:absolute;width:184px;height:184px;border-radius:50%;background:var(--accSoft)}
+  .pl-pulse.on{animation:breathe 3.6s ease-in-out infinite}
+  @keyframes breathe{0%,100%{transform:scale(.78);opacity:.28}50%{transform:scale(1.06);opacity:.6}}
+  .pl-center{position:relative;text-align:center}
+  .pl-num{font-size:64px;font-weight:900;letter-spacing:-2px;font-variant-numeric:tabular-nums;line-height:1}
+  .pl-sub{font-size:12px;font-weight:800;letter-spacing:1.4px;color:var(--muted);text-transform:uppercase;margin-top:4px}
+  .pl-set{font-size:12px;font-weight:800;letter-spacing:1.2px;color:var(--fire-l);text-transform:uppercase;margin-top:4px}
+  .pl-coach{font-size:14px;color:var(--muted);min-height:22px;margin-top:8px;max-width:320px}
+  .pl-actions{display:flex;gap:10px;width:100%;max-width:440px;margin-top:18px}
+  .pl-actions .btn{flex:1}
+  .pl-next{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:10px 12px;width:100%;max-width:440px;margin-top:14px;text-align:left}
+  .pl-next img{width:52px;height:52px;border-radius:12px;object-fit:cover;flex:0 0 auto;background:var(--card2)}
   /* Hero / session banner */
   .hero{border-radius:18px;padding:18px;color:#fff;position:relative;overflow:hidden;box-shadow:var(--shadow-lg);margin-bottom:16px}
   .hero.anterior{background:linear-gradient(135deg,#b83a10,#ff7e3a)}
@@ -122,7 +153,8 @@
   .exlist{display:flex;flex-direction:column;gap:11px}
   .ex{background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;transition:border-color .2s}
   .ex.done{border-color:rgba(34,197,94,.5)}
-  .ex-top{display:grid;grid-template-columns:auto 1fr auto;gap:12px;padding:13px 14px;align-items:center}
+  .ex-top{display:grid;grid-template-columns:auto 48px 1fr auto;gap:12px;padding:13px 14px;align-items:center}
+  .ex-thumb{width:48px;height:48px;border-radius:12px;object-fit:cover;display:block;background:var(--card2);border:1px solid var(--line)}
   .ex-check{width:30px;height:30px;border-radius:9px;border:2px solid #33415400;border-color:#334154;background:var(--card2);display:flex;align-items:center;justify-content:center;flex:0 0 auto;transition:.15s}
   .ex-check svg{width:16px;height:16px;opacity:0;transform:scale(.5);transition:.15s}
   .ex.done .ex-check{background:var(--green);border-color:var(--green)}
@@ -244,7 +276,12 @@
         <div class="brand-sub">Abs · Core · Obliques</div>
       </div>
     </div>
-    <div class="pill" id="phasePill"><span id="pillMain">Day 1</span><small id="pillSub">Baseline</small></div>
+    <div style="display:flex;align-items:center;gap:9px">
+      <div class="pill" id="phasePill"><span id="pillMain">Day 1</span><small id="pillSub">Baseline</small></div>
+      <button class="gearbtn" id="gearBtn" aria-label="Settings" onclick="openSettings()">
+        <svg width="17" height="17" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.6"></circle><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2.2 3.4"></circle></svg>
+      </button>
+    </div>
   </div>
 
   <main>
@@ -273,6 +310,8 @@
 
 <!-- Sheet / modal -->
 <div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
+<!-- Full-screen guided workout player -->
+<div class="pl" id="player"></div>
 <div class="toast" id="toast"></div>
 
 <script id="state-data" type="application/json">{}</script>
@@ -759,6 +798,8 @@ function navTo(tab){
   go(tab);
 }
 $$('.nav button').forEach(b=>b.addEventListener('click',()=>{haptic(10);navTo(b.dataset.tab);}));
+// Top-bar gear: jump to the Guide tab and scroll to its Settings section.
+function openSettings(){haptic(10);navTo('guide');setTimeout(()=>{const s=$('#settingsAnchor');if(s)s.scrollIntoView({behavior:'smooth',block:'start'});},80);}
 
 /* ============================ SHEET ============================ */
 // Opening a sheet pushes a history entry so Back closes the sheet (not the app).
@@ -788,6 +829,7 @@ let _backGuard=false,_exiting=false,_homeBackAt=0;
 function onPop(e){
   if(_exiting)return;
   if(_backGuard){_backGuard=false;return;}
+  if(typeof PLAYER!=='undefined'&&PLAYER){playerTeardown();return;}
   if($('#scrim').classList.contains('open')){
     $('#scrim').classList.remove('open');document.body.style.overflow='';stopTimer();return;
   }
@@ -982,6 +1024,7 @@ function todayWorkoutHTML(){
       <div class="hp-stats"><div class="hp-stat"><b>${totalCount}</b>exercises</div><div class="hp-stat"><b>~${vol.minutes}</b>minutes</div><div class="hp-stat"><b>${pct}%</b>done</div></div>
     </div>
   </div>
+  <button class="btn primary" style="margin:2px 0 8px;font-size:16px;padding:17px" onclick="openPlayer()">▶ Start guided workout</button>
   <div class="btnrow" style="margin:2px 0 6px"><button class="btn ghost" id="coachBrief">🎙️ Coach brief</button><button class="btn ghost" onclick="openQuickList()">⚡ Quick</button><button class="btn ghost" onclick="openRecovery()">😌 Recover</button></div>`;
   h+=homeSummaryHTML();
   h+=weeklyBannerHTML();
@@ -1031,6 +1074,7 @@ function exCardHTML(m,log,idx){
   <div class="ex ${st.done?'done':''}" data-ex="${m.exId}">
     <div class="ex-top">
       <button class="ex-check" data-act="toggle"><svg viewBox="0 0 24 24" fill="none" stroke="#04220f" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
+      ${ex.img?`<img class="ex-thumb" src="${ex.img}" alt="" loading="lazy" onerror="this.style.display='none'">`:''}
       <div class="grow">
         <div class="ex-name">${ex.name}</div>
         <div class="ex-region"><span class="tag ${ex.region}">${ex.region}</span> &nbsp;${m.sets} × ${targetStr}</div>
@@ -1117,6 +1161,197 @@ function commitSession(feel){
   const gate=reassessGate();
   go('today');
   setTimeout(checkAchievements,650);   // celebrate any new milestone after the view settles
+}
+
+/* ============================ GUIDED WORKOUT PLAYER ============================
+   Full-screen, hands-free run through the whole session: exercise → rest → next,
+   with a big timer ring, breathing pulse, spoken coaching, the workout beat and a
+   finish summary with the feel check-in. Logs each set as it completes. */
+let PLAYER=null;
+const PL_C=2*Math.PI*108;
+function plCur(){return PLAYER.items[PLAYER.i];}
+function plS(sel,txt){const e=$(sel);if(e)e.textContent=txt;}
+function plRingSet(frac){const r=$('#plRing');if(r)r.style.strokeDashoffset=PL_C*(1-Math.max(0,Math.min(1,frac)));}
+function plClear(){if(PLAYER&&PLAYER.tid){clearInterval(PLAYER.tid);PLAYER.tid=null;}}
+function plSegsHTML(){return PLAYER.items.map((m,idx)=>`<div class="pl-seg ${idx<PLAYER.i?'done':(idx===PLAYER.i?'cur':'')}"></div>`).join('');}
+function plRingHTML(color){return `
+  <div class="pl-ring"><div class="pl-pulse" id="plPulse"></div>
+    <svg width="232" height="232" viewBox="0 0 232 232">
+      <circle cx="116" cy="116" r="108" fill="none" stroke="var(--card3)" stroke-width="10"/>
+      <circle id="plRing" cx="116" cy="116" r="108" fill="none" stroke="${color}" stroke-width="10" stroke-linecap="round" stroke-dasharray="${PL_C}" stroke-dashoffset="0"/>
+    </svg>
+    <div class="pl-center"><div class="pl-num" id="plNum">0</div><div class="pl-sub" id="plSub">GO</div></div>
+  </div>`;}
+function openPlayer(){
+  const sess=buildSession(STATE.progressPtr);
+  const items=[...sess.main,sess.finisher];
+  if(!items.length)return;
+  PLAYER={sess,items,i:0,s:0,phase:null,running:true,tid:null,remain:0,total:0,repN:0,elapsed:0,setsDone:0,pendingNext:false,
+    tempo:Math.max(1.5,Math.min(6,(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3))};
+  $('#player').classList.add('open');document.body.style.overflow='hidden';
+  try{history.pushState({cf:'player'},'');}catch(e){}
+  primeVoice();beatStart();
+  plEnterReady(true);
+}
+function plChrome(){
+  const m=plCur();const ex=EX[m.exId];const bg=ex&&ex.img?ex.img:'';
+  $('#player').innerHTML=`
+    <div class="pl-bg"${bg?` style="background-image:url('${bg}')"`:''}></div>
+    <div class="pl-head"><button class="pl-x" onclick="playerQuit()" aria-label="Quit">✕</button>
+      <div class="pl-count">${PLAYER.i+1} / ${PLAYER.items.length}</div><div style="width:36px"></div></div>
+    <div class="pl-segs">${plSegsHTML()}</div>
+    <div class="pl-body" id="plBody"></div>`;
+}
+function plBodyWork(color){
+  const m=plCur();const ex=EX[m.exId];
+  $('#plBody').innerHTML=`
+    <div class="pl-region"><span class="tag ${ex.region}">${ex.region}</span></div>
+    <div class="pl-name">${ex.name}</div>
+    ${plRingHTML(color)}
+    <div class="pl-set" id="plSet">SET ${PLAYER.s+1} OF ${m.sets}</div>
+    <div class="pl-coach" id="plCoach"></div>
+    <div class="pl-actions">
+      <button class="btn ghost" id="plToggle" onclick="playerToggle()">Pause</button>
+      <button class="btn ghost" onclick="playerSkip()">Skip</button>
+      <button class="btn green" onclick="playerSetDone()">Set done ✓</button>
+    </div>`;
+}
+function plEnterReady(first){
+  plClear();plChrome();
+  const m=plCur();const isTime=m.unit==='time';
+  plBodyWork(isTime?'var(--green)':'var(--fire)');
+  PLAYER.phase='ready';PLAYER.ready=first?5:3;
+  plS('#plNum',PLAYER.ready);plS('#plSub','GET READY');plS('#plCoach','Get into position…');plRingSet(1);
+  autoRoll();beep(1000,.15,0.7);
+  if(!PLAYER.running){plS('#plToggle','Resume');return;}
+  PLAYER.tid=setInterval(plTickReady,1000);
+}
+function plTickReady(){
+  if(!PLAYER)return;
+  PLAYER.ready--;
+  if(PLAYER.ready>0){beep(1000,.15,0.7);if(PLAYER.ready<=3)coachSay(String(PLAYER.ready));plS('#plNum',PLAYER.ready);return;}
+  beepGo();haptic(30);coachSay('Go!');plEnterWork();
+}
+function plEnterWork(){
+  plClear();
+  const m=plCur();const ex=EX[m.exId];const isTime=m.unit==='time';
+  PLAYER.phase='work';
+  plS('#plCoach',(ex.cues&&ex.cues[0])?ex.cues[0]:'Own every rep.');
+  const pulse=$('#plPulse');
+  if(isTime){
+    if(pulse&&PLAYER.running)pulse.classList.add('on');
+    PLAYER.remain=m.target;PLAYER.total=Math.max(1,m.target);
+    plS('#plNum',fmtTime(PLAYER.remain));plS('#plSub','HOLD');plRingSet(1);
+    if(PLAYER.running)PLAYER.tid=setInterval(plTickHold,1000);
+  }else{
+    PLAYER.repN=0;PLAYER.total=Math.max(1,m.target);
+    plS('#plNum','0');plS('#plSub','OF '+m.target+' REPS');plRingSet(0);
+    if(PLAYER.running)PLAYER.tid=setInterval(plTickRep,PLAYER.tempo*1000);
+  }
+}
+function plTickHold(){
+  if(!PLAYER)return;
+  PLAYER.remain--;PLAYER.elapsed++;
+  const el=PLAYER.total-PLAYER.remain;
+  if(PLAYER.remain===10&&PLAYER.total>16){if(!motivate('push'))coachSpeak('Ten seconds. Hold strong.');}
+  else if(el>0&&el%12===0&&PLAYER.remain>4)motivate('during');
+  if(PLAYER.remain===3)coachSpeak('Three. Two. One.');
+  if(PLAYER.remain<=3&&PLAYER.remain>0)beep(900,.13,0.7);
+  if(PLAYER.remain<=0){beepGo();haptic(30);plAfterSet();return;}
+  plS('#plNum',fmtTime(PLAYER.remain));plRingSet(PLAYER.remain/PLAYER.total);
+}
+function plTickRep(){
+  if(!PLAYER)return;
+  const m=plCur();PLAYER.repN++;PLAYER.elapsed+=PLAYER.tempo;
+  beep(760,.06);haptic(14);
+  const half=Math.ceil(m.target/2);
+  if(m.target>=8&&PLAYER.repN===half){if(!motivate('during'))coachSpeak(String(PLAYER.repN));}
+  else coachSpeak(String(PLAYER.repN));
+  plS('#plNum',String(PLAYER.repN));plRingSet(PLAYER.repN/PLAYER.total);
+  if(PLAYER.repN>=m.target){haptic(30);plAfterSet();}
+}
+function plAfterSet(){
+  plClear();
+  const m=plCur();
+  try{markSetFromTimer(m.exId);}catch(e){}
+  PLAYER.setsDone++;
+  const pulse=$('#plPulse');if(pulse)pulse.classList.remove('on');
+  PLAYER.s++;
+  if(PLAYER.s<m.sets){if(!motivate('rest'))coachSpeak('Rest.');plEnterRest(m.rest,'set');}
+  else if(PLAYER.i+1<PLAYER.items.length){if(!motivate('rest'))coachSpeak('Nice. Next up.');PLAYER.pendingNext=true;plEnterRest(m.rest,'ex');}
+  else plEnterDone();
+}
+function plEnterRest(dur,type){
+  plClear();PLAYER.phase='rest';PLAYER.remain=Math.max(1,dur|0);PLAYER.total=PLAYER.remain;
+  const m=plCur();let name,img,rx;
+  if(type==='set'){const ex=EX[m.exId];name='Next set · '+ex.name;img=ex.img;rx='Set '+(PLAYER.s+1)+' of '+m.sets+' · '+(m.unit==='time'?fmtTime(m.target):m.target+' reps');}
+  else{const nm=PLAYER.items[PLAYER.i+1];const nex=EX[nm.exId];name='Up next · '+nex.name;img=nex.img;rx=nm.sets+' × '+(nm.unit==='time'?fmtTime(nm.target):nm.target+' reps');}
+  $('#plBody').innerHTML=`
+    <div class="pl-region"><span class="tag cardio">REST</span></div>
+    <div class="pl-name">Recover</div>
+    ${plRingHTML('var(--fire-l)')}
+    <div class="pl-coach" id="plCoach">Breathe. Shake it out.</div>
+    <div class="pl-next">${img?`<img src="${img}" alt="" onerror="this.style.display='none'">`:''}<div><div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--muted)">${name}</div><div style="font-weight:800;margin-top:2px">${rx}</div></div></div>
+    <div class="pl-actions">
+      <button class="btn ghost" onclick="playerAddRest()">+15s</button>
+      <button class="btn ghost" id="plToggle" onclick="playerToggle()">Pause</button>
+      <button class="btn primary" onclick="playerSkipRest()">Skip ▶</button>
+    </div>`;
+  plS('#plNum',fmtTime(PLAYER.remain));plS('#plSub','REST');plRingSet(1);
+  if(PLAYER.running)PLAYER.tid=setInterval(plTickRest,1000);else plS('#plToggle','Resume');
+}
+function plTickRest(){
+  if(!PLAYER)return;
+  PLAYER.remain--;
+  if(PLAYER.remain===3)coachSpeak('Three. Two. One.');
+  if(PLAYER.remain<=3&&PLAYER.remain>0)beep(900,.13,0.7);
+  if(PLAYER.remain<=0){plRestDone();return;}
+  plS('#plNum',fmtTime(PLAYER.remain));plRingSet(PLAYER.remain/PLAYER.total);
+}
+function plRestDone(){plClear();if(PLAYER.pendingNext){PLAYER.pendingNext=false;PLAYER.i++;PLAYER.s=0;}plEnterReady(false);}
+function plEnterDone(){
+  plClear();beatStop();PLAYER.phase='done';
+  const sess=PLAYER.sess;const wk=(sess.cycle*WEEKS_PER_CYCLE)+sess.week;
+  $('#plBody').innerHTML=`
+    <div class="pl-name" style="margin-bottom:2px">Session complete 🔥</div>
+    <div class="pl-coach" style="margin-bottom:14px">${sess.session.name} · Week ${wk}</div>
+    <div class="grid3" style="width:100%;max-width:440px">
+      <div class="stat"><div class="n" style="color:var(--fire-l)">${fmtTime(PLAYER.elapsed||1)}</div><div class="l">Time</div></div>
+      <div class="stat"><div class="n" style="color:var(--teal)">${PLAYER.setsDone}</div><div class="l">Sets</div></div>
+      <div class="stat"><div class="n" style="color:var(--green)">${PLAYER.items.length}</div><div class="l">Moves</div></div>
+    </div>
+    <div class="pl-set" style="margin-top:20px">HOW DID THAT FEEL?</div>
+    <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:440px;margin-top:8px">
+      <button class="btn green" onclick="playerFeel('easy')">😎 Easy — bring more</button>
+      <button class="btn primary" onclick="playerFeel('right')">💪 Challenging — just right</button>
+      <button class="btn ghost" onclick="playerFeel('hard')">🥵 Brutal — hold the load</button>
+    </div>`;
+  if(!motivate('done'))coachSpeak('Session complete. Outstanding work.');
+}
+function playerToggle(){
+  if(!PLAYER)return;
+  PLAYER.running=!PLAYER.running;
+  const t=$('#plToggle');if(t)t.textContent=PLAYER.running?'Pause':'Resume';
+  const pulse=$('#plPulse');
+  if(!PLAYER.running){plClear();if(pulse)pulse.classList.remove('on');return;}
+  if(PLAYER.phase==='ready')PLAYER.tid=setInterval(plTickReady,1000);
+  else if(PLAYER.phase==='work'){const m=plCur();if(m.unit==='time'){if(pulse)pulse.classList.add('on');PLAYER.tid=setInterval(plTickHold,1000);}else PLAYER.tid=setInterval(plTickRep,PLAYER.tempo*1000);}
+  else if(PLAYER.phase==='rest')PLAYER.tid=setInterval(plTickRest,1000);
+}
+function playerSkip(){
+  if(!PLAYER)return;plClear();
+  const pulse=$('#plPulse');if(pulse)pulse.classList.remove('on');
+  if(PLAYER.i+1<PLAYER.items.length){PLAYER.i++;PLAYER.s=0;plEnterReady(false);}else plEnterDone();
+}
+function playerSetDone(){if(PLAYER&&(PLAYER.phase==='work'||PLAYER.phase==='ready')){plClear();plAfterSet();}}
+function playerAddRest(){if(PLAYER&&PLAYER.phase==='rest'){PLAYER.remain+=15;PLAYER.total+=15;plS('#plNum',fmtTime(PLAYER.remain));toast('+15s rest');}}
+function playerSkipRest(){if(PLAYER&&PLAYER.phase==='rest')plRestDone();}
+function playerTeardown(){if(!PLAYER)return;plClear();beatStop();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;if(TAB==='today')renderToday();}
+function playerQuit(){const had=!!PLAYER;playerTeardown();if(had&&history.state&&history.state.cf==='player'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
+function playerFeel(feel){
+  plClear();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;
+  if(history.state&&history.state.cf==='player'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
+  commitSession(feel);
 }
 
 /* ============================ ASSESSMENT FLOW ============================ */
@@ -2559,7 +2794,7 @@ function renderGuide(){
   });
   h+=`</div></div>`;
   // settings / data
-  h+=`<div class="section-label">Settings</div><div class="card pad">
+  h+=`<div class="section-label" id="settingsAnchor" style="scroll-margin-top:70px">Settings</div><div class="card pad">
     <div style="padding:2px 0 8px"><div class="tiny muted" style="margin-bottom:8px">Accent theme</div>${themeChipsHTML()}</div>
     <div class="divider" style="margin:8px 0"></div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Sound cues</span><button class="chip ${STATE.settings.sound?'on':''}" onclick="toggleSetting('sound')">${STATE.settings.sound?'On':'Off'}</button></div>
