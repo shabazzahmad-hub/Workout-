@@ -180,6 +180,11 @@
   /* Progress bars */
   .pbar{height:9px;border-radius:6px;background:var(--card2);overflow:hidden;border:1px solid var(--line)}
   .pbar > i{display:block;height:100%;background:linear-gradient(90deg,var(--fire-l),var(--fire));border-radius:6px;transition:width .4s}
+  .pbar.green > i{background:linear-gradient(90deg,#5ce89a,var(--green))}
+  .hmgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-top:12px}
+  .hm{aspect-ratio:1;border-radius:5px;background:var(--card2);border:1px solid var(--line)}
+  .hm.on{background:var(--fire);border-color:var(--fire)}
+  .hm.rest{background:rgba(255,255,255,.10)}
   /* Stats grid */
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
@@ -2336,20 +2341,38 @@ function renderProgress(){
     h+=`<div class="card pad center">${ringHTML(latest.score,'Core Score')}<div style="margin-top:10px"><span class="chip on">${latest.level}</span></div>
       ${STATE.scoreHistory.length>1?scoreTrendHTML():'<div class="tiny muted" style="margin-top:10px">Re-test after week 4 to see your climb.</div>'}</div>`;
   }
-  // streak + counts
+  // snapshot: 6 headline metrics
   const sessionsDone=Object.values(STATE.logs).filter(l=>l.done).length;
   const streak=computeStreak();
   const tut=totalTUT();
+  const vol=totalVolume();
+  const thisWk=sessionsThisWeek();
   h+=`<div class="grid3">
     <div class="stat"><div class="n" style="color:var(--fire-l)">${sessionsDone}</div><div class="l">Sessions</div></div>
     <div class="stat"><div class="n" style="color:var(--green)">${streak}</div><div class="l">Day streak</div></div>
-    <div class="stat"><div class="n" style="color:var(--teal)">${tut}</div><div class="l">Min trained</div></div>
-  </div>`;
-  // waist / weight tracker
-  h+=`<div class="section-label">Body measurements</div>`;
+    <div class="stat"><div class="n" style="color:var(--teal)">${thisWk}<span style="font-size:12px;color:var(--muted)">/${SESSIONS_PER_WEEK}</span></div><div class="l">This week</div></div>
+  </div>
+  <div class="grid3" style="margin-top:10px">
+    <div class="stat"><div class="n">${tut}</div><div class="l">Min trained</div></div>
+    <div class="stat"><div class="n">${vol.reps}</div><div class="l">Reps logged</div></div>
+    <div class="stat"><div class="n" style="color:var(--fire-l)">${estCalories()}</div><div class="l">Kcal 🔥</div></div>
+  </div>
+  <div class="tiny muted center" style="margin:8px 0 2px">Lifetime volume: <b>${vol.sets} sets</b> · <b>${vol.reps} reps</b> · <b>${fmtTime(vol.hold)} holds</b></div>`;
+  // body composition (waist + goal + weight + BMI)
+  h+=`<div class="section-label">Body composition</div>`;
   h+=`<div class="card pad">
-    <div class="row" style="justify-content:space-between"><b>Waist (${unit})</b><button class="btn sm primary" onclick="logMeasure()">+ Log today</button></div>
+    <div class="row" style="justify-content:space-between"><b>Waist (${unit})</b><div class="btnrow" style="gap:7px"><button class="btn sm ghost" onclick="setWaistGoal()">🎯 Goal</button><button class="btn sm primary" onclick="logMeasure()">+ Log</button></div></div>
     ${measureChartHTML()}
+    ${waistGoalHTML()}
+    ${weightChartHTML()}
+    ${bmiLineHTML()}
+  </div>`;
+  // consistency heatmap
+  h+=`<div class="section-label">Consistency</div>`;
+  h+=`<div class="card pad">
+    <div class="row" style="justify-content:space-between"><b>Last 28 days</b><span class="tiny muted">${last28Count()} trained</span></div>
+    ${heatmapHTML()}
+    <div class="row" style="justify-content:space-between;margin-top:10px"><span class="tiny muted">🔥 trained · ▫️ rest</span><span class="tiny muted">Training load <b style="color:${loadIndexPct()>=0?'var(--green)':'var(--muted)'}">${loadIndexPct()>=0?'+':''}${loadIndexPct()}%</b> vs start</span></div>
   </div>`;
   // progress photos
   h+=`<div class="section-label">Progress photos</div>${photosHTML()}`;
@@ -2406,6 +2429,16 @@ function logMeasure(){
     <button class="btn primary" onclick="saveMeasure()">Save</button>
   `);
 }
+function setWaistGoal(){
+  const p=STATE.profile;const cur=p.goalWaist||'';
+  openSheet(`<h3>Set your waist goal</h3>
+    <p class="muted sm" style="margin:2px 0 12px">A target waist to work toward. Progress shows as a bar once you log measurements.</p>
+    <div class="field"><label>Goal waist (${p.unit})</label>
+      <div class="numrow"><button onclick="gBump(-0.5)">–</button><input id="g-waist" type="number" inputmode="decimal" value="${cur}" placeholder="${p.unit==='in'?'32':'80'}"><button onclick="gBump(0.5)">+</button></div></div>
+    <button class="btn primary" onclick="saveWaistGoal()">Save goal</button>`);
+}
+function gBump(d){const inp=$('#g-waist');inp.value=Math.max(0,((+inp.value||(+inp.placeholder||0))+d)).toFixed(1);}
+function saveWaistGoal(){const g=parseFloat($('#g-waist').value);if(!(g>0)){toast('Enter a goal');return;}STATE.profile.goalWaist=g;save();closeSheet();toast('Goal set 🎯');renderProgress();}
 function mBump(f,d){const id=f==='w'?'#m-waist':'#m-weight';const inp=$(id);inp.value=Math.max(0,((+inp.value||(+inp.placeholder||0))+d)).toFixed(1);}
 function saveMeasure(){
   const w=parseFloat($('#m-waist').value);const b=parseFloat($('#m-weight').value);
@@ -2608,6 +2641,49 @@ function totalTUT(){
   let mins=0;
   Object.keys(STATE.logs).forEach(p=>{const l=STATE.logs[p];if(l.done){const s=buildSession(+p);mins+=sessionVolume(s).minutes;}});
   return mins;
+}
+/* ---- richer progress metrics ---- */
+function localISO(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function weekStartD(d){const x=new Date(d);const day=(x.getDay()+6)%7;x.setHours(0,0,0,0);x.setDate(x.getDate()-day);return x;}
+function sessionsThisWeek(){const s=weekStartD(new Date());return Object.values(STATE.logs).filter(l=>l.done&&l.completedAt&&new Date(l.completedAt+'T00:00:00')>=s).length;}
+function totalVolume(){let reps=0,hold=0,sets=0;Object.keys(STATE.logs).forEach(p=>{const l=STATE.logs[p];if(!l.done)return;const s=buildSession(+p);[...s.main,s.finisher].forEach(m=>{const e=l.ex&&l.ex[m.exId];const sd=e&&e.sets?e.sets.filter(Boolean).length:0;sets+=sd;if(m.unit==='time')hold+=sd*m.target;else reps+=sd*m.target;});});return {reps,hold,sets};}
+function estCalories(){const kg=(STATE.nutrition&&STATE.nutrition.weightKg)||75;return Math.round(6*3.5*kg/200*totalTUT());}
+function loadIndexPct(){const a=(typeof STATE.adapt==='number')?STATE.adapt:1;return Math.round((a-1)*100);}
+function trainedDaysSet(){return new Set(Object.values(STATE.logs).filter(l=>l.done&&l.completedAt).map(l=>l.completedAt));}
+function last28Count(){const set=trainedDaysSet();let n=0;const t=new Date();for(let i=0;i<28;i++){const d=new Date(t);d.setDate(d.getDate()-i);if(set.has(localISO(d)))n++;}return n;}
+function heatmapHTML(){
+  const trained=trainedDaysSet();const rest=STATE.restDays||{};const t=new Date();let cells='';
+  for(let i=27;i>=0;i--){const d=new Date(t);d.setDate(d.getDate()-i);const iso=localISO(d);const cls=trained.has(iso)?'on':(rest[iso]?'rest':'');cells+=`<div class="hm ${cls}" title="${iso}"></div>`;}
+  return `<div class="hmgrid">${cells}</div>`;
+}
+function waistGoalHTML(){
+  const p=STATE.profile;const ms=(STATE.measurements||[]).filter(m=>m.waist>0);
+  const now=ms.length?ms[ms.length-1].waist:p.startWaist;
+  const start=p.startWaist||(ms.length?ms[0].waist:null);
+  if(!(start>0)||!(p.goalWaist>0)||start<=p.goalWaist||!(now>0))return '';
+  const pct=clamp((start-now)/(start-p.goalWaist)*100,0,100);
+  const toGo=Math.max(0,now-p.goalWaist);
+  return `<div style="margin-top:14px"><div class="row" style="justify-content:space-between"><span class="tiny muted">🎯 Goal progress</span><span class="tiny" style="font-weight:800;color:var(--green)">${Math.round(pct)}%${toGo>0?' · '+toGo.toFixed(1)+p.unit+' to go':' · reached!'}</span></div>
+    <div class="pbar green" style="margin-top:6px"><i style="width:${pct}%"></i></div>
+    <div class="row" style="justify-content:space-between;margin-top:5px"><span class="tiny muted">Start ${start}${p.unit}</span><span class="tiny muted">Goal ${p.goalWaist}${p.unit}</span></div></div>`;
+}
+function weightChartHTML(){
+  const ms=(STATE.measurements||[]).filter(m=>m.weight>0);if(!ms.length)return '';
+  const wu=STATE.profile.unit==='in'?'lb':'kg';
+  const vals=ms.map(m=>m.weight);const mn=Math.min(...vals),mx=Math.max(...vals);const range=(mx-mn)||1;
+  const first=ms[0].weight,last=ms[ms.length-1].weight;const change=last-first;
+  let bars=`<div class="barmini" style="margin-top:12px">`;
+  ms.slice(-12).forEach(m=>{const hh=15+((mx-m.weight)/range)*85;bars+=`<i style="height:${hh}%" title="${m.date}: ${m.weight}"></i>`;});
+  bars+=`</div>`;
+  return `<div class="divider" style="margin:14px 0"></div><b>Weight (${wu})</b>${bars}
+    <div class="row" style="justify-content:space-between;margin-top:10px"><span class="tiny muted">Start ${first}${wu}</span><span class="tiny" style="color:${change<=0?'var(--green)':'var(--muted)'};font-weight:800">${change<=0?'▼ ':'▲ +'}${Math.abs(change).toFixed(1)}${wu}</span><span class="tiny muted">Now ${last}${wu}</span></div>`;
+}
+function bmiLineHTML(){
+  const n=STATE.nutrition||{};if(!(n.weightKg>0&&n.heightCm>0))return '';
+  const bmi=n.weightKg/Math.pow(n.heightCm/100,2);
+  const cat=bmi<18.5?'Underweight':bmi<25?'Healthy':bmi<30?'Overweight':'Obese';
+  const col=bmi<18.5?'var(--gold)':bmi<25?'var(--green)':bmi<30?'var(--gold)':'var(--pink)';
+  return `<div class="divider" style="margin:14px 0"></div><div class="kv" style="border:none;padding:0"><span>BMI</span><b style="color:${col}">${bmi.toFixed(1)} · ${cat}</b></div><div class="tiny muted" style="margin-top:3px">From your Fuel profile height &amp; weight.</div>`;
 }
 
 /* ============================ FUEL (NUTRITION) VIEW ============================
