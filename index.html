@@ -563,6 +563,7 @@ const DEFAULT_STATE=()=>({
   nutrition:{goal:'lose',sex:null,age:null,heightCm:null,activity:1.45,kcalTarget:null,days:{}}, // fuel module
   photos:[],                // progress photos: {id,date,pose} (image bytes live in IndexedDB)
   achievements:{},          // unlocked milestone badges: {id:date}
+  restDays:{},              // logged rest days: {date:true}
   settings:{sound:true,vibrate:true,voice:true,voiceName:'',voicePitch:0.6,voiceRate:0.98,repTempo:3,hype:true,coach:'auto'},
 });
 let STATE=DEFAULT_STATE();
@@ -814,18 +815,28 @@ function onboardHTML(){
   <div class="card pad">
     <h3>Let's set you up</h3>
     <div class="field"><label>Your name (optional)</label><input id="ob-name" placeholder="Athlete" autocomplete="off"></div>
+    <div class="field"><label>Primary goal</label>
+      <div class="daypick" id="ob-goal"><button data-g="lose" class="on">🔥 Lose fat</button><button data-g="recomp">⚖️ Tone up</button><button data-g="maintain">💪 Strength</button></div></div>
+    <div class="field"><label>Experience level</label>
+      <div class="daypick" id="ob-exp"><button data-x="Beginner">Beginner</button><button data-x="Intermediate" class="on">Intermediate</button><button data-x="Advanced">Advanced</button></div>
+      <div class="tiny muted" style="margin-top:6px">A starting point — your Day-1 baseline test sets the real numbers.</div></div>
     <div class="field"><label>Training days per week</label>
       <div class="daypick" id="ob-days">
         ${['M','T','W','T','F','S','S'].map((d,i)=>`<button data-d="${(i+1)%7}">${d}</button>`).join('')}
       </div>
-      <div class="tiny muted" style="margin-top:7px">Pick ~4 days. Abs recover fast but still need rest — 4 focused sessions a week is the sweet spot.</div>
+      <div class="tiny muted" style="margin-top:7px">Pick ~4 days. 4 focused sessions a week is the sweet spot — rest days matter.</div>
     </div>
+    <div class="field"><label>Equipment you have</label>
+      <div class="daypick" id="ob-equip"><button data-e="bar" class="on">Pull-up bar</button><button data-e="bench" class="on">Bench / chair</button></div>
+      <div class="tiny muted" style="margin-top:6px">Tap to toggle. Everything works without them — we swap moves to match.</div></div>
     <div class="field"><label>Measurement units</label>
       <div class="daypick" id="ob-unit"><button data-u="cm" class="on">Centimetres</button><button data-u="in">Inches</button></div>
     </div>
-    <div class="field"><label>Waist / navel measurement now (optional)</label>
-      <input id="ob-waist" type="number" inputmode="decimal" placeholder="e.g. 86"><div class="tiny muted" style="margin-top:6px">Measured around the navel. We'll track this — it's the truest sign of core progress.</div>
+    <div class="numrow" style="gap:10px">
+      <div class="field" style="flex:1;margin:0"><label>Waist now (opt.)</label><input id="ob-waist" type="number" inputmode="decimal" placeholder="86"></div>
+      <div class="field" style="flex:1;margin:0"><label>Weight (opt.)</label><input id="ob-weight" type="number" inputmode="decimal" placeholder="wt"></div>
     </div>
+    <div class="tiny muted" style="margin:6px 0 12px">Measured around the navel. We track waist &amp; weight — the truest signs of progress (used for your Fuel targets too).</div>
     <button class="btn primary block" id="ob-go">Continue to Baseline →</button>
   </div>
   <div class="note info">Your data lives <b>only on this phone</b> (auto-saved, works offline). Nothing is uploaded.</div>`;
@@ -833,14 +844,23 @@ function onboardHTML(){
 function wireOnboard(){
   const days=new Set(STATE.profile.days);
   $$('#ob-days button').forEach(b=>{if(days.has(+b.dataset.d))b.classList.add('on');b.onclick=()=>{b.classList.toggle('on');haptic(8);};});
-  $$('#ob-unit button').forEach(b=>b.onclick=()=>{$$('#ob-unit button').forEach(x=>x.classList.remove('on'));b.classList.add('on');});
+  const single=(sel)=>$$(sel+' button').forEach(b=>b.onclick=()=>{$$(sel+' button').forEach(x=>x.classList.remove('on'));b.classList.add('on');haptic(6);});
+  single('#ob-goal');single('#ob-exp');single('#ob-unit');
+  $$('#ob-equip button').forEach(b=>b.onclick=()=>{b.classList.toggle('on');haptic(6);});
   $('#ob-go').onclick=()=>{
     const chosen=$$('#ob-days button.on').map(b=>+b.dataset.d);
     STATE.profile.name=($('#ob-name').value||'').trim();
     STATE.profile.days=chosen.length?chosen:[1,2,4,5];
     STATE.profile.unit=$('#ob-unit button.on').dataset.u;
-    const w=parseFloat($('#ob-waist').value);
-    if(w>0){STATE.profile.startWaist=w;STATE.measurements.push({date:todayISO(),waist:w,weight:null});}
+    STATE.profile.experience=($('#ob-exp button.on')||{}).dataset?$('#ob-exp button.on').dataset.x:'Intermediate';
+    const eq=$$('#ob-equip button.on').map(b=>b.dataset.e);
+    STATE.profile.hasBar=eq.includes('bar');STATE.profile.hasBench=eq.includes('bench');
+    const goal=($('#ob-goal button.on')||{dataset:{g:'lose'}}).dataset.g;
+    STATE.profile.goal=goal;STATE.nutrition.goal=goal;
+    const w=parseFloat($('#ob-waist').value),wt=parseFloat($('#ob-weight').value);
+    if(w>0){STATE.profile.startWaist=w;}
+    if(w>0||wt>0)STATE.measurements.push({date:todayISO(),waist:w>0?w:null,weight:wt>0?wt:null});
+    if(wt>0)STATE.nutrition.weightKg=STATE.profile.unit==='in'?Math.round(wt*0.4536*10)/10:wt;
     STATE.onboarded=true;save();render();
   };
 }
@@ -898,7 +918,9 @@ function todayWorkoutHTML(){
     <div class="htop"><div><div class="hlbl">Week ${wkNum} · Session ${sess.pos.dayInWeek+1}</div><h1>${sess.session.name}</h1><div class="hmeta">${sess.session.focus}</div></div><div class="hicon">${sess.session.icon}</div></div>
     <div class="hstats"><div class="hstat"><b>${totalCount}</b>exercises</div><div class="hstat"><b>~${vol.minutes}</b>minutes</div><div class="hstat"><b>${pct}%</b>done</div></div>
   </div>
-  <div class="btnrow" style="margin:2px 0 6px"><button class="btn ghost" id="coachBrief">🎙️ Coach brief</button><button class="btn ghost" onclick="openQuickList()">⚡ Quick</button></div>`;
+  <div class="btnrow" style="margin:2px 0 6px"><button class="btn ghost" id="coachBrief">🎙️ Coach brief</button><button class="btn ghost" onclick="openQuickList()">⚡ Quick</button><button class="btn ghost" onclick="openRecovery()">😌 Recover</button></div>`;
+  h+=homeSummaryHTML();
+  h+=weeklyBannerHTML();
   // progressive overload note vs previous week
   if(sess.pos.dayInWeek===0){
     h+=`<div class="note fire">📈 <b>Week ${wkNum} — load increased.</b> ${overloadNote(sess)}</div>`;
@@ -1648,6 +1670,7 @@ function renderProgress(){
   h+=`<div class="section-label">Progress photos</div>${photosHTML()}`;
   // achievements
   h+=achievementsHTML();
+  h+=sessionHistoryHTML();
   // PRs
   h+=`<div class="section-label">Personal bests</div>`;
   const prKeys=Object.keys(STATE.prs);
@@ -1718,7 +1741,7 @@ function photosHTML(){
   const ps=(STATE.photos||[]).slice().sort((a,b)=>a.id<b.id?-1:1);
   let h=`<div class="card pad">
     <div class="tiny muted" style="margin-top:0;margin-bottom:10px">Take a photo every 1–2 weeks in the same spot &amp; lighting. Private — stays on your phone.</div>
-    <div class="btnrow"><button class="btn sm ghost" style="width:100%" onclick="capturePhoto('front')">📷 Front</button><button class="btn sm ghost" style="width:100%" onclick="capturePhoto('side')">📷 Side</button></div>`;
+    <div class="btnrow"><button class="btn sm ghost" style="width:100%" onclick="capturePhoto('front')">📷 Front</button><button class="btn sm ghost" style="width:100%" onclick="capturePhoto('side')">📷 Side</button>${(STATE.photos||[]).length>=2?`<button class="btn sm ghost" style="width:100%" onclick="openCompare()">⇄ Compare</button>`:''}</div>`;
   if(ps.length>=2){
     const a=ps[0],b=ps[ps.length-1];
     h+=`<div class="section-label" style="margin:16px 3px 8px">Before → Now</div>
@@ -1869,7 +1892,13 @@ function fireReminderNotif(){
   }catch(e){}
 }
 function checkReminder(){
-  const s=STATE.settings;if(!s||!s.reminderOn)return;
+  const s=STATE.settings;if(!s)return;
+  // Saturday weekly progress check-in (photo + waist + weigh-in) — once per week
+  if(s.weeklyOn!==false && isSaturday() && STATE._weeklyRemindedWeek!==weekKey()){
+    STATE._weeklyRemindedWeek=weekKey();save();
+    if('Notification'in window&&Notification.permission==='granted'){try{fireWeeklyNotif();}catch(e){}}
+  }
+  if(!s.reminderOn)return;
   if(!('Notification'in window)||Notification.permission!=='granted')return;
   if(!isTrainingDay()||trainedToday())return;
   const [hh,mm]=(s.reminderTime||'18:00').split(':').map(Number);const now=new Date();
@@ -2137,6 +2166,93 @@ function skillTreesHTML(){
   return h;
 }
 
+/* ============================ HOME SUMMARY / RECOVERY / HISTORY / COMPARE / WEEKLY ============================ */
+function homeSummaryHTML(){
+  if(!STATE.baseline)return '';
+  const pos=posOf(Math.min(STATE.progressPtr,SESSIONS_PER_CYCLE*TOTAL_CYCLES-1));
+  const wk=(pos.cycle*WEEKS_PER_CYCLE)+pos.week;
+  const streak=computeStreak();
+  const sess=Object.values(STATE.logs).filter(l=>l.done).length;
+  const wd=waistDrop();const unit=STATE.profile.unit;
+  const latest=STATE.scoreHistory[STATE.scoreHistory.length-1];
+  const wdTxt=wd>0?('▼'+wd.toFixed(1)):(wd<0?('▲'+Math.abs(wd).toFixed(1)):'0');
+  return `<div class="grid3" style="margin-bottom:12px">
+    <div class="stat"><div class="n" style="color:var(--fire-l)">${wk}<span style="font-size:12px;color:var(--muted)"> /12</span></div><div class="l">Week</div></div>
+    <div class="stat"><div class="n" style="color:var(--green)">${streak}</div><div class="l">Streak</div></div>
+    <div class="stat"><div class="n" style="color:var(--teal)">${sess}</div><div class="l">Sessions</div></div>
+    <div class="stat"><div class="n">${latest?latest.score:'-'}</div><div class="l">Core Score</div></div>
+    <div class="stat"><div class="n" style="color:${wd>0?'var(--green)':'var(--ink)'}">${wdTxt}</div><div class="l">Waist ${unit}</div></div>
+    <div class="stat"><div class="n" style="color:var(--gold)">${Object.keys(STATE.achievements||{}).length}</div><div class="l">Badges</div></div>
+  </div>`;
+}
+function openRecovery(){
+  const rested=STATE.restDays&&STATE.restDays[todayISO()];
+  openSheet(`<h3>😌 Rest &amp; Recovery</h3>
+    <p class="muted sm" style="margin:2px 0 12px">Your core rebuilds on rest days. Keep it light: sleep, walk, hydrate, hit your protein.</p>
+    <div class="section-label" style="margin-top:0">Recovery checklist</div>
+    <div class="card pad"><ul class="cuelist" style="margin:0">
+      <li>Sleep 7–9 hours — the #1 recovery driver</li>
+      <li>Walk 20–30 min — active recovery keeps fat loss going</li>
+      <li>Hydrate &amp; hit your protein target (see Fuel)</li>
+      <li>Gentle mobility below — no hard training</li>
+    </ul></div>
+    <div class="section-label">Mobility &amp; stretch (~5 min)</div>
+    <div class="card pad">${COOLDOWN.map(c=>`<div style="padding:8px 0;border-top:1px solid var(--line)"><b>${c.n}</b><div class="tiny muted" style="margin-top:3px">${c.d}</div></div>`).join('')}
+      <div style="padding:8px 0;border-top:1px solid var(--line)"><b>Cat–Cow</b><div class="tiny muted" style="margin-top:3px">On all fours, slowly alternate arching and rounding the spine. 30s.</div></div>
+      <div style="padding:8px 0;border-top:1px solid var(--line)"><b>Deep breathing</b><div class="tiny muted" style="margin-top:3px">Lie back and take 6 slow belly breaths to wind down.</div></div>
+    </div>
+    <button class="btn ${rested?'green':'primary'}" onclick="logRestDay()">${rested?'✓ Rest day logged':'Log today as a rest day'}</button>
+    <div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
+}
+function logRestDay(){if(!STATE.restDays)STATE.restDays={};STATE.restDays[todayISO()]=true;save();toast('Rest day logged 😌');closeSheet();}
+function sessionHistoryHTML(){
+  const entries=Object.keys(STATE.logs).map(Number).filter(p=>STATE.logs[p]&&STATE.logs[p].done).sort((a,b)=>b-a);
+  if(!entries.length)return '';
+  let h=`<div class="section-label">Session history · ${entries.length}</div><div class="card">`;
+  entries.slice(0,25).forEach(p=>{
+    const l=STATE.logs[p];const pos=posOf(p);const s=pos.session;const wk=(pos.cycle*WEEKS_PER_CYCLE)+pos.week;
+    const feel=l.feel==='easy'?'😎':(l.feel==='hard'?'🥵':'💪');
+    h+=`<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer;padding:12px 14px" onclick="openSessionDetail(${p})">
+      <span><b>${s.name}</b><div class="tiny muted">Wk ${wk} · ${l.completedAt||l.date||''}</div></span><span style="font-size:18px">${feel}</span></button>`;
+  });
+  h+=`</div>`;return h;
+}
+function openSessionDetail(p){
+  const l=STATE.logs[p];if(!l)return;const sess=buildSession(p);const wk=(sess.cycle*WEEKS_PER_CYCLE)+sess.week;
+  const feelTxt=l.feel==='easy'?'😎 Easy':(l.feel==='hard'?'🥵 Brutal':'💪 Challenging');
+  const rows=[...sess.main,sess.finisher].map(m=>{const done=l.ex[m.exId]&&l.ex[m.exId].done;const rx=m.unit==='time'?fmtTime(m.target):m.target+' reps';
+    return `<div class="kv"><span>${done?'✓':'○'} ${EX[m.exId].name}</span><b>${m.sets}×${rx}</b></div>`;}).join('');
+  openSheet(`<h3>${sess.session.name}</h3><div class="tiny muted" style="margin-bottom:8px">Week ${wk} · ${l.completedAt||l.date||''} · felt ${feelTxt}</div>
+    <div class="card pad">${rows}</div><button class="btn ghost" style="margin-top:10px" onclick="closeSheet()">Close</button>`);
+}
+function openCompare(){
+  const ps=(STATE.photos||[]).slice().sort((a,b)=>a.id<b.id?-1:1);
+  if(ps.length<2){toast('Add at least 2 photos to compare');return;}
+  const opts=ps.map(p=>`<option value="${p.id}">${p.date} · ${p.pose}</option>`).join('');
+  openSheet(`<h3>Compare photos</h3><p class="muted sm" style="margin:2px 0 10px">Pick any two shots to see your change side by side.</p>
+    <div class="grid2" style="gap:8px;margin-bottom:10px">
+      <select id="cmpA" onchange="renderCompare()" style="width:100%;padding:9px;border-radius:10px;background:var(--card2);color:var(--ink);border:1px solid var(--line);font-size:13px">${opts}</select>
+      <select id="cmpB" onchange="renderCompare()" style="width:100%;padding:9px;border-radius:10px;background:var(--card2);color:var(--ink);border:1px solid var(--line);font-size:13px">${opts}</select>
+    </div>
+    <div class="grid2" style="gap:8px" id="cmpImgs"></div>
+    <button class="btn ghost" style="margin-top:12px" onclick="closeSheet()">Close</button>`);
+  $('#cmpA').value=ps[0].id;$('#cmpB').value=ps[ps.length-1].id;renderCompare();
+}
+async function renderCompare(){
+  const a=$('#cmpA'),b=$('#cmpB');if(!a||!b)return;
+  const [da,db]=await Promise.all([idbGet('ph_'+a.value),idbGet('ph_'+b.value)]);
+  const box=$('#cmpImgs');if(box)box.innerHTML=`<div><img src="${da||''}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px"><div class="tiny muted center" style="margin-top:3px">then</div></div><div><img src="${db||''}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px"><div class="tiny muted center" style="margin-top:3px">now</div></div>`;
+}
+/* Saturday weekly progress check-in */
+function isSaturday(){return new Date().getDay()===6;}
+function weekKey(){const d=new Date();const s=new Date(d.getFullYear(),0,1);return d.getFullYear()+'-W'+Math.floor(((d-s)/86400000+s.getDay())/7);}
+function weeklyBannerHTML(){
+  if(STATE.settings.weeklyOn===false||!isSaturday())return '';
+  return `<div class="note warn"><b>📸 Saturday check-in.</b> Take a progress photo, measure your waist, and weigh in — same day each week is the most accurate way to track change.
+    <div class="btnrow" style="margin-top:8px"><button class="btn sm ghost" onclick="logMeasure()">Waist &amp; weight</button><button class="btn sm ghost" onclick="go('progress')">Add photo</button></div></div>`;
+}
+function fireWeeklyNotif(){const body="Weekend check-in: take a progress photo, measure your waist, and weigh in 📸";try{if(navigator.serviceWorker&&navigator.serviceWorker.ready){navigator.serviceWorker.ready.then(r=>r.showNotification('CoreForge',{body,icon:'icon-192.png',tag:'coreforge-weekly'}));}else if('Notification'in window){new Notification('CoreForge',{body});}}catch(e){}}
+
 /* ============================ GUIDE VIEW ============================ */
 function renderGuide(){
   const v=$('#v-guide');
@@ -2172,6 +2288,7 @@ function renderGuide(){
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Workout reminders</span><button class="chip ${STATE.settings.reminderOn?'on':''}" onclick="toggleReminders()">${STATE.settings.reminderOn?'On':'Off'}</button></div>
     ${STATE.settings.reminderOn?`<div class="row" style="justify-content:space-between;padding:6px 0"><span class="sm muted">Remind me at</span><input type="time" value="${STATE.settings.reminderTime||'18:00'}" onchange="setReminderTime(this.value)" style="background:var(--card2);color:var(--ink);border:1.5px solid var(--line);border-radius:10px;padding:8px 10px;font-size:15px"></div>
     <div class="tiny muted" style="padding:2px 0 4px">Nudges you on your training days. Reminders appear when you open the app (a home-screen install makes them most reliable).</div>`:''}
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Saturday progress check-in <span class="tiny muted">· photo + waist + weigh</span></span><button class="chip ${STATE.settings.weeklyOn!==false?'on':''}" onclick="toggleSetting('weeklyOn')">${STATE.settings.weeklyOn!==false?'On':'Off'}</button></div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Voice coach <span class="tiny muted">· deep</span></span><button class="chip ${STATE.settings.voice!==false?'on':''}" onclick="toggleSetting('voice')">${STATE.settings.voice!==false?'On':'Off'}</button></div>
     <div style="padding:6px 0 2px"><div class="tiny muted" style="margin-bottom:5px">Coach voice</div>
       <select onchange="setCoachVoice(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px">${voiceOptionsHTML()}</select>
@@ -2261,6 +2378,8 @@ async function boot(){
   if(!STATE.achievements||typeof STATE.achievements!=='object')STATE.achievements={};
   if(STATE.settings.reminderOn===undefined)STATE.settings.reminderOn=false;
   if(!STATE.settings.reminderTime)STATE.settings.reminderTime='18:00';
+  if(STATE.settings.weeklyOn===undefined)STATE.settings.weeklyOn=true;
+  if(!STATE.restDays||typeof STATE.restDays!=='object')STATE.restDays={};
   if(STATE.settings.hype===undefined)STATE.settings.hype=true;   // motivator on by default
   if(!STATE.settings.coach)STATE.settings.coach='auto';          // default persona
   // one-time: switch existing installs to the new rotating Auto coach
