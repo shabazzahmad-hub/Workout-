@@ -316,6 +316,7 @@
 <div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
 <!-- Full-screen guided workout player -->
 <div class="pl" id="player"></div>
+<div class="pl" id="hiit"></div>
 <div class="toast" id="toast"></div>
 
 <script id="state-data" type="application/json">{}</script>
@@ -833,6 +834,7 @@ let _backGuard=false,_exiting=false,_homeBackAt=0;
 function onPop(e){
   if(_exiting)return;
   if(_backGuard){_backGuard=false;return;}
+  if(typeof INTV!=='undefined'&&INTV){hiitTeardown();return;}
   if(typeof PLAYER!=='undefined'&&PLAYER){playerTeardown();return;}
   if($('#scrim').classList.contains('open')){
     $('#scrim').classList.remove('open');document.body.style.overflow='';stopTimer();return;
@@ -1029,6 +1031,7 @@ function todayWorkoutHTML(){
     </div>
   </div>
   <button class="btn primary" style="margin:2px 0 8px;font-size:16px;padding:17px" onclick="openPlayer()">▶ Start guided workout</button>
+  ${sess.session.key==='metcon'?`<button class="btn ghost" style="margin:0 0 8px" onclick="openHiitChooser()">⚡ HIIT intervals — Tabata · EMOM · AMRAP</button>`:''}
   <div class="btnrow" style="margin:2px 0 6px"><button class="btn ghost" id="coachBrief">🎙️ Coach brief</button><button class="btn ghost" onclick="openQuickList()">⚡ Quick</button><button class="btn ghost" onclick="openRecovery()">😌 Recover</button></div>`;
   h+=homeSummaryHTML();
   h+=weeklyBannerHTML();
@@ -1276,24 +1279,34 @@ function plTickReady(){
   if(PLAYER.ready>0){beep(1000,.15,0.7);if(PLAYER.ready<=3)coachSay(String(PLAYER.ready));plS('#plNum',PLAYER.ready);return;}
   beepGo();haptic(30);coachSay('Go!');plEnterWork();
 }
+// Rotate to the next spoken/shown form cue for the current exercise.
+function plNextCue(){const c=PLAYER.cues||[];if(!c.length)return'';PLAYER.cueIdx=((PLAYER.cueIdx||0)+1)%c.length;const cue=c[PLAYER.cueIdx];plS('#plCoach',cue);return cue;}
 function plEnterWork(){
   plClear();
   const m=plCur();const ex=EX[m.exId];const isTime=m.unit==='time';
   PLAYER.phase='work';
-  plS('#plCoach',(ex.cues&&ex.cues[0])?ex.cues[0]:'Own every rep.');
+  PLAYER.cues=(ex.cues&&ex.cues.length)?ex.cues.slice():['Brace your core and own every rep.'];
+  PLAYER.cueIdx=0;
+  const firstSet=PLAYER.s===0;
+  // On the first set of each exercise, coach WHAT it is + HOW it strengthens you,
+  // then the first form cue. Later sets get a quick form cue.
+  const intro=firstSet?(ex.name+'. '+(ex.why?ex.why+' ':'')):'';
+  plS('#plCoach', firstSet&&ex.why ? ex.why : PLAYER.cues[0]);
   const pulse=$('#plPulse');
   if(isTime){
     if(pulse&&PLAYER.running)pulse.classList.add('on');
     PLAYER.remain=m.target;PLAYER.total=Math.max(1,m.target);
     plS('#plNum',fmtTime(PLAYER.remain));plS('#plSub','HOLD');plRingSet(1);
+    coachSpeak(intro+PLAYER.cues[0]);
     if(PLAYER.running)PLAYER.tid=setInterval(plTickHold,1000);
   }else{
     const ecc=eccOf(ex);
     PLAYER.ecc=ecc;PLAYER.eccMs=ecc*1000;PLAYER.repDurMs=(ecc+1)*1000;
     PLAYER.repN=0;PLAYER.repMs=0;PLAYER.repCounted=false;PLAYER.total=Math.max(1,m.target);
     plS('#plNum','0');plS('#plSub','OF '+m.target+' REPS');plRingSet(0);
-    coachSpeak(ecc>=2?('Controlled tempo. Lower for '+ecc+', drive up.'):'Fast and explosive. Let’s go.');
-    plS('#plCoach',ecc>=2?'Lower slow…':'Go!');
+    const tempoLine=ecc>=2?('Controlled tempo. Lower for '+ecc+' seconds, then drive up. '+PLAYER.cues[0]):('Fast and explosive. '+PLAYER.cues[0]);
+    coachSpeak(intro+tempoLine);
+    if(!firstSet||!ex.why)plS('#plCoach',ecc>=2?'Lower slow…':'Go!');
     if(PLAYER.running)PLAYER.tid=setInterval(plTickRep,100);
   }
 }
@@ -1302,8 +1315,13 @@ function plTickHold(){
   PLAYER.remain--;PLAYER.elapsed++;
   const el=PLAYER.total-PLAYER.remain;
   if(PLAYER.remain===10&&PLAYER.total>16){if(!motivate('push'))coachSpeak('Ten seconds. Hold strong.');}
-  else if(el===6||(el>0&&el%18===0&&PLAYER.remain>6)){coachSpeak('Inhale slow… and exhale.');plS('#plSub','BREATHE');setTimeout(()=>{if(PLAYER&&PLAYER.phase==='work')plS('#plSub','HOLD');},2200);}
-  else if(el>0&&el%12===0&&PLAYER.remain>4)motivate('during');
+  else if(el>0&&el%8===0&&PLAYER.remain>5){
+    // cycle: form cue → breathing → motivate, so coaching runs throughout the hold
+    const pick=Math.floor(el/8)%3;
+    if(pick===1){coachSpeak(plNextCue());}
+    else if(pick===2){coachSpeak('Inhale slow… and exhale.');plS('#plSub','BREATHE');setTimeout(()=>{if(PLAYER&&PLAYER.phase==='work')plS('#plSub','HOLD');},2200);}
+    else motivate('during');
+  }
   if(PLAYER.remain===3)coachSpeak('Three. Two. One.');
   if(PLAYER.remain<=3&&PLAYER.remain>0)beep(900,.13,0.7);
   if(PLAYER.remain<=0){beepGo();haptic(30);plAfterSet();return;}
@@ -1318,7 +1336,9 @@ function plTickRep(){
     beep(880,.08);haptic(16);
     const half=Math.ceil(m.target/2);
     plS('#plNum',String(PLAYER.repN));plRingSet(PLAYER.repN/PLAYER.total);
-    if(m.target>=8&&PLAYER.repN===half){if(!motivate('during'))coachSpeak('Up! '+PLAYER.repN);}
+    // Every 4th rep, coach a form cue; otherwise call the count.
+    if(PLAYER.repN>1&&PLAYER.repN%4===0&&PLAYER.repN<m.target){coachSpeak(plNextCue());}
+    else if(m.target>=8&&PLAYER.repN===half){if(!motivate('during'))coachSpeak('Up! '+PLAYER.repN);}
     else coachSpeak(PLAYER.ecc>=2?('Up! '+PLAYER.repN):String(PLAYER.repN));
   }
   if(PLAYER.repMs>=PLAYER.repDurMs){
@@ -1409,6 +1429,139 @@ function playerFeel(feel){
   plClear();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;
   if(history.state&&history.state.cf==='player'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
   commitSession(feel);
+}
+
+/* ============================ HIIT INTERVAL PLAYER ============================
+   Tabata / EMOM / AMRAP interval formats for the Metabolic HIIT day. Runs the
+   circuit as work↔rest intervals over the .pl overlay with ring, beeps, coach
+   and beat. Separate state (INTV) from the guided player. */
+let INTV=null;
+const IV_C=2*Math.PI*108;
+const HIIT_FORMATS={
+  tabata:{name:'Tabata',desc:'8 rounds · 20s all-out / 10s rest (~4 min). Brutal and fast.'},
+  emom:{name:'EMOM',desc:'Every minute: 45s work / 15s rest, cycling the circuit.'},
+  amrap:{name:'AMRAP 10',desc:'10 minutes — as many rounds of the circuit as you can.'},
+};
+function ivS(sel,txt){const e=$(sel);if(e)e.textContent=txt;}
+function ivRingSet(f){const r=$('#ivRing');if(r)r.style.strokeDashoffset=IV_C*(1-Math.max(0,Math.min(1,f)));}
+function ivClear(){if(INTV&&INTV.tid){clearInterval(INTV.tid);INTV.tid=null;}}
+function buildIntervals(list,format){
+  const out=[];const at=i=>list[i%list.length];
+  if(format==='tabata'){for(let r=0;r<8;r++){out.push({type:'work',secs:20,exId:at(r).exId,round:r+1,rounds:8});out.push({type:'rest',secs:10,exId:at(r+1).exId});}}
+  else if(format==='emom'){const mins=Math.max(6,list.length);for(let r=0;r<mins;r++){out.push({type:'work',secs:45,exId:at(r).exId,round:r+1,rounds:mins});out.push({type:'rest',secs:15,exId:at(r+1).exId});}}
+  else{const cap=600;let t=0,i=0;while(t<cap){const w=Math.min(40,cap-t);out.push({type:'work',secs:w,exId:at(i).exId,round:Math.floor(i/list.length)+1});t+=w;i++;if(t<cap){const rs=Math.min(5,cap-t);if(rs>0){out.push({type:'rest',secs:rs,exId:at(i).exId});t+=rs;}}}}
+  if(out.length&&out[out.length-1].type==='rest')out.pop();
+  return out;
+}
+function openHiitChooser(){
+  openSheet(`<h3>⚡ HIIT intervals</h3>
+    <p class="muted sm" style="margin:2px 0 12px">Run today's circuit as timed intervals. Pick a format:</p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${Object.keys(HIIT_FORMATS).map(k=>`<button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="startHiit('${k}')"><b style="font-size:15px">${HIIT_FORMATS[k].name}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${HIIT_FORMATS[k].desc}</div></button>`).join('')}
+    </div>
+    <div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Cancel</button>`);
+}
+function ivRingHTML(color){return `
+  <div class="pl-ring"><div class="pl-pulse" id="ivPulse"></div>
+    <svg width="232" height="232" viewBox="0 0 232 232">
+      <circle cx="116" cy="116" r="108" fill="none" stroke="var(--card3)" stroke-width="10"/>
+      <circle id="ivRing" cx="116" cy="116" r="108" fill="none" stroke="${color}" stroke-width="10" stroke-linecap="round" stroke-dasharray="${IV_C}" stroke-dashoffset="0"/>
+    </svg>
+    <div class="pl-center"><div class="pl-num" id="ivNum">0</div><div class="pl-sub" id="ivSub">GO</div></div>
+  </div>`;}
+function startHiit(format){
+  closeSheet();
+  const sess=buildSession(STATE.progressPtr);
+  const list=[...sess.main,sess.finisher].filter(m=>m&&m.exId);
+  if(!list.length)return;
+  INTV={sess,seq:buildIntervals(list,format),i:0,phase:null,running:true,tid:null,remain:0,total:0,format,workElapsed:0};
+  $('#hiit').classList.add('open');document.body.style.overflow='hidden';
+  try{history.pushState({cf:'hiit'},'');}catch(e){}
+  primeVoice();beatStart();
+  ivRenderStep(0);
+  INTV.phase='lead';INTV.lead=5;
+  ivS('#ivNum','5');ivS('#ivSub','GET READY');ivRingSet(1);
+  beep(1000,.15,0.7);coachSpeak(HIIT_FORMATS[format].name+'. Get ready.');
+  INTV.tid=setInterval(ivTickLead,1000);
+}
+function ivTickLead(){
+  if(!INTV)return;INTV.lead--;
+  if(INTV.lead>0){beep(1000,.15,0.7);if(INTV.lead<=3)coachSay(String(INTV.lead));ivS('#ivNum',INTV.lead);return;}
+  beepGo();haptic(30);coachSay('Go!');ivClear();ivStep(0);
+}
+function ivRenderStep(idx){
+  const step=INTV.seq[idx];const ex=EX[step.exId]||{name:'Work',region:'cardio',img:''};const isWork=step.type==='work';
+  const bg=ex.img||'';
+  $('#hiit').innerHTML=`
+    <div class="pl-bg"${bg?` style="background-image:url('${bg}')"`:''}></div>
+    <div class="pl-head"><button class="pl-x" onclick="hiitQuit()" aria-label="End">✕</button>
+      <div class="pl-count">${HIIT_FORMATS[INTV.format].name} · ${idx+1}/${INTV.seq.length}</div><div style="width:36px"></div></div>
+    <div class="pl-body" id="ivBody">
+      <div class="pl-region"><span class="tag ${isWork?ex.region:'cardio'}">${isWork?'WORK':'REST'}</span></div>
+      <div class="pl-name">${isWork?ex.name:'Rest — next: '+ex.name}</div>
+      ${ivRingHTML(isWork?'var(--green)':'var(--fire-l)')}
+      <div class="pl-set">${step.round?('ROUND '+step.round+(step.rounds?(' / '+step.rounds):'')):'Keep moving'}</div>
+      <div class="pl-coach" id="ivCoach">${isWork?'Max effort — every rep counts.':'Breathe. Reset.'}</div>
+      <div class="pl-actions">
+        <button class="btn ghost" id="ivToggle" onclick="hiitToggle()">Pause</button>
+        <button class="btn ghost" onclick="hiitSkip()">Skip</button>
+        <button class="btn primary" onclick="hiitQuit()">End</button>
+      </div>
+    </div>`;
+}
+function ivStep(idx){
+  if(typeof idx==='number')INTV.i=idx;
+  const step=INTV.seq[INTV.i];const ex=EX[step.exId]||{name:'Work'};const isWork=step.type==='work';
+  ivClear();INTV.phase=isWork?'work':'rest';INTV.remain=step.secs;INTV.total=Math.max(1,step.secs);
+  ivRenderStep(INTV.i);
+  ivS('#ivNum',fmtTime(INTV.remain));ivS('#ivSub',isWork?'WORK':'REST');ivRingSet(1);
+  const pulse=$('#ivPulse');if(pulse){if(isWork&&INTV.running)pulse.classList.add('on');else pulse.classList.remove('on');}
+  autoRoll();
+  if(isWork){beep(1320,.12,0.85);if(!motivate('during'))coachSpeak('Work! '+ex.name);}
+  else coachSpeak('Rest.');
+  if(INTV.running)INTV.tid=setInterval(ivTick,1000);
+}
+function ivTick(){
+  if(!INTV)return;
+  INTV.remain--;
+  if(INTV.phase==='work')INTV.workElapsed++;
+  if(INTV.remain===3)coachSpeak('Three. Two. One.');
+  if(INTV.remain<=3&&INTV.remain>0)beep(900,.13,0.7);
+  if(INTV.remain<=0){beepGo();haptic(30);INTV.i++;if(INTV.i>=INTV.seq.length){ivDone();return;}ivStep();return;}
+  ivS('#ivNum',fmtTime(INTV.remain));ivRingSet(INTV.remain/INTV.total);
+}
+function ivDone(){
+  ivClear();beatStop();INTV.phase='done';
+  const mins=Math.max(1,Math.round(INTV.workElapsed/60*10)/10);
+  const sess=INTV.sess;const isMetcon=sess.session.key==='metcon'&&sess.ptr===STATE.progressPtr;
+  $('#ivBody').innerHTML=`
+    <div class="pl-name" style="margin-bottom:2px">Circuit complete 🔥</div>
+    <div class="pl-coach" style="margin-bottom:14px">${HIIT_FORMATS[INTV.format].name} · ${sess.session.name}</div>
+    <div class="grid2" style="width:100%;max-width:440px">
+      <div class="stat"><div class="n" style="color:var(--fire-l)">${fmtTime(INTV.workElapsed||1)}</div><div class="l">Work time</div></div>
+      <div class="stat"><div class="n" style="color:var(--teal)">${mins}</div><div class="l">Minutes</div></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:440px;margin-top:18px">
+      ${isMetcon?`<button class="btn primary" onclick="hiitLogDone()">Log today's session complete</button>`:''}
+      <button class="btn ghost" onclick="hiitQuit()">Close</button>
+    </div>`;
+  if(!motivate('done'))coachSpeak('Circuit complete. Outstanding work.');
+}
+function hiitToggle(){
+  if(!INTV)return;INTV.running=!INTV.running;
+  const t=$('#ivToggle');if(t)t.textContent=INTV.running?'Pause':'Resume';
+  const pulse=$('#ivPulse');
+  if(!INTV.running){ivClear();if(pulse)pulse.classList.remove('on');return;}
+  if(INTV.phase==='lead')INTV.tid=setInterval(ivTickLead,1000);
+  else{if(INTV.phase==='work'&&pulse)pulse.classList.add('on');INTV.tid=setInterval(ivTick,1000);}
+}
+function hiitSkip(){if(!INTV)return;ivClear();INTV.i++;if(INTV.i>=INTV.seq.length)ivDone();else ivStep();}
+function hiitTeardown(){if(!INTV)return;ivClear();beatStop();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;if(TAB==='today')renderToday();}
+function hiitQuit(){const had=!!INTV;hiitTeardown();if(had&&history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
+function hiitLogDone(){
+  ivClear();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;
+  if(history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
+  finishSession();
 }
 
 /* ============================ ASSESSMENT FLOW ============================ */
