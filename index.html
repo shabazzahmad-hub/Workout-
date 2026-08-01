@@ -233,6 +233,8 @@
     <section id="v-progress" class="view"></section>
     <!-- ===================== FUEL (nutrition) ===================== -->
     <section id="v-fuel" class="view"></section>
+    <!-- ===================== QUICK WORKOUT (runner) ===================== -->
+    <section id="v-quick" class="view"></section>
     <!-- ===================== GUIDE ===================== -->
     <section id="v-guide" class="view"></section>
   </main>
@@ -767,6 +769,7 @@ function render(){
   if(TAB==='today')renderToday();
   else if(TAB==='program')renderProgram();
   else if(TAB==='fuel')renderFuel();
+  else if(TAB==='quick')renderQuick();
   else if(TAB==='progress')renderProgress();
   else if(TAB==='guide')renderGuide();
 }
@@ -895,7 +898,7 @@ function todayWorkoutHTML(){
     <div class="htop"><div><div class="hlbl">Week ${wkNum} · Session ${sess.pos.dayInWeek+1}</div><h1>${sess.session.name}</h1><div class="hmeta">${sess.session.focus}</div></div><div class="hicon">${sess.session.icon}</div></div>
     <div class="hstats"><div class="hstat"><b>${totalCount}</b>exercises</div><div class="hstat"><b>~${vol.minutes}</b>minutes</div><div class="hstat"><b>${pct}%</b>done</div></div>
   </div>
-  <button class="btn ghost" id="coachBrief" style="margin:2px 0 6px">🎙️ Coach brief</button>`;
+  <div class="btnrow" style="margin:2px 0 6px"><button class="btn ghost" id="coachBrief">🎙️ Coach brief</button><button class="btn ghost" onclick="openQuickList()">⚡ Quick</button></div>`;
   // progressive overload note vs previous week
   if(sess.pos.dayInWeek===0){
     h+=`<div class="note fire">📈 <b>Week ${wkNum} — load increased.</b> ${overloadNote(sess)}</div>`;
@@ -1571,6 +1574,8 @@ function renderProgram(){
   const curPos=STATE.progressPtr<SESSIONS_PER_CYCLE*TOTAL_CYCLES?posOf(STATE.progressPtr):null;
   const viewCycle=curPos?curPos.cycle:TOTAL_CYCLES-1;
   let h=`<h2 class="vtitle">Your Program</h2><div class="vsub">6-week progressive block · repeated ${TOTAL_CYCLES}× for 12 weeks. Every week the load climbs.</div>`;
+  // quick workouts entry
+  h+=`<button class="btn violet" style="margin-bottom:14px" onclick="openQuickList()">⚡ Quick Workouts · 5–10 min</button>`;
   // overall progress
   const totalS=SESSIONS_PER_CYCLE*TOTAL_CYCLES;const done=Math.min(STATE.progressPtr,totalS);
   h+=`<div class="card pad"><div class="row" style="justify-content:space-between;margin-bottom:8px"><b>12-week progress</b><span class="muted sm">${done}/${totalS} sessions</span></div><div class="pbar"><i style="width:${done/totalS*100}%"></i></div>
@@ -1593,6 +1598,7 @@ function renderProgram(){
     h+=`</div>`;
   }
   h+=`<div class="note info" style="margin-top:16px"><b>How progression works:</b> Week 1 sets your baseline volumes. Weeks 2–6 raise reps &amp; hold times, unlock harder variations, and add a set in the peak weeks. The app also reads how each week <i>felt</i> and auto-adjusts. After 6 weeks you re-test, and everything scales up from your new numbers.</div>`;
+  h+=skillTreesHTML();
   v.innerHTML=h;
 }
 function previewSession(ptr){
@@ -2013,6 +2019,122 @@ function saveTDEE(){
   const ex=(STATE.measurements||[]).find(m=>m.date===today);
   if(ex){ex.weight=disp;}else{(STATE.measurements=STATE.measurements||[]).push({date:today,waist:null,weight:disp});}
   save();closeSheet();toast('Targets saved');renderFuel();
+}
+
+/* ============================ QUICK WORKOUTS ============================
+   Short, follow-along 5-10 min sessions you can do any time — no baseline
+   needed. Items reference the exercise library; unit & rest come from EX.
+   Running a quick workout does NOT touch your 12-week program progress. */
+const QUICKIES=[
+  {id:'core5', name:'Core Express', mins:5, icon:'🔥', focus:'Fast all-round ab hit',
+   items:[{exId:'plank',sets:2,target:30},{exId:'bicycle',sets:2,target:30},{exId:'revcrunch',sets:2,target:15},{exId:'sideplank',sets:2,target:20}]},
+  {id:'burn7', name:'Ab Burner', mins:7, icon:'💥', focus:'Deep burn, whole midsection',
+   items:[{exId:'hollow',sets:2,target:25},{exId:'legraise',sets:2,target:12},{exId:'bicycle',sets:2,target:35},{exId:'russiantwist',sets:2,target:20},{exId:'crunch',sets:2,target:18}]},
+  {id:'oblique6', name:'Obliques & Love Handles', mins:6, icon:'🌀', focus:'Waist & side abs',
+   items:[{exId:'sideplank',sets:2,target:25},{exId:'sidedip',sets:2,target:12},{exId:'russiantwist',sets:3,target:20},{exId:'bicycle',sets:2,target:30}]},
+  {id:'hiit8', name:'Fat-Burn HIIT', mins:8, icon:'⚡', focus:'Cardio blast for fat loss',
+   items:[{exId:'jumpingjack',sets:3,target:40},{exId:'highknees',sets:3,target:30},{exId:'mountainclimber',sets:3,target:30},{exId:'burpee',sets:3,target:25}]},
+  {id:'lower6', name:'Lower-Ab Focus', mins:6, icon:'⬇️', focus:'Lower belly & deep core',
+   items:[{exId:'revcrunch',sets:3,target:14},{exId:'legraise',sets:3,target:12},{exId:'flutter',sets:3,target:30},{exId:'deadbug',sets:2,target:16}]},
+  {id:'full10', name:'Full-Body Quickie', mins:10, icon:'💪', focus:'Whole-body calorie burn + core',
+   items:[{exId:'squat',sets:3,target:16},{exId:'pushup',sets:3,target:12},{exId:'reverselunge',sets:3,target:12},{exId:'plank',sets:2,target:40},{exId:'mountainclimber',sets:2,target:30},{exId:'jumpingjack',sets:2,target:40}]},
+  {id:'quiet6', name:'Quiet / Travel (low impact)', mins:6, icon:'🤫', focus:'No jumping, apartment-safe',
+   items:[{exId:'deadbug',sets:2,target:16},{exId:'birddog',sets:2,target:16},{exId:'plank',sets:2,target:30},{exId:'kneeside',sets:2,target:20},{exId:'glutebridge',sets:2,target:15},{exId:'superman',sets:2,target:20}]},
+  {id:'morning5', name:'Morning Wake-Up', mins:5, icon:'☀️', focus:'Gentle activation to start the day',
+   items:[{exId:'march',sets:2,target:30},{exId:'glutebridge',sets:2,target:15},{exId:'birddog',sets:2,target:14},{exId:'plank',sets:1,target:30},{exId:'superman',sets:2,target:20}]},
+];
+let QUICK_ID=null, quickState={done:{}};
+function openQuickList(){
+  openSheet(`<h3>⚡ Quick Workouts</h3><p class="muted sm" style="margin:2px 0 12px">Short on time? Pick a follow-along session — these don't affect your 12-week program.</p>
+    ${QUICKIES.map(q=>`<button class="kv" style="width:100%;text-align:left;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:8px;cursor:pointer" onclick="closeSheet();openQuick('${q.id}')">
+      <span><span style="font-size:18px">${q.icon}</span> <b>${q.name}</b><div class="tiny muted" style="margin-top:2px">${q.focus}</div></span>
+      <span class="chip">${q.mins} min</span></button>`).join('')}`);
+}
+function openQuick(id){QUICK_ID=id;quickState={done:{}};try{history.pushState({cf:'tab',tab:'quick'},'');}catch(e){}go('quick');}
+function renderQuick(){
+  const v=$('#v-quick');const q=QUICKIES.find(x=>x.id===QUICK_ID);
+  if(!q){v.innerHTML=`<div class="note info">No quick workout selected.</div>`;return;}
+  const doneN=Object.values(quickState.done||{}).filter(Boolean).length;
+  let h=`<button class="btn ghost sm" style="width:auto;margin-bottom:10px" onclick="history.back()">← Back</button>
+    <div class="hero metcon"><div class="htop"><div><div class="hlbl">Quick workout · ~${q.mins} min</div><h1>${q.name}</h1><div class="hmeta">${q.focus}</div></div><div class="hicon">${q.icon}</div></div>
+      <div class="hstats"><div class="hstat"><b>${q.items.length}</b>moves</div><div class="hstat"><b>${doneN}/${q.items.length}</b>done</div></div></div>
+    <div class="note info">Tap <b>▶ Play</b> on each move for a guided timer with coaching, then check it off. No equipment needed.</div>
+    <div class="exlist">`;
+  q.items.forEach((it,idx)=>{
+    const ex=EX[it.exId];const unit=ex.unit;const done=!!(quickState.done&&quickState.done[idx]);
+    const rx=unit==='time'?fmtTime(it.target):it.target+' reps';
+    h+=`<div class="ex ${done?'done':''}">
+      <div class="ex-top">
+        <button class="ex-check" onclick="quickMark(${idx})"><svg viewBox="0 0 24 24" fill="none" stroke="#04220f" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
+        <div class="grow"><div class="ex-name">${ex.name}</div><div class="ex-region"><span class="tag ${ex.region}">${ex.region}</span> &nbsp;${it.sets} × ${rx}</div></div>
+        <div class="ex-rx"><div class="big">${it.sets}×${unit==='time'?fmtTime(it.target):it.target}</div></div>
+      </div>
+      <div class="ex-actions">
+        <button class="timer" onclick="quickPlay(${idx})">▶ Play</button>
+        <button class="info" onclick="openExerciseInfo('${it.exId}')">ⓘ How-to</button>
+      </div>
+    </div>`;
+  });
+  h+=`</div><button class="btn ${doneN>=q.items.length?'green':'primary'}" style="margin-top:6px" onclick="quickFinish()">${doneN>=q.items.length?'✓ Finish':'Finish workout'}</button>`;
+  v.innerHTML=h;
+}
+function quickPlay(idx){
+  const q=QUICKIES.find(x=>x.id===QUICK_ID);const it=q.items[idx];const ex=EX[it.exId];
+  const rest=it.rest||ex.rest||25;autoRoll();
+  const label=ex.name+(it.sets>1?` · ${it.sets} sets`:'');
+  if(ex.unit==='time') runTimer('hold',it.target,label,rest,()=>quickMark(idx));
+  else runRepCadence(it.target,label,rest,()=>quickMark(idx));
+}
+function quickMark(idx){if(!quickState.done)quickState.done={};quickState.done[idx]=true;haptic(10);if(TAB==='quick')renderQuick();}
+function quickFinish(){
+  const q=QUICKIES.find(x=>x.id===QUICK_ID);
+  STATE.quickDone=(STATE.quickDone||0)+1;save();
+  if(!motivate('done'))coachSay&&coachSay('Nice work. Quick session done.');
+  toast('Quick workout complete 💪');
+  try{history.back();}catch(e){go('today');}
+}
+
+/* ============================ SKILL-PROGRESSION TREES ============================
+   Surfaces the exercise ladders as visual paths: what you've unlocked, what you
+   are on now, and what unlocks as you level up and progress through the weeks. */
+const SKILL_TREES=[
+  {lad:'plankL', name:'Plank Strength', emoji:'🧱'},
+  {lad:'hollowL', name:'Hollow Body', emoji:'🍌'},
+  {lad:'lowerL', name:'Lower Abs', emoji:'⬇️'},
+  {lad:'dynL', name:'Dynamic Abs', emoji:'🔄'},
+  {lad:'sideL', name:'Obliques / Side', emoji:'🌀'},
+  {lad:'rotL', name:'Rotation', emoji:'🎯'},
+  {lad:'legL', name:'Legs — Squat & Lunge', emoji:'🦵'},
+  {lad:'pushL', name:'Push-Up', emoji:'⬆️'},
+];
+function currentRung(lad){
+  if(!STATE.baseline) return clamp(LEVEL_TIER[levelOf(0)]||1,0,(LADDERS[lad]||[]).length-1);
+  const ptr=Math.min(STATE.progressPtr,SESSIONS_PER_CYCLE*TOTAL_CYCLES-1);
+  const pos=posOf(ptr);
+  return rungIndex(lad,pos.cycle,pos.week,levelOf(pos.cycle));
+}
+function skillTreesHTML(){
+  let h=`<div class="section-label">Skill progression paths</div>
+    <div class="note info">Each path goes easy → hard. You start at your level and <b>unlock harder variations automatically</b> as you level up and move through the weeks. Tap any move for the how-to.</div>`;
+  SKILL_TREES.forEach(t=>{
+    const arr=LADDERS[t.lad]||[];const cur=currentRung(t.lad);
+    h+=`<div class="card pad" style="margin-bottom:12px"><div class="row" style="margin-bottom:8px"><span style="font-size:18px">${t.emoji}</span><b>&nbsp;${t.name}</b></div>`;
+    arr.forEach((exId,i)=>{
+      const ex=EX[exId];if(!ex)return;
+      const state=i<cur?'done':(i===cur?'cur':'lock');
+      const dot=state==='done'?'✓':(state==='cur'?'▶':'🔒');
+      const col=state==='done'?'var(--green)':(state==='cur'?'var(--fire-l)':'var(--muted)');
+      const bg=state==='cur'?'rgba(255,106,43,.10)':'transparent';
+      const badge=state==='done'?'unlocked':(state==='cur'?'you are here':'unlocks later');
+      h+=`<button onclick="openExerciseInfo('${exId}')" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:${bg};border:none;border-top:1px solid var(--line);padding:11px 4px;cursor:pointer">
+        <span style="width:22px;text-align:center;color:${col};font-weight:900">${dot}</span>
+        <span class="grow" style="font-weight:${state==='cur'?'900':'700'};color:${state==='lock'?'var(--muted)':'var(--ink)'}">${ex.name}</span>
+        <span class="tiny" style="color:${col};font-weight:800">${badge}</span>
+      </button>`;
+    });
+    h+=`</div>`;
+  });
+  return h;
 }
 
 /* ============================ GUIDE VIEW ============================ */
