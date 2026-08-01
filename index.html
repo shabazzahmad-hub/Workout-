@@ -530,6 +530,26 @@ const COOLDOWN = [
   {n:"Cobra Stretch", d:"Lie face-down and gently press your chest up, lengthening the abs you just trained. 30s."},
   {n:"Supine Spinal Twist", d:"On your back, drop both knees to one side, arms out wide. 30s each side."},
 ];
+/* Guided flows: name + seconds + coaching cue. Run through the loud countdown timer. */
+const WARMUP_FLOW = [
+  {n:'March in Place',      secs:40, cue:'Drive the knees up and pump the arms. Wake the body up.'},
+  {n:'Arm Circles',         secs:30, cue:'Big slow circles forward, then reverse halfway through.'},
+  {n:'Standing Torso Twists', secs:30, cue:'Feet planted, rotate side to side and open up the spine.'},
+  {n:'Hip Circles',         secs:30, cue:'Hands on the hips, make big circles each direction.'},
+  {n:'Glute Bridges',       secs:30, cue:'Squeeze the glutes at the top and brace the core.'},
+  {n:'Bird Dog',            secs:40, cue:'Opposite arm and leg, slow and controlled. Alternate sides.'},
+  {n:'Cat–Cow',             secs:30, cue:'Arch then round the spine, breathe with the movement.'},
+  {n:'Standing Knee Hugs',  secs:30, cue:'Pull one knee to the chest, alternate, find your balance.'},
+];
+const COOLDOWN_FLOW = [
+  {n:"Child's Pose",        secs:40, cue:'Sit back on the heels, reach forward, breathe into the low back.'},
+  {n:'Cobra Stretch',       secs:30, cue:'Lie face-down and press the chest up, lengthen the abs.'},
+  {n:'Supine Twist — Left', secs:30, cue:'On your back, drop both knees to the left, arms out wide.'},
+  {n:'Supine Twist — Right',secs:30, cue:'Now drop both knees to the right. Relax and breathe.'},
+  {n:'Cat–Cow',             secs:30, cue:'Slowly alternate arching and rounding the spine.'},
+  {n:'Knees to Chest',      secs:30, cue:'Hug both knees in and gently rock to release the low back.'},
+  {n:'Deep Breathing',      secs:40, cue:'Lie back and take six slow belly breaths. Wind all the way down.'},
+];
 
 /* Baseline tests shown on day 1 */
 const TESTS = [
@@ -926,9 +946,10 @@ function todayWorkoutHTML(){
     h+=`<div class="note fire">📈 <b>Week ${wkNum} — load increased.</b> ${overloadNote(sess)}</div>`;
   }
   // warmup
-  h+=`<div class="section-label">Warm-up · ~3 min</div><div class="card pad">
-     <div class="tiny muted" style="margin-bottom:10px">Prime the deep core. 1 easy round, no rest needed.</div>
-     ${sess.warmup.map(id=>`<div class="kv"><span><b>${EX[id].name}</b></span><span class="muted">${EX[id].unit==='time'?'30s':'8/side'}</span></div>`).join('')}
+  h+=`<div class="section-label">Warm-up · ~4 min</div><div class="card pad">
+     <div class="tiny muted" style="margin-bottom:10px">Prime the deep core and raise your heart rate. Tap play for a hands-free guided round.</div>
+     ${WARMUP_FLOW.map(w=>`<div class="kv"><span><b>${w.n}</b></span><span class="muted">${w.secs}s</span></div>`).join('')}
+     <button class="btn primary" style="margin-top:10px" onclick="runWarmup()">▶ Guided warm-up</button>
   </div>`;
   // main
   h+=`<div class="section-label">Main work</div><div class="exlist">`;
@@ -937,7 +958,11 @@ function todayWorkoutHTML(){
   // finisher
   h+=`<div class="section-label">Finisher · burn it out</div><div class="exlist">${exCardHTML(sess.finisher,log,99)}</div>`;
   // cooldown
-  h+=`<div class="section-label">Cooldown</div><div class="card pad">${sess.cooldown.map(c=>`<div style="padding:8px 0;border-top:1px solid var(--line)"><b>${c.n}</b><div class="tiny muted" style="margin-top:3px">${c.d}</div></div>`).join('')}</div>`;
+  h+=`<div class="section-label">Cool-down · ~4 min</div><div class="card pad">
+     <div class="tiny muted" style="margin-bottom:10px">Stretch out the abs and low back to recover. Tap play for a hands-free guided round.</div>
+     ${COOLDOWN_FLOW.map(c=>`<div class="kv"><span><b>${c.n}</b></span><span class="muted">${c.secs}s</span></div>`).join('')}
+     <button class="btn green" style="margin-top:10px" onclick="runCooldown()">▶ Guided cool-down</button>
+  </div>`;
   // finish button
   h+=`<button class="btn ${doneCount>=totalCount?'green':'primary'}" id="finishSession">${doneCount>=totalCount?'✓ Complete Session':'Mark Session Complete'}</button>`;
   return h;
@@ -1431,7 +1456,9 @@ function previewPersona(){try{primeVoice();}catch(e){}if(STATE.settings.coach===
 /* ============================ TIMERS ============================ */
 let timer=null;
 function stopTimer(){if(timer){clearInterval(timer.iv);timer=null;}if(typeof _bt!=='undefined'&&_bt){clearInterval(_bt.iv);_bt=null;}}
-function beep(freq=880,dur=0.12){if(!STATE.settings.sound)return;try{const ac=beep._ac||(beep._ac=new (window.AudioContext||window.webkitAudioContext)());const o=ac.createOscillator(),g=ac.createGain();o.frequency.value=freq;o.connect(g);g.connect(ac.destination);g.gain.setValueAtTime(.18,ac.currentTime);g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+dur);o.start();o.stop(ac.currentTime+dur);}catch(e){}}
+function beep(freq=880,dur=0.12,vol=0.6,type='square'){if(!STATE.settings.sound)return;try{const ac=beep._ac||(beep._ac=new (window.AudioContext||window.webkitAudioContext)());if(ac.state==='suspended')ac.resume();const o=ac.createOscillator(),g=ac.createGain();o.type=type;o.frequency.value=freq;o.connect(g);g.connect(ac.destination);g.gain.setValueAtTime(Math.min(vol,0.95),ac.currentTime);g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+dur);o.start();o.stop(ac.currentTime+dur);}catch(e){}}
+// loud double-tone GO cue (cuts through noise)
+function beepGo(){beep(1320,.30,0.9,'square');setTimeout(()=>beep(1760,.28,0.9,'square'),120);}
 function openExerciseTimer(exId){
   const sess=buildSession(STATE.progressPtr);const m=[...sess.main,sess.finisher].find(x=>x.exId===exId);
   const ex=EX[exId];
@@ -1443,10 +1470,23 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet){
   const isHold=mode==='hold';
   openSheet(timerHTML(label,remain,isHold,total));
   autoRoll();primeVoice();
-  if(!quiet){ if(isHold){ if(!motivate('start'))coachSpeak('Hold. Brace your core.'); } else { coachSpeak('Rest. '+seconds+' seconds.'); } }
-  const numEl=()=>$('#tnum');const ringEl=()=>$('#tring');
   const C=2*Math.PI*100;
+  // 5-second loud GET READY countdown before a hold begins (rest timers start straight away)
+  let phase=isHold?'ready':'run', ready=5;
+  const setPhase=(txt)=>{const t=$('#tphase');if(t)t.textContent=txt;};
+  if(phase==='ready'){
+    const n=$('#tnum');if(n){n.textContent='5';n.className='tnum rest';}setPhase('GET READY');
+    beep(1000,.15,0.7);
+    if(!quiet&&!motivate('start'))coachSpeak('Get ready.');
+  }else if(!quiet){coachSpeak('Rest. '+seconds+' seconds.');}
   function tick(){
+    if(phase==='ready'){
+      ready--;
+      if(ready>0){beep(1000,.15,0.7);if(ready<=3)coachSay(String(ready));const n=$('#tnum');if(n)n.textContent=ready;return;}
+      beepGo();haptic(30);coachSay('Go!');
+      phase='run';const n=$('#tnum');if(n){n.textContent=fmtTime(remain);n.className='tnum '+(isHold?'go':'rest');}setPhase(isHold?'HOLD':'REST');
+      return;
+    }
     remain--;
     const el=total-remain;                         // seconds elapsed so far
     if(isHold){
@@ -1457,9 +1497,9 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet){
       else if(total>=24&&el===Math.round(total/2))motivate('rest');
     }
     if(remain===3)coachSpeak('Three. Two. One.');
-    if(remain<=3&&remain>0)beep(660,.08);
+    if(remain<=3&&remain>0)beep(900,.13,0.7);
     if(remain<=0){
-      beep(isHold?990:880,.25);haptic(30);clearInterval(timer.iv);
+      beepGo();haptic(30);clearInterval(timer.iv);
       if(isHold&&restAfter>0){toast('Hold done! Resting '+restAfter+'s');if(!motivate('done'))coachSpeak('Time. Now rest.');setTimeout(()=>runTimer('rest',restAfter,label+' — rest',0,null,true),700);if(onDone)onDone();return;}
       if(onDone)onDone();
       if(!motivate('done'))coachSpeak(isHold?'Time. Strong hold.':'Rest over. Back to work.');
@@ -1468,7 +1508,7 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet){
     }
     update();
   }
-  function update(){const n=$('#tnum');if(n){n.textContent=fmtTime(remain);}const r=$('#tring');if(r){r.style.strokeDashoffset=C*(1-remain/total);} }
+  function update(){if(phase==='ready')return;const n=$('#tnum');if(n){n.textContent=fmtTime(remain);}const r=$('#tring');if(r){r.style.strokeDashoffset=C*(1-remain/total);} }
   timer={iv:setInterval(tick,1000),mode};
   update();
 }
@@ -1482,7 +1522,7 @@ function timerHTML(label,secs,isHold,total){
         <circle cx="110" cy="110" r="100" fill="none" stroke="var(--line)" stroke-width="12"/>
         <circle id="tring" cx="110" cy="110" r="100" fill="none" stroke="${isHold?'var(--green)':'var(--fire)'}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="0"/>
       </svg>
-      <div class="inner"><div class="tnum ${isHold?'go':'rest'}" id="tnum">${fmtTime(secs)}</div><div class="tt">${isHold?'HOLD':'REST'}</div></div>
+      <div class="inner"><div class="tnum ${isHold?'go':'rest'}" id="tnum">${isHold?'5':fmtTime(secs)}</div><div class="tt" id="tphase">${isHold?'GET READY':'REST'}</div></div>
     </div>
     <div class="btnrow" style="margin-top:20px">
       <button class="btn ghost" onclick="stopTimer();closeSheet()">Stop</button>
@@ -1514,9 +1554,19 @@ function runRepCadence(reps,label,restAfter,onDone){
   const C=2*Math.PI*100;
   openSheet(repHTML(label,total));
   autoRoll();primeVoice();
-  coachSpeak('Guided set. '+total+' reps. Here we go.');
+  const setP=(t)=>{const e=$('#rcphase');if(e)e.textContent=t;};
   function paint(){const nn=$('#rcNum');if(nn)nn.textContent=n;const rr=$('#rcRing');if(rr)rr.style.strokeDashoffset=C*(1-n/total);}
   const half=Math.ceil(total/2);
+  // 5-second loud GET READY before the reps begin
+  let ready=5;const rn=$('#rcNum');if(rn){rn.textContent='5';rn.className='tnum rest';}setP('GET READY');
+  beep(1000,.15,0.7);coachSpeak('Guided set. '+total+' reps. Get ready.');
+  function readyTick(){
+    ready--;
+    if(ready>0){beep(1000,.15,0.7);if(ready<=3)coachSay(String(ready));const e=$('#rcNum');if(e)e.textContent=ready;return;}
+    beepGo();haptic(30);coachSay('Go!');clearInterval(timer.iv);
+    const e=$('#rcNum');if(e){e.textContent='0';e.className='tnum go';}setP('OF '+total+' REPS');
+    timer={iv:setInterval(step,tempo*1000),mode:'reps'};
+  }
   function step(){
     n++;
     beep(760,.06);haptic(14);
@@ -1535,8 +1585,7 @@ function runRepCadence(reps,label,restAfter,onDone){
       },Math.max(400,tempo*450));
     }
   }
-  timer={iv:setInterval(step,tempo*1000),mode:'reps'};
-  paint();
+  timer={iv:setInterval(readyTick,1000),mode:'reps'};
 }
 function repHTML(label,total){
   const C=2*Math.PI*100;
@@ -1548,12 +1597,77 @@ function repHTML(label,total){
         <circle cx="110" cy="110" r="100" fill="none" stroke="var(--line)" stroke-width="12"/>
         <circle id="rcRing" cx="110" cy="110" r="100" fill="none" stroke="var(--fire)" stroke-width="12" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C}"/>
       </svg>
-      <div class="inner"><div class="tnum go" id="rcNum">0</div><div class="tt">OF ${total} REPS</div></div>
+      <div class="inner"><div class="tnum rest" id="rcNum">5</div><div class="tt" id="rcphase">GET READY</div></div>
     </div>
     <div class="tiny muted" style="text-align:center;margin-top:6px">Do one rep on each call. It rests you between sets automatically.</div>
     <div class="btnrow" style="margin-top:16px">
       <button class="btn ghost" onclick="cancelReps()">Stop</button>
       <button class="btn green" onclick="cancelReps()">Done</button>
+    </div>
+  </div>`;
+}
+
+/* ===== GUIDED WARM-UP / COOL-DOWN FLOW =====
+   Walks a sequence of {n,secs,cue} moves: 5s loud GET READY, then each move
+   with its own count-down, loud transition beeps and spoken coaching. */
+function runWarmup(){runFlow(WARMUP_FLOW,'Warm-up','var(--fire)');}
+function runCooldown(){runFlow(COOLDOWN_FLOW,'Cool-down','var(--teal)');}
+function runFlow(items,title,color){
+  let idx=0,phase='ready',ready=5,remain=0,total=Math.max(1,items[0].secs);
+  const C=2*Math.PI*100;
+  openSheet(flowHTML(title,items.length,color||'var(--fire)'));
+  primeVoice();
+  const set=(sel,txt)=>{const e=$(sel);if(e)e.textContent=txt;};
+  const ring=(frac)=>{const r=$('#flowRing');if(r)r.style.strokeDashoffset=C*(1-frac);};
+  set('#flowName','Get Ready'); set('#flowCue', items[0].n+' first.');
+  beep(1000,.15,0.7); coachSpeak(title+'. Get ready.'); ring(1);
+  function startItem(){
+    const it=items[idx]; remain=it.secs; total=Math.max(1,it.secs);
+    set('#flowNum',remain); set('#flowName',it.n); set('#flowCue',it.cue||'');
+    set('#flowStep',(idx+1)+' / '+items.length);
+    beepGo(); haptic(30); coachSpeak(it.n+'. '+(it.cue||'')); ring(1);
+  }
+  function tick(){
+    if(phase==='ready'){
+      ready--;
+      if(ready>0){beep(1000,.15,0.7);if(ready<=3)coachSay(String(ready));set('#flowNum',ready);return;}
+      phase='run'; startItem(); return;
+    }
+    remain--;
+    if(remain===5&&total>10)coachSpeak('Five seconds.');
+    if(remain===3)coachSpeak('Three. Two. One.');
+    if(remain<=3&&remain>0)beep(900,.13,0.7);
+    if(remain<=0){
+      idx++;
+      if(idx>=items.length){
+        beepGo();haptic(30);clearInterval(timer.iv);
+        set('#flowNum','✓');set('#flowName','Done');set('#flowCue',title+' complete. Nice work.');
+        set('#flowStep',items.length+' / '+items.length);ring(0);
+        coachSpeak(title+' complete. Nice work.');
+        setTimeout(closeSheet,1100);return;
+      }
+      beep(1000,.16,0.75); startItem(); return;
+    }
+    set('#flowNum',remain); ring(remain/total);
+  }
+  timer={iv:setInterval(tick,1000),mode:'flow'};
+}
+function flowHTML(title,count,color){
+  const C=2*Math.PI*100;
+  return `
+  <div class="timerbox">
+    <div class="tt">${title} · <span id="flowStep">0 / ${count}</span></div>
+    <div class="timerring">
+      <svg width="220" height="220" viewBox="0 0 220 220">
+        <circle cx="110" cy="110" r="100" fill="none" stroke="var(--line)" stroke-width="12"/>
+        <circle id="flowRing" cx="110" cy="110" r="100" fill="none" stroke="${color}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="0"/>
+      </svg>
+      <div class="inner"><div class="tnum go" id="flowNum">5</div><div class="tt" id="flowName" style="max-width:150px">Get Ready</div></div>
+    </div>
+    <div class="tiny muted" id="flowCue" style="text-align:center;margin-top:8px;min-height:32px">Follow along — it moves you through each stretch automatically.</div>
+    <div class="btnrow" style="margin-top:14px">
+      <button class="btn ghost" onclick="stopTimer();closeSheet()">Stop</button>
+      <button class="btn green" onclick="stopTimer();closeSheet()">Done</button>
     </div>
   </div>`;
 }
@@ -2201,6 +2315,8 @@ function openRecovery(){
       <div style="padding:8px 0;border-top:1px solid var(--line)"><b>Cat–Cow</b><div class="tiny muted" style="margin-top:3px">On all fours, slowly alternate arching and rounding the spine. 30s.</div></div>
       <div style="padding:8px 0;border-top:1px solid var(--line)"><b>Deep breathing</b><div class="tiny muted" style="margin-top:3px">Lie back and take 6 slow belly breaths to wind down.</div></div>
     </div>
+    <button class="btn green" onclick="closeSheet();runCooldown()">▶ Guided mobility flow</button>
+    <div style="height:8px"></div>
     <button class="btn ${rested?'green':'primary'}" onclick="logRestDay()">${rested?'✓ Rest day logged':'Log today as a rest day'}</button>
     <div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
 }
