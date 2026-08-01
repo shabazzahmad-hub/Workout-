@@ -3352,16 +3352,26 @@ function renderGuide(){
     </ul>
     <div class="note warn" style="margin-bottom:0">Honest note: spot-reduction isn't real. This forges the strongest possible midsection; combined with the nutrition basics above, that's how you get substantial visible results in 6 weeks — and more over 12.</div>
   </div>`;
-  // exercise library
-  h+=`<div class="section-label">Exercise library</div><div class="card"><div style="padding:4px 0">`;
+  // exercise library — every exercise, grouped by region
+  h+=`<div class="section-label">Exercise library · ${Object.keys(EX).length}</div>`;
+  const REGION_GROUPS=[['anterior','Abs & anterior core'],['oblique','Obliques & waist'],['lower','Lower abs'],['stability','Stability & posterior'],['dynamic','Dynamic finishers'],['chest','Chest'],['back','Back'],['shoulders','Shoulders'],['arms','Arms'],['legs','Legs'],['strength','Compound strength'],['cardio','Cardio / HIIT']];
   const seen={};
-  ['anterior','oblique','lower','stability','dynamic'].forEach(region=>{
-    const list=Object.keys(EX).filter(k=>EX[k].region===region);
-    list.forEach(k=>{if(seen[k])return;seen[k]=1;const ex=EX[k];
-      h+=`<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer" onclick="openExerciseInfo('${k}')"><span><b>${ex.name}</b> <span class="tag ${ex.region}" style="margin-left:4px">${ex.region}</span></span><span class="muted">ⓘ</span></button>`;
+  REGION_GROUPS.forEach(([region,label])=>{
+    const list=Object.keys(EX).filter(k=>EX[k].region===region&&!seen[k]);
+    if(!list.length)return;
+    h+=`<div class="tiny muted" style="font-weight:800;letter-spacing:.6px;text-transform:uppercase;margin:16px 3px 6px">${label} · ${list.length}</div><div class="card"><div style="padding:2px 0">`;
+    list.forEach(k=>{seen[k]=1;const ex=EX[k];
+      h+=`<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer;align-items:center;gap:10px" onclick="openExerciseInfo('${k}')"><span style="display:flex;align-items:center;gap:10px;min-width:0">${ex.img?`<img src="${ex.img}" alt="" loading="lazy" onerror="this.style.display='none'" style="width:34px;height:34px;border-radius:9px;object-fit:cover;flex:0 0 auto;background:var(--card2)">`:''}<span style="min-width:0"><b>${ex.name}</b> <span class="tag ${ex.region}" style="margin-left:2px">${ex.region}</span></span></span><span class="muted">ⓘ</span></button>`;
     });
+    h+=`</div></div>`;
   });
-  h+=`</div></div>`;
+  // any exercise whose region isn't in the groups above (safety net)
+  const leftovers=Object.keys(EX).filter(k=>!seen[k]);
+  if(leftovers.length){
+    h+=`<div class="tiny muted" style="font-weight:800;text-transform:uppercase;margin:16px 3px 6px">More · ${leftovers.length}</div><div class="card"><div style="padding:2px 0">`;
+    leftovers.forEach(k=>{const ex=EX[k];h+=`<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer" onclick="openExerciseInfo('${k}')"><span><b>${ex.name}</b> <span class="tag ${ex.region}" style="margin-left:4px">${ex.region}</span></span><span class="muted">ⓘ</span></button>`;});
+    h+=`</div></div>`;
+  }
   // settings / data
   h+=`<div class="section-label" id="settingsAnchor" style="scroll-margin-top:70px">Settings</div><div class="card pad">
     <div style="padding:2px 0 8px"><div class="tiny muted" style="margin-bottom:8px">Accent theme</div>${themeChipsHTML()}</div>
