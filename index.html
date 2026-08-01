@@ -83,6 +83,24 @@
   .tag.dynamic{background:rgba(255,59,107,.18);color:#ff8aa8}
   .tag.strength{background:rgba(34,197,94,.16);color:#6ee7a0}
   .tag.cardio{background:rgba(245,196,81,.18);color:#f5d98a}
+  /* Photo hero (Today session card) */
+  .herophoto{position:relative;border-radius:24px;overflow:hidden;border:1px solid var(--line);background:var(--card);box-shadow:var(--shadow-lg);margin-bottom:16px}
+  .herophoto>img{width:100%;height:272px;object-fit:cover;display:block;filter:saturate(.9) contrast(1.03)}
+  .herophoto .hp-grad{position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,9,11,.12) 0%,rgba(8,9,11,.5) 45%,rgba(8,9,11,.97) 100%)}
+  .herophoto .hp-badges{position:absolute;top:14px;left:14px;display:flex;gap:6px;z-index:2}
+  .hp-badge{font-size:10px;font-weight:800;letter-spacing:1px;padding:5px 9px;border-radius:8px;line-height:1}
+  .hp-badge.today{background:var(--fire);color:var(--accInk)}
+  .hp-badge.count{background:rgba(0,0,0,.5);backdrop-filter:blur(6px);border:1px solid var(--line2);color:#fff}
+  .herophoto .hp-body{position:absolute;left:0;right:0;bottom:0;padding:18px;z-index:2}
+  .hp-focus{font-size:11px;font-weight:800;letter-spacing:1.4px;color:var(--fire-l);text-transform:uppercase}
+  .herophoto h1{font-size:26px;font-weight:900;margin:5px 0 2px;letter-spacing:.3px;color:#fff}
+  .hp-stats{display:flex;gap:20px;margin-top:12px}
+  .hp-stat{font-size:11px;color:rgba(255,255,255,.82);font-weight:700}
+  .hp-stat b{display:block;font-size:19px;font-weight:900;color:#fff}
+  /* Theme picker chips */
+  .themerow{display:flex;gap:6px;padding:5px;background:var(--card2);border:1px solid var(--line);border-radius:999px;width:fit-content}
+  .themechip{padding:8px 16px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:.4px;color:var(--muted);transition:.18s}
+  .themechip.on{background:var(--fire);color:var(--accInk)}
   /* Hero / session banner */
   .hero{border-radius:18px;padding:18px;color:#fff;position:relative;overflow:hidden;box-shadow:var(--shadow-lg);margin-bottom:16px}
   .hero.anterior{background:linear-gradient(135deg,#b83a10,#ff7e3a)}
@@ -589,7 +607,7 @@ const DEFAULT_STATE=()=>({
   photos:[],                // progress photos: {id,date,pose} (image bytes live in IndexedDB)
   achievements:{},          // unlocked milestone badges: {id:date}
   restDays:{},              // logged rest days: {date:true}
-  settings:{sound:true,vibrate:true,voice:true,voiceName:'',voicePitch:0.6,voiceRate:0.98,repTempo:3,hype:true,coach:'auto',beat:true,beatVol:0.55},
+  settings:{sound:true,vibrate:true,voice:true,voiceName:'',voicePitch:0.6,voiceRate:0.98,repTempo:3,hype:true,coach:'auto',beat:true,beatVol:0.55,theme:'ember'},
 });
 let STATE=DEFAULT_STATE();
 
@@ -929,6 +947,15 @@ function restartProgram(){
   STATE.baseline=null;STATE.reassess={};STATE.progressPtr=0;STATE.logs={};STATE.weekFeel={};save();go('today');
 }
 
+/* Pick a strong representative photo for the session's hero card. */
+const HERO_IMG={anterior:'ex-plank.jpg',oblique:'ex-sideplank.jpg',fullbody:'ex-pushup.jpg',metcon:'ex-burpee.jpg'};
+function heroImageFor(sess){
+  const byKey=HERO_IMG[sess.session.key];
+  if(byKey)return byKey;
+  const first=sess.main&&sess.main[0];
+  const ex=first&&EX[first.exId];
+  return (ex&&ex.img)||'icon-512.png';
+}
 function todayWorkoutHTML(){
   const sess=buildSession(STATE.progressPtr);
   const log=STATE.logs[STATE.progressPtr]||{ex:{}};
@@ -938,10 +965,22 @@ function todayWorkoutHTML(){
   const totalCount=sess.main.length+1;
   const pct=Math.round(doneCount/totalCount*100);
   const R=sess.session.key;
+  const heroImg=heroImageFor(sess);
+  const sessInCycle=(sess.week-1)*SESSIONS_PER_WEEK+sess.pos.dayInWeek+1;
+  const sessTotal=WEEKS_PER_CYCLE*SESSIONS_PER_WEEK;
   let h=`
-  <div class="hero ${R}">
-    <div class="htop"><div><div class="hlbl">Week ${wkNum} · Session ${sess.pos.dayInWeek+1}</div><h1>${sess.session.name}</h1><div class="hmeta">${sess.session.focus}</div></div><div class="hicon">${sess.session.icon}</div></div>
-    <div class="hstats"><div class="hstat"><b>${totalCount}</b>exercises</div><div class="hstat"><b>~${vol.minutes}</b>minutes</div><div class="hstat"><b>${pct}%</b>done</div></div>
+  <div class="herophoto ${R}">
+    <img src="${heroImg}" alt="" onerror="this.style.display='none'">
+    <div class="hp-grad"></div>
+    <div class="hp-badges">
+      <span class="hp-badge today">TODAY</span>
+      <span class="hp-badge count">SESSION ${sessInCycle} / ${sessTotal}</span>
+    </div>
+    <div class="hp-body">
+      <div class="hp-focus">Week ${wkNum} · ${sess.session.focus}</div>
+      <h1>${sess.session.name}</h1>
+      <div class="hp-stats"><div class="hp-stat"><b>${totalCount}</b>exercises</div><div class="hp-stat"><b>~${vol.minutes}</b>minutes</div><div class="hp-stat"><b>${pct}%</b>done</div></div>
+    </div>
   </div>
   <div class="btnrow" style="margin:2px 0 6px"><button class="btn ghost" id="coachBrief">🎙️ Coach brief</button><button class="btn ghost" onclick="openQuickList()">⚡ Quick</button><button class="btn ghost" onclick="openRecovery()">😌 Recover</button></div>`;
   h+=homeSummaryHTML();
@@ -1304,6 +1343,23 @@ function setRepTempo(v){STATE.settings.repTempo=Math.max(1,Math.min(6,parseFloat
 function setBeatVol(v){STATE.settings.beatVol=Math.max(0.05,Math.min(1,parseFloat(v)||0.55));save();if(BEAT&&BEAT.on){BEAT.vol=beatVolPref()*0.9;const g=BEAT.master.gain,t=BEAT.ac.currentTime;g.cancelScheduledValues(t);g.setValueAtTime(Math.max(0.0002,g.value),t);g.exponentialRampToValueAtTime(Math.max(0.0002,BEAT.vol),t+0.2);}}
 let _beatPrevT=null;
 function beatPreview(){beatStart();if(_beatPrevT)clearTimeout(_beatPrevT);_beatPrevT=setTimeout(()=>{if(!$('#scrim').classList.contains('open'))beatStop();},5000);}
+
+/* ===== ACCENT THEMES ===== */
+const THEMES={
+  ember:{acc:'#ff5a1f',acc2:'#ffa23d',accInk:'#140600',soft:'rgba(255,90,31,.13)',name:'Ember'},
+  ion:{acc:'#c9f24e',acc2:'#e6ff9b',accInk:'#0f1400',soft:'rgba(201,242,78,.12)',name:'Ion'},
+  ice:{acc:'#4fa8ff',acc2:'#8fd4ff',accInk:'#00101f',soft:'rgba(79,168,255,.13)',name:'Ice'},
+};
+function applyTheme(k){
+  const t=THEMES[k]||THEMES.ember;const r=document.documentElement.style;
+  r.setProperty('--fire',t.acc);r.setProperty('--fire-d',t.acc);r.setProperty('--fire-l',t.acc2);
+  r.setProperty('--accInk',t.accInk);r.setProperty('--accSoft',t.soft);
+}
+function setTheme(k){if(!THEMES[k])return;STATE.settings.theme=k;save();applyTheme(k);haptic(8);if(TAB==='guide')renderGuide();}
+function themeChipsHTML(){
+  const cur=STATE.settings.theme||'ember';
+  return `<div class="themerow">${Object.keys(THEMES).map(k=>`<button class="themechip ${k===cur?'on':''}" style="${k===cur?'background:'+THEMES[k].acc+';color:'+THEMES[k].accInk:''}" onclick="setTheme('${k}')">${THEMES[k].name}</button>`).join('')}</div>`;
+}
 
 /* ============================ MOTIVATOR / DRILL SERGEANT ============================
    Spoken hype DURING the work — different military / ultra personas that push you
@@ -2504,6 +2560,8 @@ function renderGuide(){
   h+=`</div></div>`;
   // settings / data
   h+=`<div class="section-label">Settings</div><div class="card pad">
+    <div style="padding:2px 0 8px"><div class="tiny muted" style="margin-bottom:8px">Accent theme</div>${themeChipsHTML()}</div>
+    <div class="divider" style="margin:8px 0"></div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Sound cues</span><button class="chip ${STATE.settings.sound?'on':''}" onclick="toggleSetting('sound')">${STATE.settings.sound?'On':'Off'}</button></div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Vibration</span><button class="chip ${STATE.settings.vibrate?'on':''}" onclick="toggleSetting('vibrate')">${STATE.settings.vibrate?'On':'Off'}</button></div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Workout reminders</span><button class="chip ${STATE.settings.reminderOn?'on':''}" onclick="toggleReminders()">${STATE.settings.reminderOn?'On':'Off'}</button></div>
@@ -2612,6 +2670,10 @@ async function boot(){
   if(!STATE.settings.coach)STATE.settings.coach='auto';          // default persona
   // one-time: switch existing installs to the new rotating Auto coach
   if(!STATE.settings.autoIntro){STATE.settings.coach='auto';STATE.settings.autoIntro=true;}
+  if(STATE.settings.beat===undefined)STATE.settings.beat=true;
+  if(typeof STATE.settings.beatVol!=='number')STATE.settings.beatVol=0.55;
+  if(!THEMES[STATE.settings.theme])STATE.settings.theme='ember';
+  applyTheme(STATE.settings.theme);   // accent theme
   // request durable storage so an installed PWA keeps data
   try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();}catch(e){}
   initBackButton();   // make the phone's Back button navigate instead of closing the app
