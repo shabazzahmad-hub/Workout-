@@ -877,7 +877,8 @@ const DEFAULT_STATE=()=>({
   photos:[],                // progress photos: {id,date,pose} (image bytes live in IndexedDB)
   achievements:{},          // unlocked milestone badges: {id:date}
   restDays:{},              // logged rest days: {date:true}
-  settings:{sound:true,vibrate:true,voice:true,voiceName:'',voicePitch:0.6,voiceRate:0.98,repTempo:3,hype:true,coach:'auto',beat:true,beatVol:0.55,theme:'ember'},
+  settings:{sound:true,vibrate:true,voice:true,voiceName:'',voicePitch:0.6,voiceRate:0.98,repTempo:3,hype:true,coach:'auto',beat:true,beatVol:0.55,theme:'ember',
+    neuralOn:false,azureKey:'',azureRegion:'eastus'},   // premium online neural voices (Azure) — off until a key is entered
 });
 let STATE=DEFAULT_STATE();
 
@@ -1978,6 +1979,98 @@ function coachVoiceFor(persona){
   if(STATE.settings.voiceName){const v=COACH_VOICES.find(x=>x.name===STATE.settings.voiceName);if(v)return v;}
   return COACH_VOICE_MAP[persona.id]||pickVoiceByHint(persona.hint)||COACH_V;
 }
+
+/* ===== PREMIUM NEURAL VOICES (Azure Cognitive Services · online) =====
+   When enabled with a key, each coach speaks in a genuinely neural Azure voice —
+   hand-picked per persona, with intensity styles (shouting / angry / excited) on
+   the hardcore coaches. Fully optional: the key lives ONLY on this device
+   (localStorage), never in the repo. Offline, missing key, or any API error →
+   automatic fall-back to the built-in device voices, so nothing ever breaks. */
+const NEURAL_STYLE_VOICES=new Set(['en-US-GuyNeural','en-US-DavisNeural','en-US-TonyNeural','en-US-JasonNeural','en-US-JennyNeural','en-US-AriaNeural','en-US-SaraNeural','en-US-NancyNeural','en-US-JaneNeural']);
+const NEURAL_DEFAULT={v:'en-US-GuyNeural'};
+// Per-coach Azure voice + optional express-as style/prosody. Styles are only
+// applied to voices that support them (NEURAL_STYLE_VOICES); others use prosody.
+const COACH_NEURAL={
+  drill:{v:'en-US-GuyNeural',style:'shouting',deg:'2',rate:'+8%'},
+  marine:{v:'en-US-DavisNeural',style:'shouting',deg:'2',rate:'+10%'},
+  navy:{v:'en-GB-ThomasNeural',rate:'-4%',pitch:'-1st'},
+  swat:{v:'en-US-TonyNeural',style:'angry',deg:'1.8'},
+  ultra:{v:'en-US-JasonNeural',style:'excited',deg:'2',rate:'+6%'},
+  hype:{v:'en-US-AndrewNeural',rate:'+8%'},
+  boxing:{v:'en-AU-WilliamNeural',rate:'+10%'},
+  spartan:{v:'en-US-ChristopherNeural',pitch:'-2st',rate:'+2%'},
+  coach:{v:'en-US-RogerNeural',rate:'+4%'},
+  british:{v:'en-GB-AlfieNeural',rate:'+6%'},
+  sensei:{v:'en-GB-OliverNeural',rate:'-10%',pitch:'-1st'},
+  crossfit:{v:'en-US-EricNeural',rate:'+8%'},
+  viking:{v:'en-US-SteffanNeural',pitch:'-2st',rate:'+2%'},
+  mission:{v:'en-US-BrianNeural'},
+  cheer:{v:'en-US-JennyNeural',style:'excited',deg:'2',rate:'+8%'},
+  robot:{v:'en-US-BrianNeural',pitch:'-4st',rate:'-6%'},
+  relentless:{v:'en-US-DavisNeural',style:'angry',deg:'2',pitch:'-2st'},
+  seal:{v:'en-GB-EthanNeural',rate:'+2%'},
+  gunny:{v:'en-US-TonyNeural',style:'shouting',deg:'2',pitch:'-1st'},
+  ranger:{v:'en-AU-DarrenNeural',rate:'+10%'},
+  swattrainer:{v:'en-GB-ElliotNeural',rate:'+2%'},
+  iron:{v:'en-US-JasonNeural',style:'angry',deg:'1.6',pitch:'-2st'},
+  track:{v:'en-AU-KenNeural',rate:'+14%'},
+  kru:{v:'en-US-GuyNeural',style:'excited',deg:'1.4',pitch:'-1st'},
+  wrestle:{v:'en-US-EricNeural',rate:'+4%',pitch:'-1st'},
+  flow:{v:'en-GB-SoniaNeural',rate:'-8%'},
+  responder:{v:'en-AU-NeilNeural',rate:'+2%'},
+  commando:{v:'en-GB-NoahNeural',pitch:'-2st'},
+  gymbro:{v:'en-US-AndrewNeural',rate:'+12%',pitch:'+1st'},
+  strongman:{v:'en-US-ChristopherNeural',pitch:'-3st'},
+  endurance:{v:'en-GB-ThomasNeural',rate:'-2%'},
+};
+function neuralCfgFor(persona){return (persona&&COACH_NEURAL[persona.id])||NEURAL_DEFAULT;}
+function neuralReady(){const s=STATE.settings;return !!(s.neuralOn&&s.azureKey&&s.azureRegion);}
+function neuralAvailable(){return neuralReady()&&(navigator.onLine!==false);}
+const _neuralCache=new Map();          // cacheKey -> object URL (per-session; kills repeat API calls)
+let _neuralAudio=null, _neuralTok=0;
+function _xmlEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));}
+function neuralSSML(text,cfg){
+  const body=_xmlEsc(text);
+  let inner=body;
+  if(cfg.rate||cfg.pitch){inner=`<prosody rate="${cfg.rate||'0%'}" pitch="${cfg.pitch||'0st'}">${inner}</prosody>`;}
+  if(cfg.style&&NEURAL_STYLE_VOICES.has(cfg.v)){inner=`<mstts:express-as style="${cfg.style}" styledegree="${cfg.deg||'1.5'}">${inner}</mstts:express-as>`;}
+  return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US"><voice name="${cfg.v}">${inner}</voice></speak>`;
+}
+function stopSpeech(){
+  try{if('speechSynthesis'in window)speechSynthesis.cancel();}catch(e){}
+  try{if(_neuralAudio){_neuralAudio.onended=null;_neuralAudio.onerror=null;_neuralAudio.pause();_neuralAudio=null;beatDuck(false);}}catch(e){}
+}
+function _neuralPlay(url){
+  const a=new Audio(url);_neuralAudio=a;let ducked=true;beatDuck(true);
+  const release=()=>{if(ducked){ducked=false;beatDuck(false);}};
+  a.onended=release;a.onerror=release;a.onpause=release;
+  a.play().catch(()=>{release();});
+}
+/* Fire-and-forget neural speak. Returns true if it will handle the utterance
+   (so the caller doesn't also device-speak); on async failure it falls back to
+   the device voice itself via onFail. */
+function neuralSpeak(text,persona,onFail){
+  if(!neuralAvailable())return false;
+  const cfg=neuralCfgFor(persona);
+  const key=cfg.v+'|'+(cfg.style||'')+'|'+(cfg.deg||'')+'|'+(cfg.rate||'')+'|'+(cfg.pitch||'')+'|'+text;
+  stopSpeech();
+  const tok=++_neuralTok;
+  const cached=_neuralCache.get(key);
+  if(cached){_neuralPlay(cached);return true;}
+  const s=STATE.settings;
+  const url=`https://${encodeURIComponent(s.azureRegion)}.tts.speech.microsoft.com/cognitiveservices/v1`;
+  fetch(url,{method:'POST',headers:{
+      'Ocp-Apim-Subscription-Key':s.azureKey,
+      'Content-Type':'application/ssml+xml',
+      'X-Microsoft-OutputFormat':'audio-24khz-48kbitrate-mono-mp3'},
+      body:neuralSSML(text,cfg)})
+    .then(r=>{if(!r.ok)throw new Error('tts '+r.status);return r.blob();})
+    .then(blob=>{const u=URL.createObjectURL(blob);_neuralCache.set(key,u);
+      if(tok===_neuralTok)_neuralPlay(u);})   // only play if not superseded
+    .catch(err=>{try{console.warn('neural TTS failed, using device voice',err&&err.message);}catch(e){}
+      if(tok===_neuralTok&&typeof onFail==='function')onFail();});
+  return true;
+}
 function resolveVoice(){
   if(!COACH_VOICES.length)return null;
   const want=STATE.settings.voiceName;
@@ -2002,15 +2095,24 @@ function primeVoice(){
 function coachSpeak(text,force){
   try{
     if(!force&&STATE.settings.voice===false)return false;
+    const p=(typeof currentPersona==='function')?currentPersona():null;
+    // Premium neural voice first (online + key); it falls back to device on failure.
+    if(neuralSpeak(text,p,()=>_deviceSpeak(text,p)))return true;
+    return _deviceSpeak(text,p);
+  }catch(e){return false;}
+}
+/* Built-in device (Web Speech) coaching — the offline / no-key path. */
+function _deviceSpeak(text,p){
+  try{
     if(!('speechSynthesis'in window))return false;
     if(!COACH_VOICES.length)loadCoachVoices();
+    if(p===undefined)p=(typeof currentPersona==='function')?currentPersona():null;
     const synth=speechSynthesis;synth.cancel();
     const u=new SpeechSynthesisUtterance(String(text||''));
     u.lang='en-US';u.volume=1;
     // Speak in the active coach's own voice + pitch/rate so briefs, cues and the
     // countdown match whoever is coaching — unless the user has forced a voice or
     // manually tuned pitch/rate in Settings.
-    const p=(typeof currentPersona==='function')?currentPersona():null;
     const manualV=!!STATE.settings.voiceName, manualP=(typeof STATE.settings.voicePitch==='number'),
           manualR=(typeof STATE.settings.voiceRate==='number');
     u.rate=manualR?STATE.settings.voiceRate:((p&&p.rate)||0.98);
@@ -2058,6 +2160,24 @@ function voiceOptionsHTML(){
     list.map(v=>`<option value="${_ve(v.name)}"${v.name===sel?' selected':''}>${_ve(v.name)} · ${_ve(v.lang)}</option>`).join('');
 }
 function setCoachVoice(name){STATE.settings.voiceName=name||'';COACH_V=resolveVoice();save();testVoice();}
+/* ===== Premium neural-voice settings ===== */
+function toggleNeural(){
+  STATE.settings.neuralOn=!STATE.settings.neuralOn;save();
+  if(TAB==='guide')renderGuide();
+  if(STATE.settings.neuralOn){
+    if(!STATE.settings.azureKey){toast&&toast('Add your Azure key below to use premium voices');}
+    else testNeural();
+  }
+}
+function setAzureKey(v){STATE.settings.azureKey=(v||'').trim();_neuralCache.clear();save();}
+function setAzureRegion(v){STATE.settings.azureRegion=(v||'').trim().toLowerCase()||'eastus';_neuralCache.clear();save();}
+function testNeural(){
+  try{primeVoice();}catch(e){}
+  const p=(typeof currentPersona==='function')?currentPersona():null;
+  if(!neuralReady()){toast&&toast('Turn on premium voices and enter your Azure key + region');return;}
+  if(navigator.onLine===false){toast&&toast('You are offline — premium voices need a connection');return;}
+  neuralSpeak("Premium A I voice online. Let's get to work.",p,()=>{toast&&toast('Neural voice failed — check your key/region. Using device voice.');_deviceSpeak("Premium voice failed. Using device voice.",p);});
+}
 function setCoachPitch(v){STATE.settings.voicePitch=Math.max(0,Math.min(2,parseFloat(v)||0.6));save();}
 function setCoachRate(v){STATE.settings.voiceRate=Math.max(.5,Math.min(1.5,parseFloat(v)||0.98));save();}
 function setRepTempo(v){STATE.settings.repTempo=Math.max(1,Math.min(6,parseFloat(v)||3));save();}
@@ -2318,6 +2438,13 @@ function pickVoiceByHint(hints){
   return COACH_V||pool[0];
 }
 function hypeSpeak(text,persona){
+  try{
+    // Premium neural voice first (online + key); falls back to device on failure.
+    if(neuralSpeak(text,persona,()=>_hypeDeviceSpeak(text,persona)))return true;
+    return _hypeDeviceSpeak(text,persona);
+  }catch(e){return false;}
+}
+function _hypeDeviceSpeak(text,persona){
   try{
     if(!('speechSynthesis'in window))return false;
     if(!COACH_VOICES.length)loadCoachVoices();
@@ -3577,6 +3704,17 @@ function renderGuide(){
       <select onchange="setCoachVoice(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px">${voiceOptionsHTML()}</select>
       <div class="tiny muted" style="margin-top:5px">Pick a specific voice, or leave on Auto to use the deepest one your phone has.</div>
     </div>
+    <div class="divider" style="margin:10px 0"></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Premium AI voices <span class="tiny muted">· online · Azure neural</span></span><button class="chip ${STATE.settings.neuralOn?'on':''}" onclick="toggleNeural()">${STATE.settings.neuralOn?'On':'Off'}</button></div>
+    ${STATE.settings.neuralOn?`<div style="padding:2px 0 2px">
+      <div class="tiny muted" style="margin-bottom:6px">Genuinely neural voices — each coach gets a hand-picked Azure voice, with shouting/intense delivery on the hardcore coaches. Your key stays only on this phone; offline it automatically falls back to the device voices.</div>
+      <label class="tiny muted" style="display:block;margin-bottom:3px">Azure Speech key</label>
+      <input type="password" autocomplete="off" placeholder="paste your key" value="${_ve(STATE.settings.azureKey||'')}" onchange="setAzureKey(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px;margin-bottom:8px">
+      <label class="tiny muted" style="display:block;margin-bottom:3px">Region</label>
+      <input type="text" autocomplete="off" placeholder="eastus" value="${_ve(STATE.settings.azureRegion||'eastus')}" onchange="setAzureRegion(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px">
+      <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">Free tier: ~500k characters/month.</span><button class="chip" onclick="testNeural()">▶ Test neural</button></div>
+      <div class="tiny muted" style="margin-top:6px;opacity:.8">Get a free key: portal.azure.com → create a <b>Speech</b> resource (F0 free tier) → Keys and Endpoint → copy Key 1 + Location/Region.</div>
+    </div>`:''}
     <div style="padding:8px 0 2px">
       <div class="row" style="justify-content:space-between"><span class="tiny muted">Depth <span style="opacity:.7">(lower = deeper)</span></span><span class="tiny muted" id="pvLbl">${(typeof STATE.settings.voicePitch==='number'?STATE.settings.voicePitch:0.6).toFixed(2)}</span></div>
       <input type="range" min="0.3" max="1.2" step="0.05" value="${typeof STATE.settings.voicePitch==='number'?STATE.settings.voicePitch:0.6}" oninput="$('#pvLbl').textContent=(+this.value).toFixed(2)" onchange="setCoachPitch(this.value);sampleVoice()" style="width:100%">
