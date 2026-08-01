@@ -1936,12 +1936,47 @@ function levelBlurb(l){
    Uses the Web Speech API with a low pitch (0.6) and a male/deep voice when the
    device exposes one. Automatic callouts obey the Voice-coach setting; manual
    buttons (brief / test / hear cues) always speak. */
-let COACH_VOICES=[], COACH_V=null, _voicePrimed=false;
+let COACH_VOICES=[], COACH_V=null, _voicePrimed=false, COACH_VOICE_MAP={};
 function loadCoachVoices(){
   try{COACH_VOICES=('speechSynthesis'in window)?speechSynthesis.getVoices():[];}catch(e){COACH_VOICES=[];}
   COACH_V=resolveVoice();
+  assignCoachVoices();
   // if the Guide/Settings tab is open, refresh so the picker fills in once the OS loads voices
   try{if($('#v-guide')&&$('#v-guide').classList.contains('active'))renderGuide();}catch(e){}
+}
+/* English voices available on this device (fallback: all voices). */
+function englishVoicePool(){
+  if(!COACH_VOICES||!COACH_VOICES.length)return [];
+  const en=COACH_VOICES.filter(v=>/^en/i.test(v.lang));
+  return en.length?en:COACH_VOICES.slice();
+}
+const _FEMALE_RE=/female|samantha|victoria|karen|moira|tessa|fiona|serena|zira|susan|allison|ava|zoe|catherine|amelie|anna|nicky|kate|hazel|linda|heera|veena|salli|joanna|kendra|kimberly|aria|jenny|michelle|sonia|clara|isha|neerja|libby|maisie/i;
+/* Give every coach the most distinct device voice we can. Coaches usually
+   outnumber the phone's installed voices, so we round-robin through the pool
+   (gender-matched where the persona hints at it) — combined with each coach's
+   own pitch/rate that yields a genuinely different-sounding voice per coach. */
+function assignCoachVoices(){
+  COACH_VOICE_MAP={};
+  const pool=englishVoicePool();
+  if(!pool.length)return;
+  const female=pool.filter(v=>v.name&&_FEMALE_RE.test(v.name));
+  const male=pool.filter(v=>!(v.name&&_FEMALE_RE.test(v.name)));
+  let mi=0,fi=0;
+  for(const c of COACHES){
+    const wantsF=(c.hint||[]).some(h=>/female|samantha|victoria|karen|zira|salli|joanna|aria|jenny/i.test(h));
+    let v;
+    if(wantsF&&female.length){v=female[fi%female.length];fi++;}
+    else if(!wantsF&&male.length){v=male[mi%male.length];mi++;}
+    else {v=pool[(mi+fi)%pool.length];(wantsF?fi++:mi++);}
+    COACH_VOICE_MAP[c.id]=v;
+  }
+}
+/* The assigned device voice for a coach — respects a manual override, then the
+   per-coach assignment, then hint-matching, then the global default. */
+function coachVoiceFor(persona){
+  if(!persona)return COACH_V;
+  if(STATE.settings.voiceName){const v=COACH_VOICES.find(x=>x.name===STATE.settings.voiceName);if(v)return v;}
+  return COACH_VOICE_MAP[persona.id]||pickVoiceByHint(persona.hint)||COACH_V;
 }
 function resolveVoice(){
   if(!COACH_VOICES.length)return null;
@@ -1972,9 +2007,16 @@ function coachSpeak(text,force){
     const synth=speechSynthesis;synth.cancel();
     const u=new SpeechSynthesisUtterance(String(text||''));
     u.lang='en-US';u.volume=1;
-    u.rate=(typeof STATE.settings.voiceRate==='number')?STATE.settings.voiceRate:0.98;
-    u.pitch=(typeof STATE.settings.voicePitch==='number')?STATE.settings.voicePitch:0.6; // lower = deeper
-    if(COACH_V)u.voice=COACH_V;
+    // Speak in the active coach's own voice + pitch/rate so briefs, cues and the
+    // countdown match whoever is coaching — unless the user has forced a voice or
+    // manually tuned pitch/rate in Settings.
+    const p=(typeof currentPersona==='function')?currentPersona():null;
+    const manualV=!!STATE.settings.voiceName, manualP=(typeof STATE.settings.voicePitch==='number'),
+          manualR=(typeof STATE.settings.voiceRate==='number');
+    u.rate=manualR?STATE.settings.voiceRate:((p&&p.rate)||0.98);
+    u.pitch=manualP?STATE.settings.voicePitch:((p&&p.pitch!=null)?p.pitch:0.6); // lower = deeper
+    const v=(p&&!manualV)?coachVoiceFor(p):COACH_V;
+    if(v)u.voice=v;
     duckFor(u);synth.speak(u);return true;
   }catch(e){return false;}
 }
@@ -2283,7 +2325,7 @@ function hypeSpeak(text,persona){
     const u=new SpeechSynthesisUtterance(String(text||''));
     u.lang='en-US';u.volume=1;
     u.rate=persona.rate||1;u.pitch=(persona.pitch!=null)?persona.pitch:0.5;
-    const v=pickVoiceByHint(persona.hint);if(v)u.voice=v;
+    const v=coachVoiceFor(persona);if(v)u.voice=v;
     duckFor(u);synth.speak(u);return true;
   }catch(e){return false;}
 }
@@ -2323,33 +2365,45 @@ function beepGo(){beep(1320,.30,0.9,'square');setTimeout(()=>beep(1760,.28,0.9,'
 let BEAT=null;
 function audioCtx(){const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return null;const ac=beep._ac||(beep._ac=new AC());if(ac.state==='suspended'){try{ac.resume();}catch(e){}}return ac;}
 function beatVolPref(){return (typeof STATE.settings.beatVol==='number')?STATE.settings.beatVol:0.55;}
+/* Warm 4-chord lo-fi loop (Am – F – C – G): [pad tones], sub-bass root. */
+const LOFI_CHORDS=[
+  {pad:[220.00,261.63,329.63], bass:55.00},   // Am
+  {pad:[174.61,220.00,261.63], bass:43.65},   // F
+  {pad:[261.63,329.63,392.00], bass:65.41},   // C
+  {pad:[196.00,246.94,293.66], bass:49.00},   // G
+];
 function beatStart(){
   if(STATE.settings.beat===false)return;
   if(BEAT&&BEAT.on)return;
   const ac=audioCtx();if(!ac)return;
-  const master=ac.createGain();master.connect(ac.destination);
-  const lp=ac.createBiquadFilter();lp.type='lowpass';lp.frequency.value=8500;lp.Q.value=0.6;lp.connect(master);
+  const master=ac.createGain();
+  const warm=ac.createBiquadFilter();warm.type='lowpass';warm.frequency.value=5200;warm.Q.value=0.5; // muffled, lo-fi
+  warm.connect(master);master.connect(ac.destination);
   const vol=beatVolPref()*0.9;
   master.gain.setValueAtTime(0.0001,ac.currentTime);
-  master.gain.exponentialRampToValueAtTime(Math.max(0.0002,vol),ac.currentTime+0.6); // fade in
-  BEAT={on:true,ac,master,out:lp,vol,duck:0,step:0,next:0,tempo:86,tid:null,_noise:null};
-  BEAT.stepDur=(60/BEAT.tempo)/4;                       // 16th note
-  // 16-step patterns (boom-bap feel)
-  BEAT.kick =[1,0,0,0, 0,0,1,0, 0,0,1,0, 0,0,0,0];
-  BEAT.snare=[0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,1];
+  master.gain.exponentialRampToValueAtTime(Math.max(0.0002,vol),ac.currentTime+0.8); // fade in
+  BEAT={on:true,ac,master,out:warm,vol,duck:0,step:0,bar:0,next:0,tempo:78,tid:null,_noise:null,crackle:null};
+  BEAT.stepDur=(60/BEAT.tempo)/4;              // 16th note
+  BEAT.swing=BEAT.stepDur*0.32;                // swing the off-beats — that lazy lo-fi feel
+  BEAT.kick =[1,0,0,0, 0,0,1,0, 0,0,0,1, 0,0,0,0];
+  BEAT.snare=[0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0];
   BEAT.hat  =[1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,1];
-  // A-minor sub bassline (Hz): A1, C2, G1 anchors
-  BEAT.bass =[55.00,0,0,0, 0,0,55.00,0, 65.41,0,0,0, 49.00,0,0,0];
-  BEAT.next=ac.currentTime+0.08;
-  BEAT.tid=setInterval(()=>{ if(!BEAT)return; const la=BEAT.ac.currentTime+0.12;
-    while(BEAT.next<la){ beatStep(BEAT.step,BEAT.next); BEAT.next+=BEAT.stepDur; BEAT.step=(BEAT.step+1)%16; } },25);
+  BEAT.crackle=beatCrackle(ac,warm);           // soft vinyl crackle bed
+  BEAT.next=ac.currentTime+0.12;
+  BEAT.tid=setInterval(()=>{ if(!BEAT)return; const la=BEAT.ac.currentTime+0.15;
+    while(BEAT.next<la){
+      if(BEAT.step===0){ beatChord(BEAT.bar%LOFI_CHORDS.length, BEAT.next); BEAT.bar++; }
+      beatStep(BEAT.step,BEAT.next);
+      BEAT.next+=BEAT.stepDur; BEAT.step=(BEAT.step+1)%16;
+    } },25);
 }
 function beatStop(){
   if(!BEAT)return;const b=BEAT;BEAT=null;
-  try{clearInterval(b.tid);const t=b.ac.currentTime;b.master.gain.cancelScheduledValues(t);
+  try{clearInterval(b.tid);if(b.crackle){try{b.crackle.stop();}catch(e){}}
+    const t=b.ac.currentTime;b.master.gain.cancelScheduledValues(t);
     b.master.gain.setValueAtTime(Math.max(0.0002,b.master.gain.value),t);
-    b.master.gain.exponentialRampToValueAtTime(0.0001,t+0.4);
-    setTimeout(()=>{try{b.master.disconnect();b.out.disconnect();}catch(e){}},600);}catch(e){}
+    b.master.gain.exponentialRampToValueAtTime(0.0001,t+0.5);
+    setTimeout(()=>{try{b.master.disconnect();b.out.disconnect();}catch(e){}},700);}catch(e){}
 }
 function beatDuck(on){
   if(!BEAT||!BEAT.on)return;const g=BEAT.master.gain,t=BEAT.ac.currentTime;
@@ -2357,13 +2411,41 @@ function beatDuck(on){
   else{BEAT.duck=Math.max(0,BEAT.duck-1);if(BEAT.duck===0){g.cancelScheduledValues(t);g.setValueAtTime(Math.max(0.0002,g.value),t);g.exponentialRampToValueAtTime(Math.max(0.0002,BEAT.vol),t+0.4);}}
 }
 function beatNoise(ac){if(BEAT&&BEAT._noise)return BEAT._noise;const b=ac.createBuffer(1,Math.floor(ac.sampleRate*0.2),ac.sampleRate);const d=b.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;if(BEAT)BEAT._noise=b;return b;}
+function beatCrackle(ac,out){
+  const len=Math.floor(ac.sampleRate*3);const buf=ac.createBuffer(1,len,ac.sampleRate);const d=buf.getChannelData(0);
+  for(let i=0;i<len;i++){ d[i]=(Math.random()<0.0011)?(Math.random()*2-1)*0.9:0; }  // sparse pops/hiss
+  const src=ac.createBufferSource();src.buffer=buf;src.loop=true;
+  const hp=ac.createBiquadFilter();hp.type='highpass';hp.frequency.value=1800;
+  const g=ac.createGain();g.gain.value=0.09;
+  src.connect(hp);hp.connect(g);g.connect(out);try{src.start();}catch(e){}
+  return src;
+}
+function beatChord(i,t){
+  if(!BEAT)return;const ac=BEAT.ac,out=BEAT.out;const c=LOFI_CHORDS[i];const bar=BEAT.stepDur*16;
+  c.pad.forEach((f,k)=>{
+    const o=ac.createOscillator(),g=ac.createGain(),lp=ac.createBiquadFilter();
+    o.type='triangle';o.frequency.value=f;o.detune.value=(k-1)*4;   // slight detune = warmth
+    lp.type='lowpass';lp.frequency.value=1200;
+    g.gain.setValueAtTime(0.0001,t);g.gain.linearRampToValueAtTime(0.05,t+0.14);
+    g.gain.setValueAtTime(0.05,t+bar*0.7);g.gain.exponentialRampToValueAtTime(0.0008,t+bar*0.98);
+    o.connect(lp);lp.connect(g);g.connect(out);o.start(t);o.stop(t+bar);
+  });
+  [0,bar*0.5].forEach(off=>{
+    const o=ac.createOscillator(),g=ac.createGain(),lp=ac.createBiquadFilter();
+    o.type='sine';o.frequency.value=c.bass;lp.type='lowpass';lp.frequency.value=200;
+    const s=t+off,dur=bar*0.5;
+    g.gain.setValueAtTime(0.0001,s);g.gain.linearRampToValueAtTime(0.34,s+0.03);
+    g.gain.setValueAtTime(0.34,s+dur*0.6);g.gain.exponentialRampToValueAtTime(0.001,s+dur);
+    o.connect(lp);lp.connect(g);g.connect(out);o.start(s);o.stop(s+dur+0.02);
+  });
+}
 function beatStep(s,t){
   if(!BEAT)return;const ac=BEAT.ac,out=BEAT.out;
-  if(BEAT.kick[s]){const o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.setValueAtTime(150,t);o.frequency.exponentialRampToValueAtTime(48,t+0.12);g.gain.setValueAtTime(1.0,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.3);o.connect(g);g.connect(out);o.start(t);o.stop(t+0.32);}
-  if(BEAT.snare[s]){const src=ac.createBufferSource();src.buffer=beatNoise(ac);const bp=ac.createBiquadFilter();bp.type='bandpass';bp.frequency.value=1900;const g=ac.createGain();g.gain.setValueAtTime(0.6,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.18);src.connect(bp);bp.connect(g);g.connect(out);src.start(t);src.stop(t+0.2);
-    const o=ac.createOscillator(),og=ac.createGain();o.type='triangle';o.frequency.value=190;og.gain.setValueAtTime(0.28,t);og.gain.exponentialRampToValueAtTime(0.001,t+0.1);o.connect(og);og.connect(out);o.start(t);o.stop(t+0.12);}
-  if(BEAT.hat[s]){const src=ac.createBufferSource();src.buffer=beatNoise(ac);const hp=ac.createBiquadFilter();hp.type='highpass';hp.frequency.value=7500;const g=ac.createGain();const v=(s%4===2)?0.22:0.34;g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.05);src.connect(hp);hp.connect(g);g.connect(out);src.start(t);src.stop(t+0.06);}
-  if(BEAT.bass[s]){const dur=BEAT.stepDur*3.6;const o=ac.createOscillator(),g=ac.createGain(),lp=ac.createBiquadFilter();o.type='triangle';o.frequency.value=BEAT.bass[s];lp.type='lowpass';lp.frequency.value=420;g.gain.setValueAtTime(0.0001,t);g.gain.linearRampToValueAtTime(0.5,t+0.02);g.gain.setValueAtTime(0.5,t+dur*0.6);g.gain.exponentialRampToValueAtTime(0.001,t+dur);o.connect(lp);lp.connect(g);g.connect(out);o.start(t);o.stop(t+dur+0.02);}
+  const swT=t+((s%2===1)?BEAT.swing:0);
+  if(BEAT.kick[s]){const o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.setValueAtTime(120,t);o.frequency.exponentialRampToValueAtTime(45,t+0.14);g.gain.setValueAtTime(0.9,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.34);o.connect(g);g.connect(out);o.start(t);o.stop(t+0.36);}
+  if(BEAT.snare[s]){const src=ac.createBufferSource();src.buffer=beatNoise(ac);const bp=ac.createBiquadFilter();bp.type='bandpass';bp.frequency.value=1500;bp.Q.value=0.8;const g=ac.createGain();g.gain.setValueAtTime(0.4,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.16);src.connect(bp);bp.connect(g);g.connect(out);src.start(t);src.stop(t+0.18);
+    const o=ac.createOscillator(),og=ac.createGain();o.type='triangle';o.frequency.value=180;og.gain.setValueAtTime(0.18,t);og.gain.exponentialRampToValueAtTime(0.001,t+0.09);o.connect(og);og.connect(out);o.start(t);o.stop(t+0.1);}
+  if(BEAT.hat[s]){const src=ac.createBufferSource();src.buffer=beatNoise(ac);const hp=ac.createBiquadFilter();hp.type='highpass';hp.frequency.value=8000;const g=ac.createGain();const v=(s%4===0)?0.16:0.10;g.gain.setValueAtTime(v,swT);g.gain.exponentialRampToValueAtTime(0.001,swT+0.045);src.connect(hp);hp.connect(g);g.connect(out);src.start(swT);src.stop(swT+0.05);}
 }
 function openExerciseTimer(exId){
   const sess=buildSession(STATE.progressPtr);const m=[...sess.main,sess.finisher].find(x=>x.exId===exId);
