@@ -14,7 +14,7 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="manifest" href="manifest.webmanifest">
-<meta name="description" content="CoreForge — a complete 12-week home program for a strong core, flat stomach and no love handles: abs & core training plus compound bodyweight strength and cardio HIIT for fat loss. Baseline assessment, week-to-week progression, self-saving. Offline-ready, installs to your home screen.">
+<meta name="description" content="CoreForge — a home training program that starts with 12 weeks of core, abs and HIIT for a flat stomach and no love handles, then expands into a full year of full-body strength (chest, back, shoulders, arms, legs) plus HIIT. Baseline assessment, week-to-week progression, self-saving. Offline-ready, installs to your home screen.">
 <title>CoreForge — 6-Week Abs & Core</title>
 <style>
   :root{
@@ -85,6 +85,11 @@
   .tag.dynamic{background:rgba(255,59,107,.18);color:#ff8aa8}
   .tag.strength{background:rgba(34,197,94,.16);color:#6ee7a0}
   .tag.cardio{background:rgba(245,196,81,.18);color:#f5d98a}
+  .tag.chest{background:rgba(224,69,15,.18);color:#ff9d78}
+  .tag.shoulders{background:rgba(224,161,31,.18);color:#f5d98a}
+  .tag.back{background:rgba(18,181,201,.18);color:#5fe0ef}
+  .tag.arms{background:rgba(124,92,255,.18);color:#b3a1ff}
+  .tag.legs{background:rgba(34,197,94,.16);color:#6ee7a0}
   /* Photo hero (Today session card) */
   .herophoto{position:relative;border-radius:24px;overflow:hidden;border:1px solid var(--line);background:var(--card);box-shadow:var(--shadow-lg);margin-bottom:16px}
   .herophoto>img{width:100%;height:272px;object-fit:cover;display:block;filter:saturate(.9) contrast(1.03)}
@@ -565,6 +570,198 @@ const EX = {
     steps:['From standing, squat and plant your hands on the floor.','Jump your feet back to a plank (add a push-up to make it harder).','Jump the feet back in toward your hands.','Explode up into a jump, reach tall, and land soft. Repeat.'],
     cues:['Brace the core in the plank','Land softly from the jump','Pace it so form holds'],
     mistakes:['Sagging hips in the plank','Sloppy, uncontrolled landings']},
+
+  /* ==== CHEST (push) — week 13+ ==== */
+  inclinepushup:{name:'Incline Push-Up',region:'chest',unit:'reps',img:null,anchor:null,hardness:1,base:14,rest:55,
+    why:'Hands elevated reduces the load so you can build clean pressing strength and a braced trunk before full push-ups.',
+    steps:['Hands on a sturdy bench or your dip tower bar, slightly wider than shoulders.','Body in one straight line, core and glutes braced.','Lower your chest to the edge with elbows about 45°.','Press away powerfully and repeat.'],
+    cues:['Straight line head to heels','Elbows tucked ~45°, not flared','Full lockout at the top'],
+    mistakes:['Hips sagging or piking','Half reps']},
+  declinepushup:{name:'Decline Push-Up',region:'chest',unit:'reps',img:null,anchor:null,hardness:1,base:10,rest:60,
+    why:'Feet elevated shifts more load to the upper chest and shoulders — a big step up from the standard push-up.',
+    steps:['Feet up on a bench, hands on the floor slightly wider than shoulders.','Brace hard so the hips stay in line.','Lower the chest under control.','Press back to a full lockout.'],
+    cues:['Brace so hips don\'t sag','Control the descent','Lock out each rep'],
+    mistakes:['Lower back arching','Head dropping']},
+  diamondpushup:{name:'Diamond Push-Up',region:'chest',unit:'reps',img:null,anchor:null,hardness:1,base:9,rest:60,
+    why:'Hands together hammers the triceps and inner chest — serious pressing strength.',
+    steps:['Form a diamond with thumbs and index fingers under your chest.','Straight body, core tight.','Lower until the chest nears your hands, elbows brushing the ribs.','Press up to full extension.'],
+    cues:['Elbows stay close to the body','Straight line throughout','Full range'],
+    mistakes:['Elbows flaring wide','Sagging hips']},
+  archerpushup:{name:'Archer Push-Up',region:'chest',unit:'reps',img:null,anchor:null,hardness:1,base:6,rest:70,
+    why:'Shifts most of your bodyweight onto one arm — a powerful bridge toward the one-arm push-up. Count each side.',
+    steps:['Set up wide, hands well outside shoulder width.','Bend one arm to lower toward that hand while the other arm stays straight.','Keep the straight arm extended out to the side.','Press back to center and alternate sides.'],
+    cues:['Straight line, hips level','Sink toward the working arm','Keep the far arm long'],
+    mistakes:['Twisting the hips','Bending the "straight" arm too early']},
+  spidermanpushup:{name:'Spider-Man Push-Up',region:'chest',unit:'reps',img:null,anchor:null,hardness:1,base:8,rest:60,
+    why:'Adds a knee-to-elbow drive on every rep, blasting the obliques and hip flexors while you press — chest and core at once.',
+    steps:['Start in a strong push-up position.','As you lower, drive one knee out toward the same-side elbow.','Press back up as the foot returns.','Alternate the driving knee each rep.'],
+    cues:['Knee to elbow at the bottom','Hips stay square and low','Controlled press'],
+    mistakes:['Hips twisting up','Rushing the knee drive']},
+  superpushup:{name:'Superman Push-Up',region:'chest',unit:'reps',img:null,anchor:null,hardness:1,base:5,rest:75,
+    why:'An explosive plyometric push-up where hands and feet leave the floor — elite pressing power and full-body control.',
+    steps:['Start in a push-up position, brace everything.','Lower, then press up explosively so both hands and feet leave the floor.','Reach the arms forward briefly like Superman if you can.','Land soft into the next controlled rep.'],
+    cues:['Explode from a braced plank','Land soft, absorb with the arms','Only progress when full push-ups are easy'],
+    mistakes:['Attempting before you\'re strong enough','Landing stiff']},
+
+  /* ==== SHOULDERS ==== */
+  pikepushup:{name:'Pike Push-Up',region:'shoulders',unit:'reps',img:null,anchor:null,hardness:1,base:8,rest:55,
+    why:'Hips high turns the push-up into a vertical press — the bodyweight builder for strong, capped shoulders.',
+    steps:['From a push-up, walk feet in and lift the hips into an inverted-V.','Head points toward the floor between your hands.','Bend the elbows to lower the crown of your head toward the floor.','Press back up to the inverted-V.'],
+    cues:['Hips high, weight over the hands','Lower the top of the head, not the face','Elbows track forward'],
+    mistakes:['Hips dropping toward a plank','Short range']},
+  elevatedpike:{name:'Elevated Pike Push-Up',region:'shoulders',unit:'reps',img:null,anchor:null,hardness:1,base:6,rest:65,
+    why:'Feet on a bench makes the pike press steeper and harder — the last stop before handstand push-ups.',
+    steps:['Feet on a bench, hips stacked high over the shoulders.','Head points down between the hands.','Lower under control toward the floor.','Press back to full extension.'],
+    cues:['Stack hips over hands','Slow, controlled descent','Full lockout'],
+    mistakes:['Losing the vertical stack','Bouncing out of the bottom']},
+  wallhandstand:{name:'Wall Handstand Hold',region:'shoulders',unit:'time',img:null,anchor:null,hardness:1,base:20,rest:60,
+    why:'Builds the overhead strength, balance and shoulder stability needed for handstand push-ups — and a serious core brace.',
+    steps:['Kick up to a handstand with your belly or back toward a wall.','Stack hands, shoulders and hips in a straight line.','Brace the core and squeeze everything tight.','Hold for time, breathing steadily.'],
+    cues:['Push tall through the shoulders','Ribs down, glutes squeezed','Look between the hands'],
+    mistakes:['Banana back (over-arching)','Holding the breath']},
+  hspushup:{name:'Wall Handstand Push-Up',region:'shoulders',unit:'reps',img:null,anchor:null,hardness:1,base:4,rest:75,
+    why:'The king of bodyweight shoulder strength — a full vertical press of your own bodyweight.',
+    steps:['Kick into a wall handstand, hands slightly wider than shoulders.','Brace hard and lower the head toward the floor under control.','Stop just short, then press back to full extension.','Keep the body tight and straight throughout.'],
+    cues:['Controlled negative','Full lockout at the top','Stay tight — no arching'],
+    mistakes:['Crashing to the floor','Half reps']},
+
+  /* ==== BACK (pull — uses your pull-up/dip tower) ==== */
+  deadhang:{name:'Dead Hang',region:'back',unit:'time',img:null,anchor:null,hardness:1,base:25,rest:50,
+    why:'Builds the grip, forearm and shoulder-girdle strength that every pulling move is built on — and decompresses the spine.',
+    steps:['Grip the pull-up bar slightly wider than shoulders, palms forward.','Hang with arms straight, shoulders active (not fully shrugged up).','Brace the core, legs still.','Hold for time with steady breathing.'],
+    cues:['Shoulders slightly down and back','Full but active hang','Relax the jaw, breathe'],
+    mistakes:['Totally passive, shrugged shoulders','Swinging']},
+  scappull:{name:'Scapular Pull-Up',region:'back',unit:'reps',img:null,anchor:null,hardness:1,base:8,rest:50,
+    why:'Teaches you to pull with the back, not just the arms — the missing link that unlocks your first pull-up.',
+    steps:['Hang from the bar with straight arms.','Without bending the elbows, pull the shoulder blades down and together.','Your body rises a few inches from shoulder action alone.','Lower back to the active hang and repeat.'],
+    cues:['Arms stay straight','Drive the shoulder blades down','Small, controlled range'],
+    mistakes:['Bending the elbows','Using momentum']},
+  negpullup:{name:'Negative Pull-Up',region:'back',unit:'reps',img:null,anchor:null,hardness:1,base:5,rest:65,
+    why:'Lowering slowly from the top builds the exact strength for full pull-ups faster than anything else.',
+    steps:['Jump or step up so your chin is over the bar.','Brace the core and squeeze the back.','Lower yourself as slowly as possible (aim 3–5 seconds).','Reset at the bottom and repeat.'],
+    cues:['Fight gravity the whole way','Shoulders down, chest up','Control to a full straight-arm hang'],
+    mistakes:['Dropping fast','Cutting the range short']},
+  pullup:{name:'Pull-Up',region:'back',unit:'reps',img:null,anchor:null,hardness:1,base:6,rest:75,
+    why:'The best upper-body pull there is — builds a wide, strong back and powerful arms while your core stays braced.',
+    steps:['Hang from the bar, palms forward, slightly wider than shoulders.','Brace the core and pull the elbows down and back.','Bring the chin over the bar.','Lower under control to a full straight-arm hang.'],
+    cues:['Lead with the chest','Pull elbows to the floor','Full range top and bottom'],
+    mistakes:['Kipping/swinging','Half reps']},
+  chinup:{name:'Chin-Up',region:'back',unit:'reps',img:null,anchor:null,hardness:1,base:7,rest:75,
+    why:'Palms-up shifts more work to the biceps and lower lats — a great back-and-arm builder.',
+    steps:['Hang with palms facing you, hands shoulder-width.','Brace and pull your chin over the bar.','Squeeze the biceps and back at the top.','Lower slowly to a full hang.'],
+    cues:['Chest to the bar','Squeeze at the top','Slow negative'],
+    mistakes:['Swinging up','Not fully extending at the bottom']},
+  widepullup:{name:'Wide Pull-Up',region:'back',unit:'reps',img:null,anchor:null,hardness:1,base:5,rest:80,
+    why:'A wider grip emphasises the outer lats for that broad, V-taper back.',
+    steps:['Grip the bar noticeably wider than shoulders.','Brace and pull the chest toward the bar.','Drive the elbows down and out.','Lower with full control.'],
+    cues:['Chest up to the bar','Elbows down and wide','Controlled descent'],
+    mistakes:['Short range','Losing the core brace']},
+  invertedrow:{name:'Inverted Row',region:'back',unit:'reps',img:null,anchor:null,hardness:1,base:12,rest:50,
+    why:'A horizontal pull that builds the mid-back and rear shoulders — balances all the pressing and improves posture.',
+    steps:['Set a bar at hip height; hang underneath, body straight, heels on the floor.','Brace the core and glutes.','Pull the chest to the bar, squeezing the shoulder blades.','Lower under control to straight arms.'],
+    cues:['Body stays a straight plank','Squeeze the blades at the top','Full arm extension at the bottom'],
+    mistakes:['Hips sagging','Short pulls']},
+  invertedrowelev:{name:'Feet-Elevated Row',region:'back',unit:'reps',img:null,anchor:null,hardness:1,base:8,rest:60,
+    why:'Elevating the feet loads the row more heavily for continued back strength gains.',
+    steps:['Set the bar at hip height, feet up on a bench.','Body in a straight line, core braced.','Pull the chest to the bar.','Lower slowly to a full hang.'],
+    cues:['Straight, braced body','Blades together at the top','Control the negative'],
+    mistakes:['Hips dropping','Jerky reps']},
+
+  /* ==== ARMS (triceps — dips on your tower) ==== */
+  benchdip:{name:'Bench Dip',region:'arms',unit:'reps',img:null,anchor:null,hardness:1,base:12,rest:45,
+    why:'A beginner-friendly triceps builder using a bench or chair before progressing to full dips.',
+    steps:['Hands on the edge of a bench behind you, legs out front.','Lower by bending the elbows straight back.','Keep the hips close to the bench.','Press back up to a full lockout.'],
+    cues:['Elbows point back, not out','Chest tall','Full lockout'],
+    mistakes:['Shrugging into the shoulders','Tiny range']},
+  closepushup:{name:'Close-Grip Push-Up',region:'arms',unit:'reps',img:null,anchor:null,hardness:1,base:10,rest:50,
+    why:'Hands close and elbows tucked make the triceps the star of the push-up.',
+    steps:['Hands under the chest, roughly shoulder-width or closer.','Brace the body straight.','Lower with elbows tracking back along the ribs.','Press to a full lockout.'],
+    cues:['Elbows brush the ribs','Straight body line','Full extension'],
+    mistakes:['Elbows flaring out','Sagging hips']},
+  dips:{name:'Parallel-Bar Dips',region:'arms',unit:'reps',img:null,anchor:null,hardness:1,base:8,rest:65,
+    why:'The best bodyweight builder for triceps and lower chest — your dip tower makes these a staple.',
+    steps:['Grip the dip bars and press to a strong support hold, arms locked.','Brace the core, lean slightly forward.','Lower until the shoulders are near elbow height.','Press back up to a full lockout.'],
+    cues:['Slight forward lean','Elbows back, not flared','Lock out the top'],
+    mistakes:['Going too deep too soon','Shrugging the shoulders up']},
+
+  /* ==== LEGS ==== */
+  splitsquat:{name:'Split Squat',region:'legs',unit:'reps',img:null,anchor:null,hardness:1,base:12,rest:50,
+    why:'A staggered stance loads one leg at a time for real single-leg strength and balance. Count each side.',
+    steps:['Stand in a long split stance, torso upright.','Lower straight down until the back knee nearly touches.','Keep the front knee over the ankle.','Drive through the front heel to stand. Finish one side, then switch.'],
+    cues:['Straight up and down','Front knee tracks the toes','Torso tall'],
+    mistakes:['Front knee caving in','Leaning forward']},
+  bulgarian:{name:'Bulgarian Split Squat',region:'legs',unit:'reps',img:null,anchor:null,hardness:1,base:10,rest:60,
+    why:'Back foot elevated makes it one of the toughest, most effective single-leg builders for quads and glutes. Count each side.',
+    steps:['Place the top of your back foot on a bench behind you.','Front foot far enough forward, torso upright.','Lower until the front thigh is about parallel.','Drive through the front heel to stand. Switch sides.'],
+    cues:['Weight in the front heel','Upright chest','Control the descent'],
+    mistakes:['Front foot too close','Bouncing at the bottom']},
+  walkinglunge:{name:'Walking Lunge',region:'legs',unit:'reps',img:null,anchor:null,hardness:1,base:14,rest:55,
+    why:'Loads each leg through a big range while the core stabilises — great for legs, glutes and conditioning. Count each step.',
+    steps:['Step forward into a lunge, both knees ~90°.','Keep the torso tall and core braced.','Drive through the front heel to step the back foot through.','Continue alternating, walking forward.'],
+    cues:['Long, controlled steps','Front knee over ankle','Chest up'],
+    mistakes:['Short choppy steps','Front knee collapsing in']},
+  boxpistol:{name:'Box Pistol Squat',region:'legs',unit:'reps',img:null,anchor:null,hardness:1,base:8,rest:65,
+    why:'A single-leg squat to a box — builds toward the full pistol with control and balance. Count each side.',
+    steps:['Stand on one leg in front of a bench or box, other leg extended forward.','Sit back and down to lightly touch the box.','Keep the heel down and chest up.','Drive up through the heel to stand. Switch sides.'],
+    cues:['Reach the free leg forward for balance','Heel stays planted','Control down, power up'],
+    mistakes:['Crashing onto the box','Heel lifting']},
+  pistol:{name:'Pistol Squat',region:'legs',unit:'reps',img:null,anchor:null,hardness:1,base:5,rest:75,
+    why:'A full one-leg squat — elite single-leg strength, mobility and balance. Count each side.',
+    steps:['Stand on one leg, the other extended straight in front.','Sit down slowly all the way to the bottom, heel flat.','Keep the chest up and free leg off the floor.','Drive back up to standing. Switch sides.'],
+    cues:['Slow, controlled descent','Weight through the heel','Free leg stays lifted'],
+    mistakes:['Losing balance backward','Rounding hard at the bottom']},
+  singlebridge:{name:'Single-Leg Glute Bridge',region:'legs',unit:'reps',img:null,anchor:null,hardness:1,base:12,rest:45,
+    why:'One leg doubles the glute and hamstring demand while the core resists rotation. Count each side.',
+    steps:['Lie on your back, one knee bent, the other leg extended.','Press through the planted heel and squeeze the glute.','Lift the hips level and straight.','Lower with control. Finish one side, then switch.'],
+    cues:['Hips stay level','Squeeze the glute at the top','Ribs down'],
+    mistakes:['Hips tilting to one side','Arching the low back']},
+  hipthrust:{name:'Hip Thrust',region:'legs',unit:'reps',img:null,anchor:null,hardness:1,base:14,rest:55,
+    why:'Shoulders elevated gives the glutes a huge range under load — the top move for building and strengthening the glutes.',
+    steps:['Upper back against a bench, feet flat, knees bent.','Drive through the heels and squeeze the glutes.','Lift the hips to a flat tabletop, shins vertical.','Lower under control and repeat.'],
+    cues:['Chin tucked, ribs down','Full glute squeeze at the top','Shins vertical at the top'],
+    mistakes:['Over-arching the back','Pushing through the toes']},
+  nordic:{name:'Nordic Curl',region:'legs',unit:'reps',img:null,anchor:null,hardness:1,base:5,rest:70,
+    why:'One of the hardest hamstring builders — lowering your whole body with the hamstrings bulletproofs the knees.',
+    steps:['Kneel with your ankles anchored (under a couch or held).','Body straight from knees to head, core braced.','Lower forward as slowly as you can, resisting with the hamstrings.','Catch with the hands and push back, or pull yourself up. Repeat.'],
+    cues:['Stay straight — no bending at the hips','Resist every inch','Use hands only as needed'],
+    mistakes:['Bending at the waist','Dropping without resisting']},
+  calfraise:{name:'Calf Raise',region:'legs',unit:'reps',img:null,anchor:null,hardness:1,base:18,rest:35,
+    why:'Builds strong, resilient calves and ankles that support every jump, run and squat.',
+    steps:['Stand tall, feet hip-width (use a step for more range).','Press up onto the balls of your feet as high as possible.','Pause and squeeze at the top.','Lower slowly under control.'],
+    cues:['Full height at the top','Slow, controlled descent','Stay balanced and tall'],
+    mistakes:['Bouncing','Cutting the range short']},
+  singlecalf:{name:'Single-Leg Calf Raise',region:'legs',unit:'reps',img:null,anchor:null,hardness:1,base:12,rest:40,
+    why:'One leg doubles the load for real calf strength and balance. Count each side.',
+    steps:['Balance on one foot (hold a wall for support).','Press up as high as possible onto the ball of the foot.','Squeeze at the top.','Lower slowly. Switch sides.'],
+    cues:['Full range each rep','Control the lowering','Light touch on the wall'],
+    mistakes:['Bouncing','Using the wall to lift you']},
+  jumpsquat:{name:'Jump Squat',region:'legs',unit:'reps',img:null,anchor:null,hardness:1,base:12,rest:45,
+    why:'Explosive power for the legs plus a big calorie burn — turns squat strength into athletic power.',
+    steps:['Start in a quarter-to-half squat.','Explode straight up as high as you can.','Reach tall through the whole body.','Land soft, absorb into the next squat. Repeat.'],
+    cues:['Explode up, land soft','Absorb with bent knees','Chest tall'],
+    mistakes:['Stiff, hard landings','Knees caving on landing']},
+  splitjump:{name:'Split-Squat Jump',region:'legs',unit:'reps',img:null,anchor:null,hardness:1,base:10,rest:50,
+    why:'Explosive single-leg power and conditioning — switch legs in mid-air each rep. Count each landing.',
+    steps:['Start in a lunge position, both knees bent.','Explode straight up and switch legs in the air.','Land softly in the opposite lunge.','Absorb and immediately jump again.'],
+    cues:['Land soft and balanced','Torso stays tall','Quick, controlled switches'],
+    mistakes:['Crashing the landing','Front knee caving']},
+  broadjump:{name:'Broad Jump',region:'legs',unit:'reps',img:null,anchor:null,hardness:1,base:8,rest:55,
+    why:'Maximal horizontal power from the hips and legs — pure athleticism and a strong posterior chain.',
+    steps:['Stand tall, hinge slightly and swing the arms back.','Explode forward and up, driving through the hips.','Reach for distance, then land soft with bent knees.','Reset and repeat with control.'],
+    cues:['Big arm swing','Drive through the hips','Stick a soft landing'],
+    mistakes:['Landing stiff-legged','Rushing without a reset']},
+
+  /* ==== HIIT additions ==== */
+  tuckjump:{name:'Tuck Jump',region:'cardio',unit:'time',img:null,anchor:null,hardness:0.8,base:25,rest:35,
+    why:'Explosive jumps driving the knees high — huge calorie burn and hip-flexor/core power.',
+    steps:['Stand tall, brace the core.','Jump up and drive both knees toward the chest.','Land soft with bent knees.','Immediately rebound into the next jump for the time.'],
+    cues:['Knees to chest at the peak','Land soft and quiet','Stay tall on landing'],
+    mistakes:['Stiff landings','Leaning forward to reach the knees']},
+  burpeetuck:{name:'Tuck-Jump Burpee',region:'cardio',unit:'time',img:null,anchor:null,hardness:0.6,base:22,rest:40,
+    why:'A burpee finished with an explosive tuck jump — the ultimate full-body conditioning and core burner.',
+    steps:['Squat, hands down, jump the feet back to a plank (add a push-up).','Jump the feet back in.','Explode into a tuck jump, knees to chest.','Land soft and flow into the next rep.'],
+    cues:['Strong plank, no sag','Knees high on the jump','Pace so form holds'],
+    mistakes:['Sloppy plank','Landing hard and stiff']},
 };
 
 /* ============================ SESSION TEMPLATES ============================
@@ -585,7 +782,20 @@ const LADDERS = {
   cardioAL:   ['jumpingjack','highknees','skater'],
   cardioBL:   ['buttkick','squatthrust','burpee'],
   cardioFinL: ['jumpingjack','highknees','squatthrust','burpee'],
+  // ==== Phase 2 (week 13+) full-body split ladders ====
+  chestL:     ['inclinepushup','kneepushup','pushup','declinepushup','diamondpushup','archerpushup','spidermanpushup','superpushup'],
+  shoulderL:  ['pikepushup','elevatedpike','wallhandstand','hspushup'],
+  pullL:      ['deadhang','scappull','negpullup','pullup','chinup','widepullup'],
+  rowL:       ['superman','invertedrow','invertedrowelev'],
+  tricepL:    ['benchdip','closepushup','dips'],
+  bicepL:     ['invertedrow','chinup','widepullup'],
+  squatL:     ['squat','reverselunge','splitsquat','bulgarian','walkinglunge','boxpistol','pistol'],
+  hingeL:     ['glutebridge','singlebridge','hipthrust','nordic'],
+  calfL:      ['calfraise','singlecalf'],
+  legPowerL:  ['jumpsquat','splitjump','broadjump'],
+  hiitFinL:   ['jumpingjack','tuckjump','burpee','burpeetuck'],
 };
+// Phase 1 (weeks 1–12) — unchanged core/abs/HIIT program.
 const SESSIONS = [
   {key:'anterior', name:'Core Crusher', icon:'🔥', focus:'Abs, deep core & anti-extension',
    slots:['plankL','hollowL','lowerL','dynL'], finisher:'cardioFinL'},
@@ -595,6 +805,17 @@ const SESSIONS = [
    slots:['sideL','rotL','dynL','plankL'], finisher:'cardioFinL'},
   {key:'metcon', name:'Metabolic HIIT', icon:'⚡', focus:'Cardio circuit for fat loss + core',
    slots:['cardioAL','cardioBL','sideL','lowerL'], finisher:'finisherL'},
+];
+// Phase 2 (week 13 onward) — full-body split; core trained every session.
+const PHASE2_SESSIONS = [
+  {key:'push', name:'Push Day', icon:'💥', focus:'Chest, shoulders & triceps + core',
+   slots:['chestL','shoulderL','tricepL','lowerL'], finisher:'cardioFinL'},
+  {key:'pull', name:'Pull Day', icon:'🎯', focus:'Back, biceps & grip + core',
+   slots:['pullL','rowL','bicepL','plankL'], finisher:'cardioBL'},
+  {key:'legs', name:'Leg Day', icon:'🦵', focus:'Quads, hamstrings, glutes & calves + core',
+   slots:['squatL','hingeL','calfL','dynL'], finisher:'legPowerL'},
+  {key:'metcon', name:'Metabolic HIIT', icon:'⚡', focus:'Full-body conditioning + core',
+   slots:['cardioAL','cardioBL','sideL','lowerL'], finisher:'hiitFinL'},
 ];
 const WARMUP = ['march','glutebridge','birddog'];      // ~3 min activation
 const COOLDOWN = [
@@ -682,14 +903,17 @@ async function load(){
 
 /* ============================ PROGRESSION ENGINE ============================ */
 const SESSIONS_PER_WEEK=4, WEEKS_PER_CYCLE=6, SESSIONS_PER_CYCLE=SESSIONS_PER_WEEK*WEEKS_PER_CYCLE; // 24
-const TOTAL_CYCLES=2; // two 6-week blocks = 12 weeks
+const PHASE1_CYCLES=2;   // blocks 1–2 = weeks 1–12: core/abs/HIIT (unchanged)
+const TOTAL_CYCLES=8;    // 8 six-week blocks = 48 weeks (~1 year): Phase 1 then full-body split
+function phaseOf(cycle){return cycle<PHASE1_CYCLES?1:2;}
+function sessionsFor(cycle){return phaseOf(cycle)===1?SESSIONS:PHASE2_SESSIONS;}
 
 function posOf(ptr){
   const cycle=Math.floor(ptr/SESSIONS_PER_CYCLE); // 0..2
   const inCycle=ptr%SESSIONS_PER_CYCLE;
   const week=Math.floor(inCycle/SESSIONS_PER_WEEK)+1; // 1..4
   const dayInWeek=inCycle%SESSIONS_PER_WEEK;          // 0..3
-  return {cycle,inCycle,week,dayInWeek,session:SESSIONS[dayInWeek]};
+  return {cycle,inCycle,week,dayInWeek,phase:phaseOf(cycle),session:sessionsFor(cycle)[dayInWeek]};
 }
 function currentMaxes(cycle){
   // cycle 0 uses baseline; later cycles use reassessment if present, else baseline
@@ -702,12 +926,16 @@ function levelOf(cycle){
 }
 const LEVEL_TIER={Beginner:0,Intermediate:1,Advanced:2};
 const LEVEL_FACTOR={Beginner:0.8,Intermediate:1.0,Advanced:1.2};
+// Phase-2 ladders start fresh at week 13, so they progress off the phase-relative
+// block count (not the absolute cycle) — otherwise they'd open at their hardest rung.
+const PHASE2_LADDERS={chestL:1,shoulderL:1,pullL:1,rowL:1,tricepL:1,bicepL:1,squatL:1,hingeL:1,calfL:1,legPowerL:1};
 
 // choose which rung of a ladder based on cycle+week+level
 function rungIndex(ladder,cycle,week,level){
   const arr=LADDERS[ladder];
+  const eff=PHASE2_LADDERS[ladder]?Math.max(0,cycle-PHASE1_CYCLES):cycle;  // phase-relative for new splits
   let idx=LEVEL_TIER[level]||1;         // base off fitness level
-  idx+=cycle;                            // +1 rung each 6-week block
+  idx+=eff;                              // +1 rung each block (within the ladder's phase)
   if(week>=3) idx+=1;                     // mid-block progression
   if(week>=5) idx+=1;                     // peak-weeks progression (harder variations)
   // don't push optional/equipment rungs unless clearly earned
@@ -733,12 +961,13 @@ function prescribe(exId,pos){
   const level=levelOf(cycle);
   const maxes=currentMaxes(cycle);
   const adj=weekAdjust(cycle,week);
-  const cycleBoost=1+0.07*cycle;
+  const cycleBoost=1+0.05*Math.min(cycle,5);        // capped so ~1 year of blocks doesn't run away
   const adapt=(typeof STATE.adapt==='number')?STATE.adapt:1;  // grows as you improve, eases if too hard
+  const STRENGTH_REGIONS={chest:1,back:1,shoulders:1,arms:1,legs:1,strength:1};
   let sets=3;
   if(ex.region==='dynamic') sets=1;                 // finisher = 1 timed round
   if(ex.region==='stability') sets=2;               // warm-up/accessory
-  if(week>=5 && ex.anchor && ex.region!=='stability') sets=4;   // peak weeks 5-6: extra set
+  if(week>=5 && (ex.anchor||STRENGTH_REGIONS[ex.region]) && ex.region!=='stability') sets=4;   // peak weeks 5-6: extra set
   let target;
   if(ex.anchor && maxes[ex.anchor]){
     const frac=(ex.unit==='time'?TIME_FRAC:REP_FRAC)[week-1];
@@ -877,7 +1106,7 @@ function updatePill(){
   // check re-assessment gate
   const gate=reassessGate();
   if(gate){pm.textContent='Cycle '+(gate+1);ps.textContent='Re-test';return;}
-  if(STATE.progressPtr>=SESSIONS_PER_CYCLE*TOTAL_CYCLES){pm.textContent='Complete';ps.textContent='12 weeks';return;}
+  if(STATE.progressPtr>=SESSIONS_PER_CYCLE*TOTAL_CYCLES){pm.textContent='Complete';ps.textContent='1 year';return;}
   const pos=posOf(STATE.progressPtr);
   pm.textContent='Week '+((pos.cycle*WEEKS_PER_CYCLE)+pos.week);
   ps.textContent='Cycle '+(pos.cycle+1)+' · Wk '+pos.week;
@@ -906,7 +1135,7 @@ function renderToday(){
 
 function onboardHTML(){
   return `
-  <div class="hero anterior"><div class="htop"><div><div class="hlbl">Welcome to</div><h1>CoreForge</h1><div class="hmeta">6 weeks to a stronger core — repeatable to 12</div></div><div class="hicon">🔥</div></div></div>
+  <div class="hero anterior"><div class="htop"><div><div class="hlbl">Welcome to</div><h1>CoreForge</h1><div class="hmeta">Core &amp; abs first — then a full year of full-body training</div></div><div class="hicon">🔥</div></div></div>
   <div class="note fire">A complete program to <b>burn fat and forge a strong core</b> — dedicated abs & oblique work for your belly and love handles, plus <b>compound bodyweight strength and cardio HIIT</b> to torch calories. Day one is a quick <b>baseline assessment</b>; from it the app builds a personalised plan that <b>gets harder every week</b> automatically and saves every rep. Pair it with the <b>Fuel</b> tab to reveal the results.</div>
   <div class="card pad">
     <h3>Let's set you up</h3>
@@ -975,7 +1204,7 @@ function reassessIntroHTML(cycle){
   const prev=cycle===1?STATE.baseline:STATE.reassess[cycle-1];
   return `
   <div class="hero oblique"><div class="htop"><div><div class="hlbl">Cycle ${cycle+1} · re-test</div><h1>Progress Check</h1><div class="hmeta">6 weeks done — let's re-measure</div></div><div class="hicon">📈</div></div></div>
-  <div class="note fire">You've completed a full 6-week block. Re-take the 5 tests so the next block scales from your <b>new, stronger</b> numbers — this is what keeps results coming for the full 12 weeks.</div>
+  <div class="note fire">You've completed a full 6-week block. Re-take the 5 tests so the next block scales from your <b>new, stronger</b> numbers — this is what keeps results coming all year.</div>
   <div class="card pad"><h3>Last result</h3>
     <div class="kv"><span>Core Score</span><b>${prev?prev.score:'-'}/100</b></div>
     <div class="kv"><span>Level</span><b>${prev?prev.level:'-'}</b></div>
@@ -985,23 +1214,23 @@ function reassessIntroHTML(cycle){
 function finishedHTML(){
   const first=STATE.baseline,last=STATE.reassess[TOTAL_CYCLES-1]||STATE.reassess[1]||STATE.baseline;
   return `
-  <div class="hero anterior"><div class="htop"><div><div class="hlbl">12 weeks complete</div><h1>Forged 🏆</h1><div class="hmeta">You finished all ${TOTAL_CYCLES} blocks</div></div><div class="hicon">🏆</div></div></div>
+  <div class="hero anterior"><div class="htop"><div><div class="hlbl">Program complete</div><h1>Forged 🏆</h1><div class="hmeta">You finished all ${TOTAL_CYCLES} blocks</div></div><div class="hicon">🏆</div></div></div>
   <div class="grid2">
     <div class="stat"><div class="n">${first.score}→${last.score}</div><div class="l">Core Score</div></div>
     <div class="stat"><div class="n">${Object.keys(STATE.logs).length}</div><div class="l">Sessions done</div></div>
   </div>
   <div class="note fire" style="margin-top:14px">Outstanding work. Your core is measurably stronger. To keep progressing, run the block again — it will re-baseline and scale from here.</div>
-  <button class="btn primary" onclick="restartProgram()">Start a fresh 12-week block</button>
+  <button class="btn primary" onclick="restartProgram()">Start a fresh block</button>
   <div style="height:10px"></div>
   <button class="btn ghost" onclick="go('progress')">See my full progress</button>`;
 }
 function restartProgram(){
-  if(!confirm('Start a fresh 12-week block? Your history stays saved; you\'ll re-take the baseline.'))return;
+  if(!confirm('Start a fresh block? Your history stays saved; you\'ll re-take the baseline.'))return;
   STATE.baseline=null;STATE.reassess={};STATE.progressPtr=0;STATE.logs={};STATE.weekFeel={};save();go('today');
 }
 
 /* Pick a strong representative photo for the session's hero card. */
-const HERO_IMG={anterior:'ex-plank.jpg',oblique:'ex-sideplank.jpg',fullbody:'ex-pushup.jpg',metcon:'ex-burpee.jpg'};
+const HERO_IMG={anterior:'ex-plank.jpg',oblique:'ex-sideplank.jpg',fullbody:'ex-pushup.jpg',metcon:'ex-burpee.jpg',push:'ex-pushup.jpg',pull:'ex-superman.jpg',legs:'ex-squat.jpg'};
 function heroImageFor(sess){
   const byKey=HERO_IMG[sess.session.key];
   if(byKey)return byKey;
@@ -2249,7 +2478,7 @@ function flowHTML(title,count,color){
 
 /* ============================ EXERCISE INFO ============================ */
 function emblemHTML(ex){
-  const colors={anterior:['#ff9d4d','#ef4318'],oblique:['#9277ff','#5a3fd6'],lower:['#3fd7e8','#0c8fa0'],stability:['#4ade80','#16a34a'],dynamic:['#ff6a92','#e01f52'],strength:['#34d477','#16a34a'],cardio:['#f5d98a','#d8a11f']};
+  const colors={anterior:['#ff9d4d','#ef4318'],oblique:['#9277ff','#5a3fd6'],lower:['#3fd7e8','#0c8fa0'],stability:['#4ade80','#16a34a'],dynamic:['#ff6a92','#e01f52'],strength:['#34d477','#16a34a'],cardio:['#f5d98a','#d8a11f'],chest:['#ff8a5c','#e0450f'],shoulders:['#ffcf6b','#e0a11f'],back:['#5fd0ff','#0c8fa0'],arms:['#b39cff','#5a3fd6'],legs:['#5ce89a','#16a34a']};
   const c=colors[ex.region]||colors.anterior;
   return `<div class="emblem" style="background:linear-gradient(135deg,${c[0]},${c[1]})">
     <svg viewBox="0 0 120 90" width="150" style="opacity:.92"><g fill="rgba(255,255,255,.92)">
@@ -2281,16 +2510,18 @@ function openExerciseInfo(exId){
 /* ============================ PROGRAM VIEW ============================ */
 function renderProgram(){
   const v=$('#v-program');
-  if(!STATE.baseline){v.innerHTML=`<h2 class="vtitle">Program</h2><div class="note info">Complete your <b>baseline assessment</b> on the Today tab to generate your personalised 12-week program.</div>`;return;}
+  if(!STATE.baseline){v.innerHTML=`<h2 class="vtitle">Program</h2><div class="note info">Complete your <b>baseline assessment</b> on the Today tab to generate your personalised year-long program.</div>`;return;}
   const curPos=STATE.progressPtr<SESSIONS_PER_CYCLE*TOTAL_CYCLES?posOf(STATE.progressPtr):null;
   const viewCycle=curPos?curPos.cycle:TOTAL_CYCLES-1;
-  let h=`<h2 class="vtitle">Your Program</h2><div class="vsub">6-week progressive block · repeated ${TOTAL_CYCLES}× for 12 weeks. Every week the load climbs.</div>`;
+  const totalWeeks=WEEKS_PER_CYCLE*TOTAL_CYCLES;
+  const phaseName=phaseOf(viewCycle)===1?'Phase 1 · Core & Abs':'Phase 2 · Full-Body + Core';
+  let h=`<h2 class="vtitle">Your Program</h2><div class="vsub">${totalWeeks}-week journey · weeks 1–12 core &amp; abs, then a full-body split. The load climbs every week.</div>`;
   // quick workouts entry
   h+=`<button class="btn violet" style="margin-bottom:14px" onclick="openQuickList()">⚡ Quick Workouts · 5–10 min</button>`;
   // overall progress
   const totalS=SESSIONS_PER_CYCLE*TOTAL_CYCLES;const done=Math.min(STATE.progressPtr,totalS);
-  h+=`<div class="card pad"><div class="row" style="justify-content:space-between;margin-bottom:8px"><b>12-week progress</b><span class="muted sm">${done}/${totalS} sessions</span></div><div class="pbar"><i style="width:${done/totalS*100}%"></i></div>
-    <div class="tiny muted" style="margin-top:8px">Block ${viewCycle+1} of ${TOTAL_CYCLES} · re-test after each block keeps you progressing</div></div>`;
+  h+=`<div class="card pad"><div class="row" style="justify-content:space-between;margin-bottom:8px"><b>${totalWeeks}-week progress</b><span class="muted sm">${done}/${totalS} sessions</span></div><div class="pbar"><i style="width:${done/totalS*100}%"></i></div>
+    <div class="tiny muted" style="margin-top:8px">Block ${viewCycle+1} of ${TOTAL_CYCLES} · <b style="color:var(--fire-l)">${phaseName}</b> · re-test after each block keeps you progressing</div></div>`;
   // week-by-week for current cycle
   for(let wk=1;wk<=WEEKS_PER_CYCLE;wk++){
     const wkNum=viewCycle*WEEKS_PER_CYCLE+wk;
@@ -2299,7 +2530,7 @@ function renderProgram(){
     h+=`<div class="cal">`;
     for(let d=0;d<SESSIONS_PER_WEEK;d++){
       const ptr=viewCycle*SESSIONS_PER_CYCLE+(wk-1)*SESSIONS_PER_WEEK+d;
-      const s=SESSIONS[d];
+      const s=posOf(ptr).session;
       const isDone=STATE.logs[ptr]&&STATE.logs[ptr].done;
       const isCur=ptr===STATE.progressPtr;
       h+=`<button class="calday ${isDone?'done':''} ${isCur?'cur':''}" onclick="previewSession(${ptr})">
@@ -2887,7 +3118,7 @@ const QUICKIES=[
 ];
 let QUICK_ID=null, quickState={done:{}};
 function openQuickList(){
-  openSheet(`<h3>⚡ Quick Workouts</h3><p class="muted sm" style="margin:2px 0 12px">Short on time? Pick a follow-along session — these don't affect your 12-week program.</p>
+  openSheet(`<h3>⚡ Quick Workouts</h3><p class="muted sm" style="margin:2px 0 12px">Short on time? Pick a follow-along session — these don't affect your main program.</p>
     ${QUICKIES.map(q=>`<button class="kv" style="width:100%;text-align:left;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:8px;cursor:pointer" onclick="closeSheet();openQuick('${q.id}')">
       <span><span style="font-size:18px">${q.icon}</span> <b>${q.name}</b><div class="tiny muted" style="margin-top:2px">${q.focus}</div></span>
       <span class="chip">${q.mins} min</span></button>`).join('')}`);
@@ -2990,7 +3221,7 @@ function homeSummaryHTML(){
   const latest=STATE.scoreHistory[STATE.scoreHistory.length-1];
   const wdTxt=wd>0?('▼'+wd.toFixed(1)):(wd<0?('▲'+Math.abs(wd).toFixed(1)):'0');
   return `<div class="grid3" style="margin-bottom:12px">
-    <div class="stat"><div class="n" style="color:var(--fire-l)">${wk}<span style="font-size:12px;color:var(--muted)"> /12</span></div><div class="l">Week</div></div>
+    <div class="stat"><div class="n" style="color:var(--fire-l)">${wk}<span style="font-size:12px;color:var(--muted)"> /${WEEKS_PER_CYCLE*TOTAL_CYCLES}</span></div><div class="l">Week</div></div>
     <div class="stat"><div class="n" style="color:var(--green)">${streak}</div><div class="l">Streak</div></div>
     <div class="stat"><div class="n" style="color:var(--teal)">${sess}</div><div class="l">Sessions</div></div>
     <div class="stat"><div class="n">${latest?latest.score:'-'}</div><div class="l">Core Score</div></div>
