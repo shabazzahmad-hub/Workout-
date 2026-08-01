@@ -1761,7 +1761,8 @@ function renderProgress(){
   let h=`<h2 class="vtitle">Progress</h2><div class="vsub">Everything auto-saved on this device.</div>`;
   // core score ring + level
   if(STATE.baseline){
-    const latest=STATE.scoreHistory[STATE.scoreHistory.length-1];
+    const latest=STATE.scoreHistory[STATE.scoreHistory.length-1]
+      ||{score:STATE.baseline.score,level:STATE.baseline.level};
     h+=`<div class="card pad center">${ringHTML(latest.score,'Core Score')}<div style="margin-top:10px"><span class="chip on">${latest.level}</span></div>
       ${STATE.scoreHistory.length>1?scoreTrendHTML():'<div class="tiny muted" style="margin-top:10px">Re-test after week 4 to see your climb.</div>'}</div>`;
   }
@@ -2321,25 +2322,60 @@ function openRecovery(){
     <div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
 }
 function logRestDay(){if(!STATE.restDays)STATE.restDays={};STATE.restDays[todayISO()]=true;save();toast('Rest day logged 😌');closeSheet();}
+/* Roll up what was actually logged for a completed session. */
+function sessionStats(p){
+  const l=STATE.logs[p]||{ex:{}};const sess=buildSession(p);
+  const items=[...sess.main,sess.finisher];
+  const tempo=(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3;
+  let exDone=0,setsDone=0,setsRx=0,totalReps=0,totalHold=0,estSec=0;
+  items.forEach(m=>{
+    const e=l.ex&&l.ex[m.exId];const sd=e&&e.sets?e.sets.filter(Boolean).length:0;
+    setsDone+=sd;setsRx+=m.sets;if(e&&e.done)exDone++;
+    if(m.unit==='time'){totalHold+=sd*m.target;estSec+=sd*m.target;}
+    else{totalReps+=sd*m.target;estSec+=sd*m.target*tempo;}
+    estSec+=Math.max(0,sd)*m.rest;                       // rest between sets
+  });
+  estSec+=(sess.warmup.length*35)+(sess.cooldown.length*33); // warm-up + cool-down
+  return {sess,items,exDone,exTotal:items.length,setsDone,setsRx,totalReps,totalHold,estMin:Math.max(1,Math.round(estSec/60))};
+}
 function sessionHistoryHTML(){
   const entries=Object.keys(STATE.logs).map(Number).filter(p=>STATE.logs[p]&&STATE.logs[p].done).sort((a,b)=>b-a);
   if(!entries.length)return '';
-  let h=`<div class="section-label">Session history · ${entries.length}</div><div class="card">`;
+  let h=`<div class="section-label">Workout history · ${entries.length}</div><div class="card">`;
   entries.slice(0,25).forEach(p=>{
     const l=STATE.logs[p];const pos=posOf(p);const s=pos.session;const wk=(pos.cycle*WEEKS_PER_CYCLE)+pos.week;
     const feel=l.feel==='easy'?'😎':(l.feel==='hard'?'🥵':'💪');
+    const st=sessionStats(p);
     h+=`<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer;padding:12px 14px" onclick="openSessionDetail(${p})">
-      <span><b>${s.name}</b><div class="tiny muted">Wk ${wk} · ${l.completedAt||l.date||''}</div></span><span style="font-size:18px">${feel}</span></button>`;
+      <span><b>${s.name}</b><div class="tiny muted">Wk ${wk} · ${l.completedAt||l.date||''} · ${st.exDone}/${st.exTotal} moves · ${st.setsDone} sets · ~${st.estMin} min</div></span><span style="font-size:18px">${feel}</span></button>`;
   });
   h+=`</div>`;return h;
 }
 function openSessionDetail(p){
-  const l=STATE.logs[p];if(!l)return;const sess=buildSession(p);const wk=(sess.cycle*WEEKS_PER_CYCLE)+sess.week;
+  const l=STATE.logs[p];if(!l)return;const st=sessionStats(p);const sess=st.sess;const wk=(sess.cycle*WEEKS_PER_CYCLE)+sess.week;
   const feelTxt=l.feel==='easy'?'😎 Easy':(l.feel==='hard'?'🥵 Brutal':'💪 Challenging');
-  const rows=[...sess.main,sess.finisher].map(m=>{const done=l.ex[m.exId]&&l.ex[m.exId].done;const rx=m.unit==='time'?fmtTime(m.target):m.target+' reps';
-    return `<div class="kv"><span>${done?'✓':'○'} ${EX[m.exId].name}</span><b>${m.sets}×${rx}</b></div>`;}).join('');
-  openSheet(`<h3>${sess.session.name}</h3><div class="tiny muted" style="margin-bottom:8px">Week ${wk} · ${l.completedAt||l.date||''} · felt ${feelTxt}</div>
-    <div class="card pad">${rows}</div><button class="btn ghost" style="margin-top:10px" onclick="closeSheet()">Close</button>`);
+  const prs=STATE.prs||{};
+  const rows=st.items.map(m=>{
+    const e=l.ex&&l.ex[m.exId];const done=e&&e.done;const sd=e&&e.sets?e.sets.filter(Boolean).length:0;
+    const rx=m.unit==='time'?fmtTime(m.target):m.target+' reps';
+    const isPR=prs[m.exId]&&prs[m.exId]===m.target;
+    const setTxt=`<span class="tiny ${done?'':'muted'}">${sd}/${m.sets} sets</span>`;
+    return `<div class="kv" style="align-items:flex-start"><span>${done?'✅':(sd>0?'🟡':'⚪️')} ${EX[m.exId].name}${isPR?' <span class="tag" style="font-size:10px;background:var(--gold);color:#2a1f00">PR</span>':''}<div class="tiny muted">${m.sets}×${rx} · rest ${m.rest}s</div></span>${setTxt}</div>`;
+  }).join('');
+  const volTxt=st.totalReps?`${st.totalReps} reps`:'';
+  const holdTxt=st.totalHold?fmtTime(st.totalHold)+' hold':'';
+  const workTxt=[volTxt,holdTxt].filter(Boolean).join(' · ')||'—';
+  openSheet(`<h3>${sess.session.name}</h3><div class="tiny muted" style="margin-bottom:10px">Week ${wk} · ${l.completedAt||l.date||''} · felt ${feelTxt}</div>
+    <div class="grid3" style="margin-bottom:10px">
+      <div class="stat"><div class="n" style="color:var(--green)">${st.exDone}<span style="font-size:12px;color:var(--muted)">/${st.exTotal}</span></div><div class="l">Moves done</div></div>
+      <div class="stat"><div class="n" style="color:var(--teal)">${st.setsDone}</div><div class="l">Sets</div></div>
+      <div class="stat"><div class="n" style="color:var(--fire-l)">~${st.estMin}</div><div class="l">Minutes</div></div>
+    </div>
+    <div class="tiny muted center" style="margin:-2px 0 10px">Work volume: <b>${workTxt}</b></div>
+    <div class="section-label" style="margin-top:0">Exercises</div>
+    <div class="card pad">${rows}</div>
+    <div class="tiny muted" style="margin-top:8px">✅ all sets · 🟡 partial · ⚪️ not logged</div>
+    <button class="btn ghost" style="margin-top:10px" onclick="closeSheet()">Close</button>`);
 }
 function openCompare(){
   const ps=(STATE.photos||[]).slice().sort((a,b)=>a.id<b.id?-1:1);
