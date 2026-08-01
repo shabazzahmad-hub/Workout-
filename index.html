@@ -132,6 +132,10 @@
   .pl-actions .btn{flex:1}
   .pl-next{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:10px 12px;width:100%;max-width:440px;margin-top:14px;text-align:left}
   .pl-next img{width:52px;height:52px;border-radius:12px;object-fit:cover;flex:0 0 auto;background:var(--card2)}
+  .pl-swap{margin-top:12px;font-size:12px;font-weight:800;color:var(--muted);background:var(--card2);border:1px solid var(--line);border-radius:999px;padding:7px 15px}
+  .pl-swapmenu{display:flex;flex-direction:column;gap:8px;width:100%;max-width:440px;margin-top:10px}
+  .pl-swapmenu button{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-weight:800;color:var(--ink)}
+  .pl-swapmenu button span{font-weight:700;color:var(--muted);font-size:12px}
   /* Hero / session banner */
   .hero{border-radius:18px;padding:18px;color:#fff;position:relative;overflow:hidden;box-shadow:var(--shadow-lg);margin-bottom:16px}
   .hero.anterior{background:linear-gradient(135deg,#b83a10,#ff7e3a)}
@@ -1182,6 +1186,44 @@ function plRingHTML(color){return `
     </svg>
     <div class="pl-center"><div class="pl-num" id="plNum">0</div><div class="pl-sub" id="plSub">GO</div></div>
   </div>`;}
+/* Controlled-tempo eccentric (seconds) for guided reps: slow for strength/core,
+   fast/explosive for cardio & dynamic finishers. */
+function eccOf(ex){if(!ex||ex.unit!=='reps')return 0;return (ex.region==='cardio'||ex.region==='dynamic')?1:3;}
+/* Gentler, back- & neck-friendly alternatives (used by the swap menu). */
+const SWAP_ALT={
+  plank:'deadbug',longplank:'plank',planktap:'plank',
+  crunch:'deadbug',bicycle:'deadbug',tuckvup:'revcrunch',vup:'revcrunch',
+  russiantwist:'seatedtwist',weightedtwist:'seatedtwist',
+  sidedip:'kneeside',copenhagen:'sideplank',sideplank:'kneeside',
+  legraise:'revcrunch',kneeraise:'revcrunch',hollow:'tuckhollow',hollowrock:'hollow',
+  mountainclimber:'marchplace',burpee:'marchplace',squatthrust:'marchplace',
+  highknees:'marchplace',skater:'marchplace',buttkick:'marchplace',jumpingjack:'marchplace',
+  pushup:'kneepushup',reverselunge:'squat',
+};
+function ladderNeighbor(m,dir){const lad=LADDERS[m.slot];if(!lad)return null;const idx=lad.indexOf(m.exId);if(idx<0)return null;const ni=idx+dir;return (ni>=0&&ni<lad.length)?lad[ni]:null;}
+function swapOptions(m){
+  const opts=[];const easier=ladderNeighbor(m,-1);const harder=ladderNeighbor(m,1);
+  if(easier)opts.push({kind:'easier',exId:easier,label:'⬇ Easier'});
+  if(harder)opts.push({kind:'harder',exId:harder,label:'⬆ Harder'});
+  const alt=SWAP_ALT[m.exId];
+  if(alt&&alt!==m.exId&&alt!==easier&&alt!==harder&&EX[alt])opts.push({kind:'alt',exId:alt,label:'↔ Gentler'});
+  return opts;
+}
+function playerSwapMenu(){
+  const menu=$('#plSwapMenu');if(!menu)return;
+  if(menu.style.display!=='none'){menu.style.display='none';return;}
+  const m=plCur();const opts=swapOptions(m);
+  if(!opts.length){toast('No alternatives for this move');return;}
+  menu.innerHTML=opts.map(o=>`<button onclick="playerSwap('${o.exId}')"><span>${o.label}</span> ${EX[o.exId].name}</button>`).join('');
+  menu.style.display='flex';
+}
+function playerSwap(exId){
+  if(!PLAYER)return;const nEx=EX[exId];if(!nEx)return;
+  const m=plCur();const rx=prescribe(exId,PLAYER.sess.pos);
+  m.exId=exId;m.unit=nEx.unit;m.target=rx.target;m.rest=nEx.rest||m.rest;
+  toast('Swapped to '+nEx.name);
+  plClear();plEnterReady(false);   // restart the current set with the new move
+}
 function openPlayer(){
   const sess=buildSession(STATE.progressPtr);
   const items=[...sess.main,sess.finisher];
@@ -1210,6 +1252,8 @@ function plBodyWork(color){
     ${plRingHTML(color)}
     <div class="pl-set" id="plSet">SET ${PLAYER.s+1} OF ${m.sets}</div>
     <div class="pl-coach" id="plCoach"></div>
+    ${swapOptions(m).length?`<button class="pl-swap" onclick="playerSwapMenu()">⇄ Swap exercise</button>`:''}
+    <div class="pl-swapmenu" id="plSwapMenu" style="display:none"></div>
     <div class="pl-actions">
       <button class="btn ghost" id="plToggle" onclick="playerToggle()">Pause</button>
       <button class="btn ghost" onclick="playerSkip()">Skip</button>
@@ -1244,9 +1288,13 @@ function plEnterWork(){
     plS('#plNum',fmtTime(PLAYER.remain));plS('#plSub','HOLD');plRingSet(1);
     if(PLAYER.running)PLAYER.tid=setInterval(plTickHold,1000);
   }else{
-    PLAYER.repN=0;PLAYER.total=Math.max(1,m.target);
+    const ecc=eccOf(ex);
+    PLAYER.ecc=ecc;PLAYER.eccMs=ecc*1000;PLAYER.repDurMs=(ecc+1)*1000;
+    PLAYER.repN=0;PLAYER.repMs=0;PLAYER.repCounted=false;PLAYER.total=Math.max(1,m.target);
     plS('#plNum','0');plS('#plSub','OF '+m.target+' REPS');plRingSet(0);
-    if(PLAYER.running)PLAYER.tid=setInterval(plTickRep,PLAYER.tempo*1000);
+    coachSpeak(ecc>=2?('Controlled tempo. Lower for '+ecc+', drive up.'):'Fast and explosive. Let’s go.');
+    plS('#plCoach',ecc>=2?'Lower slow…':'Go!');
+    if(PLAYER.running)PLAYER.tid=setInterval(plTickRep,100);
   }
 }
 function plTickHold(){
@@ -1254,21 +1302,30 @@ function plTickHold(){
   PLAYER.remain--;PLAYER.elapsed++;
   const el=PLAYER.total-PLAYER.remain;
   if(PLAYER.remain===10&&PLAYER.total>16){if(!motivate('push'))coachSpeak('Ten seconds. Hold strong.');}
+  else if(el===6||(el>0&&el%18===0&&PLAYER.remain>6)){coachSpeak('Inhale slow… and exhale.');plS('#plSub','BREATHE');setTimeout(()=>{if(PLAYER&&PLAYER.phase==='work')plS('#plSub','HOLD');},2200);}
   else if(el>0&&el%12===0&&PLAYER.remain>4)motivate('during');
   if(PLAYER.remain===3)coachSpeak('Three. Two. One.');
   if(PLAYER.remain<=3&&PLAYER.remain>0)beep(900,.13,0.7);
   if(PLAYER.remain<=0){beepGo();haptic(30);plAfterSet();return;}
   plS('#plNum',fmtTime(PLAYER.remain));plRingSet(PLAYER.remain/PLAYER.total);
 }
+// Tempo rep engine: eccentric ("lower…") then concentric ("up!") — 100ms ticks.
 function plTickRep(){
   if(!PLAYER)return;
-  const m=plCur();PLAYER.repN++;PLAYER.elapsed+=PLAYER.tempo;
-  beep(760,.06);haptic(14);
-  const half=Math.ceil(m.target/2);
-  if(m.target>=8&&PLAYER.repN===half){if(!motivate('during'))coachSpeak(String(PLAYER.repN));}
-  else coachSpeak(String(PLAYER.repN));
-  plS('#plNum',String(PLAYER.repN));plRingSet(PLAYER.repN/PLAYER.total);
-  if(PLAYER.repN>=m.target){haptic(30);plAfterSet();}
+  const m=plCur();PLAYER.repMs+=100;
+  if(!PLAYER.repCounted&&PLAYER.repMs>=PLAYER.eccMs){
+    PLAYER.repCounted=true;PLAYER.repN++;PLAYER.elapsed+=(PLAYER.ecc+1);
+    beep(880,.08);haptic(16);
+    const half=Math.ceil(m.target/2);
+    plS('#plNum',String(PLAYER.repN));plRingSet(PLAYER.repN/PLAYER.total);
+    if(m.target>=8&&PLAYER.repN===half){if(!motivate('during'))coachSpeak('Up! '+PLAYER.repN);}
+    else coachSpeak(PLAYER.ecc>=2?('Up! '+PLAYER.repN):String(PLAYER.repN));
+  }
+  if(PLAYER.repMs>=PLAYER.repDurMs){
+    if(PLAYER.repN>=m.target){haptic(30);plClear();plAfterSet();return;}
+    PLAYER.repMs=0;PLAYER.repCounted=false;
+    plS('#plCoach',PLAYER.ecc>=2?'Lower slow…':'Go!');
+  }
 }
 function plAfterSet(){
   plClear();
@@ -1335,7 +1392,7 @@ function playerToggle(){
   const pulse=$('#plPulse');
   if(!PLAYER.running){plClear();if(pulse)pulse.classList.remove('on');return;}
   if(PLAYER.phase==='ready')PLAYER.tid=setInterval(plTickReady,1000);
-  else if(PLAYER.phase==='work'){const m=plCur();if(m.unit==='time'){if(pulse)pulse.classList.add('on');PLAYER.tid=setInterval(plTickHold,1000);}else PLAYER.tid=setInterval(plTickRep,PLAYER.tempo*1000);}
+  else if(PLAYER.phase==='work'){const m=plCur();if(m.unit==='time'){if(pulse)pulse.classList.add('on');PLAYER.tid=setInterval(plTickHold,1000);}else PLAYER.tid=setInterval(plTickRep,100);}
   else if(PLAYER.phase==='rest')PLAYER.tid=setInterval(plTickRest,1000);
 }
 function playerSkip(){
