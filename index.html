@@ -584,7 +584,7 @@ const DEFAULT_STATE=()=>({
   photos:[],                // progress photos: {id,date,pose} (image bytes live in IndexedDB)
   achievements:{},          // unlocked milestone badges: {id:date}
   restDays:{},              // logged rest days: {date:true}
-  settings:{sound:true,vibrate:true,voice:true,voiceName:'',voicePitch:0.6,voiceRate:0.98,repTempo:3,hype:true,coach:'auto'},
+  settings:{sound:true,vibrate:true,voice:true,voiceName:'',voicePitch:0.6,voiceRate:0.98,repTempo:3,hype:true,coach:'auto',beat:true,beatVol:0.55},
 });
 let STATE=DEFAULT_STATE();
 
@@ -749,7 +749,7 @@ function openSheet(html){
 }
 function closeSheet(){
   const wasOpen=$('#scrim').classList.contains('open');
-  $('#scrim').classList.remove('open');document.body.style.overflow='';stopTimer();
+  $('#scrim').classList.remove('open');document.body.style.overflow='';stopTimer();beatStop();
   // If the app (a button/scrim) closed the sheet, retire its history entry too,
   // so the counts stay balanced. The guard makes onPop ignore this self-pop.
   if(wasOpen&&history.state&&history.state.cf==='sheet'){
@@ -1252,8 +1252,19 @@ function coachSpeak(text,force){
     u.rate=(typeof STATE.settings.voiceRate==='number')?STATE.settings.voiceRate:0.98;
     u.pitch=(typeof STATE.settings.voicePitch==='number')?STATE.settings.voicePitch:0.6; // lower = deeper
     if(COACH_V)u.voice=COACH_V;
-    synth.speak(u);return true;
+    duckFor(u);synth.speak(u);return true;
   }catch(e){return false;}
+}
+/* Duck the beat while a coach utterance plays, then swell it back. */
+function duckFor(u){
+  try{
+    let done=false;const end=()=>{if(done)return;done=true;beatDuck(false);};
+    beatDuck(true);
+    u.onend=end;u.onerror=end;
+    // safety: if onend never fires, release after a length-based estimate
+    const est=Math.min(12000,900+String(u.text||'').length*80);
+    setTimeout(end,est);
+  }catch(e){}
 }
 function coachBrief(){
   primeVoice();
@@ -1285,6 +1296,9 @@ function setCoachVoice(name){STATE.settings.voiceName=name||'';COACH_V=resolveVo
 function setCoachPitch(v){STATE.settings.voicePitch=Math.max(0,Math.min(2,parseFloat(v)||0.6));save();}
 function setCoachRate(v){STATE.settings.voiceRate=Math.max(.5,Math.min(1.5,parseFloat(v)||0.98));save();}
 function setRepTempo(v){STATE.settings.repTempo=Math.max(1,Math.min(6,parseFloat(v)||3));save();}
+function setBeatVol(v){STATE.settings.beatVol=Math.max(0.05,Math.min(1,parseFloat(v)||0.55));save();if(BEAT&&BEAT.on){BEAT.vol=beatVolPref()*0.9;const g=BEAT.master.gain,t=BEAT.ac.currentTime;g.cancelScheduledValues(t);g.setValueAtTime(Math.max(0.0002,g.value),t);g.exponentialRampToValueAtTime(Math.max(0.0002,BEAT.vol),t+0.2);}}
+let _beatPrevT=null;
+function beatPreview(){beatStart();if(_beatPrevT)clearTimeout(_beatPrevT);_beatPrevT=setTimeout(()=>{if(!$('#scrim').classList.contains('open'))beatStop();},5000);}
 
 /* ============================ MOTIVATOR / DRILL SERGEANT ============================
    Spoken hype DURING the work — different military / ultra personas that push you
@@ -1428,7 +1442,7 @@ function hypeSpeak(text,persona){
     u.lang='en-US';u.volume=1;
     u.rate=persona.rate||1;u.pitch=(persona.pitch!=null)?persona.pitch:0.5;
     const v=pickVoiceByHint(persona.hint);if(v)u.voice=v;
-    synth.speak(u);return true;
+    duckFor(u);synth.speak(u);return true;
   }catch(e){return false;}
 }
 // Speak a random motivational line of the given kind (start|during|push|rest|done).
@@ -1459,6 +1473,56 @@ function stopTimer(){if(timer){clearInterval(timer.iv);timer=null;}if(typeof _bt
 function beep(freq=880,dur=0.12,vol=0.6,type='square'){if(!STATE.settings.sound)return;try{const ac=beep._ac||(beep._ac=new (window.AudioContext||window.webkitAudioContext)());if(ac.state==='suspended')ac.resume();const o=ac.createOscillator(),g=ac.createGain();o.type=type;o.frequency.value=freq;o.connect(g);g.connect(ac.destination);g.gain.setValueAtTime(Math.min(vol,0.95),ac.currentTime);g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+dur);o.start();o.stop(ac.currentTime+dur);}catch(e){}}
 // loud double-tone GO cue (cuts through noise)
 function beepGo(){beep(1320,.30,0.9,'square');setTimeout(()=>beep(1760,.28,0.9,'square'),120);}
+
+/* ===== BEAT ENGINE =====
+   A procedurally-synthesised lo-fi / boom-bap hip-hop loop (Web Audio, no audio
+   files — fully offline). Auto-plays through an exercise session and automatically
+   ducks its volume whenever the coach speaks, then swells back. */
+let BEAT=null;
+function audioCtx(){const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return null;const ac=beep._ac||(beep._ac=new AC());if(ac.state==='suspended'){try{ac.resume();}catch(e){}}return ac;}
+function beatVolPref(){return (typeof STATE.settings.beatVol==='number')?STATE.settings.beatVol:0.55;}
+function beatStart(){
+  if(STATE.settings.beat===false)return;
+  if(BEAT&&BEAT.on)return;
+  const ac=audioCtx();if(!ac)return;
+  const master=ac.createGain();master.connect(ac.destination);
+  const lp=ac.createBiquadFilter();lp.type='lowpass';lp.frequency.value=8500;lp.Q.value=0.6;lp.connect(master);
+  const vol=beatVolPref()*0.9;
+  master.gain.setValueAtTime(0.0001,ac.currentTime);
+  master.gain.exponentialRampToValueAtTime(Math.max(0.0002,vol),ac.currentTime+0.6); // fade in
+  BEAT={on:true,ac,master,out:lp,vol,duck:0,step:0,next:0,tempo:86,tid:null,_noise:null};
+  BEAT.stepDur=(60/BEAT.tempo)/4;                       // 16th note
+  // 16-step patterns (boom-bap feel)
+  BEAT.kick =[1,0,0,0, 0,0,1,0, 0,0,1,0, 0,0,0,0];
+  BEAT.snare=[0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,1];
+  BEAT.hat  =[1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,1];
+  // A-minor sub bassline (Hz): A1, C2, G1 anchors
+  BEAT.bass =[55.00,0,0,0, 0,0,55.00,0, 65.41,0,0,0, 49.00,0,0,0];
+  BEAT.next=ac.currentTime+0.08;
+  BEAT.tid=setInterval(()=>{ if(!BEAT)return; const la=BEAT.ac.currentTime+0.12;
+    while(BEAT.next<la){ beatStep(BEAT.step,BEAT.next); BEAT.next+=BEAT.stepDur; BEAT.step=(BEAT.step+1)%16; } },25);
+}
+function beatStop(){
+  if(!BEAT)return;const b=BEAT;BEAT=null;
+  try{clearInterval(b.tid);const t=b.ac.currentTime;b.master.gain.cancelScheduledValues(t);
+    b.master.gain.setValueAtTime(Math.max(0.0002,b.master.gain.value),t);
+    b.master.gain.exponentialRampToValueAtTime(0.0001,t+0.4);
+    setTimeout(()=>{try{b.master.disconnect();b.out.disconnect();}catch(e){}},600);}catch(e){}
+}
+function beatDuck(on){
+  if(!BEAT||!BEAT.on)return;const g=BEAT.master.gain,t=BEAT.ac.currentTime;
+  if(on){BEAT.duck++;g.cancelScheduledValues(t);g.setValueAtTime(Math.max(0.0002,g.value),t);g.exponentialRampToValueAtTime(Math.max(0.0002,BEAT.vol*0.22),t+0.12);}
+  else{BEAT.duck=Math.max(0,BEAT.duck-1);if(BEAT.duck===0){g.cancelScheduledValues(t);g.setValueAtTime(Math.max(0.0002,g.value),t);g.exponentialRampToValueAtTime(Math.max(0.0002,BEAT.vol),t+0.4);}}
+}
+function beatNoise(ac){if(BEAT&&BEAT._noise)return BEAT._noise;const b=ac.createBuffer(1,Math.floor(ac.sampleRate*0.2),ac.sampleRate);const d=b.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;if(BEAT)BEAT._noise=b;return b;}
+function beatStep(s,t){
+  if(!BEAT)return;const ac=BEAT.ac,out=BEAT.out;
+  if(BEAT.kick[s]){const o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.setValueAtTime(150,t);o.frequency.exponentialRampToValueAtTime(48,t+0.12);g.gain.setValueAtTime(1.0,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.3);o.connect(g);g.connect(out);o.start(t);o.stop(t+0.32);}
+  if(BEAT.snare[s]){const src=ac.createBufferSource();src.buffer=beatNoise(ac);const bp=ac.createBiquadFilter();bp.type='bandpass';bp.frequency.value=1900;const g=ac.createGain();g.gain.setValueAtTime(0.6,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.18);src.connect(bp);bp.connect(g);g.connect(out);src.start(t);src.stop(t+0.2);
+    const o=ac.createOscillator(),og=ac.createGain();o.type='triangle';o.frequency.value=190;og.gain.setValueAtTime(0.28,t);og.gain.exponentialRampToValueAtTime(0.001,t+0.1);o.connect(og);og.connect(out);o.start(t);o.stop(t+0.12);}
+  if(BEAT.hat[s]){const src=ac.createBufferSource();src.buffer=beatNoise(ac);const hp=ac.createBiquadFilter();hp.type='highpass';hp.frequency.value=7500;const g=ac.createGain();const v=(s%4===2)?0.22:0.34;g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.05);src.connect(hp);hp.connect(g);g.connect(out);src.start(t);src.stop(t+0.06);}
+  if(BEAT.bass[s]){const dur=BEAT.stepDur*3.6;const o=ac.createOscillator(),g=ac.createGain(),lp=ac.createBiquadFilter();o.type='triangle';o.frequency.value=BEAT.bass[s];lp.type='lowpass';lp.frequency.value=420;g.gain.setValueAtTime(0.0001,t);g.gain.linearRampToValueAtTime(0.5,t+0.02);g.gain.setValueAtTime(0.5,t+dur*0.6);g.gain.exponentialRampToValueAtTime(0.001,t+dur);o.connect(lp);lp.connect(g);g.connect(out);o.start(t);o.stop(t+dur+0.02);}
+}
 function openExerciseTimer(exId){
   const sess=buildSession(STATE.progressPtr);const m=[...sess.main,sess.finisher].find(x=>x.exId===exId);
   const ex=EX[exId];
@@ -1469,7 +1533,7 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet){
   let remain=seconds;const total=seconds;
   const isHold=mode==='hold';
   openSheet(timerHTML(label,remain,isHold,total));
-  autoRoll();primeVoice();
+  autoRoll();primeVoice();beatStart();
   const C=2*Math.PI*100;
   // 5-second loud GET READY countdown before a hold begins (rest timers start straight away)
   let phase=isHold?'ready':'run', ready=5;
@@ -1553,7 +1617,7 @@ function runRepCadence(reps,label,restAfter,onDone){
   const tempo=Math.max(1.5,Math.min(6,(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3));
   const C=2*Math.PI*100;
   openSheet(repHTML(label,total));
-  autoRoll();primeVoice();
+  autoRoll();primeVoice();beatStart();
   const setP=(t)=>{const e=$('#rcphase');if(e)e.textContent=t;};
   function paint(){const nn=$('#rcNum');if(nn)nn.textContent=n;const rr=$('#rcRing');if(rr)rr.style.strokeDashoffset=C*(1-n/total);}
   const half=Math.ceil(total/2);
@@ -1616,7 +1680,7 @@ function runFlow(items,title,color){
   let idx=0,phase='ready',ready=5,remain=0,total=Math.max(1,items[0].secs);
   const C=2*Math.PI*100;
   openSheet(flowHTML(title,items.length,color||'var(--fire)'));
-  primeVoice();
+  primeVoice();beatStart();
   const set=(sel,txt)=>{const e=$(sel);if(e)e.textContent=txt;};
   const ring=(frac)=>{const r=$('#flowRing');if(r)r.style.strokeDashoffset=C*(1-frac);};
   set('#flowName','Get Ready'); set('#flowCue', items[0].n+' first.');
@@ -2442,6 +2506,12 @@ function renderGuide(){
     <div class="tiny muted" style="padding:2px 0 4px">Nudges you on your training days. Reminders appear when you open the app (a home-screen install makes them most reliable).</div>`:''}
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Saturday progress check-in <span class="tiny muted">· photo + waist + weigh</span></span><button class="chip ${STATE.settings.weeklyOn!==false?'on':''}" onclick="toggleSetting('weeklyOn')">${STATE.settings.weeklyOn!==false?'On':'Off'}</button></div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Voice coach <span class="tiny muted">· deep</span></span><button class="chip ${STATE.settings.voice!==false?'on':''}" onclick="toggleSetting('voice')">${STATE.settings.voice!==false?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Workout beat <span class="tiny muted">· hip-hop, auto-ducks for the coach</span></span><button class="chip ${STATE.settings.beat!==false?'on':''}" onclick="toggleSetting('beat')">${STATE.settings.beat!==false?'On':'Off'}</button></div>
+    ${STATE.settings.beat!==false?`<div style="padding:4px 0 2px">
+      <div class="row" style="justify-content:space-between"><span class="tiny muted">Beat volume</span><span class="tiny muted" id="bvLbl">${Math.round(beatVolPref()*100)}%</span></div>
+      <input type="range" min="0.1" max="1" step="0.05" value="${beatVolPref()}" oninput="$('#bvLbl').textContent=Math.round(this.value*100)+'%'" onchange="setBeatVol(this.value)" style="width:100%">
+      <div class="row" style="justify-content:space-between;margin-top:4px"><span class="tiny muted">The beat plays during timers, guided reps, warm-up &amp; cool-down.</span><button class="chip" onclick="beatPreview()">▶ Preview</button></div>
+    </div>`:''}
     <div style="padding:6px 0 2px"><div class="tiny muted" style="margin-bottom:5px">Coach voice</div>
       <select onchange="setCoachVoice(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px">${voiceOptionsHTML()}</select>
       <div class="tiny muted" style="margin-top:5px">Pick a specific voice, or leave on Auto to use the deepest one your phone has.</div>
@@ -2486,6 +2556,7 @@ function toggleSetting(k){
   if(k==='hasBar')STATE.profile.hasBar=!(STATE.profile.hasBar!==false);
   else if(k==='hasBench')STATE.profile.hasBench=!(STATE.profile.hasBench!==false);
   else STATE.settings[k]=!STATE.settings[k];
+  if(k==='beat'&&STATE.settings.beat===false)beatStop();
   save();renderGuide();
 }
 function exportData(){
