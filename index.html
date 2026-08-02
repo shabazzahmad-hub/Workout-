@@ -660,7 +660,7 @@ const EX = {
     steps:['Jump or step up so your chin is over the bar.','Brace the core and squeeze the back.','Lower yourself as slowly as possible (aim 3–5 seconds).','Reset at the bottom and repeat.'],
     cues:['Fight gravity the whole way','Shoulders down, chest up','Control to a full straight-arm hang'],
     mistakes:['Dropping fast','Cutting the range short']},
-  pullup:{name:'Pull-Up',region:'back',unit:'reps',img:'ex-pullup.jpg',anchor:null,hardness:1,base:6,rest:75,
+  pullup:{name:'Pull-Up',region:'back',unit:'reps',img:'ex-pullup.jpg',anchor:null,hardness:1,base:6,rest:75,equip:['bar'],pattern:'pull',
     why:'The best upper-body pull there is — builds a wide, strong back and powerful arms while your core stays braced.',
     steps:['Hang from the bar, palms forward, slightly wider than shoulders.','Brace the core and pull the elbows down and back.','Bring the chin over the bar.','Lower under control to a full straight-arm hang.'],
     cues:['Lead with the chest','Pull elbows to the floor','Full range top and bottom'],
@@ -697,7 +697,7 @@ const EX = {
     steps:['Hands under the chest, roughly shoulder-width or closer.','Brace the body straight.','Lower with elbows tracking back along the ribs.','Press to a full lockout.'],
     cues:['Elbows brush the ribs','Straight body line','Full extension'],
     mistakes:['Elbows flaring out','Sagging hips']},
-  dips:{name:'Parallel-Bar Dips',region:'arms',unit:'reps',img:'ex-dips.jpg',anchor:null,hardness:1,base:8,rest:65,
+  dips:{name:'Parallel-Bar Dips',region:'arms',unit:'reps',img:'ex-dips.jpg',anchor:null,hardness:1,base:8,rest:65,equip:['dip'],pattern:'pushh',
     why:'The best bodyweight builder for triceps and lower chest — your dip tower makes these a staple.',
     steps:['Grip the dip bars and press to a strong support hold, arms locked.','Brace the core, lean slightly forward.','Lower until the shoulders are near elbow height.','Press back up to a full lockout.'],
     cues:['Slight forward lean','Elbows back, not flared','Lock out the top'],
@@ -782,68 +782,61 @@ const EX = {
     cues:['Strong plank, no sag','Knees high on the jump','Pace so form holds'],
     mistakes:['Sloppy plank','Landing hard and stiff']},
 
-  /* ===== EQUIPMENT / WEIGHTS LIBRARY (used by the Weights session) =====
-     Each carries `equip` (gear required) and `pattern` (movement) for the builder. */
-  db_goblet:{name:'Goblet Squat',region:'legs',unit:'reps',img:null,anchor:null,hardness:1,base:12,rest:60,equip:['dumbbells'],pattern:'squat',
-    why:'A dumbbell held at the chest loads the legs and core while keeping the torso tall — the safest big-bang leg builder.',
-    steps:['Hold one dumbbell vertically at your chest.','Sit back and down, knees tracking over toes.','Drive through the heels to stand tall.'],
-    cues:['Chest up, core braced','Knees out','Full depth then drive'],mistakes:['Heels lifting','Rounding the back']},
-  db_rdl:{name:'Dumbbell RDL',region:'legs',unit:'reps',img:null,anchor:null,hardness:1,base:12,rest:60,equip:['dumbbells'],pattern:'hinge',
-    why:'A hip hinge that builds the hamstrings, glutes and lower back — the posterior chain most people neglect.',
-    steps:['Hold dumbbells in front of your thighs.','Push the hips back, soft knees, lower the weights down the shins.','Squeeze the glutes to stand.'],
-    cues:['Hips back, not down','Flat back','Feel the hamstrings'],mistakes:['Rounding the back','Turning it into a squat']},
-  db_press:{name:'Dumbbell Bench/Floor Press',region:'chest',unit:'reps',img:null,anchor:null,hardness:1,base:10,rest:60,equip:['dumbbells'],pattern:'pushh',
-    why:'Horizontal press for the chest, shoulders and triceps — dumbbells give a bigger, safer range than a bar.',
-    steps:['Lie on a bench (or floor), dumbbells at chest height.','Press up until arms are straight.','Lower under control to the stretch.'],
-    cues:['Elbows ~45°','Press slightly together','Control the lowering'],mistakes:['Flaring elbows','Bouncing off the chest']},
-  db_row:{name:'Dumbbell Row',region:'back',unit:'reps',img:null,anchor:null,hardness:1,base:10,rest:55,equip:['dumbbells'],pattern:'pull',
-    why:'A single-arm row that builds a thick, strong back and balances all the pressing.',
-    steps:['Hinge forward, one hand supported on a bench or knee.','Row the dumbbell to your hip.','Lower with a full stretch.'],
-    cues:['Pull to the hip','Squeeze the shoulder blade','Flat back'],mistakes:['Yanking with the arm','Twisting the torso']},
-  db_press_oh:{name:'Dumbbell Shoulder Press',region:'shoulders',unit:'reps',img:null,anchor:null,hardness:1,base:10,rest:55,equip:['dumbbells'],pattern:'pushv',
-    why:'Overhead pressing builds capped, strong shoulders and a stable, braced core.',
-    steps:['Dumbbells at shoulder height, palms forward.','Brace and press overhead until arms lock.','Lower under control to the shoulders.'],
-    cues:['Ribs down, glutes tight','Press in a slight arc','No leaning back'],mistakes:['Arching the low back','Half reps']},
-  db_lunge:{name:'Dumbbell Lunge',region:'legs',unit:'reps',img:null,anchor:null,hardness:1,base:10,rest:55,equip:['dumbbells'],pattern:'lunge',
+  /* ===== HOME-GYM / WEIGHTS LIBRARY (military kit) — used by the Weights session =====
+     Built for the athlete's actual gear: ab roller, medicine ball, kettlebells, battle
+     rope, dip bar, pull-up bar. Each carries `equip` (gear) + `pattern` (movement). */
+  abroll:{name:'Kneeling Ab Rollout',region:'anterior',unit:'reps',img:'ex-abroll.jpg',anchor:null,hardness:1,base:8,rest:45,equip:['abroller'],pattern:'core',
+    why:'The ab wheel loads the entire front core under a long lever — brutal, honest anti-extension strength.',
+    steps:['Kneel and grip the roller under the shoulders.','Brace hard and roll forward, keeping a flat back.','Pull the roller back with the abs, hips tucked.'],
+    cues:['Ribs down, glutes tight','Never let the low back sag','Only roll as far as you can control'],mistakes:['Sagging hips','Rolling too far, too soon']},
+  mbslam:{name:'Medicine Ball Slam',region:'dynamic',unit:'reps',img:'ex-mbslam.jpg',anchor:null,hardness:1,base:12,rest:40,equip:['medball'],pattern:'power',
+    why:'Full-body power and a core-driven finisher — hips, lats and abs firing on every slam.',
+    steps:['Lift the ball overhead, up on the toes.','Slam it hard to the floor, hinging at the hips.','Catch the bounce or pick it up and reset.'],
+    cues:['Whole body into it','Exhale on the slam','Flat back on the pick-up'],mistakes:['All arms, no hips','Rounding to grab the ball']},
+  mbtwist:{name:'Medicine Ball Russian Twist',region:'oblique',unit:'reps',img:'ex-mbtwist.jpg',anchor:null,hardness:1,base:20,rest:35,equip:['medball'],pattern:'core',
+    why:'Loaded rotation for the obliques — carves the waist and builds real rotational strength.',
+    steps:['Sit with the heels up, leaning back slightly.','Hold the ball at the chest and rotate to tap it by each hip.','Keep the chest tall and control the turn.'],
+    cues:['Rotate from the ribs','Feet up for more','Slow and controlled'],mistakes:['Just moving the arms','Rounding the back']},
+  mbsitup:{name:'Medicine Ball Sit-Up',region:'anterior',unit:'reps',img:'ex-mbsitup.jpg',anchor:null,hardness:1,base:15,rest:35,equip:['medball'],pattern:'core',
+    why:'Adds load to the classic sit-up for a stronger, more defined upper core.',
+    steps:['Lie back holding the ball at the chest.','Sit all the way up, curling the spine.','Lower under control to the floor.'],
+    cues:['Chin tucked','Curl, do not yank','Control the way down'],mistakes:['Throwing the neck','Dropping back down']},
+  kbswing:{name:'Kettlebell Swing',region:'strength',unit:'time',img:'ex-kbswing.jpg',anchor:null,hardness:1,base:30,rest:45,equip:['kettlebell'],pattern:'hinge',
+    why:'Explosive hip power and conditioning — the single best posterior-chain and fat-burning drill.',
+    steps:['Hinge and hike the bell back between the legs.','Snap the hips to float it to chest height.','Let it fall, hinge, repeat for time.'],
+    cues:['Power from the hips','Arms are just hooks','Flat back, braced core'],mistakes:['Squatting the swing','Lifting with the arms']},
+  kbgoblet:{name:'Kettlebell Goblet Squat',region:'legs',unit:'reps',img:'ex-kbgoblet.jpg',anchor:null,hardness:1,base:12,rest:60,equip:['kettlebell'],pattern:'squat',
+    why:'A front-loaded squat that builds the legs and core while keeping the torso tall and safe.',
+    steps:['Hold the bell at the chest with both hands.','Sit down between the hips to depth.','Drive through the heels to stand tall.'],
+    cues:['Elbows inside the knees','Chest up','Full depth then drive'],mistakes:['Heels lifting','Rounding forward']},
+  kbcp:{name:'Kettlebell Clean & Press',region:'strength',unit:'reps',img:'ex-kbcp.jpg',anchor:null,hardness:1.1,base:8,rest:70,equip:['kettlebell'],pattern:'pushv',
+    why:'A total-body strength builder — clean to the shoulder, press overhead. Legs, back, shoulders, core.',
+    steps:['Clean the bell(s) to the shoulder.','Brace and press overhead to lockout.','Lower to the shoulder, then to the floor. Repeat.'],
+    cues:['Tame the arc on the clean','Ribs down on the press','Full lockout overhead'],mistakes:['Banging the wrist','Arching the low back']},
+  kbrow:{name:'Kettlebell Bent-Over Row',region:'back',unit:'reps',img:'ex-kbrow.jpg',anchor:null,hardness:1,base:10,rest:55,equip:['kettlebell'],pattern:'pull',
+    why:'Horizontal pulling for a thick, strong back — balances all the pressing and pull-ups.',
+    steps:['Hinge to ~45°, flat back, bell(s) hanging.','Row to the hip, squeezing the shoulder blade.','Lower with a full stretch.'],
+    cues:['Pull to the hip','Flat back','No twisting'],mistakes:['Standing too upright','Yanking with the arm']},
+  kbrdl:{name:'Kettlebell Romanian Deadlift',region:'legs',unit:'reps',img:'ex-kbrdl.jpg',anchor:null,hardness:1,base:12,rest:60,equip:['kettlebell'],pattern:'hinge',
+    why:'Builds the hamstrings, glutes and lower back — the posterior chain most people neglect.',
+    steps:['Hold the bell(s) at the thighs, soft knees.','Push the hips back, lowering down the shins.','Squeeze the glutes to stand tall.'],
+    cues:['Hips back, not down','Flat back','Feel the hamstrings'],mistakes:['Rounding the back','Squatting it down']},
+  kblunge:{name:'Kettlebell Reverse Lunge',region:'legs',unit:'reps',img:'ex-kblunge.jpg',anchor:null,hardness:1,base:10,rest:55,equip:['kettlebell'],pattern:'lunge',
     why:'Single-leg strength and balance for the quads and glutes — evens out side-to-side weakness.',
-    steps:['Hold dumbbells at your sides.','Step forward and lower the back knee toward the floor.','Drive back to the start. Alternate legs.'],
-    cues:['Tall torso','Front knee over ankle','Push through the front heel'],mistakes:['Short steps','Front knee caving in']},
-  db_curl:{name:'Dumbbell Curl',region:'arms',unit:'reps',img:null,anchor:null,hardness:1,base:12,rest:45,equip:['dumbbells'],pattern:'curl',
-    why:'Direct biceps work to fill out the arms and support every pulling movement.',
-    steps:['Dumbbells at your sides, palms forward.','Curl up without swinging.','Lower slowly to full extension.'],
-    cues:['Elbows pinned','Squeeze at the top','Slow the lowering'],mistakes:['Swinging the body','Half range']},
-  db_lateral:{name:'Lateral Raise',region:'shoulders',unit:'reps',img:null,anchor:null,hardness:1,base:14,rest:40,equip:['dumbbells'],pattern:'lateral',
-    why:'Isolates the side delts for that broad, capped-shoulder look.',
-    steps:['Light dumbbells at your sides, slight elbow bend.','Raise out to shoulder height.','Lower slowly.'],
-    cues:['Lead with the elbows','No shrugging','Control down'],mistakes:['Going too heavy','Using momentum']},
-  bb_squat:{name:'Barbell Back Squat',region:'legs',unit:'reps',img:null,anchor:null,hardness:1.1,base:8,rest:90,equip:['barbell'],pattern:'squat',
-    why:'The king of lower-body lifts — total leg and core strength and a huge metabolic hit.',
-    steps:['Bar on the upper back, feet shoulder-width.','Brace, sit back and down to at least parallel.','Drive up through the whole foot.'],
-    cues:['Big breath, brace','Knees track toes','Depth then drive'],mistakes:['Knees caving','Heels rising']},
-  bb_deadlift:{name:'Barbell Deadlift',region:'back',unit:'reps',img:null,anchor:null,hardness:1.15,base:6,rest:100,equip:['barbell'],pattern:'hinge',
-    why:'Full posterior-chain power — back, glutes, hamstrings and grip in one lift.',
-    steps:['Bar over mid-foot, hinge and grip it.','Brace, chest up, push the floor away.','Lock out tall, then lower with control.'],
-    cues:['Flat back, bar close','Push the floor','Hips and shoulders rise together'],mistakes:['Rounding the back','Jerking off the floor']},
-  bb_bench:{name:'Barbell Bench Press',region:'chest',unit:'reps',img:null,anchor:null,hardness:1.1,base:8,rest:90,equip:['barbell','bench'],pattern:'pushh',
-    why:'The classic upper-body strength builder for chest, shoulders and triceps.',
-    steps:['Lie back, grip just outside the shoulders.','Lower the bar to the mid-chest.','Press up and slightly back to lockout.'],
-    cues:['Shoulder blades pinched','Elbows ~45°','Feet driving'],mistakes:['Bouncing the bar','Flaring elbows']},
-  bb_row:{name:'Barbell Bent-Over Row',region:'back',unit:'reps',img:null,anchor:null,hardness:1.1,base:8,rest:75,equip:['barbell'],pattern:'pull',
-    why:'Heavy horizontal pulling for a thick, powerful back.',
-    steps:['Hinge to ~45°, flat back, bar hanging.','Row the bar to the lower ribs.','Lower under control.'],
-    cues:['Flat back','Pull to the belt','Squeeze the blades'],mistakes:['Standing too upright','Using momentum']},
-  bb_ohp:{name:'Barbell Overhead Press',region:'shoulders',unit:'reps',img:null,anchor:null,hardness:1.1,base:8,rest:80,equip:['barbell'],pattern:'pushv',
-    why:'Standing overhead strength for shoulders, triceps and a rock-solid core.',
-    steps:['Bar at the front of the shoulders, brace hard.','Press overhead, move the head back then through.','Lower under control to the shoulders.'],
-    cues:['Glutes and abs tight','Bar over mid-foot at lockout','No big lean'],mistakes:['Arching the back','Pressing around the head']},
-  kb_swing:{name:'Kettlebell Swing',region:'cardio',unit:'time',img:null,anchor:null,hardness:1,base:30,rest:50,equip:['kettlebell'],pattern:'swing',
-    why:'Explosive hip power and conditioning — builds the posterior chain and torches calories.',
-    steps:['Hinge and hike the bell back between the legs.','Snap the hips to float the bell to chest height.','Let it fall, hinge, repeat for time.'],
-    cues:['Power from the hips','Arms are just hooks','Flat back'],mistakes:['Squatting the swing','Lifting with the arms']},
-  band_pull:{name:'Band Pull-Apart',region:'back',unit:'reps',img:null,anchor:null,hardness:0.8,base:16,rest:35,equip:['bands'],pattern:'pull',
-    why:'Bulletproofs the upper back and rear delts and fixes posture — perfect between pressing.',
-    steps:['Hold a band at shoulder height, arms straight.','Pull it apart to the chest, squeezing the blades.','Return slowly.'],
-    cues:['Straight arms','Squeeze the shoulder blades','Slow return'],mistakes:['Bending the elbows','Shrugging']},
+    steps:['Hold the bell(s) at the chest or sides.','Step back and lower the back knee toward the floor.','Drive through the front heel to stand. Alternate.'],
+    cues:['Tall torso','Front knee over ankle','Controlled step back'],mistakes:['Short steps','Knee caving in']},
+  ropewave:{name:'Battle Rope Waves',region:'cardio',unit:'time',img:'ex-ropewave.jpg',anchor:null,hardness:1,base:30,rest:40,equip:['battlerope'],pattern:'cardio',
+    why:'Relentless conditioning for the shoulders, arms and core — huge heart rate, low impact.',
+    steps:['Athletic half-squat, a rope in each hand.','Whip fast alternating waves down the rope.','Keep the tempo high for time.'],
+    cues:['Stay low and braced','Fast, punchy waves','Breathe with a rhythm'],mistakes:['Standing upright','Slowing down early']},
+  ropeslam:{name:'Battle Rope Slams',region:'dynamic',unit:'time',img:'ex-ropeslam.jpg',anchor:null,hardness:1,base:20,rest:40,equip:['battlerope'],pattern:'power',
+    why:'Explosive full-body power and grip — raise both arms and slam the ropes with everything.',
+    steps:['Raise both rope ends overhead.','Slam them down hard, hinging slightly.','Reset and repeat for time.'],
+    cues:['Whole body into the slam','Exhale hard','Stay braced'],mistakes:['Arms only','Losing tension in the ropes']},
+  dipknee:{name:'Dip-Bar Knee Raise',region:'anterior',unit:'reps',img:'ex-dipknee.jpg',anchor:null,hardness:1,base:12,rest:45,equip:['dip'],pattern:'core',
+    why:'Supported on the dip bars, raising the knees hammers the lower abs and hip flexors.',
+    steps:['Support yourself on the dip bars, arms locked.','Raise both knees toward the chest.','Lower slowly without swinging.'],
+    cues:['No swinging','Curl the pelvis up','Slow on the way down'],mistakes:['Kipping with momentum','Half raises']},
 };
 
 /* ============================ SESSION TEMPLATES ============================
@@ -1269,7 +1262,7 @@ function onboardHTML(){
     <h3>Equipment you have</h3>
     <div class="tiny muted" style="margin:-4px 0 8px">Everything works with bodyweight — pick what you own and we unlock a <b>Weights session</b> tuned to your gear.</div>
     <div class="daypick" id="ob-gear" style="flex-wrap:wrap">
-      ${[['bar','Pull-up / dip tower'],['bench','Bench / chair'],['dumbbells','Dumbbells'],['barbell','Barbell'],['kettlebell','Kettlebell'],['bands','Resistance bands']].map(([k,l])=>`<button data-e="${k}"${(k==='bar'||k==='bench')?' class="on"':''}>${l}</button>`).join('')}
+      ${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['medball','Medicine ball'],['abroller','Ab roller'],['battlerope','Battle rope'],['bench','Bench / chair']].map(([k,l])=>`<button data-e="${k}"${(k==='bar')?' class="on"':''}>${l}</button>`).join('')}
     </div>
   </div>
 
@@ -1618,25 +1611,20 @@ function hasWeights(){return weightsPool().length>0;}
 function weightsRepsFor(k){const ex=EX[k];const g=STATE.profile.goal;let r=ex.base||10;if(g==='lose')r=Math.round(r*1.3);else if(g==='gain')r=Math.max(6,Math.round(r*0.85));return r;}
 function buildWeightsSession(){
   const pool=weightsPool();if(!pool.length)return null;
-  const targets=STATE.profile.targets||[],goal=STATE.profile.goal;
-  const strengthy=(goal==='gain'||goal==='maintain');
-  const byPat={};pool.forEach(k=>{const p=EX[k].pattern;(byPat[p]=byPat[p]||[]).push(k);});
-  const pick=pat=>{const arr=byPat[pat];if(!arr||!arr.length)return null;
-    const bb=arr.find(k=>EX[k].equip.includes('barbell'));const db=arr.find(k=>EX[k].equip.includes('dumbbells'));
-    return (strengthy&&bb)?bb:(db||arr[0]);};
-  const order=['squat','hinge','pushh','pull','pushv'];
-  if(targets.includes('legs')||targets.includes('glutes'))order.push('lunge');
-  if(targets.includes('arms'))order.push('curl');
-  if(targets.includes('shoulders'))order.push('lateral');
+  const byPat={};pool.forEach(k=>{const p=EX[k].pattern||'other';(byPat[p]=byPat[p]||[]).push(k);});
+  const pick=pat=>{const arr=byPat[pat];if(!arr||!arr.length)return null;return arr[Math.floor(Math.random()*arr.length)];};
+  const addItem=(k,items,used)=>{if(!k||used.has(k))return;used.add(k);const ex=EX[k];
+    items.push({exId:k,unit:ex.unit,target:ex.unit==='time'?(ex.base||30):weightsRepsFor(k),rest:ex.rest||55,sets:3});};
   const items=[],used=new Set();
-  order.forEach(pat=>{const k=pick(pat);if(k&&!used.has(k)){used.add(k);const ex=EX[k];
-    items.push({exId:k,unit:ex.unit,target:ex.unit==='time'?(ex.base||30):weightsRepsFor(k),rest:ex.rest||60,sets:3});}});
-  if(byPat.swing&&byPat.swing.length&&items.length<7){const k=byPat.swing[0];if(!used.has(k)){const ex=EX[k];items.push({exId:k,unit:ex.unit,target:ex.base||30,rest:ex.rest||45,sets:3});}}
-  return items.slice(0,7);
+  // balanced full-body military circuit
+  ['squat','hinge','pushh','pull','pushv','lunge','core'].forEach(pat=>addItem(pick(pat),items,used));
+  // conditioning finisher (battle rope / med-ball)
+  for(const pat of ['cardio','power']){if(items.length>=8)break;addItem(pick(pat),items,used);}
+  return items.slice(0,8);
 }
 function startWeights(){
   const items=buildWeightsSession();
-  if(!items||!items.length){toast('Add dumbbells, a barbell, kettlebell or bands in Setup to unlock this');return;}
+  if(!items||!items.length){toast('Add your equipment in Setup (kettlebell, dip bar, medicine ball, ab roller, battle rope, pull-up bar) to unlock this');return;}
   openPlayer({items,free:true,title:'Weights',focus:'Full-body strength'});
 }
 function plChrome(){
@@ -4158,7 +4146,7 @@ function renderGuide(){
     <div class="divider" style="margin:10px 0"></div>
     <div style="padding:2px 0"><div class="tiny muted" style="margin-bottom:6px">Equipment you have <span style="opacity:.7">· unlocks the Weights session</span></div>
       <div class="daypick" id="set-gear" style="flex-wrap:wrap">
-        ${[['bar','Pull-up / dip tower'],['bench','Bench / chair'],['dumbbells','Dumbbells'],['barbell','Barbell'],['kettlebell','Kettlebell'],['bands','Bands']].map(([k,l])=>`<button class="${(STATE.profile.gear||[]).includes(k)?'on':''}" onclick="toggleGear('${k}')">${l}</button>`).join('')}
+        ${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['medball','Medicine ball'],['abroller','Ab roller'],['battlerope','Battle rope'],['bench','Bench / chair']].map(([k,l])=>`<button class="${(STATE.profile.gear||[]).includes(k)?'on':''}" onclick="toggleGear('${k}')">${l}</button>`).join('')}
       </div></div>
     <div style="padding:8px 0 2px"><div class="tiny muted" style="margin-bottom:6px">Diet preference <span style="opacity:.7">· shapes meal plans</span></div>
       <div class="daypick" id="set-diet" style="flex-wrap:wrap">
@@ -4234,6 +4222,8 @@ async function boot(){
   if(!Array.isArray(STATE.profile.gear)){STATE.profile.gear=[];if(STATE.profile.hasBar!==false)STATE.profile.gear.push('bar');if(STATE.profile.hasBench!==false)STATE.profile.gear.push('bench');}
   if(!Array.isArray(STATE.profile.targets))STATE.profile.targets=['abs','full'];
   if(!STATE.profile.goal)STATE.profile.goal=STATE.nutrition.goal||'lose';
+  // one-time: seed the owner's actual home-gym kit so the Weights session works out of the box
+  if(!STATE.profile._gearMil){STATE.profile.gear=['bar','dip','kettlebell','medball','abroller','battlerope'];STATE.profile.hasBar=true;STATE.profile._gearMil=true;}
   if(!Array.isArray(STATE.photos))STATE.photos=[];
   if(!STATE.achievements||typeof STATE.achievements!=='object')STATE.achievements={};
   if(STATE.settings.reminderOn===undefined)STATE.settings.reminderOn=false;
