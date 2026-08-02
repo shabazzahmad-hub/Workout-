@@ -2825,7 +2825,8 @@ function repHTML(label,total){
 function runWarmup(){runFlow(WARMUP_FLOW,'Warm-up','var(--fire)');}
 function runCooldown(){runFlow(COOLDOWN_FLOW,'Cool-down','var(--teal)');}
 function runFlow(items,title,color){
-  let idx=0,phase='ready',ready=5,remain=0,total=Math.max(1,items[0].secs);
+  let idx=0,phase='ready',ready=5,trans=0,remain=0,total=Math.max(1,items[0].secs);
+  const TRANSITION=4;   // seconds to reposition between moves (floor <-> standing)
   const C=2*Math.PI*100;
   openSheet(flowHTML(title,items.length,color||'var(--fire)'));
   primeVoice();beatStart();
@@ -2835,17 +2836,31 @@ function runFlow(items,title,color){
   showFlowImg(items[0].img);   // preview the first move during the countdown
   beep(1000,.15,0.7); coachSpeak(title+'. Get ready.'); ring(1);
   function showFlowImg(src){const im=$('#flowImg');if(!im)return;if(src){im.src=src;im.style.display='block';}else{im.removeAttribute('src');im.style.display='none';}}
-  function startItem(){
+  function startItem(first){
     const it=items[idx]; remain=it.secs; total=Math.max(1,it.secs);
     set('#flowNum',remain); set('#flowName',it.n); set('#flowCue',it.cue||'');
     set('#flowStep',(idx+1)+' / '+items.length); showFlowImg(it.img);
-    beepGo(); haptic(30); coachSpeak(it.n+'. '+(it.cue||'')); ring(1);
+    beepGo(); haptic(30);
+    coachSpeak(first?(it.n+'. '+(it.cue||'')):(it.cue||it.n)); ring(1);
+  }
+  // Short "get into position" bridge before the NEXT move (floor <-> standing).
+  function enterTransition(){
+    const it=items[idx]; phase='transition'; trans=TRANSITION;
+    set('#flowName',it.n); set('#flowCue','Get into position — '+it.n);
+    set('#flowStep',(idx+1)+' / '+items.length); set('#flowNum',trans);
+    showFlowImg(it.img); ring(1); beep(1000,.15,0.7);
+    coachSpeak('Next up. '+it.n+'. Get into position.');
   }
   function tick(){
     if(phase==='ready'){
       ready--;
       if(ready>0){beep(1000,.15,0.7);if(ready<=3)coachSay(String(ready));set('#flowNum',ready);return;}
-      phase='run'; startItem(); return;
+      phase='run'; startItem(true); return;
+    }
+    if(phase==='transition'){
+      trans--;
+      if(trans>0){beep(1000,.15,0.7);if(trans<=3)coachSay(String(trans));set('#flowNum',trans);return;}
+      beepGo(); phase='run'; startItem(false); return;
     }
     remain--;
     if(remain===5&&total>10)coachSpeak('Five seconds.');
@@ -2860,7 +2875,7 @@ function runFlow(items,title,color){
         coachSpeak(title+' complete. Nice work.');
         setTimeout(closeSheet,1100);return;
       }
-      beep(1000,.16,0.75); startItem(); return;
+      enterTransition(); return;
     }
     set('#flowNum',remain); ring(remain/total);
   }
