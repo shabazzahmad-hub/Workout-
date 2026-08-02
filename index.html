@@ -104,6 +104,18 @@
   .hp-stats{display:flex;gap:20px;margin-top:12px}
   .hp-stat{font-size:11px;color:rgba(255,255,255,.82);font-weight:700}
   .hp-stat b{display:block;font-size:19px;font-weight:900;color:#fff}
+  /* Branded splash screen (shown briefly on launch) */
+  .splash{position:fixed;inset:0;z-index:400;background:#08090b;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;overflow:hidden;opacity:1;transition:opacity .5s ease}
+  .splash.hide{opacity:0;pointer-events:none}
+  .splash>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 20%}
+  .splash .sgrad{position:absolute;inset:0;background:radial-gradient(120% 80% at 50% 30%,rgba(8,9,11,.25),rgba(8,9,11,.15) 35%,rgba(8,9,11,.96) 100%)}
+  .splash .scontent{position:relative;z-index:2;text-align:center;padding:0 24px calc(58px + env(safe-area-inset-bottom));animation:sfade .6s ease both}
+  .splash .swordmark{font-size:40px;font-weight:900;letter-spacing:.5px;color:#fff;text-shadow:0 2px 18px rgba(0,0,0,.5)}
+  .splash .ssub{font-size:12px;font-weight:800;letter-spacing:3.5px;text-transform:uppercase;color:var(--fire-l);margin-top:5px}
+  .splash .sbar{width:130px;height:4px;border-radius:3px;background:rgba(255,255,255,.14);margin:20px auto 0;overflow:hidden}
+  .splash .sbar>i{display:block;height:100%;width:38%;background:var(--fire);border-radius:3px;animation:sload 1.05s ease-in-out infinite}
+  @keyframes sload{0%{transform:translateX(-110%)}100%{transform:translateX(360%)}}
+  @keyframes sfade{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
   /* Theme picker chips */
   .themerow{display:flex;gap:6px;padding:5px;background:var(--card2);border:1px solid var(--line);border-radius:999px;width:fit-content}
   .themechip{padding:8px 16px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:.4px;color:var(--muted);transition:.18s}
@@ -280,6 +292,15 @@
 </style>
 </head>
 <body>
+<div class="splash" id="splash">
+  <img src="hero.jpg" alt="">
+  <div class="sgrad"></div>
+  <div class="scontent">
+    <div class="swordmark">CoreForge</div>
+    <div class="ssub">Abs · Core · Obliques</div>
+    <div class="sbar"><i></i></div>
+  </div>
+</div>
 <div class="app">
   <div class="topbar">
     <div class="brand">
@@ -1137,7 +1158,16 @@ function renderToday(){
 
 function onboardHTML(){
   return `
-  <div class="hero anterior"><div class="htop"><div><div class="hlbl">Welcome to</div><h1>CoreForge</h1><div class="hmeta">Core &amp; abs first — then a full year of full-body training</div></div><div class="hicon">🔥</div></div></div>
+  <div class="herophoto" style="margin-bottom:14px">
+    <img src="hero.jpg" alt="" onerror="this.style.display='none'">
+    <div class="hp-grad"></div>
+    <div class="hp-badges"><span class="hp-badge today">WELCOME</span></div>
+    <div class="hp-body">
+      <div class="hp-focus">Welcome to</div>
+      <h1>CoreForge</h1>
+      <div class="hp-focus" style="opacity:.9">Core &amp; abs first — then a full year of full-body training</div>
+    </div>
+  </div>
   <div class="note fire">A complete program to <b>burn fat and forge a strong core</b> — dedicated abs & oblique work for your belly and love handles, plus <b>compound bodyweight strength and cardio HIIT</b> to torch calories. Day one is a quick <b>baseline assessment</b>; from it the app builds a personalised plan that <b>gets harder every week</b> automatically and saves every rep. Pair it with the <b>Fuel</b> tab to reveal the results.</div>
   <div class="card pad">
     <h3>Let's set you up</h3>
@@ -3892,6 +3922,7 @@ async function boot(){
   try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();}catch(e){}
   initBackButton();   // make the phone's Back button navigate instead of closing the app
   render();
+  setTimeout(hideSplash,850);   // dismiss the launch splash once the app is drawn
   // voice coach: populate the voice list now and again when the OS finishes loading it,
   // and unlock speech on the first user interaction (mobile autoplay policy)
   try{loadCoachVoices();if('speechSynthesis'in window)speechSynthesis.onvoiceschanged=loadCoachVoices;}catch(e){}
@@ -3903,6 +3934,8 @@ async function boot(){
   // service worker
   if('serviceWorker'in navigator){try{navigator.serviceWorker.register('sw.js');}catch(e){}}
 }
+function hideSplash(){const s=document.getElementById('splash');if(!s||s.classList.contains('hide'))return;s.classList.add('hide');setTimeout(()=>{try{s.remove();}catch(e){}},600);}
+setTimeout(hideSplash,6000);   // safety: never let the splash linger if boot stalls
 window.addEventListener('load',boot);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){try{checkReminder();}catch(e){}}});
 </script>
