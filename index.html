@@ -2030,9 +2030,13 @@ const _neuralCache=new Map();          // cacheKey -> object URL (per-session; k
 let _neuralAudio=null, _neuralTok=0;
 function _xmlEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));}
 function neuralSSML(text,cfg){
-  const body=_xmlEsc(text);
-  let inner=body;
-  if(cfg.rate||cfg.pitch){inner=`<prosody rate="${cfg.rate||'0%'}" pitch="${cfg.pitch||'0st'}">${inner}</prosody>`;}
+  let inner=_xmlEsc(text);
+  // Only emit prosody attributes that are actually set — a filler like pitch="0st"
+  // or rate="0%" is an invalid value and makes Azure reject the whole SSML (0x80045003).
+  if(cfg.rate||cfg.pitch){
+    const a=[];if(cfg.rate)a.push(`rate="${cfg.rate}"`);if(cfg.pitch)a.push(`pitch="${cfg.pitch}"`);
+    inner=`<prosody ${a.join(' ')}>${inner}</prosody>`;
+  }
   if(cfg.style&&NEURAL_STYLE_VOICES.has(cfg.v)){inner=`<mstts:express-as style="${cfg.style}" styledegree="${cfg.deg||'1.5'}">${inner}</mstts:express-as>`;}
   return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US"><voice name="${cfg.v}">${inner}</voice></speak>`;
 }
@@ -2221,6 +2225,7 @@ function testNeural(){
     .catch(err=>{const m=String(err&&(err.message||err.errorDetails||err)||'error');
       let hint='Neural voice failed';
       if(/SDK load|Failed to fetch|load failed|SDK missing/i.test(m))hint='Couldn\'t load the voice engine — check your connection';
+      else if(/SSML|0x8004|parsing error/i.test(m))hint='Voice markup error (app bug) — please report this';
       else if(/401|403|Forbidden|Unauthorized|subscription|invalid.*key/i.test(m))hint='Key or region rejected — re-check both';
       else if(/1006|1007|websocket|connection|handshake|4429|429/i.test(m))hint='Connection blocked — check region/network';
       toast&&toast(hint+'. Using device voice.');
