@@ -781,6 +781,69 @@ const EX = {
     steps:['Squat, hands down, jump the feet back to a plank (add a push-up).','Jump the feet back in.','Explode into a tuck jump, knees to chest.','Land soft and flow into the next rep.'],
     cues:['Strong plank, no sag','Knees high on the jump','Pace so form holds'],
     mistakes:['Sloppy plank','Landing hard and stiff']},
+
+  /* ===== EQUIPMENT / WEIGHTS LIBRARY (used by the Weights session) =====
+     Each carries `equip` (gear required) and `pattern` (movement) for the builder. */
+  db_goblet:{name:'Goblet Squat',region:'legs',unit:'reps',img:null,anchor:null,hardness:1,base:12,rest:60,equip:['dumbbells'],pattern:'squat',
+    why:'A dumbbell held at the chest loads the legs and core while keeping the torso tall — the safest big-bang leg builder.',
+    steps:['Hold one dumbbell vertically at your chest.','Sit back and down, knees tracking over toes.','Drive through the heels to stand tall.'],
+    cues:['Chest up, core braced','Knees out','Full depth then drive'],mistakes:['Heels lifting','Rounding the back']},
+  db_rdl:{name:'Dumbbell RDL',region:'legs',unit:'reps',img:null,anchor:null,hardness:1,base:12,rest:60,equip:['dumbbells'],pattern:'hinge',
+    why:'A hip hinge that builds the hamstrings, glutes and lower back — the posterior chain most people neglect.',
+    steps:['Hold dumbbells in front of your thighs.','Push the hips back, soft knees, lower the weights down the shins.','Squeeze the glutes to stand.'],
+    cues:['Hips back, not down','Flat back','Feel the hamstrings'],mistakes:['Rounding the back','Turning it into a squat']},
+  db_press:{name:'Dumbbell Bench/Floor Press',region:'chest',unit:'reps',img:null,anchor:null,hardness:1,base:10,rest:60,equip:['dumbbells'],pattern:'pushh',
+    why:'Horizontal press for the chest, shoulders and triceps — dumbbells give a bigger, safer range than a bar.',
+    steps:['Lie on a bench (or floor), dumbbells at chest height.','Press up until arms are straight.','Lower under control to the stretch.'],
+    cues:['Elbows ~45°','Press slightly together','Control the lowering'],mistakes:['Flaring elbows','Bouncing off the chest']},
+  db_row:{name:'Dumbbell Row',region:'back',unit:'reps',img:null,anchor:null,hardness:1,base:10,rest:55,equip:['dumbbells'],pattern:'pull',
+    why:'A single-arm row that builds a thick, strong back and balances all the pressing.',
+    steps:['Hinge forward, one hand supported on a bench or knee.','Row the dumbbell to your hip.','Lower with a full stretch.'],
+    cues:['Pull to the hip','Squeeze the shoulder blade','Flat back'],mistakes:['Yanking with the arm','Twisting the torso']},
+  db_press_oh:{name:'Dumbbell Shoulder Press',region:'shoulders',unit:'reps',img:null,anchor:null,hardness:1,base:10,rest:55,equip:['dumbbells'],pattern:'pushv',
+    why:'Overhead pressing builds capped, strong shoulders and a stable, braced core.',
+    steps:['Dumbbells at shoulder height, palms forward.','Brace and press overhead until arms lock.','Lower under control to the shoulders.'],
+    cues:['Ribs down, glutes tight','Press in a slight arc','No leaning back'],mistakes:['Arching the low back','Half reps']},
+  db_lunge:{name:'Dumbbell Lunge',region:'legs',unit:'reps',img:null,anchor:null,hardness:1,base:10,rest:55,equip:['dumbbells'],pattern:'lunge',
+    why:'Single-leg strength and balance for the quads and glutes — evens out side-to-side weakness.',
+    steps:['Hold dumbbells at your sides.','Step forward and lower the back knee toward the floor.','Drive back to the start. Alternate legs.'],
+    cues:['Tall torso','Front knee over ankle','Push through the front heel'],mistakes:['Short steps','Front knee caving in']},
+  db_curl:{name:'Dumbbell Curl',region:'arms',unit:'reps',img:null,anchor:null,hardness:1,base:12,rest:45,equip:['dumbbells'],pattern:'curl',
+    why:'Direct biceps work to fill out the arms and support every pulling movement.',
+    steps:['Dumbbells at your sides, palms forward.','Curl up without swinging.','Lower slowly to full extension.'],
+    cues:['Elbows pinned','Squeeze at the top','Slow the lowering'],mistakes:['Swinging the body','Half range']},
+  db_lateral:{name:'Lateral Raise',region:'shoulders',unit:'reps',img:null,anchor:null,hardness:1,base:14,rest:40,equip:['dumbbells'],pattern:'lateral',
+    why:'Isolates the side delts for that broad, capped-shoulder look.',
+    steps:['Light dumbbells at your sides, slight elbow bend.','Raise out to shoulder height.','Lower slowly.'],
+    cues:['Lead with the elbows','No shrugging','Control down'],mistakes:['Going too heavy','Using momentum']},
+  bb_squat:{name:'Barbell Back Squat',region:'legs',unit:'reps',img:null,anchor:null,hardness:1.1,base:8,rest:90,equip:['barbell'],pattern:'squat',
+    why:'The king of lower-body lifts — total leg and core strength and a huge metabolic hit.',
+    steps:['Bar on the upper back, feet shoulder-width.','Brace, sit back and down to at least parallel.','Drive up through the whole foot.'],
+    cues:['Big breath, brace','Knees track toes','Depth then drive'],mistakes:['Knees caving','Heels rising']},
+  bb_deadlift:{name:'Barbell Deadlift',region:'back',unit:'reps',img:null,anchor:null,hardness:1.15,base:6,rest:100,equip:['barbell'],pattern:'hinge',
+    why:'Full posterior-chain power — back, glutes, hamstrings and grip in one lift.',
+    steps:['Bar over mid-foot, hinge and grip it.','Brace, chest up, push the floor away.','Lock out tall, then lower with control.'],
+    cues:['Flat back, bar close','Push the floor','Hips and shoulders rise together'],mistakes:['Rounding the back','Jerking off the floor']},
+  bb_bench:{name:'Barbell Bench Press',region:'chest',unit:'reps',img:null,anchor:null,hardness:1.1,base:8,rest:90,equip:['barbell','bench'],pattern:'pushh',
+    why:'The classic upper-body strength builder for chest, shoulders and triceps.',
+    steps:['Lie back, grip just outside the shoulders.','Lower the bar to the mid-chest.','Press up and slightly back to lockout.'],
+    cues:['Shoulder blades pinched','Elbows ~45°','Feet driving'],mistakes:['Bouncing the bar','Flaring elbows']},
+  bb_row:{name:'Barbell Bent-Over Row',region:'back',unit:'reps',img:null,anchor:null,hardness:1.1,base:8,rest:75,equip:['barbell'],pattern:'pull',
+    why:'Heavy horizontal pulling for a thick, powerful back.',
+    steps:['Hinge to ~45°, flat back, bar hanging.','Row the bar to the lower ribs.','Lower under control.'],
+    cues:['Flat back','Pull to the belt','Squeeze the blades'],mistakes:['Standing too upright','Using momentum']},
+  bb_ohp:{name:'Barbell Overhead Press',region:'shoulders',unit:'reps',img:null,anchor:null,hardness:1.1,base:8,rest:80,equip:['barbell'],pattern:'pushv',
+    why:'Standing overhead strength for shoulders, triceps and a rock-solid core.',
+    steps:['Bar at the front of the shoulders, brace hard.','Press overhead, move the head back then through.','Lower under control to the shoulders.'],
+    cues:['Glutes and abs tight','Bar over mid-foot at lockout','No big lean'],mistakes:['Arching the back','Pressing around the head']},
+  kb_swing:{name:'Kettlebell Swing',region:'cardio',unit:'time',img:null,anchor:null,hardness:1,base:30,rest:50,equip:['kettlebell'],pattern:'swing',
+    why:'Explosive hip power and conditioning — builds the posterior chain and torches calories.',
+    steps:['Hinge and hike the bell back between the legs.','Snap the hips to float the bell to chest height.','Let it fall, hinge, repeat for time.'],
+    cues:['Power from the hips','Arms are just hooks','Flat back'],mistakes:['Squatting the swing','Lifting with the arms']},
+  band_pull:{name:'Band Pull-Apart',region:'back',unit:'reps',img:null,anchor:null,hardness:0.8,base:16,rest:35,equip:['bands'],pattern:'pull',
+    why:'Bulletproofs the upper back and rear delts and fixes posture — perfect between pressing.',
+    steps:['Hold a band at shoulder height, arms straight.','Pull it apart to the chest, squeezing the blades.','Return slowly.'],
+    cues:['Straight arms','Squeeze the shoulder blades','Slow return'],mistakes:['Bending the elbows','Shrugging']},
 };
 
 /* ============================ SESSION TEMPLATES ============================
@@ -882,7 +945,9 @@ const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
   version:1,
   onboarded:false,
-  profile:{name:'', days:[1,2,4,5], unit:'cm', startWaist:null, goalWaist:null, createdAt:todayISO()},
+  profile:{name:'', days:[1,2,4,5], unit:'cm', startWaist:null, goalWaist:null, createdAt:todayISO(),
+    sex:null, age:null, heightCm:null, experience:'Intermediate', activity:1.45, goal:'lose',
+    targets:['abs','full'], gear:['bar','bench'], limitations:[]},   // deep-profile fields
   baseline:null,            // {date,results:{},coreScore,level,maxes:{}}
   reassess:{},              // cycleIndex -> {date,results,coreScore,level,maxes}
   progressPtr:0,            // index of next session to do (0-based, across all cycles)
@@ -892,7 +957,8 @@ const DEFAULT_STATE=()=>({
   scoreHistory:[],          // {date,score,level}
   prs:{},                   // exId -> best (reps or seconds)
   adapt:1,                  // adaptive-overload multiplier: rises as you improve
-  nutrition:{goal:'lose',sex:null,age:null,heightCm:null,activity:1.45,kcalTarget:null,days:{}}, // fuel module
+  nutrition:{goal:'lose',sex:null,age:null,heightCm:null,activity:1.45,kcalTarget:null,days:{},
+    diet:'omnivore',allergies:'',meals:3,plan:null}, // fuel module (+ meal-plan prefs)
   photos:[],                // progress photos: {id,date,pose} (image bytes live in IndexedDB)
   achievements:{},          // unlocked milestone badges: {id:date}
   restDays:{},              // logged rest days: {date:true}
@@ -1165,56 +1231,99 @@ function onboardHTML(){
       <div class="hp-focus" style="opacity:.9">Core &amp; abs first — then a full year of full-body training</div>
     </div>
   </div>
-  <div class="note fire">A complete program to <b>burn fat and forge a strong core</b> — dedicated abs & oblique work for your belly and love handles, plus <b>compound bodyweight strength and cardio HIIT</b> to torch calories. Day one is a quick <b>baseline assessment</b>; from it the app builds a personalised plan that <b>gets harder every week</b> automatically and saves every rep. Pair it with the <b>Fuel</b> tab to reveal the results.</div>
+  <div class="note fire">Answer a few questions and CoreForge tailors your whole plan — training, equipment and meals — to <b>you</b>. Then a quick <b>baseline test</b> sets your starting numbers, and the program auto-progresses every week.</div>
   <div class="card pad">
-    <h3>Let's set you up</h3>
+    <h3>About you</h3>
     <div class="field"><label>Your name (optional)</label><input id="ob-name" placeholder="Athlete" autocomplete="off"></div>
-    <div class="field"><label>Primary goal</label>
-      <div class="daypick" id="ob-goal"><button data-g="lose" class="on">🔥 Lose fat</button><button data-g="recomp">⚖️ Tone up</button><button data-g="maintain">💪 Strength</button></div></div>
-    <div class="field"><label>Experience level</label>
-      <div class="daypick" id="ob-exp"><button data-x="Beginner">Beginner</button><button data-x="Intermediate" class="on">Intermediate</button><button data-x="Advanced">Advanced</button></div>
-      <div class="tiny muted" style="margin-top:6px">A starting point — your Day-1 baseline test sets the real numbers.</div></div>
-    <div class="field"><label>Training days per week</label>
-      <div class="daypick" id="ob-days">
-        ${['M','T','W','T','F','S','S'].map((d,i)=>`<button data-d="${(i+1)%7}">${d}</button>`).join('')}
-      </div>
-      <div class="tiny muted" style="margin-top:7px">Pick ~4 days. 4 focused sessions a week is the sweet spot — rest days matter.</div>
-    </div>
-    <div class="field"><label>Equipment you have</label>
-      <div class="daypick" id="ob-equip"><button data-e="bar" class="on">Pull-up bar</button><button data-e="bench" class="on">Bench / chair</button></div>
-      <div class="tiny muted" style="margin-top:6px">Tap to toggle. Everything works without them — we swap moves to match.</div></div>
-    <div class="field"><label>Measurement units</label>
-      <div class="daypick" id="ob-unit"><button data-u="cm" class="on">Centimetres</button><button data-u="in">Inches</button></div>
+    <div class="numrow" style="gap:10px">
+      <div class="field" style="flex:1.4;margin:0"><label>Sex (for calorie math)</label>
+        <div class="daypick" id="ob-sex"><button data-s="male" class="on">Male</button><button data-s="female">Female</button></div></div>
+      <div class="field" style="flex:1;margin:0"><label>Age</label><input id="ob-age" type="number" inputmode="numeric" placeholder="35"></div>
     </div>
     <div class="numrow" style="gap:10px">
-      <div class="field" style="flex:1;margin:0"><label>Waist now (opt.)</label><input id="ob-waist" type="number" inputmode="decimal" placeholder="86"></div>
-      <div class="field" style="flex:1;margin:0"><label>Weight (opt.)</label><input id="ob-weight" type="number" inputmode="decimal" placeholder="wt"></div>
+      <div class="field" style="flex:1;margin:0"><label>Height (<span id="ob-htu">cm</span>)</label><input id="ob-height" type="number" inputmode="decimal" placeholder="178"></div>
+      <div class="field" style="flex:1;margin:0"><label>Weight (<span id="ob-wtu">kg</span>)</label><input id="ob-weight" type="number" inputmode="decimal" placeholder="84"></div>
+      <div class="field" style="flex:1;margin:0"><label>Waist (<span id="ob-wsu">cm</span>)</label><input id="ob-waist" type="number" inputmode="decimal" placeholder="86"></div>
     </div>
-    <div class="tiny muted" style="margin:6px 0 12px">Measured around the navel. We track waist &amp; weight — the truest signs of progress (used for your Fuel targets too).</div>
-    <button class="btn primary block" id="ob-go">Continue to Baseline →</button>
+    <div class="field"><label>Measurement units</label>
+      <div class="daypick" id="ob-unit"><button data-u="cm" class="on">Metric (cm/kg)</button><button data-u="in">Imperial (in/lb)</button></div></div>
   </div>
+
+  <div class="card pad">
+    <h3>Your goal</h3>
+    <div class="field"><label>Primary goal</label>
+      <div class="daypick" id="ob-goal"><button data-g="lose" class="on">🔥 Lose fat</button><button data-g="recomp">⚖️ Tone up</button><button data-g="maintain">💪 Maintain</button><button data-g="gain">📈 Build muscle</button></div></div>
+    <div class="field"><label>Focus areas <span class="tiny muted">· tap all that apply</span></label>
+      <div class="daypick" id="ob-targets" style="flex-wrap:wrap">
+        ${[['abs','Abs & core'],['full','Full body'],['chest','Chest'],['back','Back'],['shoulders','Shoulders'],['arms','Arms'],['legs','Legs'],['glutes','Glutes']].map(([k,l])=>`<button data-t="${k}"${(k==='abs'||k==='full')?' class="on"':''}>${l}</button>`).join('')}</div></div>
+    <div class="field"><label>Experience level</label>
+      <div class="daypick" id="ob-exp"><button data-x="Beginner">Beginner</button><button data-x="Intermediate" class="on">Intermediate</button><button data-x="Advanced">Advanced</button></div></div>
+    <div class="field"><label>Daily activity (outside workouts)</label>
+      <div class="daypick" id="ob-act" style="flex-wrap:wrap"><button data-a="1.2">Mostly sitting</button><button data-a="1.375">Lightly active</button><button data-a="1.45" class="on">Moderately active</button><button data-a="1.6">Very active</button></div></div>
+    <div class="field"><label>Training days per week</label>
+      <div class="daypick" id="ob-days">${['M','T','W','T','F','S','S'].map((d,i)=>`<button data-d="${(i+1)%7}">${d}</button>`).join('')}</div>
+      <div class="tiny muted" style="margin-top:7px">Pick ~4 days — the sweet spot. Rest days matter.</div></div>
+  </div>
+
+  <div class="card pad">
+    <h3>Equipment you have</h3>
+    <div class="tiny muted" style="margin:-4px 0 8px">Everything works with bodyweight — pick what you own and we unlock a <b>Weights session</b> tuned to your gear.</div>
+    <div class="daypick" id="ob-gear" style="flex-wrap:wrap">
+      ${[['bar','Pull-up / dip tower'],['bench','Bench / chair'],['dumbbells','Dumbbells'],['barbell','Barbell'],['kettlebell','Kettlebell'],['bands','Resistance bands']].map(([k,l])=>`<button data-e="${k}"${(k==='bar'||k==='bench')?' class="on"':''}>${l}</button>`).join('')}
+    </div>
+  </div>
+
+  <div class="card pad">
+    <h3>Nutrition</h3>
+    <div class="field"><label>Diet preference <span class="tiny muted">· shapes your meal plans</span></label>
+      <div class="daypick" id="ob-diet" style="flex-wrap:wrap"><button data-d="omnivore" class="on">Omnivore</button><button data-d="halal">Halal</button><button data-d="pescatarian">Pescatarian</button><button data-d="vegetarian">Vegetarian</button><button data-d="vegan">Vegan</button></div></div>
+    <div class="field"><label>Meals per day</label>
+      <div class="daypick" id="ob-meals"><button data-m="3" class="on">3 meals</button><button data-m="4">3 + snack</button></div></div>
+    <div class="field"><label>Anything to avoid? <span class="tiny muted">· optional</span></label>
+      <input id="ob-allerg" placeholder="e.g. peanuts, dairy, shellfish" autocomplete="off"></div>
+  </div>
+
+  <button class="btn primary block" id="ob-go" style="font-size:16px;padding:16px">Build my plan → Baseline</button>
   <div class="note info">Your data lives <b>only on this phone</b> (auto-saved, works offline). Nothing is uploaded.</div>`;
 }
 function wireOnboard(){
   const days=new Set(STATE.profile.days);
   $$('#ob-days button').forEach(b=>{if(days.has(+b.dataset.d))b.classList.add('on');b.onclick=()=>{b.classList.toggle('on');haptic(8);};});
   const single=(sel)=>$$(sel+' button').forEach(b=>b.onclick=()=>{$$(sel+' button').forEach(x=>x.classList.remove('on'));b.classList.add('on');haptic(6);});
-  single('#ob-goal');single('#ob-exp');single('#ob-unit');
-  $$('#ob-equip button').forEach(b=>b.onclick=()=>{b.classList.toggle('on');haptic(6);});
+  const multi=(sel)=>$$(sel+' button').forEach(b=>b.onclick=()=>{b.classList.toggle('on');haptic(6);});
+  single('#ob-sex');single('#ob-goal');single('#ob-exp');single('#ob-act');single('#ob-unit');single('#ob-diet');single('#ob-meals');
+  multi('#ob-targets');multi('#ob-gear');
+  // keep unit labels in sync when metric/imperial toggled
+  $$('#ob-unit button').forEach(b=>b.addEventListener('click',()=>{
+    const im=($('#ob-unit button.on')||{}).dataset && $('#ob-unit button.on').dataset.u==='in';
+    ['ob-htu','ob-wtu','ob-wsu'].forEach((id,i)=>{const e=$('#'+id);if(e)e.textContent=im?(i===0?'in':i===1?'lb':'in'):(i===1?'kg':'cm');});
+  }));
   $('#ob-go').onclick=()=>{
-    const chosen=$$('#ob-days button.on').map(b=>+b.dataset.d);
-    STATE.profile.name=($('#ob-name').value||'').trim();
-    STATE.profile.days=chosen.length?chosen:[1,2,4,5];
-    STATE.profile.unit=$('#ob-unit button.on').dataset.u;
-    STATE.profile.experience=($('#ob-exp button.on')||{}).dataset?$('#ob-exp button.on').dataset.x:'Intermediate';
-    const eq=$$('#ob-equip button.on').map(b=>b.dataset.e);
-    STATE.profile.hasBar=eq.includes('bar');STATE.profile.hasBench=eq.includes('bench');
-    const goal=($('#ob-goal button.on')||{dataset:{g:'lose'}}).dataset.g;
-    STATE.profile.goal=goal;STATE.nutrition.goal=goal;
+    const P=STATE.profile, N=STATE.nutrition;
+    P.name=($('#ob-name').value||'').trim();
+    P.unit=($('#ob-unit button.on')||{dataset:{u:'cm'}}).dataset.u;
+    const im=P.unit==='in';
+    P.sex=($('#ob-sex button.on')||{dataset:{s:'male'}}).dataset.s;
+    P.age=parseInt($('#ob-age').value)||null;
+    const ht=parseFloat($('#ob-height').value); P.heightCm=ht>0?Math.round(im?ht*2.54:ht):null;
+    P.experience=($('#ob-exp button.on')||{dataset:{x:'Intermediate'}}).dataset.x;
+    P.activity=parseFloat(($('#ob-act button.on')||{dataset:{a:'1.45'}}).dataset.a)||1.45;
+    const chosen=$$('#ob-days button.on').map(b=>+b.dataset.d); P.days=chosen.length?chosen:[1,2,4,5];
+    P.goal=($('#ob-goal button.on')||{dataset:{g:'lose'}}).dataset.g;
+    P.targets=$$('#ob-targets button.on').map(b=>b.dataset.t); if(!P.targets.length)P.targets=['abs','full'];
+    P.gear=$$('#ob-gear button.on').map(b=>b.dataset.e);
+    P.hasBar=P.gear.includes('bar'); P.hasBench=P.gear.includes('bench');   // back-compat
+    // nutrition prefs
+    N.goal=P.goal; N.sex=P.sex; N.age=P.age; N.heightCm=P.heightCm; N.activity=P.activity;
+    N.diet=($('#ob-diet button.on')||{dataset:{d:'omnivore'}}).dataset.d;
+    N.meals=parseInt(($('#ob-meals button.on')||{dataset:{m:'3'}}).dataset.m)||3;
+    N.allergies=($('#ob-allerg').value||'').trim();
+    // body metrics
     const w=parseFloat($('#ob-waist').value),wt=parseFloat($('#ob-weight').value);
-    if(w>0){STATE.profile.startWaist=w;}
-    if(w>0||wt>0)STATE.measurements.push({date:todayISO(),waist:w>0?w:null,weight:wt>0?wt:null});
-    if(wt>0)STATE.nutrition.weightKg=STATE.profile.unit==='in'?Math.round(wt*0.4536*10)/10:wt;
+    if(w>0)P.startWaist=im?Math.round(w*2.54):w;
+    let kg=null; if(wt>0){kg=im?Math.round(wt*0.453592*10)/10:wt; N.weightKg=kg;}
+    if(w>0||wt>0)STATE.measurements.push({date:todayISO(),waist:P.startWaist||null,weight:kg});
+    try{recalcKcalFromStored();}catch(e){}   // pre-fill calorie/macro targets from the quiz
     STATE.onboarded=true;save();render();
   };
 }
@@ -1291,6 +1400,7 @@ function todayWorkoutHTML(){
   </div>
   <button class="btn primary" style="margin:2px 0 8px;font-size:16px;padding:17px" onclick="openPlayer()">▶ Start guided workout</button>
   ${sess.session.key==='metcon'?`<button class="btn ghost" style="margin:0 0 8px" onclick="openHiitChooser()">⚡ HIIT intervals — Tabata · EMOM · AMRAP</button>`:''}
+  ${hasWeights()?`<button class="btn ghost" style="margin:0 0 8px" onclick="startWeights()">🏋️ Weights session — full-body, your equipment</button>`:''}
   <div class="btnrow" style="margin:2px 0 6px"><button class="btn ghost" id="coachBrief">🎙️ Coach brief</button><button class="btn ghost" onclick="openQuickList()">⚡ Quick</button><button class="btn ghost" onclick="openRecovery()">😌 Recover</button></div>`;
   h+=homeSummaryHTML();
   h+=weeklyBannerHTML();
@@ -1486,16 +1596,48 @@ function playerSwap(exId){
   toast('Swapped to '+nEx.name);
   plClear();plEnterReady(false);   // restart the current set with the new move
 }
-function openPlayer(){
-  const sess=buildSession(STATE.progressPtr);
-  const items=[...sess.main,sess.finisher];
+function openPlayer(opts){
+  let sess,items,free=false;
+  if(opts&&opts.items&&opts.items.length){
+    items=opts.items;free=!!opts.free;
+    sess={session:{name:opts.title||'Weights',key:'strength',focus:opts.focus||'Full-body strength'},cycle:0,week:0,main:items,finisher:items[items.length-1],pos:{}};
+  }else{
+    sess=buildSession(STATE.progressPtr);items=[...sess.main,sess.finisher];
+  }
   if(!items.length)return;
-  PLAYER={sess,items,i:0,s:0,phase:null,running:true,tid:null,remain:0,total:0,repN:0,elapsed:0,setsDone:0,pendingNext:false,
+  PLAYER={sess,items,i:0,s:0,phase:null,running:true,tid:null,remain:0,total:0,repN:0,elapsed:0,setsDone:0,pendingNext:false,free,
     tempo:Math.max(1.5,Math.min(6,(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3))};
   $('#player').classList.add('open');document.body.style.overflow='hidden';
   try{history.pushState({cf:'player'},'');}catch(e){}
   primeVoice();beatStart();
   plEnterReady(true);
+}
+/* ===== WEIGHTS SESSION (equipment track) ===== */
+function weightsPool(){const gear=STATE.profile.gear||[];return Object.keys(EX).filter(k=>EX[k].equip&&EX[k].equip.every(g=>gear.includes(g)));}
+function hasWeights(){return weightsPool().length>0;}
+function weightsRepsFor(k){const ex=EX[k];const g=STATE.profile.goal;let r=ex.base||10;if(g==='lose')r=Math.round(r*1.3);else if(g==='gain')r=Math.max(6,Math.round(r*0.85));return r;}
+function buildWeightsSession(){
+  const pool=weightsPool();if(!pool.length)return null;
+  const targets=STATE.profile.targets||[],goal=STATE.profile.goal;
+  const strengthy=(goal==='gain'||goal==='maintain');
+  const byPat={};pool.forEach(k=>{const p=EX[k].pattern;(byPat[p]=byPat[p]||[]).push(k);});
+  const pick=pat=>{const arr=byPat[pat];if(!arr||!arr.length)return null;
+    const bb=arr.find(k=>EX[k].equip.includes('barbell'));const db=arr.find(k=>EX[k].equip.includes('dumbbells'));
+    return (strengthy&&bb)?bb:(db||arr[0]);};
+  const order=['squat','hinge','pushh','pull','pushv'];
+  if(targets.includes('legs')||targets.includes('glutes'))order.push('lunge');
+  if(targets.includes('arms'))order.push('curl');
+  if(targets.includes('shoulders'))order.push('lateral');
+  const items=[],used=new Set();
+  order.forEach(pat=>{const k=pick(pat);if(k&&!used.has(k)){used.add(k);const ex=EX[k];
+    items.push({exId:k,unit:ex.unit,target:ex.unit==='time'?(ex.base||30):weightsRepsFor(k),rest:ex.rest||60,sets:3});}});
+  if(byPat.swing&&byPat.swing.length&&items.length<7){const k=byPat.swing[0];if(!used.has(k)){const ex=EX[k];items.push({exId:k,unit:ex.unit,target:ex.base||30,rest:ex.rest||45,sets:3});}}
+  return items.slice(0,7);
+}
+function startWeights(){
+  const items=buildWeightsSession();
+  if(!items||!items.length){toast('Add dumbbells, a barbell, kettlebell or bands in Setup to unlock this');return;}
+  openPlayer({items,free:true,title:'Weights',focus:'Full-body strength'});
 }
 function plChrome(){
   const m=plCur();const ex=EX[m.exId];const bg=ex&&ex.img?ex.img:'';
@@ -1649,14 +1791,24 @@ function plRestDone(){plClear();if(PLAYER.pendingNext){PLAYER.pendingNext=false;
 function plEnterDone(){
   plClear();beatStop();PLAYER.phase='done';
   const sess=PLAYER.sess;const wk=(sess.cycle*WEEKS_PER_CYCLE)+sess.week;
-  $('#plBody').innerHTML=`
-    <div class="pl-name" style="margin-bottom:2px">Session complete 🔥</div>
-    <div class="pl-coach" style="margin-bottom:14px">${sess.session.name} · Week ${wk}</div>
-    <div class="grid3" style="width:100%;max-width:440px">
+  const label=PLAYER.free?sess.session.name:(sess.session.name+' · Week '+wk);
+  const stats=`<div class="grid3" style="width:100%;max-width:440px">
       <div class="stat"><div class="n" style="color:var(--fire-l)">${fmtTime(PLAYER.elapsed||1)}</div><div class="l">Time</div></div>
       <div class="stat"><div class="n" style="color:var(--teal)">${PLAYER.setsDone}</div><div class="l">Sets</div></div>
       <div class="stat"><div class="n" style="color:var(--green)">${PLAYER.items.length}</div><div class="l">Moves</div></div>
-    </div>
+    </div>`;
+  if(PLAYER.free){
+    // Bonus/weights session — no program commit, just a close button.
+    $('#plBody').innerHTML=`
+      <div class="pl-name" style="margin-bottom:2px">Weights done 🏋️</div>
+      <div class="pl-coach" style="margin-bottom:14px">${label}</div>${stats}
+      <div style="width:100%;max-width:440px;margin-top:18px"><button class="btn green" style="width:100%" onclick="playerQuit()">Done ✓</button></div>`;
+    if(!motivate('done'))coachSpeak('Weights session complete. Strong work.');
+    return;
+  }
+  $('#plBody').innerHTML=`
+    <div class="pl-name" style="margin-bottom:2px">Session complete 🔥</div>
+    <div class="pl-coach" style="margin-bottom:14px">${label}</div>${stats}
     <div class="pl-set" style="margin-top:20px">HOW DID THAT FEEL?</div>
     <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:440px;margin-top:8px">
       <button class="btn green" onclick="playerFeel('easy')">😎 Easy — bring more</button>
@@ -3480,7 +3632,7 @@ function mifflinBMR(sex,kg,cm,age){return 10*kg+6.25*cm-5*age+(sex==='female'?-1
 function recalcKcalFromStored(){
   const n=nut();if(!(n.sex&&n.age&&n.heightCm&&n.weightKg))return;
   const bmr=mifflinBMR(n.sex,n.weightKg,n.heightCm,n.age);const tdee=bmr*(n.activity||1.45);
-  let t=n.goal==='maintain'?tdee:(n.goal==='recomp'?tdee*0.9:tdee*0.8);
+  let t=n.goal==='gain'?tdee*1.1:(n.goal==='maintain'?tdee:(n.goal==='recomp'?tdee*0.9:tdee*0.8));
   t=Math.max(t,bmr*1.1); // safety floor
   n.kcalTarget=Math.round(t/10)*10;
 }
@@ -3857,8 +4009,14 @@ function renderGuide(){
       <div class="row" style="justify-content:space-between;margin-top:8px"><span class="muted sm">Hear this coach</span><button class="chip" onclick="previewPersona()">▶ Preview</button></div>
     </div>
     <div class="divider" style="margin:10px 0"></div>
-    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Pull-up bar available</span><button class="chip ${STATE.profile.hasBar!==false?'on':''}" onclick="toggleSetting('hasBar')">${STATE.profile.hasBar!==false?'Yes':'No'}</button></div>
-    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Bench/chair available</span><button class="chip ${STATE.profile.hasBench!==false?'on':''}" onclick="toggleSetting('hasBench')">${STATE.profile.hasBench!==false?'Yes':'No'}</button></div>
+    <div style="padding:2px 0"><div class="tiny muted" style="margin-bottom:6px">Equipment you have <span style="opacity:.7">· unlocks the Weights session</span></div>
+      <div class="daypick" id="set-gear" style="flex-wrap:wrap">
+        ${[['bar','Pull-up / dip tower'],['bench','Bench / chair'],['dumbbells','Dumbbells'],['barbell','Barbell'],['kettlebell','Kettlebell'],['bands','Bands']].map(([k,l])=>`<button class="${(STATE.profile.gear||[]).includes(k)?'on':''}" onclick="toggleGear('${k}')">${l}</button>`).join('')}
+      </div></div>
+    <div style="padding:8px 0 2px"><div class="tiny muted" style="margin-bottom:6px">Diet preference <span style="opacity:.7">· shapes meal plans</span></div>
+      <div class="daypick" id="set-diet" style="flex-wrap:wrap">
+        ${[['omnivore','Omnivore'],['halal','Halal'],['pescatarian','Pescatarian'],['vegetarian','Vegetarian'],['vegan','Vegan']].map(([k,l])=>`<button class="${(STATE.nutrition.diet||'omnivore')===k?'on':''}" onclick="setDiet('${k}')">${l}</button>`).join('')}
+      </div></div>
   </div>`;
   // backup
   h+=`<div class="section-label">Your data</div><div class="card pad">
@@ -3878,6 +4036,13 @@ function toggleSetting(k){
   if(k==='beat'&&STATE.settings.beat===false)beatStop();
   save();renderGuide();
 }
+function toggleGear(k){
+  const g=new Set(STATE.profile.gear||[]);if(g.has(k))g.delete(k);else g.add(k);
+  STATE.profile.gear=[...g];
+  STATE.profile.hasBar=g.has('bar');STATE.profile.hasBench=g.has('bench');   // keep legacy flags in sync
+  haptic(8);save();renderGuide();
+}
+function setDiet(k){STATE.nutrition.diet=k;if(STATE.nutrition.plan)STATE.nutrition.plan=null;haptic(8);save();renderGuide();}
 function exportData(){
   const blob=new Blob([JSON.stringify(STATE,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);const a=document.createElement('a');
@@ -3916,6 +4081,12 @@ async function boot(){
   if(typeof STATE.adapt!=='number')STATE.adapt=1;   // adaptive-overload multiplier
   if(!STATE.nutrition||typeof STATE.nutrition!=='object')STATE.nutrition={goal:'lose',sex:null,age:null,heightCm:null,activity:1.45,kcalTarget:null,days:{}};
   if(!STATE.nutrition.days)STATE.nutrition.days={};
+  if(!STATE.nutrition.diet)STATE.nutrition.diet='omnivore';
+  if(!STATE.nutrition.meals)STATE.nutrition.meals=3;
+  // deep-profile defaults for installs created before the equipment/diet quiz
+  if(!Array.isArray(STATE.profile.gear)){STATE.profile.gear=[];if(STATE.profile.hasBar!==false)STATE.profile.gear.push('bar');if(STATE.profile.hasBench!==false)STATE.profile.gear.push('bench');}
+  if(!Array.isArray(STATE.profile.targets))STATE.profile.targets=['abs','full'];
+  if(!STATE.profile.goal)STATE.profile.goal=STATE.nutrition.goal||'lose';
   if(!Array.isArray(STATE.photos))STATE.photos=[];
   if(!STATE.achievements||typeof STATE.achievements!=='object')STATE.achievements={};
   if(STATE.settings.reminderOn===undefined)STATE.settings.reminderOn=false;
