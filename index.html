@@ -2078,9 +2078,13 @@ function _sdkSynthesize(ssml,cfg){
     }catch(e){return reject(e);}
     synth.speakSsmlAsync(ssml,
       res=>{ try{synth.close();}catch(e){}
-        if(res&&res.reason===SDK.ResultReason.SynthesizingAudioCompleted&&res.audioData&&res.audioData.byteLength){resolve(res.audioData);}
-        else{reject(new Error('synth '+(res&&res.errorDetails||res&&res.reason||'failed')));} },
-      err=>{ try{synth.close();}catch(e){} reject(err); });
+        if(res&&res.reason===SDK.ResultReason.SynthesizingAudioCompleted&&res.audioData&&res.audioData.byteLength){resolve(res.audioData);return;}
+        // Failure — pull the richest detail Azure gives us (auth / region / connection).
+        let detail=(res&&res.errorDetails)||'';
+        try{if(SDK.SpeechSynthesisCancellationDetails&&res){const cd=SDK.SpeechSynthesisCancellationDetails.fromResult(res);
+          if(cd)detail=[cd.ErrorCode!=null?('code '+cd.ErrorCode):'',cd.errorDetails||detail].filter(Boolean).join(' · ');}}catch(e){}
+        reject(new Error(detail||('reason '+(res&&res.reason))||'synth failed')); },
+      err=>{ try{synth.close();}catch(e){} reject(err&&(err.message||err.errorDetails)?err:new Error(String(err||'synth error'))); });
   }));
 }
 /* Fire-and-forget neural speak. Returns true if it will handle the utterance
@@ -2207,18 +2211,20 @@ function testNeural(){
   if(!neuralReady()){toast&&toast('Turn on premium voices and enter your Azure key + region');return;}
   if(navigator.onLine===false){toast&&toast('You are offline — premium voices need a connection');return;}
   const cfg=neuralCfgFor(p);
-  toast&&toast('Testing premium voice…');
+  const setMsg=(t,ok)=>{const el=$('#neuralTestMsg');if(el){el.textContent=t;el.style.color=ok?'var(--green)':'var(--fire-l)';}};
+  toast&&toast('Testing premium voice…');setMsg('Testing…',true);
   stopSpeech();const tok=++_neuralTok;
   loadSpeechSDK()
     .then(()=>_sdkSynthesize(neuralSSML("Premium A I voice, online. Let's get to work.",cfg),cfg))
     .then(buf=>{const u=URL.createObjectURL(new Blob([buf],{type:'audio/mpeg'}));
-      if(tok===_neuralTok){_neuralPlay(u);toast&&toast('✓ Premium voice working');}})
+      if(tok===_neuralTok){_neuralPlay(u);toast&&toast('✓ Premium voice working');setMsg('✓ Premium voice working',true);}})
     .catch(err=>{const m=String(err&&(err.message||err.errorDetails||err)||'error');
       let hint='Neural voice failed';
-      if(/SDK load|Failed to fetch|network/i.test(m))hint='Couldn\'t load the voice engine — check your connection';
-      else if(/401|403|Forbidden|Unauthorized|subscription/i.test(m))hint='Key or region rejected — re-check both';
-      else if(/1006|1007|websocket|connection/i.test(m))hint='Connection blocked — check region/network';
+      if(/SDK load|Failed to fetch|load failed|SDK missing/i.test(m))hint='Couldn\'t load the voice engine — check your connection';
+      else if(/401|403|Forbidden|Unauthorized|subscription|invalid.*key/i.test(m))hint='Key or region rejected — re-check both';
+      else if(/1006|1007|websocket|connection|handshake|4429|429/i.test(m))hint='Connection blocked — check region/network';
       toast&&toast(hint+'. Using device voice.');
+      setMsg(hint+'.  ›  Azure said: '+m.slice(0,180),false);
       try{console.warn('neural test failed:',m);}catch(e){}
       _deviceSpeak("Premium voice unavailable. Using device voice.",p);});
 }
@@ -3757,7 +3763,8 @@ function renderGuide(){
       <label class="tiny muted" style="display:block;margin-bottom:3px">Region</label>
       <input type="text" autocomplete="off" placeholder="eastus" value="${_ve(STATE.settings.azureRegion||'eastus')}" onchange="setAzureRegion(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px">
       <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">Free tier: ~500k characters/month.</span><button class="chip" onclick="testNeural()">▶ Test neural</button></div>
-      <div class="tiny muted" style="margin-top:6px;opacity:.8">Get a free key: portal.azure.com → create a <b>Speech</b> resource (F0 free tier) → Keys and Endpoint → copy Key 1 + Location/Region.</div>
+      <div id="neuralTestMsg" class="tiny" style="margin-top:6px;word-break:break-word"></div>
+      <div class="tiny muted" style="margin-top:6px;opacity:.8">Get a free key: portal.azure.com → create a <b>Speech</b> resource (F0 free tier) → Keys and Endpoint → copy Key 1 + <b>Location/Region</b> (must match the Region field above, e.g. eastus).</div>
     </div>`:''}
     <div style="padding:8px 0 2px">
       <div class="row" style="justify-content:space-between"><span class="tiny muted">Depth <span style="opacity:.7">(lower = deeper)</span></span><span class="tiny muted" id="pvLbl">${(typeof STATE.settings.voicePitch==='number'?STATE.settings.voicePitch:0.6).toFixed(2)}</span></div>
