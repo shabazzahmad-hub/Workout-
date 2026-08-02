@@ -123,6 +123,7 @@
   .pl-body{position:relative;z-index:2;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:6px 22px calc(24px + env(safe-area-inset-bottom))}
   .pl-region{margin-bottom:6px}
   .pl-name{font-size:25px;font-weight:900;letter-spacing:.3px;line-height:1.12;margin-bottom:6px}
+  .pl-photo{width:120px;height:120px;object-fit:cover;border-radius:16px;margin:2px auto 4px;box-shadow:0 6px 18px rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.08)}
   .pl-ring{position:relative;width:232px;height:232px;margin:8px auto;display:grid;place-items:center}
   .pl-ring svg{position:absolute;inset:0;transform:rotate(-90deg)}
   .pl-pulse{position:absolute;width:184px;height:184px;border-radius:50%;background:var(--accSoft)}
@@ -1487,6 +1488,7 @@ function plBodyWork(color){
   $('#plBody').innerHTML=`
     <div class="pl-region"><span class="tag ${ex.region}">${ex.region}</span></div>
     <div class="pl-name">${ex.name}</div>
+    ${ex.img?`<img class="pl-photo" src="${ex.img}" alt="" onerror="this.remove()">`:''}
     ${plRingHTML(color)}
     <div class="pl-set" id="plSet">SET ${PLAYER.s+1} OF ${m.sets}</div>
     <div class="pl-coach" id="plCoach"></div>
