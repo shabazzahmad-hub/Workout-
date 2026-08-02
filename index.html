@@ -907,23 +907,23 @@ const COOLDOWN = [
 ];
 /* Guided flows: name + seconds + coaching cue. Run through the loud countdown timer. */
 const WARMUP_FLOW = [
-  {n:'March in Place',      secs:40, cue:'Drive the knees up and pump the arms. Wake the body up.', img:'wu-march.jpg'},
-  {n:'Arm Circles',         secs:30, cue:'Big slow circles forward, then reverse halfway through.', img:'wu-armcircles.jpg'},
-  {n:'Standing Torso Twists', secs:30, cue:'Feet planted, rotate side to side and open up the spine.', img:'wu-torsotwist.jpg'},
-  {n:'Hip Circles',         secs:30, cue:'Hands on the hips, make big circles each direction.', img:'wu-hipcircles.jpg'},
-  {n:'Glute Bridges',       secs:30, cue:'Squeeze the glutes at the top and brace the core.', img:'wu-glutebridge.jpg'},
-  {n:'Bird Dog',            secs:40, cue:'Opposite arm and leg, slow and controlled. Alternate sides.', img:'wu-birddog.jpg'},
-  {n:'Cat–Cow',             secs:30, cue:'Arch then round the spine, breathe with the movement.', img:'wu-catcow.jpg'},
-  {n:'Standing Knee Hugs',  secs:30, cue:'Pull one knee to the chest, alternate, find your balance.', img:'wu-kneehug.jpg'},
+  {n:'March in Place',      secs:40, cue:'Drive the knees up and pump the arms. Wake the body up.', img:'wu-march.jpg', vid:'wu-march.mp4'},
+  {n:'Arm Circles',         secs:30, cue:'Big slow circles forward, then reverse halfway through.', img:'wu-armcircles.jpg', vid:'wu-armcircles.mp4'},
+  {n:'Standing Torso Twists', secs:30, cue:'Feet planted, rotate side to side and open up the spine.', img:'wu-torsotwist.jpg', vid:'wu-torsotwist.mp4'},
+  {n:'Hip Circles',         secs:30, cue:'Hands on the hips, make big circles each direction.', img:'wu-hipcircles.jpg', vid:'wu-hipcircles.mp4'},
+  {n:'Glute Bridges',       secs:30, cue:'Squeeze the glutes at the top and brace the core.', img:'wu-glutebridge.jpg', vid:'wu-glutebridge.mp4'},
+  {n:'Bird Dog',            secs:40, cue:'Opposite arm and leg, slow and controlled. Alternate sides.', img:'wu-birddog.jpg', vid:'wu-birddog.mp4'},
+  {n:'Cat–Cow',             secs:30, cue:'Arch then round the spine, breathe with the movement.', img:'wu-catcow.jpg', vid:'wu-catcow.mp4'},
+  {n:'Standing Knee Hugs',  secs:30, cue:'Pull one knee to the chest, alternate, find your balance.', img:'wu-kneehug.jpg', vid:'wu-kneehug.mp4'},
 ];
 const COOLDOWN_FLOW = [
-  {n:"Child's Pose",        secs:40, cue:'Sit back on the heels, reach forward, breathe into the low back.', img:'cd-childs.jpg'},
-  {n:'Cobra Stretch',       secs:30, cue:'Lie face-down and press the chest up, lengthen the abs.', img:'cd-cobra.jpg'},
-  {n:'Supine Twist — Left', secs:30, cue:'On your back, drop both knees to the left, arms out wide.', img:'cd-twistleft.jpg'},
-  {n:'Supine Twist — Right',secs:30, cue:'Now drop both knees to the right. Relax and breathe.', img:'cd-twistright.jpg'},
-  {n:'Cat–Cow',             secs:30, cue:'Slowly alternate arching and rounding the spine.', img:'cd-catcow.jpg'},
-  {n:'Knees to Chest',      secs:30, cue:'Hug both knees in and gently rock to release the low back.', img:'cd-knees.jpg'},
-  {n:'Deep Breathing',      secs:40, cue:'Lie back and take six slow belly breaths. Wind all the way down.', img:'cd-breathing.jpg'},
+  {n:"Child's Pose",        secs:40, cue:'Sit back on the heels, reach forward, breathe into the low back.', img:'cd-childs.jpg', vid:'cd-childs.mp4'},
+  {n:'Cobra Stretch',       secs:30, cue:'Lie face-down and press the chest up, lengthen the abs.', img:'cd-cobra.jpg', vid:'cd-cobra.mp4'},
+  {n:'Supine Twist — Left', secs:30, cue:'On your back, drop both knees to the left, arms out wide.', img:'cd-twistleft.jpg', vid:'cd-twistleft.mp4'},
+  {n:'Supine Twist — Right',secs:30, cue:'Now drop both knees to the right. Relax and breathe.', img:'cd-twistright.jpg', vid:'cd-twistright.mp4'},
+  {n:'Cat–Cow',             secs:30, cue:'Slowly alternate arching and rounding the spine.', img:'cd-catcow.jpg', vid:'cd-catcow.mp4'},
+  {n:'Knees to Chest',      secs:30, cue:'Hug both knees in and gently rock to release the low back.', img:'cd-knees.jpg', vid:'cd-knees.mp4'},
+  {n:'Deep Breathing',      secs:40, cue:'Lie back and take six slow belly breaths. Wind all the way down.', img:'cd-breathing.jpg', vid:'cd-breathing.mp4'},
 ];
 
 /* Baseline tests shown on day 1 */
@@ -2985,13 +2985,23 @@ function runFlow(items,title,color){
   const set=(sel,txt)=>{const e=$(sel);if(e)e.textContent=txt;};
   const ring=(frac)=>{const r=$('#flowRing');if(r)r.style.strokeDashoffset=C*(1-frac);};
   set('#flowName','Get Ready'); set('#flowCue', items[0].n+' first.');
-  showFlowImg(items[0].img);   // preview the first move during the countdown
+  showFlowMedia(items[0]);   // preview the first move during the countdown
   beep(1000,.15,0.7); coachSpeak(title+'. Get ready.'); ring(1);
-  function showFlowImg(src){const im=$('#flowImg');if(!im)return;if(src){im.src=src;im.style.display='block';}else{im.removeAttribute('src');im.style.display='none';}}
+  // Show a looping demo video if the move has one; otherwise the photo. A video
+  // that fails to load (not generated yet) falls back to the photo automatically.
+  function showFlowMedia(it){
+    const im=$('#flowImg'),vd=$('#flowVid');if(!im)return;
+    const showImg=()=>{if(it&&it.img){im.src=it.img;im.style.display='block';}else{im.removeAttribute('src');im.style.display='none';}};
+    if(vd&&it&&it.vid){
+      vd.onerror=()=>{vd.removeAttribute('src');vd.style.display='none';showImg();};
+      vd.src=it.vid;vd.style.display='block';im.style.display='none';
+      try{const p=vd.play();if(p&&p.catch)p.catch(()=>{});}catch(e){}
+    }else{if(vd){try{vd.pause();}catch(e){}vd.style.display='none';}showImg();}
+  }
   function startItem(first){
     const it=items[idx]; remain=it.secs; total=Math.max(1,it.secs);
     set('#flowNum',remain); set('#flowName',it.n); set('#flowCue',it.cue||'');
-    set('#flowStep',(idx+1)+' / '+items.length); showFlowImg(it.img);
+    set('#flowStep',(idx+1)+' / '+items.length); showFlowMedia(it);
     beepGo(); haptic(30);
     coachSpeak(first?(it.n+'. '+(it.cue||'')):(it.cue||it.n)); ring(1);
   }
@@ -3000,7 +3010,7 @@ function runFlow(items,title,color){
     const it=items[idx]; phase='transition'; trans=TRANSITION;
     set('#flowName',it.n); set('#flowCue','Get into position — '+it.n);
     set('#flowStep',(idx+1)+' / '+items.length); set('#flowNum',trans);
-    showFlowImg(it.img); ring(1); beep(1000,.15,0.7);
+    showFlowMedia(it); ring(1); beep(1000,.15,0.7);
     coachSpeak('Next up. '+it.n+'. Get into position.');
   }
   function tick(){
@@ -3038,6 +3048,7 @@ function flowHTML(title,count,color){
   return `
   <div class="timerbox">
     <div class="tt">${title} · <span id="flowStep">0 / ${count}</span></div>
+    <video id="flowVid" loop muted playsinline preload="auto" onerror="this.style.display='none'" style="width:100%;max-width:260px;aspect-ratio:1/1;object-fit:cover;border-radius:16px;margin:10px auto 4px;display:none;box-shadow:0 6px 20px rgba(0,0,0,.35)"></video>
     <img id="flowImg" alt="" onerror="this.style.display='none'" style="width:100%;max-width:260px;aspect-ratio:1/1;object-fit:cover;border-radius:16px;margin:10px auto 4px;display:none;box-shadow:0 6px 20px rgba(0,0,0,.35)">
     <div class="timerring">
       <svg width="220" height="220" viewBox="0 0 220 220">
