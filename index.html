@@ -3576,6 +3576,140 @@ function nutritionStreak(){
     if(hit>=4)streak++;else break;}
   return streak;
 }
+/* ===== MEAL PLANS + RECIPES =====
+   Offline recipe bank tagged by diet. A daily plan picks meals that fit the
+   user's diet preference + allergies and sum near their calorie target. */
+const RECIPES=[
+  // ---- BREAKFAST ----
+  {id:'b_oats',type:'breakfast',emoji:'🥣',name:'Peanut-Banana Oats',kcal:420,p:18,c:62,f:12,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+    ing:['½ cup rolled oats','1 cup soy or oat milk','1 banana','1 tbsp peanut butter','Cinnamon'],
+    steps:['Simmer the oats in the milk for 4–5 min.','Slice in the banana and stir in the peanut butter.','Finish with cinnamon.']},
+  {id:'b_tofu',type:'breakfast',emoji:'🍳',name:'Tofu Veggie Scramble',kcal:360,p:24,c:18,f:20,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+    ing:['200 g firm tofu, crumbled','½ tsp turmeric','Handful spinach','½ pepper, diced','1 tsp oil, salt'],
+    steps:['Sauté the pepper in the oil 2 min.','Add crumbled tofu + turmeric, cook 4 min.','Stir through spinach until wilted; season.']},
+  {id:'b_yog',type:'breakfast',emoji:'🫐',name:'Greek Yogurt Berry Bowl',kcal:380,p:30,c:40,f:10,ok:['vegetarian','pescatarian','halal','omnivore'],
+    ing:['200 g Greek yogurt','1 cup mixed berries','2 tbsp granola','1 tsp honey'],
+    steps:['Spoon the yogurt into a bowl.','Top with berries and granola.','Drizzle with honey.']},
+  {id:'b_eggs',type:'breakfast',emoji:'🍳',name:'Veggie Eggs & Toast',kcal:400,p:26,c:30,f:18,ok:['vegetarian','pescatarian','halal','omnivore'],
+    ing:['3 eggs','Handful spinach + tomato','1 slice wholegrain toast','1 tsp oil, salt & pepper'],
+    steps:['Scramble the eggs in the oil with the veg.','Toast the bread.','Plate together and season.']},
+  {id:'b_smooth',type:'breakfast',emoji:'🥤',name:'Berry Protein Smoothie',kcal:330,p:28,c:40,f:6,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+    ing:['1 scoop plant protein','1 cup frozen berries','1 banana','1 cup soy milk'],
+    steps:['Add everything to a blender.','Blend until smooth.','Pour and drink cold.']},
+  {id:'b_chia',type:'breakfast',emoji:'🌱',name:'Overnight Chia Oats',kcal:390,p:16,c:52,f:14,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+    ing:['⅓ cup oats','2 tbsp chia seeds','1 cup soy milk','½ cup berries'],
+    steps:['Mix oats, chia and milk in a jar.','Refrigerate overnight.','Top with berries in the morning.']},
+  // ---- LUNCH ----
+  {id:'l_chick',type:'lunch',emoji:'🍗',name:'Chicken & Rice Power Bowl',kcal:520,p:45,c:55,f:12,ok:['halal','omnivore'],
+    ing:['150 g grilled chicken breast','1 cup cooked rice','Mixed veg','1 tsp olive oil','Lemon, spices'],
+    steps:['Season and grill the chicken, then slice.','Build the bowl with rice and veg.','Drizzle oil and lemon.']},
+  {id:'l_beef',type:'lunch',emoji:'🥩',name:'Beef & Veg Stir-fry',kcal:540,p:40,c:45,f:20,ok:['halal','omnivore'],
+    ing:['140 g lean beef strips','2 cups stir-fry veg','1 cup rice','1 tbsp soy sauce','Garlic, ginger'],
+    steps:['Sear the beef hot and fast.','Add veg, garlic, ginger and soy; toss 3 min.','Serve over rice.']},
+  {id:'l_salmon',type:'lunch',emoji:'🐟',name:'Salmon Quinoa Bowl',kcal:520,p:38,c:45,f:20,ok:['pescatarian','halal','omnivore'],
+    ing:['130 g salmon fillet','1 cup cooked quinoa','Cucumber + avocado','Lemon, salt'],
+    steps:['Pan-sear or bake the salmon.','Flake over quinoa with the veg.','Squeeze lemon on top.']},
+  {id:'l_wrap',type:'lunch',emoji:'🌯',name:'Chicken Shawarma Wrap',kcal:560,p:42,c:50,f:20,ok:['halal','omnivore'],
+    ing:['150 g chicken thigh, spiced','1 wholegrain wrap','Salad + garlic yogurt','Shawarma spice'],
+    steps:['Cook the spiced chicken and slice.','Warm the wrap.','Fill with chicken, salad and garlic yogurt; roll.']},
+  {id:'l_lentil',type:'lunch',emoji:'🥗',name:'Lentil & Chickpea Salad',kcal:460,p:22,c:60,f:14,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+    ing:['1 cup lentils + chickpeas','Tomato, cucumber, onion','Parsley','Olive oil + lemon'],
+    steps:['Toss the legumes with the chopped veg.','Dress with olive oil and lemon.','Fold through parsley.']},
+  {id:'l_tofu',type:'lunch',emoji:'🍚',name:'Teriyaki Tofu Rice Bowl',kcal:480,p:24,c:68,f:12,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+    ing:['200 g firm tofu','1 cup rice','Broccoli','2 tbsp teriyaki sauce'],
+    steps:['Crisp the tofu in a pan.','Add teriyaki to coat; steam the broccoli.','Serve over rice.']},
+  {id:'l_tuna',type:'lunch',emoji:'🐟',name:'Tuna Pasta Salad',kcal:500,p:40,c:50,f:14,ok:['pescatarian','halal','omnivore'],
+    ing:['1 can tuna','1½ cups cooked pasta','Sweetcorn + peppers','1 tbsp light mayo'],
+    steps:['Drain the tuna and flake it.','Mix with pasta, corn and peppers.','Stir through the mayo.']},
+  // ---- DINNER ----
+  {id:'d_chick',type:'dinner',emoji:'🍗',name:'Baked Chicken, Potato & Greens',kcal:560,p:48,c:45,f:18,ok:['halal','omnivore'],
+    ing:['170 g chicken breast','1 medium potato','Green beans / broccoli','1 tbsp olive oil, herbs'],
+    steps:['Roast the chicken and potato with herbs.','Steam the greens.','Plate with a drizzle of oil.']},
+  {id:'d_chili',type:'dinner',emoji:'🌶️',name:'Lean Beef Chili',kcal:540,p:42,c:48,f:18,ok:['halal','omnivore'],
+    ing:['140 g lean beef mince','½ can kidney beans','Chopped tomatoes','½ cup rice','Chili spices'],
+    steps:['Brown the mince, add spices.','Add tomatoes and beans; simmer 15 min.','Serve over rice.']},
+  {id:'d_salmon',type:'dinner',emoji:'🐟',name:'Baked Salmon & Sweet Potato',kcal:560,p:40,c:45,f:22,ok:['pescatarian','halal','omnivore'],
+    ing:['150 g salmon','1 sweet potato','Asparagus','Lemon, olive oil'],
+    steps:['Bake the salmon and sweet potato at 200°C.','Roast or steam the asparagus.','Finish with lemon.']},
+  {id:'d_lamb',type:'dinner',emoji:'🍖',name:'Lamb & Veg Skillet',kcal:580,p:44,c:35,f:28,ok:['halal','omnivore'],
+    ing:['150 g lean lamb','Courgette + pepper + onion','½ cup couscous','Cumin, garlic'],
+    steps:['Brown the lamb with cumin and garlic.','Add the veg and cook through.','Serve over couscous.']},
+  {id:'d_curry',type:'dinner',emoji:'🍛',name:'Chickpea Spinach Curry & Rice',kcal:520,p:20,c:78,f:14,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+    ing:['1 can chickpeas','2 cups spinach','½ can coconut milk','1 cup rice','Curry spices'],
+    steps:['Simmer chickpeas in the spiced coconut milk.','Wilt in the spinach.','Serve over rice.']},
+  {id:'d_noodle',type:'dinner',emoji:'🍜',name:'Tofu Veg Noodle Stir-fry',kcal:500,p:24,c:70,f:14,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+    ing:['200 g tofu','1 nest noodles','2 cups mixed veg','2 tbsp soy + sesame'],
+    steps:['Crisp the tofu; cook the noodles.','Stir-fry the veg, add tofu + noodles.','Toss with soy and sesame.']},
+  {id:'d_shrimp',type:'dinner',emoji:'🦐',name:'Garlic Shrimp & Rice',kcal:500,p:38,c:55,f:12,ok:['pescatarian','halal','omnivore'],
+    ing:['160 g shrimp','1 cup rice','Peas + peppers','Garlic, 1 tsp oil, lemon'],
+    steps:['Sauté the shrimp with garlic 3 min.','Add the veg to warm through.','Serve over rice with lemon.']},
+  {id:'d_turkey',type:'dinner',emoji:'🦃',name:'Turkey Meatballs & Zoodles',kcal:480,p:44,c:24,f:22,ok:['halal','omnivore'],
+    ing:['150 g turkey mince','1 egg + herbs','2 courgettes, spiralised','1 cup tomato sauce'],
+    steps:['Mix and roll meatballs; bake 18 min.','Warm the tomato sauce.','Serve over the zoodles.']},
+  // ---- SNACKS ----
+  {id:'s_yog',type:'snack',emoji:'🍯',name:'Greek Yogurt & Honey',kcal:180,p:18,c:20,f:3,ok:['vegetarian','pescatarian','halal','omnivore'],
+    ing:['150 g Greek yogurt','1 tsp honey','Sprinkle of seeds'],steps:['Top the yogurt with honey and seeds.']},
+  {id:'s_apple',type:'snack',emoji:'🍎',name:'Apple & Almond Butter',kcal:210,p:6,c:24,f:12,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+    ing:['1 apple, sliced','1 tbsp almond butter'],steps:['Slice the apple and dip in the almond butter.']},
+  {id:'s_hum',type:'snack',emoji:'🥕',name:'Hummus & Veg Sticks',kcal:190,p:7,c:20,f:10,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+    ing:['3 tbsp hummus','Carrot + cucumber sticks'],steps:['Serve the veg sticks with the hummus.']},
+  {id:'s_cott',type:'snack',emoji:'🍍',name:'Cottage Cheese & Pineapple',kcal:200,p:24,c:16,f:4,ok:['vegetarian','pescatarian','halal','omnivore'],
+    ing:['150 g cottage cheese','½ cup pineapple'],steps:['Spoon the pineapple over the cottage cheese.']},
+  {id:'s_edam',type:'snack',emoji:'🫛',name:'Sea-salt Edamame',kcal:180,p:16,c:14,f:8,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+    ing:['1 cup edamame','Pinch sea salt'],steps:['Steam the edamame 4 min.','Sprinkle with salt.']},
+  {id:'s_pshake',type:'snack',emoji:'🥤',name:'Plant Protein Shake',kcal:170,p:24,c:10,f:3,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+    ing:['1 scoop plant protein','1 cup water or soy milk'],steps:['Shake together until smooth.']},
+];
+function dietLabel(){return {omnivore:'Omnivore',halal:'Halal',pescatarian:'Pescatarian',vegetarian:'Vegetarian',vegan:'Vegan'}[STATE.nutrition.diet||'omnivore'];}
+function recipeById(id){return RECIPES.find(r=>r.id===id);}
+function dietOk(r){
+  const d=STATE.nutrition.diet||'omnivore';
+  if(!(r.ok||[]).includes(d))return false;
+  const av=(STATE.nutrition.allergies||'').toLowerCase().split(/[,;]+/).map(s=>s.trim()).filter(Boolean);
+  if(av.length){const hay=(r.name+' '+(r.ing||[]).join(' ')).toLowerCase();if(av.some(a=>a&&hay.includes(a)))return false;}
+  return true;
+}
+function mealSlots(){return (STATE.nutrition.meals===4)?['breakfast','lunch','dinner','snack']:['breakfast','lunch','dinner'];}
+function slotShare(slots){return slots.length===4?{breakfast:.28,lunch:.30,dinner:.30,snack:.12}:{breakfast:.30,lunch:.35,dinner:.35};}
+function pickRecipe(type,targetK,exclude){
+  let pool=RECIPES.filter(r=>r.type===type&&dietOk(r)&&!exclude.has(r.id));
+  if(!pool.length)pool=RECIPES.filter(r=>r.type===type&&dietOk(r));
+  if(!pool.length)return null;
+  pool.sort((a,b)=>Math.abs(a.kcal-targetK)-Math.abs(b.kcal-targetK));
+  const top=pool.slice(0,Math.min(3,pool.length));
+  return top[Math.floor(Math.random()*top.length)];
+}
+function generateMealPlan(){
+  const kcal=STATE.nutrition.kcalTarget||2000;const slots=mealSlots();const share=slotShare(slots);
+  const exclude=new Set();const meals=[];
+  slots.forEach(s=>{const r=pickRecipe(s,Math.round(kcal*share[s]),exclude);if(r){exclude.add(r.id);meals.push(r.id);}});
+  STATE.nutrition.plan={date:todayISO(),meals};save();return STATE.nutrition.plan;
+}
+function currentMealPlan(){const p=STATE.nutrition.plan;if(p&&p.date===todayISO()&&p.meals&&p.meals.length)return p;return generateMealPlan();}
+function regenPlan(){generateMealPlan();haptic(8);renderFuel();}
+function toggleRecipe(id){const e=$('#rc-'+id);if(e)e.style.display=e.style.display==='none'?'block':'none';}
+function mealPlanHTML(){
+  const plan=currentMealPlan();const kcalT=STATE.nutrition.kcalTarget;
+  const recs=plan.meals.map(recipeById).filter(Boolean);
+  if(!recs.length)return '';
+  const tot=recs.reduce((s,r)=>s+r.kcal,0),totP=recs.reduce((s,r)=>s+r.p,0);
+  let h=`<div class="section-label">Today's meal plan · <span class="tiny muted">${_ve(dietLabel())} · ${recs.length} meals</span></div><div class="card pad" style="padding-bottom:8px">`;
+  h+=`<div class="row" style="justify-content:space-between;margin-bottom:6px"><div><b>${tot} kcal</b> · ${totP}g protein${kcalT?` <span class="tiny muted">of ${kcalT} target</span>`:''}</div><button class="chip" onclick="regenPlan()">↻ New plan</button></div>`;
+  recs.forEach(r=>{h+=`<button class="kv" style="width:100%;text-align:left;border:none;border-top:1px solid var(--line);background:none;padding:12px 2px;cursor:pointer" onclick="toggleRecipe('${r.id}')">
+    <span style="min-width:0"><span style="font-size:18px">${r.emoji}</span> <b>${_ve(r.name)}</b><div class="tiny muted" style="margin-top:2px;text-transform:capitalize">${r.type} · ${r.kcal} kcal · ${r.p}p ${r.c}c ${r.f}f</div></span>
+    <span class="tiny muted" style="flex:0 0 auto">▾</span></button>
+    <div id="rc-${r.id}" style="display:none;padding:2px 2px 12px">
+      <div class="tiny muted" style="margin-bottom:4px;font-weight:800;letter-spacing:.6px">INGREDIENTS</div>
+      <ul class="cuelist" style="margin:0 0 10px">${r.ing.map(x=>`<li>${_ve(x)}</li>`).join('')}</ul>
+      <div class="tiny muted" style="margin-bottom:4px;font-weight:800;letter-spacing:.6px">METHOD</div>
+      <ol style="margin:0;padding-left:18px;font-size:13px;color:var(--muted)">${r.steps.map(x=>`<li style="margin-bottom:3px">${_ve(x)}</li>`).join('')}</ol>
+    </div>`;});
+  h+=`</div>`;
+  if(!kcalT){h+=`<div class="note info" style="margin-top:10px">Tip: tap <b>Calculate my targets</b> below so these meals are sized to your calorie goal.</div>`;}
+  else if(tot<kcalT*0.85){h+=`<div class="note info" style="margin-top:10px">This comes to <b>${tot} kcal</b> vs your <b>${kcalT}</b> target — increase portions or add a snack to close the gap.</div>`;}
+  else if(tot>kcalT*1.15){h+=`<div class="note warn" style="margin-top:10px">This comes to <b>${tot} kcal</b> vs your <b>${kcalT}</b> target — trim portions a little.</div>`;}
+  return h;
+}
 function renderFuel(){
   const v=$('#v-fuel');const n=nut();const t=nutToday();
   const kg=latestWeightKg();const prot=proteinTargetG();const wt=waterTargetCups();
@@ -3592,6 +3726,8 @@ function renderFuel(){
     <div class="stat"><div class="n" style="color:var(--gold)">${n.kcalTarget?n.kcalTarget:'—'}</div><div class="l">Calories${n.kcalTarget?'':' (set below)'}</div></div>
   </div>`;
   if(!n.kcalTarget){h+=`<div class="note info" style="margin-top:12px">${n.goal==='maintain'?'Eat around maintenance and let the training sculpt your core.':'For fat loss, eat in a <b>~300–500 kcal/day deficit</b> — enough to lean out, slow enough to keep your strength. Tap the calculator below for your exact number.'}</div>`;}
+  // meal plan + recipes
+  h+=mealPlanHTML();
   // water tracker
   const wc=t.water||0;const wpct=Math.min(100,Math.round(wc/wt*100));
   h+=`<div class="section-label">Hydration</div><div class="card pad">
