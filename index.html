@@ -2207,7 +2207,23 @@ function toggleNeural(){
     else testNeural();
   }
 }
-function setAzureKey(v){STATE.settings.azureKey=(v||'').trim();_neuralCache.clear();save();}
+let _editKey=false;   // transient: are we editing the (already-saved) key?
+/* Save a key from the edit field. An empty value does NOT wipe an existing key
+   (use Remove for that) — this prevents an accidental blur/clear from deleting it. */
+function saveAzureKey(v){
+  v=(v||'').trim();
+  if(v){STATE.settings.azureKey=v;_neuralCache.clear();}
+  _editKey=false;save();
+  if(TAB==='guide')renderGuide();
+  if(v&&STATE.settings.neuralOn)testNeural();
+}
+function editAzureKey(){_editKey=true;if(TAB==='guide')renderGuide();}
+function clearAzureKey(){
+  if(typeof confirm==='function'&&!confirm('Remove your saved Azure key? Premium voices will fall back to the device voices until you add it again.'))return;
+  STATE.settings.azureKey='';_neuralCache.clear();_editKey=false;save();
+  toast&&toast('Azure key removed');
+  if(TAB==='guide')renderGuide();
+}
 function setAzureRegion(v){STATE.settings.azureRegion=(v||'').trim().toLowerCase()||'eastus';_neuralCache.clear();save();}
 function testNeural(){
   try{primeVoice();}catch(e){}
@@ -3764,7 +3780,11 @@ function renderGuide(){
     ${STATE.settings.neuralOn?`<div style="padding:2px 0 2px">
       <div class="tiny muted" style="margin-bottom:6px">Genuinely neural voices — each coach gets a hand-picked Azure voice, with shouting/intense delivery on the hardcore coaches. Your key stays only on this phone; offline it automatically falls back to the device voices.</div>
       <label class="tiny muted" style="display:block;margin-bottom:3px">Azure Speech key</label>
-      <input type="password" autocomplete="off" placeholder="paste your key" value="${_ve(STATE.settings.azureKey||'')}" onchange="setAzureKey(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px;margin-bottom:8px">
+      ${(STATE.settings.azureKey&&!_editKey)?`<div class="row" style="justify-content:space-between;gap:8px;background:#141b26;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px">
+        <span class="sm" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">🔒 Saved · ••••${_ve(String(STATE.settings.azureKey).slice(-4))}</span>
+        <span style="flex:none;display:flex;gap:6px"><button class="chip" onclick="editAzureKey()">Change</button><button class="chip" style="color:var(--fire-l)" onclick="clearAzureKey()">Remove</button></span>
+      </div>`:`<input type="password" autocomplete="off" placeholder="paste your key" value="${_ve(STATE.settings.azureKey||'')}" onchange="saveAzureKey(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px;margin-bottom:8px">
+      ${STATE.settings.azureKey?`<div class="tiny muted" style="margin:-4px 0 8px">Leave blank and tap elsewhere to keep the current key.</div>`:''}`}
       <label class="tiny muted" style="display:block;margin-bottom:3px">Region</label>
       <input type="text" autocomplete="off" placeholder="eastus" value="${_ve(STATE.settings.azureRegion||'eastus')}" onchange="setAzureRegion(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px">
       <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">Free tier: ~500k characters/month.</span><button class="chip" onclick="testNeural()">▶ Test neural</button></div>
