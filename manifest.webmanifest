@@ -1,7 +1,7 @@
 {
-  "name": "CoreForge — 4-Week Abs & Core",
+  "name": "CoreForge — Full-Body Workout",
   "short_name": "CoreForge",
-  "description": "A 4-week (repeatable to 12) abs, core and oblique training program. Day-one baseline assessment, then an auto-generated, week-to-week progressive program that self-saves your progress. Offline-ready, installs to your home screen.",
+  "description": "A full-year full-body training program — abs and core first, then progressive full-body strength, calisthenics and HIIT. Day-one baseline assessment builds an auto-generated plan that gets harder every week and self-saves your progress. Offline-ready, installs to your home screen.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
