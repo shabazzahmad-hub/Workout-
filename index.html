@@ -1841,6 +1841,7 @@ function coachSay(txt){try{if(typeof coachSpeak==='function')coachSpeak(txt);}ca
 function startBaselineTimer(){
   const t=TESTS[assessState.idx];const dur=t.dur||0; // dur>0 => count down; else count up
   stopBaselineTimer();autoRoll();try{if(typeof primeVoice==='function')primeVoice();}catch(e){}
+  beatStart();   // background beat during the baseline test too (matches the workouts)
   openSheet(baselineTimerHTML(t));
   _bt={iv:setInterval(tick,1000),mode:'ready',ready:3,elapsed:0,dur:dur,tid:t.id};
   paintReady();coachSay('Get ready.');
@@ -3893,7 +3894,10 @@ async function boot(){
   // voice coach: populate the voice list now and again when the OS finishes loading it,
   // and unlock speech on the first user interaction (mobile autoplay policy)
   try{loadCoachVoices();if('speechSynthesis'in window)speechSynthesis.onvoiceschanged=loadCoachVoices;}catch(e){}
-  document.addEventListener('pointerdown',primeVoice,{once:true,passive:true});
+  // Unlock BOTH speech and the Web-Audio context (the beat/beeps) on the first
+  // tap — mobile browsers keep an AudioContext suspended until a user gesture,
+  // which is why the background beat could stay silent.
+  document.addEventListener('pointerdown',()=>{try{primeVoice();}catch(e){}try{audioCtx();}catch(e){}},{once:true,passive:true});
   try{checkReminder();}catch(e){}   // best-effort training-day nudge on open
   // service worker
   if('serviceWorker'in navigator){try{navigator.serviceWorker.register('sw.js');}catch(e){}}
