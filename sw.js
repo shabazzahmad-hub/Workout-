@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v44';
+const CACHE = 'coreforge-v45';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png',
   './ex-kneeplank.jpg','./ex-plank.jpg','./ex-longplank.jpg','./ex-planktap.jpg',
   './ex-tuckhollow.jpg','./ex-hollow.jpg','./ex-hollowrock.jpg',
@@ -15,7 +15,8 @@ const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png',
   './ex-archerpushup.jpg','./ex-spidermanpushup.jpg','./ex-wallhandstand.jpg',
   './ex-broadjump.jpg','./ex-bulgarian.jpg','./ex-calfraise.jpg','./ex-chinup.jpg','./ex-closepushup.jpg','./ex-deadhang.jpg','./ex-declinepushup.jpg','./ex-diamondpushup.jpg','./ex-elevatedpike.jpg','./ex-hipthrust.jpg','./ex-hspushup.jpg','./ex-inclinepushup.jpg','./ex-invertedrow.jpg','./ex-jumpsquat.jpg','./ex-nordic.jpg','./ex-pikepushup.jpg','./ex-pistol.jpg','./ex-pullup.jpg','./ex-scappull.jpg','./ex-singlecalf.jpg','./ex-splitsquat.jpg','./ex-superpushup.jpg','./ex-tuckjump.jpg','./ex-walkinglunge.jpg',
   './wu-march.jpg','./wu-armcircles.jpg','./wu-torsotwist.jpg','./wu-hipcircles.jpg','./wu-glutebridge.jpg','./wu-birddog.jpg','./wu-catcow.jpg','./wu-kneehug.jpg',
-  './cd-childs.jpg','./cd-cobra.jpg','./cd-twistleft.jpg','./cd-twistright.jpg','./cd-catcow.jpg','./cd-knees.jpg','./cd-breathing.jpg'];
+  './cd-childs.jpg','./cd-cobra.jpg','./cd-twistleft.jpg','./cd-twistright.jpg','./cd-catcow.jpg','./cd-knees.jpg','./cd-breathing.jpg',
+  './ex-negpullup.jpg','./ex-widepullup.jpg','./ex-invertedrowelev.jpg','./ex-benchdip.jpg','./ex-dips.jpg','./ex-boxpistol.jpg','./ex-singlebridge.jpg','./ex-splitjump.jpg','./ex-burpeetuck.jpg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
