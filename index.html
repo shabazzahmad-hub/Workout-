@@ -1056,7 +1056,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='102';
+const APP_VERSION='103';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -4263,8 +4263,11 @@ function openQuickAdd(pre){
       <div class="field" style="flex:1;margin:0"><label>Calories</label><input id="fa-kcal" type="number" inputmode="numeric" value="${pre.kcal||''}" placeholder="kcal"></div>
       <div class="field" style="flex:1;margin:0"><label>Protein (g)</label><input id="fa-p" type="number" inputmode="numeric" value="${pre.p||''}" placeholder="g"></div>
     </div>
-    ${(pre.kcal||pre.p)?'<div class="tiny muted" style="margin:8px 0">📷 Gemini estimate — approximate, tweak if needed then save.</div>':'<div style="height:8px"></div>'}
-    <button class="btn primary" onclick="saveFood()">Save</button>
+    ${(pre.kcal||pre.p)?`<div style="margin:8px 0;padding:10px 12px;border-radius:12px;background:rgba(46,204,113,.12);border:1px solid var(--green)">
+      <div style="font-weight:800">📷 Estimated: ${_ve(pre.name||'Food')}</div>
+      <div class="tiny muted" style="margin-top:2px">~${pre.kcal||0} kcal · ${pre.p||0}g protein — approximate. Tweak if needed, then tap <b>Save</b> to log it.</div>
+    </div>`:'<div style="height:8px"></div>'}
+    <button class="btn primary" onclick="saveFood()">${(pre.kcal||pre.p)?'Save to log':'Save'}</button>
     <div class="section-label" style="margin-top:14px">Quick picks</div>
     <div style="display:flex;flex-wrap:wrap;gap:6px">${COMMON_FOODS.map((f,i)=>`<button class="chip" onclick="quickPick(${i})">${f.name.split(' (')[0]} · ${f.kcal}</button>`).join('')}</div>
     <div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
@@ -4336,7 +4339,7 @@ function foodPhoto(){
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.setAttribute('capture','environment');
   inp.onchange=()=>{const f=inp.files&&inp.files[0];if(!f)return;const rd=new FileReader();
     rd.onerror=()=>{toast('Could not read image — add it manually');openQuickAdd();};
-    rd.onload=async()=>{toast('Estimating…');try{const du=await _downscale(rd.result,768);const est=await estimateFoodFromImage(du);openQuickAdd(est);}catch(e){const msg=String((e&&e.message)||e||'failed');toast('Photo estimate failed — '+msg.slice(0,120)+' · adding manually',6000);openQuickAdd();}};
+    rd.onload=async()=>{toast('Estimating…');try{const du=await _downscale(rd.result,768);const est=await estimateFoodFromImage(du);openQuickAdd(est);toast('📷 '+(est.name||'Food')+' · ~'+est.kcal+' kcal, '+est.p+'g — tap Save to log',5000);}catch(e){const msg=String((e&&e.message)||e||'failed');toast('Photo estimate failed — '+msg.slice(0,120)+' · adding manually',6000);openQuickAdd();}};
     rd.readAsDataURL(f);};
   inp.click();
 }
