@@ -838,6 +838,10 @@ const EX = {
     why:'Supported on the dip bars, raising the knees hammers the lower abs and hip flexors.',
     steps:['Support yourself on the dip bars, arms locked.','Raise both knees toward the chest.','Lower slowly without swinging.'],
     cues:['No swinging','Curl the pelvis up','Slow on the way down'],mistakes:['Kipping with momentum','Half raises']},
+  reverseplank:{name:'Reverse Plank',region:'stability',unit:'time',img:'ex-reverseplank.jpg',anchor:null,hardness:1,base:25,rest:35,
+    why:'Flips the plank to hammer the posterior chain — glutes, hamstrings and lower back — while the core resists sagging. Balances all the front-side ab work for a strong, injury-proof midsection.',
+    steps:['Sit with legs straight, hands planted behind you under the shoulders, fingers toward your feet.','Press through the hands and heels and lift the hips.','Form a straight line from heels to shoulders, chest open to the ceiling.','Hold, breathing steadily; lower with control.'],
+    cues:['Squeeze the glutes','Chest tall, hips high','Neck long and neutral'],mistakes:['Hips sagging','Shrugging into the shoulders']},
 };
 
 /* ============================ SESSION TEMPLATES ============================
@@ -845,7 +849,7 @@ const EX = {
    Each slot references a "ladder"; the rung is chosen by progression level.
 ========================================================================== */
 const LADDERS = {
-  plankL:     ['kneeplank','plank','longplank','planktap'],
+  plankL:     ['kneeplank','plank','longplank','planktap','reverseplank'],
   hollowL:    ['tuckhollow','hollow','hollowrock'],
   lowerL:     ['deadbug','revcrunch','legraise','kneeraise'],
   dynL:       ['crunch','bicycle','tuckvup','vup'],
@@ -1415,6 +1419,7 @@ function todayWorkoutHTML(){
   <button class="btn ghost" style="margin:0 0 8px" onclick="openMealPlan()">🍽️ Today's meal plan — recipes for your goal</button>
   <div class="btnrow" style="margin:2px 0 6px"><button class="btn ghost" id="coachBrief">🎙️ Coach brief</button><button class="btn ghost" onclick="openQuickList()">⚡ Quick</button><button class="btn ghost" onclick="openRecovery()">😌 Recover</button></div>`;
   h+=homeSummaryHTML();
+  h+=catchUpBanner();
   h+=weeklyBannerHTML();
   // progressive overload note vs previous week
   if(sess.pos.dayInWeek===0){
@@ -1621,7 +1626,7 @@ function openPlayer(opts){
     tempo:Math.max(1.5,Math.min(6,(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3))};
   $('#player').classList.add('open');document.body.style.overflow='hidden';
   try{history.pushState({cf:'player'},'');}catch(e){}
-  primeVoice();beatStart();
+  primeVoice();precacheSession(items);beatStart();
   plEnterReady(true);
 }
 /* ===== WEIGHTS SESSION (equipment track) ===== */
@@ -1655,12 +1660,20 @@ function plChrome(){
     <div class="pl-segs">${plSegsHTML()}</div>
     <div class="pl-body" id="plBody"></div>`;
 }
+/* Animated demo when a looping clip (ex.vid) exists, else the still photo.
+   The video falls back to the photo on error, and the photo removes itself if missing. */
+function plMediaHTML(ex){
+  if(ex&&ex.vid)return `<video class="pl-photo" src="${ex.vid}" autoplay loop muted playsinline
+    onerror="(function(v){var i=new Image();i.className='pl-photo';i.onerror=function(){i.remove();};i.src='${ex.img||''}';v.replaceWith(i);})(this)"></video>`;
+  if(ex&&ex.img)return `<img class="pl-photo" src="${ex.img}" alt="" onerror="this.remove()">`;
+  return '';
+}
 function plBodyWork(color){
   const m=plCur();const ex=EX[m.exId];
   $('#plBody').innerHTML=`
-    <div class="pl-region"><span class="tag ${ex.region}">${ex.region}</span></div>
+    <div class="pl-region"><span class="tag ${ex.region}">${ex.region}</span> ${climbNote(m)}</div>
     <div class="pl-name">${ex.name}</div>
-    ${ex.img?`<img class="pl-photo" src="${ex.img}" alt="" onerror="this.remove()">`:''}
+    ${plMediaHTML(ex)}
     ${plRingHTML(color)}
     <div class="pl-set" id="plSet">SET ${PLAYER.s+1} OF ${m.sets}</div>
     <div class="pl-coach" id="plCoach"></div>
@@ -3173,7 +3186,7 @@ function previewSession(ptr){
     <div class="section-label">Warm-up</div>
     <div class="card pad">${sess.warmup.map(id=>`<div class="kv"><span>${EX[id].name}</span><span class="muted">${EX[id].unit==='time'?'30s':'8/side'}</span></div>`).join('')}</div>
     <div class="section-label">Main work</div>
-    <div class="card pad">${sess.main.map(m=>`<div class="kv"><span><b>${EX[m.exId].name}</b> <span class="tag ${EX[m.exId].region}" style="margin-left:4px">${EX[m.exId].region}</span></span><b>${m.sets}×${m.unit==='time'?fmtTime(m.target):m.target}</b></div>`).join('')}</div>
+    <div class="card pad">${sess.main.map(m=>`<div class="kv"><span><b>${EX[m.exId].name}</b> <span class="tag ${EX[m.exId].region}" style="margin-left:4px">${EX[m.exId].region}</span> ${climbNote(m)}</span><b>${m.sets}×${m.unit==='time'?fmtTime(m.target):m.target}</b></div>`).join('')}</div>
     <div class="section-label">Finisher</div>
     <div class="card pad"><div class="kv"><span><b>${EX[sess.finisher.exId].name}</b></span><b>${sess.finisher.sets}×${sess.finisher.unit==='time'?fmtTime(sess.finisher.target):sess.finisher.target}</b></div></div>
     ${ptr===STATE.progressPtr?`<button class="btn primary" onclick="closeSheet();go('today')">Go to this workout →</button>`:`<button class="btn ghost" onclick="closeSheet()">Close</button>`}
@@ -3422,9 +3435,85 @@ function celebrateAchievements(list){
       <p class="sm muted" style="margin:6px 0 0">${a.desc}</p>
       ${list.length>1?`<p class="tiny muted" style="margin-top:8px">+${list.length-1} more unlocked 🎉</p>`:''}
     </div>
-    <button class="btn primary" style="margin-top:14px" onclick="closeSheet()">Let's keep going 💥</button>
+    <button class="btn primary" style="margin-top:14px" onclick="shareMilestoneById('${a.id}')">📤 Share this win</button>
+    <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Let's keep going 💥</button>
   `);
   haptic(30);
+}
+/* ============================ ENHANCEMENTS ============================ */
+/* #2 — Pre-cache the coming session's neural cues so the coach never drops to
+   the robotic device voice mid-workout (builds on neuralPrewarm). */
+function precacheSession(items){
+  if(!neuralReady()||!items||!items.length)return;
+  try{
+    const p=(typeof currentPersona==='function')?currentPersona():null;
+    const cfg=neuralCfgFor(p);
+    const lines=[];
+    items.forEach(m=>{const ex=EX[m.exId];if(!ex)return;
+      lines.push(ex.name);
+      if(ex.cues&&ex.cues[0])lines.push(ex.name+'. '+ex.cues[0]);});
+    [...new Set(lines)].slice(0,24)
+      .reduce((chain,t)=>chain.then(()=>_neuralCachePut(t,cfg)),Promise.resolve());
+  }catch(e){}
+}
+/* #3 — "Your climb": last personal best vs today's target for an exercise. */
+function bestFor(exId){const v=STATE.prs&&STATE.prs[exId];return (typeof v==='number'&&v>0)?v:0;}
+function climbNote(m){
+  const b=bestFor(m.exId);if(!b)return '';
+  return `<span class="tiny" style="color:var(--fire-l)">· best ${m.unit==='time'?fmtTime(b):(b+' reps')}</span>`;
+}
+/* #4 — Smart missed-day catch-up banner (streak-safe). */
+function daysSinceTrained(){
+  const set=trainedDaysSet();if(!set.size)return null;
+  const t=new Date();
+  for(let i=0;i<90;i++){const d=new Date(t);d.setDate(d.getDate()-i);if(set.has(localISO(d)))return i;}
+  return null;
+}
+function catchUpBanner(){
+  const g=daysSinceTrained();
+  if(g===null||g<2)return '';
+  return `<div class="note info" style="margin-top:12px">👋 <b>Welcome back — it's been ${g} days.</b> No streak lost — just pick up where you left off. Short on time today? <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="openQuickList()">⚡ 15-min catch-up</button></div>`;
+}
+/* #5 — Grocery list compiled from today's meal plan. */
+function openGrocery(){
+  const plan=currentMealPlan();const recs=plan.meals.map(recipeById).filter(Boolean);
+  if(!recs.length){toast('No meal plan yet');return;}
+  const seen=new Map();
+  recs.forEach(r=>(r.ing||[]).forEach(x=>{const s=String(x).trim();const k=s.toLowerCase();if(s&&!seen.has(k))seen.set(k,s);}));
+  const items=[...seen.values()].sort((a,b)=>a.localeCompare(b));
+  openSheet(`
+    <h3>🛒 Grocery list</h3>
+    <div class="tiny muted" style="margin-bottom:10px">${_ve(dietLabel())} · from today's ${recs.length} meals · tap to check off</div>
+    <div class="card pad">${items.map(x=>`<label class="kv" style="cursor:pointer;border-top:1px solid var(--line)"><span>${_ve(x)}</span><input type="checkbox" onchange="this.closest('label').style.opacity=this.checked?.4:1" style="width:20px;height:20px;flex:0 0 auto"></label>`).join('')}</div>
+    <button class="btn primary" style="margin-top:12px" onclick="closeSheet()">Done</button>
+  `);
+}
+/* #7 — Shareable milestone card (rendered to a 1080² canvas → share/download). */
+function shareMilestoneById(id){const a=ACHIEVEMENTS.find(x=>x.id===id);if(a)shareMilestone(a);}
+function _wrapText(x,text,cx,cy,maxW,lh){
+  const words=String(text||'').split(' ');let line='',y=cy;
+  words.forEach(w=>{const t=line?line+' '+w:w;if(x.measureText(t).width>maxW&&line){x.fillText(line,cx,y);line=w;y+=lh;}else line=t;});
+  if(line)x.fillText(line,cx,y);return y;
+}
+function shareMilestone(a){
+  try{
+    const S=1080,c=document.createElement('canvas');c.width=S;c.height=S;const x=c.getContext('2d');
+    const g=x.createLinearGradient(0,0,0,S);g.addColorStop(0,'#12151b');g.addColorStop(1,'#050607');
+    x.fillStyle=g;x.fillRect(0,0,S,S);
+    x.fillStyle='#ff5a1f';x.fillRect(0,0,S,14);
+    x.textAlign='center';
+    x.font='120px Archivo,system-ui,sans-serif';x.fillText(a.emoji||'🏆',S/2,300);
+    x.fillStyle='#ffa23d';x.font='800 40px Archivo,system-ui,sans-serif';x.fillText('ACHIEVEMENT UNLOCKED',S/2,410);
+    x.fillStyle='#f2f5f9';x.font='900 78px Archivo,system-ui,sans-serif';let y=_wrapText(x,a.name||'',S/2,520,920,88);
+    x.fillStyle='#8b95a5';x.font='600 34px Archivo,system-ui,sans-serif';_wrapText(x,a.desc||'',S/2,y+70,860,46);
+    x.fillStyle='#ff5a1f';x.font='900 56px Archivo,system-ui,sans-serif';x.fillText('CoreForge',S/2,980);
+    x.fillStyle='#5d6674';x.font='700 28px Archivo,system-ui,sans-serif';x.fillText('FULL-BODY WORKOUT',S/2,1026);
+    c.toBlob(blob=>{if(!blob){toast('Could not make card');return;}
+      const file=new File([blob],'coreforge-'+(a.id||'win')+'.png',{type:'image/png'});
+      if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:'CoreForge',text:a.name}).catch(()=>{});}
+      else{const u=URL.createObjectURL(blob);const l=document.createElement('a');l.href=u;l.download=file.name;document.body.appendChild(l);l.click();l.remove();setTimeout(()=>URL.revokeObjectURL(u),5000);toast('Card saved 📸');}
+    },'image/png');
+  }catch(e){toast('Could not make card');}
 }
 function achievementsHTML(){
   if(!STATE.achievements)STATE.achievements={};
@@ -3736,7 +3825,7 @@ function mealPlanHTML(){
   if(!recs.length)return '';
   const tot=recs.reduce((s,r)=>s+r.kcal,0),totP=recs.reduce((s,r)=>s+r.p,0);
   let h=`<div class="section-label" id="mealplan">Today's meal plan · <span class="tiny muted">${_ve(dietLabel())} · ${recs.length} meals</span></div><div class="card pad" style="padding-bottom:8px">`;
-  h+=`<div class="row" style="justify-content:space-between;margin-bottom:6px"><div><b>${tot} kcal</b> · ${totP}g protein${kcalT?` <span class="tiny muted">of ${kcalT} target</span>`:''}</div><button class="chip" onclick="regenPlan()">↻ New plan</button></div>`;
+  h+=`<div class="row" style="justify-content:space-between;margin-bottom:6px"><div><b>${tot} kcal</b> · ${totP}g protein${kcalT?` <span class="tiny muted">of ${kcalT} target</span>`:''}</div><div class="btnrow" style="flex:0 0 auto;gap:6px"><button class="chip" onclick="openGrocery()">🛒 List</button><button class="chip" onclick="regenPlan()">↻ New plan</button></div></div>`;
   recs.forEach(r=>{h+=`<button class="kv" style="width:100%;text-align:left;border:none;border-top:1px solid var(--line);background:none;padding:12px 2px;cursor:pointer" onclick="toggleRecipe('${r.id}')">
     <span style="min-width:0"><span style="font-size:18px">${r.emoji}</span> <b>${_ve(r.name)}</b><div class="tiny muted" style="margin-top:2px;text-transform:capitalize">${r.type} · ${r.kcal} kcal · ${r.p}p ${r.c}c ${r.f}f</div></span>
     <span class="tiny muted" style="flex:0 0 auto">▾</span></button>
