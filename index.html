@@ -871,6 +871,14 @@ const EX = {
     why:'A loaded carry that builds a crushing grip, a braced anti-tilt core and total-body strength — one of the most transferable drills there is.',
     steps:['Stand tall with a kettlebell in each hand at your sides.','Brace the core and pull the shoulders down and back.','Walk with short, controlled steps for the time.','Keep the torso upright — do not lean or tilt.'],
     cues:['Chest up, shoulders back','Squeeze the handles hard','Steady, even steps'],mistakes:['Leaning or tilting to one side','Shuffling / rushing the steps']},
+  kbhalo:{name:'Kettlebell Halo',region:'core',unit:'time',img:'ex-kbhalo.jpg',anchor:null,hardness:1,base:30,rest:45,equip:['kettlebell'],pattern:'core',
+    why:'Circles the bell around the head to open the shoulders and build a braced, anti-rotation core.',
+    steps:['Hold the bell upside-down (horns down) at chest height.','Circle it slowly around your head, keeping it close.','Only the arms move — hips and core stay locked and still.','Reverse direction halfway through the time.'],
+    cues:['Bell stays close to the head','Ribs down, core braced','Slow and controlled'],mistakes:['Swaying the hips','Rushing the circle']},
+  kbheli:{name:'Kettlebell Helicopter',region:'core',unit:'time',img:'ex-kbheli.jpg',anchor:null,hardness:1.1,base:30,rest:45,equip:['kettlebell'],pattern:'core',
+    why:'Passes the bell around the body to train grip, rotary core control and shoulder stability.',
+    steps:['Stand tall holding the bell in front with one hand.','Pass it around your waist to the other hand and back to the front.','Keep the hips square — resist the twist with a braced core.','Reverse direction halfway through the time.'],
+    cues:['Tall posture, hips square','Pass smoothly hand to hand','Brace against the rotation'],mistakes:['Twisting the torso to chase the bell','Letting the bell drift low and pull you']},
   /* -- DUMBBELL library (a pair of dumbbells) -- */
   dbgoblet:{name:'Dumbbell Goblet Squat',region:'legs',unit:'reps',img:'ex-dbgoblet.jpg',anchor:null,hardness:1,base:12,rest:60,equip:['dumbbell'],pattern:'squat',
     why:'A front-loaded squat that builds the legs and bracing core while keeping the torso tall and safe.',
@@ -1056,7 +1064,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='105';
+const APP_VERSION='106';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
