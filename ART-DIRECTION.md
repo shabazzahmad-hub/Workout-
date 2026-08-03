@@ -53,7 +53,9 @@ OD-green tee/tank + camo fatigues):
   plyometrics) — regenerated in 8 batches.
 - ✅ Warm-up / cool-down set (was a female athlete in mauve; now the male athlete
   in fatigues).
-- ✅ Hero / icon / splash — a fatigues hero brand shot (OD-green tank + camo,
-  arms crossed, dark studio) now drives `hero.jpg`, `icon-192.png`, `icon-512.png`.
+- ✅ Hero / icon / splash — the coach "Sergeant Forge" portrait (OD-green tee +
+  camo fatigues, arms crossed, neutral studio) drives `hero.jpg` and, as a
+  head-and-shoulders crop, `icon-192.png` / `icon-512.png`. Same shot as
+  `coach-sarge.jpg` (the Morning Brief avatar).
 
 Any future images must follow the wardrobe + style spec above.
