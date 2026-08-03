@@ -1121,6 +1121,11 @@ function go(tab){
   window.scrollTo(0,0);
   render();
 }
+// Today-screen shortcut: jump to the Fuel tab and scroll to today's meal plan.
+function openMealPlan(){
+  go('fuel');
+  setTimeout(()=>{try{const el=document.getElementById('mealplan');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){}},80);
+}
 // User taps a bottom-nav tab -> record a history entry so the phone's Back
 // button steps back through tabs instead of closing the app.
 function navTo(tab){
@@ -1407,6 +1412,7 @@ function todayWorkoutHTML(){
   <button class="btn primary" style="margin:2px 0 8px;font-size:16px;padding:17px" onclick="openPlayer()">▶ Start guided workout</button>
   ${sess.session.key==='metcon'?`<button class="btn ghost" style="margin:0 0 8px" onclick="openHiitChooser()">⚡ HIIT intervals — Tabata · EMOM · AMRAP</button>`:''}
   ${hasWeights()?`<button class="btn ghost" style="margin:0 0 8px" onclick="startWeights()">🏋️ Weights session — full-body, your equipment</button>`:''}
+  <button class="btn ghost" style="margin:0 0 8px" onclick="openMealPlan()">🍽️ Today's meal plan — recipes for your goal</button>
   <div class="btnrow" style="margin:2px 0 6px"><button class="btn ghost" id="coachBrief">🎙️ Coach brief</button><button class="btn ghost" onclick="openQuickList()">⚡ Quick</button><button class="btn ghost" onclick="openRecovery()">😌 Recover</button></div>`;
   h+=homeSummaryHTML();
   h+=weeklyBannerHTML();
@@ -3729,7 +3735,7 @@ function mealPlanHTML(){
   const recs=plan.meals.map(recipeById).filter(Boolean);
   if(!recs.length)return '';
   const tot=recs.reduce((s,r)=>s+r.kcal,0),totP=recs.reduce((s,r)=>s+r.p,0);
-  let h=`<div class="section-label">Today's meal plan · <span class="tiny muted">${_ve(dietLabel())} · ${recs.length} meals</span></div><div class="card pad" style="padding-bottom:8px">`;
+  let h=`<div class="section-label" id="mealplan">Today's meal plan · <span class="tiny muted">${_ve(dietLabel())} · ${recs.length} meals</span></div><div class="card pad" style="padding-bottom:8px">`;
   h+=`<div class="row" style="justify-content:space-between;margin-bottom:6px"><div><b>${tot} kcal</b> · ${totP}g protein${kcalT?` <span class="tiny muted">of ${kcalT} target</span>`:''}</div><button class="chip" onclick="regenPlan()">↻ New plan</button></div>`;
   recs.forEach(r=>{h+=`<button class="kv" style="width:100%;text-align:left;border:none;border-top:1px solid var(--line);background:none;padding:12px 2px;cursor:pointer" onclick="toggleRecipe('${r.id}')">
     <span style="min-width:0"><span style="font-size:18px">${r.emoji}</span> <b>${_ve(r.name)}</b><div class="tiny muted" style="margin-top:2px;text-transform:capitalize">${r.type} · ${r.kcal} kcal · ${r.p}p ${r.c}c ${r.f}f</div></span>
