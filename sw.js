@@ -1,8 +1,8 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v67';
+const CACHE = 'coreforge-v68';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './archivo.woff2', './icon-192.png', './icon-512.png', './hero.jpg',
   './ex-kneeplank.jpg','./ex-plank.jpg','./ex-longplank.jpg','./ex-planktap.jpg',
-  './ex-tuckhollow.jpg','./ex-hollow.jpg','./ex-hollowrock.jpg',
+  './ex-tuckhollow.jpg','./ex-hollow.jpg','./ex-hollowrock.jpg','./ex-reverseplank.jpg',
   './ex-deadbug.jpg','./ex-revcrunch.jpg','./ex-legraise.jpg','./ex-kneeraise.jpg',
   './ex-crunch.jpg','./ex-bicycle.jpg','./ex-tuckvup.jpg','./ex-vup.jpg',
   './ex-kneeside.jpg','./ex-sideplank.jpg','./ex-sidedip.jpg','./ex-copenhagen.jpg',

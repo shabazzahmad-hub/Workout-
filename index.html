@@ -826,6 +826,47 @@ const EX = {
     why:'Single-leg strength and balance for the quads and glutes — evens out side-to-side weakness.',
     steps:['Hold the bell(s) at the chest or sides.','Step back and lower the back knee toward the floor.','Drive through the front heel to stand. Alternate.'],
     cues:['Tall torso','Front knee over ankle','Controlled step back'],mistakes:['Short steps','Knee caving in']},
+  /* -- DUMBBELL library (a pair of dumbbells) -- */
+  dbgoblet:{name:'Dumbbell Goblet Squat',region:'legs',unit:'reps',img:'ex-dbgoblet.jpg',anchor:null,hardness:1,base:12,rest:60,equip:['dumbbell'],pattern:'squat',
+    why:'A front-loaded squat that builds the legs and bracing core while keeping the torso tall and safe.',
+    steps:['Hold one dumbbell vertically at the chest with both hands.','Sit down between the hips to depth.','Drive through the heels to stand tall.'],
+    cues:['Elbows inside the knees','Chest up','Full depth then drive'],mistakes:['Heels lifting','Rounding forward']},
+  dbrdl:{name:'Dumbbell Romanian Deadlift',region:'legs',unit:'reps',img:'ex-dbrdl.jpg',anchor:null,hardness:1,base:12,rest:60,equip:['dumbbell'],pattern:'hinge',
+    why:'Builds the hamstrings, glutes and lower back — the posterior chain most people neglect.',
+    steps:['Hold a dumbbell in each hand at the thighs, soft knees.','Push the hips back, lowering the bells down the shins.','Squeeze the glutes to stand tall.'],
+    cues:['Hips back, not down','Flat back','Feel the hamstrings'],mistakes:['Rounding the back','Squatting it down']},
+  dbrow:{name:'Dumbbell Bent-Over Row',region:'back',unit:'reps',img:'ex-dbrow.jpg',anchor:null,hardness:1,base:10,rest:55,equip:['dumbbell'],pattern:'pull',
+    why:'Horizontal pulling for a thick, strong back — balances all the pressing and pull-ups.',
+    steps:['Hinge to ~45°, flat back, a dumbbell in each hand hanging.','Row both bells to the hips, squeezing the shoulder blades.','Lower with a full stretch.'],
+    cues:['Pull to the hips','Flat back','No twisting'],mistakes:['Standing too upright','Yanking with the arms']},
+  dbpress:{name:'Dumbbell Shoulder Press',region:'shoulders',unit:'reps',img:'ex-dbpress.jpg',anchor:null,hardness:1,base:10,rest:60,equip:['dumbbell'],pattern:'pushv',
+    why:'A vertical press that builds strong, capped shoulders and a braced trunk.',
+    steps:['Stand tall, a dumbbell at each shoulder, palms forward.','Brace the core and press both bells overhead to lockout.','Lower under control to the shoulders.'],
+    cues:['Ribs down, glutes tight','Full lockout overhead','Press in a straight line'],mistakes:['Arching the low back','Pressing forward, not up']},
+  dbfloor:{name:'Dumbbell Floor Press',region:'chest',unit:'reps',img:'ex-dbfloor.jpg',anchor:null,hardness:1,base:12,rest:55,equip:['dumbbell'],pattern:'pushh',
+    why:'A shoulder-friendly horizontal press for the chest and triceps — no bench needed.',
+    steps:['Lie on your back, knees bent, a dumbbell in each hand at the chest.','Press both bells up to straight arms.','Lower until the upper arms just touch the floor, then press again.'],
+    cues:['Elbows ~45°','Press the bells together at the top','Controlled touch on the floor'],mistakes:['Flaring the elbows','Bouncing off the floor']},
+  dblunge:{name:'Dumbbell Reverse Lunge',region:'legs',unit:'reps',img:'ex-dblunge.jpg',anchor:null,hardness:1,base:10,rest:55,equip:['dumbbell'],pattern:'lunge',
+    why:'Single-leg strength and balance for the quads and glutes — evens out side-to-side weakness.',
+    steps:['Hold a dumbbell in each hand at your sides.','Step back and lower the back knee toward the floor.','Drive through the front heel to stand. Alternate.'],
+    cues:['Tall torso','Front knee over ankle','Controlled step back'],mistakes:['Short steps','Knee caving in']},
+  dbthruster:{name:'Dumbbell Thruster',region:'strength',unit:'reps',img:'ex-dbthruster.jpg',anchor:null,hardness:1.1,base:10,rest:65,equip:['dumbbell'],pattern:'power',
+    why:'A squat-to-press in one — a total-body power and conditioning builder that torches calories.',
+    steps:['Dumbbells at the shoulders, drop into a front squat.','Drive up explosively and press both bells overhead in one motion.','Lower to the shoulders and flow into the next rep.'],
+    cues:['Use the leg drive','Full lockout overhead','Brace the core throughout'],mistakes:['Pressing before standing','Arching the back']},
+  dbcurl:{name:'Dumbbell Biceps Curl',region:'arms',unit:'reps',img:'ex-dbcurl.jpg',anchor:null,hardness:1,base:12,rest:45,equip:['dumbbell'],pattern:'pull',
+    why:'Direct arm work to build and strengthen the biceps — a balance to all the pressing.',
+    steps:['Stand tall, a dumbbell in each hand, palms forward.','Curl both bells to the shoulders, elbows pinned to the sides.','Lower slowly under control.'],
+    cues:['Elbows stay still','No swinging','Slow on the way down'],mistakes:['Using the back to swing','Half reps']},
+  dbrenegade:{name:'Dumbbell Renegade Row',region:'anterior',unit:'reps',img:'ex-dbrenegade.jpg',anchor:null,hardness:1.1,base:10,rest:55,equip:['dumbbell'],pattern:'core',
+    why:'A plank row that hammers the anti-rotation core while building the back — brutal and honest.',
+    steps:['High plank gripping a dumbbell in each hand, feet wide for balance.','Row one bell to the hip while keeping the hips square.','Lower and row the other side. Count each side as a rep.'],
+    cues:['Hips stay level — no rotation','Feet wide for balance','Brace hard'],mistakes:['Hips twisting','Rushing the reps']},
+  dbtwist:{name:'Dumbbell Russian Twist',region:'oblique',unit:'reps',img:'ex-dbtwist.jpg',anchor:null,hardness:1,base:18,rest:40,equip:['dumbbell'],pattern:'core',
+    why:'Loaded rotation for the obliques — carves the waist and builds real rotational strength.',
+    steps:['Sit with the heels up, leaning back slightly, holding one dumbbell at the chest.','Rotate to tap the bell by each hip.','Keep the chest tall and control the turn. Count each side as a rep.'],
+    cues:['Rotate from the ribs','Feet up for more','Slow and controlled'],mistakes:['Just moving the arms','Rounding the back']},
   ropewave:{name:'Battle Rope Waves',region:'cardio',unit:'time',img:'ex-ropewave.jpg',anchor:null,hardness:1,base:30,rest:40,equip:['battlerope'],pattern:'cardio',
     why:'Relentless conditioning for the shoulders, arms and core — huge heart rate, low impact.',
     steps:['Athletic half-squat, a rope in each hand.','Whip fast alternating waves down the rope.','Keep the tempo high for time.'],
@@ -1284,7 +1325,7 @@ function onboardHTML(){
     <h3>Equipment you have</h3>
     <div class="tiny muted" style="margin:-4px 0 8px">Everything works with bodyweight — pick what you own and we unlock a <b>Weights session</b> tuned to your gear.</div>
     <div class="daypick" id="ob-gear" style="flex-wrap:wrap">
-      ${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['medball','Medicine ball'],['abroller','Ab roller'],['battlerope','Battle rope'],['bench','Bench / chair']].map(([k,l])=>`<button data-e="${k}"${(k==='bar')?' class="on"':''}>${l}</button>`).join('')}
+      ${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['battlerope','Battle rope'],['bench','Bench / chair']].map(([k,l])=>`<button data-e="${k}"${(k==='bar')?' class="on"':''}>${l}</button>`).join('')}
     </div>
   </div>
 
@@ -4278,7 +4319,7 @@ function renderGuide(){
     <div class="divider" style="margin:10px 0"></div>
     <div style="padding:2px 0"><div class="tiny muted" style="margin-bottom:6px">Equipment you have <span style="opacity:.7">· unlocks the Weights session</span></div>
       <div class="daypick" id="set-gear" style="flex-wrap:wrap">
-        ${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['medball','Medicine ball'],['abroller','Ab roller'],['battlerope','Battle rope'],['bench','Bench / chair']].map(([k,l])=>`<button class="${(STATE.profile.gear||[]).includes(k)?'on':''}" onclick="toggleGear('${k}')">${l}</button>`).join('')}
+        ${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['battlerope','Battle rope'],['bench','Bench / chair']].map(([k,l])=>`<button class="${(STATE.profile.gear||[]).includes(k)?'on':''}" onclick="toggleGear('${k}')">${l}</button>`).join('')}
       </div></div>
     <div style="padding:8px 0 2px"><div class="tiny muted" style="margin-bottom:6px">Diet preference <span style="opacity:.7">· shapes meal plans</span></div>
       <div class="daypick" id="set-diet" style="flex-wrap:wrap">
@@ -4356,6 +4397,8 @@ async function boot(){
   if(!STATE.profile.goal)STATE.profile.goal=STATE.nutrition.goal||'lose';
   // one-time: seed the owner's actual home-gym kit so the Weights session works out of the box
   if(!STATE.profile._gearMil){STATE.profile.gear=['bar','dip','kettlebell','medball','abroller','battlerope'];STATE.profile.hasBar=true;STATE.profile._gearMil=true;}
+  // one-time: add the newly-purchased dumbbells to the owner's kit
+  if(!STATE.profile._gearDb){STATE.profile.gear=[...new Set([...(STATE.profile.gear||[]),'dumbbell'])];STATE.profile._gearDb=true;}
   // one-time: switch to a 7-day-a-week training schedule
   if(!STATE.profile._days7){STATE.profile.days=[0,1,2,3,4,5,6];STATE.profile._days7=true;}
   if(!Array.isArray(STATE.photos))STATE.photos=[];
