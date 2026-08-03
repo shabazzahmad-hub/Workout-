@@ -302,6 +302,14 @@
   .coachchip .cc-name{font-weight:900;font-size:13px;line-height:1.1}
   .coachchip .cc-role{font-size:10px;color:var(--muted);letter-spacing:.4px;margin-top:1px}
   .pl-head .coach-av{margin-left:auto}
+  /* Tinted action buttons — distinct colors per shortcut on the Today screen */
+  .btn.t-blue{background:rgba(79,168,255,.15);border:1px solid rgba(79,168,255,.55);color:#a9d4ff}
+  .btn.t-purple{background:rgba(155,124,255,.16);border:1px solid rgba(155,124,255,.55);color:#c8bcff}
+  .btn.t-red{background:rgba(255,86,76,.15);border:1px solid rgba(255,86,76,.55);color:#ff9d96}
+  .btn.t-green{background:rgba(74,222,128,.14);border:1px solid rgba(74,222,128,.5);color:#8ff0b0}
+  .btn.t-gold{background:rgba(231,181,60,.16);border:1px solid rgba(231,181,60,.55);color:#f2d27a}
+  .btn.t-teal{background:rgba(45,212,191,.14);border:1px solid rgba(45,212,191,.55);color:#7ff0e0}
+  .btn.t-blue:active,.btn.t-purple:active,.btn.t-red:active,.btn.t-green:active,.btn.t-gold:active,.btn.t-teal:active{filter:brightness(1.25)}
 </style>
 </head>
 <body>
@@ -1480,15 +1488,15 @@ function todayWorkoutHTML(){
   const pct=Math.round(doneCount/totalCount*100);
   const R=sess.session.key;
   const heroImg=heroImageFor(sess);
-  const sessInCycle=(sess.week-1)*SESSIONS_PER_WEEK+sess.pos.dayInWeek+1;
-  const sessTotal=WEEKS_PER_CYCLE*SESSIONS_PER_WEEK;
+  const sessAll=SESSIONS_PER_CYCLE*TOTAL_CYCLES;   // 378 sessions across the full year
+  const sessGlobal=Math.min(STATE.progressPtr+1,sessAll);
   let h=`
   <div class="herophoto ${R}">
     <img src="${heroImg}" alt="" onerror="this.style.display='none'">
     <div class="hp-grad"></div>
     <div class="hp-badges">
       <span class="hp-badge today">TODAY</span>
-      <span class="hp-badge count">SESSION ${sessInCycle} / ${sessTotal}</span>
+      <span class="hp-badge count">SESSION ${sessGlobal} / ${sessAll}</span>
     </div>
     <div class="hp-body">
       <div class="hp-focus">Week ${wkNum} · ${sess.session.focus}</div>
@@ -1500,11 +1508,11 @@ function todayWorkoutHTML(){
   ${readinessCardHTML()}
   <button class="btn primary" style="margin:2px 0 6px;font-size:16px;padding:17px" onclick="openPlayer()">▶ Start guided workout</button>
   <div style="display:flex;justify-content:center;margin:0 0 10px">${coachChipHTML('Coaches you through every rep')}</div>
-  ${sess.session.key==='metcon'?`<button class="btn ghost" style="margin:0 0 8px" onclick="openHiitChooser()">⚡ HIIT intervals — Tabata · EMOM · AMRAP</button>`:''}
-  ${hasWeights()?`<button class="btn ghost" style="margin:0 0 8px" onclick="startWeights()">🏋️ Weights session — full-body, your equipment</button>`:''}
-  <button class="btn ghost" style="margin:0 0 8px" onclick="openSpecial()">🎖️ Special — HIIT intervals (Tabata · EMOM · AMRAP)</button>
-  <button class="btn ghost" style="margin:0 0 8px" onclick="openMealPlan()">🍽️ Today's meal plan — recipes for your goal</button>
-  <div class="btnrow" style="margin:2px 0 6px"><button class="btn ghost" id="coachBrief">🎙️ Brief</button><button class="btn ghost" onclick="openQuickList()">⚡ Quick</button><button class="btn ghost" onclick="openRecovery()">😌 Recover</button></div>`;
+  ${sess.session.key==='metcon'?`<button class="btn t-teal" style="margin:0 0 8px" onclick="openHiitChooser()">⚡ HIIT intervals — Tabata · EMOM · AMRAP</button>`:''}
+  ${hasWeights()?`<button class="btn t-purple" style="margin:0 0 8px" onclick="startWeights()">🏋️ Weights session — full-body, your equipment</button>`:''}
+  <button class="btn t-red" style="margin:0 0 8px" onclick="openSpecial()">🎖️ Special — HIIT intervals (Tabata · EMOM · AMRAP)</button>
+  <button class="btn t-green" style="margin:0 0 8px" onclick="openMealPlan()">🍽️ Today's meal plan — recipes for your goal</button>
+  <div class="btnrow" style="margin:2px 0 6px"><button class="btn t-gold" id="coachBrief">🎙️ Brief</button><button class="btn t-blue" onclick="openQuickList()">⚡ Quick</button><button class="btn t-teal" onclick="openRecovery()">😌 Recover</button></div>`;
   h+=homeSummaryHTML();
   h+=deloadBanner();
   h+=catchUpBanner();
@@ -4026,7 +4034,7 @@ function saveReadiness(){
 }
 function readinessCardHTML(){
   const r=readinessToday();
-  if(!r)return `<button class="btn ghost" style="margin:0 0 8px" onclick="_rdy={};openReadiness()">🌡️ Daily readiness check — tune today's load</button>`;
+  if(!r)return `<button class="btn t-blue" style="margin:0 0 8px" onclick="_rdy={};openReadiness()">🌡️ Daily readiness check — tune today's load</button>`;
   const s=r.score;const tag=s>=80?['Primed','var(--green)']:(s>=60?['Ready','var(--fire-l)']:(s>=40?['Ease up','var(--gold)']:['Recover','var(--pink)']));
   return `<div class="note ${s<40?'warn':'info'}" style="margin:0 0 8px;display:flex;justify-content:space-between;align-items:center;gap:10px"><span>🌡️ <b>Readiness ${s}%</b> · <span style="color:${tag[1]}">${tag[0]}</span>${s<40?' — today eased; consider rest/deload':(s>=80?' — load turned up 🔥':'')}</span><button class="btn sm ghost" style="width:auto;flex:0 0 auto" onclick="_rdy={};openReadiness()">Update</button></div>`;
 }
