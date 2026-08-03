@@ -1136,6 +1136,7 @@ function prescribe(exId,pos){
     const wk=[1,1.08,1.16,1.25,1.34,1.44][week-1];
     target=base*(LEVEL_FACTOR[level]||1)*wk*(1+adj)*cycleBoost*adapt;
   }
+  if(typeof deloadOn==='function'&&deloadOn()){sets=Math.max(1,sets-1);target*=0.62;}   // deload week — ease volume & load
   if(ex.unit==='time'){target=Math.round(target/5)*5;target=clamp(target,15,150);}
   else{target=Math.round(target);target=clamp(target,6,40);}
   return {sets,target,unit:ex.unit,rest:ex.rest||45};
@@ -1232,6 +1233,7 @@ let _backGuard=false,_exiting=false,_homeBackAt=0;
 function onPop(e){
   if(_exiting)return;
   if(_backGuard){_backGuard=false;return;}
+  if(typeof OP!=='undefined'&&OP){opQuit();return;}
   if(typeof INTV!=='undefined'&&INTV){hiitTeardown();return;}
   if(typeof PLAYER!=='undefined'&&PLAYER){playerTeardown();return;}
   if($('#scrim').classList.contains('open')){
@@ -1483,6 +1485,7 @@ function todayWorkoutHTML(){
   <button class="btn ghost" style="margin:0 0 8px" onclick="openMealPlan()">🍽️ Today's meal plan — recipes for your goal</button>
   <div class="btnrow" style="margin:2px 0 6px"><button class="btn ghost" id="coachBrief">🎙️ Coach brief</button><button class="btn ghost" onclick="openQuickList()">⚡ Quick</button><button class="btn ghost" onclick="openRecovery()">😌 Recover</button></div>`;
   h+=homeSummaryHTML();
+  h+=deloadBanner();
   h+=catchUpBanner();
   h+=weeklyBannerHTML();
   // progressive overload note vs previous week
@@ -1881,18 +1884,20 @@ function plEnterDone(){
       <div class="stat"><div class="n" style="color:var(--teal)">${PLAYER.setsDone}</div><div class="l">Sets</div></div>
       <div class="stat"><div class="n" style="color:var(--green)">${PLAYER.items.length}</div><div class="l">Moves</div></div>
     </div>`;
+  _share={t:PLAYER.free?sess.session.name:'Session Complete',s:label,l:['Time '+fmtTime(PLAYER.elapsed||1),PLAYER.setsDone+' sets · '+PLAYER.items.length+' moves']};
   if(PLAYER.free){
     // Bonus/weights session — no program commit, just a close button.
     $('#plBody').innerHTML=`
-      <div class="pl-name" style="margin-bottom:2px">Weights done 🏋️</div>
+      <div class="pl-name" style="margin-bottom:2px">Session done 🏋️</div>
       <div class="pl-coach" style="margin-bottom:14px">${label}</div>${stats}
-      <div style="width:100%;max-width:440px;margin-top:18px"><button class="btn green" style="width:100%" onclick="playerQuit()">Done ✓</button></div>`;
-    if(!motivate('done'))coachSpeak('Weights session complete. Strong work.');
+      <div style="width:100%;max-width:440px;margin-top:18px"><button class="btn primary" style="width:100%;margin-bottom:8px" onclick="shareLast()">📤 Share</button><button class="btn green" style="width:100%" onclick="playerQuit()">Done ✓</button></div>`;
+    if(!motivate('done'))coachSpeak('Session complete. Strong work.');
     return;
   }
   $('#plBody').innerHTML=`
     <div class="pl-name" style="margin-bottom:2px">Session complete 🔥</div>
     <div class="pl-coach" style="margin-bottom:14px">${label}</div>${stats}
+    <button class="btn ghost" style="width:100%;max-width:440px;margin-top:14px" onclick="shareLast()">📤 Share this session</button>
     <div class="pl-set" style="margin-top:20px">HOW DID THAT FEEL?</div>
     <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:440px;margin-top:8px">
       <button class="btn green" onclick="playerFeel('easy')">😎 Easy — bring more</button>
@@ -1966,6 +1971,9 @@ function openSpecial(){
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="specialChooser('hiit')"><b style="font-size:15px">⚡ HIIT intervals</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Bodyweight — jumping jacks, burpees, mountain climbers…</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="specialChooser('bike')"><b style="font-size:15px">🚴 Bike trainer</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Indoor ride intervals on your road bike + trainer</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="specialChooser('sprint')"><b style="font-size:15px">🏃 Sprint runs</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Max-effort sprint intervals with recovery</div></button>
+      <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="openOps()"><b style="font-size:15px">🎖️ Benchmark Ops</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Timed hero workouts — chase your best time</div></button>
+      <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="openBuilder()"><b style="font-size:15px">🛠️ Custom workout</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Build your own session from any moves</div></button>
+      <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="openMobility()"><b style="font-size:15px">🧘 Mobility &amp; stretch</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Guided flows to loosen up &amp; recover</div></button>
     </div>
     <div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
 }
@@ -2907,7 +2915,7 @@ function beatStart(){
   const vol=beatVolPref()*0.9;
   master.gain.setValueAtTime(0.0001,ac.currentTime);
   master.gain.exponentialRampToValueAtTime(Math.max(0.0002,vol),ac.currentTime+0.8); // fade in
-  BEAT={on:true,ac,master,out:warm,vol,duck:0,step:0,bar:0,next:0,tempo:78,tid:null,_noise:null,crackle:null};
+  BEAT={on:true,ac,master,out:warm,vol,duck:0,step:0,bar:0,next:0,tempo:beatTempoPref(),tid:null,_noise:null,crackle:null};
   BEAT.stepDur=(60/BEAT.tempo)/4;              // 16th note
   BEAT.swing=BEAT.stepDur*0.32;                // swing the off-beats — that lazy lo-fi feel
   BEAT.kick =[1,0,0,0, 0,0,1,0, 0,0,0,1, 0,0,0,0];
@@ -3303,6 +3311,7 @@ function renderProgress(){
   const v=$('#v-progress');
   const unit=STATE.profile.unit;
   let h=`<h2 class="vtitle">Progress</h2><div class="vsub">Everything auto-saved on this device.</div>`;
+  h+=`<button class="btn ghost" style="margin:0 0 12px" onclick="weeklyRecap()">🎙️ Weekly recap — hear it from your coach</button>`;
   // core score ring + level
   if(STATE.baseline){
     const latest=STATE.scoreHistory[STATE.scoreHistory.length-1]
@@ -3619,6 +3628,162 @@ function shareMilestone(a){
       else{const u=URL.createObjectURL(blob);const l=document.createElement('a');l.href=u;l.download=file.name;document.body.appendChild(l);l.click();l.remove();setTimeout(()=>URL.revokeObjectURL(u),5000);toast('Card saved 📸');}
     },'image/png');
   }catch(e){toast('Could not make card');}
+}
+/* ============================ MORE FEATURES ============================ */
+/* Generic shareable card (canvas → Web Share / download). */
+let _share=null;
+function shareLast(){if(_share)shareCard(_share.t,_share.s,_share.l);}
+function shareCard(title,subtitle,lines){
+  try{
+    const S=1080,c=document.createElement('canvas');c.width=S;c.height=S;const x=c.getContext('2d');
+    const g=x.createLinearGradient(0,0,0,S);g.addColorStop(0,'#12151b');g.addColorStop(1,'#050607');x.fillStyle=g;x.fillRect(0,0,S,S);
+    x.fillStyle='#ff5a1f';x.fillRect(0,0,S,14);x.textAlign='center';
+    x.fillStyle='#f2f5f9';x.font='900 84px Archivo,system-ui,sans-serif';let y=_wrapText(x,title||'',S/2,300,940,92);
+    if(subtitle){x.fillStyle='#ffa23d';x.font='800 40px Archivo,system-ui,sans-serif';y=_wrapText(x,subtitle,S/2,y+72,900,50);}
+    x.fillStyle='#8b95a5';x.font='600 42px Archivo,system-ui,sans-serif';
+    (lines||[]).filter(Boolean).forEach(l=>{y+=68;x.fillText(l,S/2,y);});
+    x.fillStyle='#ff5a1f';x.font='900 56px Archivo,system-ui,sans-serif';x.fillText('CoreForge',S/2,980);
+    x.fillStyle='#5d6674';x.font='700 28px Archivo,system-ui,sans-serif';x.fillText('FULL-BODY WORKOUT',S/2,1026);
+    c.toBlob(blob=>{if(!blob){toast('Could not make card');return;}
+      const file=new File([blob],'coreforge-card.png',{type:'image/png'});
+      if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:'CoreForge',text:title}).catch(()=>{});}
+      else{const u=URL.createObjectURL(blob);const l=document.createElement('a');l.href=u;l.download=file.name;document.body.appendChild(l);l.click();l.remove();setTimeout(()=>URL.revokeObjectURL(u),5000);toast('Card saved 📸');}
+    },'image/png');
+  }catch(e){toast('Could not make card');}
+}
+/* ---- #1 Benchmark "Ops" — for-time benchmark workouts ---- */
+const OPS=[
+  {id:'op_forge',name:'The Forge',emoji:'🔥',desc:'5 rounds for time',rounds:5,work:['10 Push-Ups','15 Bodyweight Squats','20 Mountain Climbers','10 Burpees']},
+  {id:'op_ironcore',name:'Iron Core',emoji:'🧱',desc:'4 rounds for time',rounds:4,work:['30s Plank','15 Reverse Crunches','20 Russian Twists','30s Hollow Hold']},
+  {id:'op_gauntlet',name:'Kettlebell Gauntlet',emoji:'⚙️',desc:'5 rounds · kettlebells',rounds:5,work:['15 Kettlebell Swings','10 Goblet Squats','10 KB Rows / side','20s Farmer\'s Carry']},
+  {id:'op_engine',name:'The Engine',emoji:'🚴',desc:'4 rounds · conditioning',rounds:4,work:['2 min hard bike OR 400m sprint','20 Jumping Jacks','15 Squat Thrusts','10 Tuck Jumps']},
+];
+function opBest(id){return (STATE.opsPR&&STATE.opsPR[id])||0;}
+function openOps(){
+  openSheet(`<h3>🎖️ Benchmark Ops</h3>
+    <p class="muted sm" style="margin:2px 0 12px">Fixed benchmark workouts — go fast with good form, then chase your best time. Bonus only; won't affect your program.</p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${OPS.map(o=>{const b=opBest(o.id);return `<button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="startOp('${o.id}')"><b style="font-size:15px">${o.emoji} ${o.name}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${o.desc}${b?` · PB ${fmtTime(b)}`:''}</div></button>`;}).join('')}
+    </div>
+    <div style="height:8px"></div><button class="btn ghost" onclick="openSpecial()">← Back</button>`);
+}
+let OP=null;
+function startOp(id){
+  const op=OPS.find(o=>o.id===id);if(!op)return;closeSheet();
+  OP={op,elapsed:0,tid:null,running:false};
+  $('#hiit').classList.add('open');document.body.style.overflow='hidden';
+  try{history.pushState({cf:'op'},'');}catch(e){}
+  primeVoice();opRender();
+}
+function opRender(){
+  const op=OP.op,b=opBest(op.id);
+  $('#hiit').innerHTML=`<div class="pl-bg"></div>
+    <div class="pl-head"><button class="pl-x" onclick="opQuit()" aria-label="Quit">✕</button><div class="pl-count">${op.emoji} ${op.name}</div><div style="width:36px"></div></div>
+    <div class="pl-body" style="justify-content:flex-start;padding-top:8px">
+      <div class="pl-name" style="margin-bottom:2px">${op.name}</div>
+      <div class="pl-coach" style="margin-bottom:6px">${op.desc}${b?` · PB ${fmtTime(b)}`:''}</div>
+      <div class="pl-num" id="opClock" style="font-size:60px;margin:6px 0">0:00</div>
+      <div class="card pad" style="width:100%;max-width:440px;text-align:left;margin:6px 0 14px">
+        <div class="tiny muted" style="margin-bottom:6px">${op.rounds} rounds of:</div>
+        ${op.work.map(w=>`<div class="kv"><span>${w}</span></div>`).join('')}
+      </div>
+      <div style="width:100%;max-width:440px" id="opBtns"><button class="btn primary" style="width:100%" onclick="opStart()">▶ Start clock</button></div>
+    </div>`;
+}
+function opStart(){
+  if(!OP||OP.running)return;OP.running=true;OP.elapsed=0;
+  beatStart();beepGo();haptic(30);coachSpeak(OP.op.name+'. Go!');
+  OP.tid=setInterval(()=>{if(!OP)return;OP.elapsed++;const e=$('#opClock');if(e)e.textContent=fmtTime(OP.elapsed);},1000);
+  const b=$('#opBtns');if(b)b.innerHTML=`<button class="btn green" style="width:100%" onclick="opFinish()">✓ Finished</button>`;
+}
+function opFinish(){
+  if(!OP)return;clearInterval(OP.tid);OP.running=false;beatStop();
+  const op=OP.op,t=OP.elapsed,prev=opBest(op.id),pb=(!prev||t<prev);
+  if(pb){if(!STATE.opsPR)STATE.opsPR={};STATE.opsPR[op.id]=t;save();}
+  coachSpeak(pb?'New personal best! Outstanding.':'Time. Strong effort.');haptic(30);
+  _share={t:op.name,s:pb?'New personal best 🏆':'Complete',l:['Time '+fmtTime(t),op.desc]};
+  const b=$('#opBtns');if(b)b.innerHTML=`
+    <div class="pl-name" style="margin:6px 0;text-align:center">${pb?'🏆 New PB · '+fmtTime(t):'Time · '+fmtTime(t)}</div>
+    <button class="btn primary" style="width:100%;margin-bottom:8px" onclick="shareLast()">📤 Share</button>
+    <button class="btn ghost" style="width:100%" onclick="opQuit()">Done ✓</button>`;
+}
+function opQuit(){if(OP){clearInterval(OP.tid);}OP=null;beatStop();$('#hiit').classList.remove('open');document.body.style.overflow='';try{if(history.state&&history.state.cf==='op')history.back();}catch(e){}}
+/* ---- #2 Custom workout builder ---- */
+let _custom=[];
+function builderPool(){const gear=STATE.profile.gear||[];return Object.keys(EX).filter(k=>{const ex=EX[k];if(k==='bike'||k==='sprint')return false;if(ex.equip)return ex.equip.every(g=>gear.includes(g));return true;});}
+function addCustom(k){if(!_custom.includes(k))_custom.push(k);openBuilder();}
+function removeCustom(k){_custom=_custom.filter(x=>x!==k);openBuilder();}
+function openBuilder(){
+  const pool=builderPool();const byReg={};pool.forEach(k=>{const r=EX[k].region;(byReg[r]=byReg[r]||[]).push(k);});
+  const favs=STATE.customFav||[];
+  openSheet(`<h3>🛠️ Custom workout</h3>
+    <p class="muted sm" style="margin:2px 0 10px">Tap moves to build your own session. Runs guided; won't affect your program.</p>
+    ${_custom.length?`<div class="card pad" style="margin-bottom:10px"><div class="tiny muted" style="margin-bottom:6px">Your session · ${_custom.length} moves</div>${_custom.map(k=>`<div class="kv"><span>${EX[k].name}</span><button class="chip" onclick="removeCustom('${k}')">✕</button></div>`).join('')}
+      <button class="btn primary" style="width:100%;margin-top:10px" onclick="startCustom()">▶ Start workout</button>
+      <button class="btn ghost" style="width:100%;margin-top:8px" onclick="saveCustomFav()">☆ Save as favorite</button></div>`:''}
+    ${favs.length?`<div class="tiny muted" style="margin:4px 0">Favorites</div>${favs.map((f,i)=>`<button class="kv" style="width:100%;text-align:left;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:11px 13px;margin-bottom:6px" onclick="startFav(${i})"><span>⭐ ${_ve(f.name)}</span><span class="tiny muted">${f.items.length} moves ▶</span></button>`).join('')}<div style="height:6px"></div>`:''}
+    ${Object.keys(byReg).map(r=>`<div class="tiny muted" style="margin:8px 0 4px;text-transform:capitalize">${r}</div><div style="display:flex;flex-wrap:wrap;gap:6px">${byReg[r].map(k=>`<button class="chip ${_custom.includes(k)?'on':''}" onclick="addCustom('${k}')">${EX[k].name}</button>`).join('')}</div>`).join('')}
+    <div style="height:10px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
+}
+function startCustom(){
+  if(!_custom.length){toast('Add some moves first');return;}
+  const items=_custom.map(k=>{const ex=EX[k];const t=ex.unit==='time'?(ex.base||30):(ex.base||12);return {exId:k,unit:ex.unit,target:t,rest:ex.rest||45,sets:3};});
+  closeSheet();openPlayer({items,free:true,title:'Custom Workout',focus:'Your session'});
+}
+function saveCustomFav(){
+  if(!_custom.length)return;
+  const name=prompt('Name this workout','My Workout');if(!name)return;
+  if(!STATE.customFav)STATE.customFav=[];STATE.customFav.push({name:name.slice(0,40),items:[..._custom]});save();toast('Saved ⭐');openBuilder();
+}
+function startFav(i){const f=(STATE.customFav||[])[i];if(!f)return;_custom=[...f.items];startCustom();}
+/* ---- #4 Mobility & stretch library ---- */
+const MOBILITY_FLOWS=[
+  {id:'mob_full',name:'Full-Body Mobility',flow:[...WARMUP_FLOW.slice(1,4),...COOLDOWN_FLOW]},
+  {id:'mob_hips',name:'Hips & Lower Body',flow:[WARMUP_FLOW[3],WARMUP_FLOW[4],COOLDOWN_FLOW[0],COOLDOWN_FLOW[2],COOLDOWN_FLOW[3],COOLDOWN_FLOW[5]]},
+  {id:'mob_spine',name:'Spine & Shoulders',flow:[WARMUP_FLOW[1],WARMUP_FLOW[2],WARMUP_FLOW[6],COOLDOWN_FLOW[1],COOLDOWN_FLOW[4],COOLDOWN_FLOW[6]]},
+];
+function openMobility(){
+  openSheet(`<h3>🧘 Mobility &amp; stretch</h3>
+    <p class="muted sm" style="margin:2px 0 12px">Guided mobility flows to loosen up and recover — run any day.</p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${MOBILITY_FLOWS.map((m,i)=>`<button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="startMobility(${i})"><b style="font-size:15px">🧘 ${m.name}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${m.flow.length} moves · ~${Math.round(m.flow.reduce((a,x)=>a+x.secs,0)/60)+1} min</div></button>`).join('')}
+    </div>
+    <div style="height:8px"></div><button class="btn ghost" onclick="openSpecial()">← Back</button>`);
+}
+function startMobility(i){const m=MOBILITY_FLOWS[i];if(!m)return;closeSheet();runFlow(m.flow,m.name,'var(--teal)');}
+/* ---- #5 Weekly coach voice recap ---- */
+let _recapSpeak='';
+function weeklyRecap(){
+  const set=trainedDaysSet();const t=new Date();let wk=0;
+  for(let i=0;i<7;i++){const d=new Date(t);d.setDate(d.getDate()-i);if(set.has(localISO(d)))wk++;}
+  const streak=(typeof computeStreak==='function')?computeStreak():0;
+  const drop=(typeof waistDrop==='function')?waistDrop():0;
+  const gain=(typeof scoreGain==='function')?scoreGain():0;
+  const total=(typeof sessionsDoneCount==='function')?sessionsDoneCount():0;
+  const lines=[`${wk} workout${wk===1?'':'s'} this week`,`${streak}-day streak`,total?`${total} total sessions`:'',drop>0?`Waist down ${drop}`:'',gain>0?`Core Score up ${gain}`:''].filter(Boolean);
+  _recapSpeak=`Weekly recap. You trained ${wk} time${wk===1?'':'s'} this week${streak>=3?', on a '+streak+' day streak':''}. ${drop>0?'Your waist is down '+drop+'. ':''}${gain>0?'Core score up '+gain+'. ':''}${wk>=5?'Outstanding consistency — keep the fire burning.':(wk>=3?'Solid work — push for one more next week.':'Let us stack more sessions next week. You have got this.')}`;
+  _share={t:'Weekly Recap',s:'',l:lines};
+  openSheet(`<h3>🎙️ Weekly recap</h3>
+    <div class="card pad" style="margin-top:6px">${lines.map(l=>`<div class="kv"><span>${l}</span></div>`).join('')}</div>
+    <button class="btn primary" style="margin-top:12px" onclick="coachSpeak(_recapSpeak,true)">🔊 Hear it again</button>
+    <button class="btn ghost" style="margin-top:8px" onclick="shareLast()">📤 Share</button>
+    <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Close</button>`);
+  try{coachSpeak(_recapSpeak,true);}catch(e){}
+}
+/* ---- #3 Deload week ---- */
+function deloadOn(){return STATE.settings&&STATE.settings.deload===true;}
+function toggleDeload(){if(!STATE.settings)STATE.settings={};STATE.settings.deload=!deloadOn();save();toast(deloadOn()?'Deload week on 🌙':'Deload off — full load');render();}
+function deloadBanner(){return deloadOn()?`<div class="note info" style="margin-top:12px">🌙 <b>Deload week — lighter load.</b> Sets and targets are eased so you recover and rebuild stronger. <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="toggleDeload()">End deload</button></div>`:'';}
+/* ---- #8 Beat tempo / style ---- */
+function beatTempoPref(){const t=STATE.settings&&STATE.settings.beatTempo;return (typeof t==='number'&&t>=60&&t<=110)?t:78;}
+function setBeatTempo(bpm){if(!STATE.settings)STATE.settings={};STATE.settings.beatTempo=Math.max(60,Math.min(110,parseInt(bpm)||78));save();if(BEAT&&BEAT.on){beatStop();beatStart();}}
+/* ---- #7 New-version update toast ---- */
+function showUpdateToast(){
+  if(document.getElementById('updToast'))return;
+  const d=document.createElement('div');d.id='updToast';
+  d.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:calc(74px + env(safe-area-inset-bottom));z-index:500;background:var(--card2);border:1px solid var(--line2);border-radius:14px;padding:11px 14px;display:flex;gap:12px;align-items:center;box-shadow:0 10px 34px rgba(0,0,0,.55)';
+  d.innerHTML=`<span style="font-weight:800;font-size:13px">🔄 New version ready</span><button style="background:var(--fire);color:#140600;border:none;border-radius:10px;padding:8px 13px;font-weight:900" onclick="location.reload()">Refresh</button>`;
+  document.body.appendChild(d);
 }
 function achievementsHTML(){
   if(!STATE.achievements)STATE.achievements={};
@@ -4337,8 +4502,13 @@ function renderGuide(){
     ${STATE.settings.beat!==false?`<div style="padding:4px 0 2px">
       <div class="row" style="justify-content:space-between"><span class="tiny muted">Beat volume</span><span class="tiny muted" id="bvLbl">${Math.round(beatVolPref()*100)}%</span></div>
       <input type="range" min="0.1" max="1" step="0.05" value="${beatVolPref()}" oninput="$('#bvLbl').textContent=Math.round(this.value*100)+'%'" onchange="setBeatVol(this.value)" style="width:100%">
-      <div class="row" style="justify-content:space-between;margin-top:4px"><span class="tiny muted">The beat plays during timers, guided reps, warm-up &amp; cool-down.</span><button class="chip" onclick="beatPreview()">▶ Preview</button></div>
+      <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">Beat tempo</span><span class="tiny muted" id="btLbl">${beatTempoPref()} BPM</span></div>
+      <input type="range" min="60" max="110" step="2" value="${beatTempoPref()}" oninput="$('#btLbl').textContent=this.value+' BPM'" onchange="setBeatTempo(this.value)" style="width:100%">
+      <div class="btnrow" style="gap:6px;margin-top:6px"><button class="chip" onclick="setBeatTempo(70)">😌 Chill 70</button><button class="chip" onclick="setBeatTempo(78)">🎧 Classic 78</button><button class="chip" onclick="setBeatTempo(92)">🔥 Hype 92</button></div>
+      <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">The beat plays during timers, guided reps, warm-up &amp; cool-down.</span><button class="chip" onclick="beatPreview()">▶ Preview</button></div>
     </div>`:''}
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Deload week <span class="tiny muted">· lighter sets &amp; targets to recover</span></span><button class="chip ${deloadOn()?'on':''}" onclick="toggleDeload()">${deloadOn()?'On':'Off'}</button></div>`;
+  h+=`
     <div style="padding:6px 0 2px"><div class="tiny muted" style="margin-bottom:5px">Coach voice</div>
       <select onchange="setCoachVoice(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px">${voiceOptionsHTML()}</select>
       <div class="tiny muted" style="margin-top:5px">Pick a specific voice, or leave on Auto to use the deepest one your phone has.</div>
@@ -4493,7 +4663,9 @@ async function boot(){
   document.addEventListener('pointerdown',()=>{try{primeVoice();}catch(e){}try{audioCtx();}catch(e){}},{once:true,passive:true});
   try{checkReminder();}catch(e){}   // best-effort training-day nudge on open
   // service worker
-  if('serviceWorker'in navigator){try{navigator.serviceWorker.register('sw.js');}catch(e){}}
+  if('serviceWorker'in navigator){try{navigator.serviceWorker.register('sw.js').then(reg=>{
+    reg.addEventListener('updatefound',()=>{const nw=reg.installing;if(!nw)return;nw.addEventListener('statechange',()=>{if(nw.state==='installed'&&navigator.serviceWorker.controller){try{showUpdateToast();}catch(e){}}});});
+  });}catch(e){}}
 }
 function hideSplash(){const s=document.getElementById('splash');if(!s||s.classList.contains('hide'))return;s.classList.add('hide');setTimeout(()=>{try{s.remove();}catch(e){}},600);}
 setTimeout(hideSplash,6000);   // safety: never let the splash linger if boot stalls
