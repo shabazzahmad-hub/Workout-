@@ -1470,6 +1470,7 @@ function todayWorkoutHTML(){
   <button class="btn primary" style="margin:2px 0 8px;font-size:16px;padding:17px" onclick="openPlayer()">▶ Start guided workout</button>
   ${sess.session.key==='metcon'?`<button class="btn ghost" style="margin:0 0 8px" onclick="openHiitChooser()">⚡ HIIT intervals — Tabata · EMOM · AMRAP</button>`:''}
   ${hasWeights()?`<button class="btn ghost" style="margin:0 0 8px" onclick="startWeights()">🏋️ Weights session — full-body, your equipment</button>`:''}
+  <button class="btn ghost" style="margin:0 0 8px" onclick="openSpecial()">🎖️ Special — HIIT intervals (Tabata · EMOM · AMRAP)</button>
   <button class="btn ghost" style="margin:0 0 8px" onclick="openMealPlan()">🍽️ Today's meal plan — recipes for your goal</button>
   <div class="btnrow" style="margin:2px 0 6px"><button class="btn ghost" id="coachBrief">🎙️ Coach brief</button><button class="btn ghost" onclick="openQuickList()">⚡ Quick</button><button class="btn ghost" onclick="openRecovery()">😌 Recover</button></div>`;
   h+=homeSummaryHTML();
@@ -1947,6 +1948,15 @@ function openHiitChooser(){
     </div>
     <div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Cancel</button>`);
 }
+/* Special training section — HIIT intervals available any day, on their own. */
+function openSpecial(){
+  openSheet(`<h3>🎖️ Special training</h3>
+    <p class="muted sm" style="margin:2px 0 12px">High-intensity interval sessions on the core HIIT moves — run these any day, on top of your program. Pick a format:</p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${Object.keys(HIIT_FORMATS).map(k=>`<button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="startHiitSpecial('${k}')"><b style="font-size:15px">⚡ ${HIIT_FORMATS[k].name}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${HIIT_FORMATS[k].desc}</div></button>`).join('')}
+    </div>
+    <div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
+}
 function ivRingHTML(color){return `
   <div class="pl-ring"><div class="pl-pulse" id="ivPulse"></div>
     <svg width="232" height="232" viewBox="0 0 232 232">
@@ -1955,10 +1965,10 @@ function ivRingHTML(color){return `
     </svg>
     <div class="pl-center"><div class="pl-num" id="ivNum">0</div><div class="pl-sub" id="ivSub">GO</div></div>
   </div>`;}
-function startHiit(format){
-  closeSheet();
-  const sess=buildSession(STATE.progressPtr);
-  const list=[...sess.main,sess.finisher].filter(m=>m&&m.exId);
+/* Standalone HIIT pool for the Special section — pure high-intensity moves,
+   run any day without consuming a program session. */
+const HIIT_POOL=['jumpingjack','highknees','buttkick','skater','squatthrust','burpee','mountainclimber','tuckjump','flutter','scissors','burpeetuck'];
+function _runHiit(sess,list,format){
   if(!list.length)return;
   INTV={sess,seq:buildIntervals(list,format),i:0,phase:null,running:true,tid:null,remain:0,total:0,format,workElapsed:0};
   $('#hiit').classList.add('open');document.body.style.overflow='hidden';
@@ -1969,6 +1979,18 @@ function startHiit(format){
   ivS('#ivNum','5');ivS('#ivSub','GET READY');ivRingSet(1);
   beep(1000,.15,0.7);coachSpeak(HIIT_FORMATS[format].name+'. Get ready.');
   INTV.tid=setInterval(ivTickLead,1000);
+}
+function startHiit(format){
+  closeSheet();
+  const sess=buildSession(STATE.progressPtr);
+  const list=[...sess.main,sess.finisher].filter(m=>m&&m.exId);
+  _runHiit(sess,list,format);
+}
+function startHiitSpecial(format){
+  closeSheet();
+  const list=HIIT_POOL.filter(k=>EX[k]).map(exId=>({exId,unit:EX[exId].unit,target:EX[exId].base||30,rest:20,sets:1}));
+  const sess={session:{name:'Special HIIT',key:'specialhiit',focus:'High-intensity intervals'},ptr:-1,pos:{}};
+  _runHiit(sess,list,format);
 }
 function ivTickLead(){
   if(!INTV)return;INTV.lead--;
