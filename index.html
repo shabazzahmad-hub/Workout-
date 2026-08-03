@@ -2416,7 +2416,11 @@ const COACH_NEURAL={
   gymbro:{v:'en-US-AndrewNeural',rate:'+12%',pitch:'+1st'},
   strongman:{v:'en-US-ChristopherNeural',pitch:'-3st'},
   endurance:{v:'en-GB-ThomasNeural',rate:'-2%'},
-  advisor:{v:'en-US-BrianNeural',rate:'-2%'},   // calm, natural — the daily-brief advisor (Sergeant Forge)
+  advisor:{v:'en-US-DavisNeural',rate:'-2%',pitch:'-1st'},   // deep, warm African-American male — Sarge (matches the on-app athlete)
+  // African-American army drill-sergeant lineup (Davis, with distinct express-as intensities)
+  armydrill:{v:'en-US-DavisNeural',style:'shouting',deg:'2',rate:'+8%'},
+  mastersgt:{v:'en-US-DavisNeural',style:'angry',deg:'1.7',pitch:'-2st'},
+  topcoach:{v:'en-US-DavisNeural',style:'excited',deg:'1.8',rate:'+6%'},
 };
 function neuralCfgFor(persona){return (persona&&COACH_NEURAL[persona.id])||NEURAL_DEFAULT;}
 function neuralReady(){const s=STATE.settings;return !!(s.neuralOn&&s.azureKey&&s.azureRegion);}
@@ -2988,6 +2992,24 @@ const COACHES=[
    push:["Final push! Everything you have got — now!","Do not you dare stop! Finish strong!","This is where it is won! Go, go, go!","A few more seconds of pure grit! Push!","Leave nothing on the mat! Finish!"],
    rest:["Breathe, recruit. Shake it out.","Recover fast. We go again.","Good work. Reset and refocus.","Water break is over soon — stay ready.","Catch your wind. Next round is coming."],
    done:["Outstanding work, soldier!","That is how it is done! Hooah!","You earned that one. Well done!","Now that is effort. Dismissed!","Proud of that. Solid work."]},
+  {id:'armydrill',name:'Army Drill Sergeant',emoji:'🎖️',pitch:0.5,rate:1.02,hint:['davis','david','guy','mark','male'],
+   start:["On your feet, recruit! Begin — move!","When I say go, you GO! Go!","Front and center — start now!","Lock it in and drive! Begin!","No hesitation, soldier! Move out!"],
+   during:["Push, recruit, push! You do not quit!","Dig in! Pain is just weakness leaving!","Outstanding effort — give me more!","You are Army strong — prove it! Go!","Chin up, core tight, drive through it!","Hooah! That is the spirit — keep pushing!","One more, then one more after that! Move!","Discipline over comfort — hold that line!","Sweat now so you never quit later! Push!","You do not get tired — you get tougher! Go!","Eyes forward, soldier — own every rep!","That burn means it is working. Keep going!"],
+   push:["Final push, recruit — everything you got!","This is where soldiers are made! Finish!","Do not you dare quit on me now! Go!","Empty the tank — leave nothing! Move!","Bring it home strong! Hooah!"],
+   rest:["Catch your wind, recruit. Stay ready.","Recover fast — we move again soon.","Good hustle. Reset and refocus.","Hydrate up, soldier. Stay sharp.","Solid round. Lock back in."],
+   done:["Outstanding, soldier! That is Army strong!","Now THAT is effort! Hooah!","You earned that one, recruit. Dismissed!","Proud of that work. Well done, soldier.","That is how we do it. Outstanding!"]},
+  {id:'mastersgt',name:'Master Sergeant',emoji:'⭐',pitch:0.42,rate:0.98,hint:['davis','david','guy','male'],
+   start:["Alright, on my mark — begin.","Show me what you are made of. Go.","Lock in, soldier. Start it up.","Time to earn your keep. Begin.","No excuses in my formation. Move."],
+   during:["Steady and strong — you hold the standard.","I do not accept quit. Keep going.","That is discipline. Stay on it.","Control the burn, soldier. Own it.","You are better than tired. Push through.","Standards do not drop — you rise. Keep going.","Every rep is a promise you keep. Push.","Hold the line — leaders do not fold.","Grind it out. This is the work. Keep going.","Respect the effort — now give me more.","Calm mind, strong body. Drive on.","You do the hard thing because it is hard. Push."],
+   push:["Close it out with everything. Now.","Finish like the leader you are. Go.","This is the standard — meet it. Push.","Last stretch. Hold nothing back.","Bring it home. Make it count."],
+   rest:["Breathe, soldier. Recover with purpose.","Reset. We are not finished.","Good work. Regroup and lock in.","Steady breaths. Stay ready.","Recover up. The next round is earned."],
+   done:["Outstanding. That is leadership in action.","You met the standard. Well done, soldier.","Solid work — I expect nothing less.","That is discipline. Proud of that.","Mission complete. Outstanding effort."]},
+  {id:'topcoach',name:'Staff Sergeant',emoji:'🪖',pitch:0.5,rate:1.04,hint:['davis','david','guy','male'],
+   start:["Let us GO, soldier! Fire it up!","Bring the energy — begin! Move!","Today we get better! Start now!","Show me that fire! Go, go, go!","Lock in and let us work! Begin!"],
+   during:["Yes! That is the energy — keep it rolling!","You are built for this! Push, soldier!","Love that effort — give me more! Go!","Feel that? That is you getting stronger! Push!","Keep that pace, keep that fire — go!","We do not slow down, we level up! Move!","That is championship effort! Keep going!","Every rep is a win — stack them up! Push!","You showed up — now show out! Go!","Strong body, stronger mind — drive on!","Come on, soldier — one more gear! Push!","That is what I am talking about! Keep going!"],
+   push:["Finish strong, soldier — light it up! Go!","This is your moment — take it! Push!","Empty the tank — let us GO!","Big finish! Everything you got!","Bring it home, champion! Move!"],
+   rest:["Great work! Catch your breath, soldier.","Shake it out — we go again strong.","Recover up — you are crushing this.","Sip some water, stay locked in.","Nice round! Reset and reload."],
+   done:["Let us GO! That was outstanding, soldier!","You brought it today — proud of that!","That is how champions train! Well done!","Huge effort — outstanding work!","Yes! That is the standard. Great work!"]},
   {id:'marine',name:'Marine D.I.',emoji:'🦅',pitch:0.45,rate:1.06,hint:['guy','david','mark','male'],
    start:["Oorah! Get after it — go!","On your feet and into it! Move!","No hesitation! Begin, devil dog!","Move with a purpose! Start!","Lock on and go!"],
    during:["Oorah! Keep pushing, Marine!","Adapt and overcome! Keep going!","Pain is temporary — pride is forever! Push!","You stop when you are done, not when you are tired!","Semper Fi! Hold the line!","Earn it! Every second, earn it!","Gut it out, Marine! Gut it out!","The Corps does not do quit! Keep going!","Discipline now, glory later! Push!","Improvise, adapt, overcome — keep going!","Standards do not lower. You rise! Push!","One team, one fight — finish it!"],
