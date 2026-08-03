@@ -289,6 +289,15 @@
   .kv:first-child{border-top:none}.kv b{font-weight:800}
   .install-banner{background:linear-gradient(135deg,var(--card2),var(--card));border:1px solid var(--fire);border-radius:18px;padding:13px 14px;margin-bottom:14px;display:none;align-items:center;gap:12px}
   .install-banner.show{display:flex}
+  /* Daily Advisor — morning brief */
+  .btn.gold{background:linear-gradient(135deg,var(--gold,#e7b53c),#f4d27a);color:#1c1300;border:none;font-weight:900}
+  .brieflist{display:flex;flex-direction:column;gap:8px}
+  .briefseg{display:flex;gap:11px;align-items:flex-start;background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:11px 12px;transition:.22s}
+  .briefseg.on{border-color:var(--fire);background:var(--accSoft);box-shadow:0 0 0 1px var(--fire) inset}
+  .briefseg .bs-ic{font-size:21px;line-height:1.2;flex:0 0 auto}
+  .briefseg .bs-t{font-weight:900;font-size:13px;letter-spacing:.3px;margin-bottom:2px}
+  .briefseg .bs-say{font-size:13px;color:var(--muted);line-height:1.45}
+  .briefseg.on .bs-say{color:var(--ink)}
 </style>
 </head>
 <body>
@@ -1220,6 +1229,7 @@ function openSheet(html){
 }
 function closeSheet(){
   const wasOpen=$('#scrim').classList.contains('open');
+  if(typeof BRIEF!=='undefined'&&BRIEF&&(BRIEF.playing||BRIEF.audio))briefStop();
   $('#scrim').classList.remove('open');document.body.style.overflow='';stopTimer();beatStop();
   // If the app (a button/scrim) closed the sheet, retire its history entry too,
   // so the counts stay balanced. The guard makes onPop ignore this self-pop.
@@ -1240,6 +1250,7 @@ function onPop(e){
   if(typeof INTV!=='undefined'&&INTV){hiitTeardown();return;}
   if(typeof PLAYER!=='undefined'&&PLAYER){playerTeardown();return;}
   if($('#scrim').classList.contains('open')){
+    if(typeof BRIEF!=='undefined'&&BRIEF&&(BRIEF.playing||BRIEF.audio))briefStop();
     $('#scrim').classList.remove('open');document.body.style.overflow='';stopTimer();beatStop();return;
   }
   const st=e.state||{};
@@ -1481,13 +1492,14 @@ function todayWorkoutHTML(){
       <div class="hp-stats"><div class="hp-stat"><b>${totalCount}</b>exercises</div><div class="hp-stat"><b>~${vol.minutes}</b>minutes</div><div class="hp-stat"><b>${pct}%</b>done</div></div>
     </div>
   </div>
+  <button class="btn gold" style="margin:2px 0 8px;font-size:16px;padding:16px" onclick="openBrief()">🎙️ Morning Brief with Sarge — your full audio plan</button>
   ${readinessCardHTML()}
   <button class="btn primary" style="margin:2px 0 8px;font-size:16px;padding:17px" onclick="openPlayer()">▶ Start guided workout</button>
   ${sess.session.key==='metcon'?`<button class="btn ghost" style="margin:0 0 8px" onclick="openHiitChooser()">⚡ HIIT intervals — Tabata · EMOM · AMRAP</button>`:''}
   ${hasWeights()?`<button class="btn ghost" style="margin:0 0 8px" onclick="startWeights()">🏋️ Weights session — full-body, your equipment</button>`:''}
   <button class="btn ghost" style="margin:0 0 8px" onclick="openSpecial()">🎖️ Special — HIIT intervals (Tabata · EMOM · AMRAP)</button>
   <button class="btn ghost" style="margin:0 0 8px" onclick="openMealPlan()">🍽️ Today's meal plan — recipes for your goal</button>
-  <div class="btnrow" style="margin:2px 0 6px"><button class="btn ghost" id="coachBrief">🎙️ Coach brief</button><button class="btn ghost" onclick="openQuickList()">⚡ Quick</button><button class="btn ghost" onclick="openRecovery()">😌 Recover</button></div>`;
+  <div class="btnrow" style="margin:2px 0 6px"><button class="btn ghost" id="coachBrief">🎙️ Brief</button><button class="btn ghost" onclick="openQuickList()">⚡ Quick</button><button class="btn ghost" onclick="openRecovery()">😌 Recover</button></div>`;
   h+=homeSummaryHTML();
   h+=deloadBanner();
   h+=catchUpBanner();
@@ -1571,7 +1583,7 @@ function wireToday(){
       };
     });
   });
-  const cb=$('#coachBrief');if(cb)cb.onclick=coachBrief;
+  const cb=$('#coachBrief');if(cb)cb.onclick=openBrief;
   const fin=$('#finishSession');if(fin)fin.onclick=finishSession;
 }
 function ensureLog(){const p=STATE.progressPtr;if(!STATE.logs[p])STATE.logs[p]={date:todayISO(),ex:{},feel:null,done:false};return STATE.logs[p];}
@@ -2339,6 +2351,7 @@ const COACH_NEURAL={
   gymbro:{v:'en-US-AndrewNeural',rate:'+12%',pitch:'+1st'},
   strongman:{v:'en-US-ChristopherNeural',pitch:'-3st'},
   endurance:{v:'en-GB-ThomasNeural',rate:'-2%'},
+  advisor:{v:'en-US-BrianNeural',rate:'-2%'},   // calm, natural — the daily-brief advisor (Sergeant Forge)
 };
 function neuralCfgFor(persona){return (persona&&COACH_NEURAL[persona.id])||NEURAL_DEFAULT;}
 function neuralReady(){const s=STATE.settings;return !!(s.neuralOn&&s.azureKey&&s.azureRegion);}
@@ -2528,6 +2541,183 @@ function speakExerciseCues(exId){
 }
 function testVoice(){primeVoice();coachSpeak("Core Forge voice coach, ready. Brace your core, and let's get to work.",true);}
 function sampleVoice(){primeVoice();coachSpeak("Brace your core. Deep and steady. Let's work.",true);}
+
+/* ============================ DAILY ADVISOR — Sergeant Forge ============================
+   A one-tap MORNING AUDIO BRIEFING. Tap the advisor button and Sarge walks you, in full
+   natural voice, through the whole day: your transformation mission, today's warm-up and
+   workout, your calories, protein, meals and water goal — then hands you off to the guided
+   session where he coaches every rep. Uses the premium Azure neural voice when a key is
+   present; falls back to the on-device voice so the brief still speaks offline / key-free. */
+const ADVISOR={id:'advisor',name:'Sergeant Forge',short:'Sarge',emoji:'🎖️',pitch:0.62,rate:0.98,hint:['brian','guy','david','male']};
+let BRIEF=null;   // {segs,i,stop,playing,done,audio,_devTimer}
+
+function _briefGreet(){let h=9;try{h=new Date().getHours();}catch(e){}return h<12?'Good morning':(h<17?'Good afternoon':'Good evening');}
+function _briefList(a){a=(a||[]).filter(Boolean);if(a.length<=1)return a[0]||'';if(a.length===2)return a[0]+' and '+a[1];return a.slice(0,-1).join(', ')+', and '+a[a.length-1];}
+function _briefTarget(m){return m.unit==='time'?(m.target>=60?fmtTime(m.target):m.target+' seconds'):m.target+' reps';}
+
+/* Build the ordered brief: each segment has an on-screen card (icon/title/text) and a
+   spoken line (say). The screen text and the audio stay in lock-step. */
+function briefSegments(){
+  const sess=buildSession(STATE.progressPtr);
+  const wkNum=(sess.cycle*WEEKS_PER_CYCLE)+sess.week;
+  const dayNum=((sess.pos&&sess.pos.dayInWeek)||0)+1;
+  const vol=sessionVolume(sess);
+  const name=(STATE.profile.name||'').trim();
+  const who=name?(' '+name):'';
+  const segs=[];
+  // 1 — greeting
+  segs.push({icon:'🎖️',title:'Morning brief',
+    say:`${_briefGreet()}${who}. This is ${ADVISOR.short}, your coach. Here is your brief for today — week ${wkNum}, day ${dayNum} of your one-year build. Let's walk the plan.`});
+  // 2 — mission / transformation
+  const goalW=STATE.profile.goalWeightLb||175, goalBF=STATE.profile.goalBodyFat||12, kg=latestWeightKg();
+  let mission;
+  if(kg){const lb=Math.round(kg*2.20462), toGo=lb-goalW;
+    mission = toGo>1 ? `The mission: from ${lb} pounds down to ${goalW}, and body fat under ${goalBF} percent. You are ${toGo} pounds out. Every rep and every meal today closes that gap.`
+      : (toGo>=-1 ? `You are right on your ${goalW}-pound target — now we chase body fat under ${goalBF} percent and lock in the muscle. Discipline today.`
+      : `You are under ${goalW} pounds — outstanding. Today we hold the line and drive body fat below ${goalBF} percent.`);
+  }else{
+    mission=`The mission: down to ${goalW} pounds and body fat under ${goalBF} percent. Log your weight in the Fuel tab so I can track every pound with you. Today, we get to work.`;
+  }
+  segs.push({icon:'🎯',title:'Your mission',say:mission});
+  // 3 — today's session
+  segs.push({icon:'🔥',title:"Today's session",
+    say:`Today is ${sess.session.name}. ${sess.session.focus}. That's ${sess.main.length+1} exercises, about ${vol.minutes} minutes of work.`});
+  // 4 — warm-up
+  segs.push({icon:'🌡️',title:'Warm-up · ~4 min',
+    say:`We open with a warm-up: ${_briefList(WARMUP_FLOW.slice(0,4).map(w=>w.n))}, and a couple more. Prime the deep core and raise the heart rate — do not skip it.`});
+  // 5 — main work
+  const mains=sess.main.map(m=>`${(EX[m.exId]||{}).name}, ${m.sets} sets of ${_briefTarget(m)}`);
+  segs.push({icon:'💪',title:'Main work',
+    say:`Then the main work. ${_briefList(mains)}. Brace every rep, control the tempo, and own the burn.`});
+  // 6 — finisher
+  segs.push({icon:'⚡',title:'Finisher',
+    say:`Finish with ${(EX[sess.finisher.exId]||{}).name} — one all-out round of ${_briefTarget(sess.finisher)}. Leave nothing in the tank.`});
+  // 7 — cool-down
+  segs.push({icon:'🧘',title:'Cool-down · ~4 min',
+    say:`Then cool down with stretches for the abs and low back. A few minutes of recovery so you come back stronger tomorrow.`});
+  // 8 — fuel
+  const kcal=STATE.nutrition.kcalTarget, prot=proteinTargetG();
+  segs.push({icon:'🍽️',title:'Fuel',
+    say: kcal
+      ? `Fuel: aim for about ${kcal} calories today${prot?`, and hit ${prot} grams of protein`:''}. The deficit strips the fat; the protein protects your muscle so the abs show through.`
+      : `Fuel: open the Fuel tab and tap Calculate my targets, so I can set your exact calories and protein. Eat in a moderate deficit and keep protein high.`});
+  // 9 — meals (from today's generated plan)
+  try{const plan=currentMealPlan(); const names=(plan&&plan.meals?plan.meals.map(recipeById).filter(Boolean).map(r=>r.name):[]);
+    if(names.length)segs.push({icon:'🥗',title:'Your meals',say:`Your meal plan today: ${_briefList(names)}. The full recipes are in the Fuel tab.`});
+  }catch(e){}
+  // 10 — hydration
+  const cups=waterTargetCups(), oz=Math.round(cups*8);
+  segs.push({icon:'💧',title:'Hydration',
+    say:`Hydration: ${cups} cups of water — about ${oz} ounces. Start your first glass now and keep sipping all day.`});
+  // 11 — close / handoff
+  segs.push({icon:'🚀',title:'Lock in',
+    say:`That's the brief${who}. Warm up, lock in, and let's get to work. Tap Start guided workout, and I'll coach you through every rep.`});
+  return segs;
+}
+
+/* ---- Audio: speak the segments in order, awaiting each utterance ---- */
+function briefSpeakLine(text){
+  return new Promise(resolve=>{
+    if(!BRIEF||BRIEF.stop)return resolve();
+    if(neuralAvailable()){
+      const cfg=neuralCfgFor(ADVISOR);
+      const key=cfg.v+'|'+(cfg.style||'')+'|'+(cfg.deg||'')+'|'+(cfg.rate||'')+'|'+(cfg.pitch||'')+'|'+text;
+      const play=url=>{
+        if(!BRIEF||BRIEF.stop)return resolve();
+        try{const a=new Audio(url);BRIEF.audio=a;try{beatDuck(true);}catch(e){}
+          const done=()=>{try{beatDuck(false);}catch(e){}a.onended=null;a.onerror=null;if(BRIEF)BRIEF.audio=null;resolve();};
+          a.onended=done;a.onerror=done;a.play().catch(()=>done());
+        }catch(e){resolve();}
+      };
+      const cached=_neuralCache.get(key);
+      if(cached)return play(cached);
+      _sdkSynthesize(neuralSSML(text,cfg),cfg)
+        .then(buf=>{const u=URL.createObjectURL(new Blob([buf],{type:'audio/mpeg'}));_neuralCache.set(key,u);play(u);})
+        .catch(()=>_briefDeviceSpeak(text,resolve));
+      return;
+    }
+    _briefDeviceSpeak(text,resolve);
+  });
+}
+function _briefDeviceSpeak(text,resolve){
+  try{
+    if(!('speechSynthesis'in window))return resolve();
+    if(!COACH_VOICES.length)loadCoachVoices();
+    const synth=speechSynthesis;synth.cancel();
+    const u=new SpeechSynthesisUtterance(String(text||''));
+    u.lang='en-US';u.volume=1;
+    u.rate=(typeof STATE.settings.voiceRate==='number')?STATE.settings.voiceRate:ADVISOR.rate;
+    u.pitch=(typeof STATE.settings.voicePitch==='number')?STATE.settings.voicePitch:ADVISOR.pitch;
+    const v=STATE.settings.voiceName?COACH_VOICES.find(x=>x.name===STATE.settings.voiceName):coachVoiceFor(ADVISOR);
+    if(v)u.voice=v;
+    let done=false;const fin=()=>{if(done)return;done=true;try{beatDuck(false);}catch(e){}resolve();};
+    try{beatDuck(true);}catch(e){}
+    u.onend=fin;u.onerror=fin;
+    if(BRIEF)BRIEF._devTimer=setTimeout(fin,Math.min(22000,900+String(text).length*75));
+    synth.speak(u);
+  }catch(e){resolve();}
+}
+async function briefPlay(startIdx){
+  if(!BRIEF)return;
+  primeVoice();
+  BRIEF.stop=false;BRIEF.playing=true;BRIEF.done=false;
+  briefUpdateControls();
+  for(let i=(startIdx||0);i<BRIEF.segs.length;i++){
+    if(BRIEF.stop)break;
+    BRIEF.i=i;briefHighlight(i);
+    await briefSpeakLine(BRIEF.segs[i].say);
+    if(BRIEF.stop)break;
+    await new Promise(r=>{const t=setTimeout(r,260);if(BRIEF)BRIEF._gapTimer=t;});
+  }
+  BRIEF.playing=false;
+  if(!BRIEF.stop){BRIEF.done=true;BRIEF.i=-1;briefHighlight(-1);}
+  briefUpdateControls();
+}
+function briefStop(){
+  if(!BRIEF)return;
+  BRIEF.stop=true;BRIEF.playing=false;
+  try{if(BRIEF.audio){BRIEF.audio.onended=null;BRIEF.audio.onerror=null;BRIEF.audio.pause();BRIEF.audio=null;}}catch(e){}
+  try{if('speechSynthesis'in window)speechSynthesis.cancel();}catch(e){}
+  try{if(BRIEF._devTimer)clearTimeout(BRIEF._devTimer);}catch(e){}
+  try{if(BRIEF._gapTimer)clearTimeout(BRIEF._gapTimer);}catch(e){}
+  try{beatDuck(false);}catch(e){}
+  briefUpdateControls();
+}
+function briefHighlight(i){
+  try{BRIEF.segs.forEach((_,k)=>{const el=$('#brief-seg-'+k);if(el)el.classList.toggle('on',k===i);});
+    if(i>=0){const el=$('#brief-seg-'+i);if(el)el.scrollIntoView({behavior:'smooth',block:'center'});}
+  }catch(e){}
+}
+function briefUpdateControls(){
+  const b=$('#briefPlayBtn');if(!b)return;
+  if(BRIEF&&BRIEF.playing){b.innerHTML='⏸ Stop briefing';b.onclick=()=>{haptic(8);briefStop();};}
+  else{b.innerHTML=(BRIEF&&BRIEF.done)?'↻ Replay briefing':'▶ Play briefing';b.onclick=()=>{haptic(10);briefPlay(0);};}
+}
+function briefSheetHTML(segs){
+  const d=(()=>{try{return new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'});}catch(e){return '';}})();
+  return `<div style="text-align:center;margin-bottom:6px">
+      <div style="font-size:34px;line-height:1">🎖️</div>
+      <h2 style="margin:4px 0 2px">Morning Brief</h2>
+      <div class="tiny muted">${ADVISOR.name} · your coach${d?' · '+d:''}</div>
+    </div>
+    <button class="btn primary" id="briefPlayBtn" style="margin:8px 0 4px;font-size:16px;padding:15px">▶ Play briefing</button>
+    <div class="tiny muted" style="text-align:center;margin-bottom:12px">${neuralReady()?'Premium voice on.':'Speaking in your device voice — add an Azure key in Settings for the premium natural voice.'}</div>
+    <div class="brieflist">
+      ${segs.map((s,i)=>`<div class="briefseg" id="brief-seg-${i}">
+        <div class="bs-ic">${s.icon}</div>
+        <div class="bs-body"><div class="bs-t">${s.title}</div><div class="bs-say">${_ve(s.say)}</div></div>
+      </div>`).join('')}
+    </div>
+    <button class="btn ghost" style="margin-top:12px" onclick="briefStop();closeSheet();">Close</button>`;
+}
+function openBrief(){
+  try{haptic(12);}catch(e){}
+  primeVoice();   // unlock audio + warm the neural engine on this gesture
+  const segs=briefSegments();
+  BRIEF={segs,i:-1,stop:false,playing:false,done:false,audio:null};
+  openSheet(briefSheetHTML(segs));
+  setTimeout(()=>{try{briefPlay(0);}catch(e){}},180);   // auto-start the audio brief
+}
 /* Voice-picker + depth/speed helpers */
 function _ve(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function voiceOptionsHTML(){
@@ -4846,6 +5036,8 @@ async function boot(){
   if(!STATE.profile._gearDb){STATE.profile.gear=[...new Set([...(STATE.profile.gear||[]),'dumbbell'])];STATE.profile._gearDb=true;}
   // one-time: switch to a 7-day-a-week training schedule
   if(!STATE.profile._days7){STATE.profile.days=[0,1,2,3,4,5,6];STATE.profile._days7=true;}
+  // one-time: seed the transformation goal the advisor coaches toward (190 → 175 lb, body fat under 12%)
+  if(!STATE.profile._goalXform){if(!(STATE.profile.goalWeightLb>0))STATE.profile.goalWeightLb=175;if(!(STATE.profile.goalBodyFat>0))STATE.profile.goalBodyFat=12;if(!(STATE.profile.startWeightLb>0))STATE.profile.startWeightLb=190;STATE.profile._goalXform=true;}
   if(!Array.isArray(STATE.photos))STATE.photos=[];
   if(!STATE.achievements||typeof STATE.achievements!=='object')STATE.achievements={};
   if(STATE.settings.reminderOn===undefined)STATE.settings.reminderOn=false;
