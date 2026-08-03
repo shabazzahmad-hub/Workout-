@@ -1911,6 +1911,7 @@ function plEnterDone(){
   if(PLAYER.free){
     // Bonus/weights session — no program commit, just a close button.
     $('#plBody').innerHTML=`
+      ${coachHeroHTML('Sergeant Forge · strong work')}
       <div class="pl-name" style="margin-bottom:2px">Session done 🏋️</div>
       <div class="pl-coach" style="margin-bottom:14px">${label}</div>${stats}
       <div style="width:100%;max-width:440px;margin-top:18px"><button class="btn primary" style="width:100%;margin-bottom:8px" onclick="shareLast()">📤 Share</button><button class="btn green" style="width:100%" onclick="playerQuit()">Done ✓</button></div>`;
@@ -1918,6 +1919,7 @@ function plEnterDone(){
     return;
   }
   $('#plBody').innerHTML=`
+    ${coachHeroHTML('Sergeant Forge · outstanding work')}
     <div class="pl-name" style="margin-bottom:2px">Session complete 🔥</div>
     <div class="pl-coach" style="margin-bottom:14px">${label}</div>${stats}
     <button class="btn ghost" style="width:100%;max-width:440px;margin-top:14px" onclick="shareLast()">📤 Share this session</button>
@@ -2562,6 +2564,9 @@ function coachAvatarHTML(px,style){px=px||34;const fs=Math.round(px*0.6);
   return `<img src="coach-sarge.jpg" alt="${ADVISOR.name}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{textContent:'🎖️',style:'font-size:${fs}px;line-height:1'}))" style="width:${px}px;height:${px}px;border-radius:50%;object-fit:cover;object-position:center 16%;border:2px solid var(--fire);flex:0 0 auto;${style||''}">`;}
 function coachChipHTML(role){
   return `<div class="coachchip">${coachAvatarHTML(30)}<div><div class="cc-name">${ADVISOR.short}</div><div class="cc-role">${role||'Your coach'}</div></div></div>`;}
+// Big centered Sarge avatar for celebration / hand-off moments.
+function coachHeroHTML(caption){
+  return `<div style="text-align:center;margin-bottom:8px">${coachAvatarHTML(76,'border-color:var(--gold,#e7b53c);margin:0 auto;display:block;box-shadow:0 6px 18px rgba(0,0,0,.45)')}<div class="tiny muted" style="margin-top:6px">${caption||ADVISOR.name}</div></div>`;}
 
 function _briefGreet(){let h=9;try{h=new Date().getHours();}catch(e){}return h<12?'Good morning':(h<17?'Good afternoon':'Good evening');}
 function _briefList(a){a=(a||[]).filter(Boolean);if(a.length<=1)return a[0]||'';if(a.length===2)return a[0]+' and '+a[1];return a.slice(0,-1).join(', ')+', and '+a[a.length-1];}
@@ -4757,6 +4762,7 @@ function openRecovery(){
   const rested=STATE.restDays&&STATE.restDays[todayISO()];
   openSheet(`<h3>😌 Rest &amp; Recovery</h3>
     <p class="muted sm" style="margin:2px 0 12px">Your core rebuilds on rest days. Keep it light: sleep, walk, hydrate, hit your protein.</p>
+    <div style="display:flex;justify-content:center;margin:0 0 14px">${coachChipHTML('Rest hard — this is where you grow')}</div>
     <div class="section-label" style="margin-top:0">Recovery checklist</div>
     <div class="card pad"><ul class="cuelist" style="margin:0">
       <li>Sleep 7–9 hours — the #1 recovery driver</li>
