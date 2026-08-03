@@ -1138,6 +1138,7 @@ function prescribe(exId,pos){
   }
   if(typeof deloadOn==='function'&&deloadOn()){sets=Math.max(1,sets-1);target*=0.62;}   // deload week — ease volume & load
   if(typeof readinessMult==='function'){const rf=readinessMult();target*=rf;if(rf<0.85)sets=Math.max(1,sets-1);}   // daily readiness auto-regulation
+  if(typeof exAdaptFor==='function')target*=exAdaptFor(exId);   // per-exercise progression from your ratings
   if(ex.unit==='time'){target=Math.round(target/5)*5;target=clamp(target,15,150);}
   else{target=Math.round(target);target=clamp(target,6,40);}
   return {sets,target,unit:ex.unit,rest:ex.rest||45};
@@ -1854,12 +1855,14 @@ function plEnterRest(dur,type){
   const m=plCur();let name,img,rx;
   if(type==='set'){const ex=EX[m.exId];name='Next set · '+ex.name;img=ex.img;rx='Set '+(PLAYER.s+1)+' of '+m.sets+' · '+(m.unit==='time'?fmtTime(m.target):m.target+' reps');}
   else{const nm=PLAYER.items[PLAYER.i+1];const nex=EX[nm.exId];name='Up next · '+nex.name;img=nex.img;rx=nm.sets+' × '+(nm.unit==='time'?fmtTime(nm.target):nm.target+' reps');}
+  const rate=(type==='ex'&&!PLAYER.free)?ratingChipsHTML(m.exId):'';
   $('#plBody').innerHTML=`
     <div class="pl-region"><span class="tag cardio">REST</span></div>
     <div class="pl-name">Recover</div>
     ${plRingHTML('var(--fire-l)')}
     <div class="pl-coach" id="plCoach">Breathe. Shake it out.</div>
     <div class="pl-next">${img?`<img src="${img}" alt="" onerror="this.style.display='none'">`:''}<div><div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--muted)">${name}</div><div style="font-weight:800;margin-top:2px">${rx}</div></div></div>
+    ${rate}
     <div class="pl-actions">
       <button class="btn ghost" onclick="playerAddRest()">+15s</button>
       <button class="btn ghost" id="plToggle" onclick="playerToggle()">Pause</button>
@@ -3831,6 +3834,27 @@ function goalETAHTML(){
   const weeks=Math.ceil(toGo/perWeek);const eta=new Date(b.date);eta.setDate(eta.getDate()+weeks*7);
   const mon=eta.toLocaleDateString(undefined,{month:'short',year:'numeric'});const good=perWeek>=0.2;
   return `<div class="tiny" style="margin-top:8px;color:${good?'var(--green)':'var(--gold)'};font-weight:700">📉 At ~${perWeek.toFixed(1)}${p.unit}/wk you'll hit your goal around <b>${mon}</b> (~${weeks} wk).${good?'':' Pick up the pace to speed it up.'}</div>`;
+}
+/* ---- #1 True per-exercise progression ---- */
+function exAdaptFor(exId){return (STATE.exAdapt&&STATE.exAdapt[exId])||1;}
+function ratingChipsHTML(exId){
+  const ex=EX[exId];if(!ex)return '';const cur=exAdaptFor(exId);
+  const tag=cur>1.02?' · going heavier':(cur<0.98?' · eased':'');
+  return `<div style="margin-top:12px;text-align:center"><div class="tiny muted" style="margin-bottom:6px">How were those ${ex.name}?${tag}</div>
+    <div class="btnrow" style="gap:6px;justify-content:center" id="rateRow">
+      <button class="chip" onclick="rateExercise('${exId}','hard',this)">😮‍💨 Too hard</button>
+      <button class="chip" onclick="rateExercise('${exId}','right',this)">✓ Just right</button>
+      <button class="chip" onclick="rateExercise('${exId}','easy',this)">💪 Too easy</button>
+    </div></div>`;
+}
+function rateExercise(exId,kind,btn){
+  if(!STATE.exAdapt)STATE.exAdapt={};
+  const cur=STATE.exAdapt[exId]||1;
+  const f=kind==='easy'?1.05:(kind==='hard'?0.93:1.0);
+  STATE.exAdapt[exId]=clamp(cur*f,0.85,1.25);save();
+  const row=document.getElementById('rateRow');if(row)row.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));
+  if(btn)btn.classList.add('on');haptic(8);
+  toast(kind==='easy'?'Noted — heavier next time 💪':(kind==='hard'?'Noted — easing that one':'Locked in ✓'));
 }
 function achievementsHTML(){
   if(!STATE.achievements)STATE.achievements={};
