@@ -658,6 +658,11 @@ const EX = {
     steps:['Start in a push-up position, brace everything.','Lower, then press up explosively so both hands and feet leave the floor.','Reach the arms forward briefly like Superman if you can.','Land soft into the next controlled rep.'],
     cues:['Explode from a braced plank','Land soft, absorb with the arms','Only progress when full push-ups are easy'],
     mistakes:['Attempting before you\'re strong enough','Landing stiff']},
+  atomicpushup:{name:'Atomic Push-Up',region:'chest',unit:'reps',img:'ex-atomicpushup.jpg',anchor:null,hardness:1,base:8,rest:60,
+    why:'A push-up fused with an explosive knee tuck — press up, then snap both knees toward your chest and back out. Builds pressing strength and a powerful, reactive core in one brutal rep. Elite full-body conditioning.',
+    steps:['Start in a strong high plank, hands under the shoulders, body in a straight line.','Lower into a full push-up and press back up.','At the top, explosively hop both feet forward, tucking your knees toward your chest.','Jump the feet back out to the plank and flow straight into the next rep.'],
+    cues:['Full push-up first, then the tuck','Land the tuck soft and controlled','Brace the core — no sagging hips'],
+    mistakes:['Half-repping the push-up','Hips piking or sagging','Landing hard and losing the plank']},
 
   /* ==== SHOULDERS ==== */
   pikepushup:{name:'Pike Push-Up',region:'shoulders',unit:'reps',img:'ex-pikepushup.jpg',anchor:null,hardness:1,base:8,rest:55,
@@ -962,7 +967,7 @@ const LADDERS = {
   cardioBL:   ['buttkick','squatthrust','halfburpee','burpee','halfburpee'],
   cardioFinL: ['jumpingjack','squatjack','highknees','squatthrust','halfburpee','burpee'],
   // ==== Phase 2 (week 13+) full-body split ladders ====
-  chestL:     ['inclinepushup','kneepushup','pushup','declinepushup','diamondpushup','archerpushup','spidermanpushup','superpushup'],
+  chestL:     ['inclinepushup','kneepushup','pushup','declinepushup','diamondpushup','atomicpushup','archerpushup','spidermanpushup','superpushup'],
   shoulderL:  ['pikepushup','elevatedpike','wallhandstand','hspushup'],
   pullL:      ['deadhang','scappull','negpullup','pullup','chinup','widepullup'],
   rowL:       ['superman','invertedrow','invertedrowelev'],
@@ -972,7 +977,7 @@ const LADDERS = {
   hingeL:     ['glutebridge','singlebridge','hipthrust','nordic'],
   calfL:      ['calfraise','singlecalf'],
   legPowerL:  ['jumpsquat','splitjump','broadjump'],
-  hiitFinL:   ['jumpingjack','tuckjump','burpee','burpeetuck'],
+  hiitFinL:   ['jumpingjack','tuckjump','atomicpushup','burpee','burpeetuck'],
 };
 // Phase 1 (weeks 1–12) — core/abs/HIIT program, 7 days a week.
 const SESSIONS = [
