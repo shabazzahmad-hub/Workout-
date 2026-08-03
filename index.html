@@ -2421,6 +2421,7 @@ const COACH_NEURAL={
   armydrill:{v:'en-US-DavisNeural',style:'shouting',deg:'2',rate:'+8%'},
   mastersgt:{v:'en-US-DavisNeural',style:'angry',deg:'1.7',pitch:'-2st'},
   topcoach:{v:'en-US-DavisNeural',style:'excited',deg:'1.8',rate:'+6%'},
+  femdrill:{v:'en-US-AriaNeural',style:'shouting',deg:'2',rate:'+6%'},   // commanding female drill sergeant
 };
 function neuralCfgFor(persona){return (persona&&COACH_NEURAL[persona.id])||NEURAL_DEFAULT;}
 function neuralReady(){const s=STATE.settings;return !!(s.neuralOn&&s.azureKey&&s.azureRegion);}
@@ -3010,6 +3011,12 @@ const COACHES=[
    push:["Finish strong, soldier — light it up! Go!","This is your moment — take it! Push!","Empty the tank — let us GO!","Big finish! Everything you got!","Bring it home, champion! Move!"],
    rest:["Great work! Catch your breath, soldier.","Shake it out — we go again strong.","Recover up — you are crushing this.","Sip some water, stay locked in.","Nice round! Reset and reload."],
    done:["Let us GO! That was outstanding, soldier!","You brought it today — proud of that!","That is how champions train! Well done!","Huge effort — outstanding work!","Yes! That is the standard. Great work!"]},
+  {id:'femdrill',name:'Drill Sergeant Vasquez',emoji:'🎖️',pitch:1.0,rate:1.05,hint:['aria','jenny','zira','samantha','female'],
+   start:["On your feet — move, move, move!","When I say go, you GO! Begin!","Front and center, recruit — start!","No hesitation. Lock in and go!","Show me you want it — begin!"],
+   during:["Push! You do not quit on my watch!","Dig deep, recruit — I know you have more!","Outstanding — now give me another!","You are tougher than this — prove it! Go!","Chin up, core tight — drive through it!","Standards do not drop. You rise! Keep going!","That is the work — do not slow down!","One more, then one more after that! Move!","Pain is temporary — quitting is forever. Push!","Eyes forward, soldier. Own it!","You showed up — now show me heart! Go!","Discipline wins. Hold that line!"],
+   push:["Final push — everything you have! Now!","This is where it counts — finish strong!","Do not you dare stop! Bring it home!","Empty the tank — leave nothing! Go!","Strong finish, recruit — move!"],
+   rest:["Catch your breath. Stay ready.","Recover fast — we go again.","Good work. Reset and refocus.","Hydrate up. Stay sharp, soldier.","Solid round. Lock back in."],
+   done:["Outstanding, soldier! That is heart!","Now that is effort — well done!","You earned that one, recruit!","Proud of that work. Dismissed!","That is the standard. Outstanding!"]},
   {id:'marine',name:'Marine D.I.',emoji:'🦅',pitch:0.45,rate:1.06,hint:['guy','david','mark','male'],
    start:["Oorah! Get after it — go!","On your feet and into it! Move!","No hesitation! Begin, devil dog!","Move with a purpose! Start!","Lock on and go!"],
    during:["Oorah! Keep pushing, Marine!","Adapt and overcome! Keep going!","Pain is temporary — pride is forever! Push!","You stop when you are done, not when you are tired!","Semper Fi! Hold the line!","Earn it! Every second, earn it!","Gut it out, Marine! Gut it out!","The Corps does not do quit! Keep going!","Discipline now, glory later! Push!","Improvise, adapt, overcome — keep going!","Standards do not lower. You rise! Push!","One team, one fight — finish it!"],
