@@ -872,13 +872,13 @@ const EX = {
     steps:['Stand tall with a kettlebell in each hand at your sides.','Brace the core and pull the shoulders down and back.','Walk with short, controlled steps for the time.','Keep the torso upright — do not lean or tilt.'],
     cues:['Chest up, shoulders back','Squeeze the handles hard','Steady, even steps'],mistakes:['Leaning or tilting to one side','Shuffling / rushing the steps']},
   kbhalo:{name:'Kettlebell Halo',region:'oblique',unit:'time',img:'ex-kbhalo.jpg',anchor:null,hardness:1,base:30,rest:45,equip:['kettlebell'],pattern:'core',
-    why:'Circles the bell around the head to open the shoulders and build a braced, anti-rotation core.',
-    steps:['Hold the bell upside-down (horns down) at chest height.','Circle it slowly around your head, keeping it close.','Only the arms move — hips and core stay locked and still.','Reverse direction halfway through the time.'],
-    cues:['Bell stays close to the head','Ribs down, core braced','Slow and controlled'],mistakes:['Swaying the hips','Rushing the circle']},
+    why:'The bell circles AROUND YOUR HEAD, held upside-down close to you — builds shoulder mobility and a braced, anti-rotation core.',
+    steps:['Hold: grip the kettlebell upside-down by the horns (handle down, bell pointing up) with both hands, tucked close to your chest and head.','Path: circle it slowly around your head — past one ear, behind the head, past the other ear, and back to the front — keeping it hugging you the whole way.','Only your arms move: keep the hips, torso and legs locked and still — this is the difference from the Helicopter.','Reverse direction halfway through the time.'],
+    cues:['Bell inverted (horns down), hugging the head','Ribs down, core braced, hips still','Slow, tight circles'],mistakes:['Swaying the hips or leaning back','Letting the bell drift wide away from the head']},
   kbheli:{name:'Kettlebell Helicopter',region:'oblique',unit:'time',img:'ex-kbheli.jpg',anchor:null,hardness:1.1,base:30,rest:45,equip:['kettlebell'],pattern:'core',
-    why:'Passes the bell around the body to train grip, rotary core control and shoulder stability.',
-    steps:['Stand tall holding the bell in front with one hand.','Pass it around your waist to the other hand and back to the front.','Keep the hips square — resist the twist with a braced core.','Reverse direction halfway through the time.'],
-    cues:['Tall posture, hips square','Pass smoothly hand to hand','Brace against the rotation'],mistakes:['Twisting the torso to chase the bell','Letting the bell drift low and pull you']},
+    why:'The bell swings in a big circle IN FRONT of the body — up and OVER THE TOP — held by the handle. Trains the shoulders, grip and a braced, anti-extension core.',
+    steps:['Hold: grip the kettlebell by the handle with both hands, arms hanging in front of you, bell down — a different grip from the Halo.','Path: swing it in a big circle in front of your body — up the front, over the top overhead, and back down — one smooth vertical loop, like a rotor blade.','Keep the torso tall and braced so the shoulders and arms do the work, not the low back.','Reverse direction halfway through the time.'],
+    cues:['Both hands on the handle, big circle in front','Up the front, over the top, back down','Brace hard — no arching the low back'],mistakes:['Arching or leaning back as it goes overhead','Bending the elbows and shrinking the circle']},
   /* -- DUMBBELL library (a pair of dumbbells) -- */
   dbgoblet:{name:'Dumbbell Goblet Squat',region:'legs',unit:'reps',img:'ex-dbgoblet.jpg',anchor:null,hardness:1,base:12,rest:60,equip:['dumbbell'],pattern:'squat',
     why:'A front-loaded squat that builds the legs and bracing core while keeping the torso tall and safe.',
@@ -1064,7 +1064,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='108';
+const APP_VERSION='109';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
