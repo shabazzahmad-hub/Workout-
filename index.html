@@ -352,7 +352,7 @@
 <script>
 "use strict";
 /* =========================================================================
-   CoreForge — 1-year (48-week) full-body training PWA
+   CoreForge — 1-year (54-week) full-body training PWA
    - Baseline assessment (day 1) -> Core Score + level + personal maxes
    - Auto-generated program, progressive overload week-to-week
    - Auto-regulating: adapts next week from how hard sessions felt
@@ -984,7 +984,7 @@ async function load(){
 /* ============================ PROGRESSION ENGINE ============================ */
 const SESSIONS_PER_WEEK=4, WEEKS_PER_CYCLE=6, SESSIONS_PER_CYCLE=SESSIONS_PER_WEEK*WEEKS_PER_CYCLE; // 24
 const PHASE1_CYCLES=2;   // blocks 1–2 = weeks 1–12: core/abs/HIIT (unchanged)
-const TOTAL_CYCLES=8;    // 8 six-week blocks = 48 weeks (~1 year): Phase 1 then full-body split
+const TOTAL_CYCLES=9;    // 9 six-week blocks = 54 weeks (a full year+): Phase 1 then full-body split
 function phaseOf(cycle){return cycle<PHASE1_CYCLES?1:2;}
 function sessionsFor(cycle){return phaseOf(cycle)===1?SESSIONS:PHASE2_SESSIONS;}
 
