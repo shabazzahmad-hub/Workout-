@@ -4291,17 +4291,29 @@ async function _geminiCall(model,body){
 async function estimateFoodFromImage(dataUrl){
   const mime=(String(dataUrl).match(/^data:([^;,]+)/)||[,'image/jpeg'])[1];
   const b64=String(dataUrl).replace(/^data:[^,]+,/,'');
+  // Force structured JSON output (responseMimeType + schema) so the model can't
+  // reply with prose/markdown that leaves us with "no estimate". Generous token
+  // budget so the reply is never truncated.
   const body={contents:[{parts:[
-    {text:'You estimate nutrition from a food photo. Reply ONLY with compact JSON: {"name":"short food name","kcal":<integer calories for the portion shown>,"protein":<integer grams>}. Estimate the visible portion. No prose, no markdown.'},
+    {text:'Estimate the nutrition of the food in this photo for the visible portion. Give a short food name, whole-number calories, and whole-number grams of protein.'},
     {inline_data:{mime_type:mime,data:b64}}
-  ]}],generationConfig:{maxOutputTokens:300,temperature:0.2}};
+  ]}],generationConfig:{temperature:0.2,maxOutputTokens:800,responseMimeType:'application/json',
+    responseSchema:{type:'OBJECT',properties:{name:{type:'STRING'},kcal:{type:'INTEGER'},protein:{type:'INTEGER'}},required:['name','kcal','protein']}}};
   const models=foodAIModels();let lastErr=null;
   for(const model of models){
     try{
       const j=await _geminiCall(model,body);
-      const txt=(((((j.candidates||[])[0]||{}).content)||{}).parts||[]).map(p=>p&&p.text||'').join('')||'';
-      const m=txt.match(/\{[\s\S]*\}/);if(!m)throw new Error('no estimate in reply');
-      const o=JSON.parse(m[0]);return {name:String(o.name||'Meal').slice(0,40),kcal:Math.max(0,Math.round(+o.kcal||0)),p:Math.max(0,Math.round(+(o.protein!=null?o.protein:o.p)||0))};
+      const cand=(j.candidates||[])[0]||{};
+      const txt=((cand.content||{}).parts||[]).map(p=>p&&p.text||'').join('')||'';
+      let o=null;
+      if(txt){try{o=JSON.parse(txt);}catch(_){const m=txt.match(/\{[\s\S]*\}/);if(m){try{o=JSON.parse(m[0]);}catch(__){}}}}
+      if(!o){
+        // Nothing usable — say why so it's diagnosable (safety block / truncation).
+        const bl=(j.promptFeedback&&j.promptFeedback.blockReason)||'';
+        const fr=cand.finishReason||'';
+        throw new Error(bl?('blocked — '+bl):fr==='MAX_TOKENS'?'reply cut off — try again':(fr&&fr!=='STOP')?('stopped — '+fr):'no estimate in reply');
+      }
+      return {name:String(o.name||'Meal').slice(0,40),kcal:Math.max(0,Math.round(+o.kcal||0)),p:Math.max(0,Math.round(+(o.protein!=null?o.protein:o.p)||0))};
     }catch(e){
       lastErr=e;
       // Google's free quotas are PER-MODEL: a model can be unavailable (404),
