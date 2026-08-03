@@ -871,7 +871,7 @@ const LADDERS = {
   legPowerL:  ['jumpsquat','splitjump','broadjump'],
   hiitFinL:   ['jumpingjack','tuckjump','burpee','burpeetuck'],
 };
-// Phase 1 (weeks 1–12) — unchanged core/abs/HIIT program.
+// Phase 1 (weeks 1–12) — core/abs/HIIT program, 7 days a week.
 const SESSIONS = [
   {key:'anterior', name:'Core Crusher', icon:'🔥', focus:'Abs, deep core & anti-extension',
    slots:['plankL','hollowL','lowerL','dynL'], finisher:'cardioFinL'},
@@ -881,8 +881,14 @@ const SESSIONS = [
    slots:['sideL','rotL','dynL','plankL'], finisher:'cardioFinL'},
   {key:'metcon', name:'Metabolic HIIT', icon:'⚡', focus:'Cardio circuit for fat loss + core',
    slots:['cardioAL','cardioBL','sideL','lowerL'], finisher:'finisherL'},
+  {key:'lower', name:'Lower-Ab Blast', icon:'🔻', focus:'Lower abs, hips & anti-arch',
+   slots:['lowerL','hollowL','legL','plankL'], finisher:'cardioBL'},
+  {key:'push', name:'Strength & Push', icon:'🏋️', focus:'Pushing strength + bracing core',
+   slots:['pushL','legL','rotL','sideL'], finisher:'cardioFinL'},
+  {key:'stability', name:'Core Stability', icon:'🧘', focus:'Control, holds & rotation — active-recovery core',
+   slots:['plankL','sideL','hollowL','rotL'], finisher:'finisherL'},
 ];
-// Phase 2 (week 13 onward) — full-body split; core trained every session.
+// Phase 2 (week 13 onward) — full-body split, 7 days a week; core trained every session.
 const PHASE2_SESSIONS = [
   {key:'push', name:'Push Day', icon:'💥', focus:'Chest, shoulders & triceps + core',
    slots:['chestL','shoulderL','tricepL','lowerL'], finisher:'cardioFinL'},
@@ -892,6 +898,12 @@ const PHASE2_SESSIONS = [
    slots:['squatL','hingeL','calfL','dynL'], finisher:'legPowerL'},
   {key:'metcon', name:'Metabolic HIIT', icon:'⚡', focus:'Full-body conditioning + core',
    slots:['cardioAL','cardioBL','sideL','lowerL'], finisher:'hiitFinL'},
+  {key:'upper', name:'Upper Power', icon:'🔺', focus:'Chest, back & shoulders + rotational core',
+   slots:['chestL','pullL','shoulderL','rotL'], finisher:'cardioFinL'},
+  {key:'posterior', name:'Posterior & Legs', icon:'🦿', focus:'Glutes, hamstrings, calves + core',
+   slots:['hingeL','squatL','calfL','plankL'], finisher:'legPowerL'},
+  {key:'core', name:'Core & Conditioning', icon:'🌀', focus:'Full core circuit + HIIT finish',
+   slots:['plankL','sideL','hollowL','lowerL'], finisher:'hiitFinL'},
 ];
 const WARMUP = ['march','glutebridge','birddog'];      // ~3 min activation
 const COOLDOWN = [
@@ -982,7 +994,7 @@ async function load(){
 }
 
 /* ============================ PROGRESSION ENGINE ============================ */
-const SESSIONS_PER_WEEK=4, WEEKS_PER_CYCLE=6, SESSIONS_PER_CYCLE=SESSIONS_PER_WEEK*WEEKS_PER_CYCLE; // 24
+const SESSIONS_PER_WEEK=7, WEEKS_PER_CYCLE=6, SESSIONS_PER_CYCLE=SESSIONS_PER_WEEK*WEEKS_PER_CYCLE; // 42
 const PHASE1_CYCLES=2;   // blocks 1–2 = weeks 1–12: core/abs/HIIT (unchanged)
 const TOTAL_CYCLES=9;    // 9 six-week blocks = 54 weeks (a full year+): Phase 1 then full-body split
 function phaseOf(cycle){return cycle<PHASE1_CYCLES?1:2;}
