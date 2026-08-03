@@ -298,6 +298,10 @@
   .briefseg .bs-t{font-weight:900;font-size:13px;letter-spacing:.3px;margin-bottom:2px}
   .briefseg .bs-say{font-size:13px;color:var(--muted);line-height:1.45}
   .briefseg.on .bs-say{color:var(--ink)}
+  .coachchip{display:inline-flex;align-items:center;gap:9px;background:var(--card2);border:1px solid var(--line);border-radius:999px;padding:5px 15px 5px 5px}
+  .coachchip .cc-name{font-weight:900;font-size:13px;line-height:1.1}
+  .coachchip .cc-role{font-size:10px;color:var(--muted);letter-spacing:.4px;margin-top:1px}
+  .pl-head .coach-av{margin-left:auto}
 </style>
 </head>
 <body>
@@ -1494,7 +1498,8 @@ function todayWorkoutHTML(){
   </div>
   <button class="btn gold" style="margin:2px 0 8px;font-size:16px;padding:16px" onclick="openBrief()">🎙️ Morning Brief with Sarge — your full audio plan</button>
   ${readinessCardHTML()}
-  <button class="btn primary" style="margin:2px 0 8px;font-size:16px;padding:17px" onclick="openPlayer()">▶ Start guided workout</button>
+  <button class="btn primary" style="margin:2px 0 6px;font-size:16px;padding:17px" onclick="openPlayer()">▶ Start guided workout</button>
+  <div style="display:flex;justify-content:center;margin:0 0 10px">${coachChipHTML('Coaches you through every rep')}</div>
   ${sess.session.key==='metcon'?`<button class="btn ghost" style="margin:0 0 8px" onclick="openHiitChooser()">⚡ HIIT intervals — Tabata · EMOM · AMRAP</button>`:''}
   ${hasWeights()?`<button class="btn ghost" style="margin:0 0 8px" onclick="startWeights()">🏋️ Weights session — full-body, your equipment</button>`:''}
   <button class="btn ghost" style="margin:0 0 8px" onclick="openSpecial()">🎖️ Special — HIIT intervals (Tabata · EMOM · AMRAP)</button>
@@ -1739,7 +1744,7 @@ function plChrome(){
   $('#player').innerHTML=`
     <div class="pl-bg"${bg?` style="background-image:url('${bg}')"`:''}></div>
     <div class="pl-head"><button class="pl-x" onclick="playerQuit()" aria-label="Quit">✕</button>
-      <div class="pl-count">${PLAYER.i+1} / ${PLAYER.items.length}</div><div style="width:36px"></div></div>
+      <div class="pl-count">${PLAYER.i+1} / ${PLAYER.items.length}</div>${coachAvatarHTML(36,'box-shadow:0 2px 8px rgba(0,0,0,.5)')}</div>
     <div class="pl-segs">${plSegsHTML()}</div>
     <div class="pl-body" id="plBody"></div>`;
 }
@@ -2550,6 +2555,13 @@ function sampleVoice(){primeVoice();coachSpeak("Brace your core. Deep and steady
    present; falls back to the on-device voice so the brief still speaks offline / key-free. */
 const ADVISOR={id:'advisor',name:'Sergeant Forge',short:'Sarge',emoji:'🎖️',pitch:0.62,rate:0.98,hint:['brian','guy','david','male']};
 let BRIEF=null;   // {segs,i,stop,playing,done,audio,_devTimer}
+
+/* Sarge's face — a round avatar that falls back to the 🎖️ emoji if the image is
+   ever missing. Used on the coach/player screens and the Today session card. */
+function coachAvatarHTML(px,style){px=px||34;const fs=Math.round(px*0.6);
+  return `<img src="coach-sarge.jpg" alt="${ADVISOR.name}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{textContent:'🎖️',style:'font-size:${fs}px;line-height:1'}))" style="width:${px}px;height:${px}px;border-radius:50%;object-fit:cover;object-position:center 16%;border:2px solid var(--fire);flex:0 0 auto;${style||''}">`;}
+function coachChipHTML(role){
+  return `<div class="coachchip">${coachAvatarHTML(30)}<div><div class="cc-name">${ADVISOR.short}</div><div class="cc-role">${role||'Your coach'}</div></div></div>`;}
 
 function _briefGreet(){let h=9;try{h=new Date().getHours();}catch(e){}return h<12?'Good morning':(h<17?'Good afternoon':'Good evening');}
 function _briefList(a){a=(a||[]).filter(Boolean);if(a.length<=1)return a[0]||'';if(a.length===2)return a[0]+' and '+a[1];return a.slice(0,-1).join(', ')+', and '+a[a.length-1];}
@@ -3401,6 +3413,7 @@ function flowHTML(title,count,color){
   return `
   <div class="timerbox">
     <div class="tt">${title} · <span id="flowStep">0 / ${count}</span></div>
+    <div style="display:flex;justify-content:center;margin:8px 0 2px">${coachChipHTML('Coaching you through')}</div>
     <video id="flowVid" loop muted playsinline preload="auto" onerror="this.style.display='none'" style="width:100%;max-width:260px;aspect-ratio:1/1;object-fit:cover;border-radius:16px;margin:10px auto 4px;display:none;box-shadow:0 6px 20px rgba(0,0,0,.35)"></video>
     <img id="flowImg" alt="" onerror="this.style.display='none'" style="width:100%;max-width:260px;aspect-ratio:1/1;object-fit:cover;border-radius:16px;margin:10px auto 4px;display:none;box-shadow:0 6px 20px rgba(0,0,0,.35)">
     <div class="timerring">
