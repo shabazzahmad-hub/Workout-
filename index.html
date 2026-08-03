@@ -1496,6 +1496,7 @@ function todayWorkoutHTML(){
   const totalSets=_items.reduce((a,m)=>a+(m.sets||0),0);
   const doneSets=_items.reduce((a,m)=>{const st=log.ex[m.exId];return a+(st&&st.sets?st.sets.filter(Boolean).length:0);},0);
   const setsPct=totalSets?Math.round(doneSets/totalSets*100):0;
+  const restedToday=!!(STATE.restDays&&STATE.restDays[todayISO()]);
   const R=sess.session.key;
   const heroImg=heroImageFor(sess);
   const sessAll=SESSIONS_PER_CYCLE*TOTAL_CYCLES;   // 378 sessions across the full year
@@ -1521,8 +1522,10 @@ function todayWorkoutHTML(){
     </div>
     <div class="pbar${doneCount>=totalCount?' green':''}"><i style="width:${setsPct}%"></i></div>
   </div>
-  <button class="btn primary" style="margin:2px 0 8px;font-size:17px;padding:18px;font-weight:900" onclick="startMyDay()">☀️ Start my day — Sarge runs the whole flow</button>
-  <div class="tiny muted" style="text-align:center;margin:-4px 0 10px">Brief → warm-up → workout → cool-down, guided end-to-end. Or pick a step below.</div>
+  ${restedToday?`<div class="note info" style="margin:2px 0 10px">🛌 <b>Rest day logged for today.</b> Recovery is part of the plan — your workout is still here if you change your mind. <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="openRestSheet()">Recovery options</button></div>`:''}
+  <button class="btn primary" style="margin:2px 0 6px;font-size:17px;padding:18px;font-weight:900" onclick="startMyDay()">☀️ Start my day — Sarge runs the whole flow</button>
+  <button class="btn t-teal" style="margin:0 0 6px" onclick="${restedToday?'openRestSheet()':'startRestDay()'}">🛌 ${restedToday?'Rest day — recovery options':'Take a rest day instead'}</button>
+  <div class="tiny muted" style="text-align:center;margin:-2px 0 10px">Brief → warm-up → workout → cool-down, guided end-to-end. Or pick a step below.</div>
   <button class="btn gold" style="margin:2px 0 8px;font-size:16px;padding:16px" onclick="openBrief()">🎙️ Morning Brief with Sarge — your full audio plan</button>
   ${readinessCardHTML()}
   <button class="btn primary" style="margin:2px 0 6px;font-size:16px;padding:17px" onclick="openPlayer()">▶ Start guided workout</button>
@@ -2825,6 +2828,30 @@ function dayflowDone(){
     <button class="btn ghost" onclick="closeSheet()">Done</button>
   </div>`);
   try{coachSpeak("That is the full day's work. Outstanding. Now hydrate, and hit your protein.");}catch(e){}
+}
+/* Rest-day path of the flow: log the rest day (doesn't consume a program session)
+   and give Sarge's short recovery guidance. */
+function startRestDay(){
+  try{haptic(12);}catch(e){}
+  if(!STATE.restDays)STATE.restDays={};
+  STATE.restDays[todayISO()]=true;save();
+  try{checkAchievements();}catch(e){}
+  openRestSheet();
+  if(TAB==='today')renderToday();
+}
+function openRestSheet(){
+  const name=(STATE.profile.name||'').trim();
+  openSheet(`<div style="text-align:center;margin-bottom:6px">
+      ${coachAvatarHTML(76,'border-color:var(--gold,#e7b53c);margin:0 auto 6px;display:block;box-shadow:0 6px 18px rgba(0,0,0,.45)')}
+      <h2 style="margin:2px 0">Rest day 🛌</h2>
+      <div class="tiny muted">Logged for today · ${ADVISOR.name}</div>
+    </div>
+    <p class="muted sm" style="text-align:center;margin:8px 0 14px">Smart call${name?', '+name:''}. Your core rebuilds on rest days — this is where the muscle is made. Keep it light: sleep, walk, hydrate, and hit your protein. Your program waits right here for tomorrow.</p>
+    <button class="btn t-teal" style="margin-bottom:8px" onclick="closeSheet();runCooldown()">▶ Light mobility &amp; stretch (~4 min)</button>
+    <button class="btn t-green" style="margin-bottom:8px" onclick="closeSheet();openMealPlan()">🍽️ Today's meals</button>
+    <button class="btn t-blue" style="margin-bottom:8px" onclick="closeSheet();go('fuel')">💧 Log water &amp; food</button>
+    <button class="btn ghost" onclick="closeSheet()">Done</button>`);
+  try{coachSpeak("Rest day logged. Recovery is where the muscle is built. Sleep, hydrate, and hit your protein. I will see you tomorrow.");}catch(e){}
 }
 /* Voice-picker + depth/speed helpers */
 function _ve(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
