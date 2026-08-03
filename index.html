@@ -1137,6 +1137,7 @@ function prescribe(exId,pos){
     target=base*(LEVEL_FACTOR[level]||1)*wk*(1+adj)*cycleBoost*adapt;
   }
   if(typeof deloadOn==='function'&&deloadOn()){sets=Math.max(1,sets-1);target*=0.62;}   // deload week — ease volume & load
+  if(typeof readinessMult==='function'){const rf=readinessMult();target*=rf;if(rf<0.85)sets=Math.max(1,sets-1);}   // daily readiness auto-regulation
   if(ex.unit==='time'){target=Math.round(target/5)*5;target=clamp(target,15,150);}
   else{target=Math.round(target);target=clamp(target,6,40);}
   return {sets,target,unit:ex.unit,rest:ex.rest||45};
@@ -1478,6 +1479,7 @@ function todayWorkoutHTML(){
       <div class="hp-stats"><div class="hp-stat"><b>${totalCount}</b>exercises</div><div class="hp-stat"><b>~${vol.minutes}</b>minutes</div><div class="hp-stat"><b>${pct}%</b>done</div></div>
     </div>
   </div>
+  ${readinessCardHTML()}
   <button class="btn primary" style="margin:2px 0 8px;font-size:16px;padding:17px" onclick="openPlayer()">▶ Start guided workout</button>
   ${sess.session.key==='metcon'?`<button class="btn ghost" style="margin:0 0 8px" onclick="openHiitChooser()">⚡ HIIT intervals — Tabata · EMOM · AMRAP</button>`:''}
   ${hasWeights()?`<button class="btn ghost" style="margin:0 0 8px" onclick="startWeights()">🏋️ Weights session — full-body, your equipment</button>`:''}
@@ -3785,6 +3787,51 @@ function showUpdateToast(){
   d.innerHTML=`<span style="font-weight:800;font-size:13px">🔄 New version ready</span><button style="background:var(--fire);color:#140600;border:none;border-radius:10px;padding:8px 13px;font-weight:900" onclick="location.reload()">Refresh</button>`;
   document.body.appendChild(d);
 }
+/* ---- #2 Daily readiness check (auto-regulation) ---- */
+function readinessToday(){return (STATE.readiness&&STATE.readiness[todayISO()])||null;}
+function readinessMult(){const r=readinessToday();if(!r)return 1;const s=r.score;return s>=80?1.05:(s>=60?1.0:(s>=40?0.9:0.78));}
+let _rdy={};
+function openReadiness(){
+  const cur=readinessToday();if(cur&&!_rdy._init){_rdy={sleep:cur.sleep,sore:cur.sore,energy:cur.energy,_init:1};}
+  const opt=(k,val,label,emoji)=>`<button class="chip ${_rdy[k]===val?'on':''}" onclick="_rdy['${k}']=${val};openReadiness()">${emoji} ${label}</button>`;
+  openSheet(`<h3>🌡️ Daily readiness</h3>
+    <p class="muted sm" style="margin:2px 0 12px">A 10-second check so today's load fits how you feel — fresh means push, beat-up means we ease it.</p>
+    <div class="tiny muted" style="margin:6px 0 4px">Sleep</div><div class="btnrow" style="gap:6px">${opt('sleep',100,'Great','😴')}${opt('sleep',60,'OK','🙂')}${opt('sleep',25,'Poor','🥱')}</div>
+    <div class="tiny muted" style="margin:12px 0 4px">Soreness</div><div class="btnrow" style="gap:6px">${opt('sore',100,'Fresh','💪')}${opt('sore',60,'Some','😐')}${opt('sore',25,'Very sore','🥵')}</div>
+    <div class="tiny muted" style="margin:12px 0 4px">Energy</div><div class="btnrow" style="gap:6px">${opt('energy',100,'High','⚡')}${opt('energy',60,'OK','🙂')}${opt('energy',25,'Low','🪫')}</div>
+    <button class="btn primary" style="margin-top:16px" onclick="saveReadiness()">Save</button>`);
+}
+function saveReadiness(){
+  const vals=['sleep','sore','energy'].map(k=>_rdy[k]).filter(v=>typeof v==='number');
+  if(vals.length<3){toast('Pick one for each');return;}
+  const score=Math.round(vals.reduce((a,b)=>a+b,0)/3);
+  if(!STATE.readiness)STATE.readiness={};
+  STATE.readiness[todayISO()]={score,sleep:_rdy.sleep,sore:_rdy.sore,energy:_rdy.energy};
+  _rdy={};save();closeSheet();
+  const msg=score>=80?'Fully recovered — today\'s load is turned up. Let\'s go.':(score>=60?'Good to go. Normal load today.':(score>=40?'A bit beat up — I eased today\'s targets.':'Low battery — targets eased. A deload or rest day would be smart.'));
+  toast('Readiness '+score+'%');render();try{coachSpeak(msg);}catch(e){}
+}
+function readinessCardHTML(){
+  const r=readinessToday();
+  if(!r)return `<button class="btn ghost" style="margin:0 0 8px" onclick="_rdy={};openReadiness()">🌡️ Daily readiness check — tune today's load</button>`;
+  const s=r.score;const tag=s>=80?['Primed','var(--green)']:(s>=60?['Ready','var(--fire-l)']:(s>=40?['Ease up','var(--gold)']:['Recover','var(--pink)']));
+  return `<div class="note ${s<40?'warn':'info'}" style="margin:0 0 8px;display:flex;justify-content:space-between;align-items:center;gap:10px"><span>🌡️ <b>Readiness ${s}%</b> · <span style="color:${tag[1]}">${tag[0]}</span>${s<40?' — today eased; consider rest/deload':(s>=80?' — load turned up 🔥':'')}</span><button class="btn sm ghost" style="width:auto;flex:0 0 auto" onclick="_rdy={};openReadiness()">Update</button></div>`;
+}
+/* ---- #3 Goal ETA projection ---- */
+function goalETAHTML(){
+  const p=STATE.profile;const ms=(STATE.measurements||[]).filter(m=>m.waist>0);
+  if(ms.length<2||!(p.goalWaist>0))return '';
+  const a=ms[0],b=ms[ms.length-1];
+  const days=(new Date(b.date)-new Date(a.date))/86400000;
+  if(days<3)return '';
+  const perWeek=(a.waist-b.waist)/days*7;
+  const toGo=b.waist-p.goalWaist;
+  if(toGo<=0)return `<div class="tiny" style="margin-top:8px;color:var(--green);font-weight:800">🎉 Goal reached — set a new one to keep climbing.</div>`;
+  if(perWeek<=0.03)return `<div class="tiny muted" style="margin-top:8px">Trend is flat — tighten the deficit or add a Special session to get it moving.</div>`;
+  const weeks=Math.ceil(toGo/perWeek);const eta=new Date(b.date);eta.setDate(eta.getDate()+weeks*7);
+  const mon=eta.toLocaleDateString(undefined,{month:'short',year:'numeric'});const good=perWeek>=0.2;
+  return `<div class="tiny" style="margin-top:8px;color:${good?'var(--green)':'var(--gold)'};font-weight:700">📉 At ~${perWeek.toFixed(1)}${p.unit}/wk you'll hit your goal around <b>${mon}</b> (~${weeks} wk).${good?'':' Pick up the pace to speed it up.'}</div>`;
+}
 function achievementsHTML(){
   if(!STATE.achievements)STATE.achievements={};
   const unlocked=ACHIEVEMENTS.filter(a=>STATE.achievements[a.id]).length;
@@ -3876,7 +3923,7 @@ function waistGoalHTML(){
   const toGo=Math.max(0,now-p.goalWaist);
   return `<div style="margin-top:14px"><div class="row" style="justify-content:space-between"><span class="tiny muted">🎯 Goal progress</span><span class="tiny" style="font-weight:800;color:var(--green)">${Math.round(pct)}%${toGo>0?' · '+toGo.toFixed(1)+p.unit+' to go':' · reached!'}</span></div>
     <div class="pbar green" style="margin-top:6px"><i style="width:${pct}%"></i></div>
-    <div class="row" style="justify-content:space-between;margin-top:5px"><span class="tiny muted">Start ${start}${p.unit}</span><span class="tiny muted">Goal ${p.goalWaist}${p.unit}</span></div></div>`;
+    <div class="row" style="justify-content:space-between;margin-top:5px"><span class="tiny muted">Start ${start}${p.unit}</span><span class="tiny muted">Goal ${p.goalWaist}${p.unit}</span></div>${goalETAHTML()}</div>`;
 }
 function weightChartHTML(){
   const ms=(STATE.measurements||[]).filter(m=>m.weight>0);if(!ms.length)return '';
