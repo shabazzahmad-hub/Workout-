@@ -3317,7 +3317,8 @@ function renderProgress(){
   const v=$('#v-progress');
   const unit=STATE.profile.unit;
   let h=`<h2 class="vtitle">Progress</h2><div class="vsub">Everything auto-saved on this device.</div>`;
-  h+=`<button class="btn ghost" style="margin:0 0 12px" onclick="weeklyRecap()">🎙️ Weekly recap — hear it from your coach</button>`;
+  h+=`<button class="btn ghost" style="margin:0 0 8px" onclick="weeklyRecap()">🎙️ Weekly recap — hear it from your coach</button>`;
+  h+=`<button class="btn ghost" style="margin:0 0 12px" onclick="openStandards()">🏅 Strength standards &amp; 1RM calculator</button>`;
   // core score ring + level
   if(STATE.baseline){
     const latest=STATE.scoreHistory[STATE.scoreHistory.length-1]
@@ -3835,6 +3836,51 @@ function goalETAHTML(){
   const weeks=Math.ceil(toGo/perWeek);const eta=new Date(b.date);eta.setDate(eta.getDate()+weeks*7);
   const mon=eta.toLocaleDateString(undefined,{month:'short',year:'numeric'});const good=perWeek>=0.2;
   return `<div class="tiny" style="margin-top:8px;color:${good?'var(--green)':'var(--gold)'};font-weight:700">📉 At ~${perWeek.toFixed(1)}${p.unit}/wk you'll hit your goal around <b>${mon}</b> (~${weeks} wk).${good?'':' Pick up the pace to speed it up.'}</div>`;
+}
+/* ---- #5 Strength standards + 1RM estimate ---- */
+const STANDARDS={
+  pushup:{unit:'reps',t:[10,25,40,55],n:'Push-Up'},
+  pullup:{unit:'reps',t:[3,8,15,22],n:'Pull-Up'},
+  chinup:{unit:'reps',t:[3,10,17,25],n:'Chin-Up'},
+  dips:{unit:'reps',t:[5,12,22,32],n:'Parallel-Bar Dips'},
+  squat:{unit:'reps',t:[25,45,65,90],n:'Bodyweight Squat'},
+  pistol:{unit:'reps',t:[1,5,10,15],n:'Pistol Squat'},
+  plank:{unit:'time',t:[45,90,150,240],n:'Plank'},
+  sideplank:{unit:'time',t:[30,60,90,120],n:'Side Plank'},
+  hollow:{unit:'time',t:[20,45,75,120],n:'Hollow Hold'},
+  hspushup:{unit:'reps',t:[1,3,6,10],n:'Handstand Push-Up'},
+  barhang:{unit:'time',t:[30,60,90,120],n:'Bar Hang'},
+};
+const LEVELS=['Beginner','Novice','Intermediate','Advanced','Elite'];
+function strengthLevel(val,t){let i=0;for(;i<t.length;i++){if(val<t[i])break;}return i;}
+function openStandards(){
+  const rows=Object.keys(STANDARDS).map(k=>{
+    const st=STANDARDS[k];const pr=(STATE.prs&&STATE.prs[k])||0;const lvl=pr?strengthLevel(pr,st.t):-1;
+    const val=pr?(st.unit==='time'?fmtTime(pr):pr+' reps'):'—';
+    const badge=lvl>=0?LEVELS[lvl]:'Not tested';
+    const color=lvl>=4?'var(--gold)':(lvl>=3?'var(--green)':(lvl>=2?'var(--fire-l)':(lvl>=1?'var(--teal)':'var(--muted)')));
+    const pct=pr?clamp((lvl/4)*100,5,100):0;
+    return `<div style="padding:10px 0;border-top:1px solid var(--line)"><div class="row" style="justify-content:space-between"><span><b>${st.n}</b> <span class="tiny muted">· ${val}</span></span><span class="tiny" style="font-weight:800;color:${color}">${badge}</span></div>
+      <div class="pbar" style="margin-top:6px"><i style="width:${pct}%;background:${color}"></i></div>
+      <div class="tiny muted" style="margin-top:3px">Novice→Elite: ${st.unit==='time'?st.t.map(fmtTime).join(' · '):st.t.join(' · ')}</div></div>`;
+  }).join('');
+  openSheet(`<h3>🏅 Strength standards</h3>
+    <p class="muted sm" style="margin:2px 0 8px">Your level on the key benchmarks, from your best efforts. Re-take the baseline to update these.</p>
+    <div class="card pad" style="padding-top:0">${rows}</div>
+    <div class="section-label" style="margin-top:14px">🔢 1-rep-max estimate</div>
+    <div class="card pad">
+      <div class="tiny muted" style="margin-bottom:8px">For your weighted lifts — enter the weight you used and the reps you hit.</div>
+      <div class="btnrow" style="gap:8px"><input id="orm-w" type="number" inputmode="decimal" placeholder="weight (lb)" style="flex:1;min-width:0;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px"><input id="orm-r" type="number" inputmode="numeric" placeholder="reps" style="width:84px;flex:0 0 auto;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px"></div>
+      <button class="btn primary" style="margin-top:10px" onclick="calcOneRM()">Estimate 1RM</button>
+      <div id="ormOut" class="tiny" style="margin-top:8px;font-weight:800;color:var(--fire-l)"></div>
+    </div>
+    <div style="height:10px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
+}
+function calcOneRM(){
+  const w=parseFloat($('#orm-w').value),r=parseInt($('#orm-r').value);
+  if(!(w>0)||!(r>0)){$('#ormOut').textContent='Enter weight and reps.';return;}
+  const orm=Math.round(w*(1+r/30));const w80=Math.round(orm*0.8),w70=Math.round(orm*0.7);
+  $('#ormOut').innerHTML=`Estimated 1RM ≈ <b>${orm} lb</b>. Train ~70–80%: <b>${w70}–${w80} lb</b>.`;
 }
 /* ---- #6 Injury-aware auto-substitution ---- */
 const JOINTS=[['knee','Knee'],['shoulder','Shoulder'],['wrist','Wrist'],['lowback','Lower back'],['elbow','Elbow']];
