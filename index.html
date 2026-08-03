@@ -841,7 +841,7 @@ const EX = {
 };
 
 /* ============================ SESSION TEMPLATES ============================
-   Each session = warmup (fixed) + 5 main slots + 1 finisher.
+   Each session = warmup (fixed) + 4 main slots + 1 finisher.
    Each slot references a "ladder"; the rung is chosen by progression level.
 ========================================================================== */
 const LADDERS = {
@@ -1001,10 +1001,10 @@ function phaseOf(cycle){return cycle<PHASE1_CYCLES?1:2;}
 function sessionsFor(cycle){return phaseOf(cycle)===1?SESSIONS:PHASE2_SESSIONS;}
 
 function posOf(ptr){
-  const cycle=Math.floor(ptr/SESSIONS_PER_CYCLE); // 0..2
+  const cycle=Math.floor(ptr/SESSIONS_PER_CYCLE); // 0..8 (nine 6-week blocks)
   const inCycle=ptr%SESSIONS_PER_CYCLE;
-  const week=Math.floor(inCycle/SESSIONS_PER_WEEK)+1; // 1..4
-  const dayInWeek=inCycle%SESSIONS_PER_WEEK;          // 0..3
+  const week=Math.floor(inCycle/SESSIONS_PER_WEEK)+1; // 1..6
+  const dayInWeek=inCycle%SESSIONS_PER_WEEK;          // 0..6 (seven days/week)
   return {cycle,inCycle,week,dayInWeek,phase:phaseOf(cycle),session:sessionsFor(cycle)[dayInWeek]};
 }
 function currentMaxes(cycle){
@@ -1163,7 +1163,7 @@ function onPop(e){
   if(typeof INTV!=='undefined'&&INTV){hiitTeardown();return;}
   if(typeof PLAYER!=='undefined'&&PLAYER){playerTeardown();return;}
   if($('#scrim').classList.contains('open')){
-    $('#scrim').classList.remove('open');document.body.style.overflow='';stopTimer();return;
+    $('#scrim').classList.remove('open');document.body.style.overflow='';stopTimer();beatStop();return;
   }
   const st=e.state||{};
   if(st.cf==='tab'){go(st.tab||'today');return;}
@@ -2288,6 +2288,29 @@ function neuralSpeak(text,persona,onFail){
       if(tok===_neuralTok&&typeof onFail==='function')onFail();});
   return true;
 }
+/* Synthesize once and stash in the session cache WITHOUT playing. */
+function _neuralCachePut(text,cfg){
+  const key=cfg.v+'|'+(cfg.style||'')+'|'+(cfg.deg||'')+'|'+(cfg.rate||'')+'|'+(cfg.pitch||'')+'|'+text;
+  if(_neuralCache.has(key))return Promise.resolve();
+  return _sdkSynthesize(neuralSSML(text,cfg),cfg)
+    .then(buf=>{_neuralCache.set(key,URL.createObjectURL(new Blob([buf],{type:'audio/mpeg'})));})
+    .catch(()=>{});
+}
+/* Warm the neural engine so the FIRST flow (usually the warm-up) doesn't eat the
+   Azure cold-start: preload the SDK, open the WebSocket with the first synth, and
+   pre-cache the rapid countdown tokens. Without this, warm-up's tight 3-2-1 cadence
+   loses the token race or trips the async fallback to the robotic device voice. */
+let _neuralWarmed=false;
+function neuralPrewarm(){
+  if(_neuralWarmed||!neuralReady())return;_neuralWarmed=true;
+  try{
+    const p=(typeof currentPersona==='function')?currentPersona():null;
+    const cfg=neuralCfgFor(p);
+    // sequential: the first call opens the socket, the rest cache the countdown words
+    ['1','2','3','Five seconds.','Three. Two. One.','Get ready.']
+      .reduce((chain,t)=>chain.then(()=>_neuralCachePut(t,cfg)),Promise.resolve());
+  }catch(e){_neuralWarmed=false;}
+}
 function resolveVoice(){
   if(!COACH_VOICES.length)return null;
   const want=STATE.settings.voiceName;
@@ -2306,6 +2329,7 @@ function pickDeepVoice(){
   return pool.find(x=>x.name&&!female.test(x.name))||pool[0];
 }
 function primeVoice(){
+  try{neuralPrewarm();}catch(e){}   // warm Azure every call (self-guards); handles a key added after first prime
   if(_voicePrimed)return;_voicePrimed=true;
   try{loadCoachVoices();if('speechSynthesis'in window&&!COACH_VOICES.length){speechSynthesis.onvoiceschanged=loadCoachVoices;}}catch(e){}
 }
@@ -3160,7 +3184,7 @@ function renderProgress(){
     const latest=STATE.scoreHistory[STATE.scoreHistory.length-1]
       ||{score:STATE.baseline.score,level:STATE.baseline.level};
     h+=`<div class="card pad center">${ringHTML(latest.score,'Core Score')}<div style="margin-top:10px"><span class="chip on">${latest.level}</span></div>
-      ${STATE.scoreHistory.length>1?scoreTrendHTML():'<div class="tiny muted" style="margin-top:10px">Re-test after week 4 to see your climb.</div>'}</div>`;
+      ${STATE.scoreHistory.length>1?scoreTrendHTML():'<div class="tiny muted" style="margin-top:10px">Re-test after each 6-week block to see your climb.</div>'}</div>`;
   }
   // snapshot: 6 headline metrics
   const sessionsDone=Object.values(STATE.logs).filter(l=>l.done).length;
