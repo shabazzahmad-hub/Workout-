@@ -1137,7 +1137,12 @@ const TIME_FRAC=[0.50,0.58,0.66,0.74,0.82,0.90];   // % of tested max hold, by w
 const REP_FRAC =[0.55,0.64,0.73,0.82,0.91,1.00];   // % of tested max reps, by week (1-6)
 
 function prescribe(exId,pos){
-  const ex=EX[exId];const {cycle,week}=pos;
+  const ex=EX[exId];
+  // Free/bonus sessions build items with pos:{} — default cycle/week so the math
+  // (cycleBoost, week fractions) never goes NaN and hangs a timer on swap.
+  pos=pos||{};
+  const cycle=(typeof pos.cycle==='number'&&pos.cycle>=0)?pos.cycle:0;
+  const week=(typeof pos.week==='number'&&pos.week>=1)?pos.week:1;
   const level=levelOf(cycle);
   const maxes=currentMaxes(cycle);
   const adj=weekAdjust(cycle,week);
@@ -1868,7 +1873,7 @@ function plTickRep(){
 function plAfterSet(){
   plClear();
   const m=plCur();
-  try{markSetFromTimer(m.exId);}catch(e){}
+  if(!PLAYER.free){try{markSetFromTimer(m.exId);}catch(e){}}   // bonus sessions never touch the program log
   PLAYER.setsDone++;
   const pulse=$('#plPulse');if(pulse)pulse.classList.remove('on');
   PLAYER.s++;
@@ -1950,7 +1955,7 @@ function playerToggle(){
   else if(PLAYER.phase==='rest')PLAYER.tid=setInterval(plTickRest,1000);
 }
 function playerSkip(){
-  if(!PLAYER)return;plClear();
+  if(!PLAYER)return;plClear();PLAYER.pendingNext=false;
   const pulse=$('#plPulse');if(pulse)pulse.classList.remove('on');
   if(PLAYER.i+1<PLAYER.items.length){PLAYER.i++;PLAYER.s=0;plEnterReady(false);}else plEnterDone();
 }
@@ -2387,7 +2392,7 @@ function neuralSSML(text,cfg){
 }
 function stopSpeech(){
   try{if('speechSynthesis'in window)speechSynthesis.cancel();}catch(e){}
-  try{if(_neuralAudio){_neuralAudio.onended=null;_neuralAudio.onerror=null;_neuralAudio.pause();_neuralAudio=null;beatDuck(false);}}catch(e){}
+  try{if(_neuralAudio){_neuralAudio.onended=null;_neuralAudio.onerror=null;_neuralAudio.onpause=null;_neuralAudio.pause();_neuralAudio=null;beatDuck(false);}}catch(e){}
 }
 function _neuralPlay(url){
   const a=new Audio(url);_neuralAudio=a;let ducked=true;beatDuck(true);
@@ -2640,32 +2645,42 @@ function briefSegments(){
   return segs;
 }
 
-/* ---- Audio: speak the segments in order, awaiting each utterance ---- */
-function briefSpeakLine(text){
+/* ---- Audio: speak the segments in order, awaiting each utterance ----
+   A generation counter (_briefGen) invalidates any in-flight synth/loop the
+   moment the brief is stopped or replayed, so a late-resolving Azure request
+   from an old run can never play over (or after) a newer one. */
+let _briefGen=0;
+function _briefLive(gen){return !!(BRIEF&&!BRIEF.stop&&gen===_briefGen);}
+function briefSpeakLine(text,gen){
   return new Promise(resolve=>{
-    if(!BRIEF||BRIEF.stop)return resolve();
+    if(!_briefLive(gen))return resolve();
     if(neuralAvailable()){
       const cfg=neuralCfgFor(ADVISOR);
       const key=cfg.v+'|'+(cfg.style||'')+'|'+(cfg.deg||'')+'|'+(cfg.rate||'')+'|'+(cfg.pitch||'')+'|'+text;
       const play=url=>{
-        if(!BRIEF||BRIEF.stop)return resolve();
+        if(!_briefLive(gen))return resolve();
         try{const a=new Audio(url);BRIEF.audio=a;try{beatDuck(true);}catch(e){}
-          const done=()=>{try{beatDuck(false);}catch(e){}a.onended=null;a.onerror=null;if(BRIEF)BRIEF.audio=null;resolve();};
-          a.onended=done;a.onerror=done;a.play().catch(()=>done());
+          const clear=()=>{try{beatDuck(false);}catch(e){}a.onended=null;a.onerror=null;if(BRIEF&&BRIEF.audio===a)BRIEF.audio=null;};
+          const done=()=>{clear();resolve();};
+          a.onended=done;a.onerror=done;
+          // If the browser blocks autoplay (first audio outside a gesture, e.g. iOS),
+          // fall back to the device voice instead of silently skipping the line.
+          a.play().catch(()=>{clear();if(_briefLive(gen))_briefDeviceSpeak(text,resolve,gen);else resolve();});
         }catch(e){resolve();}
       };
       const cached=_neuralCache.get(key);
       if(cached)return play(cached);
       _sdkSynthesize(neuralSSML(text,cfg),cfg)
-        .then(buf=>{const u=URL.createObjectURL(new Blob([buf],{type:'audio/mpeg'}));_neuralCache.set(key,u);play(u);})
-        .catch(()=>_briefDeviceSpeak(text,resolve));
+        .then(buf=>{const u=URL.createObjectURL(new Blob([buf],{type:'audio/mpeg'}));_neuralCache.set(key,u);if(_briefLive(gen))play(u);else resolve();})
+        .catch(()=>{if(_briefLive(gen))_briefDeviceSpeak(text,resolve,gen);else resolve();});
       return;
     }
-    _briefDeviceSpeak(text,resolve);
+    _briefDeviceSpeak(text,resolve,gen);
   });
 }
-function _briefDeviceSpeak(text,resolve){
+function _briefDeviceSpeak(text,resolve,gen){
   try{
+    if(gen!=null&&!_briefLive(gen))return resolve();
     if(!('speechSynthesis'in window))return resolve();
     if(!COACH_VOICES.length)loadCoachVoices();
     const synth=speechSynthesis;synth.cancel();
@@ -2685,26 +2700,30 @@ function _briefDeviceSpeak(text,resolve){
 async function briefPlay(startIdx){
   if(!BRIEF)return;
   primeVoice();
+  const gen=++_briefGen;   // this run owns the audio until stopped/replaced
   BRIEF.stop=false;BRIEF.playing=true;BRIEF.done=false;
   briefUpdateControls();
   for(let i=(startIdx||0);i<BRIEF.segs.length;i++){
-    if(BRIEF.stop)break;
+    if(!_briefLive(gen))break;
     BRIEF.i=i;briefHighlight(i);
-    await briefSpeakLine(BRIEF.segs[i].say);
-    if(BRIEF.stop)break;
-    await new Promise(r=>{const t=setTimeout(r,260);if(BRIEF)BRIEF._gapTimer=t;});
+    await briefSpeakLine(BRIEF.segs[i].say,gen);
+    if(!_briefLive(gen))break;
+    await new Promise(r=>{BRIEF._gapResolve=r;BRIEF._gapTimer=setTimeout(()=>{BRIEF._gapResolve=null;r();},260);});
   }
+  if(gen!==_briefGen)return;   // a newer run/stop took over — don't touch shared UI state
   BRIEF.playing=false;
   if(!BRIEF.stop){BRIEF.done=true;BRIEF.i=-1;briefHighlight(-1);}
   briefUpdateControls();
 }
 function briefStop(){
   if(!BRIEF)return;
+  _briefGen++;   // invalidate any in-flight synth/loop so nothing plays after this
   BRIEF.stop=true;BRIEF.playing=false;
-  try{if(BRIEF.audio){BRIEF.audio.onended=null;BRIEF.audio.onerror=null;BRIEF.audio.pause();BRIEF.audio=null;}}catch(e){}
+  try{if(BRIEF.audio){BRIEF.audio.onended=null;BRIEF.audio.onerror=null;BRIEF.audio.onpause=null;BRIEF.audio.pause();BRIEF.audio=null;}}catch(e){}
   try{if('speechSynthesis'in window)speechSynthesis.cancel();}catch(e){}
   try{if(BRIEF._devTimer)clearTimeout(BRIEF._devTimer);}catch(e){}
   try{if(BRIEF._gapTimer)clearTimeout(BRIEF._gapTimer);}catch(e){}
+  try{if(BRIEF._gapResolve){BRIEF._gapResolve();BRIEF._gapResolve=null;}}catch(e){}
   try{beatDuck(false);}catch(e){}
   briefUpdateControls();
 }
@@ -3242,7 +3261,7 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet){
     if(remain<=3&&remain>0)beep(900,.13,0.7);
     if(remain<=0){
       beepGo();haptic(30);clearInterval(timer.iv);
-      if(isHold&&restAfter>0){toast('Hold done! Resting '+restAfter+'s');if(!motivate('done'))coachSpeak('Time. Now rest.');setTimeout(()=>runTimer('rest',restAfter,label+' — rest',0,null,true),700);if(onDone)onDone();return;}
+      if(isHold&&restAfter>0){toast('Hold done! Resting '+restAfter+'s');if(!motivate('done'))coachSpeak('Time. Now rest.');setTimeout(()=>{if($('#scrim').classList.contains('open'))runTimer('rest',restAfter,label+' — rest',0,null,true);},700);if(onDone)onDone();return;}
       if(onDone)onDone();
       if(!motivate('done'))coachSpeak(isHold?'Time. Strong hold.':'Rest over. Back to work.');
       $('#tnum')&&($('#tnum').textContent='Done');
@@ -3649,6 +3668,9 @@ function saveMeasure(){
   if(existing){if(w>0)existing.waist=w;if(b>0)existing.weight=b;}
   else STATE.measurements.push({date:today,waist:w>0?w:null,weight:b>0?b:null});
   if(w>0&&!STATE.profile.startWaist)STATE.profile.startWaist=w;
+  // keep the working body weight (used for protein/water/BMI/TDEE) in sync with the newest logged weight
+  if(b>0){STATE.nutrition.weightKg=STATE.profile.unit==='in'?b*0.453592:b;
+    if(STATE.nutrition.kcalTarget&&typeof recalcKcalFromStored==='function'){try{recalcKcalFromStored();}catch(e){}}}
   save();closeSheet();toast('Measurement saved');renderProgress();checkAchievements();
 }
 
@@ -5014,14 +5036,17 @@ function toggleGear(k){
 }
 function setDiet(k){STATE.nutrition.diet=k;if(STATE.nutrition.plan)STATE.nutrition.plan=null;haptic(8);save();renderGuide();}
 function exportData(){
-  const blob=new Blob([JSON.stringify(STATE,null,2)],{type:'application/json'});
+  // Never write the on-device API keys into a shareable backup file.
+  const clone=JSON.parse(JSON.stringify(STATE));
+  if(clone.settings){delete clone.settings.azureKey;delete clone.settings.foodAiKey;}
+  const blob=new Blob([JSON.stringify(clone,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);const a=document.createElement('a');
   a.href=url;a.download='coreforge-backup-'+todayISO()+'.json';a.click();URL.revokeObjectURL(url);
   toast('Backup downloaded');
 }
 function importData(e){
   const f=e.target.files[0];if(!f)return;const r=new FileReader();
-  r.onload=()=>{try{const p=JSON.parse(r.result);if(!p.version){toast('Not a CoreForge backup');return;}STATE=Object.assign(DEFAULT_STATE(),p);save();toast('Backup restored');render();}catch(err){toast('Could not read file');}};
+  r.onload=()=>{try{const p=JSON.parse(r.result);if(!p.version){toast('Not a CoreForge backup');return;}STATE=Object.assign(DEFAULT_STATE(),p);normalizeState();save();toast('Backup restored');render();}catch(err){toast('Could not read file');}};
   r.readAsText(f);
 }
 function hardReset(){
@@ -5039,9 +5064,14 @@ function showInstallHint(){
 }
 
 /* ============================ BOOT ============================ */
-async function boot(){
-  await idbOpen();
-  await load();
+/* Normalize a freshly-loaded (or freshly-imported) STATE: fill defaults for
+   fields added in later versions and run one-time migrations. Idempotent, so
+   it's safe to call from BOTH boot() and importData() — an old-shape backup
+   restored via import gets the exact same normalization a stored save gets,
+   which prevents a legacy backup from white-screening the app. */
+function normalizeState(){
+  if(!STATE.settings||typeof STATE.settings!=='object')STATE.settings={};
+  if(!STATE.profile||typeof STATE.profile!=='object')STATE.profile={};
   // voice coach defaults for existing installs that predate these settings
   if(STATE.settings.voice===undefined)STATE.settings.voice=true;
   if(STATE.settings.voiceName===undefined)STATE.settings.voiceName='';
@@ -5053,6 +5083,10 @@ async function boot(){
   if(!STATE.nutrition.days)STATE.nutrition.days={};
   if(!STATE.nutrition.diet)STATE.nutrition.diet='omnivore';
   if(!STATE.nutrition.meals)STATE.nutrition.meals=3;
+  if(!Array.isArray(STATE.measurements))STATE.measurements=[];
+  if(!Array.isArray(STATE.scoreHistory))STATE.scoreHistory=[];
+  if(!STATE.logs||typeof STATE.logs!=='object')STATE.logs={};
+  if(!STATE.prs||typeof STATE.prs!=='object')STATE.prs={};
   // deep-profile defaults for installs created before the equipment/diet quiz
   if(!Array.isArray(STATE.profile.gear)){STATE.profile.gear=[];if(STATE.profile.hasBar!==false)STATE.profile.gear.push('bar');if(STATE.profile.hasBench!==false)STATE.profile.gear.push('bench');}
   if(!Array.isArray(STATE.profile.targets))STATE.profile.targets=['abs','full'];
@@ -5079,6 +5113,11 @@ async function boot(){
   if(typeof STATE.settings.beatVol!=='number')STATE.settings.beatVol=0.55;
   if(!THEMES[STATE.settings.theme])STATE.settings.theme='ember';
   applyTheme(STATE.settings.theme);   // accent theme
+}
+async function boot(){
+  await idbOpen();
+  await load();
+  normalizeState();
   // request durable storage so an installed PWA keeps data
   try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();}catch(e){}
   initBackButton();   // make the phone's Back button navigate instead of closing the app
