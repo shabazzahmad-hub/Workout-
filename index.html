@@ -1509,6 +1509,8 @@ function todayWorkoutHTML(){
       <div class="hp-stats"><div class="hp-stat"><b>${totalCount}</b>exercises</div><div class="hp-stat"><b>~${vol.minutes}</b>minutes</div><div class="hp-stat"><b>${pct}%</b>done</div></div>
     </div>
   </div>
+  <button class="btn primary" style="margin:2px 0 8px;font-size:17px;padding:18px;font-weight:900" onclick="startMyDay()">☀️ Start my day — Sarge runs the whole flow</button>
+  <div class="tiny muted" style="text-align:center;margin:-4px 0 10px">Brief → warm-up → workout → cool-down, guided end-to-end. Or pick a step below.</div>
   <button class="btn gold" style="margin:2px 0 8px;font-size:16px;padding:16px" onclick="openBrief()">🎙️ Morning Brief with Sarge — your full audio plan</button>
   ${readinessCardHTML()}
   <button class="btn primary" style="margin:2px 0 6px;font-size:16px;padding:17px" onclick="openPlayer()">▶ Start guided workout</button>
@@ -1963,11 +1965,15 @@ function playerSetDone(){if(PLAYER&&(PLAYER.phase==='work'||PLAYER.phase==='read
 function playerAddRest(){if(PLAYER&&PLAYER.phase==='rest'){PLAYER.remain+=15;PLAYER.total+=15;plS('#plNum',fmtTime(PLAYER.remain));toast('+15s rest');}}
 function playerSkipRest(){if(PLAYER&&PLAYER.phase==='rest')plRestDone();}
 function playerTeardown(){if(!PLAYER)return;plClear();beatStop();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;if(TAB==='today')renderToday();}
-function playerQuit(){const had=!!PLAYER;playerTeardown();if(had&&history.state&&history.state.cf==='player'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
+function playerQuit(){const had=!!PLAYER;
+  // bailing out of the workout mid-way ends the guided day (the feel-check path advances it instead)
+  if(dayflowActive()&&DAYFLOW_STEPS[DAYFLOW.i]&&DAYFLOW_STEPS[DAYFLOW.i].key==='workout')dayflowCancel();
+  playerTeardown();if(had&&history.state&&history.state.cf==='player'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
 function playerFeel(feel){
   plClear();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;
   if(history.state&&history.state.cf==='player'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
   commitSession(feel);
+  if(dayflowActive())dayflowAdvance('workout');   // guided day: hand off to the cool-down
 }
 
 /* ============================ HIIT INTERVAL PLAYER ============================
@@ -2752,7 +2758,10 @@ function briefSheetHTML(segs){
         <div class="bs-body"><div class="bs-t">${s.title}</div><div class="bs-say">${_ve(s.say)}</div></div>
       </div>`).join('')}
     </div>
-    <button class="btn ghost" style="margin-top:12px" onclick="briefStop();closeSheet();">Close</button>`;
+    ${dayflowActive()
+      ? `<button class="btn primary" style="margin-top:12px;font-size:16px;padding:15px" onclick="briefStop();closeSheet();dayflowAdvance('brief')">Continue to warm-up ▶</button>
+         <button class="btn ghost" style="margin-top:8px" onclick="briefStop();dayflowCancel();closeSheet();">Exit daily flow</button>`
+      : `<button class="btn ghost" style="margin-top:12px" onclick="briefStop();closeSheet();">Close</button>`}`;
 }
 function openBrief(){
   try{haptic(12);}catch(e){}
@@ -2761,6 +2770,49 @@ function openBrief(){
   BRIEF={segs,i:-1,stop:false,playing:false,done:false,audio:null};
   openSheet(briefSheetHTML(segs));
   setTimeout(()=>{try{briefPlay(0);}catch(e){}},180);   // auto-start the audio brief
+}
+
+/* ===== "Start my day" — one tap runs the whole daily flow, hands-free =====
+   Brief → guided warm-up → guided workout (+ finisher & feel check) → guided
+   cool-down → done. Each surface calls dayflowAdvance() at its natural finish,
+   which launches the next step; the brief hands off on a Continue tap. */
+let DAYFLOW=null;
+const DAYFLOW_STEPS=[
+  {key:'brief',    label:'Morning brief',    run:()=>openBrief()},
+  {key:'warmup',   label:'Guided warm-up',   run:()=>runWarmup()},
+  {key:'workout',  label:'Guided workout',   run:()=>openPlayer()},
+  {key:'cooldown', label:'Guided cool-down', run:()=>runCooldown()},
+];
+function dayflowActive(){return !!(DAYFLOW&&DAYFLOW.active);}
+function startMyDay(){
+  try{haptic(14);}catch(e){}
+  DAYFLOW={active:true,i:0};
+  toast('Start my day — Sarge takes it from here');
+  try{DAYFLOW_STEPS[0].run();}catch(e){}
+}
+function dayflowCancel(silent){if(DAYFLOW){DAYFLOW=null;if(!silent)toast('Daily flow ended — you can finish the rest anytime');}}
+// Fired at the natural completion of the step named fromKey → launch the next step.
+function dayflowAdvance(fromKey){
+  if(!dayflowActive())return false;
+  const idx=DAYFLOW_STEPS.findIndex(s=>s.key===fromKey);
+  if(idx<0||idx!==DAYFLOW.i)return false;                 // only advance from the current step
+  const next=DAYFLOW_STEPS[idx+1];
+  if(!next){DAYFLOW=null;dayflowDone();return true;}
+  DAYFLOW.i=idx+1;
+  toast('Next up: '+next.label);
+  setTimeout(()=>{if(dayflowActive())try{next.run();}catch(e){}},450);
+  return true;
+}
+function dayflowDone(){
+  openSheet(`<div style="text-align:center">
+    ${coachAvatarHTML(80,'border-color:var(--gold,#e7b53c);margin:0 auto 8px;display:block;box-shadow:0 6px 18px rgba(0,0,0,.45)')}
+    <h2 style="margin:2px 0">Day complete 🎖️</h2>
+    <p class="muted sm" style="margin:6px 0 14px">Brief, warm-up, workout and cool-down — all done. Outstanding work, ${(STATE.profile.name||'').trim()||'soldier'}. Now hydrate and hit your protein.</p>
+    <button class="btn t-green" style="margin-bottom:8px" onclick="closeSheet();openMealPlan()">🍽️ See today's meals</button>
+    <button class="btn t-blue" style="margin-bottom:8px" onclick="closeSheet();go('fuel')">💧 Log water &amp; food</button>
+    <button class="btn ghost" onclick="closeSheet()">Done</button>
+  </div>`);
+  try{coachSpeak("That is the full day's work. Outstanding. Now hydrate, and hit your protein.");}catch(e){}
 }
 /* Voice-picker + depth/speed helpers */
 function _ve(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -3432,7 +3484,7 @@ function runFlow(items,title,color){
         set('#flowNum','✓');set('#flowName','Done');set('#flowCue',title+' complete. Nice work.');
         set('#flowStep',items.length+' / '+items.length);ring(0);
         coachSpeak(title+' complete. Nice work.');
-        setTimeout(closeSheet,1100);return;
+        setTimeout(()=>{closeSheet();if(dayflowActive())dayflowAdvance(title==='Warm-up'?'warmup':(title==='Cool-down'?'cooldown':null));},1100);return;
       }
       enterTransition(); return;
     }
