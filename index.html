@@ -1548,8 +1548,7 @@ function todayWorkoutHTML(){
   <div class="tiny muted" style="text-align:center;margin:-2px 0 10px">Brief → warm-up → workout → cool-down, guided end-to-end. Or pick a step below.</div>
   <button class="btn gold" style="margin:2px 0 8px;font-size:16px;padding:16px" onclick="openBrief()">🎙️ Morning Brief with Sarge — your full audio plan</button>
   ${readinessCardHTML()}
-  <button class="btn primary" style="margin:2px 0 6px;font-size:16px;padding:17px" onclick="openPlayer()">▶ Start guided workout</button>
-  <div style="display:flex;justify-content:center;margin:0 0 10px">${coachChipHTML('Coaches you through every rep')}</div>
+  <button class="btn primary" style="margin:2px 0 8px;font-size:16px;padding:17px" onclick="openPlayer()">▶ Start guided workout</button>
   ${sess.session.key==='metcon'?`<button class="btn t-teal" style="margin:0 0 8px" onclick="openHiitChooser()">⚡ HIIT intervals — Tabata · EMOM · AMRAP</button>`:''}
   ${hasWeights()?`<button class="btn t-purple" style="margin:0 0 8px" onclick="startWeights()">🏋️ Weights session — full-body, your equipment</button>`:''}
   <button class="btn t-red" style="margin:0 0 8px" onclick="openSpecial()">🎖️ Special — HIIT intervals (Tabata · EMOM · AMRAP)</button>
