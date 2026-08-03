@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v69';
+const CACHE = 'coreforge-v70';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './archivo.woff2', './icon-192.png', './icon-512.png', './hero.jpg',
   './ex-kneeplank.jpg','./ex-plank.jpg','./ex-longplank.jpg','./ex-planktap.jpg',
   './ex-tuckhollow.jpg','./ex-hollow.jpg','./ex-hollowrock.jpg','./ex-reverseplank.jpg',
@@ -18,7 +18,7 @@ const SHELL = ['./', './index.html', './manifest.webmanifest', './archivo.woff2'
   './cd-childs.jpg','./cd-cobra.jpg','./cd-twistleft.jpg','./cd-twistright.jpg','./cd-catcow.jpg','./cd-knees.jpg','./cd-breathing.jpg',
   './ex-negpullup.jpg','./ex-widepullup.jpg','./ex-invertedrowelev.jpg','./ex-benchdip.jpg','./ex-dips.jpg','./ex-boxpistol.jpg','./ex-singlebridge.jpg','./ex-splitjump.jpg','./ex-burpeetuck.jpg',
   './ex-abroll.jpg','./ex-mbslam.jpg','./ex-mbtwist.jpg','./ex-mbsitup.jpg','./ex-kbswing.jpg','./ex-kbgoblet.jpg','./ex-kbcp.jpg','./ex-kbrow.jpg','./ex-kbrdl.jpg','./ex-kblunge.jpg','./ex-ropewave.jpg','./ex-ropeslam.jpg','./ex-dipknee.jpg',
-  './ex-dbgoblet.jpg','./ex-dbrdl.jpg','./ex-dbrow.jpg','./ex-dbpress.jpg','./ex-dbfloor.jpg','./ex-dblunge.jpg','./ex-dbthruster.jpg','./ex-dbcurl.jpg','./ex-dbrenegade.jpg','./ex-dbtwist.jpg'];
+  './ex-dbgoblet.jpg','./ex-dbrdl.jpg','./ex-dbrow.jpg','./ex-dbpress.jpg','./ex-dbfloor.jpg','./ex-dblunge.jpg','./ex-dbthruster.jpg','./ex-dbcurl.jpg','./ex-dbrenegade.jpg','./ex-dbtwist.jpg','./ex-kbcarry.jpg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
