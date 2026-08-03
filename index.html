@@ -389,7 +389,7 @@ const el = (t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const todayISO=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
 const fmtTime=s=>{s=Math.round(s);const m=Math.floor(s/60);const r=s%60;return m>0?`${m}:${String(r).padStart(2,'0')}`:`${r}s`;};
-function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2100);}
+function toast(msg,ms){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),ms||2100);}
 function haptic(ms=18){try{if(navigator.vibrate&&STATE.settings.vibrate)navigator.vibrate(ms);}catch(e){}}
 
 /* ============================ EXERCISE LIBRARY ============================
@@ -4271,9 +4271,23 @@ function openQuickAdd(pre){
    stored ONLY on this device. Estimates are approximate and always land in the
    quick-add form for the user to confirm. Falls back to manual add on any error. */
 function foodAIReady(){return !!(STATE.settings&&STATE.settings.foodAiKey);}
-function foodAIModel(){return STATE.settings.foodAiModel||'gemini-2.0-flash';}
+// Try current free-tier vision models in order; a retired/renamed model returns 404
+// and we fall through to the next. A user-set model (Settings) is honored first.
+const FOOD_AI_MODELS=['gemini-2.5-flash','gemini-2.0-flash','gemini-flash-latest'];
+function foodAIModels(){const p=STATE.settings&&STATE.settings.foodAiModel;return p?[p]:FOOD_AI_MODELS.slice();}
 function setFoodAiKey(v){if(!STATE.settings)STATE.settings={};STATE.settings.foodAiKey=(v||'').trim();save();toast(STATE.settings.foodAiKey?'Gemini key saved 🔒':'Cleared');if(TAB==='guide')renderGuide();}
 function _downscale(dataUrl,max){return new Promise(res=>{const img=new Image();img.onload=()=>{let w=img.width,h=img.height;const s=Math.min(1,max/Math.max(w,h));const c=document.createElement('canvas');c.width=Math.round(w*s);c.height=Math.round(h*s);c.getContext('2d').drawImage(img,0,0,c.width,c.height);try{res(c.toDataURL('image/jpeg',0.8));}catch(e){res(dataUrl);}};img.onerror=()=>res(dataUrl);img.src=dataUrl;});}
+async function _geminiCall(model,body){
+  const url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent?key='+encodeURIComponent(STATE.settings.foodAiKey);
+  let res;
+  try{res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});}
+  catch(e){const err=new Error('network — check your connection');err.status=0;throw err;}
+  if(!res.ok){
+    let msg='';try{const eb=await res.json();msg=(eb&&eb.error&&eb.error.message)||'';}catch(_){}
+    const err=new Error('AI '+res.status+(msg?' — '+msg:''));err.status=res.status;throw err;
+  }
+  return res.json();
+}
 async function estimateFoodFromImage(dataUrl){
   const mime=(String(dataUrl).match(/^data:([^;,]+)/)||[,'image/jpeg'])[1];
   const b64=String(dataUrl).replace(/^data:[^,]+,/,'');
@@ -4281,20 +4295,29 @@ async function estimateFoodFromImage(dataUrl){
     {text:'You estimate nutrition from a food photo. Reply ONLY with compact JSON: {"name":"short food name","kcal":<integer calories for the portion shown>,"protein":<integer grams>}. Estimate the visible portion. No prose, no markdown.'},
     {inline_data:{mime_type:mime,data:b64}}
   ]}],generationConfig:{maxOutputTokens:300,temperature:0.2}};
-  const url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(foodAIModel())+':generateContent?key='+encodeURIComponent(STATE.settings.foodAiKey);
-  const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  if(!res.ok)throw new Error('AI '+res.status);
-  const j=await res.json();
-  const txt=(((((j.candidates||[])[0]||{}).content)||{}).parts||[]).map(p=>p&&p.text||'').join('')||'';
-  const m=txt.match(/\{[\s\S]*\}/);if(!m)throw new Error('no estimate');
-  const o=JSON.parse(m[0]);return {name:String(o.name||'Meal').slice(0,40),kcal:Math.max(0,Math.round(+o.kcal||0)),p:Math.max(0,Math.round(+(o.protein!=null?o.protein:o.p)||0))};
+  const models=foodAIModels();let lastErr=null;
+  for(const model of models){
+    try{
+      const j=await _geminiCall(model,body);
+      const txt=(((((j.candidates||[])[0]||{}).content)||{}).parts||[]).map(p=>p&&p.text||'').join('')||'';
+      const m=txt.match(/\{[\s\S]*\}/);if(!m)throw new Error('no estimate in reply');
+      const o=JSON.parse(m[0]);return {name:String(o.name||'Meal').slice(0,40),kcal:Math.max(0,Math.round(+o.kcal||0)),p:Math.max(0,Math.round(+(o.protein!=null?o.protein:o.p)||0))};
+    }catch(e){
+      lastErr=e;
+      // Only advance to the next model when THIS one is unavailable (404 not-found).
+      // Auth (403), bad-key (400), quota (429) etc. would repeat — surface them now.
+      if(e&&e.status===404)continue;
+      throw e;
+    }
+  }
+  throw lastErr||new Error('no estimate');
 }
 function foodPhoto(){
   if(!foodAIReady()){toast('Add a free Gemini key in Settings (Guide ⚙️) for photo estimates');openQuickAdd();return;}
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.setAttribute('capture','environment');
   inp.onchange=()=>{const f=inp.files&&inp.files[0];if(!f)return;const rd=new FileReader();
     rd.onerror=()=>{toast('Could not read image — add it manually');openQuickAdd();};
-    rd.onload=async()=>{toast('Estimating…');try{const du=await _downscale(rd.result,768);const est=await estimateFoodFromImage(du);openQuickAdd(est);}catch(e){toast('Could not estimate — add it manually');openQuickAdd();}};
+    rd.onload=async()=>{toast('Estimating…');try{const du=await _downscale(rd.result,768);const est=await estimateFoodFromImage(du);openQuickAdd(est);}catch(e){const msg=String((e&&e.message)||e||'failed');toast('Photo estimate failed — '+msg.slice(0,120)+' · adding manually',6000);openQuickAdd();}};
     rd.readAsDataURL(f);};
   inp.click();
 }
