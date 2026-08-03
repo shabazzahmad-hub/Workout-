@@ -4,9 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#08090b">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800;900&display=swap">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -17,6 +14,9 @@
 <meta name="description" content="CoreForge — a home training program that starts with 12 weeks of core, abs and HIIT for a flat stomach and no love handles, then expands into a full year of full-body strength (chest, back, shoulders, arms, legs) plus HIIT. Baseline assessment, week-to-week progression, self-saving. Offline-ready, installs to your home screen.">
 <title>CoreForge — 1-Year Full-Body Program</title>
 <style>
+  /* Self-hosted Archivo (variable, latin subset) — bundled so the app renders in
+     brand type fully offline, no Google Fonts request. */
+  @font-face{font-family:'Archivo';font-style:normal;font-weight:100 900;font-display:swap;src:url('./archivo.woff2') format('woff2');}
   :root{
     --bg:#08090b; --bg2:#0f1218; --card:#101318; --card2:#171b22; --card3:#1f242d;
     --line:rgba(255,255,255,.075); --line2:rgba(255,255,255,.14);
