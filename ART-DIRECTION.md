@@ -44,11 +44,16 @@ for **all** future image prompts.
 - Warm-up / cool-down: `wu-<key>.jpg` / `cd-<key>.jpg` (+ `.mp4` for demo clips).
 - Identification is done by eye on integration — descriptive filenames help but aren't required.
 
-## Backlog — images still to be re-rendered into military fatigues
-These predate this standard and should be regenerated over time:
-- The 15 home-gym equipment exercises (ab roller, medicine ball, kettlebells, battle
-  rope, dip bar, pull-up bar) — **in progress, fatigues from the start**.
-- The original ~76 exercise-library photos (currently gray tank/shorts).
-- Warm-up / cool-down set (currently a female athlete in mauve).
-- Hero / icon / splash physique (currently shirtless) — decide whether to keep the
-  physique hero as-is (brand shot) or bring into fatigues.
+## Backlog — COMPLETE ✅
+The entire image set is now in the military-fatigues standard (same male athlete,
+OD-green tee/tank + camo fatigues):
+- ✅ The 15 home-gym equipment exercises (ab roller, medicine ball, kettlebells,
+  battle rope, dip bar, pull-up bar).
+- ✅ The full exercise library (core, chest, shoulders, back, arms, legs, cardio,
+  plyometrics) — regenerated in 8 batches.
+- ✅ Warm-up / cool-down set (was a female athlete in mauve; now the male athlete
+  in fatigues).
+- ✅ Hero / icon / splash — a fatigues hero brand shot (OD-green tank + camo,
+  arms crossed, dark studio) now drives `hero.jpg`, `icon-192.png`, `icon-512.png`.
+
+Any future images must follow the wardrobe + style spec above.
