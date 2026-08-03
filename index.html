@@ -616,6 +616,16 @@ const EX = {
     steps:['From standing, squat and plant your hands on the floor.','Jump your feet back to a plank (add a push-up to make it harder).','Jump the feet back in toward your hands.','Explode up into a jump, reach tall, and land soft. Repeat.'],
     cues:['Brace the core in the plank','Land softly from the jump','Pace it so form holds'],
     mistakes:['Sagging hips in the plank','Sloppy, uncontrolled landings']},
+  squatjack:{name:'Squat Jacks',region:'cardio',unit:'time',img:'ex-squatjack.jpg',anchor:null,hardness:1.0,base:30,rest:25,
+    why:'A jumping jack done as a squat — explosive lower-body cardio that torches calories, builds the legs and glutes, and keeps the core braced through every landing.',
+    steps:['Stand tall with feet together, hands ready at your chest.','Jump both feet out wide and drop straight into a squat — hips back, chest up.','Push through the floor and jump the feet back together to stand tall.','Keep a steady, athletic rhythm with soft landings.'],
+    cues:['Sit the hips back — chest tall','Land soft through the whole foot','Brace the core on every landing'],
+    mistakes:['Knees caving inward','Shallow squat with no depth','Heavy, loud landings']},
+  halfburpee:{name:'Half Burpee',region:'cardio',unit:'time',img:'ex-halfburpee.jpg',anchor:null,hardness:1.1,base:28,rest:30,
+    why:'A burpee without the push-up — squat, kick back to a plank, jump the feet in and pop up. All the heart-rate spike and core bracing of a burpee, but easier on the shoulders and wrists.',
+    steps:['Squat down and plant both hands on the floor.','Jump both feet back into a strong plank.','Jump the feet back up toward your hands.','Drive up into a small jump, reaching tall — then straight into the next rep.'],
+    cues:['Tight plank — no sagging hips','Land soft on the jump','Steady, repeatable pace'],
+    mistakes:['Piking or sagging in the plank','Skipping the jump at the top','Going so fast form breaks down']},
 
   /* ==== CHEST (push) — week 13+ ==== */
   inclinepushup:{name:'Incline Push-Up',region:'chest',unit:'reps',img:'ex-inclinepushup.jpg',anchor:null,hardness:1,base:14,rest:55,
@@ -948,9 +958,9 @@ const LADDERS = {
   // compound strength + cardio (fat-loss / complete-program)
   legL:       ['squat','reverselunge'],
   pushL:      ['kneepushup','pushup'],
-  cardioAL:   ['jumpingjack','highknees','skater'],
-  cardioBL:   ['buttkick','squatthrust','burpee'],
-  cardioFinL: ['jumpingjack','highknees','squatthrust','burpee'],
+  cardioAL:   ['jumpingjack','squatjack','highknees','skater'],
+  cardioBL:   ['buttkick','squatthrust','halfburpee','burpee'],
+  cardioFinL: ['jumpingjack','squatjack','highknees','squatthrust','halfburpee','burpee'],
   // ==== Phase 2 (week 13+) full-body split ladders ====
   chestL:     ['inclinepushup','kneepushup','pushup','declinepushup','diamondpushup','archerpushup','spidermanpushup','superpushup'],
   shoulderL:  ['pikepushup','elevatedpike','wallhandstand','hspushup'],
