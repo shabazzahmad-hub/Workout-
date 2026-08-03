@@ -880,6 +880,15 @@ const EX = {
     why:'A deep, flat-footed resting squat that restores hip, knee and ankle mobility and builds the position strength most training misses — great for a strong, pain-free squat.',
     steps:['Stand with feet about shoulder-width, toes turned slightly out.','Sit all the way down into a deep squat, heels flat on the floor.','Keep the chest tall and let the elbows rest inside the knees.','Hold and breathe, sinking a little deeper each breath.'],
     cues:['Heels stay planted','Chest tall, back long','Relax into the position'],mistakes:['Heels lifting off the floor','Rounding the low back']},
+  /* -- Special-section cardio (not in the daily program) -- */
+  bike:{name:'Bike Trainer',region:'cardio',unit:'time',img:'ex-bike.jpg',anchor:null,hardness:1,base:40,rest:20,
+    why:'Low-impact interval cardio on your road bike and trainer — a huge aerobic and fat-loss stimulus that spares the joints.',
+    steps:['Set the road bike on the trainer and clip or strap in.','On "work", ride hard — high cadence or heavier resistance.','On "rest", spin easy to recover.','Repeat for the intervals, staying smooth and strong.'],
+    cues:['Drive from the legs','Steady, strong breathing','Relax the upper body'],mistakes:['Coasting through the work bouts','Bouncing in the saddle']},
+  sprint:{name:'Sprint Run',region:'cardio',unit:'time',img:'ex-sprint.jpg',anchor:null,hardness:1,base:20,rest:40,
+    why:'Max-effort sprint intervals build explosive speed and power and are one of the best fat-burning conditioning stimuli there is.',
+    steps:['Find a clear stretch of road, track or treadmill.','On "work", sprint at near-max effort with a tall, driving stride.','On "rest", walk or jog easy to recover fully.','Repeat, keeping every sprint crisp and powerful.'],
+    cues:['Drive the knees and arms','Stay tall and relaxed','Full recovery between sprints'],mistakes:['Half-effort sprints','Skipping the recovery']},
   ropewave:{name:'Battle Rope Waves',region:'cardio',unit:'time',img:'ex-ropewave.jpg',anchor:null,hardness:1,base:30,rest:40,equip:['battlerope'],pattern:'cardio',
     why:'Relentless conditioning for the shoulders, arms and core — huge heart rate, low impact.',
     steps:['Athletic half-squat, a rope in each hand.','Whip fast alternating waves down the rope.','Keep the tempo high for time.'],
@@ -1948,14 +1957,34 @@ function openHiitChooser(){
     </div>
     <div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Cancel</button>`);
 }
-/* Special training section — HIIT intervals available any day, on their own. */
+/* Special training section — bonus conditioning (HIIT, bike, sprints) run any
+   day, on top of the program. None of it advances your plan. */
 function openSpecial(){
   openSheet(`<h3>🎖️ Special training</h3>
-    <p class="muted sm" style="margin:2px 0 12px">High-intensity interval sessions on the core HIIT moves — run these any day, on top of your program. Pick a format:</p>
+    <p class="muted sm" style="margin:2px 0 12px">Bonus conditioning — run any day, on top of your program. It won't affect your plan or streak. Pick a mode:</p>
     <div style="display:flex;flex-direction:column;gap:10px">
-      ${Object.keys(HIIT_FORMATS).map(k=>`<button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="startHiitSpecial('${k}')"><b style="font-size:15px">⚡ ${HIIT_FORMATS[k].name}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${HIIT_FORMATS[k].desc}</div></button>`).join('')}
+      <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="specialChooser('hiit')"><b style="font-size:15px">⚡ HIIT intervals</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Bodyweight — jumping jacks, burpees, mountain climbers…</div></button>
+      <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="specialChooser('bike')"><b style="font-size:15px">🚴 Bike trainer</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Indoor ride intervals on your road bike + trainer</div></button>
+      <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="specialChooser('sprint')"><b style="font-size:15px">🏃 Sprint runs</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Max-effort sprint intervals with recovery</div></button>
     </div>
     <div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
+}
+function specialChooser(kind){
+  const title=kind==='bike'?'🚴 Bike trainer':(kind==='sprint'?'🏃 Sprint runs':'⚡ HIIT intervals');
+  const call=k=>kind==='hiit'?`startHiitSpecial('${k}')`:`startSpecialCardio('${kind}','${k}')`;
+  openSheet(`<h3>${title}</h3>
+    <p class="muted sm" style="margin:2px 0 12px">Pick an interval format:</p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${Object.keys(HIIT_FORMATS).map(k=>`<button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="${call(k)}"><b style="font-size:15px">${HIIT_FORMATS[k].name}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${HIIT_FORMATS[k].desc}</div></button>`).join('')}
+    </div>
+    <div style="height:8px"></div><button class="btn ghost" onclick="openSpecial()">← Back</button>`);
+}
+function startSpecialCardio(exId,format){
+  closeSheet();
+  if(!EX[exId])return;
+  const list=[{exId,unit:'time',target:EX[exId].base||30,rest:20,sets:1}];
+  const sess={session:{name:EX[exId].name,key:'specialcardio',focus:'Conditioning intervals'},ptr:-1,pos:{}};
+  _runHiit(sess,list,format);
 }
 function ivRingHTML(color){return `
   <div class="pl-ring"><div class="pl-pulse" id="ivPulse"></div>
