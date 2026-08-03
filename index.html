@@ -938,7 +938,7 @@ const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
   version:1,
   onboarded:false,
-  profile:{name:'', days:[1,2,4,5], unit:'cm', startWaist:null, goalWaist:null, createdAt:todayISO(),
+  profile:{name:'', days:[0,1,2,3,4,5,6], unit:'cm', startWaist:null, goalWaist:null, createdAt:todayISO(),
     sex:null, age:null, heightCm:null, experience:'Intermediate', activity:1.45, goal:'lose',
     targets:['abs','full'], gear:['bar','bench'], limitations:[]},   // deep-profile fields
   baseline:null,            // {date,results:{},coreScore,level,maxes:{}}
@@ -1255,7 +1255,7 @@ function onboardHTML(){
       <div class="daypick" id="ob-act" style="flex-wrap:wrap"><button data-a="1.2">Mostly sitting</button><button data-a="1.375">Lightly active</button><button data-a="1.45" class="on">Moderately active</button><button data-a="1.6">Very active</button></div></div>
     <div class="field"><label>Training days per week</label>
       <div class="daypick" id="ob-days">${['M','T','W','T','F','S','S'].map((d,i)=>`<button data-d="${(i+1)%7}">${d}</button>`).join('')}</div>
-      <div class="tiny muted" style="margin-top:7px">Pick ~4 days — the sweet spot. Rest days matter.</div></div>
+      <div class="tiny muted" style="margin-top:7px">Set for 7 days a week — train daily. Tap any day to make it a rest day.</div></div>
   </div>
 
   <div class="card pad">
@@ -4224,6 +4224,8 @@ async function boot(){
   if(!STATE.profile.goal)STATE.profile.goal=STATE.nutrition.goal||'lose';
   // one-time: seed the owner's actual home-gym kit so the Weights session works out of the box
   if(!STATE.profile._gearMil){STATE.profile.gear=['bar','dip','kettlebell','medball','abroller','battlerope'];STATE.profile.hasBar=true;STATE.profile._gearMil=true;}
+  // one-time: switch to a 7-day-a-week training schedule
+  if(!STATE.profile._days7){STATE.profile.days=[0,1,2,3,4,5,6];STATE.profile._days7=true;}
   if(!Array.isArray(STATE.photos))STATE.photos=[];
   if(!STATE.achievements||typeof STATE.achievements!=='object')STATE.achievements={};
   if(STATE.settings.reminderOn===undefined)STATE.settings.reminderOn=false;
