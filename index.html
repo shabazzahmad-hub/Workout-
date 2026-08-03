@@ -1157,10 +1157,11 @@ function buildSession(ptr){
       if(exId==='kneeraise'&&!hasBar){exId='legraise';}
       if(exId==='copenhagen'&&STATE.profile.hasBench===false){exId='sidedip';}
     }
+    exId=safeSwap(exId);   // injury-aware: work around flagged joints
     return {exId,...prescribe(exId,pos),slot:ladder};
   });
   const finLad=LADDERS[pos.session.finisher];
-  const finId=finLad[clamp(rungIndex(pos.session.finisher,cycle,week,level),0,finLad.length-1)];
+  const finId=safeSwap(finLad[clamp(rungIndex(pos.session.finisher,cycle,week,level),0,finLad.length-1)]);
   const finisher={exId:finId,...prescribe(finId,pos),slot:pos.session.finisher};
   finisher.sets=1;   // a finisher is always one all-out burnout round
   return {ptr,pos,cycle,week,session:pos.session,warmup:WARMUP,main,finisher,cooldown:COOLDOWN};
@@ -3835,6 +3836,33 @@ function goalETAHTML(){
   const mon=eta.toLocaleDateString(undefined,{month:'short',year:'numeric'});const good=perWeek>=0.2;
   return `<div class="tiny" style="margin-top:8px;color:${good?'var(--green)':'var(--gold)'};font-weight:700">📉 At ~${perWeek.toFixed(1)}${p.unit}/wk you'll hit your goal around <b>${mon}</b> (~${weeks} wk).${good?'':' Pick up the pace to speed it up.'}</div>`;
 }
+/* ---- #6 Injury-aware auto-substitution ---- */
+const JOINTS=[['knee','Knee'],['shoulder','Shoulder'],['wrist','Wrist'],['lowback','Lower back'],['elbow','Elbow']];
+const JOINT_RISK={
+  knee:['pistol','boxpistol','jumpsquat','tuckjump','broadjump','splitjump','bulgarian','burpee','burpeetuck','walkinglunge'],
+  shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','dbpress','kbcp','dbthruster'],
+  wrist:['pushup','diamondpushup','closepushup','archerpushup','spidermanpushup','planktap','mountainclimber','dbrenegade','abroll'],
+  lowback:['superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','mbslam','ropeslam'],
+  elbow:['dips','benchdip','diamondpushup','closepushup','chinup','negpullup','dbcurl'],
+};
+const SAFE_SWAP={
+  pistol:'squat',boxpistol:'squat',jumpsquat:'squat',tuckjump:'squat',broadjump:'squat',splitjump:'reverselunge',bulgarian:'splitsquat',burpee:'squatthrust',burpeetuck:'squatthrust',walkinglunge:'reverselunge',
+  hspushup:'pikepushup',wallhandstand:'plank',pikepushup:'inclinepushup',elevatedpike:'pikepushup',superpushup:'pushup',archerpushup:'pushup',dbpress:'dbfloor',kbcp:'kbrow',dbthruster:'dbgoblet',
+  pushup:'kneepushup',diamondpushup:'kneepushup',closepushup:'kneepushup',spidermanpushup:'kneepushup',planktap:'plank',mountainclimber:'march',dbrenegade:'dbrow',abroll:'plank',
+  superman:'birddog',reverseplank:'glutebridge',nordic:'glutebridge',kbswing:'kbgoblet',dbrdl:'glutebridge',kbrdl:'glutebridge',hipthrust:'glutebridge',mbslam:'mbsitup',ropeslam:'ropewave',
+  dips:'benchdip',benchdip:'closepushup',chinup:'invertedrow',negpullup:'invertedrow',dbcurl:'dbrow',
+};
+function safeSwap(exId){
+  const lims=(STATE.profile&&STATE.profile.limitations)||[];
+  if(!lims.length)return exId;
+  for(const j of lims){if((JOINT_RISK[j]||[]).includes(exId)){const alt=SAFE_SWAP[exId];if(alt&&EX[alt])return alt;}}
+  return exId;
+}
+function toggleLimitation(j){
+  const p=STATE.profile;if(!Array.isArray(p.limitations))p.limitations=[];
+  p.limitations=p.limitations.includes(j)?p.limitations.filter(x=>x!==j):[...p.limitations,j];
+  save();toast(p.limitations.includes(j)?'Working around your '+j:'Cleared');render();
+}
 /* ---- #1 True per-exercise progression ---- */
 function exAdaptFor(exId){return (STATE.exAdapt&&STATE.exAdapt[exId])||1;}
 function ratingChipsHTML(exId){
@@ -4578,7 +4606,9 @@ function renderGuide(){
       <div class="btnrow" style="gap:6px;margin-top:6px"><button class="chip" onclick="setBeatTempo(70)">😌 Chill 70</button><button class="chip" onclick="setBeatTempo(78)">🎧 Classic 78</button><button class="chip" onclick="setBeatTempo(92)">🔥 Hype 92</button></div>
       <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">The beat plays during timers, guided reps, warm-up &amp; cool-down.</span><button class="chip" onclick="beatPreview()">▶ Preview</button></div>
     </div>`:''}
-    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Deload week <span class="tiny muted">· lighter sets &amp; targets to recover</span></span><button class="chip ${deloadOn()?'on':''}" onclick="toggleDeload()">${deloadOn()?'On':'Off'}</button></div>`;
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Deload week <span class="tiny muted">· lighter sets &amp; targets to recover</span></span><button class="chip ${deloadOn()?'on':''}" onclick="toggleDeload()">${deloadOn()?'On':'Off'}</button></div>
+    <div style="padding:6px 0 2px"><div class="tiny muted" style="margin-bottom:6px">Work around an injury <span style="opacity:.7">· auto-swaps risky moves</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${JOINTS.map(([k,l])=>`<button class="chip ${((STATE.profile.limitations||[]).includes(k))?'on':''}" onclick="toggleLimitation('${k}')">${l}</button>`).join('')}</div></div>`;
   h+=`
     <div style="padding:6px 0 2px"><div class="tiny muted" style="margin-bottom:5px">Coach voice</div>
       <select onchange="setCoachVoice(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px">${voiceOptionsHTML()}</select>
