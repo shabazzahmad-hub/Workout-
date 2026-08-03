@@ -1491,6 +1491,11 @@ function todayWorkoutHTML(){
   const doneCount=sess.main.concat(sess.finisher).filter(m=>log.ex[m.exId]&&log.ex[m.exId].done).length;
   const totalCount=sess.main.length+1;
   const pct=Math.round(doneCount/totalCount*100);
+  // day's-workout progress, by sets (smooth) — the bar updates live as sets are ticked
+  const _items=[...sess.main,sess.finisher];
+  const totalSets=_items.reduce((a,m)=>a+(m.sets||0),0);
+  const doneSets=_items.reduce((a,m)=>{const st=log.ex[m.exId];return a+(st&&st.sets?st.sets.filter(Boolean).length:0);},0);
+  const setsPct=totalSets?Math.round(doneSets/totalSets*100):0;
   const R=sess.session.key;
   const heroImg=heroImageFor(sess);
   const sessAll=SESSIONS_PER_CYCLE*TOTAL_CYCLES;   // 378 sessions across the full year
@@ -1508,6 +1513,13 @@ function todayWorkoutHTML(){
       <h1>${sess.session.name}</h1>
       <div class="hp-stats"><div class="hp-stat"><b>${totalCount}</b>exercises</div><div class="hp-stat"><b>~${vol.minutes}</b>minutes</div><div class="hp-stat"><b>${pct}%</b>done</div></div>
     </div>
+  </div>
+  <div class="card pad" style="padding:13px 15px;margin:0 0 12px">
+    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">
+      <b style="font-size:13px">${doneCount>=totalCount?'✅ Workout complete':"Today's workout"}</b>
+      <span class="tiny muted">${doneCount}/${totalCount} exercises · ${doneSets}/${totalSets} sets · ${setsPct}%</span>
+    </div>
+    <div class="pbar${doneCount>=totalCount?' green':''}"><i style="width:${setsPct}%"></i></div>
   </div>
   <button class="btn primary" style="margin:2px 0 8px;font-size:17px;padding:18px;font-weight:900" onclick="startMyDay()">☀️ Start my day — Sarge runs the whole flow</button>
   <div class="tiny muted" style="text-align:center;margin:-4px 0 10px">Brief → warm-up → workout → cool-down, guided end-to-end. Or pick a step below.</div>
