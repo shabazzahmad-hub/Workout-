@@ -1054,6 +1054,9 @@ const TESTS = [
    instr:'Do controlled bicycle crunches for as long as your form stays good. Press Start — the timer counts up — and Stop when your form breaks or you can\'t keep the pace.'},
 ];
 
+/* App build version — shown in Settings so you can confirm you're on the latest.
+   Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
+const APP_VERSION='103';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -4260,8 +4263,11 @@ function openQuickAdd(pre){
       <div class="field" style="flex:1;margin:0"><label>Calories</label><input id="fa-kcal" type="number" inputmode="numeric" value="${pre.kcal||''}" placeholder="kcal"></div>
       <div class="field" style="flex:1;margin:0"><label>Protein (g)</label><input id="fa-p" type="number" inputmode="numeric" value="${pre.p||''}" placeholder="g"></div>
     </div>
-    ${(pre.kcal||pre.p)?'<div class="tiny muted" style="margin:8px 0">📷 Gemini estimate — approximate, tweak if needed then save.</div>':'<div style="height:8px"></div>'}
-    <button class="btn primary" onclick="saveFood()">Save</button>
+    ${(pre.kcal||pre.p)?`<div style="margin:8px 0;padding:10px 12px;border-radius:12px;background:rgba(46,204,113,.12);border:1px solid var(--green)">
+      <div style="font-weight:800">📷 Estimated: ${_ve(pre.name||'Food')}</div>
+      <div class="tiny muted" style="margin-top:2px">~${pre.kcal||0} kcal · ${pre.p||0}g protein — approximate. Tweak if needed, then tap <b>Save</b> to log it.</div>
+    </div>`:'<div style="height:8px"></div>'}
+    <button class="btn primary" onclick="saveFood()">${(pre.kcal||pre.p)?'Save to log':'Save'}</button>
     <div class="section-label" style="margin-top:14px">Quick picks</div>
     <div style="display:flex;flex-wrap:wrap;gap:6px">${COMMON_FOODS.map((f,i)=>`<button class="chip" onclick="quickPick(${i})">${f.name.split(' (')[0]} · ${f.kcal}</button>`).join('')}</div>
     <div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
@@ -4333,7 +4339,7 @@ function foodPhoto(){
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.setAttribute('capture','environment');
   inp.onchange=()=>{const f=inp.files&&inp.files[0];if(!f)return;const rd=new FileReader();
     rd.onerror=()=>{toast('Could not read image — add it manually');openQuickAdd();};
-    rd.onload=async()=>{toast('Estimating…');try{const du=await _downscale(rd.result,768);const est=await estimateFoodFromImage(du);openQuickAdd(est);}catch(e){const msg=String((e&&e.message)||e||'failed');toast('Photo estimate failed — '+msg.slice(0,120)+' · adding manually',6000);openQuickAdd();}};
+    rd.onload=async()=>{toast('Estimating…');try{const du=await _downscale(rd.result,768);const est=await estimateFoodFromImage(du);openQuickAdd(est);toast('📷 '+(est.name||'Food')+' · ~'+est.kcal+' kcal, '+est.p+'g — tap Save to log',5000);}catch(e){const msg=String((e&&e.message)||e||'failed');toast('Photo estimate failed — '+msg.slice(0,120)+' · adding manually',6000);openQuickAdd();}};
     rd.readAsDataURL(f);};
   inp.click();
 }
@@ -5231,8 +5237,42 @@ function renderGuide(){
     <div class="divider"></div>
     <button class="btn ghost sm" style="width:100%;color:var(--pink)" onclick="hardReset()">Reset all data</button>
   </div>`;
-  h+=`<div class="center tiny muted" style="margin:20px 0">CoreForge · built for a strong midsection<br>${STATE.profile.name?'Athlete: '+STATE.profile.name+' · ':''}saved ${STATE._saved||todayISO()}</div>`;
+  h+=`<div class="section-label">About</div><div class="card pad">
+    <div class="row" style="justify-content:space-between;padding:2px 0"><span>App version</span><span style="font-weight:800">v${APP_VERSION}</span></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span class="sm muted">Offline cache</span><span id="swVer" class="sm muted">checking…</span></div>
+    <button class="btn ghost sm" style="width:100%;margin-top:6px" onclick="forceUpdate()">🔄 Check for update</button>
+    <div class="tiny muted" style="margin-top:6px">If the version here doesn't match the latest, tap Check for update — it re-fetches the app and reloads. On the installed app, fully closing and reopening it also picks up new versions.</div>
+  </div>`;
+  h+=`<div class="center tiny muted" style="margin:20px 0">CoreForge v${APP_VERSION} · built for a strong midsection<br>${STATE.profile.name?'Athlete: '+STATE.profile.name+' · ':''}saved ${STATE._saved||todayISO()}</div>`;
   v.innerHTML=h;
+  refreshCacheVer();
+}
+/* Read the live service-worker cache version so the user can compare it against
+   APP_VERSION — if they differ, the worker is stale and a refresh is needed. */
+function refreshCacheVer(){
+  const el=document.getElementById('swVer');if(!el)return;
+  if(!('caches'in window)){el.textContent='n/a';return;}
+  caches.keys().then(keys=>{
+    const nums=keys.map(k=>{const m=/^coreforge-v(\d+)$/.exec(k);return m?+m[1]:null;}).filter(n=>n!=null);
+    if(!nums.length){el.textContent='not cached yet';return;}
+    const active='v'+Math.max.apply(null,nums);
+    const ok=active===('v'+APP_VERSION);
+    el.innerHTML=active+(ok?' <span style="color:var(--green);font-weight:800">✓ up to date</span>':' <span style="color:var(--fire-l);font-weight:800">· update available</span>');
+  }).catch(()=>{el.textContent='n/a';});
+}
+/* Force the newest app + worker: ping sw.js for an update, then hard-reload so the
+   network-first index.html (and its APP_VERSION) comes down fresh. */
+function forceUpdate(){
+  toast('Checking for updates…');
+  const reload=()=>{try{location.reload(true);}catch(e){location.reload();}};
+  try{
+    if('serviceWorker'in navigator&&navigator.serviceWorker.getRegistration){
+      navigator.serviceWorker.getRegistration().then(reg=>{
+        const after=()=>setTimeout(reload,500);
+        if(reg&&reg.update){reg.update().then(after,after);}else after();
+      },()=>setTimeout(reload,500));
+    }else{setTimeout(reload,500);}
+  }catch(e){setTimeout(reload,500);}
 }
 function toggleSetting(k){
   if(k==='hasBar')STATE.profile.hasBar=!(STATE.profile.hasBar!==false);
