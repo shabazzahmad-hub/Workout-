@@ -66,9 +66,23 @@ const MOVES = [
   { name: "cd-breathing",  img: "cd-breathing.jpg",  prompt: "Lying on the back fully relaxed, slow deep breathing — the chest and belly rise and fall." },
 ];
 
+// EXERCISE-LIBRARY MODE: set GEN_EXERCISES=1 to also turn every ex-*.jpg photo in
+// IMG_DIR into a looping ex-*.mp4 demo. Uses a generic "smooth controlled reps,
+// return to start so it loops" motion prompt — no per-exercise prompt needed.
+function exerciseMoves() {
+  let files = [];
+  try { files = fs.readdirSync(IMG_DIR).filter(f => /^ex-.+\.jpg$/i.test(f)); } catch (e) {}
+  return files.map(f => ({
+    name: f.replace(/\.jpg$/i, ""),
+    img: f,
+    prompt: "Performs this exercise with smooth, controlled, realistic reps at a steady pace.",
+  }));
+}
+
 async function run() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
-  const list = ONLY.length ? MOVES.filter(m => ONLY.includes(m.name)) : MOVES;
+  const base = (process.env.GEN_EXERCISES === "1") ? MOVES.concat(exerciseMoves()) : MOVES;
+  const list = ONLY.length ? base.filter(m => ONLY.includes(m.name)) : base;
   console.log(`CoreForge video gen · model=${MODEL} · ${list.length} clips → ${OUT_DIR}\n`);
   let ok = 0, skip = 0, fail = 0;
   for (const m of list) {
