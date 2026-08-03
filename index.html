@@ -2696,8 +2696,8 @@ function briefUpdateControls(){
 function briefSheetHTML(segs){
   const d=(()=>{try{return new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'});}catch(e){return '';}})();
   return `<div style="text-align:center;margin-bottom:6px">
-      <div style="font-size:34px;line-height:1">🎖️</div>
-      <h2 style="margin:4px 0 2px">Morning Brief</h2>
+      <img src="coach-sarge.jpg" alt="${ADVISOR.name}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{textContent:'🎖️',style:'font-size:40px;line-height:1'}))" style="width:94px;height:94px;border-radius:50%;object-fit:cover;object-position:center 18%;border:2px solid var(--fire);box-shadow:0 6px 18px rgba(0,0,0,.45)">
+      <h2 style="margin:8px 0 2px">Morning Brief</h2>
       <div class="tiny muted">${ADVISOR.name} · your coach${d?' · '+d:''}</div>
     </div>
     <button class="btn primary" id="briefPlayBtn" style="margin:8px 0 4px;font-size:16px;padding:15px">▶ Play briefing</button>
