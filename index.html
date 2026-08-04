@@ -1060,7 +1060,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='123';
+const APP_VERSION='124';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1068,7 +1068,8 @@ const DEFAULT_STATE=()=>({
   onboarded:false,
   profile:{name:'', days:[0,1,2,3,4,5,6], unit:'cm', startWaist:null, goalWaist:null, createdAt:todayISO(),
     sex:null, age:null, heightCm:null, experience:'Intermediate', activity:1.45, goal:'lose',
-    targets:['abs','full'], gear:['bar','bench'], limitations:[]},   // deep-profile fields
+    targets:['abs','full'], gear:['bar','bench'], limitations:[],   // deep-profile fields
+    focusPrimary:'abs', troubleZones:[], conditioning:'moderate', mobility:'ok', timelineWeeks:null},   // comprehensive-quiz fields
   baseline:null,            // {date,results:{},coreScore,level,maxes:{}}
   reassess:{},              // cycleIndex -> {date,results,coreScore,level,maxes}
   progressPtr:0,            // index of next session to do (0-based, across all cycles)
@@ -1129,7 +1130,9 @@ function currentMaxes(cycle){
 }
 function levelOf(cycle){
   if(cycle>0 && STATE.reassess[cycle]) return STATE.reassess[cycle].level;
-  return (STATE.baseline&&STATE.baseline.level)||'Intermediate';
+  if(STATE.baseline&&STATE.baseline.level) return STATE.baseline.level;
+  // before the baseline test, seed the starting level from the quiz's experience answer
+  return (STATE.profile&&STATE.profile.experience)||'Intermediate';
 }
 const LEVEL_TIER={Beginner:0,Intermediate:1,Advanced:2};
 const LEVEL_FACTOR={Beginner:0.8,Intermediate:1.0,Advanced:1.2};
@@ -1193,11 +1196,47 @@ function prescribe(exId,pos){
   if(typeof readinessMult==='function'){const rf=readinessMult();target*=rf;if(rf<0.85)sets=Math.max(1,sets-1);}   // daily readiness auto-regulation
   if(typeof comebackEaseActive==='function'&&comebackEaseActive()){target*=0.8;sets=Math.max(1,sets-1);}   // non-punishing ease-in after a layoff
   if(typeof exAdaptFor==='function')target*=exAdaptFor(exId);   // per-exercise progression from your ratings
+  // conditioning level (from the quiz) scales cardio/dynamic work up or down
+  if(ex.region==='cardio'||ex.region==='dynamic'){const c=(STATE.profile&&STATE.profile.conditioning)||'moderate';target*=(c==='low'?0.85:(c==='high'?1.15:1));}
   if(ex.unit==='time'){target=Math.round(target/5)*5;target=clamp(target,15,150);}
   else{target=Math.round(target);target=clamp(target,6,40);}
   return {sets,target,unit:ex.unit,rest:ex.rest||45};
 }
 
+/* Focus-area pools for the targeted bonus slot. Each session gains ONE extra
+   accessory drawn from the area the athlete most wants to improve (quiz:
+   focusPrimary, falling back to their focus areas). Gear- and injury-filtered. */
+const FOCUS_POOL={
+  abs:['hollow','vup','tuckvup','legraise','revcrunch','crunch','bicycle','kneeraise','abroll','mbsitup','flutter'],
+  obliques:['sideplank','sidedip','russiantwist','bicycle','copenhagen','standingoblique','mbtwist','kbhalo'],
+  full:['burpee','squatthrust','mountainclimber','kbswing','dbthruster','halfburpee','squat','pushup'],
+  chest:['pushup','inclinepushup','declinepushup','diamondpushup','archerpushup','closepushup','dbfloor'],
+  back:['invertedrow','superman','scappull','negpullup','pullup','chinup','dbrow','kbrow'],
+  shoulders:['pikepushup','elevatedpike','wallhandstand','dbpress','kbcp'],
+  arms:['benchdip','closepushup','dips','dbcurl','diamondpushup'],
+  legs:['squat','reverselunge','splitsquat','bulgarian','walkinglunge','jumpsquat','kbgoblet','dbgoblet'],
+  glutes:['glutebridge','singlebridge','hipthrust','kbrdl','dbrdl','nordic'],
+};
+// Pick one bonus exercise for the athlete's priority area, avoiding what's already
+// in today's session, respecting equipment, and swapping around flagged joints.
+function focusBonus(pos,used){
+  try{
+    const p=STATE.profile||{};
+    const keys=[p.focusPrimary,...(Array.isArray(p.targets)?p.targets:[])].filter(Boolean);
+    const gear=p.gear||[];
+    const has=k=>{const e=EX[k];if(!e)return false;if(!e.equip)return true;return e.equip.every(g=>gear.includes(g));};
+    for(const key of keys){
+      const pool=FOCUS_POOL[key];if(!pool)continue;
+      const cands=pool.filter(k=>EX[k]&&!used.has(k)&&has(k)).map(k=>safeSwap(k)).filter(k=>EX[k]&&!used.has(k)&&has(k));
+      if(!cands.length)continue;
+      // deterministic-but-varied pick so it rotates across sessions without Math.random
+      const exId=cands[(pos.cycle*7+(pos.dayInWeek||0))%cands.length];
+      const rx=prescribe(exId,pos);
+      return {exId,...rx,sets:Math.min(rx.sets,2),slot:'focus',focus:true,focusKey:key};
+    }
+  }catch(e){}
+  return null;
+}
 // Build the full session object for a given pointer
 function buildSession(ptr){
   const pos=posOf(ptr);
@@ -1218,6 +1257,10 @@ function buildSession(ptr){
   const finId=safeSwap(finLad[clamp(rungIndex(pos.session.finisher,cycle,week,level),0,finLad.length-1)]);
   const finisher={exId:finId,...prescribe(finId,pos),slot:pos.session.finisher};
   finisher.sets=1;   // a finisher is always one all-out burnout round
+  // targeted bonus: one extra move for the athlete's priority area (from the quiz)
+  const used=new Set([...main.map(m=>m.exId),finId]);
+  const bonus=focusBonus(pos,used);
+  if(bonus)main.push(bonus);
   return {ptr,pos,cycle,week,session:pos.session,warmup:WARMUP,main,finisher,cooldown:COOLDOWN};
 }
 function sessionVolume(sess){
@@ -1354,7 +1397,7 @@ function reassessGate(){
 /* ============================ TODAY VIEW ============================ */
 function renderToday(){
   const v=$('#v-today');
-  if(!STATE.onboarded){v.innerHTML=onboardHTML();wireOnboard();return;}
+  if(!STATE.onboarded||OB_EDIT){v.innerHTML=onboardHTML();wireOnboard();return;}
   if(!STATE.baseline){v.innerHTML=baselineIntroHTML();$('#startAssess').onclick=()=>openAssessment(false);return;}
   const gate=reassessGate();
   if(gate){v.innerHTML=reassessIntroHTML(gate);$('#startReassess').onclick=()=>openAssessment(gate);return;}
@@ -1363,72 +1406,109 @@ function renderToday(){
   wireToday();
 }
 
+// Comprehensive onboarding wizard. Same function powers first-run setup AND the
+// non-destructive "Edit my profile" flow (OB_EDIT) — every field prefills from
+// STATE so re-opening shows your current answers.
+let OB_EDIT=false;
+function openProfileEdit(){OB_EDIT=true;navTo('today');window.scrollTo(0,0);render();}
+const OB_STEPS=6;
 function onboardHTML(){
+  const P=STATE.profile||{}, N=STATE.nutrition||{};
+  const edit=OB_EDIT, im=P.unit==='in';
+  const on=(a,b)=>a===b?' class="on"':'';                       // single-select
+  const mon=(arr,v)=>Array.isArray(arr)&&arr.includes(v)?' class="on"':''; // multi-select
+  const dv=v=>(v>0?v:'');                                       // display value or blank
+  const htD=dv(P.heightCm>0?(im?Math.round(P.heightCm/2.54):P.heightCm):0);
+  const curKg=N.weightKg||latestWeightKg()||0;
+  const wtD=dv(curKg>0?(im?Math.round(curKg/0.453592):Math.round(curKg*10)/10):0);
+  const wsD=dv(P.startWaist>0?(im?Math.round(P.startWaist/2.54):P.startWaist):0);
+  const gwtD=dv(P.goalWeightLb>0?(im?P.goalWeightLb:Math.round(P.goalWeightLb*0.453592)):0);
+  const gwsD=dv(P.goalWaist>0?(im?Math.round(P.goalWaist/2.54):P.goalWaist):0);
+  const hu=im?'in':'cm', wu=im?'lb':'kg';
+  const step=(n,title,body)=>`<div class="ob-step card pad" data-step="${n}" style="${n===1?'':'display:none'}"><h3 style="margin-top:0">${title}</h3>${body}</div>`;
+  const FOCI=[['abs','Abs & core'],['obliques','Obliques & waist'],['glutes','Glutes'],['chest','Chest'],['back','Back & posture'],['shoulders','Shoulders'],['arms','Arms'],['legs','Legs'],['full','Full body']];
+  const FAREAS=[['abs','Abs & core'],['full','Full body'],['chest','Chest'],['back','Back'],['shoulders','Shoulders'],['arms','Arms'],['legs','Legs'],['glutes','Glutes']];
+  const TROUBLE=[['belly','Belly'],['lovehandles','Love handles'],['chest','Chest'],['arms','Arms'],['thighs','Thighs'],['posture','Posture / back']];
   return `
   <div class="herophoto" style="margin-bottom:14px">
     <img src="hero.jpg" alt="" onerror="this.style.display='none'">
     <div class="hp-grad"></div>
-    <div class="hp-badges"><span class="hp-badge today">WELCOME</span></div>
+    <div class="hp-badges"><span class="hp-badge today">${edit?'EDIT PROFILE':'WELCOME'}</span></div>
     <div class="hp-body">
-      <div class="hp-focus">Welcome to</div>
+      <div class="hp-focus">${edit?'Update your':'Welcome to'}</div>
       <h1>CoreForge</h1>
-      <div class="hp-focus" style="opacity:.9">Core &amp; abs first — then a full year of full-body training</div>
+      <div class="hp-focus" style="opacity:.9">${edit?'Change anything — your progress is kept':'Core &amp; abs first — then a full year of full-body training'}</div>
     </div>
   </div>
-  <div class="note fire">Answer a few questions and CoreForge tailors your whole plan — training, equipment and meals — to <b>you</b>. Then a quick <b>baseline test</b> sets your starting numbers, and the program auto-progresses every week.</div>
-  <div class="card pad">
-    <h3>About you</h3>
-    <div class="field"><label>Your name (optional)</label><input id="ob-name" placeholder="Athlete" autocomplete="off"></div>
+  <div class="note fire" style="margin-bottom:12px">${edit?'Update any answer and tap <b>Save changes</b>. Your program and nutrition re-tune to match — nothing is reset.':'Answer a few questions and CoreForge tailors your whole plan — training, focus, equipment and meals — to <b>you</b>.'}</div>
+  <div style="margin:0 2px 12px"><div class="pbar"><i id="ob-fill" style="width:${100/OB_STEPS}%"></i></div>
+    <div class="tiny muted" id="ob-steplbl" style="margin-top:6px">Step 1 of ${OB_STEPS}</div></div>
+
+  ${step(1,'About you',`
+    <div class="field"><label>Your name (optional)</label><input id="ob-name" placeholder="Athlete" autocomplete="off" value="${(P.name||'').replace(/"/g,'&quot;')}"></div>
     <div class="numrow" style="gap:10px">
       <div class="field" style="flex:1.4;margin:0"><label>Sex (for calorie math)</label>
-        <div class="daypick" id="ob-sex"><button data-s="male" class="on">Male</button><button data-s="female">Female</button></div></div>
-      <div class="field" style="flex:1;margin:0"><label>Age</label><input id="ob-age" type="number" inputmode="numeric" placeholder="35"></div>
-    </div>
-    <div class="numrow" style="gap:10px">
-      <div class="field" style="flex:1;margin:0"><label>Height (<span id="ob-htu">cm</span>)</label><input id="ob-height" type="number" inputmode="decimal" placeholder="178"></div>
-      <div class="field" style="flex:1;margin:0"><label>Weight (<span id="ob-wtu">kg</span>)</label><input id="ob-weight" type="number" inputmode="decimal" placeholder="84"></div>
-      <div class="field" style="flex:1;margin:0"><label>Waist (<span id="ob-wsu">cm</span>)</label><input id="ob-waist" type="number" inputmode="decimal" placeholder="86"></div>
+        <div class="daypick" id="ob-sex"><button data-s="male"${on(P.sex||'male','male')}>Male</button><button data-s="female"${on(P.sex,'female')}>Female</button></div></div>
+      <div class="field" style="flex:1;margin:0"><label>Age</label><input id="ob-age" type="number" inputmode="numeric" placeholder="35" value="${dv(P.age)}"></div>
     </div>
     <div class="field"><label>Measurement units</label>
-      <div class="daypick" id="ob-unit"><button data-u="cm" class="on">Metric (cm/kg)</button><button data-u="in">Imperial (in/lb)</button></div></div>
-  </div>
+      <div class="daypick" id="ob-unit"><button data-u="cm"${on(P.unit||'cm','cm')}>Metric (cm/kg)</button><button data-u="in"${on(P.unit,'in')}>Imperial (in/lb)</button></div></div>
+    <div class="numrow" style="gap:10px">
+      <div class="field" style="flex:1;margin:0"><label>Height (<span id="ob-htu">${hu}</span>)</label><input id="ob-height" type="number" inputmode="decimal" placeholder="178" value="${htD}"></div>
+      <div class="field" style="flex:1;margin:0"><label>Weight (<span id="ob-wtu">${wu}</span>)</label><input id="ob-weight" type="number" inputmode="decimal" placeholder="84" value="${wtD}"></div>
+      <div class="field" style="flex:1;margin:0"><label>Waist (<span id="ob-wsu">${hu}</span>)</label><input id="ob-waist" type="number" inputmode="decimal" placeholder="86" value="${wsD}"></div>
+    </div>`)}
 
-  <div class="card pad">
-    <h3>Your goal</h3>
+  ${step(2,'Your goal &amp; target',`
     <div class="field"><label>Primary goal</label>
-      <div class="daypick" id="ob-goal"><button data-g="lose" class="on">🔥 Lose fat</button><button data-g="recomp">⚖️ Tone up</button><button data-g="maintain">💪 Maintain</button><button data-g="gain">📈 Build muscle</button></div></div>
-    <div class="field"><label>Focus areas <span class="tiny muted">· tap all that apply</span></label>
-      <div class="daypick" id="ob-targets" style="flex-wrap:wrap">
-        ${[['abs','Abs & core'],['full','Full body'],['chest','Chest'],['back','Back'],['shoulders','Shoulders'],['arms','Arms'],['legs','Legs'],['glutes','Glutes']].map(([k,l])=>`<button data-t="${k}"${(k==='abs'||k==='full')?' class="on"':''}>${l}</button>`).join('')}</div></div>
-    <div class="field"><label>Experience level</label>
-      <div class="daypick" id="ob-exp"><button data-x="Beginner">Beginner</button><button data-x="Intermediate" class="on">Intermediate</button><button data-x="Advanced">Advanced</button></div></div>
+      <div class="daypick" id="ob-goal"><button data-g="lose"${on(P.goal||'lose','lose')}>🔥 Lose fat</button><button data-g="recomp"${on(P.goal,'recomp')}>⚖️ Tone up</button><button data-g="maintain"${on(P.goal,'maintain')}>💪 Maintain</button><button data-g="gain"${on(P.goal,'gain')}>📈 Build muscle</button></div></div>
+    <div class="numrow" style="gap:10px">
+      <div class="field" style="flex:1;margin:0"><label>Goal weight (<span id="ob-gwtu">${wu}</span>) <span class="tiny muted">· optional</span></label><input id="ob-goalwt" type="number" inputmode="decimal" placeholder="${im?'175':'79'}" value="${gwtD}"></div>
+      <div class="field" style="flex:1;margin:0"><label>Goal waist (<span id="ob-gwsu">${hu}</span>) <span class="tiny muted">· optional</span></label><input id="ob-goalwaist" type="number" inputmode="decimal" placeholder="${im?'32':'81'}" value="${gwsD}"></div>
+    </div>
+    <div class="field"><label>Timeframe <span class="tiny muted">· sets your projection pace</span></label>
+      <div class="daypick" id="ob-timeline" style="flex-wrap:wrap"><button data-w="12"${on(P.timelineWeeks,12)}>~12 weeks</button><button data-w="24"${on(P.timelineWeeks,24)}>~6 months</button><button data-w="52"${on(P.timelineWeeks,52)}>~1 year</button><button data-w="0"${(!P.timelineWeeks?' class="on"':'')}>No deadline</button></div></div>`)}
+
+  ${step(3,'Focus &amp; priority',`
+    <div class="field"><label>#1 area you most want to improve <span class="tiny muted">· drives a targeted bonus move every session</span></label>
+      <div class="daypick" id="ob-focus" style="flex-wrap:wrap">${FOCI.map(([k,l])=>`<button data-f="${k}"${on(P.focusPrimary||'abs',k)}>${l}</button>`).join('')}</div></div>
+    <div class="field"><label>Other focus areas <span class="tiny muted">· tap all that apply</span></label>
+      <div class="daypick" id="ob-targets" style="flex-wrap:wrap">${FAREAS.map(([k,l])=>`<button data-t="${k}"${mon(P.targets&&P.targets.length?P.targets:['abs','full'],k)}>${l}</button>`).join('')}</div></div>
+    <div class="field"><label>Trouble zones <span class="tiny muted">· stubborn spots · optional</span></label>
+      <div class="daypick" id="ob-trouble" style="flex-wrap:wrap">${TROUBLE.map(([k,l])=>`<button data-z="${k}"${mon(P.troubleZones,k)}>${l}</button>`).join('')}</div></div>
+    <div class="field"><label>Work around an injury? <span class="tiny muted">· auto-swaps risky moves · optional</span></label>
+      <div class="daypick" id="ob-inj" style="flex-wrap:wrap">${JOINTS.map(([k,l])=>`<button data-j="${k}"${mon(P.limitations,k)}>${l}</button>`).join('')}</div></div>`)}
+
+  ${step(4,'Experience &amp; conditioning',`
+    <div class="field"><label>Training experience</label>
+      <div class="daypick" id="ob-exp"><button data-x="Beginner"${on(P.experience,'Beginner')}>Beginner</button><button data-x="Intermediate"${on(P.experience||'Intermediate','Intermediate')}>Intermediate</button><button data-x="Advanced"${on(P.experience,'Advanced')}>Advanced</button></div></div>
+    <div class="field"><label>Cardio / conditioning <span class="tiny muted">· scales your HIIT &amp; finishers</span></label>
+      <div class="daypick" id="ob-cond"><button data-c="low"${on(P.conditioning,'low')}>Just starting</button><button data-c="moderate"${on(P.conditioning||'moderate','moderate')}>Average</button><button data-c="high"${on(P.conditioning,'high')}>Very fit</button></div></div>
+    <div class="field"><label>Flexibility / mobility <span class="tiny muted">· tunes warm-up &amp; cool-down</span></label>
+      <div class="daypick" id="ob-mob"><button data-m="low"${on(P.mobility,'low')}>Stiff / limited</button><button data-m="ok"${on(P.mobility||'ok','ok')}>Average</button><button data-m="good"${on(P.mobility,'good')}>Very mobile</button></div></div>
     <div class="field"><label>Daily activity (outside workouts)</label>
-      <div class="daypick" id="ob-act" style="flex-wrap:wrap"><button data-a="1.2">Mostly sitting</button><button data-a="1.375">Lightly active</button><button data-a="1.45" class="on">Moderately active</button><button data-a="1.6">Very active</button></div></div>
+      <div class="daypick" id="ob-act" style="flex-wrap:wrap"><button data-a="1.2"${on(P.activity,1.2)}>Mostly sitting</button><button data-a="1.375"${on(P.activity,1.375)}>Lightly active</button><button data-a="1.45"${on(P.activity||1.45,1.45)}>Moderately active</button><button data-a="1.6"${on(P.activity,1.6)}>Very active</button></div></div>`)}
+
+  ${step(5,'Schedule &amp; equipment',`
     <div class="field"><label>Training days per week</label>
       <div class="daypick" id="ob-days">${['M','T','W','T','F','S','S'].map((d,i)=>`<button data-d="${(i+1)%7}">${d}</button>`).join('')}</div>
-      <div class="tiny muted" style="margin-top:7px">Set for 7 days a week — train daily. Tap any day to make it a rest day.</div></div>
-  </div>
+      <div class="tiny muted" style="margin-top:7px">Tap any day to make it a rest day.</div></div>
+    <div class="field"><label>Equipment you have <span class="tiny muted">· unlocks a Weights session</span></label>
+      <div class="daypick" id="ob-gear" style="flex-wrap:wrap">${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['battlerope','Battle rope'],['bench','Bench / chair']].map(([k,l])=>`<button data-e="${k}"${mon(P.gear,k)}>${l}</button>`).join('')}</div></div>`)}
 
-  <div class="card pad">
-    <h3>Equipment you have</h3>
-    <div class="tiny muted" style="margin:-4px 0 8px">Everything works with bodyweight — pick what you own and we unlock a <b>Weights session</b> tuned to your gear.</div>
-    <div class="daypick" id="ob-gear" style="flex-wrap:wrap">
-      ${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['battlerope','Battle rope'],['bench','Bench / chair']].map(([k,l])=>`<button data-e="${k}"${(k==='bar')?' class="on"':''}>${l}</button>`).join('')}
-    </div>
-  </div>
-
-  <div class="card pad">
-    <h3>Nutrition</h3>
+  ${step(6,'Nutrition',`
     <div class="field"><label>Diet preference <span class="tiny muted">· shapes your meal plans</span></label>
-      <div class="daypick" id="ob-diet" style="flex-wrap:wrap"><button data-d="omnivore" class="on">Omnivore</button><button data-d="halal">Halal</button><button data-d="pescatarian">Pescatarian</button><button data-d="vegetarian">Vegetarian</button><button data-d="vegan">Vegan</button></div></div>
+      <div class="daypick" id="ob-diet" style="flex-wrap:wrap">${[['omnivore','Omnivore'],['halal','Halal'],['pescatarian','Pescatarian'],['vegetarian','Vegetarian'],['vegan','Vegan']].map(([k,l])=>`<button data-d="${k}"${on(N.diet||'omnivore',k)}>${l}</button>`).join('')}</div></div>
     <div class="field"><label>Meals per day</label>
-      <div class="daypick" id="ob-meals"><button data-m="3" class="on">3 meals</button><button data-m="4">3 + snack</button></div></div>
+      <div class="daypick" id="ob-meals"><button data-m="3"${on(N.meals||3,3)}>3 meals</button><button data-m="4"${on(N.meals,4)}>3 + snack</button></div></div>
     <div class="field"><label>Anything to avoid? <span class="tiny muted">· optional</span></label>
-      <input id="ob-allerg" placeholder="e.g. peanuts, dairy, shellfish" autocomplete="off"></div>
-  </div>
+      <input id="ob-allerg" placeholder="e.g. peanuts, dairy, shellfish" autocomplete="off" value="${(N.allergies||'').replace(/"/g,'&quot;')}"></div>`)}
 
-  <button class="btn primary block" id="ob-go" style="font-size:16px;padding:16px">Build my plan → Baseline</button>
-  <div class="note info">Your data lives <b>only on this phone</b> (auto-saved, works offline). Nothing is uploaded.</div>`;
+  <div class="btnrow" style="gap:10px;margin-top:4px">
+    <button class="btn ghost" id="ob-back" style="flex:0 0 auto;display:none">← Back</button>
+    <button class="btn primary" id="ob-next" style="flex:1;font-size:16px;padding:16px">Next →</button>
+  </div>
+  <div class="note info" style="margin-top:12px">Your data lives <b>only on this phone</b> (auto-saved, works offline). Nothing is uploaded.</div>`;
 }
 function wireOnboard(){
   const days=new Set(STATE.profile.days);
@@ -1436,40 +1516,66 @@ function wireOnboard(){
   const single=(sel)=>$$(sel+' button').forEach(b=>b.onclick=()=>{$$(sel+' button').forEach(x=>x.classList.remove('on'));b.classList.add('on');haptic(6);});
   const multi=(sel)=>$$(sel+' button').forEach(b=>b.onclick=()=>{b.classList.toggle('on');haptic(6);});
   single('#ob-sex');single('#ob-goal');single('#ob-exp');single('#ob-act');single('#ob-unit');single('#ob-diet');single('#ob-meals');
-  multi('#ob-targets');multi('#ob-gear');
+  single('#ob-focus');single('#ob-cond');single('#ob-mob');single('#ob-timeline');
+  multi('#ob-targets');multi('#ob-gear');multi('#ob-trouble');multi('#ob-inj');
   // keep unit labels in sync when metric/imperial toggled
   $$('#ob-unit button').forEach(b=>b.addEventListener('click',()=>{
     const im=($('#ob-unit button.on')||{}).dataset && $('#ob-unit button.on').dataset.u==='in';
-    ['ob-htu','ob-wtu','ob-wsu'].forEach((id,i)=>{const e=$('#'+id);if(e)e.textContent=im?(i===0?'in':i===1?'lb':'in'):(i===1?'kg':'cm');});
+    [['ob-htu',im?'in':'cm'],['ob-wtu',im?'lb':'kg'],['ob-wsu',im?'in':'cm'],['ob-gwtu',im?'lb':'kg'],['ob-gwsu',im?'in':'cm']].forEach(([id,t])=>{const e=$('#'+id);if(e)e.textContent=t;});
   }));
-  $('#ob-go').onclick=()=>{
-    const P=STATE.profile, N=STATE.nutrition;
-    P.name=($('#ob-name').value||'').trim();
-    P.unit=($('#ob-unit button.on')||{dataset:{u:'cm'}}).dataset.u;
-    const im=P.unit==='in';
-    P.sex=($('#ob-sex button.on')||{dataset:{s:'male'}}).dataset.s;
-    P.age=parseInt($('#ob-age').value)||null;
-    const ht=parseFloat($('#ob-height').value); P.heightCm=ht>0?Math.round(im?ht*2.54:ht):null;
-    P.experience=($('#ob-exp button.on')||{dataset:{x:'Intermediate'}}).dataset.x;
-    P.activity=parseFloat(($('#ob-act button.on')||{dataset:{a:'1.45'}}).dataset.a)||1.45;
-    const chosen=$$('#ob-days button.on').map(b=>+b.dataset.d); P.days=chosen.length?chosen:[1,2,4,5];
-    P.goal=($('#ob-goal button.on')||{dataset:{g:'lose'}}).dataset.g;
-    P.targets=$$('#ob-targets button.on').map(b=>b.dataset.t); if(!P.targets.length)P.targets=['abs','full'];
-    P.gear=$$('#ob-gear button.on').map(b=>b.dataset.e);
-    P.hasBar=P.gear.includes('bar'); P.hasBench=P.gear.includes('bench');   // back-compat
-    // nutrition prefs
-    N.goal=P.goal; N.sex=P.sex; N.age=P.age; N.heightCm=P.heightCm; N.activity=P.activity;
-    N.diet=($('#ob-diet button.on')||{dataset:{d:'omnivore'}}).dataset.d;
-    N.meals=parseInt(($('#ob-meals button.on')||{dataset:{m:'3'}}).dataset.m)||3;
-    N.allergies=($('#ob-allerg').value||'').trim();
-    // body metrics
-    const w=parseFloat($('#ob-waist').value),wt=parseFloat($('#ob-weight').value);
-    if(w>0)P.startWaist=im?Math.round(w*2.54):w;
-    let kg=null; if(wt>0){kg=im?Math.round(wt*0.453592*10)/10:wt; N.weightKg=kg;}
-    if(w>0||wt>0)STATE.measurements.push({date:todayISO(),waist:P.startWaist||null,weight:kg});
-    try{recalcKcalFromStored();}catch(e){}   // pre-fill calorie/macro targets from the quiz
-    STATE.onboarded=true;save();render();
+  // ---- wizard step navigation ----
+  let step=1;
+  const showStep=n=>{
+    step=clamp(n,1,OB_STEPS);
+    $$('.ob-step').forEach(el=>el.style.display=(+el.dataset.step===step)?'':'none');
+    const fill=$('#ob-fill');if(fill)fill.style.width=(step/OB_STEPS*100)+'%';
+    const lbl=$('#ob-steplbl');if(lbl)lbl.textContent='Step '+step+' of '+OB_STEPS;
+    const back=$('#ob-back');back.style.display=(step>1||OB_EDIT)?'':'none';back.textContent=(step===1&&OB_EDIT)?'Cancel':'← Back';
+    $('#ob-next').textContent= step<OB_STEPS ? 'Next →' : (OB_EDIT?'Save changes':'Build my plan → Baseline');
+    window.scrollTo(0,0);
   };
+  $('#ob-next').onclick=()=>{ if(step<OB_STEPS){showStep(step+1);haptic(8);} else finishOnboard(); };
+  $('#ob-back').onclick=()=>{ if(step===1){ if(OB_EDIT){OB_EDIT=false;navTo('guide');render();} return; } showStep(step-1);haptic(8); };
+  showStep(1);
+}
+function finishOnboard(){
+  const P=STATE.profile, N=STATE.nutrition;
+  P.name=($('#ob-name').value||'').trim();
+  P.unit=($('#ob-unit button.on')||{dataset:{u:'cm'}}).dataset.u;
+  const im=P.unit==='in';
+  P.sex=($('#ob-sex button.on')||{dataset:{s:'male'}}).dataset.s;
+  P.age=parseInt($('#ob-age').value)||null;
+  const ht=parseFloat($('#ob-height').value); if(ht>0)P.heightCm=Math.round(im?ht*2.54:ht);
+  P.experience=($('#ob-exp button.on')||{dataset:{x:'Intermediate'}}).dataset.x;
+  P.activity=parseFloat(($('#ob-act button.on')||{dataset:{a:'1.45'}}).dataset.a)||1.45;
+  P.conditioning=($('#ob-cond button.on')||{dataset:{c:'moderate'}}).dataset.c;
+  P.mobility=($('#ob-mob button.on')||{dataset:{m:'ok'}}).dataset.m;
+  const chosen=$$('#ob-days button.on').map(b=>+b.dataset.d); P.days=chosen.length?chosen:[0,1,2,3,4,5,6];
+  P.goal=($('#ob-goal button.on')||{dataset:{g:'lose'}}).dataset.g;
+  P.focusPrimary=($('#ob-focus button.on')||{dataset:{f:'abs'}}).dataset.f;
+  P.targets=$$('#ob-targets button.on').map(b=>b.dataset.t); if(!P.targets.length)P.targets=['abs','full'];
+  if(P.focusPrimary&&!P.targets.includes(P.focusPrimary))P.targets.unshift(P.focusPrimary); // priority always counts as a focus
+  P.troubleZones=$$('#ob-trouble button.on').map(b=>b.dataset.z);
+  P.limitations=$$('#ob-inj button.on').map(b=>b.dataset.j);
+  P.gear=$$('#ob-gear button.on').map(b=>b.dataset.e);
+  P.hasBar=P.gear.includes('bar'); P.hasBench=P.gear.includes('bench');   // back-compat
+  const tl=parseInt(($('#ob-timeline button.on')||{dataset:{w:'0'}}).dataset.w)||0; P.timelineWeeks=tl>0?tl:null;
+  // goal targets (stored: goalWeightLb in lb, goalWaist in cm — matches projection)
+  const gwt=parseFloat($('#ob-goalwt').value); if(gwt>0)P.goalWeightLb=Math.round(im?gwt:gwt/0.453592);
+  const gws=parseFloat($('#ob-goalwaist').value); if(gws>0)P.goalWaist=Math.round(im?gws*2.54:gws);
+  // nutrition prefs
+  N.goal=P.goal; N.sex=P.sex; N.age=P.age; N.heightCm=P.heightCm; N.activity=P.activity;
+  N.diet=($('#ob-diet button.on')||{dataset:{d:'omnivore'}}).dataset.d;
+  N.meals=parseInt(($('#ob-meals button.on')||{dataset:{m:'3'}}).dataset.m)||3;
+  N.allergies=($('#ob-allerg').value||'').trim();
+  // body metrics
+  const w=parseFloat($('#ob-waist').value),wt=parseFloat($('#ob-weight').value);
+  if(w>0)P.startWaist=im?Math.round(w*2.54):w;
+  let kg=null; if(wt>0){kg=im?Math.round(wt*0.453592*10)/10:wt; N.weightKg=kg;}
+  if(w>0||wt>0)STATE.measurements.push({date:todayISO(),waist:P.startWaist||null,weight:kg});
+  try{recalcKcalFromStored();}catch(e){}   // (re)compute calorie/macro targets from the answers
+  if(OB_EDIT){OB_EDIT=false;save();toast('Profile updated ✓');navTo('guide');render();}
+  else{STATE.onboarded=true;save();render();}
 }
 
 function baselineIntroHTML(){
@@ -1577,7 +1683,7 @@ function todayWorkoutHTML(){
   }
   // warmup
   h+=`<div class="section-label">Warm-up · ~4 min</div><div class="card pad">
-     <div class="tiny muted" style="margin-bottom:10px">Prime the deep core and raise your heart rate. Tap play for a hands-free guided round.</div>
+     <div class="tiny muted" style="margin-bottom:10px">Prime the deep core and raise your heart rate. Tap play for a hands-free guided round.${STATE.profile.mobility==='low'?' <b style="color:var(--fire-l)">You flagged limited mobility — move slowly and take the full range.</b>':''}</div>
      ${WARMUP_FLOW.map(w=>`<div class="kv"><span><b>${w.n}</b></span><span class="muted">${w.secs}s</span></div>`).join('')}
      <button class="btn primary" style="margin-top:10px" onclick="runWarmup()">▶ Guided warm-up</button>
   </div>`;
@@ -1589,7 +1695,7 @@ function todayWorkoutHTML(){
   h+=`<div class="section-label">Finisher · burn it out</div><div class="exlist">${exCardHTML(sess.finisher,log,99)}</div>`;
   // cooldown
   h+=`<div class="section-label">Cool-down · ~4 min</div><div class="card pad">
-     <div class="tiny muted" style="margin-bottom:10px">Stretch out the abs and low back to recover. Tap play for a hands-free guided round.</div>
+     <div class="tiny muted" style="margin-bottom:10px">Stretch out the abs and low back to recover. Tap play for a hands-free guided round.${STATE.profile.mobility==='low'?' <b style="color:var(--teal)">Hold each stretch a little longer — building mobility is one of your goals.</b>':''}</div>
      ${COOLDOWN_FLOW.map(c=>`<div class="kv"><span><b>${c.n}</b></span><span class="muted">${c.secs}s</span></div>`).join('')}
      <button class="btn green" style="margin-top:10px" onclick="runCooldown()">▶ Guided cool-down</button>
   </div>`;
@@ -1620,7 +1726,7 @@ function exCardHTML(m,log,idx){
       ${ex.img?`<img class="ex-thumb" src="${ex.img}" alt="" loading="lazy" onerror="this.style.display='none'">`:''}
       <div class="grow">
         <div class="ex-name">${ex.name}</div>
-        <div class="ex-region"><span class="tag ${ex.region}">${ex.region}</span> &nbsp;${m.sets} × ${targetStr}</div>
+        <div class="ex-region">${m.focus?'<span class="tag" style="background:var(--fire-l,#ffa23d);color:#1a1205;font-weight:800">🎯 Your focus</span> ':''}<span class="tag ${ex.region}">${ex.region}</span> &nbsp;${m.sets} × ${targetStr}</div>
       </div>
       <div class="ex-rx"><div class="big">${m.sets}×${m.unit==='time'?fmtTime(m.target):m.target}</div><div class="sub">rest ${m.rest}s</div></div>
     </div>
@@ -5417,6 +5523,11 @@ function renderGuide(){
       </div></div>
     <div class="row" style="justify-content:space-between;padding:8px 0 2px"><span>Whole foods only <span class="tiny muted">· 🥦 skip processed / powders in meal plans</span></span><button class="chip ${wholeOnly()?'on':''}" onclick="toggleWholeFood()">${wholeOnly()?'On':'Off'}</button></div>
   </div>`;
+  // profile / retake the quiz (non-destructive)
+  h+=`<div class="section-label">Profile &amp; goals</div><div class="card pad">
+    <p class="sm muted" style="margin-top:0">Your answers from the setup quiz — sex, size, goal, focus areas, injuries, equipment and more. Update them any time and your plan re-tunes. <b>Your progress and history are kept.</b></p>
+    <button class="btn primary" onclick="openProfileEdit()">✎ Edit my profile &amp; goals</button>
+  </div>`;
   // backup
   h+=`<div class="section-label">Your data</div><div class="card pad">
     <p class="sm muted" style="margin-top:0">Your progress auto-saves on this phone and works offline. For extra safety, export a backup file you can re-import anytime.</p>
@@ -5532,6 +5643,12 @@ function normalizeState(){
   if(!Array.isArray(STATE.profile.gear)){STATE.profile.gear=[];if(STATE.profile.hasBar!==false)STATE.profile.gear.push('bar');if(STATE.profile.hasBench!==false)STATE.profile.gear.push('bench');}
   if(!Array.isArray(STATE.profile.targets))STATE.profile.targets=['abs','full'];
   if(!STATE.profile.goal)STATE.profile.goal=STATE.nutrition.goal||'lose';
+  // comprehensive-quiz defaults for installs created before it
+  if(!STATE.profile.focusPrimary)STATE.profile.focusPrimary=(STATE.profile.targets&&STATE.profile.targets[0])||'abs';
+  if(!Array.isArray(STATE.profile.troubleZones))STATE.profile.troubleZones=[];
+  if(!STATE.profile.conditioning)STATE.profile.conditioning='moderate';
+  if(!STATE.profile.mobility)STATE.profile.mobility='ok';
+  if(STATE.profile.timelineWeeks===undefined)STATE.profile.timelineWeeks=null;
   // one-time: seed the owner's actual home-gym kit so the Weights session works out of the box
   if(!STATE.profile._gearMil){STATE.profile.gear=['bar','dip','kettlebell','medball','abroller','battlerope'];STATE.profile.hasBar=true;STATE.profile._gearMil=true;}
   // one-time: add the newly-purchased dumbbells to the owner's kit
