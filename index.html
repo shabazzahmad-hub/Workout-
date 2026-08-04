@@ -569,6 +569,11 @@ const EX = {
     steps:['Start in a strong high plank, hands under shoulders.','Brace the core to keep hips level.','Drive one knee toward your chest, then quickly switch legs.','Keep a running rhythm for the time, hips staying low.'],
     cues:['Hips stay low and level','Fast but controlled','Core braced the whole time'],
     mistakes:['Hips bouncing up high','Feet barely moving']},
+  isoclimber:{name:'Isometric Mountain Climber',region:'anterior',unit:'time',img:'ex-isoclimber.jpg',anchor:null,hardness:1.1,base:30,rest:35,
+    why:'The mountain climber slowed to a dead hold — a high plank with one knee drawn in and held under tension. All the anti-extension core and hip-flexor demand of the fast version, but strict, joint-friendly and no bouncing.',
+    steps:['Set up in a strong high plank, hands under the shoulders, body in a straight line.','Brace the core hard and keep the hips level.','Draw one knee in toward your chest and HOLD it there, foot off the floor.','Hold for time, then switch legs on the next set. Breathe steadily.'],
+    cues:['Hips stay low and square — no piking','Squeeze the drawn-in knee toward the chest','Shoulders stacked over the wrists'],
+    mistakes:['Hips hiking up','Letting the held foot drift down','Holding the breath']},
   flutter:{name:'Flutter Kicks',region:'dynamic',unit:'time',img:'ex-flutter.jpg',anchor:null,hardness:1,base:30,rest:35,
     why:'A lower-ab endurance finisher that keeps constant tension on the deep core.',
     steps:['Lie flat, hands under your glutes, legs straight.','Press your lower back into the floor and lift both legs a few inches.','Flutter your legs up and down in small, fast, alternating kicks.','Keep the lower back pinned for the whole set.'],
@@ -585,6 +590,11 @@ const EX = {
     steps:['Stand tall, feet shoulder-width, toes slightly out.','Brace your abs and push your hips back and down.','Lower until thighs are about parallel, chest up, knees tracking over toes.','Drive through your heels to stand, squeezing glutes at the top.'],
     cues:['Chest proud, core braced','Knees track over the toes','Full depth, controlled tempo'],
     mistakes:['Knees caving inward','Heels lifting off the floor','Rounding the back']},
+  wallsit:{name:'Wall Sit',region:'legs',unit:'time',img:'ex-wallsit.jpg',anchor:null,hardness:1,base:40,rest:45,
+    why:'A no-impact isometric that builds serious quad, glute and core endurance while bracing the abs — apartment-safe, knee-friendly and brutal on the burn.',
+    steps:['Stand with your back flat against a wall, feet about two steps out.','Slide down until your thighs are parallel to the floor — knees stacked over the ankles at ~90°.','Press the whole back into the wall and brace the abs.','Hold for time, breathing steadily. Keep the weight in the heels.'],
+    cues:['Thighs parallel, knees over ankles','Whole back flat on the wall','Weight through the heels, core braced'],
+    mistakes:['Knees drifting past the toes','Hips creeping up out of the hold','Holding the breath']},
   reverselunge:{name:'Reverse Lunge',region:'strength',unit:'reps',img:'ex-reverselunge.jpg',anchor:null,hardness:1,base:12,rest:45,
     why:'A single-leg builder that torches the legs and glutes while your core fights to keep you balanced. Count each side as a rep.',
     steps:['Stand tall, hands at your chest, core braced.','Step one foot back and lower until both knees are ~90°.','Keep the front knee over the ankle, torso upright.','Drive through the front heel to stand, then switch legs.'],
@@ -972,7 +982,7 @@ const EX = {
    Each slot references a "ladder"; the rung is chosen by progression level.
 ========================================================================== */
 const LADDERS = {
-  plankL:     ['kneeplank','plank','longplank','planktap','reverseplank'],
+  plankL:     ['kneeplank','plank','longplank','planktap','isoclimber','reverseplank'],
   hollowL:    ['tuckhollow','hollow','hollowrock','lsit'],
   lowerL:     ['deadbug','revcrunch','legraise','kneeraise','hanglegraise'],
   dynL:       ['crunch','bicycle','tuckvup','vup'],
@@ -980,7 +990,7 @@ const LADDERS = {
   rotL:       ['seatedtwist','standingoblique','russiantwist','weightedtwist','windshield'],
   finisherL:  ['marchplace','mountainclimber','flutter','scissors'],
   // compound strength + cardio (fat-loss / complete-program)
-  legL:       ['squat','reverselunge'],
+  legL:       ['wallsit','squat','reverselunge'],
   pushL:      ['kneepushup','pushup'],
   cardioAL:   ['jumpingjack','squatjack','highknees','squatjack','skater'],
   cardioBL:   ['buttkick','squatthrust','halfburpee','halfburpee','burpee'],
@@ -992,7 +1002,7 @@ const LADDERS = {
   rowL:       ['superman','invertedrow','invertedrowelev'],
   tricepL:    ['benchdip','closepushup','dips'],
   bicepL:     ['invertedrow','chinup','widepullup'],
-  squatL:     ['squat','reverselunge','splitsquat','bulgarian','walkinglunge','boxpistol','pistol','asiansquat'],
+  squatL:     ['wallsit','squat','reverselunge','splitsquat','bulgarian','walkinglunge','boxpistol','pistol','asiansquat'],
   hingeL:     ['glutebridge','singlebridge','hipthrust','nordic'],
   calfL:      ['calfraise','singlecalf'],
   legPowerL:  ['jumpsquat','splitjump','broadjump'],
@@ -1075,7 +1085,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='126';
+const APP_VERSION='127';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1222,14 +1232,14 @@ function prescribe(exId,pos){
    accessory drawn from the area the athlete most wants to improve (quiz:
    focusPrimary, falling back to their focus areas). Gear- and injury-filtered. */
 const FOCUS_POOL={
-  abs:['hollow','lsit','vup','tuckvup','legraise','hanglegraise','revcrunch','crunch','bicycle','kneeraise','abroll','mbsitup','flutter'],
+  abs:['hollow','lsit','isoclimber','vup','tuckvup','legraise','hanglegraise','revcrunch','crunch','bicycle','kneeraise','abroll','mbsitup','flutter'],
   obliques:['sideplank','sidedip','russiantwist','windshield','bicycle','copenhagen','standingoblique','mbtwist','kbhalo'],
   full:['burpee','squatthrust','mountainclimber','kbswing','dbthruster','halfburpee','squat','pushup'],
   chest:['pushup','inclinepushup','declinepushup','diamondpushup','archerpushup','closepushup','dbfloor'],
   back:['invertedrow','superman','scappull','negpullup','pullup','chinup','dbrow','kbrow'],
   shoulders:['pikepushup','elevatedpike','wallhandstand','dbpress','kbcp'],
   arms:['benchdip','closepushup','dips','dbcurl','diamondpushup'],
-  legs:['squat','reverselunge','splitsquat','bulgarian','walkinglunge','jumpsquat','kbgoblet','dbgoblet'],
+  legs:['wallsit','squat','reverselunge','splitsquat','bulgarian','walkinglunge','jumpsquat','kbgoblet','dbgoblet'],
   glutes:['glutebridge','singlebridge','hipthrust','kbrdl','dbrdl','nordic'],
 };
 // Pick one bonus exercise for the athlete's priority area, avoiding what's already
@@ -4606,7 +4616,7 @@ const JOINTS=[['knee','Knee'],['shoulder','Shoulder'],['wrist','Wrist'],['lowbac
 const JOINT_RISK={
   knee:['pistol','boxpistol','jumpsquat','tuckjump','broadjump','splitjump','bulgarian','burpee','burpeetuck','walkinglunge'],
   shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','dbpress','kbcp','dbthruster','hanglegraise','lsit'],
-  wrist:['pushup','diamondpushup','closepushup','archerpushup','spidermanpushup','planktap','mountainclimber','dbrenegade','abroll','lsit'],
+  wrist:['pushup','diamondpushup','closepushup','archerpushup','spidermanpushup','planktap','mountainclimber','dbrenegade','abroll','lsit','isoclimber'],
   lowback:['superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','mbslam','ropeslam','windshield'],
   elbow:['dips','benchdip','diamondpushup','closepushup','chinup','negpullup','dbcurl'],
 };
@@ -4614,7 +4624,7 @@ const SAFE_SWAP={
   pistol:'squat',boxpistol:'squat',jumpsquat:'squat',tuckjump:'squat',broadjump:'squat',splitjump:'reverselunge',bulgarian:'splitsquat',burpee:'squatthrust',burpeetuck:'squatthrust',walkinglunge:'reverselunge',
   hspushup:'pikepushup',wallhandstand:'plank',pikepushup:'inclinepushup',elevatedpike:'pikepushup',superpushup:'pushup',archerpushup:'pushup',dbpress:'dbfloor',kbcp:'kbrow',dbthruster:'dbgoblet',
   pushup:'kneepushup',diamondpushup:'kneepushup',closepushup:'kneepushup',spidermanpushup:'kneepushup',planktap:'plank',mountainclimber:'march',dbrenegade:'dbrow',abroll:'plank',
-  superman:'birddog',reverseplank:'glutebridge',nordic:'glutebridge',kbswing:'kbgoblet',dbrdl:'glutebridge',kbrdl:'glutebridge',hipthrust:'glutebridge',mbslam:'mbsitup',ropeslam:'ropewave',windshield:'bicycle',hanglegraise:'legraise',lsit:'hollow',
+  superman:'birddog',reverseplank:'glutebridge',nordic:'glutebridge',kbswing:'kbgoblet',dbrdl:'glutebridge',kbrdl:'glutebridge',hipthrust:'glutebridge',mbslam:'mbsitup',ropeslam:'ropewave',windshield:'bicycle',hanglegraise:'legraise',lsit:'hollow',isoclimber:'plank',
   dips:'benchdip',benchdip:'closepushup',chinup:'invertedrow',negpullup:'invertedrow',dbcurl:'dbrow',
 };
 function safeSwap(exId){
