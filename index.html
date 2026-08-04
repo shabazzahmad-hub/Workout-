@@ -1090,7 +1090,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='134';
+const APP_VERSION='135';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -4692,21 +4692,34 @@ function toggleReminders(){
   }else{STATE.settings.reminderOn=true;save();toast('Reminders on');renderGuide();}
 }
 function setReminderTime(v){if(v){STATE.settings.reminderTime=v;save();}}
-// Manual "does it work?" test — fires the reminder notification on demand so you
-// can see it (and the new icon) without waiting for the scheduled nudge.
-function testReminderNotif(){
-  if(!('Notification'in window)){toast('This browser can\'t show notifications');return;}
-  const go=()=>{fireReminderNotif();toast('Sent 🔔 — check your notification shade');};
-  if(Notification.permission==='granted'){go();}
-  else if(Notification.permission==='denied'){toast('Notifications are blocked — enable them for this site first');}
-  else{Notification.requestPermission().then(p=>{p==='granted'?go():toast('Allow notifications to test');});}
-}
-function fireReminderNotif(){
-  const body="Time to train your core 💪 Keep your streak alive.";
+// Robust notification sender. Prefers the service worker (required on Android),
+// but if the SW isn't ready within a moment it falls back to the Notification
+// constructor — otherwise a missing/asleep SW makes notifications fail SILENTLY.
+// onDone(err) reports the outcome so the test button can surface the real reason.
+function sendCoreNotif(body,tag,onDone){
+  const opts={body,icon:'notif-workout.jpg',badge:'icon-192.png',tag:tag||'coreforge-reminder',renotify:true};
+  let done=false;const finish=e=>{if(done)return;done=true;if(onDone)onDone(e||null);};
+  const fallback=e=>{if(done)return;try{new Notification('CoreForge',opts);finish(null);}catch(err){finish(e||err);}};
   try{
-    if(navigator.serviceWorker&&navigator.serviceWorker.ready){navigator.serviceWorker.ready.then(r=>r.showNotification('CoreForge',{body,icon:'notif-workout.jpg',badge:'icon-192.png',tag:'coreforge-reminder'}));}
-    else if('Notification'in window){new Notification('CoreForge',{body,icon:'notif-workout.jpg'});}
-  }catch(e){}
+    if(navigator.serviceWorker&&navigator.serviceWorker.ready){
+      const t=setTimeout(()=>fallback(new Error('service worker not ready')),1500);
+      navigator.serviceWorker.ready.then(r=>{clearTimeout(t);if(done)return;
+        r.showNotification('CoreForge',opts).then(()=>finish(null)).catch(err=>fallback(err));
+      }).catch(err=>{clearTimeout(t);fallback(err);});
+    }else fallback(new Error('no service worker'));
+  }catch(e){fallback(e);}
+}
+function fireReminderNotif(){ sendCoreNotif("Time to train your core 💪 Keep your streak alive.",'coreforge-reminder'); }
+// Manual "does it work?" test — fires on demand and tells you exactly what happens.
+function testReminderNotif(){
+  if(!('Notification'in window)){alert("This browser/device can't show web notifications. On iPhone, notifications only work after you Add to Home Screen (iOS 16.4+).");return;}
+  const send=()=>sendCoreNotif("🔔 Test — this is your workout reminder.",'coreforge-test',err=>{
+    if(err)alert("Couldn't show the notification: "+(err.message||err)+"\n\nFix on Android: install the app to your home screen (⋮ ▸ Add to Home screen), open it from there, then allow notifications.");
+    else toast('Sent 🔔 — check your notification shade');
+  });
+  if(Notification.permission==='granted'){send();}
+  else if(Notification.permission==='denied'){alert("Notifications are BLOCKED for CoreForge. Enable them: phone Settings ▸ Apps ▸ CoreForge ▸ Notifications ▸ Allow (or Chrome ▸ site settings for this page ▸ Notifications).");}
+  else{Notification.requestPermission().then(p=>{p==='granted'?send():alert('Permission was not granted ("'+p+'"). Tap Allow when the prompt appears, then try again.');});}
 }
 function checkReminder(){
   const s=STATE.settings;if(!s)return;
