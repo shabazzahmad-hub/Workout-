@@ -8,8 +8,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="CoreForge">
-<link rel="icon" href="icon-192.png">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192-v2.png">
+<link rel="apple-touch-icon" href="icon-192-v2.png">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="description" content="CoreForge — a home training program that starts with 12 weeks of core, abs and HIIT for a flat stomach and no love handles, then expands into a full year of full-body strength (chest, back, shoulders, arms, legs) plus HIIT. Baseline assessment, week-to-week progression, self-saving. Offline-ready, installs to your home screen.">
 <title>CoreForge — 1-Year Full-Body Program</title>
@@ -1090,7 +1090,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='138';
+const APP_VERSION='139';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -4699,7 +4699,7 @@ function setReminderTime(v){if(v){STATE.settings.reminderTime=v;save();}}
 function sendCoreNotif(body,tag,onDone){
   // Chrome shows an ugly monogram if `icon` is omitted, so always supply it (the
   // action-shot app icon). The small left icon is the OS launcher icon (cached).
-  const opts={body,icon:'icon-192.png',badge:'icon-192.png',tag:tag||'coreforge-reminder',renotify:true};
+  const opts={body,icon:'icon-192-v2.png',badge:'icon-192-v2.png',tag:tag||'coreforge-reminder',renotify:true};
   let done=false;const finish=e=>{if(done)return;done=true;if(onDone)onDone(e||null);};
   const fallback=e=>{if(done)return;try{new Notification('CoreForge',opts);finish(null);}catch(err){finish(e||err);}};
   try{
@@ -5447,7 +5447,7 @@ function weeklyBannerHTML(){
   return `<div class="note warn"><b>📸 Saturday check-in.</b> Take a progress photo, measure your waist, and weigh in — same day each week is the most accurate way to track change.
     <div class="btnrow" style="margin-top:8px"><button class="btn sm ghost" onclick="logMeasure()">Waist &amp; weight</button><button class="btn sm ghost" onclick="go('progress')">Add photo</button></div></div>`;
 }
-function fireProgressNotif(body,tag){try{if(navigator.serviceWorker&&navigator.serviceWorker.ready){navigator.serviceWorker.ready.then(r=>r.showNotification('CoreForge',{body,icon:'icon-192.png',badge:'icon-192.png',tag:tag||'coreforge-weekly'}));}else if('Notification'in window){new Notification('CoreForge',{body});}}catch(e){}}
+function fireProgressNotif(body,tag){try{if(navigator.serviceWorker&&navigator.serviceWorker.ready){navigator.serviceWorker.ready.then(r=>r.showNotification('CoreForge',{body,icon:'icon-192-v2.png',badge:'icon-192-v2.png',tag:tag||'coreforge-weekly'}));}else if('Notification'in window){new Notification('CoreForge',{body});}}catch(e){}}
 function toggleWeekly(){
   if(STATE.settings.weeklyOn!==false){STATE.settings.weeklyOn=false;save();toast('Saturday check-in off');renderGuide();return;}
   STATE.settings.weeklyOn=true;save();renderGuide();
