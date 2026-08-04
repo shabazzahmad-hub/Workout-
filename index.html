@@ -1090,7 +1090,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='136';
+const APP_VERSION='137';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -4697,9 +4697,9 @@ function setReminderTime(v){if(v){STATE.settings.reminderTime=v;save();}}
 // constructor — otherwise a missing/asleep SW makes notifications fail SILENTLY.
 // onDone(err) reports the outcome so the test button can surface the real reason.
 function sendCoreNotif(body,tag,onDone){
-  // no large `icon` — the left app icon (now the action shot) carries the image;
-  // a separate right-side photo would just duplicate it.
-  const opts={body,badge:'icon-192.png',tag:tag||'coreforge-reminder',renotify:true};
+  // Chrome shows an ugly monogram if `icon` is omitted, so always supply it (the
+  // action-shot app icon). The small left icon is the OS launcher icon (cached).
+  const opts={body,icon:'icon-192.png',badge:'icon-192.png',tag:tag||'coreforge-reminder',renotify:true};
   let done=false;const finish=e=>{if(done)return;done=true;if(onDone)onDone(e||null);};
   const fallback=e=>{if(done)return;try{new Notification('CoreForge',opts);finish(null);}catch(err){finish(e||err);}};
   try{
