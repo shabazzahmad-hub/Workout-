@@ -1064,7 +1064,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='118';
+const APP_VERSION='119';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -2704,6 +2704,14 @@ function briefSegments(){
   const cups=waterTargetCups(), oz=Math.round(cups*8);
   segs.push({icon:'💧',title:'Hydration',
     say:`Hydration: ${cups} cups of water — about ${oz} ounces. Start your first glass now and keep sipping all day.`});
+  // 10.5 — weekly progress-check countdown (builds toward Saturday's weigh-in)
+  if(STATE.settings.weeklyOn!==false){
+    const dToSat=(6-new Date().getDay()+7)%7;   // 0 = today is Saturday
+    segs.push({icon:'📏',title:'Progress check',
+      say: dToSat===0
+        ? `Progress check: today is your weekly weigh-in. After training, step on the scale and measure your waist, then log both in the Progress tab. A shrinking waist is the clearest proof the fat is coming off.`
+        : `Progress check: your weekly weigh-in is this Saturday, ${dToSat===1?'tomorrow':'in '+dToSat+' days'}. Have your scale and a tape measure ready — on Saturday you'll log your weight and waist so we can track the trend.`});
+  }
   // 11 — close / handoff
   segs.push({icon:'🚀',title:'Lock in',
     say:`That's the brief${who}. Warm up, lock in, and let's get to work. Tap Start guided workout, and I'll coach you through every rep.`});
