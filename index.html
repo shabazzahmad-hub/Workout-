@@ -459,6 +459,21 @@ const EX = {
     steps:['Hang from a bar with a shoulder-width grip, arms straight.','Brace your core to stop yourself swinging.','Curl your knees up toward your chest, rounding the lower back slightly.','Lower under control without swinging. Repeat.'],
     cues:['Curl the pelvis at the top for the abs','No swinging — control it','Shoulders active, not fully relaxed'],
     mistakes:['Swinging with momentum','Only lifting the legs without curling the pelvis']},
+  hanglegraise:{name:'Hanging Leg Raise',region:'lower',unit:'reps',img:'ex-hanglegraise.jpg',anchor:'lower',hardness:1.3,base:8,rest:60,optional:true,equip:['bar'],
+    why:'The king of lower-ab strength — straight-leg hanging raises train the entire front core and hip flexors through a full range. The non-negotiable progression above the knee raise.',
+    steps:['Hang from a bar, arms straight, shoulders active and core braced.','Keep the legs as straight as you can.','Raise them together toward the bar, curling the pelvis up at the top.','Lower slowly with zero swing. Bend the knees only if you must to keep it strict.'],
+    cues:['Curl the pelvis at the top — don\'t just lift the legs','Dead still, no kipping or swing','Toes-to-bar is the long-term goal'],
+    mistakes:['Swinging for momentum','Stopping at 90° without the pelvic curl','Bent knees when a straight-leg raise is available']},
+  lsit:{name:'L-Sit',region:'anterior',unit:'time',img:'ex-lsit.jpg',anchor:null,hardness:1.6,base:12,rest:55,
+    why:'The flagship isometric compression hold of calisthenics — a brutal test and builder of the whole anterior core, hip flexors and quads. Progress tuck → one-leg → full L.',
+    steps:['Sit between two dip bars, parallettes, or press hands into the floor beside the hips.','Push down hard and lift the hips clear of the ground, shoulders down away from the ears.','Tuck the knees to start; extend the legs toward straight as you get stronger.','Hold for time with the legs squeezed and toes pointed.'],
+    cues:['Push the floor/bars away — shoulders down','Squeeze the quads and point the toes','Chest tall, don\'t collapse forward'],
+    mistakes:['Shrugging the shoulders up','Holding the breath','Letting the hips sink back to the floor']},
+  windshield:{name:'Windshield Wipers',region:'oblique',unit:'reps',img:'ex-windshield.jpg',anchor:null,hardness:1.4,base:10,rest:45,
+    why:'The top-end rotational move your obliques were missing — controlling the legs side to side trains rotation and anti-rotation under a long lever like nothing else.',
+    steps:['Lie on your back, arms out wide for anchor, legs raised toward vertical.','Brace the core and keep the legs fairly straight.','Lower both legs to one side under control, stopping short of the floor.','Sweep them back through center to the other side. That\'s one rep per side.'],
+    cues:['Move slowly — control beats range','Keep the shoulders pinned to the floor','Brace so the low back doesn\'t arch'],
+    mistakes:['Letting the legs crash down','Peeling the shoulders off the floor','Rushing the rotation']},
   /* -- rectus dynamic ladder -- */
   crunch:{name:'Controlled Crunch',region:'anterior',unit:'reps',img:'ex-crunch.jpg',anchor:null,hardness:1.4,base:18,rest:35,
     why:'A short, controlled spinal-flexion crunch reliably targets the upper rectus abdominis.',
@@ -958,11 +973,11 @@ const EX = {
 ========================================================================== */
 const LADDERS = {
   plankL:     ['kneeplank','plank','longplank','planktap','reverseplank'],
-  hollowL:    ['tuckhollow','hollow','hollowrock'],
-  lowerL:     ['deadbug','revcrunch','legraise','kneeraise'],
+  hollowL:    ['tuckhollow','hollow','hollowrock','lsit'],
+  lowerL:     ['deadbug','revcrunch','legraise','kneeraise','hanglegraise'],
   dynL:       ['crunch','bicycle','tuckvup','vup'],
   sideL:      ['kneeside','sideplank','sidedip','copenhagen'],
-  rotL:       ['seatedtwist','standingoblique','russiantwist','standingoblique','weightedtwist'],
+  rotL:       ['seatedtwist','standingoblique','russiantwist','weightedtwist','windshield'],
   finisherL:  ['marchplace','mountainclimber','flutter','scissors'],
   // compound strength + cardio (fat-loss / complete-program)
   legL:       ['squat','reverselunge'],
@@ -1060,7 +1075,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='124';
+const APP_VERSION='125';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1207,8 +1222,8 @@ function prescribe(exId,pos){
    accessory drawn from the area the athlete most wants to improve (quiz:
    focusPrimary, falling back to their focus areas). Gear- and injury-filtered. */
 const FOCUS_POOL={
-  abs:['hollow','vup','tuckvup','legraise','revcrunch','crunch','bicycle','kneeraise','abroll','mbsitup','flutter'],
-  obliques:['sideplank','sidedip','russiantwist','bicycle','copenhagen','standingoblique','mbtwist','kbhalo'],
+  abs:['hollow','lsit','vup','tuckvup','legraise','hanglegraise','revcrunch','crunch','bicycle','kneeraise','abroll','mbsitup','flutter'],
+  obliques:['sideplank','sidedip','russiantwist','windshield','bicycle','copenhagen','standingoblique','mbtwist','kbhalo'],
   full:['burpee','squatthrust','mountainclimber','kbswing','dbthruster','halfburpee','squat','pushup'],
   chest:['pushup','inclinepushup','declinepushup','diamondpushup','archerpushup','closepushup','dbfloor'],
   back:['invertedrow','superman','scappull','negpullup','pullup','chinup','dbrow','kbrow'],
@@ -1248,6 +1263,7 @@ function buildSession(ptr){
     // swap out equipment moves the user can't do
     if(EX[exId].optional){
       if(exId==='kneeraise'&&!hasBar){exId='legraise';}
+      if(exId==='hanglegraise'&&!hasBar){exId='vup';}
       if(exId==='copenhagen'&&STATE.profile.hasBench===false){exId='sidedip';}
     }
     exId=safeSwap(exId);   // injury-aware: work around flagged joints
@@ -4589,16 +4605,16 @@ function calcOneRM(){
 const JOINTS=[['knee','Knee'],['shoulder','Shoulder'],['wrist','Wrist'],['lowback','Lower back'],['elbow','Elbow']];
 const JOINT_RISK={
   knee:['pistol','boxpistol','jumpsquat','tuckjump','broadjump','splitjump','bulgarian','burpee','burpeetuck','walkinglunge'],
-  shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','dbpress','kbcp','dbthruster'],
-  wrist:['pushup','diamondpushup','closepushup','archerpushup','spidermanpushup','planktap','mountainclimber','dbrenegade','abroll'],
-  lowback:['superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','mbslam','ropeslam'],
+  shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','dbpress','kbcp','dbthruster','hanglegraise','lsit'],
+  wrist:['pushup','diamondpushup','closepushup','archerpushup','spidermanpushup','planktap','mountainclimber','dbrenegade','abroll','lsit'],
+  lowback:['superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','mbslam','ropeslam','windshield'],
   elbow:['dips','benchdip','diamondpushup','closepushup','chinup','negpullup','dbcurl'],
 };
 const SAFE_SWAP={
   pistol:'squat',boxpistol:'squat',jumpsquat:'squat',tuckjump:'squat',broadjump:'squat',splitjump:'reverselunge',bulgarian:'splitsquat',burpee:'squatthrust',burpeetuck:'squatthrust',walkinglunge:'reverselunge',
   hspushup:'pikepushup',wallhandstand:'plank',pikepushup:'inclinepushup',elevatedpike:'pikepushup',superpushup:'pushup',archerpushup:'pushup',dbpress:'dbfloor',kbcp:'kbrow',dbthruster:'dbgoblet',
   pushup:'kneepushup',diamondpushup:'kneepushup',closepushup:'kneepushup',spidermanpushup:'kneepushup',planktap:'plank',mountainclimber:'march',dbrenegade:'dbrow',abroll:'plank',
-  superman:'birddog',reverseplank:'glutebridge',nordic:'glutebridge',kbswing:'kbgoblet',dbrdl:'glutebridge',kbrdl:'glutebridge',hipthrust:'glutebridge',mbslam:'mbsitup',ropeslam:'ropewave',
+  superman:'birddog',reverseplank:'glutebridge',nordic:'glutebridge',kbswing:'kbgoblet',dbrdl:'glutebridge',kbrdl:'glutebridge',hipthrust:'glutebridge',mbslam:'mbsitup',ropeslam:'ropewave',windshield:'bicycle',hanglegraise:'legraise',lsit:'hollow',
   dips:'benchdip',benchdip:'closepushup',chinup:'invertedrow',negpullup:'invertedrow',dbcurl:'dbrow',
 };
 function safeSwap(exId){
