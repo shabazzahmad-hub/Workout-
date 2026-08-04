@@ -485,6 +485,11 @@ const EX = {
     steps:['Lie on your back, hands lightly behind your head, shoulders lifted.','Bring one knee toward your chest while extending the other leg.','Rotate to bring the opposite elbow toward the raised knee.','Keep pedalling smoothly, alternating sides, for the whole time.'],
     cues:['Rotate from the torso, not just the elbow','Extend the straight leg fully','Keep shoulders off the floor throughout'],
     mistakes:['Yanking the neck across','Fast, sloppy pedalling with no rotation','Racing the clock — control beats speed']},
+  heeltouch:{name:'Alternating Heel Touches',region:'oblique',unit:'reps',img:'ex-heeltouch.jpg',anchor:null,hardness:0.9,base:20,rest:30,
+    why:'A simple, apartment-friendly oblique burner — the short side-to-side crunch keeps constant tension on the waist and love-handle area. Easy to learn, brutal by the end of the set.',
+    steps:['Lie on your back, knees bent, feet flat about hip-width apart, heels close to the glutes.','Crunch your head and shoulders slightly up off the mat, arms reaching down at your sides.','Bend to one side and tap your fingertips to that heel.','Come back through center and tap the other heel. Alternate — count each side as a rep.'],
+    cues:['Keep the shoulders off the mat the whole set','Bend at the waist, not the neck','Steady, controlled taps'],
+    mistakes:['Dropping the shoulders down between reps','Pulling with the arms instead of the obliques','Bouncing too fast']},
   tuckvup:{name:'Tuck V-Up',region:'anterior',unit:'reps',img:'ex-tuckvup.jpg',anchor:null,hardness:0.85,base:14,rest:45,
     why:'A scaled V-up that trains the abs to fold the body powerfully — bridges toward the full V-up.',
     steps:['Lie flat, arms overhead, legs straight.','In one motion, curl up while tucking your knees to your chest.','Reach your hands toward your shins, balancing on your glutes.','Extend back out to the start with control. Repeat.'],
@@ -987,7 +992,7 @@ const LADDERS = {
   lowerL:     ['deadbug','revcrunch','legraise','kneeraise','hanglegraise'],
   dynL:       ['crunch','bicycle','tuckvup','vup'],
   sideL:      ['kneeside','sideplank','sidedip','copenhagen'],
-  rotL:       ['seatedtwist','standingoblique','russiantwist','weightedtwist','windshield'],
+  rotL:       ['heeltouch','seatedtwist','standingoblique','russiantwist','weightedtwist','windshield'],
   finisherL:  ['marchplace','mountainclimber','flutter','scissors'],
   // compound strength + cardio (fat-loss / complete-program)
   legL:       ['wallsit','squat','reverselunge'],
@@ -1085,7 +1090,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='131';
+const APP_VERSION='132';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1233,7 +1238,7 @@ function prescribe(exId,pos){
    focusPrimary, falling back to their focus areas). Gear- and injury-filtered. */
 const FOCUS_POOL={
   abs:['hollow','lsit','isoclimber','vup','tuckvup','legraise','hanglegraise','revcrunch','crunch','bicycle','kneeraise','abroll','mbsitup','flutter'],
-  obliques:['sideplank','sidedip','russiantwist','windshield','bicycle','copenhagen','standingoblique','mbtwist','kbhalo'],
+  obliques:['sideplank','sidedip','russiantwist','windshield','heeltouch','bicycle','copenhagen','standingoblique','mbtwist','kbhalo'],
   full:['burpee','squatthrust','mountainclimber','kbswing','dbthruster','halfburpee','squat','pushup'],
   chest:['pushup','inclinepushup','declinepushup','diamondpushup','archerpushup','closepushup','dbfloor'],
   back:['invertedrow','superman','scappull','negpullup','pullup','chinup','dbrow','kbrow'],
