@@ -1064,7 +1064,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='111';
+const APP_VERSION='112';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1195,6 +1195,7 @@ function prescribe(exId,pos){
   }
   if(typeof deloadOn==='function'&&deloadOn()){sets=Math.max(1,sets-1);target*=0.62;}   // deload week — ease volume & load
   if(typeof readinessMult==='function'){const rf=readinessMult();target*=rf;if(rf<0.85)sets=Math.max(1,sets-1);}   // daily readiness auto-regulation
+  if(typeof comebackEaseActive==='function'&&comebackEaseActive()){target*=0.8;sets=Math.max(1,sets-1);}   // non-punishing ease-in after a layoff
   if(typeof exAdaptFor==='function')target*=exAdaptFor(exId);   // per-exercise progression from your ratings
   if(ex.unit==='time'){target=Math.round(target/5)*5;target=clamp(target,15,150);}
   else{target=Math.round(target);target=clamp(target,6,40);}
@@ -1520,6 +1521,7 @@ function heroImageFor(sess){
   return 'hero.jpg';   // branded physique hero on the Today card
 }
 function todayWorkoutHTML(){
+  armComeback();   // arm a non-punishing ease-in before building today's session
   const sess=buildSession(STATE.progressPtr);
   const log=STATE.logs[STATE.progressPtr]||{ex:{}};
   const vol=sessionVolume(sess);
@@ -1695,6 +1697,7 @@ function finishSession(){
 function commitSession(feel){
   const p=STATE.progressPtr;const pos=posOf(p);const log=ensureLog();
   log.done=true;log.feel=feel;log.completedAt=todayISO();
+  if(STATE.comeback&&STATE.comeback.left>0){STATE.comeback.left--;if(STATE.comeback.left<=0)delete STATE.comeback;}   // spend one eased comeback session
   const key=pos.cycle+'-'+pos.week;(STATE.weekFeel[key]=STATE.weekFeel[key]||[]).push(feel);
   // Adaptive overload: every session nudges a persistent multiplier so targets
   // keep rising as you get stronger (and ease off only if it's genuinely brutal).
@@ -4006,10 +4009,23 @@ function daysSinceTrained(){
   for(let i=0;i<90;i++){const d=new Date(t);d.setDate(d.getDate()-i);if(set.has(localISO(d)))return i;}
   return null;
 }
+function lastTrainedISO(){const s=[...trainedDaysSet()].sort();return s.length?s[s.length-1]:null;}
+function comebackEaseActive(){return !!(STATE.comeback&&STATE.comeback.left>0);}
+// Non-punishing recalibration: after a real layoff (>=5 days), auto-ease the next
+// couple of sessions so returning ramps back up instead of punishing. Re-arms once
+// per distinct lapse (keyed to the last trained date).
+function armComeback(){
+  const g=daysSinceTrained(),last=lastTrainedISO();
+  if(g!=null&&g>=5&&last&&(!STATE.comeback||STATE.comeback.trig!==last)){
+    STATE.comeback={left:(g>=14?3:2),days:g,trig:last};save();
+  }
+}
 function catchUpBanner(){
   const g=daysSinceTrained();
   if(g===null||g<2)return '';
-  return `<div class="note info" style="margin-top:12px">👋 <b>Welcome back — it's been ${g} days.</b> No streak lost — just pick up where you left off. Short on time today? <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="openQuickList()">⚡ 15-min catch-up</button></div>`;
+  const ease=comebackEaseActive();
+  const extra=ease?` I've <b>eased your next ${STATE.comeback.left} session${STATE.comeback.left>1?'s':''}</b> — lighter volume so you ramp back up safely, no punishment and no starting over.`:'';
+  return `<div class="note info" style="margin-top:12px">👋 <b>Welcome back — it's been ${g} days.</b> No streak lost — just pick up where you left off.${extra} Short on time today? <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="openQuickList()">⚡ 15-min catch-up</button></div>`;
 }
 /* #5 — Grocery list compiled from today's meal plan. */
 function openGrocery(){
