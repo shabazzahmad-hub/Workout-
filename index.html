@@ -1090,7 +1090,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='141';
+const APP_VERSION='142';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -5448,7 +5448,8 @@ function weeklyBannerHTML(){
   return `<div class="note warn"><b>📸 Saturday check-in.</b> Take a progress photo, measure your waist, and weigh in — same day each week is the most accurate way to track change.
     <div class="btnrow" style="margin-top:8px"><button class="btn sm ghost" onclick="logMeasure()">Waist &amp; weight</button><button class="btn sm ghost" onclick="go('progress')">Add photo</button></div></div>`;
 }
-function fireProgressNotif(body,tag){try{if(navigator.serviceWorker&&navigator.serviceWorker.ready){navigator.serviceWorker.ready.then(r=>r.showNotification('CoreForge',{body,icon:'notif-hlr.jpg',badge:'icon-192-v2.png',tag:tag||'coreforge-weekly'}));}else if('Notification'in window){new Notification('CoreForge',{body});}}catch(e){}}
+// Saturday/Friday check-in uses the exact same sender + photo treatment as the reminder.
+function fireProgressNotif(body,tag){sendCoreNotif(body,tag||'coreforge-weekly');}
 function toggleWeekly(){
   if(STATE.settings.weeklyOn!==false){STATE.settings.weeklyOn=false;save();toast('Saturday check-in off');renderGuide();return;}
   STATE.settings.weeklyOn=true;save();renderGuide();
