@@ -1064,7 +1064,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='114';
+const APP_VERSION='115';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -5305,12 +5305,16 @@ function renderGuide(){
     </ul>
     <div class="note warn" style="margin-bottom:0">Honest note: spot-reduction isn't real. This forges the strongest possible midsection; combined with the nutrition basics above, that's how you get substantial visible results in 6 weeks — and more over 12.</div>
   </div>`;
-  // exercise library — every exercise, grouped by region
-  h+=`<div class="section-label">Exercise library · ${Object.keys(EX).length}</div>`;
+  // exercise library — grouped by region, filtered to the gear you actually have
+  // (so equipment variants like the dumbbell vs kettlebell goblet squat don't double up).
+  const _g=STATE.profile.gear||[];
+  const libHasGear=k=>{const e=EX[k].equip;return !e||e.every(x=>_g.includes(x));};
+  const libKeys=Object.keys(EX).filter(libHasGear);
+  h+=`<div class="section-label">Exercise library · ${libKeys.length}</div>`;
   const REGION_GROUPS=[['anterior','Abs & anterior core'],['oblique','Obliques & waist'],['lower','Lower abs'],['stability','Stability & posterior'],['dynamic','Dynamic finishers'],['chest','Chest'],['back','Back'],['shoulders','Shoulders'],['arms','Arms'],['legs','Legs'],['strength','Compound strength'],['cardio','Cardio / HIIT']];
   const seen={};
   REGION_GROUPS.forEach(([region,label])=>{
-    const list=Object.keys(EX).filter(k=>EX[k].region===region&&!seen[k]);
+    const list=libKeys.filter(k=>EX[k].region===region&&!seen[k]);
     if(!list.length)return;
     h+=`<div class="tiny muted" style="font-weight:800;letter-spacing:.6px;text-transform:uppercase;margin:16px 3px 6px">${label} · ${list.length}</div><div class="card"><div style="padding:2px 0">`;
     list.forEach(k=>{seen[k]=1;const ex=EX[k];
@@ -5319,7 +5323,7 @@ function renderGuide(){
     h+=`</div></div>`;
   });
   // any exercise whose region isn't in the groups above (safety net)
-  const leftovers=Object.keys(EX).filter(k=>!seen[k]);
+  const leftovers=libKeys.filter(k=>!seen[k]);
   if(leftovers.length){
     h+=`<div class="tiny muted" style="font-weight:800;text-transform:uppercase;margin:16px 3px 6px">More · ${leftovers.length}</div><div class="card"><div style="padding:2px 0">`;
     leftovers.forEach(k=>{const ex=EX[k];h+=`<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer" onclick="openExerciseInfo('${k}')"><span><b>${ex.name}</b> <span class="tag ${ex.region}" style="margin-left:4px">${ex.region}</span></span><span class="muted">ⓘ</span></button>`;});
