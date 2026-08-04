@@ -1064,7 +1064,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='109';
+const APP_VERSION='110';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -4252,21 +4252,47 @@ function goalETAHTML(){
   return `<div class="tiny" style="margin-top:8px;color:${good?'var(--green)':'var(--gold)'};font-weight:700">📉 At ~${perWeek.toFixed(1)}${p.unit}/wk you'll hit your goal around <b>${mon}</b> (~${weeks} wk).${good?'':' Pick up the pace to speed it up.'}</div>`;
 }
 /* ---- #4 Calorie/protein intake logging (quick-add + photo AI) ---- */
+// Whole-food quick picks — unprocessed staples across proteins, grains, fruit, veg & fats.
 const COMMON_FOODS=[
   {name:'Chicken breast (150g)',kcal:250,p:47},{name:'2 eggs',kcal:150,p:12},{name:'Greek yogurt (170g)',kcal:100,p:17},
-  {name:'Protein shake',kcal:160,p:30},{name:'Rice, cooked (1 cup)',kcal:205,p:4},{name:'Oats (1/2 cup dry)',kcal:150,p:5},
-  {name:'Banana',kcal:105,p:1},{name:'Salmon (150g)',kcal:280,p:39},{name:'Almonds (28g)',kcal:164,p:6},{name:'Avocado (half)',kcal:120,p:1},
-  {name:'Lean beef (150g)',kcal:300,p:39},{name:'Sweet potato (medium)',kcal:112,p:2},
+  {name:'Salmon (150g)',kcal:280,p:39},{name:'Lean beef (150g)',kcal:300,p:39},{name:'Canned tuna (1 can)',kcal:120,p:26},
+  {name:'Cottage cheese (150g)',kcal:120,p:16},{name:'Tofu (150g)',kcal:170,p:17},{name:'Shrimp (150g)',kcal:150,p:36},
+  {name:'Lentils (1 cup)',kcal:230,p:18},{name:'Black beans (1 cup)',kcal:227,p:15},{name:'Rice, cooked (1 cup)',kcal:205,p:4},
+  {name:'Oats (1/2 cup dry)',kcal:150,p:5},{name:'Quinoa (1 cup)',kcal:222,p:8},
+  {name:'Banana',kcal:105,p:1},{name:'Apple',kcal:95,p:0},{name:'Berries (1 cup)',kcal:65,p:1},{name:'Orange',kcal:62,p:1},{name:'Avocado (half)',kcal:120,p:1},
+  {name:'Broccoli (1 cup)',kcal:55,p:4},{name:'Sweet potato (medium)',kcal:112,p:2},{name:'Spinach (2 cups)',kcal:14,p:2},
+  {name:'Almonds (28g)',kcal:164,p:6},{name:'Peanut butter (1 tbsp)',kcal:95,p:4},
 ];
 function foodTotals(){const d=nutToday();const f=d.food||[];return {kcal:f.reduce((a,x)=>a+(x.kcal||0),0),p:f.reduce((a,x)=>a+(x.p||0),0),n:f.length};}
 function logFood(name,kcal,p){const d=nutToday();if(!Array.isArray(d.food))d.food=[];d.food.push({name:String(name||'Meal').slice(0,50),kcal:kcal||0,p:p||0,at:Date.now()});save();toast('Logged ✓');closeSheet();renderFuel();try{checkAchievements();}catch(e){}}
 function removeFood(idx){const d=nutToday();if(d.food&&d.food[idx]){d.food.splice(idx,1);save();renderFuel();}}
-function quickPick(i){const f=COMMON_FOODS[i];logFood(f.name,f.kcal,f.p);}
+function quickPick(i){const f=COMMON_FOODS[i];rememberFood(f.name,f.kcal,f.p);logFood(f.name,f.kcal,f.p);}
+/* ---- Recent & favorite foods: one-tap re-log of what you actually eat ---- */
+// Remembers the per-serving values under a food's base name (deduped, newest first).
+function rememberFood(name,kcal,p){name=String(name||'').trim();if(!name||(!kcal&&!p))return;
+  const n=nut();if(!Array.isArray(n.foods))n.foods=[];const key=name.toLowerCase();
+  const it=n.foods.find(f=>String(f.name).toLowerCase()===key);
+  if(it){it.kcal=kcal;it.p=p;it.at=Date.now();}else{n.foods.push({name,kcal,p,fav:false,at:Date.now()});}
+  // keep all favorites; cap plain recents at the 12 newest
+  const favs=n.foods.filter(f=>f.fav),rec=n.foods.filter(f=>!f.fav).sort((a,b)=>(b.at||0)-(a.at||0)).slice(0,12);
+  n.foods=favs.concat(rec);save();}
+// Favorites first (newest first), then recents — the display order the sheet uses.
+function foodsList(){const arr=Array.isArray(nut().foods)?nut().foods.slice():[];
+  const by=(a,b)=>(b.at||0)-(a.at||0);
+  return arr.filter(f=>f.fav).sort(by).concat(arr.filter(f=>!f.fav).sort(by));}
+function logRemembered(i){const f=foodsList()[i];if(!f)return;rememberFood(f.name,f.kcal,f.p);logFood(f.name,f.kcal,f.p);}
+function toggleFavFood(i){const f=foodsList()[i];if(!f)return;const it=(nut().foods||[]).find(x=>String(x.name).toLowerCase()===String(f.name).toLowerCase());if(it){it.fav=!it.fav;save();}openQuickAdd();}
+function foodsSectionHTML(){const fl=foodsList();if(!fl.length)return '';
+  return `<div class="section-label" style="margin-top:14px">Your foods</div><div class="card" style="padding:0 10px">`+
+    fl.map((f,i)=>`<div class="kv" style="border-top:1px solid var(--line);align-items:center;gap:8px">
+      <button class="chip" onclick="toggleFavFood(${i})" title="Favorite" style="flex:0 0 auto;padding:4px 9px;color:${f.fav?'var(--gold)':'var(--muted)'}">${f.fav?'★':'☆'}</button>
+      <button onclick="logRemembered(${i})" style="flex:1;min-width:0;text-align:left;background:none;border:none;color:var(--ink);cursor:pointer;padding:10px 0"><b>${_ve(f.name)}</b> <span class="tiny muted">· ${f.kcal} kcal · ${f.p}p</span></button>
+      <span class="tiny muted" style="flex:0 0 auto">＋</span></div>`).join('')+`</div>`;}
 function _faQty(){let q=parseFloat(($('#fa-qty')&&$('#fa-qty').value));return (q>0)?q:1;}
 function _fmtQty(q){return Number.isInteger(q)?String(q):String(+q.toFixed(2));}
 // Live "= total" line reflecting per-serving values × quantity.
 function updQtyTotal(){const el=$('#fa-total');if(!el)return;const k=Math.max(0,parseFloat($('#fa-kcal').value)||0),pr=Math.max(0,parseFloat($('#fa-p').value)||0),q=_faQty();el.innerHTML='= <b>'+Math.round(k*q)+'</b> kcal · <b>'+Math.round(pr*q)+'</b>g protein';}
-function saveFood(){const name=($('#fa-name').value||'').trim()||'Meal';const perK=Math.max(0,parseInt($('#fa-kcal').value)||0);const perP=Math.max(0,parseInt($('#fa-p').value)||0);const q=_faQty();const kcal=Math.round(perK*q),pr=Math.round(perP*q);if(kcal<=0&&pr<=0){toast('Enter calories or protein');return;}const label=q!==1?(name+' ×'+_fmtQty(q)):name;logFood(label,kcal,pr);}
+function saveFood(){const name=($('#fa-name').value||'').trim()||'Meal';const perK=Math.max(0,parseInt($('#fa-kcal').value)||0);const perP=Math.max(0,parseInt($('#fa-p').value)||0);const q=_faQty();const kcal=Math.round(perK*q),pr=Math.round(perP*q);if(kcal<=0&&pr<=0){toast('Enter calories or protein');return;}rememberFood(name,perK,perP);const label=q!==1?(name+' ×'+_fmtQty(q)):name;logFood(label,kcal,pr);}
 function openQuickAdd(pre){
   pre=pre||{};
   openSheet(`<h3>➕ Log food</h3>
@@ -4284,7 +4310,8 @@ function openQuickAdd(pre){
       <div class="tiny muted" style="margin-top:2px">~${pre.kcal||0} kcal · ${pre.p||0}g protein per serving — approximate. Set the quantity, tweak if needed, then tap <b>Save</b> to log it.</div>
     </div>`:'<div style="height:8px"></div>'}
     <button class="btn primary" onclick="saveFood()">${(pre.kcal||pre.p)?'Save to log':'Save'}</button>
-    <div class="section-label" style="margin-top:14px">Quick picks</div>
+    ${foodsSectionHTML()}
+    <div class="section-label" style="margin-top:14px">Quick picks <span class="tiny muted">· whole foods</span></div>
     <div style="display:flex;flex-wrap:wrap;gap:6px">${COMMON_FOODS.map((f,i)=>`<button class="chip" onclick="quickPick(${i})">${f.name.split(' (')[0]} · ${f.kcal}</button>`).join('')}</div>
     <div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
 }
@@ -4744,6 +4771,7 @@ const RECIPES=[
     ing:['1 scoop plant protein','1 cup water or soy milk'],steps:['Shake together until smooth.']},
 ];
 function dietLabel(){return {omnivore:'Omnivore',halal:'Halal',pescatarian:'Pescatarian',vegetarian:'Vegetarian',vegan:'Vegan'}[STATE.nutrition.diet||'omnivore'];}
+function toggleWholeFood(){const n=nut();n.wholeFoodOnly=!wholeOnly();generateMealPlan();save();if(typeof TAB!=='undefined'&&TAB==='fuel')renderFuel();try{renderGuide();}catch(e){}}
 function recipeById(id){return RECIPES.find(r=>r.id===id);}
 function dietOk(r){
   const d=STATE.nutrition.diet||'omnivore';
@@ -4754,9 +4782,16 @@ function dietOk(r){
 }
 function mealSlots(){return (STATE.nutrition.meals===4)?['breakfast','lunch','dinner','snack']:['breakfast','lunch','dinner'];}
 function slotShare(slots){return slots.length===4?{breakfast:.28,lunch:.30,dinner:.30,snack:.12}:{breakfast:.30,lunch:.35,dinner:.35};}
+// Whole-food goal: default ON (only explicit false turns it off).
+function wholeOnly(){return !STATE.nutrition||STATE.nutrition.wholeFoodOnly!==false;}
+// A recipe counts as "whole" unless it leans on processed protein supplements.
+function isWholeFood(r){const hay=((r.name||'')+' '+((r.ing||[]).join(' '))).toLowerCase();
+  return !/protein powder|\bwhey\b|casein|\bscoop\b|protein shake|plant protein|protein bar|meal replacement/.test(hay);}
 function pickRecipe(type,targetK,exclude){
-  let pool=RECIPES.filter(r=>r.type===type&&dietOk(r)&&!exclude.has(r.id));
-  if(!pool.length)pool=RECIPES.filter(r=>r.type===type&&dietOk(r));
+  const whole=wholeOnly();
+  let pool=RECIPES.filter(r=>r.type===type&&dietOk(r)&&!exclude.has(r.id)&&(!whole||isWholeFood(r)));
+  if(!pool.length)pool=RECIPES.filter(r=>r.type===type&&dietOk(r)&&(!whole||isWholeFood(r)));
+  if(!pool.length)pool=RECIPES.filter(r=>r.type===type&&dietOk(r));   // graceful fallback if a diet has no whole option
   if(!pool.length)return null;
   pool.sort((a,b)=>Math.abs(a.kcal-targetK)-Math.abs(b.kcal-targetK));
   const top=pool.slice(0,Math.min(3,pool.length));
@@ -4776,7 +4811,7 @@ function mealPlanHTML(){
   const recs=plan.meals.map(recipeById).filter(Boolean);
   if(!recs.length)return '';
   const tot=recs.reduce((s,r)=>s+r.kcal,0),totP=recs.reduce((s,r)=>s+r.p,0);
-  let h=`<div class="section-label" id="mealplan">Today's meal plan · <span class="tiny muted">${_ve(dietLabel())} · ${recs.length} meals</span></div><div class="card pad" style="padding-bottom:8px">`;
+  let h=`<div class="section-label" id="mealplan">Today's meal plan · <span class="tiny muted">${_ve(dietLabel())} · ${recs.length} meals${wholeOnly()?' · <span style="color:var(--green);font-weight:800">🥦 whole foods</span>':''}</span></div><div class="card pad" style="padding-bottom:8px">`;
   h+=`<div class="row" style="justify-content:space-between;margin-bottom:6px"><div><b>${tot} kcal</b> · ${totP}g protein${kcalT?` <span class="tiny muted">of ${kcalT} target</span>`:''}</div><div class="btnrow" style="flex:0 0 auto;gap:6px"><button class="chip" onclick="openGrocery()">🛒 List</button><button class="chip" onclick="regenPlan()">↻ New plan</button></div></div>`;
   recs.forEach(r=>{h+=`<button class="kv" style="width:100%;text-align:left;border:none;border-top:1px solid var(--line);background:none;padding:12px 2px;cursor:pointer" onclick="toggleRecipe('${r.id}')">
     <span style="min-width:0"><span style="font-size:18px">${r.emoji}</span> <b>${_ve(r.name)}</b><div class="tiny muted" style="margin-top:2px;text-transform:capitalize">${r.type} · ${r.kcal} kcal · ${r.p}p ${r.c}c ${r.f}f</div></span>
@@ -5250,6 +5285,7 @@ function renderGuide(){
       <div class="daypick" id="set-diet" style="flex-wrap:wrap">
         ${[['omnivore','Omnivore'],['halal','Halal'],['pescatarian','Pescatarian'],['vegetarian','Vegetarian'],['vegan','Vegan']].map(([k,l])=>`<button class="${(STATE.nutrition.diet||'omnivore')===k?'on':''}" onclick="setDiet('${k}')">${l}</button>`).join('')}
       </div></div>
+    <div class="row" style="justify-content:space-between;padding:8px 0 2px"><span>Whole foods only <span class="tiny muted">· 🥦 skip processed / powders in meal plans</span></span><button class="chip ${wholeOnly()?'on':''}" onclick="toggleWholeFood()">${wholeOnly()?'On':'Off'}</button></div>
   </div>`;
   // backup
   h+=`<div class="section-label">Your data</div><div class="card pad">
