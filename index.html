@@ -1090,7 +1090,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='140';
+const APP_VERSION='141';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -4700,7 +4700,7 @@ function sendCoreNotif(body,tag,onDone){
   // Chrome shows an ugly monogram if `icon` is omitted, so always supply it (the
   // action-shot app icon). The small left icon is the OS launcher icon (cached).
   // left icon = the app icon (Coach); large right icon = the hanging-leg-raise action shot
-  const opts={body,icon:'ex-hanglegraise.jpg',badge:'icon-192-v2.png',tag:tag||'coreforge-reminder',renotify:true};
+  const opts={body,icon:'notif-hlr.jpg',badge:'icon-192-v2.png',tag:tag||'coreforge-reminder',renotify:true};
   let done=false;const finish=e=>{if(done)return;done=true;if(onDone)onDone(e||null);};
   const fallback=e=>{if(done)return;try{new Notification('CoreForge',opts);finish(null);}catch(err){finish(e||err);}};
   try{
@@ -5448,7 +5448,7 @@ function weeklyBannerHTML(){
   return `<div class="note warn"><b>📸 Saturday check-in.</b> Take a progress photo, measure your waist, and weigh in — same day each week is the most accurate way to track change.
     <div class="btnrow" style="margin-top:8px"><button class="btn sm ghost" onclick="logMeasure()">Waist &amp; weight</button><button class="btn sm ghost" onclick="go('progress')">Add photo</button></div></div>`;
 }
-function fireProgressNotif(body,tag){try{if(navigator.serviceWorker&&navigator.serviceWorker.ready){navigator.serviceWorker.ready.then(r=>r.showNotification('CoreForge',{body,icon:'ex-hanglegraise.jpg',badge:'icon-192-v2.png',tag:tag||'coreforge-weekly'}));}else if('Notification'in window){new Notification('CoreForge',{body});}}catch(e){}}
+function fireProgressNotif(body,tag){try{if(navigator.serviceWorker&&navigator.serviceWorker.ready){navigator.serviceWorker.ready.then(r=>r.showNotification('CoreForge',{body,icon:'notif-hlr.jpg',badge:'icon-192-v2.png',tag:tag||'coreforge-weekly'}));}else if('Notification'in window){new Notification('CoreForge',{body});}}catch(e){}}
 function toggleWeekly(){
   if(STATE.settings.weeklyOn!==false){STATE.settings.weeklyOn=false;save();toast('Saturday check-in off');renderGuide();return;}
   STATE.settings.weeklyOn=true;save();renderGuide();
