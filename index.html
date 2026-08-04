@@ -1064,7 +1064,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='120';
+const APP_VERSION='121';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1564,14 +1564,13 @@ function todayWorkoutHTML(){
   <button class="btn primary" style="margin:2px 0 6px;font-size:17px;padding:18px;font-weight:900" onclick="startMyDay()">☀️ Start my day — Sarge runs the whole flow</button>
   <button class="btn t-teal" style="margin:0 0 6px" onclick="${restedToday?'openRestSheet()':'startRestDay()'}">🛌 ${restedToday?'Rest day — recovery options':'Take a rest day instead'}</button>
   <div class="tiny muted" style="text-align:center;margin:-2px 0 10px">Brief → warm-up → workout → cool-down, guided end-to-end. Or pick a step below.</div>
-  <button class="btn gold" style="margin:2px 0 8px;font-size:16px;padding:16px" onclick="openBrief()">🎙️ Morning Brief with Sarge — your full audio plan</button>
   ${readinessCardHTML()}
   <button class="btn primary" style="margin:2px 0 8px;font-size:16px;padding:17px" onclick="openPlayer()">▶ Start guided workout</button>
   ${sess.session.key==='metcon'?`<button class="btn t-teal" style="margin:0 0 8px" onclick="openHiitChooser()">⚡ HIIT intervals — Tabata · EMOM · AMRAP</button>`:''}
   ${hasWeights()?`<button class="btn t-purple" style="margin:0 0 8px" onclick="startWeights()">🏋️ Weights session — full-body, your equipment</button>`:''}
   <button class="btn t-red" style="margin:0 0 8px" onclick="openSpecial()">🎖️ Special — bonus: bike · sprints · benchmark WODs · custom</button>
   <button class="btn t-green" style="margin:0 0 8px" onclick="openMealPlan()">🍽️ Today's meal plan — recipes for your goal</button>
-  <div class="btnrow" style="margin:2px 0 6px"><button class="btn t-gold" id="coachBrief">🎙️ Brief</button><button class="btn t-blue" onclick="openQuickList()">⚡ Quick</button><button class="btn t-teal" onclick="openRecovery()">😌 Recover</button></div>`;
+  <div class="btnrow" style="margin:2px 0 6px"><button class="btn t-blue" onclick="openQuickList()">⚡ Quick</button><button class="btn t-teal" onclick="openRecovery()">😌 Recover</button></div>`;
   h+=homeSummaryHTML();
   h+=deloadBanner();
   h+=catchUpBanner();
@@ -1655,7 +1654,6 @@ function wireToday(){
       };
     });
   });
-  const cb=$('#coachBrief');if(cb)cb.onclick=openBrief;
   const fin=$('#finishSession');if(fin)fin.onclick=finishSession;
 }
 function ensureLog(){const p=STATE.progressPtr;if(!STATE.logs[p])STATE.logs[p]={date:todayISO(),ex:{},feel:null,done:false};return STATE.logs[p];}
