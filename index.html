@@ -1064,7 +1064,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='110';
+const APP_VERSION='111';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -3735,6 +3735,8 @@ function renderProgress(){
     h+=`<div class="card pad center">${ringHTML(latest.score,'Core Score')}<div style="margin-top:10px"><span class="chip on">${latest.level}</span></div>
       ${STATE.scoreHistory.length>1?scoreTrendHTML():'<div class="tiny muted" style="margin-top:10px">Re-test after each 6-week block to see your climb.</div>'}</div>`;
   }
+  // visual physique goal + forward projection
+  h+=transformationHTML();
   // snapshot: 6 headline metrics
   const sessionsDone=Object.values(STATE.logs).filter(l=>l.done).length;
   const streak=computeStreak();
@@ -4655,6 +4657,104 @@ function bmiLineHTML(){
   const cat=bmi<18.5?'Underweight':bmi<25?'Healthy':bmi<30?'Overweight':'Obese';
   const col=bmi<18.5?'var(--gold)':bmi<25?'var(--green)':bmi<30?'var(--gold)':'var(--pink)';
   return `<div class="divider" style="margin:14px 0"></div><div class="kv" style="border:none;padding:0"><span>BMI</span><b style="color:${col}">${bmi.toFixed(1)} · ${cat}</b></div><div class="tiny muted" style="margin-top:3px">From your Fuel profile height &amp; weight.</div>`;
+}
+/* ---- Visual physique goal + forward projection (see your goal + your timeline) ---- */
+const PHYS_LEVELS=[
+  {id:1,name:'Softer',  bf:28,bfF:38},
+  {id:2,name:'Average', bf:23,bfF:32},
+  {id:3,name:'Fit',     bf:18,bfF:26},
+  {id:4,name:'Lean',    bf:14,bfF:22},
+  {id:5,name:'Shredded',bf:10,bfF:18},
+];
+function isFemale(){const s=(STATE.nutrition&&STATE.nutrition.sex)||STATE.profile.sex;return s==='female'||s==='F'||s==='f';}
+function levelBF(level){const L=PHYS_LEVELS[clamp(level,1,5)-1];return isFemale()?L.bfF:L.bf;}
+// Deurenberg body-fat estimate from BMI + age + sex (no calipers needed).
+function estBodyFat(){const n=STATE.nutrition||{};const kg=latestWeightKg();const h=n.heightCm,age=n.age;
+  if(!(kg>0&&h>0&&age>0))return null;
+  const bmi=kg/Math.pow(h/100,2);
+  return clamp(Math.round(1.20*bmi+0.23*age-10.8*(isFemale()?0:1)-5.4),3,60);}
+function curBF(){const e=estBodyFat();if(e!=null)return e;if(STATE.profile.bodyCur)return levelBF(STATE.profile.bodyCur);return null;}
+// A schematic front-view silhouette whose waist narrows and abs appear as it leans out.
+function physiqueSVG(level,sel){
+  const w=[13,11.5,10,8.5,7][level-1];
+  const col=sel?'var(--fire)':'var(--muted)';
+  const torso=`M16,30 L${(30-w).toFixed(1)},60 L21,82 L39,82 L${(30+w).toFixed(1)},60 L44,30 Z`;
+  const abs=level>=4?`<g stroke="${sel?'#fff':'var(--dim)'}" stroke-width="1" opacity="${sel?0.55:0.3}" fill="none">
+     <line x1="30" y1="44" x2="30" y2="76"/><line x1="24" y1="52" x2="36" y2="52"/><line x1="24" y1="62" x2="36" y2="62"/></g>`:'';
+  return `<svg viewBox="0 0 60 118" width="44" height="86" style="display:block;margin:0 auto">
+    <g fill="${sel?'var(--fire)':'transparent'}" fill-opacity="${sel?0.16:0}" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+      <circle cx="30" cy="12" r="7"/><rect x="27.5" y="18" width="5" height="6"/>
+      <path d="${torso}"/>
+      <path d="M22,82 L20,114 L27,114 L29,84 Z"/><path d="M38,82 L40,114 L33,114 L31,84 Z"/>
+      <path d="M17,31 L10,62 L14,64 L21,35 Z"/><path d="M43,31 L50,62 L46,64 L39,35 Z"/>
+    </g>${abs}</svg>`;
+}
+function physRow(which){
+  const sel=which==='cur'?(STATE.profile.bodyCur||0):(STATE.profile.bodyGoal||0);
+  return PHYS_LEVELS.map(L=>`<button onclick="setBodyLevel('${which}',${L.id})" style="flex:1;min-width:0;background:${sel===L.id?'var(--card2)':'none'};border:1.5px solid ${sel===L.id?'var(--fire)':'var(--line)'};border-radius:12px;padding:6px 1px;cursor:pointer">
+    ${physiqueSVG(L.id,sel===L.id)}<div class="tiny ${sel===L.id?'':'muted'}" style="margin-top:2px;font-weight:${sel===L.id?800:600}">${L.name}</div></button>`).join('');
+}
+function recomputeTargetWeight(){
+  const kg=latestWeightKg(),cb=curBF(),gb=STATE.profile.goalBodyFat;
+  if(kg>0&&cb!=null&&gb>0&&gb<cb){const lean=kg*(1-cb/100);STATE.profile.goalWeightLb=Math.round((lean/(1-gb/100))/0.453592);}
+}
+function setBodyLevel(which,level){
+  if(which==='cur')STATE.profile.bodyCur=level;
+  else{STATE.profile.bodyGoal=level;STATE.profile.goalBodyFat=levelBF(level);recomputeTargetWeight();}
+  save();renderProgress();
+}
+function projTargetKg(){const g=STATE.profile.goalWeightLb;return g>0?g*0.453592:null;}
+// Time-based projection line (dashed) with monthly milestones and your logged weights overlaid.
+function projectionChartSVG(start,end,startK,endK,actual,wu,imp){
+  const W=320,H=140,padL=6,padR=6,padT=16,padB=20;
+  const disp=k=>imp?Math.round(k/0.453592):Math.round(k*10)/10;
+  const ks=[startK,endK].concat(actual.map(a=>a.k));
+  const kmin=Math.min(...ks),kmax=Math.max(...ks),kr=(kmax-kmin)||1;
+  const X=t=>padL+(end===start?0:(t-start)/(end-start))*(W-padL-padR);
+  const Y=k=>padT+(1-(k-kmin)/kr)*(H-padT-padB);
+  let mile='';const mo=30*86400000;
+  for(let t=start+mo;t<end;t+=mo){const f=(t-start)/(end-start);mile+=`<circle cx="${X(t).toFixed(1)}" cy="${Y(startK+(endK-startK)*f).toFixed(1)}" r="2.6" fill="var(--fire-l)"/>`;}
+  const ap=actual.filter(p=>p.t>=start-mo).sort((a,b)=>a.t-b.t);
+  const aline=ap.length>1?`<polyline points="${ap.map(p=>X(p.t).toFixed(1)+','+Y(p.k).toFixed(1)).join(' ')}" fill="none" stroke="var(--teal)" stroke-width="2.5"/>`:'';
+  const adots=ap.map(p=>`<circle cx="${X(p.t).toFixed(1)}" cy="${Y(p.k).toFixed(1)}" r="3.2" fill="var(--teal)"/>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="none" style="display:block;margin-top:10px;height:140px">
+    <path d="M${X(start).toFixed(1)},${Y(startK).toFixed(1)} L${X(end).toFixed(1)},${Y(endK).toFixed(1)}" fill="none" stroke="var(--fire)" stroke-width="2.5" stroke-dasharray="5 5" opacity="0.9"/>
+    ${mile}${aline}${adots}
+    <circle cx="${X(start).toFixed(1)}" cy="${Y(startK).toFixed(1)}" r="4" fill="var(--teal)"/>
+    <circle cx="${X(end).toFixed(1)}" cy="${Y(endK).toFixed(1)}" r="5" fill="var(--fire)"/>
+    <text x="${padL}" y="${(Y(startK)-8).toFixed(1)}" fill="var(--dim)" font-size="9">${disp(startK)}${wu}</text>
+    <text x="${(W-padR).toFixed(1)}" y="${(Y(endK)-8).toFixed(1)}" fill="var(--fire)" font-size="9" text-anchor="end" font-weight="700">${disp(endK)}${wu}</text>
+    <text x="${padL}" y="${H-5}" fill="var(--dim)" font-size="9">now</text>
+    <text x="${(W-padR).toFixed(1)}" y="${H-5}" fill="var(--dim)" font-size="9" text-anchor="end">target</text>
+  </svg>`;
+}
+function projectionHTML(){
+  const kg=latestWeightKg(),tkg=projTargetKg(),imp=STATE.profile.unit==='in',wu=imp?'lb':'kg';
+  const disp=k=>imp?Math.round(k/0.453592):Math.round(k*10)/10;
+  if(!(kg>0))return `<div class="note info" style="margin-top:10px">Log your body weight (Body composition ▸ <b>+ Log</b>) to see your projection to goal.</div>`;
+  if(!(tkg>0))return `<div class="note info" style="margin-top:10px">Pick a target physique above to project your timeline.</div>`;
+  const losing=tkg<kg, diff=Math.abs(kg-tkg);
+  if(diff<0.5)return `<div class="note" style="margin-top:10px;border-color:var(--green)"><b style="color:var(--green)">🎯 You're at your target weight.</b> Hold it and let your training reveal the definition.</div>`;
+  const rate=losing?Math.max(0.2,Math.min(1.0,kg*0.007)):Math.max(0.15,Math.min(0.4,kg*0.0025));
+  const weeks=Math.max(1,Math.ceil(diff/rate));
+  const start=Date.now(),end=start+weeks*7*86400000;
+  const monthLbl=new Date(end).toLocaleDateString(undefined,{month:'long',year:'numeric'});
+  const actual=(STATE.measurements||[]).filter(m=>m.weight>0).map(m=>({t:Date.parse(m.date),k:imp?m.weight*0.453592:m.weight})).filter(p=>p.t);
+  const dispRate=imp?Math.round(rate/0.453592*10)/10:Math.round(rate*10)/10;
+  return `<div class="row" style="justify-content:space-between;align-items:baseline;margin-top:2px">
+      <div><div style="font-size:21px;font-weight:900">${disp(tkg)}${wu} <span class="tiny muted" style="font-weight:600">by</span> ${monthLbl}</div></div>
+      <div class="tiny muted" style="text-align:right">~${weeks} wk<br>~${dispRate}${wu}/wk</div>
+    </div>${projectionChartSVG(start,end,kg,tkg,actual,wu,imp)}
+    <div class="tiny muted" style="margin-top:6px">A realistic pace at a moderate ${losing?'deficit':'surplus'}. Log weight weekly — the teal dots track you against the plan.</div>`;
+}
+function transformationHTML(){
+  const cb=curBF();
+  return `<div class="section-label">Your transformation</div><div class="card pad">
+    <div class="row" style="justify-content:space-between"><b>Physique goal</b>${cb!=null?`<span class="tiny muted">Est. body-fat <b style="color:var(--ink)">~${cb}%</b></span>`:''}</div>
+    <div class="tiny muted" style="margin:8px 0 4px">Where you are now</div><div style="display:flex;gap:5px">${physRow('cur')}</div>
+    <div class="tiny muted" style="margin:10px 0 4px">Where you want to be</div><div style="display:flex;gap:5px">${physRow('goal')}</div>
+    <div class="divider" style="margin:14px 0"></div><b>Projection to goal</b>${projectionHTML()}
+  </div>`;
 }
 
 /* ============================ FUEL (NUTRITION) VIEW ============================
