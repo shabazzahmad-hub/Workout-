@@ -1064,7 +1064,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='112';
+const APP_VERSION='113';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -4707,8 +4707,10 @@ function physiqueSVG(level,sel){
 }
 function physRow(which){
   const sel=which==='cur'?(STATE.profile.bodyCur||0):(STATE.profile.bodyGoal||0);
-  return PHYS_LEVELS.map(L=>`<button onclick="setBodyLevel('${which}',${L.id})" style="flex:1;min-width:0;background:${sel===L.id?'var(--card2)':'none'};border:1.5px solid ${sel===L.id?'var(--fire)':'var(--line)'};border-radius:12px;padding:6px 1px;cursor:pointer">
-    ${physiqueSVG(L.id,sel===L.id)}<div class="tiny ${sel===L.id?'':'muted'}" style="margin-top:2px;font-weight:${sel===L.id?800:600}">${L.name}</div></button>`).join('');
+  return PHYS_LEVELS.map(L=>{const on=sel===L.id;
+    return `<button onclick="setBodyLevel('${which}',${L.id})" style="flex:1;min-width:0;background:${on?'var(--card2)':'none'};border:1.5px solid ${on?'var(--fire)':'var(--line)'};border-radius:12px;padding:6px 1px;cursor:pointer">
+    <img src="phys-${L.id}.jpg" alt="${L.name}" loading="lazy" onerror="this.style.display='none'" style="width:100%;height:82px;object-fit:contain;display:block;filter:${on?'none':'grayscale(0.35) opacity(0.72)'}">
+    <div class="tiny ${on?'':'muted'}" style="margin-top:2px;font-weight:${on?800:600}">${L.name}</div></button>`;}).join('');
 }
 function recomputeTargetWeight(){
   const kg=latestWeightKg(),cb=curBF(),gb=STATE.profile.goalBodyFat;
