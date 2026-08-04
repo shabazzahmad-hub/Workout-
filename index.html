@@ -318,7 +318,7 @@
   <div class="sgrad"></div>
   <div class="scontent">
     <div class="swordmark">CoreForge</div>
-    <div class="ssub">Full-Body Workout</div>
+    <div class="ssub">Core &amp; Full-Body Training</div>
     <div class="sbar"><i></i></div>
   </div>
 </div>
@@ -327,7 +327,7 @@
     <div class="brand">
       <div>
         <div class="brand-name">CoreForge</div>
-        <div class="brand-sub">Full-Body Workout</div>
+        <div class="brand-sub">Core &amp; Full-Body Training</div>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:9px">
@@ -377,7 +377,7 @@
    - Baseline assessment (day 1) -> Core Score + level + personal maxes
    - Auto-generated program, progressive overload week-to-week
    - Auto-regulating: adapts next week from how hard sessions felt
-   - 8 six-week blocks: abs/core/HIIT (weeks 1-12) then full-body strength
+   - 9 six-week blocks: abs/core/HIIT (weeks 1-12) then full-body strength
    - Re-assessment each 6-week block -> keeps scaling across the full year
    - Self-saving: localStorage + IndexedDB mirror + persistent storage
    ========================================================================= */
@@ -533,7 +533,7 @@ const EX = {
     steps:['Start on all fours, hands under shoulders, knees under hips.','Brace your core and set a flat "tabletop" back.','Extend the opposite arm and leg straight out, keeping hips level.','Return with control and switch sides. Count each side as a rep.'],
     cues:['Hips and shoulders stay square','Reach long, don\'t just lift','Move slow'],
     mistakes:['Hips rotating open','Arching or sagging the back']},
-  march:{name:'Dead Bug March',region:'stability',unit:'reps',img:'ex-march.jpg',anchor:null,hardness:1,base:16,rest:30,
+  march:{name:'Single-Leg Dead Bug',region:'stability',unit:'reps',img:'ex-march.jpg',anchor:null,hardness:1,base:16,rest:30,
     why:'A gentle bracing drill to activate the deep core before the harder work — grooves the flat-back brace.',
     steps:['Lie on your back, knees bent 90° over your hips, arms at the ceiling.','Press your lower back flat into the floor.','Slowly lower one foot to tap the floor, then return.','Alternate feet, keeping the back pinned. Count each side as a rep.'],
     cues:['Low back stays flat','Slow, deliberate taps','Breathe out as the foot lowers'],
@@ -687,7 +687,7 @@ const EX = {
     mistakes:['Crashing to the floor','Half reps']},
 
   /* ==== BACK (pull — uses your pull-up/dip tower) ==== */
-  deadhang:{name:'Dead Hang',region:'back',unit:'time',img:'ex-deadhang.jpg',anchor:null,hardness:1,base:25,rest:50,
+  deadhang:{name:'Dead Hang',region:'back',unit:'time',img:'ex-deadhang.jpg',anchor:null,hardness:1,base:25,rest:50,equip:['bar'],pattern:'core',
     why:'Builds the grip, forearm and shoulder-girdle strength that every pulling move is built on — and decompresses the spine.',
     steps:['Grip the pull-up bar slightly wider than shoulders, palms forward.','Hang with arms straight, shoulders active (not fully shrugged up).','Brace the core, legs still.','Hold for time with steady breathing.'],
     cues:['Shoulders slightly down and back','Full but active hang','Relax the jaw, breathe'],
@@ -921,10 +921,6 @@ const EX = {
     steps:['Sit with the heels up, leaning back slightly, holding one dumbbell at the chest.','Rotate to tap the bell by each hip.','Keep the chest tall and control the turn. Count each side as a rep.'],
     cues:['Rotate from the ribs','Feet up for more','Slow and controlled'],mistakes:['Just moving the arms','Rounding the back']},
   /* -- extra staples -- */
-  barhang:{name:'Bar Hang',region:'back',unit:'time',img:'ex-barhang.jpg',anchor:null,hardness:1,base:30,rest:40,equip:['bar'],pattern:'core',
-    why:'A dead hang from the bar builds crushing grip and forearm strength, decompresses the spine and bulletproofs the shoulders for every pull.',
-    steps:['Grip the bar slightly wider than the shoulders, palms forward.','Hang with straight arms, shoulders active (not fully shrugged up).','Brace the core and keep the legs still.','Hold for time, breathing steadily.'],
-    cues:['Shoulders down and back','Squeeze the bar hard','Relax the jaw, breathe'],mistakes:['Fully passive, shrugged shoulders','Swinging']},
   asiansquat:{name:'Asian Squat',region:'legs',unit:'time',img:'ex-asiansquat.jpg',anchor:null,hardness:1,base:40,rest:35,
     why:'A deep, flat-footed resting squat that restores hip, knee and ankle mobility and builds the position strength most training misses — great for a strong, pain-free squat.',
     steps:['Stand with feet about shoulder-width, toes turned slightly out.','Sit all the way down into a deep squat, heels flat on the floor.','Keep the chest tall and let the elbows rest inside the knees.','Hold and breathe, sinking a little deeper each breath.'],
@@ -1021,7 +1017,7 @@ const PHASE2_SESSIONS = [
   {key:'core', name:'Core & Conditioning', icon:'🌀', focus:'Full core circuit + HIIT finish',
    slots:['plankL','sideL','hollowL','lowerL'], finisher:'hiitFinL'},
 ];
-const WARMUP = ['march','glutebridge','birddog'];      // ~3 min activation
+const WARMUP = ['march','glutebridge','birddog'];      // ~4 min activation
 const COOLDOWN = [
   {n:"Child's Pose", d:"Sit back onto your heels, arms reaching forward, and breathe into your lower back for 30s."},
   {n:"Cobra Stretch", d:"Lie face-down and gently press your chest up, lengthening the abs you just trained. 30s."},
@@ -1064,7 +1060,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='121';
+const APP_VERSION='122';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1565,12 +1561,12 @@ function todayWorkoutHTML(){
   <button class="btn t-teal" style="margin:0 0 6px" onclick="${restedToday?'openRestSheet()':'startRestDay()'}">🛌 ${restedToday?'Rest day — recovery options':'Take a rest day instead'}</button>
   <div class="tiny muted" style="text-align:center;margin:-2px 0 10px">Brief → warm-up → workout → cool-down, guided end-to-end. Or pick a step below.</div>
   ${readinessCardHTML()}
-  <button class="btn primary" style="margin:2px 0 8px;font-size:16px;padding:17px" onclick="openPlayer()">▶ Start guided workout</button>
+  <button class="btn primary" style="margin:2px 0 8px;font-size:16px;padding:17px" onclick="openPlayer()">▶ Workout only — skip the brief &amp; warm-up</button>
   ${sess.session.key==='metcon'?`<button class="btn t-teal" style="margin:0 0 8px" onclick="openHiitChooser()">⚡ HIIT intervals — Tabata · EMOM · AMRAP</button>`:''}
   ${hasWeights()?`<button class="btn t-purple" style="margin:0 0 8px" onclick="startWeights()">🏋️ Weights session — full-body, your equipment</button>`:''}
   <button class="btn t-red" style="margin:0 0 8px" onclick="openSpecial()">🎖️ Special — bonus: bike · sprints · benchmark WODs · custom</button>
   <button class="btn t-green" style="margin:0 0 8px" onclick="openMealPlan()">🍽️ Today's meal plan — recipes for your goal</button>
-  <div class="btnrow" style="margin:2px 0 6px"><button class="btn t-blue" onclick="openQuickList()">⚡ Quick</button><button class="btn t-teal" onclick="openRecovery()">😌 Recover</button></div>`;
+  <div class="btnrow" style="margin:2px 0 6px"><button class="btn t-blue" onclick="openQuickList()">⚡ Quick</button><button class="btn t-teal" onclick="openRestSheet()">😌 Recover</button></div>`;
   h+=homeSummaryHTML();
   h+=deloadBanner();
   h+=catchUpBanner();
@@ -2063,7 +2059,7 @@ function openSpecial(){
   openSheet(`<h3>🎖️ Special training</h3>
     <p class="muted sm" style="margin:2px 0 12px">Bonus conditioning — run any day, on top of your program. It won't affect your plan or streak. Pick a mode:</p>
     <div style="display:flex;flex-direction:column;gap:10px">
-      <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="specialChooser('hiit')"><b style="font-size:15px">⚡ HIIT intervals</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Bodyweight — jumping jacks, burpees, mountain climbers…</div></button>
+      <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="specialChooser('hiit')"><b style="font-size:15px">⚡ Bonus HIIT intervals</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Bodyweight — jumping jacks, burpees, mountain climbers…</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="specialChooser('bike')"><b style="font-size:15px">🚴 Bike trainer</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Indoor ride intervals on your road bike + trainer</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="specialChooser('sprint')"><b style="font-size:15px">🏃 Sprint runs</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Max-effort sprint intervals with recovery</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="openOps()"><b style="font-size:15px">🎖️ Benchmark Ops</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Timed hero workouts — chase your best time</div></button>
@@ -2073,7 +2069,7 @@ function openSpecial(){
     <div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
 }
 function specialChooser(kind){
-  const title=kind==='bike'?'🚴 Bike trainer':(kind==='sprint'?'🏃 Sprint runs':'⚡ HIIT intervals');
+  const title=kind==='bike'?'🚴 Bike trainer':(kind==='sprint'?'🏃 Sprint runs':'⚡ Bonus HIIT intervals');
   const call=k=>kind==='hiit'?`startHiitSpecial('${k}')`:`startSpecialCardio('${kind}','${k}')`;
   openSheet(`<h3>${title}</h3>
     <p class="muted sm" style="margin:2px 0 12px">Pick an interval format:</p>
@@ -2712,7 +2708,7 @@ function briefSegments(){
   }
   // 11 — close / handoff
   segs.push({icon:'🚀',title:'Lock in',
-    say:`That's the brief${who}. Warm up, lock in, and let's get to work. Tap Start guided workout, and I'll coach you through every rep.`});
+    say:`That's the brief${who}. Warm up, lock in, and let's get to work. I'll coach you through every rep.`});
   return segs;
 }
 
@@ -2901,19 +2897,32 @@ function startRestDay(){
   openRestSheet();
   if(TAB==='today')renderToday();
 }
+/* Single rest & recovery sheet — reached from the today banner, the "Take a rest
+   day" / "Recover" buttons, and after logging via startRestDay(). State-aware:
+   shows the log button until today is logged, then confirms it. */
 function openRestSheet(){
   const name=(STATE.profile.name||'').trim();
+  const rested=!!(STATE.restDays&&STATE.restDays[todayISO()]);
   openSheet(`<div style="text-align:center;margin-bottom:6px">
       ${coachAvatarHTML(76,'border-color:var(--gold,#e7b53c);margin:0 auto 6px;display:block;box-shadow:0 6px 18px rgba(0,0,0,.45)')}
-      <h2 style="margin:2px 0">Rest day 🛌</h2>
-      <div class="tiny muted">Logged for today · ${ADVISOR.name}</div>
+      <h2 style="margin:2px 0">Rest &amp; recovery 🛌</h2>
+      <div class="tiny muted">${rested?'Logged for today · ':''}${ADVISOR.name}</div>
     </div>
     <p class="muted sm" style="text-align:center;margin:8px 0 14px">Smart call${name?', '+name:''}. Your core rebuilds on rest days — this is where the muscle is made. Keep it light: sleep, walk, hydrate, and hit your protein. Your program waits right here for tomorrow.</p>
+    <div class="section-label" style="margin-top:0">Recovery checklist</div>
+    <div class="card pad"><ul class="cuelist" style="margin:0">
+      <li>Sleep 7–9 hours — the #1 recovery driver</li>
+      <li>Walk 20–30 min — active recovery keeps fat loss going</li>
+      <li>Hydrate &amp; hit your protein target (see Fuel)</li>
+      <li>Gentle mobility below — no hard training</li>
+    </ul></div>
+    <div style="height:10px"></div>
     <button class="btn t-teal" style="margin-bottom:8px" onclick="closeSheet();runCooldown()">▶ Light mobility &amp; stretch (~4 min)</button>
     <button class="btn t-green" style="margin-bottom:8px" onclick="closeSheet();openMealPlan()">🍽️ Today's meals</button>
     <button class="btn t-blue" style="margin-bottom:8px" onclick="closeSheet();go('fuel')">💧 Log water &amp; food</button>
+    <button class="btn ${rested?'green':'primary'}" style="margin-bottom:8px" ${rested?'disabled':'onclick="startRestDay()"'}>${rested?'✓ Rest day logged':'Log today as a rest day'}</button>
     <button class="btn ghost" onclick="closeSheet()">Done</button>`);
-  try{coachSpeak("Rest day logged. Recovery is where the muscle is built. Sleep, hydrate, and hit your protein. I will see you tomorrow.");}catch(e){}
+  try{coachSpeak(rested?"Rest day logged. Recovery is where the muscle is built. Sleep, hydrate, and hit your protein. I will see you tomorrow.":"Recovery is where the muscle is built. Rest up, sleep, hydrate, and hit your protein.");}catch(e){}
 }
 /* Voice-picker + depth/speed helpers */
 function _ve(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -4066,7 +4075,7 @@ function shareMilestone(a){
     x.fillStyle='#f2f5f9';x.font='900 78px Archivo,system-ui,sans-serif';let y=_wrapText(x,a.name||'',S/2,520,920,88);
     x.fillStyle='#8b95a5';x.font='600 34px Archivo,system-ui,sans-serif';_wrapText(x,a.desc||'',S/2,y+70,860,46);
     x.fillStyle='#ff5a1f';x.font='900 56px Archivo,system-ui,sans-serif';x.fillText('CoreForge',S/2,980);
-    x.fillStyle='#5d6674';x.font='700 28px Archivo,system-ui,sans-serif';x.fillText('FULL-BODY WORKOUT',S/2,1026);
+    x.fillStyle='#5d6674';x.font='700 28px Archivo,system-ui,sans-serif';x.fillText('CORE & FULL-BODY',S/2,1026);
     c.toBlob(blob=>{if(!blob){toast('Could not make card');return;}
       const file=new File([blob],'coreforge-'+(a.id||'win')+'.png',{type:'image/png'});
       if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:'CoreForge',text:a.name}).catch(()=>{});}
@@ -4088,7 +4097,7 @@ function shareCard(title,subtitle,lines){
     x.fillStyle='#8b95a5';x.font='600 42px Archivo,system-ui,sans-serif';
     (lines||[]).filter(Boolean).forEach(l=>{y+=68;x.fillText(l,S/2,y);});
     x.fillStyle='#ff5a1f';x.font='900 56px Archivo,system-ui,sans-serif';x.fillText('CoreForge',S/2,980);
-    x.fillStyle='#5d6674';x.font='700 28px Archivo,system-ui,sans-serif';x.fillText('FULL-BODY WORKOUT',S/2,1026);
+    x.fillStyle='#5d6674';x.font='700 28px Archivo,system-ui,sans-serif';x.fillText('CORE & FULL-BODY',S/2,1026);
     c.toBlob(blob=>{if(!blob){toast('Could not make card');return;}
       const file=new File([blob],'coreforge-card.png',{type:'image/png'});
       if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:'CoreForge',text:title}).catch(()=>{});}
@@ -4437,7 +4446,7 @@ const STANDARDS={
   sideplank:{unit:'time',t:[30,60,90,120],n:'Side Plank'},
   hollow:{unit:'time',t:[20,45,75,120],n:'Hollow Hold'},
   hspushup:{unit:'reps',t:[1,3,6,10],n:'Handstand Push-Up'},
-  barhang:{unit:'time',t:[30,60,90,120],n:'Bar Hang'},
+  deadhang:{unit:'time',t:[30,60,90,120],n:'Dead Hang'},
 };
 const LEVELS=['Beginner','Novice','Intermediate','Advanced','Elite'];
 function strengthLevel(val,t){let i=0;for(;i<t.length;i++){if(val<t[i])break;}return i;}
@@ -4968,13 +4977,13 @@ function renderFuel(){
   }
   // goal toggle
   h+=`<div class="section-label">My goal</div><div class="daypick" style="margin:0 2px 14px">
-    ${[['lose','🔥 Lose fat'],['recomp','⚖️ Tone up'],['maintain','💪 Maintain']].map(([g,l])=>`<button class="${n.goal===g?'on':''}" onclick="setNutGoal('${g}')">${l}</button>`).join('')}</div>`;
+    ${[['lose','🔥 Lose fat'],['recomp','⚖️ Tone up'],['maintain','💪 Maintain'],['gain','📈 Build muscle']].map(([g,l])=>`<button class="${n.goal===g?'on':''}" onclick="setNutGoal('${g}')">${l}</button>`).join('')}</div>`;
   // daily targets
   h+=`<div class="section-label">Today's targets</div><div class="grid2">
     <div class="stat"><div class="n" style="color:var(--fire-l)">${prot?prot+'g':'—'}</div><div class="l">Protein</div></div>
     <div class="stat"><div class="n" style="color:var(--gold)">${n.kcalTarget?n.kcalTarget:'—'}</div><div class="l">Calories${n.kcalTarget?'':' (set below)'}</div></div>
   </div>`;
-  if(!n.kcalTarget){h+=`<div class="note info" style="margin-top:12px">${n.goal==='maintain'?'Eat around maintenance and let the training sculpt your core.':'For fat loss, eat in a <b>~300–500 kcal/day deficit</b> — enough to lean out, slow enough to keep your strength. Tap the calculator below for your exact number.'}</div>`;}
+  if(!n.kcalTarget){h+=`<div class="note info" style="margin-top:12px">${n.goal==='maintain'?'Eat around maintenance and let the training sculpt your core.':(n.goal==='gain'?'To build muscle, eat in a <b>slight surplus</b> (~150–300 kcal/day) with plenty of protein. Tap the calculator below for your exact number.':'For fat loss, eat in a <b>~300–500 kcal/day deficit</b> — enough to lean out, slow enough to keep your strength. Tap the calculator below for your exact number.')}</div>`;}
   // intake logging (quick-add + photo AI)
   h+=intakeHTML();
   // meal plan + recipes
@@ -5012,14 +5021,16 @@ function renderFuel(){
   </div>`;
   v.innerHTML=h;
 }
-function setNutGoal(g){nut().goal=g;if(nut().kcalTarget)recalcKcalFromStored();save();renderFuel();}
+function setNutGoal(g){nut().goal=g;STATE.profile.goal=g;if(nut().kcalTarget)recalcKcalFromStored();save();renderFuel();}
 function logWater(d){const t=nutToday();t.water=clamp((t.water||0)+d,0,20);if(t.water>=waterTargetCups()){if(!t.habits)t.habits={};t.habits.water=true;}save();renderFuel();checkAchievements();}
 function toggleHabit(k){const t=nutToday();if(!t.habits)t.habits={};t.habits[k]=!t.habits[k];save();haptic(10);renderFuel();checkAchievements();}
 function mifflinBMR(sex,kg,cm,age){return 10*kg+6.25*cm-5*age+(sex==='female'?-161:5);}
 function recalcKcalFromStored(){
   const n=nut();if(!(n.sex&&n.age&&n.heightCm&&n.weightKg))return;
   const bmr=mifflinBMR(n.sex,n.weightKg,n.heightCm,n.age);const tdee=bmr*(n.activity||1.45);
-  let t=n.goal==='gain'?tdee*1.1:(n.goal==='maintain'?tdee:(n.goal==='recomp'?tdee*0.9:tdee*0.8));
+  // fat-loss = a moderate 300–500 kcal/day deficit (matches the on-screen copy), not a flat 20%
+  const loseDef=clamp(Math.round(tdee*0.2),300,500);
+  let t=n.goal==='gain'?tdee*1.1:(n.goal==='maintain'?tdee:(n.goal==='recomp'?tdee*0.9:tdee-loseDef));
   t=Math.max(t,bmr*1.1); // safety floor
   n.kcalTarget=Math.round(t/10)*10;
 }
@@ -5062,7 +5073,7 @@ function saveTDEE(){
 /* ============================ QUICK WORKOUTS ============================
    Short, follow-along 5-10 min sessions you can do any time — no baseline
    needed. Items reference the exercise library; unit & rest come from EX.
-   Running a quick workout does NOT touch your 12-week program progress. */
+   Running a quick workout does NOT touch your main program progress. */
 const QUICKIES=[
   {id:'core5', name:'Core Express', mins:5, icon:'🔥', focus:'Fast all-round ab hit',
    items:[{exId:'plank',sets:2,target:30},{exId:'bicycle',sets:2,target:30},{exId:'revcrunch',sets:2,target:15},{exId:'sideplank',sets:2,target:20}]},
@@ -5194,29 +5205,6 @@ function homeSummaryHTML(){
     <div class="stat"><div class="n" style="color:var(--gold)">${Object.keys(STATE.achievements||{}).length}</div><div class="l">Badges</div></div>
   </div>`;
 }
-function openRecovery(){
-  const rested=STATE.restDays&&STATE.restDays[todayISO()];
-  openSheet(`<h3>😌 Rest &amp; Recovery</h3>
-    <p class="muted sm" style="margin:2px 0 12px">Your core rebuilds on rest days. Keep it light: sleep, walk, hydrate, hit your protein.</p>
-    <div style="display:flex;justify-content:center;margin:0 0 14px">${coachChipHTML('Rest hard — this is where you grow')}</div>
-    <div class="section-label" style="margin-top:0">Recovery checklist</div>
-    <div class="card pad"><ul class="cuelist" style="margin:0">
-      <li>Sleep 7–9 hours — the #1 recovery driver</li>
-      <li>Walk 20–30 min — active recovery keeps fat loss going</li>
-      <li>Hydrate &amp; hit your protein target (see Fuel)</li>
-      <li>Gentle mobility below — no hard training</li>
-    </ul></div>
-    <div class="section-label">Mobility &amp; stretch (~5 min)</div>
-    <div class="card pad">${COOLDOWN.map(c=>`<div style="padding:8px 0;border-top:1px solid var(--line)"><b>${c.n}</b><div class="tiny muted" style="margin-top:3px">${c.d}</div></div>`).join('')}
-      <div style="padding:8px 0;border-top:1px solid var(--line)"><b>Cat–Cow</b><div class="tiny muted" style="margin-top:3px">On all fours, slowly alternate arching and rounding the spine. 30s.</div></div>
-      <div style="padding:8px 0;border-top:1px solid var(--line)"><b>Deep breathing</b><div class="tiny muted" style="margin-top:3px">Lie back and take 6 slow belly breaths to wind down.</div></div>
-    </div>
-    <button class="btn green" onclick="closeSheet();runCooldown()">▶ Guided mobility flow</button>
-    <div style="height:8px"></div>
-    <button class="btn ${rested?'green':'primary'}" onclick="logRestDay()">${rested?'✓ Rest day logged':'Log today as a rest day'}</button>
-    <div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
-}
-function logRestDay(){if(!STATE.restDays)STATE.restDays={};STATE.restDays[todayISO()]=true;save();toast('Rest day logged 😌');closeSheet();}
 /* Roll up what was actually logged for a completed session. */
 function sessionStats(p){
   const l=STATE.logs[p]||{ex:{}};const sess=buildSession(p);
