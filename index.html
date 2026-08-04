@@ -1060,7 +1060,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='122';
+const APP_VERSION='123';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -2917,7 +2917,7 @@ function openRestSheet(){
       <li>Gentle mobility below — no hard training</li>
     </ul></div>
     <div style="height:10px"></div>
-    <button class="btn t-teal" style="margin-bottom:8px" onclick="closeSheet();runCooldown()">▶ Light mobility &amp; stretch (~4 min)</button>
+    <button class="btn t-teal" style="margin-bottom:8px" onclick="closeSheet();runCooldown()">▶ Guided cool-down &amp; stretch (~4 min)</button>
     <button class="btn t-green" style="margin-bottom:8px" onclick="closeSheet();openMealPlan()">🍽️ Today's meals</button>
     <button class="btn t-blue" style="margin-bottom:8px" onclick="closeSheet();go('fuel')">💧 Log water &amp; food</button>
     <button class="btn ${rested?'green':'primary'}" style="margin-bottom:8px" ${rested?'disabled':'onclick="startRestDay()"'}>${rested?'✓ Rest day logged':'Log today as a rest day'}</button>
