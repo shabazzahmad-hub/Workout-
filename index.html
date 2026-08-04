@@ -1090,7 +1090,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='142';
+const APP_VERSION='143';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -4421,68 +4421,437 @@ function goalETAHTML(){
   const mon=eta.toLocaleDateString(undefined,{month:'short',year:'numeric'});const good=perWeek>=0.2;
   return `<div class="tiny" style="margin-top:8px;color:${good?'var(--green)':'var(--gold)'};font-weight:700">📉 At ~${perWeek.toFixed(1)}${p.unit}/wk you'll hit your goal around <b>${mon}</b> (~${weeks} wk).${good?'':' Pick up the pace to speed it up.'}</div>`;
 }
-/* ---- #4 Calorie/protein intake logging (quick-add + photo AI) ---- */
-// Whole-food quick picks — unprocessed staples across proteins, grains, fruit, veg & fats.
-const COMMON_FOODS=[
-  {name:'Chicken breast (150g)',kcal:250,p:47},{name:'2 eggs',kcal:150,p:12},{name:'Greek yogurt (170g)',kcal:100,p:17},
-  {name:'Salmon (150g)',kcal:280,p:39},{name:'Lean beef (150g)',kcal:300,p:39},{name:'Canned tuna (1 can)',kcal:120,p:26},
-  {name:'Cottage cheese (150g)',kcal:120,p:16},{name:'Tofu (150g)',kcal:170,p:17},{name:'Shrimp (150g)',kcal:150,p:36},
-  {name:'Lentils (1 cup)',kcal:230,p:18},{name:'Black beans (1 cup)',kcal:227,p:15},{name:'Rice, cooked (1 cup)',kcal:205,p:4},
-  {name:'Oats (1/2 cup dry)',kcal:150,p:5},{name:'Quinoa (1 cup)',kcal:222,p:8},
-  {name:'Banana',kcal:105,p:1},{name:'Apple',kcal:95,p:0},{name:'Berries (1 cup)',kcal:65,p:1},{name:'Orange',kcal:62,p:1},{name:'Avocado (half)',kcal:120,p:1},
-  {name:'Broccoli (1 cup)',kcal:55,p:4},{name:'Sweet potato (medium)',kcal:112,p:2},{name:'Spinach (2 cups)',kcal:14,p:2},
-  {name:'Almonds (28g)',kcal:164,p:6},{name:'Peanut butter (1 tbsp)',kcal:95,p:4},
+/* ---- #4 Calorie & macro intake logging (search · barcode · photo AI) ----
+   Offline-first food database with FULL macros so CoreForge can replace a
+   standalone calorie counter. Each entry: n=name, s=serving, k=kcal,
+   p=protein g, c=carbs g, f=fat g. Packaged/branded products come from
+   Open Food Facts (free, no key) when online — see offSearch/offBarcode. */
+const FOOD_DB=[
+  /* — Poultry, meat & eggs — */
+  {n:'Chicken breast, cooked',s:'100 g',k:165,p:31,c:0,f:3.6},
+  {n:'Chicken thigh, cooked',s:'100 g',k:209,p:26,c:0,f:11},
+  {n:'Chicken wings',s:'100 g',k:203,p:30,c:0,f:8.1},
+  {n:'Rotisserie chicken, meat',s:'100 g',k:190,p:29,c:0,f:8},
+  {n:'Turkey breast, cooked',s:'100 g',k:135,p:30,c:0,f:1},
+  {n:'Ground turkey, 93%',s:'100 g',k:176,p:27,c:0,f:8},
+  {n:'Lean beef steak, cooked',s:'100 g',k:217,p:26,c:0,f:12},
+  {n:'Ground beef, 90% lean',s:'100 g',k:217,p:26,c:0,f:12},
+  {n:'Beef mince, 80% lean',s:'100 g',k:254,p:26,c:0,f:16},
+  {n:'Pork chop, cooked',s:'100 g',k:231,p:26,c:0,f:14},
+  {n:'Pork tenderloin',s:'100 g',k:143,p:26,c:0,f:3.5},
+  {n:'Bacon, cooked',s:'2 slices',k:86,p:6,c:0,f:7},
+  {n:'Lamb, cooked',s:'100 g',k:258,p:25,c:0,f:17},
+  {n:'Goat, cooked',s:'100 g',k:143,p:27,c:0,f:3},
+  {n:'Ham, sliced',s:'100 g',k:145,p:21,c:1.5,f:6},
+  {n:'Egg, large',s:'1 egg',k:72,p:6,c:0.4,f:5},
+  {n:'Egg white',s:'1 white',k:17,p:3.6,c:0.2,f:0},
+  {n:'Scrambled eggs',s:'2 eggs',k:180,p:12,c:2,f:13},
+  /* — Fish & seafood — */
+  {n:'Salmon, cooked',s:'100 g',k:206,p:22,c:0,f:12},
+  {n:'Tuna, canned in water',s:'1 can (142 g)',k:120,p:26,c:0,f:1},
+  {n:'Tilapia, cooked',s:'100 g',k:128,p:26,c:0,f:2.7},
+  {n:'Cod, cooked',s:'100 g',k:105,p:23,c:0,f:0.9},
+  {n:'Shrimp, cooked',s:'100 g',k:99,p:24,c:0.2,f:0.3},
+  {n:'Sardines, canned',s:'1 can (92 g)',k:191,p:23,c:0,f:11},
+  {n:'Mackerel, cooked',s:'100 g',k:262,p:24,c:0,f:18},
+  {n:'Crab meat',s:'100 g',k:97,p:19,c:0,f:1.5},
+  {n:'Fish fillet, fried',s:'100 g',k:232,p:18,c:11,f:12},
+  /* — Dairy & alternatives — */
+  {n:'Greek yogurt, plain 0%',s:'170 g',k:100,p:17,c:6,f:0.7},
+  {n:'Greek yogurt, plain 2%',s:'170 g',k:145,p:20,c:8,f:4},
+  {n:'Yogurt, flavored',s:'170 g',k:150,p:8,c:25,f:2},
+  {n:'Cottage cheese, low-fat',s:'150 g',k:120,p:16,c:5,f:3},
+  {n:'Milk, whole',s:'1 cup',k:149,p:8,c:12,f:8},
+  {n:'Milk, skim',s:'1 cup',k:83,p:8,c:12,f:0.2},
+  {n:'Almond milk, unsweetened',s:'1 cup',k:30,p:1,c:1,f:2.5},
+  {n:'Oat milk',s:'1 cup',k:120,p:3,c:16,f:5},
+  {n:'Cheddar cheese',s:'28 g',k:113,p:7,c:0.4,f:9},
+  {n:'Mozzarella',s:'28 g',k:85,p:6,c:0.6,f:6},
+  {n:'Feta cheese',s:'28 g',k:75,p:4,c:1.2,f:6},
+  {n:'Parmesan, grated',s:'1 tbsp',k:22,p:2,c:0.2,f:1.4},
+  {n:'Cream cheese',s:'1 tbsp',k:51,p:1,c:0.8,f:5},
+  {n:'Butter',s:'1 tbsp',k:102,p:0.1,c:0,f:12},
+  {n:'Whey protein powder',s:'1 scoop (30 g)',k:120,p:24,c:3,f:1.5},
+  {n:'Casein protein powder',s:'1 scoop (30 g)',k:110,p:24,c:3,f:0.5},
+  {n:'Plant protein powder',s:'1 scoop (30 g)',k:120,p:21,c:5,f:2},
+  /* — Legumes, tofu & plant protein — */
+  {n:'Tofu, firm',s:'150 g',k:170,p:17,c:4,f:10},
+  {n:'Tempeh',s:'100 g',k:192,p:20,c:8,f:11},
+  {n:'Lentils, cooked',s:'1 cup',k:230,p:18,c:40,f:0.8},
+  {n:'Black beans, cooked',s:'1 cup',k:227,p:15,c:41,f:0.9},
+  {n:'Chickpeas, cooked',s:'1 cup',k:269,p:15,c:45,f:4},
+  {n:'Kidney beans, cooked',s:'1 cup',k:225,p:15,c:40,f:0.9},
+  {n:'Edamame, shelled',s:'1 cup',k:188,p:18,c:14,f:8},
+  {n:'Hummus',s:'2 tbsp',k:70,p:2,c:6,f:5},
+  {n:'Peas, green',s:'1 cup',k:118,p:8,c:21,f:0.6},
+  /* — Grains, starches & bread — */
+  {n:'White rice, cooked',s:'1 cup',k:205,p:4,c:45,f:0.4},
+  {n:'Brown rice, cooked',s:'1 cup',k:216,p:5,c:45,f:1.8},
+  {n:'Quinoa, cooked',s:'1 cup',k:222,p:8,c:39,f:3.6},
+  {n:'Oats, dry',s:'1/2 cup',k:150,p:5,c:27,f:3},
+  {n:'Oatmeal, cooked',s:'1 cup',k:166,p:6,c:28,f:3.6},
+  {n:'Pasta, cooked',s:'1 cup',k:221,p:8,c:43,f:1.3},
+  {n:'Whole-wheat pasta, cooked',s:'1 cup',k:174,p:7,c:37,f:0.8},
+  {n:'Couscous, cooked',s:'1 cup',k:176,p:6,c:36,f:0.3},
+  {n:'Bread, white',s:'1 slice',k:79,p:2.7,c:15,f:1},
+  {n:'Bread, whole-wheat',s:'1 slice',k:82,p:4,c:14,f:1.1},
+  {n:'Bagel, plain',s:'1 medium',k:245,p:10,c:48,f:1.5},
+  {n:'Tortilla, flour',s:'1 medium',k:144,p:4,c:24,f:3.5},
+  {n:'Tortilla, corn',s:'1 small',k:52,p:1.4,c:11,f:0.7},
+  {n:'Roti / chapati',s:'1 medium',k:120,p:3,c:20,f:3},
+  {n:'Naan',s:'1 piece',k:262,p:9,c:45,f:5},
+  {n:'Potato, baked',s:'1 medium',k:161,p:4.3,c:37,f:0.2},
+  {n:'Sweet potato, baked',s:'1 medium',k:112,p:2,c:26,f:0.1},
+  {n:'French fries',s:'medium serving',k:365,p:4,c:48,f:17},
+  {n:'Plantain, cooked',s:'1 cup',k:179,p:1.3,c:48,f:0.3},
+  {n:'Cassava, cooked',s:'1 cup',k:330,p:2.8,c:78,f:0.6},
+  {n:'Corn, sweet',s:'1 cup',k:143,p:5,c:31,f:2},
+  {n:'Cereal, bran flakes',s:'1 cup',k:128,p:4,c:31,f:0.8},
+  {n:'Granola',s:'1/2 cup',k:230,p:5,c:33,f:9},
+  {n:'Pancakes',s:'2 medium',k:350,p:8,c:45,f:15},
+  /* — Vegetables — */
+  {n:'Broccoli, cooked',s:'1 cup',k:55,p:4,c:11,f:0.6},
+  {n:'Spinach, raw',s:'2 cups',k:14,p:2,c:2,f:0.2},
+  {n:'Kale, cooked',s:'1 cup',k:36,p:2.5,c:7,f:0.5},
+  {n:'Mixed salad greens',s:'2 cups',k:15,p:1.4,c:3,f:0.2},
+  {n:'Carrots, raw',s:'1 cup',k:52,p:1.2,c:12,f:0.3},
+  {n:'Bell pepper',s:'1 medium',k:31,p:1,c:7,f:0.3},
+  {n:'Tomato',s:'1 medium',k:22,p:1.1,c:4.8,f:0.2},
+  {n:'Cucumber',s:'1 cup',k:16,p:0.7,c:3.8,f:0.1},
+  {n:'Onion',s:'1 medium',k:44,p:1.2,c:10,f:0.1},
+  {n:'Mushrooms',s:'1 cup',k:21,p:3,c:3,f:0.3},
+  {n:'Green beans, cooked',s:'1 cup',k:44,p:2.4,c:10,f:0.4},
+  {n:'Cauliflower, cooked',s:'1 cup',k:29,p:2.3,c:5,f:0.6},
+  {n:'Brussels sprouts',s:'1 cup',k:56,p:4,c:11,f:0.8},
+  {n:'Asparagus, cooked',s:'1 cup',k:40,p:4.3,c:7,f:0.4},
+  {n:'Zucchini, cooked',s:'1 cup',k:27,p:2,c:5,f:0.5},
+  {n:'Cabbage, cooked',s:'1 cup',k:34,p:1.5,c:8,f:0.1},
+  {n:'Okra, cooked',s:'1 cup',k:36,p:3,c:7,f:0.3},
+  {n:'Beets, cooked',s:'1 cup',k:75,p:2.9,c:17,f:0.3},
+  /* — Fruit — */
+  {n:'Banana',s:'1 medium',k:105,p:1.3,c:27,f:0.4},
+  {n:'Apple',s:'1 medium',k:95,p:0.5,c:25,f:0.3},
+  {n:'Orange',s:'1 medium',k:62,p:1.2,c:15,f:0.2},
+  {n:'Berries, mixed',s:'1 cup',k:65,p:1,c:15,f:0.5},
+  {n:'Strawberries',s:'1 cup',k:49,p:1,c:12,f:0.5},
+  {n:'Blueberries',s:'1 cup',k:84,p:1.1,c:21,f:0.5},
+  {n:'Grapes',s:'1 cup',k:104,p:1.1,c:27,f:0.2},
+  {n:'Mango',s:'1 cup',k:99,p:1.4,c:25,f:0.6},
+  {n:'Pineapple',s:'1 cup',k:83,p:0.9,c:22,f:0.2},
+  {n:'Watermelon',s:'1 cup',k:46,p:0.9,c:12,f:0.2},
+  {n:'Avocado',s:'1/2 medium',k:120,p:1.5,c:6,f:11},
+  {n:'Pear',s:'1 medium',k:101,p:0.6,c:27,f:0.2},
+  {n:'Peach',s:'1 medium',k:59,p:1.4,c:14,f:0.4},
+  {n:'Kiwi',s:'1 medium',k:42,p:0.8,c:10,f:0.4},
+  {n:'Dates',s:'2 pieces',k:133,p:1.2,c:36,f:0.2},
+  {n:'Raisins',s:'1/4 cup',k:108,p:1.1,c:29,f:0.2},
+  /* — Nuts, seeds & fats — */
+  {n:'Almonds',s:'28 g',k:164,p:6,c:6,f:14},
+  {n:'Peanuts',s:'28 g',k:161,p:7,c:4.6,f:14},
+  {n:'Walnuts',s:'28 g',k:185,p:4.3,c:3.9,f:18},
+  {n:'Cashews',s:'28 g',k:157,p:5,c:9,f:12},
+  {n:'Peanut butter',s:'1 tbsp',k:95,p:4,c:3,f:8},
+  {n:'Almond butter',s:'1 tbsp',k:98,p:3.4,c:3,f:9},
+  {n:'Chia seeds',s:'1 tbsp',k:58,p:2,c:5,f:3.7},
+  {n:'Flaxseed, ground',s:'1 tbsp',k:37,p:1.3,c:2,f:3},
+  {n:'Pumpkin seeds',s:'28 g',k:158,p:9,c:3,f:14},
+  {n:'Olive oil',s:'1 tbsp',k:119,p:0,c:0,f:14},
+  {n:'Coconut oil',s:'1 tbsp',k:121,p:0,c:0,f:14},
+  {n:'Vegetable oil',s:'1 tbsp',k:120,p:0,c:0,f:14},
+  /* — Drinks — */
+  {n:'Coffee, black',s:'1 cup',k:2,p:0.3,c:0,f:0},
+  {n:'Coffee with milk & sugar',s:'1 cup',k:80,p:2,c:12,f:2.5},
+  {n:'Tea, unsweetened',s:'1 cup',k:2,p:0,c:0.5,f:0},
+  {n:'Orange juice',s:'1 cup',k:112,p:1.7,c:26,f:0.5},
+  {n:'Soda, regular',s:'1 can (355 ml)',k:140,p:0,c:39,f:0},
+  {n:'Soda, diet',s:'1 can (355 ml)',k:0,p:0,c:0,f:0},
+  {n:'Beer',s:'1 can (355 ml)',k:153,p:1.6,c:13,f:0},
+  {n:'Wine, red',s:'150 ml',k:125,p:0.1,c:4,f:0},
+  {n:'Spirits (vodka/rum)',s:'44 ml shot',k:97,p:0,c:0,f:0},
+  {n:'Sports drink',s:'1 bottle (500 ml)',k:120,p:0,c:32,f:0},
+  {n:'Protein shake, ready-made',s:'1 bottle',k:160,p:30,c:5,f:3},
+  {n:'Smoothie, fruit',s:'1 cup',k:180,p:3,c:40,f:1},
+  /* — Meals, fast food & snacks — */
+  {n:'Chicken & rice bowl',s:'1 bowl',k:550,p:40,c:60,f:14},
+  {n:'Burrito, chicken',s:'1 burrito',k:620,p:35,c:70,f:20},
+  {n:'Cheeseburger',s:'1 burger',k:550,p:30,c:42,f:28},
+  {n:'Pizza, cheese',s:'1 slice',k:285,p:12,c:36,f:10},
+  {n:'Sandwich, turkey',s:'1 sandwich',k:350,p:22,c:40,f:11},
+  {n:'Caesar salad with chicken',s:'1 bowl',k:470,p:33,c:14,f:31},
+  {n:'Sushi roll',s:'6 pieces',k:255,p:9,c:38,f:7},
+  {n:'Curry with rice',s:'1 plate',k:600,p:25,c:75,f:22},
+  {n:'Stir-fry with chicken',s:'1 plate',k:480,p:35,c:45,f:16},
+  {n:'Omelette, 3-egg with cheese',s:'1 omelette',k:390,p:26,c:3,f:30},
+  {n:'Protein bar',s:'1 bar',k:210,p:20,c:22,f:7},
+  {n:'Granola bar',s:'1 bar',k:140,p:3,c:24,f:4},
+  {n:'Potato chips',s:'28 g',k:152,p:2,c:15,f:10},
+  {n:'Popcorn, air-popped',s:'3 cups',k:93,p:3,c:19,f:1},
+  {n:'Crackers',s:'6 crackers',k:120,p:2,c:20,f:4},
+  {n:'Dark chocolate',s:'28 g',k:170,p:2,c:13,f:12},
+  {n:'Milk chocolate bar',s:'1 bar (45 g)',k:235,p:3,c:26,f:13},
+  {n:'Ice cream',s:'1/2 cup',k:207,p:3.5,c:24,f:11},
+  {n:'Cookie',s:'1 medium',k:150,p:2,c:20,f:7},
+  {n:'Donut, glazed',s:'1 donut',k:240,p:4,c:27,f:14},
+  {n:'Muffin',s:'1 medium',k:340,p:6,c:52,f:13},
+  /* — Condiments & extras — */
+  {n:'Ketchup',s:'1 tbsp',k:19,p:0.2,c:5,f:0},
+  {n:'Mayonnaise',s:'1 tbsp',k:94,p:0.1,c:0.1,f:10},
+  {n:'Mustard',s:'1 tsp',k:3,p:0.2,c:0.3,f:0.2},
+  {n:'Soy sauce',s:'1 tbsp',k:9,p:1.3,c:0.8,f:0},
+  {n:'Hot sauce',s:'1 tsp',k:1,p:0,c:0.1,f:0},
+  {n:'Salad dressing, ranch',s:'2 tbsp',k:129,p:0.4,c:2,f:13},
+  {n:'Honey',s:'1 tbsp',k:64,p:0.1,c:17,f:0},
+  {n:'Sugar',s:'1 tsp',k:16,p:0,c:4.2,f:0},
+  {n:'Maple syrup',s:'1 tbsp',k:52,p:0,c:13,f:0},
+  {n:'Jam',s:'1 tbsp',k:56,p:0.1,c:14,f:0},
 ];
-function foodTotals(){const d=nutToday();const f=d.food||[];return {kcal:f.reduce((a,x)=>a+(x.kcal||0),0),p:f.reduce((a,x)=>a+(x.p||0),0),n:f.length};}
-function logFood(name,kcal,p){const d=nutToday();if(!Array.isArray(d.food))d.food=[];d.food.push({name:String(name||'Meal').slice(0,50),kcal:kcal||0,p:p||0,at:Date.now()});save();toast('Logged ✓');closeSheet();renderFuel();try{checkAchievements();}catch(e){}}
+// Chips shown under the log sheet — the whole-food staples worth one tap.
+const QUICK_PICKS=['Chicken breast, cooked','Egg, large','Greek yogurt, plain 0%','Salmon, cooked','Tuna, canned in water',
+  'Whey protein powder','Cottage cheese, low-fat','Tofu, firm','Lentils, cooked','Black beans, cooked','White rice, cooked',
+  'Oats, dry','Banana','Apple','Berries, mixed','Avocado','Broccoli, cooked','Sweet potato, baked','Spinach, raw','Almonds','Peanut butter'];
+const COMMON_FOODS=QUICK_PICKS.map(n=>{const f=FOOD_DB.find(x=>x.n===n)||{n:n,k:0,p:0,c:0,f:0,s:''};
+  return {name:f.n+(f.s?' ('+f.s+')':''),kcal:f.k,p:f.p,c:f.c,f:f.f};});
+/* Meal slots — logging is grouped like a food diary. Defaults to the slot that
+   matches the current time so one-tap logging lands in the right place. */
+const MEALS=[['b','🍳 Breakfast'],['l','🥗 Lunch'],['d','🍽️ Dinner'],['s','🍎 Snacks']];
+function mealLabel(k){const m=MEALS.find(x=>x[0]===k);return m?m[1]:'🍎 Snacks';}
+function currentMealSlot(){const h=new Date().getHours();return h<11?'b':(h<16?'l':(h<21?'d':'s'));}
+// Totals carry all four macros; older entries (kcal/protein only) count as 0 c/f.
+function foodTotals(){const d=nutToday();const f=d.food||[];
+  return {kcal:f.reduce((a,x)=>a+(x.kcal||0),0),p:f.reduce((a,x)=>a+(x.p||0),0),
+          c:f.reduce((a,x)=>a+(x.c||0),0),f:f.reduce((a,x)=>a+(x.f||0),0),n:f.length};}
+function logFood(name,kcal,p,c,f,meal){const d=nutToday();if(!Array.isArray(d.food))d.food=[];
+  d.food.push({name:String(name||'Meal').slice(0,60),kcal:Math.round(kcal||0),p:Math.round(p||0),
+    c:Math.round(c||0),f:Math.round(f||0),meal:meal||currentMealSlot(),at:Date.now()});
+  save();toast('Logged ✓');closeSheet();renderFuel();try{checkAchievements();}catch(e){}}
 function removeFood(idx){const d=nutToday();if(d.food&&d.food[idx]){d.food.splice(idx,1);save();renderFuel();}}
-function quickPick(i){const f=COMMON_FOODS[i];rememberFood(f.name,f.kcal,f.p);logFood(f.name,f.kcal,f.p);}
+function setFoodMeal(idx,m){const d=nutToday();if(d.food&&d.food[idx]){d.food[idx].meal=m;save();renderFuel();}}
+// Edit a logged item in place (re-uses the add sheet, then replaces the entry).
+function editFood(idx){const d=nutToday();const it=d.food&&d.food[idx];if(!it)return;
+  openQuickAdd({name:it.name,kcal:it.kcal,p:it.p,c:it.c,f:it.f,meal:it.meal,editIdx:idx});}
+function quickPick(i){const f=COMMON_FOODS[i];rememberFood(f.name,f.kcal,f.p,f.c,f.f);logFood(f.name,f.kcal,f.p,f.c,f.f);}
+/* ---- Macro targets: protein from bodyweight, fat ~27% of calories, carbs fill
+   the rest. Only shown once a calorie target exists. ---- */
+function macroTargets(){const k=nut().kcalTarget;if(!k)return null;
+  const p=proteinTargetG()||Math.round(k*0.3/4);
+  const f=Math.round(k*0.27/9);
+  const c=Math.max(0,Math.round((k-p*4-f*9)/4));
+  return {kcal:k,p:p,c:c,f:f};}
 /* ---- Recent & favorite foods: one-tap re-log of what you actually eat ---- */
 // Remembers the per-serving values under a food's base name (deduped, newest first).
-function rememberFood(name,kcal,p){name=String(name||'').trim();if(!name||(!kcal&&!p))return;
+function rememberFood(name,kcal,p,c,f){name=String(name||'').trim();if(!name||(!kcal&&!p))return;
   const n=nut();if(!Array.isArray(n.foods))n.foods=[];const key=name.toLowerCase();
-  const it=n.foods.find(f=>String(f.name).toLowerCase()===key);
-  if(it){it.kcal=kcal;it.p=p;it.at=Date.now();}else{n.foods.push({name,kcal,p,fav:false,at:Date.now()});}
-  // keep all favorites; cap plain recents at the 12 newest
-  const favs=n.foods.filter(f=>f.fav),rec=n.foods.filter(f=>!f.fav).sort((a,b)=>(b.at||0)-(a.at||0)).slice(0,12);
+  const it=n.foods.find(x=>String(x.name).toLowerCase()===key);
+  if(it){it.kcal=kcal;it.p=p;it.c=c||0;it.f=f||0;it.at=Date.now();}
+  else{n.foods.push({name,kcal,p,c:c||0,f:f||0,fav:false,at:Date.now()});}
+  // keep all favorites; cap plain recents at the 20 newest
+  const favs=n.foods.filter(x=>x.fav),rec=n.foods.filter(x=>!x.fav).sort((a,b)=>(b.at||0)-(a.at||0)).slice(0,20);
   n.foods=favs.concat(rec);save();}
 // Favorites first (newest first), then recents — the display order the sheet uses.
 function foodsList(){const arr=Array.isArray(nut().foods)?nut().foods.slice():[];
   const by=(a,b)=>(b.at||0)-(a.at||0);
   return arr.filter(f=>f.fav).sort(by).concat(arr.filter(f=>!f.fav).sort(by));}
-function logRemembered(i){const f=foodsList()[i];if(!f)return;rememberFood(f.name,f.kcal,f.p);logFood(f.name,f.kcal,f.p);}
+function logRemembered(i){const f=foodsList()[i];if(!f)return;rememberFood(f.name,f.kcal,f.p,f.c,f.f);logFood(f.name,f.kcal,f.p,f.c,f.f);}
 function toggleFavFood(i){const f=foodsList()[i];if(!f)return;const it=(nut().foods||[]).find(x=>String(x.name).toLowerCase()===String(f.name).toLowerCase());if(it){it.fav=!it.fav;save();}openQuickAdd();}
 function foodsSectionHTML(){const fl=foodsList();if(!fl.length)return '';
   return `<div class="section-label" style="margin-top:14px">Your foods</div><div class="card" style="padding:0 10px">`+
     fl.map((f,i)=>`<div class="kv" style="border-top:1px solid var(--line);align-items:center;gap:8px">
       <button class="chip" onclick="toggleFavFood(${i})" title="Favorite" style="flex:0 0 auto;padding:4px 9px;color:${f.fav?'var(--gold)':'var(--muted)'}">${f.fav?'★':'☆'}</button>
-      <button onclick="logRemembered(${i})" style="flex:1;min-width:0;text-align:left;background:none;border:none;color:var(--ink);cursor:pointer;padding:10px 0"><b>${_ve(f.name)}</b> <span class="tiny muted">· ${f.kcal} kcal · ${f.p}p</span></button>
+      <button onclick="logRemembered(${i})" style="flex:1;min-width:0;text-align:left;background:none;border:none;color:var(--ink);cursor:pointer;padding:10px 0"><b>${_ve(f.name)}</b> <span class="tiny muted">· ${f.kcal} kcal · ${f.p}p${f.c?' · '+f.c+'c':''}${f.f?' · '+f.f+'f':''}</span></button>
       <span class="tiny muted" style="flex:0 0 auto">＋</span></div>`).join('')+`</div>`;}
 function _faQty(){let q=parseFloat(($('#fa-qty')&&$('#fa-qty').value));return (q>0)?q:1;}
 function _fmtQty(q){return Number.isInteger(q)?String(q):String(+q.toFixed(2));}
+function _faNum(id){const el=$('#'+id);return el?Math.max(0,parseFloat(el.value)||0):0;}
 // Live "= total" line reflecting per-serving values × quantity.
-function updQtyTotal(){const el=$('#fa-total');if(!el)return;const k=Math.max(0,parseFloat($('#fa-kcal').value)||0),pr=Math.max(0,parseFloat($('#fa-p').value)||0),q=_faQty();el.innerHTML='= <b>'+Math.round(k*q)+'</b> kcal · <b>'+Math.round(pr*q)+'</b>g protein';}
-function saveFood(){const name=($('#fa-name').value||'').trim()||'Meal';const perK=Math.max(0,parseInt($('#fa-kcal').value)||0);const perP=Math.max(0,parseInt($('#fa-p').value)||0);const q=_faQty();const kcal=Math.round(perK*q),pr=Math.round(perP*q);if(kcal<=0&&pr<=0){toast('Enter calories or protein');return;}rememberFood(name,perK,perP);const label=q!==1?(name+' ×'+_fmtQty(q)):name;logFood(label,kcal,pr);}
+function updQtyTotal(){const el=$('#fa-total');if(!el)return;const q=_faQty();
+  el.innerHTML='= <b>'+Math.round(_faNum('fa-kcal')*q)+'</b> kcal · <b>'+Math.round(_faNum('fa-p')*q)+'</b>g P · <b>'
+    +Math.round(_faNum('fa-c')*q)+'</b>g C · <b>'+Math.round(_faNum('fa-f')*q)+'</b>g F';}
+function saveFood(){
+  const name=($('#fa-name').value||'').trim()||'Meal';
+  const perK=_faNum('fa-kcal'),perP=_faNum('fa-p'),perC=_faNum('fa-c'),perF=_faNum('fa-f');
+  const q=_faQty();const kcal=Math.round(perK*q),pr=Math.round(perP*q),cb=Math.round(perC*q),ft=Math.round(perF*q);
+  if(kcal<=0&&pr<=0&&cb<=0&&ft<=0){toast('Enter calories or macros');return;}
+  const meal=($('#fa-meal')&&$('#fa-meal').value)||currentMealSlot();
+  rememberFood(name,Math.round(perK),Math.round(perP),Math.round(perC),Math.round(perF));
+  const label=q!==1?(name+' ×'+_fmtQty(q)):name;
+  const ei=saveFood._editIdx;
+  if(typeof ei==='number'){        // editing an existing entry: replace in place
+    const d=nutToday();if(d.food&&d.food[ei]){d.food[ei]={name:label.slice(0,60),kcal,p:pr,c:cb,f:ft,meal,at:d.food[ei].at||Date.now()};save();}
+    saveFood._editIdx=null;toast('Updated ✓');closeSheet();renderFuel();return;
+  }
+  logFood(label,kcal,pr,cb,ft,meal);
+}
+/* ---- Food search: local database first (instant, offline), then Open Food
+   Facts for packaged/branded products when online. No API key required. ---- */
+function searchLocalFoods(q){q=String(q||'').trim().toLowerCase();if(!q)return [];
+  const hits=FOOD_DB.filter(f=>f.n.toLowerCase().includes(q));
+  // exact-prefix matches first so "egg" surfaces "Egg, large" before "Scrambled eggs"
+  hits.sort((a,b)=>{const ap=a.n.toLowerCase().startsWith(q)?0:1,bp=b.n.toLowerCase().startsWith(q)?0:1;
+    return ap-bp||a.n.length-b.n.length;});
+  return hits.slice(0,40);}
+// Open Food Facts nutriments are per 100 g; convert to a serving when one is given.
+function _offItem(p){
+  const nu=p.nutriments||{};
+  const k100=+nu['energy-kcal_100g']||(nu['energy_100g']?Math.round(+nu['energy_100g']/4.184):0);
+  if(!k100)return null;
+  const sg=parseFloat(String(p.serving_size||'').replace(',','.'));
+  const per=(sg>0&&sg<2000)?sg/100:1;   // serving in grams -> multiplier, else per 100 g
+  const nm=[p.product_name,p.brands?('· '+String(p.brands).split(',')[0].trim()):''].filter(Boolean).join(' ').trim();
+  return {n:(nm||'Product').slice(0,50),
+    s:(sg>0&&sg<2000)?(String(p.serving_size).trim()):'100 g',
+    k:Math.round(k100*per),p:Math.round((+nu.proteins_100g||0)*per),
+    c:Math.round((+nu.carbohydrates_100g||0)*per),f:Math.round((+nu.fat_100g||0)*per)};
+}
+const OFF_FIELDS='product_name,brands,nutriments,serving_size,code';
+async function offSearch(q){
+  const url='https://world.openfoodfacts.org/cgi/search.pl?search_terms='+encodeURIComponent(q)
+    +'&search_simple=1&action=process&json=1&page_size=20&fields='+OFF_FIELDS;
+  const r=await fetch(url,{headers:{'Accept':'application/json'}});
+  if(!r.ok)throw new Error('search '+r.status);
+  const j=await r.json();
+  return (j.products||[]).map(_offItem).filter(Boolean).slice(0,20);
+}
+async function offBarcode(code){
+  const r=await fetch('https://world.openfoodfacts.org/api/v2/product/'+encodeURIComponent(code)+'.json?fields='+OFF_FIELDS,
+    {headers:{'Accept':'application/json'}});
+  if(!r.ok)throw new Error('lookup '+r.status);
+  const j=await r.json();
+  if(!j||j.status!==1||!j.product)throw new Error('not in the database');
+  const it=_offItem(j.product);
+  if(!it)throw new Error('no nutrition data for that product');
+  return it;
+}
+// One row per result; tapping it opens the add sheet pre-filled.
+function _resRow(f,src){
+  const payload=encodeURIComponent(JSON.stringify(f));
+  return `<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer;padding:11px 2px;color:var(--ink)"
+    onclick="pickSearchFood('${payload}')">
+    <span style="min-width:0"><b>${_ve(f.n)}</b><div class="tiny muted" style="margin-top:2px">${_ve(f.s||'')} · ${f.k} kcal · ${f.p}g P · ${f.c}g C · ${f.f}g F${src?' · '+src:''}</div></span>
+    <span class="tiny muted" style="flex:0 0 auto">＋</span></button>`;
+}
+function pickSearchFood(payload){
+  let f;try{f=JSON.parse(decodeURIComponent(payload));}catch(e){return;}
+  openQuickAdd({name:f.n+(f.s?' ('+f.s+')':''),kcal:f.k,p:f.p,c:f.c,f:f.f});
+}
+function renderFoodSearch(q){
+  const box=$('#fs-results');if(!box)return;
+  const local=searchLocalFoods(q);
+  box.innerHTML=(local.length?local.map(f=>_resRow(f,'')).join('')
+    :`<div class="tiny muted" style="padding:12px 2px">No match in the built-in foods${q?' for "'+_ve(q)+'"':''}.</div>`)
+    +`<div id="fs-online"></div>`;
+}
+let _fsSeq=0;
+async function searchOnline(){
+  const q=(($('#fs-q')&&$('#fs-q').value)||'').trim();
+  if(q.length<2){toast('Type at least 2 characters');return;}
+  const box=$('#fs-online');if(box)box.innerHTML='<div class="tiny muted" style="padding:12px 2px">Searching packaged foods…</div>';
+  const seq=++_fsSeq;
+  try{
+    const res=await offSearch(q);
+    if(seq!==_fsSeq)return;
+    const b=$('#fs-online');if(!b)return;
+    b.innerHTML=res.length
+      ? `<div class="section-label" style="margin-top:12px">Packaged &amp; branded</div>`+res.map(f=>_resRow(f,'')).join('')
+      : `<div class="tiny muted" style="padding:12px 2px">No packaged products found for "${_ve(q)}".</div>`;
+  }catch(e){
+    if(seq!==_fsSeq)return;
+    const b=$('#fs-online');if(b)b.innerHTML=`<div class="tiny muted" style="padding:12px 2px">Couldn't reach the online food database (${_ve(String(e.message||e).slice(0,60))}). Built-in foods still work offline.</div>`;
+  }
+}
+function openFoodSearch(){
+  openSheet(`<h3>🔎 Search foods</h3>
+    <div class="field" style="margin-bottom:8px"><input id="fs-q" placeholder="Search e.g. chicken, oats, yogurt…" autocomplete="off" oninput="renderFoodSearch(this.value)" onkeydown="if(event.key==='Enter')searchOnline()"></div>
+    <div class="btnrow" style="gap:8px;margin-bottom:6px">
+      <button class="btn sm ghost" onclick="searchOnline()">🌐 Search packaged foods</button>
+      <button class="btn sm ghost" onclick="scanBarcode()">📸 Scan barcode</button>
+    </div>
+    <div class="tiny muted" style="margin-bottom:4px">Built-in foods work offline. Packaged &amp; barcode lookups use the free Open Food Facts database.</div>
+    <div id="fs-results" class="card" style="padding:0 12px;max-height:46vh;overflow:auto"></div>
+    <div style="height:10px"></div>
+    <button class="btn ghost" onclick="openQuickAdd()">✏️ Enter it manually</button>
+    <div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
+  renderFoodSearch('');
+  setTimeout(()=>{const el=$('#fs-q');if(el)el.focus();},60);
+}
+/* ---- Barcode scanning: uses the built-in BarcodeDetector when the browser has
+   it (Chrome/Android), otherwise falls back to typing the number in. ---- */
+function manualBarcode(){
+  const code=prompt('Enter the barcode number:');
+  if(code&&String(code).trim())lookupBarcode(String(code).trim());
+}
+async function lookupBarcode(code){
+  toast('Looking up '+code+'…');
+  try{const f=await offBarcode(code);openQuickAdd({name:f.n+(f.s?' ('+f.s+')':''),kcal:f.k,p:f.p,c:f.c,f:f.f});
+    toast('Found: '+f.n,4000);
+  }catch(e){toast('Barcode lookup failed — '+String(e.message||e).slice(0,70),5000);}
+}
+function scanBarcode(){
+  if(!('BarcodeDetector'in window)){toast('Live scanning is not supported here — enter the number instead');manualBarcode();return;}
+  if(!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)){manualBarcode();return;}
+  openSheet(`<h3>📸 Scan a barcode</h3>
+    <p class="muted sm" style="margin:2px 0 10px">Point the camera at the product's barcode.</p>
+    <video id="bc-video" playsinline muted style="width:100%;border-radius:14px;background:#000;aspect-ratio:4/3;object-fit:cover"></video>
+    <div class="tiny muted" id="bc-status" style="margin:8px 0">Starting camera…</div>
+    <button class="btn ghost" onclick="stopScan();manualBarcode()">⌨️ Type the number instead</button>
+    <div style="height:8px"></div><button class="btn ghost" onclick="stopScan();closeSheet()">Cancel</button>`);
+  startScan();
+}
+let _bcStream=null,_bcTimer=null;
+function stopScan(){try{if(_bcTimer){clearInterval(_bcTimer);_bcTimer=null;}
+  if(_bcStream){_bcStream.getTracks().forEach(t=>t.stop());_bcStream=null;}}catch(e){}}
+async function startScan(){
+  const st=$('#bc-status');
+  try{
+    const det=new window.BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128']});
+    _bcStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    const v=$('#bc-video');if(!v){stopScan();return;}
+    v.srcObject=_bcStream;await v.play();
+    if(st)st.textContent='Scanning…';
+    _bcTimer=setInterval(async()=>{
+      try{
+        const codes=await det.detect(v);
+        if(codes&&codes.length){const val=codes[0].rawValue;stopScan();closeSheet();lookupBarcode(val);}
+      }catch(e){}
+    },400);
+  }catch(e){
+    stopScan();
+    if(st)st.textContent='Camera unavailable — type the number instead.';
+    toast('Camera unavailable — enter the barcode manually');
+  }
+}
 function openQuickAdd(pre){
   pre=pre||{};
-  openSheet(`<h3>➕ Log food</h3>
+  const editing=(typeof pre.editIdx==='number');
+  saveFood._editIdx=editing?pre.editIdx:null;
+  const filled=(pre.kcal||pre.p||pre.c||pre.f);
+  const slot=pre.meal||currentMealSlot();
+  openSheet(`<h3>${editing?'✏️ Edit item':'➕ Log food'}</h3>
+    ${editing?'':`<button class="btn sm ghost" style="width:100%;margin-bottom:10px" onclick="openFoodSearch()">🔎 Search foods &amp; barcodes</button>`}
     <div class="field"><label>Food</label><input id="fa-name" value="${_ve(pre.name||'')}" placeholder="e.g. Chicken &amp; rice"></div>
     <div class="btnrow" style="gap:8px">
-      <div class="field" style="flex:1;margin:0"><label>Calories / serving</label><input id="fa-kcal" type="number" inputmode="numeric" value="${pre.kcal||''}" placeholder="kcal" oninput="updQtyTotal()"></div>
-      <div class="field" style="flex:1;margin:0"><label>Protein / serving</label><input id="fa-p" type="number" inputmode="numeric" value="${pre.p||''}" placeholder="g" oninput="updQtyTotal()"></div>
+      <div class="field" style="flex:1;margin:0"><label>Calories</label><input id="fa-kcal" type="number" inputmode="numeric" value="${pre.kcal||''}" placeholder="kcal" oninput="updQtyTotal()"></div>
+      <div class="field" style="flex:1;margin:0"><label>Protein (g)</label><input id="fa-p" type="number" inputmode="numeric" value="${pre.p||''}" placeholder="g" oninput="updQtyTotal()"></div>
+    </div>
+    <div class="btnrow" style="gap:8px">
+      <div class="field" style="flex:1;margin:0"><label>Carbs (g)</label><input id="fa-c" type="number" inputmode="numeric" value="${pre.c||''}" placeholder="g" oninput="updQtyTotal()"></div>
+      <div class="field" style="flex:1;margin:0"><label>Fat (g)</label><input id="fa-f" type="number" inputmode="numeric" value="${pre.f||''}" placeholder="g" oninput="updQtyTotal()"></div>
     </div>
     <div class="btnrow" style="gap:8px;align-items:flex-end">
-      <div class="field" style="flex:0 0 96px;margin:0"><label>Quantity</label><input id="fa-qty" type="number" inputmode="decimal" value="1" min="0" step="0.5" oninput="updQtyTotal()"></div>
-      <div class="tiny" id="fa-total" style="flex:1;padding-bottom:11px;font-weight:800">= ${pre.kcal||0} kcal · ${pre.p||0}g protein</div>
+      <div class="field" style="flex:0 0 92px;margin:0"><label>Quantity</label><input id="fa-qty" type="number" inputmode="decimal" value="1" min="0" step="0.5" oninput="updQtyTotal()"></div>
+      <div class="field" style="flex:1;margin:0"><label>Meal</label>
+        <select id="fa-meal" style="width:100%;padding:12px;border-radius:12px;background:var(--card2);color:var(--ink);border:1.5px solid var(--line);font-size:16px">
+          ${MEALS.map(([k,l])=>`<option value="${k}"${k===slot?' selected':''}>${l}</option>`).join('')}
+        </select></div>
     </div>
-    ${(pre.kcal||pre.p)?`<div style="margin:8px 0;padding:10px 12px;border-radius:12px;background:rgba(46,204,113,.12);border:1px solid var(--green)">
-      <div style="font-weight:800">📷 Estimated: ${_ve(pre.name||'Food')}</div>
-      <div class="tiny muted" style="margin-top:2px">~${pre.kcal||0} kcal · ${pre.p||0}g protein per serving — approximate. Set the quantity, tweak if needed, then tap <b>Save</b> to log it.</div>
-    </div>`:'<div style="height:8px"></div>'}
-    <button class="btn primary" onclick="saveFood()">${(pre.kcal||pre.p)?'Save to log':'Save'}</button>
-    ${foodsSectionHTML()}
+    <div class="tiny" id="fa-total" style="font-weight:800;margin:8px 2px 4px">= ${pre.kcal||0} kcal · ${pre.p||0}g P · ${pre.c||0}g C · ${pre.f||0}g F</div>
+    ${(filled&&!editing)?`<div style="margin:8px 0;padding:10px 12px;border-radius:12px;background:rgba(46,204,113,.12);border:1px solid var(--green)">
+      <div style="font-weight:800">${_ve(pre.name||'Food')}</div>
+      <div class="tiny muted" style="margin-top:2px">Per serving as shown — approximate. Set the quantity, tweak if needed, then tap <b>Save</b> to log it.</div>
+    </div>`:'<div style="height:6px"></div>'}
+    <button class="btn primary" onclick="saveFood()">${editing?'Update item':(filled?'Save to log':'Save')}</button>
+    ${editing?'':`${foodsSectionHTML()}
     <div class="section-label" style="margin-top:14px">Quick picks <span class="tiny muted">· whole foods</span></div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px">${COMMON_FOODS.map((f,i)=>`<button class="chip" onclick="quickPick(${i})">${f.name.split(' (')[0]} · ${f.kcal}</button>`).join('')}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">${COMMON_FOODS.map((f,i)=>`<button class="chip" onclick="quickPick(${i})">${f.name.split(' (')[0]} · ${f.kcal}</button>`).join('')}</div>`}
     <div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
 }
 /* ---- Photo → calorie estimate via Google Gemini (free tier) ----
@@ -4514,10 +4883,10 @@ async function estimateFoodFromImage(dataUrl){
   // reply with prose/markdown that leaves us with "no estimate". Generous token
   // budget so the reply is never truncated.
   const body={contents:[{parts:[
-    {text:'Estimate the nutrition of the food in this photo for the visible portion. Return a short food name, "kcal" = whole-number total calories, and "protein" = whole-number GRAMS of protein (a small number, e.g. a banana is about 1). Do not put the calorie number in the protein field.'},
+    {text:'Estimate the nutrition of the food in this photo for the visible portion. Return a short food name, "kcal" = whole-number total calories, and whole-number GRAMS for "protein", "carbs" and "fat" (small numbers — e.g. a banana is about 1 g protein, 27 g carbs, 0 g fat). Never put the calorie number in a macro field.'},
     {inline_data:{mime_type:mime,data:b64}}
   ]}],generationConfig:{temperature:0.2,maxOutputTokens:800,responseMimeType:'application/json',
-    responseSchema:{type:'OBJECT',properties:{name:{type:'STRING'},kcal:{type:'INTEGER'},protein:{type:'INTEGER'}},required:['name','kcal','protein']}}};
+    responseSchema:{type:'OBJECT',properties:{name:{type:'STRING'},kcal:{type:'INTEGER'},protein:{type:'INTEGER'},carbs:{type:'INTEGER'},fat:{type:'INTEGER'}},required:['name','kcal','protein']}}};
   const models=foodAIModels();let lastErr=null;
   for(const model of models){
     try{
@@ -4534,11 +4903,13 @@ async function estimateFoodFromImage(dataUrl){
       }
       const kcal=Math.max(0,Math.round(+o.kcal||0));
       let p=Math.max(0,Math.round(+(o.protein!=null?o.protein:o.p)||0));
-      // Physiological guard: protein is 4 kcal/g, so its grams can never out-calorie
-      // the food. This caps a model that echoes the calorie number into protein
-      // (e.g. a 105-kcal banana can't have 105 g protein — max is ~26).
-      if(kcal>0)p=Math.min(p,Math.round(kcal/4));
-      return {name:String(o.name||'Meal').slice(0,40),kcal:kcal,p:p};
+      let c=Math.max(0,Math.round(+(o.carbs!=null?o.carbs:o.c)||0));
+      let f=Math.max(0,Math.round(+(o.fat!=null?o.fat:o.f)||0));
+      // Physiological guard: protein/carbs are 4 kcal/g and fat 9, so their grams
+      // can never out-calorie the food. This caps a model that echoes the calorie
+      // number into a macro (a 105-kcal banana can't have 105 g protein — max ~26).
+      if(kcal>0){p=Math.min(p,Math.round(kcal/4));c=Math.min(c,Math.round(kcal/4));f=Math.min(f,Math.round(kcal/9));}
+      return {name:String(o.name||'Meal').slice(0,40),kcal:kcal,p:p,c:c,f:f};
     }catch(e){
       lastErr=e;
       // Google's free quotas are PER-MODEL: a model can be unavailable (404),
@@ -4562,14 +4933,72 @@ function foodPhoto(){
     rd.readAsDataURL(f);};
   inp.click();
 }
+// One macro bar (protein/carbs/fat) — grams eaten vs target.
+function _macroBar(label,val,target,color){
+  const pct=target?Math.min(100,Math.round(val/target*100)):0;
+  return `<div style="flex:1;min-width:0">
+    <div class="tiny" style="display:flex;justify-content:space-between;font-weight:700"><span>${label}</span><span class="muted">${val}${target?'/'+target:''}g</span></div>
+    <div class="pbar" style="height:6px;margin-top:4px"><i style="width:${pct}%;background:${color}"></i></div></div>`;
+}
 function intakeHTML(){
-  const t=foodTotals();const d=nutToday();const kcalT=STATE.nutrition.kcalTarget;const protT=proteinTargetG();
-  let h=`<div class="section-label">Today's intake${t.n?` · ${t.n} item${t.n>1?'s':''}`:''}</div><div class="card pad">
-    <div class="row" style="justify-content:space-between;gap:8px"><div><b>${t.kcal}${kcalT?' / '+kcalT:''} kcal</b> · ${t.p}${protT?' / '+protT:''}g protein</div>
-      <div class="btnrow" style="gap:6px;flex:0 0 auto"><button class="chip" onclick="foodPhoto()">📷 Snap</button><button class="chip" onclick="openQuickAdd()">➕ Add</button></div></div>`;
-  if(kcalT){const pct=Math.min(100,Math.round(t.kcal/kcalT*100));h+=`<div class="pbar${t.kcal>kcalT?' ':' green'}" style="margin-top:8px"><i style="width:${pct}%"></i></div><div class="tiny muted" style="margin-top:4px">${t.kcal<=kcalT?(kcalT-t.kcal)+' kcal left today':(t.kcal-kcalT)+' kcal over — ease portions or add a Special session'}</div>`;}
-  (d.food||[]).forEach((f,i)=>{h+=`<div class="kv" style="border-top:1px solid var(--line)"><span>${_ve(f.name)} <span class="tiny muted">· ${f.kcal} kcal · ${f.p}p</span></span><button class="chip" onclick="removeFood(${i})">✕</button></div>`;});
-  h+=`</div>`;return h;
+  const t=foodTotals();const d=nutToday();const kcalT=nut().kcalTarget;const mt=macroTargets();
+  const items=d.food||[];
+  let h=`<div class="section-label">Today's food${t.n?` · ${t.n} item${t.n>1?'s':''}`:''}</div><div class="card pad">
+    <div class="row" style="justify-content:space-between;gap:8px;align-items:flex-start">
+      <div><b style="font-size:19px">${t.kcal}${kcalT?' / '+kcalT:''}</b> <span class="tiny muted">kcal</span></div>
+      <div class="btnrow" style="gap:6px;flex:0 0 auto"><button class="chip" onclick="openFoodSearch()">🔎 Search</button><button class="chip" onclick="scanBarcode()">📸 Scan</button><button class="chip" onclick="foodPhoto()">📷 Snap</button><button class="chip" onclick="openQuickAdd()">➕</button></div></div>`;
+  if(kcalT){const pct=Math.min(100,Math.round(t.kcal/kcalT*100));
+    h+=`<div class="pbar${t.kcal>kcalT?'':' green'}" style="margin-top:8px"><i style="width:${pct}%"></i></div>
+      <div class="tiny muted" style="margin-top:4px">${t.kcal<=kcalT?(kcalT-t.kcal)+' kcal left today':(t.kcal-kcalT)+' kcal over — ease portions or add a Special session'}</div>`;}
+  // macro split
+  h+=`<div class="row" style="gap:10px;margin-top:12px">
+      ${_macroBar('Protein',t.p,mt?mt.p:0,'var(--fire-l,#ffa23d)')}
+      ${_macroBar('Carbs',t.c,mt?mt.c:0,'#3fd7e8')}
+      ${_macroBar('Fat',t.f,mt?mt.f:0,'var(--gold,#e7b53c)')}
+    </div>`;
+  if(!mt)h+=`<div class="tiny muted" style="margin-top:8px">Set a calorie target below to see protein, carb &amp; fat goals.</div>`;
+  // diary grouped by meal
+  if(items.length){
+    MEALS.forEach(([k,label])=>{
+      const rows=items.map((f,i)=>({f,i})).filter(x=>(x.f.meal||'s')===k);
+      if(!rows.length)return;
+      const sub=rows.reduce((a,x)=>a+(x.f.kcal||0),0);
+      h+=`<div class="kv" style="border-top:1px solid var(--line);padding-top:10px"><span class="tiny" style="font-weight:800;letter-spacing:.4px">${label}</span><span class="tiny muted">${sub} kcal</span></div>`;
+      rows.forEach(({f,i})=>{
+        h+=`<div class="kv" style="border-top:1px solid var(--line);gap:6px">
+          <button onclick="editFood(${i})" style="flex:1;min-width:0;text-align:left;background:none;border:none;color:var(--ink);cursor:pointer;padding:8px 0">
+            ${_ve(f.name)} <span class="tiny muted">· ${f.kcal} kcal · ${f.p}p${f.c?' · '+f.c+'c':''}${f.f?' · '+f.f+'f':''}</span></button>
+          <button class="chip" style="flex:0 0 auto" onclick="removeFood(${i})">✕</button></div>`;
+      });
+    });
+  }else{
+    h+=`<div class="tiny muted" style="margin-top:10px;border-top:1px solid var(--line);padding-top:10px">Nothing logged yet. <b>Search</b> the food database, <b>scan</b> a barcode, <b>snap</b> a photo, or add it manually.</div>`;
+  }
+  h+=`</div>`;
+  h+=intakeTrendHTML();
+  return h;
+}
+/* ---- 7-day intake trend: are you actually hitting the target on average? ---- */
+function intakeTrendHTML(){
+  const n=nut();const kcalT=n.kcalTarget;const days=[];
+  for(let i=6;i>=0;i--){const dt=new Date();dt.setDate(dt.getDate()-i);const key=localISO(dt);
+    const day=n.days&&n.days[key];const f=(day&&day.food)||[];
+    days.push({key,label:['S','M','T','W','T','F','S'][dt.getDay()],kcal:f.reduce((a,x)=>a+(x.kcal||0),0),p:f.reduce((a,x)=>a+(x.p||0),0),n:f.length});}
+  const logged=days.filter(d=>d.n>0);
+  if(logged.length<2)return '';
+  const avg=Math.round(logged.reduce((a,d)=>a+d.kcal,0)/logged.length);
+  const avgP=Math.round(logged.reduce((a,d)=>a+d.p,0)/logged.length);
+  const max=Math.max(kcalT||0,...days.map(d=>d.kcal),1);
+  const bars=days.map(d=>{const pct=Math.round(d.kcal/max*100);
+    const col=!d.n?'var(--line)':(kcalT&&d.kcal>kcalT?'var(--fire-l,#ffa23d)':'var(--green)');
+    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+      <div style="width:100%;height:56px;display:flex;align-items:flex-end"><div style="width:100%;height:${Math.max(3,pct)}%;background:${col};border-radius:4px"></div></div>
+      <div class="tiny muted">${d.label}</div></div>`;}).join('');
+  return `<div class="section-label">Last 7 days</div><div class="card pad">
+    <div class="row" style="justify-content:space-between"><div><b>${avg} kcal</b> <span class="tiny muted">daily average</span></div><div class="tiny muted">${avgP}g protein avg · ${logged.length}/7 days logged</div></div>
+    <div class="row" style="gap:6px;align-items:flex-end;margin-top:10px">${bars}</div>
+    ${kcalT?`<div class="tiny muted" style="margin-top:8px">${avg<=kcalT?'✅ Averaging under your '+kcalT+' kcal target — that\'s what drives the fat loss.':'⚠️ Averaging '+(avg-kcalT)+' kcal over target. Trim portions or add conditioning.'}</div>`:''}
+  </div>`;
 }
 /* ---- #5 Strength standards + 1RM estimate ---- */
 const STANDARDS={
