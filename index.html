@@ -1090,7 +1090,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='133';
+const APP_VERSION='134';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -4692,6 +4692,15 @@ function toggleReminders(){
   }else{STATE.settings.reminderOn=true;save();toast('Reminders on');renderGuide();}
 }
 function setReminderTime(v){if(v){STATE.settings.reminderTime=v;save();}}
+// Manual "does it work?" test — fires the reminder notification on demand so you
+// can see it (and the new icon) without waiting for the scheduled nudge.
+function testReminderNotif(){
+  if(!('Notification'in window)){toast('This browser can\'t show notifications');return;}
+  const go=()=>{fireReminderNotif();toast('Sent 🔔 — check your notification shade');};
+  if(Notification.permission==='granted'){go();}
+  else if(Notification.permission==='denied'){toast('Notifications are blocked — enable them for this site first');}
+  else{Notification.requestPermission().then(p=>{p==='granted'?go():toast('Allow notifications to test');});}
+}
 function fireReminderNotif(){
   const body="Time to train your core 💪 Keep your streak alive.";
   try{
@@ -5484,6 +5493,7 @@ function renderGuide(){
     ${STATE.settings.reminderOn?`<div class="row" style="justify-content:space-between;padding:6px 0"><span class="sm muted">Remind me at</span><input type="time" value="${STATE.settings.reminderTime||'18:00'}" onchange="setReminderTime(this.value)" style="background:var(--card2);color:var(--ink);border:1.5px solid var(--line);border-radius:10px;padding:8px 10px;font-size:15px"></div>
     <div class="tiny muted" style="padding:2px 0 4px">Nudges you on your training days. Reminders appear when you open the app (a home-screen install makes them most reliable).</div>`:''}
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Saturday progress check-in <span class="tiny muted">· push + brief countdown</span></span><button class="chip ${STATE.settings.weeklyOn!==false?'on':''}" onclick="toggleWeekly()">${STATE.settings.weeklyOn!==false?'On':'Off'}</button></div>
+    <button class="btn ghost sm" style="width:100%;margin-top:2px" onclick="testReminderNotif()">🔔 Send a test notification</button>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Voice coach <span class="tiny muted">· deep</span></span><button class="chip ${STATE.settings.voice!==false?'on':''}" onclick="toggleSetting('voice')">${STATE.settings.voice!==false?'On':'Off'}</button></div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Workout beat <span class="tiny muted">· hip-hop, auto-ducks for the coach</span></span><button class="chip ${STATE.settings.beat!==false?'on':''}" onclick="toggleSetting('beat')">${STATE.settings.beat!==false?'On':'Off'}</button></div>
     ${STATE.settings.beat!==false?`<div style="padding:4px 0 2px">
