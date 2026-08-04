@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v115';
+const CACHE = 'coreforge-v116';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './archivo.woff2', './icon-192.png', './icon-512.png', './hero.jpg', './coach-sarge.jpg',
   './ex-kneeplank.jpg','./ex-plank.jpg','./ex-longplank.jpg','./ex-planktap.jpg',
   './ex-tuckhollow.jpg','./ex-hollow.jpg','./ex-hollowrock.jpg','./ex-reverseplank.jpg',
@@ -21,7 +21,8 @@ const SHELL = ['./', './index.html', './manifest.webmanifest', './archivo.woff2'
   './ex-dbgoblet.jpg','./ex-dbrdl.jpg','./ex-dbrow.jpg','./ex-dbpress.jpg','./ex-dbfloor.jpg','./ex-dblunge.jpg','./ex-dbthruster.jpg','./ex-dbcurl.jpg','./ex-dbrenegade.jpg','./ex-dbtwist.jpg','./ex-kbcarry.jpg','./ex-barhang.jpg','./ex-asiansquat.jpg','./ex-bike.jpg','./ex-sprint.jpg',
   './ex-standingoblique.jpg','./ex-squatjack.jpg','./ex-halfburpee.jpg','./ex-atomicpushup.jpg',
   './ex-kbhalo.jpg','./ex-kbheli.jpg',
-  './phys-1.jpg','./phys-2.jpg','./phys-3.jpg','./phys-4.jpg','./phys-5.jpg'];
+  './phys-1.jpg','./phys-2.jpg','./phys-3.jpg','./phys-4.jpg','./phys-5.jpg',
+  './ex-birddog.mp4'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
