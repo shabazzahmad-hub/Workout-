@@ -727,12 +727,12 @@ const EX = {
     steps:['Grip the pull-up bar slightly wider than shoulders, palms forward.','Hang with arms straight, shoulders active (not fully shrugged up).','Brace the core, legs still.','Hold for time with steady breathing.'],
     cues:['Shoulders slightly down and back','Full but active hang','Relax the jaw, breathe'],
     mistakes:['Totally passive, shrugged shoulders','Swinging']},
-  scappull:{name:'Scapular Pull-Up',region:'back',unit:'reps',img:'ex-scappull.jpg',anchor:null,hardness:1,base:8,rest:50,
+  scappull:{name:'Scapular Pull-Up',region:'back',unit:'reps',img:'ex-scappull.jpg',equip:['bar'],anchor:null,hardness:1,base:8,rest:50,
     why:'Teaches you to pull with the back, not just the arms — the missing link that unlocks your first pull-up.',
     steps:['Hang from the bar with straight arms.','Without bending the elbows, pull the shoulder blades down and together.','Your body rises a few inches from shoulder action alone.','Lower back to the active hang and repeat.'],
     cues:['Arms stay straight','Drive the shoulder blades down','Small, controlled range'],
     mistakes:['Bending the elbows','Using momentum']},
-  negpullup:{name:'Negative Pull-Up',region:'back',unit:'reps',img:'ex-negpullup.jpg',anchor:null,hardness:1,base:5,rest:65,
+  negpullup:{name:'Negative Pull-Up',region:'back',unit:'reps',img:'ex-negpullup.jpg',equip:['bar'],anchor:null,hardness:1,base:5,rest:65,
     why:'Lowering slowly from the top builds the exact strength for full pull-ups faster than anything else.',
     steps:['Jump or step up so your chin is over the bar.','Brace the core and squeeze the back.','Lower yourself as slowly as possible (aim 3–5 seconds).','Reset at the bottom and repeat.'],
     cues:['Fight gravity the whole way','Shoulders down, chest up','Control to a full straight-arm hang'],
@@ -742,29 +742,29 @@ const EX = {
     steps:['Hang from the bar, palms forward, slightly wider than shoulders.','Brace the core and pull the elbows down and back.','Bring the chin over the bar.','Lower under control to a full straight-arm hang.'],
     cues:['Lead with the chest','Pull elbows to the floor','Full range top and bottom'],
     mistakes:['Kipping/swinging','Half reps']},
-  chinup:{name:'Chin-Up',region:'back',unit:'reps',img:'ex-chinup.jpg',anchor:null,hardness:1,base:7,rest:75,
+  chinup:{name:'Chin-Up',region:'back',unit:'reps',img:'ex-chinup.jpg',equip:['bar'],anchor:null,hardness:1,base:7,rest:75,
     why:'Palms-up shifts more work to the biceps and lower lats — a great back-and-arm builder.',
     steps:['Hang with palms facing you, hands shoulder-width.','Brace and pull your chin over the bar.','Squeeze the biceps and back at the top.','Lower slowly to a full hang.'],
     cues:['Chest to the bar','Squeeze at the top','Slow negative'],
     mistakes:['Swinging up','Not fully extending at the bottom']},
-  widepullup:{name:'Wide Pull-Up',region:'back',unit:'reps',img:'ex-widepullup.jpg',anchor:null,hardness:1,base:5,rest:80,
+  widepullup:{name:'Wide Pull-Up',region:'back',unit:'reps',img:'ex-widepullup.jpg',equip:['bar'],anchor:null,hardness:1,base:5,rest:80,
     why:'A wider grip emphasises the outer lats for that broad, V-taper back.',
     steps:['Grip the bar noticeably wider than shoulders.','Brace and pull the chest toward the bar.','Drive the elbows down and out.','Lower with full control.'],
     cues:['Chest up to the bar','Elbows down and wide','Controlled descent'],
     mistakes:['Short range','Losing the core brace']},
-  invertedrow:{name:'Inverted Row',region:'back',unit:'reps',img:'ex-invertedrow.jpg',anchor:null,hardness:1,base:12,rest:50,
+  invertedrow:{name:'Inverted Row',region:'back',unit:'reps',img:'ex-invertedrow.jpg',equip:['bar'],anchor:null,hardness:1,base:12,rest:50,
     why:'A horizontal pull that builds the mid-back and rear shoulders — balances all the pressing and improves posture.',
     steps:['Set a bar at hip height; hang underneath, body straight, heels on the floor.','Brace the core and glutes.','Pull the chest to the bar, squeezing the shoulder blades.','Lower under control to straight arms.'],
     cues:['Body stays a straight plank','Squeeze the blades at the top','Full arm extension at the bottom'],
     mistakes:['Hips sagging','Short pulls']},
-  invertedrowelev:{name:'Feet-Elevated Row',region:'back',unit:'reps',img:'ex-invertedrowelev.jpg',anchor:null,hardness:1,base:8,rest:60,
+  invertedrowelev:{name:'Feet-Elevated Row',region:'back',unit:'reps',img:'ex-invertedrowelev.jpg',equip:['bar'],anchor:null,hardness:1,base:8,rest:60,
     why:'Elevating the feet loads the row more heavily for continued back strength gains.',
     steps:['Set the bar at hip height, feet up on a bench.','Body in a straight line, core braced.','Pull the chest to the bar.','Lower slowly to a full hang.'],
     cues:['Straight, braced body','Blades together at the top','Control the negative'],
     mistakes:['Hips dropping','Jerky reps']},
 
   /* ==== ARMS (triceps — dips on your tower) ==== */
-  benchdip:{name:'Bench Dip',region:'arms',unit:'reps',img:'ex-benchdip.jpg',anchor:null,hardness:1,base:12,rest:45,
+  benchdip:{name:'Bench Dip',region:'arms',unit:'reps',img:'ex-benchdip.jpg',equip:['bench'],anchor:null,hardness:1,base:12,rest:45,
     why:'A beginner-friendly triceps builder using a bench or chair before progressing to full dips.',
     steps:['Hands on the edge of a bench behind you, legs out front.','Lower by bending the elbows straight back.','Keep the hips close to the bench.','Press back up to a full lockout.'],
     cues:['Elbows point back, not out','Chest tall','Full lockout'],
@@ -1066,22 +1066,22 @@ const COOLDOWN = [
 /* Guided flows: name + seconds + coaching cue. Run through the loud countdown timer. */
 const WARMUP_FLOW = [
   {n:'March in Place',      secs:40, cue:'Drive the knees up and pump the arms. Wake the body up.', img:'wu-march.jpg', vid:'wu-march.mp4'},
-  {n:'Arm Circles',         secs:30, cue:'Big slow circles forward, then reverse halfway through.', img:'wu-armcircles.jpg', vid:'wu-armcircles.mp4'},
-  {n:'Standing Torso Twists', secs:30, cue:'Feet planted, rotate side to side and open up the spine.', img:'wu-torsotwist.jpg', vid:'wu-torsotwist.mp4'},
-  {n:'Hip Circles',         secs:30, cue:'Hands on the hips, make big circles each direction.', img:'wu-hipcircles.jpg', vid:'wu-hipcircles.mp4'},
-  {n:'Glute Bridges',       secs:30, cue:'Squeeze the glutes at the top and brace the core.', img:'wu-glutebridge.jpg', vid:'wu-glutebridge.mp4'},
-  {n:'Bird Dog',            secs:40, cue:'Opposite arm and leg, slow and controlled. Alternate sides.', img:'wu-birddog.jpg', vid:'wu-birddog.mp4'},
-  {n:'Cat–Cow',             secs:30, cue:'Arch then round the spine, breathe with the movement.', img:'wu-catcow.jpg', vid:'wu-catcow.mp4'},
-  {n:'Standing Knee Hugs',  secs:30, cue:'Pull one knee to the chest, alternate, find your balance.', img:'wu-kneehug.jpg', vid:'wu-kneehug.mp4'},
+  {n:'Arm Circles',         secs:30, cue:'Big slow circles forward, then reverse halfway through.', img:'wu-armcircles.jpg'},
+  {n:'Standing Torso Twists', secs:30, cue:'Feet planted, rotate side to side and open up the spine.', img:'wu-torsotwist.jpg'},
+  {n:'Hip Circles',         secs:30, cue:'Hands on the hips, make big circles each direction.', img:'wu-hipcircles.jpg'},
+  {n:'Glute Bridges',       secs:30, cue:'Squeeze the glutes at the top and brace the core.', img:'wu-glutebridge.jpg'},
+  {n:'Bird Dog',            secs:40, cue:'Opposite arm and leg, slow and controlled. Alternate sides.', img:'wu-birddog.jpg'},
+  {n:'Cat–Cow',             secs:30, cue:'Arch then round the spine, breathe with the movement.', img:'wu-catcow.jpg'},
+  {n:'Standing Knee Hugs',  secs:30, cue:'Pull one knee to the chest, alternate, find your balance.', img:'wu-kneehug.jpg'},
 ];
 const COOLDOWN_FLOW = [
-  {n:"Child's Pose",        secs:40, cue:'Sit back on the heels, reach forward, breathe into the low back.', img:'cd-childs.jpg', vid:'cd-childs.mp4'},
-  {n:'Cobra Stretch',       secs:30, cue:'Lie face-down and press the chest up, lengthen the abs.', img:'cd-cobra.jpg', vid:'cd-cobra.mp4'},
-  {n:'Supine Twist — Left', secs:30, cue:'On your back, drop both knees to the left, arms out wide.', img:'cd-twistleft.jpg', vid:'cd-twistleft.mp4'},
-  {n:'Supine Twist — Right',secs:30, cue:'Now drop both knees to the right. Relax and breathe.', img:'cd-twistright.jpg', vid:'cd-twistright.mp4'},
-  {n:'Cat–Cow',             secs:30, cue:'Slowly alternate arching and rounding the spine.', img:'cd-catcow.jpg', vid:'cd-catcow.mp4'},
-  {n:'Knees to Chest',      secs:30, cue:'Hug both knees in and gently rock to release the low back.', img:'cd-knees.jpg', vid:'cd-knees.mp4'},
-  {n:'Deep Breathing',      secs:40, cue:'Lie back and take six slow belly breaths. Wind all the way down.', img:'cd-breathing.jpg', vid:'cd-breathing.mp4'},
+  {n:"Child's Pose",        secs:40, cue:'Sit back on the heels, reach forward, breathe into the low back.', img:'cd-childs.jpg'},
+  {n:'Cobra Stretch',       secs:30, cue:'Lie face-down and press the chest up, lengthen the abs.', img:'cd-cobra.jpg'},
+  {n:'Supine Twist — Left', secs:30, cue:'On your back, drop both knees to the left, arms out wide.', img:'cd-twistleft.jpg'},
+  {n:'Supine Twist — Right',secs:30, cue:'Now drop both knees to the right. Relax and breathe.', img:'cd-twistright.jpg'},
+  {n:'Cat–Cow',             secs:30, cue:'Slowly alternate arching and rounding the spine.', img:'cd-catcow.jpg'},
+  {n:'Knees to Chest',      secs:30, cue:'Hug both knees in and gently rock to release the low back.', img:'cd-knees.jpg'},
+  {n:'Deep Breathing',      secs:40, cue:'Lie back and take six slow belly breaths. Wind all the way down.', img:'cd-breathing.jpg'},
 ];
 
 /* Baseline tests shown on day 1 */
@@ -1100,7 +1100,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='149';
+const APP_VERSION='150';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1277,6 +1277,31 @@ function focusBonus(pos,used){
   }catch(e){}
   return null;
 }
+/* ---- Equipment gate: never prescribe a move the athlete can't physically do.
+   Walks down the ladder to the nearest rung they CAN do, then falls back to an
+   explicit alternative, then to any same-region bodyweight move. ---- */
+function hasGearFor(exId){const e=EX[exId];if(!e||!e.equip||!e.equip.length)return true;
+  const g=STATE.profile.gear||[];return e.equip.every(x=>g.includes(x));}
+// Where to land when a whole ladder needs kit they don't own.
+const GEAR_FALLBACK={
+  pullup:'superman',chinup:'superman',widepullup:'superman',negpullup:'superman',
+  scappull:'superman',deadhang:'superman',invertedrow:'superman',invertedrowelev:'superman',
+  dips:'closepushup',benchdip:'closepushup',dipknee:'legraise',
+  hanglegraise:'legraise',kneeraise:'legraise',dragonflag:'hollowrock',
+  abroll:'plank',copenhagen:'sidedip',
+};
+function gearSwap(exId,ladder){
+  if(hasGearFor(exId))return exId;
+  const lad=LADDERS[ladder]||[];const i=lad.indexOf(exId);
+  if(i>=0){                                   // prefer an easier rung of the same ladder
+    for(let j=i-1;j>=0;j--)if(hasGearFor(lad[j]))return lad[j];
+    for(let j=i+1;j<lad.length;j++)if(hasGearFor(lad[j]))return lad[j];
+  }
+  const alt=GEAR_FALLBACK[exId];if(alt&&EX[alt]&&hasGearFor(alt))return alt;
+  const e=EX[exId];
+  const cand=Object.keys(EX).find(k=>k!=='bike'&&k!=='sprint'&&EX[k].region===e.region&&EX[k].unit===e.unit&&hasGearFor(k));
+  return cand||exId;
+}
 // Build the full session object for a given pointer
 function buildSession(ptr){
   const pos=posOf(ptr);
@@ -1292,11 +1317,12 @@ function buildSession(ptr){
       if(exId==='dragonflag'&&!hasBar){exId='hollowrock';}
       if(exId==='copenhagen'&&STATE.profile.hasBench===false){exId='sidedip';}
     }
-    exId=safeSwap(exId);   // injury-aware: work around flagged joints
+    exId=gearSwap(exId,ladder);   // equipment-aware: only moves they can actually do
+    exId=safeSwap(exId);          // injury-aware: work around flagged joints
     return {exId,...prescribe(exId,pos),slot:ladder};
   });
   const finLad=LADDERS[pos.session.finisher];
-  const finId=safeSwap(finLad[clamp(rungIndex(pos.session.finisher,cycle,week,level),0,finLad.length-1)]);
+  const finId=safeSwap(gearSwap(finLad[clamp(rungIndex(pos.session.finisher,cycle,week,level),0,finLad.length-1)],pos.session.finisher));
   const finisher={exId:finId,...prescribe(finId,pos),slot:pos.session.finisher};
   finisher.sets=1;   // a finisher is always one all-out burnout round
   // targeted bonus: one extra move for the athlete's priority area (from the quiz)
