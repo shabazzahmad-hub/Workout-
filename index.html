@@ -485,6 +485,26 @@ const EX = {
     steps:['Lie on your back, knees bent, feet flat, hands lightly behind the head.','Press your lower back into the floor.','Curl your shoulder blades up off the floor, leading with the chest.','Squeeze the abs at the top, lower slowly. Repeat.'],
     cues:['Lead with the chest, not the chin','Short controlled range','Don\'t yank on the neck'],
     mistakes:['Pulling the head forward with the hands','Bouncing off the floor']},
+  situp:{name:'Sit-Up',region:'anterior',unit:'reps',img:'ex-situp.jpg',anchor:null,hardness:1.2,base:20,rest:40,
+    why:'The military standard. A full sit-up trains the entire rectus abdominis plus the hip flexors through a complete range — it is a graded event on service fitness tests, and the benchmark everyone measures abs against.',
+    steps:['Lie on your back, knees bent about 90°, feet flat and anchored or held down.','Cross the arms on the chest, or fingertips light at the temples — never laced behind the head.','Curl up in one controlled motion until your torso is upright, elbows past the knees.','Lower under control all the way back until the shoulder blades touch. Repeat.'],
+    cues:['Chin off the chest, eyes forward','Drive with the abs, not a neck yank','Lower under control — no crashing down'],
+    mistakes:['Pulling on the head with laced hands','Bouncing off the floor for momentum','Half-repping and never reaching upright']},
+  vertcrunch:{name:'Vertical Leg Crunch',region:'anterior',unit:'reps',img:'ex-vertcrunch.jpg',anchor:null,hardness:1.3,base:16,rest:40,
+    why:'A crunch with the legs locked straight up. Taking the legs out of the equation stops the hip flexors helping, so the upper abs do all the work — a noticeably harder crunch for the same range.',
+    steps:['Lie on your back and raise both legs straight toward the ceiling, ankles crossed.','Press the lower back into the floor and keep the legs vertical the whole set.','Curl your shoulder blades up, reaching the hands toward your feet.','Squeeze at the top, lower slowly without letting the legs drop.'],
+    cues:['Legs stay vertical — they never swing','Reach up toward the toes, not forward','Lower back stays pinned down'],
+    mistakes:['Letting the legs drift or swing for momentum','Pulling on the neck','Legs sagging toward the floor']},
+  plankleg:{name:'Plank with Leg Lift',region:'anterior',unit:'time',img:'ex-plankleg.jpg',anchor:null,hardness:1.15,base:30,rest:45,
+    why:'Lifting one foot off the floor removes a base of support, so the core has to fight rotation as well as sagging — and the glute of the working side fires hard. A big step up from a standard plank.',
+    steps:['Set up in a strong forearm plank, elbows under the shoulders, body in one straight line.','Brace the core and squeeze the glutes.','Lift one foot a few inches off the floor WITHOUT letting the hips twist or drop.','Hold, lower with control, then alternate legs through the set.'],
+    cues:['Hips stay square — no rotating open','Lift from the glute, not the low back','Small lift; control beats height'],
+    mistakes:['Hips twisting toward the lifted leg','Arching the low back to raise the foot','Holding the breath']},
+  plankrot:{name:'Plank Rotation',region:'oblique',unit:'reps',img:'ex-plankrot.jpg',anchor:null,hardness:1.25,base:12,rest:45,
+    why:'Rotating out of a plank into a side plank trains the obliques through movement rather than a static hold — it builds the rotational control that a plain side plank never touches.',
+    steps:['Start in a forearm plank, body in one straight line.','Brace, then rotate the hips and shoulders to one side, stacking into a side plank.','Reach the free arm straight up toward the ceiling, chest open.','Rotate back through the plank and repeat to the other side. Count each side as a rep.'],
+    cues:['Rotate as one rigid block','Hips stay high through the turn','Slow and controlled — no flopping'],
+    mistakes:['Hips sagging as you rotate','Rushing and losing the plank line','Only turning the shoulders, not the hips']},
   bicycle:{name:'Bicycle Crunch',region:'oblique',unit:'time',img:'ex-bicycle.jpg',anchor:null,hardness:1.0,base:40,rest:40,
     why:'Repeatedly ranks #1 for rectus abdominis AND oblique activation in EMG studies — a top all-round ab builder. Timed, so you just keep pedalling with good form.',
     steps:['Lie on your back, hands lightly behind your head, shoulders lifted.','Bring one knee toward your chest while extending the other leg.','Rotate to bring the opposite elbow toward the raised knee.','Keep pedalling smoothly, alternating sides, for the whole time.'],
@@ -1007,11 +1027,11 @@ const EX = {
    Each slot references a "ladder"; the rung is chosen by progression level.
 ========================================================================== */
 const LADDERS = {
-  plankL:     ['kneeplank','plank','longplank','planktap','isoclimber','reverseplank'],
+  plankL:     ['kneeplank','plank','longplank','planktap','plankleg','isoclimber','reverseplank'],
   hollowL:    ['tuckhollow','hollow','hollowrock','lsit','dragonflag'],
   lowerL:     ['deadbug','revcrunch','legraise','kneeraise','hanglegraise'],
-  dynL:       ['crunch','bicycle','tuckvup','vup'],
-  sideL:      ['kneeside','sideplank','sidedip','copenhagen'],
+  dynL:       ['crunch','situp','vertcrunch','bicycle','tuckvup','vup'],
+  sideL:      ['kneeside','sideplank','sidedip','plankrot','copenhagen'],
   rotL:       ['heeltouch','seatedtwist','standingoblique','russiantwist','weightedtwist','windshield'],
   finisherL:  ['marchplace','mountainclimber','flutter','scissors'],
   // compound strength + cardio (fat-loss / complete-program)
@@ -1110,7 +1130,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='152';
+const APP_VERSION='153';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1257,8 +1277,8 @@ function prescribe(exId,pos){
    accessory drawn from the area the athlete most wants to improve (quiz:
    focusPrimary, falling back to their focus areas). Gear- and injury-filtered. */
 const FOCUS_POOL={
-  abs:['hollow','lsit','dragonflag','isoclimber','vup','tuckvup','legraise','hanglegraise','revcrunch','crunch','bicycle','kneeraise','abroll','mbsitup','flutter'],
-  obliques:['sideplank','sidedip','russiantwist','windshield','heeltouch','bicycle','copenhagen','standingoblique','mbtwist','kbhalo'],
+  abs:['hollow','lsit','dragonflag','situp','vertcrunch','plankleg','isoclimber','vup','tuckvup','legraise','hanglegraise','revcrunch','crunch','bicycle','kneeraise','abroll','mbsitup','flutter'],
+  obliques:['sideplank','sidedip','russiantwist','windshield','plankrot','heeltouch','bicycle','copenhagen','standingoblique','mbtwist','kbhalo'],
   full:['burpee','squatthrust','mountainclimber','kbswing','dbthruster','halfburpee','squat','pushup'],
   chest:['pushup','inclinepushup','declinepushup','diamondpushup','archerpushup','closepushup','dbfloor'],
   back:['invertedrow','superman','scappull','negpullup','pullup','chinup','dbrow','kbrow'],
@@ -5480,16 +5500,16 @@ function calcOneRM(){
 const JOINTS=[['knee','Knee'],['shoulder','Shoulder'],['wrist','Wrist'],['lowback','Lower back'],['elbow','Elbow']];
 const JOINT_RISK={
   knee:['pistol','boxpistol','jumpsquat','tuckjump','broadjump','splitjump','bulgarian','burpee','burpeetuck','walkinglunge'],
-  shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','dbpress','kbcp','dbthruster','hanglegraise','lsit','dragonflag'],
+  shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','dbpress','kbcp','dbthruster','hanglegraise','lsit','dragonflag','plankrot'],
   wrist:['pushup','diamondpushup','closepushup','archerpushup','spidermanpushup','planktap','mountainclimber','dbrenegade','abroll','lsit','isoclimber'],
-  lowback:['superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','mbslam','ropeslam','windshield','dragonflag'],
+  lowback:['superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','mbslam','ropeslam','windshield','dragonflag','situp','vertcrunch'],
   elbow:['dips','benchdip','diamondpushup','closepushup','chinup','negpullup','dbcurl'],
 };
 const SAFE_SWAP={
   pistol:'squat',boxpistol:'squat',jumpsquat:'squat',tuckjump:'squat',broadjump:'squat',splitjump:'reverselunge',bulgarian:'splitsquat',burpee:'squatthrust',burpeetuck:'squatthrust',walkinglunge:'reverselunge',
   hspushup:'pikepushup',wallhandstand:'plank',pikepushup:'inclinepushup',elevatedpike:'pikepushup',superpushup:'pushup',archerpushup:'pushup',dbpress:'dbfloor',kbcp:'kbrow',dbthruster:'dbgoblet',
   pushup:'kneepushup',diamondpushup:'kneepushup',closepushup:'kneepushup',spidermanpushup:'kneepushup',planktap:'plank',mountainclimber:'march',dbrenegade:'dbrow',abroll:'plank',
-  superman:'birddog',reverseplank:'glutebridge',nordic:'glutebridge',kbswing:'kbgoblet',dbrdl:'glutebridge',kbrdl:'glutebridge',hipthrust:'glutebridge',mbslam:'mbsitup',ropeslam:'ropewave',windshield:'bicycle',hanglegraise:'legraise',lsit:'hollow',isoclimber:'plank',dragonflag:'hollow',
+  superman:'birddog',reverseplank:'glutebridge',nordic:'glutebridge',kbswing:'kbgoblet',dbrdl:'glutebridge',kbrdl:'glutebridge',hipthrust:'glutebridge',mbslam:'mbsitup',ropeslam:'ropewave',windshield:'bicycle',hanglegraise:'legraise',lsit:'hollow',isoclimber:'plank',dragonflag:'hollow',situp:'crunch',vertcrunch:'crunch',plankrot:'sideplank',plankleg:'plank',
   dips:'benchdip',benchdip:'closepushup',chinup:'invertedrow',negpullup:'invertedrow',dbcurl:'dbrow',
 };
 function safeSwap(exId){
