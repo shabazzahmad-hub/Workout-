@@ -131,8 +131,8 @@
   .tag.legs{background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}
   /* Photo hero (Today session card) */
   .herophoto{position:relative;border-radius:24px;overflow:hidden;border:1px solid var(--line);background:var(--card);box-shadow:var(--shadow-lg);margin-bottom:16px}
-  .herophoto>img{width:100%;height:272px;object-fit:cover;object-position:center 24%;display:block;filter:saturate(.9) contrast(1.03)}
-  .herophoto .hp-grad{position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,9,11,.12) 0%,rgba(8,9,11,.5) 45%,rgba(8,9,11,.97) 100%)}
+  .herophoto>img{width:100%;height:238px;object-fit:cover;object-position:center 22%;display:block;filter:saturate(.9) contrast(1.03)}
+  .herophoto .hp-grad{position:absolute;inset:0;background:linear-gradient(180deg,rgba(7,16,29,.15) 0%,rgba(7,16,29,.55) 42%,rgba(7,16,29,.97) 100%)}
   .herophoto .hp-badges{position:absolute;top:14px;left:14px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;z-index:2}
   .hp-badge{font-size:10px;font-weight:800;letter-spacing:1px;padding:5px 9px;border-radius:8px;line-height:1}
   .hp-badge.today{background:var(--fire);color:var(--accInk)}
@@ -273,6 +273,19 @@
   .numrow input{text-align:center;flex:1}
   /* 6 goal chips never fit on one row on a phone — lay them out 3-up so the
      longer labels ("Maintain", "Strong core & abs") stay readable */
+  /* Compact action tiles for the Today screen. Nine stacked full-width buttons
+     buried the actual workout; these carry the same actions in a third of the
+     height, with the emoji doing the labelling work. */
+  .tilegrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:2px 0 12px}
+  .slimbtn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:40px;
+    padding:9px 12px;border-radius:12px;background:transparent;border:1px dashed var(--line2);
+    color:var(--muted);font-size:12.5px;font-weight:800;margin:0 0 10px}
+  .tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
+    min-height:74px;padding:10px 6px;border-radius:15px;background:var(--card2);
+    border:1px solid var(--line);color:var(--ink);font-size:11.5px;font-weight:800;line-height:1.2;text-align:center}
+  .tile .ti{font-size:20px;line-height:1}
+  .tile:active{transform:scale(.97)}
+  .tile.accent{border-color:color-mix(in srgb,var(--fire) 45%,var(--line));color:var(--fire);background:color-mix(in srgb,var(--fire) 9%,var(--card2))}
   .goalpick{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
   .goalpick button{width:100%;min-width:0;padding:11px 6px;line-height:1.25}
   /* was flex:1 with a 38px floor, so 8 equipment chips got 37px for a 68px label
@@ -1200,7 +1213,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='162';
+const APP_VERSION='163';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1381,9 +1394,28 @@ function prescribe(exId,pos){
   if(typeof exAdaptFor==='function')target*=exAdaptFor(exId);   // per-exercise progression from your ratings
   // conditioning level (from the quiz) scales cardio/dynamic work up or down
   if(ex.region==='cardio'||ex.region==='dynamic'){const c=(STATE.profile&&STATE.profile.conditioning)||'moderate';target*=(c==='low'?0.85:(c==='high'?1.15:1));}
+  /* Primary goal shapes the WHOLE program, not just the optional Weights session.
+     Until now prescribe() never read profile.goal, so switching Lose fat -> Shred
+     -> Build muscle produced a byte-identical workout — the "I changed my goal and
+     nothing happened" complaint. Rep-range logic:
+       shred/lose  -> more reps, shorter rest (metabolic, calorie-hungry)
+       gain        -> fewer, harder reps with longer rest (strength/hypertrophy)
+       core        -> a little more work on the midsection, standard elsewhere
+     Holds are nudged far less than reps; a plank does not become a 90s plank
+     because you picked Shred. */
+  const goal=(STATE.profile&&STATE.profile.goal)||'lose';
+  const isCore=(ex.region==='anterior'||ex.region==='oblique'||ex.region==='lower');
+  let gMul=1,restMul=1;
+  if(goal==='shred'){gMul=ex.unit==='time'?1.10:1.25;restMul=0.8;}
+  else if(goal==='lose'){gMul=ex.unit==='time'?1.05:1.15;restMul=0.9;}
+  else if(goal==='gain'){gMul=ex.unit==='time'?0.95:0.85;restMul=1.3;sets=Math.min(sets+1,5);}
+  else if(goal==='core'){gMul=isCore?(ex.unit==='time'?1.10:1.15):0.95;restMul=isCore?1:0.95;}
+  else if(goal==='recomp'){gMul=1.05;}
+  target*=gMul;
   if(ex.unit==='time'){target=Math.round(target/5)*5;target=clamp(target,15,150);}
   else{target=Math.round(target);target=clamp(target,6,40);}
-  return {sets,target,unit:ex.unit,rest:ex.rest||45};
+  const rest=clamp(Math.round((ex.rest||45)*restMul),20,120);
+  return {sets,target,unit:ex.unit,rest};
 }
 
 /* Focus-area pools for the targeted bonus slot. Each session gains ONE extra
@@ -1742,7 +1774,10 @@ function onboardHTML(){
   const htD=dv(P.heightCm>0?(im?Math.round(P.heightCm/2.54):P.heightCm):0);
   const curKg=N.weightKg||latestWeightKg()||0;
   const wtD=dv(curKg>0?(im?Math.round(curKg/0.453592):Math.round(curKg*10)/10):0);
-  const wsD=dv(P.startWaist>0?(im?r1(P.startWaist/2.54):P.startWaist):0);
+  const _curW=(()=>{const ms=(STATE.measurements||[]).filter(m=>m.waist>0)
+      .sort((x,y)=>String(x.date).localeCompare(String(y.date)));
+    return ms.length?ms[ms.length-1].waist:(P.startWaist||0);})();
+  const wsD=dv(_curW>0?(im?r1(_curW/2.54):_curW):0);
   const gwtD=dv(P.goalWeightLb>0?(im?P.goalWeightLb:Math.round(P.goalWeightLb*0.453592)):0);
   const gwsD=dv(P.goalWaist>0?(im?Math.round(P.goalWaist/2.54):P.goalWaist):0);
   const hu=im?'in':'cm', wu=im?'lb':'kg';
@@ -1896,7 +1931,7 @@ function finishOnboard(){
   const tl=parseInt(($('#ob-timeline button.on')||{dataset:{w:'0'}}).dataset.w)||0; P.timelineWeeks=tl>0?tl:null;
   // goal targets (stored: goalWeightLb in lb, goalWaist in cm — matches projection)
   const gwt=parseFloat($('#ob-goalwt').value); if(gwt>0)P.goalWeightLb=Math.round(im?gwt:gwt/0.453592);
-  const gws=parseFloat($('#ob-goalwaist').value); if(gws>0)P.goalWaist=Math.round(im?gws*2.54:gws);
+  const gws=parseFloat($('#ob-goalwaist').value); if(gws>0)P.goalWaist=r1(im?gws*2.54:gws);
   // nutrition prefs
   N.goal=P.goal; N.sex=P.sex; N.age=P.age; N.heightCm=P.heightCm; N.activity=P.activity;
   N.diet=($('#ob-diet button.on')||{dataset:{d:'omnivore'}}).dataset.d;
@@ -1908,12 +1943,12 @@ function finishOnboard(){
   // Only ever SET the start waist — never overwrite it. The field is labelled just
   // "Waist" and prefills from startWaist, so editing the profile used to reset the
   // baseline to today's number, zeroing the goal bar and the waist achievements.
-  if(w>0&&!(P.startWaist>0))P.startWaist=Math.round(im?w*2.54:w);
+  if(w>0&&!(P.startWaist>0))P.startWaist=r1(im?w*2.54:w);   // one decimal — whole cm loses ~0.2in on the round-trip
   let kg=null; if(wt>0){kg=im?Math.round(wt*0.453592*10)/10:wt; N.weightKg=kg;}
   // upsert by date — a profile edit must not append a second row for today,
   // or ms[0]/ms[last] stop meaning "start" and "now"
   if(w>0||wt>0){
-    const wCm=w>0?Math.round(im?w*2.54:w):null;
+    const wCm=w>0?r1(im?w*2.54:w):null;
     const d=todayISO();const row=STATE.measurements.find(m=>m.date===d);
     if(row){if(wCm)row.waist=wCm;if(kg)row.weight=kg;}
     else STATE.measurements.push({date:d,waist:wCm,weight:kg});
@@ -2013,15 +2048,18 @@ function todayWorkoutHTML(){
   </div>
   ${restedToday?`<div class="note info" style="margin:2px 0 10px">🛌 <b>Rest day logged for today.</b> Recovery is part of the plan — your workout is still here if you change your mind. <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="openRestSheet()">Recovery options</button></div>`:''}
   <button class="btn primary" style="margin:2px 0 6px;font-size:17px;padding:18px;font-weight:900" onclick="startMyDay()">☀️ Start my day — Sarge runs the whole flow</button>
-  <button class="btn t-teal" style="margin:0 0 6px" onclick="${restedToday?'openRestSheet()':'startRestDay()'}">🛌 ${restedToday?'Rest day — recovery options':'Take a rest day instead'}</button>
   <div class="tiny muted" style="text-align:center;margin:-2px 0 10px">Brief → warm-up → workout → cool-down, guided end-to-end. Or pick a step below.</div>
   ${readinessCardHTML()}
-  <button class="btn primary" style="margin:2px 0 8px;font-size:16px;padding:17px" onclick="openPlayer()">▶ Workout only — skip the brief &amp; warm-up</button>
-  ${sess.session.key==='metcon'?`<button class="btn t-teal" style="margin:0 0 8px" onclick="openHiitChooser()">⚡ HIIT intervals — Tabata · EMOM · AMRAP</button>`:''}
-  ${hasWeights()?`<button class="btn t-purple" style="margin:0 0 8px" onclick="startWeights()">🏋️ Weights session — full-body, your equipment</button>`:''}
-  <button class="btn t-red" style="margin:0 0 8px" onclick="openSpecial()">🎖️ Special — bonus: bike · sprints · benchmark WODs · custom</button>
-  <button class="btn t-green" style="margin:0 0 8px" onclick="openMealPlan()">🍽️ Today's meal plan — recipes for your goal</button>
-  <div class="btnrow" style="margin:2px 0 6px"><button class="btn t-blue" onclick="openQuickList()">⚡ Quick</button><button class="btn t-teal" onclick="openRestSheet()">😌 Recover</button></div>`;
+  <button class="btn t-teal" style="margin:0 0 10px" onclick="openPlayer()">▶ Workout only — skip the brief &amp; warm-up</button>
+  <div class="tilegrid">
+    ${sess.session.key==='metcon'?`<button class="tile accent" onclick="openHiitChooser()"><span class="ti">⚡</span>HIIT<br>intervals</button>`:''}
+    ${hasWeights()?`<button class="tile" onclick="startWeights()"><span class="ti">🏋️</span>Weights</button>`:''}
+    <button class="tile" onclick="openSpecial()"><span class="ti">🎖️</span>Special</button>
+    <button class="tile" onclick="openMealPlan()"><span class="ti">🍽️</span>Meal plan</button>
+    <button class="tile" onclick="openQuickList()"><span class="ti">⚡</span>Quick<br>5–10 min</button>
+    <button class="tile" onclick="openRestSheet()"><span class="ti">😌</span>Recover</button>
+    <button class="tile" onclick="${restedToday?'openRestSheet()':'startRestDay()'}"><span class="ti">🛌</span>${restedToday?'Rest logged':'Rest day'}</button>
+  </div>`;
   h+=homeSummaryHTML();
   h+=deloadBanner();
   h+=catchUpBanner();
@@ -4709,7 +4747,7 @@ function setWaistGoal(){
     <button class="btn primary" onclick="saveWaistGoal()">Save goal</button>`);
 }
 function gBump(d){const inp=$('#g-waist');inp.value=Math.max(0,((+inp.value||(+inp.placeholder||0))+d)).toFixed(1);}
-function saveWaistGoal(){const g=parseFloat($('#g-waist').value);if(!(g>0)){toast('Enter a goal');return;}STATE.profile.goalWaist=Math.round(waistToCm(g));save();closeSheet();toast('Goal set 🎯');renderProgress();}
+function saveWaistGoal(){const g=parseFloat($('#g-waist').value);if(!(g>0)){toast('Enter a goal');return;}STATE.profile.goalWaist=r1(waistToCm(g));save();closeSheet();toast('Goal set 🎯');renderProgress();}
 function mBump(f,d){const id=f==='w'?'#m-waist':'#m-weight';const inp=$(id);inp.value=Math.max(0,((+inp.value||(+inp.placeholder||0))+d)).toFixed(1);}
 function saveMeasure(){
   const wIn=parseFloat($('#m-waist').value);const bIn=parseFloat($('#m-weight').value);
@@ -4806,12 +4844,17 @@ function deletePhoto(id){
    fat loss). Unlocked ids are stored in STATE.achievements {id:date}. */
 function bestHoldPR(){let m=0;Object.keys(STATE.prs||{}).forEach(k=>{const ex=EX[k];if(ex&&ex.unit==='time'&&STATE.prs[k]>m)m=STATE.prs[k];});return m;}
 // Canonical: centimetres lost since the first logged measurement (negative = gained).
-function waistDrop(){const ms=(STATE.measurements||[]).filter(m=>m.waist>0);if(ms.length<2)return 0;return ms[0].waist-ms[ms.length-1].waist;}
+function waistDrop(){const ms=(STATE.measurements||[]).filter(m=>m.waist>0)
+  .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  if(ms.length<2)return 0;return ms[0].waist-ms[ms.length-1].waist;}
 // Same figure in whatever units the athlete reads, for anything user-facing.
 function waistDropShow(){return r1(isImperial()?waistDrop()/2.54:waistDrop());}
 // Newest logged waist, in display units — what the athlete expects to see on a tile.
-function currentWaistShow(){const ms=(STATE.measurements||[]).filter(m=>m.waist>0);
-  if(!ms.length)return null;return r1(waistShow(ms[ms.length-1].waist));}
+function currentWaistShow(){
+  const ms=(STATE.measurements||[]).filter(m=>m.waist>0)
+    .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  const cm=ms.length?ms[ms.length-1].waist:(STATE.profile.startWaist||0);
+  return cm>0?r1(waistShow(cm)):null;}
 function scoreGain(){const s=STATE.scoreHistory||[];if(s.length<1)return 0;return s[s.length-1].score-s[0].score;}
 function sessionsDoneCount(){return Object.values(STATE.logs||{}).filter(l=>l.done).length;}
 function bestHabitDay(){let m=0;const d=(STATE.nutrition&&STATE.nutrition.days)||{};Object.values(d).forEach(x=>{const c=Object.values(x.habits||{}).filter(Boolean).length;if(c>m)m=c;});return m;}
@@ -5148,7 +5191,8 @@ function saveReadiness(){
 }
 function readinessCardHTML(){
   const r=readinessToday();
-  if(!r)return `<button class="btn t-blue" style="margin:0 0 8px" onclick="_rdy={};openReadiness()">🌡️ Daily readiness check — tune today's load</button>`;
+  // unfilled state is a quiet prompt, not a third full-size CTA competing with Start
+  if(!r)return `<button class="slimbtn" onclick="_rdy={};openReadiness()">🌡️ Readiness check — tune today's load</button>`;
   const s=r.score;const tag=s>=80?['Primed','var(--green)']:(s>=60?['Ready','var(--fire-l)']:(s>=40?['Ease up','var(--gold)']:['Recover','var(--pink)']));
   return `<div class="note ${s<40?'warn':'info'}" style="margin:0 0 8px;display:flex;justify-content:space-between;align-items:center;gap:10px"><span>🌡️ <b>Readiness ${s}%</b> · <span style="color:${tag[1]}">${tag[0]}</span>${s<40?' — today eased; consider rest/deload':(s>=80?' — load turned up 🔥':'')}</span><button class="btn sm ghost" style="width:auto;flex:0 0 auto" onclick="_rdy={};openReadiness()">Update</button></div>`;
 }
@@ -7012,6 +7056,16 @@ function normalizeState(){
      plank quietly dropped out of the program. The option is labelled
      "Bench / chair", which everyone has, so add it once. Untick it in Settings
      if you genuinely have neither. */
+  /* A start waist at or below the goal is impossible for someone still working
+     toward it — earlier builds could write the goal value into startWaist, which
+     then displayed as the athlete's waist and made the goal bar vanish. Re-seed
+     it from the earliest real measurement. */
+  {const P0=STATE.profile,ms0=(STATE.measurements||[]).filter(m=>m.waist>0)
+     .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+   if(P0.goalWaist>0&&P0.startWaist>0&&P0.startWaist<=P0.goalWaist){
+     P0.startWaist=ms0.length?ms0[0].waist:0;
+     if(!(P0.startWaist>0))P0.startWaist=null;
+   }}
   if(!STATE.profile._benchKit){STATE.profile.gear=[...new Set([...(STATE.profile.gear||[]),'bench'])];STATE.profile._benchKit=true;}
   if(seeding&&!STATE.profile._days7){STATE.profile.days=[0,1,2,3,4,5,6];}
   if(!STATE.profile._days7)STATE.profile._days7=true;
