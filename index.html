@@ -1213,7 +1213,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='168';
+const APP_VERSION='169';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -6944,6 +6944,31 @@ function renderGuide(){
 }
 /* Read the live service-worker cache version so the user can compare it against
    APP_VERSION — if they differ, the worker is stale and a refresh is needed. */
+/* Self-heal a stuck install.
+
+   An installed PWA can keep serving an old page from its own cache, and the
+   athlete has no way to tell — the app looks fine, it just quietly behaves like
+   an older build, and every fix appears not to work. Compare the running
+   APP_VERSION against the copy on the network; if the server is newer, drop the
+   service worker and every cache and reload once.
+
+   Guarded by a session flag so it can never loop, and silent when offline. */
+async function selfUpdate(){
+  try{
+    if(sessionStorage.getItem('cf_selfupd'))return;
+    const r=await fetch('./index.html?cb='+Date.now(),{cache:'no-store'});
+    if(!r.ok)return;
+    const m=/APP_VERSION='(\d+)'/.exec(await r.text());
+    if(!m)return;
+    const live=+m[1], mine=+APP_VERSION;
+    if(!(live>mine))return;
+    sessionStorage.setItem('cf_selfupd','1');
+    try{toast('Updating to v'+live+'…');}catch(e){}
+    try{const regs=await navigator.serviceWorker.getRegistrations();for(const g of regs)await g.unregister();}catch(e){}
+    try{const keys=await caches.keys();await Promise.all(keys.map(k=>caches.delete(k)));}catch(e){}
+    setTimeout(()=>location.reload(),400);
+  }catch(e){}   // offline or blocked — stay on what we have
+}
 function refreshCacheVer(){
   const el=document.getElementById('swVer');if(!el)return;
   if(!('caches'in window)){el.textContent='n/a';return;}
@@ -7200,6 +7225,7 @@ async function boot(){
   render();
   if(TAB!=='today')go(TAB);
   setTimeout(hideSplash,850);   // dismiss the launch splash once the app is drawn
+  setTimeout(selfUpdate,1200);  // notice if the phone is running an old copy and fix it
   // voice coach: populate the voice list now and again when the OS finishes loading it,
   // and unlock speech on the first user interaction (mobile autoplay policy)
   try{loadCoachVoices();if('speechSynthesis'in window)speechSynthesis.onvoiceschanged=loadCoachVoices;}catch(e){}
