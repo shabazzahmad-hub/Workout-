@@ -391,6 +391,17 @@ const $ = (s,r=document)=>r.querySelector(s);
 const $$ = (s,r=document)=>[...r.querySelectorAll(s)];
 const el = (t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+/* ---- Units -------------------------------------------------------------
+   Body metrics are stored CANONICALLY METRIC (waist cm, weight kg) no matter
+   which units the athlete reads. Only these four helpers cross the boundary:
+   convert on the way in, convert on the way out, never store a display value.
+   Declared as functions so they hoist above the render code that uses them. */
+function isImperial(){return (STATE.profile&&STATE.profile.unit)==='in';}
+function waistToCm(v){return isImperial()?v*2.54:v;}            // typed → stored
+function waistShow(cm){return cm==null?null:(isImperial()?cm/2.54:cm);}  // stored → shown
+function weightToKg(v){return isImperial()?v*0.453592:v;}
+function weightShow(kg){return kg==null?null:(isImperial()?kg/0.453592:kg);}
+const r1=v=>Math.round(v*10)/10;                                 // one decimal, for display
 const todayISO=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
 const fmtTime=s=>{s=Math.round(s);const m=Math.floor(s/60);const r=s%60;return m>0?`${m}:${String(r).padStart(2,'0')}`:`${r}s`;};
 function toast(msg,ms){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),ms||2100);}
@@ -1134,7 +1145,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='155';
+const APP_VERSION='156';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1172,15 +1183,30 @@ function idbDel(k){try{if(!idb)return;idb.transaction('kv','readwrite').objectSt
 let saveT=null;
 function save(){
   STATE._saved=todayISO();
+  STATE._savedAt=Date.now();
   const json=JSON.stringify(STATE);
-  try{localStorage.setItem(STORE_KEY,json);}catch(e){}
+  // A quota failure used to be swallowed whole: every later save became a no-op
+  // while a stale copy stayed in localStorage and kept winning over the fresher
+  // IndexedDB mirror. Now we notice, tell the athlete once, and let the mirror win.
+  try{localStorage.setItem(STORE_KEY,json);_lsOk=true;}
+  catch(e){_lsOk=false;if(!_lsWarned){_lsWarned=true;try{toast('Storage full — backing up to device store. Export a backup.');}catch(_){}}}
   clearTimeout(saveT);saveT=setTimeout(()=>idbPut(STORE_KEY,json),120);
 }
+let _lsOk=true,_lsWarned=false;
 async function load(){
   let json=null;
   try{json=localStorage.getItem(STORE_KEY);}catch(e){}
-  if(!json){const mirror=await idbGet(STORE_KEY);if(mirror){json=mirror;try{localStorage.setItem(STORE_KEY,json);}catch(e){}toast('Progress restored from backup');}}
-  if(json){try{const p=JSON.parse(json);STATE=Object.assign(DEFAULT_STATE(),p);STATE.settings=Object.assign(DEFAULT_STATE().settings,p.settings||{});STATE.profile=Object.assign(DEFAULT_STATE().profile,p.profile||{});}catch(e){}}
+  const mirror=await idbGet(STORE_KEY);
+  // Take whichever copy is genuinely newer. Preferring localStorage unconditionally
+  // meant that after a quota failure the stale copy won forever and the fresher
+  // mirror was never even read.
+  if(!json&&mirror){json=mirror;try{localStorage.setItem(STORE_KEY,json);}catch(e){}toast('Progress restored from backup');}
+  else if(json&&mirror&&mirror!==json){
+    try{const a=JSON.parse(json),b=JSON.parse(mirror);
+      if((b._savedAt||0)>(a._savedAt||0)){json=mirror;toast('Progress restored from backup');}
+    }catch(e){}
+  }
+  if(json){try{const p=JSON.parse(json);STATE=Object.assign(DEFAULT_STATE(),p);STATE.settings=Object.assign(DEFAULT_STATE().settings,p.settings||{});STATE.profile=Object.assign(DEFAULT_STATE().profile,p.profile||{});STATE.nutrition=Object.assign(DEFAULT_STATE().nutrition,p.nutrition||{});}catch(e){}}
 }
 
 /* ============================ PROGRESSION ENGINE ============================ */
@@ -1202,13 +1228,24 @@ function currentMaxes(cycle){
   if(cycle>0 && STATE.reassess[cycle] && STATE.reassess[cycle].maxes) return STATE.reassess[cycle].maxes;
   return (STATE.baseline&&STATE.baseline.maxes)||{plank:40,side:25,hollow:25,lower:12,dyn:20};
 }
-function levelOf(cycle){
-  if(cycle>0 && STATE.reassess[cycle]) return STATE.reassess[cycle].level;
-  if(STATE.baseline&&STATE.baseline.level) return STATE.baseline.level;
-  // before the baseline test, seed the starting level from the quiz's experience answer
-  return (STATE.profile&&STATE.profile.experience)||'Intermediate';
-}
 const LEVEL_TIER={Beginner:0,Intermediate:1,Advanced:2};
+const LEVEL_NAME=['Beginner','Intermediate','Advanced'];
+function levelOf(cycle){
+  // measured level wins — the baseline/re-test is real data, the quiz answer is a claim
+  let lv;
+  if(cycle>0 && STATE.reassess[cycle]) lv=STATE.reassess[cycle].level;
+  else if(STATE.baseline&&STATE.baseline.level) lv=STATE.baseline.level;
+  // before the baseline test, seed the starting level from the quiz's experience answer
+  else return (STATE.profile&&STATE.profile.experience)||'Intermediate';
+  // ...but let the athlete's own experience answer nudge it one tier, so changing
+  // it in the quiz actually does something instead of being silently ignored.
+  const want=STATE.profile&&STATE.profile.experience;
+  if(want&&LEVEL_TIER[want]!=null){
+    const base=LEVEL_TIER[lv]||0;
+    lv=LEVEL_NAME[clamp(base+clamp(LEVEL_TIER[want]-base,-1,1),0,2)];
+  }
+  return lv;
+}
 const LEVEL_FACTOR={Beginner:0.8,Intermediate:1.0,Advanced:1.2};
 // Phase-2 ladders start fresh at week 13, so they progress off the phase-relative
 // block count (not the absolute cycle) — otherwise they'd open at their hardest rung.
@@ -1304,6 +1341,9 @@ const FOCUS_POOL={
   legs:['wallsit','squat','reverselunge','splitsquat','bulgarian','walkinglunge','jumpsquat','kbgoblet','dbgoblet'],
   glutes:['glutebridge','singlebridge','hipthrust','kbrdl','dbrdl','nordic'],
 };
+// The quiz's "trouble zones" are body-shape words; map them onto training pools so
+// the answer actually steers the bonus instead of being stored and ignored.
+const TROUBLE_POOL={belly:'abs',lovehandles:'obliques',chest:'chest',arms:'arms',thighs:'legs',posture:'back'};
 // Pick one bonus exercise for the athlete's priority area, avoiding what's already
 // in today's session, respecting equipment, and swapping around flagged joints.
 function focusBonus(pos,used){
@@ -1311,7 +1351,8 @@ function focusBonus(pos,used){
     const p=STATE.profile||{};
     // the core goal forces a midsection bonus first, whatever else is targeted
     const lead=(p.goal==='core')?['abs','obliques']:[];
-    const keys=[...lead,p.focusPrimary,...(Array.isArray(p.targets)?p.targets:[])].filter(Boolean);
+    const trouble=(Array.isArray(p.troubleZones)?p.troubleZones:[]).map(z=>TROUBLE_POOL[z]).filter(Boolean);
+    const keys=[...new Set([...lead,p.focusPrimary,...(Array.isArray(p.targets)?p.targets:[]),...trouble].filter(Boolean))];
     const gear=p.gear||[];
     const has=k=>{const e=EX[k];if(!e)return false;if(!e.equip)return true;return e.equip.every(g=>gear.includes(g));};
     for(const key of keys){
@@ -1396,6 +1437,11 @@ function doSwap(fromId,key,toId){
 }
 function undoSwap(key){clearSwap(STATE.progressPtr,key);closeSheet();toast('Original move restored');render();}
 // Build the full session object for a given pointer
+// A stored swap is only honoured while the athlete can still do it safely:
+// the gear is present, and it is not on a flagged joint's risk list.
+function swapStillValid(exId){
+  try{return hasGearFor(exId)&&safeSwap(exId)===exId;}catch(e){return true;}
+}
 function buildSession(ptr){
   const pos=posOf(ptr);
   const cycle=pos.cycle,week=pos.week,level=levelOf(cycle);
@@ -1413,18 +1459,21 @@ function buildSession(ptr){
     }
     exId=gearSwap(exId,ladder);   // equipment-aware: only moves they can actually do
     exId=safeSwap(exId);          // injury-aware: work around flagged joints
-    if(sw&&sw[ladder]&&EX[sw[ladder]])exId=sw[ladder];   // explicit choice wins
+    // An explicit swap wins — but only while it is still safe and still doable.
+    // Otherwise a swap saved before an injury or a kit change was declared would
+    // keep forcing the exercise the athlete just told us they cannot do.
+    if(sw&&sw[ladder]&&EX[sw[ladder]]&&swapStillValid(sw[ladder]))exId=sw[ladder];
     return {exId,...prescribe(exId,pos),slot:ladder};
   });
   const finLad=LADDERS[pos.session.finisher];
   const finId=safeSwap(gearSwap(finLad[clamp(rungIndex(pos.session.finisher,cycle,week,level),0,finLad.length-1)],pos.session.finisher));
-  const finEx=(sw&&sw.__fin&&EX[sw.__fin])?sw.__fin:finId;
+  const finEx=(sw&&sw.__fin&&EX[sw.__fin]&&swapStillValid(sw.__fin))?sw.__fin:finId;
   const finisher={exId:finEx,...prescribe(finEx,pos),slot:pos.session.finisher};
   finisher.sets=1;   // a finisher is always one all-out burnout round
   // targeted bonus: one extra move for the athlete's priority area (from the quiz)
   const used=new Set([...main.map(m=>m.exId),finId]);
   let bonus=focusBonus(pos,used);
-  if(sw&&sw.focus&&EX[sw.focus])bonus={exId:sw.focus,...prescribe(sw.focus,pos),slot:'focus',focus:true};
+  if(sw&&sw.focus&&EX[sw.focus]&&swapStillValid(sw.focus))bonus={exId:sw.focus,...prescribe(sw.focus,pos),slot:'focus',focus:true};
   if(bonus)main.push(bonus);
   return {ptr,pos,cycle,week,session:pos.session,warmup:WARMUP,main,finisher,cooldown:COOLDOWN};
 }
@@ -1480,6 +1529,17 @@ function openSheet(html){
   $('#scrim').classList.add('open');document.body.style.overflow='hidden';
   if(!already){try{history.pushState({cf:'sheet'},'');}catch(e){}}
 }
+/* Anything a sheet started that outlives its markup must be stopped when the sheet
+   goes away by ANY route — including a scrim tap or the Android Back button, which
+   never reach the sheet's own Cancel buttons. Leaving these running meant the
+   activity/skip stopwatches kept ticking invisibly (so re-opening one counted two
+   seconds per second and logged roughly double the minutes), and the barcode
+   scanner held the camera open indefinitely. */
+function sheetTeardown(){
+  try{if(typeof ACTT!=='undefined'&&ACTT&&ACTT.tid){clearInterval(ACTT.tid);ACTT.tid=null;ACTT.running=false;}}catch(e){}
+  try{if(typeof SKIPT!=='undefined'&&SKIPT&&SKIPT.tid){clearInterval(SKIPT.tid);SKIPT.tid=null;SKIPT.running=false;}}catch(e){}
+  try{if(typeof stopScan==='function')stopScan();}catch(e){}
+}
 function closeSheet(){
   const wasOpen=$('#scrim').classList.contains('open');
   // Any non-hand-off dismissal during a guided day ends the guided day, so DAYFLOW
@@ -1487,7 +1547,7 @@ function closeSheet(){
   const _dfh=(typeof _dfHandoff!=='undefined')&&_dfHandoff;if(typeof _dfHandoff!=='undefined')_dfHandoff=false;
   if(wasOpen&&!_dfh&&typeof dayflowActive==='function'&&dayflowActive())dayflowCancel(true);   // only a real sheet dismissal ends the guided day
   if(typeof BRIEF!=='undefined'&&BRIEF&&(BRIEF.playing||BRIEF.audio))briefStop();
-  $('#scrim').classList.remove('open');document.body.style.overflow='';stopTimer();beatStop();
+  $('#scrim').classList.remove('open');document.body.style.overflow='';stopTimer();beatStop();sheetTeardown();
   // If the app (a button/scrim) closed the sheet, retire its history entry too,
   // so the counts stay balanced. The guard makes onPop ignore this self-pop.
   if(wasOpen&&history.state&&history.state.cf==='sheet'){
@@ -1509,7 +1569,7 @@ function onPop(e){
   if($('#scrim').classList.contains('open')){
     if(typeof dayflowActive==='function'&&dayflowActive())dayflowCancel(true);
     if(typeof BRIEF!=='undefined'&&BRIEF&&(BRIEF.playing||BRIEF.audio))briefStop();
-    $('#scrim').classList.remove('open');document.body.style.overflow='';stopTimer();beatStop();return;
+    $('#scrim').classList.remove('open');document.body.style.overflow='';stopTimer();beatStop();sheetTeardown();return;
   }
   const st=e.state||{};
   if(st.cf==='tab'){go(st.tab||'today');return;}
@@ -1529,6 +1589,19 @@ function initBackButton(){
 
 /* ============================ RENDER ROUTER ============================ */
 function render(){
+  /* Error boundary. A single bad value anywhere in a renderer used to escape and
+     leave every tab blank — and because the bad state was already saved, the app
+     stayed blank on every relaunch. Now we repair the state and retry once. */
+  try{_render();}
+  catch(e){
+    try{normalizeState();_render();toast('Recovered from a display error');}
+    catch(e2){
+      const v=document.querySelector('.view.on')||document.body;
+      v.innerHTML=`<div class="note warn" style="margin:16px"><b>Something went wrong drawing this screen.</b><div class="tiny muted" style="margin-top:6px">${_ve(String(e2&&e2.message||e2).slice(0,120))}</div><button class="btn ghost sm" style="margin-top:10px" onclick="exportData()">⬇ Export a backup first</button><button class="btn primary sm" style="margin-top:6px" onclick="location.reload()">Reload</button></div>`;
+    }
+  }
+}
+function _render(){
   updatePill();
   if(TAB==='today')renderToday();
   else if(TAB==='program')renderProgram();
@@ -1688,9 +1761,18 @@ function wireOnboard(){
   $$('#ob-goal button').forEach(b=>b.addEventListener('click',()=>{
     const n=$('#ob-goalnote');if(n)n.textContent=GOAL_NOTE[b.dataset.g]||'';}));
   // keep unit labels in sync when metric/imperial toggled
+  // Toggling cm/in must CONVERT the numbers already typed, not just relabel them —
+  // otherwise finishOnboard reads e.g. 178 as inches and stores a 452 cm athlete.
+  let obUnitWas=(STATE.profile.unit==='in');
   $$('#ob-unit button').forEach(b=>b.addEventListener('click',()=>{
     const im=($('#ob-unit button.on')||{}).dataset && $('#ob-unit button.on').dataset.u==='in';
     [['ob-htu',im?'in':'cm'],['ob-wtu',im?'lb':'kg'],['ob-wsu',im?'in':'cm'],['ob-gwtu',im?'lb':'kg'],['ob-gwsu',im?'in':'cm']].forEach(([id,t])=>{const e=$('#'+id);if(e)e.textContent=t;});
+    if(im!==obUnitWas){
+      const conv=(id,f)=>{const e=$('#'+id);if(!e)return;const v=parseFloat(e.value);if(v>0)e.value=r1(im?v/f:v*f);};
+      ['ob-height','ob-waist','ob-goalwaist'].forEach(id=>conv(id,2.54));
+      ['ob-weight','ob-goalwt'].forEach(id=>conv(id,0.453592));
+      obUnitWas=im;
+    }
   }));
   // ---- wizard step navigation ----
   let step=1;
@@ -1737,13 +1819,23 @@ function finishOnboard(){
   N.diet=($('#ob-diet button.on')||{dataset:{d:'omnivore'}}).dataset.d;
   N.meals=parseInt(($('#ob-meals button.on')||{dataset:{m:'3'}}).dataset.m)||3;
   N.allergies=($('#ob-allerg').value||'').trim();
+  N.plan=null;   // diet/meals/allergies just changed — drop today's cached meal plan
   // body metrics
   const w=parseFloat($('#ob-waist').value),wt=parseFloat($('#ob-weight').value);
   if(w>0)P.startWaist=im?Math.round(w*2.54):w;
   let kg=null; if(wt>0){kg=im?Math.round(wt*0.453592*10)/10:wt; N.weightKg=kg;}
-  if(w>0||wt>0)STATE.measurements.push({date:todayISO(),waist:P.startWaist||null,weight:kg});
+  // upsert by date — a profile edit must not append a second row for today,
+  // or ms[0]/ms[last] stop meaning "start" and "now"
+  if(w>0||wt>0){
+    const wCm=w>0?Math.round(im?w*2.54:w):null;
+    const d=todayISO();const row=STATE.measurements.find(m=>m.date===d);
+    if(row){if(wCm)row.waist=wCm;if(kg)row.weight=kg;}
+    else STATE.measurements.push({date:d,waist:wCm,weight:kg});
+  }
   try{recalcKcalFromStored();}catch(e){}   // (re)compute calorie/macro targets from the answers
-  if(OB_EDIT){OB_EDIT=false;save();toast('Profile updated ✓');navTo('guide');render();}
+  // land on Today, where the re-tuned session is actually visible (navTo already
+  // renders, so no second render() call)
+  if(OB_EDIT){OB_EDIT=false;save();toast('Profile updated ✓ — plan re-tuned');navTo('today');}
   else{STATE.onboarded=true;save();render();}
 }
 
@@ -1783,7 +1875,9 @@ function finishedHTML(){
 }
 function restartProgram(){
   if(!confirm('Start a fresh block? Your history stays saved; you\'ll re-take the baseline.'))return;
-  STATE.baseline=null;STATE.reassess={};STATE.progressPtr=0;STATE.logs={};STATE.weekFeel={};save();go('today');
+  // swaps are keyed by absolute progressPtr — keeping them would re-apply choices
+  // made in a different block to the new one
+  STATE.baseline=null;STATE.reassess={};STATE.progressPtr=0;STATE.logs={};STATE.weekFeel={};STATE.swaps={};save();go('today');
 }
 
 /* Pick a strong representative photo for the session's hero card. */
@@ -3411,7 +3505,7 @@ function briefSheetHTML(segs){
       <h2 style="margin:8px 0 2px">Morning Brief</h2>
       <div class="tiny muted">${ADVISOR.name} · your coach${d?' · '+d:''}</div>
     </div>
-    <button class="btn primary" id="briefPlayBtn" style="margin:8px 0 4px;font-size:16px;padding:15px">▶ Play briefing</button>
+    <button class="btn primary" id="briefPlayBtn" onclick="briefPlay(0)" style="margin:8px 0 4px;font-size:16px;padding:15px">▶ Play briefing</button>
     <div class="tiny muted" style="text-align:center;margin-bottom:12px">${neuralReady()?'Premium voice on.':'Speaking in your device voice — add an Azure key in Settings for the premium natural voice.'}</div>
     <div class="brieflist">
       ${segs.map((s,i)=>`<div class="briefseg" id="brief-seg-${i}">
@@ -4312,8 +4406,18 @@ function renderProgram(){
       const s=posOf(ptr).session;
       const isDone=STATE.logs[ptr]&&STATE.logs[ptr].done;
       const isCur=ptr===STATE.progressPtr;
+      // Build the real session so the grid reflects the athlete's profile. This
+      // used to render only the frozen template name/icon, which meant editing
+      // the quiz never visibly changed the week — the #1 "my save did nothing"
+      // complaint. buildSession is pure arithmetic, so 42 calls per render is cheap.
+      let tag='';
+      try{const bs=buildSession(ptr);
+        const n=(bs.main?bs.main.length:0)+(bs.finisher?1:0);
+        const fx=bs.main&&bs.main.find(m=>m.focus);
+        tag=`<div class="tiny muted" style="margin-top:2px">${n} moves${fx&&EX[fx.exId]?' · '+EX[fx.exId].name.split(' ')[0]:''}</div>`;
+      }catch(e){}
       h+=`<button class="calday ${isDone?'done':''} ${isCur?'cur':''}" onclick="previewSession(${ptr})">
-        <div class="wd">DAY ${d+1}</div><div class="ico">${isDone?'✓':s.icon}</div><div class="nm">${s.name.split(' ')[0]}</div>
+        <div class="wd">DAY ${d+1}</div><div class="ico">${isDone?'✓':s.icon}</div><div class="nm">${s.name.split(' ')[0]}</div>${tag}
       </button>`;
     }
     h+=`</div>`;
@@ -4424,7 +4528,7 @@ function measureChartHTML(){
   const ms=STATE.measurements.filter(m=>m.waist>0);
   if(ms.length<1)return `<div class="tiny muted" style="margin-top:10px">No measurements yet. Log your waist weekly — a shrinking waist is the clearest proof your core work is paying off.</div>`;
   const u=STATE.profile.unit;
-  const vals=ms.map(m=>m.waist),dates=ms.map(m=>m.date);
+  const vals=ms.map(m=>r1(waistShow(m.waist))),dates=ms.map(m=>m.date);
   const first=vals[0],last=vals[vals.length-1],change=last-first;
   const chart=ms.length>=2?lineChart(vals,dates,'var(--fire)',u):`<div class="center" style="margin-top:10px"><div style="font-size:26px;font-weight:900">${last}${u}</div></div>`;
   return `${chart}
@@ -4438,14 +4542,14 @@ function logMeasure(){
   openSheet(`
     <h3>Log today's measurements</h3>
     <div class="field"><label>Waist / navel (${STATE.profile.unit})</label>
-      <div class="numrow"><button onclick="mBump('w',-0.5)">–</button><input id="m-waist" type="number" inputmode="decimal" placeholder="${STATE.measurements.length?STATE.measurements[STATE.measurements.length-1].waist:'86'}"><button onclick="mBump('w',0.5)">+</button></div></div>
+      <div class="numrow"><button onclick="mBump('w',-0.5)">–</button><input id="m-waist" type="number" inputmode="decimal" placeholder="${(()=>{const l=[...STATE.measurements].reverse().find(m=>m.waist>0);return l?r1(waistShow(l.waist)):(isImperial()?'34':'86');})()}"><button onclick="mBump('w',0.5)">+</button></div></div>
     <div class="field"><label>Body weight (optional)</label>
       <div class="numrow"><button onclick="mBump('b',-0.5)">–</button><input id="m-weight" type="number" inputmode="decimal" placeholder="optional"><button onclick="mBump('b',0.5)">+</button></div></div>
     <button class="btn primary" onclick="saveMeasure()">Save</button>
   `);
 }
 function setWaistGoal(){
-  const p=STATE.profile;const cur=p.goalWaist||'';
+  const p=STATE.profile;const cur=p.goalWaist>0?r1(waistShow(p.goalWaist)):'';
   openSheet(`<h3>Set your waist goal</h3>
     <p class="muted sm" style="margin:2px 0 12px">A target waist to work toward. Progress shows as a bar once you log measurements.</p>
     <div class="field"><label>Goal waist (${p.unit})</label>
@@ -4453,17 +4557,19 @@ function setWaistGoal(){
     <button class="btn primary" onclick="saveWaistGoal()">Save goal</button>`);
 }
 function gBump(d){const inp=$('#g-waist');inp.value=Math.max(0,((+inp.value||(+inp.placeholder||0))+d)).toFixed(1);}
-function saveWaistGoal(){const g=parseFloat($('#g-waist').value);if(!(g>0)){toast('Enter a goal');return;}STATE.profile.goalWaist=g;save();closeSheet();toast('Goal set 🎯');renderProgress();}
+function saveWaistGoal(){const g=parseFloat($('#g-waist').value);if(!(g>0)){toast('Enter a goal');return;}STATE.profile.goalWaist=Math.round(waistToCm(g));save();closeSheet();toast('Goal set 🎯');renderProgress();}
 function mBump(f,d){const id=f==='w'?'#m-waist':'#m-weight';const inp=$(id);inp.value=Math.max(0,((+inp.value||(+inp.placeholder||0))+d)).toFixed(1);}
 function saveMeasure(){
-  const w=parseFloat($('#m-waist').value);const b=parseFloat($('#m-weight').value);
-  if(!(w>0)&&!(b>0)){toast('Enter at least one value');return;}
+  const wIn=parseFloat($('#m-waist').value);const bIn=parseFloat($('#m-weight').value);
+  if(!(wIn>0)&&!(bIn>0)){toast('Enter at least one value');return;}
+  // normalise to the canonical store (cm / kg) before anything touches STATE
+  const w=wIn>0?r1(waistToCm(wIn)):0, b=bIn>0?r1(weightToKg(bIn)):0;
   const today=todayISO();const existing=STATE.measurements.find(m=>m.date===today);
   if(existing){if(w>0)existing.waist=w;if(b>0)existing.weight=b;}
   else STATE.measurements.push({date:today,waist:w>0?w:null,weight:b>0?b:null});
   if(w>0&&!STATE.profile.startWaist)STATE.profile.startWaist=w;
   // keep the working body weight (used for protein/water/BMI/TDEE) in sync with the newest logged weight
-  if(b>0){STATE.nutrition.weightKg=STATE.profile.unit==='in'?b*0.453592:b;
+  if(b>0){STATE.nutrition.weightKg=b;
     if(STATE.nutrition.kcalTarget&&typeof recalcKcalFromStored==='function'){try{recalcKcalFromStored();}catch(e){}}}
   save();closeSheet();toast('Measurement saved');renderProgress();checkAchievements();
 }
@@ -4547,7 +4653,13 @@ function deletePhoto(id){
    Milestone badges that celebrate meaningful wins (consistency, strength,
    fat loss). Unlocked ids are stored in STATE.achievements {id:date}. */
 function bestHoldPR(){let m=0;Object.keys(STATE.prs||{}).forEach(k=>{const ex=EX[k];if(ex&&ex.unit==='time'&&STATE.prs[k]>m)m=STATE.prs[k];});return m;}
+// Canonical: centimetres lost since the first logged measurement (negative = gained).
 function waistDrop(){const ms=(STATE.measurements||[]).filter(m=>m.waist>0);if(ms.length<2)return 0;return ms[0].waist-ms[ms.length-1].waist;}
+// Same figure in whatever units the athlete reads, for anything user-facing.
+function waistDropShow(){return r1(isImperial()?waistDrop()/2.54:waistDrop());}
+// Newest logged waist, in display units — what the athlete expects to see on a tile.
+function currentWaistShow(){const ms=(STATE.measurements||[]).filter(m=>m.waist>0);
+  if(!ms.length)return null;return r1(waistShow(ms[ms.length-1].waist));}
 function scoreGain(){const s=STATE.scoreHistory||[];if(s.length<1)return 0;return s[s.length-1].score-s[0].score;}
 function sessionsDoneCount(){return Object.values(STATE.logs||{}).filter(l=>l.done).length;}
 function bestHabitDay(){let m=0;const d=(STATE.nutrition&&STATE.nutrition.days)||{};Object.values(d).forEach(x=>{const c=Object.values(x.habits||{}).filter(Boolean).length;if(c>m)m=c;});return m;}
@@ -4573,8 +4685,8 @@ const ACHIEVEMENTS=[
   {id:'block',emoji:'✅',name:'Block Complete',desc:'Finish a 6-week block',check:()=>STATE.progressPtr>=SESSIONS_PER_CYCLE},
   {id:'retest',emoji:'📈',name:'Levelled Up',desc:'Complete a re-test',check:()=>Object.keys(STATE.reassess||{}).length>=1},
   {id:'score10',emoji:'🚀',name:'Stronger Core',desc:'Core Score up 10+ from baseline',check:()=>scoreGain()>=10},
-  {id:'waist2',emoji:'📏',name:'Inches Down',desc:'Waist down 2 from start',check:()=>waistDrop()>=2},
-  {id:'waist5',emoji:'🎯',name:'Waist Winner',desc:'Waist down 5 from start',check:()=>waistDrop()>=5},
+  {id:'waist2',emoji:'📏',name:'Inches Down',desc:'Waist down 5 cm (2 in) from start',check:()=>waistDrop()>=5},
+  {id:'waist5',emoji:'🎯',name:'Waist Winner',desc:'Waist down 12 cm (5 in) from start',check:()=>waistDrop()>=12},
   {id:'photo',emoji:'📸',name:'Picture Proof',desc:'Add your first progress photo',check:()=>(STATE.photos||[]).length>=1},
   {id:'hydrate',emoji:'💧',name:'Hydrated',desc:'Hit your water goal in a day',check:()=>{const d=(STATE.nutrition&&STATE.nutrition.days)||{};return Object.values(d).some(x=>(x.water||0)>=waterTargetCups());}},
   {id:'perfectday',emoji:'🥇',name:'Perfect Day',desc:'All 5 daily habits in one day',check:()=>bestHabitDay()>=5},
@@ -4827,11 +4939,11 @@ function weeklyRecap(){
   const set=trainedDaysSet();const t=new Date();let wk=0;
   for(let i=0;i<7;i++){const d=new Date(t);d.setDate(d.getDate()-i);if(set.has(localISO(d)))wk++;}
   const streak=(typeof computeStreak==='function')?computeStreak():0;
-  const drop=(typeof waistDrop==='function')?waistDrop():0;
+  const drop=(typeof waistDropShow==='function')?waistDropShow():0;const wu=STATE.profile.unit;
   const gain=(typeof scoreGain==='function')?scoreGain():0;
   const total=(typeof sessionsDoneCount==='function')?sessionsDoneCount():0;
-  const lines=[`${wk} workout${wk===1?'':'s'} this week`,`${streak}-day streak`,total?`${total} total sessions`:'',drop>0?`Waist down ${drop}`:'',gain>0?`Core Score up ${gain}`:''].filter(Boolean);
-  _recapSpeak=`Weekly recap. You trained ${wk} time${wk===1?'':'s'} this week${streak>=3?', on a '+streak+' day streak':''}. ${drop>0?'Your waist is down '+drop+'. ':''}${gain>0?'Core score up '+gain+'. ':''}${wk>=5?'Outstanding consistency — keep the fire burning.':(wk>=3?'Solid work — push for one more next week.':'Let us stack more sessions next week. You have got this.')}`;
+  const lines=[`${wk} workout${wk===1?'':'s'} this week`,`${streak}-day streak`,total?`${total} total sessions`:'',drop>0?`Waist down ${drop}${wu}`:'',gain>0?`Core Score up ${gain}`:''].filter(Boolean);
+  _recapSpeak=`Weekly recap. You trained ${wk} time${wk===1?'':'s'} this week${streak>=3?', on a '+streak+' day streak':''}. ${drop>0?'Your waist is down '+drop+' '+(wu==='in'?'inches':'centimetres')+'. ':''}${gain>0?'Core score up '+gain+'. ':''}${wk>=5?'Outstanding consistency — keep the fire burning.':(wk>=3?'Solid work — push for one more next week.':'Let us stack more sessions next week. You have got this.')}`;
   _share={t:'Weekly Recap',s:'',l:lines};
   openSheet(`<h3>🎙️ Weekly recap</h3>
     <div class="card pad" style="margin-top:6px">${lines.map(l=>`<div class="kv"><span>${l}</span></div>`).join('')}</div>
@@ -4892,8 +5004,9 @@ function goalETAHTML(){
   const a=ms[0],b=ms[ms.length-1];
   const days=(new Date(b.date)-new Date(a.date))/86400000;
   if(days<3)return '';
-  const perWeek=(a.waist-b.waist)/days*7;
-  const toGo=b.waist-p.goalWaist;
+  // stored cm -> the units the athlete reads, so the ${p.unit} labels are honest
+  const perWeek=(isImperial()?(a.waist-b.waist)/2.54:(a.waist-b.waist))/days*7;
+  const toGo=isImperial()?(b.waist-p.goalWaist)/2.54:(b.waist-p.goalWaist);
   if(toGo<=0)return `<div class="tiny" style="margin-top:8px;color:var(--green);font-weight:800">🎉 Goal reached — set a new one to keep climbing.</div>`;
   if(perWeek<=0.03)return `<div class="tiny muted" style="margin-top:8px">Trend is flat — tighten the deficit or add a Special session to get it moving.</div>`;
   const weeks=Math.ceil(toGo/perWeek);const eta=new Date(b.date);eta.setDate(eta.getDate()+weeks*7);
@@ -5173,7 +5286,13 @@ function _offItem(p){
   const nu=p.nutriments||{};
   const k100=+nu['energy-kcal_100g']||(nu['energy_100g']?Math.round(+nu['energy_100g']/4.184):0);
   if(!k100)return null;
-  const sg=parseFloat(String(p.serving_size||'').replace(',','.'));
+  /* serving_size is free text ("2 biscuits (25 g)", "1 portion (30g)", "250 ml").
+     parseFloat grabs the leading number, which is usually a COUNT, not grams —
+     that logged a 30 g serving as 4 kcal. Take the gram/millilitre figure
+     wherever it appears, preferring the last one (the parenthesised weight). */
+  const sTxt=String(p.serving_size||'').replace(',','.');
+  const gm=[...sTxt.matchAll(/([\d.]+)\s*(g|ml)\b/gi)].map(m=>parseFloat(m[1])).filter(v=>v>0);
+  const sg=gm.length?gm[gm.length-1]:parseFloat(sTxt);
   const per=(sg>0&&sg<2000)?sg/100:1;   // serving in grams -> multiplier, else per 100 g
   const nm=[p.product_name,p.brands?('· '+String(p.brands).split(',')[0].trim()):''].filter(Boolean).join(' ').trim();
   return {n:(nm||'Product').slice(0,50),
@@ -5200,20 +5319,28 @@ async function offBarcode(code){
   if(!it)throw new Error('no nutrition data for that product');
   return it;
 }
+/* Rows are keyed by index into this table rather than carrying their data in the
+   onclick attribute. Product names come from Open Food Facts, which anyone can
+   edit: encodeURIComponent leaves apostrophes untouched, so a name like
+   "Kellogg's" used to terminate the JS string — breaking the row at best, and
+   executing whatever followed at worst. Nothing user-supplied reaches code now. */
+let _resTable=[];
+function _resReset(){_resTable=[];}
 // One row per result; tapping it opens the add sheet pre-filled.
 function _resRow(f,src){
-  const payload=encodeURIComponent(JSON.stringify(f));
+  const i=_resTable.push(f)-1;
   return `<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer;padding:11px 2px;color:var(--ink)"
-    onclick="pickSearchFood('${payload}')">
+    onclick="pickSearchFood(${i})">
     <span style="min-width:0"><b>${_ve(f.n)}</b><div class="tiny muted" style="margin-top:2px">${_ve(f.s||'')} · ${f.k} kcal · ${f.p}g P · ${f.c}g C · ${f.f}g F${src?' · '+src:''}</div></span>
     <span class="tiny muted" style="flex:0 0 auto">＋</span></button>`;
 }
-function pickSearchFood(payload){
-  let f;try{f=JSON.parse(decodeURIComponent(payload));}catch(e){return;}
+function pickSearchFood(i){
+  const f=_resTable[i];if(!f)return;
   openQuickAdd({name:f.n+(f.s?' ('+f.s+')':''),kcal:f.k,p:f.p,c:f.c,f:f.f});
 }
 function renderFoodSearch(q){
   const box=$('#fs-results');if(!box)return;
+  _resReset();                       // rebuild the index table alongside the markup
   const local=searchLocalFoods(q);
   box.innerHTML=(local.length?local.map(f=>_resRow(f,'')).join('')
     :`<div class="tiny muted" style="padding:12px 2px">No match in the built-in foods${q?' for "'+_ve(q)+'"':''}.</div>`)
@@ -5691,16 +5818,17 @@ function waistGoalHTML(){
   const now=ms.length?ms[ms.length-1].waist:p.startWaist;
   const start=p.startWaist||(ms.length?ms[0].waist:null);
   if(!(start>0)||!(p.goalWaist>0)||start<=p.goalWaist||!(now>0))return '';
-  const pct=clamp((start-now)/(start-p.goalWaist)*100,0,100);
-  const toGo=Math.max(0,now-p.goalWaist);
+  const pct=clamp((start-now)/(start-p.goalWaist)*100,0,100);   // ratio of cm — unit-free
+  const toGo=Math.max(0,r1(waistShow(now-p.goalWaist)));
+  const startD=r1(waistShow(start)),goalD=r1(waistShow(p.goalWaist));
   return `<div style="margin-top:14px"><div class="row" style="justify-content:space-between"><span class="tiny muted">🎯 Goal progress</span><span class="tiny" style="font-weight:800;color:var(--green)">${Math.round(pct)}%${toGo>0?' · '+toGo.toFixed(1)+p.unit+' to go':' · reached!'}</span></div>
     <div class="pbar green" style="margin-top:6px"><i style="width:${pct}%"></i></div>
-    <div class="row" style="justify-content:space-between;margin-top:5px"><span class="tiny muted">Start ${start}${p.unit}</span><span class="tiny muted">Goal ${p.goalWaist}${p.unit}</span></div>${goalETAHTML()}</div>`;
+    <div class="row" style="justify-content:space-between;margin-top:5px"><span class="tiny muted">Start ${startD}${p.unit}</span><span class="tiny muted">Goal ${goalD}${p.unit}</span></div>${goalETAHTML()}</div>`;
 }
 function weightChartHTML(){
   const ms=(STATE.measurements||[]).filter(m=>m.weight>0);if(!ms.length)return '';
   const wu=STATE.profile.unit==='in'?'lb':'kg';
-  const vals=ms.map(m=>m.weight),dates=ms.map(m=>m.date);
+  const vals=ms.map(m=>r1(weightShow(m.weight))),dates=ms.map(m=>m.date);
   const first=vals[0],last=vals[vals.length-1];const change=last-first;
   const chart=ms.length>=2?lineChart(vals,dates,'var(--teal)',wu):`<div class="center" style="margin-top:10px"><div style="font-size:26px;font-weight:900">${last}${wu}</div></div>`;
   return `<div class="divider" style="margin:14px 0"></div><b>Weight (${wu})</b>${chart}
@@ -5845,17 +5973,25 @@ function projectionHTML(){
   if(!(tkg>0))return `<div class="note info" style="margin-top:10px">Pick a target physique above to project your timeline.</div>`;
   const losing=tkg<kg, diff=Math.abs(kg-tkg);
   if(diff<0.5)return `<div class="note" style="margin-top:10px;border-color:var(--green)"><b style="color:var(--green)">🎯 You're at your target weight.</b> Hold it and let your training reveal the definition.</div>`;
-  const rate=losing?Math.max(0.2,Math.min(1.0,kg*0.007)):Math.max(0.15,Math.min(0.4,kg*0.0025));
-  const weeks=Math.max(1,Math.ceil(diff/rate));
+  let rate=losing?Math.max(0.2,Math.min(1.0,kg*0.007)):Math.max(0.15,Math.min(0.4,kg*0.0025));
+  let weeks=Math.max(1,Math.ceil(diff/rate));
+  // Honour the timeline the athlete chose in the quiz ("sets your projection pace"),
+  // clamped to what is physically sane so it can't promise a crash diet.
+  const tlw=STATE.profile.timelineWeeks;
+  if(tlw>0){
+    const wanted=diff/tlw;
+    const capped=losing?Math.min(wanted,Math.max(1.0,kg*0.01)):Math.min(wanted,0.5);
+    if(capped>0){rate=capped;weeks=Math.max(1,Math.ceil(diff/rate));}
+  }
   const start=Date.now(),end=start+weeks*7*86400000;
   const monthLbl=new Date(end).toLocaleDateString(undefined,{month:'long',year:'numeric'});
-  const actual=(STATE.measurements||[]).filter(m=>m.weight>0).map(m=>({t:Date.parse(m.date),k:imp?m.weight*0.453592:m.weight})).filter(p=>p.t);
+  const actual=(STATE.measurements||[]).filter(m=>m.weight>0).map(m=>({t:Date.parse(m.date),k:m.weight})).filter(p=>p.t);
   const dispRate=imp?Math.round(rate/0.453592*10)/10:Math.round(rate*10)/10;
   return `<div class="row" style="justify-content:space-between;align-items:baseline;margin-top:2px">
       <div><div style="font-size:21px;font-weight:900">${disp(tkg)}${wu} <span class="tiny muted" style="font-weight:600">by</span> ${monthLbl}</div></div>
       <div class="tiny muted" style="text-align:right">~${weeks} wk<br>~${dispRate}${wu}/wk</div>
     </div>${projectionChartSVG(start,end,kg,tkg,actual,wu,imp)}
-    <div class="tiny muted" style="margin-top:6px">A realistic pace at a moderate ${losing?'deficit':'surplus'}. Log weight weekly — the teal dots track you against the plan.</div>`;
+    <div class="tiny muted" style="margin-top:6px">${tlw>0&&weeks>tlw?`Your ${tlw}-week target needs a faster pace than is safe — this is the quickest healthy route.`:(tlw>0?`Paced to the ~${tlw}-week timeline you picked.`:`A realistic pace at a moderate ${losing?'deficit':'surplus'}.`)} Log weight weekly — the teal dots track you against the plan.</div>`;
 }
 function transformationHTML(){
   const cb=curBF();
@@ -5885,7 +6021,7 @@ function latestWeightKg(){
   const n=nut();
   if(n.weightKg>0)return n.weightKg;
   const ms=(STATE.measurements||[]).filter(m=>m.weight>0);
-  if(ms.length){const w=ms[ms.length-1].weight;return STATE.profile.unit==='in'?w*0.453592:w;} // imperial logs lb
+  if(ms.length)return ms[ms.length-1].weight;   // measurements[].weight is canonical kg
   return null;
 }
 // ~1.8 g/kg for fat loss; a steeper cut needs more to hold onto muscle
@@ -6086,7 +6222,7 @@ function renderFuel(){
   h+=`<div class="section-label">Calorie &amp; protein calculator</div><div class="card pad">
     <p class="sm muted" style="margin-top:0">Get your personal daily calorie target (Mifflin-St Jeor, moderate deficit) plus a protein goal.</p>
     <button class="btn primary" onclick="openTDEE()">${n.kcalTarget?'Update my targets':'Calculate my targets'}</button>
-    ${n.kcalTarget?`<div class="tiny muted" style="margin-top:8px;text-align:center">Current target: <b>${n.kcalTarget} kcal</b> · ${prot||'—'}g protein · goal: ${n.goal}</div>`:''}
+    ${n.kcalTarget?`<div class="tiny muted" style="margin-top:8px;text-align:center">Current target: <b>${n.kcalTarget} kcal</b> · ${prot||'—'}g protein · goal: ${n.goal}${n.kcalFloored?' · raised to a safe minimum':''}</div>`:''}
   </div>`;
   // abs-in-the-kitchen guidance
   h+=`<div class="section-label">Reveal your abs</div><div class="card pad">
@@ -6114,7 +6250,12 @@ function recalcKcalFromStored(){
   // midsection work is fuelled while bodyfat still drifts down
   const shredDef=clamp(Math.round(tdee*0.27),450,700);
   let t=n.goal==='gain'?tdee*1.1:(n.goal==='maintain'?tdee:(n.goal==='recomp'?tdee*0.9:(n.goal==='core'?tdee*0.95:(n.goal==='shred'?tdee-shredDef:tdee-loseDef))));
-  t=Math.max(t,bmr*1.1); // safety floor
+  // Safety floor: never prescribe below ~110% of BMR. Record when it bites so the
+  // UI can say the target was raised, rather than silently showing 'shred' and
+  // 'lose' the same number.
+  const floor=bmr*1.1;
+  n.kcalFloored=t<floor-1;
+  t=Math.max(t,floor);
   n.kcalTarget=Math.round(t/10)*10;
 }
 function openTDEE(){
@@ -6147,7 +6288,7 @@ function saveTDEE(){
   n.sex=sex;n.age=age;n.heightCm=Math.round(ht);n.weightKg=Math.round(wt*10)/10;n.activity=parseFloat($('#td-act').value)||1.45;
   recalcKcalFromStored();
   // also record the weight into measurements so waist/weight tracking stays in sync
-  const today=todayISO();const disp=imp?Math.round(wt/0.453592):Math.round(wt);
+  const today=todayISO();const disp=r1(wt);    // wt is already kg here — store canonical
   const ex=(STATE.measurements||[]).find(m=>m.date===today);
   if(ex){ex.weight=disp;}else{(STATE.measurements=STATE.measurements||[]).push({date:today,waist:null,weight:disp});}
   save();closeSheet();toast('Targets saved');renderFuel();
@@ -6182,7 +6323,10 @@ function openQuickList(){
       <span><span style="font-size:18px">${q.icon}</span> <b>${q.name}</b><div class="tiny muted" style="margin-top:2px">${q.focus}</div></span>
       <span class="chip">${q.mins} min</span></button>`).join('')}`);
 }
-function openQuick(id){QUICK_ID=id;quickState={done:{}};try{history.pushState({cf:'tab',tab:'quick'},'');}catch(e){}go('quick');}
+function openQuick(id){QUICK_ID=id;quickState={done:{}};
+  // closeSheet() has just queued a history.back(); pushing in the same tick puts our
+  // entry where that traversal lands and eats it, so Back then skipped a screen.
+  setTimeout(()=>{try{history.pushState({cf:'tab',tab:'quick'},'');}catch(e){}go('quick');},0);}
 function renderQuick(){
   const v=$('#v-quick');const q=QUICKIES.find(x=>x.id===QUICK_ID);
   if(!q){v.innerHTML=`<div class="note info">No quick workout selected.</div>`;return;}
@@ -6276,9 +6420,13 @@ function homeSummaryHTML(){
   const wk=(pos.cycle*WEEKS_PER_CYCLE)+pos.week;
   const streak=computeStreak();
   const sess=Object.values(STATE.logs).filter(l=>l.done).length;
-  const wd=waistDrop();const unit=STATE.profile.unit;
+  const wd=waistDropShow();const unit=STATE.profile.unit;
   const latest=STATE.scoreHistory[STATE.scoreHistory.length-1];
-  const wdTxt=wd>0?('▼'+wd.toFixed(1)):(wd<0?('▲'+Math.abs(wd).toFixed(1)):'0');
+  // Show the athlete's ACTUAL waist (what they typed), with the trend as a suffix —
+  // the tile used to show only the delta under a "Waist in" label, which read as a
+  // measurement and was badly confusing.
+  const wNow=currentWaistShow();
+  const wdTxt=wNow==null?'—':(wNow.toFixed(1)+(wd>0?' ▼':(wd<0?' ▲':'')));
   return `<div class="grid3" style="margin-bottom:12px">
     <div class="stat"><div class="n" style="color:var(--fire-l)">${wk}<span style="font-size:12px;color:var(--muted)"> /${WEEKS_PER_CYCLE*TOTAL_CYCLES}</span></div><div class="l">Week</div></div>
     <div class="stat"><div class="n" style="color:var(--green)">${streak}</div><div class="l">Streak</div></div>
@@ -6437,8 +6585,8 @@ function renderGuide(){
     ${STATE.settings.beat!==false?`<div style="padding:4px 0 2px">
       <div class="row" style="justify-content:space-between"><span class="tiny muted">Beat volume</span><span class="tiny muted" id="bvLbl">${Math.round(beatVolPref()*100)}%</span></div>
       <input type="range" min="0.1" max="1" step="0.05" value="${beatVolPref()}" oninput="$('#bvLbl').textContent=Math.round(this.value*100)+'%'" onchange="setBeatVol(this.value)" style="width:100%">
-      <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">Beat tempo</span><span class="tiny muted" id="btLbl">${beatTempoPref()} BPM</span></div>
-      <input type="range" min="60" max="110" step="2" value="${beatTempoPref()}" oninput="$('#btLbl').textContent=this.value+' BPM'" onchange="setBeatTempo(this.value)" style="width:100%">
+      <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">Beat tempo</span><span class="tiny muted" id="beatTempoLbl">${beatTempoPref()} BPM</span></div>
+      <input type="range" min="60" max="110" step="2" value="${beatTempoPref()}" oninput="$('#beatTempoLbl').textContent=this.value+' BPM'" onchange="setBeatTempo(this.value)" style="width:100%">
       <div class="btnrow" style="gap:6px;margin-top:6px"><button class="chip" onclick="setBeatTempo(70)">😌 Chill 70</button><button class="chip" onclick="setBeatTempo(78)">🎧 Classic 78</button><button class="chip" onclick="setBeatTempo(92)">🔥 Hype 92</button></div>
       <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">The beat plays during timers, guided reps, warm-up &amp; cool-down.</span><button class="chip" onclick="beatPreview()">▶ Preview</button></div>
     </div>`:''}
@@ -6577,22 +6725,56 @@ function exportData(){
 }
 function importData(e){
   const f=e.target.files[0];if(!f)return;const r=new FileReader();
-  r.onload=()=>{try{const p=JSON.parse(r.result);if(!p.version){toast('Not a CoreForge backup');return;}STATE=Object.assign(DEFAULT_STATE(),p);normalizeState();save();toast('Backup restored');render();}catch(err){toast('Could not read file');}};
+  r.onload=()=>{try{
+    const p=JSON.parse(r.result);
+    if(!p||typeof p!=='object'||!p.version){toast('Not a CoreForge backup');return;}
+    const d=DEFAULT_STATE();
+    // Deep-merge the nested objects exactly like load() does. A shallow assign
+    // let a backup that predates a field replace the whole sub-object, which
+    // silently killed sound/haptics — or, with a null in the wrong place,
+    // white-screened the app on every launch afterwards.
+    const obj=(base,v)=>(v&&typeof v==='object'&&!Array.isArray(v))?Object.assign(base,v):base;
+    STATE=Object.assign(d,p);
+    STATE.profile=obj(DEFAULT_STATE().profile,p.profile);
+    STATE.settings=obj(DEFAULT_STATE().settings,p.settings);
+    STATE.nutrition=obj(DEFAULT_STATE().nutrition,p.nutrition);
+    normalizeState();save();toast('Backup restored');render();
+  }catch(err){toast('Could not read file');}};
   r.readAsText(f);
 }
 function hardReset(){
   if(!confirm('Erase ALL your data and start over? This cannot be undone.'))return;
   if(!confirm('Are you absolutely sure? Consider exporting a backup first.'))return;
-  STATE=DEFAULT_STATE();save();go('today');
+  // Progress photos are stored as separate IndexedDB blobs, not inside STATE —
+  // clearing STATE alone left every image on the device after an "erase ALL".
+  const ids=(STATE.photos||[]).map(p=>p.id);
+  ids.forEach(id=>idbDel('ph_'+id));
+  STATE=DEFAULT_STATE();normalizeState();save();applyTheme();go('today');
 }
 
 /* ============================ INSTALL PROMPT ============================ */
 let deferredPrompt=null;
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;showInstallHint();});
+/* We call preventDefault on beforeinstallprompt, which suppresses Chrome's own
+   install affordance — so we owe the athlete a replacement. This used to be an
+   empty stub, leaving no way to install at all beyond a buried browser menu,
+   which undercuts the reminders and offline story the app depends on. */
 function showInstallHint(){
   if(document.getElementById('installBanner'))return;
-  if(!$('#v-today'))return;
+  const host=$('#v-today');if(!host||!deferredPrompt)return;
+  const d=document.createElement('div');
+  d.id='installBanner';d.className='note fire';d.style.margin='0 0 12px';
+  d.innerHTML=`<b>📲 Install CoreForge</b><div class="tiny muted" style="margin:4px 0 8px">Add it to your home screen — full screen, works offline, and reminders fire reliably.</div>
+    <div class="btnrow"><button class="btn primary sm" onclick="doInstall()">Install</button><button class="btn ghost sm" onclick="dismissInstall()">Not now</button></div>`;
+  host.insertBefore(d,host.firstChild);
 }
+function doInstall(){
+  if(!deferredPrompt){dismissInstall();return;}
+  const p=deferredPrompt;deferredPrompt=null;
+  try{p.prompt();}catch(e){}
+  dismissInstall();
+}
+function dismissInstall(){const d=document.getElementById('installBanner');if(d)d.remove();}
 
 /* ============================ BOOT ============================ */
 /* Normalize a freshly-loaded (or freshly-imported) STATE: fill defaults for
@@ -6615,27 +6797,84 @@ function normalizeState(){
   if(!STATE.nutrition.diet)STATE.nutrition.diet='omnivore';
   if(!STATE.nutrition.meals)STATE.nutrition.meals=3;
   if(!Array.isArray(STATE.measurements))STATE.measurements=[];
+  // containers that get indexed without a guard — a null here white-screened the app
+  if(!STATE.reassess||typeof STATE.reassess!=='object')STATE.reassess={};
+  if(!STATE.weekFeel||typeof STATE.weekFeel!=='object')STATE.weekFeel={};
+  if(!STATE.swaps||typeof STATE.swaps!=='object')STATE.swaps={};
+  if(!(STATE.progressPtr>=0))STATE.progressPtr=0;
+  if(STATE.baseline!==null&&typeof STATE.baseline!=='object')STATE.baseline=null;
   if(!Array.isArray(STATE.scoreHistory))STATE.scoreHistory=[];
   if(!STATE.logs||typeof STATE.logs!=='object')STATE.logs={};
   if(!STATE.prs||typeof STATE.prs!=='object')STATE.prs={};
   // deep-profile defaults for installs created before the equipment/diet quiz
   if(!Array.isArray(STATE.profile.gear)){STATE.profile.gear=[];if(STATE.profile.hasBar!==false)STATE.profile.gear.push('bar');if(STATE.profile.hasBench!==false)STATE.profile.gear.push('bench');}
   if(!Array.isArray(STATE.profile.targets))STATE.profile.targets=['abs','full'];
-  if(!STATE.profile.goal)STATE.profile.goal=STATE.nutrition.goal||'lose';
+  /* profile.goal drives training (reps, focus bonus), nutrition.goal drives food.
+     They are meant to be one value; repair either side if a backup or a partial
+     write left them out of step, so the athlete can't end up training for one
+     goal while eating for another. */
+  {const P=STATE.profile,N=STATE.nutrition;
+   const known=g=>GOALS.some(x=>x[0]===g);
+   if(!known(P.goal)&&known(N.goal))P.goal=N.goal;
+   else if(!known(N.goal)&&known(P.goal))N.goal=P.goal;
+   else if(!known(P.goal)&&!known(N.goal))P.goal=N.goal='lose';
+   else if(P.goal!==N.goal)N.goal=P.goal;   // profile is the source of truth
+  }
   // comprehensive-quiz defaults for installs created before it
   if(!STATE.profile.focusPrimary)STATE.profile.focusPrimary=(STATE.profile.targets&&STATE.profile.targets[0])||'abs';
   if(!Array.isArray(STATE.profile.troubleZones))STATE.profile.troubleZones=[];
   if(!STATE.profile.conditioning)STATE.profile.conditioning='moderate';
   if(!STATE.profile.mobility)STATE.profile.mobility='ok';
   if(STATE.profile.timelineWeeks===undefined)STATE.profile.timelineWeeks=null;
-  // one-time: seed the owner's actual home-gym kit so the Weights session works out of the box
-  if(!STATE.profile._gearMil){STATE.profile.gear=['bar','dip','kettlebell','medball','abroller','battlerope'];STATE.profile.hasBar=true;STATE.profile._gearMil=true;}
-  // one-time: add the newly-purchased dumbbells to the owner's kit
-  if(!STATE.profile._gearDb){STATE.profile.gear=[...new Set([...(STATE.profile.gear||[]),'dumbbell'])];STATE.profile._gearDb=true;}
-  // one-time: switch to a 7-day-a-week training schedule
-  if(!STATE.profile._days7){STATE.profile.days=[0,1,2,3,4,5,6];STATE.profile._days7=true;}
-  // one-time: seed the transformation goal the advisor coaches toward (190 → 175 lb, body fat under 12%)
-  if(!STATE.profile._goalXform){if(!(STATE.profile.goalWeightLb>0))STATE.profile.goalWeightLb=175;if(!(STATE.profile.goalBodyFat>0))STATE.profile.goalBodyFat=12;if(!(STATE.profile.startWeightLb>0))STATE.profile.startWeightLb=190;STATE.profile._goalXform=true;}
+  /* One-time SEEDS — sensible starting values, not corrections. They must never
+     overwrite an answer the athlete has already given, so they only run before
+     onboarding. Previously they fired whenever their flag was missing, which
+     meant importing an older backup (or re-onboarding after a reset) silently
+     replaced the athlete's own equipment, training days and goal weight. */
+  const seeding=!STATE.onboarded;
+  if(seeding&&!STATE.profile._gearMil){STATE.profile.gear=['bar','dip','kettlebell','medball','abroller','battlerope'];STATE.profile.hasBar=true;}
+  if(!STATE.profile._gearMil)STATE.profile._gearMil=true;
+  if(seeding&&!STATE.profile._gearDb){STATE.profile.gear=[...new Set([...(STATE.profile.gear||[]),'dumbbell'])];}
+  if(!STATE.profile._gearDb)STATE.profile._gearDb=true;
+  if(seeding&&!STATE.profile._days7){STATE.profile.days=[0,1,2,3,4,5,6];}
+  if(!STATE.profile._days7)STATE.profile._days7=true;
+  if(seeding&&!STATE.profile._goalXform){if(!(STATE.profile.goalWeightLb>0))STATE.profile.goalWeightLb=175;if(!(STATE.profile.goalBodyFat>0))STATE.profile.goalBodyFat=12;}
+  if(!STATE.profile._goalXform)STATE.profile._goalXform=true;
+  // gear[] and the legacy hasBar/hasBench flags describe the same kit — keep them in step
+  if(Array.isArray(STATE.profile.gear)){
+    STATE.profile.hasBar=STATE.profile.gear.includes('bar');
+    STATE.profile.hasBench=STATE.profile.gear.includes('bench');
+  }
+  /* one-time: repair mixed-unit body metrics written by earlier builds.
+     The quiz stored cm/kg while the manual logger stored whatever the athlete
+     read (in/lb), so both sat in measurements[] and got subtracted from each
+     other — producing nonsense waist trends and, worse, feeding a pound value
+     into calorie/protein maths as if it were kilograms.
+     Waist is separable by range: an adult waist is 24-60 in but 61-152 cm, so
+     anything under 60 was typed in inches. Weight is anchored to
+     nutrition.weightKg, which was always written correctly — whichever
+     interpretation lands closer to it is the right one. */
+  if(!STATE.profile._unitFix){
+    /* Only an imperial athlete could ever have written in/lb rows — a metric
+       athlete's history is already cm/kg, and touching it would wreck a genuine
+       sub-60 cm waist. */
+    if(STATE.profile.unit==='in'){
+      const anchor=(STATE.nutrition&&STATE.nutrition.weightKg)||0;
+      const looksInches=v=>v>0&&v<60;          // adult waist: 24-60 in vs 61-152 cm
+      (STATE.measurements||[]).forEach(m=>{
+        if(looksInches(m.waist))m.waist=Math.round(m.waist*2.54);
+        if(m.weight>0){
+          // with an anchor, pick whichever reading sits closer to it; without one,
+          // an imperial athlete's logged weight was pounds by definition
+          const isLb=anchor>0?Math.abs(m.weight*0.453592-anchor)<Math.abs(m.weight-anchor):m.weight>=45;
+          if(isLb)m.weight=Math.round(m.weight*0.453592*10)/10;
+        }
+      });
+      if(looksInches(STATE.profile.startWaist))STATE.profile.startWaist=Math.round(STATE.profile.startWaist*2.54);
+      if(looksInches(STATE.profile.goalWaist))STATE.profile.goalWaist=Math.round(STATE.profile.goalWaist*2.54);
+    }
+    STATE.profile._unitFix=true;
+  }
   if(!Array.isArray(STATE.photos))STATE.photos=[];
   if(!STATE.achievements||typeof STATE.achievements!=='object')STATE.achievements={};
   if(STATE.settings.reminderOn===undefined)STATE.settings.reminderOn=false;
