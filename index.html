@@ -969,6 +969,16 @@ const EX = {
     why:'Max-effort sprint intervals build explosive speed and power and are one of the best fat-burning conditioning stimuli there is.',
     steps:['Find a clear stretch of road, track or treadmill.','On "work", sprint at near-max effort with a tall, driving stride.','On "rest", walk or jog easy to recover fully.','Repeat, keeping every sprint crisp and powerful.'],
     cues:['Drive the knees and arms','Stay tall and relaxed','Full recovery between sprints'],mistakes:['Half-effort sprints','Skipping the recovery']},
+  ruck:{name:'Ruck March',region:'cardio',unit:'time',img:'ex-ruck.jpg',anchor:null,hardness:1,base:60,rest:0,
+    why:'A loaded march is the backbone of military conditioning — a huge aerobic and postural stimulus with almost no joint pounding. It builds the engine and the back that carry everything else, and you can do it anywhere.',
+    steps:['Load a pack with 10–20% of your bodyweight, sitting high and tight against your back.','Cinch the straps so it does not bounce; chest strap fastened.','Walk at a brisk, purposeful pace — quick short steps, tall posture, eyes up.','Keep it steady and unbroken for the distance or time; no jogging under load.'],
+    cues:['Tall chest, shoulders back under the load','Brisk, short, quick steps','Breathe steadily through the nose'],
+    mistakes:['Pack hanging low and swinging','Slouching forward under the weight','Loading too heavy too soon']},
+  shadowbox:{name:'Shadow Boxing',region:'cardio',unit:'time',img:'ex-shadowbox.jpg',anchor:null,hardness:1,base:60,rest:60,
+    why:'Zero equipment, zero noise and no jumping — the conditioning you can do in a hotel room at midnight. Rounds of punching in the air build the engine, footwork and rotational core control all at once.',
+    steps:['Stand in a light boxing stance, hands up at the chin, elbows in.','Stay on the balls of the feet with small, quick steps — never crossing them.','Throw straight punches and hooks in short combinations, rotating from the hips and core.','Keep moving for the whole round: punch, step, reset. Breathe out sharply on every shot.'],
+    cues:['Rotate from the hips, not just the arm','Hands come straight back to the chin','Stay light and keep moving'],
+    mistakes:['Standing flat-footed','Dropping the hands between punches','Swinging arms with no core rotation']},
   skip:{name:'Skipping (Jump Rope)',region:'cardio',unit:'time',img:'ex-skip.jpg',anchor:null,hardness:1,base:60,rest:30,
     why:'The most efficient conditioning tool there is — a rope torches calories, sharpens footwork and coordination, and hammers the calves and core, all from one square metre of floor. Perfect whenever you get a spare ten minutes.',
     steps:['Hold the handles at hip height, elbows tucked close to the ribs.','Turn the rope with the WRISTS, not big arm circles.','Stay on the balls of the feet with small, low hops — barely clearing the rope.','Keep the core braced and land soft, breathing in a steady rhythm.'],
@@ -1100,7 +1110,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='151';
+const APP_VERSION='152';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -2291,7 +2301,166 @@ const SKIP_FORMATS={
   skip93x4:{name:'9 / 3 × 4',desc:'9 min skipping · 3 min rest, four rounds (~45 min). Big engine day.',w:9,r:3,n:4},
   skip52x4:{name:'5 / 2 × 4',desc:'5 min skipping · 2 min rest, four rounds (~26 min). Faster turnaround.',w:5,r:2,n:4},
 };
-function fmtInfo(k){return HIIT_FORMATS[k]||SKIP_FORMATS[k]||{name:'Session',desc:''};}
+/* ---- Other Special activities (ruck / grip / shadow boxing) ---------------
+   Interval-based ones reuse the HIIT timer engine via SPECIAL_FORMATS, which
+   carries its own exId so buildIntervals knows what to show. Every activity
+   keeps its own record with week + all-time totals. ---- */
+const SPECIAL_FORMATS={
+  grip30:{name:'Hangs 30s × 5',desc:'5 hangs of 30 seconds, 60s rest. Grip endurance.',w:0.5,r:1,n:5,exId:'deadhang',act:'grip'},
+  grip45:{name:'Hangs 45s × 5',desc:'5 hangs of 45 seconds, 90s rest. Serious forearm work.',w:0.75,r:1.5,n:5,exId:'deadhang',act:'grip'},
+  grip60:{name:'Hangs 60s × 4',desc:'4 hangs of a full minute, 2 min rest. Advanced.',w:1,r:2,n:4,exId:'deadhang',act:'grip'},
+  gripmax:{name:'Max hang test',desc:'One all-out hang. Sets your Dead Hang standard.',w:3,r:0,n:1,exId:'deadhang',act:'grip'},
+  box3x3:{name:'3 × 3 min',desc:'Three 3-minute rounds, 1 min rest. Classic starter.',w:3,r:1,n:3,exId:'shadowbox',act:'box'},
+  box5x3:{name:'5 × 3 min',desc:'Five 3-minute rounds, 1 min rest. A full fight.',w:3,r:1,n:5,exId:'shadowbox',act:'box'},
+  box6x2:{name:'6 × 2 min',desc:'Six 2-minute rounds, 45s rest. Faster turnaround.',w:2,r:0.75,n:6,exId:'shadowbox',act:'box'},
+};
+function fmtInfo(k){return HIIT_FORMATS[k]||SKIP_FORMATS[k]||SPECIAL_FORMATS[k]||{name:'Session',desc:''};}
+/* Generic activity records: STATE.ruckLog / gripLog / boxLog */
+const ACTS={
+  ruck:{name:'Ruck March',emoji:'🎒',logKey:'ruckLog',verb:'rucked'},
+  grip:{name:'Grip & Hang',emoji:'🧗',logKey:'gripLog',verb:'hung'},
+  box:{name:'Shadow Boxing',emoji:'🥊',logKey:'boxLog',verb:'boxed'},
+};
+function actLog(k){const key=ACTS[k].logKey;if(!Array.isArray(STATE[key]))STATE[key]=[];return STATE[key];}
+function logAct(k,mins,extra){
+  mins=Math.max(0,Math.round((mins||0)*10)/10);if(!mins&&!(extra&&extra.secs))return;
+  const rec=Object.assign({date:todayISO(),mins,at:Date.now()},extra||{});
+  actLog(k).unshift(rec);
+  const key=ACTS[k].logKey;if(STATE[key].length>200)STATE[key].length=200;
+  // a max hang also updates the Dead Hang strength standard
+  if(k==='grip'&&extra&&extra.secs>0){if(!STATE.prs)STATE.prs={};
+    if((STATE.prs.deadhang||0)<extra.secs){STATE.prs.deadhang=Math.round(extra.secs);}}
+  save();toast(ACTS[k].emoji+' Logged to your '+ACTS[k].name+' record');try{checkAchievements();}catch(e){}
+}
+function actStats(k){
+  const l=actLog(k);const wk=[];const now=new Date();
+  for(let i=0;i<7;i++){const d=new Date();d.setDate(now.getDate()-i);wk.push(localISO(d));}
+  const week=l.filter(x=>wk.includes(x.date));
+  return {n:l.length,total:Math.round(l.reduce((a,x)=>a+(x.mins||0),0)),
+    week:Math.round(week.reduce((a,x)=>a+(x.mins||0),0)),
+    dist:Math.round(l.reduce((a,x)=>a+(x.dist||0),0)*10)/10,
+    best:l.reduce((m,x)=>Math.max(m,x.secs||0),0),last:l[0]||null};
+}
+function removeAct(k,i){const l=actLog(k);if(l[i]){l.splice(i,1);save();openAct(k);}}
+function actHistoryHTML(k){
+  const l=actLog(k).slice(0,8);if(!l.length)return '';
+  return `<div class="section-label" style="margin-top:14px">Recent sessions</div><div class="card" style="padding:0 12px">`+
+    l.map((x,i)=>`<div class="kv" style="border-top:1px solid var(--line)">
+      <span><b>${x.mins} min</b> <span class="tiny muted">· ${x.dist?x.dist+' '+(x.unit||'km')+' · ':''}${x.wt?x.wt+' load · ':''}${x.secs?'best '+x.secs+'s · ':''}${x.rounds?x.rounds+' rounds · ':''}${x.date}</span></span>
+      <button class="chip" onclick="removeAct('${k}',${i})">✕</button></div>`).join('')+`</div>`;
+}
+function startSpecialFormat(format){
+  closeSheet();const f=SPECIAL_FORMATS[format];if(!f)return;
+  const list=[{exId:f.exId,unit:'time',target:Math.round(f.w*60),rest:Math.round(f.r*60),sets:1}];
+  const sess={session:{name:ACTS[f.act].name,key:f.act,focus:'Special conditioning'},ptr:-1,pos:{}};
+  _runHiit(sess,list,format);
+}
+/* ---- Ruck March: steady-state, so a stopwatch + distance/load entry ---- */
+function openAct(k){
+  if(k==='ruck')return openRuck();
+  if(k==='grip')return openGrip();
+  if(k==='box')return openBox();
+}
+function openRuck(){
+  const s=actStats('ruck');const imp=STATE.profile.unit==='in';
+  openSheet(`<h3>🎒 Ruck March</h3>
+    <p class="muted sm" style="margin:2px 0 12px">Loaded pack, brisk pace. Big aerobic base with almost no joint impact — start at 10% of bodyweight and build.</p>
+    <div class="grid2" style="margin-bottom:12px">
+      <div class="stat"><div class="n" style="color:var(--fire-l)">${s.week}</div><div class="l">Min this week</div></div>
+      <div class="stat"><div class="n" style="color:var(--teal)">${s.dist||0}</div><div class="l">Total ${imp?'mi':'km'}</div></div>
+    </div>
+    <button class="btn t-teal" onclick="openActTimer('ruck')">⏱️ Start ruck — stopwatch</button>
+    <div class="section-label">Log a ruck</div>
+    <div class="btnrow" style="gap:8px;align-items:flex-end">
+      <div class="field" style="flex:1;margin:0"><label>Minutes</label><input id="rk-min" type="number" inputmode="numeric" placeholder="45"></div>
+      <div class="field" style="flex:1;margin:0"><label>Distance (${imp?'mi':'km'})</label><input id="rk-dist" type="number" inputmode="decimal" placeholder="${imp?'3':'5'}"></div>
+      <div class="field" style="flex:1;margin:0"><label>Pack (${imp?'lb':'kg'})</label><input id="rk-wt" type="number" inputmode="decimal" placeholder="${imp?'25':'12'}"></div>
+    </div>
+    <button class="btn primary" style="margin-top:10px" onclick="saveRuck()">Save ruck</button>
+    ${actHistoryHTML('ruck')}
+    <div style="height:10px"></div><button class="btn ghost" onclick="openSpecial()">← Back</button>`);
+}
+function saveRuck(){
+  const m=parseFloat(($('#rk-min')||{}).value)||0;
+  if(!(m>0)){toast('Enter the minutes');return;}
+  const d=parseFloat(($('#rk-dist')||{}).value)||0, w=parseFloat(($('#rk-wt')||{}).value)||0;
+  logAct('ruck',m,{dist:d||undefined,wt:w||undefined,unit:STATE.profile.unit==='in'?'mi':'km'});
+  openRuck();
+}
+function openGrip(){
+  const s=actStats('grip');const pr=(STATE.prs&&STATE.prs.deadhang)||0;
+  openSheet(`<h3>🧗 Grip &amp; Hang</h3>
+    <p class="muted sm" style="margin:2px 0 12px">Grip is the first thing that fails on pull-ups, toes-to-bar and carries. Train it directly — this also sets your <b>Dead Hang</b> standard.</p>
+    <div class="grid2" style="margin-bottom:12px">
+      <div class="stat"><div class="n" style="color:var(--fire-l)">${s.week}</div><div class="l">Min this week</div></div>
+      <div class="stat"><div class="n" style="color:var(--gold)">${pr?fmtTime(pr):'—'}</div><div class="l">Best hang</div></div>
+    </div>
+    <div class="section-label" style="margin-top:0">Hang sets</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${Object.keys(SPECIAL_FORMATS).filter(k=>SPECIAL_FORMATS[k].act==='grip').map(k=>`<button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="startSpecialFormat('${k}')"><b style="font-size:15px">${SPECIAL_FORMATS[k].name}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${SPECIAL_FORMATS[k].desc}</div></button>`).join('')}
+    </div>
+    <div class="section-label">Log a hang</div>
+    <div class="btnrow" style="gap:8px;align-items:flex-end">
+      <div class="field" style="flex:1;margin:0"><label>Best hang (sec)</label><input id="gp-sec" type="number" inputmode="numeric" placeholder="45"></div>
+      <div class="field" style="flex:1;margin:0"><label>Total minutes</label><input id="gp-min" type="number" inputmode="decimal" placeholder="5"></div>
+    </div>
+    <button class="btn primary" style="margin-top:10px" onclick="saveGrip()">Save hang</button>
+    ${actHistoryHTML('grip')}
+    <div style="height:10px"></div><button class="btn ghost" onclick="openSpecial()">← Back</button>`);
+}
+function saveGrip(){
+  const sec=parseFloat(($('#gp-sec')||{}).value)||0, m=parseFloat(($('#gp-min')||{}).value)||0;
+  if(!(sec>0)&&!(m>0)){toast('Enter a hang time');return;}
+  logAct('grip',m||(sec/60),{secs:sec||undefined});
+  openGrip();
+}
+function openBox(){
+  const s=actStats('box');
+  openSheet(`<h3>🥊 Shadow Boxing</h3>
+    <p class="muted sm" style="margin:2px 0 12px">No gear, no noise, no jumping — the session you can run in a hotel room. Rounds build the engine, footwork and rotational core.</p>
+    <div class="grid2" style="margin-bottom:12px">
+      <div class="stat"><div class="n" style="color:var(--fire-l)">${s.week}</div><div class="l">Min this week</div></div>
+      <div class="stat"><div class="n" style="color:var(--teal)">${s.total}</div><div class="l">Min all time</div></div>
+    </div>
+    <div class="section-label" style="margin-top:0">Rounds</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${Object.keys(SPECIAL_FORMATS).filter(k=>SPECIAL_FORMATS[k].act==='box').map(k=>`<button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="startSpecialFormat('${k}')"><b style="font-size:15px">${SPECIAL_FORMATS[k].name}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${SPECIAL_FORMATS[k].desc}</div></button>`).join('')}
+    </div>
+    <button class="btn t-teal" style="margin-top:12px" onclick="openActTimer('box')">⏱️ Free rounds — stopwatch</button>
+    <div style="height:8px"></div>
+    <button class="btn ghost" onclick="logActManual('box')">✍️ Log minutes manually</button>
+    ${actHistoryHTML('box')}
+    <div style="height:10px"></div><button class="btn ghost" onclick="openSpecial()">← Back</button>`);
+}
+function logActManual(k){
+  const v=prompt('How many minutes?');const m=parseFloat(v);
+  if(m>0){logAct(k,m);openAct(k);}
+}
+/* Shared count-up stopwatch for the non-interval activities. */
+let ACTT=null;
+function openActTimer(k){
+  ACTT={k,secs:0,tid:null,running:true};
+  const a=ACTS[k];
+  openSheet(`<h3>⏱️ ${a.emoji} ${a.name}</h3>
+    <p class="muted sm" style="margin:2px 0 14px">Counting up. Tap <b>Stop &amp; log</b> when you're done.</p>
+    <div style="text-align:center;margin:10px 0 18px"><div id="act-num" style="font-size:56px;font-weight:900;letter-spacing:1px">0:00</div></div>
+    <button class="btn primary" onclick="actTimerStop()">■ Stop &amp; log</button>
+    <div style="height:8px"></div><button class="btn ghost" id="act-toggle" onclick="actTimerToggle()">Pause</button>
+    <div style="height:8px"></div><button class="btn ghost" onclick="actTimerCancel()">Cancel</button>`);
+  ACTT.tid=setInterval(actTimerTick,1000);
+  try{coachSpeak(a.name+'. Timer running.');}catch(e){}
+}
+function actTimerTick(){if(!ACTT||!ACTT.running)return;ACTT.secs++;const e=$('#act-num');if(e)e.textContent=fmtTime(ACTT.secs);}
+function actTimerToggle(){if(!ACTT)return;ACTT.running=!ACTT.running;const b=$('#act-toggle');if(b)b.textContent=ACTT.running?'Pause':'Resume';}
+function actTimerCancel(){if(ACTT&&ACTT.tid)clearInterval(ACTT.tid);ACTT=null;closeSheet();}
+function actTimerStop(){
+  if(!ACTT)return;const k=ACTT.k,secs=ACTT.secs;if(ACTT.tid)clearInterval(ACTT.tid);ACTT=null;
+  const mins=Math.round(secs/60);
+  if(mins<1){toast('Under a minute — nothing logged');closeSheet();return;}
+  if(k==='ruck'){logAct('ruck',mins,{unit:STATE.profile.unit==='in'?'mi':'km'});}
+  else logAct(k,mins);
+  openAct(k);
+}
 function skipLog(){if(!Array.isArray(STATE.skipLog))STATE.skipLog=[];return STATE.skipLog;}
 function logSkip(mins,rounds){
   mins=Math.max(1,Math.round(mins||0));if(!mins)return;
@@ -2391,11 +2560,12 @@ function ivClear(){if(INTV&&INTV.tid){clearInterval(INTV.tid);INTV.tid=null;}}
 function buildIntervals(list,format){
   const out=[];const at=i=>list[i%list.length];
   // Skipping blocks: long work bouts with a full rest between rounds.
-  const sk=SKIP_FORMATS[format];
+  const sk=SKIP_FORMATS[format]||SPECIAL_FORMATS[format];
   if(sk){
+    const xid=sk.exId||'skip';
     for(let r=0;r<sk.n;r++){
-      out.push({type:'work',secs:sk.w*60,exId:'skip',round:r+1,rounds:sk.n});
-      if(sk.r>0&&r<sk.n-1)out.push({type:'rest',secs:sk.r*60,exId:'skip'});
+      out.push({type:'work',secs:Math.round(sk.w*60),exId:xid,round:r+1,rounds:sk.n});
+      if(sk.r>0&&r<sk.n-1)out.push({type:'rest',secs:Math.round(sk.r*60),exId:xid});
     }
     return out;
   }
@@ -2421,6 +2591,9 @@ function openSpecial(){
     <div style="display:flex;flex-direction:column;gap:10px">
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="specialChooser('hiit')"><b style="font-size:15px">⚡ Bonus HIIT intervals</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Bodyweight — jumping jacks, burpees, mountain climbers…</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="openSkipping()"><b style="font-size:15px">🪢 Skipping</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Jump-rope blocks (9/3), a free stopwatch &amp; your minute log</div></button>
+      <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="openRuck()"><b style="font-size:15px">🎒 Ruck March</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Loaded pack marches — stopwatch, distance &amp; load log</div></button>
+      <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="openGrip()"><b style="font-size:15px">🧗 Grip &amp; Hang</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Timed bar hangs — builds grip and sets your Dead Hang standard</div></button>
+      <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="openBox()"><b style="font-size:15px">🥊 Shadow Boxing</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Timed rounds — no gear, no noise, apartment-safe</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="specialChooser('bike')"><b style="font-size:15px">🚴 Bike trainer</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Indoor ride intervals on your road bike + trainer</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="specialChooser('sprint')"><b style="font-size:15px">🏃 Sprint runs</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Max-effort sprint intervals with recovery</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="openOps()"><b style="font-size:15px">🎖️ Benchmark Ops</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Timed hero workouts — chase your best time</div></button>
@@ -2532,6 +2705,7 @@ function ivDone(){
   const mins=Math.max(1,Math.round(INTV.workElapsed/60*10)/10);
   const sess=INTV.sess;const isMetcon=sess.session.key==='metcon'&&sess.ptr===STATE.progressPtr;
   const isSkip=sess.session.key==='skip';
+  const actKey=ACTS[sess.session.key]?sess.session.key:null;
   const skRounds=(SKIP_FORMATS[INTV.format]||{}).n||0;
   $('#ivBody').innerHTML=`
     <div class="pl-name" style="margin-bottom:2px">${isSkip?'Rope work done 🪢':'Circuit complete 🔥'}</div>
@@ -2542,6 +2716,7 @@ function ivDone(){
     </div>
     <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:440px;margin-top:18px">
       ${isSkip?`<button class="btn primary" onclick="hiitLogSkip(${mins},${skRounds})">🪢 Log ${Math.max(1,Math.round(mins))} min to my record</button>`:''}
+      ${actKey?`<button class="btn primary" onclick="hiitLogAct('${actKey}',${mins},${(SPECIAL_FORMATS[INTV.format]||{}).n||0},${Math.round(((SPECIAL_FORMATS[INTV.format]||{}).w||0)*60)})">${ACTS[actKey].emoji} Log to my ${ACTS[actKey].name} record</button>`:''}
       ${isMetcon?`<button class="btn primary" onclick="hiitLogDone()">Log today's session complete</button>`:''}
       <button class="btn ghost" onclick="hiitQuit()">Close</button>
     </div>`;
@@ -2562,6 +2737,13 @@ function hiitLogDone(){
   ivClear();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;
   if(history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
   finishSession();
+}
+// Ruck / grip / boxing finish into their own records too.
+function hiitLogAct(k,mins,rounds,workSecs){
+  ivClear();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;
+  if(history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
+  logAct(k,mins,k==='grip'?{secs:workSecs||0,rounds:rounds||0}:{rounds:rounds||0});
+  render();
 }
 // Skipping finishes into its own record, not the program's session counter.
 function hiitLogSkip(mins,rounds){
@@ -6400,6 +6582,7 @@ function normalizeState(){
   if(STATE.settings.weeklyOn===undefined)STATE.settings.weeklyOn=true;
   if(!STATE.restDays||typeof STATE.restDays!=='object')STATE.restDays={};
   if(!Array.isArray(STATE.skipLog))STATE.skipLog=[];   // jump-rope record
+  ['ruckLog','gripLog','boxLog'].forEach(k=>{if(!Array.isArray(STATE[k]))STATE[k]=[];});
   if(STATE.settings.hype===undefined)STATE.settings.hype=true;   // motivator on by default
   if(!STATE.settings.coach)STATE.settings.coach='auto';          // default persona
   // one-time: switch existing installs to the new rotating Auto coach
