@@ -2,9 +2,17 @@
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b1020">
 <meta name="color-scheme" content="dark">
+<!-- Hardening that cannot break a feature: no plugins, no <base> hijacking, no
+     form posts. (frame-ancestors is deliberately absent — it is ignored in a
+     meta tag and only works as an HTTP header, which GitHub Pages cannot set.)
+     script-src/connect-src are deliberately NOT locked down yet: the Azure
+     Speech SDK loads via an aka.ms redirect and talks over WebSockets to a
+     region host, so a wrong allow-list would silently kill neural voices. That
+     needs the real hosts confirmed on-device first. -->
+<meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -266,6 +274,14 @@
   .nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;color:var(--muted);font-size:10px;font-weight:800;border-radius:12px}
   .nav button svg{width:23px;height:23px}
   .nav button.on{color:var(--fire);background:color-mix(in srgb,var(--fire) 12%,transparent)}
+  /* Keyboard users need to see where they are; pointer users never see this. */
+  :focus-visible{outline:3px solid var(--fire);outline-offset:3px;border-radius:6px}
+  .skip-link{position:fixed;left:12px;top:-80px;z-index:999;background:var(--ink);color:var(--bg);padding:10px 14px;border-radius:10px;font-weight:800;text-decoration:none}
+  .skip-link:focus{top:12px}
+  /* Respect a system request to cut motion — the app animates a lot. */
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+  }
   .nav button.on svg{filter:none}
   /* Modal / sheet */
   .scrim{position:fixed;inset:0;z-index:60;background:rgba(4,6,10,.72);backdrop-filter:blur(3px);display:none;align-items:flex-end;justify-content:center}
@@ -352,6 +368,7 @@
     <div class="sbar"><i></i></div>
   </div>
 </div>
+<a class="skip-link" href="#main">Skip to workout</a>
 <div class="app">
   <div class="topbar">
     <div class="brand">
@@ -369,7 +386,7 @@
     </div>
   </div>
 
-  <main>
+  <main id="main" tabindex="-1">
     <!-- ===================== TODAY ===================== -->
     <section id="v-today" class="view active"></section>
     <!-- ===================== PROGRAM ===================== -->
@@ -384,8 +401,8 @@
     <section id="v-guide" class="view"></section>
   </main>
 
-  <nav class="nav">
-    <button data-tab="today" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v3M18 3v3M6 12l4 4 8-8"/><rect x="3" y="5" width="18" height="16" rx="3"/></svg>Today</button>
+  <nav class="nav" aria-label="Primary">
+    <button data-tab="today" class="on" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v3M18 3v3M6 12l4 4 8-8"/><rect x="3" y="5" width="18" height="16" rx="3"/></svg>Today</button>
     <button data-tab="program"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>Program</button>
     <button data-tab="fuel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3c0 1.5 1 2.5 1 4H8a4 4 0 0 0-4 4c0 5 3.5 9 8 9s8-4 8-9a4 4 0 0 0-4-4h-2c0-1.5 1-2.5 1-4a3 3 0 0 0-3-3z"/></svg>Fuel</button>
     <button data-tab="progress"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Progress</button>
@@ -1172,7 +1189,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='157';
+const APP_VERSION='158';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1526,7 +1543,8 @@ function go(tab){
   TAB=tab;
   $$('.view').forEach(v=>v.classList.remove('active'));
   $('#v-'+tab).classList.add('active');
-  $$('.nav button').forEach(b=>b.classList.toggle('on',b.dataset.tab===tab));
+  $$('.nav button').forEach(b=>{const on=b.dataset.tab===tab;b.classList.toggle('on',on);
+    if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
   window.scrollTo(0,0);
   render();
 }
@@ -2186,7 +2204,30 @@ function playerSwap(exId){
   toast('Swapped to '+nEx.name);
   plClear();plEnterReady(false);   // restart the current set with the new move
 }
+/* ---- Screen Wake Lock ------------------------------------------------------
+   Phones dim and sleep on their own schedule, which is exactly wrong mid-set or
+   mid-rest — you look up and the screen is black. Hold a wake lock while a
+   guided session is on screen and drop it the moment it ends. Unsupported
+   browsers just no-op; the lock is also re-taken when the tab becomes visible
+   again, because the OS drops it whenever you switch away. */
+let _wakeLock=null,_wakeWanted=false;
+async function wakeOn(){
+  _wakeWanted=true;
+  try{ if(!('wakeLock'in navigator)||_wakeLock)return;
+    _wakeLock=await navigator.wakeLock.request('screen');
+    _wakeLock.addEventListener('release',()=>{_wakeLock=null;});
+  }catch(e){_wakeLock=null;}
+}
+function wakeOff(){
+  _wakeWanted=false;
+  try{if(_wakeLock)_wakeLock.release();}catch(e){}
+  _wakeLock=null;
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'&&_wakeWanted)wakeOn();
+});
 function openPlayer(opts){
+  wakeOn();                      // keep the screen alive for the whole session
   let sess,items,free=false;
   if(opts&&opts.items&&opts.items.length){
     items=opts.items;free=!!opts.free;
@@ -2439,7 +2480,7 @@ function playerSkip(){
 function playerSetDone(){if(PLAYER&&(PLAYER.phase==='work'||PLAYER.phase==='ready')){plClear();plAfterSet();}}
 function playerAddRest(){if(PLAYER&&PLAYER.phase==='rest'){PLAYER.remain+=15;PLAYER.total+=15;plS('#plNum',fmtTime(PLAYER.remain));toast('+15s rest');}}
 function playerSkipRest(){if(PLAYER&&PLAYER.phase==='rest')plRestDone();}
-function playerTeardown(){if(!PLAYER)return;plClear();beatStop();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;
+function playerTeardown(){if(!PLAYER)return;wakeOff();plClear();beatStop();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;
   // Any teardown of the player = the user bailed (natural finish goes through playerFeel, which advances instead) → end the guided day.
   if(typeof dayflowActive==='function'&&dayflowActive())dayflowCancel(true);
   if(TAB==='today')renderToday();}
@@ -2812,6 +2853,7 @@ function _runHiit(sess,list,format){
   INTV.tid=setInterval(ivTickLead,1000);
 }
 function startHiit(format){
+  wakeOn();
   closeSheet();
   const sess=buildSession(STATE.progressPtr);
   const list=[...sess.main,sess.finisher].filter(m=>m&&m.exId);
@@ -2900,7 +2942,7 @@ function hiitToggle(){
   else{if(INTV.phase==='work'&&pulse)pulse.classList.add('on');INTV.tid=setInterval(ivTick,1000);}
 }
 function hiitSkip(){if(!INTV)return;ivClear();INTV.i++;if(INTV.i>=INTV.seq.length)ivDone();else ivStep();}
-function hiitTeardown(){if(!INTV)return;ivClear();beatStop();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;if(TAB==='today')renderToday();}
+function hiitTeardown(){if(!INTV)return;wakeOff();ivClear();beatStop();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;if(TAB==='today')renderToday();}
 function hiitQuit(){const had=!!INTV;hiitTeardown();if(had&&history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
 function hiitLogDone(){
   ivClear();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;
@@ -4925,7 +4967,7 @@ function opFinish(){
     <button class="btn primary" style="width:100%;margin-bottom:8px" onclick="shareLast()">📤 Share</button>
     <button class="btn ghost" style="width:100%" onclick="opQuit()">Done ✓</button>`;
 }
-function opQuit(){if(OP){clearInterval(OP.tid);}OP=null;beatStop();$('#hiit').classList.remove('open');document.body.style.overflow='';try{if(history.state&&history.state.cf==='op')history.back();}catch(e){}}
+function opQuit(){wakeOff();if(OP){clearInterval(OP.tid);}OP=null;beatStop();$('#hiit').classList.remove('open');document.body.style.overflow='';try{if(history.state&&history.state.cf==='op')history.back();}catch(e){}}
 /* ---- #2 Custom workout builder ---- */
 let _custom=[];
 function builderPool(){const gear=STATE.profile.gear||[];return Object.keys(EX).filter(k=>{const ex=EX[k];if(k==='bike'||k==='sprint')return false;if(ex.equip)return ex.equip.every(g=>gear.includes(g));return true;});}
@@ -6938,7 +6980,13 @@ async function boot(){
   // request durable storage so an installed PWA keeps data
   try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();}catch(e){}
   initBackButton();   // make the phone's Back button navigate instead of closing the app
+  // Home-screen shortcuts (and any #tab link) open straight on that tab rather
+  // than always landing on Today.
+  try{const h=(location.hash||'').replace('#','');
+    if(h&&STATE.onboarded&&['today','program','fuel','progress','guide'].includes(h))TAB=h;
+  }catch(e){}
   render();
+  if(TAB!=='today')go(TAB);
   setTimeout(hideSplash,850);   // dismiss the launch splash once the app is drawn
   // voice coach: populate the voice list now and again when the OS finishes loading it,
   // and unlock speech on the first user interaction (mobile autoplay policy)
