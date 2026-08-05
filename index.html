@@ -229,6 +229,10 @@
   .numrow button{width:48px;height:48px;border-radius:12px;background:var(--card2);border:1.5px solid var(--line);font-size:24px;font-weight:900;color:var(--fire-l);flex:0 0 auto}
   .numrow input{text-align:center;flex:1}
   .daypick{display:flex;gap:6px;flex-wrap:wrap}
+  /* 6 goal chips never fit on one row on a phone — lay them out 3-up so the
+     longer labels ("Maintain", "Strong core & abs") stay readable */
+  .goalpick{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .goalpick button{width:100%;min-width:0;padding:11px 6px;line-height:1.25}
   .daypick button{flex:1;min-width:38px;padding:11px 4px;border-radius:11px;background:var(--card2);border:1.5px solid var(--line);font-size:12px;font-weight:800;color:var(--muted)}
   .daypick button.on{background:var(--fire);border-color:var(--fire);color:var(--accInk)}
   /* Bottom nav */
@@ -1130,7 +1134,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='154';
+const APP_VERSION='155';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1276,6 +1280,19 @@ function prescribe(exId,pos){
 /* Focus-area pools for the targeted bonus slot. Each session gains ONE extra
    accessory drawn from the area the athlete most wants to improve (quiz:
    focusPrimary, falling back to their focus areas). Gear- and injury-filtered. */
+/* Primary training goals. 'shred' and 'core' sit alongside the original four:
+   shred = a harder cut (steeper deficit, more protein, higher-rep metabolic work),
+   core  = midsection-first (near-maintenance calories, strength reps, and the
+   focus bonus is forced onto abs/obliques regardless of the target picker). */
+const GOALS=[['lose','🔥 Lose fat'],['shred','🔪 Shred'],['recomp','⚖️ Tone up'],['core','🎯 Strong core & abs'],['maintain','💪 Maintain'],['gain','📈 Build muscle']];
+const GOAL_NOTE={
+  lose:'Steady fat loss — a moderate deficit that keeps your strength.',
+  shred:'Aggressive lean-out — steeper deficit, more protein, higher-rep conditioning. Best in short blocks.',
+  recomp:'Lose fat and build at the same time on a slight deficit.',
+  core:'Midsection first — every session adds an abs/oblique bonus and eats near maintenance.',
+  maintain:'Hold your weight and let the training reshape you.',
+  gain:'Build muscle on a slight surplus with heavier, lower-rep work.',
+};
 const FOCUS_POOL={
   abs:['hollow','lsit','dragonflag','situp','vertcrunch','plankleg','isoclimber','vup','tuckvup','legraise','hanglegraise','revcrunch','crunch','bicycle','kneeraise','abroll','mbsitup','flutter'],
   obliques:['sideplank','sidedip','russiantwist','windshield','plankrot','heeltouch','bicycle','copenhagen','standingoblique','mbtwist','kbhalo'],
@@ -1292,7 +1309,9 @@ const FOCUS_POOL={
 function focusBonus(pos,used){
   try{
     const p=STATE.profile||{};
-    const keys=[p.focusPrimary,...(Array.isArray(p.targets)?p.targets:[])].filter(Boolean);
+    // the core goal forces a midsection bonus first, whatever else is targeted
+    const lead=(p.goal==='core')?['abs','obliques']:[];
+    const keys=[...lead,p.focusPrimary,...(Array.isArray(p.targets)?p.targets:[])].filter(Boolean);
     const gear=p.gear||[];
     const has=k=>{const e=EX[k];if(!e)return false;if(!e.equip)return true;return e.equip.every(g=>gear.includes(g));};
     for(const key of keys){
@@ -1607,7 +1626,8 @@ function onboardHTML(){
 
   ${step(2,'Your goal &amp; target',`
     <div class="field"><label>Primary goal</label>
-      <div class="daypick" id="ob-goal"><button data-g="lose"${on(P.goal||'lose','lose')}>🔥 Lose fat</button><button data-g="recomp"${on(P.goal,'recomp')}>⚖️ Tone up</button><button data-g="maintain"${on(P.goal,'maintain')}>💪 Maintain</button><button data-g="gain"${on(P.goal,'gain')}>📈 Build muscle</button></div></div>
+      <div class="daypick goalpick" id="ob-goal">${GOALS.map(([g,l])=>`<button data-g="${g}"${on(P.goal||'lose',g)}>${l}</button>`).join('')}</div>
+      <div class="tiny muted" id="ob-goalnote" style="margin-top:6px">${GOAL_NOTE[P.goal||'lose']||''}</div></div>
     <div class="numrow" style="gap:10px">
       <div class="field" style="flex:1;margin:0"><label>Goal weight (<span id="ob-gwtu">${wu}</span>) <span class="tiny muted">· optional</span></label><input id="ob-goalwt" type="number" inputmode="decimal" placeholder="${im?'175':'79'}" value="${gwtD}"></div>
       <div class="field" style="flex:1;margin:0"><label>Goal waist (<span id="ob-gwsu">${hu}</span>) <span class="tiny muted">· optional</span></label><input id="ob-goalwaist" type="number" inputmode="decimal" placeholder="${im?'32':'81'}" value="${gwsD}"></div>
@@ -1651,8 +1671,8 @@ function onboardHTML(){
       <input id="ob-allerg" placeholder="e.g. peanuts, dairy, shellfish" autocomplete="off" value="${(N.allergies||'').replace(/"/g,'&quot;')}"></div>`)}
 
   <div class="btnrow" style="gap:10px;margin-top:4px">
-    <button class="btn ghost" id="ob-back" style="flex:0 0 auto;display:none">← Back</button>
-    <button class="btn primary" id="ob-next" style="flex:1;font-size:16px;padding:16px">Next →</button>
+    <button class="btn ghost" id="ob-back" style="flex:0 0 112px;width:auto;min-width:0;padding:16px 10px;display:none">← Back</button>
+    <button class="btn primary" id="ob-next" style="flex:1 1 auto;min-width:0;font-size:16px;padding:16px">Next →</button>
   </div>
   <div class="note info" style="margin-top:12px">Your data lives <b>only on this phone</b> (auto-saved, works offline). Nothing is uploaded.</div>`;
 }
@@ -1664,6 +1684,9 @@ function wireOnboard(){
   single('#ob-sex');single('#ob-goal');single('#ob-exp');single('#ob-act');single('#ob-unit');single('#ob-diet');single('#ob-meals');
   single('#ob-focus');single('#ob-cond');single('#ob-mob');single('#ob-timeline');
   multi('#ob-targets');multi('#ob-gear');multi('#ob-trouble');multi('#ob-inj');
+  // keep the goal blurb in sync with the chip the athlete just picked
+  $$('#ob-goal button').forEach(b=>b.addEventListener('click',()=>{
+    const n=$('#ob-goalnote');if(n)n.textContent=GOAL_NOTE[b.dataset.g]||'';}));
   // keep unit labels in sync when metric/imperial toggled
   $$('#ob-unit button').forEach(b=>b.addEventListener('click',()=>{
     const im=($('#ob-unit button.on')||{}).dataset && $('#ob-unit button.on').dataset.u==='in';
@@ -2061,7 +2084,12 @@ function openPlayer(opts){
 /* ===== WEIGHTS SESSION (equipment track) ===== */
 function weightsPool(){const gear=STATE.profile.gear||[];return Object.keys(EX).filter(k=>EX[k].equip&&EX[k].equip.every(g=>gear.includes(g)));}
 function hasWeights(){return weightsPool().length>0;}
-function weightsRepsFor(k){const ex=EX[k];const g=STATE.profile.goal;let r=ex.base||10;if(g==='lose')r=Math.round(r*1.3);else if(g==='gain')r=Math.max(6,Math.round(r*0.85));return r;}
+function weightsRepsFor(k){const ex=EX[k];const g=STATE.profile.goal;let r=ex.base||10;
+  if(g==='shred')r=Math.round(r*1.4);          // metabolic, highest volume
+  else if(g==='lose')r=Math.round(r*1.3);
+  else if(g==='gain')r=Math.max(6,Math.round(r*0.85));
+  else if(g==='core')r=Math.max(6,Math.round(r*0.9)); // strength-leaning midsection work
+  return r;}
 function buildWeightsSession(){
   const pool=weightsPool();if(!pool.length)return null;
   const byPat={};pool.forEach(k=>{const p=EX[k].pattern||'other';(byPat[p]=byPat[p]||[]).push(k);});
@@ -5860,7 +5888,10 @@ function latestWeightKg(){
   if(ms.length){const w=ms[ms.length-1].weight;return STATE.profile.unit==='in'?w*0.453592:w;} // imperial logs lb
   return null;
 }
-function proteinTargetG(){const kg=latestWeightKg();if(!kg)return null;return Math.round(kg*1.8/5)*5;} // ~1.8 g/kg for fat loss
+// ~1.8 g/kg for fat loss; a steeper cut needs more to hold onto muscle
+function proteinTargetG(){const kg=latestWeightKg();if(!kg)return null;
+  const perKg=(STATE.profile.goal==='shred')?2.2:1.8;
+  return Math.round(kg*perKg/5)*5;}
 function waterTargetCups(){const kg=latestWeightKg();if(!kg)return 8;return clamp(Math.round(kg*35/240),6,16);} // ~35 ml/kg, 240 ml/cup
 function nutritionStreak(){
   const n=nut();const dates=Object.keys(n.days).sort();let streak=0;
@@ -6018,14 +6049,21 @@ function renderFuel(){
     h+=`<div class="note warn">Add your <b>body weight</b> so we can set your protein &amp; calorie targets. <button class="btn sm primary" style="width:auto;margin-top:8px" onclick="logMeasure()">+ Log weight</button></div>`;
   }
   // goal toggle
-  h+=`<div class="section-label">My goal</div><div class="daypick" style="margin:0 2px 14px">
-    ${[['lose','🔥 Lose fat'],['recomp','⚖️ Tone up'],['maintain','💪 Maintain'],['gain','📈 Build muscle']].map(([g,l])=>`<button class="${n.goal===g?'on':''}" onclick="setNutGoal('${g}')">${l}</button>`).join('')}</div>`;
+  h+=`<div class="section-label">My goal</div><div class="daypick goalpick" style="margin:0 2px 14px">
+    ${GOALS.map(([g,l])=>`<button class="${n.goal===g?'on':''}" onclick="setNutGoal('${g}')">${l}</button>`).join('')}</div>
+    <div class="tiny muted" style="margin:-8px 2px 14px">${GOAL_NOTE[n.goal]||''}</div>`;
   // daily targets
   h+=`<div class="section-label">Today's targets</div><div class="grid2">
     <div class="stat"><div class="n" style="color:var(--fire-l)">${prot?prot+'g':'—'}</div><div class="l">Protein</div></div>
     <div class="stat"><div class="n" style="color:var(--gold)">${n.kcalTarget?n.kcalTarget:'—'}</div><div class="l">Calories${n.kcalTarget?'':' (set below)'}</div></div>
   </div>`;
-  if(!n.kcalTarget){h+=`<div class="note info" style="margin-top:12px">${n.goal==='maintain'?'Eat around maintenance and let the training sculpt your core.':(n.goal==='gain'?'To build muscle, eat in a <b>slight surplus</b> (~150–300 kcal/day) with plenty of protein. Tap the calculator below for your exact number.':'For fat loss, eat in a <b>~300–500 kcal/day deficit</b> — enough to lean out, slow enough to keep your strength. Tap the calculator below for your exact number.')}</div>`;}
+  if(!n.kcalTarget){
+    const tip=n.goal==='maintain'?'Eat around maintenance and let the training sculpt your core.'
+      :n.goal==='gain'?'To build muscle, eat in a <b>slight surplus</b> (~150–300 kcal/day) with plenty of protein. Tap the calculator below for your exact number.'
+      :n.goal==='shred'?'Shredding runs a <b>~450–700 kcal/day deficit</b> with protein pushed to ~2.2 g/kg to protect muscle. Hard but short — run it in blocks, not year-round. Tap the calculator below.'
+      :n.goal==='core'?'Core focus eats <b>just under maintenance</b> (~5%) so your abs work is fuelled while bodyfat still drifts down. Tap the calculator below.'
+      :'For fat loss, eat in a <b>~300–500 kcal/day deficit</b> — enough to lean out, slow enough to keep your strength. Tap the calculator below for your exact number.';
+    h+=`<div class="note info" style="margin-top:12px">${tip}</div>`;}
   // intake logging (quick-add + photo AI)
   h+=intakeHTML();
   // meal plan + recipes
@@ -6072,7 +6110,10 @@ function recalcKcalFromStored(){
   const bmr=mifflinBMR(n.sex,n.weightKg,n.heightCm,n.age);const tdee=bmr*(n.activity||1.45);
   // fat-loss = a moderate 300–500 kcal/day deficit (matches the on-screen copy), not a flat 20%
   const loseDef=clamp(Math.round(tdee*0.2),300,500);
-  let t=n.goal==='gain'?tdee*1.1:(n.goal==='maintain'?tdee:(n.goal==='recomp'?tdee*0.9:tdee-loseDef));
+  // shred runs a steeper cut than 'lose'; core sits just under maintenance so the
+  // midsection work is fuelled while bodyfat still drifts down
+  const shredDef=clamp(Math.round(tdee*0.27),450,700);
+  let t=n.goal==='gain'?tdee*1.1:(n.goal==='maintain'?tdee:(n.goal==='recomp'?tdee*0.9:(n.goal==='core'?tdee*0.95:(n.goal==='shred'?tdee-shredDef:tdee-loseDef))));
   t=Math.max(t,bmr*1.1); // safety floor
   n.kcalTarget=Math.round(t/10)*10;
 }
