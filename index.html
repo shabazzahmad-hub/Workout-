@@ -1213,7 +1213,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='165';
+const APP_VERSION='166';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1798,7 +1798,7 @@ function onboardHTML(){
   </div>
   <div class="note fire" style="margin-bottom:12px">${edit?'Update any answer and tap <b>Save changes</b>. Your program and nutrition re-tune to match — nothing is reset.':'Answer a few questions and CoreForge tailors your whole plan — training, focus, equipment and meals — to <b>you</b>.'}</div>
   <div style="margin:0 2px 12px"><div class="pbar"><i id="ob-fill" style="width:${100/OB_STEPS}%"></i></div>
-    <div class="tiny muted" id="ob-steplbl" style="margin-top:6px">Step 1 of ${OB_STEPS}</div></div>
+    <div class="tiny muted" id="ob-steplbl" style="margin-top:6px">Step 1 of ${OB_STEPS} · v${APP_VERSION} · changes save as you go</div></div>
 
   ${step(1,'About you',`
     <div class="field"><label>Your name (optional)</label><input id="ob-name" placeholder="Athlete" autocomplete="off" value="${(P.name||'').replace(/"/g,'&quot;')}"></div>
@@ -1898,7 +1898,7 @@ function wireOnboard(){
     step=clamp(n,1,OB_STEPS);
     $$('.ob-step').forEach(el=>el.style.display=(+el.dataset.step===step)?'':'none');
     const fill=$('#ob-fill');if(fill)fill.style.width=(step/OB_STEPS*100)+'%';
-    const lbl=$('#ob-steplbl');if(lbl)lbl.textContent='Step '+step+' of '+OB_STEPS;
+    const lbl=$('#ob-steplbl');if(lbl)lbl.textContent='Step '+step+' of '+OB_STEPS+' · v'+APP_VERSION+' · changes save as you go';
     const back=$('#ob-back');back.style.display=(step>1||OB_EDIT)?'':'none';back.textContent=(step===1&&OB_EDIT)?'Done':'← Back';   // edits commit as you go, so "Cancel" would be a lie
     $('#ob-next').textContent= step<OB_STEPS ? 'Next →' : (OB_EDIT?'Save changes':'Build my plan → Baseline');
     window.scrollTo(0,0);
@@ -1912,7 +1912,20 @@ function wireOnboard(){
    typing a new waist on step 1 and tapping Next used to persist NOTHING unless
    you walked all the way to step 6 and pressed Save changes. */
 function finishOnboard(){ obReadForm(); obFinishNav(); }
-function obCommitStep(){ if(!OB_EDIT)return; try{obReadForm();save();}catch(e){} }
+/* Commit the whole form as you move between steps. Deliberately NOT silent:
+   a swallowed failure here looks exactly like "I typed it and nothing happened",
+   which is the bug this was written to end. */
+function obCommitStep(){
+  if(!OB_EDIT)return;
+  try{
+    obReadForm();save();
+    const w=currentWaistShow();
+    toast(w!=null?('Saved ✓ · waist '+w+' '+STATE.profile.unit):'Saved ✓');
+  }catch(e){
+    console.error('[profile save]',e);
+    toast('Could not save that step — '+String(e&&e.message||e).slice(0,50));
+  }
+}
 function obFinishNav(){
   try{recalcKcalFromStored();}catch(e){}
   if(OB_EDIT){OB_EDIT=false;save();toast('Profile updated ✓ — plan re-tuned');navTo('today');}
