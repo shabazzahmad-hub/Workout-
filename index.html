@@ -470,6 +470,32 @@ function waistShow(cm){return cm==null?null:(isImperial()?cm/2.54:cm);}  // stor
 function weightToKg(v){return isImperial()?v*0.453592:v;}
 function weightShow(kg){return kg==null?null:(isImperial()?kg/0.453592:kg);}
 const r1=v=>Math.round(v*10)/10;                                 // one decimal, for display
+/* One row per date, ever. Builds before v156 APPENDED a measurements row on
+   every profile save, so a device that re-saved the quiz a few times carries
+   several rows for the same date. The upsert wrote into the FIRST match while
+   the display (sorted by date, stable) read the LAST — so the athlete's entry
+   genuinely saved and the tile still showed the stale duplicate. Collapse
+   duplicates: keep the first row (the one every writer targets), filling only
+   fields it lacks from later copies. Idempotent; runs every boot. */
+function dedupeMeasurements(){
+  const ms=STATE&&STATE.measurements;if(!Array.isArray(ms))return;
+  const byDate=new Map();const out=[];
+  for(const m of ms){
+    if(!m||!m.date)continue;
+    const k=String(m.date),ex=byDate.get(k);
+    if(!ex){byDate.set(k,m);out.push(m);}
+    else{if(ex.waist==null&&m.waist!=null)ex.waist=m.waist;
+         if(ex.weight==null&&m.weight!=null)ex.weight=m.weight;}
+  }
+  if(out.length!==ms.length)STATE.measurements=out;
+}
+// The only way any code writes a measurement: dedupe first, then update-or-insert.
+function upsertMeasure(waistCm,weightKg){
+  dedupeMeasurements();
+  const d=todayISO();const row=STATE.measurements.find(m=>m.date===d);
+  if(row){if(waistCm)row.waist=waistCm;if(weightKg)row.weight=weightKg;}
+  else STATE.measurements.push({date:d,waist:waistCm||null,weight:weightKg||null});
+}
 const todayISO=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
 const fmtTime=s=>{s=Math.round(s);const m=Math.floor(s/60);const r=s%60;return m>0?`${m}:${String(r).padStart(2,'0')}`:`${r}s`;};
 function toast(msg,ms){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),ms||2100);}
@@ -1213,7 +1239,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='169';
+const APP_VERSION='170';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -2002,12 +2028,7 @@ function obReadForm(){
   let kg=null; if(wt>0){kg=im?Math.round(wt*0.453592*10)/10:wt; N.weightKg=kg;}
   // upsert by date — a profile edit must not append a second row for today,
   // or ms[0]/ms[last] stop meaning "start" and "now"
-  if(w>0||wt>0){
-    const wCm=w>0?r1(im?w*2.54:w):null;
-    const d=todayISO();const row=STATE.measurements.find(m=>m.date===d);
-    if(row){if(wCm)row.waist=wCm;if(kg)row.weight=kg;}
-    else STATE.measurements.push({date:d,waist:wCm,weight:kg});
-  }
+  if(w>0||wt>0)upsertMeasure(w>0?r1(im?w*2.54:w):null,kg);
   try{recalcKcalFromStored();}catch(e){}   // (re)compute calorie/macro targets from the answers
 }
 
@@ -3255,8 +3276,21 @@ function loadCoachVoices(){
   try{COACH_VOICES=('speechSynthesis'in window)?speechSynthesis.getVoices():[];}catch(e){COACH_VOICES=[];}
   COACH_V=resolveVoice();
   assignCoachVoices();
-  // if the Guide/Settings tab is open, refresh so the picker fills in once the OS loads voices
-  try{if($('#v-guide')&&$('#v-guide').classList.contains('active'))renderGuide();}catch(e){}
+  /* Refresh the Settings tab so the voice picker fills in — but NEVER synchronously.
+     voiceschanged fires off the first tap anywhere (the audio unlock wakes
+     speechSynthesis), and a synchronous renderGuide() here replaced the view's
+     innerHTML BETWEEN pointerdown and click — destroying the very button being
+     tapped. The first tap on the Settings tab after launch ate itself.
+     Defer past the tap, and never while the profile editor is open. */
+  try{
+    clearTimeout(loadCoachVoices._t);
+    loadCoachVoices._t=setTimeout(()=>{
+      try{
+        if(typeof OB_EDIT!=='undefined'&&OB_EDIT)return;
+        if($('#v-guide')&&$('#v-guide').classList.contains('active'))renderGuide();
+      }catch(e){}
+    },600);
+  }catch(e){}
 }
 /* English voices available on this device (fallback: all voices). */
 function englishVoicePool(){
@@ -4805,9 +4839,7 @@ function saveMeasure(){
   if(!(wIn>0)&&!(bIn>0)){toast('Enter at least one value');return;}
   // normalise to the canonical store (cm / kg) before anything touches STATE
   const w=wIn>0?r1(waistToCm(wIn)):0, b=bIn>0?r1(weightToKg(bIn)):0;
-  const today=todayISO();const existing=STATE.measurements.find(m=>m.date===today);
-  if(existing){if(w>0)existing.waist=w;if(b>0)existing.weight=b;}
-  else STATE.measurements.push({date:today,waist:w>0?w:null,weight:b>0?b:null});
+  upsertMeasure(w>0?w:null,b>0?b:null);
   if(w>0&&!STATE.profile.startWaist)STATE.profile.startWaist=w;
   // keep the working body weight (used for protein/water/BMI/TDEE) in sync with the newest logged weight
   if(b>0){STATE.nutrition.weightKg=b;
@@ -6557,8 +6589,8 @@ function saveTDEE(){
   recalcKcalFromStored();
   // also record the weight into measurements so waist/weight tracking stays in sync
   const today=todayISO();const disp=r1(wt);    // wt is already kg here — store canonical
-  const ex=(STATE.measurements||[]).find(m=>m.date===today);
-  if(ex){ex.weight=disp;}else{(STATE.measurements=STATE.measurements||[]).push({date:today,waist:null,weight:disp});}
+  if(!Array.isArray(STATE.measurements))STATE.measurements=[];
+  upsertMeasure(null,disp);
   save();closeSheet();toast('Targets saved');renderFuel();
 }
 
@@ -6800,6 +6832,11 @@ function renderGuide(){
   const v=$('#v-guide');
   if(OB_EDIT&&OB_HOST==='v-guide'){obMount(v);return;}   // editor opened from Settings lives here
   let h=`<h2 class="vtitle">Settings</h2><div class="vsub">Your profile &amp; goals, preferences, exercise library and your data.</div>`;
+  // profile / retake the quiz (non-destructive) — FIRST, before anything else on this tab
+  h+=`<div class="section-label">Profile &amp; goals</div><div class="card pad">
+    <p class="sm muted" style="margin-top:0">Your answers from the setup quiz — sex, size, goal, focus areas, injuries, equipment and more. Update them any time and your plan re-tunes. <b>Your progress and history are kept.</b></p>
+    <button class="btn primary" onclick="openProfileEdit()">✎ Edit my profile &amp; goals</button>
+  </div>`;
   // results guidance
   h+=`<div class="section-label">See results in 6 weeks</div>
   <div class="card pad">
@@ -6918,11 +6955,6 @@ function renderGuide(){
         ${[['omnivore','Omnivore'],['halal','Halal'],['pescatarian','Pescatarian'],['vegetarian','Vegetarian'],['vegan','Vegan']].map(([k,l])=>`<button class="${(STATE.nutrition.diet||'omnivore')===k?'on':''}" onclick="setDiet('${k}')">${l}</button>`).join('')}
       </div></div>
     <div class="row" style="justify-content:space-between;padding:8px 0 2px"><span>Whole foods only <span class="tiny muted">· 🥦 skip processed / powders in meal plans</span></span><button class="chip ${wholeOnly()?'on':''}" onclick="toggleWholeFood()">${wholeOnly()?'On':'Off'}</button></div>
-  </div>`;
-  // profile / retake the quiz (non-destructive)
-  h+=`<div class="section-label">Profile &amp; goals</div><div class="card pad">
-    <p class="sm muted" style="margin-top:0">Your answers from the setup quiz — sex, size, goal, focus areas, injuries, equipment and more. Update them any time and your plan re-tunes. <b>Your progress and history are kept.</b></p>
-    <button class="btn primary" onclick="openProfileEdit()">✎ Edit my profile &amp; goals</button>
   </div>`;
   // backup
   h+=`<div class="section-label">Your data</div><div class="card pad">
@@ -7091,6 +7123,7 @@ function normalizeState(){
   if(!STATE.nutrition.diet)STATE.nutrition.diet='omnivore';
   if(!STATE.nutrition.meals)STATE.nutrition.meals=3;
   if(!Array.isArray(STATE.measurements))STATE.measurements=[];
+  dedupeMeasurements();   // collapse same-date duplicates left by pre-v156 appends
   // containers that get indexed without a guard — a null here white-screened the app
   if(!STATE.reassess||typeof STATE.reassess!=='object')STATE.reassess={};
   if(!STATE.weekFeel||typeof STATE.weekFeel!=='object')STATE.weekFeel={};
