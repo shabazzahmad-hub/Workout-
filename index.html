@@ -34,7 +34,7 @@
   :root{
     --bg:#07101d; --bg2:#0b1424; --card:#101b2e; --card2:#17243a; --card3:#20304a;
     --line:rgba(255,255,255,.11); --line2:rgba(255,255,255,.2);
-    --ink:#f7f9fc; --muted:#9ba8bd; --dim:#6c7c92; --muted2:#65718400;
+    --ink:#f7f9fc; --muted:#9ba8bd; --dim:#6c7c92; --muted2:#657184;
     --fire:#5de0b7; --fire-d:#2db996; --fire-l:#8becd0; --accInk:#03140f; --accSoft:rgba(93,224,183,.13);
     --violet:#70a7ff; --violet-d:#4a82df;
     --teal:#70a7ff; --teal-d:#4a82df;
@@ -63,13 +63,15 @@
      buttons, hero labels and photo overlays still need a contrast pass before
      light mode is honest, so the app stays dark until that is done. */
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  /* native sliders and checkboxes rendered UA-blue on navy without these */
+  :root{accent-color:var(--fire);color-scheme:dark}
   html,body{margin:0;padding:0}
   body{font-family:var(--font);color:var(--ink);background:linear-gradient(180deg,var(--bg2),var(--bg) 42%);background-attachment:fixed;font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased;overscroll-behavior-y:none}
   button,input,select,textarea{font:inherit;color:inherit}
   button{touch-action:manipulation;cursor:pointer;border:none;background:none}
   .app{max-width:600px;margin:0 auto;min-height:100vh;position:relative;background:var(--bg);background-image:radial-gradient(520px 320px at 50% -120px,var(--accSoft),transparent 70%)}
   /* Top bar */
-  .topbar{position:sticky;top:0;z-index:40;background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:blur(18px);border-bottom:1px solid var(--line);padding:calc(10px + env(safe-area-inset-top)) 16px 10px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .topbar{position:sticky;top:0;z-index:40;background:color-mix(in srgb,var(--bg) 96%,transparent);backdrop-filter:blur(18px);border-bottom:1px solid var(--line);padding:calc(10px + env(safe-area-inset-top)) 16px 10px;display:flex;align-items:center;justify-content:space-between;gap:10px}
   .brand{display:flex;align-items:center;gap:10px;min-width:0}
   .logo{width:34px;height:34px;border-radius:10px;flex:0 0 auto;background:linear-gradient(145deg,var(--fire),var(--blue));display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(0,0,0,.5)}
   .logo svg{width:22px;height:22px;display:block}
@@ -102,28 +104,31 @@
   .btn:hover{filter:brightness(1.08)}
   .btn:active{transform:scale(.98)}
   .btn.primary{background:linear-gradient(135deg,var(--fire-l),var(--fire));color:var(--accInk);border:none;box-shadow:0 14px 34px rgba(0,0,0,.5)}
-  .btn.violet{background:linear-gradient(135deg,#9277ff,var(--violet-d));color:#fff;border:none}
+  .btn.violet{background:linear-gradient(135deg,var(--violet),var(--violet-d));color:#fff;border:none}
   .btn.green{background:linear-gradient(135deg,#5ce89a,var(--green-d));color:#04220f;border:none}
   .btn.ghost{background:transparent;border:1.5px solid var(--line);color:var(--ink)}
-  .btn.sm{padding:10px 13px;font-size:13px;width:auto;border-radius:11px}
+  .btn.sm{padding:10px 13px;font-size:13px;width:auto;border-radius:11px;min-height:38px}
   .btn.block{margin-top:6px}
   .btn:disabled{opacity:.45;pointer-events:none}
   .btnrow{display:flex;gap:9px}.btnrow>*{flex:1}
   .chip{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;padding:5px 10px;border-radius:20px;background:var(--card2);border:1px solid var(--line);color:var(--muted)}
   .chip.on{background:color-mix(in srgb,var(--fire) 17%,var(--card));border-color:var(--fire);color:var(--fire)}
   .tag{display:inline-block;font-size:9.5px;font-weight:900;letter-spacing:.5px;text-transform:uppercase;padding:3px 8px;border-radius:8px}
+  /* All twelve now derive from the palette. Half were left holding the literal
+     values of variables that had been repointed — .tag.chest was still orange,
+     .tag.arms still the old violet — so region tags rendered in two eras. */
   .tag.anterior{background:color-mix(in srgb,var(--fire) 18%,transparent);color:var(--fire)}
-  .tag.oblique{background:rgba(112,167,255,.18);color:#a8c6ff}
-  .tag.lower{background:rgba(18,181,201,.18);color:#5fe0ef}
-  .tag.stability{background:rgba(34,197,94,.16);color:#6ee7a0}
-  .tag.dynamic{background:rgba(255,59,107,.18);color:#ff8aa8}
-  .tag.strength{background:rgba(34,197,94,.16);color:#6ee7a0}
-  .tag.cardio{background:rgba(245,196,81,.18);color:#f5d98a}
-  .tag.chest{background:rgba(224,69,15,.18);color:#ff9d78}
-  .tag.shoulders{background:rgba(224,161,31,.18);color:#f5d98a}
-  .tag.back{background:rgba(18,181,201,.18);color:#5fe0ef}
-  .tag.arms{background:rgba(124,92,255,.18);color:#b3a1ff}
-  .tag.legs{background:rgba(34,197,94,.16);color:#6ee7a0}
+  .tag.oblique{background:color-mix(in srgb,var(--blue) 18%,transparent);color:var(--blue)}
+  .tag.lower{background:color-mix(in srgb,var(--blue) 18%,transparent);color:var(--blue)}
+  .tag.stability{background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}
+  .tag.dynamic{background:color-mix(in srgb,var(--pink) 18%,transparent);color:var(--pink)}
+  .tag.strength{background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}
+  .tag.cardio{background:color-mix(in srgb,var(--gold) 18%,transparent);color:var(--gold)}
+  .tag.chest{background:color-mix(in srgb,var(--fire) 18%,transparent);color:var(--fire)}
+  .tag.shoulders{background:color-mix(in srgb,var(--gold) 18%,transparent);color:var(--gold)}
+  .tag.back{background:color-mix(in srgb,var(--blue) 18%,transparent);color:var(--blue)}
+  .tag.arms{background:color-mix(in srgb,var(--blue) 18%,transparent);color:var(--blue)}
+  .tag.legs{background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}
   /* Photo hero (Today session card) */
   .herophoto{position:relative;border-radius:24px;overflow:hidden;border:1px solid var(--line);background:var(--card);box-shadow:var(--shadow-lg);margin-bottom:16px}
   .herophoto>img{width:100%;height:272px;object-fit:cover;object-position:center 24%;display:block;filter:saturate(.9) contrast(1.03)}
@@ -190,13 +195,17 @@
   .pl-swapmenu button span{font-weight:700;color:var(--muted);font-size:12px}
   /* Hero / session banner */
   .hero{border-radius:18px;padding:18px;color:#fff;position:relative;overflow:hidden;box-shadow:var(--shadow-lg);margin-bottom:16px}
-    .hero.anterior{background:linear-gradient(140deg,#0f3f4f,#2db996)}
-  .hero.oblique{background:linear-gradient(140deg,#1d3566,#5f8ede)}
-  .hero.lower{background:linear-gradient(140deg,#123a52,#3f9fc4)}
-  .hero.dynamic{background:linear-gradient(140deg,#2a3358,#7d8fd8)}
+    /* Light gradient stops put white text at ~1.9:1. Darkened so every banner clears
+     4.5:1 with the fixed white type, and a scrim sits under the text besides. */
+  .hero.anterior{background:linear-gradient(140deg,#0b2f3c,#12735e)}
+  .hero.oblique{background:linear-gradient(140deg,#16264a,#2f5596)}
+  .hero.lower{background:linear-gradient(140deg,#0e2c3e,#256880)}
+  .hero.dynamic{background:linear-gradient(140deg,#1f2743,#4a568f)}
   .hero.rest{background:linear-gradient(140deg,#17243a,#33465f)}
-  .hero.fullbody{background:linear-gradient(140deg,#104a44,#3fc9a2)}
-  .hero.metcon{background:linear-gradient(140deg,#3f4a2a,#c9b45d)}
+  .hero.fullbody{background:linear-gradient(140deg,#0c3833,#1c8168)}
+  .hero.metcon{background:linear-gradient(140deg,#2c3420,#7d7038)}
+  .hero>*{position:relative;z-index:1}
+  .hero:before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.28),rgba(0,0,0,.06) 45%,rgba(0,0,0,.34));pointer-events:none;z-index:0}
   .hero .htop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
   .hero .hlbl{font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;opacity:.86}
   .hero h1{font-size:25px;font-weight:900;margin:5px 0 2px;letter-spacing:.3px}
@@ -223,7 +232,7 @@
   .ex-rx .sub{font-size:10px;color:var(--muted);margin-top:2px;font-weight:700}
   .ex-actions{display:flex;gap:7px;padding:0 14px 13px;flex-wrap:wrap}
   .ex-actions button{flex:1;min-width:0;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:9px 6px;font-size:12px;font-weight:800;color:var(--ink);display:flex;align-items:center;justify-content:center;gap:5px}
-  .ex-actions button.timer{color:var(--teal);border-color:rgba(18,181,201,.35)}
+  .ex-actions button.timer{color:var(--blue);border-color:color-mix(in srgb,var(--blue) 35%,transparent)}
   .ex-actions button.info{color:var(--muted)}
   .setdots{display:flex;gap:6px;padding:0 14px 12px;flex-wrap:wrap}
   .setdot{flex:1;min-width:52px;background:var(--card2);border:1px solid var(--line);border-radius:9px;padding:7px 4px;text-align:center;font-size:11px;font-weight:800;color:var(--muted)}
@@ -262,15 +271,17 @@
   .numrow{display:flex;align-items:center;gap:10px}
   .numrow button{width:48px;height:48px;border-radius:12px;background:var(--card2);border:1.5px solid var(--line);font-size:24px;font-weight:900;color:var(--fire-l);flex:0 0 auto}
   .numrow input{text-align:center;flex:1}
-  .daypick{display:flex;gap:6px;flex-wrap:wrap}
   /* 6 goal chips never fit on one row on a phone — lay them out 3-up so the
      longer labels ("Maintain", "Strong core & abs") stay readable */
   .goalpick{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
   .goalpick button{width:100%;min-width:0;padding:11px 6px;line-height:1.25}
-  .daypick button{flex:1;min-width:38px;padding:11px 4px;border-radius:11px;background:var(--card2);border:1.5px solid var(--line);font-size:12px;font-weight:800;color:var(--muted)}
+  /* was flex:1 with a 38px floor, so 8 equipment chips got 37px for a 68px label
+     and clipped mid-word. Same 3-up grid the goal picker already uses. */
+  .daypick{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .daypick button{width:100%;min-width:0;padding:11px 6px;line-height:1.25;border-radius:11px;background:var(--card2);border:1.5px solid var(--line);font-size:12px;font-weight:800;color:var(--muted)}
   .daypick button.on{background:var(--fire);border-color:var(--fire);color:var(--accInk)}
   /* Bottom nav */
-  .nav{position:fixed;bottom:0;left:0;right:0;z-index:50;background:color-mix(in srgb,var(--bg) 91%,transparent);backdrop-filter:blur(20px);border-top:1px solid var(--line);display:flex;padding:7px 7px calc(7px + env(safe-area-inset-bottom));max-width:600px;margin:0 auto}
+  .nav{position:fixed;bottom:0;left:0;right:0;z-index:50;background:color-mix(in srgb,var(--bg) 96%,transparent);backdrop-filter:blur(20px);border-top:1px solid var(--line);display:flex;padding:7px 7px calc(7px + env(safe-area-inset-bottom));max-width:600px;margin:0 auto}
   .nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;color:var(--muted);font-size:10px;font-weight:800;border-radius:12px}
   .nav button svg{width:23px;height:23px}
   .nav button.on{color:var(--fire);background:color-mix(in srgb,var(--fire) 12%,transparent)}
@@ -336,7 +347,7 @@
   .install-banner{background:linear-gradient(135deg,var(--card2),var(--card));border:1px solid var(--fire);border-radius:18px;padding:13px 14px;margin-bottom:14px;display:none;align-items:center;gap:12px}
   .install-banner.show{display:flex}
   /* Daily Advisor — morning brief */
-  .btn.gold{background:linear-gradient(135deg,var(--gold,#e7b53c),#f4d27a);color:#1c1300;border:none;font-weight:900}
+  .btn.gold{background:linear-gradient(135deg,var(--gold),#f4d27a);color:#1c1300;border:none;font-weight:900}
   .brieflist{display:flex;flex-direction:column;gap:8px}
   .briefseg{display:flex;gap:11px;align-items:flex-start;background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:11px 12px;transition:.22s}
   .briefseg.on{border-color:var(--fire);background:var(--accSoft);box-shadow:0 0 0 1px var(--fire) inset}
@@ -350,11 +361,11 @@
   .pl-head .coach-av{margin-left:auto}
   /* Tinted action buttons — distinct colors per shortcut on the Today screen */
   .btn.t-blue{background:rgba(79,168,255,.15);border:1px solid rgba(79,168,255,.55);color:#a9d4ff}
-  .btn.t-purple{background:rgba(155,124,255,.16);border:1px solid rgba(155,124,255,.55);color:#c8bcff}
+  .btn.t-purple{background:color-mix(in srgb,var(--violet) 16%,transparent);border:1px solid color-mix(in srgb,var(--violet) 55%,transparent);color:var(--violet)}
   .btn.t-red{background:color-mix(in srgb,var(--pink) 15%,transparent);border:1px solid color-mix(in srgb,var(--pink) 55%,transparent);color:var(--pink)}
   .btn.t-green{background:rgba(74,222,128,.14);border:1px solid rgba(74,222,128,.5);color:#8ff0b0}
   .btn.t-gold{background:rgba(231,181,60,.16);border:1px solid rgba(231,181,60,.55);color:#f2d27a}
-  .btn.t-teal{background:rgba(45,212,191,.14);border:1px solid rgba(45,212,191,.55);color:#7ff0e0}
+  .btn.t-teal{background:color-mix(in srgb,var(--fire) 14%,transparent);border:1px solid color-mix(in srgb,var(--fire) 55%,transparent);color:var(--fire)}
   .btn.t-blue:active,.btn.t-purple:active,.btn.t-red:active,.btn.t-green:active,.btn.t-gold:active,.btn.t-teal:active{filter:brightness(1.25)}
 </style>
 </head>
@@ -1189,7 +1200,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='160';
+const APP_VERSION='161';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1244,13 +1255,30 @@ async function load(){
   // Take whichever copy is genuinely newer. Preferring localStorage unconditionally
   // meant that after a quota failure the stale copy won forever and the fresher
   // mirror was never even read.
-  if(!json&&mirror){json=mirror;try{localStorage.setItem(STORE_KEY,json);}catch(e){}toast('Progress restored from backup');}
-  else if(json&&mirror&&mirror!==json){
-    try{const a=JSON.parse(json),b=JSON.parse(mirror);
-      if((b._savedAt||0)>(a._savedAt||0)){json=mirror;toast('Progress restored from backup');}
-    }catch(e){}
-  }
-  if(json){try{const p=JSON.parse(json);STATE=Object.assign(DEFAULT_STATE(),p);STATE.settings=Object.assign(DEFAULT_STATE().settings,p.settings||{});STATE.profile=Object.assign(DEFAULT_STATE().profile,p.profile||{});STATE.nutrition=Object.assign(DEFAULT_STATE().nutrition,p.nutrition||{});}catch(e){}}
+  const parse=t=>{if(!t)return null;try{const o=JSON.parse(t);return (o&&typeof o==='object')?o:null;}catch(e){return null;}};
+  let a=parse(json), bmir=parse(mirror);
+  // A corrupt localStorage entry used to win simply by being non-empty: it never
+  // reached the mirror branch, parsing threw, and the athlete was dropped back to
+  // the onboarding quiz with a perfectly good backup sitting unread.
+  let chosen=null,fromMirror=false;
+  if(a&&bmir){
+    // Prefer the newer copy. _savedAt only exists post-v156, so fall back to the
+    // _saved ISO date — otherwise the very upgrade this was written for is
+    // undecidable and the stale side wins by default.
+    const at=a._savedAt||0, bt=bmir._savedAt||0;
+    if(bt>at)      {chosen=bmir;fromMirror=true;}
+    else if(at>bt) {chosen=a;}
+    else {
+      const ad=String(a._saved||''), bd=String(bmir._saved||'');
+      if(bd>ad){chosen=bmir;fromMirror=true;} else chosen=a;
+    }
+  } else if(bmir){chosen=bmir;fromMirror=true;}
+  else if(a){chosen=a;}
+  if(fromMirror){try{localStorage.setItem(STORE_KEY,JSON.stringify(chosen));}catch(e){}toast('Progress restored from backup');}
+  if(chosen){const p=chosen;STATE=Object.assign(DEFAULT_STATE(),p);
+    STATE.settings=Object.assign(DEFAULT_STATE().settings,p.settings||{});
+    STATE.profile=Object.assign(DEFAULT_STATE().profile,p.profile||{});
+    STATE.nutrition=Object.assign(DEFAULT_STATE().nutrition,p.nutrition||{});}
 }
 
 /* ============================ PROGRESSION ENGINE ============================ */
@@ -1569,6 +1597,9 @@ function openSettings(){haptic(10);navTo('guide');setTimeout(()=>{const s=$('#se
 // Re-calling openSheet while one is already open just swaps content (no new entry),
 // so multi-step flows (assessment, timers) don't stack up history.
 function openSheet(html){
+  // A timer that just finished may have a close queued; opening something new
+  // must cancel it, or the new sheet gets slammed shut a moment later.
+  try{cancelAutoClose();}catch(e){}
   const s=$('#sheet');s.innerHTML='<div class="grab"></div>'+html;
   const already=$('#scrim').classList.contains('open');
   $('#scrim').classList.add('open');document.body.style.overflow='hidden';
@@ -1581,6 +1612,7 @@ function openSheet(html){
    seconds per second and logged roughly double the minutes), and the barcode
    scanner held the camera open indefinitely. */
 function sheetTeardown(){
+  try{cancelAutoClose();}catch(e){}
   try{if(typeof ACTT!=='undefined'&&ACTT&&ACTT.tid){clearInterval(ACTT.tid);ACTT.tid=null;ACTT.running=false;}}catch(e){}
   try{if(typeof SKIPT!=='undefined'&&SKIPT&&SKIPT.tid){clearInterval(SKIPT.tid);SKIPT.tid=null;SKIPT.running=false;}}catch(e){}
   try{if(typeof stopScan==='function')stopScan();}catch(e){}
@@ -1589,9 +1621,12 @@ function closeSheet(){
   const wasOpen=$('#scrim').classList.contains('open');
   // Any non-hand-off dismissal during a guided day ends the guided day, so DAYFLOW
   // can't be stranded active and later drive an unrelated warm-up/workout.
+  /* Brief teardown below is unconditional: it auto-starts on a 180ms timer, so
+     dismissing inside that window left playing=false/audio=null and skipped the
+     stop entirely — Sarge then read the whole brief with Stop behind a closed scrim. */
   const _dfh=(typeof _dfHandoff!=='undefined')&&_dfHandoff;if(typeof _dfHandoff!=='undefined')_dfHandoff=false;
   if(wasOpen&&!_dfh&&typeof dayflowActive==='function'&&dayflowActive())dayflowCancel(true);   // only a real sheet dismissal ends the guided day
-  if(typeof BRIEF!=='undefined'&&BRIEF&&(BRIEF.playing||BRIEF.audio))briefStop();
+  if(typeof BRIEF!=='undefined'&&BRIEF){try{briefStop();}catch(e){}BRIEF=null;}
   $('#scrim').classList.remove('open');document.body.style.overflow='';stopTimer();beatStop();sheetTeardown();
   // If the app (a button/scrim) closed the sheet, retire its history entry too,
   // so the counts stay balanced. The guard makes onPop ignore this self-pop.
@@ -1613,7 +1648,7 @@ function onPop(e){
   if(typeof PLAYER!=='undefined'&&PLAYER){playerTeardown();return;}
   if($('#scrim').classList.contains('open')){
     if(typeof dayflowActive==='function'&&dayflowActive())dayflowCancel(true);
-    if(typeof BRIEF!=='undefined'&&BRIEF&&(BRIEF.playing||BRIEF.audio))briefStop();
+    if(typeof BRIEF!=='undefined'&&BRIEF){try{briefStop();}catch(e){}BRIEF=null;}
     $('#scrim').classList.remove('open');document.body.style.overflow='';stopTimer();beatStop();sheetTeardown();return;
   }
   const st=e.state||{};
@@ -1641,7 +1676,10 @@ function render(){
   catch(e){
     try{normalizeState();_render();toast('Recovered from a display error');}
     catch(e2){
-      const v=document.querySelector('.view.on')||document.body;
+      // Views are marked .active — .view.on never matched, so this fell through to
+      // document.body and deleted the topbar, nav, scrim, player and toast host.
+      console.error('[render]',e,e2);
+      const v=document.querySelector('.view.active')||document.getElementById('main')||document.body;
       v.innerHTML=`<div class="note warn" style="margin:16px"><b>Something went wrong drawing this screen.</b><div class="tiny muted" style="margin-top:6px">${_ve(String(e2&&e2.message||e2).slice(0,120))}</div><button class="btn ghost sm" style="margin-top:10px" onclick="exportData()">⬇ Export a backup first</button><button class="btn primary sm" style="margin-top:6px" onclick="location.reload()">Reload</button></div>`;
     }
   }
@@ -1704,7 +1742,7 @@ function onboardHTML(){
   const htD=dv(P.heightCm>0?(im?Math.round(P.heightCm/2.54):P.heightCm):0);
   const curKg=N.weightKg||latestWeightKg()||0;
   const wtD=dv(curKg>0?(im?Math.round(curKg/0.453592):Math.round(curKg*10)/10):0);
-  const wsD=dv(P.startWaist>0?(im?Math.round(P.startWaist/2.54):P.startWaist):0);
+  const wsD=dv(P.startWaist>0?(im?r1(P.startWaist/2.54):P.startWaist):0);
   const gwtD=dv(P.goalWeightLb>0?(im?P.goalWeightLb:Math.round(P.goalWeightLb*0.453592)):0);
   const gwsD=dv(P.goalWaist>0?(im?Math.round(P.goalWaist/2.54):P.goalWaist):0);
   const hu=im?'in':'cm', wu=im?'lb':'kg';
@@ -1867,7 +1905,10 @@ function finishOnboard(){
   N.plan=null;   // diet/meals/allergies just changed — drop today's cached meal plan
   // body metrics
   const w=parseFloat($('#ob-waist').value),wt=parseFloat($('#ob-weight').value);
-  if(w>0)P.startWaist=im?Math.round(w*2.54):w;
+  // Only ever SET the start waist — never overwrite it. The field is labelled just
+  // "Waist" and prefills from startWaist, so editing the profile used to reset the
+  // baseline to today's number, zeroing the goal bar and the waist achievements.
+  if(w>0&&!(P.startWaist>0))P.startWaist=Math.round(im?w*2.54:w);
   let kg=null; if(wt>0){kg=im?Math.round(wt*0.453592*10)/10:wt; N.weightKg=kg;}
   // upsert by date — a profile edit must not append a second row for today,
   // or ms[0]/ms[last] stop meaning "start" and "now"
@@ -2034,7 +2075,7 @@ function exCardHTML(m,log,idx){
       ${ex.img?`<img class="ex-thumb" src="${ex.img}" alt="" loading="lazy" onerror="this.style.display='none'">`:''}
       <div class="grow">
         <div class="ex-name">${ex.name}</div>
-        <div class="ex-region">${m.focus?'<span class="tag" style="background:var(--fire-l,#ffa23d);color:#1a1205;font-weight:800">🎯 Your focus</span> ':''}<span class="tag ${ex.region}">${ex.region}</span> &nbsp;${m.sets} × ${targetStr}</div>
+        <div class="ex-region">${m.focus?'<span class="tag" style="background:var(--fire-l);color:var(--accInk);font-weight:800">🎯 Your focus</span> ':''}<span class="tag ${ex.region}">${ex.region}</span> &nbsp;${m.sets} × ${targetStr}</div>
       </div>
       <div class="ex-rx"><div class="big">${m.sets}×${m.unit==='time'?fmtTime(m.target):m.target}</div><div class="sub">rest ${m.rest}s</div></div>
     </div>
@@ -2162,7 +2203,15 @@ function ladderNeighbor(m,dir){const lad=LADDERS[m.slot];if(!lad)return null;con
    so EVERY exercise can be swapped, not just the ladder ones. */
 function swapOptions(m){
   const opts=[];const seen=new Set([m.exId]);
-  const push=(exId,label)=>{if(exId&&EX[exId]&&!seen.has(exId)){seen.add(exId);opts.push({exId,label});}};
+  /* Every offer must survive the same gates buildSession applies (swapStillValid).
+     Only the fallback list used to be filtered, so Easier/Harder/Gentler could
+     offer a move on a flagged joint or needing kit you don't own — the swap
+     "succeeded", carried your logged sets across, then got rejected at build
+     time, leaving the original exercise on screen and the sets seemingly gone. */
+  const _lims=(STATE.profile&&STATE.profile.limitations)||[];
+  const _risky=k=>_lims.some(j=>(JOINT_RISK[j]||[]).includes(k));
+  const offerable=k=>{try{return EX[k]&&!_risky(k)&&hasGearFor(k)&&safeSwap(k)===k;}catch(e){return true;}};
+  const push=(exId,label)=>{if(exId&&EX[exId]&&!seen.has(exId)&&offerable(exId)){seen.add(exId);opts.push({exId,label});}};
   const easier=ladderNeighbor(m,-1),harder=ladderNeighbor(m,1);
   if(easier)push(easier,'⬇ Easier');
   if(harder)push(harder,'⬆ Harder');
@@ -2236,6 +2285,9 @@ function openPlayer(opts){
     sess=buildSession(STATE.progressPtr);items=[...sess.main,sess.finisher];
   }
   if(!items.length)return;
+  // clear any interval still owned by a previous start — reassigning the global
+  // would orphan it, and orphans keep mutating the CURRENT session (clock runs 2x).
+  plClear();
   PLAYER={sess,items,i:0,s:0,phase:null,running:true,tid:null,remain:0,total:0,repN:0,elapsed:0,setsDone:0,pendingNext:false,free,
     tempo:Math.max(1.5,Math.min(6,(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3))};
   $('#player').classList.add('open');document.body.style.overflow='hidden';
@@ -2486,6 +2538,7 @@ function playerTeardown(){if(!PLAYER)return;wakeOff();plClear();beatStop();$('#p
   if(TAB==='today')renderToday();}
 function playerQuit(){const had=!!PLAYER;playerTeardown();if(had&&history.state&&history.state.cf==='player'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
 function playerFeel(feel){
+  wakeOff();   // finishing normally is the COMMON exit — it must release the lock too
   plClear();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;
   if(history.state&&history.state.cf==='player'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
   commitSession(feel);
@@ -2649,6 +2702,7 @@ function logActManual(k){
 /* Shared count-up stopwatch for the non-interval activities. */
 let ACTT=null;
 function openActTimer(k){
+  if(ACTT&&ACTT.tid)clearInterval(ACTT.tid);
   ACTT={k,secs:0,tid:null,running:true};
   const a=ACTS[k];
   openSheet(`<h3>⏱️ ${a.emoji} ${a.name}</h3>
@@ -2743,6 +2797,7 @@ function startSkipCustom(){
 /* Free stopwatch — for when you just pick up the rope. Counts up; Stop logs it. */
 let SKIPT=null;
 function openSkipTimer(){
+  if(SKIPT&&SKIPT.tid)clearInterval(SKIPT.tid);
   SKIPT={secs:0,tid:null,running:true};
   openSheet(`<h3>⏱️ Skipping stopwatch</h3>
     <p class="muted sm" style="margin:2px 0 14px">Counting up. Tap <b>Stop &amp; log</b> when you're done and the minutes go straight into your record.</p>
@@ -2842,6 +2897,8 @@ function ivRingHTML(color){return `
 const HIIT_POOL=['jumpingjack','highknees','buttkick','skater','squatthrust','burpee','mountainclimber','tuckjump','flutter','scissors','burpeetuck'];
 function _runHiit(sess,list,format){
   if(!list.length)return;
+  ivClear();      // never leave a previous interval ticking alongside the new one
+  wakeOn();       // every interval session funnels through here — skipping, ruck, sprints included
   INTV={sess,seq:buildIntervals(list,format),i:0,phase:null,running:true,tid:null,remain:0,total:0,format,workElapsed:0};
   $('#hiit').classList.add('open');document.body.style.overflow='hidden';
   try{history.pushState({cf:'hiit'},'');}catch(e){}
@@ -2849,11 +2906,13 @@ function _runHiit(sess,list,format){
   ivRenderStep(0);
   INTV.phase='lead';INTV.lead=5;
   ivS('#ivNum','5');ivS('#ivSub','GET READY');ivRingSet(1);
-  beep(1000,.15,0.7);coachSpeak(HIIT_FORMATS[format].name+'. Get ready.');
+  // fmtInfo covers HIIT + skip + special registries. Reading HIIT_FORMATS directly
+  // threw for every skip/ruck/grip/boxing/cardio format — before the interval was
+  // even started, so those sessions never ran at all.
+  beep(1000,.15,0.7);coachSpeak(fmtInfo(format).name+'. Get ready.');
   INTV.tid=setInterval(ivTickLead,1000);
 }
 function startHiit(format){
-  wakeOn();
   closeSheet();
   const sess=buildSession(STATE.progressPtr);
   const list=[...sess.main,sess.finisher].filter(m=>m&&m.exId);
@@ -2876,7 +2935,7 @@ function ivRenderStep(idx){
   $('#hiit').innerHTML=`
     <div class="pl-bg"${bg?` style="background-image:url('${bg}')"`:''}></div>
     <div class="pl-head"><button class="pl-x" onclick="hiitQuit()" aria-label="End">✕</button>
-      <div class="pl-count">${HIIT_FORMATS[INTV.format].name} · ${idx+1}/${INTV.seq.length}</div><div style="width:36px"></div></div>
+      <div class="pl-count">${fmtInfo(INTV.format).name} · ${idx+1}/${INTV.seq.length}</div><div style="width:36px"></div></div>
     <div class="pl-body" id="ivBody">
       <div class="pl-region"><span class="tag ${isWork?ex.region:'cardio'}">${isWork?'WORK':'REST'}</span></div>
       <div class="pl-name">${isWork?ex.name:'Rest — next: '+ex.name}</div>
@@ -2945,20 +3004,20 @@ function hiitSkip(){if(!INTV)return;ivClear();INTV.i++;if(INTV.i>=INTV.seq.lengt
 function hiitTeardown(){if(!INTV)return;wakeOff();ivClear();beatStop();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;if(TAB==='today')renderToday();}
 function hiitQuit(){const had=!!INTV;hiitTeardown();if(had&&history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
 function hiitLogDone(){
-  ivClear();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;
+  wakeOff();ivClear();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;
   if(history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
   finishSession();
 }
 // Ruck / grip / boxing finish into their own records too.
 function hiitLogAct(k,mins,rounds,workSecs){
-  ivClear();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;
+  wakeOff();ivClear();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;
   if(history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
   logAct(k,mins,k==='grip'?{secs:workSecs||0,rounds:rounds||0}:{rounds:rounds||0});
   render();
 }
 // Skipping finishes into its own record, not the program's session counter.
 function hiitLogSkip(mins,rounds){
-  ivClear();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;
+  wakeOff();ivClear();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;
   if(history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
   logSkip(mins,rounds);render();
 }
@@ -3401,7 +3460,7 @@ function coachChipHTML(role){
   return `<div class="coachchip">${coachAvatarHTML(30)}<div><div class="cc-name">${ADVISOR.short}</div><div class="cc-role">${role||'Your coach'}</div></div></div>`;}
 // Big centered Sarge avatar for celebration / hand-off moments.
 function coachHeroHTML(caption){
-  return `<div style="text-align:center;margin-bottom:8px">${coachAvatarHTML(76,'border-color:var(--gold,#e7b53c);margin:0 auto;display:block;box-shadow:0 6px 18px rgba(0,0,0,.45)')}<div class="tiny muted" style="margin-top:6px">${caption||ADVISOR.name}</div></div>`;}
+  return `<div style="text-align:center;margin-bottom:8px">${coachAvatarHTML(76,'border-color:var(--gold);margin:0 auto;display:block;box-shadow:0 6px 18px rgba(0,0,0,.45)')}<div class="tiny muted" style="margin-top:6px">${caption||ADVISOR.name}</div></div>`;}
 
 function _briefGreet(){let h=9;try{h=new Date().getHours();}catch(e){}return h<12?'Good morning':(h<17?'Good afternoon':'Good evening');}
 function _briefList(a){a=(a||[]).filter(Boolean);if(a.length<=1)return a[0]||'';if(a.length===2)return a[0]+' and '+a[1];return a.slice(0,-1).join(', ')+', and '+a[a.length-1];}
@@ -3641,7 +3700,7 @@ function dayflowAdvance(fromKey){
 }
 function dayflowDone(){
   openSheet(`<div style="text-align:center">
-    ${coachAvatarHTML(80,'border-color:var(--gold,#e7b53c);margin:0 auto 8px;display:block;box-shadow:0 6px 18px rgba(0,0,0,.45)')}
+    ${coachAvatarHTML(80,'border-color:var(--gold);margin:0 auto 8px;display:block;box-shadow:0 6px 18px rgba(0,0,0,.45)')}
     <h2 style="margin:2px 0">Day complete 🎖️</h2>
     <p class="muted sm" style="margin:6px 0 14px">Brief, warm-up, workout and cool-down — all done. Outstanding work, ${(STATE.profile.name||'').trim()||'soldier'}. Now hydrate and hit your protein.</p>
     <button class="btn t-green" style="margin-bottom:8px" onclick="closeSheet();openMealPlan()">🍽️ See today's meals</button>
@@ -3667,7 +3726,7 @@ function openRestSheet(){
   const name=(STATE.profile.name||'').trim();
   const rested=!!(STATE.restDays&&STATE.restDays[todayISO()]);
   openSheet(`<div style="text-align:center;margin-bottom:6px">
-      ${coachAvatarHTML(76,'border-color:var(--gold,#e7b53c);margin:0 auto 6px;display:block;box-shadow:0 6px 18px rgba(0,0,0,.45)')}
+      ${coachAvatarHTML(76,'border-color:var(--gold);margin:0 auto 6px;display:block;box-shadow:0 6px 18px rgba(0,0,0,.45)')}
       <h2 style="margin:2px 0">Rest &amp; recovery 🛌</h2>
       <div class="tiny muted">${rested?'Logged for today · ':''}${ADVISOR.name}</div>
     </div>
@@ -4089,7 +4148,14 @@ function previewPersona(){try{primeVoice();}catch(e){}if(STATE.settings.coach===
 
 /* ============================ TIMERS ============================ */
 let timer=null;
-function stopTimer(){if(timer){clearInterval(timer.iv);timer=null;}if(typeof _bt!=='undefined'&&_bt){clearInterval(_bt.iv);_bt=null;}}
+/* Timers auto-close their sheet ~700ms after finishing. That timeout used to be
+   fire-and-forget, so if you dismissed and opened something else in the gap, the
+   NEW sheet got slammed shut (and a stray history.back() desynced the Back stack).
+   Track it and cancel it whenever timers stop or a sheet tears down. */
+let _autoCloseT=null;
+function autoClose(ms,fn){clearTimeout(_autoCloseT);_autoCloseT=setTimeout(()=>{_autoCloseT=null;fn();},ms);}
+function cancelAutoClose(){if(_autoCloseT){clearTimeout(_autoCloseT);_autoCloseT=null;}}
+function stopTimer(){cancelAutoClose();if(timer){clearInterval(timer.iv);timer=null;}if(typeof _bt!=='undefined'&&_bt){clearInterval(_bt.iv);_bt=null;}}
 function beep(freq=880,dur=0.12,vol=0.6,type='square'){if(!STATE.settings.sound)return;try{const ac=beep._ac||(beep._ac=new (window.AudioContext||window.webkitAudioContext)());if(ac.state==='suspended')ac.resume();const o=ac.createOscillator(),g=ac.createGain();o.type=type;o.frequency.value=freq;o.connect(g);g.connect(ac.destination);g.gain.setValueAtTime(Math.min(vol,0.95),ac.currentTime);g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+dur);o.start();o.stop(ac.currentTime+dur);}catch(e){}}
 // loud double-tone GO cue (cuts through noise)
 function beepGo(){beep(1320,.30,0.9,'square');setTimeout(()=>beep(1760,.28,0.9,'square'),120);}
@@ -4228,11 +4294,12 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet){
       if(onDone)onDone();
       if(!motivate('done'))coachSpeak(isHold?'Time. Strong hold.':'Rest over. Back to work.');
       $('#tnum')&&($('#tnum').textContent='Done');
-      setTimeout(()=>closeSheet(),700);return;
+      autoClose(700,()=>closeSheet());return;
     }
     update();
   }
   function update(){if(phase==='ready')return;const n=$('#tnum');if(n){n.textContent=fmtTime(remain);}const r=$('#tring');if(r){r.style.strokeDashoffset=C*(1-remain/total);} }
+  stopTimer();
   timer={iv:setInterval(tick,1000),mode};
   update();
 }
@@ -4305,10 +4372,11 @@ function runRepCadence(reps,label,restAfter,onDone){
         if(!motivate('done'))coachSpeak('Set complete. Strong work.');
         if(done)done();
         if(rest>0)runTimer('rest',rest,lbl+' — rest',0,null);
-        else{const nn=$('#rcNum');if(nn)nn.textContent='✓';setTimeout(closeSheet,700);}
+        else{const nn=$('#rcNum');if(nn)nn.textContent='✓';autoClose(700,closeSheet);}
       },Math.max(400,tempo*450));
     }
   }
+  stopTimer();
   timer={iv:setInterval(readyTick,1000),mode:'reps'};
 }
 function repHTML(label,total){
@@ -4395,12 +4463,13 @@ function runFlow(items,title,color){
         set('#flowNum','✓');set('#flowName','Done');set('#flowCue',title+' complete. Nice work.');
         set('#flowStep',items.length+' / '+items.length);ring(0);
         coachSpeak(title+' complete. Nice work.');
-        setTimeout(()=>{if(dayflowActive())dfHandoff();closeSheet();if(dayflowActive())dayflowAdvance(title==='Warm-up'?'warmup':(title==='Cool-down'?'cooldown':null));},1100);return;
+        autoClose(1100,()=>{if(dayflowActive())dfHandoff();closeSheet();if(dayflowActive())dayflowAdvance(title==='Warm-up'?'warmup':(title==='Cool-down'?'cooldown':null));});return;
       }
       enterTransition(); return;
     }
     set('#flowNum',remain); ring(remain/total);
   }
+  stopTimer();
   timer={iv:setInterval(tick,1000),mode:'flow'};
 }
 function flowHTML(title,count,color){
@@ -4428,7 +4497,9 @@ function flowHTML(title,count,color){
 
 /* ============================ EXERCISE INFO ============================ */
 function emblemHTML(ex){
-  const colors={anterior:['#ff9d4d','#ef4318'],oblique:['#9277ff','#5a3fd6'],lower:['#3fd7e8','#0c8fa0'],stability:['#4ade80','#16a34a'],dynamic:['#ff6a92','#e01f52'],strength:['#34d477','#16a34a'],cardio:['#f5d98a','#d8a11f'],chest:['#ff8a5c','#e0450f'],shoulders:['#ffcf6b','#e0a11f'],back:['#5fd0ff','#0c8fa0'],arms:['#b39cff','#5a3fd6'],legs:['#5ce89a','#16a34a']};
+  // Fallback emblem shown when an exercise photo is missing. These were the old
+  // ember/violet ramps — a full-bleed orange band on a navy sheet.
+  const colors={anterior:['#5de0b7','#12735e'],oblique:['#8fb8ff','#2f5596'],lower:['#8fb8ff','#256880'],stability:['#7de3a8','#1c8168'],dynamic:['#ff9aa6','#c0455a'],strength:['#7de3a8','#1c8168'],cardio:['#f0d089','#9b7d2a'],chest:['#5de0b7','#12735e'],shoulders:['#f0d089','#9b7d2a'],back:['#8fb8ff','#2f5596'],arms:['#8fb8ff','#2f5596'],legs:['#7de3a8','#1c8168']};
   const c=colors[ex.region]||colors.anterior;
   return `<div class="emblem" style="background:linear-gradient(135deg,${c[0]},${c[1]})">
     <svg viewBox="0 0 120 90" width="150" style="opacity:.92"><g fill="rgba(255,255,255,.92)">
@@ -4592,7 +4663,7 @@ function renderProgress(){
 }
 function ringHTML(score,label){
   const C=2*Math.PI*44;const off=C*(1-clamp(score,0,100)/100);
-  const col=score<38?'#ff6a2b':score<68?'#f5c451':'#22c55e';
+  const col=score<38?'var(--pink)':score<68?'var(--gold)':'var(--green)';   // was old-ember orange for every day-one score
   return `<div class="ring"><svg width="104" height="104" viewBox="0 0 104 104">
     <circle cx="52" cy="52" r="44" fill="none" stroke="var(--line)" stroke-width="9"/>
     <circle cx="52" cy="52" r="44" fill="none" stroke="${col}" stroke-width="9" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${off}"/>
@@ -4872,16 +4943,16 @@ function _wrapText(x,text,cx,cy,maxW,lh){
 function shareMilestone(a){
   try{
     const S=1080,c=document.createElement('canvas');c.width=S;c.height=S;const x=c.getContext('2d');
-    const g=x.createLinearGradient(0,0,0,S);g.addColorStop(0,'#12151b');g.addColorStop(1,'#050607');
+    const g=x.createLinearGradient(0,0,0,S);g.addColorStop(0,'#101b2e');g.addColorStop(1,'#07101d');
     x.fillStyle=g;x.fillRect(0,0,S,S);
-    x.fillStyle='#ff5a1f';x.fillRect(0,0,S,14);
+    x.fillStyle='#5de0b7';x.fillRect(0,0,S,14);
     x.textAlign='center';
     x.font='120px Archivo,system-ui,sans-serif';x.fillText(a.emoji||'🏆',S/2,300);
-    x.fillStyle='#ffa23d';x.font='800 40px Archivo,system-ui,sans-serif';x.fillText('ACHIEVEMENT UNLOCKED',S/2,410);
-    x.fillStyle='#f2f5f9';x.font='900 78px Archivo,system-ui,sans-serif';let y=_wrapText(x,a.name||'',S/2,520,920,88);
-    x.fillStyle='#8b95a5';x.font='600 34px Archivo,system-ui,sans-serif';_wrapText(x,a.desc||'',S/2,y+70,860,46);
-    x.fillStyle='#ff5a1f';x.font='900 56px Archivo,system-ui,sans-serif';x.fillText('CoreForge',S/2,980);
-    x.fillStyle='#5d6674';x.font='700 28px Archivo,system-ui,sans-serif';x.fillText('CORE & FULL-BODY',S/2,1026);
+    x.fillStyle='#8becd0';x.font='800 40px Archivo,system-ui,sans-serif';x.fillText('ACHIEVEMENT UNLOCKED',S/2,410);
+    x.fillStyle='#f7f9fc';x.font='900 78px Archivo,system-ui,sans-serif';let y=_wrapText(x,a.name||'',S/2,520,920,88);
+    x.fillStyle='#9ba8bd';x.font='600 34px Archivo,system-ui,sans-serif';_wrapText(x,a.desc||'',S/2,y+70,860,46);
+    x.fillStyle='#5de0b7';x.font='900 56px Archivo,system-ui,sans-serif';x.fillText('CoreForge',S/2,980);
+    x.fillStyle='#6c7c92';x.font='700 28px Archivo,system-ui,sans-serif';x.fillText('CORE & FULL-BODY',S/2,1026);
     c.toBlob(blob=>{if(!blob){toast('Could not make card');return;}
       const file=new File([blob],'coreforge-'+(a.id||'win')+'.png',{type:'image/png'});
       if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:'CoreForge',text:a.name}).catch(()=>{});}
@@ -4896,14 +4967,14 @@ function shareLast(){if(_share)shareCard(_share.t,_share.s,_share.l);}
 function shareCard(title,subtitle,lines){
   try{
     const S=1080,c=document.createElement('canvas');c.width=S;c.height=S;const x=c.getContext('2d');
-    const g=x.createLinearGradient(0,0,0,S);g.addColorStop(0,'#12151b');g.addColorStop(1,'#050607');x.fillStyle=g;x.fillRect(0,0,S,S);
-    x.fillStyle='#ff5a1f';x.fillRect(0,0,S,14);x.textAlign='center';
-    x.fillStyle='#f2f5f9';x.font='900 84px Archivo,system-ui,sans-serif';let y=_wrapText(x,title||'',S/2,300,940,92);
-    if(subtitle){x.fillStyle='#ffa23d';x.font='800 40px Archivo,system-ui,sans-serif';y=_wrapText(x,subtitle,S/2,y+72,900,50);}
-    x.fillStyle='#8b95a5';x.font='600 42px Archivo,system-ui,sans-serif';
+    const g=x.createLinearGradient(0,0,0,S);g.addColorStop(0,'#101b2e');g.addColorStop(1,'#07101d');x.fillStyle=g;x.fillRect(0,0,S,S);
+    x.fillStyle='#5de0b7';x.fillRect(0,0,S,14);x.textAlign='center';
+    x.fillStyle='#f7f9fc';x.font='900 84px Archivo,system-ui,sans-serif';let y=_wrapText(x,title||'',S/2,300,940,92);
+    if(subtitle){x.fillStyle='#8becd0';x.font='800 40px Archivo,system-ui,sans-serif';y=_wrapText(x,subtitle,S/2,y+72,900,50);}
+    x.fillStyle='#9ba8bd';x.font='600 42px Archivo,system-ui,sans-serif';
     (lines||[]).filter(Boolean).forEach(l=>{y+=68;x.fillText(l,S/2,y);});
-    x.fillStyle='#ff5a1f';x.font='900 56px Archivo,system-ui,sans-serif';x.fillText('CoreForge',S/2,980);
-    x.fillStyle='#5d6674';x.font='700 28px Archivo,system-ui,sans-serif';x.fillText('CORE & FULL-BODY',S/2,1026);
+    x.fillStyle='#5de0b7';x.font='900 56px Archivo,system-ui,sans-serif';x.fillText('CoreForge',S/2,980);
+    x.fillStyle='#6c7c92';x.font='700 28px Archivo,system-ui,sans-serif';x.fillText('CORE & FULL-BODY',S/2,1026);
     c.toBlob(blob=>{if(!blob){toast('Could not make card');return;}
       const file=new File([blob],'coreforge-card.png',{type:'image/png'});
       if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:'CoreForge',text:title}).catch(()=>{});}
@@ -4952,6 +5023,7 @@ function opRender(){
 }
 function opStart(){
   if(!OP||OP.running)return;OP.running=true;OP.elapsed=0;
+  wakeOn();   // benchmark ops are timed too — opQuit already released a lock it never took
   beatStart();beepGo();haptic(30);coachSpeak(OP.op.name+'. Go!');
   OP.tid=setInterval(()=>{if(!OP)return;OP.elapsed++;const e=$('#opClock');if(e)e.textContent=fmtTime(OP.elapsed);},1000);
   const b=$('#opBtns');if(b)b.innerHTML=`<button class="btn green" style="width:100%" onclick="opFinish()">✓ Finished</button>`;
@@ -4967,7 +5039,9 @@ function opFinish(){
     <button class="btn primary" style="width:100%;margin-bottom:8px" onclick="shareLast()">📤 Share</button>
     <button class="btn ghost" style="width:100%" onclick="opQuit()">Done ✓</button>`;
 }
-function opQuit(){wakeOff();if(OP){clearInterval(OP.tid);}OP=null;beatStop();$('#hiit').classList.remove('open');document.body.style.overflow='';try{if(history.state&&history.state.cf==='op')history.back();}catch(e){}}
+function opQuit(){wakeOff();if(OP){clearInterval(OP.tid);}OP=null;beatStop();$('#hiit').classList.remove('open');document.body.style.overflow='';
+  // guard the self-pop like playerQuit/hiitQuit do, so onPop ignores it
+  if(history.state&&history.state.cf==='op'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
 /* ---- #2 Custom workout builder ---- */
 let _custom=[];
 function builderPool(){const gear=STATE.profile.gear||[];return Object.keys(EX).filter(k=>{const ex=EX[k];if(k==='bike'||k==='sprint')return false;if(ex.equip)return ex.equip.every(g=>gear.includes(g));return true;});}
@@ -5042,7 +5116,7 @@ function showUpdateToast(){
   if(document.getElementById('updToast'))return;
   const d=document.createElement('div');d.id='updToast';
   d.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:calc(74px + env(safe-area-inset-bottom));z-index:500;background:var(--card2);border:1px solid var(--line2);border-radius:14px;padding:11px 14px;display:flex;gap:12px;align-items:center;box-shadow:0 10px 34px rgba(0,0,0,.55)';
-  d.innerHTML=`<span style="font-weight:800;font-size:13px">🔄 New version ready</span><button style="background:var(--fire);color:#140600;border:none;border-radius:10px;padding:8px 13px;font-weight:900" onclick="location.reload()">Refresh</button>`;
+  d.innerHTML=`<span style="font-weight:800;font-size:13px">🔄 New version ready</span><button style="background:var(--fire);color:var(--accInk);border:none;border-radius:10px;padding:8px 13px;font-weight:900" onclick="location.reload()">Refresh</button>`;
   document.body.appendChild(d);
 }
 /* ---- #2 Daily readiness check (auto-regulation) ---- */
@@ -5481,15 +5555,26 @@ function scanBarcode(){
   startScan();
 }
 let _bcStream=null,_bcTimer=null;
-function stopScan(){try{if(_bcTimer){clearInterval(_bcTimer);_bcTimer=null;}
+/* Cancellation token. stopScan() is synchronous but startScan acquires the camera
+   after an await, so dismissing the sheet while the permission prompt is still up
+   used to stop nothing — the grant then resolved into a dead UI and left the
+   camera live with a detect loop running forever. Every await re-checks this. */
+let _bcGen=0;
+function stopScan(){_bcGen++;try{if(_bcTimer){clearInterval(_bcTimer);_bcTimer=null;}
   if(_bcStream){_bcStream.getTracks().forEach(t=>t.stop());_bcStream=null;}}catch(e){}}
 async function startScan(){
   const st=$('#bc-status');
+  const gen=++_bcGen;
+  const dead=()=>gen!==_bcGen;
   try{
     const det=new window.BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128']});
-    _bcStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    // cancelled while the permission prompt was up — hand the camera straight back
+    if(dead()){try{stream.getTracks().forEach(t=>t.stop());}catch(e){}return;}
+    _bcStream=stream;
     const v=$('#bc-video');if(!v){stopScan();return;}
     v.srcObject=_bcStream;await v.play();
+    if(dead()){stopScan();return;}
     if(st)st.textContent='Scanning…';
     _bcTimer=setInterval(async()=>{
       try{
@@ -5636,9 +5721,9 @@ function intakeHTML(){
       <div class="tiny muted" style="margin-top:4px">${t.kcal<=kcalT?(kcalT-t.kcal)+' kcal left today':(t.kcal-kcalT)+' kcal over — ease portions or add a Special session'}</div>`;}
   // macro split
   h+=`<div class="row" style="gap:10px;margin-top:12px">
-      ${_macroBar('Protein',t.p,mt?mt.p:0,'var(--fire-l,#ffa23d)')}
+      ${_macroBar('Protein',t.p,mt?mt.p:0,'var(--fire-l)')}
       ${_macroBar('Carbs',t.c,mt?mt.c:0,'#3fd7e8')}
-      ${_macroBar('Fat',t.f,mt?mt.f:0,'var(--gold,#e7b53c)')}
+      ${_macroBar('Fat',t.f,mt?mt.f:0,'var(--gold)')}
     </div>`;
   if(!mt)h+=`<div class="tiny muted" style="margin-top:8px">Set a calorie target below to see protein, carb &amp; fat goals.</div>`;
   // diary grouped by meal
@@ -5674,7 +5759,7 @@ function intakeTrendHTML(){
   const avgP=Math.round(logged.reduce((a,d)=>a+d.p,0)/logged.length);
   const max=Math.max(kcalT||0,...days.map(d=>d.kcal),1);
   const bars=days.map(d=>{const pct=Math.round(d.kcal/max*100);
-    const col=!d.n?'var(--line)':(kcalT&&d.kcal>kcalT?'var(--fire-l,#ffa23d)':'var(--green)');
+    const col=!d.n?'var(--line)':(kcalT&&d.kcal>kcalT?'var(--fire-l)':'var(--green)');
     return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
       <div style="width:100%;height:56px;display:flex;align-items:flex-end"><div style="width:100%;height:${Math.max(3,pct)}%;background:${col};border-radius:4px"></div></div>
       <div class="tiny muted">${d.label}</div></div>`;}).join('');
@@ -6951,8 +7036,12 @@ function normalizeState(){
         if(m.weight>0){
           // with an anchor, pick whichever reading sits closer to it; without one,
           // an imperial athlete's logged weight was pounds by definition
-          const isLb=anchor>0?Math.abs(m.weight*0.453592-anchor)<Math.abs(m.weight-anchor):m.weight>=45;
-          if(isLb)m.weight=Math.round(m.weight*0.453592*10)/10;
+          // Only convert when nutrition.weightKg gives us something to compare against.
+          // Without an anchor there is no way to tell 86 kg from 86 lb — and every real
+          // adult kg weight is also >=45, so a threshold guess corrupts good data.
+          // Leaving a row alone is recoverable; halving it silently is not.
+          if(anchor>0&&Math.abs(m.weight*0.453592-anchor)<Math.abs(m.weight-anchor))
+            m.weight=Math.round(m.weight*0.453592*10)/10;
         }
       });
       if(looksInches(STATE.profile.startWaist))STATE.profile.startWaist=Math.round(STATE.profile.startWaist*2.54);
