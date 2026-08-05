@@ -1213,7 +1213,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='164';
+const APP_VERSION='165';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1899,15 +1899,26 @@ function wireOnboard(){
     $$('.ob-step').forEach(el=>el.style.display=(+el.dataset.step===step)?'':'none');
     const fill=$('#ob-fill');if(fill)fill.style.width=(step/OB_STEPS*100)+'%';
     const lbl=$('#ob-steplbl');if(lbl)lbl.textContent='Step '+step+' of '+OB_STEPS;
-    const back=$('#ob-back');back.style.display=(step>1||OB_EDIT)?'':'none';back.textContent=(step===1&&OB_EDIT)?'Cancel':'← Back';
+    const back=$('#ob-back');back.style.display=(step>1||OB_EDIT)?'':'none';back.textContent=(step===1&&OB_EDIT)?'Done':'← Back';   // edits commit as you go, so "Cancel" would be a lie
     $('#ob-next').textContent= step<OB_STEPS ? 'Next →' : (OB_EDIT?'Save changes':'Build my plan → Baseline');
     window.scrollTo(0,0);
   };
-  $('#ob-next').onclick=()=>{ if(step<OB_STEPS){showStep(step+1);haptic(8);} else finishOnboard(); };
-  $('#ob-back').onclick=()=>{ if(step===1){ if(OB_EDIT){OB_EDIT=false;navTo('guide');render();} return; } showStep(step-1);haptic(8); };
+  $('#ob-next').onclick=()=>{ if(step<OB_STEPS){obCommitStep();showStep(step+1);haptic(8);} else finishOnboard(); };
+  $('#ob-back').onclick=()=>{ if(step===1){ if(OB_EDIT){obCommitStep();OB_EDIT=false;navTo('today');} return; } obCommitStep();showStep(step-1);haptic(8); };
   showStep(1);
 }
-function finishOnboard(){
+/* Every step's inputs live in the DOM at once (steps are just hidden), so the
+   whole form can be read from any step. In edit mode we commit on each Next —
+   typing a new waist on step 1 and tapping Next used to persist NOTHING unless
+   you walked all the way to step 6 and pressed Save changes. */
+function finishOnboard(){ obReadForm(); obFinishNav(); }
+function obCommitStep(){ if(!OB_EDIT)return; try{obReadForm();save();}catch(e){} }
+function obFinishNav(){
+  try{recalcKcalFromStored();}catch(e){}
+  if(OB_EDIT){OB_EDIT=false;save();toast('Profile updated ✓ — plan re-tuned');navTo('today');}
+  else{STATE.onboarded=true;save();render();}
+}
+function obReadForm(){
   const P=STATE.profile, N=STATE.nutrition;
   P.name=($('#ob-name').value||'').trim();
   P.unit=($('#ob-unit button.on')||{dataset:{u:'cm'}}).dataset.u;
@@ -1954,10 +1965,6 @@ function finishOnboard(){
     else STATE.measurements.push({date:d,waist:wCm,weight:kg});
   }
   try{recalcKcalFromStored();}catch(e){}   // (re)compute calorie/macro targets from the answers
-  // land on Today, where the re-tuned session is actually visible (navTo already
-  // renders, so no second render() call)
-  if(OB_EDIT){OB_EDIT=false;save();toast('Profile updated ✓ — plan re-tuned');navTo('today');}
-  else{STATE.onboarded=true;save();render();}
 }
 
 function baselineIntroHTML(){
