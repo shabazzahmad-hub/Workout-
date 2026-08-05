@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v144';
+const CACHE = 'coreforge-v145';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './archivo.woff2', './icon-192-v2.png', './icon-512-v2.png', './hero.jpg', './coach-sarge.jpg',
   './ex-kneeplank.jpg','./ex-plank.jpg','./ex-longplank.jpg','./ex-planktap.jpg',
   './ex-tuckhollow.jpg','./ex-hollow.jpg','./ex-hollowrock.jpg','./ex-reverseplank.jpg',
@@ -18,7 +18,7 @@ const SHELL = ['./', './index.html', './manifest.webmanifest', './archivo.woff2'
   './cd-childs.jpg','./cd-cobra.jpg','./cd-twistleft.jpg','./cd-twistright.jpg','./cd-catcow.jpg','./cd-knees.jpg','./cd-breathing.jpg',
   './ex-negpullup.jpg','./ex-widepullup.jpg','./ex-invertedrowelev.jpg','./ex-benchdip.jpg','./ex-dips.jpg','./ex-boxpistol.jpg','./ex-singlebridge.jpg','./ex-splitjump.jpg','./ex-burpeetuck.jpg',
   './ex-abroll.jpg','./ex-mbslam.jpg','./ex-mbtwist.jpg','./ex-mbsitup.jpg','./ex-kbswing.jpg','./ex-kbgoblet.jpg','./ex-kbcp.jpg','./ex-kbrow.jpg','./ex-kbrdl.jpg','./ex-kblunge.jpg','./ex-ropewave.jpg','./ex-ropeslam.jpg','./ex-dipknee.jpg',
-  './ex-dbgoblet.jpg','./ex-dbrdl.jpg','./ex-dbrow.jpg','./ex-dbpress.jpg','./ex-dbfloor.jpg','./ex-dblunge.jpg','./ex-dbthruster.jpg','./ex-dbcurl.jpg','./ex-dbrenegade.jpg','./ex-dbtwist.jpg','./ex-kbcarry.jpg','./ex-asiansquat.jpg','./ex-bike.jpg','./ex-sprint.jpg',
+  './ex-dbgoblet.jpg','./ex-dbrdl.jpg','./ex-dbrow.jpg','./ex-dbpress.jpg','./ex-dbfloor.jpg','./ex-dblunge.jpg','./ex-dbthruster.jpg','./ex-dbcurl.jpg','./ex-dbrenegade.jpg','./ex-dbtwist.jpg','./ex-kbcarry.jpg','./ex-asiansquat.jpg','./ex-bike.jpg','./ex-sprint.jpg','./ex-skip.jpg',
   './ex-standingoblique.jpg','./ex-squatjack.jpg','./ex-halfburpee.jpg','./ex-atomicpushup.jpg',
   './ex-hanglegraise.jpg','./notif-hlr.jpg','./ex-lsit.jpg','./ex-windshield.jpg','./ex-wallsit.jpg','./ex-heeltouch.jpg',
   './ex-kbhalo.jpg','./ex-kbheli.jpg',
