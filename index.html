@@ -479,15 +479,25 @@ const r1=v=>Math.round(v*10)/10;                                 // one decimal,
    fields it lacks from later copies. Idempotent; runs every boot. */
 function dedupeMeasurements(){
   const ms=STATE&&STATE.measurements;if(!Array.isArray(ms))return;
+  const today=todayISO();
   const byDate=new Map();const out=[];
   for(const m of ms){
     if(!m||!m.date)continue;
-    const k=String(m.date),ex=byDate.get(k);
+    // normalise the key: a timestamped date ("2026-08-05T08:00Z") must not count
+    // as a different day to "2026-08-05", and a clock-skew row dated in the
+    // FUTURE would win every "latest" read forever — clamp it to today.
+    let k=String(m.date).slice(0,10);
+    if(k>today)k=today;
+    m.date=k;
+    const ex=byDate.get(k);
     if(!ex){byDate.set(k,m);out.push(m);}
-    else{if(ex.waist==null&&m.waist!=null)ex.waist=m.waist;
-         if(ex.weight==null&&m.weight!=null)ex.weight=m.weight;}
+    else{if(!(ex.waist>0)&&m.waist>0)ex.waist=m.waist;      // 0 counts as missing, like null
+         if(!(ex.weight>0)&&m.weight>0)ex.weight=m.weight;}
   }
-  if(out.length!==ms.length)STATE.measurements=out;
+  // keep the array SORTED: some readers take the raw last row, others sort
+  // first — an out-of-order import made them disagree about "now"
+  out.sort((x,y)=>String(x.date).localeCompare(String(y.date)));
+  STATE.measurements=out;
 }
 // The only way any code writes a measurement: dedupe first, then update-or-insert.
 function upsertMeasure(waistCm,weightKg){
@@ -1239,7 +1249,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='170';
+const APP_VERSION='171';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1658,7 +1668,40 @@ function openSettings(){haptic(10);navTo('guide');setTimeout(()=>{const s=$('#se
 // Opening a sheet pushes a history entry so Back closes the sheet (not the app).
 // Re-calling openSheet while one is already open just swaps content (no new entry),
 // so multi-step flows (assessment, timers) don't stack up history.
+/* A tick that replaces the DOM between pointerdown and click destroys the very
+   button being tapped — the tap silently does nothing ("+15s" dropped at the
+   exact second rest expires, Pause lost at a phase boundary). Track the pointer
+   and let timer-driven transitions defer their DOM swap the few milliseconds
+   until the finger lifts. Keyed so a deferred transition can't queue twice. */
+let _ptrDown=false;const _ptrQ=new Map();
+document.addEventListener('pointerdown',()=>{_ptrDown=true;},true);
+document.addEventListener('pointerup',()=>{_ptrDown=false;
+  if(_ptrQ.size){const q=[..._ptrQ.values()];_ptrQ.clear();setTimeout(()=>q.forEach(f=>{try{f();}catch(e){}}),0);}
+},true);
+document.addEventListener('pointercancel',()=>{_ptrDown=false;
+  if(_ptrQ.size){const q=[..._ptrQ.values()];_ptrQ.clear();setTimeout(()=>q.forEach(f=>{try{f();}catch(e){}}),0);}
+},true);
+function whenPointerFree(key,fn){if(!_ptrDown){fn();return;}_ptrQ.set(key,fn);}
+
+/* Bumped on every sheet open/close. Async work that intends to write into "the
+   sheet the user was looking at when this started" captures the value and
+   no-ops if it changed — a slow barcode/photo lookup must never replace a sheet
+   the athlete has since opened and typed into. */
+let _sheetGen=0;
+/* Overlays close in the same frame, so the second tap of a phone double-tap
+   landed on whatever sat beneath — confirmed starting a NEW workout right after
+   finishing one, and opening the morning brief from under a swap sheet. A
+   transparent shield absorbs stray taps for a beat after any overlay closes. */
+function tapShield(ms){
+  try{
+    const d=document.createElement('div');
+    d.style.cssText='position:fixed;inset:0;z-index:9999;background:transparent';
+    document.body.appendChild(d);
+    setTimeout(()=>{try{d.remove();}catch(e){}},ms||350);
+  }catch(e){}
+}
 function openSheet(html){
+  _sheetGen++;
   // A timer that just finished may have a close queued; opening something new
   // must cancel it, or the new sheet gets slammed shut a moment later.
   try{cancelAutoClose();}catch(e){}
@@ -1675,6 +1718,7 @@ function openSheet(html){
    scanner held the camera open indefinitely. */
 function sheetTeardown(){
   try{cancelAutoClose();}catch(e){}
+  try{if(typeof _repTok!=='undefined')_repTok++;}catch(e){}   // cancel a queued guided-reps rest chain
   try{if(typeof ACTT!=='undefined'&&ACTT&&ACTT.tid){clearInterval(ACTT.tid);ACTT.tid=null;ACTT.running=false;}}catch(e){}
   try{if(typeof SKIPT!=='undefined'&&SKIPT&&SKIPT.tid){clearInterval(SKIPT.tid);SKIPT.tid=null;SKIPT.running=false;}}catch(e){}
   try{if(typeof stopScan==='function')stopScan();}catch(e){}
@@ -1686,15 +1730,24 @@ function closeSheet(){
   /* Brief teardown below is unconditional: it auto-starts on a 180ms timer, so
      dismissing inside that window left playing=false/audio=null and skipped the
      stop entirely — Sarge then read the whole brief with Stop behind a closed scrim. */
+  _sheetGen++;
   const _dfh=(typeof _dfHandoff!=='undefined')&&_dfHandoff;if(typeof _dfHandoff!=='undefined')_dfHandoff=false;
   if(wasOpen&&!_dfh&&typeof dayflowActive==='function'&&dayflowActive())dayflowCancel(true);   // only a real sheet dismissal ends the guided day
   if(typeof BRIEF!=='undefined'&&BRIEF){try{briefStop();}catch(e){}BRIEF=null;}
-  $('#scrim').classList.remove('open');document.body.style.overflow='';stopTimer();beatStop();sheetTeardown();
+  $('#scrim').classList.remove('open');
+  // only release the scroll lock when no OTHER full-screen overlay still needs it
+  if(!$('#player').classList.contains('open')&&!$('#hiit').classList.contains('open'))document.body.style.overflow='';
+  if(wasOpen)tapShield(350);   // a double-tap's second tap must not fall through to the UI beneath
+  stopTimer();beatStop();sheetTeardown();
   // If the app (a button/scrim) closed the sheet, retire its history entry too,
   // so the counts stay balanced. The guard makes onPop ignore this self-pop.
   if(wasOpen&&history.state&&history.state.cf==='sheet'){
     _backGuard=true;try{history.back();}catch(e){_backGuard=false;}
   }
+  if(wasOpen)setTimeout(()=>{try{flushCelebrations();}catch(e){}},350);   // queued badge pop-ups show once the sheet is gone
+  // Clear the sheet's markup once it has visually closed. A closed sheet kept its
+  // full DOM forever, which is precisely how a shared id ends up shadow-read.
+  setTimeout(()=>{try{if(!$('#scrim').classList.contains('open'))$('#sheet').innerHTML='';}catch(e){}},400);
 }
 $('#scrim').addEventListener('click',e=>{if(e.target.id==='scrim')closeSheet();});
 
@@ -1711,7 +1764,9 @@ function onPop(e){
   if($('#scrim').classList.contains('open')){
     if(typeof dayflowActive==='function'&&dayflowActive())dayflowCancel(true);
     if(typeof BRIEF!=='undefined'&&BRIEF){try{briefStop();}catch(e){}BRIEF=null;}
-    $('#scrim').classList.remove('open');document.body.style.overflow='';stopTimer();beatStop();sheetTeardown();return;
+    $('#scrim').classList.remove('open');
+    if(!$('#player').classList.contains('open')&&!$('#hiit').classList.contains('open'))document.body.style.overflow='';
+    tapShield(350);stopTimer();beatStop();sheetTeardown();return;
   }
   const st=e.state||{};
   if(st.cf==='tab'){go(st.tab||'today');return;}
@@ -1989,13 +2044,14 @@ function obFinishNav(){
   else{STATE.onboarded=true;obClear();save();render();}
 }
 function obReadForm(){
+  if(!$('#ob-name'))return;   // wizard not mounted — nothing to read
   const P=STATE.profile, N=STATE.nutrition;
   P.name=($('#ob-name').value||'').trim();
   P.unit=($('#ob-unit button.on')||{dataset:{u:'cm'}}).dataset.u;
   const im=P.unit==='in';
   P.sex=($('#ob-sex button.on')||{dataset:{s:'male'}}).dataset.s;
-  P.age=parseInt($('#ob-age').value)||null;
-  const ht=parseFloat($('#ob-height').value); if(ht>0)P.heightCm=Math.round(im?ht*2.54:ht);
+  {const _a=parseInt($('#ob-age').value);P.age=(_a>0)?clamp(_a,10,100):null;}
+  const ht=parseFloat($('#ob-height').value); if(ht>0)P.heightCm=clamp(Math.round(im?ht*2.54:ht),90,250);
   P.experience=($('#ob-exp button.on')||{dataset:{x:'Intermediate'}}).dataset.x;
   P.activity=parseFloat(($('#ob-act button.on')||{dataset:{a:'1.45'}}).dataset.a)||1.45;
   P.conditioning=($('#ob-cond button.on')||{dataset:{c:'moderate'}}).dataset.c;
@@ -2015,10 +2071,14 @@ function obReadForm(){
   const gws=parseFloat($('#ob-goalwaist').value); if(gws>0)P.goalWaist=r1(im?gws*2.54:gws);
   // nutrition prefs
   N.goal=P.goal; N.sex=P.sex; N.age=P.age; N.heightCm=P.heightCm; N.activity=P.activity;
+  const _od=N.diet,_om=N.meals,_oa=N.allergies;
   N.diet=($('#ob-diet button.on')||{dataset:{d:'omnivore'}}).dataset.d;
   N.meals=parseInt(($('#ob-meals button.on')||{dataset:{m:'3'}}).dataset.m)||3;
   N.allergies=($('#ob-allerg').value||'').trim();
-  N.plan=null;   // diet/meals/allergies just changed — drop today's cached meal plan
+  // drop the cached meal plan ONLY if the food answers changed — this runs on
+  // every wizard step now, and an unconditional null regenerated today's plan
+  // (and its grocery list) on every tap of Next
+  if(N.diet!==_od||N.meals!==_om||N.allergies!==_oa)N.plan=null;
   // body metrics
   const w=parseFloat($('#ob-waist').value),wt=parseFloat($('#ob-weight').value);
   // Only ever SET the start waist — never overwrite it. The field is labelled just
@@ -2059,7 +2119,7 @@ function finishedHTML(){
   <div class="hero anterior"><div class="htop"><div><div class="hlbl">Program complete</div><h1>Forged 🏆</h1><div class="hmeta">You finished all ${TOTAL_CYCLES} blocks</div></div><div class="hicon">🏆</div></div></div>
   <div class="grid2">
     <div class="stat"><div class="n">${first.score}→${last.score}</div><div class="l">Core Score</div></div>
-    <div class="stat"><div class="n">${Object.keys(STATE.logs).length}</div><div class="l">Sessions done</div></div>
+    <div class="stat"><div class="n">${sessionsDoneCount()}</div><div class="l">Sessions done</div></div>
   </div>
   <div class="note fire" style="margin-top:14px">Outstanding work. Your core is measurably stronger. To keep progressing, run the block again — it will re-baseline and scale from here.</div>
   <button class="btn primary" onclick="restartProgram()">Start a fresh block</button>
@@ -2258,6 +2318,14 @@ function finishSession(){
 function commitSession(feel){
   const p=STATE.progressPtr;const pos=posOf(p);const log=ensureLog();
   log.done=true;log.feel=feel;log.completedAt=todayISO();
+  /* Snapshot what was actually prescribed TODAY. History readers used to rebuild
+     old sessions from CURRENT settings, so flagging an injury or logging a low
+     readiness rewrote every past session — lifetime rep/minute totals shrank
+     retroactively and completed moves showed "NOT LOGGED". The log is a record;
+     it must not change after the fact. */
+  try{const _s=buildSession(p);
+    log.items=[..._s.main,_s.finisher].filter(Boolean).map(m=>({exId:m.exId,sets:m.sets,target:m.target,unit:m.unit,rest:m.rest||45}));
+  }catch(e){}
   if(STATE.comeback&&STATE.comeback.left>0){STATE.comeback.left--;if(STATE.comeback.left<=0)delete STATE.comeback;}   // spend one eased comeback session
   const key=pos.cycle+'-'+pos.week;(STATE.weekFeel[key]=STATE.weekFeel[key]||[]).push(feel);
   // Adaptive overload: every session nudges a persistent multiplier so targets
@@ -2587,7 +2655,7 @@ function plTickRest(){
   PLAYER.remain--;
   if(PLAYER.remain===3)coachSpeak('Three. Two. One.');
   if(PLAYER.remain<=3&&PLAYER.remain>0)beep(900,.13,0.7);
-  if(PLAYER.remain<=0){plRestDone();return;}
+  if(PLAYER.remain<=0){plClear();whenPointerFree('pl',plRestDone);return;}   // never swap the buttons out from under a finger
   plS('#plNum',fmtTime(PLAYER.remain));plRingSet(PLAYER.remain/PLAYER.total);
 }
 function plRestDone(){plClear();if(PLAYER.pendingNext){PLAYER.pendingNext=false;PLAYER.i++;PLAYER.s=0;}plEnterReady(false);}
@@ -2643,13 +2711,15 @@ function playerSetDone(){if(PLAYER&&(PLAYER.phase==='work'||PLAYER.phase==='read
 function playerAddRest(){if(PLAYER&&PLAYER.phase==='rest'){PLAYER.remain+=15;PLAYER.total+=15;plS('#plNum',fmtTime(PLAYER.remain));toast('+15s rest');}}
 function playerSkipRest(){if(PLAYER&&PLAYER.phase==='rest')plRestDone();}
 function playerTeardown(){if(!PLAYER)return;wakeOff();plClear();beatStop();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;
+  setTimeout(()=>{try{if(!$('#player').classList.contains('open'))$('#player').innerHTML='';}catch(e){}},400);
   // Any teardown of the player = the user bailed (natural finish goes through playerFeel, which advances instead) → end the guided day.
   if(typeof dayflowActive==='function'&&dayflowActive())dayflowCancel(true);
   if(TAB==='today')renderToday();}
 function playerQuit(){const had=!!PLAYER;playerTeardown();if(had&&history.state&&history.state.cf==='player'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
 function playerFeel(feel){
+  if(!PLAYER)return;   // double-tap must not commit twice
   wakeOff();   // finishing normally is the COMMON exit — it must release the lock too
-  plClear();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;
+  plClear();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;tapShield(400);
   if(history.state&&history.state.cf==='player'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
   commitSession(feel);
   if(dayflowActive())dayflowAdvance('workout');   // guided day: hand off to the cool-down
@@ -2711,7 +2781,8 @@ function actStats(k){
   const week=l.filter(x=>wk.includes(x.date));
   return {n:l.length,total:Math.round(l.reduce((a,x)=>a+(x.mins||0),0)),
     week:Math.round(week.reduce((a,x)=>a+(x.mins||0),0)),
-    dist:Math.round(l.reduce((a,x)=>a+(x.dist||0),0)*10)/10,
+    // dist is canonical km; legacy rows tagged 'mi' were stored raw in miles
+    dist:Math.round(l.reduce((a,x)=>a+((x.dist||0)*((x.unit==='mi'&&!x._km)?1.60934:1)),0)*10)/10,
     best:l.reduce((m,x)=>Math.max(m,x.secs||0),0),last:l[0]||null};
 }
 function removeAct(k,i){const l=actLog(k);if(l[i]){l.splice(i,1);save();openAct(k);}}
@@ -2740,7 +2811,7 @@ function openRuck(){
     <p class="muted sm" style="margin:2px 0 12px">Loaded pack, brisk pace. Big aerobic base with almost no joint impact — start at 10% of bodyweight and build.</p>
     <div class="grid2" style="margin-bottom:12px">
       <div class="stat"><div class="n" style="color:var(--fire-l)">${s.week}</div><div class="l">Min this week</div></div>
-      <div class="stat"><div class="n" style="color:var(--teal)">${s.dist||0}</div><div class="l">Total ${imp?'mi':'km'}</div></div>
+      <div class="stat"><div class="n" style="color:var(--teal)">${r1((s.dist||0)*(imp?0.621371:1))}</div><div class="l">Total ${imp?'mi':'km'}</div></div>
     </div>
     <button class="btn t-teal" onclick="openActTimer('ruck')">⏱️ Start ruck — stopwatch</button>
     <div class="section-label">Log a ruck</div>
@@ -2756,7 +2827,10 @@ function openRuck(){
 function saveRuck(){
   const m=parseFloat(($('#rk-min')||{}).value)||0;
   if(!(m>0)){toast('Enter the minutes');return;}
-  const d=parseFloat(($('#rk-dist')||{}).value)||0, w=parseFloat(($('#rk-wt')||{}).value)||0;
+  const dIn=parseFloat(($('#rk-dist')||{}).value)||0, w=parseFloat(($('#rk-wt')||{}).value)||0;
+  // store distance canonically in KM (the unit tag records what was typed):
+  // summing raw display values mixed 5 km + 3 mi into "Total 8 mi"
+  const d=dIn>0?r1(STATE.profile.unit==='in'?dIn*1.60934:dIn):0;
   logAct('ruck',m,{dist:d||undefined,wt:w||undefined,unit:STATE.profile.unit==='in'?'mi':'km'});
   openRuck();
 }
@@ -3011,7 +3085,10 @@ function _runHiit(sess,list,format){
   wakeOn();       // every interval session funnels through here — skipping, ruck, sprints included
   INTV={sess,seq:buildIntervals(list,format),i:0,phase:null,running:true,tid:null,remain:0,total:0,format,workElapsed:0};
   $('#hiit').classList.add('open');document.body.style.overflow='hidden';
-  try{history.pushState({cf:'hiit'},'');}catch(e){}
+  // closeSheet() (the chooser that launched us) has a history.back() in flight;
+  // pushing synchronously put our entry where that traversal lands and ate it —
+  // one Back then skipped a whole tab level. Same fix as openQuick.
+  setTimeout(()=>{try{if(INTV)history.pushState({cf:'hiit'},'');}catch(e){}},0);
   primeVoice();beatStart();
   ivRenderStep(0);
   INTV.phase='lead';INTV.lead=5;
@@ -3077,7 +3154,9 @@ function ivTick(){
   if(INTV.phase==='work')INTV.workElapsed++;
   if(INTV.remain===3)coachSpeak('Three. Two. One.');
   if(INTV.remain<=3&&INTV.remain>0)beep(900,.13,0.7);
-  if(INTV.remain<=0){beepGo();haptic(30);INTV.i++;if(INTV.i>=INTV.seq.length){ivDone();return;}ivStep();return;}
+  if(INTV.remain<=0){beepGo();haptic(30);ivClear();INTV.i++;
+    if(INTV.i>=INTV.seq.length){whenPointerFree('iv',ivDone);return;}
+    whenPointerFree('iv',()=>{if(INTV)ivStep();});return;}
   ivS('#ivNum',fmtTime(INTV.remain));ivRingSet(INTV.remain/INTV.total);
 }
 function ivDone(){
@@ -3111,23 +3190,28 @@ function hiitToggle(){
   else{if(INTV.phase==='work'&&pulse)pulse.classList.add('on');INTV.tid=setInterval(ivTick,1000);}
 }
 function hiitSkip(){if(!INTV)return;ivClear();INTV.i++;if(INTV.i>=INTV.seq.length)ivDone();else ivStep();}
-function hiitTeardown(){if(!INTV)return;wakeOff();ivClear();beatStop();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;if(TAB==='today')renderToday();}
+function hiitTeardown(){if(!INTV)return;wakeOff();ivClear();beatStop();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;
+  setTimeout(()=>{try{if(!$('#hiit').classList.contains('open'))$('#hiit').innerHTML='';}catch(e){}},400);
+  if(TAB==='today')renderToday();}
 function hiitQuit(){const had=!!INTV;hiitTeardown();if(had&&history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
 function hiitLogDone(){
-  wakeOff();ivClear();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;
+  if(!INTV)return;   // double-tap guard
+  wakeOff();ivClear();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;tapShield(400);
   if(history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
   finishSession();
 }
 // Ruck / grip / boxing finish into their own records too.
 function hiitLogAct(k,mins,rounds,workSecs){
-  wakeOff();ivClear();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;
+  if(!INTV)return;   // double-tap guard
+  wakeOff();ivClear();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;tapShield(400);
   if(history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
   logAct(k,mins,k==='grip'?{secs:workSecs||0,rounds:rounds||0}:{rounds:rounds||0});
   render();
 }
 // Skipping finishes into its own record, not the program's session counter.
 function hiitLogSkip(mins,rounds){
-  wakeOff();ivClear();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;
+  if(!INTV)return;   // double-tap guard
+  wakeOff();ivClear();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;tapShield(400);
   if(history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
   logSkip(mins,rounds);render();
 }
@@ -3287,6 +3371,9 @@ function loadCoachVoices(){
     loadCoachVoices._t=setTimeout(()=>{
       try{
         if(typeof OB_EDIT!=='undefined'&&OB_EDIT)return;
+        // typing in an API-key/reminder field? repainting would wipe it and drop focus
+        const ae=document.activeElement;
+        if(ae&&/^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName))return;
         if($('#v-guide')&&$('#v-guide').classList.contains('active'))renderGuide();
       }catch(e){}
     },600);
@@ -4416,7 +4503,7 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet){
     if(remain<=3&&remain>0)beep(900,.13,0.7);
     if(remain<=0){
       beepGo();haptic(30);clearInterval(timer.iv);
-      if(isHold&&restAfter>0){toast('Hold done! Resting '+restAfter+'s');if(!motivate('done'))coachSpeak('Time. Now rest.');setTimeout(()=>{if($('#scrim').classList.contains('open'))runTimer('rest',restAfter,label+' — rest',0,null,true);},700);if(onDone)onDone();return;}
+      if(isHold&&restAfter>0){toast('Hold done! Resting '+restAfter+'s');if(!motivate('done'))coachSpeak('Time. Now rest.');(g=>setTimeout(()=>{if(g===_sheetGen&&$('#scrim').classList.contains('open'))runTimer('rest',restAfter,label+' — rest',0,null,true);},700))(_sheetGen);if(onDone)onDone();return;}
       if(onDone)onDone();
       if(!motivate('done'))coachSpeak(isHold?'Time. Strong hold.':'Rest over. Back to work.');
       $('#tnum')&&($('#tnum').textContent='Done');
@@ -4492,9 +4579,9 @@ function runRepCadence(reps,label,restAfter,onDone){
     paint();
     if(n>=total){
       stopTimer();
-      const tok=++_repTok,rest=restAfter,done=onDone,lbl=label;
+      const tok=++_repTok,rest=restAfter,done=onDone,lbl=label,gen=_sheetGen;
       setTimeout(()=>{
-        if(tok!==_repTok)return;               // cancelled or superseded
+        if(tok!==_repTok||gen!==_sheetGen)return;   // cancelled, superseded, or the sheet world changed
         if(!motivate('done'))coachSpeak('Set complete. Strong work.');
         if(done)done();
         if(rest>0)runTimer('rest',rest,lbl+' — rest',0,null);
@@ -4775,7 +4862,7 @@ function renderProgress(){
   h+=strengthTrendHTML();
   h+=sessionHistoryHTML();
   // PRs
-  h+=`<div class="section-label">Personal bests</div>`;
+  h+=`<div class="section-label">Personal bests · best prescribed &amp; completed</div>`;
   const prKeys=Object.keys(STATE.prs);
   if(prKeys.length){
     h+=`<div class="card pad">${prKeys.map(k=>{const ex=EX[k];if(!ex)return'';return `<div class="kv"><span>${ex.name}</span><b>${ex.unit==='time'?fmtTime(STATE.prs[k]):STATE.prs[k]+' reps'}</b></div>`;}).join('')}</div>`;
@@ -4989,7 +5076,22 @@ function checkAchievements(){
   if(fresh.length){save();if(typeof dayflowActive!=='function'||!dayflowActive())celebrateAchievements(fresh);}
   return fresh;
 }
+/* Celebrations QUEUE behind whatever sheet is open instead of replacing it.
+   checkAchievements fires on deferred timers (300ms after the baseline results
+   open, 650ms after logging a session), and openSheet swaps the sheet's
+   innerHTML — so the pop-up was destroying the very screen that earned it:
+   every new athlete's Core Score results vanished a third of a second in. */
+let _celebQ=[];
+function flushCelebrations(){
+  if(!_celebQ.length)return;
+  if($('#scrim').classList.contains('open'))return;   // wait for the current sheet to close
+  const list=_celebQ;_celebQ=[];_celebrateNow(list);
+}
 function celebrateAchievements(list){
+  if($('#scrim').classList.contains('open')){_celebQ.push(...list);return;}
+  _celebrateNow(list);
+}
+function _celebrateNow(list){
   const a=list[0];
   openSheet(`
     <div class="center" style="padding:10px 0 4px">
@@ -5031,6 +5133,11 @@ function daysSinceTrained(){
   const set=trainedDaysSet();if(!set.size)return null;
   const t=new Date();
   for(let i=0;i<90;i++){const d=new Date(t);d.setDate(d.getDate()-i);if(set.has(localISO(d)))return i;}
+  // beyond the 90-day scan, compute exactly — returning null here meant a
+  // 157-day layoff got NO welcome-back easing while a 30-day one did
+  {const last=[...set].sort().pop();
+   const days=Math.round((new Date(todayISO())-new Date(last))/86400000);
+   if(days>0)return days;}
   return null;
 }
 function lastTrainedISO(){const s=[...trainedDaysSet()].sort();return s.length?s[s.length-1]:null;}
@@ -5672,7 +5779,10 @@ function manualBarcode(){
 }
 async function lookupBarcode(code){
   toast('Looking up '+code+'…');
-  try{const f=await offBarcode(code);openQuickAdd({name:f.n+(f.s?' ('+f.s+')':''),kcal:f.k,p:f.p,c:f.c,f:f.f});
+  const gen=_sheetGen;   // the sheet state this lookup belongs to
+  try{const f=await offBarcode(code);
+    if(gen!==_sheetGen){toast('Found: '+f.n+' — tap ➕ to log it',5000);return;}   // user moved on; never replace their sheet
+    openQuickAdd({name:f.n+(f.s?' ('+f.s+')':''),kcal:f.k,p:f.p,c:f.c,f:f.f});
     toast('Found: '+f.n,4000);
   }catch(e){toast('Barcode lookup failed — '+String(e.message||e).slice(0,70),5000);}
 }
@@ -5712,6 +5822,7 @@ async function startScan(){
     _bcTimer=setInterval(async()=>{
       try{
         const codes=await det.detect(v);
+        if(dead())return;   // a tick was in flight when the user cancelled — it must not close their new sheet
         if(codes&&codes.length){const val=codes[0].rawValue;stopScan();closeSheet();lookupBarcode(val);}
       }catch(e){}
     },400);
@@ -5831,7 +5942,12 @@ function foodPhoto(){
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.setAttribute('capture','environment');
   inp.onchange=()=>{const f=inp.files&&inp.files[0];if(!f)return;const rd=new FileReader();
     rd.onerror=()=>{toast('Could not read image — add it manually');openQuickAdd();};
-    rd.onload=async()=>{toast('Estimating…');try{const du=await _downscale(rd.result,768);const est=await estimateFoodFromImage(du);openQuickAdd(est);toast('📷 '+(est.name||'Food')+' · ~'+est.kcal+' kcal, '+est.p+'g — tap Save to log',5000);}catch(e){const msg=String((e&&e.message)||e||'failed');toast('Photo estimate failed — '+msg.slice(0,120)+' · adding manually',6000);openQuickAdd();}};
+    rd.onload=async()=>{toast('Estimating…');const gen=_sheetGen;   // Gemini can take several seconds — never clobber a sheet opened meanwhile
+      try{const du=await _downscale(rd.result,768);const est=await estimateFoodFromImage(du);
+        if(gen!==_sheetGen){toast('📷 Estimated '+(est.name||'food')+' · ~'+est.kcal+' kcal — tap ➕ to log it',6000);return;}
+        openQuickAdd(est);toast('📷 '+(est.name||'Food')+' · ~'+est.kcal+' kcal, '+est.p+'g — tap Save to log',5000);
+      }catch(e){const msg=String((e&&e.message)||e||'failed');toast('Photo estimate failed — '+msg.slice(0,120),6000);
+        if(gen===_sheetGen)openQuickAdd();}};
     rd.readAsDataURL(f);};
   inp.click();
 }
@@ -6018,7 +6134,8 @@ function isTrainingDay(){const days=STATE.profile.days||[];return days.includes(
 function toggleReminders(){
   if(STATE.settings.reminderOn){STATE.settings.reminderOn=false;save();renderGuide();return;}
   if('Notification'in window&&Notification.permission!=='granted'){
-    Notification.requestPermission().then(p=>{STATE.settings.reminderOn=(p==='granted');save();renderGuide();
+    Notification.requestPermission().then(p=>{STATE.settings.reminderOn=(p==='granted');save();
+      const ae=document.activeElement;if(!(ae&&/^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)))renderGuide();
       if(p==='granted')toast('Reminders on');else toast('Allow notifications to get reminders');});
   }else{STATE.settings.reminderOn=true;save();toast('Reminders on');renderGuide();}
 }
@@ -6080,8 +6197,11 @@ function checkReminder(){
   fireReminderNotif();toast('⏰ Time to train — keep your streak!');
 }
 function computeStreak(){
-  const dates=[...new Set(Object.values(STATE.logs).filter(l=>l.done&&l.completedAt).map(l=>l.completedAt))].sort();
+  const dates=[...new Set(Object.values(STATE.logs).filter(l=>l&&l.done&&l.completedAt).map(l=>l.completedAt))].sort();
   if(!dates.length)return 0;
+  // a streak is CURRENT by definition: if the last session is more than the
+  // allowed gap behind today, it's over — it used to read "5" months later
+  if((new Date(todayISO())-new Date(dates[dates.length-1]))/86400000>3)return 0;
   // streak = consecutive distinct training days ending at the most recent, allowing 1 rest day gap
   let streak=1;
   for(let i=dates.length-1;i>0;i--){
@@ -6092,14 +6212,17 @@ function computeStreak(){
 }
 function totalTUT(){
   let mins=0;
-  Object.keys(STATE.logs).forEach(p=>{const l=STATE.logs[p];if(l.done){const s=buildSession(+p);mins+=sessionVolume(s).minutes;}});
+  Object.keys(STATE.logs).forEach(p=>{const l=STATE.logs[p];if(!l||!l.done)return;
+    const items=logItemsFor(p,l);const tempo=(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3;
+    let sec=0;items.forEach(m=>{sec+=m.sets*(m.unit==='time'?m.target:m.target*tempo)+m.sets*(m.rest||45);});
+    mins+=Math.round(sec/60);});
   return mins;
 }
 /* ---- richer progress metrics ---- */
 function localISO(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function weekStartD(d){const x=new Date(d);const day=(x.getDay()+6)%7;x.setHours(0,0,0,0);x.setDate(x.getDate()-day);return x;}
 function sessionsThisWeek(){const s=weekStartD(new Date());return Object.values(STATE.logs).filter(l=>l.done&&l.completedAt&&new Date(l.completedAt+'T00:00:00')>=s).length;}
-function totalVolume(){let reps=0,hold=0,sets=0;Object.keys(STATE.logs).forEach(p=>{const l=STATE.logs[p];if(!l.done)return;const s=buildSession(+p);[...s.main,s.finisher].forEach(m=>{const e=l.ex&&l.ex[m.exId];const sd=e&&e.sets?e.sets.filter(Boolean).length:0;sets+=sd;if(m.unit==='time')hold+=sd*m.target;else reps+=sd*m.target;});});return {reps,hold,sets};}
+function totalVolume(){let reps=0,hold=0,sets=0;Object.keys(STATE.logs).forEach(p=>{const l=STATE.logs[p];if(!l||!l.done)return;logItemsFor(p,l).forEach(m=>{const e=l.ex&&l.ex[m.exId];const sd=e&&e.sets?e.sets.filter(Boolean).length:0;sets+=sd;if(m.unit==='time')hold+=sd*m.target;else reps+=sd*m.target;});});return {reps,hold,sets};}
 function estCalories(){const kg=(STATE.nutrition&&STATE.nutrition.weightKg)||75;return Math.round(6*3.5*kg/200*totalTUT());}
 function loadIndexPct(){const a=(typeof STATE.adapt==='number')?STATE.adapt:1;return Math.round((a-1)*100);}
 function trainedDaysSet(){return new Set(Object.values(STATE.logs).filter(l=>l.done&&l.completedAt).map(l=>l.completedAt));}
@@ -6110,7 +6233,8 @@ function heatmapHTML(){
   return `<div class="hmgrid">${cells}</div>`;
 }
 function waistGoalHTML(){
-  const p=STATE.profile;const ms=(STATE.measurements||[]).filter(m=>m.waist>0);
+  const p=STATE.profile;const ms=(STATE.measurements||[]).filter(m=>m.waist>0)
+    .sort((a,b)=>String(a.date).localeCompare(String(b.date)));   // same "now" as the tile, always
   const now=ms.length?ms[ms.length-1].waist:p.startWaist;
   const start=p.startWaist||(ms.length?ms[0].waist:null);
   if(!(start>0)||!(p.goalWaist>0)||start<=p.goalWaist||!(now>0))return '';
@@ -6330,9 +6454,15 @@ function proteinTargetG(){const kg=latestWeightKg();if(!kg)return null;
   return Math.round(kg*perKg/5)*5;}
 function waterTargetCups(){const kg=latestWeightKg();if(!kg)return 8;return clamp(Math.round(kg*35/240),6,16);} // ~35 ml/kg, 240 ml/cup
 function nutritionStreak(){
-  const n=nut();const dates=Object.keys(n.days).sort();let streak=0;
-  for(let i=dates.length-1;i>=0;i--){const day=n.days[dates[i]];const hit=Object.values(day.habits||{}).filter(Boolean).length;
-    if(hit>=4)streak++;else break;}
+  const n=nut();const dates=Object.keys(n.days).sort();let streak=0;let prev=null;
+  for(let i=dates.length-1;i>=0;i--){
+    const day=n.days[dates[i]];const hit=Object.values((day&&day.habits)||{}).filter(Boolean).length;
+    // rendering Fuel auto-creates an empty row for today — an unfinished today
+    // pauses the streak, it doesn't break yesterday's
+    if(hit<4){if(dates[i]===todayISO()&&i===dates.length-1)continue;break;}
+    if(prev&&(new Date(prev)-new Date(dates[i]))/86400000>1)break;   // days must be consecutive
+    streak++;prev=dates[i];
+  }
   return streak;
 }
 /* ===== MEAL PLANS + RECIPES =====
@@ -6586,6 +6716,9 @@ function saveTDEE(){
   if(!(sex&&age>0&&ht>0&&wt>0)){toast('Fill in all fields');return;}
   if(imp){ht=ht*2.54;wt=wt*0.453592;}
   n.sex=sex;n.age=age;n.heightCm=Math.round(ht);n.weightKg=Math.round(wt*10)/10;n.activity=parseFloat($('#td-act').value)||1.45;
+  // mirror to the profile copy — the quiz prefills from profile.*, so writing
+  // only the nutrition side meant one tap of Next reverted these answers
+  STATE.profile.sex=sex;STATE.profile.age=age;STATE.profile.heightCm=n.heightCm;STATE.profile.activity=n.activity;
   recalcKcalFromStored();
   // also record the weight into measurements so waist/weight tracking stays in sync
   const today=todayISO();const disp=r1(wt);    // wt is already kg here — store canonical
@@ -6737,9 +6870,15 @@ function homeSummaryHTML(){
   </div>`;
 }
 /* Roll up what was actually logged for a completed session. */
+// The frozen prescription for a logged session; legacy logs (no snapshot) fall
+// back to rebuilding — imperfect for them, but new logs never drift again.
+function logItemsFor(p,l){
+  if(l&&Array.isArray(l.items)&&l.items.length)return l.items;
+  const s=buildSession(+p);return [...s.main,s.finisher].filter(Boolean);
+}
 function sessionStats(p){
   const l=STATE.logs[p]||{ex:{}};const sess=buildSession(p);
-  const items=[...sess.main,sess.finisher];
+  const items=logItemsFor(p,l);
   const tempo=(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3;
   let exDone=0,setsDone=0,setsRx=0,totalReps=0,totalHold=0,estSec=0;
   items.forEach(m=>{
@@ -7124,6 +7263,22 @@ function normalizeState(){
   if(!STATE.nutrition.meals)STATE.nutrition.meals=3;
   if(!Array.isArray(STATE.measurements))STATE.measurements=[];
   dedupeMeasurements();   // collapse same-date duplicates left by pre-v156 appends
+  /* Entry-level scrubbing. The container guards above stop {} vs [] damage, but
+     a single null ENTRY inside logs killed both the Today and Progress tabs
+     (six readers dereference .done blind), a non-array weekFeel value killed
+     Today from week 2, and a photo without date/pose killed Progress. Imports
+     are not schema-checked, so scrub here — the one gate everything passes. */
+  try{
+    const L=STATE.logs;for(const k in L){if(!L[k]||typeof L[k]!=='object')delete L[k];else if(!L[k].ex||typeof L[k].ex!=='object')L[k].ex={};}
+    const W=STATE.weekFeel;for(const k in W){if(!Array.isArray(W[k]))W[k]=[];}
+    if(Array.isArray(STATE.photos))STATE.photos=STATE.photos.filter(ph=>ph&&ph.id&&typeof ph.date==='string');
+    const D=(STATE.nutrition&&STATE.nutrition.days)||{};for(const k in D){if(!D[k]||typeof D[k]!=='object')D[k]={water:0,habits:{}};}
+    ['skipLog','ruckLog','gripLog','boxLog'].forEach(kk=>{
+      if(Array.isArray(STATE[kk]))STATE[kk]=STATE[kk].filter(x=>x&&typeof x==='object')
+        .map(x=>({...x,mins:+x.mins||0}));   // string mins concatenated: "0105 MIN ALL TIME"
+    });
+    if(Array.isArray(STATE.scoreHistory))STATE.scoreHistory=STATE.scoreHistory.filter(x=>x&&typeof x==='object');
+  }catch(e){}
   // containers that get indexed without a guard — a null here white-screened the app
   if(!STATE.reassess||typeof STATE.reassess!=='object')STATE.reassess={};
   if(!STATE.weekFeel||typeof STATE.weekFeel!=='object')STATE.weekFeel={};
@@ -7169,16 +7324,21 @@ function normalizeState(){
      plank quietly dropped out of the program. The option is labelled
      "Bench / chair", which everyone has, so add it once. Untick it in Settings
      if you genuinely have neither. */
-  /* A start waist at or below the goal is impossible for someone still working
-     toward it — earlier builds could write the goal value into startWaist, which
-     then displayed as the athlete's waist and made the goal bar vanish. Re-seed
-     it from the earliest real measurement. */
-  {const P0=STATE.profile,ms0=(STATE.measurements||[]).filter(m=>m.waist>0)
-     .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
-   if(P0.goalWaist>0&&P0.startWaist>0&&P0.startWaist<=P0.goalWaist){
-     P0.startWaist=ms0.length?ms0[0].waist:0;
-     if(!(P0.startWaist>0))P0.startWaist=null;
-   }}
+  /* Repair a baseline that an earlier build contaminated with the GOAL value.
+     Deliberately narrow, and one-shot: it only fires when startWaist equals the
+     goal AND the measurement history proves the athlete is actually above it —
+     evidence of the leak, not of a recomp athlete whose goal legitimately sits
+     at or above their start. The old version ran every boot, nulled the
+     baseline when history was empty, and re-ran on mixed-unit legacy values. */
+  if(!STATE.profile._startWaistFix){
+    const P0=STATE.profile,ms0=(STATE.measurements||[]).filter(m=>m.waist>0)
+      .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+    if(P0.goalWaist>0&&P0.startWaist>0&&P0.startWaist<=P0.goalWaist
+       &&ms0.length&&ms0[0].waist>P0.goalWaist){
+      P0.startWaist=ms0[0].waist;
+    }
+    STATE.profile._startWaistFix=true;
+  }
   if(!STATE.profile._benchKit){STATE.profile.gear=[...new Set([...(STATE.profile.gear||[]),'bench'])];STATE.profile._benchKit=true;}
   if(seeding&&!STATE.profile._days7){STATE.profile.days=[0,1,2,3,4,5,6];}
   if(!STATE.profile._days7)STATE.profile._days7=true;
@@ -7201,27 +7361,36 @@ function normalizeState(){
   if(!STATE.profile._unitFix){
     /* Only an imperial athlete could ever have written in/lb rows — a metric
        athlete's history is already cm/kg, and touching it would wreck a genuine
-       sub-60 cm waist. */
+       sub-60 cm waist. Waist is separable by range, so it repairs once here. */
     if(STATE.profile.unit==='in'){
-      const anchor=(STATE.nutrition&&STATE.nutrition.weightKg)||0;
       const looksInches=v=>v>0&&v<60;          // adult waist: 24-60 in vs 61-152 cm
       (STATE.measurements||[]).forEach(m=>{
         if(looksInches(m.waist))m.waist=Math.round(m.waist*2.54);
-        if(m.weight>0){
-          // with an anchor, pick whichever reading sits closer to it; without one,
-          // an imperial athlete's logged weight was pounds by definition
-          // Only convert when nutrition.weightKg gives us something to compare against.
-          // Without an anchor there is no way to tell 86 kg from 86 lb — and every real
-          // adult kg weight is also >=45, so a threshold guess corrupts good data.
-          // Leaving a row alone is recoverable; halving it silently is not.
-          if(anchor>0&&Math.abs(m.weight*0.453592-anchor)<Math.abs(m.weight-anchor))
-            m.weight=Math.round(m.weight*0.453592*10)/10;
-        }
       });
       if(looksInches(STATE.profile.startWaist))STATE.profile.startWaist=Math.round(STATE.profile.startWaist*2.54);
       if(looksInches(STATE.profile.goalWaist))STATE.profile.goalWaist=Math.round(STATE.profile.goalWaist*2.54);
     }
     STATE.profile._unitFix=true;
+  }
+  /* Weight has no safe range test (86 kg and 86 lb are both real people), so it
+     can only be repaired against an anchor — nutrition.weightKg, which every
+     writer stored correctly. First-era backups have NO anchor, and the old
+     one-shot flag then gave up FOREVER: a 190 lb row stayed "190 kg", the chart
+     read "Now 414.5 lb" and protein hit 340 g. Now the weight repair simply
+     WAITS: it retries on every boot until an anchor exists (the athlete opens
+     the TDEE calculator or logs a weight), then converts by nearest-match and
+     seals its own flag. */
+  if(!STATE.profile._unitFixW&&STATE.profile.unit==='in'){
+    const anchor=(STATE.nutrition&&STATE.nutrition.weightKg)||0;
+    if(anchor>0){
+      (STATE.measurements||[]).forEach(m=>{
+        if(m.weight>0&&Math.abs(m.weight*0.453592-anchor)<Math.abs(m.weight-anchor))
+          m.weight=Math.round(m.weight*0.453592*10)/10;
+      });
+      STATE.profile._unitFixW=true;
+    }
+  } else if(!STATE.profile._unitFixW&&STATE.profile.unit!=='in'){
+    STATE.profile._unitFixW=true;   // metric history is already kg — nothing to repair
   }
   if(!Array.isArray(STATE.photos))STATE.photos=[];
   if(!STATE.achievements||typeof STATE.achievements!=='object')STATE.achievements={};
