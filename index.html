@@ -1189,7 +1189,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='158';
+const APP_VERSION='159';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -6914,6 +6914,13 @@ function normalizeState(){
   if(!STATE.profile._gearMil)STATE.profile._gearMil=true;
   if(seeding&&!STATE.profile._gearDb){STATE.profile.gear=[...new Set([...(STATE.profile.gear||[]),'dumbbell'])];}
   if(!STATE.profile._gearDb)STATE.profile._gearDb=true;
+  /* The kit seed never listed 'bench', and hasBench used to be undefined — which
+     read as "not false", so bench moves were allowed anyway. Once gear[] and
+     hasBench were brought into sync, that accident stopped and the Copenhagen
+     plank quietly dropped out of the program. The option is labelled
+     "Bench / chair", which everyone has, so add it once. Untick it in Settings
+     if you genuinely have neither. */
+  if(!STATE.profile._benchKit){STATE.profile.gear=[...new Set([...(STATE.profile.gear||[]),'bench'])];STATE.profile._benchKit=true;}
   if(seeding&&!STATE.profile._days7){STATE.profile.days=[0,1,2,3,4,5,6];}
   if(!STATE.profile._days7)STATE.profile._days7=true;
   if(seeding&&!STATE.profile._goalXform){if(!(STATE.profile.goalWeightLb>0))STATE.profile.goalWeightLb=175;if(!(STATE.profile.goalBodyFat>0))STATE.profile.goalBodyFat=12;}
