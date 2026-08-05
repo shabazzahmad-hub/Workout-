@@ -1095,7 +1095,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='145';
+const APP_VERSION='146';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -4214,6 +4214,14 @@ function waistDrop(){const ms=(STATE.measurements||[]).filter(m=>m.waist>0);if(m
 function scoreGain(){const s=STATE.scoreHistory||[];if(s.length<1)return 0;return s[s.length-1].score-s[0].score;}
 function sessionsDoneCount(){return Object.values(STATE.logs||{}).filter(l=>l.done).length;}
 function bestHabitDay(){let m=0;const d=(STATE.nutrition&&STATE.nutrition.days)||{};Object.values(d).forEach(x=>{const c=Object.values(x.habits||{}).filter(Boolean).length;if(c>m)m=c;});return m;}
+/* Rope milestones for the badge checks (log lives in STATE.skipLog). */
+function skipTotalMins(){return skipLog().reduce((a,x)=>a+(x.mins||0),0);}
+function skipSessionCount(){return skipLog().length;}
+function bestSkipSession(){return skipLog().reduce((m,x)=>Math.max(m,x.mins||0),0);}
+function _weekKeyOf(iso){const d=new Date(String(iso)+'T00:00:00');if(isNaN(d))return String(iso);
+  const s=new Date(d.getFullYear(),0,1);return d.getFullYear()+'-W'+Math.floor(((d-s)/86400000+s.getDay())/7);}
+function bestSkipWeek(){const by={};skipLog().forEach(x=>{const k=_weekKeyOf(x.date);by[k]=(by[k]||0)+(x.mins||0);});
+  return Object.keys(by).reduce((m,k)=>Math.max(m,by[k]),0);}
 const ACHIEVEMENTS=[
   {id:'first',emoji:'🎬',name:'First Rep',desc:'Complete your first workout',check:()=>sessionsDoneCount()>=1},
   {id:'baseline',emoji:'📋',name:'Know Your Numbers',desc:'Finish the baseline assessment',check:()=>!!STATE.baseline},
@@ -4233,6 +4241,14 @@ const ACHIEVEMENTS=[
   {id:'photo',emoji:'📸',name:'Picture Proof',desc:'Add your first progress photo',check:()=>(STATE.photos||[]).length>=1},
   {id:'hydrate',emoji:'💧',name:'Hydrated',desc:'Hit your water goal in a day',check:()=>{const d=(STATE.nutrition&&STATE.nutrition.days)||{};return Object.values(d).some(x=>(x.water||0)>=waterTargetCups());}},
   {id:'perfectday',emoji:'🥇',name:'Perfect Day',desc:'All 5 daily habits in one day',check:()=>bestHabitDay()>=5},
+  /* — Skipping (jump rope) — */
+  {id:'skip1',emoji:'🪢',name:'Rope Started',desc:'Log your first skipping session',check:()=>skipSessionCount()>=1},
+  {id:'skipblock',emoji:'⏱️',name:'Full Block',desc:'27+ minutes of skipping in one session',check:()=>bestSkipSession()>=27},
+  {id:'skip10',emoji:'🎽',name:'Rope Regular',desc:'10 skipping sessions logged',check:()=>skipSessionCount()>=10},
+  {id:'skipweek',emoji:'📅',name:'Rope Week',desc:'90+ minutes of skipping in one week',check:()=>bestSkipWeek()>=90},
+  {id:'skip100',emoji:'💯',name:'Century Rope',desc:'100 total minutes skipped',check:()=>skipTotalMins()>=100},
+  {id:'skip500',emoji:'🥊',name:'Rope Veteran',desc:'500 total minutes skipped',check:()=>skipTotalMins()>=500},
+  {id:'skip1000',emoji:'🐉',name:'Thousand-Minute Club',desc:'1000 total minutes skipped',check:()=>skipTotalMins()>=1000},
 ];
 function checkAchievements(){
   if(!STATE.achievements)STATE.achievements={};
