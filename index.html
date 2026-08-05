@@ -1100,7 +1100,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='150';
+const APP_VERSION='151';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1302,11 +1302,56 @@ function gearSwap(exId,ladder){
   const cand=Object.keys(EX).find(k=>k!=='bike'&&k!=='sprint'&&EX[k].region===e.region&&EX[k].unit===e.unit&&hasGearFor(k));
   return cand||exId;
 }
+/* ---- Persistent exercise swaps -------------------------------------------
+   A swap the athlete picks (from Today or mid-workout) is stored against that
+   session pointer + slot, so it survives re-renders, leaving the player and
+   reopening the app. Old pointers are pruned so this can't grow forever. ---- */
+function sessionSwaps(ptr){return (STATE.swaps&&STATE.swaps[ptr])||null;}
+function setSwap(ptr,key,exId){
+  if(!STATE.swaps)STATE.swaps={};
+  if(!STATE.swaps[ptr])STATE.swaps[ptr]={};
+  STATE.swaps[ptr][key]=exId;
+  const ks=Object.keys(STATE.swaps);
+  if(ks.length>12)ks.map(Number).sort((a,b)=>a-b).slice(0,ks.length-12).forEach(k=>delete STATE.swaps[k]);
+  save();
+}
+function clearSwap(ptr,key){
+  if(STATE.swaps&&STATE.swaps[ptr]){delete STATE.swaps[ptr][key];
+    if(!Object.keys(STATE.swaps[ptr]).length)delete STATE.swaps[ptr];save();}
+}
+// Today-screen swap sheet for one slot of today's session.
+function openSwapSheet(exId){
+  const ptr=STATE.progressPtr;const sess=buildSession(ptr);
+  const m=[...sess.main,sess.finisher].find(x=>x.exId===exId);
+  if(!m){toast('Not in today\'s session');return;}
+  const key=m.slot===sess.session.finisher&&m===sess.finisher?'__fin':(m.slot||'__fin');
+  const opts=swapOptions(m);
+  if(!opts.length){toast('No alternatives for this move');return;}
+  const sw=sessionSwaps(ptr);const swapped=!!(sw&&sw[key]);
+  openSheet(`<h3>⇄ Swap exercise</h3>
+    <p class="muted sm" style="margin:2px 0 12px">Replacing <b>${_ve(EX[exId].name)}</b> for today. Your program and progress are unaffected.</p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${opts.map(o=>`<button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="doSwap('${exId}','${key}','${o.exId}')">
+        <b style="font-size:15px">${_ve(EX[o.exId].name)}</b>
+        <div class="tiny muted" style="margin-top:3px;font-weight:600">${o.label} · ${EX[o.exId].region}</div></button>`).join('')}
+    </div>
+    ${swapped?`<div style="height:10px"></div><button class="btn ghost" onclick="undoSwap('${key}')">↩ Restore the original move</button>`:''}
+    <div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Cancel</button>`);
+}
+function doSwap(fromId,key,toId){
+  setSwap(STATE.progressPtr,key,toId);
+  // carry any logged sets across so a mid-session swap doesn't lose progress
+  const log=STATE.logs[STATE.progressPtr];
+  if(log&&log.ex&&log.ex[fromId]&&!log.ex[toId]){log.ex[toId]=log.ex[fromId];delete log.ex[fromId];save();}
+  closeSheet();toast('Swapped to '+EX[toId].name);render();
+}
+function undoSwap(key){clearSwap(STATE.progressPtr,key);closeSheet();toast('Original move restored');render();}
 // Build the full session object for a given pointer
 function buildSession(ptr){
   const pos=posOf(ptr);
   const cycle=pos.cycle,week=pos.week,level=levelOf(cycle);
   const hasBar=STATE.profile.hasBar!==false; // default true; toggle in settings
+  const sw=sessionSwaps(ptr);   // athlete's explicit swaps for this session
   const main=pos.session.slots.map(ladder=>{
     let idx=rungIndex(ladder,cycle,week,level);
     let exId=LADDERS[ladder][idx];
@@ -1319,15 +1364,18 @@ function buildSession(ptr){
     }
     exId=gearSwap(exId,ladder);   // equipment-aware: only moves they can actually do
     exId=safeSwap(exId);          // injury-aware: work around flagged joints
+    if(sw&&sw[ladder]&&EX[sw[ladder]])exId=sw[ladder];   // explicit choice wins
     return {exId,...prescribe(exId,pos),slot:ladder};
   });
   const finLad=LADDERS[pos.session.finisher];
   const finId=safeSwap(gearSwap(finLad[clamp(rungIndex(pos.session.finisher,cycle,week,level),0,finLad.length-1)],pos.session.finisher));
-  const finisher={exId:finId,...prescribe(finId,pos),slot:pos.session.finisher};
+  const finEx=(sw&&sw.__fin&&EX[sw.__fin])?sw.__fin:finId;
+  const finisher={exId:finEx,...prescribe(finEx,pos),slot:pos.session.finisher};
   finisher.sets=1;   // a finisher is always one all-out burnout round
   // targeted bonus: one extra move for the athlete's priority area (from the quiz)
   const used=new Set([...main.map(m=>m.exId),finId]);
-  const bonus=focusBonus(pos,used);
+  let bonus=focusBonus(pos,used);
+  if(sw&&sw.focus&&EX[sw.focus])bonus={exId:sw.focus,...prescribe(sw.focus,pos),slot:'focus',focus:true};
   if(bonus)main.push(bonus);
   return {ptr,pos,cycle,week,session:pos.session,warmup:WARMUP,main,finisher,cooldown:COOLDOWN};
 }
@@ -1805,6 +1853,7 @@ function exCardHTML(m,log,idx){
       ${m.unit==='time'
         ? `<button data-act="timer" class="timer">▶ Hold timer</button>`
         : `<button data-act="reps" class="timer">▶ Guided reps</button><button data-act="rest" class="timer">⏱ Rest</button>`}
+      <button data-act="swap" class="timer">⇄ Swap</button>
       <button data-act="info" class="info">ⓘ How-to</button>
     </div>
   </div>`;
@@ -1821,6 +1870,7 @@ function wireToday(){
         else if(act==='reps')startGuidedReps(exId);
         else if(act==='rest')openExerciseTimer(exId);
         else if(act==='info')openExerciseInfo(exId);
+        else if(act==='swap')openSwapSheet(exId);
       };
     });
   });
@@ -1953,6 +2003,11 @@ function playerSwapMenu(){
 function playerSwap(exId){
   if(!PLAYER)return;const nEx=EX[exId];if(!nEx)return;
   const m=plCur();const rx=prescribe(exId,PLAYER.sess.pos);
+  // persist it for the day's program session so it survives leaving the player
+  if(PLAYER.sess&&PLAYER.sess.ptr===STATE.progressPtr&&m.slot){
+    const key=(m===PLAYER.sess.finisher)?'__fin':m.slot;
+    try{setSwap(STATE.progressPtr,key,exId);}catch(e){}
+  }
   m.exId=exId;m.unit=nEx.unit;m.target=rx.target;m.rest=nEx.rest||m.rest;
   toast('Swapped to '+nEx.name);
   plClear();plEnterReady(false);   // restart the current set with the new move
