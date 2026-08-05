@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v148';
+const CACHE = 'coreforge-v149';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './archivo.woff2', './icon-192-v2.png', './icon-512-v2.png', './hero.jpg', './coach-sarge.jpg',
   './ex-kneeplank.jpg','./ex-plank.jpg','./ex-longplank.jpg','./ex-planktap.jpg',
   './ex-tuckhollow.jpg','./ex-hollow.jpg','./ex-hollowrock.jpg','./ex-reverseplank.jpg',
@@ -20,7 +20,7 @@ const SHELL = ['./', './index.html', './manifest.webmanifest', './archivo.woff2'
   './ex-abroll.jpg','./ex-mbslam.jpg','./ex-mbtwist.jpg','./ex-mbsitup.jpg','./ex-kbswing.jpg','./ex-kbgoblet.jpg','./ex-kbcp.jpg','./ex-kbrow.jpg','./ex-kbrdl.jpg','./ex-kblunge.jpg','./ex-ropewave.jpg','./ex-ropeslam.jpg','./ex-dipknee.jpg',
   './ex-dbgoblet.jpg','./ex-dbrdl.jpg','./ex-dbrow.jpg','./ex-dbpress.jpg','./ex-dbfloor.jpg','./ex-dblunge.jpg','./ex-dbthruster.jpg','./ex-dbcurl.jpg','./ex-dbrenegade.jpg','./ex-dbtwist.jpg','./ex-kbcarry.jpg','./ex-asiansquat.jpg','./ex-bike.jpg','./ex-sprint.jpg','./ex-skip.jpg',
   './ex-standingoblique.jpg','./ex-squatjack.jpg','./ex-halfburpee.jpg','./ex-atomicpushup.jpg',
-  './ex-hanglegraise.jpg','./notif-hlr.jpg','./ex-lsit.jpg','./ex-windshield.jpg','./ex-wallsit.jpg','./ex-heeltouch.jpg',
+  './ex-hanglegraise.jpg','./notif-hlr.jpg','./ex-lsit.jpg','./ex-windshield.jpg','./ex-wallsit.jpg','./ex-heeltouch.jpg','./ex-dragonflag.jpg',
   './ex-kbhalo.jpg','./ex-kbheli.jpg',
   './phys-1.jpg','./phys-2.jpg','./phys-3.jpg','./phys-4.jpg','./phys-5.jpg',
   './ex-birddog.mp4','./ex-halfburpee.mp4','./ex-burpee.mp4','./ex-jumpsquat.mp4','./ex-nordic.mp4','./ex-atomicpushup.mp4','./ex-kbhalo.mp4','./ex-kbheli.mp4',

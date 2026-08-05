@@ -469,6 +469,11 @@ const EX = {
     steps:['Sit between two dip bars, parallettes, or press hands into the floor beside the hips.','Push down hard and lift the hips clear of the ground, shoulders down away from the ears.','Tuck the knees to start; extend the legs toward straight as you get stronger.','Hold for time with the legs squeezed and toes pointed.'],
     cues:['Push the floor/bars away — shoulders down','Squeeze the quads and point the toes','Chest tall, don\'t collapse forward'],
     mistakes:['Shrugging the shoulders up','Holding the breath','Letting the hips sink back to the floor']},
+  dragonflag:{name:'Bent-Knee Dragon Flag',region:'anterior',unit:'reps',img:'ex-dragonflag.jpg',anchor:null,hardness:1.7,base:6,rest:70,optional:true,equip:['bar'],
+    why:'Bruce Lee\'s signature core move and the toughest anti-extension exercise in calisthenics — the whole body becomes one rigid lever against gravity. Bending the knees shortens that lever so you can own the movement before going full straight-leg.',
+    steps:['Lie on your back on the mat and reach both arms overhead to grip a fixed anchor (the upright of your pull-up rig) behind your head.','Pull down hard with the lats so your shoulders and upper back stay pressed into the floor — they never leave it.','Brace and lift everything below the shoulder blades, hips pushed up so the body is one straight line from shoulders to knees, knees bent about 90°.','Lower under control without letting the hips sag, stopping before your back touches, then drive back up.'],
+    cues:['Shoulders stay glued to the floor','Squeeze the glutes — no sag at the waist','Lower slowly; the negative is the whole exercise'],
+    mistakes:['Piking at the hips into a candlestick','Letting the low back arch off the floor','Dropping fast instead of controlling the descent']},
   windshield:{name:'Windshield Wipers',region:'oblique',unit:'reps',img:'ex-windshield.jpg',anchor:null,hardness:1.4,base:10,rest:45,
     why:'The top-end rotational move your obliques were missing — controlling the legs side to side trains rotation and anti-rotation under a long lever like nothing else.',
     steps:['Lie on your back, arms out wide for anchor, legs raised toward vertical.','Brace the core and keep the legs fairly straight.','Lower both legs to one side under control, stopping short of the floor.','Sweep them back through center to the other side. That\'s one rep per side.'],
@@ -993,7 +998,7 @@ const EX = {
 ========================================================================== */
 const LADDERS = {
   plankL:     ['kneeplank','plank','longplank','planktap','isoclimber','reverseplank'],
-  hollowL:    ['tuckhollow','hollow','hollowrock','lsit'],
+  hollowL:    ['tuckhollow','hollow','hollowrock','lsit','dragonflag'],
   lowerL:     ['deadbug','revcrunch','legraise','kneeraise','hanglegraise'],
   dynL:       ['crunch','bicycle','tuckvup','vup'],
   sideL:      ['kneeside','sideplank','sidedip','copenhagen'],
@@ -1095,7 +1100,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='148';
+const APP_VERSION='149';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1242,7 +1247,7 @@ function prescribe(exId,pos){
    accessory drawn from the area the athlete most wants to improve (quiz:
    focusPrimary, falling back to their focus areas). Gear- and injury-filtered. */
 const FOCUS_POOL={
-  abs:['hollow','lsit','isoclimber','vup','tuckvup','legraise','hanglegraise','revcrunch','crunch','bicycle','kneeraise','abroll','mbsitup','flutter'],
+  abs:['hollow','lsit','dragonflag','isoclimber','vup','tuckvup','legraise','hanglegraise','revcrunch','crunch','bicycle','kneeraise','abroll','mbsitup','flutter'],
   obliques:['sideplank','sidedip','russiantwist','windshield','heeltouch','bicycle','copenhagen','standingoblique','mbtwist','kbhalo'],
   full:['burpee','squatthrust','mountainclimber','kbswing','dbthruster','halfburpee','squat','pushup'],
   chest:['pushup','inclinepushup','declinepushup','diamondpushup','archerpushup','closepushup','dbfloor'],
@@ -1284,6 +1289,7 @@ function buildSession(ptr){
     if(EX[exId].optional){
       if(exId==='kneeraise'&&!hasBar){exId='legraise';}
       if(exId==='hanglegraise'&&!hasBar){exId='vup';}
+      if(exId==='dragonflag'&&!hasBar){exId='hollowrock';}
       if(exId==='copenhagen'&&STATE.profile.hasBench===false){exId='sidedip';}
     }
     exId=safeSwap(exId);   // injury-aware: work around flagged joints
@@ -1882,12 +1888,32 @@ const SWAP_ALT={
   pushup:'kneepushup',reverselunge:'squat',
 };
 function ladderNeighbor(m,dir){const lad=LADDERS[m.slot];if(!lad)return null;const idx=lad.indexOf(m.exId);if(idx<0)return null;const ni=idx+dir;return (ni>=0&&ni<lad.length)?lad[ni]:null;}
+/* Swap options for any prescribed move. Ladder-based sessions get true
+   easier/harder rungs; everything else (weights, quick workouts, the targeted
+   focus bonus, bonus circuits) falls back to similar moves from the same region
+   so EVERY exercise can be swapped, not just the ladder ones. */
 function swapOptions(m){
-  const opts=[];const easier=ladderNeighbor(m,-1);const harder=ladderNeighbor(m,1);
-  if(easier)opts.push({kind:'easier',exId:easier,label:'⬇ Easier'});
-  if(harder)opts.push({kind:'harder',exId:harder,label:'⬆ Harder'});
-  const alt=SWAP_ALT[m.exId];
-  if(alt&&alt!==m.exId&&alt!==easier&&alt!==harder&&EX[alt])opts.push({kind:'alt',exId:alt,label:'↔ Gentler'});
+  const opts=[];const seen=new Set([m.exId]);
+  const push=(exId,label)=>{if(exId&&EX[exId]&&!seen.has(exId)){seen.add(exId);opts.push({exId,label});}};
+  const easier=ladderNeighbor(m,-1),harder=ladderNeighbor(m,1);
+  if(easier)push(easier,'⬇ Easier');
+  if(harder)push(harder,'⬆ Harder');
+  push(SWAP_ALT[m.exId],'↔ Gentler');
+  if(opts.length>=4)return opts.slice(0,4);
+  // Fallback: same region + same unit, limited to gear you own and joints you
+  // haven't flagged, ordered by how close the difficulty is to the current move.
+  const ex=EX[m.exId];if(!ex)return opts;
+  const gear=STATE.profile.gear||[];const lims=(STATE.profile&&STATE.profile.limitations)||[];
+  const risky=k=>lims.some(j=>(JOINT_RISK[j]||[]).includes(k));
+  const cands=Object.keys(EX).filter(k=>{
+    const e=EX[k];
+    if(seen.has(k)||k==='bike'||k==='sprint')return false;
+    if(e.region!==ex.region||e.unit!==ex.unit)return false;
+    if(e.equip&&!e.equip.every(g=>gear.includes(g)))return false;
+    if(e.optional&&e.equip&&e.equip.includes('bar')&&STATE.profile.hasBar===false)return false;
+    return !risky(k);
+  }).sort((a,b)=>Math.abs((EX[a].hardness||1)-(ex.hardness||1))-Math.abs((EX[b].hardness||1)-(ex.hardness||1)));
+  cands.slice(0,4-opts.length).forEach(k=>push(k,'↔ Similar'));
   return opts;
 }
 function playerSwapMenu(){
@@ -5191,16 +5217,16 @@ function calcOneRM(){
 const JOINTS=[['knee','Knee'],['shoulder','Shoulder'],['wrist','Wrist'],['lowback','Lower back'],['elbow','Elbow']];
 const JOINT_RISK={
   knee:['pistol','boxpistol','jumpsquat','tuckjump','broadjump','splitjump','bulgarian','burpee','burpeetuck','walkinglunge'],
-  shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','dbpress','kbcp','dbthruster','hanglegraise','lsit'],
+  shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','dbpress','kbcp','dbthruster','hanglegraise','lsit','dragonflag'],
   wrist:['pushup','diamondpushup','closepushup','archerpushup','spidermanpushup','planktap','mountainclimber','dbrenegade','abroll','lsit','isoclimber'],
-  lowback:['superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','mbslam','ropeslam','windshield'],
+  lowback:['superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','mbslam','ropeslam','windshield','dragonflag'],
   elbow:['dips','benchdip','diamondpushup','closepushup','chinup','negpullup','dbcurl'],
 };
 const SAFE_SWAP={
   pistol:'squat',boxpistol:'squat',jumpsquat:'squat',tuckjump:'squat',broadjump:'squat',splitjump:'reverselunge',bulgarian:'splitsquat',burpee:'squatthrust',burpeetuck:'squatthrust',walkinglunge:'reverselunge',
   hspushup:'pikepushup',wallhandstand:'plank',pikepushup:'inclinepushup',elevatedpike:'pikepushup',superpushup:'pushup',archerpushup:'pushup',dbpress:'dbfloor',kbcp:'kbrow',dbthruster:'dbgoblet',
   pushup:'kneepushup',diamondpushup:'kneepushup',closepushup:'kneepushup',spidermanpushup:'kneepushup',planktap:'plank',mountainclimber:'march',dbrenegade:'dbrow',abroll:'plank',
-  superman:'birddog',reverseplank:'glutebridge',nordic:'glutebridge',kbswing:'kbgoblet',dbrdl:'glutebridge',kbrdl:'glutebridge',hipthrust:'glutebridge',mbslam:'mbsitup',ropeslam:'ropewave',windshield:'bicycle',hanglegraise:'legraise',lsit:'hollow',isoclimber:'plank',
+  superman:'birddog',reverseplank:'glutebridge',nordic:'glutebridge',kbswing:'kbgoblet',dbrdl:'glutebridge',kbrdl:'glutebridge',hipthrust:'glutebridge',mbslam:'mbsitup',ropeslam:'ropewave',windshield:'bicycle',hanglegraise:'legraise',lsit:'hollow',isoclimber:'plank',dragonflag:'hollow',
   dips:'benchdip',benchdip:'closepushup',chinup:'invertedrow',negpullup:'invertedrow',dbcurl:'dbrow',
 };
 function safeSwap(exId){
