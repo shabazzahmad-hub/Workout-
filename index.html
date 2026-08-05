@@ -1189,7 +1189,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='159';
+const APP_VERSION='160';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -3210,7 +3210,7 @@ function neuralSSML(text,cfg){
     inner=`<prosody ${a.join(' ')}>${inner}</prosody>`;
   }
   if(cfg.style&&NEURAL_STYLE_VOICES.has(cfg.v)){inner=`<mstts:express-as style="${cfg.style}" styledegree="${cfg.deg||'1.5'}">${inner}</mstts:express-as>`;}
-  return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US"><voice name="${cfg.v}">${inner}</voice></speak>`;
+  return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="http://www.w3.org/2001/mstts" xml:lang="en-US"><voice name="${cfg.v}">${inner}</voice></speak>`;
 }
 function stopSpeech(){
   try{if('speechSynthesis'in window)speechSynthesis.cancel();}catch(e){}
