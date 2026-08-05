@@ -964,6 +964,11 @@ const EX = {
     why:'Max-effort sprint intervals build explosive speed and power and are one of the best fat-burning conditioning stimuli there is.',
     steps:['Find a clear stretch of road, track or treadmill.','On "work", sprint at near-max effort with a tall, driving stride.','On "rest", walk or jog easy to recover fully.','Repeat, keeping every sprint crisp and powerful.'],
     cues:['Drive the knees and arms','Stay tall and relaxed','Full recovery between sprints'],mistakes:['Half-effort sprints','Skipping the recovery']},
+  skip:{name:'Skipping (Jump Rope)',region:'cardio',unit:'time',img:'ex-skip.jpg',anchor:null,hardness:1,base:60,rest:30,
+    why:'The most efficient conditioning tool there is — a rope torches calories, sharpens footwork and coordination, and hammers the calves and core, all from one square metre of floor. Perfect whenever you get a spare ten minutes.',
+    steps:['Hold the handles at hip height, elbows tucked close to the ribs.','Turn the rope with the WRISTS, not big arm circles.','Stay on the balls of the feet with small, low hops — barely clearing the rope.','Keep the core braced and land soft, breathing in a steady rhythm.'],
+    cues:['Wrists turn the rope, not the arms','Small, quiet, low hops','Stay tall — eyes forward'],
+    mistakes:['Jumping far too high','Swinging from the shoulders','Landing flat-footed and heavy']},
   ropewave:{name:'Battle Rope Waves',region:'cardio',unit:'time',img:'ex-ropewave.jpg',anchor:null,hardness:1,base:30,rest:40,equip:['battlerope'],pattern:'cardio',
     why:'Relentless conditioning for the shoulders, arms and core — huge heart rate, low impact.',
     steps:['Athletic half-squat, a rope in each hand.','Whip fast alternating waves down the rope.','Keep the tempo high for time.'],
@@ -1090,7 +1095,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='143';
+const APP_VERSION='144';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -2171,11 +2176,122 @@ const HIIT_FORMATS={
   emom:{name:'EMOM',desc:'Every minute: 45s work / 15s rest, cycling the circuit.'},
   amrap:{name:'AMRAP 10',desc:'10 minutes — as many rounds of the circuit as you can.'},
 };
+/* ---- Skipping (jump rope) — a standalone rope session with its own timer and
+   record keeping. Presets are built around the 9-min-skip / 3-min-rest block. ---- */
+const SKIP_FORMATS={
+  skip93x3:{name:'9 / 3 × 3',desc:'9 min skipping · 3 min rest, three rounds (~33 min). The standard session.',w:9,r:3,n:3},
+  skip93x2:{name:'9 / 3 × 2',desc:'9 min skipping · 3 min rest, twice (~21 min). Short on time.',w:9,r:3,n:2},
+  skip93x4:{name:'9 / 3 × 4',desc:'9 min skipping · 3 min rest, four rounds (~45 min). Big engine day.',w:9,r:3,n:4},
+  skip52x4:{name:'5 / 2 × 4',desc:'5 min skipping · 2 min rest, four rounds (~26 min). Faster turnaround.',w:5,r:2,n:4},
+};
+function fmtInfo(k){return HIIT_FORMATS[k]||SKIP_FORMATS[k]||{name:'Session',desc:''};}
+function skipLog(){if(!Array.isArray(STATE.skipLog))STATE.skipLog=[];return STATE.skipLog;}
+function logSkip(mins,rounds){
+  mins=Math.max(1,Math.round(mins||0));if(!mins)return;
+  skipLog().unshift({date:todayISO(),mins,rounds:rounds||0,at:Date.now()});
+  if(STATE.skipLog.length>200)STATE.skipLog.length=200;
+  save();toast('🪢 '+mins+' min of skipping logged');try{checkAchievements();}catch(e){}
+}
+function skipStats(){
+  const l=skipLog();const now=new Date();const wk=[];
+  for(let i=0;i<7;i++){const d=new Date();d.setDate(now.getDate()-i);wk.push(localISO(d));}
+  const week=l.filter(x=>wk.includes(x.date));
+  return {sessions:l.length,total:l.reduce((a,x)=>a+(x.mins||0),0),
+    week:week.reduce((a,x)=>a+(x.mins||0),0),weekN:week.length,last:l[0]||null};
+}
+function removeSkip(i){const l=skipLog();if(l[i]){l.splice(i,1);save();openSkipping();}}
+function skipHistoryHTML(){
+  const l=skipLog().slice(0,8);if(!l.length)return '';
+  return `<div class="section-label" style="margin-top:14px">Recent sessions</div><div class="card" style="padding:0 12px">`+
+    l.map((x,i)=>`<div class="kv" style="border-top:1px solid var(--line)">
+      <span><b>${x.mins} min</b> <span class="tiny muted">· ${x.rounds?x.rounds+' rounds · ':''}${x.date}</span></span>
+      <button class="chip" onclick="removeSkip(${i})">✕</button></div>`).join('')+`</div>`;
+}
+function openSkipping(){
+  const s=skipStats();
+  openSheet(`<h3>🪢 Skipping</h3>
+    <p class="muted sm" style="margin:2px 0 12px">Grab the rope any time — run a timed block or just start the clock. Everything you log is kept here.</p>
+    <div class="grid2" style="margin-bottom:12px">
+      <div class="stat"><div class="n" style="color:var(--fire-l)">${s.week}</div><div class="l">Min this week</div></div>
+      <div class="stat"><div class="n" style="color:var(--teal)">${s.total}</div><div class="l">Min all time</div></div>
+    </div>
+    <div class="section-label" style="margin-top:0">Timed blocks</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${Object.keys(SKIP_FORMATS).map(k=>`<button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="startSkipping('${k}')"><b style="font-size:15px">${SKIP_FORMATS[k].name}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${SKIP_FORMATS[k].desc}</div></button>`).join('')}
+    </div>
+    <div class="section-label">Custom block</div>
+    <div class="btnrow" style="gap:8px;align-items:flex-end">
+      <div class="field" style="flex:1;margin:0"><label>Skip (min)</label><input id="sk-w" type="number" inputmode="numeric" value="9" min="1"></div>
+      <div class="field" style="flex:1;margin:0"><label>Rest (min)</label><input id="sk-r" type="number" inputmode="numeric" value="3" min="0"></div>
+      <div class="field" style="flex:1;margin:0"><label>Rounds</label><input id="sk-n" type="number" inputmode="numeric" value="3" min="1"></div>
+    </div>
+    <button class="btn primary" style="margin-top:10px" onclick="startSkipCustom()">▶ Start custom block</button>
+    <div class="section-label">Or just skip</div>
+    <button class="btn t-teal" onclick="openSkipTimer()">⏱️ Open stopwatch — skip until you stop</button>
+    <div style="height:8px"></div>
+    <button class="btn ghost" onclick="logSkipManual()">✍️ Log minutes manually</button>
+    ${skipHistoryHTML()}
+    <div style="height:10px"></div><button class="btn ghost" onclick="openSpecial()">← Back</button>`);
+}
+function logSkipManual(){
+  const v=prompt('How many minutes did you skip?');
+  const m=parseFloat(v);
+  if(m>0){logSkip(m,0);openSkipping();}
+}
+function startSkipping(format){
+  closeSheet();
+  const f=SKIP_FORMATS[format];if(!f)return;
+  const list=[{exId:'skip',unit:'time',target:f.w*60,rest:f.r*60,sets:1}];
+  const sess={session:{name:'Skipping',key:'skip',focus:'Rope conditioning'},ptr:-1,pos:{}};
+  _runHiit(sess,list,format);
+}
+// Custom block: registered under a reserved key so the timer + finish screen reuse
+// the same machinery as the presets.
+function startSkipCustom(){
+  const w=Math.max(1,parseInt(($('#sk-w')||{}).value)||9);
+  const r=Math.max(0,parseInt(($('#sk-r')||{}).value)||0);
+  const n=Math.max(1,parseInt(($('#sk-n')||{}).value)||1);
+  SKIP_FORMATS.skipcustom={name:w+' / '+r+' × '+n,desc:'Custom rope block',w,r,n};
+  startSkipping('skipcustom');
+}
+/* Free stopwatch — for when you just pick up the rope. Counts up; Stop logs it. */
+let SKIPT=null;
+function openSkipTimer(){
+  SKIPT={secs:0,tid:null,running:true};
+  openSheet(`<h3>⏱️ Skipping stopwatch</h3>
+    <p class="muted sm" style="margin:2px 0 14px">Counting up. Tap <b>Stop &amp; log</b> when you're done and the minutes go straight into your record.</p>
+    <div style="text-align:center;margin:10px 0 18px"><div id="skt-num" style="font-size:56px;font-weight:900;letter-spacing:1px">0:00</div></div>
+    <button class="btn primary" onclick="skipTimerStop()">■ Stop &amp; log</button>
+    <div style="height:8px"></div>
+    <button class="btn ghost" id="skt-toggle" onclick="skipTimerToggle()">Pause</button>
+    <div style="height:8px"></div>
+    <button class="btn ghost" onclick="skipTimerCancel()">Cancel</button>`);
+  SKIPT.tid=setInterval(skipTimerTick,1000);
+  try{coachSpeak('Rope up. Timer running.');}catch(e){}
+}
+function skipTimerTick(){if(!SKIPT||!SKIPT.running)return;SKIPT.secs++;const e=$('#skt-num');if(e)e.textContent=fmtTime(SKIPT.secs);}
+function skipTimerToggle(){if(!SKIPT)return;SKIPT.running=!SKIPT.running;const b=$('#skt-toggle');if(b)b.textContent=SKIPT.running?'Pause':'Resume';}
+function skipTimerCancel(){if(SKIPT&&SKIPT.tid)clearInterval(SKIPT.tid);SKIPT=null;closeSheet();}
+function skipTimerStop(){
+  if(!SKIPT)return;const secs=SKIPT.secs;if(SKIPT.tid)clearInterval(SKIPT.tid);SKIPT=null;
+  const mins=Math.round(secs/60);
+  if(mins<1){toast('Under a minute — nothing logged');closeSheet();return;}
+  logSkip(mins,0);openSkipping();
+}
 function ivS(sel,txt){const e=$(sel);if(e)e.textContent=txt;}
 function ivRingSet(f){const r=$('#ivRing');if(r)r.style.strokeDashoffset=IV_C*(1-Math.max(0,Math.min(1,f)));}
 function ivClear(){if(INTV&&INTV.tid){clearInterval(INTV.tid);INTV.tid=null;}}
 function buildIntervals(list,format){
   const out=[];const at=i=>list[i%list.length];
+  // Skipping blocks: long work bouts with a full rest between rounds.
+  const sk=SKIP_FORMATS[format];
+  if(sk){
+    for(let r=0;r<sk.n;r++){
+      out.push({type:'work',secs:sk.w*60,exId:'skip',round:r+1,rounds:sk.n});
+      if(sk.r>0&&r<sk.n-1)out.push({type:'rest',secs:sk.r*60,exId:'skip'});
+    }
+    return out;
+  }
   if(format==='tabata'){for(let r=0;r<8;r++){out.push({type:'work',secs:20,exId:at(r).exId,round:r+1,rounds:8});out.push({type:'rest',secs:10,exId:at(r+1).exId});}}
   else if(format==='emom'){const mins=Math.max(6,list.length);for(let r=0;r<mins;r++){out.push({type:'work',secs:45,exId:at(r).exId,round:r+1,rounds:mins});out.push({type:'rest',secs:15,exId:at(r+1).exId});}}
   else{const cap=600;let t=0,i=0;while(t<cap){const w=Math.min(40,cap-t);out.push({type:'work',secs:w,exId:at(i).exId,round:Math.floor(i/list.length)+1});t+=w;i++;if(t<cap){const rs=Math.min(5,cap-t);if(rs>0){out.push({type:'rest',secs:rs,exId:at(i).exId});t+=rs;}}}}
@@ -2197,6 +2313,7 @@ function openSpecial(){
     <p class="muted sm" style="margin:2px 0 12px">Bonus conditioning — run any day, on top of your program. It won't affect your plan or streak. Pick a mode:</p>
     <div style="display:flex;flex-direction:column;gap:10px">
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="specialChooser('hiit')"><b style="font-size:15px">⚡ Bonus HIIT intervals</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Bodyweight — jumping jacks, burpees, mountain climbers…</div></button>
+      <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="openSkipping()"><b style="font-size:15px">🪢 Skipping</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Jump-rope blocks (9/3), a free stopwatch &amp; your minute log</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="specialChooser('bike')"><b style="font-size:15px">🚴 Bike trainer</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Indoor ride intervals on your road bike + trainer</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="specialChooser('sprint')"><b style="font-size:15px">🏃 Sprint runs</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Max-effort sprint intervals with recovery</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="openOps()"><b style="font-size:15px">🎖️ Benchmark Ops</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Timed hero workouts — chase your best time</div></button>
@@ -2307,18 +2424,21 @@ function ivDone(){
   ivClear();beatStop();INTV.phase='done';
   const mins=Math.max(1,Math.round(INTV.workElapsed/60*10)/10);
   const sess=INTV.sess;const isMetcon=sess.session.key==='metcon'&&sess.ptr===STATE.progressPtr;
+  const isSkip=sess.session.key==='skip';
+  const skRounds=(SKIP_FORMATS[INTV.format]||{}).n||0;
   $('#ivBody').innerHTML=`
-    <div class="pl-name" style="margin-bottom:2px">Circuit complete 🔥</div>
-    <div class="pl-coach" style="margin-bottom:14px">${HIIT_FORMATS[INTV.format].name} · ${sess.session.name}</div>
+    <div class="pl-name" style="margin-bottom:2px">${isSkip?'Rope work done 🪢':'Circuit complete 🔥'}</div>
+    <div class="pl-coach" style="margin-bottom:14px">${fmtInfo(INTV.format).name} · ${sess.session.name}</div>
     <div class="grid2" style="width:100%;max-width:440px">
       <div class="stat"><div class="n" style="color:var(--fire-l)">${fmtTime(INTV.workElapsed||1)}</div><div class="l">Work time</div></div>
       <div class="stat"><div class="n" style="color:var(--teal)">${mins}</div><div class="l">Minutes</div></div>
     </div>
     <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:440px;margin-top:18px">
+      ${isSkip?`<button class="btn primary" onclick="hiitLogSkip(${mins},${skRounds})">🪢 Log ${Math.max(1,Math.round(mins))} min to my record</button>`:''}
       ${isMetcon?`<button class="btn primary" onclick="hiitLogDone()">Log today's session complete</button>`:''}
       <button class="btn ghost" onclick="hiitQuit()">Close</button>
     </div>`;
-  if(!motivate('done'))coachSpeak('Circuit complete. Outstanding work.');
+  if(!motivate('done'))coachSpeak(isSkip?'Rope work complete. Outstanding.':'Circuit complete. Outstanding work.');
 }
 function hiitToggle(){
   if(!INTV)return;INTV.running=!INTV.running;
@@ -2335,6 +2455,12 @@ function hiitLogDone(){
   ivClear();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;
   if(history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
   finishSession();
+}
+// Skipping finishes into its own record, not the program's session counter.
+function hiitLogSkip(mins,rounds){
+  ivClear();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;
+  if(history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
+  logSkip(mins,rounds);render();
 }
 
 /* ============================ ASSESSMENT FLOW ============================ */
@@ -6150,6 +6276,7 @@ function normalizeState(){
   if(!STATE.settings.reminderTime)STATE.settings.reminderTime='18:00';
   if(STATE.settings.weeklyOn===undefined)STATE.settings.weeklyOn=true;
   if(!STATE.restDays||typeof STATE.restDays!=='object')STATE.restDays={};
+  if(!Array.isArray(STATE.skipLog))STATE.skipLog=[];   // jump-rope record
   if(STATE.settings.hype===undefined)STATE.settings.hype=true;   // motivator on by default
   if(!STATE.settings.coach)STATE.settings.coach='auto';          // default persona
   // one-time: switch existing installs to the new rotating Auto coach
