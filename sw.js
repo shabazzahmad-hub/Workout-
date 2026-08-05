@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v158';
+const CACHE = 'coreforge-v162';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './archivo.woff2', './icon-192-v2.png', './icon-512-v2.png', './hero.jpg', './coach-sarge.jpg',
   './ex-kneeplank.jpg','./ex-plank.jpg','./ex-longplank.jpg','./ex-planktap.jpg',
   './ex-tuckhollow.jpg','./ex-hollow.jpg','./ex-hollowrock.jpg','./ex-reverseplank.jpg',
@@ -30,7 +30,11 @@ const SHELL = ['./', './index.html', './manifest.webmanifest', './archivo.woff2'
 
 /* The app cannot run without these; everything else is a nice-to-have that must
    never be able to break the install. */
-const CORE = ['./', './index.html', './manifest.webmanifest', './archivo.woff2'];
+/* Only what the app genuinely cannot run without. The font and the manifest are
+   cosmetic — including them made a single failed font fetch abort the atomic
+   addAll and leave the app with NO offline cache, which is the exact failure this
+   split was meant to remove. They still get cached, just not atomically. */
+const CORE = ['./', './index.html'];
 
 /* cache.addAll() is atomic: one 404 anywhere in a 160-entry list rejects the
    whole promise and the app installs with NO offline cache at all. That made
@@ -70,8 +74,12 @@ self.addEventListener('fetch', e => {
     e.respondWith(
       fetch(req)
         .then(res => {
-          const copy = res.clone();
-          caches.open(CACHE).then(c => c.put('./index.html', copy));
+          // Never overwrite a good offline page with a 500/404 — doing so bricked
+          // the app offline and stayed broken after the origin recovered.
+          if (res && res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then(c => c.put('./index.html', copy));
+          }
           return res;
         })
         .catch(() => caches.match('./index.html'))
@@ -80,8 +88,10 @@ self.addEventListener('fetch', e => {
   }
   e.respondWith(
     caches.match(req).then(hit => hit || fetch(req).then(res => {
-      const copy = res.clone();
-      caches.open(CACHE).then(c => c.put(req, copy));
+      if (res && res.ok) {
+        const copy = res.clone();
+        caches.open(CACHE).then(c => c.put(req, copy));
+      }
       return res;
     }))
   );
