@@ -1213,7 +1213,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='166';
+const APP_VERSION='167';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1600,6 +1600,10 @@ function computeAssessment(results){
 /* ============================ NAVIGATION ============================ */
 let TAB='today';
 function go(tab){
+  // Navigating away from the editor's host view ends the edit rather than
+  // letting the wizard follow you and rebuild itself from stored state,
+  // which silently discarded whatever was typed.
+  if(OB_EDIT&&OB_HOST&&('v-'+tab)!==OB_HOST){try{obCommitStep();}catch(e){}OB_EDIT=false;OB_HOST=null;obClear();}
   TAB=tab;
   $$('.view').forEach(v=>v.classList.remove('active'));
   $('#v-'+tab).classList.add('active');
@@ -1750,7 +1754,8 @@ function reassessGate(){
 /* ============================ TODAY VIEW ============================ */
 function renderToday(){
   const v=$('#v-today');
-  if(!STATE.onboarded||OB_EDIT){v.innerHTML=onboardHTML();wireOnboard();return;}
+  if(!STATE.onboarded){obMount(v);return;}                    // first run always lands here
+  if(OB_EDIT&&OB_HOST==='v-today'){obMount(v);return;}
   if(!STATE.baseline){v.innerHTML=baselineIntroHTML();$('#startAssess').onclick=()=>openAssessment(false);return;}
   const gate=reassessGate();
   if(gate){v.innerHTML=reassessIntroHTML(gate);$('#startReassess').onclick=()=>openAssessment(gate);return;}
@@ -1763,7 +1768,33 @@ function renderToday(){
 // non-destructive "Edit my profile" flow (OB_EDIT) — every field prefills from
 // STATE so re-opening shows your current answers.
 let OB_EDIT=false;
-function openProfileEdit(){OB_EDIT=true;navTo('today');window.scrollTo(0,0);render();}
+/* Open the editor IN PLACE. It used to jump to the Today tab, so you'd be
+   editing your profile from Settings with the Today tab lit up — confusing, and
+   it made the wizard share Today's re-render path. */
+/* Mount the wizard into a view, but ONLY build it once. Rebuilding on a later
+   render() re-reads STATE into every input, which threw away whatever the
+   athlete had just typed and put the old value back — the "I entered 38 and it
+   saved 31.9" loop. */
+function obMount(v){
+  /* EXACTLY ONE wizard may exist. Every field is addressed by id, and $ is
+     querySelector — it returns the FIRST match in document order. With a copy
+     mounted in two views, the athlete typed into the visible one while
+     obReadForm() read the stale hidden one, so 38 was entered and 31.9 saved.
+     Tear down any copy living in another view before mounting here. */
+  document.querySelectorAll('.view').forEach(o=>{ if(o!==v&&o.querySelector('.ob-step'))o.innerHTML=''; });
+  if(v.querySelector('.ob-step'))return;   // already on screen with live input
+  v.innerHTML=onboardHTML();wireOnboard();
+}
+// Drop the mounted wizard so the host view rebuilds normally next render.
+function obClear(){
+  document.querySelectorAll('.view').forEach(v=>{ if(v.querySelector('.ob-step'))v.innerHTML=''; });
+}
+let OB_HOST=null;   // which view the editor is pinned to for this session
+function openProfileEdit(){
+  const cur=document.querySelector('.view.active');
+  OB_HOST=cur?cur.id:'v-today';
+  OB_EDIT=true;window.scrollTo(0,0);render();
+}
 const OB_STEPS=6;
 function onboardHTML(){
   const P=STATE.profile||{}, N=STATE.nutrition||{};
@@ -1904,7 +1935,7 @@ function wireOnboard(){
     window.scrollTo(0,0);
   };
   $('#ob-next').onclick=()=>{ if(step<OB_STEPS){obCommitStep();showStep(step+1);haptic(8);} else finishOnboard(); };
-  $('#ob-back').onclick=()=>{ if(step===1){ if(OB_EDIT){obCommitStep();OB_EDIT=false;navTo('today');} return; } obCommitStep();showStep(step-1);haptic(8); };
+  $('#ob-back').onclick=()=>{ if(step===1){ if(OB_EDIT){obCommitStep();OB_EDIT=false;OB_HOST=null;obClear();navTo('today');} return; } obCommitStep();showStep(step-1);haptic(8); };
   showStep(1);
 }
 /* Every step's inputs live in the DOM at once (steps are just hidden), so the
@@ -1928,8 +1959,8 @@ function obCommitStep(){
 }
 function obFinishNav(){
   try{recalcKcalFromStored();}catch(e){}
-  if(OB_EDIT){OB_EDIT=false;save();toast('Profile updated ✓ — plan re-tuned');navTo('today');}
-  else{STATE.onboarded=true;save();render();}
+  if(OB_EDIT){OB_EDIT=false;OB_HOST=null;obClear();save();toast('Profile updated ✓ — plan re-tuned');navTo('today');}
+  else{STATE.onboarded=true;obClear();save();render();}
 }
 function obReadForm(){
   const P=STATE.profile, N=STATE.nutrition;
@@ -6767,6 +6798,7 @@ function toggleWeekly(){
 /* ============================ GUIDE VIEW ============================ */
 function renderGuide(){
   const v=$('#v-guide');
+  if(OB_EDIT&&OB_HOST==='v-guide'){obMount(v);return;}   // editor opened from Settings lives here
   let h=`<h2 class="vtitle">Guide</h2><div class="vsub">Exercise library, results tips & your data.</div>`;
   // results guidance
   h+=`<div class="section-label">See results in 6 weeks</div>
