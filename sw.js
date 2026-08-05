@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v157';
+const CACHE = 'coreforge-v158';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './archivo.woff2', './icon-192-v2.png', './icon-512-v2.png', './hero.jpg', './coach-sarge.jpg',
   './ex-kneeplank.jpg','./ex-plank.jpg','./ex-longplank.jpg','./ex-planktap.jpg',
   './ex-tuckhollow.jpg','./ex-hollow.jpg','./ex-hollowrock.jpg','./ex-reverseplank.jpg',
@@ -28,8 +28,25 @@ const SHELL = ['./', './index.html', './manifest.webmanifest', './archivo.woff2'
   './ex-pistol.mp4','./ex-superpushup.mp4',
   './wu-march.mp4'];
 
+/* The app cannot run without these; everything else is a nice-to-have that must
+   never be able to break the install. */
+const CORE = ['./', './index.html', './manifest.webmanifest', './archivo.woff2'];
+
+/* cache.addAll() is atomic: one 404 anywhere in a 160-entry list rejects the
+   whole promise and the app installs with NO offline cache at all. That made
+   every added image a release hazard. Core assets are still required, but the
+   rest are fetched independently with allSettled, so a single missing file
+   costs exactly that one file. */
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil((async () => {
+    const c = await caches.open(CACHE);
+    await c.addAll(CORE);
+    const rest = SHELL.filter(u => !CORE.includes(u));
+    const results = await Promise.allSettled(rest.map(u => c.add(u)));
+    const failed = results.reduce((n, r) => n + (r.status === 'rejected' ? 1 : 0), 0);
+    if (failed) console.warn('[sw] ' + failed + ' of ' + rest.length + ' optional assets missing; app still installed');
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', e => {

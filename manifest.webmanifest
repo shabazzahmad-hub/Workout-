@@ -5,7 +5,7 @@
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "orientation": "portrait",
+  "orientation": "portrait-primary",
   "background_color": "#07101d",
   "theme_color": "#0b1020",
   "icons": [
@@ -26,6 +26,51 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "id": "./",
+  "display_override": [
+    "window-controls-overlay",
+    "standalone"
+  ],
+  "categories": [
+    "fitness",
+    "health",
+    "lifestyle"
+  ],
+  "shortcuts": [
+    {
+      "name": "Today's workout",
+      "short_name": "Today",
+      "url": "./index.html#today",
+      "icons": [
+        {
+          "src": "icon-192-v2.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Fuel — log food",
+      "short_name": "Fuel",
+      "url": "./index.html#fuel",
+      "icons": [
+        {
+          "src": "icon-192-v2.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Progress",
+      "short_name": "Progress",
+      "url": "./index.html#progress",
+      "icons": [
+        {
+          "src": "icon-192-v2.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ]
 }
