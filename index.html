@@ -1200,7 +1200,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='161';
+const APP_VERSION='162';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -3592,14 +3592,17 @@ async function briefPlay(startIdx){
   const gen=++_briefGen;   // this run owns the audio until stopped/replaced
   BRIEF.stop=false;BRIEF.playing=true;BRIEF.done=false;
   briefUpdateControls();
-  for(let i=(startIdx||0);i<BRIEF.segs.length;i++){
-    if(!_briefLive(gen))break;
+  /* Every BRIEF read after an await must be re-guarded: dismissing the sheet now
+     nulls BRIEF outright, and this loop resumes on the far side of a 260ms gap.
+     The body was guarded; the loop HEADER and the tail were not. */
+  for(let i=(startIdx||0);BRIEF&&i<BRIEF.segs.length;i++){
+    if(!_briefLive(gen)||!BRIEF)break;
     BRIEF.i=i;briefHighlight(i);
     await briefSpeakLine(BRIEF.segs[i].say,gen);
-    if(!_briefLive(gen))break;
-    await new Promise(r=>{BRIEF._gapResolve=r;BRIEF._gapTimer=setTimeout(()=>{BRIEF._gapResolve=null;r();},260);});
+    if(!_briefLive(gen)||!BRIEF)break;
+    await new Promise(r=>{BRIEF._gapResolve=r;BRIEF._gapTimer=setTimeout(()=>{if(BRIEF)BRIEF._gapResolve=null;r();},260);});
   }
-  if(gen!==_briefGen)return;   // a newer run/stop took over — don't touch shared UI state
+  if(gen!==_briefGen||!BRIEF)return;   // a newer run/stop took over — don't touch shared UI state
   BRIEF.playing=false;
   if(!BRIEF.stop){BRIEF.done=true;BRIEF.i=-1;briefHighlight(-1);}
   briefUpdateControls();
@@ -6043,6 +6046,10 @@ function strengthTrendHTML(){
     const vals=pts.map(p=>p.v),dates=pts.map(p=>p.date);const first=vals[0],last=vals[vals.length-1],d=last-first;
     body=lineChart(vals,dates,'var(--fire)',m.unit==='time'?'s':'')+
       `<div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">${disp(first)}</span><span class="tiny" style="font-weight:800;color:${d>=0?'var(--green)':'var(--pink)'}">${d>=0?'▲ +':'▼ '}${m.unit==='time'?fmtTime(Math.abs(d)):Math.abs(d)+' reps'}</span><span class="tiny muted">${disp(last)}</span></div>`;
+  }else if(!pts.length){
+    // an imported backup can carry baseline.maxes as {} — pts[0] then threw and
+    // took the whole Progress tab down through the render boundary
+    body=`<div class="tiny muted" style="margin-top:12px">No numbers for this lift yet — they appear after your baseline or a re-test.</div>`;
   }else{
     body=`<div class="center" style="margin-top:14px"><div style="font-size:30px;font-weight:900">${disp(pts[0].v)}</div><div class="tiny muted" style="margin-top:6px">Your baseline. Re-test after week 6 to chart your climb.</div></div>`;
   }
