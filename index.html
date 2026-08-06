@@ -604,17 +604,17 @@ const EX = {
     cues:['Move slowly — control beats range','Keep the shoulders pinned to the floor','Brace so the low back doesn\'t arch'],
     mistakes:['Letting the legs crash down','Peeling the shoulders off the floor','Rushing the rotation']},
   /* -- rectus dynamic ladder -- */
-  crunch:{name:'Controlled Crunch',region:'anterior',unit:'reps',img:'ex-crunch.jpg',anchor:null,hardness:1.4,base:18,rest:35,
+  crunch:{name:'Controlled Crunch',region:'anterior',unit:'reps',img:'ex-crunch.jpg',anchor:'lower',hardness:1.4,base:18,rest:35,
     why:'A short, controlled spinal-flexion crunch reliably targets the upper rectus abdominis.',
     steps:['Lie on your back, knees bent, feet flat, hands lightly behind the head.','Press your lower back into the floor.','Curl your shoulder blades up off the floor, leading with the chest.','Squeeze the abs at the top, lower slowly. Repeat.'],
     cues:['Lead with the chest, not the chin','Short controlled range','Don\'t yank on the neck'],
     mistakes:['Pulling the head forward with the hands','Bouncing off the floor']},
-  situp:{name:'Sit-Up',region:'anterior',unit:'reps',img:'ex-situp.jpg',anchor:null,hardness:1.2,base:20,rest:40,
+  situp:{name:'Sit-Up',region:'anterior',unit:'reps',img:'ex-situp.jpg',anchor:'lower',hardness:1.2,base:20,rest:40,
     why:'The military standard. A full sit-up trains the entire rectus abdominis plus the hip flexors through a complete range — it is a graded event on service fitness tests, and the benchmark everyone measures abs against.',
     steps:['Lie on your back, knees bent about 90°, feet flat and anchored or held down.','Cross the arms on the chest, or fingertips light at the temples — never laced behind the head.','Curl up in one controlled motion until your torso is upright, elbows past the knees.','Lower under control all the way back until the shoulder blades touch. Repeat.'],
     cues:['Chin off the chest, eyes forward','Drive with the abs, not a neck yank','Lower under control — no crashing down'],
     mistakes:['Pulling on the head with laced hands','Bouncing off the floor for momentum','Half-repping and never reaching upright']},
-  vertcrunch:{name:'Vertical Leg Crunch',region:'anterior',unit:'reps',img:'ex-vertcrunch.jpg',anchor:null,hardness:1.3,base:16,rest:40,
+  vertcrunch:{name:'Vertical Leg Crunch',region:'anterior',unit:'reps',img:'ex-vertcrunch.jpg',anchor:'lower',hardness:1.3,base:16,rest:40,
     why:'A crunch with the legs locked straight up. Taking the legs out of the equation stops the hip flexors helping, so the upper abs do all the work — a noticeably harder crunch for the same range.',
     steps:['Lie on your back and raise both legs straight toward the ceiling, ankles crossed.','Press the lower back into the floor and keep the legs vertical the whole set.','Curl your shoulder blades up, reaching the hands toward your feet.','Squeeze at the top, lower slowly without letting the legs drop.'],
     cues:['Legs stay vertical — they never swing','Reach up toward the toes, not forward','Lower back stays pinned down'],
@@ -629,12 +629,12 @@ const EX = {
     steps:['Start in a forearm plank, body in one straight line.','Brace, then rotate the hips and shoulders to one side, stacking into a side plank.','Reach the free arm straight up toward the ceiling, chest open.','Rotate back through the plank and repeat to the other side. Count each side as a rep.'],
     cues:['Rotate as one rigid block','Hips stay high through the turn','Slow and controlled — no flopping'],
     mistakes:['Hips sagging as you rotate','Rushing and losing the plank line','Only turning the shoulders, not the hips']},
-  bicycle:{name:'Bicycle Crunch',region:'oblique',unit:'time',img:'ex-bicycle.jpg',anchor:null,hardness:1.0,base:40,rest:40,
+  bicycle:{name:'Bicycle Crunch',region:'oblique',unit:'time',img:'ex-bicycle.jpg',anchor:'dyn',hardness:1.0,base:40,rest:40,
     why:'Repeatedly ranks #1 for rectus abdominis AND oblique activation in EMG studies — a top all-round ab builder. Timed, so you just keep pedalling with good form.',
     steps:['Lie on your back, hands lightly behind your head, shoulders lifted.','Bring one knee toward your chest while extending the other leg.','Rotate to bring the opposite elbow toward the raised knee.','Keep pedalling smoothly, alternating sides, for the whole time.'],
     cues:['Rotate from the torso, not just the elbow','Extend the straight leg fully','Keep shoulders off the floor throughout'],
     mistakes:['Yanking the neck across','Fast, sloppy pedalling with no rotation','Racing the clock — control beats speed']},
-  heeltouch:{name:'Alternating Heel Touches',region:'oblique',unit:'reps',img:'ex-heeltouch.jpg',anchor:null,hardness:0.9,base:20,rest:30,
+  heeltouch:{name:'Alternating Heel Touches',region:'oblique',unit:'reps',img:'ex-heeltouch.jpg',anchor:'lower',hardness:0.9,base:20,rest:30,
     why:'A simple, apartment-friendly oblique burner — the short side-to-side crunch keeps constant tension on the waist and love-handle area. Easy to learn, brutal by the end of the set.',
     steps:['Lie on your back, knees bent, feet flat about hip-width apart, heels close to the glutes.','Crunch your head and shoulders slightly up off the mat, arms reaching down at your sides.','Bend to one side and tap your fingertips to that heel.','Come back through center and tap the other heel. Alternate — count each side as a rep.'],
     cues:['Keep the shoulders off the mat the whole set','Bend at the waist, not the neck','Steady, controlled taps'],
@@ -644,7 +644,7 @@ const EX = {
     steps:['Lie flat, arms overhead, legs straight.','In one motion, curl up while tucking your knees to your chest.','Reach your hands toward your shins, balancing on your glutes.','Extend back out to the start with control. Repeat.'],
     cues:['Exhale hard as you fold up','Control the extension out','Balance on the hips'],
     mistakes:['Flopping back down','Using arm momentum only']},
-  vup:{name:'Full V-Up',region:'anterior',unit:'reps',img:'ex-vup.jpg',anchor:null,hardness:0.7,base:10,rest:50,
+  vup:{repCap:15,name:'Full V-Up',region:'anterior',unit:'reps',img:'ex-vup.jpg',anchor:null,hardness:0.7,base:10,rest:50,
     why:'An advanced full-body flexion that simultaneously hammers the upper and lower abs.',
     steps:['Lie flat, arms extended overhead, legs straight and together.','Simultaneously lift your straight legs and torso, folding at the hips.','Reach your hands toward your toes to form a V.','Lower both halves down together with control. Repeat.'],
     cues:['Keep legs as straight as you can','Meet in the middle','Slow negative'],
@@ -692,7 +692,7 @@ const EX = {
     cues:['Let the weight, not momentum, do the work','Chest tall, core braced','Full rotation each side'],
     mistakes:['Swinging the weight wildly','Losing the braced posture']},
   /* -- stability / posterior core (warm-up + accessory) -- */
-  glutebridge:{name:'Glute Bridge',region:'stability',unit:'reps',img:'ex-glutebridge.jpg',anchor:null,hardness:1,base:15,rest:35,
+  glutebridge:{name:'Glute Bridge',region:'stability',unit:'reps',img:'ex-glutebridge.jpg',anchor:'squat',hardness:1,base:15,rest:35,
     why:'Balances the midsection by strengthening the posterior core and glutes — key for posture and a stable, strong trunk.',
     steps:['Lie on your back, knees bent, feet flat and hip-width.','Press through your heels and squeeze your glutes.','Lift your hips into a straight line from knees to shoulders.','Pause at the top, then lower with control. Repeat.'],
     cues:['Squeeze glutes hard at the top','Ribs down — don\'t arch the back','Push through the heels'],
@@ -739,7 +739,7 @@ const EX = {
     cues:['Keep the back pinned','Controlled crossing motion','Legs low for more burn'],
     mistakes:['Back lifting off the floor','Bending the knees']},
   /* -- compound bodyweight strength (whole-body, burns more calories) -- */
-  squat:{name:'Bodyweight Squat',region:'strength',unit:'reps',img:'ex-squat.jpg',anchor:null,hardness:1,base:16,rest:45,
+  squat:{name:'Bodyweight Squat',region:'strength',unit:'reps',img:'ex-squat.jpg',anchor:'squat',hardness:1,base:16,rest:45,
     why:'The biggest bang-for-buck lower-body move — recruits huge muscle to raise your metabolism and burn fat while you brace the core.',
     steps:['Stand tall, feet shoulder-width, toes slightly out.','Brace your abs and push your hips back and down.','Lower until thighs are about parallel, chest up, knees tracking over toes.','Drive through your heels to stand, squeezing glutes at the top.'],
     cues:['Chest proud, core braced','Knees track over the toes','Full depth, controlled tempo'],
@@ -749,17 +749,17 @@ const EX = {
     steps:['Stand with your back flat against a wall, feet about two steps out.','Slide down until your thighs are parallel to the floor — knees stacked over the ankles at ~90°.','Press the whole back into the wall and brace the abs.','Hold for time, breathing steadily. Keep the weight in the heels.'],
     cues:['Thighs parallel, knees over ankles','Whole back flat on the wall','Weight through the heels, core braced'],
     mistakes:['Knees drifting past the toes','Hips creeping up out of the hold','Holding the breath']},
-  reverselunge:{name:'Reverse Lunge',region:'strength',unit:'reps',img:'ex-reverselunge.jpg',anchor:null,hardness:1,base:12,rest:45,
+  reverselunge:{name:'Reverse Lunge',region:'strength',unit:'reps',img:'ex-reverselunge.jpg',anchor:'squat',hardness:1,base:12,rest:45,
     why:'A single-leg builder that torches the legs and glutes while your core fights to keep you balanced. Count each side as a rep.',
     steps:['Stand tall, hands at your chest, core braced.','Step one foot back and lower until both knees are ~90°.','Keep the front knee over the ankle, torso upright.','Drive through the front heel to stand, then switch legs.'],
     cues:['Upright torso, braced core','Front knee over ankle','Control the descent'],
     mistakes:['Leaning forward','Front knee caving in','Short, bouncy range']},
-  kneepushup:{name:'Knee Push-Up',region:'strength',unit:'reps',img:'ex-kneepushup.jpg',anchor:null,hardness:1.3,base:12,rest:45,
+  kneepushup:{name:'Knee Push-Up',region:'strength',unit:'reps',img:'ex-kneepushup.jpg',anchor:'push',hardness:1.3,base:12,rest:45,
     why:'Builds pressing strength and a braced plank position — the on-ramp to full push-ups while still working the whole trunk.',
     steps:['Kneel and place hands slightly wider than shoulders, body straight from head to knees.','Brace your abs and glutes so your hips do not sag.','Lower your chest toward the floor with elbows ~45°.','Press back up, keeping the straight line.'],
     cues:['Straight line head-to-knees','Ribs down, abs braced','Elbows ~45°, not flared'],
     mistakes:['Hips sagging or piking','Half-range reps']},
-  pushup:{name:'Push-Up',region:'strength',unit:'reps',img:'ex-pushup.jpg',anchor:null,hardness:1,base:12,rest:50,
+  pushup:{name:'Push-Up',region:'strength',unit:'reps',img:'ex-pushup.jpg',anchor:'push',hardness:1,base:12,rest:50,
     why:'A full-body compound press: chest, shoulders, triceps and a rock-solid plank core all at once. Great calorie burn, zero equipment.',
     steps:['High plank, hands slightly wider than shoulders, body in a straight line.','Brace abs and glutes; no sagging.','Lower your chest toward the floor, elbows ~45°.','Press back up to a straight-arm plank.'],
     cues:['Body stays one rigid line','Elbows ~45°, not flared out','Full range, chest to just above the floor'],
@@ -807,49 +807,49 @@ const EX = {
     mistakes:['Piking or sagging in the plank','Skipping the jump at the top','Going so fast form breaks down']},
 
   /* ==== CHEST (push) — week 13+ ==== */
-  inclinepushup:{name:'Incline Push-Up',region:'chest',unit:'reps',img:'ex-inclinepushup.jpg',anchor:null,hardness:1,base:14,rest:55,
+  inclinepushup:{name:'Incline Push-Up',region:'chest',unit:'reps',img:'ex-inclinepushup.jpg',anchor:'push',hardness:1,base:14,rest:55,
     why:'Hands elevated reduces the load so you can build clean pressing strength and a braced trunk before full push-ups.',
     steps:['Hands on a sturdy bench or your dip tower bar, slightly wider than shoulders.','Body in one straight line, core and glutes braced.','Lower your chest to the edge with elbows about 45°.','Press away powerfully and repeat.'],
     cues:['Straight line head to heels','Elbows tucked ~45°, not flared','Full lockout at the top'],
     mistakes:['Hips sagging or piking','Half reps']},
-  declinepushup:{name:'Decline Push-Up',region:'chest',unit:'reps',img:'ex-declinepushup.jpg',anchor:null,hardness:1,base:10,rest:60,
+  declinepushup:{name:'Decline Push-Up',region:'chest',unit:'reps',img:'ex-declinepushup.jpg',anchor:'push',hardness:1,base:10,rest:60,
     why:'Feet elevated shifts more load to the upper chest and shoulders — a big step up from the standard push-up.',
     steps:['Feet up on a bench, hands on the floor slightly wider than shoulders.','Brace hard so the hips stay in line.','Lower the chest under control.','Press back to a full lockout.'],
     cues:['Brace so hips don\'t sag','Control the descent','Lock out each rep'],
     mistakes:['Lower back arching','Head dropping']},
-  diamondpushup:{name:'Diamond Push-Up',region:'chest',unit:'reps',img:'ex-diamondpushup.jpg',anchor:null,hardness:1,base:9,rest:60,
+  diamondpushup:{name:'Diamond Push-Up',region:'chest',unit:'reps',img:'ex-diamondpushup.jpg',anchor:'push',hardness:1,base:9,rest:60,
     why:'Hands together hammers the triceps and inner chest — serious pressing strength.',
     steps:['Form a diamond with thumbs and index fingers under your chest.','Straight body, core tight.','Lower until the chest nears your hands, elbows brushing the ribs.','Press up to full extension.'],
     cues:['Elbows stay close to the body','Straight line throughout','Full range'],
     mistakes:['Elbows flaring wide','Sagging hips']},
-  archerpushup:{repCap:12,name:'Archer Push-Up',region:'chest',unit:'reps',img:'ex-archerpushup.jpg',anchor:null,hardness:1,base:6,rest:70,
+  archerpushup:{repCap:12,name:'Archer Push-Up',region:'chest',unit:'reps',img:'ex-archerpushup.jpg',anchor:'push',hardness:1,base:6,rest:70,
     why:'Shifts most of your bodyweight onto one arm — a powerful bridge toward the one-arm push-up. Count each side.',
     steps:['Set up wide, hands well outside shoulder width.','Bend one arm to lower toward that hand while the other arm stays straight.','Keep the straight arm extended out to the side.','Press back to center and alternate sides.'],
     cues:['Straight line, hips level','Sink toward the working arm','Keep the far arm long'],
     mistakes:['Twisting the hips','Bending the "straight" arm too early']},
-  spidermanpushup:{repCap:15,name:'Spider-Man Push-Up',region:'chest',unit:'reps',img:'ex-spidermanpushup.jpg',anchor:null,hardness:1,base:8,rest:60,
+  spidermanpushup:{repCap:15,name:'Spider-Man Push-Up',region:'chest',unit:'reps',img:'ex-spidermanpushup.jpg',anchor:'push',hardness:1,base:8,rest:60,
     why:'Adds a knee-to-elbow drive on every rep, blasting the obliques and hip flexors while you press — chest and core at once.',
     steps:['Start in a strong push-up position.','As you lower, drive one knee out toward the same-side elbow.','Press back up as the foot returns.','Alternate the driving knee each rep.'],
     cues:['Knee to elbow at the bottom','Hips stay square and low','Controlled press'],
     mistakes:['Hips twisting up','Rushing the knee drive']},
-  superpushup:{repCap:10,name:'Superman Push-Up',region:'chest',unit:'reps',img:'ex-superpushup.jpg',vid:'ex-superpushup.mp4',anchor:null,hardness:1,base:5,rest:75,
+  superpushup:{repCap:10,name:'Superman Push-Up',region:'chest',unit:'reps',img:'ex-superpushup.jpg',vid:'ex-superpushup.mp4',anchor:'push',hardness:1,base:5,rest:75,
     why:'An explosive plyometric push-up where hands and feet leave the floor — elite pressing power and full-body control.',
     steps:['Start in a push-up position, brace everything.','Lower, then press up explosively so both hands and feet leave the floor.','Reach the arms forward briefly like Superman if you can.','Land soft into the next controlled rep.'],
     cues:['Explode from a braced plank','Land soft, absorb with the arms','Only progress when full push-ups are easy'],
     mistakes:['Attempting before you\'re strong enough','Landing stiff']},
-  atomicpushup:{name:'Atomic Push-Up',region:'chest',unit:'reps',img:'ex-atomicpushup.jpg',vid:'ex-atomicpushup.mp4',anchor:null,hardness:1,base:8,rest:60,
+  atomicpushup:{name:'Atomic Push-Up',region:'chest',unit:'reps',img:'ex-atomicpushup.jpg',vid:'ex-atomicpushup.mp4',anchor:'push',hardness:1,base:8,rest:60,
     why:'A push-up fused with an explosive knee tuck — press up, then snap both knees toward your chest and back out. Builds pressing strength and a powerful, reactive core in one brutal rep. Elite full-body conditioning.',
     steps:['Start in a strong high plank, hands under the shoulders, body in a straight line.','Lower into a full push-up and press back up.','At the top, explosively hop both feet forward, tucking your knees toward your chest.','Jump the feet back out to the plank and flow straight into the next rep.'],
     cues:['Full push-up first, then the tuck','Land the tuck soft and controlled','Brace the core — no sagging hips'],
     mistakes:['Half-repping the push-up','Hips piking or sagging','Landing hard and losing the plank']},
 
   /* ==== SHOULDERS ==== */
-  pikepushup:{name:'Pike Push-Up',region:'shoulders',unit:'reps',img:'ex-pikepushup.jpg',anchor:null,hardness:1,base:8,rest:55,
+  pikepushup:{name:'Pike Push-Up',region:'shoulders',unit:'reps',img:'ex-pikepushup.jpg',anchor:'push',hardness:1,base:8,rest:55,
     why:'Hips high turns the push-up into a vertical press — the bodyweight builder for strong, capped shoulders.',
     steps:['From a push-up, walk feet in and lift the hips into an inverted-V.','Head points toward the floor between your hands.','Bend the elbows to lower the crown of your head toward the floor.','Press back up to the inverted-V.'],
     cues:['Hips high, weight over the hands','Lower the top of the head, not the face','Elbows track forward'],
     mistakes:['Hips dropping toward a plank','Short range']},
-  elevatedpike:{name:'Elevated Pike Push-Up',region:'shoulders',unit:'reps',img:'ex-elevatedpike.jpg',anchor:null,hardness:1,base:6,rest:65,
+  elevatedpike:{name:'Elevated Pike Push-Up',region:'shoulders',unit:'reps',img:'ex-elevatedpike.jpg',anchor:'push',hardness:1,base:6,rest:65,
     why:'Feet on a bench makes the pike press steeper and harder — the last stop before handstand push-ups.',
     steps:['Feet on a bench, hips stacked high over the shoulders.','Head points down between the hands.','Lower under control toward the floor.','Press back to full extension.'],
     cues:['Stack hips over hands','Slow, controlled descent','Full lockout'],
@@ -859,7 +859,7 @@ const EX = {
     steps:['Kick up to a handstand with your belly or back toward a wall.','Stack hands, shoulders and hips in a straight line.','Brace the core and squeeze everything tight.','Hold for time, breathing steadily.'],
     cues:['Push tall through the shoulders','Ribs down, glutes squeezed','Look between the hands'],
     mistakes:['Banana back (over-arching)','Holding the breath']},
-  hspushup:{repCap:8,name:'Wall Handstand Push-Up',region:'shoulders',unit:'reps',img:'ex-hspushup.jpg',anchor:null,hardness:1,base:4,rest:75,
+  hspushup:{repCap:8,name:'Wall Handstand Push-Up',region:'shoulders',unit:'reps',img:'ex-hspushup.jpg',anchor:'push',hardness:1,base:4,rest:75,
     why:'The king of bodyweight shoulder strength — a full vertical press of your own bodyweight.',
     steps:['Kick into a wall handstand, hands slightly wider than shoulders.','Brace hard and lower the head toward the floor under control.','Stop just short, then press back to full extension.','Keep the body tight and straight throughout.'],
     cues:['Controlled negative','Full lockout at the top','Stay tight — no arching'],
@@ -871,121 +871,121 @@ const EX = {
     steps:['Grip the pull-up bar slightly wider than shoulders, palms forward.','Hang with arms straight, shoulders active (not fully shrugged up).','Brace the core, legs still.','Hold for time with steady breathing.'],
     cues:['Shoulders slightly down and back','Full but active hang','Relax the jaw, breathe'],
     mistakes:['Totally passive, shrugged shoulders','Swinging']},
-  scappull:{name:'Scapular Pull-Up',region:'back',unit:'reps',img:'ex-scappull.jpg',equip:['bar'],anchor:null,hardness:1,base:8,rest:50,
+  scappull:{name:'Scapular Pull-Up',region:'back',unit:'reps',img:'ex-scappull.jpg',equip:['bar'],anchor:'pull',hardness:1,base:8,rest:50,
     why:'Teaches you to pull with the back, not just the arms — the missing link that unlocks your first pull-up.',
     steps:['Hang from the bar with straight arms.','Without bending the elbows, pull the shoulder blades down and together.','Your body rises a few inches from shoulder action alone.','Lower back to the active hang and repeat.'],
     cues:['Arms stay straight','Drive the shoulder blades down','Small, controlled range'],
     mistakes:['Bending the elbows','Using momentum']},
-  negpullup:{name:'Negative Pull-Up',region:'back',unit:'reps',img:'ex-negpullup.jpg',equip:['bar'],anchor:null,hardness:1,base:5,rest:65,
+  negpullup:{name:'Negative Pull-Up',region:'back',unit:'reps',img:'ex-negpullup.jpg',equip:['bar'],anchor:'pull',hardness:1,base:5,rest:65,
     why:'Lowering slowly from the top builds the exact strength for full pull-ups faster than anything else.',
     steps:['Jump or step up so your chin is over the bar.','Brace the core and squeeze the back.','Lower yourself as slowly as possible (aim 3–5 seconds).','Reset at the bottom and repeat.'],
     cues:['Fight gravity the whole way','Shoulders down, chest up','Control to a full straight-arm hang'],
     mistakes:['Dropping fast','Cutting the range short']},
-  pullup:{name:'Pull-Up',region:'back',unit:'reps',img:'ex-pullup.jpg',anchor:null,hardness:1,base:6,rest:75,equip:['bar'],pattern:'pull',
+  pullup:{name:'Pull-Up',region:'back',unit:'reps',img:'ex-pullup.jpg',anchor:'pull',hardness:1,base:6,rest:75,equip:['bar'],pattern:'pull',
     why:'The best upper-body pull there is — builds a wide, strong back and powerful arms while your core stays braced.',
     steps:['Hang from the bar, palms forward, slightly wider than shoulders.','Brace the core and pull the elbows down and back.','Bring the chin over the bar.','Lower under control to a full straight-arm hang.'],
     cues:['Lead with the chest','Pull elbows to the floor','Full range top and bottom'],
     mistakes:['Kipping/swinging','Half reps']},
-  chinup:{name:'Chin-Up',region:'back',unit:'reps',img:'ex-chinup.jpg',equip:['bar'],anchor:null,hardness:1,base:7,rest:75,
+  chinup:{name:'Chin-Up',region:'back',unit:'reps',img:'ex-chinup.jpg',equip:['bar'],anchor:'pull',hardness:1,base:7,rest:75,
     why:'Palms-up shifts more work to the biceps and lower lats — a great back-and-arm builder.',
     steps:['Hang with palms facing you, hands shoulder-width.','Brace and pull your chin over the bar.','Squeeze the biceps and back at the top.','Lower slowly to a full hang.'],
     cues:['Chest to the bar','Squeeze at the top','Slow negative'],
     mistakes:['Swinging up','Not fully extending at the bottom']},
-  widepullup:{name:'Wide Pull-Up',region:'back',unit:'reps',img:'ex-widepullup.jpg',equip:['bar'],anchor:null,hardness:1,base:5,rest:80,
+  widepullup:{name:'Wide Pull-Up',region:'back',unit:'reps',img:'ex-widepullup.jpg',equip:['bar'],anchor:'pull',hardness:1,base:5,rest:80,
     why:'A wider grip emphasises the outer lats for that broad, V-taper back.',
     steps:['Grip the bar noticeably wider than shoulders.','Brace and pull the chest toward the bar.','Drive the elbows down and out.','Lower with full control.'],
     cues:['Chest up to the bar','Elbows down and wide','Controlled descent'],
     mistakes:['Short range','Losing the core brace']},
-  invertedrow:{name:'Inverted Row',region:'back',unit:'reps',img:'ex-invertedrow.jpg',equip:['bar'],anchor:null,hardness:1,base:12,rest:50,
+  invertedrow:{name:'Inverted Row',region:'back',unit:'reps',img:'ex-invertedrow.jpg',equip:['bar'],anchor:'pull',hardness:1,base:12,rest:50,
     why:'A horizontal pull that builds the mid-back and rear shoulders — balances all the pressing and improves posture.',
     steps:['Set a bar at hip height; hang underneath, body straight, heels on the floor.','Brace the core and glutes.','Pull the chest to the bar, squeezing the shoulder blades.','Lower under control to straight arms.'],
     cues:['Body stays a straight plank','Squeeze the blades at the top','Full arm extension at the bottom'],
     mistakes:['Hips sagging','Short pulls']},
-  invertedrowelev:{name:'Feet-Elevated Row',region:'back',unit:'reps',img:'ex-invertedrowelev.jpg',equip:['bar'],anchor:null,hardness:1,base:8,rest:60,
+  invertedrowelev:{name:'Feet-Elevated Row',region:'back',unit:'reps',img:'ex-invertedrowelev.jpg',equip:['bar'],anchor:'pull',hardness:1,base:8,rest:60,
     why:'Elevating the feet loads the row more heavily for continued back strength gains.',
     steps:['Set the bar at hip height, feet up on a bench.','Body in a straight line, core braced.','Pull the chest to the bar.','Lower slowly to a full hang.'],
     cues:['Straight, braced body','Blades together at the top','Control the negative'],
     mistakes:['Hips dropping','Jerky reps']},
 
   /* ==== ARMS (triceps — dips on your tower) ==== */
-  benchdip:{name:'Bench Dip',region:'arms',unit:'reps',img:'ex-benchdip.jpg',equip:['bench'],anchor:null,hardness:1,base:12,rest:45,
+  benchdip:{name:'Bench Dip',region:'arms',unit:'reps',img:'ex-benchdip.jpg',equip:['bench'],anchor:'push',hardness:1,base:12,rest:45,
     why:'A beginner-friendly triceps builder using a bench or chair before progressing to full dips.',
     steps:['Hands on the edge of a bench behind you, legs out front.','Lower by bending the elbows straight back.','Keep the hips close to the bench.','Press back up to a full lockout.'],
     cues:['Elbows point back, not out','Chest tall','Full lockout'],
     mistakes:['Shrugging into the shoulders','Tiny range']},
-  closepushup:{name:'Close-Grip Push-Up',region:'arms',unit:'reps',img:'ex-closepushup.jpg',anchor:null,hardness:1,base:10,rest:50,
+  closepushup:{name:'Close-Grip Push-Up',region:'arms',unit:'reps',img:'ex-closepushup.jpg',anchor:'push',hardness:1,base:10,rest:50,
     why:'Hands close and elbows tucked make the triceps the star of the push-up.',
     steps:['Hands under the chest, roughly shoulder-width or closer.','Brace the body straight.','Lower with elbows tracking back along the ribs.','Press to a full lockout.'],
     cues:['Elbows brush the ribs','Straight body line','Full extension'],
     mistakes:['Elbows flaring out','Sagging hips']},
-  dips:{name:'Parallel-Bar Dips',region:'arms',unit:'reps',img:'ex-dips.jpg',anchor:null,hardness:1,base:8,rest:65,equip:['dip'],pattern:'pushh',
+  dips:{name:'Parallel-Bar Dips',region:'arms',unit:'reps',img:'ex-dips.jpg',anchor:'push',hardness:1,base:8,rest:65,equip:['dip'],pattern:'pushh',
     why:'The best bodyweight builder for triceps and lower chest — your dip tower makes these a staple.',
     steps:['Grip the dip bars and press to a strong support hold, arms locked.','Brace the core, lean slightly forward.','Lower until the shoulders are near elbow height.','Press back up to a full lockout.'],
     cues:['Slight forward lean','Elbows back, not flared','Lock out the top'],
     mistakes:['Going too deep too soon','Shrugging the shoulders up']},
 
   /* ==== LEGS ==== */
-  splitsquat:{name:'Split Squat',region:'legs',unit:'reps',img:'ex-splitsquat.jpg',anchor:null,hardness:1,base:12,rest:50,
+  splitsquat:{name:'Split Squat',region:'legs',unit:'reps',img:'ex-splitsquat.jpg',anchor:'squat',hardness:1,base:12,rest:50,
     why:'A staggered stance loads one leg at a time for real single-leg strength and balance. Count each side.',
     steps:['Stand in a long split stance, torso upright.','Lower straight down until the back knee nearly touches.','Keep the front knee over the ankle.','Drive through the front heel to stand. Finish one side, then switch.'],
     cues:['Straight up and down','Front knee tracks the toes','Torso tall'],
     mistakes:['Front knee caving in','Leaning forward']},
-  bulgarian:{name:'Bulgarian Split Squat',region:'legs',unit:'reps',img:'ex-bulgarian.jpg',anchor:null,hardness:1,base:10,rest:60,
+  bulgarian:{name:'Bulgarian Split Squat',region:'legs',unit:'reps',img:'ex-bulgarian.jpg',anchor:'squat',hardness:1,base:10,rest:60,
     why:'Back foot elevated makes it one of the toughest, most effective single-leg builders for quads and glutes. Count each side.',
     steps:['Place the top of your back foot on a bench behind you.','Front foot far enough forward, torso upright.','Lower until the front thigh is about parallel.','Drive through the front heel to stand. Switch sides.'],
     cues:['Weight in the front heel','Upright chest','Control the descent'],
     mistakes:['Front foot too close','Bouncing at the bottom']},
-  walkinglunge:{name:'Walking Lunge',region:'legs',unit:'reps',img:'ex-walkinglunge.jpg',anchor:null,hardness:1,base:14,rest:55,
+  walkinglunge:{name:'Walking Lunge',region:'legs',unit:'reps',img:'ex-walkinglunge.jpg',anchor:'squat',hardness:1,base:14,rest:55,
     why:'Loads each leg through a big range while the core stabilises — great for legs, glutes and conditioning. Count each step.',
     steps:['Step forward into a lunge, both knees ~90°.','Keep the torso tall and core braced.','Drive through the front heel to step the back foot through.','Continue alternating, walking forward.'],
     cues:['Long, controlled steps','Front knee over ankle','Chest up'],
     mistakes:['Short choppy steps','Front knee collapsing in']},
-  boxpistol:{repCap:12,repCap:10,name:'Box Pistol Squat',region:'legs',unit:'reps',img:'ex-boxpistol.jpg',anchor:null,hardness:1,base:8,rest:65,
+  boxpistol:{repCap:12,repCap:10,name:'Box Pistol Squat',region:'legs',unit:'reps',img:'ex-boxpistol.jpg',anchor:'squat',hardness:1,base:8,rest:65,
     why:'A single-leg squat to a box — builds toward the full pistol with control and balance. Count each side.',
     steps:['Stand on one leg in front of a bench or box, other leg extended forward.','Sit back and down to lightly touch the box.','Keep the heel down and chest up.','Drive up through the heel to stand. Switch sides.'],
     cues:['Reach the free leg forward for balance','Heel stays planted','Control down, power up'],
     mistakes:['Crashing onto the box','Heel lifting']},
-  pistol:{name:'Pistol Squat',region:'legs',unit:'reps',img:'ex-pistol.jpg',vid:'ex-pistol.mp4',anchor:null,hardness:1,base:5,rest:75,
+  pistol:{repCap:10,name:'Pistol Squat',region:'legs',unit:'reps',img:'ex-pistol.jpg',vid:'ex-pistol.mp4',anchor:'squat',hardness:1,base:5,rest:75,
     why:'A full one-leg squat — elite single-leg strength, mobility and balance. Count each side.',
     steps:['Stand on one leg, the other extended straight in front.','Sit down slowly all the way to the bottom, heel flat.','Keep the chest up and free leg off the floor.','Drive back up to standing. Switch sides.'],
     cues:['Slow, controlled descent','Weight through the heel','Free leg stays lifted'],
     mistakes:['Losing balance backward','Rounding hard at the bottom']},
-  singlebridge:{name:'Single-Leg Glute Bridge',region:'legs',unit:'reps',img:'ex-singlebridge.jpg',anchor:null,hardness:1,base:12,rest:45,
+  singlebridge:{name:'Single-Leg Glute Bridge',region:'legs',unit:'reps',img:'ex-singlebridge.jpg',anchor:'squat',hardness:1,base:12,rest:45,
     why:'One leg doubles the glute and hamstring demand while the core resists rotation. Count each side.',
     steps:['Lie on your back, one knee bent, the other leg extended.','Press through the planted heel and squeeze the glute.','Lift the hips level and straight.','Lower with control. Finish one side, then switch.'],
     cues:['Hips stay level','Squeeze the glute at the top','Ribs down'],
     mistakes:['Hips tilting to one side','Arching the low back']},
-  hipthrust:{name:'Hip Thrust',region:'legs',unit:'reps',img:'ex-hipthrust.jpg',anchor:null,hardness:1,base:14,rest:55,
+  hipthrust:{name:'Hip Thrust',region:'legs',unit:'reps',img:'ex-hipthrust.jpg',anchor:'squat',hardness:1,base:14,rest:55,
     why:'Shoulders elevated gives the glutes a huge range under load — the top move for building and strengthening the glutes.',
     steps:['Upper back against a bench, feet flat, knees bent.','Drive through the heels and squeeze the glutes.','Lift the hips to a flat tabletop, shins vertical.','Lower under control and repeat.'],
     cues:['Chin tucked, ribs down','Full glute squeeze at the top','Shins vertical at the top'],
     mistakes:['Over-arching the back','Pushing through the toes']},
-  nordic:{repCap:8,name:'Nordic Curl',region:'legs',unit:'reps',img:'ex-nordic.jpg',vid:'ex-nordic.mp4',anchor:null,hardness:1,base:5,rest:70,
+  nordic:{repCap:8,name:'Nordic Curl',region:'legs',unit:'reps',img:'ex-nordic.jpg',vid:'ex-nordic.mp4',anchor:'squat',hardness:1,base:5,rest:70,
     why:'One of the hardest hamstring builders — lowering your whole body with the hamstrings bulletproofs the knees.',
     steps:['Kneel with your ankles anchored (under a couch or held).','Body straight from knees to head, core braced.','Lower forward as slowly as you can, resisting with the hamstrings.','Catch with the hands and push back, or pull yourself up. Repeat.'],
     cues:['Stay straight — no bending at the hips','Resist every inch','Use hands only as needed'],
     mistakes:['Bending at the waist','Dropping without resisting']},
-  calfraise:{name:'Calf Raise',region:'legs',unit:'reps',img:'ex-calfraise.jpg',anchor:null,hardness:1,base:18,rest:35,
+  calfraise:{name:'Calf Raise',region:'legs',unit:'reps',img:'ex-calfraise.jpg',anchor:'squat',hardness:1,base:18,rest:35,
     why:'Builds strong, resilient calves and ankles that support every jump, run and squat.',
     steps:['Stand tall, feet hip-width (use a step for more range).','Press up onto the balls of your feet as high as possible.','Pause and squeeze at the top.','Lower slowly under control.'],
     cues:['Full height at the top','Slow, controlled descent','Stay balanced and tall'],
     mistakes:['Bouncing','Cutting the range short']},
-  singlecalf:{name:'Single-Leg Calf Raise',region:'legs',unit:'reps',img:'ex-singlecalf.jpg',anchor:null,hardness:1,base:12,rest:40,
+  singlecalf:{name:'Single-Leg Calf Raise',region:'legs',unit:'reps',img:'ex-singlecalf.jpg',anchor:'squat',hardness:1,base:12,rest:40,
     why:'One leg doubles the load for real calf strength and balance. Count each side.',
     steps:['Balance on one foot (hold a wall for support).','Press up as high as possible onto the ball of the foot.','Squeeze at the top.','Lower slowly. Switch sides.'],
     cues:['Full range each rep','Control the lowering','Light touch on the wall'],
     mistakes:['Bouncing','Using the wall to lift you']},
-  jumpsquat:{name:'Jump Squat',region:'legs',unit:'reps',img:'ex-jumpsquat.jpg',vid:'ex-jumpsquat.mp4',anchor:null,hardness:1,base:12,rest:45,
+  jumpsquat:{name:'Jump Squat',region:'legs',unit:'reps',img:'ex-jumpsquat.jpg',vid:'ex-jumpsquat.mp4',anchor:'squat',hardness:1,base:12,rest:45,
     why:'Explosive power for the legs plus a big calorie burn — turns squat strength into athletic power.',
     steps:['Start in a quarter-to-half squat.','Explode straight up as high as you can.','Reach tall through the whole body.','Land soft, absorb into the next squat. Repeat.'],
     cues:['Explode up, land soft','Absorb with bent knees','Chest tall'],
     mistakes:['Stiff, hard landings','Knees caving on landing']},
-  splitjump:{name:'Jumping Lunges',region:'legs',unit:'reps',img:'ex-splitjump.jpg',anchor:null,hardness:1,base:10,rest:50,
+  splitjump:{name:'Jumping Lunges',region:'legs',unit:'reps',img:'ex-splitjump.jpg',anchor:'squat',hardness:1,base:10,rest:50,
     why:'Explosive single-leg power and conditioning — from a lunge, jump and switch legs in mid-air, landing in the opposite lunge. Count each landing.',
     steps:['Start in a lunge position, both knees bent.','Explode straight up and switch legs in the air.','Land softly in the opposite lunge.','Absorb and immediately jump again.'],
     cues:['Land soft and balanced','Torso stays tall','Quick, controlled switches'],
     mistakes:['Crashing the landing','Front knee caving']},
-  broadjump:{repCap:10,name:'Broad Jump',region:'legs',unit:'reps',img:'ex-broadjump.jpg',anchor:null,hardness:1,base:8,rest:55,
+  broadjump:{repCap:10,name:'Broad Jump',region:'legs',unit:'reps',img:'ex-broadjump.jpg',anchor:'squat',hardness:1,base:8,rest:55,
     why:'Maximal horizontal power from the hips and legs — pure athleticism and a strong posterior chain.',
     steps:['Stand tall, hinge slightly and swing the arms back.','Explode forward and up, driving through the hips.','Reach for distance, then land soft with bent knees.','Reset and repeat with control.'],
     cues:['Big arm swing','Drive through the hips','Stick a soft landing'],
@@ -1191,42 +1191,42 @@ const EX = {
     cues:['Legs as straight as comfortable','Brace at the plank','Walk the hands, do not jump'],
     mistakes:['Hips sagging at the plank','Bending the knees to cheat the reach']},
   /* ==== Tension battery — powers the Build-muscle slot ==== */
-  tempopushup:{name:'Tempo Push-Up',region:'chest',unit:'reps',img:'ex-tempopushup.jpg',anchor:null,hardness:0.85,base:10,rest:65,pattern:'push',
+  tempopushup:{name:'Tempo Push-Up',region:'chest',unit:'reps',img:'ex-tempopushup.jpg',anchor:'push',hardness:0.85,base:10,rest:65,pattern:'push',
     why:'Slowing the lowering phase to three seconds multiplies time under tension — the single most reliable way to grow muscle with only bodyweight.',
     steps:['Set up in a strong push-up position, hands under the shoulders.','Lower for a slow count of three, staying rigid.','Pause for one count with the chest an inch off the floor.','Press back up under control and repeat.'],
     cues:['Three seconds down, no faster','Elbows about 45 degrees from the body','Body stays one straight line'],
     mistakes:['Dropping fast and bouncing','Hips sagging as you tire']},
-  hindupushup:{name:'Hindu Push-Up',region:'chest',unit:'reps',img:'ex-hindupushup.jpg',anchor:null,hardness:0.8,base:10,rest:65,pattern:'push',
+  hindupushup:{name:'Hindu Push-Up',region:'chest',unit:'reps',img:'ex-hindupushup.jpg',anchor:'push',hardness:0.8,base:10,rest:65,pattern:'push',
     why:'A sweeping push-up that builds chest and shoulders through a huge range of motion while opening the spine and hips.',
     steps:['Start in a downward-dog position, hips high, hands wide.','Sweep the chest down and forward, close to the floor.','Finish by pressing the chest up with the hips low, arms straight.','Reverse the arc back to the start.'],
     cues:['One flowing arc, not two moves','Chest skims low through the middle','Push the hips back at the top'],
     mistakes:['Jerking through the sweep','Cutting the range short']},
-  typewriter:{repCap:10,name:'Typewriter Push-Up',region:'chest',unit:'reps',img:'ex-typewriter.jpg',anchor:null,hardness:0.55,base:8,rest:75,pattern:'push',
+  typewriter:{repCap:10,name:'Typewriter Push-Up',region:'chest',unit:'reps',img:'ex-typewriter.jpg',anchor:'push',hardness:0.55,base:8,rest:75,pattern:'push',
     why:'Shifting your weight onto one arm loads that side close to a one-arm push-up — a serious strength and size builder with no equipment.',
     steps:['Take a wide push-up stance and lower the chest to the floor.','Staying low, shift your weight across to one hand, straightening the other arm.','Slide back across to the opposite side, chest still low.','Press up to the start and repeat.'],
     cues:['Stay low as you slide across','Straight arm stays locked','Hips square to the floor'],
     mistakes:['Rising up between sides','Letting the hips twist']},
-  pseudoplanche:{repCap:10,name:'Pseudo Planche Push-Up',region:'chest',unit:'reps',img:'ex-pseudoplanche.jpg',anchor:null,hardness:0.5,base:8,rest:75,pattern:'push',
+  pseudoplanche:{repCap:10,name:'Pseudo Planche Push-Up',region:'chest',unit:'reps',img:'ex-pseudoplanche.jpg',anchor:'push',hardness:0.5,base:8,rest:75,pattern:'push',
     why:'Leaning forward over the hands shifts huge load onto the shoulders and upper chest — the bodyweight route to real pressing strength and size.',
     steps:['Set up in a push-up with the hands beside the waist, fingers turned slightly out.','Lean the shoulders forward well past the hands.','Keep that forward lean and lower the chest.','Press back up without losing the lean.'],
     cues:['Shoulders stay ahead of the hands','Body locked in one line','Protract — push the floor away at the top'],
     mistakes:['Losing the lean as you press','Hips dropping into an arch']},
-  cossack:{name:'Cossack Squat',region:'legs',unit:'reps',img:'ex-cossack.jpg',anchor:null,hardness:0.9,base:10,rest:60,pattern:'squat',
+  cossack:{name:'Cossack Squat',region:'legs',unit:'reps',img:'ex-cossack.jpg',anchor:'squat',hardness:0.9,base:10,rest:60,pattern:'squat',
     why:'A deep side-to-side squat that builds the legs and glutes while opening the hips and inner thighs. Hits ranges a normal squat never reaches.',
     steps:['Stand with the feet very wide, toes slightly out.','Shift your weight over one leg and sit down into a deep squat on that side.','Keep the other leg straight with the toes up.','Push back to the centre and repeat on the other side. Count each side as a rep.'],
     cues:['Heel of the working leg stays down','Chest up out of the hole','Straight leg stays straight'],
     mistakes:['Rounding the back to get lower','Heel lifting on the working side']},
-  sissysquat:{repCap:12,name:'Sissy Squat',region:'legs',unit:'reps',img:'ex-sissysquat.jpg',anchor:null,hardness:0.7,base:10,rest:65,pattern:'squat',
+  sissysquat:{repCap:12,name:'Sissy Squat',region:'legs',unit:'reps',img:'ex-sissysquat.jpg',anchor:'squat',hardness:0.7,base:10,rest:65,pattern:'squat',
     why:'Isolates the quads through a long stretch under load — one of the few bodyweight moves that genuinely builds quad size.',
     steps:['Stand tall, hold something light for balance if needed.','Rise onto the balls of the feet.','Drive the knees forward and lean the torso back, staying in one straight line from knee to head.','Lower as far as control allows, then squeeze the quads to return.'],
     cues:['Hips, torso and head stay in one line','Move slowly — never bounce','Only go as deep as the knees allow'],
     mistakes:['Bending at the hips','Dropping fast into the bottom']},
-  slrdl:{name:'Single-Leg Romanian Deadlift',region:'legs',unit:'reps',img:'ex-slrdl.jpg',anchor:null,hardness:0.9,base:10,rest:60,pattern:'hinge',
+  slrdl:{name:'Single-Leg Romanian Deadlift',region:'legs',unit:'reps',img:'ex-slrdl.jpg',anchor:'squat',hardness:0.9,base:10,rest:60,pattern:'hinge',
     why:'Builds the hamstrings and glutes one side at a time while training balance — it fixes the left-right strength gaps that hold squats back.',
     steps:['Stand on one leg with a soft knee.','Hinge at the hip, sending the free leg straight back as the chest lowers.','Keep the hips square and the back flat.','Squeeze the glute of the standing leg to stand tall. Count each side as a rep.'],
     cues:['Hips stay level — do not open up','Back flat throughout','Push the back heel to the wall behind you'],
     mistakes:['Rotating the hip open','Rounding the lower back']},
-  wallwalk:{repCap:6,name:'Wall Walk',region:'shoulders',unit:'reps',img:'ex-wallwalk.jpg',anchor:null,hardness:0.6,base:6,rest:75,pattern:'push',
+  wallwalk:{repCap:6,name:'Wall Walk',region:'shoulders',unit:'reps',img:'ex-wallwalk.jpg',anchor:'push',hardness:0.6,base:6,rest:75,pattern:'push',
     why:'Walking up to a wall handstand loads the shoulders under your full bodyweight — the strongest bodyweight builder for shoulder size and stability.',
     steps:['Start in a plank with the feet against the base of a wall.','Walk the feet up the wall while stepping the hands closer in.','Go as high as you can safely control, keeping the ribs down.','Walk back down under control. Each up-and-down is one rep.'],
     cues:['Ribs tucked, no big arch','Push the floor away hard','Come down as slowly as you went up'],
@@ -1262,7 +1262,7 @@ const EX = {
     steps:['Set up in a side plank on the forearm, hips high.','Reach the top arm up toward the ceiling.','Rotate the torso and thread that arm under your body.','Return to the top and repeat. Count each side as a rep.'],
     cues:['Hips stay high through the rotation','Move from the ribs, not the arm','Slow and controlled'],
     mistakes:['Hips dropping as you reach through','Rushing the rotation']},
-  situptwist:{repCap:20,name:'Twisting Sit-Up',region:'oblique',unit:'reps',img:'ex-situptwist.jpg',anchor:null,hardness:0.9,base:16,rest:45,
+  situptwist:{repCap:20,name:'Twisting Sit-Up',region:'oblique',unit:'reps',img:'ex-situptwist.jpg',anchor:'lower',hardness:0.9,base:16,rest:45,
     why:'Combines the sit-up with rotation to load the obliques and the rectus together — more waist work per rep than either alone.',
     steps:['Lie on your back with knees bent and hands lightly at the temples.','Curl up into a sit-up.','As you reach the top, rotate and drive one elbow toward the opposite knee.','Lower under control and alternate sides. Count each side as a rep.'],
     cues:['Rotate at the top, not on the way up','Hands rest light — do not pull the neck','Chin off the chest'],
@@ -1305,15 +1305,15 @@ const SESSIONS = [
   {key:'anterior', name:'Core Crusher', icon:'🔥', focus:'Abs, deep core & anti-extension',
    slots:['plankL','hollowL','lowerL','dynL'], finisher:'cardioFinL'},
   {key:'fullbody', name:'Full-Body Burn', icon:'💪', focus:'Compound strength + core — burns fat, builds muscle',
-   slots:['legL','pushL','plankL','lowerL'], finisher:'cardioBL'},
+   slots:['legL','pushL','rowL','lowerL'], finisher:'cardioBL'},
   {key:'oblique', name:'Obliques & Love Handles', icon:'🌀', focus:'Obliques, waist & rotation',
    slots:['sideL','rotL','dynL','plankL'], finisher:'cardioFinL'},
   {key:'metcon', name:'Metabolic HIIT', icon:'⚡', focus:'Cardio circuit for fat loss + core',
    slots:['cardioAL','cardioBL','sideL','lowerL'], finisher:'finisherL'},
   {key:'lower', name:'Lower-Ab Blast', icon:'🔻', focus:'Lower abs, hips & anti-arch',
    slots:['lowerL','hollowL','legL','plankL'], finisher:'cardioBL'},
-  {key:'push', name:'Strength & Push', icon:'🏋️', focus:'Pushing strength + bracing core',
-   slots:['pushL','legL','rotL','sideL'], finisher:'cardioFinL'},
+  {key:'push', name:'Strength: Push & Pull', icon:'🏋️', focus:'Pushing and pulling strength + bracing core',
+   slots:['pushL','rowL','hingeL','sideL'], finisher:'cardioFinL'},
   {key:'stability', name:'Core Stability', icon:'🧘', focus:'Control, holds & rotation — active-recovery core',
    slots:['plankL','sideL','hollowL','rotL'], finisher:'finisherL'},
 ];
@@ -1323,14 +1323,17 @@ const PHASE2_SESSIONS = [
    slots:['chestL','shoulderL','tricepL','lowerL'], finisher:'cardioFinL'},
   {key:'pull', name:'Pull Day', icon:'🎯', focus:'Back, biceps & grip + core',
    slots:['pullL','rowL','bicepL','plankL'], finisher:'cardioBL'},
-  {key:'legs', name:'Leg Day', icon:'🦵', focus:'Quads, hamstrings, glutes & calves + core',
-   slots:['squatL','hingeL','calfL','dynL'], finisher:'legPowerL'},
+  /* Jumps belong at the START, on fresh legs. As a finisher they landed at
+     position 6 after four working sets — maximal power output and landing
+     mechanics on the most fatigued legs of the week. */
+  {key:'legs', name:'Leg Day', icon:'🦵', focus:'Power first, then quads, hamstrings, glutes & calves',
+   slots:['legPowerL','squatL','hingeL','calfL'], finisher:'finisherL'},
   {key:'metcon', name:'Metabolic HIIT', icon:'⚡', focus:'Full-body conditioning + core',
    slots:['cardioAL','cardioBL','sideL','lowerL'], finisher:'hiitFinL'},
   {key:'upper', name:'Upper Power', icon:'🔺', focus:'Chest, back & shoulders + rotational core',
    slots:['chestL','pullL','shoulderL','rotL'], finisher:'cardioFinL'},
-  {key:'posterior', name:'Posterior & Legs', icon:'🦿', focus:'Glutes, hamstrings, calves + core',
-   slots:['hingeL','squatL','calfL','plankL'], finisher:'legPowerL'},
+  {key:'posterior', name:'Posterior Chain', icon:'🦿', focus:'Glutes, hamstrings and back — unilateral, no jumping',
+   slots:['hingeL','rowL','calfL','plankL'], finisher:'finisherL'},
   {key:'core', name:'Core & Conditioning', icon:'🌀', focus:'Full core circuit + HIIT finish',
    slots:['plankL','sideL','hollowL','lowerL'], finisher:'hiitFinL'},
 ];
@@ -1371,13 +1374,19 @@ const TESTS = [
    instr:'Hold a hollow body position (low back pinned) as long as you can keep the shape. Enter your best time.'},
   {id:'lower', name:'Reverse Crunches (max reps)', unit:'reps', ex:'revcrunch', bench:25,
    instr:'Do as many clean, controlled reverse crunches as you can in one set. Enter the number of good reps.'},
+  {id:'push', name:'Push-Ups (max reps)', unit:'reps', ex:'pushup', bench:35,
+   instr:'Do as many clean push-ups as you can in one set — chest to a fist off the floor, body straight. Drop to your knees only if you cannot hold the line, and stop there.'},
+  {id:'pull', name:'Inverted Rows (max reps)', unit:'reps', ex:'invertedrow', bench:20,
+   instr:'Set a bar or table edge at waist height, hang underneath and row your chest to it. No bar? Do Supermans and enter that count instead — we scale from whatever you can measure.'},
+  {id:'squat', name:'Bodyweight Squats (max reps)', unit:'reps', ex:'squat', bench:40,
+   instr:'Squat to at least parallel, chest up, heels down, for as many controlled reps as you can. Stop when depth or form goes.'},
   {id:'dyn', name:'Bicycle Crunches (max time)', unit:'time', ex:'bicycle', bench:75,
    instr:'Do controlled bicycle crunches for as long as your form stays good. Press Start — the timer counts up — and Stop when your form breaks or you can\'t keep the pace.'},
 ];
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='177';
+const APP_VERSION='178';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1474,8 +1483,16 @@ function posOf(ptr){
 }
 function currentMaxes(cycle){
   // cycle 0 uses baseline; later cycles use reassessment if present, else baseline
-  if(cycle>0 && STATE.reassess[cycle] && STATE.reassess[cycle].maxes) return STATE.reassess[cycle].maxes;
-  return (STATE.baseline&&STATE.baseline.maxes)||{plank:40,side:25,hollow:25,lower:12,dyn:20};
+  if(cycle>0 && STATE.reassess[cycle] && STATE.reassess[cycle].maxes){
+    const base=(STATE.baseline&&STATE.baseline.maxes)||{};
+    return Object.assign({},base,STATE.reassess[cycle].maxes);
+  }
+  const m=(STATE.baseline&&STATE.baseline.maxes)||{};
+  /* Older saves predate the push/pull/squat tests; fall back to a conservative
+     estimate scaled off the core numbers so Phase 2 still has something real. */
+  const s=Math.max(0.5,Math.min(2,(m.plank||40)/60));
+  return Object.assign({plank:40,side:25,hollow:25,lower:12,dyn:20,
+    push:Math.round(12*s),pull:Math.round(7*s),squat:Math.round(22*s)},m);
 }
 const LEVEL_TIER={Beginner:0,Intermediate:1,Advanced:2};
 const LEVEL_NAME=['Beginner','Intermediate','Advanced'];
@@ -1585,9 +1602,16 @@ function prescribe(exId,pos){
   const week=(typeof pos.week==='number'&&pos.week>=1)?pos.week:1;
   const level=levelOf(cycle);
   const maxes=currentMaxes(cycle);
-  const adj=weekAdjust(cycle,week);
-  const cycleBoost=1+0.05*Math.min(cycle,5);        // capped so ~1 year of blocks doesn't run away
-  const adapt=(typeof STATE.adapt==='number')?STATE.adapt:1;  // grows as you improve, eases if too hard
+  const adj=weekAdjust(cycle,week)*0.5;   // halved: STATE.adapt reads the same ratings
+  /* cycleBoost capped at cycle 5, so blocks 6-9 (30 weeks) got no block-over-block
+     progression at all. Anchored work now scales from the re-test, so the cap only
+     needs to restrain the UNANCHORED branch. */
+  const cycleBoost=1+0.05*Math.min(cycle,(ex.anchor&&maxes[ex.anchor])?8:5);
+  /* STATE.adapt used to climb +0.006 per "solid" session against a 1.30 ceiling,
+     so it pinned at ~50 sessions (week 7) and contributed nothing for the next 47
+     weeks. It is now REBASED to 1.0 at every re-test, because the re-tested maxes
+     already carry that adaptation — keeping both double-counted the same gains. */
+  const adapt=(typeof STATE.adapt==='number')?STATE.adapt:1;  // within-block autoregulation only
   const STRENGTH_REGIONS={chest:1,back:1,shoulders:1,arms:1,legs:1,strength:1};
   let sets=3;
   if(ex.region==='dynamic') sets=1;                 // finisher = 1 timed round
@@ -1601,6 +1625,9 @@ function prescribe(exId,pos){
     const base=(ex.unit==='time'?ex.base:ex.base);
     const wk=[1,1.08,1.16,1.25,1.34,1.44][week-1];
     target=base*(LEVEL_FACTOR[level]||1)*wk*(1+adj)*cycleBoost*adapt;
+    /* weekAdjust (adj) and STATE.adapt both derive from the same feel ratings, so
+       an athlete rating "easy" was compounded twice. adj is the within-block
+       signal; adapt is the slow one — halve adj where both apply. */
   }
   /* Deload cuts VOLUME first and load only mildly — the old 38% intensity cut
      was backwards for a taper. */
@@ -1624,7 +1651,10 @@ function prescribe(exId,pos){
   let gMul=1,restMul=1;
   if(goal==='shred'){gMul=ex.unit==='time'?1.10:1.25;restMul=0.8;}
   else if(goal==='lose'){gMul=ex.unit==='time'?1.05:1.15;restMul=0.9;}
-  else if(goal==='gain'){gMul=ex.unit==='time'?0.95:0.85;restMul=1.3;sets=Math.min(sets+1,5);}
+  /* The +1 set for 'gain' used to run AFTER the deload's -1, so a muscle-building
+     athlete had no deload at all. It is skipped on the deload week. */
+  else if(goal==='gain'){gMul=ex.unit==='time'?0.95:0.85;restMul=1.3;
+    if(!(typeof deloadOn==='function'&&deloadOn(pos)))sets=Math.min(sets+1,5);}
   else if(goal==='core'){gMul=isCore?(ex.unit==='time'?1.10:1.15):0.95;restMul=isCore?1:0.95;}
   else if(goal==='recomp'){gMul=1.05;}
   target*=gMul;
@@ -1640,7 +1670,14 @@ function prescribe(exId,pos){
     target=clamp(target,lo,hi);
   }
   const rest=clamp(Math.round((ex.rest||45)*restMul),20,120);
-  return {sets,target,unit:ex.unit,rest};
+  /* Once a ladder runs out of rungs the movement cannot get harder, so blocks 6-9
+     repeated byte-identical work. Add an intensity axis instead — tempo, then a
+     pause — real progression without inventing exercises they cannot do. */
+  let tempo=null;
+  if(cycle>=5&&(ex.anchor||STRENGTH_REGIONS[ex.region])&&ex.region!=='stability'){
+    tempo=['3s down','3s down · 1s pause','4s down · 2s pause'][Math.min(2,cycle-5)]||null;
+  }
+  return {sets,target,unit:ex.unit,rest,tempo};
 }
 
 /* Focus-area pools for the targeted bonus slot. Each session gains ONE extra
@@ -1686,7 +1723,13 @@ function focusBonus(pos,used){
     const has=k=>{const e=EX[k];if(!e)return false;if(!e.equip)return true;return e.equip.every(g=>gear.includes(g));};
     for(const key of keys){
       const pool=FOCUS_POOL[key];if(!pool)continue;
-      const cands=pool.filter(k=>EX[k]&&!used.has(k)&&has(k)).map(k=>safeSwap(k)).filter(k=>EX[k]&&!used.has(k)&&has(k));
+      /* The bonus used to pick from a flat pool with only gear and injury filters,
+         so a beginner with a bar was handed Bent-Knee Dragon Flags in week 1.
+         Gate it by how hard the movement is relative to their tested level. */
+      const tier=LEVEL_TIER[levelOf(pos&&pos.cycle||0)]??1;
+      const easyEnough=k=>{const h=EX[k]&&EX[k].hardness;return !(h>0)||h>=[1.0,0.7,0.4][tier];};
+      let cands=pool.filter(k=>EX[k]&&!used.has(k)&&has(k)&&easyEnough(k)).map(k=>safeSwap(k)).filter(k=>EX[k]&&!used.has(k)&&has(k));
+      if(!cands.length)cands=pool.filter(k=>EX[k]&&!used.has(k)&&has(k)).map(k=>safeSwap(k)).filter(k=>EX[k]&&!used.has(k)&&has(k));
       if(!cands.length)continue;
       // deterministic-but-varied pick so it rotates across sessions without Math.random
       const exId=cands[(pos.cycle*7+(pos.dayInWeek||0))%cands.length];
@@ -1777,6 +1820,10 @@ function buildSession(ptr){
   const hasBar=STATE.profile.hasBar!==false; // default true; toggle in settings
   const sw=sessionSwaps(ptr);   // athlete's explicit swaps for this session
   const used=new Set();
+  /* Direct abdominal work ran 77-110 sets a week — several times what the tissue
+     responds to, and the focus bonus stacked ON TOP of it. Cap the midsection
+     slots per session so the bonus displaces rather than adds. */
+  const CORE_REGIONS={anterior:1,oblique:1,lower:1};
   // Resolve one rung of a ladder to a real, doable exercise id.
   const resolve=(ladder,idx)=>{
     const arr=LADDERS[ladder]||[];
@@ -1842,7 +1889,10 @@ function buildSession(ptr){
   const finisher={exId:finEx,...prescribe(finEx,pos),slot:finLadName};
   finisher.sets=1;   // a finisher is always one all-out burnout round
   // targeted bonus: one extra move for the athlete's priority area (from the quiz)
-  let bonus=focusBonus(pos,used);
+  /* If the day already has three or more direct-core slots, skip the bonus —
+     an extra ab exercise on Core Crusher is not the missing stimulus. */
+  const coreSlots=main.filter(m=>EX[m.exId]&&CORE_REGIONS[EX[m.exId].region]).length;
+  let bonus=(coreSlots>=3)?null:focusBonus(pos,used);
   if(sw&&sw.focus&&EX[sw.focus]&&swapStillValid(sw.focus))bonus={exId:sw.focus,...prescribe(sw.focus,pos),slot:'focus',focus:true};
   if(bonus)main.push(bonus);
   return {ptr,pos,cycle,week,session:pos.session,warmup:WARMUP,main,finisher,cooldown:COOLDOWN};
@@ -1859,7 +1909,8 @@ function computeAssessment(results){
   TESTS.forEach(t=>{const v=+results[t.id]||0;sum+=clamp(v/t.bench*100,0,100);n++;});
   const score=Math.round(sum/n);
   const level=score<38?'Beginner':(score<68?'Intermediate':'Advanced');
-  const maxes={plank:+results.plank||30,side:+results.side||20,hollow:+results.hollow||20,lower:+results.lower||10,dyn:+results.dyn||16};
+  const maxes={plank:+results.plank||30,side:+results.side||20,hollow:+results.hollow||20,lower:+results.lower||10,dyn:+results.dyn||16,
+    push:+results.push||10,pull:+results.pull||6,squat:+results.squat||18};
   return {score,level,maxes};
 }
 
@@ -2564,7 +2615,7 @@ function exCardHTML(m,log,idx){
         <div class="ex-name">${ex.name}</div>
         <div class="ex-region">${m.focus?'<span class="tag" style="background:var(--fire-l);color:var(--accInk);font-weight:800">🎯 Your focus</span> ':''}<span class="tag ${ex.region}">${ex.region}</span> &nbsp;${m.sets} × ${targetStr}</div>
       </div>
-      <div class="ex-rx"><div class="big">${m.sets}×${m.unit==='time'?fmtTime(m.target):m.target}</div><div class="sub">rest ${m.rest}s</div></div>
+      <div class="ex-rx"><div class="big">${m.sets}×${m.unit==='time'?fmtTime(m.target):m.target}</div><div class="sub">${m.tempo?_ve(m.tempo):'rest '+m.rest+'s'}</div></div>
     </div>
     <div class="setdots">
       ${setsArr.map((d,i)=>`<button class="setdot ${d?'done':''}" data-act="set" data-i="${i}">Set ${i+1}<small>${d?(m.unit==='time'?fmtTime(m.target):m.target):'tap ✓'}</small></button>`).join('')}
@@ -3633,10 +3684,13 @@ function assessNav(dir){
   if(ni>=TESTS.length){finishAssessment();return;}
   assessState.idx=ni;renderAssessStep();
 }
+/* Re-testing re-measures the athlete, so the within-block adapt multiplier returns
+   to neutral — otherwise the same adaptation is counted twice. */
+function rebaseAdapt(){STATE.adapt=1;}
 function finishAssessment(){
   const a=computeAssessment(assessState.results);
   const rec={date:todayISO(),results:assessState.results,score:a.score,level:a.level,maxes:a.maxes};
-  if(assessState.reassess){STATE.reassess[assessState.reassess]=rec;}
+  if(assessState.reassess){STATE.reassess[assessState.reassess]=rec;rebaseAdapt();}
   else{STATE.baseline=rec;}
   STATE.scoreHistory.push({date:todayISO(),score:a.score,level:a.level});
   setTimeout(checkAchievements,300);
@@ -5472,7 +5526,7 @@ function comebackEaseActive(){return !!(STATE.comeback&&STATE.comeback.left>0);}
 function armComeback(){
   const g=daysSinceTrained(),last=lastTrainedISO();
   if(g!=null&&g>=5&&last&&(!STATE.comeback||STATE.comeback.trig!==last)){
-    STATE.comeback={left:(g>=14?3:2),days:g,trig:last};save();
+    STATE.comeback={left:clamp(Math.round(g/4),2,8),days:g,trig:last};save();
   }
 }
 function catchUpBanner(){
@@ -5480,7 +5534,7 @@ function catchUpBanner(){
   if(g===null||g<2)return '';
   const ease=comebackEaseActive();
   const extra=ease?` I've <b>eased your next ${STATE.comeback.left} session${STATE.comeback.left>1?'s':''}</b> — lighter volume so you ramp back up safely, no punishment and no starting over.`:'';
-  return `<div class="note info" style="margin-top:12px">👋 <b>Welcome back — it's been ${g} days.</b> No streak lost — just pick up where you left off.${extra} Short on time today? <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="openQuickList()">⚡ 15-min catch-up</button></div>`;
+  return `<div class="note info" style="margin-top:12px">👋 <b>Welcome back — it's been ${g} days.</b> Nothing is lost — your program waits exactly where you left it.${extra} Short on time today? <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="openQuickList()">⚡ 15-min catch-up</button></div>`;
 }
 /* #5 — Grocery list compiled from today's meal plan. */
 function openGrocery(){
@@ -5676,7 +5730,7 @@ function deloadOn(pos){
     if(STATE.settings&&STATE.settings.deload===true)return true;
     if(STATE.settings&&STATE.settings.autoDeload===false)return false;
     const p=pos||posOf(STATE.progressPtr);
-    return p&&p.week===WEEKS_PER_CYCLE;
+    return (p&&p.week===WEEKS_PER_CYCLE)||readinessSlump();
   }catch(e){return false;}
 }
 function toggleDeload(){if(!STATE.settings)STATE.settings={};STATE.settings.deload=!deloadOn();save();toast(deloadOn()?'Deload week on 🌙':'Deload off — full load');render();}
@@ -5694,7 +5748,20 @@ function showUpdateToast(){
 }
 /* ---- #2 Daily readiness check (auto-regulation) ---- */
 function readinessToday(){return (STATE.readiness&&STATE.readiness[todayISO()])||null;}
-function readinessMult(){const r=readinessToday();if(!r)return 1;const s=r.score;return s>=80?1.05:(s>=60?1.0:(s>=40?0.9:0.78));}
+function readinessMult(){const r=readinessToday();if(!r)return 1;const s=r.score;
+  /* The 40-59 band is the common under-recovered state and only cut load 10%
+     with no set reduction. Widened so it actually does something. */
+  return s>=80?1.05:(s>=60?1.0:(s>=40?0.82:0.7));}
+/* Persist the signal: three poor days in a row should trigger a real unload,
+   not three independent 18% trims. */
+function readinessSlump(){
+  try{const n=nut();const out=[];
+    for(let i=0;i<3;i++){const d=new Date();d.setDate(d.getDate()-i);
+      const k=d.toISOString().slice(0,10);const r=(STATE.readiness||{})[k];
+      if(r&&r.score>0)out.push(r.score);}
+    return out.length===3&&(out.reduce((a,b)=>a+b,0)/3)<55;
+  }catch(e){return false;}
+}
 let _rdy={};
 function openReadiness(){
   const cur=readinessToday();if(cur&&!_rdy._init){_rdy={sleep:cur.sleep,sore:cur.sore,energy:cur.energy,_init:1};}
@@ -5952,9 +6019,14 @@ function quickPick(i){const f=COMMON_FOODS[i];rememberFood(f.name,f.kcal,f.p,f.c
    the rest. Only shown once a calorie target exists. ---- */
 function macroTargets(){const k=nut().kcalTarget;if(!k)return null;
   const p=proteinTargetG()||Math.round(k*0.3/4);
-  const f=Math.round(k*0.27/9);
+  /* Fat as a pure percentage fell with the calorie target, dropping a floored
+     1140 kcal athlete to ~34 g — under what fat-soluble vitamin absorption and
+     endocrine function need. Give it an absolute and a per-kg floor. */
+  const kg=latestWeightKg();
+  const f=Math.max(Math.round(k*0.27/9), kg?Math.round(kg*0.7):0, 35);
   const c=Math.max(0,Math.round((k-p*4-f*9)/4));
-  return {kcal:k,p:p,c:c,f:f};}
+  const fib=Math.round(k/1000*14);   // 14 g per 1000 kcal — drives satiety and adherence
+  return {kcal:k,p:p,c:c,f:f,fib:fib};}
 /* ---- Recent & favorite foods: one-tap re-log of what you actually eat ---- */
 // Remembers the per-serving values under a food's base name (deduped, newest first).
 function rememberFood(name,kcal,p,c,f){name=String(name||'').trim();if(!name||(!kcal&&!p))return;
@@ -6018,7 +6090,10 @@ function _offItem(p){
      wherever it appears, preferring the last one (the parenthesised weight). */
   const sTxt=String(p.serving_size||'').replace(',','.');
   const gm=[...sTxt.matchAll(/([\d.]+)\s*(g|ml)\b/gi)].map(m=>parseFloat(m[1])).filter(v=>v>0);
-  const sg=gm.length?gm[gm.length-1]:parseFloat(sTxt);
+  /* "2 biscuits" has no gram figure, and parseFloat read the COUNT as grams —
+     logging the product at 2% of its real calories. With no gram figure, fall
+     back to per-100 g instead of trusting a bare number. */
+  const sg=gm.length?gm[gm.length-1]:0;
   const per=(sg>0&&sg<2000)?sg/100:1;   // serving in grams -> multiplier, else per 100 g
   const nm=[p.product_name,p.brands?('· '+String(p.brands).split(',')[0].trim()):''].filter(Boolean).join(' ').trim();
   return {n:(nm||'Product').slice(0,50),
@@ -6354,17 +6429,17 @@ function intakeTrendHTML(){
 }
 /* ---- #5 Strength standards + 1RM estimate ---- */
 const STANDARDS={
-  pushup:{unit:'reps',t:[10,25,40,55],n:'Push-Up'},
-  pullup:{unit:'reps',t:[3,8,15,22],n:'Pull-Up'},
-  chinup:{unit:'reps',t:[3,10,17,25],n:'Chin-Up'},
-  dips:{unit:'reps',t:[5,12,22,32],n:'Parallel-Bar Dips'},
-  squat:{unit:'reps',t:[25,45,65,90],n:'Bodyweight Squat'},
-  pistol:{unit:'reps',t:[1,5,10,15],n:'Pistol Squat'},
+  pushup:{anchor:'push',unit:'reps',t:[10,25,40,55],n:'Push-Up'},
+  pullup:{anchor:'pull',unit:'reps',t:[3,8,15,22],n:'Pull-Up'},
+  chinup:{anchor:'pull',unit:'reps',t:[3,10,17,25],n:'Chin-Up'},
+  dips:{anchor:'push',unit:'reps',t:[5,12,22,32],n:'Parallel-Bar Dips'},
+  squat:{anchor:'squat',unit:'reps',t:[25,45,65,90],n:'Bodyweight Squat'},
+  pistol:{repCap:10,anchor:'squat',unit:'reps',t:[1,5,10,15],n:'Pistol Squat'},
   plank:{unit:'time',t:[45,90,150,240],n:'Plank'},
   sideplank:{unit:'time',t:[30,60,90,120],n:'Side Plank'},
   hollow:{unit:'time',t:[20,45,75,120],n:'Hollow Hold'},
-  hspushup:{unit:'reps',t:[1,3,6,10],n:'Handstand Push-Up'},
-  deadhang:{unit:'time',t:[30,60,90,120],n:'Dead Hang'},
+  hspushup:{anchor:'push',unit:'reps',t:[1,3,6,10],n:'Handstand Push-Up'},
+  deadhang:{anchor:null,unit:'time',t:[30,60,90,120],n:'Dead Hang'},
 };
 const LEVELS=['Beginner','Novice','Intermediate','Advanced','Elite'];
 function strengthLevel(val,t){let i=0;for(;i<t.length;i++){if(val<t[i])break;}return i;}
@@ -6582,7 +6657,12 @@ function checkReminder(){
   fireReminderNotif();toast('⏰ Time to train — keep your streak!');
 }
 function computeStreak(){
-  const dates=[...new Set(Object.values(STATE.logs).filter(l=>l&&l.done&&l.completedAt).map(l=>l.completedAt))].sort();
+  /* Quick sessions are real training days — they just don't advance the main
+     program. Fold them in so a 15-minute day holds the streak. */
+  const dates=[...new Set([
+    ...Object.values(STATE.logs).filter(l=>l&&l.done&&l.completedAt).map(l=>l.completedAt),
+    ...Object.keys(STATE.quickLog||{})
+  ])].sort();
   if(!dates.length)return 0;
   // a streak is CURRENT by definition: if the last session is more than the
   // allowed gap behind today, it's over — it used to read "5" months later
@@ -6789,7 +6869,13 @@ function projectionHTML(){
   const tlw=STATE.profile.timelineWeeks;
   if(tlw>0){
     const wanted=diff/tlw;
-    const capped=losing?Math.min(wanted,Math.max(1.0,kg*0.01)):Math.min(wanted,0.5);
+    /* The Math.max(1.0, ...) floor let anyone under 100 kg be shown up to 1 kg/wk
+       — 1.67%/wk for a 60 kg athlete, contradicting the app's own 0.5-1% advice
+       and unachievable on the deficit it actually prescribes. Clamp to BOTH. */
+    const byRate=kg*0.01;
+    const dfc=(nut().tdee&&nut().kcalTarget)?Math.max(0,nut().tdee-nut().kcalTarget):0;
+    const byDeficit=dfc?dfc*7/7700:byRate;
+    const capped=losing?Math.min(wanted,byRate,byDeficit||byRate):Math.min(wanted,0.5);
     if(capped>0){rate=capped;weeks=Math.max(1,Math.ceil(diff/rate));}
   }
   const start=Date.now(),end=start+weeks*7*86400000;
@@ -6819,7 +6905,9 @@ function transformationHTML(){
    with its own streak. All stored locally by date. */
 const HABITS=[
   {k:'protein',label:'Hit protein target',emoji:'🥩'},
-  {k:'cals',label:'Stayed in calorie deficit',emoji:'🔥'},
+  /* Was a streak condition, which makes restriction the thing the app rewards
+     daily. Still loggable, but no longer required to hold the streak. */
+  {k:'cals',label:'Stayed in calorie deficit',emoji:'🔥',optional:true},
   {k:'water',label:'Hit water goal',emoji:'💧'},
   {k:'sleep',label:'7+ hours sleep',emoji:'😴'},
   {k:'steps',label:'Walk / 7k+ steps',emoji:'🚶'},
@@ -6836,15 +6924,30 @@ function latestWeightKg(){
 // ~1.8 g/kg for fat loss; a steeper cut needs more to hold onto muscle
 function proteinTargetG(){const kg=latestWeightKg();if(!kg)return null;
   const perKg=(STATE.profile.goal==='shred')?2.2:1.8;
-  return Math.round(kg*perKg/5)*5;}
+  /* Scaling off TOTAL mass overshoots at high body fat — a 110 kg athlete at 35%
+     was prescribed 240 g, over 40% of their calories. Cap against lean mass. */
+  let g=kg*perKg;
+  try{const bf=curBF();if(bf>0){const lean=kg*(1-bf/100);g=Math.min(g,lean*2.4);}}catch(e){}
+  return Math.round(g/5)*5;}
 function waterTargetCups(){const kg=latestWeightKg();if(!kg)return 8;return clamp(Math.round(kg*35/240),6,16);} // ~35 ml/kg, 240 ml/cup
+function habitsRequired(){return HABITS.filter(h=>!h.optional).length;}
+/* One forgiveness day per week, matching the training streak's tolerance —
+   otherwise one restaurant meal or one bad night's sleep zeroes it. */
+function nutStreakGrace(){return 1;}
 function nutritionStreak(){
-  const n=nut();const dates=Object.keys(n.days).sort();let streak=0;let prev=null;
+  const n=nut();const dates=Object.keys(n.days).sort();let streak=0;let prev=null;let grace=nutStreakGrace();
   for(let i=dates.length-1;i>=0;i--){
-    const day=n.days[dates[i]];const hit=Object.values((day&&day.habits)||{}).filter(Boolean).length;
+    const day=n.days[dates[i]];const hb=(day&&day.habits)||{};
+    /* Count only the non-optional habits, so a calorie deficit is no longer the
+       thing that holds the streak up. */
+    const hit=HABITS.filter(h=>!h.optional&&hb[h.k]).length;
     // rendering Fuel auto-creates an empty row for today — an unfinished today
     // pauses the streak, it doesn't break yesterday's
-    if(hit<4){if(dates[i]===todayISO()&&i===dates.length-1)continue;break;}
+    if(hit<Math.max(2,habitsRequired()-1)){
+      if(dates[i]===todayISO()&&i===dates.length-1)continue;
+      if(grace>0){grace--;prev=dates[i];continue;}   // one forgiveness day
+      break;
+    }
     if(prev&&(new Date(prev)-new Date(dates[i]))/86400000>1)break;   // days must be consecutive
     streak++;prev=dates[i];
   }
@@ -7053,6 +7156,13 @@ function mealPlanHTML(){
       <ol style="margin:0;padding-left:18px;font-size:13px;color:var(--muted)">${r.steps.map(x=>`<li style="margin-bottom:3px">${_ve(x)}</li>`).join('')}</ol>
     </div>`;});
   h+=`</div>`;
+  /* Fixed-portion recipes could not reach a bigger athlete's target, so the plan
+     silently prescribed a deficit twice the size of the calculated one. Show the
+     portion multiplier the athlete actually needs. */
+  if(kcalT&&tot>0&&tot<kcalT*0.9){
+    const mult=Math.round(kcalT/tot*20)/20;
+    h+=`<div class="note fire" style="margin-top:10px">📏 <b>Scale these portions to about ${mult}×.</b> As written this plan is <b>${tot} kcal</b> against your <b>${kcalT}</b> target — eating it as-is is a far steeper deficit than you asked for. Multiply each quantity by ${mult}, or add a snack.</div>`;
+  }
   if(!kcalT){h+=`<div class="note info" style="margin-top:10px">Tip: tap <b>Calculate my targets</b> below so these meals are sized to your calorie goal.</div>`;}
   else if(tot<kcalT*0.85){h+=`<div class="note info" style="margin-top:10px">This comes to <b>${tot} kcal</b> vs your <b>${kcalT}</b> target — increase portions or add a snack to close the gap.</div>`;}
   else if(tot>kcalT*1.15){h+=`<div class="note warn" style="margin-top:10px">This comes to <b>${tot} kcal</b> vs your <b>${kcalT}</b> target — trim portions a little.</div>`;}
@@ -7063,6 +7173,7 @@ function renderFuel(){
   const v=$('#v-fuel');const n=nut();const t=nutToday();
   const kg=latestWeightKg();const prot=proteinTargetG();const wt=waterTargetCups();
   let h=`<h2 class="vtitle">Fuel</h2><div class="vsub">Abs are built in the gym and revealed in the kitchen. Hit these daily.</div>`;
+  h+=dietBreakBanner();
   if(!kg){
     h+=`<div class="note warn">Add your <b>body weight</b> so we can set your protein &amp; calorie targets. <button class="btn sm primary" style="width:auto;margin-top:8px" onclick="logMeasure()">+ Log weight</button></div>`;
   }
@@ -7119,10 +7230,28 @@ function renderFuel(){
   </div>`;
   v.innerHTML=h;
 }
-function setNutGoal(g){nut().goal=g;STATE.profile.goal=g;if(nut().kcalTarget)recalcKcalFromStored();save();renderFuel();}
+function setNutGoal(g){nut().goal=g;STATE.profile.goal=g;noteGoalPhase();if(nut().kcalTarget)recalcKcalFromStored();save();renderFuel();}
 function logWater(d){const t=nutToday();t.water=clamp((t.water||0)+d,0,20);if(t.water>=waterTargetCups()){if(!t.habits)t.habits={};t.habits.water=true;}save();renderFuel();checkAchievements();}
 function toggleHabit(k){const t=nutToday();if(!t.habits)t.habits={};t.habits[k]=!t.habits[k];save();haptic(10);renderFuel();checkAchievements();}
 function mifflinBMR(sex,kg,cm,age){return 10*kg+6.25*cm-5*age+(sex==='female'?-161:5);}
+/* GOAL_NOTE.shred says "best in short blocks" and nothing enforced it. Track how
+   long the athlete has been cutting so the app can prompt a maintenance phase. */
+function shredWeeks(){
+  try{const s=STATE.profile._shredStart;if(!s)return 0;
+    return Math.floor((new Date(todayISO())-new Date(s))/604800000);}catch(e){return 0;}
+}
+function noteGoalPhase(){
+  try{const g=STATE.profile.goal;
+    if(g==='shred'||g==='lose'){if(!STATE.profile._shredStart)STATE.profile._shredStart=todayISO();}
+    else STATE.profile._shredStart=null;
+  }catch(e){}
+}
+function dietBreakBanner(){
+  const w=shredWeeks();
+  if(w<12)return '';
+  return `<div class="note fire">🍽️ <b>You have been in a deficit for ${w} weeks.</b> That is long enough that appetite, energy and recovery all start working against you. Take <b>2 weeks at maintenance</b> — same training, more food. You will keep the muscle, reset the hormones, and come back to the cut working properly.
+    <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="setNutGoal('maintain');toast('Switched to maintenance — well played')">Switch to maintenance</button></div>`;
+}
 function recalcKcalFromStored(){
   const n=nut();if(!(n.sex&&n.age&&n.heightCm&&n.weightKg))return;
   const bmr=mifflinBMR(n.sex,n.weightKg,n.heightCm,n.age);const tdee=bmr*(n.activity||1.45);
@@ -7135,7 +7264,11 @@ function recalcKcalFromStored(){
   // Safety floor: never prescribe below ~110% of BMR. Record when it bites so the
   // UI can say the target was raised, rather than silently showing 'shred' and
   // 'lose' the same number.
-  const floor=bmr*1.1;
+  /* A floor defined only as a multiple of BMR gives the LEAST protection to the
+     smallest and oldest athletes — exactly backwards. Below ~1200/1500 kcal a
+     complete diet is not achievable from whole food unsupervised. */
+  const isF=(STATE.profile.sex||'m')==='f';
+  const floor=Math.max(bmr*1.1, isF?1200:1500);
   n.kcalFloored=t<floor-1;
   t=Math.max(t,floor);
   n.kcalTarget=Math.round(t/10)*10;
@@ -7249,7 +7382,16 @@ function quickPlay(idx){
 function quickMark(idx){if(!quickState.done)quickState.done={};quickState.done[idx]=true;haptic(10);if(TAB==='quick')renderQuick();}
 function quickFinish(){
   const q=QUICKIES.find(x=>x.id===QUICK_ID);
-  STATE.quickDone=(STATE.quickDone||0)+1;save();
+  STATE.quickDone=(STATE.quickDone||0)+1;
+  /* Quick sessions used to write a counter nothing read: no log, no streak, no
+     heatmap square. The app's own answer to "I only have 15 minutes" scored as
+     though it never happened. It now counts as a training day (without advancing
+     the main program, which stays session-indexed). */
+  try{
+    STATE.quickLog=STATE.quickLog||{};
+    STATE.quickLog[todayISO()]=(STATE.quickLog[todayISO()]||0)+1;
+  }catch(e){}
+  save();
   if(!motivate('done'))coachSay&&coachSay('Nice work. Quick session done.');
   toast('Quick workout complete 💪');
   try{history.back();}catch(e){go('today');}
@@ -7796,6 +7938,7 @@ function normalizeState(){
      told the app you owned a battle rope, and day one prescribed one. */
   if(!STATE.profile._benchKit)STATE.profile._benchKit=true;
   try{migrateAllergens();}catch(e){}   // derive allergen tags from any old free-text answer
+  try{noteGoalPhase();}catch(e){}       // start/stop the deficit-duration clock
   if(seeding&&!STATE.profile._days7&&!Array.isArray(STATE.profile.days)){STATE.profile.days=[0,1,2,3,4,5,6];}
   if(!STATE.profile._days7)STATE.profile._days7=true;
   /* Never invent a body target. These used to be seeded to 175 lb / 12% before
