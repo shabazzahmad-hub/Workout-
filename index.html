@@ -573,17 +573,17 @@ const EX = {
     steps:['Lie on your back, hands by your sides or under your hips.','Bend knees and lift them so thighs are over your hips.','Curl your pelvis up, lifting hips off the floor toward your ribs.','Lower with control — do not just drop. Repeat.'],
     cues:['Curl the pelvis, don\'t just swing the legs','Keep the movement slow on the way down','Ribs stay down'],
     mistakes:['Using momentum to fling the hips','Pulling with the neck']},
-  legraise:{name:'Lying Leg Raise',region:'lower',unit:'reps',img:'ex-legraise.jpg',anchor:'lower',hardness:0.85,base:12,rest:50,
+  legraise:{repCap:15,name:'Lying Leg Raise',region:'lower',unit:'reps',img:'ex-legraise.jpg',anchor:'lower',hardness:0.7,base:12,rest:50,
     why:'A hard, effective lower-ab and hip-flexor movement that builds strength and control through a long range.',
     steps:['Lie flat, legs straight, hands under your glutes for support.','Press your lower back into the floor.','Keeping legs straight, raise them until they point at the ceiling.','Lower slowly, stopping before your back arches. Repeat.'],
     cues:['Lower back stays pressed down','Lower the legs slowly','Stop the descent before the back lifts'],
     mistakes:['Lower back arching as legs drop','Bending the knees to cheat range']},
-  kneeraise:{name:'Hanging Knee Raise',region:'lower',unit:'reps',img:'ex-kneeraise.jpg',anchor:'lower',hardness:0.8,base:10,rest:55,optional:true,
+  kneeraise:{repCap:15,name:'Hanging Knee Raise',region:'lower',unit:'reps',img:'ex-kneeraise.jpg',anchor:'lower',hardness:0.55,base:10,rest:55,optional:true,
     why:'If you have a bar, hanging raises are elite for the lower abs — but this is optional; a floor move is swapped in if you have no bar.',
     steps:['Hang from a bar with a shoulder-width grip, arms straight.','Brace your core to stop yourself swinging.','Curl your knees up toward your chest, rounding the lower back slightly.','Lower under control without swinging. Repeat.'],
     cues:['Curl the pelvis at the top for the abs','No swinging — control it','Shoulders active, not fully relaxed'],
     mistakes:['Swinging with momentum','Only lifting the legs without curling the pelvis']},
-  hanglegraise:{name:'Hanging Leg Raise',region:'lower',unit:'reps',img:'ex-hanglegraise.jpg',anchor:'lower',hardness:1.3,base:8,rest:60,optional:true,equip:['bar'],
+  hanglegraise:{repCap:12,name:'Hanging Leg Raise',region:'lower',unit:'reps',img:'ex-hanglegraise.jpg',anchor:'lower',hardness:0.4,base:8,rest:60,optional:true,equip:['bar'],
     why:'The king of lower-ab strength — straight-leg hanging raises train the entire front core and hip flexors through a full range. The non-negotiable progression above the knee raise.',
     steps:['Hang from a bar, arms straight, shoulders active and core braced.','Keep the legs as straight as you can.','Raise them together toward the bar, curling the pelvis up at the top.','Lower slowly with zero swing. Bend the knees only if you must to keep it strict.'],
     cues:['Curl the pelvis at the top — don\'t just lift the legs','Dead still, no kipping or swing','Toes-to-bar is the long-term goal'],
@@ -593,7 +593,7 @@ const EX = {
     steps:['Sit between two dip bars, parallettes, or press hands into the floor beside the hips.','Push down hard and lift the hips clear of the ground, shoulders down away from the ears.','Tuck the knees to start; extend the legs toward straight as you get stronger.','Hold for time with the legs squeezed and toes pointed.'],
     cues:['Push the floor/bars away — shoulders down','Squeeze the quads and point the toes','Chest tall, don\'t collapse forward'],
     mistakes:['Shrugging the shoulders up','Holding the breath','Letting the hips sink back to the floor']},
-  dragonflag:{name:'Bent-Knee Dragon Flag',region:'anterior',unit:'reps',img:'ex-dragonflag.jpg',anchor:null,hardness:1.7,base:6,rest:70,optional:true,equip:['bar'],
+  dragonflag:{repCap:10,name:'Bent-Knee Dragon Flag',region:'anterior',unit:'reps',img:'ex-dragonflag.jpg',anchor:null,hardness:1.7,base:6,rest:70,optional:true,equip:['bar'],
     why:'Bruce Lee\'s signature core move and the toughest anti-extension exercise in calisthenics — the whole body becomes one rigid lever against gravity. Bending the knees shortens that lever so you can own the movement before going full straight-leg.',
     steps:['Lie on your back on the mat and reach both arms overhead to grip a fixed anchor (the upright of your pull-up rig) behind your head.','Pull down hard with the lats so your shoulders and upper back stay pressed into the floor — they never leave it.','Brace and lift everything below the shoulder blades, hips pushed up so the body is one straight line from shoulders to knees, knees bent about 90°.','Lower under control without letting the hips sag, stopping before your back touches, then drive back up.'],
     cues:['Shoulders stay glued to the floor','Squeeze the glutes — no sag at the waist','Lower slowly; the negative is the whole exercise'],
@@ -639,7 +639,7 @@ const EX = {
     steps:['Lie on your back, knees bent, feet flat about hip-width apart, heels close to the glutes.','Crunch your head and shoulders slightly up off the mat, arms reaching down at your sides.','Bend to one side and tap your fingertips to that heel.','Come back through center and tap the other heel. Alternate — count each side as a rep.'],
     cues:['Keep the shoulders off the mat the whole set','Bend at the waist, not the neck','Steady, controlled taps'],
     mistakes:['Dropping the shoulders down between reps','Pulling with the arms instead of the obliques','Bouncing too fast']},
-  tuckvup:{name:'Tuck V-Up',region:'anterior',unit:'reps',img:'ex-tuckvup.jpg',anchor:null,hardness:0.85,base:14,rest:45,
+  tuckvup:{repCap:15,name:'Tuck V-Up',region:'anterior',unit:'reps',img:'ex-tuckvup.jpg',anchor:null,hardness:0.85,base:14,rest:45,
     why:'A scaled V-up that trains the abs to fold the body powerfully — bridges toward the full V-up.',
     steps:['Lie flat, arms overhead, legs straight.','In one motion, curl up while tucking your knees to your chest.','Reach your hands toward your shins, balancing on your glutes.','Extend back out to the start with control. Repeat.'],
     cues:['Exhale hard as you fold up','Control the extension out','Balance on the hips'],
@@ -665,7 +665,7 @@ const EX = {
     steps:['Set up in a strong side plank on your forearm.','Lower your hips a few inches toward the floor with control.','Drive them back up past the straight line, squeezing the obliques.','Repeat, then switch sides. Count each dip as a rep.'],
     cues:['Control the lower, drive the lift','Keep the line — no twisting','Squeeze at the top'],
     mistakes:['Rushing and losing the plank line','Rotating the torso']},
-  copenhagen:{name:'Copenhagen Plank (bent)',region:'oblique',unit:'time',img:'ex-copenhagen.jpg',anchor:'side',hardness:0.55,base:15,rest:55,optional:true,
+  copenhagen:{repCap:12,name:'Copenhagen Plank (bent)',region:'oblique',unit:'time',img:'ex-copenhagen.jpg',anchor:'side',hardness:0.55,base:15,rest:55,optional:true,
     why:'One of the most intense oblique and inner-thigh exercises there is — elite for a strong, resilient midsection.',
     steps:['Set up a side plank with your top shin/knee resting on a chair or bench.','Keep the bottom leg on the floor for now (bent-knee version).','Lift your hips into a straight side-plank line, supported by the top leg.','Hold, then switch sides. Skip if you have no bench.'],
     cues:['Squeeze the top inner thigh into the bench','Hips high and level','Brace the whole side'],
@@ -822,17 +822,17 @@ const EX = {
     steps:['Form a diamond with thumbs and index fingers under your chest.','Straight body, core tight.','Lower until the chest nears your hands, elbows brushing the ribs.','Press up to full extension.'],
     cues:['Elbows stay close to the body','Straight line throughout','Full range'],
     mistakes:['Elbows flaring wide','Sagging hips']},
-  archerpushup:{name:'Archer Push-Up',region:'chest',unit:'reps',img:'ex-archerpushup.jpg',anchor:null,hardness:1,base:6,rest:70,
+  archerpushup:{repCap:12,name:'Archer Push-Up',region:'chest',unit:'reps',img:'ex-archerpushup.jpg',anchor:null,hardness:1,base:6,rest:70,
     why:'Shifts most of your bodyweight onto one arm — a powerful bridge toward the one-arm push-up. Count each side.',
     steps:['Set up wide, hands well outside shoulder width.','Bend one arm to lower toward that hand while the other arm stays straight.','Keep the straight arm extended out to the side.','Press back to center and alternate sides.'],
     cues:['Straight line, hips level','Sink toward the working arm','Keep the far arm long'],
     mistakes:['Twisting the hips','Bending the "straight" arm too early']},
-  spidermanpushup:{name:'Spider-Man Push-Up',region:'chest',unit:'reps',img:'ex-spidermanpushup.jpg',anchor:null,hardness:1,base:8,rest:60,
+  spidermanpushup:{repCap:15,name:'Spider-Man Push-Up',region:'chest',unit:'reps',img:'ex-spidermanpushup.jpg',anchor:null,hardness:1,base:8,rest:60,
     why:'Adds a knee-to-elbow drive on every rep, blasting the obliques and hip flexors while you press — chest and core at once.',
     steps:['Start in a strong push-up position.','As you lower, drive one knee out toward the same-side elbow.','Press back up as the foot returns.','Alternate the driving knee each rep.'],
     cues:['Knee to elbow at the bottom','Hips stay square and low','Controlled press'],
     mistakes:['Hips twisting up','Rushing the knee drive']},
-  superpushup:{name:'Superman Push-Up',region:'chest',unit:'reps',img:'ex-superpushup.jpg',vid:'ex-superpushup.mp4',anchor:null,hardness:1,base:5,rest:75,
+  superpushup:{repCap:10,name:'Superman Push-Up',region:'chest',unit:'reps',img:'ex-superpushup.jpg',vid:'ex-superpushup.mp4',anchor:null,hardness:1,base:5,rest:75,
     why:'An explosive plyometric push-up where hands and feet leave the floor — elite pressing power and full-body control.',
     steps:['Start in a push-up position, brace everything.','Lower, then press up explosively so both hands and feet leave the floor.','Reach the arms forward briefly like Superman if you can.','Land soft into the next controlled rep.'],
     cues:['Explode from a braced plank','Land soft, absorb with the arms','Only progress when full push-ups are easy'],
@@ -859,7 +859,7 @@ const EX = {
     steps:['Kick up to a handstand with your belly or back toward a wall.','Stack hands, shoulders and hips in a straight line.','Brace the core and squeeze everything tight.','Hold for time, breathing steadily.'],
     cues:['Push tall through the shoulders','Ribs down, glutes squeezed','Look between the hands'],
     mistakes:['Banana back (over-arching)','Holding the breath']},
-  hspushup:{name:'Wall Handstand Push-Up',region:'shoulders',unit:'reps',img:'ex-hspushup.jpg',anchor:null,hardness:1,base:4,rest:75,
+  hspushup:{repCap:8,name:'Wall Handstand Push-Up',region:'shoulders',unit:'reps',img:'ex-hspushup.jpg',anchor:null,hardness:1,base:4,rest:75,
     why:'The king of bodyweight shoulder strength — a full vertical press of your own bodyweight.',
     steps:['Kick into a wall handstand, hands slightly wider than shoulders.','Brace hard and lower the head toward the floor under control.','Stop just short, then press back to full extension.','Keep the body tight and straight throughout.'],
     cues:['Controlled negative','Full lockout at the top','Stay tight — no arching'],
@@ -940,7 +940,7 @@ const EX = {
     steps:['Step forward into a lunge, both knees ~90°.','Keep the torso tall and core braced.','Drive through the front heel to step the back foot through.','Continue alternating, walking forward.'],
     cues:['Long, controlled steps','Front knee over ankle','Chest up'],
     mistakes:['Short choppy steps','Front knee collapsing in']},
-  boxpistol:{name:'Box Pistol Squat',region:'legs',unit:'reps',img:'ex-boxpistol.jpg',anchor:null,hardness:1,base:8,rest:65,
+  boxpistol:{repCap:12,repCap:10,name:'Box Pistol Squat',region:'legs',unit:'reps',img:'ex-boxpistol.jpg',anchor:null,hardness:1,base:8,rest:65,
     why:'A single-leg squat to a box — builds toward the full pistol with control and balance. Count each side.',
     steps:['Stand on one leg in front of a bench or box, other leg extended forward.','Sit back and down to lightly touch the box.','Keep the heel down and chest up.','Drive up through the heel to stand. Switch sides.'],
     cues:['Reach the free leg forward for balance','Heel stays planted','Control down, power up'],
@@ -960,7 +960,7 @@ const EX = {
     steps:['Upper back against a bench, feet flat, knees bent.','Drive through the heels and squeeze the glutes.','Lift the hips to a flat tabletop, shins vertical.','Lower under control and repeat.'],
     cues:['Chin tucked, ribs down','Full glute squeeze at the top','Shins vertical at the top'],
     mistakes:['Over-arching the back','Pushing through the toes']},
-  nordic:{name:'Nordic Curl',region:'legs',unit:'reps',img:'ex-nordic.jpg',vid:'ex-nordic.mp4',anchor:null,hardness:1,base:5,rest:70,
+  nordic:{repCap:8,name:'Nordic Curl',region:'legs',unit:'reps',img:'ex-nordic.jpg',vid:'ex-nordic.mp4',anchor:null,hardness:1,base:5,rest:70,
     why:'One of the hardest hamstring builders — lowering your whole body with the hamstrings bulletproofs the knees.',
     steps:['Kneel with your ankles anchored (under a couch or held).','Body straight from knees to head, core braced.','Lower forward as slowly as you can, resisting with the hamstrings.','Catch with the hands and push back, or pull yourself up. Repeat.'],
     cues:['Stay straight — no bending at the hips','Resist every inch','Use hands only as needed'],
@@ -985,19 +985,19 @@ const EX = {
     steps:['Start in a lunge position, both knees bent.','Explode straight up and switch legs in the air.','Land softly in the opposite lunge.','Absorb and immediately jump again.'],
     cues:['Land soft and balanced','Torso stays tall','Quick, controlled switches'],
     mistakes:['Crashing the landing','Front knee caving']},
-  broadjump:{name:'Broad Jump',region:'legs',unit:'reps',img:'ex-broadjump.jpg',anchor:null,hardness:1,base:8,rest:55,
+  broadjump:{repCap:10,name:'Broad Jump',region:'legs',unit:'reps',img:'ex-broadjump.jpg',anchor:null,hardness:1,base:8,rest:55,
     why:'Maximal horizontal power from the hips and legs — pure athleticism and a strong posterior chain.',
     steps:['Stand tall, hinge slightly and swing the arms back.','Explode forward and up, driving through the hips.','Reach for distance, then land soft with bent knees.','Reset and repeat with control.'],
     cues:['Big arm swing','Drive through the hips','Stick a soft landing'],
     mistakes:['Landing stiff-legged','Rushing without a reset']},
 
   /* ==== HIIT additions ==== */
-  tuckjump:{name:'Tuck Jump',region:'cardio',unit:'time',img:'ex-tuckjump.jpg',anchor:null,hardness:0.8,base:25,rest:35,
+  tuckjump:{repCap:15,name:'Tuck Jump',region:'cardio',unit:'time',img:'ex-tuckjump.jpg',anchor:null,hardness:0.8,base:25,rest:35,
     why:'Explosive jumps driving the knees high — huge calorie burn and hip-flexor/core power.',
     steps:['Stand tall, brace the core.','Jump up and drive both knees toward the chest.','Land soft with bent knees.','Immediately rebound into the next jump for the time.'],
     cues:['Knees to chest at the peak','Land soft and quiet','Stay tall on landing'],
     mistakes:['Stiff landings','Leaning forward to reach the knees']},
-  burpeetuck:{name:'Tuck-Jump Burpee',region:'cardio',unit:'time',img:'ex-burpeetuck.jpg',anchor:null,hardness:0.6,base:22,rest:40,
+  burpeetuck:{repCap:15,name:'Tuck-Jump Burpee',region:'cardio',unit:'time',img:'ex-burpeetuck.jpg',anchor:null,hardness:0.6,base:22,rest:40,
     why:'A burpee finished with an explosive tuck jump — the ultimate full-body conditioning and core burner.',
     steps:['Squat, hands down, jump the feet back to a plank (add a push-up).','Jump the feet back in.','Explode into a tuck jump, knees to chest.','Land soft and flow into the next rep.'],
     cues:['Strong plank, no sag','Knees high on the jump','Pace so form holds'],
@@ -1006,7 +1006,7 @@ const EX = {
   /* ===== HOME-GYM / WEIGHTS LIBRARY (military kit) — used by the Weights session =====
      Built for the athlete's actual gear: ab roller, medicine ball, kettlebells, battle
      rope, dip bar, pull-up bar. Each carries `equip` (gear) + `pattern` (movement). */
-  abroll:{name:'Kneeling Ab Rollout',region:'anterior',unit:'reps',img:'ex-abroll.jpg',anchor:null,hardness:1,base:8,rest:45,equip:['abroller'],pattern:'core',
+  abroll:{repCap:12,name:'Kneeling Ab Rollout',region:'anterior',unit:'reps',img:'ex-abroll.jpg',anchor:null,hardness:1,base:8,rest:45,equip:['abroller'],pattern:'core',
     why:'The ab wheel loads the entire front core under a long lever — brutal, honest anti-extension strength.',
     steps:['Kneel and grip the roller under the shoulders.','Brace hard and roll forward, keeping a flat back.','Pull the roller back with the abs, hips tucked.'],
     cues:['Ribs down, glutes tight','Never let the low back sag','Only roll as far as you can control'],mistakes:['Sagging hips','Rolling too far, too soon']},
@@ -1201,12 +1201,12 @@ const EX = {
     steps:['Start in a downward-dog position, hips high, hands wide.','Sweep the chest down and forward, close to the floor.','Finish by pressing the chest up with the hips low, arms straight.','Reverse the arc back to the start.'],
     cues:['One flowing arc, not two moves','Chest skims low through the middle','Push the hips back at the top'],
     mistakes:['Jerking through the sweep','Cutting the range short']},
-  typewriter:{name:'Typewriter Push-Up',region:'chest',unit:'reps',img:'ex-typewriter.jpg',anchor:null,hardness:0.55,base:8,rest:75,pattern:'push',
+  typewriter:{repCap:10,name:'Typewriter Push-Up',region:'chest',unit:'reps',img:'ex-typewriter.jpg',anchor:null,hardness:0.55,base:8,rest:75,pattern:'push',
     why:'Shifting your weight onto one arm loads that side close to a one-arm push-up — a serious strength and size builder with no equipment.',
     steps:['Take a wide push-up stance and lower the chest to the floor.','Staying low, shift your weight across to one hand, straightening the other arm.','Slide back across to the opposite side, chest still low.','Press up to the start and repeat.'],
     cues:['Stay low as you slide across','Straight arm stays locked','Hips square to the floor'],
     mistakes:['Rising up between sides','Letting the hips twist']},
-  pseudoplanche:{name:'Pseudo Planche Push-Up',region:'chest',unit:'reps',img:'ex-pseudoplanche.jpg',anchor:null,hardness:0.5,base:8,rest:75,pattern:'push',
+  pseudoplanche:{repCap:10,name:'Pseudo Planche Push-Up',region:'chest',unit:'reps',img:'ex-pseudoplanche.jpg',anchor:null,hardness:0.5,base:8,rest:75,pattern:'push',
     why:'Leaning forward over the hands shifts huge load onto the shoulders and upper chest — the bodyweight route to real pressing strength and size.',
     steps:['Set up in a push-up with the hands beside the waist, fingers turned slightly out.','Lean the shoulders forward well past the hands.','Keep that forward lean and lower the chest.','Press back up without losing the lean.'],
     cues:['Shoulders stay ahead of the hands','Body locked in one line','Protract — push the floor away at the top'],
@@ -1216,7 +1216,7 @@ const EX = {
     steps:['Stand with the feet very wide, toes slightly out.','Shift your weight over one leg and sit down into a deep squat on that side.','Keep the other leg straight with the toes up.','Push back to the centre and repeat on the other side. Count each side as a rep.'],
     cues:['Heel of the working leg stays down','Chest up out of the hole','Straight leg stays straight'],
     mistakes:['Rounding the back to get lower','Heel lifting on the working side']},
-  sissysquat:{name:'Sissy Squat',region:'legs',unit:'reps',img:'ex-sissysquat.jpg',anchor:null,hardness:0.7,base:10,rest:65,pattern:'squat',
+  sissysquat:{repCap:12,name:'Sissy Squat',region:'legs',unit:'reps',img:'ex-sissysquat.jpg',anchor:null,hardness:0.7,base:10,rest:65,pattern:'squat',
     why:'Isolates the quads through a long stretch under load — one of the few bodyweight moves that genuinely builds quad size.',
     steps:['Stand tall, hold something light for balance if needed.','Rise onto the balls of the feet.','Drive the knees forward and lean the torso back, staying in one straight line from knee to head.','Lower as far as control allows, then squeeze the quads to return.'],
     cues:['Hips, torso and head stay in one line','Move slowly — never bounce','Only go as deep as the knees allow'],
@@ -1226,7 +1226,7 @@ const EX = {
     steps:['Stand on one leg with a soft knee.','Hinge at the hip, sending the free leg straight back as the chest lowers.','Keep the hips square and the back flat.','Squeeze the glute of the standing leg to stand tall. Count each side as a rep.'],
     cues:['Hips stay level — do not open up','Back flat throughout','Push the back heel to the wall behind you'],
     mistakes:['Rotating the hip open','Rounding the lower back']},
-  wallwalk:{name:'Wall Walk',region:'shoulders',unit:'reps',img:'ex-wallwalk.jpg',anchor:null,hardness:0.6,base:6,rest:75,pattern:'push',
+  wallwalk:{repCap:6,name:'Wall Walk',region:'shoulders',unit:'reps',img:'ex-wallwalk.jpg',anchor:null,hardness:0.6,base:6,rest:75,pattern:'push',
     why:'Walking up to a wall handstand loads the shoulders under your full bodyweight — the strongest bodyweight builder for shoulder size and stability.',
     steps:['Start in a plank with the feet against the base of a wall.','Walk the feet up the wall while stepping the hands closer in.','Go as high as you can safely control, keeping the ribs down.','Walk back down under control. Each up-and-down is one rep.'],
     cues:['Ribs tucked, no big arch','Push the floor away hard','Come down as slowly as you went up'],
@@ -1252,7 +1252,7 @@ const EX = {
     steps:['Sit on the floor and lean the torso back.','Lift both legs up so the body forms a V.','Reach the arms forward alongside the legs.','Hold, keeping the chest tall and the back straight.'],
     cues:['Chest up, back straight not rounded','Squeeze the legs together','Balance just behind the sit bones'],
     mistakes:['Rounding the spine into a C','Dropping the legs as you tire']},
-  hiplift:{name:'Straight-Leg Hip Lift',region:'lower',unit:'reps',img:'ex-hiplift.jpg',anchor:'lower',hardness:0.75,base:12,rest:50,
+  hiplift:{name:'Straight-Leg Hip Lift',region:'lower',unit:'reps',img:'ex-hiplift.jpg',anchor:'lower',hardness:0.8,base:12,rest:50,
     why:'Lifting the hips straight up off the floor isolates the lower abs with almost no hip-flexor help — exactly where most people are weakest.',
     steps:['Lie on your back with the legs pointed straight at the ceiling.','Place the arms flat by your sides for support.','Press the feet upward to lift the hips a few inches off the floor.','Lower with control — do not let the legs swing.'],
     cues:['Push the feet to the ceiling, not forward','Small controlled lift','No swinging or momentum'],
@@ -1262,7 +1262,7 @@ const EX = {
     steps:['Set up in a side plank on the forearm, hips high.','Reach the top arm up toward the ceiling.','Rotate the torso and thread that arm under your body.','Return to the top and repeat. Count each side as a rep.'],
     cues:['Hips stay high through the rotation','Move from the ribs, not the arm','Slow and controlled'],
     mistakes:['Hips dropping as you reach through','Rushing the rotation']},
-  situptwist:{name:'Twisting Sit-Up',region:'oblique',unit:'reps',img:'ex-situptwist.jpg',anchor:null,hardness:0.9,base:16,rest:45,
+  situptwist:{repCap:20,name:'Twisting Sit-Up',region:'oblique',unit:'reps',img:'ex-situptwist.jpg',anchor:null,hardness:0.9,base:16,rest:45,
     why:'Combines the sit-up with rotation to load the obliques and the rectus together — more waist work per rep than either alone.',
     steps:['Lie on your back with knees bent and hands lightly at the temples.','Curl up into a sit-up.','As you reach the top, rotate and drive one elbow toward the opposite knee.','Lower under control and alternate sides. Count each side as a rep.'],
     cues:['Rotate at the top, not on the way up','Hands rest light — do not pull the neck','Chin off the chest'],
@@ -1377,7 +1377,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='176';
+const APP_VERSION='177';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1385,7 +1385,7 @@ const DEFAULT_STATE=()=>({
   onboarded:false,
   profile:{name:'', days:[0,1,2,3,4,5,6], unit:'cm', startWaist:null, goalWaist:null, createdAt:todayISO(),
     sex:null, age:null, heightCm:null, experience:'Intermediate', activity:1.45, goal:'lose',
-    targets:['abs','full'], gear:['bar','bench'], limitations:[],   // deep-profile fields
+    targets:['abs','full'], gear:[], limitations:[],   // deep-profile fields — gear starts EMPTY; pre-ticking it told the app you owned kit you don't
     focusPrimary:'abs', troubleZones:[], conditioning:'moderate', mobility:'ok', timelineWeeks:null},   // comprehensive-quiz fields
   baseline:null,            // {date,results:{},coreScore,level,maxes:{}}
   reassess:{},              // cycleIndex -> {date,results,coreScore,level,maxes}
@@ -1504,7 +1504,10 @@ const PHASE2_LADDERS={chestL:1,shoulderL:1,pullL:1,rowL:1,tricepL:1,bicepL:1,squ
 function rungIndex(ladder,cycle,week,level){
   const arr=LADDERS[ladder];
   const eff=PHASE2_LADDERS[ladder]?Math.max(0,cycle-PHASE1_CYCLES):cycle;  // phase-relative for new splits
-  let idx=LEVEL_TIER[level]||1;         // base off fitness level
+  /* LEVEL_TIER.Beginner is 0, and `0||1` is 1 — so every beginner was silently
+     promoted to the Intermediate rung and the true-novice entry of every ladder
+     (knee plank, incline push-up, tuck hollow, dead bug) was unreachable code. */
+  let idx=(LEVEL_TIER[level]??1);       // base off fitness level
   idx+=eff;                              // +1 rung each block (within the ladder's phase)
   if(week>=3) idx+=1;                     // mid-block progression
   if(week>=5) idx+=1;                     // peak-weeks progression (harder variations)
@@ -1536,19 +1539,24 @@ function goalSlots(session,pos){
   if(goal==='recomp'||goal==='maintain')return slots;
   const day=(pos&&pos.dayInWeek)||0, cyc=(pos&&pos.cycle)||0;
   const pick=arr=>arr[(cyc*7+day)%arr.length];    // deterministic, rotates across the week
+  /* Slot 0 is the day's primary movement — the press on Push Day, the squat on
+     Leg Day, the pull on Pull Day. Replacing it turned the default 'lose' goal
+     into a jumping-jack program wearing a strength-split label. A goal may shape
+     accessory selection, rep ranges and rest; it may never delete the main lift. */
+  const FIRST_SWAPPABLE=2;
   const isCardio=l=>CARDIO_LADS.includes(l), isCore=l=>CORE_LADS.includes(l);
   const count=fn=>slots.filter(fn).length;
   let at=-1,repl=null;
   if(goal==='shred'||goal==='lose'){
     // take from whichever family has the most to spare, never below 2 remaining
-    at=slots.findIndex(l=>!isCardio(l)&&(isCore(l)?count(isCore)>=3:count(x=>!isCardio(x)&&!isCore(x))>=2));
-    if(at<0)at=slots.map((l,i)=>({l,i})).reverse().find(o=>isCore(o.l)&&count(isCore)>=3)?.i??-1;
+    at=slots.findIndex((l,i)=>i>=FIRST_SWAPPABLE&&!isCardio(l)&&(isCore(l)?count(isCore)>=3:count(x=>!isCardio(x)&&!isCore(x))>=2));
+    if(at<0)at=slots.map((l,i)=>({l,i})).reverse().find(o=>o.i>=FIRST_SWAPPABLE&&isCore(o.l)&&count(isCore)>=3)?.i??-1;
     repl=pick(['cardioAL','cardioBL','cardioFinL']);
   }else if(goal==='gain'){
-    at=slots.findIndex(l=>isCardio(l)&&count(isCardio)>=1);
+    at=slots.findIndex((l,i)=>i>=FIRST_SWAPPABLE&&isCardio(l)&&count(isCardio)>=1);
     repl=pick(['squatL','pushL','hingeL','chestL','rowL']);
   }else if(goal==='core'){
-    at=slots.findIndex(l=>!isCore(l));
+    at=slots.findIndex((l,i)=>i>=FIRST_SWAPPABLE&&!isCore(l));
     repl=pick(['plankL','hollowL','lowerL','rotL','sideL']);
   }
   if(at>=0&&repl&&LADDERS[repl]&&slots[at]!==repl)slots[at]=repl;
@@ -1584,7 +1592,7 @@ function prescribe(exId,pos){
   let sets=3;
   if(ex.region==='dynamic') sets=1;                 // finisher = 1 timed round
   if(ex.region==='stability') sets=2;               // warm-up/accessory
-  if(week>=5 && (ex.anchor||STRENGTH_REGIONS[ex.region]) && ex.region!=='stability') sets=4;   // peak weeks 5-6: extra set
+  if(week>=5 && week<WEEKS_PER_CYCLE && (ex.anchor||STRENGTH_REGIONS[ex.region]) && ex.region!=='stability') sets=4;   // peak week 5: extra set (week 6 is the deload)
   let target;
   if(ex.anchor && maxes[ex.anchor]){
     const frac=(ex.unit==='time'?TIME_FRAC:REP_FRAC)[week-1];
@@ -1594,7 +1602,9 @@ function prescribe(exId,pos){
     const wk=[1,1.08,1.16,1.25,1.34,1.44][week-1];
     target=base*(LEVEL_FACTOR[level]||1)*wk*(1+adj)*cycleBoost*adapt;
   }
-  if(typeof deloadOn==='function'&&deloadOn()){sets=Math.max(1,sets-1);target*=0.62;}   // deload week — ease volume & load
+  /* Deload cuts VOLUME first and load only mildly — the old 38% intensity cut
+     was backwards for a taper. */
+  if(typeof deloadOn==='function'&&deloadOn(pos)){sets=Math.max(1,sets-1);target*=0.85;}
   if(typeof readinessMult==='function'){const rf=readinessMult();target*=rf;if(rf<0.85)sets=Math.max(1,sets-1);}   // daily readiness auto-regulation
   if(typeof comebackEaseActive==='function'&&comebackEaseActive()){target*=0.8;sets=Math.max(1,sets-1);}   // non-punishing ease-in after a layoff
   if(typeof exAdaptFor==='function')target*=exAdaptFor(exId);   // per-exercise progression from your ratings
@@ -1619,7 +1629,16 @@ function prescribe(exId,pos){
   else if(goal==='recomp'){gMul=1.05;}
   target*=gMul;
   if(ex.unit==='time'){target=Math.round(target/5)*5;target=clamp(target,15,150);}
-  else{target=Math.round(target);target=clamp(target,6,40);}
+  else{
+    /* A blanket 6-40 clamp both RAISED the hardest moves above their own base
+       (hspushup base:4 became 6) and let the ceiling run to 40 reps on movements
+       nobody performs 40 times — the hanging leg raise reached 4x40. Respect the
+       exercise's own floor, and cap by how demanding the movement actually is. */
+    target=Math.round(target);
+    const lo=Math.min(3,ex.base||6);
+    const hi=(ex.repCap>0)?ex.repCap:(ex.hardness<=0.6?12:(ex.hardness<=0.85?20:40));
+    target=clamp(target,lo,hi);
+  }
   const rest=clamp(Math.round((ex.rest||45)*restMul),20,120);
   return {sets,target,unit:ex.unit,rest};
 }
@@ -1795,10 +1814,14 @@ function buildSession(ptr){
     const e=EX[base];
     if(e){
       const ok=k=>k!==base&&!used.has(k)&&EX[k]&&k!=='bike'&&k!=='sprint'&&hasGearFor(k)&&safeSwap(k)===k;
-      // same region and same unit reads most like the move it replaces; if that
-      // is taken too, any move of the region beats prescribing a duplicate
+      /* Same region and same unit reads most like the move it replaces. If the
+         region is exhausted — which happens when several flagged joints shrink
+         the safe pool to a handful and two slots collapse onto the same fallback
+         — widen to ANY safe movement rather than prescribing a duplicate. */
       const alt=Object.keys(EX).find(k=>ok(k)&&EX[k].region===e.region&&EX[k].unit===e.unit)
-             || Object.keys(EX).find(k=>ok(k)&&EX[k].region===e.region);
+             || Object.keys(EX).find(k=>ok(k)&&EX[k].region===e.region)
+             || Object.keys(EX).find(k=>ok(k)&&EX[k].unit===e.unit)
+             || Object.keys(EX).find(k=>ok(k));
       if(alt)return alt;
     }
     return base;                  // nothing else available — accept the prescribed one
@@ -2049,9 +2072,9 @@ function renderToday(){
   const v=$('#v-today');
   if(!STATE.onboarded){obMount(v);return;}                    // first run always lands here
   if(OB_EDIT&&OB_HOST==='v-today'){obMount(v);return;}
-  if(!STATE.baseline){v.innerHTML=baselineIntroHTML();$('#startAssess').onclick=()=>openAssessment(false);return;}
+  if(!STATE.baseline){v.innerHTML=baselineIntroHTML();const sa=$('#startAssess');if(sa)sa.onclick=()=>openAssessment(false);return;}
   const gate=reassessGate();
-  if(gate){v.innerHTML=reassessIntroHTML(gate);$('#startReassess').onclick=()=>openAssessment(gate);return;}
+  if(gate){v.innerHTML=reassessIntroHTML(gate);const sr=$('#startReassess');if(sr)sr.onclick=()=>openAssessment(gate);return;}
   if(STATE.progressPtr>=SESSIONS_PER_CYCLE*TOTAL_CYCLES){v.innerHTML=finishedHTML();return;}
   v.innerHTML=todayWorkoutHTML();
   wireToday();
@@ -2088,7 +2111,7 @@ function openProfileEdit(){
   OB_HOST=cur?cur.id:'v-today';
   OB_EDIT=true;window.scrollTo(0,0);render();
 }
-const OB_STEPS=6;
+const OB_STEPS=7;   // +1 for the health check
 function onboardHTML(){
   const P=STATE.profile||{}, N=STATE.nutrition||{};
   const edit=OB_EDIT, im=P.unit==='in';
@@ -2177,13 +2200,20 @@ function onboardHTML(){
     <div class="field"><label>Equipment you have <span class="tiny muted">· unlocks a Weights session</span></label>
       <div class="daypick" id="ob-gear" style="flex-wrap:wrap">${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['battlerope','Battle rope'],['bench','Bench / chair']].map(([k,l])=>`<button data-e="${k}"${mon(P.gear,k)}>${l}</button>`).join('')}</div></div>`)}
 
-  ${step(6,'Nutrition',`
+  ${step(6,'Health check',`
+    <div class="note info" style="margin-top:0">Before anything else — this keeps day one safe. Tap anything that applies to you. If none do, leave them all off.</div>
+    <div class="daypick" id="ob-parq" style="flex-wrap:wrap">${PARQ.map(([k,l])=>`<button data-q="${k}"${mon(parqFlags(),k)}>${l}</button>`).join('')}</div>
+    ${DISCLAIMER()}`)}
+
+  ${step(7,'Nutrition',`
     <div class="field"><label>Diet preference <span class="tiny muted">· shapes your meal plans</span></label>
       <div class="daypick" id="ob-diet" style="flex-wrap:wrap">${[['omnivore','Omnivore'],['halal','Halal'],['pescatarian','Pescatarian'],['vegetarian','Vegetarian'],['vegan','Vegan']].map(([k,l])=>`<button data-d="${k}"${on(N.diet||'omnivore',k)}>${l}</button>`).join('')}</div></div>
     <div class="field"><label>Meals per day</label>
       <div class="daypick" id="ob-meals"><button data-m="3"${on(N.meals||3,3)}>3 meals</button><button data-m="4"${on(N.meals,4)}>3 + snack</button></div></div>
-    <div class="field"><label>Anything to avoid? <span class="tiny muted">· optional</span></label>
-      <input id="ob-allerg" placeholder="e.g. peanuts, dairy, shellfish" autocomplete="off" value="${(N.allergies||'').replace(/"/g,'&quot;')}"></div>`)}
+    <div class="field"><label>Allergies <span class="tiny muted">· tap any that apply — meals containing them are removed</span></label>
+      <div class="daypick" id="ob-alg" style="flex-wrap:wrap">${ALLERGENS.map(([k,l])=>`<button data-a="${k}"${mon(algList(),k)}>${l}</button>`).join('')}</div></div>
+    <div class="field"><label>Anything else to avoid? <span class="tiny muted">· optional note, not an allergy filter</span></label>
+      <input id="ob-allerg" placeholder="e.g. mushrooms, spicy food" autocomplete="off" value="${(N.allergies||'').replace(/"/g,'&quot;')}"></div>`)}
 
   <div class="btnrow" style="gap:10px;margin-top:4px">
     <button class="btn ghost" id="ob-back" style="flex:0 0 112px;width:auto;min-width:0;padding:16px 10px;display:none">← Back</button>
@@ -2198,7 +2228,7 @@ function wireOnboard(){
   const multi=(sel)=>$$(sel+' button').forEach(b=>b.onclick=()=>{b.classList.toggle('on');haptic(6);});
   single('#ob-sex');single('#ob-goal');single('#ob-exp');single('#ob-act');single('#ob-unit');single('#ob-diet');single('#ob-meals');
   single('#ob-focus');single('#ob-cond');single('#ob-mob');single('#ob-timeline');
-  multi('#ob-targets');multi('#ob-gear');multi('#ob-trouble');multi('#ob-inj');
+  multi('#ob-targets');multi('#ob-gear');multi('#ob-trouble');multi('#ob-inj');multi('#ob-parq');multi('#ob-alg');
   // keep the goal blurb in sync with the chip the athlete just picked
   $$('#ob-goal button').forEach(b=>b.addEventListener('click',()=>{
     const n=$('#ob-goalnote');if(n)n.textContent=GOAL_NOTE[b.dataset.g]||'';}));
@@ -2283,14 +2313,16 @@ function obReadForm(){
   const gws=parseFloat($('#ob-goalwaist').value); if(gws>0)P.goalWaist=r1(im?gws*2.54:gws);
   // nutrition prefs
   N.goal=P.goal; N.sex=P.sex; N.age=P.age; N.heightCm=P.heightCm; N.activity=P.activity;
-  const _od=N.diet,_om=N.meals,_oa=N.allergies;
+  const _od=N.diet,_om=N.meals,_oa=N.allergies,_ag=algList().join(',');
   N.diet=($('#ob-diet button.on')||{dataset:{d:'omnivore'}}).dataset.d;
   N.meals=parseInt(($('#ob-meals button.on')||{dataset:{m:'3'}}).dataset.m)||3;
+  if($('#ob-parq')){P.parq=$$('#ob-parq button.on').map(b=>b.dataset.q);P.parqDone=true;}
   N.allergies=($('#ob-allerg').value||'').trim();
+  if($('#ob-alg'))N.allergens=$$('#ob-alg button.on').map(b=>b.dataset.a);
   // drop the cached meal plan ONLY if the food answers changed — this runs on
   // every wizard step now, and an unconditional null regenerated today's plan
   // (and its grocery list) on every tap of Next
-  if(N.diet!==_od||N.meals!==_om||N.allergies!==_oa)N.plan=null;
+  if(N.diet!==_od||N.meals!==_om||N.allergies!==_oa||algList().join(',')!==_ag)N.plan=null;
   // body metrics
   const w=parseFloat($('#ob-waist').value),wt=parseFloat($('#ob-weight').value);
   // Only ever SET the start waist — never overwrite it. The field is labelled just
@@ -2304,6 +2336,35 @@ function obReadForm(){
   try{recalcKcalFromStored();}catch(e){}   // (re)compute calorie/macro targets from the answers
 }
 
+/* The athlete flagged something on the health check. Rather than silently
+   blocking them forever, let them confirm they have actually been cleared —
+   and be explicit that this is their statement, not our assessment. */
+function openClearance(){
+  openSheet(`<h3>Medical clearance</h3>
+    <p class="muted sm" style="margin:2px 0 12px">You flagged: <b>${_ve(parqFlags().map(k=>(PARQ.find(p=>p[0]===k)||[,k])[1]).join(', '))}</b>.</p>
+    <div class="note warn">Only confirm this if a doctor has actually cleared you for maximal-effort exercise. CoreForge cannot assess you and is taking your word for it.</div>
+    <button class="btn primary" style="margin-top:12px" onclick="confirmClearance()">A doctor has cleared me</button>
+    <div style="height:8px"></div>
+    <button class="btn ghost" onclick="closeSheet()">Not yet</button>`);
+}
+/* Start training without the max-effort battery. levelOf() already falls back to
+   the quiz's experience answer, so the machinery to run un-tested exists. */
+function skipBaseline(){
+  const lvl=(STATE.profile&&STATE.profile.experience)||'Intermediate';
+  const b=Math.max(1,Math.round(({Beginner:0.6,Intermediate:1,Advanced:1.5})[lvl]||1));
+  STATE.baseline={date:todayISO(),score:null,level:lvl,estimated:true,
+    maxes:{plank:Math.round(30*b),side:Math.round(20*b),hollow:Math.round(15*b),lower:Math.round(8*b),dyn:Math.round(20*b)}};
+  save();toast('Starting from your experience level — retest any time from Progress');render();
+}
+/* Defer a re-test without stalling the program: carry the previous block's
+   measured maxima forward so the athlete is never locked out of training. */
+function skipReassess(){
+  const g=(typeof reassessGate==='function')?reassessGate():null;
+  if(g==null)return;
+  const prev=(g===1?STATE.baseline:STATE.reassess[g-1])||STATE.baseline;
+  STATE.reassess[g]=Object.assign({},prev,{date:todayISO(),deferred:true});
+  save();toast('Carried your current numbers forward — retest any time');render();
+}
 function baselineIntroHTML(){
   return `
   <div class="hero anterior"><div class="htop"><div><div class="hlbl">Day 1</div><h1>Baseline Test</h1><div class="hmeta">~10 minutes · sets your whole program</div></div><div class="hicon">📋</div></div></div>
@@ -2311,8 +2372,14 @@ function baselineIntroHTML(){
   <div class="card pad"><h3>The 5 tests</h3>
     ${TESTS.map((t,i)=>`<div class="kv"><span><b>${i+1}. ${t.name}</b></span><span class="tag ${EX[t.ex].region}">${t.unit==='time'?'hold':'reps'}</span></div>`).join('')}
   </div>
-  <div class="note info"><b>Warm up first.</b> Do 60 seconds of marching, a few glute bridges and bird dogs. Rest ~1 min between tests. Push honestly — a true baseline gives you the best program.</div>
-  <button class="btn primary" id="startAssess">Start Baseline Assessment</button>`;
+  <div class="note info"><b>Warm up first.</b> Do 60 seconds of marching, a few glute bridges and bird dogs. Rest ~1 min between tests. <b>Breathe throughout — never hold your breath.</b> Stop immediately for chest pain, dizziness or shortness of breath.</div>
+  ${safeMode()?`<div class="note warn"><b>Hold on — you flagged something on the health check.</b> A test to failure is the most demanding thing this app will ever ask of you, so it stays locked until you have spoken to a doctor. You can still train: we will start you at a sensible level and cap every test at a comfortable effort.
+    <button class="btn sm primary" style="width:auto;margin-top:10px" onclick="openClearance()">I've been cleared by a doctor</button>
+    <button class="btn sm ghost" style="width:auto;margin-top:6px" onclick="skipBaseline()">Skip the test — start me training</button></div>`
+   :`<button class="btn primary" id="startAssess">Start Baseline Assessment</button>
+     <div style="height:8px"></div>
+     <button class="btn ghost" onclick="skipBaseline()">Skip for now — I'll test after my first week</button>`}
+  ${DISCLAIMER()}`;
 }
 function reassessIntroHTML(cycle){
   const prev=cycle===1?STATE.baseline:STATE.reassess[cycle-1];
@@ -2323,7 +2390,12 @@ function reassessIntroHTML(cycle){
     <div class="kv"><span>Core Score</span><b>${prev?prev.score:'-'}/100</b></div>
     <div class="kv"><span>Level</span><b>${prev?prev.level:'-'}</b></div>
   </div>
-  <button class="btn violet" id="startReassess">Start Re-Assessment</button>`;
+  <div class="note info"><b>Warm up first</b>, exactly as you did on day one — 60 seconds of marching, a few glute bridges and bird dogs, and rest ~1 min between tests. Breathe throughout. Test on a day you feel fresh: a tired re-test tells the program you got weaker.</div>
+  ${safeMode()?`<div class="note warn">You flagged something on the health check, so the max-effort re-test stays locked. Your program will keep scaling from your existing numbers.
+     <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="skipReassess()">Continue without re-testing</button></div>`
+   :`<button class="btn violet" id="startReassess">Start Re-Assessment</button>
+     <div style="height:8px"></div>
+     <button class="btn ghost" onclick="skipReassess()">Not today — carry my current numbers forward</button>`}`;
 }
 function finishedHTML(){
   const first=STATE.baseline,last=STATE.reassess[TOTAL_CYCLES-1]||STATE.reassess[1]||STATE.baseline;
@@ -3935,14 +4007,19 @@ function briefSegments(){
   segs.push({icon:'🎖️',title:'Morning brief',
     say:`${_briefGreet()}${who}. This is ${ADVISOR.short}, your coach. Here is your brief for today — week ${wkNum}, day ${dayNum} of your one-year build. Let's walk the plan.`});
   // 2 — mission / transformation
-  const goalW=STATE.profile.goalWeightLb||175, goalBF=STATE.profile.goalBodyFat||12, kg=latestWeightKg();
+  const goalW=STATE.profile.goalWeightLb, goalBF=STATE.profile.goalBodyFat, kg=latestWeightKg();
+  const bf=(goalBF>0)?`, and body fat under ${goalBF} percent`:'';
   let mission;
-  if(kg){const lb=Math.round(kg*2.20462), toGo=lb-goalW;
-    mission = toGo>1 ? `The mission: from ${lb} pounds down to ${goalW}, and body fat under ${goalBF} percent. You are ${toGo} pounds out. Every rep and every meal today closes that gap.`
-      : (toGo>=-1 ? `You are right on your ${goalW}-pound target — now we chase body fat under ${goalBF} percent and lock in the muscle. Discipline today.`
-      : `You are under ${goalW} pounds — outstanding. Today we hold the line and drive body fat below ${goalBF} percent.`);
+  /* Never speak an invented target. These used to fall back to 175 lb / 12% —
+     numbers the athlete never chose — and the coach read them out every morning. */
+  if(!(goalW>0)){
+    mission = `You have not set a goal weight yet. Open the Progress tab and pick one, or just train and let the tape measure tell the story. Either way — today, we work.`;
+  }else if(kg){const lb=Math.round(kg*2.20462), toGo=lb-goalW;
+    mission = toGo>1 ? `The mission: from ${lb} pounds down to ${goalW}${bf}. You are ${toGo} pounds out. Every rep and every meal today closes that gap.`
+      : (toGo>=-1 ? `You are right on your ${goalW}-pound target — now we lock in the muscle. Discipline today.`
+      : `You are under ${goalW} pounds — outstanding. Today we hold the line.`);
   }else{
-    mission=`The mission: down to ${goalW} pounds and body fat under ${goalBF} percent. Log your weight in the Fuel tab so I can track every pound with you. Today, we get to work.`;
+    mission=`The mission: down to ${goalW} pounds${bf}. Log your weight in the Fuel tab so I can track every pound with you. Today, we get to work.`;
   }
   segs.push({icon:'🎯',title:'Your mission',say:mission});
   // 3 — today's session
@@ -4309,7 +4386,7 @@ function themeChipsHTML(){
 const COACHES=[
   {id:'drill',name:'Drill Sergeant',emoji:'🎖️',pitch:0.5,rate:1.0,hint:['david','guy','mark','daniel','male'],
    start:["Listen up! On my count — GO!","Move, move, move! Start now!","Lock it in, recruit. Begin!","Drop and give me your best! Go!","No excuses today. Start!"],
-   during:["Keep going! You can do it, soldier!","Do not quit on me! Push!","Outstanding! Hold that line!","Dig deep, recruit! Dig deep!","Is that all you got? Give me more!","Stay tight, stay strong, keep going!","Pain is weakness leaving the body. Push!","Eyes forward, core braced — keep going!","You signed up for this — now earn it!","I have seen tougher — prove me wrong! Push!","Nobody remembers the easy days. Keep going!","Chin up, chest out, drive through it!","That burn means it is working. Keep going!","You are stronger than your excuses. Push!"],
+   during:["Keep going! You can do it, soldier!","Do not quit on me! Push!","Outstanding! Hold that line!","Dig deep, recruit! Dig deep!","Is that all you got? Give me more!","Stay tight, stay strong, keep going!","Own the burn — but sharp pain means stop!","Eyes forward, core braced — keep going!","You signed up for this — now earn it!","I have seen tougher — prove me wrong! Push!","Nobody remembers the easy days. Keep going!","Chin up, chest out, drive through it!","That burn means it is working. Keep going!","You are stronger than your excuses. Push!"],
    push:["Final push! Everything you have got — now!","Do not you dare stop! Finish strong!","This is where it is won! Go, go, go!","A few more seconds of pure grit! Push!","Leave nothing on the mat! Finish!"],
    rest:["Breathe, recruit. Shake it out.","Recover fast. We go again.","Good work. Reset and refocus.","Water break is over soon — stay ready.","Catch your wind. Next round is coming."],
    done:["Outstanding work, soldier!","That is how it is done! Hooah!","You earned that one. Well done!","Now that is effort. Dismissed!","Proud of that. Solid work."]},
@@ -4333,7 +4410,7 @@ const COACHES=[
    done:["Let us GO! That was outstanding, soldier!","You brought it today — proud of that!","That is how champions train! Well done!","Huge effort — outstanding work!","Yes! That is the standard. Great work!"]},
   {id:'femdrill',name:'Drill Sergeant Vasquez',emoji:'🎖️',pitch:1.0,rate:1.05,hint:['aria','jenny','zira','samantha','female'],
    start:["On your feet — move, move, move!","When I say go, you GO! Begin!","Front and center, recruit — start!","No hesitation. Lock in and go!","Show me you want it — begin!"],
-   during:["Push! You do not quit on my watch!","Dig deep, recruit — I know you have more!","Outstanding — now give me another!","You are tougher than this — prove it! Go!","Chin up, core tight — drive through it!","Standards do not drop. You rise! Keep going!","That is the work — do not slow down!","One more, then one more after that! Move!","Pain is temporary — quitting is forever. Push!","Eyes forward, soldier. Own it!","You showed up — now show me heart! Go!","Discipline wins. Hold that line!"],
+   during:["Push! You do not quit on my watch!","Dig deep, recruit — I know you have more!","Outstanding — now give me another!","You are tougher than this — prove it! Go!","Chin up, core tight — drive through it!","Standards do not drop. You rise! Keep going!","That is the work — do not slow down!","One more, then one more after that! Move!","Discomfort is temporary — but real pain means stop!","Eyes forward, soldier. Own it!","You showed up — now show me heart! Go!","Discipline wins. Hold that line!"],
    push:["Final push — everything you have! Now!","This is where it counts — finish strong!","Do not you dare stop! Bring it home!","Empty the tank — leave nothing! Go!","Strong finish, recruit — move!"],
    rest:["Catch your breath. Stay ready.","Recover fast — we go again.","Good work. Reset and refocus.","Hydrate up. Stay sharp, soldier.","Solid round. Lock back in."],
    done:["Outstanding, soldier! That is heart!","Now that is effort — well done!","You earned that one, recruit!","Proud of that work. Dismissed!","That is the standard. Outstanding!"]},
@@ -4345,7 +4422,7 @@ const COACHES=[
    done:["Bang on, soldier — proper effort!","Now that is more like it. Well done!","You did yourself proud there.","Outstanding graft. Dismissed!","That is the standard, sunshine. Spot on!"]},
   {id:'marine',name:'Marine D.I.',emoji:'🦅',pitch:0.45,rate:1.06,hint:['guy','david','mark','male'],
    start:["Oorah! Get after it — go!","On your feet and into it! Move!","No hesitation! Begin, devil dog!","Move with a purpose! Start!","Lock on and go!"],
-   during:["Oorah! Keep pushing, Marine!","Adapt and overcome! Keep going!","Pain is temporary — pride is forever! Push!","You stop when you are done, not when you are tired!","Semper Fi! Hold the line!","Earn it! Every second, earn it!","Gut it out, Marine! Gut it out!","The Corps does not do quit! Keep going!","Discipline now, glory later! Push!","Improvise, adapt, overcome — keep going!","Standards do not lower. You rise! Push!","One team, one fight — finish it!"],
+   during:["Oorah! Keep pushing, Marine!","Adapt and overcome! Keep going!","Effort is temporary — pride is forever! Push!","You stop when you are done, not when you are tired!","Semper Fi! Hold the line!","Earn it! Every second, earn it!","Gut it out, Marine! Gut it out!","The Corps does not do quit! Keep going!","Discipline now, glory later! Push!","Improvise, adapt, overcome — keep going!","Standards do not lower. You rise! Push!","One team, one fight — finish it!"],
    push:["Push through! Improvise, adapt, finish!","Last stretch — make it count! Oorah!","Nobody said it would be easy. Finish!","Storm the hill! Do not stop!","Bring it home, devil dog!"],
    rest:["Catch your breath, Marine. Regroup.","Recover. Next round is coming.","Solid. Reset and lock in.","Rehydrate and refocus.","Good work — stay sharp."],
    done:["Oorah! Outstanding, Marine!","Mission complete. Well done!","That is the standard. Semper Fi!","You held the line. Respect.","Devil dog approved. Solid."]},
@@ -4453,7 +4530,7 @@ const COACHES=[
    done:["Outstanding, Marine! That is the standard.","You earned your chow today. Well done.","Now that is effort. Carry on.","Solid work — I will allow it.","That will do, Marine. Proud of that."]},
   {id:'ranger',name:'Army Ranger PT',emoji:'🏅',pitch:0.5,rate:1.1,hint:['guy','david','mark','male'],
    start:["Rangers lead the way — go!","Set the pace — begin!","No quit in this formation. Start!","Move out — go, go!","Lead from the front. Begin!"],
-   during:["Rangers do not quit — keep going!","Set the standard, then raise it! Push!","Drive your legs, pump your arms — go!","Of your own accord — push harder!","Keep the tempo — do not fall out!","Pain is just the mission talking. Push!","Lead the way — every single rep! Go!","Stay in the fight — keep going!","Smoke it — then keep moving!","You earn it right now! Push!","One more, Ranger — always one more!","Hold the pace — finish it!"],
+   during:["Rangers do not quit — keep going!","Set the standard, then raise it! Push!","Drive your legs, pump your arms — go!","Of your own accord — push harder!","Keep the tempo — do not fall out!","That burn is the mission talking. Push!","Lead the way — every single rep! Go!","Stay in the fight — keep going!","Smoke it — then keep moving!","You earn it right now! Push!","One more, Ranger — always one more!","Hold the pace — finish it!"],
    push:["Final objective — push through!","Sprint the finish — Rangers lead!","Close it out — do not stop!","Everything now — finish strong!","Bring it home — go!"],
    rest:["Recover, Ranger. Controlled breathing.","Reset. Next movement soon.","Good. Refit and stay ready.","Catch your wind. Stay sharp.","Quick rest. We move again."],
    done:["Rangers lead the way — outstanding!","That is a standard-setter. Well done.","You earned that one. Hooah!","Mission complete. Solid work.","Led from the front. Respect."]},
@@ -5077,7 +5154,7 @@ function renderProgress(){
   h+=`<div class="grid3">
     <div class="stat"><div class="n" style="color:var(--fire-l)">${sessionsDone}</div><div class="l">Sessions</div></div>
     <div class="stat"><div class="n" style="color:var(--green)">${streak}</div><div class="l">Day streak</div></div>
-    <div class="stat"><div class="n" style="color:var(--teal)">${thisWk}<span style="font-size:12px;color:var(--muted)">/${SESSIONS_PER_WEEK}</span></div><div class="l">This week</div></div>
+    <div class="stat"><div class="n" style="color:var(--teal)">${thisWk}<span style="font-size:12px;color:var(--muted)">/${weeklyTarget()}</span></div><div class="l">This week</div></div>
   </div>
   <div class="grid3" style="margin-top:10px">
     <div class="stat"><div class="n">${tut}</div><div class="l">Min trained</div></div>
@@ -5591,7 +5668,17 @@ function weeklyRecap(){
   try{coachSpeak(_recapSpeak,true);}catch(e){}
 }
 /* ---- #3 Deload week ---- */
-function deloadOn(){return STATE.settings&&STATE.settings.deload===true;}
+/* Deload used to be a manual switch in Settings that nothing ever set, so a
+   compliant athlete ran 378 sessions with no planned unloading and weeks 5-6 of
+   every block ADDED a set. The last week of each block is now a real deload. */
+function deloadOn(pos){
+  try{
+    if(STATE.settings&&STATE.settings.deload===true)return true;
+    if(STATE.settings&&STATE.settings.autoDeload===false)return false;
+    const p=pos||posOf(STATE.progressPtr);
+    return p&&p.week===WEEKS_PER_CYCLE;
+  }catch(e){return false;}
+}
 function toggleDeload(){if(!STATE.settings)STATE.settings={};STATE.settings.deload=!deloadOn();save();toast(deloadOn()?'Deload week on 🌙':'Deload off — full load');render();}
 function deloadBanner(){return deloadOn()?`<div class="note info" style="margin-top:12px">🌙 <b>Deload week — lighter load.</b> Sets and targets are eased so you recover and rebuild stronger. <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="toggleDeload()">End deload</button></div>`:'';}
 /* ---- #8 Beat tempo / style ---- */
@@ -6313,10 +6400,10 @@ function calcOneRM(){
 /* ---- #6 Injury-aware auto-substitution ---- */
 const JOINTS=[['knee','Knee'],['shoulder','Shoulder'],['wrist','Wrist'],['lowback','Lower back'],['elbow','Elbow']];
 const JOINT_RISK={
-  knee:['pistol','boxpistol','jumpsquat','tuckjump','broadjump','splitjump','bulgarian','burpee','burpeetuck','walkinglunge','sissysquat','cossack','sprawl','latshuffle'],
-  shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','dbpress','kbcp','dbthruster','hanglegraise','lsit','dragonflag','plankrot','wallwalk','pseudoplanche','typewriter','hindupushup'],
-  wrist:['pushup','diamondpushup','closepushup','archerpushup','spidermanpushup','planktap','mountainclimber','dbrenegade','abroll','lsit','isoclimber','bearcrawl','crabwalk','plankjack','crossclimber','bearhold','pseudoplanche','typewriter','hindupushup','tempopushup','inchworm'],
-  lowback:['superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','mbslam','ropeslam','windshield','dragonflag','situp','vertcrunch','situptwist','vsit','slrdl','swimmer'],
+  knee:['pistol','boxpistol','jumpsquat','tuckjump','broadjump','splitjump','bulgarian','burpee','burpeetuck','walkinglunge','sissysquat','cossack','sprawl','latshuffle','nordic','asiansquat','wallsit','skater','squatjack','splitsquat','jumpingjack','sealjack','highknees','buttkick'],
+  shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','benchdip','dbpress','kbcp','dbthruster','hanglegraise','lsit','dragonflag','plankrot','wallwalk','pseudoplanche','typewriter','hindupushup','pullup','chinup','widepullup','negpullup','deadhang','scappull','invertedrow','invertedrowelev','crabwalk','reverseplank','abroll','mbslam','ropeslam','ropewave','kbswing','atomicpushup','declinepushup','burpee','burpeetuck'],
+  wrist:['pushup','kneepushup','inclinepushup','declinepushup','diamondpushup','closepushup','archerpushup','spidermanpushup','superpushup','planktap','mountainclimber','dbrenegade','abroll','lsit','isoclimber','bearcrawl','crabwalk','plankjack','crossclimber','bearhold','pseudoplanche','typewriter','hindupushup','tempopushup','inchworm','pikepushup','elevatedpike','wallwalk','wallhandstand','hspushup','atomicpushup','burpee','burpeetuck','halfburpee','squatthrust','sprawl','reverseplank'],
+  lowback:['superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','mbslam','ropeslam','windshield','dragonflag','situp','vertcrunch','situptwist','vsit','slrdl','swimmer','legraise','hanglegraise','kneeraise','hiplift','flutter','scissors','vup','tuckvup','russiantwist','weightedtwist','mbtwist','mbsitup','seatedtwist','abroll','longplank','ruck','dipknee','heeltouch','crunch','bicycle'],
   elbow:['dips','benchdip','diamondpushup','closepushup','chinup','negpullup','dbcurl','typewriter','pseudoplanche'],
 };
 const SAFE_SWAP={
@@ -6324,7 +6411,24 @@ const SAFE_SWAP={
   hspushup:'pikepushup',wallhandstand:'plank',pikepushup:'inclinepushup',elevatedpike:'pikepushup',superpushup:'pushup',archerpushup:'pushup',dbpress:'dbfloor',kbcp:'kbrow',dbthruster:'dbgoblet',
   pushup:'kneepushup',diamondpushup:'kneepushup',closepushup:'kneepushup',spidermanpushup:'kneepushup',planktap:'plank',mountainclimber:'march',dbrenegade:'dbrow',abroll:'plank',
   superman:'birddog',reverseplank:'glutebridge',nordic:'glutebridge',kbswing:'kbgoblet',dbrdl:'glutebridge',kbrdl:'glutebridge',hipthrust:'glutebridge',mbslam:'mbsitup',ropeslam:'ropewave',windshield:'bicycle',hanglegraise:'legraise',lsit:'hollow',isoclimber:'plank',dragonflag:'hollow',situp:'crunch',vertcrunch:'crunch',plankrot:'sideplank',plankleg:'plank',
-  dips:'benchdip',benchdip:'closepushup',chinup:'invertedrow',negpullup:'invertedrow',dbcurl:'dbrow',
+  dips:'kneepushup',benchdip:'kneepushup',chinup:'superman',negpullup:'superman',dbcurl:'dbrow',
+  /* A flagged low back is usually flexion-intolerant, so swapping a sit-up for a
+     crunch changes the load but not the mechanism. Every flexion move now lands
+     on anti-extension or anti-rotation work instead. */
+  situp:'deadbug',vertcrunch:'deadbug',crunch:'deadbug',bicycle:'deadbug',situptwist:'birddog',
+  vsit:'plank',hollowflutter:'deadbug',legraise:'deadbug',hanglegraise:'deadbug',kneeraise:'deadbug',
+  hiplift:'glutebridge',flutter:'deadbug',scissors:'deadbug',vup:'plank',tuckvup:'plank',
+  russiantwist:'sideplank',weightedtwist:'sideplank',seatedtwist:'sideplank',heeltouch:'sideplank',
+  longplank:'plank',ruck:'march',dipknee:'kneeplank',
+  pullup:'superman',widepullup:'superman',deadhang:'birddog',scappull:'birddog',
+  invertedrow:'superman',invertedrowelev:'superman',crabwalk:'glutebridge',
+  wallwalk:'inclinepushup',pikepushup:'inclinepushup',elevatedpike:'inclinepushup',
+  kneepushup:'wallsit',inclinepushup:'wallsit',declinepushup:'kneepushup',
+  bearcrawl:'birddog',plankjack:'march',crossclimber:'march',bearhold:'birddog',
+  halfburpee:'march',squatthrust:'march',sprawl:'march',
+  asiansquat:'glutebridge',wallsit:'glutebridge',skater:'march',squatjack:'march',
+  splitsquat:'glutebridge',jumpingjack:'march',sealjack:'march',highknees:'march',buttkick:'march',
+  ropewave:'march',
   sissysquat:'squat',cossack:'squat',sprawl:'squatthrust',latshuffle:'marchplace',
   wallwalk:'pikepushup',pseudoplanche:'pushup',typewriter:'pushup',hindupushup:'pushup',tempopushup:'kneepushup',
   bearcrawl:'march',crabwalk:'glutebridge',plankjack:'jumpingjack',crossclimber:'march',bearhold:'plank',inchworm:'march',
@@ -6405,6 +6509,12 @@ function achievementsHTML(){
    local notification if you've granted permission). Reliable background push
    would need a server; this keeps everything on-device. */
 function trainedToday(){return Object.values(STATE.logs||{}).some(l=>l.done&&l.completedAt===todayISO());}
+/* How many sessions the athlete actually signed up for. The tile used to compare
+   against a hardcoded 7 regardless of the days they picked. */
+function weeklyTarget(){
+  try{const d=STATE.profile&&STATE.profile.days;
+    return (Array.isArray(d)&&d.length)?d.length:SESSIONS_PER_WEEK;}catch(e){return SESSIONS_PER_WEEK;}
+}
 function isTrainingDay(){const days=STATE.profile.days||[];return days.includes(new Date().getDay());}
 function toggleReminders(){
   if(STATE.settings.reminderOn){STATE.settings.reminderOn=false;save();renderGuide();return;}
@@ -6743,85 +6853,146 @@ function nutritionStreak(){
 /* ===== MEAL PLANS + RECIPES =====
    Offline recipe bank tagged by diet. A daily plan picks meals that fit the
    user's diet preference + allergies and sum near their calorie target. */
+/* Allergen tagging. The old filter did a raw substring match of the athlete's
+   free text against the recipe name + ingredients, so the app's OWN placeholder
+   ("peanuts, dairy, shellfish") matched NOTHING — the ingredient strings say
+   "peanut butter", "Greek yogurt", "shrimp". A declared allergy silently filtered
+   zero recipes while the athlete believed they were protected. Tags are explicit
+   now, and the picker is a fixed list so free text can never be the safety layer. */
+const ALLERGENS=[['peanut','Peanuts'],['treenut','Tree nuts'],['dairy','Dairy'],['egg','Egg'],
+  ['soy','Soy'],['gluten','Gluten / wheat'],['fish','Fish'],['shellfish','Shellfish'],['sesame','Sesame']];
+/* Only used to migrate an existing free-text answer onto the tag list — never to filter. */
+const ALG_SYN={peanut:['peanut','peanuts','groundnut'],treenut:['tree nut','treenut','nut','nuts','almond','cashew','walnut','pecan','pistachio','hazelnut','coconut'],
+  dairy:['dairy','milk','cheese','yogurt','yoghurt','lactose','butter','cream','whey','casein'],
+  egg:['egg','eggs','albumen'],soy:['soy','soya','soybean','tofu','edamame','tempeh'],
+  gluten:['gluten','wheat','barley','rye','bread','pasta','oats','couscous','noodle'],
+  fish:['fish','salmon','tuna','cod','anchovy','sardine'],
+  shellfish:['shellfish','shrimp','prawn','crab','lobster','mussel','oyster','scallop','clam'],
+  sesame:['sesame','tahini','hummus']};
+function algList(){const n=STATE.nutrition||{};return Array.isArray(n.allergens)?n.allergens:[];}
+/* One-shot: derive tags from whatever free text an existing athlete already typed. */
+function migrateAllergens(){
+  const n=STATE.nutrition;if(!n||Array.isArray(n.allergens))return;
+  let txt=(n.allergies||'').toLowerCase();const out=[];
+  if(txt.trim()){
+    /* Longest-token families first, and consume what matches, so "shellfish"
+       cannot also register as "fish" and "peanuts" cannot register as "nut". */
+    const order=['shellfish','peanut','treenut','dairy','egg','soy','gluten','fish','sesame'];
+    for(const k of order){
+      const syns=(ALG_SYN[k]||[]).slice().sort((a,b)=>b.length-a.length);
+      for(const s of syns){
+        if(new RegExp('(^|[^a-z])'+s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'[a-z]{0,2}([^a-z]|$)').test(txt)){
+          out.push(k);txt=txt.split(s).join(' ');break;
+        }
+      }
+    }
+  }
+  n.allergens=out;
+}
+/* Pre-participation screening. There was previously none at all, and day one is
+   five maximal-effort tests — sustained maximal isometrics produce the largest
+   acute blood-pressure response of any modality. Any positive answer routes the
+   athlete to medical clearance and a capped, submaximal entry instead. */
+const PARQ=[
+  ['heart','A heart condition, or chest pain during or at rest'],
+  ['bp','High blood pressure that is not controlled'],
+  ['dizzy','Dizziness, fainting, or loss of balance'],
+  ['joint','A bone or joint problem that activity makes worse'],
+  ['meds','Prescription medication for your heart or blood pressure'],
+  ['preg','Pregnant, or within 6 months of giving birth'],
+  ['advice','A doctor has told you to restrict your activity'],
+];
+function parqFlags(){try{const p=STATE.profile&&STATE.profile.parq;return Array.isArray(p)?p:[];}catch(e){return [];}}
+function parqFlagged(){return parqFlags().length>0;}
+/* Cleared === answered, and either nothing flagged or the athlete has confirmed
+   they spoke to a clinician. Until then the max-effort battery stays locked. */
+function parqDone(){try{return !!(STATE.profile&&STATE.profile.parqDone);}catch(e){return false;}}
+function medCleared(){try{return !!(STATE.profile&&STATE.profile.medCleared);}catch(e){return false;}}
+function safeMode(){return parqFlagged()&&!medCleared();}
+function confirmClearance(){
+  STATE.profile.medCleared=true;save();closeSheet();
+  toast('Noted — capped tests unlocked');render();
+}
+function DISCLAIMER(){return `<div class="note warn" style="margin-top:12px"><b>Not medical advice.</b> CoreForge is a general fitness app, not a clinician. It does not know your medical history. Talk to a doctor before starting, especially if you have a health condition, are pregnant, or are returning from injury. <b>Stop immediately</b> for chest pain, dizziness, shortness of breath, or sharp joint pain — that is not "pushing through", that is a warning.</div>`;}
 const RECIPES=[
   // ---- BREAKFAST ----
-  {id:'b_oats',type:'breakfast',emoji:'🥣',name:'Peanut-Banana Oats',kcal:420,p:18,c:62,f:12,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+  {id:'b_oats',alg:['peanut','soy','gluten'],type:'breakfast',emoji:'🥣',name:'Peanut-Banana Oats',kcal:420,p:18,c:62,f:12,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
     ing:['½ cup rolled oats','1 cup soy or oat milk','1 banana','1 tbsp peanut butter','Cinnamon'],
     steps:['Simmer the oats in the milk for 4–5 min.','Slice in the banana and stir in the peanut butter.','Finish with cinnamon.']},
-  {id:'b_tofu',type:'breakfast',emoji:'🍳',name:'Tofu Veggie Scramble',kcal:360,p:24,c:18,f:20,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+  {id:'b_tofu',alg:['soy'],type:'breakfast',emoji:'🍳',name:'Tofu Veggie Scramble',kcal:360,p:24,c:18,f:20,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
     ing:['200 g firm tofu, crumbled','½ tsp turmeric','Handful spinach','½ pepper, diced','1 tsp oil, salt'],
     steps:['Sauté the pepper in the oil 2 min.','Add crumbled tofu + turmeric, cook 4 min.','Stir through spinach until wilted; season.']},
-  {id:'b_yog',type:'breakfast',emoji:'🫐',name:'Greek Yogurt Berry Bowl',kcal:380,p:30,c:40,f:10,ok:['vegetarian','pescatarian','halal','omnivore'],
+  {id:'b_yog',alg:['dairy','gluten'],type:'breakfast',emoji:'🫐',name:'Greek Yogurt Berry Bowl',kcal:380,p:30,c:40,f:10,ok:['vegetarian','pescatarian','halal','omnivore'],
     ing:['200 g Greek yogurt','1 cup mixed berries','2 tbsp granola','1 tsp honey'],
     steps:['Spoon the yogurt into a bowl.','Top with berries and granola.','Drizzle with honey.']},
-  {id:'b_eggs',type:'breakfast',emoji:'🍳',name:'Veggie Eggs & Toast',kcal:400,p:26,c:30,f:18,ok:['vegetarian','pescatarian','halal','omnivore'],
+  {id:'b_eggs',alg:['egg','gluten'],type:'breakfast',emoji:'🍳',name:'Veggie Eggs & Toast',kcal:400,p:26,c:30,f:18,ok:['vegetarian','pescatarian','halal','omnivore'],
     ing:['3 eggs','Handful spinach + tomato','1 slice wholegrain toast','1 tsp oil, salt & pepper'],
     steps:['Scramble the eggs in the oil with the veg.','Toast the bread.','Plate together and season.']},
-  {id:'b_smooth',type:'breakfast',emoji:'🥤',name:'Berry Protein Smoothie',kcal:330,p:28,c:40,f:6,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+  {id:'b_smooth',alg:['soy'],type:'breakfast',emoji:'🥤',name:'Berry Protein Smoothie',kcal:330,p:28,c:40,f:6,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
     ing:['1 scoop plant protein','1 cup frozen berries','1 banana','1 cup soy milk'],
     steps:['Add everything to a blender.','Blend until smooth.','Pour and drink cold.']},
-  {id:'b_chia',type:'breakfast',emoji:'🌱',name:'Overnight Chia Oats',kcal:390,p:16,c:52,f:14,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+  {id:'b_chia',alg:['soy','gluten'],type:'breakfast',emoji:'🌱',name:'Overnight Chia Oats',kcal:390,p:16,c:52,f:14,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
     ing:['⅓ cup oats','2 tbsp chia seeds','1 cup soy milk','½ cup berries'],
     steps:['Mix oats, chia and milk in a jar.','Refrigerate overnight.','Top with berries in the morning.']},
   // ---- LUNCH ----
-  {id:'l_chick',type:'lunch',emoji:'🍗',name:'Chicken & Rice Power Bowl',kcal:520,p:45,c:55,f:12,ok:['halal','omnivore'],
+  {id:'l_chick',alg:[],type:'lunch',emoji:'🍗',name:'Chicken & Rice Power Bowl',kcal:520,p:45,c:55,f:12,ok:['halal','omnivore'],
     ing:['150 g grilled chicken breast','1 cup cooked rice','Mixed veg','1 tsp olive oil','Lemon, spices'],
     steps:['Season and grill the chicken, then slice.','Build the bowl with rice and veg.','Drizzle oil and lemon.']},
-  {id:'l_beef',type:'lunch',emoji:'🥩',name:'Beef & Veg Stir-fry',kcal:540,p:40,c:45,f:20,ok:['halal','omnivore'],
+  {id:'l_beef',alg:['soy','gluten'],type:'lunch',emoji:'🥩',name:'Beef & Veg Stir-fry',kcal:540,p:40,c:45,f:20,ok:['halal','omnivore'],
     ing:['140 g lean beef strips','2 cups stir-fry veg','1 cup rice','1 tbsp soy sauce','Garlic, ginger'],
     steps:['Sear the beef hot and fast.','Add veg, garlic, ginger and soy; toss 3 min.','Serve over rice.']},
-  {id:'l_salmon',type:'lunch',emoji:'🐟',name:'Salmon Quinoa Bowl',kcal:520,p:38,c:45,f:20,ok:['pescatarian','halal','omnivore'],
+  {id:'l_salmon',alg:['fish'],type:'lunch',emoji:'🐟',name:'Salmon Quinoa Bowl',kcal:520,p:38,c:45,f:20,ok:['pescatarian','halal','omnivore'],
     ing:['130 g salmon fillet','1 cup cooked quinoa','Cucumber + avocado','Lemon, salt'],
     steps:['Pan-sear or bake the salmon.','Flake over quinoa with the veg.','Squeeze lemon on top.']},
-  {id:'l_wrap',type:'lunch',emoji:'🌯',name:'Chicken Shawarma Wrap',kcal:560,p:42,c:50,f:20,ok:['halal','omnivore'],
+  {id:'l_wrap',alg:['gluten','dairy'],type:'lunch',emoji:'🌯',name:'Chicken Shawarma Wrap',kcal:560,p:42,c:50,f:20,ok:['halal','omnivore'],
     ing:['150 g chicken thigh, spiced','1 wholegrain wrap','Salad + garlic yogurt','Shawarma spice'],
     steps:['Cook the spiced chicken and slice.','Warm the wrap.','Fill with chicken, salad and garlic yogurt; roll.']},
-  {id:'l_lentil',type:'lunch',emoji:'🥗',name:'Lentil & Chickpea Salad',kcal:460,p:22,c:60,f:14,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+  {id:'l_lentil',alg:[],type:'lunch',emoji:'🥗',name:'Lentil & Chickpea Salad',kcal:460,p:22,c:60,f:14,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
     ing:['1 cup lentils + chickpeas','Tomato, cucumber, onion','Parsley','Olive oil + lemon'],
     steps:['Toss the legumes with the chopped veg.','Dress with olive oil and lemon.','Fold through parsley.']},
-  {id:'l_tofu',type:'lunch',emoji:'🍚',name:'Teriyaki Tofu Rice Bowl',kcal:480,p:24,c:68,f:12,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+  {id:'l_tofu',alg:['soy','gluten'],type:'lunch',emoji:'🍚',name:'Teriyaki Tofu Rice Bowl',kcal:480,p:24,c:68,f:12,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
     ing:['200 g firm tofu','1 cup rice','Broccoli','2 tbsp teriyaki sauce'],
     steps:['Crisp the tofu in a pan.','Add teriyaki to coat; steam the broccoli.','Serve over rice.']},
-  {id:'l_tuna',type:'lunch',emoji:'🐟',name:'Tuna Pasta Salad',kcal:500,p:40,c:50,f:14,ok:['pescatarian','halal','omnivore'],
+  {id:'l_tuna',alg:['fish','gluten','egg'],type:'lunch',emoji:'🐟',name:'Tuna Pasta Salad',kcal:500,p:40,c:50,f:14,ok:['pescatarian','halal','omnivore'],
     ing:['1 can tuna','1½ cups cooked pasta','Sweetcorn + peppers','1 tbsp light mayo'],
     steps:['Drain the tuna and flake it.','Mix with pasta, corn and peppers.','Stir through the mayo.']},
   // ---- DINNER ----
-  {id:'d_chick',type:'dinner',emoji:'🍗',name:'Baked Chicken, Potato & Greens',kcal:560,p:48,c:45,f:18,ok:['halal','omnivore'],
+  {id:'d_chick',alg:[],type:'dinner',emoji:'🍗',name:'Baked Chicken, Potato & Greens',kcal:560,p:48,c:45,f:18,ok:['halal','omnivore'],
     ing:['170 g chicken breast','1 medium potato','Green beans / broccoli','1 tbsp olive oil, herbs'],
     steps:['Roast the chicken and potato with herbs.','Steam the greens.','Plate with a drizzle of oil.']},
-  {id:'d_chili',type:'dinner',emoji:'🌶️',name:'Lean Beef Chili',kcal:540,p:42,c:48,f:18,ok:['halal','omnivore'],
+  {id:'d_chili',alg:[],type:'dinner',emoji:'🌶️',name:'Lean Beef Chili',kcal:540,p:42,c:48,f:18,ok:['halal','omnivore'],
     ing:['140 g lean beef mince','½ can kidney beans','Chopped tomatoes','½ cup rice','Chili spices'],
     steps:['Brown the mince, add spices.','Add tomatoes and beans; simmer 15 min.','Serve over rice.']},
-  {id:'d_salmon',type:'dinner',emoji:'🐟',name:'Baked Salmon & Sweet Potato',kcal:560,p:40,c:45,f:22,ok:['pescatarian','halal','omnivore'],
+  {id:'d_salmon',alg:['fish'],type:'dinner',emoji:'🐟',name:'Baked Salmon & Sweet Potato',kcal:560,p:40,c:45,f:22,ok:['pescatarian','halal','omnivore'],
     ing:['150 g salmon','1 sweet potato','Asparagus','Lemon, olive oil'],
     steps:['Bake the salmon and sweet potato at 200°C.','Roast or steam the asparagus.','Finish with lemon.']},
-  {id:'d_lamb',type:'dinner',emoji:'🍖',name:'Lamb & Veg Skillet',kcal:580,p:44,c:35,f:28,ok:['halal','omnivore'],
+  {id:'d_lamb',alg:['gluten'],type:'dinner',emoji:'🍖',name:'Lamb & Veg Skillet',kcal:580,p:44,c:35,f:28,ok:['halal','omnivore'],
     ing:['150 g lean lamb','Courgette + pepper + onion','½ cup couscous','Cumin, garlic'],
     steps:['Brown the lamb with cumin and garlic.','Add the veg and cook through.','Serve over couscous.']},
-  {id:'d_curry',type:'dinner',emoji:'🍛',name:'Chickpea Spinach Curry & Rice',kcal:520,p:20,c:78,f:14,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+  {id:'d_curry',alg:['treenut'],type:'dinner',emoji:'🍛',name:'Chickpea Spinach Curry & Rice',kcal:520,p:20,c:78,f:14,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
     ing:['1 can chickpeas','2 cups spinach','½ can coconut milk','1 cup rice','Curry spices'],
     steps:['Simmer chickpeas in the spiced coconut milk.','Wilt in the spinach.','Serve over rice.']},
-  {id:'d_noodle',type:'dinner',emoji:'🍜',name:'Tofu Veg Noodle Stir-fry',kcal:500,p:24,c:70,f:14,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+  {id:'d_noodle',alg:['soy','gluten','sesame'],type:'dinner',emoji:'🍜',name:'Tofu Veg Noodle Stir-fry',kcal:500,p:24,c:70,f:14,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
     ing:['200 g tofu','1 nest noodles','2 cups mixed veg','2 tbsp soy + sesame'],
     steps:['Crisp the tofu; cook the noodles.','Stir-fry the veg, add tofu + noodles.','Toss with soy and sesame.']},
-  {id:'d_shrimp',type:'dinner',emoji:'🦐',name:'Garlic Shrimp & Rice',kcal:500,p:38,c:55,f:12,ok:['pescatarian','halal','omnivore'],
+  {id:'d_shrimp',alg:['shellfish'],type:'dinner',emoji:'🦐',name:'Garlic Shrimp & Rice',kcal:500,p:38,c:55,f:12,ok:['pescatarian','halal','omnivore'],
     ing:['160 g shrimp','1 cup rice','Peas + peppers','Garlic, 1 tsp oil, lemon'],
     steps:['Sauté the shrimp with garlic 3 min.','Add the veg to warm through.','Serve over rice with lemon.']},
-  {id:'d_turkey',type:'dinner',emoji:'🦃',name:'Turkey Meatballs & Zoodles',kcal:480,p:44,c:24,f:22,ok:['halal','omnivore'],
+  {id:'d_turkey',alg:['egg'],type:'dinner',emoji:'🦃',name:'Turkey Meatballs & Zoodles',kcal:480,p:44,c:24,f:22,ok:['halal','omnivore'],
     ing:['150 g turkey mince','1 egg + herbs','2 courgettes, spiralised','1 cup tomato sauce'],
     steps:['Mix and roll meatballs; bake 18 min.','Warm the tomato sauce.','Serve over the zoodles.']},
   // ---- SNACKS ----
-  {id:'s_yog',type:'snack',emoji:'🍯',name:'Greek Yogurt & Honey',kcal:180,p:18,c:20,f:3,ok:['vegetarian','pescatarian','halal','omnivore'],
+  {id:'s_yog',alg:['dairy','sesame'],type:'snack',emoji:'🍯',name:'Greek Yogurt & Honey',kcal:180,p:18,c:20,f:3,ok:['vegetarian','pescatarian','halal','omnivore'],
     ing:['150 g Greek yogurt','1 tsp honey','Sprinkle of seeds'],steps:['Top the yogurt with honey and seeds.']},
-  {id:'s_apple',type:'snack',emoji:'🍎',name:'Apple & Almond Butter',kcal:210,p:6,c:24,f:12,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+  {id:'s_apple',alg:['treenut'],type:'snack',emoji:'🍎',name:'Apple & Almond Butter',kcal:210,p:6,c:24,f:12,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
     ing:['1 apple, sliced','1 tbsp almond butter'],steps:['Slice the apple and dip in the almond butter.']},
-  {id:'s_hum',type:'snack',emoji:'🥕',name:'Hummus & Veg Sticks',kcal:190,p:7,c:20,f:10,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+  {id:'s_hum',alg:['sesame'],type:'snack',emoji:'🥕',name:'Hummus & Veg Sticks',kcal:190,p:7,c:20,f:10,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
     ing:['3 tbsp hummus','Carrot + cucumber sticks'],steps:['Serve the veg sticks with the hummus.']},
-  {id:'s_cott',type:'snack',emoji:'🍍',name:'Cottage Cheese & Pineapple',kcal:200,p:24,c:16,f:4,ok:['vegetarian','pescatarian','halal','omnivore'],
+  {id:'s_cott',alg:['dairy'],type:'snack',emoji:'🍍',name:'Cottage Cheese & Pineapple',kcal:200,p:24,c:16,f:4,ok:['vegetarian','pescatarian','halal','omnivore'],
     ing:['150 g cottage cheese','½ cup pineapple'],steps:['Spoon the pineapple over the cottage cheese.']},
-  {id:'s_edam',type:'snack',emoji:'🫛',name:'Sea-salt Edamame',kcal:180,p:16,c:14,f:8,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+  {id:'s_edam',alg:['soy'],type:'snack',emoji:'🫛',name:'Sea-salt Edamame',kcal:180,p:16,c:14,f:8,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
     ing:['1 cup edamame','Pinch sea salt'],steps:['Steam the edamame 4 min.','Sprinkle with salt.']},
-  {id:'s_pshake',type:'snack',emoji:'🥤',name:'Plant Protein Shake',kcal:170,p:24,c:10,f:3,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+  {id:'s_pshake',alg:['soy'],type:'snack',emoji:'🥤',name:'Plant Protein Shake',kcal:170,p:24,c:10,f:3,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
     ing:['1 scoop plant protein','1 cup water or soy milk'],steps:['Shake together until smooth.']},
 ];
 function dietLabel(){return {omnivore:'Omnivore',halal:'Halal',pescatarian:'Pescatarian',vegetarian:'Vegetarian',vegan:'Vegan'}[STATE.nutrition.diet||'omnivore'];}
@@ -6830,8 +7001,13 @@ function recipeById(id){return RECIPES.find(r=>r.id===id);}
 function dietOk(r){
   const d=STATE.nutrition.diet||'omnivore';
   if(!(r.ok||[]).includes(d))return false;
-  const av=(STATE.nutrition.allergies||'').toLowerCase().split(/[,;]+/).map(s=>s.trim()).filter(Boolean);
-  if(av.length){const hay=(r.name+' '+(r.ing||[]).join(' ')).toLowerCase();if(av.some(a=>a&&hay.includes(a)))return false;}
+  /* Tag match only. A recipe with no tag list is treated as UNKNOWN, not as safe,
+     so a future recipe added without tags can never slip past a declared allergy. */
+  const av=algList();
+  if(av.length){
+    if(!Array.isArray(r.alg))return false;
+    if(av.some(a=>r.alg.includes(a)))return false;
+  }
   return true;
 }
 function mealSlots(){return (STATE.nutrition.meals===4)?['breakfast','lunch','dinner','snack']:['breakfast','lunch','dinner'];}
@@ -6880,6 +7056,7 @@ function mealPlanHTML(){
   if(!kcalT){h+=`<div class="note info" style="margin-top:10px">Tip: tap <b>Calculate my targets</b> below so these meals are sized to your calorie goal.</div>`;}
   else if(tot<kcalT*0.85){h+=`<div class="note info" style="margin-top:10px">This comes to <b>${tot} kcal</b> vs your <b>${kcalT}</b> target — increase portions or add a snack to close the gap.</div>`;}
   else if(tot>kcalT*1.15){h+=`<div class="note warn" style="margin-top:10px">This comes to <b>${tot} kcal</b> vs your <b>${kcalT}</b> target — trim portions a little.</div>`;}
+  if(algList().length)h+=`<div class="note warn" style="margin-top:10px">⚠️ <b>Check every label yourself.</b> Meals are filtered using our own recipe tags — this is not an allergen-safety tool, and brands and recipes vary. If your allergy is serious, read the ingredients before you eat.</div>`;
   return h;
 }
 function renderFuel(){
@@ -7290,6 +7467,7 @@ function renderGuide(){
     h+=`</div></div>`;
   }
   // settings / data
+  h+=DISCLAIMER();
   h+=`<div class="section-label" id="settingsAnchor" style="scroll-margin-top:70px">Settings</div><div class="card pad">
     <div style="padding:2px 0 8px"><div class="tiny muted" style="margin-bottom:8px">Accent theme</div>${themeChipsHTML()}</div>
     <div class="divider" style="margin:8px 0"></div>
@@ -7589,9 +7767,9 @@ function normalizeState(){
      meant importing an older backup (or re-onboarding after a reset) silently
      replaced the athlete's own equipment, training days and goal weight. */
   const seeding=!STATE.onboarded;
-  if(seeding&&!STATE.profile._gearMil){STATE.profile.gear=['bar','dip','kettlebell','medball','abroller','battlerope'];STATE.profile.hasBar=true;}
+
   if(!STATE.profile._gearMil)STATE.profile._gearMil=true;
-  if(seeding&&!STATE.profile._gearDb){STATE.profile.gear=[...new Set([...(STATE.profile.gear||[]),'dumbbell'])];}
+
   if(!STATE.profile._gearDb)STATE.profile._gearDb=true;
   /* The kit seed never listed 'bench', and hasBench used to be undefined — which
      read as "not false", so bench moves were allowed anyway. Once gear[] and
@@ -7614,10 +7792,16 @@ function normalizeState(){
     }
     STATE.profile._startWaistFix=true;
   }
-  if(!STATE.profile._benchKit){STATE.profile.gear=[...new Set([...(STATE.profile.gear||[]),'bench'])];STATE.profile._benchKit=true;}
-  if(seeding&&!STATE.profile._days7){STATE.profile.days=[0,1,2,3,4,5,6];}
+  /* Equipment is no longer pre-ticked. Seeding it meant tapping through the quiz
+     told the app you owned a battle rope, and day one prescribed one. */
+  if(!STATE.profile._benchKit)STATE.profile._benchKit=true;
+  try{migrateAllergens();}catch(e){}   // derive allergen tags from any old free-text answer
+  if(seeding&&!STATE.profile._days7&&!Array.isArray(STATE.profile.days)){STATE.profile.days=[0,1,2,3,4,5,6];}
   if(!STATE.profile._days7)STATE.profile._days7=true;
-  if(seeding&&!STATE.profile._goalXform){if(!(STATE.profile.goalWeightLb>0))STATE.profile.goalWeightLb=175;if(!(STATE.profile.goalBodyFat>0))STATE.profile.goalBodyFat=12;}
+  /* Never invent a body target. These used to be seeded to 175 lb / 12% before
+     the athlete answered anything, and the coach then read them aloud daily as
+     "the mission" — a number they never chose, and one that sits below the
+     female essential-fat floor. If it is unset it stays unset. */
   if(!STATE.profile._goalXform)STATE.profile._goalXform=true;
   // gear[] and the legacy hasBar/hasBench flags describe the same kit — keep them in step
   if(Array.isArray(STATE.profile.gear)){
