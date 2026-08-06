@@ -1254,7 +1254,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='172';
+const APP_VERSION='173';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1385,9 +1385,51 @@ function rungIndex(ladder,cycle,week,level){
   idx+=eff;                              // +1 rung each block (within the ladder's phase)
   if(week>=3) idx+=1;                     // mid-block progression
   if(week>=5) idx+=1;                     // peak-weeks progression (harder variations)
+  /* Building muscle is driven by mechanical tension, so that goal climbs one rung
+     early — a harder VARIATION of the move, not just fewer reps of the same one.
+     This is what makes "I changed my goal" visible in the exercise names. Equipment
+     and injury gates still run downstream, so a rung the athlete can't do is walked
+     back to one they can. */
+  try{if((STATE.profile&&STATE.profile.goal)==='gain')idx+=1;}catch(e){}
   // don't push optional/equipment rungs unless clearly earned
   idx=clamp(idx,0,arr.length-1);
   return idx;
+}
+/* ---- Goal shapes WHICH movements you train, not only how many reps ----
+   One slot in the session is re-pointed at a different exercise family:
+     shred / lose -> a conditioning slot replaces a strength slot (metabolic density)
+     gain         -> a strength slot replaces a conditioning slot (mechanical tension)
+     core         -> a core slot replaces the first non-core slot (midsection first)
+     recomp/maintain -> the balanced default, untouched
+   Only ever swaps ONE slot, and only when the session still keeps at least two
+   slots of the family being taken from — so a fat-loss goal can't hollow out
+   Core Crusher, and Build muscle can't strip Metabolic HIIT of its conditioning. */
+const CORE_LADS=['plankL','hollowL','lowerL','dynL','sideL','rotL'];
+const CARDIO_LADS=['cardioAL','cardioBL','cardioFinL','finisherL','legPowerL','hiitFinL'];
+const STRENGTH_LADS=['legL','pushL','chestL','shoulderL','pullL','rowL','tricepL','bicepL','squatL','hingeL','calfL'];
+function goalSlots(session,pos){
+  const slots=(session.slots||[]).slice();
+  let goal='lose';try{goal=(STATE.profile&&STATE.profile.goal)||'lose';}catch(e){}
+  if(goal==='recomp'||goal==='maintain')return slots;
+  const day=(pos&&pos.dayInWeek)||0, cyc=(pos&&pos.cycle)||0;
+  const pick=arr=>arr[(cyc*7+day)%arr.length];    // deterministic, rotates across the week
+  const isCardio=l=>CARDIO_LADS.includes(l), isCore=l=>CORE_LADS.includes(l);
+  const count=fn=>slots.filter(fn).length;
+  let at=-1,repl=null;
+  if(goal==='shred'||goal==='lose'){
+    // take from whichever family has the most to spare, never below 2 remaining
+    at=slots.findIndex(l=>!isCardio(l)&&(isCore(l)?count(isCore)>=3:count(x=>!isCardio(x)&&!isCore(x))>=2));
+    if(at<0)at=slots.map((l,i)=>({l,i})).reverse().find(o=>isCore(o.l)&&count(isCore)>=3)?.i??-1;
+    repl=pick(['cardioAL','cardioBL']);
+  }else if(goal==='gain'){
+    at=slots.findIndex(l=>isCardio(l)&&count(isCardio)>=1);
+    repl=pick(['squatL','pushL','hingeL']);
+  }else if(goal==='core'){
+    at=slots.findIndex(l=>!isCore(l));
+    repl=pick(['plankL','hollowL','lowerL','rotL']);
+  }
+  if(at>=0&&repl&&LADDERS[repl]&&slots[at]!==repl)slots[at]=repl;
+  return slots;
 }
 // auto-regulation: adjust from how last week's sessions felt
 function weekAdjust(cycle,week){
@@ -1592,9 +1634,12 @@ function buildSession(ptr){
   const cycle=pos.cycle,week=pos.week,level=levelOf(cycle);
   const hasBar=STATE.profile.hasBar!==false; // default true; toggle in settings
   const sw=sessionSwaps(ptr);   // athlete's explicit swaps for this session
-  const main=pos.session.slots.map(ladder=>{
-    let idx=rungIndex(ladder,cycle,week,level);
-    let exId=LADDERS[ladder][idx];
+  const used=new Set();
+  // Resolve one rung of a ladder to a real, doable exercise id.
+  const resolve=(ladder,idx)=>{
+    const arr=LADDERS[ladder]||[];
+    let exId=arr[clamp(idx,0,arr.length-1)];
+    if(!exId||!EX[exId])return exId;
     // swap out equipment moves the user can't do
     if(EX[exId].optional){
       if(exId==='kneeraise'&&!hasBar){exId='legraise';}
@@ -1603,20 +1648,54 @@ function buildSession(ptr){
       if(exId==='copenhagen'&&STATE.profile.hasBench===false){exId='sidedip';}
     }
     exId=gearSwap(exId,ladder);   // equipment-aware: only moves they can actually do
-    exId=safeSwap(exId);          // injury-aware: work around flagged joints
+    return safeSwap(exId);        // injury-aware: work around flagged joints
+  };
+  /* No session may prescribe the same movement twice. Ladders overlap — and a
+     goal-driven slot swap can point a slot at the family the finisher already
+     uses (Shred put Squat Jacks in slot 1 of a session that finishes on Squat
+     Jacks) — so walk out from the prescribed rung to the nearest unused one. */
+  const distinct=(ladder,idx)=>{
+    const arr=LADDERS[ladder]||[];
+    for(let d=0;d<arr.length;d++){
+      for(const j of (d===0?[idx]:[idx-d,idx+d])){
+        if(j<0||j>=arr.length)continue;
+        const id=resolve(ladder,j);
+        if(id&&!used.has(id))return id;
+      }
+    }
+    /* The whole ladder is exhausted. This happens when the equipment gate
+       collapses many rungs onto one fallback — with no pull-up bar every rung
+       of the pull ladders lands on Superman, so Pull Day prescribed Superman
+       three times. Take the nearest unused move of the same region and unit
+       that the athlete can actually do, and that clears their flagged joints. */
+    const base=resolve(ladder,idx);
+    const e=EX[base];
+    if(e){
+      const ok=k=>k!==base&&!used.has(k)&&EX[k]&&k!=='bike'&&k!=='sprint'&&hasGearFor(k)&&safeSwap(k)===k;
+      // same region and same unit reads most like the move it replaces; if that
+      // is taken too, any move of the region beats prescribing a duplicate
+      const alt=Object.keys(EX).find(k=>ok(k)&&EX[k].region===e.region&&EX[k].unit===e.unit)
+             || Object.keys(EX).find(k=>ok(k)&&EX[k].region===e.region);
+      if(alt)return alt;
+    }
+    return base;                  // nothing else available — accept the prescribed one
+  };
+  const main=goalSlots(pos.session,pos).map(ladder=>{
+    let exId=distinct(ladder,rungIndex(ladder,cycle,week,level));
     // An explicit swap wins — but only while it is still safe and still doable.
     // Otherwise a swap saved before an injury or a kit change was declared would
     // keep forcing the exercise the athlete just told us they cannot do.
     if(sw&&sw[ladder]&&EX[sw[ladder]]&&swapStillValid(sw[ladder]))exId=sw[ladder];
+    used.add(exId);
     return {exId,...prescribe(exId,pos),slot:ladder};
   });
-  const finLad=LADDERS[pos.session.finisher];
-  const finId=safeSwap(gearSwap(finLad[clamp(rungIndex(pos.session.finisher,cycle,week,level),0,finLad.length-1)],pos.session.finisher));
+  const finLadName=pos.session.finisher;
+  const finId=distinct(finLadName,rungIndex(finLadName,cycle,week,level));
   const finEx=(sw&&sw.__fin&&EX[sw.__fin]&&swapStillValid(sw.__fin))?sw.__fin:finId;
-  const finisher={exId:finEx,...prescribe(finEx,pos),slot:pos.session.finisher};
+  used.add(finEx);
+  const finisher={exId:finEx,...prescribe(finEx,pos),slot:finLadName};
   finisher.sets=1;   // a finisher is always one all-out burnout round
   // targeted bonus: one extra move for the athlete's priority area (from the quiz)
-  const used=new Set([...main.map(m=>m.exId),finId]);
   let bonus=focusBonus(pos,used);
   if(sw&&sw.focus&&EX[sw.focus]&&swapStillValid(sw.focus))bonus={exId:sw.focus,...prescribe(sw.focus,pos),slot:'focus',focus:true};
   if(bonus)main.push(bonus);
