@@ -1410,7 +1410,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='182';
+const APP_VERSION='183';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -8194,7 +8194,30 @@ function normalizeState(){
   if(!STATE.logs||typeof STATE.logs!=='object')STATE.logs={};
   if(!STATE.prs||typeof STATE.prs!=='object')STATE.prs={};
   // deep-profile defaults for installs created before the equipment/diet quiz
-  if(!Array.isArray(STATE.profile.gear)){STATE.profile.gear=[];if(STATE.profile.hasBar!==false)STATE.profile.gear.push('bar');if(STATE.profile.hasBench!==false)STATE.profile.gear.push('bench');}
+  /* This branch was unreachable. load() and importData() both do
+     Object.assign(DEFAULT_STATE().profile, saved.profile), and the default gear
+     is [] — so gear was ALWAYS an array by the time this ran, and a pre-v124
+     save carrying only hasBar/hasBench came through with gear:[]. Line ~8250
+     then derived hasBar=gear.includes('bar')=false, overwriting the athlete's
+     explicit "yes I own a pull-up bar" with a no. Every bar and bench movement
+     vanished from their program permanently. Recover on EMPTY as well. */
+  if(!Array.isArray(STATE.profile.gear))STATE.profile.gear=[];
+  if(!STATE.profile.gear.length&&!STATE.profile._gearLegacy){
+    if(STATE.profile.hasBar===true)STATE.profile.gear.push('bar');
+    if(STATE.profile.hasBench===true)STATE.profile.gear.push('bench');
+    if(STATE.profile.gear.length)STATE.profile._gearLegacy=true;
+  }
+  /* days drives the weekly target and the training-day reminder. A null or a
+     string here is the same class of latent defect that limitations was: it does
+     not throw today, but every reader has to guess. */
+  if(!Array.isArray(STATE.profile.days)||!STATE.profile.days.length
+     ||!STATE.profile.days.every(d=>Number.isInteger(d)&&d>=0&&d<=6)){
+    const from=STATE.profile.days;
+    let out=[];
+    if(typeof from==='string')out=[...new Set(String(from).split(/[^0-6]+/).filter(x=>x!=='').map(Number))];
+    else if(Array.isArray(from))out=[...new Set(from.map(Number).filter(d=>Number.isInteger(d)&&d>=0&&d<=6))];
+    STATE.profile.days=out.length?out.sort((a,b)=>a-b):[0,1,2,3,4,5,6];
+  }
   if(!Array.isArray(STATE.profile.targets))STATE.profile.targets=['abs','full'];
   /* profile.goal drives training (reps, focus bonus), nutrition.goal drives food.
      They are meant to be one value; repair either side if a backup or a partial

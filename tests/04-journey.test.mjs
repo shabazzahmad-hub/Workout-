@@ -1,0 +1,253 @@
+/* The athlete's journey, driven through the real UI: the wizard, the baseline
+   battery, the four Today panes, the guided player, and every button on every
+   tab. Nothing here injects state that the app would not have produced itself. */
+import { serve, launch, suite, seedAthlete } from './lib/harness.mjs';
+
+export default async function run() {
+  const t = suite('athlete journey');
+  const { srv, port } = await serve();
+
+  // ---- onboarding, clicked like a first-time user --------------------------
+  {
+    const { browser, page, errors } = await launch(port);
+    const steps = [];
+    for (let i = 0; i < 12; i++) {
+      const before = await page.evaluate(() => {
+        const s = document.querySelector('.ob-step:not([style*="display: none"])');
+        return s ? s.dataset.step : null;
+      });
+      if (!before) break;
+      steps.push(before);
+      await page.evaluate(() => {
+        const vis = document.querySelector('.ob-step:not([style*="display: none"])');
+        if (!vis) return;
+        vis.querySelectorAll('input[type=text],input[type=number],input:not([type])').forEach(inp => {
+          if (inp.value) return;
+          const id = inp.id || '';
+          if (/name/.test(id)) inp.value = 'Test Athlete';
+          else if (/age/.test(id)) inp.value = '41';
+          else if (/height/.test(id)) inp.value = '178';
+          else if (/goalwt|goalwaist/.test(id)) inp.value = '';
+          else if (/weight/.test(id)) inp.value = '88';
+          else if (/waist/.test(id)) inp.value = '96';
+          inp.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        vis.querySelectorAll('.daypick,.chooser,.seg').forEach(g => {
+          if (g.querySelector('button.on')) return;
+          const b = g.querySelector('button'); if (b) b.click();
+        });
+      });
+      const btn = await page.$('#ob-next');
+      if (!btn) { t.fail('wizard step has no Next button', 'step ' + before); break; }
+      await btn.click(); await page.waitForTimeout(240);
+      const after = await page.evaluate(() => {
+        const s = document.querySelector('.ob-step:not([style*="display: none"])');
+        return s ? s.dataset.step : null;
+      });
+      if (after === before) { t.fail('Next did not advance the wizard', 'stuck on step ' + before); break; }
+      if (!after) break;
+    }
+    const done = await page.evaluate(() => ({
+      onboarded: STATE.onboarded, name: STATE.profile.name, age: STATE.profile.age,
+      heightCm: STATE.profile.heightCm, parqDone: STATE.profile.parqDone,
+      weightKg: STATE.nutrition.weightKg, kcal: STATE.nutrition.kcalTarget,
+      days: STATE.profile.days, landing: (document.querySelector('#v-today') || {}).innerText || '',
+    }));
+    t.ok('the wizard walks all 7 steps and completes', done.onboarded, { steps, done });
+    t.ok('the name typed in the wizard is saved', done.name === 'Test Athlete', done);
+    t.ok('age and height are saved', done.age === 41 && done.heightCm === 178, done);
+    t.ok('bodyweight is saved', done.weightKg === 88, done);
+    t.ok('the calorie target is computed on completion', done.kcal > 0, done);
+    t.ok('the health screen is recorded as answered', done.parqDone === true, done);
+    t.ok('onboarding lands on the baseline test', /Baseline Test/i.test(done.landing), done.landing.slice(0, 120));
+    await browser.close();
+    errors.forEach(e => t.fail('page error during onboarding', e));
+  }
+
+  // ---- the baseline battery, driven through the real sheet ----------------
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page, () => { STATE.baseline = null; STATE.scoreHistory = []; STATE.prs = {}; save(); render(); });
+    await page.waitForTimeout(200);
+    const start = await page.$('#startAssess');
+    t.ok('a screened athlete can start the baseline', !!start);
+    if (start) {
+      await start.click(); await page.waitForTimeout(200);
+      const ENTER = { plank: 150, side: 95, hollow: 70, lower: 30, push: 48, pull: 22, squat: 62, dyn: 55 };
+      const walked = [];
+      for (let i = 0; i < 12; i++) {
+        const cur = await page.evaluate(() => {
+          const s = document.querySelector('#sheet');
+          if (!s || !s.querySelector('#assess-val')) return null;
+          const test = TESTS[assessState.idx];
+          return { id: test.id, unit: test.unit, idx: assessState.idx,
+            header: (s.innerText.match(/Test \d+ of \d+/) || [''])[0],
+            hasTimer: /startBaselineTimer/.test(s.innerHTML) };
+        });
+        if (!cur) break;
+        walked.push(cur.id);
+        t.ok(`test ${cur.idx + 1} shows its progress header`, !!cur.header, cur);
+        if (cur.unit === 'time') t.ok(`timed test "${cur.id}" offers a timer`, cur.hasTimer, cur);
+        await page.evaluate(v => {
+          const el = document.querySelector('#assess-val');
+          el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true }));
+        }, ENTER[cur.id]);
+        await page.evaluate(() => assessNav(1));
+        await page.waitForTimeout(120);
+      }
+      t.eq('all 8 tests are walked', walked.length, 8);
+      const res = await page.evaluate(() => ({
+        maxes: STATE.baseline && STATE.baseline.maxes, score: STATE.baseline && STATE.baseline.score,
+        level: STATE.baseline && STATE.baseline.level, testCount: STATE.baseline && STATE.baseline.testCount,
+        prs: STATE.prs || {}, history: (STATE.scoreHistory || []).length,
+      }));
+      t.ok('the baseline is stored', !!res.maxes, res);
+      if (res.maxes) {
+        const wrong = Object.keys(ENTER).filter(k => res.maxes[k] !== ENTER[k]);
+        t.ok('every entered result is stored exactly', wrong.length === 0,
+          wrong.map(k => `${k}: entered ${ENTER[k]}, stored ${res.maxes[k]}`));
+      }
+      t.ok('a Core Score is computed', res.score > 0, res);
+      t.eq('the record stamps how many tests it used', res.testCount, 8);
+      /* The tests ARE max efforts. Recording them is the only way the plank,
+         side plank and squat rows of Strength Standards can ever be rated —
+         the program prescribes those as measuring sticks, never as work. */
+      const rated = ['plank', 'sideplank', 'squat', 'pushup', 'hollow'].filter(k => res.prs[k] > 0);
+      t.eq('the baseline seeds personal bests for the tested movements', rated.length, 5, res.prs);
+      t.eq('the score history gains one entry', res.history, 1);
+    }
+    await browser.close();
+    errors.forEach(e => t.fail('page error during the baseline', e));
+  }
+
+  // ---- Today: four panes, every card control ------------------------------
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    await page.waitForTimeout(250);
+    const tabs = await page.evaluate(() => [...document.querySelectorAll('#v-today .ttab')].map(b => b.innerText.trim()));
+    t.eq('Today has four sub-tabs', tabs.length, 4, tabs);
+    for (const pane of ['brief', 'warmup', 'workout', 'cooldown']) {
+      await page.evaluate(p => setTodayTab(p), pane);
+      await page.waitForTimeout(160);
+      const r = await page.evaluate(() => {
+        const v = document.querySelector('#v-today');
+        const txt = v.innerText;
+        return { len: txt.trim().length,
+          bad: (txt.match(/.{0,50}(undefined|NaN|\[object|Infinity).{0,20}/g) || []).slice(0, 2),
+          nullish: (txt.match(/(^|[\s>])null([\s<]|$)/g) || []).length,
+          broken: [...v.querySelectorAll('img')].filter(i => i.complete && i.naturalWidth === 0).map(i => i.getAttribute('src')) };
+      });
+      t.ok(`the ${pane} pane renders real content`, r.len > 150, `${r.len} chars`);
+      t.ok(`the ${pane} pane shows no placeholder values`, r.bad.length === 0 && r.nullish === 0, r);
+      t.ok(`the ${pane} pane has no broken images`, r.broken.length === 0, r.broken);
+    }
+    await page.evaluate(() => setTodayTab('workout'));
+    await page.waitForTimeout(160);
+    const acts = await page.evaluate(() =>
+      [...new Set([...document.querySelectorAll('#v-today .ex [data-act]')].map(b => b.dataset.act))]);
+    ['toggle', 'set', 'swap', 'info'].forEach(a =>
+      t.ok(`exercise cards offer the "${a}" control`, acts.includes(a), acts));
+    const howto = await page.evaluate(() => {
+      const s = buildSession(STATE.progressPtr);
+      return [...s.main, s.finisher].map(m => {
+        try { openExerciseInfo(m.exId);
+          const sh = document.querySelector('#sheet'); const txt = sh ? sh.innerText : '';
+          const im = sh && sh.querySelector('img.exphoto');
+          const r = { id: m.exId, len: txt.length, broken: !!(im && im.complete && im.naturalWidth === 0) };
+          closeSheet(); return r;
+        } catch (e) { return { id: m.exId, err: String(e).slice(0, 120) }; }
+      });
+    });
+    howto.forEach(h => {
+      t.ok(`how-to for ${h.id} opens`, !h.err, h.err);
+      t.ok(`how-to for ${h.id} is substantive`, (h.len || 0) > 200, h);
+      t.ok(`how-to for ${h.id} has a working image`, !h.broken, h);
+    });
+    await browser.close();
+    errors.forEach(e => t.fail('page error on Today', e));
+  }
+
+  // ---- the guided player, driven through every phase ----------------------
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page, () => { STATE.settings = STATE.settings || {}; STATE.settings.voice = false; STATE.settings.beat = false; save(); });
+    const drive = await page.evaluate(() => {
+      const out = { phases: [], err: null };
+      try {
+        openPlayer();
+        out.mounted = !!document.querySelector('.pl-name');
+        out.items = PLAYER ? PLAYER.items.length : 0;
+        for (let g = 0; g < 30000 && document.querySelector('#player.open'); g++) {
+          const p = PLAYER && PLAYER.phase;
+          if (p && out.phases[out.phases.length - 1] !== p) out.phases.push(p);
+          if (!PLAYER) break;
+          if (p === 'ready') plTickReady();
+          else if (p === 'work') ((PLAYER.items[PLAYER.i] || {}).unit === 'time') ? plTickHold() : plTickRep();
+          else if (p === 'rest') plTickRest();
+          else break;
+        }
+      } catch (e) { out.err = String(e).slice(0, 200); }
+      const log = STATE.logs[String(STATE.progressPtr)] || {};
+      out.exLogged = Object.keys(log.ex || {}).length;
+      out.setsLogged = Object.values(log.ex || {}).reduce((a, x) => a + (x.sets || []).filter(Boolean).length, 0);
+      out.prs = Object.keys(STATE.prs || {}).length;
+      out.finalPhase = PLAYER && PLAYER.phase;
+      out.timerLeak = !!(window.timer && window.timer.iv);
+      out.expected = (() => { const s = buildSession(STATE.progressPtr); return s.main.length + 1; })();
+      return out;
+    });
+    t.ok('the player mounts', drive.mounted, drive);
+    t.ok('the player never throws while running', !drive.err, drive.err);
+    t.ok('the player cycles ready -> work -> rest', ['ready', 'work', 'rest'].every(p => drive.phases.includes(p)), drive.phases.slice(0, 6));
+    t.ok('the player reaches its finish screen', drive.finalPhase === 'done', drive);
+    t.eq('the player logs every exercise in the session', drive.exLogged, drive.expected);
+    t.ok('the player logs sets', drive.setsLogged > 0, drive);
+    t.ok('the player records personal bests', drive.prs > 0, drive);
+    t.ok('no timer is left running after the player finishes', !drive.timerLeak, drive);
+    await browser.close();
+    errors.forEach(e => t.fail('page error in the player', e));
+  }
+
+  // ---- every button on every tab -----------------------------------------
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page, () => { STATE.progressPtr = 12; save(); });
+    let clicked = 0;
+    for (const tab of ['today', 'program', 'fuel', 'progress', 'guide']) {
+      await page.click(`[data-tab="${tab}"]`).catch(() => t.fail('tab is not clickable', tab));
+      await page.waitForTimeout(280);
+      const r = await page.evaluate(tb => {
+        const v = document.querySelector('#v-' + tb); const txt = v.innerText;
+        return { len: txt.trim().length,
+          bad: (txt.match(/.{0,50}(undefined|NaN|\[object|Infinity).{0,20}/g) || []).slice(0, 2),
+          nullish: (txt.match(/(^|[\s>])null([\s<]|$)/g) || []).length,
+          broken: [...v.querySelectorAll('img')].filter(i => i.complete && i.naturalWidth === 0).map(i => i.getAttribute('src')),
+          overflow: v.scrollWidth > v.clientWidth + 2 };
+      }, tab);
+      t.ok(`the ${tab} tab renders`, r.len > 200, `${r.len} chars`);
+      t.ok(`the ${tab} tab shows no placeholder values`, r.bad.length === 0 && r.nullish === 0, r);
+      t.ok(`the ${tab} tab has no broken images`, r.broken.length === 0, r.broken);
+      t.ok(`the ${tab} tab does not overflow a 390px screen`, !r.overflow, r);
+      const n = await page.evaluate(() => document.querySelectorAll('#v-' + TAB + ' button').length);
+      for (let i = 0; i < n; i++) {
+        const res = await page.evaluate(({ tb, idx }) => {
+          const btn = document.querySelectorAll('#v-' + tb + ' button')[idx];
+          if (!btn) return null;
+          const label = (btn.innerText || btn.title || '').trim().slice(0, 40);
+          try { btn.click(); } catch (e) { return { label, err: String(e).slice(0, 140) }; }
+          return { label, err: null };
+        }, { tb: tab, idx: i });
+        if (res) { clicked++; if (res.err) t.fail('a button click threw', `${tab} · "${res.label}" -> ${res.err}`); }
+        await page.evaluate(() => { try { closeSheet(); } catch (e) {} });
+        await page.waitForTimeout(30);
+      }
+    }
+    t.ok('a meaningful number of controls were exercised', clicked > 150, clicked + ' buttons clicked');
+    await browser.close();
+    errors.forEach(e => t.fail('page error while clicking through the tabs', e));
+  }
+
+  srv.close();
+  return t.finish();
+}

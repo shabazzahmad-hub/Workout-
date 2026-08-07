@@ -1,0 +1,14 @@
+{
+  "name": "coreforge",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "CoreForge — offline PWA. A 54-week calisthenics and core program.",
+  "scripts": {
+    "test": "node tests/run.mjs",
+    "check": "node tests/check-syntax.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}

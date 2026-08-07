@@ -20,7 +20,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Nothing reaches a phone without the suite passing. GitHub Pages serves
+  # whatever is on main, so this is the only gate between a bad commit and an
+  # installed app that auto-updates itself.
+  test:
+    uses: ./.github/workflows/test.yml
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     environment:
       name: github-pages
