@@ -1,14 +1,17 @@
 name: Tests
 
-# Runs on every push and every pull request. The deploy workflow waits on this,
-# so nothing reaches a phone without the suite passing first.
+# The deploy workflow waits on this, so nothing this repository publishes gets
+# there without the suite passing first.
 
-# A branch with an open pull request would otherwise run this twice — once for
-# the push and once for the PR — so pushes are limited to main (where there is
-# no PR to cover them) and everything else is covered by the pull_request event.
+# There is deliberately no `push` trigger.
+#
+# On main, deploy-pages.yml calls this workflow before it publishes, so a push
+# is already covered. Adding `push: [main]` on top meant the standalone run and
+# the called run both resolved github.ref to refs/heads/main, landed in the same
+# concurrency group, and cancel-in-progress made them kill each other — the
+# deploy's test job was cancelled the instant it was created and the deploy
+# itself was skipped. Every other branch is covered by pull_request.
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_call:      # deploy-pages.yml calls this before publishing
   workflow_dispatch:
@@ -16,8 +19,10 @@ on:
 permissions:
   contents: read
 
+# Keyed to the run, not the ref, so a called run can never contend with a
+# standalone one for the same slot.
 concurrency:
-  group: tests-${{ github.ref }}
+  group: tests-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
