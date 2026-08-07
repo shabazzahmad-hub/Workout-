@@ -1401,7 +1401,7 @@ const TESTS = [
   {id:'push', name:'Push-Ups (max reps)', unit:'reps', ex:'pushup', bench:35,
    instr:'Do as many clean push-ups as you can in one set — chest to a fist off the floor, body straight. Drop to your knees only if you cannot hold the line, and stop there.'},
   {id:'pull', name:'Inverted Rows (max reps)', unit:'reps', ex:'invertedrow', bench:20,
-   instr:'Set a bar or table edge at waist height, hang underneath and row your chest to it. No bar? Do Supermans and enter that count instead — we scale from whatever you can measure.'},
+   instr:'Set a bar, or lie under a sturdy table and grip the edge. Hang underneath, body straight, and row your chest to it for as many controlled reps as you can. No bar and no table? Loop a towel around a door handle, lean back and row — the Towel Door Row is in your program. Enter reps of a PULL only: this number scales every row and pull-up you will be given, so a back extension like the Superman would badly over-prescribe them.'},
   {id:'squat', name:'Bodyweight Squats (max reps)', unit:'reps', ex:'squat', bench:40,
    instr:'Squat to at least parallel, chest up, heels down, for as many controlled reps as you can. Stop when depth or form goes.'},
   {id:'dyn', name:'Bicycle Crunches (max time)', unit:'time', ex:'bicycle', bench:75,
@@ -1410,7 +1410,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='181';
+const APP_VERSION='182';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -3858,6 +3858,16 @@ function finishAssessment(){
   if(assessState.reassess){STATE.reassess[assessState.reassess]=rec;rebaseAdapt();}
   else{STATE.baseline=rec;}
   STATE.scoreHistory.push({date:todayISO(),score:a.score,level:a.level,testCount:TESTS.length});
+  /* A test IS a max effort — better PR data than any prescribed set. Recording
+     it here is also the only way four of the eleven Strength Standards rows can
+     ever be rated: the program never prescribes the plank, side plank, squat or
+     dead hang as working sets (they are the measuring sticks, not the work), so
+     those rows sat permanently unrated no matter how long the athlete trained. */
+  try{
+    if(!STATE.prs)STATE.prs={};
+    TESTS.forEach(t=>{const v=+assessState.results[t.id];
+      if(v>0&&EX[t.ex]&&v>(STATE.prs[t.ex]||0))STATE.prs[t.ex]=v;});
+  }catch(e){console.error('[assessment PRs]',e);}
   setTimeout(checkAchievements,300);
   save();
   // results screen
@@ -5609,6 +5619,13 @@ const ACHIEVEMENTS=[
   {id:'s10',emoji:'💪',name:'Ten Down',desc:'10 workouts completed',check:()=>sessionsDoneCount()>=10},
   {id:'s25',emoji:'🏆',name:'Quarter Century',desc:'25 workouts completed',check:()=>sessionsDoneCount()>=25},
   {id:'s50',emoji:'👑',name:'Core King',desc:'50 workouts completed',check:()=>sessionsDoneCount()>=50},
+  /* The program runs 378 sessions. Topping the ladder out at 50 meant the last
+     328 sessions — six sevenths of the journey — earned no milestone at all. */
+  {id:'s100',emoji:'💯',name:'Century',desc:'100 workouts completed',check:()=>sessionsDoneCount()>=100},
+  {id:'s200',emoji:'🛡️',name:'Double Century',desc:'200 workouts completed',check:()=>sessionsDoneCount()>=200},
+  {id:'s378',emoji:'🎖️',name:'Full Tour',desc:'All 378 sessions — the complete program',check:()=>sessionsDoneCount()>=378},
+  {id:'blocks3',emoji:'🔷',name:'Three Blocks Deep',desc:'Finish 3 six-week blocks',check:()=>STATE.progressPtr>=SESSIONS_PER_CYCLE*3},
+  {id:'phase2',emoji:'🏗️',name:'Into Phase 2',desc:'Reach the full-body split',check:()=>STATE.progressPtr>=SESSIONS_PER_CYCLE*2},
   {id:'plank60',emoji:'🧱',name:'Solid Minute',desc:'A prescribed 60s+ hold',check:()=>bestHoldPR()>=60},
   {id:'plank120',emoji:'🗿',name:'Two-Minute Titan',desc:'A prescribed 120s hold',check:()=>bestHoldPR()>=120},
   {id:'block',emoji:'✅',name:'Block Complete',desc:'Finish a 6-week block',check:()=>STATE.progressPtr>=SESSIONS_PER_CYCLE},
