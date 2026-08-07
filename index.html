@@ -723,9 +723,7 @@ const EX = {
     steps:['Start in a strong high plank, hands under shoulders.','Brace the core to keep hips level.','Drive one knee toward your chest, then quickly switch legs.','Keep a running rhythm for the time, hips staying low.'],
     cues:['Hips stay low and level','Fast but controlled','Core braced the whole time'],
     mistakes:['Hips bouncing up high','Feet barely moving']},
-  /* No artwork of its own yet — emblemHTML() renders the regional emblem, which
-     is honest, where the mountain-climber photo showed a different movement. */
-  isoclimber:{name:'Isometric Mountain Climber',region:'anterior',unit:'time',anchor:null,hardness:1.1,base:30,rest:35,
+  isoclimber:{name:'Isometric Mountain Climber',region:'anterior',unit:'time',img:'ex-isoclimber.jpg',anchor:null,hardness:1.1,base:30,rest:35,
     why:'The mountain climber slowed to a dead hold — a high plank with one knee drawn in and held under tension. All the anti-extension core and hip-flexor demand of the fast version, but strict, joint-friendly and no bouncing.',
     steps:['Set up in a strong high plank, hands under the shoulders, body in a straight line.','Brace the core hard and keep the hips level.','Draw one knee in toward your chest and HOLD it there, foot off the floor.','Hold for time, then switch legs on the next set. Breathe steadily.'],
     cues:['Hips stay low and square — no piking','Squeeze the drawn-in knee toward the chest','Shoulders stacked over the wrists'],
@@ -1412,7 +1410,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='180';
+const APP_VERSION='181';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
