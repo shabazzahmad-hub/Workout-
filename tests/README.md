@@ -80,3 +80,20 @@ it under every filter. It now reads the rendered rows and checks their category.
 same-document navigation, so `boot()` never re-runs and the deep-link check
 passes against whatever tab was already open. `06-reference` sets the hash and
 calls `page.reload()`.
+
+**Wait on the condition, never on a stopwatch.** `boot()` awaits `idbOpen()` and
+`load()` before it normalises state and renders, so `domcontentloaded` and
+`networkidle` both fire while `STATE` is still the empty default. A 400 ms sleep
+after a reload passed on a development machine and failed on a CI runner — which
+reads as a broken app rather than as a check measuring the runner. `waitForBoot()`
+in the harness waits for a rendered active view instead, and `launch()` calls it
+too, because the first load races exactly like a reload does.
+
+**`history.back()` is asynchronous, and `closeSheet()` calls it.** Any block that
+opens and closes sheets leaves a back navigation queued. In `06-reference` it
+landed *after* `location.hash = 'ref'`, reverted the URL, and the reload came up
+on Today with no hash. Nothing was wrong with the app — a real thumb cannot
+produce that sequence — but the deep-link check has to be immune to it. It now
+navigates out to `about:blank` and back in with an explicit URL, which makes the
+destination unambiguous and drops any queued history work. localStorage is
+per-origin, so the seeded athlete survives the round trip.

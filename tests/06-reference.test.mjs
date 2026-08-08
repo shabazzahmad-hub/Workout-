@@ -487,18 +487,42 @@ export default async function run() {
   t.ok('the tab still renders after a corrupt tick value', ticks.rendersAfterCorrupt, ticks);
 
   // ---- routing -------------------------------------------------------------
-  /* A hash-only goto is a same-document navigation — the page would never
-     reload and boot() would never re-read the hash, so the check would pass
-     against the tab that was already open. Reload for real. */
-  await page.evaluate(() => { go('today'); location.hash = 'ref'; });
-  await page.reload({ waitUntil: 'networkidle' });
-  await page.waitForTimeout(400);
+  /* Getting a clean read on the deep link took three goes, and both dead ends
+     are worth keeping written down.
+
+     A hash-only goto is a same-document navigation: the page never reloads,
+     boot() never re-reads the hash, and the check passes against whatever tab
+     was already open. So it has to be a real navigation.
+
+     But a reload is not enough either, because closeSheet() calls
+     history.back() and history.back() is ASYNCHRONOUS. The sheet blocks above
+     leave a back navigation queued; it lands after `location.hash = 'ref'` and
+     reverts the URL, so the reload loads without the hash and the tab comes up
+     on Today. That is a hazard of driving the app faster than a thumb can, not
+     an app defect — but it made this check fail on CI while passing here.
+
+     Navigating out to about:blank and back in makes the URL explicit and drops
+     any queued history work. localStorage is per-origin, so the athlete
+     survives the round trip. */
+  await page.evaluate(() => { try { closeSheet(); } catch (e) {} go('today'); save(); });
+  await page.waitForTimeout(500);
+  await page.goto('about:blank');
+  await page.goto(`http://127.0.0.1:${port}/#ref`, { waitUntil: 'domcontentloaded' });
+  /* And wait on the condition, not on a stopwatch: boot() awaits idbOpen() and
+     load() before it reads the hash, so neither 'networkidle' nor a fixed sleep
+     tells you it has finished. */
+  let booted = true;
+  try {
+    await page.waitForFunction(
+      () => typeof TAB !== 'undefined' && TAB === 'ref' && !!document.querySelector('#v-ref.active'),
+      null, { timeout: 15000 });
+  } catch (e) { booted = false; }
   const routed = await page.evaluate(() => ({
     tab: TAB,
     active: !!document.querySelector('#v-ref.active'),
     rendered: (document.querySelector('#v-ref') || {}).innerHTML.length > 2000,
   }));
-  t.ok('a #ref home-screen shortcut opens on the Reference tab', routed.tab === 'ref' && routed.active, routed);
+  t.ok('a #ref home-screen shortcut opens on the Reference tab', booted && routed.tab === 'ref' && routed.active, routed);
   t.ok('it is rendered by the time it is shown', routed.rendered, routed);
 
   // ---- the tab is not an injection path ------------------------------------

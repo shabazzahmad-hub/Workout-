@@ -50,7 +50,22 @@ export async function launch(port) {
     if (!IGNORE.test(t)) errors.push('console: ' + t.slice(0, 300));
   });
   await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'networkidle' });
+  await waitForBoot(page);   // the first load races exactly like a reload does
   return { browser, page, errors };
+}
+
+/* boot() awaits idbOpen() and load() before it normalises state and renders, so
+   'domcontentloaded' and 'networkidle' both fire while STATE is still the empty
+   default and TAB is still 'today'. Anything that reloads the page has to wait
+   for the app, not for the network — a fixed sleep passes on a fast machine and
+   fails on a slower CI runner, which reads as a broken app rather than as a
+   check measuring the wrong thing. A rendered active view is the signal: it can
+   only happen after load() has resolved. */
+export function waitForBoot(page, timeout = 15000) {
+  return page.waitForFunction(() => {
+    const v = document.querySelector('.view.active');
+    return !!v && v.innerHTML.length > 400;
+  }, null, { timeout });
 }
 
 /* A profile the engine can actually build a full program from. Tests that care
