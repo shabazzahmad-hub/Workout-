@@ -167,6 +167,33 @@ export default async function run() {
       } catch (e) { o.dlErr = String(e).slice(0, 120); }
       return o;
     });
+    // the step target must scale with the goal and never render as a raw function
+    const steps = await page.evaluate(() => {
+      const o = { byGoal: {} };
+      ['shred', 'lose', 'recomp', 'core', 'maintain', 'gain'].forEach(g => {
+        STATE.profile.goal = g; o.byGoal[g] = stepTarget();
+      });
+      STATE.profile.goal = 'lose';
+      o.kcal = stepKcal();
+      // a corrupt goal must still yield a usable target, not NaN
+      STATE.profile.goal = null; o.fallback = stepTarget();
+      STATE.profile.goal = 'lose';
+      const h = document.querySelector('#v-fuel');
+      go('fuel');
+      const txt = (document.querySelector('#v-fuel') || {}).innerText || '';
+      o.shown = /10,000\+ steps/.test(txt);
+      o.noRawFn = !/function|=>/.test(txt);
+      return o;
+    });
+    t.eq('a cutting athlete is asked for 10k steps', steps.byGoal.lose, 10000, steps.byGoal);
+    t.eq('shred asks for 10k too', steps.byGoal.shred, 10000, steps.byGoal);
+    t.eq('recomp asks for 8k', steps.byGoal.recomp, 8000, steps.byGoal);
+    t.eq('maintain asks for 7k', steps.byGoal.maintain, 7000, steps.byGoal);
+    t.ok('the step target survives a missing goal', steps.fallback > 0, steps);
+    t.ok('the calorie estimate is sane', steps.kcal > 100 && steps.kcal < 800, steps);
+    t.ok('the target is rendered on the habit row', steps.shown, steps);
+    t.ok('a function label never leaks into the UI', steps.noRawFn, steps);
+
     Object.keys(flows).filter(k => /Err$/.test(k)).forEach(k => t.fail(k.replace('Err', '') + ' flow threw', flows[k]));
     t.ok('a rest day is recorded', flows.rest >= 1, flows);
     t.ok('a skipping session is recorded', flows.skip >= 1, flows);
