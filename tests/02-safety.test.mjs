@@ -119,6 +119,59 @@ export default async function run() {
   t.ok('a string allergen list is repaired, not discarded', alg.stringRepaired, alg);
   t.ok('a meal-plan gap is always reported, never silent', alg.holes.length === 0, alg.holes);
 
+  // ---- eating window must never quietly change the diet ---------------------
+  /* Time-restricted eating is an adherence tool, not a metabolic one. If turning
+     it on ever moved kcalTarget or the protein target, the app would be handing
+     the athlete a deficit they did not choose. */
+  const win = await page.evaluate(() => {
+    const o = {};
+    STATE.nutrition.eatWindow = null;
+    recalcKcalFromStored();
+    const before = { kcal: nut().kcalTarget, p: proteinTargetG() };
+    o.defaultOff = eatWin().on === false;
+    toggleEatWindow();
+    const after = { kcal: nut().kcalTarget, p: proteinTargetG() };
+    o.unchanged = before.kcal === after.kcal && before.p === after.p;
+    o.saysUnchanged = /unchanged/.test(eatWindowHTML());
+    // meals land inside the window, in order, last one before it shuts
+    const t = mealTimes();
+    o.meals = t && t.length === mealSlots().length;
+    const mins = l => { const m = /^(\d+):(\d+)(am|pm)$/.exec(l); let h = +m[1] % 12;
+      if (m[3] === 'pm') h += 12; return h * 60 + (+m[2]); };
+    const w = eatWin();
+    o.inside = t.every(x => mins(x.label) >= w.start * 60 && mins(x.label) <= (w.start + w.hours) * 60);
+    o.ordered = t.every((x, i) => i === 0 || mins(x.label) > mins(t[i - 1].label));
+    // the state machine reads correctly around the clock
+    setEatWindow({ start: 12, hours: 8 });
+    o.fastingAt9 = eatWindowState(new Date(2026, 7, 8, 9, 0)).inWindow === false;
+    o.openAt14 = eatWindowState(new Date(2026, 7, 8, 14, 0)).inWindow === true;
+    o.fastingAt21 = eatWindowState(new Date(2026, 7, 8, 21, 0)).inWindow === false;
+    // a very short window must warn about protein rather than silently accept less
+    setEatWindow({ hours: 6 });
+    o.warnsShort = /struggle to fit/.test(eatWindowHTML());
+    setEatWindow({ hours: 8 });
+    // a corrupt stored value must be repaired, not crash the Fuel tab
+    STATE.nutrition.eatWindow = '16:8';
+    normalizeState();
+    o.corruptRepaired = eatWin().on === false;
+    let rendered = true;
+    try { eatWindowHTML(); mealPlanHTML(); } catch (e) { rendered = false; }
+    o.rendersAfterCorrupt = rendered;
+    STATE.nutrition.eatWindow = null;
+    return o;
+  });
+  t.ok('the eating window is off by default', win.defaultOff, win);
+  t.ok('turning it on changes NOTHING about calories or protein', win.unchanged, win);
+  t.ok('the card states plainly that calories are unchanged', win.saysUnchanged, win);
+  t.ok('every meal is retimed into the window', win.meals && win.inside, win);
+  t.ok('the meals stay in order', win.ordered, win);
+  t.ok('it reads as fasting before the window opens', win.fastingAt9, win);
+  t.ok('it reads as open inside the window', win.openAt14, win);
+  t.ok('it reads as fasting after the window shuts', win.fastingAt21, win);
+  t.ok('a very short window warns about protein', win.warnsShort, win);
+  t.ok('a corrupt window value is repaired', win.corruptRepaired, win);
+  t.ok('Fuel still renders after a corrupt window value', win.rendersAfterCorrupt, win);
+
   // ---- stored XSS ----------------------------------------------------------
   await page.evaluate(() => {
     const P = '<img src=/nope onerror="window.__PWN=1">';
