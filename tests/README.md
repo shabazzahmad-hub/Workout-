@@ -26,7 +26,7 @@ not publish unless they pass.
 | `03-program.test.mjs` | A full 378-session run, load intensity at three levels, goal handling, the athletes most likely to be underserved |
 | `04-journey.test.mjs` | The wizard, the 8-test baseline, the four Today panes, the guided player, every button on every tab |
 | `05-state.test.mjs` | Hostile saves, upgrades from older builds, idempotence, and the everyday flows that write to storage |
-| `06-reference.test.mjs` | The Reference tab: the food table's macros, the seven worked days, the shopping list's persisted ticks, and the drift warning |
+| `06-reference.test.mjs` | The Reference tab: costing an arbitrary amount, the seven days scaled onto a live target, the derived shopping list, and both write paths into the food log |
 
 ## Why the checks are shaped the way they are
 
@@ -55,10 +55,21 @@ node. `02-safety` asserts on *execution* and on live markup reaching the DOM,
 not on a substring.
 
 **A tab that writes needs its numbers checked, not just its markup.** The
-Reference food list is a write surface — tapping a row pre-fills the log sheet
-— so `06-reference` reconciles every food's protein, derived carbs and fat back
-against its own calorie count, and names the specific rows a category-average
-estimate got wrong. It found olive oil logging as 20 g of carbohydrate.
+Reference food list is a write surface — tapping a row costs an amount and logs
+it, and "Log this meal" writes several entries at once — so `06-reference`
+reconciles every food's protein, derived carbs and fat back against its own
+calorie count, and names the specific rows a category-average estimate got
+wrong. It found olive oil logging as 20 g of carbohydrate.
+
+**When nothing is hand-typed, assert the relationships.** Every figure on the
+Reference tab is computed: a day's header is its meals, a day scaled to a target
+lands on that target, the shopping list is the sum of the days. That removes
+drift as a failure mode and replaces it with "the arithmetic is confidently
+wrong", so the checks assert those identities at five different targets rather
+than comparing against a fixture. The same block asserts that no amount the
+scaler produces is one nobody would plate — an earlier version closed a calorie
+gap by putting 770 g of potato in a single sitting, which was arithmetically
+correct and useless as coaching.
 
 **Scope a "does not appear" assertion to the element that owns it.** The first
 version of the fish-filter check searched the whole view for `Chicken breast`
