@@ -295,8 +295,10 @@
   .daypick button.on{background:var(--fire);border-color:var(--fire);color:var(--accInk)}
   /* Bottom nav */
   .nav{position:fixed;bottom:0;left:0;right:0;z-index:50;background:color-mix(in srgb,var(--bg) 96%,transparent);backdrop-filter:blur(20px);border-top:1px solid var(--line);display:flex;padding:7px 7px calc(7px + env(safe-area-inset-bottom));max-width:600px;margin:0 auto}
-  .nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;color:var(--muted);font-size:10px;font-weight:800;border-radius:12px}
+  .nav button{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 1px;color:var(--muted);font-size:10px;font-weight:800;border-radius:12px}
   .nav button svg{width:23px;height:23px}
+  /* Six tabs on a 360px phone: shrink the label, never the tap target. */
+  @media(max-width:380px){.nav button{font-size:9px;padding:8px 0}.nav button svg{width:21px;height:21px}}
   .nav button.on{color:var(--fire);background:color-mix(in srgb,var(--fire) 12%,transparent)}
   /* Keyboard users need to see where they are; pointer users never see this. */
   :focus-visible{outline:3px solid var(--fire);outline-offset:3px;border-radius:6px}
@@ -430,11 +432,13 @@
     <section id="v-guide" class="view"></section>
   </main>
 
+  <section class="view" id="v-ref"></section>
   <nav class="nav" aria-label="Primary">
     <button data-tab="today" class="on" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v3M18 3v3M6 12l4 4 8-8"/><rect x="3" y="5" width="18" height="16" rx="3"/></svg>Today</button>
     <button data-tab="program"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>Program</button>
     <button data-tab="fuel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3c0 1.5 1 2.5 1 4H8a4 4 0 0 0-4 4c0 5 3.5 9 8 9s8-4 8-9a4 4 0 0 0-4-4h-2c0-1.5 1-2.5 1-4a3 3 0 0 0-3-3z"/></svg>Fuel</button>
     <button data-tab="progress"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Progress</button>
+    <button data-tab="ref"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5V5a2 2 0 0 1 2-2h13v18H6.5A2.5 2.5 0 0 1 4 19.5z"/><path d="M8 7h7M8 11h7"/></svg>Reference</button>
     <button data-tab="guide"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21H9.6v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3V9.6h.1A1.7 1.7 0 0 0 4.7 8.5a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.1A1.7 1.7 0 0 0 15.5 4.7a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.14.38.36.72.66 1 .3.28.68.43 1.1.4h.1v4h-.1a1.7 1.7 0 0 0-1.76.6z"/></svg>Settings</button>
   </nav>
 </div>
@@ -1410,7 +1414,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='186';
+const APP_VERSION='187';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -2192,6 +2196,7 @@ function _render(){
   else if(TAB==='fuel')renderFuel();
   else if(TAB==='quick')renderQuick();
   else if(TAB==='progress')renderProgress();
+  else if(TAB==='ref')renderRef();
   else if(TAB==='guide')renderGuide();
 }
 function updatePill(){
@@ -6453,6 +6458,11 @@ async function startScan(){
 function openQuickAdd(pre){
   pre=pre||{};
   const editing=(typeof pre.editIdx==='number');
+  /* A macro that is genuinely zero must render as 0, not as an empty box —
+     `pre.c||''` blanked the carbs on cod and olive oil, which reads as "the app
+     could not work it out" rather than "there are none". An untouched sheet
+     passes undefined and still opens empty. */
+  const pf=v=>(typeof v==='number'&&isFinite(v))?v:(v||'');
   saveFood._editIdx=editing?pre.editIdx:null;
   const filled=(pre.kcal||pre.p||pre.c||pre.f);
   const slot=pre.meal||currentMealSlot();
@@ -6460,12 +6470,12 @@ function openQuickAdd(pre){
     ${editing?'':`<button class="btn sm ghost" style="width:100%;margin-bottom:10px" onclick="openFoodSearch()">🔎 Search foods &amp; barcodes</button>`}
     <div class="field"><label>Food</label><input id="fa-name" value="${_ve(pre.name||'')}" placeholder="e.g. Chicken &amp; rice"></div>
     <div class="btnrow" style="gap:8px">
-      <div class="field" style="flex:1;margin:0"><label>Calories</label><input id="fa-kcal" type="number" inputmode="numeric" value="${pre.kcal||''}" placeholder="kcal" oninput="updQtyTotal()"></div>
-      <div class="field" style="flex:1;margin:0"><label>Protein (g)</label><input id="fa-p" type="number" inputmode="numeric" value="${pre.p||''}" placeholder="g" oninput="updQtyTotal()"></div>
+      <div class="field" style="flex:1;margin:0"><label>Calories</label><input id="fa-kcal" type="number" inputmode="numeric" value="${pf(pre.kcal)}" placeholder="kcal" oninput="updQtyTotal()"></div>
+      <div class="field" style="flex:1;margin:0"><label>Protein (g)</label><input id="fa-p" type="number" inputmode="numeric" value="${pf(pre.p)}" placeholder="g" oninput="updQtyTotal()"></div>
     </div>
     <div class="btnrow" style="gap:8px">
-      <div class="field" style="flex:1;margin:0"><label>Carbs (g)</label><input id="fa-c" type="number" inputmode="numeric" value="${pre.c||''}" placeholder="g" oninput="updQtyTotal()"></div>
-      <div class="field" style="flex:1;margin:0"><label>Fat (g)</label><input id="fa-f" type="number" inputmode="numeric" value="${pre.f||''}" placeholder="g" oninput="updQtyTotal()"></div>
+      <div class="field" style="flex:1;margin:0"><label>Carbs (g)</label><input id="fa-c" type="number" inputmode="numeric" value="${pf(pre.c)}" placeholder="g" oninput="updQtyTotal()"></div>
+      <div class="field" style="flex:1;margin:0"><label>Fat (g)</label><input id="fa-f" type="number" inputmode="numeric" value="${pf(pre.f)}" placeholder="g" oninput="updQtyTotal()"></div>
     </div>
     <div class="btnrow" style="gap:8px;align-items:flex-end">
       <div class="field" style="flex:0 0 92px;margin:0"><label>Quantity</label><input id="fa-qty" type="number" inputmode="decimal" value="1" min="0" step="0.5" oninput="updQtyTotal()"></div>
@@ -7501,6 +7511,398 @@ function eatWindowHTML(){
   h+=`</div>`;
   return h;
 }
+
+/* ============================ REFERENCE ============================
+   A food list, seven worked days and the weekly shop, held inside the app so
+   they read the athlete's LIVE targets rather than a number frozen into a PDF.
+   As bodyweight falls the calorie and protein targets move with it, and every
+   figure on this tab moves too.
+
+   [name, protein g, kcal, portion, category]. Categories drive the filter and
+   the macro split below. Everything here is wheat-free by design; seitan is
+   deliberately absent because it is pure wheat gluten and tops every
+   plant-protein list an athlete avoiding wheat is likely to read. */
+/* Each row is: name, protein g, calories, fat g, category, BASE AMOUNT, unit.
+   The four nutrition figures describe exactly the base amount, so any other
+   amount is a straight ratio off it — that is what lets the tab answer "how
+   much of this do I need" instead of only "here is one portion".
+
+   Protein, calories and fat are the real per-portion figures. Carbohydrate is
+   DERIVED from what calories are left, so a logged food always reconciles to
+   its own calorie count. Fat is carried per food rather than guessed from the
+   category, because a category ratio is wildly wrong at both ends of it: the
+   'Carbs & fats' tab covers both olive oil and a banana, and splitting olive
+   oil on the category average logged it as 20 g of carbohydrate. */
+const FOODS=[
+  ['Chicken breast',46,250,'150 g cooked','meat',7,150,'g'],
+  ['Sirloin steak',46,320,'150 g','meat',15,150,'g'],
+  ['Pork loin',45,290,'150 g','meat',12,150,'g'],
+  ['Tuna steak, fresh',44,220,'150 g','fish',5,150,'g'],
+  ['Turkey mince 5%',43,250,'150 g','meat',9,150,'g'],
+  ['Beef mince 5%',40,260,'150 g','meat',11,150,'g'],
+  ['Tilapia',39,195,'150 g','fish',4,150,'g'],
+  ['Salmon fillet',38,310,'150 g','fish',18,150,'g'],
+  ['Kippers',37,330,'150 g','fish',20,150,'g'],
+  ['Prawns',36,150,'150 g','fish',1,150,'g'],
+  ['Chicken thigh',36,300,'150 g','meat',17,150,'g'],
+  ['Cottage cheese',35,230,'250 g','dairy',6,250,'g'],
+  ['Soybeans',34,340,'200 g cooked','plant',18,200,'g'],
+  ['Cod',33,140,'150 g','fish',1,150,'g'],
+  ['Haddock',32,145,'150 g','fish',2,150,'g'],
+  ['Pollock',32,140,'150 g','fish',1,150,'g'],
+  ['Trout',32,220,'150 g','fish',10,150,'g'],
+  ['Firm tofu',32,290,'200 g','plant',17,200,'g'],
+  ['Sea bream',30,190,'150 g','fish',8,150,'g'],
+  ['Sea bass',30,180,'150 g','fish',7,150,'g'],
+  ['Scallops',30,170,'150 g','fish',2,150,'g'],
+  ['Tempeh',30,290,'150 g','plant',15,150,'g'],
+  ['Crab meat',29,130,'150 g','fish',1,150,'g'],
+  ['Mackerel',28,305,'150 g','fish',21,150,'g'],
+  ['Mussels',27,130,'150 g','fish',2,150,'g'],
+  ['Sardines, tinned',26,220,'120 g, 1 tin','fish',13,120,'g'],
+  ['Tuna, tinned in water',25,110,'100 g drained, 1 tin','fish',1,100,'g'],
+  ['Smoked salmon',25,180,'100 g','fish',9,100,'g'],
+  ['Soy mince, dry',25,170,'50 g dry','plant',1,50,'g'],
+  ['Whey powder',24,120,'30 g, 1 scoop','dairy',1,30,'g'],
+  ['Squid / calamari',24,140,'150 g','fish',2,150,'g'],
+  ['Egg whites',22,100,'200 ml','dairy',0,200,'ml'],
+  ['Edamame, podded',22,240,'200 g','veg',10,200,'g'],
+  ['Greek yogurt 0%',20,110,'200 g','dairy',0,200,'g'],
+  ['Greek yogurt 5%',18,190,'200 g','dairy',10,200,'g'],
+  ['Green / brown lentils',18,230,'200 g cooked','plant',1,200,'g'],
+  ['Red lentils',18,240,'200 g cooked','plant',1,200,'g'],
+  ['Skyr',17,95,'170 g','dairy',0,170,'g'],
+  ['Kidney beans',17,260,'200 g cooked','plant',1,200,'g'],
+  ['Chickpeas',16,300,'200 g cooked','plant',5,200,'g'],
+  ['Black beans',16,260,'200 g cooked','plant',1,200,'g'],
+  ['Pinto beans',16,290,'200 g cooked','plant',1,200,'g'],
+  ['Split peas',16,240,'200 g cooked','plant',1,200,'g'],
+  ['Black-eyed peas',15,260,'200 g cooked','plant',1,200,'g'],
+  ['Broad / fava beans',15,220,'200 g cooked','plant',1,200,'g'],
+  ['Butter beans',14,240,'200 g cooked','plant',1,200,'g'],
+  ['Cannellini beans',14,250,'200 g cooked','plant',1,200,'g'],
+  ['Mung beans',14,210,'200 g cooked','plant',1,200,'g'],
+  ['GF oats',12,350,'90 g dry','pad',7,90,'g'],
+  ['Quinoa, cooked',12,360,'300 g','pad',6,300,'g'],
+  ['Green peas',10,160,'200 g','veg',1,200,'g'],
+  ['Semi-skimmed milk',10,150,'300 ml','dairy',5,300,'ml'],
+  ['Potato',9,345,'450 g','pad',0,450,'g'],
+  ['Pumpkin seeds',9,160,'30 g','pad',13,30,'g'],
+  ['Anchovies',8,60,'30 g','fish',3,30,'g'],
+  ['White rice, cooked',8,390,'300 g','pad',1,300,'g'],
+  ['Peanut butter',8,190,'32 g, 2 tbsp','pad',16,32,'g'],
+  ['Sweetcorn',7,190,'200 g','veg',2,200,'g'],
+  ['Brussels sprouts',7,90,'200 g','veg',1,200,'g'],
+  ['Cheddar',7,120,'30 g','dairy',10,30,'g'],
+  ['Spinach, cooked',6,45,'200 g','veg',1,200,'g'],
+  ['Broccoli',6,70,'200 g','veg',1,200,'g'],
+  ['Kale',6,70,'200 g','veg',1,200,'g'],
+  ['Mushrooms',6,45,'200 g','veg',1,200,'g'],
+  ['Artichoke hearts',6,95,'200 g','veg',1,200,'g'],
+  ['Cauliflower',6,75,'300 g','veg',1,300,'g'],
+  ['Green beans',6,95,'300 g','veg',1,300,'g'],
+  ['Egg',6,72,'1 egg','dairy',5,1,'ea'],
+  ['Sweet potato',6,345,'400 g','pad',0,400,'g'],
+  ['Almonds',6,170,'28 g','pad',15,28,'g'],
+  ['Asparagus',5,45,'200 g','veg',0,200,'g'],
+  ['Courgette',4,60,'400 g, 2 medium','veg',1,400,'g'],
+  ['Cabbage',4,75,'300 g','veg',0,300,'g'],
+  ['Tomatoes',4,70,'400 g','veg',1,400,'g'],
+  ['Peppers',3,90,'360 g, 3 whole','veg',1,360,'g'],
+  ['Cucumber',2,45,'300 g, 1 whole','veg',0,300,'g'],
+  ['Salad leaves',2,30,'100 g, 1 bag','veg',0,100,'g'],
+  ['Avocado',2,160,'100 g, half a large one','pad',15,100,'g'],
+  ['Dark chocolate 85%',2,170,'30 g','pad',13,30,'g'],
+  ['Banana',1,105,'1 medium','pad',0,1,'ea'],
+  ['Olive oil',0,120,'14 g, 1 tbsp','pad',13,14,'g'],
+];
+const FOOD_CATS=[['all','All'],['meat','Meat'],['fish','Fish'],['dairy','Dairy & eggs'],
+  ['plant','Beans & plant'],['veg','Veg'],['pad','Carbs & fats']];
+/* Only the fallback for a food added without a fat figure. validateData() flags
+   any such food, so this should never actually run. */
+const CAT_SPLIT={meat:[0.10,0.90],fish:[0.05,0.95],dairy:[0.45,0.55],plant:[0.70,0.30],
+  veg:[0.85,0.15],pad:[0.65,0.35]};
+const FOOD_BY_NAME={};FOODS.forEach((f,i)=>{FOOD_BY_NAME[f[0]]=i;});
+function foodBase(f){return (typeof f[6]==='number'&&f[6]>0)?f[6]:1;}
+function foodUnit(f){return f[7]||'g';}
+function foodMacros(f){
+  const p=f[1]||0,k=f[2]||0,cat=f[4];
+  if(typeof f[5]==='number'){
+    const fat=Math.max(0,f[5]);
+    return {c:Math.max(0,Math.round((k-p*4-fat*9)/4)),f:fat};
+  }
+  const left=Math.max(0,k-p*4);const [cs,fs]=CAT_SPLIT[cat]||[0.6,0.4];
+  return {c:Math.round(left*cs/4),f:Math.round(left*fs/9)};
+}
+/* Everything the tab shows about an amount comes from here, so a number on the
+   screen can never disagree with the number that gets logged. */
+function foodAt(f,amt){
+  const r=(+amt||0)/foodBase(f);const m=foodMacros(f);
+  return {amt:+amt||0,p:Math.round(f[1]*r),kcal:Math.round(f[2]*r),
+          c:Math.round(m.c*r),f:Math.round(m.f*r),
+          pExact:f[1]*r,kExact:f[2]*r};
+}
+/* How much of this food covers `needP` grams of protein. Returned in the food's
+   own unit and rounded the way the athlete would actually measure it. */
+function amountForProtein(f,needP){
+  if(!(f[1]>0)||!(needP>0))return 0;
+  return roundAmount(f,foodBase(f)*needP/f[1]);
+}
+function roundAmount(f,amt){
+  amt=Math.max(0,+amt||0);const u=foodUnit(f);
+  if(u==='ea')return Math.max(0.5,Math.round(amt*2)/2);
+  if(amt>=100)return Math.round(amt/10)*10;
+  return Math.max(u==='ml'?10:5,Math.round(amt/5)*5);
+}
+function fmtAmount(f,amt){
+  const u=foodUnit(f);
+  if(u==='ea')return '×'+(amt%1?amt.toFixed(1):amt);
+  if(amt>=1000)return (amt/1000).toFixed(amt%1000?1:0)+' k'+u;
+  return Math.round(amt)+' '+u;
+}
+function foodEfficiency(f){return f[2]>0?(f[1]/f[2]*100):0;}
+/* Protein per 100 g / 100 ml / each — the figure that lets you scale a food in
+   your head without opening anything. */
+function foodPer100(f){
+  const u=foodUnit(f);const n=u==='ea'?1:100;
+  return {p:+(f[1]*n/foodBase(f)).toFixed(u==='ea'?0:1),
+          kcal:Math.round(f[2]*n/foodBase(f)),per:u==='ea'?'each':('100 '+u)};
+}
+let REF_CAT='all';
+function setRefCat(c){REF_CAT=c;renderRef();}
+
+/* ---- the amount sheet ---------------------------------------------------
+   Tapping a food asks how much, shows what that amount is worth against the
+   day still to eat, and only then logs it. */
+let REF_FOOD=-1;
+function openFoodAmount(i){
+  const f=FOODS[i];if(!f)return;
+  REF_FOOD=i;
+  const u=foodUnit(f);const base=foodBase(f);
+  const chips=(u==='ea')?[1,2,3,4]:(base<=40?[base,base*2,base*3,base*4]:[100,150,200,250,300]);
+  openSheet(`<h3>${_ve(f[0])}</h3>
+    <div class="tiny muted" style="margin:-6px 0 12px">${foodPer100(f).p} g protein and ${foodPer100(f).kcal} kcal per ${foodPer100(f).per}</div>
+    <div class="field"><label>How much${u==='ea'?'':' ('+u+')'}</label>
+      <input id="ref-amt" type="number" inputmode="decimal" min="0" step="${u==='ea'?'0.5':'5'}" value="${base}" oninput="refAmtCalc()"></div>
+    <div class="daypick" style="flex-wrap:wrap;margin:-4px 2px 12px">${chips.map(c=>
+      `<button onclick="refSetAmt(${c})">${fmtAmount(f,c)}</button>`).join('')}</div>
+    <div id="ref-amt-out"></div>
+    <div class="btnrow" style="gap:8px;margin-top:12px">
+      <button class="btn ghost" style="flex:1" onclick="refFillProtein()">Fill my protein gap</button>
+      <button class="btn" style="flex:1" onclick="logFoodAmount()">Log it</button>
+    </div>`);
+  refAmtCalc();
+}
+function refSetAmt(v){const el=$('#ref-amt');if(el){el.value=v;refAmtCalc();}}
+function refAmtCalc(){
+  const f=FOODS[REF_FOOD],out=$('#ref-amt-out'),el=$('#ref-amt');
+  if(!f||!out||!el)return;
+  const n=foodAt(f,el.value);
+  const protT=proteinTargetG()||0,kcalT=(STATE.nutrition&&STATE.nutrition.kcalTarget)||0;
+  const eaten=foodTotals();
+  const pLeft=Math.max(0,protT-eaten.p),kLeft=Math.max(0,kcalT-eaten.kcal);
+  let h=`<div class="grid2">
+    <div class="stat"><div class="n" style="color:var(--fire-l)">${n.p}g</div><div class="l">Protein</div></div>
+    <div class="stat"><div class="n" style="color:var(--gold)">${n.kcal}</div><div class="l">Calories</div></div></div>
+    <div class="kv" style="padding:8px 2px"><span class="tiny muted">Carbs / fat</span><span class="tiny">${n.c} g / ${n.f} g</span></div>`;
+  if(protT){
+    const after=Math.max(0,pLeft-n.p);
+    h+=`<div class="kv" style="padding:8px 2px;border-top:1px solid var(--line)"><span class="tiny muted">Protein still to eat after this</span>
+      <b class="tiny" style="color:${after?'var(--fire-l)':'var(--green)'}">${pLeft}g → ${after}g</b></div>`;
+  }
+  if(kcalT){
+    const kAfter=kLeft-n.kcal;
+    h+=`<div class="kv" style="padding:8px 2px;border-top:1px solid var(--line)"><span class="tiny muted">Calories left after this</span>
+      <b class="tiny" style="color:${kAfter<0?'var(--red,#ff6b6b)':'var(--gold)'}">${kLeft} → ${kAfter}</b></div>`;
+    if(kAfter<0)h+=`<div class="note warn" style="margin-top:8px">That puts you <b>${-kAfter} kcal</b> over for the day. Fine once; not every day — the deficit is what moves the waist.</div>`;
+  }
+  if(!protT||!kcalT)h+=`<div class="note info" style="margin-top:8px">Set your weight and tap <b>Calculate my targets</b> in Fuel to see this against your own numbers.</div>`;
+  out.innerHTML=h;
+}
+function refFillProtein(){
+  const f=FOODS[REF_FOOD];if(!f)return;
+  const protT=proteinTargetG()||0;
+  if(!protT){toast('Set your targets in Fuel first');return;}
+  const need=Math.max(0,protT-foodTotals().p);
+  if(!need){toast('Protein target already met ✓');return;}
+  if(!(f[1]>0)){toast(f[0]+' has no protein to fill it with');return;}
+  refSetAmt(amountForProtein(f,need));
+}
+function logFoodAmount(){
+  const f=FOODS[REF_FOOD],el=$('#ref-amt');if(!f||!el)return;
+  const n=foodAt(f,el.value);
+  if(n.kcal<=0&&n.p<=0){toast('Enter an amount');return;}
+  logFood(f[0]+' '+fmtAmount(f,n.amt),n.kcal,n.p,n.c,n.f,currentMealSlot());
+}
+/* Kept so an existing link or test that logs a whole listed portion still works. */
+function logFoodFromList(i){const f=FOODS[i];if(!f)return;openFoodAmount(i);}
+
+/* ---- the seven worked days ----------------------------------------------
+   Days are ITEMS, not prose: [food name, amount in that food's unit]. Every
+   protein and calorie figure on screen is computed from the food table, so a
+   day's header can never drift away from the sum of its meals, and the whole
+   day can be rescaled to the athlete's own targets. */
+const REF_DAYS=[
+  {name:'Meat and potatoes',meals:[
+    {slot:'Breakfast',items:[['Egg',3],['GF oats',90],['Greek yogurt 0%',200]]},
+    {slot:'Lunch',items:[['Chicken breast',130],['White rice, cooked',250],['Broccoli',200],['Olive oil',14]]},
+    {slot:'Dinner',items:[['Beef mince 5%',130],['Sweet potato',300],['Green beans',300]]},
+    {slot:'Snack',items:[['Dark chocolate 85%',30]]}]},
+  {name:'Fish day',meals:[
+    {slot:'Breakfast',items:[['Cottage cheese',250],['Egg',2],['Banana',1]]},
+    {slot:'Lunch',items:[['Tuna, tinned in water',125],['Potato',450],['Tomatoes',400],['Olive oil',14]]},
+    {slot:'Dinner',items:[['Salmon fillet',150],['Quinoa, cooked',350],['Asparagus',200]]},
+    {slot:'Snack',items:[['Almonds',28]]}]},
+  {name:'No-cook / travel',meals:[
+    {slot:'Breakfast',items:[['Greek yogurt 5%',200],['Whey powder',30],['Banana',1],['Peanut butter',32]]},
+    {slot:'Lunch',items:[['Cottage cheese',250],['Almonds',28],['Cucumber',300]]},
+    {slot:'Dinner',items:[['Tuna, tinned in water',100],['White rice, cooked',300],['Salad leaves',100],['Olive oil',14]]},
+    {slot:'Snack',items:[['Skyr',170],['Pumpkin seeds',30],['Dark chocolate 85%',30]]}]},
+  {name:'Plant-forward',meals:[
+    {slot:'Breakfast',items:[['GF oats',90],['Whey powder',30],['Banana',1]]},
+    {slot:'Lunch',items:[['Firm tofu',200],['Quinoa, cooked',250],['Broccoli',200],['Olive oil',14]]},
+    {slot:'Dinner',items:[['Tempeh',150],['Green / brown lentils',200],['Sweet potato',200]]},
+    {slot:'Snack',items:[['Edamame, podded',150]]}]},
+  {name:'Big dinner',meals:[
+    {slot:'Breakfast',items:[['Skyr',170],['Egg whites',200],['Banana',1],['Almonds',28]]},
+    {slot:'Lunch',items:[['Chicken breast',100],['White rice, cooked',400],['Kale',200]]},
+    {slot:'Dinner',items:[['Sirloin steak',120],['Potato',450],['Egg',2],['Mushrooms',200],['Olive oil',14]]}]},
+  {name:'16:8, three sittings',meals:[
+    {slot:'12:00',items:[['Chicken breast',150],['White rice, cooked',300],['Peppers',360],['Avocado',100]]},
+    {slot:'16:00',items:[['Cottage cheese',250],['Peanut butter',32]]},
+    {slot:'19:30',items:[['Sirloin steak',150],['Potato',450],['Dark chocolate 85%',30]]}]},
+  {name:'Halal / no pork',meals:[
+    {slot:'Breakfast',items:[['Egg',3],['GF oats',90],['Greek yogurt 0%',200]]},
+    {slot:'Lunch',items:[['Turkey mince 5%',150],['White rice, cooked',300],['Courgette',400],['Olive oil',14]]},
+    {slot:'Dinner',items:[['Chicken thigh',150],['Sweet potato',400],['Spinach, cooked',200]]}]},
+];
+/* The starches are the dial. Protein anchors move to hit the protein target;
+   these move to close whatever calorie gap is left, which is the same advice
+   the build rules give in words. Fats and treats are left alone — scaling a
+   30 g square of chocolate to 75 g to "close a gap" is not coaching. */
+const REF_STARCH=['GF oats','White rice, cooked','Potato','Sweet potato','Quinoa, cooked','Banana'];
+const REF_ANCHOR_CATS=['meat','fish','dairy','plant'];
+function refDefaults(){return {p:150,kcal:2170};}
+/* The athlete's live targets, falling back to what the days were written
+   against so the tab is still useful before Fuel has been set up. */
+function refTargets(){
+  const d=refDefaults();
+  const p=proteinTargetG()||0,k=(STATE.nutrition&&STATE.nutrition.kcalTarget)||0;
+  return {p:p||d.p,kcal:k||d.kcal,live:!!(p&&k)};
+}
+/* Scale a day onto a protein and a calorie target and return the amounts to
+   actually put on the plate. Totals are recomputed from the ROUNDED amounts,
+   so what is displayed is what the day is worth — not what it would have been
+   worth before rounding. */
+function scaleDay(day,targetP,targetK){
+  const rows=[];
+  day.meals.forEach((m,mi)=>m.items.forEach(([name,amt])=>{
+    const i=FOOD_BY_NAME[name];if(i===undefined)return;
+    const f=FOODS[i];
+    rows.push({mi,i,f,base:amt,
+      anchor:REF_ANCHOR_CATS.includes(f[4]),starch:REF_STARCH.includes(name)});
+  }));
+  const at=(r,mul)=>foodAt(r.f,r.base*mul);
+  const sum=(sel,fn)=>rows.filter(sel).reduce((a,r)=>a+fn(r),0);
+  const anchorP=sum(r=>r.anchor,r=>at(r,1).pExact);
+  const anchorK=sum(r=>r.anchor,r=>at(r,1).kExact);
+  const starchP=sum(r=>r.starch,r=>at(r,1).pExact);
+  const starchK=sum(r=>r.starch,r=>at(r,1).kExact);
+  const restP=sum(r=>!r.anchor&&!r.starch,r=>at(r,1).pExact);
+  const restK=sum(r=>!r.anchor&&!r.starch,r=>at(r,1).kExact);
+  /* The clamps are the point, not a guard. Left open, closing a calorie gap on
+     starch alone put 700 g of potato in one sitting — arithmetically correct
+     and not something anyone eats. Protein is allowed to move further than the
+     starch because a 40 g anchor going to 60 g is still a normal plate. When
+     the clamp binds, the day lands off target and renderRef() says so rather
+     than pretending. */
+  let sp=1,ss=1;
+  for(let n=0;n<8;n++){
+    sp=anchorP>0?clamp((targetP-starchP*ss-restP)/anchorP,0.5,1.9):1;
+    const kcal=anchorK*sp+starchK*ss+restK;
+    ss=starchK>0?clamp(ss+(targetK-kcal)/starchK,0.5,1.6):1;
+  }
+  rows.forEach(r=>{r.amt=roundAmount(r.f,r.base*(r.anchor?sp:(r.starch?ss:1)));});
+  const meals=day.meals.map((m,mi)=>{
+    const items=rows.filter(r=>r.mi===mi).map(r=>{
+      const n=foodAt(r.f,r.amt);
+      return {i:r.i,name:r.f[0],amt:r.amt,label:fmtAmount(r.f,r.amt),p:n.p,kcal:n.kcal,c:n.c,f:n.f};
+    });
+    return {slot:m.slot,items,
+      p:items.reduce((a,x)=>a+x.p,0),kcal:items.reduce((a,x)=>a+x.kcal,0)};
+  });
+  return {name:day.name,meals,
+    p:meals.reduce((a,m)=>a+m.p,0),kcal:meals.reduce((a,m)=>a+m.kcal,0),
+    scaled:Math.abs(sp-1)>0.02||Math.abs(ss-1)>0.02};
+}
+function scaledDays(){const t=refTargets();return REF_DAYS.map(d=>scaleDay(d,t.p,t.kcal));}
+/* Log a whole meal in one tap. Each item lands as its own line, so any of them
+   can still be edited or removed in Fuel. */
+/* A day's slot is either a name or a clock time ('19:30'); both have to reach
+   the same four buckets the food log stores. */
+function refSlotKey(label){
+  const l=String(label||'').toLowerCase();
+  if(/break/.test(l))return 'b';
+  if(/lunch/.test(l))return 'l';
+  if(/dinner|supper/.test(l))return 'd';
+  if(/snack/.test(l))return 's';
+  const m=/^(\d{1,2}):/.exec(l);
+  if(m){const h=+m[1];return h<11?'b':(h<16?'l':(h<21?'d':'s'));}
+  return currentMealSlot();
+}
+function logRefMeal(di,mi){
+  const d=scaledDays()[di];const m=d&&d.meals[mi];if(!m)return;
+  const slot=refSlotKey(m.slot);const t=nutToday();
+  if(!Array.isArray(t.food))t.food=[];
+  m.items.forEach(x=>t.food.push({name:(x.name+' '+x.label).slice(0,60),kcal:x.kcal,p:x.p,
+    c:x.c,f:x.f,meal:slot,at:Date.now()}));
+  save();haptic(12);toast(m.items.length+' items logged · '+m.p+'g ✓');
+  renderRef();try{renderFuel();}catch(e){}try{checkAchievements();}catch(e){}
+}
+
+/* ---- the weekly shop ----------------------------------------------------
+   Derived from the seven days at the athlete's own scale, so the list can
+   never disagree with the days above it. */
+const SHOP_GROUPS=[['Protein counter',['meat','fish','dairy','plant']],
+  ['Fresh',['veg']],['Cupboard & freezer',['pad']]];
+/* The days are costed in the state you EAT the food in; a shop is in the state
+   you BUY it in. 1.9 kg of cooked rice is not a thing you can put in a trolley.
+   [multiplier, what the result is]. */
+const SHOP_BUY={
+  'Chicken breast':[1.3,'raw'],'Spinach, cooked':[3,'raw'],
+  'White rice, cooked':[0.33,'dry'],'Quinoa, cooked':[0.28,'dry'],'Soybeans':[0.45,'dry'],
+  'Green / brown lentils':[0.4,'dry'],'Red lentils':[0.4,'dry'],'Kidney beans':[0.4,'dry'],
+  'Chickpeas':[0.4,'dry'],'Black beans':[0.4,'dry'],'Pinto beans':[0.4,'dry'],
+  'Split peas':[0.4,'dry'],'Black-eyed peas':[0.4,'dry'],'Broad / fava beans':[0.4,'dry'],
+  'Butter beans':[0.4,'dry'],'Cannellini beans':[0.4,'dry'],'Mung beans':[0.4,'dry'],
+};
+function shopList(){
+  const tot={};
+  scaledDays().forEach(d=>d.meals.forEach(m=>m.items.forEach(x=>{
+    tot[x.name]=(tot[x.name]||0)+x.amt;
+  })));
+  return SHOP_GROUPS.map(([g,cats])=>{
+    const items=Object.keys(tot).filter(n=>cats.includes(FOODS[FOOD_BY_NAME[n]][4]))
+      .sort((a,b)=>FOOD_BY_NAME[a]-FOOD_BY_NAME[b])
+      .map(n=>{const f=FOODS[FOOD_BY_NAME[n]];
+        const [mul,note]=SHOP_BUY[n]||[1,''];
+        const u=foodUnit(f);
+        const amt=u==='ea'?Math.ceil(tot[n]*mul):Math.ceil(tot[n]*mul/10)*10;
+        /* The list is titled by what you buy, so a line that has been converted
+           drops the state it was costed in: 'White rice, cooked — 620 g dry'
+           reads as a contradiction. The tick key stays the food name. */
+        return {name:n,label:note?n.replace(/,\s*cooked$/,''):n,
+          qty:fmtAmount(f,amt)+(note?' '+note:''),raw:amt,note};});
+    return [g,items];
+  }).filter(([,items])=>items.length);
+}
+function shopTicks(){const s=STATE.shopTicks;return (s&&typeof s==='object'&&!Array.isArray(s))?s:{};}
+function toggleShop(k){
+  if(!STATE.shopTicks||typeof STATE.shopTicks!=='object'||Array.isArray(STATE.shopTicks))STATE.shopTicks={};
+  if(STATE.shopTicks[k])delete STATE.shopTicks[k];else STATE.shopTicks[k]=1;
+  save();haptic(8);renderRef();
+}
+function clearShop(){STATE.shopTicks={};save();toast('List reset');renderRef();}
 function mealSlots(){return (STATE.nutrition.meals===4)?['breakfast','lunch','dinner','snack']:['breakfast','lunch','dinner'];}
 function slotShare(slots){return slots.length===4?{breakfast:.28,lunch:.30,dinner:.30,snack:.12}:{breakfast:.30,lunch:.35,dinner:.35};}
 // Whole-food goal: default ON (only explicit false turns it off).
@@ -7579,6 +7981,118 @@ function mealPlanHTML(){
   else if(tot>kcalT*1.15){h+=`<div class="note warn" style="margin-top:10px">This comes to <b>${tot} kcal</b> vs your <b>${kcalT}</b> target — trim portions a little.</div>`;}
   if(algList().length)h+=`<div class="note warn" style="margin-top:10px">⚠️ <b>Check every label yourself.</b> Meals are filtered using our own recipe tags — this is not an allergen-safety tool, and brands and recipes vary. If your allergy is serious, read the ingredients before you eat.</div>`;
   return h;
+}
+
+function renderRef(){
+  const v=$('#v-ref');
+  const T=refTargets();
+  const eaten=foodTotals();
+  const pLeft=Math.max(0,T.p-eaten.p),kLeft=T.kcal-eaten.kcal;
+  let h=`<h2 class="vtitle">Reference</h2><div class="vsub">Every amount below is costed in grams of protein and calories, against your own targets.</div>`;
+
+  /* ---- today, live ---- */
+  h+=`<div class="section-label">Today, live</div><div class="grid2">
+    <div class="stat"><div class="n" style="color:var(--fire-l)">${pLeft}g</div><div class="l">Protein still to eat</div></div>
+    <div class="stat"><div class="n" style="color:${kLeft<0?'var(--red,#ff6b6b)':'var(--gold)'}">${kLeft}</div><div class="l">Calories left</div></div>
+  </div>`;
+  h+=`<div class="kv" style="padding:8px 2px"><span class="tiny muted">Your target</span>
+    <b class="tiny">${T.p} g protein · ${T.kcal} kcal</b></div>`;
+  if(!T.live){
+    h+=`<div class="note info">These are the defaults the sheets were written against. Set your weight and tap <b>Calculate my targets</b> in Fuel and everything on this tab — the amounts, the seven days, the shopping list — recalculates onto your numbers.</div>`;
+  }
+
+  /* ---- the one food list ---- */
+  h+=`<div class="section-label">Food list · <span class="tiny muted">tap a food to pick an amount</span></div>`;
+  h+=`<div class="daypick" id="ref-cats" style="flex-wrap:wrap;margin:0 2px 10px">${FOOD_CATS.map(([k,l])=>
+    `<button class="${REF_CAT===k?'on':''}" onclick="setRefCat('${k}')">${l}</button>`).join('')}</div>`;
+  const rows=FOODS.map((f,i)=>[f,i]).filter(([f])=>REF_CAT==='all'||f[4]===REF_CAT);
+  h+=`<div class="card" style="padding:0 12px">
+    <div class="kv" style="border:none;padding:9px 2px 5px"><span class="tiny muted" style="letter-spacing:.08em;text-transform:uppercase;font-weight:800">Food · listed amount</span>
+      <span class="tiny muted" style="letter-spacing:.08em;text-transform:uppercase;font-weight:800">Protein · kcal</span></div>`;
+  rows.forEach(([f,i])=>{
+    const eff=foodEfficiency(f),per=foodPer100(f);
+    h+=`<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer;padding:10px 2px" onclick="openFoodAmount(${i})">
+      <span style="min-width:0"><b>${_ve(f[0])}</b>
+        <div class="tiny muted" style="margin-top:2px">${_ve(f[3])} · ${per.p} g and ${per.kcal} kcal per ${per.per}</div>
+</span>
+      <span style="flex:0 0 auto;text-align:right;white-space:nowrap"><b style="color:var(--fire-l)">${f[1]}g</b>
+        <span class="tiny muted"> · ${f[2]}</span>
+        <div class="tiny" style="color:${eff>=15?'var(--green)':eff>=8?'var(--muted)':'var(--faint,var(--muted))'};margin-top:2px">${eff.toFixed(1)} g/100kcal</div></span>
+    </button>`;
+  });
+  h+=`</div>`;
+  h+=`<div class="note info" style="margin-top:10px"><b>Read the last number.</b> Grams of protein per 100 kcal is what matters on a cut — it says how much protein a food buys for its calories. Prawns, cod and tinned tuna score 23–24; salmon scores 12. Both are good food, only one lets you eat more of it.</div>`;
+  h+=`<div class="note warn"><b>Seitan is not on this list on purpose.</b> It is the highest-protein vegetarian food there is and it is pure wheat gluten. Every plant-protein list you read will recommend it.</div>`;
+
+  /* ---- worked days, scaled onto the athlete's targets ---- */
+  h+=`<div class="section-label">Seven worked days</div>`;
+  const days=scaledDays();
+  h+=`<div class="note ${T.live?'info':'warn'}">Weighed out for <b>${T.p} g protein and ${T.kcal} kcal</b>${T.live?', your current target':', the default target'}. The protein anchors are sized to hit the protein; the starches — rice, potato, oats, quinoa — are sized to close whatever calories are left. Change your target in Fuel and these amounts move with it.</div>`;
+  days.forEach((d,i)=>{
+    const dp=T.p?Math.round(d.p/T.p*100):0;
+    h+=`<div class="card pad" style="margin-bottom:8px">
+      <div class="row" style="justify-content:space-between;align-items:baseline">
+        <b>${i+1} · ${_ve(d.name)}</b>
+        <span class="tiny"><b style="color:${Math.abs(d.p-T.p)<=8?'var(--green)':'var(--gold)'}">${d.p}g</b>
+          <span class="muted"> · ${d.kcal} kcal</span></span></div>
+      <div class="tiny muted" style="margin:2px 0 4px">${dp}% of your protein target · ${d.kcal-T.kcal>=0?'+':''}${d.kcal-T.kcal} kcal against it</div>`;
+    const gapK=T.kcal-d.kcal,gapP=T.p-d.p;
+    if(Math.abs(gapK)>140||Math.abs(gapP)>12){
+      h+=`<div class="note ${Math.abs(gapK)>300||Math.abs(gapP)>25?'warn':'info'}" style="margin:2px 0 6px">This one will not stretch all the way to your target without amounts nobody plates.
+        ${gapP>12?`Add about <b>${gapP} g of protein</b> — ${amountForProtein(FOODS[FOOD_BY_NAME['Cottage cheese']],gapP)} g of cottage cheese does it. `:''}
+        ${gapP<-12?`It runs <b>${-gapP} g over</b> on protein, which is not a problem, just more food than you need. `:''}
+        ${gapK>140?`It lands <b>${gapK} kcal short</b> — a banana and a spoon of peanut butter closes it.`:''}
+        ${gapK<-140?`It runs <b>${-gapK} kcal over</b> — take it out of the starch.`:''}</div>`;
+    }
+    d.meals.forEach((m,mi)=>{
+      h+=`<div style="border-top:1px solid var(--line);padding:7px 0">
+        <div class="kv" style="padding:0 0 3px">
+          <span class="tiny muted" style="letter-spacing:.06em;text-transform:uppercase;font-weight:800">${_ve(m.slot)}</span>
+          <span class="tiny"><b style="color:var(--fire-l)">${m.p}g</b><span class="muted"> · ${m.kcal} kcal</span></span></div>`;
+      m.items.forEach(x=>{
+        h+=`<div class="kv" style="padding:2px 0;font-size:13px">
+          <span style="min-width:0">${_ve(x.name)} <span class="muted">${_ve(x.label)}</span></span>
+          <span class="tiny" style="flex:0 0 auto;white-space:nowrap"><b>${x.p}g</b><span class="muted"> · ${x.kcal}</span></span></div>`;
+      });
+      h+=`<button class="btn sm ghost" style="width:100%;margin-top:6px" onclick="logRefMeal(${i},${mi})">Log this meal · ${m.p}g · ${m.kcal} kcal</button></div>`;
+    });
+    h+=`</div>`;
+  });
+
+  /* ---- shopping list, derived from those same days ---- */
+  const shop=shopList();
+  const ticks=shopTicks();
+  const total=shop.reduce((a,g)=>a+g[1].length,0);
+  const done=shop.reduce((a,g)=>a+g[1].filter(it=>ticks[it.name]).length,0);
+  h+=`<div class="section-label">Weekly shop · <span style="color:var(--green)">${done}/${total}</span></div>`;
+  h+=`<div class="note info">Totalled straight from the seven days above at your own amounts, so it moves when your target does. Converted to what you <b>buy</b>, not what you eat — rice and quinoa are dry, chicken is raw, so the weights here are deliberately not the ones on the plate.</div>`;
+  shop.forEach(([group,items])=>{
+    h+=`<div class="card" style="padding:0 12px;margin-bottom:8px">
+      <div class="kv" style="border:none;padding:10px 2px 6px"><span class="tiny muted" style="letter-spacing:.08em;text-transform:uppercase;font-weight:800">${_ve(group)}</span></div>`;
+    items.forEach(it=>{
+      const on=!!ticks[it.name];
+      h+=`<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer;padding:10px 2px" onclick="toggleShop(${JSON.stringify(it.name).replace(/"/g,'&quot;')})">
+        <span style="min-width:0;display:flex;gap:10px;align-items:center">
+          <span class="ex-check" style="width:22px;height:22px;flex:0 0 auto;${on?'background:var(--green);border-color:var(--green)':''}"><svg viewBox="0 0 24 24" fill="none" stroke="#04220f" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;opacity:${on?1:0}"><path d="M20 6 9 17l-5-5"/></svg></span>
+          <span style="${on?'opacity:.45;text-decoration:line-through':''}">${_ve(it.label||it.name)}</span></span>
+        <b style="flex:0 0 auto;${on?'opacity:.45':''}">${_ve(it.qty)}</b></button>`;
+    });
+    h+=`</div>`;
+  });
+  if(done)h+=`<button class="btn ghost" onclick="clearShop()">Reset the list</button>`;
+
+  /* ---- the rules ---- */
+  const anchor=Math.round(T.p/3.75/5)*5;
+  h+=`<div class="section-label">Getting to ${T.p} g</div><div class="card pad">
+    <ol class="steplist" style="margin:0">
+      <li>A <b>${anchor} g anchor</b> in each main meal — that is ~${anchor*3} g before anything else.</li>
+      <li>One <b>${Math.max(10,Math.round((T.p-anchor*3)*0.65/5)*5)} g middle</b>: yogurt, eggs, whey.</li>
+      <li><b>Toppers</b> close the last few grams — seeds, cheese, milk, an egg.</li>
+      <li><b>Then count calories and pad.</b> A protein-led day runs 400–800 kcal short. Add rice, potato, oats, oil and nuts on purpose — under-eating steepens the deficit past the ceiling and costs you muscle.</li>
+    </ol></div>`;
+  h+=`<div class="note fire"><b>Short at 8pm?</b> Cottage cheese 250 g = 35 g for 230 kcal · tin of tuna = 25 g for 110 · whey in water = 24 g for 120 · egg whites 200 ml = 22 g for 100. <b>Not a protein bar</b> — most are 200–250 kcal for 15–20 g.</div>`;
+
+  v.innerHTML=h;
 }
 function renderFuel(){
   const v=$('#v-fuel');const n=nut();const t=nutToday();
@@ -8365,6 +8879,7 @@ function normalizeState(){
      else if(N.allergens!=null&&!Array.isArray(N.allergens))delete N.allergens;
    }
    if(!STATE.quickLog||typeof STATE.quickLog!=='object'||Array.isArray(STATE.quickLog))STATE.quickLog={};
+   if(!STATE.shopTicks||typeof STATE.shopTicks!=='object'||Array.isArray(STATE.shopTicks))STATE.shopTicks={};
    if(N&&N.eatWindow!=null&&(typeof N.eatWindow!=='object'||Array.isArray(N.eatWindow)))delete N.eatWindow;
    if(Array.isArray(STATE.scoreHistory))
      STATE.scoreHistory=STATE.scoreHistory.filter(e=>e&&typeof e==='object'&&e.score!=null&&isFinite(e.score));
@@ -8535,6 +9050,56 @@ function validateData(){
     Object.keys(m).forEach(k=>{if(!EX[m[k]])errs.push(n+'.'+k+' -> unknown exercise "'+m[k]+'"');});
   });
   Object.keys(JOINT_RISK).forEach(j=>JOINT_RISK[j].forEach(k=>{if(!EX[k])errs.push('JOINT_RISK.'+j+': unknown exercise "'+k+'"');}));
+  // ---- the Reference tables ------------------------------------------------
+  // A tapped food writes straight into the day's macro totals, and every figure
+  // the tab shows is computed off these rows, so a bad row is both wrong on
+  // screen and wrong in the log.
+  const catKeys=FOOD_CATS.map(c=>c[0]).filter(c=>c!=='all');
+  const seenFood={};
+  FOODS.forEach((f,i)=>{
+    const tag='FOODS['+i+'] '+(f&&f[0]);
+    if(!Array.isArray(f)||f.length<8){errs.push(tag+': malformed row');return;}
+    if(seenFood[f[0]])errs.push(tag+': duplicate name');
+    seenFood[f[0]]=1;
+    if(!(f[2]>0))errs.push(tag+': non-positive calories');
+    if(!(f[1]>=0))errs.push(tag+': negative protein');
+    if(f[1]*4>f[2]+5)errs.push(tag+': protein alone ('+(f[1]*4)+' kcal) exceeds its calories ('+f[2]+')');
+    if(!catKeys.includes(f[4]))errs.push(tag+': category "'+f[4]+'" is not a filter tab');
+    if(typeof f[5]!=='number')errs.push(tag+': no fat figure — falling back to the category guess');
+    if(!(f[6]>0))errs.push(tag+': no base amount, so no amount can be costed off it');
+    if(!['g','ml','ea'].includes(f[7]))errs.push(tag+': unit "'+f[7]+'" is not one the sheet can format');
+    const m=foodMacros(f);
+    if(m.c<0||m.f<0)errs.push(tag+': negative macro '+JSON.stringify(m));
+    const recon=f[1]*4+m.c*4+m.f*9;
+    if(Math.abs(recon-f[2])>12)errs.push(tag+': macros reconstruct to '+recon+' kcal, listed '+f[2]);
+    // scaling must be a straight ratio in both directions
+    const dbl=foodAt(f,f[6]*2);
+    if(Math.abs(dbl.p-f[1]*2)>1||Math.abs(dbl.kcal-f[2]*2)>1)errs.push(tag+': does not scale linearly');
+  });
+  REF_DAYS.forEach((d,i)=>{
+    const tag='REF_DAYS['+i+'] '+d.name;
+    d.meals.forEach(m=>m.items.forEach(([n])=>{
+      if(FOOD_BY_NAME[n]===undefined)errs.push(tag+': "'+n+'" is not in the food list');
+    }));
+    if(d.meals.length<3)errs.push(tag+': fewer than three eating occasions');
+    // the day must land on whatever target it is scaled to, or the amounts lie
+    [[150,2170],[190,2600],[120,1700]].forEach(([tp,tk])=>{
+      const sc=scaleDay(d,tp,tk);
+      if(Math.abs(sc.p-tp)>12)errs.push(tag+': scales to '+sc.p+' g against a '+tp+' g target');
+      if(Math.abs(sc.kcal-tk)>150)errs.push(tag+': scales to '+sc.kcal+' kcal against a '+tk+' kcal target');
+      const bad=sc.meals.some(m=>m.items.some(x=>!(x.amt>0)));
+      if(bad)errs.push(tag+': scales an item to zero at '+tp+'/'+tk);
+    });
+  });
+  const shopNames={};
+  shopList().forEach(([g,items])=>items.forEach(it=>{
+    if(shopNames[it.name])errs.push('shopList: "'+it.name+'" listed twice — one tick would strike both');
+    shopNames[it.name]=1;
+    if(!(it.raw>0))errs.push('shopList: "'+it.name+'" has no quantity');
+  }));
+  REF_DAYS.forEach(d=>d.meals.forEach(m=>m.items.forEach(([n])=>{
+    if(!shopNames[n])errs.push('shopList: the days use "'+n+'" but the shop never buys it');
+  })));
   if(errs.length)console.error('[coreforge] data validation: '+errs.length+' problem(s)\n - '+errs.join('\n - '));
   return errs;
 }
@@ -8549,7 +9114,7 @@ async function boot(){
   // Home-screen shortcuts (and any #tab link) open straight on that tab rather
   // than always landing on Today.
   try{const h=(location.hash||'').replace('#','');
-    if(h&&STATE.onboarded&&['today','program','fuel','progress','guide'].includes(h))TAB=h;
+    if(h&&STATE.onboarded&&['today','program','fuel','progress','ref','guide'].includes(h))TAB=h;
   }catch(e){}
   render();
   if(TAB!=='today')go(TAB);
