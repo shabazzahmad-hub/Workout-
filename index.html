@@ -1410,7 +1410,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='184';
+const APP_VERSION='185';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -7398,6 +7398,95 @@ function dietOk(r){
   }
   return true;
 }
+
+/* ---- Eating window (16:8 and friends) --------------------------------------
+   Time-restricted eating is an ADHERENCE tool, not a metabolic one: matched on
+   weekly calories it produces the same fat loss as eating across the whole day.
+   So this deliberately changes NOTHING about kcalTarget, protein or the recipes
+   — it only moves when they land, and warns if the window is too tight to fit
+   the protein. Anything that quietly cut calories here would be selling the
+   athlete a deficit they did not choose. */
+const WINDOWS=[[8,'16:8','16 h fast · 8 h eating'],[10,'14:10','14 h fast · 10 h eating'],[6,'18:6','18 h fast · 6 h eating']];
+function eatWin(){
+  const n=STATE.nutrition||{};const w=n.eatWindow;
+  if(!w||typeof w!=='object')return {on:false,start:12,hours:8};
+  return {on:!!w.on,
+    start:(typeof w.start==='number'&&w.start>=0&&w.start<=23)?w.start:12,
+    hours:(typeof w.hours==='number'&&w.hours>=4&&w.hours<=14)?w.hours:8};
+}
+function setEatWindow(patch){
+  const n=nut();const cur=eatWin();
+  n.eatWindow=Object.assign({},cur,patch);
+  save();renderFuel();
+}
+function toggleEatWindow(){const w=eatWin();setEatWindow({on:!w.on});
+  toast(eatWin().on?'Eating window on — same calories, fewer hours':'Eating window off');}
+function fmtHour(h){const x=((h%24)+24)%24;const ap=x<12?'am':'pm';const hh=x%12===0?12:x%12;return hh+ap;}
+/* Minutes until the window opens (negative while it is open). */
+function eatWindowState(now){
+  const w=eatWin();if(!w.on)return {on:false};
+  const d=now||new Date();
+  const mins=d.getHours()*60+d.getMinutes();
+  const open=w.start*60, close=open+w.hours*60;   // may run past midnight
+  const inWin=(mins>=open&&mins<close)||(close>1440&&mins<close-1440);
+  const left=inWin?((mins>=open?close-mins:close-1440-mins)):0;
+  let until=open-mins;if(until<0)until+=1440;
+  return {on:true,inWindow:inWin,minsLeft:left,minsUntilOpen:until,
+    start:w.start,hours:w.hours,closeHour:(w.start+w.hours)%24};
+}
+/* Meal clock times inside the window, evenly spread. */
+function mealTimes(){
+  const w=eatWin();const slots=mealSlots();
+  if(!w.on)return null;
+  const span=w.hours*60, n=slots.length;
+  const gap=n>1?(span-30)/(n-1):0;    // last meal lands 30 min before the window shuts
+  return slots.map((s,i)=>{
+    const m=w.start*60+Math.round(i*gap);
+    const hh=Math.floor(m/60)%24, mm=m%60;
+    return {slot:s,label:(hh%12===0?12:hh%12)+':'+String(mm).padStart(2,'0')+(hh<12?'am':'pm')};
+  });
+}
+function eatWindowHTML(){
+  const w=eatWin();
+  const st=eatWindowState();
+  const prot=proteinTargetG();
+  let h=`<div class="section-label">Eating window <span class="tiny muted">· optional</span></div><div class="card pad">`;
+  h+=`<div class="row" style="justify-content:space-between;align-items:center">
+      <div><b>${w.on?fmtHour(w.start)+' – '+fmtHour(w.start+w.hours):'Off'}</b>
+        <div class="tiny muted">${w.on?(24-w.hours)+' h fast · '+w.hours+' h eating':'Eat across the whole day'}</div></div>
+      <button class="btn sm ${w.on?'ghost':'primary'}" style="width:auto" onclick="toggleEatWindow()">${w.on?'Turn off':'Turn on'}</button>
+    </div>`;
+  if(w.on){
+    h+=`<div class="daypick" style="flex-wrap:wrap;margin-top:12px">${WINDOWS.map(([hrs,name,desc])=>
+      `<button class="${w.hours===hrs?'on':''}" onclick="setEatWindow({hours:${hrs}})" title="${desc}">${name}</button>`).join('')}</div>`;
+    h+=`<div class="field" style="margin-top:12px"><label>First meal at</label>
+      <div class="daypick" style="flex-wrap:wrap">${[8,9,10,11,12,13,14].map(s=>
+        `<button class="${w.start===s?'on':''}" onclick="setEatWindow({start:${s}})">${fmtHour(s)}</button>`).join('')}</div></div>`;
+    if(st.on){
+      h+= st.inWindow
+        ? `<div class="note info" style="margin-top:10px">🍽️ <b>Window open</b> — ${Math.floor(st.minsLeft/60)}h ${st.minsLeft%60}m left. Closes at ${fmtHour(st.closeHour)}.</div>`
+        : `<div class="note" style="margin-top:10px">⏳ <b>Fasting</b> — opens in ${Math.floor(st.minsUntilOpen/60)}h ${st.minsUntilOpen%60}m, at ${fmtHour(w.start)}.</div>`;
+    }
+    const times=mealTimes();
+    if(times&&times.length){
+      h+=`<div class="tiny muted" style="margin-top:10px">Your ${times.length} meals land at <b>${times.map(t=>t.label).join('</b>, <b>')}</b>.</div>`;
+    }
+    /* Protein is the whole reason to be careful here. Compressing the day does
+       not change the target, and a very short window makes it hard to hit. */
+    if(prot>0){
+      const perMeal=Math.round(prot/mealSlots().length);
+      h+=`<div class="note ${w.hours<=6?'warn':'info'}" style="margin-top:10px">
+        Your calories and protein are <b>unchanged</b> — ${STATE.nutrition.kcalTarget||'—'} kcal and <b>${prot} g protein</b>, just eaten in ${w.hours} hours.
+        That is about <b>${perMeal} g of protein per meal</b>.${w.hours<=6?' At 18:6 most people struggle to fit that. If protein slips, widen the window rather than accept less.':''}</div>`;
+    }
+    h+=`<div class="tiny muted" style="margin-top:10px">Time-restricted eating does not burn extra fat on its own — matched on weekly calories it performs the same as eating all day. It helps because fewer eating hours makes the target easier to hold. Water, black coffee and plain tea do not break the fast.</div>`;
+    if(typeof safeMode==='function'&&safeMode()){
+      h+=`<div class="note warn" style="margin-top:10px">You flagged something on the health check. Talk to your doctor before fasting — it interacts with blood-sugar and blood-pressure medication.</div>`;
+    }
+  }
+  h+=`</div>`;
+  return h;
+}
 function mealSlots(){return (STATE.nutrition.meals===4)?['breakfast','lunch','dinner','snack']:['breakfast','lunch','dinner'];}
 function slotShare(slots){return slots.length===4?{breakfast:.28,lunch:.30,dinner:.30,snack:.12}:{breakfast:.30,lunch:.35,dinner:.35};}
 // Whole-food goal: default ON (only explicit false turns it off).
@@ -7448,10 +7537,11 @@ function mealPlanHTML(){
      targets and Hydration — no plan, no explanation, no controls. */
   if(!recs.length)return `<div id="mealplan"></div>${mealGapHTML(plan.missing&&plan.missing.length?plan.missing:mealSlots())}`;
   const tot=recs.reduce((s,r)=>s+r.kcal,0),totP=recs.reduce((s,r)=>s+r.p,0);
+  const _mt=mealTimes();
   let h=`<div class="section-label" id="mealplan">Today's meal plan · <span class="tiny muted">${_ve(dietLabel())} · ${recs.length} meals${wholeOnly()?' · <span style="color:var(--green);font-weight:800">🥦 whole foods</span>':''}</span></div><div class="card pad" style="padding-bottom:8px">`;
   h+=`<div class="row" style="justify-content:space-between;margin-bottom:6px"><div><b>${tot} kcal</b> · ${totP}g protein${kcalT?` <span class="tiny muted">of ${kcalT} target</span>`:''}</div><div class="btnrow" style="flex:0 0 auto;gap:6px"><button class="chip" onclick="openGrocery()">🛒 List</button><button class="chip" onclick="regenPlan()">↻ New plan</button></div></div>`;
-  recs.forEach(r=>{h+=`<button class="kv" style="width:100%;text-align:left;border:none;border-top:1px solid var(--line);background:none;padding:12px 2px;cursor:pointer" onclick="toggleRecipe('${r.id}')">
-    <span style="min-width:0"><span style="font-size:18px">${r.emoji}</span> <b>${_ve(r.name)}</b><div class="tiny muted" style="margin-top:2px;text-transform:capitalize">${r.type} · ${r.kcal} kcal · ${r.p}p ${r.c}c ${r.f}f</div></span>
+  recs.forEach((r,_i)=>{const _t=_mt&&_mt[_i];h+=`<button class="kv" style="width:100%;text-align:left;border:none;border-top:1px solid var(--line);background:none;padding:12px 2px;cursor:pointer" onclick="toggleRecipe('${r.id}')">
+    <span style="min-width:0"><span style="font-size:18px">${r.emoji}</span> <b>${_ve(r.name)}</b>${_t?` <span class="chip" style="font-size:11px;padding:2px 7px">${_t.label}</span>`:''}<div class="tiny muted" style="margin-top:2px;text-transform:capitalize">${r.type} · ${r.kcal} kcal · ${r.p}p ${r.c}c ${r.f}f</div></span>
     <span class="tiny muted" style="flex:0 0 auto">▾</span></button>
     <div id="rc-${r.id}" style="display:none;padding:2px 2px 12px">
       <div class="tiny muted" style="margin-bottom:4px;font-weight:800;letter-spacing:.6px">INGREDIENTS</div>
@@ -7503,6 +7593,8 @@ function renderFuel(){
     h+=`<div class="note info" style="margin-top:12px">${tip}</div>`;}
   // intake logging (quick-add + photo AI)
   h+=intakeHTML();
+  // eating window (optional) — sits above the plan because it retimes it
+  h+=eatWindowHTML();
   // meal plan + recipes
   h+=mealPlanHTML();
   // water tracker
@@ -8259,6 +8351,7 @@ function normalizeState(){
      else if(N.allergens!=null&&!Array.isArray(N.allergens))delete N.allergens;
    }
    if(!STATE.quickLog||typeof STATE.quickLog!=='object'||Array.isArray(STATE.quickLog))STATE.quickLog={};
+   if(N&&N.eatWindow!=null&&(typeof N.eatWindow!=='object'||Array.isArray(N.eatWindow)))delete N.eatWindow;
    if(Array.isArray(STATE.scoreHistory))
      STATE.scoreHistory=STATE.scoreHistory.filter(e=>e&&typeof e==='object'&&e.score!=null&&isFinite(e.score));
    else STATE.scoreHistory=[];
