@@ -1410,7 +1410,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='185';
+const APP_VERSION='186';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -7165,6 +7165,20 @@ function transformationHTML(){
    fuel targets: protein (from bodyweight), a calorie target (Mifflin-St Jeor
    calculator, moderate deficit), a hydration tracker, and a daily habit checklist
    with its own streak. All stored locally by date. */
+/* Daily steps are the cheapest lever in the whole app: roughly 40 kcal per
+   1,000 steps, and unlike adding training they cost nothing in recovery, so they
+   do not eat into the sessions the program is already asking for. Going from 7k
+   to 10k is about 120 kcal a day — a quarter of a pound a week, which is weeks
+   off a cut. The target scales with the goal because a maintenance athlete has
+   no reason to chase the same number as someone shredding. */
+const STEP_TARGETS={shred:10000,lose:10000,recomp:8000,core:8000,maintain:7000,gain:7000};
+function stepTarget(){
+  try{const g=(STATE.profile&&STATE.profile.goal)||'lose';return STEP_TARGETS[g]||8000;}
+  catch(e){return 8000;}
+}
+/* ~0.04 kcal per step is the usual rough figure for an adult; it scales with
+   bodyweight, so use the athlete's own if we have it. */
+function stepKcal(n){const kg=latestWeightKg()||80;return Math.round((n||stepTarget())*0.0005*kg);}
 const HABITS=[
   {k:'protein',label:'Hit protein target',emoji:'🥩'},
   /* Was a streak condition, which makes restriction the thing the app rewards
@@ -7172,7 +7186,7 @@ const HABITS=[
   {k:'cals',label:'Stayed in calorie deficit',emoji:'🔥',optional:true},
   {k:'water',label:'Hit water goal',emoji:'💧'},
   {k:'sleep',label:'7+ hours sleep',emoji:'😴'},
-  {k:'steps',label:'Walk / 7k+ steps',emoji:'🚶'},
+  {k:'steps',label:()=>'Walk / '+stepTarget().toLocaleString()+'+ steps',emoji:'🚶'},
 ];
 function nut(){return STATE.nutrition||(STATE.nutrition={goal:'lose',sex:null,age:null,heightCm:null,activity:1.45,kcalTarget:null,days:{}});}
 function nutToday(){const n=nut();const d=todayISO();if(!n.days[d])n.days[d]={water:0,habits:{}};return n.days[d];}
@@ -7608,7 +7622,7 @@ function renderFuel(){
   const hitCount=Object.values(t.habits||{}).filter(Boolean).length;
   h+=`<div class="section-label">Daily habits · <span style="color:var(--green)">${hitCount}/${HABITS.length}</span> · 🔥 ${nutritionStreak()}-day streak</div><div class="card">
     ${HABITS.map(hb=>{const on=!!(t.habits&&t.habits[hb.k]);return `<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer;padding:13px 14px" onclick="toggleHabit('${hb.k}')">
-      <span>${hb.emoji} ${hb.label}</span>
+      <span>${hb.emoji} ${_ve(typeof hb.label==='function'?hb.label():hb.label)}${hb.k==='steps'?` <span class="tiny muted">· ~${stepKcal()} kcal</span>`:''}</span>
       <span class="ex-check" style="width:26px;height:26px;${on?'background:var(--green);border-color:var(--green)':''}"><svg viewBox="0 0 24 24" fill="none" stroke="#04220f" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;opacity:${on?1:0}"><path d="M20 6 9 17l-5-5"/></svg></span></button>`;}).join('')}
   </div>`;
   // calorie calculator
