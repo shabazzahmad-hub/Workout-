@@ -1410,7 +1410,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='183';
+const APP_VERSION='184';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -7303,6 +7303,16 @@ const RECIPES=[
   {id:'b_fruitnut',alg:[],type:'breakfast',emoji:'🍌',name:'Banana, Seeds & Coconut',kcal:350,p:10,c:48,f:14,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
     ing:['2 bananas','2 tbsp sunflower seeds','2 tbsp desiccated coconut','1 tbsp maple syrup'],
     steps:['Slice the bananas into a bowl.','Scatter the seeds and coconut.','Finish with the syrup.']},
+  {id:'b_steak',alg:['egg'],type:'breakfast',emoji:'🥩',name:'Steak & Eggs Skillet',kcal:480,p:46,c:8,f:30,ok:['halal','omnivore'],
+    ing:['150 g lean steak (sirloin or rump)','3 eggs','Handful mushrooms + spinach','1 tsp olive oil','Salt, pepper'],
+    steps:['Sear the steak 2–3 min a side in a hot pan, then rest it.','Cook the mushrooms and spinach in the same pan.','Scramble or fry the eggs alongside.','Slice the steak across the grain and plate it all together.']},
+  {id:'b_cott',alg:['dairy'],type:'breakfast',emoji:'🥣',name:'Cottage Cheese Power Bowl',kcal:360,p:40,c:26,f:11,ok:['vegetarian','pescatarian','halal','omnivore'],
+    ing:['250 g cottage cheese','1 cup mixed berries','1 tbsp pumpkin seeds','1 tsp honey','Cinnamon'],
+    steps:['Spoon the cottage cheese into a bowl.','Top with the berries and seeds.','Drizzle the honey and dust with cinnamon.'],
+    note:'No cooking — the fastest high-protein start in the list.'},
+  {id:'b_salmon',alg:['egg','fish'],type:'breakfast',emoji:'🐟',name:'Smoked Salmon & Eggs',kcal:430,p:38,c:6,f:29,ok:['pescatarian','omnivore'],
+    ing:['100 g smoked salmon','3 eggs','1 tsp butter or olive oil','Handful rocket','Lemon, black pepper, dill'],
+    steps:['Scramble the eggs slowly over a low heat so they stay soft.','Plate with the salmon and rocket.','Finish with lemon, dill and plenty of black pepper.']},
   {id:'b_eggs',alg:['egg','gluten'],type:'breakfast',emoji:'🍳',name:'Veggie Eggs & Toast',kcal:400,p:26,c:30,f:18,ok:['vegetarian','pescatarian','halal','omnivore'],
     ing:['3 eggs','Handful spinach + tomato','1 slice wholegrain toast','1 tsp oil, salt & pepper'],
     steps:['Scramble the eggs in the oil with the veg.','Toast the bread.','Plate together and season.']},
