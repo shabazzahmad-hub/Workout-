@@ -1469,7 +1469,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='197';
+const APP_VERSION='198';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -2968,11 +2968,21 @@ function workoutTabHTML(sess,log,doneCount,totalCount,wkNum,restedToday){
   h+=deloadBanner();
   h+=catchUpBanner();
   h+=weeklyBannerHTML();
+  /* These are about TODAY and must render every day. They were inside the
+     `dayInWeek===0` branch below, which exists for the weekly overload note —
+     later additions were appended into it one at a time and inherited a
+     once-a-week gate nobody intended. "That is today done", the drift nudge,
+     the resume offer, the pain pattern and undo were therefore invisible six
+     days out of seven. The resume check in suite 10 passed anyway because
+     seedAthlete starts at pointer 0, which IS day zero of a week — a test that
+     was right for the wrong reason. */
+  h+=doneForTodayHTML();
+  h+=undoBannerHTML();
+  h+=painPromptHTML();
+  h+=resumeBanner();
+  h+=driftBanner();
   // progressive overload note vs previous week
   if(sess.pos.dayInWeek===0){
-    h+=doneForTodayHTML();
-    h+=resumeBanner();
-    h+=driftBanner();
     h+=`<div class="note fire">📈 <b>Week ${wkNum} — ${overloadHeadline(sess)}.</b> ${overloadNote(sess)}</div>`;
   }
   h+=`<div class="section-label">Main work</div><div class="exlist">`;
@@ -3149,10 +3159,73 @@ function finishSession(){
    PLAYER may already be gone by then, so the figures are handed over rather
    than read back. */
 let _lastSessionClock=null;
+/* ---- Undo ----------------------------------------------------------------
+   Committing is the single most destructive button in the app: it advances the
+   programme pointer, writes the log, moves the adaptive load multiplier and can
+   unlock achievements. A mis-tap on "Mark session complete", or tapping a feel
+   chip you did not mean, was permanent — and the pointer drives 378 sessions of
+   scheduling, so being one ahead stays wrong forever.
+
+   One level, and only for the session just committed. Anything more would mean
+   reconstructing state from arbitrary points in history, which is where undo
+   features start corrupting the thing they are meant to protect. */
+function snapshotForUndo(p,key){
+  try{
+    const log=(STATE.logs||{})[p];
+    return {
+      ptr:p, key,
+      at:Date.now(), date:todayISO(),
+      log:log?JSON.parse(JSON.stringify(log)):null,
+      adapt:(typeof STATE.adapt==='number')?STATE.adapt:1,
+      weekFeel:Array.isArray(STATE.weekFeel&&STATE.weekFeel[key])?STATE.weekFeel[key].slice():null,
+      comeback:STATE.comeback?JSON.parse(JSON.stringify(STATE.comeback)):null,
+      achievements:JSON.parse(JSON.stringify(STATE.achievements||{})),
+    };
+  }catch(e){return null;}
+}
+function undoInfo(){
+  try{
+    const u=STATE._undo;
+    if(!u||typeof u!=='object')return null;
+    // only the session immediately behind the pointer, and only today
+    if(u.ptr!==STATE.progressPtr-1)return null;
+    if(u.date!==todayISO())return null;
+    return u;
+  }catch(e){return null;}
+}
+function undoSession(){
+  const u=undoInfo();
+  if(!u){toast('Nothing to undo');return;}
+  try{
+    if(u.log)STATE.logs[u.ptr]=JSON.parse(JSON.stringify(u.log));
+    else delete STATE.logs[u.ptr];
+    STATE.adapt=u.adapt;
+    if(u.key){
+      if(u.weekFeel)STATE.weekFeel[u.key]=u.weekFeel.slice();
+      else delete STATE.weekFeel[u.key];
+    }
+    if(u.comeback)STATE.comeback=JSON.parse(JSON.stringify(u.comeback));
+    else delete STATE.comeback;
+    // an achievement unlocked by a session that did not happen is not an achievement
+    if(u.achievements)STATE.achievements=JSON.parse(JSON.stringify(u.achievements));
+    STATE.progressPtr=u.ptr;
+    delete STATE._undo;
+    save();go('today');render();
+    toast('Session un-logged — you are back on session '+(u.ptr+1));
+  }catch(e){console.error('[undo]',e);toast('Could not undo that');}
+}
+function undoBannerHTML(){
+  const u=undoInfo();
+  if(!u)return '';
+  return `<div class="note info"><b>Session ${u.ptr+1} logged.</b> Tapped that by mistake?
+    <button class="btn sm ghost" style="width:100%;margin-top:10px" onclick="undoSession()">↩ Undo — put it back</button>
+    <div class="tiny muted" style="margin-top:8px">Available until tomorrow, or until you log the next one.</div></div>`;
+}
 function commitSession(feel){
   // finishedHTML() guards the view, but nothing guarded the mutation itself
   if(STATE.progressPtr>=SESSIONS_PER_CYCLE*TOTAL_CYCLES)return;
   const p=STATE.progressPtr;const pos=posOf(p);const log=ensureLog();
+  STATE._undo=snapshotForUndo(p,pos.cycle+'-'+pos.week);
   log.done=true;log.feel=feel;log.completedAt=todayISO();
   if(_lastSessionClock){
     log.durSec=_lastSessionClock.wall;log.pausedSec=_lastSessionClock.paused;
@@ -3379,6 +3452,122 @@ function playerSwapMenu(){
   menu.innerHTML=opts.map(o=>`<button onclick="playerSwap('${o.exId}')"><span>${o.label}</span> ${EX[o.exId].name}</button>`).join('');
   menu.style.display='flex';
 }
+/* ---- "That hurt" ---------------------------------------------------------
+   The app could swap a movement out BEFORE a session and work around a joint
+   flagged in onboarding, but during the set — which is when a body actually
+   tells you something — the only exits were Skip, which records nothing, and
+   Quit, which ends the workout. So the one moment the athlete has real
+   information about their own joint was the one moment the app was not
+   listening, and pain went unrecorded until it was bad enough to declare in
+   Settings.
+
+   Every branch here REMOVES load. There is no "push through" option, because
+   an app cannot tell a tweak from a tear and must not guess. Sheets render at
+   z-index 60 and the player at 75, so this is an in-player panel like the swap
+   menu rather than the usual openSheet. */
+function playerHurt(){
+  if(!PLAYER)return;
+  const menu=$('#plHurtMenu');if(!menu)return;
+  const sm=$('#plSwapMenu');if(sm)sm.style.display='none';
+  if(menu.style.display!=='none'){menu.style.display='none';return;}
+  // pause the clock the moment they say it — they are not training right now
+  if(PLAYER.running)try{playerToggle();}catch(e){}
+  const m=plCur();const gentler=swapOptions(m).filter(o=>/gentle|easier/i.test(o.label));
+  const alt=gentler[0]||swapOptions(m)[0]||null;
+  menu.innerHTML=`
+    <div class="note warn" style="margin:0 0 4px;text-align:left"><b>Stop the set.</b> Sharp, pinching or joint pain is not something to train through. Aching muscles are fine; anything that feels wrong is not.</div>
+    ${alt?`<button onclick="hurtSwap('${alt.exId}')"><span>Gentler</span> ${_ve(EX[alt.exId].name)}</button>`:''}
+    <button onclick="hurtSkip()"><span>Skip it</span> Move to the next exercise</button>
+    <button onclick="hurtStop()"><span>Stop</span> End the session here — it still counts</button>
+    <button onclick="playerHurt()"><span>Back</span> Never mind, carry on</button>`;
+  menu.style.display='flex';
+}
+/* Recorded per exercise AND per region, because the useful pattern is usually
+   the joint rather than the movement — three different shoulder presses hurting
+   once each is a shoulder, not three coincidences. */
+function noteHurt(exId){
+  try{
+    if(!Array.isArray(STATE.pain))STATE.pain=[];
+    const ex=EX[exId];
+    STATE.pain.push({exId,region:(ex&&ex.region)||'',date:todayISO(),ptr:STATE.progressPtr});
+    if(STATE.pain.length>60)STATE.pain=STATE.pain.slice(-60);
+    save();
+  }catch(e){}
+}
+function hurtCloseMenu(){const menu=$('#plHurtMenu');if(menu)menu.style.display='none';}
+function hurtSwap(exId){
+  if(!PLAYER)return;
+  noteHurt(plCur().exId);
+  hurtCloseMenu();
+  playerSwap(exId);
+  toast('Swapped — take it easy on that one');
+}
+function hurtSkip(){
+  if(!PLAYER)return;
+  noteHurt(plCur().exId);
+  hurtCloseMenu();
+  playerSkip();
+  toast('Skipped — logged so it can be worked around');
+}
+/* Stopping early still commits the session. Someone who trained four exercises
+   and then hurt did the work; zeroing the day would teach them to keep going
+   instead of stopping, which is the opposite of what this button is for. */
+function hurtStop(){
+  if(!PLAYER)return;
+  noteHurt(plCur().exId);
+  hurtCloseMenu();
+  playerFeel('hard');
+  toast('Session logged. Rest that joint.');
+}
+/* How many DISTINCT sessions in the last eight weeks reported this region. */
+function painCount(region){
+  try{
+    if(!Array.isArray(STATE.pain)||!region)return 0;
+    const cut=Date.now()-56*86400000;
+    const seen=new Set();
+    STATE.pain.forEach(x=>{
+      if(!x||x.region!==region)return;
+      const t=Date.parse(x.date);
+      if(!isFinite(t)||t<cut)return;
+      seen.add(String(x.date)+'|'+String(x.ptr));
+    });
+    return seen.size;
+  }catch(e){return 0;}
+}
+/* Maps the body region an exercise belongs to onto the joint the athlete would
+   actually flag in Settings. Only regions with a real joint entry appear. */
+const PAIN_JOINT={shoulders:'shoulder',chest:'shoulder',back:'shoulder',arms:'elbow',
+  legs:'knee',glutes:'knee',lowback:'lowback',oblique:'lowback',anterior:'lowback'};
+function painPromptHTML(){
+  try{
+    const lims=(STATE.profile&&STATE.profile.limitations)||[];
+    const hits=Object.keys(PAIN_JOINT)
+      .map(r=>({region:r,joint:PAIN_JOINT[r],n:painCount(r)}))
+      .filter(x=>x.n>=2&&!lims.includes(x.joint));
+    if(!hits.length)return '';
+    const h=hits.sort((a,b)=>b.n-a.n)[0];
+    return `<div class="note warn"><b>That is ${h.n} sessions where ${_ve(h.region)} work hurt.</b> Twice is a pattern, not a bad day. Flagging the joint swaps the movements that load it out of every session from here — you keep training, just around it.
+      <div class="btnrow" style="margin-top:10px"><button class="btn sm primary" onclick="adoptPainLimit('${h.joint}')">Work around my ${_ve(h.joint)}</button><button class="btn sm ghost" onclick="dismissPain('${h.region}')">It is fine</button></div>
+      <div class="tiny muted" style="margin-top:8px">Pain that persists past a couple of weeks is worth a physio, not an app.</div></div>`;
+  }catch(e){return '';}
+}
+function adoptPainLimit(joint){
+  try{
+    const P=STATE.profile;
+    if(!Array.isArray(P.limitations))P.limitations=[];
+    if(!P.limitations.includes(joint))P.limitations.push(joint);
+    // the reports have done their job; clearing them stops the prompt repeating
+    STATE.pain=(STATE.pain||[]).filter(x=>PAIN_JOINT[x&&x.region]!==joint);
+    save();render();
+    toast('Working around your '+joint+' from now on');
+  }catch(e){}
+}
+function dismissPain(region){
+  try{
+    STATE.pain=(STATE.pain||[]).filter(x=>!x||x.region!==region);
+    save();render();
+  }catch(e){}
+}
 function playerSwap(exId){
   if(!PLAYER)return;const nEx=EX[exId];if(!nEx)return;
   const m=plCur();const rx=prescribe(exId,PLAYER.sess.pos);
@@ -3499,8 +3688,12 @@ function plBodyWork(color){
     ${plRingHTML(color)}
     <div class="pl-set" id="plSet">SET ${PLAYER.s+1} OF ${m.sets}</div>
     <div class="pl-coach" id="plCoach"></div>
-    ${swapOptions(m).length?`<button class="pl-swap" onclick="playerSwapMenu()">⇄ Swap exercise</button>`:''}
+    <div class="row" style="gap:8px;justify-content:center;flex-wrap:wrap">
+      ${swapOptions(m).length?`<button class="pl-swap" onclick="playerSwapMenu()">⇄ Swap exercise</button>`:''}
+      <button class="pl-swap" style="border-color:var(--red,#ff6b6b);color:var(--red,#ff6b6b)" onclick="playerHurt()">⚠ That hurt</button>
+    </div>
     <div class="pl-swapmenu" id="plSwapMenu" style="display:none"></div>
+    <div class="pl-swapmenu" id="plHurtMenu" style="display:none"></div>
     <div class="pl-actions">
       <button class="btn ghost" id="plToggle" onclick="playerToggle()">Pause</button>
       <button class="btn ghost" onclick="playerSkip()">Skip</button>
@@ -4380,9 +4573,81 @@ function assessNav(dir){
    every subsequent re-test — re-testing already measures that improvement, so
    keeping the multiplier counted the same gain twice, all year. */
 function rebaseAdapt(){STATE.adapt=1;STATE.exAdapt={};}
+/* ---- A bad day is not a new baseline -------------------------------------
+   A re-test rewrites every target for the next six weeks. It is also a maximal
+   effort battery, which means it is exquisitely sensitive to things that have
+   nothing to do with fitness: four hours' sleep, a skipped lunch, day three of
+   a cold, testing at 10pm. Whatever the athlete managed on that one day was
+   committed silently, and the whole next block was then built from it — the
+   athlete gets easier work, finds it easy, and the adaptive multiplier takes
+   ages to climb back.
+
+   So: compare against the previous test and, if the drop is big enough to be
+   implausible as real detraining, ASK. Both answers are legitimate. A genuine
+   regression after an eight-week layoff or an injury is real data and must be
+   recordable — this only refuses to assume. */
+function retestDrop(a){
+  try{
+    const prev=assessState&&assessState.reassess
+      ? (assessState.reassess===1?STATE.baseline:STATE.reassess[assessState.reassess-1])||STATE.baseline
+      : null;
+    if(!prev||!(prev.score>0)||!(a.score>=0))return null;
+    // a like-for-like comparison only: the battery grew from 5 tests to 8 in v178
+    if(prev.testCount&&prev.testCount!==TESTS.length)return null;
+    const pct=(prev.score-a.score)/prev.score;
+    if(pct<0.25)return null;
+    // which movements fell away, so the question can name them
+    const worse=[];
+    TESTS.forEach(t=>{
+      const now=+assessState.results[t.id]||0;
+      const was=+((prev.results||{})[t.id])||0;
+      if(was>0&&now<was*0.75)worse.push({name:t.name,was,now,unit:t.unit});
+    });
+    return {prevScore:prev.score,score:a.score,pct:Math.round(pct*100),worse};
+  }catch(e){return null;}
+}
+function confirmRetest(){
+  const pend=assessState&&assessState._pending;
+  if(!pend)return;
+  assessState._pending=null;
+  commitAssessment(pend.a,pend.rec);
+}
+/* Keeping the old numbers is NOT the same as never testing: the block still has
+   to be marked done or the athlete is asked to re-test forever. Record it as a
+   deferral carrying the previous maxes, which is exactly what the existing
+   "defer" path does. */
+function discardRetest(){
+  try{
+    const g=assessState&&assessState.reassess;
+    if(!g){closeSheet();return;}
+    const prev=(g===1?STATE.baseline:STATE.reassess[g-1])||STATE.baseline;
+    STATE.reassess[g]=Object.assign({},prev,{date:todayISO(),deferred:true,offDay:true});
+    save();closeSheet();go('today');render();
+    toast('Kept your previous numbers — retest when you are fresh');
+  }catch(e){closeSheet();}
+}
 function finishAssessment(){
   const a=computeAssessment(assessState.results);
   const rec={date:todayISO(),results:assessState.results,score:a.score,level:a.level,maxes:a.maxes,testCount:TESTS.length};
+  /* Ask BEFORE writing anything. An interstitial that appears after the commit
+     would be a notification, not a check. */
+  const drop=retestDrop(a);
+  if(drop){
+    assessState._pending={a,rec};
+    openSheet(`
+      <h3>That is a big drop — worth a look</h3>
+      <div class="note warn"><b>Your score went from ${drop.prevScore} to ${drop.score}</b> — down ${drop.pct}%. That is more than training normally moves in six weeks, so it is usually the day rather than the body: short sleep, under-fuelled, a cold coming on, or testing late at night.
+      ${drop.worse.length?`<div class="tiny muted" style="margin-top:8px">Biggest changes: ${drop.worse.slice(0,3).map(w=>_ve(w.name)+' '+w.was+'→'+w.now+(w.unit==='time'?'s':'')).join(' · ')}</div>`:''}</div>
+      <div class="note info" style="margin-top:0"><b>Why it matters:</b> these numbers set every target for the next six weeks. Locking in an off day means six weeks of work that is too easy.</div>
+      <button class="btn primary" onclick="discardRetest()">It was an off day — keep my old numbers</button>
+      <button class="btn ghost" style="margin-top:8px" onclick="confirmRetest()">No, this is where I am now</button>
+      <div class="tiny muted" style="margin-top:10px">Coming back from a layoff, illness or injury? Then the lower numbers are real — take the second option and the programme will rebuild from here.</div>
+    `);
+    return;
+  }
+  commitAssessment(a,rec);
+}
+function commitAssessment(a,rec){
   if(assessState.reassess){STATE.reassess[assessState.reassess]=rec;rebaseAdapt();}
   else{STATE.baseline=rec;}
   STATE.scoreHistory.push({date:todayISO(),score:a.score,level:a.level,testCount:TESTS.length});
@@ -9579,7 +9844,8 @@ function renderFuel(){
   h+=`<div class="section-label">Calorie &amp; protein calculator</div><div class="card pad">
     <p class="sm muted" style="margin-top:0">Get your personal daily calorie target (Mifflin-St Jeor, moderate deficit) plus a protein goal.</p>
     <button class="btn primary" onclick="openTDEE()">${n.kcalTarget?'Update my targets':'Calculate my targets'}</button>
-    ${n.kcalTarget?`<div class="tiny muted" style="margin-top:8px;text-align:center">Current target: <b>${n.kcalTarget} kcal</b> · ${prot||'—'}g protein · goal: ${n.goal}${n.kcalFloored?' · raised to a safe minimum':''}</div>`:''}
+    ${n.kcalTarget?`<div class="tiny muted" style="margin-top:8px;text-align:center">Current target: <b>${n.kcalTarget} kcal</b> · ${prot||'—'}g protein · goal: ${n.goal}${n.kcalFloored?' · raised to a safe minimum':''}${n.kcalAdj?` · adjusted ${n.kcalAdj>0?'+':''}${n.kcalAdj} from your own results`:''}</div>`:''}
+    ${calorieCheckHTML()}
   </div>`;
   // abs-in-the-kitchen guidance
   h+=`<div class="section-label">Reveal your abs</div><div class="card pad">
@@ -9648,11 +9914,126 @@ function recalcKcalFromStored(){
      so isF was false for every real athlete and the 1200 floor could not be
      reached — small older women were floored at 1500 and 'shred' and 'lose'
      collapsed to the same number. isFemale() already handles every spelling. */
+  /* A correction measured against the athlete's own scale, applied before the
+     floor so it can never push anyone under it. Mifflin-St Jeor plus an
+     activity multiplier is a population estimate: it is routinely 200-300 kcal
+     out for an individual, and the activity factor is a guess on top of a
+     guess. Reality is what the weight trend says, and calorieCheck() turns that
+     into this number. */
+  const adj=(typeof n.kcalAdj==='number'&&isFinite(n.kcalAdj))?clamp(n.kcalAdj,-500,500):0;
+  n.kcalAdj=adj;
+  t+=adj;
   const isF=isFemale();
   const floor=Math.max(bmr*1.1, isF?1200:1500);
   n.kcalFloored=t<floor-1;
   t=Math.max(t,floor);
   n.kcalTarget=Math.round(t/10)*10;
+}
+/* ---- Is the calorie target actually working? -----------------------------
+   Nothing checked. The app produced a number from Mifflin-St Jeor times an
+   activity multiplier and then never looked at the scale again, so an athlete
+   whose real maintenance was 300 kcal below the estimate could eat exactly what
+   they were told for three months, lose nothing, and be given no reason and no
+   correction. That is the single most common way a diet app fails the person
+   using it, and it fails them silently.
+
+   ~7700 kcal per kg of fat is the usual figure. It is an approximation — as
+   somebody gets lighter their maintenance falls, and adaptive thermogenesis
+   drifts it further — which is precisely the argument for measuring the outcome
+   instead of trusting the arithmetic. */
+const KCAL_PER_KG=7700;
+function trendKgPerWeek(days){
+  try{
+    const ms=(STATE.measurements||[])
+      .filter(m=>m&&plausibleKg(m.weight))
+      .map(m=>({t:Date.parse(m.date),kg:m.weight}))
+      .filter(m=>isFinite(m.t))
+      .sort((a,b)=>a.t-b.t);
+    if(ms.length<3)return null;
+    const cut=ms[ms.length-1].t-days*86400000;
+    const win=ms.filter(m=>m.t>=cut);
+    if(win.length<3)return null;
+    const spanDays=(win[win.length-1].t-win[0].t)/86400000;
+    if(spanDays<21)return null;      // less than three weeks is noise, not a trend
+    /* Endpoints are averaged over up to three readings each: a single heavy
+       morning at either end can swing a six-week trend by a third. */
+    const head=win.slice(0,3),tail=win.slice(-3);
+    const mean=a=>a.reduce((x,y)=>x+y.kg,0)/a.length;
+    return {kgPerWeek:(mean(tail)-mean(head))/spanDays*7,days:Math.round(spanDays),n:win.length,
+      from:Math.round(mean(head)*10)/10,to:Math.round(mean(tail)*10)/10};
+  }catch(e){return null;}
+}
+function calorieCheck(){
+  try{
+    const n=nut();
+    if(!(n.tdee>0)||!(n.kcalTarget>0))return null;
+    // signed: negative means the plan expects weight to come off
+    const expected=(n.kcalTarget-n.tdee)*7/KCAL_PER_KG;
+    if(expected>-0.05)return null;         // no meaningful deficit prescribed — nothing to verify
+    const tr=trendKgPerWeek(56);
+    if(!tr)return null;
+    const observed=tr.kgPerWeek;
+    /* The gap in kg/week converted straight back into kcal/day, signed so that
+       it CLOSES the gap. Written the other way round first, which told a
+       stalled dieter to eat 300 kcal MORE — the exact opposite of the advice,
+       delivered with a confident number on it. Losing less than planned
+       (observed above expected, both negative) has to reduce intake.
+       Clamped: a single correction should nudge, not lurch, and the next check
+       three weeks later will nudge again if it is still off. */
+    const stepRaw=(expected-observed)*KCAL_PER_KG/7;
+    const step=Math.round(clamp(stepRaw,-300,300)/10)*10;
+    let verdict='ontrack';
+    if(observed>expected*0.4)verdict='stalled';        // losing far less than promised (or gaining)
+    else if(observed<expected*1.75)verdict='fast';     // coming off faster than is useful
+    return {expected,observed,verdict,step,trend:tr,
+      adj:(typeof n.kcalAdj==='number')?n.kcalAdj:0,
+      target:n.kcalTarget};
+  }catch(e){return null;}
+}
+/* Do not ask again for three weeks: the trend window is three weeks minimum, so
+   a faster cadence would be re-reacting to the same data. */
+function calorieCheckDue(){
+  try{
+    const n=nut();
+    if(!n.kcalAdjAt)return true;
+    return (Date.now()-Date.parse(n.kcalAdjAt))/86400000>=21;
+  }catch(e){return true;}
+}
+function applyKcalAdj(step){
+  try{
+    const n=nut();
+    const cur=(typeof n.kcalAdj==='number'&&isFinite(n.kcalAdj))?n.kcalAdj:0;
+    n.kcalAdj=clamp(cur+(+step||0),-500,500);
+    n.kcalAdjAt=todayISO();
+    recalcKcalFromStored();
+    save();render();
+    toast('Target is now '+n.kcalTarget+' kcal — give it three weeks');
+  }catch(e){}
+}
+function dismissKcalCheck(){
+  try{const n=nut();n.kcalAdjAt=todayISO();save();render();}catch(e){}
+}
+function calorieCheckHTML(){
+  const c=calorieCheck();
+  if(!c)return '';
+  const kg=v=>isImperial()?(Math.abs(v)*2.20462).toFixed(1)+' lb':Math.abs(v).toFixed(2)+' kg';
+  const wu=isImperial()?'lb':'kg';
+  const shown=x=>isImperial()?(x*2.20462).toFixed(1):x.toFixed(1);
+  if(c.verdict==='ontrack'){
+    return `<div class="note ok"><b>Your calorie target is working.</b> Over the last ${c.trend.days} days you have averaged <b>${kg(c.observed)} a week</b>, against the ${kg(c.expected)} the plan aims for. Nothing to change.</div>`;
+  }
+  if(!calorieCheckDue()){
+    return `<div class="tiny muted" style="margin-top:8px">Tracking your weight against the target — next check in a few weeks.</div>`;
+  }
+  if(c.verdict==='stalled'){
+    const gaining=c.observed>0;
+    return `<div class="note warn"><b>${gaining?'The scale is going up.':'The scale is barely moving.'}</b> Over ${c.trend.days} days you have gone ${shown(c.trend.from)} → ${shown(c.trend.to)} ${wu} — about <b>${kg(c.observed)} a week</b>, where ${c.target} kcal should give <b>${kg(c.expected)}</b>.
+      <div class="tiny muted" style="margin-top:8px">The calculator estimates your maintenance from height, weight, age and an activity guess. It is commonly a few hundred calories out either way. Your scale is the better instrument, so use it.</div>
+      <div class="btnrow" style="margin-top:10px"><button class="btn sm primary" onclick="applyKcalAdj(${c.step})">Drop to ${Math.max(0,c.target+c.step)} kcal</button><button class="btn sm ghost" onclick="dismissKcalCheck()">Leave it</button></div>
+      <div class="tiny muted" style="margin-top:8px">Worth ruling out first: weekends that undo the week, cooking oil and drinks going unlogged, and a new training block holding water. If you have not been logging honestly, fix that before cutting further.</div></div>`;
+  }
+  return `<div class="note warn"><b>That is coming off faster than it should.</b> ${c.trend.days} days at about <b>${kg(c.observed)} a week</b>, against a planned ${kg(c.expected)}. Fast loss costs muscle and is the pace people quit at.
+    <div class="btnrow" style="margin-top:10px"><button class="btn sm primary" onclick="applyKcalAdj(${c.step})">Raise to ${c.target+c.step} kcal</button><button class="btn sm ghost" onclick="dismissKcalCheck()">Leave it</button></div></div>`;
 }
 function openTDEE(){
   const n=nut();const imp=STATE.profile.unit==='in';
@@ -10615,6 +10996,22 @@ function normalizeState(){
       if(day.jackUnit!=null&&!JACK_UNITS.some(u=>u[0]===day.jackUnit))delete day.jackUnit;
     });
   }catch(e){}
+  /* Pain reports drive a safety prompt, so a non-array here must not be able to
+     throw inside painCount() on the Today render path. */
+  /* undoInfo() re-validates, but a non-object here would throw before it got
+     the chance — and it is on the Today render path. */
+  if(STATE._undo!=null&&(typeof STATE._undo!=='object'||Array.isArray(STATE._undo)))delete STATE._undo;
+  /* kcalAdj feeds straight into the prescribed calorie target, so a string here
+     would poison it. recalcKcalFromStored clamps, but only once it is a number. */
+  try{
+    const _n=STATE.nutrition;
+    if(_n){
+      if(_n.kcalAdj!=null&&(typeof _n.kcalAdj!=='number'||!isFinite(_n.kcalAdj)))_n.kcalAdj=0;
+      if(_n.kcalAdjAt!=null&&typeof _n.kcalAdjAt!=='string')delete _n.kcalAdjAt;
+    }
+  }catch(e){}
+  if(!Array.isArray(STATE.pain))STATE.pain=[];
+  STATE.pain=STATE.pain.filter(x=>x&&typeof x==='object'&&typeof x.exId==='string');
   if(!Array.isArray(STATE.photos))STATE.photos=[];
   if(!STATE.achievements||typeof STATE.achievements!=='object')STATE.achievements={};
   if(STATE.settings.reminderOn===undefined)STATE.settings.reminderOn=false;
