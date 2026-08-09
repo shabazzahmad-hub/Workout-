@@ -592,17 +592,23 @@ export default async function run() {
     // Pull Day must contain a pull
     o.rowOpensOnARow = !['superman', 'swimmer'].includes(LADDERS.rowL[0]);
     o.bicepProtected = true;   // asserted via goalSlots below
-    // the bike replaces about half the jumping, not none and not all
-    const jumps = g => { STATE.profile.gear = g; let j = 0, b = 0;
+    /* Owning a trainer is no longer enough to be programmed one. A bike is the
+       least portable thing an athlete owns, so jumping jacks lead and the ride
+       is what you opt into — CHOOSING the bike still replaces about half the
+       jumping, not none and not all. */
+    const jumps = (g, mode) => { STATE.profile.gear = g; STATE.nutrition.cardioMode = mode; let j = 0, b = 0;
       for (let p = 0; p < 42; p++) { const s2 = buildSession(p);
         [...s2.main, s2.finisher].filter(Boolean).forEach(m => {
           if (m.exId === 'bike') b += m.sets; else if ((EX[m.exId] || {}).region === 'cardio') j += m.sets; }); }
       return { j, b }; };
-    const noBike = jumps(['bar', 'bench', 'dip']);
-    const withBike = jumps(['bar', 'bench', 'dip', 'bike']);
+    const noBike = jumps(['bar', 'bench', 'dip'], 'jacks');
+    const ownsNotChosen = jumps(['bar', 'bench', 'dip', 'bike'], 'jacks');
+    const withBike = jumps(['bar', 'bench', 'dip', 'bike'], 'bike');
     o.jumpBefore = noBike.j; o.jumpAfter = withBike.j; o.bikeSets = withBike.b;
     o.bikeUnchangedWithoutTrainer = noBike.b === 0;
+    o.ownsButDidNotChoose = ownsNotChosen.b === 0 && ownsNotChosen.j === noBike.j;
     o.roughlyHalf = withBike.j < noBike.j * 0.75 && withBike.j > 0;
+    STATE.nutrition.cardioMode = 'jacks';
     o.phase1 = PHASE1_CYCLES;
     o.validator = validateData().length;
     STATE.profile = JSON.parse(realP); STATE.baseline = JSON.parse(realB);
@@ -612,7 +618,8 @@ export default async function run() {
   t.ok('no working set exceeds the athlete\'s own tested single',
     coach.worstRatio <= 1.01, { ratio: coach.worstRatio, worst: coach.worstDesc });
   t.ok('the row ladder opens on an actual row, not a back extension', coach.rowOpensOnARow, coach);
-  t.ok('an athlete with a trainer rides instead of jumping, for about half of it', coach.roughlyHalf,
+  t.ok('owning a trainer alone does not put the bike in the programme', coach.ownsButDidNotChoose, coach);
+  t.ok('an athlete who CHOOSES the bike rides instead of jumping, for about half of it', coach.roughlyHalf,
     { before: coach.jumpBefore, after: coach.jumpAfter, bike: coach.bikeSets });
   t.ok('and without a trainer nothing changes', coach.bikeUnchangedWithoutTrainer, coach);
   t.eq('full-body work starts after one block, not two', coach.phase1, 1);
