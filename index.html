@@ -1469,7 +1469,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='195';
+const APP_VERSION='196';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1724,15 +1724,20 @@ const TIME_FRAC=[0.50,0.58,0.66,0.74,0.82,0.90];   // % of tested max hold, by w
    program is beating him. Working sets belong at 60-85% of a rep max. */
 const REP_FRAC =[0.50,0.58,0.66,0.73,0.80,0.85];   // % of tested max reps, by week (1-6)
 
-/* Half the conditioning slots become steady riding when the athlete has a
-   trainer. Half, not all: some impact work is worth keeping for bone and
-   tendon, and an athlete who chose the bike still gets variety. Deterministic
-   on the session pointer so it alternates rather than randomising. */
+/* Half the conditioning slots become steady riding — but only for an athlete
+   who has ASKED to ride. Owning a trainer used to be enough, which quietly made
+   the bike the programme's default cardio; the trouble with that is a bike is
+   the least portable thing in the house. Jumping jacks need a patch of floor
+   and travel to a hotel room or a friend's place, so they lead, and the ride is
+   what you switch to. Half the slots, not all: some impact work is worth
+   keeping for bone and tendon, and it stays deterministic on the session
+   pointer so it alternates rather than randomising. */
 function bikeSwap(exId,ptr,idx){
   try{
     if(!EX.bike)return exId;
     const gear=(STATE.profile&&STATE.profile.gear)||[];
     if(!gear.includes('bike'))return exId;
+    if(cardioMode()!=='bike')return exId;
     const ex=EX[exId];
     if(!ex||ex.region!=='cardio'||exId==='bike')return exId;
     // alternate on the session pointer AND the slot, so it is half the
@@ -2530,7 +2535,12 @@ function onboardHTML(){
       <div class="daypick" id="ob-days">${['M','T','W','T','F','S','S'].map((d,i)=>`<button data-d="${(i+1)%7}">${d}</button>`).join('')}</div>
       <div class="tiny muted" style="margin-top:7px">Five days is the floor — tap a day to make it a rest day, but keep at least five.</div></div>
     <div class="field"><label>Equipment you have <span class="tiny muted">· unlocks a Weights session</span></label>
-      <div class="daypick" id="ob-gear" style="flex-wrap:wrap">${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['battlerope','Battle rope'],['bench','Bench / chair'],['bike','Bike + trainer']].map(([k,l])=>`<button data-e="${k}"${mon(P.gear,k)}>${l}</button>`).join('')}</div></div>`)}
+      <div class="daypick" id="ob-gear" style="flex-wrap:wrap">${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['battlerope','Battle rope'],['bench','Bench / chair'],['bike','Bike + trainer']].map(([k,l])=>`<button data-e="${k}"${mon(P.gear,k)}>${l}</button>`).join('')}</div></div>
+    <div class="field"><label>Room to train in</label>
+      <div class="daypick" id="ob-space">
+        <button data-sp="full"${on(P.tightSpace?'tight':'full','full')}>Clear wall + space</button>
+        <button data-sp="tight"${on(P.tightSpace?'tight':'full','tight')}>🏠 Tight</button></div>
+      <div class="tiny muted" style="margin-top:8px">Handstand work needs a clear wall and about <b>6 ft / 2 m</b> of floor in front of it to walk up safely — and the travelling moves need a room you can cross. Most apartments have neither. Pick <b>Tight</b> and you get the hardest floor presses instead, which load the shoulder the same way. You can change this any time in Settings.</div></div>`)}
 
   ${step(6,'Health check',`
     <div class="note info" style="margin-top:0">Before anything else — this keeps day one safe. Tap anything that applies to you. If none do, leave them all off.</div>
@@ -2561,6 +2571,7 @@ function wireOnboard(){
   single('#ob-sex');single('#ob-goal');single('#ob-exp');single('#ob-act');single('#ob-unit');single('#ob-diet');single('#ob-meals');
   single('#ob-focus');single('#ob-cond');single('#ob-mob');single('#ob-timeline');
   multi('#ob-targets');multi('#ob-gear');multi('#ob-trouble');multi('#ob-inj');multi('#ob-parq');multi('#ob-alg');
+  single('#ob-space');
   // keep the goal blurb in sync with the chip the athlete just picked
   $$('#ob-goal button').forEach(b=>b.addEventListener('click',()=>{
     const n=$('#ob-goalnote');if(n)n.textContent=GOAL_NOTE[b.dataset.g]||'';}));
@@ -2675,6 +2686,7 @@ function obReadForm(){
   P.troubleZones=$$('#ob-trouble button.on').map(b=>b.dataset.z);
   P.limitations=$$('#ob-inj button.on').map(b=>b.dataset.j);
   P.gear=$$('#ob-gear button.on').map(b=>b.dataset.e);
+  {const sp=$('#ob-space button.on');if(sp)P.tightSpace=(sp.dataset.sp==='tight');}
   P.hasBar=P.gear.includes('bar'); P.hasBench=P.gear.includes('bench');   // back-compat
   const tl=parseInt(($('#ob-timeline button.on')||{dataset:{w:'0'}}).dataset.w)||0; P.timelineWeeks=tl>0?tl:null;
   // goal targets (stored: goalWeightLb in lb, goalWaist in cm — matches projection)
@@ -8018,6 +8030,63 @@ function bikeNeed(steps,k){
     kcal:Math.ceil(steps*kcalPerStep())};
 }
 const BIKE_UNITS=[['min','Minutes'],['dist','Distance'],['kcal','Calories']];
+
+/* ---- Making the step target up with jumping jacks -------------------------
+   The bike was the only way to pay a step debt, and a trainer is the least
+   portable thing an athlete owns. Jumping jacks need a patch of floor and no
+   equipment at all, which is what a hotel room and a friend's spare room
+   actually offer — so they are the DEFAULT, and the bike is the option you
+   switch to.
+
+   Same arithmetic as the bike so the two can never disagree: METs are net of
+   resting metabolism (a compendium figure with ~1.0 taken off) to match
+   stepKcal(), and steps/min is MET x 35. The compendium puts vigorous
+   calisthenics at 8.0 gross; every figure here is deliberately below the
+   straight conversion, for the same reason the bike's are — a movement that
+   over-credits itself quietly eats the deficit.
+
+   'Step jacks' earns its place twice over: it is the version that works when
+   there is somebody underneath you, and it is the version that works when a
+   knee or an ankle is flagged. */
+const JACK_LEVELS=[
+  {k:'step',label:'Step jacks',met:3.5,rpm:50,rpe:'RPE 3–4',impact:'low',
+   cue:'no jump — step one foot out at a time. Quiet enough for a hotel room, and the version to use on a sore knee'},
+  {k:'easy',label:'Easy',met:4.5,rpm:40,rpe:'RPE 4–5',impact:'high',
+   cue:'unhurried, soft landings, full sentences between breaths'},
+  {k:'steady',label:'Steady',met:6.0,rpm:55,rpe:'RPE 6–7',impact:'high',
+   cue:'a working rhythm you could hold for several minutes — the default'},
+  {k:'hard',label:'Hard',met:7.5,rpm:70,rpe:'RPE 8',impact:'high',
+   cue:'fast hands and feet, in bursts — you will want to stop before the clock does'},
+];
+function jackLevel(k){return JACK_LEVELS.find(b=>b.k===k)||JACK_LEVELS[2];}
+function jackStepsPerMin(k){return Math.round(jackLevel(k).met*35);}
+function jackKcalPerMin(k){return jackLevel(k).met*3.5*(latestWeightKg()||80)/200;}
+function jackRepsPerMin(k){return jackLevel(k).rpm;}
+function jackMinutesFor(steps,k){
+  const per=jackStepsPerMin(k);
+  return (per>0&&steps>0)?Math.ceil(steps/per):0;
+}
+/* Rounded UP in whichever unit it is quoted in, for the same reason as the
+   bike: a number the athlete is promised will close the gap has to close it. */
+function jackNeed(steps,k){
+  if(!(steps>0))return {min:0,reps:0,kcal:0};
+  const min=jackMinutesFor(steps,k);
+  return {min,
+    reps:Math.ceil(steps/jackStepsPerMin(k)*jackRepsPerMin(k)),
+    kcal:Math.ceil(steps*kcalPerStep())};   // energy is energy, whatever the pace
+}
+const JACK_UNITS=[['min','Minutes'],['reps','Reps'],['kcal','Calories']];
+function jackUnitLabel(u){return u==='min'?'min':(u==='reps'?'reps':'kcal');}
+/* Which currency the Movement card is working in. Jacks by default: they need
+   nothing, they travel, and the bike is a thing you have to be at home to use. */
+function cardioMode(){
+  try{const m=STATE.nutrition&&STATE.nutrition.cardioMode;return m==='bike'?'bike':'jacks';}
+  catch(e){return 'jacks';}
+}
+function setCardioMode(m){
+  const n=nut();n.cardioMode=(m==='bike')?'bike':'jacks';
+  save();renderFuel();haptic(8);
+}
 function bikeUnitLabel(u){return u==='min'?'min':(u==='dist'?distUnit():'kcal');}
 /* Fail-safe read. A day loaded from an old save, a hand-edited backup or an
    import has no movement fields at all, and a string where a number belongs
@@ -8027,7 +8096,56 @@ function movement(){
   const num=(v,cap)=>(typeof v==='number'&&isFinite(v)&&v>0)?Math.min(v,cap):0;
   const lvl=BIKE_LEVELS.some(b=>b.k===t.bikeLvl)?t.bikeLvl:'steady';
   const unit=BIKE_UNITS.some(u=>u[0]===t.bikeUnit)?t.bikeUnit:'min';
-  return {steps:Math.round(num(t.steps,100000)),val:num(t.bikeVal,100000),unit,lvl};
+  const jlvl=JACK_LEVELS.some(b=>b.k===t.jackLvl)?t.jackLvl:'steady';
+  const junit=JACK_UNITS.some(u=>u[0]===t.jackUnit)?t.jackUnit:'min';
+  return {steps:Math.round(num(t.steps,100000)),val:num(t.bikeVal,100000),unit,lvl,
+    jval:num(t.jackVal,100000),junit,jlvl};
+}
+/* The jack session in every currency at once, same shape as bikeRide(). */
+function jackMinutes(){
+  const m=movement();
+  if(!m.jval)return 0;
+  if(m.junit==='min')return Math.min(300,m.jval);
+  if(m.junit==='reps')return Math.min(300,m.jval/jackRepsPerMin(m.jlvl));
+  return Math.min(300,m.jval/jackKcalPerMin(m.jlvl));
+}
+function jackWork(){
+  const m=movement(),min=jackMinutes();
+  return {min:Math.round(min),
+    reps:Math.round(min*jackRepsPerMin(m.jlvl)),
+    kcal:Math.round(min*jackKcalPerMin(m.jlvl)),
+    steps:Math.round(min*jackStepsPerMin(m.jlvl))};
+}
+function setJackVal(v){
+  const t=nutToday();const m=movement();
+  const n=Math.max(0,+v||0);
+  const cap=m.junit==='min'?300:(m.junit==='reps'?9000:3000);
+  t.jackVal=Math.min(cap,Math.round(n*100)/100);
+  syncStepHabit();save();renderFuel();
+}
+function addJackVal(d){
+  const m=movement();
+  setJackVal(Math.max(0,Math.round((m.jval+d)*10)/10));
+  haptic(8);
+}
+function jackStep(u){return u==='min'?5:(u==='reps'?25:50);}
+/* Switching currency re-expresses the SAME work, exactly as the bike does —
+   30 minutes then tapping Reps must read ~1,650, not 30. */
+function setJackUnit(u){
+  if(!JACK_UNITS.some(x=>x[0]===u))return;
+  const t=nutToday();const m=movement();const min=jackMinutes();
+  t.jackUnit=u;
+  if(min>0){
+    t.jackVal=u==='min'?Math.round(min)
+      :(u==='reps'?Math.round(min*jackRepsPerMin(m.jlvl))
+                  :Math.round(min*jackKcalPerMin(m.jlvl)));
+  }
+  syncStepHabit();save();renderFuel();
+}
+function setJackLvl(k){
+  if(!JACK_LEVELS.some(b=>b.k===k))return;
+  const t=nutToday();t.jackLvl=k;
+  syncStepHabit();save();renderFuel();haptic(8);
 }
 /* Whatever was entered, in minutes — the one place the three currencies meet.
    Everything downstream reads this, so they can never disagree with each other. */
@@ -8046,8 +8164,9 @@ function bikeRide(){
     kcal:Math.round(min*bikeKcalPerMin(m.lvl)),
     steps:Math.round(min*bikeStepsPerMin(m.lvl))};
 }
-// What the day is worth in steps, walked and ridden together.
-function stepEquivalent(){return movement().steps+bikeRide().steps;}
+/* What the day is worth in steps: walked, jacked and ridden together. All
+   three are the same currency by construction, so they simply add. */
+function stepEquivalent(){return movement().steps+bikeRide().steps+jackWork().steps;}
 function setSteps(v){
   const t=nutToday();t.steps=Math.max(0,Math.min(100000,Math.round(+v||0)));
   syncStepHabit();save();renderFuel();
@@ -8136,38 +8255,59 @@ function syncStepHabit(){
    athlete who owns the trainer. */
 const RIDE_TARGET={n:2,min:35};
 function hasTrainer(){try{return ((STATE.profile&&STATE.profile.gear)||[]).includes('bike');}catch(e){return false;}}
+/* Counts a session whether it was ridden or jumped. It used to count rides
+   only, so an athlete doing the same work with jumping jacks — the portable
+   option, and now the default — saw a permanently empty progress bar for
+   conditioning he had actually done. */
 function ridesThisWeek(){
-  const n=nut();let rides=0,mins=0;
+  const n=nut();let rides=0,mins=0,jackMin=0,rideMin=0;
   for(let i=0;i<7;i++){
     const d=new Date();d.setDate(d.getDate()-i);
     const day=n.days&&n.days[localISO(d)];if(!day)continue;
+    let dayMin=0;
     const v=(typeof day.bikeVal==='number'&&isFinite(day.bikeVal)&&day.bikeVal>0)?day.bikeVal:0;
-    if(!v)continue;
-    const lvl=BIKE_LEVELS.some(b=>b.k===day.bikeLvl)?day.bikeLvl:'steady';
-    const u=BIKE_UNITS.some(x=>x[0]===day.bikeUnit)?day.bikeUnit:'min';
-    const m=(u==='min')?v:(u==='dist'?v/bikeKmPerMin(lvl):v/bikeKcalPerMin(lvl));
-    mins+=m;if(m>=RIDE_TARGET.min*0.7)rides++;
+    if(v){
+      const lvl=BIKE_LEVELS.some(b=>b.k===day.bikeLvl)?day.bikeLvl:'steady';
+      const u=BIKE_UNITS.some(x=>x[0]===day.bikeUnit)?day.bikeUnit:'min';
+      const m=(u==='min')?v:(u==='dist'?v/bikeKmPerMin(lvl):v/bikeKcalPerMin(lvl));
+      dayMin+=m;rideMin+=m;
+    }
+    const jv=(typeof day.jackVal==='number'&&isFinite(day.jackVal)&&day.jackVal>0)?day.jackVal:0;
+    if(jv){
+      const jl=JACK_LEVELS.some(b=>b.k===day.jackLvl)?day.jackLvl:'steady';
+      const ju=JACK_UNITS.some(x=>x[0]===day.jackUnit)?day.jackUnit:'min';
+      const m=(ju==='min')?jv:(ju==='reps'?jv/jackRepsPerMin(jl):jv/jackKcalPerMin(jl));
+      dayMin+=m;jackMin+=m;
+    }
+    if(!dayMin)continue;
+    mins+=dayMin;if(dayMin>=RIDE_TARGET.min*0.7)rides++;
   }
-  return {rides,mins:Math.round(mins)};
+  return {rides,mins:Math.round(mins),jackMin:Math.round(jackMin),rideMin:Math.round(rideMin)};
 }
 function rideTargetHTML(){
-  if(!hasTrainer())return '';
+  /* Shown to everyone now. The gate was hasTrainer(), which hid the whole
+     conditioning target from any athlete without a bike — the people with the
+     fewest options were the ones told nothing. */
   const r=ridesThisWeek();const done=Math.min(RIDE_TARGET.n,r.rides);
   const pct=Math.min(100,Math.round(r.mins/(RIDE_TARGET.n*RIDE_TARGET.min)*100));
-  return `<div class="section-label">Steady rides · <span style="color:${done>=RIDE_TARGET.n?'var(--green)':'var(--gold)'}">${done}/${RIDE_TARGET.n} this week</span></div>
+  const breakdown=(r.jackMin&&r.rideMin)?`${r.jackMin} jumping · ${r.rideMin} riding`
+    :(r.jackMin?'jumping jacks':(r.rideMin?'on the bike':''));
+  return `<div class="section-label">Easy conditioning · <span style="color:${done>=RIDE_TARGET.n?'var(--green)':'var(--gold)'}">${done}/${RIDE_TARGET.n} this week</span></div>
   <div class="card pad">
-    <div class="pbar" style="margin:2px 0 10px"><i style="width:${pct}%;background:linear-gradient(90deg,#4fc3f7,#0288d1)"></i></div>
+    <div class="pbar" style="margin:2px 0 10px"><i style="width:${pct}%;background:linear-gradient(90deg,#7ee08a,#2fa84f)"></i></div>
     <div class="row" style="justify-content:space-between;align-items:baseline">
-      <div><b>${r.mins} min ridden</b><div class="tiny muted">Target ${RIDE_TARGET.n} × ${RIDE_TARGET.min} min easy</div></div>
-      <span class="tiny muted">${Math.round(r.mins*bikeKcalPerMin('easy'))} kcal</span></div>
-    <div class="note info" style="margin:10px 0 0"><b>Easy means easy.</b> Full sentences, legs never burning. This is the volume that shifts body fat without taking anything out of your sessions — the intervals in your workouts are already doing the hard part.</div>
+      <div><b>${r.mins} min</b>${breakdown?` <span class="tiny muted">· ${_ve(breakdown)}</span>`:''}<div class="tiny muted">Target ${RIDE_TARGET.n} × ${RIDE_TARGET.min} min easy</div></div>
+      <span class="tiny muted">${Math.round(r.mins*jackKcalPerMin('easy'))} kcal</span></div>
+    <div class="note info" style="margin:10px 0 0"><b>Easy means easy.</b> Full sentences, nothing burning. This is the volume that shifts body fat without taking anything out of your sessions — the intervals in your workouts are already doing the hard part. Jumping jacks, a walk or the bike all count; pick whichever you will actually do today.</div>
   </div>`;
 }
 function movementHTML(){
-  const m=movement(),tgt=stepTarget(),eq=stepEquivalent(),ride=bikeRide();
+  const m=movement(),tgt=stepTarget(),eq=stepEquivalent(),ride=bikeRide(),work=jackWork();
   const short=Math.max(0,tgt-eq);
   const pct=Math.min(100,Math.round(eq/tgt*100));
   const lvl=bikeLevel(m.lvl);const need=bikeNeed(short,m.lvl);
+  const jlvl=jackLevel(m.jlvl);const jneed=jackNeed(short,m.jlvl);
+  const mode=cardioMode();
   const shownVal=m.unit==='dist'?Math.round(kmToShow(m.val)*10)/10:m.val;
   let h=`<div class="section-label">Movement · <span style="color:${eq>=tgt?'var(--green)':'var(--gold)'}">${eq.toLocaleString()} / ${tgt.toLocaleString()}</span></div><div class="card pad">
     <div class="pbar" style="margin:2px 0 12px"><i style="width:${pct}%;background:linear-gradient(90deg,#7ee08a,#2fa84f)"></i></div>
@@ -8175,12 +8315,36 @@ function movementHTML(){
       <input id="mv-steps" type="number" inputmode="numeric" min="0" value="${m.steps||''}" placeholder="0"
         onchange="setSteps(this.value)"></div>`;
   if(short>0){
-    h+=`<div class="note info" style="margin:0 0 10px"><b>${short.toLocaleString()} steps to go.</b>
-      ${lvl.label} on the trainer, that is <b>${need.min} min</b>, <b>${need.dist} ${distUnit()}</b>, or <b>${need.kcal} kcal</b> — whichever your bike shows you.</div>`;
-  }else if(ride.min){
-    h+=`<div class="note ok" style="margin:0 0 10px"><b>Target met.</b> The bike carried ${ride.steps.toLocaleString()} of it.</div>`;
+    h+= mode==='bike'
+      ? `<div class="note info" style="margin:0 0 10px"><b>${short.toLocaleString()} steps to go.</b>
+      ${lvl.label} on the trainer, that is <b>${need.min} min</b>, <b>${need.dist} ${distUnit()}</b>, or <b>${need.kcal} kcal</b> — whichever your bike shows you.</div>`
+      : `<div class="note info" style="margin:0 0 10px"><b>${short.toLocaleString()} steps to go.</b>
+      ${jlvl.label} jumping jacks, that is <b>${jneed.min} min</b>, <b>${jneed.reps.toLocaleString()} reps</b>, or <b>${jneed.kcal} kcal</b>. No kit, no wall, anywhere you can stand.</div>`;
+  }else if(work.min||ride.min){
+    const carried=work.steps+ride.steps;
+    const by=work.min&&ride.min?'Jacks and the bike':(work.min?'Jumping jacks':'The bike');
+    h+=`<div class="note ok" style="margin:0 0 10px"><b>Target met.</b> ${by} carried ${carried.toLocaleString()} of it.</div>`;
   }
-  h+=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">How hard you rode</div>
+  /* Jacks lead because they are the ones that travel. The bike is right here
+     next to them for the days he is at home and would rather ride. */
+  h+=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Make it up with</div>
+    <div class="daypick" style="margin:0 0 4px">
+      <button class="${mode==='jacks'?'on':''}" onclick="setCardioMode('jacks')">🤸 Jumping jacks</button>
+      <button class="${mode==='bike'?'on':''}" onclick="setCardioMode('bike')">🚴 Bike</button></div>
+    <div class="tiny muted" style="margin-bottom:12px">${mode==='jacks'
+      ? 'Nothing to set up and nothing to carry — a hotel room or a friend&#39;s spare floor is enough.'
+      : 'Lowest-impact option, and the easiest to hold a steady effort on. Needs the trainer.'}</div>`;
+  if(work.min&&mode==='bike')
+    h+=`<div class="tiny muted" style="margin:-6px 0 12px">Also logged today: <b>${work.reps.toLocaleString()} jacks</b> (${work.steps.toLocaleString()} steps). Both count.</div>`;
+  if(ride.min&&mode==='jacks')
+    h+=`<div class="tiny muted" style="margin:-6px 0 12px">Also logged today: <b>${ride.min} min</b> on the bike (${ride.steps.toLocaleString()} steps). Both count.</div>`;
+  h+= mode==='bike' ? bikeBlockHTML(m,short,need,lvl,ride,shownVal)
+                    : jackBlockHTML(m,short,jneed,jlvl,work);
+  h+=`</div>`;
+  return h;
+}
+function bikeBlockHTML(m,short,need,lvl,ride,shownVal){
+  let h=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">How hard you rode</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${BIKE_LEVELS.map(b=>
       `<button class="${m.lvl===b.k?'on':''}" onclick="setBikeLvl('${b.k}')">${b.label}</button>`).join('')}</div>
     <div class="tiny muted" style="margin-bottom:12px">${_ve(lvl.rpe)} · ${_ve(lvl.cue)} · <b>${bikeStepsPerMin(m.lvl)} steps</b>, <b>${r1(kmToShow(bikeKmPerMin(m.lvl)))} ${distUnit()}</b> and <b>${Math.round(bikeKcalPerMin(m.lvl))} kcal</b> a minute</div>
@@ -8205,7 +8369,39 @@ function movementHTML(){
   }
   h+=`<div class="note warn" style="margin-top:10px;margin-bottom:0"><b>On a trainer, trust the clock over the distance.</b> What a turbo puts on its screen depends on the trainer and where the resistance is set — the distance here is what that effort covers on the road. Time and calories are the honest inputs.</div>`;
   h+=`<div class="note warn" style="margin-bottom:0"><b>And the bike pays the calories, not everything else.</b> Walking loads the skeleton and breaks up sitting, which riding does not. Use the trainer for the days that got away from you, not as the plan.</div>`;
-  h+=`</div>`;
+  return h;
+}
+/* The portable half. Same three-currency shape as the ride, and the same
+   warning at the end, because jacks pay the calories without loading the
+   skeleton either. */
+function jackBlockHTML(m,short,jneed,jlvl,work){
+  let h=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">How hard you went</div>
+    <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${JACK_LEVELS.map(b=>
+      `<button class="${m.jlvl===b.k?'on':''}" onclick="setJackLvl('${b.k}')">${b.label}</button>`).join('')}</div>
+    <div class="tiny muted" style="margin-bottom:12px">${_ve(jlvl.rpe)} · ${_ve(jlvl.cue)} · <b>${jackStepsPerMin(m.jlvl)} steps</b>, <b>${jackRepsPerMin(m.jlvl)} reps</b> and <b>${Math.round(jackKcalPerMin(m.jlvl))} kcal</b> a minute</div>
+    <div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log it as</div>
+    <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${JACK_UNITS.map(([k,l])=>
+      `<button class="${m.junit===k?'on':''}" onclick="setJackUnit('${k}')">${l}</button>`).join('')}</div>
+    <div class="row" style="justify-content:space-between;align-items:flex-end;gap:10px">
+      <div class="field" style="flex:1;margin:0"><label>${_ve(m.junit==='min'?'Minutes':(m.junit==='reps'?'Reps':'Calories'))}</label>
+        <input id="mv-jack" type="number" inputmode="decimal" min="0" step="1" value="${m.jval||''}" placeholder="0" onchange="setJackVal(this.value)"></div>
+      <div class="btnrow" style="flex:0 0 auto;gap:8px">
+        <button class="btn sm ghost" onclick="addJackVal(-${jackStep(m.junit)})" style="width:44px">–${jackStep(m.junit)}</button>
+        <button class="btn sm primary" onclick="addJackVal(${jackStep(m.junit)})" style="width:44px">+${jackStep(m.junit)}</button></div></div>`;
+  if(work.min){
+    h+=`<div class="kv" style="padding:10px 2px 0;border-top:1px solid var(--line);margin-top:10px">
+      <span class="tiny muted">That is</span>
+      <b class="tiny">${work.min} min · ${work.reps.toLocaleString()} reps · ${work.kcal} kcal · ${work.steps.toLocaleString()} steps</b></div>`;
+  }
+  if(short>0&&m.steps){
+    const add=m.junit==='min'?jneed.min:(m.junit==='reps'?jneed.reps:jneed.kcal);
+    h+=`<button class="btn sm ghost" style="width:100%;margin-top:10px" onclick="addJackVal(${add})">Log the ${add.toLocaleString()} ${jackUnitLabel(m.junit)} that closes it</button>`;
+  }
+  h+=`<div class="note info" style="margin-top:10px;margin-bottom:0"><b>Break it up.</b> Nobody does forty minutes of jacks in one go, and you do not have to — four sets of ten minutes across the day count exactly the same. Set the timer, do a block, add it here.</div>`;
+  if(jlvl.impact==='high'){
+    h+=`<div class="note warn" style="margin-bottom:0"><b>Somebody underneath you?</b> <b>Step jacks</b> is the same movement without the jump — quieter, easier on the knees and ankles, and it still counts. It pays ${jackStepsPerMin('step')} steps a minute against ${jackStepsPerMin(m.jlvl)}.</div>`;
+  }
+  h+=`<div class="note warn" style="margin-bottom:0"><b>Jacks pay the calories, not everything else.</b> Walking loads the skeleton and breaks up sitting, which bouncing on the spot does not. Use these for the days that got away from you, not as the plan.</div>`;
   return h;
 }
 const HABITS=[
@@ -9899,7 +10095,7 @@ function renderGuide(){
         ${''}${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['battlerope','Battle rope'],['bench','Bench / chair']].map(([k,l])=>`<button class="${(STATE.profile.gear||[]).includes(k)?'on':''}" onclick="toggleGear('${k}')">${l}</button>`).join('')}
         <div style="margin-top:12px"></div>
         <button class="${STATE.profile.tightSpace?'on':''}" onclick="toggleTightSpace()">🏠 Tight space</button>
-        <div class="tiny muted" style="margin-top:8px">Tight space swaps out the handstand work and anything that travels across the room — you get the hardest floor presses instead, which load the shoulder the same way without needing a clear wall. Straight trade to know about: nothing on the floor fully replaces a handstand push-up, so the very top of the shoulder ladder is a step easier. Everything else is like for like.</div>
+        <div class="tiny muted" style="margin-top:8px">Handstand work needs a clear wall and about <b>6 ft / 2 m</b> of floor in front of it to walk up safely; the travelling moves need a room you can cross. Tight space swaps both out — you get the hardest floor presses instead, which load the shoulder the same way without needing a clear wall. Straight trade to know about: nothing on the floor fully replaces a handstand push-up, so the very top of the shoulder ladder is a step easier. Everything else is like for like.</div>
       </div></div>
     <div style="padding:8px 0 2px"><div class="tiny muted" style="margin-bottom:6px">Diet preference <span style="opacity:.7">· shapes meal plans</span></div>
       <div class="daypick" id="set-diet" style="flex-wrap:wrap">
@@ -10347,6 +10543,21 @@ function normalizeState(){
      index — resumeInfo() re-validates, but the field is dropped here so a
      non-object can never reach it in the first place. */
   if(STATE._plResume!=null&&(typeof STATE._plResume!=='object'||Array.isArray(STATE._plResume)))delete STATE._plResume;
+  /* Anything other than 'bike' means jacks — the portable default is also the
+     safe landing place for a corrupt value. */
+  if(STATE.nutrition&&STATE.nutrition.cardioMode!=='bike'&&STATE.nutrition.cardioMode!=null)
+    STATE.nutrition.cardioMode='jacks';
+  /* The jack fields are read through movement(), which already coerces, but a
+     string here would survive into a backup and out again. */
+  try{
+    const _d=(STATE.nutrition&&STATE.nutrition.days)||{};
+    Object.keys(_d).forEach(k=>{
+      const day=_d[k];if(!day||typeof day!=='object')return;
+      if(day.jackVal!=null&&(typeof day.jackVal!=='number'||!isFinite(day.jackVal)||day.jackVal<0))delete day.jackVal;
+      if(day.jackLvl!=null&&!JACK_LEVELS.some(b=>b.k===day.jackLvl))delete day.jackLvl;
+      if(day.jackUnit!=null&&!JACK_UNITS.some(u=>u[0]===day.jackUnit))delete day.jackUnit;
+    });
+  }catch(e){}
   if(!Array.isArray(STATE.photos))STATE.photos=[];
   if(!STATE.achievements||typeof STATE.achievements!=='object')STATE.achievements={};
   if(STATE.settings.reminderOn===undefined)STATE.settings.reminderOn=false;
@@ -10487,6 +10698,26 @@ function validateData(){
   });
   if(Math.abs(kcalPerStep()-stepKcal(1000)/1000)>0.0002)
     errs.push('kcalPerStep() has drifted from stepKcal()');
+  /* Same contract as the bike: harder must pay more, and every currency quoted
+     against a 10,000-step debt has to actually cover it. */
+  JACK_LEVELS.forEach((b,i)=>{
+    if(!(b.met>0))errs.push('JACK_LEVELS.'+b.k+' has no MET value');
+    if(!(b.rpm>0))errs.push('JACK_LEVELS.'+b.k+' has no reps-per-minute');
+    if(i&&b.met<=JACK_LEVELS[i-1].met)
+      errs.push('JACK_LEVELS.'+b.k+' is listed harder than '+JACK_LEVELS[i-1].k+' but pays no more');
+    const mins=jackMinutesFor(10000,b.k);
+    if(!(mins>0)||mins*jackStepsPerMin(b.k)<10000)
+      errs.push('JACK_LEVELS.'+b.k+': '+mins+' min does not actually cover 10,000 steps');
+    const jn=jackNeed(10000,b.k);
+    if(jn.reps/jackRepsPerMin(b.k)*jackStepsPerMin(b.k)<10000)
+      errs.push('JACK_LEVELS.'+b.k+': '+jn.reps+' reps falls short of 10,000 steps');
+    if(jn.kcal<10000*kcalPerStep())
+      errs.push('JACK_LEVELS.'+b.k+': '+jn.kcal+' kcal falls short of 10,000 steps');
+  });
+  /* Step jacks exist to be the quiet, joint-friendly option — if they ever stop
+     being the lowest-impact rung the copy pointing athletes at them is a lie. */
+  if(JACK_LEVELS[0].k!=='step'||JACK_LEVELS[0].impact!=='low')
+    errs.push('JACK_LEVELS: the low-impact option is no longer first');
     // ---- the Reference tables ------------------------------------------------
   // A tapped food writes straight into the day's macro totals, and every figure
   // the tab shows is computed off these rows, so a bad row is both wrong on

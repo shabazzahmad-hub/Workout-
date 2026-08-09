@@ -211,7 +211,7 @@ export default async function run() {
   const log = await page.evaluate(() => {
     const o = {}, T = nutToday();
     delete T.steps; delete T.bikeVal; delete T.bikeUnit; delete T.bikeLvl; T.habits = {};
-    o.emptyReadsZero = JSON.stringify(movement()) === JSON.stringify({ steps: 0, val: 0, unit: 'min', lvl: 'steady' });
+    o.emptyReadsZero = JSON.stringify(movement()) === JSON.stringify({ steps: 0, val: 0, unit: 'min', lvl: 'steady', jval: 0, junit: 'min', jlvl: 'steady' });
     o.emptyEquivZero = stepEquivalent() === 0 && bikeMinutes() === 0;
     setSteps(4200);
     o.steps = movement().steps;
@@ -335,6 +335,10 @@ export default async function run() {
   const card = await page.evaluate(() => {
     const T = nutToday();
     delete T.steps; delete T.bikeVal; delete T.bikeUnit; delete T.bikeLvl; T.habits = {};
+    /* The card now opens on jumping jacks, because they are the option that
+       travels. Everything below this line is about the RIDE, so switch to it
+       explicitly rather than relying on it being what you get by default. */
+    nut().cardioMode = 'bike';
     setSteps(3000); setBikeLvl('steady'); setBikeUnit('min'); setBikeVal(10);
     const v = () => document.querySelector('#v-fuel');
     const need = bikeNeed(stepTarget() - stepEquivalent(), 'steady');
