@@ -196,6 +196,108 @@ export default async function run() {
     t.eq('a full ten-second countdown is eleven tones, no doubles', r.total, 11, r);
   }
 
+  /* ============ how loud, and what ducks the music ======================= */
+  {
+    const r = await page.evaluate(async () => {
+      if (window.__realBeep) beep = window.__realBeep;
+      STATE.settings.sound = true;
+      const out = {};
+      // default, and the clamp
+      delete STATE.settings.cueVol;
+      out.def = cueVolPref();
+      STATE.settings.cueVol = 99; out.high = cueVolPref();
+      STATE.settings.cueVol = -5; out.low = cueVolPref();
+      /* cueVolPref() guards on its own, so asserting its OUTPUT cannot see the
+         normalizeState repair at all — that mutation survived. What the repair
+         is for is getting the junk out of STATE, so it cannot persist into a
+         backup or be read raw. Assert on the field. */
+      STATE.settings.cueVol = 'loud'; normalizeState();
+      out.repaired = cueVolPref();
+      out.junkRemoved = !('cueVol' in STATE.settings);
+      STATE.settings.cueVol = NaN; normalizeState();
+      out.nanRemoved = !('cueVol' in STATE.settings);
+      STATE.settings.cueVol = 0.8; normalizeState();
+      out.validKept = STATE.settings.cueVol === 0.8;
+
+      /* Watch the gain actually written to the graph, not the argument we
+         passed in — the multiplier and the clip guard both live inside beep(). */
+      const AC = window.AudioContext || window.webkitAudioContext;
+      const origGain = AC.prototype.createGain;
+      let gains = [];
+      AC.prototype.createGain = function () {
+        const g = origGain.apply(this, arguments);
+        const sv = g.gain.setValueAtTime.bind(g.gain);
+        g.gain.setValueAtTime = (v, tm) => { gains.push(v); return sv(v, tm); };
+        return g;
+      };
+      const measure = (vol, cue) => {
+        STATE.settings.cueVol = cue; gains = [];
+        beep(900, .1, vol);
+        return gains[0];
+      };
+      out.atOne = measure(0.7, 1);
+      out.atDefault = measure(0.7, 1.25);
+      out.scales = out.atDefault > out.atOne;
+      out.capped = measure(0.95, 2);          // 1.9 raw → must clip to 1.0
+      AC.prototype.createGain = origGain;
+      delete STATE.settings.cueVol;
+      return out;
+    });
+    t.eq('the default is louder than the old fixed level', r.def, 1.25);
+    t.eq('the setting is clamped at the top', r.high, 2);
+    t.eq('and at the bottom', r.low, 0.2);
+    t.eq('a corrupt value falls back to the default', r.repaired, 1.25);
+    t.ok('and is stripped from STATE, not just ignored', r.junkRemoved, r);
+    t.ok('NaN is stripped too', r.nanRemoved, r);
+    t.ok('but a valid setting survives normalisation', r.validKept, r);
+    t.ok('the multiplier reaches the audio graph', r.scales, r);
+    t.ok('and gain never exceeds unity, which would clip', r.capped <= 1.0 + 1e-9, r);
+    t.ok('the capped value is actually at the ceiling', Math.abs(r.capped - 1.0) < 1e-9, r);
+  }
+
+  /* ---- the music must get out of the way of the cues that matter -------- */
+  {
+    const r = await page.evaluate(async () => {
+      if (window.__realBeep) beep = window.__realBeep;
+      STATE.settings.sound = true;
+      const realDuck = beatDuck, realBeat = window.BEAT;
+      let ducks = 0;
+      BEAT = { on: true };
+      beatDuck = () => { ducks++; };
+      const count = fn => { ducks = 0; fn(); return ducks; };
+      const out = {
+        marker: count(() => countdownCue(10, 60)),
+        tick: count(() => countdownCue(7, 60)),
+        lastThree: count(() => countdownCue(2, 60)),
+        go: count(() => beepGo()),
+      };
+      beatDuck = realDuck; BEAT = realBeat;
+      return out;
+    });
+    t.ok('the ten-second marker ducks the beat', r.marker > 0, r);
+    t.ok('the last three seconds duck the beat', r.lastThree > 0, r);
+    t.ok('and so does GO', r.go > 0, r);
+    t.eq('but a soft tick does not, or the music would pump every second', r.tick, 0, r);
+  }
+
+  /* ---- and it is adjustable without editing the app --------------------- */
+  {
+    const r = await page.evaluate(async () => {
+      STATE.settings.beat = true;
+      go('guide'); render();
+      await new Promise(z => setTimeout(z, 150));
+      const v = document.querySelector('#v-guide');
+      const slider = [...v.querySelectorAll('input[type=range]')]
+        .find(i => (i.getAttribute('onchange') || '').includes('setCueVol'));
+      return { present: !!slider, min: slider && slider.min, max: slider && slider.max,
+        labelled: /Beep .*volume/i.test(v.textContent) };
+    });
+    t.ok('Settings exposes a cue-volume slider', r.present, r);
+    t.ok('and it is labelled', r.labelled, r);
+    t.eq('it can go quieter than default', r.min, '0.2');
+    t.eq('and louder', r.max, '2');
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
