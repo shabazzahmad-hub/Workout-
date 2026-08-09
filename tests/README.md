@@ -27,7 +27,7 @@ not publish unless they pass.
 | `04-journey.test.mjs` | The wizard, the 8-test baseline, the four Today panes, the guided player, every button on every tab |
 | `05-state.test.mjs` | Hostile saves, upgrades from older builds, idempotence, and the everyday flows that write to storage |
 | `06-reference.test.mjs` | The Reference tab: costing an arbitrary amount, the seven days scaled onto a live target, the derived shopping list, and both write paths into the food log |
-| `07-movement.test.mjs` | Trading bike minutes for steps: the conversion in both directions, hostile input, and the tick agreeing with the number |
+| `07-movement.test.mjs` | Trading a ride for steps in three currencies, in both unit systems, plus hostile input and the tick agreeing with the number |
 
 ## Why the checks are shaped the way they are
 
@@ -112,3 +112,11 @@ read, so removing the clamp in `setSteps()` changed nothing any behavioural chec
 could see. The clamp on the way in still matters — it is what `exportData()`
 ships and what the history repair has to cope with — so there are now checks
 that read the stored value directly, not just the accessor.
+
+**Check the physics before you trust your own expectation.** A check asserting
+that "10 km is 10 km at any intensity" failed, and the model was right: covering
+the same distance faster costs *more* energy, because the resistance and the
+drag are what made it faster. Only calories are genuinely intensity-free, and
+that is not a special case — the MET cancels between steps-per-minute and
+kcal-per-minute. The checks now assert each currency's actual behaviour, which
+is the thing worth pinning down.
