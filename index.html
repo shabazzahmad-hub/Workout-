@@ -1469,7 +1469,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='201';
+const APP_VERSION='202';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1493,7 +1493,7 @@ const DEFAULT_STATE=()=>({
   photos:[],                // progress photos: {id,date,pose} (image bytes live in IndexedDB)
   achievements:{},          // unlocked milestone badges: {id:date}
   restDays:{},              // logged rest days: {date:true}
-  settings:{sound:true,vibrate:true,voice:true,voiceName:'',voicePitch:0.6,voiceRate:0.98,repTempo:3,hype:true,coach:'auto',beat:true,beatVol:0.55,theme:'mint',
+  settings:{sound:true,vibrate:true,voice:true,voiceName:'',voiceTone:'mid',voiceRate:0.98,repTempo:3,hype:true,coach:'auto',beat:true,beatVol:0.55,theme:'mint',
     neuralOn:false,azureKey:'',azureRegion:'eastus'},   // premium online neural voices (Azure) — off until a key is entered
 });
 let STATE=DEFAULT_STATE();
@@ -4839,8 +4839,9 @@ function neuralSSML(text,cfg){
   let inner=_xmlEsc(text);
   // Only emit prosody attributes that are actually set — a filler like pitch="0st"
   // or rate="0%" is an invalid value and makes Azure reject the whole SSML (0x80045003).
-  if(cfg.rate||cfg.pitch){
-    const a=[];if(cfg.rate)a.push(`rate="${cfg.rate}"`);if(cfg.pitch)a.push(`pitch="${cfg.pitch}"`);
+  const _pitch=neuralPitchFor(cfg.pitch);
+  if(cfg.rate||_pitch){
+    const a=[];if(cfg.rate)a.push(`rate="${cfg.rate}"`);if(_pitch)a.push(`pitch="${_pitch}"`);
     inner=`<prosody ${a.join(' ')}>${inner}</prosody>`;
   }
   if(cfg.style&&NEURAL_STYLE_VOICES.has(cfg.v)){inner=`<mstts:express-as style="${cfg.style}" styledegree="${cfg.deg||'1.5'}">${inner}</mstts:express-as>`;}
@@ -4981,10 +4982,10 @@ function _deviceSpeak(text,p){
     // Speak in the active coach's own voice + pitch/rate so briefs, cues and the
     // countdown match whoever is coaching — unless the user has forced a voice or
     // manually tuned pitch/rate in Settings.
-    const manualV=!!STATE.settings.voiceName, manualP=(typeof STATE.settings.voicePitch==='number'),
+    const manualV=!!STATE.settings.voiceName,
           manualR=(typeof STATE.settings.voiceRate==='number');
     u.rate=manualR?STATE.settings.voiceRate:((p&&p.rate)||0.98);
-    u.pitch=manualP?STATE.settings.voicePitch:((p&&p.pitch!=null)?p.pitch:0.6); // lower = deeper
+    u.pitch=localPitchFor(p);   // tone preset + this persona's own character
     const v=(p&&!manualV)?coachVoiceFor(p):COACH_V;
     if(v)u.voice=v;
     duckFor(u);synth.speak(u);return true;
@@ -5146,7 +5147,7 @@ function _briefDeviceSpeak(text,resolve,gen){
     const u=new SpeechSynthesisUtterance(String(text||''));
     u.lang='en-US';u.volume=1;
     u.rate=(typeof STATE.settings.voiceRate==='number')?STATE.settings.voiceRate:ADVISOR.rate;
-    u.pitch=(typeof STATE.settings.voicePitch==='number')?STATE.settings.voicePitch:ADVISOR.pitch;
+    u.pitch=localPitchFor(ADVISOR);
     const v=STATE.settings.voiceName?COACH_VOICES.find(x=>x.name===STATE.settings.voiceName):coachVoiceFor(ADVISOR);
     if(v)u.voice=v;
     let done=false;const fin=()=>{if(done)return;done=true;try{beatDuck(false);}catch(e){}resolve();};
@@ -5382,6 +5383,60 @@ function testNeural(){
       setMsg(hint+'.  ›  Azure said: '+m.slice(0,180),false);
       try{console.warn('neural test failed:',m);}catch(e){}
       _deviceSpeak("Premium voice unavailable. Using device voice.",p);});
+}
+/* ---- Voice tone ----------------------------------------------------------
+   Every coach spoke at pitch 0.6 regardless of persona, because DEFAULT_STATE
+   shipped voicePitch:0.6 — which made the "has the user manually tuned pitch?"
+   test true for everybody, so the per-persona pitches were dead code. 0.6 is
+   also far enough below a Web Speech voice's natural range that many Android
+   voices go buzzy and synthetic there: the deeper it was pushed, the more
+   robotic it got.
+
+   Tone is a BASE the personas move around, not an absolute value. A drill
+   sergeant should still read deeper than a coach; what changes is where the
+   whole set sits. The persona's own pitch is kept as a character offset from
+   the old 0.6 baseline, halved so it colours the voice without dragging it
+   back into the artifact zone. */
+const VOICE_TONES=[
+  ['deep','Deep','Lowest the voices go without buzzing',0.74,-2],
+  ['mid','Mid','Natural range — most voices sound best here',0.98,0],
+  ['bright','Bright','Lighter and clearer, cuts through noise',1.18,2],
+];
+function voiceToneKey(){
+  const k=STATE.settings&&STATE.settings.voiceTone;
+  return VOICE_TONES.some(t=>t[0]===k)?k:'mid';
+}
+function voiceTone(){const k=voiceToneKey();return VOICE_TONES.find(t=>t[0]===k);}
+function setVoiceTone(k){
+  if(!VOICE_TONES.some(t=>t[0]===k))return;
+  STATE.settings.voiceTone=k;
+  /* A tone choice supersedes any hand-set slider value — otherwise the manual
+     number keeps winning and the buttons appear to do nothing. */
+  delete STATE.settings.voicePitch;
+  save();haptic(8);
+  try{renderGuide();}catch(e){}
+  try{sampleVoice();}catch(e){}
+}
+/* The pitch handed to Web Speech for a given persona. */
+function localPitchFor(p){
+  try{
+    if(typeof STATE.settings.voicePitch==='number'&&isFinite(STATE.settings.voicePitch))
+      return clamp(STATE.settings.voicePitch,0.3,1.6);       // explicit fine-tune wins
+    const base=voiceTone()[3];
+    const own=(p&&typeof p.pitch==='number'&&isFinite(p.pitch))?p.pitch:0.6;
+    return clamp(base+(own-0.6)*0.5,0.5,1.6);
+  }catch(e){return 0.98;}
+}
+/* The same shift for the neural path, in semitones, so switching engines does
+   not change what "Deep" means. */
+function neuralPitchFor(cfgPitch){
+  try{
+    const st=voiceTone()[4];
+    const m=/(-?\d+(?:\.\d+)?)\s*st/.exec(cfgPitch||'');
+    const base=m?parseFloat(m[1]):0;
+    const v=Math.round(clamp(base+st,-8,8)*10)/10;
+    return v?((v>0?'+':'')+v+'st'):null;   // "0st" is invalid SSML — omit it
+  }catch(e){return cfgPitch||null;}
 }
 function setCoachPitch(v){STATE.settings.voicePitch=Math.max(0,Math.min(2,parseFloat(v)||0.6));save();}
 function setCoachRate(v){STATE.settings.voiceRate=Math.max(.5,Math.min(1.5,parseFloat(v)||0.98));save();}
@@ -5694,7 +5749,7 @@ function _hypeDeviceSpeak(text,persona){
     const synth=speechSynthesis;synth.cancel();
     const u=new SpeechSynthesisUtterance(String(text||''));
     u.lang='en-US';u.volume=1;
-    u.rate=persona.rate||1;u.pitch=(persona.pitch!=null)?persona.pitch:0.5;
+    u.rate=persona.rate||1;u.pitch=localPitchFor(persona);
     const v=coachVoiceFor(persona);if(v)u.voice=v;
     duckFor(u);synth.speak(u);return true;
   }catch(e){return false;}
@@ -10522,9 +10577,17 @@ function renderGuide(){
       <div class="tiny muted" style="margin-top:6px;opacity:.8">Get a free key: portal.azure.com → create a <b>Speech</b> resource (F0 free tier) → Keys and Endpoint → copy Key 1 + <b>Location/Region</b> (must match the Region field above, e.g. eastus).</div>
     </div>`:''}
     <div style="padding:8px 0 2px">
-      <div class="row" style="justify-content:space-between"><span class="tiny muted">Depth <span style="opacity:.7">(lower = deeper)</span></span><span class="tiny muted" id="pvLbl">${(typeof STATE.settings.voicePitch==='number'?STATE.settings.voicePitch:0.6).toFixed(2)}</span></div>
-      <input type="range" min="0.3" max="1.2" step="0.05" value="${typeof STATE.settings.voicePitch==='number'?STATE.settings.voicePitch:0.6}" oninput="$('#pvLbl').textContent=(+this.value).toFixed(2)" onchange="setCoachPitch(this.value);sampleVoice()" style="width:100%">
+      <div class="tiny muted" style="margin-bottom:6px">Voice tone</div>
+      <div class="daypick" id="voiceTone" style="flex-wrap:wrap">${VOICE_TONES.map(([k,label])=>
+        `<button class="${voiceToneKey()===k?'on':''}" onclick="setVoiceTone('${k}')">${label}</button>`).join('')}</div>
+      <div class="tiny muted" style="margin-top:6px">${_ve(voiceTone()[2])}. Plays a sample when you pick one. Each coach keeps their own character — this moves the whole set up or down.</div>
+      ${typeof STATE.settings.voicePitch==='number'?`<div class="tiny muted" style="margin-top:6px">Fine-tuned to <b>${STATE.settings.voicePitch.toFixed(2)}</b>, which overrides the tone. Pick a tone above to go back to automatic.</div>`:''}
     </div>
+    <details style="padding:4px 0 2px"><summary class="tiny muted" style="cursor:pointer">Fine-tune depth by hand</summary>
+      <div class="row" style="justify-content:space-between;margin-top:6px"><span class="tiny muted">Depth <span style="opacity:.7">(lower = deeper)</span></span><span class="tiny muted" id="pvLbl">${(typeof STATE.settings.voicePitch==='number'?STATE.settings.voicePitch:localPitchFor(null)).toFixed(2)}</span></div>
+      <input type="range" min="0.5" max="1.5" step="0.05" value="${typeof STATE.settings.voicePitch==='number'?STATE.settings.voicePitch:localPitchFor(null)}" oninput="$('#pvLbl').textContent=(+this.value).toFixed(2)" onchange="setCoachPitch(this.value);sampleVoice()" style="width:100%">
+      <div class="tiny muted" style="margin-top:4px">Below about 0.5 most phone voices start to buzz rather than sound deep.</div>
+    </details>
     <div style="padding:8px 0 2px">
       <div class="row" style="justify-content:space-between"><span class="tiny muted">Speed</span><span class="tiny muted" id="rvLbl">${(typeof STATE.settings.voiceRate==='number'?STATE.settings.voiceRate:0.98).toFixed(2)}×</span></div>
       <input type="range" min="0.7" max="1.3" step="0.05" value="${typeof STATE.settings.voiceRate==='number'?STATE.settings.voiceRate:0.98}" oninput="$('#rvLbl').textContent=(+this.value).toFixed(2)+'×'" onchange="setCoachRate(this.value);sampleVoice()" style="width:100%">
@@ -11099,6 +11162,21 @@ function normalizeState(){
   try{
     const _s=STATE.settings;
     if(_s&&_s.cueVol!=null&&(typeof _s.cueVol!=='number'||!isFinite(_s.cueVol)))delete _s.cueVol;
+  }catch(e){}
+  /* Everyone alive today has voicePitch:0.6 stored — it was in DEFAULT_STATE —
+     and that value is exactly what made every coach speak at the same robotic
+     depth. Clear it ONCE so the tone presets take over. A pitch the athlete
+     actually chose is any other number, and is left alone. */
+  try{
+    const _s=STATE.settings;
+    if(_s){
+      if(_s.voiceTone!=null&&!VOICE_TONES.some(t=>t[0]===_s.voiceTone))delete _s.voiceTone;
+      if(_s.voicePitch!=null&&(typeof _s.voicePitch!=='number'||!isFinite(_s.voicePitch)))delete _s.voicePitch;
+      if(!_s._toneFix){
+        if(_s.voicePitch===0.6)delete _s.voicePitch;
+        _s._toneFix=true;
+      }
+    }
   }catch(e){}
   if(!Array.isArray(STATE.pain))STATE.pain=[];
   STATE.pain=STATE.pain.filter(x=>x&&typeof x==='object'&&typeof x.exId==='string');
