@@ -124,6 +124,13 @@ Known traps when writing checks:
   `activating`. Wait for the state, not the promise.
 - `history.back()` is async; `closeSheet()` leaves a queued navigation that can
   revert `location.hash` after a reload.
+- **Do not test a repair through a getter that guards itself.** This has now
+  bitten twice: `parqDone()` and `cueVolPref()` both sanitise their own reads,
+  so asserting on their OUTPUT passes whether or not `normalizeState()` still
+  repairs the field. Assert that the junk is gone from `STATE`. The same shape
+  applies to any value transformed on the way out — check the gain written to
+  the audio graph, not the `vol` argument handed to `beep()`, because the
+  multiplier and the clip guard both live inside it.
 
 ## The exercise engine
 
@@ -206,6 +213,35 @@ All of it routes through `beep()`, which returns early when
 `settings.sound` is off. Any new timed surface calls `countdownCue` rather
 than growing its own beeps — four surfaces had already drifted into four
 copies of the same three-beep line before this was centralised.
+
+### Being heard is mostly not about gain
+
+"Make the beeps louder" was three problems, and the smallest of them was
+volume:
+
+1. **The beat was never ducked for a beep.** `beatDuck()` had existed for ages
+   and was used by coach speech, the briefing and neural audio — but not by
+   cues, so a 0.13s square wave competed with music at full level. Turning a
+   blip up fights the beat; ducking the beat ends the fight. `beepDuck(ms)`
+   does it and auto-releases.
+2. **They were too short.** A very brief sound reads as quieter than it is, so
+   durations went up with the gains.
+3. **The right level depends on the room**, not on the app.
+
+**Only the cues that must land duck the music** — the ten-second marker, the
+last three seconds, GO, and the HIIT work start. The one-second ticks
+deliberately do not: ducking every second pumps the beat audibly and is worse
+than the problem. If you add a cue, decide which of those two lists it is in.
+
+`settings.cueVol` is a single multiplier applied inside `beep()`, so it covers
+every tone in the app and the balance between a soft tick and the GO tone
+survives someone turning it all up. Default 1.25, clamped 0.2–2, with a slider
+in Settings. **Do not raise the per-call volumes to make things louder** —
+that is what the multiplier is for, and forty edited call sites is how the
+balance gets lost.
+
+Gain into `destination` is capped at **1.0**. A single oscillator driven past
+unity clips, which sounds broken rather than loud.
 
 ## The service worker
 
