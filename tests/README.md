@@ -28,6 +28,7 @@ not publish unless they pass.
 | `05-state.test.mjs` | Hostile saves, upgrades from older builds, idempotence, and the everyday flows that write to storage |
 | `06-reference.test.mjs` | The Reference tab: costing an arbitrary amount, the seven days scaled onto a live target, the derived shopping list, and both write paths into the food log |
 | `07-movement.test.mjs` | Trading a ride for steps in three currencies, in both unit systems, plus hostile input and the tick agreeing with the number |
+| `08-clock.test.mjs` | The session clock: the time budget, pause staying free and honest at every phase, the nudges, and what reaches the log |
 
 ## Why the checks are shaped the way they are
 
@@ -120,3 +121,18 @@ drag are what made it faster. Only calories are genuinely intensity-free, and
 that is not a special case — the MET cancels between steps-per-minute and
 kcal-per-minute. The checks now assert each currency's actual behaviour, which
 is the thing worth pinning down.
+
+**Faking time is fast, and it cannot see the app not setting the clock.** Every
+check in `08-clock` moves `PLAYER.t0` and `PLAYER.pauseAt` by hand, which keeps
+the file under three seconds. But because the checks set `pauseAt` themselves,
+deleting the line in `playerToggle()` that *starts* the pause left the whole
+block green — the tests were supplying the very state they were meant to be
+verifying. There is now one check that pauses, waits 1.6 s on the real clock,
+and asserts nothing moved. It costs the suite two seconds and it is the only
+one that proves the promise end to end.
+
+**Moving `t0` back is not the same as time passing.** The first attempt at that
+un-faked check moved `t0` while paused, which models the session having started
+earlier — not two minutes elapsing during the pause. Both the total and the
+paused figure have to grow together, or the assertion is about a scenario that
+cannot happen.
