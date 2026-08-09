@@ -70,6 +70,19 @@ Live-session scratch (`_undo`, `_plResume`) is listed in `TRANSIENT_KEYS` and
 stripped on export **and** on import — a backup describes the athlete, not a
 half-finished tap, and old backups already carry these fields.
 
+**A default in `DEFAULT_STATE` can permanently satisfy an "has the user
+overridden this?" test, killing the code it guards.** `settings.voicePitch`
+shipped as `0.6` and the override test was `typeof === 'number'` — true for
+every athlete, forever — so the per-persona voice pitches were dead code and
+every coach spoke in the same voice for months. Nothing threw and nothing
+looked wrong in the diff. If a field means "the athlete changed this", its
+default must be **absent**, not a value.
+
+That also means **changing a default fixes nobody who already installed the
+app** — their old value is already saved. A stale default needs a one-time
+migration keyed to the exact value, behind a flag, leaving any other value
+alone as a deliberate choice. See `_toneFix`.
+
 **Escape every user-controlled string that reaches `innerHTML`** with `_ve()`
 — `profile.name`, `baseline.level`, food names, favourite names. `importData()`
 accepts arbitrary JSON, so these are a real injection path, not self-XSS.
@@ -128,9 +141,11 @@ Known traps when writing checks:
   bitten twice: `parqDone()` and `cueVolPref()` both sanitise their own reads,
   so asserting on their OUTPUT passes whether or not `normalizeState()` still
   repairs the field. Assert that the junk is gone from `STATE`. The same shape
-  applies to any value transformed on the way out — check the gain written to
-  the audio graph, not the `vol` argument handed to `beep()`, because the
-  multiplier and the clip guard both live inside it.
+  applies to any value transformed on the way out: check the gain written to
+  the audio graph rather than the `vol` argument handed to `beep()`, and read
+  the `pitch` attribute in the SSML that is actually sent rather than asserting
+  the SSML "builds". Three separate mutations have survived a check that
+  measured the input or the container instead of the payload.
 
 ## The exercise engine
 
@@ -242,6 +257,24 @@ balance gets lost.
 
 Gain into `destination` is capped at **1.0**. A single oscillator driven past
 unity clips, which sounds broken rather than loud.
+
+### Voice tone
+
+`VOICE_TONES` is Deep / Mid / Bright, and it sets a **base the personas move
+around** — not an absolute pitch. Each persona's own `pitch` is kept as a
+character offset from the historical 0.6 baseline, halved, so a drill sergeant
+still reads deeper than a coach while the whole cast shifts together. Setting
+one absolute value for everybody is what the old code effectively did, and it
+made every coach the same person.
+
+Everything clamps to **0.5–1.6**: below about 0.5 a Web Speech voice buzzes
+rather than sounding deep, which is what "robotic" meant. Deeper is not the
+same as better, and past a point it is strictly worse.
+
+The neural path takes the same shift in semitones (`neuralPitchFor`) so
+switching engines does not change what "Deep" means. **A shift that lands on
+neutral must omit the `pitch` attribute** — `pitch="0st"` is invalid SSML and
+Azure rejects the whole request (0x80045003).
 
 ## The service worker
 
