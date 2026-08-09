@@ -166,7 +166,12 @@
   .pl-bg:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,9,11,.65),var(--bg) 74%)}
   .pl-head{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;padding:calc(14px + env(safe-area-inset-top)) 16px 6px}
   .pl-x{width:36px;height:36px;border-radius:12px;background:var(--card2);border:1px solid var(--line);color:var(--ink);font-size:15px;display:grid;place-items:center}
-  .pl-count{font-size:12px;font-weight:800;letter-spacing:1px;color:var(--muted)}
+  .pl-clock{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.02em;
+  background:rgba(0,0,0,.42);padding:5px 10px;border-radius:999px;backdrop-filter:blur(4px)}
+.pl-clock.paused{opacity:.55}
+.pl-clock .pl-budget{font-size:11px;font-weight:700;color:var(--muted)}
+.pl-pausedbar{text-align:center;font-size:11px;font-weight:800;letter-spacing:.12em;color:var(--gold);min-height:14px}
+.pl-count{font-size:12px;font-weight:800;letter-spacing:1px;color:var(--muted)}
   .pl-segs{position:relative;z-index:2;display:flex;gap:5px;padding:8px 16px 0}
   .pl-seg{flex:1;height:5px;border-radius:3px;background:var(--card2)}
   .pl-seg.done{background:var(--fire)}
@@ -1414,7 +1419,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='188';
+const APP_VERSION='189';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -2842,9 +2847,18 @@ function finishSession(){
       <button class="btn ghost" onclick="commitSession('hard')">🥵 Brutal — hold the load</button>
     </div>`);
 }
+/* Set by the player on the finish screen. commitSession() is a step later and
+   PLAYER may already be gone by then, so the figures are handed over rather
+   than read back. */
+let _lastSessionClock=null;
 function commitSession(feel){
   const p=STATE.progressPtr;const pos=posOf(p);const log=ensureLog();
   log.done=true;log.feel=feel;log.completedAt=todayISO();
+  if(_lastSessionClock){
+    log.durSec=_lastSessionClock.wall;log.pausedSec=_lastSessionClock.paused;
+    log.workSec=_lastSessionClock.work;log.budgetMin=_lastSessionClock.budget;
+    _lastSessionClock=null;
+  }
   /* Snapshot what was actually prescribed TODAY. History readers used to rebuild
      old sessions from CURRENT settings, so flagging an injury or logging a low
      readiness rewrote every past session — lifetime rep/minute totals shrank
@@ -2878,6 +2892,95 @@ function plCur(){return PLAYER.items[PLAYER.i];}
 function plS(sel,txt){const e=$(sel);if(e)e.textContent=txt;}
 function plRingSet(frac){const r=$('#plRing');if(r)r.style.strokeDashoffset=PL_C*(1-Math.max(0,Math.min(1,frac)));}
 function plClear(){if(PLAYER&&PLAYER.tid){clearInterval(PLAYER.tid);PLAYER.tid=null;}}
+/* ---- The session clock --------------------------------------------------
+   PLAYER.elapsed counts only the seconds the app was actively timing a set. It
+   is a useful number and it is NOT how long you were in the gym — the finish
+   screen used to label it "Time", which flattered every session that had a
+   ten-minute phone break in the middle of it.
+
+   This is a wall clock: it starts when the player opens and stops only while
+   paused. Pause stays available at every phase and is never rationed, because
+   a real interruption should not be punished — but the paused total is kept
+   and shown, so the cost of it is visible rather than absorbed.
+
+   The clock runs on its own interval. Tying it to the phase timers would have
+   stopped it during the gaps between them, which is precisely the time this
+   exists to catch. */
+let _plClock=null;
+function plClockStart(){
+  plClockStop();
+  _plClock=setInterval(plClockTick,1000);
+}
+function plClockStop(){if(_plClock){clearInterval(_plClock);_plClock=null;}}
+// Seconds spent paused, including a pause still in progress.
+function plPausedSec(){
+  if(!PLAYER)return 0;
+  const live=PLAYER.pauseAt?(Date.now()-PLAYER.pauseAt):0;
+  return Math.floor(((PLAYER.pausedMs||0)+live)/1000);
+}
+// Wall-clock seconds in the session, not counting time paused.
+function plWallSec(){
+  if(!PLAYER||!PLAYER.t0)return 0;
+  return Math.max(0,Math.floor((Date.now()-PLAYER.t0)/1000)-plPausedSec());
+}
+/* The budget is computed off the item list rather than the session, so a
+   weights or bonus session — which has no sess.main — gets one too. Same shape
+   as sessionVolume(): time under tension, plus the rest it prescribes, plus
+   three minutes for getting into position. */
+function plBudgetMin(items,tempo){
+  const list=Array.isArray(items)?items:[];
+  const t=Math.max(1.5,Math.min(6,tempo||3));
+  /* Coerced, because an item is not always well formed: a legacy log, an
+     imported backup or a hand-built bonus session can arrive without sets or a
+     target, and one NaN anywhere makes the whole budget NaN — which then reads
+     as "NaN" in the header and turns every comparison against it false, so the
+     clock silently stops holding anyone to anything. */
+  const n=v=>(typeof v==='number'&&isFinite(v)&&v>0)?v:0;
+  let secs=0;
+  list.forEach(m=>{
+    if(!m)return;
+    const sets=n(m.sets)||1,target=n(m.target);
+    secs+=(m.unit==='time'?sets*target:sets*target*t)+sets*(n(m.rest)||45);
+  });
+  return Math.max(5,Math.round(secs/60)+3);
+}
+function plClockTick(){
+  if(!PLAYER)return;
+  const el=$('#plClock');
+  if(el){
+    const w=plWallSec(),budget=(PLAYER.budget||0)*60;
+    const ratio=budget?w/budget:0;
+    const col=ratio>1.35?'var(--red,#ff6b6b)':(ratio>1?'var(--gold)':'var(--ink)');
+    el.innerHTML=`<b style="color:${col}">${fmtTime(w)}</b><span class="pl-budget"> / ~${PLAYER.budget}m</span>`;
+    el.classList.toggle('paused',!!PLAYER.pauseAt);
+  }
+  const pz=$('#plPaused');
+  if(pz)pz.textContent=PLAYER.pauseAt?('PAUSED '+fmtTime(plPausedSec())):'';
+  plNudge();
+}
+/* Two nudges, both quiet and neither blocking. The point is that a session
+   drifting to twice its length is something you get told about while there is
+   still time to do something, not something you discover afterwards. */
+function plNudge(){
+  if(!PLAYER)return;
+  const now=Date.now();
+  if(PLAYER.pauseAt){
+    const paused=plPausedSec();
+    if(paused>=180&&now-(PLAYER.lastPauseNudge||0)>120000){
+      PLAYER.lastPauseNudge=now;
+      beep(700,.12,0.5);haptic(15);
+      toast('Paused '+fmtTime(paused)+' — still there?');
+    }
+    return;
+  }
+  const budget=(PLAYER.budget||0)*60;
+  if(budget&&plWallSec()>budget&&!PLAYER.overNudged){
+    PLAYER.overNudged=true;
+    beep(700,.12,0.5);haptic(15);
+    toast("You're past the "+PLAYER.budget+" min this session should take");
+    coachSpeak('Past the clock. Tighten the rests.');
+  }
+}
 function plSegsHTML(){return PLAYER.items.map((m,idx)=>`<div class="pl-seg ${idx<PLAYER.i?'done':(idx===PLAYER.i?'cur':'')}"></div>`).join('');}
 function plRingHTML(color){return `
   <div class="pl-ring"><div class="pl-pulse" id="plPulse"></div>
@@ -2993,11 +3096,14 @@ function openPlayer(opts){
   // clear any interval still owned by a previous start — reassigning the global
   // would orphan it, and orphans keep mutating the CURRENT session (clock runs 2x).
   plClear();
+  const _tempo=Math.max(1.5,Math.min(6,(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3));
   PLAYER={sess,items,i:0,s:0,phase:null,running:true,tid:null,remain:0,total:0,repN:0,elapsed:0,setsDone:0,pendingNext:false,free,
-    tempo:Math.max(1.5,Math.min(6,(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3))};
+    tempo:_tempo,
+    t0:Date.now(),pausedMs:0,pauseAt:null,budget:plBudgetMin(items,_tempo),overNudged:false,lastPauseNudge:0};
   $('#player').classList.add('open');document.body.style.overflow='hidden';
   try{history.pushState({cf:'player'},'');}catch(e){}
   primeVoice();precacheSession(items);beatStart();
+  plClockStart();
   plEnterReady(true);
 }
 /* ===== WEIGHTS SESSION (equipment track) ===== */
@@ -3039,7 +3145,10 @@ function plChrome(){
   $('#player').innerHTML=`
     <div class="pl-bg"${bg?` style="background-image:url('${bg}')"`:''}></div>
     <div class="pl-head"><button class="pl-x" onclick="playerQuit()" aria-label="Quit">✕</button>
-      <div class="pl-count">${PLAYER.i+1} / ${PLAYER.items.length}</div>${coachAvatarHTML(36,'box-shadow:0 2px 8px rgba(0,0,0,.5)')}</div>
+      <div class="pl-count">${PLAYER.i+1} / ${PLAYER.items.length}</div>
+      <div class="pl-clock" id="plClock"><b>${fmtTime(plWallSec())}</b><span class="pl-budget"> / ~${PLAYER.budget}m</span></div>
+      ${coachAvatarHTML(36,'box-shadow:0 2px 8px rgba(0,0,0,.5)')}</div>
+    <div class="pl-pausedbar" id="plPaused">${PLAYER.pauseAt?('PAUSED '+fmtTime(plPausedSec())):''}</div>
     <div class="pl-segs">${plSegsHTML()}</div>
     <div class="pl-body" id="plBody"></div>`;
 }
@@ -3194,15 +3303,26 @@ function plTickRest(){
 }
 function plRestDone(){plClear();if(PLAYER.pendingNext){PLAYER.pendingNext=false;PLAYER.i++;PLAYER.s=0;}plEnterReady(false);}
 function plEnterDone(){
-  plClear();beatStop();PLAYER.phase='done';
+  plClear();plClockStop();beatStop();PLAYER.phase='done';
+  // freeze the clock at the moment of finishing, so the numbers on this screen
+  // do not keep climbing while the athlete reads them
+  PLAYER.wall=plWallSec();PLAYER.paused=plPausedSec();
   const sess=PLAYER.sess;const wk=(sess.cycle*WEEKS_PER_CYCLE)+sess.week;
   const label=PLAYER.free?sess.session.name:(sess.session.name+' · Week '+wk);
+  const over=PLAYER.wall-PLAYER.budget*60;
+  const overCol=over>PLAYER.budget*60*0.35?'var(--red,#ff6b6b)':(over>0?'var(--gold)':'var(--green)');
   const stats=`<div class="grid3" style="width:100%;max-width:440px">
-      <div class="stat"><div class="n" style="color:var(--fire-l)">${fmtTime(PLAYER.elapsed||1)}</div><div class="l">Time</div></div>
+      <div class="stat"><div class="n" style="color:${overCol}">${fmtTime(PLAYER.wall||1)}</div><div class="l">On the clock</div></div>
       <div class="stat"><div class="n" style="color:var(--teal)">${PLAYER.setsDone}</div><div class="l">Sets</div></div>
       <div class="stat"><div class="n" style="color:var(--green)">${PLAYER.items.length}</div><div class="l">Moves</div></div>
-    </div>`;
-  _share={t:PLAYER.free?sess.session.name:'Session Complete',s:label,l:['Time '+fmtTime(PLAYER.elapsed||1),PLAYER.setsDone+' sets · '+PLAYER.items.length+' moves']};
+    </div>
+    <div class="tiny muted" style="max-width:440px;margin-top:8px;text-align:center">
+      ${fmtTime(PLAYER.elapsed||0)} of that was working${PLAYER.paused?(' · '+fmtTime(PLAYER.paused)+' paused'):''} ·
+      <b style="color:${overCol}">${over>0?fmtTime(over)+' over':(over<0?fmtTime(-over)+' under':'bang on')}</b> the ~${PLAYER.budget} min this one should take</div>`;
+  _share={t:PLAYER.free?sess.session.name:'Session Complete',s:label,
+    l:[fmtTime(PLAYER.wall||1)+' on the clock',PLAYER.setsDone+' sets · '+PLAYER.items.length+' moves']};
+  // hand the figures to commitSession(), which is what actually writes the log
+  _lastSessionClock={wall:PLAYER.wall,paused:PLAYER.paused,work:PLAYER.elapsed||0,budget:PLAYER.budget};
   if(PLAYER.free){
     // Bonus/weights session — no program commit, just a close button.
     $('#plBody').innerHTML=`
@@ -3229,6 +3349,12 @@ function plEnterDone(){
 function playerToggle(){
   if(!PLAYER)return;
   PLAYER.running=!PLAYER.running;
+  /* Pause stops the wall clock as well as the phase timer, so an interruption
+     is never held against the session — but the time is banked and shown, so
+     it is not invisible either. */
+  if(!PLAYER.running){PLAYER.pauseAt=Date.now();}
+  else if(PLAYER.pauseAt){PLAYER.pausedMs=(PLAYER.pausedMs||0)+(Date.now()-PLAYER.pauseAt);PLAYER.pauseAt=null;PLAYER.lastPauseNudge=0;}
+  plClockTick();
   const t=$('#plToggle');if(t)t.textContent=PLAYER.running?'Pause':'Resume';
   const pulse=$('#plPulse');
   if(!PLAYER.running){plClear();if(pulse)pulse.classList.remove('on');return;}
@@ -3244,7 +3370,7 @@ function playerSkip(){
 function playerSetDone(){if(PLAYER&&(PLAYER.phase==='work'||PLAYER.phase==='ready')){plClear();plAfterSet();}}
 function playerAddRest(){if(PLAYER&&PLAYER.phase==='rest'){PLAYER.remain+=15;PLAYER.total+=15;plS('#plNum',fmtTime(PLAYER.remain));toast('+15s rest');}}
 function playerSkipRest(){if(PLAYER&&PLAYER.phase==='rest')plRestDone();}
-function playerTeardown(){if(!PLAYER)return;wakeOff();plClear();beatStop();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;
+function playerTeardown(){if(!PLAYER)return;wakeOff();plClear();plClockStop();beatStop();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;
   setTimeout(()=>{try{if(!$('#player').classList.contains('open'))$('#player').innerHTML='';}catch(e){}},400);
   // Any teardown of the player = the user bailed (natural finish goes through playerFeel, which advances instead) → end the guided day.
   if(typeof dayflowActive==='function'&&dayflowActive())dayflowCancel(true);
@@ -3253,7 +3379,7 @@ function playerQuit(){const had=!!PLAYER;playerTeardown();if(had&&history.state&
 function playerFeel(feel){
   if(!PLAYER)return;   // double-tap must not commit twice
   wakeOff();   // finishing normally is the COMMON exit — it must release the lock too
-  plClear();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;tapShield(400);
+  plClear();plClockStop();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;tapShield(400);
   if(history.state&&history.state.cf==='player'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
   commitSession(feel);
   if(dayflowActive())dayflowAdvance('workout');   // guided day: hand off to the cool-down
