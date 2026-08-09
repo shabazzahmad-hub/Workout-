@@ -1469,7 +1469,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='196';
+const APP_VERSION='197';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -10114,12 +10114,16 @@ function renderGuide(){
   h+=`<div class="section-label">About</div><div class="card pad">
     <div class="row" style="justify-content:space-between;padding:2px 0"><span>App version</span><span style="font-weight:800">v${APP_VERSION}</span></div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span class="sm muted">Offline cache</span><span id="swVer" class="sm muted">checking…</span></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span class="sm muted">Offline pack</span><span id="packStat" class="sm muted">checking…</span></div>
+    <div class="pbar" id="packBar" style="margin:2px 0 0;display:none"><i style="width:0%"></i></div>
+    <div class="tiny muted" id="packNote" style="margin-top:6px">Exercise photos download quietly in the background, a few at a time, so the app is usable straight away instead of waiting on the lot. Anything you open before it finishes is saved as you view it.</div>
     <button class="btn ghost sm" style="width:100%;margin-top:6px" onclick="forceUpdate()">🔄 Check for update</button>
     <div class="tiny muted" style="margin-top:6px">If the version here doesn't match the latest, tap Check for update — it re-fetches the app and reloads. On the installed app, fully closing and reopening it also picks up new versions.</div>
   </div>`;
   h+=`<div class="center tiny muted" style="margin:20px 0">CoreForge v${APP_VERSION} · built for a strong midsection<br>${STATE.profile.name?'Athlete: '+_ve(STATE.profile.name)+' · ':''}saved ${STATE._saved||todayISO()}</div>`;
   v.innerHTML=h;
   refreshCacheVer();
+  refreshPackStat();
 }
 /* Read the live service-worker cache version so the user can compare it against
    APP_VERSION — if they differ, the worker is stale and a refresh is needed. */
@@ -10132,6 +10136,59 @@ function renderGuide(){
    service worker and every cache and reload once.
 
    Guarded by a session flag so it can never loop, and silent when offline. */
+/* Progress for the tiered precache. The worker pushes an update after every
+   batch; this asks for a figure on render too, because a worker that finished
+   before this tab opened will never push anything. */
+let _packSeen=null;
+function packRender(d){
+  if(!d)return;
+  _packSeen=d;
+  const st=document.getElementById('packStat');
+  const bar=document.getElementById('packBar');
+  const note=document.getElementById('packNote');
+  if(!st)return;
+  const total=+d.total||0,done=Math.min(+d.done||0,total);
+  const pct=total?Math.round(done/total*100):0;
+  if(d.phase==='skipped-savedata'){
+    st.textContent='paused · Data Saver';
+    if(bar)bar.style.display='none';
+    if(note)note.innerHTML='Data Saver is on, so the photos are not being downloaded in bulk. Everything still works — each image is saved the first time you look at it. <button class="btn sm ghost" style="width:100%;margin-top:8px" onclick="packForce()">Download them anyway</button>';
+    return;
+  }
+  if(d.phase==='error'){st.textContent='interrupted';if(bar)bar.style.display='none';return;}
+  st.textContent = (total&&done>=total) ? 'complete ✓' : pct+'% · '+done+'/'+total;
+  if(bar){
+    bar.style.display=(total&&done>=total)?'none':'';
+    const i=bar.querySelector('i');if(i)i.style.width=pct+'%';
+  }
+}
+function refreshPackStat(){
+  try{
+    if(!navigator.serviceWorker||!navigator.serviceWorker.controller){
+      const st=document.getElementById('packStat');
+      if(st)st.textContent='not installed';
+      const bar=document.getElementById('packBar');if(bar)bar.style.display='none';
+      return;
+    }
+    if(_packSeen)packRender(_packSeen);
+    navigator.serviceWorker.controller.postMessage({type:'cf-precache-status'});
+  }catch(e){}
+}
+function packForce(){
+  try{
+    if(navigator.serviceWorker&&navigator.serviceWorker.controller)
+      navigator.serviceWorker.controller.postMessage({type:'cf-topup',force:true});
+    toast('Downloading the rest in the background');
+  }catch(e){}
+}
+try{
+  if(navigator.serviceWorker){
+    navigator.serviceWorker.addEventListener('message',ev=>{
+      const d=ev.data||{};
+      if(d.type==='cf-precache'){_packSeen=d;if(TAB==='guide')packRender(d);}
+    });
+  }
+}catch(e){}
 async function selfUpdate(){
   if(_sessionLive())return;   // a reload here dumps the athlete out mid-set
   try{
@@ -10836,6 +10893,14 @@ async function boot(){
   // service worker
   if('serviceWorker'in navigator){try{navigator.serviceWorker.register('sw.js').then(reg=>{
     reg.addEventListener('updatefound',()=>{const nw=reg.installing;if(!nw)return;nw.addEventListener('statechange',()=>{if(nw.state==='installed'&&navigator.serviceWorker.controller){try{showUpdateToast();}catch(e){}}});});
+    /* Ask the worker to carry on filling the offline pack. The install only
+       takes the shell now, so the exercise photos arrive in the background —
+       and the worker only stays alive to do it while a page is holding it, so
+       this ping is what actually drives it. Sent on every load, so a pack left
+       half-finished picks up where it stopped. */
+    navigator.serviceWorker.ready.then(()=>{
+      try{if(navigator.serviceWorker.controller)navigator.serviceWorker.controller.postMessage({type:'cf-topup'});}catch(e){}
+    }).catch(()=>{});
   });}catch(e){}}
 }
 function hideSplash(){const s=document.getElementById('splash');if(!s||s.classList.contains('hide'))return;s.classList.add('hide');setTimeout(()=>{try{s.remove();}catch(e){}},600);}
