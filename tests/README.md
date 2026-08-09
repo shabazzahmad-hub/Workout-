@@ -29,6 +29,7 @@ not publish unless they pass.
 | `06-reference.test.mjs` | The Reference tab: costing an arbitrary amount, the seven days scaled onto a live target, the derived shopping list, and both write paths into the food log |
 | `07-movement.test.mjs` | Trading a ride for steps in three currencies, in both unit systems, plus hostile input and the tick agreeing with the number |
 | `08-clock.test.mjs` | The session clock: the time budget, pause staying free and honest at every phase, the nudges, and what reaches the log |
+| `09-audit.test.mjs` | The v190 audit fixes — asserted under the specific timezone, unit system and training schedule each defect needed to appear |
 
 ## Why the checks are shaped the way they are
 
@@ -136,3 +137,19 @@ un-faked check moved `t0` while paused, which models the session having started
 earlier — not two minutes elapsing during the pause. Both the total and the
 paused figure have to grow together, or the assertion is about a scenario that
 cannot happen.
+
+**Some defects only exist under conditions the reviewer does not share.** The
+five-reviewer audit that produced `09-audit` found bugs that were invisible in
+the default test context and perfectly visible one setting away: the readiness
+deload worked in UTC and failed west of it after 6pm; the waist-pace verdict
+was correct in centimetres and wrong in inches; the comeback ease was fine at
+five sessions a week and pinned a two-day-a-week athlete permanently. So this
+file deliberately drives a real `America/Denver` browser context with a fixed
+clock, flips `profile.unit`, and varies `profile.days` — rather than asserting
+everything against one comfortable default.
+
+**Absence needs a check too.** Several findings were things that never
+happened: a nudge that could not fire, a button two toasts promised that did
+not exist, photo bytes missing from a backup the error boundary tells you to
+take. Nothing throws for any of those, so only an assertion that the thing IS
+there will catch its removal.

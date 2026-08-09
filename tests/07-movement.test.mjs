@@ -354,7 +354,11 @@ export default async function run() {
       quotesCalories: v().innerHTML.includes(need.kcal + ' kcal'),
       showsRideThreeWays: /That ride is/.test(v().innerHTML),
       warnsTrainerDistance: /trust the clock over the distance/i.test(v().innerHTML),
-      namesTheSafestInput: /Calories is the one to trust/.test(v().innerHTML),
+      /* This used to assert copy that said calories was "the one to trust". It
+         was wrong: a turbo console reports GROSS calories and this field is net,
+         so trusting it over-credits ~15%. The check now pins the corrected
+         guidance instead — the wrongness was in the app, not in the check. */
+      warnsConsoleRunsHigh: /knock ~15% off it/.test(v().innerHTML),
       saysItIsNotEverything: /loads the skeleton/.test(v().innerHTML),
       noNaN: !/NaN|undefined/.test(v().innerHTML),
     };
@@ -384,7 +388,7 @@ export default async function run() {
   t.ok('and in calories', card.quotesCalories, card);
   t.ok('the logged ride is shown in all three at once', card.showsRideThreeWays, card);
   t.ok('it says a turbo\'s distance readout is not a measurement', card.warnsTrainerDistance, card);
-  t.ok('and which entry is safest if the effort chip is a guess', card.namesTheSafestInput, card);
+  t.ok('it warns that a turbo\'s calorie readout runs high against a net field', card.warnsConsoleRunsHigh, card);
   t.ok('it says plainly that the bike does not replace walking entirely', card.saysItIsNotEverything, card);
   t.ok('nothing renders as NaN', card.noNaN, card);
   t.ok('it offers to log the ride that closes the gap', card.hasCloseButton, card);

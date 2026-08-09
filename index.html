@@ -1419,14 +1419,14 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='189';
+const APP_VERSION='190';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
   version:1,
   onboarded:false,
-  profile:{name:'', days:[0,1,2,3,4,5,6], unit:'cm', startWaist:null, goalWaist:null, createdAt:todayISO(),
-    sex:null, age:null, heightCm:null, experience:'Intermediate', activity:1.45, goal:'lose',
+  profile:{name:'', days:[1,2,4,5,6], unit:'cm', startWaist:null, goalWaist:null, createdAt:todayISO(),
+    sex:null, age:null, heightCm:null, experience:'Beginner', activity:1.45, goal:'lose',
     targets:['abs','full'], gear:[], limitations:[],   // deep-profile fields — gear starts EMPTY; pre-ticking it told the app you owned kit you don't
     focusPrimary:'abs', troubleZones:[], conditioning:'moderate', mobility:'ok', timelineWeeks:null},   // comprehensive-quiz fields
   baseline:null,            // {date,results:{},coreScore,level,maxes:{}}
@@ -1545,10 +1545,18 @@ function levelOf(cycle){
   else return (STATE.profile&&STATE.profile.experience)||'Intermediate';
   // ...but let the athlete's own experience answer nudge it one tier, so changing
   // it in the quiz actually does something instead of being silently ignored.
+  /* DOWNWARD ONLY. The line above says the measured level wins and the quiz
+     answer is a claim — and then this used to let the claim win by a tier in
+     either direction. Since `experience` was pre-selected as 'Intermediate' in
+     the wizard, an athlete the test measured as Beginner was promoted by a
+     radio button nobody touched: LEVEL_FACTOR 0.8 -> 1.0 (+25% on every
+     unanchored target) and rungIndex starting at 1, which skips the true-novice
+     rung of every ladder. Saying "I'm a beginner" may still ease the program;
+     saying "I'm advanced" no longer overrides what you actually tested. */
   const want=STATE.profile&&STATE.profile.experience;
   if(want&&LEVEL_TIER[want]!=null){
     const base=LEVEL_TIER[lv]||0;
-    lv=LEVEL_NAME[clamp(base+clamp(LEVEL_TIER[want]-base,-1,1),0,2)];
+    lv=LEVEL_NAME[clamp(base+clamp(LEVEL_TIER[want]-base,-1,0),0,2)];
   }
   return lv;
 }
@@ -2361,7 +2369,7 @@ function onboardHTML(){
   ${step(5,'Schedule &amp; equipment',`
     <div class="field"><label>Training days per week</label>
       <div class="daypick" id="ob-days">${['M','T','W','T','F','S','S'].map((d,i)=>`<button data-d="${(i+1)%7}">${d}</button>`).join('')}</div>
-      <div class="tiny muted" style="margin-top:7px">Tap any day to make it a rest day.</div></div>
+      <div class="tiny muted" style="margin-top:7px">Five days is the floor — tap a day to make it a rest day, but keep at least five.</div></div>
     <div class="field"><label>Equipment you have <span class="tiny muted">· unlocks a Weights session</span></label>
       <div class="daypick" id="ob-gear" style="flex-wrap:wrap">${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['battlerope','Battle rope'],['bench','Bench / chair']].map(([k,l])=>`<button data-e="${k}"${mon(P.gear,k)}>${l}</button>`).join('')}</div></div>`)}
 
@@ -2852,6 +2860,8 @@ function finishSession(){
    than read back. */
 let _lastSessionClock=null;
 function commitSession(feel){
+  // finishedHTML() guards the view, but nothing guarded the mutation itself
+  if(STATE.progressPtr>=SESSIONS_PER_CYCLE*TOTAL_CYCLES)return;
   const p=STATE.progressPtr;const pos=posOf(p);const log=ensureLog();
   log.done=true;log.feel=feel;log.completedAt=todayISO();
   if(_lastSessionClock){
@@ -3441,8 +3451,12 @@ function actStats(k){
   const week=l.filter(x=>wk.includes(x.date));
   return {n:l.length,total:Math.round(l.reduce((a,x)=>a+(x.mins||0),0)),
     week:Math.round(week.reduce((a,x)=>a+(x.mins||0),0)),
-    // dist is canonical km; legacy rows tagged 'mi' were stored raw in miles
-    dist:Math.round(l.reduce((a,x)=>a+((x.dist||0)*((x.unit==='mi'&&!x._km)?1.60934:1)),0)*10)/10,
+    /* dist is canonical km for every row saveRuck() has ever written — it
+       converts on the way in and tags `unit` only to record what was TYPED.
+       The legacy repair keyed off `_km`, which is written nowhere in this file,
+       so it fired on every imperial row and converted an already-canonical
+       value a second time: a 3-mile ruck displayed as 4.8 mi. */
+    dist:Math.round(l.reduce((a,x)=>a+(x.dist||0),0)*10)/10,
     best:l.reduce((m,x)=>Math.max(m,x.secs||0),0),last:l[0]||null};
 }
 function removeAct(k,i){const l=actLog(k);if(l[i]){l.splice(i,1);save();openAct(k);}}
@@ -3982,7 +3996,12 @@ function assessNav(dir){
 }
 /* Re-testing re-measures the athlete, so the within-block adapt multiplier returns
    to neutral — otherwise the same adaptation is counted twice. */
-function rebaseAdapt(){STATE.adapt=1;}
+/* Per-exercise ratings have to rebase with the global multiplier. exAdapt was
+   written by rateExercise() and cleared nowhere in the file, so a movement
+   rated "too easy" a few times sat 25% above its anchored prescription across
+   every subsequent re-test — re-testing already measures that improvement, so
+   keeping the multiplier counted the same gain twice, all year. */
+function rebaseAdapt(){STATE.adapt=1;STATE.exAdapt={};}
 function finishAssessment(){
   const a=computeAssessment(assessState.results);
   const rec={date:todayISO(),results:assessState.results,score:a.score,level:a.level,maxes:a.maxes,testCount:TESTS.length};
@@ -4017,7 +4036,13 @@ function finishAssessment(){
 function scoreDeltaHTML(a){
   const hist=STATE.scoreHistory;
   if(hist.length<2)return '';
-  const prev=hist[hist.length-2].score;const d=a.score-prev;
+  /* scoreTrendHTML() already refuses to compare across the v178 5->8 test
+     change; this screen did not, so the re-test results — the highest-stakes
+     moment in the program — greeted a stronger athlete with a red drop. */
+  const pr=hist[hist.length-2];
+  if((pr.testCount||5)!==TESTS.length)
+    return `<div class="note info" style="text-align:center">Scoring changed since your last test (${pr.testCount||5} tests, now ${TESTS.length}) — this score starts a fresh comparison.</div>`;
+  const prev=pr.score;const d=a.score-prev;
   if(d===0)return '';
   return `<div class="note ${d>0?'fire':'warn'}" style="text-align:center">${d>0?'▲ +'+d:'▼ '+d} points vs last test${d>0?' — your core is getting stronger 💪':''}</div>`;
 }
@@ -5537,6 +5562,16 @@ function renderProgress(){
     ${weightChartHTML()}
     ${bmiLineHTML()}
   </div>`;
+  h+=measureListHTML();
+  /* skipBaseline() and skipReassess() both toast "retest any time from
+     Progress". Until now that button did not exist anywhere in the app, and
+     openAssessment() was reachable only from the two Today gates — so a test
+     taken while ill scaled six weeks of training with no way to correct it. */
+  h+=`<div class="section-label">Strength test</div><div class="card pad">
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <div style="min-width:0"><b>${STATE.baseline?(STATE.baseline.estimated?'Estimated, never tested':(latestTestDate()?('Last tested '+_ve(latestTestDate())):'Tested — date not recorded')):'Not tested yet'}</b>
+        <div class="tiny muted" style="margin-top:2px">Every target for the block is scaled off this. Tested tired? Do it again — the newest result wins.</div></div>
+      <button class="btn sm primary" style="flex:0 0 auto" onclick="retestNow()">Re-test</button></div></div>`;
   // consistency heatmap
   h+=`<div class="section-label">Consistency</div>`;
   h+=`<div class="card pad">
@@ -5623,11 +5658,19 @@ function setWaistGoal(){
 function gBump(d){const inp=$('#g-waist');inp.value=Math.max(0,((+inp.value||(+inp.placeholder||0))+d)).toFixed(1);}
 function saveWaistGoal(){const g=parseFloat($('#g-waist').value);if(!(g>0)){toast('Enter a goal');return;}STATE.profile.goalWaist=r1(waistToCm(g));save();closeSheet();toast('Goal set 🎯');renderProgress();}
 function mBump(f,d){const id=f==='w'?'#m-waist':'#m-weight';const inp=$(id);inp.value=Math.max(0,((+inp.value||(+inp.placeholder||0))+d)).toFixed(1);}
+/* The wizard already clamps these; the two other writers did not, so a
+   fat-fingered "1900" for weight set a 13,300 kcal target and an 825 g protein
+   goal, and a "380" waist flattened both trend charts for the life of the
+   install — permanently, because no measurement row could ever be deleted. */
+function plausibleKg(kg){return kg>=25&&kg<=350;}
+function plausibleWaistCm(cm){return cm>=40&&cm<=250;}
 function saveMeasure(){
   const wIn=parseFloat($('#m-waist').value);const bIn=parseFloat($('#m-weight').value);
   if(!(wIn>0)&&!(bIn>0)){toast('Enter at least one value');return;}
   // normalise to the canonical store (cm / kg) before anything touches STATE
   const w=wIn>0?r1(waistToCm(wIn)):0, b=bIn>0?r1(weightToKg(bIn)):0;
+  if(w>0&&!plausibleWaistCm(w)){toast('Waist looks off — expected '+(isImperial()?'16–98 in':'40–250 cm'));return;}
+  if(b>0&&!plausibleKg(b)){toast('Weight looks off — expected '+(isImperial()?'55–770 lb':'25–350 kg'));return;}
   upsertMeasure(w>0?w:null,b>0?b:null);
   if(w>0&&!STATE.profile.startWaist)STATE.profile.startWaist=w;
   // keep the working body weight (used for protein/water/BMI/TDEE) in sync with the newest logged weight
@@ -5854,9 +5897,18 @@ function comebackEaseActive(){return !!(STATE.comeback&&STATE.comeback.left>0);}
 // Non-punishing recalibration: after a real layoff (>=5 days), auto-ease the next
 // couple of sessions so returning ramps back up instead of punishing. Re-arms once
 // per distinct lapse (keyed to the last trained date).
+/* The gap that counts as "away" has to be relative to the schedule, not a
+   flat 5 days. An athlete training Saturday+Sunday has a 6-day gap every single
+   week: the ease armed 26 times in 26 weeks, 51 of his 52 sessions ran at
+   sets-1 and target x0.8, and he was told "it's been 6 days" every Saturday.
+   At 5 days a week this is still 5; at 2 days a week it is 7. */
+function comebackGap(){
+  const w=(typeof weeklyTarget==='function')?weeklyTarget():5;
+  return Math.max(5,Math.round(7/Math.max(1,w))+3);
+}
 function armComeback(){
   const g=daysSinceTrained(),last=lastTrainedISO();
-  if(g!=null&&g>=5&&last&&(!STATE.comeback||STATE.comeback.trig!==last)){
+  if(g!=null&&g>=comebackGap()&&last&&(!STATE.comeback||STATE.comeback.trig!==last)){
     STATE.comeback={left:clamp(Math.round(g/4),2,8),days:g,trig:last};save();
   }
 }
@@ -6099,7 +6151,12 @@ function readinessMult(){const r=readinessToday();if(!r)return 1;const s=r.score
 function readinessSlump(){
   try{const n=nut();const out=[];
     for(let i=0;i<3;i++){const d=new Date();d.setDate(d.getDate()-i);
-      const k=d.toISOString().slice(0,10);const r=(STATE.readiness||{})[k];
+      /* localISO, not toISOString. Readiness is WRITTEN under todayISO() (local);
+         reading it back in UTC meant that from 6pm Mountain onwards day 0's key
+         was tomorrow's date, the 3-day window could never fill, and the
+         automatic deload silently could not fire for anyone who trains in the
+         evening. It worked perfectly in UTC, which is where every review ran. */
+      const k=localISO(d);const r=(STATE.readiness||{})[k];
       if(r&&r.score>0)out.push(r.score);}
     return out.length===3&&(out.reduce((a,b)=>a+b,0)/3)<55;
   }catch(e){return false;}
@@ -6133,20 +6190,69 @@ function readinessCardHTML(){
   return `<div class="note ${s<40?'warn':'info'}" style="margin:0 0 8px;display:flex;justify-content:space-between;align-items:center;gap:10px"><span>🌡️ <b>Readiness ${s}%</b> · <span style="color:${tag[1]}">${tag[0]}</span>${s<40?' — today eased; consider rest/deload':(s>=80?' — load turned up 🔥':'')}</span><button class="btn sm ghost" style="width:auto;flex:0 0 auto" onclick="_rdy={};openReadiness()">Update</button></div>`;
 }
 /* ---- #3 Goal ETA projection ---- */
+/* Every other log in the app has a delete control; measurements had none, so a
+   single mistyped row skewed the auto-scaled charts and, if it was the first
+   row, became the permanent baseline for waistDrop(), both chart "Start"
+   figures and the goal ETA. */
+function removeMeasure(date){
+  if(!confirm('Delete the measurement from '+date+'?'))return;
+  STATE.measurements=(STATE.measurements||[]).filter(m=>String(m.date).slice(0,10)!==date);
+  const last=(STATE.measurements||[]).filter(m=>m.weight>0).slice(-1)[0];
+  if(last){STATE.nutrition.weightKg=last.weight;try{recalcKcalFromStored();}catch(e){}}
+  save();toast('Deleted');renderProgress();
+}
+function measureListHTML(){
+  const ms=(STATE.measurements||[]).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,8);
+  if(!ms.length)return '';
+  return `<div class="section-label">Logged measurements</div><div class="card" style="padding:0 12px">`+
+    ms.map(m=>`<div class="kv" style="border-top:1px solid var(--line);padding:10px 2px">
+      <span style="min-width:0"><b>${_ve(String(m.date).slice(0,10))}</b>
+        <div class="tiny muted" style="margin-top:2px">${m.waist>0?('waist '+r1(waistShow(m.waist))+' '+(isImperial()?'in':'cm')):''}${(m.waist>0&&m.weight>0)?' · ':''}${m.weight>0?('weight '+r1(weightShow(m.weight))+' '+(isImperial()?'lb':'kg')):''}</div></span>
+      <button class="btn sm ghost" style="flex:0 0 auto" onclick="removeMeasure('${_ve(String(m.date).slice(0,10))}')">✕</button></div>`).join('')+
+    `</div><div class="tiny muted" style="margin-top:6px">Mistyped one? Delete it — a bad row skews the charts and the goal pace for good.</div>`;
+}
+function latestTestDate(){
+  const ks=Object.keys(STATE.reassess||{}).map(Number).sort((a,b)=>b-a);
+  /* A record written before v177 can carry maxes and no date at all —
+     String(undefined).slice(0,10) is the string "undefined", which is precisely
+     the placeholder the state suite scans this tab for. */
+  for(const k of ks){const r=STATE.reassess[k];if(r&&r.maxes&&!r.deferred&&r.date)return String(r.date).slice(0,10);}
+  return (STATE.baseline&&STATE.baseline.date)?String(STATE.baseline.date).slice(0,10):null;
+}
+/* finishAssessment() already overwrites STATE.reassess[n] and calls
+   rebaseAdapt(), so re-testing needs no engine change — only a way in. */
+function retestNow(){
+  if(!STATE.baseline){openAssessment(false);return;}
+  const cyc=reassessGate()||Math.max(1,posOf(STATE.progressPtr).cycle);
+  openAssessment(cyc);
+}
 function goalETAHTML(){
   const p=STATE.profile;const ms=(STATE.measurements||[]).filter(m=>m.waist>0);
   if(ms.length<2||!(p.goalWaist>0))return '';
-  const a=ms[0],b=ms[ms.length-1];
+  const b=ms[ms.length-1];
+  /* Pace comes from the TRAILING window, not from first-vs-last over the whole
+     history. Averaging the lifetime meant three good months kept the number
+     above the flat threshold through five months of nothing, so the stall
+     branch below — which is the one piece of copy written for exactly that
+     situation — could never fire for the athlete who most needed it. */
+  const recent=ms.filter(m=>(new Date(b.date)-new Date(m.date))/86400000<=42);
+  const a=(recent.length>=2)?recent[0]:ms[0];
   const days=(new Date(b.date)-new Date(a.date))/86400000;
   if(days<3)return '';
-  // stored cm -> the units the athlete reads, so the ${p.unit} labels are honest
-  const perWeek=(isImperial()?(a.waist-b.waist)/2.54:(a.waist-b.waist))/days*7;
-  const toGo=isImperial()?(b.waist-p.goalWaist)/2.54:(b.waist-p.goalWaist);
-  if(toGo<=0)return `<div class="tiny" style="margin-top:8px;color:var(--green);font-weight:800">🎉 Goal reached — set a new one to keep climbing.</div>`;
-  if(perWeek<=0.03)return `<div class="tiny muted" style="margin-top:8px">Trend is flat — tighten the deficit or add a Special session to get it moving.</div>`;
-  const weeks=Math.ceil(toGo/perWeek);const eta=new Date(b.date);eta.setDate(eta.getDate()+weeks*7);
-  const mon=eta.toLocaleDateString(undefined,{month:'short',year:'numeric'});const good=perWeek>=0.2;
-  return `<div class="tiny" style="margin-top:8px;color:${good?'var(--green)':'var(--gold)'};font-weight:700">📉 At ~${perWeek.toFixed(1)}${p.unit}/wk you'll hit your goal around <b>${mon}</b> (~${weeks} wk).${good?'':' Pick up the pace to speed it up.'}</div>`;
+  /* Compare in CANONICAL CM and convert only to print. The thresholds are bare
+     constants, so measuring perWeek in display units made them 2.54x stricter
+     in inches: 0.35 cm/wk — a textbook cut — read as "on pace" in metric and
+     "pick up the pace" in imperial, on the same body. */
+  const perWeekCm=(a.waist-b.waist)/days*7;
+  const toGoCm=b.waist-p.goalWaist;
+  if(toGoCm<=0)return `<div class="tiny" style="margin-top:8px;color:var(--green);font-weight:800">🎉 Goal reached — set a new one to keep climbing.</div>`;
+  if(perWeekCm<=0.03)return `<div class="tiny muted" style="margin-top:8px">Trend is flat over the last ${Math.round(days)} days — tighten the deficit or add a Special session to get it moving.</div>`;
+  const weeks=Math.ceil(toGoCm/perWeekCm);const eta=new Date(b.date);eta.setDate(eta.getDate()+weeks*7);
+  const mon=eta.toLocaleDateString(undefined,{month:'short',year:'numeric'});const good=perWeekCm>=0.2;
+  // two decimals in inches: toFixed(1) printed "~0.1in/wk" for 0.14 and left the
+  // rate disagreeing with its own ETA by 40%
+  const shown=isImperial()?(perWeekCm/2.54).toFixed(2):perWeekCm.toFixed(1);
+  return `<div class="tiny" style="margin-top:8px;color:${good?'var(--green)':'var(--gold)'};font-weight:700">📉 At ~${shown}${p.unit}/wk you'll hit your goal around <b>${mon}</b> (~${weeks} wk).${good?'':' Pick up the pace to speed it up.'}</div>`;
 }
 /* ---- #4 Calorie & macro intake logging (search · barcode · photo AI) ----
    Offline-first food database with FULL macros so CoreForge can replace a
@@ -6756,7 +6862,11 @@ function intakeTrendHTML(){
   for(let i=6;i>=0;i--){const dt=new Date();dt.setDate(dt.getDate()-i);const key=localISO(dt);
     const day=n.days&&n.days[key];const f=(day&&day.food)||[];
     days.push({key,label:['S','M','T','W','T','F','S'][dt.getDay()],kcal:f.reduce((a,x)=>a+(x.kcal||0),0),p:f.reduce((a,x)=>a+(x.p||0),0),n:f.length});}
-  const logged=days.filter(d=>d.n>0);
+  /* Today is still in progress: including a logged breakfast as a full day
+     dropped a 2,300-kcal average to 2,032 and flipped the verdict from "over
+     target" to "on track" every morning. Judge on closed days only. */
+  const closed=days.slice(0,6);
+  const logged=closed.filter(d=>d.n>0);
   if(logged.length<2)return '';
   const avg=Math.round(logged.reduce((a,d)=>a+d.kcal,0)/logged.length);
   const avgP=Math.round(logged.reduce((a,d)=>a+d.p,0)/logged.length);
@@ -6767,9 +6877,14 @@ function intakeTrendHTML(){
       <div style="width:100%;height:56px;display:flex;align-items:flex-end"><div style="width:100%;height:${Math.max(3,pct)}%;background:${col};border-radius:4px"></div></div>
       <div class="tiny muted">${d.label}</div></div>`;}).join('');
   return `<div class="section-label">Last 7 days</div><div class="card pad">
-    <div class="row" style="justify-content:space-between"><div><b>${avg} kcal</b> <span class="tiny muted">daily average</span></div><div class="tiny muted">${avgP}g protein avg · ${logged.length}/7 days logged</div></div>
+    <div class="row" style="justify-content:space-between"><div><b>${avg} kcal</b> <span class="tiny muted">daily average</span></div><div class="tiny muted">${avgP}g protein avg · ${logged.length}/6 days logged</div></div>
     <div class="row" style="gap:6px;align-items:flex-end;margin-top:10px">${bars}</div>
-    ${kcalT?`<div class="tiny muted" style="margin-top:8px">${avg<=kcalT?'✅ Averaging under your '+kcalT+' kcal target — that\'s what drives the fat loss.':'⚠️ Averaging '+(avg-kcalT)+' kcal over target. Trim portions or add conditioning.'}</div>`:''}
+    ${kcalT?(logged.length>=5
+      ? `<div class="tiny muted" style="margin-top:8px">${avg<=kcalT?'✅ Averaging under your '+kcalT+' kcal target — that\'s what drives the fat loss.':'⚠️ Averaging '+(avg-kcalT)+' kcal over target. Trim portions or add conditioning.'}</div>`
+      /* Unlogged days are not random — they are the restaurant and the weekend,
+         so dropping them biases the average in exactly the direction that
+         produces false reassurance. Below 5 closed days, report, do not judge. */
+      : `<div class="tiny muted" style="margin-top:8px">Only ${logged.length} of the last 6 days are logged, so this average is those days, not your week. Log 5+ and this becomes a verdict.</div>`):''}
   </div>`;
 }
 /* ---- #5 Strength standards + 1RM estimate ---- */
@@ -7080,20 +7195,42 @@ function computeStreak(){
   }
   return streak;
 }
-function totalTUT(){
-  let mins=0;
+/* Split, because "minutes trained" and "calories burned" want different things
+   from the same walk, and because this counted PRESCRIBED sets while the reps
+   tile beside it counted COMPLETED ones — so a week of one-set-of-four sessions
+   raised the minutes by the full prescription. */
+function totalTUTSplit(){
+  let work=0,rest=0;
   Object.keys(STATE.logs).forEach(p=>{const l=STATE.logs[p];if(!l||!l.done)return;
     const items=logItemsFor(p,l);const tempo=(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3;
-    let sec=0;items.forEach(m=>{sec+=m.sets*(m.unit==='time'?m.target:m.target*tempo)+m.sets*(m.rest||45);});
-    mins+=Math.round(sec/60);});
-  return mins;
+    items.forEach(m=>{
+      const e=l.ex&&l.ex[m.exId];const sd=e&&e.sets?e.sets.filter(Boolean).length:0;
+      if(!sd)return;
+      work+=sd*(m.unit==='time'?m.target:m.target*tempo);
+      rest+=sd*(m.rest||45);
+    });});
+  return {work:work/60,rest:rest/60};
 }
+function totalTUT(){const t=totalTUTSplit();return Math.round(t.work+t.rest);}
 /* ---- richer progress metrics ---- */
 function localISO(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function weekStartD(d){const x=new Date(d);const day=(x.getDay()+6)%7;x.setHours(0,0,0,0);x.setDate(x.getDate()-day);return x;}
-function sessionsThisWeek(){const s=weekStartD(new Date());return Object.values(STATE.logs).filter(l=>l.done&&l.completedAt&&new Date(l.completedAt+'T00:00:00')>=s).length;}
+/* Quick sessions were taught to the streak, the heatmap and the 28-day count
+   but not to this one, so a travel week of five Quick sessions showed "5 day
+   streak", five lit heatmap squares and "This week 0/5" on the same screen. */
+function sessionsThisWeek(){const s=weekStartD(new Date());let n=0;
+  trainedDaysSet().forEach(d=>{if(new Date(d+'T00:00:00')>=s)n++;});return n;}
 function totalVolume(){let reps=0,hold=0,sets=0;Object.keys(STATE.logs).forEach(p=>{const l=STATE.logs[p];if(!l||!l.done)return;logItemsFor(p,l).forEach(m=>{const e=l.ex&&l.ex[m.exId];const sd=e&&e.sets?e.sets.filter(Boolean).length:0;sets+=sd;if(m.unit==='time')hold+=sd*m.target;else reps+=sd*m.target;});});return {reps,hold,sets};}
-function estCalories(){const kg=(STATE.nutrition&&STATE.nutrition.weightKg)||75;return Math.round(6*3.5*kg/200*totalTUT());}
+/* Was 6 gross METs applied to work AND rest for the whole session — about
+   2.4x the honest figure, in an app whose step and bike models are scrupulously
+   NET and carry a comment explaining why mixing the two over-credits. Work at
+   6 METs, rest at 1.3, and subtract the resting cost across the whole duration
+   so this is what the training ADDED. */
+function estCalories(){
+  const kg=latestWeightKg()||80;const t=totalTUTSplit();
+  const net=(m,min)=>Math.max(0,(m-1))*3.5*kg/200*min;
+  return Math.round(net(6,t.work)+net(1.3,t.rest));
+}
 function loadIndexPct(){const a=(typeof STATE.adapt==='number')?STATE.adapt:1;return Math.round((a-1)*100);}
 /* computeStreak() was taught to read quickLog; the heatmap, the 28-day count and
    the weekly tile were not — so five quick sessions showed a streak of 5 next to
@@ -7163,7 +7300,11 @@ function setStrengthMetric(k){strengthSel=k;renderProgress();}
 function assessSeries(){
   const list=[];
   if(STATE.baseline&&STATE.baseline.maxes)list.push({date:STATE.baseline.date,maxes:STATE.baseline.maxes});
-  Object.keys(STATE.reassess||{}).map(Number).sort((a,b)=>a-b).forEach(k=>{const r=STATE.reassess[k];if(r&&r.maxes)list.push({date:r.date,maxes:r.maxes});});
+  /* skipReassess() carries the previous block's maxes forward stamped with
+     today's date and flagged deferred. Plotting those drew a dead-flat strength
+     trend from tests that never happened — which reads as a plateau, which is
+     exactly the signal that makes someone abandon a program that was working. */
+  Object.keys(STATE.reassess||{}).map(Number).sort((a,b)=>a-b).forEach(k=>{const r=STATE.reassess[k];if(r&&r.maxes&&!r.deferred)list.push({date:r.date,maxes:r.maxes});});
   return list;
 }
 function strengthTrendHTML(){
@@ -7468,8 +7609,14 @@ function setBikeLvl(k){
    without anyone counting. */
 function syncStepHabit(){
   const t=nutToday();const m=movement();
-  if(!m.steps&&!m.val)return;
+  /* The early return has to consider what was ALREADY logged, not just what is
+     there now. Clearing a mistyped step count back to 0 left the habit ticked
+     while the card above it read 0/10,000 — the exact contradiction the comment
+     below was written to prevent. */
+  const everLogged=m.steps||m.val||(t.habits&&t.habits._stepAuto);
+  if(!everLogged)return;
   if(!t.habits||typeof t.habits!=='object')t.habits={};
+  t.habits._stepAuto=1;
   t.habits.steps=stepEquivalent()>=stepTarget();
 }
 function movementHTML(){
@@ -7494,7 +7641,7 @@ function movementHTML(){
       `<button class="${m.lvl===b.k?'on':''}" onclick="setBikeLvl('${b.k}')">${b.label}</button>`).join('')}</div>
     <div class="tiny muted" style="margin-bottom:12px">${_ve(lvl.rpe)} · ${_ve(lvl.cue)} · <b>${bikeStepsPerMin(m.lvl)} steps</b>, <b>${r1(kmToShow(bikeKmPerMin(m.lvl)))} ${distUnit()}</b> and <b>${Math.round(bikeKcalPerMin(m.lvl))} kcal</b> a minute</div>
     <div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log the ride as</div>
-    <div class="tiny muted" style="margin:-2px 0 8px">Calories is the one to trust if you are unsure which effort to pick — it is the only entry the choice cannot throw off.</div>
+    <div class="tiny muted" style="margin:-2px 0 8px">Effort only changes what minutes are worth — distance and calories are already the work done. <b>Read calories off the bike and knock ~15% off it</b>: a turbo counts the calories you would have burned sitting still, this field does not.</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${BIKE_UNITS.map(([k,l])=>
       `<button class="${m.unit===k?'on':''}" onclick="setBikeUnit('${k}')">${l==='Distance'?distUnit().toUpperCase():l}</button>`).join('')}</div>
     <div class="row" style="justify-content:space-between;align-items:flex-end;gap:10px">
@@ -7850,7 +7997,9 @@ function eatWindowHTML(){
    the macro split below. Everything here is wheat-free by design; seitan is
    deliberately absent because it is pure wheat gluten and tops every
    plant-protein list an athlete avoiding wheat is likely to read. */
-/* Each row is: name, protein g, calories, fat g, category, BASE AMOUNT, unit.
+/* Each row is: name, protein g, calories, PORTION LABEL, category, fat g, BASE AMOUNT, unit.
+   (indices 0-7 — fat is [5], not [3]; getting this wrong is exactly the kind of
+   off-by-one an anchored regex edit over this literal would bake in.)
    The four nutrition figures describe exactly the base amount, so any other
    amount is a straight ratio off it — that is what lets the tab answer "how
    much of this do I need" instead of only "here is one portion".
@@ -8430,7 +8579,8 @@ function renderRef(){
   });
   h+=`</div>`;
   h+=`<div class="note info" style="margin-top:10px"><b>The rule of thumb is MET × 35.</b> Steady riding is about 5.8 METs net of just sitting there, so roughly <b>200 steps a minute</b>. Bodyweight cancels out of that conversion — it only changes the calories beside it.</div>`;
-  h+=`<div class="note info"><b>The calorie column is the same in every row.</b> ${Math.ceil(tgt*kcalPerStep())} kcal is what ${tgt.toLocaleString()} steps costs you, and it does not care how fast you spin — riding harder only buys the same energy in less time. Log whichever of the three your bike actually shows you: <b>Fuel → Movement</b> takes all of them.</div>`;
+  h+=`<div class="note info"><b>The calorie column is the same in every row.</b> ${Math.ceil(tgt*kcalPerStep())} kcal is what ${tgt.toLocaleString()} steps costs you, and it does not care how fast you spin — riding harder only buys the same energy in less time. Log whichever of the three your bike shows: <b>Fuel → Movement</b> takes all of them.</div>`;
+  h+=`<div class="note warn"><b>Your bike's calorie readout runs high.</b> A console reports gross calories; every figure here is net of what you would have burned sitting still. If the screen says 300, count about 255.</div>`;
   h+=`<div class="note warn"><b>On a trainer, trust the clock over the distance.</b> What a turbo puts on its screen depends on the trainer and where the resistance is set. The distance here is what that effort would cover on the road — useful as a target, not a measurement.</div>`;
   h+=`<div class="note warn"><b>It is not a straight swap.</b> Both sides are matched on energy, and energy is what drives the deficit. Walking also loads the skeleton and breaks up sitting, which riding does not. Use the trainer for the days that got away from you.</div>`;
 
@@ -8527,8 +8677,16 @@ function noteGoalPhase(){
     /* Stamping today's date restarted the deficit clock at zero for anyone
        already mid-cut, pushing the 12-week diet-break guardrail 12 weeks into
        the future for someone 31 weeks in. Seed from evidence we already hold. */
+    /* Seed from TODAY on a fresh transition into a deficit. Re-seeding from
+       createdAt meant that after taking the diet break the banner asked for,
+       coming back to 'lose' immediately re-announced 14 unbroken weeks of
+       deficit — so the banner could never be cleared again, and every
+       maintenance phase was counted as deficit time. createdAt remains the
+       fallback only for an install that has never recorded a start. */
     if(g==='shred'||g==='lose'){if(!STATE.profile._shredStart)STATE.profile._shredStart=
+      (STATE.profile._everDeficit?todayISO():null)||
       STATE.profile.createdAt||((STATE.measurements||[])[0]||{}).date||todayISO();}
+    if(g==='shred'||g==='lose')STATE.profile._everDeficit=1;
     else STATE.profile._shredStart=null;
   }catch(e){}
 }
@@ -8591,6 +8749,8 @@ function saveTDEE(){
   let ht=parseFloat($('#td-ht').value);let wt=parseFloat($('#td-wt').value);
   if(!(sex&&age>0&&ht>0&&wt>0)){toast('Fill in all fields');return;}
   if(imp){ht=ht*2.54;wt=wt*0.453592;}
+  if(!plausibleKg(wt)){toast('Weight looks off — expected '+(imp?'55–770 lb':'25–350 kg'));return;}
+  if(!plausibleWaistCm(ht)&&!(ht>=120&&ht<=230)){toast('Height looks off');return;}
   n.sex=sex;n.age=age;n.heightCm=Math.round(ht);n.weightKg=Math.round(wt*10)/10;n.activity=parseFloat($('#td-act').value)||1.45;
   // mirror to the profile copy — the quiz prefills from profile.*, so writing
   // only the nutrition side meant one tap of Next reverted these answers
@@ -9067,15 +9227,29 @@ function toggleGear(k){
   haptic(8);save();renderGuide();
 }
 function setDiet(k){STATE.nutrition.diet=k;if(STATE.nutrition.plan)STATE.nutrition.plan=null;haptic(8);save();renderGuide();}
-function exportData(){
+/* Photo BYTES live in IndexedDB under ph_<id>; STATE.photos holds only
+   {id,date,pose}, so JSON.stringify(STATE) silently produced a backup with no
+   photos in it — while the render error boundary and hardReset() both tell the
+   athlete to export one first. They are the only thing in here that cannot be
+   re-created. */
+async function exportData(){
   // Never write the on-device API keys into a shareable backup file.
   const clone=JSON.parse(JSON.stringify(STATE));
   if(clone.settings){delete clone.settings.azureKey;delete clone.settings.foodAiKey;}
+  clone._photoData={};
+  try{
+    for(const ph of (clone.photos||[])){
+      const d=await idbGet('ph_'+ph.id);
+      if(d)clone._photoData[ph.id]=d;
+    }
+  }catch(e){}
+  const missing=(clone.photos||[]).length-Object.keys(clone._photoData).length;
   const blob=new Blob([JSON.stringify(clone,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);const a=document.createElement('a');
   a.href=url;a.download='coreforge-backup-'+todayISO()+'.json';a.click();
   setTimeout(()=>{try{URL.revokeObjectURL(url);}catch(e){}},5000);   // the share-card paths already defer; revoking in the same tick can kill the download
-  toast('Backup downloaded');
+  const n=Object.keys(clone._photoData||{}).length;
+  toast('Backup downloaded'+(n?(' · '+n+' photo'+(n===1?'':'s')+' included'):'')+(missing>0?(' · '+missing+' photo file'+(missing===1?'':'s')+' missing'):''));
 }
 function importData(e){
   const f=e.target.files[0];if(!f)return;const r=new FileReader();
@@ -9092,7 +9266,20 @@ function importData(e){
     STATE.profile=obj(DEFAULT_STATE().profile,p.profile);
     STATE.settings=obj(DEFAULT_STATE().settings,p.settings);
     STATE.nutrition=obj(DEFAULT_STATE().nutrition,p.nutrition);
-    normalizeState();save();toast('Backup restored');render();
+    /* Put the photo bytes back where hydratePhotos() looks for them, and keep
+       them out of STATE — they are ~200 KB each and localStorage is not where
+       they live. A backup written before this field simply has none. */
+    const ph=p._photoData&&typeof p._photoData==='object'?p._photoData:null;
+    delete STATE._photoData;
+    normalizeState();save();
+    if(ph){
+      const ids=Object.keys(ph);
+      Promise.all(ids.map(id=>idbPut('ph_'+id,ph[id]))).then(()=>{
+        toast('Backup restored · '+ids.length+' photo'+(ids.length===1?'':'s'));
+        try{hydratePhotos();}catch(e){}
+      }).catch(()=>toast('Backup restored, photos failed'));
+    } else toast('Backup restored');
+    render();
   }catch(err){toast('Could not read file');}};
   r.readAsText(f);
 }
@@ -9234,6 +9421,17 @@ function normalizeState(){
    }
    if(!STATE.quickLog||typeof STATE.quickLog!=='object'||Array.isArray(STATE.quickLog))STATE.quickLog={};
    if(!STATE.shopTicks||typeof STATE.shopTicks!=='object'||Array.isArray(STATE.shopTicks))STATE.shopTicks={};
+   /* Both of these drive prescription and neither had repair, against the rule
+      that every STATE field gets it. A string in exAdapt produced a NaN target
+      that the render boundary never catches because nothing throws; a string in
+      readiness made readinessMult() return 0.7 — a silent 30% deload with no
+      visible cause. importData() accepts arbitrary JSON, so this is reachable. */
+   if(!STATE.exAdapt||typeof STATE.exAdapt!=='object'||Array.isArray(STATE.exAdapt))STATE.exAdapt={};
+   else Object.keys(STATE.exAdapt).forEach(k=>{const v=STATE.exAdapt[k];
+     if(!(typeof v==='number'&&isFinite(v)&&v>0))delete STATE.exAdapt[k];});
+   if(!STATE.readiness||typeof STATE.readiness!=='object'||Array.isArray(STATE.readiness))STATE.readiness={};
+   else Object.keys(STATE.readiness).forEach(k=>{const r=STATE.readiness[k];
+     if(!r||typeof r!=='object'||!(typeof r.score==='number'&&isFinite(r.score)))delete STATE.readiness[k];});
    /* Movement is stored per day, so a bad value hides in history rather than in
       today and only surfaces when that day is read back. Repair every one. */
    if(N&&N.days&&typeof N.days==='object'){
