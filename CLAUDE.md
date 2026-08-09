@@ -184,6 +184,29 @@ goes above that branch.
 `openSheet()` from inside a session is invisible. Mid-session UI is an
 in-player panel — see `#plSwapMenu` and `#plHurtMenu`.
 
+## Audio
+
+`countdownCue(remain, total)` owns the last ten seconds of a timed effort, and
+every timed surface calls it: the guided player's holds, the standalone hold
+timer, HIIT work intervals, and warm-up/cool-down moves. Ten seconds is a
+two-tone marker (low→high), 9–4 a soft tick each second, 3–1 the louder beep
+plus a short buzz so a silenced phone still gives the last three.
+
+Two properties are load-bearing, not decoration:
+
+- **Rest must NOT use it.** Rest keeps its plain 3-2-1, so the ten-second
+  marker always means *your effort is ending*. If both phases counted down the
+  same way the athlete would lose the ability to tell them apart by ear, which
+  is the entire reason the cue exists — you cannot look at the phone at second
+  40 of a plank.
+- **Efforts of 14s or less are skipped.** A ten-second countdown on a
+  twelve-second hold is most of the exercise, and becomes noise.
+
+All of it routes through `beep()`, which returns early when
+`settings.sound` is off. Any new timed surface calls `countdownCue` rather
+than growing its own beeps — four surfaces had already drifted into four
+copies of the same three-beep line before this was centralised.
+
 ## The service worker
 
 Precache is **tiered**: `CORE` (atomic) and `SHELL_MIN` install — about 1.25 MB
@@ -248,9 +271,17 @@ succeeds and an `until` loop on one spins forever. Confirm a deploy through the
 Actions API instead. "Live" therefore means both jobs went green, not that the
 page was fetched — say it that way.
 
-**`$GITHUB_TOKEN` is not set.** Shell polling with `curl` against the API
-silently returns nothing and an `until` loop on it burns until timeout. Use the
-GitHub MCP tools.
+**`$GITHUB_TOKEN` is not set, so NO shell path can poll the GitHub API.**
+Unauthenticated `curl` returns a body with no `status` field, which parses
+without error and reads as "not finished yet" — so the loop never exits and
+burns until timeout. This applies inside `Monitor` exactly as it does in a
+plain `until` loop: a Monitor built on `curl` against the API is a fifteen-
+minute silence, not a watch. **Use the GitHub MCP tools, on demand.**
+
+Worth stating plainly because writing the rule down did not prevent it: this
+note already existed, and a `Monitor` polling the Actions API with
+unauthenticated `curl` was started an hour later anyway. If you are about to
+watch CI from the shell, that is the tell.
 
 **`list_workflow_runs` returns ~490 KB** and blows the context window. It gets
 saved to a file; parse that with `python3 -c`, pulling `head_sha`, `status`,
