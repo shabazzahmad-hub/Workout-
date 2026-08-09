@@ -536,7 +536,7 @@ function haptic(ms=18){try{if(navigator.vibrate&&STATE.settings.vibrate)navigato
 const EX = {
   /* -- anti-extension / plank ladder -- */
   kneeplank:{name:'Knee Plank',region:'anterior',unit:'time',img:'ex-kneeplank.jpg',anchor:'plank',hardness:1.5,base:30,rest:45,
-    why:'The safest entry to anti-extension core bracing — builds the deep transverse abdominis that flattens the waist.',
+    why:'The safest entry to anti-extension core bracing — builds the deep transverse abdominis that holds the midsection tight.',
     steps:['Kneel on all fours, then drop to your forearms with elbows under shoulders.','Walk knees back so your body forms a straight line from head to knees.','Brace your abs as if about to be punched; tuck the ribs down.','Squeeze glutes and hold — do not let the hips sag.'],
     cues:['Elbows directly under shoulders','Ribs down, belt-line pulled in','Neutral neck — look at the floor'],
     mistakes:['Hips sagging toward the floor','Butt piked up in the air','Holding your breath — breathe steadily']},
@@ -597,17 +597,17 @@ const EX = {
     steps:['Hang from a bar, arms straight, shoulders active and core braced.','Keep the legs as straight as you can.','Raise them together toward the bar, curling the pelvis up at the top.','Lower slowly with zero swing. Bend the knees only if you must to keep it strict.'],
     cues:['Curl the pelvis at the top — don\'t just lift the legs','Dead still, no kipping or swing','Toes-to-bar is the long-term goal'],
     mistakes:['Swinging for momentum','Stopping at 90° without the pelvic curl','Bent knees when a straight-leg raise is available']},
-  lsit:{name:'L-Sit',region:'anterior',unit:'time',img:'ex-lsit.jpg',anchor:null,hardness:1.6,base:12,rest:55,
+  lsit:{name:'L-Sit',region:'anterior',unit:'time',img:'ex-lsit.jpg',anchor:null,hardness:0.18,base:12,rest:55,
     why:'The flagship isometric compression hold of calisthenics — a brutal test and builder of the whole anterior core, hip flexors and quads. Progress tuck → one-leg → full L.',
     steps:['Sit between two dip bars, parallettes, or press hands into the floor beside the hips.','Push down hard and lift the hips clear of the ground, shoulders down away from the ears.','Tuck the knees to start; extend the legs toward straight as you get stronger.','Hold for time with the legs squeezed and toes pointed.'],
     cues:['Push the floor/bars away — shoulders down','Squeeze the quads and point the toes','Chest tall, don\'t collapse forward'],
     mistakes:['Shrugging the shoulders up','Holding the breath','Letting the hips sink back to the floor']},
-  dragonflag:{repCap:10,pattern:'core',name:'Bent-Knee Dragon Flag',region:'anterior',unit:'reps',img:'ex-dragonflag.jpg',anchor:null,hardness:1.7,base:6,rest:70,optional:true,equip:['bar'],
+  dragonflag:{repCap:10,pattern:'core',name:'Bent-Knee Dragon Flag',region:'anterior',unit:'reps',img:'ex-dragonflag.jpg',anchor:null,hardness:0.15,base:6,rest:70,optional:true,equip:['bar'],
     why:'Bruce Lee\'s signature core move and the toughest anti-extension exercise in calisthenics — the whole body becomes one rigid lever against gravity. Bending the knees shortens that lever so you can own the movement before going full straight-leg.',
     steps:['Lie on your back on the mat and reach both arms overhead to grip a fixed anchor (the upright of your pull-up rig) behind your head.','Pull down hard with the lats so your shoulders and upper back stay pressed into the floor — they never leave it.','Brace and lift everything below the shoulder blades, hips pushed up so the body is one straight line from shoulders to knees, knees bent about 90°.','Lower under control without letting the hips sag, stopping before your back touches, then drive back up.'],
     cues:['Shoulders stay glued to the floor','Squeeze the glutes — no sag at the waist','Lower slowly; the negative is the whole exercise'],
     mistakes:['Piking at the hips into a candlestick','Letting the low back arch off the floor','Dropping fast instead of controlling the descent']},
-  windshield:{name:'Windshield Wipers',region:'oblique',unit:'reps',img:'ex-windshield.jpg',anchor:null,hardness:1.4,base:10,rest:45,
+  windshield:{name:'Windshield Wipers',region:'oblique',unit:'reps',img:'ex-windshield.jpg',anchor:null,hardness:0.42,base:10,rest:45,
     why:'The top-end rotational move your obliques were missing — controlling the legs side to side trains rotation and anti-rotation under a long lever like nothing else.',
     steps:['Lie on your back, arms out wide for anchor, legs raised toward vertical.','Brace the core and keep the legs fairly straight.','Lower both legs to one side under control, stopping short of the floor.','Sweep them back through center to the other side. That\'s one rep per side.'],
     cues:['Move slowly — control beats range','Keep the shoulders pinned to the floor','Brace so the low back doesn\'t arch'],
@@ -628,12 +628,12 @@ const EX = {
     steps:['Lie on your back and raise both legs straight toward the ceiling, ankles crossed.','Press the lower back into the floor and keep the legs vertical the whole set.','Curl your shoulder blades up, reaching the hands toward your feet.','Squeeze at the top, lower slowly without letting the legs drop.'],
     cues:['Legs stay vertical — they never swing','Reach up toward the toes, not forward','Lower back stays pinned down'],
     mistakes:['Letting the legs drift or swing for momentum','Pulling on the neck','Legs sagging toward the floor']},
-  plankleg:{name:'Plank with Leg Lift',region:'anterior',unit:'time',img:'ex-plankleg.jpg',anchor:null,hardness:1.15,base:30,rest:45,
+  plankleg:{name:'Plank with Leg Lift',region:'anterior',unit:'time',img:'ex-plankleg.jpg',anchor:null,hardness:0.5,base:30,rest:45,
     why:'Lifting one foot off the floor removes a base of support, so the core has to fight rotation as well as sagging — and the glute of the working side fires hard. A big step up from a standard plank.',
     steps:['Set up in a strong forearm plank, elbows under the shoulders, body in one straight line.','Brace the core and squeeze the glutes.','Lift one foot a few inches off the floor WITHOUT letting the hips twist or drop.','Hold, lower with control, then alternate legs through the set.'],
     cues:['Hips stay square — no rotating open','Lift from the glute, not the low back','Small lift; control beats height'],
     mistakes:['Hips twisting toward the lifted leg','Arching the low back to raise the foot','Holding the breath']},
-  plankrot:{name:'Plank Rotation',region:'oblique',unit:'reps',img:'ex-plankrot.jpg',anchor:null,hardness:1.25,base:12,rest:45,
+  plankrot:{name:'Plank Rotation',region:'oblique',unit:'reps',img:'ex-plankrot.jpg',anchor:null,hardness:0.62,base:12,rest:45,
     why:'Rotating out of a plank into a side plank trains the obliques through movement rather than a static hold — it builds the rotational control that a plain side plank never touches.',
     steps:['Start in a forearm plank, body in one straight line.','Brace, then rotate the hips and shoulders to one side, stacking into a side plank.','Reach the free arm straight up toward the ceiling, chest open.','Rotate back through the plank and repeat to the other side. Count each side as a rep.'],
     cues:['Rotate as one rigid block','Hips stay high through the turn','Slow and controlled — no flopping'],
@@ -644,7 +644,7 @@ const EX = {
     cues:['Rotate from the torso, not just the elbow','Extend the straight leg fully','Keep shoulders off the floor throughout'],
     mistakes:['Yanking the neck across','Fast, sloppy pedalling with no rotation','Racing the clock — control beats speed']},
   heeltouch:{name:'Alternating Heel Touches',region:'oblique',unit:'reps',img:'ex-heeltouch.jpg',anchor:'lower',repCap:25,hardness:0.9,base:20,rest:30,
-    why:'A simple, apartment-friendly oblique burner — the short side-to-side crunch keeps constant tension on the waist and love-handle area. Easy to learn, brutal by the end of the set.',
+    why:'A simple, apartment-friendly oblique burner — the short side-to-side crunch keeps constant tension on the obliques. Easy to learn, brutal by the end of the set.',
     steps:['Lie on your back, knees bent, feet flat about hip-width apart, heels close to the glutes.','Crunch your head and shoulders slightly up off the mat, arms reaching down at your sides.','Bend to one side and tap your fingertips to that heel.','Come back through center and tap the other heel. Alternate — count each side as a rep.'],
     cues:['Keep the shoulders off the mat the whole set','Bend at the waist, not the neck','Steady, controlled taps'],
     mistakes:['Dropping the shoulders down between reps','Pulling with the arms instead of the obliques','Bouncing too fast']},
@@ -660,7 +660,7 @@ const EX = {
     mistakes:['Bending the knees','Crashing down out of control']},
   /* -- lateral / oblique ladder -- */
   kneeside:{name:'Knee Side Plank',region:'oblique',unit:'time',img:'ex-kneeside.jpg',anchor:'side',hardness:1.5,base:20,rest:40,
-    why:'Builds the obliques and the deep lateral core that cinches the waist — the accessible entry to side-plank strength.',
+    why:'Builds the obliques and the deep lateral core that stabilises the trunk — the accessible entry to side-plank strength.',
     steps:['Lie on your side, forearm down with elbow under shoulder, knees bent.','Stack your hips and shoulders.','Lift your hips so your body forms a straight line from head to knees.','Hold, then repeat on the other side.'],
     cues:['Elbow directly under shoulder','Push the hip up toward the ceiling','Don\'t let the top shoulder roll forward'],
     mistakes:['Hips sagging down','Rotating the chest toward the floor']},
@@ -680,22 +680,22 @@ const EX = {
     cues:['Squeeze the top inner thigh into the bench','Hips high and level','Brace the whole side'],
     mistakes:['Hips sagging','Going to the full version too soon']},
   /* -- rotation ladder -- */
-  standingoblique:{name:'Standing Obliques',region:'oblique',unit:'reps',img:'ex-standingoblique.jpg',anchor:null,hardness:1.4,base:20,rest:30,
+  standingoblique:{name:'Standing Obliques',region:'oblique',unit:'reps',img:'ex-standingoblique.jpg',anchor:null,hardness:0.78,base:20,rest:30,
     why:'A standing oblique crunch — drive your elbow down to your knee and crunch the side of your waist. No floor needed, easy on the neck and lower back, and it hits the obliques through a full range to carve the waistline.',
     steps:['Stand tall, feet hip-width, hands lightly behind your head with elbows wide.','Lift one knee out to the side while crunching the same-side elbow down toward it.','Squeeze the oblique hard as elbow and knee meet, then return to standing tall with control.','Alternate sides — count each side as a rep.'],
     cues:['Crunch the side of your waist — not your neck','Elbow to knee, then really squeeze','Stand tall and reset between reps'],
     mistakes:['Pulling on your head or neck','Just tapping without a real side crunch','Rushing instead of squeezing each rep']},
-  seatedtwist:{name:'Seated Twist',region:'oblique',unit:'reps',img:'ex-seatedtwist.jpg',anchor:null,hardness:1.3,base:20,rest:35,
+  seatedtwist:{name:'Seated Twist',region:'oblique',unit:'reps',img:'ex-seatedtwist.jpg',anchor:null,hardness:0.85,base:20,rest:35,
     why:'A gentle rotational move to wake up the obliques and rotary core — the on-ramp to Russian twists.',
     steps:['Sit with knees bent, feet flat, leaning back slightly to a strong braced position.','Clasp your hands at your chest.','Rotate your torso to one side, then the other, keeping the chest tall.','Move with control from the waist. Count each side as a rep.'],
     cues:['Rotate from the waist, not the arms','Keep the chest lifted','Feet stay grounded'],
     mistakes:['Just swinging the arms','Rounding and collapsing forward']},
-  russiantwist:{name:'Russian Twist',region:'oblique',unit:'reps',img:'ex-russiantwist.jpg',anchor:null,hardness:1.0,base:20,rest:40,
+  russiantwist:{name:'Russian Twist',region:'oblique',unit:'reps',img:'ex-russiantwist.jpg',anchor:null,hardness:0.7,base:20,rest:40,
     why:'A proven rotational oblique builder that develops the twisting strength for a defined, athletic waist.',
     steps:['Sit with knees bent, lean back to ~45°, bracing your core.','Lift your feet slightly off the floor for more challenge (or keep them down).','Clasp your hands and rotate to tap the floor beside one hip.','Rotate to the other side. Count each side as a rep.'],
     cues:['Twist from the torso','Keep the chest proud, back flat','Controlled taps, not frantic'],
     mistakes:['Rounding the back','Only moving the arms']},
-  weightedtwist:{name:'Weighted Russian Twist',region:'oblique',unit:'reps',img:'ex-weightedtwist.jpg',anchor:null,hardness:0.8,base:18,rest:45,
+  weightedtwist:{name:'Weighted Russian Twist',region:'oblique',unit:'reps',img:'ex-weightedtwist.jpg',anchor:null,hardness:0.58,base:18,rest:45,
     why:'Adding any load (a bottle, book or dumbbell) overloads the obliques for continued strength gains.',
     steps:['Sit in the Russian twist position holding a weight (water bottle, book, or dumbbell) at your chest.','Lean back and lift the feet if you can.','Rotate side to side, moving the weight across your body.','Keep control at the end of each rotation. Count each side as a rep.'],
     cues:['Let the weight, not momentum, do the work','Chest tall, core braced','Full rotation each side'],
@@ -722,27 +722,27 @@ const EX = {
     cues:['Lift from the glutes and back','Neck neutral — don\'t crank it up','Reach long in both directions'],
     mistakes:['Straining the neck','Jerking up instead of a smooth lift']},
   /* -- dynamic finishers -- */
-  marchplace:{name:'Standing Core March',region:'dynamic',unit:'time',img:'ex-marchplace.jpg',anchor:null,hardness:1,base:30,rest:30,
+  marchplace:{name:'Standing Core March',region:'dynamic',unit:'time',img:'ex-marchplace.jpg',anchor:null,hardness:1.3,base:30,rest:30,
     why:'A low-impact finisher that keeps tension on the core while raising the heart rate.',
     steps:['Stand tall, brace your core, hands at your chest or overhead.','Drive one knee up toward your chest.','Lower and drive the other knee up, staying tall.','Keep a steady rhythm for the time, squeezing the abs on each lift.'],
     cues:['Stay tall — don\'t hunch','Squeeze the abs at the top of each knee drive','Steady pace'],
     mistakes:['Slouching forward','Letting the pace collapse']},
-  mountainclimber:{name:'Mountain Climbers',region:'dynamic',unit:'time',img:'ex-mountainclimber.jpg',anchor:null,hardness:1,base:30,rest:35,
+  mountainclimber:{name:'Mountain Climbers',region:'dynamic',unit:'time',img:'ex-mountainclimber.jpg',anchor:null,hardness:1.1,base:30,rest:35,
     why:'A dynamic finisher that torches the core while burning calories — pairs strength with the conditioning that reveals abs.',
     steps:['Start in a strong high plank, hands under shoulders.','Brace the core to keep hips level.','Drive one knee toward your chest, then quickly switch legs.','Keep a running rhythm for the time, hips staying low.'],
     cues:['Hips stay low and level','Fast but controlled','Core braced the whole time'],
     mistakes:['Hips bouncing up high','Feet barely moving']},
-  isoclimber:{name:'Isometric Mountain Climber',region:'anterior',unit:'time',img:'ex-isoclimber.jpg',anchor:null,hardness:1.1,base:30,rest:35,
+  isoclimber:{name:'Isometric Mountain Climber',region:'anterior',unit:'time',img:'ex-isoclimber.jpg',anchor:null,hardness:0.45,base:30,rest:35,
     why:'The mountain climber slowed to a dead hold — a high plank with one knee drawn in and held under tension. All the anti-extension core and hip-flexor demand of the fast version, but strict, joint-friendly and no bouncing.',
     steps:['Set up in a strong high plank, hands under the shoulders, body in a straight line.','Brace the core hard and keep the hips level.','Draw one knee in toward your chest and HOLD it there, foot off the floor.','Hold for time, then switch legs on the next set. Breathe steadily.'],
     cues:['Hips stay low and square — no piking','Squeeze the drawn-in knee toward the chest','Shoulders stacked over the wrists'],
     mistakes:['Hips hiking up','Letting the held foot drift down','Holding the breath']},
-  flutter:{name:'Flutter Kicks',region:'dynamic',unit:'time',img:'ex-flutter.jpg',anchor:null,hardness:1,base:30,rest:35,
+  flutter:{name:'Flutter Kicks',region:'dynamic',unit:'time',img:'ex-flutter.jpg',anchor:null,hardness:0.95,base:30,rest:35,
     why:'A lower-ab endurance finisher that keeps constant tension on the deep core.',
     steps:['Lie flat, hands under your glutes, legs straight.','Press your lower back into the floor and lift both legs a few inches.','Flutter your legs up and down in small, fast, alternating kicks.','Keep the lower back pinned for the whole set.'],
     cues:['Lower back stays down','Small, quick kicks','Keep the legs low for more challenge'],
     mistakes:['Back arching up','Kicking too high and losing tension']},
-  scissors:{name:'Scissor Kicks',region:'dynamic',unit:'time',img:'ex-scissors.jpg',anchor:null,hardness:1,base:30,rest:35,
+  scissors:{name:'Scissor Kicks',region:'dynamic',unit:'time',img:'ex-scissors.jpg',anchor:null,hardness:0.9,base:30,rest:35,
     why:'Adds a crossing action to flutter kicks for extra lower-ab and inner-thigh work.',
     steps:['Lie flat, hands under your glutes, legs straight and lifted slightly.','Press the lower back down into the floor.','Open the legs apart, then cross one over the other.','Alternate the crossing leg in a steady scissor rhythm.'],
     cues:['Keep the back pinned','Controlled crossing motion','Legs low for more burn'],
@@ -753,7 +753,7 @@ const EX = {
     steps:['Stand tall, feet shoulder-width, toes slightly out.','Brace your abs and push your hips back and down.','Lower until thighs are about parallel, chest up, knees tracking over toes.','Drive through your heels to stand, squeezing glutes at the top.'],
     cues:['Chest proud, core braced','Knees track over the toes','Full depth, controlled tempo'],
     mistakes:['Knees caving inward','Heels lifting off the floor','Rounding the back']},
-  wallsit:{name:'Wall Sit',region:'legs',unit:'time',img:'ex-wallsit.jpg',anchor:null,hardness:1,base:40,rest:45,
+  wallsit:{name:'Wall Sit',region:'legs',unit:'time',img:'ex-wallsit.jpg',anchor:null,hardness:1.2,base:40,rest:45,
     why:'A no-impact isometric that builds serious quad, glute and core endurance while bracing the abs — apartment-safe, knee-friendly and brutal on the burn.',
     steps:['Stand with your back flat against a wall, feet about two steps out.','Slide down until your thighs are parallel to the floor — knees stacked over the ankles at ~90°.','Press the whole back into the wall and brace the abs.','Hold for time, breathing steadily. Keep the weight in the heels.'],
     cues:['Thighs parallel, knees over ankles','Whole back flat on the wall','Weight through the heels, core braced'],
@@ -774,27 +774,27 @@ const EX = {
     cues:['Body stays one rigid line','Elbows ~45°, not flared out','Full range, chest to just above the floor'],
     mistakes:['Hips sagging or butt up','Head dropping','Partial reps']},
   /* -- cardio / conditioning (fat-loss circuits) -- */
-  jumpingjack:{name:'Jumping Jacks',region:'cardio',unit:'time',img:'ex-jumpingjack.jpg',anchor:null,hardness:1,base:40,rest:25,
+  jumpingjack:{name:'Jumping Jacks',region:'cardio',unit:'time',img:'ex-jumpingjack.jpg',anchor:null,hardness:1.3,base:40,rest:25,
     why:'A classic full-body cardio move to spike the heart rate and burn calories — the engine of fat loss that reveals your abs.',
     steps:['Stand tall, arms at your sides, core lightly braced.','Jump your feet out wide while raising your arms overhead.','Jump back to the start in a smooth rhythm.','Keep a steady, springy pace for the time.'],
     cues:['Soft, springy knees','Stay tall and light','Steady breathing rhythm'],
     mistakes:['Stiff, heavy landings','Letting the pace collapse']},
-  highknees:{name:'High Knees',region:'cardio',unit:'time',img:'ex-highknees.jpg',anchor:null,hardness:1,base:30,rest:25,
+  highknees:{name:'High Knees',region:'cardio',unit:'time',img:'ex-highknees.jpg',anchor:null,hardness:1.1,base:30,rest:25,
     why:'A running-in-place burner that drives the knees up hard — big cardio demand and constant lower-ab engagement.',
     steps:['Stand tall, arms bent, core braced.','Drive one knee up toward hip height, then quickly switch.','Stay on the balls of your feet with a fast rhythm.','Punch the abs to lift each knee; keep the chest tall.'],
     cues:['Knees to hip height','Fast feet, tall chest','Brace the core on each drive'],
     mistakes:['Leaning back','Low, lazy knees']},
-  buttkick:{name:'Butt Kicks',region:'cardio',unit:'time',img:'ex-buttkick.jpg',anchor:null,hardness:1.2,base:30,rest:25,
+  buttkick:{name:'Butt Kicks',region:'cardio',unit:'time',img:'ex-buttkick.jpg',anchor:null,hardness:1.35,base:30,rest:25,
     why:'A low-impact cardio option that raises the heart rate while sparing the knees — keeps the fat-loss engine running.',
     steps:['Jog in place, kicking your heels up toward your glutes.','Keep your torso tall and core lightly braced.','Pump the arms as if running.','Hold a quick, steady rhythm for the time.'],
     cues:['Heels to glutes','Tall posture','Quick, light feet'],
     mistakes:['Hunching forward','Slow, heavy pace']},
   skater:{name:'Skater Hops',region:'cardio',unit:'time',img:'ex-skater.jpg',anchor:null,hardness:0.9,base:30,rest:25,
-    why:'Lateral bounds that build athletic power and blast calories while hammering the obliques and glutes — great for love handles.',
+    why:'Lateral bounds that build athletic power and blast calories while hammering the obliques and glutes — great oblique and conditioning work.',
     steps:['Stand on one leg, slight knee bend, core braced.','Bound sideways onto the other foot, landing softly.','Let the trailing leg sweep behind for balance.','Bound back and forth in a steady skating rhythm.'],
     cues:['Soft, controlled landings','Push off the outside leg','Stay low and athletic'],
     mistakes:['Landing stiff-legged','Losing balance / no control']},
-  squatthrust:{name:'Squat Thrust',region:'cardio',unit:'time',img:'ex-squatthrust.jpg',anchor:null,hardness:0.85,base:30,rest:30,
+  squatthrust:{name:'Squat Thrust',region:'cardio',unit:'time',img:'ex-squatthrust.jpg',anchor:null,hardness:0.95,base:30,rest:30,
     why:'A burpee without the jump — full-body conditioning that spikes the heart rate and strengthens the core through the plank kick-out.',
     steps:['Stand, then squat and place your hands on the floor.','Jump or step both feet back into a strong plank.','Jump or step the feet back up to your hands.','Stand tall and repeat at a steady pace.'],
     cues:['Strong plank — no sagging','Land feet softly','Keep a steady rhythm'],
@@ -804,12 +804,12 @@ const EX = {
     steps:['From standing, squat and plant your hands on the floor.','Jump your feet back to a plank (add a push-up to make it harder).','Jump the feet back in toward your hands.','Explode up into a jump, reach tall, and land soft. Repeat.'],
     cues:['Brace the core in the plank','Land softly from the jump','Pace it so form holds'],
     mistakes:['Sagging hips in the plank','Sloppy, uncontrolled landings']},
-  squatjack:{name:'Squat Jacks',region:'cardio',unit:'time',img:'ex-squatjack.jpg',anchor:null,hardness:1.0,base:30,rest:25,
+  squatjack:{name:'Squat Jacks',region:'cardio',unit:'time',img:'ex-squatjack.jpg',anchor:null,hardness:1.2,base:30,rest:25,
     why:'A jumping jack done as a squat — explosive lower-body cardio that torches calories, builds the legs and glutes, and keeps the core braced through every landing.',
     steps:['Stand tall with feet together, hands ready at your chest.','Jump both feet out wide and drop straight into a squat — hips back, chest up.','Push through the floor and jump the feet back together to stand tall.','Keep a steady, athletic rhythm with soft landings.'],
     cues:['Sit the hips back — chest tall','Land soft through the whole foot','Brace the core on every landing'],
     mistakes:['Knees caving inward','Shallow squat with no depth','Heavy, loud landings']},
-  halfburpee:{name:'Half Burpee',region:'cardio',unit:'time',img:'ex-halfburpee.jpg',vid:'ex-halfburpee.mp4',anchor:null,hardness:1.1,base:28,rest:30,
+  halfburpee:{name:'Half Burpee',region:'cardio',unit:'time',img:'ex-halfburpee.jpg',vid:'ex-halfburpee.mp4',anchor:null,hardness:0.85,base:28,rest:30,
     why:'A burpee without the push-up — squat, kick back to a plank, jump the feet in and pop up. All the heart-rate spike and core bracing of a burpee, but easier on the shoulders and wrists.',
     steps:['Squat down and plant both hands on the floor.','Jump both feet back into a strong plank.','Jump the feet back up toward your hands.','Drive up into a small jump, reaching tall — then straight into the next rep.'],
     cues:['Tight plank — no sagging hips','Land soft on the jump','Steady, repeatable pace'],
@@ -863,19 +863,19 @@ const EX = {
     steps:['Feet on a bench, hips stacked high over the shoulders.','Head points down between the hands.','Lower under control toward the floor.','Press back to full extension.'],
     cues:['Stack hips over hands','Slow, controlled descent','Full lockout'],
     mistakes:['Losing the vertical stack','Bouncing out of the bottom']},
-  wallhandstand:{name:'Wall Handstand Hold',region:'shoulders',unit:'time',img:'ex-wallhandstand.jpg',anchor:null,hardness:1,base:20,rest:60,
+  wallhandstand:{name:'Wall Handstand Hold',region:'shoulders',unit:'time',img:'ex-wallhandstand.jpg',anchor:null,hardness:0.18,base:20,rest:60,
     why:'Builds the overhead strength, balance and shoulder stability needed for handstand push-ups — and a serious core brace.',
-    steps:['Kick up to a handstand with your belly or back toward a wall.','Stack hands, shoulders and hips in a straight line.','Brace the core and squeeze everything tight.','Hold for time, breathing steadily.'],
+    steps:['Do NOT kick up. Start in a push-up position with your feet against the wall, then walk your feet up the wall and your hands in toward it.','Stack hands, shoulders and hips in a straight line.','Brace the core and squeeze everything tight.','Hold for time, breathing steadily.','TO COME DOWN: walk the feet back down the wall the same way you went up. If you ever feel stuck, bend one arm and turn your chest to that side to step down — never straighten up and fall backwards.'],
     cues:['Push tall through the shoulders','Ribs down, glutes squeezed','Look between the hands'],
-    mistakes:['Banana back (over-arching)','Holding the breath']},
+    mistakes:['Kicking up instead of walking up','Going upside down with no plan for getting down','Banana back (over-arching)','Holding the breath']},
   hspushup:{repCap:8,name:'Wall Handstand Push-Up',region:'shoulders',unit:'reps',img:'ex-hspushup.jpg',anchor:'push',hardness:0.15,base:4,rest:75,
     why:'The king of bodyweight shoulder strength — a full vertical press of your own bodyweight.',
-    steps:['Kick into a wall handstand, hands slightly wider than shoulders.','Brace hard and lower the head toward the floor under control.','Stop just short, then press back to full extension.','Keep the body tight and straight throughout.'],
+    steps:['Walk up into a wall handstand as above — never kick — with the hands slightly wider than the shoulders.','Brace hard and lower the head toward the floor under control.','Stop just short, then press back to full extension.','Keep the body tight and straight throughout.'],
     cues:['Controlled negative','Full lockout at the top','Stay tight — no arching'],
-    mistakes:['Crashing to the floor','Half reps']},
+    mistakes:['Kicking up instead of walking up','Lowering past the point you can press back out of','Crashing to the floor','Half reps']},
 
   /* ==== BACK (pull — uses your pull-up/dip tower) ==== */
-  deadhang:{name:'Dead Hang',region:'back',unit:'time',img:'ex-deadhang.jpg',anchor:null,hardness:1,base:25,rest:50,equip:['bar'],pattern:'core',
+  deadhang:{name:'Dead Hang',region:'back',unit:'time',img:'ex-deadhang.jpg',anchor:null,hardness:1.3,base:25,rest:50,equip:['bar'],pattern:'core',
     why:'Builds the grip, forearm and shoulder-girdle strength that every pulling move is built on — and decompresses the spine.',
     steps:['Grip the pull-up bar slightly wider than shoulders, palms forward.','Hang with arms straight, shoulders active (not fully shrugged up).','Brace the core, legs still.','Hold for time with steady breathing.'],
     cues:['Shoulders slightly down and back','Full but active hang','Relax the jaw, breathe'],
@@ -943,9 +943,9 @@ const EX = {
   /* ==== ARMS (triceps — dips on your tower) ==== */
   benchdip:{pattern:'pushh',name:'Bench Dip',region:'arms',unit:'reps',img:'ex-benchdip.jpg',equip:['bench'],anchor:'push',repCap:25,hardness:1.1,base:12,rest:45,
     why:'A beginner-friendly triceps builder using a bench or chair before progressing to full dips.',
-    steps:['Hands on the edge of a bench behind you, legs out front.','Lower by bending the elbows straight back.','Keep the hips close to the bench.','Press back up to a full lockout.'],
-    cues:['Elbows point back, not out','Chest tall','Full lockout'],
-    mistakes:['Shrugging into the shoulders','Tiny range']},
+    steps:['Hands on the edge of a bench behind you, legs out front.','Lower by bending the elbows straight back — stop when the upper arms reach parallel with the floor.','Keep the hips close to the bench and the shoulders pulled down away from the ears.','Press back up to a full lockout.'],
+    cues:['Elbows point back, not out','Shoulders down and back the whole time','Stop at parallel — depth here is not the goal'],
+    mistakes:['Dropping below parallel — this position loads the front of the shoulder hard and is where bench dips hurt people','Letting the shoulders shrug up toward the ears','Hips drifting away from the bench','Tiny range']},
   closepushup:{name:'Close-Grip Push-Up',region:'arms',unit:'reps',img:'ex-closepushup.jpg',anchor:'push',hardness:0.8,base:10,rest:50,
     why:'Hands close and elbows tucked make the triceps the star of the push-up.',
     steps:['Hands under the chest, roughly shoulder-width or closer.','Brace the body straight.','Lower with elbows tracking back along the ribs.','Press to a full lockout.'],
@@ -1133,7 +1133,7 @@ const EX = {
     steps:['Sit with the heels up, leaning back slightly, holding one dumbbell at the chest.','Rotate to tap the bell by each hip.','Keep the chest tall and control the turn. Count each side as a rep.'],
     cues:['Rotate from the ribs','Feet up for more','Slow and controlled'],mistakes:['Just moving the arms','Rounding the back']},
   /* -- extra staples -- */
-  asiansquat:{name:'Asian Squat',region:'legs',unit:'time',img:'ex-asiansquat.jpg',anchor:null,hardness:1,base:40,rest:35,
+  asiansquat:{name:'Asian Squat',region:'legs',unit:'time',img:'ex-asiansquat.jpg',anchor:null,hardness:1.5,base:40,rest:35,
     why:'A deep, flat-footed resting squat that restores hip, knee and ankle mobility and builds the position strength most training misses — great for a strong, pain-free squat.',
     steps:['Stand with feet about shoulder-width, toes turned slightly out.','Sit all the way down into a deep squat, heels flat on the floor.','Keep the chest tall and let the elbows rest inside the knees.','Hold and breathe, sinking a little deeper each breath.'],
     cues:['Heels stay planted','Chest tall, back long','Relax into the position'],mistakes:['Heels lifting off the floor','Rounding the low back']},
@@ -1173,52 +1173,52 @@ const EX = {
     why:'Supported on the dip bars, raising the knees hammers the lower abs and hip flexors.',
     steps:['Support yourself on the dip bars, arms locked.','Raise both knees toward the chest.','Lower slowly without swinging.'],
     cues:['No swinging','Curl the pelvis up','Slow on the way down'],mistakes:['Kipping with momentum','Half raises']},
-  reverseplank:{name:'Reverse Plank',region:'stability',unit:'time',img:'ex-reverseplank.jpg',anchor:null,hardness:1,base:25,rest:35,
+  reverseplank:{name:'Reverse Plank',region:'stability',unit:'time',img:'ex-reverseplank.jpg',anchor:null,hardness:0.4,base:25,rest:35,
     why:'Flips the plank to hammer the posterior chain — glutes, hamstrings and lower back — while the core resists sagging. Balances all the front-side ab work for a strong, injury-proof midsection.',
     steps:['Sit with legs straight, hands planted behind you under the shoulders, fingers toward your feet.','Press through the hands and heels and lift the hips.','Form a straight line from heels to shoulders, chest open to the ceiling.','Hold, breathing steadily; lower with control.'],
     cues:['Squeeze the glutes','Chest tall, hips high','Neck long and neutral'],mistakes:['Hips sagging','Shrugging into the shoulders']},
   /* ==== Conditioning battery — powers the Shred / Lose-fat slot ==== */
-  sealjack:{name:'Seal Jacks',region:'cardio',unit:'time',img:'ex-sealjack.jpg',anchor:null,hardness:1,base:30,rest:30,
+  sealjack:{name:'Seal Jacks',region:'cardio',unit:'time',img:'ex-sealjack.jpg',anchor:null,hardness:1.25,base:30,rest:30,
     why:'A wider, chest-opening jack that raises the heart rate while pulling the shoulders back — more calorie burn than a standard jumping jack with a posture bonus.',
     steps:['Stand tall, arms straight out to the sides at chest height.','Jump the feet wide and clap the hands together in front of the chest.','Jump the feet back together and fling the arms wide again.','Keep a steady rhythm for the full time.'],
     cues:['Arms stay at chest height','Squeeze the shoulder blades on the open','Land soft through the feet'],
     mistakes:['Letting the arms drift down','Landing flat-footed and heavy']},
-  fastfeet:{name:'Fast Feet',region:'cardio',unit:'time',img:'ex-fastfeet.jpg',anchor:null,hardness:1,base:25,rest:30,
+  fastfeet:{name:'Fast Feet',region:'cardio',unit:'time',img:'ex-fastfeet.jpg',anchor:null,hardness:1.15,base:25,rest:30,
     why:'A pure engine-builder — the quickest way to spike the heart rate in a small space without any jumping impact on the knees.',
     steps:['Stand in a quarter-squat, weight on the balls of the feet, hands up in front.','Chop the feet as fast as you can, barely leaving the floor.','Stay low with the chest up the whole time.','Go all out for the full interval.'],
     cues:['Tiny, rapid steps','Stay low — do not stand up','Pump the arms'],
     mistakes:['Standing tall as you tire','Stepping too big and slowing down']},
-  latshuffle:{name:'Lateral Shuffle',region:'cardio',unit:'time',img:'ex-latshuffle.jpg',anchor:null,hardness:1,base:30,rest:30,
+  latshuffle:{name:'Lateral Shuffle',region:'cardio',unit:'time',img:'ex-latshuffle.jpg',anchor:null,hardness:1.0,base:30,rest:30,
     why:'Side-to-side work hits the glutes and outer hips that forward-only cardio misses, while burning serious calories.',
     steps:['Drop into an athletic stance, knees soft, chest up.','Shuffle two or three steps to one side, staying low.','Shuffle back the other way without standing up.','Keep the feet quick and never let them cross.'],
     cues:['Stay low the whole time','Push off the outside foot','Feet never cross'],
     mistakes:['Popping up between shuffles','Crossing the feet over']},
-  plankjack:{name:'Plank Jacks',region:'cardio',unit:'time',img:'ex-plankjack.jpg',anchor:null,hardness:1,base:25,rest:35,
+  plankjack:{name:'Plank Jacks',region:'cardio',unit:'time',img:'ex-plankjack.jpg',anchor:null,hardness:1.0,base:25,rest:35,
     why:'Turns a plank into conditioning — the core fights to stay still while the legs drive the heart rate up. Burns fat and builds the midsection at once.',
     steps:['Set up in a strong high plank, hands under shoulders.','Brace the abs so the hips cannot bounce.','Jump both feet wide, then jump them back together.','Keep the shoulders stacked over the hands throughout.'],
     cues:['Hips stay level — no bouncing','Shoulders over wrists','Land light on the toes'],
     mistakes:['Hips piking up with each jump','Letting the low back sag']},
-  crossclimber:{name:'Cross-Body Mountain Climber',region:'cardio',unit:'time',img:'ex-crossclimber.jpg',anchor:null,hardness:1,base:30,rest:35,
+  crossclimber:{name:'Cross-Body Mountain Climber',region:'cardio',unit:'time',img:'ex-crossclimber.jpg',anchor:null,hardness:1.05,base:30,rest:35,
     why:'Driving the knee across the body loads the obliques hard while keeping the heart rate high — the waist-carving version of the mountain climber.',
     steps:['Start in a high plank, body in a straight line.','Drive one knee toward the OPPOSITE elbow.','Return it and drive the other knee across.','Keep alternating at a strong, steady pace.'],
     cues:['Knee travels across, not straight up','Hips stay low and level','Shoulders over the wrists'],
     mistakes:['Hips rising with every drive','Only bringing the knee halfway']},
-  sprawl:{name:'Sprawl',region:'cardio',unit:'reps',img:'ex-sprawl.jpg',anchor:null,hardness:1,base:12,rest:40,
+  sprawl:{name:'Sprawl',region:'cardio',unit:'reps',img:'ex-sprawl.jpg',anchor:null,hardness:0.9,base:12,rest:40,
     why:'A burpee without the push-up or the jump — all of the metabolic cost, far less wear on the shoulders and knees.',
     steps:['From standing, drop the hands to the floor and kick both feet back.','Let the hips drop briefly to the floor, chest up.','Snap the feet back underneath you.','Stand tall and go straight into the next rep.'],
     cues:['Hips touch low','Fast feet on the way back in','Chest stays proud'],
     mistakes:['Keeping the hips high like a plank','Slowing down between reps']},
-  bearcrawl:{name:'Bear Crawl',region:'cardio',unit:'time',img:'ex-bearcrawl.jpg',anchor:null,hardness:1,base:25,rest:40,
+  bearcrawl:{name:'Bear Crawl',region:'cardio',unit:'time',img:'ex-bearcrawl.jpg',anchor:null,hardness:0.75,base:25,rest:40,
     why:'A full-body conditioning drill that torches calories while the deep core works overtime to stop the hips rotating.',
     steps:['Set up on hands and toes with the knees hovering an inch off the floor.','Keep the back flat and the hips low.','Crawl forward moving the opposite hand and foot together.','Crawl back the way you came, staying low.'],
     cues:['Knees hover, never touch','Hips stay low and quiet','Opposite hand and foot together'],
     mistakes:['Hips swinging side to side','Letting the butt rise up']},
-  crabwalk:{name:'Crab Walk',region:'cardio',unit:'time',img:'ex-crabwalk.jpg',anchor:null,hardness:1,base:25,rest:40,
+  crabwalk:{name:'Crab Walk',region:'cardio',unit:'time',img:'ex-crabwalk.jpg',anchor:null,hardness:1.05,base:25,rest:40,
     why:'Hits the triceps, shoulders and glutes at a conditioning pace — a rare posterior-chain cardio drill that balances all the front-side work.',
     steps:['Sit with knees bent and hands planted behind you, fingers toward your feet.','Press the hips up so only hands and feet touch the floor.','Walk forward using the opposite hand and foot.','Keep the hips high the whole way, then walk back.'],
     cues:['Hips stay lifted','Chest open to the ceiling','Small controlled steps'],
     mistakes:['Letting the hips drop toward the floor','Rushing and losing the height']},
-  inchworm:{name:'Inchworm Walkout',region:'dynamic',unit:'reps',img:'ex-inchworm.jpg',anchor:null,hardness:1,base:10,rest:40,
+  inchworm:{name:'Inchworm Walkout',region:'dynamic',unit:'reps',img:'ex-inchworm.jpg',anchor:null,hardness:1.15,base:10,rest:40,
     why:'Warms and works the whole body — hamstrings stretch, then the core braces hard through the walkout. A staple in fat-loss circuits.',
     steps:['Stand tall, then hinge and place the hands on the floor.','Walk the hands out until you reach a strong plank.','Pause and brace hard for a beat.','Walk the hands back to the feet and stand tall.'],
     cues:['Legs as straight as comfortable','Brace at the plank','Walk the hands, do not jump'],
@@ -1291,7 +1291,7 @@ const EX = {
     cues:['Push the feet to the ceiling, not forward','Small controlled lift','No swinging or momentum'],
     mistakes:['Rocking the legs to generate the lift','Letting the legs drift over the face']},
   sideplankreach:{name:'Side Plank Reach-Through',region:'oblique',unit:'reps',img:'ex-sideplankreach.jpg',hardness:0.85,base:12,rest:50,
-    why:'Adds rotation to the side plank so the obliques work through their full range — the movement that carves the waistline.',
+    why:'Adds rotation to the side plank so the obliques work through their full range — the movement that builds the obliques.',
     steps:['Set up in a side plank on the forearm, hips high.','Reach the top arm up toward the ceiling.','Rotate the torso and thread that arm under your body.','Return to the top and repeat. Count each side as a rep.'],
     cues:['Hips stay high through the rotation','Move from the ribs, not the arm','Slow and controlled'],
     mistakes:['Hips dropping as you reach through','Rushing the rotation']},
@@ -1310,28 +1310,53 @@ const LADDERS = {
   plankL:     ['kneeplank','plank','bearhold','longplank','planktap','plankleg','isoclimber','reverseplank'],
   hollowL:    ['tuckhollow','hollow','hollowflutter','hollowrock','vsit','lsit','dragonflag'],
   lowerL:     ['deadbug','revcrunch','hiplift','legraise','kneeraise','hanglegraise'],
-  dynL:       ['crunch','situp','vertcrunch','situptwist','bicycle','tuckvup','vup'],
+  /* bicycle IS the dyn anchor test, so its hardness is 1.0 by definition and
+     cannot be tuned — the order moves instead. */
+  dynL:       ['crunch','situp','bicycle','vertcrunch','situptwist','tuckvup','vup'],
   sideL:      ['kneeside','sideplank','sideplankreach','sidedip','plankrot','copenhagen'],
   rotL:       ['heeltouch','seatedtwist','standingoblique','russiantwist','weightedtwist','windshield'],
   finisherL:  ['marchplace','mountainclimber','crossclimber','plankjack','flutter','scissors'],
   // compound strength + cardio (fat-loss / complete-program)
   legL:       ['wallsit','squat','reverselunge','cossack'],
   pushL:      ['kneepushup','pushup','tempopushup','typewriter','pseudoplanche'],
+  /* An athlete who owns a trainer gets it programmed, not offered as a bonus.
+     Plyometrics for a 86 kg beginner in an apartment is the highest-injury
+     conditioning modality available, chosen over the lowest-injury one he
+     already owns. cardioBikeL is substituted for cardioAL on half the
+     conditioning slots when 'bike' is in his gear — see bikeSwap(). */
   cardioAL:   ['jumpingjack','sealjack','squatjack','fastfeet','highknees','latshuffle','skater'],
+  cardioBikeL:['bike','bike','bike','bike','bike','bike','bike'],
   cardioBL:   ['buttkick','inchworm','crabwalk','squatthrust','sprawl','halfburpee','bearcrawl','burpee'],
   cardioFinL: ['jumpingjack','sealjack','squatjack','highknees','crossclimber','plankjack','squatthrust','halfburpee','burpee'],
   // ==== Phase 2 (week 13+) full-body split ladders ====
   chestL:     ['inclinepushup','kneepushup','pushup','fistpushup','hindupushup','declinepushup','diamondpushup','spidermanpushup','tempopushup','atomicpushup','archerpushup','superpushup'],
+  /* The wall walk is how you LEARN the position; it sat after the pike
+     variants and the athlete was asked to kick up before ever having walked
+     up. Correct order puts the safe entry first. */
   shoulderL:  ['pikepushup','elevatedpike','wallwalk','wallhandstand','hspushup'],
   pullL:      ['deadhang','scappull','negpullup','chinup','pullup','widepullup'],
-  rowL:       ['superman','swimmer','towelrow','tablerow','invertedrow','invertedrowelev'],
+  /* Opened on two BACK EXTENSIONS. gearSwap already carries a comment mocking
+     exactly this ("sent all of them to Superman — a back EXTENSION, not a
+     pull"), but the ladder itself still did it: week 13's Pull Day contained
+     three sets of hanging and no rows at all, and the inverted row the athlete
+     was baseline-TESTED on did not appear until week 29. Superman and Swimmer
+     remain in the catalogue as posterior accessories; they are not rows. */
+  rowL:       ['towelrow','tablerow','invertedrow','invertedrowelev'],
+  /* Order is by STRENGTH demand and stays that way — the validator is right
+     that closepushup (0.8) is harder than benchdip (1.1) and cannot come
+     first. The real problem with bench dips at rung 0 is joint RISK, not
+     difficulty: maximum shoulder extension plus internal rotation under load.
+     That is a coaching-copy problem, and it is fixed in the entry itself. */
   tricepL:    ['benchdip','closepushup','dips'],
   bicepL:     ['towelrow','invertedrow','chinup','widepullup'],
-  squatL:     ['wallsit','squat','reverselunge','splitsquat','sissysquat','walkinglunge','cossack','bulgarian','boxpistol','pistol','asiansquat'],
+  /* asiansquat was the FINAL rung, past the pistol — a deep bodyweight squat
+     hold is a mobility position you start from, not a progression beyond a
+     one-legged squat. It opens the ladder now. */
+  squatL:     ['asiansquat','wallsit','squat','reverselunge','splitsquat','sissysquat','walkinglunge','cossack','bulgarian','boxpistol','pistol'],
   hingeL:     ['glutebridge','slrdl','hipthrust','singlebridge','nordic'],
   calfL:      ['calfraise','singlecalf'],
   legPowerL:  ['jumpsquat','splitjump','broadjump'],
-  hiitFinL:   ['jumpingjack','tuckjump','atomicpushup','burpee','burpeetuck'],
+  hiitFinL:   ['jumpingjack','tuckjump','burpee','burpeetuck','atomicpushup'],
 };
 // Phase 1 (weeks 1–12) — core/abs/HIIT program, 7 days a week.
 const SESSIONS = [
@@ -1419,14 +1444,14 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='189';
+const APP_VERSION='192';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
   version:1,
   onboarded:false,
-  profile:{name:'', days:[0,1,2,3,4,5,6], unit:'cm', startWaist:null, goalWaist:null, createdAt:todayISO(),
-    sex:null, age:null, heightCm:null, experience:'Intermediate', activity:1.45, goal:'lose',
+  profile:{name:'', days:[1,2,4,5,6], unit:'cm', startWaist:null, goalWaist:null, createdAt:todayISO(),
+    sex:null, age:null, heightCm:null, experience:'Beginner', activity:1.45, goal:'lose',
     targets:['abs','full'], gear:[], limitations:[],   // deep-profile fields — gear starts EMPTY; pre-ticking it told the app you owned kit you don't
     focusPrimary:'abs', troubleZones:[], conditioning:'moderate', mobility:'ok', timelineWeeks:null},   // comprehensive-quiz fields
   baseline:null,            // {date,results:{},coreScore,level,maxes:{}}
@@ -1502,7 +1527,15 @@ async function load(){
 
 /* ============================ PROGRESSION ENGINE ============================ */
 const SESSIONS_PER_WEEK=7, WEEKS_PER_CYCLE=6, SESSIONS_PER_CYCLE=SESSIONS_PER_WEEK*WEEKS_PER_CYCLE; // 42
-const PHASE1_CYCLES=2;   // blocks 1–2 = weeks 1–12: core/abs/HIIT (unchanged)
+/* Was 2, so full-body work did not start until week 13. Driven counts for
+   week 1 were 44 sets of direct core against 12 sets for the entire rest of the
+   body — below any dose that RETAINS lean mass in a deficit, in the twelve
+   weeks a beginner adapts fastest. The muscle that makes abs visible is not the
+   rectus abdominis; it is everything else, because it is what protects lean
+   mass during the cut. Phase 2 now opens at week 7. It is one block rather
+   than the week 4 that would be ideal, because the 6-week block IS the re-test
+   cadence and splitting it mid-block would desynchronise every anchor. */
+const PHASE1_CYCLES=1;   // block 1 = weeks 1–6: core/abs/HIIT. Full-body from week 7.
 const TOTAL_CYCLES=9;    // 9 six-week blocks = 54 weeks (a full year+): Phase 1 then full-body split
 function phaseOf(cycle){return cycle<PHASE1_CYCLES?1:2;}
 function sessionsFor(cycle){return phaseOf(cycle)===1?SESSIONS:PHASE2_SESSIONS;}
@@ -1545,17 +1578,25 @@ function levelOf(cycle){
   else return (STATE.profile&&STATE.profile.experience)||'Intermediate';
   // ...but let the athlete's own experience answer nudge it one tier, so changing
   // it in the quiz actually does something instead of being silently ignored.
+  /* DOWNWARD ONLY. The line above says the measured level wins and the quiz
+     answer is a claim — and then this used to let the claim win by a tier in
+     either direction. Since `experience` was pre-selected as 'Intermediate' in
+     the wizard, an athlete the test measured as Beginner was promoted by a
+     radio button nobody touched: LEVEL_FACTOR 0.8 -> 1.0 (+25% on every
+     unanchored target) and rungIndex starting at 1, which skips the true-novice
+     rung of every ladder. Saying "I'm a beginner" may still ease the program;
+     saying "I'm advanced" no longer overrides what you actually tested. */
   const want=STATE.profile&&STATE.profile.experience;
   if(want&&LEVEL_TIER[want]!=null){
     const base=LEVEL_TIER[lv]||0;
-    lv=LEVEL_NAME[clamp(base+clamp(LEVEL_TIER[want]-base,-1,1),0,2)];
+    lv=LEVEL_NAME[clamp(base+clamp(LEVEL_TIER[want]-base,-1,0),0,2)];
   }
   return lv;
 }
 const LEVEL_FACTOR={Beginner:0.8,Intermediate:1.0,Advanced:1.2};
 // Phase-2 ladders start fresh at week 13, so they progress off the phase-relative
 // block count (not the absolute cycle) — otherwise they'd open at their hardest rung.
-const PHASE2_LADDERS={chestL:1,shoulderL:1,pullL:1,rowL:1,tricepL:1,bicepL:1,squatL:1,hingeL:1,calfL:1,legPowerL:1};
+const PHASE2_LADDERS={chestL:1,shoulderL:1,pullL:1,rowL:1,tricepL:1,bicepL:1,squatL:1,hingeL:1,calfL:1,legPowerL:1,hiitFinL:1};   // hiitFinL is phase-2 only; omitting it opened the ladder two rungs in
 
 // choose which rung of a ladder based on cycle+week+level
 function rungIndex(ladder,cycle,week,level){
@@ -1607,7 +1648,7 @@ function goalSlots(session,pos){
      the release notes claimed Phase 1 had gained both. Conditioning ladders were
      already protected this way; the structural strength patterns need the same
      protection, or the goal quietly rewrites the split. */
-  const STRUCTURAL=['hingeL','rowL','pullL','chestL','squatL'];
+  const STRUCTURAL=['hingeL','rowL','pullL','chestL','squatL','bicepL'];   // bicepL was droppable, so 'lose' deleted the only pull on Pull Day
   const isCardio=l=>CARDIO_LADS.includes(l), isCore=l=>CORE_LADS.includes(l);
   const isStruct=l=>STRUCTURAL.includes(l);
   const count=fn=>slots.filter(fn).length;
@@ -1639,8 +1680,62 @@ function weekAdjust(cycle,week){
 }
 
 const TIME_FRAC=[0.50,0.58,0.66,0.74,0.82,0.90];   // % of tested max hold, by week (1-6)
-const REP_FRAC =[0.55,0.64,0.73,0.82,0.91,1.00];   // % of tested max reps, by week (1-6)
+/* Capped at 0.85. Reaching 1.00 meant one working set equalled the athlete's
+   all-out tested single — repeated three or four times, then multiplied by
+   hardness, cycleBoost and the goal multiplier on top. Driven output before
+   this: 4x29 push-ups for an athlete whose tested max was 25. Peak weeks were
+   arithmetically unachievable, which is how a compliant athlete concludes the
+   program is beating him. Working sets belong at 60-85% of a rep max. */
+const REP_FRAC =[0.50,0.58,0.66,0.73,0.80,0.85];   // % of tested max reps, by week (1-6)
 
+/* Half the conditioning slots become steady riding when the athlete has a
+   trainer. Half, not all: some impact work is worth keeping for bone and
+   tendon, and an athlete who chose the bike still gets variety. Deterministic
+   on the session pointer so it alternates rather than randomising. */
+function bikeSwap(exId,ptr,idx){
+  try{
+    if(!EX.bike)return exId;
+    const gear=(STATE.profile&&STATE.profile.gear)||[];
+    if(!gear.includes('bike'))return exId;
+    const ex=EX[exId];
+    if(!ex||ex.region!=='cardio'||exId==='bike')return exId;
+    // alternate on the session pointer AND the slot, so it is half the
+    // conditioning rather than all of it, and it varies week to week
+    return (((+ptr||0)+(+idx||0))%2===0)?'bike':exId;
+  }catch(e){return exId;}
+}
+/* ---- Training space ------------------------------------------------------
+   Inverted work needs a clear wall AND about two metres of floor in front of
+   it, and the travelling movements need a room you can cross. A living room
+   between a sofa and a coffee table has neither. Every other constraint in the
+   app is modelled — equipment, injuries, diet — and this one was not, so the
+   only options were to skip the movement or to do it badly in a space too
+   small for it.
+
+   Substitutes are same-family and at least as hard: pseudo-planche and Superman
+   push-ups are the two hardest floor presses in the catalogue, and they load
+   the shoulder in the same straight-arm-forward way an inversion does. A
+   travelling movement becomes its static twin, which is the same muscles
+   without the metres. */
+const SPACE_SWAP={
+  wallwalk:'pseudoplanche', wallhandstand:'pseudoplanche', hspushup:'superpushup',
+  bearcrawl:'bearhold', crabwalk:'reverseplank', walkinglunge:'splitsquat',
+  latshuffle:'plankjack', skater:'squatthrust',
+};
+function tightSpace(){try{return !!(STATE.profile&&STATE.profile.tightSpace);}catch(e){return false;}}
+function spaceSwap(exId){
+  try{
+    if(!tightSpace())return exId;
+    let out=exId,hops=0;
+    while(SPACE_SWAP[out]&&EX[SPACE_SWAP[out]]&&hops++<4)out=SPACE_SWAP[out];
+    return EX[out]?out:exId;
+  }catch(e){return exId;}
+}
+function toggleTightSpace(){
+  STATE.profile.tightSpace=!STATE.profile.tightSpace;
+  haptic(8);save();renderGuide();
+  toast(STATE.profile.tightSpace?'Swapped the handstand and travelling moves out':'Full space — handstands are back in');
+}
 function prescribe(exId,pos){
   const ex=EX[exId];
   // Free/bonus sessions build items with pos:{} — default cycle/week so the math
@@ -1656,7 +1751,12 @@ function prescribe(exId,pos){
      needs to restrain the UNANCHORED branch. */
   const _anchorTest=TESTS.find(t=>t.id===ex.anchor);
   const _anchored=!!(ex.anchor&&maxes[ex.anchor]&&_anchorTest&&_anchorTest.unit===ex.unit);
-  const cycleBoost=1+0.05*Math.min(cycle,_anchored?8:5);
+  /* Anchored work must NOT compound cycleBoost: the re-test IS the
+     progression, and the new max already contains every block of adaptation
+     that came before it. Multiplying by up to 1.4 on top is the same
+     double-count rebaseAdapt() exists to prevent for STATE.adapt. Unanchored
+     work keeps the boost, because nothing re-measures it. */
+  const cycleBoost=_anchored?1:(1+0.05*Math.min(cycle,5));
   /* STATE.adapt used to climb +0.006 per "solid" session against a 1.30 ceiling,
      so it pinned at ~50 sessions (week 7) and contributed nothing for the next 47
      weeks. It is now REBASED to 1.0 at every re-test, because the re-tested maxes
@@ -1789,7 +1889,11 @@ function focusBonus(pos,used){
       const tier=LEVEL_TIER[levelOf(pos&&pos.cycle||0)]??1;
       const easyEnough=k=>{const h=EX[k]&&EX[k].hardness;return !(h>0)||h>=[1.0,0.7,0.4][tier];};
       let cands=pool.filter(k=>EX[k]&&!used.has(k)&&has(k)&&easyEnough(k)).map(k=>safeSwap(k)).filter(k=>EX[k]&&!used.has(k)&&has(k));
-      if(!cands.length)cands=pool.filter(k=>EX[k]&&!used.has(k)&&has(k)).map(k=>safeSwap(k)).filter(k=>EX[k]&&!used.has(k)&&has(k));
+      /* No ungated fallback. This used to drop the difficulty gate entirely
+         when the gated pool came up empty, so the bonus slot could still hand a
+         beginner the hardest movement in the catalogue — which is the exact
+         thing the gate above was written to prevent. An empty pool means skip
+         the bonus, not lower the bar. */
       if(!cands.length)continue;
       // deterministic-but-varied pick so it rotates across sessions without Math.random
       const exId=cands[(pos.cycle*7+(pos.dayInWeek||0))%cands.length];
@@ -1906,6 +2010,8 @@ function buildSession(ptr){
       if(exId==='copenhagen'&&STATE.profile.hasBench===false){exId='sidedip';}
     }
     exId=gearSwap(exId,ladder);   // equipment-aware: only moves they can actually do
+    exId=bikeSwap(exId,ptr,idx);  // trainer-aware: ride instead of jump, when he owns one
+    exId=spaceSwap(exId);         // space-aware: no inversions or travelling moves in a small room
     return safeSwap(exId);        // injury-aware: work around flagged joints
   };
   /* Can this athlete perform the movement AT ALL? hardness says what fraction of
@@ -2011,7 +2117,10 @@ function buildSession(ptr){
 }
 function sessionVolume(sess){
   let tut=0;const list=[...sess.main,sess.finisher];
-  list.forEach(m=>{if(m.unit==='time')tut+=m.sets*m.target;else tut+=m.sets*m.target*3;});
+  // same seconds-per-rep the player actually paces at, so the card, the clock
+  // and the history row stop quoting three different durations
+  list.forEach(m=>{if(m.unit==='time')tut+=m.sets*m.target;
+    else tut+=m.sets*m.target*(repSecondsFor(m.exId,repTempoSetting())||3);});
   return {exercises:list.length,minutes:Math.round((tut+ list.reduce((a,m)=>a+m.sets*m.rest,0))/60)+3};
 }
 
@@ -2143,6 +2252,22 @@ function closeSheet(){
   setTimeout(()=>{try{if(!$('#scrim').classList.contains('open'))$('#sheet').innerHTML='';}catch(e){}},400);
 }
 $('#scrim').addEventListener('click',e=>{if(e.target.id==='scrim')closeSheet();});
+
+/* prescribe() drops a set and eases targets in week 6 — its own comment says
+   "week 6 is the deload" — but the overload note was never told, so the Today
+   tab printed "📈 Week 6 — load increased. Final peak week — the highest load
+   of the block" five lines under the deload banner, on a session that had just
+   halved its sets. */
+function overloadNote(sess){
+  try{if(sess&&sess.week===WEEKS_PER_CYCLE&&deloadOn(sess))
+    return 'Volume drops on purpose this week so the next block starts higher. Do not add the sets back.';}catch(e){}
+  return _overloadNoteInner(sess);
+}
+// and the headline above it must not say the opposite
+function overloadHeadline(sess){
+  try{if(sess&&sess.week===WEEKS_PER_CYCLE&&deloadOn(sess))return 'load eased';}catch(e){}
+  return 'load increased';
+}
 
 /* ---- Android / browser Back-button integration ----
    Back: (1) close an open sheet, else (2) step back a tab, else
@@ -2361,9 +2486,9 @@ function onboardHTML(){
   ${step(5,'Schedule &amp; equipment',`
     <div class="field"><label>Training days per week</label>
       <div class="daypick" id="ob-days">${['M','T','W','T','F','S','S'].map((d,i)=>`<button data-d="${(i+1)%7}">${d}</button>`).join('')}</div>
-      <div class="tiny muted" style="margin-top:7px">Tap any day to make it a rest day.</div></div>
+      <div class="tiny muted" style="margin-top:7px">Five days is the floor — tap a day to make it a rest day, but keep at least five.</div></div>
     <div class="field"><label>Equipment you have <span class="tiny muted">· unlocks a Weights session</span></label>
-      <div class="daypick" id="ob-gear" style="flex-wrap:wrap">${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['battlerope','Battle rope'],['bench','Bench / chair']].map(([k,l])=>`<button data-e="${k}"${mon(P.gear,k)}>${l}</button>`).join('')}</div></div>`)}
+      <div class="daypick" id="ob-gear" style="flex-wrap:wrap">${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['battlerope','Battle rope'],['bench','Bench / chair'],['bike','Bike + trainer']].map(([k,l])=>`<button data-e="${k}"${mon(P.gear,k)}>${l}</button>`).join('')}</div></div>`)}
 
   ${step(6,'Health check',`
     <div class="note info" style="margin-top:0">Before anything else — this keeps day one safe. Tap anything that applies to you. If none do, leave them all off.</div>
@@ -2628,7 +2753,16 @@ function restartProgram(){
   if(!confirm('Start a fresh block? Your history stays saved; you\'ll re-take the baseline.'))return;
   // swaps are keyed by absolute progressPtr — keeping them would re-apply choices
   // made in a different block to the new one
-  STATE.baseline=null;STATE.reassess={};STATE.progressPtr=0;STATE.logs={};STATE.weekFeel={};STATE.swaps={};save();go('today');
+  /* STATE.logs is the permanent record every lifetime counter reads —
+     sessionsDoneCount, totalVolume, estCalories, the heatmap and the history
+     list. Clearing it made the confirm's promise false: 12 sessions, a streak
+     and a lit heatmap all went to zero. The new block writes fresh keys from
+     progressPtr 0 and history is keyed off completedAt, so the old rows can
+     simply stay. adapt and exAdapt must rebase, though — carrying them onto a
+     freshly measured baseline is the double-count rebaseAdapt() exists for. */
+  STATE.baseline=null;STATE.reassess={};STATE.progressPtr=0;STATE.weekFeel={};STATE.swaps={};
+  rebaseAdapt();
+  save();go('today');
 }
 
 /* Pick a strong representative photo for the session's hero card. */
@@ -2745,7 +2879,7 @@ function workoutTabHTML(sess,log,doneCount,totalCount,wkNum,restedToday){
   h+=weeklyBannerHTML();
   // progressive overload note vs previous week
   if(sess.pos.dayInWeek===0){
-    h+=`<div class="note fire">📈 <b>Week ${wkNum} — load increased.</b> ${overloadNote(sess)}</div>`;
+    h+=`<div class="note fire">📈 <b>Week ${wkNum} — ${overloadHeadline(sess)}.</b> ${overloadNote(sess)}</div>`;
   }
   h+=`<div class="section-label">Main work</div><div class="exlist">`;
   sess.main.forEach((m,i)=>h+=exCardHTML(m,log,i));
@@ -2754,7 +2888,7 @@ function workoutTabHTML(sess,log,doneCount,totalCount,wkNum,restedToday){
   h+=`<button class="btn ${doneCount>=totalCount?'green':'primary'}" id="finishSession">${doneCount>=totalCount?'✓ Complete Session':'Mark Session Complete'}</button>`;
   return h;
 }
-function overloadNote(sess){
+function _overloadNoteInner(sess){
   const w=sess.week;
   if(w===1&&sess.cycle===0)return 'Establishing your baseline volumes — nail your form this week.';
   if(w===1)return 'Scaling from your latest re-test — every number starts higher than last block.';
@@ -2852,6 +2986,8 @@ function finishSession(){
    than read back. */
 let _lastSessionClock=null;
 function commitSession(feel){
+  // finishedHTML() guards the view, but nothing guarded the mutation itself
+  if(STATE.progressPtr>=SESSIONS_PER_CYCLE*TOTAL_CYCLES)return;
   const p=STATE.progressPtr;const pos=posOf(p);const log=ensureLog();
   log.done=true;log.feel=feel;log.completedAt=todayISO();
   if(_lastSessionClock){
@@ -2940,7 +3076,8 @@ function plBudgetMin(items,tempo){
   list.forEach(m=>{
     if(!m)return;
     const sets=n(m.sets)||1,target=n(m.target);
-    secs+=(m.unit==='time'?sets*target:sets*target*t)+sets*(n(m.rest)||45);
+    const per=(m.unit==='time')?1:(repSecondsFor(m.exId,t)||t);
+    secs+=sets*target*per+sets*(n(m.rest)||45);
   });
   return Math.max(5,Math.round(secs/60)+3);
 }
@@ -2993,6 +3130,24 @@ function plRingHTML(color){return `
 /* Controlled-tempo eccentric (seconds) for guided reps: slow for strength/core,
    fast/explosive for cardio & dynamic finishers. */
 function eccOf(ex){if(!ex||ex.unit!=='reps')return 0;return (ex.region==='cardio'||ex.region==='dynamic')?1:3;}
+/* THE seconds-per-rep figure, for everyone who needs one.
+   There were three: sessionVolume() hardcoded 3, plBudgetMin() and
+   sessionStats() used settings.repTempo, and the player itself paced at
+   (ecc+1)=4s regardless of the slider. So the Today card said ~36 min, the
+   player's own clock budgeted ~44, history recorded ~45, and the session took
+   36 — and the "past the time this should take" nudge I added in v189 fired on
+   sessions that ran exactly to plan, because it was priced against a number the
+   pacing ignored. Explosive work keeps its own faster cadence; everything else
+   obeys the athlete's Rep cadence setting. */
+function repSecondsFor(exId,tempo){
+  const e=eccOf(EX[exId]);
+  if(!e)return 0;
+  return (e<=1)?2:Math.max(1.5,Math.min(6,tempo||3));
+}
+function repTempoSetting(){
+  const v=STATE.settings&&STATE.settings.repTempo;
+  return (typeof v==='number')?Math.max(1.5,Math.min(6,v)):3;
+}
 /* Gentler, back- & neck-friendly alternatives (used by the swap menu). */
 const SWAP_ALT={
   plank:'deadbug',longplank:'plank',planktap:'plank',
@@ -3215,7 +3370,11 @@ function plEnterWork(){
     if(PLAYER.running)PLAYER.tid=setInterval(plTickHold,1000);
   }else{
     const ecc=eccOf(ex);
-    PLAYER.ecc=ecc;PLAYER.eccMs=ecc*1000;PLAYER.repDurMs=(ecc+1)*1000;
+    // the whole rep lasts what the athlete asked for; the eccentric keeps its
+    // share of it, so the "lower slow" cue still lands in the right place
+    const _rs=repSecondsFor(m.exId,PLAYER.tempo)||(ecc+1);
+    PLAYER.ecc=ecc;PLAYER.repDurMs=Math.round(_rs*1000);
+    PLAYER.eccMs=Math.round(PLAYER.repDurMs*(ecc/(ecc+1)));
     PLAYER.repN=0;PLAYER.repMs=0;PLAYER.repCounted=false;PLAYER.total=Math.max(1,m.target);
     plS('#plNum','0');plS('#plSub','OF '+m.target+' REPS');plRingSet(0);
     const tempoLine=ecc>=2?('Controlled tempo. Lower for '+ecc+' seconds, then drive up. '+PLAYER.cues[0]):('Fast and explosive. '+PLAYER.cues[0]);
@@ -3441,8 +3600,12 @@ function actStats(k){
   const week=l.filter(x=>wk.includes(x.date));
   return {n:l.length,total:Math.round(l.reduce((a,x)=>a+(x.mins||0),0)),
     week:Math.round(week.reduce((a,x)=>a+(x.mins||0),0)),
-    // dist is canonical km; legacy rows tagged 'mi' were stored raw in miles
-    dist:Math.round(l.reduce((a,x)=>a+((x.dist||0)*((x.unit==='mi'&&!x._km)?1.60934:1)),0)*10)/10,
+    /* dist is canonical km for every row saveRuck() has ever written — it
+       converts on the way in and tags `unit` only to record what was TYPED.
+       The legacy repair keyed off `_km`, which is written nowhere in this file,
+       so it fired on every imperial row and converted an already-canonical
+       value a second time: a 3-mile ruck displayed as 4.8 mi. */
+    dist:Math.round(l.reduce((a,x)=>a+(x.dist||0),0)*10)/10,
     best:l.reduce((m,x)=>Math.max(m,x.secs||0),0),last:l[0]||null};
 }
 function removeAct(k,i){const l=actLog(k);if(l[i]){l.splice(i,1);save();openAct(k);}}
@@ -3982,7 +4145,12 @@ function assessNav(dir){
 }
 /* Re-testing re-measures the athlete, so the within-block adapt multiplier returns
    to neutral — otherwise the same adaptation is counted twice. */
-function rebaseAdapt(){STATE.adapt=1;}
+/* Per-exercise ratings have to rebase with the global multiplier. exAdapt was
+   written by rateExercise() and cleared nowhere in the file, so a movement
+   rated "too easy" a few times sat 25% above its anchored prescription across
+   every subsequent re-test — re-testing already measures that improvement, so
+   keeping the multiplier counted the same gain twice, all year. */
+function rebaseAdapt(){STATE.adapt=1;STATE.exAdapt={};}
 function finishAssessment(){
   const a=computeAssessment(assessState.results);
   const rec={date:todayISO(),results:assessState.results,score:a.score,level:a.level,maxes:a.maxes,testCount:TESTS.length};
@@ -4017,7 +4185,13 @@ function finishAssessment(){
 function scoreDeltaHTML(a){
   const hist=STATE.scoreHistory;
   if(hist.length<2)return '';
-  const prev=hist[hist.length-2].score;const d=a.score-prev;
+  /* scoreTrendHTML() already refuses to compare across the v178 5->8 test
+     change; this screen did not, so the re-test results — the highest-stakes
+     moment in the program — greeted a stronger athlete with a red drop. */
+  const pr=hist[hist.length-2];
+  if((pr.testCount||5)!==TESTS.length)
+    return `<div class="note info" style="text-align:center">Scoring changed since your last test (${pr.testCount||5} tests, now ${TESTS.length}) — this score starts a fresh comparison.</div>`;
+  const prev=pr.score;const d=a.score-prev;
   if(d===0)return '';
   return `<div class="note ${d>0?'fire':'warn'}" style="text-align:center">${d>0?'▲ +'+d:'▼ '+d} points vs last test${d>0?' — your core is getting stronger 💪':''}</div>`;
 }
@@ -4159,7 +4333,10 @@ function _neuralCacheSet(k,u){
 }
 function _neuralCacheClear(){
   _neuralCache.forEach(u=>{try{URL.revokeObjectURL(u);}catch(e){}});
-  _neuralCacheClear();
+  // was _neuralCacheClear() — infinite recursion. It threw a RangeError before
+  // saveAzureKey() reached save(), so the key worked for that session and was
+  // silently gone on the next launch, with no error the athlete could see.
+  _neuralCache.clear();
 }
 let _neuralAudio=null, _neuralTok=0;
 function _xmlEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));}
@@ -5537,6 +5714,16 @@ function renderProgress(){
     ${weightChartHTML()}
     ${bmiLineHTML()}
   </div>`;
+  h+=measureListHTML();
+  /* skipBaseline() and skipReassess() both toast "retest any time from
+     Progress". Until now that button did not exist anywhere in the app, and
+     openAssessment() was reachable only from the two Today gates — so a test
+     taken while ill scaled six weeks of training with no way to correct it. */
+  h+=`<div class="section-label">Strength test</div><div class="card pad">
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <div style="min-width:0"><b>${STATE.baseline?(STATE.baseline.estimated?'Estimated, never tested':(latestTestDate()?('Last tested '+_ve(latestTestDate())):'Tested — date not recorded')):'Not tested yet'}</b>
+        <div class="tiny muted" style="margin-top:2px">Every target for the block is scaled off this. Tested tired? Do it again — the newest result wins.</div></div>
+      <button class="btn sm primary" style="flex:0 0 auto" onclick="retestNow()">Re-test</button></div></div>`;
   // consistency heatmap
   h+=`<div class="section-label">Consistency</div>`;
   h+=`<div class="card pad">
@@ -5623,11 +5810,19 @@ function setWaistGoal(){
 function gBump(d){const inp=$('#g-waist');inp.value=Math.max(0,((+inp.value||(+inp.placeholder||0))+d)).toFixed(1);}
 function saveWaistGoal(){const g=parseFloat($('#g-waist').value);if(!(g>0)){toast('Enter a goal');return;}STATE.profile.goalWaist=r1(waistToCm(g));save();closeSheet();toast('Goal set 🎯');renderProgress();}
 function mBump(f,d){const id=f==='w'?'#m-waist':'#m-weight';const inp=$(id);inp.value=Math.max(0,((+inp.value||(+inp.placeholder||0))+d)).toFixed(1);}
+/* The wizard already clamps these; the two other writers did not, so a
+   fat-fingered "1900" for weight set a 13,300 kcal target and an 825 g protein
+   goal, and a "380" waist flattened both trend charts for the life of the
+   install — permanently, because no measurement row could ever be deleted. */
+function plausibleKg(kg){return kg>=25&&kg<=350;}
+function plausibleWaistCm(cm){return cm>=40&&cm<=250;}
 function saveMeasure(){
   const wIn=parseFloat($('#m-waist').value);const bIn=parseFloat($('#m-weight').value);
   if(!(wIn>0)&&!(bIn>0)){toast('Enter at least one value');return;}
   // normalise to the canonical store (cm / kg) before anything touches STATE
   const w=wIn>0?r1(waistToCm(wIn)):0, b=bIn>0?r1(weightToKg(bIn)):0;
+  if(w>0&&!plausibleWaistCm(w)){toast('Waist looks off — expected '+(isImperial()?'16–98 in':'40–250 cm'));return;}
+  if(b>0&&!plausibleKg(b)){toast('Weight looks off — expected '+(isImperial()?'55–770 lb':'25–350 kg'));return;}
   upsertMeasure(w>0?w:null,b>0?b:null);
   if(w>0&&!STATE.profile.startWaist)STATE.profile.startWaist=w;
   // keep the working body weight (used for protein/water/BMI/TDEE) in sync with the newest logged weight
@@ -5732,7 +5927,7 @@ function currentWaistShow(){
   return ms.length?r1(waistShow(ms[ms.length-1].waist)):null;}
 function scoreGain(){const s=STATE.scoreHistory||[];if(s.length<1)return 0;return s[s.length-1].score-s[0].score;}
 function sessionsDoneCount(){return Object.values(STATE.logs||{}).filter(l=>l.done).length;}
-function bestHabitDay(){let m=0;const d=(STATE.nutrition&&STATE.nutrition.days)||{};Object.values(d).forEach(x=>{const c=Object.values(x.habits||{}).filter(Boolean).length;if(c>m)m=c;});return m;}
+function bestHabitDay(){let m=0;const d=(STATE.nutrition&&STATE.nutrition.days)||{};Object.values(d).forEach(x=>{const c=HABITS.filter(hb=>x.habits&&x.habits[hb.k]).length;if(c>m)m=c;});return m;}
 /* Rope milestones for the badge checks (log lives in STATE.skipLog). */
 function skipTotalMins(){return skipLog().reduce((a,x)=>a+(x.mins||0),0);}
 function skipSessionCount(){return skipLog().length;}
@@ -5854,9 +6049,18 @@ function comebackEaseActive(){return !!(STATE.comeback&&STATE.comeback.left>0);}
 // Non-punishing recalibration: after a real layoff (>=5 days), auto-ease the next
 // couple of sessions so returning ramps back up instead of punishing. Re-arms once
 // per distinct lapse (keyed to the last trained date).
+/* The gap that counts as "away" has to be relative to the schedule, not a
+   flat 5 days. An athlete training Saturday+Sunday has a 6-day gap every single
+   week: the ease armed 26 times in 26 weeks, 51 of his 52 sessions ran at
+   sets-1 and target x0.8, and he was told "it's been 6 days" every Saturday.
+   At 5 days a week this is still 5; at 2 days a week it is 7. */
+function comebackGap(){
+  const w=(typeof weeklyTarget==='function')?weeklyTarget():5;
+  return Math.max(5,Math.round(7/Math.max(1,w))+3);
+}
 function armComeback(){
   const g=daysSinceTrained(),last=lastTrainedISO();
-  if(g!=null&&g>=5&&last&&(!STATE.comeback||STATE.comeback.trig!==last)){
+  if(g!=null&&g>=comebackGap()&&last&&(!STATE.comeback||STATE.comeback.trig!==last)){
     STATE.comeback={left:clamp(Math.round(g/4),2,8),days:g,trig:last};save();
   }
 }
@@ -6036,8 +6240,11 @@ function startMobility(i){const m=MOBILITY_FLOWS[i];if(!m)return;closeSheet();ru
 /* ---- #5 Weekly coach voice recap ---- */
 let _recapSpeak='';
 function weeklyRecap(){
-  const set=trainedDaysSet();const t=new Date();let wk=0;
-  for(let i=0;i<7;i++){const d=new Date(t);d.setDate(d.getDate()-i);if(set.has(localISO(d)))wk++;}
+  /* One definition of "this week". This was its own rolling 7-day loop while
+     the Progress tile 20 lines below used a Monday-anchored week, so on a
+     Monday the recap sheet said "5 workouts this week" and the tile said 1/5 —
+     and the coach read the 5 out loud. */
+  const wk=sessionsThisWeek();
   const streak=(typeof computeStreak==='function')?computeStreak():0;
   const drop=(typeof waistDropShow==='function')?waistDropShow():0;const wu=STATE.profile.unit;
   const gain=(typeof scoreGain==='function')?scoreGain():0;
@@ -6081,10 +6288,18 @@ function deloadBanner(){return deloadOn()?`<div class="note info" style="margin-
 function beatTempoPref(){const t=STATE.settings&&STATE.settings.beatTempo;return (typeof t==='number'&&t>=60&&t<=110)?t:78;}
 function setBeatTempo(bpm){if(!STATE.settings)STATE.settings={};STATE.settings.beatTempo=Math.max(60,Math.min(110,parseInt(bpm)||78));save();if(BEAT&&BEAT.on){beatStop();beatStart();}}
 /* ---- #7 New-version update toast ---- */
+/* A deploy landing mid-set put a bar with a Refresh button exactly where
+   "Set done ✓" is, at a higher z-index than the player, with no dismiss. The
+   reflex tap reloaded the app and killed the session. */
+function _sessionLive(){
+  try{return !!((typeof PLAYER!=='undefined'&&PLAYER)||(typeof INTV!=='undefined'&&INTV)||(typeof OP!=='undefined'&&OP));}
+  catch(e){return false;}
+}
 function showUpdateToast(){
+  if(_sessionLive())return;   // it will be offered again on the next launch
   if(document.getElementById('updToast'))return;
   const d=document.createElement('div');d.id='updToast';
-  d.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:calc(74px + env(safe-area-inset-bottom));z-index:500;background:var(--card2);border:1px solid var(--line2);border-radius:14px;padding:11px 14px;display:flex;gap:12px;align-items:center;box-shadow:0 10px 34px rgba(0,0,0,.55)';
+  d.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:calc(74px + env(safe-area-inset-bottom));z-index:70;background:var(--card2);border:1px solid var(--line2);border-radius:14px;padding:11px 14px;display:flex;gap:12px;align-items:center;box-shadow:0 10px 34px rgba(0,0,0,.55)';
   d.innerHTML=`<span style="font-weight:800;font-size:13px">🔄 New version ready</span><button style="background:var(--fire);color:var(--accInk);border:none;border-radius:10px;padding:8px 13px;font-weight:900" onclick="location.reload()">Refresh</button>`;
   document.body.appendChild(d);
 }
@@ -6099,7 +6314,12 @@ function readinessMult(){const r=readinessToday();if(!r)return 1;const s=r.score
 function readinessSlump(){
   try{const n=nut();const out=[];
     for(let i=0;i<3;i++){const d=new Date();d.setDate(d.getDate()-i);
-      const k=d.toISOString().slice(0,10);const r=(STATE.readiness||{})[k];
+      /* localISO, not toISOString. Readiness is WRITTEN under todayISO() (local);
+         reading it back in UTC meant that from 6pm Mountain onwards day 0's key
+         was tomorrow's date, the 3-day window could never fill, and the
+         automatic deload silently could not fire for anyone who trains in the
+         evening. It worked perfectly in UTC, which is where every review ran. */
+      const k=localISO(d);const r=(STATE.readiness||{})[k];
       if(r&&r.score>0)out.push(r.score);}
     return out.length===3&&(out.reduce((a,b)=>a+b,0)/3)<55;
   }catch(e){return false;}
@@ -6133,20 +6353,69 @@ function readinessCardHTML(){
   return `<div class="note ${s<40?'warn':'info'}" style="margin:0 0 8px;display:flex;justify-content:space-between;align-items:center;gap:10px"><span>🌡️ <b>Readiness ${s}%</b> · <span style="color:${tag[1]}">${tag[0]}</span>${s<40?' — today eased; consider rest/deload':(s>=80?' — load turned up 🔥':'')}</span><button class="btn sm ghost" style="width:auto;flex:0 0 auto" onclick="_rdy={};openReadiness()">Update</button></div>`;
 }
 /* ---- #3 Goal ETA projection ---- */
+/* Every other log in the app has a delete control; measurements had none, so a
+   single mistyped row skewed the auto-scaled charts and, if it was the first
+   row, became the permanent baseline for waistDrop(), both chart "Start"
+   figures and the goal ETA. */
+function removeMeasure(date){
+  if(!confirm('Delete the measurement from '+date+'?'))return;
+  STATE.measurements=(STATE.measurements||[]).filter(m=>String(m.date).slice(0,10)!==date);
+  const last=(STATE.measurements||[]).filter(m=>m.weight>0).slice(-1)[0];
+  if(last){STATE.nutrition.weightKg=last.weight;try{recalcKcalFromStored();}catch(e){}}
+  save();toast('Deleted');renderProgress();
+}
+function measureListHTML(){
+  const ms=(STATE.measurements||[]).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,8);
+  if(!ms.length)return '';
+  return `<div class="section-label">Logged measurements</div><div class="card" style="padding:0 12px">`+
+    ms.map(m=>`<div class="kv" style="border-top:1px solid var(--line);padding:10px 2px">
+      <span style="min-width:0"><b>${_ve(String(m.date).slice(0,10))}</b>
+        <div class="tiny muted" style="margin-top:2px">${m.waist>0?('waist '+r1(waistShow(m.waist))+' '+(isImperial()?'in':'cm')):''}${(m.waist>0&&m.weight>0)?' · ':''}${m.weight>0?('weight '+r1(weightShow(m.weight))+' '+(isImperial()?'lb':'kg')):''}</div></span>
+      <button class="btn sm ghost" style="flex:0 0 auto" onclick="removeMeasure('${_ve(String(m.date).slice(0,10))}')">✕</button></div>`).join('')+
+    `</div><div class="tiny muted" style="margin-top:6px">Mistyped one? Delete it — a bad row skews the charts and the goal pace for good.</div>`;
+}
+function latestTestDate(){
+  const ks=Object.keys(STATE.reassess||{}).map(Number).sort((a,b)=>b-a);
+  /* A record written before v177 can carry maxes and no date at all —
+     String(undefined).slice(0,10) is the string "undefined", which is precisely
+     the placeholder the state suite scans this tab for. */
+  for(const k of ks){const r=STATE.reassess[k];if(r&&r.maxes&&!r.deferred&&r.date)return String(r.date).slice(0,10);}
+  return (STATE.baseline&&STATE.baseline.date)?String(STATE.baseline.date).slice(0,10):null;
+}
+/* finishAssessment() already overwrites STATE.reassess[n] and calls
+   rebaseAdapt(), so re-testing needs no engine change — only a way in. */
+function retestNow(){
+  if(!STATE.baseline){openAssessment(false);return;}
+  const cyc=reassessGate()||Math.max(1,posOf(STATE.progressPtr).cycle);
+  openAssessment(cyc);
+}
 function goalETAHTML(){
   const p=STATE.profile;const ms=(STATE.measurements||[]).filter(m=>m.waist>0);
   if(ms.length<2||!(p.goalWaist>0))return '';
-  const a=ms[0],b=ms[ms.length-1];
+  const b=ms[ms.length-1];
+  /* Pace comes from the TRAILING window, not from first-vs-last over the whole
+     history. Averaging the lifetime meant three good months kept the number
+     above the flat threshold through five months of nothing, so the stall
+     branch below — which is the one piece of copy written for exactly that
+     situation — could never fire for the athlete who most needed it. */
+  const recent=ms.filter(m=>(new Date(b.date)-new Date(m.date))/86400000<=42);
+  const a=(recent.length>=2)?recent[0]:ms[0];
   const days=(new Date(b.date)-new Date(a.date))/86400000;
   if(days<3)return '';
-  // stored cm -> the units the athlete reads, so the ${p.unit} labels are honest
-  const perWeek=(isImperial()?(a.waist-b.waist)/2.54:(a.waist-b.waist))/days*7;
-  const toGo=isImperial()?(b.waist-p.goalWaist)/2.54:(b.waist-p.goalWaist);
-  if(toGo<=0)return `<div class="tiny" style="margin-top:8px;color:var(--green);font-weight:800">🎉 Goal reached — set a new one to keep climbing.</div>`;
-  if(perWeek<=0.03)return `<div class="tiny muted" style="margin-top:8px">Trend is flat — tighten the deficit or add a Special session to get it moving.</div>`;
-  const weeks=Math.ceil(toGo/perWeek);const eta=new Date(b.date);eta.setDate(eta.getDate()+weeks*7);
-  const mon=eta.toLocaleDateString(undefined,{month:'short',year:'numeric'});const good=perWeek>=0.2;
-  return `<div class="tiny" style="margin-top:8px;color:${good?'var(--green)':'var(--gold)'};font-weight:700">📉 At ~${perWeek.toFixed(1)}${p.unit}/wk you'll hit your goal around <b>${mon}</b> (~${weeks} wk).${good?'':' Pick up the pace to speed it up.'}</div>`;
+  /* Compare in CANONICAL CM and convert only to print. The thresholds are bare
+     constants, so measuring perWeek in display units made them 2.54x stricter
+     in inches: 0.35 cm/wk — a textbook cut — read as "on pace" in metric and
+     "pick up the pace" in imperial, on the same body. */
+  const perWeekCm=(a.waist-b.waist)/days*7;
+  const toGoCm=b.waist-p.goalWaist;
+  if(toGoCm<=0)return `<div class="tiny" style="margin-top:8px;color:var(--green);font-weight:800">🎉 Goal reached — set a new one to keep climbing.</div>`;
+  if(perWeekCm<=0.03)return `<div class="tiny muted" style="margin-top:8px">Trend is flat over the last ${Math.round(days)} days — tighten the deficit or add a Special session to get it moving.</div>`;
+  const weeks=Math.ceil(toGoCm/perWeekCm);const eta=new Date(b.date);eta.setDate(eta.getDate()+weeks*7);
+  const mon=eta.toLocaleDateString(undefined,{month:'short',year:'numeric'});const good=perWeekCm>=0.2;
+  // two decimals in inches: toFixed(1) printed "~0.1in/wk" for 0.14 and left the
+  // rate disagreeing with its own ETA by 40%
+  const shown=isImperial()?(perWeekCm/2.54).toFixed(2):perWeekCm.toFixed(1);
+  return `<div class="tiny" style="margin-top:8px;color:${good?'var(--green)':'var(--gold)'};font-weight:700">📉 At ~${shown}${p.unit}/wk you'll hit your goal around <b>${mon}</b> (~${weeks} wk).${good?'':' Pick up the pace to speed it up.'}</div>`;
 }
 /* ---- #4 Calorie & macro intake logging (search · barcode · photo AI) ----
    Offline-first food database with FULL macros so CoreForge can replace a
@@ -6349,8 +6618,8 @@ function foodTotals(){const d=nutToday();const f=d.food||[];
 function logFood(name,kcal,p,c,f,meal){const d=nutToday();if(!Array.isArray(d.food))d.food=[];
   d.food.push({name:String(name||'Meal').slice(0,60),kcal:Math.round(kcal||0),p:Math.round(p||0),
     c:Math.round(c||0),f:Math.round(f||0),meal:meal||currentMealSlot(),at:Date.now()});
-  save();toast('Logged ✓');closeSheet();renderFuel();try{checkAchievements();}catch(e){}}
-function removeFood(idx){const d=nutToday();if(d.food&&d.food[idx]){d.food.splice(idx,1);save();renderFuel();}}
+  syncProteinHabit();save();toast('Logged ✓');closeSheet();renderFuel();try{checkAchievements();}catch(e){}}
+function removeFood(idx){const d=nutToday();if(d.food&&d.food[idx]){d.food.splice(idx,1);syncProteinHabit();save();renderFuel();}}
 // Edit a logged item in place (re-uses the add sheet, then replaces the entry).
 function editFood(idx){const d=nutToday();const it=d.food&&d.food[idx];if(!it)return;
   openQuickAdd({name:it.name,kcal:it.kcal,p:it.p,c:it.c,f:it.f,meal:it.meal,editIdx:idx});}
@@ -6423,6 +6692,8 @@ function searchLocalFoods(q){q=String(q||'').trim().toLowerCase();if(!q)return [
 function _offItem(p){
   const nu=p.nutriments||{};
   const k100=+nu['energy-kcal_100g']||(nu['energy_100g']?Math.round(+nu['energy_100g']/4.184):0);
+  // pure fat is 884 kcal/100 g; anything above that is bad third-party data
+  if(!(k100>0)||k100>900)return null;
   if(!k100)return null;
   /* serving_size is free text ("2 biscuits (25 g)", "1 portion (30g)", "250 ml").
      parseFloat grabs the leading number, which is usually a COUNT, not grams —
@@ -6721,7 +6992,7 @@ function intakeHTML(){
       <div class="btnrow" style="gap:6px;flex:0 0 auto"><button class="chip" onclick="openFoodSearch()">🔎 Search</button><button class="chip" onclick="scanBarcode()">📸 Scan</button><button class="chip" onclick="foodPhoto()">📷 Snap</button><button class="chip" onclick="openQuickAdd()">➕</button></div></div>`;
   if(kcalT){const pct=Math.min(100,Math.round(t.kcal/kcalT*100));
     h+=`<div class="pbar${t.kcal>kcalT?'':' green'}" style="margin-top:8px"><i style="width:${pct}%"></i></div>
-      <div class="tiny muted" style="margin-top:4px">${t.kcal<=kcalT?(kcalT-t.kcal)+' kcal left today':(t.kcal-kcalT)+' kcal over — ease portions or add a Special session'}</div>`;}
+      <div class="tiny muted" style="margin-top:4px">${t.kcal<=kcalT?(kcalT-t.kcal)+' kcal left today':(t.kcal-kcalT)+' kcal over — that\'s one day, not the week.'}</div>`;}
   // macro split
   h+=`<div class="row" style="gap:10px;margin-top:12px">
       ${_macroBar('Protein',t.p,mt?mt.p:0,'var(--fire-l)')}
@@ -6756,7 +7027,11 @@ function intakeTrendHTML(){
   for(let i=6;i>=0;i--){const dt=new Date();dt.setDate(dt.getDate()-i);const key=localISO(dt);
     const day=n.days&&n.days[key];const f=(day&&day.food)||[];
     days.push({key,label:['S','M','T','W','T','F','S'][dt.getDay()],kcal:f.reduce((a,x)=>a+(x.kcal||0),0),p:f.reduce((a,x)=>a+(x.p||0),0),n:f.length});}
-  const logged=days.filter(d=>d.n>0);
+  /* Today is still in progress: including a logged breakfast as a full day
+     dropped a 2,300-kcal average to 2,032 and flipped the verdict from "over
+     target" to "on track" every morning. Judge on closed days only. */
+  const closed=days.slice(0,6);
+  const logged=closed.filter(d=>d.n>0);
   if(logged.length<2)return '';
   const avg=Math.round(logged.reduce((a,d)=>a+d.kcal,0)/logged.length);
   const avgP=Math.round(logged.reduce((a,d)=>a+d.p,0)/logged.length);
@@ -6767,9 +7042,14 @@ function intakeTrendHTML(){
       <div style="width:100%;height:56px;display:flex;align-items:flex-end"><div style="width:100%;height:${Math.max(3,pct)}%;background:${col};border-radius:4px"></div></div>
       <div class="tiny muted">${d.label}</div></div>`;}).join('');
   return `<div class="section-label">Last 7 days</div><div class="card pad">
-    <div class="row" style="justify-content:space-between"><div><b>${avg} kcal</b> <span class="tiny muted">daily average</span></div><div class="tiny muted">${avgP}g protein avg · ${logged.length}/7 days logged</div></div>
+    <div class="row" style="justify-content:space-between"><div><b>${avg} kcal</b> <span class="tiny muted">daily average</span></div><div class="tiny muted">${avgP}g protein avg · ${logged.length}/6 days logged</div></div>
     <div class="row" style="gap:6px;align-items:flex-end;margin-top:10px">${bars}</div>
-    ${kcalT?`<div class="tiny muted" style="margin-top:8px">${avg<=kcalT?'✅ Averaging under your '+kcalT+' kcal target — that\'s what drives the fat loss.':'⚠️ Averaging '+(avg-kcalT)+' kcal over target. Trim portions or add conditioning.'}</div>`:''}
+    ${kcalT?(logged.length>=5
+      ? `<div class="tiny muted" style="margin-top:8px">${avg<=kcalT?'✅ Averaging under your '+kcalT+' kcal target — that\'s what drives the fat loss.':'⚠️ Averaging '+(avg-kcalT)+' kcal over target across the days you logged.'}</div>`
+      /* Unlogged days are not random — they are the restaurant and the weekend,
+         so dropping them biases the average in exactly the direction that
+         produces false reassurance. Below 5 closed days, report, do not judge. */
+      : `<div class="tiny muted" style="margin-top:8px">Only ${logged.length} of the last 6 days are logged, so this average is those days, not your week. Log 5+ and this becomes a verdict.</div>`):''}
   </div>`;
 }
 /* ---- #5 Strength standards + 1RM estimate ---- */
@@ -7080,20 +7360,42 @@ function computeStreak(){
   }
   return streak;
 }
-function totalTUT(){
-  let mins=0;
+/* Split, because "minutes trained" and "calories burned" want different things
+   from the same walk, and because this counted PRESCRIBED sets while the reps
+   tile beside it counted COMPLETED ones — so a week of one-set-of-four sessions
+   raised the minutes by the full prescription. */
+function totalTUTSplit(){
+  let work=0,rest=0;
   Object.keys(STATE.logs).forEach(p=>{const l=STATE.logs[p];if(!l||!l.done)return;
     const items=logItemsFor(p,l);const tempo=(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3;
-    let sec=0;items.forEach(m=>{sec+=m.sets*(m.unit==='time'?m.target:m.target*tempo)+m.sets*(m.rest||45);});
-    mins+=Math.round(sec/60);});
-  return mins;
+    items.forEach(m=>{
+      const e=l.ex&&l.ex[m.exId];const sd=e&&e.sets?e.sets.filter(Boolean).length:0;
+      if(!sd)return;
+      work+=sd*(m.unit==='time'?m.target:m.target*tempo);
+      rest+=sd*(m.rest||45);
+    });});
+  return {work:work/60,rest:rest/60};
 }
+function totalTUT(){const t=totalTUTSplit();return Math.round(t.work+t.rest);}
 /* ---- richer progress metrics ---- */
 function localISO(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function weekStartD(d){const x=new Date(d);const day=(x.getDay()+6)%7;x.setHours(0,0,0,0);x.setDate(x.getDate()-day);return x;}
-function sessionsThisWeek(){const s=weekStartD(new Date());return Object.values(STATE.logs).filter(l=>l.done&&l.completedAt&&new Date(l.completedAt+'T00:00:00')>=s).length;}
+/* Quick sessions were taught to the streak, the heatmap and the 28-day count
+   but not to this one, so a travel week of five Quick sessions showed "5 day
+   streak", five lit heatmap squares and "This week 0/5" on the same screen. */
+function sessionsThisWeek(){const s=weekStartD(new Date());let n=0;
+  trainedDaysSet().forEach(d=>{if(new Date(d+'T00:00:00')>=s)n++;});return n;}
 function totalVolume(){let reps=0,hold=0,sets=0;Object.keys(STATE.logs).forEach(p=>{const l=STATE.logs[p];if(!l||!l.done)return;logItemsFor(p,l).forEach(m=>{const e=l.ex&&l.ex[m.exId];const sd=e&&e.sets?e.sets.filter(Boolean).length:0;sets+=sd;if(m.unit==='time')hold+=sd*m.target;else reps+=sd*m.target;});});return {reps,hold,sets};}
-function estCalories(){const kg=(STATE.nutrition&&STATE.nutrition.weightKg)||75;return Math.round(6*3.5*kg/200*totalTUT());}
+/* Was 6 gross METs applied to work AND rest for the whole session — about
+   2.4x the honest figure, in an app whose step and bike models are scrupulously
+   NET and carry a comment explaining why mixing the two over-credits. Work at
+   6 METs, rest at 1.3, and subtract the resting cost across the whole duration
+   so this is what the training ADDED. */
+function estCalories(){
+  const kg=latestWeightKg()||80;const t=totalTUTSplit();
+  const net=(m,min)=>Math.max(0,(m-1))*3.5*kg/200*min;
+  return Math.round(net(6,t.work)+net(1.3,t.rest));
+}
 function loadIndexPct(){const a=(typeof STATE.adapt==='number')?STATE.adapt:1;return Math.round((a-1)*100);}
 /* computeStreak() was taught to read quickLog; the heatmap, the 28-day count and
    the weekly tile were not — so five quick sessions showed a streak of 5 next to
@@ -7163,7 +7465,11 @@ function setStrengthMetric(k){strengthSel=k;renderProgress();}
 function assessSeries(){
   const list=[];
   if(STATE.baseline&&STATE.baseline.maxes)list.push({date:STATE.baseline.date,maxes:STATE.baseline.maxes});
-  Object.keys(STATE.reassess||{}).map(Number).sort((a,b)=>a-b).forEach(k=>{const r=STATE.reassess[k];if(r&&r.maxes)list.push({date:r.date,maxes:r.maxes});});
+  /* skipReassess() carries the previous block's maxes forward stamped with
+     today's date and flagged deferred. Plotting those drew a dead-flat strength
+     trend from tests that never happened — which reads as a plateau, which is
+     exactly the signal that makes someone abandon a program that was working. */
+  Object.keys(STATE.reassess||{}).map(Number).sort((a,b)=>a-b).forEach(k=>{const r=STATE.reassess[k];if(r&&r.maxes&&!r.deferred)list.push({date:r.date,maxes:r.maxes});});
   return list;
 }
 function strengthTrendHTML(){
@@ -7272,8 +7578,12 @@ function projectionHTML(){
        and unachievable on the deficit it actually prescribes. Clamp to BOTH. */
     const byRate=kg*0.01;
     const dfc=(nut().tdee&&nut().kcalTarget)?Math.max(0,nut().tdee-nut().kcalTarget):0;
-    const byDeficit=dfc?dfc*7/7700:byRate;
-    const capped=losing?Math.min(wanted,byRate,byDeficit||byRate):Math.min(wanted,0.5);
+    /* `dfc?` made a zero deficit fall back to byRate — the clamp disengaged in
+       exactly the case it exists for, so maintenance and gain both projected
+       0.9 kg/wk, and a floored athlete eating above her TDEE was promised half
+       a kilo a week from a 343 kcal surplus. */
+    const byDeficit=dfc>0?dfc*7/7700:0;
+    const capped=losing?Math.min(wanted,byRate,byDeficit):Math.min(wanted,0.5);
     if(capped>0){rate=capped;weeks=Math.max(1,Math.ceil(diff/rate));}
   }
   const start=Date.now(),end=start+weeks*7*86400000;
@@ -7466,11 +7776,61 @@ function setBikeLvl(k){
    logged the habit mirrors the total; with nothing logged the manual tick is
    left exactly as the athlete set it, because plenty of days are walked
    without anyone counting. */
+/* The water tracker ticks its own habit and the movement card ticks its own;
+   the food diary did not, so 175 g logged against a 155 g target sat above a
+   checklist reading "Hit protein target" unticked — and the nutrition streak,
+   which needs 3 of 4, could read 0 on a perfect week. */
+function syncProteinHabit(){
+  const t=nutToday();const tgt=proteinTargetG();
+  if(!tgt||!(foodTotals().n>0))return;
+  if(!t.habits||typeof t.habits!=='object')t.habits={};
+  t.habits.protein=foodTotals().p>=tgt;
+}
 function syncStepHabit(){
   const t=nutToday();const m=movement();
-  if(!m.steps&&!m.val)return;
+  /* The early return has to consider what was ALREADY logged, not just what is
+     there now. Clearing a mistyped step count back to 0 left the habit ticked
+     while the card above it read 0/10,000 — the exact contradiction the comment
+     below was written to prevent. */
+  const everLogged=m.steps||m.val||t._stepAuto;
+  if(!everLogged)return;
   if(!t.habits||typeof t.habits!=='object')t.habits={};
+  t._stepAuto=1;
   t.habits.steps=stepEquivalent()>=stepTarget();
+}
+/* Substituting the bike into conditioning slots lowers the impact but they
+   are still short intervals. The thing that actually moves body composition is
+   steady aerobic volume, so it is a stated weekly target with its own count —
+   two rides, 35 minutes, easy enough to hold a conversation. Only shown to an
+   athlete who owns the trainer. */
+const RIDE_TARGET={n:2,min:35};
+function hasTrainer(){try{return ((STATE.profile&&STATE.profile.gear)||[]).includes('bike');}catch(e){return false;}}
+function ridesThisWeek(){
+  const n=nut();let rides=0,mins=0;
+  for(let i=0;i<7;i++){
+    const d=new Date();d.setDate(d.getDate()-i);
+    const day=n.days&&n.days[localISO(d)];if(!day)continue;
+    const v=(typeof day.bikeVal==='number'&&isFinite(day.bikeVal)&&day.bikeVal>0)?day.bikeVal:0;
+    if(!v)continue;
+    const lvl=BIKE_LEVELS.some(b=>b.k===day.bikeLvl)?day.bikeLvl:'steady';
+    const u=BIKE_UNITS.some(x=>x[0]===day.bikeUnit)?day.bikeUnit:'min';
+    const m=(u==='min')?v:(u==='dist'?v/bikeKmPerMin(lvl):v/bikeKcalPerMin(lvl));
+    mins+=m;if(m>=RIDE_TARGET.min*0.7)rides++;
+  }
+  return {rides,mins:Math.round(mins)};
+}
+function rideTargetHTML(){
+  if(!hasTrainer())return '';
+  const r=ridesThisWeek();const done=Math.min(RIDE_TARGET.n,r.rides);
+  const pct=Math.min(100,Math.round(r.mins/(RIDE_TARGET.n*RIDE_TARGET.min)*100));
+  return `<div class="section-label">Steady rides · <span style="color:${done>=RIDE_TARGET.n?'var(--green)':'var(--gold)'}">${done}/${RIDE_TARGET.n} this week</span></div>
+  <div class="card pad">
+    <div class="pbar" style="margin:2px 0 10px"><i style="width:${pct}%;background:linear-gradient(90deg,#4fc3f7,#0288d1)"></i></div>
+    <div class="row" style="justify-content:space-between;align-items:baseline">
+      <div><b>${r.mins} min ridden</b><div class="tiny muted">Target ${RIDE_TARGET.n} × ${RIDE_TARGET.min} min easy</div></div>
+      <span class="tiny muted">${Math.round(r.mins*bikeKcalPerMin('easy'))} kcal</span></div>
+    <div class="note info" style="margin:10px 0 0"><b>Easy means easy.</b> Full sentences, legs never burning. This is the volume that shifts body fat without taking anything out of your sessions — the intervals in your workouts are already doing the hard part.</div>
+  </div>`;
 }
 function movementHTML(){
   const m=movement(),tgt=stepTarget(),eq=stepEquivalent(),ride=bikeRide();
@@ -7494,7 +7854,7 @@ function movementHTML(){
       `<button class="${m.lvl===b.k?'on':''}" onclick="setBikeLvl('${b.k}')">${b.label}</button>`).join('')}</div>
     <div class="tiny muted" style="margin-bottom:12px">${_ve(lvl.rpe)} · ${_ve(lvl.cue)} · <b>${bikeStepsPerMin(m.lvl)} steps</b>, <b>${r1(kmToShow(bikeKmPerMin(m.lvl)))} ${distUnit()}</b> and <b>${Math.round(bikeKcalPerMin(m.lvl))} kcal</b> a minute</div>
     <div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log the ride as</div>
-    <div class="tiny muted" style="margin:-2px 0 8px">Calories is the one to trust if you are unsure which effort to pick — it is the only entry the choice cannot throw off.</div>
+    <div class="tiny muted" style="margin:-2px 0 8px">Effort only changes what minutes are worth — distance and calories are already the work done. <b>Read calories off the bike and knock ~15% off it</b>: a turbo counts the calories you would have burned sitting still, this field does not.</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${BIKE_UNITS.map(([k,l])=>
       `<button class="${m.unit===k?'on':''}" onclick="setBikeUnit('${k}')">${l==='Distance'?distUnit().toUpperCase():l}</button>`).join('')}</div>
     <div class="row" style="justify-content:space-between;align-items:flex-end;gap:10px">
@@ -7646,13 +8006,13 @@ const RECIPES=[
   {id:'b_yog',alg:['dairy','gluten'],type:'breakfast',emoji:'🫐',name:'Greek Yogurt Berry Bowl',kcal:380,p:30,c:40,f:10,ok:['vegetarian','pescatarian','halal','omnivore'],
     ing:['200 g Greek yogurt','1 cup mixed berries','2 tbsp granola','1 tsp honey'],
     steps:['Spoon the yogurt into a bowl.','Top with berries and granola.','Drizzle with honey.']},
-  {id:'b_rice',alg:[],type:'breakfast',emoji:'🍚',name:'Rice Porridge & Seeds',kcal:390,p:14,c:60,f:11,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+  {id:'b_rice',alg:['treenut'],type:'breakfast',emoji:'🍚',name:'Rice Porridge & Seeds',kcal:390,p:14,c:60,f:11,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
     ing:['½ cup rice flakes (or leftover rice)','1 cup rice or coconut milk','1 tbsp pumpkin seeds','1 tbsp raisins','Cinnamon'],
     steps:['Simmer the rice in the milk until creamy, 5–6 min.','Stir in the raisins.','Top with the seeds and cinnamon.']},
   {id:'b_eggavo',alg:['egg'],type:'breakfast',emoji:'🥑',name:'Eggs & Avocado Bowl',kcal:420,p:24,c:14,f:31,ok:['vegetarian','pescatarian','halal','omnivore'],
     ing:['3 eggs','½ avocado','Handful spinach','1 tsp olive oil','Salt, pepper, chilli flakes'],
     steps:['Wilt the spinach in the oil.','Scramble or fry the eggs alongside.','Plate with sliced avocado and season.']},
-  {id:'b_fruitnut',alg:[],type:'breakfast',emoji:'🍌',name:'Banana, Seeds & Coconut',kcal:350,p:10,c:48,f:14,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+  {id:'b_fruitnut',alg:['treenut'],type:'breakfast',emoji:'🍌',name:'Banana, Seeds & Coconut',kcal:350,p:10,c:48,f:14,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
     ing:['2 bananas','2 tbsp sunflower seeds','2 tbsp desiccated coconut','1 tbsp maple syrup'],
     steps:['Slice the bananas into a bowl.','Scatter the seeds and coconut.','Finish with the syrup.']},
   {id:'b_steak',alg:['egg'],type:'breakfast',emoji:'🥩',name:'Steak & Eggs Skillet',kcal:480,p:46,c:8,f:30,ok:['halal','omnivore'],
@@ -7663,7 +8023,7 @@ const RECIPES=[
     steps:['Spoon the cottage cheese into a bowl.','Top with the berries and seeds.','Drizzle the honey and dust with cinnamon.'],
     note:'No cooking — the fastest high-protein start in the list.'},
   {id:'b_salmon',alg:['egg','fish'],type:'breakfast',emoji:'🐟',name:'Smoked Salmon & Eggs',kcal:430,p:38,c:6,f:29,ok:['pescatarian','omnivore'],
-    ing:['100 g smoked salmon','3 eggs','1 tsp butter or olive oil','Handful rocket','Lemon, black pepper, dill'],
+    ing:['100 g smoked salmon','3 eggs','1 tsp olive oil','Handful rocket','Lemon, black pepper, dill'],
     steps:['Scramble the eggs slowly over a low heat so they stay soft.','Plate with the salmon and rocket.','Finish with lemon, dill and plenty of black pepper.']},
   {id:'b_eggs',alg:['egg','gluten'],type:'breakfast',emoji:'🍳',name:'Veggie Eggs & Toast',kcal:400,p:26,c:30,f:18,ok:['vegetarian','pescatarian','halal','omnivore'],
     ing:['3 eggs','Handful spinach + tomato','1 slice wholegrain toast','1 tsp oil, salt & pepper'],
@@ -7850,7 +8210,9 @@ function eatWindowHTML(){
    the macro split below. Everything here is wheat-free by design; seitan is
    deliberately absent because it is pure wheat gluten and tops every
    plant-protein list an athlete avoiding wheat is likely to read. */
-/* Each row is: name, protein g, calories, fat g, category, BASE AMOUNT, unit.
+/* Each row is: name, protein g, calories, PORTION LABEL, category, fat g, BASE AMOUNT, unit.
+   (indices 0-7 — fat is [5], not [3]; getting this wrong is exactly the kind of
+   off-by-one an anchored regex edit over this literal would bake in.)
    The four nutrition figures describe exactly the base amount, so any other
    amount is a straight ratio off it — that is what lets the tab answer "how
    much of this do I need" instead of only "here is one portion".
@@ -8026,7 +8388,10 @@ function refAmtCalc(){
   const f=FOODS[REF_FOOD],out=$('#ref-amt-out'),el=$('#ref-amt');
   if(!f||!out||!el)return;
   const n=foodAt(f,el.value);
-  const protT=proteinTargetG()||0,kcalT=(STATE.nutrition&&STATE.nutrition.kcalTarget)||0;
+  /* refTargets(), not the raw reads — the tab has already committed to the
+     defaults in print, so "Fill my protein gap" refusing with "set your targets
+     in Fuel first" contradicted the number at the top of the same screen. */
+  const _T=refTargets();const protT=_T.p,kcalT=_T.kcal;
   const eaten=foodTotals();
   const pLeft=Math.max(0,protT-eaten.p),kLeft=Math.max(0,kcalT-eaten.kcal);
   let h=`<div class="grid2">
@@ -8049,8 +8414,7 @@ function refAmtCalc(){
 }
 function refFillProtein(){
   const f=FOODS[REF_FOOD];if(!f)return;
-  const protT=proteinTargetG()||0;
-  if(!protT){toast('Set your targets in Fuel first');return;}
+  const protT=refTargets().p;
   const need=Math.max(0,protT-foodTotals().p);
   if(!need){toast('Protein target already met ✓');return;}
   if(!(f[1]>0)){toast(f[0]+' has no protein to fill it with');return;}
@@ -8260,7 +8624,18 @@ function generateMealPlan(){
     if(r){exclude.add(r.id);meals.push(r.id);}else missing.push(s);});
   STATE.nutrition.plan={date:todayISO(),meals,missing};save();return STATE.nutrition.plan;
 }
-function currentMealPlan(){const p=STATE.nutrition.plan;if(p&&p.date===todayISO()&&p.meals&&p.meals.length)return p;return generateMealPlan();}
+/* Self-healing, because the invariant was held only by every writer
+   remembering to null the plan — and migrateAllergens(), which runs at boot and
+   derives tags from free text, did not. An athlete upgrading from that build
+   saw their newly-registered allergy, the banner saying meals were filtered for
+   it, and both violating recipes still on the plate. */
+function _planStillValid(p){
+  try{return p&&Array.isArray(p.meals)&&p.meals.every(id=>{const r=recipeById(id);return r&&dietOk(r);});}
+  catch(e){return false;}
+}
+function currentMealPlan(){const p=STATE.nutrition.plan;
+  if(p&&p.date===todayISO()&&p.meals&&p.meals.length&&_planStillValid(p))return p;
+  return generateMealPlan();}
 function regenPlan(){generateMealPlan();haptic(8);renderFuel();}
 function toggleRecipe(id){const e=$('#rc-'+id);if(e)e.style.display=e.style.display==='none'?'block':'none';}
 const MEAL_LABEL={breakfast:'breakfast',lunch:'lunch',dinner:'dinner',snack:'snack'};
@@ -8330,6 +8705,14 @@ function renderRef(){
   }
 
   /* ---- the one food list ---- */
+  /* The meal plan filters on diet and allergens; this tab does not, and said
+     nothing about it. Silence reads as "checked and safe" — which is the worst
+     outcome, because it teaches trust the tab has not earned. */
+  const _alg=(STATE.nutrition&&Array.isArray(STATE.nutrition.allergens))?STATE.nutrition.allergens:[];
+  const _diet=(STATE.nutrition&&STATE.nutrition.diet)||'omnivore';
+  if(_alg.length||_diet!=='omnivore'){
+    h+=`<div class="note warn"><b>This tab is not filtered.</b> It is the full food list, so it does not know about your ${_alg.length?'declared '+_alg.map(a=>_ve(a)).join(', ')+(_diet!=='omnivore'?' or your '+_ve(_diet)+' diet':''):_ve(_diet)+' diet'}. The meal plan in <b>Fuel</b> is filtered; read this one yourself.</div>`;
+  }
   h+=`<div class="section-label">Food list · <span class="tiny muted">tap a food to pick an amount</span></div>`;
   h+=`<div class="daypick" id="ref-cats" style="flex-wrap:wrap;margin:0 2px 10px">${FOOD_CATS.map(([k,l])=>
     `<button class="${REF_CAT===k?'on':''}" onclick="setRefCat('${k}')">${l}</button>`).join('')}</div>`;
@@ -8367,7 +8750,7 @@ function renderRef(){
     const gapK=T.kcal-d.kcal,gapP=T.p-d.p;
     if(Math.abs(gapK)>140||Math.abs(gapP)>12){
       h+=`<div class="note ${Math.abs(gapK)>300||Math.abs(gapP)>25?'warn':'info'}" style="margin:2px 0 6px">This one will not stretch all the way to your target without amounts nobody plates.
-        ${gapP>12?`Add about <b>${gapP} g of protein</b> — ${amountForProtein(FOODS[FOOD_BY_NAME['Cottage cheese']],gapP)} g of cottage cheese does it. `:''}
+        ${gapP>12?`Add about <b>${gapP} g of protein</b>${_alg.includes('dairy')||_diet==='vegan'?'':` — ${amountForProtein(FOODS[FOOD_BY_NAME['Cottage cheese']],gapP)} g of cottage cheese does it`}. `:''}
         ${gapP<-12?`It runs <b>${-gapP} g over</b> on protein, which is not a problem, just more food than you need. `:''}
         ${gapK>140?`It lands <b>${gapK} kcal short</b> — a banana and a spoon of peanut butter closes it.`:''}
         ${gapK<-140?`It runs <b>${-gapK} kcal over</b> — take it out of the starch.`:''}</div>`;
@@ -8430,7 +8813,8 @@ function renderRef(){
   });
   h+=`</div>`;
   h+=`<div class="note info" style="margin-top:10px"><b>The rule of thumb is MET × 35.</b> Steady riding is about 5.8 METs net of just sitting there, so roughly <b>200 steps a minute</b>. Bodyweight cancels out of that conversion — it only changes the calories beside it.</div>`;
-  h+=`<div class="note info"><b>The calorie column is the same in every row.</b> ${Math.ceil(tgt*kcalPerStep())} kcal is what ${tgt.toLocaleString()} steps costs you, and it does not care how fast you spin — riding harder only buys the same energy in less time. Log whichever of the three your bike actually shows you: <b>Fuel → Movement</b> takes all of them.</div>`;
+  h+=`<div class="note info"><b>The calorie column is the same in every row.</b> ${Math.ceil(tgt*kcalPerStep())} kcal is what ${tgt.toLocaleString()} steps costs you, and it does not care how fast you spin — riding harder only buys the same energy in less time. Log whichever of the three your bike shows: <b>Fuel → Movement</b> takes all of them.</div>`;
+  h+=`<div class="note warn"><b>Your bike's calorie readout runs high.</b> A console reports gross calories; every figure here is net of what you would have burned sitting still. If the screen says 300, count about 255.</div>`;
   h+=`<div class="note warn"><b>On a trainer, trust the clock over the distance.</b> What a turbo puts on its screen depends on the trainer and where the resistance is set. The distance here is what that effort would cover on the road — useful as a target, not a measurement.</div>`;
   h+=`<div class="note warn"><b>It is not a straight swap.</b> Both sides are matched on energy, and energy is what drives the deficit. Walking also loads the skeleton and breaks up sitting, which riding does not. Use the trainer for the days that got away from you.</div>`;
 
@@ -8486,11 +8870,21 @@ function renderFuel(){
     <div class="pbar" style="margin-top:12px"><i style="width:${wpct}%;background:linear-gradient(90deg,#3fd7e8,#12b5c9)"></i></div>
   </div>`;
   h+=movementHTML();
+  h+=rideTargetHTML();
   // habit checklist
-  const hitCount=Object.values(t.habits||{}).filter(Boolean).length;
-  h+=`<div class="section-label">Daily habits · <span style="color:var(--green)">${hitCount}/${HABITS.length}</span> · 🔥 ${nutritionStreak()}-day streak</div><div class="card">
+  /* Count the DECLARED habits, not every truthy key in the map. A private
+     bookkeeping flag written alongside them read as a completed habit: 3,000
+     steps against an 8,000 target showed "1/5" with every checkbox empty, and
+     Perfect Day unlocked on four. */
+  const hitCount=HABITS.filter(hb=>t.habits&&t.habits[hb.k]).length;
+  /* Denominator is the REQUIRED habits — the calorie one is deliberately
+     optional (it was removed as a streak condition so restriction is not what
+     the app rewards daily) but was still counted, so hitting everything that
+     matters read as 4/5 forever. */
+  const hitReq=HABITS.filter(hb=>!hb.optional&&t.habits&&t.habits[hb.k]).length;
+  h+=`<div class="section-label">Daily habits · <span style="color:var(--green)">${hitReq}/${habitsRequired()}</span> · 🔥 ${nutritionStreak()}-day streak</div><div class="card">
     ${HABITS.map(hb=>{const on=!!(t.habits&&t.habits[hb.k]);return `<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer;padding:13px 14px" onclick="toggleHabit('${hb.k}')">
-      <span>${hb.emoji} ${_ve(typeof hb.label==='function'?hb.label():hb.label)}${hb.k==='steps'?` <span class="tiny muted">· ~${stepKcal()} kcal</span>`:''}</span>
+      <span>${hb.emoji} ${_ve(typeof hb.label==='function'?hb.label():hb.label)}${hb.k==='steps'?` <span class="tiny muted">· ~${stepKcal()} kcal</span>`:''}${hb.optional?` <span class="tiny muted">· optional</span>`:''}</span>
       <span class="ex-check" style="width:26px;height:26px;${on?'background:var(--green);border-color:var(--green)':''}"><svg viewBox="0 0 24 24" fill="none" stroke="#04220f" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;opacity:${on?1:0}"><path d="M20 6 9 17l-5-5"/></svg></span></button>`;}).join('')}
   </div>`;
   // calorie calculator
@@ -8527,8 +8921,16 @@ function noteGoalPhase(){
     /* Stamping today's date restarted the deficit clock at zero for anyone
        already mid-cut, pushing the 12-week diet-break guardrail 12 weeks into
        the future for someone 31 weeks in. Seed from evidence we already hold. */
+    /* Seed from TODAY on a fresh transition into a deficit. Re-seeding from
+       createdAt meant that after taking the diet break the banner asked for,
+       coming back to 'lose' immediately re-announced 14 unbroken weeks of
+       deficit — so the banner could never be cleared again, and every
+       maintenance phase was counted as deficit time. createdAt remains the
+       fallback only for an install that has never recorded a start. */
     if(g==='shred'||g==='lose'){if(!STATE.profile._shredStart)STATE.profile._shredStart=
+      (STATE.profile._everDeficit?todayISO():null)||
       STATE.profile.createdAt||((STATE.measurements||[])[0]||{}).date||todayISO();}
+    if(g==='shred'||g==='lose')STATE.profile._everDeficit=1;
     else STATE.profile._shredStart=null;
   }catch(e){}
 }
@@ -8591,6 +8993,15 @@ function saveTDEE(){
   let ht=parseFloat($('#td-ht').value);let wt=parseFloat($('#td-wt').value);
   if(!(sex&&age>0&&ht>0&&wt>0)){toast('Fill in all fields');return;}
   if(imp){ht=ht*2.54;wt=wt*0.453592;}
+  if(!plausibleKg(wt)){toast('Weight looks off — expected '+(imp?'55–770 lb':'25–350 kg'));return;}
+  /* Was `!plausibleWaistCm(ht) && !(ht>=120&&ht<=230)`, which is true only
+     outside 40-250 cm — the second branch could never reject anything. The
+     realistic mis-entry is a height typed in inches while the unit is cm: 70
+     was accepted, giving a TDEE of 1591 instead of 2570 and a target floored to
+     1500, whose only feedback is "raised to a safe minimum" — which reads as
+     reassurance rather than as "your height is wrong". */
+  if(!(ht>=120&&ht<=230)){toast('Height looks off — expected '+(imp?'47–91 in':'120–230 cm'));return;}
+  if(!(age>=14&&age<=100)){toast('Age looks off — expected 14–100');return;}
   n.sex=sex;n.age=age;n.heightCm=Math.round(ht);n.weightKg=Math.round(wt*10)/10;n.activity=parseFloat($('#td-act').value)||1.45;
   // mirror to the profile copy — the quiz prefills from profile.*, so writing
   // only the nutrition side meant one tap of Next reverted these answers
@@ -8663,8 +9074,14 @@ function renderQuick(){
   h+=`</div><button class="btn ${doneN>=q.items.length?'green':'primary'}" style="margin-top:6px" onclick="quickFinish()">${doneN>=q.items.length?'✓ Finish':'Finish workout'}</button>`;
   v.innerHTML=h;
 }
+/* QUICKIES and HIIT_POOL are flat literals that never went through the swap
+   the program applies to every prescribed movement, so a flagged low back was
+   routed around for 378 sessions and then handed three sets of Russian twists
+   by the catch-up banner — at the one moment the athlete is least conditioned.
+   safeSwap() is a no-op when nothing is flagged. */
+function quickExId(exId){try{return safeSwap(exId);}catch(e){return exId;}}
 function quickPlay(idx){
-  const q=QUICKIES.find(x=>x.id===QUICK_ID);const it=q.items[idx];const ex=EX[it.exId];
+  const q=QUICKIES.find(x=>x.id===QUICK_ID);const it=q.items[idx];const ex=EX[quickExId(it.exId)]||EX[it.exId];
   const rest=it.rest||ex.rest||25;autoRoll();
   const label=ex.name+(it.sets>1?` · ${it.sets} sets`:'');
   if(ex.unit==='time') runTimer('hold',it.target,label,rest,()=>quickMark(idx));
@@ -8872,7 +9289,7 @@ function renderGuide(){
       <li>Track your <b>waist</b> weekly (Progress tab). A shrinking waist is the truest proof.</li>
       <li>Sleep 7–9 hrs — recovery is when the core rebuilds stronger.</li>
     </ul>
-    <div class="note warn" style="margin-bottom:0">Honest note: spot-reduction isn't real. This forges the strongest possible midsection; combined with the nutrition basics above, that's how you get substantial visible results in 6 weeks — and more over 12.</div>
+    <div class="note warn" style="margin-bottom:0"><b>Honest note: spot-reduction isn't real, and neither is a six-week six-pack.</b> Core work builds the muscle; the deficit uncovers it, and that part is arithmetic. Expect the <b>tape to move in 3–4 weeks</b> — that is the number to watch. Visible abs is roughly 12–14% body fat for a man, and getting there from 25% is 11–13 kg of fat, which at a sane 0.5 kg a week is <b>6–9 months</b>. Anyone promising it faster is selling something. Track your waist weekly in Progress; that is where you will see this working long before the mirror shows it.</div>
   </div>`;
   // exercise library — grouped by region, filtered to the gear you actually have
   // (so equipment variants like the dumbbell vs kettlebell goblet squat don't double up).
@@ -8972,7 +9389,10 @@ function renderGuide(){
     <div class="divider" style="margin:10px 0"></div>
     <div style="padding:2px 0"><div class="tiny muted" style="margin-bottom:6px">Equipment you have <span style="opacity:.7">· unlocks the Weights session</span></div>
       <div class="daypick" id="set-gear" style="flex-wrap:wrap">
-        ${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['battlerope','Battle rope'],['bench','Bench / chair']].map(([k,l])=>`<button class="${(STATE.profile.gear||[]).includes(k)?'on':''}" onclick="toggleGear('${k}')">${l}</button>`).join('')}
+        ${''}${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['battlerope','Battle rope'],['bench','Bench / chair']].map(([k,l])=>`<button class="${(STATE.profile.gear||[]).includes(k)?'on':''}" onclick="toggleGear('${k}')">${l}</button>`).join('')}
+        <div style="margin-top:12px"></div>
+        <button class="${STATE.profile.tightSpace?'on':''}" onclick="toggleTightSpace()">🏠 Tight space</button>
+        <div class="tiny muted" style="margin-top:8px">Tight space swaps out the handstand work and anything that travels across the room — you get the hardest floor presses instead, which load the shoulder the same way without needing a clear wall. Straight trade to know about: nothing on the floor fully replaces a handstand push-up, so the very top of the shoulder ladder is a step easier. Everything else is like for like.</div>
       </div></div>
     <div style="padding:8px 0 2px"><div class="tiny muted" style="margin-bottom:6px">Diet preference <span style="opacity:.7">· shapes meal plans</span></div>
       <div class="daypick" id="set-diet" style="flex-wrap:wrap">
@@ -9010,6 +9430,7 @@ function renderGuide(){
 
    Guarded by a session flag so it can never loop, and silent when offline. */
 async function selfUpdate(){
+  if(_sessionLive())return;   // a reload here dumps the athlete out mid-set
   try{
     if(sessionStorage.getItem('cf_selfupd'))return;
     /* APP_VERSION sits in the first few KB, so ask for the first 64 KB instead of
@@ -9067,15 +9488,29 @@ function toggleGear(k){
   haptic(8);save();renderGuide();
 }
 function setDiet(k){STATE.nutrition.diet=k;if(STATE.nutrition.plan)STATE.nutrition.plan=null;haptic(8);save();renderGuide();}
-function exportData(){
+/* Photo BYTES live in IndexedDB under ph_<id>; STATE.photos holds only
+   {id,date,pose}, so JSON.stringify(STATE) silently produced a backup with no
+   photos in it — while the render error boundary and hardReset() both tell the
+   athlete to export one first. They are the only thing in here that cannot be
+   re-created. */
+async function exportData(){
   // Never write the on-device API keys into a shareable backup file.
   const clone=JSON.parse(JSON.stringify(STATE));
   if(clone.settings){delete clone.settings.azureKey;delete clone.settings.foodAiKey;}
+  clone._photoData={};
+  try{
+    for(const ph of (clone.photos||[])){
+      const d=await idbGet('ph_'+ph.id);
+      if(d)clone._photoData[ph.id]=d;
+    }
+  }catch(e){}
+  const missing=(clone.photos||[]).length-Object.keys(clone._photoData).length;
   const blob=new Blob([JSON.stringify(clone,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);const a=document.createElement('a');
   a.href=url;a.download='coreforge-backup-'+todayISO()+'.json';a.click();
   setTimeout(()=>{try{URL.revokeObjectURL(url);}catch(e){}},5000);   // the share-card paths already defer; revoking in the same tick can kill the download
-  toast('Backup downloaded');
+  const n=Object.keys(clone._photoData||{}).length;
+  toast('Backup downloaded'+(n?(' · '+n+' photo'+(n===1?'':'s')+' included'):'')+(missing>0?(' · '+missing+' photo file'+(missing===1?'':'s')+' missing'):''));
 }
 function importData(e){
   const f=e.target.files[0];if(!f)return;const r=new FileReader();
@@ -9092,7 +9527,20 @@ function importData(e){
     STATE.profile=obj(DEFAULT_STATE().profile,p.profile);
     STATE.settings=obj(DEFAULT_STATE().settings,p.settings);
     STATE.nutrition=obj(DEFAULT_STATE().nutrition,p.nutrition);
-    normalizeState();save();toast('Backup restored');render();
+    /* Put the photo bytes back where hydratePhotos() looks for them, and keep
+       them out of STATE — they are ~200 KB each and localStorage is not where
+       they live. A backup written before this field simply has none. */
+    const ph=p._photoData&&typeof p._photoData==='object'?p._photoData:null;
+    delete STATE._photoData;
+    normalizeState();save();
+    if(ph){
+      const ids=Object.keys(ph);
+      Promise.all(ids.map(id=>idbPut('ph_'+id,ph[id]))).then(()=>{
+        toast('Backup restored · '+ids.length+' photo'+(ids.length===1?'':'s'));
+        try{hydratePhotos();}catch(e){}
+      }).catch(()=>toast('Backup restored, photos failed'));
+    } else toast('Backup restored');
+    render();
   }catch(err){toast('Could not read file');}};
   r.readAsText(f);
 }
@@ -9234,6 +9682,18 @@ function normalizeState(){
    }
    if(!STATE.quickLog||typeof STATE.quickLog!=='object'||Array.isArray(STATE.quickLog))STATE.quickLog={};
    if(!STATE.shopTicks||typeof STATE.shopTicks!=='object'||Array.isArray(STATE.shopTicks))STATE.shopTicks={};
+   /* Both of these drive prescription and neither had repair, against the rule
+      that every STATE field gets it. A string in exAdapt produced a NaN target
+      that the render boundary never catches because nothing throws; a string in
+      readiness made readinessMult() return 0.7 — a silent 30% deload with no
+      visible cause. importData() accepts arbitrary JSON, so this is reachable. */
+   if(P.tightSpace!=null&&typeof P.tightSpace!=='boolean')P.tightSpace=!!P.tightSpace;
+   if(!STATE.exAdapt||typeof STATE.exAdapt!=='object'||Array.isArray(STATE.exAdapt))STATE.exAdapt={};
+   else Object.keys(STATE.exAdapt).forEach(k=>{const v=STATE.exAdapt[k];
+     if(!(typeof v==='number'&&isFinite(v)&&v>0))delete STATE.exAdapt[k];});
+   if(!STATE.readiness||typeof STATE.readiness!=='object'||Array.isArray(STATE.readiness))STATE.readiness={};
+   else Object.keys(STATE.readiness).forEach(k=>{const r=STATE.readiness[k];
+     if(!r||typeof r!=='object'||!(typeof r.score==='number'&&isFinite(r.score)))delete STATE.readiness[k];});
    /* Movement is stored per day, so a bad value hides in history rather than in
       today and only surfaces when that day is read back. Repair every one. */
    if(N&&N.days&&typeof N.days==='object'){
@@ -9412,15 +9872,70 @@ function validateData(){
     for(let i=1;i<a.length;i++){
       const p=EX[a[i-1]],c=EX[a[i]];
       if(!p||!c){errs.push(l+': unknown rung '+(!p?a[i-1]:a[i]));continue;}
-      if(p.anchor&&c.anchor&&p.anchor===c.anchor&&c.hardness>p.hardness)
+      /* Was gated on both rungs sharing an anchor, so every anchor:null rung was
+         invisible — which is most of the cardio, plank, rotation and inverted
+         work, and is exactly how an L-Sit rated 1.6 ("easier than a knee
+         plank") sat in a ladder for months without complaint. hardness is a
+         single scale; compare it unconditionally. */
+      if(c.hardness>p.hardness)
         errs.push(l+': rung '+i+' ('+a[i]+' '+c.hardness+') is EASIER than '+a[i-1]+' ('+p.hardness+')');
     }
   });
   // every swap target must exist, and must not simply re-flag the same joint
+  /* A space substitute that is EASIER than what it replaces would quietly
+     downgrade the program for anyone who ticks the box. */
+  Object.keys(SPACE_SWAP).forEach(k=>{
+    const from=EX[k],to=EX[SPACE_SWAP[k]];
+    if(!to){errs.push('SPACE_SWAP.'+k+' -> unknown exercise "'+SPACE_SWAP[k]+'"');return;}
+    if(SPACE_SWAP[SPACE_SWAP[k]])errs.push('SPACE_SWAP.'+k+': target '+SPACE_SWAP[k]+' is itself swapped — the room is still too small');
+    /* A small easing is allowed, and only here. Nothing you can do on the floor
+       fully replaces a handstand push-up — superpushup is the hardest floor
+       press in the catalogue and still sits a step below it. Pretending
+       otherwise would either force a dishonest hardness value or block the
+       feature. The tolerance is tight enough that a lazy substitution still
+       fails, and the UI says plainly what the trade is. */
+    if(from&&to.hardness>from.hardness+0.12)
+      errs.push('SPACE_SWAP.'+k+': '+SPACE_SWAP[k]+' ('+to.hardness+') is much EASIER than '+k+' ('+from.hardness+')');
+  });
   [['SAFE_SWAP',SAFE_SWAP],['LOWBACK_SWAP',LOWBACK_SWAP],['GEAR_FALLBACK',GEAR_FALLBACK]].forEach(([n,m])=>{
     Object.keys(m).forEach(k=>{if(!EX[m[k]])errs.push(n+'.'+k+' -> unknown exercise "'+m[k]+'"');});
   });
   Object.keys(JOINT_RISK).forEach(j=>JOINT_RISK[j].forEach(k=>{if(!EX[k])errs.push('JOINT_RISK.'+j+': unknown exercise "'+k+'"');}));
+  /* ---- the recipe bank -----------------------------------------------------
+     FOODS had eleven per-row assertions; RECIPES — the allergen tags, which are
+     the only thing between a declared allergy and the plate — had none. That is
+     how two recipes shipped serving coconut to a tree-nut allergy with alg:[].
+     dietOk() fails an UNTAGGED recipe closed, but alg:[] is a valid array, so
+     "wrongly tagged as containing nothing" slips straight through the guard. */
+  const algKeys=(typeof ALLERGENS!=='undefined')?ALLERGENS.map(a=>a[0]):Object.keys(ALG_SYN);
+  const DIETS=['vegan','vegetarian','pescatarian','halal','omnivore'];
+  const seenR={};
+  /* Two whole families of false positive on the dairy check: nut butters, and
+     plant milks. Both have to be removed from the haystack rather than
+     suppressing the word outright — "milk" untagged is exactly the kind of
+     miss this check exists for. */
+  const deDairy=h=>h.replace(/\b(soy|soya|almond|oat|rice|coconut|cashew|hemp|pea|plant)\s+milk\b/g,' ')
+                    .replace(/\b(almond|peanut|cashew|nut|coconut|seed)\s+butter\b/g,' ');
+  RECIPES.forEach(r=>{
+    const tag='RECIPES.'+(r&&r.id);
+    if(!r||!r.id){errs.push('RECIPES: row with no id');return;}
+    if(seenR[r.id])errs.push(tag+': duplicate id');
+    seenR[r.id]=1;
+    if(!Array.isArray(r.alg))errs.push(tag+': alg is not an array — dietOk() will refuse it');
+    else r.alg.forEach(a=>{if(!algKeys.includes(a))errs.push(tag+': unknown allergen "'+a+'"');});
+    if(!Array.isArray(r.ok)||!r.ok.length)errs.push(tag+': no diets listed');
+    else r.ok.forEach(d=>{if(!DIETS.includes(d))errs.push(tag+': unknown diet "'+d+'"');});
+    if(!['breakfast','lunch','dinner','snack'].includes(r.type))errs.push(tag+': type "'+r.type+'" is not a meal slot');
+    if(!(r.kcal>0)||!(r.p>=0))errs.push(tag+': missing macros');
+    // the check that found the coconut: does the text match a family it is not tagged with?
+    const hay=((r.name||'')+' '+((r.ing||[]).join(' '))).toLowerCase();
+    Object.keys(ALG_SYN).forEach(fam=>{
+      if((r.alg||[]).includes(fam))return;
+      const h=(fam==='dairy')?deDairy(hay):hay;
+      const hit=(ALG_SYN[fam]||[]).find(w=>new RegExp('\\b'+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'s?\\b').test(h));
+      if(hit)errs.push(tag+': ingredients mention "'+hit+'" but it is not tagged '+fam);
+    });
+  });
   // ---- the bike conversion -------------------------------------------------
   // A wrong figure here credits movement that was never done, which is a
   // deficit the athlete thinks they have and does not.
@@ -9509,6 +10024,13 @@ async function boot(){
   normalizeState();
   // request durable storage so an installed PWA keeps data
   try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();}catch(e){}
+  /* Android focuses an already-running PWA and navigates it, which is a
+     same-document hash change — boot() never runs, so the Progress and Fuel
+     home-screen shortcuts did nothing whenever the app was already open. */
+  window.addEventListener('hashchange',()=>{try{
+    const h=(location.hash||'').replace('#','');
+    if(h&&STATE.onboarded&&['today','program','fuel','progress','ref','guide'].includes(h)&&h!==TAB)go(h);
+  }catch(e){}});
   initBackButton();   // make the phone's Back button navigate instead of closing the app
   // Home-screen shortcuts (and any #tab link) open straight on that tab rather
   // than always landing on Today.
