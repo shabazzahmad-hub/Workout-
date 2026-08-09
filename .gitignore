@@ -1,3 +1,19 @@
 node_modules/
 package-lock.json
 .DS_Store
+
+# Throwaway probe scripts.
+#
+# Driving the app from a script requires Playwright, and Playwright only
+# resolves from the repo root — so an audit that wants to EXECUTE the app
+# rather than read it has to put its scratch file here. That turned out to
+# matter: the defects found by executing (a deload that silently stops firing
+# after 6pm, a comeback ease that pins a two-day-a-week athlete forever) were
+# invisible to every review that only read the code.
+#
+# These are scratch and are never part of the app. The real suite lives in
+# tests/ and is committed.
+/_*.mjs
+/zz-*.mjs
+/audit-*.mjs
+/*.tmp.mjs
