@@ -536,7 +536,7 @@ function haptic(ms=18){try{if(navigator.vibrate&&STATE.settings.vibrate)navigato
 const EX = {
   /* -- anti-extension / plank ladder -- */
   kneeplank:{name:'Knee Plank',region:'anterior',unit:'time',img:'ex-kneeplank.jpg',anchor:'plank',hardness:1.5,base:30,rest:45,
-    why:'The safest entry to anti-extension core bracing — builds the deep transverse abdominis that flattens the waist.',
+    why:'The safest entry to anti-extension core bracing — builds the deep transverse abdominis that holds the midsection tight.',
     steps:['Kneel on all fours, then drop to your forearms with elbows under shoulders.','Walk knees back so your body forms a straight line from head to knees.','Brace your abs as if about to be punched; tuck the ribs down.','Squeeze glutes and hold — do not let the hips sag.'],
     cues:['Elbows directly under shoulders','Ribs down, belt-line pulled in','Neutral neck — look at the floor'],
     mistakes:['Hips sagging toward the floor','Butt piked up in the air','Holding your breath — breathe steadily']},
@@ -597,12 +597,12 @@ const EX = {
     steps:['Hang from a bar, arms straight, shoulders active and core braced.','Keep the legs as straight as you can.','Raise them together toward the bar, curling the pelvis up at the top.','Lower slowly with zero swing. Bend the knees only if you must to keep it strict.'],
     cues:['Curl the pelvis at the top — don\'t just lift the legs','Dead still, no kipping or swing','Toes-to-bar is the long-term goal'],
     mistakes:['Swinging for momentum','Stopping at 90° without the pelvic curl','Bent knees when a straight-leg raise is available']},
-  lsit:{name:'L-Sit',region:'anterior',unit:'time',img:'ex-lsit.jpg',anchor:null,hardness:1.6,base:12,rest:55,
+  lsit:{name:'L-Sit',region:'anterior',unit:'time',img:'ex-lsit.jpg',anchor:null,hardness:0.18,base:12,rest:55,
     why:'The flagship isometric compression hold of calisthenics — a brutal test and builder of the whole anterior core, hip flexors and quads. Progress tuck → one-leg → full L.',
     steps:['Sit between two dip bars, parallettes, or press hands into the floor beside the hips.','Push down hard and lift the hips clear of the ground, shoulders down away from the ears.','Tuck the knees to start; extend the legs toward straight as you get stronger.','Hold for time with the legs squeezed and toes pointed.'],
     cues:['Push the floor/bars away — shoulders down','Squeeze the quads and point the toes','Chest tall, don\'t collapse forward'],
     mistakes:['Shrugging the shoulders up','Holding the breath','Letting the hips sink back to the floor']},
-  dragonflag:{repCap:10,pattern:'core',name:'Bent-Knee Dragon Flag',region:'anterior',unit:'reps',img:'ex-dragonflag.jpg',anchor:null,hardness:1.7,base:6,rest:70,optional:true,equip:['bar'],
+  dragonflag:{repCap:10,pattern:'core',name:'Bent-Knee Dragon Flag',region:'anterior',unit:'reps',img:'ex-dragonflag.jpg',anchor:null,hardness:0.15,base:6,rest:70,optional:true,equip:['bar'],
     why:'Bruce Lee\'s signature core move and the toughest anti-extension exercise in calisthenics — the whole body becomes one rigid lever against gravity. Bending the knees shortens that lever so you can own the movement before going full straight-leg.',
     steps:['Lie on your back on the mat and reach both arms overhead to grip a fixed anchor (the upright of your pull-up rig) behind your head.','Pull down hard with the lats so your shoulders and upper back stay pressed into the floor — they never leave it.','Brace and lift everything below the shoulder blades, hips pushed up so the body is one straight line from shoulders to knees, knees bent about 90°.','Lower under control without letting the hips sag, stopping before your back touches, then drive back up.'],
     cues:['Shoulders stay glued to the floor','Squeeze the glutes — no sag at the waist','Lower slowly; the negative is the whole exercise'],
@@ -644,7 +644,7 @@ const EX = {
     cues:['Rotate from the torso, not just the elbow','Extend the straight leg fully','Keep shoulders off the floor throughout'],
     mistakes:['Yanking the neck across','Fast, sloppy pedalling with no rotation','Racing the clock — control beats speed']},
   heeltouch:{name:'Alternating Heel Touches',region:'oblique',unit:'reps',img:'ex-heeltouch.jpg',anchor:'lower',repCap:25,hardness:0.9,base:20,rest:30,
-    why:'A simple, apartment-friendly oblique burner — the short side-to-side crunch keeps constant tension on the waist and love-handle area. Easy to learn, brutal by the end of the set.',
+    why:'A simple, apartment-friendly oblique burner — the short side-to-side crunch keeps constant tension on the obliques. Easy to learn, brutal by the end of the set.',
     steps:['Lie on your back, knees bent, feet flat about hip-width apart, heels close to the glutes.','Crunch your head and shoulders slightly up off the mat, arms reaching down at your sides.','Bend to one side and tap your fingertips to that heel.','Come back through center and tap the other heel. Alternate — count each side as a rep.'],
     cues:['Keep the shoulders off the mat the whole set','Bend at the waist, not the neck','Steady, controlled taps'],
     mistakes:['Dropping the shoulders down between reps','Pulling with the arms instead of the obliques','Bouncing too fast']},
@@ -660,7 +660,7 @@ const EX = {
     mistakes:['Bending the knees','Crashing down out of control']},
   /* -- lateral / oblique ladder -- */
   kneeside:{name:'Knee Side Plank',region:'oblique',unit:'time',img:'ex-kneeside.jpg',anchor:'side',hardness:1.5,base:20,rest:40,
-    why:'Builds the obliques and the deep lateral core that cinches the waist — the accessible entry to side-plank strength.',
+    why:'Builds the obliques and the deep lateral core that stabilises the trunk — the accessible entry to side-plank strength.',
     steps:['Lie on your side, forearm down with elbow under shoulder, knees bent.','Stack your hips and shoulders.','Lift your hips so your body forms a straight line from head to knees.','Hold, then repeat on the other side.'],
     cues:['Elbow directly under shoulder','Push the hip up toward the ceiling','Don\'t let the top shoulder roll forward'],
     mistakes:['Hips sagging down','Rotating the chest toward the floor']},
@@ -790,7 +790,7 @@ const EX = {
     cues:['Heels to glutes','Tall posture','Quick, light feet'],
     mistakes:['Hunching forward','Slow, heavy pace']},
   skater:{name:'Skater Hops',region:'cardio',unit:'time',img:'ex-skater.jpg',anchor:null,hardness:0.9,base:30,rest:25,
-    why:'Lateral bounds that build athletic power and blast calories while hammering the obliques and glutes — great for love handles.',
+    why:'Lateral bounds that build athletic power and blast calories while hammering the obliques and glutes — great oblique and conditioning work.',
     steps:['Stand on one leg, slight knee bend, core braced.','Bound sideways onto the other foot, landing softly.','Let the trailing leg sweep behind for balance.','Bound back and forth in a steady skating rhythm.'],
     cues:['Soft, controlled landings','Push off the outside leg','Stay low and athletic'],
     mistakes:['Landing stiff-legged','Losing balance / no control']},
@@ -865,14 +865,14 @@ const EX = {
     mistakes:['Losing the vertical stack','Bouncing out of the bottom']},
   wallhandstand:{name:'Wall Handstand Hold',region:'shoulders',unit:'time',img:'ex-wallhandstand.jpg',anchor:null,hardness:1,base:20,rest:60,
     why:'Builds the overhead strength, balance and shoulder stability needed for handstand push-ups — and a serious core brace.',
-    steps:['Kick up to a handstand with your belly or back toward a wall.','Stack hands, shoulders and hips in a straight line.','Brace the core and squeeze everything tight.','Hold for time, breathing steadily.'],
+    steps:['Do NOT kick up. Start in a push-up position with your feet against the wall, then walk your feet up the wall and your hands in toward it.','Stack hands, shoulders and hips in a straight line.','Brace the core and squeeze everything tight.','Hold for time, breathing steadily.','TO COME DOWN: walk the feet back down the wall the same way you went up. If you ever feel stuck, bend one arm and turn your chest to that side to step down — never straighten up and fall backwards.'],
     cues:['Push tall through the shoulders','Ribs down, glutes squeezed','Look between the hands'],
-    mistakes:['Banana back (over-arching)','Holding the breath']},
+    mistakes:['Kicking up instead of walking up','Going upside down with no plan for getting down','Banana back (over-arching)','Holding the breath']},
   hspushup:{repCap:8,name:'Wall Handstand Push-Up',region:'shoulders',unit:'reps',img:'ex-hspushup.jpg',anchor:'push',hardness:0.15,base:4,rest:75,
     why:'The king of bodyweight shoulder strength — a full vertical press of your own bodyweight.',
-    steps:['Kick into a wall handstand, hands slightly wider than shoulders.','Brace hard and lower the head toward the floor under control.','Stop just short, then press back to full extension.','Keep the body tight and straight throughout.'],
+    steps:['Walk up into a wall handstand as above — never kick — with the hands slightly wider than the shoulders.','Brace hard and lower the head toward the floor under control.','Stop just short, then press back to full extension.','Keep the body tight and straight throughout.'],
     cues:['Controlled negative','Full lockout at the top','Stay tight — no arching'],
-    mistakes:['Crashing to the floor','Half reps']},
+    mistakes:['Kicking up instead of walking up','Lowering past the point you can press back out of','Crashing to the floor','Half reps']},
 
   /* ==== BACK (pull — uses your pull-up/dip tower) ==== */
   deadhang:{name:'Dead Hang',region:'back',unit:'time',img:'ex-deadhang.jpg',anchor:null,hardness:1,base:25,rest:50,equip:['bar'],pattern:'core',
@@ -943,9 +943,9 @@ const EX = {
   /* ==== ARMS (triceps — dips on your tower) ==== */
   benchdip:{pattern:'pushh',name:'Bench Dip',region:'arms',unit:'reps',img:'ex-benchdip.jpg',equip:['bench'],anchor:'push',repCap:25,hardness:1.1,base:12,rest:45,
     why:'A beginner-friendly triceps builder using a bench or chair before progressing to full dips.',
-    steps:['Hands on the edge of a bench behind you, legs out front.','Lower by bending the elbows straight back.','Keep the hips close to the bench.','Press back up to a full lockout.'],
-    cues:['Elbows point back, not out','Chest tall','Full lockout'],
-    mistakes:['Shrugging into the shoulders','Tiny range']},
+    steps:['Hands on the edge of a bench behind you, legs out front.','Lower by bending the elbows straight back — stop when the upper arms reach parallel with the floor.','Keep the hips close to the bench and the shoulders pulled down away from the ears.','Press back up to a full lockout.'],
+    cues:['Elbows point back, not out','Shoulders down and back the whole time','Stop at parallel — depth here is not the goal'],
+    mistakes:['Dropping below parallel — this position loads the front of the shoulder hard and is where bench dips hurt people','Letting the shoulders shrug up toward the ears','Hips drifting away from the bench','Tiny range']},
   closepushup:{name:'Close-Grip Push-Up',region:'arms',unit:'reps',img:'ex-closepushup.jpg',anchor:'push',hardness:0.8,base:10,rest:50,
     why:'Hands close and elbows tucked make the triceps the star of the push-up.',
     steps:['Hands under the chest, roughly shoulder-width or closer.','Brace the body straight.','Lower with elbows tracking back along the ribs.','Press to a full lockout.'],
@@ -1291,7 +1291,7 @@ const EX = {
     cues:['Push the feet to the ceiling, not forward','Small controlled lift','No swinging or momentum'],
     mistakes:['Rocking the legs to generate the lift','Letting the legs drift over the face']},
   sideplankreach:{name:'Side Plank Reach-Through',region:'oblique',unit:'reps',img:'ex-sideplankreach.jpg',hardness:0.85,base:12,rest:50,
-    why:'Adds rotation to the side plank so the obliques work through their full range — the movement that carves the waistline.',
+    why:'Adds rotation to the side plank so the obliques work through their full range — the movement that builds the obliques.',
     steps:['Set up in a side plank on the forearm, hips high.','Reach the top arm up toward the ceiling.','Rotate the torso and thread that arm under your body.','Return to the top and repeat. Count each side as a rep.'],
     cues:['Hips stay high through the rotation','Move from the ribs, not the arm','Slow and controlled'],
     mistakes:['Hips dropping as you reach through','Rushing the rotation']},
@@ -1317,21 +1317,41 @@ const LADDERS = {
   // compound strength + cardio (fat-loss / complete-program)
   legL:       ['wallsit','squat','reverselunge','cossack'],
   pushL:      ['kneepushup','pushup','tempopushup','typewriter','pseudoplanche'],
+  /* An athlete who owns a trainer gets it programmed, not offered as a bonus.
+     Plyometrics for a 86 kg beginner in an apartment is the highest-injury
+     conditioning modality available, chosen over the lowest-injury one he
+     already owns. cardioBikeL is substituted for cardioAL on half the
+     conditioning slots when 'bike' is in his gear — see bikeSwap(). */
   cardioAL:   ['jumpingjack','sealjack','squatjack','fastfeet','highknees','latshuffle','skater'],
+  cardioBikeL:['bike','bike','bike','bike','bike','bike','bike'],
   cardioBL:   ['buttkick','inchworm','crabwalk','squatthrust','sprawl','halfburpee','bearcrawl','burpee'],
   cardioFinL: ['jumpingjack','sealjack','squatjack','highknees','crossclimber','plankjack','squatthrust','halfburpee','burpee'],
   // ==== Phase 2 (week 13+) full-body split ladders ====
   chestL:     ['inclinepushup','kneepushup','pushup','fistpushup','hindupushup','declinepushup','diamondpushup','spidermanpushup','tempopushup','atomicpushup','archerpushup','superpushup'],
+  /* The wall walk is how you LEARN the position; it sat after the pike
+     variants and the athlete was asked to kick up before ever having walked
+     up. Correct order puts the safe entry first. */
   shoulderL:  ['pikepushup','elevatedpike','wallwalk','wallhandstand','hspushup'],
   pullL:      ['deadhang','scappull','negpullup','chinup','pullup','widepullup'],
-  rowL:       ['superman','swimmer','towelrow','tablerow','invertedrow','invertedrowelev'],
+  /* Opened on two BACK EXTENSIONS. gearSwap already carries a comment mocking
+     exactly this ("sent all of them to Superman — a back EXTENSION, not a
+     pull"), but the ladder itself still did it: week 13's Pull Day contained
+     three sets of hanging and no rows at all, and the inverted row the athlete
+     was baseline-TESTED on did not appear until week 29. Superman and Swimmer
+     remain in the catalogue as posterior accessories; they are not rows. */
+  rowL:       ['towelrow','tablerow','invertedrow','invertedrowelev'],
+  /* Order is by STRENGTH demand and stays that way — the validator is right
+     that closepushup (0.8) is harder than benchdip (1.1) and cannot come
+     first. The real problem with bench dips at rung 0 is joint RISK, not
+     difficulty: maximum shoulder extension plus internal rotation under load.
+     That is a coaching-copy problem, and it is fixed in the entry itself. */
   tricepL:    ['benchdip','closepushup','dips'],
   bicepL:     ['towelrow','invertedrow','chinup','widepullup'],
   squatL:     ['wallsit','squat','reverselunge','splitsquat','sissysquat','walkinglunge','cossack','bulgarian','boxpistol','pistol','asiansquat'],
   hingeL:     ['glutebridge','slrdl','hipthrust','singlebridge','nordic'],
   calfL:      ['calfraise','singlecalf'],
   legPowerL:  ['jumpsquat','splitjump','broadjump'],
-  hiitFinL:   ['jumpingjack','tuckjump','atomicpushup','burpee','burpeetuck'],
+  hiitFinL:   ['jumpingjack','tuckjump','burpee','burpeetuck','atomicpushup'],
 };
 // Phase 1 (weeks 1–12) — core/abs/HIIT program, 7 days a week.
 const SESSIONS = [
@@ -1419,7 +1439,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='190';
+const APP_VERSION='191';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1502,7 +1522,15 @@ async function load(){
 
 /* ============================ PROGRESSION ENGINE ============================ */
 const SESSIONS_PER_WEEK=7, WEEKS_PER_CYCLE=6, SESSIONS_PER_CYCLE=SESSIONS_PER_WEEK*WEEKS_PER_CYCLE; // 42
-const PHASE1_CYCLES=2;   // blocks 1–2 = weeks 1–12: core/abs/HIIT (unchanged)
+/* Was 2, so full-body work did not start until week 13. Driven counts for
+   week 1 were 44 sets of direct core against 12 sets for the entire rest of the
+   body — below any dose that RETAINS lean mass in a deficit, in the twelve
+   weeks a beginner adapts fastest. The muscle that makes abs visible is not the
+   rectus abdominis; it is everything else, because it is what protects lean
+   mass during the cut. Phase 2 now opens at week 7. It is one block rather
+   than the week 4 that would be ideal, because the 6-week block IS the re-test
+   cadence and splitting it mid-block would desynchronise every anchor. */
+const PHASE1_CYCLES=1;   // block 1 = weeks 1–6: core/abs/HIIT. Full-body from week 7.
 const TOTAL_CYCLES=9;    // 9 six-week blocks = 54 weeks (a full year+): Phase 1 then full-body split
 function phaseOf(cycle){return cycle<PHASE1_CYCLES?1:2;}
 function sessionsFor(cycle){return phaseOf(cycle)===1?SESSIONS:PHASE2_SESSIONS;}
@@ -1563,7 +1591,7 @@ function levelOf(cycle){
 const LEVEL_FACTOR={Beginner:0.8,Intermediate:1.0,Advanced:1.2};
 // Phase-2 ladders start fresh at week 13, so they progress off the phase-relative
 // block count (not the absolute cycle) — otherwise they'd open at their hardest rung.
-const PHASE2_LADDERS={chestL:1,shoulderL:1,pullL:1,rowL:1,tricepL:1,bicepL:1,squatL:1,hingeL:1,calfL:1,legPowerL:1};
+const PHASE2_LADDERS={chestL:1,shoulderL:1,pullL:1,rowL:1,tricepL:1,bicepL:1,squatL:1,hingeL:1,calfL:1,legPowerL:1,hiitFinL:1};   // hiitFinL is phase-2 only; omitting it opened the ladder two rungs in
 
 // choose which rung of a ladder based on cycle+week+level
 function rungIndex(ladder,cycle,week,level){
@@ -1615,7 +1643,7 @@ function goalSlots(session,pos){
      the release notes claimed Phase 1 had gained both. Conditioning ladders were
      already protected this way; the structural strength patterns need the same
      protection, or the goal quietly rewrites the split. */
-  const STRUCTURAL=['hingeL','rowL','pullL','chestL','squatL'];
+  const STRUCTURAL=['hingeL','rowL','pullL','chestL','squatL','bicepL'];   // bicepL was droppable, so 'lose' deleted the only pull on Pull Day
   const isCardio=l=>CARDIO_LADS.includes(l), isCore=l=>CORE_LADS.includes(l);
   const isStruct=l=>STRUCTURAL.includes(l);
   const count=fn=>slots.filter(fn).length;
@@ -1647,8 +1675,30 @@ function weekAdjust(cycle,week){
 }
 
 const TIME_FRAC=[0.50,0.58,0.66,0.74,0.82,0.90];   // % of tested max hold, by week (1-6)
-const REP_FRAC =[0.55,0.64,0.73,0.82,0.91,1.00];   // % of tested max reps, by week (1-6)
+/* Capped at 0.85. Reaching 1.00 meant one working set equalled the athlete's
+   all-out tested single — repeated three or four times, then multiplied by
+   hardness, cycleBoost and the goal multiplier on top. Driven output before
+   this: 4x29 push-ups for an athlete whose tested max was 25. Peak weeks were
+   arithmetically unachievable, which is how a compliant athlete concludes the
+   program is beating him. Working sets belong at 60-85% of a rep max. */
+const REP_FRAC =[0.50,0.58,0.66,0.73,0.80,0.85];   // % of tested max reps, by week (1-6)
 
+/* Half the conditioning slots become steady riding when the athlete has a
+   trainer. Half, not all: some impact work is worth keeping for bone and
+   tendon, and an athlete who chose the bike still gets variety. Deterministic
+   on the session pointer so it alternates rather than randomising. */
+function bikeSwap(exId,ptr,idx){
+  try{
+    if(!EX.bike)return exId;
+    const gear=(STATE.profile&&STATE.profile.gear)||[];
+    if(!gear.includes('bike'))return exId;
+    const ex=EX[exId];
+    if(!ex||ex.region!=='cardio'||exId==='bike')return exId;
+    // alternate on the session pointer AND the slot, so it is half the
+    // conditioning rather than all of it, and it varies week to week
+    return (((+ptr||0)+(+idx||0))%2===0)?'bike':exId;
+  }catch(e){return exId;}
+}
 function prescribe(exId,pos){
   const ex=EX[exId];
   // Free/bonus sessions build items with pos:{} — default cycle/week so the math
@@ -1664,7 +1714,12 @@ function prescribe(exId,pos){
      needs to restrain the UNANCHORED branch. */
   const _anchorTest=TESTS.find(t=>t.id===ex.anchor);
   const _anchored=!!(ex.anchor&&maxes[ex.anchor]&&_anchorTest&&_anchorTest.unit===ex.unit);
-  const cycleBoost=1+0.05*Math.min(cycle,_anchored?8:5);
+  /* Anchored work must NOT compound cycleBoost: the re-test IS the
+     progression, and the new max already contains every block of adaptation
+     that came before it. Multiplying by up to 1.4 on top is the same
+     double-count rebaseAdapt() exists to prevent for STATE.adapt. Unanchored
+     work keeps the boost, because nothing re-measures it. */
+  const cycleBoost=_anchored?1:(1+0.05*Math.min(cycle,5));
   /* STATE.adapt used to climb +0.006 per "solid" session against a 1.30 ceiling,
      so it pinned at ~50 sessions (week 7) and contributed nothing for the next 47
      weeks. It is now REBASED to 1.0 at every re-test, because the re-tested maxes
@@ -1797,7 +1852,11 @@ function focusBonus(pos,used){
       const tier=LEVEL_TIER[levelOf(pos&&pos.cycle||0)]??1;
       const easyEnough=k=>{const h=EX[k]&&EX[k].hardness;return !(h>0)||h>=[1.0,0.7,0.4][tier];};
       let cands=pool.filter(k=>EX[k]&&!used.has(k)&&has(k)&&easyEnough(k)).map(k=>safeSwap(k)).filter(k=>EX[k]&&!used.has(k)&&has(k));
-      if(!cands.length)cands=pool.filter(k=>EX[k]&&!used.has(k)&&has(k)).map(k=>safeSwap(k)).filter(k=>EX[k]&&!used.has(k)&&has(k));
+      /* No ungated fallback. This used to drop the difficulty gate entirely
+         when the gated pool came up empty, so the bonus slot could still hand a
+         beginner the hardest movement in the catalogue — which is the exact
+         thing the gate above was written to prevent. An empty pool means skip
+         the bonus, not lower the bar. */
       if(!cands.length)continue;
       // deterministic-but-varied pick so it rotates across sessions without Math.random
       const exId=cands[(pos.cycle*7+(pos.dayInWeek||0))%cands.length];
@@ -1914,6 +1973,7 @@ function buildSession(ptr){
       if(exId==='copenhagen'&&STATE.profile.hasBench===false){exId='sidedip';}
     }
     exId=gearSwap(exId,ladder);   // equipment-aware: only moves they can actually do
+    exId=bikeSwap(exId,ptr,idx);  // trainer-aware: ride instead of jump, when he owns one
     return safeSwap(exId);        // injury-aware: work around flagged joints
   };
   /* Can this athlete perform the movement AT ALL? hardness says what fraction of
@@ -7700,6 +7760,40 @@ function syncStepHabit(){
   t._stepAuto=1;
   t.habits.steps=stepEquivalent()>=stepTarget();
 }
+/* Substituting the bike into conditioning slots lowers the impact but they
+   are still short intervals. The thing that actually moves body composition is
+   steady aerobic volume, so it is a stated weekly target with its own count —
+   two rides, 35 minutes, easy enough to hold a conversation. Only shown to an
+   athlete who owns the trainer. */
+const RIDE_TARGET={n:2,min:35};
+function hasTrainer(){try{return ((STATE.profile&&STATE.profile.gear)||[]).includes('bike');}catch(e){return false;}}
+function ridesThisWeek(){
+  const n=nut();let rides=0,mins=0;
+  for(let i=0;i<7;i++){
+    const d=new Date();d.setDate(d.getDate()-i);
+    const day=n.days&&n.days[localISO(d)];if(!day)continue;
+    const v=(typeof day.bikeVal==='number'&&isFinite(day.bikeVal)&&day.bikeVal>0)?day.bikeVal:0;
+    if(!v)continue;
+    const lvl=BIKE_LEVELS.some(b=>b.k===day.bikeLvl)?day.bikeLvl:'steady';
+    const u=BIKE_UNITS.some(x=>x[0]===day.bikeUnit)?day.bikeUnit:'min';
+    const m=(u==='min')?v:(u==='dist'?v/bikeKmPerMin(lvl):v/bikeKcalPerMin(lvl));
+    mins+=m;if(m>=RIDE_TARGET.min*0.7)rides++;
+  }
+  return {rides,mins:Math.round(mins)};
+}
+function rideTargetHTML(){
+  if(!hasTrainer())return '';
+  const r=ridesThisWeek();const done=Math.min(RIDE_TARGET.n,r.rides);
+  const pct=Math.min(100,Math.round(r.mins/(RIDE_TARGET.n*RIDE_TARGET.min)*100));
+  return `<div class="section-label">Steady rides · <span style="color:${done>=RIDE_TARGET.n?'var(--green)':'var(--gold)'}">${done}/${RIDE_TARGET.n} this week</span></div>
+  <div class="card pad">
+    <div class="pbar" style="margin:2px 0 10px"><i style="width:${pct}%;background:linear-gradient(90deg,#4fc3f7,#0288d1)"></i></div>
+    <div class="row" style="justify-content:space-between;align-items:baseline">
+      <div><b>${r.mins} min ridden</b><div class="tiny muted">Target ${RIDE_TARGET.n} × ${RIDE_TARGET.min} min easy</div></div>
+      <span class="tiny muted">${Math.round(r.mins*bikeKcalPerMin('easy'))} kcal</span></div>
+    <div class="note info" style="margin:10px 0 0"><b>Easy means easy.</b> Full sentences, legs never burning. This is the volume that shifts body fat without taking anything out of your sessions — the intervals in your workouts are already doing the hard part.</div>
+  </div>`;
+}
 function movementHTML(){
   const m=movement(),tgt=stepTarget(),eq=stepEquivalent(),ride=bikeRide();
   const short=Math.max(0,tgt-eq);
@@ -8738,6 +8832,7 @@ function renderFuel(){
     <div class="pbar" style="margin-top:12px"><i style="width:${wpct}%;background:linear-gradient(90deg,#3fd7e8,#12b5c9)"></i></div>
   </div>`;
   h+=movementHTML();
+  h+=rideTargetHTML();
   // habit checklist
   /* Count the DECLARED habits, not every truthy key in the map. A private
      bookkeeping flag written alongside them read as a completed habit: 3,000
@@ -9156,7 +9251,7 @@ function renderGuide(){
       <li>Track your <b>waist</b> weekly (Progress tab). A shrinking waist is the truest proof.</li>
       <li>Sleep 7–9 hrs — recovery is when the core rebuilds stronger.</li>
     </ul>
-    <div class="note warn" style="margin-bottom:0">Honest note: spot-reduction isn't real. This forges the strongest possible midsection; combined with the nutrition basics above, that's how you get substantial visible results in 6 weeks — and more over 12.</div>
+    <div class="note warn" style="margin-bottom:0"><b>Honest note: spot-reduction isn't real, and neither is a six-week six-pack.</b> Core work builds the muscle; the deficit uncovers it, and that part is arithmetic. Expect the <b>tape to move in 3–4 weeks</b> — that is the number to watch. Visible abs is roughly 12–14% body fat for a man, and getting there from 25% is 11–13 kg of fat, which at a sane 0.5 kg a week is <b>6–9 months</b>. Anyone promising it faster is selling something. Track your waist weekly in Progress; that is where you will see this working long before the mirror shows it.</div>
   </div>`;
   // exercise library — grouped by region, filtered to the gear you actually have
   // (so equipment variants like the dumbbell vs kettlebell goblet squat don't double up).

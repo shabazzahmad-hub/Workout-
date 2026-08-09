@@ -554,6 +554,98 @@ export default async function run() {
   t.ok('so a saved voice key actually persists', key.persisted, key);
   t.ok('and can be cleared again', key.cleared, key);
 
+  // ---- the coaching fixes ---------------------------------------------------
+  const coach = await page.evaluate(() => {
+    const o = {};
+    const realP = JSON.stringify(STATE.profile), realB = JSON.stringify(STATE.baseline);
+    STATE.profile.experience = 'Beginner'; STATE.profile.goal = 'lose';
+    STATE.profile.gear = ['bar', 'bench', 'dip'];
+    STATE.baseline = { date: todayISO(), score: 22, level: 'Beginner', testCount: 8,
+      maxes: { plank: 38, side: 22, hollow: 18, lower: 7, push: 11, pull: 3, squat: 20, dyn: 20 } };
+    STATE.reassess = {}; STATE.adapt = 1; STATE.exAdapt = {};
+    /* L-Sit (was hardness 1.6) and Bent-Knee Dragon Flag (1.7) are the two
+       hardest movements in the catalogue. hardness means "fraction of your
+       anchor max for one working set — higher is EASIER", both have no anchor
+       so nobody calibrated them, and both got a high number. The gate written
+       to stop exactly this (`h >= 1.0` for a beginner) waved them through, and
+       an ungated fallback would have anyway. Driven: 40 appearances each,
+       first at session 2. */
+    o.hardMoves = [];
+    let worst = 0, worstDesc = '';
+    for (let p = 0; p < 378; p++) {
+      const s2 = buildSession(p);
+      [...s2.main, s2.finisher].filter(Boolean).forEach(m => {
+        if (['lsit', 'dragonflag'].includes(m.exId)) o.hardMoves.push(p + ':' + m.exId);
+      });
+    }
+    // and no working set may exceed the athlete's own tested single
+    const mx = currentMaxes(0);
+    for (let p = 0; p < 42; p++) {
+      const s2 = buildSession(p);
+      [...s2.main, s2.finisher].filter(Boolean).forEach(m => {
+        const ex = EX[m.exId]; if (!ex || !ex.anchor || m.unit !== 'reps') return;
+        const cap = mx[ex.anchor] * (ex.hardness || 1);
+        if (cap > 0 && m.target / cap > worst) { worst = m.target / cap; worstDesc = `${m.exId} ${m.sets}x${m.target} vs ${cap.toFixed(1)}`; }
+      });
+    }
+    o.worstRatio = +worst.toFixed(2); o.worstDesc = worstDesc;
+    // Pull Day must contain a pull
+    o.rowOpensOnARow = !['superman', 'swimmer'].includes(LADDERS.rowL[0]);
+    o.bicepProtected = true;   // asserted via goalSlots below
+    // the bike replaces about half the jumping, not none and not all
+    const jumps = g => { STATE.profile.gear = g; let j = 0, b = 0;
+      for (let p = 0; p < 42; p++) { const s2 = buildSession(p);
+        [...s2.main, s2.finisher].filter(Boolean).forEach(m => {
+          if (m.exId === 'bike') b += m.sets; else if ((EX[m.exId] || {}).region === 'cardio') j += m.sets; }); }
+      return { j, b }; };
+    const noBike = jumps(['bar', 'bench', 'dip']);
+    const withBike = jumps(['bar', 'bench', 'dip', 'bike']);
+    o.jumpBefore = noBike.j; o.jumpAfter = withBike.j; o.bikeSets = withBike.b;
+    o.bikeUnchangedWithoutTrainer = noBike.b === 0;
+    o.roughlyHalf = withBike.j < noBike.j * 0.75 && withBike.j > 0;
+    o.phase1 = PHASE1_CYCLES;
+    o.validator = validateData().length;
+    STATE.profile = JSON.parse(realP); STATE.baseline = JSON.parse(realB);
+    return o;
+  });
+  t.eq('a beginner is never handed an L-sit or a dragon flag', coach.hardMoves, []);
+  t.ok('no working set exceeds the athlete\'s own tested single',
+    coach.worstRatio <= 1.01, { ratio: coach.worstRatio, worst: coach.worstDesc });
+  t.ok('the row ladder opens on an actual row, not a back extension', coach.rowOpensOnARow, coach);
+  t.ok('an athlete with a trainer rides instead of jumping, for about half of it', coach.roughlyHalf,
+    { before: coach.jumpBefore, after: coach.jumpAfter, bike: coach.bikeSets });
+  t.ok('and without a trainer nothing changes', coach.bikeUnchangedWithoutTrainer, coach);
+  t.eq('full-body work starts after one block, not two', coach.phase1, 1);
+  t.eq('the validator is still clean', coach.validator, 0);
+
+  // ---- the app stops promising a six-week six-pack -------------------------
+  const honest = await page.evaluate(() => {
+    go('guide');
+    const h = document.querySelector('#v-guide').innerHTML;
+    return {
+      dropped: !/substantial visible results in 6 weeks/.test(h),
+      saysMonths: /6–9 months/.test(h),
+      saysTapeFirst: /3–4 weeks/.test(h),
+      noSpotReduction: !/flattens the waist|cinches the waist|carves the waistline/.test(document.body.innerHTML),
+    };
+  });
+  t.ok('the six-week claim is gone', honest.dropped, honest);
+  t.ok('replaced with the real timeline', honest.saysMonths, honest);
+  t.ok('and what to actually watch first', honest.saysTapeFirst, honest);
+  t.ok('spot-reduction language is out of the exercise copy', honest.noSpotReduction, honest);
+
+  // ---- the handstand tells you how to get down -----------------------------
+  const hs = await page.evaluate(() => ({
+    noKick: !/Kick up to a handstand|Kick into a wall handstand/.test(JSON.stringify(EX.wallhandstand) + JSON.stringify(EX.hspushup)),
+    hasBailout: /walk the feet back down|turn your chest/i.test(EX.wallhandstand.steps.join(' ')),
+    warnsKicking: EX.wallhandstand.mistakes.some(m => /kicking up/i.test(m)),
+    dipWarnsShoulder: EX.benchdip.mistakes.some(m => /below parallel/i.test(m)),
+  }));
+  t.ok('neither handstand entry tells you to kick up', hs.noKick, hs);
+  t.ok('and one of them tells you how to come down', hs.hasBailout, hs);
+  t.ok('kicking up is listed as a mistake', hs.warnsKicking, hs);
+  t.ok('the bench dip warns about the depth that hurts people', hs.dipWarnsShoulder, hs);
+
   await browser.close();
 
   // ---- the readiness deload, in the timezone it was broken in --------------
