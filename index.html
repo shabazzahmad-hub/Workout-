@@ -1414,7 +1414,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='187';
+const APP_VERSION='188';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -7189,6 +7189,113 @@ function stepTarget(){
 /* ~0.04 kcal per step is the usual rough figure for an adult; it scales with
    bodyweight, so use the athlete's own if we have it. */
 function stepKcal(n){const kg=latestWeightKg()||80;return Math.round((n||stepTarget())*0.0005*kg);}
+/* ---- Making the step target up on the bike ------------------------------
+   The step target is an energy target dressed up as a step count, so a bike
+   can pay it — but only honestly if both sides are measured the same way.
+
+   stepKcal() is calibrated NET of resting metabolism (~0.04 kcal/step for an
+   80 kg adult; walking gross is nearer 0.065). So these MET figures are net
+   too — a compendium value with 1.0 subtracted for the resting cost you would
+   have paid sitting on the sofa instead. Comparing a gross bike figure against
+   a net walking figure would credit roughly 20% more bike than was earned.
+
+   The arithmetic then collapses to something worth knowing by heart:
+
+     steps per bike-minute = kcal/min ÷ kcal/step
+                           = (MET × 3.5 × kg / 200) ÷ (0.0005 × kg)
+                           = MET × 35              <- bodyweight cancels out
+
+   So the conversion is the same for everybody, and the calorie figures under
+   it are the ones that scale with your weight. */
+const BIKE_LEVELS=[
+  {k:'easy',label:'Easy spin',met:4.0,rpe:'RPE 3–4',
+   cue:'full sentences, light resistance, legs never burn — recovery pace'},
+  {k:'steady',label:'Steady',met:5.8,rpe:'RPE 5–6',
+   cue:'short sentences only, breathing clearly audible — the default'},
+  {k:'hard',label:'Hard',met:7.8,rpe:'RPE 7–8',
+   cue:'a few words at a time, legs working the whole way'},
+  {k:'intervals',label:'Intervals',met:9.5,rpe:'RPE 8–9 in bursts',
+   cue:'1 min hard / 1 min easy — the same job in the least time'},
+];
+function bikeLevel(k){return BIKE_LEVELS.find(b=>b.k===k)||BIKE_LEVELS[1];}
+// Mirrors stepKcal()'s constant. Kept as one function so the two can never drift.
+function kcalPerStep(){return 0.0005*(latestWeightKg()||80);}
+function bikeKcalPerMin(k){return bikeLevel(k).met*3.5*(latestWeightKg()||80)/200;}
+function bikeStepsPerMin(k){return Math.round(bikeLevel(k).met*35);}
+function bikeMinutesFor(steps,k){
+  const per=bikeStepsPerMin(k);
+  return (per>0&&steps>0)?Math.ceil(steps/per):0;
+}
+/* Fail-safe read. A day loaded from an old save, a hand-edited backup or an
+   import has no movement fields at all, and a string where a number belongs
+   must read as "nothing logged", never as NaN spreading into the progress bar. */
+function movement(){
+  const t=nutToday();
+  const num=(v,cap)=>(typeof v==='number'&&isFinite(v)&&v>0)?Math.min(Math.round(v),cap):0;
+  const lvl=BIKE_LEVELS.some(b=>b.k===t.bikeLvl)?t.bikeLvl:'steady';
+  return {steps:num(t.steps,100000),min:num(t.bikeMin,600),lvl};
+}
+// What the day is worth in steps, walked and ridden together.
+function stepEquivalent(){
+  const m=movement();
+  return m.steps+m.min*bikeStepsPerMin(m.lvl);
+}
+function setSteps(v){
+  const t=nutToday();t.steps=Math.max(0,Math.min(100000,Math.round(+v||0)));
+  syncStepHabit();save();renderFuel();
+}
+function setBikeMin(v){
+  const t=nutToday();t.bikeMin=Math.max(0,Math.min(600,Math.round(+v||0)));
+  syncStepHabit();save();renderFuel();
+}
+function addBikeMin(d){setBikeMin(movement().min+d);haptic(8);}
+function setBikeLvl(k){
+  const t=nutToday();t.bikeLvl=bikeLevel(k).k;
+  syncStepHabit();save();renderFuel();
+}
+/* The tick and the number must not contradict each other. Once anything is
+   logged the habit mirrors the total; with nothing logged the manual tick is
+   left exactly as the athlete set it, because plenty of days are walked
+   without anyone counting. */
+function syncStepHabit(){
+  const t=nutToday();const m=movement();
+  if(!m.steps&&!m.min)return;
+  if(!t.habits||typeof t.habits!=='object')t.habits={};
+  t.habits.steps=stepEquivalent()>=stepTarget();
+}
+function movementHTML(){
+  const m=movement(),tgt=stepTarget(),eq=stepEquivalent();
+  const short=Math.max(0,tgt-eq);
+  const pct=Math.min(100,Math.round(eq/tgt*100));
+  const lvl=bikeLevel(m.lvl);
+  let h=`<div class="section-label">Movement · <span style="color:${eq>=tgt?'var(--green)':'var(--gold)'}">${eq.toLocaleString()} / ${tgt.toLocaleString()}</span></div><div class="card pad">
+    <div class="pbar" style="margin:2px 0 12px"><i style="width:${pct}%;background:linear-gradient(90deg,#7ee08a,#2fa84f)"></i></div>
+    <div class="field" style="margin-bottom:10px"><label>Steps walked today</label>
+      <input id="mv-steps" type="number" inputmode="numeric" min="0" value="${m.steps||''}" placeholder="0"
+        onchange="setSteps(this.value)"></div>`;
+  if(short>0){
+    h+=`<div class="note info" style="margin:0 0 10px"><b>${short.toLocaleString()} steps to go.</b>
+      On the trainer that is <b>${bikeMinutesFor(short,m.lvl)} min ${lvl.label.toLowerCase()}</b>${
+        m.lvl==='steady'?'':` — or ${bikeMinutesFor(short,'steady')} min steady`}.</div>`;
+  }else if(m.min){
+    h+=`<div class="note ok" style="margin:0 0 10px"><b>Target met.</b> ${m.min} min on the bike carried ${(m.min*bikeStepsPerMin(m.lvl)).toLocaleString()} of it.</div>`;
+  }
+  h+=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">How hard you rode</div>
+    <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${BIKE_LEVELS.map(b=>
+      `<button class="${m.lvl===b.k?'on':''}" onclick="setBikeLvl('${b.k}')">${b.label}</button>`).join('')}</div>
+    <div class="tiny muted" style="margin-bottom:12px">${_ve(lvl.rpe)} · ${_ve(lvl.cue)} · <b>${bikeStepsPerMin(m.lvl)} steps</b> and <b>${Math.round(bikeKcalPerMin(m.lvl))} kcal</b> a minute</div>
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <div><b>${m.min} min on the bike</b><div class="tiny muted">= ${(m.min*bikeStepsPerMin(m.lvl)).toLocaleString()} steps · ${Math.round(m.min*bikeKcalPerMin(m.lvl))} kcal</div></div>
+      <div class="btnrow" style="flex:0 0 auto;gap:8px">
+        <button class="btn sm ghost" onclick="addBikeMin(-5)" style="width:44px">–5</button>
+        <button class="btn sm primary" onclick="addBikeMin(5)" style="width:44px">+5</button></div></div>`;
+  if(short>0&&m.steps){
+    h+=`<button class="btn sm ghost" style="width:100%;margin-top:10px" onclick="setBikeMin(movement().min+bikeMinutesFor(${short},movement().lvl))">Log the ${bikeMinutesFor(short,m.lvl)} min that closes it</button>`;
+  }
+  h+=`<div class="note warn" style="margin-bottom:0"><b>The bike pays the calories, not everything else.</b> Walking loads the skeleton and breaks up sitting, which riding does not. Use the trainer for the days that got away from you, not as the plan.</div>`;
+  h+=`</div>`;
+  return h;
+}
 const HABITS=[
   {k:'protein',label:'Hit protein target',emoji:'🥩'},
   /* Was a streak condition, which makes restriction the thing the app rewards
@@ -8081,6 +8188,27 @@ function renderRef(){
   });
   if(done)h+=`<button class="btn ghost" onclick="clearShop()">Reset the list</button>`;
 
+  /* ---- making the step target up on the bike ---- */
+  const tgt=stepTarget();
+  h+=`<div class="section-label">Steps on the trainer</div>`;
+  h+=`<div class="note info">Your target is <b>${tgt.toLocaleString()} steps</b>. That is an energy target wearing a step count, so the bike can pay it. Log the ride in <b>Fuel → Movement</b> and it counts toward the day.</div>`;
+  h+=`<div class="card" style="padding:0 12px">
+    <div class="kv" style="border:none;padding:9px 2px 5px">
+      <span class="tiny muted" style="letter-spacing:.08em;text-transform:uppercase;font-weight:800">Effort</span>
+      <span class="tiny muted" style="letter-spacing:.08em;text-transform:uppercase;font-weight:800">To cover ${tgt.toLocaleString()}</span></div>`;
+  BIKE_LEVELS.forEach(b=>{
+    h+=`<div class="kv" style="border-top:1px solid var(--line);padding:10px 2px">
+      <span style="min-width:0"><b>${_ve(b.label)}</b>
+        <div class="tiny muted" style="margin-top:2px">${_ve(b.rpe)} · ${_ve(b.cue)}</div>
+        <div class="tiny" style="color:var(--green);margin-top:2px">${bikeStepsPerMin(b.k)} steps a minute</div></span>
+      <span style="flex:0 0 auto;text-align:right;white-space:nowrap">
+        <b style="color:var(--fire-l)">${bikeMinutesFor(tgt,b.k)} min</b>
+        <div class="tiny muted" style="margin-top:2px">${Math.round(bikeMinutesFor(tgt,b.k)*bikeKcalPerMin(b.k))} kcal</div></span></div>`;
+  });
+  h+=`</div>`;
+  h+=`<div class="note info" style="margin-top:10px"><b>The rule of thumb is MET × 35.</b> Steady riding is about 5.8 METs net of just sitting there, so roughly <b>200 steps a minute</b>. Bodyweight cancels out of that conversion — it only changes the calories beside it.</div>`;
+  h+=`<div class="note warn"><b>It is not a straight swap.</b> Both sides are matched on energy, and energy is what drives the deficit. Walking also loads the skeleton and breaks up sitting, which riding does not. Use the trainer for the days that got away from you.</div>`;
+
   /* ---- the rules ---- */
   const anchor=Math.round(T.p/3.75/5)*5;
   h+=`<div class="section-label">Getting to ${T.p} g</div><div class="card pad">
@@ -8132,6 +8260,7 @@ function renderFuel(){
       <div class="btnrow" style="flex:0 0 auto;gap:8px"><button class="btn sm ghost" onclick="logWater(-1)" style="width:44px">–</button><button class="btn sm primary" onclick="logWater(1)" style="width:44px">＋</button></div></div>
     <div class="pbar" style="margin-top:12px"><i style="width:${wpct}%;background:linear-gradient(90deg,#3fd7e8,#12b5c9)"></i></div>
   </div>`;
+  h+=movementHTML();
   // habit checklist
   const hitCount=Object.values(t.habits||{}).filter(Boolean).length;
   h+=`<div class="section-label">Daily habits · <span style="color:var(--green)">${hitCount}/${HABITS.length}</span> · 🔥 ${nutritionStreak()}-day streak</div><div class="card">
@@ -8880,6 +9009,16 @@ function normalizeState(){
    }
    if(!STATE.quickLog||typeof STATE.quickLog!=='object'||Array.isArray(STATE.quickLog))STATE.quickLog={};
    if(!STATE.shopTicks||typeof STATE.shopTicks!=='object'||Array.isArray(STATE.shopTicks))STATE.shopTicks={};
+   /* Movement is stored per day, so a bad value hides in history rather than in
+      today and only surfaces when that day is read back. Repair every one. */
+   if(N&&N.days&&typeof N.days==='object'){
+     Object.keys(N.days).forEach(k=>{
+       const d=N.days[k];if(!d||typeof d!=='object')return;
+       if(d.steps!=null&&!(typeof d.steps==='number'&&isFinite(d.steps)&&d.steps>=0))delete d.steps;
+       if(d.bikeMin!=null&&!(typeof d.bikeMin==='number'&&isFinite(d.bikeMin)&&d.bikeMin>=0))delete d.bikeMin;
+       if(d.bikeLvl!=null&&!BIKE_LEVELS.some(b=>b.k===d.bikeLvl))delete d.bikeLvl;
+     });
+   }
    if(N&&N.eatWindow!=null&&(typeof N.eatWindow!=='object'||Array.isArray(N.eatWindow)))delete N.eatWindow;
    if(Array.isArray(STATE.scoreHistory))
      STATE.scoreHistory=STATE.scoreHistory.filter(e=>e&&typeof e==='object'&&e.score!=null&&isFinite(e.score));
@@ -9050,7 +9189,27 @@ function validateData(){
     Object.keys(m).forEach(k=>{if(!EX[m[k]])errs.push(n+'.'+k+' -> unknown exercise "'+m[k]+'"');});
   });
   Object.keys(JOINT_RISK).forEach(j=>JOINT_RISK[j].forEach(k=>{if(!EX[k])errs.push('JOINT_RISK.'+j+': unknown exercise "'+k+'"');}));
-  // ---- the Reference tables ------------------------------------------------
+  // ---- the bike conversion -------------------------------------------------
+  // A wrong figure here credits movement that was never done, which is a
+  // deficit the athlete thinks they have and does not.
+  const bikeKeys={};
+  BIKE_LEVELS.forEach((b,i)=>{
+    if(bikeKeys[b.k])errs.push('BIKE_LEVELS: duplicate key "'+b.k+'"');
+    bikeKeys[b.k]=1;
+    if(!(b.met>0))errs.push('BIKE_LEVELS.'+b.k+': no MET value');
+    if(!b.label||!b.cue||!b.rpe)errs.push('BIKE_LEVELS.'+b.k+': incomplete coaching copy');
+    if(i&&b.met<=BIKE_LEVELS[i-1].met)
+      errs.push('BIKE_LEVELS.'+b.k+' ('+b.met+') is not harder than '+BIKE_LEVELS[i-1].k);
+    if(b.met>=12)errs.push('BIKE_LEVELS.'+b.k+': '+b.met+' net METs is beyond sustained human output');
+    if(!(bikeStepsPerMin(b.k)>0))errs.push('BIKE_LEVELS.'+b.k+': converts to no steps');
+    // the conversion has to be the inverse of itself
+    const mins=bikeMinutesFor(10000,b.k);
+    if(!(mins>0)||mins*bikeStepsPerMin(b.k)<10000)
+      errs.push('BIKE_LEVELS.'+b.k+': '+mins+' min does not actually cover 10,000 steps');
+  });
+  if(Math.abs(kcalPerStep()-stepKcal(1000)/1000)>0.0002)
+    errs.push('kcalPerStep() has drifted from stepKcal()');
+    // ---- the Reference tables ------------------------------------------------
   // A tapped food writes straight into the day's macro totals, and every figure
   // the tab shows is computed off these rows, so a bad row is both wrong on
   // screen and wrong in the log.

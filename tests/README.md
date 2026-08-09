@@ -27,6 +27,7 @@ not publish unless they pass.
 | `04-journey.test.mjs` | The wizard, the 8-test baseline, the four Today panes, the guided player, every button on every tab |
 | `05-state.test.mjs` | Hostile saves, upgrades from older builds, idempotence, and the everyday flows that write to storage |
 | `06-reference.test.mjs` | The Reference tab: costing an arbitrary amount, the seven days scaled onto a live target, the derived shopping list, and both write paths into the food log |
+| `07-movement.test.mjs` | Trading bike minutes for steps: the conversion in both directions, hostile input, and the tick agreeing with the number |
 
 ## Why the checks are shaped the way they are
 
@@ -97,3 +98,17 @@ produce that sequence — but the deep-link check has to be immune to it. It now
 navigates out to `about:blank` and back in with an explicit URL, which makes the
 destination unambiguous and drops any queued history work. localStorage is
 per-origin, so the seeded athlete survives the round trip.
+
+**A guard band can be the only check that sees the bug.** The bike conversion
+survives a swap from net METs to the gross compendium values with everything
+still looking right: `MET × 35` still holds, every intensity still costs the
+same energy, the table still reads sensibly — and roughly 20% more credit is
+handed out than was earned. Nothing but the wall-clock time gives it away, so
+`07-movement` asserts each intensity's minutes for 10,000 steps against a band
+anchored on what walking it would take.
+
+**Watch for a downstream guard masking an upstream one.** `movement()` clamps on
+read, so removing the clamp in `setSteps()` changed nothing any behavioural check
+could see. The clamp on the way in still matters — it is what `exportData()`
+ships and what the history repair has to cope with — so there are now checks
+that read the stored value directly, not just the accessor.
