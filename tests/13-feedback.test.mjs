@@ -410,6 +410,57 @@ export default async function run() {
     t.ok('undo shows mid-week', r.undo, r);
   }
 
+  /* ============ 6. a backup describes the athlete, not the session ======== */
+  {
+    const r = await page.evaluate(async () => {
+      STATE.progressPtr = 7; STATE.logs = {}; ensureLog();
+      STATE._plResume = { ptr: 7, i: 1, s: 0, setsDone: 2, date: todayISO(), ts: Date.now() };
+      STATE._undo = { ptr: 6, key: '0-0', at: Date.now(), date: todayISO(), log: null, adapt: 1, weekFeel: null, comeback: null, achievements: {} };
+      STATE.pain = [{ exId: 'dips', region: 'shoulders', date: todayISO(), ptr: 1 }];
+      STATE.settings = STATE.settings || {}; STATE.settings.azureKey = 'SECRET-A';
+      save();
+      let blob = null;
+      const oc = URL.createObjectURL; URL.createObjectURL = b => { blob = b; return 'blob:x'; };
+      const ck = HTMLAnchorElement.prototype.click; HTMLAnchorElement.prototype.click = function () {};
+      try { await exportData(); } catch (e) { return { err: String(e).slice(0, 150) }; }
+      URL.createObjectURL = oc; HTMLAnchorElement.prototype.click = ck;
+      if (!blob) return { err: 'no blob' };
+      const txt = await blob.text(); const parsed = JSON.parse(txt);
+      const o = {
+        hasUndo: '_undo' in parsed, hasResume: '_plResume' in parsed,
+        leaksKey: txt.includes('SECRET-A'),
+        // real history must still be there
+        keepsPain: Array.isArray(parsed.pain) && parsed.pain.length === 1,
+        keepsLogs: !!parsed.logs, keepsPtr: parsed.progressPtr === 7,
+        // and the live session is untouched by having taken a backup
+        liveUndoIntact: !!STATE._undo, liveResumeIntact: !!STATE._plResume,
+      };
+      /* An OLD backup — one written by v195-v198 — still carries them, and
+         those files get restored long after this build. */
+      const legacy = JSON.parse(JSON.stringify(parsed));
+      legacy._undo = { ptr: 6, key: '0-0', at: Date.now(), date: todayISO(), log: null, adapt: 1, weekFeel: null, comeback: null, achievements: {} };
+      legacy._plResume = { ptr: 7, i: 1, s: 0, setsDone: 2, date: todayISO(), ts: Date.now() };
+      const file = new File([JSON.stringify(legacy)], 'b.json', { type: 'application/json' });
+      await new Promise(res => {
+        const orig = FileReader.prototype.readAsText;
+        importData({ target: { files: [file] } });
+        const iv = setInterval(() => { if (!('_undo' in STATE) || STATE._importDone) { clearInterval(iv); res(); } }, 60);
+        setTimeout(() => { clearInterval(iv); res(); }, 3000);
+      });
+      o.afterLegacyImport = { undo: '_undo' in STATE, resume: '_plResume' in STATE,
+        offersUndo: undoBannerHTML() !== '', offersResume: (() => { try { return !!resumeInfo(); } catch (e) { return 'threw'; } })() };
+      return o;
+    });
+    t.ok('export does not write the undo record', r.hasUndo === false, r);
+    t.ok('export does not write the resume breadcrumb', r.hasResume === false, r);
+    t.ok('and still does not leak an API key', r.leaksKey === false, r);
+    t.ok('real history survives the strip', r.keepsPain && r.keepsLogs && r.keepsPtr, r);
+    t.ok('taking a backup does not disturb the live session', r.liveUndoIntact && r.liveResumeIntact, r);
+    t.ok('a legacy backup carrying them is cleaned on import', r.afterLegacyImport.undo === false && r.afterLegacyImport.resume === false, r);
+    t.ok('so a restore never offers to undo a session it did not log', r.afterLegacyImport.offersUndo === false, r);
+    t.ok('nor to resume one', r.afterLegacyImport.offersResume === false, r);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
