@@ -268,7 +268,7 @@ export default async function run() {
   // ---- the tick and the number must agree ----------------------------------
   const habit = await page.evaluate(() => {
     const o = {}, T = nutToday(), tgt = stepTarget();
-    delete T.steps; delete T.bikeVal; T.habits = { steps: true };
+    delete T.steps; delete T.bikeVal; delete T._stepAuto; T.habits = { steps: true };
     syncStepHabit();
     o.manualTickKept = T.habits.steps === true;
     T.habits = { steps: false }; syncStepHabit();

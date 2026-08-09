@@ -2019,7 +2019,10 @@ function buildSession(ptr){
 }
 function sessionVolume(sess){
   let tut=0;const list=[...sess.main,sess.finisher];
-  list.forEach(m=>{if(m.unit==='time')tut+=m.sets*m.target;else tut+=m.sets*m.target*3;});
+  // same seconds-per-rep the player actually paces at, so the card, the clock
+  // and the history row stop quoting three different durations
+  list.forEach(m=>{if(m.unit==='time')tut+=m.sets*m.target;
+    else tut+=m.sets*m.target*(repSecondsFor(m.exId,repTempoSetting())||3);});
   return {exercises:list.length,minutes:Math.round((tut+ list.reduce((a,m)=>a+m.sets*m.rest,0))/60)+3};
 }
 
@@ -2151,6 +2154,22 @@ function closeSheet(){
   setTimeout(()=>{try{if(!$('#scrim').classList.contains('open'))$('#sheet').innerHTML='';}catch(e){}},400);
 }
 $('#scrim').addEventListener('click',e=>{if(e.target.id==='scrim')closeSheet();});
+
+/* prescribe() drops a set and eases targets in week 6 — its own comment says
+   "week 6 is the deload" — but the overload note was never told, so the Today
+   tab printed "📈 Week 6 — load increased. Final peak week — the highest load
+   of the block" five lines under the deload banner, on a session that had just
+   halved its sets. */
+function overloadNote(sess){
+  try{if(sess&&sess.week===WEEKS_PER_CYCLE&&deloadOn(sess))
+    return 'Volume drops on purpose this week so the next block starts higher. Do not add the sets back.';}catch(e){}
+  return _overloadNoteInner(sess);
+}
+// and the headline above it must not say the opposite
+function overloadHeadline(sess){
+  try{if(sess&&sess.week===WEEKS_PER_CYCLE&&deloadOn(sess))return 'load eased';}catch(e){}
+  return 'load increased';
+}
 
 /* ---- Android / browser Back-button integration ----
    Back: (1) close an open sheet, else (2) step back a tab, else
@@ -2636,7 +2655,16 @@ function restartProgram(){
   if(!confirm('Start a fresh block? Your history stays saved; you\'ll re-take the baseline.'))return;
   // swaps are keyed by absolute progressPtr — keeping them would re-apply choices
   // made in a different block to the new one
-  STATE.baseline=null;STATE.reassess={};STATE.progressPtr=0;STATE.logs={};STATE.weekFeel={};STATE.swaps={};save();go('today');
+  /* STATE.logs is the permanent record every lifetime counter reads —
+     sessionsDoneCount, totalVolume, estCalories, the heatmap and the history
+     list. Clearing it made the confirm's promise false: 12 sessions, a streak
+     and a lit heatmap all went to zero. The new block writes fresh keys from
+     progressPtr 0 and history is keyed off completedAt, so the old rows can
+     simply stay. adapt and exAdapt must rebase, though — carrying them onto a
+     freshly measured baseline is the double-count rebaseAdapt() exists for. */
+  STATE.baseline=null;STATE.reassess={};STATE.progressPtr=0;STATE.weekFeel={};STATE.swaps={};
+  rebaseAdapt();
+  save();go('today');
 }
 
 /* Pick a strong representative photo for the session's hero card. */
@@ -2753,7 +2781,7 @@ function workoutTabHTML(sess,log,doneCount,totalCount,wkNum,restedToday){
   h+=weeklyBannerHTML();
   // progressive overload note vs previous week
   if(sess.pos.dayInWeek===0){
-    h+=`<div class="note fire">📈 <b>Week ${wkNum} — load increased.</b> ${overloadNote(sess)}</div>`;
+    h+=`<div class="note fire">📈 <b>Week ${wkNum} — ${overloadHeadline(sess)}.</b> ${overloadNote(sess)}</div>`;
   }
   h+=`<div class="section-label">Main work</div><div class="exlist">`;
   sess.main.forEach((m,i)=>h+=exCardHTML(m,log,i));
@@ -2762,7 +2790,7 @@ function workoutTabHTML(sess,log,doneCount,totalCount,wkNum,restedToday){
   h+=`<button class="btn ${doneCount>=totalCount?'green':'primary'}" id="finishSession">${doneCount>=totalCount?'✓ Complete Session':'Mark Session Complete'}</button>`;
   return h;
 }
-function overloadNote(sess){
+function _overloadNoteInner(sess){
   const w=sess.week;
   if(w===1&&sess.cycle===0)return 'Establishing your baseline volumes — nail your form this week.';
   if(w===1)return 'Scaling from your latest re-test — every number starts higher than last block.';
@@ -2950,7 +2978,8 @@ function plBudgetMin(items,tempo){
   list.forEach(m=>{
     if(!m)return;
     const sets=n(m.sets)||1,target=n(m.target);
-    secs+=(m.unit==='time'?sets*target:sets*target*t)+sets*(n(m.rest)||45);
+    const per=(m.unit==='time')?1:(repSecondsFor(m.exId,t)||t);
+    secs+=sets*target*per+sets*(n(m.rest)||45);
   });
   return Math.max(5,Math.round(secs/60)+3);
 }
@@ -3003,6 +3032,24 @@ function plRingHTML(color){return `
 /* Controlled-tempo eccentric (seconds) for guided reps: slow for strength/core,
    fast/explosive for cardio & dynamic finishers. */
 function eccOf(ex){if(!ex||ex.unit!=='reps')return 0;return (ex.region==='cardio'||ex.region==='dynamic')?1:3;}
+/* THE seconds-per-rep figure, for everyone who needs one.
+   There were three: sessionVolume() hardcoded 3, plBudgetMin() and
+   sessionStats() used settings.repTempo, and the player itself paced at
+   (ecc+1)=4s regardless of the slider. So the Today card said ~36 min, the
+   player's own clock budgeted ~44, history recorded ~45, and the session took
+   36 — and the "past the time this should take" nudge I added in v189 fired on
+   sessions that ran exactly to plan, because it was priced against a number the
+   pacing ignored. Explosive work keeps its own faster cadence; everything else
+   obeys the athlete's Rep cadence setting. */
+function repSecondsFor(exId,tempo){
+  const e=eccOf(EX[exId]);
+  if(!e)return 0;
+  return (e<=1)?2:Math.max(1.5,Math.min(6,tempo||3));
+}
+function repTempoSetting(){
+  const v=STATE.settings&&STATE.settings.repTempo;
+  return (typeof v==='number')?Math.max(1.5,Math.min(6,v)):3;
+}
 /* Gentler, back- & neck-friendly alternatives (used by the swap menu). */
 const SWAP_ALT={
   plank:'deadbug',longplank:'plank',planktap:'plank',
@@ -3225,7 +3272,11 @@ function plEnterWork(){
     if(PLAYER.running)PLAYER.tid=setInterval(plTickHold,1000);
   }else{
     const ecc=eccOf(ex);
-    PLAYER.ecc=ecc;PLAYER.eccMs=ecc*1000;PLAYER.repDurMs=(ecc+1)*1000;
+    // the whole rep lasts what the athlete asked for; the eccentric keeps its
+    // share of it, so the "lower slow" cue still lands in the right place
+    const _rs=repSecondsFor(m.exId,PLAYER.tempo)||(ecc+1);
+    PLAYER.ecc=ecc;PLAYER.repDurMs=Math.round(_rs*1000);
+    PLAYER.eccMs=Math.round(PLAYER.repDurMs*(ecc/(ecc+1)));
     PLAYER.repN=0;PLAYER.repMs=0;PLAYER.repCounted=false;PLAYER.total=Math.max(1,m.target);
     plS('#plNum','0');plS('#plSub','OF '+m.target+' REPS');plRingSet(0);
     const tempoLine=ecc>=2?('Controlled tempo. Lower for '+ecc+' seconds, then drive up. '+PLAYER.cues[0]):('Fast and explosive. '+PLAYER.cues[0]);
@@ -4184,7 +4235,10 @@ function _neuralCacheSet(k,u){
 }
 function _neuralCacheClear(){
   _neuralCache.forEach(u=>{try{URL.revokeObjectURL(u);}catch(e){}});
-  _neuralCacheClear();
+  // was _neuralCacheClear() — infinite recursion. It threw a RangeError before
+  // saveAzureKey() reached save(), so the key worked for that session and was
+  // silently gone on the next launch, with no error the athlete could see.
+  _neuralCache.clear();
 }
 let _neuralAudio=null, _neuralTok=0;
 function _xmlEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));}
@@ -5775,7 +5829,7 @@ function currentWaistShow(){
   return ms.length?r1(waistShow(ms[ms.length-1].waist)):null;}
 function scoreGain(){const s=STATE.scoreHistory||[];if(s.length<1)return 0;return s[s.length-1].score-s[0].score;}
 function sessionsDoneCount(){return Object.values(STATE.logs||{}).filter(l=>l.done).length;}
-function bestHabitDay(){let m=0;const d=(STATE.nutrition&&STATE.nutrition.days)||{};Object.values(d).forEach(x=>{const c=Object.values(x.habits||{}).filter(Boolean).length;if(c>m)m=c;});return m;}
+function bestHabitDay(){let m=0;const d=(STATE.nutrition&&STATE.nutrition.days)||{};Object.values(d).forEach(x=>{const c=HABITS.filter(hb=>x.habits&&x.habits[hb.k]).length;if(c>m)m=c;});return m;}
 /* Rope milestones for the badge checks (log lives in STATE.skipLog). */
 function skipTotalMins(){return skipLog().reduce((a,x)=>a+(x.mins||0),0);}
 function skipSessionCount(){return skipLog().length;}
@@ -6088,8 +6142,11 @@ function startMobility(i){const m=MOBILITY_FLOWS[i];if(!m)return;closeSheet();ru
 /* ---- #5 Weekly coach voice recap ---- */
 let _recapSpeak='';
 function weeklyRecap(){
-  const set=trainedDaysSet();const t=new Date();let wk=0;
-  for(let i=0;i<7;i++){const d=new Date(t);d.setDate(d.getDate()-i);if(set.has(localISO(d)))wk++;}
+  /* One definition of "this week". This was its own rolling 7-day loop while
+     the Progress tile 20 lines below used a Monday-anchored week, so on a
+     Monday the recap sheet said "5 workouts this week" and the tile said 1/5 —
+     and the coach read the 5 out loud. */
+  const wk=sessionsThisWeek();
   const streak=(typeof computeStreak==='function')?computeStreak():0;
   const drop=(typeof waistDropShow==='function')?waistDropShow():0;const wu=STATE.profile.unit;
   const gain=(typeof scoreGain==='function')?scoreGain():0;
@@ -6133,10 +6190,18 @@ function deloadBanner(){return deloadOn()?`<div class="note info" style="margin-
 function beatTempoPref(){const t=STATE.settings&&STATE.settings.beatTempo;return (typeof t==='number'&&t>=60&&t<=110)?t:78;}
 function setBeatTempo(bpm){if(!STATE.settings)STATE.settings={};STATE.settings.beatTempo=Math.max(60,Math.min(110,parseInt(bpm)||78));save();if(BEAT&&BEAT.on){beatStop();beatStart();}}
 /* ---- #7 New-version update toast ---- */
+/* A deploy landing mid-set put a bar with a Refresh button exactly where
+   "Set done ✓" is, at a higher z-index than the player, with no dismiss. The
+   reflex tap reloaded the app and killed the session. */
+function _sessionLive(){
+  try{return !!((typeof PLAYER!=='undefined'&&PLAYER)||(typeof INTV!=='undefined'&&INTV)||(typeof OP!=='undefined'&&OP));}
+  catch(e){return false;}
+}
 function showUpdateToast(){
+  if(_sessionLive())return;   // it will be offered again on the next launch
   if(document.getElementById('updToast'))return;
   const d=document.createElement('div');d.id='updToast';
-  d.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:calc(74px + env(safe-area-inset-bottom));z-index:500;background:var(--card2);border:1px solid var(--line2);border-radius:14px;padding:11px 14px;display:flex;gap:12px;align-items:center;box-shadow:0 10px 34px rgba(0,0,0,.55)';
+  d.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:calc(74px + env(safe-area-inset-bottom));z-index:70;background:var(--card2);border:1px solid var(--line2);border-radius:14px;padding:11px 14px;display:flex;gap:12px;align-items:center;box-shadow:0 10px 34px rgba(0,0,0,.55)';
   d.innerHTML=`<span style="font-weight:800;font-size:13px">🔄 New version ready</span><button style="background:var(--fire);color:var(--accInk);border:none;border-radius:10px;padding:8px 13px;font-weight:900" onclick="location.reload()">Refresh</button>`;
   document.body.appendChild(d);
 }
@@ -6455,8 +6520,8 @@ function foodTotals(){const d=nutToday();const f=d.food||[];
 function logFood(name,kcal,p,c,f,meal){const d=nutToday();if(!Array.isArray(d.food))d.food=[];
   d.food.push({name:String(name||'Meal').slice(0,60),kcal:Math.round(kcal||0),p:Math.round(p||0),
     c:Math.round(c||0),f:Math.round(f||0),meal:meal||currentMealSlot(),at:Date.now()});
-  save();toast('Logged ✓');closeSheet();renderFuel();try{checkAchievements();}catch(e){}}
-function removeFood(idx){const d=nutToday();if(d.food&&d.food[idx]){d.food.splice(idx,1);save();renderFuel();}}
+  syncProteinHabit();save();toast('Logged ✓');closeSheet();renderFuel();try{checkAchievements();}catch(e){}}
+function removeFood(idx){const d=nutToday();if(d.food&&d.food[idx]){d.food.splice(idx,1);syncProteinHabit();save();renderFuel();}}
 // Edit a logged item in place (re-uses the add sheet, then replaces the entry).
 function editFood(idx){const d=nutToday();const it=d.food&&d.food[idx];if(!it)return;
   openQuickAdd({name:it.name,kcal:it.kcal,p:it.p,c:it.c,f:it.f,meal:it.meal,editIdx:idx});}
@@ -6529,6 +6594,8 @@ function searchLocalFoods(q){q=String(q||'').trim().toLowerCase();if(!q)return [
 function _offItem(p){
   const nu=p.nutriments||{};
   const k100=+nu['energy-kcal_100g']||(nu['energy_100g']?Math.round(+nu['energy_100g']/4.184):0);
+  // pure fat is 884 kcal/100 g; anything above that is bad third-party data
+  if(!(k100>0)||k100>900)return null;
   if(!k100)return null;
   /* serving_size is free text ("2 biscuits (25 g)", "1 portion (30g)", "250 ml").
      parseFloat grabs the leading number, which is usually a COUNT, not grams —
@@ -6827,7 +6894,7 @@ function intakeHTML(){
       <div class="btnrow" style="gap:6px;flex:0 0 auto"><button class="chip" onclick="openFoodSearch()">🔎 Search</button><button class="chip" onclick="scanBarcode()">📸 Scan</button><button class="chip" onclick="foodPhoto()">📷 Snap</button><button class="chip" onclick="openQuickAdd()">➕</button></div></div>`;
   if(kcalT){const pct=Math.min(100,Math.round(t.kcal/kcalT*100));
     h+=`<div class="pbar${t.kcal>kcalT?'':' green'}" style="margin-top:8px"><i style="width:${pct}%"></i></div>
-      <div class="tiny muted" style="margin-top:4px">${t.kcal<=kcalT?(kcalT-t.kcal)+' kcal left today':(t.kcal-kcalT)+' kcal over — ease portions or add a Special session'}</div>`;}
+      <div class="tiny muted" style="margin-top:4px">${t.kcal<=kcalT?(kcalT-t.kcal)+' kcal left today':(t.kcal-kcalT)+' kcal over — that\'s one day, not the week.'}</div>`;}
   // macro split
   h+=`<div class="row" style="gap:10px;margin-top:12px">
       ${_macroBar('Protein',t.p,mt?mt.p:0,'var(--fire-l)')}
@@ -6880,7 +6947,7 @@ function intakeTrendHTML(){
     <div class="row" style="justify-content:space-between"><div><b>${avg} kcal</b> <span class="tiny muted">daily average</span></div><div class="tiny muted">${avgP}g protein avg · ${logged.length}/6 days logged</div></div>
     <div class="row" style="gap:6px;align-items:flex-end;margin-top:10px">${bars}</div>
     ${kcalT?(logged.length>=5
-      ? `<div class="tiny muted" style="margin-top:8px">${avg<=kcalT?'✅ Averaging under your '+kcalT+' kcal target — that\'s what drives the fat loss.':'⚠️ Averaging '+(avg-kcalT)+' kcal over target. Trim portions or add conditioning.'}</div>`
+      ? `<div class="tiny muted" style="margin-top:8px">${avg<=kcalT?'✅ Averaging under your '+kcalT+' kcal target — that\'s what drives the fat loss.':'⚠️ Averaging '+(avg-kcalT)+' kcal over target across the days you logged.'}</div>`
       /* Unlogged days are not random — they are the restaurant and the weekend,
          so dropping them biases the average in exactly the direction that
          produces false reassurance. Below 5 closed days, report, do not judge. */
@@ -7413,8 +7480,12 @@ function projectionHTML(){
        and unachievable on the deficit it actually prescribes. Clamp to BOTH. */
     const byRate=kg*0.01;
     const dfc=(nut().tdee&&nut().kcalTarget)?Math.max(0,nut().tdee-nut().kcalTarget):0;
-    const byDeficit=dfc?dfc*7/7700:byRate;
-    const capped=losing?Math.min(wanted,byRate,byDeficit||byRate):Math.min(wanted,0.5);
+    /* `dfc?` made a zero deficit fall back to byRate — the clamp disengaged in
+       exactly the case it exists for, so maintenance and gain both projected
+       0.9 kg/wk, and a floored athlete eating above her TDEE was promised half
+       a kilo a week from a 343 kcal surplus. */
+    const byDeficit=dfc>0?dfc*7/7700:0;
+    const capped=losing?Math.min(wanted,byRate,byDeficit):Math.min(wanted,0.5);
     if(capped>0){rate=capped;weeks=Math.max(1,Math.ceil(diff/rate));}
   }
   const start=Date.now(),end=start+weeks*7*86400000;
@@ -7607,16 +7678,26 @@ function setBikeLvl(k){
    logged the habit mirrors the total; with nothing logged the manual tick is
    left exactly as the athlete set it, because plenty of days are walked
    without anyone counting. */
+/* The water tracker ticks its own habit and the movement card ticks its own;
+   the food diary did not, so 175 g logged against a 155 g target sat above a
+   checklist reading "Hit protein target" unticked — and the nutrition streak,
+   which needs 3 of 4, could read 0 on a perfect week. */
+function syncProteinHabit(){
+  const t=nutToday();const tgt=proteinTargetG();
+  if(!tgt||!(foodTotals().n>0))return;
+  if(!t.habits||typeof t.habits!=='object')t.habits={};
+  t.habits.protein=foodTotals().p>=tgt;
+}
 function syncStepHabit(){
   const t=nutToday();const m=movement();
   /* The early return has to consider what was ALREADY logged, not just what is
      there now. Clearing a mistyped step count back to 0 left the habit ticked
      while the card above it read 0/10,000 — the exact contradiction the comment
      below was written to prevent. */
-  const everLogged=m.steps||m.val||(t.habits&&t.habits._stepAuto);
+  const everLogged=m.steps||m.val||t._stepAuto;
   if(!everLogged)return;
   if(!t.habits||typeof t.habits!=='object')t.habits={};
-  t.habits._stepAuto=1;
+  t._stepAuto=1;
   t.habits.steps=stepEquivalent()>=stepTarget();
 }
 function movementHTML(){
@@ -7793,13 +7874,13 @@ const RECIPES=[
   {id:'b_yog',alg:['dairy','gluten'],type:'breakfast',emoji:'🫐',name:'Greek Yogurt Berry Bowl',kcal:380,p:30,c:40,f:10,ok:['vegetarian','pescatarian','halal','omnivore'],
     ing:['200 g Greek yogurt','1 cup mixed berries','2 tbsp granola','1 tsp honey'],
     steps:['Spoon the yogurt into a bowl.','Top with berries and granola.','Drizzle with honey.']},
-  {id:'b_rice',alg:[],type:'breakfast',emoji:'🍚',name:'Rice Porridge & Seeds',kcal:390,p:14,c:60,f:11,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+  {id:'b_rice',alg:['treenut'],type:'breakfast',emoji:'🍚',name:'Rice Porridge & Seeds',kcal:390,p:14,c:60,f:11,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
     ing:['½ cup rice flakes (or leftover rice)','1 cup rice or coconut milk','1 tbsp pumpkin seeds','1 tbsp raisins','Cinnamon'],
     steps:['Simmer the rice in the milk until creamy, 5–6 min.','Stir in the raisins.','Top with the seeds and cinnamon.']},
   {id:'b_eggavo',alg:['egg'],type:'breakfast',emoji:'🥑',name:'Eggs & Avocado Bowl',kcal:420,p:24,c:14,f:31,ok:['vegetarian','pescatarian','halal','omnivore'],
     ing:['3 eggs','½ avocado','Handful spinach','1 tsp olive oil','Salt, pepper, chilli flakes'],
     steps:['Wilt the spinach in the oil.','Scramble or fry the eggs alongside.','Plate with sliced avocado and season.']},
-  {id:'b_fruitnut',alg:[],type:'breakfast',emoji:'🍌',name:'Banana, Seeds & Coconut',kcal:350,p:10,c:48,f:14,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
+  {id:'b_fruitnut',alg:['treenut'],type:'breakfast',emoji:'🍌',name:'Banana, Seeds & Coconut',kcal:350,p:10,c:48,f:14,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
     ing:['2 bananas','2 tbsp sunflower seeds','2 tbsp desiccated coconut','1 tbsp maple syrup'],
     steps:['Slice the bananas into a bowl.','Scatter the seeds and coconut.','Finish with the syrup.']},
   {id:'b_steak',alg:['egg'],type:'breakfast',emoji:'🥩',name:'Steak & Eggs Skillet',kcal:480,p:46,c:8,f:30,ok:['halal','omnivore'],
@@ -7810,7 +7891,7 @@ const RECIPES=[
     steps:['Spoon the cottage cheese into a bowl.','Top with the berries and seeds.','Drizzle the honey and dust with cinnamon.'],
     note:'No cooking — the fastest high-protein start in the list.'},
   {id:'b_salmon',alg:['egg','fish'],type:'breakfast',emoji:'🐟',name:'Smoked Salmon & Eggs',kcal:430,p:38,c:6,f:29,ok:['pescatarian','omnivore'],
-    ing:['100 g smoked salmon','3 eggs','1 tsp butter or olive oil','Handful rocket','Lemon, black pepper, dill'],
+    ing:['100 g smoked salmon','3 eggs','1 tsp olive oil','Handful rocket','Lemon, black pepper, dill'],
     steps:['Scramble the eggs slowly over a low heat so they stay soft.','Plate with the salmon and rocket.','Finish with lemon, dill and plenty of black pepper.']},
   {id:'b_eggs',alg:['egg','gluten'],type:'breakfast',emoji:'🍳',name:'Veggie Eggs & Toast',kcal:400,p:26,c:30,f:18,ok:['vegetarian','pescatarian','halal','omnivore'],
     ing:['3 eggs','Handful spinach + tomato','1 slice wholegrain toast','1 tsp oil, salt & pepper'],
@@ -8175,7 +8256,10 @@ function refAmtCalc(){
   const f=FOODS[REF_FOOD],out=$('#ref-amt-out'),el=$('#ref-amt');
   if(!f||!out||!el)return;
   const n=foodAt(f,el.value);
-  const protT=proteinTargetG()||0,kcalT=(STATE.nutrition&&STATE.nutrition.kcalTarget)||0;
+  /* refTargets(), not the raw reads — the tab has already committed to the
+     defaults in print, so "Fill my protein gap" refusing with "set your targets
+     in Fuel first" contradicted the number at the top of the same screen. */
+  const _T=refTargets();const protT=_T.p,kcalT=_T.kcal;
   const eaten=foodTotals();
   const pLeft=Math.max(0,protT-eaten.p),kLeft=Math.max(0,kcalT-eaten.kcal);
   let h=`<div class="grid2">
@@ -8198,8 +8282,7 @@ function refAmtCalc(){
 }
 function refFillProtein(){
   const f=FOODS[REF_FOOD];if(!f)return;
-  const protT=proteinTargetG()||0;
-  if(!protT){toast('Set your targets in Fuel first');return;}
+  const protT=refTargets().p;
   const need=Math.max(0,protT-foodTotals().p);
   if(!need){toast('Protein target already met ✓');return;}
   if(!(f[1]>0)){toast(f[0]+' has no protein to fill it with');return;}
@@ -8409,7 +8492,18 @@ function generateMealPlan(){
     if(r){exclude.add(r.id);meals.push(r.id);}else missing.push(s);});
   STATE.nutrition.plan={date:todayISO(),meals,missing};save();return STATE.nutrition.plan;
 }
-function currentMealPlan(){const p=STATE.nutrition.plan;if(p&&p.date===todayISO()&&p.meals&&p.meals.length)return p;return generateMealPlan();}
+/* Self-healing, because the invariant was held only by every writer
+   remembering to null the plan — and migrateAllergens(), which runs at boot and
+   derives tags from free text, did not. An athlete upgrading from that build
+   saw their newly-registered allergy, the banner saying meals were filtered for
+   it, and both violating recipes still on the plate. */
+function _planStillValid(p){
+  try{return p&&Array.isArray(p.meals)&&p.meals.every(id=>{const r=recipeById(id);return r&&dietOk(r);});}
+  catch(e){return false;}
+}
+function currentMealPlan(){const p=STATE.nutrition.plan;
+  if(p&&p.date===todayISO()&&p.meals&&p.meals.length&&_planStillValid(p))return p;
+  return generateMealPlan();}
 function regenPlan(){generateMealPlan();haptic(8);renderFuel();}
 function toggleRecipe(id){const e=$('#rc-'+id);if(e)e.style.display=e.style.display==='none'?'block':'none';}
 const MEAL_LABEL={breakfast:'breakfast',lunch:'lunch',dinner:'dinner',snack:'snack'};
@@ -8479,6 +8573,14 @@ function renderRef(){
   }
 
   /* ---- the one food list ---- */
+  /* The meal plan filters on diet and allergens; this tab does not, and said
+     nothing about it. Silence reads as "checked and safe" — which is the worst
+     outcome, because it teaches trust the tab has not earned. */
+  const _alg=(STATE.nutrition&&Array.isArray(STATE.nutrition.allergens))?STATE.nutrition.allergens:[];
+  const _diet=(STATE.nutrition&&STATE.nutrition.diet)||'omnivore';
+  if(_alg.length||_diet!=='omnivore'){
+    h+=`<div class="note warn"><b>This tab is not filtered.</b> It is the full food list, so it does not know about your ${_alg.length?'declared '+_alg.map(a=>_ve(a)).join(', ')+(_diet!=='omnivore'?' or your '+_ve(_diet)+' diet':''):_ve(_diet)+' diet'}. The meal plan in <b>Fuel</b> is filtered; read this one yourself.</div>`;
+  }
   h+=`<div class="section-label">Food list · <span class="tiny muted">tap a food to pick an amount</span></div>`;
   h+=`<div class="daypick" id="ref-cats" style="flex-wrap:wrap;margin:0 2px 10px">${FOOD_CATS.map(([k,l])=>
     `<button class="${REF_CAT===k?'on':''}" onclick="setRefCat('${k}')">${l}</button>`).join('')}</div>`;
@@ -8516,7 +8618,7 @@ function renderRef(){
     const gapK=T.kcal-d.kcal,gapP=T.p-d.p;
     if(Math.abs(gapK)>140||Math.abs(gapP)>12){
       h+=`<div class="note ${Math.abs(gapK)>300||Math.abs(gapP)>25?'warn':'info'}" style="margin:2px 0 6px">This one will not stretch all the way to your target without amounts nobody plates.
-        ${gapP>12?`Add about <b>${gapP} g of protein</b> — ${amountForProtein(FOODS[FOOD_BY_NAME['Cottage cheese']],gapP)} g of cottage cheese does it. `:''}
+        ${gapP>12?`Add about <b>${gapP} g of protein</b>${_alg.includes('dairy')||_diet==='vegan'?'':` — ${amountForProtein(FOODS[FOOD_BY_NAME['Cottage cheese']],gapP)} g of cottage cheese does it`}. `:''}
         ${gapP<-12?`It runs <b>${-gapP} g over</b> on protein, which is not a problem, just more food than you need. `:''}
         ${gapK>140?`It lands <b>${gapK} kcal short</b> — a banana and a spoon of peanut butter closes it.`:''}
         ${gapK<-140?`It runs <b>${-gapK} kcal over</b> — take it out of the starch.`:''}</div>`;
@@ -8637,10 +8739,19 @@ function renderFuel(){
   </div>`;
   h+=movementHTML();
   // habit checklist
-  const hitCount=Object.values(t.habits||{}).filter(Boolean).length;
-  h+=`<div class="section-label">Daily habits · <span style="color:var(--green)">${hitCount}/${HABITS.length}</span> · 🔥 ${nutritionStreak()}-day streak</div><div class="card">
+  /* Count the DECLARED habits, not every truthy key in the map. A private
+     bookkeeping flag written alongside them read as a completed habit: 3,000
+     steps against an 8,000 target showed "1/5" with every checkbox empty, and
+     Perfect Day unlocked on four. */
+  const hitCount=HABITS.filter(hb=>t.habits&&t.habits[hb.k]).length;
+  /* Denominator is the REQUIRED habits — the calorie one is deliberately
+     optional (it was removed as a streak condition so restriction is not what
+     the app rewards daily) but was still counted, so hitting everything that
+     matters read as 4/5 forever. */
+  const hitReq=HABITS.filter(hb=>!hb.optional&&t.habits&&t.habits[hb.k]).length;
+  h+=`<div class="section-label">Daily habits · <span style="color:var(--green)">${hitReq}/${habitsRequired()}</span> · 🔥 ${nutritionStreak()}-day streak</div><div class="card">
     ${HABITS.map(hb=>{const on=!!(t.habits&&t.habits[hb.k]);return `<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer;padding:13px 14px" onclick="toggleHabit('${hb.k}')">
-      <span>${hb.emoji} ${_ve(typeof hb.label==='function'?hb.label():hb.label)}${hb.k==='steps'?` <span class="tiny muted">· ~${stepKcal()} kcal</span>`:''}</span>
+      <span>${hb.emoji} ${_ve(typeof hb.label==='function'?hb.label():hb.label)}${hb.k==='steps'?` <span class="tiny muted">· ~${stepKcal()} kcal</span>`:''}${hb.optional?` <span class="tiny muted">· optional</span>`:''}</span>
       <span class="ex-check" style="width:26px;height:26px;${on?'background:var(--green);border-color:var(--green)':''}"><svg viewBox="0 0 24 24" fill="none" stroke="#04220f" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;opacity:${on?1:0}"><path d="M20 6 9 17l-5-5"/></svg></span></button>`;}).join('')}
   </div>`;
   // calorie calculator
@@ -8750,7 +8861,14 @@ function saveTDEE(){
   if(!(sex&&age>0&&ht>0&&wt>0)){toast('Fill in all fields');return;}
   if(imp){ht=ht*2.54;wt=wt*0.453592;}
   if(!plausibleKg(wt)){toast('Weight looks off — expected '+(imp?'55–770 lb':'25–350 kg'));return;}
-  if(!plausibleWaistCm(ht)&&!(ht>=120&&ht<=230)){toast('Height looks off');return;}
+  /* Was `!plausibleWaistCm(ht) && !(ht>=120&&ht<=230)`, which is true only
+     outside 40-250 cm — the second branch could never reject anything. The
+     realistic mis-entry is a height typed in inches while the unit is cm: 70
+     was accepted, giving a TDEE of 1591 instead of 2570 and a target floored to
+     1500, whose only feedback is "raised to a safe minimum" — which reads as
+     reassurance rather than as "your height is wrong". */
+  if(!(ht>=120&&ht<=230)){toast('Height looks off — expected '+(imp?'47–91 in':'120–230 cm'));return;}
+  if(!(age>=14&&age<=100)){toast('Age looks off — expected 14–100');return;}
   n.sex=sex;n.age=age;n.heightCm=Math.round(ht);n.weightKg=Math.round(wt*10)/10;n.activity=parseFloat($('#td-act').value)||1.45;
   // mirror to the profile copy — the quiz prefills from profile.*, so writing
   // only the nutrition side meant one tap of Next reverted these answers
@@ -8823,8 +8941,14 @@ function renderQuick(){
   h+=`</div><button class="btn ${doneN>=q.items.length?'green':'primary'}" style="margin-top:6px" onclick="quickFinish()">${doneN>=q.items.length?'✓ Finish':'Finish workout'}</button>`;
   v.innerHTML=h;
 }
+/* QUICKIES and HIIT_POOL are flat literals that never went through the swap
+   the program applies to every prescribed movement, so a flagged low back was
+   routed around for 378 sessions and then handed three sets of Russian twists
+   by the catch-up banner — at the one moment the athlete is least conditioned.
+   safeSwap() is a no-op when nothing is flagged. */
+function quickExId(exId){try{return safeSwap(exId);}catch(e){return exId;}}
 function quickPlay(idx){
-  const q=QUICKIES.find(x=>x.id===QUICK_ID);const it=q.items[idx];const ex=EX[it.exId];
+  const q=QUICKIES.find(x=>x.id===QUICK_ID);const it=q.items[idx];const ex=EX[quickExId(it.exId)]||EX[it.exId];
   const rest=it.rest||ex.rest||25;autoRoll();
   const label=ex.name+(it.sets>1?` · ${it.sets} sets`:'');
   if(ex.unit==='time') runTimer('hold',it.target,label,rest,()=>quickMark(idx));
@@ -9170,6 +9294,7 @@ function renderGuide(){
 
    Guarded by a session flag so it can never loop, and silent when offline. */
 async function selfUpdate(){
+  if(_sessionLive())return;   // a reload here dumps the athlete out mid-set
   try{
     if(sessionStorage.getItem('cf_selfupd'))return;
     /* APP_VERSION sits in the first few KB, so ask for the first 64 KB instead of
@@ -9619,6 +9744,41 @@ function validateData(){
     Object.keys(m).forEach(k=>{if(!EX[m[k]])errs.push(n+'.'+k+' -> unknown exercise "'+m[k]+'"');});
   });
   Object.keys(JOINT_RISK).forEach(j=>JOINT_RISK[j].forEach(k=>{if(!EX[k])errs.push('JOINT_RISK.'+j+': unknown exercise "'+k+'"');}));
+  /* ---- the recipe bank -----------------------------------------------------
+     FOODS had eleven per-row assertions; RECIPES — the allergen tags, which are
+     the only thing between a declared allergy and the plate — had none. That is
+     how two recipes shipped serving coconut to a tree-nut allergy with alg:[].
+     dietOk() fails an UNTAGGED recipe closed, but alg:[] is a valid array, so
+     "wrongly tagged as containing nothing" slips straight through the guard. */
+  const algKeys=(typeof ALLERGENS!=='undefined')?ALLERGENS.map(a=>a[0]):Object.keys(ALG_SYN);
+  const DIETS=['vegan','vegetarian','pescatarian','halal','omnivore'];
+  const seenR={};
+  /* Two whole families of false positive on the dairy check: nut butters, and
+     plant milks. Both have to be removed from the haystack rather than
+     suppressing the word outright — "milk" untagged is exactly the kind of
+     miss this check exists for. */
+  const deDairy=h=>h.replace(/\b(soy|soya|almond|oat|rice|coconut|cashew|hemp|pea|plant)\s+milk\b/g,' ')
+                    .replace(/\b(almond|peanut|cashew|nut|coconut|seed)\s+butter\b/g,' ');
+  RECIPES.forEach(r=>{
+    const tag='RECIPES.'+(r&&r.id);
+    if(!r||!r.id){errs.push('RECIPES: row with no id');return;}
+    if(seenR[r.id])errs.push(tag+': duplicate id');
+    seenR[r.id]=1;
+    if(!Array.isArray(r.alg))errs.push(tag+': alg is not an array — dietOk() will refuse it');
+    else r.alg.forEach(a=>{if(!algKeys.includes(a))errs.push(tag+': unknown allergen "'+a+'"');});
+    if(!Array.isArray(r.ok)||!r.ok.length)errs.push(tag+': no diets listed');
+    else r.ok.forEach(d=>{if(!DIETS.includes(d))errs.push(tag+': unknown diet "'+d+'"');});
+    if(!['breakfast','lunch','dinner','snack'].includes(r.type))errs.push(tag+': type "'+r.type+'" is not a meal slot');
+    if(!(r.kcal>0)||!(r.p>=0))errs.push(tag+': missing macros');
+    // the check that found the coconut: does the text match a family it is not tagged with?
+    const hay=((r.name||'')+' '+((r.ing||[]).join(' '))).toLowerCase();
+    Object.keys(ALG_SYN).forEach(fam=>{
+      if((r.alg||[]).includes(fam))return;
+      const h=(fam==='dairy')?deDairy(hay):hay;
+      const hit=(ALG_SYN[fam]||[]).find(w=>new RegExp('\\b'+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'s?\\b').test(h));
+      if(hit)errs.push(tag+': ingredients mention "'+hit+'" but it is not tagged '+fam);
+    });
+  });
   // ---- the bike conversion -------------------------------------------------
   // A wrong figure here credits movement that was never done, which is a
   // deficit the athlete thinks they have and does not.
@@ -9707,6 +9867,13 @@ async function boot(){
   normalizeState();
   // request durable storage so an installed PWA keeps data
   try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();}catch(e){}
+  /* Android focuses an already-running PWA and navigates it, which is a
+     same-document hash change — boot() never runs, so the Progress and Fuel
+     home-screen shortcuts did nothing whenever the app was already open. */
+  window.addEventListener('hashchange',()=>{try{
+    const h=(location.hash||'').replace('#','');
+    if(h&&STATE.onboarded&&['today','program','fuel','progress','ref','guide'].includes(h)&&h!==TAB)go(h);
+  }catch(e){}});
   initBackButton();   // make the phone's Back button navigate instead of closing the app
   // Home-screen shortcuts (and any #tab link) open straight on that tab rather
   // than always landing on Today.

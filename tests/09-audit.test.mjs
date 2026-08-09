@@ -225,8 +225,11 @@ export default async function run() {
     setSteps(0);
     o.clearedTick = nutToday().habits.steps === false;
     o.cardAgrees = stepEquivalent() === 0;
-    // and with nothing ever logged, a manual tick is still the athlete's business
-    delete T.steps; delete T.bikeVal; T.habits = { steps: true };
+    /* And with nothing EVER logged, a manual tick is still the athlete's
+       business — plenty of days get walked without anyone counting. _stepAuto
+       is what distinguishes "never logged" from "logged then cleared", so a
+       reset that leaves it set is not the state this is checking. */
+    delete T.steps; delete T.bikeVal; delete T._stepAuto; T.habits = { steps: true };
     syncStepHabit();
     o.manualUntouched = T.habits.steps === true;
     delete T.steps; delete T.bikeVal; T.habits = {}; save();
@@ -427,6 +430,129 @@ export default async function run() {
   t.ok('a half-logged today cannot flip the verdict', intake.notFooledByToday, intake);
   t.ok('six days over target reads as over target', intake.warns, intake);
   t.ok('too few logged days reports instead of judging', intake.withholdsVerdict, intake);
+
+  // ---- allergens: the recipe bank is now checked, not just trusted ---------
+  const alg = await page.evaluate(() => {
+    const o = {}, N = STATE.nutrition;
+    const realD = N.diet, realA = N.allergens, realP = N.plan;
+    /* Coconut is a declarable tree nut and ALG_SYN already said so, but two
+       recipes carried alg:[] while serving it. dietOk() fails an UNTAGGED
+       recipe closed — alg:[] is a valid array, so "wrongly tagged as containing
+       nothing" walked straight through the guard. */
+    N.diet = 'vegan'; N.allergens = ['treenut']; N.plan = null;
+    o.coconutServed = RECIPES.filter(dietOk).filter(r =>
+      /coconut/i.test((r.ing || []).join(' '))).map(r => r.id);
+    // and the validator now catches it being re-introduced
+    const victim = RECIPES.find(r => r.id === 'b_fruitnut');
+    const keep = victim.alg; victim.alg = [];
+    /* validateData() reports to console.error, and the harness counts a console
+       error as a failed run — correctly. Silence it only around the deliberate
+       corruption, so a REAL validation failure anywhere else still fails. */
+    const realErr = console.error; console.error = () => {};
+    try { o.validatorCatchesMistag = validateData().some(e => /b_fruitnut/.test(e) && /treenut/.test(e)); }
+    finally { console.error = realErr; victim.alg = keep; }
+    o.validatorCleanOtherwise = validateData().length === 0;
+    // plant milk is not dairy, and nut butter is not dairy
+    o.noPlantMilkFalsePositive = !validateData().some(e => /milk/.test(e));
+    /* A stored plan must re-validate: migrateAllergens() runs at boot, derives
+       tags from free text, and did not null the plan — so the allergy, the
+       banner announcing it, and the violating recipes were all on screen at
+       once. */
+    N.allergens = []; N.plan = null;
+    const before = generateMealPlan();
+    o.planMade = before.meals.length > 0;
+    N.allergens = ['treenut', 'dairy', 'peanut'];   // changed WITHOUT nulling the plan
+    const after = currentMealPlan();
+    o.planRevalidated = after.meals.every(id => { const r = recipeById(id); return r && dietOk(r); });
+    N.diet = realD; N.allergens = realA; N.plan = realP;
+    return o;
+  });
+  t.eq('no coconut recipe reaches a tree-nut allergy', alg.coconutServed, []);
+  t.ok('the validator catches a re-introduced mistag', alg.validatorCatchesMistag, alg);
+  t.ok('and is otherwise clean', alg.validatorCleanOtherwise, alg);
+  t.ok('plant milk and nut butter are not flagged as dairy', alg.noPlantMilkFalsePositive, alg);
+  t.ok('a stored plan re-validates against a changed allergy', alg.planRevalidated, alg);
+
+  // ---- quick workouts respect the injury flags the program routes around ---
+  const quick = await page.evaluate(() => {
+    const o = { risky: [] };
+    const real = STATE.profile.limitations;
+    STATE.profile.limitations = ['lowback', 'knee'];
+    const risky = k => ['lowback', 'knee'].some(j => (JOINT_RISK[j] || []).includes(k));
+    QUICKIES.forEach(q => q.items.forEach(it => {
+      const out = quickExId(it.exId);
+      if (!EX[out] || risky(out)) o.risky.push(q.id + '/' + it.exId + '->' + out);
+    }));
+    o.noFlagsIsNoOp = (STATE.profile.limitations = [], QUICKIES[0].items.every(it => quickExId(it.exId) === it.exId));
+    STATE.profile.limitations = real;
+    return o;
+  });
+  t.ok('no Quick workout serves a flagged joint a risky movement', quick.risky.length === 0, quick.risky.slice(0, 6));
+  t.ok('and with nothing flagged it changes nothing', quick.noFlagsIsNoOp, quick);
+
+  // ---- the habit count, and the protein habit -------------------------------
+  const hab = await page.evaluate(() => {
+    const o = {}, t2 = nutToday();
+    t2.habits = {}; delete t2._stepAuto; t2.food = [];
+    setSteps(stepTarget() + 500);
+    /* _stepAuto is bookkeeping. Written into the habits map it read as a
+       completed habit: 3,000 steps against an 8,000 target showed 1/5 with
+       every checkbox empty, and Perfect Day unlocked on four of five. */
+    o.flagOutsideHabits = !('_stepAuto' in t2.habits) && !!t2._stepAuto;
+    t2.habits = { steps: true, _stepAuto: 1 };
+    o.countsDeclaredOnly = bestHabitDay() <= HABITS.length - 1 || HABITS.filter(h => t2.habits[h.k]).length === 1;
+    // the diary ticks its own habit, like water and steps already do
+    t2.habits = {}; t2.food = [];
+    const tgt = proteinTargetG();
+    logFood('x', 400, tgt + 10, 10, 5, 'l');
+    o.proteinTicked = nutToday().habits.protein === true;
+    nutToday().food = [{ name: 'x', kcal: 100, p: 5, c: 1, f: 1, meal: 'l' }];
+    syncProteinHabit();
+    o.proteinUnticked = nutToday().habits.protein === false;
+    t2.habits = {}; t2.food = []; delete t2._stepAuto; delete t2.steps; save();
+    return o;
+  });
+  t.ok('the movement bookkeeping flag is not stored among the habits', hab.flagOutsideHabits, hab);
+  t.ok('logging enough protein ticks the protein habit', hab.proteinTicked, hab);
+  t.ok('and dropping below the target unticks it', hab.proteinUnticked, hab);
+
+  // ---- nothing interrupts a live session ------------------------------------
+  const live = await page.evaluate(() => {
+    const o = {};
+    /* An update toast at z-index 500 landed exactly on "Set done ✓" with no
+       dismiss, and selfUpdate() could reload the page mid-set. */
+    openPlayer();
+    o.live = _sessionLive();
+    showUpdateToast();
+    o.toastSuppressed = !document.querySelector('#updToast');
+    playerQuit();
+    o.idleAfterQuit = !_sessionLive();
+    showUpdateToast();
+    o.toastShownWhenIdle = !!document.querySelector('#updToast');
+    const el = document.querySelector('#updToast'); if (el) el.remove();
+    return o;
+  });
+  t.ok('an update toast never covers a live session', live.live && live.toastSuppressed, live);
+  t.ok('but is still offered once the session ends', live.idleAfterQuit && live.toastShownWhenIdle, live);
+
+  // ---- the API key survives being saved -------------------------------------
+  const key = await page.evaluate(() => {
+    const o = {};
+    /* _neuralCacheClear() called itself. The RangeError threw before
+       saveAzureKey() reached save(), so the key worked for one session and was
+       silently gone on the next launch. */
+    try { _neuralCacheClear(); o.clearOk = true; } catch (e) { o.clearOk = false; }
+    saveAzureKey('testkey123');
+    o.persisted = JSON.parse(localStorage.getItem('coreforge.v1')).settings.azureKey === 'testkey123';
+    // clearAzureKey() asks for confirmation, which headless auto-dismisses
+    const realConfirm = window.confirm; window.confirm = () => true;
+    try { clearAzureKey(); } finally { window.confirm = realConfirm; }
+    o.cleared = !JSON.parse(localStorage.getItem('coreforge.v1')).settings.azureKey;
+    return o;
+  });
+  t.ok('clearing the voice cache does not blow the stack', key.clearOk, key);
+  t.ok('so a saved voice key actually persists', key.persisted, key);
+  t.ok('and can be cleared again', key.cleared, key);
 
   await browser.close();
 
