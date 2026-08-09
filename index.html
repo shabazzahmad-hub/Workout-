@@ -1469,7 +1469,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='198';
+const APP_VERSION='199';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -10634,10 +10634,18 @@ function setDiet(k){STATE.nutrition.diet=k;if(STATE.nutrition.plan)STATE.nutriti
    photos in it — while the render error boundary and hardReset() both tell the
    athlete to export one first. They are the only thing in here that cannot be
    re-created. */
+/* Live-session scratch, not history. Both are scoped to today and to the
+   current pointer, so restoring them is at best meaningless and at worst
+   confusing: a backup taken minutes after logging a session carried an undo
+   record, and restoring it on the same day would offer to un-log a session the
+   athlete had legitimately finished. Neither describes the athlete, so neither
+   belongs in a file that represents them. */
+const TRANSIENT_KEYS=['_undo','_plResume'];
 async function exportData(){
   // Never write the on-device API keys into a shareable backup file.
   const clone=JSON.parse(JSON.stringify(STATE));
   if(clone.settings){delete clone.settings.azureKey;delete clone.settings.foodAiKey;}
+  TRANSIENT_KEYS.forEach(k=>{delete clone[k];});
   clone._photoData={};
   try{
     for(const ph of (clone.photos||[])){
@@ -10673,6 +10681,10 @@ function importData(e){
        they live. A backup written before this field simply has none. */
     const ph=p._photoData&&typeof p._photoData==='object'?p._photoData:null;
     delete STATE._photoData;
+    /* Dropped on the way IN as well as on the way out: every backup written by
+       v195-v198 already contains them, and those files will be restored long
+       after this build. */
+    TRANSIENT_KEYS.forEach(k=>{delete STATE[k];});
     normalizeState();save();
     if(ph){
       const ids=Object.keys(ph);
