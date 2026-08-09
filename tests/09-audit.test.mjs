@@ -646,6 +646,73 @@ export default async function run() {
   t.ok('kicking up is listed as a mistake', hs.warnsKicking, hs);
   t.ok('the bench dip warns about the depth that hurts people', hs.dipWarnsShoulder, hs);
 
+  // ---- every ladder is now genuinely ordered, and checked ------------------
+  const lad = await page.evaluate(() => {
+    const o = { violations: [], unanchoredRungs: 0, total: 0 };
+    Object.keys(LADDERS).forEach(l => {
+      const a = LADDERS[l];
+      for (let i = 0; i < a.length; i++) {
+        o.total++;
+        if (!(EX[a[i]] || {}).anchor) o.unanchoredRungs++;
+        if (i && EX[a[i]].hardness > EX[a[i - 1]].hardness)
+          o.violations.push(`${l}: ${a[i]}(${EX[a[i]].hardness}) after ${a[i-1]}(${EX[a[i-1]].hardness})`);
+      }
+    });
+    /* The check used to require BOTH rungs to share an anchor, so every
+       anchor:null rung was invisible — most of the cardio, plank, rotation and
+       inverted work. Eleven ladders climbed backwards unreported, which is how
+       an L-Sit rated "easier than a knee plank" survived. */
+    const keep = EX.wallhandstand.hardness; EX.wallhandstand.hardness = 1.6;
+    const ce = console.error; console.error = () => {};
+    try { o.catchesUnanchored = validateData().some(e => /wallhandstand/.test(e)); }
+    finally { console.error = ce; EX.wallhandstand.hardness = keep; }
+    o.everyRungHasHardness = Object.keys(LADDERS).every(l => LADDERS[l].every(k => EX[k] && EX[k].hardness > 0));
+    return o;
+  });
+  t.ok('no ladder gets easier as it climbs', lad.violations.length === 0, lad.violations.slice(0, 6));
+  t.ok('and most rungs are unanchored, so this was the blind spot', lad.unanchoredRungs > 30, lad);
+  t.ok('the validator now catches an unanchored rung going backwards', lad.catchesUnanchored, lad);
+  t.ok('every rung carries a hardness', lad.everyRungHasHardness, lad);
+
+  // ---- tight space -----------------------------------------------------------
+  const space = await page.evaluate(() => {
+    const o = {}, realP = JSON.stringify(STATE.profile), realB = JSON.stringify(STATE.baseline);
+    STATE.baseline = { date: todayISO(), score: 40, level: 'Intermediate', testCount: 8,
+      maxes: { plank: 70, side: 45, hollow: 40, lower: 14, push: 26, pull: 9, squat: 40, dyn: 45 } };
+    STATE.reassess = {}; STATE.adapt = 1; STATE.exAdapt = {};
+    const HUNGRY = Object.keys(SPACE_SWAP);
+    const scan = () => { const hits = {};
+      for (let p = 0; p < 378; p++) { const s2 = buildSession(p);
+        [...s2.main, s2.finisher].filter(Boolean).forEach(m => {
+          if (HUNGRY.includes(m.exId)) hits[m.exId] = (hits[m.exId] || 0) + 1; }); }
+      return hits; };
+    STATE.profile.tightSpace = false; o.full = scan();
+    o.fullHasThem = Object.keys(o.full).length > 0;
+    STATE.profile.tightSpace = true; o.tight = scan();
+    o.tightHasNone = Object.keys(o.tight).length === 0;
+    // the program must still be a program, not a shorter one
+    const n = p => { const s2 = buildSession(p); return [...s2.main, s2.finisher].filter(Boolean).length; };
+    STATE.profile.tightSpace = false; const a = [0, 40, 120, 300].map(n);
+    STATE.profile.tightSpace = true; const b = [0, 40, 120, 300].map(n);
+    o.sameLength = JSON.stringify(a) === JSON.stringify(b);
+    // and every substitute must be a real, non-swapped exercise
+    o.badTargets = Object.keys(SPACE_SWAP).filter(k => !EX[SPACE_SWAP[k]] || SPACE_SWAP[SPACE_SWAP[k]]);
+    o.stillPresses = (() => { let press = 0;
+      for (let p = 0; p < 84; p++) { const s2 = buildSession(p);
+        [...s2.main, s2.finisher].filter(Boolean).forEach(m => {
+          if ((EX[m.exId] || {}).region === 'chest' || (EX[m.exId] || {}).region === 'shoulders') press++; }); }
+      return press; })();
+    o.offByDefault = (STATE.profile.tightSpace = false, !tightSpace());
+    STATE.profile = JSON.parse(realP); STATE.baseline = JSON.parse(realB);
+    return o;
+  });
+  t.ok('a full room still gets the handstand and travelling work', space.fullHasThem, space.full);
+  t.ok('a tight room gets none of it, across all 378 sessions', space.tightHasNone, space.tight);
+  t.ok('and the sessions are the same length, not shorter', space.sameLength, space);
+  t.ok('every substitute exists and is not itself swapped away', space.badTargets.length === 0, space.badTargets);
+  t.ok('a tight room still gets real pressing work', space.stillPresses > 20, space);
+  t.ok('the setting is off by default', space.offByDefault, space);
+
   await browser.close();
 
   // ---- the readiness deload, in the timezone it was broken in --------------
