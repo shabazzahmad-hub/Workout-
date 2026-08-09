@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 13 suites, ~975 checks, run by `npm test` |
+| `tests/` | 16 suites, ~1,093 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -148,6 +148,11 @@ Known traps when writing checks:
   `activating`. Wait for the state, not the promise.
 - `history.back()` is async; `closeSheet()` leaves a queued navigation that can
   revert `location.hash` after a reload.
+- `plEnterWork()` only rewrites text — `plBodyWork()` is what builds the ring.
+  A probe that set `PLAYER.items[i].exId` and called `plEnterWork()` never
+  changed the media, so the darkest and the brightest photo in the library both
+  scored an identical contrast ratio. Two numbers that agree to two decimals
+  across inputs that should differ is the tell.
 - **Do not test a repair through a getter that guards itself.** This has now
   bitten twice: `parqDone()` and `cueVolPref()` both sanitise their own reads,
   so asserting on their OUTPUT passes whether or not `normalizeState()` still
@@ -212,6 +217,33 @@ one at a time and inherited a once-a-week gate nobody intended:
 `doneForTodayHTML`, `driftBanner`, `resumeBanner`, `painPromptHTML` and
 `undoBannerHTML` were invisible six days out of seven. Anything about *today*
 goes above that branch.
+
+**The photograph outranks the clock.** The exercise image lives INSIDE the
+countdown ring (`plRingMediaHTML`), in both the guided player and HIIT. It was a
+120px thumbnail above a 232px timer and read as decoration — *"it's like there
+is no view of that exercise"* — while HIIT had no photograph at all.
+
+The priority is deliberate and it is the athlete's: *"the image of the exercise
+should be 100% clear to see and up front, the timer should sit at the back and
+translucent"*. The picture is the form reference you glance at mid-set. So:
+
+- **Nothing is laid over the photo.** There is no scrim, and suite 16 proves it
+  by comparing rendered pixels against the source file — a veil shows up as a
+  luminance drop. An earlier version darkened the middle by ~90 points to keep
+  the digits crisp; that was the wrong trade.
+- **`.pl-center` is 40% opacity during an effort.** What makes that affordable is
+  `countdownCue()`: the last ten seconds are audible, so the digits do not have
+  to win. **Rest is the exception and stays solid** — rest deliberately has no
+  ten-second cue, only a 3-2-1, so it is the one timer with nothing behind it.
+- **Fixed pixel sizes inside `.pl-body` get squashed, silently.** `.pl-ring` was
+  `232px × 232px` in a flex column; on a 690px-tall phone flex shrank its
+  *height* to 153px while the SVG kept drawing a full circle, so the ring
+  spilled over "SET 1 OF 3" and the coach cue. It now takes a `height` and lets
+  `aspect-ratio:1` derive the width, so it shrinks to fit a short phone and
+  stays a circle while it does. Anything added to the player checks
+  `scrollHeight <= clientHeight` at 412×690 — the player is hands-free, so
+  content that needs scrolling is content the athlete never sees, and every
+  pixel of chrome is a pixel the photograph does not get.
 
 **Sheets render behind the player.** `.scrim` is z-index 60, `.pl` is 75, so
 `openSheet()` from inside a session is invisible. Mid-session UI is an
@@ -339,7 +371,7 @@ Develop on `claude/abs-core-workout-app-3rr2ob`.
 
 1. `npm run check` — parses the inline script and `sw.js`, and enforces the
    `APP_VERSION` / `CACHE` lockstep.
-2. `npm test` — all 13 suites green, zero page errors, validator clean.
+2. `npm test` — all 16 suites green, zero page errors, validator clean.
    Mutation-test anything newly added.
 3. Bump `APP_VERSION` and `CACHE` together.
 4. `git fetch origin main && git checkout -B <branch> origin/main`, commit,

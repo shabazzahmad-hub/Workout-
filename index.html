@@ -169,7 +169,7 @@
   /* Full-screen guided workout player */
   .pl{position:fixed;inset:0;z-index:75;background:var(--bg);display:none;flex-direction:column;overflow:hidden}
   .pl.open{display:flex}
-  .pl-bg{position:absolute;inset:0;background-size:cover;background-position:center top;opacity:.16;filter:saturate(.7)}
+  .pl-bg{position:absolute;inset:0;background-size:cover;background-position:center top;opacity:.26;filter:saturate(.75)}
   .pl-bg:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,9,11,.65),var(--bg) 74%)}
   .pl-head{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;padding:calc(14px + env(safe-area-inset-top)) 16px 6px}
   .pl-x{width:44px;height:44px;border-radius:12px;background:var(--card2);border:1px solid var(--line);color:var(--ink);font-size:15px;display:grid;place-items:center}
@@ -188,25 +188,47 @@
      "Swap exercise" button sat 55px below the fold with no way to get to it,
      mid-workout. `safe` degrades to flex-start rather than clipping when the
      content does not fit. */
-  .pl-body{position:relative;z-index:2;flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:safe center;text-align:center;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:6px 22px calc(24px + env(safe-area-inset-bottom))}
-  .pl-region{margin-bottom:6px}
-  .pl-name{font-size:25px;font-weight:900;letter-spacing:.3px;line-height:1.12;margin-bottom:6px}
-  .pl-photo{width:120px;height:120px;object-fit:cover;border-radius:16px;margin:2px auto 4px;box-shadow:0 6px 18px rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.08)}
-  .pl-ring{position:relative;width:232px;height:232px;margin:8px auto;display:grid;place-items:center}
-  .pl-ring svg{position:absolute;inset:0;transform:rotate(-90deg)}
-  .pl-pulse{position:absolute;width:184px;height:184px;border-radius:50%;background:var(--accSoft)}
+  .pl-body{position:relative;z-index:2;flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:safe center;text-align:center;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:4px 12px calc(14px + env(safe-area-inset-bottom))}
+  .pl-region{margin-bottom:2px}
+  .pl-name{font-size:23px;font-weight:900;letter-spacing:.3px;line-height:1.12;margin-bottom:3px}
+  /* Sized by what is left over, not by a guess. A fixed pixel box in this
+     column was what let flex squash the ring into an ellipse; giving it a
+     height and letting `aspect-ratio` derive the width means it shrinks to
+     fit a short phone and stays a circle while it does. */
+  .pl-ring{position:relative;height:min(392px,96vw,62vh);min-height:150px;width:auto;aspect-ratio:1;
+    flex:0 1 auto;margin:3px auto;display:grid;place-items:center}
+  .pl-ring.sm{height:min(330px,86vw,46vh)}
+  /* Rest is the exception: it keeps a solid clock. The watermark is
+     affordable during an effort because countdownCue() speaks the last ten
+     seconds — rest deliberately does NOT use that cue (so the marker always
+     means "your effort is ending"), and gets only a 3-2-1. Fading the one
+     timer with nothing behind it is the one place it would cost something. */
+  .pl-ring.rest .pl-center{opacity:1}
+  .pl-ring svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
+  .pl-pulse{position:absolute;width:79%;height:79%;border-radius:50%;background:var(--accSoft)}
+  /* The movement itself, filling the ring. A 120px thumbnail above a 232px
+     timer read as decoration — "it's like there is no view of that exercise".
+     Centred inside the ring it is roughly three times the area, sits exactly
+     where the eye already goes for the clock, and costs no height at all. */
+  .pl-ringmedia{position:absolute;inset:6.5%;border-radius:50%;overflow:hidden;background:var(--card2)}
+  .pl-ringmedia>img,.pl-ringmedia>video{width:100%;height:100%;object-fit:cover;display:block}
+  /* No scrim. The photograph is the thing being looked at — it is how you
+     check your own form mid-set — so it is shown at full clarity and the clock
+     is what gives way. */
   .pl-pulse.on{animation:breathe 3.6s ease-in-out infinite}
   @keyframes breathe{0%,100%{transform:scale(.78);opacity:.28}50%{transform:scale(1.06);opacity:.6}}
-  .pl-center{position:relative;text-align:center}
-  .pl-num{font-size:64px;font-weight:900;letter-spacing:-2px;font-variant-numeric:tabular-nums;line-height:1}
-  .pl-sub{font-size:12px;font-weight:800;letter-spacing:1.4px;color:var(--muted);text-transform:uppercase;margin-top:4px}
-  .pl-set{font-size:12px;font-weight:800;letter-spacing:1.2px;color:var(--fire-l);text-transform:uppercase;margin-top:4px}
-  .pl-coach{font-size:14px;color:var(--muted);min-height:22px;margin-top:8px;max-width:320px}
-  .pl-actions{display:flex;gap:10px;width:100%;max-width:440px;margin-top:18px}
+  /* The clock reads as a watermark behind the movement. Ten seconds out it
+     starts speaking anyway, which is what makes this affordable. */
+  .pl-center{position:relative;text-align:center;opacity:.4}
+  .pl-num{font-size:72px;font-weight:900;letter-spacing:-2px;font-variant-numeric:tabular-nums;line-height:1}
+  .pl-sub{font-size:12px;font-weight:800;letter-spacing:1.4px;color:var(--ink);text-transform:uppercase;margin-top:4px}
+  .pl-set{font-size:12px;font-weight:800;letter-spacing:1.2px;color:var(--fire-l);text-transform:uppercase}
+  .pl-coach{font-size:14px;color:var(--muted);min-height:20px;margin-top:4px;max-width:340px;
+    display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+  .pl-actions{display:flex;gap:10px;width:100%;max-width:440px;margin-top:6px}
   .pl-actions .btn{flex:1}
   .pl-next{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:10px 12px;width:100%;max-width:440px;margin-top:14px;text-align:left}
-  .pl-next img{width:52px;height:52px;border-radius:12px;object-fit:cover;flex:0 0 auto;background:var(--card2)}
-  .pl-swap{margin-top:12px;font-size:12px;font-weight:800;color:var(--muted);background:var(--card2);border:1px solid var(--line);border-radius:999px;padding:7px 15px;min-height:40px}
+  .pl-swap{margin-top:4px;font-size:12px;font-weight:800;color:var(--muted);background:var(--card2);border:1px solid var(--line);border-radius:999px;padding:6px 14px;min-height:36px}
   .pl-swapmenu{display:flex;flex-direction:column;gap:8px;width:100%;max-width:440px;margin-top:10px}
   .pl-swapmenu button{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-weight:800;color:var(--ink)}
   .pl-swapmenu button span{font-weight:700;color:var(--muted);font-size:12px}
@@ -1469,7 +1491,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='203';
+const APP_VERSION='204';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -3367,9 +3389,19 @@ function plNudge(){
   }
 }
 function plSegsHTML(){return PLAYER.items.map((m,idx)=>`<div class="pl-seg ${idx<PLAYER.i?'done':(idx===PLAYER.i?'cur':'')}"></div>`).join('');}
-function plRingHTML(color){return `
-  <div class="pl-ring"><div class="pl-pulse" id="plPulse"></div>
-    <svg width="232" height="232" viewBox="0 0 232 232">
+/* The exercise inside the ring: a looping clip where one exists, else the
+   still. A video that fails to load falls back to the photo; a photo that
+   fails removes itself and leaves the plain disc behind it. */
+function plRingMediaHTML(ex){
+  if(!ex)return '';
+  if(ex.vid)return `<div class="pl-ringmedia"><video src="${ex.vid}" autoplay loop muted playsinline
+    onerror="(function(v){var i=new Image();i.onerror=function(){i.remove();};i.src='${ex.img||''}';v.replaceWith(i);})(this)"></video></div>`;
+  if(ex.img)return `<div class="pl-ringmedia"><img src="${ex.img}" alt="" onerror="this.remove()"></div>`;
+  return '';
+}
+function plRingHTML(color,ex,cls){return `
+  <div class="pl-ring ${cls||''}">${plRingMediaHTML(ex)}<div class="pl-pulse" id="plPulse"></div>
+    <svg viewBox="0 0 232 232">
       <circle cx="116" cy="116" r="108" fill="none" stroke="var(--card3)" stroke-width="10"/>
       <circle id="plRing" cx="116" cy="116" r="108" fill="none" stroke="${color}" stroke-width="10" stroke-linecap="round" stroke-dasharray="${PL_C}" stroke-dashoffset="0"/>
     </svg>
@@ -3671,22 +3703,13 @@ function plChrome(){
     <div class="pl-segs">${plSegsHTML()}</div>
     <div class="pl-body" id="plBody"></div>`;
 }
-/* Animated demo when a looping clip (ex.vid) exists, else the still photo.
-   The video falls back to the photo on error, and the photo removes itself if missing. */
-function plMediaHTML(ex){
-  if(ex&&ex.vid)return `<video class="pl-photo" src="${ex.vid}" autoplay loop muted playsinline
-    onerror="(function(v){var i=new Image();i.className='pl-photo';i.onerror=function(){i.remove();};i.src='${ex.img||''}';v.replaceWith(i);})(this)"></video>`;
-  if(ex&&ex.img)return `<img class="pl-photo" src="${ex.img}" alt="" onerror="this.remove()">`;
-  return '';
-}
 function plBodyWork(color){
   const m=plCur();const ex=EX[m.exId];
   $('#plBody').innerHTML=`
-    <div class="pl-region"><span class="tag ${ex.region}">${ex.region}</span> ${climbNote(m)}</div>
+    <div class="pl-region"><span class="tag ${ex.region}">${ex.region}</span>
+      <span class="pl-set" id="plSet">Set ${PLAYER.s+1} of ${m.sets}</span> ${climbNote(m)}</div>
     <div class="pl-name">${ex.name}</div>
-    ${plMediaHTML(ex)}
-    ${plRingHTML(color)}
-    <div class="pl-set" id="plSet">SET ${PLAYER.s+1} OF ${m.sets}</div>
+    ${plRingHTML(color,ex)}
     <div class="pl-coach" id="plCoach"></div>
     <div class="row" style="gap:8px;justify-content:center;flex-wrap:wrap">
       ${swapOptions(m).length?`<button class="pl-swap" onclick="playerSwapMenu()">⇄ Swap exercise</button>`:''}
@@ -3841,16 +3864,16 @@ function plEnterRest(dur,type){
      derived from a timestamp; these were not. */
   plClear();PLAYER.phase='rest';PLAYER.remain=Math.max(1,dur|0);PLAYER.total=PLAYER.remain;
   PLAYER.deadline=Date.now()+PLAYER.remain*1000;
-  const m=plCur();let name,img,rx;
-  if(type==='set'){const ex=EX[m.exId];name='Next set · '+ex.name;img=ex.img;rx='Set '+(PLAYER.s+1)+' of '+m.sets+' · '+(m.unit==='time'?fmtTime(m.target):m.target+' reps');}
-  else{const nm=PLAYER.items[PLAYER.i+1];const nex=EX[nm.exId];name='Up next · '+nex.name;img=nex.img;rx=nm.sets+' × '+(nm.unit==='time'?fmtTime(nm.target):nm.target+' reps');}
+  const m=plCur();let name,rx,nextEx;
+  if(type==='set'){const ex=EX[m.exId];nextEx=ex;name='Next set · '+ex.name;rx='Set '+(PLAYER.s+1)+' of '+m.sets+' · '+(m.unit==='time'?fmtTime(m.target):m.target+' reps');}
+  else{const nm=PLAYER.items[PLAYER.i+1];const nex=EX[nm.exId];nextEx=nex;name='Up next · '+nex.name;rx=nm.sets+' × '+(nm.unit==='time'?fmtTime(nm.target):nm.target+' reps');}
   const rate=(type==='ex'&&!PLAYER.free)?ratingChipsHTML(m.exId):'';
   $('#plBody').innerHTML=`
     <div class="pl-region"><span class="tag cardio">REST</span></div>
     <div class="pl-name">Recover</div>
-    ${plRingHTML('var(--fire-l)')}
+    ${plRingHTML('var(--fire-l)',nextEx,'sm rest')}
     <div class="pl-coach" id="plCoach">Breathe. Shake it out.</div>
-    <div class="pl-next">${img?`<img src="${img}" alt="" onerror="this.style.display='none'">`:''}<div><div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--muted)">${name}</div><div style="font-weight:800;margin-top:2px">${rx}</div></div></div>
+    <div class="pl-next"><div><div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--muted)">${name}</div><div style="font-weight:800;margin-top:2px">${rx}</div></div></div>
     ${rate}
     <div class="pl-actions">
       <button class="btn ghost" onclick="playerAddRest()">+15s</button>
@@ -4313,9 +4336,9 @@ function startSpecialCardio(exId,format){
   const sess={session:{name:EX[exId].name,key:'specialcardio',focus:'Conditioning intervals'},ptr:-1,pos:{}};
   _runHiit(sess,list,format);
 }
-function ivRingHTML(color){return `
-  <div class="pl-ring"><div class="pl-pulse" id="ivPulse"></div>
-    <svg width="232" height="232" viewBox="0 0 232 232">
+function ivRingHTML(color,ex){return `
+  <div class="pl-ring">${plRingMediaHTML(ex)}<div class="pl-pulse" id="ivPulse"></div>
+    <svg viewBox="0 0 232 232">
       <circle cx="116" cy="116" r="108" fill="none" stroke="var(--card3)" stroke-width="10"/>
       <circle id="ivRing" cx="116" cy="116" r="108" fill="none" stroke="${color}" stroke-width="10" stroke-linecap="round" stroke-dasharray="${IV_C}" stroke-dashoffset="0"/>
     </svg>
@@ -4371,7 +4394,7 @@ function ivRenderStep(idx){
     <div class="pl-body" id="ivBody">
       <div class="pl-region"><span class="tag ${isWork?ex.region:'cardio'}">${isWork?'WORK':'REST'}</span></div>
       <div class="pl-name">${isWork?ex.name:'Rest — next: '+ex.name}</div>
-      ${ivRingHTML(isWork?'var(--green)':'var(--fire-l)')}
+      ${ivRingHTML(isWork?'var(--green)':'var(--fire-l)',ex)}
       <div class="pl-set">${step.round?('ROUND '+step.round+(step.rounds?(' / '+step.rounds):'')):'Keep moving'}</div>
       <div class="pl-coach" id="ivCoach">${isWork?'Max effort — every rep counts.':'Breathe. Reset.'}</div>
       <div class="pl-actions">
