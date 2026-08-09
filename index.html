@@ -1469,7 +1469,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='199';
+const APP_VERSION='200';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -3782,7 +3782,7 @@ function plTickHold(){
     else motivate('during');
   }
   if(PLAYER.remain===3)coachSpeak('Three. Two. One.');
-  if(PLAYER.remain<=3&&PLAYER.remain>0)beep(900,.13,0.7);
+  countdownCue(PLAYER.remain,PLAYER.total);
   if(PLAYER.remain<=0){beepGo();haptic(30);plAfterSet();return;}
   plS('#plNum',fmtTime(PLAYER.remain));plRingSet(PLAYER.remain/PLAYER.total);
 }
@@ -4398,7 +4398,8 @@ function ivTick(){
   INTV.remain--;
   if(INTV.phase==='work')INTV.workElapsed++;
   if(INTV.remain===3)coachSpeak('Three. Two. One.');
-  if(INTV.remain<=3&&INTV.remain>0)beep(900,.13,0.7);
+  if(INTV.phase==='work')countdownCue(INTV.remain,INTV.total);
+  else if(INTV.remain<=3&&INTV.remain>0)beep(900,.13,0.7);
   if(INTV.remain<=0){beepGo();haptic(30);ivClear();INTV.i++;
     if(INTV.i>=INTV.seq.length){whenPointerFree('iv',ivDone);return;}
     whenPointerFree('iv',()=>{if(INTV)ivStep();});return;}
@@ -5734,6 +5735,42 @@ function beep(freq=880,dur=0.12,vol=0.6,type='square'){if(!STATE.settings.sound)
 // loud double-tone GO cue (cuts through noise)
 function beepGo(){beep(1320,.30,0.9,'square');setTimeout(()=>beep(1760,.28,0.9,'square'),120);}
 
+/* ---- The last ten seconds of a timed effort -------------------------------
+   Every timed surface used to be silent until three seconds left, then give
+   three identical beeps. In a plank at second 40 of 60 you cannot look at the
+   phone, so there was no way to know whether twenty seconds remained or five —
+   which is exactly when people quit early or hold on past form.
+
+   One shared cue so the whole app speaks the same language:
+
+     10s  a two-tone marker, low then high. Unmistakably "final ten", and
+          different from anything else in the app.
+     9-4  a soft, low tick each second. Present enough to count by, quiet
+          enough not to nag.
+     3-1  the existing louder beep, plus a short buzz — a phone on silent
+          still gives the athlete the last three seconds.
+
+   Deliberately NOT applied to rest. Rest already ends with 3-2-1 and a GO, and
+   if rest counted down the same way as work the two would stop being
+   distinguishable by ear — which is the entire point of doing this without
+   looking. Hearing the ten-second marker always means "your effort is ending".
+
+   Skipped on efforts of fourteen seconds or less, where a ten-second countdown
+   is most of the exercise and becomes noise rather than information. */
+function countdownCue(remain,total){
+  try{
+    if(!(remain>0))return;
+    if(remain<=3){
+      beep(900,.13,0.7);
+      haptic(12);            // gated by its own setting; covers a silent phone
+      return;
+    }
+    if(!(total>=15))return;  // short holds keep the plain 3-2-1
+    if(remain===10){beep(520,.11,0.5);setTimeout(()=>beep(880,.13,0.6),110);return;}
+    if(remain<10)beep(620,.06,0.32);
+  }catch(e){}
+}
+
 /* ===== BEAT ENGINE =====
    A procedurally-synthesised lo-fi / boom-bap hip-hop loop (Web Audio, no audio
    files — fully offline). Auto-plays through an exercise session and automatically
@@ -5861,7 +5898,8 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet){
       else if(total>=24&&el===Math.round(total/2))motivate('rest');
     }
     if(remain===3)coachSpeak('Three. Two. One.');
-    if(remain<=3&&remain>0)beep(900,.13,0.7);
+    // rest keeps the plain 3-2-1 so the two phases stay distinguishable by ear
+    if(isHold)countdownCue(remain,total); else if(remain<=3&&remain>0)beep(900,.13,0.7);
     if(remain<=0){
       beepGo();haptic(30);clearInterval(timer.iv);
       if(isHold&&restAfter>0){toast('Hold done! Resting '+restAfter+'s');if(!motivate('done'))coachSpeak('Time. Now rest.');(g=>setTimeout(()=>{if(g===_sheetGen&&$('#scrim').classList.contains('open'))runTimer('rest',restAfter,label+' — rest',0,null,true);},700))(_sheetGen);if(onDone)onDone();return;}
@@ -6062,7 +6100,7 @@ function runFlow(items,title,color){
     remain--;
     if(remain===5&&total>10)coachSpeak('Five seconds.');
     if(remain===3)coachSpeak('Three. Two. One.');
-    if(remain<=3&&remain>0)beep(900,.13,0.7);
+    countdownCue(remain,total);
     if(remain<=0){
       idx++;
       if(idx>=items.length){
