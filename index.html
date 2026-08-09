@@ -1444,7 +1444,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='192';
+const APP_VERSION='194';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -2879,6 +2879,8 @@ function workoutTabHTML(sess,log,doneCount,totalCount,wkNum,restedToday){
   h+=weeklyBannerHTML();
   // progressive overload note vs previous week
   if(sess.pos.dayInWeek===0){
+    h+=doneForTodayHTML();
+    h+=driftBanner();
     h+=`<div class="note fire">📈 <b>Week ${wkNum} — ${overloadHeadline(sess)}.</b> ${overloadNote(sess)}</div>`;
   }
   h+=`<div class="section-label">Main work</div><div class="exlist">`;
@@ -2958,12 +2960,82 @@ function toggleSet(exId,i){
   const log=ensureLog();const st=log.ex[exId]||{sets:[],done:false};
   st.sets=st.sets||[];st.sets[i]=!st.sets[i];
   const filled=st.sets.filter(Boolean).length;
+  const wasDone=st.done;
   st.done=filled>=m.sets;
-  if(st.done)recordPR(exId,m);
-  log.ex[exId]=st;save();haptic(10);renderToday();
+  log.ex[exId]=st;save();haptic(10);
+  /* Finishing an exercise asks ONE number: what you actually got on the last
+     set. Everything before this recorded only that a set was ticked, and then
+     stored the PRESCRIBED target as a personal record — so STATE.prs was a
+     record of what the app asked for, the Strength Standards graded you on your
+     own prescriptions, and the only signal that could push back on next week's
+     load was a single three-way feel chip. Grind out 18 of a prescribed 24,
+     tap "just right", and the engine asks for 26. */
+  if(st.done&&!wasDone)askActual(exId,m);
+  else renderToday();
+}
+/* One field, pre-filled with the target, accept or correct. Deliberately not
+   per-set: per-set entry would wreck the tap-and-go the whole player is built
+   around, and the last set is the one that carries the information. */
+function askActual(exId,m){
+  const ex=EX[exId];if(!ex){renderToday();return;}
+  const unit=m.unit==='time'?'seconds held':'reps';
+  const log=ensureLog();const st=log.ex[exId]||{};
+  const prev=(typeof st.actual==='number')?st.actual:m.target;
+  openSheet(`<h3>${_ve(ex.name)} done</h3>
+    <p class="sm muted" style="margin-top:-4px">Last set — what did you actually get? This is what sets next week's load.</p>
+    <div class="field"><label>${unit}</label>
+      <input id="ac-n" type="number" inputmode="numeric" min="0" value="${prev}"></div>
+    <div class="tiny muted" style="margin:-4px 0 12px">Asked for ${m.target}. If you got fewer, say so — the next block scales off the truth, not the target.</div>
+    <div class="btnrow" style="gap:8px">
+      <button class="btn ghost" style="flex:1" onclick="saveActual('${_ve(exId)}',null)">Skip</button>
+      <button class="btn green" style="flex:1" onclick="saveActual('${_ve(exId)}')">Save</button>
+    </div>`);
+  setTimeout(()=>{const el=$('#ac-n');if(el){el.focus();el.select();}},80);
+}
+function saveActual(exId,forced){
+  const log=ensureLog();const st=log.ex[exId];
+  if(st){
+    if(forced===null){
+      /* Skipping means "as prescribed" — recorded explicitly so a skipped entry
+         is distinguishable from a day the athlete never answered. */
+      st.actual=st.actual||null;st.actualSkipped=1;
+    }else{
+      const el=$('#ac-n');const v=Math.max(0,Math.round(+(el&&el.value)||0));
+      if(v>0){st.actual=v;delete st.actualSkipped;}
+    }
+    save();
+  }
+  closeSheet();recordPRFromActual(exId);renderToday();
+}
+/* A personal record is what you DID. Falls back to the prescription only when
+   nothing was entered, so upgrading installs keep their existing figures. */
+function recordPRFromActual(exId){
+  try{
+    const log=ensureLog();const st=log.ex[exId];if(!st||!st.done)return;
+    const sess=buildSession(STATE.progressPtr);
+    const m=[...sess.main,sess.finisher].find(x=>x&&x.exId===exId);if(!m)return;
+    const val=(typeof st.actual==='number'&&st.actual>0)?st.actual:m.target;
+    const cur=STATE.prs[exId]||0;
+    if(val>cur){STATE.prs[exId]=val;save();}
+  }catch(e){}
 }
 function recordPR(exId,m){
   const cur=STATE.prs[exId]||0;if(m.target>cur){STATE.prs[exId]=m.target;}
+}
+/* How the last block actually went, as a fraction of what was asked. Feeds the
+   feel chip's adjustment so the engine has an objective signal alongside the
+   subjective one. Only counts exercises where a number was entered. */
+function actualRatio(){
+  try{
+    const log=STATE.logs&&STATE.logs[STATE.progressPtr];if(!log||!log.ex)return null;
+    let got=0,asked=0;
+    const sess=buildSession(STATE.progressPtr);
+    [...sess.main,sess.finisher].filter(Boolean).forEach(m=>{
+      const st=log.ex[m.exId];
+      if(st&&typeof st.actual==='number'&&st.actual>0&&m.target>0){got+=st.actual;asked+=m.target;}
+    });
+    return asked>0?got/asked:null;
+  }catch(e){return null;}
 }
 function finishSession(){
   const sess=buildSession(STATE.progressPtr);const total=sess.main.length+1;
@@ -3007,7 +3079,18 @@ function commitSession(feel){
   const key=pos.cycle+'-'+pos.week;(STATE.weekFeel[key]=STATE.weekFeel[key]||[]).push(feel);
   // Adaptive overload: every session nudges a persistent multiplier so targets
   // keep rising as you get stronger (and ease off only if it's genuinely brutal).
-  const d=feel==='easy'?0.02:(feel==='hard'?-0.03:0.006);
+  /* The feel chip was the ONLY thing that could push back on load. If the
+     athlete ground out 75% of what was asked and tapped "just right", adapt
+     still climbed. Where a real number exists, it moderates the chip: well
+     short of the prescription eases off regardless of what was tapped. */
+  let d=feel==='easy'?0.02:(feel==='hard'?-0.03:0.006);
+  try{const r=actualRatio();
+    if(r!==null){
+      if(r<0.85)d=Math.min(d,-0.02);            // missed the work — do not add load
+      else if(r<0.95)d=Math.min(d,0);           // scraped it — hold
+      else if(r>=1&&feel==='easy')d=0.025;      // hit it all and it was easy
+    }
+  }catch(e){}
   STATE.adapt=clamp((typeof STATE.adapt==='number'?STATE.adapt:1)+d,0.9,1.30);
   STATE.progressPtr=p+1;
   closeSheet();save();
@@ -3424,6 +3507,17 @@ function plAfterSet(){
   plClear();
   const m=plCur();
   if(!PLAYER.free){try{markSetFromTimer(m.exId);}catch(e){}}   // bonus sessions never touch the program log
+  /* The player knows exactly how many reps it counted, so it can record the
+     truth without asking — only the timed holds and the rep sets the athlete
+     cut short need a number, and plTickRep already has it. */
+  if(!PLAYER.free&&PLAYER.s+1>=m.sets){
+    try{const log=ensureLog();const st=log.ex[m.exId];
+      if(st&&typeof st.actual!=='number'){
+        const done=(m.unit==='time')?Math.round(PLAYER.total-PLAYER.remain||m.target):(PLAYER.repN||m.target);
+        if(done>0){st.actual=Math.min(done,m.target);save();try{recordPRFromActual(m.exId);}catch(e){}}
+      }
+    }catch(e){}
+  }
   PLAYER.setsDone++;
   const pulse=$('#plPulse');if(pulse)pulse.classList.remove('on');
   PLAYER.s++;
@@ -3432,7 +3526,13 @@ function plAfterSet(){
   else plEnterDone();
 }
 function plEnterRest(dur,type){
+  /* Anchored to the wall clock. `remain--` once per interval drifts badly
+     under Chrome's intensive throttling (timers drop to ~1/min after five
+     minutes hidden) and stops entirely if Android freezes the page — so a 90 s
+     rest could read 85 s after four real minutes. The session clock was already
+     derived from a timestamp; these were not. */
   plClear();PLAYER.phase='rest';PLAYER.remain=Math.max(1,dur|0);PLAYER.total=PLAYER.remain;
+  PLAYER.deadline=Date.now()+PLAYER.remain*1000;
   const m=plCur();let name,img,rx;
   if(type==='set'){const ex=EX[m.exId];name='Next set · '+ex.name;img=ex.img;rx='Set '+(PLAYER.s+1)+' of '+m.sets+' · '+(m.unit==='time'?fmtTime(m.target):m.target+' reps');}
   else{const nm=PLAYER.items[PLAYER.i+1];const nex=EX[nm.exId];name='Up next · '+nex.name;img=nex.img;rx=nm.sets+' × '+(nm.unit==='time'?fmtTime(nm.target):nm.target+' reps');}
@@ -3454,7 +3554,14 @@ function plEnterRest(dur,type){
 }
 function plTickRest(){
   if(!PLAYER)return;
-  PLAYER.remain--;
+  /* The wall clock is a FLOOR, not the only source. Taking the deadline alone
+     meant the countdown could not be advanced by anything but real time, which
+     broke +15s, broke pausing, and made the timer undriveable. Taking the
+     minimum of "one tick" and "what the clock says is left" means it can never
+     run slower than real time — the throttling case this exists for — and
+     never faster than one second per tick. */
+  const byTick=PLAYER.remain-1;
+  PLAYER.remain=PLAYER.deadline?Math.min(byTick,Math.ceil((PLAYER.deadline-Date.now())/1000)):byTick;
   if(PLAYER.remain===3)coachSpeak('Three. Two. One.');
   if(PLAYER.remain<=3&&PLAYER.remain>0)beep(900,.13,0.7);
   if(PLAYER.remain<=0){plClear();whenPointerFree('pl',plRestDone);return;}   // never swap the buttons out from under a finger
@@ -3512,7 +3619,13 @@ function playerToggle(){
      is never held against the session — but the time is banked and shown, so
      it is not invisible either. */
   if(!PLAYER.running){PLAYER.pauseAt=Date.now();}
-  else if(PLAYER.pauseAt){PLAYER.pausedMs=(PLAYER.pausedMs||0)+(Date.now()-PLAYER.pauseAt);PLAYER.pauseAt=null;PLAYER.lastPauseNudge=0;}
+  else if(PLAYER.pauseAt){
+    const held=Date.now()-PLAYER.pauseAt;
+    PLAYER.pausedMs=(PLAYER.pausedMs||0)+held;PLAYER.pauseAt=null;PLAYER.lastPauseNudge=0;
+    // push the rest deadline out by exactly the time spent paused, or a two
+    // minute interruption would end the rest while the athlete was away
+    if(PLAYER.deadline)PLAYER.deadline+=held;
+  }
   plClockTick();
   const t=$('#plToggle');if(t)t.textContent=PLAYER.running?'Pause':'Resume';
   const pulse=$('#plPulse');
@@ -3527,7 +3640,7 @@ function playerSkip(){
   if(PLAYER.i+1<PLAYER.items.length){PLAYER.i++;PLAYER.s=0;plEnterReady(false);}else plEnterDone();
 }
 function playerSetDone(){if(PLAYER&&(PLAYER.phase==='work'||PLAYER.phase==='ready')){plClear();plAfterSet();}}
-function playerAddRest(){if(PLAYER&&PLAYER.phase==='rest'){PLAYER.remain+=15;PLAYER.total+=15;plS('#plNum',fmtTime(PLAYER.remain));toast('+15s rest');}}
+function playerAddRest(){if(PLAYER&&PLAYER.phase==='rest'){PLAYER.remain+=15;PLAYER.total+=15;if(PLAYER.deadline)PLAYER.deadline+=15000;plS('#plNum',fmtTime(PLAYER.remain));toast('+15s rest');}}
 function playerSkipRest(){if(PLAYER&&PLAYER.phase==='rest')plRestDone();}
 function playerTeardown(){if(!PLAYER)return;wakeOff();plClear();plClockStop();beatStop();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;
   setTimeout(()=>{try{if(!$('#player').classList.contains('open'))$('#player').innerHTML='';}catch(e){}},400);
@@ -5484,7 +5597,40 @@ function repHTML(label,total){
    with its own count-down, loud transition beeps and spoken coaching. */
 function runWarmup(){runFlow(WARMUP_FLOW,'Warm-up','var(--fire)');}
 function runCooldown(){runFlow(COOLDOWN_FLOW,'Cool-down','var(--teal)');}
+/* WARMUP_FLOW and COOLDOWN_FLOW are fixed arrays that never went through
+   safeSwap, so the app kept flexion and rotation off a flagged low back for the
+   whole session and then prescribed Cobra Stretch and a Supine Spinal Twist as
+   recovery. Filter both through the same map everything else uses. */
+/* Flow items are display-only — {n, secs, cue, img} — with no exId, so
+   JOINT_RISK cannot be applied to them and the first version of this filter
+   silently matched nothing. They need their own map, keyed by name. */
+const FLOW_RISK={
+  'Standing Torso Twists':['lowback'],
+  'Cobra Stretch':['lowback'],
+  'Supine Twist — Left':['lowback'],
+  'Supine Twist — Right':['lowback'],
+  'Knees to Chest':['lowback'],
+  'Glute Bridges':['knee'],
+  'Deep Squat Hold':['knee','ankle'],
+  'Ankle Rocks':['ankle'],
+  'Wrist Circles':['wrist'],
+  'Shoulder Rolls':['shoulder'],
+  'Arm Circles':['shoulder'],
+};
+function safeFlow(items){
+  try{
+    const lim=(STATE.profile&&STATE.profile.limitations)||[];
+    if(!lim.length)return items;
+    const out=(items||[]).filter(it=>{
+      const risks=FLOW_RISK[it&&it.n]||[];
+      return !risks.some(j=>lim.includes(j));
+    });
+    // never strip a warm-up to nothing — a short one still beats none
+    return out.length?out:(items||[]).slice(0,2);
+  }catch(e){return items;}
+}
 function runFlow(items,title,color){
+  items=safeFlow(items);
   let idx=0,phase='ready',ready=5,trans=0,remain=0,total=Math.max(1,items[0].secs);
   const TRANSITION=4;   // seconds to reposition between moves (floor <-> standing)
   const C=2*Math.PI*100;
@@ -6063,6 +6209,39 @@ function armComeback(){
   if(g!=null&&g>=comebackGap()&&last&&(!STATE.comeback||STATE.comeback.trig!==last)){
     STATE.comeback={left:clamp(Math.round(g/4),2,8),days:g,trig:last};save();
   }
+}
+/* Opens-without-training is what week-5 attrition looks like before it looks
+   like silence, and nothing was watching for it: the only detector was a
+   layoff from TRAINING, and intakeTrendHTML() actively went QUIET as logging
+   fell off. Count opens, and when he has been here three days running without
+   training, offer the five-minute version rather than the full session he has
+   already declined twice. */
+function noteOpen(){
+  try{
+    if(!STATE._opens||typeof STATE._opens!=='object'||Array.isArray(STATE._opens))STATE._opens={};
+    STATE._opens[todayISO()]=1;
+    const keys=Object.keys(STATE._opens).sort();
+    while(keys.length>30)delete STATE._opens[keys.shift()];
+    save();
+  }catch(e){}
+}
+function driftingDays(){
+  try{
+    const o=STATE._opens||{};let n=0;
+    for(let i=0;i<7;i++){
+      const d=new Date();d.setDate(d.getDate()-i);const k=localISO(d);
+      if(!o[k])break;
+      if(trainedDaysSet().has(k))break;
+      n++;
+    }
+    return n;
+  }catch(e){return 0;}
+}
+function driftBanner(){
+  const n=driftingDays();
+  if(n<3)return '';
+  return `<div class="note info"><b>Three days here, none of them training.</b> That is usually time, not willpower — so do not open the full session. <b>Five minutes</b> counts: it holds your streak, it fills the heatmap, and it is how a week gets rescued.
+    <button class="btn sm primary" style="width:100%;margin-top:10px" onclick="openQuickList()">⚡ Show me the 5-minute version</button></div>`;
 }
 function catchUpBanner(){
   const g=daysSinceTrained();
@@ -7424,14 +7603,29 @@ function waistGoalHTML(){
     <div class="pbar green" style="margin-top:6px"><i style="width:${pct}%"></i></div>
     <div class="row" style="justify-content:space-between;margin-top:5px"><span class="tiny muted">Start ${startD}${p.unit}</span><span class="tiny muted">Goal ${goalD}${p.unit}</span></div>${goalETAHTML()}</div>`;
 }
+/* Trailing mean, as its own function so it can be checked directly rather
+   than inferred from a rendered chart. */
+function trailingMean(arr,n){
+  if(!Array.isArray(arr))return [];
+  return arr.map((_,i)=>{const w=arr.slice(Math.max(0,i-(n-1)),i+1);
+    return r1(w.reduce((a,b)=>a+b,0)/w.length);});
+}
 function weightChartHTML(){
   const ms=(STATE.measurements||[]).filter(m=>m.weight>0);if(!ms.length)return '';
   const wu=STATE.profile.unit==='in'?'lb':'kg';
-  const vals=ms.map(m=>r1(weightShow(m.weight))),dates=ms.map(m=>m.date);
+  const raw=ms.map(m=>r1(weightShow(m.weight))),dates=ms.map(m=>m.date);
+  /* Day-to-day weight noise for an 86 kg adult is +/- 1 kg against a target
+     loss of ~0.5 kg a WEEK, and lineChart() auto-scales its y-axis to the data
+     range — so a fortnight of water weight filled the whole chart and read as
+     failure. Plot a trailing mean instead, with the raw readings behind it, so
+     the line shows the thing that is actually happening. */
+  const vals=trailingMean(raw,7);
   const first=vals[0],last=vals[vals.length-1];const change=last-first;
   const chart=ms.length>=2?lineChart(vals,dates,'var(--teal)',wu):`<div class="center" style="margin-top:10px"><div style="font-size:26px;font-weight:900">${last}${wu}</div></div>`;
-  return `<div class="divider" style="margin:14px 0"></div><b>Weight (${wu})</b>${chart}
-    <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">Start ${first}${wu}</span><span class="tiny" style="color:${change<=0?'var(--green)':'var(--muted)'};font-weight:800">${change<=0?'▼ ':'▲ +'}${Math.abs(change).toFixed(1)}${wu}</span><span class="tiny muted">Now ${last}${wu}</span></div>`;
+  const spot=raw[raw.length-1];
+  return `<div class="divider" style="margin:14px 0"></div><b>Weight (${wu})</b> <span class="tiny muted">· 7-day average</span>${chart}
+    <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">Start ${first}${wu}</span><span class="tiny" style="color:${change<=0?'var(--green)':'var(--muted)'};font-weight:800">${change<=0?'▼ ':'▲ +'}${Math.abs(change).toFixed(1)}${wu}</span><span class="tiny muted">Now ${last}${wu}</span></div>
+    ${ms.length>=3?`<div class="tiny muted" style="margin-top:6px">Averaged, so one heavy morning does not read as a setback. Today's actual reading: <b>${spot}${wu}</b>.</div>`:''}`;
 }
 /* Reusable dated line graph (SVG). vals[i] plotted against dates[i]. */
 function lineChart(vals,dates,color,unit){
@@ -7907,9 +8101,9 @@ function waterTargetCups(){const kg=latestWeightKg();if(!kg)return 8;return clam
 function habitsRequired(){return HABITS.filter(h=>!h.optional).length;}
 /* One forgiveness day per week, matching the training streak's tolerance —
    otherwise one restaurant meal or one bad night's sleep zeroes it. */
-function nutStreakGrace(){return 1;}
+function nutStreakGrace(){return 1;}   // per rolling week, not per streak
 function nutritionStreak(){
-  const n=nut();const dates=Object.keys(n.days).sort();let streak=0;let prev=null;let grace=nutStreakGrace();
+  const n=nut();const dates=Object.keys(n.days).sort();let streak=0;let prev=null;let grace=nutStreakGrace();let graceAt=null;
   for(let i=dates.length-1;i>=0;i--){
     const day=n.days[dates[i]];const hb=(day&&day.habits)||{};
     /* Count only the non-optional habits, so a calorie deficit is no longer the
@@ -7919,9 +8113,20 @@ function nutritionStreak(){
     // pauses the streak, it doesn't break yesterday's
     if(hit<Math.max(2,habitsRequired()-1)){
       if(dates[i]===todayISO()&&i===dates.length-1)continue;
-      if(grace>0){grace--;prev=dates[i];continue;}   // one forgiveness day
+      /* Grace is a ROLLING allowance, not a single token for the whole streak.
+         It was one forgiveness day EVER, so a 60-day streak died on its first
+         bad day and there was nothing left to protect — and a day the athlete
+         simply never opened the app fell through to the gap check below, which
+         had no grace at all, so forgetting was punished harder than trying and
+         missing. */
+      if(grace>0){grace--;graceAt=dates[i];prev=dates[i];continue;}
       break;
     }
+    /* Refresh the allowance once we have walked more than a week PAST the day
+       it was spent. Keying it off the gap between consecutive entries never
+       fired, because entries are daily — the allowance has to age out against
+       the date it was used, not against the previous row. */
+    if(graceAt&&(new Date(graceAt)-new Date(dates[i]))/86400000>7){grace=nutStreakGrace();graceAt=null;}
     if(prev&&(new Date(prev)-new Date(dates[i]))/86400000>1)break;   // days must be consecutive
     streak++;prev=dates[i];
   }
@@ -8306,6 +8511,72 @@ const FOODS=[
   ['Banana',1,105,'1 medium','pad',0,1,'ea'],
   ['Olive oil',0,120,'14 g, 1 tbsp','pad',13,14,'g'],
 ];
+/* ---- What is in each food -------------------------------------------------
+   Kept as a name-keyed map rather than a ninth column, because these rows are
+   a hand-maintained literal and CLAUDE.md is explicit about what regex edits
+   over them have cost before.
+
+   EVERY food must appear here, including the ones with nothing to declare.
+   An empty array means "checked, contains none of the nine"; an ABSENT entry
+   means nobody checked. validateData() fails on an absent one — which is the
+   distinction that let two recipes ship serving coconut to a tree-nut allergy
+   with alg:[], indistinguishable from a real all-clear. */
+const FOOD_ALG={
+  'Chicken breast':[],'Sirloin steak':[],'Pork loin':[],'Turkey mince 5%':[],
+  'Beef mince 5%':[],'Chicken thigh':[],
+  'Tuna steak, fresh':['fish'],'Tilapia':['fish'],'Salmon fillet':['fish'],
+  'Kippers':['fish'],'Cod':['fish'],'Haddock':['fish'],'Pollock':['fish'],
+  'Trout':['fish'],'Sea bream':['fish'],'Sea bass':['fish'],'Mackerel':['fish'],
+  'Sardines, tinned':['fish'],'Tuna, tinned in water':['fish'],
+  'Smoked salmon':['fish'],'Anchovies':['fish'],
+  // molluscs and crustaceans are SHELLFISH, not fish — a fish allergy and a
+  // shellfish allergy are different allergies and are declared separately
+  'Prawns':['shellfish'],'Scallops':['shellfish'],'Crab meat':['shellfish'],
+  'Mussels':['shellfish'],'Squid / calamari':['shellfish'],
+  'Cottage cheese':['dairy'],'Whey powder':['dairy'],'Greek yogurt 0%':['dairy'],
+  'Greek yogurt 5%':['dairy'],'Skyr':['dairy'],'Semi-skimmed milk':['dairy'],
+  'Cheddar':['dairy'],'Egg whites':['egg'],'Egg':['egg'],
+  'Soybeans':['soy'],'Firm tofu':['soy'],'Tempeh':['soy'],'Soy mince, dry':['soy'],
+  'Edamame, podded':['soy'],
+  'Green / brown lentils':[],'Red lentils':[],'Kidney beans':[],'Chickpeas':[],
+  'Black beans':[],'Pinto beans':[],'Split peas':[],'Black-eyed peas':[],
+  'Broad / fava beans':[],'Butter beans':[],'Cannellini beans':[],'Mung beans':[],
+  'Green peas':[],'Sweetcorn':[],'Brussels sprouts':[],'Spinach, cooked':[],
+  'Broccoli':[],'Kale':[],'Mushrooms':[],'Artichoke hearts':[],'Cauliflower':[],
+  'Green beans':[],'Asparagus':[],'Courgette':[],'Cabbage':[],'Tomatoes':[],
+  'Peppers':[],'Cucumber':[],'Salad leaves':[],
+  // certified gluten-free oats are the only grain on this tab, hence no gluten
+  'GF oats':[],'Quinoa, cooked':[],'Potato':[],'White rice, cooked':[],
+  'Sweet potato':[],'Banana':[],'Avocado':[],'Olive oil':[],'Pumpkin seeds':[],
+  'Peanut butter':['peanut'],'Almonds':['treenut'],
+  // soy lecithin is near-universal in chocolate; declaring it is the safe call
+  'Dark chocolate 85%':['soy'],
+};
+/* Diet follows the category, with one exception the category cannot express. */
+const CAT_DIETS={
+  meat:['omnivore','halal'],
+  fish:['omnivore','pescatarian','halal'],
+  dairy:['omnivore','vegetarian','pescatarian','halal'],
+  plant:['vegan','vegetarian','pescatarian','halal','omnivore'],
+  veg:['vegan','vegetarian','pescatarian','halal','omnivore'],
+  pad:['vegan','vegetarian','pescatarian','halal','omnivore'],
+};
+const FOOD_DIET_OVERRIDE={'Pork loin':['omnivore']};
+function foodAlg(f){const a=FOOD_ALG[f&&f[0]];return Array.isArray(a)?a:null;}
+function foodDiets(f){return FOOD_DIET_OVERRIDE[f&&f[0]]||CAT_DIETS[f&&f[4]]||['omnivore'];}
+/* Fails CLOSED: an unlisted food is treated as unsafe rather than assumed
+   clean, so forgetting to tag a new food hides it instead of serving it. */
+function foodOk(f){
+  try{
+    const alg=foodAlg(f);
+    if(!alg)return false;
+    const n=STATE.nutrition||{};
+    const mine=Array.isArray(n.allergens)?n.allergens:[];
+    if(alg.some(a=>mine.includes(a)))return false;
+    const diet=n.diet||'omnivore';
+    return foodDiets(f).includes(diet);
+  }catch(e){return false;}
+}
 const FOOD_CATS=[['all','All'],['meat','Meat'],['fish','Fish'],['dairy','Dairy & eggs'],
   ['plant','Beans & plant'],['veg','Veg'],['pad','Carbs & fats']];
 /* Only the fallback for a food added without a fat figure. validateData() flags
@@ -8489,7 +8760,28 @@ function refTargets(){
 function scaleDay(day,targetP,targetK){
   const rows=[];
   day.meals.forEach((m,mi)=>m.items.forEach(([name,amt])=>{
-    const i=FOOD_BY_NAME[name];if(i===undefined)return;
+    let i=FOOD_BY_NAME[name];if(i===undefined)return;
+    /* If a day calls for something the athlete cannot eat, swap in the closest
+       thing in the same category that they can — matched on protein density so
+       the day still hits its target. Only fall through to skipping it when the
+       category has nothing safe at all. */
+    if(!foodOk(FOODS[i])){
+      const want=FOODS[i];
+      /* Same category FIRST, then anywhere. Restricting to the category meant a
+         vegan lost every meat item outright rather than getting tofu, and the
+         day collapsed 20-40 g under its protein target. */
+      const alt=FOODS.map((x,xi)=>[x,xi]).filter(([x])=>foodOk(x)).sort((a,b)=>{
+        const sa=a[0][4]===want[4]?0:1,sb=b[0][4]===want[4]?0:1;
+        if(sa!==sb)return sa-sb;
+        return Math.abs(foodEfficiency(a[0])-foodEfficiency(want))-Math.abs(foodEfficiency(b[0])-foodEfficiency(want));
+      })[0];
+      if(!alt)return;
+      i=alt[1];
+      // match the PROTEIN the day was built around, not the weight
+      if(want[1]>0&&FOODS[i][1]>0)
+        amt=amt*(want[1]/FOODS[i][1])*(foodBase(FOODS[i])/foodBase(want));
+      else amt=amt*(foodBase(FOODS[i])/foodBase(want));
+    }
     const f=FOODS[i];
     rows.push({mi,i,f,base:amt,
       anchor:REF_ANCHOR_CATS.includes(f[4]),starch:REF_STARCH.includes(name)});
@@ -8644,7 +8936,60 @@ function mealGapHTML(missing){
   const av=algList().map(k=>(ALLERGENS.find(a=>a[0]===k)||[,k])[1]).join(', ');
   return `<div class="note warn"><b>No safe ${_ve(missing.map(m=>MEAL_LABEL[m]||m).join(' or '))} in our library.</b> Nothing in the recipe list works with ${_ve(STATE.nutrition.diet||'your diet')}${av?' plus '+_ve(av):''}. Build that meal yourself around your protein target — do <b>not</b> just skip it, the rest of the plan does not cover its calories.</div>`;
 }
+/* ---- Today's plan is one of the seven worked days ------------------------
+   The recipe generator picked on CALORIES alone and the library topped out
+   below the per-slot target, so it undershot every single day: 1,500-1,620 kcal
+   and 103-139 g protein against 1,970 and 155. It then showed a "multiply
+   every quantity by 1.3x" banner, which is arithmetic at every meal rather
+   than a plan.
+
+   The seven days already solve this — they are scaled to the athlete's live
+   targets, substitute round any allergy or diet, and land within 5 g of the
+   protein target for every combination tested including vegan with soy, tree
+   nut, peanut and gluten all excluded. Rotate them by date so the week has
+   variety, and show what is actually on the plate.
+
+   The recipe bank stays: it is still browsable, and mealGapHTML/dietOk still
+   guard it. It is no longer what the daily plan is built from. */
+function todaysWorkedDay(){
+  const days=scaledDays();
+  if(!days.length)return null;
+  // deterministic on the date, so it does not reshuffle on every render
+  const d=new Date();
+  const key=Math.floor(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())/86400000);
+  return {idx:((key%days.length)+days.length)%days.length,day:days[((key%days.length)+days.length)%days.length]};
+}
 function mealPlanHTML(){
+  const picked=todaysWorkedDay();
+  if(picked&&picked.day){
+    const d=picked.day,T=refTargets();
+    const gapP=T.p-d.p,gapK=T.kcal-d.kcal;
+    let h=`<div class="section-label" id="mealplan">Today's plan · <span class="tiny muted">${_ve(dietLabel())} · day ${picked.idx+1} of ${REF_DAYS.length}</span></div><div class="card pad" style="padding-bottom:8px">`;
+    h+=`<div class="row" style="justify-content:space-between;margin-bottom:6px">
+      <div><b>${d.kcal} kcal</b> <span class="tiny muted">of ${T.kcal}</span> · <b>${d.p}g protein</b> <span class="tiny muted">of ${T.p}</span></div>
+      <div class="btnrow" style="flex:0 0 auto;gap:6px"><button class="chip" onclick="openGrocery()">🛒 List</button></div></div>`;
+    if(Math.abs(gapP)>12||Math.abs(gapK)>200){
+      h+=`<div class="note warn" style="margin:4px 0 8px">This day lands ${gapP>0?gapP+'g under':(-gapP)+'g over'} on protein and ${gapK>0?gapK+' kcal under':(-gapK)+' kcal over'}. ${gapP>12?'Add a protein anchor — see the Reference tab.':'Trim the starch.'}</div>`;
+    }
+    d.meals.forEach((m,mi)=>{
+      h+=`<div style="border-top:1px solid var(--line);padding:10px 0">
+        <div class="kv" style="padding:0 0 4px">
+          <span class="tiny muted" style="letter-spacing:.06em;text-transform:uppercase;font-weight:800">${_ve(m.slot)}</span>
+          <span class="tiny"><b style="color:var(--fire-l)">${m.p}g</b><span class="muted"> · ${m.kcal} kcal</span></span></div>`;
+      m.items.forEach(x=>{
+        h+=`<div class="kv" style="padding:2px 0;font-size:13px">
+          <span style="min-width:0">${_ve(x.name)} <span class="muted">${_ve(x.label)}</span></span>
+          <span class="tiny" style="flex:0 0 auto;white-space:nowrap"><b>${x.p}g</b><span class="muted"> · ${x.kcal}</span></span></div>`;
+      });
+      h+=`<button class="btn sm ghost" style="width:100%;margin-top:6px" onclick="logRefMeal(${picked.idx},${mi})">Log this meal · ${m.p}g · ${m.kcal} kcal</button></div>`;
+    });
+    h+=`<div class="tiny muted" style="margin-top:8px">Weighed to your targets, and filtered for your diet — no multiplying required. The full seven days are on <b>Reference</b>.</div>`;
+    h+=`</div>`;
+    return h;
+  }
+  return _recipePlanHTML();
+}
+function _recipePlanHTML(){
   /* currentMealPlan() generates and save()s a randomly-chosen plan. Called from
      an HTML builder, a render could persist a different plan than the one it
      drew. renderFuel() primes it before assembling any markup. */
@@ -8710,13 +9055,16 @@ function renderRef(){
      outcome, because it teaches trust the tab has not earned. */
   const _alg=(STATE.nutrition&&Array.isArray(STATE.nutrition.allergens))?STATE.nutrition.allergens:[];
   const _diet=(STATE.nutrition&&STATE.nutrition.diet)||'omnivore';
+  const _hidden=FOODS.filter(f=>!foodOk(f)).length;
   if(_alg.length||_diet!=='omnivore'){
-    h+=`<div class="note warn"><b>This tab is not filtered.</b> It is the full food list, so it does not know about your ${_alg.length?'declared '+_alg.map(a=>_ve(a)).join(', ')+(_diet!=='omnivore'?' or your '+_ve(_diet)+' diet':''):_ve(_diet)+' diet'}. The meal plan in <b>Fuel</b> is filtered; read this one yourself.</div>`;
+    h+=`<div class="note info"><b>Filtered for you.</b> ${_hidden} food${_hidden===1?'':'s'} hidden — your ${_alg.length?_alg.map(a=>_ve(a)).join(', ')+(_diet!=='omnivore'?' and '+_ve(_diet):''):_ve(_diet)} ${_alg.length?'':'diet'}. Change it in <b>Fuel</b>.</div>`;
   }
   h+=`<div class="section-label">Food list · <span class="tiny muted">tap a food to pick an amount</span></div>`;
   h+=`<div class="daypick" id="ref-cats" style="flex-wrap:wrap;margin:0 2px 10px">${FOOD_CATS.map(([k,l])=>
     `<button class="${REF_CAT===k?'on':''}" onclick="setRefCat('${k}')">${l}</button>`).join('')}</div>`;
-  const rows=FOODS.map((f,i)=>[f,i]).filter(([f])=>REF_CAT==='all'||f[4]===REF_CAT);
+  /* Filtered, not annotated. This tab used to show the whole list and say
+     nothing, and silence on a food list reads as "checked and safe". */
+  const rows=FOODS.map((f,i)=>[f,i]).filter(([f])=>foodOk(f)&&(REF_CAT==='all'||f[4]===REF_CAT));
   h+=`<div class="card" style="padding:0 12px">
     <div class="kv" style="border:none;padding:9px 2px 5px"><span class="tiny muted" style="letter-spacing:.08em;text-transform:uppercase;font-weight:800">Food · listed amount</span>
       <span class="tiny muted" style="letter-spacing:.08em;text-transform:uppercase;font-weight:800">Protein · kcal</span></div>`;
@@ -9148,6 +9496,21 @@ function skillTreesHTML(){
 }
 
 /* ============================ HOME SUMMARY / RECOVERY / HISTORY / COMPARE / WEEKLY ============================ */
+/* Every surface carried an unfinished counter, permanently — habits x/5, cups
+   n/13, badges unlocked/30, a "Log waist" prompt every day against copy that
+   says measure weekly. Ambient incompleteness is the background radiation of
+   app abandonment. Define a floor and say when it is cleared. */
+function minimumDayMet(){
+  try{
+    const t=nutToday();
+    const hb=HABITS.filter(h=>!h.optional&&t.habits&&t.habits[h.k]).length;
+    return !!(trainedToday()&&hb>=2);
+  }catch(e){return false;}
+}
+function doneForTodayHTML(){
+  if(!minimumDayMet())return '';
+  return `<div class="note ok"><b>That is today done.</b> You trained and you covered the basics — everything below this is optional. Come back tomorrow.</div>`;
+}
 function homeSummaryHTML(){
   if(!STATE.baseline)return '';
   const pos=posOf(Math.min(STATE.progressPtr,SESSIONS_PER_CYCLE*TOTAL_CYCLES-1));
@@ -9688,6 +10051,15 @@ function normalizeState(){
       readiness made readinessMult() return 0.7 — a silent 30% deload with no
       visible cause. importData() accepts arbitrary JSON, so this is reachable. */
    if(P.tightSpace!=null&&typeof P.tightSpace!=='boolean')P.tightSpace=!!P.tightSpace;
+   /* `actual` drives PRs, the Strength Standards and the load adjustment, so a
+      string or a negative from an imported backup would poison all three. */
+   try{Object.values(STATE.logs||{}).forEach(l=>{
+     if(!l||!l.ex||typeof l.ex!=='object')return;
+     Object.values(l.ex).forEach(st=>{
+       if(!st||typeof st!=='object')return;
+       if(st.actual!=null&&!(typeof st.actual==='number'&&isFinite(st.actual)&&st.actual>=0))delete st.actual;
+     });
+   });}catch(e){}
    if(!STATE.exAdapt||typeof STATE.exAdapt!=='object'||Array.isArray(STATE.exAdapt))STATE.exAdapt={};
    else Object.keys(STATE.exAdapt).forEach(k=>{const v=STATE.exAdapt[k];
      if(!(typeof v==='number'&&isFinite(v)&&v>0))delete STATE.exAdapt[k];});
@@ -9990,6 +10362,29 @@ function validateData(){
     const dbl=foodAt(f,f[6]*2);
     if(Math.abs(dbl.p-f[1]*2)>1||Math.abs(dbl.kcal-f[2]*2)>1)errs.push(tag+': does not scale linearly');
   });
+  const algKeys2=ALLERGENS.map(a=>a[0]);
+  FOODS.forEach(f=>{
+    const a=FOOD_ALG[f[0]];
+    if(!Array.isArray(a))errs.push('FOOD_ALG: "'+f[0]+'" is not listed — an untagged food is served to everyone');
+    else a.forEach(k=>{if(!algKeys2.includes(k))errs.push('FOOD_ALG."'+f[0]+'": unknown allergen "'+k+'"');});
+    if(!CAT_DIETS[f[4]])errs.push('CAT_DIETS: no diets for category "'+f[4]+'"');
+  });
+  Object.keys(FOOD_ALG).forEach(n=>{if(FOOD_BY_NAME[n]===undefined)errs.push('FOOD_ALG: "'+n+'" is not a food');});
+  /* Cross-check the tags against the names, the same way the recipe bank is
+     checked — a fish tagged as a fish is not enough if it is actually a mollusc. */
+  FOODS.forEach(f=>{
+    const a=FOOD_ALG[f[0]]||[];const n=f[0].toLowerCase();
+    if(/prawn|crab|scallop|mussel|squid|calamari|lobster|oyster/.test(n)&&!a.includes('shellfish'))
+      errs.push('FOOD_ALG."'+f[0]+'": shellfish, not tagged');
+    if(/yogurt|cheese|milk|skyr|whey|cheddar/.test(n)&&!a.includes('dairy'))
+      errs.push('FOOD_ALG."'+f[0]+'": dairy, not tagged');
+    if(/egg/.test(n)&&!a.includes('egg'))errs.push('FOOD_ALG."'+f[0]+'": egg, not tagged');
+    if(/peanut/.test(n)&&!a.includes('peanut'))errs.push('FOOD_ALG."'+f[0]+'": peanut, not tagged');
+    if(/almond|cashew|walnut|pecan|hazelnut/.test(n)&&!a.includes('treenut'))
+      errs.push('FOOD_ALG."'+f[0]+'": tree nut, not tagged');
+    if(/tofu|tempeh|soy|edamame/.test(n)&&!a.includes('soy'))
+      errs.push('FOOD_ALG."'+f[0]+'": soy, not tagged');
+  });
   REF_DAYS.forEach((d,i)=>{
     const tag='REF_DAYS['+i+'] '+d.name;
     d.meals.forEach(m=>m.items.forEach(([n])=>{
@@ -10011,9 +10406,15 @@ function validateData(){
     shopNames[it.name]=1;
     if(!(it.raw>0))errs.push('shopList: "'+it.name+'" has no quantity');
   }));
-  REF_DAYS.forEach(d=>d.meals.forEach(m=>m.items.forEach(([n])=>{
-    if(!shopNames[n])errs.push('shopList: the days use "'+n+'" but the shop never buys it');
-  })));
+  /* Compare the SCALED days against the shop, not the raw REF_DAYS. The days
+     now substitute round the athlete's diet and allergies, so a raw name is
+     deliberately absent from the shop whenever it was swapped out — checking
+     the pre-substitution names made this fire for every athlete who is not an
+     unrestricted omnivore. The invariant that matters is that everything the
+     athlete is actually told to eat is on the list. */
+  try{scaledDays().forEach(d=>d.meals.forEach(m=>m.items.forEach(x=>{
+    if(!shopNames[x.name])errs.push('shopList: the days serve "'+x.name+'" but the shop never buys it');
+  })));}catch(e){errs.push('shopList: could not be built — '+e);}
   if(errs.length)console.error('[coreforge] data validation: '+errs.length+' problem(s)\n - '+errs.join('\n - '));
   return errs;
 }
@@ -10048,6 +10449,7 @@ async function boot(){
   // tap — mobile browsers keep an AudioContext suspended until a user gesture,
   // which is why the background beat could stay silent.
   document.addEventListener('pointerdown',()=>{try{primeVoice();}catch(e){}try{audioCtx();}catch(e){}},{once:true,passive:true});
+  try{noteOpen();}catch(e){}        // count opens, so drift is visible before it becomes silence
   try{checkReminder();}catch(e){}   // best-effort training-day nudge on open
   // service worker
   if('serviceWorker'in navigator){try{navigator.serviceWorker.register('sw.js').then(reg=>{
