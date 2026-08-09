@@ -110,8 +110,13 @@
   .btn.sm{padding:10px 13px;font-size:13px;width:auto;border-radius:11px;min-height:38px}
   .btn.block{margin-top:6px}
   .btn:disabled{opacity:.45;pointer-events:none}
-  .btnrow{display:flex;gap:9px}.btnrow>*{flex:1}
-  .chip{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;padding:5px 10px;border-radius:20px;background:var(--card2);border:1px solid var(--line);color:var(--muted)}
+  /* wrap, or the four-chip Fuel row pushes its last button clean off a 320px
+     screen — the ➕ was at x=349 on a 320-wide viewport, unreachable */
+  .btnrow{display:flex;gap:9px;flex-wrap:wrap}.btnrow>*{flex:1}
+  .chip{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:11px;font-weight:800;padding:5px 10px;border-radius:20px;background:var(--card2);border:1px solid var(--line);color:var(--muted)}
+  /* A chip used as a LABEL can be any size; a chip you are meant to hit cannot.
+     These were 28px tall against a 44px iOS/Material floor. */
+  button.chip,.chip[onclick]{min-height:40px;padding-top:8px;padding-bottom:8px}
   .chip.on{background:color-mix(in srgb,var(--fire) 17%,var(--card));border-color:var(--fire);color:var(--fire)}
   .tag{display:inline-block;font-size:9.5px;font-weight:900;letter-spacing:.5px;text-transform:uppercase;padding:3px 8px;border-radius:8px}
   /* All twelve now derive from the palette. Half were left holding the literal
@@ -156,8 +161,10 @@
   @keyframes sload{0%{transform:translateX(-110%)}100%{transform:translateX(360%)}}
   @keyframes sfade{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
   /* Theme picker chips */
-  .themerow{display:flex;gap:6px;padding:5px;background:var(--card2);border:1px solid var(--line);border-radius:999px;width:fit-content}
-  .themechip{padding:8px 16px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:.4px;color:var(--muted);transition:.18s}
+  /* wraps to a rounded block on narrow screens instead of running the last
+     theme off the edge (Ice sat at x=293 on a 280px Fold) */
+  .themerow{display:flex;gap:6px;padding:5px;background:var(--card2);border:1px solid var(--line);border-radius:999px;width:fit-content;max-width:100%;flex-wrap:wrap}
+  .themechip{padding:8px 16px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:.4px;color:var(--muted);transition:.18s;min-height:40px}
   .themechip.on{background:var(--fire);color:var(--accInk)}
   /* Full-screen guided workout player */
   .pl{position:fixed;inset:0;z-index:75;background:var(--bg);display:none;flex-direction:column;overflow:hidden}
@@ -165,7 +172,7 @@
   .pl-bg{position:absolute;inset:0;background-size:cover;background-position:center top;opacity:.16;filter:saturate(.7)}
   .pl-bg:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,9,11,.65),var(--bg) 74%)}
   .pl-head{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;padding:calc(14px + env(safe-area-inset-top)) 16px 6px}
-  .pl-x{width:36px;height:36px;border-radius:12px;background:var(--card2);border:1px solid var(--line);color:var(--ink);font-size:15px;display:grid;place-items:center}
+  .pl-x{width:44px;height:44px;border-radius:12px;background:var(--card2);border:1px solid var(--line);color:var(--ink);font-size:15px;display:grid;place-items:center}
   .pl-clock{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.02em;
   background:rgba(0,0,0,.42);padding:5px 10px;border-radius:999px;backdrop-filter:blur(4px)}
 .pl-clock.paused{opacity:.55}
@@ -176,7 +183,12 @@
   .pl-seg{flex:1;height:5px;border-radius:3px;background:var(--card2)}
   .pl-seg.done{background:var(--fire)}
   .pl-seg.cur{background:var(--fire-l)}
-  .pl-body{position:relative;z-index:2;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:6px 22px calc(24px + env(safe-area-inset-bottom))}
+  /* `safe center` + scroll. Centred flex content in an overflow:hidden parent
+     is unreachable once it is taller than the screen: on a 320x568 phone the
+     "Swap exercise" button sat 55px below the fold with no way to get to it,
+     mid-workout. `safe` degrades to flex-start rather than clipping when the
+     content does not fit. */
+  .pl-body{position:relative;z-index:2;flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:safe center;text-align:center;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:6px 22px calc(24px + env(safe-area-inset-bottom))}
   .pl-region{margin-bottom:6px}
   .pl-name{font-size:25px;font-weight:900;letter-spacing:.3px;line-height:1.12;margin-bottom:6px}
   .pl-photo{width:120px;height:120px;object-fit:cover;border-radius:16px;margin:2px auto 4px;box-shadow:0 6px 18px rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.08)}
@@ -194,7 +206,7 @@
   .pl-actions .btn{flex:1}
   .pl-next{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:10px 12px;width:100%;max-width:440px;margin-top:14px;text-align:left}
   .pl-next img{width:52px;height:52px;border-radius:12px;object-fit:cover;flex:0 0 auto;background:var(--card2)}
-  .pl-swap{margin-top:12px;font-size:12px;font-weight:800;color:var(--muted);background:var(--card2);border:1px solid var(--line);border-radius:999px;padding:7px 15px}
+  .pl-swap{margin-top:12px;font-size:12px;font-weight:800;color:var(--muted);background:var(--card2);border:1px solid var(--line);border-radius:999px;padding:7px 15px;min-height:40px}
   .pl-swapmenu{display:flex;flex-direction:column;gap:8px;width:100%;max-width:440px;margin-top:10px}
   .pl-swapmenu button{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-weight:800;color:var(--ink)}
   .pl-swapmenu button span{font-weight:700;color:var(--muted);font-size:12px}
@@ -225,8 +237,20 @@
   .ex.done{border-color:rgba(34,197,94,.5)}
   .ex-top{display:grid;grid-template-columns:auto 48px 1fr auto;gap:12px;padding:13px 14px;align-items:center}
   .ex-thumb{width:48px;height:48px;border-radius:12px;object-fit:cover;display:block;background:var(--card2);border:1px solid var(--line)}
-  .ex-check{width:30px;height:30px;border-radius:9px;border:2px solid #33415400;border-color:#334154;background:var(--card2);display:flex;align-items:center;justify-content:center;flex:0 0 auto;transition:.15s}
+  /* The tick that marks an exercise done is the most-tapped control in the app
+     and it was a 30x30 box. The visual stays 30px; ::after widens the actual
+     hit area to 44px so a thumb lands on it. Rows are ~64px apart, so the
+     expanded targets do not overlap the neighbouring exercise. */
+  .ex-check{position:relative;width:30px;height:30px;border-radius:9px;border:2px solid #33415400;border-color:#334154;background:var(--card2);display:flex;align-items:center;justify-content:center;flex:0 0 auto;transition:.15s}
+  /* button only — .ex-check is also used as a decorative tick inside larger
+     buttons, and a 44px overlay there would sit over its siblings */
+  button.ex-check::after{content:'';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:44px;height:44px}
   .ex-check svg{width:16px;height:16px;opacity:0;transform:scale(.5);transition:.15s}
+  /* A 16px-tall slider is a miss waiting to happen on a phone. The track keeps
+     its look; the control gets a 40px band to be hit in. */
+  input[type=range]{height:40px;background:transparent}
+  input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:999px;background:var(--card2);border:1px solid var(--line)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;margin-top:-10px;border-radius:50%;background:var(--fire);border:none}
   .ex.done .ex-check{background:var(--green);border-color:var(--green)}
   .ex.done .ex-check svg{opacity:1;transform:scale(1)}
   .ex-name{font-size:15px;font-weight:850;line-height:1.2}
@@ -273,6 +297,7 @@
   .field label{display:block;font-size:12px;font-weight:800;color:var(--muted);margin-bottom:7px;text-transform:uppercase;letter-spacing:.5px}
   .field input,.field select{width:100%;background:var(--card2);border:1.5px solid var(--line);border-radius:12px;padding:13px 14px;font-size:16px;font-weight:700;color:var(--ink)}
   .field input:focus,.field select:focus{outline:none;border-color:var(--fire)}
+  .field input.bad{border-color:var(--red,#ff6b6b);background:rgba(255,107,107,.08)}
   .numrow{display:flex;align-items:center;gap:10px}
   .numrow button{width:48px;height:48px;border-radius:12px;background:var(--card2);border:1.5px solid var(--line);font-size:24px;font-weight:900;color:var(--fire-l);flex:0 0 auto}
   .numrow input{text-align:center;flex:1}
@@ -1444,7 +1469,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='194';
+const APP_VERSION='195';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1556,9 +1581,20 @@ function posOf(ptr){
    anchored branch of prescribe() then saw undefined and silently fell through to
    the generic base x level formula, tripling volume for the weakest athletes. */
 function estimateMaxes(m){
-  const s=Math.max(0.5,Math.min(2,(m.plank||40)/60));
+  /* Sanitise BEFORE merging. Object.assign lets a present-but-invalid value win
+     over the default that exists to cover it, so a backup carrying
+     {plank:"abc", push:null, pull:-5, hollow:NaN} produced target:null and the
+     session card rendered "~NaN minutes". A max is a positive finite number or
+     it is not a max — anything else is a gap, and gaps are what the defaults
+     below are for. */
+  const clean={};
+  Object.keys(m||{}).forEach(k=>{
+    const v=typeof m[k]==='number'?m[k]:parseFloat(m[k]);
+    if(isFinite(v)&&v>0)clean[k]=v;
+  });
+  const s=Math.max(0.5,Math.min(2,(clean.plank||40)/60));
   return Object.assign({plank:40,side:25,hollow:25,lower:12,dyn:20,
-    push:Math.round(12*s),pull:Math.round(7*s),squat:Math.round(22*s)},m);
+    push:Math.round(12*s),pull:Math.round(7*s),squat:Math.round(22*s)},clean);
 }
 function currentMaxes(cycle){
   // cycle 0 uses baseline; later cycles use reassessment if present, else baseline
@@ -2119,9 +2155,15 @@ function sessionVolume(sess){
   let tut=0;const list=[...sess.main,sess.finisher];
   // same seconds-per-rep the player actually paces at, so the card, the clock
   // and the history row stop quoting three different durations
-  list.forEach(m=>{if(m.unit==='time')tut+=m.sets*m.target;
-    else tut+=m.sets*m.target*(repSecondsFor(m.exId,repTempoSetting())||3);});
-  return {exercises:list.length,minutes:Math.round((tut+ list.reduce((a,m)=>a+m.sets*m.rest,0))/60)+3};
+  /* A single non-finite target used to poison the whole sum and the card read
+     "~NaN minutes". estimateMaxes now prevents that upstream; this keeps the
+     number printable even if some future path emits a bad target. */
+  const num=(v,d)=>{const n=typeof v==='number'?v:parseFloat(v);return isFinite(n)&&n>0?n:d;};
+  list.forEach(m=>{const t=num(m.target,0),st=num(m.sets,1);
+    if(m.unit==='time')tut+=st*t;
+    else tut+=st*t*(repSecondsFor(m.exId,repTempoSetting())||3);});
+  const rest=list.reduce((a,m)=>a+num(m.sets,1)*num(m.rest,0),0);
+  return {exercises:list.length,minutes:Math.round((tut+rest)/60)+3};
 }
 
 /* ============================ CORE SCORE ============================ */
@@ -2547,7 +2589,44 @@ function wireOnboard(){
     $('#ob-next').textContent= step<OB_STEPS ? 'Next →' : (OB_EDIT?'Save changes':'Build my plan → Baseline');
     window.scrollTo(0,0);
   };
-  $('#ob-next').onclick=()=>{ if(step<OB_STEPS){obCommitStep();showStep(step+1);haptic(8);} else finishOnboard(); };
+  /* Required-field gate. Tapping Next seven times used to walk a brand-new
+     athlete all the way to "Build my plan" with age, height and weight all
+     blank, and the app happily onboarded them: no calorie target, no protein
+     target, no waist projection, and a Fuel tab that just said to come back
+     with a body weight. Impatient tapping is the single most common way a
+     first run actually goes, so the three numbers every downstream calculation
+     is built from are now gated at the step that asks for them. */
+  const obStepError=n=>{
+    if(n!==1)return null;
+    const num=id=>{const e=$('#'+id);return e?parseFloat(e.value):NaN;};
+    const im=(($('#ob-unit button.on')||{dataset:{}}).dataset.u)==='in';
+    const age=num('ob-age');
+    if(!isFinite(age)||age<13||age>100)
+      return {id:'ob-age',msg:'Add your age (13–100) — every calorie and training target is built from it.'};
+    let ht=num('ob-height'); if(im&&isFinite(ht))ht*=2.54;
+    if(!isFinite(ht)||ht<120||ht>230)
+      return {id:'ob-height',msg:im?'Add your height in inches (47–91).':'Add your height in cm (120–230).'};
+    let wt=num('ob-weight'); if(im&&isFinite(wt))wt*=0.453592;
+    if(!isFinite(wt)||wt<30||wt>250)
+      return {id:'ob-weight',msg:im?'Add your weight in pounds (66–550).':'Add your weight in kg (30–250).'};
+    return null;
+  };
+  // clear the marker as soon as they start fixing it
+  ['ob-age','ob-height','ob-weight'].forEach(id=>{const e=$('#'+id);if(e)e.addEventListener('input',()=>e.classList.remove('bad'));});
+  const obBlocked=n=>{
+    const bad=obStepError(n);
+    if(!bad)return false;
+    const e=$('#'+bad.id);
+    if(e){e.classList.add('bad');try{e.scrollIntoView({block:'center',behavior:'smooth'});e.focus({preventScroll:true});}catch(_){e.focus();}}
+    toast(bad.msg);haptic(20);
+    return true;
+  };
+  $('#ob-next').onclick=()=>{
+    if(obBlocked(step))return;
+    // the last step commits the whole form, so re-check step 1 even from step 7
+    if(step===OB_STEPS&&obBlocked(1)){showStep(1);return;}
+    if(step<OB_STEPS){obCommitStep();showStep(step+1);haptic(8);} else finishOnboard();
+  };
   $('#ob-back').onclick=()=>{ if(step===1){ if(OB_EDIT){obCommitStep();OB_EDIT=false;OB_HOST=null;obClear();navTo('today');} return; } obCommitStep();showStep(step-1);haptic(8); };
   showStep(1);
 }
@@ -2880,6 +2959,7 @@ function workoutTabHTML(sess,log,doneCount,totalCount,wkNum,restedToday){
   // progressive overload note vs previous week
   if(sess.pos.dayInWeek===0){
     h+=doneForTodayHTML();
+    h+=resumeBanner();
     h+=driftBanner();
     h+=`<div class="note fire">📈 <b>Week ${wkNum} — ${overloadHeadline(sess)}.</b> ${overloadNote(sess)}</div>`;
   }
@@ -2909,7 +2989,7 @@ function exCardHTML(m,log,idx){
   return `
   <div class="ex ${st.done?'done':''}" data-ex="${m.exId}">
     <div class="ex-top">
-      <button class="ex-check" data-act="toggle"><svg viewBox="0 0 24 24" fill="none" stroke="#04220f" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
+      <button class="ex-check" data-act="toggle" aria-pressed="${st.done?'true':'false'}" aria-label="${st.done?'Unmark':'Mark'} ${_ve(ex.name)} as done"><svg viewBox="0 0 24 24" fill="none" stroke="#04220f" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
       ${ex.img?`<img class="ex-thumb" src="${ex.img}" alt="" loading="lazy" onerror="this.style.display='none'">`:''}
       <div class="grow">
         <div class="ex-name">${ex.name}</div>
@@ -3433,8 +3513,26 @@ function plTickReady(){
 }
 // Rotate to the next spoken/shown form cue for the current exercise.
 function plNextCue(){const c=PLAYER.cues||[];if(!c.length)return'';PLAYER.cueIdx=((PLAYER.cueIdx||0)+1)%c.length;const cue=c[PLAYER.cueIdx];plS('#plCoach',cue);return cue;}
+/* A session that ends because the PHONE ended it — reload, tab eviction, an OS
+   kill mid-rest — used to vanish. The finished sets were already in the log, so
+   nothing was lost, but the athlete came back to a Today tab that offered to
+   start the whole session from exercise 1 with no acknowledgement that they were
+   eight sets in. Cheap to fix: leave a breadcrumb on every work phase and clear
+   it on either intentional exit. Only a crash can leave it behind. */
+function plSaveResume(nextI){
+  try{
+    if(!PLAYER||PLAYER.free)return;   // bonus/free sessions are not program sessions
+    const i=(typeof nextI==='number')?nextI:PLAYER.i;
+    if(i>=PLAYER.items.length){plClearResume();return;}   // nothing left to come back to
+    STATE._plResume={ptr:STATE.progressPtr,i,s:0,
+      setsDone:PLAYER.setsDone,date:todayISO(),ts:Date.now()};
+    save();
+  }catch(e){}
+}
+function plClearResume(){try{if(STATE._plResume){delete STATE._plResume;save();}}catch(e){}}
 function plEnterWork(){
   plClear();
+  plSaveResume();
   const m=plCur();const ex=EX[m.exId];const isTime=m.unit==='time';
   PLAYER.phase='work';
   PLAYER.cues=(ex.cues&&ex.cues.length)?ex.cues.slice():['Brace your core and own every rep.'];
@@ -3521,6 +3619,11 @@ function plAfterSet(){
   PLAYER.setsDone++;
   const pulse=$('#plPulse');if(pulse)pulse.classList.remove('on');
   PLAYER.s++;
+  /* Resume at the exercise they would come back to, not the one they just
+     finished: mid-exercise resumes where they are, a completed exercise
+     resumes at the next one. Sets always restart from 0 within an exercise —
+     repeating a set is safe, silently skipping one is not. */
+  plSaveResume(PLAYER.s<m.sets?PLAYER.i:PLAYER.i+1);
   if(PLAYER.s<m.sets){if(!motivate('rest'))coachSpeak('Rest.');plEnterRest(m.rest,'set');}
   else if(PLAYER.i+1<PLAYER.items.length){if(!motivate('rest'))coachSpeak('Nice. Next up.');PLAYER.pendingNext=true;plEnterRest(m.rest,'ex');}
   else plEnterDone();
@@ -3642,7 +3745,7 @@ function playerSkip(){
 function playerSetDone(){if(PLAYER&&(PLAYER.phase==='work'||PLAYER.phase==='ready')){plClear();plAfterSet();}}
 function playerAddRest(){if(PLAYER&&PLAYER.phase==='rest'){PLAYER.remain+=15;PLAYER.total+=15;if(PLAYER.deadline)PLAYER.deadline+=15000;plS('#plNum',fmtTime(PLAYER.remain));toast('+15s rest');}}
 function playerSkipRest(){if(PLAYER&&PLAYER.phase==='rest')plRestDone();}
-function playerTeardown(){if(!PLAYER)return;wakeOff();plClear();plClockStop();beatStop();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;
+function playerTeardown(){if(!PLAYER)return;plClearResume();wakeOff();plClear();plClockStop();beatStop();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;
   setTimeout(()=>{try{if(!$('#player').classList.contains('open'))$('#player').innerHTML='';}catch(e){}},400);
   // Any teardown of the player = the user bailed (natural finish goes through playerFeel, which advances instead) → end the guided day.
   if(typeof dayflowActive==='function'&&dayflowActive())dayflowCancel(true);
@@ -3650,6 +3753,7 @@ function playerTeardown(){if(!PLAYER)return;wakeOff();plClear();plClockStop();be
 function playerQuit(){const had=!!PLAYER;playerTeardown();if(had&&history.state&&history.state.cf==='player'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
 function playerFeel(feel){
   if(!PLAYER)return;   // double-tap must not commit twice
+  plClearResume();
   wakeOff();   // finishing normally is the COMMON exit — it must release the lock too
   plClear();plClockStop();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;tapShield(400);
   if(history.state&&history.state.cf==='player'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
@@ -6237,6 +6341,39 @@ function driftingDays(){
     return n;
   }catch(e){return 0;}
 }
+/* Valid only for TODAY and only for the session still on the pointer: a
+   breadcrumb from a session that has since been committed, or from last week,
+   is stale and must not offer to reopen anything. */
+function resumeInfo(){
+  try{
+    const r=STATE._plResume;
+    if(!r||typeof r!=='object')return null;
+    if(r.date!==todayISO())return null;
+    if(r.ptr!==STATE.progressPtr)return null;
+    const i=+r.i;
+    if(!isFinite(i)||i<0)return null;
+    const sess=buildSession(STATE.progressPtr);
+    const items=[...sess.main,sess.finisher];
+    if(i>=items.length)return null;
+    return {i,setsDone:Math.max(0,+r.setsDone||0),total:items.length,ex:items[i]};
+  }catch(e){return null;}
+}
+function resumeBanner(){
+  const r=resumeInfo();
+  if(!r)return '';
+  const nm=(EX[r.ex.exId]&&EX[r.ex.exId].name)||'your next exercise';
+  return `<div class="note info"><b>You were part-way through this session.</b> ${r.setsDone} set${r.setsDone===1?'':'s'} logged — you stopped on <b>${_ve(nm)}</b> (${r.i+1} of ${r.total}).
+    <div class="btnrow" style="margin-top:10px"><button class="btn sm primary" onclick="resumeSession()">▶ Pick up where I left off</button><button class="btn sm ghost" onclick="dismissResume()">Start over</button></div></div>`;
+}
+function resumeSession(){
+  const r=resumeInfo();
+  if(!r){plClearResume();render();return;}
+  openPlayer();
+  if(!PLAYER){toast('Could not reopen that session');return;}
+  PLAYER.i=r.i;PLAYER.s=0;PLAYER.setsDone=r.setsDone;
+  plEnterWork();
+}
+function dismissResume(){plClearResume();toast('Starting fresh');render();}
 function driftBanner(){
   const n=driftingDays();
   if(n<3)return '';
@@ -7166,9 +7303,9 @@ function intakeHTML(){
   const t=foodTotals();const d=nutToday();const kcalT=nut().kcalTarget;const mt=macroTargets();
   const items=d.food||[];
   let h=`<div class="section-label">Today's food${t.n?` · ${t.n} item${t.n>1?'s':''}`:''}</div><div class="card pad">
-    <div class="row" style="justify-content:space-between;gap:8px;align-items:flex-start">
+    <div class="row" style="justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap">
       <div><b style="font-size:19px">${t.kcal}${kcalT?' / '+kcalT:''}</b> <span class="tiny muted">kcal</span></div>
-      <div class="btnrow" style="gap:6px;flex:0 0 auto"><button class="chip" onclick="openFoodSearch()">🔎 Search</button><button class="chip" onclick="scanBarcode()">📸 Scan</button><button class="chip" onclick="foodPhoto()">📷 Snap</button><button class="chip" onclick="openQuickAdd()">➕</button></div></div>`;
+      <div class="btnrow" style="gap:6px;flex:1 1 auto;min-width:0;justify-content:flex-end"><button class="chip" onclick="openFoodSearch()">🔎 Search</button><button class="chip" onclick="scanBarcode()">📸 Scan</button><button class="chip" onclick="foodPhoto()">📷 Snap</button><button class="chip" onclick="openQuickAdd()" aria-label="Quick add food">➕</button></div></div>`;
   if(kcalT){const pct=Math.min(100,Math.round(t.kcal/kcalT*100));
     h+=`<div class="pbar${t.kcal>kcalT?'':' green'}" style="margin-top:8px"><i style="width:${pct}%"></i></div>
       <div class="tiny muted" style="margin-top:4px">${t.kcal<=kcalT?(kcalT-t.kcal)+' kcal left today':(t.kcal-kcalT)+' kcal over — that\'s one day, not the week.'}</div>`;}
@@ -8188,7 +8325,14 @@ function parqFlags(){try{const p=STATE.profile&&STATE.profile.parq;return Array.
 function parqFlagged(){return parqFlags().length>0;}
 /* Cleared === answered, and either nothing flagged or the athlete has confirmed
    they spoke to a clinician. Until then the max-effort battery stays locked. */
-function parqDone(){try{return !!(STATE.profile&&STATE.profile.parqDone);}catch(e){return false;}}
+/* "Done" requires the ANSWERS, not just the flag that says they were given.
+   parqDone was a bare boolean read, so a restored backup carrying
+   {parqDone:true} with no parq array at all satisfied it — which is precisely
+   the pre-v177 upgrade case the note below was written to close. Backups are
+   arbitrary JSON via importData(), so this is reachable, and it fails OPEN:
+   parqFlags() returns [] for a missing array, safeMode() goes false, and the
+   maximal battery unlocks for someone who never answered the screen. */
+function parqDone(){try{return !!(STATE.profile&&STATE.profile.parqDone&&Array.isArray(STATE.profile.parq));}catch(e){return false;}}
 function medCleared(){try{return !!(STATE.profile&&STATE.profile.medCleared);}catch(e){return false;}}
 /* Unanswered is NOT the same as cleared. Every athlete who upgraded from a
    pre-v177 build has no parq field at all, so parqFlagged() was false and the
@@ -9409,7 +9553,7 @@ function renderQuick(){
     const rx=unit==='time'?fmtTime(it.target):it.target+' reps';
     h+=`<div class="ex ${done?'done':''}">
       <div class="ex-top">
-        <button class="ex-check" onclick="quickMark(${idx})"><svg viewBox="0 0 24 24" fill="none" stroke="#04220f" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
+        <button class="ex-check" onclick="quickMark(${idx})" aria-pressed="${done?'true':'false'}" aria-label="${done?'Unmark':'Mark'} ${_ve(ex.name)} as done"><svg viewBox="0 0 24 24" fill="none" stroke="#04220f" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
         <div class="grow"><div class="ex-name">${ex.name}</div><div class="ex-region"><span class="tag ${ex.region}">${ex.region}</span> &nbsp;${it.sets} × ${rx}</div></div>
         <div class="ex-rx"><div class="big">${it.sets}×${unit==='time'?fmtTime(it.target):it.target}</div></div>
       </div>
@@ -9705,7 +9849,7 @@ function renderGuide(){
       <div style="display:flex;flex-wrap:wrap;gap:6px">${JOINTS.map(([k,l])=>`<button class="chip ${((STATE.profile.limitations||[]).includes(k))?'on':''}" onclick="toggleLimitation('${k}')">${l}</button>`).join('')}</div></div>
     <div style="padding:6px 0 2px"><div class="row" style="justify-content:space-between;margin-bottom:6px"><span class="tiny muted">AI food photo <span style="opacity:.7">· 📷 Snap → calories, via Google Gemini (free)</span></span>${STATE.settings.foodAiKey?`<button class="chip" onclick="setFoodAiKey('')">Clear key</button>`:''}</div>
       <input type="password" value="" onchange="if(this.value.trim())setFoodAiKey(this.value)" placeholder="${STATE.settings.foodAiKey?'🔒 Saved · type to replace':'Google Gemini API key'}" style="width:100%;padding:10px;border-radius:10px;background:var(--card2);color:var(--ink);border:1px solid var(--line)">
-      <div class="tiny muted" style="margin-top:5px">Get a <b>free</b> key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> — no billing. Stays only on this phone. Estimates are approximate — always confirm.</div></div>
+      <div class="tiny muted" style="margin-top:5px">Get a <b>free</b> key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="display:inline-block;padding:8px 0">aistudio.google.com/apikey</a> — no billing. Stays only on this phone. Estimates are approximate — always confirm.</div></div>
 `;
   h+=`
     <div style="padding:6px 0 2px"><div class="tiny muted" style="margin-bottom:5px">Coach voice</div>
@@ -10037,7 +10181,10 @@ function normalizeState(){
        - quickLog as an array silently swallowed every quick session. */
   {const P=STATE.profile,N=STATE.nutrition;
    if(!Array.isArray(P.limitations))P.limitations=[];
-   if(P.parq!=null&&!Array.isArray(P.parq)){P.parq=[];P.parqDone=false;P.medCleared=false;}
+   /* No `!=null` guard. null and undefined are exactly the shapes an older or
+     hand-edited backup arrives in, and skipping them left parqDone true with no
+     answers behind it — an unanswered screen reading as a clean one. */
+  if(!Array.isArray(P.parq)){P.parq=[];P.parqDone=false;P.medCleared=false;}
    if(N){
      if(typeof N.allergens==='string')
        N.allergens=N.allergens.split(/[,;]+/).map(s=>s.trim().toLowerCase()).filter(s=>ALLERGENS.some(a=>a[0]===s));
@@ -10196,6 +10343,10 @@ function normalizeState(){
   } else if(!STATE.profile._unitFixW&&STATE.profile.unit!=='in'){
     STATE.profile._unitFixW=true;   // metric history is already kg — nothing to repair
   }
+  /* A malformed breadcrumb must not be able to reopen a player at a junk
+     index — resumeInfo() re-validates, but the field is dropped here so a
+     non-object can never reach it in the first place. */
+  if(STATE._plResume!=null&&(typeof STATE._plResume!=='object'||Array.isArray(STATE._plResume)))delete STATE._plResume;
   if(!Array.isArray(STATE.photos))STATE.photos=[];
   if(!STATE.achievements||typeof STATE.achievements!=='object')STATE.achievements={};
   if(STATE.settings.reminderOn===undefined)STATE.settings.reminderOn=false;
