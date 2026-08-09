@@ -1444,7 +1444,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='193';
+const APP_VERSION='194';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -8511,6 +8511,72 @@ const FOODS=[
   ['Banana',1,105,'1 medium','pad',0,1,'ea'],
   ['Olive oil',0,120,'14 g, 1 tbsp','pad',13,14,'g'],
 ];
+/* ---- What is in each food -------------------------------------------------
+   Kept as a name-keyed map rather than a ninth column, because these rows are
+   a hand-maintained literal and CLAUDE.md is explicit about what regex edits
+   over them have cost before.
+
+   EVERY food must appear here, including the ones with nothing to declare.
+   An empty array means "checked, contains none of the nine"; an ABSENT entry
+   means nobody checked. validateData() fails on an absent one — which is the
+   distinction that let two recipes ship serving coconut to a tree-nut allergy
+   with alg:[], indistinguishable from a real all-clear. */
+const FOOD_ALG={
+  'Chicken breast':[],'Sirloin steak':[],'Pork loin':[],'Turkey mince 5%':[],
+  'Beef mince 5%':[],'Chicken thigh':[],
+  'Tuna steak, fresh':['fish'],'Tilapia':['fish'],'Salmon fillet':['fish'],
+  'Kippers':['fish'],'Cod':['fish'],'Haddock':['fish'],'Pollock':['fish'],
+  'Trout':['fish'],'Sea bream':['fish'],'Sea bass':['fish'],'Mackerel':['fish'],
+  'Sardines, tinned':['fish'],'Tuna, tinned in water':['fish'],
+  'Smoked salmon':['fish'],'Anchovies':['fish'],
+  // molluscs and crustaceans are SHELLFISH, not fish — a fish allergy and a
+  // shellfish allergy are different allergies and are declared separately
+  'Prawns':['shellfish'],'Scallops':['shellfish'],'Crab meat':['shellfish'],
+  'Mussels':['shellfish'],'Squid / calamari':['shellfish'],
+  'Cottage cheese':['dairy'],'Whey powder':['dairy'],'Greek yogurt 0%':['dairy'],
+  'Greek yogurt 5%':['dairy'],'Skyr':['dairy'],'Semi-skimmed milk':['dairy'],
+  'Cheddar':['dairy'],'Egg whites':['egg'],'Egg':['egg'],
+  'Soybeans':['soy'],'Firm tofu':['soy'],'Tempeh':['soy'],'Soy mince, dry':['soy'],
+  'Edamame, podded':['soy'],
+  'Green / brown lentils':[],'Red lentils':[],'Kidney beans':[],'Chickpeas':[],
+  'Black beans':[],'Pinto beans':[],'Split peas':[],'Black-eyed peas':[],
+  'Broad / fava beans':[],'Butter beans':[],'Cannellini beans':[],'Mung beans':[],
+  'Green peas':[],'Sweetcorn':[],'Brussels sprouts':[],'Spinach, cooked':[],
+  'Broccoli':[],'Kale':[],'Mushrooms':[],'Artichoke hearts':[],'Cauliflower':[],
+  'Green beans':[],'Asparagus':[],'Courgette':[],'Cabbage':[],'Tomatoes':[],
+  'Peppers':[],'Cucumber':[],'Salad leaves':[],
+  // certified gluten-free oats are the only grain on this tab, hence no gluten
+  'GF oats':[],'Quinoa, cooked':[],'Potato':[],'White rice, cooked':[],
+  'Sweet potato':[],'Banana':[],'Avocado':[],'Olive oil':[],'Pumpkin seeds':[],
+  'Peanut butter':['peanut'],'Almonds':['treenut'],
+  // soy lecithin is near-universal in chocolate; declaring it is the safe call
+  'Dark chocolate 85%':['soy'],
+};
+/* Diet follows the category, with one exception the category cannot express. */
+const CAT_DIETS={
+  meat:['omnivore','halal'],
+  fish:['omnivore','pescatarian','halal'],
+  dairy:['omnivore','vegetarian','pescatarian','halal'],
+  plant:['vegan','vegetarian','pescatarian','halal','omnivore'],
+  veg:['vegan','vegetarian','pescatarian','halal','omnivore'],
+  pad:['vegan','vegetarian','pescatarian','halal','omnivore'],
+};
+const FOOD_DIET_OVERRIDE={'Pork loin':['omnivore']};
+function foodAlg(f){const a=FOOD_ALG[f&&f[0]];return Array.isArray(a)?a:null;}
+function foodDiets(f){return FOOD_DIET_OVERRIDE[f&&f[0]]||CAT_DIETS[f&&f[4]]||['omnivore'];}
+/* Fails CLOSED: an unlisted food is treated as unsafe rather than assumed
+   clean, so forgetting to tag a new food hides it instead of serving it. */
+function foodOk(f){
+  try{
+    const alg=foodAlg(f);
+    if(!alg)return false;
+    const n=STATE.nutrition||{};
+    const mine=Array.isArray(n.allergens)?n.allergens:[];
+    if(alg.some(a=>mine.includes(a)))return false;
+    const diet=n.diet||'omnivore';
+    return foodDiets(f).includes(diet);
+  }catch(e){return false;}
+}
 const FOOD_CATS=[['all','All'],['meat','Meat'],['fish','Fish'],['dairy','Dairy & eggs'],
   ['plant','Beans & plant'],['veg','Veg'],['pad','Carbs & fats']];
 /* Only the fallback for a food added without a fat figure. validateData() flags
@@ -8694,7 +8760,28 @@ function refTargets(){
 function scaleDay(day,targetP,targetK){
   const rows=[];
   day.meals.forEach((m,mi)=>m.items.forEach(([name,amt])=>{
-    const i=FOOD_BY_NAME[name];if(i===undefined)return;
+    let i=FOOD_BY_NAME[name];if(i===undefined)return;
+    /* If a day calls for something the athlete cannot eat, swap in the closest
+       thing in the same category that they can — matched on protein density so
+       the day still hits its target. Only fall through to skipping it when the
+       category has nothing safe at all. */
+    if(!foodOk(FOODS[i])){
+      const want=FOODS[i];
+      /* Same category FIRST, then anywhere. Restricting to the category meant a
+         vegan lost every meat item outright rather than getting tofu, and the
+         day collapsed 20-40 g under its protein target. */
+      const alt=FOODS.map((x,xi)=>[x,xi]).filter(([x])=>foodOk(x)).sort((a,b)=>{
+        const sa=a[0][4]===want[4]?0:1,sb=b[0][4]===want[4]?0:1;
+        if(sa!==sb)return sa-sb;
+        return Math.abs(foodEfficiency(a[0])-foodEfficiency(want))-Math.abs(foodEfficiency(b[0])-foodEfficiency(want));
+      })[0];
+      if(!alt)return;
+      i=alt[1];
+      // match the PROTEIN the day was built around, not the weight
+      if(want[1]>0&&FOODS[i][1]>0)
+        amt=amt*(want[1]/FOODS[i][1])*(foodBase(FOODS[i])/foodBase(want));
+      else amt=amt*(foodBase(FOODS[i])/foodBase(want));
+    }
     const f=FOODS[i];
     rows.push({mi,i,f,base:amt,
       anchor:REF_ANCHOR_CATS.includes(f[4]),starch:REF_STARCH.includes(name)});
@@ -8849,7 +8936,60 @@ function mealGapHTML(missing){
   const av=algList().map(k=>(ALLERGENS.find(a=>a[0]===k)||[,k])[1]).join(', ');
   return `<div class="note warn"><b>No safe ${_ve(missing.map(m=>MEAL_LABEL[m]||m).join(' or '))} in our library.</b> Nothing in the recipe list works with ${_ve(STATE.nutrition.diet||'your diet')}${av?' plus '+_ve(av):''}. Build that meal yourself around your protein target — do <b>not</b> just skip it, the rest of the plan does not cover its calories.</div>`;
 }
+/* ---- Today's plan is one of the seven worked days ------------------------
+   The recipe generator picked on CALORIES alone and the library topped out
+   below the per-slot target, so it undershot every single day: 1,500-1,620 kcal
+   and 103-139 g protein against 1,970 and 155. It then showed a "multiply
+   every quantity by 1.3x" banner, which is arithmetic at every meal rather
+   than a plan.
+
+   The seven days already solve this — they are scaled to the athlete's live
+   targets, substitute round any allergy or diet, and land within 5 g of the
+   protein target for every combination tested including vegan with soy, tree
+   nut, peanut and gluten all excluded. Rotate them by date so the week has
+   variety, and show what is actually on the plate.
+
+   The recipe bank stays: it is still browsable, and mealGapHTML/dietOk still
+   guard it. It is no longer what the daily plan is built from. */
+function todaysWorkedDay(){
+  const days=scaledDays();
+  if(!days.length)return null;
+  // deterministic on the date, so it does not reshuffle on every render
+  const d=new Date();
+  const key=Math.floor(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())/86400000);
+  return {idx:((key%days.length)+days.length)%days.length,day:days[((key%days.length)+days.length)%days.length]};
+}
 function mealPlanHTML(){
+  const picked=todaysWorkedDay();
+  if(picked&&picked.day){
+    const d=picked.day,T=refTargets();
+    const gapP=T.p-d.p,gapK=T.kcal-d.kcal;
+    let h=`<div class="section-label" id="mealplan">Today's plan · <span class="tiny muted">${_ve(dietLabel())} · day ${picked.idx+1} of ${REF_DAYS.length}</span></div><div class="card pad" style="padding-bottom:8px">`;
+    h+=`<div class="row" style="justify-content:space-between;margin-bottom:6px">
+      <div><b>${d.kcal} kcal</b> <span class="tiny muted">of ${T.kcal}</span> · <b>${d.p}g protein</b> <span class="tiny muted">of ${T.p}</span></div>
+      <div class="btnrow" style="flex:0 0 auto;gap:6px"><button class="chip" onclick="openGrocery()">🛒 List</button></div></div>`;
+    if(Math.abs(gapP)>12||Math.abs(gapK)>200){
+      h+=`<div class="note warn" style="margin:4px 0 8px">This day lands ${gapP>0?gapP+'g under':(-gapP)+'g over'} on protein and ${gapK>0?gapK+' kcal under':(-gapK)+' kcal over'}. ${gapP>12?'Add a protein anchor — see the Reference tab.':'Trim the starch.'}</div>`;
+    }
+    d.meals.forEach((m,mi)=>{
+      h+=`<div style="border-top:1px solid var(--line);padding:10px 0">
+        <div class="kv" style="padding:0 0 4px">
+          <span class="tiny muted" style="letter-spacing:.06em;text-transform:uppercase;font-weight:800">${_ve(m.slot)}</span>
+          <span class="tiny"><b style="color:var(--fire-l)">${m.p}g</b><span class="muted"> · ${m.kcal} kcal</span></span></div>`;
+      m.items.forEach(x=>{
+        h+=`<div class="kv" style="padding:2px 0;font-size:13px">
+          <span style="min-width:0">${_ve(x.name)} <span class="muted">${_ve(x.label)}</span></span>
+          <span class="tiny" style="flex:0 0 auto;white-space:nowrap"><b>${x.p}g</b><span class="muted"> · ${x.kcal}</span></span></div>`;
+      });
+      h+=`<button class="btn sm ghost" style="width:100%;margin-top:6px" onclick="logRefMeal(${picked.idx},${mi})">Log this meal · ${m.p}g · ${m.kcal} kcal</button></div>`;
+    });
+    h+=`<div class="tiny muted" style="margin-top:8px">Weighed to your targets, and filtered for your diet — no multiplying required. The full seven days are on <b>Reference</b>.</div>`;
+    h+=`</div>`;
+    return h;
+  }
+  return _recipePlanHTML();
+}
+function _recipePlanHTML(){
   /* currentMealPlan() generates and save()s a randomly-chosen plan. Called from
      an HTML builder, a render could persist a different plan than the one it
      drew. renderFuel() primes it before assembling any markup. */
@@ -8915,13 +9055,16 @@ function renderRef(){
      outcome, because it teaches trust the tab has not earned. */
   const _alg=(STATE.nutrition&&Array.isArray(STATE.nutrition.allergens))?STATE.nutrition.allergens:[];
   const _diet=(STATE.nutrition&&STATE.nutrition.diet)||'omnivore';
+  const _hidden=FOODS.filter(f=>!foodOk(f)).length;
   if(_alg.length||_diet!=='omnivore'){
-    h+=`<div class="note warn"><b>This tab is not filtered.</b> It is the full food list, so it does not know about your ${_alg.length?'declared '+_alg.map(a=>_ve(a)).join(', ')+(_diet!=='omnivore'?' or your '+_ve(_diet)+' diet':''):_ve(_diet)+' diet'}. The meal plan in <b>Fuel</b> is filtered; read this one yourself.</div>`;
+    h+=`<div class="note info"><b>Filtered for you.</b> ${_hidden} food${_hidden===1?'':'s'} hidden — your ${_alg.length?_alg.map(a=>_ve(a)).join(', ')+(_diet!=='omnivore'?' and '+_ve(_diet):''):_ve(_diet)} ${_alg.length?'':'diet'}. Change it in <b>Fuel</b>.</div>`;
   }
   h+=`<div class="section-label">Food list · <span class="tiny muted">tap a food to pick an amount</span></div>`;
   h+=`<div class="daypick" id="ref-cats" style="flex-wrap:wrap;margin:0 2px 10px">${FOOD_CATS.map(([k,l])=>
     `<button class="${REF_CAT===k?'on':''}" onclick="setRefCat('${k}')">${l}</button>`).join('')}</div>`;
-  const rows=FOODS.map((f,i)=>[f,i]).filter(([f])=>REF_CAT==='all'||f[4]===REF_CAT);
+  /* Filtered, not annotated. This tab used to show the whole list and say
+     nothing, and silence on a food list reads as "checked and safe". */
+  const rows=FOODS.map((f,i)=>[f,i]).filter(([f])=>foodOk(f)&&(REF_CAT==='all'||f[4]===REF_CAT));
   h+=`<div class="card" style="padding:0 12px">
     <div class="kv" style="border:none;padding:9px 2px 5px"><span class="tiny muted" style="letter-spacing:.08em;text-transform:uppercase;font-weight:800">Food · listed amount</span>
       <span class="tiny muted" style="letter-spacing:.08em;text-transform:uppercase;font-weight:800">Protein · kcal</span></div>`;
@@ -10219,6 +10362,29 @@ function validateData(){
     const dbl=foodAt(f,f[6]*2);
     if(Math.abs(dbl.p-f[1]*2)>1||Math.abs(dbl.kcal-f[2]*2)>1)errs.push(tag+': does not scale linearly');
   });
+  const algKeys2=ALLERGENS.map(a=>a[0]);
+  FOODS.forEach(f=>{
+    const a=FOOD_ALG[f[0]];
+    if(!Array.isArray(a))errs.push('FOOD_ALG: "'+f[0]+'" is not listed — an untagged food is served to everyone');
+    else a.forEach(k=>{if(!algKeys2.includes(k))errs.push('FOOD_ALG."'+f[0]+'": unknown allergen "'+k+'"');});
+    if(!CAT_DIETS[f[4]])errs.push('CAT_DIETS: no diets for category "'+f[4]+'"');
+  });
+  Object.keys(FOOD_ALG).forEach(n=>{if(FOOD_BY_NAME[n]===undefined)errs.push('FOOD_ALG: "'+n+'" is not a food');});
+  /* Cross-check the tags against the names, the same way the recipe bank is
+     checked — a fish tagged as a fish is not enough if it is actually a mollusc. */
+  FOODS.forEach(f=>{
+    const a=FOOD_ALG[f[0]]||[];const n=f[0].toLowerCase();
+    if(/prawn|crab|scallop|mussel|squid|calamari|lobster|oyster/.test(n)&&!a.includes('shellfish'))
+      errs.push('FOOD_ALG."'+f[0]+'": shellfish, not tagged');
+    if(/yogurt|cheese|milk|skyr|whey|cheddar/.test(n)&&!a.includes('dairy'))
+      errs.push('FOOD_ALG."'+f[0]+'": dairy, not tagged');
+    if(/egg/.test(n)&&!a.includes('egg'))errs.push('FOOD_ALG."'+f[0]+'": egg, not tagged');
+    if(/peanut/.test(n)&&!a.includes('peanut'))errs.push('FOOD_ALG."'+f[0]+'": peanut, not tagged');
+    if(/almond|cashew|walnut|pecan|hazelnut/.test(n)&&!a.includes('treenut'))
+      errs.push('FOOD_ALG."'+f[0]+'": tree nut, not tagged');
+    if(/tofu|tempeh|soy|edamame/.test(n)&&!a.includes('soy'))
+      errs.push('FOOD_ALG."'+f[0]+'": soy, not tagged');
+  });
   REF_DAYS.forEach((d,i)=>{
     const tag='REF_DAYS['+i+'] '+d.name;
     d.meals.forEach(m=>m.items.forEach(([n])=>{
@@ -10240,9 +10406,15 @@ function validateData(){
     shopNames[it.name]=1;
     if(!(it.raw>0))errs.push('shopList: "'+it.name+'" has no quantity');
   }));
-  REF_DAYS.forEach(d=>d.meals.forEach(m=>m.items.forEach(([n])=>{
-    if(!shopNames[n])errs.push('shopList: the days use "'+n+'" but the shop never buys it');
-  })));
+  /* Compare the SCALED days against the shop, not the raw REF_DAYS. The days
+     now substitute round the athlete's diet and allergies, so a raw name is
+     deliberately absent from the shop whenever it was swapped out — checking
+     the pre-substitution names made this fire for every athlete who is not an
+     unrestricted omnivore. The invariant that matters is that everything the
+     athlete is actually told to eat is on the list. */
+  try{scaledDays().forEach(d=>d.meals.forEach(m=>m.items.forEach(x=>{
+    if(!shopNames[x.name])errs.push('shopList: the days serve "'+x.name+'" but the shop never buys it');
+  })));}catch(e){errs.push('shopList: could not be built — '+e);}
   if(errs.length)console.error('[coreforge] data validation: '+errs.length+' problem(s)\n - '+errs.join('\n - '));
   return errs;
 }

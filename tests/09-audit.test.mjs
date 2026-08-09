@@ -887,6 +887,86 @@ export default async function run() {
   t.ok('+15s still adds time', flow.addRestWorks, flow);
   t.ok('and pausing does not let the rest expire', flow.pauseHoldsRest, flow);
 
+  // ---- the food table knows what is in it ----------------------------------
+  const food = await page.evaluate(() => {
+    const o = {}, N = STATE.nutrition;
+    const realD = N.diet, realA = N.allergens;
+    /* Every food must be LISTED, including the ones with nothing to declare.
+       An absent entry is the failure that let two recipes ship coconut to a
+       tree-nut allergy with alg:[] — indistinguishable from a real all-clear. */
+    o.untagged = FOODS.filter(f => !Array.isArray(FOOD_ALG[f[0]])).map(f => f[0]);
+    o.orphanTags = Object.keys(FOOD_ALG).filter(n => FOOD_BY_NAME[n] === undefined);
+    // molluscs and crustaceans are shellfish, which is a different allergy to fish
+    o.shellfishRight = ['Prawns', 'Crab meat', 'Mussels', 'Scallops', 'Squid / calamari']
+      .every(n => (FOOD_ALG[n] || []).includes('shellfish') && !(FOOD_ALG[n] || []).includes('fish'));
+    o.finfishRight = ['Cod', 'Salmon fillet', 'Mackerel'].every(n => (FOOD_ALG[n] || []).includes('fish'));
+    o.porkNotHalal = !foodDiets(FOODS[FOOD_BY_NAME['Pork loin']]).includes('halal');
+    o.beefIsHalal = foodDiets(FOODS[FOOD_BY_NAME['Sirloin steak']]).includes('halal');
+    // an unlisted food fails CLOSED
+    o.unlistedHidden = !foodOk(['Mystery meat', 40, 200, '100 g', 'meat', 5, 100, 'g']);
+    // no combination leaks, and the days still hit the target after substitution
+    const combos = [['omnivore', []], ['vegan', []], ['vegetarian', ['egg']],
+      ['pescatarian', ['dairy', 'soy', 'shellfish']], ['omnivore', ['treenut', 'peanut']],
+      ['vegan', ['soy', 'treenut', 'peanut', 'gluten']]];
+    o.leaks = []; o.unsafeDays = []; o.worstGap = 0;
+    combos.forEach(([diet, alg]) => {
+      N.diet = diet; N.allergens = alg;
+      FOODS.filter(foodOk).forEach(f => {
+        if ((FOOD_ALG[f[0]] || []).some(a => alg.includes(a))) o.leaks.push(diet + '/' + f[0]);
+        if (!foodDiets(f).includes(diet)) o.leaks.push(diet + '/diet/' + f[0]);
+      });
+      const days = scaledDays(), T = refTargets();
+      days.forEach(d => {
+        d.meals.forEach(m => m.items.forEach(x => {
+          const f = FOODS[FOOD_BY_NAME[x.name]];
+          if (f && !foodOk(f)) o.unsafeDays.push(diet + '/' + x.name);
+        }));
+        o.worstGap = Math.max(o.worstGap, Math.abs(d.p - T.p));
+      });
+    });
+    N.diet = realD; N.allergens = realA;
+    return o;
+  });
+  t.ok('every food is tagged, including the clean ones', food.untagged.length === 0, food.untagged);
+  t.ok('no tag refers to a food that does not exist', food.orphanTags.length === 0, food.orphanTags);
+  t.ok('molluscs and crustaceans are shellfish, not fish', food.shellfishRight, food);
+  t.ok('and finfish are fish', food.finfishRight, food);
+  t.ok('pork is not halal', food.porkNotHalal, food);
+  t.ok('but beef is', food.beefIsHalal, food);
+  t.ok('an unlisted food is hidden, not served', food.unlistedHidden, food);
+  t.ok('no diet or allergen combination leaks a food', food.leaks.length === 0, food.leaks.slice(0, 6));
+  t.ok('and the seven days never serve one either', food.unsafeDays.length === 0, food.unsafeDays.slice(0, 6));
+  t.ok('every day still lands on the protein target after substitution',
+    food.worstGap <= 12, { worstGap: food.worstGap });
+
+  // ---- today's plan is a worked day, not a random draw ---------------------
+  const plan = await page.evaluate(() => {
+    const o = {};
+    go('fuel');
+    const v = document.querySelector('#v-fuel').innerHTML;
+    const T = refTargets(), d = todaysWorkedDay().day;
+    o.usesWorkedDay = /Today's plan/.test(v) && new RegExp('day \\d+ of ' + REF_DAYS.length).test(v);
+    /* The generator picked on CALORIES alone against a library that topped out
+       below the per-slot target, so it undershot every day: 1,500-1,620 kcal
+       and 103-139 g protein against 1,970 and 155, then told the athlete to
+       multiply every quantity by 1.3x. */
+    o.hitsCalories = Math.abs(d.kcal - T.kcal) < T.kcal * 0.12;
+    o.hitsProtein = Math.abs(d.p - T.p) <= 12;
+    o.showsBothTargets = v.includes('of ' + T.kcal) && v.includes('of ' + T.p);
+    o.noScalingBanner = !/Scale these portions/.test(v) && !/multiply each quantity/i.test(v);
+    o.loggable = /logRefMeal/.test(v);
+    // deterministic within a day, so it does not reshuffle on every render
+    o.stable = todaysWorkedDay().idx === todaysWorkedDay().idx;
+    return o;
+  });
+  t.ok('the plan is one of the seven worked days', plan.usesWorkedDay, plan);
+  t.ok('it hits the calorie target', plan.hitsCalories, plan);
+  t.ok('and the protein target', plan.hitsProtein, plan);
+  t.ok('showing both, so neither is quietly missing', plan.showsBothTargets, plan);
+  t.ok('with no "multiply everything by 1.3" instruction', plan.noScalingBanner, plan);
+  t.ok('and every meal is loggable in one tap', plan.loggable, plan);
+  t.ok('the day does not reshuffle on re-render', plan.stable, plan);
+
   await browser.close();
 
   // ---- the readiness deload, in the timezone it was broken in --------------
