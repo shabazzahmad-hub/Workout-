@@ -116,7 +116,19 @@ Develop on `claude/abs-core-workout-app-3rr2ob`.
 4. `git fetch origin main && git checkout -B <branch> origin/main`, commit,
    push with `--force-with-lease`.
 5. Draft PR → ready → confirm `mergeable_state: "clean"` → squash merge.
-6. Sync `main`, then confirm both Pages workflows report `success`.
+6. Sync `main`, then confirm the **`Deploy to GitHub Pages`** run for the merge
+   commit has BOTH jobs green — `test / test` and `deploy`. The `deploy` job is
+   `needs: test`, so a red suite on `main` shows up as *deploy skipped*, not as
+   a failure: the version ships nowhere and nothing says so. Check the jobs, not
+   just the run.
+
+   There is only one workflow to check now. `pages build and deployment` was the
+   branch builder and stopped running when Pages Source moved to GitHub Actions.
+
+**`github.io` is not reachable from this sandbox** — the agent proxy returns
+`CONNECT tunnel failed, 403`, so a `curl` poll against the live site never
+succeeds and an `until` loop on one spins forever. Confirm a deploy through the
+Actions API instead.
 
 Never put a model identifier in a commit, PR, code comment, or anything else
 pushed to the repository.
