@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v192';
+const CACHE = 'coreforge-v193';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './archivo.woff2', './icon-192-v2.png', './icon-512-v2.png', './hero.jpg', './coach-sarge.jpg',
   './ex-kneeplank.jpg','./ex-plank.jpg','./ex-longplank.jpg','./ex-planktap.jpg',
   './ex-tuckhollow.jpg','./ex-hollow.jpg','./ex-hollowrock.jpg','./ex-reverseplank.jpg',
@@ -72,18 +72,32 @@ self.addEventListener('fetch', e => {
 
   const isPage = req.mode === 'navigate' || url.pathname.endsWith('/index.html') || url.pathname.endsWith('/');
   if (isPage) {
+    /* Network-first, but RACED against the cache on a 2.5 s timer.
+       Plain network-first only reaches the cache once the fetch REJECTS, so a
+       connection that associates and then hangs — gym wifi that does not route,
+       a dead hotspot, an LTE handover in a stairwell — left the athlete on the
+       splash for as long as the TCP timeout took. Measured: airplane mode was
+       usable in 115 ms, a hanging server took 26 seconds. Airplane mode was the
+       better experience, which is the wrong way round.
+
+       The fetch is still allowed to finish and refresh the cache either way, so
+       a slow network costs one stale load, not a stale install. */
     e.respondWith(
-      fetch(req)
-        .then(res => {
-          // Never overwrite a good offline page with a 500/404 — doing so bricked
-          // the app offline and stayed broken after the origin recovered.
-          if (res && res.ok) {
-            const copy = res.clone();
-            caches.open(CACHE).then(c => c.put('./index.html', copy));
-          }
-          return res;
-        })
-        .catch(() => caches.match('./index.html'))
+      Promise.race([
+        fetch(req)
+          .then(res => {
+            // Never overwrite a good offline page with a 500/404 — doing so bricked
+            // the app offline and stayed broken after the origin recovered.
+            if (res && res.ok) {
+              const copy = res.clone();
+              caches.open(CACHE).then(c => c.put('./index.html', copy));
+            }
+            return res;
+          }),
+        new Promise(resolve => setTimeout(() => {
+          caches.match('./index.html').then(hit => { if (hit) resolve(hit); });
+        }, 2500)),
+      ]).catch(() => caches.match('./index.html'))
     );
     return;
   }

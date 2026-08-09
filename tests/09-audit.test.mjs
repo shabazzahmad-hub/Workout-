@@ -713,6 +713,180 @@ export default async function run() {
   t.ok('a tight room still gets real pressing work', space.stillPresses > 20, space);
   t.ok('the setting is off by default', space.offByDefault, space);
 
+  // ---- what you actually did, not what you were asked -----------------------
+  const actual = await page.evaluate(() => {
+    const o = {};
+    STATE.progressPtr = 0; STATE.logs = {}; STATE.prs = {}; STATE.adapt = 1;
+    const sess = buildSession(0), m = sess.main[0];
+    o.target = m.target;
+    for (let i = 0; i < m.sets; i++) toggleSet(m.exId, i);
+    o.asksOnLastSet = !!document.querySelector('#ac-n');
+    o.prefilledWithTarget = +document.querySelector('#ac-n').value === m.target;
+    document.querySelector('#ac-n').value = Math.round(m.target * 0.7);
+    saveActual(m.exId);
+    const st = STATE.logs[0].ex[m.exId];
+    o.stored = st.actual;
+    /* STATE.prs used to store m.target — the PRESCRIBED number — so the
+       Personal Records card and the Strength Standards graded the athlete on
+       his own prescriptions, and a gold PR badge appeared for every exercise
+       completed at its highest-ever prescription, achieved or not. */
+    o.prIsWhatWasDone = STATE.prs[m.exId] === st.actual && STATE.prs[m.exId] !== m.target;
+    o.ratio = +actualRatio().toFixed(2);
+    /* And the only thing that could push back on next week's load was one
+       three-way feel chip: grind out 70% and tap "just right", and adapt still
+       climbed. */
+    const before = STATE.adapt;
+    commitSession('easy');
+    o.easyAfterShortfallStillEases = STATE.adapt < before;
+    // hitting the target and calling it easy still adds load
+    STATE.progressPtr = 1; STATE.adapt = 1;
+    const s2 = buildSession(1), m2 = s2.main[0];
+    for (let i = 0; i < m2.sets; i++) toggleSet(m2.exId, i);
+    if (document.querySelector('#ac-n')) { document.querySelector('#ac-n').value = m2.target; saveActual(m2.exId); }
+    const b2 = STATE.adapt; commitSession('easy');
+    o.easyOnTargetStillAdds = STATE.adapt > b2;
+    // skipping the question must not corrupt anything
+    STATE.progressPtr = 2;
+    const s3 = buildSession(2), m3 = s3.main[0];
+    for (let i = 0; i < m3.sets; i++) toggleSet(m3.exId, i);
+    saveActual(m3.exId, null);
+    /* closeSheet() clears the markup on a 400 ms timer, so checking for the
+       node synchronously tests the animation, not the behaviour. Check the
+       state it was supposed to leave behind. */
+    o.skipSafe = STATE.logs[2].ex[m3.exId].actualSkipped === 1
+      && isFinite(STATE.prs[m3.exId] || 0) && (STATE.prs[m3.exId] || 0) > 0;
+    // a corrupt actual from an import is repaired
+    STATE.logs[0].ex[Object.keys(STATE.logs[0].ex)[0]].actual = 'lots';
+    normalizeState();
+    o.corruptRepaired = Object.values(STATE.logs[0].ex).every(x => x.actual === undefined || typeof x.actual === 'number');
+    STATE.logs = {}; STATE.prs = {}; STATE.progressPtr = 0; STATE.adapt = 1; save();
+    return o;
+  });
+  t.ok('finishing an exercise asks what you actually got', actual.asksOnLastSet, actual);
+  t.ok('pre-filled with the target, so accepting is one tap', actual.prefilledWithTarget, actual);
+  t.ok('a personal record is what you did, not what you were asked', actual.prIsWhatWasDone, actual);
+  t.ok('falling short eases the load even if you call it easy', actual.easyAfterShortfallStillEases, actual);
+  t.ok('but hitting the target and calling it easy still adds load', actual.easyOnTargetStillAdds, actual);
+  t.ok('skipping the question is safe', actual.skipSafe, actual);
+  t.ok('a corrupt figure from an import is repaired', actual.corruptRepaired, actual);
+
+  // ---- sticking with it ------------------------------------------------------
+  const stick = await page.evaluate(() => {
+    const o = {}, n = nut();
+    // the weight chart shows a trend, not the noise
+    const realM = JSON.stringify(STATE.measurements);
+    const base = new Date(); base.setDate(base.getDate() - 60);
+    STATE.measurements = [];
+    for (let i = 0; i < 20; i++) { const d = new Date(base); d.setDate(d.getDate() + i * 3);
+      STATE.measurements.push({ date: localISO(d), weight: 88 - i * 0.15 + (i % 2 ? 1.1 : -1.1), waist: 96 }); }
+    const html = weightChartHTML();
+    o.saysAveraged = /7-day average/.test(html);
+    o.showsSpotToo = /actual reading/.test(html);
+    /* Assert the SMOOTHING, not the label. The first version of this checked
+       only for the words "7-day average" in the markup — a static string that
+       stayed true when the averaging was removed entirely. */
+    const spiky = [80, 90, 80, 90, 80, 90, 80, 90];
+    const sm = trailingMean(spiky, 7);
+    /* Compare the SETTLED part — once the window is full. The early points are
+       averages of fewer readings by definition (sm[0] is just raw[0]), so
+       including them measures the warm-up of the filter, not the filter. */
+    const settled = sm.slice(6);
+    o.flattensASpike = (Math.max(...settled) - Math.min(...settled))
+      < (Math.max(...spiky) - Math.min(...spiky)) / 4;
+    o.keepsTheLevel = Math.abs(sm[sm.length - 1] - 85) < 1.5;
+    o.firstPointUnchanged = sm[0] === spiky[0];
+    /* And the CHART must use it. Testing trailingMean() alone passed happily
+       when weightChartHTML() stopped calling it — the function still existed
+       and still worked. The "Now" figure is rendered from the plotted series,
+       so it distinguishes the two. */
+    const rawVals = STATE.measurements.map(mm => r1(weightShow(mm.weight)));
+    const smVals = trailingMean(rawVals, 7);
+    const rawLast = rawVals[rawVals.length - 1], smLast = smVals[smVals.length - 1];
+    o.seriesDiffer = rawLast !== smLast;           // guard: otherwise the check is vacuous
+    o.chartPlotsSmoothed = html.includes('Now ' + smLast) && !html.includes('Now ' + rawLast);
+    STATE.measurements = JSON.parse(realM);
+    /* One forgotten day used to end a 60-day streak permanently: grace was a
+       single token for the whole backward walk, not an allowance per week. */
+    const realD = JSON.stringify(n.days);
+    n.days = {};
+    for (let i = 0; i < 40; i++) { const d = new Date(); d.setDate(d.getDate() - i);
+      const bad = (i === 9 || i === 25);
+      n.days[localISO(d)] = { water: 0, habits: bad ? {} : { protein: 1, water: 1, sleep: 1, steps: 1 } }; }
+    o.streakSurvivesTwoBadDays = nutritionStreak() > 25;
+    n.days = JSON.parse(realD);
+    // drifting: three opens with no training offers the short version
+    const realO = STATE._opens; STATE._opens = {};
+    for (let i = 0; i < 3; i++) { const d = new Date(); d.setDate(d.getDate() - i); STATE._opens[localISO(d)] = 1; }
+    STATE.logs = {}; STATE.quickLog = {};
+    o.driftDetected = driftingDays() >= 3 && /5-minute/.test(driftBanner());
+    STATE.quickLog[todayISO()] = 1;
+    o.trainingClearsIt = driftingDays() === 0 && driftBanner() === '';
+    STATE.quickLog = {}; STATE._opens = realO || {};
+    // and the app can say you are done
+    const t2 = nutToday(); t2.habits = { protein: 1, water: 1 };
+    STATE.quickLog[todayISO()] = 1;
+    o.saysDone = minimumDayMet() && /that is today done/i.test(doneForTodayHTML());
+    t2.habits = {}; STATE.quickLog = {};
+    o.quietOtherwise = !minimumDayMet() && doneForTodayHTML() === '';
+    save();
+    return o;
+  });
+  t.ok('the weight chart plots a 7-day average', stick.saysAveraged, stick);
+  t.ok('and the averaging actually flattens a spike', stick.flattensASpike, stick);
+  t.ok('without shifting the level it is averaging', stick.keepsTheLevel, stick);
+  t.ok('the first reading is itself, not an average of nothing', stick.firstPointUnchanged, stick);
+  t.ok('the seeded data is noisy enough for this check to mean something', stick.seriesDiffer, stick);
+  t.ok('and the chart plots the smoothed series, not the raw one', stick.chartPlotsSmoothed, stick);
+  t.ok('and still shows today\'s real number', stick.showsSpotToo, stick);
+  t.ok('two bad days in six weeks do not wipe the streak', stick.streakSurvivesTwoBadDays, stick);
+  t.ok('three opens without training offers the 5-minute version', stick.driftDetected, stick);
+  t.ok('and training clears it', stick.trainingClearsIt, stick);
+  t.ok('the app says when the day is done', stick.saysDone, stick);
+  t.ok('and stays quiet when it is not', stick.quietOtherwise, stick);
+
+  // ---- warm-ups honour the injury flags, and rests survive a sleeping phone --
+  const flow = await page.evaluate(() => {
+    const o = {}, real = STATE.profile.limitations;
+    STATE.profile.limitations = ['lowback'];
+    /* Flow items carry a NAME, not an exId — checking `it.exId` matched nothing
+       and passed whether or not the filter did anything at all. */
+    const names = f => f.map(it => it.n);
+    o.warmNames = names(safeFlow(WARMUP_FLOW));
+    o.coolNames = names(safeFlow(COOLDOWN_FLOW));
+    o.warmRisky = o.warmNames.filter(n2 => (FLOW_RISK[n2] || []).includes('lowback')).length;
+    o.coolRisky = o.coolNames.filter(n2 => (FLOW_RISK[n2] || []).includes('lowback')).length;
+    o.actuallyRemovedSome = o.warmNames.length < WARMUP_FLOW.length && o.coolNames.length < COOLDOWN_FLOW.length;
+    o.keptTheSafeOnes = o.coolNames.includes("Child's Pose") && o.coolNames.includes('Deep Breathing');
+    STATE.profile.limitations = [];
+    o.unfilteredUntouched = safeFlow(WARMUP_FLOW).length === WARMUP_FLOW.length;
+    STATE.profile.limitations = real;
+    // a rest timer must not lose time while the phone is asleep
+    openPlayer(); plEnterRest(90, 'set');
+    o.hasDeadline = !!PLAYER.deadline;
+    PLAYER.deadline = Date.now() + 30000;   // as if 60s passed while frozen
+    plTickRest();
+    o.catchesUp = PLAYER.remain <= 30;
+    // +15s still works
+    const b = PLAYER.remain; playerAddRest(); plTickRest();
+    o.addRestWorks = PLAYER.remain > b;
+    // and pausing does not let it expire
+    plEnterRest(60, 'set');
+    playerToggle(); PLAYER.pauseAt = Date.now() - 40000; playerToggle();
+    plTickRest();
+    o.pauseHoldsRest = PLAYER.remain > 15;
+    playerQuit();
+    return o;
+  });
+  t.eq('a flagged low back gets no risky warm-up move', flow.warmRisky, 0);
+  t.ok('and something was actually removed', flow.actuallyRemovedSome, flow);
+  t.ok('while the safe stretches stay', flow.keptTheSafeOnes, flow);
+  t.eq('nor a risky cool-down move', flow.coolRisky, 0);
+  t.ok('with nothing flagged the flow is untouched', flow.unfilteredUntouched, flow);
+  t.ok('the rest timer is anchored to the clock', flow.hasDeadline, flow);
+  t.ok('so it catches up after the phone sleeps', flow.catchesUp, flow);
+  t.ok('+15s still adds time', flow.addRestWorks, flow);
+  t.ok('and pausing does not let the rest expire', flow.pauseHoldsRest, flow);
+
   await browser.close();
 
   // ---- the readiness deload, in the timezone it was broken in --------------
