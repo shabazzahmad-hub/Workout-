@@ -1469,7 +1469,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='200';
+const APP_VERSION='201';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -3713,7 +3713,7 @@ function plEnterReady(first){
 function plTickReady(){
   if(!PLAYER)return;
   PLAYER.ready--;
-  if(PLAYER.ready>0){beep(1000,.15,0.7);if(PLAYER.ready<=3)coachSay(String(PLAYER.ready));plS('#plNum',PLAYER.ready);return;}
+  if(PLAYER.ready>0){beep(1000,.18,0.9);if(PLAYER.ready<=3)coachSay(String(PLAYER.ready));plS('#plNum',PLAYER.ready);return;}
   beepGo();haptic(30);coachSay('Go!');plEnterWork();
 }
 // Rotate to the next spoken/shown form cue for the current exercise.
@@ -3871,7 +3871,7 @@ function plTickRest(){
   const byTick=PLAYER.remain-1;
   PLAYER.remain=PLAYER.deadline?Math.min(byTick,Math.ceil((PLAYER.deadline-Date.now())/1000)):byTick;
   if(PLAYER.remain===3)coachSpeak('Three. Two. One.');
-  if(PLAYER.remain<=3&&PLAYER.remain>0)beep(900,.13,0.7);
+  if(PLAYER.remain<=3&&PLAYER.remain>0){beepDuck(300);beep(920,.17,0.92);}
   if(PLAYER.remain<=0){plClear();whenPointerFree('pl',plRestDone);return;}   // never swap the buttons out from under a finger
   plS('#plNum',fmtTime(PLAYER.remain));plRingSet(PLAYER.remain/PLAYER.total);
 }
@@ -4358,7 +4358,7 @@ function startHiitSpecial(format){
 }
 function ivTickLead(){
   if(!INTV)return;INTV.lead--;
-  if(INTV.lead>0){beep(1000,.15,0.7);if(INTV.lead<=3)coachSay(String(INTV.lead));ivS('#ivNum',INTV.lead);return;}
+  if(INTV.lead>0){beep(1000,.18,0.9);if(INTV.lead<=3)coachSay(String(INTV.lead));ivS('#ivNum',INTV.lead);return;}
   beepGo();haptic(30);coachSay('Go!');ivClear();ivStep(0);
 }
 function ivRenderStep(idx){
@@ -4389,7 +4389,7 @@ function ivStep(idx){
   ivS('#ivNum',fmtTime(INTV.remain));ivS('#ivSub',isWork?'WORK':'REST');ivRingSet(1);
   const pulse=$('#ivPulse');if(pulse){if(isWork&&INTV.running)pulse.classList.add('on');else pulse.classList.remove('on');}
   autoRoll();
-  if(isWork){beep(1320,.12,0.85);if(!motivate('during'))coachSpeak('Work! '+ex.name);}
+  if(isWork){beepDuck(300);beep(1320,.16,0.95);if(!motivate('during'))coachSpeak('Work! '+ex.name);}
   else coachSpeak('Rest.');
   if(INTV.running)INTV.tid=setInterval(ivTick,1000);
 }
@@ -4399,7 +4399,7 @@ function ivTick(){
   if(INTV.phase==='work')INTV.workElapsed++;
   if(INTV.remain===3)coachSpeak('Three. Two. One.');
   if(INTV.phase==='work')countdownCue(INTV.remain,INTV.total);
-  else if(INTV.remain<=3&&INTV.remain>0)beep(900,.13,0.7);
+  else if(INTV.remain<=3&&INTV.remain>0){beepDuck(300);beep(920,.17,0.92);}
   if(INTV.remain<=0){beepGo();haptic(30);ivClear();INTV.i++;
     if(INTV.i>=INTV.seq.length){whenPointerFree('iv',ivDone);return;}
     whenPointerFree('iv',()=>{if(INTV)ivStep();});return;}
@@ -5731,9 +5731,37 @@ let _autoCloseT=null;
 function autoClose(ms,fn){clearTimeout(_autoCloseT);_autoCloseT=setTimeout(()=>{_autoCloseT=null;fn();},ms);}
 function cancelAutoClose(){if(_autoCloseT){clearTimeout(_autoCloseT);_autoCloseT=null;}}
 function stopTimer(){cancelAutoClose();if(timer){clearInterval(timer.iv);timer=null;}if(typeof _bt!=='undefined'&&_bt){clearInterval(_bt.iv);_bt=null;}}
-function beep(freq=880,dur=0.12,vol=0.6,type='square'){if(!STATE.settings.sound)return;try{const ac=beep._ac||(beep._ac=new (window.AudioContext||window.webkitAudioContext)());if(ac.state==='suspended')ac.resume();const o=ac.createOscillator(),g=ac.createGain();o.type=type;o.frequency.value=freq;o.connect(g);g.connect(ac.destination);g.gain.setValueAtTime(Math.min(vol,0.95),ac.currentTime);g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+dur);o.start();o.stop(ac.currentTime+dur);}catch(e){}}
+/* How loud the cues are, as a multiplier over every beep in the app. A single
+   number rather than forty edited call sites, so the relative balance between
+   a soft tick and the GO tone survives someone turning the whole thing up.
+   Default 1.25: the old fixed levels were tuned in a quiet room and lost
+   against a beat, a fan and breathing hard. Cap stays at 1.0 — a single
+   oscillator driven past unity into destination clips, which sounds broken
+   rather than loud. */
+function cueVolPref(){
+  const v=STATE.settings&&STATE.settings.cueVol;
+  return (typeof v==='number'&&isFinite(v))?clamp(v,0.2,2):1.25;
+}
+function setCueVol(v){
+  STATE.settings.cueVol=clamp(parseFloat(v)||1.25,0.2,2);
+  save();
+}
+function beep(freq=880,dur=0.12,vol=0.6,type='square'){if(!STATE.settings.sound)return;try{const ac=beep._ac||(beep._ac=new (window.AudioContext||window.webkitAudioContext)());if(ac.state==='suspended')ac.resume();const o=ac.createOscillator(),g=ac.createGain();o.type=type;o.frequency.value=freq;o.connect(g);g.connect(ac.destination);g.gain.setValueAtTime(Math.min(vol*cueVolPref(),1.0),ac.currentTime);g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+dur);o.start();o.stop(ac.currentTime+dur);}catch(e){}}
+/* Pull the music down under a cue and let it back up, the same way coach
+   speech already does. This is the part that actually makes a beep audible:
+   turning a 0.13s blip up fights the beat, ducking the beat removes it. Used
+   only for the cues that MUST land — the ten-second marker, the last three
+   seconds and the GO. Doing it for every one-second tick would pump the music
+   audibly and be worse than the problem. */
+function beepDuck(ms){
+  try{
+    if(!BEAT||!BEAT.on)return;
+    beatDuck(true);
+    setTimeout(()=>{try{beatDuck(false);}catch(e){}},Math.max(120,ms||260));
+  }catch(e){}
+}
 // loud double-tone GO cue (cuts through noise)
-function beepGo(){beep(1320,.30,0.9,'square');setTimeout(()=>beep(1760,.28,0.9,'square'),120);}
+function beepGo(){beepDuck(560);beep(1320,.32,0.95,'square');setTimeout(()=>beep(1760,.30,0.95,'square'),120);}
 
 /* ---- The last ten seconds of a timed effort -------------------------------
    Every timed surface used to be silent until three seconds left, then give
@@ -5761,13 +5789,14 @@ function countdownCue(remain,total){
   try{
     if(!(remain>0))return;
     if(remain<=3){
-      beep(900,.13,0.7);
-      haptic(12);            // gated by its own setting; covers a silent phone
+      beepDuck(300);
+      beep(920,.17,0.92);
+      haptic(14);            // gated by its own setting; covers a silent phone
       return;
     }
     if(!(total>=15))return;  // short holds keep the plain 3-2-1
-    if(remain===10){beep(520,.11,0.5);setTimeout(()=>beep(880,.13,0.6),110);return;}
-    if(remain<10)beep(620,.06,0.32);
+    if(remain===10){beepDuck(420);beep(520,.14,0.78);setTimeout(()=>beep(880,.17,0.88),110);return;}
+    if(remain<10)beep(620,.09,0.5);
   }catch(e){}
 }
 
@@ -5899,7 +5928,7 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet){
     }
     if(remain===3)coachSpeak('Three. Two. One.');
     // rest keeps the plain 3-2-1 so the two phases stay distinguishable by ear
-    if(isHold)countdownCue(remain,total); else if(remain<=3&&remain>0)beep(900,.13,0.7);
+    if(isHold)countdownCue(remain,total); else if(remain<=3&&remain>0){beepDuck(300);beep(920,.17,0.92);}
     if(remain<=0){
       beepGo();haptic(30);clearInterval(timer.iv);
       if(isHold&&restAfter>0){toast('Hold done! Resting '+restAfter+'s');if(!motivate('done'))coachSpeak('Time. Now rest.');(g=>setTimeout(()=>{if(g===_sheetGen&&$('#scrim').classList.contains('open'))runTimer('rest',restAfter,label+' — rest',0,null,true);},700))(_sheetGen);if(onDone)onDone();return;}
@@ -10450,6 +10479,11 @@ function renderGuide(){
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Saturday progress check-in <span class="tiny muted">· push + brief countdown</span></span><button class="chip ${STATE.settings.weeklyOn!==false?'on':''}" onclick="toggleWeekly()">${STATE.settings.weeklyOn!==false?'On':'Off'}</button></div>
     <button class="btn ghost sm" style="width:100%;margin-top:2px" onclick="testReminderNotif()">🔔 Send a test notification</button>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Voice coach <span class="tiny muted">· deep</span></span><button class="chip ${STATE.settings.voice!==false?'on':''}" onclick="toggleSetting('voice')">${STATE.settings.voice!==false?'On':'Off'}</button></div>
+    <div style="padding:4px 0 2px">
+      <div class="row" style="justify-content:space-between"><span class="tiny muted">Beep &amp; countdown volume</span><span class="tiny muted" id="cvLbl">${Math.round(cueVolPref()*100/1.25)}%</span></div>
+      <input type="range" min="0.2" max="2" step="0.05" value="${cueVolPref()}" oninput="$('#cvLbl').textContent=Math.round(this.value*100/1.25)+'%'" onchange="setCueVol(this.value);beep(920,.17,0.92)" style="width:100%">
+      <div class="tiny muted" style="margin-bottom:4px">Plays a sample as you let go. The beat ducks under the cues that matter, so these stay audible over the music.</div>
+    </div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Workout beat <span class="tiny muted">· hip-hop, auto-ducks for the coach</span></span><button class="chip ${STATE.settings.beat!==false?'on':''}" onclick="toggleSetting('beat')">${STATE.settings.beat!==false?'On':'Off'}</button></div>
     ${STATE.settings.beat!==false?`<div style="padding:4px 0 2px">
       <div class="row" style="justify-content:space-between"><span class="tiny muted">Beat volume</span><span class="tiny muted" id="bvLbl">${Math.round(beatVolPref()*100)}%</span></div>
@@ -11059,6 +11093,12 @@ function normalizeState(){
       if(_n.kcalAdj!=null&&(typeof _n.kcalAdj!=='number'||!isFinite(_n.kcalAdj)))_n.kcalAdj=0;
       if(_n.kcalAdjAt!=null&&typeof _n.kcalAdjAt!=='string')delete _n.kcalAdjAt;
     }
+  }catch(e){}
+  /* cueVol multiplies every beep in the app; a string here would make
+     Math.min(NaN,1.0) NaN and silence the lot. */
+  try{
+    const _s=STATE.settings;
+    if(_s&&_s.cueVol!=null&&(typeof _s.cueVol!=='number'||!isFinite(_s.cueVol)))delete _s.cueVol;
   }catch(e){}
   if(!Array.isArray(STATE.pain))STATE.pain=[];
   STATE.pain=STATE.pain.filter(x=>x&&typeof x==='object'&&typeof x.exId==='string');
