@@ -2,7 +2,7 @@
    flows that write to storage. The render error boundary retries THROUGH
    normalizeState(), so anything it fails to repair is unrecoverable on a real
    phone — the app stays broken across relaunches. */
-import { serve, launch, suite, seedAthlete, ATHLETE } from './lib/harness.mjs';
+import { serve, launch, suite, waitForBoot, seedAthlete, ATHLETE } from './lib/harness.mjs';
 
 const HOSTILE = {
   'nulls everywhere': { onboarded: true, profile: { days: null, gear: null, targets: null, limitations: null, parq: null },
@@ -41,7 +41,8 @@ export default async function run() {
       const cur = JSON.parse(localStorage.getItem('coreforge.v1') || '{}');
       localStorage.setItem('coreforge.v1', JSON.stringify(Object.assign(cur, s)));
     }, save);
-    await page.reload({ waitUntil: 'networkidle' });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForBoot(page);
     const boot = await page.evaluate(() => ({
       boundary: /went wrong drawing/i.test(document.body.innerText),
       navUsable: document.querySelectorAll('[data-tab]').length > 0,
@@ -89,7 +90,8 @@ export default async function run() {
       const cur = JSON.parse(localStorage.getItem('coreforge.v1') || '{}');
       localStorage.setItem('coreforge.v1', JSON.stringify(Object.assign(cur, s)));
     }, HOSTILE['a pre-v177 save']);
-    await page.reload({ waitUntil: 'networkidle' });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForBoot(page);
     const up = await page.evaluate(() => ({
       goalWeight: STATE.profile.goalWeightLb, goalBF: STATE.profile.goalBodyFat,
       shredStart: STATE.profile._shredStart, createdAt: STATE.profile.createdAt,
