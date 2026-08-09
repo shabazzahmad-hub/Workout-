@@ -70,6 +70,19 @@ Live-session scratch (`_undo`, `_plResume`) is listed in `TRANSIENT_KEYS` and
 stripped on export **and** on import — a backup describes the athlete, not a
 half-finished tap, and old backups already carry these fields.
 
+**A default in `DEFAULT_STATE` can permanently satisfy an "has the user
+overridden this?" test, killing the code it guards.** `settings.voicePitch`
+shipped as `0.6` and the override test was `typeof === 'number'` — true for
+every athlete, forever — so the per-persona voice pitches were dead code and
+every coach spoke in the same voice for months. Nothing threw and nothing
+looked wrong in the diff. If a field means "the athlete changed this", its
+default must be **absent**, not a value.
+
+That also means **changing a default fixes nobody who already installed the
+app** — their old value is already saved. A stale default needs a one-time
+migration keyed to the exact value, behind a flag, leaving any other value
+alone as a deliberate choice. See `_toneFix`.
+
 **Escape every user-controlled string that reaches `innerHTML`** with `_ve()`
 — `profile.name`, `baseline.level`, food names, favourite names. `importData()`
 accepts arbitrary JSON, so these are a real injection path, not self-XSS.
@@ -106,6 +119,17 @@ single day, in code that already had a green suite:
 - **An audit check** called `safeFlow()` directly rather than the `runFlow()`
   path that calls it, and indexed `FLOW_RISK` by joint when it is keyed by
   exercise *name* — so it compared against an empty list.
+- **A tap-repaints-the-UI check** slept 200 ms before reading the DOM back, and
+  `loadCoachVoices()` parks a deferred `renderGuide()` 600 ms after
+  `voiceschanged`. That unrelated repaint landed inside the wait and painted the
+  correct state, so the check passed with the re-render deleted from the
+  handler. **A check that a tap repaints must read back synchronously** — any
+  `await` hands the assertion to whatever else is scheduled.
+- **"The validator is clean" proves nothing about a validator rule.** It stays
+  clean whether the rule exists or not. A new rule needs a check that *breaks
+  the data in front of it* and requires the specific complaint, then restores.
+  Mute `console.error` while doing so — `validateData()` logs, and the harness
+  counts a console error as a page failure.
 
 **Mutation-test every new check: seed the defect back, confirm the suite goes
 red, restore.** Nothing else reliably distinguishes "this passes" from "this
@@ -128,9 +152,11 @@ Known traps when writing checks:
   bitten twice: `parqDone()` and `cueVolPref()` both sanitise their own reads,
   so asserting on their OUTPUT passes whether or not `normalizeState()` still
   repairs the field. Assert that the junk is gone from `STATE`. The same shape
-  applies to any value transformed on the way out — check the gain written to
-  the audio graph, not the `vol` argument handed to `beep()`, because the
-  multiplier and the clip guard both live inside it.
+  applies to any value transformed on the way out: check the gain written to
+  the audio graph rather than the `vol` argument handed to `beep()`, and read
+  the `pitch` attribute in the SSML that is actually sent rather than asserting
+  the SSML "builds". Three separate mutations have survived a check that
+  measured the input or the container instead of the payload.
 
 ## The exercise engine
 
@@ -242,6 +268,38 @@ balance gets lost.
 
 Gain into `destination` is capped at **1.0**. A single oscillator driven past
 unity clips, which sounds broken rather than loud.
+
+### Voice tone
+
+`VOICE_TONES` is Deep / Mid / Bright, and it sets a **base the personas move
+around** — not an absolute pitch. Each persona's own `pitch` is kept as a
+character offset from the historical 0.6 baseline, halved, so a drill sergeant
+still reads deeper than a coach while the whole cast shifts together. Setting
+one absolute value for everybody is what the old code effectively did, and it
+made every coach the same person.
+
+Everything clamps to **0.5–1.6**: below about 0.5 a Web Speech voice buzzes
+rather than sounding deep, which is what "robotic" meant. Deeper is not the
+same as better, and past a point it is strictly worse.
+
+The neural path takes the same shift in semitones (`neuralPitchFor`) so
+switching engines does not change what "Deep" means. **A shift that lands on
+neutral must omit the `pitch` attribute** — `pitch="0st"` is invalid SSML and
+Azure rejects the whole request (0x80045003).
+
+**Only the A.I. Trainer may sound synthetic** — that is its character. Every
+other persona is a person, and `validateData()` enforces the floor: local
+`pitch` at or above **0.42**, neural shift no deeper than **−2st**, `robot`
+exempt. A tone slider does not rescue a persona authored at the bottom of the
+range; Strongman shipped at 0.4 / −3st and still read as processed after the
+tone fix landed, because Deep shifts *down* from wherever the persona already
+sat.
+
+**A control that stores a value must repaint.** `setBeatTempo` saved and
+restarted the beat but did not re-render, so the slider, the BPM label and the
+preset chips all kept showing the old number — tapping a preset looked like it
+did nothing at all. The chips also carried no selected state. Anything with
+presets shows which one is on, and re-renders its own surface after storing.
 
 ## The service worker
 

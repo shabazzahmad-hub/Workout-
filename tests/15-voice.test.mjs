@@ -212,6 +212,110 @@ export default async function run() {
     t.ok('the hand slider is still available for anyone who wants it', r.stillHasFineTune, r);
   }
 
+  /* ---- only the A.I. Trainer may sound synthetic ------------------------ */
+  {
+    const r = await page.evaluate(() => {
+      const belowLine = COACHES.filter(c => c.id !== 'robot'
+        && typeof c.pitch === 'number' && c.pitch < 0.42).map(c => [c.id, c.pitch]);
+      const neuralDeep = Object.keys(COACH_NEURAL).filter(k => {
+        if (k === 'robot') return false;
+        const m = /(-?\d+(?:\.\d+)?)\s*st/.exec((COACH_NEURAL[k] || {}).pitch || '');
+        return m && parseFloat(m[1]) < -2;
+      });
+      delete STATE.settings.voicePitch; STATE.settings.voiceTone = 'mid';
+      const strongman = COACHES.find(c => c.id === 'strongman');
+      return {
+        belowLine, neuralDeep,
+        robotExempt: (COACHES.find(c => c.id === 'robot') || {}).pitch < 0.42,
+        strongmanHeard: localPitchFor(strongman),
+        strongmanNeural: (COACH_NEURAL.strongman || {}).pitch,
+        validator: validateData().length,
+      };
+    });
+    /* Asserting "the validator is clean" proves nothing about the rule — it
+       stays clean whether the rule exists or not. Put an offending persona in
+       front of it and require a complaint. */
+    const guard = await page.evaluate(() => {
+      /* validateData() logs its own complaints, and the harness treats a console
+         error as a page failure — so mute it while we are deliberately breaking
+         the data. */
+      const _err = console.error; console.error = () => {};
+      const hit = re => validateData().filter(m => re.test(m));
+      const g = COACHES.find(c => c.id === 'gunny');
+      const localWas = g.pitch, neuralWas = COACH_NEURAL.strongman.pitch;
+      const robot = COACHES.find(c => c.id === 'robot');
+      try {
+        g.pitch = 0.3;
+        const local = hit(/COACHES\.gunny.*robotic/);
+        g.pitch = localWas;
+        COACH_NEURAL.strongman.pitch = '-4st';
+        const neural = hit(/COACH_NEURAL\.strongman.*processed/);
+        COACH_NEURAL.strongman.pitch = neuralWas;
+        // the exemption is a real carve-out, not an accident of ordering
+        const robotNoise = hit(new RegExp('COACHES\\.robot|COACH_NEURAL\\.robot'));
+        return { local, neural, robotNoise, robotPitch: robot.pitch, clean: validateData().length };
+      } finally {
+        g.pitch = localWas; COACH_NEURAL.strongman.pitch = neuralWas;
+        console.error = _err;
+      }
+    });
+    t.eq('the validator catches a persona dropped into the robotic range',
+      guard.local.length, 1, guard);
+    t.eq('and catches a neural pitch pushed past -2st', guard.neural.length, 1, guard);
+    t.eq('the A.I. Trainer is exempt from both', guard.robotNoise, []);
+    t.eq('and everything is put back', guard.clean, 0);
+    t.eq('no real-voice persona sits in the robotic range', r.belowLine, []);
+    t.eq('and none is deeper than -2st on the neural path', r.neuralDeep, []);
+    t.ok('the A.I. Trainer is still deliberately synthetic', r.robotExempt, r);
+    t.ok('Strongman now speaks in a human range',
+      r.strongmanHeard >= 0.85 && r.strongmanHeard <= 1.05, r);
+    t.eq('and its neural pitch is in line with the other deep coaches', r.strongmanNeural, '-2st');
+    t.eq('the validator is clean', r.validator, 0);
+  }
+
+  /* ---- the beat tempo presets have to show which one is on -------------- */
+  {
+    const r = await page.evaluate(async () => {
+      STATE.settings.beat = true;
+      setBeatTempo(78);
+      go('guide'); render();
+      await new Promise(z => setTimeout(z, 150));
+      const chips = () => [...document.querySelectorAll('#v-guide button.chip')]
+        .filter(b => /Chill 70|Classic 78|Hype 92/.test(b.textContent));
+      const state = () => chips().map(b => [b.textContent.trim(), b.classList.contains('on')]);
+      const bpmLabel = () => {
+        const e = document.querySelector('#beatTempoLbl');
+        return e ? e.textContent.trim() : null;
+      };
+      const out = { at78: state(), label78: bpmLabel() };
+      /* Tap the chip the way a thumb does, and read the UI back — the bug was
+         that the tempo DID change while every visible control kept showing the
+         old value, so a check on STATE alone would have passed. */
+      const hype = chips().find(b => /Hype 92/.test(b.textContent));
+      /* Read back SYNCHRONOUSLY. loadCoachVoices() parks a deferred renderGuide()
+         600ms after voiceschanged, and waiting even 200ms here let that unrelated
+         repaint land and paint the correct state — the check passed with the
+         re-render deleted from setBeatTempo. The tap must repaint on its own. */
+      clearTimeout(loadCoachVoices._t);
+      hype.click();
+      out.at92 = state();
+      out.label92 = bpmLabel();
+      out.stored = beatTempoPref();
+      const slider = [...document.querySelectorAll('#v-guide input[type=range]')]
+        .find(i => (i.getAttribute('onchange') || '').includes('setBeatTempo'));
+      out.sliderValue = slider ? +slider.value : null;
+      setBeatTempo(78);
+      return out;
+    });
+    const on = arr => arr.filter(([, sel]) => sel).map(([n]) => n);
+    t.eq('exactly one preset reads as selected at 78', on(r.at78), ['🎧 Classic 78']);
+    t.eq('the label agrees', r.label78, '78 BPM');
+    t.eq('tapping Hype moves the selection', on(r.at92), ['🔥 Hype 92']);
+    t.eq('and the label follows', r.label92, '92 BPM');
+    t.eq('and the slider follows', r.sliderValue, 92);
+    t.eq('and it is actually stored', r.stored, 92);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

@@ -1469,7 +1469,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='202';
+const APP_VERSION='203';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -4800,7 +4800,7 @@ const COACH_NEURAL={
   responder:{v:'en-AU-NeilNeural',rate:'+2%'},
   commando:{v:'en-GB-NoahNeural',pitch:'-2st'},
   gymbro:{v:'en-US-AndrewNeural',rate:'+12%',pitch:'+1st'},
-  strongman:{v:'en-US-ChristopherNeural',pitch:'-3st'},
+  strongman:{v:'en-US-ChristopherNeural',pitch:'-2st'},
   endurance:{v:'en-GB-ThomasNeural',rate:'-2%'},
   advisor:{v:'en-US-DavisNeural',rate:'-2%',pitch:'-1st'},   // deep, warm African-American male — Sarge (matches the on-app athlete)
   // African-American army drill-sergeant lineup (Davis, with distinct express-as intensities)
@@ -5441,7 +5441,7 @@ function neuralPitchFor(cfgPitch){
 function setCoachPitch(v){STATE.settings.voicePitch=Math.max(0,Math.min(2,parseFloat(v)||0.6));save();}
 function setCoachRate(v){STATE.settings.voiceRate=Math.max(.5,Math.min(1.5,parseFloat(v)||0.98));save();}
 function setRepTempo(v){STATE.settings.repTempo=Math.max(1,Math.min(6,parseFloat(v)||3));save();}
-function setBeatVol(v){STATE.settings.beatVol=Math.max(0.05,Math.min(1,parseFloat(v)||0.55));save();if(BEAT&&BEAT.on){BEAT.vol=beatVolPref()*0.9;const g=BEAT.master.gain,t=BEAT.ac.currentTime;g.cancelScheduledValues(t);g.setValueAtTime(Math.max(0.0002,g.value),t);g.exponentialRampToValueAtTime(Math.max(0.0002,BEAT.vol),t+0.2);}}
+function setBeatVol(v){STATE.settings.beatVol=Math.max(0.05,Math.min(1,parseFloat(v)||0.55));save();haptic(6);if(BEAT&&BEAT.on){BEAT.vol=beatVolPref()*0.9;const g=BEAT.master.gain,t=BEAT.ac.currentTime;g.cancelScheduledValues(t);g.setValueAtTime(Math.max(0.0002,g.value),t);g.exponentialRampToValueAtTime(Math.max(0.0002,BEAT.vol),t+0.2);}}
 let _beatPrevT=null;
 function beatPreview(){beatStart();if(_beatPrevT)clearTimeout(_beatPrevT);_beatPrevT=setTimeout(()=>{if(!$('#scrim').classList.contains('open'))beatStop();},5000);}
 
@@ -5603,7 +5603,7 @@ const COACHES=[
    push:["Maximum output required. Now.","Final sequence. Deploy all energy.","Complete the objective. Push.","Overdrive engaged. Finish.","Full power. Execute final phase."],
    rest:["Recovery mode. Recharge.","Cooling systems. Standby.","Recalibrating. Breathe.","Energy restore in progress.","Standby for next sequence."],
    done:["Objective complete. Performance: excellent.","Workout protocol successful. Well done.","Target achieved. You have upgraded.","Data logged. Superior effort.","Sequence complete. Impressive, human."]},
-  {id:'relentless',name:'The Relentless',emoji:'🧠',pitch:0.38,rate:1.08,hint:['guy','david','mark','male'],
+  {id:'relentless',name:'The Relentless',emoji:'🧠',pitch:0.44,rate:1.08,hint:['guy','david','mark','male'],
    start:["No excuses. We start now.","Nobody is coming. Get to work. Go!","Time to do what they will not. Begin!","This is you versus your excuses. Go!","Get uncomfortable. Start now!"],
    during:["Your mind quit — your body did not. Keep going!","This right here is where you change. Stay in it!","You do not stop when you are tired. You stop when you are done!","Nobody is watching — do it anyway. Push!","The work you hate is the work that changes you. Go!","Stay relentless. One more, then one more!","Doubt is loud — be louder. Keep going!","You wanted this. Now suffer well. Push!","Every rep you steal from the pain is yours forever!","Comfortable is where dreams die. Stay in the fire!","When you want to stop, that is rep number one. Go!","No one is coming to save you. Own it. Push!","Nobody remembers easy. Get after it. Keep going!","You are not done — you are just uncomfortable. Push!"],
    push:["Empty it. Everything, right now!","This is the rep that counts — take it!","Finish what most people quit. Go!","Prove it to yourself. Do not stop!","Leave nothing. Nothing! Finish!"],
@@ -5615,7 +5615,7 @@ const COACHES=[
    push:["Secure the win — finish!","Last evolution — everything now!","This is the surf zone — get through it!","Do not ring the bell. Finish strong!","Give me everything — go!"],
    rest:["Recover, candidate. Controlled breathing.","Reset. Next evolution incoming.","Good. Regroup and refit.","Catch your wind. Stay ready.","Recover fast. We go again."],
    done:["Hooyah! Outstanding work.","You earned that one. Well done.","That is operator standard. Solid.","No bell today. Respect.","Mission complete. Hooyah!"]},
-  {id:'gunny',name:'Marine Gunnery Sgt',emoji:'🎖️',pitch:0.4,rate:0.97,hint:['david','guy','mark','male'],
+  {id:'gunny',name:'Marine Gunnery Sgt',emoji:'🎖️',pitch:0.44,rate:0.97,hint:['david','guy','mark','male'],
    start:["On your feet — move it! Go!","You came to work? Then work! Begin!","No slack in my formation. Start!","Lock it up and get after it! Go!","Move with a purpose, Marine! Begin!"],
    during:["Suck it up and drive on, Marine!","I do not want tired — I want tougher! Push!","You have got one speed: forward. Keep going!","Complacency kills. Keep pushing!","That is the standard — now exceed it! Go!","Steel is forged under heat. Keep going!","Quit is not in my vocabulary, or yours! Push!","Stay in the fight, Marine! Keep going!","Do it right, do it hard, do it now!","Adapt and overcome — keep going!","Every rep is a promise you keep to yourself. Push!","Outstanding — now give me more!"],
    push:["Push it out — finish strong, Marine!","Last effort — make it count!","Bring it home — do not quit on me!","Everything you have got — right now!","Drive through the finish! Go!"],
@@ -5681,7 +5681,7 @@ const COACHES=[
    push:["Send it home — everything now!","Last rep, make it nasty — go!","Leave it all here, bro — push!","Finish strong, big dog!","All gas, no brakes — go!"],
    rest:["Nice set, bro. Catch your breath.","Shake it out. We go again.","Sip some water. Reset.","Solid. Quick breather.","Recover up, big dog."],
    done:["Let's gooo! Great work, bro!","That was nasty. Well done!","Gains secured. Nice one!","Beast mode delivered. Yeah buddy!","You cooked. Great job!"]},
-  {id:'strongman',name:'Strongman',emoji:'🪨',pitch:0.4,rate:0.98,hint:['david','guy','mark','male'],
+  {id:'strongman',name:'Strongman',emoji:'🪨',pitch:0.44,rate:0.98,hint:['david','guy','mark','male'],
    start:["Pick it up — begin!","Grip and rip — go!","Big effort — start now!","Move something heavy — go!","Brace and lift — begin!"],
    during:["Big and strong — keep going!","Carry the load — do not drop it!","Raw power — push!","Every step, every rep — keep going!","Be the strongest in the room — push!","Grip tight, drive hard — keep going!","Move it or wear it — go!","Heavy hands, strong heart — push!","Nothing is too heavy today — keep going!","Own the weight — push!"],
    push:["Last carry — finish it!","Drive to the line — go!","Everything you have — push!","Do not set it down — finish!","Big finish — go!"],
@@ -7001,7 +7001,17 @@ function toggleDeload(){
 function deloadBanner(){return deloadOn()?`<div class="note info" style="margin-top:12px">🌙 <b>Deload week — lighter load.</b> Sets and targets are eased so you recover and rebuild stronger. <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="toggleDeload()">End deload</button></div>`:'';}
 /* ---- #8 Beat tempo / style ---- */
 function beatTempoPref(){const t=STATE.settings&&STATE.settings.beatTempo;return (typeof t==='number'&&t>=60&&t<=110)?t:78;}
-function setBeatTempo(bpm){if(!STATE.settings)STATE.settings={};STATE.settings.beatTempo=Math.max(60,Math.min(110,parseInt(bpm)||78));save();if(BEAT&&BEAT.on){beatStop();beatStart();}}
+/* Re-render after storing. Without it the preset chips did change the tempo —
+   the beat restarted at the new BPM — but the slider, the "92 BPM" label and
+   the chip highlight all kept showing the old value, so tapping one looked
+   like it had done nothing at all. */
+function setBeatTempo(bpm){
+  if(!STATE.settings)STATE.settings={};
+  STATE.settings.beatTempo=Math.max(60,Math.min(110,parseInt(bpm)||78));
+  save();haptic(8);
+  if(BEAT&&BEAT.on){beatStop();beatStart();}
+  if(TAB==='guide')try{renderGuide();}catch(e){}
+}
 /* ---- #7 New-version update toast ---- */
 /* A deploy landing mid-set put a bar with a Refresh button exactly where
    "Set done ✓" is, at a higher z-index than the player, with no dismiss. The
@@ -10545,7 +10555,8 @@ function renderGuide(){
       <input type="range" min="0.1" max="1" step="0.05" value="${beatVolPref()}" oninput="$('#bvLbl').textContent=Math.round(this.value*100)+'%'" onchange="setBeatVol(this.value)" style="width:100%">
       <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">Beat tempo</span><span class="tiny muted" id="beatTempoLbl">${beatTempoPref()} BPM</span></div>
       <input type="range" min="60" max="110" step="2" value="${beatTempoPref()}" oninput="$('#beatTempoLbl').textContent=this.value+' BPM'" onchange="setBeatTempo(this.value)" style="width:100%">
-      <div class="btnrow" style="gap:6px;margin-top:6px"><button class="chip" onclick="setBeatTempo(70)">😌 Chill 70</button><button class="chip" onclick="setBeatTempo(78)">🎧 Classic 78</button><button class="chip" onclick="setBeatTempo(92)">🔥 Hype 92</button></div>
+      <div class="btnrow" style="gap:6px;margin-top:6px">${[[70,'😌 Chill 70'],[78,'🎧 Classic 78'],[92,'🔥 Hype 92']].map(([bpm,label])=>
+        `<button class="chip ${beatTempoPref()===bpm?'on':''}" onclick="setBeatTempo(${bpm})">${label}</button>`).join('')}</div>
       <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">The beat plays during timers, guided reps, warm-up &amp; cool-down.</span><button class="chip" onclick="beatPreview()">▶ Preview</button></div>
     </div>`:''}
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Deload week <span class="tiny muted">· lighter sets &amp; targets to recover</span></span><button class="chip ${deloadOn()?'on':''}" onclick="toggleDeload()">${deloadOn()?'On':'Off'}</button></div>
@@ -11322,6 +11333,23 @@ function validateData(){
     errs.push('kcalPerStep() has drifted from stepKcal()');
   /* Same contract as the bike: harder must pay more, and every currency quoted
      against a 10,000-step debt has to actually cover it. */
+  /* Only the A.I. Trainer is allowed to sound synthetic — that is its whole
+     character. Every other persona is a person, and past these limits Web
+     Speech and Azure both stop sounding like one: it reads as processed rather
+     than deep, which is exactly the complaint that produced this rule. */
+  try{
+    COACHES.forEach(m=>{
+      if(m.id==='robot')return;
+      if(typeof m.pitch==='number'&&m.pitch<0.42)
+        errs.push('COACHES.'+m.id+': pitch '+m.pitch+' is below 0.42 — that range sounds robotic, not deep');
+    });
+    Object.keys(COACH_NEURAL).forEach(k=>{
+      if(k==='robot')return;
+      const st=/(-?\d+(?:\.\d+)?)\s*st/.exec((COACH_NEURAL[k]||{}).pitch||'');
+      if(st&&parseFloat(st[1])<-2)
+        errs.push('COACH_NEURAL.'+k+': '+st[1]+'st is deeper than any other real voice — it will sound processed');
+    });
+  }catch(e){errs.push('persona pitch check threw: '+e);}
   JACK_LEVELS.forEach((b,i)=>{
     if(!(b.met>0))errs.push('JACK_LEVELS.'+b.k+' has no MET value');
     if(!(b.rpm>0))errs.push('JACK_LEVELS.'+b.k+' has no reps-per-minute');
