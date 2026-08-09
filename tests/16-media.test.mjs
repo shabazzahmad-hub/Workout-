@@ -12,12 +12,6 @@ import { serve, launch, suite, seedAthlete } from './lib/harness.mjs';
 
 const PHONE = { width: 412, height: 690 };   // S-class with browser chrome showing
 
-/* Straight WCAG. Kept here rather than imported so a change to the app's own
-   colour maths cannot quietly redefine what "readable" means. */
-const rel = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
-const lum = ([r, g, b]) => 0.2126 * rel(r) + 0.7152 * rel(g) + 0.0722 * rel(b);
-const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
-
 export default async function run() {
   const t = suite('exercise media');
   const { srv, port } = await serve();
@@ -186,60 +180,80 @@ export default async function run() {
     t.ok('with the still photo as the fallback', r.fallsBack, r);
   }
 
-  /* ---- the timer has to stay readable on top of a photograph ------------ */
+  /* ---- the photograph is unobstructed, the clock gives way -------------- */
   {
-    /* The veil is the whole trick, and getting it wrong is silent: too dark
-       and the exercise is a smudge, too light and the clock disappears
-       against a bright frame. Measured against the brightest and the darkest
-       artwork in the library, in both themes — nothing else proves it. */
-    const extremes = await page.evaluate(async () => {
-      const keys = Object.keys(EX).filter(k => EX[k].img);
-      const score = async k => {
-        const img = new Image(); img.src = EX[k].img;
-        try { await img.decode(); } catch (e) { return null; }
-        const c = document.createElement('canvas'); c.width = c.height = 48;
-        const g = c.getContext('2d'); g.drawImage(img, 0, 0, 48, 48);
-        const d = g.getImageData(14, 14, 20, 20).data;   // where the digits land
-        let s = 0; for (let i = 0; i < d.length; i += 4) s += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
-        return [k, s / (d.length / 4)];
-      };
-      const out = []; for (const k of keys) { const r = await score(k); if (r) out.push(r); }
-      out.sort((a, b) => a[1] - b[1]);
-      return { darkest: out[0][0], brightest: out[out.length - 1][0], n: out.length };
+    /* The brief, verbatim: "the image of the exercise should be 100% clear to
+       see and up front, the timer should sit at the back and translucent".
+       That inverts the usual priority, so it needs a check that a scrim cannot
+       creep back into. Rendered pixels are compared against the source file:
+       anything laid over the photo shows up as a luminance shift. */
+    await workOn('plank');
+    const geom = await page.evaluate(() => {
+      const box = document.querySelector('.pl-ringmedia').getBoundingClientRect();
+      // a square well inside the circular mask, so the crop cannot skew it
+      const side = Math.round(box.width * 0.42);
+      return { x: Math.round(box.x + (box.width - side) / 2), y: Math.round(box.y + (box.height - side) / 2),
+        side, w: Math.round(box.width), src: document.querySelector('.pl-ringmedia img').getAttribute('src') };
     });
-    t.ok('there is artwork to measure', extremes.n > 100, extremes);
+    await page.evaluate(() => { document.querySelector('.pl-center').style.visibility = 'hidden'; });
+    const shot = await page.screenshot({ clip: { x: geom.x, y: geom.y, width: geom.side, height: geom.side } });
+    await page.evaluate(() => { document.querySelector('.pl-center').style.visibility = ''; });
+    const delta = await page.evaluate(async ([b64, g]) => {
+      const mean = async src => {
+        const im = new Image(); im.src = src; await im.decode();
+        const c = document.createElement('canvas'); c.width = c.height = 32;
+        const ctx = c.getContext('2d');
+        return { im, ctx, c };
+      };
+      // what the page actually painted
+      const a = await mean('data:image/png;base64,' + b64);
+      a.ctx.drawImage(a.im, 0, 0, 32, 32);
+      const A = a.ctx.getImageData(0, 0, 32, 32).data;
+      // the same patch of the source file, at the same scale
+      const b = await mean(g.src);
+      const s = b.im.naturalWidth, side = s * 0.42, off = (s - side) / 2;
+      b.ctx.drawImage(b.im, off, off, side, side, 0, 0, 32, 32);
+      const B = b.ctx.getImageData(0, 0, 32, 32).data;
+      const lum = (d, i) => 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+      let la = 0, lb = 0;
+      for (let i = 0; i < A.length; i += 4) { la += lum(A, i); lb += lum(B, i); }
+      const n = A.length / 4;
+      return { painted: la / n, source: lb / n, drop: (lb - la) / n };
+    }, [shot.toString('base64'), geom]);
+    /* A veil at the old .57 pulled ~90 points of luminance out of the middle of
+       the frame. Nothing should now pull more than a rounding error. */
+    t.ok('nothing is laid over the photograph', Math.abs(delta.drop) < 10,
+      { paintedLuma: Math.round(delta.painted), sourceLuma: Math.round(delta.source), drop: Math.round(delta.drop) });
+  }
 
-    let worst = 99, worstAt = null;
-    for (const theme of ['dark', 'light']) {
-      await page.evaluate(th => document.documentElement.setAttribute('data-theme', th), theme);
-      for (const key of [extremes.darkest, extremes.brightest]) {
-        await workOn(key);
-        for (const sel of ['.pl-num', '.pl-sub']) {
-          const m = await page.evaluate(s => {
-            const el = document.querySelector(s), r = el.getBoundingClientRect();
-            return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height),
-              color: getComputedStyle(el).color };
-          }, sel);
-          await page.evaluate(() => { document.querySelector('.pl-center').style.visibility = 'hidden'; });
-          const shot = await page.screenshot({ clip: { x: m.x, y: m.y, width: m.w, height: m.h } });
-          await page.evaluate(() => { document.querySelector('.pl-center').style.visibility = ''; });
-          const px = await page.evaluate(async b64 => {
-            const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
-            const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
-            c.getContext('2d').drawImage(img, 0, 0);
-            return Array.from(c.getContext('2d').getImageData(0, 0, c.width, c.height).data);
-          }, shot.toString('base64'));
-          const fg = m.color.match(/\d+/g).slice(0, 3).map(Number);
-          for (let i = 0; i < px.length; i += 4) {
-            const c = ratio(fg, [px[i], px[i + 1], px[i + 2]]);
-            if (c < worst) { worst = c; worstAt = `${theme}/${key}${sel}`; }
-          }
-        }
-      }
-    }
-    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
-    t.ok('the timer clears 4.5:1 over the hardest artwork in both themes',
-      worst >= 4.5, { worst: Number(worst.toFixed(2)), at: worstAt });
+  /* ---- the clock is a watermark during an effort, solid during rest ------ */
+  {
+    const r = await page.evaluate(async () => {
+      const read = () => {
+        const c = document.querySelector('.pl-center');
+        const body = document.querySelector('#plBody');
+        const m = document.querySelector('.pl-ringmedia').getBoundingClientRect();
+        const num = document.querySelector('.pl-num').getBoundingClientRect();
+        return { op: Number(getComputedStyle(c).opacity), media: Math.round(m.width),
+          pct: Math.round(m.height / body.clientHeight * 100),
+          numW: Math.round(num.width), numH: Math.round(num.height) };
+      };
+      plClear(); plEnterWork(); await new Promise(z => setTimeout(z, 400));
+      const work = read();
+      plClear(); plEnterRest(45, 'ex'); await new Promise(z => setTimeout(z, 400));
+      const rest = read();
+      return { work, rest };
+    });
+    t.ok('the effort clock is translucent, around 40%',
+      r.work.op >= 0.3 && r.work.op <= 0.5, r.work);
+    /* Rest deliberately has no ten-second cue — only a 3-2-1 — so it is the one
+       timer with nothing behind it and it stays solid. */
+    t.eq('the rest clock stays solid', r.rest.op, 1);
+    t.ok('the movement dominates the screen (>=50% of the player body)', r.work.pct >= 50, r.work);
+    t.ok('and is at least 300px across', r.work.media >= 300, r.work);
+    t.ok('the picture is far bigger than the clock printed on it',
+      (r.work.media * r.work.media) > 6 * (r.work.numW * r.work.numH),
+      { media: r.work.media, num: [r.work.numW, r.work.numH] });
   }
 
   srv.close();

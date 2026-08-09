@@ -36,7 +36,6 @@
     --line:rgba(255,255,255,.11); --line2:rgba(255,255,255,.2);
     --ink:#f7f9fc; --muted:#9ba8bd; --dim:#6c7c92; --muted2:#657184;
     --fire:#5de0b7; --fire-d:#2db996; --fire-l:#8becd0; --accInk:#03140f; --accSoft:rgba(93,224,183,.13);
-    --plveil1:rgba(4,9,16,.57); --plveil2:rgba(4,9,16,.18); --plveilsh:rgba(0,0,0,.9);
     --violet:#70a7ff; --violet-d:#4a82df;
     --teal:#70a7ff; --teal-d:#4a82df;
     --green:#55d98c; --green-d:#2fae66;
@@ -54,7 +53,6 @@
     --line:rgba(16,32,53,.12); --line2:rgba(16,32,53,.22);
     --ink:#102035; --muted:#59697d; --dim:#7d8b9c;
     --fire:#127f67; --fire-d:#0d6d58; --fire-l:#0f6e59; --accInk:#ffffff; --accSoft:rgba(18,127,103,.12);
-    --plveil1:rgba(247,250,253,.66); --plveil2:rgba(247,250,253,.30); --plveilsh:rgba(255,255,255,.95);
     --violet:#2c67c8; --violet-d:#22539f; --teal:#2c67c8; --teal-d:#22539f;
     --green:#147a46; --green-d:#0f6036; --pink:#b82f45; --pink-d:#942436; --gold:#9b6d00;
     --blue:#2c67c8; --brandInk:#ffffff;
@@ -190,11 +188,22 @@
      "Swap exercise" button sat 55px below the fold with no way to get to it,
      mid-workout. `safe` degrades to flex-start rather than clipping when the
      content does not fit. */
-  .pl-body{position:relative;z-index:2;flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:safe center;text-align:center;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:6px 22px calc(24px + env(safe-area-inset-bottom))}
-  .pl-region{margin-bottom:6px}
-  .pl-name{font-size:25px;font-weight:900;letter-spacing:.3px;line-height:1.12;margin-bottom:6px}
-  .pl-ring{position:relative;width:min(268px,74vw,40vh);aspect-ratio:1;flex:0 0 auto;margin:10px auto;display:grid;place-items:center}
-  .pl-ring.sm{width:min(216px,62vw,31vh)}
+  .pl-body{position:relative;z-index:2;flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:safe center;text-align:center;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:4px 12px calc(14px + env(safe-area-inset-bottom))}
+  .pl-region{margin-bottom:2px}
+  .pl-name{font-size:23px;font-weight:900;letter-spacing:.3px;line-height:1.12;margin-bottom:3px}
+  /* Sized by what is left over, not by a guess. A fixed pixel box in this
+     column was what let flex squash the ring into an ellipse; giving it a
+     height and letting `aspect-ratio` derive the width means it shrinks to
+     fit a short phone and stays a circle while it does. */
+  .pl-ring{position:relative;height:min(392px,96vw,62vh);min-height:150px;width:auto;aspect-ratio:1;
+    flex:0 1 auto;margin:3px auto;display:grid;place-items:center}
+  .pl-ring.sm{height:min(330px,86vw,46vh)}
+  /* Rest is the exception: it keeps a solid clock. The watermark is
+     affordable during an effort because countdownCue() speaks the last ten
+     seconds — rest deliberately does NOT use that cue (so the marker always
+     means "your effort is ending"), and gets only a 3-2-1. Fading the one
+     timer with nothing behind it is the one place it would cost something. */
+  .pl-ring.rest .pl-center{opacity:1}
   .pl-ring svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
   .pl-pulse{position:absolute;width:79%;height:79%;border-radius:50%;background:var(--accSoft)}
   /* The movement itself, filling the ring. A 120px thumbnail above a 232px
@@ -203,19 +212,23 @@
      where the eye already goes for the clock, and costs no height at all. */
   .pl-ringmedia{position:absolute;inset:6.5%;border-radius:50%;overflow:hidden;background:var(--card2)}
   .pl-ringmedia>img,.pl-ringmedia>video{width:100%;height:100%;object-fit:cover;display:block}
-  .pl-ringmedia:after{content:"";position:absolute;inset:0;border-radius:50%;
-    background:radial-gradient(circle at 50% 50%,var(--plveil1) 0%,var(--plveil1) 30%,var(--plveil2) 100%)}
+  /* No scrim. The photograph is the thing being looked at — it is how you
+     check your own form mid-set — so it is shown at full clarity and the clock
+     is what gives way. */
   .pl-pulse.on{animation:breathe 3.6s ease-in-out infinite}
   @keyframes breathe{0%,100%{transform:scale(.78);opacity:.28}50%{transform:scale(1.06);opacity:.6}}
-  .pl-center{position:relative;text-align:center}
-  .pl-num{font-size:64px;font-weight:900;letter-spacing:-2px;font-variant-numeric:tabular-nums;line-height:1;text-shadow:0 2px 16px var(--plveilsh),0 0 3px var(--plveilsh)}
-  .pl-sub{font-size:12px;font-weight:800;letter-spacing:1.4px;color:var(--ink);text-transform:uppercase;margin-top:4px;text-shadow:0 1px 10px var(--plveilsh)}
-  .pl-set{font-size:12px;font-weight:800;letter-spacing:1.2px;color:var(--fire-l);text-transform:uppercase;margin-top:4px}
-  .pl-coach{font-size:14px;color:var(--muted);min-height:22px;margin-top:8px;max-width:320px}
-  .pl-actions{display:flex;gap:10px;width:100%;max-width:440px;margin-top:18px}
+  /* The clock reads as a watermark behind the movement. Ten seconds out it
+     starts speaking anyway, which is what makes this affordable. */
+  .pl-center{position:relative;text-align:center;opacity:.4}
+  .pl-num{font-size:72px;font-weight:900;letter-spacing:-2px;font-variant-numeric:tabular-nums;line-height:1}
+  .pl-sub{font-size:12px;font-weight:800;letter-spacing:1.4px;color:var(--ink);text-transform:uppercase;margin-top:4px}
+  .pl-set{font-size:12px;font-weight:800;letter-spacing:1.2px;color:var(--fire-l);text-transform:uppercase}
+  .pl-coach{font-size:14px;color:var(--muted);min-height:20px;margin-top:4px;max-width:340px;
+    display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+  .pl-actions{display:flex;gap:10px;width:100%;max-width:440px;margin-top:6px}
   .pl-actions .btn{flex:1}
   .pl-next{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:10px 12px;width:100%;max-width:440px;margin-top:14px;text-align:left}
-  .pl-swap{margin-top:12px;font-size:12px;font-weight:800;color:var(--muted);background:var(--card2);border:1px solid var(--line);border-radius:999px;padding:7px 15px;min-height:40px}
+  .pl-swap{margin-top:4px;font-size:12px;font-weight:800;color:var(--muted);background:var(--card2);border:1px solid var(--line);border-radius:999px;padding:6px 14px;min-height:36px}
   .pl-swapmenu{display:flex;flex-direction:column;gap:8px;width:100%;max-width:440px;margin-top:10px}
   .pl-swapmenu button{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-weight:800;color:var(--ink)}
   .pl-swapmenu button span{font-weight:700;color:var(--muted);font-size:12px}
@@ -3693,10 +3706,10 @@ function plChrome(){
 function plBodyWork(color){
   const m=plCur();const ex=EX[m.exId];
   $('#plBody').innerHTML=`
-    <div class="pl-region"><span class="tag ${ex.region}">${ex.region}</span> ${climbNote(m)}</div>
+    <div class="pl-region"><span class="tag ${ex.region}">${ex.region}</span>
+      <span class="pl-set" id="plSet">Set ${PLAYER.s+1} of ${m.sets}</span> ${climbNote(m)}</div>
     <div class="pl-name">${ex.name}</div>
     ${plRingHTML(color,ex)}
-    <div class="pl-set" id="plSet">SET ${PLAYER.s+1} OF ${m.sets}</div>
     <div class="pl-coach" id="plCoach"></div>
     <div class="row" style="gap:8px;justify-content:center;flex-wrap:wrap">
       ${swapOptions(m).length?`<button class="pl-swap" onclick="playerSwapMenu()">⇄ Swap exercise</button>`:''}
@@ -3858,7 +3871,7 @@ function plEnterRest(dur,type){
   $('#plBody').innerHTML=`
     <div class="pl-region"><span class="tag cardio">REST</span></div>
     <div class="pl-name">Recover</div>
-    ${plRingHTML('var(--fire-l)',nextEx,'sm')}
+    ${plRingHTML('var(--fire-l)',nextEx,'sm rest')}
     <div class="pl-coach" id="plCoach">Breathe. Shake it out.</div>
     <div class="pl-next"><div><div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--muted)">${name}</div><div style="font-weight:800;margin-top:2px">${rx}</div></div></div>
     ${rate}

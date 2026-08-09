@@ -218,28 +218,32 @@ one at a time and inherited a once-a-week gate nobody intended:
 `undoBannerHTML` were invisible six days out of seven. Anything about *today*
 goes above that branch.
 
-**The exercise photo lives INSIDE the countdown ring** (`plRingMediaHTML`), in
-both the guided player and HIIT. It was a 120px thumbnail above a 232px timer
-and read as decoration — *"it's like there is no view of that exercise"* — while
-HIIT had no photograph at all. In the ring it is roughly three times the area,
-sits where the eye already goes for the clock, and costs no height, which is
-what made it fit: a phone at 412×690 has no room for a big picture *and* a big
-timer stacked.
+**The photograph outranks the clock.** The exercise image lives INSIDE the
+countdown ring (`plRingMediaHTML`), in both the guided player and HIIT. It was a
+120px thumbnail above a 232px timer and read as decoration — *"it's like there
+is no view of that exercise"* — while HIIT had no photograph at all.
 
-Two things that come with it:
+The priority is deliberate and it is the athlete's: *"the image of the exercise
+should be 100% clear to see and up front, the timer should sit at the back and
+translucent"*. The picture is the form reference you glance at mid-set. So:
 
-- **The veil is load-bearing and it is theme-aware.** `--plveil1/2` darken the
-  middle of the photo so the digits read. Too dark and the movement is a smudge;
-  too light and the clock vanishes against a bright frame — and nothing throws
-  either way. The floor is **4.5:1 measured against the brightest and the darkest
-  artwork in the library, in both themes**, which is what suite 16 does.
+- **Nothing is laid over the photo.** There is no scrim, and suite 16 proves it
+  by comparing rendered pixels against the source file — a veil shows up as a
+  luminance drop. An earlier version darkened the middle by ~90 points to keep
+  the digits crisp; that was the wrong trade.
+- **`.pl-center` is 40% opacity during an effort.** What makes that affordable is
+  `countdownCue()`: the last ten seconds are audible, so the digits do not have
+  to win. **Rest is the exception and stays solid** — rest deliberately has no
+  ten-second cue, only a 3-2-1, so it is the one timer with nothing behind it.
 - **Fixed pixel sizes inside `.pl-body` get squashed, silently.** `.pl-ring` was
   `232px × 232px` in a flex column; on a 690px-tall phone flex shrank its
   *height* to 153px while the SVG kept drawing a full circle, so the ring
-  spilled over "SET 1 OF 3" and the coach cue. It is now `aspect-ratio:1` with
-  `flex:0 0 auto` and a `min(…, 40vh)` width. Anything added to the player
-  checks `scrollHeight <= clientHeight` at 412×690 — the player is hands-free,
-  so content that needs scrolling is content the athlete never sees.
+  spilled over "SET 1 OF 3" and the coach cue. It now takes a `height` and lets
+  `aspect-ratio:1` derive the width, so it shrinks to fit a short phone and
+  stays a circle while it does. Anything added to the player checks
+  `scrollHeight <= clientHeight` at 412×690 — the player is hands-free, so
+  content that needs scrolling is content the athlete never sees, and every
+  pixel of chrome is a pixel the photograph does not get.
 
 **Sheets render behind the player.** `.scrim` is z-index 60, `.pl` is 75, so
 `openSheet()` from inside a session is invisible. Mid-session UI is an
