@@ -119,6 +119,17 @@ single day, in code that already had a green suite:
 - **An audit check** called `safeFlow()` directly rather than the `runFlow()`
   path that calls it, and indexed `FLOW_RISK` by joint when it is keyed by
   exercise *name* — so it compared against an empty list.
+- **A tap-repaints-the-UI check** slept 200 ms before reading the DOM back, and
+  `loadCoachVoices()` parks a deferred `renderGuide()` 600 ms after
+  `voiceschanged`. That unrelated repaint landed inside the wait and painted the
+  correct state, so the check passed with the re-render deleted from the
+  handler. **A check that a tap repaints must read back synchronously** — any
+  `await` hands the assertion to whatever else is scheduled.
+- **"The validator is clean" proves nothing about a validator rule.** It stays
+  clean whether the rule exists or not. A new rule needs a check that *breaks
+  the data in front of it* and requires the specific complaint, then restores.
+  Mute `console.error` while doing so — `validateData()` logs, and the harness
+  counts a console error as a page failure.
 
 **Mutation-test every new check: seed the defect back, confirm the suite goes
 red, restore.** Nothing else reliably distinguishes "this passes" from "this
@@ -275,6 +286,20 @@ The neural path takes the same shift in semitones (`neuralPitchFor`) so
 switching engines does not change what "Deep" means. **A shift that lands on
 neutral must omit the `pitch` attribute** — `pitch="0st"` is invalid SSML and
 Azure rejects the whole request (0x80045003).
+
+**Only the A.I. Trainer may sound synthetic** — that is its character. Every
+other persona is a person, and `validateData()` enforces the floor: local
+`pitch` at or above **0.42**, neural shift no deeper than **−2st**, `robot`
+exempt. A tone slider does not rescue a persona authored at the bottom of the
+range; Strongman shipped at 0.4 / −3st and still read as processed after the
+tone fix landed, because Deep shifts *down* from wherever the persona already
+sat.
+
+**A control that stores a value must repaint.** `setBeatTempo` saved and
+restarted the beat but did not re-render, so the slider, the BPM label and the
+preset chips all kept showing the old number — tapping a preset looked like it
+did nothing at all. The chips also carried no selected state. Anything with
+presets shows which one is on, and re-renders its own surface after storing.
 
 ## The service worker
 
