@@ -1497,7 +1497,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='210';
+const APP_VERSION='212';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1970,7 +1970,34 @@ function focusBonus(pos,used){
     // the core goal forces a midsection bonus first, whatever else is targeted
     const lead=(p.goal==='core')?['abs','obliques']:[];
     const trouble=(Array.isArray(p.troubleZones)?p.troubleZones:[]).map(z=>TROUBLE_POOL[z]).filter(Boolean);
-    const keys=[...new Set([...lead,p.focusPrimary,...(Array.isArray(p.targets)?p.targets:[]),...trouble].filter(Boolean))];
+    /* Priority order, then ROTATION. The loop below returns on the first key
+       that yields a candidate, and the first key virtually always does — so
+       exactly one area was ever served. Measured over a full program: the
+       bonus was chosen by 'abs' in all 306 sessions that had one, and adding
+       chest, arms and thighs as trouble zones changed nothing whatsoever.
+       Clearing focusPrimary and targets did not help either; it just made
+       'chest' the one area, 306 times. Every secondary target and every
+       trouble zone the athlete picked was dead input — the quiz asked, stored
+       the answer, and the program never read it.
+
+       The wheel alternates primary and secondary so the athlete's declared
+       priority still gets roughly half the bonuses while the rest actually
+       appear. Rotating on the absolute session index keeps it deterministic —
+       no Math.random, same session always builds the same way. */
+    const prio=[...new Set([...lead,p.focusPrimary].filter(Boolean))];
+    const rest=[...new Set([...(Array.isArray(p.targets)?p.targets:[]),...trouble].filter(Boolean))]
+      .filter(k=>!prio.includes(k));
+    let keys;
+    if(!rest.length)keys=prio;
+    else if(!prio.length)keys=rest;
+    else{
+      keys=[];
+      for(let i=0;i<rest.length;i++){keys.push(prio[i%prio.length]);keys.push(rest[i]);}
+    }
+    if(!keys.length)return null;
+    const absIdx=((pos&&pos.cycle)||0)*SESSIONS_PER_CYCLE+((pos&&pos.inCycle)||0);
+    const rot=((absIdx%keys.length)+keys.length)%keys.length;
+    keys=keys.slice(rot).concat(keys.slice(0,rot));
     const gear=p.gear||[];
     const has=k=>{const e=EX[k];if(!e)return false;if(!e.equip)return true;return e.equip.every(g=>gear.includes(g));};
     for(const key of keys){
@@ -1980,7 +2007,13 @@ function focusBonus(pos,used){
          Gate it by how hard the movement is relative to their tested level. */
       const tier=LEVEL_TIER[levelOf(pos&&pos.cycle||0)]??1;
       const easyEnough=k=>{const h=EX[k]&&EX[k].hardness;return !(h>0)||h>=[1.0,0.7,0.4][tier];};
-      let cands=pool.filter(k=>EX[k]&&!used.has(k)&&has(k)&&easyEnough(k)).map(k=>safeSwap(k)).filter(k=>EX[k]&&!used.has(k)&&has(k));
+      /* spaceSwap as well as safeSwap. The bonus ran the injury swap and not the
+         tight-room one, so a travelling move could be handed to someone who
+         told the app they train in a small room. It never showed while the
+         bonus only ever picked one pool; rotating across the athlete's other
+         areas surfaced it immediately — bearcrawl, 15 times in 378 sessions. */
+      let cands=pool.filter(k=>EX[k]&&!used.has(k)&&has(k)&&easyEnough(k))
+        .map(k=>spaceSwap(safeSwap(k))).filter(k=>EX[k]&&!used.has(k)&&has(k));
       /* No ungated fallback. This used to drop the difficulty gate entirely
          when the gated pool came up empty, so the bonus slot could still hand a
          beginner the hardest movement in the catalogue — which is the exact
@@ -2628,7 +2661,7 @@ function onboardHTML(){
     <button class="btn ghost" id="ob-back" style="flex:0 0 112px;width:auto;min-width:0;padding:16px 10px;display:none">← Back</button>
     <button class="btn primary" id="ob-next" style="flex:1 1 auto;min-width:0;font-size:16px;padding:16px">Next →</button>
   </div>
-  <div class="note info" style="margin-top:12px">Your data lives <b>only on this phone</b> (auto-saved, works offline). Nothing is uploaded.</div>`;
+  ${privacyNoteHTML()}`;
 }
 function wireOnboard(){
   const days=new Set(STATE.profile.days);
@@ -5647,7 +5680,7 @@ const COACHES=[
    done:["Outstanding work, soldier!","That is how it is done! Hooah!","You earned that one. Well done!","Now that is effort. Dismissed!","Proud of that. Solid work."]},
   {id:'armydrill',name:'Army Drill Sergeant',emoji:'🎖️',pitch:0.5,rate:1.02,hint:['davis','david','guy','mark','male'],
    start:["On your feet, recruit! Begin — move!","When I say go, you GO! Go!","Front and center — start now!","Lock it in and drive! Begin!","No hesitation, soldier! Move out!"],
-   during:["Push, recruit, push! You do not quit!","Dig in! Pain is just weakness leaving!","Outstanding effort — give me more!","You are Army strong — prove it! Go!","Chin up, core tight, drive through it!","Hooah! That is the spirit — keep pushing!","One more, then one more after that! Move!","Discipline over comfort — hold that line!","Sweat now so you never quit later! Push!","You do not get tired — you get tougher! Go!","Eyes forward, soldier — own every rep!","That burn means it is working. Keep going!"],
+   during:["Push, recruit, push! You do not quit!","Dig in! This is effort, and effort is the point!","Outstanding effort — give me more!","You are Army strong — prove it! Go!","Chin up, core tight, drive through it!","Hooah! That is the spirit — keep pushing!","One more, then one more after that! Move!","Discipline over comfort — hold that line!","Sweat now so you never quit later! Push!","You do not get tired — you get tougher! Go!","Eyes forward, soldier — own every rep!","That burn means it is working. Keep going!"],
    push:["Final push, recruit — everything you got!","This is where soldiers are made! Finish!","Do not you dare quit on me now! Go!","Empty the tank — leave nothing! Move!","Bring it home strong! Hooah!"],
    rest:["Catch your wind, recruit. Stay ready.","Recover fast — we move again soon.","Good hustle. Reset and refocus.","Hydrate up, soldier. Stay sharp.","Solid round. Lock back in."],
    done:["Outstanding, soldier! That is Army strong!","Now THAT is effort! Hooah!","You earned that one, recruit. Dismissed!","Proud of that work. Well done, soldier.","That is how we do it. Outstanding!"]},
@@ -5695,7 +5728,7 @@ const COACHES=[
    done:["Objective secured. Outstanding.","Mission complete. Excellent work.","Clean execution. Well done.","Target down. Great job.","Flawless. Stand down."]},
   {id:'ultra',name:'Ultra Beast',emoji:'🔥',pitch:0.42,rate:1.06,hint:['guy','david','mark','male'],
    start:["No excuses. Start now.","Time to go to work. Begin!","Get comfortable being uncomfortable. Go!","This is the work nobody sees. Start!","Your rival is training. Go!"],
-   during:["Keep going! Your mind quits before your body does!","This is where you grow. Stay in it!","You want it? Then earn it! Push!","When it hurts — that is the one that counts!","Do not negotiate with the burn. Keep going!","Callus your mind. Push through it!","One more second, then one more. Never stop!","They are resting. You are working. Keep going!","Motivation fades — discipline stays. Push!","Nobody is coming to save you. Keep going!","You versus you. Win it. Push!","Comfort is the enemy. Stay in the fire!","The extra rep is where you change. Go!"],
+   during:["Keep going! Your mind quits before your body does!","This is where you grow. Stay in it!","You want it? Then earn it! Push!","When it burns — that is the one that counts!","Do not negotiate with the burn. Keep going!","Callus your mind. Push through it!","One more second, then one more. Never stop!","They are resting. You are working. Keep going!","Motivation fades — discipline stays. Push!","Nobody is coming to save you. Keep going!","You versus you. Win it. Push!","Comfort is the enemy. Stay in the fire!","The extra rep is where you change. Go!"],
    push:["Take it back — finish!","Empty the tank. Everything, right now!","This is the moment. Do not quit!","Own this. Finish what you started!","Prove it to yourself — go!"],
    rest:["Breathe. But do not get comfortable.","Recover. The work is not done.","Reset. We are just getting started.","Short rest. Long results. Refocus.","Compose yourself. We go again."],
    done:["That is what discipline looks like. Done!","You did not quit. Respect. Finished!","Stayed strong. That is the standard!","You just got tougher. Well done.","That is a deposit in the bank. Done."]},
@@ -5767,7 +5800,7 @@ const COACHES=[
    done:["Objective complete. Performance: excellent.","Workout protocol successful. Well done.","Target achieved. You have upgraded.","Data logged. Superior effort.","Sequence complete. Impressive, human."]},
   {id:'relentless',name:'The Relentless',emoji:'🧠',pitch:0.44,rate:1.08,hint:['guy','david','mark','male'],
    start:["No excuses. We start now.","Nobody is coming. Get to work. Go!","Time to do what they will not. Begin!","This is you versus your excuses. Go!","Get uncomfortable. Start now!"],
-   during:["Your mind quit — your body did not. Keep going!","This right here is where you change. Stay in it!","You do not stop when you are tired. You stop when you are done!","Nobody is watching — do it anyway. Push!","The work you hate is the work that changes you. Go!","Stay relentless. One more, then one more!","Doubt is loud — be louder. Keep going!","You wanted this. Now suffer well. Push!","Every rep you steal from the pain is yours forever!","Comfortable is where dreams die. Stay in the fire!","When you want to stop, that is rep number one. Go!","No one is coming to save you. Own it. Push!","Nobody remembers easy. Get after it. Keep going!","You are not done — you are just uncomfortable. Push!"],
+   during:["Your mind quit — your body did not. Keep going!","This right here is where you change. Stay in it!","You do not stop when you are tired. You stop when you are done!","Nobody is watching — do it anyway. Push!","The work you hate is the work that changes you. Go!","Stay relentless. One more, then one more!","Doubt is loud — be louder. Keep going!","You wanted this. Now work for it. Push!","Every rep you earn past comfortable is yours forever!","Comfortable is where dreams die. Stay in the fire!","When you want to stop, that is rep number one. Go!","No one is coming to save you. Own it. Push!","Nobody remembers easy. Get after it. Keep going!","You are not done — you are just uncomfortable. Push!"],
    push:["Empty it. Everything, right now!","This is the rep that counts — take it!","Finish what most people quit. Go!","Prove it to yourself. Do not stop!","Leave nothing. Nothing! Finish!"],
    rest:["Breathe. But do not get soft.","Recover. The work is not finished.","Reset. We are just getting started.","Short rest — then back in the fire.","Compose yourself. We go again."],
    done:["That is a deposit nobody can take. Done!","You did not quit. That is the whole game.","You got tougher just now. Respect.","That is who you are becoming. Finished!","Stayed relentless. That is the standard."]},
@@ -5833,7 +5866,7 @@ const COACHES=[
    done:["Call complete. Outstanding.","You showed up. Well done.","That is duty. Great work.","Job done. Respect.","Hero effort. Solid."]},
   {id:'commando',name:'Legion Commando',emoji:'🪖',pitch:0.46,rate:1.0,hint:['david','guy','mark','male'],
    start:["March or fall — begin!","No surrender — go!","Forward — start now!","Hold the line — begin!","Move out — go!"],
-   during:["Endure — the mission is not done!","March through the pain — keep going!","Honor and steel — push!","No comfort, only forward — keep going!","Carry the weight — do not drop it!","Legionnaire strong — keep going!","Suffer in silence, finish in glory!","One more of pure grit — push!","The unit does not quit — keep going!","Harden your resolve — push!"],
+   during:["Endure — the mission is not done!","March through the burn — keep going!","Honor and steel — push!","No comfort, only forward — keep going!","Carry the weight — do not drop it!","Legionnaire strong — keep going!","Work in silence, finish in glory!","One more of pure grit — push!","The unit does not quit — keep going!","Harden your resolve — push!"],
    push:["Final march — everything now!","Take the objective — finish!","No retreat — push through!","Last stand — do not stop!","Finish the mission — go!"],
    rest:["Fall out. Breathe.","Recover. We march again.","Good soldier. Reset.","Refit and refocus.","Steady. Ready yourself."],
    done:["Mission accomplished. Honor earned.","You endured. Well done.","Legion strong. Respect.","That is discipline. Great work.","Objective secured. Solid."]},
@@ -9298,6 +9331,21 @@ const RECIPES=[
 const DIET_OPTS=[['omnivore','Omnivore'],['halal','Halal'],['pescatarian','Pescatarian'],['vegetarian','Vegetarian'],['vegan','Vegan']];
 const DIET_KEYS=DIET_OPTS.map(d=>d[0]);
 function dietLabel(){const m=Object.fromEntries(DIET_OPTS);return m[STATE.nutrition.diet]||m.omnivore;}
+/* The onboarding promise used to be "Nothing is uploaded", full stop — and it
+   was not true. Two optional features send data to a named third party: the
+   food-photo lookup posts the photograph to Google Gemini, and the premium
+   neural voice posts the coach's line to Azure Speech. Both are off unless the
+   athlete pastes in their own API key, and both are described where they are
+   switched on — but somebody reading the first-run screen has already been
+   given an absolute assurance by then, and that is where consent is formed.
+
+   Scope the claim instead of dropping it: everything that IS local stays
+   named as local, and the exception is stated plainly rather than buried. One
+   helper so the wording cannot drift between the two places it appears. */
+function privacyNoteHTML(){
+  return `<div class="note info" style="margin-top:12px">Your training data lives <b>only on this phone</b> — sessions, measurements, photos and backups are saved on the device and work offline. Nothing is uploaded, and there is no account.
+    <div class="tiny muted" style="margin-top:6px">Two optional extras are the exception, and both stay off until you add your own API key: the <b>food-photo lookup</b> sends that photo to Google Gemini, and the <b>premium coach voice</b> sends the line being spoken to Microsoft Azure. Leave them off and nothing ever leaves the phone.</div></div>`;
+}
 /* Shown when normalizeState() could not recognise the stored diet and fell
    back to the restrictive one. The athlete is the only one who knows what it
    was meant to be, so ask rather than guess quietly. */

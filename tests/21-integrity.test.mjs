@@ -239,6 +239,87 @@ export default async function run() {
     t.ok('neither throws', !r.threw, r);
   }
 
+  /* ---- the first-run privacy claim is true ------------------------------
+     "Nothing is uploaded" was an absolute, and two opt-in features break it:
+     the food-photo lookup posts to Google Gemini and the neural voice posts to
+     Azure. Both are described where they are switched on — but consent is
+     formed on the first-run screen, which had already promised otherwise. */
+  {
+    const r = await page.evaluate(() => {
+      const html = privacyNoteHTML();
+      const el = document.createElement('div'); el.innerHTML = html;
+      const txt = el.textContent;
+      return { txt,
+        saysLocal: /only on this phone/i.test(txt),
+        namesGemini: /gemini/i.test(txt),
+        namesAzure: /azure/i.test(txt),
+        saysOptIn: /own API key/i.test(txt),
+        absolute: /Nothing is uploaded\.\s*$/.test(txt.trim()) };
+    });
+    t.ok('the note still says training data is local', r.saysLocal, r.txt);
+    t.ok('it names Google Gemini as a recipient', r.namesGemini, r.txt);
+    t.ok('and Microsoft Azure', r.namesAzure, r.txt);
+    t.ok('and says both need the athlete\'s own key', r.saysOptIn, r.txt);
+    t.ok('the unqualified "nothing is uploaded" claim is gone', !r.absolute, r.txt);
+  }
+  {
+    // and it actually renders on the screen that makes the promise
+    const r = await page.evaluate(() => {
+      const before = STATE.onboarded; STATE.onboarded = false;
+      let txt = '', threw = null;
+      try { obMount(document.querySelector('#v-today')); txt = document.querySelector('#v-today').innerText; }
+      catch (e) { threw = String(e).slice(0, 120); }
+      STATE.onboarded = before;
+      return { threw, hasClaim: /only on this phone/i.test(txt), names: /Gemini|Azure/i.test(txt) };
+    });
+    t.ok('onboarding renders the note without throwing', !r.threw, r);
+  }
+
+  /* ---- every area the athlete picks actually gets trained ---------------
+     focusBonus() returned on the FIRST key that yielded a candidate, and the
+     first key virtually always does. Measured across a whole 378-session
+     program: the bonus was chosen by 'abs' 306 times out of 306, and adding
+     chest, arms and thighs as trouble zones changed precisely nothing. Every
+     secondary target and every trouble zone was dead input — the quiz asked,
+     stored the answer, and the engine never read it. The in-code comment on
+     focusKey even claimed the opposite. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = JSON.stringify({ f: STATE.profile.focusPrimary, t: STATE.profile.targets,
+        z: STATE.profile.troubleZones, g: STATE.profile.goal });
+      const scan = () => {
+        const k = {};
+        for (let p = 0; p < 378; p++) {
+          try {
+            const s = buildSession(p);
+            const f = [...s.main, s.finisher].filter(Boolean).find(m => m && m.focus);
+            if (f && f.focusKey) k[f.focusKey] = (k[f.focusKey] || 0) + 1;
+          } catch (e) {}
+        }
+        return k;
+      };
+      STATE.profile.goal = 'lose';
+      STATE.profile.focusPrimary = 'abs'; STATE.profile.targets = ['abs', 'full'];
+      STATE.profile.troubleZones = [];
+      const twoAreas = scan();
+      STATE.profile.troubleZones = ['chest', 'arms', 'thighs'];
+      const withTrouble = scan();
+      const k = JSON.parse(keep);
+      STATE.profile.focusPrimary = k.f; STATE.profile.targets = k.t;
+      STATE.profile.troubleZones = k.z; STATE.profile.goal = k.g;
+      return { twoAreas, withTrouble, total: Object.values(withTrouble).reduce((a, b) => a + b, 0) };
+    });
+    t.ok('a secondary target is trained, not just the primary',
+      (r.twoAreas.full || 0) > 0, r.twoAreas);
+    t.ok('the primary focus still gets the largest share',
+      (r.twoAreas.abs || 0) >= (r.twoAreas.full || 0), r.twoAreas);
+    ['chest', 'arms', 'legs'].forEach(z =>
+      t.ok(`the "${z}" trouble zone actually reaches the program`, (r.withTrouble[z] || 0) > 0, r.withTrouble));
+    t.ok('the primary is still the most-trained area with trouble zones added',
+      (r.withTrouble.abs || 0) > (r.withTrouble.chest || 0), r.withTrouble);
+    t.ok('and the bonus still fires on the same number of sessions', r.total > 300, r);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

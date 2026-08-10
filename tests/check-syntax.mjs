@@ -40,3 +40,41 @@ if (cache !== 'coreforge-v' + ver) {
   process.exit(1);
 }
 console.log(`✓ APP_VERSION ${ver} matches CACHE ${cache}`);
+
+/* ---- safety lexicon -------------------------------------------------------
+   The app tells the athlete, in the player and on the health screen, that sharp
+   pain means stop. Six coach lines said the opposite — "Pain is just weakness
+   leaving", "March through the pain", "When it hurts, that is the one that
+   counts" — so the same product gave mutually exclusive instructions at the
+   exact moment someone is deciding whether what they feel is normal effort or a
+   warning. Motivation may push effort, burn and fatigue. It may never use pain,
+   or a symptom, as the thing to push through.
+
+   A build gate rather than a test because it costs nothing and the failure mode
+   is a well-meant line added months from now, in a persona nobody re-reads. */
+const BANNED = [
+  [/pain is (just )?weakness/i, 'frames pain as weakness'],
+  [/(march|push|power|fight|train|work)(ing)? (on |right )?through the pain/i, 'says to push through pain'],
+  [/no pain,? no gain/i, 'the "no pain no gain" framing'],
+  [/when it hurts/i, 'treats hurting as the goal'],
+  [/steal from the pain|embrace the pain|love the pain|welcome the pain/i, 'romanticises pain'],
+  [/suffer (well|in silence|more)/i, 'frames suffering as the objective'],
+  [/ignore the (pain|dizziness|chest)/i, 'tells the athlete to ignore a symptom'],
+];
+/* Quoted strings only: prose in comments explaining this rule must not trip it,
+   and neither must the code that HANDLES pain (hurtStop, painCount, the "sharp
+   pain means stop" cue, which are the messages we want). */
+const strings = js.match(/"(?:[^"\\\n]|\\.){2,300}"/g) || [];
+const offenders = [];
+for (const raw of strings) {
+  for (const [re, why] of BANNED) {
+    if (re.test(raw)) offenders.push(`${why}: ${raw.slice(0, 100)}`);
+  }
+}
+if (offenders.length) {
+  console.error(`✗ ${offenders.length} coach line(s) conflict with the stop-for-pain rule`);
+  offenders.forEach(o => console.error('  ' + o));
+  console.error('  Coach effort, burn and fatigue — never pain or a symptom.');
+  process.exit(1);
+}
+console.log(`✓ no coach line contradicts the stop-for-pain rule (${strings.length} strings scanned)`);

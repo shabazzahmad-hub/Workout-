@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 21 suites, ~1,370 checks, run by `npm test` |
+| `tests/` | 21 suites, ~1,380 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -319,6 +319,30 @@ as the test itself — that shipped once and prescribed 4×40 dips.
 **`LADDERS` arrays must be non-increasing in `hardness`.** A rung that climbs
 must never get easier.
 
+**A control the athlete sets must be readable in the OUTPUT, not just stored.**
+`focusBonus()` walked a priority list and returned on the first key that
+yielded a candidate — and the first key virtually always does. Measured across
+a full 378-session program: the bonus was chosen by `abs` 306 times out of 306,
+and adding chest, arms and thighs as trouble zones changed *nothing*. Every
+secondary target and every trouble zone the quiz collected was dead input. The
+comment on `focusKey` claimed the opposite ("the only handle that proves the
+trouble-zone answers actually steer the selection"), which is how it survived.
+
+The check that finds this class is not "does the setting save" — it is **set A,
+fingerprint the program, set B, fingerprint again, assert they differ**. Run it
+over a SPREAD of sessions: gear and handstands cannot appear in a week-1
+bodyweight core day, so testing there proves nothing. Half the first probe's
+"dead" findings were the probe using a key the app does not have — `'db'`
+instead of `'dumbbell'`, `STATE.deload` instead of `settings.deload`,
+`troubleZones:['knee']` when the pool is keyed `belly/lovehandles/chest/arms/
+thighs/posture`. Confirm the control's real shape before believing the result.
+
+**Widening what an engine reaches exposes filters nobody applied there.**
+Rotating the bonus across the athlete's other areas immediately produced
+`bearcrawl` 15 times for an athlete who had declared a tight room: the bonus ran
+`safeSwap` and never `spaceSwap`. The filter existed; that path just never
+needed it while it only ever picked one pool.
+
 **Cardio defaults to jumping jacks, not the bike.** `cardioMode()` returns
 `'jacks'` unless the athlete has explicitly chosen `'bike'`; owning a trainer is
 not consent to be programmed one. Jacks and the bike share the same arithmetic
@@ -581,8 +605,10 @@ wrong — not the validator.
 
 Develop on `claude/abs-core-workout-app-3rr2ob`.
 
-1. `npm run check` — parses the inline script and `sw.js`, and enforces the
-   `APP_VERSION` / `CACHE` lockstep.
+1. `npm run check` — parses the inline script and `sw.js`, enforces the
+   `APP_VERSION` / `CACHE` lockstep, and lints the coach corpus against the
+   stop-for-pain rule (no line may frame pain or a symptom as the thing to
+   push through).
 2. `npm test` — all 21 suites green, zero page errors, validator clean.
    Mutation-test anything newly added.
 3. Bump `APP_VERSION` and `CACHE` together.
