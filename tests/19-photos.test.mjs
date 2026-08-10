@@ -1,0 +1,160 @@
+/* Progress photos: three views, and comparisons that compare like with like.
+
+   The panel used to hold one rule — earliest photo on the left, latest on the
+   right — which is only ever correct when every photo is of the same thing.
+   Adding a back view made that assumption visible: a front shot captioned
+   "before" beside a back shot captioned "now" is not a comparison, it is two
+   unrelated pictures. Every check below is written so that restoring
+   `ps[0]` / `ps[ps.length-1]` turns it red.
+
+   The pose repair is asserted on STATE, never through poseOf(). poseOf()
+   sanitises its own read, so a check on what it returns passes whether or not
+   normalizeState() still repairs the field — the exact trap CLAUDE.md
+   describes for parqDone() and cueVolPref(). */
+import { serve, launch, suite, waitForBoot, seedAthlete } from './lib/harness.mjs';
+
+// 1×1 PNG. Small enough to be free, real enough for Image + canvas to decode.
+const PIXEL = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64');
+
+/* Photos straight into STATE. The bytes are irrelevant to every assertion here
+   — captions, panel presence and pose selection are all rendered synchronously
+   from the metadata, while the images hydrate from IndexedDB afterwards. */
+const seedPhotos = list => page => page.evaluate(ps => {
+  STATE.photos = ps.map(([date, pose]) => ({ id: date + '-' + pose + '-0', date, pose }));
+  save(); go('progress'); renderProgress();
+}, list);
+
+/* The two captions under the Before → Now pair, e.g. "2026-01-01 · front". */
+const readPair = page => page.evaluate(() => {
+  const v = document.querySelector('#v-progress');
+  const lbl = [...v.querySelectorAll('.section-label')]
+    .find(e => /Before . Now/.test(e.textContent));
+  if (!lbl) return { shown: false, heading: '', caps: [] };
+  const grid = lbl.nextElementSibling;
+  return { shown: true, heading: lbl.textContent.trim(),
+    caps: [...grid.querySelectorAll('.tiny')].map(e => e.textContent.trim()) };
+});
+
+export default async function run() {
+  const t = suite('progress photos');
+  const { srv, port } = await serve();
+  const { browser, page, errors } = await launch(port);
+  await waitForBoot(page);
+  await seedAthlete(page);
+
+  /* ---- the back view exists, and it survives the round trip -------------- */
+  {
+    const r = await page.evaluate(() => {
+      go('progress'); renderProgress();
+      const html = document.querySelector('#v-progress').innerHTML;
+      return { front: html.includes("capturePhoto('front')"),
+        side: html.includes("capturePhoto('side')"),
+        back: html.includes("capturePhoto('back')") };
+    });
+    t.ok('the Progress tab offers a front shot', r.front, r);
+    t.ok('and a side shot', r.side, r);
+    t.ok('and a back shot — where lat width and flank fat actually show', r.back, r);
+  }
+  {
+    // through the real capture path: the button sets the pose, the input saves it
+    await page.evaluate(() => { STATE.photos = []; save(); capturePhoto('back'); });
+    await page.setInputFiles('#photoInput', { name: 'b.png', mimeType: 'image/png', buffer: PIXEL });
+    await page.waitForFunction(() => (STATE.photos || []).length === 1, null, { timeout: 5000 });
+    const r = await page.evaluate(async () => {
+      const p = STATE.photos[0];
+      return { pose: p.pose, date: p.date, bytes: !!(await idbGet('ph_' + p.id)) };
+    });
+    t.eq('capturing a back shot stores it as a back shot', r.pose, 'back');
+    t.ok('and the bytes land in IndexedDB', r.bytes, r);
+    await page.evaluate(async () => {
+      for (const p of STATE.photos) await idbDel('ph_' + p.id);
+      STATE.photos = []; save();
+    });
+  }
+
+  /* ---- Before → Now compares one pose against itself --------------------- */
+  {
+    // earliest photo is a front, latest is a back: the old rule paired them
+    await seedPhotos([['2026-01-01', 'front'], ['2026-02-01', 'front'], ['2026-03-01', 'back']])(page);
+    const r = await readPair(page);
+    t.ok('a mixed library still shows a Before → Now panel', r.shown, r);
+    t.ok('both sides are the same pose', /front/.test(r.caps[0] || '') && /front/.test(r.caps[1] || ''), r);
+    t.ok('and it spans the two dates of that pose, not the library',
+      /2026-01-01/.test(r.caps[0] || '') && /2026-02-01/.test(r.caps[1] || ''), r);
+    t.ok('the heading names the pose being compared', /front/i.test(r.heading), r);
+  }
+  {
+    // only the back view has two shots — the panel must follow the data
+    await seedPhotos([['2026-01-01', 'front'], ['2026-01-02', 'back'], ['2026-03-01', 'back']])(page);
+    const r = await readPair(page);
+    t.ok('with only the back view repeated, the back view is compared',
+      /back/.test(r.caps[0] || '') && /back/.test(r.caps[1] || ''), r);
+    t.ok('across the back shots\' own dates',
+      /2026-01-02/.test(r.caps[0] || '') && /2026-03-01/.test(r.caps[1] || ''), r);
+  }
+  {
+    // widest span wins: front spans 2 months, side spans 2 days
+    await seedPhotos([['2026-01-01', 'front'], ['2026-01-01', 'side'], ['2026-01-03', 'side'],
+      ['2026-03-01', 'front']])(page);
+    const r = await readPair(page);
+    t.ok('the pose with the longest span is the one shown',
+      /front/.test(r.caps[0] || '') && /front/.test(r.caps[1] || ''), r);
+  }
+  {
+    // three photos, three poses, nothing repeated — there is no comparison yet
+    await seedPhotos([['2026-01-01', 'front'], ['2026-01-01', 'side'], ['2026-01-01', 'back']])(page);
+    const r = await readPair(page);
+    t.ok('three different poses produce no Before → Now panel at all', !r.shown, r);
+    const hint = await page.evaluate(() =>
+      /same/i.test(document.querySelector('#v-progress').innerText));
+    t.ok('and the athlete is told a second shot of one pose is what unlocks it', hint, { hint });
+  }
+
+  /* ---- the compare sheet opens on the same pair -------------------------- */
+  {
+    await seedPhotos([['2026-01-01', 'front'], ['2026-02-01', 'front'], ['2026-03-01', 'back']])(page);
+    const r = await page.evaluate(() => {
+      openCompare();
+      const a = document.querySelector('#cmpA'), b = document.querySelector('#cmpB');
+      const txt = s => s.options[s.selectedIndex].textContent;
+      const out = { a: txt(a), b: txt(b) };
+      closeSheet();
+      return out;
+    });
+    t.ok('Compare opens on two shots of one pose', /front/.test(r.a) && /front/.test(r.b), r);
+  }
+
+  /* ---- a photo with no pose is repaired, not dropped and not fatal ------- */
+  {
+    await page.evaluate(() => {
+      const cur = JSON.parse(localStorage.getItem('coreforge.v1') || '{}');
+      cur.photos = [{ id: '2026-01-01-x-0', date: '2026-01-01' },          // no pose at all
+        { id: '2026-01-02-x-0', date: '2026-01-02', pose: '' },            // empty pose
+        { id: '2026-01-03-x-0', date: '2026-01-03', pose: 7 },             // wrong type
+        { id: '2026-01-04-x-0', date: '2026-01-04', pose: 'side' }];       // untouched
+      localStorage.setItem('coreforge.v1', JSON.stringify(cur));
+    });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForBoot(page);
+    // assert the junk is GONE FROM STATE — not that poseOf() papered over it
+    const r = await page.evaluate(() => {
+      go('progress'); renderProgress();
+      return { kept: (STATE.photos || []).length,
+        poses: (STATE.photos || []).map(p => p.pose),
+        types: (STATE.photos || []).map(p => typeof p.pose),
+        boundary: /went wrong drawing/i.test(document.body.innerText) };
+    });
+    t.eq('no photo is discarded for a bad pose — the bytes are irreplaceable', r.kept, 4);
+    t.eq('every stored pose is a non-empty string', r.types, ['string', 'string', 'string', 'string']);
+    t.eq('the missing ones are repaired to front, the good one left alone',
+      r.poses, ['front', 'front', 'front', 'side']);
+    t.ok('and Progress renders instead of hitting the error boundary', !r.boundary, r);
+  }
+
+  srv.close();
+  const failed = t.finish(errors);
+  await browser.close();
+  return failed;
+}
