@@ -146,18 +146,27 @@ export default async function run() {
     t.ok('the report is recorded against the exercise', r.recorded, r);
     t.ok('and against the body region', r.hasRegion, r);
 
-    /* stopping early still counts the session — otherwise the button punishes
-       the athlete for using it */
+    /* Stopping early must never cost the athlete anything — a button that
+       punishes you for pressing it does not get pressed. The pointer still
+       moves, so nobody repeats the session that hurt them. But since v210 a
+       stop before ANY set was logged is recorded as stoppedForPain rather than
+       done: it must not claim a workout that did not happen. Stopping AFTER
+       real work still commits as a partial session (covered below). */
     const stop = await page.evaluate(async () => {
       try { playerQuit(); } catch (e) {}
       STATE.progressPtr = 3; STATE.pain = [];
       openPlayer(); await new Promise(z => setTimeout(z, 200));
       const before = STATE.progressPtr;
       hurtStop(); await new Promise(z => setTimeout(z, 300));
-      return { before, after: STATE.progressPtr, logged: !!(STATE.logs[before] && STATE.logs[before].done), pain: STATE.pain.length };
+      const l = STATE.logs[before] || {};
+      return { before, after: STATE.progressPtr, done: !!l.done, painStop: !!l.stoppedForPain,
+        pain: STATE.pain.length, counted: sessionsDoneCount() };
     });
     t.eq('stopping because of pain still advances the programme', stop.after, stop.before + 1);
-    t.ok('and the session is logged', stop.logged, stop);
+    t.ok('the stop is recorded against the session', stop.painStop, stop);
+    t.ok('a stop with no work done is not banked as a completed session', !stop.done, stop);
+    t.eq('so it never inflates the sessions-done count', stop.counted, 0);
+    t.ok('and the pain report is still filed', stop.pain >= 1, stop);
     t.eq('and the pain is recorded', stop.pain, 1);
 
     const pattern = await page.evaluate(() => {
@@ -307,7 +316,10 @@ export default async function run() {
       const out = {};
       STATE.progressPtr = 5; STATE.adapt = 1.05; STATE.logs = {}; STATE.achievements = {};
       const before = { ptr: STATE.progressPtr, adapt: STATE.adapt, logs: Object.keys(STATE.logs).length };
-      ensureLog();
+      /* A zero-work session is refused since v210 — skipping everything must
+         not bank a session. These blocks are about the commit that FOLLOWS
+         real work, so log a movement first, exactly as the athlete would. */
+      { const _s = buildSession(STATE.progressPtr); if (_s.main[0]) toggleEx(_s.main[0].exId); }
       commitSession('easy');
       await new Promise(z => setTimeout(z, 400));
       out.advanced = STATE.progressPtr === before.ptr + 1;
@@ -350,7 +362,10 @@ export default async function run() {
 
     const ach = await page.evaluate(async () => {
       STATE.progressPtr = 20; STATE.logs = {}; STATE.achievements = {};
-      ensureLog();
+      /* A zero-work session is refused since v210 — skipping everything must
+         not bank a session. These blocks are about the commit that FOLLOWS
+         real work, so log a movement first, exactly as the athlete would. */
+      { const _s = buildSession(STATE.progressPtr); if (_s.main[0]) toggleEx(_s.main[0].exId); }
       const before = JSON.stringify(STATE.achievements);
       commitSession('ok');
       await new Promise(z => setTimeout(z, 800));   // checkAchievements runs on a timer
@@ -394,7 +409,10 @@ export default async function run() {
 
       // and undo, after a real commit from a mid-week pointer
       const p0 = STATE.progressPtr;
-      ensureLog();
+      /* A zero-work session is refused since v210 — skipping everything must
+         not bank a session. These blocks are about the commit that FOLLOWS
+         real work, so log a movement first, exactly as the athlete would. */
+      { const _s = buildSession(STATE.progressPtr); if (_s.main[0]) toggleEx(_s.main[0].exId); }
       commitSession('ok');
       await new Promise(z => setTimeout(z, 400));
       out.committedFrom = p0;
