@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 17 suites, ~1,135 checks, run by `npm test` |
+| `tests/` | 18 suites, ~1,161 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -82,6 +82,17 @@ That also means **changing a default fixes nobody who already installed the
 app** — their old value is already saved. A stale default needs a one-time
 migration keyed to the exact value, behind a flag, leaving any other value
 alone as a deliberate choice. See `_toneFix`.
+
+The other half of that rule: **a check on an absent-by-default field has to run
+the boot path.** `delete STATE.x; assert(STATE.x === undefined)` proves nothing
+— it passes whether or not `normalizeState()` would install a default. Call
+`normalizeState()` first. A mutant that added `proteinTarget = 150` walked
+straight through the check that skipped it.
+
+**`!= null` is not "is absent".** It skips `null` as well as `undefined`, so the
+repair guarding `nutrition.proteinTarget` left a stored `null` in place — a junk
+key that then travels in every backup. Use `!== undefined` when absent is the
+contract.
 
 **Escape every user-controlled string that reaches `innerHTML`** with `_ve()`
 — `profile.name`, `baseline.level`, food names, favourite names. `importData()`
@@ -449,7 +460,7 @@ Develop on `claude/abs-core-workout-app-3rr2ob`.
 
 1. `npm run check` — parses the inline script and `sw.js`, and enforces the
    `APP_VERSION` / `CACHE` lockstep.
-2. `npm test` — all 17 suites green, zero page errors, validator clean.
+2. `npm test` — all 18 suites green, zero page errors, validator clean.
    Mutation-test anything newly added.
 3. Bump `APP_VERSION` and `CACHE` together.
 4. `git fetch origin main && git checkout -B <branch> origin/main`, commit,
