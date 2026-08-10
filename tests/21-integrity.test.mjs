@@ -239,6 +239,42 @@ export default async function run() {
     t.ok('neither throws', !r.threw, r);
   }
 
+  /* ---- the first-run privacy claim is true ------------------------------
+     "Nothing is uploaded" was an absolute, and two opt-in features break it:
+     the food-photo lookup posts to Google Gemini and the neural voice posts to
+     Azure. Both are described where they are switched on — but consent is
+     formed on the first-run screen, which had already promised otherwise. */
+  {
+    const r = await page.evaluate(() => {
+      const html = privacyNoteHTML();
+      const el = document.createElement('div'); el.innerHTML = html;
+      const txt = el.textContent;
+      return { txt,
+        saysLocal: /only on this phone/i.test(txt),
+        namesGemini: /gemini/i.test(txt),
+        namesAzure: /azure/i.test(txt),
+        saysOptIn: /own API key/i.test(txt),
+        absolute: /Nothing is uploaded\.\s*$/.test(txt.trim()) };
+    });
+    t.ok('the note still says training data is local', r.saysLocal, r.txt);
+    t.ok('it names Google Gemini as a recipient', r.namesGemini, r.txt);
+    t.ok('and Microsoft Azure', r.namesAzure, r.txt);
+    t.ok('and says both need the athlete\'s own key', r.saysOptIn, r.txt);
+    t.ok('the unqualified "nothing is uploaded" claim is gone', !r.absolute, r.txt);
+  }
+  {
+    // and it actually renders on the screen that makes the promise
+    const r = await page.evaluate(() => {
+      const before = STATE.onboarded; STATE.onboarded = false;
+      let txt = '', threw = null;
+      try { obMount(document.querySelector('#v-today')); txt = document.querySelector('#v-today').innerText; }
+      catch (e) { threw = String(e).slice(0, 120); }
+      STATE.onboarded = before;
+      return { threw, hasClaim: /only on this phone/i.test(txt), names: /Gemini|Azure/i.test(txt) };
+    });
+    t.ok('onboarding renders the note without throwing', !r.threw, r);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

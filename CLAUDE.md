@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 21 suites, ~1,370 checks, run by `npm test` |
+| `tests/` | 21 suites, ~1,380 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -581,8 +581,10 @@ wrong — not the validator.
 
 Develop on `claude/abs-core-workout-app-3rr2ob`.
 
-1. `npm run check` — parses the inline script and `sw.js`, and enforces the
-   `APP_VERSION` / `CACHE` lockstep.
+1. `npm run check` — parses the inline script and `sw.js`, enforces the
+   `APP_VERSION` / `CACHE` lockstep, and lints the coach corpus against the
+   stop-for-pain rule (no line may frame pain or a symptom as the thing to
+   push through).
 2. `npm test` — all 21 suites green, zero page errors, validator clean.
    Mutation-test anything newly added.
 3. Bump `APP_VERSION` and `CACHE` together.
