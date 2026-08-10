@@ -320,6 +320,42 @@ export default async function run() {
     t.ok('and the bonus still fires on the same number of sessions', r.total > 300, r);
   }
 
+  /* ---- the baseline battery does not measure its own fatigue -------------
+     plank -> side -> hollow -> reverse crunch was four maximal TRUNK efforts
+     in a row. Each measured how tired the one before it had left you, and
+     those numbers anchor every prescription for a year. */
+  {
+    const r = await page.evaluate(() => {
+      const TRUNK = new Set(['plank', 'side', 'hollow', 'lower', 'dyn']);
+      const ids = TESTS.map(t => t.id);
+      let run = 0, worst = 0;
+      ids.forEach(id => { if (TRUNK.has(id)) { run++; worst = Math.max(worst, run); } else run = 0; });
+      return { ids, worst, count: ids.length, protocol: (typeof TEST_PROTOCOL === 'number') ? TEST_PROTOCOL : null,
+        trunk: ids.filter(i => TRUNK.has(i)).length };
+    });
+    t.eq('all eight tests are still in the battery', r.count, 8);
+    t.ok('no more than two trunk tests run back to back', r.worst <= 2, r);
+    t.eq('the battery still opens on the plank anchor', r.ids[0], 'plank');
+    t.ok('the protocol version is defined', r.protocol >= 2, r);
+  }
+  {
+    // a recorded assessment carries the protocol it was taken under
+    const r = await page.evaluate(() => {
+      const keepB = STATE.baseline, keepH = STATE.scoreHistory.slice(), keepA = assessState;
+      const res = {}; TESTS.forEach(t => res[t.id] = 20);
+      // commitAssessment reads assessState.reassess; it is null outside the flow
+      assessState = { idx: TESTS.length, results: res, reassess: null };
+      const a = computeAssessment(res);
+      const rec = { date: todayISO(), results: res, score: a.score, level: a.level,
+        maxes: a.maxes, testCount: TESTS.length, protocol: TEST_PROTOCOL };
+      commitAssessment(a, rec);
+      const stamped = STATE.baseline && STATE.baseline.protocol;
+      STATE.baseline = keepB; STATE.scoreHistory = keepH; assessState = keepA;
+      return { stamped };
+    });
+    t.ok('a saved baseline records which protocol produced it', r.stamped >= 2, r);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

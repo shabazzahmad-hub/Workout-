@@ -316,6 +316,21 @@ this movement is. Higher = easier.** A push-up anchored to the push-up test is
 calibrated `hardness` makes the engine treat that movement as exactly as hard
 as the test itself — that shipped once and prescribed 4×40 dips.
 
+**The ORDER of the baseline battery is part of the measurement.** The eight
+tests ran plank → side → hollow → reverse crunch: four maximal TRUNK efforts
+back to back, so each measured how tired the previous one had left the athlete
+as much as it measured capacity — and those numbers anchor every prescription
+for a year. The order now alternates domains (`TESTS` is plank, push, side,
+squat, hollow, pull, lower, dyn), which holds the longest trunk run to two, and
+the guidance asks for two minutes between efforts rather than one. Nothing
+indexes `TESTS` by position — consumers use `assessState.idx` or the test `id`
+— so reordering is safe, but a check pins the run length so it cannot drift
+back.
+
+`TEST_PROTOCOL` is stamped on every recorded assessment. A v1 baseline and a v2
+re-test were not taken under the same conditions, and a comparison across them
+should be able to say so rather than read as progress.
+
 **`LADDERS` arrays must be non-increasing in `hardness`.** A rung that climbs
 must never get easier.
 

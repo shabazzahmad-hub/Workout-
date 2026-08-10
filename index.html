@@ -1476,28 +1476,41 @@ const COOLDOWN_FLOW = [
 ];
 
 /* Baseline tests shown on day 1 */
+/* Bumped whenever the battery's ORDER or rest changes, because both change the
+   numbers. Stored on each assessment so a cross-protocol comparison is
+   detectable instead of silently reading as progress or regression. */
+const TEST_PROTOCOL = 2;
+/* ORDER IS PART OF THE MEASUREMENT. These ran plank -> side -> hollow ->
+   reverse crunch: four maximal trunk efforts back to back, so each one
+   measured how tired the previous one had left you as much as it measured
+   capacity. Those numbers then anchor every prescription for a year.
+   Alternating the domains keeps the longest trunk run to two, and the two that
+   remain adjacent are different modes (flexion reps, then dynamic time).
+   Re-tests walk the same array, so comparability holds — but a baseline
+   recorded before this change was taken under the old order, which is why the
+   protocol version is stamped alongside it. */
 const TESTS = [
-  {id:'plank', name:'Forearm Plank', unit:'time', ex:'plank', bench:120,
+    {id:'plank', name:'Forearm Plank', unit:'time', ex:'plank', bench:120,
    instr:'Hold a solid forearm plank for as long as your form stays perfect. Stop when your hips sag. Enter your best time.'},
-  {id:'side', name:'Side Plank (weakest side)', unit:'time', ex:'sideplank', bench:75,
-   instr:'Hold a side plank on each side to failure. Enter your WEAKER side\'s time — we build from your true baseline.'},
-  {id:'hollow', name:'Hollow Body Hold', unit:'time', ex:'hollow', bench:50,
-   instr:'Hold a hollow body position (low back pinned) as long as you can keep the shape. Enter your best time.'},
-  {id:'lower', name:'Reverse Crunches (max reps)', unit:'reps', ex:'revcrunch', bench:25,
-   instr:'Do as many clean, controlled reverse crunches as you can in one set. Enter the number of good reps.'},
-  {id:'push', name:'Push-Ups (max reps)', unit:'reps', ex:'pushup', bench:35,
+    {id:'push', name:'Push-Ups (max reps)', unit:'reps', ex:'pushup', bench:35,
    instr:'Do as many clean push-ups as you can in one set — chest to a fist off the floor, body straight. Drop to your knees only if you cannot hold the line, and stop there.'},
-  {id:'pull', name:'Inverted Rows (max reps)', unit:'reps', ex:'invertedrow', bench:20,
-   instr:'Set a bar, or lie under a sturdy table and grip the edge. Hang underneath, body straight, and row your chest to it for as many controlled reps as you can. No bar and no table? Loop a towel around a door handle, lean back and row — the Towel Door Row is in your program. Enter reps of a PULL only: this number scales every row and pull-up you will be given, so a back extension like the Superman would badly over-prescribe them.'},
-  {id:'squat', name:'Bodyweight Squats (max reps)', unit:'reps', ex:'squat', bench:40,
+    {id:'side', name:'Side Plank (weakest side)', unit:'time', ex:'sideplank', bench:75,
+   instr:'Hold a side plank on each side to failure. Enter your WEAKER side\'s time — we build from your true baseline.'},
+    {id:'squat', name:'Bodyweight Squats (max reps)', unit:'reps', ex:'squat', bench:40,
    instr:'Squat to at least parallel, chest up, heels down, for as many controlled reps as you can. Stop when depth or form goes.'},
-  {id:'dyn', name:'Bicycle Crunches (max time)', unit:'time', ex:'bicycle', bench:75,
+    {id:'hollow', name:'Hollow Body Hold', unit:'time', ex:'hollow', bench:50,
+   instr:'Hold a hollow body position (low back pinned) as long as you can keep the shape. Enter your best time.'},
+    {id:'pull', name:'Inverted Rows (max reps)', unit:'reps', ex:'invertedrow', bench:20,
+   instr:'Set a bar, or lie under a sturdy table and grip the edge. Hang underneath, body straight, and row your chest to it for as many controlled reps as you can. No bar and no table? Loop a towel around a door handle, lean back and row — the Towel Door Row is in your program. Enter reps of a PULL only: this number scales every row and pull-up you will be given, so a back extension like the Superman would badly over-prescribe them.'},
+    {id:'lower', name:'Reverse Crunches (max reps)', unit:'reps', ex:'revcrunch', bench:25,
+   instr:'Do as many clean, controlled reverse crunches as you can in one set. Enter the number of good reps.'},
+    {id:'dyn', name:'Bicycle Crunches (max time)', unit:'time', ex:'bicycle', bench:75,
    instr:'Do controlled bicycle crunches for as long as your form stays good. Press Start — the timer counts up — and Stop when your form breaks or you can\'t keep the pace.'},
 ];
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='212';
+const APP_VERSION='213';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -2896,7 +2909,7 @@ function baselineIntroHTML(){
   <div class="card pad"><h3>The ${TESTS.length} tests</h3>
     ${TESTS.map((t,i)=>`<div class="kv"><span><b>${i+1}. ${t.name}</b></span><span class="tag ${EX[t.ex].region}">${t.unit==='time'?'hold':'reps'}</span></div>`).join('')}
   </div>
-  <div class="note info"><b>Warm up first.</b> Do 60 seconds of marching, a few glute bridges and bird dogs. Rest ~1 min between tests. <b>Breathe throughout — never hold your breath.</b> Stop immediately for chest pain, dizziness or shortness of breath.</div>
+  <div class="note info"><b>Warm up first.</b> Do 60 seconds of marching, a few glute bridges and bird dogs. <b>Rest 2 minutes between tests</b> — these are maximal efforts, and a short rest measures your recovery instead of your strength. The order alternates on purpose so no test lands on a muscle the one before it just emptied. Split them over two days if you would rather. <b>Breathe throughout — never hold your breath.</b> Stop immediately for chest pain, dizziness or shortness of breath.</div>
   ${!parqDone()?`<div class="note warn"><b>One quick health check first.</b> A test to failure is the most demanding thing this app will ever ask of you, so we screen before you do it. Takes a few seconds.
     <button class="btn sm primary" style="width:auto;margin-top:10px" onclick="openHealthCheck()">Answer the health check</button>
     <button class="btn sm ghost" style="width:auto;margin-top:6px" onclick="skipBaseline()">Skip the test — start me training</button></div>`
@@ -2917,7 +2930,7 @@ function reassessIntroHTML(cycle){
     <div class="kv"><span>Core Score</span><b>${(prev&&prev.score!=null)?prev.score+'/100':'not tested'}</b></div>
     <div class="kv"><span>Level</span><b>${_ve((prev&&prev.level)||'—')}</b></div>
   </div>
-  <div class="note info"><b>Warm up first</b>, exactly as you did on day one — 60 seconds of marching, a few glute bridges and bird dogs, and rest ~1 min between tests. Breathe throughout. Test on a day you feel fresh: a tired re-test tells the program you got weaker.</div>
+  <div class="note info"><b>Warm up first</b>, exactly as you did on day one — 60 seconds of marching, a few glute bridges and bird dogs, and <b>2 minutes of rest between tests</b>. Same warm-up, same order, same rest as last time: that is what makes the comparison mean anything. Breathe throughout. Test on a day you feel fresh: a tired re-test tells the program you got weaker.</div>
   ${!parqDone()?`<div class="note warn"><b>One quick health check first.</b> The re-test is another maximal effort, so we screen before you do it.
      <button class="btn sm primary" style="width:auto;margin-top:8px" onclick="openHealthCheck()">Answer the health check</button>
      <button class="btn sm ghost" style="width:auto;margin-top:6px" onclick="skipReassess()">Continue without re-testing</button></div>`
@@ -4824,7 +4837,11 @@ function discardRetest(){
 }
 function finishAssessment(){
   const a=computeAssessment(assessState.results);
-  const rec={date:todayISO(),results:assessState.results,score:a.score,level:a.level,maxes:a.maxes,testCount:TESTS.length};
+  /* PROTOCOL stamps HOW the numbers were taken, not just what they were. v2
+     alternates the movement domains; v1 ran four maximal trunk efforts in a
+     row, so a v1 baseline and a v2 re-test are not measuring the same thing
+     and a comparison between them should say so rather than read as progress. */
+  const rec={date:todayISO(),results:assessState.results,score:a.score,level:a.level,maxes:a.maxes,testCount:TESTS.length,protocol:TEST_PROTOCOL};
   /* Ask BEFORE writing anything. An interstitial that appears after the commit
      would be a notification, not a check. */
   const drop=retestDrop(a);
