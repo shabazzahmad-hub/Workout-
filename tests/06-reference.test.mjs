@@ -182,7 +182,7 @@ export default async function run() {
       .map(refSlotKey);
     return o;
   });
-  t.eq('there are seven worked days', days.n, 7);
+  t.eq('there are twenty-eight worked days — a month, not a week', days.n, 28);
   t.ok('every day is built from foods that exist', days.missing.length === 0, days.missing);
   t.ok('a day scaled to a target lands on that target', days.bad.length === 0, days.bad.slice(0, 8));
   t.ok('a day header is always the sum of its meals and its items', days.inconsistent.length === 0, days.inconsistent.slice(0, 6));
@@ -247,7 +247,7 @@ export default async function run() {
   t.ok('a food that needs no conversion is bought as costed', shop.plainFoodUnconverted, shop);
   t.ok('the whole shop grows for a bigger athlete', shop.movesWithTarget, shop);
   t.eq('the shop is grouped by where you pick it up', shop.groups,
-    ['Protein counter', 'Fresh', 'Cupboard & freezer']);
+    ['Protein counter', 'Fresh', 'Fruit', 'Cupboard & freezer']);
 
   // ---- targets -------------------------------------------------------------
   const tgt = await page.evaluate(() => {
@@ -287,8 +287,9 @@ export default async function run() {
       expectedRows: FOODS.length,
       mealButtons: v.querySelectorAll('[onclick^="logRefMeal"]').length,
       expectedMeals: REF_DAYS.reduce((a, d) => a + d.meals.length, 0),
-      hasDays: /Seven worked days/.test(v.innerHTML),
-      hasShop: /Weekly shop/.test(v.innerHTML),
+      hasDays: /28 worked days/.test(v.innerHTML),
+      hasShop: /The whole shop/.test(v.innerHTML),
+      weekMarkers: (v.innerHTML.match(/>Week \d</g) || []).length,
       hasRules: /Getting to \d+ g/.test(v.innerHTML),
       quotesTarget: new RegExp(refTargets().p + ' g protein').test(v.innerHTML),
       navHasRef: !!document.querySelector('.nav button[data-tab="ref"]'),
@@ -301,8 +302,11 @@ export default async function run() {
   t.ok('no other view is left active alongside it', view.onlyOneActive, view);
   t.eq('every food renders as a tappable row', view.foodRows, view.expectedRows);
   t.eq('every meal of every day gets a log button', view.mealButtons, view.expectedMeals);
-  t.ok('the seven days render', view.hasDays, view);
+  t.ok('the month of days renders', view.hasDays, view);
   t.ok('the shopping list renders', view.hasShop, view);
+  /* Twenty-eight cards in a row is a wall. They are marked off in weeks so
+     the tab stays navigable. */
+  t.eq('and the days are marked off into four weeks', view.weekMarkers, 4);
   t.ok('the build rules render, headed by the athlete\'s own number', view.hasRules, view);
   t.ok('the tab states the target it is working to', view.quotesTarget, view);
   t.ok('the nav carries a Reference button', view.navHasRef, view);

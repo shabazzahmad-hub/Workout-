@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 16 suites, ~1,102 checks, run by `npm test` |
+| `tests/` | 17 suites, ~1,135 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -396,6 +396,42 @@ Two rules that are easy to get wrong:
 baseline tests, every warm-up and cool-down, and a beginner's first fortnight.
 Video (`.mp4`) sorts last in `EXTRA`, being heaviest and least necessary.
 
+## The reference days
+
+`REF_DAYS` is **28 worked days** — four weeks, then it repeats — and `shopList()`
+totals all of them into one list. No pork on any of them, gluten-free
+throughout, fruit on every day.
+
+**A day is not just a menu; it has to land on whatever target it is scaled
+to.** `scaleDay()` moves the protein anchors to hit the protein and the
+starches (`REF_STARCH`) to close the calories. Everything else — nuts, oil,
+avocado, fruit, veg — is **fixed**, and that is what makes days fail:
+
+- **A day with no starch at breakfast cannot stretch upward.** Four of the new
+  days landed 160–220 kcal short of a 2,800 kcal athlete with the starch dial
+  already at its 1.6× stop. A starch in every meal gives the dial something to
+  turn.
+- **Stacked fixed items set a calorie floor the scaler cannot get under.**
+  Nut butter plus oil plus avocado plus seeds plus fruit on one day put it
+  ~190 kcal over a 1,700 kcal target at the 0.5× floor.
+- **Plant anchors are calorie-expensive per gram of protein**, so a day has to
+  survive *substitution*: for a vegan athlete with soy, nut and gluten
+  allergies every anchor becomes a pulse, and three days fell 13–15 g short at
+  155 g / 2,170 kcal purely because of it.
+
+Three separate bars, and they are checked in three different places — meeting
+one does not mean meeting the others:
+
+| bar | where | what it sweeps |
+|---|---|---|
+| 3 targets, omnivore | `validateData()` | 150/2170, 190/2600, 120/1700 |
+| 5 targets, omnivore | suite 06 | up to 200 g / 2,800 kcal |
+| 6 diet+allergen combos | suite 09 | after substitution, ±12 g at 155/2170 |
+
+`validateData()` runs **whenever it is called**, including while a suite has a
+restrictive diet set — so a day must clear its three targets *after
+substitution* too, not merely for an omnivore.
+
 ## `validateData()`
 
 Runs at boot and logs to the console. It checks anchors resolve, anchor units
@@ -413,7 +449,7 @@ Develop on `claude/abs-core-workout-app-3rr2ob`.
 
 1. `npm run check` — parses the inline script and `sw.js`, and enforces the
    `APP_VERSION` / `CACHE` lockstep.
-2. `npm test` — all 16 suites green, zero page errors, validator clean.
+2. `npm test` — all 17 suites green, zero page errors, validator clean.
    Mutation-test anything newly added.
 3. Bump `APP_VERSION` and `CACHE` together.
 4. `git fetch origin main && git checkout -B <branch> origin/main`, commit,
