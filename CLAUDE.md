@@ -167,7 +167,12 @@ Known traps when writing checks:
   A probe that set `PLAYER.items[i].exId` and called `plEnterWork()` never
   changed the media, so the darkest and the brightest photo in the library both
   scored an identical contrast ratio. Two numbers that agree to two decimals
-  across inputs that should differ is the tell.
+  across inputs that should differ is the tell. This caught a *shipped suite*
+  the second time, not just a throwaway probe: a block called `plEnterWork()`
+  and read back the rest screen the previous block had left mounted, and it had
+  been green on nothing but block order. **Every block builds the state it
+  asserts on** — `plEnterReady(false)` first, then `plClear(); plEnterWork()`.
+  What the block before you left on screen is not a contract.
 - **Do not test a repair through a getter that guards itself.** This has now
   bitten twice: `parqDone()` and `cueVolPref()` both sanitise their own reads,
   so asserting on their OUTPUT passes whether or not `normalizeState()` still
