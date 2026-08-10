@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 20 suites, ~1,320 checks, run by `npm test` |
+| `tests/` | 21 suites, ~1,370 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -134,8 +134,55 @@ clears it for its own reasons, so deleting the clear-on-valid branch entirely
 left the suite green.
 
 **Escape every user-controlled string that reaches `innerHTML`** with `_ve()`
-— `profile.name`, `baseline.level`, food names, favourite names. `importData()`
-accepts arbitrary JSON, so these are a real injection path, not self-XSS.
+— `profile.name`, `baseline.level`, food names, favourite names, **`_saved`,
+achievement dates**. `importData()` accepts arbitrary JSON, so these are a real
+injection path, not self-XSS. The two that shipped unescaped were both fields
+nobody thinks of as user content: a housekeeping timestamp and a badge date,
+rendered a line apart from a `profile.name` that *was* escaped. If it can come
+out of a backup, it is user content.
+
+**A promise in UI text is a specification.** Three of the worst defects in this
+repo were a sentence the athlete could read and no code behind it. The health
+screen said an uncleared athlete would be held "well short of failure" while
+`prescribe()` never called `safeMode()` — flagged and cleared athletes got
+byte-identical sessions. The restart confirm said "history stays saved" while
+`restartProgram()` cleared the logs; the fix kept them and created a worse bug
+(below). The finish screen said a session was complete when nothing had been
+done. **When you write a reassurance into the UI, grep for the code that
+enforces it — and if there isn't any, that is the bug.**
+
+**A skipped session is not a completed one, and a measured zero is not a
+missing answer.** Both are the same mistake: treating "no work" as "no data".
+`computeAssessment()` did `+results.plank||30`, so an athlete who honestly
+recorded 0 was prescribed against a 30-second plank. `actualRatio()` returned
+`null` when nothing was logged, and `commitSession()` reads `null` as "no
+opinion" and raises the load — so skipping every movement and tapping "Easy"
+made next week *harder*. Zero is data. Say zero.
+
+The completion gate that came out of it: **zero sets refuses to commit** (the
+session stays open), partial work commits but is flagged `partial`, and the
+pain-stop path keeps its own rule — it still advances the pointer, because a
+button that punishes you for pressing it does not get pressed, but a stop
+before any set was logged records `stoppedForPain` instead of `done` so it
+never claims a workout that did not happen.
+
+**Resetting a pointer that keys a map is a collision, not a reset.** `logs` is
+keyed by `progressPtr`, and `restartProgram()` set that back to 0 while keeping
+the rows — so the new block's session 0 *was* the old block's session 0,
+already `done:true`. The code comment asserted "the new block writes fresh keys
+from progressPtr 0", which was simply false. Archive the whole run into
+`STATE.runs` instead; the keys go with it, and every lifetime counter reads both
+(`allDoneLogs`, `allDonePairs`). **A comment claiming an invariant is not the
+invariant** — this one was written by the fix for the previous bug in the same
+function.
+
+**CacheStorage and service-worker registrations are scoped to the ORIGIN, not
+to your scope.** `caches.keys()` on `shabazzahmad-hub.github.io` returns the
+Command app's caches too, so `keys.filter(k => k !== CACHE)` in `activate` and a
+bare `getRegistrations()` loop in `selfUpdate()` deleted another app's offline
+pack and unregistered its worker on every CoreForge update. Match on
+`/^coreforge-v\d+$/` and take the registration by scope. Never
+enumerate-and-delete origin-wide.
 
 **Sanitise before merging over defaults.** `Object.assign({defaults}, stored)`
 lets a present-but-invalid value beat the fallback that exists to cover it.
@@ -199,6 +246,31 @@ in code that already had a green suite, and the list keeps growing:
 **Mutation-test every new check: seed the defect back, confirm the suite goes
 red, restore.** Nothing else reliably distinguishes "this passes" from "this
 cannot fail". Roughly a fifth of new checks survive their first mutant.
+
+- **Three checks written for the v210 audit fixes passed on nothing**, and each
+  failed for a different reason. A `currentRung` check ran as the seeded
+  *Advanced* athlete, and the bug it was aimed at (`LEVEL_TIER[lvl] || 1`) only
+  bites on Beginner, whose tier is the falsy 0 — the mutant walked straight
+  through. An XSS check asserted `!/onerror=/.test(html)`, which matched 126
+  legitimate exercise thumbnails using `onerror` as a missing-image fallback;
+  it had to query for the injected **element**, not the substring. And a
+  service-worker 500 check used `page.route` and then `ctx.route` to fake the
+  error — **Playwright's route interception never sees a request issued by the
+  service worker**, so the real 200 came through and the check passed with the
+  defect restored. Only a server that genuinely returns 500 exercises it, hence
+  `srv.fail500()` in the harness. Guard clauses are worth their weight here: the
+  one that finally caught it was `t.eq('guard: the origin really is failing',
+  originStatus, 500)` — and it had to be measured from **Node**, because a
+  `fetch()` inside the page goes through the worker and returns the cached 200.
+- **`update()` on a byte-identical `sw.js` installs nothing, and `unregister()`
+  does not stop a worker while a client is still controlled.** Both leave the
+  ORIGINAL activation as the thing being measured, so a cleanup check seeded
+  after first load tests an activate that already ran. Register a distinct
+  script URL (`./sw.js?probe=1`) to force a real install → activate.
+- **Seed each mutant from a clean file.** A mutation harness that patches the
+  working copy in a loop stacks the mutants, and the failure counts climb
+  monotonically (2, 2, 8, 9, 11, …) whether or not any individual check catches
+  anything. Copy the good file back before every seed.
 
 Known traps when writing checks:
 
@@ -511,7 +583,7 @@ Develop on `claude/abs-core-workout-app-3rr2ob`.
 
 1. `npm run check` — parses the inline script and `sw.js`, and enforces the
    `APP_VERSION` / `CACHE` lockstep.
-2. `npm test` — all 20 suites green, zero page errors, validator clean.
+2. `npm test` — all 21 suites green, zero page errors, validator clean.
    Mutation-test anything newly added.
 3. Bump `APP_VERSION` and `CACHE` together.
 4. `git fetch origin main && git checkout -B <branch> origin/main`, commit,

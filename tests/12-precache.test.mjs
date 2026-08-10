@@ -188,6 +188,69 @@ export default async function run() {
     });
     t.eq('with no broken images', broken, 0);
   }
+  /* ---- the worker cleans up after ITSELF, and nobody else ----------------
+     CacheStorage is scoped to the ORIGIN, not to the scope the worker was
+     registered under. `keys.filter(k => k !== CACHE)` therefore reached every
+     other app published from the same GitHub Pages origin — the Command app
+     under /command/ shares shabazzahmad-hub.github.io — and deleted its
+     offline pack every time CoreForge updated. Seed both a stale CoreForge
+     cache and a foreign one, then let activation run. */
+  {
+    const survivors = await page.evaluate(async () => {
+      await caches.open('coreforge-v1');            // our own, stale
+      await caches.open('command-v3');              // another app on this origin
+      await caches.open('workbox-precache-v2');     // something else entirely
+      /* Forcing a genuine activate is the whole difficulty here. update() on a
+         byte-identical sw.js installs nothing, and unregister() does not stop
+         the worker while a client is still controlled — both left the ORIGINAL
+         activation (which happened before these caches existed) as the thing
+         being measured, so the check passed on nothing. Registering a distinct
+         script URL is a new registration: install and activate really run. */
+      const reg = await navigator.serviceWorker.register('./sw.js?probe=1');
+      const w = reg.installing || reg.waiting || reg.active;
+      if (w && w.state !== 'activated') {
+        await new Promise(res => {
+          const h = () => { if (w.state === 'activated') { w.removeEventListener('statechange', h); res(); } };
+          w.addEventListener('statechange', h); setTimeout(res, 8000);
+        });
+      }
+      await new Promise(z => setTimeout(z, 600));
+      return (await caches.keys()).sort();
+    });
+    t.ok('a foreign app cache is left alone', survivors.includes('command-v3'), survivors);
+    t.ok('and so is an unrelated one', survivors.includes('workbox-precache-v2'), survivors);
+    t.ok('while our own stale version is cleaned up', !survivors.includes('coreforge-v1'), survivors);
+    t.ok('and the live CoreForge cache is still there',
+      survivors.some(k => /^coreforge-v\d+$/.test(k)), survivors);
+  }
+
+  /* ---- a server error must not beat a cached page ------------------------
+     The navigation handler raced fetch against the cache and returned whatever
+     the fetch produced. It refused to CACHE a 500 — but still handed it to the
+     browser, so a transient error showed an error page to someone holding a
+     working copy of the app. */
+  {
+    /* The failing request is issued by the SERVICE WORKER, and Playwright's
+       route interception never sees those — page.route and ctx.route both left
+       the real 200 in place, so the first two versions of this block passed
+       with the defect restored (boomHits was 0). The origin has to actually
+       fail, so the harness server serves the 500 itself. */
+    srv.fail500('/index.html');
+    /* Check the origin from NODE, not from the page: a fetch made inside the
+       page goes through the service worker too, so it returns the cached 200 —
+       which is the fix working, not evidence the server is healthy. */
+    const originStatus = (await fetch(`http://127.0.0.1:${port}/index.html`)).status;
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    const served = await page.evaluate(() => ({
+      boom: /upstream boom/.test(document.body.innerText),
+      app: !!document.querySelector('[data-tab]') || /CoreForge/i.test(document.documentElement.innerHTML),
+    }));
+    srv.failClear();
+    t.eq('guard: the origin really is failing', originStatus, 500);
+    t.ok('a 500 does not reach the athlete when a cached page exists', !served.boom, served);
+    t.ok('the cached app is served instead', served.app, served);
+  }
+
   await ctx.setOffline(false);
   await ctx.close();
 

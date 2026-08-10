@@ -20,7 +20,7 @@
 <link rel="icon" href="icon-192-v2.png">
 <link rel="apple-touch-icon" href="icon-192-v2.png">
 <link rel="manifest" href="manifest.webmanifest">
-<meta name="description" content="CoreForge — a home training program that starts with 12 weeks of core, abs and HIIT for a flat stomach and no love handles, then expands into a full year of full-body strength (chest, back, shoulders, arms, legs) plus HIIT. Baseline assessment, week-to-week progression, self-saving. Offline-ready, installs to your home screen.">
+<meta name="description" content="CoreForge — a home training program that starts with 6 weeks of core, abs and HIIT for a flat stomach and no love handles, then expands into a full year of full-body strength (chest, back, shoulders, arms, legs) plus HIIT. Baseline assessment, week-to-week progression, self-saving. Offline-ready, installs to your home screen.">
 <title>CoreForge — 1-Year Full-Body Program</title>
 <style>
   /* Self-hosted Archivo (variable, latin subset) — bundled so the app renders in
@@ -516,7 +516,7 @@
    - Baseline assessment (day 1) -> Core Score + level + personal maxes
    - Auto-generated program, progressive overload week-to-week
    - Auto-regulating: adapts next week from how hard sessions felt
-   - 9 six-week blocks: abs/core/HIIT (weeks 1-12) then full-body strength
+   - 9 six-week blocks: abs/core/HIIT (weeks 1-6) then full-body strength
    - Re-assessment each 6-week block -> keeps scaling across the full year
    - Self-saving: localStorage + IndexedDB mirror + persistent storage
    ========================================================================= */
@@ -1411,7 +1411,7 @@ const LADDERS = {
   legPowerL:  ['jumpsquat','splitjump','broadjump'],
   hiitFinL:   ['jumpingjack','tuckjump','burpee','burpeetuck','atomicpushup'],
 };
-// Phase 1 (weeks 1–12) — core/abs/HIIT program, 7 days a week.
+// Phase 1 (weeks 1–6, PHASE1_CYCLES=1) — core/abs/HIIT program, 7 days a week.
 const SESSIONS = [
   {key:'anterior', name:'Core Crusher', icon:'🔥', focus:'Abs, deep core & anti-extension',
    slots:['plankL','hollowL','lowerL','dynL'], finisher:'cardioFinL'},
@@ -1497,7 +1497,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='209';
+const APP_VERSION='210';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1511,6 +1511,11 @@ const DEFAULT_STATE=()=>({
   reassess:{},              // cycleIndex -> {date,results,coreScore,level,maxes}
   progressPtr:0,            // index of next session to do (0-based, across all cycles)
   logs:{},                  // sessionIndex -> {date,ex:{exId:{sets:[..],done}}, feel, done}
+  /* Finished program runs, archived whole when a fresh block starts. logs are
+     keyed by progressPtr, and restarting resets that pointer to 0 — so keeping
+     the old rows in place meant the new session 0 WAS the old session 0. See
+     restartProgram(). */
+  runs:[],                  // [{endedAt, sessions, logs:{ptr->log}}]
   weekFeel:{},              // "cycle-week" -> array of feel strings
   measurements:[],          // {date,waist,weight}
   scoreHistory:[],          // {date,score,level}
@@ -1885,6 +1890,24 @@ function prescribe(exId,pos){
   else if(goal==='core'){gMul=isCore?(ex.unit==='time'?1.10:1.15):0.95;restMul=isCore?1:0.95;}
   else if(goal==='recomp'){gMul=1.05;}
   target*=gMul;
+  /* SAFE MODE — the health screen's promise, enforced. An athlete who flags a
+     condition is told, in as many words, that they can still train and that
+     CoreForge "will hold every session well short of failure". safeMode()
+     gated the maximal TEST screens and nothing else: an uncleared athlete who
+     had declared a heart condition and a medically-cleared one received
+     byte-identical prescriptions. A promise made in UI text and not enforced
+     in code is not a safety control.
+
+     safeMode() already fails closed — an unanswered screen counts as flagged,
+     and parqDone() checks the answers exist rather than trusting a boolean —
+     so this reads the data, not a flag. A wider margin below the tested max,
+     fewer sets, longer rest. Applied before the clamps so every exercise's own
+     floor still holds, and it cannot be undone by anything downstream. */
+  if(typeof safeMode==='function'&&safeMode()){
+    target*=0.75;
+    restMul*=1.25;
+    sets=Math.min(sets,3);
+  }
   if(ex.unit==='time'){target=Math.round(target/5)*5;target=clamp(target,15,150);}
   else{
     /* A blanket 6-40 clamp both RAISED the hardest moves above their own base
@@ -2205,8 +2228,24 @@ function computeAssessment(results){
   TESTS.forEach(t=>{const v=+results[t.id]||0;sum+=clamp(v/t.bench*100,0,100);n++;});
   const score=Math.round(sum/n);
   const level=score<38?'Beginner':(score<68?'Intermediate':'Advanced');
-  const maxes={plank:+results.plank||30,side:+results.side||20,hollow:+results.hollow||20,lower:+results.lower||10,dyn:+results.dyn||16,
-    push:+results.push||10,pull:+results.pull||6,squat:+results.squat||18};
+  /* `+results.plank||30` treated a MEASURED ZERO as a missing answer. The
+     assessment screen accepts 0 — it is the honest answer for someone who
+     cannot hold a plank at all — and scoring counts it as 0, so the athlete
+     saw "Core Score 0 / Beginner" and was then prescribed against a 30-second
+     plank, 10 push-ups and 6 pull-ups they had just demonstrated they could
+     not do. The one number in the app that is supposed to be measured rather
+     than assumed was the one being invented.
+
+     Zero is data. Only genuinely absent or unusable input falls back to the
+     starting estimate, and the fallbacks are the same ones as before so an
+     athlete who skips the battery is unaffected. */
+  const DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,squat:18};
+  const maxes={};
+  Object.keys(DEFAULTS).forEach(k=>{
+    const raw=results?results[k]:undefined;
+    const v=(raw===''||raw===null||raw===undefined)?NaN:+raw;
+    maxes[k]=(isFinite(v)&&v>=0)?v:DEFAULTS[k];
+  });
   return {score,level,maxes};
 }
 
@@ -2879,6 +2918,22 @@ function restartProgram(){
      progressPtr 0 and history is keyed off completedAt, so the old rows can
      simply stay. adapt and exAdapt must rebase, though — carrying them onto a
      freshly measured baseline is the double-count rebaseAdapt() exists for. */
+  /* Keeping the rows in place was the v208 fix for "history stays saved", and
+     it traded one bug for a subtler one. logs are keyed by progressPtr and
+     restarting sets that pointer back to 0, so ensureLog() handed the new
+     block's first session the OLD session 0 — already done:true, with last
+     block's date, sets and feel on it. Today opened on a completed workout,
+     and committing it would have overwritten a real record.
+
+     Archive the whole run instead. The keys go with it, the new run starts on
+     an empty map, and every lifetime counter reads both (see allDoneLogs).
+     Nothing is deleted and nothing collides. */
+  const _done=Object.values(STATE.logs||{}).filter(l=>l&&l.done).length;
+  if(_done>0){
+    if(!Array.isArray(STATE.runs))STATE.runs=[];
+    STATE.runs.push({endedAt:todayISO(),sessions:_done,logs:STATE.logs});
+  }
+  STATE.logs={};
   STATE.baseline=null;STATE.reassess={};STATE.progressPtr=0;STATE.weekFeel={};STATE.swaps={};
   rebaseAdapt();
   save();go('today');
@@ -3155,8 +3210,31 @@ function recordPR(exId,m){
 /* How the last block actually went, as a fraction of what was asked. Feeds the
    feel chip's adjustment so the engine has an objective signal alongside the
    subjective one. Only counts exercises where a number was entered. */
+/* How much of the prescribed work actually happened. Every logging path — the
+   Today checkboxes, the per-set chips and the guided player — writes into
+   st.sets, so counting those is the one measure that holds across all three. */
+function sessionWork(ptr){
+  const out={setsDone:0,setsAsked:0,movesDone:0,movesAsked:0};
+  try{
+    const log=STATE.logs&&STATE.logs[ptr];
+    const sess=buildSession(ptr);
+    [...sess.main,sess.finisher].filter(Boolean).forEach(m=>{
+      out.movesAsked++;out.setsAsked+=(+m.sets||0);
+      const st=log&&log.ex&&log.ex[m.exId];
+      const sd=(st&&Array.isArray(st.sets))?st.sets.filter(Boolean).length:0;
+      out.setsDone+=sd;if(sd>0)out.movesDone++;
+    });
+  }catch(e){}
+  return out;
+}
 function actualRatio(){
   try{
+    /* This runs BEFORE the "is there a log at all" guard on purpose. Skipping
+       every movement never creates a log, so the early return below answered
+       "no data" — and commitSession() reads that as permission to raise the
+       load. The emptiest possible session is the clearest possible zero. */
+    const w0=sessionWork(STATE.progressPtr);
+    if(w0.setsAsked>0&&w0.setsDone===0)return 0;
     const log=STATE.logs&&STATE.logs[STATE.progressPtr];if(!log||!log.ex)return null;
     let got=0,asked=0;
     const sess=buildSession(STATE.progressPtr);
@@ -3164,7 +3242,14 @@ function actualRatio(){
       const st=log.ex[m.exId];
       if(st&&typeof st.actual==='number'&&st.actual>0&&m.target>0){got+=st.actual;asked+=m.target;}
     });
-    return asked>0?got/asked:null;
+    if(asked>0)return got/asked;
+    /* `null` here meant "no data, do not judge", and commitSession() reads that
+       as permission to raise the load. But a session where NOTHING was logged
+       is not missing data — it is a measured zero, and it is exactly the case
+       the load guard exists for. Skipping every exercise and tapping "Easy"
+       used to push adapt UP. Only say "no data" when work was actually done
+       and simply not counted. */
+    return null;
   }catch(e){return null;}
 }
 function finishSession(){
@@ -3253,6 +3338,29 @@ function commitSession(feel){
   // finishedHTML() guards the view, but nothing guarded the mutation itself
   if(STATE.progressPtr>=SESSIONS_PER_CYCLE*TOTAL_CYCLES)return;
   const p=STATE.progressPtr;const pos=posOf(p);const log=ensureLog();
+  /* A session with no work in it is not a completed session. Skipping every
+     movement in the guided player walked straight through to the finish screen
+     and this function marked the log done, advanced the pointer, banked a
+     streak and — because actualRatio() answered "no data" rather than "zero" —
+     raised the adaptive load. Every downstream number the athlete trusts
+     (sessions done, streak, adherence, re-test timing) could be run up without
+     training.
+
+     Zero sets is the unambiguous case and it is refused outright: the session
+     stays open so it can be done properly. Partial work is NOT refused — a
+     short session is still a session, and the athlete is the one who decides
+     that — but it is recorded as partial, and the load guard below reads the
+     same numbers so a scraped session can never ask for more next week. */
+  const work=sessionWork(p);
+  if(work.setsAsked>0&&work.setsDone===0){
+    log.done=false;log.abandonedAt=todayISO();
+    save();closeSheet();
+    toast('Nothing was logged — session left open');
+    try{render();}catch(e){}
+    return;
+  }
+  log.partial=work.setsAsked>0&&work.setsDone<work.setsAsked;
+  log.setsDone=work.setsDone;log.setsAsked=work.setsAsked;
   STATE._undo=snapshotForUndo(p,pos.cycle+'-'+pos.week);
   log.done=true;log.feel=feel;log.completedAt=todayISO();
   if(_lastSessionClock){
@@ -3550,10 +3658,35 @@ function hurtSkip(){
 /* Stopping early still commits the session. Someone who trained four exercises
    and then hurt did the work; zeroing the day would teach them to keep going
    instead of stopping, which is the opposite of what this button is for. */
+/* Stopping for pain must never cost the athlete anything — a button that
+   punishes you for pressing it does not get pressed, and this is the one
+   button in the app that has to. So the pointer still moves: nobody is made to
+   repeat the session that hurt them.
+
+   What it must not do is claim a workout happened. When the stop comes before
+   ANY set was logged, the slot is closed and marked stoppedForPain rather than
+   done, so it stays out of sessions-done, the streak and lifetime volume. Stop
+   after real work and nothing changes — that is a partial session and it
+   counts, exactly as before. */
 function hurtStop(){
   if(!PLAYER)return;
   noteHurt(plCur().exId);
   hurtCloseMenu();
+  const p=STATE.progressPtr;
+  const noWork=sessionWork(p).setsDone===0;
+  if(noWork){
+    const log=ensureLog();
+    log.stoppedForPain=todayISO();log.done=false;
+    if(p<SESSIONS_PER_CYCLE*TOTAL_CYCLES)STATE.progressPtr=p+1;
+    save();
+    plClearResume();wakeOff();plClear();plClockStop();
+    $('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;tapShield(400);
+    if(history.state&&history.state.cf==='player'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
+    try{render();}catch(e){}
+    toast('Stopped — moving you on. Rest that joint.');
+    if(dayflowActive())dayflowAdvance('workout');
+    return;
+  }
   playerFeel('hard');
   toast('Session logged. Rest that joint.');
 }
@@ -3917,7 +4050,7 @@ function plEnterDone(){
   const stats=`<div class="grid3" style="width:100%;max-width:440px">
       <div class="stat"><div class="n" style="color:${overCol}">${fmtTime(PLAYER.wall||1)}</div><div class="l">On the clock</div></div>
       <div class="stat"><div class="n" style="color:var(--teal)">${PLAYER.setsDone}</div><div class="l">Sets</div></div>
-      <div class="stat"><div class="n" style="color:var(--green)">${PLAYER.items.length}</div><div class="l">Moves</div></div>
+      <div class="stat"><div class="n" style="color:var(--green)">${PLAYER.free?PLAYER.items.length:(sessionWork(STATE.progressPtr).movesDone+' / '+PLAYER.items.length)}</div><div class="l">Moves</div></div>
     </div>
     <div class="tiny muted" style="max-width:440px;margin-top:8px;text-align:center">
       ${fmtTime(PLAYER.elapsed||0)} of that was working${PLAYER.paused?(' · '+fmtTime(PLAYER.paused)+' paused'):''} ·
@@ -6294,7 +6427,7 @@ function renderProgram(){
   const viewCycle=curPos?curPos.cycle:TOTAL_CYCLES-1;
   const totalWeeks=WEEKS_PER_CYCLE*TOTAL_CYCLES;
   const phaseName=phaseOf(viewCycle)===1?'Phase 1 · Core & Abs':'Phase 2 · Full-Body + Core';
-  let h=`<h2 class="vtitle">Your Program</h2><div class="vsub">${totalWeeks}-week journey · weeks 1–12 core &amp; abs, then a full-body split. The load climbs every week.</div>`;
+  let h=`<h2 class="vtitle">Your Program</h2><div class="vsub">${totalWeeks}-week journey · weeks 1–6 core &amp; abs, then a full-body split. The load climbs every week.</div>`;
   // quick workouts entry
   h+=`<button class="btn violet" style="margin-bottom:14px" onclick="openQuickList()">⚡ Quick Workouts · 5–10 min</button>`;
   // overall progress
@@ -6367,7 +6500,7 @@ function renderProgress(){
   // visual physique goal + forward projection
   h+=transformationHTML();
   // snapshot: 6 headline metrics
-  const sessionsDone=Object.values(STATE.logs).filter(l=>l.done).length;
+  const sessionsDone=sessionsDoneCount();
   const streak=computeStreak();
   const tut=totalTUT();
   const vol=totalVolume();
@@ -6635,7 +6768,28 @@ function currentWaistShow(){
     .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
   return ms.length?r1(waistShow(ms[ms.length-1].waist)):null;}
 function scoreGain(){const s=STATE.scoreHistory||[];if(s.length<1)return 0;return s[s.length-1].score-s[0].score;}
-function sessionsDoneCount(){return Object.values(STATE.logs||{}).filter(l=>l.done).length;}
+/* Lifetime readers must span archived runs as well as the live one, or
+   archiving on restart would recreate the very data loss it was written to
+   avoid. Current run first so the newest work is cheapest to reach. */
+function archivedRuns(){return Array.isArray(STATE.runs)?STATE.runs:[];}
+function allDoneLogs(){
+  const out=Object.values(STATE.logs||{}).filter(l=>l&&l.done);
+  archivedRuns().forEach(r=>{
+    Object.values((r&&r.logs)||{}).forEach(l=>{if(l&&l.done)out.push(l);});
+  });
+  return out;
+}
+/* Same, but keeping the pointer, for readers that rebuild a session from it.
+   Archived entries carry their own snapshot in l.items — rebuilding one from
+   the CURRENT engine would describe a workout that never happened. */
+function allDonePairs(){
+  const out=Object.keys(STATE.logs||{}).filter(p=>STATE.logs[p]&&STATE.logs[p].done).map(p=>[p,STATE.logs[p],true]);
+  archivedRuns().forEach(r=>{
+    Object.keys((r&&r.logs)||{}).forEach(p=>{const l=r.logs[p];if(l&&l.done)out.push([p,l,false]);});
+  });
+  return out;
+}
+function sessionsDoneCount(){return allDoneLogs().length;}
 function bestHabitDay(){let m=0;const d=(STATE.nutrition&&STATE.nutrition.days)||{};Object.values(d).forEach(x=>{const c=HABITS.filter(hb=>x.habits&&x.habits[hb.k]).length;if(c>m)m=c;});return m;}
 /* Rope milestones for the badge checks (log lives in STATE.skipLog). */
 function skipTotalMins(){return skipLog().reduce((a,x)=>a+(x.mins||0),0);}
@@ -8043,7 +8197,7 @@ function achievementsHTML(){
       ${ACHIEVEMENTS.map(a=>{const on=!!STATE.achievements[a.id];return `<div style="text-align:center;opacity:${on?1:.32}">
         <div style="font-size:30px;line-height:1;filter:${on?'none':'grayscale(1)'}">${a.emoji}</div>
         <div class="tiny" style="font-weight:800;margin-top:4px;line-height:1.15">${a.name}</div>
-        <div class="tiny muted" style="font-size:9.5px;line-height:1.1;margin-top:2px">${on?'✓ '+STATE.achievements[a.id].slice(5):a.desc}</div>
+        <div class="tiny muted" style="font-size:9.5px;line-height:1.1;margin-top:2px">${on?'✓ '+_ve(String(STATE.achievements[a.id]).slice(5)):a.desc}</div>
       </div>`;}).join('')}
     </div></div>`;
 }
@@ -8130,7 +8284,7 @@ function computeStreak(){
   /* Quick sessions are real training days — they just don't advance the main
      program. Fold them in so a 15-minute day holds the streak. */
   const dates=[...new Set([
-    ...Object.values(STATE.logs).filter(l=>l&&l.done&&l.completedAt).map(l=>l.completedAt),
+    ...allDoneLogs().filter(l=>l.completedAt).map(l=>l.completedAt),
     ...Object.keys(STATE.quickLog||{})
   ])].sort();
   if(!dates.length)return 0;
@@ -8151,7 +8305,7 @@ function computeStreak(){
    raised the minutes by the full prescription. */
 function totalTUTSplit(){
   let work=0,rest=0;
-  Object.keys(STATE.logs).forEach(p=>{const l=STATE.logs[p];if(!l||!l.done)return;
+  allDonePairs().forEach(([p,l])=>{
     const items=logItemsFor(p,l);const tempo=(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3;
     items.forEach(m=>{
       const e=l.ex&&l.ex[m.exId];const sd=e&&e.sets?e.sets.filter(Boolean).length:0;
@@ -8170,7 +8324,24 @@ function weekStartD(d){const x=new Date(d);const day=(x.getDay()+6)%7;x.setHours
    streak", five lit heatmap squares and "This week 0/5" on the same screen. */
 function sessionsThisWeek(){const s=weekStartD(new Date());let n=0;
   trainedDaysSet().forEach(d=>{if(new Date(d+'T00:00:00')>=s)n++;});return n;}
-function totalVolume(){let reps=0,hold=0,sets=0;Object.keys(STATE.logs).forEach(p=>{const l=STATE.logs[p];if(!l||!l.done)return;logItemsFor(p,l).forEach(m=>{const e=l.ex&&l.ex[m.exId];const sd=e&&e.sets?e.sets.filter(Boolean).length:0;sets+=sd;if(m.unit==='time')hold+=sd*m.target;else reps+=sd*m.target;});});return {reps,hold,sets};}
+/* Lifetime totals. Every set used to be counted at its PRESCRIBED target, so an
+   athlete who was asked for 40 seconds and managed 25 banked 40 — the tile
+   reported the plan, not the performance, in an app that had just been taught
+   to adapt load from the performance. askActual() records the LAST set, which
+   is the only set we have a real number for, so that set is counted at what it
+   actually was and the earlier ones stay at target. That is not a full truth,
+   but it is never an overstatement of the one set we measured, and a set that
+   beat its target now counts the extra. */
+function totalVolume(){let reps=0,hold=0,sets=0;allDonePairs().forEach(([p,l])=>{
+  logItemsFor(p,l).forEach(m=>{
+    const e=l.ex&&l.ex[m.exId];const sd=e&&e.sets?e.sets.filter(Boolean).length:0;
+    if(!sd)return;
+    sets+=sd;
+    const tgt=+m.target||0;
+    const act=(e&&typeof e.actual==='number'&&isFinite(e.actual)&&e.actual>=0)?e.actual:null;
+    const v=(sd-1)*tgt+(act===null?tgt:act);
+    if(m.unit==='time')hold+=v;else reps+=v;
+  });});return {reps,hold,sets};}
 /* Was 6 gross METs applied to work AND rest for the whole session — about
    2.4x the honest figure, in an app whose step and bike models are scrupulously
    NET and carry a comment explaining why mixing the two over-credits. Work at
@@ -8186,7 +8357,7 @@ function loadIndexPct(){const a=(typeof STATE.adapt==='number')?STATE.adapt:1;re
    the weekly tile were not — so five quick sessions showed a streak of 5 next to
    an empty heatmap and "0 sessions this week". A session is a session. */
 function trainedDaysSet(){
-  const s=new Set(Object.values(STATE.logs).filter(l=>l.done&&l.completedAt).map(l=>l.completedAt));
+  const s=new Set(allDoneLogs().filter(l=>l.completedAt).map(l=>l.completedAt));
   Object.keys(STATE.quickLog||{}).forEach(d=>s.add(d));
   return s;
 }
@@ -10567,7 +10738,10 @@ const SKILL_TREES=[
   {lad:'pushL', name:'Push-Up', emoji:'⬆️'},
 ];
 function currentRung(lad){
-  if(!STATE.baseline) return clamp(LEVEL_TIER[levelOf(0)]||1,0,(LADDERS[lad]||[]).length-1);
+  /* `||1` again — LEVEL_TIER.Beginner is 0, so the skill tree showed a beginner
+     standing one rung above where rungIndex() actually prescribes. The engine
+     bug was fixed with `??`; this display copy of it was missed. */
+  if(!STATE.baseline) return clamp(LEVEL_TIER[levelOf(0)]??1,0,(LADDERS[lad]||[]).length-1);
   const ptr=Math.min(STATE.progressPtr,SESSIONS_PER_CYCLE*TOTAL_CYCLES-1);
   const pos=posOf(ptr);
   return rungIndex(lad,pos.cycle,pos.week,levelOf(pos.cycle));
@@ -10617,7 +10791,7 @@ function homeSummaryHTML(){
   const pos=posOf(Math.min(STATE.progressPtr,SESSIONS_PER_CYCLE*TOTAL_CYCLES-1));
   const wk=(pos.cycle*WEEKS_PER_CYCLE)+pos.week;
   const streak=computeStreak();
-  const sess=Object.values(STATE.logs).filter(l=>l.done).length;
+  const sess=sessionsDoneCount();
   const wd=waistDropShow();const unit=STATE.profile.unit;
   const latest=STATE.scoreHistory[STATE.scoreHistory.length-1];
   // Show the athlete's ACTUAL waist (what they typed), with the trend as a suffix —
@@ -10657,9 +10831,16 @@ function sessionStats(p){
   return {sess,items,exDone,exTotal:items.length,setsDone,setsRx,totalReps,totalHold,estMin:Math.max(1,Math.round(estSec/60))};
 }
 function sessionHistoryHTML(){
+  /* This block only. The rows are keyed by progressPtr and rendered through
+     posOf()/sessionStats(), both of which describe the CURRENT run — an
+     archived pointer would be captioned with a week it did not belong to. The
+     archived sessions still count everywhere it matters (see allDoneLogs) and
+     are summarised below rather than silently vanishing. */
   const entries=Object.keys(STATE.logs).map(Number).filter(p=>STATE.logs[p]&&STATE.logs[p].done).sort((a,b)=>b-a);
-  if(!entries.length)return '';
-  let h=`<div class="section-label">Workout history · ${entries.length}</div><div class="card">`;
+  const prior=archivedRuns().reduce((n,r)=>n+(+r.sessions||0),0);
+  const priorNote=prior>0?`<div class="tiny muted" style="margin:8px 3px 0">Earlier blocks: <b>${prior}</b> session${prior===1?'':'s'} — still counted in your lifetime totals, streak and badges.</div>`:'';
+  if(!entries.length)return prior>0?`<div class="section-label">Workout history</div>${priorNote}`:'';
+  let h=`<div class="section-label">Workout history · ${entries.length}${prior>0?' this block':''}</div><div class="card">`;
   entries.slice(0,25).forEach(p=>{
     const l=STATE.logs[p];const pos=posOf(p);const s=pos.session;const wk=(pos.cycle*WEEKS_PER_CYCLE)+pos.week;
     const feel=l.feel==='easy'?'😎':(l.feel==='hard'?'🥵':'💪');
@@ -10667,7 +10848,7 @@ function sessionHistoryHTML(){
     h+=`<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer;padding:12px 14px" onclick="openSessionDetail(${p})">
       <span><b>${s.name}</b><div class="tiny muted">Wk ${wk} · ${l.completedAt||l.date||''} · ${st.exDone}/${st.exTotal} moves · ${st.setsDone} sets · ~${st.estMin} min</div></span><span style="font-size:18px">${feel}</span></button>`;
   });
-  h+=`</div>`;return h;
+  h+=`</div>${priorNote}`;return h;
 }
 function openSessionDetail(p){
   const l=STATE.logs[p];if(!l)return;const st=sessionStats(p);const sess=st.sess;const wk=(sess.cycle*WEEKS_PER_CYCLE)+sess.week;
@@ -10900,7 +11081,7 @@ function renderGuide(){
     <button class="btn ghost sm" style="width:100%;margin-top:6px" onclick="forceUpdate()">🔄 Check for update</button>
     <div class="tiny muted" style="margin-top:6px">If the version here doesn't match the latest, tap Check for update — it re-fetches the app and reloads. On the installed app, fully closing and reopening it also picks up new versions.</div>
   </div>`;
-  h+=`<div class="center tiny muted" style="margin:20px 0">CoreForge v${APP_VERSION} · built for a strong midsection<br>${STATE.profile.name?'Athlete: '+_ve(STATE.profile.name)+' · ':''}saved ${STATE._saved||todayISO()}</div>`;
+  h+=`<div class="center tiny muted" style="margin:20px 0">CoreForge v${APP_VERSION} · built for a strong midsection<br>${STATE.profile.name?'Athlete: '+_ve(STATE.profile.name)+' · ':''}saved ${_ve(STATE._saved||todayISO())}</div>`;
   v.innerHTML=h;
   refreshCacheVer();
   refreshPackStat();
@@ -10984,8 +11165,13 @@ async function selfUpdate(){
     if(!(live>mine))return;
     sessionStorage.setItem('cf_selfupd','1');
     try{toast('Updating to v'+live+'…');}catch(e){}
-    try{const regs=await navigator.serviceWorker.getRegistrations();for(const g of regs)await g.unregister();}catch(e){}
-    try{const keys=await caches.keys();await Promise.all(keys.map(k=>caches.delete(k)));}catch(e){}
+    /* Both of these used to be origin-wide. getRegistrations() returns every
+       service worker on the origin and caches.keys() every cache on it, so
+       "update CoreForge" unregistered the Command app under /command/ and
+       deleted its offline pack as collateral. Take our own registration by
+       scope, and only cache names that match ours. */
+    try{const reg=await navigator.serviceWorker.getRegistration('./');if(reg)await reg.unregister();}catch(e){}
+    try{const keys=await caches.keys();await Promise.all(keys.filter(k=>/^coreforge-v\d+$/.test(k)).map(k=>caches.delete(k)));}catch(e){}
     setTimeout(()=>location.reload(),400);
   }catch(e){}   // offline or blocked — stay on what we have
 }
@@ -11189,6 +11375,12 @@ function normalizeState(){
      Only 3 and 4 mean anything here; coerce, then pick the nearer. */
   {const _m=+STATE.nutrition.meals;STATE.nutrition.meals=(isFinite(_m)&&_m>=4)?4:3;}
   if(!Array.isArray(STATE.measurements))STATE.measurements=[];
+  /* Archived program runs. A non-array, or an entry with no logs map, would
+     break every lifetime counter at once — they all fold this in beside the
+     live logs, so it is exactly the shape that must never be trusted raw. */
+  if(!Array.isArray(STATE.runs))STATE.runs=[];
+  STATE.runs=STATE.runs.filter(r=>r&&typeof r==='object'&&r.logs&&typeof r.logs==='object'&&!Array.isArray(r.logs))
+    .map(r=>({...r,sessions:Math.max(0,Math.floor(+r.sessions)||0)}));
   dedupeMeasurements();   // collapse same-date duplicates left by pre-v156 appends
   /* Entry-level scrubbing. The container guards above stop {} vs [] damage, but
      a single null ENTRY inside logs killed both the Today and Progress tabs

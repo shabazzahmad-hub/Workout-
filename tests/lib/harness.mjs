@@ -18,10 +18,19 @@ const TYPES = {
   '.json': 'application/json', '.md': 'text/markdown',
 };
 
+/* Fault injection, for the checks that need the ORIGIN to misbehave rather than
+   the client. Service-worker fetches are not visible to Playwright's route
+   interception, so a test that wants the worker to see a 500 has to get it from
+   a real server. srv.fail500(pathSuffix) turns it on; srv.failClear() off. */
 export async function serve() {
+  let fail = null;
   const srv = http.createServer((rq, rs) => {
     let p = rq.url.split('?')[0];
     if (p === '/') p = '/index.html';
+    if (fail && p.endsWith(fail)) {
+      rs.statusCode = 500; rs.setHeader('content-type', 'text/html');
+      rs.end('upstream boom'); return;
+    }
     // Never let a test reach outside the repo.
     const file = path.join(ROOT, path.normalize(p).replace(/^(\.\.[/\\])+/, ''));
     if (!file.startsWith(ROOT)) { rs.statusCode = 403; rs.end('no'); return; }
@@ -31,6 +40,8 @@ export async function serve() {
       rs.end(d);
     });
   });
+  srv.fail500 = suffix => { fail = suffix; };
+  srv.failClear = () => { fail = null; };
   await new Promise(r => srv.listen(0, '127.0.0.1', r));
   return { srv, port: srv.address().port };
 }

@@ -315,6 +315,9 @@ export default async function run() {
     PLAYER.elapsed = 800; PLAYER.setsDone = 10;
     plEnterDone();
     playerQuit();
+    /* v210 refuses a session with no logged work; this block is about the
+       CLOCK figures on a genuine commit, so record a movement first. */
+    { const _s = buildSession(STATE.progressPtr); if (_s.main[0]) toggleEx(_s.main[0].exId); }
     commitSession('right');
     const l = Object.values(STATE.logs).find(x => x && x.done);
     o.log = l && { durSec: l.durSec, pausedSec: l.pausedSec, workSec: l.workSec, budgetMin: l.budgetMin };

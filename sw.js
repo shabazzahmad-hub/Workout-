@@ -1,5 +1,9 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v209';
+const CACHE = 'coreforge-v210';
+/* Which caches on this origin belong to CoreForge. CacheStorage is shared by
+   every app published from the same GitHub Pages origin, so cleanup must match
+   on our own name and never enumerate-and-delete everything it finds. */
+const MINE = /^coreforge-v\d+$/;
 
 /* ---- Why the precache is in tiers ----------------------------------------
    The install used to await all 191 assets — about 11 MB — inside
@@ -169,8 +173,15 @@ self.addEventListener('install', e => {
 
 self.addEventListener('activate', e => {
   e.waitUntil((async () => {
+    /* Delete only OUR OWN old versions. CacheStorage is scoped to the ORIGIN,
+       not to the scope this worker was registered under, so
+       `keys.filter(k => k !== CACHE)` reached every other app published from
+       the same GitHub Pages origin — including the Command app under
+       /command/ — and wiped its offline pack on every CoreForge update. The
+       victim only finds out when they open it on a train with no signal.
+       `refreshCacheVer()` in the page already matches on this exact prefix. */
     const keys = await caches.keys();
-    await Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)));
+    await Promise.all(keys.filter(k => MINE.test(k) && k !== CACHE).map(k => caches.delete(k)));
     await self.clients.claim();
     /* NOT started here. Activation must finish promptly — the page waits on it
        — and a top-up detached from activate is unpinned and gets terminated
@@ -223,14 +234,22 @@ self.addEventListener('fetch', e => {
     e.respondWith(
       Promise.race([
         fetch(req)
-          .then(res => {
+          .then(async res => {
             // Never overwrite a good offline page with a 500/404 — doing so bricked
             // the app offline and stayed broken after the origin recovered.
             if (res && res.ok) {
               const copy = res.clone();
               caches.open(CACHE).then(c => c.put('./index.html', copy));
+              return res;
             }
-            return res;
+            /* Refusing to CACHE the bad response was only half the job — it was
+               still handed to the browser, so a transient 500 or a Pages deploy
+               blip showed an error page to someone holding a phone with a
+               perfectly good copy of the app already on it. A non-ok navigation
+               is a failed navigation: fall back exactly as if the fetch threw,
+               and only surface the error when there is nothing cached. */
+            const hit = await caches.match('./index.html');
+            return hit || res;
           }),
         new Promise(resolve => setTimeout(() => {
           caches.match('./index.html').then(hit => { if (hit) resolve(hit); });
