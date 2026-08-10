@@ -1497,7 +1497,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='206';
+const APP_VERSION='207';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -8849,13 +8849,37 @@ function latestWeightKg(){
   return null;
 }
 // ~1.8 g/kg for fat loss; a steeper cut needs more to hold onto muscle
-function proteinTargetG(){const kg=latestWeightKg();if(!kg)return null;
+const PROT_MIN=40,PROT_MAX=400;
+/* An explicit choice outranks the calculation, and is read BEFORE the weight
+   guard so it still works for someone who has not logged a weight yet.
+   Absent by default — a value here means "the athlete set this". */
+function proteinTargetSet(){
+  const v=STATE.nutrition&&STATE.nutrition.proteinTarget;
+  return (typeof v==='number'&&isFinite(v)&&v>=PROT_MIN&&v<=PROT_MAX)?v:null;
+}
+function proteinTargetCalc(){const kg=latestWeightKg();if(!kg)return null;
   const perKg=(STATE.profile.goal==='shred')?2.2:1.8;
   /* Scaling off TOTAL mass overshoots at high body fat — a 110 kg athlete at 35%
      was prescribed 240 g, over 40% of their calories. Cap against lean mass. */
   let g=kg*perKg;
   try{const bf=curBF();if(bf>0){const lean=kg*(1-bf/100);g=Math.min(g,lean*2.4);}}catch(e){}
   return Math.round(g/5)*5;}
+function proteinTargetG(){return proteinTargetSet()||proteinTargetCalc();}
+/* Stores and repaints. A control that saves a number and leaves the old one on
+   screen reads as broken — see setBeatTempo. */
+function setProteinTarget(g){
+  if(!STATE.nutrition)STATE.nutrition={};
+  const v=Math.round(clamp(parseInt(g)||0,PROT_MIN,PROT_MAX)/5)*5;
+  STATE.nutrition.proteinTarget=v;
+  STATE.nutrition.plan=null;            // the day's meals are sized to the target
+  save();haptic(8);
+  try{renderFuel();}catch(e){}
+}
+function clearProteinTarget(){
+  if(STATE.nutrition){delete STATE.nutrition.proteinTarget;STATE.nutrition.plan=null;}
+  save();haptic(8);toast('Back to the calculated target');
+  try{renderFuel();}catch(e){}
+}
 function waterTargetCups(){const kg=latestWeightKg();if(!kg)return 8;return clamp(Math.round(kg*35/240),6,16);} // ~35 ml/kg, 240 ml/cup
 function habitsRequired(){return HABITS.filter(h=>!h.optional).length;}
 /* One forgiveness day per week, matching the training streak's tolerance —
@@ -10090,10 +10114,30 @@ function renderFuel(){
     ${GOALS.map(([g,l])=>`<button class="${n.goal===g?'on':''}" onclick="setNutGoal('${g}')">${l}</button>`).join('')}</div>
     <div class="tiny muted" style="margin:-8px 2px 14px">${GOAL_NOTE[n.goal]||''}</div>`;
   // daily targets
+  const _pSet=proteinTargetSet(),_pCalc=proteinTargetCalc();
   h+=`<div class="section-label">Today's targets</div><div class="grid2">
-    <div class="stat"><div class="n" style="color:var(--fire-l)">${prot?prot+'g':'—'}</div><div class="l">Protein</div></div>
+    <div class="stat"><div class="n" style="color:var(--fire-l)">${prot?prot+'g':'—'}</div><div class="l">Protein${_pSet?' · yours':(_pCalc?' · calculated':'')}</div></div>
     <div class="stat"><div class="n" style="color:var(--gold)">${n.kcalTarget?n.kcalTarget:'—'}</div><div class="l">Calories${n.kcalTarget?'':' (set below)'}</div></div>
   </div>`;
+  /* Protein was the one target the athlete could not state. It was computed
+     from bodyweight and goal, full stop — so somebody who wanted 165 g had no
+     way to say so, and every amount on the Reference tab and the whole
+     shopping list stayed sized to a number they disagreed with. */
+  {const _base=prot||_pCalc||150;
+   h+=`<div class="row" style="gap:8px;align-items:center;margin:8px 2px 0;flex-wrap:wrap">
+    <span class="tiny muted" style="font-weight:800;letter-spacing:.04em">PROTEIN TARGET</span>
+    <button class="chip" onclick="setProteinTarget(${_base-5})" aria-label="5 grams less">−5</button>
+    <b style="font-variant-numeric:tabular-nums;min-width:56px;text-align:center">${_base} g</b>
+    <button class="chip" onclick="setProteinTarget(${_base+5})" aria-label="5 grams more">+5</button>
+    ${_pSet?`<button class="chip" onclick="clearProteinTarget()">↺ Use calculated${_pCalc?' ('+_pCalc+' g)':''}</button>`:''}
+   </div>`;
+   if(_pSet&&_pCalc&&Math.abs(_pSet-_pCalc)>=25){
+     h+=`<div class="note info" style="margin-top:8px">You have set <b>${_pSet} g</b>; the calculation for your weight and goal says <b>${_pCalc} g</b>. Yours is the one being used everywhere — the days, the amounts and the shopping list are all sized to it.</div>`;
+   }
+   const _kg=latestWeightKg();
+   if(_pSet&&_kg&&_pSet/_kg>3){
+     h+=`<div class="note warn" style="margin-top:8px">${_pSet} g is over 3 g per kg of bodyweight. There is no evidence of benefit past about 2.4 g/kg, and it crowds out the carbs that fuel your sessions.</div>`;
+   }}
   if(!n.kcalTarget){
     const tip=n.goal==='maintain'?'Eat around maintenance and let the training sculpt your core.'
       :n.goal==='gain'?'To build muscle, eat in a <b>slight surplus</b> (~150–300 kcal/day) with plenty of protein. Tap the calculator below for your exact number.'
@@ -11056,6 +11100,14 @@ function normalizeState(){
   if(!STATE.nutrition||typeof STATE.nutrition!=='object')STATE.nutrition={goal:'lose',sex:null,age:null,heightCm:null,activity:1.45,kcalTarget:null,days:{}};
   if(!STATE.nutrition.days)STATE.nutrition.days={};
   if(!STATE.nutrition.diet)STATE.nutrition.diet='omnivore';
+  /* A hand-set protein target. Junk here would otherwise flow straight into
+     every prescribed amount on the Reference tab and the shopping list, so it
+     is dropped rather than coerced — absent means "use the calculation". */
+  /* `!=null` skipped the very value it should have removed: a stored null is
+     not "absent", it is a junk key that then travels in every backup. */
+  {const _pt=STATE.nutrition.proteinTarget;
+   if(_pt!==undefined&&(typeof _pt!=='number'||!isFinite(_pt)||_pt<PROT_MIN||_pt>PROT_MAX))
+     delete STATE.nutrition.proteinTarget;}
   if(!STATE.nutrition.meals)STATE.nutrition.meals=3;
   if(!Array.isArray(STATE.measurements))STATE.measurements=[];
   dedupeMeasurements();   // collapse same-date duplicates left by pre-v156 appends

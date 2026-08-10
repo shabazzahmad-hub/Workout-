@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v206';
+const CACHE = 'coreforge-v207';
 
 /* ---- Why the precache is in tiers ----------------------------------------
    The install used to await all 191 assets — about 11 MB — inside
