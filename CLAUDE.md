@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 19 suites, ~1,180 checks, run by `npm test` |
+| `tests/` | 20 suites, ~1,320 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -93,6 +93,45 @@ straight through the check that skipped it.
 repair guarding `nutrition.proteinTarget` left a stored `null` in place — a junk
 key that then travels in every backup. Use `!== undefined` when absent is the
 contract.
+
+**A repair on a field with a fixed set of legal values needs a MEMBERSHIP test.
+Truthiness and range are not substitutes, and both have shipped as one.**
+
+> `if(!STATE.nutrition.diet)` caught `''`, `null` and `undefined` and nothing
+> else, so every other string survived — `'kosher'`, `'Vegan'` with a capital V,
+> `'omnivore '` with a trailing space, anything an imported backup carried.
+> `dietOk()` then asks `r.ok.includes(d)`, which no recipe answers for a diet
+> that is not in the list, so an unrecognised diet made **every food in the
+> library forbidden**: zero recipes passed the filter, the meal plan scaled to
+> 0 g of protein and 0 kcal, `dietLabel()` rendered `undefined`, and
+> `validateData()` reported 168 problems. Nothing threw.
+
+> `if(!(STATE.progressPtr>=0))` is a *range* test doing a *type* test's job. It
+> let through the fraction `3.7`, the string `'12'`, `true`, `null` and `[]`.
+> The fraction was the one that hurt: `progressPtr` indexes
+> `sessionsFor(cycle)[dayInWeek]`, a fractional slot is `undefined`, and Today
+> died on the error boundary — which retries *through* `normalizeState()`, so a
+> stored `3.7` bricked the tab across relaunches. The survivors were wrong more
+> quietly: `'12'` reached `Math.min(STATE.progressPtr+1, …)` and
+> **concatenated**, printing "SESSION 121 / 378" to an athlete on session 13.
+
+Two things follow. **Keep the legal set in one place** — the five diets existed
+as three separate literals (the picker, `dietLabel()`, `validateData()`), which
+is a drift waiting to happen; `DIET_OPTS` is now the only copy. And **when a
+repair has to guess, prefer the restrictive answer and say so.** An unknown diet
+falls back to *vegan*, not omnivore, because the two ways of being wrong are not
+symmetrical: an over-restrictive plan is visible and one tap from fixed, while
+quietly serving pork to someone whose halal setting failed to load is neither.
+`dietRepaired` drives a prompt to re-pick.
+
+**A repair flag has to clear on the boot path, not only where it was set.**
+Keying the clear off "the stored value survived" made `dietRepaired` sticky: a
+fresh athlete with no diet at all got the default *and* kept a warning left in a
+backup they had already replaced. Set the flag in exactly one branch and clear
+it in every other. The check that catches this is a boot with a **valid** value
+and a stale flag beside it — every other flag check goes through a branch that
+clears it for its own reasons, so deleting the clear-on-valid branch entirely
+left the suite green.
 
 **Escape every user-controlled string that reaches `innerHTML`** with `_ve()`
 — `profile.name`, `baseline.level`, food names, favourite names. `importData()`
@@ -472,7 +511,7 @@ Develop on `claude/abs-core-workout-app-3rr2ob`.
 
 1. `npm run check` — parses the inline script and `sw.js`, and enforces the
    `APP_VERSION` / `CACHE` lockstep.
-2. `npm test` — all 19 suites green, zero page errors, validator clean.
+2. `npm test` — all 20 suites green, zero page errors, validator clean.
    Mutation-test anything newly added.
 3. Bump `APP_VERSION` and `CACHE` together.
 4. `git fetch origin main && git checkout -B <branch> origin/main`, commit,
