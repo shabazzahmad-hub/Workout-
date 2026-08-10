@@ -188,6 +188,14 @@ export default async function run() {
     });
     t.eq('with no broken images', broken, 0);
   }
+  /* Back online before the blocks below. Both need the network — one registers
+     a new script URL to force a real activate, the other needs the origin to
+     answer with a 500 — and the offline section above leaves the context
+     disconnected. CI caught this and the local run did not: the offline read
+     was served from cache locally, so the registration only failed on a clean
+     runner. */
+  await ctx.setOffline(false);
+
   /* ---- the worker cleans up after ITSELF, and nobody else ----------------
      CacheStorage is scoped to the ORIGIN, not to the scope the worker was
      registered under. `keys.filter(k => k !== CACHE)` therefore reached every
@@ -251,7 +259,6 @@ export default async function run() {
     t.ok('the cached app is served instead', served.app, served);
   }
 
-  await ctx.setOffline(false);
   await ctx.close();
 
   srv.close();
