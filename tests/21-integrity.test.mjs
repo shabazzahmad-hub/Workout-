@@ -356,6 +356,44 @@ export default async function run() {
     t.ok('a saved baseline records which protocol produced it', r.stamped >= 2, r);
   }
 
+  /* ---- progress past the benchmark is visible ---------------------------
+     Core Score clamps each test's contribution at 100, so an athlete who goes
+     from 120s to 150s on the plank sees the headline number not move. The cap
+     is right for a 0-100 level indicator and wrong as the only thing shown. */
+  {
+    const r = await page.evaluate(() => {
+      const keepA = assessState, keepB = STATE.baseline;
+      const plank = TESTS.find(t => t.id === 'plank');
+      // well past every benchmark
+      const res = {}; TESTS.forEach(t => res[t.id] = t.bench * 1.5);
+      assessState = { idx: TESTS.length, results: res, reassess: null };
+      const a = computeAssessment(res);
+      const html = testBreakdownHTML(a);
+      const el = document.createElement('div'); el.innerHTML = html; const txt = el.textContent;
+      // and a re-test against a same-protocol prior, to check the delta appears
+      STATE.baseline = { date: '2026-01-01', results: Object.fromEntries(TESTS.map(t => [t.id, t.bench])),
+        protocol: TEST_PROTOCOL, score: 80, level: 'Advanced' };
+      assessState = { idx: TESTS.length, results: res, reassess: 1 };
+      const el2 = document.createElement('div'); el2.innerHTML = testBreakdownHTML(a); const txt2 = el2.textContent;
+      // ...and against an OLD-protocol prior, where a delta would be misleading
+      STATE.baseline = { date: '2026-01-01', results: Object.fromEntries(TESTS.map(t => [t.id, t.bench])),
+        protocol: 1, score: 80, level: 'Advanced' };
+      const el3 = document.createElement('div'); el3.innerHTML = testBreakdownHTML(a); const txt3 = el3.textContent;
+      assessState = keepA; STATE.baseline = keepB;
+      return { score: a.score, has150: /150%/.test(txt), pastIt: /past it/.test(txt),
+        namesPlank: txt.indexOf(plank.name) >= 0,
+        deltaShown: /\+/.test(txt2), crossProtocolNote: /not measuring the same thing/.test(txt3),
+        crossProtocolHidesDelta: !/\+/.test(txt3) };
+    });
+    t.eq('the headline score is still capped at 100', r.score, 100);
+    t.ok('but the breakdown shows 150% of benchmark uncapped', r.has150, r);
+    t.ok('and says the benchmark was passed', r.pastIt, r);
+    t.ok('every test is named in it', r.namesPlank, r);
+    t.ok('a same-protocol re-test shows the improvement', r.deltaShown, r);
+    t.ok('a cross-protocol comparison shows no delta', r.crossProtocolHidesDelta, r);
+    t.ok('and explains why', r.crossProtocolNote, r);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

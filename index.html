@@ -4882,12 +4882,65 @@ function commitAssessment(a,rec){
     <div class="center" style="margin:16px 0">${ringHTML(a.score,'Core Score')}</div>
     <div class="center" style="margin-bottom:16px"><span class="chip on" style="font-size:13px">Level: ${_ve(a.level)}</span></div>
     ${scoreDeltaHTML(a)}
+    ${testBreakdownHTML(a)}
     <div class="card pad" style="margin-top:6px"><h3 style="font-size:14px">What this means</h3>
       <p class="sm muted">${levelBlurb(a.level)}</p>
       <p class="sm muted">Your program is now built from these numbers. Targets start sub-maximal for perfect form, then climb every week. You'll re-test after each 6-week block.</p>
     </div>
     <button class="btn primary" onclick="closeSheet();go('today')">${assessState.reassess?'Continue training →':'Start Week 1 →'}</button>
   `);
+}
+/* Core Score clamps every test's contribution at 100, which is right for a
+   0-100 level indicator and wrong as the only thing the athlete is shown: past
+   the benchmark, the headline stops moving while the athlete keeps improving.
+   A plank going 120s -> 150s is a quarter better and reads as "no change".
+
+   So the score keeps its cap and the evidence sits underneath it, UNCAPPED —
+   each test as a percentage of its benchmark, with the change since the last
+   assessment where there is one to compare against. This is the panel that
+   should be read at a re-test; the ring is just the summary. */
+function testBreakdownHTML(a){
+  try{
+    const res=(assessState&&assessState.results)||{};
+    /* Compare against the previous assessment of the SAME protocol. A v1
+       baseline was taken with four maximal trunk efforts back to back, so its
+       numbers are not comparable with a v2 re-test and a delta between them
+       would read as progress the athlete did not make. */
+    const prevRec=assessState&&assessState.reassess
+      ? (STATE.baseline&&STATE.baseline.results?STATE.baseline:null) : null;
+    const prev=(prevRec&&prevRec.results)||null;
+    const sameProtocol=!!prevRec&&(+prevRec.protocol||1)===(+TEST_PROTOCOL||1);
+    const fmt=(t,v)=>t.unit==='time'?fmtTime(Math.round(v)):Math.round(v)+' reps';
+    const rows=TESTS.map(t=>{
+      const v=+res[t.id];
+      if(!isFinite(v))return '';
+      const pct=Math.round(v/t.bench*100);          // deliberately NOT clamped
+      const over=pct>=100;
+      let delta='';
+      if(prev&&isFinite(+prev[t.id])&&sameProtocol){
+        const d=v-(+prev[t.id]);
+        if(Math.abs(d)>=(t.unit==='time'?1:1)){
+          delta=`<span class="tiny" style="color:${d>0?'var(--green)':'var(--fire-l)'};font-weight:800">${d>0?'+':''}${t.unit==='time'?fmtTime(Math.abs(Math.round(d))).replace(/^/,d>0?'':'-'):Math.round(d)}</span>`;
+        }else delta='<span class="tiny muted">level</span>';
+      }
+      const bar=Math.max(2,Math.min(140,pct));
+      return `<div style="padding:7px 0;border-top:1px solid var(--line)">
+        <div class="row" style="justify-content:space-between;align-items:baseline">
+          <span class="sm"><b>${_ve(t.name)}</b></span>
+          <span class="sm"><b>${fmt(t,v)}</b> ${delta}</span></div>
+        <div style="height:6px;border-radius:4px;background:var(--card2);overflow:hidden;margin-top:4px">
+          <i style="display:block;height:100%;width:${bar/1.4}%;background:${over?'var(--green)':'var(--fire)'}"></i></div>
+        <div class="tiny muted" style="margin-top:2px">${pct}% of the ${fmt(t,t.bench)} benchmark${over?' · <b style="color:var(--green)">past it</b>':''}</div>
+      </div>`;
+    }).join('');
+    if(!rows)return '';
+    const note=prevRec&&!sameProtocol
+      ? '<div class="tiny muted" style="margin-top:8px">No change shown against your last assessment: it was taken under the older test order, so the two are not measuring the same thing. From here on they will be.</div>'
+      : '';
+    return `<div class="card pad" style="margin-top:6px"><h3 style="font-size:14px">Test by test</h3>
+      <p class="sm muted" style="margin-top:-4px">The score above stops at 100. These do not — this is where progress past the benchmark shows up.</p>
+      ${rows}${note}</div>`;
+  }catch(e){return '';}
 }
 function scoreDeltaHTML(a){
   const hist=STATE.scoreHistory;
