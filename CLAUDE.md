@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 16 suites, ~1,093 checks, run by `npm test` |
+| `tests/` | 16 suites, ~1,097 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -101,8 +101,8 @@ not merely that it produced a number.
 
 ## Tests that pass for the wrong reason
 
-This is the dominant failure mode in this repo. It happened five times in a
-single day, in code that already had a green suite:
+This is the dominant failure mode in this repo — every entry below was found
+in code that already had a green suite, and the list keeps growing:
 
 - **The resume banner check** passed while the banner was invisible six days in
   seven, because `seedAthlete` starts at `progressPtr` 0 — which *is* day zero
@@ -130,6 +130,21 @@ single day, in code that already had a green suite:
   the data in front of it* and requires the specific complaint, then restores.
   Mute `console.error` while doing so — `validateData()` logs, and the harness
   counts a console error as a page failure.
+
+- **A check can be rigorous and still encode the wrong requirement.** The
+  timer-over-photo veil had a real measurement behind it — 4.5:1 against the
+  brightest and darkest artwork in the library, in both themes, worst case
+  4.58:1 — and the whole thing was aimed at the wrong goal. The athlete wanted
+  the *photograph* unobstructed and was content to lose the clock. A green
+  suite says the code does what the check says; it does not say the check wants
+  the right thing. When a requirement changes, the check is part of the change.
+- **Assert on the pixels that were painted, not on the rule that painted
+  them.** "There is no scrim" as a CSS assertion passes the moment someone adds
+  the scrim somewhere else — a `box-shadow`, a parent `filter`, a second
+  overlay. Suite 16 screenshots the middle of the photo and compares its
+  luminance against the source file, which catches an overlay as faint as
+  `.09` alpha no matter where it came from. Same family as reading the SSML
+  actually sent: measure the output, not the instruction.
 
 **Mutation-test every new check: seed the defect back, confirm the suite goes
 red, restore.** Nothing else reliably distinguishes "this passes" from "this
@@ -244,6 +259,17 @@ translucent"*. The picture is the form reference you glance at mid-set. So:
   `scrollHeight <= clientHeight` at 412×690 — the player is hands-free, so
   content that needs scrolling is content the athlete never sees, and every
   pixel of chrome is a pixel the photograph does not get.
+
+**The player has twins, and they drift.** A timed effort is rendered in three
+places: the guided player (`plBodyWork`/`plEnterRest`), HIIT
+(`ivRenderStep`/`ivRingHTML`), and the warm-up/cool-down flows (`runFlow`,
+`showFlowMedia`). Every treatment that has landed in one has had to be chased
+into the others afterwards — four separate copies of the same three-beep line
+before `countdownCue()` centralised them, and a photograph in the guided player
+while HIIT had none at all and the flows quietly had the biggest image in the
+app at 260px. **Anything added to one gets checked against the other two in the
+same change**, and shared markup lives in one helper (`plRingMediaHTML` is used
+by both rings) rather than being copied.
 
 **Sheets render behind the player.** `.scrim` is z-index 60, `.pl` is 75, so
 `openSheet()` from inside a session is invisible. Mid-session UI is an
