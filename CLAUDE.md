@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 18 suites, ~1,161 checks, run by `npm test` |
+| `tests/` | 19 suites, ~1,180 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -302,6 +302,18 @@ by both rings) rather than being copied.
 `openSheet()` from inside a session is invisible. Mid-session UI is an
 in-player panel — see `#plSwapMenu` and `#plHurtMenu`.
 
+**Widening what a list can hold breaks the rules that were only correct
+because it was narrow.** Progress photos were front and side, and "Before →
+Now" was `ps[0]` against `ps[ps.length-1]` — earliest against latest,
+whichever views they happened to be. That is defensible with one pose and
+merely lucky with two. Adding a back view made it wrong on ordinary data: the
+first shot of the oldest session against the last shot of the newest session
+is routinely a front captioned "before" beside a back captioned "now". Nothing
+threw, the panel still rendered two photographs, and the comparison meant
+nothing. `photoPair()` now picks a pose that has at least two shots and shows
+the widest span *inside* it. When you add a member to an enumeration, re-read
+every place the old set was small enough to index by position.
+
 ## Audio
 
 `countdownCue(remain, total)` owns the last ten seconds of a timed effort, and
@@ -460,7 +472,7 @@ Develop on `claude/abs-core-workout-app-3rr2ob`.
 
 1. `npm run check` — parses the inline script and `sw.js`, and enforces the
    `APP_VERSION` / `CACHE` lockstep.
-2. `npm test` — all 18 suites green, zero page errors, validator clean.
+2. `npm test` — all 19 suites green, zero page errors, validator clean.
    Mutation-test anything newly added.
 3. Bump `APP_VERSION` and `CACHE` together.
 4. `git fetch origin main && git checkout -B <branch> origin/main`, commit,
@@ -506,6 +518,17 @@ use `.get()`.
 **Do not pace API polling with fixed `sleep` timers.** Their completion
 notifications arrive long after the answer is already in hand, and every one of
 them costs a turn to dismiss. Poll on demand.
+
+**The sandbox ships one Chromium build, and `npm install` outruns it.**
+`/opt/pw-browsers` carries chromium **1194**; `package-lock.json` resolves
+Playwright to a newer release that wants a different revision, so `npm test`
+dies with *"Executable doesn't exist"* and tells you to run
+`npx playwright install` — which the environment says not to do. Match the
+library to the browser instead: `npm i playwright@1.56.0 --no-save`. Revisions
+step 1187 → 1194 → 1200 → 1208 per minor, so if the pinned build ever changes,
+read `node_modules/playwright-core/browsers.json` rather than guessing. CI
+downloads its own browser and is unaffected — do not "fix" this in
+`package.json`.
 
 **Check the wall clock before calling something slow.** A CI job was reported
 as "seven minutes and needs explaining" when it had run for 88 seconds; the
