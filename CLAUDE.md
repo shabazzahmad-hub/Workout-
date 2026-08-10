@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 16 suites, ~1,097 checks, run by `npm test` |
+| `tests/` | 16 suites, ~1,102 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -250,6 +250,17 @@ translucent"*. The picture is the form reference you glance at mid-set. So:
   `countdownCue()`: the last ten seconds are audible, so the digits do not have
   to win. **Rest is the exception and stays solid** — rest deliberately has no
   ten-second cue, only a 3-2-1, so it is the one timer with nothing behind it.
+  Solid is not the same as legible, though: with the veil gone, white digits
+  over the brightest artwork measured **1.00:1** in light theme. The rest clock
+  carries a **halo** (`--plhalo`, a layered `text-shadow`), which darkens the
+  few pixels around each glyph and leaves the frame alone. A halo is not a
+  scrim, and the no-scrim check cannot see one — it hides `.pl-center` before
+  sampling, so it read identically with the halo and without it. Legibility is
+  measured on the **painted** box instead: 12.3:1 with the halo, 2.1:1 without.
+- **Rest is laid out exactly like an effort** — the tag, the movement's *name*,
+  the same full-size photograph. It used to say "Recover" over a shrunken
+  preview with the useful part, *what you are about to do*, in a chip below the
+  fold.
 - **Fixed pixel sizes inside `.pl-body` get squashed, silently.** `.pl-ring` was
   `232px × 232px` in a flex column; on a 690px-tall phone flex shrank its
   *height* to 153px while the SVG kept drawing a full circle, so the ring

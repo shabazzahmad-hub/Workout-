@@ -90,21 +90,33 @@ export default async function run() {
       await new Promise(z => setTimeout(z, 400));
       const el = document.querySelector('.pl-ringmedia img,.pl-ringmedia video');
       const body = document.querySelector('#plBody');
+      const m = document.querySelector('.pl-ringmedia').getBoundingClientRect();
       return { shown: el && el.getAttribute('src'), curImg: EX[cur].img, nextImg: nextId && EX[nextId].img,
-        overflow: body.scrollHeight - body.clientHeight };
+        overflow: body.scrollHeight - body.clientHeight,
+        media: Math.round(m.width), pct: Math.round(m.height / body.clientHeight * 100),
+        name: document.querySelector('.pl-name').textContent.trim(),
+        nextName: nextId && EX[nextId].name };
     });
     t.eq('an exercise rest previews the NEXT movement', r.shown, r.nextImg);
     t.ok('which is not the one just finished', r.shown !== r.curImg, r);
     t.ok('and the rest screen fits too', r.overflow <= 0, { overflowPx: r.overflow });
+    /* Rest gets the same treatment as an effort, not a shrunken preview: the
+       movement is named up top and shown at full size, rather than "Recover"
+       over a chip below the fold. */
+    t.eq('the next movement is named, not "Recover"', r.name, r.nextName);
+    t.ok('and shown at effort size (>=290px)', r.media >= 290, r);
+    t.ok('taking half the screen like an effort does', r.pct >= 45, r);
   }
   {
     const r = await page.evaluate(async () => {
       plClear(); plEnterRest(30, 'set');
       await new Promise(z => setTimeout(z, 400));
       const el = document.querySelector('.pl-ringmedia img,.pl-ringmedia video');
-      return { shown: el && el.getAttribute('src'), curImg: EX[plCur().exId].img };
+      return { shown: el && el.getAttribute('src'), curImg: EX[plCur().exId].img,
+        name: document.querySelector('.pl-name').textContent.trim(), curName: EX[plCur().exId].name };
     });
     t.eq('a rest between sets keeps showing the movement you are on', r.shown, r.curImg);
+    t.eq('and names it', r.name, r.curName);
   }
 
   /* ---- HIIT had no photograph of the movement whatsoever ---------------- */
@@ -226,6 +238,71 @@ export default async function run() {
       { paintedLuma: Math.round(delta.painted), sourceLuma: Math.round(delta.source), drop: Math.round(delta.drop) });
   }
 
+  /* ---- the rest clock is the one that still has to be readable ---------- */
+  {
+    /* With the veil gone, solid white digits over the brightest artwork
+       measured 1.00:1 in light theme — the rest clock was invisible. A halo
+       fixes it without touching the frame, but that only shows up if the
+       digits are actually PAINTED in the sample: measuring the photo behind
+       them with `.pl-center` hidden cannot see a text-shadow at all, and read
+       exactly the same with the halo and without it.
+
+       So this compares the darkest and lightest bands of the painted box: one
+       of them is the glyph, the other is the halo or the photo. Removing the
+       halo takes it from 12.3:1 to 2.1:1. */
+    const extremes = await page.evaluate(async () => {
+      const keys = Object.keys(EX).filter(k => EX[k].img); const out = [];
+      for (const k of keys) {
+        const im = new Image(); im.src = EX[k].img;
+        try { await im.decode(); } catch (e) { continue; }
+        const c = document.createElement('canvas'); c.width = c.height = 48;
+        const g = c.getContext('2d'); g.drawImage(im, 0, 0, 48, 48);
+        const d = g.getImageData(14, 14, 20, 20).data; let s = 0;
+        for (let i = 0; i < d.length; i += 4) s += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+        out.push([k, s / (d.length / 4)]);
+      }
+      out.sort((a, b) => a[1] - b[1]);
+      return { darkest: out[0][0], brightest: out[out.length - 1][0] };
+    });
+    const nextWas = await page.evaluate(() => PLAYER.items[PLAYER.i + 1].exId);
+    const rel = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+    const L = ([r, g, b]) => 0.2126 * rel(r) + 0.7152 * rel(g) + 0.0722 * rel(b);
+    let worst = 99, at = null;
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(th => document.documentElement.setAttribute('data-theme', th), theme);
+      for (const key of [extremes.darkest, extremes.brightest]) {
+        const box = await page.evaluate(async k => {
+          PLAYER.items[PLAYER.i + 1].exId = k;
+          plClear(); plEnterRest(45, 'ex');
+          await new Promise(z => setTimeout(z, 550));
+          const r = document.querySelector('.pl-num').getBoundingClientRect();
+          return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+        }, key);
+        const shot = await page.screenshot({ clip: { x: box.x, y: box.y, width: box.w, height: box.h } });
+        const px = await page.evaluate(async b64 => {
+          const im = new Image(); im.src = 'data:image/png;base64,' + b64; await im.decode();
+          const c = document.createElement('canvas'); c.width = im.width; c.height = im.height;
+          c.getContext('2d').drawImage(im, 0, 0);
+          return Array.from(c.getContext('2d').getImageData(0, 0, c.width, c.height).data);
+        }, shot.toString('base64'));
+        const lums = [];
+        for (let i = 0; i < px.length; i += 4) lums.push(L([px[i], px[i + 1], px[i + 2]]));
+        lums.sort((a, b) => a - b);
+        const q = Math.max(1, Math.floor(lums.length * 0.15));
+        const lo = lums.slice(0, q).reduce((a, v) => a + v, 0) / q;
+        const hi = lums.slice(-q).reduce((a, v) => a + v, 0) / q;
+        const c = (hi + 0.05) / (lo + 0.05);
+        if (c < worst) { worst = c; at = `${theme}/${key}`; }
+      }
+    }
+    await page.evaluate(([k]) => {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      PLAYER.items[PLAYER.i + 1].exId = k;      // put the preview back
+    }, [nextWas]);
+    t.ok('the rest clock stays legible over any artwork, in either theme',
+      worst >= 7, { worst: Number(worst.toFixed(2)), at });
+  }
+
   /* ---- the clock is a watermark during an effort, solid during rest ------ */
   {
     const r = await page.evaluate(async () => {
@@ -238,7 +315,11 @@ export default async function run() {
           pct: Math.round(m.height / body.clientHeight * 100),
           numW: Math.round(num.width), numH: Math.round(num.height) };
       };
-      plClear(); plEnterWork(); await new Promise(z => setTimeout(z, 400));
+      /* plEnterWork() only rewrites text. Without rebuilding the body first
+         this read whatever the previous block left on screen — it was passing
+         on the back of block ordering, not on the work screen. */
+      plEnterReady(false); await new Promise(z => setTimeout(z, 200));
+      plClear(); plEnterWork(); await new Promise(z => setTimeout(z, 450));
       const work = read();
       plClear(); plEnterRest(45, 'ex'); await new Promise(z => setTimeout(z, 400));
       const rest = read();

@@ -36,6 +36,7 @@
     --line:rgba(255,255,255,.11); --line2:rgba(255,255,255,.2);
     --ink:#f7f9fc; --muted:#9ba8bd; --dim:#6c7c92; --muted2:#657184;
     --fire:#5de0b7; --fire-d:#2db996; --fire-l:#8becd0; --accInk:#03140f; --accSoft:rgba(93,224,183,.13);
+    --plhalo:rgba(2,6,12,.95);
     --violet:#70a7ff; --violet-d:#4a82df;
     --teal:#70a7ff; --teal-d:#4a82df;
     --green:#55d98c; --green-d:#2fae66;
@@ -53,6 +54,7 @@
     --line:rgba(16,32,53,.12); --line2:rgba(16,32,53,.22);
     --ink:#102035; --muted:#59697d; --dim:#7d8b9c;
     --fire:#127f67; --fire-d:#0d6d58; --fire-l:#0f6e59; --accInk:#ffffff; --accSoft:rgba(18,127,103,.12);
+    --plhalo:rgba(255,255,255,.97);
     --violet:#2c67c8; --violet-d:#22539f; --teal:#2c67c8; --teal-d:#22539f;
     --green:#147a46; --green-d:#0f6036; --pink:#b82f45; --pink-d:#942436; --gold:#9b6d00;
     --blue:#2c67c8; --brandInk:#ffffff;
@@ -197,13 +199,18 @@
      fit a short phone and stays a circle while it does. */
   .pl-ring{position:relative;height:min(392px,96vw,62vh);min-height:150px;width:auto;aspect-ratio:1;
     flex:0 1 auto;margin:3px auto;display:grid;place-items:center}
-  .pl-ring.sm{height:min(330px,86vw,46vh)}
   /* Rest is the exception: it keeps a solid clock. The watermark is
      affordable during an effort because countdownCue() speaks the last ten
      seconds — rest deliberately does NOT use that cue (so the marker always
      means "your effort is ending"), and gets only a 3-2-1. Fading the one
      timer with nothing behind it is the one place it would cost something. */
   .pl-ring.rest .pl-center{opacity:1}
+  /* A halo, not a scrim: it darkens the few pixels around each glyph and
+     leaves the frame alone. Solid white digits over a bright photograph
+     measured 1.00:1 in light theme once the veil came off — the rest clock
+     really was invisible on the brighter artwork. */
+  .pl-ring.rest .pl-num,.pl-ring.rest .pl-sub{
+    text-shadow:0 0 5px var(--plhalo),0 0 12px var(--plhalo),0 0 22px var(--plhalo),0 2px 3px var(--plhalo)}
   .pl-ring svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
   .pl-pulse{position:absolute;width:79%;height:79%;border-radius:50%;background:var(--accSoft)}
   /* The movement itself, filling the ring. A 120px thumbnail above a 232px
@@ -227,7 +234,6 @@
     display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
   .pl-actions{display:flex;gap:10px;width:100%;max-width:440px;margin-top:6px}
   .pl-actions .btn{flex:1}
-  .pl-next{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:10px 12px;width:100%;max-width:440px;margin-top:14px;text-align:left}
   .pl-swap{margin-top:4px;font-size:12px;font-weight:800;color:var(--muted);background:var(--card2);border:1px solid var(--line);border-radius:999px;padding:6px 14px;min-height:36px}
   .pl-swapmenu{display:flex;flex-direction:column;gap:8px;width:100%;max-width:440px;margin-top:10px}
   .pl-swapmenu button{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-weight:800;color:var(--ink)}
@@ -1491,7 +1497,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='204';
+const APP_VERSION='205';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -3864,16 +3870,16 @@ function plEnterRest(dur,type){
      derived from a timestamp; these were not. */
   plClear();PLAYER.phase='rest';PLAYER.remain=Math.max(1,dur|0);PLAYER.total=PLAYER.remain;
   PLAYER.deadline=Date.now()+PLAYER.remain*1000;
-  const m=plCur();let name,rx,nextEx;
-  if(type==='set'){const ex=EX[m.exId];nextEx=ex;name='Next set · '+ex.name;rx='Set '+(PLAYER.s+1)+' of '+m.sets+' · '+(m.unit==='time'?fmtTime(m.target):m.target+' reps');}
-  else{const nm=PLAYER.items[PLAYER.i+1];const nex=EX[nm.exId];nextEx=nex;name='Up next · '+nex.name;rx=nm.sets+' × '+(nm.unit==='time'?fmtTime(nm.target):nm.target+' reps');}
+  const m=plCur();let lead,rx,nextEx;
+  if(type==='set'){const ex=EX[m.exId];nextEx=ex;lead='Next set';rx='Set '+(PLAYER.s+1)+' of '+m.sets+' · '+(m.unit==='time'?fmtTime(m.target):m.target+' reps');}
+  else{const nm=PLAYER.items[PLAYER.i+1];const nex=EX[nm.exId];nextEx=nex;lead='Up next';rx=nm.sets+' × '+(nm.unit==='time'?fmtTime(nm.target):nm.target+' reps');}
   const rate=(type==='ex'&&!PLAYER.free)?ratingChipsHTML(m.exId):'';
   $('#plBody').innerHTML=`
-    <div class="pl-region"><span class="tag cardio">REST</span></div>
-    <div class="pl-name">Recover</div>
-    ${plRingHTML('var(--fire-l)',nextEx,'sm rest')}
+    <div class="pl-region"><span class="tag cardio">REST</span>
+      <span class="pl-set">${lead} · ${rx}</span></div>
+    <div class="pl-name">${nextEx.name}</div>
+    ${plRingHTML('var(--fire-l)',nextEx,'rest')}
     <div class="pl-coach" id="plCoach">Breathe. Shake it out.</div>
-    <div class="pl-next"><div><div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--muted)">${name}</div><div style="font-weight:800;margin-top:2px">${rx}</div></div></div>
     ${rate}
     <div class="pl-actions">
       <button class="btn ghost" onclick="playerAddRest()">+15s</button>
