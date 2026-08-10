@@ -1497,7 +1497,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='205';
+const APP_VERSION='206';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -9274,8 +9274,22 @@ const FOODS=[
   ['Salad leaves',2,30,'100 g, 1 bag','veg',0,100,'g'],
   ['Avocado',2,160,'100 g, half a large one','pad',15,100,'g'],
   ['Dark chocolate 85%',2,170,'30 g','pad',13,30,'g'],
-  ['Banana',1,105,'1 medium','pad',0,1,'ea'],
   ['Olive oil',0,120,'14 g, 1 tbsp','pad',13,14,'g'],
+  ['Banana',1.3,105,'1 medium','fruit',0.4,1,'ea'],
+  ['Apple',0.5,95,'1 medium','fruit',0.3,1,'ea'],
+  ['Orange',1.2,62,'1 medium','fruit',0.2,1,'ea'],
+  ['Pear',0.6,101,'1 medium','fruit',0.2,1,'ea'],
+  ['Peach',1.4,59,'1 medium','fruit',0.4,1,'ea'],
+  ['Kiwi',0.8,42,'1 medium','fruit',0.4,1,'ea'],
+  ['Blueberries',1.1,86,'150 g','fruit',0.5,150,'g'],
+  ['Strawberries',1,48,'150 g','fruit',0.5,150,'g'],
+  ['Raspberries',1.8,78,'150 g','fruit',1,150,'g'],
+  ['Grapes',1.1,104,'150 g','fruit',0.2,150,'g'],
+  ['Pineapple',0.9,83,'165 g','fruit',0.2,165,'g'],
+  ['Mango',1.4,99,'165 g','fruit',0.6,165,'g'],
+  ['Melon, cantaloupe',1.4,60,'175 g','fruit',0.3,175,'g'],
+  ['Watermelon',0.9,46,'150 g','fruit',0.2,150,'g'],
+  ['Dates',1.2,133,'2 pieces','fruit',0.2,2,'ea'],
 ];
 /* ---- What is in each food -------------------------------------------------
    Kept as a name-keyed map rather than a ninth column, because these rows are
@@ -9302,6 +9316,9 @@ const FOOD_ALG={
   'Cottage cheese':['dairy'],'Whey powder':['dairy'],'Greek yogurt 0%':['dairy'],
   'Greek yogurt 5%':['dairy'],'Skyr':['dairy'],'Semi-skimmed milk':['dairy'],
   'Cheddar':['dairy'],'Egg whites':['egg'],'Egg':['egg'],
+  'Apple':[],'Orange':[],'Pear':[],'Peach':[],'Kiwi':[],'Blueberries':[],
+  'Strawberries':[],'Raspberries':[],'Grapes':[],'Pineapple':[],'Mango':[],
+  'Melon, cantaloupe':[],'Watermelon':[],'Dates':[],
   'Soybeans':['soy'],'Firm tofu':['soy'],'Tempeh':['soy'],'Soy mince, dry':['soy'],
   'Edamame, podded':['soy'],
   'Green / brown lentils':[],'Red lentils':[],'Kidney beans':[],'Chickpeas':[],
@@ -9326,6 +9343,7 @@ const CAT_DIETS={
   plant:['vegan','vegetarian','pescatarian','halal','omnivore'],
   veg:['vegan','vegetarian','pescatarian','halal','omnivore'],
   pad:['vegan','vegetarian','pescatarian','halal','omnivore'],
+  fruit:['vegan','vegetarian','pescatarian','halal','omnivore'],
 };
 const FOOD_DIET_OVERRIDE={'Pork loin':['omnivore']};
 function foodAlg(f){const a=FOOD_ALG[f&&f[0]];return Array.isArray(a)?a:null;}
@@ -9344,10 +9362,10 @@ function foodOk(f){
   }catch(e){return false;}
 }
 const FOOD_CATS=[['all','All'],['meat','Meat'],['fish','Fish'],['dairy','Dairy & eggs'],
-  ['plant','Beans & plant'],['veg','Veg'],['pad','Carbs & fats']];
+  ['plant','Beans & plant'],['veg','Veg'],['fruit','Fruit'],['pad','Carbs & fats']];
 /* Only the fallback for a food added without a fat figure. validateData() flags
    any such food, so this should never actually run. */
-const CAT_SPLIT={meat:[0.10,0.90],fish:[0.05,0.95],dairy:[0.45,0.55],plant:[0.70,0.30],
+const CAT_SPLIT={meat:[0.10,0.90],fish:[0.05,0.95],dairy:[0.45,0.55],plant:[0.70,0.30],fruit:[0.94,0.06],
   veg:[0.85,0.15],pad:[0.65,0.35]};
 const FOOD_BY_NAME={};FOODS.forEach((f,i)=>{FOOD_BY_NAME[f[0]]=i;});
 function foodBase(f){return (typeof f[6]==='number'&&f[6]>0)?f[6]:1;}
@@ -9476,7 +9494,7 @@ const REF_DAYS=[
     {slot:'Breakfast',items:[['Egg',3],['GF oats',90],['Greek yogurt 0%',200]]},
     {slot:'Lunch',items:[['Chicken breast',130],['White rice, cooked',250],['Broccoli',200],['Olive oil',14]]},
     {slot:'Dinner',items:[['Beef mince 5%',130],['Sweet potato',300],['Green beans',300]]},
-    {slot:'Snack',items:[['Dark chocolate 85%',30]]}]},
+    {slot:'Snack',items:[['Dark chocolate 85%',30],['Apple',1]]}]},
   {name:'Fish day',meals:[
     {slot:'Breakfast',items:[['Cottage cheese',250],['Egg',2],['Banana',1]]},
     {slot:'Lunch',items:[['Tuna, tinned in water',125],['Potato',450],['Tomatoes',400],['Olive oil',14]]},
@@ -9491,19 +9509,127 @@ const REF_DAYS=[
     {slot:'Breakfast',items:[['GF oats',90],['Whey powder',30],['Banana',1]]},
     {slot:'Lunch',items:[['Firm tofu',200],['Quinoa, cooked',250],['Broccoli',200],['Olive oil',14]]},
     {slot:'Dinner',items:[['Tempeh',150],['Green / brown lentils',200],['Sweet potato',200]]},
-    {slot:'Snack',items:[['Edamame, podded',150]]}]},
+    {slot:'Snack',items:[['Edamame, podded',150],['Orange',1]]}]},
   {name:'Big dinner',meals:[
     {slot:'Breakfast',items:[['Skyr',170],['Egg whites',200],['Banana',1],['Almonds',28]]},
     {slot:'Lunch',items:[['Chicken breast',100],['White rice, cooked',400],['Kale',200]]},
     {slot:'Dinner',items:[['Sirloin steak',120],['Potato',450],['Egg',2],['Mushrooms',200],['Olive oil',14]]}]},
   {name:'16:8, three sittings',meals:[
     {slot:'12:00',items:[['Chicken breast',150],['White rice, cooked',300],['Peppers',360],['Avocado',100]]},
-    {slot:'16:00',items:[['Cottage cheese',250],['Peanut butter',32]]},
+    {slot:'16:00',items:[['Cottage cheese',250],['Peanut butter',32],['Kiwi',2]]},
     {slot:'19:30',items:[['Sirloin steak',150],['Potato',450],['Dark chocolate 85%',30]]}]},
   {name:'Halal / no pork',meals:[
     {slot:'Breakfast',items:[['Egg',3],['GF oats',90],['Greek yogurt 0%',200]]},
     {slot:'Lunch',items:[['Turkey mince 5%',150],['White rice, cooked',300],['Courgette',400],['Olive oil',14]]},
-    {slot:'Dinner',items:[['Chicken thigh',150],['Sweet potato',400],['Spinach, cooked',200]]}]},
+    {slot:'Dinner',items:[['Chicken thigh',150],['Sweet potato',400],['Spinach, cooked',200]],},
+    {slot:'Snack',items:[['Melon, cantaloupe',175]]}]},
+  /* ---- week two ---------------------------------------------------- */
+  {name:'Chicken and rice, done properly',meals:[
+    {slot:'Breakfast',items:[['Egg',3],['GF oats',80],['Blueberries',150]]},
+    {slot:'Lunch',items:[['Chicken breast',140],['White rice, cooked',300],['Peppers',300],['Olive oil',14]]},
+    {slot:'Dinner',items:[['Cod',180],['Potato',400],['Broccoli',250]]},
+    {slot:'Snack',items:[['Skyr',170],['Apple',1]]}]},
+  {name:'Steak night',meals:[
+    {slot:'Breakfast',items:[['Greek yogurt 0%',250],['GF oats',70],['Almonds',28],['Strawberries',150]]},
+    {slot:'Lunch',items:[['Tuna, tinned in water',125],['Quinoa, cooked',300],['Cucumber',250],['Olive oil',14]]},
+    {slot:'Dinner',items:[['Sirloin steak',140],['Sweet potato',350],['Asparagus',200]]},
+    {slot:'Snack',items:[['Orange',1],['Pumpkin seeds',30]]}]},
+  {name:'Prawn and lentil',meals:[
+    {slot:'Breakfast',items:[['Egg',2],['Egg whites',150],['GF oats',80],['Banana',1]]},
+    {slot:'Lunch',items:[['Prawns',180],['White rice, cooked',300],['Courgette',300],['Olive oil',14]]},
+    {slot:'Dinner',items:[['Green / brown lentils',250],['Sweet potato',300],['Kale',200]]},
+    {slot:'Snack',items:[['Cottage cheese',200],['Pineapple',165]]}]},
+  {name:'Turkey and quinoa',meals:[
+    {slot:'Breakfast',items:[['Skyr',200],['GF oats',80],['Raspberries',150]]},
+    {slot:'Lunch',items:[['Turkey mince 5%',150],['Quinoa, cooked',300],['Tomatoes',300],['Olive oil',14]]},
+    {slot:'Dinner',items:[['Salmon fillet',150],['Potato',400],['Green beans',250]]},
+    {slot:'Snack',items:[['Grapes',150]]}]},
+  {name:'Two-fish day',meals:[
+    {slot:'Breakfast',items:[['Cottage cheese',210],['Egg',2],['GF oats',70],['Melon, cantaloupe',175]]},
+    {slot:'Lunch',items:[['Mackerel',130],['White rice, cooked',300],['Salad leaves',100],['Tomatoes',200]]},
+    {slot:'Dinner',items:[['Haddock',200],['Sweet potato',350],['Brussels sprouts',250]]},
+    {slot:'Snack',items:[['Greek yogurt 0%',200],['Kiwi',2]]}]},
+  {name:'Tofu and beans',meals:[
+    {slot:'Breakfast',items:[['GF oats',80],['Egg whites',200],['Banana',1]]},
+    {slot:'Lunch',items:[['Firm tofu',220],['White rice, cooked',300],['Broccoli',250],['Olive oil',14]]},
+    {slot:'Dinner',items:[['Black beans',250],['Sweet potato',300],['Peppers',250]]},
+    {slot:'Snack',items:[['Skyr',200],['Pear',1]]}]},
+  {name:'Big Sunday roast',meals:[
+    {slot:'Breakfast',items:[['Egg',3],['Skyr',220],['Strawberries',150]]},
+    {slot:'Lunch',items:[['Chicken thigh',170],['Potato',400],['Cabbage',250],['Olive oil',14]]},
+    {slot:'Dinner',items:[['Beef mince 5%',160],['White rice, cooked',300],['Mushrooms',200],['Spinach, cooked',150]]},
+    {slot:'Snack',items:[['Dark chocolate 85%',30],['Orange',1]]}]},
+  /* ---- week three -------------------------------------------------- */
+  {name:'Sea bass and greens',meals:[
+    {slot:'Breakfast',items:[['Greek yogurt 5%',200],['GF oats',80],['Blueberries',150]]},
+    {slot:'Lunch',items:[['Sea bass',200],['Quinoa, cooked',300],['Asparagus',200],['Olive oil',14]]},
+    {slot:'Dinner',items:[['Chicken breast',155],['Sweet potato',350],['Kale',200]]},
+    {slot:'Snack',items:[['Almonds',28],['Apple',1]]}]},
+  {name:'Chickpea and chicken',meals:[
+    {slot:'Breakfast',items:[['Egg',3],['GF oats',80],['Peach',1]]},
+    {slot:'Lunch',items:[['Chickpeas',250],['White rice, cooked',250],['Tomatoes',300],['Olive oil',14]]},
+    {slot:'Dinner',items:[['Chicken breast',150],['Potato',400],['Green beans',250]]},
+    {slot:'Snack',items:[['Cottage cheese',200],['Grapes',150]]}]},
+  {name:'Sardines on the go',meals:[
+    {slot:'Breakfast',items:[['Skyr',200],['GF oats',70],['Almonds',28],['Banana',1]]},
+    {slot:'Lunch',items:[['Sardines, tinned',120],['Potato',400],['Salad leaves',100],['Cucumber',200]]},
+    {slot:'Dinner',items:[['Turkey mince 5%',150],['White rice, cooked',300],['Courgette',300]]},
+    {slot:'Snack',items:[['Greek yogurt 0%',200],['Raspberries',150]]}]},
+  {name:'Tempeh and squash',meals:[
+    {slot:'Breakfast',items:[['GF oats',80],['Whey powder',30],['Kiwi',1]]},
+    {slot:'Lunch',items:[['Tempeh',170],['Quinoa, cooked',260],['Peppers',300],['Olive oil',10]]},
+    {slot:'Dinner',items:[['Red lentils',250],['Sweet potato',250],['Spinach, cooked',150]]},
+    {slot:'Snack',items:[['Pumpkin seeds',15],['Mango',120]]}]},
+  {name:'Trout and potatoes',meals:[
+    {slot:'Breakfast',items:[['Egg',2],['Egg whites',150],['GF oats',80],['Strawberries',150]]},
+    {slot:'Lunch',items:[['Trout',170],['Potato',400],['Broccoli',250],['Olive oil',14]]},
+    {slot:'Dinner',items:[['Chicken thigh',150],['White rice, cooked',300],['Cauliflower',250]]},
+    {slot:'Snack',items:[['Skyr',170],['Kiwi',2]]}]},
+  {name:'Beef and butter beans',meals:[
+    {slot:'Breakfast',items:[['Cottage cheese',300],['GF oats',80],['Blueberries',150]]},
+    {slot:'Lunch',items:[['Butter beans',280],['White rice, cooked',250],['Kale',200],['Olive oil',14]]},
+    {slot:'Dinner',items:[['Beef mince 5%',170],['Sweet potato',350],['Green peas',200]]},
+    {slot:'Snack',items:[['Watermelon',300]]}]},
+  {name:'16:8, fruit-forward',meals:[
+    {slot:'12:00',items:[['Chicken breast',150],['White rice, cooked',300],['Peppers',300],['Avocado',80]]},
+    {slot:'16:00',items:[['Greek yogurt 0%',250],['Blueberries',150],['Almonds',28]]},
+    {slot:'19:30',items:[['Salmon fillet',150],['Potato',400],['Asparagus',200],['Orange',1]]}]},
+  /* ---- week four --------------------------------------------------- */
+  {name:'Cod and cannellini',meals:[
+    {slot:'Breakfast',items:[['Egg',3],['GF oats',80],['Grapes',150]]},
+    {slot:'Lunch',items:[['Cannellini beans',250],['Quinoa, cooked',250],['Tomatoes',300],['Olive oil',14]]},
+    {slot:'Dinner',items:[['Cod',200],['Potato',400],['Broccoli',250]]},
+    {slot:'Snack',items:[['Skyr',200],['Peach',1]]}]},
+  {name:'Chicken fajita bowl',meals:[
+    {slot:'Breakfast',items:[['Greek yogurt 0%',300],['GF oats',80],['Banana',1]]},
+    {slot:'Lunch',items:[['Chicken breast',150],['White rice, cooked',300],['Peppers',350],['Avocado',40]]},
+    {slot:'Dinner',items:[['Black beans',280],['Sweet potato',300],['Sweetcorn',100]]},
+    {slot:'Snack',items:[['Pineapple',165],['Pumpkin seeds',20]]}]},
+  {name:'Smoked salmon brunch',meals:[
+    {slot:'Breakfast',items:[['Smoked salmon',100],['Egg',3],['Melon, cantaloupe',175]]},
+    {slot:'Lunch',items:[['Cottage cheese',250],['Potato',400],['Cucumber',250],['Olive oil',14]]},
+    {slot:'Dinner',items:[['Turkey mince 5%',150],['White rice, cooked',300],['Green beans',250]]},
+    {slot:'Snack',items:[['Apple',1],['Almonds',28]]}]},
+  {name:'Lentil and lamb-style mince',meals:[
+    {slot:'Breakfast',items:[['Skyr',200],['GF oats',80],['Raspberries',150]]},
+    {slot:'Lunch',items:[['Green / brown lentils',250],['White rice, cooked',250],['Courgette',300],['Olive oil',14]]},
+    {slot:'Dinner',items:[['Beef mince 5%',150],['Potato',400],['Cabbage',250]]},
+    {slot:'Snack',items:[['Dates',2],['Greek yogurt 0%',200]]}]},
+  {name:'Prawn stir-fry',meals:[
+    {slot:'Breakfast',items:[['Egg',2],['Egg whites',150],['GF oats',80],['Kiwi',2]]},
+    {slot:'Lunch',items:[['Prawns',200],['White rice, cooked',300],['Broccoli',250],['Olive oil',14]]},
+    {slot:'Dinner',items:[['Firm tofu',220],['Sweet potato',300],['Peppers',250]]},
+    {slot:'Snack',items:[['Cottage cheese',200],['Strawberries',150]]}]},
+  {name:'Mussels and mash',meals:[
+    {slot:'Breakfast',items:[['Greek yogurt 0%',250],['GF oats',70],['Almonds',28],['Blueberries',150]]},
+    {slot:'Lunch',items:[['Mussels',250],['Potato',400],['Tomatoes',300],['Olive oil',14]]},
+    {slot:'Dinner',items:[['Chicken breast',150],['Quinoa, cooked',300],['Spinach, cooked',150]]},
+    {slot:'Snack',items:[['Pear',1],['Dark chocolate 85%',30]]}]},
+  {name:'Month-end reset',meals:[
+    {slot:'Breakfast',items:[['Egg',3],['GF oats',80],['Orange',1]]},
+    {slot:'Lunch',items:[['Tuna, tinned in water',150],['Sweet potato',350],['Salad leaves',100],['Avocado',80]]},
+    {slot:'Dinner',items:[['Salmon fillet',170],['White rice, cooked',300],['Brussels sprouts',250]]},
+    {slot:'Snack',items:[['Skyr',220],['Mango',165]]}]},
 ];
 /* The starches are the dial. Protein anchors move to hit the protein target;
    these move to close whatever calorie gap is left, which is the same advice
@@ -9611,10 +9737,10 @@ function logRefMeal(di,mi){
 }
 
 /* ---- the weekly shop ----------------------------------------------------
-   Derived from the seven days at the athlete's own scale, so the list can
+   Derived from the month of days at the athlete's own scale, so the list can
    never disagree with the days above it. */
 const SHOP_GROUPS=[['Protein counter',['meat','fish','dairy','plant']],
-  ['Fresh',['veg']],['Cupboard & freezer',['pad']]];
+  ['Fresh',['veg']],['Fruit',['fruit']],['Cupboard & freezer',['pad']]];
 /* The days are costed in the state you EAT the food in; a shop is in the state
    you BUY it in. 1.9 kg of cooked rice is not a thing you can put in a trolley.
    [multiplier, what the result is]. */
@@ -9709,7 +9835,7 @@ function mealGapHTML(missing){
    every quantity by 1.3x" banner, which is arithmetic at every meal rather
    than a plan.
 
-   The seven days already solve this — they are scaled to the athlete's live
+   The worked days already solve this — they are scaled to the athlete's live
    targets, substitute round any allergy or diet, and land within 5 g of the
    protein target for every combination tested including vegan with soy, tree
    nut, peanut and gluten all excluded. Rotate them by date so the week has
@@ -9749,7 +9875,7 @@ function mealPlanHTML(){
       });
       h+=`<button class="btn sm ghost" style="width:100%;margin-top:6px" onclick="logRefMeal(${picked.idx},${mi})">Log this meal · ${m.p}g · ${m.kcal} kcal</button></div>`;
     });
-    h+=`<div class="tiny muted" style="margin-top:8px">Weighed to your targets, and filtered for your diet — no multiplying required. The full seven days are on <b>Reference</b>.</div>`;
+    h+=`<div class="tiny muted" style="margin-top:8px">Weighed to your targets, and filtered for your diet — no multiplying required. The full month is on <b>Reference</b>.</div>`;
     h+=`</div>`;
     return h;
   }
@@ -9812,7 +9938,7 @@ function renderRef(){
   h+=`<div class="kv" style="padding:8px 2px"><span class="tiny muted">Your target</span>
     <b class="tiny">${T.p} g protein · ${T.kcal} kcal</b></div>`;
   if(!T.live){
-    h+=`<div class="note info">These are the defaults the sheets were written against. Set your weight and tap <b>Calculate my targets</b> in Fuel and everything on this tab — the amounts, the seven days, the shopping list — recalculates onto your numbers.</div>`;
+    h+=`<div class="note info">These are the defaults the sheets were written against. Set your weight and tap <b>Calculate my targets</b> in Fuel and everything on this tab — the amounts, the month of days, the shopping list — recalculates onto your numbers.</div>`;
   }
 
   /* ---- the one food list ---- */
@@ -9850,11 +9976,12 @@ function renderRef(){
   h+=`<div class="note warn"><b>Seitan is not on this list on purpose.</b> It is the highest-protein vegetarian food there is and it is pure wheat gluten. Every plant-protein list you read will recommend it.</div>`;
 
   /* ---- worked days, scaled onto the athlete's targets ---- */
-  h+=`<div class="section-label">Seven worked days</div>`;
+  h+=`<div class="section-label">${REF_DAYS.length} worked days · <span class="tiny muted">four weeks, then it repeats</span></div>`;
   const days=scaledDays();
   h+=`<div class="note ${T.live?'info':'warn'}">Weighed out for <b>${T.p} g protein and ${T.kcal} kcal</b>${T.live?', your current target':', the default target'}. The protein anchors are sized to hit the protein; the starches — rice, potato, oats, quinoa — are sized to close whatever calories are left. Change your target in Fuel and these amounts move with it.</div>`;
   days.forEach((d,i)=>{
     const dp=T.p?Math.round(d.p/T.p*100):0;
+    if(i%7===0)h+=`<div class="tiny muted" style="letter-spacing:.08em;text-transform:uppercase;font-weight:800;margin:12px 2px 6px">Week ${Math.floor(i/7)+1}</div>`;
     h+=`<div class="card pad" style="margin-bottom:8px">
       <div class="row" style="justify-content:space-between;align-items:baseline">
         <b>${i+1} · ${_ve(d.name)}</b>
@@ -9889,11 +10016,15 @@ function renderRef(){
   const ticks=shopTicks();
   const total=shop.reduce((a,g)=>a+g[1].length,0);
   const done=shop.reduce((a,g)=>a+g[1].filter(it=>ticks[it.name]).length,0);
-  h+=`<div class="section-label">Weekly shop · <span style="color:var(--green)">${done}/${total}</span></div>`;
-  h+=`<div class="note info">Totalled straight from the seven days above at your own amounts, so it moves when your target does. Converted to what you <b>buy</b>, not what you eat — rice and quinoa are dry, chicken is raw, so the weights here are deliberately not the ones on the plate.</div>`;
+  h+=`<div class="section-label">The whole shop · <span style="color:var(--green)">${done}/${total}</span></div>`;
+  h+=`<div class="note info">One list, totalled straight from all ${REF_DAYS.length} days above at your own amounts, so it moves when your target does. Converted to what you <b>buy</b>, not what you eat — rice and quinoa are dry, chicken is raw, so the weights here are deliberately not the ones on the plate.</div>`;
+  /* A month of fresh food does not survive a month. The cupboard shelf is the
+     only group worth buying in one go; saying so beats letting someone bring
+     home two kilos of yogurt and watch half of it turn. */
+  h+=`<div class="note warn">These are <b>month totals</b>. Only the cupboard and freezer shelf keeps that long — buy the protein, fresh veg and fruit about <b>a quarter at a time</b>, once a week.</div>`;
   shop.forEach(([group,items])=>{
     h+=`<div class="card" style="padding:0 12px;margin-bottom:8px">
-      <div class="kv" style="border:none;padding:10px 2px 6px"><span class="tiny muted" style="letter-spacing:.08em;text-transform:uppercase;font-weight:800">${_ve(group)}</span></div>`;
+      <div class="kv" style="border:none;padding:10px 2px 6px"><span class="tiny muted" style="letter-spacing:.08em;text-transform:uppercase;font-weight:800">${_ve(group)}</span>${/cupboard/i.test(group)?'<span class="tiny muted">keeps · buy once</span>':'<span class="tiny muted">buy ¼ weekly</span>'}</div>`;
     items.forEach(it=>{
       const on=!!ticks[it.name];
       h+=`<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer;padding:10px 2px" onclick="toggleShop(${JSON.stringify(it.name).replace(/"/g,'&quot;')})">
