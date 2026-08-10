@@ -1497,7 +1497,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='208';
+const APP_VERSION='209';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -9121,7 +9121,19 @@ const RECIPES=[
   {id:'s_pshake',alg:['soy'],type:'snack',emoji:'🥤',name:'Plant Protein Shake',kcal:170,p:24,c:10,f:3,ok:['vegan','vegetarian','pescatarian','halal','omnivore'],
     ing:['1 scoop plant protein','1 cup water or soy milk'],steps:['Shake together until smooth.']},
 ];
-function dietLabel(){return {omnivore:'Omnivore',halal:'Halal',pescatarian:'Pescatarian',vegetarian:'Vegetarian',vegan:'Vegan'}[STATE.nutrition.diet||'omnivore'];}
+/* The five diets, in ONE place. This list existed three times — here, in the
+   Settings picker and inside validateData() — and a diet the picker can set
+   but the validator does not know about (or the reverse) is a silent drift. */
+const DIET_OPTS=[['omnivore','Omnivore'],['halal','Halal'],['pescatarian','Pescatarian'],['vegetarian','Vegetarian'],['vegan','Vegan']];
+const DIET_KEYS=DIET_OPTS.map(d=>d[0]);
+function dietLabel(){const m=Object.fromEntries(DIET_OPTS);return m[STATE.nutrition.diet]||m.omnivore;}
+/* Shown when normalizeState() could not recognise the stored diet and fell
+   back to the restrictive one. The athlete is the only one who knows what it
+   was meant to be, so ask rather than guess quietly. */
+function dietRepairNoteHTML(){
+  if(!(STATE.nutrition&&STATE.nutrition.dietRepaired))return '';
+  return `<div class="note warn"><b>Check your diet setting.</b> The diet saved on this device was not one we recognise, so meal plans are running on <b>Vegan</b> for now — the most restrictive option, chosen deliberately so nothing turns up on your plate that you do not eat. Pick the right one below and it will stick.</div>`;
+}
 function toggleWholeFood(){const n=nut();n.wholeFoodOnly=!wholeOnly();generateMealPlan();save();if(typeof TAB!=='undefined'&&TAB==='fuel')renderFuel();try{renderGuide();}catch(e){}}
 function recipeById(id){return RECIPES.find(r=>r.id===id);}
 function dietOk(r){
@@ -10136,6 +10148,7 @@ function renderFuel(){
   try{currentMealPlan();}catch(e){}   // state changes happen HERE, before any markup is built
   const kg=latestWeightKg();const prot=proteinTargetG();const wt=waterTargetCups();
   let h=`<h2 class="vtitle">Fuel</h2><div class="vsub">Abs are built in the gym and revealed in the kitchen. Hit these daily.</div>`;
+  h+=dietRepairNoteHTML();
   h+=dietBreakBanner();
   if(!kg){
     h+=`<div class="note warn">Add your <b>body weight</b> so we can set your protein &amp; calorie targets. <button class="btn sm primary" style="width:auto;margin-top:8px" onclick="logMeasure()">+ Log weight</button></div>`;
@@ -10866,8 +10879,8 @@ function renderGuide(){
       </div></div>
     <div style="padding:8px 0 2px"><div class="tiny muted" style="margin-bottom:6px">Diet preference <span style="opacity:.7">· shapes meal plans</span></div>
       <div class="daypick" id="set-diet" style="flex-wrap:wrap">
-        ${[['omnivore','Omnivore'],['halal','Halal'],['pescatarian','Pescatarian'],['vegetarian','Vegetarian'],['vegan','Vegan']].map(([k,l])=>`<button class="${(STATE.nutrition.diet||'omnivore')===k?'on':''}" onclick="setDiet('${k}')">${l}</button>`).join('')}
-      </div></div>
+        ${DIET_OPTS.map(([k,l])=>`<button class="${(STATE.nutrition.diet||'omnivore')===k?'on':''}" onclick="setDiet('${k}')">${l}</button>`).join('')}
+      </div>${dietRepairNoteHTML()}</div>
     <div class="row" style="justify-content:space-between;padding:8px 0 2px"><span>Whole foods only <span class="tiny muted">· 🥦 skip processed / powders in meal plans</span></span><button class="chip ${wholeOnly()?'on':''}" onclick="toggleWholeFood()">${wholeOnly()?'On':'Off'}</button></div>
   </div>`;
   // backup
@@ -11014,7 +11027,9 @@ function toggleGear(k){
   STATE.profile.hasBar=g.has('bar');STATE.profile.hasBench=g.has('bench');   // keep legacy flags in sync
   haptic(8);save();renderGuide();
 }
-function setDiet(k){STATE.nutrition.diet=k;if(STATE.nutrition.plan)STATE.nutrition.plan=null;haptic(8);save();renderGuide();}
+function setDiet(k){if(!DIET_KEYS.includes(k))return;   // the picker is the only writer; keep it to real keys
+  STATE.nutrition.diet=k;delete STATE.nutrition.dietRepaired;
+  if(STATE.nutrition.plan)STATE.nutrition.plan=null;haptic(8);save();renderGuide();}
 /* Photo BYTES live in IndexedDB under ph_<id>; STATE.photos holds only
    {id,date,pose}, so JSON.stringify(STATE) silently produced a backup with no
    photos in it — while the render error boundary and hardReset() both tell the
@@ -11135,7 +11150,31 @@ function normalizeState(){
   if(typeof STATE.adapt!=='number')STATE.adapt=1;   // adaptive-overload multiplier
   if(!STATE.nutrition||typeof STATE.nutrition!=='object')STATE.nutrition={goal:'lose',sex:null,age:null,heightCm:null,activity:1.45,kcalTarget:null,days:{}};
   if(!STATE.nutrition.days)STATE.nutrition.days={};
-  if(!STATE.nutrition.diet)STATE.nutrition.diet='omnivore';
+  /* A diet is not a boolean. `!STATE.nutrition.diet` caught '' and null and
+     undefined and NOTHING else, so any other string walked straight through —
+     'kosher', 'Vegan' with a capital V, 'omnivore ' with a trailing space,
+     anything a hand-edited or foreign backup carried. dietOk() then asks
+     `r.ok.includes(d)`, so an unrecognised diet makes every food in the
+     library forbidden: zero recipes passed the filter, the meal plan scaled to
+     0 g of protein and 0 kcal, dietLabel() rendered "undefined" and
+     validateData() reported 168 problems. Nothing threw, so nothing said so.
+
+     The repair is to a KNOWN key, and deliberately to the most restrictive one
+     rather than to omnivore. We do not know what the athlete meant, and the two
+     ways of being wrong are not symmetrical: an over-restrictive plan is
+     visible, harmless and one tap from fixed, while quietly serving pork to
+     someone whose halal setting failed to load is none of those. The flag
+     drives a prompt to re-pick, and clears itself as soon as the value is
+     valid — including on the next import.
+
+     The flag is set in exactly one branch and cleared in both others. Keying
+     the clear off "the stored value survived" instead made it sticky: a fresh
+     athlete with no diet at all got the default AND kept a warning left in a
+     backup they had already replaced. */
+  {const _d=STATE.nutrition.diet;
+   if(_d===undefined||_d===null||_d===''){STATE.nutrition.diet='omnivore';delete STATE.nutrition.dietRepaired;}
+   else if(!DIET_KEYS.includes(_d)){STATE.nutrition.diet='vegan';STATE.nutrition.dietRepaired=true;}
+   else delete STATE.nutrition.dietRepaired;}
   /* A hand-set protein target. Junk here would otherwise flow straight into
      every prescribed amount on the Reference tab and the shopping list, so it
      is dropped rather than coerced — absent means "use the calculation". */
@@ -11144,7 +11183,11 @@ function normalizeState(){
   {const _pt=STATE.nutrition.proteinTarget;
    if(_pt!==undefined&&(typeof _pt!=='number'||!isFinite(_pt)||_pt<PROT_MIN||_pt>PROT_MAX))
      delete STATE.nutrition.proteinTarget;}
-  if(!STATE.nutrition.meals)STATE.nutrition.meals=3;
+  /* Same shape of bug, quieter symptom. `!meals` let the string '4' through,
+     and mealSlots() compares `=== 4` — so a backup holding "4" silently
+     dropped the athlete's snack slot and planned three meals instead of four.
+     Only 3 and 4 mean anything here; coerce, then pick the nearer. */
+  {const _m=+STATE.nutrition.meals;STATE.nutrition.meals=(isFinite(_m)&&_m>=4)?4:3;}
   if(!Array.isArray(STATE.measurements))STATE.measurements=[];
   dedupeMeasurements();   // collapse same-date duplicates left by pre-v156 appends
   /* Entry-level scrubbing. The container guards above stop {} vs [] damage, but
@@ -11175,7 +11218,22 @@ function normalizeState(){
   if(!STATE.reassess||typeof STATE.reassess!=='object')STATE.reassess={};
   if(!STATE.weekFeel||typeof STATE.weekFeel!=='object')STATE.weekFeel={};
   if(!STATE.swaps||typeof STATE.swaps!=='object')STATE.swaps={};
-  if(!(STATE.progressPtr>=0))STATE.progressPtr=0;
+  /* `!(ptr>=0)` is a RANGE test standing in for a type test, and it let through
+     everything that compares true: the fraction 3.7, the string '12', true,
+     null and []. The fraction was the one that hurt — progressPtr indexes
+     sessionsFor(cycle)[dayInWeek], a fractional slot is undefined, goalSlots()
+     dereferenced it and Today died on the error boundary. The boundary retries
+     THROUGH normalizeState(), so a stored 3.7 bricked the tab across
+     relaunches rather than for a single render.
+
+     The survivors that did not throw were wrong more quietly: '12' reached
+     `Math.min(STATE.progressPtr+1, …)` and CONCATENATED, printing "SESSION 121
+     / 378" to an athlete on session 13, and 1e9 rendered a cycle number of
+     23,809,523. One non-negative integer, clamped to the length of the
+     program — the ceiling is the value the "program complete" branch already
+     tests against, so a pointer past the end still lands on the trophy. */
+  {const _p=Math.floor(STATE.progressPtr);   // Math.floor already does ToNumber
+   STATE.progressPtr=(isFinite(_p)&&_p>0)?Math.min(_p,SESSIONS_PER_CYCLE*TOTAL_CYCLES):0;}
   if(STATE.baseline!==null&&typeof STATE.baseline!=='object')STATE.baseline=null;
   if(!Array.isArray(STATE.scoreHistory))STATE.scoreHistory=[];
   if(!STATE.logs||typeof STATE.logs!=='object')STATE.logs={};
@@ -11531,7 +11589,7 @@ function validateData(){
      dietOk() fails an UNTAGGED recipe closed, but alg:[] is a valid array, so
      "wrongly tagged as containing nothing" slips straight through the guard. */
   const algKeys=(typeof ALLERGENS!=='undefined')?ALLERGENS.map(a=>a[0]):Object.keys(ALG_SYN);
-  const DIETS=['vegan','vegetarian','pescatarian','halal','omnivore'];
+  const DIETS=DIET_KEYS;   // one list, so the picker and the validator cannot drift
   const seenR={};
   /* Two whole families of false positive on the dairy check: nut butters, and
      plant milks. Both have to be removed from the haystack rather than

@@ -216,6 +216,59 @@ export default async function run() {
     errors.forEach(e => t.fail('page error during the everyday flows', e));
   }
 
+  /* ---- progressPtr is an index, and it has to be a whole one --------------
+     posOf() feeds dayInWeek into sessionsFor(cycle)[...]. A FRACTION indexes a
+     slot that does not exist, so goalSlots() dereferenced undefined and Today
+     died on the error boundary — which retries THROUGH normalizeState(), so a
+     stored 3.7 bricked the tab across relaunches, not just for one render.
+     The quieter shapes were wrong too: the string '12' reached
+     `Math.min(STATE.progressPtr+1, …)` and CONCATENATED, printing "SESSION 121
+     / 378" to an athlete on session 13.
+
+     Note the seeding. save() writes localStorage now and mirrors to IndexedDB
+     120 ms later, so planting a value and reloading immediately races the
+     mirror and the seed wins about half the time — which reads as "the repair
+     worked". Both stores get the value, with a fresher stamp. */
+  {
+    const { browser, page, errors } = await launch(port);
+    const CASES = [
+      ['a fraction', 3.7, 3], ['a fraction under one', 0.5, 0], ['a numeric string', '12', 12],
+      ['a negative', -5, 0], ['a boolean', true, 1], ['null', null, 0], ['an array', [], 0],
+      ['an object', {}, 0], ['a word', 'twelve', 0], ['past the end', 1e9, 378],
+    ];
+    for (const [label, planted, want] of CASES) {
+      await page.evaluate(seed => { eval(seed)(); }, ATHLETE);
+      await page.waitForTimeout(200);                       // let the idb mirror land first
+      await page.evaluate(async p => {
+        const cur = JSON.parse(localStorage.getItem('coreforge.v1') || '{}');
+        cur.progressPtr = p; cur._savedAt = Date.now() + 5000;
+        const json = JSON.stringify(cur);
+        localStorage.setItem('coreforge.v1', json);
+        await idbPut('coreforge.v1', json);                 // and beat the mirror on its own terms
+      }, planted);
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await waitForBoot(page);
+      const r = await page.evaluate(() => {
+        go('today');
+        const txt = document.querySelector('.view.active').innerText;
+        let threw = null;
+        try { buildSession(STATE.progressPtr); } catch (e) { threw = String(e).slice(0, 90); }
+        return { ptr: STATE.progressPtr, type: typeof STATE.progressPtr, threw,
+          boundary: /went wrong drawing/i.test(txt),
+          session: (txt.match(/SESSION (\d+) \/ (\d+)/) || [])[1] || null,
+          total: (txt.match(/SESSION (\d+) \/ (\d+)/) || [])[2] || null };
+      });
+      t.eq(`[${label}] is repaired to a whole index`, r.ptr, want);
+      t.eq(`[${label}] is stored as a number`, r.type, 'number');
+      t.ok(`[${label}] builds a session instead of throwing`, !r.threw, r);
+      t.ok(`[${label}] never reaches the error boundary`, !r.boundary, r);
+      if (r.session) t.ok(`[${label}] shows a session inside the program, not past it`,
+        +r.session >= 1 && +r.session <= +r.total, r);
+    }
+    errors.filter(e => /render/.test(e)).forEach(e => t.fail('a hostile pointer reached the render boundary', e));
+    await browser.close();
+  }
+
   srv.close();
   return t.finish();
 }
