@@ -1497,7 +1497,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='211';
+const APP_VERSION='212';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1970,7 +1970,34 @@ function focusBonus(pos,used){
     // the core goal forces a midsection bonus first, whatever else is targeted
     const lead=(p.goal==='core')?['abs','obliques']:[];
     const trouble=(Array.isArray(p.troubleZones)?p.troubleZones:[]).map(z=>TROUBLE_POOL[z]).filter(Boolean);
-    const keys=[...new Set([...lead,p.focusPrimary,...(Array.isArray(p.targets)?p.targets:[]),...trouble].filter(Boolean))];
+    /* Priority order, then ROTATION. The loop below returns on the first key
+       that yields a candidate, and the first key virtually always does — so
+       exactly one area was ever served. Measured over a full program: the
+       bonus was chosen by 'abs' in all 306 sessions that had one, and adding
+       chest, arms and thighs as trouble zones changed nothing whatsoever.
+       Clearing focusPrimary and targets did not help either; it just made
+       'chest' the one area, 306 times. Every secondary target and every
+       trouble zone the athlete picked was dead input — the quiz asked, stored
+       the answer, and the program never read it.
+
+       The wheel alternates primary and secondary so the athlete's declared
+       priority still gets roughly half the bonuses while the rest actually
+       appear. Rotating on the absolute session index keeps it deterministic —
+       no Math.random, same session always builds the same way. */
+    const prio=[...new Set([...lead,p.focusPrimary].filter(Boolean))];
+    const rest=[...new Set([...(Array.isArray(p.targets)?p.targets:[]),...trouble].filter(Boolean))]
+      .filter(k=>!prio.includes(k));
+    let keys;
+    if(!rest.length)keys=prio;
+    else if(!prio.length)keys=rest;
+    else{
+      keys=[];
+      for(let i=0;i<rest.length;i++){keys.push(prio[i%prio.length]);keys.push(rest[i]);}
+    }
+    if(!keys.length)return null;
+    const absIdx=((pos&&pos.cycle)||0)*SESSIONS_PER_CYCLE+((pos&&pos.inCycle)||0);
+    const rot=((absIdx%keys.length)+keys.length)%keys.length;
+    keys=keys.slice(rot).concat(keys.slice(0,rot));
     const gear=p.gear||[];
     const has=k=>{const e=EX[k];if(!e)return false;if(!e.equip)return true;return e.equip.every(g=>gear.includes(g));};
     for(const key of keys){
@@ -1980,7 +2007,13 @@ function focusBonus(pos,used){
          Gate it by how hard the movement is relative to their tested level. */
       const tier=LEVEL_TIER[levelOf(pos&&pos.cycle||0)]??1;
       const easyEnough=k=>{const h=EX[k]&&EX[k].hardness;return !(h>0)||h>=[1.0,0.7,0.4][tier];};
-      let cands=pool.filter(k=>EX[k]&&!used.has(k)&&has(k)&&easyEnough(k)).map(k=>safeSwap(k)).filter(k=>EX[k]&&!used.has(k)&&has(k));
+      /* spaceSwap as well as safeSwap. The bonus ran the injury swap and not the
+         tight-room one, so a travelling move could be handed to someone who
+         told the app they train in a small room. It never showed while the
+         bonus only ever picked one pool; rotating across the athlete's other
+         areas surfaced it immediately — bearcrawl, 15 times in 378 sessions. */
+      let cands=pool.filter(k=>EX[k]&&!used.has(k)&&has(k)&&easyEnough(k))
+        .map(k=>spaceSwap(safeSwap(k))).filter(k=>EX[k]&&!used.has(k)&&has(k));
       /* No ungated fallback. This used to drop the difficulty gate entirely
          when the gated pool came up empty, so the bonus slot could still hand a
          beginner the hardest movement in the catalogue — which is the exact

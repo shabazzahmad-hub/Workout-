@@ -275,6 +275,51 @@ export default async function run() {
     t.ok('onboarding renders the note without throwing', !r.threw, r);
   }
 
+  /* ---- every area the athlete picks actually gets trained ---------------
+     focusBonus() returned on the FIRST key that yielded a candidate, and the
+     first key virtually always does. Measured across a whole 378-session
+     program: the bonus was chosen by 'abs' 306 times out of 306, and adding
+     chest, arms and thighs as trouble zones changed precisely nothing. Every
+     secondary target and every trouble zone was dead input — the quiz asked,
+     stored the answer, and the engine never read it. The in-code comment on
+     focusKey even claimed the opposite. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = JSON.stringify({ f: STATE.profile.focusPrimary, t: STATE.profile.targets,
+        z: STATE.profile.troubleZones, g: STATE.profile.goal });
+      const scan = () => {
+        const k = {};
+        for (let p = 0; p < 378; p++) {
+          try {
+            const s = buildSession(p);
+            const f = [...s.main, s.finisher].filter(Boolean).find(m => m && m.focus);
+            if (f && f.focusKey) k[f.focusKey] = (k[f.focusKey] || 0) + 1;
+          } catch (e) {}
+        }
+        return k;
+      };
+      STATE.profile.goal = 'lose';
+      STATE.profile.focusPrimary = 'abs'; STATE.profile.targets = ['abs', 'full'];
+      STATE.profile.troubleZones = [];
+      const twoAreas = scan();
+      STATE.profile.troubleZones = ['chest', 'arms', 'thighs'];
+      const withTrouble = scan();
+      const k = JSON.parse(keep);
+      STATE.profile.focusPrimary = k.f; STATE.profile.targets = k.t;
+      STATE.profile.troubleZones = k.z; STATE.profile.goal = k.g;
+      return { twoAreas, withTrouble, total: Object.values(withTrouble).reduce((a, b) => a + b, 0) };
+    });
+    t.ok('a secondary target is trained, not just the primary',
+      (r.twoAreas.full || 0) > 0, r.twoAreas);
+    t.ok('the primary focus still gets the largest share',
+      (r.twoAreas.abs || 0) >= (r.twoAreas.full || 0), r.twoAreas);
+    ['chest', 'arms', 'legs'].forEach(z =>
+      t.ok(`the "${z}" trouble zone actually reaches the program`, (r.withTrouble[z] || 0) > 0, r.withTrouble));
+    t.ok('the primary is still the most-trained area with trouble zones added',
+      (r.withTrouble.abs || 0) > (r.withTrouble.chest || 0), r.withTrouble);
+    t.ok('and the bonus still fires on the same number of sessions', r.total > 300, r);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
