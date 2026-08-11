@@ -1510,7 +1510,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='222';
+const APP_VERSION='223';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -4317,21 +4317,36 @@ const HIIT_FORMATS={
   emom:{name:'EMOM',desc:'Every minute: 45s work / 15s rest, cycling the circuit.'},
   amrap:{name:'AMRAP 10',desc:'10 minutes — as many rounds of the circuit as you can.'},
 };
-/* ---- Long-interval VO2max work ---------------------------------------------
-   Everything above is short and all-out. This is the other end of the
-   interval spectrum: 3-4 minute efforts at a hard-but-holdable pace, which the
-   sports-science literature (Helgerud et al., 2007) finds raises aerobic
-   capacity MORE than either short sprints or slow steady-state — the
-   "Norwegian 4x4". Counter-intuitive, because the popular assumption is that
-   shorter and harder is always the better cardio lever.
+/* ---- VO2max and anaerobic-capacity work ------------------------------------
+   Everything in HIIT_FORMATS is short, all-out, and forgiving of a rotating
+   bodyweight circuit. These three are different: each asks for one STEADY
+   effort — hard, or truly maximal — held continuously for the interval, which
+   only the bike and a run can actually deliver cleanly. A rotating burpee /
+   mountain-climber / jumping-jack circuit cannot hold one controlled effort
+   that long, and an "all-out" bodyweight rep is not the same measurable thing
+   as an all-out sprint or a maxed-out watt number on a trainer. specialChooser()
+   gates all three out of the 'hiit' (bodyweight) kind for exactly this reason.
 
-   Offered only where holding one steady intensity for four minutes straight
-   actually makes sense — the bike and a run — not the bodyweight HIIT pool,
-   which rotates between different movements and cannot sustain one effort
-   that long. specialChooser() gates it out of the 'hiit' (bodyweight) kind
-   for exactly this reason. */
+   Three distinct stimuli, not three versions of the same thing:
+
+   vo2max4x4  — 4 min hard / 3 min easy, HARD-BUT-HOLDABLE. Helgerud et al.,
+   2007: this raises the aerobic ceiling more than either short sprints or
+   slow steady-state. Counter-intuitive, because the popular assumption is
+   that shorter and harder is always the better cardio lever.
+
+   vo2max3030 — 30s hard / 30s easy, repeated. Targets vVO2max directly — the
+   pace that actually elicits max oxygen uptake — with a real anaerobic
+   contribution the 4x4 does not have, at a pace that is hard but genuinely
+   repeatable, not maximal.
+
+   sit6x30 — 30s ALL-OUT / 4 min full recovery, only six times. Gibala's
+   sprint-interval protocol: about three minutes of real work in a
+   23-minute session, and it still produces an outsized anaerobic-capacity
+   adaptation. The counter-example to "more volume is always better". */
 const ENDURANCE_FORMATS={
   vo2max4x4:{name:'VO2max 4×4',desc:'4 rounds of 4 min hard / 3 min easy (25 min). One of the best-evidenced ways to raise your aerobic ceiling — hard enough that the last minute of each round hurts, not so hard you cannot finish it.',w:4,r:3,n:4},
+  vo2max3030:{name:'30/30s VO2max',desc:'16 rounds of 30s hard / 30s easy (~16 min). Targets the exact pace that pushes your oxygen uptake to its ceiling — hard and repeatable, not maximal. More anaerobic bite than the 4×4, still sustainable for the whole set.',w:0.5,r:0.5,n:16},
+  sit6x30:{name:'6×30 All-Out',desc:'6 rounds of 30s FLAT OUT / 4 min full recovery (23 min). Only about 3 minutes of real work in the whole session — go as hard as you can find, every single rep, because the long recovery is what lets you. Small volume, real anaerobic-capacity gains.',w:0.5,r:4,n:6},
 };
 /* ---- Skipping (jump rope) — a standalone rope session with its own timer and
    record keeping. Presets are built around the 9-min-skip / 3-min-rest block. ---- */

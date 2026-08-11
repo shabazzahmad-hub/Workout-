@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 22 suites, ~1,680 checks, run by `npm test` |
+| `tests/` | 22 suites, ~1,710 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -517,15 +517,35 @@ guarantee. Confirm a background mutation run has actually finished (check its
 log for the "ALL DONE" line, not just that the process exited) before
 touching the same file with git.
 
-## Long intervals
+## VO2max and anaerobic-capacity work
 
-`ENDURANCE_FORMATS` (v222) is the other end of the interval spectrum from
-`HIIT_FORMATS`: 3-4 minute efforts at a hard-but-holdable pace rather than
-short all-out bursts — the "Norwegian 4×4" (Helgerud et al., 2007), one round
-of 4 min hard / 3 min easy, four times. Counter-intuitive on purpose: the
-popular assumption is that shorter and harder is always the better cardio
-lever, and the literature says otherwise for raising the aerobic ceiling
-specifically.
+`ENDURANCE_FORMATS` (v222, extended v223) is the other end of the interval
+spectrum from `HIIT_FORMATS` — every entry asks for one STEADY effort, hard
+or truly maximal, held continuously for the interval, rather than a short
+all-out burst inside a rotating circuit. Three distinct stimuli live here on
+purpose, not three versions of the same protocol:
+
+- `vo2max4x4` — 4 min hard / 3 min easy × 4 (25 min). The "Norwegian 4×4"
+  (Helgerud et al., 2007): hard-but-holdable, and counter-intuitively better
+  for raising the aerobic ceiling than either short sprints or slow
+  steady-state.
+- `vo2max3030` — 30s hard / 30s easy × 16 (~16 min). Targets vVO2max
+  directly — the pace that actually elicits max oxygen uptake — with more
+  anaerobic bite than the 4×4 while staying repeatable, not maximal.
+- `sit6x30` — 30s ALL-OUT / 4 min full recovery × 6 (23 min, only ~3 min of
+  it real work). Gibala's sprint-interval protocol: the counter-example to
+  "more volume is always better" — minimal work, real anaerobic-capacity
+  adaptation, because the long recovery is what keeps the sixth rep as
+  maximal as the first.
+
+**A guard belongs on "these are actually different protocols," not just on
+each protocol's own numbers.** Two formats can each independently check out —
+right round count, right work/rest split — and still turn out to be the same
+shape by a copy-paste slip. `new Set([...]).size` on a `work/rest×count`
+signature per format is cheap insurance against that, and it is a check that
+mutation-testing alone would not have forced into existence: seeding wrong
+numbers into ONE format catches that format's own checks fine without ever
+proving the two formats remain distinct from each other.
 
 **Gated to where a steady effort actually makes sense.** `specialChooser()`
 only merges `ENDURANCE_FORMATS` into the picker when `kind !== 'hiit'` — the
