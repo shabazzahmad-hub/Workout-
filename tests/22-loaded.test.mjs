@@ -344,6 +344,113 @@ export default async function run() {
       !afterRow.includes('🎒'), afterRow);
   }
 
+  // ---- loadProgression(): double progression on the logged load -----------
+  /* liftLog stored what you lifted and handed it back next time — a memory,
+     not a program. Classic double progression: last set met the exercise's
+     own rep ceiling with real room (2+ left) -> aim a small step heavier;
+     anything short of that repeats. It must never auto-decrease — that is
+     deload/readiness's job, not this one's — and it must respect BOTH
+     easing signals, not just the one that happens to be live in a given
+     scenario. */
+  {
+    const r = await page.evaluate(() => {
+      const exId = 'dbcp';
+      const ceiling = prescribeCeiling(EX[exId]);
+      const keep = JSON.stringify(STATE.readiness || null);
+      delete STATE.readiness;
+      const out = {};
+
+      STATE.liftLog = [];
+      out.noHistory = loadProgression(exId, {});
+
+      STATE.liftLog = [{ date: todayISO(), exId, loadKg: 10, reps: ceiling, rir: 3 }];
+      out.climbsOnCeilingWithRoom = loadProgression(exId, {});
+
+      STATE.liftLog = [{ date: todayISO(), exId, loadKg: 10, reps: ceiling - 1, rir: 3 }];
+      out.repeatsShortOfCeiling = loadProgression(exId, {});
+
+      STATE.liftLog = [{ date: todayISO(), exId, loadKg: 10, reps: ceiling, rir: 0 }];
+      out.repeatsWithNoRoom = loadProgression(exId, {});
+
+      STATE.liftLog = [{ date: todayISO(), exId, loadKg: 10, reps: ceiling, rir: null }];
+      out.repeatsWithUnknownRoom = loadProgression(exId, {});
+
+      // eased by TODAY's readiness alone, independent of the calendar
+      STATE.liftLog = [{ date: todayISO(), exId, loadKg: 10, reps: ceiling, rir: 3 }];
+      STATE.readiness = { [todayISO()]: { score: 25, sleep: 1, sore: 1, energy: 1 } };
+      out.easedByReadiness = loadProgression(exId, {});
+      delete STATE.readiness;
+
+      // eased by the CALENDAR deload week, independent of readiness
+      out.easedByCalendarDeload = loadProgression(exId, { week: WEEKS_PER_CYCLE });
+
+      STATE.readiness = keep ? JSON.parse(keep) : undefined;
+      return out;
+    });
+    t.eq('no history gives no recommendation', r.noHistory, { lastLoadKg: null, nextLoadKg: null, climbing: false });
+    t.eq('ceiling reps + 2 left in the tank -> climb by the load step', r.climbsOnCeilingWithRoom,
+      { lastLoadKg: 10, nextLoadKg: 11, climbing: true });
+    t.eq('short of the ceiling -> repeat the same load', r.repeatsShortOfCeiling,
+      { lastLoadKg: 10, nextLoadKg: 10, climbing: false });
+    t.eq('ceiling reps but no room left -> repeat, not climb', r.repeatsWithNoRoom,
+      { lastLoadKg: 10, nextLoadKg: 10, climbing: false });
+    t.eq('effort not recorded -> repeat, never assume room that was not reported', r.repeatsWithUnknownRoom,
+      { lastLoadKg: 10, nextLoadKg: 10, climbing: false });
+    t.eq('poor readiness today overrides an otherwise-earned climb', r.easedByReadiness,
+      { lastLoadKg: 10, nextLoadKg: 10, climbing: false });
+    t.eq('the calendar deload week overrides an otherwise-earned climb', r.easedByCalendarDeload,
+      { lastLoadKg: 10, nextLoadKg: 10, climbing: false });
+  }
+
+  // ---- loadCeilingNote() and openLiftLog() surface the recommendation -----
+  /* currentRung() (which gates whether a ladder counts as "topped") reads
+     STATE.progressPtr directly and ignores whatever pos is passed to
+     atLadderCeiling — but week 6 of the final cycle, the ONLY position where
+     dragonflag is naturally ceiling-maxed for this athlete, is ALSO always
+     the calendar deload week, which would make "climbing" unreachable by
+     construction, not by the code being wrong. Decoupling the two: keep
+     STATE.progressPtr at the real maxed position (so the rung genuinely IS
+     topped), but hand prescribe()/atLadderCeiling a copy of that same
+     position with an earlier, non-deload week — exactly the kind of pos
+     object every other block in this file already constructs by hand. */
+  {
+    const r = await page.evaluate(() => {
+      const exId = 'dragonflag';
+      const ceiling = prescribeCeiling(EX[exId]);
+      STATE.progressPtr = SESSIONS_PER_CYCLE * TOTAL_CYCLES - 1;
+      const pos = Object.assign({}, posOf(STATE.progressPtr), { week: 2 });
+      const reallyMaxed = atLadderCeiling(exId, pos);
+      const reallyNotDeload = !deloadOn(pos);
+      const keepPlayer = (typeof PLAYER !== 'undefined') ? PLAYER : undefined;
+      PLAYER = { sess: { pos } };
+
+      STATE.liftLog = [];
+      const firstTimeNote = loadCeilingNote({ exId });
+
+      STATE.liftLog = [{ date: todayISO(), exId, loadKg: 10, reps: ceiling, rir: 3 }];
+      const climbNoteHtml = loadCeilingNote({ exId });
+
+      STATE.liftLog = [{ date: todayISO(), exId, loadKg: 10, reps: ceiling - 1, rir: 3 }];
+      const repeatNoteHtml = loadCeilingNote({ exId });
+
+      PLAYER = keepPlayer;
+
+      // openLiftLog's own row hint — no PLAYER needed, it defaults pos to {}
+      STATE.liftLog = [{ date: todayISO(), exId, loadKg: 10, reps: ceiling, rir: 3 }];
+      openLiftLog([{ exId, unit: 'reps', target: ceiling }]);
+      const sheetHtml = document.querySelector('#sheet').innerHTML;
+      closeSheet();
+
+      return { reallyMaxed, reallyNotDeload, ceiling, firstTimeNote, climbNoteHtml, repeatNoteHtml, sheetHtml };
+    });
+    t.ok('guard: this position is really not a deload week', r.reallyNotDeload, r);
+    t.ok('guard: dragonflag is really ceiling-maxed at this position', r.reallyMaxed, r);
+    t.ok('a ceiling-maxed movement with no lift history prompts to add load', /try adding load/.test(r.firstTimeNote), r.firstTimeNote);
+    t.ok('an earned climb names the SPECIFIC next load, not just the last one', /aim for \+11/.test(r.climbNoteHtml), r.climbNoteHtml);
+    t.ok('a short set says repeat, not aim for a heavier one', /repeat \+10/.test(r.repeatNoteHtml) && !/aim for/.test(r.repeatNoteHtml), r.repeatNoteHtml);
+    t.ok('the lift-log sheet itself shows the same recommendation per row', /aim for 11/.test(r.sheetHtml) && r.sheetHtml.includes('📈'), r.sheetHtml);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
