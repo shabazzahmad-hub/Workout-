@@ -1510,7 +1510,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='217';
+const APP_VERSION='218';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -10310,7 +10310,19 @@ function generateMealPlan(){
   const missing=[];
   slots.forEach(s=>{const r=pickRecipe(s,Math.round(kcal*share[s]),exclude);
     if(r){exclude.add(r.id);meals.push(r.id);}else missing.push(s);});
-  STATE.nutrition.plan={date:todayISO(),meals,missing};save();return STATE.nutrition.plan;
+  STATE.nutrition.plan={date:todayISO(),meals,missing,stamp:_planStamp()};save();return STATE.nutrition.plan;
+}
+/* Every input generateMealPlan() reads that dietOk() cannot see, in one string.
+   Checking the recipes is enough to catch a diet or an allergen change, because
+   those make the stored recipes themselves illegal. A calorie target does not:
+   the old recipes stay perfectly edible, they are just sized to a number the
+   athlete has replaced. Tapping "Calculate my targets" moved the header from
+   2020 to 2770 kcal and left the same three meals underneath it — measured at
+   +750 kcal with a byte-identical plan. Same for switching to 4 meals a day,
+   which kept showing three. Stamp what the plan was built from. */
+function _planStamp(){
+  try{return [STATE.nutrition.kcalTarget||2000,mealSlots().join(','),wholeOnly()?1:0].join('|');}
+  catch(e){return 'x';}
 }
 /* Self-healing, because the invariant was held only by every writer
    remembering to null the plan — and migrateAllergens(), which runs at boot and
@@ -10318,8 +10330,11 @@ function generateMealPlan(){
    saw their newly-registered allergy, the banner saying meals were filtered for
    it, and both violating recipes still on the plate. */
 function _planStillValid(p){
-  try{return p&&Array.isArray(p.meals)&&p.meals.every(id=>{const r=recipeById(id);return r&&dietOk(r);});}
-  catch(e){return false;}
+  try{
+    if(!(p&&Array.isArray(p.meals)))return false;
+    if(p.stamp!==_planStamp())return false;   // absent on a pre-v218 plan: rebuilt once, correctly
+    return p.meals.every(id=>{const r=recipeById(id);return r&&dietOk(r);});
+  }catch(e){return false;}
 }
 function currentMealPlan(){const p=STATE.nutrition.plan;
   if(p&&p.date===todayISO()&&p.meals&&p.meals.length&&_planStillValid(p))return p;
@@ -10389,7 +10404,11 @@ function _recipePlanHTML(){
   /* currentMealPlan() generates and save()s a randomly-chosen plan. Called from
      an HTML builder, a render could persist a different plan than the one it
      drew. renderFuel() primes it before assembling any markup. */
-  const plan=(STATE.nutrition.plan&&STATE.nutrition.plan.date===todayISO()&&STATE.nutrition.plan.meals)?STATE.nutrition.plan:currentMealPlan();
+  /* This re-stated currentMealPlan()'s freshness test and got it WRONG — date
+     and non-empty only, with no _planStillValid(). A second copy of a rule is a
+     second place for it to drift, and this one had already drifted. */
+  const _p=STATE.nutrition.plan;
+  const plan=(_p&&_p.date===todayISO()&&_p.meals&&_p.meals.length&&_planStillValid(_p))?_p:currentMealPlan();
   const kcalT=STATE.nutrition.kcalTarget;
   const recs=plan.meals.map(recipeById).filter(Boolean);
   /* Returning '' here hid the allergen warning and the gap notice along with the
@@ -11601,7 +11620,40 @@ function normalizeState(){
   if(typeof STATE.settings.repTempo!=='number')STATE.settings.repTempo=3;
   if(typeof STATE.adapt!=='number')STATE.adapt=1;   // adaptive-overload multiplier
   if(!STATE.nutrition||typeof STATE.nutrition!=='object')STATE.nutrition={goal:'lose',sex:null,age:null,heightCm:null,activity:1.45,kcalTarget:null,days:{}};
-  if(!STATE.nutrition.days)STATE.nutrition.days={};
+  /* nutrition.days is THREE athlete inputs in one map — the food log, the water
+     count and the habit ticks — and it had no type repair at all, only a
+     `!days` container check that a string or an array walks straight past.
+
+     A backup carrying `food:'chicken'` threw inside foodTotals(), which is on
+     the Fuel render path, so the tab died on the error boundary — and the
+     boundary retries THROUGH normalizeState(), so with nothing here to fix it
+     the tab never came back. A single null row did the same. `habits` as a
+     string was quieter and worse in its way: toggleHabit() threw on every tap,
+     so the habit ticks were dead for good and nothing on screen said so. And
+     junk macros needed no bad shape at all to show: `kcal:'lots'` concatenated
+     into the day's total and printed "0lots" to the athlete. */
+  {const _d=STATE.nutrition.days;
+   const days=(_d&&typeof _d==='object'&&!Array.isArray(_d))?_d:{};
+   const num=(v,max)=>{const n=+v;return (isFinite(n)&&n>0)?Math.min(Math.round(n),max):0;};
+   Object.keys(days).forEach(k=>{
+     const day=days[k];
+     if(!day||typeof day!=='object'||Array.isArray(day)){delete days[k];return;}
+     day.water=num(day.water,20);   // same ceiling logWater() clamps to
+     if(!day.habits||typeof day.habits!=='object'||Array.isArray(day.habits))day.habits={};
+     else Object.keys(day.habits).forEach(h=>{day.habits[h]=!!day.habits[h];});
+     /* A bad ROW is dropped, a bad FIELD inside a good row is zeroed — same rule
+        as liftLog. The row is the only record that a meal happened, but one NaN
+        in one field makes every total on the tab read NaN. Days with no food
+        key keep none, so this does not grow every backup. */
+     if(day.food!==undefined)
+       day.food=(Array.isArray(day.food)?day.food:[])
+         .filter(x=>x&&typeof x==='object'&&!Array.isArray(x))
+         .map(x=>({name:String(x.name==null?'Meal':x.name).slice(0,60),
+           kcal:num(x.kcal,20000),p:num(x.p,2000),c:num(x.c,2000),f:num(x.f,2000),
+           meal:['b','l','d','s'].includes(x.meal)?x.meal:'l',
+           at:(typeof x.at==='number'&&isFinite(x.at))?x.at:0}));
+   });
+   STATE.nutrition.days=days;}
   /* A diet is not a boolean. `!STATE.nutrition.diet` caught '' and null and
      undefined and NOTHING else, so any other string walked straight through —
      'kosher', 'Vegan' with a capital V, 'omnivore ' with a trailing space,
