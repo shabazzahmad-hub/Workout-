@@ -1019,6 +1019,130 @@ export default async function run() {
     t.ok('and neither does no data at all', r.empty === false, r);
     await ctx.close();
   }
+
+  // ---- readinessMult() actually moves the real prescription -----------------
+  /* readinessSlump() (above) and the normalizeState() repair (below) were the
+     only readiness coverage in the suite — readinessMult() itself, the UI that
+     writes it, and the card that displays it had none. Reading the code is not
+     enough: focusBonus() looked identical and was proven DEAD by exactly this
+     shape of check (set A, fingerprint the program, set B, fingerprint again,
+     assert they differ, in the correct direction) across a spread of
+     exercises and a real calendar position — not just at the seeded athlete's
+     default day 0. */
+  {
+    const ctx = await tzb.newContext();
+    const pg = await ctx.newPage();
+    await pg.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
+    await waitForBoot(pg);
+    await seedAthlete(pg);   // a fresh context boots to a default, near-zero athlete — prescribe() needs real numbers to show a % swing
+    const r = await pg.evaluate(() => {
+      const pos = posOf(50);   // mid-cycle, mid-week — not the seeded athlete's day-0 pointer
+      const bands = [
+        ['unset', undefined, null],
+        ['79', 79, 1.0], ['80', 80, 1.05],   // the >=80 boundary
+        ['59', 59, 0.82], ['60', 60, 1.0],   // the >=60 boundary
+        ['39', 39, 0.7], ['40', 40, 0.82],   // the >=40 boundary
+        ['95', 95, 1.05], ['70', 70, 1.0], ['50', 50, 0.82], ['25', 25, 0.7],
+      ];
+      const mults = {};
+      bands.forEach(([label, score]) => {
+        if (score === undefined) delete STATE.readiness;
+        else STATE.readiness = { [todayISO()]: { score, sleep: score, sore: score, energy: score } };
+        mults[label] = readinessMult();
+      });
+      // real prescribe() output, anchored and unanchored exercises, across the band
+      const fingerprint = score => {
+        if (score == null) delete STATE.readiness;
+        else STATE.readiness = { [todayISO()]: { score, sleep: score, sore: score, energy: score } };
+        return { pushup: prescribe('pushup', pos), thruster: prescribe('dbthruster', pos) };
+      };
+      const none = fingerprint(null);
+      const great = fingerprint(95);
+      const poor = fingerprint(25);
+      const setsCut = { at82: fingerprint(50), at100: fingerprint(70) };
+      delete STATE.readiness;
+      return { mults, bands, none, great, poor, setsCut };
+    });
+    t.eq('band boundaries match the documented thresholds', r.mults, {
+      unset: 1, '79': 1.0, '80': 1.05, '59': 0.82, '60': 1.0, '39': 0.7, '40': 0.82,
+      '95': 1.05, '70': 1.0, '50': 0.82, '25': 0.7,
+    });
+    t.ok('great readiness raises the real target above no-readiness',
+      r.great.pushup.target > r.none.pushup.target && r.great.thruster.target > r.none.thruster.target,
+      { great: r.great, none: r.none });
+    t.ok('poor readiness lowers the real target below no-readiness',
+      r.poor.pushup.target < r.none.pushup.target && r.poor.thruster.target < r.none.thruster.target,
+      { poor: r.poor, none: r.none });
+    t.ok('a multiplier under 0.85 also cuts a set, one at 1.0 does not',
+      r.setsCut.at82.pushup.sets < r.setsCut.at100.pushup.sets, r.setsCut);
+    await ctx.close();
+  }
+
+  // ---- the readiness sheet itself: write, re-open, display ------------------
+  {
+    const ctx = await tzb.newContext();
+    const pg = await ctx.newPage();
+    await pg.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
+    await waitForBoot(pg);
+    await seedAthlete(pg);
+    const r = await pg.evaluate(() => {
+      delete STATE.readiness;
+      const out = {};
+      // incomplete: only two of three picked
+      _rdy = { sleep: 100, sore: 60 };
+      out.incompleteRejected = (() => { saveReadiness(); return !STATE.readiness || !STATE.readiness[todayISO()]; })();
+      // complete: tap sleep=Poor(25), sore=Some(60), energy=High(100) -> avg 61.67 -> round 62
+      _rdy = {};
+      openReadiness();
+      _rdy.sleep = 25; openReadiness();
+      _rdy.sore = 60; openReadiness();
+      _rdy.energy = 100; openReadiness();
+      const sheetBeforeSave = document.querySelector('#sheet').innerHTML;
+      saveReadiness();
+      const saved = STATE.readiness[todayISO()];
+      out.scoreIsRoundedAverage = saved.score === 62;
+      out.fieldsStored = saved.sleep === 25 && saved.sore === 60 && saved.energy === 100;
+      out.chipsMarkedOnBeforeSave = /class="chip on"[^>]*>🥱 Poor/.test(sheetBeforeSave)
+        && /class="chip on"[^>]*>😐 Some/.test(sheetBeforeSave)
+        && /class="chip on"[^>]*>⚡ High/.test(sheetBeforeSave);
+      // closeSheet() clears #sheet's innerHTML on a 400ms setTimeout, not
+      // synchronously — the scrim's 'open' class is what it clears immediately
+      out.sheetClosedAfterSave = !document.querySelector('#scrim').classList.contains('open');
+      // re-opening the same day pre-fills from what was just saved, not a blank sheet
+      _rdy = {};
+      openReadiness();
+      const reopened = document.querySelector('#sheet').innerHTML;
+      out.reopenPrefillsSleep = /class="chip on"[^>]*>🥱 Poor/.test(reopened);
+      out.reopenPrefillsEnergy = /class="chip on"[^>]*>⚡ High/.test(reopened);
+      closeSheet();
+      // the card reflects each band with the right tag
+      const cardFor = score => {
+        STATE.readiness = { [todayISO()]: { score, sleep: score, sore: score, energy: score } };
+        return readinessCardHTML();
+      };
+      out.cardPrimed = /Primed/.test(cardFor(90));
+      out.cardReady = /Ready/.test(cardFor(65));
+      out.cardEaseUp = /Ease up/.test(cardFor(45));
+      out.cardRecover = /Recover/.test(cardFor(20)) && /eased/.test(cardFor(20));
+      delete STATE.readiness;
+      out.cardUnfilledPrompt = /Readiness check/.test(readinessCardHTML());
+      return out;
+    });
+    t.ok('saving with a field unpicked is rejected, nothing is written', r.incompleteRejected, r);
+    t.ok('the score is the rounded average of the three picks', r.scoreIsRoundedAverage, r);
+    t.ok('sleep, sore and energy are stored individually, not just the average', r.fieldsStored, r);
+    t.ok('the tapped chips show selected before saving', r.chipsMarkedOnBeforeSave, r);
+    t.ok('the sheet closes after a successful save', r.sheetClosedAfterSave, r);
+    t.ok('re-opening the same day pre-fills the sleep pick', r.reopenPrefillsSleep, r);
+    t.ok('and the energy pick', r.reopenPrefillsEnergy, r);
+    t.ok('the card reads "Primed" at 90', r.cardPrimed, r);
+    t.ok('"Ready" at 65', r.cardReady, r);
+    t.ok('"Ease up" at 45', r.cardEaseUp, r);
+    t.ok('"Recover" at 20, naming that today was eased', r.cardRecover, r);
+    t.ok('an unfilled day shows the quiet prompt, not a score', r.cardUnfilledPrompt, r);
+    await ctx.close();
+  }
+
   await tzb.close();
 
   srv.close();

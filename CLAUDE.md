@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 22 suites, ~1,726 checks, run by `npm test` |
+| `tests/` | 22 suites, ~1,742 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -736,6 +736,61 @@ identical and the assertion would have passed whichever target the code
 actually used. A guard (`correctC !== leakedC`) caught it. Carbs, computed as
 `(kcal - protein*4 - fat*9)/4`, are the macro that actually moves with a
 176 kcal gap — that's what the check needed to read.
+
+## Daily readiness (sleep, soreness, energy auto-regulation)
+
+`readinessMult()` reads today's 3-question check (sleep/soreness/energy,
+averaged to one score) and scales `prescribe()`'s target directly —
+`s>=80?1.05:(s>=60?1.0:(s>=40?0.82:0.7))` — and cuts a set on top when the
+multiplier drops below 0.85. `readinessSlump()` persists the signal: three
+sub-55 days in a row folds into `deloadOn()` as a real unload, not three
+independent 18% trims. This already existed as a full feature (not a gap) —
+a separate "sleep tracking" feature proposed in the same session would have
+been a second, parallel system next to it.
+
+**An audit of an existing feature is not the same question as "was it ever
+verified."** `readinessSlump()` had real coverage (the timezone bug, the
+corrupt-record repair); `readinessMult()`, `saveReadiness()`, `openReadiness()`
+and `readinessCardHTML()` had none. Reading the code was not enough to know
+that — this is exactly the `focusBonus()` shape (CLAUDE.md above): a control
+that looks wired in can still be a dead input in the actual output. Verified
+by fingerprinting `prescribe()`'s real target across a spread of readiness
+scores at a real calendar position, in both directions — the multiplier
+does move the number, and moves it monotonically the right way.
+
+**A percentage swing on a small integer rounds away.** The first version of
+that check compared `great (95, ×1.05)` against `no-readiness (×1.0)` — only
+a 5% gap — on a freshly-booted, unseeded test context where `prescribe()`'s
+raw numbers were small enough (target ~4) that `Math.round()` collapsed the
+difference to the same integer for both. It escaped as a **false failure**
+(a real behavior, wrongly asserted as absent) rather than a false pass — the
+mechanism is the same one CLAUDE.md keeps naming for the opposite direction:
+a check needs a scenario engineered to discriminate, and "compare against a
+5% swing on an un-seeded athlete" doesn't have the power to. Calling
+`seedAthlete()` (which every other block in this test file already assumed
+implicitly by reusing the top-level page, but this block opened its own
+fresh browser context and never called it) put the raw numbers back in a
+range where a 5% swing survives rounding.
+
+**A DOM-scraping check has to match the actual attribute order, not the
+order in your head.** `opt()` renders
+`` `<button class="chip ${on?'on':''}" onclick="...">${emoji} ${label}</button>` ``
+— `onclick` sits between the class and the closing `>`. A regex written as
+`/class="chip on">🥱 Poor/` assumes `class` is the last attribute and can
+never match against the real markup; it needs `/class="chip on"[^>]*>🥱 Poor/`.
+Both of this check's assertions (chip shows selected before save, chip
+pre-fills on reopen) silently read as "chip never on" until the pattern was
+fixed — caught by mutation-testing a "the chip never marks on" defect and
+finding the check passed on BOTH the clean file and the mutant.
+
+**`closeSheet()` clears `#sheet`'s markup on a 400ms `setTimeout`, not
+synchronously** — the DOM read this file already used a moment earlier
+(`document.body.textContent`/scan patterns) would read stale content if
+checked immediately after a save-and-close. What clears synchronously is
+the scrim's `open` class, which is what "the sheet is closed" should assert
+on. Reading the sheet's own re-render *is* safe synchronously, because
+`openReadiness()`'s `openSheet()` call sets `innerHTML` directly with no
+timer involved — only the teardown path is deferred.
 
 ## Rendering
 
