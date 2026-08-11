@@ -1538,7 +1538,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='225';
+const APP_VERSION='226';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -3931,7 +3931,26 @@ function weightsRepsFor(k){const ex=EX[k];const g=STATE.profile.goal;let r=ex.ba
   else if(g==='lose')r=Math.round(r*1.3);
   else if(g==='gain')r=Math.max(6,Math.round(r*0.85));
   else if(g==='core')r=Math.max(6,Math.round(r*0.9)); // strength-leaning midsection work
-  return r;}
+  /* The weights track ran on its own clock — no deload, no readiness — while
+     the main program eased both. An athlete in a real 3-day slump got
+     full-intensity dumbbell work the same day the bodyweight side backed
+     off. deloadOn() with no pos falls back to the readiness-slump check only
+     (there is no calendar week for a bonus session) — the one signal here
+     that IS position-independent. */
+  if(typeof deloadOn==='function'&&deloadOn())r=Math.round(r*0.85);
+  if(typeof readinessMult==='function')r=Math.round(r*readinessMult());
+  return Math.max(Math.min(3,ex.base||6),r);}
+/* Same easing, for the timed weights-track holds (farmer's carry, kettlebell
+   swing…) — these bypassed weightsRepsFor entirely and used raw ex.base, so
+   they got no goal, deload OR readiness adjustment at all. */
+function weightsTargetFor(k){
+  const ex=EX[k];
+  if(ex.unit!=='time')return weightsRepsFor(k);
+  let t=ex.base||30;
+  if(typeof deloadOn==='function'&&deloadOn())t=Math.round(t*0.85);
+  if(typeof readinessMult==='function')t=Math.round(t*readinessMult());
+  return Math.max(15,t);
+}
 /* ---- Resistance log -------------------------------------------------------
    The one number that makes a weights session progressive is what you lifted
    last time, so that is what this stores and what it hands back the next time
@@ -3944,16 +3963,40 @@ function lastLift(exId){
 function loadToKg(v){return isImperial()?v*0.453592:v;}
 function loadShow(kg){return kg==null?null:(isImperial()?kg/0.453592:kg);}
 function loadUnit(){return isImperial()?'lb':'kg';}
+/* ---- Progressive overload on the logged load --------------------------
+   liftLog stored what you lifted and handed it back next time — a memory,
+   not a program. Classic double progression: once the LAST set met the
+   exercise's own rep ceiling with real room to spare (2+ reps left), the
+   next one should aim a small step heavier; anything short of that — fewer
+   reps, no room, or no readiness for it — repeats the same load. This never
+   auto-DECREASES a load; that is what deload/readiness already own, and a
+   silent regression here would just be a second, uncoordinated one. */
+const LOAD_STEP_KG=1;   // ~2 lb — small enough that a bad guess costs nothing
+function loadProgression(exId,pos){
+  try{
+    const last=lastLift(exId);
+    if(!last||last.loadKg==null)return {lastLoadKg:null,nextLoadKg:null,climbing:false};
+    const ex=EX[exId];
+    const metCeiling=last.reps!=null&&last.reps>=prescribeCeiling(ex);
+    const hadRoom=last.rir!=null&&last.rir>=2;
+    const easing=(typeof deloadOn==='function'&&deloadOn(pos))||(typeof readinessMult==='function'&&readinessMult()<1);
+    const climbing=metCeiling&&hadRoom&&!easing;
+    return {lastLoadKg:last.loadKg,nextLoadKg:climbing?r1(last.loadKg+LOAD_STEP_KG):last.loadKg,climbing};
+  }catch(e){return {lastLoadKg:null,nextLoadKg:null,climbing:false};}
+}
 function openLiftLog(items){
   const list=(items||[]).filter(m=>m&&EX[m.exId]);
   if(!list.length){closeSheet();return;}
   const u=loadUnit();
+  const pos=(typeof PLAYER!=='undefined'&&PLAYER&&PLAYER.sess)?PLAYER.sess.pos:{};
   const rows=list.map((m,i)=>{
     const ex=EX[m.exId];const prev=lastLift(m.exId);
     const pl=prev&&prev.loadKg!=null?r1(loadShow(prev.loadKg)):'';
     const pr=prev&&prev.reps!=null?prev.reps:(m.unit==='reps'?m.target:'');
+    const lp=loadProgression(m.exId,pos);
+    const aim=lp.lastLoadKg!=null?`<span class="tiny" style="color:var(--gold)"> · aim for ${r1(loadShow(lp.nextLoadKg))} ${u}${lp.climbing?' 📈':''}</span>`:'';
     return `<div style="padding:8px 0;border-top:1px solid var(--line)">
-      <div class="sm"><b>${_ve(ex.name)}</b>${prev?`<span class="tiny muted"> · last time ${prev.loadKg!=null?r1(loadShow(prev.loadKg))+' '+u+' × ':''}${prev.reps||'—'}</span>`:'<span class="tiny muted"> · first time</span>'}</div>
+      <div class="sm"><b>${_ve(ex.name)}</b>${prev?`<span class="tiny muted"> · last time ${prev.loadKg!=null?r1(loadShow(prev.loadKg))+' '+u+' × ':''}${prev.reps||'—'}</span>`:'<span class="tiny muted"> · first time</span>'}${aim}</div>
       <div class="row" style="gap:8px;margin-top:5px">
         <input id="lf-l-${i}" type="number" inputmode="decimal" placeholder="${u}" value="${pl}" style="flex:1;min-width:0">
         <input id="lf-r-${i}" type="number" inputmode="numeric" placeholder="reps" value="${pr}" style="flex:1;min-width:0">
@@ -4006,12 +4049,18 @@ function buildWeightsSession(){
      Fails closed. If the safe alternative needs kit the athlete does not own,
      the slot is dropped rather than filled with the movement that was flagged
      in the first place — a shorter circuit beats a circuit that hurts. */
+  /* Sets get the same cut prescribe() gives the main program: a real deload
+     (readinessSlump, since there is no calendar week here) or a sub-0.85
+     readiness multiplier drops one set, same as an anchored program day. */
+  let sets=3;
+  if(typeof deloadOn==='function'&&deloadOn())sets=Math.max(1,sets-1);
+  if(typeof readinessMult==='function'&&readinessMult()<0.85)sets=Math.max(1,sets-1);
   const addItem=(k,items,used)=>{
     if(!k)return;
     const safe=spaceSwap(safeSwap(k));
     if(!safe||!EX[safe]||!hasGearFor(safe)||used.has(safe))return;
     used.add(safe);const ex=EX[safe];
-    items.push({exId:safe,unit:ex.unit,target:ex.unit==='time'?(ex.base||30):weightsRepsFor(safe),rest:ex.rest||55,sets:3});};
+    items.push({exId:safe,unit:ex.unit,target:weightsTargetFor(safe),rest:ex.rest||55,sets});};
   const items=[],used=new Set();
   // balanced full-body military circuit
   ['squat','hinge','pushh','pull','pushv','lunge','core'].forEach(pat=>addItem(pick(pat),items,used));
@@ -7272,11 +7321,12 @@ function climbNote(m){
 function loadCeilingNote(m){
   try{
     if(!PLAYER||!atLadderCeiling(m.exId,PLAYER.sess.pos))return '';
-    const last=lastLift(m.exId);
     const u=loadUnit();
-    return last&&last.loadKg!=null
-      ? `<span class="tiny" style="color:var(--gold)">· maxed the ladder — last +${r1(loadShow(last.loadKg))}${u}</span>`
-      : `<span class="tiny" style="color:var(--gold)">· maxed the ladder — try adding load</span>`;
+    const lp=loadProgression(m.exId,PLAYER.sess.pos);
+    if(lp.lastLoadKg==null)return `<span class="tiny" style="color:var(--gold)">· maxed the ladder — try adding load</span>`;
+    return lp.climbing
+      ? `<span class="tiny" style="color:var(--gold)">· maxed the ladder — last +${r1(loadShow(lp.lastLoadKg))}${u}, aim for +${r1(loadShow(lp.nextLoadKg))}${u} today</span>`
+      : `<span class="tiny" style="color:var(--gold)">· maxed the ladder — repeat +${r1(loadShow(lp.lastLoadKg))}${u} today</span>`;
   }catch(e){return '';}
 }
 /* #4 — Smart missed-day catch-up banner (streak-safe). */

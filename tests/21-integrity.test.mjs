@@ -660,6 +660,76 @@ export default async function run() {
     t.ok('and all seven actually turn up in the circuit, not just the pool', r.everAppears.every(Boolean), r.everAppears);
   }
 
+  /* ---- the weights track shares the program's deload/readiness clock -----
+     buildWeightsSession() credits the day and builds a real circuit but ran
+     on its own clock entirely — no deloadOn(), no readinessMult(). An
+     athlete in a genuine 3-day slump, or one who logged a poor readiness
+     score TODAY, got full-intensity dumbbell work on the exact day the main
+     program would have eased both sets and reps. deloadOn() with no pos
+     falls back to the readiness-slump check only, since a bonus session has
+     no calendar week — the one signal here that is position-independent.
+     Both signals are independent (same as prescribe()'s own two separate
+     `if` cuts) and must be provably independent here too: a real deload
+     week is not the only way to trigger either one. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = JSON.stringify({ g: STATE.profile.gear, rd: STATE.readiness || null });
+      STATE.profile.gear = ['dumbbell', 'kettlebell', 'bar', 'bench', 'dip'];
+      delete STATE.readiness;
+      const setsAcross = n => { const out = []; for (let i = 0; i < n; i++) { const s = buildWeightsSession(); if (s && s.length) out.push(s.map(x => x.sets)); } return out; };
+
+      const clean = setsAcross(15);
+      const repsClean = weightsRepsFor('dbgoblet');
+
+      // isolated deload (slump): today's OWN score stays high, only the 3-day average is low
+      STATE.readiness = {};
+      const d0 = new Date();
+      STATE.readiness[localISO(d0)] = { score: 90, sleep: 3, sore: 3, energy: 3 };
+      for (let i = 1; i < 3; i++) { const d = new Date(); d.setDate(d.getDate() - i);
+        STATE.readiness[localISO(d)] = { score: 25, sleep: 1, sore: 1, energy: 1 }; }
+      const deloadGuard = { slump: readinessSlump(), deloadNoPos: deloadOn(), multToday: readinessMult() };
+      const deloadOnly = setsAcross(15);
+      const repsDeloadOnly = weightsRepsFor('dbgoblet');   // readinessMult() is 1.0 here — only the deload cut can move this
+      delete STATE.readiness;
+
+      // isolated readiness: no slump, just a poor score today
+      STATE.readiness = { [todayISO()]: { score: 25, sleep: 1, sore: 1, energy: 1 } };
+      const readinessGuard = { slump: readinessSlump(), deloadNoPos: deloadOn() };
+      const readinessOnly = setsAcross(15);
+      const repsReadinessOnly = weightsRepsFor('dbgoblet');   // deloadOn() is false here — only the readiness cut can move this
+      delete STATE.readiness;
+
+      // both at once: a slump AND a poor score today should stack, same as prescribe()
+      STATE.readiness = {};
+      for (let i = 0; i < 3; i++) { const d = new Date(); d.setDate(d.getDate() - i);
+        STATE.readiness[localISO(d)] = { score: 25, sleep: 1, sore: 1, energy: 1 }; }
+      const bothGuard = { slump: readinessSlump(), multToday: readinessMult() };
+      const both = setsAcross(15);
+      delete STATE.readiness;
+
+      // timed items (kbswing etc.) went through raw ex.base with no easing at all
+      const timedClean = weightsTargetFor('kbswing');
+      STATE.readiness = { [todayISO()]: { score: 25, sleep: 1, sore: 1, energy: 1 } };
+      const timedEased = weightsTargetFor('kbswing');
+
+      const k = JSON.parse(keep);
+      STATE.profile.gear = k.g; STATE.readiness = k.rd;
+      return { clean, repsClean, deloadGuard, deloadOnly, repsDeloadOnly, readinessGuard, readinessOnly, repsReadinessOnly, bothGuard, both, timedClean, timedEased };
+    });
+    t.ok('a clean athlete keeps a full 3 sets', r.clean.every(arr => arr.every(x => x === 3)), r.clean);
+    t.ok('guard: the deload-only scenario is really a slump, not a readiness cut',
+      r.deloadGuard.slump && r.deloadGuard.deloadNoPos && r.deloadGuard.multToday >= 1, r.deloadGuard);
+    t.ok('a real slump alone cuts exactly one set', r.deloadOnly.every(arr => arr.every(x => x === 2)), r.deloadOnly);
+    t.ok('and the deload cut also lowers the REP target itself, not just sets', r.repsDeloadOnly < r.repsClean, { repsClean: r.repsClean, repsDeloadOnly: r.repsDeloadOnly });
+    t.ok('guard: the readiness-only scenario has no slump behind it',
+      !r.readinessGuard.slump && !r.readinessGuard.deloadNoPos, r.readinessGuard);
+    t.ok('poor readiness alone (no slump) also cuts exactly one set', r.readinessOnly.every(arr => arr.every(x => x === 2)), r.readinessOnly);
+    t.ok('and the readiness cut also lowers the REP target itself, not just sets', r.repsReadinessOnly < r.repsClean, { repsClean: r.repsClean, repsReadinessOnly: r.repsReadinessOnly });
+    t.ok('guard: the stacked scenario really is both a slump and a poor day', r.bothGuard.slump && r.bothGuard.multToday < 0.85, r.bothGuard);
+    t.ok('both signals together cut two sets, not one — they stack like prescribe()\'s own do', r.both.every(arr => arr.every(x => x === 1)), r.both);
+    t.ok('a timed weights item is eased by poor readiness too, not just rep-based ones', r.timedEased < r.timedClean, { timedClean: r.timedClean, timedEased: r.timedEased });
+  }
+
   /* ---- Special HIIT respects the same flags as everything else -----------
      HIIT_POOL is a flat literal and startHiitSpecial() used it RAW.
      startHiit() goes through buildSession() and was fine; this path was not,

@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 22 suites, ~1,742 checks, run by `npm test` |
+| `tests/` | 22 suites, ~1,765 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -516,6 +516,80 @@ than a mutant mid-flight — but that was order of operations, not a
 guarantee. Confirm a background mutation run has actually finished (check its
 log for the "ALL DONE" line, not just that the process exited) before
 touching the same file with git.
+
+## Feeding the logged load back in (v226)
+
+Two gaps named explicitly as future work when loaded progression shipped
+(v221): the logged load never fed back into a real recommendation, and the
+Weights track ran on its own clock — no deload, no readiness — while the
+main program eased both. v226 closes both, narrowly.
+
+**`loadProgression(exId, pos)` is classic double progression, nothing
+fancier.** Last set met the exercise's own rep ceiling (`prescribeCeiling`)
+with real room (RIR ≥ 2) → aim `LOAD_STEP_KG` (1 kg, ~2 lb) heavier next
+time. Anything short of that — fewer reps, no room, or effort not even
+recorded — repeats the same load. **It never auto-decreases.** A silent
+regression here would be a second, uncoordinated deload sitting on top of
+the one `deloadOn()`/`readinessMult()` already apply — worse than leaving
+the number alone. Effort not recorded reads as "no room," not as "assume
+room" — the same restrictive-default instinct as everywhere else in this
+file. The recommendation is a labeled hint next to an editable field
+(`aim for 11kg 📈`), never a value fed silently into `target` math — the
+athlete is still logging what they *did*, not confirming a plan.
+
+**A tiny flat step is deliberate, not a placeholder for something smarter.**
+Scaling the increment to %bodyweight or a computed "value of a kilogram in
+hardness terms" was the exact automation v221 declined to build, calling it
+"a worse mistake than leaving the athlete to read their own log." A fixed
+1 kg step keeps the same posture: cheap to be wrong about, easy to override,
+never presented as a computed prescription.
+
+**Both easing signals gate the SAME recommendation, and had to be proven
+independently, not just "a deload week happened to also show it eased."**
+The first version of the loadCeilingNote()/openLiftLog() integration check
+reused the skill-tree block's own ceiling-maxed setup (`progressPtr` at the
+final position) — which for `dragonflag` is *only* ever ceiling-maxed at
+week 6, and week 6 is unconditionally the calendar deload week. That
+coupling made "climbing" unreachable by construction, not by the code being
+wrong — every attempt at that scenario silently landed on "repeat." Fixed by
+decoupling the two: `currentRung()` reads `STATE.progressPtr` directly and
+ignores whatever `pos` is passed to `atLadderCeiling`/`prescribe`, so the
+real maxed position can be kept for the rung check while a copy of that same
+`pos` with an earlier week is handed to the ceiling/deload check — a
+position object built by hand, exactly like every other block in this file
+already does.
+
+**A check on `sets` proves nothing about whether the underlying `target`
+moved.** `buildWeightsSession()`'s deload/readiness cut lives in two places:
+`sets` (computed once per session) and each item's own `weightsRepsFor()`
+call (computed once per exercise). A mutant that deleted the deload
+multiplier from `weightsRepsFor()` — leaving only the readiness one — passed
+every existing assertion, because all of them checked `sets`, never the rep
+count itself. Fixed with a direct before/after comparison of
+`weightsRepsFor('dbgoblet')` under an isolated deload (score high today,
+slump from two earlier days only) versus an isolated readiness cut (poor
+score today, no slump) — proving each signal moves the NUMBER, not just the
+set count each signal happens to also share.
+
+**Both signals are independent and must be shown stacking, not just each
+individually correct.** `deloadOn()` (slump) and `readinessMult()<0.85`
+(today's own score) can both be true at once and both cut a set, same as
+`prescribe()`'s own two separate `if` statements. A test data slip caught
+this by accident first: using `score: 0` for the "bad" days in a synthetic
+slump silently produced `readinessSlump()===false`, because that function
+filters on `r.score>0` — a logged 0 is not a real answer the UI can ever
+produce, so the filter is correct, but it means slump test data has to use
+the real minimum (25), not an arbitrarily low placeholder.
+
+**Timed weights-track items (`kbswing`, `kbcarry`…) bypassed easing
+entirely before this — not a new gap `weightsTargetFor()` introduced, but a
+pre-existing one it was the natural place to close.** The old code path
+computed a rep target only through `weightsRepsFor()`; anything with
+`unit==='time'` fell through to `ex.base||30` raw, with no goal, deload, or
+readiness adjustment. Since deload/readiness were being wired in anyway,
+routing both branches through the same easing logic cost nothing extra and
+closed a gap that would otherwise have shipped invisibly next to the one
+this session was actually asked to fix.
 
 ## VO2max and anaerobic-capacity work
 
