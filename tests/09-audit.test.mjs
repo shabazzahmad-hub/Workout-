@@ -894,6 +894,43 @@ export default async function run() {
   t.ok('+15s still adds time', flow.addRestWorks, flow);
   t.ok('and pausing does not let the rest expire', flow.pauseHoldsRest, flow);
 
+  // ---- a flagged joint gets prep ADDED to the warm-up, not just risk removed
+  const jointWarm = await page.evaluate(() => {
+    const o = {}, real = STATE.profile.limitations;
+    const names = f => f.map(it => it.n);
+
+    STATE.profile.limitations = ['lowback'];
+    const lowback = jointAwareWarmup(WARMUP_FLOW);
+    o.lowbackAdds = names(lowback).includes('Spine Stability Prep');
+    o.lowbackAfterBirdDog = names(lowback).indexOf('Spine Stability Prep') === names(lowback).indexOf('Bird Dog') + 1;
+    o.lowbackSurvivesSafeFlow = names(safeFlow(lowback)).includes('Spine Stability Prep');
+    o.lowbackNotDuplicated = names(jointAwareWarmup(lowback)).filter(n2 => n2 === 'Spine Stability Prep').length === 1;
+
+    STATE.profile.limitations = ['shoulder'];
+    o.shoulderAdds = names(jointAwareWarmup(WARMUP_FLOW)).includes('Shoulder Activation');
+    STATE.profile.limitations = ['knee'];
+    o.kneeAdds = names(jointAwareWarmup(WARMUP_FLOW)).includes('Knee Prep — Glute Bridge');
+
+    // only ONE bonus slot, same as correctiveBonus() — the first flagged joint wins
+    STATE.profile.limitations = ['shoulder', 'knee'];
+    const both = names(jointAwareWarmup(WARMUP_FLOW));
+    o.onlyFirstJointAdded = both.includes('Shoulder Activation') && !both.includes('Knee Prep — Glute Bridge');
+
+    STATE.profile.limitations = [];
+    o.noneFlaggedUnchanged = jointAwareWarmup(WARMUP_FLOW).length === WARMUP_FLOW.length;
+
+    STATE.profile.limitations = real;
+    return o;
+  });
+  t.ok('a flagged low back gets real spine prep added to the warm-up', jointWarm.lowbackAdds, jointWarm);
+  t.ok('placed right after Bird Dog, the same-family movement it extends', jointWarm.lowbackAfterBirdDog, jointWarm);
+  t.ok('and it is not itself flagged as risky for the joint it was added for', jointWarm.lowbackSurvivesSafeFlow, jointWarm);
+  t.ok('running it twice does not add it twice', jointWarm.lowbackNotDuplicated, jointWarm);
+  t.ok('a flagged shoulder gets shoulder activation added', jointWarm.shoulderAdds, jointWarm);
+  t.ok('a flagged knee gets glute-bridge prep added', jointWarm.kneeAdds, jointWarm);
+  t.ok('two flagged joints still add only one bonus item, same as correctiveBonus()', jointWarm.onlyFirstJointAdded, jointWarm);
+  t.ok('with nothing flagged the warm-up is unchanged', jointWarm.noneFlaggedUnchanged, jointWarm);
+
   // ---- the food table knows what is in it ----------------------------------
   const food = await page.evaluate(() => {
     const o = {}, N = STATE.nutrition;

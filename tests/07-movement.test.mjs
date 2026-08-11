@@ -10,7 +10,7 @@
    follows is about the three staying consistent with each other and with the
    step debt they are supposed to settle, in both unit systems, and about the
    habit tick never contradicting the number beside it. */
-import { serve, launch, suite, seedAthlete } from './lib/harness.mjs';
+import { serve, launch, suite, seedAthlete, ATHLETE, waitForBoot } from './lib/harness.mjs';
 
 export default async function run() {
   const t = suite('movement & the bike');
@@ -211,6 +211,7 @@ export default async function run() {
   const log = await page.evaluate(() => {
     const o = {}, T = nutToday();
     delete T.steps; delete T.bikeVal; delete T.bikeUnit; delete T.bikeLvl; T.habits = {};
+    if (STATE.profile) delete STATE.profile.bikeLevel;
     o.emptyReadsZero = JSON.stringify(movement()) === JSON.stringify({ steps: 0, val: 0, unit: 'min', lvl: 'steady', jval: 0, junit: 'min', jlvl: 'steady' });
     o.emptyEquivZero = stepEquivalent() === 0 && bikeMinutes() === 0;
     setSteps(4200);
@@ -815,6 +816,117 @@ export default async function run() {
     t.ok('6×30 as a sprint session actually starts', r.sit.started, r.sit);
     t.eq('with the full 11-step sequence', r.sit.seqLen, 11);
     t.ok('nothing renders as NaN or undefined', !/NaN|undefined/.test(r.sit.html), r.sit.html.slice(0, 400));
+  }
+
+  /* ---- bike intensity progression, from real ride feedback ---------------
+     BIKE_LEVELS had a dial and no memory — chosen fresh every day, no
+     record of how any ride went. rateBikeRide()/bikeLevelSuggestion() give
+     it the same double-progression rule loadProgression() (v226) gave
+     loaded work: three easy rides in a row at the SAME level suggest the
+     next one up. A suggestion, never an auto-applied change — mirrors
+     loadCeilingNote()'s "aim for" hint. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = JSON.stringify({ lim: STATE.profile.limitations, bl: STATE.bikeLevelFeel, pbl: STATE.profile.bikeLevel });
+      const out = {};
+
+      delete STATE.bikeLevelFeel;
+      STATE.profile.bikeLevel = 'steady';
+      out.freshDefaultsToSteadyZero = bikeLevelFeel();
+      out.noSuggestionFresh = bikeLevelSuggestion();
+
+      rateBikeRide('easy'); rateBikeRide('easy');
+      out.twoEasyNoSuggestionYet = { feel: bikeLevelFeel(), suggestion: bikeLevelSuggestion() };
+      rateBikeRide('easy');
+      out.threeEasySuggestsNext = { feel: bikeLevelFeel(), suggestion: bikeLevelSuggestion() };
+
+      rateBikeRide('hard');
+      out.hardResetsTheStreak = { feel: bikeLevelFeel(), suggestion: bikeLevelSuggestion() };
+
+      rateBikeRide('easy'); rateBikeRide('easy'); rateBikeRide('easy');
+      rateBikeRide('right');
+      out.rightAlsoResetsTheStreak = { feel: bikeLevelFeel(), suggestion: bikeLevelSuggestion() };
+
+      // at the top level, three easy rides still yield no suggestion — nothing to climb to
+      STATE.profile.bikeLevel = 'intervals'; STATE.bikeLevelFeel = { level: 'intervals', streak: 0 };
+      rateBikeRide('easy'); rateBikeRide('easy'); rateBikeRide('easy');
+      out.noSuggestionAtTopLevel = bikeLevelSuggestion();
+
+      // switching level between rides resets the streak against the NEW level
+      STATE.profile.bikeLevel = 'hard'; STATE.bikeLevelFeel = { level: 'hard', streak: 3 };
+      STATE.profile.bikeLevel = 'steady';
+      rateBikeRide('easy');
+      out.switchingLevelStartsFreshStreak = bikeLevelFeel();
+
+      // setBikeLvl() persists the choice to STATE.profile — a fresh "day" no
+      // longer resets to 'steady', it inherits what was chosen yesterday
+      STATE.profile.bikeLevel = null;
+      setBikeLvl('hard');
+      out.setBikeLvlPersists = STATE.profile.bikeLevel;
+      const day = nutToday(); delete day.bikeLvl;   // simulate a brand-new day's object
+      out.freshDayInheritsPersistedLevel = movement().lvl;
+
+      const k = JSON.parse(keep);
+      STATE.profile.limitations = k.lim; STATE.bikeLevelFeel = k.bl; STATE.profile.bikeLevel = k.pbl;
+      return out;
+    });
+    t.eq('a fresh athlete is at steady with a zero streak', r.freshDefaultsToSteadyZero, { level: 'steady', streak: 0 });
+    t.eq('and gets no suggestion yet', r.noSuggestionFresh, null);
+    t.eq('two easy rides is not enough yet', r.twoEasyNoSuggestionYet.suggestion, null);
+    t.eq('the streak really is counting', r.twoEasyNoSuggestionYet.feel.streak, 2);
+    t.eq('three easy rides in a row at the same level suggests the next one up', r.threeEasySuggestsNext.suggestion.k, 'hard');
+    t.eq('a hard-rated ride resets the streak to zero', r.hardResetsTheStreak.feel.streak, 0);
+    t.eq('and withdraws the suggestion', r.hardResetsTheStreak.suggestion, null);
+    t.eq('a "right" rating also resets the streak, not just "hard"', r.rightAlsoResetsTheStreak.feel.streak, 0);
+    t.eq('the top level never suggests a level beyond it', r.noSuggestionAtTopLevel, null);
+    t.eq('switching levels starts the new level\'s streak at 1, not carrying the old one', r.switchingLevelStartsFreshStreak.streak, 1);
+    t.eq('setBikeLvl() persists the choice to the profile', r.setBikeLvlPersists, 'hard');
+    t.eq('so a fresh day inherits it instead of resetting to steady', r.freshDayInheritsPersistedLevel, 'hard');
+  }
+
+  /* ---- the rating only appears where the level system actually applies --- */
+  {
+    const r = await page.evaluate(() => {
+      const keep = JSON.stringify({ bl: STATE.bikeLevelFeel, pbl: STATE.profile.bikeLevel });
+      delete STATE.bikeLevelFeel; STATE.profile.bikeLevel = 'steady';
+      const run = (kind, k) => {
+        try { closeSheet(); } catch (e) {}
+        startSpecialCardio(kind, k);
+        while (INTV && INTV.i < INTV.seq.length) { INTV.workElapsed += INTV.seq[INTV.i].secs; INTV.i++; }
+        ivDone();
+        const html = document.getElementById('ivBody').innerHTML;
+        try { hiitQuit(); } catch (e) {}
+        return html;
+      };
+      const bikeHtml = run('bike', 'vo2max3030');
+      const sprintHtml = run('sprint', 'sit6x30');
+      const kk = JSON.parse(keep);
+      STATE.bikeLevelFeel = kk.bl; STATE.profile.bikeLevel = kk.pbl;
+      return { bikeHtml, sprintHtml };
+    });
+    t.ok('a completed bike session shows the ride-feel rating', /How did that ride feel/.test(r.bikeHtml), r.bikeHtml.slice(0, 500));
+    t.ok('and the rating buttons call rateBikeAndClose', /rateBikeAndClose\('easy'\)/.test(r.bikeHtml), r.bikeHtml.slice(0, 800));
+    t.ok('a completed sprint session — no bike level system behind it — does not', !/How did that ride feel/.test(r.sprintHtml), r.sprintHtml.slice(0, 500));
+  }
+
+  /* ---- corrupt bikeLevelFeel/bikeLevel are repaired at boot, not trusted -- */
+  {
+    const r = await page.evaluate(([seed]) => {
+      eval(seed)();
+      const cur = JSON.parse(localStorage.getItem('coreforge.v1') || '{}');
+      cur.bikeLevelFeel = { level: 'nosuchlevel', streak: 'lots' };
+      cur.profile = cur.profile || {}; cur.profile.bikeLevel = 'madeup';
+      localStorage.setItem('coreforge.v1', JSON.stringify(cur));
+    }, [ATHLETE]);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForBoot(page);
+    const r2 = await page.evaluate(() => ({
+      feel: STATE.bikeLevelFeel, level: STATE.profile.bikeLevel,
+      threw: /went wrong drawing/i.test(document.body.innerText),
+    }));
+    t.eq('a corrupt streak/level is reset to a safe default', r2.feel, { level: 'steady', streak: 0 });
+    t.eq('a bogus persisted level is dropped, not carried as junk', r2.level, undefined);
+    t.ok('and nothing hits the error boundary', !r2.threw, r2);
   }
 
   await browser.close(); srv.close();
