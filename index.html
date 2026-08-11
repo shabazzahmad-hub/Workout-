@@ -4641,7 +4641,21 @@ function startHiit(format){
 }
 function startHiitSpecial(format){
   closeSheet();
-  const list=HIIT_POOL.filter(k=>EX[k]).map(exId=>({exId,unit:EX[exId].unit,target:EX[exId].base||30,rest:20,sets:1}));
+  /* HIIT_POOL is a flat literal and this path used it RAW. startHiit() goes
+     through buildSession() and is filtered; Special HIIT was not, so with a
+     joint flagged 9 of the 11 movements came through contraindicated —
+     burpees, tuck jumps, mountain climbers, skaters — and skater is also the
+     one the tight-room swap exists for. The comment on quickExId() named
+     HIIT_POOL as needing this and only QUICKIES ever got it.
+
+     Both swaps, then dedupe: two pool entries can collapse onto the same safe
+     alternative, and an interval list that repeats a movement back to back is
+     not the session anyone intended. */
+  const _seen=new Set();
+  const list=HIIT_POOL.filter(k=>EX[k])
+    .map(k=>spaceSwap(safeSwap(k)))
+    .filter(k=>EX[k]&&hasGearFor(k)&&!_seen.has(k)&&_seen.add(k))
+    .map(exId=>({exId,unit:EX[exId].unit,target:EX[exId].base||30,rest:20,sets:1}));
   const sess={session:{name:'Special HIIT',key:'specialhiit',focus:'High-intensity intervals'},ptr:-1,pos:{}};
   _runHiit(sess,list,format);
 }

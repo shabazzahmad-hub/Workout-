@@ -583,6 +583,69 @@ export default async function run() {
     t.eq('no swap target needs equipment its source did not', r.bad, []);
   }
 
+  /* ---- Special HIIT respects the same flags as everything else -----------
+     HIIT_POOL is a flat literal and startHiitSpecial() used it RAW.
+     startHiit() goes through buildSession() and was fine; this path was not,
+     so with a joint flagged 9 of the 11 movements came through
+     contraindicated. The comment on quickExId() named HIIT_POOL as needing
+     the swap and only QUICKIES ever received it. Warm-up and cool-down were
+     checked at the same time and are clean — nothing in them is swappable. */
+  {
+    const r = await page.evaluate(seed => {
+      /* Reseed. Earlier blocks in this suite reload the page and leave STATE
+         wherever they finished, and the first version of this check found the
+         flags simply not taking — it passed with the swap removed. A block
+         builds the state it asserts on. */
+      eval(seed)();
+      const keep = JSON.stringify({ l: STATE.profile.limitations, t: STATE.profile.tightSpace });
+      /* Read INTV, the state the app actually runs from. Monkeypatching
+         window._runHiit looked like it worked — the clean list came back with
+         eleven entries — but the flagged lists came back safe with the swap
+         REMOVED, which means the patch was not intercepting the real call.
+         The sequence the athlete would perform is the honest output. */
+      const build = () => {
+        try { startHiitSpecial('classic'); } catch (e) { return []; }
+        const seq = (typeof INTV === 'object' && INTV && INTV.seq) || [];
+        const ids = [...new Set(seq.map(x => x && x.exId).filter(Boolean))];
+        try { ivClear(); document.querySelector('#hiit').classList.remove('open');
+          document.body.style.overflow = ''; } catch (e) {}
+        return ids;
+      };
+      const unsafe = l => l.filter(k => safeSwap(k) !== k || spaceSwap(k) !== k);
+      /* Score each list WHILE its flags are still set. The first version
+         collected the lists here and called unsafe() down in the return
+         statement — by which point the flags had been restored, so safeSwap()
+         compared against no injuries and every list read clean. The checks
+         passed with the swap removed, twice, before this was spotted. */
+      STATE.profile.limitations = []; STATE.profile.tightSpace = false;
+      const clean = build();
+      STATE.profile.limitations = ['knee'];
+      const knee = build(), kneeBad = unsafe(knee);
+      STATE.profile.limitations = ['shoulder', 'knee', 'back', 'wrist'];
+      const many = build(), manyBad = unsafe(many);
+      STATE.profile.limitations = []; STATE.profile.tightSpace = true;
+      const tight = build(), tightBad = unsafe(tight);
+      // the flows, checked in the same breath
+      STATE.profile.limitations = ['shoulder', 'knee', 'back', 'wrist', 'neck', 'hip'];
+      const flows = unsafe([...WARMUP, ...COOLDOWN]);
+      const k = JSON.parse(keep);
+      STATE.profile.limitations = k.l; STATE.profile.tightSpace = k.t;
+      return { cleanN: clean.length, kneeBad, manyBad,
+        manyN: many.length, tightBad,
+        dupes: many.length !== new Set(many).size, flows,
+        // guard: prove the flag actually bites, or the checks above are vacuous
+        swapLive: (STATE.profile.limitations = ['knee'], safeSwap('tuckjump') !== 'tuckjump') };
+    }, ATHLETE);
+    t.ok('guard: a flagged knee really does make a jump unsafe', r.swapLive, r);
+    t.ok('a clean athlete still gets the full interval list', r.cleanN >= 10, r);
+    t.eq('one flagged joint yields no contraindicated interval', r.kneeBad, []);
+    t.eq('four flagged joints yield none either', r.manyBad, []);
+    t.ok('and a session is still built rather than emptied', r.manyN >= 3, r);
+    t.eq('a tight room yields no travelling movement', r.tightBad, []);
+    t.ok('two pool entries collapsing on one alternative do not repeat it', !r.dupes, r);
+    t.eq('warm-up and cool-down carry nothing contraindicated', r.flows, []);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
