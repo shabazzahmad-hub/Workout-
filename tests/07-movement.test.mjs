@@ -638,6 +638,98 @@ export default async function run() {
       brief.say.includes(String(brief.budget)), brief);
   }
 
+  /* ---- VO2max 4x4: long intervals, offered only where they make sense -----
+     Everything in HIIT_FORMATS is short and all-out. This is the other end of
+     the interval spectrum — 4 rounds of 4 min hard / 3 min easy, the
+     "Norwegian 4x4" — and it only makes physiological sense where one steady
+     effort can be held for four minutes straight: the bike and a run, not the
+     bodyweight HIIT pool, which rotates movements every round. */
+  {
+    const r = await page.evaluate(() => {
+      const info = fmtInfo('vo2max4x4');
+      const bikeSeq = buildIntervals([{ exId: 'bike', unit: 'time', target: 30, rest: 20, sets: 1 }], 'vo2max4x4');
+      const sprintSeq = buildIntervals([{ exId: 'sprint', unit: 'time', target: 30, rest: 40, sets: 1 }], 'vo2max4x4');
+      const work = bikeSeq.filter(s => s.type === 'work');
+      const rest = bikeSeq.filter(s => s.type === 'rest');
+      return {
+        name: info.name, w: info.w, r: info.r, n: info.n,
+        seqLen: bikeSeq.length,
+        workCount: work.length, workSecs: [...new Set(work.map(s => s.secs))],
+        restCount: rest.length, restSecs: [...new Set(rest.map(s => s.secs))],
+        rounds: work.map(s => s.round), roundsOf: work.map(s => s.rounds),
+        totalSecs: bikeSeq.reduce((a, s) => a + s.secs, 0),
+        lastIsWork: bikeSeq[bikeSeq.length - 1].type === 'work',
+        bikeExIds: [...new Set(bikeSeq.map(s => s.exId))],
+        sprintExIds: [...new Set(sprintSeq.map(s => s.exId))],
+      };
+    });
+    t.eq('the format is named VO2max 4×4', r.name, 'VO2max 4×4');
+    t.eq('four rounds of four minutes work', [r.n, r.w], [4, 4]);
+    t.eq('three minutes rest between rounds', r.r, 3);
+    t.eq('exactly four work blocks', r.workCount, 4);
+    t.eq('each work block is 240s (4 min), nothing else', r.workSecs, [240]);
+    t.eq('exactly three rest blocks — one fewer than work blocks', r.restCount, 3);
+    t.eq('each rest block is 180s (3 min), nothing else', r.restSecs, [180]);
+    t.eq('rounds are numbered 1 through 4 in order', r.rounds, [1, 2, 3, 4]);
+    t.ok('every work block knows the total round count is 4', r.roundsOf.every(x => x === 4), r);
+    t.eq('total session time is exactly 25 minutes, work and rest combined', r.totalSecs, 1500);
+    t.ok('the sequence ends on work, not a dangling rest nobody needed', r.lastIsWork, r);
+    t.eq('on the bike, every step is the bike — not a hard-coded movement', r.bikeExIds, ['bike']);
+    t.eq('and on a sprint session, every step is the sprint', r.sprintExIds, ['sprint']);
+  }
+  {
+    // guard: the exId fallback change did not regress skip/grip/box, which DO hard-code their movement
+    const r = await page.evaluate(() => {
+      const skip = buildIntervals([{ exId: 'irrelevant' }], 'skip93x2');
+      const grip = buildIntervals([{ exId: 'irrelevant' }], 'grip30');
+      return {
+        skipExIds: [...new Set(skip.map(s => s.exId))],
+        gripExIds: [...new Set(grip.map(s => s.exId))],
+      };
+    });
+    t.eq('skipping still always resolves to the rope, regardless of what list it is handed', r.skipExIds, ['skip']);
+    t.eq('grip hangs still always resolve to the dead hang', r.gripExIds, ['deadhang']);
+  }
+  {
+    // the picker: offered for bike and sprint, withheld from bodyweight HIIT
+    const r = await page.evaluate(() => {
+      const out = {};
+      specialChooser('bike');
+      out.bikeHtml = document.querySelector('#sheet').innerHTML;
+      specialChooser('sprint');
+      out.sprintHtml = document.querySelector('#sheet').innerHTML;
+      specialChooser('hiit');
+      out.hiitHtml = document.querySelector('#sheet').innerHTML;
+      openHiitChooser();
+      out.todayHtml = document.querySelector('#sheet').innerHTML;
+      try { closeSheet(); } catch (e) {}
+      return out;
+    });
+    t.ok('the bike chooser offers VO2max 4×4', /VO2max 4×4/.test(r.bikeHtml), r.bikeHtml.slice(0, 600));
+    t.ok('so does the sprint chooser', /VO2max 4×4/.test(r.sprintHtml), r.sprintHtml.slice(0, 600));
+    t.ok('the bodyweight HIIT chooser does not — no movement there can hold a steady 4 minutes',
+      !/VO2max 4×4/.test(r.hiitHtml), r.hiitHtml.slice(0, 600));
+    t.ok('and neither does converting TODAY\'S bodyweight circuit into intervals',
+      !/VO2max 4×4/.test(r.todayHtml), r.todayHtml.slice(0, 600));
+  }
+  {
+    // a real run, start to finish, on the bike
+    const r = await page.evaluate(() => {
+      try { closeSheet(); } catch (e) {}
+      startSpecialCardio('bike', 'vo2max4x4');
+      const out = {
+        started: !!INTV, seqLen: INTV ? INTV.seq.length : 0, format: INTV ? INTV.format : null,
+        html: document.getElementById('hiit').innerHTML,
+      };
+      try { hiitQuit(); } catch (e) {}
+      return out;
+    });
+    t.ok('a real bike session actually starts', r.started, r);
+    t.eq('with the full 7-step sequence', r.seqLen, 7);
+    t.eq('tagged with the right format', r.format, 'vo2max4x4');
+    t.ok('nothing renders as NaN or undefined', !/NaN|undefined/.test(r.html), r.html.slice(0, 400));
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }
