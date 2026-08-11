@@ -1476,28 +1476,41 @@ const COOLDOWN_FLOW = [
 ];
 
 /* Baseline tests shown on day 1 */
+/* Bumped whenever the battery's ORDER or rest changes, because both change the
+   numbers. Stored on each assessment so a cross-protocol comparison is
+   detectable instead of silently reading as progress or regression. */
+const TEST_PROTOCOL = 2;
+/* ORDER IS PART OF THE MEASUREMENT. These ran plank -> side -> hollow ->
+   reverse crunch: four maximal trunk efforts back to back, so each one
+   measured how tired the previous one had left you as much as it measured
+   capacity. Those numbers then anchor every prescription for a year.
+   Alternating the domains keeps the longest trunk run to two, and the two that
+   remain adjacent are different modes (flexion reps, then dynamic time).
+   Re-tests walk the same array, so comparability holds — but a baseline
+   recorded before this change was taken under the old order, which is why the
+   protocol version is stamped alongside it. */
 const TESTS = [
-  {id:'plank', name:'Forearm Plank', unit:'time', ex:'plank', bench:120,
+    {id:'plank', name:'Forearm Plank', unit:'time', ex:'plank', bench:120,
    instr:'Hold a solid forearm plank for as long as your form stays perfect. Stop when your hips sag. Enter your best time.'},
-  {id:'side', name:'Side Plank (weakest side)', unit:'time', ex:'sideplank', bench:75,
-   instr:'Hold a side plank on each side to failure. Enter your WEAKER side\'s time — we build from your true baseline.'},
-  {id:'hollow', name:'Hollow Body Hold', unit:'time', ex:'hollow', bench:50,
-   instr:'Hold a hollow body position (low back pinned) as long as you can keep the shape. Enter your best time.'},
-  {id:'lower', name:'Reverse Crunches (max reps)', unit:'reps', ex:'revcrunch', bench:25,
-   instr:'Do as many clean, controlled reverse crunches as you can in one set. Enter the number of good reps.'},
-  {id:'push', name:'Push-Ups (max reps)', unit:'reps', ex:'pushup', bench:35,
+    {id:'push', name:'Push-Ups (max reps)', unit:'reps', ex:'pushup', bench:35,
    instr:'Do as many clean push-ups as you can in one set — chest to a fist off the floor, body straight. Drop to your knees only if you cannot hold the line, and stop there.'},
-  {id:'pull', name:'Inverted Rows (max reps)', unit:'reps', ex:'invertedrow', bench:20,
-   instr:'Set a bar, or lie under a sturdy table and grip the edge. Hang underneath, body straight, and row your chest to it for as many controlled reps as you can. No bar and no table? Loop a towel around a door handle, lean back and row — the Towel Door Row is in your program. Enter reps of a PULL only: this number scales every row and pull-up you will be given, so a back extension like the Superman would badly over-prescribe them.'},
-  {id:'squat', name:'Bodyweight Squats (max reps)', unit:'reps', ex:'squat', bench:40,
+    {id:'side', name:'Side Plank (weakest side)', unit:'time', ex:'sideplank', bench:75,
+   instr:'Hold a side plank on each side to failure. Enter your WEAKER side\'s time — we build from your true baseline.'},
+    {id:'squat', name:'Bodyweight Squats (max reps)', unit:'reps', ex:'squat', bench:40,
    instr:'Squat to at least parallel, chest up, heels down, for as many controlled reps as you can. Stop when depth or form goes.'},
-  {id:'dyn', name:'Bicycle Crunches (max time)', unit:'time', ex:'bicycle', bench:75,
+    {id:'hollow', name:'Hollow Body Hold', unit:'time', ex:'hollow', bench:50,
+   instr:'Hold a hollow body position (low back pinned) as long as you can keep the shape. Enter your best time.'},
+    {id:'pull', name:'Inverted Rows (max reps)', unit:'reps', ex:'invertedrow', bench:20,
+   instr:'Set a bar, or lie under a sturdy table and grip the edge. Hang underneath, body straight, and row your chest to it for as many controlled reps as you can. No bar and no table? Loop a towel around a door handle, lean back and row — the Towel Door Row is in your program. Enter reps of a PULL only: this number scales every row and pull-up you will be given, so a back extension like the Superman would badly over-prescribe them.'},
+    {id:'lower', name:'Reverse Crunches (max reps)', unit:'reps', ex:'revcrunch', bench:25,
+   instr:'Do as many clean, controlled reverse crunches as you can in one set. Enter the number of good reps.'},
+    {id:'dyn', name:'Bicycle Crunches (max time)', unit:'time', ex:'bicycle', bench:75,
    instr:'Do controlled bicycle crunches for as long as your form stays good. Press Start — the timer counts up — and Stop when your form breaks or you can\'t keep the pace.'},
 ];
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='212';
+const APP_VERSION='215';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1516,6 +1529,13 @@ const DEFAULT_STATE=()=>({
      the old rows in place meant the new session 0 WAS the old session 0. See
      restartProgram(). */
   runs:[],                  // [{endedAt, sessions, logs:{ptr->log}}]
+  /* Resistance work. The weights track prescribed sets and reps and recorded
+     NOTHING — no load, no reps, no effort — so a session with dumbbells left
+     no trace in history, adherence or progression, and the app could not tell
+     whether the athlete was getting stronger with weights at all. Load is
+     stored canonically in KG like every other body metric; the display
+     converts. */
+  liftLog:[],               // [{date, exId, loadKg, reps, rir}]
   weekFeel:{},              // "cycle-week" -> array of feel strings
   measurements:[],          // {date,waist,weight}
   scoreHistory:[],          // {date,score,level}
@@ -2896,7 +2916,7 @@ function baselineIntroHTML(){
   <div class="card pad"><h3>The ${TESTS.length} tests</h3>
     ${TESTS.map((t,i)=>`<div class="kv"><span><b>${i+1}. ${t.name}</b></span><span class="tag ${EX[t.ex].region}">${t.unit==='time'?'hold':'reps'}</span></div>`).join('')}
   </div>
-  <div class="note info"><b>Warm up first.</b> Do 60 seconds of marching, a few glute bridges and bird dogs. Rest ~1 min between tests. <b>Breathe throughout — never hold your breath.</b> Stop immediately for chest pain, dizziness or shortness of breath.</div>
+  <div class="note info"><b>Warm up first.</b> Do 60 seconds of marching, a few glute bridges and bird dogs. <b>Rest 2 minutes between tests</b> — these are maximal efforts, and a short rest measures your recovery instead of your strength. The order alternates on purpose so no test lands on a muscle the one before it just emptied. Split them over two days if you would rather. <b>Breathe throughout — never hold your breath.</b> Stop immediately for chest pain, dizziness or shortness of breath.</div>
   ${!parqDone()?`<div class="note warn"><b>One quick health check first.</b> A test to failure is the most demanding thing this app will ever ask of you, so we screen before you do it. Takes a few seconds.
     <button class="btn sm primary" style="width:auto;margin-top:10px" onclick="openHealthCheck()">Answer the health check</button>
     <button class="btn sm ghost" style="width:auto;margin-top:6px" onclick="skipBaseline()">Skip the test — start me training</button></div>`
@@ -2917,7 +2937,7 @@ function reassessIntroHTML(cycle){
     <div class="kv"><span>Core Score</span><b>${(prev&&prev.score!=null)?prev.score+'/100':'not tested'}</b></div>
     <div class="kv"><span>Level</span><b>${_ve((prev&&prev.level)||'—')}</b></div>
   </div>
-  <div class="note info"><b>Warm up first</b>, exactly as you did on day one — 60 seconds of marching, a few glute bridges and bird dogs, and rest ~1 min between tests. Breathe throughout. Test on a day you feel fresh: a tired re-test tells the program you got weaker.</div>
+  <div class="note info"><b>Warm up first</b>, exactly as you did on day one — 60 seconds of marching, a few glute bridges and bird dogs, and <b>2 minutes of rest between tests</b>. Same warm-up, same order, same rest as last time: that is what makes the comparison mean anything. Breathe throughout. Test on a day you feel fresh: a tired re-test tells the program you got weaker.</div>
   ${!parqDone()?`<div class="note warn"><b>One quick health check first.</b> The re-test is another maximal effort, so we screen before you do it.
      <button class="btn sm primary" style="width:auto;margin-top:8px" onclick="openHealthCheck()">Answer the health check</button>
      <button class="btn sm ghost" style="width:auto;margin-top:6px" onclick="skipReassess()">Continue without re-testing</button></div>`
@@ -3842,12 +3862,86 @@ function weightsRepsFor(k){const ex=EX[k];const g=STATE.profile.goal;let r=ex.ba
   else if(g==='gain')r=Math.max(6,Math.round(r*0.85));
   else if(g==='core')r=Math.max(6,Math.round(r*0.9)); // strength-leaning midsection work
   return r;}
+/* ---- Resistance log -------------------------------------------------------
+   The one number that makes a weights session progressive is what you lifted
+   last time, so that is what this stores and what it hands back the next time
+   the same movement comes up. */
+function liftLog(){return Array.isArray(STATE.liftLog)?STATE.liftLog:(STATE.liftLog=[]);}
+function lastLift(exId){
+  const rows=liftLog().filter(r=>r&&r.exId===exId);
+  return rows.length?rows[rows.length-1]:null;
+}
+function loadToKg(v){return isImperial()?v*0.453592:v;}
+function loadShow(kg){return kg==null?null:(isImperial()?kg/0.453592:kg);}
+function loadUnit(){return isImperial()?'lb':'kg';}
+function openLiftLog(items){
+  const list=(items||[]).filter(m=>m&&EX[m.exId]);
+  if(!list.length){closeSheet();return;}
+  const u=loadUnit();
+  const rows=list.map((m,i)=>{
+    const ex=EX[m.exId];const prev=lastLift(m.exId);
+    const pl=prev&&prev.loadKg!=null?r1(loadShow(prev.loadKg)):'';
+    const pr=prev&&prev.reps!=null?prev.reps:(m.unit==='reps'?m.target:'');
+    return `<div style="padding:8px 0;border-top:1px solid var(--line)">
+      <div class="sm"><b>${_ve(ex.name)}</b>${prev?`<span class="tiny muted"> · last time ${prev.loadKg!=null?r1(loadShow(prev.loadKg))+' '+u+' × ':''}${prev.reps||'—'}</span>`:'<span class="tiny muted"> · first time</span>'}</div>
+      <div class="row" style="gap:8px;margin-top:5px">
+        <input id="lf-l-${i}" type="number" inputmode="decimal" placeholder="${u}" value="${pl}" style="flex:1;min-width:0">
+        <input id="lf-r-${i}" type="number" inputmode="numeric" placeholder="reps" value="${pr}" style="flex:1;min-width:0">
+        <select id="lf-e-${i}" style="flex:1.1;min-width:0;padding:9px;border-radius:10px;background:var(--card2);color:var(--ink);border:1px solid var(--line);font-size:13px">
+          <option value="">effort…</option><option value="3">3+ left</option><option value="2">2 left</option>
+          <option value="1">1 left</option><option value="0">all out</option></select>
+      </div></div>`;
+  }).join('');
+  openSheet(`<h3>What did you lift?</h3>
+    <p class="sm muted" style="margin-top:-4px">Top set of each. This is the only way the app can tell whether you are getting stronger — and next time it hands these numbers back so you know what to beat. Skip anything you would rather not record.</p>
+    ${rows}
+    <button class="btn primary" style="margin-top:12px" onclick='saveLiftLog(${JSON.stringify(list.map(m=>m.exId))})'>Save</button>
+    <div style="height:8px"></div>
+    <button class="btn ghost" onclick="closeSheet()">Not this time</button>`);
+}
+function saveLiftLog(exIds){
+  const d=todayISO();let n=0;
+  (exIds||[]).forEach((exId,i)=>{
+    const L=$('#lf-l-'+i),R=$('#lf-r-'+i),E=$('#lf-e-'+i);
+    const load=parseFloat(L&&L.value),reps=parseInt(R&&R.value,10);
+    const rirRaw=E&&E.value!==''?parseInt(E.value,10):null;
+    if(!(isFinite(load)&&load>0)&&!(isFinite(reps)&&reps>0))return;   // nothing entered
+    liftLog().push({date:d,exId,
+      loadKg:(isFinite(load)&&load>0)?r1(loadToKg(load)):null,
+      reps:(isFinite(reps)&&reps>0)?reps:null,
+      rir:(rirRaw!==null&&isFinite(rirRaw)&&rirRaw>=0&&rirRaw<=5)?rirRaw:null});
+    n++;
+  });
+  if(liftLog().length>2000)STATE.liftLog=liftLog().slice(-2000);
+  /* A resistance session is training. It credits the day the same way a quick
+     workout does — streak, heatmap, weekly count — WITHOUT consuming a program
+     session, because it is not one. */
+  if(n){if(!STATE.quickLog)STATE.quickLog={};STATE.quickLog[d]=(STATE.quickLog[d]||0)+1;}
+  save();closeSheet();
+  toast(n?('Logged '+n+' movement'+(n===1?'':'s')):'Nothing logged');
+  try{render();}catch(e){}
+}
 function buildWeightsSession(){
   const pool=weightsPool();if(!pool.length)return null;
   const byPat={};pool.forEach(k=>{const p=EX[k].pattern||'other';(byPat[p]=byPat[p]||[]).push(k);});
   const pick=pat=>{const arr=byPat[pat];if(!arr||!arr.length)return null;return arr[Math.floor(Math.random()*arr.length)];};
-  const addItem=(k,items,used)=>{if(!k||used.has(k))return;used.add(k);const ex=EX[k];
-    items.push({exId:k,unit:ex.unit,target:ex.unit==='time'?(ex.base||30):weightsRepsFor(k),rest:ex.rest||55,sets:3});};
+  /* The weights circuit filtered on EQUIPMENT and nothing else — no joint
+     check, no space check. Measured with shoulder, knee, back and wrist
+     flagged: 17 distinct contraindicated movements came through, including
+     battle-rope waves in all 300 circuits sampled, dumbbell shoulder press in
+     153 and kettlebell clean-and-press in 147. The main program has run
+     safeSwap since the beginning; this track was simply never given it, which
+     is the same gap the focus bonus had.
+
+     Fails closed. If the safe alternative needs kit the athlete does not own,
+     the slot is dropped rather than filled with the movement that was flagged
+     in the first place — a shorter circuit beats a circuit that hurts. */
+  const addItem=(k,items,used)=>{
+    if(!k)return;
+    const safe=spaceSwap(safeSwap(k));
+    if(!safe||!EX[safe]||!hasGearFor(safe)||used.has(safe))return;
+    used.add(safe);const ex=EX[safe];
+    items.push({exId:safe,unit:ex.unit,target:ex.unit==='time'?(ex.base||30):weightsRepsFor(safe),rest:ex.rest||55,sets:3});};
   const items=[],used=new Set();
   // balanced full-body military circuit
   ['squat','hinge','pushh','pull','pushv','lunge','core'].forEach(pat=>addItem(pick(pat),items,used));
@@ -4098,7 +4192,7 @@ function plEnterDone(){
       ${coachHeroHTML('Sergeant Forge · strong work')}
       <div class="pl-name" style="margin-bottom:2px">Session done 🏋️</div>
       <div class="pl-coach" style="margin-bottom:14px">${label}</div>${stats}
-      <div style="width:100%;max-width:440px;margin-top:18px"><button class="btn primary" style="width:100%;margin-bottom:8px" onclick="shareLast()">📤 Share</button><button class="btn green" style="width:100%" onclick="playerQuit()">Done ✓</button></div>`;
+      <div style="width:100%;max-width:440px;margin-top:18px"><button class="btn primary" style="width:100%;margin-bottom:8px" onclick='openLiftLog(${JSON.stringify(PLAYER.items.map(m=>({exId:m.exId,unit:m.unit,target:m.target})))})'>🏋️ Log what you lifted</button><button class="btn ghost" style="width:100%;margin-bottom:8px" onclick="shareLast()">📤 Share</button><button class="btn green" style="width:100%" onclick="playerQuit()">Done ✓</button></div>`;
     if(!motivate('done'))coachSpeak('Session complete. Strong work.');
     return;
   }
@@ -4547,7 +4641,21 @@ function startHiit(format){
 }
 function startHiitSpecial(format){
   closeSheet();
-  const list=HIIT_POOL.filter(k=>EX[k]).map(exId=>({exId,unit:EX[exId].unit,target:EX[exId].base||30,rest:20,sets:1}));
+  /* HIIT_POOL is a flat literal and this path used it RAW. startHiit() goes
+     through buildSession() and is filtered; Special HIIT was not, so with a
+     joint flagged 9 of the 11 movements came through contraindicated —
+     burpees, tuck jumps, mountain climbers, skaters — and skater is also the
+     one the tight-room swap exists for. The comment on quickExId() named
+     HIIT_POOL as needing this and only QUICKIES ever got it.
+
+     Both swaps, then dedupe: two pool entries can collapse onto the same safe
+     alternative, and an interval list that repeats a movement back to back is
+     not the session anyone intended. */
+  const _seen=new Set();
+  const list=HIIT_POOL.filter(k=>EX[k])
+    .map(k=>spaceSwap(safeSwap(k)))
+    .filter(k=>EX[k]&&hasGearFor(k)&&!_seen.has(k)&&_seen.add(k))
+    .map(exId=>({exId,unit:EX[exId].unit,target:EX[exId].base||30,rest:20,sets:1}));
   const sess={session:{name:'Special HIIT',key:'specialhiit',focus:'High-intensity intervals'},ptr:-1,pos:{}};
   _runHiit(sess,list,format);
 }
@@ -4824,7 +4932,11 @@ function discardRetest(){
 }
 function finishAssessment(){
   const a=computeAssessment(assessState.results);
-  const rec={date:todayISO(),results:assessState.results,score:a.score,level:a.level,maxes:a.maxes,testCount:TESTS.length};
+  /* PROTOCOL stamps HOW the numbers were taken, not just what they were. v2
+     alternates the movement domains; v1 ran four maximal trunk efforts in a
+     row, so a v1 baseline and a v2 re-test are not measuring the same thing
+     and a comparison between them should say so rather than read as progress. */
+  const rec={date:todayISO(),results:assessState.results,score:a.score,level:a.level,maxes:a.maxes,testCount:TESTS.length,protocol:TEST_PROTOCOL};
   /* Ask BEFORE writing anything. An interstitial that appears after the commit
      would be a notification, not a check. */
   const drop=retestDrop(a);
@@ -4865,12 +4977,65 @@ function commitAssessment(a,rec){
     <div class="center" style="margin:16px 0">${ringHTML(a.score,'Core Score')}</div>
     <div class="center" style="margin-bottom:16px"><span class="chip on" style="font-size:13px">Level: ${_ve(a.level)}</span></div>
     ${scoreDeltaHTML(a)}
+    ${testBreakdownHTML(a)}
     <div class="card pad" style="margin-top:6px"><h3 style="font-size:14px">What this means</h3>
       <p class="sm muted">${levelBlurb(a.level)}</p>
       <p class="sm muted">Your program is now built from these numbers. Targets start sub-maximal for perfect form, then climb every week. You'll re-test after each 6-week block.</p>
     </div>
     <button class="btn primary" onclick="closeSheet();go('today')">${assessState.reassess?'Continue training →':'Start Week 1 →'}</button>
   `);
+}
+/* Core Score clamps every test's contribution at 100, which is right for a
+   0-100 level indicator and wrong as the only thing the athlete is shown: past
+   the benchmark, the headline stops moving while the athlete keeps improving.
+   A plank going 120s -> 150s is a quarter better and reads as "no change".
+
+   So the score keeps its cap and the evidence sits underneath it, UNCAPPED —
+   each test as a percentage of its benchmark, with the change since the last
+   assessment where there is one to compare against. This is the panel that
+   should be read at a re-test; the ring is just the summary. */
+function testBreakdownHTML(a){
+  try{
+    const res=(assessState&&assessState.results)||{};
+    /* Compare against the previous assessment of the SAME protocol. A v1
+       baseline was taken with four maximal trunk efforts back to back, so its
+       numbers are not comparable with a v2 re-test and a delta between them
+       would read as progress the athlete did not make. */
+    const prevRec=assessState&&assessState.reassess
+      ? (STATE.baseline&&STATE.baseline.results?STATE.baseline:null) : null;
+    const prev=(prevRec&&prevRec.results)||null;
+    const sameProtocol=!!prevRec&&(+prevRec.protocol||1)===(+TEST_PROTOCOL||1);
+    const fmt=(t,v)=>t.unit==='time'?fmtTime(Math.round(v)):Math.round(v)+' reps';
+    const rows=TESTS.map(t=>{
+      const v=+res[t.id];
+      if(!isFinite(v))return '';
+      const pct=Math.round(v/t.bench*100);          // deliberately NOT clamped
+      const over=pct>=100;
+      let delta='';
+      if(prev&&isFinite(+prev[t.id])&&sameProtocol){
+        const d=v-(+prev[t.id]);
+        if(Math.abs(d)>=(t.unit==='time'?1:1)){
+          delta=`<span class="tiny" style="color:${d>0?'var(--green)':'var(--fire-l)'};font-weight:800">${d>0?'+':''}${t.unit==='time'?fmtTime(Math.abs(Math.round(d))).replace(/^/,d>0?'':'-'):Math.round(d)}</span>`;
+        }else delta='<span class="tiny muted">level</span>';
+      }
+      const bar=Math.max(2,Math.min(140,pct));
+      return `<div style="padding:7px 0;border-top:1px solid var(--line)">
+        <div class="row" style="justify-content:space-between;align-items:baseline">
+          <span class="sm"><b>${_ve(t.name)}</b></span>
+          <span class="sm"><b>${fmt(t,v)}</b> ${delta}</span></div>
+        <div style="height:6px;border-radius:4px;background:var(--card2);overflow:hidden;margin-top:4px">
+          <i style="display:block;height:100%;width:${bar/1.4}%;background:${over?'var(--green)':'var(--fire)'}"></i></div>
+        <div class="tiny muted" style="margin-top:2px">${pct}% of the ${fmt(t,t.bench)} benchmark${over?' · <b style="color:var(--green)">past it</b>':''}</div>
+      </div>`;
+    }).join('');
+    if(!rows)return '';
+    const note=prevRec&&!sameProtocol
+      ? '<div class="tiny muted" style="margin-top:8px">No change shown against your last assessment: it was taken under the older test order, so the two are not measuring the same thing. From here on they will be.</div>'
+      : '';
+    return `<div class="card pad" style="margin-top:6px"><h3 style="font-size:14px">Test by test</h3>
+      <p class="sm muted" style="margin-top:-4px">The score above stops at 100. These do not — this is where progress past the benchmark shows up.</p>
+      ${rows}${note}</div>`;
+  }catch(e){return '';}
 }
 function scoreDeltaHTML(a){
   const hist=STATE.scoreHistory;
@@ -11427,6 +11592,15 @@ function normalizeState(){
      break every lifetime counter at once — they all fold this in beside the
      live logs, so it is exactly the shape that must never be trusted raw. */
   if(!Array.isArray(STATE.runs))STATE.runs=[];
+  /* Resistance history. These rows are the only record that a weights session
+     happened, so a bad ROW is dropped and a bad FIELD inside a good row is
+     nulled rather than costing the whole entry. */
+  if(!Array.isArray(STATE.liftLog))STATE.liftLog=[];
+  STATE.liftLog=STATE.liftLog.filter(r=>r&&typeof r==='object'&&typeof r.date==='string'&&r.exId&&EX[r.exId])
+    .map(r=>({date:r.date,exId:r.exId,
+      loadKg:(typeof r.loadKg==='number'&&isFinite(r.loadKg)&&r.loadKg>0)?r.loadKg:null,
+      reps:(typeof r.reps==='number'&&isFinite(r.reps)&&r.reps>0)?Math.round(r.reps):null,
+      rir:(typeof r.rir==='number'&&isFinite(r.rir)&&r.rir>=0&&r.rir<=5)?Math.round(r.rir):null}));
   STATE.runs=STATE.runs.filter(r=>r&&typeof r==='object'&&r.logs&&typeof r.logs==='object'&&!Array.isArray(r.logs))
     .map(r=>({...r,sessions:Math.max(0,Math.floor(+r.sessions)||0)}));
   dedupeMeasurements();   // collapse same-date duplicates left by pre-v156 appends

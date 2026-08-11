@@ -320,6 +320,332 @@ export default async function run() {
     t.ok('and the bonus still fires on the same number of sessions', r.total > 300, r);
   }
 
+  /* ---- the baseline battery does not measure its own fatigue -------------
+     plank -> side -> hollow -> reverse crunch was four maximal TRUNK efforts
+     in a row. Each measured how tired the one before it had left you, and
+     those numbers anchor every prescription for a year. */
+  {
+    const r = await page.evaluate(() => {
+      const TRUNK = new Set(['plank', 'side', 'hollow', 'lower', 'dyn']);
+      const ids = TESTS.map(t => t.id);
+      let run = 0, worst = 0;
+      ids.forEach(id => { if (TRUNK.has(id)) { run++; worst = Math.max(worst, run); } else run = 0; });
+      return { ids, worst, count: ids.length, protocol: (typeof TEST_PROTOCOL === 'number') ? TEST_PROTOCOL : null,
+        trunk: ids.filter(i => TRUNK.has(i)).length };
+    });
+    t.eq('all eight tests are still in the battery', r.count, 8);
+    t.ok('no more than two trunk tests run back to back', r.worst <= 2, r);
+    t.eq('the battery still opens on the plank anchor', r.ids[0], 'plank');
+    t.ok('the protocol version is defined', r.protocol >= 2, r);
+  }
+  {
+    // a recorded assessment carries the protocol it was taken under
+    const r = await page.evaluate(() => {
+      const keepB = STATE.baseline, keepH = STATE.scoreHistory.slice(), keepA = assessState;
+      const res = {}; TESTS.forEach(t => res[t.id] = 20);
+      // commitAssessment reads assessState.reassess; it is null outside the flow
+      assessState = { idx: TESTS.length, results: res, reassess: null };
+      const a = computeAssessment(res);
+      const rec = { date: todayISO(), results: res, score: a.score, level: a.level,
+        maxes: a.maxes, testCount: TESTS.length, protocol: TEST_PROTOCOL };
+      commitAssessment(a, rec);
+      const stamped = STATE.baseline && STATE.baseline.protocol;
+      STATE.baseline = keepB; STATE.scoreHistory = keepH; assessState = keepA;
+      return { stamped };
+    });
+    t.ok('a saved baseline records which protocol produced it', r.stamped >= 2, r);
+  }
+
+  /* ---- progress past the benchmark is visible ---------------------------
+     Core Score clamps each test's contribution at 100, so an athlete who goes
+     from 120s to 150s on the plank sees the headline number not move. The cap
+     is right for a 0-100 level indicator and wrong as the only thing shown. */
+  {
+    const r = await page.evaluate(() => {
+      const keepA = assessState, keepB = STATE.baseline;
+      const plank = TESTS.find(t => t.id === 'plank');
+      // well past every benchmark
+      const res = {}; TESTS.forEach(t => res[t.id] = t.bench * 1.5);
+      assessState = { idx: TESTS.length, results: res, reassess: null };
+      const a = computeAssessment(res);
+      const html = testBreakdownHTML(a);
+      const el = document.createElement('div'); el.innerHTML = html; const txt = el.textContent;
+      // and a re-test against a same-protocol prior, to check the delta appears
+      STATE.baseline = { date: '2026-01-01', results: Object.fromEntries(TESTS.map(t => [t.id, t.bench])),
+        protocol: TEST_PROTOCOL, score: 80, level: 'Advanced' };
+      assessState = { idx: TESTS.length, results: res, reassess: 1 };
+      const el2 = document.createElement('div'); el2.innerHTML = testBreakdownHTML(a); const txt2 = el2.textContent;
+      // ...and against an OLD-protocol prior, where a delta would be misleading
+      STATE.baseline = { date: '2026-01-01', results: Object.fromEntries(TESTS.map(t => [t.id, t.bench])),
+        protocol: 1, score: 80, level: 'Advanced' };
+      const el3 = document.createElement('div'); el3.innerHTML = testBreakdownHTML(a); const txt3 = el3.textContent;
+      assessState = keepA; STATE.baseline = keepB;
+      return { score: a.score, has150: /150%/.test(txt), pastIt: /past it/.test(txt),
+        namesPlank: txt.indexOf(plank.name) >= 0,
+        deltaShown: /\+/.test(txt2), crossProtocolNote: /not measuring the same thing/.test(txt3),
+        crossProtocolHidesDelta: !/\+/.test(txt3) };
+    });
+    t.eq('the headline score is still capped at 100', r.score, 100);
+    t.ok('but the breakdown shows 150% of benchmark uncapped', r.has150, r);
+    t.ok('and says the benchmark was passed', r.pastIt, r);
+    t.ok('every test is named in it', r.namesPlank, r);
+    t.ok('a same-protocol re-test shows the improvement', r.deltaShown, r);
+    t.ok('a cross-protocol comparison shows no delta', r.crossProtocolHidesDelta, r);
+    t.ok('and explains why', r.crossProtocolNote, r);
+  }
+
+  /* ---- resistance work leaves a trace ------------------------------------
+     buildWeightsSession() prescribed sets and reps and recorded nothing: no
+     load, no reps, no effort. A session with dumbbells vanished from history,
+     adherence and progression, and the app could not tell whether the athlete
+     was getting stronger with weights at all. */
+  {
+    const r = await page.evaluate(async () => {
+      const keepQ = JSON.stringify(STATE.quickLog || {});
+      STATE.liftLog = []; STATE.quickLog = {}; STATE.profile.unit = 'cm';
+      const ex = Object.keys(EX).find(k => EX[k].equip && EX[k].equip.includes('dumbbell'));
+      const items = [{ exId: ex, unit: 'reps', target: 10 }];
+      openLiftLog(items);
+      const before = { trained: trainedToday(), rows: STATE.liftLog.length,
+        prevHint: /first time/.test(document.body.innerText) };
+      document.querySelector('#lf-l-0').value = '22.5';
+      document.querySelector('#lf-r-0').value = '8';
+      document.querySelector('#lf-e-0').value = '1';
+      saveLiftLog([ex]);
+      await new Promise(z => setTimeout(z, 120));
+      const row = STATE.liftLog[STATE.liftLog.length - 1];
+      // second session: the sheet must hand back what was lifted last time
+      openLiftLog(items);
+      const prefill = document.querySelector('#lf-l-0').value;
+      const hint = /last time/.test(document.body.innerText);
+      closeSheet();
+      // imperial round trip: stored canonical kg, shown in lb
+      STATE.profile.unit = 'in';
+      openLiftLog(items);
+      const lbPrefill = parseFloat(document.querySelector('#lf-l-0').value);
+      closeSheet(); STATE.profile.unit = 'cm';
+      STATE.quickLog = JSON.parse(keepQ);
+      return { before, row, prefill, hint, lbPrefill, trainedAfter: !!row };
+    });
+    t.ok('a first-time movement says so', r.before.prevHint, r.before);
+    t.eq('nothing was logged before', r.before.rows, 0);
+    t.eq('the load is stored canonically in kg', r.row.loadKg, 22.5);
+    t.eq('the reps are stored', r.row.reps, 8);
+    t.eq('the effort rating is stored', r.row.rir, 1);
+    t.eq('next time the sheet hands the load back', r.prefill, '22.5');
+    t.ok('and says it was last time', r.hint, r);
+    t.ok('an imperial athlete sees pounds, not kilos', Math.abs(r.lbPrefill - 49.6) < 0.5, r);
+  }
+  {
+    /* Entering in metric proves nothing about the conversion — loadToKg() is
+       the identity there, so storing the raw display value looks identical.
+       Enter in POUNDS, where a canonical store and a naive one differ. */
+    const r = await page.evaluate(async () => {
+      STATE.liftLog = []; STATE.profile.unit = 'in';
+      const ex = Object.keys(EX).find(k => EX[k].equip && EX[k].equip.includes('dumbbell'));
+      openLiftLog([{ exId: ex, unit: 'reps', target: 10 }]);
+      document.querySelector('#lf-l-0').value = '100';    // 100 lb
+      document.querySelector('#lf-r-0').value = '5';
+      saveLiftLog([ex]);
+      await new Promise(z => setTimeout(z, 120));
+      const stored = STATE.liftLog[STATE.liftLog.length - 1].loadKg;
+      openLiftLog([{ exId: ex, unit: 'reps', target: 10 }]);
+      const back = parseFloat(document.querySelector('#lf-l-0').value);
+      closeSheet(); STATE.profile.unit = 'cm';
+      return { stored, back };
+    });
+    t.ok('100 lb is stored as ~45.4 kg, not as 100', Math.abs(r.stored - 45.4) < 0.3, r);
+    t.ok('and reads back as ~100 lb', Math.abs(r.back - 100) < 0.5, r);
+  }
+  {
+    // it credits the day without consuming a program session
+    const r = await page.evaluate(async () => {
+      // clear the program log too: earlier blocks in this suite commit sessions
+      STATE.liftLog = []; STATE.quickLog = {}; STATE.logs = {}; STATE.runs = [];
+      STATE.progressPtr = 7; save();
+      const ex = Object.keys(EX).find(k => EX[k].equip && EX[k].equip.includes('dumbbell'));
+      openLiftLog([{ exId: ex, unit: 'reps', target: 10 }]);
+      document.querySelector('#lf-l-0').value = '20';
+      document.querySelector('#lf-r-0').value = '10';
+      saveLiftLog([ex]);
+      await new Promise(z => setTimeout(z, 120));
+      return { ptr: STATE.progressPtr, trained: trainedToday(),
+        counted: sessionsDoneCount(), quick: Object.keys(STATE.quickLog).length };
+    });
+    t.eq('a weights session does not advance the programme', r.ptr, 7);
+    t.ok('but it does count as having trained today', r.trained, r);
+    t.eq('and it is not banked as a program session', r.counted, 0);
+    t.eq('it credits the day once', r.quick, 1);
+  }
+  {
+    // a junk row must not cost the whole history
+    await page.evaluate(([seed]) => {
+      eval(seed)();
+      const cur = JSON.parse(localStorage.getItem('coreforge.v1') || '{}');
+      cur.liftLog = [
+        { date: '2026-01-01', exId: 'dbpress', loadKg: 20, reps: 10, rir: 1 },
+        { date: '2026-01-02', exId: 'dbpress', loadKg: 'heavy', reps: 'lots', rir: 99 },
+        { date: '2026-01-03', exId: 'nosuchexercise', loadKg: 20 },
+        null, 'junk',
+      ];
+      localStorage.setItem('coreforge.v1', JSON.stringify(cur));
+    }, [ATHLETE]);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForBoot(page);
+    const r = await page.evaluate(() => ({
+      kept: STATE.liftLog.length,
+      good: STATE.liftLog[0],
+      repaired: STATE.liftLog[1],
+      types: STATE.liftLog.map(x => typeof x.reps),
+      boundary: /went wrong drawing/i.test(document.body.innerText),
+    }));
+    t.eq('rows for real exercises survive, junk rows do not', r.kept, 2);
+    t.eq('a good row is untouched', r.good.loadKg, 20);
+    t.eq('a bad load is nulled, not dropped with the row', r.repaired.loadKg, null);
+    t.eq('a bad rep count is nulled too', r.repaired.reps, null);
+    t.eq('and a bad effort rating is nulled rather than clamped', r.repaired.rir, null);
+    t.eq('every surviving row has a numeric-or-null reps field',
+      r.types, ['number', 'object']);
+    t.ok('and nothing hits the error boundary', !r.boundary, r);
+  }
+
+  /* ---- the weights circuit respects a flagged joint ----------------------
+     weightsPool() filtered on EQUIPMENT and nothing else. With shoulder, knee,
+     back and wrist flagged, 300 sampled circuits produced 17 distinct
+     contraindicated movements — battle-rope waves in every single one,
+     dumbbell shoulder press in 153, kettlebell clean-and-press in 147. The
+     main program has run safeSwap since the beginning; this track never got
+     it, the same gap the focus bonus had. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = JSON.stringify({ g: STATE.profile.gear, l: STATE.profile.limitations, t: STATE.profile.tightSpace });
+      STATE.profile.gear = ['bar', 'bench', 'dip', 'dumbbell', 'kettlebell', 'medball', 'abroller', 'battlerope'];
+      const sample = () => {
+        const risky = {}; const seen = new Set(); let empty = 0;
+        for (let i = 0; i < 120; i++) {
+          const s = buildWeightsSession() || [];
+          if (s.length < 3) empty++;
+          s.forEach(m => { seen.add(m.exId); if (safeSwap(m.exId) !== m.exId) risky[m.exId] = (risky[m.exId] || 0) + 1; });
+        }
+        return { risky: Object.keys(risky), distinct: seen.size, empty };
+      };
+      STATE.profile.limitations = []; STATE.profile.tightSpace = false;
+      const clean = sample();
+      STATE.profile.limitations = ['shoulder', 'knee', 'back', 'wrist'];
+      const flagged = sample();
+      /* Owning EVERYTHING cannot catch a missing gear re-check — the swap can
+         only land on kit you already have. The interesting athlete owns a
+         little and has flagged joints, so a safe alternative may need kit that
+         is not in the room. */
+      const gearOk = (() => {
+        const sets = [['dumbbell'], ['kettlebell'], ['bench'], ['dumbbell', 'bench']];
+        for (const g of sets) {
+          STATE.profile.gear = g;
+          for (let i = 0; i < 40; i++) {
+            const s = buildWeightsSession() || [];
+            if (s.some(m => !hasGearFor(m.exId))) return { ok: false, gear: g, bad: s.filter(m => !hasGearFor(m.exId)).map(m => m.exId) };
+          }
+        }
+        return { ok: true };
+      })();
+      const k = JSON.parse(keep);
+      STATE.profile.gear = k.g; STATE.profile.limitations = k.l; STATE.profile.tightSpace = k.t;
+      return { clean, flagged, gearOk };
+    });
+    t.eq('a clean athlete gets no contraindicated movement', r.clean.risky.length, 0);
+    t.eq('and neither does one with four flagged joints', r.flagged.risky.length, 0);
+    t.ok('the circuit is still built, not emptied by the filter',
+      r.flagged.distinct >= 8 && r.flagged.empty === 0, r.flagged);
+    t.ok('and never prescribes kit the athlete does not own', r.gearOk.ok, r.gearOk);
+  }
+  {
+    /* The hasGearFor() guard in addItem cannot currently fail: every swap
+       target that needs equipment needs the SAME equipment as its source, so
+       owning the source implies owning the target. That makes the guard
+       unreachable and its mutant equivalent — no runtime check can kill it.
+       Pin the PROPERTY instead. The day someone adds a cross-equipment swap
+       (kbswing -> dbrdl, say) this fires, and the guard starts earning its
+       keep instead of silently becoming the only thing standing between the
+       athlete and kit they do not own. */
+    const r = await page.evaluate(() => {
+      const need = k => ((EX[k] && EX[k].equip) || []).slice().sort().join(',');
+      const bad = [];
+      [['SAFE_SWAP', SAFE_SWAP], ['SPACE_SWAP', SPACE_SWAP]].forEach(([name, map]) => {
+        Object.keys(map || {}).forEach(src => {
+          const tgt = map[src];
+          if (!EX[tgt]) { bad.push(`${name}: ${src} -> ${tgt} (no such exercise)`); return; }
+          const extra = ((EX[tgt] && EX[tgt].equip) || []).filter(g => !((EX[src] && EX[src].equip) || []).includes(g));
+          if (extra.length) bad.push(`${name}: ${src} (${need(src) || 'none'}) -> ${tgt} needs ${extra.join(',')}`);
+        });
+      });
+      return { bad };
+    });
+    t.eq('no swap target needs equipment its source did not', r.bad, []);
+  }
+
+  /* ---- Special HIIT respects the same flags as everything else -----------
+     HIIT_POOL is a flat literal and startHiitSpecial() used it RAW.
+     startHiit() goes through buildSession() and was fine; this path was not,
+     so with a joint flagged 9 of the 11 movements came through
+     contraindicated. The comment on quickExId() named HIIT_POOL as needing
+     the swap and only QUICKIES ever received it. Warm-up and cool-down were
+     checked at the same time and are clean — nothing in them is swappable. */
+  {
+    const r = await page.evaluate(seed => {
+      /* Reseed. Earlier blocks in this suite reload the page and leave STATE
+         wherever they finished, and the first version of this check found the
+         flags simply not taking — it passed with the swap removed. A block
+         builds the state it asserts on. */
+      eval(seed)();
+      const keep = JSON.stringify({ l: STATE.profile.limitations, t: STATE.profile.tightSpace });
+      /* Read INTV, the state the app actually runs from. Monkeypatching
+         window._runHiit looked like it worked — the clean list came back with
+         eleven entries — but the flagged lists came back safe with the swap
+         REMOVED, which means the patch was not intercepting the real call.
+         The sequence the athlete would perform is the honest output. */
+      const build = () => {
+        try { startHiitSpecial('classic'); } catch (e) { return []; }
+        const seq = (typeof INTV === 'object' && INTV && INTV.seq) || [];
+        const ids = [...new Set(seq.map(x => x && x.exId).filter(Boolean))];
+        try { ivClear(); document.querySelector('#hiit').classList.remove('open');
+          document.body.style.overflow = ''; } catch (e) {}
+        return ids;
+      };
+      const unsafe = l => l.filter(k => safeSwap(k) !== k || spaceSwap(k) !== k);
+      /* Score each list WHILE its flags are still set. The first version
+         collected the lists here and called unsafe() down in the return
+         statement — by which point the flags had been restored, so safeSwap()
+         compared against no injuries and every list read clean. The checks
+         passed with the swap removed, twice, before this was spotted. */
+      STATE.profile.limitations = []; STATE.profile.tightSpace = false;
+      const clean = build();
+      STATE.profile.limitations = ['knee'];
+      const knee = build(), kneeBad = unsafe(knee);
+      STATE.profile.limitations = ['shoulder', 'knee', 'back', 'wrist'];
+      const many = build(), manyBad = unsafe(many);
+      STATE.profile.limitations = []; STATE.profile.tightSpace = true;
+      const tight = build(), tightBad = unsafe(tight);
+      // the flows, checked in the same breath
+      STATE.profile.limitations = ['shoulder', 'knee', 'back', 'wrist', 'neck', 'hip'];
+      const flows = unsafe([...WARMUP, ...COOLDOWN]);
+      const k = JSON.parse(keep);
+      STATE.profile.limitations = k.l; STATE.profile.tightSpace = k.t;
+      return { cleanN: clean.length, kneeBad, manyBad,
+        manyN: many.length, tightBad,
+        dupes: many.length !== new Set(many).size, flows,
+        // guard: prove the flag actually bites, or the checks above are vacuous
+        swapLive: (STATE.profile.limitations = ['knee'], safeSwap('tuckjump') !== 'tuckjump') };
+    }, ATHLETE);
+    t.ok('guard: a flagged knee really does make a jump unsafe', r.swapLive, r);
+    t.ok('a clean athlete still gets the full interval list', r.cleanN >= 10, r);
+    t.eq('one flagged joint yields no contraindicated interval', r.kneeBad, []);
+    t.eq('four flagged joints yield none either', r.manyBad, []);
+    t.ok('and a session is still built rather than emptied', r.manyN >= 3, r);
+    t.eq('a tight room yields no travelling movement', r.tightBad, []);
+    t.ok('two pool entries collapsing on one alternative do not repeat it', !r.dupes, r);
+    t.eq('warm-up and cool-down carry nothing contraindicated', r.flows, []);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

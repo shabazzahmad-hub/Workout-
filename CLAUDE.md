@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 21 suites, ~1,380 checks, run by `npm test` |
+| `tests/` | 21 suites, ~1,420 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -315,6 +315,21 @@ this movement is. Higher = easier.** A push-up anchored to the push-up test is
 `1.0`; a one-arm variant is far below it. Adding an `anchor` without setting a
 calibrated `hardness` makes the engine treat that movement as exactly as hard
 as the test itself — that shipped once and prescribed 4×40 dips.
+
+**The ORDER of the baseline battery is part of the measurement.** The eight
+tests ran plank → side → hollow → reverse crunch: four maximal TRUNK efforts
+back to back, so each measured how tired the previous one had left the athlete
+as much as it measured capacity — and those numbers anchor every prescription
+for a year. The order now alternates domains (`TESTS` is plank, push, side,
+squat, hollow, pull, lower, dyn), which holds the longest trunk run to two, and
+the guidance asks for two minutes between efforts rather than one. Nothing
+indexes `TESTS` by position — consumers use `assessState.idx` or the test `id`
+— so reordering is safe, but a check pins the run length so it cannot drift
+back.
+
+`TEST_PROTOCOL` is stamped on every recorded assessment. A v1 baseline and a v2
+re-test were not taken under the same conditions, and a comparison across them
+should be able to say so rather than read as progress.
 
 **`LADDERS` arrays must be non-increasing in `hardness`.** A rung that climbs
 must never get easier.
