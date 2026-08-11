@@ -626,13 +626,40 @@ the "stays in family" check catches directly; the pre-existing "no swap needs
 equipment its source lacked" check does not, because a self-loop declares no
 extra equipment at all.
 
-**The images do not exist yet.** All seven exercises ship with a placeholder
-JPEG (`800×800`, grey studio backdrop matching the real photo set, name +
-"PHOTO PENDING" centered) rather than a missing file — `sw.js`'s precache
-list is asset-existence-checked at test time (`01-data.test.mjs`), so
-referencing a file that is not on disk is a shipping-blocker, not a
-runtime-only concern the `onerror` fallback quietly absorbs. Swapping in the
-real photo later is a drop-in: same filename, no code change.
+**The images do not exist yet.** All seven exercises shipped in v224 with a
+placeholder JPEG (`800×800`, grey studio backdrop matching the real photo
+set, name + "PHOTO PENDING" centered) rather than a missing file — `sw.js`'s
+precache list is asset-existence-checked at test time (`01-data.test.mjs`),
+so referencing a file that is not on disk is a shipping-blocker, not a
+runtime-only concern the `onerror` fallback quietly absorbs. v225 (same
+session) replaced all seven with the real generated photos, same filenames,
+no code change — confirming the drop-in worked as designed.
+
+**A ChatGPT grid of several exercises in one image needs the same
+equipment-identity discipline as the data it illustrates.** The first
+generation put the kettlebell thruster shot in a 7-pose contact sheet where
+every other pose used dumbbells — it rendered hex dumbbells instead of
+kettlebells, because nothing in the prompt anchored the equipment's SHAPE
+against the surrounding context bleeding in. The fix was not a stronger
+"kettlebell" keyword; it was spelling out the object itself ("a solid round
+cast-iron ball with a single thick curved handle... NOT a hex-head
+dumbbell") and regenerating that one pose standalone, outside the mixed-kit
+grid. Splitting a multi-exercise photo request into one generation per
+exercise — rather than one grid covering several — removes the cross-pose
+bleed entirely and was the actual fix used here.
+
+**Extracting individual exercise photos from a contact-sheet grid needs the
+same care as any other image edit.** The seven-pose sheet had two different
+internal grids (4 columns on top, 3 wider columns on the bottom), found by
+scanning for nearly-white, nearly-uniform gutter columns/rows rather than
+assuming a fixed cell size — a fixed guess would have sliced through a
+photo's edge on the wider bottom row. And a naive flat-color pad to square
+the narrower crops up to 800×800 left a visible rectangular seam against the
+backdrop's vignette (brighter center, darker corners); the first fix
+(bluring the whole padded strip) made it worse, smearing directional
+streaks from single-pixel edge colors. What worked: sample the backdrop tone
+near each edge, then feather a ~50px blend from that flat tone into the
+real edge pixels — matching the vignette's gradient instead of fighting it.
 
 ## Editing `EX` and the swap maps
 
