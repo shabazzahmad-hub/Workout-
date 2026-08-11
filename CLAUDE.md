@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 22 suites, ~1,765 checks, run by `npm test` |
+| `tests/` | 22 suites, ~1,788 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -590,6 +590,105 @@ readiness adjustment. Since deload/readiness were being wired in anyway,
 routing both branches through the same easing logic cost nothing extra and
 closed a gap that would otherwise have shipped invisibly next to the one
 this session was actually asked to fix.
+
+## Corrective work for a flagged joint, and objective training load (v227)
+
+Two more program-effectiveness gaps, both scoped narrowly on purpose.
+
+**A flagged joint was only ever avoided, never strengthened.** `safeSwap()`
+routes a flagged shoulder/knee/lowback around anything risky, and had done
+so since the beginning — but nothing ever added anything back. Avoidance
+protects a joint from getting WORSE; it does nothing to make it stronger, so
+an athlete who flags a shoulder in week 1 is still only avoiding it,
+unchanged, in week 54. `correctiveBonus()` adds one light, joint-specific
+stability movement on top of the session (never in place of anything),
+reusing `focusBonus()`'s own machinery — same `safeSwap`/`spaceSwap` chain,
+same deterministic per-session rotation, same session-object shape
+(`slot:'corrective'`).
+
+**Scoped to joints where the library has a real, non-flagged, genuinely
+targeted movement — not a generic "safe" filler wearing a corrective
+label.** `CORRECTIVE_POOL` is `{shoulder:['superman'], knee:['glutebridge'],
+lowback:['birddog','deadbug']}`. Wrist and elbow have no such movement in
+the catalogue (the closest candidates are all themselves flagged, or are
+generic stability holds with no real claim to that specific joint) and are
+deliberately left silent rather than offer a mismatched filler — the same
+"when a repair has to guess, prefer the restrictive answer" instinct as
+everywhere else in this file. `scappull` looked like an obvious shoulder
+pick and turned out to be IN `JOINT_RISK.shoulder` itself (a dead hang under
+load) — reachable only by actually reading the risk lists, not by the
+exercise's name.
+
+**Two checks were vacuous on the first draft, both for the same underlying
+reason: the exercise pool used here is small and every entry is
+`region:'stability'`.** `prescribe()` already caps `region:'stability'`
+sets at 2 regardless of any cap `correctiveBonus()` applies on top, so
+asserting the real prescribed item's `sets<=2` never exercised the code's
+OWN `Math.min(rx.sets,2)` — fixed by temporarily overriding `prescribe`
+to hand back `sets:5` and confirming the cap still clamps it. And a
+duplicate-exercise check used fabricated `{done:false, abandonedAt:...}`
+log rows with no `completedAt` field at all — in REAL data `completedAt`
+is only ever set alongside `done:true` (confirmed by reading `hurtStop()`
+and the abandoned-session path in `commitSession()`), so a fixture missing
+it passed whether or not the `done` guard existed. Both fixes follow the
+same shape: force the specific state the mutation targets, don't rely on
+data that happens to look right.
+
+**A real collision needed a real scenario to prove it wasn't happening.**
+`glutebridge` sits in both `FOCUS_POOL.glutes` and `CORRECTIVE_POOL.knee` —
+a knee-flagged athlete whose focus area is glutes is the one real case
+where the focus bonus and the corrective bonus could pick the identical
+exercise on the same day. `used.add(bonus.exId)` after the focus-bonus push
+(previously absent — `buildSession()` tracked every OTHER slot in `used`
+except its own focus bonus) closes it; the test forces `focusPrimary:
+'glutes'` with `limitations:['knee']` rather than trusting the seeded
+athlete's defaults not to collide by chance.
+
+**Training load tracked as a number, not just felt.** `readinessMult()`/
+`readinessSlump()` are both self-reported — exactly the signal a driven,
+"tough it out" athlete under-reports right up until they get hurt. `acwr()`
+computes the classic Acute:Chronic Workload Ratio (Gabbett et al., 2016):
+this week's total logged sets against the trailing 4-week weekly average,
+flagging a spike (`>=1.5`, the commonly-cited high-risk cutoff) even on a
+day the athlete swears they feel great. `loadSpike()` folds into `deloadOn()`
+as a third OR condition, alongside the calendar week and the readiness
+slump — an athlete who is objectively overreaching gets the same easing as
+one who is subjectively burnt out.
+
+**Same caution as `readinessSlump()`, for the same reason.** A ratio
+computed from mostly-empty weeks means nothing — a brand-new athlete in
+week 1, or one a couple of sessions back from a layoff (already eased by
+`comebackEaseActive()`), must read as "not enough history," never as a
+false spike purely for lack of a chronic baseline. `acwr()` requires at
+least 3 of the trailing 4 weekly buckets to have SOME logged volume before
+it will compute a ratio at all.
+
+**"Training load" was already a UI label, for a completely different
+number.** The Progress tab shows `Training load +X% vs start` — `STATE.adapt`
+expressed as a percentage, a slow cumulative multiplier nudged ±2-3% per
+session. Reusing the same phrase for the new spike banner would read as the
+same metric contradicting itself. The banner says "Weekly volume spiked"
+instead — different number, different word for it.
+
+**A mutant exposed a real, catastrophic performance regression, and it
+was in the check itself, not just the mutation harness.** `deloadOn()` runs
+on EVERY exercise of EVERY `prescribe()` call, including historical
+sessions the Progress tab reconstructs for its charts — potentially
+thousands of calls in one render. The first `acwr()` scanned the whole of
+`STATE.logs` once per day queried (28 scans per call): invisible at a
+handful of sessions, over 20 million iterations at a year of history, and
+the pre-existing 400ms performance budget on the Progress tab caught it
+immediately (629-705ms). That budget's own fabricated soak-test data
+uses a `date` field, not `completedAt`, so it never actually matched
+anything in `acwr()`'s lookup — it only caught the regression because the
+SCAN cost was independent of match count. Fixed by building the
+date→sets index ONCE per `acwr()` call (`_setsByDateIndex()`) and sharing
+it across all 28 day lookups — O(N) instead of O(28×N). A second, direct
+benchmark was added alongside it: 300 `deloadOn()` calls against a year of
+REAL `completedAt`-matching history, under a 200ms budget — mutation-tested
+by reverting to the un-shared per-lookup index rebuild, which pushed a
+single test run to 443ms. Relying on the generic performance budget alone
+would have caught this by luck twice, not by design.
 
 ## VO2max and anaerobic-capacity work
 

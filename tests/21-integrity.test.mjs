@@ -320,6 +320,81 @@ export default async function run() {
     t.ok('and the bonus still fires on the same number of sessions', r.total > 300, r);
   }
 
+  /* ---- a flagged joint gets stability work, not just avoidance -----------
+     Every flagged joint until now was purely AVOIDED — safeSwap routes
+     around anything risky, but nothing ever added corrective work back.
+     correctiveBonus() adds one light stability movement on TOP of the
+     session for a flagged shoulder/knee/lowback, scoped to joints where the
+     library actually has a real (non-flagged, genuinely targeted) movement
+     — wrist and elbow have none, and must stay silent rather than offer a
+     mismatched filler. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = JSON.stringify(STATE.profile.limitations || []);
+      const picksFor = lims => {
+        STATE.profile.limitations = lims;
+        const seen = new Set(); const dupes = [];
+        for (let p = 20; p < 60; p++) {
+          const items = buildSession(p).main;
+          const ids = items.map(m => m.exId);
+          if (new Set(ids).size !== ids.length) dupes.push({ p, ids });
+          items.forEach(m => { if (m.corrective) seen.add(m.exId); });
+        }
+        return { picks: [...seen], dupes };
+      };
+      const none = picksFor([]);
+      const shoulder = picksFor(['shoulder']);
+      const knee = picksFor(['knee']);
+      const lowback = picksFor(['lowback']);
+      const wristElbow = picksFor(['wrist', 'elbow']);
+      // superman IS itself lowback-flagged — stacking shoulder+lowback must
+      // still land on something that clears BOTH flags, not just shoulder's
+      const stacked = picksFor(['shoulder', 'lowback']);
+      const lims = ['shoulder', 'lowback'];
+      const risky = k => lims.some(j => (JOINT_RISK[j] || []).includes(k));
+      const stackedStillSafe = stacked.picks.every(k => !risky(k));
+      // glutebridge sits in BOTH FOCUS_POOL.glutes and CORRECTIVE_POOL.knee —
+      // a knee-flagged athlete whose focus is glutes is the real scenario
+      // where the two bonus slots could pick the identical exercise twice
+      const keepFocus = JSON.stringify({ f: STATE.profile.focusPrimary, t: STATE.profile.targets });
+      STATE.profile.focusPrimary = 'glutes'; STATE.profile.targets = ['glutes'];
+      const glutesCollision = picksFor(['knee']);
+      const fk = JSON.parse(keepFocus);
+      STATE.profile.focusPrimary = fk.f; STATE.profile.targets = fk.t;
+      // sets are capped low — this is a light add-on, not a full accessory.
+      // Every CORRECTIVE_POOL entry is region:'stability', which prescribe()
+      // already caps at 2 sets on its own — so the real prescribed number
+      // can never exercise correctiveBonus()'s OWN cap. Force prescribe()
+      // to hand back something bigger and confirm the cap still catches it.
+      STATE.profile.limitations = ['lowback'];
+      const sess = buildSession(50);
+      const item = sess.main.find(m => m.corrective);
+      const origPrescribe = prescribe;
+      prescribe = (exId, pos) => ({ ...origPrescribe(exId, pos), sets: 5 });
+      const forcedItem = correctiveBonus(posOf(50), new Set());
+      prescribe = origPrescribe;
+      const k = JSON.parse(keep);
+      STATE.profile.limitations = k;
+      return { none, shoulder, knee, lowback, wristElbow, stacked, stackedStillSafe, glutesCollision, item, forcedItem };
+    });
+    t.eq('no flagged joint means no corrective item anywhere', r.none.picks, []);
+    t.eq('a flagged shoulder gets superman', r.shoulder.picks, ['superman']);
+    t.eq('a flagged knee gets glutebridge', r.knee.picks, ['glutebridge']);
+    t.ok('a flagged lowback gets birddog and/or deadbug', r.lowback.picks.length > 0 &&
+      r.lowback.picks.every(k => ['birddog', 'deadbug'].includes(k)), r.lowback);
+    t.eq('wrist and elbow have no corrective content and stay silent', r.wristElbow.picks, []);
+    t.ok('stacking shoulder+lowback never lands on a movement risky for either', r.stackedStillSafe, r.stacked);
+    t.ok('the corrective item never duplicates an exercise already in the session',
+      r.none.dupes.length === 0 && r.shoulder.dupes.length === 0 && r.knee.dupes.length === 0 &&
+      r.lowback.dupes.length === 0 && r.stacked.dupes.length === 0, r);
+    t.ok('not even when the focus bonus and the corrective slot could both want glutebridge',
+      r.glutesCollision.dupes.length === 0, r.glutesCollision);
+    t.ok('it is capped at 2 sets — an add-on, not a full accessory', !!r.item && r.item.sets <= 2, r.item);
+    t.eq('and tagged so it is identifiable as corrective, not the focus bonus', r.item && r.item.slot, 'corrective');
+    t.eq('the cap itself clamps a bigger prescribed number down to 2, not just passes a naturally-small one through',
+      r.forcedItem && r.forcedItem.sets, 2);
+  }
+
   /* ---- the baseline battery does not measure its own fatigue -------------
      plank -> side -> hollow -> reverse crunch was four maximal TRUNK efforts
      in a row. Each measured how tired the one before it had left you, and
