@@ -1510,7 +1510,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='215';
+const APP_VERSION='216';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -6876,7 +6876,10 @@ function photosHTML(){
   const ps=(STATE.photos||[]).slice().sort((a,b)=>a.id<b.id?-1:1);
   let h=`<div class="card pad">
     <div class="tiny muted" style="margin-top:0;margin-bottom:10px">Take all three every 1–2 weeks in the same spot &amp; lighting. Private — stays on your phone.</div>
+    <div class="tiny muted" style="margin:0 0 4px">Take one now</div>
     <div class="btnrow">${POSES.map(([k,lbl])=>`<button class="btn sm ghost" style="width:100%" onclick="capturePhoto('${k}')">📷 ${lbl}</button>`).join('')}</div>
+    <div class="tiny muted" style="margin:10px 0 4px">Or add ones you already have</div>
+    <div class="btnrow">${POSES.map(([k,lbl])=>`<button class="btn sm ghost" style="width:100%" onclick="pickPhotos('${k}')">🖼️ ${lbl}</button>`).join('')}</div>
     ${ps.length>=2?`<div class="btnrow" style="margin-top:9px"><button class="btn sm ghost" style="width:100%" onclick="openCompare()">⇄ Compare</button></div>`:''}`;
   const pair=photoPair();
   if(pair){
@@ -6897,31 +6900,63 @@ function photosHTML(){
   }else{
     h+=`<div class="note info" style="margin-top:12px;margin-bottom:0">No photos yet — a front, side &amp; back shot today becomes your baseline. The mirror lies; photos don't.</div>`;
   }
-  h+=`</div><input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" onchange="onPhotoPicked(event)">`;
+  /* Two inputs, because one cannot do both jobs. `capture="environment"` is
+     what makes a phone open the camera straight away, and it is also what
+     stops the athlete reaching a photo they already took — the gallery is
+     simply not offered. The picker below omits capture (so the phone shows the
+     photo library) and allows `multiple`, because the natural way to catch up
+     is to add front, side and back for a pose in one go. */
+  h+=`</div>
+    <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" onchange="onPhotoPicked(event)">
+    <input type="file" id="photoPickInput" accept="image/*" multiple style="display:none" onchange="onPhotoPicked(event)">`;
   return h;
 }
 function capturePhoto(pose){_pendingPose=pose;const inp=$('#photoInput');if(inp){inp.value='';inp.click();}}
-function onPhotoPicked(e){
-  const f=e.target.files&&e.target.files[0];if(!f)return;
-  const r=new FileReader();
-  r.onload=()=>{
-    const img=new Image();
-    img.onload=()=>{
-      const MAX=1000;let{width:w,height:hh}=img;
-      if(w>MAX||hh>MAX){const s=MAX/Math.max(w,hh);w=Math.round(w*s);hh=Math.round(hh*s);}
-      const c=document.createElement('canvas');c.width=w;c.height=hh;
-      c.getContext('2d').drawImage(img,0,0,w,hh);
-      let data;try{data=c.toDataURL('image/jpeg',0.82);}catch(err){data=r.result;}
-      const id=todayISO()+'-'+(_pendingPose||'front')+'-'+(Object.keys(STATE.photos).length+ (STATE.photos.length))+'-'+Math.floor(performance.now());
-      idbPut('ph_'+id,data);
-      STATE.photos.push({id,date:todayISO(),pose:_pendingPose||'front'});
-      save();toast('Photo saved');renderProgress();checkAchievements();
+function pickPhotos(pose){_pendingPose=pose;const inp=$('#photoPickInput');if(inp){inp.value='';inp.click();}}
+/* Downscale one file and store it. Returns a promise so a multi-select can be
+   processed in order — the ids carry a counter, and firing them concurrently
+   raced it and produced collisions. */
+function _storePhoto(file,pose,n){
+  return new Promise(resolve=>{
+    const r=new FileReader();
+    r.onerror=()=>resolve(false);
+    r.onload=()=>{
+      const img=new Image();
+      img.onerror=()=>resolve(false);
+      img.onload=()=>{
+        const MAX=1000;let{width:w,height:hh}=img;
+        if(w>MAX||hh>MAX){const sc=MAX/Math.max(w,hh);w=Math.round(w*sc);hh=Math.round(hh*sc);}
+        const c=document.createElement('canvas');c.width=w;c.height=hh;
+        c.getContext('2d').drawImage(img,0,0,w,hh);
+        let data;try{data=c.toDataURL('image/jpeg',0.82);}catch(err){data=r.result;}
+        const id=todayISO()+'-'+pose+'-'+((STATE.photos||[]).length)+'-'+n+'-'+Math.floor(performance.now());
+        idbPut('ph_'+id,data);
+        STATE.photos.push({id,date:todayISO(),pose});
+        resolve(true);
+      };
+      img.src=r.result;
     };
-    img.onerror=()=>toast('Could not read that image');
-    img.src=r.result;
-  };
-  r.readAsDataURL(f);
+    r.readAsDataURL(file);
+  });
 }
+/* Serves both inputs. The camera hands back one file; the gallery can hand
+   back several, and dropping all but the first is how "add my three shots"
+   used to become "add one shot". */
+async function onPhotoPicked(e){
+  const files=[...((e.target&&e.target.files)||[])];
+  if(!files.length)return;
+  const pose=_pendingPose||'front';
+  let ok=0,failed=0;
+  for(let i=0;i<files.length;i++){
+    const done=await _storePhoto(files[i],pose,i);
+    if(done)ok++;else failed++;
+  }
+  try{e.target.value='';}catch(err){}
+  if(ok){save();renderProgress();checkAchievements();}
+  toast(ok?(ok===1?'Photo saved':ok+' photos saved'):'Could not read that image');
+  if(ok&&failed)toast(failed+' could not be read');
+}
+
 async function hydratePhotos(){
   const imgs=$$('#v-progress .ph-img');
   for(const el of imgs){

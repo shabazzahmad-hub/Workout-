@@ -153,6 +153,64 @@ export default async function run() {
     t.ok('and Progress renders instead of hitting the error boundary', !r.boundary, r);
   }
 
+  /* ---- photos already on the phone can be added --------------------------
+     The only input had capture="environment", which is exactly what makes a
+     phone open the camera — and exactly what stops the athlete reaching a
+     photo they already took. Someone who shot their three poses with the
+     normal camera app had no way to get them in. A second input without
+     capture, and with multiple, so a catch-up is one trip to the gallery. */
+  {
+    const r = await page.evaluate(() => {
+      go('progress'); renderProgress();
+      const cam = document.querySelector('#photoInput');
+      const pick = document.querySelector('#photoPickInput');
+      const html = document.querySelector('#v-progress').innerHTML;
+      return {
+        camExists: !!cam, camForcesCamera: cam && cam.hasAttribute('capture'),
+        pickExists: !!pick,
+        pickAvoidsCamera: pick && !pick.hasAttribute('capture'),
+        pickMultiple: pick && pick.hasAttribute('multiple'),
+        pickAccepts: pick && pick.getAttribute('accept'),
+        buttons: POSE_KEYS.every(k => html.includes(`pickPhotos('${k}')`)),
+      };
+    });
+    t.ok('the camera input still forces the camera', r.camForcesCamera, r);
+    t.ok('a second input exists for the gallery', r.pickExists, r);
+    t.ok('and it does NOT carry capture, so the phone offers the library', r.pickAvoidsCamera, r);
+    t.ok('it accepts more than one file at a time', r.pickMultiple, r);
+    t.eq('and only images', r.pickAccepts, 'image/*');
+    t.ok('every pose has a gallery button, not just front', r.buttons, r);
+  }
+  {
+    // three files in one go, all landing on the chosen pose
+    await page.evaluate(async () => {
+      for (const p of STATE.photos) await idbDel('ph_' + p.id);
+      STATE.photos = []; save(); go('progress'); renderProgress();
+      pickPhotos('back');
+    });
+    await page.setInputFiles('#photoPickInput', [
+      { name: 'a.png', mimeType: 'image/png', buffer: PIXEL },
+      { name: 'b.png', mimeType: 'image/png', buffer: PIXEL },
+      { name: 'c.png', mimeType: 'image/png', buffer: PIXEL },
+    ]);
+    await page.waitForFunction(() => (STATE.photos || []).length === 3, null, { timeout: 8000 });
+    const r = await page.evaluate(async () => {
+      const ps = STATE.photos;
+      const bytes = await Promise.all(ps.map(p => idbGet('ph_' + p.id)));
+      return { n: ps.length, poses: ps.map(p => p.pose),
+        uniqueIds: new Set(ps.map(p => p.id)).size,
+        allStored: bytes.every(Boolean) };
+    });
+    t.eq('all three files are added, not just the first', r.n, 3);
+    t.eq('each lands on the pose that was chosen', r.poses, ['back', 'back', 'back']);
+    t.eq('and each gets a distinct id', r.uniqueIds, 3);
+    t.ok('with bytes stored for every one', r.allStored, r);
+    await page.evaluate(async () => {
+      for (const p of STATE.photos) await idbDel('ph_' + p.id);
+      STATE.photos = []; save();
+    });
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
