@@ -1538,7 +1538,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='227';
+const APP_VERSION='228';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -4939,6 +4939,15 @@ function ivDone(){
   const isSkip=sess.session.key==='skip';
   const actKey=ACTS[sess.session.key]?sess.session.key:null;
   const skRounds=(SKIP_FORMATS[INTV.format]||{}).n||0;
+  /* Bike-based VO2max/anaerobic protocols were the one interval session
+     with a real intensity DIAL (BIKE_LEVELS) and zero memory of how any
+     ride at any level actually went — chosen fresh every day, no route
+     from "that felt easy" to "try Hard next time" the way loaded work has
+     via loadProgression(). Scoped to bike specifically: it is the one
+     exId with a single, unambiguous level system behind it — jacks-based
+     circuits mix several bodyweight movements in one session and have no
+     equivalent single dial to rate. */
+  const isBike=sess.session.key==='specialcardio'&&INTV.seq[0]&&INTV.seq[0].exId==='bike';
   $('#ivBody').innerHTML=`
     <div class="pl-name" style="margin-bottom:2px">${isSkip?'Rope work done 🪢':'Circuit complete 🔥'}</div>
     <div class="pl-coach" style="margin-bottom:14px">${fmtInfo(INTV.format).name} · ${sess.session.name}</div>
@@ -4946,11 +4955,17 @@ function ivDone(){
       <div class="stat"><div class="n" style="color:var(--fire-l)">${fmtTime(INTV.workElapsed||1)}</div><div class="l">Work time</div></div>
       <div class="stat"><div class="n" style="color:var(--teal)">${mins}</div><div class="l">Minutes</div></div>
     </div>
+    ${isBike?`<div class="tiny muted" style="margin-top:14px">How did that ride feel?</div>
+    <div class="row" style="gap:8px;margin-top:6px;width:100%;max-width:440px">
+      <button class="btn ghost" style="flex:1" onclick="rateBikeAndClose('easy')">😎 Easy</button>
+      <button class="btn ghost" style="flex:1" onclick="rateBikeAndClose('right')">💪 Right</button>
+      <button class="btn ghost" style="flex:1" onclick="rateBikeAndClose('hard')">🥵 Hard</button>
+    </div>`:''}
     <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:440px;margin-top:18px">
       ${isSkip?`<button class="btn primary" onclick="hiitLogSkip(${mins},${skRounds})">🪢 Log ${Math.max(1,Math.round(mins))} min to my record</button>`:''}
       ${actKey?`<button class="btn primary" onclick="hiitLogAct('${actKey}',${mins},${(SPECIAL_FORMATS[INTV.format]||{}).n||0},${Math.round(((SPECIAL_FORMATS[INTV.format]||{}).w||0)*60)})">${ACTS[actKey].emoji} Log to my ${ACTS[actKey].name} record</button>`:''}
       ${isMetcon?`<button class="btn primary" onclick="hiitLogDone()">Log today's session complete</button>`:''}
-      <button class="btn ghost" onclick="hiitQuit()">Close</button>
+      ${isBike?'':'<button class="btn ghost" onclick="hiitQuit()">Close</button>'}
     </div>`;
   if(!motivate('done'))coachSpeak(isSkip?'Rope work complete. Outstanding.':'Circuit complete. Outstanding work.');
 }
@@ -6682,7 +6697,7 @@ function repHTML(label,total){
 /* ===== GUIDED WARM-UP / COOL-DOWN FLOW =====
    Walks a sequence of {n,secs,cue} moves: 5s loud GET READY, then each move
    with its own count-down, loud transition beeps and spoken coaching. */
-function runWarmup(){runFlow(WARMUP_FLOW,'Warm-up','var(--fire)');}
+function runWarmup(){runFlow(jointAwareWarmup(WARMUP_FLOW),'Warm-up','var(--fire)');}
 function runCooldown(){runFlow(COOLDOWN_FLOW,'Cool-down','var(--teal)');}
 /* WARMUP_FLOW and COOLDOWN_FLOW are fixed arrays that never went through
    safeSwap, so the app kept flexion and rotation off a flagged low back for the
@@ -6715,6 +6730,40 @@ function safeFlow(items){
     // never strip a warm-up to nothing — a short one still beats none
     return out.length?out:(items||[]).slice(0,2);
   }catch(e){return items;}
+}
+/* safeFlow() only SUBTRACTS — it strips Arm Circles for a flagged shoulder,
+   Glute Bridges for a flagged knee, and adds nothing back. The flagged
+   joint got LESS warm-up attention than an unflagged athlete, which is
+   backwards: the corrective-work principle (v227, correctiveBonus()) is
+   avoidance is not enough, add real prep back. Same joints, same content
+   family (reuses the main exercise library's own photos — flow items have
+   no exId of their own to draw a fresh image from), applied to the
+   warm-up specifically because it runs before EVERY session, unconditional
+   of what safeSwap() ends up routing the main session around.
+
+   Named distinctly from anything in FLOW_RISK on purpose — safeFlow() runs
+   AFTER this, matching purely on item NAME (flow items carry no exId), so
+   reusing 'Glute Bridges' or 'Arm Circles' verbatim would let safeFlow()
+   immediately strip the very item just added for that exact joint. */
+const WARMUP_JOINT_ADD={
+  shoulder:{n:'Shoulder Activation',secs:20,cue:'Lift the chest and arms together, squeeze the shoulder blades. Gentle — this wakes the shoulder up, it is not a max hold.',img:'ex-superman.jpg'},
+  knee:{n:'Knee Prep — Glute Bridge',secs:30,cue:'Press through the heels, squeeze the glutes at the top. Strong glutes take the load off the knees before you move.',img:'ex-glutebridge.jpg'},
+  lowback:{n:'Spine Stability Prep',secs:30,cue:'Opposite arm and leg, brace and move slow. Grooves a stable spine before you load it.',img:'ex-birddog.jpg',vid:'ex-birddog.mp4'},
+};
+function jointAwareWarmup(items){
+  try{
+    const lims=(STATE.profile&&Array.isArray(STATE.profile.limitations))?STATE.profile.limitations:[];
+    for(const joint of lims){
+      const add=WARMUP_JOINT_ADD[joint];
+      if(!add)continue;
+      if(items.some(it=>it&&it.n===add.n))continue;   // already present, do not duplicate
+      const out=items.slice();
+      const at=out.findIndex(it=>it&&it.n==='Bird Dog');
+      out.splice(at>=0?at+1:out.length,0,add);
+      return out;
+    }
+  }catch(e){}
+  return items;
 }
 function runFlow(items,title,color){
   items=safeFlow(items);
@@ -9297,7 +9346,10 @@ function bikeUnitLabel(u){return u==='min'?'min':(u==='dist'?distUnit():'kcal');
 function movement(){
   const t=nutToday();
   const num=(v,cap)=>(typeof v==='number'&&isFinite(v)&&v>0)?Math.min(v,cap):0;
-  const lvl=BIKE_LEVELS.some(b=>b.k===t.bikeLvl)?t.bikeLvl:'steady';
+  // nutToday() is a brand-new object every day, so an unset bikeLvl falls
+  // back to the athlete's own last choice (STATE.profile.bikeLevel, set by
+  // setBikeLvl) rather than silently resetting to 'steady' every morning.
+  const lvl=BIKE_LEVELS.some(b=>b.k===t.bikeLvl)?t.bikeLvl:(((STATE.profile&&STATE.profile.bikeLevel)&&BIKE_LEVELS.some(b=>b.k===STATE.profile.bikeLevel))?STATE.profile.bikeLevel:'steady');
   const unit=BIKE_UNITS.some(u=>u[0]===t.bikeUnit)?t.bikeUnit:'min';
   const jlvl=JACK_LEVELS.some(b=>b.k===t.jackLvl)?t.jackLvl:'steady';
   const junit=JACK_UNITS.some(u=>u[0]===t.jackUnit)?t.jackUnit:'min';
@@ -9458,7 +9510,48 @@ function setBikeUnit(u){
    card says so. */
 function setBikeLvl(k){
   const t=nutToday();t.bikeLvl=bikeLevel(k).k;
+  // Persist as the athlete's carried-forward default — bikeLvl itself is a
+  // fresh per-day field (nutToday() is a brand-new object every day), so
+  // without this the level silently reset to 'steady' every single morning.
+  if(!STATE.profile)STATE.profile={};
+  STATE.profile.bikeLevel=bikeLevel(k).k;
   syncStepHabit();save();renderFuel();
+}
+/* ---- Bike intensity progression, from real ride feedback ----------------
+   BIKE_LEVELS had a real dial and zero memory of how any ride at any level
+   actually went. Loaded work progresses on a real signal (double
+   progression, v226); the bike had none. Ask the same question a
+   completed VO2max/anaerobic bike ride already invites — the athlete just
+   finished it — and use the same double-progression rule: three easy
+   rides in a row at the SAME level suggest the next one up. Never
+   auto-applied — a suggestion, exactly like loadCeilingNote()'s "aim for"
+   hint never rewrites the target itself. */
+function bikeLevelFeel(){
+  const f=STATE.bikeLevelFeel;
+  return (f&&typeof f==='object'&&BIKE_LEVELS.some(b=>b.k===f.level)&&typeof f.streak==='number')?f:{level:'steady',streak:0};
+}
+function rateBikeRide(feel){
+  const lvl=(STATE.profile&&STATE.profile.bikeLevel)||'steady';
+  const cur=bikeLevelFeel();
+  STATE.bikeLevelFeel=(feel==='easy')
+    ?{level:lvl,streak:(cur.level===lvl?cur.streak:0)+1}
+    :{level:lvl,streak:0};
+  save();
+}
+function bikeLevelSuggestion(){
+  try{
+    const f=bikeLevelFeel();
+    if(f.streak<3)return null;
+    const i=BIKE_LEVELS.findIndex(b=>b.k===f.level);
+    if(i<0||i>=BIKE_LEVELS.length-1)return null;
+    return BIKE_LEVELS[i+1];
+  }catch(e){return null;}
+}
+function rateBikeAndClose(feel){
+  rateBikeRide(feel);
+  const next=bikeLevelSuggestion();
+  hiitQuit();
+  toast(next?('📈 3 easy rides at this level — try "'+next.label+'" next time?'):(feel==='easy'?'Noted':'Logged'));
 }
 /* The tick and the number must not contradict each other. Once anything is
    logged the habit mirrors the total; with nothing logged the manual tick is
@@ -12206,6 +12299,16 @@ function normalizeState(){
    if(!STATE.readiness||typeof STATE.readiness!=='object'||Array.isArray(STATE.readiness))STATE.readiness={};
    else Object.keys(STATE.readiness).forEach(k=>{const r=STATE.readiness[k];
      if(!r||typeof r!=='object'||!(typeof r.score==='number'&&isFinite(r.score)))delete STATE.readiness[k];});
+   // A junk bikeLevelFeel would either hide bikeLevelSuggestion() forever
+   // (a bad streak type never reaches 3) or, worse, feed a non-existent
+   // BIKE_LEVELS key into the picker — bikeLevelFeel() already guards its
+   // own read, but the stored value still has to be repaired at boot so a
+   // corrupt import cannot leave the field permanently unusable.
+   if(!STATE.bikeLevelFeel||typeof STATE.bikeLevelFeel!=='object'||Array.isArray(STATE.bikeLevelFeel)||
+      !BIKE_LEVELS.some(b=>b.k===STATE.bikeLevelFeel.level)||
+      !(typeof STATE.bikeLevelFeel.streak==='number'&&isFinite(STATE.bikeLevelFeel.streak)&&STATE.bikeLevelFeel.streak>=0))
+     STATE.bikeLevelFeel={level:'steady',streak:0};
+   if(P.bikeLevel!=null&&!BIKE_LEVELS.some(b=>b.k===P.bikeLevel))delete P.bikeLevel;
    /* Movement is stored per day, so a bad value hides in history rather than in
       today and only surfaces when that day is read back. Repair every one. */
    if(N&&N.days&&typeof N.days==='object'){

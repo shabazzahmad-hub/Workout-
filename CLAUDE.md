@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 22 suites, ~1,788 checks, run by `npm test` |
+| `tests/` | 22 suites, ~1,814 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -964,6 +964,76 @@ the scrim's `open` class, which is what "the sheet is closed" should assert
 on. Reading the sheet's own re-render *is* safe synchronously, because
 `openReadiness()`'s `openSheet()` call sets `innerHTML` directly with no
 timer involved — only the teardown path is deferred.
+
+## Joint-aware warm-up, and the bike's missing memory (v228)
+
+Two gaps, both the same shape: a system that had one half of a loop and not
+the other.
+
+**`safeFlow()` only SUBTRACTS.** It strips Arm Circles for a flagged
+shoulder and Glute Bridges for a flagged knee and adds nothing back, so the
+athlete who most needs prep got *less* warm-up than an unflagged one. That
+is backwards, and it is the same principle `correctiveBonus()` (v227) had
+already established for the session itself: avoidance is not enough, add
+real prep. `jointAwareWarmup()` runs BEFORE `safeFlow()` in `runWarmup()`
+and inserts one joint-specific item.
+
+**The added item must not be a name `FLOW_RISK` already knows.** Flow items
+carry a NAME, not an exId — that is the whole reason `FLOW_RISK` is
+name-keyed — so naming the low-back addition `'Glute Bridges'` or the
+shoulder one `'Arm Circles'` would let `safeFlow()`, running immediately
+afterwards, strip the very item just added for that exact joint. The
+distinct names (`'Spine Stability Prep'`, `'Shoulder Activation'`,
+`'Knee Prep — Glute Bridge'`) are load-bearing, not cosmetic, and the check
+that proves it asserts the added item **survives `safeFlow()`** rather than
+merely that `jointAwareWarmup()` returned it. Mutating the low-back entry's
+name to `'Standing Torso Twists'` (a real `FLOW_RISK` lowback entry) is what
+demonstrates that check can fail.
+
+**One bonus item, first flagged joint wins** — matching `correctiveBonus()`
+exactly. A warm-up that grows by one item per flag is a warm-up that gets
+longer the more limitations an athlete declares, which is the wrong
+direction for the athlete least able to sustain it.
+
+**`nutToday()` is a brand-new object every day, so a per-day field is not a
+setting.** `BIKE_LEVELS` had a real intensity dial stored only in
+`nutToday().bikeLvl` — so it silently reset to `'steady'` every single
+morning. Nobody noticed because the reset looks exactly like a fresh day.
+`setBikeLvl()` now also writes `STATE.profile.bikeLevel` and `movement()`
+falls back to it before defaulting. **Any dial the athlete sets that is
+stored in `nutToday()` needs to ask whether it is today's data or the
+athlete's preference** — the former belongs there, the latter does not.
+
+**And the dial had no memory of how any ride went.** `rateBikeRide()` /
+`bikeLevelSuggestion()` give it the same double-progression rule
+`loadProgression()` (v226) gave loaded work: three easy rides in a row at
+the SAME level suggest the next one up. Suggestion only, never applied —
+same posture as `loadCeilingNote()`'s "aim for" hint. Rating anything other
+than easy resets the streak to zero, and *switching levels* resets it too
+(`cur.level===lvl?cur.streak:0`), because three easy rides spread across
+three different intensities is not evidence about any one of them.
+
+**The rating only appears where the level system exists.** `ivDone()` gates
+it on `INTV.seq[0].exId==='bike'` — a sprint or a rope session has no
+`BIKE_LEVELS` behind it, and offering a dial-progression prompt for one
+would be a control wired to nothing. That gate needs mutants in **both**
+directions: forcing it false and forcing it true each kill a different
+check, and a suite that only proves the bike shows it would pass on a
+version that shows it to everybody.
+
+**A behaviour change that makes a value persist breaks tests that assumed
+it did not, and the failure looks like a bug in the new feature.** A
+pre-existing check in `07-movement.test.mjs` — "a day with nothing logged
+reads as zero" — cleared `nutToday()`'s per-day fields and asserted
+`movement()` read `lvl:'steady'`. It broke, but not because persistence is
+wrong: an *earlier block in the same file* iterates
+`BIKE_LEVELS.map(b => (setBikeLvl(b.k), …))` and leaves the last one
+(`'intervals'`) persisted. "Empty day" now spans two layers — the daily
+override and the carried-forward default — and the check has to clear both.
+Sequential `page.evaluate()` blocks in one suite share persistent `STATE`,
+so a new persistence layer is a new way for block N to reach block N+10.
+Every new block added here saves and restores what it touches
+(`const keep = JSON.stringify({…})`) for exactly this reason.
 
 ## Rendering
 
