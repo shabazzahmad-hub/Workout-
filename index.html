@@ -1538,7 +1538,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='226';
+const APP_VERSION='227';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -2052,6 +2052,16 @@ const FOCUS_POOL={
 // The quiz's "trouble zones" are body-shape words; map them onto training pools so
 // the answer actually steers the bonus instead of being stored and ignored.
 const TROUBLE_POOL={belly:'abs',lovehandles:'obliques',chest:'chest',arms:'arms',thighs:'legs',posture:'back'};
+/* Joint-specific corrective/stability work. Until now a flagged joint was
+   only ever AVOIDED — safeSwap routes around anything risky, but nothing
+   ever added anything back. Avoidance protects a joint from getting WORSE;
+   it does nothing to make it stronger, so an athlete who flags a shoulder
+   in week 1 is still only avoiding it, unchanged, in week 54. Scoped to
+   joints where the library has a real, non-flagged, genuinely targeted
+   stability movement — not a generic "safe" filler standing in for one.
+   Wrist and elbow have no such movement in the catalogue and are
+   deliberately left out rather than mislabeling a filler as corrective. */
+const CORRECTIVE_POOL={shoulder:['superman'],knee:['glutebridge'],lowback:['birddog','deadbug']};
 // Pick one bonus exercise for the athlete's priority area, avoiding what's already
 // in today's session, respecting equipment, and swapping around flagged joints.
 function focusBonus(pos,used){
@@ -2117,6 +2127,30 @@ function focusBonus(pos,used){
          reads it, but it is the only handle that proves the trouble-zone answers
          actually steer the selection — a regression suite asserts on it. */
       return {exId,...rx,sets:Math.min(rx.sets,2),slot:'focus',focus:true,focusKey:key};
+    }
+  }catch(e){}
+  return null;
+}
+/* One light joint-specific stability movement, added ON TOP of the session
+   — never in place of anything. Picks the FIRST flagged joint (in the
+   order the athlete declared them) that has real corrective content in
+   CORRECTIVE_POOL, running the exact same safeSwap/spaceSwap chain and
+   deterministic rotation focusBonus() uses, so a corrective pick that is
+   itself risky for a DIFFERENT flagged joint still gets swapped to
+   something safe rather than shipped as-is. */
+function correctiveBonus(pos,used){
+  try{
+    const lims=(STATE.profile&&Array.isArray(STATE.profile.limitations))?STATE.profile.limitations:[];
+    const gear=(STATE.profile&&STATE.profile.gear)||[];
+    const has=k=>{const e=EX[k];if(!e)return false;if(!e.equip)return true;return e.equip.every(g=>gear.includes(g));};
+    for(const joint of lims){
+      const pool=CORRECTIVE_POOL[joint];if(!pool||!pool.length)continue;
+      const cands=pool.filter(k=>EX[k]&&!used.has(k)&&has(k))
+        .map(k=>spaceSwap(safeSwap(k))).filter(k=>EX[k]&&!used.has(k)&&has(k));
+      if(!cands.length)continue;
+      const exId=cands[(pos.cycle*7+(pos.dayInWeek||0))%cands.length];
+      const rx=prescribe(exId,pos);
+      return {exId,...rx,sets:Math.min(rx.sets,2),slot:'corrective',corrective:true,correctiveJoint:joint};
     }
   }catch(e){}
   return null;
@@ -2327,7 +2361,10 @@ function buildSession(ptr){
   const coreSlots=main.filter(m=>EX[m.exId]&&CORE_REGIONS[EX[m.exId].region]).length;
   let bonus=(coreSlots>=3)?null:focusBonus(pos,used);
   if(sw&&sw.focus&&EX[sw.focus]&&swapStillValid(sw.focus))bonus={exId:sw.focus,...prescribe(sw.focus,pos),slot:'focus',focus:true};
-  if(bonus)main.push(bonus);
+  if(bonus){main.push(bonus);used.add(bonus.exId);}
+  // one light stability movement for a flagged joint, on top of everything above
+  const corrective=correctiveBonus(pos,used);
+  if(corrective)main.push(corrective);
   return {ptr,pos,cycle,week,session:pos.session,warmup:WARMUP,main,finisher,cooldown:COOLDOWN,dropped};
 }
 function sessionVolume(sess){
@@ -7648,6 +7685,57 @@ function weeklyRecap(){
     <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Close</button>`);
   try{coachSpeak(_recapSpeak,true);}catch(e){}
 }
+/* ---- Objective training-load tracking (independent of readiness) --------
+   readinessMult()/readinessSlump() are both SELF-reported — exactly the
+   signal a driven, "tough it out" athlete under-reports right up until
+   they get hurt. This tracks what was actually DONE: total sets
+   completed, the one volume currency every committed session already
+   produces regardless of gear, session type, or whether the guided
+   player was used. Acute:chronic workload ratio (Gabbett et al., 2016) —
+   this week's total against the trailing 4-week weekly average — flags a
+   real volume spike even on a day the athlete swears they feel great. */
+/* prescribe() calls deloadOn() -> loadSpike() -> acwr() on EVERY exercise of
+   EVERY session it prescribes, including a year of historical sessions the
+   Progress tab reconstructs for its charts. The first version scanned the
+   whole of STATE.logs once per day queried (28 scans per acwr() call) —
+   fine at a handful of sessions, 20 MILLION+ iterations across a real
+   render with a year of history and hundreds of prescribe() calls, and the
+   400ms performance budget caught it immediately. Build the date->sets
+   index ONCE per acwr() call and share it across all 28 day lookups. */
+function _setsByDateIndex(){
+  const idx={};
+  Object.values(STATE.logs||{}).forEach(log=>{
+    if(log&&log.done&&log.completedAt)idx[log.completedAt]=(idx[log.completedAt]||0)+(log.setsDone||0);
+  });
+  return idx;
+}
+function loggedSetsOn(dateISO,idx){return (idx||_setsByDateIndex())[dateISO]||0;}
+function weeklyLoad(weeksAgo,idx){
+  idx=idx||_setsByDateIndex();
+  let n=0;
+  for(let i=weeksAgo*7;i<weeksAgo*7+7;i++){
+    const d=new Date();d.setDate(d.getDate()-i);
+    n+=loggedSetsOn(localISO(d),idx);
+  }
+  return n;
+}
+/* Same caution as readinessSlump(): a ratio computed from mostly-empty
+   weeks means nothing. A brand-new athlete in week 1, or one only a
+   couple of sessions back from a layoff, must read as "not enough
+   history" — never as a spike purely for lack of a chronic baseline. */
+function acwr(){
+  try{
+    const idx=_setsByDateIndex();
+    const weeks=[weeklyLoad(0,idx),weeklyLoad(1,idx),weeklyLoad(2,idx),weeklyLoad(3,idx)];
+    if(weeks.filter(w=>w>0).length<3)return null;
+    const chronic=weeks.reduce((a,b)=>a+b,0)/4;
+    if(!(chronic>0))return null;
+    return weeks[0]/chronic;
+  }catch(e){return null;}
+}
+/* 1.5 is the commonly-cited high-injury-risk cutoff in the ACWR
+   literature — the "sweet spot" sits roughly 0.8-1.3. */
+function loadSpike(){const r=acwr();return r!=null&&r>=1.5;}
 /* ---- #3 Deload week ---- */
 /* Deload used to be a manual switch in Settings that nothing ever set, so a
    compliant athlete ran 378 sessions with no planned unloading and weeks 5-6 of
@@ -7657,7 +7745,7 @@ function deloadOn(pos){
     if(STATE.settings&&STATE.settings.deload===true)return true;
     if(STATE.settings&&STATE.settings.autoDeload===false)return false;
     const p=pos||posOf(STATE.progressPtr);
-    return (p&&p.week===WEEKS_PER_CYCLE)||readinessSlump();
+    return (p&&p.week===WEEKS_PER_CYCLE)||readinessSlump()||loadSpike();
   }catch(e){return false;}
 }
 /* deloadOn() is now a COMPOSITE (manual flag OR scheduled week 6 OR a readiness
@@ -7672,7 +7760,26 @@ function toggleDeload(){
   else{STATE.settings.deload=true;delete STATE.settings.autoDeload;}
   save();toast(deloadOn()?'Deload week on 🌙':'Deload off — full load');render();
 }
-function deloadBanner(){return deloadOn()?`<div class="note info" style="margin-top:12px">🌙 <b>Deload week — lighter load.</b> Sets and targets are eased so you recover and rebuild stronger. <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="toggleDeload()">End deload</button></div>`:'';}
+/* Every reason deloadOn() can be true shared one generic message. That's
+   fine for "manual" and "calendar week 6" — but a spike-only deload is
+   news the athlete did not expect, and telling them WHY (logged volume,
+   not the calendar) is what makes it read as a real signal and not a bug.
+   Only wins the message when it is the SOLE reason — manual/calendar/
+   slump all still take priority, exactly the order deloadOn() checks them.
+   Says "weekly volume", not "training load" — the Progress tab already
+   uses "Training load +X% vs start" for the unrelated STATE.adapt
+   percentage, and reusing the phrase here for a different number would
+   read as the same metric contradicting itself. */
+function deloadBanner(){
+  if(!deloadOn())return '';
+  const manual=STATE.settings&&STATE.settings.deload===true;
+  const calendar=(pos=>pos&&pos.week===WEEKS_PER_CYCLE)(posOf(STATE.progressPtr));
+  const spikeOnly=!manual&&!calendar&&!readinessSlump()&&typeof loadSpike==='function'&&loadSpike();
+  const msg=spikeOnly
+    ? '📈 <b>Weekly volume spiked — lighter load.</b> Your logged sets this week are well above your recent average. Targets are eased so you recover and rebuild stronger.'
+    : '🌙 <b>Deload week — lighter load.</b> Sets and targets are eased so you recover and rebuild stronger.';
+  return `<div class="note info" style="margin-top:12px">${msg} <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="toggleDeload()">End deload</button></div>`;
+}
 /* ---- #8 Beat tempo / style ---- */
 function beatTempoPref(){const t=STATE.settings&&STATE.settings.beatTempo;return (typeof t==='number'&&t>=60&&t<=110)?t:78;}
 /* Re-render after storing. Without it the preset chips did change the tempo —

@@ -1143,6 +1143,124 @@ export default async function run() {
     await ctx.close();
   }
 
+  // ---- objective training-load tracking (ACWR), independent of readiness --
+  /* readinessMult()/readinessSlump() are both SELF-reported — exactly the
+     signal a driven athlete under-reports right up until they get hurt.
+     acwr() tracks what was actually DONE (logged sets), comparing this
+     week's total against the trailing 4-week average — a real spike must
+     ease the load even when the athlete says they feel great, and it must
+     say NOTHING when there isn't enough history for the ratio to mean
+     anything. loggedSetsOn() buckets by localISO() exactly like
+     readinessSlump() does — the same west-of-UTC bug is possible here, so
+     this runs in the same non-UTC timezone context as that check. */
+  {
+    const ctx = await tzb.newContext({ timezoneId: 'America/Denver' });
+    const pg = await ctx.newPage();
+    await pg.clock.setFixedTime(new Date('2026-08-09T02:00:00Z'));   // evening, west of UTC
+    await pg.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
+    await waitForBoot(pg);
+    const r = await pg.evaluate(() => {
+      const keep = JSON.stringify(STATE.logs || {});
+      const dISO = daysAgo => { const d = new Date(); d.setDate(d.getDate() - daysAgo); return localISO(d); };
+      const fakeLog = (dateISO, sets) => ({ done: true, completedAt: dateISO, setsDone: sets, setsAsked: sets });
+      const out = {};
+
+      STATE.logs = {};
+      out.noHistory = { ratio: acwr(), spike: loadSpike() };
+
+      // steady 3x/week, 12 sets/session, for 4 weeks -> this week ~= chronic average
+      let idx = 0;
+      for (let w = 0; w < 4; w++) for (const dow of [0, 2, 4]) STATE.logs[idx++] = fakeLog(dISO(w * 7 + dow), 12);
+      out.steady = { ratio: acwr(), spike: loadSpike() };
+
+      // same 3 prior weeks, but this week trains every day -> a real spike
+      STATE.logs = {}; idx = 0;
+      for (let w = 1; w < 4; w++) for (const dow of [0, 2, 4]) STATE.logs[idx++] = fakeLog(dISO(w * 7 + dow), 12);
+      for (let dow = 0; dow < 7; dow++) STATE.logs[idx++] = fakeLog(dISO(dow), 12);
+      out.spike = { ratio: acwr(), spike: loadSpike() };
+      // isolate from calendar/readiness so this is provably the spike alone
+      const posKeep = STATE.progressPtr; STATE.progressPtr = 3;   // week 1 of cycle 0, not a deload week
+      delete STATE.readiness;
+      out.spikeAloneDeloads = deloadOn();
+      out.spikeBanner = deloadBanner();
+      STATE.progressPtr = posKeep;
+
+      // guard: only 1 of the 4 weekly buckets has anything -> not enough history
+      STATE.logs = {}; idx = 0;
+      for (let dow = 0; dow < 3; dow++) STATE.logs[idx++] = fakeLog(dISO(dow), 40);
+      out.thinHistory = { ratio: acwr(), spike: loadSpike() };
+
+      // abandoned and pain-stopped sessions must not count toward load. In
+      // real data completedAt is only ever set alongside done:true — an
+      // abandoned/stoppedForPain log never gets one — so a fixture missing
+      // completedAt would pass this check whether or not the done guard
+      // exists at all. Set completedAt explicitly too, so this actually
+      // exercises the done check and not just the date match.
+      STATE.logs = {};
+      STATE.logs[0] = { done: false, abandonedAt: dISO(0), completedAt: dISO(0), setsDone: 5 };
+      STATE.logs[1] = { done: false, stoppedForPain: dISO(1), completedAt: dISO(1), setsDone: 3 };
+      out.abandonedCounted = loggedSetsOn(dISO(0));
+      out.painStoppedCounted = loggedSetsOn(dISO(1));
+
+      // calendar week 6 still wins the banner even if a spike is ALSO true
+      STATE.logs = {}; idx = 0;
+      for (let w = 1; w < 4; w++) for (const dow of [0, 2, 4]) STATE.logs[idx++] = fakeLog(dISO(w * 7 + dow), 12);
+      for (let dow = 0; dow < 7; dow++) STATE.logs[idx++] = fakeLog(dISO(dow), 12);
+      const posKeep2 = STATE.progressPtr; STATE.progressPtr = SESSIONS_PER_CYCLE * WEEKS_PER_CYCLE - 1;
+      out.calendarStillWinsBanner = /Deload week —/.test(deloadBanner()) && !/Weekly volume spiked/.test(deloadBanner());
+      STATE.progressPtr = posKeep2;
+
+      STATE.logs = JSON.parse(keep);
+      return out;
+    });
+    t.eq('no logged history at all is "not enough data", never a spike', r.noHistory, { ratio: null, spike: false });
+    t.ok('a steady weekly pattern reads close to a 1.0 ratio', Math.abs(r.steady.ratio - 1) < 0.1, r.steady);
+    t.ok('and does not read as a spike', !r.steady.spike, r.steady);
+    t.ok('tripling this week\'s sets against a steady baseline reads as a real spike', r.spike.ratio >= 1.5 && r.spike.spike, r.spike);
+    t.ok('a spike alone (no calendar deload, no readiness slump) still triggers deloadOn()', r.spikeAloneDeloads, r);
+    t.ok('and the banner names the REAL reason — weekly volume, not the generic deload message', /Weekly volume spiked/.test(r.spikeBanner), r.spikeBanner);
+    t.eq('with only 1 of 4 weeks logged, the ratio is withheld rather than guessed', r.thinHistory, { ratio: null, spike: false });
+    t.eq('an abandoned session contributes zero sets to the load', r.abandonedCounted, 0);
+    t.eq('a pain-stopped session contributes zero sets to the load', r.painStoppedCounted, 0);
+    t.ok('the calendar deload week still shows the generic message even with a spike also true', r.calendarStillWinsBanner, r);
+    await ctx.close();
+  }
+
+  // ---- acwr() stays cheap at a realistic year of REAL matching history ----
+  /* The first version scanned all of STATE.logs once per day queried (28
+     scans per acwr() call) — invisible at a handful of sessions, and
+     deloadOn() (which calls acwr()) runs on every exercise of every
+     prescribe() call, including historical ones the Progress tab
+     reconstructs. The launch-gates performance budget caught this by
+     accident (its fabricated logs use a `date` field, not `completedAt`,
+     so they never actually match — the cost was in scanning regardless of
+     match count). This is the direct, ACWR-specific version: real
+     completedAt-matching entries, called repeatedly, with a real budget. */
+  {
+    const ctx = await tzb.newContext();
+    const pg = await ctx.newPage();
+    await pg.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
+    await waitForBoot(pg);
+    const r = await pg.evaluate(() => {
+      STATE.logs = {};
+      for (let i = 0; i < 365; i++) {
+        const d = new Date(); d.setDate(d.getDate() - i);
+        STATE.logs[i] = { done: true, completedAt: localISO(d), setsDone: 12 };
+      }
+      const t0 = performance.now();
+      for (let i = 0; i < 300; i++) deloadOn();
+      const ms = performance.now() - t0;
+      const ratio = acwr();
+      STATE.logs = {};
+      return { ms, ratio };
+    });
+    t.ok('300 deloadOn() calls against a year of real logged history stay well under budget',
+      r.ms < 200, r);
+    t.ok('guard: this really did compute a real ratio, not skip the work entirely',
+      typeof r.ratio === 'number' && Math.abs(r.ratio - 1) < 0.05, r);
+    await ctx.close();
+  }
+
   await tzb.close();
 
   srv.close();
