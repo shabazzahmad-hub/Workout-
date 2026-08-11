@@ -583,6 +583,83 @@ export default async function run() {
     t.eq('no swap target needs equipment its source did not', r.bad, []);
   }
 
+  /* ---- dumbbell and kettlebell full-body compounds ------------------------
+     The weights library had exactly one genuine full-body compound per
+     implement (dbthruster, kbcp) buried among single-pattern isolation moves
+     (goblet squat, RDL, row, curl…). dbcp, dbmanmaker, dbdevil, kbsnatch,
+     kbtgu and kbthruster round that out — real ground-to-overhead /
+     loaded-hinge movements that train the body as one chain, not another
+     accessory. dbcarry fills a plain coverage gap: a dumbbell-only athlete
+     had no loaded carry at all, only kbcarry did.
+
+     The generic "flagged joints" sample two blocks up proves the SWAP
+     mechanism works for whatever IS flagged; it says nothing about whether
+     THESE SEVEN were ever flagged in the first place. An exercise nobody
+     added to JOINT_RISK never shows up in that sample's risky list, not
+     because it is safe but because risky() was never asked about it — the
+     same shape of gap that let dbpress and kbcp through 153 and 147
+     contraindicated circuits before safeSwap covered this track at all.
+     Assert JOINT_RISK membership directly, independent of the sample. */
+  {
+    const r = await page.evaluate(() => {
+      const NEW = ['dbcp', 'dbmanmaker', 'dbdevil', 'dbcarry', 'kbsnatch', 'kbtgu', 'kbthruster'];
+      const flaggedFor = k => Object.keys(JOINT_RISK).filter(j => JOINT_RISK[j].includes(k));
+      const present = NEW.map(k => !!EX[k]);
+      const equipOk = NEW.map(k => !!(EX[k] && EX[k].equip && EX[k].equip.length));
+      const patternOk = NEW.map(k => !!(EX[k] && EX[k].pattern));
+      const sameFamily = NEW.map(k => {
+        const want = k[0] === 'k' ? 'kettlebell' : 'dumbbell';
+        return !!(EX[k].equip && EX[k].equip.length === 1 && EX[k].equip[0] === want);
+      });
+      const flags = {}; NEW.forEach(k => { flags[k] = flaggedFor(k); });
+      const keep = JSON.stringify({ g: STATE.profile.gear, l: STATE.profile.limitations });
+      STATE.profile.gear = ['dumbbell', 'kettlebell'];
+      const swaps = {}; const landsSafe = {}; const staysInFamily = {};
+      const risky = j => (STATE.profile.limitations || []).some(l => (JOINT_RISK[l] || []).includes(j));
+      NEW.forEach(k => {
+        // an unflagged movement (dbcarry) is legitimately never risky —
+        // fall back to 'shoulder' just so the swap path still runs on it
+        STATE.profile.limitations = flags[k].length ? flags[k] : ['shoulder'];
+        swaps[k] = safeSwap(k);
+        landsSafe[k] = !risky(swaps[k]);
+        const want = k[0] === 'k' ? 'kettlebell' : 'dumbbell';
+        staysInFamily[k] = !!(EX[swaps[k]] && EX[swaps[k]].equip && EX[swaps[k]].equip.includes(want));
+      });
+      // in an unflagged pool, every one of them is reachable — the reverse
+      // of the point above: a movement that IS safe must not be swapped away
+      STATE.profile.limitations = [];
+      const pool = weightsPool();
+      const inPool = NEW.map(k => pool.includes(k));
+      const seen = new Set();
+      for (let i = 0; i < 80; i++) (buildWeightsSession() || []).forEach(m => seen.add(m.exId));
+      const everAppears = NEW.map(k => seen.has(k));
+      const k2 = JSON.parse(keep);
+      STATE.profile.gear = k2.g; STATE.profile.limitations = k2.l;
+      return { present, equipOk, patternOk, sameFamily, flags, landsSafe, staysInFamily, inPool, everAppears };
+    });
+    t.ok('all seven new compounds exist', r.present.every(Boolean), r.present);
+    t.ok('each carries equip', r.equipOk.every(Boolean), r.equipOk);
+    t.ok('each carries a pattern (equip without pattern is unreachable in the circuit)', r.patternOk.every(Boolean), r.patternOk);
+    t.ok('each is tagged to its own implement only, not mixed', r.sameFamily.every(Boolean), r.sameFamily);
+    t.ok('dbcp is flagged shoulder + lowback (loaded floor clean to overhead)',
+      r.flags.dbcp.includes('shoulder') && r.flags.dbcp.includes('lowback'), r.flags.dbcp);
+    t.ok('dbmanmaker is flagged shoulder + lowback + wrist (plank, clean and overhead in one)',
+      ['shoulder', 'lowback', 'wrist'].every(j => r.flags.dbmanmaker.includes(j)), r.flags.dbmanmaker);
+    t.ok('dbdevil is flagged shoulder + lowback + wrist (burpee into a double overhead snatch)',
+      ['shoulder', 'lowback', 'wrist'].every(j => r.flags.dbdevil.includes(j)), r.flags.dbdevil);
+    t.eq('dbcarry carries no joint flag, matching kbcarry\'s precedent', r.flags.dbcarry, []);
+    t.ok('kbsnatch is flagged shoulder + lowback (ballistic hip-to-overhead)',
+      r.flags.kbsnatch.includes('shoulder') && r.flags.kbsnatch.includes('lowback'), r.flags.kbsnatch);
+    t.ok('kbtgu is flagged shoulder (locked overhead through the whole rep)',
+      r.flags.kbtgu.includes('shoulder'), r.flags.kbtgu);
+    t.ok('kbthruster is flagged shoulder + lowback (mirrors dbthruster)',
+      r.flags.kbthruster.includes('shoulder') && r.flags.kbthruster.includes('lowback'), r.flags.kbthruster);
+    t.ok('every flagged one swaps to something that clears the flag', Object.values(r.landsSafe).every(Boolean), r.landsSafe);
+    t.ok('and the swap stays on kit the athlete still owns', Object.values(r.staysInFamily).every(Boolean), r.staysInFamily);
+    t.ok('all seven are reachable in the pool when nothing is flagged', r.inPool.every(Boolean), r.inPool);
+    t.ok('and all seven actually turn up in the circuit, not just the pool', r.everAppears.every(Boolean), r.everAppears);
+  }
+
   /* ---- Special HIIT respects the same flags as everything else -----------
      HIIT_POOL is a flat literal and startHiitSpecial() used it RAW.
      startHiit() goes through buildSession() and was fine; this path was not,

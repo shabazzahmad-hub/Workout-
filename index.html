@@ -1120,6 +1120,18 @@ const EX = {
     why:'A total-body strength builder — clean to the shoulder, press overhead. Legs, back, shoulders, core.',
     steps:['Clean the bell(s) to the shoulder.','Brace and press overhead to lockout.','Lower to the shoulder, then to the floor. Repeat.'],
     cues:['Tame the arc on the clean','Ribs down on the press','Full lockout overhead'],mistakes:['Banging the wrist','Arching the low back']},
+  kbsnatch:{name:'Kettlebell Snatch',region:'strength',unit:'reps',img:'ex-kbsnatch.jpg',anchor:null,hardness:1.2,base:8,rest:70,equip:['kettlebell'],pattern:'power',
+    why:'An explosive hip-to-overhead throw in one motion — the single best total-body power and conditioning kettlebell movement.',
+    steps:['Hike the bell back between the legs like a swing.','Snap the hips and pull it up close to the body.','Punch the hand through as the bell flips overhead to lockout.','Lower back to the hike position under control. Switch hands and repeat. Count each side as a rep.'],
+    cues:['Power from the hips, not the arm','Let the bell float — do not muscle it up','Punch through at the top for a soft landing'],mistakes:['Muscling it up with the shoulder','Letting the bell bang the wrist or forearm']},
+  kbtgu:{name:'Kettlebell Turkish Get-Up',region:'strength',unit:'reps',img:'ex-kbtgu.jpg',anchor:null,hardness:1.25,base:6,rest:90,equip:['kettlebell'],pattern:'power',
+    why:'Ground to standing under load, through every position in between — the single best total-body strength, stability and shoulder-health movement there is.',
+    steps:['Lie on your back holding the bell in one hand, arm locked straight up.','Roll to the elbow, then post up onto the hand, bell locked overhead the whole time.','Sweep the back leg through and rise to a lunge, then stand tall.','Reverse the steps back to the floor under control. Switch sides. Count each side as a rep.'],
+    cues:['Eyes on the bell the entire rep','Lock the arm out and keep it stacked overhead','Move slow and controlled through each position'],mistakes:['Letting the arm bend or drift from vertical','Rushing through the transitions']},
+  kbthruster:{name:'Kettlebell Thruster',region:'strength',unit:'reps',img:'ex-kbthruster.jpg',anchor:null,hardness:1.15,base:8,rest:65,equip:['kettlebell'],pattern:'power',
+    why:"A squat-to-press in one — the kettlebell's version of the classic total-body power and conditioning builder.",
+    steps:['Hold the bell(s) at the shoulders, drop into a front squat.','Drive up explosively and press overhead in one motion.','Lower to the shoulders and flow into the next rep.'],
+    cues:['Use the leg drive','Full lockout overhead','Brace the core throughout'],mistakes:['Pressing before standing','Arching the back']},
   kbrow:{name:'Kettlebell Bent-Over Row',region:'back',unit:'reps',img:'ex-kbrow.jpg',anchor:null,hardness:1,base:10,rest:55,equip:['kettlebell'],pattern:'pull',
     why:'Horizontal pulling for a thick, strong back — balances all the pressing and pull-ups.',
     steps:['Hinge to ~45°, flat back, bell(s) hanging.','Row to the hip, squeezing the shoulder blade.','Lower with a full stretch.'],
@@ -1173,6 +1185,18 @@ const EX = {
     why:'A squat-to-press in one — a total-body power and conditioning builder that torches calories.',
     steps:['Dumbbells at the shoulders, drop into a front squat.','Drive up explosively and press both bells overhead in one motion.','Lower to the shoulders and flow into the next rep.'],
     cues:['Use the leg drive','Full lockout overhead','Brace the core throughout'],mistakes:['Pressing before standing','Arching the back']},
+  dbcp:{name:'Dumbbell Clean & Press',region:'strength',unit:'reps',img:'ex-dbcp.jpg',anchor:null,hardness:1.15,base:8,rest:70,equip:['dumbbell'],pattern:'pushv',
+    why:'A total-body strength builder — clean both bells to the shoulders, then press overhead. Legs, back, shoulders and core all work together.',
+    steps:['Hinge and clean both dumbbells from the floor to the shoulders in one motion.','Brace and press both bells overhead to lockout.','Lower to the shoulders, then to the floor. Repeat.'],
+    cues:['Drive with the legs and hips on the clean','Ribs down on the press','Full lockout overhead'],mistakes:['Curling the bells up instead of cleaning','Arching the low back on the press']},
+  dbmanmaker:{name:'Dumbbell Man Maker',region:'strength',unit:'reps',img:'ex-dbmanmaker.jpg',anchor:null,hardness:1.3,base:6,rest:80,equip:['dumbbell'],pattern:'power',
+    why:'The ultimate total-body finisher — a push-up, a row each side, a clean and a thruster in one continuous rep. Hits nearly every muscle and torches calories.',
+    steps:['From a high plank gripping both dumbbells, do a push-up.','Row one bell to the hip, then the other.','Jump or step the feet up outside the bells and stand, cleaning them to the shoulders.','Press or thrust both bells overhead, set them down and repeat.'],
+    cues:['Hips stay level through the rows','Explode up out of the clean','Full lockout overhead'],mistakes:['Twisting the hips on the row','Rushing the transition and losing form']},
+  dbdevil:{name:"Dumbbell Devil's Press",region:'strength',unit:'reps',img:'ex-dbdevil.jpg',anchor:null,hardness:1.35,base:6,rest:85,equip:['dumbbell'],pattern:'power',
+    why:'A burpee into a double dumbbell snatch overhead — one of the most brutal total-body conditioning moves there is. Legs, back, shoulders, core and lungs all pay for it.',
+    steps:['Squat down and place both dumbbells on the floor, hands on top.','Jump the feet back to a plank, then jump them back in.','Explode up, swinging both bells from the floor to overhead in one motion.','Lower the bells back to the floor and repeat.'],
+    cues:['Drive through the legs, not the arms, on the swing up','Full lockout overhead','Land soft, chest up'],mistakes:['Muscling the bells up with the arms','Losing the plank position on the jump back']},
   dbcurl:{name:'Dumbbell Biceps Curl',region:'arms',unit:'reps',img:'ex-dbcurl.jpg',anchor:null,hardness:1,base:12,rest:45,equip:['dumbbell'],pattern:'pull',
     why:'Direct arm work to build and strengthen the biceps — a balance to all the pressing.',
     steps:['Stand tall, a dumbbell in each hand, palms forward.','Curl both bells to the shoulders, elbows pinned to the sides.','Lower slowly under control.'],
@@ -1185,6 +1209,10 @@ const EX = {
     why:'Loaded rotation for the obliques — carves the waist and builds real rotational strength.',
     steps:['Sit with the heels up, leaning back slightly, holding one dumbbell at the chest.','Rotate to tap the bell by each hip.','Keep the chest tall and control the turn. Count each side as a rep.'],
     cues:['Rotate from the ribs','Feet up for more','Slow and controlled'],mistakes:['Just moving the arms','Rounding the back']},
+  dbcarry:{name:"Dumbbell Farmer's Carry",region:'strength',unit:'time',img:'ex-dbcarry.jpg',anchor:null,hardness:1,base:40,rest:50,equip:['dumbbell'],pattern:'core',
+    why:'A loaded carry that builds a crushing grip, a braced anti-tilt core and total-body strength — one of the most transferable drills there is.',
+    steps:['Stand tall with a dumbbell in each hand at your sides.','Brace the core and pull the shoulders down and back.','Walk with short, controlled steps for the time.','Keep the torso upright — do not lean or tilt.'],
+    cues:['Chest up, shoulders back','Squeeze the handles hard','Steady, even steps'],mistakes:['Leaning or tilting to one side','Shuffling / rushing the steps']},
   /* -- extra staples -- */
   asiansquat:{name:'Asian Squat',region:'legs',unit:'time',img:'ex-asiansquat.jpg',anchor:null,hardness:1.5,base:40,rest:35,
     why:'A deep, flat-footed resting squat that restores hip, knee and ankle mobility and builds the position strength most training misses — great for a strong, pain-free squat.',
@@ -1510,7 +1538,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='223';
+const APP_VERSION='224';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -8429,11 +8457,11 @@ function calcOneRM(){
 const JOINTS=[['knee','Knee'],['shoulder','Shoulder'],['wrist','Wrist'],['lowback','Lower back'],['elbow','Elbow']];
 const JOINT_RISK={
   knee:['pistol','boxpistol','jumpsquat','tuckjump','broadjump','splitjump','bulgarian','burpee','burpeetuck','walkinglunge','sissysquat','cossack','sprawl','latshuffle','nordic','asiansquat','wallsit','skater','squatjack','splitsquat','jumpingjack','sealjack','highknees','buttkick'],
-  shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','benchdip','dbpress','kbcp','dbthruster','hanglegraise','lsit','dragonflag','plankrot','wallwalk','pseudoplanche','typewriter','hindupushup','pullup','chinup','widepullup','negpullup','deadhang','scappull','invertedrow','invertedrowelev','tablerow','crabwalk','reverseplank','abroll','mbslam','ropeslam','ropewave','kbswing','atomicpushup','declinepushup','burpee','burpeetuck'],
+  shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','benchdip','dbpress','kbcp','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbtgu','kbthruster','hanglegraise','lsit','dragonflag','plankrot','wallwalk','pseudoplanche','typewriter','hindupushup','pullup','chinup','widepullup','negpullup','deadhang','scappull','invertedrow','invertedrowelev','tablerow','crabwalk','reverseplank','abroll','mbslam','ropeslam','ropewave','kbswing','atomicpushup','declinepushup','burpee','burpeetuck'],
   /* fistpushup is deliberately ABSENT: knuckles down keeps the wrist straight,
      which is the whole point of the movement. */
-  wrist:['pushup','kneepushup','inclinepushup','declinepushup','diamondpushup','closepushup','archerpushup','spidermanpushup','superpushup','planktap','mountainclimber','dbrenegade','abroll','lsit','isoclimber','bearcrawl','crabwalk','plankjack','crossclimber','bearhold','pseudoplanche','typewriter','hindupushup','tempopushup','inchworm','pikepushup','elevatedpike','wallwalk','wallhandstand','hspushup','atomicpushup','burpee','burpeetuck','halfburpee','squatthrust','sprawl','reverseplank'],
-  lowback:['superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','mbslam','ropeslam','windshield','dragonflag','situp','vertcrunch','situptwist','vsit','slrdl','swimmer','legraise','hanglegraise','kneeraise','hiplift','flutter','scissors','vup','tuckvup','russiantwist','weightedtwist','mbtwist','mbsitup','seatedtwist','abroll','longplank','ruck','dipknee','heeltouch','crunch','bicycle','revcrunch'],
+  wrist:['pushup','kneepushup','inclinepushup','declinepushup','diamondpushup','closepushup','archerpushup','spidermanpushup','superpushup','planktap','mountainclimber','dbrenegade','dbmanmaker','dbdevil','abroll','lsit','isoclimber','bearcrawl','crabwalk','plankjack','crossclimber','bearhold','pseudoplanche','typewriter','hindupushup','tempopushup','inchworm','pikepushup','elevatedpike','wallwalk','wallhandstand','hspushup','atomicpushup','burpee','burpeetuck','halfburpee','squatthrust','sprawl','reverseplank'],
+  lowback:['superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbthruster','mbslam','ropeslam','windshield','dragonflag','situp','vertcrunch','situptwist','vsit','slrdl','swimmer','legraise','hanglegraise','kneeraise','hiplift','flutter','scissors','vup','tuckvup','russiantwist','weightedtwist','mbtwist','mbsitup','seatedtwist','abroll','longplank','ruck','dipknee','heeltouch','crunch','bicycle','revcrunch'],
   elbow:['dips','benchdip','diamondpushup','closepushup','chinup','negpullup','dbcurl','typewriter','pseudoplanche'],
 };
 /* One flat literal edited by three feature waves ended up with 126 properties
@@ -8475,6 +8503,7 @@ const SAFE_SWAP={
   inclinepushup:'glutebridge',
   dips:'kneepushup',benchdip:'kneepushup',dipknee:'kneeplank',
   dbpress:'dbfloor',kbcp:'kbrow',dbthruster:'dbgoblet',dbrenegade:'dbrow',dbcurl:'dbrow',
+  dbcp:'dbgoblet',dbmanmaker:'dbgoblet',dbdevil:'dbgoblet',kbsnatch:'kbgoblet',kbtgu:'kbgoblet',kbthruster:'kbgoblet',
   // pulling — lands on a bar-free row, not on a back extension
   pullup:'towelrow',widepullup:'towelrow',chinup:'towelrow',negpullup:'towelrow',
   invertedrow:'towelrow',invertedrowelev:'towelrow',tablerow:'towelrow',towelrow:'superman',

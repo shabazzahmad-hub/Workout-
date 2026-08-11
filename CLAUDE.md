@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 22 suites, ~1,710 checks, run by `npm test` |
+| `tests/` | 22 suites, ~1,726 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -571,6 +571,68 @@ caught it immediately. Fixed by giving every `SKIP_FORMATS` entry (including
 the one `startSkipCustom()` builds at runtime) its own explicit
 `exId:'skip'`, matching the pattern grip and box already used, rather than
 leaning on fallback order to do it implicitly.
+
+## Full-body compound loading (dumbbell + kettlebell)
+
+The weights library had exactly one genuine full-body compound per implement
+— `dbthruster`, `kbcp` — sitting among a set of single-pattern isolation and
+regional moves (goblet squat, RDL, row, curl, twist). v224 added `dbcp`,
+`dbmanmaker`, `dbdevil`, `dbcarry`, `kbsnatch`, `kbtgu` and `kbthruster`: real
+ground-to-overhead and loaded-hinge chains, plus `dbcarry` to close a plain
+coverage gap — a dumbbell-only athlete had no loaded carry at all, only
+`kbcarry` did.
+
+**A new heavy compound needs the same joint-risk treatment as the rest of the
+library, not a pass because it is new.** `dbpress` and `kbcp` shipped
+unflagged once and came through 153 and 147 contraindicated weights circuits
+before `safeSwap` covered this track (see the weights-circuit note above).
+Every one of the seven new entries is flagged in `JOINT_RISK` for whatever it
+actually loads — shoulder for anything locked overhead, lowback for anything
+hinging or cleaning off the floor under load, wrist for anything gripping the
+implement from a plank — and carries a `SAFE_SWAP` entry that lands on
+`dbgoblet` / `kbgoblet`: a squat pattern in the same equipment family, so a
+flagged athlete keeps training on the kit they own instead of losing the slot
+to a bodyweight fallback. `dbcarry` carries no flag at all, matching
+`kbcarry`'s existing precedent — a loaded carry is close to self-limiting and
+was never on the list.
+
+**The generic "flagged joints don't leak" sample proves the swap mechanism;
+it cannot prove new content was ever flagged in the first place.** That
+suite's assertion is `risky.length === 0` over whatever `buildWeightsSession()`
+returns — an exercise nobody added to `JOINT_RISK` simply never enters the
+`risky` bucket, not because it is safe but because `risky()` was never asked
+about it. It would pass whether or not any of the seven new movements carried
+a flag at all. The check that actually catches a missing flag asserts
+`JOINT_RISK` membership directly, per exercise, independent of the sample —
+and it earned its keep in mutation testing: dropping `dbmanmaker` from the
+wrist list crashed the FIRST version of that check instead of failing it, because
+a `sameFamily` assertion read `EX[k].equip.length` without guarding a
+possible `undefined` — the same "guard immediately after computing the value
+the rest of the block depends on" lesson as the builder-pool hang, this time
+caught before shipping rather than after.
+
+**Not every escaped mutant is a check defect.** Pointing `SAFE_SWAP.dbcp` at
+`dbpress` (itself shoulder-flagged) did not fail the "lands somewhere safe"
+check, because `safeSwap`'s own chain resolved it in a second hop —
+`dbpress`'s existing swap to `dbfloor` absorbed the injected defect. The
+athlete still lands somewhere safe on kit they own either way, so the
+non-catch is correct: it is testing the outcome that matters (does the
+athlete end up safe) rather than the specific hop that produces it. A
+*self-referencing* swap (`dbcp:'dbcp'`) is a different animal — `safeSwap`
+breaks its chain the moment a hop returns the same id, falls through to the
+equipment-FREE regional fallback, and hands a dumbbell-owning athlete a
+bodyweight substitute for a movement they have the kit to do safely. That one
+the "stays in family" check catches directly; the pre-existing "no swap needs
+equipment its source lacked" check does not, because a self-loop declares no
+extra equipment at all.
+
+**The images do not exist yet.** All seven exercises ship with a placeholder
+JPEG (`800×800`, grey studio backdrop matching the real photo set, name +
+"PHOTO PENDING" centered) rather than a missing file — `sw.js`'s precache
+list is asset-existence-checked at test time (`01-data.test.mjs`), so
+referencing a file that is not on disk is a shipping-blocker, not a
+runtime-only concern the `onerror` fallback quietly absorbs. Swapping in the
+real photo later is a drop-in: same filename, no code change.
 
 ## Editing `EX` and the swap maps
 

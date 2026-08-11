@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v223';
+const CACHE = 'coreforge-v224';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
@@ -60,8 +60,9 @@ const EXTRA = [
   './ex-birddog.jpg','./ex-boxpistol.jpg','./ex-broadjump.jpg','./ex-bulgarian.jpg',
   './ex-burpee.jpg','./ex-burpeetuck.jpg','./ex-calfraise.jpg','./ex-chinup.jpg',
   './ex-closepushup.jpg','./ex-copenhagen.jpg','./ex-cossack.jpg','./ex-crabwalk.jpg',
-  './ex-crossclimber.jpg','./ex-dbcurl.jpg','./ex-dbfloor.jpg','./ex-dbgoblet.jpg',
-  './ex-dblunge.jpg','./ex-dbpress.jpg','./ex-dbrdl.jpg','./ex-dbrenegade.jpg',
+  './ex-crossclimber.jpg','./ex-dbcarry.jpg','./ex-dbcp.jpg','./ex-dbcurl.jpg',
+  './ex-dbdevil.jpg','./ex-dbfloor.jpg','./ex-dbgoblet.jpg',
+  './ex-dblunge.jpg','./ex-dbmanmaker.jpg','./ex-dbpress.jpg','./ex-dbrdl.jpg','./ex-dbrenegade.jpg',
   './ex-dbrow.jpg','./ex-dbthruster.jpg','./ex-dbtwist.jpg','./ex-deadhang.jpg',
   './ex-declinepushup.jpg','./ex-diamondpushup.jpg','./ex-dipknee.jpg','./ex-dips.jpg',
   './ex-dragonflag.jpg','./ex-elevatedpike.jpg','./ex-fastfeet.jpg','./ex-fistpushup.jpg',
@@ -70,7 +71,8 @@ const EXTRA = [
   './ex-hollowrock.jpg','./ex-hspushup.jpg','./ex-inclinepushup.jpg','./ex-invertedrowelev.jpg',
   './ex-isoclimber.jpg','./ex-jumpsquat.jpg','./ex-kbcarry.jpg','./ex-kbcp.jpg',
   './ex-kbgoblet.jpg','./ex-kbhalo.jpg','./ex-kbheli.jpg','./ex-kblunge.jpg',
-  './ex-kbrdl.jpg','./ex-kbrow.jpg','./ex-kbswing.jpg','./ex-kneeraise.jpg',
+  './ex-kbrdl.jpg','./ex-kbrow.jpg','./ex-kbsnatch.jpg','./ex-kbswing.jpg',
+  './ex-kbtgu.jpg','./ex-kbthruster.jpg','./ex-kneeraise.jpg',
   './ex-latshuffle.jpg','./ex-legraise.jpg','./ex-longplank.jpg','./ex-lsit.jpg',
   './ex-march.jpg','./ex-mbsitup.jpg','./ex-mbslam.jpg','./ex-mbtwist.jpg',
   './ex-mountainclimber.jpg','./ex-negpullup.jpg','./ex-nordic.jpg','./ex-pikepushup.jpg',
