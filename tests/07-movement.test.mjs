@@ -730,6 +730,93 @@ export default async function run() {
     t.ok('nothing renders as NaN or undefined', !/NaN|undefined/.test(r.html), r.html.slice(0, 400));
   }
 
+  /* ---- 30/30s and the Gibala 6x30 all-out — two more distinct stimuli ----
+     Neither is a variant of the 4x4: 30/30s is a real anaerobic pace done
+     repeatably, 6x30 is truly maximal effort done rarely, with a long enough
+     recovery that "maximal" stays honest on the sixth rep as well as the
+     first. Both reuse the SAME gating and exId-resolution machinery the 4x4
+     was built on, so these checks focus on what is actually NEW: the numbers
+     for each protocol, and that a third format did not slip into the wrong
+     picker somewhere along the way. */
+  {
+    const r = await page.evaluate(() => {
+      const mk = k => {
+        const seq = buildIntervals([{ exId: 'bike', unit: 'time', target: 30, rest: 20, sets: 1 }], k);
+        const work = seq.filter(s => s.type === 'work'), rest = seq.filter(s => s.type === 'rest');
+        return {
+          info: fmtInfo(k),
+          workCount: work.length, workSecs: [...new Set(work.map(s => s.secs))],
+          restCount: rest.length, restSecs: [...new Set(rest.map(s => s.secs))],
+          totalSecs: seq.reduce((a, s) => a + s.secs, 0),
+          lastIsWork: seq[seq.length - 1].type === 'work',
+          exIds: [...new Set(seq.map(s => s.exId))],
+        };
+      };
+      return { thirty: mk('vo2max3030'), sit: mk('sit6x30') };
+    });
+    t.eq('30/30s: exactly 16 work blocks', r.thirty.workCount, 16);
+    t.eq('each 30 seconds, nothing else', r.thirty.workSecs, [30]);
+    t.eq('and 15 rest blocks — one fewer than work', r.thirty.restCount, 15);
+    t.eq('each rest also 30 seconds', r.thirty.restSecs, [30]);
+    t.eq('total session time is 15.5 minutes', r.thirty.totalSecs, 930);
+    t.ok('ends on work, no dangling rest', r.thirty.lastIsWork, r.thirty);
+    t.eq('resolves to whichever exercise was passed in, not a hard-coded one', r.thirty.exIds, ['bike']);
+
+    t.eq('6×30: exactly 6 work blocks', r.sit.workCount, 6);
+    t.eq('each 30 seconds — genuinely short, meant to be all-out', r.sit.workSecs, [30]);
+    t.eq('and 5 rest blocks', r.sit.restCount, 5);
+    t.eq('each a full 4 minutes — the long recovery is the whole point', r.sit.restSecs, [240]);
+    t.eq('total session time is 23 minutes', r.sit.totalSecs, 1380);
+    t.ok('ends on work, no dangling rest', r.sit.lastIsWork, r.sit);
+    t.eq('also resolves to whichever exercise was passed in', r.sit.exIds, ['bike']);
+
+    // guard: three real, distinct protocols now exist, not the same numbers three times
+    const shapes = [r.thirty, r.sit].map(x => x.workSecs[0] + '/' + x.restSecs[0] + 'x' +
+      (x.workCount + x.restCount));
+    t.eq('guard: the two new protocols are not secretly identical to each other',
+      new Set(shapes).size, 2);
+  }
+  {
+    // the picker: both new formats offered for bike and sprint, withheld from bodyweight HIIT
+    const r = await page.evaluate(() => {
+      const out = {};
+      specialChooser('bike'); out.bikeHtml = document.querySelector('#sheet').innerHTML;
+      specialChooser('sprint'); out.sprintHtml = document.querySelector('#sheet').innerHTML;
+      specialChooser('hiit'); out.hiitHtml = document.querySelector('#sheet').innerHTML;
+      openHiitChooser(); out.todayHtml = document.querySelector('#sheet').innerHTML;
+      try { closeSheet(); } catch (e) {}
+      return out;
+    });
+    t.ok('30/30s is offered on the bike', /30\/30s VO2max/.test(r.bikeHtml), r.bikeHtml.slice(0, 600));
+    t.ok('and for sprints', /30\/30s VO2max/.test(r.sprintHtml), r.sprintHtml.slice(0, 600));
+    t.ok('6×30 all-out is offered on the bike', /6×30 All-Out/.test(r.bikeHtml), r.bikeHtml.slice(0, 600));
+    t.ok('and for sprints', /6×30 All-Out/.test(r.sprintHtml), r.sprintHtml.slice(0, 600));
+    t.ok('neither shows up for bodyweight HIIT',
+      !/30\/30s VO2max/.test(r.hiitHtml) && !/6×30 All-Out/.test(r.hiitHtml), r.hiitHtml.slice(0, 600));
+    t.ok('nor for converting today\'s bodyweight circuit into intervals',
+      !/30\/30s VO2max/.test(r.todayHtml) && !/6×30 All-Out/.test(r.todayHtml), r.todayHtml.slice(0, 600));
+  }
+  {
+    // a real run, start to finish, for each
+    const r = await page.evaluate(() => {
+      const run = (kind, k) => {
+        try { closeSheet(); } catch (e) {}
+        startSpecialCardio(kind, k);
+        const out = { started: !!INTV, seqLen: INTV ? INTV.seq.length : 0, format: INTV ? INTV.format : null,
+          html: document.getElementById('hiit').innerHTML };
+        try { hiitQuit(); } catch (e) {}
+        return out;
+      };
+      return { thirty: run('bike', 'vo2max3030'), sit: run('sprint', 'sit6x30') };
+    });
+    t.ok('30/30s on the bike actually starts', r.thirty.started, r.thirty);
+    t.eq('with the full 31-step sequence', r.thirty.seqLen, 31);
+    t.ok('nothing renders as NaN or undefined', !/NaN|undefined/.test(r.thirty.html), r.thirty.html.slice(0, 400));
+    t.ok('6×30 as a sprint session actually starts', r.sit.started, r.sit);
+    t.eq('with the full 11-step sequence', r.sit.seqLen, 11);
+    t.ok('nothing renders as NaN or undefined', !/NaN|undefined/.test(r.sit.html), r.sit.html.slice(0, 400));
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }
