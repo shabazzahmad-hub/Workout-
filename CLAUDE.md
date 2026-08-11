@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 22 suites, ~1,660 checks, run by `npm test` |
+| `tests/` | 22 suites, ~1,680 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -516,6 +516,41 @@ than a mutant mid-flight — but that was order of operations, not a
 guarantee. Confirm a background mutation run has actually finished (check its
 log for the "ALL DONE" line, not just that the process exited) before
 touching the same file with git.
+
+## Long intervals
+
+`ENDURANCE_FORMATS` (v222) is the other end of the interval spectrum from
+`HIIT_FORMATS`: 3-4 minute efforts at a hard-but-holdable pace rather than
+short all-out bursts — the "Norwegian 4×4" (Helgerud et al., 2007), one round
+of 4 min hard / 3 min easy, four times. Counter-intuitive on purpose: the
+popular assumption is that shorter and harder is always the better cardio
+lever, and the literature says otherwise for raising the aerobic ceiling
+specifically.
+
+**Gated to where a steady effort actually makes sense.** `specialChooser()`
+only merges `ENDURANCE_FORMATS` into the picker when `kind !== 'hiit'` — the
+bike and a run can hold one intensity for four minutes straight, the
+bodyweight HIIT pool rotates between burpees, mountain climbers and jumping
+jacks every round and cannot. Both `specialChooser('hiit')` and
+`openHiitChooser()` (converting today's bodyweight circuit into intervals)
+stay on the short formats only.
+
+**Reusing `buildIntervals()`'s existing `{w,r,n,exId}` shape for
+SKIP_FORMATS/SPECIAL_FORMATS surfaced a real, narrow bug in the exId
+fallback, not a hypothetical one.** Grip and box hard-code their movement
+(`exId:'deadhang'`), so `sk.exId||'skip'` always won for them regardless of
+what list was passed in — correct, because a hang session IS the hang.
+Skipping formats carried no `exId` at all and relied entirely on the trailing
+`'skip'` literal doing the same job by coincidence. Extending the fallback to
+`sk.exId||(list[0]&&list[0].exId)||'skip'` — needed so VO2max 4×4 resolves to
+whichever the athlete picked, bike or sprint, since that lives on the list,
+not the format — silently broke the coincidence: a caller that ever passed a
+list with a different exId would now get THAT instead of the rope. Nothing
+in the app does that today, but a check that deliberately does (`buildIntervals([{exId:'irrelevant'}],'skip93x2')`)
+caught it immediately. Fixed by giving every `SKIP_FORMATS` entry (including
+the one `startSkipCustom()` builds at runtime) its own explicit
+`exId:'skip'`, matching the pattern grip and box already used, rather than
+leaning on fallback order to do it implicitly.
 
 ## Editing `EX` and the swap maps
 

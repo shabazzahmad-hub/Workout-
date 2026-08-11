@@ -1510,7 +1510,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='221';
+const APP_VERSION='222';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -4317,13 +4317,29 @@ const HIIT_FORMATS={
   emom:{name:'EMOM',desc:'Every minute: 45s work / 15s rest, cycling the circuit.'},
   amrap:{name:'AMRAP 10',desc:'10 minutes — as many rounds of the circuit as you can.'},
 };
+/* ---- Long-interval VO2max work ---------------------------------------------
+   Everything above is short and all-out. This is the other end of the
+   interval spectrum: 3-4 minute efforts at a hard-but-holdable pace, which the
+   sports-science literature (Helgerud et al., 2007) finds raises aerobic
+   capacity MORE than either short sprints or slow steady-state — the
+   "Norwegian 4x4". Counter-intuitive, because the popular assumption is that
+   shorter and harder is always the better cardio lever.
+
+   Offered only where holding one steady intensity for four minutes straight
+   actually makes sense — the bike and a run — not the bodyweight HIIT pool,
+   which rotates between different movements and cannot sustain one effort
+   that long. specialChooser() gates it out of the 'hiit' (bodyweight) kind
+   for exactly this reason. */
+const ENDURANCE_FORMATS={
+  vo2max4x4:{name:'VO2max 4×4',desc:'4 rounds of 4 min hard / 3 min easy (25 min). One of the best-evidenced ways to raise your aerobic ceiling — hard enough that the last minute of each round hurts, not so hard you cannot finish it.',w:4,r:3,n:4},
+};
 /* ---- Skipping (jump rope) — a standalone rope session with its own timer and
    record keeping. Presets are built around the 9-min-skip / 3-min-rest block. ---- */
 const SKIP_FORMATS={
-  skip93x3:{name:'9 / 3 × 3',desc:'9 min skipping · 3 min rest, three rounds (~33 min). The standard session.',w:9,r:3,n:3},
-  skip93x2:{name:'9 / 3 × 2',desc:'9 min skipping · 3 min rest, twice (~21 min). Short on time.',w:9,r:3,n:2},
-  skip93x4:{name:'9 / 3 × 4',desc:'9 min skipping · 3 min rest, four rounds (~45 min). Big engine day.',w:9,r:3,n:4},
-  skip52x4:{name:'5 / 2 × 4',desc:'5 min skipping · 2 min rest, four rounds (~26 min). Faster turnaround.',w:5,r:2,n:4},
+  skip93x3:{name:'9 / 3 × 3',desc:'9 min skipping · 3 min rest, three rounds (~33 min). The standard session.',w:9,r:3,n:3,exId:'skip'},
+  skip93x2:{name:'9 / 3 × 2',desc:'9 min skipping · 3 min rest, twice (~21 min). Short on time.',w:9,r:3,n:2,exId:'skip'},
+  skip93x4:{name:'9 / 3 × 4',desc:'9 min skipping · 3 min rest, four rounds (~45 min). Big engine day.',w:9,r:3,n:4,exId:'skip'},
+  skip52x4:{name:'5 / 2 × 4',desc:'5 min skipping · 2 min rest, four rounds (~26 min). Faster turnaround.',w:5,r:2,n:4,exId:'skip'},
 };
 /* ---- Other Special activities (ruck / grip / shadow boxing) ---------------
    Interval-based ones reuse the HIIT timer engine via SPECIAL_FORMATS, which
@@ -4338,7 +4354,7 @@ const SPECIAL_FORMATS={
   box5x3:{name:'5 × 3 min',desc:'Five 3-minute rounds, 1 min rest. A full fight.',w:3,r:1,n:5,exId:'shadowbox',act:'box'},
   box6x2:{name:'6 × 2 min',desc:'Six 2-minute rounds, 45s rest. Faster turnaround.',w:2,r:0.75,n:6,exId:'shadowbox',act:'box'},
 };
-function fmtInfo(k){return HIIT_FORMATS[k]||SKIP_FORMATS[k]||SPECIAL_FORMATS[k]||{name:'Session',desc:''};}
+function fmtInfo(k){return HIIT_FORMATS[k]||SKIP_FORMATS[k]||SPECIAL_FORMATS[k]||ENDURANCE_FORMATS[k]||{name:'Session',desc:''};}
 /* The grip and boxing formats hard-code ONE movement, and that is the point of
    them: a hang session IS the hang. So unlike the prescribed circuits — where
    safeSwap substitutes an equivalent and the athlete never needs to know — a
@@ -4578,7 +4594,7 @@ function startSkipCustom(){
   const w=Math.max(1,parseInt(($('#sk-w')||{}).value)||9);
   const r=Math.max(0,parseInt(($('#sk-r')||{}).value)||0);
   const n=Math.max(1,parseInt(($('#sk-n')||{}).value)||1);
-  SKIP_FORMATS.skipcustom={name:w+' / '+r+' × '+n,desc:'Custom rope block',w,r,n};
+  SKIP_FORMATS.skipcustom={name:w+' / '+r+' × '+n,desc:'Custom rope block',w,r,n,exId:'skip'};
   startSkipping('skipcustom');
 }
 /* Free stopwatch — for when you just pick up the rope. Counts up; Stop logs it. */
@@ -4612,9 +4628,14 @@ function ivClear(){if(INTV&&INTV.tid){clearInterval(INTV.tid);INTV.tid=null;}}
 function buildIntervals(list,format){
   const out=[];const at=i=>list[i%list.length];
   // Skipping blocks: long work bouts with a full rest between rounds.
-  const sk=SKIP_FORMATS[format]||SPECIAL_FORMATS[format];
+  const sk=SKIP_FORMATS[format]||SPECIAL_FORMATS[format]||ENDURANCE_FORMATS[format];
   if(sk){
-    const xid=sk.exId||'skip';
+    /* SKIP_FORMATS and ENDURANCE_FORMATS carry no exId of their own — skipping
+       is always 'skip', and VO2max 4x4 runs on whatever the athlete picked
+       (bike or sprint), which lives on the passed-in list, not the format.
+       Only SPECIAL_FORMATS (grip/box) hard-code one, because those ARE a
+       single fixed movement by design. */
+    const xid=sk.exId||(list[0]&&list[0].exId)||'skip';
     for(let r=0;r<sk.n;r++){
       out.push({type:'work',secs:Math.round(sk.w*60),exId:xid,round:r+1,rounds:sk.n});
       if(sk.r>0&&r<sk.n-1)out.push({type:'rest',secs:Math.round(sk.r*60),exId:xid});
@@ -4657,10 +4678,15 @@ function openSpecial(){
 function specialChooser(kind){
   const title=kind==='bike'?'🚴 Bike trainer':(kind==='sprint'?'🏃 Sprint runs':'⚡ Bonus HIIT intervals');
   const call=k=>kind==='hiit'?`startHiitSpecial('${k}')`:`startSpecialCardio('${kind}','${k}')`;
+  /* The long-interval formats only make sense where one steady effort can be
+     held for four minutes — the bike and a run. The bodyweight HIIT pool
+     rotates movements every round and cannot hold one intensity that long, so
+     'hiit' stays on the short, all-out formats only. */
+  const formats=Object.assign({},HIIT_FORMATS,kind!=='hiit'?ENDURANCE_FORMATS:{});
   openSheet(`<h3>${title}</h3>
     <p class="muted sm" style="margin:2px 0 12px">Pick an interval format:</p>
     <div style="display:flex;flex-direction:column;gap:10px">
-      ${Object.keys(HIIT_FORMATS).map(k=>`<button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="${call(k)}"><b style="font-size:15px">${HIIT_FORMATS[k].name}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${HIIT_FORMATS[k].desc}</div></button>`).join('')}
+      ${Object.keys(formats).map(k=>`<button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="${call(k)}"><b style="font-size:15px">${formats[k].name}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${formats[k].desc}</div></button>`).join('')}
     </div>
     <div style="height:8px"></div><button class="btn ghost" onclick="openSpecial()">← Back</button>`);
 }
