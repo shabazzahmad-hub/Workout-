@@ -688,6 +688,85 @@ export default async function run() {
     t.ok('across every movement the quick workouts use', r.quickTotal >= 20, r);
   }
 
+  /* ---- the custom workout builder was the fourth sibling path -----------
+     builderPool() filters by gear the same way the main program does, but
+     never checked safeSwap() — an athlete could tap a shoulder-risky dip or a
+     wrist-risky push-up into their own session with the joint flagged and see
+     nothing. Same call as grip/box above: warn, do not silently swap, because
+     the athlete built this list on purpose. And starting a SAVED favorite
+     used to skip the builder screen entirely and drop straight into the
+     player — the one place the warning could never be seen at all. */
+  {
+    const r = await page.evaluate(seed => {
+      eval(seed)();
+      STATE.profile.limitations = ['shoulder', 'wrist'];
+      // a movement JOINT_RISK actually flags for this profile, and one it does not
+      const risky = Object.keys(EX).find(k => safeSwap(k) !== k && builderPool().includes(k));
+      const safe = Object.keys(EX).find(k => safeSwap(k) === k && builderPool().includes(k));
+      const out = { risky, safe };
+      /* Guard BEFORE touching addCustom/startFav — both assume a real exId, and
+         a mutant that makes builderPool() hide every risky move (the wrong fix:
+         hide, not warn) leaves `risky` undefined. Feeding that into the render
+         path threw inside a template literal that the render error boundary
+         then retried forever, hanging the check instead of failing it. Bail out
+         with the same shape the assertions below already expect. */
+      if (!risky || !safe) { STATE.profile.limitations = []; return out; }
+
+      // ---- the pool itself never drops a risky move — it warns, it doesn't hide it
+      out.poolHasRisky = builderPool().includes(risky);
+
+      // ---- the builder screen: adding a risky move surfaces the warning
+      _custom = [];
+      addCustom(risky);
+      out.warnsOnRisky = /flagged a joint/i.test(document.body.innerText);
+      /* The pool chip below ALSO carries the same ⚠️ + name text, so a plain
+         .includes() on the risky move's marked form passes whether or not the
+         "Your session" ROW is marked — it is just matching the unrelated chip.
+         Scope to that row specifically. .kv also appears in other mounted
+         views (CLAUDE.md: views never clear innerHTML), so scope to #sheet too. */
+      const rowText = k => { const row = [...document.querySelectorAll('#sheet .kv')]
+        .find(el => el.textContent.includes(EX[k].name)); return row ? row.textContent : ''; };
+      out.riskyRowMarked = rowText(risky).includes('⚠️');
+      _custom = [];
+      addCustom(safe);
+      out.silentOnSafe = !/flagged a joint/i.test(document.body.innerText);
+      out.safeRowUnmarked = rowText(safe).includes(EX[safe].name) && !rowText(safe).includes('⚠️');
+      _custom = [];
+      try { closeSheet(); } catch (e) {}
+
+      // ---- a favorite saved before the flag existed still warns when started
+      STATE.customFav = STATE.customFav || [];
+      STATE.customFav.push({ name: 'Old favorite', items: [risky, safe] });
+      const favIdx = STATE.customFav.length - 1;
+      startFav(favIdx);
+      out.favRoutesToBuilder = /flagged a joint/i.test(document.body.innerText);
+      out.favDidNotJumpToPlayer = !document.getElementById('player').classList.contains('open');
+      try { closeSheet(); } catch (e) {}
+
+      // ---- a clean favorite (nothing flagged) still starts in one tap — no added friction
+      STATE.customFav.push({ name: 'Clean favorite', items: [safe] });
+      const cleanIdx = STATE.customFav.length - 1;
+      startFav(cleanIdx);
+      out.cleanFavStartsPlayer = document.getElementById('player').classList.contains('open');
+      try { document.getElementById('player').classList.remove('open'); PLAYER = null; } catch (e) {}
+      try { closeSheet(); } catch (e) {}
+
+      STATE.customFav = [];
+      STATE.profile.limitations = [];
+      return out;
+    }, ATHLETE);
+    t.ok('guard: a flagged shoulder+wrist really does mark a builder move risky', !!r.risky, r);
+    t.ok('guard: and leaves at least one move clear', !!r.safe, r);
+    t.ok('the pool still offers the risky move — informed, not blocked', r.poolHasRisky, r);
+    t.ok('adding it to a custom session warns', r.warnsOnRisky, r);
+    t.ok('and marks that row with a warning icon', r.riskyRowMarked, r);
+    t.ok('adding a clear move does not', r.silentOnSafe, r);
+    t.ok('and leaves that row unmarked', r.safeRowUnmarked, r);
+    t.ok('starting a favorite that carries a flagged move opens the builder, warning shown', r.favRoutesToBuilder, r);
+    t.ok('rather than dropping straight into the player', r.favDidNotJumpToPlayer, r);
+    t.ok('a favorite with nothing flagged still starts in one tap', r.cleanFavStartsPlayer, r);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

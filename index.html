@@ -1510,7 +1510,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='218';
+const APP_VERSION='219';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -7379,16 +7379,31 @@ let _custom=[];
 function builderPool(){const gear=STATE.profile.gear||[];return Object.keys(EX).filter(k=>{const ex=EX[k];if(k==='bike'||k==='sprint')return false;if(ex.equip)return ex.equip.every(g=>gear.includes(g));return true;});}
 function addCustom(k){if(!_custom.includes(k))_custom.push(k);openBuilder();}
 function removeCustom(k){_custom=_custom.filter(x=>x!==k);openBuilder();}
+/* builderPool() filters by gear the same way the main program does, but never
+   checked safeSwap() — every flagged-joint filter in the app routes AROUND a
+   contraindicated movement except here, where the athlete could tap dips or
+   push-ups into their own session with a wrist or shoulder flag on file and
+   see nothing. Same call as grip/box in v217: warn, do not silently swap —
+   the athlete built this list on purpose, on purpose. */
+function customRiskHTML(){
+  try{
+    const risky=_custom.filter(k=>EX[k]&&safeSwap(k)!==k);
+    if(!risky.length)return '';
+    const names=risky.map(k=>EX[k].name).join(', ');
+    return `<div class="note warn" style="margin-top:8px"><b>You flagged a joint ${risky.length>1?'some of these load':'this loads'}.</b> ${_ve(names)} — the programme routes around ${risky.length>1?'these':'it'} elsewhere. Nothing here is stopping you, but if it pinches or feels wrong, stop.</div>`;
+  }catch(e){return '';}
+}
 function openBuilder(){
   const pool=builderPool();const byReg={};pool.forEach(k=>{const r=EX[k].region;(byReg[r]=byReg[r]||[]).push(k);});
   const favs=STATE.customFav||[];
   openSheet(`<h3>🛠️ Custom workout</h3>
     <p class="muted sm" style="margin:2px 0 10px">Tap moves to build your own session. Runs guided; won't affect your program.</p>
-    ${_custom.length?`<div class="card pad" style="margin-bottom:10px"><div class="tiny muted" style="margin-bottom:6px">Your session · ${_custom.length} moves</div>${_custom.map(k=>`<div class="kv"><span>${EX[k].name}</span><button class="chip" onclick="removeCustom('${k}')">✕</button></div>`).join('')}
+    ${_custom.length?`<div class="card pad" style="margin-bottom:10px"><div class="tiny muted" style="margin-bottom:6px">Your session · ${_custom.length} moves</div>${_custom.map(k=>`<div class="kv"><span>${safeSwap(k)!==k?'⚠️ ':''}${EX[k].name}</span><button class="chip" onclick="removeCustom('${k}')">✕</button></div>`).join('')}
+      ${customRiskHTML()}
       <button class="btn primary" style="width:100%;margin-top:10px" onclick="startCustom()">▶ Start workout</button>
       <button class="btn ghost" style="width:100%;margin-top:8px" onclick="saveCustomFav()">☆ Save as favorite</button></div>`:''}
     ${favs.length?`<div class="tiny muted" style="margin:4px 0">Favorites</div>${favs.map((f,i)=>`<button class="kv" style="width:100%;text-align:left;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:11px 13px;margin-bottom:6px" onclick="startFav(${i})"><span>⭐ ${_ve(f.name)}</span><span class="tiny muted">${f.items.length} moves ▶</span></button>`).join('')}<div style="height:6px"></div>`:''}
-    ${Object.keys(byReg).map(r=>`<div class="tiny muted" style="margin:8px 0 4px;text-transform:capitalize">${r}</div><div style="display:flex;flex-wrap:wrap;gap:6px">${byReg[r].map(k=>`<button class="chip ${_custom.includes(k)?'on':''}" onclick="addCustom('${k}')">${EX[k].name}</button>`).join('')}</div>`).join('')}
+    ${Object.keys(byReg).map(r=>`<div class="tiny muted" style="margin:8px 0 4px;text-transform:capitalize">${r}</div><div style="display:flex;flex-wrap:wrap;gap:6px">${byReg[r].map(k=>`<button class="chip ${_custom.includes(k)?'on':''}" onclick="addCustom('${k}')">${safeSwap(k)!==k?'⚠️ ':''}${EX[k].name}</button>`).join('')}</div>`).join('')}
     <div style="height:10px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
 }
 function startCustom(){
@@ -7401,7 +7416,18 @@ function saveCustomFav(){
   const name=prompt('Name this workout','My Workout');if(!name)return;
   if(!STATE.customFav)STATE.customFav=[];STATE.customFav.push({name:name.slice(0,40),items:[..._custom]});save();toast('Saved ⭐');openBuilder();
 }
-function startFav(i){const f=(STATE.customFav||[])[i];if(!f)return;_custom=[...f.items];startCustom();}
+/* A favorite is saved once and started many times, and profile.limitations can
+   change in between — a joint flagged after the save, or a favorite built
+   before any flag existed. startCustom() drops straight into the guided
+   player with no screen in between, so a stale favorite bypassed the warning
+   entirely. Route through the builder — where it renders — whenever there is
+   something to say; an unflagged favorite still starts in one tap. */
+function startFav(i){
+  const f=(STATE.customFav||[])[i];if(!f)return;
+  _custom=[...f.items];
+  if(_custom.some(k=>EX[k]&&safeSwap(k)!==k)){openBuilder();return;}
+  startCustom();
+}
 /* ---- #4 Mobility & stretch library ---- */
 const MOBILITY_FLOWS=[
   {id:'mob_full',name:'Full-Body Mobility',flow:[...WARMUP_FLOW.slice(1,4),...COOLDOWN_FLOW]},

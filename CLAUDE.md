@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 21 suites, ~1,580 checks, run by `npm test` |
+| `tests/` | 21 suites, ~1,590 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -349,6 +349,22 @@ Known traps when writing checks:
   the `pitch` attribute in the SSML that is actually sent rather than asserting
   the SSML "builds". Three separate mutations have survived a check that
   measured the input or the container instead of the payload.
+- **A check that mutates a value must guard against the mutation producing
+  nothing to test with.** A mutant that made `builderPool()` hide every
+  flagged-joint movement (the wrong fix — hide, not warn) left this suite's
+  `risky` variable `undefined`. Feeding that straight into `addCustom()`
+  threw inside a template literal, and the render error boundary retried the
+  throw forever — the check didn't fail, it **hung** the whole suite run
+  until the timeout killed it. Guard immediately after computing the value
+  the rest of the block depends on, before any code that assumes it exists.
+- **Scope a DOM assertion to where the change was made, not the whole
+  document.** A warning icon was added in two places — the picker's pool chip
+  and the "your session" list the athlete had already built — and a check
+  that only asserted `document.body.innerText.includes('⚠️ ' + name)` passed
+  whether or not the SECOND one existed, because the first one alone
+  satisfied it. `.kv` rows exist in other mounted views too (views never
+  clear `innerHTML`), so the fix was `#sheet .kv` scoped to the one row that
+  names the movement, not a page-wide substring search.
 
 ## The exercise engine
 
@@ -407,6 +423,24 @@ needed it while it only ever picked one pool.
 `'jacks'` unless the athlete has explicitly chosen `'bike'`; owning a trainer is
 not consent to be programmed one. Jacks and the bike share the same arithmetic
 — net METs, `steps/min = MET × 35` — so the two currencies can never disagree.
+
+**The custom workout builder was the fourth sibling path to skip `safeSwap()`,
+after the focus bonus, the weights circuit and Special HIIT.** `builderPool()`
+filters by gear — same as `hasGearFor()` — but never checked whether a
+movement was safe for a flagged joint, so an athlete who had declared a
+shoulder or wrist issue could tap a dip or a push-up into their own session
+and see nothing. Same call as grip/box in v217: warn, do not silently swap,
+because the athlete is choosing every movement on purpose — `customRiskHTML()`
+names what is flagged in the list they built, and a ⚠️ marks the row.
+
+Worse than the missing warning: **starting a saved favorite skipped the
+builder screen entirely** and dropped straight into the guided player —
+`startFav()` called `startCustom()` directly, so a favorite saved before a
+joint was ever flagged, or built back when it wasn't, could never be seen
+before the session started. It now routes through the builder (where the
+warning renders) whenever the saved list carries a flagged movement, and
+starts in one tap exactly as before when it does not — the fix adds friction
+only where there is something to say.
 
 ## Editing `EX` and the swap maps
 
