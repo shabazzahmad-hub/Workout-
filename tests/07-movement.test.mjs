@@ -428,6 +428,216 @@ export default async function run() {
   t.ok('and it says where to log the ride', ref.pointsAtFuel, ref);
   t.ok('nothing renders as NaN', ref.noNaN, ref);
 
+  /* ---- movement earns room in the food budget, but only the surplus -------
+     recalcKcalFromStored() prices activity from a fixed onboarding answer and
+     never revisits it, so a day that clears the step target by 8,000 and a
+     day that clears it by zero were priced identically — stepKcal() already
+     knew almost exactly what the gap was worth and the app never told the
+     food budget. movementKcalAdj()/todayKcalBudget() are that wire.
+
+     Deliberately asymmetric: a shortfall subtracts nothing. Every commercial
+     tracker earns calories up and never docks them down, because the
+     baseline already assumes a normal day and a second penalty on the same
+     shortfall is a nudge toward under-eating on the hardest days to move. */
+  {
+    const r = await page.evaluate(() => {
+      const T = nutToday();
+      T.steps = 0; delete T.bikeVal; delete T.jackVal; T.habits = {};
+      const base = nut().kcalTarget;
+      const o = { base };
+
+      // at target: no credit
+      T.steps = stepTarget();
+      o.atTarget = movementKcalAdj();
+      o.budgetAtTarget = todayKcalBudget();
+
+      // short of target: no credit, and definitely not a penalty
+      T.steps = Math.max(0, stepTarget() - 3000);
+      o.short = movementKcalAdj();
+      o.budgetShort = todayKcalBudget();
+
+      // 4,000 steps past target: a real, specific credit
+      T.steps = stepTarget() + 4000;
+      o.overBy4k = movementKcalAdj();
+      o.expected4k = Math.round(4000 * kcalPerStep());
+      o.budgetOver = todayKcalBudget();
+
+      // an absurd step count is clamped, not left to run away
+      T.steps = stepTarget() + 100000;
+      o.clamped = movementKcalAdj();
+
+      // the credit is currency-agnostic: jumping jacks past target pay the same FORMULA as steps
+      T.steps = 0; T.jackVal = null;
+      const jacksNeeded = jackNeed(stepTarget() + 4000, 'steady');
+      setJackUnit('reps'); T.jackVal = jacksNeeded.reps;
+      o.viaJacks = movementKcalAdj();
+      o.expectedJacks = Math.round((stepEquivalent() - stepTarget()) * kcalPerStep());
+
+      // and the bike pays it too
+      T.jackVal = 0; T.bikeVal = null;
+      const bikeNeeded = bikeNeed(stepTarget() + 4000, 'steady');
+      setBikeUnit('min'); T.bikeVal = bikeNeeded.min;
+      o.viaBike = movementKcalAdj();
+      o.expectedBike = Math.round((stepEquivalent() - stepTarget()) * kcalPerStep());
+
+      T.steps = 0; T.jackVal = 0; T.bikeVal = 0; T.habits = {};
+      save();
+      return o;
+    });
+    t.eq('exactly at target earns nothing', r.atTarget, 0);
+    t.eq('so today\'s budget is just the base target', r.budgetAtTarget, r.base);
+    t.eq('short of target earns nothing — not a positive credit', r.short, 0);
+    t.ok('and short of target is never a PENALTY either', r.short >= 0, r);
+    t.eq('and the budget for a short day is still just the base target', r.budgetShort, r.base);
+    t.ok('clearing the target by 4,000 steps earns a real credit', r.overBy4k > 0, r);
+    t.eq('computed the same way stepKcal/kcalPerStep price everything else', r.overBy4k, r.expected4k);
+    t.eq('and that credit is added on top of the base target', r.budgetOver, r.base + r.overBy4k);
+    t.ok('an extreme step count is clamped rather than left to run away', r.clamped <= 500, r);
+    /* Not compared against the steps-only figure directly: bike/jack minutes
+       are logged as whole units and rounded UP to guarantee coverage (same
+       "the minutes quoted always cover the steps owed" rule tested above),
+       so the exact overage differs from currency to currency by design. What
+       must hold is that whichever currency pushed stepEquivalent() past
+       target, the SAME formula priced the surplus — proving jacks/bike really
+       do flow through stepEquivalent() into the credit, not a separate path. */
+    t.ok('jumping jacks past target earn a real, correctly-formulated credit',
+      r.viaJacks > 0 && r.viaJacks === r.expectedJacks, r);
+    t.ok('so does the bike', r.viaBike > 0 && r.viaBike === r.expectedBike, r);
+  }
+  {
+    // guard: a real 41-year-old 88kg athlete's numbers are not degenerate
+    const g = await page.evaluate(() => ({
+      target: stepTarget(), perStep: kcalPerStep(), kcalTarget: nut().kcalTarget,
+    }));
+    t.ok('guard: the seeded athlete has a real step target', g.target >= 6000 && g.target <= 12000, g);
+    t.ok('guard: and a real per-step cost', g.perStep > 0.03 && g.perStep < 0.06, g);
+    t.ok('guard: and a real calorie target to add credit onto', g.kcalTarget > 1000, g);
+  }
+
+  // ---- the live Fuel ring shows the adjusted number; the base plan does not
+  {
+    await page.evaluate(() => {
+      const T = nutToday();
+      T.steps = stepTarget() + 4000; T.jackVal = 0; T.bikeVal = 0; T.habits = {};
+      save(); go('fuel'); renderFuel();
+    });
+    const live = await page.evaluate(() => {
+      const v = document.querySelector('#v-fuel');
+      const base = nut().kcalTarget;
+      const adj = movementKcalAdj();
+      /* CARBS, not protein: proteinTargetG() is bodyweight-driven and, for an
+         athlete with a logged weight, does not depend on kcalTarget at all —
+         a guard confirmed the two candidate protein figures were IDENTICAL
+         for this athlete, which would have made that assertion pass whether
+         or not the code leaked the adjusted target. Carbs are computed as
+         (kcal - protein*4 - fat*9)/4, so a 176 kcal gap moves them by ~40g —
+         actually sensitive to which target macroTargets() was given.
+
+         Derived independently of intakeHTML() (recomputed here, not read
+         back from a second render call), so this proves what was actually
+         PAINTED rather than what a fresh call would compute now. */
+      const _stored = nut().kcalTarget;
+      nut().kcalTarget = base; const correctC = macroTargets().c;
+      nut().kcalTarget = base + adj; const leakedC = macroTargets().c;
+      nut().kcalTarget = _stored;
+      const carbRow = /Carbs<\/span><span class="muted">\d+\/(\d+)g/.exec(v.innerHTML);
+      return {
+        html: v.innerHTML, adj, budget: todayKcalBudget(), base,
+        correctC, leakedC, renderedCarbTarget: carbRow ? +carbRow[1] : null,
+      };
+    });
+    t.ok('the live ring shows the ADJUSTED total, not the base target',
+      live.html.includes('/' + live.budget + '<') || new RegExp('/\\s*' + live.budget + '\\b').test(live.html), live);
+    t.ok('and names the credit so the athlete can see where the room came from',
+      /earned from today's movement/.test(live.html), live);
+    t.ok('guard: at this athlete\'s numbers the two candidate carb targets actually differ',
+      live.correctC !== live.leakedC, live);
+    t.eq('the RENDERED carb bar targets the base plan, not the movement-adjusted one',
+      live.renderedCarbTarget, live.correctC);
+    t.ok('the settings summary still shows the base target, not the live one',
+      new RegExp('Current target:.*\\b' + live.base + '\\s*kcal').test(live.html), live);
+    t.ok('nothing renders as NaN', !/NaN|undefined/.test(live.html), live);
+  }
+  {
+    // and with nothing earned, the ring shows no phantom credit
+    const clean = await page.evaluate(() => {
+      const T = nutToday(); T.steps = 0; T.jackVal = 0; T.bikeVal = 0; T.habits = {}; save();
+      renderFuel();
+      return document.querySelector('#v-fuel').innerHTML;
+    });
+    t.ok('an athlete who has not moved sees no earned-calories note', !/earned from today's movement/.test(clean), clean.slice(0, 200));
+  }
+
+  // ---- the movement card itself explains the credit, steps-only included ---
+  {
+    const cardR = await page.evaluate(() => {
+      const T = nutToday();
+      T.steps = stepTarget() + 4000; T.jackVal = 0; T.bikeVal = 0; T.habits = {};
+      save(); renderFuel();
+      return document.querySelector('#v-fuel').innerHTML;
+    });
+    t.ok('walking past target ALONE (no jacks, no bike) still shows the earned note — ' +
+      'the existing "target met" banner only fired when jacks or the bike carried part of it',
+      /kcal earned today/.test(cardR), cardR.slice(0, 400));
+  }
+
+  // ---- the structural plan never moves with a same-day step count ----------
+  {
+    const stable = await page.evaluate(() => {
+      // pinned: pickRecipe() draws at random among the closest three, so two
+      // calls at the SAME target can legitimately differ by luck — pin it or
+      // this proves nothing either way, per the v218 meal-plan check lesson.
+      const _rand = Math.random; Math.random = () => 0;
+      const T = nutToday(); T.steps = 0; T.jackVal = 0; T.bikeVal = 0; T.habits = {}; save();
+      STATE.nutrition.plan = null;
+      const planLow = generateMealPlan().meals.join(',');
+      const stampLow = STATE.nutrition.plan.stamp;
+      T.steps = stepTarget() + 4000; save();
+      STATE.nutrition.plan = null;
+      const planHigh = generateMealPlan().meals.join(',');
+      const stampHigh = STATE.nutrition.plan.stamp;
+      const refLow = refTargets();
+      T.steps = 0; save();
+      const out = { planLow, planHigh, stampLow, stampHigh, refLow, refHigh: refTargets() };
+      Math.random = _rand;
+      return out;
+    });
+    t.eq('the meal plan is byte-identical whether or not steps earned a credit', stable.planHigh, stable.planLow);
+    t.eq('its stamp does not carry movement as an input', stable.stampHigh, stable.stampLow);
+    t.eq('and Reference still scales to the base target, not the live one', stable.refHigh, stable.refLow);
+  }
+  {
+    /* The behavioural check above only proves it for THIS athlete's recipe
+       pool at THIS kcal gap — the pool is small enough that a 176-500 kcal
+       difference does not always land on a different closest-3 recipe per
+       slot, so a version of generateMealPlan() that DID read the movement
+       credit could still draw byte-identical output by the same coincidence
+       and slip the check above. Read the source directly instead: neither
+       function may call the movement machinery at all, which is true or
+       false independent of any recipe pool or random draw. */
+    const src = await page.evaluate(() => ({
+      plan: generateMealPlan.toString(),
+      stamp: _planStamp.toString(),
+    }));
+    t.ok('generateMealPlan() does not read movementKcalAdj', !src.plan.includes('movementKcalAdj'), src.plan);
+    t.ok('or todayKcalBudget', !src.plan.includes('todayKcalBudget'), src.plan);
+    t.ok('and neither does the plan\'s freshness stamp', !src.stamp.includes('movementKcalAdj') && !src.stamp.includes('todayKcalBudget'), src.stamp);
+  }
+
+  // ---- and the pre-session voice briefing reads the live number -----------
+  {
+    const brief = await page.evaluate(() => {
+      const T = nutToday(); T.steps = stepTarget() + 4000; T.jackVal = 0; T.bikeVal = 0; T.habits = {}; save();
+      const segs = briefSegments();
+      const fuel = segs.find(s => s.title === 'Fuel');
+      const budget = todayKcalBudget();   // read BEFORE resetting, or it measures the wrong day
+      T.steps = 0; save();
+      return { say: fuel ? fuel.say : '', budget };
+    });
+    t.ok('the briefing quotes the CREDITED number, not the stale base target',
+      brief.say.includes(String(brief.budget)), brief);
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }

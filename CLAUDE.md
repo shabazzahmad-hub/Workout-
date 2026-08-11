@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 21 suites, ~1,590 checks, run by `npm test` |
+| `tests/` | 21 suites, ~1,620 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -468,6 +468,55 @@ re.match(r"\s{2}([a-z0-9]+):\{", line)
 `assert old in s` *and* `assert s.count(old) == expected` before mutating, with
 the file written once at the end. That is what turns a bad anchor into a clean
 no-op instead of a half-applied edit.
+
+## Movement earns room, but only the surplus
+
+`todayKcalBudget()` (v220) is `kcalTarget + movementKcalAdj()` — the one
+number every LIVE "today" surface reads. `recalcKcalFromStored()` prices
+activity once, from a fixed onboarding answer, and never looks at it again;
+`stepKcal()` already knew almost exactly what a day's real movement was worth
+and the food budget never heard about it. This wires it in, deliberately
+narrow:
+
+- **Surplus only.** Clearing the step target by 8,000 credits real calories
+  back; falling short by 8,000 credits nothing — not a positive number, and
+  not a negative one either. Every commercial activity tracker earns
+  calories up and never docks them down, for a real reason: the baseline
+  already assumes a normal day, and a second penalty on a day that was
+  already short is a nudge toward under-eating precisely when it is hardest
+  to move. The asymmetry is the point, not an oversight.
+- **Clamped**, the same reasoning as `applyKcalAdj()`'s ±500: one freak step
+  count should not blow a week's deficit open on a single mis-logged number.
+- **Scoped to LIVE displays only.** The meal plan, its freshness stamp,
+  Reference's scaled days, the 7-day trend and the settings summary all stay
+  on the unadjusted target on purpose — a plan that reshuffled its recipes
+  every time a step count changed mid-afternoon would be a worse feature, not
+  a more accurate one. Only the Fuel "today" ring and the pre-session voice
+  briefing read the credited number.
+
+**A behavioural check can lack the power to fail, even when written
+correctly.** The first version of "the meal plan does not move with steps"
+compared two `generateMealPlan()` calls, pinned `Math.random`, and passed —
+including against a seeded mutant that made the function read the movement
+credit. The recipe pool is small enough that a 176–500 kcal gap does not
+always cross into a different closest-3 recipe per slot, so the buggy and the
+correct code drew the identical plan by the same coincidence. No stronger
+kcal gap fixes this in general, because the whole point is the function
+should ignore the input regardless of how large it is. The fix was to stop
+asserting on behavior and read `generateMealPlan.toString()` for the
+dependency's name directly — a case where the source *is* the more reliable
+test, because the property under test is "doesn't call X," which behavior can
+only demonstrate probabilistically.
+
+**A macro comparison needs a macro that's actually sensitive to the thing
+being tested.** A check asserted the rendered protein target didn't shift
+with the movement credit — technically true, but for the wrong reason:
+`proteinTargetG()` is bodyweight-driven and, for any athlete with a logged
+weight, doesn't read `kcalTarget` at all, so the two candidate values were
+identical and the assertion would have passed whichever target the code
+actually used. A guard (`correctC !== leakedC`) caught it. Carbs, computed as
+`(kcal - protein*4 - fat*9)/4`, are the macro that actually moves with a
+176 kcal gap — that's what the check needed to read.
 
 ## Rendering
 
