@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 21 suites, ~1,420 checks, run by `npm test` |
+| `tests/` | 21 suites, ~1,580 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -196,6 +196,42 @@ told to eat 300 kcal *more* — the opposite of the advice, with a confident
 number attached. Any signed nudge gets a check that asserts which way it points,
 not merely that it produced a number.
 
+**A container check is not a type repair, and one map can hold several inputs.**
+`nutrition.days` had only `if(!STATE.nutrition.days)days={}` — which a string
+and an array both walk straight past — and nothing at all below the container.
+Three separate athlete inputs live in there: the food log, the water count and
+the habit ticks. A backup carrying `food:'chicken'` threw inside `foodTotals()`,
+which is on the Fuel render path, so the tab died on the error boundary — and
+the boundary retries *through* `normalizeState()`, so with no repair there the
+tab **never came back**. `habits:'all'` was quieter and worse in its way:
+`toggleHabit()` threw on every tap, so the ticks were dead for good and nothing
+on screen said so. And `kcal:'lots'` needed no bad shape at all — it
+concatenated into the day's total and printed "0lots" to the athlete. Repair
+the container, the entries, *and* the fields; drop a bad row, zero a bad field.
+
+**A cache is only self-healing against the inputs its validity test can see.**
+`_planStillValid()` re-checked every recipe with `dietOk()`, which catches a
+diet or an allergen change because those make the stored recipes *illegal*. A
+calorie target does not: the recipes stay perfectly edible, they are just sized
+to a number the athlete has replaced. So tapping "Calculate my targets" moved
+the header from 2020 to 2770 kcal and left the same three meals underneath it —
+measured at **+750 kcal with a byte-identical plan** — and switching to four
+meals a day kept showing three. The fix is a stamp of every input the generator
+read (`_planStamp`), not another writer remembering to null the plan; the class
+of bug here is precisely that writers forget. An absent stamp on an old stored
+plan reads as stale, which rebuilds it once, correctly.
+
+Its twin: **a second copy of a freshness rule is a second place for it to
+drift**, and this one had. `_recipePlanHTML()` re-stated the test as date and
+non-empty, with no `_planStillValid()` at all. It survived because
+`renderFuel()` primes with `currentMealPlan()` before building any markup — so
+the copy is unreachable from the only caller, which is exactly why nobody
+noticed. Two consequences for the check: it has to call the builder **directly**
+(via `renderFuel()` the mutant is equivalent and the check passes on nothing),
+and `Math.random` has to be pinned so `pickRecipe()` takes the closest recipe
+rather than one of the closest three — otherwise two different targets can draw
+the same plan by luck and the check passes on a coin flip.
+
 ## Tests that pass for the wrong reason
 
 This is the dominant failure mode in this repo — every entry below was found
@@ -271,6 +307,15 @@ cannot fail". Roughly a fifth of new checks survive their first mutant.
   working copy in a loop stacks the mutants, and the failure counts climb
   monotonically (2, 2, 8, 9, 11, …) whether or not any individual check catches
   anything. Copy the good file back before every seed.
+- **An escaped mutant is sometimes a bad mutant.** Two of the v218 seeds
+  survived and neither was the check's fault. `.map(x=>({...x, name:…}))`
+  spreads the junk in and then overwrites every field it spread — equivalent to
+  the original, so nothing could have caught it. And restoring the weak guard in
+  `_recipePlanHTML()` changed code that `renderFuel()`'s priming call makes
+  unreachable. Before rewriting a check, read the mutant back and ask whether it
+  actually changes the program: the fix for the first was mutating the coercion
+  (`kcal:num(x.kcal,20000)` → `kcal:x.kcal`), and for the second, calling the
+  builder directly instead of through the caller that primes it.
 
 Known traps when writing checks:
 
