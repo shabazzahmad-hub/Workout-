@@ -394,6 +394,121 @@ export default async function run() {
     t.ok('and explains why', r.crossProtocolNote, r);
   }
 
+  /* ---- resistance work leaves a trace ------------------------------------
+     buildWeightsSession() prescribed sets and reps and recorded nothing: no
+     load, no reps, no effort. A session with dumbbells vanished from history,
+     adherence and progression, and the app could not tell whether the athlete
+     was getting stronger with weights at all. */
+  {
+    const r = await page.evaluate(async () => {
+      const keepQ = JSON.stringify(STATE.quickLog || {});
+      STATE.liftLog = []; STATE.quickLog = {}; STATE.profile.unit = 'cm';
+      const ex = Object.keys(EX).find(k => EX[k].equip && EX[k].equip.includes('dumbbell'));
+      const items = [{ exId: ex, unit: 'reps', target: 10 }];
+      openLiftLog(items);
+      const before = { trained: trainedToday(), rows: STATE.liftLog.length,
+        prevHint: /first time/.test(document.body.innerText) };
+      document.querySelector('#lf-l-0').value = '22.5';
+      document.querySelector('#lf-r-0').value = '8';
+      document.querySelector('#lf-e-0').value = '1';
+      saveLiftLog([ex]);
+      await new Promise(z => setTimeout(z, 120));
+      const row = STATE.liftLog[STATE.liftLog.length - 1];
+      // second session: the sheet must hand back what was lifted last time
+      openLiftLog(items);
+      const prefill = document.querySelector('#lf-l-0').value;
+      const hint = /last time/.test(document.body.innerText);
+      closeSheet();
+      // imperial round trip: stored canonical kg, shown in lb
+      STATE.profile.unit = 'in';
+      openLiftLog(items);
+      const lbPrefill = parseFloat(document.querySelector('#lf-l-0').value);
+      closeSheet(); STATE.profile.unit = 'cm';
+      STATE.quickLog = JSON.parse(keepQ);
+      return { before, row, prefill, hint, lbPrefill, trainedAfter: !!row };
+    });
+    t.ok('a first-time movement says so', r.before.prevHint, r.before);
+    t.eq('nothing was logged before', r.before.rows, 0);
+    t.eq('the load is stored canonically in kg', r.row.loadKg, 22.5);
+    t.eq('the reps are stored', r.row.reps, 8);
+    t.eq('the effort rating is stored', r.row.rir, 1);
+    t.eq('next time the sheet hands the load back', r.prefill, '22.5');
+    t.ok('and says it was last time', r.hint, r);
+    t.ok('an imperial athlete sees pounds, not kilos', Math.abs(r.lbPrefill - 49.6) < 0.5, r);
+  }
+  {
+    /* Entering in metric proves nothing about the conversion — loadToKg() is
+       the identity there, so storing the raw display value looks identical.
+       Enter in POUNDS, where a canonical store and a naive one differ. */
+    const r = await page.evaluate(async () => {
+      STATE.liftLog = []; STATE.profile.unit = 'in';
+      const ex = Object.keys(EX).find(k => EX[k].equip && EX[k].equip.includes('dumbbell'));
+      openLiftLog([{ exId: ex, unit: 'reps', target: 10 }]);
+      document.querySelector('#lf-l-0').value = '100';    // 100 lb
+      document.querySelector('#lf-r-0').value = '5';
+      saveLiftLog([ex]);
+      await new Promise(z => setTimeout(z, 120));
+      const stored = STATE.liftLog[STATE.liftLog.length - 1].loadKg;
+      openLiftLog([{ exId: ex, unit: 'reps', target: 10 }]);
+      const back = parseFloat(document.querySelector('#lf-l-0').value);
+      closeSheet(); STATE.profile.unit = 'cm';
+      return { stored, back };
+    });
+    t.ok('100 lb is stored as ~45.4 kg, not as 100', Math.abs(r.stored - 45.4) < 0.3, r);
+    t.ok('and reads back as ~100 lb', Math.abs(r.back - 100) < 0.5, r);
+  }
+  {
+    // it credits the day without consuming a program session
+    const r = await page.evaluate(async () => {
+      // clear the program log too: earlier blocks in this suite commit sessions
+      STATE.liftLog = []; STATE.quickLog = {}; STATE.logs = {}; STATE.runs = [];
+      STATE.progressPtr = 7; save();
+      const ex = Object.keys(EX).find(k => EX[k].equip && EX[k].equip.includes('dumbbell'));
+      openLiftLog([{ exId: ex, unit: 'reps', target: 10 }]);
+      document.querySelector('#lf-l-0').value = '20';
+      document.querySelector('#lf-r-0').value = '10';
+      saveLiftLog([ex]);
+      await new Promise(z => setTimeout(z, 120));
+      return { ptr: STATE.progressPtr, trained: trainedToday(),
+        counted: sessionsDoneCount(), quick: Object.keys(STATE.quickLog).length };
+    });
+    t.eq('a weights session does not advance the programme', r.ptr, 7);
+    t.ok('but it does count as having trained today', r.trained, r);
+    t.eq('and it is not banked as a program session', r.counted, 0);
+    t.eq('it credits the day once', r.quick, 1);
+  }
+  {
+    // a junk row must not cost the whole history
+    await page.evaluate(([seed]) => {
+      eval(seed)();
+      const cur = JSON.parse(localStorage.getItem('coreforge.v1') || '{}');
+      cur.liftLog = [
+        { date: '2026-01-01', exId: 'dbpress', loadKg: 20, reps: 10, rir: 1 },
+        { date: '2026-01-02', exId: 'dbpress', loadKg: 'heavy', reps: 'lots', rir: 99 },
+        { date: '2026-01-03', exId: 'nosuchexercise', loadKg: 20 },
+        null, 'junk',
+      ];
+      localStorage.setItem('coreforge.v1', JSON.stringify(cur));
+    }, [ATHLETE]);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForBoot(page);
+    const r = await page.evaluate(() => ({
+      kept: STATE.liftLog.length,
+      good: STATE.liftLog[0],
+      repaired: STATE.liftLog[1],
+      types: STATE.liftLog.map(x => typeof x.reps),
+      boundary: /went wrong drawing/i.test(document.body.innerText),
+    }));
+    t.eq('rows for real exercises survive, junk rows do not', r.kept, 2);
+    t.eq('a good row is untouched', r.good.loadKg, 20);
+    t.eq('a bad load is nulled, not dropped with the row', r.repaired.loadKg, null);
+    t.eq('a bad rep count is nulled too', r.repaired.reps, null);
+    t.eq('and a bad effort rating is nulled rather than clamped', r.repaired.rir, null);
+    t.eq('every surviving row has a numeric-or-null reps field',
+      r.types, ['number', 'object']);
+    t.ok('and nothing hits the error boundary', !r.boundary, r);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

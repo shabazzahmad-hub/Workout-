@@ -1510,7 +1510,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='213';
+const APP_VERSION='214';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1529,6 +1529,13 @@ const DEFAULT_STATE=()=>({
      the old rows in place meant the new session 0 WAS the old session 0. See
      restartProgram(). */
   runs:[],                  // [{endedAt, sessions, logs:{ptr->log}}]
+  /* Resistance work. The weights track prescribed sets and reps and recorded
+     NOTHING — no load, no reps, no effort — so a session with dumbbells left
+     no trace in history, adherence or progression, and the app could not tell
+     whether the athlete was getting stronger with weights at all. Load is
+     stored canonically in KG like every other body metric; the display
+     converts. */
+  liftLog:[],               // [{date, exId, loadKg, reps, rir}]
   weekFeel:{},              // "cycle-week" -> array of feel strings
   measurements:[],          // {date,waist,weight}
   scoreHistory:[],          // {date,score,level}
@@ -3855,6 +3862,65 @@ function weightsRepsFor(k){const ex=EX[k];const g=STATE.profile.goal;let r=ex.ba
   else if(g==='gain')r=Math.max(6,Math.round(r*0.85));
   else if(g==='core')r=Math.max(6,Math.round(r*0.9)); // strength-leaning midsection work
   return r;}
+/* ---- Resistance log -------------------------------------------------------
+   The one number that makes a weights session progressive is what you lifted
+   last time, so that is what this stores and what it hands back the next time
+   the same movement comes up. */
+function liftLog(){return Array.isArray(STATE.liftLog)?STATE.liftLog:(STATE.liftLog=[]);}
+function lastLift(exId){
+  const rows=liftLog().filter(r=>r&&r.exId===exId);
+  return rows.length?rows[rows.length-1]:null;
+}
+function loadToKg(v){return isImperial()?v*0.453592:v;}
+function loadShow(kg){return kg==null?null:(isImperial()?kg/0.453592:kg);}
+function loadUnit(){return isImperial()?'lb':'kg';}
+function openLiftLog(items){
+  const list=(items||[]).filter(m=>m&&EX[m.exId]);
+  if(!list.length){closeSheet();return;}
+  const u=loadUnit();
+  const rows=list.map((m,i)=>{
+    const ex=EX[m.exId];const prev=lastLift(m.exId);
+    const pl=prev&&prev.loadKg!=null?r1(loadShow(prev.loadKg)):'';
+    const pr=prev&&prev.reps!=null?prev.reps:(m.unit==='reps'?m.target:'');
+    return `<div style="padding:8px 0;border-top:1px solid var(--line)">
+      <div class="sm"><b>${_ve(ex.name)}</b>${prev?`<span class="tiny muted"> · last time ${prev.loadKg!=null?r1(loadShow(prev.loadKg))+' '+u+' × ':''}${prev.reps||'—'}</span>`:'<span class="tiny muted"> · first time</span>'}</div>
+      <div class="row" style="gap:8px;margin-top:5px">
+        <input id="lf-l-${i}" type="number" inputmode="decimal" placeholder="${u}" value="${pl}" style="flex:1;min-width:0">
+        <input id="lf-r-${i}" type="number" inputmode="numeric" placeholder="reps" value="${pr}" style="flex:1;min-width:0">
+        <select id="lf-e-${i}" style="flex:1.1;min-width:0;padding:9px;border-radius:10px;background:var(--card2);color:var(--ink);border:1px solid var(--line);font-size:13px">
+          <option value="">effort…</option><option value="3">3+ left</option><option value="2">2 left</option>
+          <option value="1">1 left</option><option value="0">all out</option></select>
+      </div></div>`;
+  }).join('');
+  openSheet(`<h3>What did you lift?</h3>
+    <p class="sm muted" style="margin-top:-4px">Top set of each. This is the only way the app can tell whether you are getting stronger — and next time it hands these numbers back so you know what to beat. Skip anything you would rather not record.</p>
+    ${rows}
+    <button class="btn primary" style="margin-top:12px" onclick='saveLiftLog(${JSON.stringify(list.map(m=>m.exId))})'>Save</button>
+    <div style="height:8px"></div>
+    <button class="btn ghost" onclick="closeSheet()">Not this time</button>`);
+}
+function saveLiftLog(exIds){
+  const d=todayISO();let n=0;
+  (exIds||[]).forEach((exId,i)=>{
+    const L=$('#lf-l-'+i),R=$('#lf-r-'+i),E=$('#lf-e-'+i);
+    const load=parseFloat(L&&L.value),reps=parseInt(R&&R.value,10);
+    const rirRaw=E&&E.value!==''?parseInt(E.value,10):null;
+    if(!(isFinite(load)&&load>0)&&!(isFinite(reps)&&reps>0))return;   // nothing entered
+    liftLog().push({date:d,exId,
+      loadKg:(isFinite(load)&&load>0)?r1(loadToKg(load)):null,
+      reps:(isFinite(reps)&&reps>0)?reps:null,
+      rir:(rirRaw!==null&&isFinite(rirRaw)&&rirRaw>=0&&rirRaw<=5)?rirRaw:null});
+    n++;
+  });
+  if(liftLog().length>2000)STATE.liftLog=liftLog().slice(-2000);
+  /* A resistance session is training. It credits the day the same way a quick
+     workout does — streak, heatmap, weekly count — WITHOUT consuming a program
+     session, because it is not one. */
+  if(n){if(!STATE.quickLog)STATE.quickLog={};STATE.quickLog[d]=(STATE.quickLog[d]||0)+1;}
+  save();closeSheet();
+  toast(n?('Logged '+n+' movement'+(n===1?'':'s')):'Nothing logged');
+  try{render();}catch(e){}
+}
 function buildWeightsSession(){
   const pool=weightsPool();if(!pool.length)return null;
   const byPat={};pool.forEach(k=>{const p=EX[k].pattern||'other';(byPat[p]=byPat[p]||[]).push(k);});
@@ -4111,7 +4177,7 @@ function plEnterDone(){
       ${coachHeroHTML('Sergeant Forge · strong work')}
       <div class="pl-name" style="margin-bottom:2px">Session done 🏋️</div>
       <div class="pl-coach" style="margin-bottom:14px">${label}</div>${stats}
-      <div style="width:100%;max-width:440px;margin-top:18px"><button class="btn primary" style="width:100%;margin-bottom:8px" onclick="shareLast()">📤 Share</button><button class="btn green" style="width:100%" onclick="playerQuit()">Done ✓</button></div>`;
+      <div style="width:100%;max-width:440px;margin-top:18px"><button class="btn primary" style="width:100%;margin-bottom:8px" onclick='openLiftLog(${JSON.stringify(PLAYER.items.map(m=>({exId:m.exId,unit:m.unit,target:m.target})))})'>🏋️ Log what you lifted</button><button class="btn ghost" style="width:100%;margin-bottom:8px" onclick="shareLast()">📤 Share</button><button class="btn green" style="width:100%" onclick="playerQuit()">Done ✓</button></div>`;
     if(!motivate('done'))coachSpeak('Session complete. Strong work.');
     return;
   }
@@ -11497,6 +11563,15 @@ function normalizeState(){
      break every lifetime counter at once — they all fold this in beside the
      live logs, so it is exactly the shape that must never be trusted raw. */
   if(!Array.isArray(STATE.runs))STATE.runs=[];
+  /* Resistance history. These rows are the only record that a weights session
+     happened, so a bad ROW is dropped and a bad FIELD inside a good row is
+     nulled rather than costing the whole entry. */
+  if(!Array.isArray(STATE.liftLog))STATE.liftLog=[];
+  STATE.liftLog=STATE.liftLog.filter(r=>r&&typeof r==='object'&&typeof r.date==='string'&&r.exId&&EX[r.exId])
+    .map(r=>({date:r.date,exId:r.exId,
+      loadKg:(typeof r.loadKg==='number'&&isFinite(r.loadKg)&&r.loadKg>0)?r.loadKg:null,
+      reps:(typeof r.reps==='number'&&isFinite(r.reps)&&r.reps>0)?Math.round(r.reps):null,
+      rir:(typeof r.rir==='number'&&isFinite(r.rir)&&r.rir>=0&&r.rir<=5)?Math.round(r.rir):null}));
   STATE.runs=STATE.runs.filter(r=>r&&typeof r==='object'&&r.logs&&typeof r.logs==='object'&&!Array.isArray(r.logs))
     .map(r=>({...r,sessions:Math.max(0,Math.floor(+r.sessions)||0)}));
   dedupeMeasurements();   // collapse same-date duplicates left by pre-v156 appends
