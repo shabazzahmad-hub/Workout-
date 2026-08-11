@@ -646,6 +646,48 @@ export default async function run() {
     t.eq('warm-up and cool-down carry nothing contraindicated', r.flows, []);
   }
 
+  /* ---- the single-movement formats warn instead of pretending -----------
+     Finishing the sibling-path audit. QUICKIES came back clean on both filters
+     (23 movements, zero unsafe). SPECIAL_FORMATS did not: every grip format
+     hard-codes deadhang, which safeSwap routes around for a flagged shoulder,
+     elbow or wrist.
+
+     This one does NOT get a silent swap. A hang session IS the hang — handing
+     back a different movement while still calling it "Hangs 30s x 5" is not a
+     safety control, it is a lie about what the athlete chose. They get a
+     warning and keep the decision. */
+  {
+    const r = await page.evaluate(seed => {
+      eval(seed)();
+      const read = () => {
+        let txt = '';
+        /* openGrip(), not openSpecial() — the latter is the chooser between
+           ruck/grip/boxing and never renders the hang sets. The first version
+           of this block read the wrong sheet and failed on both counts. */
+        try { openGrip(); txt = document.body.innerText; } catch (e) { txt = 'THREW ' + e; }
+        try { closeSheet(); } catch (e) {}
+        return txt;
+      };
+      STATE.profile.limitations = [];
+      const clean = read();
+      STATE.profile.limitations = ['shoulder', 'wrist'];
+      const flagged = read();
+      // and the quick workouts, which came back clean — pin that they stay clean
+      const qIds = [...new Set((QUICKIES || []).flatMap(q => (q.items || []).map(i => i.exId)))].filter(k => EX[k]);
+      const quickBad = qIds.filter(k => safeSwap(quickExId(k)) !== quickExId(k));
+      STATE.profile.limitations = [];
+      return { cleanWarns: /flagged a joint/i.test(clean),
+        flaggedWarns: /flagged a joint/i.test(flagged),
+        stillOffersHangs: /Hangs 30s/.test(flagged),
+        quickBad, quickTotal: qIds.length };
+    }, ATHLETE);
+    t.ok('a clean athlete sees no warning on the hang sets', !r.cleanWarns, r);
+    t.ok('a flagged shoulder or wrist does', r.flaggedWarns, r);
+    t.ok('but the session is still offered — the athlete keeps the choice', r.stillOffersHangs, r);
+    t.eq('and no quick workout hands out a contraindicated movement', r.quickBad, []);
+    t.ok('across every movement the quick workouts use', r.quickTotal >= 20, r);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

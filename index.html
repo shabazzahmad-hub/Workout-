@@ -1510,7 +1510,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='216';
+const APP_VERSION='217';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -4288,6 +4288,23 @@ const SPECIAL_FORMATS={
   box6x2:{name:'6 × 2 min',desc:'Six 2-minute rounds, 45s rest. Faster turnaround.',w:2,r:0.75,n:6,exId:'shadowbox',act:'box'},
 };
 function fmtInfo(k){return HIIT_FORMATS[k]||SKIP_FORMATS[k]||SPECIAL_FORMATS[k]||{name:'Session',desc:''};}
+/* The grip and boxing formats hard-code ONE movement, and that is the point of
+   them: a hang session IS the hang. So unlike the prescribed circuits — where
+   safeSwap substitutes an equivalent and the athlete never needs to know — a
+   silent swap here would hand back something that is not the session they
+   chose while still calling it "Hangs 30s × 5".
+
+   The honest control for a deliberately chosen single-movement session is a
+   warning, not a substitution. The athlete keeps the decision; they just stop
+   making it uninformed. Fails closed in the sense that matters: if safeSwap()
+   would route around this movement anywhere else in the app, it says so. */
+function actRiskNoteHTML(exId,why){
+  try{
+    if(!EX[exId]||safeSwap(exId)===exId)return '';
+    const alt=EX[safeSwap(exId)];
+    return `<div class="note warn" style="margin-top:0"><b>You flagged a joint this loads.</b> ${_ve(why)}, and your health answers say that is one to be careful with. The programme routes around it elsewhere${alt?` — it gives you ${_ve(alt.name)} instead`:''}. Nothing here is stopping you, but if it pinches or feels wrong, stop.</div>`;
+  }catch(e){return '';}
+}
 /* Generic activity records: STATE.ruckLog / gripLog / boxLog */
 const ACTS={
   ruck:{name:'Ruck March',emoji:'🎒',logKey:'ruckLog',verb:'rucked'},
@@ -4376,6 +4393,7 @@ function openGrip(){
       <div class="stat"><div class="n" style="color:var(--fire-l)">${s.week}</div><div class="l">Min this week</div></div>
       <div class="stat"><div class="n" style="color:var(--gold)">${pr?fmtTime(pr):'—'}</div><div class="l">Best hang</div></div>
     </div>
+    ${actRiskNoteHTML('deadhang','Hanging loads the shoulders, elbows and wrists under your full bodyweight')}
     <div class="section-label" style="margin-top:0">Hang sets</div>
     <div style="display:flex;flex-direction:column;gap:10px">
       ${Object.keys(SPECIAL_FORMATS).filter(k=>SPECIAL_FORMATS[k].act==='grip').map(k=>`<button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="startSpecialFormat('${k}')"><b style="font-size:15px">${SPECIAL_FORMATS[k].name}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${SPECIAL_FORMATS[k].desc}</div></button>`).join('')}
