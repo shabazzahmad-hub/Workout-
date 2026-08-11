@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 21 suites, ~1,620 checks, run by `npm test` |
+| `tests/` | 22 suites, ~1,660 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -442,6 +442,81 @@ warning renders) whenever the saved list carries a flagged movement, and
 starts in one tap exactly as before when it does not — the fix adds friction
 only where there is something to say.
 
+## Loaded progression past the bodyweight ceiling
+
+A ladder runs out of rungs long before the program does. Tempo (from cycle 5)
+was the only intensity axis a maxed movement had, and it stops changing after
+cycle 7 — cycles 8-9, 12 of the program's 54 weeks, had nothing left to add
+for any movement that topped its ladder early. `atLadderCeiling()` (v221)
+wires the bodyweight ladders into the SAME `liftLog`/`lastLift`/
+`loadToKg`/`loadShow` machinery the Weights track already had, rather than
+inventing a second system next to it.
+
+**Three conditions, not one, and getting any single one wrong is a real bug in
+either direction.** Top of its ladder, the calendar has actually scheduled
+them there (`currentRung`), and the real prescription — safe mode, deload,
+readiness, every multiplier `prescribe()` already applies — is landing AT the
+ceiling, not under it. Drop the first and an easy early rung that happens to
+hit its own low rep cap on a strong athlete's numbers reads as "nothing left
+to progress" when a dozen harder bodyweight rungs remain. Drop the third and a
+flagged-joint athlete in safe mode at 75% of a max rung gets offered a vest on
+top of a session that was eased specifically to be lighter — undoing the
+ease. `prescribeCeiling(ex)` is pulled out of `prescribe()`'s own clamp so
+this can compare against the exact number being enforced, not a second copy
+of the ternary kept in step by hand.
+
+Extended to three surfaces on purpose, and no further for v221: a mid-set note
+naming the last logged load (or prompting for a first one), an end-of-session
+"log your added load" button scoped to only the ceiling-maxed items in that
+session (not the whole session — a core day is mostly bodyweight work with
+nothing to load, and offering it for every move would be noise every single
+day), and a skill-tree badge. Feeding the logged load back into `prescribe()`'s
+own target math — how much a kilogram of vest is worth in "hardness" terms —
+was deliberately left alone: that is a real exercise-science judgment call,
+not a code-completeness gap, and encoding a guess as automatic prescription
+math is a worse mistake than leaving the athlete to read their own log.
+
+**A behavioural check needs a scenario engineered to discriminate, not just
+any scenario that happens to produce the right-shaped data.** "A top rung not
+yet reached by the calendar is not maxed" passed against a mutant with the
+scheduling gate deleted entirely, because at week 1 with the seeded athlete's
+ordinary numbers, `prescribe()`'s own arithmetic already falls short of the
+ceiling regardless of whether the gate exists — the check was measuring
+coincidence, not the gate. Fixed by cranking the anchor maxes up until the RAW
+arithmetic hits the ceiling on its own, at a position the calendar has
+deliberately not reached yet — the gate is then the only thing that can still
+say no, and a guard proves the raw number really would trip it un-gated.
+
+**Two mutants escaped through the same mechanism, in the same test file, from
+two different checks.** `prescribe()` is clamped to `prescribeCeiling()`, so
+"prescribe's output never exceeds the ceiling" holds no matter what
+`prescribeCeiling()` returns — a version quietly returning half the real
+number just moves the clamp with it, and the check that only watched the
+relationship between the two passed on nothing. Needed a check on
+`prescribeCeiling()`'s actual VALUES against the documented formula
+(explicit `repCap` first, then a hardness tier, then a flat 150 for a timed
+hold), independent of anything `prescribe()` does with them. Likewise a
+skill-tree badge check that scanned the whole page for `🎒` passed against a
+mutant that dropped the ceiling check entirely, because two OTHER ladders in
+the same screen (`rotL`, `legL`) happen to have enough headroom above their
+own cap that a 25% safe-mode cut still clamps them at it — the page-wide scan
+stayed true from those regardless of whether the mutated ladder's own badge
+was gated correctly. Fixed by anchoring on the specific exercise's row
+(`openExerciseInfo('dragonflag')` in the markup) rather than the page.
+
+**A mutation harness sharing a working tree with the rest of the session is a
+real hazard, not just a style note.** Rebasing a branch after its own PR
+squash-merges (see "Never stack new commits on the already-merged history"
+below) requires a clean tree, so uncommitted feature work has to be
+`git stash`ed first — and a background mutation script's OWN cleanup step
+(`cp $CLEAN index.html`) can land in that same window. It worked out this
+time because the script had already finished and restored the clean copy
+before the stash ran, so the stash captured the intended feature code rather
+than a mutant mid-flight — but that was order of operations, not a
+guarantee. Confirm a background mutation run has actually finished (check its
+log for the "ALL DONE" line, not just that the process exited) before
+touching the same file with git.
+
 ## Editing `EX` and the swap maps
 
 These are large hand-maintained object literals, and **regex and substring
@@ -752,12 +827,32 @@ Develop on `claude/abs-core-workout-app-3rr2ob`.
    `APP_VERSION` / `CACHE` lockstep, and lints the coach corpus against the
    stop-for-pain rule (no line may frame pain or a symptom as the thing to
    push through).
-2. `npm test` — all 21 suites green, zero page errors, validator clean.
+2. `npm test` — all 22 suites green, zero page errors, validator clean.
    Mutation-test anything newly added.
 3. Bump `APP_VERSION` and `CACHE` together.
 4. `git fetch origin main && git checkout -B <branch> origin/main`, commit,
    push with `--force-with-lease`.
 5. Draft PR → ready → confirm `mergeable_state: "clean"` → squash merge.
+
+   **Never stack new commits on the already-merged history.** A squash merge
+   gives `main` a brand-new commit SHA carrying the same content as the PR
+   branch's commit — the branch itself still has the pre-squash commit as an
+   ancestor. Committing the next version straight on top of that branch (no
+   `git fetch`/`checkout -B` in between) leaves two commits with identical
+   diffs in the same history: the branch's own pre-squash one and the new
+   squashed one it was based on. GitHub reports `mergeable_state: "dirty"`
+   for the resulting PR, not a clean conflict — nothing about the message
+   says "duplicate ancestor." This happened twice in one session (v219→v220,
+   v220→v221), immediately after the exact same fix on the previous round.
+   Every version's commit must be rebased onto a **freshly fetched** `main`
+   before its own PR is opened, every time — not just after the *previous*
+   PR merged, but literally every round, because the previous round's merge
+   is what makes the current branch stale:
+   `git fetch origin main && git rebase --onto origin/main <old-base> HEAD`,
+   then re-point the branch (`git branch -f <branch> HEAD && git checkout
+   <branch>`) and force-push. If uncommitted work is in progress when this is
+   needed, `git stash push -u` first and pop it back after — rebase requires
+   a clean tree.
 6. Sync `main`, then confirm the **`Deploy to GitHub Pages`** run for the merge
    commit has BOTH jobs green — `test / test` and `deploy`. The `deploy` job is
    `needs: test`, so a red suite on `main` shows up as *deploy skipped*, not as

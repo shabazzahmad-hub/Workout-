@@ -1510,7 +1510,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='220';
+const APP_VERSION='221';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -1830,6 +1830,49 @@ function toggleTightSpace(){
   haptic(8);save();renderGuide();
   toast(STATE.profile.tightSpace?'Swapped the handstand and travelling moves out':'Full space — handstands are back in');
 }
+/* The hard ceiling prescribe() will never write a target past, by unit.
+   Pulled out of prescribe()'s own clamp so a second copy of this ternary
+   does not have to be kept in step with it by hand — atLadderCeiling()
+   below needs the exact same number prescribe() is already enforcing, not
+   a re-derived approximation of it. */
+function prescribeCeiling(ex){
+  if(ex.unit==='time')return 150;
+  return (ex.repCap>0)?ex.repCap:(ex.hardness<=0.6?12:(ex.hardness<=0.85?20:40));
+}
+/* Every ladder this exId is the FINAL rung of. Most movements sit in exactly
+   one; a few (burpee, jumpingjack, …) close out more than one ladder, and
+   any of those counts. */
+function ladderTopFor(exId){
+  return Object.keys(LADDERS).filter(l=>{const a=LADDERS[l];return a.length&&a[a.length-1]===exId;});
+}
+/* Once a ladder runs out of rungs the movement cannot get harder — that
+   already got an intensity axis (tempo, from cycle 5) so it is not dead
+   air, but tempo itself stops changing after cycle 7, and cycles 8-9 (12 of
+   the program's 54 weeks) had nothing left to add at all. External load is
+   the other axis a maxed bodyweight movement still has.
+
+   Three things all have to be true, not just one:
+     - this exId is the LAST rung of a ladder it belongs to — an easy early
+       rung hitting ITS OWN low rep cap on a strong athlete's numbers is not
+       the same thing as having nothing bodyweight left to progress into;
+     - the CALENDAR has actually scheduled them there (currentRung), not
+       just that the movement happens to top some ladder in the catalogue;
+     - and the real prescription — safe mode, deload, readiness and every
+       other multiplier already applied — is landing AT the ceiling, not
+       under it. A flagged-joint athlete in safe mode at 75% of a max rung
+       is not maxed; asking them to add a vest on top of an eased session
+       would undo the ease.
+   Fails closed: any exception reads as "no, don't offer it". */
+function atLadderCeiling(exId,pos){
+  try{
+    const ex=EX[exId];
+    if(!ex||(ex.unit!=='reps'&&ex.unit!=='time'))return false;
+    const tops=ladderTopFor(exId);
+    if(!tops.length)return false;
+    if(!tops.some(l=>currentRung(l)>=LADDERS[l].length-1))return false;
+    return prescribe(exId,pos).target>=prescribeCeiling(ex);
+  }catch(e){return false;}
+}
 function prescribe(exId,pos){
   const ex=EX[exId];
   // Free/bonus sessions build items with pos:{} — default cycle/week so the math
@@ -1928,7 +1971,7 @@ function prescribe(exId,pos){
     restMul*=1.25;
     sets=Math.min(sets,3);
   }
-  if(ex.unit==='time'){target=Math.round(target/5)*5;target=clamp(target,15,150);}
+  if(ex.unit==='time'){target=Math.round(target/5)*5;target=clamp(target,15,prescribeCeiling(ex));}
   else{
     /* A blanket 6-40 clamp both RAISED the hardest moves above their own base
        (hspushup base:4 became 6) and let the ceiling run to 40 reps on movements
@@ -1936,8 +1979,7 @@ function prescribe(exId,pos){
        exercise's own floor, and cap by how demanding the movement actually is. */
     target=Math.round(target);
     const lo=Math.min(3,ex.base||6);
-    const hi=(ex.repCap>0)?ex.repCap:(ex.hardness<=0.6?12:(ex.hardness<=0.85?20:40));
-    target=clamp(target,lo,hi);
+    target=clamp(target,lo,prescribeCeiling(ex));
   }
   const rest=clamp(Math.round((ex.rest||45)*restMul),20,120);
   /* Once a ladder runs out of rungs the movement cannot get harder, so blocks 6-9
@@ -3973,7 +4015,7 @@ function plBodyWork(color){
   const m=plCur();const ex=EX[m.exId];
   $('#plBody').innerHTML=`
     <div class="pl-region"><span class="tag ${ex.region}">${ex.region}</span>
-      <span class="pl-set" id="plSet">Set ${PLAYER.s+1} of ${m.sets}</span> ${climbNote(m)}</div>
+      <span class="pl-set" id="plSet">Set ${PLAYER.s+1} of ${m.sets}</span> ${climbNote(m)}${loadCeilingNote(m)}</div>
     <div class="pl-name">${ex.name}</div>
     ${plRingHTML(color,ex)}
     <div class="pl-coach" id="plCoach"></div>
@@ -4196,11 +4238,20 @@ function plEnterDone(){
     if(!motivate('done'))coachSpeak('Session complete. Strong work.');
     return;
   }
+  /* A program session never offered to log added load at all — "Log what you
+     lifted" only existed on the free/weights branch above. Scoped to the
+     specific items that are actually ladder-maxed, not the whole session: a
+     core day is mostly bodyweight work with nothing to add a vest to, and
+     offering it for every move would be noise on every single session. */
+  const ceilingItems=(PLAYER.items||[]).filter(m=>atLadderCeiling(m.exId,sess.pos));
   $('#plBody').innerHTML=`
     ${coachHeroHTML('Sergeant Forge · outstanding work')}
     <div class="pl-name" style="margin-bottom:2px">Session complete 🔥</div>
     <div class="pl-coach" style="margin-bottom:14px">${label}</div>${stats}
-    <button class="btn ghost" style="width:100%;max-width:440px;margin-top:14px" onclick="shareLast()">📤 Share this session</button>
+    <div style="width:100%;max-width:440px;display:flex;flex-direction:column;gap:8px;margin-top:14px">
+      ${ceilingItems.length?`<button class="btn ghost" onclick='openLiftLog(${JSON.stringify(ceilingItems.map(m=>({exId:m.exId,unit:m.unit,target:m.target})))})'>🎒 Log your added load</button>`:''}
+      <button class="btn ghost" onclick="shareLast()">📤 Share this session</button>
+    </div>
     <div class="pl-set" style="margin-top:20px">HOW DID THAT FEEL?</div>
     <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:440px;margin-top:8px">
       <button class="btn green" onclick="playerFeel('easy')">😎 Easy — bring more</button>
@@ -7145,6 +7196,19 @@ function bestFor(exId){const v=STATE.prs&&STATE.prs[exId];return (typeof v==='nu
 function climbNote(m){
   const b=bestFor(m.exId);if(!b)return '';
   return `<span class="tiny" style="color:var(--fire-l)">· best ${m.unit==='time'?fmtTime(b):(b+' reps')}</span>`;
+}
+/* The mid-set cue for a ladder-maxed movement. climbNote() shows the
+   BODYWEIGHT best, which stops moving once a ladder is topped out — this is
+   the note that says why, and what the next rep of progress actually is. */
+function loadCeilingNote(m){
+  try{
+    if(!PLAYER||!atLadderCeiling(m.exId,PLAYER.sess.pos))return '';
+    const last=lastLift(m.exId);
+    const u=loadUnit();
+    return last&&last.loadKg!=null
+      ? `<span class="tiny" style="color:var(--gold)">· maxed the ladder — last +${r1(loadShow(last.loadKg))}${u}</span>`
+      : `<span class="tiny" style="color:var(--gold)">· maxed the ladder — try adding load</span>`;
+  }catch(e){return '';}
 }
 /* #4 — Smart missed-day catch-up banner (streak-safe). */
 function daysSinceTrained(){
@@ -11108,16 +11172,19 @@ function currentRung(lad){
 function skillTreesHTML(){
   let h=`<div class="section-label">Skill progression paths</div>
     <div class="note info">Each path goes easy → hard. You start at your level and <b>unlock harder variations automatically</b> as you level up and move through the weeks. Tap any move for the how-to.</div>`;
+  const pos=STATE.baseline?posOf(Math.min(STATE.progressPtr,SESSIONS_PER_CYCLE*TOTAL_CYCLES-1)):{};
   SKILL_TREES.forEach(t=>{
     const arr=LADDERS[t.lad]||[];const cur=currentRung(t.lad);
     h+=`<div class="card pad" style="margin-bottom:12px"><div class="row" style="margin-bottom:8px"><span style="font-size:18px">${t.emoji}</span><b>&nbsp;${t.name}</b></div>`;
     arr.forEach((exId,i)=>{
       const ex=EX[exId];if(!ex)return;
       const state=i<cur?'done':(i===cur?'cur':'lock');
-      const dot=state==='done'?'✓':(state==='cur'?'▶':'🔒');
-      const col=state==='done'?'var(--green)':(state==='cur'?'var(--fire-l)':'var(--muted)');
+      // top of the ladder, fully prescribed to it, and nothing bodyweight left above it
+      const maxed=state==='cur'&&i===arr.length-1&&atLadderCeiling(exId,pos);
+      const dot=maxed?'🎒':(state==='done'?'✓':(state==='cur'?'▶':'🔒'));
+      const col=maxed?'var(--gold)':(state==='done'?'var(--green)':(state==='cur'?'var(--fire-l)':'var(--muted)'));
       const bg=state==='cur'?'color-mix(in srgb,var(--fire) 10%,transparent)':'transparent';
-      const badge=state==='done'?'unlocked':(state==='cur'?'you are here':'unlocks later');
+      const badge=maxed?'add load':(state==='done'?'unlocked':(state==='cur'?'you are here':'unlocks later'));
       h+=`<button onclick="openExerciseInfo('${exId}')" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:${bg};border:none;border-top:1px solid var(--line);padding:11px 4px;cursor:pointer">
         <span style="width:22px;text-align:center;color:${col};font-weight:900">${dot}</span>
         <span class="grow" style="font-weight:${state==='cur'?'900':'700'};color:${state==='lock'?'var(--muted)':'var(--ink)'}">${ex.name}</span>
