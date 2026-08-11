@@ -1510,7 +1510,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='214';
+const APP_VERSION='215';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 const DEFAULT_STATE=()=>({
@@ -3925,8 +3925,23 @@ function buildWeightsSession(){
   const pool=weightsPool();if(!pool.length)return null;
   const byPat={};pool.forEach(k=>{const p=EX[k].pattern||'other';(byPat[p]=byPat[p]||[]).push(k);});
   const pick=pat=>{const arr=byPat[pat];if(!arr||!arr.length)return null;return arr[Math.floor(Math.random()*arr.length)];};
-  const addItem=(k,items,used)=>{if(!k||used.has(k))return;used.add(k);const ex=EX[k];
-    items.push({exId:k,unit:ex.unit,target:ex.unit==='time'?(ex.base||30):weightsRepsFor(k),rest:ex.rest||55,sets:3});};
+  /* The weights circuit filtered on EQUIPMENT and nothing else — no joint
+     check, no space check. Measured with shoulder, knee, back and wrist
+     flagged: 17 distinct contraindicated movements came through, including
+     battle-rope waves in all 300 circuits sampled, dumbbell shoulder press in
+     153 and kettlebell clean-and-press in 147. The main program has run
+     safeSwap since the beginning; this track was simply never given it, which
+     is the same gap the focus bonus had.
+
+     Fails closed. If the safe alternative needs kit the athlete does not own,
+     the slot is dropped rather than filled with the movement that was flagged
+     in the first place — a shorter circuit beats a circuit that hurts. */
+  const addItem=(k,items,used)=>{
+    if(!k)return;
+    const safe=spaceSwap(safeSwap(k));
+    if(!safe||!EX[safe]||!hasGearFor(safe)||used.has(safe))return;
+    used.add(safe);const ex=EX[safe];
+    items.push({exId:safe,unit:ex.unit,target:ex.unit==='time'?(ex.base||30):weightsRepsFor(safe),rest:ex.rest||55,sets:3});};
   const items=[],used=new Set();
   // balanced full-body military circuit
   ['squat','hinge','pushh','pull','pushv','lunge','core'].forEach(pat=>addItem(pick(pat),items,used));

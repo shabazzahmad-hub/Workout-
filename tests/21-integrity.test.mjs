@@ -509,6 +509,80 @@ export default async function run() {
     t.ok('and nothing hits the error boundary', !r.boundary, r);
   }
 
+  /* ---- the weights circuit respects a flagged joint ----------------------
+     weightsPool() filtered on EQUIPMENT and nothing else. With shoulder, knee,
+     back and wrist flagged, 300 sampled circuits produced 17 distinct
+     contraindicated movements — battle-rope waves in every single one,
+     dumbbell shoulder press in 153, kettlebell clean-and-press in 147. The
+     main program has run safeSwap since the beginning; this track never got
+     it, the same gap the focus bonus had. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = JSON.stringify({ g: STATE.profile.gear, l: STATE.profile.limitations, t: STATE.profile.tightSpace });
+      STATE.profile.gear = ['bar', 'bench', 'dip', 'dumbbell', 'kettlebell', 'medball', 'abroller', 'battlerope'];
+      const sample = () => {
+        const risky = {}; const seen = new Set(); let empty = 0;
+        for (let i = 0; i < 120; i++) {
+          const s = buildWeightsSession() || [];
+          if (s.length < 3) empty++;
+          s.forEach(m => { seen.add(m.exId); if (safeSwap(m.exId) !== m.exId) risky[m.exId] = (risky[m.exId] || 0) + 1; });
+        }
+        return { risky: Object.keys(risky), distinct: seen.size, empty };
+      };
+      STATE.profile.limitations = []; STATE.profile.tightSpace = false;
+      const clean = sample();
+      STATE.profile.limitations = ['shoulder', 'knee', 'back', 'wrist'];
+      const flagged = sample();
+      /* Owning EVERYTHING cannot catch a missing gear re-check — the swap can
+         only land on kit you already have. The interesting athlete owns a
+         little and has flagged joints, so a safe alternative may need kit that
+         is not in the room. */
+      const gearOk = (() => {
+        const sets = [['dumbbell'], ['kettlebell'], ['bench'], ['dumbbell', 'bench']];
+        for (const g of sets) {
+          STATE.profile.gear = g;
+          for (let i = 0; i < 40; i++) {
+            const s = buildWeightsSession() || [];
+            if (s.some(m => !hasGearFor(m.exId))) return { ok: false, gear: g, bad: s.filter(m => !hasGearFor(m.exId)).map(m => m.exId) };
+          }
+        }
+        return { ok: true };
+      })();
+      const k = JSON.parse(keep);
+      STATE.profile.gear = k.g; STATE.profile.limitations = k.l; STATE.profile.tightSpace = k.t;
+      return { clean, flagged, gearOk };
+    });
+    t.eq('a clean athlete gets no contraindicated movement', r.clean.risky.length, 0);
+    t.eq('and neither does one with four flagged joints', r.flagged.risky.length, 0);
+    t.ok('the circuit is still built, not emptied by the filter',
+      r.flagged.distinct >= 8 && r.flagged.empty === 0, r.flagged);
+    t.ok('and never prescribes kit the athlete does not own', r.gearOk.ok, r.gearOk);
+  }
+  {
+    /* The hasGearFor() guard in addItem cannot currently fail: every swap
+       target that needs equipment needs the SAME equipment as its source, so
+       owning the source implies owning the target. That makes the guard
+       unreachable and its mutant equivalent — no runtime check can kill it.
+       Pin the PROPERTY instead. The day someone adds a cross-equipment swap
+       (kbswing -> dbrdl, say) this fires, and the guard starts earning its
+       keep instead of silently becoming the only thing standing between the
+       athlete and kit they do not own. */
+    const r = await page.evaluate(() => {
+      const need = k => ((EX[k] && EX[k].equip) || []).slice().sort().join(',');
+      const bad = [];
+      [['SAFE_SWAP', SAFE_SWAP], ['SPACE_SWAP', SPACE_SWAP]].forEach(([name, map]) => {
+        Object.keys(map || {}).forEach(src => {
+          const tgt = map[src];
+          if (!EX[tgt]) { bad.push(`${name}: ${src} -> ${tgt} (no such exercise)`); return; }
+          const extra = ((EX[tgt] && EX[tgt].equip) || []).filter(g => !((EX[src] && EX[src].equip) || []).includes(g));
+          if (extra.length) bad.push(`${name}: ${src} (${need(src) || 'none'}) -> ${tgt} needs ${extra.join(',')}`);
+        });
+      });
+      return { bad };
+    });
+    t.eq('no swap target needs equipment its source did not', r.bad, []);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
