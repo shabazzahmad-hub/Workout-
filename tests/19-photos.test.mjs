@@ -126,6 +126,50 @@ export default async function run() {
     t.ok('Compare opens on two shots of one pose', /front/.test(r.a) && /front/.test(r.b), r);
   }
 
+  /* ---- a stale renderCompare() call must not win the race ---------------- */
+  {
+    // Real sheet, real <option>s — fabricated #cmpA/#cmpB/#cmpImgs elements hit
+    // a DUPLICATE id: #cmpImgs already exists inside the (possibly still-mounted,
+    // per this app's "views never clear innerHTML" rule) sheet markup from the
+    // earlier openCompare() block above, so document.querySelector('#cmpImgs')
+    // silently returned that stale node instead of the throwaway one — the
+    // first version of this check read back an empty string forever, on both
+    // the clean code and a seeded defect alike.
+    await seedPhotos([['2026-01-01', 'front'], ['2026-01-02', 'front'],
+      ['2026-01-03', 'front'], ['2026-01-04', 'front']])(page);
+    const r = await page.evaluate(async () => {
+      const ids = STATE.photos.slice().sort((a, b) => a.id < b.id ? -1 : 1).map(p => p.id);
+      // four distinct ids, each with distinguishable "bytes" (a plain marker
+      // string is enough — renderCompare() just drops it into an <img src>).
+      // idbPut() is fire-and-forget, so give the writes a moment to land.
+      idbPut('ph_' + ids[0], 'MARK-OLD-A'); idbPut('ph_' + ids[1], 'MARK-OLD-B');
+      idbPut('ph_' + ids[2], 'MARK-NEW-A'); idbPut('ph_' + ids[3], 'MARK-NEW-B');
+      await new Promise(z => setTimeout(z, 100));
+
+      openCompare();
+      const a = document.querySelector('#cmpA'), b = document.querySelector('#cmpB');
+
+      const realIdbGet = idbGet;
+      let calls = 0;
+      // the FIRST render's lookups are slow; the SECOND (newer selection) resolves first
+      idbGet = async k => { calls++; if (calls <= 2) await new Promise(z => setTimeout(z, 150)); return realIdbGet(k); };
+
+      a.value = ids[0]; b.value = ids[1];
+      const first = renderCompare();
+      a.value = ids[2]; b.value = ids[3];
+      const second = renderCompare();
+      await Promise.all([first, second]);
+      idbGet = realIdbGet;
+
+      const html = document.querySelector('#cmpImgs').innerHTML;
+      closeSheet();
+      for (const id of ids) idbDel('ph_' + id);
+      return { html };
+    });
+    t.ok('the newer selection is what actually renders', r.html.includes('MARK-NEW-A') && r.html.includes('MARK-NEW-B'), r);
+    t.ok('the stale (slower-resolving) selection never overwrites it', !r.html.includes('MARK-OLD-A') && !r.html.includes('MARK-OLD-B'), r);
+  }
+
   /* ---- a photo with no pose is repaired, not dropped and not fatal ------- */
   {
     await page.evaluate(() => {

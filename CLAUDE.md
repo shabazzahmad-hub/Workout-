@@ -1556,6 +1556,92 @@ Photo was already in hand — the athlete generated and confirmed it before
 asking for the build, so this shipped with a real photo from the start,
 no placeholder.
 
+## A full QA audit, and seven fixes (v238)
+
+Asked directly for a Principal-Engineer-style audit across bugs, data
+fetching, core workflows and completeness — not a build request, a review.
+Four parallel research passes, each independently verified against the
+actual current source (not just trusted) before anything shipped: this repo
+has 230+ versions of prior bug-fixing behind it, so the risk was rediscovering
+already-fixed defects, not missing real ones. All seven verified findings
+were then implemented, tested, and mutation-tested in one round.
+
+**The pattern repeats: a fix applied to one twin, never carried to the
+other.** `plTickHold()` (the work-phase timed hold — planks, hollow holds,
+`extplank`) never got the wall-clock anchor `plTickRest()` was explicitly
+given specifically because Chrome's intensive throttling drops timers to
+~1/min after five minutes hidden. The fix comment for rest even says so
+("a 90s rest could read 85s after four real minutes") — that reasoning
+applies identically to a hold, and nobody carried it over. Same shape as
+this file's own "player has twins" rule for rendering, just for timer logic
+instead of markup. Fixed by giving `plEnterWork()`/`plTickHold()` the exact
+same `deadline`-anchored `Math.min(byTick, wallClockRemaining)` treatment,
+which — because `playerToggle()`'s pause/resume already adjusts
+`PLAYER.deadline` generically, not per-phase — required no changes there at
+all.
+
+**A permission-gated toggle set the state before the permission was known,
+right next to the ONE that does it correctly.** `toggleReminders()`
+correctly sets `reminderOn` only inside `requestPermission().then(p=>...)`.
+Its sibling `toggleWeekly()`, six lines away, set `weeklyOn=true` and
+toasted "on" unconditionally, fired `requestPermission()`, and threw the
+result away (`.then(()=>{})`). A denial left the setting silently stuck on
+forever, with no notification ever able to fire and nothing on screen
+saying so. Fixed by mirroring the correct sibling exactly.
+
+**`renderCompare()` was the one repeatable async lookup in the file with no
+generation-token guard.** Every other one (`searchOnline()`→`_fsSeq`,
+`startScan()`→`_bcGen`, `estimateFoodFromImage()`→`_sheetGen`) has one.
+Two overlapping calls (either `<select>` changed twice, or A then B before
+the first `idbGet` resolves) let IndexedDB's unordered resolution paint a
+stale photo pair over a fresh one. The mutation test for this one is worth
+noting: reverting just the `if(gen!==_cmpGen)return;` line reproduced the
+exact failure mode from a cold read — the OLDER, slower-resolving selection
+visibly won over the newer one, not a coincidence or a flaky timing
+artifact.
+
+**No network call in the file had a timeout.** `offSearch()`, `offBarcode()`
+(Open Food Facts) and `_geminiCall()` (food-photo AI) all `await fetch(...)`
+with no bound. `sw.js` already races page navigation against a 2.5s timer for
+the documented reason that a connection which *associates* and then hangs —
+gym wifi, a dead hotspot — never rejects on its own; the app's own network
+calls had no equivalent. Fixed with `fetchWithTimeout(url,opts,ms)`, an
+`AbortController` wrapper with `ms` as a real parameter (not a hardcoded
+8000) specifically so a test can pass a short one. **The mutation test for
+this one doesn't fail — it hangs.** Reverting the fix and driving the check
+against a route that never responds doesn't produce a red assertion; the
+whole check never returns, and only a wall-clock `timeout` around the test
+runner kills it. That non-outcome — hang instead of clean failure — IS the
+bug this fix closes, demonstrated more convincingly than a normal red would.
+
+**`saveLiftLog()` had a floor but no ceiling — and the first fix used the
+WRONG ceiling.** `load>0` was checked, but nothing stopped `999999`. The
+obvious reuse was `plausibleKg()` (already used for bodyweight/waist entry,
+25–350kg) — and it broke `21-integrity.test.mjs` immediately: a real,
+already-tested 22.5kg dumbbell load is *below* `plausibleKg()`'s 25kg
+floor, because that floor is calibrated for a human's bodyweight, not a
+loaded implement. A 2.5kg dumbbell set is a completely legitimate logged
+entry. Fixed with a dedicated `plausibleLoadKg(kg){return kg>0&&kg<=400;}`
+— ceiling only, no floor, since `load>0` already guards that. **Reusing a
+plausibility check from an adjacent domain is not free** — the two
+quantities looked similar enough (both "a weight in kg") to reach for the
+same guard, and weren't.
+
+**Two `sw.js` `cache.put()` calls and one `serviceWorker.register()` chain
+were unhandled-rejection risks — fixed with `.catch(()=>{})`, verified with
+a static source check, not a live behavioural one.** There is no reliable
+way to force a real IndexedDB-quota-style failure from this harness, so
+each check greps the actual source for the `.catch(` rather than observing
+an effect. The `cache.put()` check had to be anchored on the specific call
+shape (`` `c => c.put(` ``, the real arrow-function usage), not a bare
+`c.put(` substring match — a source COMMENT in the same file mentions
+`c.put()` in prose, and a naive substring check would have counted that
+comment as an uncaught call site and failed on entirely correct code.
+
+Images unaffected — this round touched no exercise data, only timer logic,
+a permission toggle, a race guard, network resilience, an input clamp, and
+two defensive `.catch()`s.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

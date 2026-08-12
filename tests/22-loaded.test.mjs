@@ -454,6 +454,34 @@ export default async function run() {
     t.ok('the lift-log sheet itself shows the same recommendation per row', /aim for 11/.test(r.sheetHtml) && r.sheetHtml.includes('📈'), r.sheetHtml);
   }
 
+  // ---- saveLiftLog() rejects an implausible weight instead of storing it verbatim
+  {
+    const r = await page.evaluate(() => {
+      const exId = 'dbgoblet';
+      const before = liftLog().length;
+
+      openLiftLog([{ exId, unit: 'reps', target: 10 }]);
+      document.querySelector('#lf-l-0').value = '999999';
+      document.querySelector('#lf-r-0').value = '8';
+      saveLiftLog([exId]);
+      closeSheet();
+      const absurd = liftLog()[liftLog().length - 1];
+
+      openLiftLog([{ exId, unit: 'reps', target: 10 }]);
+      document.querySelector('#lf-l-0').value = '60';
+      document.querySelector('#lf-r-0').value = '8';
+      saveLiftLog([exId]);
+      closeSheet();
+      const normal = liftLog()[liftLog().length - 1];
+
+      return { before, after: liftLog().length, absurd, normal };
+    });
+    t.eq('an implausible logged weight is rejected, not stored verbatim', r.absurd.loadKg, null, r.absurd);
+    t.eq('the rep count still saves even when the weight is rejected', r.absurd.reps, 8, r.absurd);
+    t.ok('a plausible weight still saves normally', r.normal.loadKg > 0 && r.normal.loadKg < 350, r.normal);
+    t.eq('both attempts still logged a row (nothing entered is the only skip case)', r.after, r.before + 2, r);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
