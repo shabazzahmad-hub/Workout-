@@ -1730,6 +1730,148 @@ Images unaffected — this round touched no exercise data, only goal-direction
 logic, one input clamp, one performance split, a small dedup, and two more
 network-timeout fixes.
 
+## A third audit pass, and a shipped fix that didn't actually fix anything (v240)
+
+A full 20-phase production-readiness audit, requested directly, with an
+explicit instruction not to just confirm the app loads but to prove it
+behaves correctly. Rather than re-deriving the whole architecture a third
+time (239 prior versions, 22 suites, two just-completed audit rounds already
+cover most of this ground), the new research was aimed specifically at
+territory v238/v239 hadn't touched, and every agent finding was verified
+against real source and, where practical, a real running browser before
+being trusted — not just read and believed.
+
+**One reported accessibility finding was a false positive, and the reason
+it looked real is worth naming.** An agent flagged `.ex-check`'s 30×30px
+visual box as under the 40×40 touch-target floor. A first empirical
+Playwright probe agreed — clicking 6px outside the box did nothing — but
+that probe had two bugs of its own: it never scrolled the button into view
+(so `elementFromPoint` was correctly returning null for an off-screen
+coordinate, not proving the target was missing) and it ran before
+`#splash`'s 850ms-delay-plus-600ms-fade removal, so `elementFromPoint` was
+hitting the launch splash's decorative `.sgrad` overlay, not the button.
+Once both were fixed, a real click 6px outside the visual box correctly
+toggled `aria-pressed` — `button.ex-check::after`'s 44×44 invisible tap
+zone was already working exactly as designed. Filed as a finding worth
+recording precisely because it shows the SAME discipline this file already
+demands of test-writing applies to verifying an audit agent's own report:
+trust but verify, and a flawed verification script can manufacture a
+defect that was never there. (`.gearbtn` at 34×34px with no `::after`
+compensation is a real, separate, low-priority gap — noted below as a
+deferred enhancement, not fixed this round.)
+
+**`selfUpdate()`'s forced reload only checked `_sessionLive()` once, at
+entry — several `await`s and up to ~6.4s before the reload actually
+fires** (the version-check fetch alone allows up to 6s under
+`fetchWithTimeout`). An athlete who started a set in that window still got
+yanked out from under them. Fixed by moving the check to fire immediately
+before `location.reload()` itself: `setTimeout(()=>{if(_sessionLive())return;location.reload();},400);`.
+The regression test has to find `_sessionLive()` specifically inside the
+reload's own scheduling, not just anywhere in the function — an entry-only
+check would make a naive "does the function call _sessionLive" assertion
+pass on the buggy version too.
+
+**`estimateMaxes()` had the exact falsy-zero mistake `computeAssessment()`
+was already fixed for, one function downstream — twice in the same
+function.** The sanitiser filter was `v>0` (dropping a genuine "couldn't
+hold the plank at all" 0 as if it were a data-quality gap, not a real
+result), and the very next line's `clean.plank||40` would have re-broken
+it even with the filter fixed, since `0||40` is `40`. Both needed fixing
+together — fixing only the filter would leave the fallback still treating
+an honest zero as absent. **Building the regression test surfaced a second
+bug in the test itself, caught by mutation testing rather than by
+inspection:** the first draft's baseline included `push:0` alongside
+`plank:0` — since `Object.assign(defaults, clean)` lets any present input
+key pass straight through untouched, `r.m.push` was reading the INPUT
+value, never the value `estimateMaxes()` actually derives from the
+plank-anchored scale. Reverting only the `||40` fallback (leaving the
+`v>=0` filter intact) passed clean against that first draft — a real
+escaped mutant, not a false pass on a already-broken check. Fixed by
+omitting push/pull/squat from the test's input baseline entirely, so the
+scale formula is what's actually exercised, and asserting the exact
+floor-clamped value (`push===6`) rather than a loose inequality.
+
+**The `_ve()` single-quote fix looked like a real security fix, passed its
+own test, and did not actually close the hole — verified empirically, not
+assumed.** `removeMeasure`'s delete button was `onclick="removeMeasure('${_ve(date)}')"`,
+and escaping `'` to `&#39;` in `_ve()` looks like it should stop a crafted
+measurement date (STATE.measurements carries no schema validation on
+import) from breaking out of the single-quoted JS string and injecting
+code. It does not, because **the browser HTML-decodes an inline event
+handler's attribute value BEFORE compiling it as JS** — confirmed with a
+standalone Playwright probe reading `element.getAttribute('onclick')` back
+decoded, then confirmed end-to-end with a real click: `&#39;` turns back
+into a literal `'` right before the handler runs, and the string still
+breaks out exactly as if it had never been escaped. **A regex-based test
+of the rendered markup can't catch this at all** — the first draft of the
+regression check extracted the onclick argument with
+`/onclick="removeMeasure\(([^)]*)\)"/` and asserted it looked like a
+single clean argument, and that regex is fooled by the exact same
+first-`)` ambiguity the exploit relies on, so it read as "safe" on BOTH
+the vulnerable and the intended-fixed code. The only test that actually
+proves anything here injects the rendered HTML into a real DOM element and
+fires a real click, then checks whether the injected side effect ran.
+
+The real fix replaces the hand-wrapped single-quoted JS string with one
+built by `JSON.stringify()` — `onclick="removeMeasure(${_ve(JSON.stringify(date))})"`
+— which produces its own correctly backslash-escaped, double-quoted JS
+string literal; `_ve()` then only has to protect the HTML *attribute*
+boundary (escaping the JSON string's own `"` delimiters to `&quot;`),
+which is a job it does correctly, since that escaping is consumed once by
+HTML decoding and never asked to also survive a second JS-parse pass. The
+`_ve()` single-quote addition itself is still kept — harmless, and real
+protection for any *other*, differently-shaped call site that embeds
+output inside a single-quoted HTML attribute — but the comment on it and
+on `measureListHTML()` now says plainly what it does and does not
+protect, since the original phrasing ("escaping `'` everywhere is the safe
+default") is precisely the claim that turned out to be false for the one
+call site it was written for. **`measureListHTML()`'s existing
+`String(m.date).slice(0,10)` truncation also shapes the real attack
+surface** — the regression test's payload is built to fit a complete
+breakout (closing quote, closing paren, injected statement, `//` comment)
+inside exactly 10 characters, matching what an attacker actually has to
+work with, not an unbounded string that would never survive to the
+vulnerable code path intact.
+
+**The `importData()` prototype-pollution guard's first regression test
+was checking the wrong object, and a standalone probe was needed to find
+the right one.** `Object.assign(target, JSON.parse(untrustedJson))` — the
+mechanism a comment already correctly described — does NOT touch the
+global `Object.prototype`: `JSON.parse` without a reviver produces an own
+"`__proto__`"-named *data* property (it does not trigger the accessor at
+parse time), and it's the later `Object.assign` that triggers a real
+property `[[Set]]` on `target.__proto__`, reassigning *that specific
+object's own* `[[Prototype]]` link — confirmed with a standalone probe
+comparing `Object.getPrototypeOf(target)` and a leaked property read
+through the hijacked chain, with and without the reviver. The first draft
+of the test asserted on `Object.prototype.polluted`, which is `undefined`
+whether the guard exists or not, and it mutation-tested clean against a
+seeded mutant that deleted the reviver entirely — a check that cannot
+fail. Fixed by driving the real `importData()` through a real `File` (the
+same pattern `13-feedback.test.mjs`'s legacy-backup check already uses,
+including the `window.confirm` stub for the now-gated confirm), and
+asserting `Object.getPrototypeOf(STATE) === Object.prototype` afterward.
+**The completion-polling signal needed its own second fix**: the first
+version polled for a sentinel written to `STATE._saved`, which `save()` —
+called unconditionally at the very end of `importData()` — immediately
+overwrites with `todayISO()` before the polling loop's first tick can ever
+observe it. Switched to `STATE.profile.name`, deep-merged from the backup
+and untouched by `save()`.
+
+**Every fix in this round shares one shape**: the thing that looked like
+verification (a regex over rendered HTML, an assertion on the wrong
+global, a loose inequality a pass-through value could satisfy by
+coincidence) had to be replaced with something that actually drives the
+real code path and reads the real effect, and in three of the four cases
+that only became visible by mutation-testing the check against the exact
+defect it claimed to guard.
+
+`.gearbtn`'s 34×34px touch target (no `::after` compensation, unlike
+`.ex-check`) is a real, low-priority, deliberately-deferred gap — noted
+here rather than fixed, since it's cosmetic-adjacent rather than a
+behavioral defect and this round's fixes were scoped to verified
+correctness/security issues.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

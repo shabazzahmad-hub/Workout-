@@ -97,6 +97,17 @@ export default async function run() {
     const bodyEnd = html.indexOf('\n}', fnIdx);
     const body = html.slice(fnIdx, bodyEnd);
     t.ok('it calls fetchWithTimeout, not a bare fetch', body.includes('fetchWithTimeout('), body.slice(0, 200));
+
+    /* _sessionLive() was only checked once, at entry — several awaits and up
+       to ~6.4s before the reload actually fires (the fetch alone allows up to
+       6s). An athlete who started a set in that window still got yanked out.
+       The entry check alone would make this assertion trivially true even on
+       the buggy version, so this has to find _sessionLive() specifically
+       inside the reload's own scheduling, not just anywhere in the function. */
+    const reloadIdx = body.indexOf('location.reload()');
+    t.ok('selfUpdate() schedules a reload', reloadIdx >= 0, reloadIdx);
+    const justBefore = body.slice(Math.max(0, reloadIdx - 120), reloadIdx);
+    t.ok('and re-checks _sessionLive() immediately before firing it, not only at entry', justBefore.includes('_sessionLive()'), justBefore);
   }
 
   /* ---- cf-precache-status must be pinned with waitUntil, same as cf-topup
