@@ -18,7 +18,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="CoreForge">
 <link rel="icon" href="icon-192-v2.png">
-<link rel="apple-touch-icon" href="icon-192-v2.png">
+<link rel="apple-touch-icon" href="icon-180-apple.png">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="description" content="CoreForge — a home training program that starts with 6 weeks of core, abs and HIIT for a flat stomach and no love handles, then expands into a full year of full-body strength (chest, back, shoulders, arms, legs) plus HIIT. Baseline assessment, week-to-week progression, self-saving. Offline-ready, installs to your home screen.">
 <title>CoreForge — 1-Year Full-Body Program</title>
@@ -1538,7 +1538,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='229';
+const APP_VERSION='230';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -10050,7 +10050,8 @@ function dietLabel(){const m=Object.fromEntries(DIET_OPTS);return m[STATE.nutrit
    helper so the wording cannot drift between the two places it appears. */
 function privacyNoteHTML(){
   return `<div class="note info" style="margin-top:12px">Your training data lives <b>only on this phone</b> — sessions, measurements, photos and backups are saved on the device and work offline. Nothing is uploaded, and there is no account.
-    <div class="tiny muted" style="margin-top:6px">Two optional extras are the exception, and both stay off until you add your own API key: the <b>food-photo lookup</b> sends that photo to Google Gemini, and the <b>premium coach voice</b> sends the line being spoken to Microsoft Azure. Leave them off and nothing ever leaves the phone.</div></div>`;
+    <div class="tiny muted" style="margin-top:6px">Two optional extras stay off until you add your own API key: the <b>food-photo lookup</b> sends that photo to Google Gemini, and the <b>premium coach voice</b> sends the line being spoken to Microsoft Azure. A third, key-free lookup — <b>searching packaged foods or scanning a barcode</b> — sends only the search term or barcode (never anything about you) to the free Open Food Facts database. Skip all three and nothing ever leaves the phone.</div>
+    <div class="tiny muted" style="margin-top:6px"><a href="./privacy.html" target="_blank" rel="noopener" style="color:inherit">Read the full privacy policy →</a></div></div>`;
 }
 /* Shown when normalizeState() could not recognise the stored diet and fell
    back to the restrictive one. The athlete is the only one who knows what it
@@ -11872,6 +11873,9 @@ function renderGuide(){
     <div class="tiny muted" id="packNote" style="margin-top:6px">Exercise photos download quietly in the background, a few at a time, so the app is usable straight away instead of waiting on the lot. Anything you open before it finishes is saved as you view it.</div>
     <button class="btn ghost sm" style="width:100%;margin-top:6px" onclick="forceUpdate()">🔄 Check for update</button>
     <div class="tiny muted" style="margin-top:6px">If the version here doesn't match the latest, tap Check for update — it re-fetches the app and reloads. On the installed app, fully closing and reopening it also picks up new versions.</div>
+    <div class="divider"></div>
+    <div class="btnrow"><a class="btn ghost sm" style="width:100%" href="./privacy.html" target="_blank" rel="noopener">Privacy policy</a><a class="btn ghost sm" style="width:100%" href="./terms.html" target="_blank" rel="noopener">Terms of use</a></div>
+    <a class="btn ghost sm" style="width:100%;margin-top:8px" href="https://github.com/shabazzahmad-hub/Workout-/issues" target="_blank" rel="noopener">💬 Report a problem / get help</a>
   </div>`;
   h+=`<div class="center tiny muted" style="margin:20px 0">CoreForge v${APP_VERSION} · built for a strong midsection<br>${STATE.profile.name?'Athlete: '+_ve(STATE.profile.name)+' · ':''}saved ${_ve(STATE._saved||todayISO())}</div>`;
   v.innerHTML=h;

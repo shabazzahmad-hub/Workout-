@@ -2,6 +2,7 @@
   "name": "CoreForge — Full-Body Workout",
   "short_name": "CoreForge",
   "description": "A full-year full-body training program — abs and core first, then progressive full-body strength, calisthenics and HIIT. Day-one baseline assessment builds an auto-generated plan that gets harder every week and self-saves your progress. Offline-ready, installs to your home screen.",
+  "lang": "en",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
@@ -22,10 +23,39 @@
       "purpose": "any"
     },
     {
-      "src": "icon-512-v2.png",
+      "src": "icon-192-maskable.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icon-512-maskable.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "screenshot-today.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Today's session, built for you every day"
+    },
+    {
+      "src": "screenshot-fuel.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Nutrition targets and food logging"
+    },
+    {
+      "src": "screenshot-progress.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Core score and transformation tracking"
     }
   ],
   "id": "./",

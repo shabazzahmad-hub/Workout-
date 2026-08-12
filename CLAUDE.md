@@ -1143,6 +1143,76 @@ fixes follow the same shape as the rest of this section: find the specific
 scenario the passing suite never actually constructed, not just add another
 assertion next to the ones that already pass.
 
+## App-store listing quality (v230)
+
+Prompted by "what would Apple/Google Play check before listing this" —
+narrowed, on the user's explicit steer, to genuine functional/store-quality
+gaps rather than legal paperwork the user does not want time spent on.
+
+**A privacy blurb that omits a real outbound call is worse than no blurb.**
+`privacyNoteHTML()` named two opt-in, key-gated third parties (Azure, Gemini)
+and stopped there — but packaged-food search and barcode scanning hit the
+free Open Food Facts database with **no key and no opt-in gate at all**,
+and the note never said so. Fixed by naming it explicitly (search term or
+barcode only, never anything about the athlete) and linking to a full
+policy page (`privacy.html`) and terms page (`terms.html`) — both static,
+outside the single inline `<script>`, since they are legal documents rather
+than application logic and the user does not want them touched again absent
+a specific ask.
+
+**A maskable icon that reuses the "any" icon file usually is not actually
+maskable.** The manifest pointed `purpose:"maskable"` at the exact same
+512×512 photographic portrait used for `purpose:"any"` — full-bleed, with
+the subject's crossed arms running to the frame edges. An OS that crops a
+maskable icon to a circle or squircle would cut into the elbows/hands,
+because nothing in the source image left room for that crop. Fixed by
+generating a real maskable variant: the subject scaled to 80% (the
+conventional maskable safe zone) and centered on a canvas filled with the
+photo's own backdrop tone — sampled from the source image's corners, not
+guessed — so the safe zone survives any OS mask shape. A naive hard paste
+of the scaled photo onto the flat fill left the exact rectangular seam this
+file's contact-sheet extraction note already documents; the fix was the
+same one used there — feather the paste mask with a Gaussian blur so the
+boundary blends into the flat fill instead of fighting it, rather than
+trying to match the fill color more precisely.
+
+**`manifest.webmanifest`'s `screenshots` array has to be real screenshots
+of the real app, not a placeholder.** Generated via the existing Playwright
+test harness (`seedAthlete()` + `waitForBoot()`), at the app's actual mobile
+viewport, of Today/Fuel/Progress with a fully-seeded athlete so they show
+real content rather than an empty onboarding state. Caught one thing the
+manual approach could not have skipped past silently: the branded launch
+splash (`#splash`, dismissed by `hideSplash()` ~850ms after boot, then a
+600ms fade-out) was still fully opaque in the first attempt's screenshots
+because the script screenshotted before it cleared — the fix is to wait
+past that window (or call `hideSplash()` directly) before capturing, the
+same "read back synchronously, do not let an unrelated timer land inside
+your wait" lesson this file's tap-repaints-the-UI note already draws,
+just on the other side: here the wait was too SHORT, not accidentally too
+long.
+
+**Every shipped asset must be in some precache tier, and that invariant
+caught its own violator immediately.** Adding the new icon and screenshot
+files without also adding them to `sw.js`'s tiers failed suite 12's
+"every shipped asset is in some tier" check on the first run — exactly the
+gap that check exists to catch. The three screenshots went in `EXTRA`
+(least essential — they're read only by the browser's own install-prompt
+UI, never fetched by the running app) rather than `SHELL_MIN`.
+
+**A comment placed INSIDE a tracked `sw.js` array literal can break the
+test that parses it, for a reason that has nothing to do with the code
+being wrong.** Suite 12 extracts each tier's contents with a regex that
+scans between single quotes (`/'([^']+)'/g`) — a first attempt put an
+explanatory comment inline inside `EXTRA`'s array literal, and the comment
+contained the word "browser's". That stray apostrophe paired with a later
+quote to fake a matched "string," corrupting the parsed asset list and
+producing two unrelated-looking failures (a bogus "asset appears in two
+tiers" and a bogus "references a file that does not exist") from one typo.
+Comments belong **outside** array literals that a test's own naive parser
+walks, not folded in as an inline aside — the array's plain-text contract
+with its own test is as real as the array's contract with the service
+worker.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

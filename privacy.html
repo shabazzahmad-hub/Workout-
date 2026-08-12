@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — CoreForge</title>
+<style>
+  :root{--bg:#07101d;--bg2:#0b1424;--card:#101b2e;--line:rgba(255,255,255,.11);--ink:#f7f9fc;--muted:#9ba8bd;--fire:#5de0b7}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:linear-gradient(180deg,var(--bg2),var(--bg) 42%);background-attachment:fixed;line-height:1.55;padding:0 0 60px}
+  .wrap{max-width:720px;margin:0 auto;padding:32px 20px}
+  h1{font-size:26px;margin:0 0 4px}
+  .updated{color:var(--muted);font-size:13px;margin:0 0 28px}
+  h2{font-size:18px;margin:32px 0 10px;color:var(--fire)}
+  p,li{color:var(--ink);font-size:15px}
+  ul{padding-left:20px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:14px 0}
+  a{color:var(--fire)}
+  .back{display:inline-block;margin-bottom:20px;color:var(--muted);text-decoration:none;font-size:14px}
+  .muted{color:var(--muted)}
+  code{background:var(--card);padding:2px 6px;border-radius:6px;font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="./index.html">← Back to CoreForge</a>
+  <h1>Privacy Policy</h1>
+  <p class="updated">Last updated: August 2026</p>
+
+  <div class="card">
+    <p><b>The short version:</b> CoreForge has no account, no server, and no ad or analytics tracking of any kind. Everything you enter — your profile, your workouts, your food log, your progress photos — is stored only on your own device. Nothing is uploaded anywhere unless you explicitly turn on one of three optional, clearly-labelled features described below.</p>
+  </div>
+
+  <h2>What is collected, and where it lives</h2>
+  <p>CoreForge stores everything locally, in your browser's <code>localStorage</code> and <code>IndexedDB</code> — the same on-device storage every website uses, scoped to this app only. This includes:</p>
+  <ul>
+    <li>Your profile: name, age, sex, height, goals, equipment, and any injury/limitation flags you set</li>
+    <li>Training history: sessions completed, sets, reps, loads, ratings, streaks and progress photos</li>
+    <li>Nutrition data: logged food, water, macros, and any diet or allergy preferences you set</li>
+    <li>App settings: theme, sound, coach voice, and (if you add them) your own third-party API keys</li>
+  </ul>
+  <p>None of this is sent to us — there is no "us" to send it to. CoreForge has no backend server and no account system.</p>
+
+  <h2>The three exceptions — all opt-in, all named at the point you turn them on</h2>
+  <ul>
+    <li><b>Premium coach voice.</b> If you paste your own Microsoft Azure Speech key into Settings, the line the coach is about to speak is sent to Azure to synthesize. Off by default; nothing is sent until you add a key.</li>
+    <li><b>Food-photo lookup.</b> If you paste your own Google Gemini API key into Settings, a photo you take of food is sent to Gemini to identify it. Off by default; nothing is sent until you add a key.</li>
+    <li><b>Packaged-food &amp; barcode search.</b> Searching for a packaged food or scanning a barcode sends only the search term or barcode number to the free, public <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a> database — no key required, and nothing about you is sent, only the term you typed or the code you scanned. Built-in foods work fully offline without this.</li>
+  </ul>
+  <p class="muted">In every case, only the specific piece of data described above (a line of coach speech, a food photo, or a search term/barcode) is sent — never your profile, your training history, or anything else on the device.</p>
+
+  <h2>No ads, no analytics, no tracking</h2>
+  <p>CoreForge does not run any advertising, analytics, or tracking code. There are no cookies used for tracking, no third-party trackers, and no data broker relationships. The app cannot see how you use it, because nothing reports back.</p>
+
+  <h2>Exporting and deleting your data</h2>
+  <p>You are always in control:</p>
+  <ul>
+    <li><b>Export a backup</b> any time from Settings → Your data → Export backup. This downloads a JSON file to your device containing your data, with any API keys stripped out.</li>
+    <li><b>Delete everything</b> from Settings → Your data → Reset all data, or by clearing this site's storage in your browser, or by uninstalling the app.</li>
+    <li>Because there is no account and no server copy, deleting the app or its storage deletes the data completely — there is nothing left anywhere else to ask us to delete.</li>
+  </ul>
+
+  <h2>Children's privacy</h2>
+  <p>CoreForge is a general-fitness app intended for users aged 16 and older, and is not directed at children. It collects no data from anyone, of any age, beyond what is described above, and that data never leaves the device except through the three explicit, opt-in actions listed.</p>
+
+  <h2>Changes to this policy</h2>
+  <p>If this policy changes, the "last updated" date above will change with it. Because CoreForge has no way to contact you (there is no account and no email on file), please check back here if you want to know about updates.</p>
+
+  <h2>Contact</h2>
+  <p>Questions, or found a problem? Open an issue on the project's <a href="https://github.com/shabazzahmad-hub/Workout-/issues" target="_blank" rel="noopener">GitHub repository</a>.</p>
+
+  <p class="muted" style="margin-top:32px">See also the <a href="./terms.html">Terms of Use</a>.</p>
+</div>
+</body>
+</html>
