@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 22 suites, ~1,906 checks, run by `npm test` |
+| `tests/` | 22 suites, ~1,924 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -1376,6 +1376,79 @@ bonus with the right gear owned). ChatGPT prompts for the real photos were
 handed to the user rather than generated in-session, matching the
 established equipment-identity discipline (one generation per exercise,
 explicit shape description, never a mixed-equipment grid).
+
+**The first generated Dragon Flag photo revealed exactly what the prompt
+was missing, and it was a real lesson in how to brief an image model.**
+The athlete had just bought a 25lb and a 31lb kettlebell and asked for a
+prompt fix. The first attempt (floor mat + pull-up rig) rendered as a
+hanging row — feet planted on the mat, torso reclined at an angle, nothing
+actually suspended, because a floor scene gives the model no reference
+plane to show a body floating in open air. The fix wasn't more adjectives
+about straight legs; it was giving the model a *surface to hover above* —
+switching to a flat bench and demanding, twice, a visible gap of empty air
+between the body and the bench. Composition beats description: the model
+needed something to show absence *against*, not just instructions to
+"suspend" a body in a void.
+
+## Five new kettlebell exercises (v233)
+
+Requested directly, in the same breath as the Dragon Flag prompt fix: "I
+now have a 25lb and a 31lb kettlebell — give me more core and compound
+full-body kettlebell exercises." A survey of the existing 12-entry `kb*`
+roster found swing, goblet squat, Turkish get-up, snatch, clean & press,
+RDL, farmer's carry, thruster and halo all already present — genuinely
+missing: windmill, suitcase carry, figure-8, renegade row, and sumo
+deadlift high pull. Three core-focused, two compound full-body, matching
+the two categories asked for.
+
+**Kettlebell load tracking already existed and needed nothing new.**
+`liftLog`/`loadKg`/`loadToKg`/`loadProgression()` are keyed by `exId`, not
+by equipment type — a kettlebell exercise flows through the exact same
+double-progression pipeline a dumbbell one does. The athlete owning two
+*specific* bell weights (25lb, 31lb) doesn't need a `KB_LEVELS`-style
+dial the way `BIKE_LEVELS` needed one — that dial existed because
+`nutToday()` reset the chosen intensity to `'steady'` every single
+morning with no data behind it. A kettlebell's weight is a number the
+athlete types into the lift-log once and the app remembers it verbatim;
+there was no missing mechanism to build, only exercises to add to the
+one that already runs everything else.
+
+**The two new core movements deliberately do NOT share a joint-risk
+profile, and calibrating each against its nearest existing sibling is
+what got both right.** `kbwindmill` — a locked-out overhead hold combined
+with a loaded hip hinge — is flagged both `shoulder` (same reasoning as
+`kbsnatch`/`kbtgu`, which also lock a bell overhead) and `lowback` (same
+reasoning as `kbswing`/`kbrdl`, both loaded hinges), landing on
+`kbgoblet` like every other flagged kb overhead/hinge movement.
+`kbsuitcase` (a single-arm carry) and `kbfigure8` (a light circling
+pass-around) are deliberately left **unflagged**, matching their closest
+siblings — `kbcarry` (bilateral carry) and `kbhalo` (circling around the
+head) — neither of which carries a flag either. A single-arm carry is, if
+anything, closer to what a physical therapist prescribes for a weak low
+back than a risk to it.
+
+**`kbrenegade` inherits `dbrenegade`'s exact risk profile and swap
+target, not a fresh guess.** Same plank-row pattern, same `wrist` flag
+(the off-center load stresses the wrist in a plank identically regardless
+of which implement is doing the loading), same landing spot (`kbrow`,
+mirroring `dbrenegade:'dbrow'`). The one deliberate difference: a
+kettlebell's rounded bottom makes the balance demand more honest than a
+hex dumbbell's flat one, which the `why` field says outright rather than
+copying the dumbbell version's copy verbatim.
+
+**Three of ten mutants seeded against the new checks survived, and all
+three are legitimate — the same non-catch shape this file already
+documents for `SAFE_SWAP.dbcp` and `mbchop`, just doubled up.** Dropping
+the explicit `SAFE_SWAP` entries for `kbwindmill` and `kbrenegade`
+independently escaped the "lands somewhere safe" check both times,
+because `safeSwap()`'s own generic same-region/same-unit fallback finds
+an equally safe landing spot even with no map entry at all — the outcome
+the check actually cares about held regardless of the specific mechanism
+producing it. A third mutant (adding an unused `SAFE_SWAP.kbsuitcase`
+entry to an exercise that was never flagged in the first place) was a
+weak mutant on this file's own part, not a real gap: an unused map entry
+for an unflagged exercise is dead code, and the check correctly has
+nothing to say about dead code.
 
 ## Rendering
 

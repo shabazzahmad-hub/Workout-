@@ -139,6 +139,69 @@ export default async function run() {
   t.eq('and lands on the same safe substitutes', core.dragonflagfullSwaps, { safe: 'hollow', lowback: 'plank' });
   t.ok('all three are reachable through the focus bonus', core.inFocusPool.dbpallof && core.inFocusPool.mbchop && core.inFocusPool.dragonflagfull, core.inFocusPool);
 
+  /* ---- five new kettlebell exercises (Windmill, Suitcase Carry, Figure-8,
+     Renegade Row, Sumo Deadlift High Pull) — requested after the athlete
+     said they now own a 25lb and a 31lb kettlebell. Three core-focused
+     (anti-lateral-flexion, anti-rotation), two compound full-body. --------- */
+  const kb = await page.evaluate(() => {
+    const o = {};
+    const ids = ['kbwindmill', 'kbsuitcase', 'kbfigure8', 'kbrenegade', 'kbhighpull'];
+    o.equip = {}; ids.forEach(id => { o.equip[id] = EX[id].equip; });
+    STATE.profile.gear = [];
+    o.noneOwned = {}; ids.forEach(id => { o.noneOwned[id] = hasGearFor(id); });
+    STATE.profile.gear = ['kettlebell'];
+    o.allOwned = {}; ids.forEach(id => { o.allOwned[id] = hasGearFor(id); });
+    // overhead-locked (windmill) and hinge-under-ballistic-load (windmill, high pull)
+    // are flagged the same way their existing kb siblings (kbsnatch/kbtgu, kbswing/kbrdl) already are
+    o.windmillShoulder = JOINT_RISK.shoulder.includes('kbwindmill');
+    o.windmillLowback = JOINT_RISK.lowback.includes('kbwindmill');
+    o.highpullLowback = JOINT_RISK.lowback.includes('kbhighpull');
+    // a single-arm plank row loads the wrist under an off-center round base, same as its dumbbell cousin
+    o.renegadeWrist = JOINT_RISK.wrist.includes('kbrenegade');
+    // suitcase carry and figure-8 are deliberately UNFLAGGED — matching kbcarry/kbhalo,
+    // their closest siblings, which carry no flag either
+    o.suitcaseFlags = Object.keys(JOINT_RISK).filter(j => JOINT_RISK[j].includes('kbsuitcase'));
+    o.figure8Flags = Object.keys(JOINT_RISK).filter(j => JOINT_RISK[j].includes('kbfigure8'));
+    // every flagged one still lands somewhere real and unflagged for that joint
+    const landsSafe = (exId, joint) => {
+      const real = STATE.profile.limitations; STATE.profile.limitations = [joint];
+      const out = safeSwap(exId); STATE.profile.limitations = real;
+      return !!EX[out] && !(JOINT_RISK[joint] || []).includes(out);
+    };
+    o.windmillLandsSafeShoulder = landsSafe('kbwindmill', 'shoulder');
+    o.windmillLandsSafeLowback = landsSafe('kbwindmill', 'lowback');
+    o.highpullLandsSafe = landsSafe('kbhighpull', 'lowback');
+    o.renegadeLandsSafe = landsSafe('kbrenegade', 'wrist');
+    // reachable through the focus bonus — the core ones via obliques/abs, the compound ones via full/back
+    o.inFocusPool = {
+      kbwindmill: FOCUS_POOL.obliques.includes('kbwindmill'),
+      kbsuitcase: FOCUS_POOL.obliques.includes('kbsuitcase'),
+      kbfigure8: FOCUS_POOL.obliques.includes('kbfigure8'),
+      kbrenegade: FOCUS_POOL.abs.includes('kbrenegade') && FOCUS_POOL.back.includes('kbrenegade'),
+      kbhighpull: FOCUS_POOL.full.includes('kbhighpull'),
+    };
+    STATE.profile.gear = [];
+    return o;
+  });
+  t.eq('Kettlebell Windmill requires a kettlebell', kb.equip.kbwindmill, ['kettlebell']);
+  t.eq('Kettlebell Suitcase Carry requires a kettlebell', kb.equip.kbsuitcase, ['kettlebell']);
+  t.eq('Kettlebell Figure-8 requires a kettlebell', kb.equip.kbfigure8, ['kettlebell']);
+  t.eq('Kettlebell Renegade Row requires a kettlebell', kb.equip.kbrenegade, ['kettlebell']);
+  t.eq('Kettlebell Sumo Deadlift High Pull requires a kettlebell', kb.equip.kbhighpull, ['kettlebell']);
+  t.ok('none of the five are offered without a kettlebell', Object.values(kb.noneOwned).every(v => !v), kb.noneOwned);
+  t.ok('all five are offered once a kettlebell is owned', Object.values(kb.allOwned).every(v => v), kb.allOwned);
+  t.ok('the windmill is flagged for a loaded overhead shoulder, like kbsnatch/kbtgu', kb.windmillShoulder, kb);
+  t.ok('and for a weighted hip hinge, like kbswing/kbrdl', kb.windmillLowback, kb);
+  t.ok('the sumo high pull is flagged for a weighted hip hinge too', kb.highpullLowback, kb);
+  t.ok('the renegade row is flagged for the wrist, like its dumbbell cousin', kb.renegadeWrist, kb);
+  t.eq('the suitcase carry is unflagged, matching kbcarry', kb.suitcaseFlags, []);
+  t.eq('the figure-8 is unflagged, matching kbhalo', kb.figure8Flags, []);
+  t.ok('a flagged shoulder routes the windmill somewhere safe', kb.windmillLandsSafeShoulder, kb);
+  t.ok('a flagged low back routes the windmill somewhere safe', kb.windmillLandsSafeLowback, kb);
+  t.ok('a flagged low back routes the high pull somewhere safe', kb.highpullLandsSafe, kb);
+  t.ok('a flagged wrist routes the renegade row somewhere safe', kb.renegadeLandsSafe, kb);
+  t.ok('all five are reachable through the focus bonus', Object.values(kb.inFocusPool).every(v => v), kb.inFocusPool);
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }
