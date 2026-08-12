@@ -1490,6 +1490,27 @@ Images shipped as the same 800×800 grey-backdrop "PHOTO PENDING" placeholders
 established in v224, added to `sw.js`'s `EXTRA` tier. ChatGPT prompts for the
 real photos were handed to the user rather than generated in-session.
 
+## Real photos landing after the fact (v235)
+
+Six real photos the athlete had already generated and reviewed earlier in
+the same session — `dbpallof`, `mbchop`, `dragonflagfull` (the corrected
+bench version), `kbwindmill`, `kbsuitcase`, `kbrenegade` — had been shown
+and approved in chat but never actually written into the repo. Chat images
+are not a durable handoff: viewing and approving an image in the
+conversation does not put a file on disk anywhere the build can reach.
+Asked directly "do we need any more images," the actual answer required
+checking disk state, not memory of what was discussed — the uploaded
+originals were still sitting in the session's upload directory, confirmed
+against the corrections history (kbfigure8 and kbhighpull's FIRST attempts
+are also there, and are the ones already documented as flawed — figure-8
+read as a static hold, high pull read as a static upright row — so those
+two stay on placeholders pending a v2 generation, not swapped in wrongly).
+Resized 1254×1254 → 800×800, same JPEG quality as the rest of the library.
+
+**Still on placeholders after this round:** `kbfigure8`, `kbhighpull`
+(corrected prompts already sent, not yet regenerated), `abrollstand`,
+`ropeplank` (prompts sent same day, not yet generated at all).
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
