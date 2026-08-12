@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 22 suites, ~1,924 checks, run by `npm test` |
+| `tests/` | 22 suites, ~1,907 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -1449,6 +1449,46 @@ entry to an exercise that was never flagged in the first place) was a
 weak mutant on this file's own part, not a real gap: an unused map entry
 for an unflagged exercise is dead code, and the check correctly has
 nothing to say about dead code.
+
+## Two more roster gaps: standing ab-wheel rollout, battle-rope plank (v234)
+
+Asked directly, after the kettlebell round: "are there any more effective core
+workout you would like to add to this program?" Two genuine marginal gaps
+after three heavy rounds of additions — a harder progression above the
+existing kneeling ab rollout, and a core-region move for the battle rope the
+athlete already owns (`ropeslam`/`ropewave` are power/cardio, not core).
+
+**`abrollstand` inherits `abroll`'s ENTIRE risk profile, not a fresh guess.**
+Removing the knee anchor doesn't remove any of the three ways the kneeling
+version already stresses the body — it makes all three more honest, since the
+whole body (not just the torso) now has to control the fall and the return.
+Same `shoulder`/`wrist`/`lowback` flags, same `SAFE_SWAP`/`LOWBACK_SWAP`/
+`GEAR_FALLBACK` landing spot (`plank`), same standalone status — `abroll`
+was never in a `LADDERS` array, reached only through the focus bonus, and
+`abrollstand` follows the identical shape rather than inventing a two-rung
+ladder for a pair that was never meant to be one.
+
+**`ropeplank` is a controlled isometric hold, not a slam, and the flag has to
+say so.** The rope library's existing entries (`ropeslam`, `ropewave`) are
+both `shoulder`+`lowback`-flagged ballistic movements. A plank that adds
+small wrist-driven waves is mechanically much closer to `bearhold`/
+`isoclimber` — the two existing plank-family holds, both flagged `wrist`
+only, neither `shoulder` nor `lowback` — than to a rope slam. Flagging it
+like its rope siblings rather than its plank siblings would have been the
+easy, wrong copy-paste.
+
+**One mutant was a legitimate non-catch, the same shape this file has now
+documented four separate times.** Dropping `ropeplank`'s explicit
+`SAFE_SWAP` entry didn't fail the "lands somewhere safe" check, because
+`safeSwap()`'s own generic same-region/same-unit fallback finds `plank`
+without it. The outcome the check cares about — does a wrist-flagged
+athlete end up somewhere real and unflagged — held regardless of the
+specific map entry, so the non-catch is correct and the entry stays for
+clarity, not because the check needs it.
+
+Images shipped as the same 800×800 grey-backdrop "PHOTO PENDING" placeholders
+established in v224, added to `sw.js`'s `EXTRA` tier. ChatGPT prompts for the
+real photos were handed to the user rather than generated in-session.
 
 ## Rendering
 
