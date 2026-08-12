@@ -52,6 +52,36 @@ export default async function run() {
     t.ok('the first-run tier covers the baseline tests and the flows',
       FIRST.includes('./ex-plank.jpg') && FIRST.includes('./wu-march.jpg') && FIRST.includes('./cd-childs.jpg'),
       FIRST.slice(0, 6));
+
+    /* ---- fire-and-forget cache.put() calls must not become unhandled
+       rejections — a quota failure or an opaque/redirected response cache.put
+       legitimately rejects on must stay a silent no-op inside the worker, not
+       a rejection with nothing watching it. Static, not behavioural: there is
+       no reliable way to force a real quota-exceeded from this harness, so this
+       checks the SOURCE carries the guard rather than observing its effect. */
+    /* Anchored on the real call shape (`c => c.put(`), not just `c.put(` — a
+       bare substring match also hits an unrelated code COMMENT that mentions
+       "c.put()" in prose, which has no .catch() to find and would false-fail. */
+    const putSites = [...sw.matchAll(/c => c\.put\([^)]*\)([^;]*);/g)].map(m => m[0]);
+    t.eq('exactly the two known cache.put() call sites are present', putSites.length, 2, putSites);
+    const uncaught = putSites.filter(s => !/\.catch\(/.test(s));
+    t.eq('every cache.put() chain has a .catch()', uncaught, []);
+  }
+
+  /* ---- the page's own serviceWorker.register() must not leave an unhandled
+     rejection either — the outer try/catch only guards the SYNCHRONOUS call to
+     register(), not a rejection of the promise it returns (private-browsing
+     storage restrictions, a corrupted prior registration). Plain string search
+     rather than a regex: the arrow function body has its own parens, which a
+     naive [^)]* can't span. */
+  {
+    const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const openIdx = html.indexOf("navigator.serviceWorker.register('sw.js').then(reg=>{");
+    t.ok('the register().then() chain is found', openIdx >= 0, openIdx);
+    const closeIdx = html.indexOf('\n  })', openIdx);
+    t.ok('its closing brace is found', closeIdx >= 0, closeIdx);
+    const tail = html.slice(closeIdx, closeIdx + 40);
+    t.ok('and it ends in a .catch(), not just the outer try/catch', tail.includes('.catch('), tail);
   }
 
   /* ---- the worker activates without waiting for the tail ----------------- */

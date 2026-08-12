@@ -1598,7 +1598,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='237';
+const APP_VERSION='238';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4139,7 +4139,7 @@ function saveLiftLog(exIds){
     const rirRaw=E&&E.value!==''?parseInt(E.value,10):null;
     if(!(isFinite(load)&&load>0)&&!(isFinite(reps)&&reps>0))return;   // nothing entered
     liftLog().push({date:d,exId,
-      loadKg:(isFinite(load)&&load>0)?r1(loadToKg(load)):null,
+      loadKg:(isFinite(load)&&load>0&&plausibleLoadKg(loadToKg(load)))?r1(loadToKg(load)):null,
       reps:(isFinite(reps)&&reps>0)?reps:null,
       rir:(rirRaw!==null&&isFinite(rirRaw)&&rirRaw>=0&&rirRaw<=5)?rirRaw:null});
     n++;
@@ -4278,6 +4278,7 @@ function plEnterWork(){
   if(isTime){
     if(pulse&&PLAYER.running)pulse.classList.add('on');
     PLAYER.remain=m.target;PLAYER.total=Math.max(1,m.target);
+    PLAYER.deadline=Date.now()+PLAYER.remain*1000;   // same wall-clock floor plTickRest already relies on
     plS('#plNum',fmtTime(PLAYER.remain));plS('#plSub','HOLD');plRingSet(1);
     coachSpeak(intro+PLAYER.cues[0]);
     if(PLAYER.running)PLAYER.tid=setInterval(plTickHold,1000);
@@ -4298,7 +4299,15 @@ function plEnterWork(){
 }
 function plTickHold(){
   if(!PLAYER)return;
-  PLAYER.remain--;PLAYER.elapsed++;
+  /* Same fix plTickRest already carries: remain-- alone drifts badly under
+     Chrome's intensive throttling (timers drop to ~1/min after five minutes
+     hidden), so a backgrounded 30s hold could still read 25s after four real
+     minutes. The wall clock is a FLOOR — min(one tick, what the clock says is
+     left) — so it can't run slower than real time but also can't be driven
+     faster than one second per tick by a clock jump. */
+  const byTick=PLAYER.remain-1;
+  PLAYER.remain=PLAYER.deadline?Math.min(byTick,Math.ceil((PLAYER.deadline-Date.now())/1000)):byTick;
+  PLAYER.elapsed++;
   const el=PLAYER.total-PLAYER.remain;
   if(PLAYER.remain===10&&PLAYER.total>16){if(!motivate('push'))coachSpeak('Ten seconds. Hold strong.');}
   else if(el>0&&el%8===0&&PLAYER.remain>5){
@@ -7190,6 +7199,11 @@ function mBump(f,d){const id=f==='w'?'#m-waist':'#m-weight';const inp=$(id);inp.
    install — permanently, because no measurement row could ever be deleted. */
 function plausibleKg(kg){return kg>=25&&kg<=350;}
 function plausibleWaistCm(cm){return cm>=40&&cm<=250;}
+/* NOT plausibleKg() — that floor (25kg) is calibrated for human BODYWEIGHT.
+   A logged dumbbell/kettlebell load is a different quantity that legitimately
+   goes well below it (a 2.5kg dumbbell is a real logged set), so this only
+   clamps the ceiling a mistyped extra digit would blow through. */
+function plausibleLoadKg(kg){return kg>0&&kg<=400;}
 function saveMeasure(){
   const wIn=parseFloat($('#m-waist').value);const bIn=parseFloat($('#m-weight').value);
   if(!(wIn>0)&&!(bIn>0)){toast('Enter at least one value');return;}
@@ -8383,17 +8397,32 @@ function _offItem(p){
     c:Math.round((+nu.carbohydrates_100g||0)*per),f:Math.round((+nu.fat_100g||0)*per)};
 }
 const OFF_FIELDS='product_name,brands,nutriments,serving_size,code';
-async function offSearch(q){
+/* A connection that ASSOCIATES and then hangs (gym wifi, a dead hotspot) never
+   rejects on its own — sw.js already races the page-navigation fetch against a
+   timer for exactly this reason. These are the app's own network calls, which
+   had no equivalent bound: a hung request left the loading toast (which fades
+   on its own fixed timer) looking idle rather than failed, with no way back
+   except waiting out the browser's own TCP timeout. `ms` is a parameter, not a
+   hardcoded constant, so a test can pass a short one instead of waiting out the
+   real default. */
+async function fetchWithTimeout(url,opts,ms){
+  const ctrl=new AbortController();
+  const t=setTimeout(()=>ctrl.abort(),ms||8000);
+  try{return await fetch(url,{...opts,signal:ctrl.signal});}
+  catch(e){if(e&&e.name==='AbortError'){const err=new Error('timed out — check your connection');err.status=0;throw err;}throw e;}
+  finally{clearTimeout(t);}
+}
+async function offSearch(q,ms){
   const url='https://world.openfoodfacts.org/cgi/search.pl?search_terms='+encodeURIComponent(q)
     +'&search_simple=1&action=process&json=1&page_size=20&fields='+OFF_FIELDS;
-  const r=await fetch(url,{headers:{'Accept':'application/json'}});
+  const r=await fetchWithTimeout(url,{headers:{'Accept':'application/json'}},ms);
   if(!r.ok)throw new Error('search '+r.status);
   const j=await r.json();
   return (j.products||[]).map(_offItem).filter(Boolean).slice(0,20);
 }
-async function offBarcode(code){
-  const r=await fetch('https://world.openfoodfacts.org/api/v2/product/'+encodeURIComponent(code)+'.json?fields='+OFF_FIELDS,
-    {headers:{'Accept':'application/json'}});
+async function offBarcode(code,ms){
+  const r=await fetchWithTimeout('https://world.openfoodfacts.org/api/v2/product/'+encodeURIComponent(code)+'.json?fields='+OFF_FIELDS,
+    {headers:{'Accept':'application/json'}},ms);
   if(!r.ok)throw new Error('lookup '+r.status);
   const j=await r.json();
   if(!j||j.status!==1||!j.product)throw new Error('not in the database');
@@ -8576,8 +8605,8 @@ function _downscale(dataUrl,max){return new Promise(res=>{const img=new Image();
 async function _geminiCall(model,body){
   const url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent?key='+encodeURIComponent(STATE.settings.foodAiKey);
   let res;
-  try{res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});}
-  catch(e){const err=new Error('network — check your connection');err.status=0;throw err;}
+  try{res=await fetchWithTimeout(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});}
+  catch(e){if(e&&e.status===0)throw e;const err=new Error('network — check your connection');err.status=0;throw err;}
   if(!res.ok){
     let msg='';try{const eb=await res.json();msg=(eb&&eb.error&&eb.error.message)||'';}catch(_){}
     const err=new Error('AI '+res.status+(msg?' — '+msg:''));err.status=res.status;throw err;
@@ -11770,9 +11799,12 @@ function openCompare(){
   $('#cmpB').value=(pair?pair.b:ps[ps.length-1]).id;
   renderCompare();
 }
+let _cmpGen=0;
 async function renderCompare(){
   const a=$('#cmpA'),b=$('#cmpB');if(!a||!b)return;
+  const gen=++_cmpGen;
   const [da,db]=await Promise.all([idbGet('ph_'+a.value),idbGet('ph_'+b.value)]);
+  if(gen!==_cmpGen)return;   // a newer selection already resolved and won
   const box=$('#cmpImgs');if(box)box.innerHTML=`<div><img src="${da||''}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px"><div class="tiny muted center" style="margin-top:3px">then</div></div><div><img src="${db||''}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px"><div class="tiny muted center" style="margin-top:3px">now</div></div>`;
 }
 /* Saturday weekly progress check-in */
@@ -11787,10 +11819,18 @@ function weeklyBannerHTML(){
 function fireProgressNotif(body,tag){sendCoreNotif(body,tag||'coreforge-weekly');}
 function toggleWeekly(){
   if(STATE.settings.weeklyOn!==false){STATE.settings.weeklyOn=false;save();toast('Saturday check-in off');renderGuide();return;}
-  STATE.settings.weeklyOn=true;save();renderGuide();
-  // Ask for notification permission so the Friday/Saturday push can fire.
-  if('Notification'in window&&Notification.permission==='default'){Notification.requestPermission().then(()=>{});}
-  toast('Saturday check-in on 📏');
+  /* Mirrors toggleReminders(): the setting only turns on once the permission
+     result is actually known. Setting it true and toasting "on" before asking
+     left a denial silently stuck — weeklyOn stayed true forever with no
+     notification able to fire and nothing on screen saying so. */
+  if('Notification'in window&&Notification.permission!=='granted'){
+    Notification.requestPermission().then(p=>{
+      STATE.settings.weeklyOn=(p==='granted');save();renderGuide();
+      toast(p==='granted'?'Saturday check-in on 📏':'Allow notifications to get the check-in');
+    });
+  }else{
+    STATE.settings.weeklyOn=true;save();renderGuide();toast('Saturday check-in on 📏');
+  }
 }
 
 /* ============================ GUIDE VIEW ============================ */
@@ -13007,7 +13047,7 @@ async function boot(){
     navigator.serviceWorker.ready.then(()=>{
       try{if(navigator.serviceWorker.controller)navigator.serviceWorker.controller.postMessage({type:'cf-topup'});}catch(e){}
     }).catch(()=>{});
-  });}catch(e){}}
+  }).catch(()=>{});}catch(e){}}   // the outer try/catch only guards the SYNCHRONOUS call; register() can reject too
 }
 function hideSplash(){const s=document.getElementById('splash');if(!s||s.classList.contains('hide'))return;s.classList.add('hide');setTimeout(()=>{try{s.remove();}catch(e){}},600);}
 setTimeout(hideSplash,6000);   // safety: never let the splash linger if boot stalls

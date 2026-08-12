@@ -406,6 +406,25 @@ export default async function run() {
         food: [{ name: 'Chicken 200 g', kcal: 330, p: 62, c: 0, f: 7, meal: 'd', at: 1767225600000 }] });
   }
 
+  // ---- a hung Open Food Facts connection must give up, not hang forever -----
+  /* A connection that ASSOCIATES and then never responds (gym wifi, a dead
+     hotspot) never rejects on its own — sw.js already races page navigation
+     against a timer for exactly this reason, but offSearch()/offBarcode() had
+     no equivalent bound. `ms` is a real parameter (not a hardcoded 8000), so
+     this test can pass a short one instead of waiting out the real default. */
+  {
+    await page.route('https://world.openfoodfacts.org/**', () => {});   // never fulfilled — a true hang, not a fast rejection
+    const r = await page.evaluate(async () => {
+      const t0 = Date.now();
+      try { await offSearch('chicken', 300); return { threw: false }; }
+      catch (e) { return { threw: true, ms: Date.now() - t0, msg: String(e.message || e) }; }
+    });
+    await page.unroute('https://world.openfoodfacts.org/**');
+    t.ok('a hung request eventually rejects instead of hanging forever', r.threw, r);
+    t.ok('and it gives up close to the requested timeout, not the browser\'s own TCP timeout', r.ms < 2000, r);
+    t.ok('with a message that reads as a timeout, not a generic failure', /time/i.test(r.msg || ''), r);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

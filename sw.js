@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v237';
+const CACHE = 'coreforge-v238';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
@@ -247,7 +247,9 @@ self.addEventListener('fetch', e => {
             // the app offline and stayed broken after the origin recovered.
             if (res && res.ok) {
               const copy = res.clone();
-              caches.open(CACHE).then(c => c.put('./index.html', copy));
+              // Best-effort refresh of the cached shell — a quota/storage failure here
+              // must not surface as an unhandled rejection inside the worker.
+              caches.open(CACHE).then(c => c.put('./index.html', copy)).catch(() => {});
               return res;
             }
             /* Refusing to CACHE the bad response was only half the job — it was
@@ -273,7 +275,11 @@ self.addEventListener('fetch', e => {
     caches.match(req).then(hit => hit || fetch(req).then(res => {
       if (res && res.ok) {
         const copy = res.clone();
-        caches.open(CACHE).then(c => c.put(req, copy));
+        // Same best-effort catch as the navigation path above — an opaque/redirected
+        // response or a full quota can legitimately reject c.put(); that must stay
+        // a silent no-op (the asset just isn't cached this time), not an unhandled
+        // rejection.
+        caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
       }
       return res;
     }))

@@ -894,6 +894,32 @@ export default async function run() {
   t.ok('+15s still adds time', flow.addRestWorks, flow);
   t.ok('and pausing does not let the rest expire', flow.pauseHoldsRest, flow);
 
+  // ---- a timed WORK hold (plank, hollow, etc.) must not lose time either —
+  // the same throttling fix plEnterRest/plTickRest already carry, extended to
+  // plEnterWork/plTickHold, which had none of it.
+  const hold = await page.evaluate(() => {
+    const o = {};
+    openPlayer();
+    const idx = PLAYER.items.findIndex(m => m.unit === 'time');
+    if (idx < 0) { playerQuit(); return { skip: true }; }
+    PLAYER.i = idx; PLAYER.s = 0; plEnterWork();
+    o.hasDeadline = !!PLAYER.deadline;
+    o.total = PLAYER.total;
+    if (o.total < 8) { playerQuit(); return { skip: true, tooShort: o.total }; }   // needs headroom below "5s left"
+    // as if most of the hold passed while the phone was frozen — 5s left on the
+    // clock, same shape as the existing plTickRest check two blocks up
+    PLAYER.deadline = Date.now() + 5000;
+    plTickHold();
+    o.catchesUp = PLAYER.remain <= 5 && PLAYER.remain < o.total - 1;
+    playerQuit();
+    return o;
+  });
+  if (hold.skip) t.fail('no timed exercise (with enough headroom) available to drive the hold-timer check', hold);
+  else {
+    t.ok('the work-phase hold timer is anchored to the clock too', hold.hasDeadline, hold);
+    t.ok('so a backgrounded hold catches up instead of drifting', hold.catchesUp, hold);
+  }
+
   // ---- a flagged joint gets prep ADDED to the warm-up, not just risk removed
   const jointWarm = await page.evaluate(() => {
     const o = {}, real = STATE.profile.limitations;

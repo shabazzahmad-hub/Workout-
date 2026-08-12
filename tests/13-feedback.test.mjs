@@ -484,6 +484,38 @@ export default async function run() {
     t.ok('nor to resume one', r.afterLegacyImport.offersResume === false, r);
   }
 
+  // ---- toggleWeekly() must not report "on" until the permission is actually known
+  {
+    const r = await page.evaluate(async () => {
+      const realNotif = window.Notification;
+      const stub = (initial, resolved) => {
+        function FakeNotification() {}
+        FakeNotification.permission = initial;
+        FakeNotification.requestPermission = () => Promise.resolve(resolved);
+        window.Notification = FakeNotification;
+      };
+      const out = {};
+
+      STATE.settings.weeklyOn = false; save();
+      stub('default', 'denied');
+      toggleWeekly();
+      await new Promise(z => setTimeout(z, 50));
+      out.deniedLeavesOff = STATE.settings.weeklyOn === false;
+
+      STATE.settings.weeklyOn = false; save();
+      stub('default', 'granted');
+      toggleWeekly();
+      await new Promise(z => setTimeout(z, 50));
+      out.grantedTurnsOn = STATE.settings.weeklyOn === true;
+
+      window.Notification = realNotif;
+      STATE.settings.weeklyOn = undefined; save();
+      return out;
+    });
+    t.ok('a denied permission leaves the Saturday check-in OFF, not silently stuck on', r.deniedLeavesOff, r);
+    t.ok('a granted permission does turn it on', r.grantedTurnsOn, r);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
