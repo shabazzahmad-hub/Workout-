@@ -216,6 +216,176 @@ export default async function run() {
     errors.forEach(e => t.fail('page error during the everyday flows', e));
   }
 
+  /* ---- importData() asks first, and a mistaken restore has a way back -----
+     hardReset() — equally destructive — asks TWICE. importData() asked
+     nothing at all: the wrong file silently replaced everything since, with
+     no warning and no undo. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const o = {};
+      o.origName = STATE.profile.name;
+      const backup = JSON.parse(JSON.stringify(STATE));
+      backup.profile.name = 'Imported Athlete';
+      const file = () => new File([JSON.stringify(backup)], 'b.json', { type: 'application/json' });
+      const wait = async () => { for (let i = 0; i < 40 && STATE.profile.name !== 'Imported Athlete'; i++) await new Promise(z => setTimeout(z, 50)); };
+
+      // declining the confirm must leave everything exactly as it was
+      const realConfirm = window.confirm;
+      window.confirm = () => false;
+      importData({ target: { files: [file()] } });
+      await new Promise(z => setTimeout(z, 150));
+      o.declinedNameUnchanged = STATE.profile.name === o.origName;
+      o.declinedNoSnapshot = !hasPreImportSnapshot();
+
+      // accepting commits the import and takes a recovery snapshot
+      window.confirm = () => true;
+      importData({ target: { files: [file()] } });
+      await wait();
+      o.acceptedNameChanged = STATE.profile.name === 'Imported Athlete';
+      o.acceptedHasSnapshot = hasPreImportSnapshot();
+
+      // declining the UNDO confirm must leave the imported state in place
+      const toastText = () => (document.getElementById('toast') || {}).textContent;
+      window.confirm = () => false;
+      undoImport();
+      await new Promise(z => setTimeout(z, 50));
+      o.declinedUndoLeftImportInPlace = STATE.profile.name === 'Imported Athlete';
+      o.declinedUndoKeptSnapshot = hasPreImportSnapshot();
+
+      // undo restores exactly what was live before the import, then clears itself
+      window.confirm = () => true;
+      undoImport();
+      await new Promise(z => setTimeout(z, 50));
+      o.undoRestoredName = STATE.profile.name === o.origName;
+      o.undoClearsSnapshot = !hasPreImportSnapshot();
+
+      // nothing left to undo a second time — must not throw, must say so
+      undoImport();
+      o.secondUndoToast = toastText();
+      o.secondUndoLeftNameAlone = STATE.profile.name === o.origName;
+
+      window.confirm = realConfirm;
+      return o;
+    });
+    t.ok('declining the confirm leaves the athlete untouched', r.declinedNameUnchanged, r);
+    t.ok('and takes no recovery snapshot', r.declinedNoSnapshot, r);
+    t.ok('accepting actually restores the backup', r.acceptedNameChanged, r);
+    t.ok('and a recovery snapshot of what was live is taken first', r.acceptedHasSnapshot, r);
+    t.ok('declining the undo confirm leaves the import in place', r.declinedUndoLeftImportInPlace, r);
+    t.ok('and keeps the snapshot available to try again', r.declinedUndoKeptSnapshot, r);
+    t.ok('undoing the import restores what was there before it', r.undoRestoredName, r);
+    t.ok('and the one-shot snapshot is consumed, not kept around', r.undoClearsSnapshot, r);
+    t.eq('undoing with nothing to restore says so instead of throwing', r.secondUndoToast, 'Nothing to restore');
+    t.ok('and leaves the athlete alone', r.secondUndoLeftNameAlone, r);
+    await browser.close();
+    errors.forEach(e => t.fail('page error during the import-undo flow', e));
+  }
+
+  /* ---- a boot-time repair or validation problem reaches the athlete, not
+     just the console — validateData()'s findings and any shape normalizeState()
+     had to fix used to go nowhere a real athlete would ever see them. -------- */
+  {
+    const { browser, page, errors } = await launch(port);
+    await page.evaluate(seed => { eval(seed)(); }, ATHLETE);
+    // a value normalizeState() will actually have to repair on THIS boot
+    await page.evaluate(() => {
+      const cur = JSON.parse(localStorage.getItem('coreforge.v1') || '{}');
+      cur.nutrition = cur.nutrition || {}; cur.nutrition.days = cur.nutrition.days || {};
+      cur.nutrition.days['2026-01-02'] = { water: 4, habits: {}, steps: 'heaps' };
+      localStorage.setItem('coreforge.v1', JSON.stringify(cur));
+    });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForBoot(page);
+    const flagged = await page.evaluate(() => {
+      go('guide');
+      const html = document.querySelector('#v-guide').innerHTML;
+      return { repaired: !!STATE._dataRepaired, noteShown: /needed a repair/.test(html) };
+    });
+    t.ok('a real repair on this boot sets the flag', flagged.repaired, flagged);
+    t.ok('and the athlete sees a note about it, not just the console', flagged.noteShown, flagged);
+
+    // dismissing clears it, and it stays clear across a further boot with nothing left to fix
+    const cleared = await page.evaluate(async () => {
+      dismissDataHealth();
+      const afterDismiss = !!STATE._dataRepaired;
+      return { afterDismiss };
+    });
+    t.ok('dismissing clears the flag', !cleared.afterDismiss, cleared);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForBoot(page);
+    const stillClear = await page.evaluate(() => !!STATE._dataRepaired);
+    t.ok('and a later boot with nothing left to repair does not re-set it', !stillClear, stillClear);
+
+    await browser.close();
+    errors.filter(e => !/render:recovered/.test(e)).forEach(e => t.fail('page error during the data-health flow', e));
+  }
+
+  /* ---- exporting a fresh backup is not itself flagged as needing repair --- */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const clean = await page.evaluate(() => !!STATE._dataRepaired);
+    t.ok('a clean, freshly-seeded athlete boots with nothing flagged', !clean, clean);
+    await browser.close();
+    errors.forEach(e => t.fail('page error on a clean boot', e));
+  }
+
+  /* ---- a stale backup nudge, gated on real elapsed time, not a toggle ----- */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const o = {};
+      const old = d => { const x = new Date(); x.setDate(x.getDate() - d); return localISO(x); };
+
+      // a brand-new athlete is never nagged, even with no export on record
+      STATE.profile.createdAt = old(2); delete STATE._lastExport; delete STATE._backupNudgeDismissed;
+      o.newAthleteQuiet = backupNudgeHTML() === '';
+
+      // old enough, never exported — the nudge shows
+      STATE.profile.createdAt = old(40);
+      o.neverExportedNags = /No backup in a while/.test(backupNudgeHTML());
+
+      // exporting recently silences it, even though the account itself is old
+      STATE._lastExport = old(2);
+      o.recentExportQuiet = backupNudgeHTML() === '';
+
+      // but a STALE export does not — 21+ days since the last one nags again
+      STATE._lastExport = old(30);
+      o.staleExportNags = /No backup in a while/.test(backupNudgeHTML());
+
+      // dismissing silences it for a while, without requiring an actual export
+      dismissBackupNudge();
+      o.dismissedQuiet = backupNudgeHTML() === '';
+
+      // and exportData() itself clears the nag, not just a manual dismiss
+      delete STATE._backupNudgeDismissed; STATE._lastExport = old(30);
+      return o;
+    });
+    t.ok('a new athlete is not nagged before they have had time to ramp up', r.newAthleteQuiet, r);
+    t.ok('an established athlete who never exported is nagged', r.neverExportedNags, r);
+    t.ok('a recent export silences it', r.recentExportQuiet, r);
+    t.ok('a stale export nags again', r.staleExportNags, r);
+    t.ok('dismissing silences it too', r.dismissedQuiet, r);
+
+    const exported = await page.evaluate(async () => {
+      let ok = false;
+      const oc = URL.createObjectURL, ck = HTMLAnchorElement.prototype.click;
+      URL.createObjectURL = () => 'blob:x'; HTMLAnchorElement.prototype.click = function () {};
+      try { await exportData(); ok = true; } finally {
+        URL.createObjectURL = oc; HTMLAnchorElement.prototype.click = ck;
+      }
+      return { ok, quiet: backupNudgeHTML() === '', stamp: STATE._lastExport === todayISO() };
+    });
+    t.ok('exportData() runs clean', exported.ok, exported);
+    t.ok('and its own real export clears the nag immediately', exported.quiet, exported);
+    t.ok('stamping today as the last export date', exported.stamp, exported);
+    await browser.close();
+    errors.forEach(e => t.fail('page error during the backup-nudge flow', e));
+  }
+
   /* ---- progressPtr is an index, and it has to be a whole one --------------
      posOf() feeds dayInWeek into sessionsFor(cycle)[...]. A FRACTION indexes a
      slot that does not exist, so goalSlots() dereferenced undefined and Today

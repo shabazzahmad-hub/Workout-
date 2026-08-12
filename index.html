@@ -1538,9 +1538,15 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='228';
+const APP_VERSION='229';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
+// A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
+// not part of STATE itself. Holds exactly one snapshot: the STATE that was live
+// immediately before the last import, so an accidental restore (wrong file, a
+// friend's export) has a way back that does not depend on the athlete having
+// made a fresh backup of their own first.
+const PREIMPORT_KEY=STORE_KEY+'.preimport';
 const DEFAULT_STATE=()=>({
   version:1,
   onboarded:false,
@@ -3224,6 +3230,7 @@ function workoutTabHTML(sess,log,doneCount,totalCount,wkNum,restedToday){
   h+=painPromptHTML();
   h+=resumeBanner();
   h+=driftBanner();
+  h+=backupNudgeHTML();
   // progressive overload note vs previous week
   if(sess.pos.dayInWeek===0){
     h+=`<div class="note fire">📈 <b>Week ${wkNum} — ${overloadHeadline(sess)}.</b> ${overloadNote(sess)}</div>`;
@@ -7520,6 +7527,29 @@ function catchUpBanner(){
   const extra=ease?` I've <b>eased your next ${STATE.comeback.left} session${STATE.comeback.left>1?'s':''}</b> — lighter volume so you ramp back up safely, no punishment and no starting over.`:'';
   return `<div class="note info" style="margin-top:12px">👋 <b>Welcome back — it's been ${g} days.</b> Nothing is lost — your program waits exactly where you left it.${extra} Short on time today? <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="openQuickList()">⚡ 15-min catch-up</button></div>`;
 }
+/* The only copy of an athlete's progress lives in this browser's storage — a
+   lost phone or a cleared cache takes it with it, and nothing ever prompted a
+   backup. Same exact-day-gap idiom daysSinceTrained() already uses beyond its
+   90-day scan: both sides parsed from a bare YYYY-MM-DD string land on UTC
+   midnight, so the subtraction is immune to the local DST shift that bit
+   readinessSlump() (see CLAUDE.md). */
+function daysSince(iso){
+  if(!iso)return null;
+  const days=Math.round((new Date(todayISO())-new Date(iso))/86400000);
+  return isFinite(days)?days:null;
+}
+function backupNudgeHTML(){
+  try{
+    const age=daysSince(STATE.profile&&STATE.profile.createdAt);
+    if(age===null||age<21)return '';   // give a new athlete time to ramp up before nagging
+    const sinceExport=daysSince(STATE._lastExport);
+    if(sinceExport!==null&&sinceExport<21)return '';
+    if(STATE._backupNudgeDismissed&&(Date.now()-STATE._backupNudgeDismissed)<21*86400000)return '';
+    return `<div class="note info" style="margin-top:12px"><b>No backup in a while.</b> Your progress lives only on this phone — a lost or reset device would take it with it. Takes ten seconds.
+      <div class="btnrow" style="margin-top:10px"><button class="btn sm primary" onclick="exportData()">⬇ Export backup</button><button class="btn sm ghost" onclick="dismissBackupNudge()">Not now</button></div></div>`;
+  }catch(e){return '';}
+}
+function dismissBackupNudge(){STATE._backupNudgeDismissed=Date.now();save();render();}
 /* #5 — Grocery list compiled from today's meal plan. */
 function openGrocery(){
   const plan=currentMealPlan();const recs=plan.meals.map(recipeById).filter(Boolean);
@@ -10029,6 +10059,20 @@ function dietRepairNoteHTML(){
   if(!(STATE.nutrition&&STATE.nutrition.dietRepaired))return '';
   return `<div class="note warn"><b>Check your diet setting.</b> The diet saved on this device was not one we recognise, so meal plans are running on <b>Vegan</b> for now — the most restrictive option, chosen deliberately so nothing turns up on your plate that you do not eat. Pick the right one below and it will stick.</div>`;
 }
+/* validateData() and normalizeState() both already catch real problems — a
+   corrupt import, a field a normalizeState() repair couldn't fully resolve —
+   but the findings only ever reached console.error, which no real athlete
+   ever opens. STATE._dataRepaired is set once at boot (see boot()) whenever
+   either found something, and cleared the moment a later boot finds nothing —
+   the same "clear on every other branch" discipline this file's other repair
+   flags (dietRepaired) already follow, so it cannot go stale once the athlete
+   has moved on. */
+function dataHealthNoteHTML(){
+  if(!STATE._dataRepaired)return '';
+  return `<div class="note warn"><b>Your data needed a repair after loading.</b> Something stored on this device was not in a shape the app expected, so it was reset to a safe default rather than left broken. If a setting, a log or a target looks wrong, check it below — or restore an older backup.
+    <button class="btn ghost sm" style="width:100%;margin-top:8px" onclick="dismissDataHealth()">Got it</button></div>`;
+}
+function dismissDataHealth(){delete STATE._dataRepaired;save();render();}
 function toggleWholeFood(){const n=nut();n.wholeFoodOnly=!wholeOnly();generateMealPlan();save();if(typeof TAB!=='undefined'&&TAB==='fuel')renderFuel();try{renderGuide();}catch(e){}}
 function recipeById(id){return RECIPES.find(r=>r.id===id);}
 function dietOk(r){
@@ -11813,8 +11857,10 @@ function renderGuide(){
   // backup
   h+=`<div class="section-label">Your data</div><div class="card pad">
     <p class="sm muted" style="margin-top:0">Your progress auto-saves on this phone and works offline. For extra safety, export a backup file you can re-import anytime.</p>
+    ${dataHealthNoteHTML()}
     <div class="btnrow"><button class="btn ghost sm" style="width:100%" onclick="exportData()">⬇ Export backup</button><button class="btn ghost sm" style="width:100%" onclick="$('#importFile').click()">⬆ Import backup</button></div>
     <input type="file" id="importFile" accept="application/json" style="display:none" onchange="importData(event)">
+    ${hasPreImportSnapshot()?'<button class="btn ghost sm" style="width:100%;margin-top:8px" onclick="undoImport()">↩ Undo last import</button>':''}
     <div class="divider"></div>
     <button class="btn ghost sm" style="width:100%;color:var(--pink)" onclick="hardReset()">Reset all data</button>
   </div>`;
@@ -11973,8 +12019,15 @@ function setDiet(k){if(!DIET_KEYS.includes(k))return;   // the picker is the onl
    record, and restoring it on the same day would offer to un-log a session the
    athlete had legitimately finished. Neither describes the athlete, so neither
    belongs in a file that represents them. */
-const TRANSIENT_KEYS=['_undo','_plResume'];
+/* _dataRepaired is this DEVICE's boot noticing something needed fixing —
+   restoring an old backup onto a fresh device should not carry forward a flag
+   about a repair that happened somewhere else. _backupNudgeDismissed is the
+   same shape: a snooze on THIS device's nagging, not a fact about the athlete. */
+const TRANSIENT_KEYS=['_undo','_plResume','_dataRepaired','_backupNudgeDismissed'];
 async function exportData(){
+  // Record it on THIS device before cloning, so backupNudgeHTML() stops
+  // asking and the exported file itself carries an accurate "as of" stamp.
+  STATE._lastExport=todayISO();save();
   // Never write the on-device API keys into a shareable backup file.
   const clone=JSON.parse(JSON.stringify(STATE));
   if(clone.settings){delete clone.settings.azureKey;delete clone.settings.foodAiKey;}
@@ -11993,12 +12046,22 @@ async function exportData(){
   setTimeout(()=>{try{URL.revokeObjectURL(url);}catch(e){}},5000);   // the share-card paths already defer; revoking in the same tick can kill the download
   const n=Object.keys(clone._photoData||{}).length;
   toast('Backup downloaded'+(n?(' · '+n+' photo'+(n===1?'':'s')+' included'):'')+(missing>0?(' · '+missing+' photo file'+(missing===1?'':'s')+' missing'):''));
+  try{render();}catch(e){}   // the "no backup in a while" nudge clears immediately, not on the next unrelated render
 }
 function importData(e){
   const f=e.target.files[0];if(!f)return;const r=new FileReader();
   r.onload=()=>{try{
     const p=JSON.parse(r.result);
     if(!p||typeof p!=='object'||!p.version){toast('Not a CoreForge backup');return;}
+    /* hardReset() — equally destructive to current progress — asks TWICE and
+       tells the athlete to back up first. Restoring a backup replaces STATE
+       just as completely and asked NOTHING: the wrong file (an old export, a
+       friend's) silently erased everything since, with no warning and no way
+       back. Ask, and snapshot what is about to be overwritten either way, so
+       a mistaken import has a way back even without a fresh export of its own. */
+    const when=p._saved?('from '+p._saved):'of an unknown date';
+    if(!confirm('Replace your current progress with this backup ('+when+')? Your current data will be saved first so you can undo this if it is a mistake.'))return;
+    try{localStorage.setItem(PREIMPORT_KEY,JSON.stringify(STATE));}catch(e){}
     const d=DEFAULT_STATE();
     // Deep-merge the nested objects exactly like load() does. A shallow assign
     // let a backup that predates a field replace the whole sub-object, which
@@ -12029,6 +12092,26 @@ function importData(e){
     render();
   }catch(err){toast('Could not read file');}};
   r.readAsText(f);
+}
+function hasPreImportSnapshot(){try{return !!localStorage.getItem(PREIMPORT_KEY);}catch(e){return false;}}
+/* One step back, not a history — the same posture as the rest of this file's
+   narrow safety nets (loadProgression()'s flat 1kg step, bikeLevelSuggestion()'s
+   plain "aim for" hint): cheap to be right about, and an undo of an undo is not
+   a case worth building for. Cleared after use, so there is nothing further
+   back to restore to until the next import takes a fresh snapshot. */
+function undoImport(){
+  let raw=null;try{raw=localStorage.getItem(PREIMPORT_KEY);}catch(e){}
+  if(!raw){toast('Nothing to restore');return;}
+  if(!confirm('Undo the last import and restore what was here before it?'))return;
+  try{
+    const p=JSON.parse(raw);
+    if(!p||typeof p!=='object')throw new Error('bad snapshot');
+    STATE=p;
+    normalizeState();save();
+    try{localStorage.removeItem(PREIMPORT_KEY);}catch(e){}
+    toast('Restored');
+    render();
+  }catch(e){toast('Could not restore');}
 }
 function hardReset(){
   if(!confirm('Erase ALL your data and start over? This cannot be undone.'))return;
@@ -12076,7 +12159,16 @@ function normalizeState(){
   // voice coach defaults for existing installs that predate these settings
   if(STATE.settings.voice===undefined)STATE.settings.voice=true;
   if(STATE.settings.voiceName===undefined)STATE.settings.voiceName='';
-  if(typeof STATE.settings.voicePitch!=='number')STATE.settings.voicePitch=0.6;
+  /* voicePitch must NOT default here. Every reader (localPitchFor(), the
+     Settings slider) already treats "absent" as "no manual override, use the
+     tone-derived pitch" via a typeof==='number' check — that is the entire
+     point of the _toneFix migration below, which clears a legacy voicePitch
+     of exactly 0.6 ONE TIME because that value used to make the override
+     test true for everyone. Restoring a default here undid it: on an
+     athlete's SECOND boot, _toneFix had already run (its guard is
+     `if(!_s._toneFix)`), so this line alone re-added voicePitch:0.6 with
+     nothing left to remove it again — reintroducing, on every boot after the
+     first, the exact bug the migration exists to fix. */
   if(typeof STATE.settings.voiceRate!=='number')STATE.settings.voiceRate=0.98;
   if(typeof STATE.settings.repTempo!=='number')STATE.settings.repTempo=3;
   if(typeof STATE.adapt!=='number')STATE.adapt=1;   // adaptive-overload multiplier
@@ -12309,6 +12401,14 @@ function normalizeState(){
       !(typeof STATE.bikeLevelFeel.streak==='number'&&isFinite(STATE.bikeLevelFeel.streak)&&STATE.bikeLevelFeel.streak>=0))
      STATE.bikeLevelFeel={level:'steady',streak:0};
    if(P.bikeLevel!=null&&!BIKE_LEVELS.some(b=>b.k===P.bikeLevel))delete P.bikeLevel;
+   // _dataRepaired is written only by boot() as a plain boolean; a corrupt or
+   // hand-edited value is dropped rather than trusted, same as any other field.
+   if(STATE._dataRepaired!==undefined&&typeof STATE._dataRepaired!=='boolean')delete STATE._dataRepaired;
+   // _lastExport/_backupNudgeDismissed feed backupNudgeHTML()'s timing — an
+   // unparseable value must read as "never exported" / "never dismissed", the
+   // MORE-nudging direction, not silently suppress a reminder that matters.
+   if(STATE._lastExport!==undefined&&(typeof STATE._lastExport!=='string'||isNaN(Date.parse(STATE._lastExport))))delete STATE._lastExport;
+   if(STATE._backupNudgeDismissed!==undefined&&!(typeof STATE._backupNudgeDismissed==='number'&&isFinite(STATE._backupNudgeDismissed)))delete STATE._backupNudgeDismissed;
    /* Movement is stored per day, so a bad value hides in history rather than in
       today and only surfaces when that day is read back. Repair every one. */
    if(N&&N.days&&typeof N.days==='object'){
@@ -12758,7 +12858,27 @@ async function boot(){
   try{validateData();_assertNoDupes();}catch(e){}
   await idbOpen();
   await load();
+  /* The validateData() call above runs before load() even resolves — against
+     DEFAULT_STATE()'s own nutrition object, not the real athlete's diet or
+     allergens — so it is a smoke test on the shipped data tables, not a check
+     on this athlete's own STATE. Diffing normalizeState()'s before/after here,
+     plus a validateData() call that now runs against the REAL loaded STATE,
+     is what actually notices a repair or a problem this athlete's own data
+     caused, and dataHealthNoteHTML() is what tells them instead of the
+     console nobody but a developer opens. */
+  /* Gate on already having been onboarded — a fresh, never-onboarded
+     DEFAULT_STATE() legitimately gets scaffolding added by normalizeState()
+     (fields no literal bothers pre-populating) on every single first boot,
+     which is routine bootstrapping, not a repair of anything an athlete's
+     data did wrong. Flagging that would fire the note for every new install. */
+  const _wasOnboarded=!!STATE.onboarded;
+  const _beforeNorm=JSON.stringify(STATE);
   normalizeState();
+  let _verrs=[];try{_verrs=validateData();}catch(e){}
+  const _wasFlagged=!!STATE._dataRepaired;
+  const _repaired=_wasOnboarded&&((JSON.stringify(STATE)!==_beforeNorm)||_verrs.length>0);
+  if(_repaired)STATE._dataRepaired=true;else delete STATE._dataRepaired;
+  if(_repaired!==_wasFlagged)save();
   // request durable storage so an installed PWA keeps data
   try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();}catch(e){}
   /* Android focuses an already-running PWA and navigates it, which is a

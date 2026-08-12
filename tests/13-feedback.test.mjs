@@ -459,12 +459,17 @@ export default async function run() {
       legacy._undo = { ptr: 6, key: '0-0', at: Date.now(), date: todayISO(), log: null, adapt: 1, weekFeel: null, comeback: null, achievements: {} };
       legacy._plResume = { ptr: 7, i: 1, s: 0, setsDone: 2, date: todayISO(), ts: Date.now() };
       const file = new File([JSON.stringify(legacy)], 'b.json', { type: 'application/json' });
+      // importData() now confirms before it commits — a real athlete decides;
+      // this test is asserting what a CONFIRMED restore does, same as every
+      // other confirm()-gated action in this suite (window.confirm stub).
+      const realConfirm = window.confirm; window.confirm = () => true;
       await new Promise(res => {
         const orig = FileReader.prototype.readAsText;
         importData({ target: { files: [file] } });
         const iv = setInterval(() => { if (!('_undo' in STATE) || STATE._importDone) { clearInterval(iv); res(); } }, 60);
         setTimeout(() => { clearInterval(iv); res(); }, 3000);
       });
+      window.confirm = realConfirm;
       o.afterLegacyImport = { undo: '_undo' in STATE, resume: '_plResume' in STATE,
         offersUndo: undoBannerHTML() !== '', offersResume: (() => { try { return !!resumeInfo(); } catch (e) { return 'threw'; } })() };
       return o;
