@@ -102,6 +102,34 @@ export default async function run() {
     t.ok('the migration runs once, not on every boot', r.secondRunLeavesIt, r);
   }
 
+  /* ---- absent must STAY absent across every boot after the first, not just
+     the first — the exact regression this migration exists to prevent came
+     back once already because a separate "default it if missing" line ran
+     BEFORE the one-time migration on every call, re-adding voicePitch:0.6
+     right after the migration had just cleared it, with nothing left to
+     remove it a second time once _toneFix was already true. A real athlete's
+     SECOND app open, forever, is exactly this shape: voicePitch already
+     absent, _toneFix already true. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {};
+      delete STATE.settings.voicePitch; delete STATE.settings._toneFix;
+      normalizeState();                       // boot #1: sets, then migration clears it
+      out.absentAfterFirstBoot = !('voicePitch' in STATE.settings);
+      normalizeState();                       // boot #2: must not reintroduce it
+      out.stillAbsentAfterSecondBoot = !('voicePitch' in STATE.settings);
+      normalizeState(); normalizeState();     // and it never comes back, ever
+      out.stillAbsentAfterMoreBoots = !('voicePitch' in STATE.settings);
+      out.usesToneDerivedPitch = Math.abs(localPitchFor(null) - voiceTone()[3]) < 1e-9;
+      return out;
+    });
+    t.ok('absent right after the one-time migration, as before', r.absentAfterFirstBoot, r);
+    t.ok('and still absent on the very next boot', r.stillAbsentAfterSecondBoot, r);
+    t.ok('and every boot after that, not just the second', r.stillAbsentAfterMoreBoots, r);
+    t.ok('so an untouched athlete keeps reading the tone-derived pitch, not a phantom override',
+      r.usesToneDerivedPitch, r);
+  }
+
   /* ---- picking a tone must actually take effect ------------------------- */
   {
     const r = await page.evaluate(() => {

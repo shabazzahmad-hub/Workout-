@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 22 suites, ~1,814 checks, run by `npm test` |
+| `tests/` | 22 suites, ~1,858 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -1034,6 +1034,114 @@ Sequential `page.evaluate()` blocks in one suite share persistent `STATE`,
 so a new persistence layer is a new way for block N to reach block N+10.
 Every new block added here saves and restores what it touches
 (`const keep = JSON.stringify({…})`) for exactly this reason.
+
+## Data safety and serviceability (v229)
+
+Three gaps, none touching the exercise engine — the app's only copy of an
+athlete's progress lives in one browser's storage, and nothing helped the
+athlete protect or diagnose it.
+
+**`importData()` was the one destructive action with no guardrail.**
+`hardReset()` asks TWICE and tells the athlete to back up first; restoring a
+backup is equally destructive — it fully replaces `STATE` — and asked
+nothing. The wrong file (an old export, a friend's) silently erased
+everything since, with no warning and no way back. It now confirms once
+(quoting the backup's own `_saved` date so the athlete knows what they are
+about to load), and snapshots the STATE it is about to overwrite into a
+separate, un-mirrored `localStorage` key (`PREIMPORT_KEY`) first — one step
+back, not a history, matching this file's other narrow safety nets
+(`loadProgression()`'s flat 1kg step, `bikeLevelSuggestion()`'s "aim for"
+hint): cheap to be right about, consumed after one `undoImport()`, no undo of
+an undo.
+
+**`validateData()`'s findings only ever reached `console.error`**, which no
+real athlete ever opens — and the ORIGINAL boot-time call was never even
+checking their data. `boot()` runs `validateData()` before `load()` resolves,
+against `DEFAULT_STATE()`'s own nutrition object, not the athlete's real diet
+or allergens — a smoke test on the shipped data tables, unconditional of who
+is using the app, not a check on this athlete's own STATE. `boot()` now also
+diffs `normalizeState()`'s before/after JSON and re-runs `validateData()`
+against the REAL loaded STATE, and `dataHealthNoteHTML()` surfaces either
+signal in Settings — the same "clear on every boot branch, not only where it
+was set" discipline `dietRepaired` already established, so a flag from a
+past repair cannot outlive the athlete acknowledging it (or a later boot that
+finds nothing left to fix).
+
+**A "was anything repaired" diff has a real false-positive mode: routine
+bootstrapping is not a repair.** The first version fired on literally every
+fresh install, before onboarding — `normalizeState()` legitimately adds
+scaffolding beyond what `DEFAULT_STATE()`'s own literal pre-populates, which
+is normal first-boot behavior, not evidence anything about an athlete's data
+was wrong. Gating the whole diff on `STATE.onboarded` already being true
+*before* that boot's `normalizeState()` call scopes it to what it is
+actually meant to catch: an already-onboarded athlete's stored data needing
+a real repair.
+
+**Building the diff check surfaced a live, currently-shipped regression of
+the exact bug it already fixed once.** `normalizeState()` had
+`if(typeof STATE.settings.voicePitch!=='number')STATE.settings.voicePitch=0.6;`
+running near the TOP of the function, unconditionally, on every call where
+the field is absent — and the one-time `_toneFix` migration that clears a
+legacy `voicePitch:0.6` runs much later, gated on `if(!_s._toneFix)`. On an
+athlete's first-ever boot this looked fine: the unconditional line sets
+`0.6`, then `_toneFix` immediately clears it and marks itself done. But on
+**every boot after that**, the unconditional line still fires (the field is
+absent again), re-adding `voicePitch:0.6` — and the one-time guard is now
+`true`, so nothing removes it a second time. Net effect: every athlete's
+SECOND app open, forever, silently re-broke the exact "every coach speaks in
+the same voice" bug the `_toneFix` migration exists to fix, and nothing in
+the existing suite caught it because no check called `normalizeState()`
+across two separate real boots — a fresh install runs it once, and every
+`seedAthlete()`-based test evaluates the SAME loaded session rather than
+reloading. The fix deletes the unconditional default outright: every reader
+(`localPitchFor()`, the Settings slider) already treats "absent" as "no
+manual override," which was the entire point of `_toneFix` in the first
+place — restoring a default was the bug.
+
+**No reminder existed to export a backup at all.** `backupNudgeHTML()`
+mirrors `driftBanner()`'s exact posture — rendered above the
+`dayInWeek===0` branch in `renderToday()`, per the rule below. It reads
+three signals: account age (a brand-new athlete gets time to ramp up before
+being nagged), days since `STATE._lastExport` (written by `exportData()`
+itself, so a real export always clears it — no separate "I did it" flag to
+forget to set), and a dismiss timestamp. All three use the exact
+`Math.round((new Date(todayISO())-new Date(iso))/86400000)` idiom
+`daysSinceTrained()` already uses beyond its own 90-day scan — both sides
+parsed from a bare `YYYY-MM-DD` land on UTC midnight, which is what makes
+the subtraction immune to the local DST shift that bit `readinessSlump()`.
+
+**`_dataRepaired`, `_lastExport` and `_backupNudgeDismissed` all needed the
+same TRANSIENT_KEYS judgment call `_undo`/`_plResume` already established.**
+A repair flag or a nag-dismiss timestamp describes what happened on THIS
+device, not a fact about the athlete — restoring an old backup onto a fresh
+phone should not import a stale "I already saw that repair note" from
+wherever the backup was made. `_lastExport` is the opposite case and was
+kept: like `_saved`/`_savedAt`, it is informational device history that a
+restored backup carrying it forward is harmless, even mildly correct.
+
+**Testing a `confirm()`-gated action broke an existing test that called it
+directly**, the same trap this file has now hit for `restartProgram()` and
+`clearAzureKey()`: `13-feedback.test.mjs` called `importData()` to prove a
+legacy backup's transient keys get stripped, and the new confirm gate made
+every assertion after it read the PRE-import state, since `confirm()`
+defaults to declining in headless Playwright. Same fix as always — stub
+`window.confirm = () => true` around the call, restore after.
+
+**Two of the fourteen mutants seeded against this round's new checks escaped
+on the first pass, both for the same reason: a test that only exercises the
+ACCEPT path of a confirm-gated action never proves the DECLINE path does
+anything.** Every check in the import-undo test used `window.confirm = ()
+=> true` throughout except the one dedicated decline scenario for
+`importData()` itself — `undoImport()`'s own confirm was never declined, so
+deleting its `if(!confirm(...))return;` passed clean. And the voicePitch
+regression fix (above) had no check calling `normalizeState()` across a
+genuinely absent value more than once — the existing "migration runs once"
+test always re-set `voicePitch` to `0.6` before the second call, which tests
+a *different* invariant (an athlete's deliberate `0.6` is not clobbered
+twice), not the one that broke (an absent value must stay absent). Both
+fixes follow the same shape as the rest of this section: find the specific
+scenario the passing suite never actually constructed, not just add another
+assertion next to the ones that already pass.
 
 ## Rendering
 
