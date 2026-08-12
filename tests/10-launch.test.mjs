@@ -110,6 +110,38 @@ const { browser, page, errors } = await launch(port);
   s.ok('no "NaN" rendered on Today', !/NaN|Infinity/.test(screen), screen.slice(0, 200));
 }
 
+/* ============ B2. a genuine ZERO baseline must not become a fake default ==== */
+/* computeAssessment() was already fixed for this exact class of bug
+   (+results.plank||30 silently replacing an honest zero) — estimateMaxes(),
+   one function downstream, had the identical mistake: v>0 (not v>=0) dropped
+   a legitimate "couldn't hold the plank at all" 0 from the sanitiser, and a
+   second `||` on the very next line would have re-broken it even with the
+   sanitiser fixed. An athlete who scores 0 must be prescribed EASIER than the
+   defaults, never AS IF they'd scored the default. */
+{
+  const r = await page.evaluate(() => {
+    STATE.profile.parq = []; STATE.profile.parqDone = true;
+    // push/pull/squat deliberately OMITTED so estimateMaxes() must derive them
+    // from the plank-anchored `s` scale — including push here would let the
+    // input value pass straight through Object.assign and the check would
+    // never actually exercise the scale formula the `||` bug lives in.
+    STATE.baseline = { date: todayISO(), score: 10, level: 'Beginner', testCount: 8,
+      maxes: { plank: 0, hollow: 5, side: 8, lower: 2, dyn: 4 } };
+    normalizeState();
+    const m = currentMaxes(0);
+    go('today'); render();
+    const screen = [...document.querySelectorAll('.view.active')].map(v => v.textContent).join(' ');
+    return { m, noNaN: !/NaN|Infinity/.test(screen) };
+  });
+  s.eq('a genuine zero-second plank is stored as 0, not defaulted to 40', r.m.plank, 0, r.m);
+  // correct: s clamps to the 0.5 floor -> push=round(12*0.5)=6. Buggy `||40`
+  // fallback: s=40/60=0.667 -> push=round(12*0.667)=8. The strict "<6" (not
+  // "<=6") is deliberate so the floor value itself still counts as a pass.
+  s.ok('the derived push/pull/squat scale is pulled toward the FLOOR by a real zero plank, not the 40s default\'s scale', r.m.push < 7, r.m);
+  s.eq('push lands exactly at the 0.5-floor value, not the ~0.67 the ||40 bug would produce', r.m.push, 6, r.m);
+  s.ok('nothing renders NaN/Infinity from a zero-anchored scale', r.noNaN, r);
+}
+
 /* ============ C. the first-run funnel gates its required fields ============ */
 {
   const p2 = await browser.newPage({ viewport: { width: 390, height: 844 } });

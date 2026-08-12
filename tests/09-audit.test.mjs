@@ -1142,6 +1142,99 @@ export default async function run() {
   t.ok('and every meal is loggable in one tap', plan.loggable, plan);
   t.ok('the day does not reshuffle on re-render', plan.stable, plan);
 
+  // ---- removeMeasure's onclick must survive a real click, not just a regex
+  // read of the markup. A hand-wrapped onclick="removeMeasure('${_ve(x)}')"
+  // LOOKS safe once _ve() escapes ' to &#39; — but the browser HTML-decodes
+  // the onclick attribute before compiling it as JS, so &#39; turns back
+  // into a literal ' right before the handler runs and the exploit still
+  // fires. A regex over the rendered HTML string can't see that decode step
+  // at all, so this drives it through a REAL DOM element and a REAL click.
+  // measureListHTML() truncates the date to 10 chars (String(m.date).slice(0,10))
+  // before it ever reaches the onclick, on the display path AND the argument
+  // path alike — so the real attack surface is a 10-character window, and the
+  // payload below is built to fit a valid breakout inside exactly that: a
+  // closing quote, a closing paren, an injected statement, and a `//` comment
+  // to swallow whatever the template appends after it, all within 10 chars.
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      o.escapesQuote = _ve("it's") === 'it&#39;s';
+      o.stillEscapesOthers = _ve('<&">') === '&lt;&amp;&quot;&gt;';
+
+      const PAYLOAD = "');q=1;//x"; // exactly 10 chars — survives the slice untouched
+      delete window.q;
+      const real = JSON.stringify(STATE.measurements);
+      STATE.measurements = [{ date: PAYLOAD, waist: 90, weight: 80 }];
+      const html = measureListHTML();
+      STATE.measurements = JSON.parse(real);
+
+      const div = document.createElement('div');
+      div.id = '__exploitProbe';
+      div.innerHTML = html;
+      document.body.appendChild(div);
+      const btn = div.querySelector('button[onclick^="removeMeasure"]');
+      o.foundButton = !!btn;
+      const origRemove = window.removeMeasure;
+      let calledWith;
+      window.removeMeasure = (d) => { calledWith = d; };
+      if (btn) btn.click();
+      window.removeMeasure = origRemove;
+      div.remove();
+      o.pwned = window.q === 1;
+      o.calledWith = calledWith;
+      delete window.q;
+      return o;
+    });
+    t.ok('_ve() escapes a single quote to &#39;', r.escapesQuote, r);
+    t.ok('and still escapes the original &<>" set', r.stillEscapesOthers, r);
+    t.ok('the delete button is found in the rendered markup', r.foundButton, r);
+    t.ok('a real click on a crafted measurement date does not execute injected JS', !r.pwned, r);
+    t.eq('removeMeasure is instead called with the full, unbroken date string', r.calledWith, "');q=1;//x", r);
+  }
+
+  // ---- importData()'s Object.assign(d, backup) must not hijack STATE's own
+  // prototype. Checked empirically before writing this: JSON.parse WITHOUT a
+  // reviver produces an own "__proto__"-named DATA property — it does NOT
+  // touch the real Object.prototype at parse time, and neither does the
+  // later Object.assign ever touch the GLOBAL Object.prototype. The actual
+  // danger is one line later, at STATE=Object.assign(d,p): Object.assign
+  // performs a genuine property SET for every source key, and a set of
+  // "__proto__" DOES trigger the inherited accessor, reassigning the
+  // TARGET's own [[Prototype]] to whatever object the backup supplied — so
+  // STATE.someUndefinedField can start reading attacker data instead of
+  // undefined. An earlier draft of this check asserted on
+  // Object.prototype.polluted, which stays undefined whether the guard
+  // exists or not — it passed clean on a seeded mutant that deleted the
+  // guard entirely. This drives the REAL importData() through a REAL File,
+  // the same way 13-feedback.test.mjs's legacy-backup check does, and reads
+  // STATE's actual prototype afterwards.
+  {
+    const r = await page.evaluate(async () => {
+      // NOT _saved as the completion signal — save(), called at the end of
+      // importData() itself, unconditionally overwrites STATE._saved to
+      // todayISO() on every call, so a sentinel there is wiped before the
+      // polling loop's first tick ever runs. profile.name survives — it is
+      // deep-merged from the backup, not stamped by save().
+      const json = '{"version":1,"__proto__":{"polluted":"yes"},"profile":{"name":"__PROTOTEST__"}}';
+      const file = new File([json], 'proto.json', { type: 'application/json' });
+      const realConfirm = window.confirm; window.confirm = () => true;
+      await new Promise(res => {
+        importData({ target: { files: [file] } });
+        const iv = setInterval(() => { if (STATE.profile && STATE.profile.name === '__PROTOTEST__') { clearInterval(iv); res(); } }, 60);
+        setTimeout(() => { clearInterval(iv); res(); }, 3000);
+      });
+      window.confirm = realConfirm;
+      return {
+        imported: STATE.profile && STATE.profile.name === '__PROTOTEST__',
+        protoIsReal: Object.getPrototypeOf(STATE) === Object.prototype,
+        pollutedLeak: STATE.polluted,
+      };
+    });
+    t.ok('guard: the crafted backup was actually imported', r.imported, r);
+    t.ok('STATE keeps its real prototype after importing a backup carrying __proto__', r.protoIsReal, r);
+    t.eq('and nothing leaks through a hijacked prototype chain', r.pollutedLeak, undefined, r);
+  }
+
   await browser.close();
 
   // ---- the readiness deload, in the timezone it was broken in --------------

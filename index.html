@@ -1598,7 +1598,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='239';
+const APP_VERSION='240';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -1731,15 +1731,20 @@ function estimateMaxes(m){
   /* Sanitise BEFORE merging. Object.assign lets a present-but-invalid value win
      over the default that exists to cover it, so a backup carrying
      {plank:"abc", push:null, pull:-5, hollow:NaN} produced target:null and the
-     session card rendered "~NaN minutes". A max is a positive finite number or
-     it is not a max — anything else is a gap, and gaps are what the defaults
-     below are for. */
+     session card rendered "~NaN minutes". A max is a non-negative finite
+     number or it is not a max — anything else (negative, NaN, garbage) is a
+     gap, and gaps are what the defaults below are for.
+     v>=0, not v>0: a genuine 0 (couldn't hold the plank at all) is a real,
+     honestly-recorded baseline result, not a data-quality gap — the same
+     falsy-zero mistake computeAssessment() was already fixed for, reintroduced
+     one function downstream. The `||` on the next line had the identical trap:
+     a legitimate plank:0 was silently replaced by the 40s default. */
   const clean={};
   Object.keys(m||{}).forEach(k=>{
     const v=typeof m[k]==='number'?m[k]:parseFloat(m[k]);
-    if(isFinite(v)&&v>0)clean[k]=v;
+    if(isFinite(v)&&v>=0)clean[k]=v;
   });
-  const s=Math.max(0.5,Math.min(2,(clean.plank||40)/60));
+  const s=Math.max(0.5,Math.min(2,(clean.plank!=null?clean.plank:40)/60));
   return Object.assign({plank:40,side:25,hollow:25,lower:12,dyn:20,
     push:Math.round(12*s),pull:Math.round(7*s),squat:Math.round(22*s)},clean);
 }
@@ -6030,7 +6035,19 @@ function openRestSheet(){
   try{coachSpeak(rested?"Rest day logged. Recovery is where the muscle is built. Sleep, hydrate, and hit your protein. I will see you tomorrow.":"Recovery is where the muscle is built. Rest up, sleep, hydrate, and hit your protein.");}catch(e){}
 }
 /* Voice-picker + depth/speed helpers */
-function _ve(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+/* Single quotes were NOT escaped — harmless everywhere _ve() lands inside a
+   double-quoted HTML attribute or in text content, but insufficient on its
+   own at removeMeasure's call site below: an inline onclick attribute is
+   HTML-DECODED by the browser before the result is compiled as JS, so
+   escaping ' to &#39; here does nothing there — it decodes right back to a
+   literal ' before the click handler ever runs, verified empirically with a
+   real click, not just by reading the markup. That call site needed its own
+   fix (JSON.stringify + this escaper, not a hand-wrapped single-quoted JS
+   string) — see the comment there. This escaper still gains ' coverage
+   because it's used at dozens of other sites and a future single-quoted
+   HTML attribute is a real, cheap-to-guard-against case; it just isn't what
+   makes removeMeasure's call site safe. */
+function _ve(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function voiceOptionsHTML(){
   if(!COACH_VOICES.length)return '<option value="">Tap "Test voice" to load voices…</option>';
   const en=COACH_VOICES.filter(v=>/^en/i.test(v.lang));
@@ -8066,13 +8083,24 @@ function removeMeasure(date){
   save();toast('Deleted');renderProgress();
 }
 function measureListHTML(){
+  /* The delete button's onclick embeds the date as a JS string literal built
+     with JSON.stringify() — not hand-wrapped in single quotes. A hand-wrapped
+     onclick="removeMeasure('${_ve(date)}')" is NOT safe even once _ve()
+     escapes ': the browser HTML-decodes the onclick attribute BEFORE
+     compiling it as JS, so &#39; turns back into a literal ' right before the
+     click handler runs, and a date crafted from an imported backup
+     (STATE.measurements has no schema validation) can still close the string
+     and inject JS. JSON.stringify() produces its own double-quoted, properly
+     backslash-escaped JS literal; _ve() then only has to protect the HTML
+     ATTRIBUTE boundary (the surrounding onclick="..."), which is a job it
+     actually does correctly. */
   const ms=(STATE.measurements||[]).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,8);
   if(!ms.length)return '';
   return `<div class="section-label">Logged measurements</div><div class="card" style="padding:0 12px">`+
     ms.map(m=>`<div class="kv" style="border-top:1px solid var(--line);padding:10px 2px">
       <span style="min-width:0"><b>${_ve(String(m.date).slice(0,10))}</b>
         <div class="tiny muted" style="margin-top:2px">${m.waist>0?('waist '+r1(waistShow(m.waist))+' '+(isImperial()?'in':'cm')):''}${(m.waist>0&&m.weight>0)?' · ':''}${m.weight>0?('weight '+r1(weightShow(m.weight))+' '+(isImperial()?'lb':'kg')):''}</div></span>
-      <button class="btn sm ghost" style="flex:0 0 auto" onclick="removeMeasure('${_ve(String(m.date).slice(0,10))}')">✕</button></div>`).join('')+
+      <button class="btn sm ghost" style="flex:0 0 auto" onclick="removeMeasure(${_ve(JSON.stringify(String(m.date).slice(0,10)))})">✕</button></div>`).join('')+
     `</div><div class="tiny muted" style="margin-top:6px">Mistyped one? Delete it — a bad row skews the charts and the goal pace for good.</div>`;
 }
 function latestTestDate(){
@@ -12123,7 +12151,11 @@ async function selfUpdate(){
        scope, and only cache names that match ours. */
     try{const reg=await navigator.serviceWorker.getRegistration('./');if(reg)await reg.unregister();}catch(e){}
     try{const keys=await caches.keys();await Promise.all(keys.filter(k=>/^coreforge-v\d+$/.test(k)).map(k=>caches.delete(k)));}catch(e){}
-    setTimeout(()=>location.reload(),400);
+    /* _sessionLive() was only checked at entry, several awaits and up to ~6.4s
+       ago (the fetch alone can take up to 6s). An athlete who started a set in
+       that window would still get yanked out by this reload — re-check right
+       before it actually fires, not just before the work that leads up to it. */
+    setTimeout(()=>{if(_sessionLive())return;location.reload();},400);
   }catch(e){}   // offline or blocked — stay on what we have
 }
 function refreshCacheVer(){
@@ -12210,7 +12242,12 @@ async function exportData(){
 function importData(e){
   const f=e.target.files[0];if(!f)return;const r=new FileReader();
   r.onload=()=>{try{
-    const p=JSON.parse(r.result);
+    /* A reviver that drops __proto__ at every level (not just the few objects
+       the merges below touch by hand) — Object.assign(target,{__proto__:x})
+       reassigns the TARGET's own prototype chain, since Object.prototype has
+       a __proto__ ACCESSOR. Returning undefined from a JSON.parse reviver
+       deletes that key from the result before it ever reaches Object.assign. */
+    const p=JSON.parse(r.result,(k,v)=>k==='__proto__'?undefined:v);
     if(!p||typeof p!=='object'||!p.version){toast('Not a CoreForge backup');return;}
     /* hardReset() — equally destructive to current progress — asks TWICE and
        tells the athlete to back up first. Restoring a backup replaces STATE
