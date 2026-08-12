@@ -1171,6 +1171,31 @@ const EX = {
     why:'The bell swings in a big circle IN FRONT of the body — up and OVER THE TOP — held by the handle. Trains the shoulders, grip and a braced, anti-extension core.',
     steps:['Hold: grip the kettlebell by the handle with both hands, arms hanging in front of you, bell down — a different grip from the Halo.','Path: swing it in a big circle in front of your body — up the front, over the top overhead, and back down — one smooth vertical loop, like a rotor blade.','Keep the torso tall and braced so the shoulders and arms do the work, not the low back.','Reverse direction halfway through the time.'],
     cues:['Both hands on the handle, big circle in front','Up the front, over the top, back down','Brace hard — no arching the low back'],mistakes:['Arching or leaning back as it goes overhead','Bending the elbows and shrinking the circle']},
+  kbwindmill:{name:'Kettlebell Windmill',region:'oblique',unit:'reps',img:'ex-kbwindmill.jpg',anchor:null,hardness:1.05,base:8,rest:60,equip:['kettlebell'],pattern:'core',
+    why:'A locked-out overhead hold and a hip hinge combined — the obliques resist the lean while the shoulder learns real overhead stability.',
+    steps:['Hold the bell overhead in one hand, arm locked straight, feet turned slightly away from that side.','Push the hips back on the working side and hinge sideways, reaching the free hand down toward the floor.','Keep the overhead arm locked directly above you the entire time — eyes on the bell.','Reverse the hinge to stand back up. Finish all reps on one side before switching.'],
+    cues:['Eyes on the bell overhead','Hinge from the hip, not the low back','The overhead arm never bends'],
+    mistakes:['Letting the overhead arm drift forward','Rounding the low back instead of hinging']},
+  kbsuitcase:{name:'Kettlebell Suitcase Carry',region:'oblique',unit:'time',img:'ex-kbsuitcase.jpg',anchor:null,hardness:1,base:40,rest:50,equip:['kettlebell'],pattern:'core',
+    why:'One bell, one side — the obliques fight the tip instead of just bracing, a real anti-lateral-flexion stimulus a bilateral carry cannot give.',
+    steps:['Stand tall holding one kettlebell at your side, like a suitcase.','Brace hard and walk with short, controlled steps.','Resist leaning toward the loaded side — stay tall and level.','Switch hands partway through if going for total time.'],
+    cues:['Shoulders level, do not lean','Ribs down, brace the whole way','Short, controlled steps'],
+    mistakes:['Tilting toward the weight','Shrugging the loaded shoulder up']},
+  kbfigure8:{name:'Kettlebell Figure-8',region:'oblique',unit:'reps',img:'ex-kbfigure8.jpg',anchor:null,hardness:1,base:16,rest:40,equip:['kettlebell'],pattern:'core',
+    why:'Passing the bell hand-to-hand around and between the legs — grip, rotation and hip-hinge control in one continuous loop.',
+    steps:['Stand in a quarter-squat, feet wide, hinged slightly forward.','Pass the kettlebell from hand to hand behind one leg, around the front, then behind the other.','Keep the hinge steady — the bell moves, the torso stays low and stable.','One full loop around both legs is one rep.'],
+    cues:['Stay low in the hinge the whole time','Let the hips absorb the momentum','Smooth hand-offs, do not rush'],
+    mistakes:['Standing up out of the hinge between reps','Yanking the bell instead of a smooth pass']},
+  kbrenegade:{name:'Kettlebell Renegade Row',region:'anterior',unit:'reps',img:'ex-kbrenegade.jpg',anchor:null,hardness:1.1,base:8,rest:55,equip:['kettlebell'],pattern:'core',
+    why:'A plank row that hammers the anti-rotation core while building the back — a rounder base than a dumbbell makes the balance demand even more honest.',
+    steps:['High plank gripping a kettlebell in each hand, feet wide for balance.','Row one bell to the hip while keeping the hips square.','Set it down under control and row the other side.','Count each side as a rep.'],
+    cues:['Hips stay square — fight the rotation','Wide feet for a stable base','Slow and controlled, no yanking'],
+    mistakes:['Letting the hips twist toward the rowing side','Feet too close together — no base to work from']},
+  kbhighpull:{name:'Kettlebell Sumo Deadlift High Pull',region:'strength',unit:'reps',img:'ex-kbhighpull.jpg',anchor:null,hardness:1.15,base:10,rest:65,equip:['kettlebell'],pattern:'power',
+    why:'A sumo-stance deadlift into an explosive high pull — legs, hips, back and shoulders in one continuous full-body chain.',
+    steps:['Stand wide, toes turned out, kettlebell on the floor between the feet.','Hinge and grip the bell, chest up, back flat.','Drive through the floor to stand, then explosively pull the bell up to chin height, elbows high.','Lower under control and reset for the next rep.'],
+    cues:['Drive the floor away with the legs first','Elbows lead the pull, above the wrists','Chest stays tall the whole rep'],
+    mistakes:['Pulling with the arms before the legs finish','Rounding the back off the floor']},
   /* -- DUMBBELL library (a pair of dumbbells) -- */
   dbgoblet:{name:'Dumbbell Goblet Squat',region:'legs',unit:'reps',img:'ex-dbgoblet.jpg',anchor:null,hardness:1,base:12,rest:60,equip:['dumbbell'],pattern:'squat',
     why:'A front-loaded squat that builds the legs and bracing core while keeping the torso tall and safe.',
@@ -1558,7 +1583,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='232';
+const APP_VERSION='233';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2065,11 +2090,11 @@ const GOAL_NOTE={
   gain:'Build muscle on a slight surplus with heavier, lower-rep work.',
 };
 const FOCUS_POOL={
-  abs:['hollow','hollowflutter','vsit','bearhold','lsit','dragonflag','dragonflagfull','situp','vertcrunch','plankleg','isoclimber','vup','tuckvup','legraise','hiplift','hanglegraise','revcrunch','crunch','bicycle','kneeraise','abroll','mbsitup','flutter'],
-  obliques:['sideplank','sideplankreach','situptwist','sidedip','russiantwist','windshield','plankrot','heeltouch','bicycle','copenhagen','standingoblique','mbtwist','kbhalo','dbpallof','mbchop'],
-  full:['burpee','sprawl','bearcrawl','inchworm','squatthrust','mountainclimber','kbswing','dbthruster','halfburpee','squat','pushup'],
+  abs:['hollow','hollowflutter','vsit','bearhold','lsit','dragonflag','dragonflagfull','situp','vertcrunch','plankleg','isoclimber','vup','tuckvup','legraise','hiplift','hanglegraise','revcrunch','crunch','bicycle','kneeraise','abroll','mbsitup','flutter','kbrenegade'],
+  obliques:['sideplank','sideplankreach','situptwist','sidedip','russiantwist','windshield','plankrot','heeltouch','bicycle','copenhagen','standingoblique','mbtwist','kbhalo','dbpallof','mbchop','kbwindmill','kbsuitcase','kbfigure8'],
+  full:['burpee','sprawl','bearcrawl','inchworm','squatthrust','mountainclimber','kbswing','dbthruster','halfburpee','squat','pushup','kbhighpull'],
   chest:['pushup','tempopushup','hindupushup','typewriter','inclinepushup','declinepushup','diamondpushup','archerpushup','closepushup','dbfloor'],
-  back:['invertedrow','superman','swimmer','scappull','negpullup','pullup','chinup','dbrow','kbrow'],
+  back:['invertedrow','superman','swimmer','scappull','negpullup','pullup','chinup','dbrow','kbrow','kbrenegade'],
   shoulders:['pikepushup','elevatedpike','wallwalk','wallhandstand','dbpress','kbcp'],
   arms:['benchdip','closepushup','dips','dbcurl','diamondpushup'],
   legs:['wallsit','squat','cossack','sissysquat','reverselunge','splitsquat','bulgarian','walkinglunge','jumpsquat','kbgoblet','dbgoblet'],
@@ -8738,11 +8763,11 @@ function calcOneRM(){
 const JOINTS=[['knee','Knee'],['shoulder','Shoulder'],['wrist','Wrist'],['lowback','Lower back'],['elbow','Elbow']];
 const JOINT_RISK={
   knee:['pistol','boxpistol','jumpsquat','tuckjump','broadjump','splitjump','bulgarian','burpee','burpeetuck','walkinglunge','sissysquat','cossack','sprawl','latshuffle','nordic','asiansquat','wallsit','skater','squatjack','splitsquat','jumpingjack','sealjack','highknees','buttkick'],
-  shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','benchdip','dbpress','kbcp','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbtgu','kbthruster','hanglegraise','lsit','dragonflag','dragonflagfull','plankrot','wallwalk','pseudoplanche','typewriter','hindupushup','pullup','chinup','widepullup','negpullup','deadhang','scappull','invertedrow','invertedrowelev','tablerow','crabwalk','reverseplank','abroll','mbslam','ropeslam','ropewave','kbswing','atomicpushup','declinepushup','burpee','burpeetuck'],
+  shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','benchdip','dbpress','kbcp','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbtgu','kbthruster','kbwindmill','hanglegraise','lsit','dragonflag','dragonflagfull','plankrot','wallwalk','pseudoplanche','typewriter','hindupushup','pullup','chinup','widepullup','negpullup','deadhang','scappull','invertedrow','invertedrowelev','tablerow','crabwalk','reverseplank','abroll','mbslam','ropeslam','ropewave','kbswing','atomicpushup','declinepushup','burpee','burpeetuck'],
   /* fistpushup is deliberately ABSENT: knuckles down keeps the wrist straight,
      which is the whole point of the movement. */
-  wrist:['pushup','kneepushup','inclinepushup','declinepushup','diamondpushup','closepushup','archerpushup','spidermanpushup','superpushup','planktap','mountainclimber','dbrenegade','dbmanmaker','dbdevil','abroll','lsit','isoclimber','bearcrawl','crabwalk','plankjack','crossclimber','bearhold','pseudoplanche','typewriter','hindupushup','tempopushup','inchworm','pikepushup','elevatedpike','wallwalk','wallhandstand','hspushup','atomicpushup','burpee','burpeetuck','halfburpee','squatthrust','sprawl','reverseplank'],
-  lowback:['superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbthruster','mbslam','ropeslam','windshield','dragonflag','dragonflagfull','situp','vertcrunch','situptwist','vsit','slrdl','swimmer','legraise','hanglegraise','kneeraise','hiplift','flutter','scissors','vup','tuckvup','russiantwist','weightedtwist','mbtwist','mbchop','mbsitup','seatedtwist','abroll','longplank','ruck','dipknee','heeltouch','crunch','bicycle','revcrunch'],
+  wrist:['pushup','kneepushup','inclinepushup','declinepushup','diamondpushup','closepushup','archerpushup','spidermanpushup','superpushup','planktap','mountainclimber','dbrenegade','kbrenegade','dbmanmaker','dbdevil','abroll','lsit','isoclimber','bearcrawl','crabwalk','plankjack','crossclimber','bearhold','pseudoplanche','typewriter','hindupushup','tempopushup','inchworm','pikepushup','elevatedpike','wallwalk','wallhandstand','hspushup','atomicpushup','burpee','burpeetuck','halfburpee','squatthrust','sprawl','reverseplank'],
+  lowback:['superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbthruster','kbwindmill','kbhighpull','mbslam','ropeslam','windshield','dragonflag','dragonflagfull','situp','vertcrunch','situptwist','vsit','slrdl','swimmer','legraise','hanglegraise','kneeraise','hiplift','flutter','scissors','vup','tuckvup','russiantwist','weightedtwist','mbtwist','mbchop','mbsitup','seatedtwist','abroll','longplank','ruck','dipknee','heeltouch','crunch','bicycle','revcrunch'],
   elbow:['dips','benchdip','diamondpushup','closepushup','chinup','negpullup','dbcurl','typewriter','pseudoplanche'],
 };
 /* One flat literal edited by three feature waves ended up with 126 properties
@@ -8783,8 +8808,8 @@ const SAFE_SWAP={
   atomicpushup:'fistpushup',fistpushup:'inclinepushup',kneepushup:'inclinepushup',
   inclinepushup:'glutebridge',
   dips:'kneepushup',benchdip:'kneepushup',dipknee:'kneeplank',
-  dbpress:'dbfloor',kbcp:'kbrow',dbthruster:'dbgoblet',dbrenegade:'dbrow',dbcurl:'dbrow',
-  dbcp:'dbgoblet',dbmanmaker:'dbgoblet',dbdevil:'dbgoblet',kbsnatch:'kbgoblet',kbtgu:'kbgoblet',kbthruster:'kbgoblet',
+  dbpress:'dbfloor',kbcp:'kbrow',dbthruster:'dbgoblet',dbrenegade:'dbrow',kbrenegade:'kbrow',dbcurl:'dbrow',
+  dbcp:'dbgoblet',dbmanmaker:'dbgoblet',dbdevil:'dbgoblet',kbsnatch:'kbgoblet',kbtgu:'kbgoblet',kbthruster:'kbgoblet',kbwindmill:'kbgoblet',
   // pulling — lands on a bar-free row, not on a back extension
   pullup:'towelrow',widepullup:'towelrow',chinup:'towelrow',negpullup:'towelrow',
   invertedrow:'towelrow',invertedrowelev:'towelrow',tablerow:'towelrow',towelrow:'superman',
@@ -8795,7 +8820,7 @@ const SAFE_SWAP={
   crossclimber:'march',plankleg:'plank',plankrot:'sideplank',longplank:'plank',
   // posterior chain / hinge
   superman:'birddog',swimmer:'birddog',reverseplank:'glutebridge',hipthrust:'glutebridge',
-  dbrdl:'glutebridge',kbrdl:'glutebridge',kbswing:'kbgoblet',mbslam:'mbsitup',ropeslam:'ropewave',
+  dbrdl:'glutebridge',kbrdl:'glutebridge',kbswing:'kbgoblet',kbhighpull:'kbgoblet',mbslam:'mbsitup',ropeslam:'ropewave',
   ruck:'march',
   // midsection
   windshield:'bicycle',hanglegraise:'legraise',lsit:'hollow',dragonflag:'hollow',dragonflagfull:'hollow',revcrunch:'legraise',
