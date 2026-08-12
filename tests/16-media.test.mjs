@@ -337,6 +337,81 @@ export default async function run() {
       { media: r.work.media, num: [r.work.numW, r.work.numH] });
   }
 
+  /* ---- warm-up/cool-down/mobility (runFlow's flowHTML) is the player's third
+     twin — CLAUDE.md already names it as the one that keeps drifting behind
+     the other two. It had its own separate stacked photo-then-ring layout,
+     with a FIXED 220px ring, which overflowed a real phone's sheet by 127px
+     at 375×667 and 106px at 412×690 — Stop/Done and the cue text pushed below
+     the fold. Fixed the same way .pl-ring was: the media moved inside the
+     ring (.pl-ringmedia, shared with the player/HIIT) and the ring itself
+     went from a fixed square to a responsive min(). */
+  for (const vp of [{ width: 375, height: 667 }, PHONE]) {
+    await page.setViewportSize(vp);
+    const r = await page.evaluate(async () => {
+      try { closeSheet(); } catch (e) {}
+      runWarmup();
+      await new Promise(z => setTimeout(z, 300));
+      const sheet = document.querySelector('#sheet');
+      const media = document.querySelector('.timerring .pl-ringmedia');
+      const img = media && media.querySelector('img,video');
+      const stop = document.querySelector('#sheet .btnrow .btn.ghost');
+      const done = document.querySelector('#sheet .btnrow .btn.green');
+      const inView = el => { if (!el) return false; const b = el.getBoundingClientRect();
+        return b.top >= 0 && b.bottom <= window.innerHeight && b.width > 0 && b.height > 0; };
+      const out = {
+        overflow: sheet ? sheet.scrollHeight - sheet.clientHeight : null,
+        mediaInsideRing: !!img,
+        stopVisible: inView(stop), doneVisible: inView(done),
+      };
+      try { flowStop(false); } catch (e) {}
+      return out;
+    });
+    t.ok(`[warm-up @ ${vp.width}x${vp.height}] the sheet fits without scrolling`, r.overflow <= 0, r);
+    t.ok(`[warm-up @ ${vp.width}x${vp.height}] the exercise photo renders inside the ring, not stacked above it`, r.mediaInsideRing, r);
+    t.ok(`[warm-up @ ${vp.width}x${vp.height}] Stop is on screen without scrolling`, r.stopVisible, r);
+    t.ok(`[warm-up @ ${vp.width}x${vp.height}] Done is on screen without scrolling`, r.doneVisible, r);
+  }
+
+  /* The fix lives in the shared flowHTML()/runFlow(), but cool-down is a
+     separate caller — confirm it did not drift from warm-up's fix. */
+  {
+    await page.setViewportSize({ width: 375, height: 667 });
+    const r = await page.evaluate(async () => {
+      try { closeSheet(); } catch (e) {}
+      runCooldown();
+      await new Promise(z => setTimeout(z, 300));
+      const sheet = document.querySelector('#sheet');
+      const out = { overflow: sheet ? sheet.scrollHeight - sheet.clientHeight : null };
+      try { flowStop(false); } catch (e) {}
+      return out;
+    });
+    t.ok('cool-down also fits without scrolling at 375x667', r.overflow <= 0, r);
+  }
+
+  /* ---- the ring itself shrinks under real vertical pressure, not just the
+     media move — a portrait phone at 375x667/412x690 no longer overflows
+     from the media move alone, so that check can't tell a fixed 220px ring
+     apart from a responsive one. Landscape genuinely can: manifest.webmanifest
+     declares portrait-primary so this is not the app's target orientation,
+     but a phone rotated mid-session is real, and the ring measurably shrinks
+     to make room instead of holding a fixed size regardless of what fits. */
+  {
+    await page.setViewportSize({ width: 667, height: 320 });
+    const r = await page.evaluate(async () => {
+      try { closeSheet(); } catch (e) {}
+      runWarmup();
+      await new Promise(z => setTimeout(z, 300));
+      const ring = document.querySelector('.timerring').getBoundingClientRect();
+      const sheet = document.querySelector('#sheet');
+      const out = { ringH: Math.round(ring.height), overflow: sheet.scrollHeight - sheet.clientHeight };
+      try { flowStop(false); } catch (e) {}
+      return out;
+    });
+    t.ok('the ring shrinks below its base size under real height pressure', r.ringH < 200, r);
+    t.ok('and that shrink measurably reduces the overflow it cannot fully eliminate off-orientation',
+      r.overflow < 175, r);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

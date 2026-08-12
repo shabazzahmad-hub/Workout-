@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v229';
+const CACHE = 'coreforge-v231';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
@@ -36,7 +36,9 @@ const CORE = ['./', './index.html'];
    a missing font must never cost the athlete the whole offline cache. */
 const SHELL_MIN = [
   './manifest.webmanifest','./archivo.woff2','./icon-192-v2.png',
-  './icon-512-v2.png','./hero.jpg','./coach-sarge.jpg'
+  './icon-512-v2.png','./hero.jpg','./coach-sarge.jpg',
+  './icon-192-maskable.png','./icon-512-maskable.png','./icon-180-apple.png',
+  './privacy.html','./terms.html'
 ];
 
 /* What a new athlete meets in their first fortnight. */
@@ -53,7 +55,9 @@ const FIRST_RUN = [
   './wu-kneehug.jpg','./wu-march.jpg','./wu-torsotwist.jpg'
 ];
 
-/* The other 144. Stills, then video. */
+/* The other 144. Stills, then video. The three screenshot-*.png files at the
+   end are only ever read by the browser's OWN install-prompt UI, never
+   fetched by the running app — least essential, hence EXTRA. */
 const EXTRA = [
   './ex-abroll.jpg','./ex-archerpushup.jpg','./ex-asiansquat.jpg','./ex-atomicpushup.jpg',
   './ex-bearcrawl.jpg','./ex-bearhold.jpg','./ex-benchdip.jpg','./ex-bike.jpg',
@@ -92,7 +96,8 @@ const EXTRA = [
   './phys-1.jpg','./phys-2.jpg','./phys-3.jpg','./phys-4.jpg',
   './phys-5.jpg','./ex-atomicpushup.mp4','./ex-birddog.mp4','./ex-burpee.mp4',
   './ex-halfburpee.mp4','./ex-jumpsquat.mp4','./ex-kbhalo.mp4','./ex-kbheli.mp4',
-  './ex-nordic.mp4','./ex-pistol.mp4','./ex-superpushup.mp4','./wu-march.mp4'
+  './ex-nordic.mp4','./ex-pistol.mp4','./ex-superpushup.mp4','./wu-march.mp4',
+  './screenshot-today.png','./screenshot-fuel.png','./screenshot-progress.png'
 ];
 
 /* The union, and still the single source of truth for "what ships offline". */

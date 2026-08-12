@@ -18,7 +18,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="CoreForge">
 <link rel="icon" href="icon-192-v2.png">
-<link rel="apple-touch-icon" href="icon-192-v2.png">
+<link rel="apple-touch-icon" href="icon-180-apple.png">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="description" content="CoreForge — a home training program that starts with 6 weeks of core, abs and HIIT for a flat stomach and no love handles, then expands into a full year of full-body strength (chest, back, shoulders, arms, legs) plus HIIT. Baseline assessment, week-to-week progression, self-saving. Offline-ready, installs to your home screen.">
 <title>CoreForge — 1-Year Full-Body Program</title>
@@ -348,9 +348,10 @@
   .goalpick button{width:100%;min-width:0;padding:11px 6px;line-height:1.25}
   /* was flex:1 with a 38px floor, so 8 equipment chips got 37px for a 68px label
      and clipped mid-word. Same 3-up grid the goal picker already uses. */
-  .daypick{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .daypick{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;border-radius:14px}
   .daypick button{width:100%;min-width:0;padding:11px 6px;line-height:1.25;border-radius:11px;background:var(--card2);border:1.5px solid var(--line);font-size:12px;font-weight:800;color:var(--muted)}
   .daypick button.on{background:var(--fire);border-color:var(--fire);color:var(--accInk)}
+  .daypick.bad{outline:1.5px solid var(--red,#ff6b6b);outline-offset:4px}
   /* Bottom nav */
   .nav{position:fixed;bottom:0;left:0;right:0;z-index:50;background:color-mix(in srgb,var(--bg) 96%,transparent);backdrop-filter:blur(20px);border-top:1px solid var(--line);display:flex;padding:7px 7px calc(7px + env(safe-area-inset-bottom));max-width:600px;margin:0 auto}
   .nav button{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 1px;color:var(--muted);font-size:10px;font-weight:800;border-radius:12px}
@@ -391,8 +392,12 @@
   .timerbox .tnum{font-size:72px;font-weight:900;line-height:1;letter-spacing:-2px;margin:8px 0;font-variant-numeric:tabular-nums}
   .timerbox .tnum.go{color:var(--green)}
   .timerbox .tnum.rest{color:var(--fire-l)}
-  .timerring{position:relative;width:220px;height:220px;margin:0 auto}
-  .timerring svg{transform:rotate(-90deg)}
+  /* height-driven, not a fixed 220px square — same reasoning as .pl-ring:
+     a fixed size overflowed the sheet on a short phone (127px past the fold
+     at 375×667, with the media stacked above it as a separate block on top).
+     min() lets it shrink to fit instead of pushing Stop/Done off-screen. */
+  .timerring{position:relative;height:min(220px,72vw,40vh);min-height:130px;width:auto;aspect-ratio:1;margin:0 auto}
+  .timerring svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
   .timerring .inner{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
   /* Assessment */
   .assess-step{display:none}.assess-step.active{display:block}
@@ -1538,7 +1543,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='229';
+const APP_VERSION='231';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2798,7 +2803,7 @@ function onboardHTML(){
 }
 function wireOnboard(){
   const days=new Set(STATE.profile.days);
-  $$('#ob-days button').forEach(b=>{if(days.has(+b.dataset.d))b.classList.add('on');b.onclick=()=>{b.classList.toggle('on');haptic(8);};});
+  $$('#ob-days button').forEach(b=>{if(days.has(+b.dataset.d))b.classList.add('on');b.onclick=()=>{b.classList.toggle('on');haptic(8);const p=$('#ob-days');if(p&&$$('#ob-days button.on').length>=5)p.classList.remove('bad');};});
   const single=(sel)=>$$(sel+' button').forEach(b=>b.onclick=()=>{$$(sel+' button').forEach(x=>x.classList.remove('on'));b.classList.add('on');haptic(6);});
   const multi=(sel)=>$$(sel+' button').forEach(b=>b.onclick=()=>{b.classList.toggle('on');haptic(6);});
   single('#ob-sex');single('#ob-goal');single('#ob-exp');single('#ob-act');single('#ob-unit');single('#ob-diet');single('#ob-meals');
@@ -2841,18 +2846,29 @@ function wireOnboard(){
      first run actually goes, so the three numbers every downstream calculation
      is built from are now gated at the step that asks for them. */
   const obStepError=n=>{
-    if(n!==1)return null;
-    const num=id=>{const e=$('#'+id);return e?parseFloat(e.value):NaN;};
-    const im=(($('#ob-unit button.on')||{dataset:{}}).dataset.u)==='in';
-    const age=num('ob-age');
-    if(!isFinite(age)||age<13||age>100)
-      return {id:'ob-age',msg:'Add your age (13–100) — every calorie and training target is built from it.'};
-    let ht=num('ob-height'); if(im&&isFinite(ht))ht*=2.54;
-    if(!isFinite(ht)||ht<120||ht>230)
-      return {id:'ob-height',msg:im?'Add your height in inches (47–91).':'Add your height in cm (120–230).'};
-    let wt=num('ob-weight'); if(im&&isFinite(wt))wt*=0.453592;
-    if(!isFinite(wt)||wt<30||wt>250)
-      return {id:'ob-weight',msg:im?'Add your weight in pounds (66–550).':'Add your weight in kg (30–250).'};
+    if(n===1){
+      const num=id=>{const e=$('#'+id);return e?parseFloat(e.value):NaN;};
+      const im=(($('#ob-unit button.on')||{dataset:{}}).dataset.u)==='in';
+      const age=num('ob-age');
+      if(!isFinite(age)||age<13||age>100)
+        return {id:'ob-age',msg:'Add your age (13–100) — every calorie and training target is built from it.'};
+      let ht=num('ob-height'); if(im&&isFinite(ht))ht*=2.54;
+      if(!isFinite(ht)||ht<120||ht>230)
+        return {id:'ob-height',msg:im?'Add your height in inches (47–91).':'Add your height in cm (120–230).'};
+      let wt=num('ob-weight'); if(im&&isFinite(wt))wt*=0.453592;
+      if(!isFinite(wt)||wt<30||wt>250)
+        return {id:'ob-weight',msg:im?'Add your weight in pounds (66–550).':'Add your weight in kg (30–250).'};
+      return null;
+    }
+    /* The day-picker's own copy says "keep at least five" — nothing enforced
+       it, on either the first-run wizard or the identical edit-profile path
+       (OB_EDIT reuses this same wizard), so 1-4 days saved silently. Gated
+       here the same way step 1's required fields already are. */
+    if(n===5){
+      const chosen=$$('#ob-days button.on').length;
+      if(chosen<5)
+        return {id:'ob-days',msg:'Pick at least 5 training days — the whole program is paced around five.'};
+    }
     return null;
   };
   // clear the marker as soon as they start fixing it
@@ -2911,7 +2927,10 @@ function obReadForm(){
   P.activity=parseFloat(($('#ob-act button.on')||{dataset:{a:'1.45'}}).dataset.a)||1.45;
   P.conditioning=($('#ob-cond button.on')||{dataset:{c:'moderate'}}).dataset.c;
   P.mobility=($('#ob-mob button.on')||{dataset:{m:'ok'}}).dataset.m;
-  const chosen=$$('#ob-days button.on').map(b=>+b.dataset.d); P.days=chosen.length?chosen:[0,1,2,3,4,5,6];
+  /* obBlocked()'s step-5 gate is the primary defense; this is the write path
+     itself, so it holds the same floor independently rather than trusting a
+     caller reached it through the wizard's own Next button. */
+  const chosen=$$('#ob-days button.on').map(b=>+b.dataset.d); P.days=chosen.length>=5?chosen:[0,1,2,3,4,5,6];
   P.goal=($('#ob-goal button.on')||{dataset:{g:'lose'}}).dataset.g;
   P.focusPrimary=($('#ob-focus button.on')||{dataset:{f:'abs'}}).dataset.f;
   P.targets=$$('#ob-targets button.on').map(b=>b.dataset.t); if(!P.targets.length)P.targets=['abs','full'];
@@ -6841,16 +6860,26 @@ function runFlow(items,title,color){
   stopTimer();
   timer={iv:setInterval(tick,1000),mode:'flow'};
 }
+/* The photo/video sits INSIDE the ring (.pl-ringmedia, shared with the guided
+   player and HIIT — see plRingMediaHTML()) rather than stacked above it as a
+   separate square block. The old layout paid for both a 260px image AND a
+   full 220px ring in stacked vertical space, which overflowed a real phone's
+   sheet by 100+ px — the Stop/Done buttons and the cue text were pushed
+   below the fold. #flowVid/#flowImg keep their own persistent elements and
+   showFlowMedia()'s existing src/display toggling untouched; only where they
+   render changed. */
 function flowHTML(title,count,color){
   const C=2*Math.PI*100;
   return `
   <div class="timerbox">
     <div class="tt">${title} · <span id="flowStep">0 / ${count}</span></div>
     <div style="display:flex;justify-content:center;margin:8px 0 2px">${coachChipHTML('Coaching you through')}</div>
-    <video id="flowVid" loop muted playsinline preload="auto" onerror="this.style.display='none'" style="width:100%;max-width:260px;aspect-ratio:1/1;object-fit:cover;border-radius:16px;margin:10px auto 4px;display:none;box-shadow:0 6px 20px rgba(0,0,0,.35)"></video>
-    <img id="flowImg" alt="" onerror="this.style.display='none'" style="width:100%;max-width:260px;aspect-ratio:1/1;object-fit:cover;border-radius:16px;margin:10px auto 4px;display:none;box-shadow:0 6px 20px rgba(0,0,0,.35)">
     <div class="timerring">
-      <svg width="220" height="220" viewBox="0 0 220 220">
+      <div class="pl-ringmedia">
+        <video id="flowVid" loop muted playsinline preload="auto" onerror="this.style.display='none'" style="display:none"></video>
+        <img id="flowImg" alt="" onerror="this.style.display='none'" style="display:none">
+      </div>
+      <svg viewBox="0 0 220 220">
         <circle cx="110" cy="110" r="100" fill="none" stroke="var(--line)" stroke-width="12"/>
         <circle id="flowRing" cx="110" cy="110" r="100" fill="none" stroke="${color}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="0"/>
       </svg>
@@ -10050,7 +10079,8 @@ function dietLabel(){const m=Object.fromEntries(DIET_OPTS);return m[STATE.nutrit
    helper so the wording cannot drift between the two places it appears. */
 function privacyNoteHTML(){
   return `<div class="note info" style="margin-top:12px">Your training data lives <b>only on this phone</b> — sessions, measurements, photos and backups are saved on the device and work offline. Nothing is uploaded, and there is no account.
-    <div class="tiny muted" style="margin-top:6px">Two optional extras are the exception, and both stay off until you add your own API key: the <b>food-photo lookup</b> sends that photo to Google Gemini, and the <b>premium coach voice</b> sends the line being spoken to Microsoft Azure. Leave them off and nothing ever leaves the phone.</div></div>`;
+    <div class="tiny muted" style="margin-top:6px">Two optional extras stay off until you add your own API key: the <b>food-photo lookup</b> sends that photo to Google Gemini, and the <b>premium coach voice</b> sends the line being spoken to Microsoft Azure. A third, key-free lookup — <b>searching packaged foods or scanning a barcode</b> — sends only the search term or barcode (never anything about you) to the free Open Food Facts database. Skip all three and nothing ever leaves the phone.</div>
+    <div class="tiny muted" style="margin-top:6px"><a href="./privacy.html" target="_blank" rel="noopener" style="color:inherit">Read the full privacy policy →</a></div></div>`;
 }
 /* Shown when normalizeState() could not recognise the stored diet and fell
    back to the restrictive one. The athlete is the only one who knows what it
@@ -11872,6 +11902,9 @@ function renderGuide(){
     <div class="tiny muted" id="packNote" style="margin-top:6px">Exercise photos download quietly in the background, a few at a time, so the app is usable straight away instead of waiting on the lot. Anything you open before it finishes is saved as you view it.</div>
     <button class="btn ghost sm" style="width:100%;margin-top:6px" onclick="forceUpdate()">🔄 Check for update</button>
     <div class="tiny muted" style="margin-top:6px">If the version here doesn't match the latest, tap Check for update — it re-fetches the app and reloads. On the installed app, fully closing and reopening it also picks up new versions.</div>
+    <div class="divider"></div>
+    <div class="btnrow"><a class="btn ghost sm" style="width:100%" href="./privacy.html" target="_blank" rel="noopener">Privacy policy</a><a class="btn ghost sm" style="width:100%" href="./terms.html" target="_blank" rel="noopener">Terms of use</a></div>
+    <a class="btn ghost sm" style="width:100%;margin-top:8px" href="https://github.com/shabazzahmad-hub/Workout-/issues" target="_blank" rel="noopener">💬 Report a problem / get help</a>
   </div>`;
   h+=`<div class="center tiny muted" style="margin:20px 0">CoreForge v${APP_VERSION} · built for a strong midsection<br>${STATE.profile.name?'Athlete: '+_ve(STATE.profile.name)+' · ':''}saved ${_ve(STATE._saved||todayISO())}</div>`;
   v.innerHTML=h;

@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 22 suites, ~1,858 checks, run by `npm test` |
+| `tests/` | 22 suites, ~1,892 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -1142,6 +1142,144 @@ twice), not the one that broke (an absent value must stay absent). Both
 fixes follow the same shape as the rest of this section: find the specific
 scenario the passing suite never actually constructed, not just add another
 assertion next to the ones that already pass.
+
+## App-store listing quality (v230)
+
+Prompted by "what would Apple/Google Play check before listing this" —
+narrowed, on the user's explicit steer, to genuine functional/store-quality
+gaps rather than legal paperwork the user does not want time spent on.
+
+**A privacy blurb that omits a real outbound call is worse than no blurb.**
+`privacyNoteHTML()` named two opt-in, key-gated third parties (Azure, Gemini)
+and stopped there — but packaged-food search and barcode scanning hit the
+free Open Food Facts database with **no key and no opt-in gate at all**,
+and the note never said so. Fixed by naming it explicitly (search term or
+barcode only, never anything about the athlete) and linking to a full
+policy page (`privacy.html`) and terms page (`terms.html`) — both static,
+outside the single inline `<script>`, since they are legal documents rather
+than application logic and the user does not want them touched again absent
+a specific ask.
+
+**A maskable icon that reuses the "any" icon file usually is not actually
+maskable.** The manifest pointed `purpose:"maskable"` at the exact same
+512×512 photographic portrait used for `purpose:"any"` — full-bleed, with
+the subject's crossed arms running to the frame edges. An OS that crops a
+maskable icon to a circle or squircle would cut into the elbows/hands,
+because nothing in the source image left room for that crop. Fixed by
+generating a real maskable variant: the subject scaled to 80% (the
+conventional maskable safe zone) and centered on a canvas filled with the
+photo's own backdrop tone — sampled from the source image's corners, not
+guessed — so the safe zone survives any OS mask shape. A naive hard paste
+of the scaled photo onto the flat fill left the exact rectangular seam this
+file's contact-sheet extraction note already documents; the fix was the
+same one used there — feather the paste mask with a Gaussian blur so the
+boundary blends into the flat fill instead of fighting it, rather than
+trying to match the fill color more precisely.
+
+**`manifest.webmanifest`'s `screenshots` array has to be real screenshots
+of the real app, not a placeholder.** Generated via the existing Playwright
+test harness (`seedAthlete()` + `waitForBoot()`), at the app's actual mobile
+viewport, of Today/Fuel/Progress with a fully-seeded athlete so they show
+real content rather than an empty onboarding state. Caught one thing the
+manual approach could not have skipped past silently: the branded launch
+splash (`#splash`, dismissed by `hideSplash()` ~850ms after boot, then a
+600ms fade-out) was still fully opaque in the first attempt's screenshots
+because the script screenshotted before it cleared — the fix is to wait
+past that window (or call `hideSplash()` directly) before capturing, the
+same "read back synchronously, do not let an unrelated timer land inside
+your wait" lesson this file's tap-repaints-the-UI note already draws,
+just on the other side: here the wait was too SHORT, not accidentally too
+long.
+
+**Every shipped asset must be in some precache tier, and that invariant
+caught its own violator immediately.** Adding the new icon and screenshot
+files without also adding them to `sw.js`'s tiers failed suite 12's
+"every shipped asset is in some tier" check on the first run — exactly the
+gap that check exists to catch. The three screenshots went in `EXTRA`
+(least essential — they're read only by the browser's own install-prompt
+UI, never fetched by the running app) rather than `SHELL_MIN`.
+
+**A comment placed INSIDE a tracked `sw.js` array literal can break the
+test that parses it, for a reason that has nothing to do with the code
+being wrong.** Suite 12 extracts each tier's contents with a regex that
+scans between single quotes (`/'([^']+)'/g`) — a first attempt put an
+explanatory comment inline inside `EXTRA`'s array literal, and the comment
+contained the word "browser's". That stray apostrophe paired with a later
+quote to fake a matched "string," corrupting the parsed asset list and
+producing two unrelated-looking failures (a bogus "asset appears in two
+tiers" and a bogus "references a file that does not exist") from one typo.
+Comments belong **outside** array literals that a test's own naive parser
+walks, not folded in as an inline aside — the array's plain-text contract
+with its own test is as real as the array's contract with the service
+worker.
+
+## Functional quality pass (v231)
+
+The user redirected mid-audit: not interested in store paperwork, wanted
+crashes/dead-ends/broken-functionality checked instead — the actual thing
+Apple/Google review for beyond the listing metadata. A dedicated pass
+(driven live with Playwright, both fresh-onboarding and seeded) found two
+real defects; a static cross-reference of every `onclick`/`onchange`
+handler against defined functions, and a broad interactive sweep of all
+six tabs, found none.
+
+**A promise printed in the onboarding copy had no code behind it — the
+exact shape CLAUDE.md already names ("write a reassurance into the UI,
+grep for the code that enforces it").** The day-picker's own label reads
+"Five days is the floor... keep at least five," and nothing checked it:
+`obStepError(n)` only ever validated step 1 (`if(n!==1)return null;`), so
+1-4 selected days sailed through both first-run onboarding AND the
+identical edit-profile path (`openProfileEdit()` reuses the same wizard).
+Downstream, `weeklyTarget()` reads `STATE.profile.days.length` directly,
+so the Progress tab's own weekly target silently shrank to whatever was
+picked instead of holding the floor the athlete was told about.
+
+Fixed at the step-5 gate (`obStepError`, mirroring step 1's existing
+age/height/weight pattern) so the wizard's own "Next" button blocks
+advancing — plus, independently, hardened `obReadForm()` itself (the
+actual write path into `STATE.profile.days`) to refuse persisting fewer
+than 5 regardless of how it's reached. **Two mutants exercised exactly why
+both layers earned their keep**: an off-by-one (`chosen<4` instead of
+`chosen<5`) escaped a check that only ever tried 2 days and 5 days — it
+needed the boundary itself, exactly 4, tested directly; and reverting
+`obReadForm()`'s floor escaped every check driven through the wizard's own
+UI, because the UI gate is unreachable-in-practice defense for that second
+layer — it needed a check that calls `obReadForm()` directly, bypassing
+`obBlocked()` entirely, to prove the write path holds the line on its own
+rather than trusting a caller already validated it.
+
+**`runFlow()`/`flowHTML()` — warm-up, cool-down, and all three mobility
+flows — is the guided player's "third twin" CLAUDE.md already names as the
+one that keeps drifting behind the other two, and it had drifted on the
+exact overflow rule the other two were fixed against.** It stacked a
+separate `max-width:260px` image ABOVE a separate fixed `220×220` ring —
+the guided player's own pre-consolidation layout, from before
+`plRingMediaHTML()` moved the photo inside the ring. Measured overflow: 127px
+past the fold at 375×667, 106px at 412×690 — Stop/Done and the cue text
+were below the visible screen on ordinary phone sizes, for a feature whose
+whole design premise is hands-free.
+
+Fixed the same way `.pl-ring` was: the media moved inside the ring
+(reusing `.pl-ringmedia` directly rather than inventing a parallel class),
+and `.timerring` went from a fixed square to `height:min(220px,72vw,40vh)`.
+**One of those two changes turned out to do almost all the actual work, and
+mutation testing is what caught it.** Reverting `.timerring` to a fixed
+220px alone produced ZERO measurable regression at 375×667, 412×690, or even
+320×568 — moving the media inside the ring had already reclaimed enough
+vertical space to fix the reported bug on its own, so a check built only
+against portrait phone sizes could not tell a responsive ring apart from a
+fixed one. It took a genuinely constrained real scenario — landscape
+orientation, where `manifest.webmanifest`'s `orientation:"portrait-primary"`
+declares the app does not target the case but a phone rotated mid-session
+still happens — to find where the responsive sizing is load-bearing: 175px
+of overflow with a fixed ring, 85px with the responsive one. The check
+does not claim landscape is fixed (it visibly isn't), only that the
+responsive sizing measurably helps where it can, which is what the CSS
+change actually does. **An escaped mutant that reveals a change never had
+observable effect at the sizes tested is not automatically a bad mutant to
+discard** — before concluding that (per CLAUDE.md's own "an escaped mutant
+is sometimes a bad mutant" note), it is worth searching harder for a real
+scenario where the change *does* matter, the way this one did.
 
 ## Rendering
 
