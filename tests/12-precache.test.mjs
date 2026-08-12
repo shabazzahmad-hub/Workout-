@@ -110,6 +110,26 @@ export default async function run() {
     t.ok('and re-checks _sessionLive() immediately before firing it, not only at entry', justBefore.includes('_sessionLive()'), justBefore);
   }
 
+  /* ---- the cache-first static-asset fetch(req) must not leave an unhandled
+     rejection either — the write side (c.put right next to it) already has a
+     .catch(); the READ side didn't: caches.match(req).then(hit=>hit||fetch(req)...)
+     rejected with nothing to catch it when an uncached asset's own network
+     fetch fails outright (offline, DNS failure). Static, not behavioural, for
+     the same reason as the cache.put()/register() checks above: there is no
+     reliable way to force a genuine network-level (not HTTP-level) failure
+     from this harness — a 500 response RESOLVES fetch() with res.ok===false
+     (already handled without this fix), only a real connection failure
+     REJECTS it, and this harness's fault injection only fakes HTTP status
+     codes, not connection-level failures. */
+  {
+    const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+    const openIdx = sw.indexOf('caches.match(req).then(hit => hit || fetch(req).then(res => {');
+    t.ok('the cache-first static-asset fetch chain is found', openIdx >= 0, openIdx);
+    const closeIdx = sw.indexOf('}).catch(() => undefined))', openIdx);
+    t.ok('and fetch(req) itself ends in a .catch(), not left to reject unhandled',
+      closeIdx >= 0 && closeIdx - openIdx < 800, { openIdx, closeIdx });
+  }
+
   /* ---- cf-precache-status must be pinned with waitUntil, same as cf-topup
      right above it — an idle worker with nothing pinning it can be reclaimed
      mid-loop, and the requesting page would wait forever for a reply that

@@ -1235,6 +1235,126 @@ export default async function run() {
     t.eq('and nothing leaks through a hijacked prototype chain', r.pollutedLeak, undefined, r);
   }
 
+  // ---- _faNum() must ceiling a manually-typed food value, not just floor
+  // it — every other numeric input in this file (weight, waist, lift load)
+  // has a sanity ceiling; this one didn't.
+  {
+    const r = await page.evaluate(() => {
+      const el = document.createElement('input');
+      el.id = '__faTestProbe';
+      document.body.appendChild(el);
+      el.value = '99999999';
+      const huge = _faNum('__faTestProbe');
+      el.value = '-50';
+      const neg = _faNum('__faTestProbe');
+      el.value = '250';
+      const normal = _faNum('__faTestProbe');
+      el.remove();
+      return { huge, neg, normal };
+    });
+    t.ok('an absurdly large manually-typed value is capped, not passed through raw', r.huge <= 9999, r);
+    t.eq('a negative value still floors to 0', r.neg, 0, r);
+    t.eq('an ordinary value passes through unchanged', r.normal, 250, r);
+  }
+
+  // ---- removeMeasure() must say so when the date it was asked to delete
+  // doesn't match anything, instead of unconditionally claiming "Deleted".
+  {
+    const r = await page.evaluate(() => {
+      const real = JSON.stringify(STATE.measurements);
+      STATE.measurements = [{ date: '2020-01-01', waist: 90, weight: 80 }];
+      const realConfirm = window.confirm; window.confirm = () => true;
+      removeMeasure('2099-12-31');   // does not match the one entry above
+      const notFoundToast = document.querySelector('#toast').textContent;
+      const untouchedAfterMiss = STATE.measurements.length;
+      removeMeasure('2020-01-01');   // the real one
+      const deletedToast = document.querySelector('#toast').textContent;
+      window.confirm = realConfirm;
+      STATE.measurements = JSON.parse(real);
+      return { notFoundToast, untouchedAfterMiss, deletedToast };
+    });
+    t.eq('deleting a non-matching date says so', r.notFoundToast, 'Not found', r);
+    t.eq('and leaves the real entry untouched', r.untouchedAfterMiss, 1, r);
+    t.eq('deleting the real entry still says Deleted', r.deletedToast, 'Deleted', r);
+  }
+
+  // ---- playerSwap() must not claim an unqualified "Swapped" when the part
+  // that's supposed to survive leaving the player silently failed to persist.
+  {
+    const r = await page.evaluate(() => {
+      openPlayer();
+      if (!PLAYER) return { skip: true };
+      PLAYER.i = 0; PLAYER.s = 0;
+      const m = plCur();
+      const altId = Object.keys(EX).find(k => k !== m.exId && EX[k].unit === m.unit && !EX[k].equip);
+      if (!altId) { playerQuit(); return { skip: true }; }
+
+      playerSwap(altId);
+      const successToast = document.querySelector('#toast').textContent;
+      const successExId = plCur().exId;
+
+      // reset to the original exercise for a clean second attempt
+      PLAYER.i = 0; PLAYER.s = 0;
+      const m2 = plCur();
+      const altId2 = Object.keys(EX).find(k => k !== m2.exId && EX[k].unit === m2.unit && !EX[k].equip) || altId;
+      const origSetSwap = window.setSwap;
+      window.setSwap = () => { throw new Error('forced'); };
+      playerSwap(altId2);
+      window.setSwap = origSetSwap;
+      const failToast = document.querySelector('#toast').textContent;
+      const failExId = plCur().exId;
+
+      playerQuit();
+      return { successToast, successExId, altId, failToast, failExId, altId2 };
+    });
+    if (r.skip) { t.fail('no suitable bodyweight exercise found to drive the playerSwap check', r); }
+    else {
+      t.eq('a normal swap changes the in-session exercise', r.successExId, r.altId, r);
+      t.ok('and its toast is an unqualified "Swapped to X"', /^Swapped to /.test(r.successToast) && !/may not stick/.test(r.successToast), r.successToast);
+      t.eq('the in-session swap still applies even when persistence throws', r.failExId, r.altId2, r);
+      t.ok('but the toast now warns it may not survive leaving the player', /may not stick/.test(r.failToast), r.failToast);
+    }
+  }
+
+  // ---- plAfterSet() must say something when a completed set fails to log,
+  // instead of the athlete finding out later that the count never saved.
+  {
+    const r = await page.evaluate(() => {
+      openPlayer();
+      if (!PLAYER) return { skip: true };
+      PLAYER.i = 0; PLAYER.s = 0;
+      const m = plCur();
+      if (!(m.sets >= 1)) { playerQuit(); return { skip: true }; }
+      PLAYER.s = m.sets - 1;   // the LAST set, so the "record actual" branch runs
+      PLAYER.repN = m.target; PLAYER.total = m.target; PLAYER.remain = 0;
+
+      plAfterSet();
+      const successToast = document.querySelector('#toast').textContent;
+      playerQuit();
+
+      // fresh session for the isolated failure path
+      openPlayer();
+      if (!PLAYER) return { skip: true };
+      PLAYER.i = 0; PLAYER.s = 0;
+      const m2 = plCur();
+      PLAYER.s = m2.sets - 1;
+      PLAYER.repN = m2.target; PLAYER.total = m2.target; PLAYER.remain = 0;
+      const orig = window.markSetFromTimer;
+      window.markSetFromTimer = () => { throw new Error('forced'); };
+      plAfterSet();
+      window.markSetFromTimer = orig;
+      const failToast = document.querySelector('#toast').textContent;
+      playerQuit();
+
+      return { successToast, failToast };
+    });
+    if (r.skip) { t.fail('could not drive a completable set to test plAfterSet', r); }
+    else {
+      t.ok('a normal completed set does not warn about a save failure', !/may not have saved/.test(r.successToast), r.successToast);
+      t.ok('but a forced logging failure surfaces a toast instead of staying silent', /may not have saved/.test(r.failToast), r.failToast);
+    }
+  }
+
   await browser.close();
 
   // ---- the readiness deload, in the timezone it was broken in --------------
