@@ -665,6 +665,11 @@ const EX = {
     steps:['Lie on your back on the mat and reach both arms overhead to grip a fixed anchor (the upright of your pull-up rig) behind your head.','Pull down hard with the lats so your shoulders and upper back stay pressed into the floor — they never leave it.','Brace and lift everything below the shoulder blades, hips pushed up so the body is one straight line from shoulders to knees, knees bent about 90°.','Lower under control without letting the hips sag, stopping before your back touches, then drive back up.'],
     cues:['Shoulders stay glued to the floor','Squeeze the glutes — no sag at the waist','Lower slowly; the negative is the whole exercise'],
     mistakes:['Piking at the hips into a candlestick','Letting the low back arch off the floor','Dropping fast instead of controlling the descent']},
+  dragonflagfull:{repCap:8,pattern:'core',name:'Full Dragon Flag',region:'anterior',unit:'reps',img:'ex-dragonflagfull.jpg',anchor:null,hardness:0.10,base:5,rest:80,optional:true,equip:['bar'],
+    why:'The full straight-leg version of Bruce Lee\'s signature move — no bend anywhere to shorten the lever, so the entire body works as one rigid plank against gravity.',
+    steps:['Lie on your back and grip a fixed anchor behind your head, same setup as the bent-knee version.','Pull down hard through the lats so the shoulders never leave the floor.','Brace and lift the entire body — legs fully straight — into one rigid line from shoulders to toes.','Lower as slowly as control allows, stopping before the back touches, then drive back up.'],
+    cues:['Legs locked straight the whole rep','Shoulders glued down, always','The slower the lower, the more it works'],
+    mistakes:['Bending the knees to cheat the lever shorter','Letting the hips pike or the back arch','Rushing the lowering phase']},
   windshield:{name:'Windshield Wipers',region:'oblique',unit:'reps',img:'ex-windshield.jpg',anchor:null,hardness:0.42,base:10,rest:45,
     why:'The top-end rotational move your obliques were missing — controlling the legs side to side trains rotation and anti-rotation under a long lever like nothing else.',
     steps:['Lie on your back, arms out wide for anchor, legs raised toward vertical.','Brace the core and keep the legs fairly straight.','Lower both legs to one side under control, stopping short of the floor.','Sweep them back through center to the other side. That\'s one rep per side.'],
@@ -1113,6 +1118,11 @@ const EX = {
     why:'Adds load to the classic sit-up for a stronger, more defined upper core.',
     steps:['Lie back holding the ball at the chest.','Sit all the way up, curling the spine.','Lower under control to the floor.'],
     cues:['Chin tucked','Curl, do not yank','Control the way down'],mistakes:['Throwing the neck','Dropping back down']},
+  mbchop:{name:'Medicine Ball Woodchopper',region:'oblique',unit:'reps',img:'ex-mbchop.jpg',anchor:null,hardness:1,base:16,rest:40,equip:['medball'],pattern:'core',
+    why:'Loaded rotational power, high to low — trains the diagonal, hip-driven twisting strength nothing else here builds quite this way.',
+    steps:['Stand with the feet wide, holding the ball with both hands above one shoulder.','Rotate through the hips and core, driving the ball diagonally down to the opposite hip.','Control it back up to the start. That is one rep on this side.','Finish all reps on one side before switching.'],
+    cues:['Power comes from the hips, not the arms','Pivot the back foot as you turn','Control the ball on the way up too'],
+    mistakes:['Rotating only the arms while the hips stay square',"Letting the ball's momentum throw the finish"]},
   kbswing:{name:'Kettlebell Swing',region:'strength',unit:'time',img:'ex-kbswing.jpg',anchor:null,hardness:1,base:30,rest:45,equip:['kettlebell'],pattern:'hinge',
     why:'Explosive hip power and conditioning — the single best posterior-chain and fat-burning drill.',
     steps:['Hinge and hike the bell back between the legs.','Snap the hips to float it to chest height.','Let it fall, hinge, repeat for time.'],
@@ -1214,6 +1224,11 @@ const EX = {
     why:'Loaded rotation for the obliques — carves the waist and builds real rotational strength.',
     steps:['Sit with the heels up, leaning back slightly, holding one dumbbell at the chest.','Rotate to tap the bell by each hip.','Keep the chest tall and control the turn. Count each side as a rep.'],
     cues:['Rotate from the ribs','Feet up for more','Slow and controlled'],mistakes:['Just moving the arms','Rounding the back']},
+  dbpallof:{name:'Dumbbell Pallof Press',region:'oblique',unit:'reps',img:'ex-dbpallof.jpg',anchor:null,hardness:0.95,base:12,rest:45,equip:['dumbbell'],pattern:'core',
+    why:'Anti-rotation core stability — resisting the twist instead of creating it, exactly what protects the spine under load in real life.',
+    steps:['Stand tall, feet shoulder-width, holding one dumbbell at the chest with both hands.','Brace the core hard — this move is about resisting rotation, not creating it.','Press the dumbbell straight out from the chest without letting the torso twist.','Pause, then pull it back to the chest under control. That is one rep.'],
+    cues:['Fight the pull the whole rep','Ribs down, hips square','Press straight out, not across'],
+    mistakes:['Letting the torso rotate toward the press arm','Pressing with the arms only, no core brace']},
   dbcarry:{name:"Dumbbell Farmer's Carry",region:'strength',unit:'time',img:'ex-dbcarry.jpg',anchor:null,hardness:1,base:40,rest:50,equip:['dumbbell'],pattern:'core',
     why:'A loaded carry that builds a crushing grip, a braced anti-tilt core and total-body strength — one of the most transferable drills there is.',
     steps:['Stand tall with a dumbbell in each hand at your sides.','Brace the core and pull the shoulders down and back.','Walk with short, controlled steps for the time.','Keep the torso upright — do not lean or tilt.'],
@@ -1394,7 +1409,7 @@ const EX = {
 ========================================================================== */
 const LADDERS = {
   plankL:     ['kneeplank','plank','bearhold','longplank','planktap','plankleg','isoclimber','reverseplank'],
-  hollowL:    ['tuckhollow','hollow','hollowflutter','hollowrock','vsit','lsit','dragonflag'],
+  hollowL:    ['tuckhollow','hollow','hollowflutter','hollowrock','vsit','lsit','dragonflag','dragonflagfull'],
   lowerL:     ['deadbug','revcrunch','hiplift','legraise','kneeraise','hanglegraise'],
   /* bicycle IS the dyn anchor test, so its hardness is 1.0 by definition and
      cannot be tuned — the order moves instead. */
@@ -1543,7 +1558,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='231';
+const APP_VERSION='232';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2050,8 +2065,8 @@ const GOAL_NOTE={
   gain:'Build muscle on a slight surplus with heavier, lower-rep work.',
 };
 const FOCUS_POOL={
-  abs:['hollow','hollowflutter','vsit','bearhold','lsit','dragonflag','situp','vertcrunch','plankleg','isoclimber','vup','tuckvup','legraise','hiplift','hanglegraise','revcrunch','crunch','bicycle','kneeraise','abroll','mbsitup','flutter'],
-  obliques:['sideplank','sideplankreach','situptwist','sidedip','russiantwist','windshield','plankrot','heeltouch','bicycle','copenhagen','standingoblique','mbtwist','kbhalo'],
+  abs:['hollow','hollowflutter','vsit','bearhold','lsit','dragonflag','dragonflagfull','situp','vertcrunch','plankleg','isoclimber','vup','tuckvup','legraise','hiplift','hanglegraise','revcrunch','crunch','bicycle','kneeraise','abroll','mbsitup','flutter'],
+  obliques:['sideplank','sideplankreach','situptwist','sidedip','russiantwist','windshield','plankrot','heeltouch','bicycle','copenhagen','standingoblique','mbtwist','kbhalo','dbpallof','mbchop'],
   full:['burpee','sprawl','bearcrawl','inchworm','squatthrust','mountainclimber','kbswing','dbthruster','halfburpee','squat','pushup'],
   chest:['pushup','tempopushup','hindupushup','typewriter','inclinepushup','declinepushup','diamondpushup','archerpushup','closepushup','dbfloor'],
   back:['invertedrow','superman','swimmer','scappull','negpullup','pullup','chinup','dbrow','kbrow'],
@@ -2180,7 +2195,7 @@ const GEAR_FALLBACK={
   pullup:'tablerow',chinup:'tablerow',widepullup:'tablerow',negpullup:'towelrow',
   scappull:'towelrow',deadhang:'towelrow',invertedrow:'tablerow',invertedrowelev:'tablerow',
   dips:'closepushup',benchdip:'closepushup',dipknee:'legraise',
-  hanglegraise:'legraise',kneeraise:'legraise',dragonflag:'hollowrock',
+  hanglegraise:'legraise',kneeraise:'legraise',dragonflag:'hollowrock',dragonflagfull:'hollowrock',
   abroll:'plank',copenhagen:'sidedip',
 };
 function gearSwap(exId,ladder){
@@ -2267,6 +2282,7 @@ function buildSession(ptr){
       if(exId==='kneeraise'&&!hasBar){exId='legraise';}
       if(exId==='hanglegraise'&&!hasBar){exId='vup';}
       if(exId==='dragonflag'&&!hasBar){exId='hollowrock';}
+      if(exId==='dragonflagfull'&&!hasBar){exId='hollowrock';}
       if(exId==='copenhagen'&&STATE.profile.hasBench===false){exId='sidedip';}
     }
     exId=gearSwap(exId,ladder);   // equipment-aware: only moves they can actually do
@@ -8722,11 +8738,11 @@ function calcOneRM(){
 const JOINTS=[['knee','Knee'],['shoulder','Shoulder'],['wrist','Wrist'],['lowback','Lower back'],['elbow','Elbow']];
 const JOINT_RISK={
   knee:['pistol','boxpistol','jumpsquat','tuckjump','broadjump','splitjump','bulgarian','burpee','burpeetuck','walkinglunge','sissysquat','cossack','sprawl','latshuffle','nordic','asiansquat','wallsit','skater','squatjack','splitsquat','jumpingjack','sealjack','highknees','buttkick'],
-  shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','benchdip','dbpress','kbcp','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbtgu','kbthruster','hanglegraise','lsit','dragonflag','plankrot','wallwalk','pseudoplanche','typewriter','hindupushup','pullup','chinup','widepullup','negpullup','deadhang','scappull','invertedrow','invertedrowelev','tablerow','crabwalk','reverseplank','abroll','mbslam','ropeslam','ropewave','kbswing','atomicpushup','declinepushup','burpee','burpeetuck'],
+  shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','benchdip','dbpress','kbcp','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbtgu','kbthruster','hanglegraise','lsit','dragonflag','dragonflagfull','plankrot','wallwalk','pseudoplanche','typewriter','hindupushup','pullup','chinup','widepullup','negpullup','deadhang','scappull','invertedrow','invertedrowelev','tablerow','crabwalk','reverseplank','abroll','mbslam','ropeslam','ropewave','kbswing','atomicpushup','declinepushup','burpee','burpeetuck'],
   /* fistpushup is deliberately ABSENT: knuckles down keeps the wrist straight,
      which is the whole point of the movement. */
   wrist:['pushup','kneepushup','inclinepushup','declinepushup','diamondpushup','closepushup','archerpushup','spidermanpushup','superpushup','planktap','mountainclimber','dbrenegade','dbmanmaker','dbdevil','abroll','lsit','isoclimber','bearcrawl','crabwalk','plankjack','crossclimber','bearhold','pseudoplanche','typewriter','hindupushup','tempopushup','inchworm','pikepushup','elevatedpike','wallwalk','wallhandstand','hspushup','atomicpushup','burpee','burpeetuck','halfburpee','squatthrust','sprawl','reverseplank'],
-  lowback:['superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbthruster','mbslam','ropeslam','windshield','dragonflag','situp','vertcrunch','situptwist','vsit','slrdl','swimmer','legraise','hanglegraise','kneeraise','hiplift','flutter','scissors','vup','tuckvup','russiantwist','weightedtwist','mbtwist','mbsitup','seatedtwist','abroll','longplank','ruck','dipknee','heeltouch','crunch','bicycle','revcrunch'],
+  lowback:['superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbthruster','mbslam','ropeslam','windshield','dragonflag','dragonflagfull','situp','vertcrunch','situptwist','vsit','slrdl','swimmer','legraise','hanglegraise','kneeraise','hiplift','flutter','scissors','vup','tuckvup','russiantwist','weightedtwist','mbtwist','mbchop','mbsitup','seatedtwist','abroll','longplank','ruck','dipknee','heeltouch','crunch','bicycle','revcrunch'],
   elbow:['dips','benchdip','diamondpushup','closepushup','chinup','negpullup','dbcurl','typewriter','pseudoplanche'],
 };
 /* One flat literal edited by three feature waves ended up with 126 properties
@@ -8782,7 +8798,7 @@ const SAFE_SWAP={
   dbrdl:'glutebridge',kbrdl:'glutebridge',kbswing:'kbgoblet',mbslam:'mbsitup',ropeslam:'ropewave',
   ruck:'march',
   // midsection
-  windshield:'bicycle',hanglegraise:'legraise',lsit:'hollow',dragonflag:'hollow',revcrunch:'legraise',
+  windshield:'bicycle',hanglegraise:'legraise',lsit:'hollow',dragonflag:'hollow',dragonflagfull:'hollow',revcrunch:'legraise',
   situp:'crunch',vertcrunch:'crunch',vsit:'hollow',hollowflutter:'hollow',
   situptwist:'bicycle',sideplankreach:'sideplank',hiplift:'glutebridge',
 };
@@ -8797,7 +8813,7 @@ const LOWBACK_SWAP={
   scissors:'deadbug',vup:'plank',tuckvup:'plank',heeltouch:'sideplank',
   russiantwist:'sideplank',weightedtwist:'sideplank',seatedtwist:'sideplank',
   longplank:'plank',ruck:'march',dipknee:'kneeplank',windshield:'birddog',
-  dragonflag:'plank',lsit:'plank',abroll:'plank',swimmer:'birddog',slrdl:'glutebridge',
+  dragonflag:'plank',dragonflagfull:'plank',lsit:'plank',abroll:'plank',swimmer:'birddog',slrdl:'glutebridge',
 };
 /* Both maps are hand-maintained literals, and a duplicate key in a literal is
    silent — JS keeps the last one. That is exactly how the hiplift defect shipped.

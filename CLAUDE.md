@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 22 suites, ~1,892 checks, run by `npm test` |
+| `tests/` | 22 suites, ~1,906 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -1280,6 +1280,102 @@ observable effect at the sizes tested is not automatically a bad mutant to
 discard** — before concluding that (per CLAUDE.md's own "an escaped mutant
 is sometimes a bad mutant" note), it is worth searching harder for a real
 scenario where the change *does* matter, the way this one did.
+
+## Three new core exercises (v232)
+
+Requested directly: "3 of the most effective core and abdominal exercises."
+A survey of the existing ~50-entry core/ab roster (`anterior`, `oblique`,
+`lower`, `stability` regions) found nearly every commonly-cited "most
+effective" movement already present — dead bug, hollow hold, hanging leg
+raise, ab wheel rollout, V-up, reverse crunch, the full plank family. Two
+genuine gaps: a Pallof press (loaded anti-rotation) and a true standing
+woodchopper (loaded diagonal rotational power) — neither existed under any
+name. The third, `dragonflagfull`, isn't a new movement pattern so much as
+the missing top rung: the roster had only the bent-knee Dragon Flag,
+never the full straight-leg version that's the *actual* famous exercise.
+
+**Neither the Pallof press nor the woodchopper could ship as their
+textbook cable/band versions — this app's gear list has no cable or
+band category, and adding one for a single exercise each didn't clear the
+bar.** Both are standard, real trainer-taught variations using equipment
+already in the picker: `dbpallof` (Dumbbell Pallof Press, standing,
+anti-rotation) and `mbchop` (Medicine Ball Woodchopper, standing, loaded
+diagonal chop) — `equip:['dumbbell']` and `['medball']` respectively,
+`pattern:'core'` matching every other gear-based core entry (`dbtwist`,
+`mbtwist`, `kbhalo`). No new equipment category, no new gear-picker UI.
+
+**An anti-rotation press and a loaded rotation move are opposite risk
+profiles, and the joint-risk flags say so.** Pallof presses are what
+physical therapists actually prescribe FOR a flagged low back — the whole
+point is resisting rotation, not moving through it — so `dbpallof` carries
+no `JOINT_RISK` flag at all, matching `dbtwist`'s own precedent. The
+woodchopper is a ballistic, loaded, standing rotation — mechanically the
+same risk as the seated `mbtwist`/`russiantwist` family already flagged
+`lowback` — so `mbchop` got the same flag, with no explicit `SAFE_SWAP`
+entry needed, falling through to the same generic regional fallback
+`mbtwist`/`mbsitup` already rely on without one.
+
+**`dragonflagfull` inherits every flag and swap target the bent-knee rung
+already carries — same movement pattern, same risks, just harder.**
+`equip:['bar']`, `optional:true`, both `shoulder` and `lowback` in
+`JOINT_RISK`, `SAFE_SWAP.dragonflagfull:'hollow'`,
+`LOWBACK_SWAP.dragonflagfull:'plank'`, and the same hardcoded gear-fallback
+override (`if(exId==='dragonflagfull'&&!hasBar){exId='hollowrock';}`) the
+bent-knee rung already has — added rather than left to the generic
+ladder-walk fallback (which would have landed on `lsit` instead), so the
+two rungs of the same movement don't quietly diverge to different
+substitutes for no reason. It sits ABOVE `dragonflag` in `hollowL`, making
+`dragonflag` a middle rung for the first time since it shipped.
+
+**That reordering broke two pre-existing, passing tests, and both breaks
+were correct — the tests had hardcoded an assumption that was only ever
+true by construction, not by contract.** `22-loaded.test.mjs` had two
+blocks built around "`dragonflag` is the ceiling-maxed top of `hollowL`
+for the seeded athlete" — true right up until a harder rung existed above
+it. Swapping the test subject to `dragonflagfull` surfaced a real
+calibration gap: its raw `prescribe()` target (unanchored, since
+`anchor:null` — the unanchored branch scales off `base`, not `hardness`,
+which only matters for the anchored branch and the ladder-monotonicity
+check) came in at 7 against a `repCap` ceiling of 8, one short. `base`
+went from 4 to 5 to actually clear it. **Hardness alone does not predict
+whether an unanchored exercise's prescription reaches its own explicit
+repCap — only `base` does, for that branch — and tuning it needs the real
+number probed, not inferred from the anchored-branch mental model that
+governs most of the roster.**
+
+**A third, unrelated pre-existing test failure surfaced by chance, in the
+full-suite run only — never in isolation.** `21-integrity.test.mjs`'s junk
+liftLog-row test planted `localStorage` and reloaded immediately, racing
+`save()`'s 120ms IndexedDB mirror exactly the way CLAUDE.md's own state
+durability notes already describe — the full-suite run apparently
+schedules just differently enough for the race to lose reliably, while
+100 isolated runs never lost it once. Confirmed against the CLEAN
+pre-exercises baseline before touching anything, so it was clearly not a
+regression from this round — fixed anyway (beating the mirror with
+`idbPut()`, the same technique `05-state.test.mjs` already uses) since a
+suite that only passes in isolation is not the green the ship gate
+actually requires.
+
+**A generic joint-safety sweep already existed and already covered the
+new exercises for free** (`02-safety.test.mjs`'s "safeSwap always lands
+clear across all 31 joint combinations" walks every key in `EX`), which
+is exactly why the new dedicated block in `01-data.test.mjs` mutation-tested
+clean on the first pass for eight of nine seeded mutants. **The ninth
+mutant is a legitimate non-catch, the same shape CLAUDE.md's own
+`SAFE_SWAP.dbcp` note already documents**: routing a flagged low back's
+`mbchop` to the also-flagged `mbtwist` didn't fail the "lands somewhere
+safe" check, because `safeSwap()` resolved it in a second hop to something
+genuinely safe. The check tests the outcome (does the athlete end up
+somewhere safe), not the specific hop that produces it — and the outcome
+was correct, so the non-catch is correct too.
+
+Images shipped as the same 800×800 grey-backdrop "PHOTO PENDING"
+placeholders v224 established, added to `EXTRA` (least essential — none of
+the three are core-program staples; they only surface through the focus
+bonus with the right gear owned). ChatGPT prompts for the real photos were
+handed to the user rather than generated in-session, matching the
+established equipment-identity discipline (one generation per exercise,
+explicit shape description, never a mixed-equipment grid).
 
 ## Rendering
 

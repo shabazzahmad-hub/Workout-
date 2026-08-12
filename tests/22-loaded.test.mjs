@@ -314,12 +314,15 @@ export default async function run() {
        and a badge keyed only to ladder position (not the real prescription)
        would still show it. It must not.
 
-       Scoped to hollowL/dragonflag specifically, not "any 🎒 on the page" —
+       Scoped to hollowL/dragonflagfull specifically, not "any 🎒 on the page" —
        rotL and legL's top rungs happen to have enough headroom above their
        own ceiling that safe mode's 25% cut still clamps them at it, so a
        page-wide .includes('🎒') check stays true from THOSE regardless of
-       whether dragonflag's own badge is correctly gated. Anchoring on its
-       onclick target isolates the one row that was actually mutated. */
+       whether dragonflagfull's own badge is correctly gated. Anchoring on its
+       onclick target isolates the one row that was actually mutated.
+       dragonflagfull, not dragonflag, is the top rung of hollowL as of the
+       Full Dragon Flag addition — dragonflag is now a middle rung and is
+       never itself ceiling-maxed for this seeded athlete. */
     const rowFor = (html, exId) => {
       const at = html.indexOf(`openExerciseInfo('${exId}')`);
       return at < 0 ? '' : html.slice(at, html.indexOf('</button>', at));
@@ -335,12 +338,12 @@ export default async function run() {
       STATE.profile.parq = []; STATE.profile.medCleared = false;
       return { stillTopRung, before, after, safeModeOn };
     });
-    const beforeRow = rowFor(r.before, 'dragonflag'), afterRow = rowFor(r.after, 'dragonflag');
+    const beforeRow = rowFor(r.before, 'dragonflagfull'), afterRow = rowFor(r.after, 'dragonflagfull');
     t.ok('guard: the ladder position itself is unaffected by flagging a joint', r.stillTopRung, r);
     t.ok('guard: safe mode is really on', r.safeModeOn, r);
-    t.ok('guard: dragonflag\'s row was showing the vest badge before the flag',
+    t.ok('guard: dragonflagfull\'s row was showing the vest badge before the flag',
       beforeRow.includes('🎒') && /add load/.test(beforeRow), beforeRow);
-    t.ok('an uncleared flag eases the real target below the ceiling, and dragonflag\'s badge follows it — not the ladder position',
+    t.ok('an uncleared flag eases the real target below the ceiling, and dragonflagfull\'s badge follows it — not the ladder position',
       !afterRow.includes('🎒'), afterRow);
   }
 
@@ -406,7 +409,7 @@ export default async function run() {
   /* currentRung() (which gates whether a ladder counts as "topped") reads
      STATE.progressPtr directly and ignores whatever pos is passed to
      atLadderCeiling — but week 6 of the final cycle, the ONLY position where
-     dragonflag is naturally ceiling-maxed for this athlete, is ALSO always
+     dragonflagfull is naturally ceiling-maxed for this athlete, is ALSO always
      the calendar deload week, which would make "climbing" unreachable by
      construction, not by the code being wrong. Decoupling the two: keep
      STATE.progressPtr at the real maxed position (so the rung genuinely IS
@@ -415,7 +418,7 @@ export default async function run() {
      object every other block in this file already constructs by hand. */
   {
     const r = await page.evaluate(() => {
-      const exId = 'dragonflag';
+      const exId = 'dragonflagfull';
       const ceiling = prescribeCeiling(EX[exId]);
       STATE.progressPtr = SESSIONS_PER_CYCLE * TOTAL_CYCLES - 1;
       const pos = Object.assign({}, posOf(STATE.progressPtr), { week: 2 });
