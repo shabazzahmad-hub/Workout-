@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v238';
+const CACHE = 'coreforge-v239';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
@@ -207,7 +207,10 @@ self.addEventListener('message', e => {
      finish eventually rather than restarting forever. */
   if (d.type === 'cf-topup') e.waitUntil(topUp(!!d.force));
   if (d.type === 'cf-precache-status') {
-    (async () => {
+    // Same reasoning as cf-topup, two lines up: this loop awaits ~180 sequential
+    // cache lookups, and a worker with nothing pinning it can be reclaimed
+    // mid-loop — the requesting page would then wait forever for a reply.
+    e.waitUntil((async () => {
       const c = await caches.open(CACHE);
       const queue = [...FIRST_RUN, ...EXTRA];
       let have = 0;
@@ -215,7 +218,7 @@ self.addEventListener('message', e => {
       const src = e.source || null;
       const msg = { type: 'cf-precache', phase: have >= queue.length ? 'complete' : 'idle', done: have, total: queue.length };
       if (src && src.postMessage) src.postMessage(msg); else tellClients(msg);
-    })();
+    })());
   }
 });
 

@@ -1642,6 +1642,94 @@ Images unaffected — this round touched no exercise data, only timer logic,
 a permission toggle, a race guard, network resilience, an input clamp, and
 two defensive `.catch()`s.
 
+## A second audit pass: goal direction, and the twins the first pass missed (v239)
+
+Asked for the same audit again, immediately after v238, under a generic
+"cloud fitness app" template that assumed a backend this app doesn't have
+(no cloud functions, no database, no auth, no server — everything is
+client-only). Confirmed the mismatch with the athlete first rather than
+either fabricating findings for infrastructure that doesn't exist or
+silently re-running the exact same four dimensions v238 already covered.
+Redirected to the angles v238 didn't touch — best practices, performance,
+and a targeted sweep of goals/progress/notifications — then fixed and
+shipped every verified finding.
+
+**A goal can point in two directions, and half this app's "progress"
+language only ever checked one of them.** `goal:'gain'` (Build muscle) is a
+first-class, fully-wired option — it already drives the calorie surplus and
+the rep/rest multipliers — but the two places that put that number in front
+of the athlete never asked which direction it meant:
+
+- `briefSegments()`'s morning mission read `toGo=lb-goalW` and treated a
+  negative value (current weight below a gain target) as "you're under
+  goal — outstanding," the exact sentence written for a LOSS goal being
+  cleared. A bulking athlete ten pounds short of their target got
+  congratulated for it every single morning.
+- `weightChartHTML()`'s trend color was `change<=0?green:muted`, unconditionally
+  — a rising trend (real progress toward a gain goal) rendered neutral,
+  and losing weight (moving away from a gain goal) rendered green.
+
+Both are fixed by branching on `STATE.profile.goal==='gain'`, not by
+re-deriving direction from the numbers the way `projectionHTML()` does
+(`losing=tkg<kg`) — that pattern answers "which way do I need to move
+from HERE," which is right for a timeline projection but wrong for
+describing the athlete's actual intent, since it flips the moment they
+cross the target rather than staying anchored to why they set the number
+in the first place. Two different questions, two different sources of
+truth — using the wrong one silently for either would have been the bug in
+a different shape, not a fix.
+
+**A validated boundary in one entry point does not mean the value is
+validated everywhere it can be written.** Onboarding's waist-goal field
+already enforced `okCm(v)=>v>=40&&v<=250`, and Progress's own in-app
+"edit goal" sheet — a completely separate write path — enforced only
+`g>0`. A mistyped `9999` sailed through, `goalETAHTML()` immediately read
+it as `toGoCm` deeply negative and fired a false "🎉 Goal reached" banner.
+Fixed by having the second entry point call the same `plausibleWaistCm()`
+the rest of the file already uses, rather than inventing a second bound
+that could drift from the first.
+
+**The performance finding worth fixing now, and the one worth naming but
+not touching yet, split on the same question `acwr()`'s own fix already
+answered: is anyone currently paying for it.** `sessionHistoryHTML()`
+called the expensive `sessionStats()` — a full `buildSession()` rebuild:
+ladder walks, `gearSwap`/`safeSwap` chains, a `prescribe()` per exercise —
+for all 25 rows of the history list, then discarded the `sess` object it
+returned; only `openSessionDetail()`'s single call actually reads it.
+`sessionStats(p,full)` now skips the rebuild unless `full` is true, and the
+list gets a session's exercise/set counts from data already sitting in the
+log. `renderProgress()`'s own redundant rescans of `STATE.logs` (~8 separate
+full walks in one render, the same *shape* of waste `acwr()` had before its
+fix) are a real but NOT a currently-paid-for cost — still inside the
+documented 400ms render budget — so it's named here as known debt rather
+than risked as a same-round refactor across eight call sites with no
+demonstrated regression driving it.
+
+**Two functions with byte-for-byte identical bodies under different names
+is the exact shape this file's own drift warnings are about, even with
+zero current disagreement between them.** `loadToKg`/`loadShow` duplicated
+`weightToKg`/`weightShow` exactly — same `0.453592` constant, same
+imperial/metric branch — while the raw literal is ALSO inlined at another
+~14 call sites. Consolidated the two function pairs into aliases
+(`const loadToKg=weightToKg`); left the 14 inline literal sites alone —
+they all currently agree, and a sweep across that many hand-maintained
+call sites for a value that isn't wrong yet is a bigger diff than the
+verified risk justifies, so it's named as debt rather than touched this
+round, the same call as `renderProgress()`'s scan duplication above.
+
+**Two more unbounded network calls than the previous round's sweep caught.**
+`selfUpdate()`'s own version-check fetch was the one remaining bare `fetch`
+after `fetchWithTimeout()` shipped in v238 for the other three — now routed
+through it. And `sw.js`'s `cf-precache-status` handler ran the identical
+shape of work as `cf-topup` right above it (an async loop the comment on
+`cf-topup` explains an idle worker can be reclaimed mid-task) without the
+`e.waitUntil()` that same comment argues for — the second branch was added
+after the first and the reasoning just wasn't re-applied.
+
+Images unaffected — this round touched no exercise data, only goal-direction
+logic, one input clamp, one performance split, a small dedup, and two more
+network-timeout fixes.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
