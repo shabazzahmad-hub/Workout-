@@ -608,6 +608,11 @@ const EX = {
     steps:['Start in a forearm plank.','Walk your elbows forward, a few inches ahead of your shoulders.','Brace even harder — the further forward, the tougher.','Hold the straight line without letting the hips drop.'],
     cues:['Only go as far forward as you can stay rigid','Ribs stapled down','Push elbows into the floor'],
     mistakes:['Lower back caving as you extend','Reaching too far, too soon']},
+  extplank:{name:'Extended Arm Plank',region:'anterior',unit:'time',img:'ex-extplank.jpg',anchor:'plank',hardness:0.6,base:25,rest:60,
+    why:'Walking the HANDS forward past the shoulders — arms locked straight — pushes the lever even further than the forearm version, demanding serious shoulder stability on top of the anti-extension core work.',
+    steps:['Start in a standard push-up position, arms straight.','Walk both hands forward several inches past your shoulders, keeping the arms locked out.','Brace hard and hold the long, straight line from shoulders to heels.','Stop walking forward the moment you feel your back start to sag.'],
+    cues:['Arms stay locked straight throughout','Ribs pulled down, no arch in the low back','Only walk out as far as you can hold rigid'],
+    mistakes:['Letting the hips sag as the hands walk out','Bending the elbows to cheat the position','Walking out further than you can control']},
   planktap:{name:'Plank Shoulder Taps',region:'anterior',unit:'reps',img:'ex-planktap.jpg',hardness:0.55,base:16,rest:55,
     why:'Adds an anti-rotation demand to the plank — your abs and obliques fight to keep your hips level as you lift each hand.',
     steps:['Set up in a high plank on your hands, feet slightly wider than hips.','Brace the core and squeeze glutes to lock the torso still.','Lift one hand and tap the opposite shoulder.','Return and repeat other side — keep hips dead level. Count both taps as reps.'],
@@ -1443,7 +1448,7 @@ const EX = {
    Each slot references a "ladder"; the rung is chosen by progression level.
 ========================================================================== */
 const LADDERS = {
-  plankL:     ['kneeplank','plank','bearhold','longplank','planktap','plankleg','isoclimber','reverseplank'],
+  plankL:     ['kneeplank','plank','bearhold','longplank','extplank','planktap','plankleg','isoclimber','reverseplank'],
   hollowL:    ['tuckhollow','hollow','hollowflutter','hollowrock','vsit','lsit','dragonflag','dragonflagfull'],
   lowerL:     ['deadbug','revcrunch','hiplift','legraise','kneeraise','hanglegraise'],
   /* bicycle IS the dyn anchor test, so its hardness is 1.0 by definition and
@@ -1593,7 +1598,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='236';
+const APP_VERSION='237';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3781,7 +3786,7 @@ function repTempoSetting(){
 }
 /* Gentler, back- & neck-friendly alternatives (used by the swap menu). */
 const SWAP_ALT={
-  plank:'deadbug',longplank:'plank',planktap:'plank',
+  plank:'deadbug',longplank:'plank',extplank:'plank',planktap:'plank',
   crunch:'deadbug',bicycle:'deadbug',tuckvup:'revcrunch',vup:'revcrunch',
   russiantwist:'seatedtwist',weightedtwist:'seatedtwist',
   sidedip:'kneeside',copenhagen:'sideplank',sideplank:'kneeside',
@@ -8776,8 +8781,8 @@ const JOINT_RISK={
   shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','benchdip','dbpress','kbcp','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbtgu','kbthruster','kbwindmill','abrollstand','hanglegraise','lsit','dragonflag','dragonflagfull','plankrot','wallwalk','pseudoplanche','typewriter','hindupushup','pullup','chinup','widepullup','negpullup','deadhang','scappull','invertedrow','invertedrowelev','tablerow','crabwalk','reverseplank','abroll','mbslam','ropeslam','ropewave','kbswing','atomicpushup','declinepushup','burpee','burpeetuck'],
   /* fistpushup is deliberately ABSENT: knuckles down keeps the wrist straight,
      which is the whole point of the movement. */
-  wrist:['pushup','kneepushup','inclinepushup','declinepushup','diamondpushup','closepushup','archerpushup','spidermanpushup','superpushup','planktap','mountainclimber','dbrenegade','kbrenegade','dbmanmaker','dbdevil','abroll','abrollstand','ropeplank','lsit','isoclimber','bearcrawl','crabwalk','plankjack','crossclimber','bearhold','pseudoplanche','typewriter','hindupushup','tempopushup','inchworm','pikepushup','elevatedpike','wallwalk','wallhandstand','hspushup','atomicpushup','burpee','burpeetuck','halfburpee','squatthrust','sprawl','reverseplank'],
-  lowback:['superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbthruster','kbwindmill','kbhighpull','mbslam','ropeslam','windshield','dragonflag','dragonflagfull','abrollstand','situp','vertcrunch','situptwist','vsit','slrdl','swimmer','legraise','hanglegraise','kneeraise','hiplift','flutter','scissors','vup','tuckvup','russiantwist','weightedtwist','mbtwist','mbchop','mbsitup','seatedtwist','abroll','longplank','ruck','dipknee','heeltouch','crunch','bicycle','revcrunch'],
+  wrist:['pushup','kneepushup','inclinepushup','declinepushup','diamondpushup','closepushup','archerpushup','spidermanpushup','superpushup','planktap','mountainclimber','dbrenegade','kbrenegade','dbmanmaker','dbdevil','abroll','abrollstand','ropeplank','extplank','lsit','isoclimber','bearcrawl','crabwalk','plankjack','crossclimber','bearhold','pseudoplanche','typewriter','hindupushup','tempopushup','inchworm','pikepushup','elevatedpike','wallwalk','wallhandstand','hspushup','atomicpushup','burpee','burpeetuck','halfburpee','squatthrust','sprawl','reverseplank'],
+  lowback:['superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbthruster','kbwindmill','kbhighpull','mbslam','ropeslam','windshield','dragonflag','dragonflagfull','abrollstand','situp','vertcrunch','situptwist','vsit','slrdl','swimmer','legraise','hanglegraise','kneeraise','hiplift','flutter','scissors','vup','tuckvup','russiantwist','weightedtwist','mbtwist','mbchop','mbsitup','seatedtwist','abroll','longplank','extplank','ruck','dipknee','heeltouch','crunch','bicycle','revcrunch'],
   elbow:['dips','benchdip','diamondpushup','closepushup','chinup','negpullup','dbcurl','typewriter','pseudoplanche'],
 };
 /* One flat literal edited by three feature waves ended up with 126 properties
@@ -8827,7 +8832,7 @@ const SAFE_SWAP={
   // quadruped / anti-extension
   planktap:'plank',mountainclimber:'march',abroll:'plank',abrollstand:'plank',isoclimber:'plank',ropeplank:'plank',
   bearcrawl:'birddog',bearhold:'plank',crabwalk:'glutebridge',plankjack:'march',
-  crossclimber:'march',plankleg:'plank',plankrot:'sideplank',longplank:'plank',
+  crossclimber:'march',plankleg:'plank',plankrot:'sideplank',longplank:'plank',extplank:'plank',
   // posterior chain / hinge
   superman:'birddog',swimmer:'birddog',reverseplank:'glutebridge',hipthrust:'glutebridge',
   dbrdl:'glutebridge',kbrdl:'glutebridge',kbswing:'kbgoblet',kbhighpull:'kbgoblet',mbslam:'mbsitup',ropeslam:'ropewave',
@@ -8847,7 +8852,7 @@ const LOWBACK_SWAP={
   hanglegraise:'deadbug',kneeraise:'deadbug',hiplift:'glutebridge',flutter:'deadbug',
   scissors:'deadbug',vup:'plank',tuckvup:'plank',heeltouch:'sideplank',
   russiantwist:'sideplank',weightedtwist:'sideplank',seatedtwist:'sideplank',
-  longplank:'plank',ruck:'march',dipknee:'kneeplank',windshield:'birddog',
+  longplank:'plank',extplank:'plank',ruck:'march',dipknee:'kneeplank',windshield:'birddog',
   dragonflag:'plank',dragonflagfull:'plank',lsit:'plank',abroll:'plank',abrollstand:'plank',swimmer:'birddog',slrdl:'glutebridge',
 };
 /* Both maps are hand-maintained literals, and a duplicate key in a literal is

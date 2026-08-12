@@ -246,6 +246,41 @@ export default async function run() {
   t.ok('a flagged wrist routes the rope plank somewhere safe', gaps.ropeplankLandsSafeWrist, gaps);
   t.ok('both are reachable through the focus bonus', gaps.inFocusPool.abrollstand && gaps.inFocusPool.ropeplank, gaps.inFocusPool);
 
+  /* ---- extended arm plank: a genuinely harder rung above longplank in the SAME
+     ladder, not a standalone addition — walking the HANDS forward (arms locked)
+     is a further-along point on the exact continuum longplank (elbows forward)
+     already occupies, so it belongs IN plankL, not beside it. */
+  const ext = await page.evaluate(() => {
+    const o = {};
+    const lad = LADDERS.plankL;
+    o.longplankIdx = lad.indexOf('longplank');
+    o.extplankIdx = lad.indexOf('extplank');
+    o.hardness = { longplank: EX.longplank.hardness, extplank: EX.extplank.hardness };
+    o.anchor = { longplank: EX.longplank.anchor, extplank: EX.extplank.anchor };
+    // hand contact (vs longplank's forearm contact) adds a wrist flag that longplank never carried
+    o.extplankFlags = Object.keys(JOINT_RISK).filter(j => JOINT_RISK[j].includes('extplank')).sort();
+    o.longplankFlags = Object.keys(JOINT_RISK).filter(j => JOINT_RISK[j].includes('longplank')).sort();
+    const landsSafe = (exId, joint) => {
+      const real = STATE.profile.limitations; STATE.profile.limitations = [joint];
+      const out = safeSwap(exId); STATE.profile.limitations = real;
+      return !!EX[out] && !(JOINT_RISK[joint] || []).includes(out);
+    };
+    o.landsSafeWrist = landsSafe('extplank', 'wrist');
+    o.landsSafeLowback = landsSafe('extplank', 'lowback');
+    o.notInFocusPool = Object.keys(FOCUS_POOL).every(k => !FOCUS_POOL[k].includes('extplank'));
+    o.longplankNotInFocusPool = Object.keys(FOCUS_POOL).every(k => !FOCUS_POOL[k].includes('longplank'));
+    return o;
+  });
+  t.ok('extplank sits in plankL, right after longplank', ext.extplankIdx === ext.longplankIdx + 1, ext);
+  t.eq('both are anchored to the same baseline plank test', ext.anchor, { longplank: 'plank', extplank: 'plank' });
+  t.ok('extplank is HARDER (lower hardness) than the longplank rung it extends', ext.hardness.extplank < ext.hardness.longplank, ext);
+  t.eq('extplank keeps the lowback flag longplank already carries', ext.extplankFlags.includes('lowback'), true);
+  t.eq('and adds a wrist flag longplank never needed, because it is hand- not forearm-contact', ext.extplankFlags, ['lowback', 'wrist']);
+  t.eq('longplank itself stays forearm-only (no wrist flag)', ext.longplankFlags, ['lowback']);
+  t.ok('a flagged wrist routes extplank somewhere safe', ext.landsSafeWrist, ext);
+  t.ok('a flagged low back routes extplank somewhere safe', ext.landsSafeLowback, ext);
+  t.eq('extplank is reached via the ladder, matching longplank\'s own exclusion from the focus bonus', ext.notInFocusPool, ext.longplankNotInFocusPool);
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }
