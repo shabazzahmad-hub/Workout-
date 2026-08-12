@@ -202,6 +202,50 @@ export default async function run() {
   t.ok('a flagged wrist routes the renegade row somewhere safe', kb.renegadeLandsSafe, kb);
   t.ok('all five are reachable through the focus bonus', Object.values(kb.inFocusPool).every(v => v), kb.inFocusPool);
 
+  /* ---- two more gaps named directly by the athlete after the kettlebell round:
+     a harder progression above the kneeling ab rollout, and a core move that
+     actually uses the battle rope for something other than power/cardio. Neither
+     belongs in a LADDERS array — abroll itself, the movement abrollstand extends,
+     is standalone and reached only through the focus bonus, not a progression walk. */
+  const gaps = await page.evaluate(() => {
+    const o = {};
+    o.equip = { abrollstand: EX.abrollstand.equip, ropeplank: EX.ropeplank.equip };
+    STATE.profile.gear = [];
+    o.noneOwned = { abrollstand: hasGearFor('abrollstand'), ropeplank: hasGearFor('ropeplank') };
+    STATE.profile.gear = ['abroller', 'battlerope'];
+    o.allOwned = { abrollstand: hasGearFor('abrollstand'), ropeplank: hasGearFor('ropeplank') };
+    o.notLaddered = Object.keys(LADDERS).every(l => !LADDERS[l].includes('abrollstand') && !LADDERS[l].includes('ropeplank'));
+    // the standing rollout removes the knee anchor abroll still has — same full risk profile
+    o.abrollstandFlags = Object.keys(JOINT_RISK).filter(j => JOINT_RISK[j].includes('abrollstand')).sort();
+    o.abrollFlags = Object.keys(JOINT_RISK).filter(j => JOINT_RISK[j].includes('abroll')).sort();
+    // a controlled isometric hold against a moving rope — plank-family precedent (bearhold/isoclimber), not the ballistic slam
+    o.ropeplankFlags = Object.keys(JOINT_RISK).filter(j => JOINT_RISK[j].includes('ropeplank'));
+    const landsSafe = (exId, joint) => {
+      const real = STATE.profile.limitations; STATE.profile.limitations = [joint];
+      const out = safeSwap(exId); STATE.profile.limitations = real;
+      return !!EX[out] && !(JOINT_RISK[joint] || []).includes(out);
+    };
+    o.abrollstandLandsSafeShoulder = landsSafe('abrollstand', 'shoulder');
+    o.abrollstandLandsSafeWrist = landsSafe('abrollstand', 'wrist');
+    o.abrollstandLandsSafeLowback = landsSafe('abrollstand', 'lowback');
+    o.ropeplankLandsSafeWrist = landsSafe('ropeplank', 'wrist');
+    o.inFocusPool = { abrollstand: FOCUS_POOL.abs.includes('abrollstand'), ropeplank: FOCUS_POOL.abs.includes('ropeplank') };
+    STATE.profile.gear = [];
+    return o;
+  });
+  t.eq('Standing Ab-Wheel Rollout requires an ab roller', gaps.equip.abrollstand, ['abroller']);
+  t.eq('Battle Rope Plank Waves requires a battle rope', gaps.equip.ropeplank, ['battlerope']);
+  t.ok('neither is offered without the right gear', !gaps.noneOwned.abrollstand && !gaps.noneOwned.ropeplank, gaps.noneOwned);
+  t.ok('both are offered once the gear is owned', gaps.allOwned.abrollstand && gaps.allOwned.ropeplank, gaps.allOwned);
+  t.ok('neither sits in a LADDERS array, matching abroll\'s own standalone precedent', gaps.notLaddered, gaps);
+  t.eq('the standing rollout inherits the SAME risk profile as the kneeling one it extends', gaps.abrollstandFlags, gaps.abrollFlags);
+  t.eq('the rope plank is flagged wrist-only, matching the plank-family hold (bearhold/isoclimber), not the ballistic slam', gaps.ropeplankFlags, ['wrist']);
+  t.ok('a flagged shoulder routes the standing rollout somewhere safe', gaps.abrollstandLandsSafeShoulder, gaps);
+  t.ok('a flagged wrist routes the standing rollout somewhere safe', gaps.abrollstandLandsSafeWrist, gaps);
+  t.ok('a flagged low back routes the standing rollout somewhere safe', gaps.abrollstandLandsSafeLowback, gaps);
+  t.ok('a flagged wrist routes the rope plank somewhere safe', gaps.ropeplankLandsSafeWrist, gaps);
+  t.ok('both are reachable through the focus bonus', gaps.inFocusPool.abrollstand && gaps.inFocusPool.ropeplank, gaps.inFocusPool);
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }
