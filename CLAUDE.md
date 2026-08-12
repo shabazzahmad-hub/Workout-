@@ -26,7 +26,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 22 suites, ~1,858 checks, run by `npm test` |
+| `tests/` | 22 suites, ~1,892 checks, run by `npm test` |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
 Deployed to GitHub Pages from `main`.
@@ -1212,6 +1212,74 @@ Comments belong **outside** array literals that a test's own naive parser
 walks, not folded in as an inline aside — the array's plain-text contract
 with its own test is as real as the array's contract with the service
 worker.
+
+## Functional quality pass (v231)
+
+The user redirected mid-audit: not interested in store paperwork, wanted
+crashes/dead-ends/broken-functionality checked instead — the actual thing
+Apple/Google review for beyond the listing metadata. A dedicated pass
+(driven live with Playwright, both fresh-onboarding and seeded) found two
+real defects; a static cross-reference of every `onclick`/`onchange`
+handler against defined functions, and a broad interactive sweep of all
+six tabs, found none.
+
+**A promise printed in the onboarding copy had no code behind it — the
+exact shape CLAUDE.md already names ("write a reassurance into the UI,
+grep for the code that enforces it").** The day-picker's own label reads
+"Five days is the floor... keep at least five," and nothing checked it:
+`obStepError(n)` only ever validated step 1 (`if(n!==1)return null;`), so
+1-4 selected days sailed through both first-run onboarding AND the
+identical edit-profile path (`openProfileEdit()` reuses the same wizard).
+Downstream, `weeklyTarget()` reads `STATE.profile.days.length` directly,
+so the Progress tab's own weekly target silently shrank to whatever was
+picked instead of holding the floor the athlete was told about.
+
+Fixed at the step-5 gate (`obStepError`, mirroring step 1's existing
+age/height/weight pattern) so the wizard's own "Next" button blocks
+advancing — plus, independently, hardened `obReadForm()` itself (the
+actual write path into `STATE.profile.days`) to refuse persisting fewer
+than 5 regardless of how it's reached. **Two mutants exercised exactly why
+both layers earned their keep**: an off-by-one (`chosen<4` instead of
+`chosen<5`) escaped a check that only ever tried 2 days and 5 days — it
+needed the boundary itself, exactly 4, tested directly; and reverting
+`obReadForm()`'s floor escaped every check driven through the wizard's own
+UI, because the UI gate is unreachable-in-practice defense for that second
+layer — it needed a check that calls `obReadForm()` directly, bypassing
+`obBlocked()` entirely, to prove the write path holds the line on its own
+rather than trusting a caller already validated it.
+
+**`runFlow()`/`flowHTML()` — warm-up, cool-down, and all three mobility
+flows — is the guided player's "third twin" CLAUDE.md already names as the
+one that keeps drifting behind the other two, and it had drifted on the
+exact overflow rule the other two were fixed against.** It stacked a
+separate `max-width:260px` image ABOVE a separate fixed `220×220` ring —
+the guided player's own pre-consolidation layout, from before
+`plRingMediaHTML()` moved the photo inside the ring. Measured overflow: 127px
+past the fold at 375×667, 106px at 412×690 — Stop/Done and the cue text
+were below the visible screen on ordinary phone sizes, for a feature whose
+whole design premise is hands-free.
+
+Fixed the same way `.pl-ring` was: the media moved inside the ring
+(reusing `.pl-ringmedia` directly rather than inventing a parallel class),
+and `.timerring` went from a fixed square to `height:min(220px,72vw,40vh)`.
+**One of those two changes turned out to do almost all the actual work, and
+mutation testing is what caught it.** Reverting `.timerring` to a fixed
+220px alone produced ZERO measurable regression at 375×667, 412×690, or even
+320×568 — moving the media inside the ring had already reclaimed enough
+vertical space to fix the reported bug on its own, so a check built only
+against portrait phone sizes could not tell a responsive ring apart from a
+fixed one. It took a genuinely constrained real scenario — landscape
+orientation, where `manifest.webmanifest`'s `orientation:"portrait-primary"`
+declares the app does not target the case but a phone rotated mid-session
+still happens — to find where the responsive sizing is load-bearing: 175px
+of overflow with a fixed ring, 85px with the responsive one. The check
+does not claim landscape is fixed (it visibly isn't), only that the
+responsive sizing measurably helps where it can, which is what the CSS
+change actually does. **An escaped mutant that reveals a change never had
+observable effect at the sizes tested is not automatically a bad mutant to
+discard** — before concluding that (per CLAUDE.md's own "an escaped mutant
+is sometimes a bad mutant" note), it is worth searching harder for a real
+scenario where the change *does* matter, the way this one did.
 
 ## Rendering
 

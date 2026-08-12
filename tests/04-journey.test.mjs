@@ -64,6 +64,94 @@ export default async function run() {
     errors.forEach(e => t.fail('page error during onboarding', e));
   }
 
+  /* ---- the day-picker's own promise — "keep at least five" — is enforced,
+     not just printed. Walked through the real wizard exactly like the block
+     above, but this time deliberately dropping below the floor on step 5. */
+  {
+    const { browser, page, errors } = await launch(port);
+    const fillVisibleStep = () => page.evaluate(() => {
+      const vis = document.querySelector('.ob-step:not([style*="display: none"])');
+      if (!vis) return;
+      vis.querySelectorAll('input[type=text],input[type=number],input:not([type])').forEach(inp => {
+        if (inp.value) return;
+        const id = inp.id || '';
+        if (/name/.test(id)) inp.value = 'Floor Test';
+        else if (/age/.test(id)) inp.value = '30';
+        else if (/height/.test(id)) inp.value = '178';
+        else if (/goalwt|goalwaist/.test(id)) inp.value = '';
+        else if (/weight/.test(id)) inp.value = '82';
+        else if (/waist/.test(id)) inp.value = '90';
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      // every group except the day-picker itself defaults sanely — leave #ob-days alone here
+      vis.querySelectorAll('.daypick:not(#ob-days),.chooser,.seg').forEach(g => {
+        if (g.querySelector('button.on')) return;
+        const b = g.querySelector('button'); if (b) b.click();
+      });
+    });
+    for (let i = 0; i < 4; i++) { await fillVisibleStep(); await page.click('#ob-next'); await page.waitForTimeout(200); }
+    const onStep5 = await page.evaluate(() => document.querySelector('.ob-step:not([style*="display: none"])')?.dataset.step);
+    t.eq('the walkthrough reaches the schedule step', onStep5, '5');
+
+    // drop to 2 days and try to advance
+    const before = await page.evaluate(() => {
+      document.querySelectorAll('#ob-days button.on').forEach(b => b.click());
+      const btns = [...document.querySelectorAll('#ob-days button')];
+      btns[0].click(); btns[3].click();
+      return { selected: document.querySelectorAll('#ob-days button.on').length };
+    });
+    t.eq('two days are actually selected', before.selected, 2);
+    await page.click('#ob-next'); await page.waitForTimeout(150);
+    const blocked = await page.evaluate(() => ({
+      step: document.querySelector('.ob-step:not([style*="display: none"])')?.dataset.step,
+      flagged: document.getElementById('ob-days').classList.contains('bad'),
+      toast: (document.getElementById('toast') || {}).textContent,
+    }));
+    t.eq('two days does not advance past the schedule step', blocked.step, '5');
+    t.ok('the day-picker is visibly flagged', blocked.flagged, blocked);
+    t.ok('and the toast names the floor', /at least 5/.test(blocked.toast), blocked);
+
+    // the boundary itself: four is still short of the floor, not close enough
+    const four = await page.evaluate(() => {
+      const btns = [...document.querySelectorAll('#ob-days button')];
+      btns[1].click(); btns[2].click();
+      return { selected: document.querySelectorAll('#ob-days button.on').length };
+    });
+    t.eq('four days are now selected', four.selected, 4);
+    await page.click('#ob-next'); await page.waitForTimeout(150);
+    const stillBlocked = await page.evaluate(() => document.querySelector('.ob-step:not([style*="display: none"])')?.dataset.step);
+    t.eq('four days still does not clear the floor', stillBlocked, '5');
+
+    // fix it — the fifth day, the flag clears, and the wizard actually advances
+    const fixed = await page.evaluate(() => {
+      const btns = [...document.querySelectorAll('#ob-days button')];
+      btns[4].click();
+      return { selected: document.querySelectorAll('#ob-days button.on').length,
+        flaggedNow: document.getElementById('ob-days').classList.contains('bad') };
+    });
+    t.eq('five days are now selected', fixed.selected, 5);
+    t.ok('the flag clears as soon as the floor is met', !fixed.flaggedNow, fixed);
+    await page.click('#ob-next'); await page.waitForTimeout(150);
+    const advanced = await page.evaluate(() => document.querySelector('.ob-step:not([style*="display: none"])')?.dataset.step);
+    t.eq('five days advances past the schedule step', advanced, '6');
+
+    /* obReadForm() is the actual write path into STATE.profile.days — it must
+       hold the floor on its own, not merely trust that a caller reached it
+       through the wizard's Next-button gate. Drop back below 5 directly on
+       the still-mounted DOM and call it without going through obBlocked(). */
+    const direct = await page.evaluate(() => {
+      document.querySelectorAll('#ob-days button.on').forEach(b => b.click());
+      const btns = [...document.querySelectorAll('#ob-days button')];
+      btns[0].click(); btns[1].click(); btns[2].click();   // exactly 3, unreachable via the wizard's own gate
+      obReadForm();
+      return { days: STATE.profile.days };
+    });
+    t.ok('obReadForm() itself refuses to persist fewer than 5 days',
+      Array.isArray(direct.days) && direct.days.length >= 5, direct);
+    await browser.close();
+    errors.forEach(e => t.fail('page error during the day-floor walkthrough', e));
+  }
+
   // ---- the baseline battery, driven through the real sheet ----------------
   {
     const { browser, page, errors } = await launch(port);
