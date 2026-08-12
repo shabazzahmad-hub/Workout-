@@ -909,6 +909,218 @@ export default async function run() {
     t.ok('a completed sprint session — no bike level system behind it — does not', !/How did that ride feel/.test(r.sprintHtml), r.sprintHtml.slice(0, 500));
   }
 
+  /* ============================================================
+     Fuel-tab step makeup: a real in-app timer for jacks/the bike
+     ("Before this, the movement card told the athlete to set an
+     external timer and type the result in after.") Reuses the same
+     interval engine as HIIT/skip/grip/box, under a dedicated session
+     key (cardiomakeup) so it can never leak into — or be leaked into
+     by — the pre-existing Special-training bike/sprint flow, which
+     deliberately still does NOT credit movement (a separate, real,
+     out-of-scope gap named in CLAUDE.md, not fixed here). ============ */
+
+  /* ---- the entry buttons actually render in the Fuel-tab blocks ---------- */
+  {
+    const r = await page.evaluate(() => {
+      setCardioMode('jacks'); go('fuel'); render();
+      const jackHtml = document.querySelector('#v-fuel').innerHTML;
+      setCardioMode('bike'); render();
+      const bikeHtml = document.querySelector('#v-fuel').innerHTML;
+      return { jackHtml, bikeHtml };
+    });
+    t.ok('the jacks block offers the timer', /openMakeupTimer\('jacks'\)/.test(r.jackHtml), r.jackHtml.length);
+    t.ok('the bike block offers the timer', /openMakeupTimer\('bike'\)/.test(r.bikeHtml), r.bikeHtml.length);
+  }
+
+  /* ---- the stopwatch: counts up, credits on stop, additive, no-ops under a
+     minute — both modes, driven through the real MUT state and the real
+     openMakeupStopwatch()/makeupStopwatchStop() functions, not a re-implementation. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = JSON.stringify({ jackVal: nutToday().jackVal, jackUnit: nutToday().jackUnit,
+        bikeVal: nutToday().bikeVal, bikeUnit: nutToday().bikeUnit });
+      setJackUnit('min'); setJackVal(0);
+      setBikeUnit('min'); setBikeVal(0);
+
+      openMakeupStopwatch('jacks');
+      const jackStarted = !!MUT && MUT.mode === 'jacks';
+      MUT.secs = 615;           // 10.25 min -> rounds to 10
+      makeupStopwatchStop();
+      const jackAfterFirst = movement().jval;
+
+      openMakeupStopwatch('jacks');
+      MUT.secs = 300;           // +5 min, additive on top of the 10 above
+      makeupStopwatchStop();
+      const jackAfterSecond = movement().jval;
+
+      openMakeupStopwatch('jacks');
+      MUT.secs = 20;            // Math.round(20/60)=0 -> genuinely under a minute.
+                                 // 30s would round UP to 1 (same as skipTimerStop()'s
+                                 // identical Math.round(secs/60) — consistent with that
+                                 // precedent, not a bug), so it would not test this guard.
+      makeupStopwatchStop();
+      const jackAfterSubMinute = movement().jval;
+      const subMinuteToast = document.querySelector('#toast').textContent;
+
+      openMakeupStopwatch('bike');
+      const bikeStarted = !!MUT && MUT.mode === 'bike';
+      MUT.secs = 1200;          // 20 min
+      makeupStopwatchStop();
+      const bikeAfterFirst = movement().val;
+
+      openMakeupStopwatch('bike');
+      MUT.secs = 600;           // +10 min, additive on top of the 20 above —
+                                 // a single run can't tell additive from
+                                 // overwrite when it starts from a 0 baseline,
+                                 // so this has to be a SECOND stacked run.
+      makeupStopwatchStop();
+      const bikeAfterSecond = movement().val;
+
+      const kk = JSON.parse(keep);
+      nutToday().jackVal = kk.jackVal; nutToday().jackUnit = kk.jackUnit;
+      nutToday().bikeVal = kk.bikeVal; nutToday().bikeUnit = kk.bikeUnit;
+      return { jackStarted, jackAfterFirst, jackAfterSecond, jackAfterSubMinute, subMinuteToast, bikeStarted, bikeAfterFirst, bikeAfterSecond };
+    });
+    t.ok('the jacks stopwatch actually starts', r.jackStarted, r);
+    t.eq('stopping it credits the rounded minutes', r.jackAfterFirst, 10, r);
+    t.eq('a second block stacks on top, not overwrites', r.jackAfterSecond, 15, r);
+    t.eq('under a minute logs nothing further', r.jackAfterSubMinute, 15, r);
+    t.eq('and says so', r.subMinuteToast, 'Under a minute — nothing logged', r);
+    t.ok('the bike stopwatch actually starts', r.bikeStarted, r);
+    t.eq('stopping it credits the minutes into the bike currency', r.bikeAfterFirst, 20, r);
+    t.eq('a second bike block stacks on top too, not overwrites', r.bikeAfterSecond, 30, r);
+  }
+
+  /* ---- additive crediting re-expresses an existing non-minute currency
+     first, rather than clobbering it — same guarantee setJackUnit() already
+     gives the manual +/- buttons, extended to the timer's finish. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = JSON.stringify({ jackVal: nutToday().jackVal, jackUnit: nutToday().jackUnit });
+      setJackLvl('steady'); setJackUnit('reps'); setJackVal(0);
+      addJackVal(275);                       // ~5 min worth of reps at 'steady'
+      const baselineMin = jackMinutes();
+      openMakeupStopwatch('jacks');
+      MUT.secs = 300;                        // +5 min on the stopwatch
+      makeupStopwatchStop();
+      const finalMin = movement().jval, finalUnit = movement().junit;
+      const kk = JSON.parse(keep);
+      nutToday().jackVal = kk.jackVal; nutToday().jackUnit = kk.jackUnit;
+      return { baselineMin, finalMin, finalUnit };
+    });
+    t.ok('the reps baseline is worth a real amount of minutes', r.baselineMin > 0, r);
+    t.eq('the currency switches to minutes on credit', r.finalUnit, 'min', r);
+    t.eq('the final total is the pre-existing minutes plus the new block, not just the new block',
+      r.finalMin, Math.round(r.baselineMin) + 5, r);
+  }
+
+  /* ---- the structured jacks block: work/rest/rounds picked at runtime,
+     same reserved-key pattern as startSkipCustom(), ending on the same
+     finish screen as every other interval session. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = JSON.stringify({ jackVal: nutToday().jackVal, jackUnit: nutToday().jackUnit });
+      setJackUnit('min'); setJackVal(0);
+      openMakeupTimer('jacks');
+      $('#mut-jk-w').value = '10'; $('#mut-jk-r').value = '2'; $('#mut-jk-n').value = '3';
+      startJackMakeup();
+      const seq = INTV ? INTV.seq.slice() : [];
+      const work = seq.filter(s => s.type === 'work'), rest = seq.filter(s => s.type === 'rest');
+      while (INTV && INTV.i < INTV.seq.length) { INTV.workElapsed += INTV.seq[INTV.i].secs; INTV.i++; }
+      ivDone();
+      const html = document.getElementById('ivBody').innerHTML;
+      const mMatch = /creditMakeupAndClose\('jacks',([\d.]+)\)/.exec(html);
+      const loggedMins = mMatch ? parseFloat(mMatch[1]) : null;
+      if (loggedMins != null) creditMakeupAndClose('jacks', loggedMins);
+      const after = movement().jval;
+      try { hiitQuit(); } catch (e) {}
+      const kk = JSON.parse(keep);
+      nutToday().jackVal = kk.jackVal; nutToday().jackUnit = kk.jackUnit;
+      return { work, rest, exIds: [...new Set(seq.map(s => s.exId))], html, loggedMins, after };
+    });
+    t.eq('3 rounds of work', r.work.length, 3, r.work);
+    t.ok('each 10 minutes', r.work.every(w => w.secs === 600), r.work);
+    t.eq('2 rest blocks — one fewer than work, no dangling rest after the last round', r.rest.length, 2, r.rest);
+    t.ok('each 2 minutes', r.rest.every(w => w.secs === 120), r.rest);
+    t.eq('the whole block is jumping jacks throughout', r.exIds, ['jumpingjack'], r.exIds);
+    t.ok('the finish screen calls it out by name', /Jacks logged/.test(r.html), r.html.slice(0, 300));
+    t.ok('and offers to log the minutes to today\'s steps', r.loggedMins > 0, r);
+    t.ok('no bike ride-feel rating leaks into a jacks finish', !/How did that ride feel/.test(r.html), r.html.slice(0, 800));
+    t.eq('tapping it actually credits the movement card', r.after, r.loggedMins, r);
+  }
+
+  /* ---- the bike duration picker: a single continuous block, no rest, and
+     the SAME ride-feel rating + level-progression machinery as the existing
+     Special-training bike flow — reused, not reimplemented. */
+  {
+    const r = await page.evaluate(() => {
+      const keepM = JSON.stringify({ bikeVal: nutToday().bikeVal, bikeUnit: nutToday().bikeUnit });
+      const keepF = JSON.stringify({ bl: STATE.bikeLevelFeel, pbl: STATE.profile.bikeLevel });
+      delete STATE.bikeLevelFeel; STATE.profile.bikeLevel = 'steady';
+      setBikeUnit('min'); setBikeVal(0);
+
+      startBikeMakeup(20);
+      const seq = INTV ? INTV.seq.slice() : [];
+      while (INTV && INTV.i < INTV.seq.length) { INTV.workElapsed += INTV.seq[INTV.i].secs; INTV.i++; }
+      ivDone();
+      const html = document.getElementById('ivBody').innerHTML;
+      const hasRating = /How did that ride feel/.test(html);
+      const hasEasyCall = /creditMakeupAndClose\('bike',([\d.]+),'easy'\)/.test(html);
+      const hasJackButton = /Log [\d.]+ min to today's steps/.test(html);
+      creditMakeupAndClose('bike', 20, 'easy');
+      const afterVal = movement().val, afterFeel = STATE.bikeLevelFeel;
+      try { hiitQuit(); } catch (e) {}
+
+      // the custom-minutes field, via startBikeMakeupCustom()
+      setBikeUnit('min'); setBikeVal(0);
+      openMakeupTimer('bike');
+      $('#mut-bike-custom').value = '35';
+      startBikeMakeupCustom();
+      const customSecs = INTV ? INTV.seq.reduce((a, s) => a + s.secs, 0) : 0;
+      try { hiitQuit(); } catch (e) {}
+
+      const kkM = JSON.parse(keepM); nutToday().bikeVal = kkM.bikeVal; nutToday().bikeUnit = kkM.bikeUnit;
+      const kkF = JSON.parse(keepF); STATE.bikeLevelFeel = kkF.bl; STATE.profile.bikeLevel = kkF.pbl;
+      return { seq, html, hasRating, hasEasyCall, hasJackButton, afterVal, afterFeel, customSecs };
+    });
+    t.eq('a 20-minute pick is one continuous block', r.seq.length, 1, r.seq);
+    t.eq('exactly 20 minutes', r.seq[0].secs, 1200, r.seq);
+    t.eq('on the bike', r.seq[0].exId, 'bike', r.seq);
+    t.ok('the finish screen offers the ride-feel rating, same as Special-training bike sessions', r.hasRating, r.html.slice(0, 800));
+    t.ok('rating buttons call creditMakeupAndClose, not the old rateBikeAndClose', r.hasEasyCall, r.html.slice(0, 800));
+    t.ok('a bike finish never shows the jacks log button', !r.hasJackButton, r.html.slice(0, 800));
+    t.eq('tapping a rating credits the ride minutes', r.afterVal, 20, r);
+    t.ok('and it actually rated the ride through the real BIKE_LEVELS streak machinery',
+      r.afterFeel && r.afterFeel.level === 'steady' && r.afterFeel.streak === 1, r.afterFeel);
+    t.eq('the custom-minutes field is honoured', r.customSecs, 35 * 60, r);
+  }
+
+  /* ---- no leakage either direction between the old specialcardio/isBike
+     path and the new cardiomakeup path — they must never trigger each
+     other's finish-screen branch or crediting call. */
+  {
+    const r = await page.evaluate(() => {
+      const keepM = JSON.stringify({ bikeVal: nutToday().bikeVal, bikeUnit: nutToday().bikeUnit });
+      setBikeUnit('min'); setBikeVal(0);
+      try { closeSheet(); } catch (e) {}
+      startSpecialCardio('bike', 'vo2max4x4');   // the PRE-EXISTING Special-training path
+      while (INTV && INTV.i < INTV.seq.length) { INTV.workElapsed += INTV.seq[INTV.i].secs; INTV.i++; }
+      ivDone();
+      const oldHtml = document.getElementById('ivBody').innerHTML;
+      const oldStillUncredited = movement().val === 0;
+      const oldHasNoCreditCall = !/creditMakeupAndClose/.test(oldHtml);
+      try { hiitQuit(); } catch (e) {}
+      const kkM = JSON.parse(keepM); nutToday().bikeVal = kkM.bikeVal; nutToday().bikeUnit = kkM.bikeUnit;
+      return { oldHtml, oldStillUncredited, oldHasNoCreditCall };
+    });
+    t.ok('guard: the old Special-training bike session still shows its own rateBikeAndClose call',
+      /rateBikeAndClose\(/.test(r.oldHtml), r.oldHtml.slice(0, 800));
+    t.ok('the old path is untouched by this feature and still credits nothing to movement',
+      r.oldStillUncredited, r);
+    t.ok('and its finish screen never references the new crediting function',
+      r.oldHasNoCreditCall, r.oldHtml.slice(0, 800));
+  }
+
   /* ---- corrupt bikeLevelFeel/bikeLevel are repaired at boot, not trusted -- */
   {
     const r = await page.evaluate(([seed]) => {
