@@ -1520,6 +1520,42 @@ session (v232–v234) now ship a real photo; none are left on the grey
 "PHOTO PENDING" placeholder. Same drop-in path as v235: resize
 1254×1254 → 800×800, same JPEG quality, same filenames, no code change.
 
+## Extended Arm Plank (v237)
+
+The athlete sent a reference photo of a straight-arm plank — hands walked
+out ahead of the shoulders, arms locked, no elbows on the floor — and asked
+for a prompt. Checking it against the roster first (the same discipline as
+every addition this session) found it was neither a duplicate nor a reshoot:
+the existing `longplank` ("Long-Lever Plank") is the FOREARM version — walk
+the elbows forward, weight stays on the forearms. Nothing in the library
+covered the straight-arm, hand-contact version. Asked directly which it
+should be — a fresh exercise, or a replacement photo for `longplank` — the
+athlete chose fresh.
+
+**`extplank` is a harder RUNG of the same ladder `longplank` already
+occupies, not a new standalone.** Both are calibrated against the same
+`anchor:'plank'` baseline test, and walking the hands forward is a further
+point on the exact continuum walking the elbows forward already started —
+so it belongs directly after `longplank` in `plankL`, with a lower
+`hardness` (0.6 vs 0.7) reflecting the added difficulty, not beside the
+ladder as its own thing.
+
+**The risk profile is an ESCALATION, not a copy.** `longplank` carries only
+`lowback` (anti-extension risk from walking the lever out) — no `wrist`,
+because forearm contact puts no load through the wrist at all. `extplank`
+keeps that same `lowback` risk (if anything, greater, with an even longer
+lever) and adds `wrist` on top, because switching to hand contact is
+exactly what every other hand-plank in the library (`bearhold`,
+`isoclimber`, the `pushup` family) is already flagged for. Getting this
+right needed a check that verifies `longplank` stays wrist-FREE, not just
+that `extplank` is wrist-flagged — the mutant that incorrectly added a
+wrist flag to `longplank` too would have passed a check that only looked
+at `extplank`'s side of the comparison.
+
+Photo was already in hand — the athlete generated and confirmed it before
+asking for the build, so this shipped with a real photo from the start,
+no placeholder.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

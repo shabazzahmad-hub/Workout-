@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v236';
+const CACHE = 'coreforge-v237';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
@@ -69,7 +69,7 @@ const EXTRA = [
   './ex-dblunge.jpg','./ex-dbmanmaker.jpg','./ex-dbpress.jpg','./ex-dbrdl.jpg','./ex-dbrenegade.jpg',
   './ex-dbrow.jpg','./ex-dbthruster.jpg','./ex-dbtwist.jpg','./ex-dbpallof.jpg','./ex-deadhang.jpg',
   './ex-declinepushup.jpg','./ex-diamondpushup.jpg','./ex-dipknee.jpg','./ex-dips.jpg',
-  './ex-dragonflag.jpg','./ex-dragonflagfull.jpg','./ex-elevatedpike.jpg','./ex-fastfeet.jpg','./ex-fistpushup.jpg',
+  './ex-dragonflag.jpg','./ex-dragonflagfull.jpg','./ex-elevatedpike.jpg','./ex-extplank.jpg','./ex-fastfeet.jpg','./ex-fistpushup.jpg',
   './ex-flutter.jpg','./ex-halfburpee.jpg','./ex-hanglegraise.jpg','./ex-highknees.jpg',
   './ex-hindupushup.jpg','./ex-hiplift.jpg','./ex-hipthrust.jpg','./ex-hollowflutter.jpg',
   './ex-hollowrock.jpg','./ex-hspushup.jpg','./ex-inclinepushup.jpg','./ex-invertedrowelev.jpg',
