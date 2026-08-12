@@ -1511,6 +1511,15 @@ Resized 1254×1254 → 800×800, same JPEG quality as the rest of the library.
 (corrected prompts already sent, not yet regenerated), `abrollstand`,
 `ropeplank` (prompts sent same day, not yet generated at all).
 
+## The library goes fully photographed (v236)
+
+The last four — `kbfigure8` and `kbhighpull` regenerated from the v2
+prompts (v235's note above), plus `abrollstand` and `ropeplank` generated
+for the first time — landed within the hour. All ten exercises added this
+session (v232–v234) now ship a real photo; none are left on the grey
+"PHOTO PENDING" placeholder. Same drop-in path as v235: resize
+1254×1254 → 800×800, same JPEG quality, same filenames, no code change.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
