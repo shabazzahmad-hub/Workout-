@@ -920,6 +920,111 @@ export default async function run() {
     t.ok('so a backgrounded hold catches up instead of drifting', hold.catchesUp, hold);
   }
 
+  // ---- a 'gain' goal must not read a bulking athlete's own numbers backwards
+  {
+    const r = await page.evaluate(() => {
+      const realProfile = JSON.stringify(STATE.profile);
+      const realWeightKg = nut().weightKg;
+      const o = {};
+      nut().weightKg = 68;   // ~150 lb, fixed regardless of whatever the seed carries
+      STATE.profile.goal = 'gain'; STATE.profile.goalWeightLb = 160;
+      const missionGain = briefSegments().find(s => s.title === 'Your mission').say;
+      STATE.profile.goal = 'lose'; STATE.profile.goalWeightLb = 140;
+      const missionLose = briefSegments().find(s => s.title === 'Your mission').say;
+      nut().weightKg = realWeightKg;
+      STATE.profile = JSON.parse(realProfile);
+      return {
+        gainSaysUp: /up to 160/.test(missionGain),
+        gainNotBackwards: !/outstanding/i.test(missionGain),
+        loseSaysDown: /down to 140/.test(missionLose),
+        missionGain, missionLose,
+      };
+    });
+    t.ok('a gain-goal athlete below target is told to go UP toward it', r.gainSaysUp, r);
+    t.ok('not congratulated for being short of a weight-GAIN goal', r.gainNotBackwards, r);
+    t.ok('a lose-goal athlete above target is still told to go down (unchanged)', r.loseSaysDown, r);
+  }
+
+  // ---- the weight-trend chart colors "good" relative to the actual goal direction
+  {
+    const r = await page.evaluate(() => {
+      const realM = JSON.stringify(STATE.measurements);
+      const realProfile = JSON.stringify(STATE.profile);
+      const base = new Date(); base.setDate(base.getDate() - 9);
+      STATE.measurements = [];
+      for (let i = 0; i < 10; i++) {
+        const d = new Date(base); d.setDate(d.getDate() + i);
+        STATE.measurements.push({ date: localISO(d), weight: 70 + i * 0.3, waist: 90 });   // rising trend
+      }
+      STATE.profile.goal = 'gain';
+      const htmlGain = weightChartHTML();
+      STATE.profile.goal = 'lose';
+      const htmlLose = weightChartHTML();
+      STATE.measurements = JSON.parse(realM);
+      STATE.profile = JSON.parse(realProfile);
+      return {
+        gainRisingIsGreen: htmlGain.includes('▲') && htmlGain.includes('color:var(--green)'),
+        loseRisingIsMuted: htmlLose.includes('▲') && htmlLose.includes('color:var(--muted)') && !htmlLose.includes('color:var(--green)'),
+      };
+    });
+    t.ok('a rising trend reads GREEN for a gain goal', r.gainRisingIsGreen, r);
+    t.ok('the SAME rising trend reads muted (not green) for a lose goal', r.loseRisingIsMuted, r);
+  }
+
+  // ---- the in-app waist-goal editor enforces the same bound onboarding already does
+  {
+    const r = await page.evaluate(() => {
+      const real = STATE.profile.goalWaist;
+      const o = {};
+      setWaistGoal();
+      document.querySelector('#g-waist').value = '9999';
+      saveWaistGoal();
+      o.rejectedAbsurd = STATE.profile.goalWaist === real;
+      setWaistGoal();
+      document.querySelector('#g-waist').value = STATE.profile.unit === 'in' ? '34' : '86';
+      saveWaistGoal();
+      o.acceptedPlausible = STATE.profile.goalWaist > 0 && STATE.profile.goalWaist !== real;
+      STATE.profile.goalWaist = real; save();
+      return o;
+    });
+    t.ok('an absurd waist goal (9999) is rejected, not stored', r.rejectedAbsurd, r);
+    t.ok('a plausible waist goal still saves', r.acceptedPlausible, r);
+  }
+
+  // ---- the history list no longer pays for a full buildSession() per row
+  {
+    const r = await page.evaluate(() => {
+      // a synthetic but realistic completed log — real items, decoupled from
+      // whatever the earlier blocks in this file left in STATE.logs
+      const p = STATE.progressPtr;
+      const built = buildSession(p);
+      const items = [...built.main, built.finisher].filter(Boolean);
+      const realLog = STATE.logs[p];
+      STATE.logs[p] = { done: true, items, ex: {}, completedAt: todayISO(), feel: 'ok' };
+
+      const real = buildSession; let calls = 0;
+      buildSession = function (...a) { calls++; return real.apply(this, a); };
+      const cheap = sessionStats(p);
+      const cheapCalls = calls;
+      const full = sessionStats(p, true);
+      const fullCalls = calls - cheapCalls;
+      buildSession = real;
+
+      if (realLog === undefined) delete STATE.logs[p]; else STATE.logs[p] = realLog;
+      return {
+        cheapCalls, fullCalls,
+        cheapHasNoSess: !('sess' in cheap),
+        fullHasSess: !!(full.sess && typeof full.sess.week === 'number'),
+        sameCounts: cheap.exDone === full.exDone && cheap.setsDone === full.setsDone && cheap.exTotal === full.exTotal,
+      };
+    });
+    t.eq('the history-list (cheap) path does not call buildSession() at all', r.cheapCalls, 0, r);
+    t.eq('the detail (full) path calls it exactly once', r.fullCalls, 1, r);
+    t.ok('the cheap path omits sess entirely rather than a half-built one', r.cheapHasNoSess, r);
+    t.ok('the full path still returns a real sess object', r.fullHasSess, r);
+    t.ok('both paths agree on the counts that matter to the list', r.sameCounts, r);
+  }
+
   // ---- a flagged joint gets prep ADDED to the warm-up, not just risk removed
   const jointWarm = await page.evaluate(() => {
     const o = {}, real = STATE.profile.limitations;

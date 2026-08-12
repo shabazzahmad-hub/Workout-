@@ -1598,7 +1598,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='238';
+const APP_VERSION='239';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4079,8 +4079,11 @@ function lastLift(exId){
   const rows=liftLog().filter(r=>r&&r.exId===exId);
   return rows.length?rows[rows.length-1]:null;
 }
-function loadToKg(v){return isImperial()?v*0.453592:v;}
-function loadShow(kg){return kg==null?null:(isImperial()?kg/0.453592:kg);}
+/* Byte-for-byte the same conversion as weightToKg/weightShow (line ~542) —
+   named separately because a lifted LOAD and a BODYWEIGHT are conceptually
+   different quantities, but they must never be allowed to compute the
+   conversion differently, so these are aliases, not a second copy. */
+const loadToKg=weightToKg, loadShow=weightShow;
 function loadUnit(){return isImperial()?'lb':'kg';}
 /* ---- Progressive overload on the logged load --------------------------
    liftLog stored what you lifted and handed it back next time — a memory,
@@ -5743,10 +5746,24 @@ function briefSegments(){
      numbers the athlete never chose — and the coach read them out every morning. */
   if(!(goalW>0)){
     mission = `You have not set a goal weight yet. Open the Progress tab and pick one, or just train and let the tape measure tell the story. Either way — today, we work.`;
-  }else if(kg){const lb=Math.round(kg*2.20462), toGo=lb-goalW;
-    mission = toGo>1 ? `The mission: from ${lb} pounds down to ${goalW}${bf}. You are ${toGo} pounds out. Every rep and every meal today closes that gap.`
-      : (toGo>=-1 ? `You are right on your ${goalW}-pound target — now we lock in the muscle. Discipline today.`
-      : `You are under ${goalW} pounds — outstanding. Today we hold the line.`);
+  }else if(kg){const lb=Math.round(kg*2.20462), toGo=lb-goalW, gaining=STATE.profile.goal==='gain';
+    /* toGo>0 means CURRENT is above the target. For a lose/maintain goal that
+       means ground left to cover; for a 'gain' goal it means the target is
+       already cleared — the two directions read the SAME sign oppositely, and
+       this used to always read it the lose/maintain way, so a bulking athlete
+       short of their gain target was told "outstanding, hold the line" every
+       morning instead of being pointed at the gap still open. */
+    if(Math.abs(toGo)<=1){
+      mission = `You are right on your ${goalW}-pound target — now we lock in the muscle. Discipline today.`;
+    }else if(gaining){
+      mission = toGo<0
+        ? `The mission: from ${lb} pounds up to ${goalW}${bf}. You are ${-toGo} pounds out. Every rep and every meal today closes that gap.`
+        : `You are over ${goalW} pounds — outstanding. Today we hold the line.`;
+    }else{
+      mission = toGo>0
+        ? `The mission: from ${lb} pounds down to ${goalW}${bf}. You are ${toGo} pounds out. Every rep and every meal today closes that gap.`
+        : `You are under ${goalW} pounds — outstanding. Today we hold the line.`;
+    }
   }else{
     mission=`The mission: down to ${goalW} pounds${bf}. Log your weight in the Fuel tab so I can track every pound with you. Today, we get to work.`;
   }
@@ -7191,7 +7208,7 @@ function setWaistGoal(){
     <button class="btn primary" onclick="saveWaistGoal()">Save goal</button>`);
 }
 function gBump(d){const inp=$('#g-waist');inp.value=Math.max(0,((+inp.value||(+inp.placeholder||0))+d)).toFixed(1);}
-function saveWaistGoal(){const g=parseFloat($('#g-waist').value);if(!(g>0)){toast('Enter a goal');return;}STATE.profile.goalWaist=r1(waistToCm(g));save();closeSheet();toast('Goal set 🎯');renderProgress();}
+function saveWaistGoal(){const g=parseFloat($('#g-waist').value);const cm=waistToCm(g);if(!(g>0)||!plausibleWaistCm(cm)){toast('Enter a realistic goal');return;}STATE.profile.goalWaist=r1(cm);save();closeSheet();toast('Goal set 🎯');renderProgress();}
 function mBump(f,d){const id=f==='w'?'#m-waist':'#m-weight';const inp=$(id);inp.value=Math.max(0,((+inp.value||(+inp.placeholder||0))+d)).toFixed(1);}
 /* The wizard already clamps these; the two other writers did not, so a
    fat-fingered "1900" for weight set a 13,300 kcal target and an 825 g protein
@@ -9166,10 +9183,16 @@ function weightChartHTML(){
      the line shows the thing that is actually happening. */
   const vals=trailingMean(raw,7);
   const first=vals[0],last=vals[vals.length-1];const change=last-first;
+  /* The arrow always shows which way the number actually moved; only the
+     COLOR is goal-relative. A 'gain' athlete moving up is the same green a
+     'lose' athlete moving down gets — it was hardcoded to "down is green"
+     regardless of goal, so a bulking athlete's real progress read as neutral
+     and a bulking athlete's setback (losing weight) read as green. */
+  const goodDirection=(STATE.profile.goal==='gain')?(change>=0):(change<=0);
   const chart=ms.length>=2?lineChart(vals,dates,'var(--teal)',wu):`<div class="center" style="margin-top:10px"><div style="font-size:26px;font-weight:900">${last}${wu}</div></div>`;
   const spot=raw[raw.length-1];
   return `<div class="divider" style="margin:14px 0"></div><b>Weight (${wu})</b> <span class="tiny muted">· 7-day average</span>${chart}
-    <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">Start ${first}${wu}</span><span class="tiny" style="color:${change<=0?'var(--green)':'var(--muted)'};font-weight:800">${change<=0?'▼ ':'▲ +'}${Math.abs(change).toFixed(1)}${wu}</span><span class="tiny muted">Now ${last}${wu}</span></div>
+    <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">Start ${first}${wu}</span><span class="tiny" style="color:${goodDirection?'var(--green)':'var(--muted)'};font-weight:800">${change<=0?'▼ ':'▲ +'}${Math.abs(change).toFixed(1)}${wu}</span><span class="tiny muted">Now ${last}${wu}</span></div>
     ${ms.length>=3?`<div class="tiny muted" style="margin-top:6px">Averaged, so one heavy morning does not read as a setback. Today's actual reading: <b>${spot}${wu}</b>.</div>`:''}`;
 }
 /* Reusable dated line graph (SVG). vals[i] plotted against dates[i]. */
@@ -11720,8 +11743,8 @@ function logItemsFor(p,l){
   if(l&&Array.isArray(l.items)&&l.items.length)return l.items;
   const s=buildSession(+p);return [...s.main,s.finisher].filter(Boolean);
 }
-function sessionStats(p){
-  const l=STATE.logs[p]||{ex:{}};const sess=buildSession(p);
+function sessionStats(p,full){
+  const l=STATE.logs[p]||{ex:{}};
   const items=logItemsFor(p,l);
   const tempo=(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3;
   let exDone=0,setsDone=0,setsRx=0,totalReps=0,totalHold=0,estSec=0;
@@ -11732,6 +11755,13 @@ function sessionStats(p){
     else{totalReps+=sd*m.target;estSec+=sd*m.target*tempo;}
     estSec+=Math.max(0,sd)*m.rest;                       // rest between sets
   });
+  /* buildSession() is a full rebuild — ladder walks, gearSwap/spaceSwap/safeSwap
+     chains, a prescribe() call per exercise — and only openSessionDetail() (the
+     `full` caller) actually reads `sess` (week/cycle header, warm-up/cool-down
+     minutes). The 25-row history LIST was paying for a full rebuild on every
+     row just to discard the result; skip it unless asked for. */
+  if(!full)return {items,exDone,exTotal:items.length,setsDone,setsRx,totalReps,totalHold,estMin:Math.max(1,Math.round(estSec/60))};
+  const sess=buildSession(p);
   estSec+=(sess.warmup.length*35)+(sess.cooldown.length*33); // warm-up + cool-down
   return {sess,items,exDone,exTotal:items.length,setsDone,setsRx,totalReps,totalHold,estMin:Math.max(1,Math.round(estSec/60))};
 }
@@ -11756,7 +11786,7 @@ function sessionHistoryHTML(){
   h+=`</div>${priorNote}`;return h;
 }
 function openSessionDetail(p){
-  const l=STATE.logs[p];if(!l)return;const st=sessionStats(p);const sess=st.sess;const wk=(sess.cycle*WEEKS_PER_CYCLE)+sess.week;
+  const l=STATE.logs[p];if(!l)return;const st=sessionStats(p,true);const sess=st.sess;const wk=(sess.cycle*WEEKS_PER_CYCLE)+sess.week;
   const feelTxt=l.feel==='easy'?'😎 Easy':(l.feel==='hard'?'🥵 Brutal':'💪 Challenging');
   const prs=STATE.prs||{};
   const rows=st.items.map(m=>{
@@ -12078,7 +12108,7 @@ async function selfUpdate(){
     /* APP_VERSION sits in the first few KB, so ask for the first 64 KB instead of
        re-downloading the entire page on every launch. A server that ignores Range
        simply returns 200 and the whole body, which still works. */
-    const r=await fetch('./index.html?cb='+Date.now(),{cache:'no-store',headers:{'Range':'bytes=0-65535'}});
+    const r=await fetchWithTimeout('./index.html?cb='+Date.now(),{cache:'no-store',headers:{'Range':'bytes=0-65535'}},6000);
     if(!r.ok&&r.status!==206)return;
     const m=/APP_VERSION='(\d+)'/.exec(await r.text());
     if(!m)return;

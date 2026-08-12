@@ -84,6 +84,34 @@ export default async function run() {
     t.ok('and it ends in a .catch(), not just the outer try/catch', tail.includes('.catch('), tail);
   }
 
+  /* ---- selfUpdate()'s own network call must be bounded too — it's the one
+     remaining unbounded fetch after fetchWithTimeout() was introduced for the
+     others (offSearch/offBarcode/_geminiCall). Static, not behavioural: this
+     already has live behavioural coverage of fetchWithTimeout() itself via the
+     hung-route check in 20-diet.test.mjs; this just confirms selfUpdate()
+     actually calls it instead of a bare fetch. */
+  {
+    const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const fnIdx = html.indexOf('async function selfUpdate()');
+    t.ok('selfUpdate() is found', fnIdx >= 0, fnIdx);
+    const bodyEnd = html.indexOf('\n}', fnIdx);
+    const body = html.slice(fnIdx, bodyEnd);
+    t.ok('it calls fetchWithTimeout, not a bare fetch', body.includes('fetchWithTimeout('), body.slice(0, 200));
+  }
+
+  /* ---- cf-precache-status must be pinned with waitUntil, same as cf-topup
+     right above it — an idle worker with nothing pinning it can be reclaimed
+     mid-loop, and the requesting page would wait forever for a reply that
+     never comes. Static: there is no reliable way to force the browser to
+     reclaim a worker mid-task from this harness. */
+  {
+    const swSrc = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+    const openIdx = swSrc.indexOf("d.type === 'cf-precache-status'");
+    t.ok('the cf-precache-status branch is found', openIdx >= 0, openIdx);
+    const after = swSrc.slice(openIdx, openIdx + 400);
+    t.ok('its body is wrapped in e.waitUntil(', after.includes('e.waitUntil('), after);
+  }
+
   /* ---- the worker activates without waiting for the tail ----------------- */
   const ctx = await chromium.launchPersistentContext('', { serviceWorkers: 'allow', viewport: { width: 390, height: 844 } });
   const page = ctx.pages()[0] || await ctx.newPage();
