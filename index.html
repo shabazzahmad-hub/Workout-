@@ -1598,7 +1598,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='240';
+const APP_VERSION='241';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3990,12 +3990,16 @@ function playerSwap(exId){
   if(!PLAYER)return;const nEx=EX[exId];if(!nEx)return;
   const m=plCur();const rx=prescribe(exId,PLAYER.sess.pos);
   // persist it for the day's program session so it survives leaving the player
+  let persisted=true;
   if(PLAYER.sess&&PLAYER.sess.ptr===STATE.progressPtr&&m.slot){
     const key=(m===PLAYER.sess.finisher)?'__fin':m.slot;
-    try{setSwap(STATE.progressPtr,key,exId);}catch(e){}
+    try{setSwap(STATE.progressPtr,key,exId);}catch(e){persisted=false;}
   }
   m.exId=exId;m.unit=nEx.unit;m.target=rx.target;m.rest=nEx.rest||m.rest;
-  toast('Swapped to '+nEx.name);
+  // the in-session swap above always applies regardless — only the toast
+  // needs to say so when the part that's supposed to survive leaving the
+  // player silently didn't, instead of claiming an unqualified success
+  toast(persisted?('Swapped to '+nEx.name):('Swapped to '+nEx.name+' for this set — may not stick after you leave'));
   plClear();plEnterReady(false);   // restart the current set with the new move
 }
 /* ---- Screen Wake Lock ------------------------------------------------------
@@ -4353,7 +4357,12 @@ function plTickRep(){
 function plAfterSet(){
   plClear();
   const m=plCur();
-  if(!PLAYER.free){try{markSetFromTimer(m.exId);}catch(e){}}   // bonus sessions never touch the program log
+  // bonus sessions never touch the program log. A real write failure here is
+  // rare and anomalous (not a normal "nothing to log" case), so it's worth a
+  // soft toast rather than the athlete finding out later that a set silently
+  // never made it into the log — but it must not block plClear()/plS() below.
+  let logIssue=false;
+  if(!PLAYER.free){try{markSetFromTimer(m.exId);}catch(e){logIssue=true;}}
   /* The player knows exactly how many reps it counted, so it can record the
      truth without asking — only the timed holds and the rep sets the athlete
      cut short need a number, and plTickRep already has it. */
@@ -4363,8 +4372,9 @@ function plAfterSet(){
         const done=(m.unit==='time')?Math.round(PLAYER.total-PLAYER.remain||m.target):(PLAYER.repN||m.target);
         if(done>0){st.actual=Math.min(done,m.target);save();try{recordPRFromActual(m.exId);}catch(e){}}
       }
-    }catch(e){}
+    }catch(e){logIssue=true;}
   }
+  if(logIssue)toast('Set completed, but the count may not have saved');
   PLAYER.setsDone++;
   const pulse=$('#plPulse');if(pulse)pulse.classList.remove('on');
   PLAYER.s++;
@@ -8077,7 +8087,9 @@ function readinessCardHTML(){
    figures and the goal ETA. */
 function removeMeasure(date){
   if(!confirm('Delete the measurement from '+date+'?'))return;
+  const before=(STATE.measurements||[]).length;
   STATE.measurements=(STATE.measurements||[]).filter(m=>String(m.date).slice(0,10)!==date);
+  if(STATE.measurements.length===before){toast('Not found');return;}
   const last=(STATE.measurements||[]).filter(m=>m.weight>0).slice(-1)[0];
   if(last){STATE.nutrition.weightKg=last.weight;try{recalcKcalFromStored();}catch(e){}}
   save();toast('Deleted');renderProgress();
@@ -8389,7 +8401,10 @@ function foodsSectionHTML(){const fl=foodsList();if(!fl.length)return '';
       <span class="tiny muted" style="flex:0 0 auto">＋</span></div>`).join('')+`</div>`;}
 function _faQty(){let q=parseFloat(($('#fa-qty')&&$('#fa-qty').value));return (q>0)?q:1;}
 function _fmtQty(q){return Number.isInteger(q)?String(q):String(+q.toFixed(2));}
-function _faNum(id){const el=$('#'+id);return el?Math.max(0,parseFloat(el.value)||0):0;}
+/* Floored at 0 already; also ceilinged at 9999 — every other numeric input
+   in this file (weight, waist, lift load) has a sanity ceiling and this one
+   didn't, so a manually typed food entry had no upper bound at all. */
+function _faNum(id){const el=$('#'+id);const v=el?parseFloat(el.value):0;return isFinite(v)?Math.max(0,Math.min(v,9999)):0;}
 // Live "= total" line reflecting per-serving values × quantity.
 function updQtyTotal(){const el=$('#fa-total');if(!el)return;const q=_faQty();
   el.innerHTML='= <b>'+Math.round(_faNum('fa-kcal')*q)+'</b> kcal · <b>'+Math.round(_faNum('fa-p')*q)+'</b>g P · <b>'

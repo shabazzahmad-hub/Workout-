@@ -1872,6 +1872,97 @@ here rather than fixed, since it's cosmetic-adjacent rather than a
 behavioral defect and this round's fixes were scoped to verified
 correctness/security issues.
 
+## A fourth audit, scoped to what a client-only app actually has (v241)
+
+Same generic "Senior Full-Stack Engineer and QA Expert" audit template as
+before, this time asking specifically about User Auth, protected routes,
+and database queries — none of which this app has. Flagged the mismatch
+inline (single-file client-only PWA, no backend/accounts/database) rather
+than re-asking via `AskUserQuestion` a second time in the same session, and
+scoped the five requested categories to what's real: the actual network
+calls (Open Food Facts, the AI food-photo estimator, the update checker),
+the math/logic engine, workout-logging state management, and completeness.
+Four parallel research passes, each verified against real source (and in
+one case a standalone empirical probe) before anything shipped — same
+discipline as v238-v240, aimed at territory those hadn't covered rather
+than re-deriving ground already audited.
+
+**A missing `.catch()` was real, but the obvious behavioural test for it is
+provably impossible in this harness — same shape as three `.catch()` fixes
+in v238.** `sw.js`'s cache-first static-asset handler
+(`caches.match(req).then(hit=>hit||fetch(req)...)`) had a `.catch()` on the
+`cache.put()` write right next to it, but none on the `fetch(req)` READ
+itself — an uncached asset whose network fetch genuinely rejects (offline,
+device DNS failure) left an unhandled rejection inside the worker instead
+of a graceful fallback. The reason this needed a *static* source check
+(`tests/12-precache.test.mjs`, anchored on the exact call-shape text) rather
+than a live one: `fetch()` only REJECTS on a network-level failure, and this
+harness's only fault injection (`srv.fail500`) fakes an HTTP status code —
+which RESOLVES `fetch()` with `res.ok===false`, a case the code already
+handled correctly without this fix. There is no way to force a genuine
+connection-level failure from this harness, the same limitation CLAUDE.md
+already documents for the `cache.put()`/`register()` catches.
+
+**Two "proper functionality" findings were the same shape: a toast that
+claimed more success than the code underneath it actually delivered.**
+`playerSwap()`'s in-session exercise swap (`m.exId=exId`) always applies —
+but the swap is also supposed to persist via `setSwap()` so it survives
+leaving the player, and that call was wrapped in a bare `try{}catch(e){}`
+with an unconditional `toast('Swapped to '+nEx.name)` right after,
+regardless of which branch ran. `plAfterSet()` had the identical shape
+twice in one function: `markSetFromTimer()` and the block that records a
+timed hold's or cut-short rep set's `actual` count were each wrapped in a
+silent `catch(e){}`, so a genuine logging failure (rare, but not
+impossible) left the athlete believing a set was recorded when it wasn't,
+with nothing on screen saying so. Both fixed the same way: track whether
+the risky part actually succeeded, and only change the athlete-facing
+message when it didn't — never adding a toast to the common, successful
+path, since a hands-free session screen that toasts on every ordinary set
+would be worse than the silence it replaces.
+
+**Testing both required forcing a specific internal function to throw, not
+just asserting the surrounding code "looks wired up."** Monkey-patching
+`window.setSwap`/`window.markSetFromTimer` to throw for one isolated
+`openPlayer()`/`plAfterSet()` run, and leaving them real for a second,
+proves the toast text actually depends on the outcome — a check that only
+drove the success path (which is what "does the swap work" superficially
+tests) would pass whether or not the failure branch said anything at all.
+
+**A cosmetic finding got a cosmetic fix, at the size the finding earned.**
+`removeMeasure(date)` said "Deleted" even when the date matched nothing in
+`STATE.measurements` — harmless (a no-op filter), but misleading. Fixed
+with a length-before/length-after comparison and a "Not found" toast;
+correctly scoped as a UX nit, not treated as a data-integrity bug, since
+nothing was actually at risk.
+
+**One numeric field had no ceiling anywhere in the codebase, and it was
+the one field that took free-typed input from the athlete rather than a
+validated picker.** `_faNum()`, backing the manual "add food" macro entry
+(kcal/protein/carbs/fat), floored at 0 but never capped — every other
+numeric input in the file (`plausibleKg`, `plausibleWaistCm`,
+`plausibleLoadKg`) has a sanity ceiling matched to what it measures. Capped
+at 9999, generously above any real single food entry, matching this file's
+existing pattern of a loose but real bound rather than a precisely-tuned
+one for a field that only ever feeds the athlete's own displayed/logged
+totals.
+
+**One completeness finding was deliberately left unfixed.** No way exists
+to edit or correct a past logged workout (`openSessionDetail()` renders
+history read-only). Flagged in the audit report as a genuine gap but
+possibly intentional — an immutable training log is defensible for an app
+built around honest self-reporting (see this file's own "zero is data, say
+zero" completion-integrity rules) — and left for the athlete's own call
+rather than building an edit feature nobody explicitly asked for.
+
+Also confirmed clean this round, with agents independently verifying
+against real source rather than assumed from the doc history above: the
+falsy-zero trap (already closed in `estimateMaxes`/`computeAssessment`),
+duplicate-log prevention (`STATE.logs` is dictionary-keyed and `PLAYER` is
+nulled before `commitSession` to block a double-tap), delete-by-missing-key
+safety (`Array.filter`/`delete` are both no-op-safe), the zero-set/partial/
+pain-stop completion gate, every body-metric input's bounds-checking, the
+settings screen, and the absence of hardcoded placeholder data.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

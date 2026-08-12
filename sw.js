@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v240';
+const CACHE = 'coreforge-v241';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
@@ -285,6 +285,12 @@ self.addEventListener('fetch', e => {
         caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
       }
       return res;
-    }))
+    }).catch(() => undefined))
+    // A miss that then fails to fetch (offline, DNS failure) rejected with
+    // nothing to catch it — an unhandled rejection inside the worker instead
+    // of a graceful failure. Resolving to undefined here lets the browser
+    // handle the missing asset exactly as it already does for anything else
+    // that comes back empty (e.g. an <img onerror> fallback), rather than an
+    // unhandled promise rejection surfacing as a broken/blocked request.
   );
 });
