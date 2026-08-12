@@ -554,7 +554,11 @@ export default async function run() {
   }
   {
     // a junk row must not cost the whole history
-    await page.evaluate(([seed]) => {
+    /* save() writes localStorage immediately but mirrors to IndexedDB 120ms
+       later (see CLAUDE.md); reloading right after planting a value races
+       that mirror, and load() prefers whichever copy has the fresher stamp.
+       Beat it on its own terms, exactly like 05-state.test.mjs does. */
+    await page.evaluate(async ([seed]) => {
       eval(seed)();
       const cur = JSON.parse(localStorage.getItem('coreforge.v1') || '{}');
       cur.liftLog = [
@@ -563,7 +567,10 @@ export default async function run() {
         { date: '2026-01-03', exId: 'nosuchexercise', loadKg: 20 },
         null, 'junk',
       ];
-      localStorage.setItem('coreforge.v1', JSON.stringify(cur));
+      cur._savedAt = Date.now() + 5000;
+      const json = JSON.stringify(cur);
+      localStorage.setItem('coreforge.v1', json);
+      await idbPut('coreforge.v1', json);
     }, [ATHLETE]);
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForBoot(page);

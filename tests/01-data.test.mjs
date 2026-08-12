@@ -92,6 +92,53 @@ export default async function run() {
   const onDisk = shell.filter(f => !fs.existsSync(path.join(ROOT, f)));
   t.ok('every shell asset exists on disk', onDisk.length === 0, onDisk);
 
+  /* ---- the three new core additions (Dumbbell Pallof Press, Medicine Ball
+     Woodchopper, Full Dragon Flag) land where they were designed to, not just
+     where validateData()'s generic sweep happens not to complain. ---------- */
+  const core = await page.evaluate(() => {
+    const o = {};
+    o.hollowLTop = LADDERS.hollowL[LADDERS.hollowL.length - 1];
+    o.dragonflagNotTop = LADDERS.hollowL.indexOf('dragonflag') < LADDERS.hollowL.indexOf('dragonflagfull');
+    o.equip = { dbpallof: EX.dbpallof.equip, mbchop: EX.mbchop.equip, dragonflagfull: EX.dragonflagfull.equip };
+    // hasGearFor() actually gates on the equipment, both ways
+    STATE.profile.gear = [];
+    o.noneOwned = { dbpallof: hasGearFor('dbpallof'), mbchop: hasGearFor('mbchop'), dragonflagfull: hasGearFor('dragonflagfull') };
+    STATE.profile.gear = ['dumbbell', 'medball', 'bar'];
+    o.allOwned = { dbpallof: hasGearFor('dbpallof'), mbchop: hasGearFor('mbchop'), dragonflagfull: hasGearFor('dragonflagfull') };
+    // an anti-rotation press is genuinely joint-friendly by design — unflagged, matching dbtwist's own precedent
+    o.dbpallofFlags = Object.keys(JOINT_RISK).filter(j => JOINT_RISK[j].includes('dbpallof'));
+    // a loaded, ballistic standing rotation is flagged the same way its seated cousins (mbtwist, russiantwist) already are
+    o.mbchopLowback = JOINT_RISK.lowback.includes('mbchop');
+    o.mbchopLandsSafe = (() => {
+      const real = STATE.profile.limitations; STATE.profile.limitations = ['lowback'];
+      const out = safeSwap('mbchop'); STATE.profile.limitations = real;
+      return !!EX[out] && !JOINT_RISK.lowback.includes(out);
+    })();
+    // the full dragon flag carries the SAME flags as the bent-knee rung it extends, and lands the same places
+    o.dragonflagfullShoulder = JOINT_RISK.shoulder.includes('dragonflagfull');
+    o.dragonflagfullLowback = JOINT_RISK.lowback.includes('dragonflagfull');
+    o.dragonflagfullSwaps = { safe: SAFE_SWAP.dragonflagfull, lowback: LOWBACK_SWAP.dragonflagfull };
+    // reachable by the focus bonus (abs/obliques), the actual point of adding them
+    o.inFocusPool = { dbpallof: FOCUS_POOL.obliques.includes('dbpallof'),
+      mbchop: FOCUS_POOL.obliques.includes('mbchop'), dragonflagfull: FOCUS_POOL.abs.includes('dragonflagfull') };
+    STATE.profile.gear = [];
+    return o;
+  });
+  t.eq('the full dragon flag, not the bent-knee version, is the new top of hollowL', core.hollowLTop, 'dragonflagfull');
+  t.ok('the bent-knee rung sits below the full version in the ladder', core.dragonflagNotTop, core);
+  t.eq('Dumbbell Pallof Press requires a dumbbell', core.equip.dbpallof, ['dumbbell']);
+  t.eq('Medicine Ball Woodchopper requires a medicine ball', core.equip.mbchop, ['medball']);
+  t.eq('Full Dragon Flag requires a bar, same as the bent-knee version', core.equip.dragonflagfull, ['bar']);
+  t.ok('none of the three are offered without the right gear', !core.noneOwned.dbpallof && !core.noneOwned.mbchop && !core.noneOwned.dragonflagfull, core.noneOwned);
+  t.ok('all three are offered once the gear is owned', core.allOwned.dbpallof && core.allOwned.mbchop && core.allOwned.dragonflagfull, core.allOwned);
+  t.eq('the anti-rotation press is not flagged for any joint — that is its whole purpose', core.dbpallofFlags, []);
+  t.ok('the loaded standing woodchopper is flagged for a low back, like its seated cousins', core.mbchopLowback, core);
+  t.ok('and a flagged low back is actually routed somewhere safe', core.mbchopLandsSafe, core);
+  t.ok('the full dragon flag inherits the shoulder flag its bent-knee rung carries', core.dragonflagfullShoulder, core);
+  t.ok('and the low-back flag too', core.dragonflagfullLowback, core);
+  t.eq('and lands on the same safe substitutes', core.dragonflagfullSwaps, { safe: 'hollow', lowback: 'plank' });
+  t.ok('all three are reachable through the focus bonus', core.inFocusPool.dbpallof && core.inFocusPool.mbchop && core.inFocusPool.dragonflagfull, core.inFocusPool);
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }
