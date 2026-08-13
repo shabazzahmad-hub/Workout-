@@ -1598,7 +1598,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='241';
+const APP_VERSION='242';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4935,6 +4935,93 @@ function startSpecialCardio(exId,format){
   const sess={session:{name:EX[exId].name,key:'specialcardio',focus:'Conditioning intervals'},ptr:-1,pos:{}};
   _runHiit(sess,list,format);
 }
+/* ---- Fuel-tab step makeup: a real in-app timer for jacks/the bike --------
+   Before this, the movement card told the athlete to "set the timer" on
+   their own clock and type the result in after. This reuses the SAME
+   interval engine as HIIT/skip/grip/box (_runHiit/buildIntervals/ivDone) —
+   a dedicated session key ('cardiomakeup', not 'specialcardio') so it never
+   shares an athlete-facing branch with the pre-existing Special-training
+   bike/sprint sessions, which do not credit movement on finish today — a
+   separate, real gap, deliberately left alone here; this only owns sessions
+   THIS feature starts. */
+function openMakeupTimer(mode){
+  const isBike=mode==='bike';
+  const label=isBike?'🚴 Bike':'🤸 Jumping jacks';
+  let body=`<h3>⏱️ ${label} timer</h3>
+    <p class="muted sm" style="margin:2px 0 14px">However you make it up, the minutes feed straight into today's step target when you're done.</p>
+    <button class="btn t-teal" style="width:100%" onclick="openMakeupStopwatch('${mode}')">⏱️ Stopwatch — start and stop as you go</button>
+    <div class="section-label">${isBike?'Or pick a duration':'Or a structured block'}</div>`;
+  if(isBike){
+    body+=`<div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${[10,15,20,30,45].map(mn=>
+      `<button onclick="startBikeMakeup(${mn})">${mn} min</button>`).join('')}</div>
+      <div class="btnrow" style="gap:8px;align-items:flex-end">
+        <div class="field" style="flex:1;margin:0"><label>Custom minutes</label><input id="mut-bike-custom" type="number" inputmode="numeric" placeholder="25" min="1"></div>
+        <button class="btn primary" onclick="startBikeMakeupCustom()">Start</button>
+      </div>`;
+  }else{
+    body+=`<div class="btnrow" style="gap:8px;align-items:flex-end">
+        <div class="field" style="flex:1;margin:0"><label>Work (min)</label><input id="mut-jk-w" type="number" inputmode="numeric" value="10" min="1"></div>
+        <div class="field" style="flex:1;margin:0"><label>Rest (min)</label><input id="mut-jk-r" type="number" inputmode="numeric" value="2" min="0"></div>
+        <div class="field" style="flex:1;margin:0"><label>Rounds</label><input id="mut-jk-n" type="number" inputmode="numeric" value="2" min="1"></div>
+      </div>
+      <button class="btn primary" style="margin-top:10px;width:100%" onclick="startJackMakeup()">▶ Start block</button>`;
+  }
+  body+=`<div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Cancel</button>`;
+  openSheet(body);
+}
+function startCardioMakeupSession(exId,format){
+  closeSheet();
+  if(!EX[exId])return;
+  const list=[{exId,unit:'time',target:EX[exId].base||30,rest:0,sets:1}];
+  const sess={session:{name:EX[exId].name,key:'cardiomakeup',focus:'Step makeup'},ptr:-1,pos:{},makeupExId:exId};
+  _runHiit(sess,list,format);
+}
+// Reserved runtime keys, same established pattern as startSkipCustom()'s
+// SKIP_FORMATS.skipcustom — no exId of its own, so buildIntervals() falls
+// back to the passed-in list's exId ('bike'), giving one continuous block.
+function startBikeMakeup(mins){
+  mins=Math.max(1,Math.round(mins)||20);
+  ENDURANCE_FORMATS.bikemakeup={name:mins+' min ride',desc:'Custom bike block',w:mins,r:0,n:1};
+  startCardioMakeupSession('bike','bikemakeup');
+}
+function startBikeMakeupCustom(){
+  startBikeMakeup(parseInt(($('#mut-bike-custom')||{}).value)||20);
+}
+function startJackMakeup(){
+  const w=Math.max(1,parseInt(($('#mut-jk-w')||{}).value)||10);
+  const r=Math.max(0,parseInt(($('#mut-jk-r')||{}).value)||0);
+  const n=Math.max(1,parseInt(($('#mut-jk-n')||{}).value)||1);
+  ENDURANCE_FORMATS.jackmakeup={name:w+' / '+r+' × '+n,desc:'Custom jumping-jack block',w,r,n};
+  startCardioMakeupSession('jumpingjack','jackmakeup');
+}
+/* Free stopwatch for either mode — same shape as openSkipTimer()/SKIPT, but
+   the finish credits today's movement fields instead of a separate log. */
+let MUT=null;
+function openMakeupStopwatch(mode){
+  if(MUT&&MUT.tid)clearInterval(MUT.tid);
+  MUT={mode,secs:0,tid:null,running:true};
+  const label=mode==='bike'?'🚴 Bike':'🤸 Jumping jacks';
+  openSheet(`<h3>⏱️ ${label} stopwatch</h3>
+    <p class="muted sm" style="margin:2px 0 14px">Counting up. Tap <b>Stop &amp; log</b> when you're done and the minutes go straight into today's movement.</p>
+    <div style="text-align:center;margin:10px 0 18px"><div id="mut-num" style="font-size:56px;font-weight:900;letter-spacing:1px">0:00</div></div>
+    <button class="btn primary" onclick="makeupStopwatchStop()">■ Stop &amp; log</button>
+    <div style="height:8px"></div>
+    <button class="btn ghost" id="mut-toggle" onclick="makeupStopwatchToggle()">Pause</button>
+    <div style="height:8px"></div>
+    <button class="btn ghost" onclick="makeupStopwatchCancel()">Cancel</button>`);
+  MUT.tid=setInterval(makeupStopwatchTick,1000);
+  try{coachSpeak(label+'. Timer running.');}catch(e){}
+}
+function makeupStopwatchTick(){if(!MUT||!MUT.running)return;MUT.secs++;const e=$('#mut-num');if(e)e.textContent=fmtTime(MUT.secs);}
+function makeupStopwatchToggle(){if(!MUT)return;MUT.running=!MUT.running;const b=$('#mut-toggle');if(b)b.textContent=MUT.running?'Pause':'Resume';}
+function makeupStopwatchCancel(){if(MUT&&MUT.tid)clearInterval(MUT.tid);MUT=null;closeSheet();}
+function makeupStopwatchStop(){
+  if(!MUT)return;const mode=MUT.mode,secs=MUT.secs;if(MUT.tid)clearInterval(MUT.tid);MUT=null;
+  const mins=Math.round(secs/60);
+  closeSheet();
+  if(mins<1){toast('Under a minute — nothing logged');return;}
+  creditMakeup(mode,mins);
+}
 function ivRingHTML(color,ex){return `
   <div class="pl-ring">${plRingMediaHTML(ex)}<div class="pl-pulse" id="ivPulse"></div>
     <svg viewBox="0 0 232 232">
@@ -5057,8 +5144,13 @@ function ivDone(){
      circuits mix several bodyweight movements in one session and have no
      equivalent single dial to rate. */
   const isBike=sess.session.key==='specialcardio'&&INTV.seq[0]&&INTV.seq[0].exId==='bike';
+  // See the comment on openMakeupTimer() — a distinct session key from
+  // specialcardio, so this branch only ever fires for a session THIS
+  // Fuel-tab feature started.
+  const isMakeup=sess.session.key==='cardiomakeup';
+  const makeupIsBike=isMakeup&&sess.makeupExId==='bike';
   $('#ivBody').innerHTML=`
-    <div class="pl-name" style="margin-bottom:2px">${isSkip?'Rope work done 🪢':'Circuit complete 🔥'}</div>
+    <div class="pl-name" style="margin-bottom:2px">${isMakeup?(makeupIsBike?'Ride logged 🚴':'Jacks logged 🤸'):(isSkip?'Rope work done 🪢':'Circuit complete 🔥')}</div>
     <div class="pl-coach" style="margin-bottom:14px">${fmtInfo(INTV.format).name} · ${sess.session.name}</div>
     <div class="grid2" style="width:100%;max-width:440px">
       <div class="stat"><div class="n" style="color:var(--fire-l)">${fmtTime(INTV.workElapsed||1)}</div><div class="l">Work time</div></div>
@@ -5070,13 +5162,20 @@ function ivDone(){
       <button class="btn ghost" style="flex:1" onclick="rateBikeAndClose('right')">💪 Right</button>
       <button class="btn ghost" style="flex:1" onclick="rateBikeAndClose('hard')">🥵 Hard</button>
     </div>`:''}
+    ${makeupIsBike?`<div class="tiny muted" style="margin-top:14px">How did that ride feel?</div>
+    <div class="row" style="gap:8px;margin-top:6px;width:100%;max-width:440px">
+      <button class="btn ghost" style="flex:1" onclick="creditMakeupAndClose('bike',${mins},'easy')">😎 Easy</button>
+      <button class="btn ghost" style="flex:1" onclick="creditMakeupAndClose('bike',${mins},'right')">💪 Right</button>
+      <button class="btn ghost" style="flex:1" onclick="creditMakeupAndClose('bike',${mins},'hard')">🥵 Hard</button>
+    </div>`:''}
     <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:440px;margin-top:18px">
       ${isSkip?`<button class="btn primary" onclick="hiitLogSkip(${mins},${skRounds})">🪢 Log ${Math.max(1,Math.round(mins))} min to my record</button>`:''}
       ${actKey?`<button class="btn primary" onclick="hiitLogAct('${actKey}',${mins},${(SPECIAL_FORMATS[INTV.format]||{}).n||0},${Math.round(((SPECIAL_FORMATS[INTV.format]||{}).w||0)*60)})">${ACTS[actKey].emoji} Log to my ${ACTS[actKey].name} record</button>`:''}
       ${isMetcon?`<button class="btn primary" onclick="hiitLogDone()">Log today's session complete</button>`:''}
+      ${isMakeup&&!makeupIsBike?`<button class="btn primary" onclick="creditMakeupAndClose('jacks',${mins})">🤸 Log ${mins} min to today's steps</button>`:''}
       ${isBike?'':'<button class="btn ghost" onclick="hiitQuit()">Close</button>'}
     </div>`;
-  if(!motivate('done'))coachSpeak(isSkip?'Rope work complete. Outstanding.':'Circuit complete. Outstanding work.');
+  if(!motivate('done'))coachSpeak(isMakeup?(makeupIsBike?'Ride complete. Nice work.':'Jacks complete. Nice work.'):(isSkip?'Rope work complete. Outstanding.':'Circuit complete. Outstanding work.'));
 }
 function hiitToggle(){
   if(!INTV)return;INTV.running=!INTV.running;
@@ -9763,6 +9862,29 @@ function rateBikeAndClose(feel){
   hiitQuit();
   toast(next?('📈 3 easy rides at this level — try "'+next.label+'" next time?'):(feel==='easy'?'Noted':'Logged'));
 }
+/* Shared crediting for the Fuel-tab makeup timer — the guided-interval
+   finish screen and the plain stopwatch both funnel here, so the elapsed
+   minutes always land in the SAME place (setJackVal/setBikeVal's minute
+   currency) regardless of which timer mode was used. Additive, matching
+   the existing +/- nudge buttons and "close it" quick-fill — a timed block
+   run after some manual entry stacks on top of it rather than overwriting. */
+function creditMakeup(mode,mins,feel){
+  let msg='Logged '+mins+' min to today’s movement';
+  if(mode==='bike'){
+    if(feel){
+      rateBikeRide(feel);
+      const next=bikeLevelSuggestion();
+      if(next)msg='📈 3 easy rides at this level — try "'+next.label+'" next time?';
+    }
+    if(movement().unit!=='min')setBikeUnit('min');
+    addBikeVal(mins);
+  }else{
+    if(movement().junit!=='min')setJackUnit('min');
+    addJackVal(mins);
+  }
+  toast(msg);
+}
+function creditMakeupAndClose(mode,mins,feel){creditMakeup(mode,mins,feel);hiitQuit();}
 /* The tick and the number must not contradict each other. Once anything is
    logged the habit mirrors the total; with nothing logged the manual tick is
    left exactly as the athlete set it, because plenty of days are walked
@@ -9895,6 +10017,7 @@ function bikeBlockHTML(m,short,need,lvl,ride,shownVal){
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${BIKE_LEVELS.map(b=>
       `<button class="${m.lvl===b.k?'on':''}" onclick="setBikeLvl('${b.k}')">${b.label}</button>`).join('')}</div>
     <div class="tiny muted" style="margin-bottom:12px">${_ve(lvl.rpe)} · ${_ve(lvl.cue)} · <b>${bikeStepsPerMin(m.lvl)} steps</b>, <b>${r1(kmToShow(bikeKmPerMin(m.lvl)))} ${distUnit()}</b> and <b>${Math.round(bikeKcalPerMin(m.lvl))} kcal</b> a minute</div>
+    <button class="btn t-teal" style="width:100%;margin-bottom:12px" onclick="openMakeupTimer('bike')">⏱️ Time it — guided timer, logs itself</button>
     <div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log the ride as</div>
     <div class="tiny muted" style="margin:-2px 0 8px">Effort only changes what minutes are worth — distance and calories are already the work done. <b>Read calories off the bike and knock ~15% off it</b>: a turbo counts the calories you would have burned sitting still, this field does not.</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${BIKE_UNITS.map(([k,l])=>
@@ -9926,6 +10049,7 @@ function jackBlockHTML(m,short,jneed,jlvl,work){
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${JACK_LEVELS.map(b=>
       `<button class="${m.jlvl===b.k?'on':''}" onclick="setJackLvl('${b.k}')">${b.label}</button>`).join('')}</div>
     <div class="tiny muted" style="margin-bottom:12px">${_ve(jlvl.rpe)} · ${_ve(jlvl.cue)} · <b>${jackStepsPerMin(m.jlvl)} steps</b>, <b>${jackRepsPerMin(m.jlvl)} reps</b> and <b>${Math.round(jackKcalPerMin(m.jlvl))} kcal</b> a minute</div>
+    <button class="btn t-teal" style="width:100%;margin-bottom:12px" onclick="openMakeupTimer('jacks')">⏱️ Time it — guided timer, logs itself</button>
     <div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log it as</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${JACK_UNITS.map(([k,l])=>
       `<button class="${m.junit===k?'on':''}" onclick="setJackUnit('${k}')">${l}</button>`).join('')}</div>
@@ -9944,7 +10068,7 @@ function jackBlockHTML(m,short,jneed,jlvl,work){
     const add=m.junit==='min'?jneed.min:(m.junit==='reps'?jneed.reps:jneed.kcal);
     h+=`<button class="btn sm ghost" style="width:100%;margin-top:10px" onclick="addJackVal(${add})">Log the ${add.toLocaleString()} ${jackUnitLabel(m.junit)} that closes it</button>`;
   }
-  h+=`<div class="note info" style="margin-top:10px;margin-bottom:0"><b>Break it up.</b> Nobody does forty minutes of jacks in one go, and you do not have to — four sets of ten minutes across the day count exactly the same. Set the timer, do a block, add it here.</div>`;
+  h+=`<div class="note info" style="margin-top:10px;margin-bottom:0"><b>Break it up.</b> Nobody does forty minutes of jacks in one go, and you do not have to — four sets of ten minutes across the day count exactly the same. Use the timer above for each block, or add minutes here as you go.</div>`;
   if(jlvl.impact==='high'){
     h+=`<div class="note warn" style="margin-bottom:0"><b>Somebody underneath you?</b> <b>Step jacks</b> is the same movement without the jump — quieter, easier on the knees and ankles, and it still counts. It pays ${jackStepsPerMin('step')} steps a minute against ${jackStepsPerMin(m.jlvl)}.</div>`;
   }

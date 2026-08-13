@@ -1963,6 +1963,80 @@ safety (`Array.filter`/`delete` are both no-op-safe), the zero-set/partial/
 pain-stop completion gate, every body-metric input's bounds-checking, the
 settings screen, and the absence of hardcoded placeholder data.
 
+## A real in-app timer for the step-makeup jacks/bike blocks (v242)
+
+Requested directly: "the days I have to make up my steps with jumping jacks
+or the bike... I should be able to select start timer and stop it as a
+stopwatch, or set a timer for 10 minutes followed by rest, followed by 10
+minutes again... same for the bike... right from the same Fuel tab." Before
+this, `jackBlockHTML()`/`bikeBlockHTML()` had no timing mechanism at all —
+the athlete self-timed on an external clock and typed the result in after
+(the card's own copy said so: *"Set the timer, do a block, add it here"*).
+
+**Reused the existing interval engine rather than building a second one.**
+`_runHiit`/`buildIntervals`/`INTV`/`ivDone` already run HIIT circuits,
+skip-rope blocks, grip hangs and shadow-boxing rounds as a full-screen
+guided timer — work/rest rings, audio cues, wall-clock-anchored countdowns
+that survive the phone sleeping, wake lock. `startJackMakeup()`/
+`startBikeMakeup(mins)` register a runtime-built entry into
+`ENDURANCE_FORMATS` (the exact reserved-key pattern `startSkipCustom()`
+already established for `SKIP_FORMATS.skipcustom`) and hand it to the same
+`_runHiit()` every other interval session uses. A plain stopwatch
+(`openMakeupStopwatch`/`MUT`) is a near-verbatim copy of the existing
+`openSkipTimer()`/`SKIPT` shape, because that's already exactly "count up,
+Stop & log."
+
+**A dedicated session key, not a shared one — discovered a real, separate
+gap in the process and deliberately did not fix it here.** The obvious
+reuse for the bike duration picker was `startSpecialCardio('bike',format)`,
+the exact function the pre-existing "Special training → Bike trainer" menu
+already calls. Reading `ivDone()` to see how that session finishes revealed
+it credits *nothing* to movement/step-equivalent today — `rateBikeAndClose()`
+only updates the `BIKE_LEVELS` streak-suggestion state, never touches
+`bikeVal`. A bike interval run from Special training has always given zero
+step credit for real, measurable effort. Tempting to fix both flows at
+once since it's the same code path, but this feature is scoped to the
+Fuel tab; changing `startSpecialCardio`'s finish behavior risks the
+existing, tested Special-training UX for entry points nobody asked to
+change. `cardiomakeup` is a new session key precisely so this feature's
+crediting logic (`creditMakeup`/`creditMakeupAndClose`) only ever fires
+for sessions this feature itself started, leaving `specialcardio`/`isBike`
+completely untouched — verified with a check that runs the OLD path start
+to finish and asserts it *still* credits zero, proving no leakage in
+either direction. The old gap is named here, not fixed.
+
+**Additive, not overwriting — matching the manual +/- buttons' own
+contract, and the one place mutation-testing caught a real coverage
+hole.** A timed block stacks on top of whatever was already logged
+(`addJackVal`/`addBikeVal`, not `setJackVal`/`setBikeVal`), the same as
+the existing nudge buttons and the "close it" quick-fill. The bike side of
+this mutated clean on the FIRST pass: a single stopwatch run starting from
+a zero baseline can't distinguish `add` from `set` (0+20 and just-set-to-20
+are the same number), so the check needed a SECOND stacked run — the
+identical shape of gap CLAUDE.md's own "under a minute" note describes
+elsewhere in this file, just for a different property. Currency
+re-expression is reused too: crediting always switches the unit to `min`
+via `setJackUnit`/`setBikeUnit` first if it wasn't already, so a session
+logged in reps or distance is correctly re-expressed into minutes before
+the timer's own minutes are added on top — not clobbered.
+
+**`Math.round(secs/60)` rounds a half-minute UP, not down — a real
+implementation detail inherited from `skipTimerStop()`/`actTimerStop()`,
+not a new bug.** The first draft of the "under a minute" guard check used
+30 seconds and failed, because `Math.round(0.5)` is `1` in JS: a 30-second
+block already clears the guard and gets logged as 1 minute, exactly as
+`skipTimerStop()` has always done. That's consistent behavior across every
+stopwatch in the file, not something this round needed to fix — the check
+was wrong, not the code, and got moved to a genuinely sub-threshold value
+(20 seconds) to actually exercise the guard.
+
+**Verified live in a real browser, not just via `page.evaluate()`.** Real
+`.click()`s through Fuel → "Time it" → Stopwatch → Stop & log confirmed the
+toast and the credited minutes end to end, and the rendered sheets
+(chooser, stopwatch) were screenshotted to confirm the UI actually looks
+right — no overlap, correct button states, consistent with the rest of the
+app's styling.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
