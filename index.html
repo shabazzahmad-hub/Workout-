@@ -1692,7 +1692,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='260';
+const APP_VERSION='261';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -9012,8 +9012,35 @@ function openQuickAdd(pre){
 function foodAIReady(){return !!(STATE.settings&&STATE.settings.foodAiKey);}
 // Try current free-tier vision models in order; a retired/renamed model returns 404
 // and we fall through to the next. A user-set model (Settings) is honored first.
-const FOOD_AI_MODELS=['gemini-2.5-flash','gemini-2.0-flash','gemini-flash-latest'];
-function foodAIModels(){const p=STATE.settings&&STATE.settings.foodAiModel;return p?[p]:FOOD_AI_MODELS.slice();}
+/* `gemini-flash-latest` FIRST, and it is an alias rather than a pinned
+   version on purpose. Google retired `gemini-2.5-flash` and `gemini-2.0-flash`
+   for keys created after a certain date — a new key gets a hard 404 saying
+   "no longer available to new users" — so the old order spent two dead
+   round-trips before reaching the only model that answers, and handed it
+   whatever was left of the budget. Diagnosed from a real phone with
+   runAIDiagnostic(), not guessed. An alias cannot rot the same way: it always
+   resolves to whatever the current flash model is. The pinned ids stay behind
+   it for older keys that still have access. */
+const FOOD_AI_MODELS=['gemini-flash-latest','gemini-2.5-flash','gemini-2.0-flash'];
+/* A model that answered before is overwhelmingly likely to answer again, and
+   a 404 for this key is PERMANENT — re-trying a retired model on every single
+   import is pure latency the athlete pays for nothing. Remember the one that
+   worked and lead with it. Still only a reordering: the full list is always
+   tried, so a remembered model that later breaks costs one wasted call, not a
+   dead end. */
+function foodAIModels(){
+  const s=STATE.settings||{};
+  if(s.foodAiModel)return [s.foodAiModel];              // explicit override wins
+  const list=FOOD_AI_MODELS.slice();
+  const good=s.foodAiModelOk;
+  if(good&&list.includes(good))return [good].concat(list.filter(m=>m!==good));
+  return list;
+}
+function _rememberGoodModel(m){
+  try{if(!STATE.settings)STATE.settings={};
+    if(m&&STATE.settings.foodAiModelOk!==m){STATE.settings.foodAiModelOk=m;save();}
+  }catch(e){}
+}
 function setFoodAiKey(v){if(!STATE.settings)STATE.settings={};STATE.settings.foodAiKey=(v||'').trim();save();toast(STATE.settings.foodAiKey?'Gemini key saved 🔒':'Cleared');if(TAB==='guide')renderGuide();}
 /* ---- AI connection diagnostic -------------------------------------------
    Four separate failures of the photo/screenshot import in one day (timeout,
@@ -9070,6 +9097,7 @@ async function runAIDiagnostic(){
   /* Reachability first, with a SHORT bound: if the network is dead this says
      so in 6 seconds instead of 25, and the rest of the run is pointless. */
   const ping=await _aiPing(models[0],6000);
+  if(ping.ok)_rememberGoodModel(models[0]);
   out.push(_diagLine('Reaching Google ('+models[0]+')',ping));paint();
   if(!ping.ok&&ping.status===0){
     const slow=await _aiPing(models[0],20000);
@@ -9089,7 +9117,12 @@ async function runAIDiagnostic(){
     for(const m of models.slice(1)){
       const p2=await _aiPing(m,8000);
       out.push(_diagLine('Trying '+m,p2));paint();
-      if(p2.ok){out.push(`<div class="note info" style="margin-top:10px">The first model is unavailable but <b>${_ve(m)}</b> works. Google is having trouble with one model — imports should still succeed.</div>`);paint();return;}
+      if(p2.ok){
+        /* Record it. A diagnostic that identifies the one working model and
+           then lets the app keep leading with a dead one has told the athlete
+           something true and changed nothing. */
+        _rememberGoodModel(m);
+        out.push(`<div class="note ok" style="margin-top:10px"><b>${_ve(m)}</b> works — the others are retired for this key (Google does that to older model names). Saved it as your model, so imports will use it first from now on.</div>`);paint();return;}
     }
     out.push(`<div class="note warn" style="margin-top:10px">Every model is refusing right now — that is Google being overloaded, not your phone or your key. Try again in a few minutes.</div>`);paint();return;
   }
@@ -9248,6 +9281,7 @@ async function _visionEstimate(dataUrl,promptText,opts){
       /* Model-authored free text heading for innerHTML — every render site escapes
          it with _ve(). Collapse whitespace so a multi-line reply cannot break the
          one-line layout it sits in. */
+      _rememberGoodModel(model);   // lead with this one next time
       return {name:String(o.name||'Meal').slice(0,40),kcal:kcal,p:p,c:c,f:f,portion:cleanPortion(o.portion)};
     }catch(e){
       lastErr=e;
