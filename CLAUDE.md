@@ -2228,6 +2228,81 @@ membership, each independently, each by the specific check aimed at it.
 Image shipped as the same 800×800 grey-backdrop "PHOTO PENDING" placeholder
 established in v224, added to `sw.js`'s `EXTRA` tier.
 
+## The photo estimate learns portions, and Fuel loses its suggested menu (v245)
+
+Two Fuel-tab changes, both driven by the athlete directly.
+
+**The AI food photo estimated calories and macros but never said how much food
+it thought it was looking at.** Asked whether a snap of a salmon fillet would
+report the portion in ounces or grams, the honest answer was no — the prompt
+asked for a name, `kcal`, and three macro grams, nothing else. `portion` is now
+a free-text field ("about 6 oz (170 g)", "1 cup cooked", "2 slices"), one string
+rather than a number, because the useful unit genuinely differs by food and
+forcing everything into grams would be a worse answer for a banana than for a
+steak.
+
+**It is deliberately NOT in the schema's `required` list.** A model that omits
+the portion must still produce a usable calorie estimate — no portion is
+strictly better than no estimate, and the absent case degrades exactly to the
+pre-v245 behaviour. Same restrictive-default instinct as everywhere else in this
+file, pointed at a different failure.
+
+**The portion is stored only when there IS one.** The first draft wrote
+`portion:''` onto every repaired row, which grew every backup by a dead key for
+every meal ever logged and broke `20-diet`'s "a well-formed day survives the
+repair byte for byte" check. That break was the right signal: a manual add has no
+portion, and the fix (`...(cleanPortion(x)?{portion:…}:{})`) leaves untouched
+rows genuinely untouched, which is what that check exists to prove.
+
+**`cleanPortion()` is one function called from four sites, not four copies of the
+rule** — the parser, `logFood()`, `saveFood()`'s edit path and
+`normalizeState()`. It rejects non-strings rather than coercing them: `String({})`
+is the literal `"[object Object]"`, which would render as a portion beside a real
+meal, and the first draft did exactly that before the mutation caught it. It also
+collapses whitespace, because the diary row is one line and a stored newline
+breaks it.
+
+**A portion is user-controlled content in the `importData()` sense, even though a
+language model wrote it** — it reaches `innerHTML` at two sites (the log sheet and
+the diary row) and both escape with `_ve()`. The check queries for the injected
+**element** rather than scanning for a substring, per this file's own note about
+the 126 legitimate `onerror` thumbnails that made a substring assertion useless.
+
+**Fuel's "Today's plan" card is gone at the athlete's request.** It suggested a
+breakfast/lunch/dinner/snack with a "Log this meal" button on each. Nothing was
+ever auto-logged — every meal needed a deliberate tap — but a prescribed menu
+sitting above the athlete's own diary read as clutter on the one screen where
+they record what they actually ate. The GENERATOR is kept, not deleted:
+`currentMealPlan`/`_planStillValid`/`_planStamp` are still directly covered by
+suite 20, and the same worked days still power the Reference tab, which is
+opt-in browsing rather than something that greets you on the log screen.
+
+**Removing a card breaks the checks that asserted it renders, and deleting them
+would be the wrong repair.** Three checks in `09-audit` read the plan out of
+`#v-fuel`. Their DAY-level invariants (the worked day hits the calorie and protein
+targets, and does not reshuffle) are unchanged and still matter, because
+Reference and the shopping list both still serve those days — so the markup
+assertions were re-pointed at the Reference tab, where a worked day still
+renders, rather than dropped. Left aimed at Fuel they would have passed on an
+empty tab, which is worse than deleting them outright: a check that cannot fail
+reads as coverage and is not. `showsBothTargets` also needed its phrasing
+updated — `'of ' + kcal` belonged to the removed card's own header; Reference
+states them as "Weighed out for X g protein and Y kcal".
+
+**The source-scan check for the removed call hit this file's own documented
+comment trap on the first run.** The explanatory block comment left where
+`h+=mealPlanHTML();` used to be names the function in prose, and
+`/mealPlanHTML\(\)/` over `renderFuel.toString()` matched the explanation — the
+same false positive a comment mentioning `c.put()` once produced in the `sw.js`
+check. Fixed by stripping comments before searching, not by removing the word
+from the comment: the comment has to name what it is explaining.
+
+All eight mutants seeded against the new checks were caught, each by its own
+dedicated check — the coercing `cleanPortion`, the unescaped diary render, the
+hidden sheet row, a dropped `logFood` portion, an always-written empty key, a
+stale portion leaking into the next sheet, the schema field, and re-adding the
+plan card to Fuel.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

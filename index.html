@@ -1642,7 +1642,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='244';
+const APP_VERSION='245';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -8502,17 +8502,31 @@ const COMMON_FOODS=QUICK_PICKS.map(n=>{const f=FOOD_DB.find(x=>x.n===n)||{n:n,k:
 const MEALS=[['b','🍳 Breakfast'],['l','🥗 Lunch'],['d','🍽️ Dinner'],['s','🍎 Snacks']];
 function currentMealSlot(){const h=new Date().getHours();return h<11?'b':(h<16?'l':(h<21?'d':'s'));}
 // Totals carry all four macros; older entries (kcal/protein only) count as 0 c/f.
+/* The portion note is free text a language model wrote, and an imported backup can
+   carry literally any shape in its place. ONE copy of the rule, called from every
+   site that accepts one — the parser, the log write and normalizeState() — because
+   three hand-kept copies is three places for it to drift.
+
+   Non-strings become '' rather than being coerced: String({}) is the literal
+   "[object Object]", which would render as a portion beside a real meal. Whitespace
+   collapses because the diary row is one line, and a stored newline breaks it. */
+function cleanPortion(v){return (typeof v==='string')?v.replace(/\s+/g,' ').trim().slice(0,40):'';}
 function foodTotals(){const d=nutToday();const f=d.food||[];
   return {kcal:f.reduce((a,x)=>a+(x.kcal||0),0),p:f.reduce((a,x)=>a+(x.p||0),0),
           c:f.reduce((a,x)=>a+(x.c||0),0),f:f.reduce((a,x)=>a+(x.f||0),0),n:f.length};}
-function logFood(name,kcal,p,c,f,meal){const d=nutToday();if(!Array.isArray(d.food))d.food=[];
+function logFood(name,kcal,p,c,f,meal,portion){const d=nutToday();if(!Array.isArray(d.food))d.food=[];
   d.food.push({name:String(name||'Meal').slice(0,60),kcal:Math.round(kcal||0),p:Math.round(p||0),
-    c:Math.round(c||0),f:Math.round(f||0),meal:meal||currentMealSlot(),at:Date.now()});
+    c:Math.round(c||0),f:Math.round(f||0),meal:meal||currentMealSlot(),at:Date.now(),
+    /* Only written when there IS one. A manual add carries no portion, and an
+       empty key on every row would grow every backup for nothing. */
+    ...(cleanPortion(portion)?{portion:cleanPortion(portion)}:{})});
   syncProteinHabit();save();toast('Logged ✓');closeSheet();renderFuel();try{checkAchievements();}catch(e){}}
 function removeFood(idx){const d=nutToday();if(d.food&&d.food[idx]){d.food.splice(idx,1);syncProteinHabit();save();renderFuel();}}
 // Edit a logged item in place (re-uses the add sheet, then replaces the entry).
 function editFood(idx){const d=nutToday();const it=d.food&&d.food[idx];if(!it)return;
-  openQuickAdd({name:it.name,kcal:it.kcal,p:it.p,c:it.c,f:it.f,meal:it.meal,editIdx:idx});}
+  // carry the portion through an edit — it describes what was eaten, and dropping
+  // it on every correction would erase the photo's own record of the amount
+  openQuickAdd({name:it.name,kcal:it.kcal,p:it.p,c:it.c,f:it.f,meal:it.meal,editIdx:idx,portion:it.portion});}
 function quickPick(i){const f=COMMON_FOODS[i];rememberFood(f.name,f.kcal,f.p,f.c,f.f);logFood(f.name,f.kcal,f.p,f.c,f.f);}
 /* ---- Macro targets: protein from bodyweight, fat ~27% of calories, carbs fill
    the rest. Only shown once a calorie target exists. ---- */
@@ -8566,12 +8580,17 @@ function saveFood(){
   const meal=($('#fa-meal')&&$('#fa-meal').value)||currentMealSlot();
   rememberFood(name,Math.round(perK),Math.round(perP),Math.round(perC),Math.round(perF));
   const label=q!==1?(name+' ×'+_fmtQty(q)):name;
+  /* Held as the PER-SERVING amount, never multiplied by the quantity — the '×2'
+     already in the label is what carries the multiple, so scaling this too would
+     double-count it on screen. */
+  const portion=String(saveFood._portion||'').slice(0,40);
   const ei=saveFood._editIdx;
   if(typeof ei==='number'){        // editing an existing entry: replace in place
-    const d=nutToday();if(d.food&&d.food[ei]){d.food[ei]={name:label.slice(0,60),kcal,p:pr,c:cb,f:ft,meal,at:d.food[ei].at||Date.now()};save();}
-    saveFood._editIdx=null;toast('Updated ✓');closeSheet();renderFuel();return;
+    const d=nutToday();if(d.food&&d.food[ei]){d.food[ei]={name:label.slice(0,60),kcal,p:pr,c:cb,f:ft,meal,at:d.food[ei].at||Date.now(),...(portion?{portion}:{})};save();}
+    saveFood._editIdx=null;saveFood._portion='';toast('Updated ✓');closeSheet();renderFuel();return;
   }
-  logFood(label,kcal,pr,cb,ft,meal);
+  logFood(label,kcal,pr,cb,ft,meal,portion);
+  saveFood._portion='';
 }
 /* ---- Food search: local database first (instant, offline), then Open Food
    Facts for packaged/branded products when online. No API key required. ---- */
@@ -8769,6 +8788,12 @@ function openQuickAdd(pre){
      passes undefined and still opens empty. */
   const pf=v=>(typeof v==='number'&&isFinite(v))?v:(v||'');
   saveFood._editIdx=editing?pre.editIdx:null;
+  /* The photo's portion estimate has no input field of its own — it is a note
+     about what the camera saw, not something the athlete types. Stashed here the
+     same way _editIdx is, so saveFood() can carry it onto the entry. Set on EVERY
+     open, so a later manual add or quick-pick cannot inherit a stale portion from
+     a photo estimate three sheets ago. */
+  saveFood._portion=cleanPortion(pre.portion);
   const filled=(pre.kcal||pre.p||pre.c||pre.f);
   const slot=pre.meal||currentMealSlot();
   openSheet(`<h3>${editing?'✏️ Edit item':'➕ Log food'}</h3>
@@ -8792,6 +8817,7 @@ function openQuickAdd(pre){
     <div class="tiny" id="fa-total" style="font-weight:800;margin:8px 2px 4px">= ${pre.kcal||0} kcal · ${pre.p||0}g P · ${pre.c||0}g C · ${pre.f||0}g F</div>
     ${(filled&&!editing)?`<div style="margin:8px 0;padding:10px 12px;border-radius:12px;background:rgba(46,204,113,.12);border:1px solid var(--green)">
       <div style="font-weight:800">${_ve(pre.name||'Food')}</div>
+      ${pre.portion?`<div class="tiny" style="margin-top:3px;font-weight:700">📏 Estimated portion: ${_ve(pre.portion)}</div>`:''}
       <div class="tiny muted" style="margin-top:2px">Per serving as shown — approximate. Set the quantity, tweak if needed, then tap <b>Save</b> to log it.</div>
     </div>`:'<div style="height:6px"></div>'}
     <button class="btn primary" onclick="saveFood()">${editing?'Update item':(filled?'Save to log':'Save')}</button>
@@ -8829,10 +8855,13 @@ async function estimateFoodFromImage(dataUrl){
   // reply with prose/markdown that leaves us with "no estimate". Generous token
   // budget so the reply is never truncated.
   const body={contents:[{parts:[
-    {text:'Estimate the nutrition of the food in this photo for the visible portion. Return a short food name, "kcal" = whole-number total calories, and whole-number GRAMS for "protein", "carbs" and "fat" (small numbers — e.g. a banana is about 1 g protein, 27 g carbs, 0 g fat). Never put the calorie number in a macro field.'},
+    {text:'Estimate the nutrition of the food in this photo for the visible portion. Return a short food name, "kcal" = whole-number total calories, and whole-number GRAMS for "protein", "carbs" and "fat" (small numbers — e.g. a banana is about 1 g protein, 27 g carbs, 0 g fat). Never put the calorie number in a macro field. Also return "portion": a short plain description of the amount you estimated, using whatever unit suits the food — a weight ("about 6 oz (170 g)"), a volume ("1 cup cooked"), or a count ("2 slices", "1 medium banana"). Give a weight in both ounces and grams when the food is meat, fish or cheese. Keep it under 40 characters and describe the amount only, never the nutrition.'},
     {inline_data:{mime_type:mime,data:b64}}
   ]}],generationConfig:{temperature:0.2,maxOutputTokens:800,responseMimeType:'application/json',
-    responseSchema:{type:'OBJECT',properties:{name:{type:'STRING'},kcal:{type:'INTEGER'},protein:{type:'INTEGER'},carbs:{type:'INTEGER'},fat:{type:'INTEGER'}},required:['name','kcal','protein']}}};
+    /* portion is deliberately NOT in `required`: a model that omits it must still
+       produce a usable calorie/macro estimate. No portion is better than no
+       estimate at all, so an absent one degrades to the pre-v245 behaviour. */
+    responseSchema:{type:'OBJECT',properties:{name:{type:'STRING'},kcal:{type:'INTEGER'},protein:{type:'INTEGER'},carbs:{type:'INTEGER'},fat:{type:'INTEGER'},portion:{type:'STRING'}},required:['name','kcal','protein']}}};
   const models=foodAIModels();let lastErr=null;
   for(const model of models){
     try{
@@ -8855,7 +8884,10 @@ async function estimateFoodFromImage(dataUrl){
       // can never out-calorie the food. This caps a model that echoes the calorie
       // number into a macro (a 105-kcal banana can't have 105 g protein — max ~26).
       if(kcal>0){p=Math.min(p,Math.round(kcal/4));c=Math.min(c,Math.round(kcal/4));f=Math.min(f,Math.round(kcal/9));}
-      return {name:String(o.name||'Meal').slice(0,40),kcal:kcal,p:p,c:c,f:f};
+      /* Model-authored free text heading for innerHTML — every render site escapes
+         it with _ve(). Collapse whitespace so a multi-line reply cannot break the
+         one-line layout it sits in. */
+      return {name:String(o.name||'Meal').slice(0,40),kcal:kcal,p:p,c:c,f:f,portion:cleanPortion(o.portion)};
     }catch(e){
       lastErr=e;
       // Google's free quotas are PER-MODEL: a model can be unavailable (404),
@@ -8878,7 +8910,7 @@ function foodPhoto(){
     rd.onload=async()=>{toast('Estimating…');const gen=_sheetGen;   // Gemini can take several seconds — never clobber a sheet opened meanwhile
       try{const du=await _downscale(rd.result,768);const est=await estimateFoodFromImage(du);
         if(gen!==_sheetGen){toast('📷 Estimated '+(est.name||'food')+' · ~'+est.kcal+' kcal — tap ➕ to log it',6000);return;}
-        openQuickAdd(est);toast('📷 '+(est.name||'Food')+' · ~'+est.kcal+' kcal, '+est.p+'g — tap Save to log',5000);
+        openQuickAdd(est);toast('📷 '+(est.name||'Food')+(est.portion?' · '+est.portion:'')+' · ~'+est.kcal+' kcal, '+est.p+'g — tap Save to log',5000);
       }catch(e){const msg=String((e&&e.message)||e||'failed');toast('Photo estimate failed — '+msg.slice(0,120),6000);
         if(gen===_sheetGen)openQuickAdd();}};
     rd.readAsDataURL(f);};
@@ -8925,7 +8957,7 @@ function intakeHTML(){
       rows.forEach(({f,i})=>{
         h+=`<div class="kv" style="border-top:1px solid var(--line);gap:6px">
           <button onclick="editFood(${i})" style="flex:1;min-width:0;text-align:left;background:none;border:none;color:var(--ink);cursor:pointer;padding:8px 0">
-            ${_ve(f.name)} <span class="tiny muted">· ${f.kcal} kcal · ${f.p}p${f.c?' · '+f.c+'c':''}${f.f?' · '+f.f+'f':''}</span></button>
+            ${_ve(f.name)} <span class="tiny muted">· ${f.kcal} kcal · ${f.p}p${f.c?' · '+f.c+'c':''}${f.f?' · '+f.f+'f':''}</span>${f.portion?`<span class="tiny muted"> · 📏 ${_ve(f.portion)}</span>`:''}</button>
           <button class="chip" style="flex:0 0 auto" onclick="removeFood(${i})">✕</button></div>`;
       });
     });
@@ -11508,8 +11540,17 @@ function renderFuel(){
   h+=intakeHTML();
   // eating window (optional) — sits above the plan because it retimes it
   h+=eatWindowHTML();
-  // meal plan + recipes
-  h+=mealPlanHTML();
+  /* The "Today's plan" card (mealPlanHTML) used to render here — a suggested
+     breakfast/lunch/dinner/snack with a "Log this meal" button on each. Removed
+     at the athlete's request: they log what they actually ate, by photo or by
+     hand, and a prescribed menu sitting above their own diary read as clutter
+     rather than help. Nothing was ever auto-logged by it — every meal needed a
+     deliberate tap — but the suggestions themselves were unwanted.
+
+     mealPlanHTML()/_recipePlanHTML() are KEPT, not deleted: the generator behind
+     them (currentMealPlan/_planStillValid/_planStamp) is still directly covered
+     by suite 20, and the same month of days still powers the Reference tab, which
+     is opt-in browsing rather than something that greets you on the log screen. */
   // water tracker
   const wc=t.water||0;const wpct=Math.min(100,Math.round(wc/wt*100));
   h+=`<div class="section-label">Hydration</div><div class="card pad">
@@ -12591,7 +12632,8 @@ function normalizeState(){
          .map(x=>({name:String(x.name==null?'Meal':x.name).slice(0,60),
            kcal:num(x.kcal,20000),p:num(x.p,2000),c:num(x.c,2000),f:num(x.f,2000),
            meal:['b','l','d','s'].includes(x.meal)?x.meal:'l',
-           at:(typeof x.at==='number'&&isFinite(x.at))?x.at:0}));
+           at:(typeof x.at==='number'&&isFinite(x.at))?x.at:0,
+           ...(cleanPortion(x.portion)?{portion:cleanPortion(x.portion)}:{})}));
    });
    STATE.nutrition.days=days;}
   /* A diet is not a boolean. `!STATE.nutrition.diet` caught '' and null and

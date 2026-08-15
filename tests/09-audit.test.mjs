@@ -1114,20 +1114,33 @@ export default async function run() {
   t.ok('every day still lands on the protein target after substitution',
     food.worstGap <= 12, { worstGap: food.worstGap });
 
-  // ---- today's plan is a worked day, not a random draw ---------------------
+  /* ---- today's plan is a worked day, not a random draw --------------------
+     The DAY-level invariants below are unchanged and still matter: the same
+     worked days feed the Reference tab and the shopping list, so they must
+     still land on the athlete's real targets.
+
+     What moved is where they are READ FROM. v245 removed the "Today's plan"
+     card from Fuel at the athlete's request — they log what they actually ate,
+     by photo or by hand — so the three markup assertions now run against the
+     Reference tab, which is where a worked day still renders. Pointing them at
+     Fuel would have made them pass on an empty tab, which is worse than
+     deleting them: a check that cannot fail reads as coverage and is not. */
   const plan = await page.evaluate(() => {
     const o = {};
-    go('fuel');
-    const v = document.querySelector('#v-fuel').innerHTML;
+    go('ref'); renderRef();
+    const v = document.querySelector('#v-ref').innerHTML;
     const T = refTargets(), d = todaysWorkedDay().day;
-    o.usesWorkedDay = /Today's plan/.test(v) && new RegExp('day \\d+ of ' + REF_DAYS.length).test(v);
+    o.usesWorkedDay = new RegExp('of the ' + REF_DAYS.length + ' days|' + REF_DAYS.length + ' days').test(v)
+      && /Log this meal/.test(v);
     /* The generator picked on CALORIES alone against a library that topped out
        below the per-slot target, so it undershot every day: 1,500-1,620 kcal
        and 103-139 g protein against 1,970 and 155, then told the athlete to
        multiply every quantity by 1.3x. */
     o.hitsCalories = Math.abs(d.kcal - T.kcal) < T.kcal * 0.12;
     o.hitsProtein = Math.abs(d.p - T.p) <= 12;
-    o.showsBothTargets = v.includes('of ' + T.kcal) && v.includes('of ' + T.p);
+    // Reference states them as "Weighed out for <p> g protein and <kcal> kcal";
+    // the old 'of <n>' phrasing belonged to the removed Fuel card's own header
+    o.showsBothTargets = v.includes(T.p + ' g protein') && v.includes(T.kcal + ' kcal');
     o.noScalingBanner = !/Scale these portions/.test(v) && !/multiply each quantity/i.test(v);
     o.loggable = /logRefMeal/.test(v);
     // deterministic within a day, so it does not reshuffle on every render

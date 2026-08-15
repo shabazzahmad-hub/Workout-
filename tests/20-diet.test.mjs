@@ -425,6 +425,150 @@ export default async function run() {
     t.ok('with a message that reads as a timeout, not a generic failure', /time/i.test(r.msg || ''), r);
   }
 
+  /* ---- the photo estimate's portion note (v245) ---------------------------
+     The AI food photo now also returns a portion size ("about 6 oz (170 g)",
+     "1 cup cooked", "2 slices"). It is free text a language model wrote, so it
+     is both an injection path (importData accepts arbitrary JSON) and a shape
+     hazard, and it must never cost the athlete the calorie estimate itself. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      // the schema asks for it but does NOT require it — an estimate must still
+      // land when the model omits the portion entirely
+      const src = estimateFoodFromImage.toString();
+      o.inSchema = /portion:\{type:'STRING'\}/.test(src);
+      o.notRequired = /required:\['name','kcal','protein'\]/.test(src);
+
+      // cleanPortion is the ONE copy of the rule; every site calls it
+      o.clean = {
+        str: cleanPortion('about 6 oz (170 g)'),
+        obj: cleanPortion({}),          // String({}) would be "[object Object]"
+        arr: cleanPortion(['6 oz']),
+        num: cleanPortion(170),
+        nul: cleanPortion(null),
+        undef: cleanPortion(undefined),
+        multiline: cleanPortion('about 6 oz\n(170 g)'),
+        long: cleanPortion('x'.repeat(200)).length,
+      };
+      return o;
+    });
+    t.ok('the response schema asks the model for a portion', r.inSchema, r);
+    t.ok('but does not require it — an omitted portion must not lose the whole estimate', r.notRequired, r);
+    t.eq('a real portion string passes through intact', r.clean.str, 'about 6 oz (170 g)');
+    t.eq('an object becomes empty, never the literal "[object Object]"', r.clean.obj, '');
+    t.eq('and so does an array', r.clean.arr, '');
+    t.eq('and a number — a portion is text, not a quantity to coerce', r.clean.num, '');
+    t.eq('null is empty', r.clean.nul, '');
+    t.eq('undefined is empty', r.clean.undef, '');
+    t.eq('a newline collapses, so it cannot break the one-line diary row', r.clean.multiline, 'about 6 oz (170 g)');
+    t.eq('and it is bounded', r.clean.long, 40);
+  }
+  {
+    // it survives a real log → render → repair round trip, and is ESCAPED on the
+    // way to innerHTML: importData() accepts arbitrary JSON, so a portion is
+    // user-controlled content exactly like profile.name is
+    const r = await page.evaluate(() => {
+      const o = {};
+      const day = nutToday(); day.food = [];
+      logFood('Salmon', 340, 40, 0, 20, 'd', 'about 6 oz (170 g)');
+      const row = nutToday().food[nutToday().food.length - 1];
+      o.stored = row.portion;
+      // a manual add writes NO portion key at all — an empty one on every row
+      // would grow every backup for nothing
+      logFood('Plain toast', 90, 3, 17, 1, 'b');
+      o.manualHasKey = 'portion' in nutToday().food[nutToday().food.length - 1];
+
+      go('fuel'); renderFuel();
+      const txt = (document.querySelector('.view.active') || {}).innerText || '';
+      o.onScreen = txt.includes('about 6 oz (170 g)');
+
+      /* The sheet the athlete actually confirms against, driven exactly the way
+         foodPhoto() drives it — the estimate object straight into openQuickAdd. */
+      openQuickAdd({ name: 'Salmon', kcal: 340, p: 40, c: 0, f: 20, portion: 'about 6 oz (170 g)' });
+      o.sheetShows = (document.querySelector('#sheet') || {}).innerText.includes('about 6 oz (170 g)');
+      closeSheet();
+      openQuickAdd({ name: 'Bad', kcal: 10, p: 1, c: 0, f: 0, portion: '<img src=y onerror=window.__pwn2=1>' });
+      o.sheetInjected = !!document.querySelector('#sheet img[src="y"]');
+      closeSheet();
+      /* A plain manual add opened right after a photo estimate must not inherit
+         the last one's portion — saveFood._portion is set on EVERY open for this
+         reason, not only when a portion is present. */
+      openQuickAdd();
+      o.staleSheet = !!saveFood._portion;
+      closeSheet();
+
+      // XSS: a crafted portion must render as text, not as an element
+      nutToday().food = [{ name: 'X', kcal: 10, p: 1, c: 0, f: 0, meal: 'b', at: Date.now(),
+        portion: '<img src=x onerror=window.__pwn=1>' }];
+      renderFuel();
+      o.injected = !!document.querySelector('.view.active img[src="x"]');
+      o.pwned = !!window.__pwn;
+      return o;
+    });
+    t.eq('a photo-logged portion is stored on the entry', r.stored, 'about 6 oz (170 g)');
+    t.ok('the log sheet shows it before the athlete saves — the first surface after a snap', r.sheetShows, r);
+    t.ok('and escapes it there too', !r.sheetInjected, r);
+    t.ok('a sheet opened without one does not carry a stale portion from the last snap', !r.staleSheet, r);
+    t.eq('a manual add writes no portion key at all', r.manualHasKey, false);
+    t.ok('the portion shows in the food diary', r.onScreen, r);
+    t.ok('a crafted portion never becomes a real element', !r.injected, r);
+    t.ok('and its payload never runs', !r.pwned, r);
+  }
+  {
+    // normalizeState repairs it across a real boot, like every other field in
+    // the row — and a junk portion must not cost the athlete the meal
+    await page.evaluate(([seed]) => {
+      eval(seed)();
+      const cur = JSON.parse(localStorage.getItem('coreforge.v1') || '{}');
+      cur.nutrition.days = { '2026-02-02': { water: 3, habits: {},
+        food: [{ name: 'Steak', kcal: 500, p: 50, c: 0, f: 30, meal: 'd', at: 1770000000000, portion: { oz: 8 } },
+               { name: 'Rice', kcal: 200, p: 4, c: 45, f: 0, meal: 'd', at: 1770000000000, portion: '  1 cup\n cooked  ' }] } };
+      localStorage.setItem('coreforge.v1', JSON.stringify(cur));
+    }, [ATHLETE]);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForBoot(page);
+    const r = await page.evaluate(() => {
+      const f = (STATE.nutrition.days['2026-02-02'] || {}).food || [];
+      return { n: f.length, first: f[0], second: f[1] };
+    });
+    t.eq('a junk portion does not drop the row — the meal is the record, not the note', r.n, 2);
+    t.eq('the bad portion is gone rather than stringified', 'portion' in (r.first || {}), false);
+    t.eq('and the rest of that row is untouched', r.first && r.first.kcal, 500);
+    t.eq('a messy but real portion is cleaned, not discarded', r.second && r.second.portion, '1 cup cooked');
+  }
+
+  /* ---- the suggested meal plan no longer greets the athlete on Fuel (v245) --
+     Removed at the athlete's request: they log what they actually ate, by photo
+     or by hand. Nothing was ever auto-logged (every meal needed a deliberate
+     tap on "Log this meal"), but a prescribed menu sitting above their own diary
+     was unwanted. The GENERATOR is deliberately kept — suite 20 above still
+     covers it directly, and the same days still power the Reference tab. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      go('fuel'); renderFuel();
+      const view = document.querySelector('#view-fuel') || document.querySelector('.view.active');
+      o.logMealButtons = view.querySelectorAll('[onclick^="logRefMeal"]').length;
+      o.planAnchor = !!view.querySelector('#mealplan');
+      /* Comments STRIPPED before the source is searched. The block comment left
+         where the call used to be names mealPlanHTML() in prose to explain why it
+         is gone, and a naive substring scan reads that explanation as a live call
+         site — the same false positive a comment mentioning c.put() once produced
+         in the sw.js check. */
+      o.renderFuelCalls = /mealPlanHTML\(\)/.test(renderFuel.toString().replace(/\/\*[\s\S]*?\*\//g, ''));
+      // the machinery itself is untouched and still works
+      o.generatorLives = typeof currentMealPlan === 'function' && !!currentMealPlan().meals.length;
+      // and the athlete's own log is still fully there
+      o.stillHasIntake = !!view.querySelector('[onclick^="foodPhoto"]') && !!view.querySelector('[onclick^="openQuickAdd"]');
+      return o;
+    });
+    t.eq('no "Log this meal" buttons remain on the Fuel tab', r.logMealButtons, 0);
+    t.eq('and the plan card itself is gone', r.planAnchor, false);
+    t.eq('renderFuel no longer calls the plan builder at all', r.renderFuelCalls, false);
+    t.ok('the meal-plan generator is still intact behind it', r.generatorLives, r);
+    t.ok('and the athlete\'s own logging controls are untouched', r.stillHasIntake, r);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
