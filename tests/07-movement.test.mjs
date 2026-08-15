@@ -42,8 +42,17 @@ export default async function run() {
     o.kcalScalesWithWeight = Math.abs(kHeavy / kLight - 130 / 55) < 0.01;
     o.stepKcalScalesToo = Math.abs(sHeavy / sLight - 130 / 55) < 0.01;
     o.unknownFallsBack = bikeLevel('nonsense').k === 'steady' && bikeStepsPerMin('nonsense') > 0;
-    // the two energy models must agree — they are the whole basis of the trade
-    o.perStepMatches = Math.abs(kcalPerStep() - stepKcal(1000) / 1000) < 0.0002;
+    /* The two energy models must agree — they are the whole basis of the trade.
+       Was a tolerance comparison against the UNROUNDED per-step rate divided
+       back out of stepKcal(1000)'s rounded integer — which only holds by luck
+       of the seeded athlete's weight (88kg: 0.5*88 is a whole number, so
+       nothing rounds). A different seed weight would fail this for a reason
+       that has nothing to do with the code being wrong, the same false
+       positive found live in validateData()'s own copy of this comparison.
+       Exact equality against Math.round(1000*kcalPerStep()) is what stepKcal()
+       actually promises, and is immune to the rounding the old form tripped
+       over — confirmed across every 0.1kg step from 40-150kg. */
+    o.perStepMatches = stepKcal(1000) === Math.round(1000 * kcalPerStep());
     o.covers = [];
     BIKE_LEVELS.forEach(b => [500, 3333, 8000, 10000, 17777].forEach(n => {
       const min = bikeMinutesFor(n, b.k);
