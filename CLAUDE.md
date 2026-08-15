@@ -2433,6 +2433,113 @@ renders inline on Reference — so nothing user-facing was lost. Verified by
 counting real call sites per function rather than trusting the diff, which is
 also how the `openMealPlan()` dead end above was found.
 
+## A ninth baseline test: Jump Squats, and re-anchoring explosive power (v247)
+
+Asked directly, after a review of whether the baseline test was still
+comprehensive given how far the program had grown: "is our initial fitness
+test still comprehensive?" That review found the 8-test battery still doing
+its real job correctly — every one of the (by then) 178 exercises traces back
+to it, either directly (anchored) or through the athlete's overall level tier
+— but explosive leg power had never had its own test. `jumpsquat` was anchored
+to the `squat` test as a proxy, because that was the closest number available,
+not because a squat rep max is actually what predicts jump-squat capacity. The
+athlete confirmed they have both the app's own built-in stopwatch and a tape
+measure, and asked for the jump squat test specifically.
+
+**Placed SECOND, not appended at the end.** Every existing test is a hold or a
+max-effort rep set — local muscular endurance, which tolerates some prior
+fatigue and still gives a usable number. A jump squat test measures
+neuromuscular power, the single most fatigue-sensitive quality of the eight
+(now nine). Running it last, after six-plus other maximal efforts, would have
+measured a tired athlete's ceiling, not a fresh one's. It goes right after
+Plank — gentle enough to open on, nothing explosive attempted before the body
+is warm — and this file's own prior note already established that `TESTS` is
+read by id everywhere, never by position, so reordering it is safe. The
+trunk-fatigue-run check (`21-integrity.test.mjs`, "no more than two trunk
+tests run back to back") already reads `TESTS` generically rather than a
+hand-kept id list, so the reorder didn't need a second copy of that rule
+updated by hand — it just had to stay under the same limit, and it does.
+
+**A fixed 20-second countdown, using a timer mechanism that had shipped but
+never actually been used.** `startBaselineTimer()` has supported a `t.dur`
+countdown-then-enter-your-reps mode since the file's own comment described "the
+60s bicycle test counts DOWN" — but no test had ever actually set `dur`
+(bicycle counts UP, to failure, same as every other timed test). The mechanism
+was fully built and completely dead code. Jump Squats is the first test to use
+it, with `dur:20` — long enough for a meaningful rep count, short enough to
+stay dominated by explosive/anaerobic-alactic output rather than becoming a
+conditioning test.
+
+**That dead code hid a real, if harmless-until-now, bug.** The reps-entry
+label read `` `Good reps in the 60 seconds` `` unconditionally whenever `t.dur`
+was set — a hardcoded number with no test to ever exercise it. Fixed to read
+the test's real `t.dur`. This shipped as part of the same round precisely
+because touching the only code path that could ever trigger it is what
+surfaced it — the same shape as this file's other "reading a mutant back"
+lessons: a latent defect that looks harmless only because nothing had ever
+called it.
+
+**`jumpsquat` becomes the power test's own anchor exercise, matching the
+self-anchor convention every other test's exercise already uses.** `pushup`
+anchors to `push` at `hardness:1`, `squat` anchors to `squat` at `hardness:1`,
+and so on — the exercise that IS the test always sits at 1.0. `jumpsquat` was
+re-anchored from `squat` (hardness 0.35, a borrowed proxy) to `power`
+(hardness 1, its own real number). `splitjump` and `broadjump`, the harder
+rungs above it in `legPowerL`, keep their ORIGINAL relative spacing rebased
+onto the new 1.0 ceiling (0.3/0.35 and 0.2/0.35 of the old squat-anchored
+values → 0.85 and 0.6), rather than being left proportional to a test that no
+longer has anything to do with them.
+
+**`TEST_DEFAULTS` was hoisted out of `computeAssessment()` to module scope,
+and a validator check now keeps it and `TESTS` in lockstep, both
+directions.** It was a local literal keyed to exactly the original 8 ids —
+adding a 9th test without a matching default would have left `maxes.power`
+`undefined` for anyone who skips the battery (or whose stored result is
+corrupt), silently un-anchoring `jumpsquat`/`splitjump`/`broadjump` for them
+specifically, the exact "a repair on a field with a fixed set of legal values
+needs a membership test" shape this file already names elsewhere. Hoisted
+alongside `TESTS` itself (same reasoning as `DIET_OPTS`: the same set existing
+as two copies is a drift waiting to happen), with `validateData()` now
+checking both directions — every `TESTS` id has a default, and no default
+names a test that no longer exists.
+
+**"validateData() is clean" proved nothing about that specific rule**, so it
+needed its own dedicated check, not just a read of the overall problem count.
+`TEST_DEFAULTS` and `TESTS` already agreed in real data, so deleting the two
+lines that compare them produced no new problems — the mutation escaped
+completely silently against every other check in this round. Caught only by a
+check that breaks the data live (deletes a real entry, adds a fake one),
+requires the SPECIFIC error message by name for both directions, then
+restores — muting `console.error` around it the same way this file's other
+live `validateData()` breaks already do.
+
+**Backward compatibility was verified directly against `prescribe()`, not
+inferred from `buildSession()` happening to pick the exercise.** An athlete
+whose baseline predates this change has no `maxes.power` at all.
+`prescribe()`'s existing `anchorUsable` guard already handles a missing anchor
+value by falling through to the unanchored base/level formula — true for any
+exercise, not something this round had to build — so nothing crashes or goes
+NaN; they simply lose `jumpsquat`'s newly-precise calibration until their next
+6-week re-test, the cadence the app already recommends. The first version of
+this check called `buildSession(0)` and looked for a `jumpsquat` item in the
+result, which depends on that ladder actually being reached at that calendar
+position — a fact about session composition, not about the anchor fallback
+under test, and exactly the "every block builds the state it asserts on"
+trap this file keeps naming. Fixed by calling `prescribe('jumpsquat', pos)`
+directly.
+
+**Mutation-tested against seven seeded defects. Six were caught on the first
+pass** — a missing `TEST_DEFAULTS` entry, the anchor left on `squat`,
+`jumpsquat`'s hardness left below 1, a broken ladder ordering, the stale "60
+seconds" label, and a countdown that never stops itself. All six also
+cascaded into unrelated failures elsewhere in the same suite run, which is
+the expected shape when a real safety net is removed rather than a
+test-only assertion. **The seventh — deleting the `TEST_DEFAULTS`/`TESTS`
+lockstep check itself — is the one described two paragraphs up**: it escaped
+every existing assertion cleanly, because the data those two lines compare
+was already correct. It only started failing once a dedicated live-break
+check existed for it specifically.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

@@ -1106,17 +1106,33 @@ const EX = {
     steps:['Balance on one foot (hold a wall for support).','Press up as high as possible onto the ball of the foot.','Squeeze at the top.','Lower slowly. Switch sides.'],
     cues:['Full range each rep','Control the lowering','Light touch on the wall'],
     mistakes:['Bouncing','Using the wall to lift you']},
-  jumpsquat:{name:'Jump Squat',region:'legs',unit:'reps',img:'ex-jumpsquat.jpg',vid:'ex-jumpsquat.mp4',anchor:'squat',hardness:0.35,base:12,rest:45,
+  /* Re-anchored from 'squat' to the new 'power' test — a jump squat's true
+     ceiling is explosive capacity, not how many plain squats you can grind
+     out, and borrowing the squat max was always a proxy for not having a
+     better number. jumpsquat IS the power test's own exercise, so it takes
+     hardness:1 by the same convention every other self-anchoring exercise
+     uses (pushup/push, squat/squat, plank/plank, ...). splitjump and
+     broadjump keep their ORIGINAL relative spacing below it (0.3/0.35 and
+     0.2/0.35 of the old squat-anchored values), just rebased onto the new
+     1.0 ceiling: ~0.86 and ~0.57, rounded to 0.85 and 0.6.
+
+     An athlete whose baseline predates this change has no maxes.power yet —
+     prescribe()'s own anchorUsable guard already handles that by falling
+     through to the unanchored base/level formula until they retest, so nothing
+     here can crash or produce NaN for existing athletes; they just don't get
+     power-anchored precision on this one family until their next 6-week
+     re-test, the same cadence the app already recommends. */
+  jumpsquat:{name:'Jump Squat',region:'legs',unit:'reps',img:'ex-jumpsquat.jpg',vid:'ex-jumpsquat.mp4',anchor:'power',hardness:1,base:12,rest:45,
     why:'Explosive power for the legs plus a big calorie burn — turns squat strength into athletic power.',
     steps:['Start in a quarter-to-half squat.','Explode straight up as high as you can.','Reach tall through the whole body.','Land soft, absorb into the next squat. Repeat.'],
     cues:['Explode up, land soft','Absorb with bent knees','Chest tall'],
     mistakes:['Stiff, hard landings','Knees caving on landing']},
-  splitjump:{name:'Jumping Lunges',region:'legs',unit:'reps',img:'ex-splitjump.jpg',anchor:'squat',hardness:0.3,base:10,rest:50,
+  splitjump:{name:'Jumping Lunges',region:'legs',unit:'reps',img:'ex-splitjump.jpg',anchor:'power',hardness:0.85,base:10,rest:50,
     why:'Explosive single-leg power and conditioning — from a lunge, jump and switch legs in mid-air, landing in the opposite lunge. Count each landing.',
     steps:['Start in a lunge position, both knees bent.','Explode straight up and switch legs in the air.','Land softly in the opposite lunge.','Absorb and immediately jump again.'],
     cues:['Land soft and balanced','Torso stays tall','Quick, controlled switches'],
     mistakes:['Crashing the landing','Front knee caving']},
-  broadjump:{repCap:10,name:'Broad Jump',region:'legs',unit:'reps',img:'ex-broadjump.jpg',anchor:'squat',hardness:0.2,base:8,rest:55,
+  broadjump:{repCap:10,name:'Broad Jump',region:'legs',unit:'reps',img:'ex-broadjump.jpg',anchor:'power',hardness:0.6,base:8,rest:55,
     why:'Maximal horizontal power from the hips and legs — pure athleticism and a strong posterior chain.',
     steps:['Stand tall, hinge slightly and swing the arms back.','Explode forward and up, driving through the hips.','Reach for distance, then land soft with bent knees.','Reset and repeat with control.'],
     cues:['Big arm swing','Drive through the hips','Stick a soft landing'],
@@ -1624,6 +1640,20 @@ const TEST_PROTOCOL = 2;
 const TESTS = [
     {id:'plank', name:'Forearm Plank', unit:'time', ex:'plank', bench:120,
    instr:'Hold a solid forearm plank for as long as your form stays perfect. Stop when your hips sag. Enter your best time.'},
+    /* Placed SECOND on purpose, not last. Every other test here is a hold or a
+       max-effort rep set — local muscular endurance, which tolerates some prior
+       fatigue and still gives a usable number. A jump squat test measures
+       neuromuscular power, the single most fatigue-sensitive quality in the
+       whole battery: run it after six other maximal efforts and it reads as a
+       tired athlete's ceiling, not a fresh one's. It goes right after Plank —
+       gentle enough to open on, with nothing explosive attempted before the
+       body is warm — and everything else keeps its original relative order.
+       TESTS is read by id everywhere, never by position, so reordering the
+       array is safe; a dedicated check pins the trunk-fatigue run length so
+       the alternation this creates cannot silently drift back to front-loaded
+       trunk work. */
+    {id:'power', name:'Jump Squats (max reps in 20s)', unit:'reps', ex:'jumpsquat', dur:20, bench:20,
+   instr:'20 seconds, full effort — explode up out of every squat and land soft. The timer counts down; count every good rep as you go, then enter your total when time is up.'},
     {id:'push', name:'Push-Ups (max reps)', unit:'reps', ex:'pushup', bench:35,
    instr:'Do as many clean push-ups as you can in one set — chest to a fist off the floor, body straight. Drop to your knees only if you cannot hold the line, and stop there.'},
     {id:'side', name:'Side Plank (weakest side)', unit:'time', ex:'sideplank', bench:75,
@@ -1639,10 +1669,17 @@ const TESTS = [
     {id:'dyn', name:'Bicycle Crunches (max time)', unit:'time', ex:'bicycle', bench:75,
    instr:'Do controlled bicycle crunches for as long as your form stays good. Press Start — the timer counts up — and Stop when your form breaks or you can\'t keep the pace.'},
 ];
+/* Starting numbers for an athlete who skips a test, or whose stored result is
+   corrupt — the single source of truth, read by computeAssessment() and
+   checked by validateData() against TESTS itself so the two cannot drift.
+   Previously a local literal inside computeAssessment(); hoisted here for the
+   same reason DIET_OPTS was — the same set existing as two copies is a drift
+   waiting to happen, and there is now a validator check that would catch it. */
+const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,squat:18,power:7};
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='246';
+const APP_VERSION='247';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2521,7 +2558,7 @@ function computeAssessment(results){
      Zero is data. Only genuinely absent or unusable input falls back to the
      starting estimate, and the fallbacks are the same ones as before so an
      athlete who skips the battery is unaffected. */
-  const DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,squat:18};
+  const DEFAULTS=TEST_DEFAULTS;   // one copy, see TEST_DEFAULTS' own comment
   const maxes={};
   Object.keys(DEFAULTS).forEach(k=>{
     const raw=results?results[k]:undefined;
@@ -5298,7 +5335,7 @@ function renderAssessStep(){
     ${ex.img?`<img class="exphoto" src="${ex.img}" alt="">`:emblemHTML(ex)}
     <div class="note info">${t.instr}</div>
     ${(t.unit==='time'||t.dur)?`<button class="btn green" style="margin-bottom:12px" onclick="startBaselineTimer()">▶ ${t.dur?`Start ${t.dur}s timer`:'Start timer'}</button>`:''}
-    <div class="field"><label>${t.unit==='time'?'Your hold (seconds) — the timer fills this in':(t.dur?'Good reps in the 60 seconds':'Good reps completed')}</label>
+    <div class="field"><label>${t.unit==='time'?'Your hold (seconds) — the timer fills this in':(t.dur?`Good reps in the ${t.dur} seconds`:'Good reps completed')}</label>
       <div class="numrow">
         <button onclick="assessBump(-${t.unit==='time'?5:1})">–</button>
         <input id="assess-val" type="number" inputmode="numeric" value="${assessState.results[t.id]||''}" placeholder="0">
@@ -5316,8 +5353,10 @@ function renderAssessStep(){
 function assessBump(d){const inp=$('#assess-val');inp.value=Math.max(0,(+inp.value||0)+d);}
 
 /* ---- Baseline test timer: Start -> 3·2·1 -> run -> Stop ----
-   Timed holds count UP until you stop (elapsed seconds = your result).
-   The 60s bicycle test counts DOWN and stops itself, then you enter reps. */
+   Timed holds (unit:'time', no t.dur — plank, side, hollow, bicycle) count UP
+   until you stop; elapsed seconds is your result. A test with t.dur set counts
+   DOWN and stops itself once time is up, then you enter the reps you got — the
+   Jump Squats power test (dur:20) is the only one that currently uses this. */
 let _bt=null;
 function stopBaselineTimer(){if(_bt){clearInterval(_bt.iv);_bt=null;}}
 function coachSay(txt){try{if(typeof coachSpeak==='function')coachSpeak(txt);}catch(e){}}
@@ -13089,6 +13128,13 @@ function normalizeState(){
 function validateData(){
   const errs=[];
   const testUnit={};TESTS.forEach(t=>testUnit[t.id]=t.unit);
+  // TEST_DEFAULTS must cover exactly the same ids as TESTS — a test added
+  // without a default leaves maxes[id] undefined for anyone who skips it,
+  // silently unanchoring every exercise keyed to it (see TEST_DEFAULTS' own
+  // comment). Checked both directions: a missing default, and a stale one
+  // left behind for a test that no longer exists.
+  TESTS.forEach(t=>{if(!(t.id in TEST_DEFAULTS))errs.push('TEST_DEFAULTS is missing an entry for test "'+t.id+'"');});
+  Object.keys(TEST_DEFAULTS).forEach(k=>{if(!testUnit[k])errs.push('TEST_DEFAULTS has a stale entry "'+k+'" — no such test exists');});
   Object.keys(EX).forEach(k=>{
     const e=EX[k];
     if(e.anchor&&!testUnit[e.anchor])errs.push(k+': anchor "'+e.anchor+'" is not a test');
