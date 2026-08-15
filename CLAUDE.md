@@ -2643,6 +2643,45 @@ not required to mirror `TESTS`, and left alone; adding a Jump Squats row
 there is a real option but needs its own Novice→Elite tier values chosen
 thoughtfully, not a drive-by addition.
 
+## A pre-launch pass finds a real drift check broken by its own arithmetic (v250)
+
+Asked directly, with the program about to see real use, to run everything —
+the full suite, the validator, and confirmation the whole chain holds
+together end to end. The 22-suite battery was already green; what it could
+not catch was a check that only fails for SOME real athletes depending on
+their exact bodyweight, because the suite's own seeded fixture happened to
+sit on a value where the bug is invisible. Found by driving a full
+onboarding → 9-test baseline → multi-week session sweep → nutrition → every
+tab, at an ordinary 85kg, not by re-reading code already covered.
+
+**`validateData()` compared `kcalPerStep()` (unrounded) against
+`stepKcal(1000)/1000` (built by rounding to a whole kcal *then* dividing by
+1000) with a `0.0002` tolerance — a comparison that fails purely from the
+rounding step for roughly 60% of realistic bodyweights (checked across every
+0.1kg from 40–150kg), with nothing actually wrong.** The project's own
+seeded test athlete (88kg) happened to land on one of the exact weights
+where `0.5×kg` is a whole number, so the identical comparison duplicated in
+`07-movement.test.mjs` had been passing by coincidence of the fixture
+weight, not because the check was sound — confirmed by testing a handful of
+other weights (85kg among them) and watching it fail for a reason that had
+nothing to do with the code being wrong.
+
+Fixed by checking the actual promise `stepKcal()` makes —
+`stepKcal(1000)===Math.round(1000*kcalPerStep())`, exact integer equality —
+which is immune to the rounding the old comparison tripped over, confirmed
+clean across the same 40–150kg sweep in both the app's own validator and the
+test file's duplicate of it. Mutation-tested by drifting the two constants
+apart for real: both catch it immediately.
+
+Everything else audited clean on this pass: the full 22-suite battery,
+`validateData()` on a real freshly-built athlete's data, a 9-test baseline
+walked through the real sheet, a sweep of `buildSession()` targets across 12
+weeks confirming every prescribed target is finite and positive, the guided
+player opening without error, food logging with a photo portion rendering
+correctly on Fuel, every one of the six tabs free of placeholder text and
+broken images, and a real `exportData()` run against this session's own
+state completing without throwing.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

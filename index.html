@@ -1679,7 +1679,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='249';
+const APP_VERSION='250';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -13282,7 +13282,18 @@ function validateData(){
     if(need.kcal<10000*kcalPerStep())
       errs.push('BIKE_LEVELS.'+b.k+': '+need.kcal+' kcal falls short of 10,000 steps');
   });
-  if(Math.abs(kcalPerStep()-stepKcal(1000)/1000)>0.0002)
+  /* This used to divide stepKcal(1000) by 1000 and compare against the
+     unrounded kcalPerStep() with a 0.0002 tolerance — but stepKcal() rounds to
+     the nearest whole kcal before this check ever sees it, and dividing a
+     rounded integer by 1000 does not reliably land within 0.0002 of the
+     unrounded per-step rate. Checked against realistic bodyweights (40-150kg
+     in 0.1kg steps): roughly 60% of them tripped this by rounding alone, a
+     false positive on real athlete data, not a real drift — found running a
+     full onboarding-through-baseline smoke test with an ordinary 85kg entry,
+     not by reading the code. The actual invariant is that stepKcal() rounds
+     kcalPerStep()'s own rate correctly, so check that directly: exact integer
+     equality, immune to the rounding the old comparison was tripping over. */
+  if(stepKcal(1000)!==Math.round(1000*kcalPerStep()))
     errs.push('kcalPerStep() has drifted from stepKcal()');
   /* Same contract as the bike: harder must pay more, and every currency quoted
      against a 10,000-step debt has to actually cover it. */
