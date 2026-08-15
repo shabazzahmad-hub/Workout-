@@ -1668,6 +1668,19 @@ const TESTS = [
    instr:'Do as many clean, controlled reverse crunches as you can in one set. Enter the number of good reps.'},
     {id:'dyn', name:'Bicycle Crunches (max time)', unit:'time', ex:'bicycle', bench:75,
    instr:'Do controlled bicycle crunches for as long as your form stays good. Press Start — the timer counts up — and Stop when your form breaks or you can\'t keep the pace.'},
+    /* Placed LAST, not with the others — the opposite reasoning from Jump
+       Squats (placed 2nd because IT was the fatigue-sensitive one). This is
+       the fatiguer: a genuinely maximal 60-second full-body/cardio effort
+       would leave its mark on every test that came after it, the same
+       plank->side->hollow->crunch problem TEST_PROTOCOL 2 already fixed for
+       the trunk tests, just for the whole body instead of one region. Every
+       other test in the battery measures strength or local muscular
+       endurance; this is the only one that measures cardiovascular stamina,
+       which had no baseline number anywhere in the app before this — the
+       "conditioning" quiz answer is self-reported and never checked against
+       anything real. */
+    {id:'stamina', name:'Burpees (max reps in 60s)', unit:'reps', ex:'burpee', dur:60, bench:30,
+   instr:'60 seconds, steady near-max effort — squat, kick your feet back to a plank, chest to the floor, back up and jump. Pace yourself to last the whole minute rather than blowing up in the first 20 seconds. The timer counts down; count every good rep, then enter your total when time is up.'},
 ];
 /* Starting numbers for an athlete who skips a test, or whose stored result is
    corrupt — the single source of truth, read by computeAssessment() and
@@ -1675,11 +1688,11 @@ const TESTS = [
    Previously a local literal inside computeAssessment(); hoisted here for the
    same reason DIET_OPTS was — the same set existing as two copies is a drift
    waiting to happen, and there is now a validator check that would catch it. */
-const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,squat:18,power:7};
+const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,squat:18,power:7,stamina:12};
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='251';
+const APP_VERSION='252';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -1834,8 +1847,14 @@ function estimateMaxes(m){
      unanchored branch instead, because Object.assign had nothing here to fall
      back to. 10 reps at s=1 sits in the same rough band as squat's 22 relative
      to a bodyweight-squat max, scaled the same way as the other seven. */
+  /* stamina (Burpees, added v252) follows the identical pattern power did in
+     v249 — missing here would fall it all the way through to the generic
+     unanchored branch instead of degrading to a plank-scaled estimate like
+     every other field. 12 at s=1 matches push's own coefficient; both are
+     moderate-difficulty, full-body-ish movements. */
   return Object.assign({plank:40,side:25,hollow:25,lower:12,dyn:20,
-    push:Math.round(12*s),pull:Math.round(7*s),squat:Math.round(22*s),power:Math.round(10*s)},clean);
+    push:Math.round(12*s),pull:Math.round(7*s),squat:Math.round(22*s),power:Math.round(10*s),
+    stamina:Math.round(12*s)},clean);
 }
 function currentMaxes(cycle){
   // cycle 0 uses baseline; later cycles use reassessment if present, else baseline
@@ -3182,17 +3201,18 @@ function openClearance(){
 function skipBaseline(){
   const lvl=(STATE.profile&&STATE.profile.experience)||'Intermediate';
   const b=Math.max(1,Math.round(({Beginner:0.6,Intermediate:1,Advanced:1.5})[lvl]||1));
-  /* All NINE anchors, not eight. This has happened before — the comment used to
-     say "not five," when writing only the core five left push/pull/squat
-     undefined and every Phase-2 exercise fell through to the generic branch and
-     ignored the athlete entirely. v247 added a ninth (power, Jump Squats) and
-     this literal was not updated to match — the exact same class of gap
-     recurring for the exact same reason: a hand-kept list drifting behind
-     TESTS. Found by auditing the new test's wiring, not reported. */
+  /* All TEN anchors, not nine. This has happened before, twice — the comment
+     used to say "not five," then "not eight." Writing only a subset always
+     leaves the missing fields undefined, and every exercise anchored to one
+     falls through to the generic branch and ignores the athlete entirely.
+     v247 added a ninth (power, Jump Squats); v252 added a tenth (stamina,
+     Burpees) and this literal has to be updated again, in step, for the
+     exact same reason as both times before: a hand-kept list drifting
+     behind TESTS. Found by auditing the new test's wiring, not reported. */
   STATE.baseline={date:todayISO(),score:null,level:lvl,estimated:true,testCount:TESTS.length,
     maxes:{plank:Math.round(30*b),side:Math.round(20*b),hollow:Math.round(15*b),lower:Math.round(8*b),
            dyn:Math.round(20*b),push:Math.round(12*b),pull:Math.round(6*b),squat:Math.round(22*b),
-           power:Math.round(10*b)}};
+           power:Math.round(10*b),stamina:Math.round(12*b)}};
   save();toast('Starting from your experience level — retest any time from Progress');render();
 }
 /* Defer a re-test without stalling the program: carry the previous block's
@@ -9583,7 +9603,7 @@ function lineChart(vals,dates,color,unit){
    the assessment flow — "Bicycle Crunches (max time)" — not a chip); an id
    with no override falls back to the full test name rather than disappearing. */
 const STRENGTH_LABELS={plank:'Plank',power:'Jump Squats',push:'Push-Ups',side:'Side Plank',
-  squat:'Squats',hollow:'Hollow',pull:'Inverted Row',lower:'Rev. Crunch',dyn:'Bicycle'};
+  squat:'Squats',hollow:'Hollow',pull:'Inverted Row',lower:'Rev. Crunch',dyn:'Bicycle',stamina:'Burpees'};
 const STRENGTH_METRICS=TESTS.map(t=>({k:t.id,label:STRENGTH_LABELS[t.id]||t.name,unit:t.unit}));
 let strengthSel='plank';
 function setStrengthMetric(k){strengthSel=k;renderProgress();}

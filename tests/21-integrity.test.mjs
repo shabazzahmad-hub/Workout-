@@ -416,15 +416,19 @@ export default async function run() {
         trunk: ids.filter(i => TRUNK.has(i)).length };
     });
     /* v247 added a ninth test (Jump Squats, id 'power') — a non-trunk power
-       test placed second, right after plank. Count and position both moved on
-       purpose; what must NOT move is the invariant itself (no 3+ trunk efforts
-       in a row), which is checked generically against TESTS.map(t=>t.id)
-       above rather than a hand-kept id list, so it stays correct across the
-       next test added too. */
-    t.eq('all nine tests are still in the battery', r.count, 9);
+       test placed second, right after plank. v252 added a tenth (Burpees, id
+       'stamina') — placed LAST instead, the opposite reasoning: it is the
+       fatiguer, not the fatigue-sensitive one, so it has to run after
+       everything it could otherwise compromise, not before. Count and
+       position both moved on purpose each time; what must NOT move is the
+       invariant itself (no 3+ trunk efforts in a row), which is checked
+       generically against TESTS.map(t=>t.id) above rather than a hand-kept id
+       list, so it stays correct across the next test added too. */
+    t.eq('all ten tests are still in the battery', r.count, 10);
     t.ok('no more than two trunk tests run back to back', r.worst <= 2, r);
     t.eq('the battery still opens on the plank anchor', r.ids[0], 'plank');
     t.eq('the power test runs second, before any other maximal effort tires the athlete', r.ids[1], 'power');
+    t.eq('the stamina test runs LAST, after everything it could otherwise fatigue', r.ids[r.ids.length - 1], 'stamina');
     t.ok('the protocol version is defined', r.protocol >= 2, r);
   }
   {

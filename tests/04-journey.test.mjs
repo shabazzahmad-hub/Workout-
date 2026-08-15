@@ -161,7 +161,7 @@ export default async function run() {
     t.ok('a screened athlete can start the baseline', !!start);
     if (start) {
       await start.click(); await page.waitForTimeout(200);
-      const ENTER = { plank: 150, side: 95, hollow: 70, lower: 30, push: 48, pull: 22, squat: 62, dyn: 55, power: 14 };
+      const ENTER = { plank: 150, side: 95, hollow: 70, lower: 30, push: 48, pull: 22, squat: 62, dyn: 55, power: 14, stamina: 24 };
       const walked = [];
       for (let i = 0; i < 12; i++) {
         const cur = await page.evaluate(() => {
@@ -183,7 +183,7 @@ export default async function run() {
         await page.evaluate(() => assessNav(1));
         await page.waitForTimeout(120);
       }
-      t.eq('all 9 tests are walked', walked.length, 9);
+      t.eq('all 10 tests are walked', walked.length, 10);
       const res = await page.evaluate(() => ({
         maxes: STATE.baseline && STATE.baseline.maxes, score: STATE.baseline && STATE.baseline.score,
         level: STATE.baseline && STATE.baseline.level, testCount: STATE.baseline && STATE.baseline.testCount,
@@ -196,7 +196,7 @@ export default async function run() {
           wrong.map(k => `${k}: entered ${ENTER[k]}, stored ${res.maxes[k]}`));
       }
       t.ok('a Core Score is computed', res.score > 0, res);
-      t.eq('the record stamps how many tests it used', res.testCount, 9);
+      t.eq('the record stamps how many tests it used', res.testCount, 10);
       /* The tests ARE max efforts. Recording them is the only way the plank,
          side plank and squat rows of Strength Standards can ever be rated —
          the program prescribes those as measuring sticks, never as work. */

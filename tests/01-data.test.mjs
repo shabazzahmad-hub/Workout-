@@ -563,6 +563,85 @@ export default async function run() {
   t.ok('a stale TEST_DEFAULTS entry for a test that does not exist is caught by name', lockstep.staleCaught, lockstep);
   t.ok('and validateData() is clean again once both are restored', lockstep.cleanAfterRestore, lockstep);
 
+  /* ---- Burpees: a tenth baseline test, for cardiovascular stamina (v252) --
+     Requested after an audit found the battery measured strength and local
+     muscular endurance nine ways over but never touched cardiovascular
+     stamina at all — "conditioning" was self-reported only, never checked
+     against a real number the way every other capacity in the battery is.
+     Placed LAST (opposite of Jump Squats, placed 2nd): this is the fatiguer,
+     not the fatigue-sensitive one, so it has to run after everything it
+     could otherwise compromise. Reuses the existing burpee exercise purely
+     for display (photo/instructions/info) — EX.burpee itself is left
+     completely untouched (still unanchored, still unit:'time', still used
+     as-is by every HIIT circuit and cardio finisher that already prescribes
+     it) precisely to avoid the blast radius of changing a widely-shared
+     exercise's own unit just to satisfy one new test's anchor. */
+  const stamina = await page.evaluate(() => {
+    const o = {};
+    o.testEntry = TESTS.find(x => x.id === 'stamina');
+    o.testIdx = TESTS.findIndex(x => x.id === 'stamina');
+    o.count = TESTS.length;
+    o.defaultsHasStamina = 'stamina' in TEST_DEFAULTS;
+    o.defaultsKeys = Object.keys(TEST_DEFAULTS).sort();
+    o.testIds = TESTS.map(x => x.id).sort();
+    // burpee itself must be untouched — anchoring it would ripple into every
+    // HIIT circuit and cardio finisher that already prescribes it by time
+    o.burpeeUnchanged = { anchor: EX.burpee.anchor, unit: EX.burpee.unit, hardness: EX.burpee.hardness, base: EX.burpee.base };
+    o.estimateMaxesStamina = estimateMaxes({}).stamina;
+    o.estimateMaxesKeepsReal = estimateMaxes({ stamina: 19 }).stamina === 19;
+    const realBaseline = STATE.baseline;
+    STATE.baseline = null;
+    skipBaseline();
+    o.skippedStamina = STATE.baseline && STATE.baseline.maxes && STATE.baseline.maxes.stamina;
+    STATE.baseline = realBaseline;
+    o.metricEntry = STRENGTH_METRICS.find(x => x.k === 'stamina');
+    // a flagged joint reroutes the stamina test too, generalising the v251
+    // baseline-safety fix without a single line changed for this new test —
+    // burpee is flagged BOTH shoulder and wrist in JOINT_RISK
+    const real = STATE.profile.limitations;
+    STATE.profile.limitations = ['shoulder'];
+    o.swappedShoulder = safeSwap('burpee');
+    STATE.profile.limitations = ['wrist'];
+    o.swappedWrist = safeSwap('burpee');
+    STATE.profile.limitations = real;
+    o.validateProblems = validateData();
+    return o;
+  });
+  t.eq('the stamina test is the LAST test in the battery', stamina.testIdx, stamina.count - 1, stamina);
+  t.eq('a 60-second countdown scored in reps, displayed with the real burpee exercise', { unit: stamina.testEntry.unit, dur: stamina.testEntry.dur, ex: stamina.testEntry.ex }, { unit: 'reps', dur: 60, ex: 'burpee' });
+  t.eq('EX.burpee itself is untouched — no new anchor, same unit, same hardness, same base', stamina.burpeeUnchanged, { anchor: null, unit: 'time', hardness: 0.7, base: 25 });
+  t.ok('TEST_DEFAULTS has an entry for the new test', stamina.defaultsHasStamina, stamina);
+  t.eq('and TEST_DEFAULTS covers exactly the same ids as TESTS, no more and no fewer', stamina.defaultsKeys, stamina.testIds);
+  t.ok('estimateMaxes({}) has a real default for stamina now, not missing', stamina.estimateMaxesStamina > 0, stamina);
+  t.eq('and a real measured value still wins over the default', stamina.estimateMaxesKeepsReal, true);
+  t.ok('skipping the baseline entirely still estimates stamina too', stamina.skippedStamina > 0, stamina);
+  t.eq('Strength Trends gets a short "Burpees" label, not the full test name', (stamina.metricEntry || {}).label, 'Burpees');
+  t.ok('a flagged shoulder routes the stamina test away from burpee', stamina.swappedShoulder !== 'burpee', stamina);
+  t.ok('a flagged wrist routes the stamina test away from burpee too', stamina.swappedWrist !== 'burpee', stamina);
+  t.ok('validateData() stays at zero problems with the tenth test', stamina.validateProblems.length === 0, stamina.validateProblems);
+
+  /* Same live-break-and-restore shape as the power test's own lockstep check
+     above — "validateData() is clean" proves nothing about THIS test id
+     specifically until something is actually broken and restored under it. */
+  const staminaLockstep = await page.evaluate(() => {
+    const realErr = console.error; console.error = () => {};
+    const o = {};
+    const realDefaults = { ...TEST_DEFAULTS };
+    delete TEST_DEFAULTS.stamina;
+    o.missingCaught = validateData().some(e => /TEST_DEFAULTS is missing an entry for test "stamina"/.test(e));
+    Object.assign(TEST_DEFAULTS, realDefaults);
+    const real = estimateMaxes;
+    window.estimateMaxes = m => { const r = real(m); delete r.stamina; return r; };
+    o.emCaught = validateData().some(e => /estimateMaxes\(\{\}\) has no usable default for test "stamina"/.test(e));
+    window.estimateMaxes = real;
+    o.cleanAfterRestore = validateData().length === 0;
+    console.error = realErr;
+    return o;
+  });
+  t.ok('a TEST_DEFAULTS entry deleted for stamina is caught by name', staminaLockstep.missingCaught, staminaLockstep);
+  t.ok('a missing estimateMaxes() default for stamina is caught by name', staminaLockstep.emCaught, staminaLockstep);
+  t.ok('and validateData() is clean again once both are restored', staminaLockstep.cleanAfterRestore, staminaLockstep);
+
   /* ---- an audit of the whole test->week chain, prompted directly (v249) ----
      Asked to add all nine tests to the Strength Trends chart, and separately to
      audit that the baseline test is properly interlinked to every week of the
@@ -611,7 +690,7 @@ export default async function run() {
     // rather than assumed, or strengthTrendHTML() renders nothing at all and
     // the chip-rendering assertion below would pass on an empty tab.
     STATE.baseline = { date: todayISO(), score: 60, level: 'Intermediate', testCount: TESTS.length,
-      maxes: { plank: 60, side: 40, hollow: 35, lower: 15, dyn: 30, push: 20, pull: 12, squat: 25, power: 12 } };
+      maxes: { plank: 60, side: 40, hollow: 35, lower: 15, dyn: 30, push: 20, pull: 12, squat: 25, power: 12, stamina: 15 } };
     go('progress'); renderProgress();
     const capt = (document.querySelector('#v-progress') || {}).innerText || '';
     o.oldClaimGone = !/truest measure of core strength/i.test(capt);
@@ -621,7 +700,7 @@ export default async function run() {
     o.chipLabels = STRENGTH_METRICS.map(x => x.label).filter(l => chipEls.includes(l));
     return o;
   });
-  t.eq('the Strength Trends chart now covers exactly the 9 real tests, no more and no fewer', audit.metricIds, audit.testIds);
+  t.eq('the Strength Trends chart covers exactly the real tests, no more and no fewer', audit.metricIds, audit.testIds);
   t.ok('every metric has a real display label', audit.hasLabels, audit);
   t.eq('Jump Squats gets its own short label rather than the full test name', audit.powerLabel, 'Jump Squats');
   t.ok('estimateMaxes({}) returns a finite positive default for every test, including the new one', audit.estimateMaxesFinite, audit);
@@ -629,7 +708,7 @@ export default async function run() {
   t.eq('and a real measured value still wins over the default', audit.estimateMaxesKeepsReal, true);
   t.ok('skipping the baseline entirely still estimates every test, including power', audit.skippedHasAllIds, audit);
   t.ok('the caption no longer claims to be core-only now that it is not', audit.oldClaimGone, audit.capt);
-  t.eq('all 9 chips actually render on the real Progress tab', audit.chipLabels.length, 9, audit);
+  t.eq('all 10 chips actually render on the real Progress tab', audit.chipLabels.length, 10, audit);
 
   /* "validateData() is clean" proves nothing about the estimateMaxes() check
      specifically, same shape as the TEST_DEFAULTS lockstep check above:
