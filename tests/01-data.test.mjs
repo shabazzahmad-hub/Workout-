@@ -256,6 +256,85 @@ export default async function run() {
     eight.inFocusPool.toetouch && eight.inFocusPool.sitthrust && eight.inFocusPool.legcircle && eight.inFocusPool.kneetoelbow, eight.inFocusPool);
   t.ok('and the two full-body cardio additions too', eight.inFocusPool.kneekick && eight.inFocusPool.quickpunch, eight.inFocusPool);
 
+  /* ---- Dumbbell Bench Press — a follow-up gap: the athlete's own gear
+     picker has a "Bench / chair" option that, before this, powered exactly
+     one exercise (benchdip). No exercise required dumbbell + bench together;
+     the existing loaded chest press (dbfloor) is done lying on the floor.
+     This is the first exercise to actually consult both. */
+  const bench = await page.evaluate(() => {
+    const o = {};
+    o.equip = EX.dbbench.equip;
+    // the AND-gate: missing EITHER item must deny it, not just missing both
+    STATE.profile.gear = [];
+    o.gearNone = hasGearFor('dbbench');
+    STATE.profile.gear = ['dumbbell'];
+    o.gearDbOnly = hasGearFor('dbbench');
+    STATE.profile.gear = ['bench'];
+    o.gearBenchOnly = hasGearFor('dbbench');
+    STATE.profile.gear = ['dumbbell', 'bench'];
+    o.gearBoth = hasGearFor('dbbench');
+    // the fuller range of motion a bench allows (vs. the floor stopping the
+    // descent early) is genuinely more shoulder-loading — dbfloor's own
+    // "why" text says as much ("no bench needed"), so this earns the flag
+    // dbfloor deliberately does not carry
+    o.dbbenchShoulder = JOINT_RISK.shoulder.includes('dbbench');
+    o.dbfloorShoulder = JOINT_RISK.shoulder.includes('dbfloor');
+    o.dbbenchLandsSafe = (() => {
+      const real = STATE.profile.limitations; STATE.profile.limitations = ['shoulder'];
+      const out = safeSwap('dbbench'); STATE.profile.limitations = real;
+      return !!EX[out] && !JOINT_RISK.shoulder.includes(out);
+    })();
+    o.safeSwapTarget = SAFE_SWAP.dbbench;
+    // GEAR_FALLBACK is consulted only by gearSwap(), which resolve() calls for
+    // LADDER rungs — dbbench is reached through the focus bonus instead, whose
+    // own has()/hasGearFor() gate never calls gearSwap() at all. So this entry
+    // is kept as documentation/defense-in-depth (same precedent as
+    // kneeraise:'legraise'), not because any current path needs it — confirmed
+    // below by exercising the REAL selection path (focusBonus), not this map.
+    o.gearFallback = GEAR_FALLBACK.dbbench;
+    o.inFocusPool = FOCUS_POOL.chest.includes('dbbench');
+
+    // real behavioural sweep of the actual selection path: with a dumbbell
+    // but no bench, dbbench must never be offered by the focus bonus, while
+    // dbfloor (needing only a dumbbell) genuinely is — proving the chest pool
+    // was actually reached, not just skipped entirely for some other reason.
+    const real = { gear: STATE.profile.gear, focusPrimary: STATE.profile.focusPrimary, targets: STATE.profile.targets };
+    STATE.profile.gear = ['dumbbell'];
+    STATE.profile.focusPrimary = 'chest';
+    STATE.profile.targets = [];
+    let sawDbbenchNoBench = false, sawDbfloorNoBench = false;
+    for (let c = 0; c < 54; c++) {
+      const bonus = focusBonus({ cycle: c, inCycle: 0 }, new Set());
+      if (bonus && bonus.exId === 'dbbench') sawDbbenchNoBench = true;
+      if (bonus && bonus.exId === 'dbfloor') sawDbfloorNoBench = true;
+    }
+    o.noBenchSweep = { sawDbbenchNoBench, sawDbfloorNoBench };
+    // and with both items owned, dbbench does get offered at least once
+    STATE.profile.gear = ['dumbbell', 'bench'];
+    let sawDbbenchWithBench = false;
+    for (let c = 0; c < 54; c++) {
+      const bonus = focusBonus({ cycle: c, inCycle: 0 }, new Set());
+      if (bonus && bonus.exId === 'dbbench') sawDbbenchWithBench = true;
+    }
+    o.sawDbbenchWithBench = sawDbbenchWithBench;
+    STATE.profile.gear = real.gear; STATE.profile.focusPrimary = real.focusPrimary; STATE.profile.targets = real.targets;
+    return o;
+  });
+  t.eq('Dumbbell Bench Press requires both a dumbbell and a bench', bench.equip, ['dumbbell', 'bench']);
+  t.ok('neither item alone is enough — owning nothing fails', !bench.gearNone, bench);
+  t.ok('a dumbbell alone is not enough, missing the bench', !bench.gearDbOnly, bench);
+  t.ok('a bench alone is not enough, missing the dumbbell', !bench.gearBenchOnly, bench);
+  t.ok('both together is enough', bench.gearBoth, bench);
+  t.ok('the fuller range of motion earns a shoulder flag the floor press deliberately does not carry', bench.dbbenchShoulder, bench);
+  t.ok('confirming the floor press really does stay unflagged', !bench.dbfloorShoulder, bench);
+  t.ok('a flagged shoulder actually routes it somewhere safe', bench.dbbenchLandsSafe, bench);
+  t.eq('and lands specifically on the floor press, the documented shoulder-friendlier alternative', bench.safeSwapTarget, 'dbfloor');
+  t.eq('GEAR_FALLBACK also points there, for defense-in-depth', bench.gearFallback, 'dbfloor');
+  t.ok('reachable through the focus bonus on a chest day', bench.inFocusPool, bench);
+  t.ok('a real sweep of the focus bonus never offers it without a bench', !bench.noBenchSweep.sawDbbenchNoBench, bench.noBenchSweep);
+  t.ok('while the floor press genuinely is offered — proving the chest pool was actually reached', bench.noBenchSweep.sawDbfloorNoBench, bench.noBenchSweep);
+  t.ok('and it is genuinely offered once both items are owned', bench.sawDbbenchWithBench, bench);
+
   /* ---- five new kettlebell exercises (Windmill, Suitcase Carry, Figure-8,
      Renegade Row, Sumo Deadlift High Pull) — requested after the athlete
      said they now own a 25lb and a 31lb kettlebell. Three core-focused
