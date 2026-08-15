@@ -3281,6 +3281,45 @@ an external API this sandbox is blocked from — the highest-value change is
 the one that makes the invisible legible, and it should come first rather
 than sixth.
 
+## The macros were always on screen — as percentages (v262)
+
+The import kept logging a real 897-kcal day with 0 g protein, and v260's
+warning correctly said "no macros found". Both were wrong about WHY, and the
+answer only appeared when the athlete sent the actual screenshot: Lose It's
+daily summary shows the split as a coloured bar — **"25% Fat · 34% Carbs ·
+41% Protein"** — with no grams anywhere on screen.
+
+**The prompt demanded grams, so the model correctly refused to invent them.**
+Worse, `protein` was in the schema's `required` list, which pushed it toward
+answering 0 rather than omitting the field. The data was always there; the
+app was asking for it in a form the screenshot never contained. Two rounds
+were spent telling the athlete their screenshot might not have the numbers.
+It did. **When a reading comes back empty, the question is not only "did the
+model fail" but "did we ask for the form the data is actually in."**
+
+**The conversion is done in CODE, never asked of the model.** `_macrosFromPct()`
+takes the percentages and the calorie total and applies 4/4/9 — exact
+arithmetic in four lines of JS, and a coin flip inside a language model. The
+prompt says so explicitly ("do NOT try to convert them yourself, the app does
+that exactly"). Grams still win when both are shown, so nothing double-converts.
+
+**A partial ring must invent nothing.** All three slices have to be present
+and land near 100 together (80–120, loose because trackers round each slice
+independently and printed splits often sum to 99 or 101). One slice read as
+"41% Protein" alone degrades to the honest macros-missing path rather than
+fabricating two thirds of a meal.
+
+**A mutant escaped, and fixing the check found a real bug in the guard.**
+"A partly-read ring invents nothing" passed against a version that only
+validated protein — because 41 alone is under the 80 floor, so the SUM check
+was doing the work and the null check was never exercised. The discriminating
+case is a partial ring whose visible slices happen to land in range
+(`50, 50, null`). Adding it failed against the CLEAN code too: `n()` coerced
+with `+v` first, and **`+null` is 0, not NaN**, so a null slice became a
+perfectly valid 0% and sailed through. `undefined` was rejected, `null` was
+not. The guard now rejects `v==null` before coercing. Same family as this
+file's other "`!= null` is not is-absent" note, from the opposite direction.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

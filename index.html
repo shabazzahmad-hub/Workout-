@@ -1692,7 +1692,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='261';
+const APP_VERSION='262';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -9182,6 +9182,24 @@ async function _geminiCall(model,body,ms){
    _geminiCall). It belongs here: a connection that stalled once is exactly
    the kind of thing a second attempt fixes, and leaving it out meant v257's
    retry never fired for the most common real-world failure of all. */
+/* Macro ring/bar percentages -> grams, using the calorie total. Protein and
+   carbs are 4 kcal/g, fat 9. Returns null unless the split is plausible: the
+   three must be present, non-negative, and land near 100 together, so a
+   half-read ring ("41% Protein" alone) degrades to the honest macros-missing
+   path instead of inventing two thirds of a meal. 80-120 is deliberately
+   loose — trackers round each slice independently and the printed numbers
+   often sum to 99 or 101. */
+function _macrosFromPct(kcal,pp,cp,fp){
+  /* `v==null` FIRST: +null is 0, not NaN, so a null slice would coerce to a
+     perfectly valid 0% and a half-read ring could pass the sum check. Caught
+     by a test that fed 50/50/null — undefined was rejected, null was not. */
+  const n=v=>{if(v==null)return null;const x=+v;return isFinite(x)&&x>=0?x:null;};
+  const P=n(pp),C=n(cp),F=n(fp);
+  if(P==null||C==null||F==null)return null;
+  const sum=P+C+F;
+  if(sum<80||sum>120)return null;
+  return {p:Math.round(kcal*(P/100)/4),c:Math.round(kcal*(C/100)/4),f:Math.round(kcal*(F/100)/9)};
+}
 function _transientAIStatus(s){return s===0||s===429||s===500||s===502||s===503||s===504;}
 /* A connection-level failure is not a MODEL problem, so cycling the rest of
    the list just burns another full timeout each — 3 models x 25s is 75
@@ -9235,7 +9253,15 @@ async function _visionEstimate(dataUrl,promptText,opts){
     /* portion is deliberately NOT in `required`: a model that omits it must still
        produce a usable calorie/macro estimate. No portion is better than no
        estimate at all, so an absent one degrades to the pre-v245 behaviour. */
-    responseSchema:{type:'OBJECT',properties:{name:{type:'STRING'},kcal:{type:'INTEGER'},protein:{type:'INTEGER'},carbs:{type:'INTEGER'},fat:{type:'INTEGER'},portion:{type:'STRING'}},required:['name','kcal','protein']}}};
+    /* proteinPct/carbsPct/fatPct exist because plenty of trackers show the
+       split as a RING or BAR in percent — Lose It's daily summary is "25% Fat
+       · 34% Carbs · 41% Protein" with no grams anywhere on screen. Demanding
+       grams made the model correctly refuse to invent them, and the import
+       logged a real 897-kcal day with 0 g protein. Ask for whichever form is
+       actually shown; the grams are then derived HERE, from the calorie
+       total, because 4/4/9 arithmetic is exact in code and a coin flip in a
+       language model. */
+    responseSchema:{type:'OBJECT',properties:{name:{type:'STRING'},kcal:{type:'INTEGER'},protein:{type:'INTEGER'},carbs:{type:'INTEGER'},fat:{type:'INTEGER'},proteinPct:{type:'NUMBER'},carbsPct:{type:'NUMBER'},fatPct:{type:'NUMBER'},portion:{type:'STRING'}},required:['name','kcal']}}};
   const models=foodAIModels();let lastErr=null;
   const o_=opts||{};
   const backoff=o_.backoff||AI_RETRY_BACKOFF_MS;
@@ -9274,6 +9300,15 @@ async function _visionEstimate(dataUrl,promptText,opts){
       let p=Math.max(0,Math.round(+(o.protein!=null?o.protein:o.p)||0));
       let c=Math.max(0,Math.round(+(o.carbs!=null?o.carbs:o.c)||0));
       let f=Math.max(0,Math.round(+(o.fat!=null?o.fat:o.f)||0));
+      /* Grams absent but a percentage split present — derive them. Done here
+         rather than asked of the model because this is arithmetic, and a
+         language model doing arithmetic is a coin flip while four lines of
+         JS are exact. Percentages are of CALORIES, which is what every
+         tracker's macro ring means. */
+      if(kcal>0&&!p&&!c&&!f){
+        const g=_macrosFromPct(kcal,o.proteinPct,o.carbsPct,o.fatPct);
+        if(g){p=g.p;c=g.c;f=g.f;}
+      }
       // Physiological guard: protein/carbs are 4 kcal/g and fat 9, so their grams
       // can never out-calorie the food. This caps a model that echoes the calorie
       // number into a macro (a 105-kcal banana can't have 105 g protein — max ~26).
@@ -9318,7 +9353,7 @@ function estimateFoodFromImage(dataUrl,opts){
    has. Same _visionEstimate() plumbing (model fallback, JSON schema, the
    physiological clamp), only the prompt changes: read, do not calculate. */
 function estimateFoodFromScreenshot(dataUrl,opts){
-  return _visionEstimate(dataUrl,'This is a screenshot from a nutrition-tracking app (such as Lose It or MyFitnessPal) or a nutrition label. The calories and macros have ALREADY been calculated and are displayed somewhere in this image. Your job is to READ them, not to estimate them — do NOT recalculate or round beyond what is shown. Look everywhere in the image: totals rows, summary headers, progress rings or bars, budget/remaining rows, and per-item lists. Macros may be labelled in full ("Protein", "Carbohydrates", "Fat") or abbreviated ("P", "C", "F", "Prot", "Carb"). Return: "name" = the food, meal or day label shown (e.g. "Lunch", "Chicken salad", "Today"); "kcal" = the whole-number calorie total; and whole-number GRAMS for "protein", "carbs" and "fat". If a single total or summary is shown, use it. If only individual foods are listed with no total, sum them into one entry. If a number is genuinely not shown anywhere, return 0 for that ONE field but still return every other number you did find — a partial reading is useful. Also return "portion": a short description of the serving or quantity shown, if visible, under 40 characters. Only if the image contains no nutrition numbers at all should you return kcal:0 and protein:0.',opts);
+  return _visionEstimate(dataUrl,'This is a screenshot from a nutrition-tracking app (such as Lose It or MyFitnessPal) or a nutrition label. The calories and macros have ALREADY been calculated and are displayed somewhere in this image. Your job is to READ them, not to estimate them — do NOT recalculate or round beyond what is shown. Look everywhere in the image: totals rows, summary headers, progress rings or bars, budget/remaining rows, and per-item lists. Macros may be labelled in full ("Protein", "Carbohydrates", "Fat") or abbreviated ("P", "C", "F", "Prot", "Carb"). IMPORTANT: many trackers show the macro split as PERCENTAGES in a ring, donut or coloured bar (for example "25% Fat, 34% Carbs, 41% Protein") rather than in grams. If you see percentages, put them in "proteinPct", "carbsPct" and "fatPct" and leave the gram fields out — do NOT try to convert them yourself, the app does that exactly. If you see grams, use "protein", "carbs" and "fat". If both are shown, give the grams. Return: "name" = the food, meal or day label shown (e.g. "Lunch", "Chicken salad", "Today"); "kcal" = the whole-number calorie total; and whole-number GRAMS for "protein", "carbs" and "fat". If a single total or summary is shown, use it. If only individual foods are listed with no total, sum them into one entry. If a number is genuinely not shown anywhere, return 0 for that ONE field but still return every other number you did find — a partial reading is useful. Also return "portion": a short description of the serving or quantity shown, if visible, under 40 characters. Only if the image contains no nutrition numbers at all should you return kcal:0 and protein:0.',opts);
 }
 function foodPhoto(){
   if(!foodAIReady()){toast('Add a free Gemini key in Settings ⚙️ for photo estimates');openQuickAdd();return;}

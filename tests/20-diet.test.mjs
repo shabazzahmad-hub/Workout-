@@ -477,7 +477,11 @@ export default async function run() {
       // itself — both it and estimateFoodFromScreenshot route through it.
       const src = _visionEstimate.toString();
       o.inSchema = /portion:\{type:'STRING'\}/.test(src);
-      o.notRequired = /required:\['name','kcal','protein'\]/.test(src);
+      /* The property is that PORTION is not required — not the exact
+         contents of the list. v262 dropped 'protein' from required too:
+         forcing it made the model refuse a percentage-only screenshot
+         rather than answer in the form actually shown. */
+      o.notRequired = /required:\[[^\]]*\]/.test(src) && !/required:\[[^\]]*portion/.test(src);
 
       // cleanPortion is the ONE copy of the rule; every site calls it
       o.clean = {
@@ -1148,6 +1152,109 @@ export default async function run() {
     t.eq('the very first attempt already uses the working alias', r.firstTried, 'gemini-flash-latest');
     t.eq('and a later import spends ONE call, not three', r.secondRunCalls, 1);
     t.eq('leading with the remembered model', r.secondRunFirst, 'gemini-flash-latest');
+  }
+
+  /* ---- macros shown as PERCENTAGES, not grams (v262) ---------------------
+     The real reason the import kept logging 0 g protein, found only by
+     looking at the athlete's actual screenshot: Lose It's daily summary shows
+     "25% Fat · 34% Carbs · 41% Protein" in a coloured bar, with no grams
+     anywhere on screen. The prompt demanded grams, so the model correctly
+     refused to invent them — and a real 897-kcal day was logged with no
+     protein. The conversion is done in CODE, not asked of the model: 4/4/9 is
+     exact arithmetic here and a coin flip in a language model. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      // the athlete's own numbers
+      o.real = _macrosFromPct(897, 41, 34, 25);
+      // and they must reconcile back to the calories they came from
+      const g = o.real;
+      o.reconciles = g ? Math.abs((g.p * 4 + g.c * 4 + g.f * 9) - 897) <= 6 : false;
+      // rounding slop in the tracker's own printed numbers is fine
+      o.sums99 = !!_macrosFromPct(1000, 40, 34, 25);
+      o.sums101 = !!_macrosFromPct(1000, 41, 35, 25);
+      // a half-read ring must NOT invent the rest
+      o.partial = _macrosFromPct(897, 41, null, null);
+      o.oneMissing = _macrosFromPct(897, 41, 34, undefined);
+      /* The cases above are ALSO refused by the sum guard (41 alone is under
+         80), so they pass whether or not the missing-slice check exists —
+         confirmed by a mutant that only validated protein. These two read a
+         partial ring whose visible slices happen to land in range, so the
+         null check is the only thing that can refuse them. */
+      o.onlyProteinButSums = _macrosFromPct(897, 100, null, null);
+      o.fatMissingButSums = _macrosFromPct(897, 50, 50, null);
+      // nonsense splits are refused rather than scaled
+      o.wayOff = _macrosFromPct(897, 10, 10, 10);
+      o.over = _macrosFromPct(897, 90, 90, 90);
+      o.negative = _macrosFromPct(897, -5, 60, 45);
+      o.junk = _macrosFromPct(897, 'a lot', 34, 25);
+      return o;
+    });
+    t.eq('41% protein of 897 kcal is 92 g', r.real && r.real.p, 92);
+    t.eq('34% carbs is 76 g', r.real && r.real.c, 76);
+    t.eq('25% fat is 25 g', r.real && r.real.f, 25);
+    t.ok('and the grams add back up to the calories they came from', r.reconciles, r);
+    t.ok('a split summing to 99 is accepted — trackers round each slice', r.sums99, r);
+    t.ok('and so is one summing to 101', r.sums101, r);
+    t.eq('a partly-read ring invents nothing', r.partial, null);
+    t.eq('even when only one slice is missing', r.oneMissing, null);
+    t.eq('a lone 100% slice is refused, not scaled into a whole meal', r.onlyProteinButSums, null);
+    t.eq('and a missing fat slice is refused even when the rest sums to 100', r.fatMissingButSums, null);
+    t.eq('a split that is nowhere near 100 is refused', r.wayOff, null);
+    t.eq('and so is one far over', r.over, null);
+    t.eq('a negative slice is refused', r.negative, null);
+    t.eq('and junk is refused rather than coerced', r.junk, null);
+  }
+  {
+    // end to end through the real pipeline, with the reply shaped exactly as
+    // the model now returns it for a percentage-only screenshot
+    const r = await page.evaluate(async () => {
+      const o = {}, real = window._geminiCall;
+      const reply = obj => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(obj) }] }, finishReason: 'STOP' }] });
+
+      window._geminiCall = async () => reply({ name: 'Today', kcal: 897, proteinPct: 41, carbsPct: 34, fatPct: 25 });
+      const est = await _visionEstimate('data:image/png;base64,AA==', 'p', { backoff: [0] });
+      o.p = est.p; o.c = est.c; o.f = est.f; o.kcal = est.kcal;
+      // and it must NOT then be treated as a macros-missing reading
+      o.notFlaggedMissing = !_macrosMissing(est);
+
+      // grams win when both are present — no double conversion
+      window._geminiCall = async () => reply({ name: 'X', kcal: 897, protein: 50, carbs: 60, fat: 20, proteinPct: 41, carbsPct: 34, fatPct: 25 });
+      const both = await _visionEstimate('data:image/png;base64,AA==', 'p', { backoff: [0] });
+      o.gramsWin = both.p === 50 && both.c === 60 && both.f === 20;
+
+      // percentages absent AND grams absent still reads as macros-missing
+      window._geminiCall = async () => reply({ name: 'Breakfast', kcal: 897 });
+      const bare = await _visionEstimate('data:image/png;base64,AA==', 'p', { backoff: [0] });
+      o.bareStillMissing = _macrosMissing(bare);
+
+      window._geminiCall = real;
+      return o;
+    });
+    t.eq('a percentage-only screenshot yields real protein grams', r.p, 92);
+    t.eq('real carb grams', r.c, 76);
+    t.eq('real fat grams', r.f, 25);
+    t.eq('with the calories untouched', r.kcal, 897);
+    t.ok('and it is no longer treated as a macros-missing reading', r.notFlaggedMissing, r);
+    t.ok('explicit grams still win over percentages when both are shown', r.gramsWin, r);
+    t.ok('a reading with neither still falls back to the macros-missing warning', r.bareStillMissing, r);
+  }
+  {
+    // the prompt has to actually ask for the percentages, or the fields stay empty
+    const r = await page.evaluate(() => {
+      const shot = estimateFoodFromScreenshot.toString();
+      const shared = _visionEstimate.toString();
+      return {
+        promptMentionsPct: /percentage/i.test(shot) && /proteinPct/.test(shot),
+        promptSaysDontConvert: /do NOT try to convert/i.test(shot),
+        schemaHasPct: /proteinPct:\{type:'NUMBER'\}/.test(shared),
+        proteinNoLongerRequired: /required:\['name','kcal'\]/.test(shared),
+      };
+    });
+    t.ok('the prompt tells the model percentages are a valid answer', r.promptMentionsPct, r);
+    t.ok('and tells it not to do the arithmetic itself', r.promptSaysDontConvert, r);
+    t.ok('the schema accepts the percentage fields', r.schemaHasPct, r);
+    t.ok('and protein is no longer REQUIRED in grams, which is what forced the refusal', r.proteinNoLongerRequired, r);
   }
 
   /* ---- the suggested meal plan no longer greets the athlete on Fuel (v245) --
