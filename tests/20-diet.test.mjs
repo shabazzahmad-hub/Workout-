@@ -733,6 +733,90 @@ export default async function run() {
     t.ok('the privacy note names the new outbound photo path, not just the old one', r.privacyMentionsScreenshot, r);
   }
 
+  /* ---- a transient 503 must not cost the athlete the import (v257) -------
+     Reported live, third distinct failure of the same feature: Google
+     returned 503 "Spikes in demand are usually temporary. Please try again
+     later" and the app gave up after one attempt per model — not taking
+     advice the response body was literally giving it. Earlier in this session
+     that was waved off as "nothing to fix, it is Google being busy," which
+     was the wrong call: a 503 is the definition of retryable. */
+  {
+    const r = await page.evaluate(async () => {
+      const o = {}, real = window._geminiCall;
+      const good = { candidates: [{ content: { parts: [{ text: JSON.stringify(
+        { name: 'Lunch', kcal: 620, protein: 41, carbs: 58, fat: 19 }) }] }, finishReason: 'STOP' }] };
+      const boom = st => { const e = new Error('AI ' + st); e.status = st; throw e; };
+
+      // 1. overloaded on every model for the first pass, fine on the second
+      let calls = 0;
+      window._geminiCall = async () => { calls++; if (calls <= 3) boom(503); return good; };
+      let retried = 0;
+      /* Caught rather than allowed to propagate: without the retry this
+         rejects, and an uncaught rejection here fails the whole FILE with a
+         stack instead of failing this check by name — a worse signal, and one
+         that hides every assertion after it. Seeded and confirmed. */
+      let est = null;
+      try {
+        est = await _visionEstimate('data:image/png;base64,AA==', 'p',
+          { backoff: [0, 10, 20], onRetry: () => { retried++; } });
+      } catch (e) { o.recoveryThrew = String(e.message || e); }
+      o.recovered = !!est && est.kcal === 620;
+      o.calls = calls;
+      o.toldTheAthlete = retried > 0;
+
+      // 2. a permanent error must NOT be retried — same message, three times
+      //    slower, is worse than failing fast
+      calls = 0;
+      window._geminiCall = async () => { calls++; boom(404); };
+      try { await _visionEstimate('data:image/png;base64,AA==', 'p', { backoff: [0, 10, 20] }); }
+      catch (e) { o.permanentMsg = String(e.message || e); }
+      o.permanentCalls = calls;   // 3 models x 1 pass, not x3 passes
+
+      // 3. a key problem still fails immediately, before even finishing the list
+      calls = 0;
+      window._geminiCall = async () => { calls++; boom(403); };
+      try { await _visionEstimate('data:image/png;base64,AA==', 'p', { backoff: [0, 10, 20] }); }
+      catch (e) { o.keyMsg = String(e.message || e); }
+      o.keyCalls = calls;
+
+      // 4. genuinely persistent 503 gives up rather than looping forever
+      calls = 0;
+      window._geminiCall = async () => { calls++; boom(503); };
+      try { await _visionEstimate('data:image/png;base64,AA==', 'p', { backoff: [0, 10, 20] }); }
+      catch (e) { o.downStatus = e.status; }
+      o.downCalls = calls;
+
+      window._geminiCall = real;
+      return o;
+    });
+    t.ok('a 503 that clears on the next pass produces a real estimate instead of an error', r.recovered, r);
+    t.ok('and the athlete is told it is retrying rather than left staring at a pause', r.toldTheAthlete, r);
+    t.eq('it retried the whole model list, not just one model', r.calls, 4);
+    t.eq('a permanent 404 is tried once per model and not retried', r.permanentCalls, 3);
+    t.eq('a key error fails on the first call, without trying the rest', r.keyCalls, 1);
+    t.eq('a persistent outage gives up after the last pass', r.downCalls, 9);
+    t.eq('and surfaces the transient status rather than swallowing it', r.downStatus, 503);
+  }
+  {
+    // the message the athlete actually reads
+    const r = await page.evaluate(() => {
+      const mk = (st, msg) => { const e = new Error(msg || ('AI ' + st)); e.status = st; return e; };
+      return {
+        overloaded: _aiErrText(mk(503, 'AI 503 — This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.')),
+        quota: _aiErrText(mk(429, 'AI 429')),
+        plain: _aiErrText(new Error('no numbers found — try a screenshot showing the totals')),
+        longNonTransient: _aiErrText(new Error('x'.repeat(400))),
+      };
+    });
+    t.ok('an overload says what to do now, not Google\'s paragraph cut mid-word',
+      /overloaded/i.test(r.overloaded) && !/Please try again late$/.test(r.overloaded), r);
+    t.ok('and does not claim a quota problem it cannot know about', !/quota/i.test(r.overloaded), r);
+    t.ok('a 429 is named as a quota problem, which is a different fix', /quota/i.test(r.quota), r);
+    t.ok('a real diagnosable error keeps its own text', /no numbers found/.test(r.plain), r);
+    t.ok('and a very long one is trimmed at a word boundary, not mid-word',
+      r.longNonTransient.length <= 125 && r.longNonTransient.endsWith('…'), r);
+  }
+
   /* ---- the suggested meal plan no longer greets the athlete on Fuel (v245) --
      Removed at the athlete's request: they log what they actually ate, by photo
      or by hand. Nothing was ever auto-logged (every meal needed a deliberate
