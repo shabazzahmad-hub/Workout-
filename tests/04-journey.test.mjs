@@ -255,6 +255,75 @@ export default async function run() {
     errors.forEach(e => t.fail('page error during the power test timer', e));
   }
 
+  /* ---- the baseline test respects a flagged joint (v251) ------------------
+     renderAssessStep() used to read EX[t.ex] straight through with no
+     safeSwap() call — a maximal-EFFORT battery is a harder ask on a joint
+     than an ordinary prescribed set, so a shoulder-flagged athlete was still
+     asked to inverted-row to failure and a knee-flagged one to jump-squat for
+     20 seconds, the exact class of harm safeSwap() exists everywhere else in
+     the app to prevent. Drives the real sheet with a shoulder flag set (the
+     "pull" test's own exercise, invertedrow, is shoulder-flagged) and
+     confirms the swap actually reaches the screen — not just that safeSwap()
+     itself returns a different id, which the app already knew how to do. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page, () => {
+      STATE.baseline = null; STATE.profile.limitations = ['shoulder']; save(); render();
+    });
+    await page.waitForTimeout(200);
+    await page.evaluate(() => openAssessment());
+    await page.waitForTimeout(150);
+    // walk to the "pull" test (invertedrow) without asserting on any other step
+    let pull = null;
+    for (let i = 0; i < 9 && !pull; i++) {
+      const cur = await page.evaluate(() => (assessState ? TESTS[assessState.idx] : null));
+      if (!cur) break;
+      if (cur.id === 'pull') {
+        pull = await page.evaluate(() => {
+          const s = document.querySelector('#sheet');
+          const infoBtn = (s.innerHTML.match(/openExerciseInfo\('([a-z0-9]+)'\)/) || [])[1];
+          return { html: s.innerHTML, text: s.innerText, infoBtn,
+            infoBtnStillRisky: infoBtn ? JOINT_RISK.shoulder.includes(infoBtn) : null };
+        });
+        break;
+      }
+      await page.evaluate(() => {
+        const el = document.querySelector('#assess-val');
+        el.value = '10'; el.dispatchEvent(new Event('input', { bubbles: true }));
+        assessNav(1);
+      });
+      await page.waitForTimeout(100);
+    }
+    t.ok('reached the pull test', !!pull);
+    if (pull) {
+      t.ok('a shoulder-flagged athlete is shown a swap note', /Swapped to/.test(pull.text), pull.text.slice(0, 300));
+      t.ok('the swap note names the joint they flagged', /shoulder/i.test(pull.text), pull.text.slice(0, 300));
+      t.ok('the "how to" button points at the SWAPPED exercise, not the risky original',
+        pull.infoBtn && pull.infoBtn !== 'invertedrow', pull.infoBtn);
+      t.ok('and the swapped exercise is not itself shoulder-flagged',
+        pull.infoBtn && pull.infoBtnStillRisky === false, pull.infoBtn);
+    }
+    // an athlete with NO flagged joints sees the original movement, unchanged
+    const clean = await page.evaluate(async () => {
+      closeSheet(); await new Promise(r => setTimeout(r, 450));
+      STATE.profile.limitations = []; assessState = null; openAssessment();
+      await new Promise(r => setTimeout(r, 50));
+      while (TESTS[assessState.idx].id !== 'pull') {
+        const el = document.querySelector('#assess-val');
+        el.value = '10'; el.dispatchEvent(new Event('input', { bubbles: true }));
+        assessNav(1);
+        await new Promise(r => setTimeout(r, 30));
+      }
+      const s = document.querySelector('#sheet');
+      return { hasSwapNote: /Swapped to/.test(s.innerText), infoBtn: (s.innerHTML.match(/openExerciseInfo\('([a-z0-9]+)'\)/) || [])[1] };
+    });
+    t.ok('an unflagged athlete sees no swap note', !clean.hasSwapNote, clean);
+    t.eq('and the info button still points at the real test exercise', clean.infoBtn, 'invertedrow');
+    await page.evaluate(() => { try { closeSheet(); } catch (e) {} });
+    await browser.close();
+    errors.forEach(e => t.fail('page error during the joint-flagged baseline test', e));
+  }
+
   // ---- Today: four panes, every card control ------------------------------
   {
     const { browser, page, errors } = await launch(port);

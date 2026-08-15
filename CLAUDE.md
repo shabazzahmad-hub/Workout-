@@ -2682,6 +2682,91 @@ correctly on Fuel, every one of the six tabs free of placeholder text and
 broken images, and a real `exportData()` run against this session's own
 state completing without throwing.
 
+## The baseline test never checked a flagged joint, and "tunes warm-up" was a sentence, not a number (v251)
+
+Asked directly to confirm the onboarding quiz is comprehensive and actually
+wired into program design, the initial core test, and strength/endurance
+work — not just collected. Auditing every `STATE.profile` field the wizard
+writes against every place it is read (the same method `focusBonus()`'s
+audit used) found two real gaps, both the same shape this file keeps
+finding: a control that looks connected and isn't.
+
+**`renderAssessStep()` read `EX[t.ex]` straight through, with no `safeSwap()`
+call at all — the ONE place in the app that asks for a genuinely maximal
+effort had never been taught about a flagged joint.** Five of the nine
+baseline tests use an exercise `JOINT_RISK` already flags: `pushup` (wrist),
+`invertedrow` (shoulder), `jumpsquat` (knee), `revcrunch` and `bicycle`
+(lowback). `prescribe()` routes every ordinary session away from a flagged
+joint's risky moves; the baseline battery — which asks for reps or a hold
+"until it breaks," harder than anything `prescribe()` ever assigns — was
+routing an athlete straight at the same moves the rest of the app exists to
+protect them from. A shoulder-flagged athlete opening the "pull" test got
+told to row to failure on the exact movement `JOINT_RISK.shoulder` lists.
+
+Fixed by calling the SAME `safeSwap()` every other flagged-joint
+substitution in the app already uses: `renderAssessStep()` computes
+`exId=safeSwap(t.ex)` and shows, times, and photographs the substitute
+instead. The score still saves under the test's own id (`t.id`), so every
+downstream `maxes`/anchor read is untouched — only which movement earns
+that number changes, exactly like any other safe-swap substitution
+elsewhere. **Silent substitution was the wrong call here even though
+`prescribe()` itself is silent everywhere else** — a maximal-effort test is
+the one place the athlete needs to know their number reflects a different
+movement than the one named on screen, so the sheet now shows an explicit
+note ("Swapped to X — you flagged your shoulder…") and the exercise-info
+button points at the real tested movement, not the original.
+
+**Onboarding's mobility question is labelled "tunes warm-up & cool-down,"
+and until this round nothing it wrote ever reached a number.** `mobility`
+was read in exactly two places, both banner text above the flow ("Hold each
+stretch a little longer — building mobility is one of your goals" /
+"move slowly and take the full range") — never the actual hold duration a
+flagged-low-mobility athlete was given. A promise in the UI is a
+specification this file has named before; this one had been sitting unmet
+since the field was added. `mobilityFlow()` makes it true: a `'low'`
+answer now gives 25% longer holds in both `runWarmup()` and
+`runCooldown()`, including the joint-aware addition `jointAwareWarmup()`
+inserts, since that item is built from the same durations and would
+otherwise be the one thing in the flow the promise still didn't cover.
+Scoped to exactly what the banner already claims — `'ok'`/`'good'` are
+left at the original durations, since nothing in the copy promises them
+anything different.
+
+**Everything else the wizard collects was traced and confirmed already
+wired, not assumed clean from prior rounds.** `goal`, `days`, `gear`,
+`tightSpace`, `limitations`, `focusPrimary`/`targets`/`troubleZones`,
+`experience`, `activity`, `diet`/`allergens`/`meals` all resolve to a real
+downstream read, most already covered by earlier rounds' own audits
+(`focusBonus()`'s dead-input fix, the corrective-work and joint-aware
+warm-up additions, `todayKcalBudget()`). `conditioning` (labelled "scales
+your HIIT & finishers") is read exactly once, to multiply the target of
+any `cardio`/`dynamic` exercise — a legitimate, if coarse, scaling knob,
+left alone. The free-text "anything else to avoid" field is documented
+elsewhere in this file as deliberately not a filter, which is not a defect.
+
+**No dedicated cardiovascular endurance/stamina test exists in the
+baseline battery** — all nine tests measure strength or local muscular
+endurance (holds and max-rep sets); "conditioning" is self-reported only,
+never objectively tested the way every other capacity in the battery is.
+Named here rather than built this round: adding a tenth test is the same
+scale of change as the Jump Squats addition (v247) — a new ladder anchor,
+a calibrated `hardness`, a `TEST_DEFAULTS` entry, `validateData()`
+coverage — and, unlike the two fixes above, it is a real product decision
+(what movement, what duration) rather than a defect with one correct
+answer, so it is left for the athlete to decide rather than assumed.
+
+Both fixes driven live through the real sheet, not asserted on function
+output alone: `tests/04-journey.test.mjs` drives `openAssessment()` with a
+shoulder flag set, walks to the "pull" test, and confirms the swap note,
+the substituted photo/instructions, and the info button all show the
+substitute — then repeats with no flags set and confirms nothing changed.
+`tests/09-audit.test.mjs` confirms `mobilityFlow()` scales `'low'`
+correctly (including the joint-aware addition), leaves `'ok'`/`'good'`
+alone, and does not mutate the shared `WARMUP_FLOW`/`COOLDOWN_FLOW`
+arrays. Both mutation-tested: reverting the assessment swap to
+`exId=t.ex` fails all four of the new swap-note checks; reverting
+`mobilityFlow()` to a no-op fails all three of the new scaling checks.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
