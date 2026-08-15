@@ -945,8 +945,20 @@ export default async function run() {
       await runAIDiagnostic();
       o.imageOnly = read();
 
-      // everything healthy
-      window._geminiCall = async (m, b) => okReply(JSON.stringify(b).includes('inline_data') ? '42' : 'OK');
+      /* Everything healthy. The mock has to answer all THREE shapes the
+         diagnostic now sends: a text ping, the tiny "what number is this"
+         vision ping, and — since v263 — the real import self-test, which
+         pushes a synthetic tracker card through estimateFoodFromScreenshot()
+         and expects a parseable estimate back. A mock that returns "42" to
+         every image made the self-test fail and the report say "something
+         failed", which is the check doing its job on an incomplete fixture. */
+      window._geminiCall = async (m, b) => {
+        const body = JSON.stringify(b);
+        if (!body.includes('inline_data')) return okReply('OK');
+        if (/nutrition-tracking app/i.test(body))
+          return okReply(JSON.stringify({ name: 'Today', kcal: 900, protein: 92, carbs: 76, fat: 25 }));
+        return okReply('42');
+      };
       await runAIDiagnostic();
       o.healthy = read();
 
