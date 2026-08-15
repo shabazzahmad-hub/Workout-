@@ -1081,6 +1081,75 @@ export default async function run() {
     t.ok('and the toast says it too, for anyone who dismisses the sheet', r.tellsInToast, r);
   }
 
+  /* ---- the model list had rotted, and the app kept paying for it (v261) --
+     Root cause of several of the import failures, found by the v259
+     diagnostic on a real phone rather than guessed: Google retired
+     gemini-2.5-flash and gemini-2.0-flash for newer keys ("no longer
+     available to new users", a hard 404), so the old order spent TWO dead
+     round-trips before reaching gemini-flash-latest — the only model that
+     answers — and handed it whatever was left of the budget. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {}, keep = { ok: STATE.settings.foodAiModelOk, m: STATE.settings.foodAiModel };
+      delete STATE.settings.foodAiModelOk; delete STATE.settings.foodAiModel;
+      o.first = foodAIModels()[0];
+      o.all = foodAIModels();
+      // an alias, not a pinned version — a pinned id is what rotted
+      o.firstIsAlias = /latest/.test(o.first);
+      // remembering a working model leads with it, without losing the others
+      _rememberGoodModel('gemini-2.0-flash');
+      o.afterRemember = foodAIModels();
+      o.stillHasAll = o.afterRemember.length === o.all.length;
+      // an explicit override still wins outright
+      STATE.settings.foodAiModel = 'my-model';
+      o.override = foodAIModels();
+      delete STATE.settings.foodAiModel;
+      // a remembered model that is not in the list is ignored rather than trusted
+      STATE.settings.foodAiModelOk = 'something-retired-and-gone';
+      o.junkRemembered = foodAIModels();
+      STATE.settings.foodAiModelOk = keep.ok; if (keep.ok === undefined) delete STATE.settings.foodAiModelOk;
+      if (keep.m === undefined) delete STATE.settings.foodAiModel; else STATE.settings.foodAiModel = keep.m;
+      return o;
+    });
+    t.eq('the working alias is tried FIRST, not last', r.first, 'gemini-flash-latest');
+    t.ok('and it is an alias rather than a pinned version, which is what rotted', r.firstIsAlias, r);
+    t.eq('a remembered good model leads the list', r.afterRemember[0], 'gemini-2.0-flash');
+    t.ok('without dropping the others as fallbacks', r.stillHasAll, r);
+    t.eq('an explicit override still wins outright', r.override.length, 1);
+    t.eq('and a remembered model that is no longer in the list is ignored', r.junkRemembered[0], 'gemini-flash-latest');
+  }
+  {
+    // a successful call records the model, so a retired one is not retried forever
+    const r = await page.evaluate(async () => {
+      const o = {}, real = window._geminiCall;
+      const keep = STATE.settings.foodAiModelOk;
+      delete STATE.settings.foodAiModelOk;
+      const good = { candidates: [{ content: { parts: [{ text: JSON.stringify({ name: 'X', kcal: 100, protein: 9 }) }] }, finishReason: 'STOP' }] };
+      const tried = [];
+      // first two 404 exactly as Google now does for a new key
+      window._geminiCall = async (m) => {
+        tried.push(m);
+        if (m !== 'gemini-flash-latest') { const e = new Error('AI 404'); e.status = 404; throw e; }
+        return good;
+      };
+      await _visionEstimate('data:image/png;base64,AA==', 'p', { backoff: [0, 10] });
+      o.remembered = STATE.settings.foodAiModelOk;
+      o.firstTried = tried[0];
+      // a second run must lead with the remembered one and not re-pay for the dead ids
+      tried.length = 0;
+      await _visionEstimate('data:image/png;base64,AA==', 'p', { backoff: [0, 10] });
+      o.secondRunCalls = tried.length;
+      o.secondRunFirst = tried[0];
+      window._geminiCall = real;
+      if (keep === undefined) delete STATE.settings.foodAiModelOk; else STATE.settings.foodAiModelOk = keep;
+      return o;
+    });
+    t.eq('the model that actually answered is remembered', r.remembered, 'gemini-flash-latest');
+    t.eq('the very first attempt already uses the working alias', r.firstTried, 'gemini-flash-latest');
+    t.eq('and a later import spends ONE call, not three', r.secondRunCalls, 1);
+    t.eq('leading with the remembered model', r.secondRunFirst, 'gemini-flash-latest');
+  }
+
   /* ---- the suggested meal plan no longer greets the athlete on Fuel (v245) --
      Removed at the athlete's request: they log what they actually ate, by photo
      or by hand. Nothing was ever auto-logged (every meal needed a deliberate

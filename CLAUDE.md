@@ -3232,6 +3232,55 @@ sheet fails only the "blanks the macro fields" check; dropping the warning
 text fails only the sheet check. Neither alone covers the fix — the athlete
 needs both the empty box and the sentence explaining it.
 
+## The model list had rotted, and the diagnostic is what found it (v261)
+
+Six failures of the screenshot import across one day, each with a real and
+different cause, each fixed. The v259 diagnostic — built specifically because
+patching from one line of toast text had stopped being defensible — found the
+root cause underneath several of them on its first real run:
+
+```
+❌ gemini-2.5-flash   404 — "no longer available to new users"
+❌ gemini-2.0-flash   404 — "no longer available"
+✅ gemini-flash-latest  works (2095 ms)
+```
+
+**Google retired both pinned model ids for keys created after some cutoff.**
+`FOOD_AI_MODELS` led with them, so every import spent two dead round-trips
+before reaching the only model that answers — and then handed it whatever was
+left of the budget, which after a timeout on the way through was often a
+couple of seconds. The timeouts were real, the retries were real, and they
+were all downstream of a stale list.
+
+**The fix leads with an ALIAS, not a pinned version.** `gemini-flash-latest`
+always resolves to whatever the current flash model is, so it cannot rot the
+same way the pinned ids did. The pinned ids stay behind it for older keys
+that still have access — this is a reordering plus one addition, not a
+replacement, because a key that CAN reach `gemini-2.5-flash` should still be
+able to.
+
+**A 404 for a given key is permanent, so re-paying for it on every import is
+pure waste.** `foodAiModelOk` remembers the model that actually answered and
+leads with it, while still keeping the full list behind — a remembered model
+that later breaks costs one wasted call, not a dead end. It is validated
+against the list on read (`list.includes(good)`), so a stored id that is
+itself later retired is ignored rather than trusted; the mutant that dropped
+that guard is caught.
+
+**The diagnostic records it too.** A diagnostic that identifies the one
+working model and then lets the app keep leading with a dead one has told the
+athlete something true and changed nothing — so both `runAIDiagnostic()`'s
+success paths call `_rememberGoodModel()`, and the report says plainly that
+it has been saved.
+
+**The lesson is about instrumentation, not about Gemini.** Five rounds of
+inference from a symptom produced five real fixes and never reached the
+cause. One round of *measurement* did, immediately. When a failure is
+happening somewhere the developer structurally cannot reach — a user's phone,
+an external API this sandbox is blocked from — the highest-value change is
+the one that makes the invisible legible, and it should come first rather
+than sixth.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
