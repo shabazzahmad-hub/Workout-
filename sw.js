@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v242';
+const CACHE = 'coreforge-v243';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
@@ -77,22 +77,22 @@ const EXTRA = [
   './ex-kbgoblet.jpg','./ex-kbhalo.jpg','./ex-kbheli.jpg','./ex-kblunge.jpg',
   './ex-kbrdl.jpg','./ex-kbrow.jpg','./ex-kbsnatch.jpg','./ex-kbswing.jpg',
   './ex-kbtgu.jpg','./ex-kbthruster.jpg','./ex-kbwindmill.jpg','./ex-kbsuitcase.jpg',
-  './ex-kbfigure8.jpg','./ex-kbrenegade.jpg','./ex-kbhighpull.jpg','./ex-kneeraise.jpg',
-  './ex-latshuffle.jpg','./ex-legraise.jpg','./ex-longplank.jpg','./ex-lsit.jpg',
+  './ex-kbfigure8.jpg','./ex-kbrenegade.jpg','./ex-kbhighpull.jpg','./ex-kneekick.jpg','./ex-kneeraise.jpg','./ex-kneetoelbow.jpg',
+  './ex-latshuffle.jpg','./ex-legcircle.jpg','./ex-legraise.jpg','./ex-longplank.jpg','./ex-lsit.jpg',
   './ex-march.jpg','./ex-mbsitup.jpg','./ex-mbslam.jpg','./ex-mbtwist.jpg','./ex-mbchop.jpg',
   './ex-mountainclimber.jpg','./ex-negpullup.jpg','./ex-nordic.jpg','./ex-pikepushup.jpg',
   './ex-pistol.jpg','./ex-plankjack.jpg','./ex-plankleg.jpg','./ex-plankrot.jpg',
-  './ex-planktap.jpg','./ex-pseudoplanche.jpg','./ex-pullup.jpg','./ex-reverselunge.jpg',
+  './ex-planktap.jpg','./ex-pseudoplanche.jpg','./ex-pullup.jpg','./ex-quickpunch.jpg','./ex-reverselunge.jpg',
   './ex-reverseplank.jpg','./ex-ropeslam.jpg','./ex-ropewave.jpg','./ex-ropeplank.jpg','./ex-ruck.jpg',
   './ex-russiantwist.jpg','./ex-scappull.jpg','./ex-scissors.jpg','./ex-seatedtwist.jpg',
   './ex-shadowbox.jpg','./ex-sidedip.jpg','./ex-sideplankreach.jpg','./ex-singlebridge.jpg',
-  './ex-singlecalf.jpg','./ex-sissysquat.jpg','./ex-situptwist.jpg','./ex-skater.jpg',
+  './ex-singlecalf.jpg','./ex-sissysquat.jpg','./ex-sitthrust.jpg','./ex-situptwist.jpg','./ex-skater.jpg','./ex-skaterground.jpg',
   './ex-skip.jpg','./ex-slrdl.jpg','./ex-spidermanpushup.jpg','./ex-splitjump.jpg',
   './ex-splitsquat.jpg','./ex-sprawl.jpg','./ex-sprint.jpg','./ex-squatjack.jpg',
   './ex-squatthrust.jpg','./ex-standingoblique.jpg','./ex-superman.jpg','./ex-superpushup.jpg',
-  './ex-swimmer.jpg','./ex-tablerow.jpg','./ex-tempopushup.jpg','./ex-tuckjump.jpg',
+  './ex-swimmer.jpg','./ex-tablerow.jpg','./ex-tempopushup.jpg','./ex-toetouch.jpg','./ex-tuckjump.jpg',
   './ex-tuckvup.jpg','./ex-typewriter.jpg','./ex-vertcrunch.jpg','./ex-vsit.jpg',
-  './ex-vup.jpg','./ex-walkinglunge.jpg','./ex-wallhandstand.jpg','./ex-wallwalk.jpg',
+  './ex-vup.jpg','./ex-walkinglunge.jpg','./ex-wallhandstand.jpg','./ex-wallwalk.jpg','./ex-warriorthree.jpg',
   './ex-weightedtwist.jpg','./ex-widepullup.jpg','./ex-windshield.jpg','./notif-hlr.jpg',
   './phys-1.jpg','./phys-2.jpg','./phys-3.jpg','./phys-4.jpg',
   './phys-5.jpg','./ex-atomicpushup.mp4','./ex-birddog.mp4','./ex-burpee.mp4',
