@@ -1642,7 +1642,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='245';
+const APP_VERSION='246';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3255,7 +3255,7 @@ function todayWorkoutHTML(){
   const totalSets=_items.reduce((a,m)=>a+(m.sets||0),0);
   const doneSets=_items.reduce((a,m)=>{const st=log.ex[m.exId];return a+(st&&st.sets?st.sets.filter(Boolean).length:0);},0);
   const setsPct=totalSets?Math.round(doneSets/totalSets*100):0;
-  const restedToday=!!(STATE.restDays&&STATE.restDays[todayISO()]);
+  const restedToday=restedTodayFlag();
   const R=sess.session.key;
   const heroImg=heroImageFor(sess);
   const sessAll=SESSIONS_PER_CYCLE*TOTAL_CYCLES;   // 378 sessions across the full year
@@ -3332,18 +3332,28 @@ function cooldownTabHTML(){
      <button class="btn green" style="margin-top:10px" onclick="runCooldown()">▶ Guided cool-down</button>
   </div>`;
 }
+/* Has today been logged as a rest day? Read from TWO screens since v246 moved the
+   Rest day tile to Program while renderToday() still needs it for its own banner,
+   so it is one function rather than two hand-kept reads of STATE.restDays. */
+function restedTodayFlag(){return !!(STATE.restDays&&STATE.restDays[todayISO()]);}
 function workoutTabHTML(sess,log,doneCount,totalCount,wkNum,restedToday){
+  /* Today shows TODAY'S WORKOUT and nothing else. Two grids used to sit here and
+     were removed at the athlete's request as clutter on the one screen they open
+     to train:
+
+       - six alternate-session tiles (Weights, Special, Meal plan, Quick, Recover,
+         Rest day) — none of them about today's session. They now live on the
+         Program tab, which is already the "what else can I train" screen and
+         already carried its own Quick Workouts button.
+       - the six-stat summary (Week, Streak, Sessions, Core Score, Waist, Badges),
+         moved to Progress, which exists precisely to report those numbers.
+
+     The HIIT tile STAYS, and the distinction is the whole point of the split: it
+     converts THIS session's circuit into intervals, so it is about today in a way
+     none of the others were. The Meal plan tile was not carried over — v245
+     removed the card it scrolled to, so it had already become a dead link. */
   let h=`<button class="btn t-teal" style="margin:0 0 10px" onclick="openPlayer()">▶ Guided workout — hands-free player</button>
-  <div class="tilegrid">
-    ${sess.session.key==='metcon'?`<button class="tile accent" onclick="openHiitChooser()"><span class="ti">⚡</span>HIIT<br>intervals</button>`:''}
-    ${hasWeights()?`<button class="tile" onclick="startWeights()"><span class="ti">🏋️</span>Weights</button>`:''}
-    <button class="tile" onclick="openSpecial()"><span class="ti">🎖️</span>Special</button>
-    <button class="tile" onclick="openMealPlan()"><span class="ti">🍽️</span>Meal plan</button>
-    <button class="tile" onclick="openQuickList()"><span class="ti">⚡</span>Quick<br>5–10 min</button>
-    <button class="tile" onclick="openRestSheet()"><span class="ti">😌</span>Recover</button>
-    <button class="tile" onclick="${restedToday?'openRestSheet()':'startRestDay()'}"><span class="ti">🛌</span>${restedToday?'Rest logged':'Rest day'}</button>
-  </div>`;
-  h+=homeSummaryHTML();
+  ${sess.session.key==='metcon'?`<div class="tilegrid"><button class="tile accent" onclick="openHiitChooser()"><span class="ti">⚡</span>HIIT<br>intervals</button></div>`:''}`;
   h+=deloadBanner();
   h+=catchUpBanner();
   h+=weeklyBannerHTML();
@@ -7193,8 +7203,18 @@ function renderProgram(){
   const totalWeeks=WEEKS_PER_CYCLE*TOTAL_CYCLES;
   const phaseName=phaseOf(viewCycle)===1?'Phase 1 · Core & Abs':'Phase 2 · Full-Body + Core';
   let h=`<h2 class="vtitle">Your Program</h2><div class="vsub">${totalWeeks}-week journey · weeks 1–6 core &amp; abs, then a full-body split. The load climbs every week.</div>`;
-  // quick workouts entry
-  h+=`<button class="btn violet" style="margin-bottom:14px" onclick="openQuickList()">⚡ Quick Workouts · 5–10 min</button>`;
+  /* The alternate-session tiles, moved off Today in v246. Quick Workouts already
+     had its own button on this tab; it folds into the grid rather than sitting
+     beside a near-identical tile, which would be the clutter this move exists to
+     undo. Rest day is state-aware exactly as it was on Today. */
+  const _rested=restedTodayFlag();
+  h+=`<div class="tilegrid" style="margin-bottom:14px">
+    ${hasWeights()?`<button class="tile" onclick="startWeights()"><span class="ti">🏋️</span>Weights</button>`:''}
+    <button class="tile" onclick="openSpecial()"><span class="ti">🎖️</span>Special</button>
+    <button class="tile" onclick="openQuickList()"><span class="ti">⚡</span>Quick<br>5–10 min</button>
+    <button class="tile" onclick="openRestSheet()"><span class="ti">😌</span>Recover</button>
+    <button class="tile" onclick="${_rested?'openRestSheet()':'startRestDay()'}"><span class="ti">🛌</span>${_rested?'Rest logged':'Rest day'}</button>
+  </div>`;
   // overall progress
   const totalS=SESSIONS_PER_CYCLE*TOTAL_CYCLES;const done=Math.min(STATE.progressPtr,totalS);
   h+=`<div class="card pad"><div class="row" style="justify-content:space-between;margin-bottom:8px"><b>${totalWeeks}-week progress</b><span class="muted sm">${done}/${totalS} sessions</span></div><div class="pbar"><i style="width:${done/totalS*100}%"></i></div>
@@ -7252,6 +7272,9 @@ function renderProgress(){
   const v=$('#v-progress');
   const unit=STATE.profile.unit;
   let h=`<h2 class="vtitle">Progress</h2><div class="vsub">Everything auto-saved on this device.</div>`;
+  /* Moved off Today in v246. This is the tab that reports these numbers, and the
+     ring below it gives the Core Score its detail — summary first, then depth. */
+  h+=homeSummaryHTML();
   h+=`<button class="btn ghost" style="margin:0 0 8px" onclick="weeklyRecap()">🎙️ Weekly recap — hear it from your coach</button>`;
   h+=`<button class="btn ghost" style="margin:0 0 12px" onclick="openStandards()">🏅 Strength standards &amp; 1RM calculator</button>`;
   // core score ring + level

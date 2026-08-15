@@ -2303,6 +2303,71 @@ hidden sheet row, a dropped `logFood` portion, an always-written empty key, a
 stale portion leaking into the next sheet, the schema field, and re-adding the
 plan card to Fuel.
 
+## Today is today's workout, and nothing else (v246)
+
+Asked directly, twice: *"Today's tab of the app is the main page. It should not
+be clustered with a lot of various stuff. It should be focused on the exercises
+of the day."* Two grids came off it, and both MOVED rather than died.
+
+- Six alternate-session tiles (Weights, Special, Meal plan, Quick, Recover, Rest
+  day) → the **Program** tab, which is already the "what else can I train"
+  screen and already carried its own Quick Workouts button. That button folded
+  INTO the grid rather than sitting beside a near-identical tile, which would be
+  the clutter the move exists to undo.
+- The six-stat summary (`homeSummaryHTML`: Week, Streak, Sessions, Core Score,
+  Waist, Badges) → the **Progress** tab, which exists to report exactly those
+  numbers.
+
+**The HIIT tile stays on Today, and that distinction is the whole point of the
+split.** It converts THIS session's circuit into intervals, so it is about today
+in a way none of the others were. The Meal plan tile was not carried over at
+all: v245 had removed the card `openMealPlan()` scrolls to, so it was already a
+dead link — a tile that navigates to a `#mealplan` anchor which no longer
+exists, degrading silently thanks to its own `if(el)` guard.
+
+**Moving the Rest day tile meant two screens needed the same flag, so it became
+a function.** `renderToday()` computed `restedToday` into a local; Program now
+needs it too. `restedTodayFlag()` is one read of `STATE.restDays` rather than
+two hand-kept copies — the first draft did inline the second copy, and the
+comment written to justify it was itself the argument against it.
+
+**The moved tile broke suite 04's click-every-button sweep, and the fix was in
+the harness, not the app.** `startWeights()` legitimately opens the full-screen
+player; `.pl` is z-index 75 and covers the tab bar, so the next real
+`page.click('[data-tab=…]')` times out and every later tab renders 0 chars —
+three tabs failing with "tab is not clickable" and a fourth failing the
+controls-exercised count. The sweep already recovered from a click with
+`closeSheet()`, for exactly this reason; it just never had to handle a
+full-screen surface, because every player-opening button used to live on
+`today`, the FIRST tab in the loop, where nothing came after it to block.
+Verified rather than assumed: a probe against the pre-change file confirmed the
+Today sweep ends with no full-screen surface open and the next tab click
+succeeding. `playerTeardown()`/`hiitTeardown()` joined the recovery step, which
+also cut that block's runtime from ~120s to ~29s — the old number was mostly
+Playwright timing out on covered elements.
+
+**A `.grid3` probe on Progress passed on nothing, and only a mutant found it.**
+`renderProgress()` has grids of its own, so `!!prg.querySelector('.grid3')`
+stayed true whether or not the summary moved there — the "never moved to
+Progress" mutant sailed past that assertion and was caught only by an unrelated
+text check. Re-anchored on markup unique to `homeSummaryHTML()`: its waist stat
+is the only `logMeasure()` button, and its week tile the only one carrying the
+`/54` programme denominator. Same family as the ⚠️-icon and 🎒-badge checks this
+file already documents — a page-wide selector that other content also satisfies
+is not evidence about the thing you changed.
+
+**Two of the new assertions failed on first run for a reason that was not the
+code**: `.section-label` and the stat labels are uppercased by CSS
+`text-transform`, and `innerText` reflects that, so `includes('Main work')` and
+`includes('Badges')` both read as missing. The finisher check passed only
+because it happened to be written lowercased. Match case-insensitively, or an
+assertion reads "the section is gone" when the section is merely shouting.
+
+All six mutants seeded against the move were caught, each by its own check —
+tiles restored to Today, stats restored to Today, stats never added to Progress,
+tiles never added to Program, the Quick button duplicated beside its own tile,
+and the dead Meal plan tile carried over.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
