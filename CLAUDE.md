@@ -2410,12 +2410,28 @@ computes its own copy for its own banner, so the argument was still being passed
 and never read. Confirmed by brace-matching the function's real span rather than
 eyeballing it, then dropped from both the signature and the call site.
 
-**Named as debt, not fixed:** `renderFuel()` still calls `currentMealPlan()` to
-prime a plan nothing renders any more, so every Fuel render generates and
-`save()`s a meal plan the athlete never sees. It is waste rather than a
-correctness bug, the tab is inside its budget, and suite 20 reaches the builder
-directly rather than through this priming — same call as `renderProgress()`'s
-redundant log scans, recorded here rather than risked as a same-round refactor.
+**`STATE.nutrition.plan` had become write-only, and that one IS worth fixing.**
+`renderFuel()` kept a `currentMealPlan()` priming call whose comment explained it
+ran "before any markup is built" — but v245 deleted the only markup that read the
+plan, so every Fuel render generated recipes and `save()`d them for a value
+nothing displays. Removed. The generator is untouched and still covered directly
+by suite 20.
+
+**Removing it broke a check that asserted the RENDERER rebuilds a stale plan**,
+which was only ever true because Fuel displayed one. Same repair as the three
+`09-audit` checks above: the invariant (a stale plan rebuilds, a fresh one does
+not) is real and still worth having, so it was re-pointed at `currentMealPlan()`
+itself rather than deleted. Asserting it through `renderFuel()` now would be
+asserting it through nothing — the render path no longer touches the plan, and
+reading `STATE.nutrition.plan` back after a render finds `null`.
+
+**The dead chain left behind is deliberate and was traced, not assumed.**
+`mealPlanHTML` → `_recipePlanHTML` → `regenPlan`/`openGrocery`/`todaysWorkedDay`
+are all unreachable from app code now. They are kept because suite 20 drives the
+generator directly and the shopping list the grocery sheet duplicated still
+renders inline on Reference — so nothing user-facing was lost. Verified by
+counting real call sites per function rather than trusting the diff, which is
+also how the `openMealPlan()` dead end above was found.
 
 ## Rendering
 

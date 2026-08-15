@@ -11521,7 +11521,13 @@ function renderRef(){
 }
 function renderFuel(){
   const v=$('#v-fuel');const n=nut();const t=nutToday();
-  try{currentMealPlan();}catch(e){}   // state changes happen HERE, before any markup is built
+  /* The currentMealPlan() priming call that used to sit here is gone. It existed
+     so the generator's own state changes landed before any markup was built —
+     but v245 removed the only markup that read the plan, which left this
+     generating recipes and save()ing them on EVERY Fuel render for a value
+     nothing displays. STATE.nutrition.plan had become write-only, so the work
+     and the storage it churned were both pure waste. The generator itself is
+     untouched and still covered directly by suite 20. */
   const kg=latestWeightKg();const prot=proteinTargetG();const wt=waterTargetCups();
   let h=`<h2 class="vtitle">Fuel</h2><div class="vsub">Abs are built in the gym and revealed in the kitchen. Hit these daily.</div>`;
   h+=dietRepairNoteHTML();

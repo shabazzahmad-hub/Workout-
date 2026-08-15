@@ -230,9 +230,16 @@ export default async function run() {
       o.wholeFresh = currentMealPlan().meals.join(',');
       STATE.nutrition.meals = 3;
 
+      /* Driven through currentMealPlan() directly, not `go('fuel'); renderFuel()`.
+         Fuel used to prime the generator before building its plan card; v245
+         removed the card and v246 removed the now-pointless priming call, so the
+         render path no longer touches STATE.nutrition.plan at all and reading it
+         back after a render finds null. The invariant under test is unchanged and
+         still worth having — a stale plan rebuilds, a fresh one does not — it just
+         belongs to the generator rather than to a renderer that no longer calls
+         it. Asserting it through Fuel now would be asserting it through nothing. */
       STATE.nutrition.kcalTarget = 1600; STATE.nutrition.plan = null;
-      go('fuel'); renderFuel();
-      o.rendered = STATE.nutrition.plan.meals.join(',');
+      o.rendered = currentMealPlan().meals.join(',');
       o.renderedStamp = STATE.nutrition.plan.stamp;
       Math.random = _rand;
       /* Twice through with NOTHING changed between: a plan that rebuilds on
