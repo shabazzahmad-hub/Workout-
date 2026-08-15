@@ -563,6 +563,97 @@ export default async function run() {
   t.ok('a stale TEST_DEFAULTS entry for a test that does not exist is caught by name', lockstep.staleCaught, lockstep);
   t.ok('and validateData() is clean again once both are restored', lockstep.cleanAfterRestore, lockstep);
 
+  /* ---- an audit of the whole test->week chain, prompted directly (v249) ----
+     Asked to add all nine tests to the Strength Trends chart, and separately to
+     audit that the baseline test is properly interlinked to every week of the
+     program. STRENGTH_METRICS was a hand-kept five-test literal (the audit's
+     actual request); estimateMaxes() and skipBaseline() were found broken by
+     reading every consumer of TESTS/maxes, not reported by the athlete. Both
+     had shipped the exact "a hand-kept list drifts behind TESTS" defect
+     TEST_DEFAULTS was hoisted to prevent in v247 — just in two places that
+     hoist did not reach, because they are not simple flat literals. */
+  const audit = await page.evaluate(() => {
+    const o = {};
+    // 1. the chart now covers every test, membership read from TESTS itself
+    o.metricIds = STRENGTH_METRICS.map(x => x.k).sort();
+    o.testIds = TESTS.map(t => t.id).sort();
+    o.hasLabels = STRENGTH_METRICS.every(x => typeof x.label === 'string' && x.label.length > 0);
+    o.powerLabel = (STRENGTH_METRICS.find(x => x.k === 'power') || {}).label;
+
+    // 2. estimateMaxes({}) — the actual gate every stored maxes object passes
+    // through before prescribe() ever sees it — has a real, positive default
+    // for every test, not just the original eight.
+    const em = estimateMaxes({});
+    o.estimateMaxesIds = TESTS.map(t => t.id);
+    o.estimateMaxesFinite = o.estimateMaxesIds.every(id => typeof em[id] === 'number' && isFinite(em[id]) && em[id] > 0);
+    o.estimateMaxesPower = em.power;
+    // a real, present power value must still win over the default — the bug
+    // was an ABSENT default, not the merge order, so this must keep working
+    o.estimateMaxesKeepsReal = estimateMaxes({ power: 17 }).power === 17;
+
+    // 3. skipBaseline() — an athlete who never takes the battery at all must
+    // still get an estimate for every test, including the new one, or the
+    // Strength Trends chart shows "no data" for Jump Squats specifically while
+    // every other lift the same athlete has an estimate for.
+    const keep = STATE.baseline;
+    STATE.baseline = null;
+    skipBaseline();
+    o.skippedMaxes = STATE.baseline && STATE.baseline.maxes;
+    o.skippedHasAllIds = o.skippedMaxes ? TESTS.every(t => o.skippedMaxes[t.id] > 0) : false;
+    STATE.baseline = keep;
+
+    // 4. the caption no longer claims something the content contradicts —
+    // this file's own "a promise in the UI is a specification" rule, pointed
+    // at itself: Push-Ups/Squats/Jump Squats are not core-specific, so a chart
+    // that now includes them cannot still call itself core-only.
+    // This file never calls seedAthlete() — it drives the raw page — so
+    // STATE.baseline starts null. A real baseline is set here explicitly
+    // rather than assumed, or strengthTrendHTML() renders nothing at all and
+    // the chip-rendering assertion below would pass on an empty tab.
+    STATE.baseline = { date: todayISO(), score: 60, level: 'Intermediate', testCount: TESTS.length,
+      maxes: { plank: 60, side: 40, hollow: 35, lower: 15, dyn: 30, push: 20, pull: 12, squat: 25, power: 12 } };
+    go('progress'); renderProgress();
+    const capt = (document.querySelector('#v-progress') || {}).innerText || '';
+    o.oldClaimGone = !/truest measure of core strength/i.test(capt);
+
+    // and the chips actually render, in TESTS' own order, on the real tab
+    const chipEls = [...document.querySelectorAll('#v-progress .chip')].map(b => b.textContent.trim());
+    o.chipLabels = STRENGTH_METRICS.map(x => x.label).filter(l => chipEls.includes(l));
+    return o;
+  });
+  t.eq('the Strength Trends chart now covers exactly the 9 real tests, no more and no fewer', audit.metricIds, audit.testIds);
+  t.ok('every metric has a real display label', audit.hasLabels, audit);
+  t.eq('Jump Squats gets its own short label rather than the full test name', audit.powerLabel, 'Jump Squats');
+  t.ok('estimateMaxes({}) returns a finite positive default for every test, including the new one', audit.estimateMaxesFinite, audit);
+  t.ok('specifically, the power default is a real number now, not missing', audit.estimateMaxesPower > 0, audit);
+  t.eq('and a real measured value still wins over the default', audit.estimateMaxesKeepsReal, true);
+  t.ok('skipping the baseline entirely still estimates every test, including power', audit.skippedHasAllIds, audit);
+  t.ok('the caption no longer claims to be core-only now that it is not', audit.oldClaimGone, audit.capt);
+  t.eq('all 9 chips actually render on the real Progress tab', audit.chipLabels.length, 9, audit);
+
+  /* "validateData() is clean" proves nothing about the estimateMaxes() check
+     specifically, same shape as the TEST_DEFAULTS lockstep check above:
+     estimateMaxes({}) already returns a real default for every test, so
+     deleting the two lines that verify it produces no NEW problems and the
+     mutation escapes silently. Requires the SPECIFIC complaint, forcing the
+     real function to actually go missing a default rather than editing the
+     validator's own source (which page.evaluate cannot do to a running page
+     anyway) — monkey-patching estimateMaxes() itself for the duration of one
+     validateData() call, muting console.error the same way this file's other
+     live breaks already do. */
+  const emGate = await page.evaluate(() => {
+    const realErr = console.error; console.error = () => {};
+    const real = estimateMaxes;
+    window.estimateMaxes = m => { const r = real(m); delete r.power; return r; };
+    const caught = validateData().some(e => /estimateMaxes\(\{\}\) has no usable default for test "power"/.test(e));
+    window.estimateMaxes = real;
+    const cleanAfter = validateData().length === 0;
+    console.error = realErr;
+    return { caught, cleanAfter };
+  });
+  t.ok('a power default that goes missing from estimateMaxes() is caught by name', emGate.caught, emGate);
+  t.ok('and validateData() is clean again once the real function is restored', emGate.cleanAfter, emGate);
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }

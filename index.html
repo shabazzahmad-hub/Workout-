@@ -1679,7 +1679,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='248';
+const APP_VERSION='249';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -1826,8 +1826,16 @@ function estimateMaxes(m){
     if(isFinite(v)&&v>=0)clean[k]=v;
   });
   const s=Math.max(0.5,Math.min(2,(clean.plank!=null?clean.plank:40)/60));
+  /* power (Jump Squats, added v247) was missing from this literal entirely —
+     found auditing the new test's wiring, not reported. Every OTHER field here
+     degrades to a plank-scaled estimate when missing or corrupt, so jumpsquat/
+     splitjump/broadjump kept their anchored precision through a bad backup or a
+     skipped question; power alone fell all the way through to the generic
+     unanchored branch instead, because Object.assign had nothing here to fall
+     back to. 10 reps at s=1 sits in the same rough band as squat's 22 relative
+     to a bodyweight-squat max, scaled the same way as the other seven. */
   return Object.assign({plank:40,side:25,hollow:25,lower:12,dyn:20,
-    push:Math.round(12*s),pull:Math.round(7*s),squat:Math.round(22*s)},clean);
+    push:Math.round(12*s),pull:Math.round(7*s),squat:Math.round(22*s),power:Math.round(10*s)},clean);
 }
 function currentMaxes(cycle){
   // cycle 0 uses baseline; later cycles use reassessment if present, else baseline
@@ -3174,12 +3182,17 @@ function openClearance(){
 function skipBaseline(){
   const lvl=(STATE.profile&&STATE.profile.experience)||'Intermediate';
   const b=Math.max(1,Math.round(({Beginner:0.6,Intermediate:1,Advanced:1.5})[lvl]||1));
-  /* All EIGHT anchors, not five. Writing only the core five left push/pull/squat
-     undefined, so every Phase-2 exercise fell through to the generic branch and
-     ignored the athlete entirely. */
+  /* All NINE anchors, not eight. This has happened before — the comment used to
+     say "not five," when writing only the core five left push/pull/squat
+     undefined and every Phase-2 exercise fell through to the generic branch and
+     ignored the athlete entirely. v247 added a ninth (power, Jump Squats) and
+     this literal was not updated to match — the exact same class of gap
+     recurring for the exact same reason: a hand-kept list drifting behind
+     TESTS. Found by auditing the new test's wiring, not reported. */
   STATE.baseline={date:todayISO(),score:null,level:lvl,estimated:true,testCount:TESTS.length,
     maxes:{plank:Math.round(30*b),side:Math.round(20*b),hollow:Math.round(15*b),lower:Math.round(8*b),
-           dyn:Math.round(20*b),push:Math.round(12*b),pull:Math.round(6*b),squat:Math.round(22*b)}};
+           dyn:Math.round(20*b),push:Math.round(12*b),pull:Math.round(6*b),squat:Math.round(22*b),
+           power:Math.round(10*b)}};
   save();toast('Starting from your experience level — retest any time from Progress');render();
 }
 /* Defer a re-test without stalling the program: carry the previous block's
@@ -9518,12 +9531,19 @@ function lineChart(vals,dates,color,unit){
     ${n>1?xlab(0,'start')+xlab(n-1,'end'):xlab(0,'middle')}
   </svg>`;
 }
-/* Strength trends from the baseline + re-tests (the true benchmark tests). */
-const STRENGTH_METRICS=[
-  {k:'plank',label:'Plank',unit:'time'},{k:'side',label:'Side Plank',unit:'time'},
-  {k:'hollow',label:'Hollow',unit:'time'},{k:'lower',label:'Rev. Crunch',unit:'reps'},
-  {k:'dyn',label:'Bicycle',unit:'time'},
-];
+/* Strength trends from the baseline + re-tests — all nine tests, not a curated
+   five. This used to be its own hand-kept literal covering only the core-only
+   tests (plank/side/hollow/lower/dyn), which meant Push-Ups, Squats, Inverted
+   Rows and Jump Squats had no chip and no chart no matter how many times you
+   retested. Membership is read from TESTS directly — the same reasoning
+   TEST_DEFAULTS was hoisted for — so a future TESTS entry gets a chip
+   automatically instead of needing a second edit here to remember. Only the
+   DISPLAY label is worth shortening by hand (TESTS' own names are built for
+   the assessment flow — "Bicycle Crunches (max time)" — not a chip); an id
+   with no override falls back to the full test name rather than disappearing. */
+const STRENGTH_LABELS={plank:'Plank',power:'Jump Squats',push:'Push-Ups',side:'Side Plank',
+  squat:'Squats',hollow:'Hollow',pull:'Inverted Row',lower:'Rev. Crunch',dyn:'Bicycle'};
+const STRENGTH_METRICS=TESTS.map(t=>({k:t.id,label:STRENGTH_LABELS[t.id]||t.name,unit:t.unit}));
 let strengthSel='plank';
 function setStrengthMetric(k){strengthSel=k;renderProgress();}
 function assessSeries(){
@@ -9556,7 +9576,7 @@ function strengthTrendHTML(){
   }
   return `<div class="section-label">Strength trends</div><div class="card pad">
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">${chips}</div>${body}
-    <div class="tiny muted" style="margin-top:8px">From your baseline &amp; re-tests — the truest measure of core strength.</div></div>`;
+    <div class="tiny muted" style="margin-top:8px">From your baseline &amp; re-tests — the truest measure of your real strength, not a projection.</div></div>`;
 }
 function bmiLineHTML(){
   const n=STATE.nutrition||{};if(!(n.weightKg>0&&n.heightCm>0))return '';
@@ -13143,6 +13163,17 @@ function validateData(){
   // left behind for a test that no longer exists.
   TESTS.forEach(t=>{if(!(t.id in TEST_DEFAULTS))errs.push('TEST_DEFAULTS is missing an entry for test "'+t.id+'"');});
   Object.keys(TEST_DEFAULTS).forEach(k=>{if(!testUnit[k])errs.push('TEST_DEFAULTS has a stale entry "'+k+'" — no such test exists');});
+  /* estimateMaxes({}) is the LAST gate every stored maxes object passes through
+     on the way to prescribe() — currentMaxes() calls nothing else. Its own
+     internal defaults literal has drifted behind TESTS before (power/Jump
+     Squats shipped in v247 with no entry here at all, silently un-anchoring
+     jumpsquat/splitjump/broadjump for anyone with a missing or corrupt power
+     value, found by audit rather than reported). Checked by calling the real
+     function with no input and confirming every TESTS id comes back as a
+     finite positive number — a static list comparison could not see this,
+     since the defaults are computed inline, not stored in an inspectable map. */
+  {const emptyMaxes=estimateMaxes({});
+   TESTS.forEach(t=>{if(!(emptyMaxes[t.id]>0))errs.push('estimateMaxes({}) has no usable default for test "'+t.id+'"');});}
   Object.keys(EX).forEach(k=>{
     const e=EX[k];
     if(e.anchor&&!testUnit[e.anchor])errs.push(k+': anchor "'+e.anchor+'" is not a test');
