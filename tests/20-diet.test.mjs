@@ -441,8 +441,10 @@ export default async function run() {
     const r = await page.evaluate(() => {
       const o = {};
       // the schema asks for it but does NOT require it — an estimate must still
-      // land when the model omits the portion entirely
-      const src = estimateFoodFromImage.toString();
+      // land when the model omits the portion entirely. Lives in the SHARED
+      // _visionEstimate() pipeline now (v253), not in estimateFoodFromImage
+      // itself — both it and estimateFoodFromScreenshot route through it.
+      const src = _visionEstimate.toString();
       o.inSchema = /portion:\{type:'STRING'\}/.test(src);
       o.notRequired = /required:\['name','kcal','protein'\]/.test(src);
 
@@ -542,6 +544,106 @@ export default async function run() {
     t.eq('the bad portion is gone rather than stringified', 'portion' in (r.first || {}), false);
     t.eq('and the rest of that row is untouched', r.first && r.first.kcal, 500);
     t.eq('a messy but real portion is cleaned, not discarded', r.second && r.second.portion, '1 cup cooked');
+  }
+
+  /* ---- importing a screenshot from another tracker (v253) -----------------
+     Requested directly: the athlete tracks macros in a separate app (Lose It)
+     and wants that number carried into CoreForge without retyping it.
+     foodPhoto() ESTIMATES from a photo of food; foodScreenshot() TRANSCRIBES
+     numbers already on screen — same Gemini plumbing (_visionEstimate), a
+     different prompt, and it must not force the camera open the way a food
+     photo does, since the screenshot already exists in the photo library. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      const imgSrc = estimateFoodFromImage.toString();
+      const shotSrc = estimateFoodFromScreenshot.toString();
+      // both route through the ONE shared pipeline — drift protection, not two
+      // copies of the model-fallback/JSON-parse/clamp logic
+      o.imgSharesPipeline = /_visionEstimate\(/.test(imgSrc);
+      o.shotSharesPipeline = /_visionEstimate\(/.test(shotSrc);
+      // but the prompts are genuinely different — an estimate task vs a read task
+      o.imgSaysEstimate = /Estimate the nutrition/i.test(imgSrc);
+      o.shotSaysRead = /do NOT estimate|read the exact numbers/i.test(shotSrc);
+      o.shotMentionsTrackers = /nutrition-tracking app/i.test(shotSrc);
+
+      // the file-picker wiring: foodPhoto() forces the camera, foodScreenshot()
+      // must not — the screenshot already exists in the photo library
+      const photoSrc = foodPhoto.toString();
+      const shotFnSrc = foodScreenshot.toString();
+      o.photoForcesCamera = /capture['"]?,\s*['"]environment/.test(photoSrc) || /setAttribute\('capture','environment'\)/.test(photoSrc);
+      o.screenshotDoesNotForceCamera = !/capture/.test(shotFnSrc);
+
+      return o;
+    });
+    t.ok('estimateFoodFromImage and estimateFoodFromScreenshot share one pipeline', r.imgSharesPipeline && r.shotSharesPipeline, r);
+    t.ok('the food-photo prompt asks the model to estimate', r.imgSaysEstimate, r);
+    t.ok('the screenshot prompt asks the model to read, not estimate', r.shotSaysRead, r);
+    t.ok('and names what kind of screenshot it expects', r.shotMentionsTrackers, r);
+    t.ok('foodPhoto() opens the camera directly', r.photoForcesCamera, r);
+    t.ok('foodScreenshot() does not — it needs the photo library, not the camera', r.screenshotDoesNotForceCamera, r);
+    /* The behavioural checks below prove _screenshotUnusable() itself is
+       correct in isolation — they cannot prove foodScreenshot() actually
+       CALLS it before opening the sheet, since driving a real file-picker
+       through a dynamically-created, never-attached <input type=file> has no
+       established pattern in this suite. A source check on the wiring closes
+       that gap; confirmed it can fail by deleting the guard call and rerunning. */
+    const wired = await page.evaluate(() => /_screenshotUnusable\(est\)/.test(foodScreenshot.toString()));
+    t.ok('foodScreenshot() actually calls the guard on the estimate it received', wired);
+  }
+  {
+    // the shared clamp and the "don't guess" honesty case, driven through the
+    // REAL pipeline with only the network call mocked — same technique this
+    // file already uses nowhere else because nothing before this touched
+    // _geminiCall, so the mock is scoped to this one block and restored after
+    const r = await page.evaluate(async () => {
+      const o = {}, real = window._geminiCall;
+      const reply = (obj) => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(obj) }] }, finishReason: 'STOP' }] });
+
+      window._geminiCall = async () => reply({ name: 'Chicken bowl', kcal: 450, protein: 40, carbs: 35, fat: 12, portion: '1 bowl' });
+      const clean = await estimateFoodFromScreenshot('data:image/png;base64,AA==');
+      o.cleanPassesThrough = clean.kcal === 450 && clean.p === 40 && clean.c === 35 && clean.f === 12;
+      o.cleanUsable = !_screenshotUnusable(clean);
+
+      // a macro that would out-calorie the food (protein*4 > kcal) is still
+      // clamped on the screenshot path — proving the guard is genuinely
+      // SHARED code, not a copy that only the photo path exercises
+      window._geminiCall = async () => reply({ name: 'Odd reading', kcal: 100, protein: 100, carbs: 0, fat: 0 });
+      const clamped = await estimateFoodFromScreenshot('data:image/png;base64,AA==');
+      o.clampedOnScreenshotPath = clamped.p === 25;   // Math.round(100/4)
+
+      // the model doing exactly what it was told — no clear numbers found
+      window._geminiCall = async () => reply({ name: 'Unclear', kcal: 0, protein: 0, carbs: 0, fat: 0 });
+      const blank = await estimateFoodFromScreenshot('data:image/png;base64,AA==');
+      o.blankIsUnusable = _screenshotUnusable(blank);
+
+      // the guard itself, directly — the real claim, not just "the pipeline
+      // returned zeros", since a false positive here would open the log sheet
+      // pre-filled with zeros that read as a deliberate zero-calorie entry
+      o.guardTrueOnBothZero = _screenshotUnusable({ kcal: 0, p: 0 });
+      o.guardFalseWithKcal = !_screenshotUnusable({ kcal: 120, p: 0 });
+      o.guardFalseWithProtein = !_screenshotUnusable({ kcal: 0, p: 8 });
+
+      window._geminiCall = real;
+      return o;
+    });
+    t.ok('a well-formed screenshot reading passes through unchanged', r.cleanPassesThrough, r);
+    t.ok('and is treated as usable', r.cleanUsable, r);
+    t.ok('an impossible macro is clamped on the screenshot path too — shared code, not a fork', r.clampedOnScreenshotPath, r);
+    t.ok('a kcal:0/protein:0 reply is treated as unusable, not a real zero-calorie food', r.blankIsUnusable, r);
+    t.ok('the guard fires on both zero', r.guardTrueOnBothZero, r);
+    t.ok('but not when either number is real', r.guardFalseWithKcal && r.guardFalseWithProtein, r);
+  }
+  {
+    // the entry point actually reaches the athlete, on the real Fuel tab
+    const r = await page.evaluate(() => {
+      go('fuel'); renderFuel();
+      const view = document.querySelector('#view-fuel') || document.querySelector('.view.active');
+      return { hasImportButton: !!view.querySelector('[onclick^="foodScreenshot"]'),
+        privacyMentionsScreenshot: /screenshot/i.test(privacyNoteHTML()) };
+    });
+    t.ok('a screenshot-import button is on the Fuel tab', r.hasImportButton, r);
+    t.ok('the privacy note names the new outbound photo path, not just the old one', r.privacyMentionsScreenshot, r);
   }
 
   /* ---- the suggested meal plan no longer greets the athlete on Fuel (v245) --

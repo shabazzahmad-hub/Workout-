@@ -2846,6 +2846,78 @@ another test process might still be reading it, full stop — not just
 "restore before the next mutation," which was already being done and
 still wasn't enough.
 
+## Importing a screenshot from another tracker (v253)
+
+Asked directly: the athlete tracks macros in a separate app (Lose It) every
+day and wants that number carried into CoreForge without retyping it. A
+live account-to-account sync isn't possible — CoreForge has no server, and
+Lose It has no open API for a hobbyist integration to plug into — but the
+app already had almost everything needed for the honest alternative: a
+screenshot of the numbers Lose It already computed, read straight into the
+log, rather than re-estimated.
+
+**`foodPhoto()` ESTIMATES from a photo of food; `foodScreenshot()`
+TRANSCRIBES numbers that are already on screen — same model, same key, a
+different job.** Reusing `estimateFoodFromImage()`'s exact prompt on a
+screenshot would ask Gemini to *guess* the calories in a photo of a
+calorie-tracking app, which throws away the one advantage a screenshot has
+over a food photo: the number is already computed and correct. The new
+prompt says so explicitly — "read the exact numbers shown... do NOT
+estimate, recalculate, or round beyond what is already displayed."
+
+**One shared pipeline, not two.** The model-fallback loop, JSON-schema
+parsing, error surfacing and the physiological macro clamp (`protein*4`
+can never exceed `kcal`) all lived inside `estimateFoodFromImage()`, so
+adding a second entry point the naive way would have meant copying all of
+it — and this file's own history is full of exactly that kind of copy
+drifting apart. Pulled into `_visionEstimate(dataUrl, promptText)`, with
+`estimateFoodFromImage()` and `estimateFoodFromScreenshot()` now both thin
+wrappers that supply only the prompt. Refactoring it broke a PRE-EXISTING
+test — `20-diet.test.mjs`'s portion-schema check read
+`estimateFoodFromImage.toString()` for the schema literal, which no longer
+lives there — caught immediately by the suite, not shipped and found later.
+
+**`foodPhoto()` forces the camera open (`capture:'environment'`) because
+the athlete is standing over a plate; `foodScreenshot()` must not, since
+the screenshot already exists in the photo library.** Same `<input
+type=file>` shape, one attribute different — get it backwards and the
+screenshot button demands a live camera photo of your phone's own screen.
+
+**A reply of `kcal:0` AND `protein:0` from the screenshot path is not a
+real zero-calorie food — it is the model doing exactly what the prompt
+asked ("if you cannot clearly find numbers, do not guess").** Opening the
+log sheet pre-filled with two zeros looks identical to a deliberate
+zero-calorie entry, which is worse than the toast-and-fall-back-to-manual
+pattern every other failure in this flow already uses. `_screenshotUnusable(est)`
+is named and factored out on purpose, matching this file's own established
+reasoning for `dietOk()`/`parqFlags()`/every other fail-closed predicate:
+a control worth trusting has to be provable on its own, not only inferable
+from driving the full UI around it — which for a dynamically-created,
+never-DOM-attached `<input type=file>` has no working pattern in this
+suite at all. The guard function is unit-tested directly; a SEPARATE
+source check confirms `foodScreenshot()` actually calls it on the estimate
+it received, since the first draft of this round proved the guard correct
+in isolation and then shipped a version that never called it — mutation-
+tested by deleting the call site, which the isolated-guard checks alone
+did not catch and the wiring check does.
+
+**The privacy note is a specification for what leaves the phone, and this
+adds a second thing over the same wire the old sentence didn't name.**
+`privacyNoteHTML()` said "the food-photo lookup sends **that photo** to
+Google Gemini" — technically still true, but a screenshot is also a photo
+sent to the same place, and the old wording read as if only food photos
+qualified. Reworded to name both rather than leaving the second one to be
+inferred, the same "a privacy blurb that omits a real outbound call is
+worse than no blurb" instinct this file already applied to Open Food
+Facts (v230).
+
+**Five mutants seeded, five caught** — the two functions sharing one
+pipeline (collapsed `estimateFoodFromScreenshot` onto
+`estimateFoodFromImage` directly), the button missing from Fuel, the
+privacy note reverted, the physiological clamp disabled (proving the
+screenshot path exercises the SAME clamp code, not a copy that only the
+photo path runs through), and the wiring gap described above.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

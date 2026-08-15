@@ -1692,7 +1692,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='252';
+const APP_VERSION='253';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -8998,14 +8998,19 @@ async function _geminiCall(model,body){
   }
   return res.json();
 }
-async function estimateFoodFromImage(dataUrl){
+/* Shared by both vision entry points — a photo of the food itself (estimate)
+   and a screenshot of another app's already-computed nutrition numbers
+   (transcribe). Only the prompt differs; the model-fallback loop, JSON
+   parsing, error surfacing and the physiological macro clamp are identical
+   and must not drift into two copies. */
+async function _visionEstimate(dataUrl,promptText){
   const mime=(String(dataUrl).match(/^data:([^;,]+)/)||[,'image/jpeg'])[1];
   const b64=String(dataUrl).replace(/^data:[^,]+,/,'');
   // Force structured JSON output (responseMimeType + schema) so the model can't
   // reply with prose/markdown that leaves us with "no estimate". Generous token
   // budget so the reply is never truncated.
   const body={contents:[{parts:[
-    {text:'Estimate the nutrition of the food in this photo for the visible portion. Return a short food name, "kcal" = whole-number total calories, and whole-number GRAMS for "protein", "carbs" and "fat" (small numbers — e.g. a banana is about 1 g protein, 27 g carbs, 0 g fat). Never put the calorie number in a macro field. Also return "portion": a short plain description of the amount you estimated, using whatever unit suits the food — a weight ("about 6 oz (170 g)"), a volume ("1 cup cooked"), or a count ("2 slices", "1 medium banana"). Give a weight in both ounces and grams when the food is meat, fish or cheese. Keep it under 40 characters and describe the amount only, never the nutrition.'},
+    {text:promptText},
     {inline_data:{mime_type:mime,data:b64}}
   ]}],generationConfig:{temperature:0.2,maxOutputTokens:800,responseMimeType:'application/json',
     /* portion is deliberately NOT in `required`: a model that omits it must still
@@ -9052,6 +9057,18 @@ async function estimateFoodFromImage(dataUrl){
   }
   throw lastErr||new Error('no estimate');
 }
+function estimateFoodFromImage(dataUrl){
+  return _visionEstimate(dataUrl,'Estimate the nutrition of the food in this photo for the visible portion. Return a short food name, "kcal" = whole-number total calories, and whole-number GRAMS for "protein", "carbs" and "fat" (small numbers — e.g. a banana is about 1 g protein, 27 g carbs, 0 g fat). Never put the calorie number in a macro field. Also return "portion": a short plain description of the amount you estimated, using whatever unit suits the food — a weight ("about 6 oz (170 g)"), a volume ("1 cup cooked"), or a count ("2 slices", "1 medium banana"). Give a weight in both ounces and grams when the food is meat, fish or cheese. Keep it under 40 characters and describe the amount only, never the nutrition.');
+}
+/* A screenshot of another tracker (Lose It, MyFitnessPal, a nutrition label —
+   anything with numbers already on screen) is a TRANSCRIPTION job, not an
+   estimate — the whole point is that the number is already computed and
+   right there, so guessing would throw away accuracy the athlete already
+   has. Same _visionEstimate() plumbing (model fallback, JSON schema, the
+   physiological clamp), only the prompt changes: read, do not calculate. */
+function estimateFoodFromScreenshot(dataUrl){
+  return _visionEstimate(dataUrl,'This is a screenshot of a nutrition-tracking app or a food label showing a meal that has ALREADY been logged or calculated, with its calories and macros already displayed as numbers on screen. Read the exact numbers shown — do NOT estimate, recalculate, or round beyond what is already displayed. Return the food or meal name exactly as shown, "kcal" = the whole-number total calories shown, and whole-number GRAMS for "protein", "carbs" and "fat" exactly as displayed. If several foods are listed together (a whole meal or a whole day), sum their totals into one entry. Also return "portion": a short description of the serving or quantity shown, if any is visible, under 40 characters. If you cannot clearly find calorie and protein numbers in the image, do not guess — return kcal:0 and protein:0.');
+}
 function foodPhoto(){
   if(!foodAIReady()){toast('Add a free Gemini key in Settings ⚙️ for photo estimates');openQuickAdd();return;}
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.setAttribute('capture','environment');
@@ -9062,6 +9079,40 @@ function foodPhoto(){
         if(gen!==_sheetGen){toast('📷 Estimated '+(est.name||'food')+' · ~'+est.kcal+' kcal — tap ➕ to log it',6000);return;}
         openQuickAdd(est);toast('📷 '+(est.name||'Food')+(est.portion?' · '+est.portion:'')+' · ~'+est.kcal+' kcal, '+est.p+'g — tap Save to log',5000);
       }catch(e){const msg=String((e&&e.message)||e||'failed');toast('Photo estimate failed — '+msg.slice(0,120),6000);
+        if(gen===_sheetGen)openQuickAdd();}};
+    rd.readAsDataURL(f);};
+  inp.click();
+}
+/* Read numbers off a screenshot of another tracker (Lose It, MyFitnessPal, a
+   nutrition label) instead of guessing from a photo of the food itself — for
+   an athlete who is already logging elsewhere and wants that number carried
+   over rather than re-estimated. Deliberately NOT capture:'environment':
+   foodPhoto() forces the camera open because you are standing over a plate;
+   this one has to open the photo library / Files, since the screenshot
+   already exists. Downscaled less aggressively than a food photo (1280 vs
+   768) — the thing being read is small on-screen text and digits, not a
+   whole plate, and shrinking it further risks making a "6" unreadable as
+   an "8". */
+/* A reply of kcal:0 AND protein:0 is not a real zero-calorie food — it is the
+   model doing exactly what the screenshot prompt asked ("if you cannot
+   clearly find numbers, do not guess"). Named separately so the guard is
+   testable on its own, rather than only provable by driving a real file
+   picker through foodScreenshot(). */
+function _screenshotUnusable(est){return !(est&&est.kcal>0)&&!(est&&est.p>0);}
+function foodScreenshot(){
+  if(!foodAIReady()){toast('Add a free Gemini key in Settings ⚙️ to import a screenshot');openQuickAdd();return;}
+  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';
+  inp.onchange=()=>{const f=inp.files&&inp.files[0];if(!f)return;const rd=new FileReader();
+    rd.onerror=()=>{toast('Could not read image — add it manually');openQuickAdd();};
+    rd.onload=async()=>{toast('Reading screenshot…');const gen=_sheetGen;
+      try{const du=await _downscale(rd.result,1280);const est=await estimateFoodFromScreenshot(du);
+        // The prompt is told to return zeros rather than guess when it can't find
+        // real numbers — that is success from the model's own honesty, but it is
+        // not a usable result, so treat it the same as a thrown error.
+        if(_screenshotUnusable(est))throw new Error('could not find clear numbers in that screenshot');
+        if(gen!==_sheetGen){toast('📋 Imported '+(est.name||'food')+' · ~'+est.kcal+' kcal — tap ➕ to log it',6000);return;}
+        openQuickAdd(est);toast('📋 '+(est.name||'Food')+(est.portion?' · '+est.portion:'')+' · ~'+est.kcal+' kcal, '+est.p+'g — tap Save to log',5000);
+      }catch(e){const msg=String((e&&e.message)||e||'failed');toast('Screenshot import failed — '+msg.slice(0,120),6000);
         if(gen===_sheetGen)openQuickAdd();}};
     rd.readAsDataURL(f);};
   inp.click();
@@ -9086,7 +9137,7 @@ function intakeHTML(){
   let h=`<div class="section-label">Today's food${t.n?` · ${t.n} item${t.n>1?'s':''}`:''}</div><div class="card pad">
     <div class="row" style="justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap">
       <div><b style="font-size:19px">${t.kcal}${kcalT?' / '+kcalT:''}</b> <span class="tiny muted">kcal</span></div>
-      <div class="btnrow" style="gap:6px;flex:1 1 auto;min-width:0;justify-content:flex-end"><button class="chip" onclick="openFoodSearch()">🔎 Search</button><button class="chip" onclick="scanBarcode()">📸 Scan</button><button class="chip" onclick="foodPhoto()">📷 Snap</button><button class="chip" onclick="openQuickAdd()" aria-label="Quick add food">➕</button></div></div>`;
+      <div class="btnrow" style="gap:6px;flex:1 1 auto;min-width:0;justify-content:flex-end"><button class="chip" onclick="openFoodSearch()">🔎 Search</button><button class="chip" onclick="scanBarcode()">📸 Scan</button><button class="chip" onclick="foodPhoto()">📷 Snap</button><button class="chip" onclick="foodScreenshot()">📋 Import</button><button class="chip" onclick="openQuickAdd()" aria-label="Quick add food">➕</button></div></div>`;
   if(kcalT){const pct=Math.min(100,Math.round(t.kcal/kcalT*100));
     h+=`<div class="pbar${t.kcal>kcalT?'':' green'}" style="margin-top:8px"><i style="width:${pct}%"></i></div>
       <div class="tiny muted" style="margin-top:4px">${t.kcal<=kcalT?(kcalT-t.kcal)+' kcal left today':(t.kcal-kcalT)+' kcal over — that\'s one day, not the week.'}${adj>0?` <span style="color:var(--green);font-weight:700">· +${adj} earned from today's movement</span>`:''}</div>`;}
@@ -10595,7 +10646,7 @@ function dietLabel(){const m=Object.fromEntries(DIET_OPTS);return m[STATE.nutrit
    helper so the wording cannot drift between the two places it appears. */
 function privacyNoteHTML(){
   return `<div class="note info" style="margin-top:12px">Your training data lives <b>only on this phone</b> — sessions, measurements, photos and backups are saved on the device and work offline. Nothing is uploaded, and there is no account.
-    <div class="tiny muted" style="margin-top:6px">Two optional extras stay off until you add your own API key: the <b>food-photo lookup</b> sends that photo to Google Gemini, and the <b>premium coach voice</b> sends the line being spoken to Microsoft Azure. A third, key-free lookup — <b>searching packaged foods or scanning a barcode</b> — sends only the search term or barcode (never anything about you) to the free Open Food Facts database. Skip all three and nothing ever leaves the phone.</div>
+    <div class="tiny muted" style="margin-top:6px">Two optional extras stay off until you add your own API key: the <b>food-photo lookup</b> sends that photo — or a screenshot you import from another tracker — to Google Gemini, and the <b>premium coach voice</b> sends the line being spoken to Microsoft Azure. A third, key-free lookup — <b>searching packaged foods or scanning a barcode</b> — sends only the search term or barcode (never anything about you) to the free Open Food Facts database. Skip all three and nothing ever leaves the phone.</div>
     <div class="tiny muted" style="margin-top:6px"><a href="./privacy.html" target="_blank" rel="noopener" style="color:inherit">Read the full privacy policy →</a></div></div>`;
 }
 /* Shown when normalizeState() could not recognise the stored diet and fell
