@@ -2037,6 +2037,99 @@ toast and the credited minutes end to end, and the rendered sheets
 right — no overlap, correct button states, consistent with the rest of the
 app's styling.
 
+## Eight more exercises from a screenshot roster comparison (v243)
+
+The athlete shared several screenshots of another app's exercise library and
+asked which ones CoreForge was missing, for core/chest strength and
+endurance/stamina. Chest turned out to already be saturated (16 push-up
+variants, dips, presses) — nothing added there. Cross-referencing roughly 80
+named exercises across the screenshots against the real ~160-entry `EX`
+library (not memory) found the large majority already present, several
+under a name that doesn't share a substring with the screenshot's own
+label — the exact trap this file's own "the pattern repeats" notes warn
+about.
+
+**One initially-flagged "gap" was a false positive caught on a second pass,
+specifically because the first pass searched for the wrong substring.**
+"Standing Oblique Twists" looked absent because the search for `.*Twist`
+never matched `standingoblique`'s actual name, "Standing Obliques" — the
+same movement, already in the library and already wired into
+`FOCUS_POOL.obliques`. Corrected before anything was built, not after — the
+lesson generalises past this one miss: a substring match on a claimed gap
+proves the search term was absent, not that the movement was.
+
+**Eight genuine, non-overlapping gaps survived the cross-reference:** Sit
+Thrust, Knee Kicks, Warrior III, Skater Jumps With Ground Touch, Quick
+Punches, Toe Touches, Hanging Knee-to-Elbow, Seated Leg Circles. Two are new
+ladder rungs (`kneetoelbow` inserted into `lowerL` between `kneeraise` and
+`hanglegraise`; `skaterground` appended above `skater` in `cardioAL`, same
+"harder rung above the existing top" pattern as `dragonflagfull`/`extplank`);
+the other six are standalone accessories reached through `FOCUS_POOL`, same
+as `dbpallof`/`mbchop`/`ropeplank`.
+
+**Warrior III deliberately carries no joint-risk flag, which is not the
+same as "no risk was considered."** A single-leg balance hold is the kind of
+move that invites an automatic knee flag on the assumption that "balance =
+risky," but the standing leg in this pose stays nearly straight — it is
+mechanically far closer to a plank or hollow hold (both unflagged) than to
+`wallsit` (bent-knee, sustained load, correctly flagged). Forcing a flag
+onto a move because the category sounds risky, when the actual mechanical
+load doesn't support one, would be the same dishonesty as under-flagging a
+genuinely risky move — this file's "prefer the restrictive answer" instinct
+is about resolving real ambiguity, not manufacturing risk that isn't there.
+A mutation test confirms the check can tell the difference: seeding a knee
+flag onto `warriorthree` fails the specific assertion that it stays
+unflagged, proving the check isn't just trivially passing on an empty list.
+
+**Adding `kneetoelbow` to `lowerL` surfaced that the hardcoded no-bar
+override pattern (`kneeraise`→`legraise`, `hanglegraise`→`vup`) is not
+actually needed for every optional, equipment-gated rung — only the ones
+where the generic mechanism would land somewhere WORSE than the deliberate
+choice.** `gearSwap()`'s own ladder-walk already checks the immediately-
+easier rung first; since `kneetoelbow`'s neighbour (`kneeraise`) needs no
+equipment, `gearSwap()` finds it on its own, making a hardcoded
+`kneetoelbow→kneeraise` override redundant — confirmed by mutation-testing
+the removed line and finding zero behavioural change across a 400-session
+sweep. This is NOT true for `hanglegraise`, whose override deliberately
+sends it to `vup` instead of the `gearSwap()`-natural `kneeraise` — a real,
+intentional divergence from the generic mechanism, which is exactly why
+that one earns the hardcoded line and `kneetoelbow` doesn't. Same
+reasoning extends to `GEAR_FALLBACK.kneetoelbow`: also unreachable via the
+one real call site (`gearSwap()`'s ladder-walk resolves first), but kept —
+matching this file's own established precedent (`kneeraise:'legraise'` is
+equally redundant and was already there) — as a documentation/defense-in-
+depth entry, not because any current path needs it.
+
+**A container-only assertion on `GEAR_FALLBACK.kneetoelbow`'s literal value
+doesn't prove the entry is ever consulted — a real behavioural sweep does.**
+Reading the object's own property and asserting it equals `'legraise'`
+passes whether or not anything actually reads that property (confirmed:
+deleting it still made the direct assertion fail, but that only proves the
+data changed, not that behaviour did). The real proof is a sweep of 400
+built sessions with no bar owned, asserting `kneetoelbow` never appears and
+its fallback (`kneeraise`) does — the latter half matters as much as the
+former, because an absent `kneetoelbow` with an ALSO-absent `kneeraise`
+would mean the ladder region was simply never reached, proving nothing.
+
+**The first version of that sweep used too short a range and failed for a
+reason that had nothing to do with the code being wrong.** A 60-session
+sweep never saw `kneeraise` appear at all when run inside the real test
+file, though a standalone probe against a freshly seeded athlete found it
+at session 28. The difference: earlier blocks in the same test file mutate
+shared `STATE.baseline` fields before this block runs, shifting exactly
+where the level curve reaches each ladder rung — the same "every block
+builds the state it asserts on, not what the block before it left behind"
+lesson this file already names elsewhere, just for a numeric threshold
+instead of a UI state. Widened to 400 sessions (covering essentially the
+full 54-week program) rather than pinned to a specific number, so the
+check is robust to exactly where in the file it runs.
+
+Images shipped as the same 800×800 grey-backdrop "PHOTO PENDING"
+placeholders established in v224. ChatGPT prompts for the real photos were
+handed to the athlete rather than generated in-session, each specifying the
+same house style (olive tee, camo cargo pants, black boots, black mat, grey
+studio backdrop) used throughout the library, one generation per exercise.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

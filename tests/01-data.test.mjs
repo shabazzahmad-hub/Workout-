@@ -139,6 +139,123 @@ export default async function run() {
   t.eq('and lands on the same safe substitutes', core.dragonflagfullSwaps, { safe: 'hollow', lowback: 'plank' });
   t.ok('all three are reachable through the focus bonus', core.inFocusPool.dbpallof && core.inFocusPool.mbchop && core.inFocusPool.dragonflagfull, core.inFocusPool);
 
+  /* ---- eight exercises added from a screenshot-driven roster comparison
+     (Sit Thrust, Knee Kicks, Warrior III, Skater Jumps w/ Ground Touch,
+     Quick Punches, Toe Touches, Hanging Knee-to-Elbow, Seated Leg Circles).
+     The generic "safeSwap lands clear across all 31 joint combinations"
+     sweep proves the SWAP MECHANISM works; it cannot prove any of this
+     content was ever flagged in the first place — an exercise nobody added
+     to JOINT_RISK simply never enters that sweep's risky bucket. These
+     assert JOINT_RISK membership directly, per exercise. */
+  const eight = await page.evaluate(() => {
+    const o = {};
+    // knee: cardio/impact family — matches skater/buttkick/highknees precedent
+    o.kneeFlags = { kneekick: JOINT_RISK.knee.includes('kneekick'), skaterground: JOINT_RISK.knee.includes('skaterground') };
+    // wrist-bearing, hip-thrust-under-weight — matches bearhold's wrist-only precedent
+    o.sitthrustFlags = Object.keys(JOINT_RISK).filter(j => JOINT_RISK[j].includes('sitthrust'));
+    // spinal-flexion family — matches situp/vertcrunch/crunch's lowback precedent
+    o.toetouchLowback = JOINT_RISK.lowback.includes('toetouch');
+    o.legcircleLowback = JOINT_RISK.lowback.includes('legcircle');
+    // harder than a straight knee raise (shoulder demand of hanglegraise), still lowback-flagged like both neighbours
+    o.kneetoelbowFlags = { shoulder: JOINT_RISK.shoulder.includes('kneetoelbow'), lowback: JOINT_RISK.lowback.includes('kneetoelbow') };
+    // a straight-leg standing balance hold is genuinely unflagged, matching plank/hollow's own precedent —
+    // not every isometric hold gets a joint flag just because it looks demanding
+    o.warriorthreeFlags = Object.keys(JOINT_RISK).filter(j => JOINT_RISK[j].includes('warriorthree'));
+    o.quickpunchFlags = Object.keys(JOINT_RISK).filter(j => JOINT_RISK[j].includes('quickpunch'));
+
+    // every flagged one actually lands somewhere safe when its OWN joint is flagged
+    const landsSafe = (exId, joint) => {
+      const real = STATE.profile.limitations; STATE.profile.limitations = [joint];
+      const out = safeSwap(exId); STATE.profile.limitations = real;
+      return !!EX[out] && !(JOINT_RISK[joint] || []).includes(out);
+    };
+    o.kneekickLandsSafe = landsSafe('kneekick', 'knee');
+    o.skatergroundLandsSafe = landsSafe('skaterground', 'knee');
+    o.sitthrustLandsSafe = landsSafe('sitthrust', 'wrist');
+    o.toetouchLandsSafe = landsSafe('toetouch', 'lowback');
+    o.legcircleLandsSafe = landsSafe('legcircle', 'lowback');
+    o.kneetoelbowLandsSafe = landsSafe('kneetoelbow', 'lowback');
+
+    // ladder placement: kneetoelbow strictly between kneeraise and hanglegraise
+    o.lowerLOrder = LADDERS.lowerL.map(k => LADDERS.lowerL.indexOf(k));
+    o.kneetoelbowBetween = LADDERS.lowerL.indexOf('kneeraise') < LADDERS.lowerL.indexOf('kneetoelbow')
+      && LADDERS.lowerL.indexOf('kneetoelbow') < LADDERS.lowerL.indexOf('hanglegraise');
+    o.kneetoelbowHardness = { kneeraise: EX.kneeraise.hardness, kneetoelbow: EX.kneetoelbow.hardness, hanglegraise: EX.hanglegraise.hardness };
+    // ladder placement: skaterground is the new top of cardioAL, above skater
+    o.cardioALTop = LADDERS.cardioAL[LADDERS.cardioAL.length - 1];
+    o.skaterBelowGround = LADDERS.cardioAL.indexOf('skater') < LADDERS.cardioAL.indexOf('skaterground');
+    o.skatergroundHardness = { skater: EX.skater.hardness, skaterground: EX.skaterground.hardness };
+
+    // equipment: kneetoelbow needs a bar, same as its neighbours, and falls back correctly without one
+    o.kneetoelbowEquip = EX.kneetoelbow.equip;
+    STATE.profile.gear = [];
+    o.kneetoelbowNoBar = hasGearFor('kneetoelbow');
+    STATE.profile.gear = ['bar'];
+    o.kneetoelbowWithBar = hasGearFor('kneetoelbow');
+    STATE.profile.gear = [];
+    o.gearFallback = GEAR_FALLBACK.kneetoelbow;
+    // the hardcoded no-bar override in buildSession()'s ladder resolver, same
+    // pattern as kneeraise/hanglegraise — proved directly by sweeping real
+    // built sessions rather than reverse-engineering which ptr lands on which
+    // rung index: with no bar owned, kneetoelbow must never be prescribed,
+    // and its fallback (kneeraise) must actually appear somewhere in the sweep
+    // — otherwise an absent kneetoelbow would prove nothing (the ladder might
+    // just never have been reached at all).
+    // 400 covers the full ~54-week program regardless of exactly where an
+    // earlier block in this same test file left STATE.baseline — the level
+    // curve that decides which rung gets reached at which ptr shifts with it,
+    // so a short sweep is fragile to block order (the file's own "every block
+    // builds the state it asserts on" discipline), a long one is not.
+    let sawKneetoelbowNoBar = false, sawKneeraiseNoBar = false;
+    for (let p = 0; p < 400; p++) {
+      const s = buildSession(p);
+      const ids = [...s.main, s.finisher].filter(Boolean).map(m => m.exId);
+      if (ids.includes('kneetoelbow')) sawKneetoelbowNoBar = true;
+      if (ids.includes('kneeraise')) sawKneeraiseNoBar = true;
+    }
+    o.noBarSweep = { sawKneetoelbowNoBar, sawKneeraiseNoBar };
+
+    // reachable through the focus bonus
+    o.inFocusPool = {
+      toetouch: FOCUS_POOL.abs.includes('toetouch'), sitthrust: FOCUS_POOL.abs.includes('sitthrust'),
+      legcircle: FOCUS_POOL.abs.includes('legcircle'), kneetoelbow: FOCUS_POOL.abs.includes('kneetoelbow'),
+      kneekick: FOCUS_POOL.full.includes('kneekick'), quickpunch: FOCUS_POOL.full.includes('quickpunch'),
+    };
+    return o;
+  });
+  t.ok('Knee Kicks is flagged for a knee, matching the standing-impact family it sits in', eight.kneeFlags.kneekick, eight.kneeFlags);
+  t.ok('so is the harder Skater ground-touch rung', eight.kneeFlags.skaterground, eight.kneeFlags);
+  t.eq('Sit Thrust is flagged for a wrist only, matching bearhold\'s own precedent', eight.sitthrustFlags, ['wrist', 'lowback']);
+  t.ok('Toe Touches is flagged for a low back, matching the spinal-flexion crunch family', eight.toetouchLowback, eight);
+  t.ok('and so is Seated Leg Circles', eight.legcircleLowback, eight);
+  t.ok('the knee-to-elbow inherits the shoulder demand of the hanging leg raise it sits below', eight.kneetoelbowFlags.shoulder, eight.kneetoelbowFlags);
+  t.ok('and the low-back flag both hanging neighbours carry', eight.kneetoelbowFlags.lowback, eight.kneetoelbowFlags);
+  t.eq('Warrior III is a straight-leg balance hold with no real joint-loading risk, so it stays unflagged', eight.warriorthreeFlags, []);
+  t.eq('Quick Punches carries no lower-body impact, so it stays unflagged like Shadow Boxing', eight.quickpunchFlags, []);
+  t.ok('a flagged knee actually routes Knee Kicks somewhere safe', eight.kneekickLandsSafe, eight);
+  t.ok('and the ground-touch skater too', eight.skatergroundLandsSafe, eight);
+  t.ok('a flagged wrist routes Sit Thrust somewhere safe', eight.sitthrustLandsSafe, eight);
+  t.ok('a flagged low back routes Toe Touches somewhere safe', eight.toetouchLandsSafe, eight);
+  t.ok('and Seated Leg Circles', eight.legcircleLandsSafe, eight);
+  t.ok('and the knee-to-elbow', eight.kneetoelbowLandsSafe, eight);
+  t.eq('the knee-to-elbow lower.L ladder position sits strictly between the raise and the leg raise', eight.kneetoelbowBetween, true, eight);
+  t.ok('and its hardness is correctly between the two — non-increasing down the ladder',
+    eight.kneetoelbowHardness.kneeraise > eight.kneetoelbowHardness.kneetoelbow
+    && eight.kneetoelbowHardness.kneetoelbow > eight.kneetoelbowHardness.hanglegraise, eight.kneetoelbowHardness);
+  t.eq('the ground-touch skater is the new top of cardioAL', eight.cardioALTop, 'skaterground');
+  t.ok('sitting above plain Skater Hops in the ladder', eight.skaterBelowGround, eight);
+  t.ok('with a lower (harder) hardness than the rung below it', eight.skatergroundHardness.skaterground < eight.skatergroundHardness.skater, eight.skatergroundHardness);
+  t.eq('the knee-to-elbow requires a bar, matching its hanging neighbours', eight.kneetoelbowEquip, ['bar']);
+  t.ok('and is not offered without one', !eight.kneetoelbowNoBar, eight);
+  t.ok('but is offered once a bar is owned', eight.kneetoelbowWithBar, eight);
+  t.eq('a bar-free athlete falls back to the plain knee raise, the closest already-covered no-bar move', eight.gearFallback, 'legraise');
+  t.ok('and a real sweep of built sessions never actually prescribes kneetoelbow without a bar', !eight.noBarSweep.sawKneetoelbowNoBar, eight.noBarSweep);
+  t.ok('while its fallback, the plain knee raise, genuinely does appear — proving the ladder rung was actually reached, not just absent by luck',
+    eight.noBarSweep.sawKneeraiseNoBar, eight.noBarSweep);
+  t.ok('the four core-family additions are reachable through the focus bonus',
+    eight.inFocusPool.toetouch && eight.inFocusPool.sitthrust && eight.inFocusPool.legcircle && eight.inFocusPool.kneetoelbow, eight.inFocusPool);
+  t.ok('and the two full-body cardio additions too', eight.inFocusPool.kneekick && eight.inFocusPool.quickpunch, eight.inFocusPool);
+
   /* ---- five new kettlebell exercises (Windmill, Suitcase Carry, Figure-8,
      Renegade Row, Sumo Deadlift High Pull) — requested after the athlete
      said they now own a 25lb and a 31lb kettlebell. Three core-focused
