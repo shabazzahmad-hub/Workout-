@@ -2540,6 +2540,34 @@ every existing assertion cleanly, because the data those two lines compare
 was already correct. It only started failing once a dedicated live-break
 check existed for it specifically.
 
+## Progress photos moves next to the goal picker (v248)
+
+Asked directly, with a screenshot of each section: "should these two be
+closer together." "Your transformation" (the physique-goal picker with
+generic reference images) and "Progress photos" (the athlete's own before/now
+shots) used to sit five sections apart — a stat grid, body composition,
+logged measurements, a strength-test card, and a consistency heatmap in
+between. Both cards answer the same question, one as an aspirational
+reference and one as real proof, and there was no reason found to keep them
+apart: the goal card's `~27%` body-fat estimate reads `latestWeightKg()` plus
+height and age, never the waist chart that used to sit between them —
+confirmed by reading `estBodyFat()` before proposing the move, not assumed.
+
+**Moved photos up to the goal picker, not the goal picker down to photos.**
+Real photos of yourself are the most motivating thing on the tab; they now
+render immediately after the Core Score ring and the goal card, ahead of the
+numeric detail sections (stats, body composition, strength test, consistency)
+rather than after them.
+
+**Asserted on real DOM order, not proximity in the source string.** A helper
+can render more section-labels than the one line that calls it, so the check
+walks `#v-progress .section-label` and confirms Progress photos is the
+element immediately after Your transformation, and that it now sits before
+Body composition/Strength test/Consistency rather than after all three.
+Mutation-tested by reverting the move: both assertions caught it, and neither
+needed a fixture change since nothing else on the tab reads photos by
+position.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
