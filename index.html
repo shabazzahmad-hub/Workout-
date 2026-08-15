@@ -1692,7 +1692,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='257';
+const APP_VERSION='258';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -9052,7 +9052,22 @@ async function _geminiCall(model,body,ms){
    other side of their stack. Everything else (400 bad request, 401/403 key
    problems, 404 unknown model) is about THIS request and will not improve by
    asking again. */
-function _transientAIStatus(s){return s===429||s===500||s===502||s===503||s===504;}
+/* status 0 is our own timeout/network failure (see fetchWithTimeout and
+   _geminiCall). It belongs here: a connection that stalled once is exactly
+   the kind of thing a second attempt fixes, and leaving it out meant v257's
+   retry never fired for the most common real-world failure of all. */
+function _transientAIStatus(s){return s===0||s===429||s===500||s===502||s===503||s===504;}
+/* A connection-level failure is not a MODEL problem, so cycling the rest of
+   the list just burns another full timeout each — 3 models x 25s is 75
+   seconds before the athlete sees anything. Skip straight to the backoff and
+   try the whole thing again instead. */
+function _connectionLevel(s){return s===0;}
+/* Hard ceiling on the WHOLE operation — every model, every retry, all the
+   waiting in between. Without it, making timeouts retryable multiplies the
+   worst case instead of bounding it (3 models x 3 passes x 25s = minutes of
+   staring at a spinner). Each individual call is given only what is left of
+   the budget, so the total cannot overrun no matter how the passes fall. */
+const AI_TOTAL_BUDGET_MS=55000;
 /* Google's own 503 body is a paragraph, and slice(0,120) cut it mid-word —
    the athlete saw "Please try again late". Once the app retries on its own,
    the raw prose is also the wrong thing to show: by the time this renders we
@@ -9061,6 +9076,10 @@ function _transientAIStatus(s){return s===429||s===500||s===502||s===503||s===50
    a word boundary, because those are the diagnosable ones. */
 function _aiErrText(e){
   const s=e&&e.status;
+  /* A timeout is not necessarily the athlete's wifi — it is just as often
+     Google being slow under the same load that produces the 503s. Saying
+     "check your connection" sends them to fix something that may be fine. */
+  if(s===0)return 'no answer in time — the AI may be busy, or the connection dropped. Retried; try once more, or add the numbers by hand.';
   if(_transientAIStatus(s))return s===429
     ? 'your Gemini quota is used up for now — try later, or add the numbers by hand'
     : 'Google\'s AI is overloaded right now. Tried 3 times. Give it a minute, or add the numbers by hand.';
@@ -9094,16 +9113,27 @@ async function _visionEstimate(dataUrl,promptText,opts){
   const models=foodAIModels();let lastErr=null;
   const o_=opts||{};
   const backoff=o_.backoff||AI_RETRY_BACKOFF_MS;
+  const budget=o_.budget||AI_TOTAL_BUDGET_MS;
+  const started=Date.now();
+  const left=()=>budget-(Date.now()-started);
   for(let round=0;round<backoff.length;round++){
     if(round>0){
-      // tell the athlete it is still working — a silent 4s pause reads as frozen
+      if(left()<=backoff[round]+300)break;   // not enough budget left to be worth another pass
+      // tell the athlete it is still working — a silent pause reads as frozen
       if(typeof o_.onRetry==='function'){try{o_.onRetry(round,backoff.length);}catch(e){}}
       await _aiSleep(backoff[round]);
     }
     let sawTransient=false;
   for(const model of models){
+    /* Each call gets only what is left of the whole-operation budget, so the
+       total can never overrun however the passes and models fall. The guard
+       is on the REMAINING BUDGET, not on the slice: comparing the requested
+       per-call timeout against the floor meant a short ms skipped the call
+       entirely and returned a timeout without ever trying. */
+    if(left()<300){lastErr=lastErr||Object.assign(new Error('timed out — check your connection'),{status:0});break;}
+    const slice=Math.min(o_.ms||25000,left());
     try{
-      const j=await _geminiCall(model,body,o_.ms);
+      const j=await _geminiCall(model,body,slice);
       const cand=(j.candidates||[])[0]||{};
       const txt=((cand.content||{}).parts||[]).map(p=>p&&p.text||'').join('')||'';
       let o=null;
@@ -9136,6 +9166,10 @@ async function _visionEstimate(dataUrl,promptText,opts){
       const s=e&&e.status;
       if(s===400||s===401||s===403)throw e;
       if(_transientAIStatus(s))sawTransient=true;
+      /* The connection, not the model. Trying the rest of the list costs one
+         more full timeout each and cannot help — go straight to the backoff
+         and retry the whole thing. */
+      if(_connectionLevel(s))break;
       continue;
     }
   }

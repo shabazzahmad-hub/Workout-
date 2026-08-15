@@ -817,6 +817,90 @@ export default async function run() {
       r.longNonTransient.length <= 125 && r.longNonTransient.endsWith('…'), r);
   }
 
+  /* ---- a timeout is retryable, and the TOTAL wait is bounded (v258) ------
+     Fourth failure of the same feature on a real phone, and the fourth
+     distinct cause: "timed out — check your connection". Two defects behind
+     it. (a) fetchWithTimeout stamps status 0, which v257 did not count as
+     transient — so the retry it had just added never fired for the single
+     most common real failure. (b) With 3 models at 25s each and no overall
+     budget, a stalled connection burned up to 75s before showing anything,
+     and simply making timeouts retryable would have multiplied that instead
+     of bounding it. Measured first rather than guessed: the screenshot
+     payload is only ~197KB, so upload size was NOT the cause. */
+  {
+    const r = await page.evaluate(async () => {
+      const o = {}, real = window._geminiCall;
+      const good = { candidates: [{ content: { parts: [{ text: JSON.stringify(
+        { name: 'Lunch', kcal: 620, protein: 41 }) }] }, finishReason: 'STOP' }] };
+      const timeoutErr = () => { const e = new Error('timed out — check your connection'); e.status = 0; throw e; };
+
+      o.timeoutIsTransient = _transientAIStatus(0);
+      o.timeoutIsConnectionLevel = _connectionLevel(0);
+      o.overloadIsNotConnectionLevel = !_connectionLevel(503);
+
+      // a connection blip that clears on the retry must produce a real result
+      let calls = 0;
+      window._geminiCall = async () => { calls++; if (calls === 1) timeoutErr(); return good; };
+      let est = null;
+      try {
+        est = await _visionEstimate('data:image/png;base64,AA==', 'p', { backoff: [0, 10, 20], ms: 50 });
+      } catch (e) { o.blipThrew = String(e.message || e); }
+      o.blipRecovered = !!est && est.kcal === 620;
+      /* And it must NOT have burned the other two models first: a stalled
+         connection is not a model problem, so the pass short-circuits. Call 1
+         is the timeout, call 2 is the first model of the NEXT pass. */
+      o.blipCalls = calls;
+
+      // a persistently dead connection: bounded total, not 3 models x 3 passes
+      calls = 0;
+      window._geminiCall = async () => { calls++; timeoutErr(); };
+      const t0 = Date.now();
+      try { await _visionEstimate('data:image/png;base64,AA==', 'p', { backoff: [0, 10, 20], ms: 50, budget: 3000 }); }
+      catch (e) { o.deadStatus = e.status; }
+      o.deadMs = Date.now() - t0;
+      o.deadCalls = calls;
+
+      // the budget is a real ceiling even when every call is slow
+      calls = 0;
+      /* The mock must HONOUR the timeout it is handed, or the budget never
+         bites: a mock that fails in 60ms finishes well inside any budget, so
+         removing the budget entirely changes nothing and the check passes on
+         a defect. Sleeping for the granted slice is what makes the clamp
+         observable — without it slice is the full 3000ms ms, with it the
+         slice is capped to what is left of the 500ms budget. */
+      window._geminiCall = async (m, b, ms) => { calls++; await new Promise(r2 => setTimeout(r2, ms)); timeoutErr(); };
+      const t1 = Date.now();
+      try { await _visionEstimate('data:image/png;base64,AA==', 'p', { backoff: [0, 20, 40], ms: 3000, budget: 500 }); }
+      catch (e) {}
+      o.budgetedMs = Date.now() - t1;
+      o.budgetedCalls = calls;
+
+      window._geminiCall = real;
+      return o;
+    });
+    t.ok('a timeout counts as transient, so the retry actually fires for it', r.timeoutIsTransient, r);
+    t.ok('and is recognised as connection-level, not a model problem', r.timeoutIsConnectionLevel, r);
+    t.ok('while a 503 is NOT connection-level — that one should try other models', r.overloadIsNotConnectionLevel, r);
+    t.ok('a connection blip that clears on retry yields a real estimate', r.blipRecovered, r);
+    t.eq('and it did not burn the other models on a connection failure', r.blipCalls, 2);
+    t.eq('a dead connection still surfaces as a timeout', r.deadStatus, 0);
+    t.ok('a dead connection is bounded by the budget, not 3 models x 3 passes',
+      r.deadMs < 2500, r);
+    t.eq('and makes ONE attempt per pass, not one per model per pass', r.deadCalls, 3);
+    t.ok('a slow call is clamped to the remaining budget, not its own timeout',
+      r.budgetedMs < 1500, r);
+    t.ok('and it really did attempt the call rather than skipping it', r.budgetedCalls >= 1, r);
+  }
+  {
+    // the message must not blame the athlete's wifi for Google being slow
+    const r = await page.evaluate(() => {
+      const e = new Error('timed out — check your connection'); e.status = 0;
+      return { txt: _aiErrText(e) };
+    });
+    t.ok('a timeout message allows that the AI may simply be busy', /busy/i.test(r.txt), r);
+    t.ok('and says it already retried', /retried/i.test(r.txt), r);
+  }
+
   /* ---- the suggested meal plan no longer greets the athlete on Fuel (v245) --
      Removed at the athlete's request: they log what they actually ate, by photo
      or by hand. Nothing was ever auto-logged (every meal needed a deliberate

@@ -3107,6 +3107,56 @@ into four cleanly-named failures. A check that detects the defect is not the
 same as a check that REPORTS it, and the difference only shows up under
 mutation.
 
+## The retry that could not fire, and the 75-second wait (v258)
+
+Fourth failure of the screenshot import on a real phone, fourth distinct
+cause: "timed out — check your connection". **Measured before changing
+anything, and the first hypothesis was wrong.** v255 had raised the
+screenshot to 2048px/q0.92, so the obvious suspicion was that the upload had
+grown too big for the 25s bound — but a realistic flat-UI screenshot encodes
+to about **197 KB**, which is not a slow upload on any usable connection.
+Payload size was not the cause; guessing would have produced a fix aimed at
+nothing.
+
+**`fetchWithTimeout()` stamps `status:0`, and v257's `_transientAIStatus()`
+did not include it.** So the retry added one version earlier — specifically
+to stop transient failures costing the athlete the import — could never fire
+for the single most common transient failure of all. A stalled connection is
+exactly what a second attempt fixes.
+
+**But making timeouts retryable without a total budget multiplies the wait
+instead of bounding it.** Three models at 25s each already meant a
+connection-level stall burned up to **75 seconds** before showing anything;
+retrying that three times over would be minutes. Two changes make it safe:
+`AI_TOTAL_BUDGET_MS` (55s) is a hard ceiling on the WHOLE operation, and each
+individual call is granted only `min(perCall, remaining)` so the total cannot
+overrun however the passes fall. And `_connectionLevel(0)` short-circuits the
+model loop — a dead connection is not a model problem, so trying the other
+two costs a full timeout each and cannot help.
+
+**Two of this round's bugs were in the new code and were caught by its own
+tests, not by inspection.** The budget guard first compared the REQUESTED
+per-call `ms` against the floor rather than the remaining budget, so a small
+`ms` skipped the call entirely and returned a timeout without ever trying.
+And a second, fixed `left()<=2000` guard — redundant with the round-start
+check — was larger than any small test budget, cutting the retry to one
+attempt. Both surfaced as failing assertions immediately.
+
+**The mutant that escaped is the one that matters, and the check was too weak
+to see it.** Deleting the total budget outright passed everything: the mock
+`_geminiCall` failed in 60ms, which finishes inside any budget, so removing
+the clamp changed no timing at all. A budget can only be observed when the
+call is slow RELATIVE to it — the mock had to sleep for the slice it was
+granted (`ms`), so that with the clamp the first call is capped to the 500ms
+remaining and without it runs its full 3000ms. Same family as every other
+"passes for the wrong reason" entry here: the scenario has to be engineered
+to discriminate, not merely to look right.
+
+**"Check your connection" was also the wrong thing to say.** A timeout is as
+often Google being slow under the same load that produces the 503s, and that
+wording sends the athlete to fix something that may be fine. It now allows
+both, and says it already retried.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
