@@ -2130,6 +2130,45 @@ handed to the athlete rather than generated in-session, each specifying the
 same house style (olive tee, camo cargo pants, black boots, black mat, grey
 studio backdrop) used throughout the library, one generation per exercise.
 
+## The v243 roster's real photos land as one collage, cropped by hand
+
+The individual-prompt handoff from v243 (eight separate ChatGPT calls) got
+consolidated into a single combined prompt at the athlete's request, with
+explicit "eight separate images, no collage" instructions repeated twice.
+The image model merged them into one 1254×1254 contact sheet anyway — the
+exact failure mode this file's own v224 note already warned about, and the
+one this session flagged as a real possibility before the athlete generated
+it. No amount of "do not collage" phrasing prevented it once eight subjects
+were requested inside one message; the documented fix (one generation per
+exercise, submitted separately) is a workaround for the model's behavior, not
+something a stronger prompt reliably avoids.
+
+**Extraction reused the established contact-sheet technique verbatim, not a
+new one.** Grid gutters were found by scanning for near-white, near-uniform
+column/row bands (4 columns × 2 rows, confirmed rather than assumed) instead
+of guessing a fixed cell size. Each portrait-oriented cell (~307×621px) was
+padded to a square canvas using its OWN backdrop tone, sampled from its own
+corners rather than a flat guess — the source collage carries a vignette, so
+a single global grey would have mismatched every cell differently. The pad
+seam was feathered with a Gaussian-blurred copy of the padded canvas,
+composited through a distance-based mask, then the sharp subject re-pasted
+on top — the same fix this file's v224 note already reached for after a flat
+pad first left a visible rectangular seam.
+
+**All eight came out usable — visually verified per-image, not assumed from
+the crop math succeeding.** Each of the eight extracted photos was read back
+and checked against its intended exercise (the collage's own 4×2 order
+matched the prompt order exercise-for-exercise) before overwriting the
+placeholder — matching the standing rule that a crop landing without an
+exception is not the same as a crop landing on the right content. No image
+needed a re-crop or was left on its placeholder this round.
+
+**No version bump.** Same drop-in path as v235/v236: same filenames, real
+JPEGs replacing placeholder JPEGs, no code change. `npm run check` and the
+full `npm test` (22 suites, including the asset-existence and dimension
+checks in the exercise-media suite) both stayed green with zero diff to
+`index.html` or `sw.js`.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
