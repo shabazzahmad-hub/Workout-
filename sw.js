@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v246';
+const CACHE = 'coreforge-v247';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
@@ -24,7 +24,7 @@ const MINE = /^coreforge-v\d+$/;
    fetch handler anyway.
 
    Order is deliberate. FIRST_RUN is derived from what a brand-new athlete
-   actually sees — the eight baseline tests, every warm-up and cool-down (they
+   actually sees — the nine baseline tests, every warm-up and cool-down (they
    run in EVERY session), and the first two weeks of a beginner's programme. The
    long tail is stills first and video last, because the eleven .mp4 files are
    the heaviest and the least necessary things here. */
@@ -47,7 +47,7 @@ const FIRST_RUN = [
   './cd-knees.jpg','./cd-twistleft.jpg','./cd-twistright.jpg','./ex-bicycle.jpg',
   './ex-buttkick.jpg','./ex-crunch.jpg','./ex-deadbug.jpg','./ex-glutebridge.jpg',
   './ex-heeltouch.jpg','./ex-hollow.jpg','./ex-inchworm.jpg','./ex-invertedrow.jpg',
-  './ex-jumpingjack.jpg','./ex-kneeplank.jpg','./ex-kneepushup.jpg','./ex-kneeside.jpg',
+  './ex-jumpingjack.jpg','./ex-jumpsquat.jpg','./ex-kneeplank.jpg','./ex-kneepushup.jpg','./ex-kneeside.jpg',
   './ex-marchplace.jpg','./ex-plank.jpg','./ex-pushup.jpg','./ex-revcrunch.jpg',
   './ex-sealjack.jpg','./ex-sideplank.jpg','./ex-situp.jpg','./ex-squat.jpg',
   './ex-towelrow.jpg','./ex-tuckhollow.jpg','./ex-wallsit.jpg','./wu-armcircles.jpg',
@@ -73,7 +73,7 @@ const EXTRA = [
   './ex-flutter.jpg','./ex-halfburpee.jpg','./ex-hanglegraise.jpg','./ex-highknees.jpg',
   './ex-hindupushup.jpg','./ex-hiplift.jpg','./ex-hipthrust.jpg','./ex-hollowflutter.jpg',
   './ex-hollowrock.jpg','./ex-hspushup.jpg','./ex-inclinepushup.jpg','./ex-invertedrowelev.jpg',
-  './ex-isoclimber.jpg','./ex-jumpsquat.jpg','./ex-kbcarry.jpg','./ex-kbcp.jpg',
+  './ex-isoclimber.jpg','./ex-kbcarry.jpg','./ex-kbcp.jpg',
   './ex-kbgoblet.jpg','./ex-kbhalo.jpg','./ex-kbheli.jpg','./ex-kblunge.jpg',
   './ex-kbrdl.jpg','./ex-kbrow.jpg','./ex-kbsnatch.jpg','./ex-kbswing.jpg',
   './ex-kbtgu.jpg','./ex-kbthruster.jpg','./ex-kbwindmill.jpg','./ex-kbsuitcase.jpg',

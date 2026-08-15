@@ -22,12 +22,18 @@ export default async function run() {
   /* ---- CF209-01: a measured zero is data, not a missing answer ----------- */
   {
     const r = await page.evaluate(() => {
-      const ids = ['plank', 'side', 'hollow', 'lower', 'dyn', 'push', 'pull', 'squat'];
+      // driven off the real TESTS ids, not a hand-kept list — the same trap
+      // this file's own trunk-order check hit a few blocks down: a literal
+      // list of ids goes stale the moment a test is added, and for THIS check
+      // specifically a stale list is worse than most, because an id simply
+      // missing from the fixture reads as "absent" and falls back to its
+      // default rather than testing the zero it was supposed to test.
+      const ids = TESTS.map(t => t.id);
       const zero = {}; ids.forEach(k => zero[k] = 0);
       const a = computeAssessment(zero);
       const blank = {}; ids.forEach(k => blank[k] = '');
       const b = computeAssessment(blank);
-      const mixed = computeAssessment({ plank: 0, side: 45, hollow: '', lower: 12, dyn: 0, push: 0, pull: 0, squat: 30 });
+      const mixed = computeAssessment({ plank: 0, side: 45, hollow: '', lower: 12, dyn: 0, push: 0, pull: 0, squat: 30, power: 0 });
       return { zeroMaxes: a.maxes, zeroScore: a.score, zeroLevel: a.level,
         blankMaxes: b.maxes, mixed: mixed.maxes };
     });
@@ -36,10 +42,11 @@ export default async function run() {
     t.eq('and scores as zero', r.zeroScore, 0);
     t.eq('and reads as Beginner', r.zeroLevel, 'Beginner');
     t.ok('a BLANK answer still falls back to the starting estimate',
-      r.blankMaxes.plank === 30 && r.blankMaxes.pull === 6, r.blankMaxes);
+      r.blankMaxes.plank === 30 && r.blankMaxes.pull === 6 && r.blankMaxes.power === 7, r.blankMaxes);
     t.eq('a zero beside real results is kept', r.mixed.plank, 0);
     t.eq('and the real results are untouched', r.mixed.side, 45);
     t.eq('while a blank one falls back', r.mixed.hollow, 20);
+    t.eq('and a measured zero on the newest test is kept too, not defaulted', r.mixed.power, 0);
   }
 
   /* ---- CF209-20: the skill tree agrees with the engine ------------------- */
@@ -408,9 +415,16 @@ export default async function run() {
       return { ids, worst, count: ids.length, protocol: (typeof TEST_PROTOCOL === 'number') ? TEST_PROTOCOL : null,
         trunk: ids.filter(i => TRUNK.has(i)).length };
     });
-    t.eq('all eight tests are still in the battery', r.count, 8);
+    /* v247 added a ninth test (Jump Squats, id 'power') — a non-trunk power
+       test placed second, right after plank. Count and position both moved on
+       purpose; what must NOT move is the invariant itself (no 3+ trunk efforts
+       in a row), which is checked generically against TESTS.map(t=>t.id)
+       above rather than a hand-kept id list, so it stays correct across the
+       next test added too. */
+    t.eq('all nine tests are still in the battery', r.count, 9);
     t.ok('no more than two trunk tests run back to back', r.worst <= 2, r);
     t.eq('the battery still opens on the plank anchor', r.ids[0], 'plank');
+    t.eq('the power test runs second, before any other maximal effort tires the athlete', r.ids[1], 'power');
     t.ok('the protocol version is defined', r.protocol >= 2, r);
   }
   {

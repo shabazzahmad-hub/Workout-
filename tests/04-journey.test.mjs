@@ -161,7 +161,7 @@ export default async function run() {
     t.ok('a screened athlete can start the baseline', !!start);
     if (start) {
       await start.click(); await page.waitForTimeout(200);
-      const ENTER = { plank: 150, side: 95, hollow: 70, lower: 30, push: 48, pull: 22, squat: 62, dyn: 55 };
+      const ENTER = { plank: 150, side: 95, hollow: 70, lower: 30, push: 48, pull: 22, squat: 62, dyn: 55, power: 14 };
       const walked = [];
       for (let i = 0; i < 12; i++) {
         const cur = await page.evaluate(() => {
@@ -183,7 +183,7 @@ export default async function run() {
         await page.evaluate(() => assessNav(1));
         await page.waitForTimeout(120);
       }
-      t.eq('all 8 tests are walked', walked.length, 8);
+      t.eq('all 9 tests are walked', walked.length, 9);
       const res = await page.evaluate(() => ({
         maxes: STATE.baseline && STATE.baseline.maxes, score: STATE.baseline && STATE.baseline.score,
         level: STATE.baseline && STATE.baseline.level, testCount: STATE.baseline && STATE.baseline.testCount,
@@ -196,7 +196,7 @@ export default async function run() {
           wrong.map(k => `${k}: entered ${ENTER[k]}, stored ${res.maxes[k]}`));
       }
       t.ok('a Core Score is computed', res.score > 0, res);
-      t.eq('the record stamps how many tests it used', res.testCount, 8);
+      t.eq('the record stamps how many tests it used', res.testCount, 9);
       /* The tests ARE max efforts. Recording them is the only way the plank,
          side plank and squat rows of Strength Standards can ever be rated —
          the program prescribes those as measuring sticks, never as work. */
@@ -206,6 +206,53 @@ export default async function run() {
     }
     await browser.close();
     errors.forEach(e => t.fail('page error during the baseline', e));
+  }
+
+  /* ---- the Jump Squats test's own 20-second countdown timer (v247) --------
+     The walkthrough above never touches the timer — it types straight into
+     #assess-val, which is a valid path but proves nothing about the countdown
+     UI itself. This drives startBaselineTimer() for real. It also directly
+     regression-tests the reps label, which was hardcoded to "60 seconds"
+     regardless of the test's actual duration — dead code until this test
+     existed (nothing before it ever set t.dur), and the first thing that would
+     have shown a wrong number to every athlete taking this test had it shipped
+     unfixed. Fast-forwarded by writing _bt.elapsed directly rather than
+     waiting out a real 20 seconds — the player's own tests do the equivalent
+     with PLAYER.deadline. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page, () => { STATE.baseline = null; save(); render(); });
+    await page.waitForTimeout(200);
+    await page.evaluate(() => openAssessment());
+    await page.waitForTimeout(150);
+    // advance from plank (idx 0) to power (idx 1) — assessNav() reads the real
+    // input's value, same as the walkthrough above; setting assessState.results
+    // directly does nothing, since the field is what it actually checks
+    await page.evaluate(() => {
+      const el = document.querySelector('#assess-val');
+      el.value = '60'; el.dispatchEvent(new Event('input', { bubbles: true }));
+      assessNav(1);
+    });
+    await page.waitForTimeout(150);
+    const label = await page.evaluate(() => (document.querySelector('#sheet label') || {}).textContent || '');
+    t.ok('the reps label names the test\'s real duration, not a hardcoded one', /20 seconds/.test(label), label);
+    t.ok('and not the stale "60 seconds" this label used to show for ANY dur-based test', !/60 seconds/.test(label), label);
+
+    const run = await page.evaluate(async () => {
+      startBaselineTimer();
+      await new Promise(r => setTimeout(r, 60));   // let the 3-2-1 ready phase start
+      const midReady = { mode: _bt.mode, dur: _bt.dur };
+      _bt.mode = 'run'; _bt.elapsed = _bt.dur - 1;   // fast-forward past ready and most of the run
+      await new Promise(r => setTimeout(r, 1150));   // one more real tick crosses left<=0
+      return { midReady, stoppedItself: !_bt, sheetText: (document.querySelector('#sheet') || {}).innerText || '' };
+    });
+    t.eq('the timer starts in the 3-2-1 ready phase', run.midReady.mode, 'ready');
+    t.eq('carrying the test\'s real 20s duration, not a default', run.midReady.dur, 20);
+    t.ok('time running out stops the timer itself, without a manual Stop tap', run.stoppedItself, run);
+    t.ok('and returns to the reps entry, prompting the athlete to enter what they got', /reps/i.test(run.sheetText), run.sheetText.slice(0, 200));
+    await page.evaluate(() => { try { closeSheet(); } catch (e) {} });
+    await browser.close();
+    errors.forEach(e => t.fail('page error during the power test timer', e));
   }
 
   // ---- Today: four panes, every card control ------------------------------

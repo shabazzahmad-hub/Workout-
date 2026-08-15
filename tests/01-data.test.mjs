@@ -477,6 +477,92 @@ export default async function run() {
   t.ok('a flagged low back routes extplank somewhere safe', ext.landsSafeLowback, ext);
   t.eq('extplank is reached via the ladder, matching longplank\'s own exclusion from the focus bonus', ext.notInFocusPool, ext.longplankNotInFocusPool);
 
+  /* ---- Jump Squats: a ninth baseline test, and legPowerL re-anchored to it
+     (v247). Explosive power was previously only measured as a fraction of the
+     squat test — a proxy for not having a better number. jumpsquat is now the
+     'power' test's own anchor exercise; splitjump and broadjump, the harder
+     rungs above it, keep their ORIGINAL relative spacing rebased onto the new
+     1.0 ceiling. */
+  const power = await page.evaluate(() => {
+    const o = {};
+    o.testEntry = TESTS.find(x => x.id === 'power');
+    o.testIdx = TESTS.findIndex(x => x.id === 'power');
+    o.equip = EX.jumpsquat.equip;
+    // the self-anchor convention every other test's own exercise already uses
+    // (pushup/push, squat/squat, plank/plank, ...) — jumpsquat IS the power
+    // test's exercise, so it must follow the same hardness:1 pattern.
+    o.anchors = { jumpsquat: EX.jumpsquat.anchor, splitjump: EX.splitjump.anchor, broadjump: EX.broadjump.anchor };
+    o.hardness = { jumpsquat: EX.jumpsquat.hardness, splitjump: EX.splitjump.hardness, broadjump: EX.broadjump.hardness };
+    const lad = LADDERS.legPowerL;
+    o.ladderOrder = lad;
+    o.monotonic = lad.every((id, i) => i === 0 || EX[lad[i - 1]].hardness >= EX[id].hardness);
+    // TEST_DEFAULTS must have an entry for every test id, both directions —
+    // exercised directly here, not just inferred from validateData() staying
+    // clean, since a validator that never runs the case it claims to guard
+    // proves nothing about it.
+    o.defaultsHasPower = 'power' in TEST_DEFAULTS;
+    o.defaultsKeys = Object.keys(TEST_DEFAULTS).sort();
+    o.testIds = TESTS.map(x => x.id).sort();
+    /* Backward compatibility: an athlete whose baseline predates this change
+       has no maxes.power. prescribe() must not crash or produce NaN for
+       jumpsquat in that case — it should fall through to the unanchored
+       base/level formula, exactly like any other exercise whose anchor test
+       result is missing. Called DIRECTLY rather than through buildSession(),
+       which chooses exercises via its own ladder-walk and calendar position —
+       whether it happens to reach legPowerL's jumpsquat at a given ptr is a
+       fact about session composition, not about prescribe()'s own anchor
+       fallback, and asserting on buildSession() output here would make this
+       check pass or fail on a coincidence of which exercise got picked. */
+    const realBaseline = STATE.baseline;
+    STATE.baseline = { date: todayISO(), score: 60, level: 'Intermediate', testCount: 8,
+      maxes: { plank: 60, side: 40, hollow: 35, lower: 15, dyn: 30, push: 20, pull: 12, squat: 25 } };   // no .power key at all
+    normalizeState();
+    const rx = prescribe('jumpsquat', posOf(0));
+    o.oldBaselineTarget = rx ? rx.target : null;
+    o.oldBaselineFinite = rx ? (typeof rx.target === 'number' && isFinite(rx.target) && rx.target > 0) : null;
+    STATE.baseline = realBaseline; normalizeState();
+    // and a validateData() problem count of zero is confirmed directly, not
+    // just assumed from the rest of this block passing
+    o.validateProblems = validateData();
+    return o;
+  });
+  t.eq('the power test is the second test in the battery, right after plank', power.testIdx, 1, power);
+  t.eq('it is a 20-second countdown scored in reps, anchored to jumpsquat', { unit: power.testEntry.unit, dur: power.testEntry.dur, ex: power.testEntry.ex }, { unit: 'reps', dur: 20, ex: 'jumpsquat' });
+  t.eq('jump squats need no equipment', power.equip, undefined);
+  t.eq('jumpsquat, splitjump and broadjump all anchor to the new power test', power.anchors, { jumpsquat: 'power', splitjump: 'power', broadjump: 'power' });
+  t.eq('jumpsquat self-anchors at hardness 1, matching every other test\'s own exercise', power.hardness.jumpsquat, 1);
+  t.ok('splitjump and broadjump keep their original relative spacing, rebased below it', power.hardness.splitjump < 1 && power.hardness.broadjump < power.hardness.splitjump, power.hardness);
+  t.eq('legPowerL is jumpsquat, splitjump, broadjump in that order', power.ladderOrder, ['jumpsquat', 'splitjump', 'broadjump']);
+  t.ok('and it is non-increasing in hardness top to bottom', power.monotonic, power);
+  t.ok('TEST_DEFAULTS has an entry for the new test', power.defaultsHasPower, power);
+  t.eq('and TEST_DEFAULTS covers exactly the same ids as TESTS, no more and no fewer', power.defaultsKeys, power.testIds);
+  t.ok('an athlete whose baseline predates this change still gets a finite jump-squat target', power.oldBaselineFinite, power);
+  t.ok('validateData() stays at zero problems with the new test and the re-anchored ladder', power.validateProblems.length === 0, power.validateProblems);
+
+  /* "validateData() is clean" proves nothing about the TEST_DEFAULTS<->TESTS
+     rule specifically — TEST_DEFAULTS and TESTS already agree in real data, so
+     removing the check that compares them produces no NEW problems and the
+     mutation escapes silently. Requires the SPECIFIC complaint, breaking the
+     data live and restoring it, muting console.error the same way this file's
+     other live validateData() breaks already do. */
+  const lockstep = await page.evaluate(() => {
+    const realErr = console.error; console.error = () => {};
+    const o = {};
+    const realDefaults = { ...TEST_DEFAULTS };
+    delete TEST_DEFAULTS.power;
+    o.missingCaught = validateData().some(e => /TEST_DEFAULTS is missing an entry for test "power"/.test(e));
+    Object.assign(TEST_DEFAULTS, realDefaults);
+    TEST_DEFAULTS.ghost = 99;
+    o.staleCaught = validateData().some(e => /TEST_DEFAULTS has a stale entry "ghost"/.test(e));
+    delete TEST_DEFAULTS.ghost;
+    o.cleanAfterRestore = validateData().length === 0;
+    console.error = realErr;
+    return o;
+  });
+  t.ok('a TEST_DEFAULTS entry deleted at runtime is caught by name', lockstep.missingCaught, lockstep);
+  t.ok('a stale TEST_DEFAULTS entry for a test that does not exist is caught by name', lockstep.staleCaught, lockstep);
+  t.ok('and validateData() is clean again once both are restored', lockstep.cleanAfterRestore, lockstep);
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }

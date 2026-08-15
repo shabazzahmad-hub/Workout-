@@ -156,14 +156,22 @@ export default async function run() {
   });
   t.ok('Quick sessions count on the weekly tile, as they already did on the heatmap', agree.agrees, agree);
 
-  // ---- the score comparison across the 5->8 test change --------------------
+  /* ---- the score comparison across a test-count change ---------------------
+     Was hardcoded to the specific 5->8 transition (v178); that literal '8' is
+     what this file's own history warns about — a value that is only correct
+     until the NEXT test gets added, at which point 8 quietly becomes the OLD
+     era instead of the current one and the "compares within era" half starts
+     failing for a reason that has nothing to do with the code being wrong.
+     Derived from the real TESTS.length instead, so this stays correct across
+     any future change to the battery size. */
   const score = await page.evaluate(() => {
     const real = JSON.stringify(STATE.scoreHistory);
-    STATE.scoreHistory = [{ date: '2026-01-01', score: 62, level: 'Beginner', testCount: 5 },
-                          { date: '2026-03-01', score: 55, level: 'Beginner', testCount: 8 }];
+    const cur = TESTS.length, prev = cur - 1;
+    STATE.scoreHistory = [{ date: '2026-01-01', score: 62, level: 'Beginner', testCount: prev },
+                          { date: '2026-03-01', score: 55, level: 'Beginner', testCount: cur }];
     const oldEra = scoreDeltaHTML({ score: 55 });
-    STATE.scoreHistory = [{ date: '2026-01-01', score: 50, level: 'Beginner', testCount: 8 },
-                          { date: '2026-03-01', score: 60, level: 'Beginner', testCount: 8 }];
+    STATE.scoreHistory = [{ date: '2026-01-01', score: 50, level: 'Beginner', testCount: cur },
+                          { date: '2026-03-01', score: 60, level: 'Beginner', testCount: cur }];
     const sameEra = scoreDeltaHTML({ score: 60 });
     STATE.scoreHistory = JSON.parse(real);
     return { refusesAcrossEras: /Scoring changed/.test(oldEra) && !/▼/.test(oldEra),
