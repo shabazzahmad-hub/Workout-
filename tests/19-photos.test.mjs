@@ -255,6 +255,27 @@ export default async function run() {
     });
   }
 
+  /* ---- Progress photos sits right under the goal picker (v248) -------------
+     Moved at the athlete's own request: both cards answer the same question —
+     what does my body look like, and how is it changing — and there was no
+     data reason keeping them apart (the goal card's body-fat estimate reads
+     weight/height/age, never the waist chart that used to sit between them).
+     Asserted on real DOM order, not proximity in the source string — the two
+     can differ if a helper renders more than its own section-label. */
+  {
+    const order = await page.evaluate(() => {
+      go('progress'); renderProgress();
+      const labels = [...document.querySelectorAll('#v-progress .section-label')].map(e => e.textContent.trim());
+      const idx = name => labels.findIndex(l => l.includes(name));
+      return { labels, transformation: idx('Your transformation'), photos: idx('Progress photos'),
+        bodyComp: idx('Body composition'), strength: idx('Strength test'), consistency: idx('Consistency') };
+    });
+    t.ok('both section labels are present', order.transformation >= 0 && order.photos >= 0, order.labels);
+    t.eq('Progress photos is the very next section after Your transformation', order.photos, order.transformation + 1, order);
+    t.ok('and it now comes BEFORE body composition, not five sections after it',
+      order.photos < order.bodyComp && order.photos < order.strength && order.photos < order.consistency, order);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

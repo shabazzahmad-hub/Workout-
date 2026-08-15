@@ -1679,7 +1679,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='247';
+const APP_VERSION='248';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -7332,6 +7332,16 @@ function renderProgress(){
   }
   // visual physique goal + forward projection
   h+=transformationHTML();
+  /* Progress photos sits directly below the goal picker, not after five
+     unrelated sections (the stat grid, body composition, strength test,
+     consistency heatmap) the way it used to. Both cards answer the same
+     question — what does my body look like, and how is it changing — one as
+     an aspirational reference, one as real proof. There is no data reason they
+     were ever apart: the goal card's body-fat estimate reads latestWeightKg()
+     plus height/age, never the waist chart that used to sit between them.
+     Moved at the athlete's own request, after confirming there was nothing
+     tying the two apart. */
+  h+=`<div class="section-label">Progress photos</div>${photosHTML()}`;
   // snapshot: 6 headline metrics
   const sessionsDone=sessionsDoneCount();
   const streak=computeStreak();
@@ -7375,8 +7385,6 @@ function renderProgress(){
     ${heatmapHTML()}
     <div class="row" style="justify-content:space-between;margin-top:10px"><span class="tiny muted">🔥 trained · ▫️ rest</span><span class="tiny muted">Training load <b style="color:${loadIndexPct()>=0?'var(--green)':'var(--muted)'}">${loadIndexPct()>=0?'+':''}${loadIndexPct()}%</b> vs start</span></div>
   </div>`;
-  // progress photos
-  h+=`<div class="section-label">Progress photos</div>${photosHTML()}`;
   // achievements
   h+=achievementsHTML();
   // strength trend charts (baseline + re-tests)
