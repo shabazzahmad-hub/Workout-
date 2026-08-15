@@ -3059,6 +3059,54 @@ real `neuralSpeak()`, and an assertion that `onFail()` actually ran. The
 stall-based checks prove the bound exists; this one proves the bound buys the
 athlete a working voice.
 
+## A 503 is advice, and the app was not taking it (v257)
+
+Third distinct failure of the same feature on a real phone: Google returned
+**503** with a body that literally reads *"Spikes in demand are usually
+temporary. Please try again later"* — and `_visionEstimate()` tried each model
+once and gave up. Earlier in the same session this exact toast was waved off
+to the athlete as "nothing to fix, that is Google being busy." **That was the
+wrong call.** A 503 is the textbook retryable status; every serious API client
+retries it. Dismissing it as external was treating the symptom's origin as a
+reason not to handle it.
+
+**Retry the whole model list, not the individual model.** The pre-existing
+fallback loop already covers "this one model is unavailable" — a per-model
+retry would just hammer a sick model before moving on. Three passes at
+0 / 1.2s / 3s adds at most ~4s to the failure case and converts the common
+brief spike into a slower success. Deliberately short: a genuine outage must
+still fail fast enough that the athlete falls back to typing the numbers
+rather than watching a spinner.
+
+**Only spend the backoff on something a wait can fix.** `_transientAIStatus()`
+is 429/500/502/503/504. A 404 on every model, or a reply the parser could not
+use, reads identically three times running — retrying it just makes the
+athlete wait longer for the same message, so the loop breaks out when no
+transient status was seen. 400/401/403 still throw on the FIRST call without
+finishing the list, since a key problem repeats everywhere.
+
+**A silent four-second pause reads as frozen**, so the retry is visible
+(`onRetry` → "Google's AI is busy — retrying (1/2)…"). A fix that makes the
+app appear to hang longer is not obviously an improvement over failing fast;
+the toast is what makes it one.
+
+**Once the app retries on its own, the raw upstream prose is the wrong thing
+to show.** `slice(0,120)` cut Google's paragraph mid-word — the athlete's
+screenshot shows the toast ending "Please try again late". By the time the
+message renders the app has already tried three times, so the useful text is
+what to DO now. `_aiErrText()` gives transient failures a written answer,
+distinguishes 429 (quota — a different fix) from overload, and trims genuine
+diagnosable errors at a WORD boundary instead of mid-token.
+
+**Two of the four mutants initially failed by throwing the whole test file
+rather than by name.** Removing the retry makes `_visionEstimate()` reject,
+and an uncaught rejection inside the `page.evaluate` fails the FILE with a
+stack — which hides every assertion after it and says nothing about which
+property broke. Wrapping the recovery call in its own try/catch turned both
+into four cleanly-named failures. A check that detects the defect is not the
+same as a check that REPORTS it, and the difference only shows up under
+mutation.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
