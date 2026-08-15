@@ -1070,6 +1070,48 @@ export default async function run() {
   t.ok('two flagged joints still add only one bonus item, same as correctiveBonus()', jointWarm.onlyFirstJointAdded, jointWarm);
   t.ok('with nothing flagged the warm-up is unchanged', jointWarm.noneFlaggedUnchanged, jointWarm);
 
+  /* ---- onboarding's "mobility" question actually tunes the flow (v251) ----
+     Labelled "tunes warm-up & cool-down" in the wizard, but until now the only
+     thing STATE.profile.mobility touched was a sentence of encouragement
+     above the flow — a promise in the UI with no code behind it, per this
+     file's own note on that exact shape of defect. mobilityFlow() is the fix;
+     confirm it actually lengthens holds for 'low' and leaves 'ok'/'good'
+     (and the joint-aware addition) alone, rather than just existing. */
+  const mob = await page.evaluate(() => {
+    const o = {}, real = STATE.profile.mobility;
+    const secsOf = f => f.map(it => it.secs);
+    const beforeWarm = secsOf(WARMUP_FLOW), beforeCool = secsOf(COOLDOWN_FLOW);
+
+    STATE.profile.mobility = 'low';
+    o.warmupLonger = secsOf(mobilityFlow(WARMUP_FLOW)).every((s, i) => s === Math.round(beforeWarm[i] * 1.25));
+    o.cooldownLonger = secsOf(mobilityFlow(COOLDOWN_FLOW)).every((s, i) => s === Math.round(beforeCool[i] * 1.25));
+    // the joint-aware addition is built AFTER onboarding's mobility answer is
+    // known, so it must also be scaled — not just the fixed WARMUP_FLOW array
+    STATE.profile.limitations = ['lowback'];
+    const withAdd = mobilityFlow(jointAwareWarmup(WARMUP_FLOW));
+    const addedItem = withAdd.find(it => it.n === 'Spine Stability Prep');
+    o.jointAddAlsoScaled = !!addedItem && addedItem.secs === Math.round(30 * 1.25);
+    STATE.profile.limitations = [];
+    // must not mutate the shared source arrays — a later unflagged athlete
+    // reading WARMUP_FLOW/COOLDOWN_FLOW directly must still see the originals
+    o.sourceUntouched = secsOf(WARMUP_FLOW).every((s, i) => s === beforeWarm[i]) &&
+      secsOf(COOLDOWN_FLOW).every((s, i) => s === beforeCool[i]);
+
+    STATE.profile.mobility = 'ok';
+    o.averageUnchanged = secsOf(mobilityFlow(WARMUP_FLOW)).every((s, i) => s === beforeWarm[i]);
+    STATE.profile.mobility = 'good';
+    o.goodUnchanged = secsOf(mobilityFlow(COOLDOWN_FLOW)).every((s, i) => s === beforeCool[i]);
+
+    STATE.profile.mobility = real;
+    return o;
+  });
+  t.ok('a stiff athlete (mobility: low) gets 25% longer warm-up holds', mob.warmupLonger, mob);
+  t.ok('and 25% longer cool-down holds, matching the UI\'s own "hold a little longer" promise', mob.cooldownLonger, mob);
+  t.ok('the joint-aware warm-up addition is scaled too, not just the fixed array', mob.jointAddAlsoScaled, mob);
+  t.ok('an average-mobility athlete sees the original warm-up durations', mob.averageUnchanged, mob);
+  t.ok('a very-mobile athlete sees the original cool-down durations', mob.goodUnchanged, mob);
+  t.ok('scaling does not mutate the shared WARMUP_FLOW source array', mob.sourceUntouched, mob);
+
   // ---- the food table knows what is in it ----------------------------------
   const food = await page.evaluate(() => {
     const o = {}, N = STATE.nutrition;

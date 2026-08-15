@@ -1679,7 +1679,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='250';
+const APP_VERSION='251';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -5338,15 +5338,45 @@ function openAssessment(reassessCycle){
   assessState={idx:0,results:{},reassess:reassessCycle};
   renderAssessStep();
 }
+/* Which of the athlete's declared limitations is the reason a test exercise
+   got swapped — for the on-screen note, not for safeSwap()'s own routing. */
+function assessSwapJoint(exId){
+  const lims=(STATE.profile&&Array.isArray(STATE.profile.limitations))?STATE.profile.limitations:[];
+  const j=lims.find(k=>(JOINT_RISK[k]||[]).includes(exId));
+  return j&&(JOINTS.find(([k])=>k===j)||[])[1];
+}
+/* Generic instructions for a swapped test — t.instr is hand-written for the
+   ORIGINAL exercise ("chest to a fist off the floor") and stops being accurate
+   the moment the movement changes underneath it. */
+function assessSwapInstr(t){
+  if(t.unit==='time')return 'Hold as long as your form stays perfect. Stop when it breaks. Enter your best time.';
+  if(t.dur)return `${t.dur} seconds, full effort — count every good rep, then enter your total when time is up.`;
+  return 'Do as many clean, controlled reps as you can in one set. Stop when your form goes.';
+}
 function renderAssessStep(){
-  const i=assessState.idx;const t=TESTS[i];const ex=EX[t.ex];
+  const i=assessState.idx;const t=TESTS[i];
+  /* A maximal-effort test is a HARDER ask on a joint than an ordinary
+     prescribed set — prescribe() already routes every session away from a
+     flagged joint's risky moves, and the baseline battery had been reading
+     EX[t.ex] straight through with no such check, asking a shoulder-flagged
+     athlete to do inverted rows to failure or a knee-flagged one to jump-squat
+     for 20 seconds. safeSwap() already knows a safe substitute for every one
+     of the five test moves that carries a flag (pushup, invertedrow,
+     jumpsquat, revcrunch, bicycle) — this just has to actually call it. The
+     score still saves under the test's own id (t.id), so every downstream
+     anchor/maxes read is unaffected; only which movement earns that number
+     changes, same as any other flagged-joint substitution in the app. */
+  const exId=safeSwap(t.ex);const ex=EX[exId];
+  const swapped=exId!==t.ex;
+  const joint=swapped?assessSwapJoint(t.ex):null;
   const total=TESTS.length;
   openSheet(`
     <div class="row" style="justify-content:space-between;margin-bottom:6px"><div class="tiny muted">Test ${i+1} of ${total}</div><button class="chip" onclick="closeSheet()">Cancel</button></div>
     <div class="pbar" style="margin-bottom:14px"><i style="width:${(i)/total*100}%"></i></div>
     <h3>${t.name}</h3>
+    ${swapped?`<div class="note fire" style="margin-bottom:10px">Swapped to <b>${_ve(ex.name)}</b> — you flagged your ${_ve((joint||'joint').toLowerCase())}, and this tests the same capacity without the risk.</div>`:''}
     ${ex.img?`<img class="exphoto" src="${ex.img}" alt="">`:emblemHTML(ex)}
-    <div class="note info">${t.instr}</div>
+    <div class="note info">${swapped?assessSwapInstr(t):t.instr}</div>
     ${(t.unit==='time'||t.dur)?`<button class="btn green" style="margin-bottom:12px" onclick="startBaselineTimer()">▶ ${t.dur?`Start ${t.dur}s timer`:'Start timer'}</button>`:''}
     <div class="field"><label>${t.unit==='time'?'Your hold (seconds) — the timer fills this in':(t.dur?`Good reps in the ${t.dur} seconds`:'Good reps completed')}</label>
       <div class="numrow">
@@ -5359,7 +5389,7 @@ function renderAssessStep(){
       ${i>0?`<button class="btn ghost" onclick="assessNav(-1)">← Back</button>`:''}
       <button class="btn primary" onclick="assessNav(1)">${i===total-1?'See my results':'Next test →'}</button>
     </div>
-    <button class="btn ghost" style="margin-top:10px" onclick="openExerciseInfo('${t.ex}')">ⓘ How to do this move</button>
+    <button class="btn ghost" style="margin-top:10px" onclick="openExerciseInfo('${exId}')">ⓘ How to do this move</button>
   `);
   setTimeout(()=>{const inp=$('#assess-val');if(inp)inp.focus();},120);
 }
@@ -7049,8 +7079,19 @@ function repHTML(label,total){
 /* ===== GUIDED WARM-UP / COOL-DOWN FLOW =====
    Walks a sequence of {n,secs,cue} moves: 5s loud GET READY, then each move
    with its own count-down, loud transition beeps and spoken coaching. */
-function runWarmup(){runFlow(jointAwareWarmup(WARMUP_FLOW),'Warm-up','var(--fire)');}
-function runCooldown(){runFlow(COOLDOWN_FLOW,'Cool-down','var(--teal)');}
+/* Onboarding's mobility question is labelled "tunes warm-up & cool-down," but
+   until now the only thing it touched was a sentence of encouragement above
+   the flow ("Hold each stretch a little longer — building mobility is one of
+   your goals"). Nothing in the actual timer read it — a promise printed in
+   the UI with no code behind it, the exact shape this file's own notes warn
+   about. Scoped to exactly what the banner already claims: a stiffer athlete
+   gets longer holds, not a different exercise set or a different pace label. */
+function mobilityFlow(items){
+  if((STATE.profile&&STATE.profile.mobility)!=='low')return items;
+  return (items||[]).map(it=>Object.assign({},it,{secs:Math.round(it.secs*1.25)}));
+}
+function runWarmup(){runFlow(mobilityFlow(jointAwareWarmup(WARMUP_FLOW)),'Warm-up','var(--fire)');}
+function runCooldown(){runFlow(mobilityFlow(COOLDOWN_FLOW),'Cool-down','var(--teal)');}
 /* WARMUP_FLOW and COOLDOWN_FLOW are fixed arrays that never went through
    safeSwap, so the app kept flexion and rotation off a flagged low back for the
    whole session and then prescribed Cobra Stretch and a Supine Spinal Twist as
