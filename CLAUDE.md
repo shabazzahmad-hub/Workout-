@@ -2918,6 +2918,34 @@ privacy note reverted, the physiological clamp disabled (proving the
 screenshot path exercises the SAME clamp code, not a copy that only the
 photo path runs through), and the wiring gap described above.
 
+## The Gemini timeout was too short, and the athlete found it within minutes (v254)
+
+v253 shipped, and the first real use of the new screenshot-import button
+failed with "Screenshot import failed — timed out — check your connection."
+
+**`_geminiCall()` was using `fetchWithTimeout()`'s bare 8000ms default —
+sized for `offSearch()`'s small JSON request, never adjusted for a call
+that uploads an image and waits on model inference.** That undersized bound
+already applied to the food-photo estimate (`foodPhoto()`) too; v253 just
+made it easy to hit, because a screenshot needs more resolution to keep
+small on-screen digits legible (1280px vs. 768px for a food photo), and a
+bigger base64 payload takes longer to upload on an ordinary connection.
+Bumped to 25s — real headroom, not a shrug; a genuinely dead connection
+still gives up. `ms` is a real parameter on `_geminiCall(model,body,ms)`,
+not a hardcoded 25000, for the exact reason `offSearch(q,ms)`'s already is:
+so a test can pass a short one instead of waiting out the real default.
+
+**Found and fixed inside the hour, by the person the fix is for.** Nothing
+about this needed a new audit method — it's the same "no network call had a
+timeout" gap `fetchWithTimeout()` itself was built to close in v238, just
+under-sized on one specific call site. The regression test is the same
+shape as `offSearch()`'s own hang test one section above it: a route that
+never fulfills, a short `ms`, and an assertion that the rejection lands
+close to the requested timeout rather than the browser's own TCP ceiling —
+plus a second check reading the real production default's value back out
+of the source, so a future edit can't quietly shrink it to 8000 again
+without a check noticing.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

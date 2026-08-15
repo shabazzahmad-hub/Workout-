@@ -432,6 +432,37 @@ export default async function run() {
     t.ok('with a message that reads as a timeout, not a generic failure', /time/i.test(r.msg || ''), r);
   }
 
+  /* ---- a hung Gemini connection must also give up, not hang forever (v253) -
+     _geminiCall() reused fetchWithTimeout()'s bare 8000ms default — sized for
+     a small JSON request, not an image upload plus model inference. Real,
+     found by an athlete hitting "Screenshot import failed — timed out" on the
+     very first live use of v253's larger, slower-to-upload screenshot path,
+     though the same undersized bound already applied to the food-photo
+     estimate too. Same hang-test technique as offSearch() above, with the
+     same reasoning for why `ms` has to be a real parameter. */
+  {
+    await page.route('https://generativelanguage.googleapis.com/**', () => {});   // never fulfilled
+    const r = await page.evaluate(async () => {
+      const t0 = Date.now();
+      try { await _geminiCall('gemini-2.5-flash', {}, 300); return { threw: false }; }
+      catch (e) { return { threw: true, ms: Date.now() - t0, msg: String(e.message || e) }; }
+    });
+    await page.unroute('https://generativelanguage.googleapis.com/**');
+    t.ok('a hung Gemini call eventually rejects instead of hanging forever', r.threw, r);
+    t.ok('and gives up close to the requested timeout, not fetchWithTimeout\'s 8000ms default', r.ms < 2000, r);
+    t.ok('with a message that reads as a timeout', /time/i.test(r.msg || ''), r);
+  }
+  {
+    // the production default is real headroom (25s), not left at the 8s that
+    // just failed in practice — checked as a value, not merely "is a number"
+    const ms = await page.evaluate(() => {
+      const src = _geminiCall.toString();
+      const m = src.match(/ms\|\|(\d+)/);
+      return m ? +m[1] : null;
+    });
+    t.ok('the production default is materially longer than the 8000ms that just failed', ms >= 20000, ms);
+  }
+
   /* ---- the photo estimate's portion note (v245) ---------------------------
      The AI food photo now also returns a portion size ("about 6 oz (170 g)",
      "1 cup cooked", "2 slices"). It is free text a language model wrote, so it
