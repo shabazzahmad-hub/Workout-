@@ -1257,6 +1257,10 @@ const EX = {
     why:'A shoulder-friendly horizontal press for the chest and triceps — no bench needed.',
     steps:['Lie on your back, knees bent, a dumbbell in each hand at the chest.','Press both bells up to straight arms.','Lower until the upper arms just touch the floor, then press again.'],
     cues:['Elbows ~45°','Press the bells together at the top','Controlled touch on the floor'],mistakes:['Flaring the elbows','Bouncing off the floor']},
+  dbbench:{name:'Dumbbell Bench Press',region:'chest',unit:'reps',img:'ex-dbbench.jpg',anchor:null,hardness:1,base:11,rest:60,equip:['dumbbell','bench'],pattern:'pushh',
+    why:'A full-range horizontal press for the chest, shoulders and triceps — the bench lets the bells drop below the torso for more stretch than the floor press allows.',
+    steps:['Lie back on a bench with a dumbbell in each hand at the chest.','Press both bells up to straight arms over the chest.','Lower with control until the upper arms dip just below the bench line, then press again.'],
+    cues:['Feet planted, shoulder blades set','Elbows ~45°, not flared','Full stretch at the bottom'],mistakes:['Bouncing at the bottom','Feet or hips lifting off the bench']},
   dblunge:{name:'Dumbbell Reverse Lunge',region:'legs',unit:'reps',img:'ex-dblunge.jpg',anchor:null,hardness:1,base:10,rest:55,equip:['dumbbell'],pattern:'lunge',
     why:'Single-leg strength and balance for the quads and glutes — evens out side-to-side weakness.',
     steps:['Hold a dumbbell in each hand at your sides.','Step back and lower the back knee toward the floor.','Drive through the front heel to stand. Alternate.'],
@@ -1638,7 +1642,7 @@ const TESTS = [
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='243';
+const APP_VERSION='244';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2153,7 +2157,7 @@ const FOCUS_POOL={
   abs:['hollow','hollowflutter','vsit','bearhold','lsit','dragonflag','dragonflagfull','situp','vertcrunch','plankleg','isoclimber','vup','tuckvup','legraise','hiplift','hanglegraise','revcrunch','crunch','bicycle','kneeraise','abroll','abrollstand','mbsitup','flutter','kbrenegade','ropeplank','toetouch','sitthrust','legcircle','kneetoelbow'],
   obliques:['sideplank','sideplankreach','situptwist','sidedip','russiantwist','windshield','plankrot','heeltouch','bicycle','copenhagen','standingoblique','mbtwist','kbhalo','dbpallof','mbchop','kbwindmill','kbsuitcase','kbfigure8'],
   full:['burpee','sprawl','bearcrawl','inchworm','squatthrust','mountainclimber','kbswing','dbthruster','halfburpee','squat','pushup','kbhighpull','kneekick','quickpunch'],
-  chest:['pushup','tempopushup','hindupushup','typewriter','inclinepushup','declinepushup','diamondpushup','archerpushup','closepushup','dbfloor'],
+  chest:['pushup','tempopushup','hindupushup','typewriter','inclinepushup','declinepushup','diamondpushup','archerpushup','closepushup','dbfloor','dbbench'],
   back:['invertedrow','superman','swimmer','scappull','negpullup','pullup','chinup','dbrow','kbrow','kbrenegade'],
   shoulders:['pikepushup','elevatedpike','wallwalk','wallhandstand','dbpress','kbcp'],
   arms:['benchdip','closepushup','dips','dbcurl','diamondpushup'],
@@ -2282,6 +2286,7 @@ const GEAR_FALLBACK={
   dips:'closepushup',benchdip:'closepushup',dipknee:'legraise',
   hanglegraise:'legraise',kneeraise:'legraise',kneetoelbow:'legraise',dragonflag:'hollowrock',dragonflagfull:'hollowrock',
   abroll:'plank',abrollstand:'plank',copenhagen:'sidedip',
+  dbbench:'dbfloor',
 };
 function gearSwap(exId,ladder){
   if(hasGearFor(exId))return exId;
@@ -9011,7 +9016,7 @@ function calcOneRM(){
 const JOINTS=[['knee','Knee'],['shoulder','Shoulder'],['wrist','Wrist'],['lowback','Lower back'],['elbow','Elbow']];
 const JOINT_RISK={
   knee:['pistol','boxpistol','jumpsquat','tuckjump','broadjump','splitjump','bulgarian','burpee','burpeetuck','walkinglunge','sissysquat','cossack','sprawl','latshuffle','nordic','asiansquat','wallsit','skater','squatjack','splitsquat','jumpingjack','sealjack','highknees','buttkick','kneekick','skaterground'],
-  shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','benchdip','dbpress','kbcp','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbtgu','kbthruster','kbwindmill','abrollstand','hanglegraise','lsit','dragonflag','dragonflagfull','plankrot','wallwalk','pseudoplanche','typewriter','hindupushup','pullup','chinup','widepullup','negpullup','deadhang','scappull','invertedrow','invertedrowelev','tablerow','crabwalk','reverseplank','abroll','mbslam','ropeslam','ropewave','kbswing','atomicpushup','declinepushup','burpee','burpeetuck','kneetoelbow'],
+  shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','benchdip','dbpress','kbcp','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbtgu','kbthruster','kbwindmill','abrollstand','hanglegraise','lsit','dragonflag','dragonflagfull','plankrot','wallwalk','pseudoplanche','typewriter','hindupushup','pullup','chinup','widepullup','negpullup','deadhang','scappull','invertedrow','invertedrowelev','tablerow','crabwalk','reverseplank','abroll','mbslam','ropeslam','ropewave','kbswing','atomicpushup','declinepushup','burpee','burpeetuck','kneetoelbow','dbbench'],
   /* fistpushup is deliberately ABSENT: knuckles down keeps the wrist straight,
      which is the whole point of the movement. */
   wrist:['pushup','kneepushup','inclinepushup','declinepushup','diamondpushup','closepushup','archerpushup','spidermanpushup','superpushup','planktap','mountainclimber','dbrenegade','kbrenegade','dbmanmaker','dbdevil','abroll','abrollstand','ropeplank','extplank','lsit','isoclimber','bearcrawl','crabwalk','plankjack','crossclimber','bearhold','pseudoplanche','typewriter','hindupushup','tempopushup','inchworm','pikepushup','elevatedpike','wallwalk','wallhandstand','hspushup','atomicpushup','burpee','burpeetuck','halfburpee','squatthrust','sprawl','reverseplank','sitthrust'],
@@ -9056,7 +9061,7 @@ const SAFE_SWAP={
   atomicpushup:'fistpushup',fistpushup:'inclinepushup',kneepushup:'inclinepushup',
   inclinepushup:'glutebridge',
   dips:'kneepushup',benchdip:'kneepushup',dipknee:'kneeplank',
-  dbpress:'dbfloor',kbcp:'kbrow',dbthruster:'dbgoblet',dbrenegade:'dbrow',kbrenegade:'kbrow',dbcurl:'dbrow',
+  dbpress:'dbfloor',kbcp:'kbrow',dbthruster:'dbgoblet',dbrenegade:'dbrow',kbrenegade:'kbrow',dbcurl:'dbrow',dbbench:'dbfloor',
   dbcp:'dbgoblet',dbmanmaker:'dbgoblet',dbdevil:'dbgoblet',kbsnatch:'kbgoblet',kbtgu:'kbgoblet',kbthruster:'kbgoblet',kbwindmill:'kbgoblet',
   // pulling — lands on a bar-free row, not on a back extension
   pullup:'towelrow',widepullup:'towelrow',chinup:'towelrow',negpullup:'towelrow',

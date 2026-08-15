@@ -2169,6 +2169,65 @@ full `npm test` (22 suites, including the asset-existence and dimension
 checks in the exercise-media suite) both stayed green with zero diff to
 `index.html` or `sw.js`.
 
+## A follow-up gap search finds one real addition: Dumbbell Bench Press (v244)
+
+Asked directly, after the photo round: "are there any more exercises we
+should add?" A full survey of the (by then) 177-entry `EX` library across
+every region and equipment type found it heavily saturated — nine prior
+rounds (v224, v232–v234, v243) had already covered nearly every commonly
+cited bodyweight/dumbbell/kettlebell/medicine-ball/ab-roller/battle-rope
+movement. Two narrow candidates survived the survey; offered to the
+athlete, who chose one.
+
+**The athlete's own "Bench / chair" gear checkbox powered exactly one
+exercise in the whole library before this.** `benchdip` uses `equip:
+['bench']` alone; the only other loaded chest press, `dbfloor`, is done
+lying on the floor and needs no bench (its own `why` text says so
+explicitly — "no bench needed"). No exercise anywhere required a dumbbell
+and a bench together, so an athlete who owns both had that combination
+sitting unused. `dbbench` (Dumbbell Bench Press, `equip:['dumbbell',
+'bench']`) is the first.
+
+**The declined candidate, for the record.** A `kbsuitcase`-style single-arm
+Dumbbell Suitcase Carry — the same asymmetry v224 already fixed once for
+the bilateral farmer's carry (kettlebell had one, dumbbell didn't;
+`dbcarry` closed it) — was raised alongside the bench press and the
+athlete chose bench-press-only. Left unbuilt; not a rejected idea so much
+as an unscoped one, worth revisiting if a future round asks the same
+question again.
+
+**A fuller range of motion is a real, not cosmetic, difference from the
+floor press — and the risk flag has to say so.** A bench lets the dumbbells
+descend below the torso plane; the floor stops the descent early. That
+extra stretch at the bottom is exactly the mechanism fitness literature
+points to when it calls a floor press "shoulder-friendlier" than a bench
+press — which is also, word for word, the reasoning `dbfloor`'s own `why`
+text already gives for existing as a no-bench alternative. So `dbbench`
+carries `shoulder` in `JOINT_RISK`; `dbfloor` deliberately does not.
+`SAFE_SWAP.dbbench:'dbfloor'` is the natural, already-documented-in-app
+landing spot for a flagged shoulder — not a generic same-region pick.
+
+**`GEAR_FALLBACK.dbbench` is genuine defense-in-depth, not a working
+mechanism — traced, not assumed.** `GEAR_FALLBACK` is read from exactly one
+place, `gearSwap()`, which `resolve()` calls only when walking a `LADDERS`
+rung. `dbbench` is not in any ladder — it is reached the same way
+`dbfloor`/`dbpallof`/`mbchop` are, through `FOCUS_POOL` and `focusBonus()`'s
+own `has()` gate, which checks `e.equip.every(g=>gear.includes(g))`
+directly and never calls `gearSwap()` at all. The entry is kept, matching
+this file's own `kneeraise:'legraise'` precedent, but the test proves the
+REAL path — a swept `focusBonus()` call across a full 54-week range with
+only a dumbbell owned never offers `dbbench`, while `dbfloor` (needing only
+a dumbbell) genuinely does, proving the chest pool was actually reached and
+not just silently skipped.
+
+**All five mutations seeded against the new checks were caught on the
+first pass** — the shoulder flag, `SAFE_SWAP`, `GEAR_FALLBACK`, the
+equipment gate (dropping the bench requirement), and the `FOCUS_POOL`
+membership, each independently, each by the specific check aimed at it.
+
+Image shipped as the same 800×800 grey-backdrop "PHOTO PENDING" placeholder
+established in v224, added to `sw.js`'s `EXTRA` tier.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
