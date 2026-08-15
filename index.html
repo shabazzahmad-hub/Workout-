@@ -1692,7 +1692,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='258';
+const APP_VERSION='259';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -9012,6 +9012,96 @@ function foodAIReady(){return !!(STATE.settings&&STATE.settings.foodAiKey);}
 const FOOD_AI_MODELS=['gemini-2.5-flash','gemini-2.0-flash','gemini-flash-latest'];
 function foodAIModels(){const p=STATE.settings&&STATE.settings.foodAiModel;return p?[p]:FOOD_AI_MODELS.slice();}
 function setFoodAiKey(v){if(!STATE.settings)STATE.settings={};STATE.settings.foodAiKey=(v||'').trim();save();toast(STATE.settings.foodAiKey?'Gemini key saved 🔒':'Cleared');if(TAB==='guide')renderGuide();}
+/* ---- AI connection diagnostic -------------------------------------------
+   Four separate failures of the photo/screenshot import in one day (timeout,
+   image fidelity, 503, timeout again) were each diagnosed from a single line
+   of toast text, because nothing in the app reports what actually happened
+   and the dev sandbox cannot reach Google at all. This turns that guessing
+   into real numbers the athlete can read out: which model, what HTTP status,
+   how long it took, and how big the upload was — separating "the key is
+   wrong" from "the network is slow" from "Google is overloaded" from "the
+   image is the problem", which the single toast never could.
+
+   Deliberately staged smallest-first. A text-only ping is a few hundred
+   bytes and isolates key validity and reachability; only if that works does
+   it spend an image. Each stage carries its own short bound so a dead
+   connection reports in seconds rather than sitting on the real 25s. */
+async function _aiPing(model,ms){
+  const t0=Date.now();
+  const body={contents:[{parts:[{text:'Reply with the single word OK.'}]}],
+    generationConfig:{temperature:0,maxOutputTokens:10}};
+  try{const j=await _geminiCall(model,body,ms);
+    const txt=(((j.candidates||[])[0]||{}).content||{}).parts||[];
+    return {ok:true,ms:Date.now()-t0,reply:(txt.map(p=>p&&p.text||'').join('')||'').trim().slice(0,20)};
+  }catch(e){return {ok:false,ms:Date.now()-t0,status:(e&&e.status),msg:String((e&&e.message)||e).slice(0,90)};}
+}
+async function _aiVisionPing(model,ms){
+  // a tiny real image — proves the vision path without a big upload
+  const c=document.createElement('canvas');c.width=c.height=64;
+  const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,64,64);
+  x.fillStyle='#000';x.font='28px sans-serif';x.fillText('42',8,44);
+  const du=c.toDataURL('image/jpeg',0.9);
+  const t0=Date.now();
+  const body={contents:[{parts:[{text:'What number is written in this image? Reply with digits only.'},
+    {inline_data:{mime_type:'image/jpeg',data:du.replace(/^data:[^,]+,/,'')}}]}],
+    generationConfig:{temperature:0,maxOutputTokens:10}};
+  try{const j=await _geminiCall(model,body,ms);
+    const txt=(((j.candidates||[])[0]||{}).content||{}).parts||[];
+    return {ok:true,ms:Date.now()-t0,kb:Math.round(du.length/1024),reply:(txt.map(p=>p&&p.text||'').join('')||'').trim().slice(0,20)};
+  }catch(e){return {ok:false,ms:Date.now()-t0,kb:Math.round(du.length/1024),status:(e&&e.status),msg:String((e&&e.message)||e).slice(0,90)};}
+}
+function _diagLine(label,r){
+  const good=r.ok;
+  const detail=good
+    ? `${r.ms} ms${r.reply?' · replied "'+_ve(r.reply)+'"':''}${r.kb?' · sent '+r.kb+' KB':''}`
+    : `${r.ms} ms · ${r.status===0?'timed out / no connection':('HTTP '+(r.status==null?'?':r.status))}${r.msg?' · '+_ve(r.msg):''}`;
+  return `<div class="kv"><span>${good?'✅':'❌'} ${_ve(label)}</span><span class="tiny muted" style="text-align:right;max-width:60%">${detail}</span></div>`;
+}
+async function runAIDiagnostic(){
+  if(!foodAIReady()){toast('Add a Gemini key first');return;}
+  const models=foodAIModels();
+  openSheet(`<h3>🔬 Testing the AI connection</h3>
+    <p class="muted sm" style="margin:2px 0 12px">Running a few small requests. This takes a few seconds.</p>
+    <div id="diagOut"><div class="tiny muted">Working…</div></div>`);
+  const out=[];const paint=()=>{const e=$('#diagOut');if(e)e.innerHTML=out.join('');};
+  /* Reachability first, with a SHORT bound: if the network is dead this says
+     so in 6 seconds instead of 25, and the rest of the run is pointless. */
+  const ping=await _aiPing(models[0],6000);
+  out.push(_diagLine('Reaching Google ('+models[0]+')',ping));paint();
+  if(!ping.ok&&ping.status===0){
+    const slow=await _aiPing(models[0],20000);
+    out.push(_diagLine('Retry with a longer wait',slow));paint();
+    if(slow.ok)out.push(`<div class="note warn" style="margin-top:10px">Your connection reaches Google but is <b>slow</b> — the first try needed more than 6 seconds. Imports may time out on this network. Try wifi, or add the numbers by hand.</div>`);
+    else out.push(`<div class="note warn" style="margin-top:10px">No answer from Google at all. That is the connection or a blocked network, not your key or the screenshot.</div>`);
+    paint();return;
+  }
+  if(!ping.ok&&(ping.status===400||ping.status===401||ping.status===403)){
+    out.push(`<div class="note warn" style="margin-top:10px">Google rejected the <b>key</b> (HTTP ${ping.status}). Paste a fresh one from aistudio.google.com/apikey.</div>`);paint();return;
+  }
+  if(!ping.ok&&ping.status===429){
+    out.push(`<div class="note warn" style="margin-top:10px">Your free <b>quota is used up</b> for now. It resets on Google's schedule — until then, add the numbers by hand.</div>`);paint();return;
+  }
+  if(!ping.ok){
+    // 5xx or something unclassified — try the other models before judging
+    for(const m of models.slice(1)){
+      const p2=await _aiPing(m,8000);
+      out.push(_diagLine('Trying '+m,p2));paint();
+      if(p2.ok){out.push(`<div class="note info" style="margin-top:10px">The first model is unavailable but <b>${_ve(m)}</b> works. Google is having trouble with one model — imports should still succeed.</div>`);paint();return;}
+    }
+    out.push(`<div class="note warn" style="margin-top:10px">Every model is refusing right now — that is Google being overloaded, not your phone or your key. Try again in a few minutes.</div>`);paint();return;
+  }
+  // text works — now the vision path, which is what the import actually uses
+  const vis=await _aiVisionPing(models[0],20000);
+  out.push(_diagLine('Reading a tiny test image',vis));paint();
+  if(vis.ok){
+    out.push(`<div class="note ok" style="margin-top:10px">Everything works. Text and image both went through${ping.ms&&vis.ms?` in ${ping.ms} and ${vis.ms} ms`:''}. If a real screenshot still times out, it is the size of that particular image on this connection — try again on wifi.</div>`);
+  }else if(vis.status===0){
+    out.push(`<div class="note warn" style="margin-top:10px">Text works but <b>images time out</b>. The connection is too slow to upload a picture right now, even a tiny one. Try wifi.</div>`);
+  }else{
+    out.push(`<div class="note warn" style="margin-top:10px">Text works but the image request failed (${vis.status==null?'?':'HTTP '+vis.status}). That points at the vision model rather than your key or connection.</div>`);
+  }
+  paint();
+}
 /* `max` bounds the LONG edge, which is the right rule for a photo of a plate
    and the wrong one for a portrait screenshot: a 1179x2556 phone capture
    scaled to a 1280 long edge comes out 590 wide, halving the horizontal
@@ -9234,8 +9324,25 @@ function foodScreenshot(){
          portrait screenshot loses its text to the long-edge rule and to JPEG
          ringing long before the model ever sees it, which reads on screen as
          "could not find clear numbers" and looks like a model failure. */
-      try{const du=await _downscale(rd.result,2048,0.92);
-        const est=await estimateFoodFromScreenshot(du,{onRetry:(n,of)=>toast('Google\'s AI is busy — retrying ('+n+'/'+(of-1)+')…',2500)});
+      const busy=(n,of)=>toast('Google\'s AI is busy — retrying ('+n+'/'+(of-1)+')…',2500);
+      /* Two attempts at DIFFERENT sizes, not the same payload twice. v255
+         raised this to 2048/q0.92 because a portrait screenshot loses its
+         digits at anything smaller — that is the right first choice and stays
+         the default. But when the failure is connection-level (status 0), the
+         one thing worth changing is the number of bytes on the wire: ~197 KB
+         down to ~104 KB, still 646px wide, which is more than the 590px that
+         made v253 unreadable. Preferring legibility and falling back to
+         deliverability beats failing with a perfect image nobody received. */
+      try{let est;
+        try{
+          const du=await _downscale(rd.result,2048,0.92);
+          est=await estimateFoodFromScreenshot(du,{onRetry:busy,budget:30000});
+        }catch(e1){
+          if(!_connectionLevel(e1&&e1.status))throw e1;
+          toast('Slow connection — trying a lighter image…',3000);
+          const du2=await _downscale(rd.result,1400,0.85);
+          est=await estimateFoodFromScreenshot(du2,{onRetry:busy,budget:20000});
+        }
         // The prompt is told to return zeros rather than guess when it can't find
         // real numbers — that is success from the model's own honesty, but it is
         // not a usable result, so treat it the same as a thrown error.
@@ -12548,7 +12655,8 @@ function renderGuide(){
       <div style="display:flex;flex-wrap:wrap;gap:6px">${JOINTS.map(([k,l])=>`<button class="chip ${((STATE.profile.limitations||[]).includes(k))?'on':''}" onclick="toggleLimitation('${k}')">${l}</button>`).join('')}</div></div>
     <div style="padding:6px 0 2px"><div class="row" style="justify-content:space-between;margin-bottom:6px"><span class="tiny muted">AI food photo <span style="opacity:.7">· 📷 Snap → calories, via Google Gemini (free)</span></span>${STATE.settings.foodAiKey?`<button class="chip" onclick="setFoodAiKey('')">Clear key</button>`:''}</div>
       <input type="password" value="" onchange="if(this.value.trim())setFoodAiKey(this.value)" placeholder="${STATE.settings.foodAiKey?'🔒 Saved · type to replace':'Google Gemini API key'}" style="width:100%;padding:10px;border-radius:10px;background:var(--card2);color:var(--ink);border:1px solid var(--line)">
-      <div class="tiny muted" style="margin-top:5px">Get a <b>free</b> key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="display:inline-block;padding:8px 0">aistudio.google.com/apikey</a> — no billing. Stays only on this phone. Estimates are approximate — always confirm.</div></div>
+      <div class="tiny muted" style="margin-top:5px">Get a <b>free</b> key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="display:inline-block;padding:8px 0">aistudio.google.com/apikey</a> — no billing. Stays only on this phone. Estimates are approximate — always confirm.</div>
+      ${STATE.settings.foodAiKey?`<button class="btn sm ghost" style="width:100%;margin-top:8px" onclick="runAIDiagnostic()">🔬 Test the AI connection</button>`:''}</div>
 `;
   h+=`
     <div style="padding:6px 0 2px"><div class="tiny muted" style="margin-bottom:5px">Coach voice</div>
