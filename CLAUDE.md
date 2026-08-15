@@ -2946,6 +2946,61 @@ plus a second check reading the real production default's value back out
 of the source, so a future edit can't quietly shrink it to 8000 again
 without a check noticing.
 
+## The screenshot never reached the model legible (v255)
+
+v254 fixed the timeout and the next real attempt got further and then
+failed differently: "could not find clear numbers in that screenshot." The
+model was not the problem. The image was destroyed before it was ever sent.
+
+**`_downscale()` bounds the LONG edge, which is right for a plate and wrong
+for a portrait screenshot.** A 1179×2556 phone capture sent at max 1280
+arrives **590 wide** — the horizontal resolution the text actually lives in
+is halved, and small digits stop being legible. The food-photo path never
+noticed because a plate has no small text on it. Raised to 2048 for the
+screenshot path only, which keeps a typical capture ~945 wide.
+
+**JPEG quality 0.8 lays its ringing artifacts exactly on sharp edges, which
+is the entire visual content of a digit.** `_downscale(dataUrl,max,q)` grew
+a `q` parameter; the screenshot path passes 0.92. Both parameters default
+to the original values, so the food-photo path is byte-for-byte unchanged
+— the point is that a text-reading job and a plate-estimating job have
+genuinely different encoding needs, not that the old numbers were wrong for
+what they were chosen for.
+
+**The prompt also said "if you cannot clearly find calorie and protein
+numbers... return kcal:0 and protein:0" — an AND that invites bailing
+entirely when only one number is visible.** Rewritten to say where the
+numbers might be (totals rows, summary headers, progress rings, budget
+rows, per-item lists), that macro labels are often abbreviated, and that a
+PARTIAL reading is useful: return 0 for the one field genuinely absent and
+still return everything else found. Only a picture with no nutrition
+numbers at all should come back empty.
+
+**The dimension checks are measured on a real canvas, not asserted from the
+source.** A canvas painted with actual text (a flat fill would compress
+identically at any quality and prove nothing about `q`), downscaled at both
+the old and new settings, then read back through an `Image` to get real
+pixel dimensions and payload size. What that catches: the old cap really
+did crush the width, the new one really does keep more, and `q` is honoured
+rather than an ignored argument.
+
+**A source check on the wiring is still needed alongside them**, and the
+mutants show why the split is the right one: reverting `foodScreenshot()`
+to `_downscale(rd.result,1280)` fails ONLY the wiring check, because the
+dimension checks call `_downscale()` directly with explicit arguments and
+are therefore blind to what any caller passes. Ignoring the `q` parameter
+inside `_downscale()` fails only the behavioural quality check, which the
+source check cannot see. Neither alone covers the fix.
+
+**A pre-existing check broke on the prompt rewrite, and the check was the
+thing that was wrong.** `o.shotSaysRead` matched the literal string
+`do NOT estimate`; the reworded prompt says "READ them, not to estimate
+them — do NOT recalculate," which is the same rule in different words. A
+check pinned to one phrasing of a prompt fails every time the prompt is
+improved, for a reason that has nothing to do with the rule still holding.
+Re-pointed at the property: it must tell the model to READ, and it must
+forbid estimating.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
