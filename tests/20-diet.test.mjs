@@ -595,7 +595,12 @@ export default async function run() {
       o.shotSharesPipeline = /_visionEstimate\(/.test(shotSrc);
       // but the prompts are genuinely different — an estimate task vs a read task
       o.imgSaysEstimate = /Estimate the nutrition/i.test(imgSrc);
-      o.shotSaysRead = /do NOT estimate|read the exact numbers/i.test(shotSrc);
+      /* The property, not one exact sentence: the screenshot prompt must tell
+         the model to READ and must forbid estimating. Pinned to a single
+         phrase before, which broke when the prompt was reworded in v255 for
+         a reason that had nothing to do with this rule still holding. */
+      o.shotSaysRead = /\bREAD\b/.test(shotSrc) &&
+        /not to estimate|do NOT estimate|do NOT recalculate/i.test(shotSrc);
       o.shotMentionsTrackers = /nutrition-tracking app/i.test(shotSrc);
 
       // the file-picker wiring: foodPhoto() forces the camera, foodScreenshot()
@@ -621,6 +626,57 @@ export default async function run() {
        that gap; confirmed it can fail by deleting the guard call and rerunning. */
     const wired = await page.evaluate(() => /_screenshotUnusable\(est\)/.test(foodScreenshot.toString()));
     t.ok('foodScreenshot() actually calls the guard on the estimate it received', wired);
+  }
+  /* ---- a screenshot must reach the model still legible (v255) -------------
+     Reported live: the import got past v254's timeout and then failed with
+     "could not find clear numbers." The cause was in image PREPARATION, not
+     the model — _downscale() bounds the LONG edge, so a portrait phone
+     capture (1179x2556) sent at max 1280 arrived 590 wide, halving the
+     horizontal resolution the text lives in, and JPEG q0.8 lays its ringing
+     artifacts exactly on the sharp edges that make a digit a digit. Measured
+     on a real canvas, not asserted from the source. */
+  {
+    const r = await page.evaluate(async () => {
+      const o = {};
+      // a portrait "screenshot" with real text on it — a flat fill would
+      // compress identically at any quality and prove nothing about q
+      const c = document.createElement('canvas');
+      c.width = 1179; c.height = 2556;
+      const x = c.getContext('2d');
+      x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+      x.fillStyle = '#000'; x.font = '28px sans-serif';
+      for (let i = 0; i < 40; i++) x.fillText('Protein 41 g · Carbs 58 g · 620 kcal', 40, 80 + i * 60);
+      const src = c.toDataURL('image/png');
+      const dims = async (max, q) => {
+        const du = await _downscale(src, max, q);
+        const img = new Image();
+        await new Promise(res => { img.onload = res; img.src = du; });
+        return { w: img.width, h: img.height, bytes: du.length };
+      };
+      o.old = await dims(1280);          // what the screenshot path used to send
+      o.now = await dims(2048, 0.92);    // what it sends after the fix
+      o.photo = await dims(768);         // the food-photo path, unchanged
+      // quality is a real knob, not an ignored argument
+      const lo = await dims(2048, 0.4);
+      o.qualityMatters = o.now.bytes > lo.bytes * 1.3;
+      // the default must stay 0.8 so the food-photo path is byte-identical
+      const defaulted = await dims(2048);
+      const explicit = await dims(2048, 0.8);
+      o.defaultIsStill08 = defaulted.bytes === explicit.bytes;
+      return o;
+    });
+    t.ok('the old 1280 long-edge cap really did crush a portrait screenshot\'s width', r.old.w < 640, r.old);
+    t.ok('the screenshot path now keeps materially more horizontal resolution', r.now.w > r.old.w * 1.5, r);
+    t.ok('and that is where the text lives, so it is the number that matters', r.now.w >= 900, r.now);
+    t.ok('quality is honoured, not an ignored parameter', r.qualityMatters, r);
+    t.ok('the default stays 0.8 — the food-photo path must be unchanged', r.defaultIsStill08, r);
+    t.eq('and the food photo still goes at its own 768 cap', r.photo.h, 768);
+    const wiring = await page.evaluate(() => ({
+      shot: /_downscale\(rd\.result,2048,0\.92\)/.test(foodScreenshot.toString()),
+      photo: /_downscale\(rd\.result,768\)/.test(foodPhoto.toString()),
+    }));
+    t.ok('foodScreenshot() actually asks for the higher-fidelity encode', wiring.shot, wiring);
+    t.ok('and foodPhoto() is left exactly as it was', wiring.photo, wiring);
   }
   {
     // the shared clamp and the "don't guess" honesty case, driven through the

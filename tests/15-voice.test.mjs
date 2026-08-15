@@ -344,6 +344,121 @@ export default async function run() {
     t.eq('and it is actually stored', r.stored, 92);
   }
 
+  /* ---- the neural path must never hang the coach into silence (v256) ------
+     Found auditing the same defect class as the Gemini timeout the athlete
+     hit live: an external call with no bound, whose failure mode is silence.
+     Worse here than there. A <script> request that STALLS rather than fails
+     fires neither onload nor onerror, so _sdkPromise never settles, so
+     _sdkSynthesize never settles, so neuralSpeak()'s .catch never runs and
+     onFail() — the device-voice fallback — never fires. And _sdkPromise is
+     memoised, so the coach stays silent for the REST of the session, in a
+     feature whose entire premise is hands-free. Both bounds are real
+     parameters so a check can pass a short one. */
+  {
+    // a request that never fulfills — a true stall, not a fast rejection
+    await page.route('https://aka.ms/**', () => {});
+    const r = await page.evaluate(async () => {
+      const hadSDK = window.SpeechSDK; delete window.SpeechSDK;
+      const t0 = Date.now();
+      let out;
+      try { await loadSpeechSDK(400); out = { threw: false }; }
+      catch (e) { out = { threw: true, ms: Date.now() - t0, msg: String(e.message || e) }; }
+      /* It must also be RETRYABLE. The onerror path already cleared
+         _sdkPromise for exactly this reason; a timeout that rejected without
+         clearing would leave every later call awaiting the same dead promise
+         — silence for the rest of the session, which is the actual defect.
+
+         The discriminator is TIME, not outcome. An already-rejected promise
+         rejects again the instant it is awaited, so "did it reject twice?"
+         is true whether or not _sdkPromise was cleared — that version of
+         this check passed against a mutant that deliberately left it wedged.
+         A CLEARED promise makes a genuinely new attempt and has to sit out
+         the bound again; a wedged one returns the dead promise immediately. */
+      const t1 = Date.now();
+      try { await loadSpeechSDK(400); } catch (e) {}
+      out.secondMs = Date.now() - t1;
+      if (hadSDK) window.SpeechSDK = hadSDK;
+      return out;
+    });
+    await page.unroute('https://aka.ms/**');
+    t.ok('a stalled Speech SDK load rejects instead of hanging forever', r.threw, r);
+    t.ok('close to the requested bound, not the browser\'s own', r.ms < 3000, r);
+    t.ok('with a message that reads as a timeout', /timed out/i.test(r.msg || ''), r);
+    t.ok('and the dead promise is cleared so a later cue really re-attempts, rather than instantly re-rejecting forever',
+      r.secondMs >= 200, r);
+  }
+  {
+    /* The second hang path: the SDK loaded fine, but speakSsmlAsync talks over
+       a WebSocket and a stalled socket calls NEITHER callback. Stub the SDK so
+       loadSpeechSDK() short-circuits and only the synth bound is under test. */
+    const r = await page.evaluate(async () => {
+      const hadSDK = window.SpeechSDK;
+      let closed = false;
+      window.SpeechSDK = {
+        SpeechConfig: { fromSubscription: () => ({}) },
+        SpeechSynthesisOutputFormat: { Audio24Khz48KBitRateMonoMp3: 1 },
+        ResultReason: { SynthesizingAudioCompleted: 1 },
+        SpeechSynthesizer: function () {
+          this.speakSsmlAsync = () => {};            // never calls back — a stalled socket
+          this.close = () => { closed = true; };
+        },
+      };
+      const t0 = Date.now();
+      let out;
+      try { await _sdkSynthesize('<speak/>', {}, 400); out = { threw: false }; }
+      catch (e) { out = { threw: true, ms: Date.now() - t0, msg: String(e.message || e) }; }
+      out.closedOnTimeout = closed;
+      if (hadSDK) window.SpeechSDK = hadSDK; else delete window.SpeechSDK;
+      return out;
+    });
+    t.ok('a stalled synthesis rejects instead of hanging forever', r.threw, r);
+    t.ok('close to the requested bound', r.ms < 3000, r);
+    t.ok('with a message that reads as a timeout', /timed out/i.test(r.msg || ''), r);
+    t.ok('and the synthesizer is closed rather than leaked', r.closedOnTimeout, r);
+  }
+  {
+    /* The whole point of bounding these is that the DEVICE voice takes over —
+       a rejection nothing listens to is the same silence with better logging.
+       Drive the real neuralSpeak() and prove onFail actually runs. Uses a
+       synth that FAILS immediately rather than one that stalls: the rejection
+       path is identical from neuralSpeak's side, and it does not require
+       sitting out the production 10s bound to observe. */
+    const r = await page.evaluate(async () => {
+      const hadSDK = window.SpeechSDK;
+      window.SpeechSDK = {
+        SpeechConfig: { fromSubscription: () => ({}) },
+        SpeechSynthesisOutputFormat: { Audio24Khz48KBitRateMonoMp3: 1 },
+        ResultReason: { SynthesizingAudioCompleted: 1 },
+        SpeechSynthesizer: function () {
+          this.speakSsmlAsync = (ssml, ok, bad) => setTimeout(() => bad('socket closed'), 10);
+          this.close = () => {};
+        },
+      };
+      const keep = { on: STATE.settings.neuralOn, k: STATE.settings.azureKey, r: STATE.settings.azureRegion };
+      STATE.settings.neuralOn = true; STATE.settings.azureKey = 'test'; STATE.settings.azureRegion = 'eastus';
+      let fellBack = false;
+      const handled = neuralSpeak('Three. Two. One.', null, () => { fellBack = true; });
+      await new Promise(res => setTimeout(res, 400));
+      Object.assign(STATE.settings, { neuralOn: keep.on, azureKey: keep.k, azureRegion: keep.r });
+      if (hadSDK) window.SpeechSDK = hadSDK; else delete window.SpeechSDK;
+      return { handled, fellBack };
+    });
+    t.ok('neuralSpeak accepts the utterance when a key is configured', r.handled, r);
+    t.ok('and a failed synthesis hands the line to the device voice, not to silence', r.fellBack, r);
+  }
+  {
+    // the production defaults are real bounds, read back as values
+    const v = await page.evaluate(() => ({
+      sdk: (loadSpeechSDK.toString().match(/ms\|\|(\w+)/) || [])[1],
+      synth: (_sdkSynthesize.toString().match(/ms\|\|(\w+)/) || [])[1],
+      sdkVal: typeof SPEECH_SDK_TIMEOUT_MS === 'number' ? SPEECH_SDK_TIMEOUT_MS : null,
+      synthVal: typeof SPEECH_SYNTH_TIMEOUT_MS === 'number' ? SPEECH_SYNTH_TIMEOUT_MS : null,
+    }));
+    t.ok('the SDK load has a real default bound', v.sdkVal > 0 && v.sdkVal <= 30000, v);
+    t.ok('and so does one synthesis', v.synthVal > 0 && v.synthVal <= 30000, v);
+    t.ok('both are actually wired to their parameter, not ignored', !!v.sdk && !!v.synth, v);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
