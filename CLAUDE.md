@@ -3001,6 +3001,64 @@ improved, for a reason that has nothing to do with the rule still holding.
 Re-pointed at the property: it must tell the model to READ, and it must
 forbid estimating.
 
+## The audit the athlete had to ask for, and the silent-coach bug it found (v256)
+
+The screenshot import failed twice in a row on first real use (v254 timeout,
+v255 image fidelity) and the athlete pushed back on the whole premise: how
+does a feature ship "clean and ready" through 22 green suites and then break
+on the first tap. The answer is specific and worth writing down rather than
+answering with more tests.
+
+**Every test written for the v253 screenshot feature mocked `_geminiCall`.**
+They proved the plumbing — the right function is called, a junk reply is
+handled, the button renders, the guard fires. Not one sent a real image to a
+real model. Both shipped bugs lived precisely in the gap a mocked test cannot
+see: how long the call may take, and what the image looks like by the time it
+arrives. A green suite said the wiring was connected; it never said the
+feature worked, and it was reported as though it had.
+
+**And that gap cannot be closed from this sandbox.** Verified rather than
+assumed: `world.openfoodfacts.org` is unreachable (connection refused) and
+`generativelanguage.googleapis.com` returns 403 through the agent proxy. So
+two of the app's three external integrations are structurally unverifiable
+here, by any method. The honest posture when shipping one of them is to say
+so plainly, not to list the suite count. Real-device confirmation by the
+athlete is part of the ship, not a formality after it.
+
+**Auditing that defect CLASS — an unbounded external call whose failure mode
+is silence — found a worse instance than the one reported.** `loadSpeechSDK()`
+injects a `<script>` from `aka.ms` with `onload`/`onerror` and no timer. A
+request that STALLS rather than fails fires neither handler, so `_sdkPromise`
+never settles, so `_sdkSynthesize()` never settles, so `neuralSpeak()`'s
+`.catch` never runs and `onFail()` — the device-voice fallback — never fires.
+`_sdkPromise` is memoised, so it is not one lost cue: the coach goes silent
+for the REST of the session, in the one feature whose entire premise is
+hands-free. `speakSsmlAsync()` has the same shape over a WebSocket and needed
+the same bound. Both now take a real `ms` parameter, same as `offSearch(q,ms)`
+and `_geminiCall(model,body,ms)`, so a check can pass a short one.
+
+**Two of the four mutants did not fail the suite — they HUNG it**, which is
+the same non-outcome `fetchWithTimeout()`'s own mutation produced in v238 and
+is the most direct possible demonstration: removing either bound turns a
+bounded rejection into an unbounded wait, and only a wall-clock kill ends it.
+
+**The third mutant escaped, and the check was the defect.** "A timeout that
+does not clear `_sdkPromise` leaves the session wedged" was tested by calling
+`loadSpeechSDK()` twice and asserting the second call also rejected — which
+is true either way, because **an already-rejected promise rejects again the
+instant it is awaited**. The discriminator is TIME, not outcome: a cleared
+promise makes a genuinely new attempt and sits out the bound again, a wedged
+one returns the dead promise in ~0ms. Re-pointed at elapsed time, it caught
+the mutant immediately. Same family as every other entry in the "tests that
+pass for the wrong reason" section, found the only way this class ever gets
+found — by seeding the exact defect and watching the check not care.
+
+**A rejection nothing listens to is the same silence with better logging**, so
+the fallback itself is driven end to end: a stubbed SDK that fails fast, the
+real `neuralSpeak()`, and an assertion that `onFail()` actually ran. The
+stall-based checks prove the bound exists; this one proves the bound buys the
+athlete a working voice.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

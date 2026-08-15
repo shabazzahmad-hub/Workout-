@@ -1692,7 +1692,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='255';
+const APP_VERSION='256';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -5839,21 +5839,43 @@ function _neuralPlay(url){
    connection anyway) and cached by the browser thereafter. */
 const SPEECH_SDK_URL='https://aka.ms/csspeech/jsbrowserpackageraw';
 let _sdkPromise=null;
-function loadSpeechSDK(){
+/* A <script> whose request HANGS rather than fails fires neither onload nor
+   onerror — the same "associates then never answers" case (gym wifi, captive
+   portal, dead hotspot) that sw.js already races page navigation against a
+   timer for, and that fetchWithTimeout() exists for everywhere else in this
+   file. Without a bound here the promise never settles, so _sdkSynthesize()
+   never settles, so neuralSpeak()'s .catch never runs and onFail() — the
+   device-voice fallback — never fires. The coach goes SILENT mid-session,
+   and because _sdkPromise is memoised it stays silent for every later cue
+   too. Rejecting on a timer (and clearing _sdkPromise, exactly as the
+   onerror path already does) turns a permanent silence into one late cue
+   and a working fallback. */
+const SPEECH_SDK_TIMEOUT_MS=15000;
+function loadSpeechSDK(ms){
   if(window.SpeechSDK)return Promise.resolve(window.SpeechSDK);
   if(_sdkPromise)return _sdkPromise;
   _sdkPromise=new Promise((resolve,reject)=>{
+    let done=false;
+    const finish=fn=>(...a)=>{if(done)return;done=true;clearTimeout(timer);fn(...a);};
+    const ok=finish(resolve), bad=finish(e=>{_sdkPromise=null;reject(e);});
+    const timer=setTimeout(()=>bad(new Error('SDK load timed out')),ms||SPEECH_SDK_TIMEOUT_MS);
     try{
       const sc=document.createElement('script');sc.src=SPEECH_SDK_URL;sc.async=true;
-      sc.onload=()=>{ window.SpeechSDK?resolve(window.SpeechSDK):reject(new Error('SDK missing after load')); };
-      sc.onerror=()=>{ _sdkPromise=null; reject(new Error('SDK load failed')); };
+      sc.onload=()=>{ window.SpeechSDK?ok(window.SpeechSDK):bad(new Error('SDK missing after load')); };
+      sc.onerror=()=>{ bad(new Error('SDK load failed')); };
       document.head.appendChild(sc);
-    }catch(e){_sdkPromise=null;reject(e);}
+    }catch(e){bad(e);}
   });
   return _sdkPromise;
 }
-/* Synthesize one utterance via the SDK → mp3 bytes (ArrayBuffer). */
-function _sdkSynthesize(ssml,cfg){
+/* Synthesize one utterance via the SDK → mp3 bytes (ArrayBuffer).
+   speakSsmlAsync() talks over a WebSocket, and a socket that stalls rather
+   than errors calls NEITHER callback — same silent-coach outcome as an
+   unbounded SDK load, so it needs its own bound for the same reason. One
+   utterance is a short job; 10s is generous for it and still far below the
+   point where a late cue is worth anything in a live session. */
+const SPEECH_SYNTH_TIMEOUT_MS=10000;
+function _sdkSynthesize(ssml,cfg,ms){
   return loadSpeechSDK().then(SDK=>new Promise((resolve,reject)=>{
     const s=STATE.settings;
     let synth;
@@ -5862,15 +5884,19 @@ function _sdkSynthesize(ssml,cfg){
       conf.speechSynthesisOutputFormat=SDK.SpeechSynthesisOutputFormat.Audio24Khz48KBitRateMonoMp3;
       synth=new SDK.SpeechSynthesizer(conf,null);   // null audioConfig → no auto-play; bytes in result.audioData
     }catch(e){return reject(e);}
+    let done=false;
+    const settle=fn=>(...a)=>{if(done)return;done=true;clearTimeout(timer);fn(...a);};
+    const ok=settle(resolve), bad=settle(reject);
+    const timer=setTimeout(()=>{try{synth.close();}catch(e){}bad(new Error('synth timed out'));},ms||SPEECH_SYNTH_TIMEOUT_MS);
     synth.speakSsmlAsync(ssml,
       res=>{ try{synth.close();}catch(e){}
-        if(res&&res.reason===SDK.ResultReason.SynthesizingAudioCompleted&&res.audioData&&res.audioData.byteLength){resolve(res.audioData);return;}
+        if(res&&res.reason===SDK.ResultReason.SynthesizingAudioCompleted&&res.audioData&&res.audioData.byteLength){ok(res.audioData);return;}
         // Failure — pull the richest detail Azure gives us (auth / region / connection).
         let detail=(res&&res.errorDetails)||'';
         try{if(SDK.SpeechSynthesisCancellationDetails&&res){const cd=SDK.SpeechSynthesisCancellationDetails.fromResult(res);
           if(cd)detail=[cd.ErrorCode!=null?('code '+cd.ErrorCode):'',cd.errorDetails||detail].filter(Boolean).join(' · ');}}catch(e){}
-        reject(new Error(detail||('reason '+(res&&res.reason))||'synth failed')); },
-      err=>{ try{synth.close();}catch(e){} reject(err&&(err.message||err.errorDetails)?err:new Error(String(err||'synth error'))); });
+        bad(new Error(detail||('reason '+(res&&res.reason))||'synth failed')); },
+      err=>{ try{synth.close();}catch(e){} bad(err&&(err.message||err.errorDetails)?err:new Error(String(err||'synth error'))); });
   }));
 }
 /* Fire-and-forget neural speak. Returns true if it will handle the utterance
