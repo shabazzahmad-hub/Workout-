@@ -3196,6 +3196,42 @@ family as every other entry in the "tests that pass for the wrong reason"
 section: a substring that appears in both the correct and the incorrect
 output is not evidence of which one was produced.
 
+## Calories without macros is a MISSING answer, not a zero (v260)
+
+The screenshot import finally worked — and the first successful run exposed
+a defect worse than any of the five failures before it, because it failed
+*silently*. It read "Breakfast · 897 kcal" off a Lose It **meal-summary
+row**, which shows no macro breakdown at all, and logged protein, carbs and
+fat as **0**. The Fuel bars then sat at 0/165 g protein against a real
+897-kcal meal, and nothing on screen said the numbers were never found.
+
+**This is the exact mirror of a rule this file already states.**
+`computeAssessment()` was fixed because it treated a measured 0 as absent
+(`+results.plank||30`) — a real zero is data and must be kept. The inverse
+is just as wrong and lands harder: an ABSENT answer recorded as a measured
+zero, on the one number the whole plan is built around. A logged 0 g protein
+is not "we could not read it", it is a claim about the meal.
+
+**Keep the calories, blank the macros, say why.** The 897 was really read and
+is worth keeping; the macros were not, so `_macrosMissing()` hands those
+three fields over as `undefined` rather than `0`, and the sheet replaces its
+green "here is your estimate" box with a warning that says the boxes are
+**blank, not zero**. Pre-filling zeros and merely warning would be worse than
+either: it reads as a complete entry and saves without a second thought.
+
+**The condition is calories-present AND all three macros absent**, not "any
+macro is zero" — a real meal genuinely can have 0 g fat or 0 g carbs, and
+flagging those would train the athlete to dismiss the warning. Mutation-
+tested in both directions: a version that never fires and a version that
+fires on every reading with calories are both caught, the second by three
+separate checks (protein-only, carbs-only, fat-only readings).
+
+**Detection and presentation needed separate checks, and the mutants prove
+it.** Flagging the case correctly but still passing the zeros through to the
+sheet fails only the "blanks the macro fields" check; dropping the warning
+text fails only the sheet check. Neither alone covers the fix — the athlete
+needs both the empty box and the sentence explaining it.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

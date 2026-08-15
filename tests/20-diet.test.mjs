@@ -1003,6 +1003,84 @@ export default async function run() {
     t.ok('but still wider than the setting that made screenshots unreadable', r.light.w > r.v253.w, r);
   }
 
+  /* ---- calories without macros is a MISSING answer, not a zero (v260) ----
+     Reported live on the first successful import: it read "Breakfast · 897
+     kcal" off a meal-summary row, where Lose It shows no macro breakdown at
+     all, and logged protein/carbs/fat as 0. The protein bar then sat at
+     0/165g against a real 897-kcal meal. This project already has the rule in
+     the other direction — a measured zero is data and must be kept — and this
+     is its mirror image: an absent answer recorded as a measured zero, landing
+     on the one number the whole plan is built around. */
+  {
+    const r = await page.evaluate(() => ({
+      // calories found, every macro absent -> flagged
+      summaryRow: _macrosMissing({ kcal: 897, p: 0, c: 0, f: 0 }),
+      // any real macro -> a complete reading, not flagged
+      withProtein: _macrosMissing({ kcal: 897, p: 41, c: 0, f: 0 }),
+      withCarbs: _macrosMissing({ kcal: 897, p: 0, c: 58, f: 0 }),
+      withFat: _macrosMissing({ kcal: 897, p: 0, c: 0, f: 19 }),
+      // no calories either is the OTHER failure, already handled upstream
+      nothing: _macrosMissing({ kcal: 0, p: 0, c: 0, f: 0 }),
+      // a genuinely zero-calorie entry is not this case
+      zeroKcal: _macrosMissing({ kcal: 0, p: 0, c: 0, f: 0 }),
+      junk: _macrosMissing(null),
+    }));
+    t.ok('a calories-only summary row is flagged as macros-missing', r.summaryRow, r);
+    t.ok('a reading with real protein is not flagged', !r.withProtein, r);
+    t.ok('nor one with carbs', !r.withCarbs, r);
+    t.ok('nor one with fat', !r.withFat, r);
+    t.ok('an empty reading is not this case — that is the unusable path', !r.nothing, r);
+    t.ok('and it never throws on junk', r.junk === false, r);
+  }
+  {
+    // the sheet the athlete confirms against must say so, and must NOT
+    // pre-fill a protein number nobody measured
+    const r = await page.evaluate(() => {
+      const o = {};
+      openQuickAdd({ name: 'Breakfast', kcal: 897, p: undefined, c: undefined, f: undefined, macrosMissing: true });
+      const sheet = document.querySelector('#sheet');
+      o.warns = /No macros found/i.test(sheet.innerText);
+      o.saysBlankNotZero = /blank, not zero/i.test(sheet.innerText);
+      o.keepsCalories = (document.querySelector('#fa-kcal') || {}).value === '897';
+      o.proteinBlank = (document.querySelector('#fa-p') || {}).value === '';
+      o.carbsBlank = (document.querySelector('#fa-c') || {}).value === '';
+      o.fatBlank = (document.querySelector('#fa-f') || {}).value === '';
+      closeSheet();
+      // a complete reading keeps the ordinary confirmation, not the warning
+      openQuickAdd({ name: 'Chicken salad', kcal: 620, p: 41, c: 58, f: 19, portion: '1 bowl' });
+      const s2 = document.querySelector('#sheet');
+      o.normalNoWarning = !/No macros found/i.test(s2.innerText);
+      o.normalShowsPortion = /1 bowl/.test(s2.innerText);
+      o.normalProteinFilled = (document.querySelector('#fa-p') || {}).value === '41';
+      closeSheet();
+      return o;
+    });
+    t.ok('the log sheet warns that no macros were found', r.warns, r);
+    t.ok('and states plainly that the boxes are blank rather than zero', r.saysBlankNotZero, r);
+    t.ok('the calories — the part that WAS read — are kept', r.keepsCalories, r);
+    t.ok('protein is left blank, not pre-filled with a zero nobody measured', r.proteinBlank, r);
+    t.ok('and so are carbs and fat', r.carbsBlank && r.fatBlank, r);
+    t.ok('a complete reading shows no warning', r.normalNoWarning, r);
+    t.ok('and still shows its portion note', r.normalShowsPortion, r);
+    t.ok('and still pre-fills the macros it really did read', r.normalProteinFilled, r);
+  }
+  {
+    // the import path itself blanks the macros and sets the flag
+    const r = await page.evaluate(() => {
+      const src = foodScreenshot.toString();
+      return {
+        checks: /_macrosMissing\(est\)/.test(src),
+        blanks: /p:undefined,c:undefined,f:undefined/.test(src),
+        flags: /macrosMissing:true/.test(src),
+        tellsInToast: /no macros in that screenshot/i.test(src),
+      };
+    });
+    t.ok('the import checks for the macros-missing case', r.checks, r);
+    t.ok('blanks the macro fields rather than passing zeros through', r.blanks, r);
+    t.ok('flags it for the sheet to render', r.flags, r);
+    t.ok('and the toast says it too, for anyone who dismisses the sheet', r.tellsInToast, r);
+  }
+
   /* ---- the suggested meal plan no longer greets the athlete on Fuel (v245) --
      Removed at the athlete's request: they log what they actually ate, by photo
      or by hand. Nothing was ever auto-logged (every meal needed a deliberate

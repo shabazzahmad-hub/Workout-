@@ -1692,7 +1692,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='259';
+const APP_VERSION='260';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -8991,11 +8991,14 @@ function openQuickAdd(pre){
         </select></div>
     </div>
     <div class="tiny" id="fa-total" style="font-weight:800;margin:8px 2px 4px">= ${pre.kcal||0} kcal · ${pre.p||0}g P · ${pre.c||0}g C · ${pre.f||0}g F</div>
-    ${(filled&&!editing)?`<div style="margin:8px 0;padding:10px 12px;border-radius:12px;background:rgba(46,204,113,.12);border:1px solid var(--green)">
+    ${(filled&&!editing)?(pre.macrosMissing?`<div class="note warn" style="margin:8px 0">
+      <div style="font-weight:800">${_ve(pre.name||'Food')} · ${pre.kcal} kcal</div>
+      <div class="tiny" style="margin-top:4px">⚠️ <b>No macros found</b> in that screenshot — only the calorie total. The protein, carbs and fat boxes above are <b>blank, not zero</b>. Fill them in, or import again from a screen that shows the macro breakdown.</div>
+    </div>`:`<div style="margin:8px 0;padding:10px 12px;border-radius:12px;background:rgba(46,204,113,.12);border:1px solid var(--green)">
       <div style="font-weight:800">${_ve(pre.name||'Food')}</div>
       ${pre.portion?`<div class="tiny" style="margin-top:3px;font-weight:700">📏 Estimated portion: ${_ve(pre.portion)}</div>`:''}
       <div class="tiny muted" style="margin-top:2px">Per serving as shown — approximate. Set the quantity, tweak if needed, then tap <b>Save</b> to log it.</div>
-    </div>`:'<div style="height:6px"></div>'}
+    </div>`):'<div style="height:6px"></div>'}
     <button class="btn primary" onclick="saveFood()">${editing?'Update item':(filled?'Save to log':'Save')}</button>
     ${editing?'':`${foodsSectionHTML()}
     <div class="section-label" style="margin-top:14px">Quick picks <span class="tiny muted">· whole foods</span></div>
@@ -9314,6 +9317,16 @@ function foodPhoto(){
    testable on its own, rather than only provable by driving a real file
    picker through foodScreenshot(). */
 function _screenshotUnusable(est){return !(est&&est.kcal>0)&&!(est&&est.p>0);}
+/* Calories found, but every macro came back zero. That is almost never a real
+   meal — it is a screenshot of a MEAL SUMMARY row (Lose It's "Breakfast 897
+   cal") where the macros simply are not on screen. Recording it as 0 g protein
+   is the exact mistake this project already fixed in the other direction: a
+   measured zero is data and must be kept, but a MISSING answer stored as zero
+   is a lie, and here it lands on the one number the whole plan is built
+   around. Keep the calories — they are real and hard-won — and say plainly
+   that the macros were not found, rather than presenting a complete-looking
+   entry that quietly holds the protein bar at zero. */
+function _macrosMissing(est){return !!(est&&est.kcal>0&&!(est.p>0)&&!(est.c>0)&&!(est.f>0));}
 function foodScreenshot(){
   if(!foodAIReady()){toast('Add a free Gemini key in Settings ⚙️ to import a screenshot');openQuickAdd();return;}
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';
@@ -9347,8 +9360,17 @@ function foodScreenshot(){
         // real numbers — that is success from the model's own honesty, but it is
         // not a usable result, so treat it the same as a thrown error.
         if(_screenshotUnusable(est))throw new Error('no numbers found — try a screenshot showing the calorie and protein totals');
+        /* Calories but no macros — a meal-summary row rather than a detail
+           view. Hand the fields over BLANK rather than pre-filled with zeros,
+           so the athlete types a real number instead of silently accepting a
+           protein figure nobody measured. */
+        if(_macrosMissing(est))est=Object.assign({},est,{p:undefined,c:undefined,f:undefined,macrosMissing:true});
         if(gen!==_sheetGen){toast('📋 Imported '+(est.name||'food')+' · ~'+est.kcal+' kcal — tap ➕ to log it',6000);return;}
-        openQuickAdd(est);toast('📋 '+(est.name||'Food')+(est.portion?' · '+est.portion:'')+' · ~'+est.kcal+' kcal, '+est.p+'g — tap Save to log',5000);
+        openQuickAdd(est);
+        toast(est.macrosMissing
+          ? '📋 '+(est.name||'Food')+' · '+est.kcal+' kcal — but no macros in that screenshot. Add protein before saving.'
+          : '📋 '+(est.name||'Food')+(est.portion?' · '+est.portion:'')+' · ~'+est.kcal+' kcal, '+est.p+'g — tap Save to log',
+          est.macrosMissing?7000:5000);
       }catch(e){toast('Screenshot import failed — '+_aiErrText(e),6000);
         if(gen===_sheetGen)openQuickAdd();}};
     rd.readAsDataURL(f);};
