@@ -3157,6 +3157,45 @@ often Google being slow under the same load that produces the 503s, and that
 wording sends the athlete to fix something that may be fine. It now allows
 both, and says it already retried.
 
+## Diagnosing instead of guessing again (v259)
+
+Fifth failure of the screenshot import on a real phone, and the point at
+which patching blind stopped being defensible. Four fixes had each been
+diagnosed from ONE line of toast text — because nothing in the app reports
+what actually happened, and this sandbox cannot reach Google at all. Each
+fix was real, but the loop was: guess from a symptom, ship, wait for the
+next symptom.
+
+**`runAIDiagnostic()` turns that into numbers the athlete can read out.**
+Staged smallest-first on purpose: a text-only ping (a few hundred bytes,
+6s bound) isolates key validity and reachability, and only if that passes
+does it spend an image. Each stage reports the model, HTTP status, elapsed
+ms and payload size, so "the key is wrong" / "the network is slow" /
+"Google is overloaded" / "images specifically fail" are four different
+readings instead of one indistinguishable toast. The 6s first bound matters:
+a dead connection reports in six seconds rather than sitting on the real
+25s bound before saying anything.
+
+**The screenshot path stops retrying the identical payload.** v255 raised
+it to 2048/q0.92 because a portrait screenshot loses its digits at anything
+smaller, and that stays the first choice. But when the failure is
+connection-level, the one variable worth changing is bytes on the wire —
+~197 KB down to ~104 KB, still 646px wide, comfortably above the 590px that
+made v253 unreadable. Preferring legibility and falling back to
+deliverability beats failing with a perfect image nobody received. Gated on
+`_connectionLevel()` specifically: shrinking the image cannot help a 403 or
+a 429, and doing it anyway would be cargo-culting.
+
+**A mutant escaped because the check matched the right word in the wrong
+sentence.** "A rejected key is diagnosed as the key" was tested with a bare
+`/key/i` — which also matches the generic fallback's own text ("not your
+phone or your key"), so deleting the entire 400/401/403 branch passed
+clean. Re-pointed at the SPECIFIC diagnosis (`rejected the` plus the
+aistudio link) and at the absence of the wrong one (`overloaded`). Same
+family as every other entry in the "tests that pass for the wrong reason"
+section: a substring that appears in both the correct and the incorrect
+output is not evidence of which one was produced.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

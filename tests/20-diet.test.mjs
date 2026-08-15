@@ -901,6 +901,108 @@ export default async function run() {
     t.ok('and says it already retried', /retried/i.test(r.txt), r);
   }
 
+  /* ---- the diagnostic, and a lighter-image fallback (v259) ---------------
+     Fifth failure of the same feature, and the point at which patching blind
+     stopped being defensible: four fixes were each diagnosed from ONE line of
+     toast text, because nothing in the app reports what actually happened and
+     the dev sandbox cannot reach Google at all. runAIDiagnostic() turns that
+     into real numbers; the screenshot path also stops retrying the identical
+     197KB payload when the failure is connection-level. */
+  {
+    const r = await page.evaluate(async () => {
+      const o = {}, real = window._geminiCall;
+      const keep = STATE.settings.foodAiKey;
+      STATE.settings.foodAiKey = 'test-key';
+      const okReply = t => ({ candidates: [{ content: { parts: [{ text: t }] }, finishReason: 'STOP' }] });
+      const boom = st => { const e = new Error('AI ' + st); e.status = st; throw e; };
+      const read = () => (document.querySelector('#diagOut') || {}).innerText || '';
+
+      // a dead connection must be named as the connection, not the key
+      window._geminiCall = async () => boom(0);
+      await runAIDiagnostic();
+      o.dead = read();
+
+      // a rejected key must be named as the key
+      window._geminiCall = async () => boom(403);
+      await runAIDiagnostic();
+      o.badKey = read();
+
+      // exhausted quota is its own diagnosis
+      window._geminiCall = async () => boom(429);
+      await runAIDiagnostic();
+      o.quota = read();
+
+      // text fine, image times out — the case the athlete actually hit
+      let n = 0;
+      window._geminiCall = async (m, b) => {
+        const hasImage = JSON.stringify(b).includes('inline_data');
+        n++; if (hasImage) boom(0); return okReply('OK');
+      };
+      await runAIDiagnostic();
+      o.imageOnly = read();
+
+      // everything healthy
+      window._geminiCall = async (m, b) => okReply(JSON.stringify(b).includes('inline_data') ? '42' : 'OK');
+      await runAIDiagnostic();
+      o.healthy = read();
+
+      try { closeSheet(); } catch (e) {}
+      window._geminiCall = real; STATE.settings.foodAiKey = keep;
+      return o;
+    });
+    t.ok('a dead connection is diagnosed as the connection, not the key', /connection/i.test(r.dead) && !/key/i.test(r.dead.split('connection')[0] || ''), r.dead.slice(0, 200));
+    /* NOT a bare /key/ test: the generic "every model is refusing" fallback
+       also contains the word key ("not your phone or your key"), so a loose
+       match passed against a mutant with the 403 branch deleted entirely.
+       Assert the SPECIFIC diagnosis and that the wrong one is absent. */
+    t.ok('a rejected key is diagnosed as the key, with the action to take',
+      /rejected the/i.test(r.badKey) && /aistudio/i.test(r.badKey), r.badKey.slice(0, 250));
+    t.ok('and is not mistaken for Google being overloaded', !/overloaded/i.test(r.badKey), r.badKey.slice(0, 250));
+    t.ok('and names the status so it can be looked up', /403/.test(r.badKey), r.badKey.slice(0, 200));
+    t.ok('an exhausted quota is called out as quota, not a broken key', /quota/i.test(r.quota), r.quota.slice(0, 200));
+    t.ok('text-works-but-images-fail is distinguished from a total outage',
+      /images? time out|too slow to upload/i.test(r.imageOnly), r.imageOnly.slice(0, 250));
+    t.ok('and a healthy setup says so plainly', /Everything works/i.test(r.healthy), r.healthy.slice(0, 200));
+    t.ok('the healthy report includes real timings, not just a verdict', /\d+\s*ms/.test(r.healthy), r.healthy.slice(0, 250));
+  }
+  {
+    // the lighter-image fallback: a connection failure must change the PAYLOAD,
+    // not just try the same bytes again
+    const r = await page.evaluate(() => {
+      const src = foodScreenshot.toString();
+      return {
+        firstIsHiFi: /_downscale\(rd\.result,2048,0\.92\)/.test(src),
+        fallbackIsLighter: /_downscale\(rd\.result,1400,0\.85\)/.test(src),
+        onlyOnConnectionFailure: /_connectionLevel\(e1&&e1\.status\)/.test(src),
+        tellsTheAthlete: /lighter image/i.test(src),
+      };
+    });
+    t.ok('the first attempt still uses the high-fidelity encode', r.firstIsHiFi, r);
+    t.ok('a connection failure falls back to a genuinely smaller image', r.fallbackIsLighter, r);
+    t.ok('and only for a connection failure — a 503 or a bad key must not shrink the image', r.onlyOnConnectionFailure, r);
+    t.ok('the athlete is told why it is trying again', r.tellsTheAthlete, r);
+  }
+  {
+    // and the fallback size is a real improvement on both axes: lighter than
+    // the hi-fi encode, but still wider than the 590px that made v253 unreadable
+    const r = await page.evaluate(async () => {
+      const c = document.createElement('canvas'); c.width = 1179; c.height = 2556;
+      const x = c.getContext('2d');
+      x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+      x.fillStyle = '#000'; x.font = '30px sans-serif';
+      for (let i = 0; i < 30; i++) x.fillText('Protein 41 g · 620 kcal · Carbs 58 g', 40, 90 + i * 80);
+      const src = c.toDataURL('image/png');
+      const m = async (max, q) => {
+        const du = await _downscale(src, max, q);
+        const img = new Image(); await new Promise(res => { img.onload = res; img.src = du; });
+        return { w: img.width, kb: Math.round(du.length / 1024) };
+      };
+      return { hifi: await m(2048, 0.92), light: await m(1400, 0.85), v253: await m(1280) };
+    });
+    t.ok('the fallback really is lighter than the first attempt', r.light.kb < r.hifi.kb * 0.75, r);
+    t.ok('but still wider than the setting that made screenshots unreadable', r.light.w > r.v253.w, r);
+  }
+
   /* ---- the suggested meal plan no longer greets the athlete on Fuel (v245) --
      Removed at the athlete's request: they log what they actually ate, by photo
      or by hand. Nothing was ever auto-logged (every meal needed a deliberate
