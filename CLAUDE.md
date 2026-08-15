@@ -2767,6 +2767,85 @@ arrays. Both mutation-tested: reverting the assessment swap to
 `exId=t.ex` fails all four of the new swap-note checks; reverting
 `mobilityFlow()` to a no-op fails all three of the new scaling checks.
 
+## A tenth baseline test: Burpees, for stamina the battery never measured (v252)
+
+v251's audit named a real gap and deliberately didn't build it: nine tests
+measure strength or local muscular endurance, and none measure
+cardiovascular stamina — "conditioning" is self-reported only, never
+checked against a real number. Asked directly whether to build it now
+rather than leave it open, and told yes.
+
+**Placed LAST, the opposite reasoning from Jump Squats.** Every other test
+in the battery is a hold or a max-effort rep set that tolerates some prior
+fatigue; Jump Squats (v247) went second specifically because IT couldn't
+tolerate any. A 60-second near-maximal full-body/cardio effort is the
+reverse case — it is the fatiguer, not the fatigue-sensitive one, so it has
+to run after everything else or it would leave its mark on every number
+that follows it, the exact plank→side→hollow→crunch problem `TEST_PROTOCOL
+2` already fixed once, just for the whole body instead of one region.
+`{id:'stamina', unit:'reps', ex:'burpee', dur:60, bench:30}` — reuses the
+existing `t.dur` countdown-then-enter-reps mechanic Jump Squats already
+proved out, not a new one.
+
+**`EX.burpee` itself is deliberately untouched.** Every other test's
+exercise self-anchors (`anchor` equals the test's own id, `hardness:1`) —
+but burpee is `unit:'time'`, like every cardio/dynamic exercise in the
+library, because HIIT circuits and cardio finishers are always prescribed
+as timed rounds, never rep counts, and it is already used that way at
+several existing call sites. Anchoring it to a `unit:'reps'` test would
+require changing its own `unit`, which would silently change what every
+one of those existing circuits prescribes — the anchor-usability check
+(`_at.unit===ex.unit` in `prescribe()`) exists precisely to keep an
+exercise's unit and its anchor test's unit in agreement, and fighting that
+check to force a mismatch was the wrong call. `TESTS[i].ex` only points at
+burpee for display — photo, instructions, `openExerciseInfo()` — the same
+role `t.ex` already plays for every test; it does not require the
+underlying `EX` entry to be anchored to it at all. `maxes.stamina` is
+recorded, drives Core Score/level and the Strength Trends chart (both
+already fully generic since `TEST_DEFAULTS`/`STRENGTH_METRICS` were hoisted
+in v247/v249), but does not feed back into any live prescription — the
+same deliberately-scoped posture v226 already took for logged load
+("a worse mistake than leaving the athlete to read their own log"),
+applied here to a second kind of objective measurement.
+
+**The v251 baseline-safety fix generalised to this test for free, and that
+was worth proving rather than assuming.** Burpee is flagged BOTH `shoulder`
+and `wrist` in `JOINT_RISK` — a shoulder- or wrist-flagged athlete taking
+the new stamina test is routed to a safe substitute by the exact same
+`safeSwap()` call `renderAssessStep()` already makes for every test, with
+zero new code. `tests/01-data.test.mjs` calls `safeSwap('burpee')` directly
+under each flag and confirms it lands somewhere else, which is the real
+claim — not that the test SHOWS a swap note (already proven generically in
+v251), but that THIS specific exercise, safety-flagged on two joints,
+actually triggers the mechanism.
+
+**All ten anchors, not nine — the same drifting-literal defect this file
+has now named three times.** `TEST_DEFAULTS`, `estimateMaxes()`'s internal
+defaults, and `skipBaseline()`'s literal all needed the new id added by
+hand; `validateData()`'s existing lockstep checks (hoisted generic in
+v247/v249) caught a real, deliberately-seeded omission in
+`estimateMaxes()` immediately — 13 assertions failed from one missing
+field, cascading exactly the way a real safety net is supposed to.
+`TESTS.length`/count assertions in `tests/04-journey.test.mjs` and
+`tests/21-integrity.test.mjs` were hardcoded tripwires (9 → 10), updated
+by hand on purpose rather than derived, matching this file's own
+established call on when a literal count is worth keeping as a deliberate
+"did anyone forget to update this" check rather than a tautology.
+
+**A mutation harness sharing a live test run is exactly the hazard this
+file already named once, and it recurred.** Swapping `index.html` on disk
+for mutation testing while a separate, already-running full-suite process
+was still reading that same file from disk produced a real-looking failure
+in an unrelated suite (`estimateMaxes({}) has no usable default for test
+"stamina"`, surfacing in `15-voice.test.mjs`) — the mutant's missing field,
+picked up mid-run by a suite that had nothing to do with the change being
+tested. Confirmed the working file was clean (byte-identical to a saved-
+clean copy) and re-ran the full suite in isolation, which passed cleanly.
+The fix is procedural, not code: never mutate the shared `index.html` while
+another test process might still be reading it, full stop — not just
+"restore before the next mutation," which was already being done and
+still wasn't enough.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
