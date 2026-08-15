@@ -2568,6 +2568,81 @@ Mutation-tested by reverting the move: both assertions caught it, and neither
 needed a fixture change since nothing else on the tab reads photos by
 position.
 
+## Strength Trends covers all nine tests, and an audit finds two more (v249)
+
+Asked directly to add all nine tests to the Strength Trends chart, and
+separately to audit that the baseline test is properly interlinked to every
+week of the program — a broader ask than the chart alone. The chart itself
+was the reported symptom; auditing every consumer of `TESTS`/`maxes` (not
+just re-reading the chart) surfaced two more real gaps, both the exact
+"a hand-kept list drifts behind `TESTS`" defect `TEST_DEFAULTS` was hoisted
+in v247 to prevent — in two places that hoist did not reach, because neither
+is a simple flat literal `TEST_DEFAULTS` could stand in for.
+
+**`STRENGTH_METRICS` was its own five-test literal**, hand-curated to
+core-only movements (Plank, Side Plank, Hollow, Rev. Crunch, Bicycle) since
+before `power` existed. Now derived from `TESTS` directly —
+`TESTS.map(t=>({k:t.id,label:STRENGTH_LABELS[t.id]||t.name,unit:t.unit}))` —
+so a future test gets a chip automatically. `STRENGTH_LABELS` is the one
+place worth keeping hand-written: `TESTS[].name` is built for the assessment
+flow ("Bicycle Crunches (max time)"), too long for a chip, and an id with no
+override falls back to the full name rather than silently disappearing.
+The caption ("the truest measure of core strength") no longer matched its
+own content once Push-Ups, Squats and Jump Squats — none of them
+core-specific — joined the chart, so it changed too: a promise in the UI is
+a specification, pointed at this file's own copy for once.
+
+**`estimateMaxes()` had no `power` entry in its own internal defaults
+literal — found by audit, not reported.** It is the LAST gate every stored
+`maxes` object passes through before `prescribe()` ever sees it, and every
+other field degrades to a plank-scaled estimate when missing or corrupt
+(`push:Math.round(12*s)`, etc.) so an athlete keeps SOME anchored precision
+through a bad backup or a skipped question. `power` had nothing to fall
+back to, so it alone dropped all the way through to the generic unanchored
+branch — safe (`prescribe()`'s `anchorUsable` guard prevents a crash or a
+NaN), but a real, silent loss of the calibration the other eight fields
+keep. Fixed with the same `10*s` scaling the other seven already use.
+
+**`skipBaseline()` had the identical gap, and its own comment already
+named this exact defect class once before.** "All EIGHT anchors, not
+five... left push/pull/squat undefined, so every Phase-2 exercise fell
+through to the generic branch and ignored the athlete entirely" — that was
+the 5→8 fix. v247's 8→9 change never touched this literal, so it recurred
+for the identical reason: a hand-kept maxes object, not read from `TESTS`.
+An athlete who skips the whole battery got estimates for eight lifts and
+none for Jump Squats specifically — invisible in `prescribe()` (the missing
+`estimateMaxes()` default covered for it) but visible on Strength Trends,
+which reads `s.maxes[k]` directly and would show "no data" for Jump Squats
+alone while every other lift had a number.
+
+**A `validateData()` check on `estimateMaxes()` closes the class, not just
+the instance.** Static comparison against a list was not possible — the
+defaults are computed inline (`Math.round(12*s)`), not stored in an
+inspectable map the way `TEST_DEFAULTS` is — so the check calls the real
+function with `{}` and confirms every `TESTS` id comes back finite and
+positive. Same "the validator is clean proves nothing about the rule
+itself" trap as the `TEST_DEFAULTS` lockstep check: the current data is
+correct, so deleting the two lines that verify it produced no new problems
+and the mutation escaped silently on the first pass. Caught only by a
+dedicated check that monkey-patches `estimateMaxes()` itself for the
+duration of one `validateData()` call, deletes `power` from its output,
+and requires the specific complaint by name — muting `console.error`
+around it the same way this file's other live `validateData()` breaks
+already do.
+
+**Everything else audited came back clean, and is recorded here as
+evidence, not assumption.** `commitAssessment()`'s PR-seeding and
+`retestDrop()`'s big-score-drop comparison both already iterate `TESTS`
+generically rather than a hand-kept list, so both picked up `power`
+automatically with no change needed. `reassessGate()`/`currentMaxes()`'s
+cycle-keyed reassessment lookup is untouched by test count and continues to
+work. `STANDARDS` (the separate Strength Standards benchmark screen) is a
+deliberately curated list of well-known movements, most of which are not
+baseline tests at all (Pull-Up, Chin-Up, Dips, Pistol Squat, Dead Hang) —
+not required to mirror `TESTS`, and left alone; adding a Jump Squats row
+there is a real option but needs its own Novice→Elite tier values chosen
+thoughtfully, not a drive-by addition.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
