@@ -2547,8 +2547,14 @@ function go(tab){
   render();
 }
 // Today-screen shortcut: jump to the Fuel tab and scroll to today's meal plan.
+/* Goes to REFERENCE, not Fuel. v245 removed Fuel's "Today's plan" card at the
+   athlete's request, and this function kept scrolling to its `#mealplan` anchor —
+   which no longer existed, so its own `if(el)` guard made it fail silently and
+   the two callers below ("See today's meals" on the day-complete sheet, "Meal
+   ideas" on the rest-day sheet) became dead ends that promised food and showed
+   none. The worked days still live on Reference, so the anchor moved with them. */
 function openMealPlan(){
-  go('fuel');
+  go('ref');
   setTimeout(()=>{try{const el=document.getElementById('mealplan');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){}},80);
 }
 // User taps a bottom-nav tab -> record a history entry so the phone's Back
@@ -3292,7 +3298,7 @@ function todayWorkoutHTML(){
   if(TODAY_TAB==='brief')h+=briefTabHTML();
   else if(TODAY_TAB==='warmup')h+=warmupTabHTML();
   else if(TODAY_TAB==='cooldown')h+=cooldownTabHTML();
-  else h+=workoutTabHTML(sess,log,doneCount,totalCount,wkNum,restedToday);
+  else h+=workoutTabHTML(sess,log,doneCount,totalCount,wkNum);
   return h;
 }
 function todayTabsHTML(){
@@ -3336,7 +3342,7 @@ function cooldownTabHTML(){
    Rest day tile to Program while renderToday() still needs it for its own banner,
    so it is one function rather than two hand-kept reads of STATE.restDays. */
 function restedTodayFlag(){return !!(STATE.restDays&&STATE.restDays[todayISO()]);}
-function workoutTabHTML(sess,log,doneCount,totalCount,wkNum,restedToday){
+function workoutTabHTML(sess,log,doneCount,totalCount,wkNum){
   /* Today shows TODAY'S WORKOUT and nothing else. Two grids used to sit here and
      were removed at the athlete's request as clutter on the one screen they open
      to train:
@@ -6160,7 +6166,7 @@ function dayflowDone(){
     ${coachAvatarHTML(80,'border-color:var(--gold);margin:0 auto 8px;display:block;box-shadow:0 6px 18px rgba(0,0,0,.45)')}
     <h2 style="margin:2px 0">Day complete 🎖️</h2>
     <p class="muted sm" style="margin:6px 0 14px">Brief, warm-up, workout and cool-down — all done. Outstanding work, ${_ve((STATE.profile.name||'').trim()||'soldier')}. Now hydrate and hit your protein.</p>
-    <button class="btn t-green" style="margin-bottom:8px" onclick="closeSheet();openMealPlan()">🍽️ See today's meals</button>
+    <button class="btn t-green" style="margin-bottom:8px" onclick="closeSheet();openMealPlan()">🍽️ Meal ideas</button>
     <button class="btn t-blue" style="margin-bottom:8px" onclick="closeSheet();go('fuel')">💧 Log water &amp; food</button>
     <button class="btn ghost" onclick="closeSheet()">Done</button>
   </div>`);
@@ -6197,7 +6203,7 @@ function openRestSheet(){
     </ul></div>
     <div style="height:10px"></div>
     <button class="btn t-teal" style="margin-bottom:8px" onclick="closeSheet();runCooldown()">▶ Guided cool-down &amp; stretch (~4 min)</button>
-    <button class="btn t-green" style="margin-bottom:8px" onclick="closeSheet();openMealPlan()">🍽️ Today's meals</button>
+    <button class="btn t-green" style="margin-bottom:8px" onclick="closeSheet();openMealPlan()">🍽️ Meal ideas</button>
     <button class="btn t-blue" style="margin-bottom:8px" onclick="closeSheet();go('fuel')">💧 Log water &amp; food</button>
     <button class="btn ${rested?'green':'primary'}" style="margin-bottom:8px" ${rested?'disabled':'onclick="startRestDay()"'}>${rested?'✓ Rest day logged':'Log today as a rest day'}</button>
     <button class="btn ghost" onclick="closeSheet()">Done</button>`);
@@ -11413,7 +11419,7 @@ function renderRef(){
   h+=`<div class="note warn"><b>Seitan is not on this list on purpose.</b> It is the highest-protein vegetarian food there is and it is pure wheat gluten. Every plant-protein list you read will recommend it.</div>`;
 
   /* ---- worked days, scaled onto the athlete's targets ---- */
-  h+=`<div class="section-label">${REF_DAYS.length} worked days · <span class="tiny muted">four weeks, then it repeats</span></div>`;
+  h+=`<div class="section-label" id="mealplan">${REF_DAYS.length} worked days · <span class="tiny muted">four weeks, then it repeats</span></div>`;
   const days=scaledDays();
   h+=`<div class="note ${T.live?'info':'warn'}">Weighed out for <b>${T.p} g protein and ${T.kcal} kcal</b>${T.live?', your current target':', the default target'}. The protein anchors are sized to hit the protein; the starches — rice, potato, oats, quinoa — are sized to close whatever calories are left. Change your target in Fuel and these amounts move with it.</div>`;
   days.forEach((d,i)=>{

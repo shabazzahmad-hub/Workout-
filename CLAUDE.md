@@ -2368,6 +2368,55 @@ tiles restored to Today, stats restored to Today, stats never added to Progress,
 tiles never added to Program, the Quick button duplicated beside its own tile,
 and the dead Meal plan tile carried over.
 
+## Auditing the two changes that had just shipped (v246, same round)
+
+Asked for a review and audit immediately after v245/v246 were pushed. Four
+things were checked against the real running app rather than re-read from the
+diff, and one of them was a genuine regression introduced an hour earlier.
+
+**Removing a card orphaned two buttons on OTHER screens, and its own defensive
+guard is what hid it.** v245 deleted Fuel's "Today's plan" card. `openMealPlan()`
+still ran `go('fuel')` and scrolled to `#mealplan` — an anchor that no longer
+existed — and its `if(el)` guard turned that into a silent no-op rather than an
+error. Two live callers survived the removal: "See today's meals" on the
+day-complete sheet and "Today's meals" on the rest-day sheet. Both became dead
+ends that promise food and show none, which is precisely the "a promise in UI
+text is a specification" defect this file already names. Found by counting real
+call sites (`grep -c 'openMealPlan('` → 3, one being the definition), not by
+reading the diff, which showed nothing wrong because the breakage was in files
+the diff never touched. **When a render site is deleted, grep for every caller of
+the navigation helper that pointed at it** — the helper is the thing that
+outlives the markup.
+
+The fix moves the anchor to where the content went (Reference still renders the
+worked days) rather than deleting the buttons, and relabels both to "Meal ideas"
+so the label matches the destination. The check drives `openMealPlan()` for real
+and asserts the destination tab *contains meals* — a source scan for `'ref'`
+would pass just as happily with the anchor deleted, and the anchor-only mutant
+proves it: it fails the "the anchor actually exists" assertion alone.
+
+**A `.grid3` moved onto Progress needed its performance verified, not assumed.**
+`renderProgress()` carries a documented 400ms budget, and this round added
+`homeSummaryHTML()` (which walks `computeStreak`, `sessionsDoneCount`,
+`waistDropShow`) to the top of it. Measured against the suite's own year-of-
+history soak data: Progress worst-of-five at **134ms**, and `homeSummaryHTML()`
+itself ~0.2ms per call. Comfortable, but the point is that the number was read
+rather than guessed — the `acwr()` regression in v227 was exactly this shape and
+only the budget caught it.
+
+**A parameter left dead by a UI removal.** `workoutTabHTML(…,restedToday)` lost
+its only consumer when the Rest day tile moved to Program — `todayWorkoutHTML()`
+computes its own copy for its own banner, so the argument was still being passed
+and never read. Confirmed by brace-matching the function's real span rather than
+eyeballing it, then dropped from both the signature and the call site.
+
+**Named as debt, not fixed:** `renderFuel()` still calls `currentMealPlan()` to
+prime a plan nothing renders any more, so every Fuel render generates and
+`save()`s a meal plan the athlete never sees. It is waste rather than a
+correctness bug, the tab is inside its budget, and suite 20 reaches the builder
+directly rather than through this priming — same call as `renderProgress()`'s
+redundant log scans, recorded here rather than risked as a same-round refactor.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

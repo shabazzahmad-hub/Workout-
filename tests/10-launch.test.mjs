@@ -452,6 +452,34 @@ const { browser, page, errors } = await launch(port);
   s.ok('and the badge count', r.progressShowsBadges, r);
 }
 
+/* ---- "Meal ideas" must land on meals, not an empty tab -------------------
+   Regression from v245: removing Fuel's plan card orphaned openMealPlan(),
+   which still scrolled to a #mealplan anchor that no longer existed. Its own
+   `if(el)` guard swallowed that silently, so two live buttons — on the
+   day-complete sheet and the rest-day sheet — became dead ends that promised
+   food and showed none. Driven end to end rather than asserting on source: a
+   check that only read openMealPlan() for the string 'ref' would pass just as
+   happily if the anchor it scrolls to had been deleted. */
+{
+  const r = await page.evaluate(() => {
+    const o = {};
+    go('today');
+    openMealPlan();
+    o.tab = TAB;
+    const view = document.querySelector('#v-' + TAB);
+    o.anchorExists = !!(view && view.querySelector('#mealplan'));
+    // the destination genuinely shows meals, not just a tab that rendered
+    const txt = (view && view.innerText) || '';
+    o.showsMeals = /worked days/i.test(txt) && /Log this meal/i.test(txt);
+    // and every caller still points at the function under test
+    o.callers = ((document.documentElement.innerHTML.match(/openMealPlan\(\)/g) || []).length);
+    return o;
+  });
+  s.eq('the meal-ideas button lands on Reference, where the days now live', r.tab, 'ref');
+  s.ok('the anchor it scrolls to actually exists on that tab', r.anchorExists, r);
+  s.ok('and that tab really shows meals', r.showsMeals, r);
+}
+
 srv.close();
 const failed = s.finish(errors);
 await browser.close();
