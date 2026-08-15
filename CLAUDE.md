@@ -2228,6 +2228,211 @@ membership, each independently, each by the specific check aimed at it.
 Image shipped as the same 800×800 grey-backdrop "PHOTO PENDING" placeholder
 established in v224, added to `sw.js`'s `EXTRA` tier.
 
+## The photo estimate learns portions, and Fuel loses its suggested menu (v245)
+
+Two Fuel-tab changes, both driven by the athlete directly.
+
+**The AI food photo estimated calories and macros but never said how much food
+it thought it was looking at.** Asked whether a snap of a salmon fillet would
+report the portion in ounces or grams, the honest answer was no — the prompt
+asked for a name, `kcal`, and three macro grams, nothing else. `portion` is now
+a free-text field ("about 6 oz (170 g)", "1 cup cooked", "2 slices"), one string
+rather than a number, because the useful unit genuinely differs by food and
+forcing everything into grams would be a worse answer for a banana than for a
+steak.
+
+**It is deliberately NOT in the schema's `required` list.** A model that omits
+the portion must still produce a usable calorie estimate — no portion is
+strictly better than no estimate, and the absent case degrades exactly to the
+pre-v245 behaviour. Same restrictive-default instinct as everywhere else in this
+file, pointed at a different failure.
+
+**The portion is stored only when there IS one.** The first draft wrote
+`portion:''` onto every repaired row, which grew every backup by a dead key for
+every meal ever logged and broke `20-diet`'s "a well-formed day survives the
+repair byte for byte" check. That break was the right signal: a manual add has no
+portion, and the fix (`...(cleanPortion(x)?{portion:…}:{})`) leaves untouched
+rows genuinely untouched, which is what that check exists to prove.
+
+**`cleanPortion()` is one function called from four sites, not four copies of the
+rule** — the parser, `logFood()`, `saveFood()`'s edit path and
+`normalizeState()`. It rejects non-strings rather than coercing them: `String({})`
+is the literal `"[object Object]"`, which would render as a portion beside a real
+meal, and the first draft did exactly that before the mutation caught it. It also
+collapses whitespace, because the diary row is one line and a stored newline
+breaks it.
+
+**A portion is user-controlled content in the `importData()` sense, even though a
+language model wrote it** — it reaches `innerHTML` at two sites (the log sheet and
+the diary row) and both escape with `_ve()`. The check queries for the injected
+**element** rather than scanning for a substring, per this file's own note about
+the 126 legitimate `onerror` thumbnails that made a substring assertion useless.
+
+**Fuel's "Today's plan" card is gone at the athlete's request.** It suggested a
+breakfast/lunch/dinner/snack with a "Log this meal" button on each. Nothing was
+ever auto-logged — every meal needed a deliberate tap — but a prescribed menu
+sitting above the athlete's own diary read as clutter on the one screen where
+they record what they actually ate. The GENERATOR is kept, not deleted:
+`currentMealPlan`/`_planStillValid`/`_planStamp` are still directly covered by
+suite 20, and the same worked days still power the Reference tab, which is
+opt-in browsing rather than something that greets you on the log screen.
+
+**Removing a card breaks the checks that asserted it renders, and deleting them
+would be the wrong repair.** Three checks in `09-audit` read the plan out of
+`#v-fuel`. Their DAY-level invariants (the worked day hits the calorie and protein
+targets, and does not reshuffle) are unchanged and still matter, because
+Reference and the shopping list both still serve those days — so the markup
+assertions were re-pointed at the Reference tab, where a worked day still
+renders, rather than dropped. Left aimed at Fuel they would have passed on an
+empty tab, which is worse than deleting them outright: a check that cannot fail
+reads as coverage and is not. `showsBothTargets` also needed its phrasing
+updated — `'of ' + kcal` belonged to the removed card's own header; Reference
+states them as "Weighed out for X g protein and Y kcal".
+
+**The source-scan check for the removed call hit this file's own documented
+comment trap on the first run.** The explanatory block comment left where
+`h+=mealPlanHTML();` used to be names the function in prose, and
+`/mealPlanHTML\(\)/` over `renderFuel.toString()` matched the explanation — the
+same false positive a comment mentioning `c.put()` once produced in the `sw.js`
+check. Fixed by stripping comments before searching, not by removing the word
+from the comment: the comment has to name what it is explaining.
+
+All eight mutants seeded against the new checks were caught, each by its own
+dedicated check — the coercing `cleanPortion`, the unescaped diary render, the
+hidden sheet row, a dropped `logFood` portion, an always-written empty key, a
+stale portion leaking into the next sheet, the schema field, and re-adding the
+plan card to Fuel.
+
+## Today is today's workout, and nothing else (v246)
+
+Asked directly, twice: *"Today's tab of the app is the main page. It should not
+be clustered with a lot of various stuff. It should be focused on the exercises
+of the day."* Two grids came off it, and both MOVED rather than died.
+
+- Six alternate-session tiles (Weights, Special, Meal plan, Quick, Recover, Rest
+  day) → the **Program** tab, which is already the "what else can I train"
+  screen and already carried its own Quick Workouts button. That button folded
+  INTO the grid rather than sitting beside a near-identical tile, which would be
+  the clutter the move exists to undo.
+- The six-stat summary (`homeSummaryHTML`: Week, Streak, Sessions, Core Score,
+  Waist, Badges) → the **Progress** tab, which exists to report exactly those
+  numbers.
+
+**The HIIT tile stays on Today, and that distinction is the whole point of the
+split.** It converts THIS session's circuit into intervals, so it is about today
+in a way none of the others were. The Meal plan tile was not carried over at
+all: v245 had removed the card `openMealPlan()` scrolls to, so it was already a
+dead link — a tile that navigates to a `#mealplan` anchor which no longer
+exists, degrading silently thanks to its own `if(el)` guard.
+
+**Moving the Rest day tile meant two screens needed the same flag, so it became
+a function.** `renderToday()` computed `restedToday` into a local; Program now
+needs it too. `restedTodayFlag()` is one read of `STATE.restDays` rather than
+two hand-kept copies — the first draft did inline the second copy, and the
+comment written to justify it was itself the argument against it.
+
+**The moved tile broke suite 04's click-every-button sweep, and the fix was in
+the harness, not the app.** `startWeights()` legitimately opens the full-screen
+player; `.pl` is z-index 75 and covers the tab bar, so the next real
+`page.click('[data-tab=…]')` times out and every later tab renders 0 chars —
+three tabs failing with "tab is not clickable" and a fourth failing the
+controls-exercised count. The sweep already recovered from a click with
+`closeSheet()`, for exactly this reason; it just never had to handle a
+full-screen surface, because every player-opening button used to live on
+`today`, the FIRST tab in the loop, where nothing came after it to block.
+Verified rather than assumed: a probe against the pre-change file confirmed the
+Today sweep ends with no full-screen surface open and the next tab click
+succeeding. `playerTeardown()`/`hiitTeardown()` joined the recovery step, which
+also cut that block's runtime from ~120s to ~29s — the old number was mostly
+Playwright timing out on covered elements.
+
+**A `.grid3` probe on Progress passed on nothing, and only a mutant found it.**
+`renderProgress()` has grids of its own, so `!!prg.querySelector('.grid3')`
+stayed true whether or not the summary moved there — the "never moved to
+Progress" mutant sailed past that assertion and was caught only by an unrelated
+text check. Re-anchored on markup unique to `homeSummaryHTML()`: its waist stat
+is the only `logMeasure()` button, and its week tile the only one carrying the
+`/54` programme denominator. Same family as the ⚠️-icon and 🎒-badge checks this
+file already documents — a page-wide selector that other content also satisfies
+is not evidence about the thing you changed.
+
+**Two of the new assertions failed on first run for a reason that was not the
+code**: `.section-label` and the stat labels are uppercased by CSS
+`text-transform`, and `innerText` reflects that, so `includes('Main work')` and
+`includes('Badges')` both read as missing. The finisher check passed only
+because it happened to be written lowercased. Match case-insensitively, or an
+assertion reads "the section is gone" when the section is merely shouting.
+
+All six mutants seeded against the move were caught, each by its own check —
+tiles restored to Today, stats restored to Today, stats never added to Progress,
+tiles never added to Program, the Quick button duplicated beside its own tile,
+and the dead Meal plan tile carried over.
+
+## Auditing the two changes that had just shipped (v246, same round)
+
+Asked for a review and audit immediately after v245/v246 were pushed. Four
+things were checked against the real running app rather than re-read from the
+diff, and one of them was a genuine regression introduced an hour earlier.
+
+**Removing a card orphaned two buttons on OTHER screens, and its own defensive
+guard is what hid it.** v245 deleted Fuel's "Today's plan" card. `openMealPlan()`
+still ran `go('fuel')` and scrolled to `#mealplan` — an anchor that no longer
+existed — and its `if(el)` guard turned that into a silent no-op rather than an
+error. Two live callers survived the removal: "See today's meals" on the
+day-complete sheet and "Today's meals" on the rest-day sheet. Both became dead
+ends that promise food and show none, which is precisely the "a promise in UI
+text is a specification" defect this file already names. Found by counting real
+call sites (`grep -c 'openMealPlan('` → 3, one being the definition), not by
+reading the diff, which showed nothing wrong because the breakage was in files
+the diff never touched. **When a render site is deleted, grep for every caller of
+the navigation helper that pointed at it** — the helper is the thing that
+outlives the markup.
+
+The fix moves the anchor to where the content went (Reference still renders the
+worked days) rather than deleting the buttons, and relabels both to "Meal ideas"
+so the label matches the destination. The check drives `openMealPlan()` for real
+and asserts the destination tab *contains meals* — a source scan for `'ref'`
+would pass just as happily with the anchor deleted, and the anchor-only mutant
+proves it: it fails the "the anchor actually exists" assertion alone.
+
+**A `.grid3` moved onto Progress needed its performance verified, not assumed.**
+`renderProgress()` carries a documented 400ms budget, and this round added
+`homeSummaryHTML()` (which walks `computeStreak`, `sessionsDoneCount`,
+`waistDropShow`) to the top of it. Measured against the suite's own year-of-
+history soak data: Progress worst-of-five at **134ms**, and `homeSummaryHTML()`
+itself ~0.2ms per call. Comfortable, but the point is that the number was read
+rather than guessed — the `acwr()` regression in v227 was exactly this shape and
+only the budget caught it.
+
+**A parameter left dead by a UI removal.** `workoutTabHTML(…,restedToday)` lost
+its only consumer when the Rest day tile moved to Program — `todayWorkoutHTML()`
+computes its own copy for its own banner, so the argument was still being passed
+and never read. Confirmed by brace-matching the function's real span rather than
+eyeballing it, then dropped from both the signature and the call site.
+
+**`STATE.nutrition.plan` had become write-only, and that one IS worth fixing.**
+`renderFuel()` kept a `currentMealPlan()` priming call whose comment explained it
+ran "before any markup is built" — but v245 deleted the only markup that read the
+plan, so every Fuel render generated recipes and `save()`d them for a value
+nothing displays. Removed. The generator is untouched and still covered directly
+by suite 20.
+
+**Removing it broke a check that asserted the RENDERER rebuilds a stale plan**,
+which was only ever true because Fuel displayed one. Same repair as the three
+`09-audit` checks above: the invariant (a stale plan rebuilds, a fresh one does
+not) is real and still worth having, so it was re-pointed at `currentMealPlan()`
+itself rather than deleted. Asserting it through `renderFuel()` now would be
+asserting it through nothing — the render path no longer touches the plan, and
+reading `STATE.nutrition.plan` back after a render finds `null`.
+
+**The dead chain left behind is deliberate and was traced, not assumed.**
+`mealPlanHTML` → `_recipePlanHTML` → `regenPlan`/`openGrocery`/`todaysWorkedDay`
+are all unreachable from app code now. They are kept because suite 20 drives the
+generator directly and the shopping list the grocery sheet duplicated still
+renders inline on Reference — so nothing user-facing was lost. Verified by
+counting real call sites per function rather than trusting the diff, which is
+also how the `openMealPlan()` dead end above was found.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

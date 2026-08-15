@@ -327,7 +327,19 @@ export default async function run() {
           return { label, err: null };
         }, { tb: tab, idx: i });
         if (res) { clicked++; if (res.err) t.fail('a button click threw', `${tab} · "${res.label}" -> ${res.err}`); }
-        await page.evaluate(() => { try { closeSheet(); } catch (e) {} });
+        /* Recover from whatever that click opened, so one button cannot poison
+           the rest of the sweep. closeSheet() alone was enough while every
+           button that mounts a FULL-SCREEN surface lived on 'today', the first
+           tab — v246 moved the Weights tile to Program, and startWeights()
+           legitimately opens the player. `.pl` is z-index 75 and covers the tab
+           bar, so a real page.click() on the next tab then times out and every
+           later tab renders 0 chars. That is the harness lacking a teardown,
+           not the app misbehaving: the tile does exactly what it always did. */
+        await page.evaluate(() => {
+          try { closeSheet(); } catch (e) {}
+          try { playerTeardown(); } catch (e) {}
+          try { hiitTeardown(); } catch (e) {}
+        });
         await page.waitForTimeout(30);
       }
     }

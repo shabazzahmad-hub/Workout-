@@ -386,6 +386,100 @@ const { browser, page, errors } = await launch(port);
   await pc.close();
 }
 
+/* ---- Today is today's workout, nothing else (v246) -----------------------
+   Two grids were removed from the Today tab at the athlete's request: six
+   alternate-session tiles and the six-stat summary. Both MOVED rather than
+   died, so this asserts on both ends — gone from Today AND present on the tab
+   that now owns them. Checking only the removal would pass just as happily on
+   a version that deleted them outright, which is not what was asked for. */
+{
+  const r = await page.evaluate(() => {
+    const o = {};
+    const txt = el => (el && el.innerText) || '';
+    const html = el => (el && el.innerHTML) || '';
+
+    go('today'); renderToday();
+    const today = document.querySelector('#v-today');
+    o.todayLen = txt(today).trim().length;
+    // the six moved tiles, by the handler each one carried
+    o.todayTiles = ['startWeights(', 'openSpecial(', 'openMealPlan(', 'openQuickList(',
+      'openRestSheet(', 'startRestDay('].filter(fn => html(today).includes(fn));
+    o.todayStats = !!today.querySelector('.grid3 [onclick^="logMeasure"]');
+    // what MUST still be there: today's actual session
+    o.keepsPlayer = html(today).includes('openPlayer(');
+    /* Section labels and stat labels are uppercased by CSS text-transform, and
+       innerText reflects that — match case-insensitively or an assertion reads
+       as "the section is gone" when it is only shouting. */
+    o.keepsMainWork = /main work/i.test(txt(today));
+    o.keepsFinisher = /finisher/i.test(txt(today));
+    o.keepsExercises = today.querySelectorAll('.exlist .excard, .exlist > *').length;
+
+    go('program'); renderProgram();
+    const prog = document.querySelector('#v-program');
+    o.progTiles = ['openSpecial(', 'openQuickList(', 'openRestSheet('].filter(fn => html(prog).includes(fn));
+    o.progHasRest = html(prog).includes('startRestDay(') || html(prog).includes('openRestSheet(');
+    // the standalone Quick button folded INTO the grid — not both
+    o.progQuickCount = (html(prog).match(/openQuickList\(/g) || []).length;
+    // the dead tile is not carried over: v245 removed the card it scrolled to
+    o.progMealPlan = html(prog).includes('openMealPlan(');
+
+    go('progress'); renderProgress();
+    const prg = document.querySelector('#v-progress');
+    /* NOT a bare '.grid3' probe — renderProgress() has grids of its own, so that
+       selector stays true whether or not the summary moved here, and a mutant
+       that never added it passed exactly that way. Anchor on markup unique to
+       homeSummaryHTML(): the waist stat is its only logMeasure() button, and the
+       week tile is the only one carrying the /54 programme denominator. */
+    o.progressStats = !!prg.querySelector('.grid3 [onclick^="logMeasure"]')
+      && html(prg).includes('/' + (WEEKS_PER_CYCLE * TOTAL_CYCLES));
+    o.progressShowsWeek = /week/i.test(txt(prg));
+    o.progressShowsBadges = /badges/i.test(txt(prg));
+    return o;
+  });
+  s.eq('no alternate-session tiles remain on Today', r.todayTiles, []);
+  s.eq('and the six-stat summary is gone from Today', r.todayStats, false);
+  s.ok('Today still leads with the guided player', r.keepsPlayer, r);
+  s.ok('and still shows the main work', r.keepsMainWork, r);
+  s.ok('and the finisher', r.keepsFinisher, r);
+  s.ok('and still lists today\'s actual exercises', r.keepsExercises > 0, r);
+  s.ok('Today still renders a real page, not a stub', r.todayLen > 200, r);
+  s.eq('the session tiles now live on Program', r.progTiles.length, 3, r);
+  s.ok('including the rest-day control', r.progHasRest, r);
+  s.eq('with Quick Workouts appearing once, not beside a duplicate button', r.progQuickCount, 1, r);
+  s.eq('the dead Meal plan tile is not carried over', r.progMealPlan, false, r);
+  s.ok('the stat summary now lives on Progress', r.progressStats, r);
+  s.ok('showing the week', r.progressShowsWeek, r);
+  s.ok('and the badge count', r.progressShowsBadges, r);
+}
+
+/* ---- "Meal ideas" must land on meals, not an empty tab -------------------
+   Regression from v245: removing Fuel's plan card orphaned openMealPlan(),
+   which still scrolled to a #mealplan anchor that no longer existed. Its own
+   `if(el)` guard swallowed that silently, so two live buttons — on the
+   day-complete sheet and the rest-day sheet — became dead ends that promised
+   food and showed none. Driven end to end rather than asserting on source: a
+   check that only read openMealPlan() for the string 'ref' would pass just as
+   happily if the anchor it scrolls to had been deleted. */
+{
+  const r = await page.evaluate(() => {
+    const o = {};
+    go('today');
+    openMealPlan();
+    o.tab = TAB;
+    const view = document.querySelector('#v-' + TAB);
+    o.anchorExists = !!(view && view.querySelector('#mealplan'));
+    // the destination genuinely shows meals, not just a tab that rendered
+    const txt = (view && view.innerText) || '';
+    o.showsMeals = /worked days/i.test(txt) && /Log this meal/i.test(txt);
+    // and every caller still points at the function under test
+    o.callers = ((document.documentElement.innerHTML.match(/openMealPlan\(\)/g) || []).length);
+    return o;
+  });
+  s.eq('the meal-ideas button lands on Reference, where the days now live', r.tab, 'ref');
+  s.ok('the anchor it scrolls to actually exists on that tab', r.anchorExists, r);
+  s.ok('and that tab really shows meals', r.showsMeals, r);
+}
+
 srv.close();
 const failed = s.finish(errors);
 await browser.close();
