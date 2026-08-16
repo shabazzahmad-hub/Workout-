@@ -3885,6 +3885,54 @@ angle IS the point and the extra dimension would obscure it. `ex-plegraise.jpg`
 was installed as a side profile and swapped to the three-quarter frame the same
 morning for exactly this reason.
 
+## The pitch bases were tuned on a desktop, and a phone said so (v269)
+
+The athlete listed eight coaches that sounded ROBOTIC — Master Sergeant, Iron
+Temple, The Relentless, Strongman, Viking Jarl, Legion Commando, Spartan
+Warrior, Sergeant Major — with the tone set to Mid.
+
+**The authored numbers did not explain the list, and saying so is what got the
+right answer.** All eight sit in the deepest band, but so do Ultra Beast (0.42,
+identical to Master Sergeant) and Marine Gunnery Sgt (0.44, identical to
+Strongman), and neither was reported. Pitch was the prime suspect and not a
+proven cause, so the honest move was to ask for ONE discriminating test rather
+than raise numbers on a hunch: switch to Bright and re-listen. Bright fixed
+every one of them, which rules out voice SELECTION and confirms pitch.
+
+**A device's Web Speech voice is pitch-SHIFTED, not resynthesised.** Push it far
+enough down and it produces artifacts before it produces depth. The old bases
+(deep 0.74 / mid 0.98 / bright 1.18) were tuned by ear against desktop voices,
+where the artifact floor is lower. Mid is the DEFAULT, so Mid is what the app
+gets judged on: bases are now 0.88 / 1.08 / 1.24, and the per-persona offset
+multiplier drops from 0.5 to 0.35 so the deepest coaches cannot drag themselves
+back into the zone the base was just raised out of. Measured result: the lowest
+non-robot coach at Mid goes from 0.89 to 1.02, ordering intact, and the A.I.
+Trainer stays the lowest because sounding synthetic IS its character.
+
+**Depth of character has to come from the voice HINT, the rate and the script —
+not from dragging the shifter down until it buzzes.** That is the same
+conclusion the Strongman note above reached ("still read as processed after the
+tone fix landed") and it is now enforced: the check pins a FLOOR at the default
+tone across the whole cast rather than pinning individual numbers, which would
+be a restatement of the table and would break on any deliberate re-voicing. The
+neural path is untouched — that is real synthesis, and its semitone shifts do
+not have this failure mode.
+
+## Nine controls had no name a screen reader could read (v269)
+
+Found in the pre-release sweep, not by a suite: six sliders, two dropdowns, two
+API-key fields and three file inputs announced as a bare "slider" or "combo
+box". Every one of them HAS a visible caption — it just lives in a SIBLING
+element rather than a `<label>`, so nothing associates the two. Reading the page
+with your eyes gives no hint at all that anything is missing.
+
+The check asserts on the computed accessible NAME (aria-label, a wrapping
+label, a `label[for]`, or a placeholder) rather than on the presence of the
+attribute, so a control that later gets a real `<label>` instead still passes.
+It sweeps every tab, with a guard that Settings really had controls to find —
+an "unnamed length is 0" assertion over an empty list is the emptiness trap
+this file has now documented three times.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

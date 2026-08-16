@@ -675,6 +675,45 @@ export default async function () {
     t.ok('and says nothing at all about missing macros', r.cleanDayQuiet, r);
   }
 
+
+  /* ---------- 19. every control has an accessible name -------------------
+     Found in the pre-release sweep: nine controls in Settings — six sliders,
+     two dropdowns, a file input and both API-key fields — announced to a screen
+     reader as a bare "slider" or "combo box". Their visible captions live in
+     SIBLING elements, not in a <label>, so nothing associates the two.
+
+     Asserted on the computed accessible name (aria-label, a wrapping label, a
+     label[for], or a placeholder) rather than on the presence of the attribute,
+     so a future control that gets a real <label> instead still passes. */
+  {
+    const r = await page.evaluate(() => {
+      const named = el => !!(el.getAttribute('aria-label')
+        || (el.id && document.querySelector(`label[for="${el.id}"]`))
+        || el.closest('label')
+        || el.getAttribute('placeholder')
+        || el.getAttribute('title'));
+      const scan = tab => {
+        go(tab);
+        const els = Array.from(document.querySelectorAll('.view.active input, .view.active select, .view.active textarea'));
+        return { total: els.length, unnamed: els.filter(e => !named(e)).map(e => (e.type||e.tagName)) };
+      };
+      const out = {};
+      ['today','program','fuel','progress','ref','guide'].forEach(t => out[t] = scan(t));
+      // buttons must be reachable by name too — icon-only ones need aria-label
+      go('guide');
+      const btns = Array.from(document.querySelectorAll('.view.active button'));
+      out.buttons = { total: btns.length,
+        unnamed: btns.filter(b => !(b.innerText||'').trim() && !b.getAttribute('aria-label') && !b.title).length };
+      return out;
+    });
+    // Guard: Settings is where the controls are — if it scanned nothing, the rest is vacuous.
+    t.ok('guard: Settings really has form controls to check', r.guide.total >= 8, r.guide);
+    ['today','program','fuel','progress','ref','guide'].forEach(tab =>
+      t.eq(`[${tab}] every form control has an accessible name`, r[tab].unnamed.length, 0, r[tab]));
+    t.ok('guard: Settings really has buttons to check', r.buttons.total > 20, r.buttons);
+    t.eq('every button has a name a screen reader can read', r.buttons.unnamed, 0, r.buttons);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
