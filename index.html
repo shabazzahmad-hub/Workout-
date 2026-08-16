@@ -375,7 +375,15 @@
   @keyframes slideup{from{transform:translateY(100%)}to{transform:none}}
   .sheet .grab{width:42px;height:5px;border-radius:3px;background:var(--line);margin:8px auto 12px}
   .sheet h3{font-size:19px;font-weight:900;margin:2px 0 3px}
-  .exphoto{width:100%;height:190px;object-fit:cover;border-radius:14px;background:var(--card2);display:block;margin-bottom:14px}
+  /* Height-responsive, not a fixed 190px. On a 375x667 phone the assessment
+     step pushed its own "Next test ->" button ~91px below the fold on all ten
+     tests — the primary action of the app's most important first-run flow. */
+  /* The nav row sticks to the bottom of the scrolling sheet, so the primary
+     action is reachable no matter how tall a test's photo and instructions are.
+     Shrinking the photo alone got 375x667 from 91px hidden to 61 — better, and
+     still not "the button is on screen", which is the actual requirement. */
+  .assess-nav{position:sticky;bottom:0;background:var(--card);padding:8px 0 2px;margin-top:2px}
+  .exphoto{width:100%;height:min(190px,24vh);object-fit:cover;border-radius:14px;background:var(--card2);display:block;margin-bottom:14px}
   .emblem{width:100%;height:150px;border-radius:14px;display:flex;align-items:center;justify-content:center;margin-bottom:14px;position:relative;overflow:hidden}
   .steplist{counter-reset:s;margin:0;padding:0;list-style:none}
   .steplist li{position:relative;padding:9px 0 9px 40px;border-top:1px solid var(--line);font-size:13.5px;line-height:1.5}
@@ -396,7 +404,7 @@
      a fixed size overflowed the sheet on a short phone (127px past the fold
      at 375×667, with the media stacked above it as a separate block on top).
      min() lets it shrink to fit instead of pushing Stop/Done off-screen. */
-  .timerring{position:relative;height:min(220px,72vw,40vh);min-height:130px;width:auto;aspect-ratio:1;margin:0 auto}
+  .timerring{position:relative;height:min(330px,88vw,48vh);min-height:130px;width:auto;aspect-ratio:1;margin:0 auto}
   .timerring svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
   .timerring .inner{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
   /* Assessment */
@@ -1692,7 +1700,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='264';
+const APP_VERSION='265';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -5516,11 +5524,11 @@ function renderAssessStep(){
         <button onclick="assessBump(${t.unit==='time'?5:1})">+</button>
       </div>
     </div>
-    <div class="btnrow">
+    <button class="btn ghost" style="margin-bottom:10px" onclick="openExerciseInfo('${exId}')">ⓘ How to do this move</button>
+    <div class="btnrow assess-nav">
       ${i>0?`<button class="btn ghost" onclick="assessNav(-1)">← Back</button>`:''}
       <button class="btn primary" onclick="assessNav(1)">${i===total-1?'See my results':'Next test →'}</button>
     </div>
-    <button class="btn ghost" style="margin-top:10px" onclick="openExerciseInfo('${exId}')">ⓘ How to do this move</button>
   `);
   setTimeout(()=>{const inp=$('#assess-val');if(inp)inp.focus();},120);
 }
@@ -6363,8 +6371,14 @@ let DAYFLOW=null;
 let _dfHandoff=false;   // set true right before a legitimate hand-off close so the dismissal hooks don't cancel DAYFLOW
 function dfHandoff(){_dfHandoff=true;}
 // Flow-sheet Stop/Done during a guided day: Done on warm-up/cool-down advances; anything else ends the day.
+let _flowResume=null;
+function flowToggle(){
+  const b=$('#flowToggle');
+  if(timer&&timer.mode==='flow'){clearInterval(timer.iv);timer=null;if(b)b.textContent='Resume';beatStop();return;}
+  if(_flowResume){_flowResume();if(b)b.textContent='Pause';beatStart();}
+}
 function flowStop(done){
-  stopTimer();
+  stopTimer();wakeOff();_flowResume=null;
   if(typeof dayflowActive==='function'&&dayflowActive()){
     const key=(DAYFLOW_STEPS[(DAYFLOW&&DAYFLOW.i)||0]||{}).key;
     if(done&&(key==='warmup'||key==='cooldown')){dfHandoff();closeSheet();dayflowAdvance(key);return;}
@@ -7321,6 +7335,10 @@ function runFlow(items,title,color){
   const TRANSITION=4;   // seconds to reposition between moves (floor <-> standing)
   const C=2*Math.PI*100;
   openSheet(flowHTML(title,items.length,color||'var(--fire)'));
+  /* The flow is as hands-free as the player and HIIT — it talks you through
+     each stretch — and it was the only one of the three that let the screen
+     sleep. wakeOff() is called from flowStop(), the single exit. */
+  wakeOn();
   primeVoice();beatStart();
   const set=(sel,txt)=>{const e=$(sel);if(e)e.textContent=txt;};
   const ring=(frac)=>{const r=$('#flowRing');if(r)r.style.strokeDashoffset=C*(1-frac);};
@@ -7389,6 +7407,11 @@ function runFlow(items,title,color){
     set('#flowNum',remain); ring(remain/total);
   }
   stopTimer();
+  /* Pause was missing entirely, so the only way to answer the door mid-stretch
+     was to abandon the flow or falsely mark it Done. Resuming re-anchors the
+     deadline so the pause is not counted as elapsed time — the same thing
+     playerToggle() and hiitToggle() already do. */
+  _flowResume=()=>{if(timer&&timer.mode==='flow')return;if(phase==='run'&&remain>0)deadline=Date.now()+remain*1000;timer={iv:setInterval(tick,1000),mode:'flow'};};
   timer={iv:setInterval(tick,1000),mode:'flow'};
 }
 /* The photo/video sits INSIDE the ring (.pl-ringmedia, shared with the guided
@@ -7418,6 +7441,7 @@ function flowHTML(title,count,color){
     </div>
     <div class="tiny muted" id="flowCue" style="text-align:center;margin-top:8px;min-height:32px">Follow along — it moves you through each stretch automatically.</div>
     <div class="btnrow" style="margin-top:14px">
+      <button class="btn ghost" id="flowToggle" onclick="flowToggle()">Pause</button>
       <button class="btn ghost" onclick="flowStop(false)">Stop</button>
       <button class="btn green" onclick="flowStop(true)">Done</button>
     </div>
@@ -11769,6 +11793,40 @@ const REF_DAYS=[
    the build rules give in words. Fats and treats are left alone — scaling a
    30 g square of chocolate to 75 g to "close a gap" is not coaching. */
 const REF_STARCH=['GF oats','White rice, cooked','Potato','Sweet potato','Quinoa, cooked','Banana'];
+/* The SECOND dial, and it only ever turns one way. The starch dial clamps at
+   1.6x — deliberately, since closing a gap on starch alone put 700 g of potato
+   on one plate — and above roughly 2,800 kcal that clamp binds on every one of
+   the 28 days, so a big, very active athlete on a gain goal missed the calorie
+   bar 28 times out of 28. Fat is 9 kcal/g, so a modest gram increase closes a
+   gap starch cannot without becoming a volume nobody eats.
+
+   Two properties make this safe to add to a set of days that already worked:
+   it is clamped at 1 on the low side, so it can never SHRINK a day (the
+   deficit case is still the starch floor's job, unchanged), and it only opens
+   once the starch dial has actually saturated. Every day that already lands on
+   its target therefore scales exactly as it did before. */
+const REF_FATS=['Peanut butter','Almonds','Pumpkin seeds','Avocado','Olive oil','Dark chocolate 85%'];
+const REF_STARCH_MAX=1.6;
+const REF_FAT_MAX=2.6;
+/* THE THIRD LEVER, and the only one that adds food rather than resizing it.
+   Above roughly 2,800 kcal the dials run out for a reason no clamp change can
+   fix: at a fixed protein target the anchor dial is pinned by the protein, and
+   several days simply do not contain enough starch or fat MASS to scale into
+   the gap — day 11 tops out at 2,491 kcal however far the dials are opened.
+   Widening the clamps instead is what puts 700 g of potato on one plate.
+
+   So do what a person actually does when they need to eat more: add another
+   food. Spread across two items rather than piling on one, capped at twice a
+   normal portion each, allergen- and diet-checked like everything else, and
+   only ever reached once the dials have genuinely saturated — so every day that
+   already lands on its target is untouched. */
+/* Ordered fat-first on purpose. These days are already ON their protein target
+   when the top-up runs, so reaching for a protein-bearing food first pushes
+   protein past a target the anchors have just been dialled to hit. Olive oil,
+   avocado and chocolate carry almost none. */
+const REF_TOPUP=['Olive oil','Avocado','Dark chocolate 85%','Almonds','Peanut butter','GF oats','White rice, cooked'];
+const REF_TOPUP_MAX=2;      // never more than two normal portions of one food
+const REF_TOPUP_ITEMS=4;    // and never more than three extra foods on a day
 const REF_ANCHOR_CATS=['meat','fish','dairy','plant'];
 function refDefaults(){return {p:150,kcal:2170};}
 /* The athlete's live targets, falling back to what the days were written
@@ -11808,8 +11866,10 @@ function scaleDay(day,targetP,targetK){
       else amt=amt*(foodBase(FOODS[i])/foodBase(want));
     }
     const f=FOODS[i];
+    const isStarch=REF_STARCH.includes(f[0]);
     rows.push({mi,i,f,base:amt,
-      anchor:REF_ANCHOR_CATS.includes(f[4]),starch:REF_STARCH.includes(name)});
+      anchor:REF_ANCHOR_CATS.includes(f[4]),starch:isStarch,
+      fat:!isStarch&&REF_FATS.includes(f[0])});
   }));
   const at=(r,mul)=>foodAt(r.f,r.base*mul);
   const sum=(sel,fn)=>rows.filter(sel).reduce((a,r)=>a+fn(r),0);
@@ -11817,21 +11877,78 @@ function scaleDay(day,targetP,targetK){
   const anchorK=sum(r=>r.anchor,r=>at(r,1).kExact);
   const starchP=sum(r=>r.starch,r=>at(r,1).pExact);
   const starchK=sum(r=>r.starch,r=>at(r,1).kExact);
-  const restP=sum(r=>!r.anchor&&!r.starch,r=>at(r,1).pExact);
-  const restK=sum(r=>!r.anchor&&!r.starch,r=>at(r,1).kExact);
+  const fatP=sum(r=>r.fat,r=>at(r,1).pExact);
+  const fatK=sum(r=>r.fat,r=>at(r,1).kExact);
+  const restP=sum(r=>!r.anchor&&!r.starch&&!r.fat,r=>at(r,1).pExact);
+  const restK=sum(r=>!r.anchor&&!r.starch&&!r.fat,r=>at(r,1).kExact);
   /* The clamps are the point, not a guard. Left open, closing a calorie gap on
      starch alone put 700 g of potato in one sitting — arithmetically correct
      and not something anyone eats. Protein is allowed to move further than the
      starch because a 40 g anchor going to 60 g is still a normal plate. When
      the clamp binds, the day lands off target and renderRef() says so rather
      than pretending. */
-  let sp=1,ss=1;
+  let sp=1,ss=1,sf=1;
   for(let n=0;n<8;n++){
-    sp=anchorP>0?clamp((targetP-starchP*ss-restP)/anchorP,0.5,1.9):1;
-    const kcal=anchorK*sp+starchK*ss+restK;
-    ss=starchK>0?clamp(ss+(targetK-kcal)/starchK,0.5,1.6):1;
+    sp=anchorP>0?clamp((targetP-starchP*ss-fatP*sf-restP)/anchorP,0.5,1.9):1;
+    const kcal=anchorK*sp+starchK*ss+fatK*sf+restK;
+    ss=starchK>0?clamp(ss+(targetK-kcal)/starchK,0.5,REF_STARCH_MAX):1;
+    /* Fat only opens once starch has run out of travel, and never goes below 1.
+       Both halves matter: without the saturation test a day would start adding
+       oil while it still had cheap starch left, and without the floor of 1 this
+       would become a second, uncoordinated way to shrink a day. */
+    const afterStarch=anchorK*sp+starchK*ss+fatK*sf+restK;
+    sf=(fatK>0&&ss>=REF_STARCH_MAX-1e-9)?clamp(sf+(targetK-afterStarch)/fatK,1,REF_FAT_MAX):1;
   }
-  rows.forEach(r=>{r.amt=roundAmount(r.f,r.base*(r.anchor?sp:(r.starch?ss:1)));});
+  rows.forEach(r=>{r.amt=roundAmount(r.f,r.base*(r.anchor?sp:(r.starch?ss:(r.fat?sf:1))));});
+  /* Top-up, after the dials. Measured against what the day ACTUALLY lands on
+     once amounts are rounded, not against the pre-rounding arithmetic.
+
+     Adding food and re-solving protein pull against each other — a top-up
+     carries protein, so re-solving the anchors to hit the protein target takes
+     calories back out. Two passes settle it; a single pass landed 240 kcal
+     short on the worst day, having just corrected a 17 g protein overshoot. */
+  {
+    const bigMeal=day.meals.reduce((best,m,mi)=>{
+      const k=rows.filter(r=>r.mi===mi).reduce((a,r)=>a+foodAt(r.f,r.amt).kExact,0);
+      return k>best.k?{mi,k}:best;},{mi:0,k:-1}).mi;
+    const dayK=()=>rows.reduce((a,r)=>a+foodAt(r.f,r.amt).kExact,0);
+    let added=0;
+    for(let pass=0;pass<2;pass++){
+      let short=targetK-dayK();
+      for(const name of REF_TOPUP){
+        if(short<=120||added>=REF_TOPUP_ITEMS)break;
+        const i=FOOD_BY_NAME[name];if(i===undefined)continue;
+        const f=FOODS[i];
+        if(!foodOk(f))continue;                        // allergens and diet, same as everything else
+        if(rows.some(r=>r.i===i))continue;             // already on the plate — that is the dials' job
+        const per=foodAt(f,foodBase(f)).kExact;if(!(per>0))continue;
+        const mult=clamp(short/per,0.25,REF_TOPUP_MAX);
+        const amt=roundAmount(f,foodBase(f)*mult);
+        const got=foodAt(f,amt).kExact;if(!(got>0))continue;
+        /* A top-up must never carry more protein than the anchors can dial back
+           out. sp bottoms at 0.5, so once the non-anchor protein alone exceeds
+           targetP - anchorP*0.5 the day is stuck OVER its protein target with no
+           way down — REF_DAYS[13] landed at 154 g against 140 g exactly this
+           way, and the validator caught it. Skip the item rather than take the
+           calories: landing short on calories is disclosed on screen, landing
+           over on protein was not. */
+        const addP=foodAt(f,amt).pExact;
+        const otherPNow=rows.filter(r=>!r.anchor).reduce((a,r)=>a+foodAt(r.f,r.amt).pExact,0);
+        if(otherPNow+addP>targetP-anchorP*0.5)continue;
+        rows.push({mi:bigMeal,i,f,base:foodBase(f),amt,anchor:false,starch:false,fat:false,topup:true});
+        short-=got;added++;
+      }
+      /* A top-up carries protein of its own, so the anchor dial — solved before
+         these rows existed — now overshoots. Re-solve it against what is really
+         on the plate. Fat-first ordering keeps this correction small. */
+      if(added&&anchorP>0){
+        const otherP=rows.filter(r=>!r.anchor).reduce((a,r)=>a+foodAt(r.f,r.amt).pExact,0);
+        const sp2=clamp((targetP-otherP)/anchorP,0.5,1.9);
+        rows.filter(r=>r.anchor).forEach(r=>{r.amt=roundAmount(r.f,r.base*sp2);});
+      }
+      if(!added)break;
+    }
+  }
   const meals=day.meals.map((m,mi)=>{
     const items=rows.filter(r=>r.mi===mi).map(r=>{
       const n=foodAt(r.f,r.amt);
@@ -12465,7 +12582,15 @@ function calorieCheck(){
     if(!(n.tdee>0)||!(n.kcalTarget>0))return null;
     // signed: negative means the plan expects weight to come off
     const expected=(n.kcalTarget-n.tdee)*7/KCAL_PER_KG;
-    if(expected>-0.05)return null;         // no meaningful deficit prescribed — nothing to verify
+    /* A gain plan needs checking exactly as much as a cut. This used to bail on
+       anything that was not a deficit, so an athlete bulking for three months
+       and gaining nothing — or gaining a kilo a week of mostly fat — got no
+       check and no correction at all, which is the very failure this function's
+       own header calls the commonest way a diet app fails somebody. v239 fixed
+       goal DIRECTION in the brief and the weight chart and never reached here.
+       Maintenance stays out: there is no intended rate to measure against. */
+    const gaining=expected>0.05;
+    if(!gaining&&expected>-0.05)return null;   // maintenance — no prescribed rate to verify
     const tr=trendKgPerWeek(56);
     if(!tr)return null;
     const observed=tr.kgPerWeek;
@@ -12478,10 +12603,17 @@ function calorieCheck(){
        three weeks later will nudge again if it is still off. */
     const stepRaw=(expected-observed)*KCAL_PER_KG/7;
     const step=Math.round(clamp(stepRaw,-300,300)/10)*10;
+    /* The same two tests, read through the sign of the plan. On a cut, "stalled"
+       is observed ABOVE expected and "fast" is below; on a bulk both comparisons
+       flip, because expected is positive. Deriving them from the ratio rather
+       than duplicating the branch keeps the two goals from drifting apart —
+       a ratio below 0.4 is under-delivering either way, above 1.75 is
+       over-delivering either way. */
+    const ratio=expected!==0?observed/expected:0;
     let verdict='ontrack';
-    if(observed>expected*0.4)verdict='stalled';        // losing far less than promised (or gaining)
-    else if(observed<expected*1.75)verdict='fast';     // coming off faster than is useful
-    return {expected,observed,verdict,step,trend:tr,
+    if(ratio<0.4)verdict='stalled';        // moving far less than promised (or the wrong way)
+    else if(ratio>1.75)verdict='fast';     // moving faster than is useful
+    return {expected,observed,verdict,step,trend:tr,gaining,
       adj:(typeof n.kcalAdj==='number')?n.kcalAdj:0,
       target:n.kcalTarget};
   }catch(e){return null;}
@@ -12521,25 +12653,39 @@ function calorieCheckHTML(){
   if(!calorieCheckDue()){
     return `<div class="tiny muted" style="margin-top:8px">Tracking your weight against the target — next check in a few weeks.</div>`;
   }
+  /* Both verdicts now have to speak for two goals, because calorieCheck() no
+     longer bails on a bulk. The label always names the number the setter would
+     really produce (kcalTargetPreview), and the safety floor only exists on the
+     way down — a bulk that needs MORE food is never blocked by it. */
+  const pv=kcalTargetPreview(c.step);
+  const wouldMove=pv&&pv.target!==c.target;
+  const cutting=c.step<0;
+  const buttons=label=>`<div class="btnrow" style="margin-top:10px"><button class="btn sm primary" onclick="applyKcalAdj(${c.step})">${label} ${pv?pv.target:c.target+c.step} kcal</button><button class="btn sm ghost" onclick="dismissKcalCheck()">Leave it</button></div>`;
+  const flooredNote=`<div class="note info" style="margin:10px 0 0"><b>Your target is already at the safe floor.</b> Cutting further is not something this app will prescribe. Move more instead — steps, an extra session, a longer warm-up — or check your logging before eating less.
+     <div class="btnrow" style="margin-top:8px"><button class="btn sm ghost" onclick="dismissKcalCheck()">Got it</button></div></div>`;
+  const offer=wouldMove?buttons(cutting?'Drop to':'Raise to'):(cutting?flooredNote:buttons('Raise to'));
+  const trendLine=`Over ${c.trend.days} days you have gone ${shown(c.trend.from)} → ${shown(c.trend.to)} ${wu} — about <b>${kg(c.observed)} a week</b>, where ${c.target} kcal should give <b>${kg(c.expected)}</b>.`;
+  const estimateNote=`<div class="tiny muted" style="margin-top:8px">The calculator estimates your maintenance from height, weight, age and an activity guess. It is commonly a few hundred calories out either way. Your scale is the better instrument, so use it.</div>`;
   if(c.verdict==='stalled'){
-    const gaining=c.observed>0;
-    /* Ask the setter what it would actually produce. An athlete already on the
-       safety floor cannot be cut further, and offering it anyway was a button
-       that did nothing and then silenced the check for three weeks. */
-    const pv=kcalTargetPreview(c.step);
-    const wouldMove=pv&&pv.target!==c.target;
-    const offer=wouldMove
-      ? `<div class="btnrow" style="margin-top:10px"><button class="btn sm primary" onclick="applyKcalAdj(${c.step})">Drop to ${pv.target} kcal</button><button class="btn sm ghost" onclick="dismissKcalCheck()">Leave it</button></div>`
-      : `<div class="note info" style="margin:10px 0 0"><b>Your target is already at the safe floor.</b> Cutting further is not something this app will prescribe. Move more instead — steps, an extra session, a longer warm-up — or check your logging before eating less.
-         <div class="btnrow" style="margin-top:8px"><button class="btn sm ghost" onclick="dismissKcalCheck()">Got it</button></div></div>`;
-    return `<div class="note warn"><b>${gaining?'The scale is going up.':'The scale is barely moving.'}</b> Over ${c.trend.days} days you have gone ${shown(c.trend.from)} → ${shown(c.trend.to)} ${wu} — about <b>${kg(c.observed)} a week</b>, where ${c.target} kcal should give <b>${kg(c.expected)}</b>.
-      <div class="tiny muted" style="margin-top:8px">The calculator estimates your maintenance from height, weight, age and an activity guess. It is commonly a few hundred calories out either way. Your scale is the better instrument, so use it.</div>
+    if(c.gaining){
+      return `<div class="note warn"><b>You are not gaining.</b> ${trendLine}
+        ${estimateNote}
+        ${offer}
+        <div class="tiny muted" style="margin-top:8px">Worth ruling out first: appetite dropping off on training days, and meals going unlogged. Building muscle is slow — about 0.25 kg a week is a good rate, and faster than that is mostly fat.</div></div>`;
+    }
+    return `<div class="note warn"><b>${c.observed>0?'The scale is going up.':'The scale is barely moving.'}</b> ${trendLine}
+      ${estimateNote}
       ${offer}
       <div class="tiny muted" style="margin-top:8px">Worth ruling out first: weekends that undo the week, cooking oil and drinks going unlogged, and a new training block holding water. If you have not been logging honestly, fix that before cutting further.</div></div>`;
   }
+  if(c.gaining){
+    return `<div class="note warn"><b>That is going on faster than it should.</b> ${c.trend.days} days at about <b>${kg(c.observed)} a week</b>, against a planned ${kg(c.expected)}. Past roughly 0.25 kg a week the extra is mostly fat, and you have to cut it off again later.
+      ${offer}</div>`;
+  }
   return `<div class="note warn"><b>That is coming off faster than it should.</b> ${c.trend.days} days at about <b>${kg(c.observed)} a week</b>, against a planned ${kg(c.expected)}. Fast loss costs muscle and is the pace people quit at.
-    <div class="btnrow" style="margin-top:10px"><button class="btn sm primary" onclick="applyKcalAdj(${c.step})">Raise to ${c.target+c.step} kcal</button><button class="btn sm ghost" onclick="dismissKcalCheck()">Leave it</button></div></div>`;
+    ${offer}</div>`;
 }
+
 function openTDEE(){
   const n=nut();const imp=STATE.profile.unit==='in';
   openSheet(`
@@ -14100,7 +14246,21 @@ function validateData(){
     }));
     if(d.meals.length<3)errs.push(tag+': fewer than three eating occasions');
     // the day must land on whatever target it is scaled to, or the amounts lie
-    [[150,2170],[190,2600],[120,1700]].forEach(([tp,tk])=>{
+    /* The fourth bar sits ABOVE the old ~2,800 kcal ceiling on purpose. Every
+       documented bar was calibrated exactly at where the starch dial ran out,
+       so an ordinary very-active athlete on a gain goal missed the calorie bar
+       on 28 days out of 28 and nothing anywhere objected. A bar that only ever
+       probes inside the reachable range cannot notice the range shrinking.
+
+       2,900 and not 3,200, because validateData() runs whenever it is called —
+       including while a suite has a restrictive diet set — so this bar has to
+       clear AFTER substitution. Measured at 140 g protein: omnivore now reaches 3,300 (it was 2,420), halal
+       3,300, pescatarian-minus-dairy 3,280, vegan 3,020, and the worst real
+       combination — vegan with a tree-nut allergy — 2,860. So this bar sits at
+       2,800;
+       suite 06 carries the omnivore-only 3,200 bar, the same way the three
+       existing bars are already split across three places. */
+    [[150,2170],[190,2600],[120,1700],[140,2800]].forEach(([tp,tk])=>{
       const sc=scaleDay(d,tp,tk);
       if(Math.abs(sc.p-tp)>12)errs.push(tag+': scales to '+sc.p+' g against a '+tp+' g target');
       if(Math.abs(sc.kcal-tk)>150)errs.push(tag+': scales to '+sc.kcal+' kcal against a '+tk+' kcal target');
