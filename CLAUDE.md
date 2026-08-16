@@ -4037,6 +4037,32 @@ still hands `"east us"` to Azure.
 
 Eight mutants seeded, eight caught.
 
+**Instructions for a job already done are clutter (v273).** The six setup steps
+rendered unconditionally, filling the screen for an athlete whose key was
+already saved and working — the same complaint that drove the Today-tab split
+in v246, on a smaller surface. They now collapse behind a `<details>` once a
+key exists and stay open when there is none. **ONE copy of the text either
+way**: a saved-vs-unsaved pair of blocks would be two places for the same six
+steps to drift, so the `open` attribute is the only difference between them.
+Folded, never deleted — a key can be removed, and the steps have to come back
+for whoever needs them next.
+
+**A source scan cannot tell "collapsed" from "deleted", so the check reads the
+rendered `<details>` and its `open` property.** Three mutants prove all three
+states are distinguished: always-open, never-open, and removed-entirely each
+fail different assertions, and the last one fails the "still there to open"
+check that exists precisely because deleting them would look like a fix.
+
+**A backtick inside an HTML comment ends the template literal it sits in.**
+The first draft of that comment wrote the attribute name as `` `open` `` in
+prose, which closed the surrounding template string and produced
+`Unexpected identifier 'open'` from `npm run check` — a parse error whose
+message points at the attribute rather than at the comment. Same family as
+this file's own `sw.js` note about an apostrophe in a comment corrupting a
+test's naive parser: **prose inside a code literal is still inside the code
+literal.** The comment now says so explicitly, since the next person to edit
+that block will not otherwise know.
+
 ## Nine controls had no name a screen reader could read (v269)
 
 Found in the pre-release sweep, not by a suite: six sliders, two dropdowns, two

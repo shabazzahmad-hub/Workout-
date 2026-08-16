@@ -718,6 +718,42 @@ export default async function run() {
     t.eq('normalizeState repairs a stored region', r.after, 'eastus', r);
   }
 
+  /* ---- the setup steps get out of the way once the key is saved ---------
+     Read the RENDERED <details>, not the source. A source scan cannot tell
+     "collapsed" from "deleted", and deleting them would be the wrong fix — a
+     key can be removed, and the steps have to come back. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = { on: STATE.settings.neuralOn, key: STATE.settings.azureKey, tab: TAB };
+      const read = () => {
+        renderGuide();
+        const v = document.querySelector('#v-guide');
+        const els = [...v.querySelectorAll('details')]
+          .filter(d => /portal\.azure\.com/.test(d.innerHTML));
+        return {
+          found: els.length,
+          open: els.length === 1 ? !!els[0].open : null,
+          hasSteps: els.length === 1 && /Keys and Endpoint/.test(els[0].innerHTML),
+        };
+      };
+      STATE.settings.neuralOn = true;
+      STATE.settings.azureKey = '';
+      const noKey = read();
+      STATE.settings.azureKey = 'a-saved-key';
+      const saved = read();
+      STATE.settings.neuralOn = keep.on; STATE.settings.azureKey = keep.key;
+      go(keep.tab);
+      return { noKey, saved };
+    });
+    t.eq('guard: the setup steps render exactly once with no key', r.noKey.found, 1, r);
+    t.eq('guard: and exactly once with a key too', r.saved.found, 1, r);
+    t.ok('with no key the steps are open where they are needed', r.noKey.open === true, r);
+    t.ok('once a key is saved they fold away', r.saved.open === false, r);
+    /* Folded, not gone — a key can be removed and the steps have to be there
+       for the next person who needs them. */
+    t.ok('and they are still there to open', r.saved.hasSteps, r);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
