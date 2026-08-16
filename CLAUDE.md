@@ -3957,6 +3957,86 @@ be a restatement of the table and would break on any deliberate re-voicing. The
 neural path is untouched — that is real synthesis, and its semitone shifts do
 not have this failure mode.
 
+## Setting up the neural voice: the third call this sandbox cannot reach (v272)
+
+Asked to set up the neural voice. The path was already fully built — 38
+`COACH_NEURAL` entries, SDK loading, SSML, caching, device fallback — and all
+nine coaches reported as robotic have a real neural voice with genuine depth,
+which is exactly the point: **neural is real synthesis, so the semitone shifts
+there do not have the resampling failure mode the local pitch band spent v269
+through v271 fighting.** What was missing was not the feature. It was
+everything that makes a feature the athlete cannot debug from the outside
+actually settable.
+
+**Azure is the third external integration this sandbox structurally cannot
+verify, and that was measured rather than assumed.** Both `aka.ms` (the voice
+engine CDN) and `<region>.tts.speech.microsoft.com` return `CONNECT tunnel
+failed, 403` through the agent proxy — alongside the already-documented Gemini
+403 and Open Food Facts connection refused. So this is the same position the
+food import was in for six rounds: the athlete's phone is the only place it can
+ever be measured, and the honest response is instrumentation, not another
+careful guess.
+
+**`testNeural()` answers one question — did a cue come out — and every way it
+can fail collapses into one line.** `runNeuralDiagnostic()` is three stages,
+smallest first, and **the staging IS the diagnosis**:
+
+1. **Load the voice engine.** Nothing has been sent to Microsoft yet, so a
+   failure here is the connection or a blocked CDN — provably not the key and
+   not the region. Work and school wifi blocks this CDN, which is a real and
+   otherwise invisible cause.
+2. **Speak one word with the PLAIN default voice**, no style and no pitch. The
+   narrowest thing that still needs the key and the region, so a failure here
+   is one of those two and nothing else.
+3. **Speak with the current coach's real config** — voice name, express-as
+   style, pitch shift. Passing 2 and failing 3 produces the one verdict the old
+   single-shot button could never reach: *your credentials are fine, this is our
+   bug*, which is the difference between an athlete re-typing a key for an hour
+   and reporting a defect.
+
+**Merging any two stages destroys the whole point, so a check guards exactly
+that.** Stage 2 is only diagnostic BECAUSE it is plain — the mutant that hands
+it the coach's `cfg` (the natural "simplification") is caught by asserting the
+stage-2 SSML contains no `prosody` and no `express-as`. Each of the other
+verdicts has its own check requiring it to name its own cause AND not the
+others': the blocked-CDN case must say "not your key", the 401 case must say
+the key was rejected, the 1006 case must point at the region and must *not*
+claim the key was rejected.
+
+**The region field had a real defect, and the test scenario I first wrote for
+it was wrong in a way that exposed a second one.** The Azure portal shows the
+Location as **"East US"**, and `.trim().toLowerCase()` — what `setAzureRegion()`
+did — leaves the interior space. `"east us"` is not a region; its only symptom
+is an opaque WebSocket failure from deep inside the SDK, naming nothing. An
+Azure region id IS the display name lowercased with spaces removed, so
+`_azRegionNorm()` stripping ALL whitespace is a deterministic transform, not a
+guess. `AZ_SPEECH_REGIONS` warns on an unrecognised value but **never blocks** —
+Microsoft adds regions, and refusing a real new one would break the app for
+whoever is in it.
+
+Then the check written as "an unrecognised region is called out" using
+`'east us'` **failed, correctly**: the diagnostic normalises first, so the
+portal spelling resolves to a real region and must run clean or the warning
+cries wolf at the single commonest way that field gets filled in. Fixing the
+scenario to a genuinely invented region surfaced the real gap underneath —
+**`_sdkSynthesize()` reads `STATE.settings.azureRegion` directly with only
+`.trim()`, so a legacy stored `"east us"` still fails to speak.** Repairing the
+write path alone leaves every existing install broken. The fix normalises at
+the read site (where the value is actually spent, so it cannot be forgotten by
+a caller added later) **and** repairs it in `normalizeState()` so the junk stops
+travelling in backups. Two separate mutants prove both halves are load-bearing:
+reverting the read site fails only the "a legacy value still reaches Azure as a
+real region" check, and deleting the `normalizeState()` repair fails only its
+own.
+
+**That legacy check reads the region handed to the SDK, not the one held in
+`STATE`** — measuring the payload rather than the container, the same rule this
+file already states for the SSML `pitch` attribute and the audio-graph gain.
+Asserting on `STATE.settings.azureRegion` would have passed on the version that
+still hands `"east us"` to Azure.
+
+Eight mutants seeded, eight caught.
+
 ## Nine controls had no name a screen reader could read (v269)
 
 Found in the pre-release sweep, not by a suite: six sliders, two dropdowns, two

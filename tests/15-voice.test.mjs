@@ -548,6 +548,176 @@ export default async function run() {
       r.deepestStillDeeper, r);
   }
 
+  /* ---- the region field, and the space that breaks it ------------------- */
+  {
+    const r = await page.evaluate(() => {
+      const keep = STATE.settings.azureRegion;
+      const out = {};
+      /* The Azure portal shows "East US". `.trim().toLowerCase()` — what this
+         used to do — leaves the interior space, and "east us" is not a region:
+         it fails as an opaque WebSocket error with nothing naming the cause. */
+      setAzureRegion('East US'); out.portalStyle = STATE.settings.azureRegion;
+      setAzureRegion('  westeurope  '); out.padded = STATE.settings.azureRegion;
+      setAzureRegion(''); out.emptyFallsBack = STATE.settings.azureRegion;
+      out.knownReal = azRegionKnown('eastus');
+      out.knownPortalStyle = azRegionKnown('East US');
+      out.knownJunk = azRegionKnown('nowhereland');
+      // guard: the set is a real list, not an empty one that answers no to all
+      out.setSize = AZ_SPEECH_REGIONS.size;
+      STATE.settings.azureRegion = keep;
+      return out;
+    });
+    t.ok('guard: the region list is really populated', r.setSize > 20, r);
+    t.eq('a region copied from the portal keeps its space out', r.portalStyle, 'eastus', r);
+    t.eq('surrounding padding is still stripped', r.padded, 'westeurope', r);
+    t.eq('an empty region falls back rather than sticking', r.emptyFallsBack, 'eastus', r);
+    t.ok('a real region is recognised', r.knownReal, r);
+    t.ok('and recognised through the portal spelling too', r.knownPortalStyle, r);
+    t.ok('an invented region is not', r.knownJunk === false, r);
+  }
+
+  /* ---- the diagnostic's three stages each blame the right thing ---------
+     The value here is entirely in the SEPARATION. A single test button cannot
+     tell a blocked CDN from a bad key from a bad voice name, and this sandbox
+     cannot reach Azure at all, so the staging is the only diagnosis there is.
+     Each block forces exactly one stage to fail and requires the verdict to
+     name that stage's cause and NOT the others'. */
+  const runDiag = (page, opts) => page.evaluate(async o => {
+    const keep = {
+      on: STATE.settings.neuralOn, key: STATE.settings.azureKey,
+      region: STATE.settings.azureRegion,
+      load: window.loadSpeechSDK, synth: window._sdkSynthesize,
+      play: window._neuralPlay, online: navigator.onLine,
+    };
+    STATE.settings.neuralOn = true;
+    STATE.settings.azureKey = 'test-key';
+    STATE.settings.azureRegion = o.region || 'eastus';
+    const seen = [];
+    window._neuralPlay = () => {};
+    try {
+      Object.defineProperty(navigator, 'onLine', { value: !o.offline, configurable: true });
+    } catch (e) {}
+    window.loadSpeechSDK = () => o.sdkFails
+      ? Promise.reject(new Error('SDK load failed'))
+      : Promise.resolve({});
+    window._sdkSynthesize = (ssml, cfg) => {
+      seen.push({ ssml, v: cfg && cfg.v, style: cfg && cfg.style });
+      const n = seen.length;
+      if (o.failStage === n) return Promise.reject(new Error(o.failMsg || 'boom'));
+      return Promise.resolve(new ArrayBuffer(2048));
+    };
+    try { await runNeuralDiagnostic(); } catch (e) {}
+    const el = document.querySelector('#nDiagOut');
+    const html = el ? el.innerHTML : '';
+    const text = el ? el.innerText : '';
+    STATE.settings.neuralOn = keep.on; STATE.settings.azureKey = keep.key;
+    STATE.settings.azureRegion = keep.region;
+    window.loadSpeechSDK = keep.load; window._sdkSynthesize = keep.synth;
+    window._neuralPlay = keep.play;
+    try { Object.defineProperty(navigator, 'onLine', { value: keep.online, configurable: true }); } catch (e) {}
+    try { closeSheet(); } catch (e) {}
+    return { html, text, seen, calls: seen.length };
+  }, opts);
+
+  {
+    const r = await runDiag(page, {});
+    t.ok('guard: a clean run really reached all three stages', r.calls === 2, r.seen);
+    t.ok('a working setup says so', /working/i.test(r.text), r.text.slice(0, 200));
+    /* Stage 2 is only diagnostic BECAUSE it is plain. If it carried the coach's
+       style or pitch, a failure there would no longer isolate key/region — the
+       exact merge that would quietly destroy the whole point of staging. */
+    t.ok('the key/region stage speaks with no style and no pitch',
+      !!r.seen[0] && !r.seen[0].style && !/prosody|express-as/.test(r.seen[0].ssml), r.seen[0]);
+    t.ok('and the coach stage does carry the coach\'s own voice',
+      !!r.seen[1] && !!r.seen[1].v, r.seen[1]);
+  }
+  {
+    const r = await runDiag(page, { sdkFails: true });
+    t.ok('a blocked voice engine is blamed on the connection',
+      /connection|network/i.test(r.text), r.text.slice(0, 240));
+    t.ok('and explicitly NOT on the key or the region',
+      /not your key|not the key/i.test(r.text), r.text.slice(0, 240));
+    t.eq('nothing is sent to Microsoft when the engine never loaded', r.calls, 0, r.seen);
+  }
+  {
+    const r = await runDiag(page, { failStage: 1, failMsg: '401 Unauthorized' });
+    t.ok('a rejected key is named as the key', /key was rejected/i.test(r.text), r.text.slice(0, 240));
+    t.eq('and the coach stage is never reached', r.calls, 1, r.seen);
+  }
+  {
+    const r = await runDiag(page, { failStage: 1, failMsg: '1006 websocket closed' });
+    t.ok('a refused connection points at the region', /region/i.test(r.text), r.text.slice(0, 240));
+    t.ok('and does not claim the key was rejected',
+      !/key was rejected/i.test(r.text), r.text.slice(0, 240));
+  }
+  {
+    /* The one verdict the old single-shot test could never produce: the
+       athlete's credentials are provably fine and the fault is ours. */
+    const r = await runDiag(page, { failStage: 2, failMsg: 'bad voice name' });
+    t.eq('the coach stage really was the one that failed', r.calls, 2, r.seen);
+    t.ok('a bad coach voice clears the key and region by name',
+      /key and region are/i.test(r.text) && /fine/i.test(r.text), r.text.slice(0, 260));
+    t.ok('and says it is an app bug rather than something to re-type',
+      /app bug/i.test(r.text), r.text.slice(0, 260));
+  }
+  {
+    const r = await runDiag(page, { offline: true });
+    t.ok('offline is answered without touching the network', /offline/i.test(r.text), r.text.slice(0, 200));
+    t.eq('and nothing is sent', r.calls, 0, r.seen);
+  }
+  {
+    const r = await runDiag(page, { region: 'atlantisnorth' });
+    t.ok('an unrecognised region is called out before anything is tried',
+      /not one I recognise/i.test(r.text), r.text.slice(0, 240));
+  }
+  {
+    /* The portal spelling is NOT the unrecognised case — it normalises to a
+       real region and must run clean, or the warning would cry wolf at the
+       single most common way this field gets filled in. */
+    const r = await runDiag(page, { region: 'East US' });
+    t.ok('the portal spelling is not treated as unknown',
+      !/not one I recognise/i.test(r.text), r.text.slice(0, 240));
+    t.ok('and still reaches a working verdict', /working/i.test(r.text), r.text.slice(0, 240));
+  }
+
+  /* ---- a region stored before the fix must still SPEAK -------------------
+     Repairing the write path alone leaves every existing install broken, so
+     the value has to be normalised where it is actually spent. This reads the
+     region handed to the SDK rather than the one held in STATE — measuring the
+     payload, not the container. */
+  {
+    const r = await page.evaluate(async () => {
+      const keep = { region: STATE.settings.azureRegion, key: STATE.settings.azureKey, load: window.loadSpeechSDK };
+      STATE.settings.azureKey = 'test-key';
+      STATE.settings.azureRegion = 'east us';        // a legacy stored value
+      let handed = null;
+      window.loadSpeechSDK = () => Promise.resolve({
+        SpeechConfig: { fromSubscription: (k, reg) => { handed = reg; return {}; } },
+        SpeechSynthesisOutputFormat: { Audio24Khz48KBitRateMonoMp3: 1 },
+        SpeechSynthesizer: function () { this.speakSsmlAsync = (s, ok) => ok({ reason: 1, audioData: null }); this.close = () => {}; },
+        ResultReason: { SynthesizingAudioCompleted: 99 },
+      });
+      try { await _sdkSynthesize('<speak/>', { v: 'x' }, 2000); } catch (e) {}
+      STATE.settings.azureRegion = keep.region; STATE.settings.azureKey = keep.key;
+      window.loadSpeechSDK = keep.load;
+      return { handed };
+    });
+    t.eq('a legacy "east us" still reaches Azure as a real region', r.handed, 'eastus', r);
+  }
+
+  /* ---- and normalizeState cleans it out of STATE, so backups stay clean -- */
+  {
+    const r = await page.evaluate(() => {
+      const keep = STATE.settings.azureRegion;
+      STATE.settings.azureRegion = 'East US';
+      normalizeState();
+      const after = STATE.settings.azureRegion;
+      STATE.settings.azureRegion = keep;
+      return { after };
+    });
+    t.eq('normalizeState repairs a stored region', r.after, 'eastus', r);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
