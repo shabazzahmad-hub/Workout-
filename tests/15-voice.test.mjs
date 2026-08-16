@@ -459,6 +459,55 @@ export default async function run() {
     t.ok('both are actually wired to their parameter, not ignored', !!v.sdk && !!v.synth, v);
   }
 
+  /* ---- the default tone must not land any coach in the artifact zone ------
+     Reported from a real device: at the old Mid base the eight deepest coaches
+     all read as ROBOTIC, and switching to Bright fixed every one of them. That
+     A/B is the diagnosis — a device's Web Speech voice is pitch-SHIFTED, not
+     resynthesised, so shifting far down produces artifacts before it produces
+     depth.
+
+     Mid is the DEFAULT, so Mid is what the app is judged on. The check pins the
+     floor there rather than pinning individual numbers, which would just be a
+     restatement of the table and would break on every deliberate re-voicing. */
+  {
+    const r = await page.evaluate(() => {
+      const keepTone = STATE.settings.voiceTone, keepPitch = STATE.settings.voicePitch;
+      delete STATE.settings.voicePitch;              // no manual override in play
+      const at = tone => { STATE.settings.voiceTone = tone;
+        return COACHES.map(c => ({ id: c.id, name: c.name, p: localPitchFor(c) })); };
+      const mid = at('mid'), deep = at('deep'), bright = at('bright');
+      STATE.settings.voiceTone = keepTone;
+      if (keepPitch !== undefined) STATE.settings.voicePitch = keepPitch;
+      const byId = arr => Object.fromEntries(arr.map(x => [x.id, x.p]));
+      const M = byId(mid), D = byId(deep), B = byId(bright);
+      return {
+        count: mid.length,
+        // robot is exempt by design — sounding synthetic IS its character
+        lowestNonRobot: Math.min(...mid.filter(x => x.id !== 'robot').map(x => x.p)),
+        offenders: mid.filter(x => x.id !== 'robot' && x.p < 1.0).map(x => x.name),
+        robotMid: M.robot,
+        robotIsLowest: M.robot <= Math.min(...mid.filter(x => x.id !== 'robot').map(x => x.p)),
+        // the eight the athlete actually reported
+        reported: ['mastersgt','iron','relentless','strongman','viking','commando','spartan','britmajor']
+          .map(k => ({ k, p: M[k] })),
+        // tone still does something, in the right direction, for every coach
+        toneOrderHolds: mid.every(x => D[x.id] < M[x.id] && M[x.id] < B[x.id]),
+        // character ordering survives: a deeper-authored coach still sounds deeper
+        deepestStillDeeper: M.mastersgt < M.dance && M.iron < M.cheer,
+      };
+    });
+    t.ok('guard: the whole cast was measured', r.count > 30, r);
+    t.eq('no coach but the A.I. Trainer sits in the artifact zone at the default tone',
+      r.offenders.length, 0, r.offenders);
+    t.ok('the lowest non-robot coach clears natural pitch', r.lowestNonRobot >= 1.0, r);
+    r.reported.forEach(x =>
+      t.ok(`[${x.k}] the coach reported as robotic now clears it`, x.p >= 1.0, x));
+    t.ok('the A.I. Trainer keeps its synthetic character — still the lowest', r.robotIsLowest, r);
+    t.ok('Deep < Mid < Bright still holds for every coach', r.toneOrderHolds, r);
+    t.ok('and a deeper-authored coach still reads deeper than a bright one',
+      r.deepestStillDeeper, r);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

@@ -1716,7 +1716,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='268';
+const APP_VERSION='269';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -6567,10 +6567,24 @@ function testNeural(){
    whole set sits. The persona's own pitch is kept as a character offset from
    the old 0.6 baseline, halved so it colours the voice without dragging it
    back into the artifact zone. */
+/* These bases were tuned by ear against desktop voices and were too low for a
+   real phone. Confirmed on an athlete's own device: at the old Mid base the
+   deepest third of the cast — Master Sergeant, Iron Temple, Strongman, Viking
+   Jarl, Spartan Warrior, Legion Commando, The Relentless, Sergeant Major — all
+   read as ROBOTIC, and switching to Bright fixed every one of them. That is a
+   pitch problem, not a voice-selection problem, and it is the diagnosis the
+   athlete's own A/B produced rather than one inferred from the numbers.
+
+   A device's Web Speech voice is pitch-SHIFTED, not resynthesised, so shifting
+   it far down produces artifacts before it produces depth. Mid is the default,
+   so Mid is what most people judge the app on: it now sits clear of that zone.
+   Depth of character comes from the voice HINT, the rate and the script — not
+   from dragging the shifter down until it buzzes. The neural path is unaffected;
+   that is real synthesis, and its semitone shifts are untouched. */
 const VOICE_TONES=[
-  ['deep','Deep','Lowest the voices go without buzzing',0.74,-2],
-  ['mid','Mid','Natural range — most voices sound best here',0.98,0],
-  ['bright','Bright','Lighter and clearer, cuts through noise',1.18,2],
+  ['deep','Deep','As low as it goes — on some phones the deepest coaches buzz',0.88,-2],
+  ['mid','Mid','Natural range — most voices sound best here',1.08,0],
+  ['bright','Bright','Lighter and clearer, cuts through noise',1.24,2],
 ];
 function voiceToneKey(){
   const k=STATE.settings&&STATE.settings.voiceTone;
@@ -6594,7 +6608,10 @@ function localPitchFor(p){
       return clamp(STATE.settings.voicePitch,0.3,1.6);       // explicit fine-tune wins
     const base=voiceTone()[3];
     const own=(p&&typeof p.pitch==='number'&&isFinite(p.pitch))?p.pitch:0.6;
-    return clamp(base+(own-0.6)*0.5,0.5,1.6);
+    /* 0.35, not 0.5. The persona offset is character, not a second tone dial —
+       at 0.5 the deepest coaches dragged themselves back down into the artifact
+       zone the base was just raised out of. Tighter spread, same ordering. */
+    return clamp(base+(own-0.6)*0.35,0.5,1.6);
   }catch(e){return 0.98;}
 }
 /* The same shift for the neural path, in semitones, so switching engines does
@@ -7820,8 +7837,8 @@ function photosHTML(){
      photo library) and allows `multiple`, because the natural way to catch up
      is to add front, side and back for a pose in one go. */
   h+=`</div>
-    <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" onchange="onPhotoPicked(event)">
-    <input type="file" id="photoPickInput" accept="image/*" multiple style="display:none" onchange="onPhotoPicked(event)">`;
+    <input type="file" id="photoInput" aria-label="Take a progress photo with the camera" accept="image/*" capture="environment" style="display:none" onchange="onPhotoPicked(event)">
+    <input type="file" id="photoPickInput" aria-label="Choose progress photos from your library" accept="image/*" multiple style="display:none" onchange="onPhotoPicked(event)">`;
   return h;
 }
 function capturePhoto(pose){_pendingPose=pose;const inp=$('#photoInput');if(inp){inp.value='';inp.click();}}
@@ -13193,15 +13210,15 @@ function renderGuide(){
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Voice coach <span class="tiny muted">· deep</span></span><button class="chip ${STATE.settings.voice!==false?'on':''}" onclick="toggleSetting('voice')">${STATE.settings.voice!==false?'On':'Off'}</button></div>
     <div style="padding:4px 0 2px">
       <div class="row" style="justify-content:space-between"><span class="tiny muted">Beep &amp; countdown volume</span><span class="tiny muted" id="cvLbl">${Math.round(cueVolPref()*100/1.25)}%</span></div>
-      <input type="range" min="0.2" max="2" step="0.05" value="${cueVolPref()}" oninput="$('#cvLbl').textContent=Math.round(this.value*100/1.25)+'%'" onchange="setCueVol(this.value);beep(920,.17,0.92)" style="width:100%">
+      <input type="range" aria-label="Beep and countdown volume" min="0.2" max="2" step="0.05" value="${cueVolPref()}" oninput="$('#cvLbl').textContent=Math.round(this.value*100/1.25)+'%'" onchange="setCueVol(this.value);beep(920,.17,0.92)" style="width:100%">
       <div class="tiny muted" style="margin-bottom:4px">Plays a sample as you let go. The beat ducks under the cues that matter, so these stay audible over the music.</div>
     </div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Workout beat <span class="tiny muted">· hip-hop, auto-ducks for the coach</span></span><button class="chip ${STATE.settings.beat!==false?'on':''}" onclick="toggleSetting('beat')">${STATE.settings.beat!==false?'On':'Off'}</button></div>
     ${STATE.settings.beat!==false?`<div style="padding:4px 0 2px">
       <div class="row" style="justify-content:space-between"><span class="tiny muted">Beat volume</span><span class="tiny muted" id="bvLbl">${Math.round(beatVolPref()*100)}%</span></div>
-      <input type="range" min="0.1" max="1" step="0.05" value="${beatVolPref()}" oninput="$('#bvLbl').textContent=Math.round(this.value*100)+'%'" onchange="setBeatVol(this.value)" style="width:100%">
+      <input type="range" aria-label="Beat volume" min="0.1" max="1" step="0.05" value="${beatVolPref()}" oninput="$('#bvLbl').textContent=Math.round(this.value*100)+'%'" onchange="setBeatVol(this.value)" style="width:100%">
       <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">Beat tempo</span><span class="tiny muted" id="beatTempoLbl">${beatTempoPref()} BPM</span></div>
-      <input type="range" min="60" max="110" step="2" value="${beatTempoPref()}" oninput="$('#beatTempoLbl').textContent=this.value+' BPM'" onchange="setBeatTempo(this.value)" style="width:100%">
+      <input type="range" aria-label="Beat tempo in beats per minute" min="60" max="110" step="2" value="${beatTempoPref()}" oninput="$('#beatTempoLbl').textContent=this.value+' BPM'" onchange="setBeatTempo(this.value)" style="width:100%">
       <div class="btnrow" style="gap:6px;margin-top:6px">${[[70,'😌 Chill 70'],[78,'🎧 Classic 78'],[92,'🔥 Hype 92']].map(([bpm,label])=>
         `<button class="chip ${beatTempoPref()===bpm?'on':''}" onclick="setBeatTempo(${bpm})">${label}</button>`).join('')}</div>
       <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">The beat plays during timers, guided reps, warm-up &amp; cool-down.</span><button class="chip" onclick="beatPreview()">▶ Preview</button></div>
@@ -13210,13 +13227,13 @@ function renderGuide(){
     <div style="padding:6px 0 2px"><div class="tiny muted" style="margin-bottom:6px">Work around an injury <span style="opacity:.7">· auto-swaps risky moves</span></div>
       <div style="display:flex;flex-wrap:wrap;gap:6px">${JOINTS.map(([k,l])=>`<button class="chip ${((STATE.profile.limitations||[]).includes(k))?'on':''}" onclick="toggleLimitation('${k}')">${l}</button>`).join('')}</div></div>
     <div style="padding:6px 0 2px"><div class="row" style="justify-content:space-between;margin-bottom:6px"><span class="tiny muted">AI food photo <span style="opacity:.7">· 📷 Snap → calories, via Google Gemini (free)</span></span>${STATE.settings.foodAiKey?`<button class="chip" onclick="setFoodAiKey('')">Clear key</button>`:''}</div>
-      <input type="password" value="" onchange="if(this.value.trim())setFoodAiKey(this.value)" placeholder="${STATE.settings.foodAiKey?'🔒 Saved · type to replace':'Google Gemini API key'}" style="width:100%;padding:10px;border-radius:10px;background:var(--card2);color:var(--ink);border:1px solid var(--line)">
+      <input type="password" aria-label="Google Gemini API key" value="" onchange="if(this.value.trim())setFoodAiKey(this.value)" placeholder="${STATE.settings.foodAiKey?'🔒 Saved · type to replace':'Google Gemini API key'}" style="width:100%;padding:10px;border-radius:10px;background:var(--card2);color:var(--ink);border:1px solid var(--line)">
       <div class="tiny muted" style="margin-top:5px">Get a <b>free</b> key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="display:inline-block;padding:8px 0">aistudio.google.com/apikey</a> — no billing. Stays only on this phone. Estimates are approximate — always confirm.</div>
       ${STATE.settings.foodAiKey?`<button class="btn sm ghost" style="width:100%;margin-top:8px" onclick="runAIDiagnostic()">🔬 Test the AI connection</button>`:''}</div>
 `;
   h+=`
     <div style="padding:6px 0 2px"><div class="tiny muted" style="margin-bottom:5px">Coach voice</div>
-      <select onchange="setCoachVoice(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px">${voiceOptionsHTML()}</select>
+      <select aria-label="Coach voice" onchange="setCoachVoice(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px">${voiceOptionsHTML()}</select>
       <div class="tiny muted" style="margin-top:5px">Pick a specific voice, or leave on Auto to use the deepest one your phone has.</div>
     </div>
     <div class="divider" style="margin:10px 0"></div>
@@ -13227,7 +13244,7 @@ function renderGuide(){
       ${(STATE.settings.azureKey&&!_editKey)?`<div class="row" style="justify-content:space-between;gap:8px;background:#141b26;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px">
         <span class="sm" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">🔒 Saved · ••••${_ve(String(STATE.settings.azureKey).slice(-4))}</span>
         <span style="flex:none;display:flex;gap:6px"><button class="chip" onclick="editAzureKey()">Change</button><button class="chip" style="color:var(--fire-l)" onclick="clearAzureKey()">Remove</button></span>
-      </div>`:`<input type="password" autocomplete="off" placeholder="paste your key" value="${_ve(STATE.settings.azureKey||'')}" onchange="saveAzureKey(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px;margin-bottom:8px">
+      </div>`:`<input type="password" aria-label="Azure speech key" autocomplete="off" placeholder="paste your key" value="${_ve(STATE.settings.azureKey||'')}" onchange="saveAzureKey(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px;margin-bottom:8px">
       ${STATE.settings.azureKey?`<div class="tiny muted" style="margin:-4px 0 8px">Leave blank and tap elsewhere to keep the current key.</div>`:''}`}
       <label class="tiny muted" style="display:block;margin-bottom:3px">Region</label>
       <input type="text" autocomplete="off" placeholder="eastus" value="${_ve(STATE.settings.azureRegion||'eastus')}" onchange="setAzureRegion(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px">
@@ -13244,23 +13261,23 @@ function renderGuide(){
     </div>
     <details style="padding:4px 0 2px"><summary class="tiny muted" style="cursor:pointer">Fine-tune depth by hand</summary>
       <div class="row" style="justify-content:space-between;margin-top:6px"><span class="tiny muted">Depth <span style="opacity:.7">(lower = deeper)</span></span><span class="tiny muted" id="pvLbl">${(typeof STATE.settings.voicePitch==='number'?STATE.settings.voicePitch:localPitchFor(null)).toFixed(2)}</span></div>
-      <input type="range" min="0.5" max="1.5" step="0.05" value="${typeof STATE.settings.voicePitch==='number'?STATE.settings.voicePitch:localPitchFor(null)}" oninput="$('#pvLbl').textContent=(+this.value).toFixed(2)" onchange="setCoachPitch(this.value);sampleVoice()" style="width:100%">
+      <input type="range" aria-label="Coach voice depth" min="0.5" max="1.5" step="0.05" value="${typeof STATE.settings.voicePitch==='number'?STATE.settings.voicePitch:localPitchFor(null)}" oninput="$('#pvLbl').textContent=(+this.value).toFixed(2)" onchange="setCoachPitch(this.value);sampleVoice()" style="width:100%">
       <div class="tiny muted" style="margin-top:4px">Below about 0.5 most phone voices start to buzz rather than sound deep.</div>
     </details>
     <div style="padding:8px 0 2px">
       <div class="row" style="justify-content:space-between"><span class="tiny muted">Speed</span><span class="tiny muted" id="rvLbl">${(typeof STATE.settings.voiceRate==='number'?STATE.settings.voiceRate:0.98).toFixed(2)}×</span></div>
-      <input type="range" min="0.7" max="1.3" step="0.05" value="${typeof STATE.settings.voiceRate==='number'?STATE.settings.voiceRate:0.98}" oninput="$('#rvLbl').textContent=(+this.value).toFixed(2)+'×'" onchange="setCoachRate(this.value);sampleVoice()" style="width:100%">
+      <input type="range" aria-label="Coach speaking speed" min="0.7" max="1.3" step="0.05" value="${typeof STATE.settings.voiceRate==='number'?STATE.settings.voiceRate:0.98}" oninput="$('#rvLbl').textContent=(+this.value).toFixed(2)+'×'" onchange="setCoachRate(this.value);sampleVoice()" style="width:100%">
     </div>
     <div style="padding:8px 0 2px">
       <div class="row" style="justify-content:space-between"><span class="tiny muted">Rep cadence <span style="opacity:.7">(sec / rep)</span></span><span class="tiny muted" id="rtLbl">${(typeof STATE.settings.repTempo==='number'?STATE.settings.repTempo:3).toFixed(1)}s</span></div>
-      <input type="range" min="1.5" max="5" step="0.5" value="${typeof STATE.settings.repTempo==='number'?STATE.settings.repTempo:3}" oninput="$('#rtLbl').textContent=(+this.value).toFixed(1)+'s'" onchange="setRepTempo(this.value)" style="width:100%">
+      <input type="range" aria-label="Rep cadence in seconds per rep" min="1.5" max="5" step="0.5" value="${typeof STATE.settings.repTempo==='number'?STATE.settings.repTempo:3}" oninput="$('#rtLbl').textContent=(+this.value).toFixed(1)+'s'" onchange="setRepTempo(this.value)" style="width:100%">
       <div class="tiny muted" style="margin-top:4px">How fast the coach counts your reps during a guided set.</div>
     </div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span class="muted sm">Hear a sample</span><button class="chip" onclick="testVoice()">▶ Test voice</button></div>
     <div class="divider" style="margin:10px 0"></div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Motivator <span class="tiny muted">· hype during sets</span></span><button class="chip ${STATE.settings.hype!==false?'on':''}" onclick="toggleSetting('hype')">${STATE.settings.hype!==false?'On':'Off'}</button></div>
     <div style="padding:6px 0 2px"><div class="tiny muted" style="margin-bottom:5px">Coach persona</div>
-      <select onchange="setPersona(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px">${personaOptionsHTML()}</select>
+      <select aria-label="Coach persona" onchange="setPersona(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px">${personaOptionsHTML()}</select>
       <div class="row" style="justify-content:space-between;margin-top:6px"><span class="tiny muted"><b>Auto</b> rotates a random coach each exercise so the voice keeps changing — or pick one of the 16 (Drill Sergeant, Marine, Ultra, Viking, Cheer, A.I. Trainer, and more). They push you <b>during</b> the exercise, not just at the end.</span></div>
       <div class="row" style="justify-content:space-between;margin-top:8px"><span class="muted sm">Hear this coach</span><button class="chip" onclick="previewPersona()">▶ Preview</button></div>
     </div>
@@ -13283,7 +13300,7 @@ function renderGuide(){
     <p class="sm muted" style="margin-top:0">Your progress auto-saves on this phone and works offline. For extra safety, export a backup file you can re-import anytime.</p>
     ${dataHealthNoteHTML()}
     <div class="btnrow"><button class="btn ghost sm" style="width:100%" onclick="exportData()">⬇ Export backup</button><button class="btn ghost sm" style="width:100%" onclick="$('#importFile').click()">⬆ Import backup</button></div>
-    <input type="file" id="importFile" accept="application/json" style="display:none" onchange="importData(event)">
+    <input type="file" id="importFile" aria-label="Choose a backup file to restore" accept="application/json" style="display:none" onchange="importData(event)">
     ${hasPreImportSnapshot()?'<button class="btn ghost sm" style="width:100%;margin-top:8px" onclick="undoImport()">↩ Undo last import</button>':''}
     <div class="divider"></div>
     <button class="btn ghost sm" style="width:100%;color:var(--pink)" onclick="hardReset()">Reset all data</button>
