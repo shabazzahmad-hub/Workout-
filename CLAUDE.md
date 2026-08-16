@@ -3773,6 +3773,72 @@ should not have to re-litigate whether percentages work. The on-device
 self-test (`_importSelfTest`, v263) exists precisely so that check does not
 depend on the athlete noticing.
 
+## Parallettes, and a wrist flag that means "change the implement" (v267)
+
+The athlete bought 9.6" push-up bars and said they can now do L-sits and leg
+raises from the ground. Checking the roster before building anything found two
+things worth separating.
+
+**The L-Sit was never gated.** `lsit` has no `equip` at all, sits in `hollowL`
+between `vsit` and `dragonflag`, and its own `steps` text already names
+parallettes as one way to do it. Nothing was blocked; the bars make it better,
+not newly possible. Saying so was more useful than adding an exercise.
+
+**And the "Dip bar / station" box would have been the wrong answer.** It is the
+obvious tick — the Amazon listing itself says "Dip Bar" — and it unlocks `dips`
+(Parallel-Bar Dips) and `dipknee` (Dip-Bar Knee Raise), both of which assume a
+station tall enough to hang under. At 9.6 inches the feet reach the floor. The
+listing's own marketing is not an equipment spec, and mapping new kit onto the
+nearest existing gear key is how an athlete gets programmed something they
+cannot perform.
+
+**The real gap was that a wrist flag could not be answered by equipment.** A
+bent-back wrist under load is the entire reason `JOINT_RISK.wrist` exists, and
+gripping a bar removes it — parallettes are the standard clinical answer to
+wrists that hurt on push-ups. `safeSwap()` had no way to know that, so a
+wrist-flagged athlete who owned the fix was still routed away from the push-up
+and the L-Sit. `wristRelieved()` closes it, and three properties are
+load-bearing:
+
+- **Gated on actually owning them.** Nothing changes for anyone else, which is
+  what makes it safe to add to a shipped risk map.
+- **Only the WRIST dimension is relieved**, applied per-joint rather than as a
+  blanket exemption — `lsit` is flagged for the shoulder too, and a bar does
+  nothing for a shoulder. The mutant that drops the `j==='wrist'` guard is
+  caught by a check that flags the shoulder and expects the L-Sit to still go.
+- **Scoped to planted-hand movements that fit on two fixed bars.** Bear crawls,
+  mountain climbers, inchworms and wall walks are deliberately absent: you
+  cannot do them on parallettes, so "relieving" them would reinstate a real risk
+  under cover of a fix. Checked explicitly, not left to the list's contents.
+
+**One shared predicate, because this repo has now watched four separate paths
+forget `safeSwap()`.** The weights circuit, the focus bonus, Special HIIT and
+the custom builder each skipped it in turn. `jointRisky(exId, lims)` is now the
+one place the test lives, and the two existing inline copies were re-pointed at
+it rather than a third being written.
+
+**`tucklsit` is a ladder fix, not a parallettes feature, and it carries no
+equipment requirement.** `hollowL` went `vsit` (0.6) straight to `lsit` (0.18)
+— a jump most athletes cannot make. The Tuck L-Sit at 0.35 is the standard rung
+between them and works on the floor, so every athlete gets it whether or not
+they own bars. The three genuinely bar-dependent additions (`psupport`,
+`plegraise`, `ppushup`) are `equip:['parallettes']` and flagged shoulder-only —
+wrist-flagging them would be both wrong and self-defeating, since it would swap
+the athlete away from the very thing the bars fix.
+
+**A guard caught a real defect in this round's own check, exactly as designed.**
+The "a bar-free athlete is never offered a parallette movement" sweep walked
+`buildSession(i).items` — a property that does not exist; the session exposes
+`main`/`finisher` plus its bonus slots. Every iteration threw into the `catch`,
+`seen` stayed empty, and the assertion `offered.length === 0` passed on
+nothing. The `total > 20` guard failed instead and named it. This is the
+third time in this file's history that an emptiness assertion needed a
+companion guard proving the collection was ever populated.
+
+Images shipped as the same 800x800 grey-backdrop "PHOTO PENDING" placeholders
+v224 established, added to `sw.js`'s `EXTRA` tier. Six mutants seeded, six
+caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

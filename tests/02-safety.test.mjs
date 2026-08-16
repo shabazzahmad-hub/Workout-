@@ -195,6 +195,138 @@ export default async function run() {
   t.ok('a stored payload never executes', !xss.executed, xss);
   t.ok('a stored payload never reaches the DOM as live markup', !xss.rawTag, xss);
 
+  /* ---- parallettes: a wrist flag is a reason to change the IMPLEMENT ------
+     A bent-back wrist under load is the entire reason JOINT_RISK.wrist exists,
+     and gripping a bar instead removes it. So an athlete who owns parallettes
+     should KEEP the push-up and the L-Sit rather than be routed away from them.
+
+     Both directions are needed and neither alone is enough: without the "no
+     bars" half, a version that simply deleted the wrist list would pass; without
+     the "owns bars" half, the relief could be absent entirely and nothing would
+     notice. */
+  {
+    const r = await page.evaluate(() => {
+      const P = STATE.profile;
+      const keep = { gear: (P.gear || []).slice(), lims: (P.limitations || []).slice() };
+      const run = (gear, lims) => { P.gear = gear; P.limitations = lims; return {
+        pushup: safeSwap('pushup'), lsit: safeSwap('lsit'),
+        // must NOT be relieved — you cannot travel your hands on two fixed bars
+        climber: safeSwap('mountainclimber'), crawl: safeSwap('bearcrawl'),
+      }; };
+      const out = {};
+      out.wristNoBars   = run(['bench'], ['wrist']);
+      out.wristWithBars = run(['bench', 'parallettes'], ['wrist']);
+      // the shoulder is a different joint and a bar does not fix it
+      out.shoulderWithBars = run(['bench', 'parallettes'], ['shoulder']);
+      // relief must never fire for an athlete with no flag at all
+      out.noFlag = run(['bench', 'parallettes'], []);
+      P.gear = keep.gear; P.limitations = keep.lims;
+      return out;
+    });
+    t.ok('a wrist flag with NO bars still routes away from the push-up',
+      r.wristNoBars.pushup !== 'pushup', r.wristNoBars);
+    t.ok('and away from the L-Sit', r.wristNoBars.lsit !== 'lsit', r.wristNoBars);
+    t.eq('owning parallettes KEEPS the push-up', r.wristWithBars.pushup, 'pushup', r.wristWithBars);
+    t.eq('and keeps the L-Sit', r.wristWithBars.lsit, 'lsit', r.wristWithBars);
+    // The scope of the relief is the point — a bar cannot help a travelling hand.
+    t.ok('bars do not excuse mountain climbers',
+      r.wristWithBars.climber !== 'mountainclimber', r.wristWithBars);
+    t.ok('nor a bear crawl', r.wristWithBars.crawl !== 'bearcrawl', r.wristWithBars);
+    // Only the WRIST dimension is relieved, never the whole exercise.
+    t.ok('a flagged SHOULDER still leaves the L-Sit even with bars',
+      r.shoulderWithBars.lsit !== 'lsit', r.shoulderWithBars);
+    t.eq('an unflagged athlete is unaffected', r.noFlag.pushup, 'pushup', r.noFlag);
+  }
+
+  /* ---- the new movements are flagged, and flagged for the RIGHT joints ----
+     The generic "flagged joints never leak" sweep cannot prove this: an exercise
+     nobody added to JOINT_RISK simply never enters the risky bucket, so that
+     check stays green whether or not these were ever flagged at all.
+
+     The negative half matters as much as the positive one. A neutral grip on a
+     bar is exactly what takes the wrist out of it, so a parallette movement that
+     was wrist-flagged would be wrong — and would also make the relief above
+     pointless, since the athlete would be swapped away from the very thing they
+     bought the bars for. */
+  {
+    const r = await page.evaluate(() => {
+      const inList = (j, k) => (JOINT_RISK[j] || []).indexOf(k) >= 0;
+      const out = { exists: {}, shoulder: {}, wrist: {}, gated: {}, lands: {} };
+      ['tucklsit', 'psupport', 'plegraise', 'ppushup'].forEach(k => {
+        out.exists[k] = !!EX[k];
+        out.shoulder[k] = inList('shoulder', k);
+        out.wrist[k] = inList('wrist', k);
+        out.gated[k] = (EX[k] && EX[k].equip) ? EX[k].equip.slice() : [];
+      });
+      // a flagged shoulder has to land somewhere real, whatever the mechanism
+      const P = STATE.profile;
+      const keep = { gear: (P.gear || []).slice(), lims: (P.limitations || []).slice() };
+      P.gear = ['parallettes']; P.limitations = ['shoulder'];
+      ['tucklsit', 'psupport', 'plegraise', 'ppushup'].forEach(k => {
+        const alt = safeSwap(k);
+        out.lands[k] = { to: alt, real: !!EX[alt], clear: (JOINT_RISK.shoulder || []).indexOf(alt) < 0 };
+      });
+      P.gear = keep.gear; P.limitations = keep.lims;
+      // the ladder gained its missing rung, in the right place
+      const h = LADDERS.hollowL;
+      out.rung = { at: h.indexOf('tucklsit'), afterVsit: h.indexOf('tucklsit') === h.indexOf('vsit') + 1,
+        beforeLsit: h.indexOf('tucklsit') === h.indexOf('lsit') - 1,
+        easierThanLsit: EX.tucklsit.hardness > EX.lsit.hardness,
+        harderThanVsit: EX.tucklsit.hardness < EX.vsit.hardness };
+      return out;
+    });
+    ['tucklsit', 'psupport', 'plegraise', 'ppushup'].forEach(k => {
+      t.ok(`[${k}] exists`, r.exists[k], r.exists);
+      t.ok(`[${k}] is flagged for the shoulder`, r.shoulder[k], r.shoulder);
+      t.ok(`[${k}] lands somewhere real and shoulder-clear`,
+        r.lands[k].real && r.lands[k].clear, r.lands[k]);
+    });
+    t.ok('the Tuck L-Sit keeps the L-Sit’s wrist flag — it is the same hand position',
+      r.wrist.tucklsit, r.wrist);
+    ['psupport', 'plegraise', 'ppushup'].forEach(k =>
+      t.ok(`[${k}] is NOT wrist-flagged — the neutral grip is the whole point`,
+        !r.wrist[k], r.wrist));
+    ['psupport', 'plegraise', 'ppushup'].forEach(k =>
+      t.ok(`[${k}] requires the parallettes`, r.gated[k].indexOf('parallettes') >= 0, r.gated));
+    t.eq('the Tuck L-Sit needs no equipment — the floor works', r.gated.tucklsit.length, 0, r.gated);
+    t.ok('the Tuck L-Sit sits straight after the V-Sit', r.rung.afterVsit, r.rung);
+    t.ok('and straight before the L-Sit', r.rung.beforeLsit, r.rung);
+    t.ok('easier than the L-Sit', r.rung.easierThanLsit, r.rung);
+    t.ok('and harder than the V-Sit', r.rung.harderThanVsit, r.rung);
+  }
+
+  /* ---- an athlete with no bars is never offered a parallette movement -----
+     Asserted behaviourally across a real spread of sessions, not by reading the
+     GEAR_FALLBACK literal back: reading the map proves the data changed, never
+     that anything consults it. */
+  {
+    const r = await page.evaluate(() => {
+      const P = STATE.profile;
+      const keep = { gear: (P.gear || []).slice(), ptr: STATE.progressPtr };
+      P.gear = [];                       // owns nothing at all
+      /* The session exposes main/finisher (plus whatever bonus slots the build
+         added), never a flat `items`. Walking every array property collects the
+         focus and corrective bonuses too, which is where these movements would
+         actually surface. */
+      const seen = new Set();
+      for (let i = 0; i < 400; i++) {
+        try {
+          const sess = buildSession(i);
+          Object.values(sess).forEach(v => {
+            (Array.isArray(v) ? v : [v]).forEach(m => { if (m && m.exId) seen.add(m.exId); });
+          });
+        } catch (e) {}
+      }
+      P.gear = keep.gear; STATE.progressPtr = keep.ptr;
+      return { offered: ['psupport', 'plegraise', 'ppushup'].filter(k => seen.has(k)),
+        sawFallback: seen.has('pushup') || seen.has('legraise'), total: seen.size };
+    });
+    // Guard: an empty result would prove nothing if the sweep reached nothing.
+    t.ok('guard: the sweep really built sessions', r.total > 20, r);
+    t.ok('guard: the fallback movements are genuinely reachable', r.sawFallback, r);
+    t.eq('a bar-free athlete is never offered a parallette movement', r.offered.length, 0, r);
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }
