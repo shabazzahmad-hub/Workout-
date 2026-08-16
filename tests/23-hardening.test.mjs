@@ -556,7 +556,12 @@ export default async function () {
     await page.waitForTimeout(500);
     const r = await page.evaluate(() => {
       const sh = document.querySelector('#sheet');
-      const media = document.querySelector('#flowImg');
+      /* The MEDIA BOX, not the <img>. #flowImg is display:none until the photo
+         decodes, so its own rect is 0x0 on any machine slower than the one this
+         check was written on — it passed locally at 279px and failed CI at 0.
+         The box is what the CSS actually sizes, and it is there whether or not
+         a photo ever arrives. */
+      const media = sh.querySelector('.pl-ringmedia');
       const before = !!(timer && timer.mode === 'flow');
       flowToggle();
       const paused = !(timer && timer.mode === 'flow');
@@ -566,7 +571,7 @@ export default async function () {
       return { before, paused, resumed, label,
         hasPause: !!document.querySelector('#flowToggle'),
         wakes: /wakeOn\(/.test(runFlow.toString()),
-        media: Math.round(media.getBoundingClientRect().width),
+        media: media ? Math.round(media.getBoundingClientRect().width) : 0,
         hidden: sh.scrollHeight - sh.clientHeight };
     });
     await page.evaluate(() => flowStop(false));
@@ -577,7 +582,7 @@ export default async function () {
     t.eq('and says so', r.label, 'Resume', r);
     t.ok('Resume restarts it', r.resumed, r);
     t.ok('the flow keeps the screen awake like its twins', r.wakes, r);
-    t.ok('its photo is no longer half the size of the player’s', r.media >= 260, r);
+    t.ok('its photo box is no longer half the size of the player’s', r.media >= 260, r);
     t.eq('and the sheet still fits the fold', r.hidden, 0, r);
   }
 

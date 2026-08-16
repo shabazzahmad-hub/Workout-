@@ -3698,6 +3698,17 @@ Five mutants seeded against the four fixes, five caught: the top-up removed,
 the gain guard restored, the Pause button deleted, the sticky nav and
 responsive photo both reverted, and `wakeOn()` dropped from `runFlow()`.
 
+**A check that measures an `<img>`'s own rect measures whether the photo has
+DECODED, not whether the CSS sized it.** The flow-photo check read
+`#flowImg.getBoundingClientRect().width`, passed locally at 279px, and failed
+CI at **0** — `showFlowMedia()` leaves the element `display:none` until the
+image loads, and a CI runner is slower than the machine the check was written
+on. Re-pointed at `.pl-ringmedia`, the box the CSS actually sizes, which is
+there whether or not a photo ever arrives; still catches the reverted
+`.timerring` height under mutation. Same family as the geometry-before-the-
+animation slip above: both measured something real, and neither measured the
+thing under test.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
