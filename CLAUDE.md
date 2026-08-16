@@ -3588,6 +3588,127 @@ deleted the button passes the first alone.
 - The baseline assessment sheet pushes "Next test →" ~91px below the fold at
   375×667 on all ten tests.
 
+## The four deliberately-deferred items, closed (v265)
+
+v264 shipped twenty audit fixes and named four things it had deliberately not
+built, each because it needed a decision rather than a one-line change. Asked
+to fix those too. All four are now closed, and the interesting part is that
+three of them punished guessing.
+
+**The reference days could not reach a gain-goal calorie target, and no clamp
+change fixes that.** The starch dial clamps at 1.6x for a documented reason —
+closing a gap on starch alone put 700 g of potato on one plate — so the obvious
+move is to widen it, and the obvious move is wrong twice over. Widening the
+starch clamp reintroduces the exact volume problem it exists to prevent; and
+raising the FAT clamp, measured, moved the ceiling by 20 kcal, because at a
+fixed protein target the anchor dial is pinned by the protein and several days
+simply do not contain enough calorie-dense MASS to scale into the gap. Day 11
+tops out at 2,491 kcal however far the dials are opened.
+
+So the third lever adds food rather than resizing it, which is what a person
+actually does: `REF_TOPUP` appends up to four calorie-dense items, capped at
+two normal portions each, spread rather than piled, allergen- and diet-checked
+like everything else, and only reached once the dials have genuinely saturated
+— so every day that already lands on its target is untouched.
+
+**Ordered fat-first, and that ordering is load-bearing.** The days are already
+ON their protein target when the top-up runs, so reaching for a protein-bearing
+food first pushes protein past a target the anchors were just dialled to hit —
+measured at +17 g on a 3,500 kcal day. Olive oil, avocado and chocolate carry
+almost none.
+
+**Adding food and re-solving protein pull against each other, and one pass is
+not enough.** A top-up carries protein, so re-solving the anchors to hit the
+protein target takes calories back out: a single pass corrected the 17 g
+overshoot and landed 240 kcal short. Two passes settle it. And a guard was
+still needed on top — `sp` bottoms at 0.5, so once the non-anchor protein alone
+exceeds `targetP - anchorP*0.5` the day is stuck OVER its protein target with
+no way down. REF_DAYS[13] landed at 154 g against 140 g exactly this way, and
+`validateData()` caught it. The top-up now skips an item rather than take the
+calories: landing short on calories is disclosed on screen, landing over on
+protein was not.
+
+**The failing day moved every time a number was tuned, which is the tell that
+tuning is the wrong tool.** Day 2, then day 8, then day 1 — each one 100-300
+kcal short at a bar that had been picked by aspiration rather than measurement.
+The fix was to stop guessing and measure the real ceiling, then set the bar to
+it. At 140 g protein: omnivore now reaches 3,300 (it was 2,420), halal 3,300,
+pescatarian-minus-dairy 3,280, vegan 3,020, and the worst real combination —
+vegan with a tree-nut allergy — 2,860.
+
+**Which is why the new bar is split in two, the same way the three existing
+bars already are.** `validateData()` runs whenever it is called, including
+while a suite has a restrictive diet set, so its bar has to clear AFTER
+substitution and sits at 140 g / 2,800 kcal. Suite 06 runs omnivore and carries
+the ambitious 140 g / 3,200 kcal bar. A bar calibrated at exactly the old
+ceiling is what let 28 days out of 28 miss without anything objecting; a bar
+only ever probed from the inside cannot show the range shrinking again, so the
+check asserts a measured RANGE rather than "the new bar passes".
+
+**`calorieCheck()` bailed on anything that was not a deficit.** So an athlete
+bulking for three months and gaining nothing, or gaining a kilo a week of
+mostly fat, got no check and no correction — the very failure the function's
+own header calls the commonest way a diet app fails somebody. v239 fixed goal
+DIRECTION in the brief and the weight chart and never reached here.
+
+**The two verdicts are derived from a RATIO, not duplicated per goal.** On a
+cut, "stalled" is observed above expected and "fast" is below; on a bulk both
+comparisons flip, because `expected` is positive. `observed/expected` is
+under-delivering below 0.4 and over-delivering above 1.75 either way, which
+keeps the two goals from drifting apart — the same argument as `DIET_OPTS` and
+`kcalTargetPreview()`. Maintenance still returns null: there is no prescribed
+rate to measure against. The safety floor only exists on the way DOWN, so a
+bulk that needs more food is never blocked by it.
+
+**Four scenarios, because a fix that simply deleted the guard would pass a
+check that only tests one.** Bulk-stalled must say eat MORE, bulk-too-fast must
+say eat less, the cut path must still behave, and maintenance must still opt
+out.
+
+**The warm-up/cool-down flow was the only hands-free surface that let the
+screen sleep, and the only one with no Pause.** It talks you through each
+stretch exactly as the player and HIIT do; the only way to answer the door
+mid-flow was to abandon it or falsely mark it Done. `wakeOn()` on entry,
+`wakeOff()` in `flowStop()` (the single exit), and `flowToggle()` re-anchors the
+deadline on resume so a pause is not counted as elapsed time — the same thing
+`playerToggle()` and `hiitToggle()` already do. Its photo went from a fixed
+191px to `min(330px,88vw,48vh)`, measured at 279px against the player's 295px
+at 375x667, with the sheet still fitting the fold at 320x568.
+
+**Shrinking the assessment photo was not enough, and "better" is not the
+requirement.** "Next test →" sat ~91px below the fold at 375x667 on all ten
+tests. A height-responsive `.exphoto` took that to 61px, and 61px hidden is
+still a primary action the athlete cannot see. The nav row is now
+`position:sticky;bottom:0` inside the sheet's own scroll box, so it is
+reachable whatever a test's content does — verified visible at 375x667 and at
+320x568, where six of ten tests previously clipped "← Back" as well. The
+secondary "ⓘ How to do this move" moved above it, since a secondary action is
+what should be scrolled to, not the primary one.
+
+**A geometry probe that reads synchronously measures the sheet mid-animation.**
+The first version of the fold check reported the CTA off-screen at every size
+INCLUDING after the fix, because `#sheet` slides up on a transition and its
+`getBoundingClientRect().top` was still 673 on a 667px viewport — the sheet had
+not arrived yet. `scrollHeight - clientHeight` is position-independent and was
+fine; every absolute coordinate was meaningless. Same family as this file's
+tap-repaints-the-UI note, from the other side: there the wait was accidentally
+too long, here there was no wait at all.
+
+Five mutants seeded against the four fixes, five caught: the top-up removed,
+the gain guard restored, the Pause button deleted, the sticky nav and
+responsive photo both reverted, and `wakeOn()` dropped from `runFlow()`.
+
+**A check that measures an `<img>`'s own rect measures whether the photo has
+DECODED, not whether the CSS sized it.** The flow-photo check read
+`#flowImg.getBoundingClientRect().width`, passed locally at 279px, and failed
+CI at **0** — `showFlowMedia()` leaves the element `display:none` until the
+image loads, and a CI runner is slower than the machine the check was written
+on. Re-pointed at `.pl-ringmedia`, the box the CSS actually sizes, which is
+there whether or not a photo ever arrives; still catches the reverted
+`.timerring` height under mutation. Same family as the geometry-before-the-
+animation slip above: both measured something real, and neither measured the
+thing under test.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

@@ -466,6 +466,154 @@ export default async function () {
     }
   }
 
+
+  /* ---------- 14. the reference days could not reach a gain target -------
+     The starch dial clamps at 1.6x, deliberately — closing a gap on starch
+     alone put 700 g of potato on one plate — so above ~2,800 kcal it bound on
+     every one of the 28 days and an ordinary very-active athlete on a gain goal
+     missed the calorie bar 28 times out of 28. Every documented bar was
+     calibrated at exactly that ceiling, so nothing objected.
+
+     Asserted as a measured RANGE, not as "the new bar passes": a bar only ever
+     probed from the inside cannot show the range shrinking again. */
+  {
+    const r = await page.evaluate(() => {
+      const ceilingAt = p => {
+        let hi = 0;
+        for (let k = 2000; k <= 4000; k += 20)
+          if (REF_DAYS.every(d => Math.abs(scaleDay(d, p, k).kcal - k) <= 150)) hi = k;
+        return hi;
+      };
+      // The audit's own example: 78 kg, very active, building muscle.
+      const day = scaleDay(REF_DAYS[0], 140, 3300);
+      return { at140: ceilingAt(140), at200: ceilingAt(200), day: { kcal: day.kcal, p: day.p } };
+    });
+    t.ok('every day reaches a real gain-goal calorie target', r.at140 >= 3200, r);
+    t.ok('and the ceiling rises with the protein target, not against it', r.at200 >= r.at140, r);
+    t.ok('a single day lands on 3,300 kcal', Math.abs(r.day.kcal - 3300) <= 150, r);
+    t.ok('without overshooting its protein target', Math.abs(r.day.p - 140) <= 12, r);
+  }
+
+  /* ---------- 15. the calorie check never ran for a gain goal ------------
+     `if(expected>-0.05)return null` bailed on anything that was not a deficit,
+     so an athlete bulking and gaining nothing got no check at all — the exact
+     failure the function's own header calls the commonest way a diet app fails
+     somebody.
+
+     Four scenarios, because a fix that simply removed the guard would pass a
+     check that only ever tests one: both goals must produce a verdict, and the
+     correction must point the right way in each. */
+  {
+    const r = await page.evaluate(() => {
+      const n = nut(); const keep = JSON.stringify(n);
+      const keepM = JSON.stringify(STATE.measurements || []);
+      const setup = (goal, fromKg, toKg) => {
+        n.sex = 'male'; n.age = 30; n.heightCm = 180; n.weightKg = toKg;
+        n.activity = 1.6; n.goal = goal; n.kcalAdj = 0; delete n.kcalAdjAt;
+        recalcKcalFromStored();
+        // eight weeks of a flat-or-moving trend
+        const ms = []; const day = 86400000;
+        for (let i = 0; i < 8; i++) {
+          const d = new Date(Date.now() - (7 - i) * 7 * day).toISOString().slice(0, 10);
+          ms.push({ date: d, waist: 84, weight: fromKg + (toKg - fromKg) * (i / 7) });
+        }
+        STATE.measurements = ms;
+        return calorieCheck();
+      };
+      const out = {};
+      out.gainStalled = setup('gain', 80, 80);            // bulking, nothing happening
+      out.gainFast    = setup('gain', 80, 88);            // bulking far too fast
+      out.loseStalled = setup('lose', 80, 80);            // cutting, nothing happening
+      out.maintain    = setup('maintain', 80, 80);        // no prescribed rate to verify
+      Object.assign(n, JSON.parse(keep)); STATE.measurements = JSON.parse(keepM);
+      recalcKcalFromStored(); save();
+      return out;
+    });
+    t.ok('a bulk that is not moving gets a verdict at all', !!r.gainStalled, r.gainStalled);
+    t.eq('and it reads as stalled', r.gainStalled && r.gainStalled.verdict, 'stalled', r.gainStalled);
+    t.ok('and the correction says EAT MORE, not less',
+      r.gainStalled && r.gainStalled.step > 0, r.gainStalled);
+    t.eq('a bulk gaining far too fast reads as fast',
+      r.gainFast && r.gainFast.verdict, 'fast', r.gainFast);
+    t.ok('and that correction says eat LESS', r.gainFast && r.gainFast.step < 0, r.gainFast);
+    // Guard: the cut path must not have been broken by generalising the test.
+    t.eq('a stalled cut still reads as stalled', r.loseStalled && r.loseStalled.verdict, 'stalled', r.loseStalled);
+    t.ok('and still says eat less', r.loseStalled && r.loseStalled.step < 0, r.loseStalled);
+    t.eq('maintenance has no prescribed rate, so no check', r.maintain, null, r.maintain);
+  }
+
+  /* ---------- 16. the flow had no Pause, no wake lock, a shrunken photo --
+     It is as hands-free as the player and HIIT — it talks you through each
+     stretch — and it was the only one of the three that let the screen sleep,
+     with no way to answer the door except abandoning it or falsely marking it
+     Done. Its photo was fixed at 191px against the player's 331px.
+
+     Measured after the sheet has finished sliding open: read synchronously and
+     every geometry number is taken while the sheet is still off-screen. */
+  {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.evaluate(() => runWarmup());
+    await page.waitForTimeout(500);
+    const r = await page.evaluate(() => {
+      const sh = document.querySelector('#sheet');
+      /* The MEDIA BOX, not the <img>. #flowImg is display:none until the photo
+         decodes, so its own rect is 0x0 on any machine slower than the one this
+         check was written on — it passed locally at 279px and failed CI at 0.
+         The box is what the CSS actually sizes, and it is there whether or not
+         a photo ever arrives. */
+      const media = sh.querySelector('.pl-ringmedia');
+      const before = !!(timer && timer.mode === 'flow');
+      flowToggle();
+      const paused = !(timer && timer.mode === 'flow');
+      const label = (document.querySelector('#flowToggle') || {}).textContent;
+      flowToggle();
+      const resumed = !!(timer && timer.mode === 'flow');
+      return { before, paused, resumed, label,
+        hasPause: !!document.querySelector('#flowToggle'),
+        wakes: /wakeOn\(/.test(runFlow.toString()),
+        media: media ? Math.round(media.getBoundingClientRect().width) : 0,
+        hidden: sh.scrollHeight - sh.clientHeight };
+    });
+    await page.evaluate(() => flowStop(false));
+    await page.waitForTimeout(400);
+    t.ok('the flow offers a Pause control', r.hasPause, r);
+    t.ok('guard: the flow timer was really running', r.before, r);
+    t.ok('Pause actually stops the timer', r.paused, r);
+    t.eq('and says so', r.label, 'Resume', r);
+    t.ok('Resume restarts it', r.resumed, r);
+    t.ok('the flow keeps the screen awake like its twins', r.wakes, r);
+    t.ok('its photo box is no longer half the size of the player’s', r.media >= 260, r);
+    t.eq('and the sheet still fits the fold', r.hidden, 0, r);
+  }
+
+  /* ---------- 17. the assessment sheet hid its own primary action --------
+     "Next test →" sat ~91px below the fold at 375x667 on all ten tests, and at
+     320x568 six of ten also clipped "← Back". This is the primary action of the
+     app's most important first-run flow.
+
+     Shrinking the photo alone took 91px to 61 — better, and still not "the
+     button is on screen", which is the actual requirement. The nav row is
+     sticky, so it is reachable whatever a test's content does. */
+  for (const [w, h] of [[375, 667], [320, 568]]) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.evaluate(() => openAssessment());
+    await page.waitForTimeout(500);
+    const r = await page.evaluate(() => {
+      const sh = document.querySelector('#sheet');
+      const cta = Array.from(sh.querySelectorAll('button'))
+        .find(b => /Next test|See my results/.test(b.textContent));
+      const b = cta.getBoundingClientRect();
+      return { visible: b.bottom <= innerHeight + 1 && b.top >= 0,
+        bottom: Math.round(b.bottom), vh: innerHeight,
+        sticky: getComputedStyle(sh.querySelector('.assess-nav')).position };
+    });
+    await page.evaluate(() => closeSheet());
+    await page.waitForTimeout(400);
+    t.ok(`[${w}x${h}] the primary action is on screen without scrolling`, r.visible, r);
+    t.eq(`[${w}x${h}] the nav row is pinned, not merely shrunk into place`, r.sticky, 'sticky', r);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

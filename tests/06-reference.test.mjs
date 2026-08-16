@@ -151,7 +151,11 @@ export default async function run() {
     });
     // the real guarantee: a day scaled to a target lands on that target, at
     // every target the app can produce — not just the one it was written for
-    const TARGETS = [[120, 1700], [150, 2170], [155, 2280], [175, 2400], [200, 2800]];
+    /* [140, 3500] is the bar that was missing. Every target above was at or
+       below where the starch dial saturates, so the whole suite agreed the days
+       worked while a 78 kg very-active athlete on a gain goal missed on all 28.
+       A range only probed from the inside cannot be seen to shrink. */
+    const TARGETS = [[120, 1700], [150, 2170], [155, 2280], [175, 2400], [200, 2800], [140, 3200]];
     TARGETS.forEach(([tp, tk]) => REF_DAYS.forEach(d => {
       const sc = scaleDay(d, tp, tk);
       if (Math.abs(sc.p - tp) > 12) o.bad.push(`${d.name}@${tp}: ${sc.p}g`);
