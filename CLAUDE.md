@@ -3839,6 +3839,42 @@ Images shipped as the same 800x800 grey-backdrop "PHOTO PENDING" placeholders
 v224 established, added to `sw.js`'s `EXTRA` tier. Six mutants seeded, six
 caught.
 
+**A photo that cannot be generated twice is evidence about the EXERCISE, not
+the prompt (v268).** `psupport` (Parallette Support Hold) shipped in v267 and
+was dropped one version later, and the route there is the point.
+
+The first generated photo showed a man standing next to some bars. Reading the
+entry back to find out why exposed a real defect: the steps said "arms straight
+down beside the hips" and "the legs together and toes pointed" on bars about
+10 inches high. Legs hanging straight down put the feet on the floor, so the
+hold as described was not hard, it was undoable. **Nothing in the suite could
+have caught that** — the entry was well-formed, its swaps resolved, the ladder
+stayed monotonic and `validateData()` was clean. A rendering is an independent
+reader of your instructions: it has no idea what you meant, so it shows the gap
+between what the prose says and what the movement is. Worth reaching for
+deliberately whenever an exercise is added for equipment with a real physical
+constraint — height, length, clearance — that the text has to respect.
+
+The text was corrected (knees bent, shins tucked BACK, and naming the 10-inch
+constraint so the next reader does not straighten the legs again) and the
+SECOND generation still put the boots on the mat. That is the part worth
+generalising: two independent failures to depict a position, after the
+description was fixed, is a signal that the movement itself is marginal. It
+overlapped heavily with `tucklsit` — both static, straight-arm, feet off the
+floor, differing only in which way the knees point — while `tucklsit` is
+harder, trains compression as well as support, and needs no equipment at all.
+Dropping it left no gap, because the whole `hollowL` ladder sits below it.
+
+**"I cannot photograph this clearly" is a legitimate reason to question a
+feature**, and a cheaper signal than shipping it and finding out that nobody
+can follow it from a phone screen. The instruction fix was written, tested and
+mutation-tested before the second photo arrived — all of it correct, all of it
+deleted. That is the right outcome and not wasted work: it is what proved the
+entry was undoable, which is what made the removal obvious.
+
+Left in place: `tucklsit` (no equipment, the ladder rung `hollowL` was missing),
+`plegraise` and `ppushup`. Three movements, three distinguishable photos.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
