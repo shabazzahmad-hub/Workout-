@@ -614,6 +614,67 @@ export default async function () {
   }
   await page.setViewportSize({ width: 390, height: 844 });
 
+
+  /* ---------- 18. a logged row with no macros is not a measured zero -----
+     Reported from a real phone: an imported 897 kcal meal sat above three macro
+     bars reading 0/165g, 0/180g, 0/60g with nothing saying why. v260 fixed the
+     INPUT side — the sheet blanks the fields and warns — but once the row was
+     saved the zeros were indistinguishable from real ones again.
+
+     The rule is arithmetic, not a guess: calories come from protein, carbs and
+     fat and nothing else, so 897 kcal with all three at zero cannot be a
+     measurement. The 50 kcal floor keeps black coffee out of it. */
+  {
+    const r = await page.evaluate(() => {
+      const CASES = [
+        ['an imported meal with no macros', { kcal: 897, p: 0, c: 0, f: 0 }, true],
+        ['black coffee', { kcal: 5, p: 0, c: 0, f: 0 }, false],
+        ['a real zero-carb steak', { kcal: 400, p: 60, c: 0, f: 18 }, false],
+        ['a pure-fat spoon of oil', { kcal: 120, p: 0, c: 0, f: 14 }, false],
+        ['a plain sugar drink', { kcal: 140, p: 0, c: 35, f: 0 }, false],
+      ];
+      return CASES.map(([label, row, want]) => [label, macrosUncaptured(row), want]);
+    });
+    r.forEach(([label, got, want]) =>
+      t.eq(`[${label}] uncaptured = ${want}`, got, want, { label, got, want }));
+  }
+
+  {
+    const r = await page.evaluate(() => {
+      const d = nutToday();
+      const keep = JSON.stringify({ food: d.food, habits: d.habits });
+      d.food = [{ name: 'Breakfast', kcal: 897, p: 0, c: 0, f: 0, meal: 'b' }];
+      go('fuel'); renderFuel();
+      const v = document.querySelector('#v-fuel');
+      const txt = v.innerText;
+      const out = {
+        warns: /no macros recorded/i.test(txt),
+        saysNotZero: /not saying you ate none/i.test(txt),
+        rowFlagged: /macros not captured/i.test(txt),
+        // the row must still be the thing you tap to fix it
+        editable: !!Array.from(v.querySelectorAll('button')).find(b => /macros not captured/i.test(b.innerText)),
+        count: uncapturedCount(),
+      };
+      // A day of REAL macros must say none of this.
+      d.food = [{ name: 'Chicken and rice', kcal: 620, p: 55, c: 60, f: 14, meal: 'l' }];
+      renderFuel();
+      const t2 = document.querySelector('#v-fuel').innerText;
+      out.cleanDayQuiet = !/no macros recorded/i.test(t2) && !/macros not captured/i.test(t2);
+      out.cleanCount = uncapturedCount();
+      const back = JSON.parse(keep);
+      const dd = nutToday(); dd.food = back.food; dd.habits = back.habits; save();
+      return out;
+    });
+    t.eq('the day counts the item with no macros', r.count, 1, r);
+    t.ok('the macro bars say an item is missing, not that you ate none', r.warns, r);
+    t.ok('and say so in those words', r.saysNotZero, r);
+    t.ok('the diary row is marked', r.rowFlagged, r);
+    t.ok('and the mark is on the button that opens the editor', r.editable, r);
+    // Guard: without this the checks above could pass on markup shown to everybody.
+    t.eq('a day of real macros counts none', r.cleanCount, 0, r);
+    t.ok('and says nothing at all about missing macros', r.cleanDayQuiet, r);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
