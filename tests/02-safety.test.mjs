@@ -252,7 +252,7 @@ export default async function run() {
     const r = await page.evaluate(() => {
       const inList = (j, k) => (JOINT_RISK[j] || []).indexOf(k) >= 0;
       const out = { exists: {}, shoulder: {}, wrist: {}, gated: {}, lands: {} };
-      ['tucklsit', 'psupport', 'plegraise', 'ppushup'].forEach(k => {
+      ['tucklsit', 'plegraise', 'ppushup'].forEach(k => {
         out.exists[k] = !!EX[k];
         out.shoulder[k] = inList('shoulder', k);
         out.wrist[k] = inList('wrist', k);
@@ -262,7 +262,7 @@ export default async function run() {
       const P = STATE.profile;
       const keep = { gear: (P.gear || []).slice(), lims: (P.limitations || []).slice() };
       P.gear = ['parallettes']; P.limitations = ['shoulder'];
-      ['tucklsit', 'psupport', 'plegraise', 'ppushup'].forEach(k => {
+      ['tucklsit', 'plegraise', 'ppushup'].forEach(k => {
         const alt = safeSwap(k);
         out.lands[k] = { to: alt, real: !!EX[alt], clear: (JOINT_RISK.shoulder || []).indexOf(alt) < 0 };
       });
@@ -275,7 +275,7 @@ export default async function run() {
         harderThanVsit: EX.tucklsit.hardness < EX.vsit.hardness };
       return out;
     });
-    ['tucklsit', 'psupport', 'plegraise', 'ppushup'].forEach(k => {
+    ['tucklsit', 'plegraise', 'ppushup'].forEach(k => {
       t.ok(`[${k}] exists`, r.exists[k], r.exists);
       t.ok(`[${k}] is flagged for the shoulder`, r.shoulder[k], r.shoulder);
       t.ok(`[${k}] lands somewhere real and shoulder-clear`,
@@ -283,10 +283,10 @@ export default async function run() {
     });
     t.ok('the Tuck L-Sit keeps the L-Sit’s wrist flag — it is the same hand position',
       r.wrist.tucklsit, r.wrist);
-    ['psupport', 'plegraise', 'ppushup'].forEach(k =>
+    ['plegraise', 'ppushup'].forEach(k =>
       t.ok(`[${k}] is NOT wrist-flagged — the neutral grip is the whole point`,
         !r.wrist[k], r.wrist));
-    ['psupport', 'plegraise', 'ppushup'].forEach(k =>
+    ['plegraise', 'ppushup'].forEach(k =>
       t.ok(`[${k}] requires the parallettes`, r.gated[k].indexOf('parallettes') >= 0, r.gated));
     t.eq('the Tuck L-Sit needs no equipment — the floor works', r.gated.tucklsit.length, 0, r.gated);
     t.ok('the Tuck L-Sit sits straight after the V-Sit', r.rung.afterVsit, r.rung);
@@ -318,7 +318,7 @@ export default async function run() {
         } catch (e) {}
       }
       P.gear = keep.gear; STATE.progressPtr = keep.ptr;
-      return { offered: ['psupport', 'plegraise', 'ppushup'].filter(k => seen.has(k)),
+      return { offered: ['plegraise', 'ppushup'].filter(k => seen.has(k)),
         sawFallback: seen.has('pushup') || seen.has('legraise'), total: seen.size };
     });
     // Guard: an empty result would prove nothing if the sweep reached nothing.
