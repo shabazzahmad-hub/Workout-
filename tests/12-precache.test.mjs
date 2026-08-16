@@ -321,6 +321,66 @@ export default async function run() {
       survivors.some(k => /^coreforge-v\d+$/.test(k)), survivors);
   }
 
+  /* ---- another app on the same origin is not OUR shell -------------------
+     CacheStorage and this worker's reach are scoped to the ORIGIN, which is the
+     same fact behind the documented caches.keys() bug — pointed the other way.
+     `req.mode === 'navigate'` is true for EVERY same-origin navigation, so
+     opening a sibling app published from the same GitHub Pages origin wrote ITS
+     page into './index.html', and CoreForge then served that other app offline.
+
+     Forced with a real page that is not our shell rather than a fabricated one:
+     under the old rule a navigation to /privacy.html was "a page", so the cached
+     shell was overwritten with it. The assertion reads the CACHED BYTES back,
+     not the rule that produced them. */
+  {
+    const ctx = await chromium.launchPersistentContext('', { serviceWorkers: 'allow', viewport: { width: 390, height: 844 } });
+    const pg = await ctx.newPage();
+    await pg.goto(base, { waitUntil: 'domcontentloaded' });
+    await pg.evaluate(() => navigator.serviceWorker.ready);
+    await pg.waitForTimeout(600);
+
+    const before = await pg.evaluate(async () => {
+      const hit = await caches.match('./index.html');
+      return hit ? (await hit.text()).length : 0;
+    });
+
+    // A same-origin navigation to a page that is NOT the app shell.
+    await pg.goto(base + 'privacy.html', { waitUntil: 'domcontentloaded' });
+    await pg.waitForTimeout(600);
+    await pg.goto(base + 'terms.html', { waitUntil: 'domcontentloaded' });
+    await pg.waitForTimeout(400);
+
+    const after = await pg.evaluate(async () => {
+      // Absolute, so it cannot resolve relative to whatever page is open.
+      const hit = await caches.match(new URL('/index.html', location.origin).href);
+      const body = hit ? await hit.text() : '';
+      return { len: body.length, isCoreForge: /APP_VERSION\s*=/.test(body) };
+    });
+    await ctx.close();
+
+    // Guard: the shell really was cached before the sibling navigation.
+    t.ok('guard: our own shell was cached to begin with', before > 100000, { before });
+    t.ok('a sibling page does not replace the cached CoreForge shell', after.isCoreForge, after);
+    t.eq('and the cached shell is byte-for-byte the same size', after.len, before, { before, after });
+  }
+
+  /* ---- SHELL_MIN is topped up, not installed once and abandoned ----------
+     It went in only at install, through Promise.allSettled, whose rejections
+     were logged and dropped — and the top-up queue never looked at that tier.
+     So a font or an icon that failed at install was missing from the offline
+     pack forever. Read off the real queue expression, since the failure is a
+     tier being absent from it. */
+  {
+    const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+    const queues = [...sw.matchAll(/const queue = \[([^\]]+)\]/g)].map(m => m[1]);
+    t.ok('guard: both top-up queues were found', queues.length === 2, queues);
+    queues.forEach((q, i) => {
+      t.ok(`queue ${i + 1} tops up SHELL_MIN`, /\.\.\.SHELL_MIN/.test(q), q);
+      t.ok(`queue ${i + 1} still tops up FIRST_RUN and EXTRA`,
+        /\.\.\.FIRST_RUN/.test(q) && /\.\.\.EXTRA/.test(q), q);
+    });
+  }
+
   /* ---- a server error must not beat a cached page ------------------------
      The navigation handler raced fetch against the cache and returned whatever
      the fetch produced. It refused to CACHE a 500 — but still handed it to the

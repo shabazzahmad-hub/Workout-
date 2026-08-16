@@ -1692,7 +1692,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='263';
+const APP_VERSION='264';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3300,8 +3300,14 @@ function restartProgram(){
      Archive the whole run instead. The keys go with it, the new run starts on
      an empty map, and every lifetime counter reads both (see allDoneLogs).
      Nothing is deleted and nothing collides. */
+  /* Archive whenever there is ANYTHING to archive, not only when a completed
+     session exists. Gating on `_done>0` meant a run made entirely of
+     part-finished and pain-stopped sessions — real logged sets, and the ones
+     an athlete is least able to re-create — was dropped on the floor by a
+     confirm that says "Your history stays saved". `sessions` still counts only
+     completed ones, because that is what every lifetime counter means by it. */
   const _done=Object.values(STATE.logs||{}).filter(l=>l&&l.done).length;
-  if(_done>0){
+  if(Object.keys(STATE.logs||{}).length>0){
     if(!Array.isArray(STATE.runs))STATE.runs=[];
     STATE.runs.push({endedAt:todayISO(),sessions:_done,logs:STATE.logs});
   }
@@ -3568,8 +3574,17 @@ function saveActual(exId,forced){
          is distinguishable from a day the athlete never answered. */
       st.actual=st.actual||null;st.actualSkipped=1;
     }else{
-      const el=$('#ac-n');const v=Math.max(0,Math.round(+(el&&el.value)||0));
-      if(v>0){st.actual=v;delete st.actualSkipped;}
+      /* An entered 0 is a MEASURED result, not a blank. The sheet's own copy
+         says "If you got fewer, say so — the next block scales off the truth,
+         not the target", and the input carries min="0"; `v>0` threw that
+         answer away, and recordPRFromActual() then fell back to the PRESCRIBED
+         target and stamped a personal record the athlete never set. Same rule
+         this file already fixed in computeAssessment() and actualRatio(), left
+         unapplied at the one call site where the athlete types the number
+         themselves. Emptiness is the only thing that means "no answer". */
+      const el=$('#ac-n');const raw=el?String(el.value).trim():'';
+      const v=Math.max(0,Math.round(+raw||0));
+      if(raw!==''&&isFinite(v)){st.actual=v;delete st.actualSkipped;}
     }
     save();
   }
@@ -3582,7 +3597,12 @@ function recordPRFromActual(exId){
     const log=ensureLog();const st=log.ex[exId];if(!st||!st.done)return;
     const sess=buildSession(STATE.progressPtr);
     const m=[...sess.main,sess.finisher].find(x=>x&&x.exId===exId);if(!m)return;
-    const val=(typeof st.actual==='number'&&st.actual>0)?st.actual:m.target;
+    /* `st.actual>0` fell back to the PRESCRIPTION for a recorded zero, which
+       is how a PR badge appeared on a movement the athlete logged 0 reps in.
+       A recorded number of any size is what they DID; only an absent one may
+       fall back. (A 0 can never beat `cur` anyway, so this simply stops the
+       fabrication.) */
+    const val=(typeof st.actual==='number'&&isFinite(st.actual))?st.actual:m.target;
     const cur=STATE.prs[exId]||0;
     if(val>cur){STATE.prs[exId]=val;save();}
   }catch(e){}
@@ -3623,7 +3643,12 @@ function actualRatio(){
     const sess=buildSession(STATE.progressPtr);
     [...sess.main,sess.finisher].filter(Boolean).forEach(m=>{
       const st=log.ex[m.exId];
-      if(st&&typeof st.actual==='number'&&st.actual>0&&m.target>0){got+=st.actual;asked+=m.target;}
+      /* `st.actual>0` skipped an honestly-logged 0, so a session where every
+         set was ticked but every rep count was zero returned null — which
+         commitSession() reads as "no opinion" and answers by RAISING the load.
+         The sets-based guard above cannot catch it: the sets really were done.
+         `m.target>0` already protects the division. */
+      if(st&&typeof st.actual==='number'&&isFinite(st.actual)&&st.actual>=0&&m.target>0){got+=st.actual;asked+=m.target;}
     });
     if(asked>0)return got/asked;
     /* `null` here meant "no data, do not judge", and commitSession() reads that
@@ -4239,12 +4264,30 @@ function loadUnit(){return isImperial()?'lb':'kg';}
    auto-DECREASES a load; that is what deload/readiness already own, and a
    silent regression here would just be a second, uncoordinated one. */
 const LOAD_STEP_KG=1;   // ~2 lb — small enough that a bad guess costs nothing
+/* The rep ceiling to measure a logged set against, chosen by the track that
+   actually PRESCRIBED it. prescribeCeiling() is the bodyweight ladder's clamp,
+   and for anything without an explicit repCap it returns a flat 40 reps — while
+   the Weights track prescribes 6-20 through weightsTargetFor(). So the gate
+   could never open: the whole double-progression feature was unreachable for
+   every loaded exercise, which is the only track it was built for. */
+function progressionCeiling(exId){
+  const ex=EX[exId];if(!ex)return 0;
+  /* Owning equipment is NOT the discriminator — dragonflagfull needs a pull-up
+     bar and is still prescribed by the bodyweight ladder, clamped by
+     prescribeCeiling(). What matters is which track set the number: anything in
+     a LADDERS array came from prescribe(), everything else that needs kit is
+     reached only through buildWeightsSession(), which prescribes 6-20 through
+     weightsTargetFor(). Measure against whichever one actually asked. */
+  const inLadder=Object.keys(LADDERS).some(k=>LADDERS[k].indexOf(exId)>=0);
+  if(!inLadder&&ex.equip&&ex.equip.length)return weightsTargetFor(exId);
+  return prescribeCeiling(ex);
+}
 function loadProgression(exId,pos){
   try{
     const last=lastLift(exId);
     if(!last||last.loadKg==null)return {lastLoadKg:null,nextLoadKg:null,climbing:false};
     const ex=EX[exId];
-    const metCeiling=last.reps!=null&&last.reps>=prescribeCeiling(ex);
+    const metCeiling=last.reps!=null&&last.reps>=progressionCeiling(exId);
     const hadRoom=last.rir!=null&&last.rir>=2;
     const easing=(typeof deloadOn==='function'&&deloadOn(pos))||(typeof readinessMult==='function'&&readinessMult()<1);
     const climbing=metCeiling&&hadRoom&&!easing;
@@ -4272,13 +4315,35 @@ function openLiftLog(items){
           <option value="1">1 left</option><option value="0">all out</option></select>
       </div></div>`;
   }).join('');
-  openSheet(`<h3>What did you lift?</h3>
+  /* MID-SESSION UI IS AN IN-PLAYER PANEL. `.scrim` is z-index 60 and `.pl` is
+     75, so a sheet opened from the finish screen builds correctly, sets the
+     scrim, and is then painted entirely BEHIND the player — the button looked
+     dead and Android Back silently popped an invisible sheet. This is the app's
+     only route for recording added load, so the whole loaded-progression
+     feature had no input path at all.
+
+     Tearing the player down first would be worse on the program branch: the
+     feel buttons beside this one are what commit the session, and they would go
+     with it. So it mounts as a panel next to #plSwapMenu / #plHurtMenu — the
+     pattern this file already states for exactly this reason — and falls back
+     to a sheet when the player is not up. */
+  const body=`<h3>What did you lift?</h3>
     <p class="sm muted" style="margin-top:-4px">Top set of each. This is the only way the app can tell whether you are getting stronger — and next time it hands these numbers back so you know what to beat. Skip anything you would rather not record.</p>
     ${rows}
     <button class="btn primary" style="margin-top:12px" onclick='saveLiftLog(${JSON.stringify(list.map(m=>m.exId))})'>Save</button>
-    <div style="height:8px"></div>
-    <button class="btn ghost" onclick="closeSheet()">Not this time</button>`);
+    <div style="height:8px"></div>`;
+  const panel=$('#plLiftPanel');
+  if(panel&&$('#player')&&$('#player').classList.contains('open')){
+    panel.innerHTML=body+`<button class="btn ghost" onclick="closeLiftLog()">Not this time</button>`;
+    panel.style.display='block';
+    try{panel.scrollIntoView({block:'nearest'});}catch(e){}
+    return;
+  }
+  openSheet(body+`<button class="btn ghost" onclick="closeSheet()">Not this time</button>`);
 }
+/* Closing the panel must not reach for closeSheet() — there is no sheet open,
+   and calling it would pop a history entry the player itself owns. */
+function closeLiftLog(){const p=$('#plLiftPanel');if(p){p.style.display='none';p.innerHTML='';}else closeSheet();}
 function saveLiftLog(exIds){
   const d=todayISO();let n=0;
   (exIds||[]).forEach((exId,i)=>{
@@ -4297,7 +4362,8 @@ function saveLiftLog(exIds){
      workout does — streak, heatmap, weekly count — WITHOUT consuming a program
      session, because it is not one. */
   if(n){if(!STATE.quickLog)STATE.quickLog={};STATE.quickLog[d]=(STATE.quickLog[d]||0)+1;}
-  save();closeSheet();
+  // Whichever surface it was mounted on — panel inside the player, or a sheet.
+  save();if($('#plLiftPanel')&&$('#plLiftPanel').style.display==='block')closeLiftLog();else closeSheet();
   toast(n?('Logged '+n+' movement'+(n===1?'':'s')):'Nothing logged');
   try{render();}catch(e){}
 }
@@ -4505,8 +4571,15 @@ function plAfterSet(){
   if(!PLAYER.free&&PLAYER.s+1>=m.sets){
     try{const log=ensureLog();const st=log.ex[m.exId];
       if(st&&typeof st.actual!=='number'){
-        const done=(m.unit==='time')?Math.round(PLAYER.total-PLAYER.remain||m.target):(PLAYER.repN||m.target);
-        if(done>0){st.actual=Math.min(done,m.target);save();try{recordPRFromActual(m.exId);}catch(e){}}
+        /* `||` treated a genuine ZERO as "nothing counted" and substituted the
+           full prescribed target — so a set the athlete got no reps in, or a
+           hold abandoned immediately, was logged as complete work. This is the
+           primary logging path, so it inflated totalVolume() and actualRatio()
+           with no athlete action at all. A counted number is data at any size;
+           only a genuinely absent one may fall back to the prescription. */
+        const counted=(m.unit==='time')?Math.round(PLAYER.total-PLAYER.remain):PLAYER.repN;
+        const done=(typeof counted==='number'&&isFinite(counted)&&counted>=0)?counted:m.target;
+        if(done>=0){st.actual=Math.min(done,m.target);save();try{recordPRFromActual(m.exId);}catch(e){}}
       }
     }catch(e){logIssue=true;}
   }
@@ -4593,7 +4666,8 @@ function plEnterDone(){
       ${coachHeroHTML('Sergeant Forge · strong work')}
       <div class="pl-name" style="margin-bottom:2px">Session done 🏋️</div>
       <div class="pl-coach" style="margin-bottom:14px">${label}</div>${stats}
-      <div style="width:100%;max-width:440px;margin-top:18px"><button class="btn primary" style="width:100%;margin-bottom:8px" onclick='openLiftLog(${JSON.stringify(PLAYER.items.map(m=>({exId:m.exId,unit:m.unit,target:m.target})))})'>🏋️ Log what you lifted</button><button class="btn ghost" style="width:100%;margin-bottom:8px" onclick="shareLast()">📤 Share</button><button class="btn green" style="width:100%" onclick="playerQuit()">Done ✓</button></div>`;
+      <div style="width:100%;max-width:440px;margin-top:18px"><button class="btn primary" style="width:100%;margin-bottom:8px" onclick='openLiftLog(${JSON.stringify(PLAYER.items.map(m=>({exId:m.exId,unit:m.unit,target:m.target})))})'>🏋️ Log what you lifted</button><button class="btn ghost" style="width:100%;margin-bottom:8px" onclick="shareLast()">📤 Share</button><button class="btn green" style="width:100%" onclick="playerQuit()">Done ✓</button></div>
+      <div class="pl-swapmenu" id="plLiftPanel" style="display:none;text-align:left"></div>`;
     if(!motivate('done'))coachSpeak('Session complete. Strong work.');
     return;
   }
@@ -4611,6 +4685,7 @@ function plEnterDone(){
       ${ceilingItems.length?`<button class="btn ghost" onclick='openLiftLog(${JSON.stringify(ceilingItems.map(m=>({exId:m.exId,unit:m.unit,target:m.target})))})'>🎒 Log your added load</button>`:''}
       <button class="btn ghost" onclick="shareLast()">📤 Share this session</button>
     </div>
+    <div class="pl-swapmenu" id="plLiftPanel" style="display:none;text-align:left"></div>
     <div class="pl-set" style="margin-top:20px">HOW DID THAT FEEL?</div>
     <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:440px;margin-top:8px">
       <button class="btn green" onclick="playerFeel('easy')">😎 Easy — bring more</button>
@@ -4880,7 +4955,7 @@ function logActManual(k){
 let ACTT=null;
 function openActTimer(k){
   if(ACTT&&ACTT.tid)clearInterval(ACTT.tid);
-  ACTT={k,secs:0,tid:null,running:true};
+  ACTT=swStart({k,secs:0,tid:null,running:true});
   const a=ACTS[k];
   openSheet(`<h3>⏱️ ${a.emoji} ${a.name}</h3>
     <p class="muted sm" style="margin:2px 0 14px">Counting up. Tap <b>Stop &amp; log</b> when you're done.</p>
@@ -4891,8 +4966,27 @@ function openActTimer(k){
   ACTT.tid=setInterval(actTimerTick,1000);
   try{coachSpeak(a.name+'. Timer running.');}catch(e){}
 }
-function actTimerTick(){if(!ACTT||!ACTT.running)return;ACTT.secs++;const e=$('#act-num');if(e)e.textContent=fmtTime(ACTT.secs);}
-function actTimerToggle(){if(!ACTT)return;ACTT.running=!ACTT.running;const b=$('#act-toggle');if(b)b.textContent=ACTT.running?'Pause':'Resume';}
+/* ---- Count-up stopwatches ------------------------------------------------
+   Every one of these counted CALLBACKS, not seconds. A tab that loses the main
+   thread — a backgrounded phone, a notification, Chrome's own throttling —
+   delivers fewer of them, so measured: ten real seconds recorded as six. The
+   sharp edge was Benchmark Ops, which writes its number straight into
+   STATE.opsPR as a personal best, so a throttled run set a fake record; the
+   others under-credited logged minutes. Derive elapsed from the wall clock and
+   subtract only the time actually spent paused. */
+function swStart(st){st.at=Date.now();st.pausedMs=0;st.pausedAt=0;st.secs=0;return st;}
+function swSecs(st){
+  if(!st||!st.at)return st?(st.secs||0):0;
+  const pausedNow=st.pausedAt?(Date.now()-st.pausedAt):0;
+  return Math.max(0,Math.round((Date.now()-st.at-(st.pausedMs||0)-pausedNow)/1000));
+}
+function swPause(st,running){
+  if(!st)return;
+  if(running){if(st.pausedAt){st.pausedMs=(st.pausedMs||0)+(Date.now()-st.pausedAt);st.pausedAt=0;}}
+  else if(!st.pausedAt)st.pausedAt=Date.now();
+}
+function actTimerTick(){if(!ACTT||!ACTT.running)return;ACTT.secs=swSecs(ACTT);const e=$('#act-num');if(e)e.textContent=fmtTime(ACTT.secs);}
+function actTimerToggle(){if(!ACTT)return;ACTT.running=!ACTT.running;swPause(ACTT,ACTT.running);const b=$('#act-toggle');if(b)b.textContent=ACTT.running?'Pause':'Resume';}
 function actTimerCancel(){if(ACTT&&ACTT.tid)clearInterval(ACTT.tid);ACTT=null;closeSheet();}
 function actTimerStop(){
   if(!ACTT)return;const k=ACTT.k,secs=ACTT.secs;if(ACTT.tid)clearInterval(ACTT.tid);ACTT=null;
@@ -4975,7 +5069,7 @@ function startSkipCustom(){
 let SKIPT=null;
 function openSkipTimer(){
   if(SKIPT&&SKIPT.tid)clearInterval(SKIPT.tid);
-  SKIPT={secs:0,tid:null,running:true};
+  SKIPT=swStart({secs:0,tid:null,running:true});
   openSheet(`<h3>⏱️ Skipping stopwatch</h3>
     <p class="muted sm" style="margin:2px 0 14px">Counting up. Tap <b>Stop &amp; log</b> when you're done and the minutes go straight into your record.</p>
     <div style="text-align:center;margin:10px 0 18px"><div id="skt-num" style="font-size:56px;font-weight:900;letter-spacing:1px">0:00</div></div>
@@ -4987,8 +5081,8 @@ function openSkipTimer(){
   SKIPT.tid=setInterval(skipTimerTick,1000);
   try{coachSpeak('Rope up. Timer running.');}catch(e){}
 }
-function skipTimerTick(){if(!SKIPT||!SKIPT.running)return;SKIPT.secs++;const e=$('#skt-num');if(e)e.textContent=fmtTime(SKIPT.secs);}
-function skipTimerToggle(){if(!SKIPT)return;SKIPT.running=!SKIPT.running;const b=$('#skt-toggle');if(b)b.textContent=SKIPT.running?'Pause':'Resume';}
+function skipTimerTick(){if(!SKIPT||!SKIPT.running)return;SKIPT.secs=swSecs(SKIPT);const e=$('#skt-num');if(e)e.textContent=fmtTime(SKIPT.secs);}
+function skipTimerToggle(){if(!SKIPT)return;SKIPT.running=!SKIPT.running;swPause(SKIPT,SKIPT.running);const b=$('#skt-toggle');if(b)b.textContent=SKIPT.running?'Pause':'Resume';}
 function skipTimerCancel(){if(SKIPT&&SKIPT.tid)clearInterval(SKIPT.tid);SKIPT=null;closeSheet();}
 function skipTimerStop(){
   if(!SKIPT)return;const secs=SKIPT.secs;if(SKIPT.tid)clearInterval(SKIPT.tid);SKIPT=null;
@@ -5135,7 +5229,7 @@ function startJackMakeup(){
 let MUT=null;
 function openMakeupStopwatch(mode){
   if(MUT&&MUT.tid)clearInterval(MUT.tid);
-  MUT={mode,secs:0,tid:null,running:true};
+  MUT=swStart({mode,secs:0,tid:null,running:true});
   const label=mode==='bike'?'🚴 Bike':'🤸 Jumping jacks';
   openSheet(`<h3>⏱️ ${label} stopwatch</h3>
     <p class="muted sm" style="margin:2px 0 14px">Counting up. Tap <b>Stop &amp; log</b> when you're done and the minutes go straight into today's movement.</p>
@@ -5148,8 +5242,8 @@ function openMakeupStopwatch(mode){
   MUT.tid=setInterval(makeupStopwatchTick,1000);
   try{coachSpeak(label+'. Timer running.');}catch(e){}
 }
-function makeupStopwatchTick(){if(!MUT||!MUT.running)return;MUT.secs++;const e=$('#mut-num');if(e)e.textContent=fmtTime(MUT.secs);}
-function makeupStopwatchToggle(){if(!MUT)return;MUT.running=!MUT.running;const b=$('#mut-toggle');if(b)b.textContent=MUT.running?'Pause':'Resume';}
+function makeupStopwatchTick(){if(!MUT||!MUT.running)return;MUT.secs=swSecs(MUT);const e=$('#mut-num');if(e)e.textContent=fmtTime(MUT.secs);}
+function makeupStopwatchToggle(){if(!MUT)return;MUT.running=!MUT.running;swPause(MUT,MUT.running);const b=$('#mut-toggle');if(b)b.textContent=MUT.running?'Pause':'Resume';}
 function makeupStopwatchCancel(){if(MUT&&MUT.tid)clearInterval(MUT.tid);MUT=null;closeSheet();}
 function makeupStopwatchStop(){
   if(!MUT)return;const mode=MUT.mode,secs=MUT.secs;if(MUT.tid)clearInterval(MUT.tid);MUT=null;
@@ -5158,8 +5252,14 @@ function makeupStopwatchStop(){
   if(mins<1){toast('Under a minute — nothing logged');return;}
   creditMakeup(mode,mins);
 }
-function ivRingHTML(color,ex){return `
-  <div class="pl-ring">${plRingMediaHTML(ex)}<div class="pl-pulse" id="ivPulse"></div>
+/* `cls` was missing entirely, so `.pl-ring.rest` never applied here — the HIIT
+   rest clock rendered at the work phase's 40% watermark opacity with no halo,
+   over a full-brightness photo. Measured 1.65:1 against the guided player's
+   14.52:1 on comparable artwork. Rest is the ONE phase with no ten-second
+   countdownCue (ivTick gates it on phase==='work'), which is precisely the
+   reason the player's rest clock is solid and haloed. */
+function ivRingHTML(color,ex,cls){return `
+  <div class="pl-ring ${cls||''}">${plRingMediaHTML(ex)}<div class="pl-pulse" id="ivPulse"></div>
     <svg viewBox="0 0 232 232">
       <circle cx="116" cy="116" r="108" fill="none" stroke="var(--card3)" stroke-width="10"/>
       <circle id="ivRing" cx="116" cy="116" r="108" fill="none" stroke="${color}" stroke-width="10" stroke-linecap="round" stroke-dasharray="${IV_C}" stroke-dashoffset="0"/>
@@ -5230,7 +5330,7 @@ function ivRenderStep(idx){
     <div class="pl-body" id="ivBody">
       <div class="pl-region"><span class="tag ${isWork?ex.region:'cardio'}">${isWork?'WORK':'REST'}</span></div>
       <div class="pl-name">${isWork?ex.name:'Rest — next: '+ex.name}</div>
-      ${ivRingHTML(isWork?'var(--green)':'var(--fire-l)',ex)}
+      ${ivRingHTML(isWork?'var(--green)':'var(--fire-l)',ex,isWork?'':'rest')}
       <div class="pl-set">${step.round?('ROUND '+step.round+(step.rounds?(' / '+step.rounds):'')):'Keep moving'}</div>
       <div class="pl-coach" id="ivCoach">${isWork?'Max effort — every rep counts.':'Breathe. Reset.'}</div>
       <div class="pl-actions">
@@ -5244,6 +5344,7 @@ function ivStep(idx){
   if(typeof idx==='number')INTV.i=idx;
   const step=INTV.seq[INTV.i];const ex=EX[step.exId]||{name:'Work'};const isWork=step.type==='work';
   ivClear();INTV.phase=isWork?'work':'rest';INTV.remain=step.secs;INTV.total=Math.max(1,step.secs);
+  INTV.deadline=Date.now()+step.secs*1000;   // wall-clock anchor — see ivTick()
   ivRenderStep(INTV.i);
   ivS('#ivNum',fmtTime(INTV.remain));ivS('#ivSub',isWork?'WORK':'REST');ivRingSet(1);
   const pulse=$('#ivPulse');if(pulse){if(isWork&&INTV.running)pulse.classList.add('on');else pulse.classList.remove('on');}
@@ -5254,7 +5355,15 @@ function ivStep(idx){
 }
 function ivTick(){
   if(!INTV)return;
-  INTV.remain--;
+  /* The same wall-clock FLOOR plTickRest()/plTickHold() carry, and for the same
+     reason: Chrome throttles a hidden tab's timers to roughly one callback a
+     minute, so a bare `remain--` counts callbacks rather than seconds. Measured
+     before this: six real seconds moved the HIIT clock by two. A Tabata round
+     silently ran long every time the phone dimmed — on the surface most likely
+     to be left unattended. Taking the MINIMUM of one tick and what the clock
+     says is left keeps +15s, pause and skip all driveable. */
+  const byTick=INTV.remain-1;
+  INTV.remain=INTV.deadline?Math.min(byTick,Math.ceil((INTV.deadline-Date.now())/1000)):byTick;
   if(INTV.phase==='work')INTV.workElapsed++;
   if(INTV.remain===3)coachSpeak('Three. Two. One.');
   if(INTV.phase==='work')countdownCue(INTV.remain,INTV.total);
@@ -5318,6 +5427,8 @@ function hiitToggle(){
   const t=$('#ivToggle');if(t)t.textContent=INTV.running?'Pause':'Resume';
   const pulse=$('#ivPulse');
   if(!INTV.running){ivClear();if(pulse)pulse.classList.remove('on');return;}
+  // Resuming re-anchors the deadline to what was left, so a pause is not counted as elapsed time.
+  if(INTV.remain>0)INTV.deadline=Date.now()+INTV.remain*1000;
   if(INTV.phase==='lead')INTV.tid=setInterval(ivTickLead,1000);
   else{if(INTV.phase==='work'&&pulse)pulse.classList.add('on');INTV.tid=setInterval(ivTick,1000);}
 }
@@ -7206,7 +7317,7 @@ function jointAwareWarmup(items){
 }
 function runFlow(items,title,color){
   items=safeFlow(items);
-  let idx=0,phase='ready',ready=5,trans=0,remain=0,total=Math.max(1,items[0].secs);
+  let idx=0,phase='ready',ready=5,trans=0,remain=0,total=Math.max(1,items[0].secs),deadline=0;
   const TRANSITION=4;   // seconds to reposition between moves (floor <-> standing)
   const C=2*Math.PI*100;
   openSheet(flowHTML(title,items.length,color||'var(--fire)'));
@@ -7229,6 +7340,7 @@ function runFlow(items,title,color){
   }
   function startItem(first){
     const it=items[idx]; remain=it.secs; total=Math.max(1,it.secs);
+    deadline=Date.now()+it.secs*1000;   // wall-clock anchor — see tick()
     set('#flowNum',remain); set('#flowName',it.n); set('#flowCue',it.cue||'');
     set('#flowStep',(idx+1)+' / '+items.length); showFlowMedia(it);
     beepGo(); haptic(30);
@@ -7253,7 +7365,13 @@ function runFlow(items,title,color){
       if(trans>0){beep(1000,.15,0.7);if(trans<=3)coachSay(String(trans));set('#flowNum',trans);return;}
       beepGo(); phase='run'; startItem(false); return;
     }
-    remain--;
+    /* Wall-clock FLOOR, the same one plTickHold() and ivTick() carry. A bare
+       `remain--` counts CALLBACKS, and a throttled tab delivers roughly one a
+       minute — measured, six real seconds moved this clock by two. A stretch
+       hold silently ran long every time the screen dimmed, which on a flow with
+       no wake lock is most of them. */
+    const byTick=remain-1;
+    remain=deadline?Math.min(byTick,Math.ceil((deadline-Date.now())/1000)):byTick;
     if(remain===5&&total>10)coachSpeak('Five seconds.');
     if(remain===3)coachSpeak('Three. Two. One.');
     countdownCue(remain,total);
@@ -7599,7 +7717,12 @@ let _pendingPose=null;
    fat live — the side and back changes arrive long before the front does. */
 const POSES=[['front','Front'],['side','Side'],['back','Back']];
 const POSE_KEYS=POSES.map(p=>p[0]);
-function poseOf(p){return (p&&typeof p.pose==='string'&&p.pose)||'front';}
+/* MEMBERSHIP, not truthiness. `pose` is rendered raw at five sites (the
+   gallery caption, the Before → Now labels, the compare picker, the photo
+   sheet heading) and a restored backup can carry any string at all. There are
+   exactly three legal poses; anything else is 'front', which is also what the
+   normalizeState repair guesses for a missing one. */
+function poseOf(p){const v=p&&p.pose;return (typeof v==='string'&&POSE_KEYS.indexOf(v)>=0)?v:'front';}
 /* Before → Now has to compare LIKE WITH LIKE. The rule used to be `ps[0]` vs
    `ps[ps.length-1]` — the earliest photo against the latest, whatever they
    were of. With one pose that is harmless; with three it routinely captions a
@@ -7634,8 +7757,8 @@ function photosHTML(){
     const a=pair.a,b=pair.b;
     h+=`<div class="section-label" style="margin:16px 3px 8px">Before → Now · ${pair.pose}</div>
       <div class="grid2" style="gap:8px">
-        <div><img class="ph-img" data-pid="${a.id}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;background:var(--card2)"><div class="tiny muted center" style="margin-top:4px">${a.date} · ${poseOf(a)}</div></div>
-        <div><img class="ph-img" data-pid="${b.id}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;background:var(--card2)"><div class="tiny muted center" style="margin-top:4px">${b.date} · ${poseOf(b)}</div></div>
+        <div><img class="ph-img" data-pid="${_ve(a.id)}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;background:var(--card2)"><div class="tiny muted center" style="margin-top:4px">${_ve(a.date)} · ${poseOf(a)}</div></div>
+        <div><img class="ph-img" data-pid="${_ve(b.id)}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;background:var(--card2)"><div class="tiny muted center" style="margin-top:4px">${_ve(b.date)} · ${poseOf(b)}</div></div>
       </div>`;
   }else if(ps.length>=2){
     h+=`<div class="note info" style="margin:16px 0 0">Two shots of the <b>same</b> pose is what makes a comparison — take a second ${poseOf(ps[0])} and the Before → Now panel appears.</div>`;
@@ -7643,7 +7766,7 @@ function photosHTML(){
   if(ps.length){
     h+=`<div class="section-label" style="margin:16px 3px 8px">All photos (${ps.length})</div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-        ${ps.map(p=>`<div style="position:relative"><img class="ph-img" data-pid="${p.id}" onclick="viewPhoto('${p.id}')" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:10px;background:var(--card2);cursor:pointer"><div class="tiny muted" style="text-align:center;margin-top:2px">${p.date.slice(5)} ${poseOf(p)[0].toUpperCase()}</div></div>`).join('')}
+        ${ps.map(p=>`<div style="position:relative"><img class="ph-img" data-pid="${_ve(p.id)}" onclick="viewPhoto(${_ve(JSON.stringify(String(p.id)))})" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:10px;background:var(--card2);cursor:pointer"><div class="tiny muted" style="text-align:center;margin-top:2px">${_ve(String(p.date).slice(5))} ${poseOf(p)[0].toUpperCase()}</div></div>`).join('')}
       </div>`;
   }else{
     h+=`<div class="note info" style="margin-top:12px;margin-bottom:0">No photos yet — a front, side &amp; back shot today becomes your baseline. The mirror lies; photos don't.</div>`;
@@ -7715,9 +7838,9 @@ async function hydratePhotos(){
 async function viewPhoto(id){
   const data=await idbGet('ph_'+id);const meta=(STATE.photos||[]).find(p=>p.id===id);
   openSheet(`
-    <h3 style="text-transform:capitalize">${meta?poseOf(meta)+' · '+meta.date:'Photo'}</h3>
+    <h3 style="text-transform:capitalize">${meta?_ve(poseOf(meta)+' · '+meta.date):'Photo'}</h3>
     <img src="${data||''}" style="width:100%;border-radius:14px;margin:6px 0 14px">
-    <button class="btn ghost" style="color:var(--pink)" onclick="deletePhoto('${id}')">Delete this photo</button>
+    <button class="btn ghost" style="color:var(--pink)" onclick="deletePhoto(${_ve(JSON.stringify(String(id)))})">Delete this photo</button>
     <div style="height:8px"></div>
     <button class="btn ghost" onclick="closeSheet()">Close</button>
   `);
@@ -8121,10 +8244,10 @@ function opRender(){
     </div>`;
 }
 function opStart(){
-  if(!OP||OP.running)return;OP.running=true;OP.elapsed=0;
+  if(!OP||OP.running)return;OP.running=true;OP.elapsed=0;swStart(OP);
   wakeOn();   // benchmark ops are timed too — opQuit already released a lock it never took
   beatStart();beepGo();haptic(30);coachSpeak(OP.op.name+'. Go!');
-  OP.tid=setInterval(()=>{if(!OP)return;OP.elapsed++;const e=$('#opClock');if(e)e.textContent=fmtTime(OP.elapsed);},1000);
+  OP.tid=setInterval(()=>{if(!OP)return;OP.elapsed=swSecs(OP);const e=$('#opClock');if(e)e.textContent=fmtTime(OP.elapsed);},1000);
   const b=$('#opBtns');if(b)b.innerHTML=`<button class="btn green" style="width:100%" onclick="opFinish()">✓ Finished</button>`;
 }
 function opFinish(){
@@ -10447,8 +10570,15 @@ function movementKcalAdj(){
    STRUCTURAL target the athlete set and would drift meaninglessly if they
    rebuilt themselves every time a step count changed mid-afternoon. */
 function todayKcalBudget(){
-  const k=nut().kcalTarget;
-  return k?k+movementKcalAdj():k;
+  /* `+k`, not `k`. A stored STRING target — exactly what a hand-edited or
+     foreign backup carries — made this CONCATENATE: '2400' + 600 rendered
+     "24000 kcal left today" on Fuel while Settings two rows down still said
+     2400. Nothing threw. Same family as progressPtr:'12' printing session 121.
+     The repair in normalizeState() is the real fix; this is the second half of
+     it, so a value that reaches here by any other route still adds. */
+  const k=+nut().kcalTarget;
+  if(!isFinite(k)||k<=0)return nut().kcalTarget;
+  return k+movementKcalAdj();
 }
 function setSteps(v){
   const t=nutToday();t.steps=Math.max(0,Math.min(100000,Math.round(+v||0)));
@@ -10579,7 +10709,11 @@ function creditMakeupAndClose(mode,mins,feel){creditMakeup(mode,mins,feel);hiitQ
    which needs 3 of 4, could read 0 on a perfect week. */
 function syncProteinHabit(){
   const t=nutToday();const tgt=proteinTargetG();
-  if(!tgt||!(foodTotals().n>0))return;
+  /* The `n>0` half of this guard meant the tick could go on and never come
+     off: delete the last food row and an EMPTY diary still read "Hit protein
+     target". An emptied diary is 0 g — a measured zero, not a missing answer,
+     which is the rule this app already states everywhere else. */
+  if(!tgt)return;
   if(!t.habits||typeof t.habits!=='object')t.habits={};
   t.habits.protein=foodTotals().p>=tgt;
 }
@@ -10589,7 +10723,11 @@ function syncStepHabit(){
      there now. Clearing a mistyped step count back to 0 left the habit ticked
      while the card above it read 0/10,000 — the exact contradiction the comment
      below was written to prevent. */
-  const everLogged=m.steps||m.val||t._stepAuto;
+  /* `m.jval` was missing, and jacks are the DEFAULT cardio mode — owning a
+     bike is not consent to be programmed one. So an hour of hard jacks credited
+     15,780 step-equivalents and 342 kcal and still left the step habit
+     unticked, quietly costing a nutrition-streak day. */
+  const everLogged=m.steps||m.val||m.jval||t._stepAuto;
   if(!everLogged)return;
   if(!t.habits||typeof t.habits!=='object')t.habits={};
   t._stepAuto=1;
@@ -12203,7 +12341,11 @@ function renderFuel(){
   v.innerHTML=h;
 }
 function setNutGoal(g){nut().goal=g;STATE.profile.goal=g;noteGoalPhase();if(nut().kcalTarget)recalcKcalFromStored();save();renderFuel();}
-function logWater(d){const t=nutToday();t.water=clamp((t.water||0)+d,0,20);if(t.water>=waterTargetCups()){if(!t.habits)t.habits={};t.habits.water=true;}save();renderFuel();checkAchievements();}
+/* Recompute BOTH ways. This only ever ticked on the way up, so undoing a
+   mis-tap left "Hit water goal" checked above a card reading 0/13 — the exact
+   contradiction syncStepHabit()'s own comment says it exists to prevent, never
+   carried across to water. */
+function logWater(d){const t=nutToday();t.water=clamp((t.water||0)+d,0,20);if(!t.habits||typeof t.habits!=='object')t.habits={};t.habits.water=t.water>=waterTargetCups();save();renderFuel();checkAchievements();}
 function toggleHabit(k){const t=nutToday();if(!t.habits)t.habits={};t.habits[k]=!t.habits[k];save();haptic(10);renderFuel();checkAchievements();}
 function mifflinBMR(sex,kg,cm,age){return 10*kg+6.25*cm-5*age+(sex==='female'?-161:5);}
 /* GOAL_NOTE.shred says "best in short blocks" and nothing enforced it. Track how
@@ -12236,40 +12378,52 @@ function dietBreakBanner(){
   return `<div class="note fire">🍽️ <b>You have been in a deficit for ${w} weeks.</b> That is long enough that appetite, energy and recovery all start working against you. Take <b>2 weeks at maintenance</b> — same training, more food. You will keep the muscle, reset the hormones, and come back to the cut working properly.
     <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="setNutGoal('maintain');toast('Switched to maintenance — well played')">Switch to maintenance</button></div>`;
 }
-function recalcKcalFromStored(){
-  const n=nut();if(!(n.sex&&n.age&&n.heightCm&&n.weightKg))return;
+/* The floor lives here and NOWHERE else. calorieCheckHTML() used to label its
+   button `c.target + c.step` — the arithmetic result, not the number the app
+   would actually deliver — so a small, older athlete already sitting on the
+   1200 kcal floor was offered "Drop to 1130 kcal", tapped it, and the target
+   did not move. The adjustment was still stamped, so the check then went quiet
+   for three weeks and repeated the same no-op forever. A second copy of the
+   floor in the label would just be a second thing to drift, so the predictor
+   and the setter are the same code, asked a different question. */
+function kcalTargetPreview(adjOverride){
+  const n=nut();if(!(n.sex&&n.age&&n.heightCm&&n.weightKg))return null;
   const bmr=mifflinBMR(n.sex,n.weightKg,n.heightCm,n.age);const tdee=bmr*(n.activity||1.45);
-  n.tdee=Math.round(tdee);   // read by the weight projection; previously never assigned, so its deficit clamp was dead
   // fat-loss = a moderate 300–500 kcal/day deficit (matches the on-screen copy), not a flat 20%
   const loseDef=clamp(Math.round(tdee*0.2),300,500);
   // shred runs a steeper cut than 'lose'; core sits just under maintenance so the
   // midsection work is fuelled while bodyfat still drifts down
   const shredDef=clamp(Math.round(tdee*0.27),450,700);
   let t=n.goal==='gain'?tdee*1.1:(n.goal==='maintain'?tdee:(n.goal==='recomp'?tdee*0.9:(n.goal==='core'?tdee*0.95:(n.goal==='shred'?tdee-shredDef:tdee-loseDef))));
-  // Safety floor: never prescribe below ~110% of BMR. Record when it bites so the
-  // UI can say the target was raised, rather than silently showing 'shred' and
-  // 'lose' the same number.
-  /* A floor defined only as a multiple of BMR gives the LEAST protection to the
-     smallest and oldest athletes — exactly backwards. Below ~1200/1500 kcal a
-     complete diet is not achievable from whole food unsupervised. */
-  /* This compared against 'f'. The app writes 'female' (the picker's own value),
-     so isF was false for every real athlete and the 1200 floor could not be
-     reached — small older women were floored at 1500 and 'shred' and 'lose'
-     collapsed to the same number. isFemale() already handles every spelling. */
   /* A correction measured against the athlete's own scale, applied before the
      floor so it can never push anyone under it. Mifflin-St Jeor plus an
      activity multiplier is a population estimate: it is routinely 200-300 kcal
      out for an individual, and the activity factor is a guess on top of a
      guess. Reality is what the weight trend says, and calorieCheck() turns that
      into this number. */
-  const adj=(typeof n.kcalAdj==='number'&&isFinite(n.kcalAdj))?clamp(n.kcalAdj,-500,500):0;
-  n.kcalAdj=adj;
+  const stored=(typeof n.kcalAdj==='number'&&isFinite(n.kcalAdj))?clamp(n.kcalAdj,-500,500):0;
+  const adj=(adjOverride===undefined)?stored:clamp(stored+(+adjOverride||0),-500,500);
   t+=adj;
-  const isF=isFemale();
-  const floor=Math.max(bmr*1.1, isF?1200:1500);
-  n.kcalFloored=t<floor-1;
-  t=Math.max(t,floor);
-  n.kcalTarget=Math.round(t/10)*10;
+  /* Safety floor: never prescribe below ~110% of BMR. Record when it bites so the
+     UI can say the target was raised, rather than silently showing 'shred' and
+     'lose' the same number.
+     A floor defined only as a multiple of BMR gives the LEAST protection to the
+     smallest and oldest athletes — exactly backwards. Below ~1200/1500 kcal a
+     complete diet is not achievable from whole food unsupervised.
+     This compared against 'f'. The app writes 'female' (the picker's own value),
+     so isF was false for every real athlete and the 1200 floor could not be
+     reached — small older women were floored at 1500 and 'shred' and 'lose'
+     collapsed to the same number. isFemale() already handles every spelling. */
+  const floor=Math.max(bmr*1.1, isFemale()?1200:1500);
+  const floored=t<floor-1;
+  return {tdee:Math.round(tdee),adj,floored,target:Math.round(Math.max(t,floor)/10)*10};
+}
+function recalcKcalFromStored(){
+  const n=nut();const p=kcalTargetPreview();if(!p)return;
+  n.tdee=p.tdee;        // read by the weight projection; previously never assigned, so its deficit clamp was dead
+  n.kcalAdj=p.adj;
+  n.kcalFloored=p.floored;
+  n.kcalTarget=p.target;
 }
 /* ---- Is the calorie target actually working? -----------------------------
    Nothing checked. The app produced a number from Mifflin-St Jeor times an
@@ -12369,9 +12523,18 @@ function calorieCheckHTML(){
   }
   if(c.verdict==='stalled'){
     const gaining=c.observed>0;
+    /* Ask the setter what it would actually produce. An athlete already on the
+       safety floor cannot be cut further, and offering it anyway was a button
+       that did nothing and then silenced the check for three weeks. */
+    const pv=kcalTargetPreview(c.step);
+    const wouldMove=pv&&pv.target!==c.target;
+    const offer=wouldMove
+      ? `<div class="btnrow" style="margin-top:10px"><button class="btn sm primary" onclick="applyKcalAdj(${c.step})">Drop to ${pv.target} kcal</button><button class="btn sm ghost" onclick="dismissKcalCheck()">Leave it</button></div>`
+      : `<div class="note info" style="margin:10px 0 0"><b>Your target is already at the safe floor.</b> Cutting further is not something this app will prescribe. Move more instead — steps, an extra session, a longer warm-up — or check your logging before eating less.
+         <div class="btnrow" style="margin-top:8px"><button class="btn sm ghost" onclick="dismissKcalCheck()">Got it</button></div></div>`;
     return `<div class="note warn"><b>${gaining?'The scale is going up.':'The scale is barely moving.'}</b> Over ${c.trend.days} days you have gone ${shown(c.trend.from)} → ${shown(c.trend.to)} ${wu} — about <b>${kg(c.observed)} a week</b>, where ${c.target} kcal should give <b>${kg(c.expected)}</b>.
       <div class="tiny muted" style="margin-top:8px">The calculator estimates your maintenance from height, weight, age and an activity guess. It is commonly a few hundred calories out either way. Your scale is the better instrument, so use it.</div>
-      <div class="btnrow" style="margin-top:10px"><button class="btn sm primary" onclick="applyKcalAdj(${c.step})">Drop to ${Math.max(0,c.target+c.step)} kcal</button><button class="btn sm ghost" onclick="dismissKcalCheck()">Leave it</button></div>
+      ${offer}
       <div class="tiny muted" style="margin-top:8px">Worth ruling out first: weekends that undo the week, cooking oil and drinks going unlogged, and a new training block holding water. If you have not been logging honestly, fix that before cutting further.</div></div>`;
   }
   return `<div class="note warn"><b>That is coming off faster than it should.</b> ${c.trend.days} days at about <b>${kg(c.observed)} a week</b>, against a planned ${kg(c.expected)}. Fast loss costs muscle and is the pace people quit at.
@@ -12468,17 +12631,25 @@ function renderQuick(){
     <div class="note info">Tap <b>▶ Play</b> on each move for a guided timer with coaching, then check it off. No equipment needed.</div>
     <div class="exlist">`;
   q.items.forEach((it,idx)=>{
-    const ex=EX[it.exId];const unit=ex.unit;const done=!!(quickState.done&&quickState.done[idx]);
-    const rx=unit==='time'?fmtTime(it.target):it.target+' reps';
+    /* Resolve the swap HERE, not only inside quickPlay(). The card used to show
+       the contraindicated movement — its name, its region, its How-to — and
+       only Play quietly substituted, so a flagged athlete read one exercise and
+       performed another. Worse, a swap can cross units: the card said
+       "Russian Twist 2 x 20 reps" and Play ran "Side Plank 20 SECONDS", the
+       rep count carried straight over as a duration. */
+    const exId=quickExId(it.exId);
+    const ex=EX[exId]||EX[it.exId];const unit=ex.unit;const done=!!(quickState.done&&quickState.done[idx]);
+    const target=quickTarget(it,ex);
+    const rx=unit==='time'?fmtTime(target):target+' reps';
     h+=`<div class="ex ${done?'done':''}">
       <div class="ex-top">
         <button class="ex-check" onclick="quickMark(${idx})" aria-pressed="${done?'true':'false'}" aria-label="${done?'Unmark':'Mark'} ${_ve(ex.name)} as done"><svg viewBox="0 0 24 24" fill="none" stroke="#04220f" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
-        <div class="grow"><div class="ex-name">${ex.name}</div><div class="ex-region"><span class="tag ${ex.region}">${ex.region}</span> &nbsp;${it.sets} × ${rx}</div></div>
-        <div class="ex-rx"><div class="big">${it.sets}×${unit==='time'?fmtTime(it.target):it.target}</div></div>
+        <div class="grow"><div class="ex-name">${_ve(ex.name)}</div><div class="ex-region"><span class="tag ${ex.region}">${ex.region}</span> &nbsp;${it.sets} × ${rx}</div></div>
+        <div class="ex-rx"><div class="big">${it.sets}×${unit==='time'?fmtTime(target):target}</div></div>
       </div>
       <div class="ex-actions">
         <button class="timer" onclick="quickPlay(${idx})">▶ Play</button>
-        <button class="info" onclick="openExerciseInfo('${it.exId}')">ⓘ How-to</button>
+        <button class="info" onclick="openExerciseInfo('${exId}')">ⓘ How-to</button>
       </div>
     </div>`;
   });
@@ -12491,12 +12662,22 @@ function renderQuick(){
    by the catch-up banner — at the one moment the athlete is least conditioned.
    safeSwap() is a no-op when nothing is flagged. */
 function quickExId(exId){try{return safeSwap(exId);}catch(e){return exId;}}
+/* A swap can land on a movement measured in the OTHER unit. Carrying the number
+   across unchanged turned "20 reps" into a 20-second hold — the card and the
+   player then disagreed with each other AND with what was actually asked for.
+   Fall back to the substitute's own base when the units differ. */
+function quickTarget(it,ex){
+  const src=EX[it.exId];
+  if(!src||!ex||src.unit===ex.unit)return it.target;
+  return ex.base||(ex.unit==='time'?30:10);
+}
 function quickPlay(idx){
   const q=QUICKIES.find(x=>x.id===QUICK_ID);const it=q.items[idx];const ex=EX[quickExId(it.exId)]||EX[it.exId];
   const rest=it.rest||ex.rest||25;autoRoll();
   const label=ex.name+(it.sets>1?` · ${it.sets} sets`:'');
-  if(ex.unit==='time') runTimer('hold',it.target,label,rest,()=>quickMark(idx));
-  else runRepCadence(it.target,label,rest,()=>quickMark(idx));
+  const target=quickTarget(it,ex);   // same number the card shows
+  if(ex.unit==='time') runTimer('hold',target,label,rest,()=>quickMark(idx));
+  else runRepCadence(target,label,rest,()=>quickMark(idx));
 }
 function quickMark(idx){if(!quickState.done)quickState.done={};quickState.done[idx]=true;haptic(10);if(TAB==='quick')renderQuick();}
 function quickFinish(){
@@ -12680,7 +12861,7 @@ function openSessionDetail(p){
 function openCompare(){
   const ps=(STATE.photos||[]).slice().sort((a,b)=>a.id<b.id?-1:1);
   if(ps.length<2){toast('Add at least 2 photos to compare');return;}
-  const opts=ps.map(p=>`<option value="${p.id}">${p.date} · ${poseOf(p)}</option>`).join('');
+  const opts=ps.map(p=>`<option value="${_ve(p.id)}">${_ve(p.date)} · ${poseOf(p)}</option>`).join('');
   openSheet(`<h3>Compare photos</h3><p class="muted sm" style="margin:2px 0 10px">Pick any two shots to see your change side by side.</p>
     <div class="grid2" style="gap:8px;margin-bottom:10px">
       <select id="cmpA" onchange="renderCompare()" style="width:100%;padding:9px;border-radius:10px;background:var(--card2);color:var(--ink);border:1px solid var(--line);font-size:13px">${opts}</select>
@@ -13155,6 +13336,12 @@ function hardReset(){
   // clearing STATE alone left every image on the device after an "erase ALL".
   const ids=(STATE.photos||[]).map(p=>p.id);
   ids.forEach(id=>idbDel('ph_'+id));
+  /* The pre-import snapshot is a COMPLETE copy of STATE, and unlike a backup
+     file it is not stripped — it carries azureKey and foodAiKey in plain text.
+     Leaving it behind made "This cannot be undone" false in the worst possible
+     way: the Undo button was still offered on the freshly-erased app and handed
+     the whole account, credentials included, back to whoever tapped it. */
+  try{localStorage.removeItem(PREIMPORT_KEY);}catch(e){}
   STATE=DEFAULT_STATE();normalizeState();save();applyTheme();go('today');
 }
 
@@ -13276,6 +13463,17 @@ function normalizeState(){
   {const _pt=STATE.nutrition.proteinTarget;
    if(_pt!==undefined&&(typeof _pt!=='number'||!isFinite(_pt)||_pt<PROT_MIN||_pt>PROT_MAX))
      delete STATE.nutrition.proteinTarget;}
+  /* kcalTarget had NO type repair at all, and it is the number every food
+     surface is measured against. A stored string '2400' made todayKcalBudget()
+     concatenate rather than add. Coerce a numeric string back to a number
+     (that is recoverable and clearly meant); drop anything else so the
+     calculation takes over, which is what absent already means here. */
+  {const _kt=STATE.nutrition.kcalTarget;
+   if(_kt!==undefined){
+     const n=+_kt;
+     if(isFinite(n)&&n>=800&&n<=8000)STATE.nutrition.kcalTarget=Math.round(n);
+     else delete STATE.nutrition.kcalTarget;
+   }}
   /* Same shape of bug, quieter symptom. `!meals` let the string '4' through,
      and mealSlots() compares `=== 4` — so a backup holding "4" silently
      dropped the athlete's snack slot and planned three meals instead of four.
@@ -13470,6 +13668,11 @@ function normalizeState(){
   // comprehensive-quiz defaults for installs created before it
   if(!STATE.profile.focusPrimary)STATE.profile.focusPrimary=(STATE.profile.targets&&STATE.profile.targets[0])||'abs';
   if(!Array.isArray(STATE.profile.troubleZones))STATE.profile.troubleZones=[];
+  /* `unit` has exactly two legal values and reaches innerHTML unescaped at six
+     sites on the Progress render path. A membership test is the fix, not six
+     escapes: with the value constrained the sinks cannot be reached at all,
+     and every consumer already means "in or cm" by it. */
+  if(STATE.profile.unit!=='in')STATE.profile.unit='cm';
   if(!STATE.profile.conditioning)STATE.profile.conditioning='moderate';
   if(!STATE.profile.mobility)STATE.profile.mobility='ok';
   if(STATE.profile.timelineWeeks===undefined)STATE.profile.timelineWeeks=null;
@@ -13634,7 +13837,11 @@ function normalizeState(){
   if(!Array.isArray(STATE.photos))STATE.photos=[];
   if(!STATE.achievements||typeof STATE.achievements!=='object')STATE.achievements={};
   if(STATE.settings.reminderOn===undefined)STATE.settings.reminderOn=false;
-  if(!STATE.settings.reminderTime)STATE.settings.reminderTime='18:00';
+  /* MEMBERSHIP, not truthiness — the `diet` bug shape verbatim. This value is
+     interpolated straight into an HTML attribute in Settings, so anything that
+     is not an HH:MM clock time is both a broken input and an injection path
+     out of a restored backup. */
+  if(!/^\d{2}:\d{2}$/.test(String(STATE.settings.reminderTime||'')))STATE.settings.reminderTime='18:00';
   if(STATE.settings.weeklyOn===undefined)STATE.settings.weeklyOn=true;
   if(!STATE.restDays||typeof STATE.restDays!=='object')STATE.restDays={};
   if(!Array.isArray(STATE.skipLog))STATE.skipLog=[];   // jump-rope record

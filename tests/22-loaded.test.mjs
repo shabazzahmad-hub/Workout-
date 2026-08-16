@@ -358,10 +358,22 @@ export default async function run() {
   {
     const r = await page.evaluate(() => {
       const exId = 'dbcp';
-      const ceiling = prescribeCeiling(EX[exId]);
+      /* progressionCeiling(), not prescribeCeiling(). This line used to hardcode
+         the bodyweight ladder's clamp — a flat 40 reps for anything without an
+         explicit repCap — while the Weights track that actually prescribes dbcp
+         asks for 6-20. The gate could therefore never open, so the whole double
+         progression was unreachable for every loaded exercise, and this check
+         passed only because it measured against the same unreachable number. */
+      const ceiling = progressionCeiling(exId);
       const keep = JSON.stringify(STATE.readiness || null);
       delete STATE.readiness;
       const out = {};
+
+      // Guard: the ceiling has to be a number the Weights track really prescribes,
+      // or every assertion below is measuring an unreachable threshold again.
+      out.ceiling = ceiling;
+      out.prescribed = weightsTargetFor(exId);
+      out.bodyweightClamp = prescribeCeiling(EX[exId]);
 
       STATE.liftLog = [];
       out.noHistory = loadProgression(exId, {});
@@ -393,6 +405,9 @@ export default async function run() {
     t.eq('no history gives no recommendation', r.noHistory, { lastLoadKg: null, nextLoadKg: null, climbing: false });
     t.eq('ceiling reps + 2 left in the tank -> climb by the load step', r.climbsOnCeilingWithRoom,
       { lastLoadKg: 10, nextLoadKg: 11, climbing: true });
+    t.eq('the ceiling is the one the Weights track actually prescribes', r.ceiling, r.prescribed, r);
+    t.ok('and that is genuinely reachable, unlike the bodyweight clamp',
+      r.ceiling < r.bodyweightClamp, r);
     t.eq('short of the ceiling -> repeat the same load', r.repeatsShortOfCeiling,
       { lastLoadKg: 10, nextLoadKg: 10, climbing: false });
     t.eq('ceiling reps but no room left -> repeat, not climb', r.repeatsWithNoRoom,

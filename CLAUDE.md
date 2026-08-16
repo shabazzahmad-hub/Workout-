@@ -3376,6 +3376,218 @@ five real fixes and never reached the cause; one round of measurement did,
 immediately. A feature that cannot be verified where it runs is not finished
 when its tests are green — it is finished when it can verify itself there.
 
+## Four parallel senior audits, and the twenty fixes they found (v264)
+
+Asked to test every other aspect of the app as thoroughly as the food import
+had just been tested, then to fix everything the audits returned. Four
+Principal-Engineer passes ran in parallel — workout engine, state/data safety,
+UI and the guided player, nutrition math and the service worker. Every finding
+was re-verified against real source (and, for the high-severity ones, in a real
+browser) before anything shipped. Twenty fixes, nineteen mutants seeded, nineteen
+caught.
+
+**The audits found the same defect CLASSES this file already documents, in the
+places the documentation had not yet reached.** That is the honest summary:
+almost nothing here is a new kind of mistake. It is the known kinds, one
+function over from where they were last fixed.
+
+**`onclick="viewPhoto('${p.id}')"` is the `removeMeasure()` breakout of v240,
+unfixed one function away.** `normalizeState()` only ever required a photo's
+`id` to be truthy, and a restored backup carries them verbatim — so an id
+containing a quote closed the JS string and ran what followed. Verified with a
+real click setting a real global. Fixed the same way v240 fixed its twin, with
+`JSON.stringify()` building the argument. **The check has to inject the rendered
+markup into a real element and fire a real click**: the browser HTML-decodes an
+inline handler before compiling it, so asserting on the escaped attribute proves
+nothing, exactly as v240 already recorded.
+
+**Three more fields reached `innerHTML` with a truthiness "repair" behind them,
+and two of them have a fixed legal set — so the fix is a MEMBERSHIP test, not
+three escapes.** `profile.unit` (six sinks on the Progress path, two legal
+values), `photos[].pose` (five sinks, three legal poses, and the existing repair
+only ever guessed at a MISSING pose, never a hostile one), and
+`settings.reminderTime` (inside `value="…"`, and a clock time has a shape).
+Constraining the value closes every sink at once and cannot be forgotten at a
+sink added later — which is the whole argument `DIET_OPTS` already made.
+
+**`hardReset()` said "This cannot be undone" and left a complete, un-stripped
+copy of STATE behind — including both API keys in plain text.** The pre-import
+snapshot is not a backup file: `exportData()` strips the keys, this does not.
+The Undo button was still offered on the freshly-erased app and handed the whole
+account back. One `removeItem` — and the check reads the raw localStorage key
+rather than `hasPreImportSnapshot()`, so it cannot pass on a getter that answers
+no while the bytes are still on the device.
+
+**`restartProgram()`'s confirm says "Your history stays saved" and it destroyed
+every session that was logged but never completed.** It archived only when a
+`done` session existed, then cleared the map unconditionally — so a run made
+entirely of part-finished and pain-stopped work went on the floor. That is
+precisely the work an athlete cannot re-create. Same "a promise in UI text is a
+specification" class this file names, on the same function that has now produced
+three separate defects.
+
+**`nutrition.kcalTarget` had no type repair, and `todayKcalBudget()`
+CONCATENATED.** A stored `'2400'` rendered "24000 kcal left today" on Fuel while
+Settings two rows down still said 2400. Nothing threw. This is `progressPtr:'12'`
+printing "SESSION 121" verbatim, on the number every food surface is measured
+against. Repaired in `normalizeState()` **and** made to add in the reader, and
+the two halves are checked separately because a mutant reverting either one is
+caught by only one of them.
+
+### The service worker was serving another app
+
+**`req.mode === 'navigate'` is true for EVERY same-origin navigation, so opening
+the sibling app published from the same GitHub Pages origin wrote ITS page into
+`./index.html` — and CoreForge then served that other app offline.** Measured:
+1,050,064 bytes of CoreForge replaced by 286,583 bytes of Command, its images
+landing in `coreforge-v263` by the same route. This is the documented
+`caches.keys()` origin-scoping bug pointed the other way — not deleting a
+neighbour's cache, but ingesting its page as your own. The worker now identifies
+its OWN shell and its OWN directory explicitly and declines everything else.
+
+**Forcing it in a test needed no fabricated second app**: `/privacy.html` is a
+real same-origin page that is not the shell, and under the old rule it was "a
+page". The check reads the CACHED BYTES back afterwards, absolutely rather than
+relatively — a relative `'./index.html'` read from the sibling page resolves to
+the sibling's own path and comes back empty, which reads as a false clean.
+
+**`SHELL_MIN` installed once, non-atomically, and was never topped up.** The
+top-up queue was `[...FIRST_RUN, ...EXTRA]`; `SHELL_MIN` went in only at install
+via `Promise.allSettled`, whose rejections are logged and dropped. So the brand
+font, every icon, the manifest and both legal pages were missing from the
+offline pack FOREVER if they failed once. Suite 12's own resume check only ever
+evicted EXTRA entries, so it could not see this. Every entry is skip-if-cached,
+so adding the tier costs one cache lookup each on a clean install.
+
+### The guided player's third twin, again — and a button wired to nothing
+
+**"Log what you lifted" opened a sheet BEHIND the player, so the app's only
+route for recording added load had no input path at all.** `.scrim` is z-index
+60 and `.pl` is 75 — the rule this file already states. The sheet built
+correctly, set the scrim, and was painted underneath; the button looked dead and
+Android Back silently popped an invisible sheet. The whole v221/v226 loaded-
+progression feature was therefore unreachable from the finish screen.
+
+Tearing the player down first would have been worse on the program branch — the
+feel buttons beside it are what commit the session, and they would go too. It
+mounts as an in-player panel next to `#plSwapMenu`/`#plHurtMenu`, the pattern
+this file already prescribes, and falls back to a sheet when no player is up.
+**The check uses `elementFromPoint` on the input the athlete has to type into**,
+not on the panel existing: a panel mounted somewhere unreachable satisfies a
+`querySelector` and is the same bug.
+
+**v238's wall-clock anchor was given to `plTickHold()` and never carried to
+either twin.** `ivTick()` and `runFlow()`'s own `tick()` were both a bare
+`remain--`, which counts CALLBACKS — and Chrome throttles a hidden tab to
+roughly one a minute. Measured: six real seconds moved the HIIT clock by two.
+A Tabata round or a stretch hold silently ran long every time the phone dimmed,
+on the two surfaces most likely to be left unattended. Same `Math.min(byTick,
+wallClockRemaining)` floor, and pause re-anchors the deadline the way
+`playerToggle()` already does.
+
+**The check STARVES the tick rather than sleeping.** Firing one callback after
+real time has passed is what throttling actually does; letting an unthrottled
+interval run normally proves nothing, because it is accurate either way.
+
+**Every count-up stopwatch under-counted, and one of them writes a personal
+record.** Benchmark Ops recorded 6 s where 10 really elapsed and wrote that
+straight into `STATE.opsPR` as a best time. `swStart`/`swSecs`/`swPause` derive
+elapsed from the wall clock and subtract only time actually spent paused — one
+helper for all four, rather than four copies of the same arithmetic.
+
+**HIIT's rest clock never got the `rest` treatment because `ivRingHTML()` had no
+`cls` parameter at all.** So `.pl-ring.rest` never applied: 40% watermark
+opacity, no halo, over a full-brightness photo. Measured 1.65:1 against the
+guided player's 14.52:1 on comparable artwork — and rest is the ONE phase with
+no ten-second `countdownCue`, which is exactly the reason this file gives for
+making the player's rest clock solid and haloed.
+
+### Two engine gaps, and a test that had encoded one of them
+
+**`loadProgression()`'s double progression was unreachable for every loaded
+exercise.** It compared the last logged set against `prescribeCeiling()` — the
+bodyweight ladder's clamp, a flat 40 reps for anything without an explicit
+`repCap` — while the Weights track prescribes 6-20 through `weightsTargetFor()`.
+The gate could never open, on the only track the feature was built for.
+
+**Suite 22 had hardcoded that same unreachable number, so it passed by measuring
+against it.** The break was correct and is the second time this has happened
+here (v232's `dragonflag` reordering was the first): a check written around a
+value that is only true by construction fails the moment the construction is
+fixed. It now asserts the ceiling is the one the track really prescribes AND
+that it sits below the bodyweight clamp — a guard, so the check cannot quietly
+go back to measuring an unreachable threshold.
+
+**The first version of the fix used the wrong discriminator, and the suite
+caught it.** Keying on "does it need equipment" routed `dragonflagfull` — a
+pull-up bar movement prescribed by the bodyweight ladder — to the weights
+formula. Owning kit is not the question; which track set the number is. Anything
+in a `LADDERS` array came from `prescribe()`; everything else needing equipment
+is reached only through `buildWeightsSession()`.
+
+**Quick Workouts ran `safeSwap()` inside `quickPlay()` only, so the CARD showed
+the movement the swap exists to avoid** — name, region, target and How-to all
+naming the contraindicated exercise while Play quietly substituted. And a swap
+can cross units: the card said "Russian Twist 2 × 20 reps" and Play ran "Side
+Plank 20 SECONDS", the rep count carried straight across as a duration.
+`quickTarget()` falls back to the substitute's own base when the units differ,
+and the card and the player now read the same number from the same place.
+
+### Four "zero is data" call sites the rule had never reached
+
+`saveActual()` discarded a typed `0`; `recordPRFromActual()` then read that
+absence as "use the target" and stamped a personal record nobody set;
+`actualRatio()` skipped zeros, so an all-zero session read as "no opinion" and
+tapping *Easy* RAISED the load; and `plAfterSet()` — the primary logging path —
+recorded the full prescribed target for a set with zero counted reps. All four
+are `||` where an explicit `isFinite`/`>=0` belongs, which is the exact defect
+`computeAssessment()` was fixed for and `estimateMaxes()` was fixed for again in
+v240. Writing a rule down does not apply it to code the writer did not look at.
+
+### Three habit ticks that only ever went on
+
+`syncStepHabit()`'s own comment says the tick and the number must never
+contradict each other. Water never got the treatment (13 cups undone still read
+"Hit water goal" above a card showing 0/13), protein never got it (an emptied
+diary is 0 g — a measured zero, not a missing answer), and the step guard was
+blind to `jackVal` — jumping jacks, the DEFAULT cardio mode, so an hour of hard
+jacks credited 15,780 step-equivalents and 342 kcal and left the habit unticked,
+costing a nutrition-streak day.
+
+### The calorie button promised a number the code refused to deliver
+
+`applyKcalAdj()` routes through the BMR/absolute floor, which can swallow the
+whole correction — so a 52-year-old, 158 cm, 56 kg athlete already sitting on
+the 1200 kcal floor was offered "Drop to 1130 kcal", tapped it, and nothing
+moved. The adjustment was still stamped, so the check went quiet for three weeks
+and repeated the same no-op forever. **A second copy of the floor in the label
+would just be a second thing to drift**, so `kcalTargetPreview()` was extracted
+and `recalcKcalFromStored()` now delegates to it: the predictor and the setter
+are the same code asked a different question. A floored athlete is told so
+instead of being offered a cut this app will not prescribe.
+
+**Two scenarios were needed, not one** — a floored athlete must NOT be offered
+a cut and an unfloored one must still be offered a real one. A fix that simply
+deleted the button passes the first alone.
+
+### Still open, deliberately
+
+- The 28 reference days cannot reach a calorie target above ~2,800, and every
+  documented bar (`validateData()`'s three, suite 06's five) is calibrated
+  exactly at that ceiling — so an ordinary 78 kg very-active athlete on a gain
+  goal misses the bar on 28 days out of 28. `renderRef()` does disclose each gap
+  in words, so it is not silent, but the tab and the shopping list stop being
+  usable for a whole class of athlete. Needs either a wider starch clamp or a
+  surplus dial, plus a validator bar above the ceiling — a real content decision,
+  not a defect with one answer.
+- `calorieCheck()` returns null unless a deficit is prescribed, so the feedback
+  loop never runs for a gain or maintenance goal. v239 fixed goal DIRECTION in
+  the brief and the weight chart and did not reach here.
+- The warm-up/cool-down flow still has no Pause and no wake lock, and its photo
+  is fixed at 191px against the player's 331px.
+- The baseline assessment sheet pushes "Next test →" ~91px below the fold at
+  375×667 on all ten tests.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v263';
+const CACHE = 'coreforge-v264';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
@@ -136,7 +136,13 @@ async function topUp(force) {
     }
     await sleep(SETTLE_MS);
     const c = await caches.open(CACHE);
-    const queue = [...FIRST_RUN, ...EXTRA];
+    /* SHELL_MIN is in here too, and first. It installs via Promise.allSettled,
+       whose rejections are logged and then dropped — so anything that failed at
+       install (the brand font, every icon, the manifest, privacy.html) was
+       missing from the offline pack FOREVER, because the only retry mechanism
+       in the worker never looked at that tier. Every entry is skip-if-cached,
+       so a clean install pays one cache lookup each and nothing more. */
+    const queue = [...SHELL_MIN, ...FIRST_RUN, ...EXTRA];
     const pending = [];
     for (const u of queue) if (!(await c.match(u))) pending.push(u);
     const total = queue.length;
@@ -212,7 +218,7 @@ self.addEventListener('message', e => {
     // mid-loop — the requesting page would then wait forever for a reply.
     e.waitUntil((async () => {
       const c = await caches.open(CACHE);
-      const queue = [...FIRST_RUN, ...EXTRA];
+      const queue = [...SHELL_MIN, ...FIRST_RUN, ...EXTRA];   // must match topUp()'s queue
       let have = 0;
       for (const u of queue) if (await c.match(u)) have++;
       const src = e.source || null;
@@ -230,8 +236,27 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;
 
-  const isPage = req.mode === 'navigate' || url.pathname.endsWith('/index.html') || url.pathname.endsWith('/');
-  if (isPage) {
+  /* CacheStorage is scoped to the ORIGIN, and so is this worker's reach — the
+     same fact that made `caches.keys()` delete the sibling app's offline pack.
+     Pointed the other way it is worse: `req.mode === 'navigate'` is true for
+     EVERY same-origin navigation, so opening the Command app published from
+     this same GitHub Pages origin wrote ITS page into `./index.html`, and
+     CoreForge then served that other app offline — measured, 1,050,064 bytes
+     of CoreForge replaced by 286,583 bytes of Command. Its images landed in
+     our cache through the static branch below by the same route.
+
+     Identify our OWN shell and our OWN directory explicitly. Anything else on
+     the origin is somebody else's app: do not serve it, do not cache it, let
+     the browser fetch it exactly as if this worker did not exist. */
+  const SCOPE = new URL(self.registration.scope).pathname;
+  const isOurShell = url.pathname === SCOPE || url.pathname === SCOPE + 'index.html';
+  // Our assets are flat files in the scope directory — a deeper path is another app's.
+  const inOurDir = url.pathname.lastIndexOf('/') === SCOPE.length - 1;
+  const isNav = req.mode === 'navigate' || url.pathname.endsWith('/index.html') || url.pathname.endsWith('/');
+  if (isNav && !isOurShell) return;
+  if (!isNav && !inOurDir) return;
+
+  if (isOurShell) {
     /* Network-first, but RACED against the cache on a 2.5 s timer.
        Plain network-first only reaches the cache once the fetch REJECTS, so a
        connection that associates and then hangs — gym wifi that does not route,
