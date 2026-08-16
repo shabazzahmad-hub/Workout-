@@ -1716,7 +1716,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='270';
+const APP_VERSION='271';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -6600,11 +6600,11 @@ function testNeural(){
    promise of depth it cannot keep. Character comes from the voice HINT, the rate
    and the script. Genuine depth needs the neural path, which is real synthesis
    and is deliberately untouched here. */
-const LOCAL_PITCH_FLOOR=1.10;
+const LOCAL_PITCH_FLOOR=1.18;
 const VOICE_TONES=[
-  ['deep','Deep','As low as a phone voice goes without buzzing',1.10,-2],
-  ['mid','Mid','Natural range — most voices sound best here',1.20,0],
-  ['bright','Bright','Lighter and clearer, cuts through noise',1.32,2],
+  ['deep','Deep','As low as a phone voice goes without buzzing',1.18,-2],
+  ['mid','Mid','Natural range — most voices sound best here',1.26,0],
+  ['bright','Bright','Lighter and clearer, cuts through noise',1.36,2],
 ];
 function voiceToneKey(){
   const k=STATE.settings&&STATE.settings.voiceTone;
@@ -6625,13 +6625,13 @@ function setVoiceTone(k){
 function localPitchFor(p){
   try{
     if(typeof STATE.settings.voicePitch==='number'&&isFinite(STATE.settings.voicePitch))
-      return clamp(STATE.settings.voicePitch,LOCAL_PITCH_FLOOR,1.6);   // explicit fine-tune wins, but not below the floor
+      return clamp(STATE.settings.voicePitch,LOCAL_PITCH_FLOOR,1.45);  // explicit fine-tune wins, but not below the floor
     const base=voiceTone()[3];
     const own=(p&&typeof p.pitch==='number'&&isFinite(p.pitch))?p.pitch:0.6;
     /* The offset is a hint of character, not a second tone dial, and it can no
        longer push anything under the floor — that is what kept dragging the
        deep coaches back into the buzz however high the base went. */
-    return clamp(base+(own-0.6)*0.22,LOCAL_PITCH_FLOOR,1.6);
+    return clamp(base+(own-0.6)*0.15,LOCAL_PITCH_FLOOR,1.45);
   }catch(e){return 0.98;}
 }
 /* The same shift for the neural path, in semitones, so switching engines does
@@ -13281,7 +13281,7 @@ function renderGuide(){
     </div>
     <details style="padding:4px 0 2px"><summary class="tiny muted" style="cursor:pointer">Fine-tune depth by hand</summary>
       <div class="row" style="justify-content:space-between;margin-top:6px"><span class="tiny muted">Depth <span style="opacity:.7">(lower = deeper)</span></span><span class="tiny muted" id="pvLbl">${(typeof STATE.settings.voicePitch==='number'?STATE.settings.voicePitch:localPitchFor(null)).toFixed(2)}</span></div>
-      <input type="range" aria-label="Coach voice depth" min="1.10" max="1.60" step="0.05" value="${typeof STATE.settings.voicePitch==='number'?STATE.settings.voicePitch:localPitchFor(null)}" oninput="$('#pvLbl').textContent=(+this.value).toFixed(2)" onchange="setCoachPitch(this.value);sampleVoice()" style="width:100%">
+      <input type="range" aria-label="Coach voice depth" min="1.18" max="1.45" step="0.01" value="${typeof STATE.settings.voicePitch==='number'?STATE.settings.voicePitch:localPitchFor(null)}" oninput="$('#pvLbl').textContent=(+this.value).toFixed(2)" onchange="setCoachPitch(this.value);sampleVoice()" style="width:100%">
       <div class="tiny muted" style="margin-top:4px">Below about 0.5 most phone voices start to buzz rather than sound deep.</div>
     </details>
     <div style="padding:8px 0 2px">
