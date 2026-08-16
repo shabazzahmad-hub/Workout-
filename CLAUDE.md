@@ -3909,6 +3909,31 @@ back into the zone the base was just raised out of. Measured result: the lowest
 non-robot coach at Mid goes from 0.89 to 1.02, ordering intact, and the A.I.
 Trainer stays the lowest because sounding synthetic IS its character.
 
+**v269 raised the bases and it was STILL the wrong lever — the athlete's own
+data is what proved it (v270).** Coaches with IDENTICAL authored pitch and rate
+sat on opposite sides of the "sounds robotic" list: Strongman 0.44/0.98
+reported, Marine Gunnery Sgt 0.44/0.97 not; Spartan 0.48/1.00 reported,
+Wrestling Coach 0.48/1.02 not; Sergeant Major 0.50/1.06 reported, Staff Sergeant
+0.50/1.04 not. **Parameters that cannot separate the two groups cannot be the
+cause.** Every coach in the deep band buzzes on that device; the nine reported
+are simply the ones with hard-sounding names, so they are the ones that got
+played. Chasing the list persona-by-persona would have been chasing a sampling
+artifact.
+
+So the answer is not a better number, it is a FLOOR. `LOCAL_PITCH_FLOOR` is
+1.10 and nothing goes under it — not a tone base, not a persona offset, not the
+manual fine-tune slider, and not Deep. Deep now means "as low as this device
+manages cleanly", which is honest, rather than a promise of depth a resampled
+phone voice cannot keep. The slider's own `min` moved to 1.10 as well, because a
+control that stores a value the app then clamps away is a control that lies.
+
+**The mutation that escaped is the one worth keeping.** Deleting the floor from
+the MANUAL override passed clean, because the slider can no longer ask for a
+value under it — so nothing in the suite ever fed `localPitchFor` a low one. An
+install from before the floor existed carries exactly that, though, and the
+check now plants a legacy `voicePitch:0.45` and requires it to be raised. The
+new range protects new choices; only that case protects stored ones.
+
 **Depth of character has to come from the voice HINT, the rate and the script —
 not from dragging the shifter down until it buzzes.** That is the same
 conclusion the Strongman note above reached ("still read as processed after the

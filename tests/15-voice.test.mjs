@@ -25,7 +25,9 @@ export default async function run() {
       /* The complaint was robotic-sounding depth. Below ~0.5 Web Speech voices
          buzz, so even the deepest preset has to stay clear of it. */
       out.deepAboveBuzz = out.deep >= 0.65;
-      out.midNearNatural = out.mid >= 0.9 && out.mid <= 1.1;
+      // Mid must sit at or above the artifact floor, not at 1.0 — a phone voice
+      // shifted below ~1.1 buzzes, confirmed twice on a real device.
+      out.midNearNatural = out.mid >= LOCAL_PITCH_FLOOR && out.mid <= 1.35;
       // junk falls back rather than throwing
       STATE.settings.voiceTone = 'sideways';
       out.junkKey = voiceToneKey();
@@ -83,7 +85,12 @@ export default async function run() {
       delete STATE.settings._toneFix;
       normalizeState();
       out.chosenKept = STATE.settings.voicePitch === 0.45;
-      out.chosenWins = Math.abs(localPitchFor({ pitch: 0.6 }) - 0.45) < 1e-9;
+      // The manual fine-tune still wins — within the range its own slider offers.
+      // It cannot ask for a value below the floor because the slider no longer
+      // goes there, which is what keeps the control honest about what it does.
+      STATE.settings.voicePitch = 1.35;
+      out.chosenWins = Math.abs(localPitchFor({ pitch: 0.6 }) - 1.35) < 1e-9;
+      STATE.settings.voicePitch = 0.45;
 
       // and the migration only runs once
       delete STATE.settings.voicePitch;
@@ -257,6 +264,7 @@ export default async function run() {
         robotExempt: (COACHES.find(c => c.id === 'robot') || {}).pitch < 0.42,
         strongmanHeard: localPitchFor(strongman),
         strongmanNeural: (COACH_NEURAL.strongman || {}).pitch,
+        floor: LOCAL_PITCH_FLOOR,   // read from the page; not in Node scope
         validator: validateData().length,
       };
     });
@@ -296,7 +304,7 @@ export default async function run() {
     t.eq('and none is deeper than -2st on the neural path', r.neuralDeep, []);
     t.ok('the A.I. Trainer is still deliberately synthetic', r.robotExempt, r);
     t.ok('Strongman now speaks in a human range',
-      r.strongmanHeard >= 0.85 && r.strongmanHeard <= 1.05, r);
+      r.strongmanHeard >= r.floor && r.strongmanHeard <= 1.35, r);
     t.eq('and its neural pitch is in line with the other deep coaches', r.strongmanNeural, '-2st');
     t.eq('the validator is clean', r.validator, 0);
   }
@@ -494,12 +502,36 @@ export default async function run() {
         toneOrderHolds: mid.every(x => D[x.id] < M[x.id] && M[x.id] < B[x.id]),
         // character ordering survives: a deeper-authored coach still sounds deeper
         deepestStillDeeper: M.mastersgt < M.dance && M.iron < M.cheer,
+        // every coach x every tone, Deep included
+        floorAll: Math.min(...[...mid, ...deep, ...bright].map(x => x.p)),
+        floor: LOCAL_PITCH_FLOOR,
+        /* An install from before the floor existed carries whatever the old
+           slider let the athlete pick — the slider's new minimum protects new
+           choices, not stored ones. Without this case nothing ever asks
+           localPitchFor for a value under the floor, so deleting the clamp on
+           the manual override passes clean. It did. */
+        storedBelowFloor: (() => {
+          const keep = STATE.settings.voicePitch;
+          STATE.settings.voicePitch = 0.45;          // a legacy hand-tuned value
+          const heard = localPitchFor(COACHES[0]);
+          if (keep === undefined) delete STATE.settings.voicePitch;
+          else STATE.settings.voicePitch = keep;
+          return heard;
+        })(),
       };
     });
     t.ok('guard: the whole cast was measured', r.count > 30, r);
     t.eq('no coach but the A.I. Trainer sits in the artifact zone at the default tone',
       r.offenders.length, 0, r.offenders);
     t.ok('the lowest non-robot coach clears natural pitch', r.lowestNonRobot >= 1.0, r);
+    /* The floor is the real guarantee and it has to hold on EVERY tone. The
+       athlete's question was "what happens when I put them on Deep" — the
+       answer has to be a number, not a hope. */
+    t.ok('nothing anywhere, on any tone, goes under the artifact floor',
+      r.floorAll >= r.floor, r);
+    t.ok('and the floor is where a real device said it had to be', r.floor >= 1.10, r);
+    t.ok('a pitch stored by an older install is raised to the floor too',
+      r.storedBelowFloor >= r.floor, r);
     r.reported.forEach(x =>
       t.ok(`[${x.k}] the coach reported as robotic now clears it`, x.p >= 1.0, x));
     t.ok('the A.I. Trainer keeps its synthetic character — still the lowest', r.robotIsLowest, r);
