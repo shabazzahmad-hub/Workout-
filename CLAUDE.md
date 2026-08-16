@@ -3709,6 +3709,54 @@ there whether or not a photo ever arrives; still catches the reverted
 animation slip above: both measured something real, and neither measured the
 thing under test.
 
+## A logged zero macro is not a measured zero (v266)
+
+Reported from a real phone with two screenshots side by side: an imported
+897 kcal meal sitting above three macro bars reading 0/165 g, 0/180 g and
+0/60 g, next to the Lose It summary that plainly showed
+"24% Fat · 36% Carbs · 40% Protein".
+
+**The percentage path itself was fine.** v262's prompt already asks for
+`proteinPct`/`carbsPct`/`fatPct` and `_macrosFromPct()` already converts them
+at 4/4/9 — that row predates v262 and was stored with hard zeros. The
+temptation was to answer "your entry is old, re-import it", which is true and
+is not the bug.
+
+**The bug is that a saved row of zeros is indistinguishable from a real
+measurement, and v260 only fixed the INPUT side.** That round blanks the macro
+fields in the sheet and warns that they are blank rather than zero — but the
+moment the athlete saves, the row is `{kcal:897,p:0,c:0,f:0}` and every surface
+downstream reads it as a meal with no protein in it. Three empty bars then say
+"you ate no protein today" about a day that contained an 897 kcal breakfast.
+
+**The predicate is arithmetic, not a guess.** Calories come from protein, carbs
+and fat and nothing else, so a row with real calories and all three macros at
+zero cannot be a measurement — it is a reading that failed.
+`macrosUncaptured(f)` is `kcal>=50 && !(p>0) && !(c>0) && !(f>0)`, and the
+50 kcal floor is what keeps black coffee and a diet drink out of it: those are
+genuinely near-zero on every axis and nobody is missing anything. A real
+zero-carb steak, a spoon of oil and a sugar drink all have at least one macro
+above zero, so none of them trip it.
+
+This is the same rule this file states everywhere else, applied in the
+direction it had not yet reached. `computeAssessment()` and `estimateMaxes()`
+were fixed because they treated a measured 0 as absent. This is the inverse and
+it lands on the number the whole nutrition plan is built around.
+
+**Detection and presentation needed separate checks, and the mutants prove
+it.** Marking the row but leaving the bars silent fails only the bar-note
+check; noting it above the bars but leaving the row unmarked fails only the row
+check. And loosening the predicate to `!(p>0)` alone — dropping the calorie
+floor and the carb/fat halves — fails a third, because black coffee and a
+zero-protein sugar drink then read as broken data. Neither of the first two
+alone covers the fix, and the third is the one that keeps it from crying wolf.
+
+**The guard that matters most is the QUIET case.** A day of real macros must
+say none of this — without it, every assertion above would pass just as
+happily on markup rendered unconditionally for everybody, which is exactly the
+"a page-wide selector other content also satisfies" trap this file already
+documents for the ⚠️ icon and the 🎒 badge.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

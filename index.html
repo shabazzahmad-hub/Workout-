@@ -1700,7 +1700,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='265';
+const APP_VERSION='266';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -8844,6 +8844,26 @@ function logFood(name,kcal,p,c,f,meal,portion){const d=nutToday();if(!Array.isAr
        empty key on every row would grow every backup for nothing. */
     ...(cleanPortion(portion)?{portion:cleanPortion(portion)}:{})});
   syncProteinHabit();save();toast('Logged ✓');closeSheet();renderFuel();try{checkAchievements();}catch(e){}}
+/* A logged row with real calories and NOTHING in any macro field was never
+   MEASURED at zero — it is arithmetically impossible, since calories come from
+   protein, carbs and fat and nothing else. So it is a reading that failed, not
+   a food with no macros, and the app must say so rather than let three empty
+   bars read as "you ate no protein today".
+
+   This is the same rule this file states everywhere else, in the direction it
+   had not yet been applied: a measured zero is data and must be kept, and an
+   ABSENT answer must never be presented as a measured zero. v260 fixed the
+   input side (the sheet blanks the fields and warns); once a row is saved the
+   zeros were indistinguishable from real ones again.
+
+   The 50 kcal floor keeps black coffee and a diet drink out of it — those are
+   genuinely near-zero on every axis and nobody is missing anything. */
+function macrosUncaptured(f){
+  return !!f&&(+f.kcal||0)>=50&&!((+f.p||0)>0)&&!((+f.c||0)>0)&&!((+f.f||0)>0);
+}
+function uncapturedCount(){
+  const d=nutToday();return (Array.isArray(d.food)?d.food:[]).filter(macrosUncaptured).length;
+}
 function removeFood(idx){const d=nutToday();if(d.food&&d.food[idx]){d.food.splice(idx,1);syncProteinHabit();save();renderFuel();}}
 // Edit a logged item in place (re-uses the add sheet, then replaces the entry).
 function editFood(idx){const d=nutToday();const it=d.food&&d.food[idx];if(!it)return;
@@ -9686,6 +9706,8 @@ function intakeHTML(){
       ${_macroBar('Carbs',t.c,mt?mt.c:0,'#3fd7e8')}
       ${_macroBar('Fat',t.f,mt?mt.f:0,'var(--gold)')}
     </div>`;
+  {const un=uncapturedCount();
+   if(un)h+=`<div class="note warn" style="margin:8px 0 0"><b>${un} logged item${un===1?' has':'s have'} no macros recorded.</b> These bars are missing that food — they are not saying you ate none. Tap the item below to add its protein, carbs and fat, or import the day's summary from your tracker (the coloured split works too, not just grams).</div>`;}
   if(!mt)h+=`<div class="tiny muted" style="margin-top:8px">Set a calorie target below to see protein, carb &amp; fat goals.</div>`;
   // diary grouped by meal
   if(items.length){
@@ -9697,7 +9719,7 @@ function intakeHTML(){
       rows.forEach(({f,i})=>{
         h+=`<div class="kv" style="border-top:1px solid var(--line);gap:6px">
           <button onclick="editFood(${i})" style="flex:1;min-width:0;text-align:left;background:none;border:none;color:var(--ink);cursor:pointer;padding:8px 0">
-            ${_ve(f.name)} <span class="tiny muted">· ${f.kcal} kcal · ${f.p}p${f.c?' · '+f.c+'c':''}${f.f?' · '+f.f+'f':''}</span>${f.portion?`<span class="tiny muted"> · 📏 ${_ve(f.portion)}</span>`:''}</button>
+            ${_ve(f.name)} <span class="tiny muted">· ${f.kcal} kcal · ${macrosUncaptured(f)?'':`${f.p}p${f.c?' · '+f.c+'c':''}${f.f?' · '+f.f+'f':''}`}</span>${macrosUncaptured(f)?`<span class="tiny" style="color:var(--gold);font-weight:700">⚠️ macros not captured — tap to add</span>`:''}${f.portion?`<span class="tiny muted"> · 📏 ${_ve(f.portion)}</span>`:''}</button>
           <button class="chip" style="flex:0 0 auto" onclick="removeFood(${i})">✕</button></div>`;
       });
     });
