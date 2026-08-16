@@ -3934,6 +3934,20 @@ install from before the floor existed carries exactly that, though, and the
 check now plants a legacy `voicePitch:0.45` and requires it to be raised. The
 new range protects new choices; only that case protects stored ones.
 
+**Raising the floor is not a direction you can keep going in (v271).** Pitch
+1.0 is NO shift — the voice exactly as recorded — and artifacts come from moving
+away from it in EITHER direction. A floor that keeps climbing trades a buzz for
+a chipmunk, so the band now has a ceiling (1.45) as well as a floor (1.18), and
+a check pins both. The per-persona spread narrowed again to 0.15 because the
+whole usable band is only ~0.27 wide; character has to live somewhere else.
+
+**The fine-tune slider is the real answer to "adjust even more".** Its range is
+the usable band exactly (1.18–1.45, step 0.01) and it previews on change, so the
+athlete can settle this in ten seconds instead of waiting on a release. A
+shipped constant is a guess about someone else's speaker; a slider they can hear
+is not. Any future report of this shape should reach for the slider first and
+the constants second.
+
 **Depth of character has to come from the voice HINT, the rate and the script —
 not from dragging the shifter down until it buzzes.** That is the same
 conclusion the Strongman note above reached ("still read as processed after the

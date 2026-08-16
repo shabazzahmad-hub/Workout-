@@ -27,7 +27,7 @@ export default async function run() {
       out.deepAboveBuzz = out.deep >= 0.65;
       // Mid must sit at or above the artifact floor, not at 1.0 — a phone voice
       // shifted below ~1.1 buzzes, confirmed twice on a real device.
-      out.midNearNatural = out.mid >= LOCAL_PITCH_FLOOR && out.mid <= 1.35;
+      out.midNearNatural = out.mid >= LOCAL_PITCH_FLOOR && out.mid <= 1.40;
       // junk falls back rather than throwing
       STATE.settings.voiceTone = 'sideways';
       out.junkKey = voiceToneKey();
@@ -90,6 +90,9 @@ export default async function run() {
       // goes there, which is what keeps the control honest about what it does.
       STATE.settings.voicePitch = 1.35;
       out.chosenWins = Math.abs(localPitchFor({ pitch: 0.6 }) - 1.35) < 1e-9;
+      // and the ceiling holds too — a stored value above the usable band is clamped
+      STATE.settings.voicePitch = 3.0;
+      out.ceilingHolds = localPitchFor({ pitch: 0.6 }) <= 1.45;
       STATE.settings.voicePitch = 0.45;
 
       // and the migration only runs once
@@ -106,6 +109,7 @@ export default async function run() {
     t.ok('so the voices come up out of the robotic range', r.louderThanBefore, r);
     t.ok('a deliberately chosen pitch is not touched', r.chosenKept, r);
     t.ok('and it still overrides the tone', r.chosenWins, r);
+    t.ok('but never past the usable ceiling', r.ceilingHolds, r);
     t.ok('the migration runs once, not on every boot', r.secondRunLeavesIt, r);
   }
 
@@ -304,7 +308,7 @@ export default async function run() {
     t.eq('and none is deeper than -2st on the neural path', r.neuralDeep, []);
     t.ok('the A.I. Trainer is still deliberately synthetic', r.robotExempt, r);
     t.ok('Strongman now speaks in a human range',
-      r.strongmanHeard >= r.floor && r.strongmanHeard <= 1.35, r);
+      r.strongmanHeard >= r.floor && r.strongmanHeard <= 1.40, r);
     t.eq('and its neural pitch is in line with the other deep coaches', r.strongmanNeural, '-2st');
     t.eq('the validator is clean', r.validator, 0);
   }
@@ -504,6 +508,7 @@ export default async function run() {
         deepestStillDeeper: M.mastersgt < M.dance && M.iron < M.cheer,
         // every coach x every tone, Deep included
         floorAll: Math.min(...[...mid, ...deep, ...bright].map(x => x.p)),
+        ceilAll: Math.max(...[...mid, ...deep, ...bright].map(x => x.p)),
         floor: LOCAL_PITCH_FLOOR,
         /* An install from before the floor existed carries whatever the old
            slider let the athlete pick — the slider's new minimum protects new
@@ -529,7 +534,10 @@ export default async function run() {
        answer has to be a number, not a hope. */
     t.ok('nothing anywhere, on any tone, goes under the artifact floor',
       r.floorAll >= r.floor, r);
-    t.ok('and the floor is where a real device said it had to be', r.floor >= 1.10, r);
+    t.ok('and the floor is where a real device said it had to be', r.floor >= 1.18, r);
+    /* Both directions away from 1.0 resample. A floor that keeps climbing trades
+       a buzz for a chipmunk, so the band has a ceiling as well. */
+    t.ok('and nothing is pushed so high it chipmunks', r.ceilAll <= 1.45, r);
     t.ok('a pitch stored by an older install is raised to the floor too',
       r.storedBelowFloor >= r.floor, r);
     r.reported.forEach(x =>
