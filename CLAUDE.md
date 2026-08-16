@@ -3875,6 +3875,16 @@ entry was undoable, which is what made the removal obvious.
 Left in place: `tucklsit` (no equipment, the ladder rung `hollowL` was missing),
 `plegraise` and `ppushup`. Three movements, three distinguishable photos.
 
+**House style for exercise photography: a three-quarter angle, not a flat side
+profile.** Stated by the athlete after seeing both of the same movement side by
+side — the isometric view reads better. It shows depth, both arms and the gap
+under the body at once, where a pure side profile flattens the subject and
+hides the far limb. Every generation prompt should ask for "three-quarter side
+angle"; reserve a straight side profile for the rare case where a single joint
+angle IS the point and the extra dimension would obscure it. `ex-plegraise.jpg`
+was installed as a side profile and swapped to the three-quarter frame the same
+morning for exactly this reason.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
