@@ -3757,6 +3757,22 @@ happily on markup rendered unconditionally for everybody, which is exactly the
 "a page-wide selector other content also satisfies" trap this file already
 documents for the ⚠️ icon and the 🎒 badge.
 
+**Confirmed working on the athlete's own phone, and that is the entry that
+matters most in this whole sequence.** Nine rounds (v253-v266) went out against
+a feature this sandbox structurally cannot exercise — Gemini returns 403
+through the agent proxy, so every test for it mocked the network and proved the
+wiring rather than the result. The percentage path (v262) had therefore never
+been shown to WORK, only shown to be wired. Re-importing the Lose It daily
+summary on v266 populated protein, carbs and fat correctly from the
+"24% Fat · 36% Carbs · 40% Protein" bar.
+
+Two things follow for anything else that leaves the phone. A green suite plus a
+real-device confirmation is the ship gate, not the suite alone — and the
+confirmation is worth writing down, because the next session reading this file
+should not have to re-litigate whether percentages work. The on-device
+self-test (`_importSelfTest`, v263) exists precisely so that check does not
+depend on the athlete noticing.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
