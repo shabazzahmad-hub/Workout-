@@ -673,6 +673,27 @@ const EX = {
     steps:['Hang from a bar, arms straight, shoulders active and core braced.','Keep the legs as straight as you can.','Raise them together toward the bar, curling the pelvis up at the top.','Lower slowly with zero swing. Bend the knees only if you must to keep it strict.'],
     cues:['Curl the pelvis at the top — don\'t just lift the legs','Dead still, no kipping or swing','Toes-to-bar is the long-term goal'],
     mistakes:['Swinging for momentum','Stopping at 90° without the pelvic curl','Bent knees when a straight-leg raise is available']},
+  tucklsit:{name:'Tuck L-Sit',region:'anterior',unit:'time',img:'ex-tucklsit.jpg',anchor:null,hardness:0.35,base:15,rest:50,
+    why:'The rung the L-Sit was missing. Going straight from a V-Sit Hold to a full L-Sit is a jump most people cannot make — tucking the knees shortens the lever so you can own the support, the shoulder depression and the compression first. Needs no equipment: the floor works, parallettes work better.',
+    steps:['Sit with the hands planted beside the hips — floor, parallettes or two low bars.','Push the floor away hard and lift the hips clear, shoulders pressed DOWN away from the ears.','Tuck both knees up toward the chest and hold them there.','Hold for time. Extend one leg at a time as it gets easier — that is the road to the full L-Sit.'],
+    cues:['Push down through straight arms','Shoulders away from the ears','Round the low back slightly and squeeze the knees in'],
+    mistakes:['Shrugging up into the ears','Letting the feet touch back down','Holding the breath']},
+  psupport:{name:'Parallette Support Hold',region:'anterior',unit:'time',img:'ex-psupport.jpg',anchor:null,hardness:0.9,base:25,rest:45,optional:true,equip:['parallettes'],pattern:'core',
+    why:'The foundation everything else on the bars is built on. Straight arms, locked elbows, shoulders driven down — this is what teaches the scapular strength an L-Sit needs, and it is the honest starting point if a support hold is new to you.',
+    steps:['Grip the parallettes with the arms straight down beside the hips.','Press hard into the bars and lift the whole body clear of the floor.','Drive the shoulders DOWN away from the ears and lock the elbows.','Hold tall with the legs together and toes pointed.'],
+    cues:['Elbows locked, arms vertical','Shoulders down, chest proud','Squeeze the legs together'],
+    mistakes:['Letting the shoulders shrug up','Bent elbows taking the load','Hips swinging behind the hands']},
+  plegraise:{repCap:15,name:'Parallette Leg Raise',region:'lower',unit:'reps',img:'ex-plegraise.jpg',anchor:'lower',hardness:0.45,base:10,rest:55,optional:true,equip:['parallettes'],pattern:'core',
+    why:'A hanging leg raise without needing a bar to hang from. Supported on the parallettes the hips are clear of the floor, so the legs travel through the full range with nothing to rest on at the bottom — the lower abs never get a break the way they do lying down.',
+    steps:['Support yourself on the parallettes with straight arms, shoulders down.','Start with the legs hanging straight below, toes pointed.','Raise the legs to horizontal without swinging, leading with the pelvis.','Lower under control — do not let them drop.'],
+    cues:['No swing — the torso stays still','Curl the pelvis at the top','Slow on the way down'],
+    mistakes:['Kicking up with momentum','Bending the elbows','Letting the shoulders shrug']},
+  ppushup:{repCap:20,name:'Parallette Push-Up',region:'chest',unit:'reps',img:'ex-ppushup.jpg',anchor:'push',hardness:0.8,base:10,rest:55,optional:true,equip:['parallettes'],pattern:'pushh',
+    why:'A deeper push-up, and a kinder one. The bars let the chest drop BELOW the hands for range a floor push-up cannot reach, and the neutral grip keeps the wrist straight instead of bent back — which is why parallettes are the standard answer to wrists that hurt on push-ups.',
+    steps:['Set the parallettes about shoulder width and grip them with the wrists straight.','Brace into a plank with the body in one line.','Lower until the chest drops between and below the bars.','Press back up to locked arms without letting the hips sag.'],
+    cues:['Wrists straight — that is the whole point','Elbows back at about 45°, not flared','Chest below the hands at the bottom'],
+    mistakes:['Cutting the depth short','Hips sagging or piking','Bars set too wide, which loads the shoulder'],
+    tags:['wrist-friendly']},
   lsit:{name:'L-Sit',region:'anterior',unit:'time',img:'ex-lsit.jpg',anchor:null,hardness:0.18,base:12,rest:55,
     why:'The flagship isometric compression hold of calisthenics — a brutal test and builder of the whole anterior core, hip flexors and quads. Progress tuck → one-leg → full L.',
     steps:['Sit between two dip bars, parallettes, or press hands into the floor beside the hips.','Push down hard and lift the hips clear of the ground, shoulders down away from the ears.','Tuck the knees to start; extend the legs toward straight as you get stronger.','Hold for time with the legs squeezed and toes pointed.'],
@@ -1517,7 +1538,7 @@ const EX = {
 ========================================================================== */
 const LADDERS = {
   plankL:     ['kneeplank','plank','bearhold','longplank','extplank','planktap','plankleg','isoclimber','reverseplank'],
-  hollowL:    ['tuckhollow','hollow','hollowflutter','hollowrock','vsit','lsit','dragonflag','dragonflagfull'],
+  hollowL:    ['tuckhollow','hollow','hollowflutter','hollowrock','vsit','tucklsit','lsit','dragonflag','dragonflagfull'],
   lowerL:     ['deadbug','revcrunch','hiplift','legraise','kneeraise','kneetoelbow','hanglegraise'],
   /* bicycle IS the dyn anchor test, so its hardness is 1.0 by definition and
      cannot be tuned — the order moves instead. */
@@ -1700,7 +1721,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='266';
+const APP_VERSION='267';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2226,7 +2247,7 @@ const GOAL_NOTE={
   gain:'Build muscle on a slight surplus with heavier, lower-rep work.',
 };
 const FOCUS_POOL={
-  abs:['hollow','hollowflutter','vsit','bearhold','lsit','dragonflag','dragonflagfull','situp','vertcrunch','plankleg','isoclimber','vup','tuckvup','legraise','hiplift','hanglegraise','revcrunch','crunch','bicycle','kneeraise','abroll','abrollstand','mbsitup','flutter','kbrenegade','ropeplank','toetouch','sitthrust','legcircle','kneetoelbow'],
+  abs:['hollow','hollowflutter','vsit','bearhold','lsit','dragonflag','dragonflagfull','situp','vertcrunch','plankleg','isoclimber','vup','tuckvup','legraise','hiplift','hanglegraise','revcrunch','crunch','bicycle','kneeraise','abroll','abrollstand','mbsitup','flutter','kbrenegade','ropeplank','toetouch','sitthrust','legcircle','kneetoelbow','tucklsit','psupport','plegraise'],
   obliques:['sideplank','sideplankreach','situptwist','sidedip','russiantwist','windshield','plankrot','heeltouch','bicycle','copenhagen','standingoblique','mbtwist','kbhalo','dbpallof','mbchop','kbwindmill','kbsuitcase','kbfigure8'],
   full:['burpee','sprawl','bearcrawl','inchworm','squatthrust','mountainclimber','kbswing','dbthruster','halfburpee','squat','pushup','kbhighpull','kneekick','quickpunch'],
   chest:['pushup','tempopushup','hindupushup','typewriter','inclinepushup','declinepushup','diamondpushup','archerpushup','closepushup','dbfloor','dbbench'],
@@ -2349,6 +2370,8 @@ function hasGearFor(exId){const e=EX[exId];if(!e||!e.equip||!e.equip.length)retu
   const g=STATE.profile.gear||[];return e.equip.every(x=>g.includes(x));}
 // Where to land when a whole ladder needs kit they don't own.
 const GEAR_FALLBACK={
+  // no parallettes owned → the closest thing that needs nothing at all
+  psupport:'hollow',plegraise:'legraise',ppushup:'pushup',
   /* Every one of these used to land on 'superman'. A Superman is a prone back
      EXTENSION — it does not pull anything. A bar-free athlete got zero pulling
      for the whole program. They now land on a row that needs only a door or a
@@ -2962,7 +2985,7 @@ function onboardHTML(){
       <div class="daypick" id="ob-days">${['M','T','W','T','F','S','S'].map((d,i)=>`<button data-d="${(i+1)%7}">${d}</button>`).join('')}</div>
       <div class="tiny muted" style="margin-top:7px">Five days is the floor — tap a day to make it a rest day, but keep at least five.</div></div>
     <div class="field"><label>Equipment you have <span class="tiny muted">· unlocks a Weights session</span></label>
-      <div class="daypick" id="ob-gear" style="flex-wrap:wrap">${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['battlerope','Battle rope'],['bench','Bench / chair'],['bike','Bike + trainer']].map(([k,l])=>`<button data-e="${k}"${mon(P.gear,k)}>${l}</button>`).join('')}</div></div>
+      <div class="daypick" id="ob-gear" style="flex-wrap:wrap">${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['battlerope','Battle rope'],['parallettes','Parallettes / push-up bars'],['bench','Bench / chair'],['bike','Bike + trainer']].map(([k,l])=>`<button data-e="${k}"${mon(P.gear,k)}>${l}</button>`).join('')}</div></div>
     <div class="field"><label>Room to train in</label>
       <div class="daypick" id="ob-space">
         <button data-sp="full"${on(P.tightSpace?'tight':'full','full')}>Clear wall + space</button>
@@ -3982,7 +4005,7 @@ function swapOptions(m){
      "succeeded", carried your logged sets across, then got rejected at build
      time, leaving the original exercise on screen and the sets seemingly gone. */
   const _lims=(STATE.profile&&STATE.profile.limitations)||[];
-  const _risky=k=>_lims.some(j=>(JOINT_RISK[j]||[]).includes(k));
+  const _risky=k=>jointRisky(k,_lims);
   const offerable=k=>{try{return EX[k]&&!_risky(k)&&hasGearFor(k)&&safeSwap(k)===k;}catch(e){console.error('[offerable]',e);return false;}};
   const push=(exId,label)=>{if(exId&&EX[exId]&&!seen.has(exId)&&offerable(exId)){seen.add(exId);opts.push({exId,label});}};
   const easier=ladderNeighbor(m,-1),harder=ladderNeighbor(m,1);
@@ -3994,7 +4017,7 @@ function swapOptions(m){
   // haven't flagged, ordered by how close the difficulty is to the current move.
   const ex=EX[m.exId];if(!ex)return opts;
   const gear=STATE.profile.gear||[];const lims=(STATE.profile&&STATE.profile.limitations)||[];
-  const risky=k=>lims.some(j=>(JOINT_RISK[j]||[]).includes(k));
+  const risky=k=>jointRisky(k,lims);
   const cands=Object.keys(EX).filter(k=>{
     const e=EX[k];
     if(seen.has(k)||k==='bike'||k==='sprint')return false;
@@ -9810,10 +9833,10 @@ function calcOneRM(){
 const JOINTS=[['knee','Knee'],['shoulder','Shoulder'],['wrist','Wrist'],['lowback','Lower back'],['elbow','Elbow']];
 const JOINT_RISK={
   knee:['pistol','boxpistol','jumpsquat','tuckjump','broadjump','splitjump','bulgarian','burpee','burpeetuck','walkinglunge','sissysquat','cossack','sprawl','latshuffle','nordic','asiansquat','wallsit','skater','squatjack','splitsquat','jumpingjack','sealjack','highknees','buttkick','kneekick','skaterground'],
-  shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','benchdip','dbpress','kbcp','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbtgu','kbthruster','kbwindmill','abrollstand','hanglegraise','lsit','dragonflag','dragonflagfull','plankrot','wallwalk','pseudoplanche','typewriter','hindupushup','pullup','chinup','widepullup','negpullup','deadhang','scappull','invertedrow','invertedrowelev','tablerow','crabwalk','reverseplank','abroll','mbslam','ropeslam','ropewave','kbswing','atomicpushup','declinepushup','burpee','burpeetuck','kneetoelbow','dbbench'],
+  shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','benchdip','dbpress','kbcp','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbtgu','kbthruster','kbwindmill','abrollstand','hanglegraise','lsit','dragonflag','dragonflagfull','plankrot','wallwalk','pseudoplanche','typewriter','hindupushup','pullup','chinup','widepullup','negpullup','deadhang','scappull','invertedrow','invertedrowelev','tablerow','crabwalk','reverseplank','abroll','mbslam','ropeslam','ropewave','kbswing','atomicpushup','declinepushup','burpee','burpeetuck','kneetoelbow','dbbench','tucklsit','psupport','plegraise','ppushup'],
   /* fistpushup is deliberately ABSENT: knuckles down keeps the wrist straight,
      which is the whole point of the movement. */
-  wrist:['pushup','kneepushup','inclinepushup','declinepushup','diamondpushup','closepushup','archerpushup','spidermanpushup','superpushup','planktap','mountainclimber','dbrenegade','kbrenegade','dbmanmaker','dbdevil','abroll','abrollstand','ropeplank','extplank','lsit','isoclimber','bearcrawl','crabwalk','plankjack','crossclimber','bearhold','pseudoplanche','typewriter','hindupushup','tempopushup','inchworm','pikepushup','elevatedpike','wallwalk','wallhandstand','hspushup','atomicpushup','burpee','burpeetuck','halfburpee','squatthrust','sprawl','reverseplank','sitthrust'],
+  wrist:['pushup','kneepushup','inclinepushup','declinepushup','diamondpushup','closepushup','archerpushup','spidermanpushup','superpushup','planktap','mountainclimber','dbrenegade','kbrenegade','dbmanmaker','dbdevil','abroll','abrollstand','ropeplank','extplank','lsit','isoclimber','bearcrawl','crabwalk','plankjack','crossclimber','bearhold','pseudoplanche','typewriter','hindupushup','tempopushup','inchworm','pikepushup','elevatedpike','wallwalk','wallhandstand','hspushup','atomicpushup','burpee','burpeetuck','halfburpee','squatthrust','sprawl','reverseplank','sitthrust','tucklsit'],
   lowback:['superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbthruster','kbwindmill','kbhighpull','mbslam','ropeslam','windshield','dragonflag','dragonflagfull','abrollstand','situp','vertcrunch','situptwist','vsit','slrdl','swimmer','legraise','hanglegraise','kneeraise','hiplift','flutter','scissors','vup','tuckvup','russiantwist','weightedtwist','mbtwist','mbchop','mbsitup','seatedtwist','abroll','longplank','extplank','ruck','dipknee','heeltouch','crunch','bicycle','revcrunch','sitthrust','toetouch','legcircle','kneetoelbow'],
   elbow:['dips','benchdip','diamondpushup','closepushup','chinup','negpullup','dbcurl','typewriter','pseudoplanche'],
 };
@@ -9837,6 +9860,9 @@ const REGION_KIN={
   cardio:['dynamic'], dynamic:['cardio'],
 };
 const SAFE_SWAP={
+  // parallettes — a flagged SHOULDER still has to leave the support hold, and
+  // the landing spot stays in the same region rather than a generic filler.
+  tucklsit:'hollow',psupport:'hollow',plegraise:'legraise',ppushup:'kneepushup',
   // legs / plyometrics
   pistol:'squat',boxpistol:'squat',jumpsquat:'squat',tuckjump:'squat',broadjump:'squat',
   splitjump:'reverselunge',bulgarian:'splitsquat',walkinglunge:'reverselunge',
@@ -9905,10 +9931,41 @@ function _assertNoDupes(){
   }catch(e){}
 }
 
+/* Parallettes put the hand in a NEUTRAL grip. That is not a nicety — a bent-back
+   wrist under load is the entire reason JOINT_RISK.wrist exists, and gripping a
+   bar instead removes it. So an athlete who OWNS parallettes should keep the
+   push-up and the L-Sit rather than be routed away from them; a wrist flag is a
+   reason to change the implement, not to lose the movement.
+
+   Scoped to planted-hand movements that actually fit on a pair of 9.6" bars.
+   Anything with travelling hands or feet (bear crawl, mountain climbers,
+   inchworm, wall walks) is deliberately absent — you cannot do those on two
+   fixed bars, so "relieving" them would be a lie that reinstates a real risk.
+
+   Only the WRIST dimension is relieved. A movement flagged for the shoulder as
+   well still swaps for the shoulder, which is why this is applied per-joint
+   rather than as a blanket exemption. Fails CLOSED: any error, and the movement
+   stays risky. */
+const PARALLETTE_RELIEF=['lsit','pushup','diamondpushup','closepushup','tempopushup',
+  'archerpushup','superpushup','pseudoplanche','bearhold','extplank','pikepushup','elevatedpike'];
+function ownsParallettes(){
+  try{const g=STATE.profile&&STATE.profile.gear;return Array.isArray(g)&&g.indexOf('parallettes')>=0;}
+  catch(e){return false;}
+}
+function wristRelieved(exId){
+  try{return ownsParallettes()&&PARALLETTE_RELIEF.indexOf(exId)>=0;}catch(e){return false;}
+}
+/* The one place every risk test should go through, so the relief above cannot
+   be applied on one path and forgotten on another — which is exactly how the
+   weights circuit, the focus bonus and the custom builder each ended up
+   skipping safeSwap in turn. */
+function jointRisky(exId,lims){
+  return (lims||[]).some(j=>(JOINT_RISK[j]||[]).includes(exId)&&!(j==='wrist'&&wristRelieved(exId)));
+}
 function safeSwap(exId){
   const lims=(STATE.profile&&Array.isArray(STATE.profile.limitations))?STATE.profile.limitations:[];
   if(!lims.length)return exId;
-  const risky=k=>lims.some(j=>(JOINT_RISK[j]||[]).includes(k));
+  const risky=k=>jointRisky(k,lims);
   if(!risky(exId))return exId;
   const lowback=lims.includes('lowback');
   const nextOf=k=>(lowback&&LOWBACK_SWAP[k])||SAFE_SWAP[k];
@@ -13215,7 +13272,7 @@ function renderGuide(){
     <div class="divider" style="margin:10px 0"></div>
     <div style="padding:2px 0"><div class="tiny muted" style="margin-bottom:6px">Equipment you have <span style="opacity:.7">· unlocks the Weights session</span></div>
       <div class="daypick" id="set-gear" style="flex-wrap:wrap">
-        ${''}${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['battlerope','Battle rope'],['bench','Bench / chair']].map(([k,l])=>`<button class="${(STATE.profile.gear||[]).includes(k)?'on':''}" onclick="toggleGear('${k}')">${l}</button>`).join('')}
+        ${''}${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['battlerope','Battle rope'],['parallettes','Parallettes / push-up bars'],['bench','Bench / chair']].map(([k,l])=>`<button class="${(STATE.profile.gear||[]).includes(k)?'on':''}" onclick="toggleGear('${k}')">${l}</button>`).join('')}
         <div style="margin-top:12px"></div>
         <button class="${STATE.profile.tightSpace?'on':''}" onclick="toggleTightSpace()">🏠 Tight space</button>
         <div class="tiny muted" style="margin-top:8px">Handstand work needs a clear wall and about <b>6 ft / 2 m</b> of floor in front of it to walk up safely; the travelling moves need a room you can cross. Tight space swaps both out — you get the hardest floor presses instead, which load the shoulder the same way without needing a clear wall. Straight trade to know about: nothing on the floor fully replaces a handstand push-up, so the very top of the shoulder ladder is a step easier. Everything else is like for like.</div>
