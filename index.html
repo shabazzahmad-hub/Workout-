@@ -1716,7 +1716,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='271';
+const APP_VERSION='272';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -6017,7 +6017,13 @@ function _sdkSynthesize(ssml,cfg,ms){
     const s=STATE.settings;
     let synth;
     try{
-      const conf=SDK.SpeechConfig.fromSubscription(s.azureKey,(s.azureRegion||'eastus').trim());
+      /* Normalise HERE, at the one place the region is actually spent, not
+         only where it is typed. An install that stored "east us" before
+         setAzureRegion() learned to strip interior spaces still carries it,
+         and .trim() alone does nothing for the space in the middle — so the
+         write-path fix on its own would leave every existing athlete broken
+         with an opaque WebSocket error. */
+      const conf=SDK.SpeechConfig.fromSubscription(s.azureKey,_azRegionNorm(s.azureRegion)||'eastus');
       conf.speechSynthesisOutputFormat=SDK.SpeechSynthesisOutputFormat.Audio24Khz48KBitRateMonoMp3;
       synth=new SDK.SpeechSynthesizer(conf,null);   // null audioConfig → no auto-play; bytes in result.audioData
     }catch(e){return reject(e);}
@@ -6529,7 +6535,103 @@ function clearAzureKey(){
   toast&&toast('Azure key removed');
   if(TAB==='guide')renderGuide();
 }
-function setAzureRegion(v){STATE.settings.azureRegion=(v||'').trim().toLowerCase()||'eastus';_neuralCacheClear();save();}
+/* The Azure portal shows the Location as "East US", and an athlete copying it
+   verbatim used to store "east us" — a region that does not exist, whose only
+   symptom is an opaque WebSocket failure from deep inside the SDK. An Azure
+   region id IS the display name lowercased with the spaces removed, so this is
+   a deterministic normalisation, not a guess: strip ALL whitespace, not just
+   the ends. `.trim()` alone left the interior space untouched, which is the
+   one that breaks it. */
+function _azRegionNorm(v){return String(v==null?'':v).replace(/\s+/g,'').toLowerCase();}
+/* Known Speech regions, for a WARNING only — never a block. Microsoft adds
+   regions, and refusing a real new one would break the app for whoever is in
+   it; but a typo that reaches Azure comes back as "1006 connection closed",
+   which names nothing. Say which of the two it looks like and let them decide. */
+const AZ_SPEECH_REGIONS=new Set(['eastus','eastus2','westus','westus2','westus3','centralus','northcentralus','southcentralus','westcentralus',
+  'canadacentral','brazilsouth','northeurope','westeurope','uksouth','francecentral','germanywestcentral','norwayeast','swedencentral','switzerlandnorth',
+  'italynorth','polandcentral','spaincentral','southafricanorth','uaenorth','qatarcentral','centralindia','japaneast','japanwest','koreacentral',
+  'southeastasia','eastasia','australiaeast','jioindiawest']);
+function azRegionKnown(v){return AZ_SPEECH_REGIONS.has(_azRegionNorm(v));}
+function setAzureRegion(v){
+  const raw=String(v==null?'':v);
+  const r=_azRegionNorm(raw)||'eastus';
+  STATE.settings.azureRegion=r;_neuralCacheClear();save();
+  if(raw.trim()&&_azRegionNorm(raw)!==raw.trim())toast&&toast('Region saved as "'+r+'"');
+  else if(raw.trim()&&!azRegionKnown(r))toast&&toast('"'+r+'" is not a region I recognise — check Keys and Endpoint');
+  if(TAB==='guide')renderGuide();
+}
+/* ---- Staged neural diagnostic -------------------------------------------
+   testNeural() answers one question — "did a cue come out" — and every way it
+   can fail collapses into one line. That is the same shape the food import was
+   in for six rounds before runAIDiagnostic() replaced guessing with numbers,
+   and this call is in the same position: the dev sandbox cannot reach Azure at
+   all (the SDK CDN and the speech endpoint both return 403 through the proxy),
+   so the athlete's phone is the only place it can ever be measured.
+
+   Three stages, smallest first, each isolating one cause the others cannot:
+
+     1. Load the voice engine. Nothing has been sent to Azure yet, so a failure
+        here is the connection or a blocked CDN — not the key, not the region.
+     2. Speak one word with the PLAIN default voice, no style and no pitch.
+        This is the narrowest thing that still needs the key and the region, so
+        a failure here is one of those two and nothing else.
+     3. Speak with the CURRENT coach's real config — voice name, express-as
+        style, pitch shift. Passing 2 and failing 3 is a fact about that
+        coach's settings, which stage 2 alone can never tell you.
+
+   The staging IS the diagnosis. Merging any two of them back together loses
+   the one thing this has over the existing test button. */
+function _neuralStage(label,fn){
+  const t0=Date.now();
+  return fn().then(v=>({ok:true,ms:Date.now()-t0,label,v}))
+             .catch(e=>({ok:false,ms:Date.now()-t0,label,msg:String((e&&(e.message||e.errorDetails))||e||'failed').slice(0,140)}));
+}
+function _neuralDiagLine(r,extra){
+  const detail=r.ok?(r.ms+' ms'+(extra?' · '+extra:'')):(r.ms+' ms · '+_ve(r.msg));
+  return `<div class="kv"><span>${r.ok?'✅':'❌'} ${_ve(r.label)}</span><span class="tiny muted" style="text-align:right;max-width:60%">${detail}</span></div>`;
+}
+async function runNeuralDiagnostic(){
+  const s=STATE.settings;
+  if(!s.neuralOn){toast&&toast('Turn on premium voices first');return;}
+  if(!s.azureKey){toast&&toast('Add your Azure key first');return;}
+  const region=_azRegionNorm(s.azureRegion)||'eastus';
+  const p=(typeof currentPersona==='function')?currentPersona():null;
+  const cfg=neuralCfgFor(p);
+  openSheet(`<h3>🔬 Testing the premium voice</h3>
+    <p class="muted sm" style="margin:2px 0 12px">Three small checks. This takes a few seconds.</p>
+    <div id="nDiagOut"><div class="tiny muted">Working…</div></div>`);
+  const out=[];const paint=()=>{const e=$('#nDiagOut');if(e)e.innerHTML=out.join('');};
+  if(navigator.onLine===false){
+    out.push(`<div class="note warn">Your phone says it is <b>offline</b>. Premium voices need a connection — the device voices still work.</div>`);paint();return;
+  }
+  if(!azRegionKnown(region)){
+    out.push(`<div class="note warn" style="margin-bottom:10px">Region <b>${_ve(region)}</b> is not one I recognise. Copy <b>Location/Region</b> exactly from Keys and Endpoint — for example <b>eastus</b>, no space.</div>`);paint();
+  }
+  const s1=await _neuralStage('Loading the voice engine',()=>loadSpeechSDK(12000));
+  out.push(_neuralDiagLine(s1));paint();
+  if(!s1.ok){
+    out.push(`<div class="note warn" style="margin-top:10px">The voice engine itself would not load, and nothing has been sent to Microsoft yet — so this is your <b>connection or network</b>, not your key or region. Some work and school wifi blocks it. Try mobile data.</div>`);paint();return;
+  }
+  const s2=await _neuralStage('Checking your key and region',()=>
+    _sdkSynthesize(neuralSSML('Check.',{v:NEURAL_DEFAULT.v}),{v:NEURAL_DEFAULT.v},12000));
+  out.push(_neuralDiagLine(s2,s2.ok?Math.max(1,Math.round((s2.v.byteLength||0)/1024))+' KB of audio':''));paint();
+  if(!s2.ok){
+    const m=s2.msg||'';
+    let why=`Microsoft refused a plain test with no coach settings involved, so this is the <b>key or the region</b>. They must be from the SAME Speech resource — a key from one and a region from another fails exactly like a wrong key.`;
+    if(/401|403|Forbidden|Unauthorized|subscription|invalid/i.test(m))why=`Your <b>key was rejected</b>. Copy KEY 1 again from Keys and Endpoint — the whole string, no spaces.`;
+    else if(/1006|websocket|connection|handshake|host|dns/i.test(m))why=`Could not open a connection to <b>${_ve(region)}</b>. That usually means the region does not match the one on your Speech resource.`;
+    else if(/429|quota|exceeded/i.test(m))why=`Your free <b>quota is used up</b> for this month. It resets on Microsoft's schedule; the device voices keep working until then.`;
+    else if(/timed out/i.test(m))why=`No answer in time. The connection reached Microsoft but nothing came back — try wifi, or again in a minute.`;
+    out.push(`<div class="note warn" style="margin-top:10px">${why}</div>`);paint();return;
+  }
+  const s3=await _neuralStage('Speaking as '+((p&&p.name)||'your coach'),()=>_sdkSynthesize(neuralSSML("Let's get to work.",cfg),cfg,12000));
+  out.push(_neuralDiagLine(s3,s3.ok?_ve(cfg.v):''));paint();
+  if(!s3.ok){
+    out.push(`<div class="note warn" style="margin-top:10px">Your key and region are <b>fine</b> — the plain test above worked. This coach's own voice settings are what failed (<b>${_ve(cfg.v)}</b>${cfg.style?', style "'+_ve(cfg.style)+'"':''}). Pick another coach for now and report this one — it is an app bug, not something you can fix.</div>`);paint();return;
+  }
+  try{_neuralPlay(URL.createObjectURL(new Blob([s3.v],{type:'audio/mpeg'})));}catch(e){}
+  out.push(`<div class="note ok" style="margin-top:10px"><b>Premium voice is working.</b> You should hear it now. Every coach line goes through Microsoft while you are online, and falls back to the device voice by itself when you are not.</div>`);paint();
+}
 function testNeural(){
   try{primeVoice();}catch(e){}
   const p=(typeof currentPersona==='function')?currentPersona():null;
@@ -13268,9 +13370,20 @@ function renderGuide(){
       ${STATE.settings.azureKey?`<div class="tiny muted" style="margin:-4px 0 8px">Leave blank and tap elsewhere to keep the current key.</div>`:''}`}
       <label class="tiny muted" style="display:block;margin-bottom:3px">Region</label>
       <input type="text" autocomplete="off" placeholder="eastus" value="${_ve(STATE.settings.azureRegion||'eastus')}" onchange="setAzureRegion(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px">
-      <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">Free tier: ~500k characters/month.</span><button class="chip" onclick="testNeural()">▶ Test neural</button></div>
+      ${(STATE.settings.azureRegion&&!azRegionKnown(STATE.settings.azureRegion))?`<div class="tiny" style="margin-top:5px;color:var(--fire-l)">⚠️ Not a region I recognise. Copy <b>Location/Region</b> exactly from Keys and Endpoint — e.g. <b>eastus</b>, no space.</div>`:''}
+      <div class="row" style="justify-content:space-between;margin-top:8px;gap:6px"><span class="tiny muted">Free tier: ~500k characters/month.</span><button class="chip" onclick="testNeural()">▶ Test neural</button></div>
       <div id="neuralTestMsg" class="tiny" style="margin-top:6px;word-break:break-word"></div>
-      <div class="tiny muted" style="margin-top:6px;opacity:.8">Get a free key: portal.azure.com → create a <b>Speech</b> resource (F0 free tier) → Keys and Endpoint → copy Key 1 + <b>Location/Region</b> (must match the Region field above, e.g. eastus).</div>
+      ${STATE.settings.azureKey?`<button class="btn sm ghost" style="width:100%;margin-top:8px" onclick="runNeuralDiagnostic()">🔬 Test the premium voice, step by step</button>`:''}
+      <div class="tiny muted" style="margin-top:8px;opacity:.85">
+        <b>Setting it up — free, about 5 minutes:</b><br>
+        1. Go to <a href="https://portal.azure.com" target="_blank" rel="noopener" style="display:inline-block;padding:6px 0">portal.azure.com</a> and sign in.<br>
+        2. Create a resource → search <b>Speech</b> → Create.<br>
+        3. Pricing tier: pick <b>F0 (Free)</b>. Region: <b>East US</b> is fine.<br>
+        4. Open the resource → <b>Keys and Endpoint</b>.<br>
+        5. Copy <b>KEY 1</b> into the key box above.<br>
+        6. Copy <b>Location/Region</b> into the region box — as the id, e.g. <b>eastus</b>, no space.<br>
+        The key and the region must come from the <b>same</b> Speech resource. Your key stays on this phone only.
+      </div>
     </div>`:''}
     <div style="padding:8px 0 2px">
       <div class="tiny muted" style="margin-bottom:6px">Voice tone</div>
@@ -14099,6 +14212,14 @@ function normalizeState(){
      is not an HH:MM clock time is both a broken input and an injection path
      out of a restored backup. */
   if(!/^\d{2}:\d{2}$/.test(String(STATE.settings.reminderTime||'')))STATE.settings.reminderTime='18:00';
+  /* Clean a stored region once rather than normalising it at every read
+     forever. The read site does it too — that is what protects an athlete who
+     is mid-session when this first runs — but leaving the junk in STATE means
+     it also travels in every backup they make from here on. */
+  if(STATE.settings.azureRegion!==undefined){
+    const _r=_azRegionNorm(STATE.settings.azureRegion);
+    if(_r!==STATE.settings.azureRegion)STATE.settings.azureRegion=_r||'eastus';
+  }
   if(STATE.settings.weeklyOn===undefined)STATE.settings.weeklyOn=true;
   if(!STATE.restDays||typeof STATE.restDays!=='object')STATE.restDays={};
   if(!Array.isArray(STATE.skipLog))STATE.skipLog=[];   // jump-rope record
