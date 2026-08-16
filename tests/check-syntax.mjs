@@ -78,3 +78,89 @@ if (offenders.length) {
   process.exit(1);
 }
 console.log(`✓ no coach line contradicts the stop-for-pain rule (${strings.length} strings scanned)`);
+
+/* ---- External-integration contract ---------------------------------------
+   Every failure the athlete hit on a real phone in one day — an 8s timeout on
+   an image upload, a 503 the app refused to retry, a stalled connection with
+   no total bound, two retired model ids tried first on every import — was the
+   same shape: a call leaving the phone without the defences a call leaving
+   the phone needs. Each was found by the athlete, one at a time, because
+   nothing here objected.
+
+   A build gate rather than a test, for the same reason the coach-line rule is
+   one: the failure mode is a plausible-looking line added months from now, by
+   someone who has not read this file, and the cost of checking is nothing. */
+const EXT = [];
+
+/* 1. No bare fetch(). fetchWithTimeout is the ONLY way out, because a
+      connection that associates and then hangs never rejects on its own. */
+{
+  const stripped = js.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const bare = (stripped.match(/[^a-zA-Z_.]fetch\s*\(/g) || []).length;
+  const wrapped = (stripped.match(/fetchWithTimeout\s*\(/g) || []).length;
+  // fetchWithTimeout's own single internal fetch() is the one legitimate call
+  if (bare > 1) EXT.push(`${bare} bare fetch() calls — every outbound call must go through fetchWithTimeout()`);
+  if (!wrapped) EXT.push('fetchWithTimeout() is never called — the timeout wrapper exists but nothing uses it');
+}
+
+/* 2. A vision/AI call must be bounded by something far larger than the small JSON
+      default, and the whole operation must have a ceiling. Both were learned
+      the hard way: 8000ms killed image uploads, and 3 models x 25s with no
+      total budget meant 75 seconds before the athlete saw anything. */
+{
+  if (!/AI_TOTAL_BUDGET_MS\s*=\s*\d{4,}/.test(js))
+    EXT.push('no AI_TOTAL_BUDGET_MS — a retrying multi-model call needs a hard ceiling on the whole operation');
+  const m = js.match(/_geminiCall\s*\([^)]*\)\s*\{[\s\S]{0,400}?ms\s*\|\|\s*(\d+)/);
+  if (!m) EXT.push('_geminiCall has no default timeout');
+  else if (+m[1] < 15000) EXT.push(`_geminiCall default timeout is ${m[1]}ms — too short for an image upload plus inference`);
+}
+
+/* 3. Transient failures must be retried, and a timeout (status 0) is the most
+      common transient failure there is — leaving it out is what made the
+      retry added in v257 unable to fire for the case it was built for. */
+{
+  const t = js.match(/_transientAIStatus\s*\([^)]*\)\s*\{\s*return([^;]+);/);
+  if (!t) EXT.push('no _transientAIStatus classifier — transient and permanent failures must be told apart');
+  else {
+    if (!/s\s*===\s*0/.test(t[1])) EXT.push('_transientAIStatus omits status 0 — a timeout is retryable and is the most common one');
+    if (!/503/.test(t[1])) EXT.push('_transientAIStatus omits 503 — the status whose own body says to try again');
+  }
+}
+
+/* 4. The model list must contain a floating alias. Pinning every id is what
+      rotted: Google retired two of three for newer keys, and the app kept
+      trying them first on every single import. */
+{
+  const m = js.match(/FOOD_AI_MODELS\s*=\s*\[([^\]]+)\]/);
+  if (!m) EXT.push('FOOD_AI_MODELS not found');
+  else {
+    const ids = m[1].match(/'([^']+)'/g) || [];
+    if (!ids.some(x => /latest/.test(x))) EXT.push('FOOD_AI_MODELS pins every id — keep a "-latest" alias so the list cannot rot');
+    if (!/latest/.test(ids[0] || '')) EXT.push('FOOD_AI_MODELS does not lead with the floating alias — a retired pin costs a dead round-trip on every call');
+  }
+}
+
+/* 5. Anything the athlete can be blocked by needs a diagnostic they can run
+      themselves. Six rounds were spent inferring from one line of toast text
+      because there was no way to see a status code from here. */
+{
+  if (!/function runAIDiagnostic/.test(js)) EXT.push('no runAIDiagnostic() — an external integration needs an on-device diagnostic');
+  /* Anchored on the DEFINITION and a real CALL, not a bare substring: a
+     substring match is satisfied by any longer name that merely starts the
+     same way, so renaming the function to _importSelfTestX walked straight
+     through the first version of this gate. */
+  if (!/function _importSelfTest\s*\(/.test(js))
+    EXT.push('no _importSelfTest() — the diagnostic must exercise the real pipeline, not only reachability');
+  if (!/await _importSelfTest\s*\(/.test(js))
+    EXT.push('_importSelfTest() is defined but never run by the diagnostic');
+}
+
+if (EXT.length) {
+  console.error(`✗ ${EXT.length} external-integration contract violation(s)`);
+  EXT.forEach(o => console.error('  ' + o));
+  console.error('  Every call that leaves the phone needs: a timeout, a total budget,');
+  console.error('  a transient/permanent classifier, a non-rotting model list, and a');
+  console.error('  diagnostic the athlete can run without me.');
+  process.exit(1);
+}
+console.log('✓ external calls carry their timeouts, budget, retry classifier and diagnostic');

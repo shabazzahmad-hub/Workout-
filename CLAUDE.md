@@ -3320,6 +3320,62 @@ perfectly valid 0% and sailed through. `undefined` was rejected, `null` was
 not. The guard now rejects `v==null` before coercing. Same family as this
 file's other "`!= null` is not is-absent" note, from the opposite direction.
 
+## Self-defence: the app tests itself on the phone I cannot reach (v263)
+
+Asked, after seven rounds of the screenshot import failing on a real device,
+what separates this from a well-produced fitness app. The honest answer is
+not craft or care — this repo has 262 versions of documented reasoning — it
+is that a real product team **uses the app on the device it ships to**. Every
+test written for the import mocked the network, which proves the wiring and
+nothing about the result, and the sandbox structurally cannot reach Google or
+Open Food Facts. So the athlete was the integration test, one failure at a
+time. Two defences close that, and both are build-time or on-device rather
+than another promise to be careful.
+
+**1. The diagnostic now runs the REAL import end to end, on the athlete's
+phone, against images whose answer is known in advance.** `_importSelfTest()`
+draws a synthetic tracker card — dark background, a calorie total, and either
+a gram row or a percentage bar — and pushes it through the actual
+`estimateFoodFromScreenshot()`, then compares against `SELFTEST_EXPECT`.
+Both layouts are covered because both are common: **MyFitnessPal shows macros
+as percentages on its free tier and Lose It locks grams behind Premium**, so
+the percentage ring that logged a 897-kcal day with 0 g protein is the
+DEFAULT presentation for most users of the two biggest trackers, not an edge
+case. Drawn to look like a real card rather than text on white, so it
+exercises the same reading problem a real capture does; tolerance is ±3 g or
+12%, because rounding is not a failure.
+
+**2. `npm run check` now enforces the external-call contract as a build
+gate.** Every failure the athlete hit in one day was the same shape — a call
+leaving the phone without the defences such a call needs — and nothing in the
+repo objected to any of them. The gate refuses: a bare `fetch()` anywhere but
+inside `fetchWithTimeout()`; a `_geminiCall` default under 15s (8000 was what
+killed image uploads); a missing `AI_TOTAL_BUDGET_MS` (3 models × 25s with no
+ceiling is 75 seconds of silence); a `_transientAIStatus` that omits status 0
+or 503 (omitting 0 is what made v257's retry unable to fire for the commonest
+transient failure); a `FOOD_AI_MODELS` that pins every id or does not lead
+with a floating alias (pinning is what rotted); and a missing on-device
+diagnostic or self-test.
+
+**A build gate, not a test, for the same reason the coach-line rule is one:**
+the failure mode is a plausible-looking line added months from now by someone
+who has not read this file, and the cost of checking is nothing.
+
+**Mutation-tested like any other check, and the sixth seed escaped.** The
+self-test requirement was a bare `/_importSelfTest/`, which a rename to
+`_importSelfTestX` satisfies — a substring is matched by any longer name that
+merely starts the same way. Re-anchored on the definition
+(`function _importSelfTest\s*\(`) AND a real call site
+(`await _importSelfTest\s*\(`), so a version that defines it and never runs
+it is caught too. Same family as every other "passes for the wrong reason"
+entry here, this time in the gate rather than the suite.
+
+**The rule this leaves behind: instrumentation before features, for anything
+that leaves the phone.** Five rounds of inference from a symptom produced
+five real fixes and never reached the cause; one round of measurement did,
+immediately. A feature that cannot be verified where it runs is not finished
+when its tests are green — it is finished when it can verify itself there.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

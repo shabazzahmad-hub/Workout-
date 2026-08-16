@@ -17,3 +17,12 @@ package-lock.json
 /zz-*.mjs
 /audit-*.mjs
 /*.tmp.mjs
+# "probe" is the name anyone reaching for a scratch script actually types —
+# probe1.mjs, probe-xss.mjs, auditprobe-a.mjs. None of the patterns above
+# matched those, so a `git add -A` during a parallel audit swept nine of them
+# into a release commit. The glob is deliberately loose for that reason.
+/*probe*.mjs
+/*.probe.mjs
+# Screenshots a probe takes while investigating are the same kind of scratch.
+/*probe*.png
+/probe*.jpg

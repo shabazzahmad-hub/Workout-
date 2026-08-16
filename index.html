@@ -1692,7 +1692,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='262';
+const APP_VERSION='263';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -9129,14 +9129,78 @@ async function runAIDiagnostic(){
   // text works — now the vision path, which is what the import actually uses
   const vis=await _aiVisionPing(models[0],20000);
   out.push(_diagLine('Reading a tiny test image',vis));paint();
-  if(vis.ok){
-    out.push(`<div class="note ok" style="margin-top:10px">Everything works. Text and image both went through${ping.ms&&vis.ms?` in ${ping.ms} and ${vis.ms} ms`:''}. If a real screenshot still times out, it is the size of that particular image on this connection — try again on wifi.</div>`);
-  }else if(vis.status===0){
-    out.push(`<div class="note warn" style="margin-top:10px">Text works but <b>images time out</b>. The connection is too slow to upload a picture right now, even a tiny one. Try wifi.</div>`);
-  }else{
-    out.push(`<div class="note warn" style="margin-top:10px">Text works but the image request failed (${vis.status==null?'?':'HTTP '+vis.status}). That points at the vision model rather than your key or connection.</div>`);
+  if(!vis.ok){
+    if(vis.status===0)out.push(`<div class="note warn" style="margin-top:10px">Text works but <b>images time out</b>. The connection is too slow to upload a picture right now, even a tiny one. Try wifi.</div>`);
+    else out.push(`<div class="note warn" style="margin-top:10px">Text works but the image request failed (${vis.status==null?'?':'HTTP '+vis.status}). That points at the vision model rather than your key or connection.</div>`);
+    paint();return;
   }
+  /* The connection and the model are fine — now test the thing that actually
+     kept failing: whether a REAL tracker screenshot parses into the right
+     numbers. This is the gap nothing else could close. The dev sandbox cannot
+     reach Google, so the import pipeline could only ever be tested with the
+     network mocked, which proves the wiring and nothing about the result.
+     Running it here, on the athlete's own phone, against images whose correct
+     answer is known in advance, is the only honest end-to-end check there is.
+     Both layouts are covered because both are common: grams, and the
+     percentage ring that MyFitnessPal and Lose It show on their free tiers —
+     the latter is what silently logged a 897 kcal day with 0 g protein. */
+  out.push(`<div class="tiny muted" style="margin:10px 0 4px">Checking a real import, end to end…</div>`);paint();
+  for(const kind of ['grams','percent']){
+    const r=await _importSelfTest(kind);
+    out.push(_selfTestLine(kind,r));paint();
+  }
+  const bad=out.filter(x=>/❌/.test(x)).length;
+  out.push(bad
+    ? `<div class="note warn" style="margin-top:10px">Something above failed. Send this screen to whoever maintains the app — it names the exact stage, which is what makes it fixable without guessing.</div>`
+    : `<div class="note ok" style="margin-top:10px">Everything works, including a full import in both layouts. If a real screenshot still fails, it is that specific image — send it along rather than only the error.</div>`);
   paint();
+}
+/* A synthetic tracker screenshot with numbers we already know the answer to.
+   Deliberately drawn to look like the real thing — dark card, a calorie
+   total, and either a gram row or a percentage bar — rather than plain text
+   on white, so it exercises the same reading problem a real capture does. */
+const SELFTEST_EXPECT={kcal:900,p:92,c:76,f:25};
+function _selfTestImage(kind){
+  const c=document.createElement('canvas');c.width=1000;c.height=560;
+  const x=c.getContext('2d');
+  x.fillStyle='#1c1c1e';x.fillRect(0,0,c.width,c.height);
+  x.fillStyle='#ffffff';x.font='bold 84px sans-serif';x.fillText('900',80,180);
+  x.font='34px sans-serif';x.fillStyle='#b0b3b8';x.fillText('Calories eaten today',80,235);
+  if(kind==='grams'){
+    x.fillStyle='#ffffff';x.font='bold 44px sans-serif';
+    x.fillText('Protein  92 g',80,360);
+    x.fillText('Carbs  76 g',80,430);
+    x.fillText('Fat  25 g',80,500);
+  }else{
+    // 41% protein / 34% carbs / 25% fat of 900 kcal == 92 / 76 / 25 g
+    x.fillStyle='#ffffff';x.font='bold 40px sans-serif';
+    x.fillText('25% Fat',80,360);x.fillText('34% Carbs',360,360);x.fillText('41% Protein',680,360);
+    const y=400,w=840;
+    x.fillStyle='#f5b942';x.fillRect(80,y,w*0.25,34);
+    x.fillStyle='#4fc3d9';x.fillRect(80+w*0.25,y,w*0.34,34);
+    x.fillStyle='#7b6cf0';x.fillRect(80+w*0.59,y,w*0.41,34);
+  }
+  return c.toDataURL('image/jpeg',0.92);
+}
+async function _importSelfTest(kind){
+  const t0=Date.now();
+  try{
+    const est=await estimateFoodFromScreenshot(_selfTestImage(kind),{budget:30000});
+    const e=SELFTEST_EXPECT;
+    // a few grams either way is rounding, not a failure
+    const near=(a,b)=>Math.abs((+a||0)-b)<=Math.max(3,b*0.12);
+    return {ok:near(est.kcal,e.kcal)&&near(est.p,e.p)&&near(est.c,e.c)&&near(est.f,e.f),
+      ms:Date.now()-t0,got:est};
+  }catch(err){return {ok:false,ms:Date.now()-t0,status:(err&&err.status),msg:String((err&&err.message)||err).slice(0,80)};}
+}
+function _selfTestLine(kind,r){
+  const label=kind==='grams'?'Import test · macros in grams':'Import test · macros as percentages';
+  if(r.ok)return `<div class="kv"><span>✅ ${label}</span><span class="tiny muted">${r.ms} ms · read it correctly</span></div>`;
+  const e=SELFTEST_EXPECT;
+  const detail=r.got
+    ? `got ${r.got.kcal} kcal · ${r.got.p}p ${r.got.c}c ${r.got.f}f — expected ${e.kcal} · ${e.p}p ${e.c}c ${e.f}f`
+    : `${r.status===0?'timed out':('HTTP '+(r.status==null?'?':r.status))}${r.msg?' · '+_ve(r.msg):''}`;
+  return `<div class="kv"><span>❌ ${label}</span><span class="tiny muted" style="text-align:right;max-width:62%">${_ve(detail)}</span></div>`;
 }
 /* `max` bounds the LONG edge, which is the right rule for a photo of a plate
    and the wrong one for a portrait screenshot: a 1179x2556 phone capture
