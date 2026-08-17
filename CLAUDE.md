@@ -4125,6 +4125,58 @@ same "not in the database", because a misread is a well-formed number for a
 product that does not exist. The blank sheet is the same right answer either
 way, so this is a gap in the DIAGNOSIS, not in the outcome.
 
+## An audit that found no bug, and the coverage gap it did find (v275)
+
+Asked to trace onboarding scores, exercise generation, assessments,
+progression, state sync and UI refresh, and to fix what was broken. **Nothing
+in those areas reproduced.** Recorded here because "we measured it and it
+works" is a result, and the next session should not re-derive it:
+
+- Every onboarding control moves the built program — measured by fingerprinting
+  all 378 sessions across a spread and comparing.
+- A re-test rebuilds its block; `currentMaxes()` reads the re-test rather than
+  the baseline; `reassessGate()` fires at 42 and 84 and nowhere else.
+- `swapStillValid()` is applied at all three read sites and fails closed, so a
+  stored swap dies when gear or a joint flag changes. `recalcKcalFromStored()`
+  runs on both the wizard-commit and the profile-edit path.
+- `go()` re-renders the tab it switches to, so stale markup cannot survive a
+  navigation.
+- Fresh install and onboarded-but-baseline-skipped both render all six tabs
+  with zero page errors; the full suite ran green twice with no flakes.
+
+**Three "dead input" findings and two "broken" findings were all defects in the
+probe, not the app**, which is the entry worth keeping. The probe set
+`conditioning`, `experience` and `baseline.level` to values the seeded athlete
+ALREADY had, so a perfectly live wire read as dead — the same trap this file
+already records ("half the first probe's dead findings were the probe using a
+key the app does not have"). Its `restore()` handed back the SAME object every
+time, so each mutation wrote onto the saved baseline and every later probe
+compared against accumulated junk. And two "failures" were safety gates working
+exactly as designed: `openAssessment()` refuses a maximal battery before the
+health screen, and `commitSession()` refuses a session with zero logged sets.
+**State both ends of a probe explicitly, deep-copy on restore, and check
+whether a "failure" is a documented gate before believing it.**
+
+**The real gap was coverage, not behaviour: no suite swept ALL the onboarding
+controls and asserted each one reaches the engine.** Individual controls were
+checked in several places; the `focusBonus()` dead-input class is precisely a
+control that looks wired and is not, so `tests/24-wiring.test.mjs` now sweeps
+them together.
+
+**Two mutants had to be chased before that suite could fail honestly.** The
+first version compared lose-vs-gain over a fingerprint that included targets,
+so deleting `rungIndex()`'s `+1` rung for 'gain' passed clean — `goal` also
+moves every target through `gMul`. Narrowing the fingerprint to exercise IDS
+alone STILL passed, because goal reaches the names through more than one path.
+Only a direct assertion on `rungIndex()` itself isolates it — measure the thing
+under test, not a downstream aggregate that several inputs feed. It carries a
+headroom guard, because at the top of a ladder `clamp()` would swallow the +1
+and the check would prove nothing.
+
+**`rel2.mjs` and `rel3.mjs` were committed probe scripts**, against this file's
+own rule ("Delete them afterwards and leave `git status` clean"). They were
+being published to GitHub Pages with every deploy. Removed.
+
 ## Nine controls had no name a screen reader could read (v269)
 
 Found in the pre-release sweep, not by a suite: six sliders, two dropdowns, two
