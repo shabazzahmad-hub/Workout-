@@ -172,6 +172,88 @@ export default async function () {
     t.ok('the Undo button is not offered on a freshly-erased app', !r.stillOffered, r);
   }
 
+  /* ---------- 5b. hardReset() must still ERASE athlete data, and now must NOT
+     erase the two API keys — a deliberate change, requested directly, from the
+     original "erase ALL data" posture. The key was typed once into this device
+     and never leaves it either way (exportData() already strips it from a
+     backup file), so re-typing it after wiping a season of training is real
+     cost with no safety benefit.
+
+     Both halves of this need their own check: proving keys survive says
+     nothing about whether the rest of STATE was actually wiped, and a version
+     that skipped the wipe entirely (or only reset a couple of fields) would
+     pass a keys-survive-only assertion just as happily. */
+  {
+    const r = await page.evaluate(() => {
+      const kc = window.confirm; window.confirm = () => true;
+      STATE.settings.azureKey = 'AZURE-SECRET-789';
+      // deliberately NOT DEFAULT_STATE()'s own default ('eastus') — a region
+      // that happens to already match the default cannot distinguish a real
+      // carry-forward from the carry-forward being silently skipped
+      STATE.settings.azureRegion = 'westeurope';
+      STATE.settings.foodAiKey = 'GEMINI-SECRET-321';
+      STATE.profile.name = 'Real Athlete';
+      STATE.baseline = { date: '2026-01-01', score: 80, level: 'Advanced', maxes: { plank: 90 } };
+      STATE.logs = { 0: { done: true, feel: 'good' } };
+      STATE.nutrition.diet = 'vegan';
+      save();
+      hardReset();
+      window.confirm = kc;
+      return {
+        azureKey: STATE.settings.azureKey, azureRegion: STATE.settings.azureRegion,
+        foodAiKey: STATE.settings.foodAiKey,
+        profileName: STATE.profile.name, baseline: STATE.baseline,
+        logCount: Object.keys(STATE.logs || {}).length,
+        diet: STATE.nutrition.diet,
+      };
+    });
+    t.eq('the Azure key survives a reset', r.azureKey, 'AZURE-SECRET-789', r);
+    t.eq('its region survives alongside it', r.azureRegion, 'westeurope', r);
+    t.eq('the Gemini key survives a reset', r.foodAiKey, 'GEMINI-SECRET-321', r);
+    // and everything else really is wiped — the keys are the ONE exception
+    t.ok('the profile name is erased', r.profileName !== 'Real Athlete', r);
+    t.eq('the baseline is erased', r.baseline, null, r);
+    t.eq('the training log is erased', r.logCount, 0, r);
+    t.eq('the diet preference is reset to its default', r.diet, 'omnivore', r);
+    // re-seed for the blocks that follow — ATHLETE overwrites STATE.onboarded itself
+    await seedAthlete(page);
+  }
+
+  /* ---------- 5c. a region carried across is normalised on the way back in --
+     Keeping the key but losing (or mangling) its region reintroduces the exact
+     "opaque WebSocket failure naming nothing" defect fixed once already (v272)
+     — a stored "east us" with the portal's own space in it must not survive a
+     reset unrepaired, since normalizeState() runs BEFORE the carried region is
+     written back and would never see it. */
+  {
+    const r = await page.evaluate(() => {
+      const kc = window.confirm; window.confirm = () => true;
+      STATE.settings.azureKey = 'AZURE-SECRET-999';
+      STATE.settings.azureRegion = 'East US';   // the portal's own spelling, unnormalised
+      save();
+      hardReset();
+      window.confirm = kc;
+      return { region: STATE.settings.azureRegion };
+    });
+    t.eq('a region carried across a reset is normalised, not just copied', r.region, 'eastus', r);
+    await page.evaluate(() => { STATE.onboarded = false; });
+    await seedAthlete(page);
+  }
+
+  /* ---------- 5d. the confirm text must say what the button now does -------
+     A promise in the UI is a specification. The old wording ("Erase ALL your
+     data") became false the moment keys started surviving — this is the exact
+     class of defect this file already exists to catch, applied to a change
+     made in the SAME round rather than found in old code. */
+  {
+    const r = await page.evaluate(() => {
+      return { src: hardReset.toString() };
+    });
+    t.ok('the confirm text no longer promises ALL data is erased',
+      !/erase all your data/i.test(r.src), r.src.slice(0, 200));
+    t.ok('and says the keys are kept', /api keys stay/i.test(r.src), r.src.slice(0, 200));
+  }
+
   /* ---------- 6. nutrition.kcalTarget had no type repair ----------------
      todayKcalBudget() did `k + movementKcalAdj()`, so a stored STRING
      CONCATENATED: '2400' + 600 rendered "24000 kcal left today" on Fuel while

@@ -4192,6 +4192,58 @@ and the check would prove nothing.
 own rule ("Delete them afterwards and leave `git status` clean"). They were
 being published to GitHub Pages with every deploy. Removed.
 
+## API keys now survive "Reset all data" (v276)
+
+Requested directly, reversing a deliberate v229 stance: `hardReset()` used to
+wipe `settings.azureKey` and `settings.foodAiKey` along with everything else,
+on the reasoning that "erase ALL data" should mean all of it. Asked to change
+that specifically — the keys should not be erased.
+
+**A key is a device credential, not athlete data, and it never left the device
+either way.** `exportData()` already strips both keys from every backup file —
+so the key was never something that got backed up or restored, only something
+typed once into this specific browser. Re-typing a Gemini or Azure key from
+scratch after wiping a season of training logs is real cost with no safety
+benefit; the v229 reasoning was about a DIFFERENT leak (the un-stripped
+pre-import snapshot silently surviving the wipe and being restorable via the
+Undo button), not about the keys the athlete is actively using.
+
+**Carried across explicitly, not by skipping the wipe.** `STATE` still becomes
+a genuine, complete `DEFAULT_STATE()` first — the three fields are read off the
+old STATE before that line and written back on afterward. A version that
+skipped the wipe to preserve the keys would leave the profile, baseline and
+logs behind too, which is exactly the regression the dedicated test proves
+does NOT happen alongside the keys surviving.
+
+**`azureRegion` travels WITH `azureKey`, not on its own.** A key with no
+region, or the wrong one, is the identical "opaque WebSocket failure naming
+nothing" defect v272 already fixed once — keeping the key and losing its
+region would silently reintroduce that failure on the very next premium-voice
+attempt. Re-normalised (`_azRegionNorm`) on the way back in, for the same
+reason every other read site normalises it: a region carried from before that
+fix existed must not skip it.
+
+**The confirm text is part of the change, not a cleanup afterthought.** The
+old wording ("Erase ALL your data") became false the instant keys started
+surviving — the exact "a promise in the UI is a specification" class this file
+already names repeatedly, this time introduced and caught in the SAME round
+rather than found in old code later. Reworded to name what is actually erased
+and say plainly that the keys are kept.
+
+**One mutant needed a second look at the test data, not the fix.** The first
+draft of the region-survives check planted `azureRegion:'eastus'` before
+resetting — which is `DEFAULT_STATE()`'s own default, so a version that
+silently skipped the carry-forward produced the identical value by
+coincidence and the check passed on nothing. Fixed by seeding a region that
+is NOT the default (`'westeurope'`), the same "the discriminating scenario
+must not be indistinguishable from doing nothing" lesson this file states
+for readiness/pitch swings elsewhere.
+
+Four checks added to `tests/23-hardening.test.mjs`: both keys and the region
+survive; a legacy unnormalised region is repaired on the way back in; the
+rest of STATE is genuinely wiped alongside the keys surviving; the confirm
+text says what the button now does. Six mutants seeded, six caught.
+
 ## Nine controls had no name a screen reader could read (v269)
 
 Found in the pre-release sweep, not by a suite: six sliders, two dropdowns, two
