@@ -4063,6 +4063,68 @@ test's naive parser: **prose inside a code literal is still inside the code
 literal.** The comment now says so explicitly, since the next person to edit
 that block will not otherwise know.
 
+## The barcode scanner read only half of Open Food Facts (v274)
+
+Reported from a real phone: *"Barcode lookup failed — no nutrition data for
+that product."* That wording is diagnostic and was worth reading before
+guessing — it is the branch where `j.status===1` and `j.product` both hold, so
+the network worked, the barcode resolved, and `_offItem()` rejected what came
+back. Not a scanner problem and not a connection problem.
+
+**`_offItem()` read the per-100g nutriments and nothing else.** Energy arrives
+from Open Food Facts in four shapes — kcal or kilojoules, per 100 g or per
+serving — and a great many entries, especially non-EU ones, carry the serving
+pair only. Those all returned `null`, so a product the database answers
+perfectly well came back as "no nutrition data". `kcalAt(suffix)` now tries
+kcal then kJ at whichever suffix it is handed, and the per-100g branch is tried
+first so nothing that already worked changes.
+
+**The per-serving branch must NOT apply the serving multiplier.** The per-100g
+path multiplies by `servingGrams/100`; applying that to a value which is
+already per serving is the classic scale-what-is-already-scaled bug, and it
+silently under-reports (240 kcal → 144 on a 60 g serving). It has its own
+mutant for exactly that, because the two branches look similar enough to
+"tidy up" into one.
+
+**Its ceiling is looser but still a ceiling.** 900 kcal/100 g is the per-100g
+sanity bound (pure fat is 884). A serving is a whole portion rather than a
+fixed 100 g, so that bound does not transfer — 5000 kcal in one serving is
+still bad third-party data, not a big meal.
+
+**A crowd-sourced database that answers with a name and no numbers is a
+SUCCESSFUL lookup, and it was being treated as a failure.** Open Food Facts is
+full of entries that are a photograph and a product name with the nutrition
+panel never filled in. The old path threw, `lookupBarcode()` toasted, the toast
+vanished, and the athlete was left holding the box with the label on it and
+nowhere to type it. `offBarcode()` now carries the product name out ON the
+error (`e.productName`) and `lookupBarcode()` opens the add sheet pre-filled
+with it — numbers deliberately **blank, not zero**, which is the v260 rule
+applied to a second input path: an absent reading stored as a measured one is
+worse than no reading. A barcode that is genuinely not in the database opens a
+blank sheet too, quoting the number it could not find.
+
+**Two of nine mutants escaped on the first pass, both for the same reason, and
+it is a reason this file has already recorded once.** The data layer
+(`offBarcode`) and the presentation layer (`openQuickAdd`) each had their own
+checks, and both mutants lived in `lookupBarcode()` — the function that WIRES
+them together, which nothing drove. Reverting the found-but-blank branch to a
+dead end passed clean; so did pre-filling zeros instead of blanks. Same shape
+as v253's `_screenshotUnusable`: a guard proven correct in isolation and then
+shipped never being called. Fixed with a block that drives `lookupBarcode()`
+for real against a mocked route and reads the sheet's actual input values back
+— after which all nine were caught.
+
+**The quiet case is the guard that matters most here**, as everywhere else in
+this file: a successful barcode must fill the numbers in and show none of the
+warning text, or every assertion above would pass just as happily against a
+version that blanked everything for everybody.
+
+Not fixed, and worth naming: nothing distinguishes *the scanner misread the
+barcode* from *this barcode is genuinely not in the database*. Both produce the
+same "not in the database", because a misread is a well-formed number for a
+product that does not exist. The blank sheet is the same right answer either
+way, so this is a gap in the DIAGNOSIS, not in the outcome.
+
 ## Nine controls had no name a screen reader could read (v269)
 
 Found in the pre-release sweep, not by a suite: six sliders, two dropdowns, two

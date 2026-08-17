@@ -1716,7 +1716,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='273';
+const APP_VERSION='274';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -9101,12 +9101,29 @@ function searchLocalFoods(q){q=String(q||'').trim().toLowerCase();if(!q)return [
     return ap-bp||a.n.length-b.n.length;});
   return hits.slice(0,40);}
 // Open Food Facts nutriments are per 100 g; convert to a serving when one is given.
+/* The product's display name, on its own — needed even when the nutrition is
+   unusable, because a barcode that resolves to a real product and then dead-ends
+   is worse than one that never resolved: the athlete is holding the box with the
+   label on it and has nothing to type it into. */
+function _offName(p){
+  const nm=[p&&p.product_name,(p&&p.brands)?('· '+String(p.brands).split(',')[0].trim()):'']
+    .filter(Boolean).join(' ').trim();
+  return (nm||'').slice(0,50);
+}
 function _offItem(p){
   const nu=p.nutriments||{};
-  const k100=+nu['energy-kcal_100g']||(nu['energy_100g']?Math.round(+nu['energy_100g']/4.184):0);
-  // pure fat is 884 kcal/100 g; anything above that is bad third-party data
-  if(!(k100>0)||k100>900)return null;
-  if(!k100)return null;
+  /* Energy comes in four shapes and a product may carry ANY of them: kcal or
+     kilojoules, per 100 g or per serving. Reading only the per-100g pair is
+     what made a barcode that Open Food Facts answers perfectly well come back
+     as "no nutrition data" — plenty of entries, especially non-EU ones, carry
+     serving values only. */
+  const kcalAt=suf=>{
+    const kc=+nu['energy-kcal'+suf];
+    if(isFinite(kc)&&kc>0)return kc;
+    const kj=+nu['energy'+suf];
+    return (isFinite(kj)&&kj>0)?Math.round(kj/4.184):0;
+  };
+  const g=(base,suf)=>{const v=+nu[base+suf];return (isFinite(v)&&v>0)?v:0;};
   /* serving_size is free text ("2 biscuits (25 g)", "1 portion (30g)", "250 ml").
      parseFloat grabs the leading number, which is usually a COUNT, not grams —
      that logged a 30 g serving as 4 kcal. Take the gram/millilitre figure
@@ -9117,12 +9134,29 @@ function _offItem(p){
      logging the product at 2% of its real calories. With no gram figure, fall
      back to per-100 g instead of trusting a bare number. */
   const sg=gm.length?gm[gm.length-1]:0;
-  const per=(sg>0&&sg<2000)?sg/100:1;   // serving in grams -> multiplier, else per 100 g
-  const nm=[p.product_name,p.brands?('· '+String(p.brands).split(',')[0].trim()):''].filter(Boolean).join(' ').trim();
-  return {n:(nm||'Product').slice(0,50),
-    s:(sg>0&&sg<2000)?(String(p.serving_size).trim()):'100 g',
-    k:Math.round(k100*per),p:Math.round((+nu.proteins_100g||0)*per),
-    c:Math.round((+nu.carbohydrates_100g||0)*per),f:Math.round((+nu.fat_100g||0)*per)};
+  const nm=_offName(p);
+  const k100=kcalAt('_100g');
+  // pure fat is 884 kcal/100 g; anything above that is bad third-party data
+  if(k100>0&&k100<=900){
+    const per=(sg>0&&sg<2000)?sg/100:1;   // serving in grams -> multiplier, else per 100 g
+    return {n:nm||'Product',
+      s:(sg>0&&sg<2000)?(String(p.serving_size).trim()):'100 g',
+      k:Math.round(k100*per),p:Math.round(g('proteins','_100g')*per),
+      c:Math.round(g('carbohydrates','_100g')*per),f:Math.round(g('fat','_100g')*per)};
+  }
+  /* Per-serving only. These are already for one serving, so there is no
+     multiplier to apply — applying the per-100g one here would be the classic
+     "scale a number that is already scaled" bug. The ceiling is looser than
+     900 because a serving is a whole portion, not a fixed 100 g, but it is
+     still a ceiling: 5000 kcal in one serving is bad data, not a big meal. */
+  const kServ=kcalAt('_serving');
+  if(kServ>0&&kServ<=5000){
+    return {n:nm||'Product',
+      s:(sTxt.trim()||'1 serving'),
+      k:Math.round(kServ),p:Math.round(g('proteins','_serving')),
+      c:Math.round(g('carbohydrates','_serving')),f:Math.round(g('fat','_serving'))};
+  }
+  return null;
 }
 const OFF_FIELDS='product_name,brands,nutriments,serving_size,code';
 /* A connection that ASSOCIATES and then hangs (gym wifi, a dead hotspot) never
@@ -9155,7 +9189,17 @@ async function offBarcode(code,ms){
   const j=await r.json();
   if(!j||j.status!==1||!j.product)throw new Error('not in the database');
   const it=_offItem(j.product);
-  if(!it)throw new Error('no nutrition data for that product');
+  if(!it){
+    /* Open Food Facts is crowd-sourced: a great many entries are a photograph
+       and a name with the nutrition panel never filled in. That is not a
+       failure to look the barcode up — it succeeded, and it found the product.
+       Carry the NAME out on the error so the caller can hand the athlete a
+       half-filled sheet instead of a dead end; they are standing there holding
+       the box with the label on it. */
+    const e=new Error('no nutrition data for that product');
+    e.productName=_offName(j.product);
+    throw e;
+  }
   return it;
 }
 /* Rows are keyed by index into this table rather than carrying their data in the
@@ -9231,7 +9275,22 @@ async function lookupBarcode(code){
     if(gen!==_sheetGen){toast('Found: '+f.n+' — tap ➕ to log it',5000);return;}   // user moved on; never replace their sheet
     openQuickAdd({name:f.n+(f.s?' ('+f.s+')':''),kcal:f.k,p:f.p,c:f.c,f:f.f});
     toast('Found: '+f.n,4000);
-  }catch(e){toast('Barcode lookup failed — '+String(e.message||e).slice(0,70),5000);}
+  }catch(e){
+    if(gen!==_sheetGen){toast('Barcode lookup failed — '+String(e.message||e).slice(0,70),5000);return;}
+    /* A found-but-blank product opens the sheet with the name already in it and
+       the numbers deliberately BLANK — not zero. Zeros here would be the same
+       defect v260 fixed for the photo import: an absent reading recorded as a
+       measured one, on the number the whole plan is built around. */
+    if(e&&e.productName){
+      openQuickAdd({name:e.productName,barcodeBlank:true});
+      toast('Found '+e.productName+' — but no nutrition on file',5000);
+      return;
+    }
+    /* Not in the database at all, or the network failed. Still not a dead end:
+       open a blank sheet so the label in their hand can be typed straight in. */
+    openQuickAdd({name:'',barcodeBlank:true,barcodeCode:String(code||'')});
+    toast('Barcode lookup failed — '+String(e.message||e).slice(0,70),5000);
+  }
 }
 function scanBarcode(){
   if(!('BarcodeDetector'in window)){toast('Live scanning is not supported here — enter the number instead');manualBarcode();return;}
@@ -9315,6 +9374,12 @@ function openQuickAdd(pre){
         </select></div>
     </div>
     <div class="tiny" id="fa-total" style="font-weight:800;margin:8px 2px 4px">= ${pre.kcal||0} kcal · ${pre.p||0}g P · ${pre.c||0}g C · ${pre.f||0}g F</div>
+    ${(pre.barcodeBlank&&!editing)?`<div class="note warn" style="margin:8px 0">
+      <div style="font-weight:800">${pre.name?_ve(pre.name):'Barcode not recognised'}</div>
+      <div class="tiny" style="margin-top:4px">${pre.name
+        ? `That barcode found the product, but <b>nobody has filled in its nutrition</b> in the free food database. Every box above is <b>blank, not zero</b> — copy the numbers off the label.`
+        : `That barcode is not in the free food database${pre.barcodeCode?' ('+_ve(String(pre.barcodeCode))+')':''}. Type the name and the numbers off the label.`}</div>
+    </div>`:''}
     ${(filled&&!editing)?(pre.macrosMissing?`<div class="note warn" style="margin:8px 0">
       <div style="font-weight:800">${_ve(pre.name||'Food')} · ${pre.kcal} kcal</div>
       <div class="tiny" style="margin-top:4px">⚠️ <b>No macros found</b> in that screenshot — only the calorie total. The protein, carbs and fat boxes above are <b>blank, not zero</b>. Fill them in, or import again from a screen that shows the macro breakdown.</div>
