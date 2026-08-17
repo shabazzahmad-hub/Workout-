@@ -4554,6 +4554,73 @@ Nine mutants seeded across the engine, the `ivDone()` wiring and the
 above were strengthened to stop reading state through a self-sanitizing
 getter.
 
+## A stability ball, and three genuinely new exercises (v281)
+
+Requested directly: "I now have an exercise ball." Confirmed which kind
+first (stability/Swiss ball, not a slam ball — the app's existing
+`medball` gear key already covers that) before building anything, the same
+discipline that caught the "Dip bar" trap in the parallettes round —
+checking what a piece of kit actually is beats mapping it onto the nearest
+existing checkbox. The gear picker had ten categories and none of them
+covered it; this is a genuinely new equipment class, not a hidden gap.
+
+**Three additions, each checked against the existing roster for overlap
+first.** `sbrollout` (Stability Ball Rollout) is the same anti-extension
+mechanism as the existing ab-wheel rollout, with a real difference: the
+ball's wobble adds an anti-rotation demand a fixed wheel doesn't have.
+`sbhamcurl` (Stability Ball Hamstring Curl) is a genuinely new pattern —
+nothing else in the library trains a bridge-and-curl in one rep. `sbstir`
+(Stir-the-Pot) is real anti-rotation core work, distinct from the standing
+`dbpallof`. Two candidates were deliberately left out as too close to what
+already exists: a ball pike/plank (overlaps the hollow-rock family) and a
+ball back extension (overlaps `superman`).
+
+**The rollout inherits `abroll`'s entire risk profile rather than a fresh
+guess — same mechanism, same risk.** Shoulder, wrist and lowback, same
+`SAFE_SWAP`/`LOWBACK_SWAP`/`GEAR_FALLBACK` landing spot (`plank`). The
+other two are calibrated against their real closest siblings instead:
+`sbhamcurl` is a loaded hip bridge, flagged lowback only — matching
+`hipthrust`/`dbrdl`, not the abroll-family shoulder/wrist flags a rollout
+carries. `sbstir` is a forearm-plank hold, flagged wrist only — matching
+`bearhold`/`isoclimber`/`ropeplank`, not shoulder or lowback. Copying
+abroll's flags onto all three would have been the easy, wrong shortcut —
+the mechanism has to match, not just the region.
+
+**A behavioural sweep proving the pool is actually reached needed the
+seeded athlete's own level pinned explicitly, and finding out why is worth
+recording.** The first version of the "genuinely offered once the ball is
+owned" sweep failed for all three exercises, despite every flag and
+gear-gating check passing. `focusBonus()` gates candidates by a difficulty
+tier relative to the athlete's tested level — `[1.0, 0.7, 0.4]` for
+Beginner/Intermediate/Advanced — and all three of these are calibrated
+below hardness 1.0 (0.9, 0.7, 0.55), unlike every prior gear-round addition
+(the kettlebell five and `dbbench` all shipped at hardness >= 1.0, clearing
+even the Beginner gate). By the point in `01-data.test.mjs` where this
+block runs, an earlier block had already mutated `STATE.baseline` down to
+Beginner — the exact "every block builds the state it asserts on, not what
+an earlier block left behind" trap this file already names. Setting
+`STATE.baseline={level:'Advanced'}` explicitly fixed two of the three, but
+`sbstir` (hardness 0.55, needing the Advanced-tier 0.4 threshold) still
+failed — `levelOf()` also lets `STATE.profile.experience` nudge the
+measured level DOWN by one tier, and that field had also been left at
+something below Advanced by the same earlier block. Two separate pieces of
+inherited state had to be pinned, not one.
+
+**One mutant was a legitimate non-catch, the fifth time this file has
+documented the exact same shape.** Dropping the rollout's explicit
+`SAFE_SWAP` entry didn't fail the "lands somewhere safe" check, because
+`safeSwap()`'s own generic same-region fallback finds `plank` without it —
+matching `dbcp`/`mbchop`/`kbwindmill`/`kbrenegade`/`ropeplank` before it.
+The entry stays in the shipped code for clarity, not because the check
+needs it.
+
+Images shipped as the same 800×800 grey-backdrop "PHOTO PENDING"
+placeholders established in v224, generated locally with Pillow to match
+the existing style exactly (sampled backdrop and text colours from a real
+shipped placeholder rather than guessing them) since no image-generation
+handoff happened this round. Added to `sw.js`'s `EXTRA` tier. Eight
+mutants seeded against the new checks, all eight caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
