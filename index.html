@@ -1716,7 +1716,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='277';
+const APP_VERSION='279';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4850,6 +4850,68 @@ const SPECIAL_FORMATS={
   box6x2:{name:'6 × 2 min',desc:'Six 2-minute rounds, 45s rest. Faster turnaround.',w:2,r:0.75,n:6,exId:'shadowbox',act:'box'},
 };
 function fmtInfo(k){return HIIT_FORMATS[k]||SKIP_FORMATS[k]||SPECIAL_FORMATS[k]||ENDURANCE_FORMATS[k]||{name:'Session',desc:''};}
+/* ---- Progression for the three groups with a real volume order -----------
+   Skip and grip/box already log every session; nothing ever asked how it
+   felt or suggested going harder, the way BIKE_LEVELS/bikeLevelSuggestion()
+   already does for the bike. Same double-progression rule, generalised
+   across groups instead of hardcoded to one.
+
+   Ordered low->high by total WORK volume (w*n) — not object key order,
+   which is presentation order and does not agree with it. gripmax is
+   deliberately excluded: it is a max-effort TEST ("sets your Dead Hang
+   standard"), not a volume rung, the same reasoning VO2max/HIIT formats
+   are excluded from ordering entirely below. */
+const PROGRESSION_GROUPS={
+  skip:{formats:['skip93x2','skip52x4','skip93x3','skip93x4']},
+  grip:{formats:['grip30','grip45','grip60']},
+  box:{formats:['box3x3','box6x2','box5x3']},
+};
+function formatFeel(group){
+  const all=(STATE.formatFeel&&typeof STATE.formatFeel==='object')?STATE.formatFeel:{};
+  const f=all[group];
+  const list=(PROGRESSION_GROUPS[group]||{}).formats||[];
+  return (f&&typeof f==='object'&&list.includes(f.level)&&typeof f.streak==='number')?f:{level:list[0],streak:0};
+}
+function rateFormat(group,format,feel){
+  if(!PROGRESSION_GROUPS[group])return;
+  const cur=formatFeel(group);
+  if(!STATE.formatFeel||typeof STATE.formatFeel!=='object')STATE.formatFeel={};
+  STATE.formatFeel[group]=(feel==='easy')
+    ?{level:format,streak:(cur.level===format?cur.streak:0)+1}
+    :{level:format,streak:0};
+  save();
+}
+function formatSuggestion(group,format){
+  try{
+    const list=(PROGRESSION_GROUPS[group]||{}).formats||[];
+    const f=formatFeel(group);
+    if(f.level!==format||f.streak<3)return null;
+    const i=list.indexOf(format);
+    if(i<0||i>=list.length-1)return null;
+    return list[i+1];
+  }catch(e){return null;}
+}
+/* ---- A completion record for the formats with no natural order -----------
+   HIIT_FORMATS (tabata/emom/amrap) and ENDURANCE_FORMATS (vo2max4x4/
+   vo2max3030/sit6x30, and sprint runs) are each documented in their own
+   definitions above as distinct stimuli, not rungs of one ladder — so unlike
+   skip/grip/box there is nothing honest to suggest moving "up" to. Bonus
+   HIIT (session key specialhiit) and sprint/VO2max-off-the-bike-menu
+   (specialcardio, non-bike) had no record of any kind before this — not
+   even that the session happened. This is the minimum honest signal
+   available without inventing a fake score: time spent at that exact
+   format, over time. */
+function hiitLog(){if(!Array.isArray(STATE.hiitLog))STATE.hiitLog=[];return STATE.hiitLog;}
+function logHiitCompletion(group,format,mins){
+  mins=Math.max(0,Math.round((mins||0)*10)/10);if(!mins)return;
+  hiitLog().unshift({date:todayISO(),format,group,mins,at:Date.now()});
+  if(STATE.hiitLog.length>200)STATE.hiitLog.length=200;
+  save();
+}
+function hiitFormatStats(format){
+  const l=hiitLog().filter(x=>x.format===format);
+  return {n:l.length,total:Math.round(l.reduce((a,x)=>a+(x.mins||0),0))};
+}
 /* The grip and boxing formats hard-code ONE movement, and that is the point of
    them: a hang session IS the hang. So unlike the prescribed circuits — where
    safeSwap substitutes an equivalent and the athlete never needs to know — a
@@ -5440,6 +5502,21 @@ function ivDone(){
   // Fuel-tab feature started.
   const isMakeup=sess.session.key==='cardiomakeup';
   const makeupIsBike=isMakeup&&sess.makeupExId==='bike';
+  /* Skip/grip/box already have a real volume order (PROGRESSION_GROUPS) —
+     give them the same "how did that feel?" rating bike already has,
+     which both logs the session AND can suggest the next rung up. Ruck
+     has no format ladder, so actKey==='ruck' correctly falls through to
+     the plain log button below, unchanged. */
+  const progGroup=isSkip?'skip':(actKey&&PROGRESSION_GROUPS[actKey]?actKey:null);
+  const progCall=feel=>isSkip?`rateSkipAndClose('${feel}',${mins},${skRounds})`
+    :`rateActAndClose('${actKey}','${feel}',${mins},${(SPECIAL_FORMATS[INTV.format]||{}).n||0},${Math.round(((SPECIAL_FORMATS[INTV.format]||{}).w||0)*60)})`;
+  /* Bonus HIIT (specialhiit) and sprint/VO2max off the bike menu
+     (specialcardio, not bike — bike itself is already isBike above) had
+     no completion record of any kind. HIIT_FORMATS/ENDURANCE_FORMATS are
+     each documented as distinct stimuli with no natural harder/easier
+     order, so this tracks time-at-format rather than suggesting a switch. */
+  const isTrackedNoOrder=sess.session.key==='specialhiit'||(sess.session.key==='specialcardio'&&!isBike);
+  const trackedGroup=sess.session.key==='specialhiit'?'hiit':'endurance';
   $('#ivBody').innerHTML=`
     <div class="pl-name" style="margin-bottom:2px">${isMakeup?(makeupIsBike?'Ride logged 🚴':'Jacks logged 🤸'):(isSkip?'Rope work done 🪢':'Circuit complete 🔥')}</div>
     <div class="pl-coach" style="margin-bottom:14px">${fmtInfo(INTV.format).name} · ${sess.session.name}</div>
@@ -5459,14 +5536,48 @@ function ivDone(){
       <button class="btn ghost" style="flex:1" onclick="creditMakeupAndClose('bike',${mins},'right')">💪 Right</button>
       <button class="btn ghost" style="flex:1" onclick="creditMakeupAndClose('bike',${mins},'hard')">🥵 Hard</button>
     </div>`:''}
+    ${progGroup?`<div class="tiny muted" style="margin-top:14px">How did that feel?</div>
+    <div class="row" style="gap:8px;margin-top:6px;width:100%;max-width:440px">
+      <button class="btn ghost" style="flex:1" onclick="${progCall('easy')}">😎 Easy</button>
+      <button class="btn ghost" style="flex:1" onclick="${progCall('right')}">💪 Right</button>
+      <button class="btn ghost" style="flex:1" onclick="${progCall('hard')}">🥵 Hard</button>
+    </div>`:''}
     <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:440px;margin-top:18px">
-      ${isSkip?`<button class="btn primary" onclick="hiitLogSkip(${mins},${skRounds})">🪢 Log ${Math.max(1,Math.round(mins))} min to my record</button>`:''}
-      ${actKey?`<button class="btn primary" onclick="hiitLogAct('${actKey}',${mins},${(SPECIAL_FORMATS[INTV.format]||{}).n||0},${Math.round(((SPECIAL_FORMATS[INTV.format]||{}).w||0)*60)})">${ACTS[actKey].emoji} Log to my ${ACTS[actKey].name} record</button>`:''}
       ${isMetcon?`<button class="btn primary" onclick="hiitLogDone()">Log today's session complete</button>`:''}
       ${isMakeup&&!makeupIsBike?`<button class="btn primary" onclick="creditMakeupAndClose('jacks',${mins})">🤸 Log ${mins} min to today's steps</button>`:''}
-      ${isBike?'':'<button class="btn ghost" onclick="hiitQuit()">Close</button>'}
+      ${isTrackedNoOrder?`<button class="btn primary" onclick="logHiitAndClose('${trackedGroup}','${INTV.format}',${mins})">✅ Log ${Math.max(1,Math.round(mins))} min to my record</button>`:''}
+      ${(isBike||progGroup)?'':'<button class="btn ghost" onclick="hiitQuit()">Close</button>'}
     </div>`;
   if(!motivate('done'))coachSpeak(isMakeup?(makeupIsBike?'Ride complete. Nice work.':'Jacks complete. Nice work.'):(isSkip?'Rope work complete. Outstanding.':'Circuit complete. Outstanding work.'));
+}
+/* Rating IS the log action here, same as rateBikeAndClose() — one tap
+   both records the session (via the existing hiitLogSkip/hiitLogAct,
+   untouched) and feeds the streak that can suggest the next rung up. */
+function rateSkipAndClose(feel,mins,rounds){
+  if(!INTV)return;
+  const format=INTV.format;
+  rateFormat('skip',format,feel);
+  const next=formatSuggestion('skip',format);
+  hiitLogSkip(mins,rounds);
+  if(next)toast('📈 3 easy sessions at this level — try "'+fmtInfo(next).name+'" next time?');
+}
+function rateActAndClose(k,feel,mins,rounds,workSecs){
+  if(!INTV)return;
+  const format=INTV.format;
+  rateFormat(k,format,feel);
+  const next=formatSuggestion(k,format);
+  hiitLogAct(k,mins,rounds,workSecs);
+  if(next)toast('📈 3 easy sessions at this level — try "'+fmtInfo(next).name+'" next time?');
+}
+/* Bonus HIIT / sprint / VO2max have no order to suggest, so this just
+   mirrors time-at-format back — the only honest signal available. */
+function logHiitAndClose(group,format,mins){
+  if(!INTV)return;
+  logHiitCompletion(group,format,mins);
+  const s=hiitFormatStats(format);
+  const name=fmtInfo(format).name;
+  hiitQuit();
+  toast(s.n<=1?('Logged — first '+name+' in the books'):('Logged — '+s.n+' '+name+' sessions now · '+s.total+' min total'));
 }
 function hiitToggle(){
   if(!INTV)return;INTV.running=!INTV.running;
@@ -14123,6 +14234,22 @@ function normalizeState(){
       !(typeof STATE.bikeLevelFeel.streak==='number'&&isFinite(STATE.bikeLevelFeel.streak)&&STATE.bikeLevelFeel.streak>=0))
      STATE.bikeLevelFeel={level:'steady',streak:0};
    if(P.bikeLevel!=null&&!BIKE_LEVELS.some(b=>b.k===P.bikeLevel))delete P.bikeLevel;
+   // Same shape, same reason, for skip/grip/box's own feel/streak — a junk
+   // entry per group either hides formatSuggestion() forever or feeds a
+   // format key that no longer exists in PROGRESSION_GROUPS into the picker.
+   if(!STATE.formatFeel||typeof STATE.formatFeel!=='object'||Array.isArray(STATE.formatFeel))STATE.formatFeel={};
+   Object.keys(PROGRESSION_GROUPS).forEach(g=>{
+     const f=STATE.formatFeel[g];const list=PROGRESSION_GROUPS[g].formats;
+     if(!f||typeof f!=='object'||Array.isArray(f)||!list.includes(f.level)||
+        !(typeof f.streak==='number'&&isFinite(f.streak)&&f.streak>=0))
+       STATE.formatFeel[g]={level:list[0],streak:0};
+   });
+   // Drop any group key that is no longer a real progression group at all —
+   // e.g. left over from an old build where the group list was different.
+   Object.keys(STATE.formatFeel).forEach(g=>{if(!PROGRESSION_GROUPS[g])delete STATE.formatFeel[g];});
+   if(!Array.isArray(STATE.hiitLog))STATE.hiitLog=[];
+   else STATE.hiitLog=STATE.hiitLog.filter(x=>x&&typeof x==='object'&&typeof x.format==='string'&&
+     typeof x.mins==='number'&&isFinite(x.mins)&&x.mins>=0);
    // _dataRepaired is written only by boot() as a plain boolean; a corrupt or
    // hand-edited value is dropped rather than trusted, same as any other field.
    if(STATE._dataRepaired!==undefined&&typeof STATE._dataRepaired!=='boolean')delete STATE._dataRepaired;
