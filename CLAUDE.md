@@ -4306,6 +4306,78 @@ exercises — handed to the athlete the same way every photo prompt in this
 library's history has been, to come back as real files through the same
 drop-in process suite 12 and the exercise-media suite already cover.
 
+## The first Week-1 video, salvaged from a generation that ignored its own instruction (v278)
+
+The athlete generated a video from one of the v277 house-style prompts and sent
+it back. It could not be dropped in as-is, and finding out why — by actually
+decoding and inspecting the file, not trusting the filename — is the point of
+this entry.
+
+**The clip contained two exercises, not one.** Ten seconds, cut cleanly at
+4.9s: Dead Bug lying down, then a hard cut to Jumping Jacks standing up. The
+prompt said "one exercise per generation — never combine several moves into
+one clip," and the model did it anyway. This is the video-generation instance
+of the exact failure this file already documents for images — v243's contact
+sheet, generated despite "no collage" being repeated twice. **A model ignoring
+an explicit instruction is not a one-off; it is a known failure mode for this
+class of tool, and the fix is procedural (inspect the output, split what
+needs splitting) rather than a stronger prompt.**
+
+**The Dead Bug half was unusable on its own terms, not just for being spliced
+in.** The app's own `steps` for `deadbug` describe a contralateral movement —
+one arm and the OPPOSITE leg lower together, then switch. The generated clip
+kept both arms locked together overhead the entire time and moved only the
+legs — a different, incorrect movement that would teach the wrong form if
+shipped. It also carried a one-frame wardrobe flicker (the shirt disappears
+for a single frame) and was shot in flat side profile rather than the
+requested three-quarter angle. No amount of cropping fixes an incorrect
+movement; this half was discarded, not salvaged.
+
+**The Jumping Jacks half was genuinely usable, and was verified rather than
+assumed.** Extracted at 4fps into a contact sheet first — checking for the
+same class of defect (flicker, wardrobe glitches, inconsistent framing) that
+had just been found in the other half. None appeared. Confirmed against a
+real point of comparison: `ex-burpee.mp4`, an existing shipped file, is itself
+a full multi-phase rep cycle (jump → squat → plank → push-up → stand → jump),
+not a static hold — so a dynamic, multi-second Jumping Jacks clip is
+consistent with what this library already ships, not a stretch of the format.
+
+**The loop point was found by measurement, not by eye.** All 118 frames of
+the candidate segment were exported as 64×64 grayscale thumbnails and diffed
+against frame 0 with a plain mean-absolute-pixel-difference — the same
+measure-the-actual-pixels instinct this file states for a scrim or a contrast
+ratio, applied to motion instead of colour. The best match was unambiguous
+(diff 1.35 against a next-best of 1.59+), landing on a 3.0s loop. **Read back
+honestly rather than oversold**: the true first and last frames of the
+resulting clip are close but not identical — a small catch is visible at the
+restart, because this footage was never generated as a loop. Confirmed by
+extracting and comparing the exact boundary frames before presenting it, and
+disclosed as a real, minor limitation rather than claimed as seamless.
+
+**Processing matched the library's own established convention, not a fresh
+guess at one.** The source was 1280×720; the shipped library is uniformly
+640×640. A centred square crop (removing the letterboxed sides) happened to
+also crop out a small AI-generation watermark sitting in the bottom-right
+corner — verified after the fact by reading the cropped frames back, not
+assumed from the crop math. Re-encoded to land near the existing files' own
+size convention (~100-130KB for a few seconds at 640×640, not a raw
+re-mux at several times that), with the audio track stripped — every existing
+shipped `.mp4` is video-only, since the player always renders it `muted`.
+
+**The athlete made the ship/hold call, not a default.** Two real options
+existed — ship the imperfect-but-clean loop now, or wait for a purpose-made
+regeneration — and the tradeoff (small cosmetic seam vs. no video at all for
+this exercise) is a product judgment call. Asked directly rather than assumed;
+the answer was ship it. Dead Bug stays on its photo until a fresh,
+single-exercise generation exists — no placeholder video was fabricated to
+fill the gap, consistent with this file's standing rule that a photo fallback
+already working correctly is a better outcome than a fake video pretending to
+be finished.
+
+`EXTRA`'s own comment counting "the eleven .mp4 files" was updated to twelve
+in the same change — a stale count next to a growing list is exactly the kind
+of drift this file's own conventions exist to prevent.
+
 ## Nine controls had no name a screen reader could read (v269)
 
 Found in the pre-release sweep, not by a suite: six sliders, two dropdowns, two
