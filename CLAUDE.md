@@ -4244,6 +4244,68 @@ survive; a legacy unnormalised region is repaired on the way back in; the
 rest of STATE is genuinely wiped alongside the keys surviving; the confirm
 text says what the button now does. Six mutants seeded, six caught.
 
+## Day 1 says what a normal day looks like, not just the test (v277)
+
+A field report on a 100M-download competitor named a real gap: the Day-1 hero
+promises "~15 minutes," and that number describes only the baseline TEST —
+nothing on that screen says what a normal training day looks like afterward,
+which is exactly the anxiety a mass-market competitor's "just 5-10 minutes a
+day" framing is built to prevent.
+
+**Reused rather than guessed.** `typicalSessionMin()` calls `plBudgetMin()` —
+the guided player's own real per-session estimate — against `buildSession(0)`,
+the athlete's actual first day, and prices warm-up/cool-down at the exact
+35s/33s-per-move `sessionStats()` already uses for the history list. Two
+existing numbers, not a third invented one that could drift from either.
+Confirmed safe to call before a baseline exists — `prescribe()`'s own
+`anchorUsable` fallback already covers a null `STATE.baseline`, the same
+guarantee every other pre-baseline read in this file relies on.
+
+**Session 0, not an average.** The question the sentence answers is "what does
+MY first day look like," so it is built from the exact session the athlete is
+about to do, carrying whatever gear/goal/limitations they already entered in
+onboarding — not a generic figure that could disagree with what they actually
+see ten minutes later.
+
+**The sentence is omitted entirely rather than risking a broken number.** If
+`typicalSessionMin()` throws for any reason, it returns `null` and the
+template renders nothing — never `~null minutes` or an empty fragment. Proven
+by monkey-patching `buildSession` to throw and reading the rendered HTML back.
+
+**A companion check proves the number is actually computed, not a static
+string that happens to look dynamic.** Flipping `experience`/`conditioning`/
+`goal` and re-reading `typicalSessionMin()` requires the two values to differ
+— the exact "dead input" shape this file has now named for `focusBonus()`,
+`conditioning`, and the onboarding-wiring sweep in v275, checked again here on
+a smaller, newer surface before it could become a fourth instance.
+
+Three mutants seeded, three caught: the sentence deleted, the sentence forced
+to render unconditionally (risking the null case), and the estimate hardcoded
+to a fixed number regardless of input.
+
+**The video half of the same report could not ship as code.** The report also
+named "extend the existing `vid:` field to a few Week-1 exercises" as
+worth doing — checking which exercises a first-time athlete's Week 1 actually
+reaches (a sweep across Beginner/Intermediate/Advanced starting levels, no
+baseline yet, matching the real onboarding-to-Day-1 path) found **42 distinct
+exercises, zero of which already have video** — the ten existing clips are all
+harder or equipment-gated movements a brand-new athlete's first week never
+reaches. That is a real, useful, and much larger finding than "a handful,"
+worth recording exactly because the original report's phrasing undersold it.
+
+There was still no code to write. `plRingMediaHTML()` already falls back
+cleanly from a missing/failed video to the real photo — adding `vid:` fields
+with no file behind them would fail the asset-existence check this repo
+already enforces at test time (the same gate that made "PHOTO PENDING"
+placeholders necessary for new exercises in v224), and a placeholder VIDEO
+autoplaying filler text in the guided ring would be a regression against the
+photo fallback already working correctly, not an improvement. The one honest
+deliverable available without real footage was the identification pass itself
+plus ready-to-use, house-style generation prompts for the highest-exposure
+exercises — handed to the athlete the same way every photo prompt in this
+library's history has been, to come back as real files through the same
+drop-in process suite 12 and the exercise-media suite already cover.
+
 ## Nine controls had no name a screen reader could read (v269)
 
 Found in the pre-release sweep, not by a suite: six sliders, two dropdowns, two

@@ -1716,7 +1716,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='276';
+const APP_VERSION='277';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3254,10 +3254,30 @@ function skipReassess(){
   rebaseAdapt();
   save();toast('Carried your current numbers forward — retest any time');render();
 }
+/* "~15 minutes" on the Day-1 hero is honest about the TEST and silent about
+   everything after it — the exact gap that made a mass-market competitor's
+   "just 5-10 minutes a day" framing feel safer than a 54-week program does on
+   first glance. Reused rather than guessed: plBudgetMin() already prices a
+   real prescribed session for the guided player, and sessionStats() already
+   prices warm-up/cool-down at 35s and 33s per move for the history list — the
+   same numbers, not a second copy of them that could drift. Built from
+   buildSession(0), the athlete's actual first day, not an average across the
+   program — confirmed safe to call with no baseline yet (prescribe()'s own
+   anchorUsable fallback covers it, same as every other pre-baseline read). */
+function typicalSessionMin(){
+  try{
+    const sess=buildSession(0);
+    const items=[...sess.main,sess.finisher].filter(Boolean);
+    const work=plBudgetMin(items,repTempoSetting());
+    const wc=Math.round((sess.warmup.length*35+sess.cooldown.length*33)/60);
+    return work+wc;
+  }catch(e){return null;}
+}
 function baselineIntroHTML(){
+  const typ=typicalSessionMin();
   return `
   <div class="hero anterior"><div class="htop"><div><div class="hlbl">Day 1</div><h1>Baseline Test</h1><div class="hmeta">~15 minutes · sets your whole program</div></div><div class="hicon">📋</div></div></div>
-  <div class="note fire">Everything is built from this. You'll do <b>${TESTS.length} quick tests</b> to failure. The app scores your core, sets your level, and personalises every target — so you start exactly where you should and progress from <b>your</b> numbers.</div>
+  <div class="note fire">Everything is built from this. You'll do <b>${TESTS.length} quick tests</b> to failure. The app scores your core, sets your level, and personalises every target — so you start exactly where you should and progress from <b>your</b> numbers.${typ?` Most training days after this run about <b>~${typ} minutes</b> — today is longer because it's a measurement, not a workout.`:''}</div>
   <div class="card pad"><h3>The ${TESTS.length} tests</h3>
     ${TESTS.map((t,i)=>`<div class="kv"><span><b>${i+1}. ${t.name}</b></span><span class="tag ${EX[t.ex].region}">${t.unit==='time'?'hold':'reps'}</span></div>`).join('')}
   </div>
