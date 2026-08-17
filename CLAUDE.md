@@ -4321,6 +4321,115 @@ It sweeps every tab, with a guard that Settings really had controls to find —
 an "unnamed length is 0" assertion over an empty list is the emptiness trap
 this file has now documented three times.
 
+## Progression for the formats that never had any (v279)
+
+Requested directly: "integrate progressive overload." Bodyweight ladders,
+`loadProgression()` (v226, weights double-progression) and
+`bikeLevelSuggestion()` (v228) already covered three tracks. Auditing the
+rest found a real, specific gap rather than a general one: `SKIP_FORMATS`
+and the `grip`/`box` halves of `SPECIAL_FORMATS` each have a genuine volume
+order and already log every session, but never asked how it felt or
+suggested going harder. `HIIT_FORMATS` (tabata/emom/amrap) and
+`ENDURANCE_FORMATS` (vo2max4x4/vo2max3030/sit6x30) had something worse: run
+as bonus HIIT (session key `specialhiit`) or as a sprint off the Special
+Training bike menu (`specialcardio`, not bike — bike itself already had
+`bikeLevelSuggestion()`), they hit `ivDone()` and produced no record of any
+kind, not even that the session happened.
+
+**Suggesting a next format only works where a next format actually
+exists.** `HIIT_FORMATS` and `ENDURANCE_FORMATS` are each already documented
+in their own definitions as distinct STIMULI, not rungs of one ladder — a
+Tabata is not an easier AMRAP, and the VO2max 4×4 is not a harder 30/30.
+Treating them as one ordered ladder would be inventing an order that isn't
+there, the same "distinct stimuli, not three versions of the same thing"
+reasoning that already gates `ENDURANCE_FORMATS` out of the bodyweight HIIT
+picker. So `PROGRESSION_GROUPS` covers only the three groups with a real
+order — `skip`, `grip`, `box` — and the other two get a plain
+time-at-format mirror instead ("6 Tabata sessions now · 41 min total"),
+never a suggestion to switch.
+
+**The order is real work volume, not object-key order, and box is the
+exercise that proves it.** `SPECIAL_FORMATS`' own key order is `box3x3,
+box5x3, box6x2`; the real order by total work (`w*n`) is `box3x3` (9 min) <
+`box6x2` (12 min) < `box5x3` (15 min) — the fifth entry is easier than the
+fourth. `PROGRESSION_GROUPS` stores each group's order as an explicit
+array read from nothing but itself, and the regression test deliberately
+rates `box3x3` three times easy and asserts the suggestion is `box6x2`,
+not `box5x3` — the one scenario that only passes if the order is genuinely
+being read and not just iterated in declaration order. `grip`'s `gripmax`
+is excluded from its own group's ladder for the same reason
+`ENDURANCE_FORMATS` is excluded from HIIT's picker: it's a max-effort
+TEST ("sets your Dead Hang standard"), not a volume rung.
+
+**Rating a session and logging it are now the same tap, mirroring how
+bike already works.** `rateSkipAndClose()`/`rateActAndClose()` call the
+SAME `hiitLogSkip()`/`hiitLogAct()` the old standalone "Log to my record"
+button called — no duplicate logging path — then layer
+`rateFormat()`/`formatSuggestion()` on top and replace the old button with
+the same three-button "how did that feel?" row bike already has. The
+separate plain log button is gone for skip/grip/box specifically because
+having both would mean two ways to finish a session, one of which silently
+skips the rating — exactly the kind of redundant control this file's own
+history warns builds a false sense that a feature does more than it does.
+Ruck is unaffected: it has no `SPECIAL_FORMATS` entries and so has never
+gone through this rating row.
+
+**A getter that validates its input can mask a bug in a completely
+different function, and it did here on the first mutation pass.** A
+seeded defect made `formatFeel()` always read `STATE.formatFeel.box`
+regardless of which group was asked for — a real bug, since it would
+silently report every other group's streak as permanently zero. It
+escaped every check that only ever rated `box` (the entire ladder
+walkthrough above uses `box` throughout, so the mutation is invisible when
+the argument happens to already equal `'box'`), and it ALSO escaped a
+direct "rating one group doesn't leak into another" check, because that
+check read the leaked value back through `formatFeel('grip')` — which
+validates the stored `level` against `grip`'s own format list, sees a
+`box` format name that isn't in it, and silently falls back to a clean
+default. The getter's own defensiveness papered over the exact bug the
+check was trying to catch — this file's own "test a repair through a
+getter that guards itself" trap, encountered here for the first time on a
+brand-new field rather than an old one. Fixed two ways: a second full
+ladder walkthrough using `skip` instead of `box` (proving the getter
+dispatches on its argument at all), and the leak check re-pointed at the
+RAW `STATE.formatFeel.grip` value instead of the getter's return.
+
+**A render check proving the right buttons appear is not the same claim
+as a tap doing anything.** Every render-level check here asserts on the
+onclick STRING in the produced HTML (`rateActAndClose\('box','easy'`,
+etc.) — which is exactly the shape of gap this file's own "wiring" section
+warns about: a function proven correct in isolation, wired to a button
+that was never actually driven. A separate block calls
+`rateActAndClose()`/`rateSkipAndClose()`/`logHiitAndClose()` directly
+after a real completed session and reads `STATE.formatFeel`/`boxLog`/
+`skipLog`/`hiitLog` back — mutation-tested by deleting the `hiitLogSkip()`
+call from inside `rateSkipAndClose()`, which passed every rating/streak
+check (the rating still happens) and failed only the one check that reads
+`skipLog` back, confirming the render-level checks alone would not have
+caught it.
+
+**`STATE.formatFeel`/`STATE.hiitLog` get the same `normalizeState()`
+treatment `STATE.bikeLevelFeel` already has, not a lighter one because
+they're new.** A wrong-shape or unrecognised-format entry is reset to that
+GROUP's own first rung, not deleted — deleting it was the first draft and
+it failed its own repair check, because `formatFeel()`'s self-sanitizing
+default (`{level:list[0],streak:0}`) made a deleted key and a repaired key
+read identically through the getter, so the check couldn't tell a real
+repair from the getter merely covering for a gap. Asserting on the raw
+`STATE.formatFeel.grip` value directly — the same fix the leak check
+above needed — is what told them apart. `hiitLog` rows missing a string
+`format` or a finite non-negative `mins` are dropped individually, same
+shape as every other activity log's own row-level repair.
+
+Both new fields travel in a backup un-stripped, matching `bikeLevelFeel`
+and `skipLog`/`gripLog`/`boxLog`'s own precedent — they describe the
+athlete's real training history, not device-local scratch state.
+
+Nine mutants seeded across the engine, the `ivDone()` wiring and the
+`normalizeState()` repair; all nine caught, two only after the checks
+above were strengthened to stop reading state through a self-sanitizing
+getter.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

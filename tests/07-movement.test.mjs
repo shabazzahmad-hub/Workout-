@@ -918,6 +918,205 @@ export default async function run() {
     t.ok('a completed sprint session — no bike level system behind it — does not', !/How did that ride feel/.test(r.sprintHtml), r.sprintHtml.slice(0, 500));
   }
 
+  /* ---- progressive overload for skip/grip/box, and a record for the
+     formats with no order at all -------------------------------------------
+     Skip/grip/box already logged every session but never asked how it felt
+     or suggested going harder, the way BIKE_LEVELS/bikeLevelSuggestion()
+     already did for the bike. PROGRESSION_GROUPS generalises the same
+     double-progression rule across the three groups that have a real
+     volume order. HIIT_FORMATS/ENDURANCE_FORMATS (tabata/emom/amrap,
+     vo2max*, sit6x30) are each documented as distinct stimuli with no
+     natural harder/easier order — bonus HIIT and sprint sessions had NO
+     completion record of any kind before this, so they get a plain
+     time-at-format mirror instead of a suggestion. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = JSON.stringify({ ff: STATE.formatFeel, hl: STATE.hiitLog });
+      const out = {};
+
+      delete STATE.formatFeel; STATE.hiitLog = [];
+
+      // box's real order is box3x3 < box6x2 < box5x3 by total work volume —
+      // NOT object key order (box3x3, box5x3, box6x2) and not alphabetical.
+      // Walking this ladder is the discriminating case: it only passes if
+      // the order is really read from PROGRESSION_GROUPS.
+      out.volumeOrder = ['skip', 'grip', 'box'].map(g => {
+        const list = PROGRESSION_GROUPS[g].formats;
+        const vol = k => { const f = SKIP_FORMATS[k] || SPECIAL_FORMATS[k]; return f.w * f.n; };
+        return list.every((k, i) => !i || vol(k) > vol(list[i - 1]));
+      });
+
+      out.freshDefaultsToFirstRungZero = formatFeel('box');
+      out.noSuggestionFresh = formatSuggestion('box', 'box3x3');
+
+      rateFormat('box', 'box3x3', 'easy'); rateFormat('box', 'box3x3', 'easy');
+      out.twoEasyNoSuggestionYet = { feel: formatFeel('box'), sugg: formatSuggestion('box', 'box3x3') };
+      rateFormat('box', 'box3x3', 'easy');
+      out.threeEasySuggestsNext = { feel: formatFeel('box'), sugg: formatSuggestion('box', 'box3x3') };
+
+      rateFormat('box', 'box3x3', 'hard');
+      out.hardResetsStreak = { feel: formatFeel('box'), sugg: formatSuggestion('box', 'box3x3') };
+
+      // at the top rung, three easy still yields nothing to climb to
+      STATE.formatFeel.box = { level: 'box5x3', streak: 0 };
+      rateFormat('box', 'box5x3', 'easy'); rateFormat('box', 'box5x3', 'easy'); rateFormat('box', 'box5x3', 'easy');
+      out.noSuggestionAtCeiling = formatSuggestion('box', 'box5x3');
+
+      // Every walk above used group='box' throughout. A getter that quietly
+      // ignores its own argument (always reads/writes one hardcoded group)
+      // would pass every one of those checks by coincidence and only show
+      // up on a SECOND, different group — so walk skip's own ladder too.
+      STATE.formatFeel = {};
+      rateFormat('skip', 'skip93x2', 'easy'); rateFormat('skip', 'skip93x2', 'easy'); rateFormat('skip', 'skip93x2', 'easy');
+      out.skipAlsoProgressesOnItsOwn = { feel: formatFeel('skip'), sugg: formatSuggestion('skip', 'skip93x2') };
+
+      // rating one group must not touch another's streak — a shared object
+      // reference, or a write keyed to the wrong group, would leak box's
+      // rating into grip. Read the RAW stored value, not through
+      // formatFeel('grip') — that getter validates a format against grip's
+      // own list and silently falls back, which would paper over a wrong
+      // write just as easily as a correct one.
+      STATE.formatFeel = {};
+      rateFormat('box', 'box3x3', 'easy'); rateFormat('box', 'box3x3', 'easy'); rateFormat('box', 'box3x3', 'easy');
+      out.gripRawUntouchedByBoxRatings = STATE.formatFeel.grip;
+      out.boxRawGotTheRatings = STATE.formatFeel.box;
+
+      // the completion record for formats with no order: first vs repeat
+      STATE.hiitLog = [];
+      out.freshFormatStats = hiitFormatStats('tabata');
+      logHiitCompletion('hiit', 'tabata', 4);
+      out.afterFirstTabata = hiitFormatStats('tabata');
+      logHiitCompletion('hiit', 'tabata', 4);
+      logHiitCompletion('endurance', 'sit6x30', 23);
+      out.afterSecondTabataAndOneSprint = { tabata: hiitFormatStats('tabata'), sit6x30: hiitFormatStats('sit6x30') };
+
+      const k = JSON.parse(keep);
+      STATE.formatFeel = k.ff; STATE.hiitLog = k.hl;
+      return out;
+    });
+    t.ok('box\'s real order is by work volume for every group, not object-key order', r.volumeOrder.every(Boolean), r.volumeOrder);
+    t.eq('a fresh group starts at its own first rung with a zero streak', r.freshDefaultsToFirstRungZero, { level: 'box3x3', streak: 0 });
+    t.eq('and gets no suggestion yet', r.noSuggestionFresh, null);
+    t.eq('two easy sessions is not enough yet', r.twoEasyNoSuggestionYet.sugg, null);
+    t.eq('the streak really is counting', r.twoEasyNoSuggestionYet.feel.streak, 2);
+    t.eq('three easy in a row suggests the next rung up by volume, not by key order', r.threeEasySuggestsNext.sugg, 'box6x2');
+    t.eq('a hard-rated session resets the streak to zero', r.hardResetsStreak.feel.streak, 0);
+    t.eq('and withdraws the suggestion', r.hardResetsStreak.sugg, null);
+    t.eq('the top rung never suggests a format beyond it', r.noSuggestionAtCeiling, null);
+    t.eq('a second, different group progresses on its own too — not just box', r.skipAlsoProgressesOnItsOwn.sugg, 'skip52x4');
+    t.eq('with its own real streak, not a default masking a hardcoded group', r.skipAlsoProgressesOnItsOwn.feel.streak, 3);
+    t.eq('rating box leaves no trace at all in grip\'s raw stored entry', r.gripRawUntouchedByBoxRatings, undefined);
+    t.eq('and box itself really did receive all three ratings', r.boxRawGotTheRatings, { level: 'box3x3', streak: 3 });
+    t.eq('a format with no log yet reads as zero, not undefined', r.freshFormatStats, { n: 0, total: 0 });
+    t.eq('the first completion of a format counts once', r.afterFirstTabata, { n: 1, total: 4 });
+    t.eq('a second tabata adds to tabata, not to sit6x30', r.afterSecondTabataAndOneSprint.tabata, { n: 2, total: 8 });
+    t.eq('and sit6x30 only counts its own completion', r.afterSecondTabataAndOneSprint.sit6x30, { n: 1, total: 23 });
+  }
+
+  /* ---- the same progression prompt, wired into a real completed session -- */
+  {
+    const r = await page.evaluate(() => {
+      const keep = JSON.stringify({ ff: STATE.formatFeel, hl: STATE.hiitLog });
+      delete STATE.formatFeel; STATE.hiitLog = [];
+      const run = (start) => {
+        try { closeSheet(); } catch (e) {}
+        start();
+        while (INTV && INTV.i < INTV.seq.length) { INTV.workElapsed += INTV.seq[INTV.i].secs; INTV.i++; }
+        ivDone();
+        const html = document.getElementById('ivBody').innerHTML;
+        try { hiitQuit(); } catch (e) {}
+        return html;
+      };
+      const boxHtml = run(() => startSpecialFormat('box3x3'));
+      const skipHtml = run(() => startSkipping('skip93x2'));
+      const bonusHiitHtml = run(() => startHiitSpecial('tabata'));
+      const k = JSON.parse(keep);
+      STATE.formatFeel = k.ff; STATE.hiitLog = k.hl;
+      return { boxHtml, skipHtml, bonusHiitHtml };
+    });
+    t.ok('a completed box session offers the generic feel rating', /How did that feel\?/.test(r.boxHtml), r.boxHtml.slice(0, 600));
+    t.ok('wired to rateActAndClose, not the plain log button', /rateActAndClose\('box','easy'/.test(r.boxHtml), r.boxHtml.slice(0, 800));
+    t.ok('a completed skip session offers the same rating', /How did that feel\?/.test(r.skipHtml), r.skipHtml.slice(0, 600));
+    t.ok('wired to rateSkipAndClose', /rateSkipAndClose\('easy'/.test(r.skipHtml), r.skipHtml.slice(0, 800));
+    t.ok('bonus HIIT — no order behind it — gets no feel rating', !/How did that feel\?/.test(r.bonusHiitHtml), r.bonusHiitHtml.slice(0, 600));
+    t.ok('and instead offers the plain completion-record button', /logHiitAndClose\('hiit','tabata'/.test(r.bonusHiitHtml), r.bonusHiitHtml.slice(0, 800));
+  }
+
+  /* ---- tapping the button actually persists, not just renders correctly --
+     Matching what actually rendered is not the same as proving a tap does
+     anything — CLAUDE.md's own "wiring gap" trap: a guard proven correct in
+     isolation and then shipped never being called. Drive the real wrapper
+     functions the onclick handlers above call, and read STATE back. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = JSON.stringify({ ff: STATE.formatFeel, hl: STATE.hiitLog, bx: STATE.boxLog, sk: STATE.skipLog });
+      STATE.formatFeel = {}; STATE.hiitLog = []; STATE.boxLog = []; STATE.skipLog = [];
+
+      startSpecialFormat('box3x3');
+      while (INTV && INTV.i < INTV.seq.length) { INTV.workElapsed += INTV.seq[INTV.i].secs; INTV.i++; }
+      ivDone();
+      rateActAndClose('box', 'easy', 5, 3, 180);
+      const afterBoxTap = { feel: STATE.formatFeel.box, logRows: STATE.boxLog.length, intvCleared: INTV === null };
+
+      startSkipping('skip93x2');
+      while (INTV && INTV.i < INTV.seq.length) { INTV.workElapsed += INTV.seq[INTV.i].secs; INTV.i++; }
+      ivDone();
+      rateSkipAndClose('easy', 18, 2);
+      const afterSkipTap = { feel: STATE.formatFeel.skip, logRows: STATE.skipLog.length };
+
+      startHiitSpecial('tabata');
+      while (INTV && INTV.i < INTV.seq.length) { INTV.workElapsed += INTV.seq[INTV.i].secs; INTV.i++; }
+      ivDone();
+      logHiitAndClose('hiit', 'tabata', 4);
+      const afterHiitTap = hiitFormatStats('tabata');
+
+      const k = JSON.parse(keep);
+      STATE.formatFeel = k.ff; STATE.hiitLog = k.hl; STATE.boxLog = k.bx; STATE.skipLog = k.sk;
+      return { afterBoxTap, afterSkipTap, afterHiitTap };
+    });
+    t.eq('tapping Easy on a box finish rates the format for real', r.afterBoxTap.feel, { level: 'box3x3', streak: 1 });
+    t.eq('and actually writes a row to boxLog, not just the streak', r.afterBoxTap.logRows, 1);
+    t.ok('and the interval session is torn down afterward', r.afterBoxTap.intvCleared, r.afterBoxTap);
+    t.eq('tapping Easy on a skip finish rates skip independently', r.afterSkipTap.feel, { level: 'skip93x2', streak: 1 });
+    t.eq('and writes a row to skipLog', r.afterSkipTap.logRows, 1);
+    t.eq('tapping the record button on bonus HIIT writes a real completion', r.afterHiitTap, { n: 1, total: 4 });
+  }
+
+  /* ---- normalizeState() repairs both new fields, per-group and per-row --- */
+  {
+    const r = await page.evaluate(() => {
+      const keep = JSON.stringify({ ff: STATE.formatFeel, hl: STATE.hiitLog });
+      // one valid group, one corrupt-shape group, one group naming a format
+      // that no longer exists — the repair must fix only the bad ones
+      STATE.formatFeel = {
+        skip: { level: 'skip93x2', streak: 2 },
+        grip: 'not an object',
+        box: { level: 'box9x9', streak: 5 },
+      };
+      STATE.hiitLog = [
+        { date: '2026-01-01', format: 'tabata', group: 'hiit', mins: 4, at: 1 },
+        { date: '2026-01-02', format: 'emom', group: 'hiit', mins: 'lots', at: 2 },
+        null,
+      ];
+      normalizeState();
+      const out = {
+        skipSurvived: STATE.formatFeel.skip,
+        gripRepaired: STATE.formatFeel.grip,
+        boxRepaired: STATE.formatFeel.box,
+        logKept: STATE.hiitLog.length,
+        goodRowSurvived: STATE.hiitLog.some(x => x.format === 'tabata' && x.mins === 4),
+      };
+      const k = JSON.parse(keep);
+      STATE.formatFeel = k.ff; STATE.hiitLog = k.hl;
+      return out;
+    });
+    t.eq('a genuinely valid group survives the repair untouched', r.skipSurvived, { level: 'skip93x2', streak: 2 });
+    t.eq('a wrong-shape group is reset to its own first rung', r.gripRepaired, { level: 'grip30', streak: 0 });
+    t.eq('a format that no longer exists is reset the same way', r.boxRepaired, { level: 'box3x3', streak: 0 });
+    t.eq('only the malformed hiitLog rows are dropped', r.logKept, 1);
+    t.ok('a well-formed row survives byte for byte', r.goodRowSurvived, r);
+  }
+
   /* ============================================================
      Fuel-tab step makeup: a real in-app timer for jacks/the bike
      ("Before this, the movement card told the athlete to set an
