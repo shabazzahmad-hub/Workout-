@@ -1716,7 +1716,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='275';
+const APP_VERSION='276';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -13774,7 +13774,7 @@ function undoImport(){
   }catch(e){toast('Could not restore');}
 }
 function hardReset(){
-  if(!confirm('Erase ALL your data and start over? This cannot be undone.'))return;
+  if(!confirm('Erase your workout, food and profile data and start over? Your saved API keys stay on this device. This cannot be undone.'))return;
   if(!confirm('Are you absolutely sure? Consider exporting a backup first.'))return;
   // Progress photos are stored as separate IndexedDB blobs, not inside STATE —
   // clearing STATE alone left every image on the device after an "erase ALL".
@@ -13784,9 +13784,33 @@ function hardReset(){
      file it is not stripped — it carries azureKey and foodAiKey in plain text.
      Leaving it behind made "This cannot be undone" false in the worst possible
      way: the Undo button was still offered on the freshly-erased app and handed
-     the whole account, credentials included, back to whoever tapped it. */
+     the whole account, credentials included, back to whoever tapped it. This is
+     still true and still applies here — the snapshot is erased below regardless
+     of the API-key carry-forward next to it, because a stale full-STATE copy is
+     not the same thing as the two live credential fields. */
   try{localStorage.removeItem(PREIMPORT_KEY);}catch(e){}
-  STATE=DEFAULT_STATE();normalizeState();save();applyTheme();go('today');
+  /* API keys are a device credential, not athlete data — the key was typed once,
+     into this browser, for this device, and never leaves it either way (the
+     export path already strips it, see exportData()). Re-typing a Gemini or
+     Azure key from scratch after erasing a season of training is real cost with
+     no safety upside, so they are carried across explicitly rather than by
+     skipping the wipe — STATE still becomes a genuine, complete DEFAULT_STATE()
+     first, so nothing else survives by accident.
+
+     azureRegion travels WITH azureKey, not on its own: a key with no region (or
+     the wrong one) is the exact "opaque WebSocket failure naming nothing" defect
+     already fixed once (v272) — keeping the key and losing its region would
+     silently reintroduce that failure on the very next premium-voice attempt.
+     Re-normalised on the way back in for the same reason it is on every other
+     read: a value carried from before that fix existed must not skip it. */
+  const _keepAzureKey=STATE.settings&&STATE.settings.azureKey;
+  const _keepAzureRegion=STATE.settings&&STATE.settings.azureRegion;
+  const _keepFoodAiKey=STATE.settings&&STATE.settings.foodAiKey;
+  STATE=DEFAULT_STATE();normalizeState();
+  if(_keepAzureKey)STATE.settings.azureKey=_keepAzureKey;
+  if(_keepAzureRegion)STATE.settings.azureRegion=_azRegionNorm(_keepAzureRegion)||'eastus';
+  if(_keepFoodAiKey)STATE.settings.foodAiKey=_keepFoodAiKey;
+  save();applyTheme();go('today');
 }
 
 /* ============================ INSTALL PROMPT ============================ */
