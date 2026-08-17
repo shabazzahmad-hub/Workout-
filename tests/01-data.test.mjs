@@ -733,6 +733,110 @@ export default async function run() {
   t.ok('a power default that goes missing from estimateMaxes() is caught by name', emGate.caught, emGate);
   t.ok('and validateData() is clean again once the real function is restored', emGate.cleanAfter, emGate);
 
+  /* ---- three stability-ball exercises — a genuinely new gear category, not
+     hiding under an existing checkbox. The rollout inherits abroll's exact
+     risk profile (same anti-extension mechanism, just wobblier). The
+     hamstring curl is a loaded hip bridge — flagged lowback only, matching
+     hipthrust/dbrdl, not the abroll-family shoulder/wrist flags. Stir-the-Pot
+     is a forearm-plank hold — flagged wrist only, matching bearhold/
+     isoclimber/ropeplank, not shoulder or lowback. */
+  const ball = await page.evaluate(() => {
+    const o = {};
+    const ids = ['sbrollout', 'sbhamcurl', 'sbstir'];
+    o.equip = {}; ids.forEach(id => { o.equip[id] = EX[id].equip; });
+    STATE.profile.gear = [];
+    o.noneOwned = {}; ids.forEach(id => { o.noneOwned[id] = hasGearFor(id); });
+    STATE.profile.gear = ['stabilityball'];
+    o.allOwned = {}; ids.forEach(id => { o.allOwned[id] = hasGearFor(id); });
+    o.rolloutFlags = Object.keys(JOINT_RISK).filter(j => JOINT_RISK[j].includes('sbrollout')).sort();
+    o.hamcurlFlags = Object.keys(JOINT_RISK).filter(j => JOINT_RISK[j].includes('sbhamcurl')).sort();
+    o.stirFlags = Object.keys(JOINT_RISK).filter(j => JOINT_RISK[j].includes('sbstir')).sort();
+    const landsSafe = (exId, joint) => {
+      const real = STATE.profile.limitations; STATE.profile.limitations = [joint];
+      const out = safeSwap(exId); STATE.profile.limitations = real;
+      return !!EX[out] && !(JOINT_RISK[joint] || []).includes(out);
+    };
+    o.rolloutLandsSafeShoulder = landsSafe('sbrollout', 'shoulder');
+    o.rolloutLandsSafeWrist = landsSafe('sbrollout', 'wrist');
+    o.rolloutLandsSafeLowback = landsSafe('sbrollout', 'lowback');
+    o.hamcurlLandsSafeLowback = landsSafe('sbhamcurl', 'lowback');
+    o.stirLandsSafeWrist = landsSafe('sbstir', 'wrist');
+    o.inFocusPool = {
+      sbrollout: FOCUS_POOL.abs.includes('sbrollout'),
+      sbstir: FOCUS_POOL.abs.includes('sbstir'),
+      sbhamcurl: FOCUS_POOL.glutes.includes('sbhamcurl'),
+    };
+    // real behavioural sweep, matching the dbbench/kettlebell precedent: with
+    // no stability ball owned, none of the three are ever offered by the
+    // focus bonus, while an unrelated bodyweight sibling in the same pool
+    // genuinely is — proving the pool was actually reached, not skipped
+    // entirely for an unrelated reason.
+    //
+    // sbstir's hardness (0.55) only clears focusBonus()'s difficulty gate at
+    // the Advanced tier (threshold 0.4) — an earlier block in this same file
+    // has already mutated STATE.baseline by this point, degrading the level
+    // to Beginner (threshold 1.0), which silently excludes all three of
+    // these below-1.0 items. Every block builds the state it asserts on, not
+    // what an earlier block left behind — set the level explicitly rather
+    // than trusting whatever the file's execution order happens to leave.
+    // levelOf() also lets profile.experience nudge the measured level DOWN
+    // by one tier — an earlier block leaving experience at something below
+    // Advanced silently dragged an explicit Advanced baseline back down to
+    // Intermediate, which was the second half of the same trap.
+    const real = { gear: STATE.profile.gear, focusPrimary: STATE.profile.focusPrimary, targets: STATE.profile.targets, baseline: STATE.baseline, reassess: STATE.reassess, experience: STATE.profile.experience };
+    STATE.baseline = { level: 'Advanced' };
+    STATE.reassess = {};
+    STATE.profile.experience = 'Advanced';
+    STATE.profile.gear = [];
+    STATE.profile.focusPrimary = 'abs';
+    STATE.profile.targets = [];
+    let sawBallNoGear = false, sawHollowNoGear = false;
+    for (let c = 0; c < 54; c++) {
+      const bonus = focusBonus({ cycle: c, dayInWeek: c % 7 }, new Set());
+      if (bonus && (bonus.exId === 'sbrollout' || bonus.exId === 'sbstir')) sawBallNoGear = true;
+      if (bonus && bonus.exId === 'hollow') sawHollowNoGear = true;
+    }
+    o.noGearSweep = { sawBallNoGear, sawHollowNoGear };
+    STATE.profile.gear = ['stabilityball'];
+    let sawRolloutWithGear = false, sawStirWithGear = false;
+    for (let c = 0; c < 54; c++) {
+      const bonus = focusBonus({ cycle: c, dayInWeek: c % 7 }, new Set());
+      if (bonus && bonus.exId === 'sbrollout') sawRolloutWithGear = true;
+      if (bonus && bonus.exId === 'sbstir') sawStirWithGear = true;
+    }
+    o.withGearSweep = { sawRolloutWithGear, sawStirWithGear };
+    STATE.profile.focusPrimary = 'glutes';
+    let sawHamcurlWithGear = false;
+    for (let c = 0; c < 54; c++) {
+      const bonus = focusBonus({ cycle: c, dayInWeek: c % 7 }, new Set());
+      if (bonus && bonus.exId === 'sbhamcurl') sawHamcurlWithGear = true;
+    }
+    o.sawHamcurlWithGear = sawHamcurlWithGear;
+
+    STATE.profile.gear = real.gear; STATE.profile.focusPrimary = real.focusPrimary; STATE.profile.targets = real.targets;
+    STATE.baseline = real.baseline; STATE.reassess = real.reassess; STATE.profile.experience = real.experience;
+    return o;
+  });
+  t.eq('Stability Ball Rollout requires a stability ball', ball.equip.sbrollout, ['stabilityball']);
+  t.eq('Stability Ball Hamstring Curl requires a stability ball', ball.equip.sbhamcurl, ['stabilityball']);
+  t.eq('Stir-the-Pot requires a stability ball', ball.equip.sbstir, ['stabilityball']);
+  t.ok('none of the three are offered without a stability ball', Object.values(ball.noneOwned).every(v => !v), ball.noneOwned);
+  t.ok('all three are offered once a stability ball is owned', Object.values(ball.allOwned).every(v => v), ball.allOwned);
+  t.eq('the rollout inherits abroll\'s full risk profile: shoulder, wrist and lowback', ball.rolloutFlags, ['lowback', 'shoulder', 'wrist']);
+  t.eq('the hamstring curl is a loaded bridge — lowback only, matching hipthrust/dbrdl', ball.hamcurlFlags, ['lowback']);
+  t.eq('stir-the-pot is a forearm-plank hold — wrist only, matching bearhold/isoclimber/ropeplank', ball.stirFlags, ['wrist']);
+  t.ok('a flagged shoulder routes the rollout somewhere safe', ball.rolloutLandsSafeShoulder, ball);
+  t.ok('a flagged wrist routes the rollout somewhere safe', ball.rolloutLandsSafeWrist, ball);
+  t.ok('a flagged low back routes the rollout somewhere safe', ball.rolloutLandsSafeLowback, ball);
+  t.ok('a flagged low back routes the hamstring curl somewhere safe', ball.hamcurlLandsSafeLowback, ball);
+  t.ok('a flagged wrist routes stir-the-pot somewhere safe', ball.stirLandsSafeWrist, ball);
+  t.ok('all three are reachable through the focus bonus', Object.values(ball.inFocusPool).every(v => v), ball.inFocusPool);
+  t.ok('a real sweep of the focus bonus never offers the rollout or stir-the-pot without a ball', !ball.noGearSweep.sawBallNoGear, ball.noGearSweep);
+  t.ok('while an unrelated bodyweight sibling genuinely is offered — proving the abs pool was actually reached', ball.noGearSweep.sawHollowNoGear, ball.noGearSweep);
+  t.ok('the rollout is genuinely offered once the ball is owned', ball.withGearSweep.sawRolloutWithGear, ball.withGearSweep);
+  t.ok('stir-the-pot is genuinely offered once the ball is owned', ball.withGearSweep.sawStirWithGear, ball.withGearSweep);
+  t.ok('the hamstring curl is genuinely offered through the glutes pool once the ball is owned', ball.sawHamcurlWithGear, ball);
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }

@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v280';
+const CACHE = 'coreforge-v281';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
@@ -84,7 +84,8 @@ const EXTRA = [
   './ex-pistol.jpg','./ex-plegraise.jpg','./ex-ppushup.jpg','./ex-tucklsit.jpg','./ex-plankjack.jpg','./ex-plankleg.jpg','./ex-plankrot.jpg',
   './ex-planktap.jpg','./ex-pseudoplanche.jpg','./ex-pullup.jpg','./ex-quickpunch.jpg','./ex-reverselunge.jpg',
   './ex-reverseplank.jpg','./ex-ropeslam.jpg','./ex-ropewave.jpg','./ex-ropeplank.jpg','./ex-ruck.jpg',
-  './ex-russiantwist.jpg','./ex-scappull.jpg','./ex-scissors.jpg','./ex-seatedtwist.jpg',
+  './ex-russiantwist.jpg','./ex-sbhamcurl.jpg','./ex-sbrollout.jpg','./ex-sbstir.jpg',
+  './ex-scappull.jpg','./ex-scissors.jpg','./ex-seatedtwist.jpg',
   './ex-shadowbox.jpg','./ex-sidedip.jpg','./ex-sideplankreach.jpg','./ex-singlebridge.jpg',
   './ex-singlecalf.jpg','./ex-sissysquat.jpg','./ex-sitthrust.jpg','./ex-situptwist.jpg','./ex-skater.jpg','./ex-skaterground.jpg',
   './ex-skip.jpg','./ex-slrdl.jpg','./ex-spidermanpushup.jpg','./ex-splitjump.jpg',
