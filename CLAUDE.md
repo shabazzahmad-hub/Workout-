@@ -4306,7 +4306,7 @@ exercises — handed to the athlete the same way every photo prompt in this
 library's history has been, to come back as real files through the same
 drop-in process suite 12 and the exercise-media suite already cover.
 
-## The first Week-1 video, salvaged from a generation that ignored its own instruction (v278)
+## The first Week-1 video, salvaged from a generation that ignored its own instruction (v280)
 
 The athlete generated a video from one of the v277 house-style prompts and sent
 it back. It could not be dropped in as-is, and finding out why — by actually
@@ -4378,7 +4378,7 @@ be finished.
 in the same change — a stale count next to a growing list is exactly the kind
 of drift this file's own conventions exist to prevent.
 
-## The rest of the "hard to visualize" video request, and a genuine success (v278, cont'd)
+## The rest of the "hard to visualize" video request, and a genuine success (v280, cont'd)
 
 Asked directly, after the jumping-jacks salvage, for prompts targeting
 exercises a STILL photo genuinely fails at — not just any dynamic move, but
