@@ -1301,6 +1301,186 @@ export default async function run() {
     t.ok('and the athlete\'s own logging controls are untouched', r.stillHasIntake, r);
   }
 
+  /* ---- a barcode that Open Food Facts answers must not read as "no data" ---
+     Reported from a real phone: "Barcode lookup failed — no nutrition data for
+     that product". That message is the branch where the product WAS found, so
+     the lookup worked and _offItem() rejected what came back. It only ever read
+     the per-100g pair, and a large share of entries — especially non-EU ones —
+     carry serving values only. */
+  const OFF_BC = 'https://world.openfoodfacts.org/api/v2/product/**';
+  const mockBarcode = async (page, product) => {
+    await page.route(OFF_BC, r => r.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(product === null ? { status: 0 } : { status: 1, product }),
+    }));
+    const out = await page.evaluate(async () => {
+      try { return { ok: true, item: await offBarcode('0000000000000', 4000) }; }
+      catch (e) { return { ok: false, msg: String(e.message || e), productName: e && e.productName }; }
+    });
+    await page.unroute(OFF_BC);
+    return out;
+  };
+
+  {
+    const r = await mockBarcode(page, {
+      product_name: 'Serving Only Bar', brands: 'Testco', serving_size: '60 g',
+      nutriments: { 'energy-kcal_serving': 240, proteins_serving: 20, carbohydrates_serving: 25, fat_serving: 7 },
+    });
+    t.ok('a per-serving-only product is read, not rejected', r.ok, r);
+    t.eq('its calories are taken as-is, not rescaled', r.ok && r.item.k, 240, r);
+    t.eq('and so is its protein', r.ok && r.item.p, 20, r);
+    /* The per-100g branch multiplies by serving/100. Applying that here would
+       scale a number that is already per serving — 240 would become 144. */
+    t.ok('the serving multiplier is NOT applied twice', r.ok && r.item.k !== 144, r);
+  }
+  {
+    // kilojoules only, per serving — the fourth shape energy arrives in
+    const r = await mockBarcode(page, {
+      product_name: 'KJ Only', serving_size: '30 g',
+      nutriments: { energy_serving: 837, proteins_serving: 5 },
+    });
+    t.ok('kilojoules per serving are converted too', r.ok, r);
+    t.eq('at 4.184 kJ per kcal', r.ok && r.item.k, 200, r);
+  }
+  {
+    // the per-100g path must be untouched by all of this
+    const r = await mockBarcode(page, {
+      product_name: 'Hundred Gram', serving_size: '50 g',
+      nutriments: { 'energy-kcal_100g': 400, proteins_100g: 10 },
+    });
+    t.ok('a per-100g product still reads', r.ok, r);
+    t.eq('and is still scaled to its serving', r.ok && r.item.k, 200, r);
+    t.eq('protein scaled the same way', r.ok && r.item.p, 5, r);
+  }
+  {
+    // per-100g wins when both are present, so nothing double-converts
+    const r = await mockBarcode(page, {
+      product_name: 'Both', serving_size: '50 g',
+      nutriments: { 'energy-kcal_100g': 400, 'energy-kcal_serving': 999 },
+    });
+    t.eq('per-100g wins when a product carries both', r.ok && r.item.k, 200, r);
+  }
+  {
+    // junk data is still refused — the ceiling is not removed, only widened
+    const r = await mockBarcode(page, {
+      product_name: 'Impossible', nutriments: { 'energy-kcal_serving': 99999 },
+    });
+    t.ok('an absurd serving figure is still rejected', !r.ok, r);
+  }
+
+  /* ---- a found-but-blank product must not dead-end ----------------------
+     Open Food Facts is crowd-sourced and a great many entries are a photo and
+     a name with the nutrition panel never filled in. That is a successful
+     lookup, and the athlete is holding the box — carrying the NAME out means a
+     half-filled sheet instead of a toast that vanishes. */
+  {
+    const r = await mockBarcode(page, { product_name: 'Blank Product', brands: 'Testco', nutriments: {} });
+    t.ok('a product with no nutrition still fails the lookup', !r.ok, r);
+    t.ok('but the name comes out with the error', /Blank Product/.test(r.productName || ''), r);
+  }
+  {
+    const r = await mockBarcode(page, null);
+    t.ok('a barcode genuinely not in the database fails', !r.ok, r);
+    t.ok('and carries no product name, because there is no product',
+      !r.productName, r);
+  }
+
+  /* ---- and the sheet says WHY the boxes are empty ------------------------
+     Detection and presentation are separate: carrying the name out is useless
+     if nothing opens with it, and a sheet that opens with zeros would be the
+     v260 defect again — an absent reading stored as a measured one. */
+  {
+    const r = await page.evaluate(() => {
+      const read = () => {
+        const s = document.querySelector('#sheet');
+        return {
+          text: s ? s.innerText : '',
+          kcal: (document.querySelector('#fa-kcal') || {}).value,
+          p: (document.querySelector('#fa-p') || {}).value,
+          name: (document.querySelector('#fa-name') || {}).value,
+        };
+      };
+      openQuickAdd({ name: 'Blank Product', barcodeBlank: true });
+      const found = read();
+      openQuickAdd({ name: '', barcodeBlank: true, barcodeCode: '123456' });
+      const missing = read();
+      openQuickAdd({ name: 'Normal', kcal: 200, p: 10, c: 5, f: 3 });
+      const quiet = read();
+      try { closeSheet(); } catch (e) {}
+      return { found, missing, quiet };
+    });
+    t.eq('the found product\'s name is pre-filled', r.found.name, 'Blank Product', r.found);
+    t.eq('its calories are blank, not zero', r.found.kcal, '', r.found);
+    t.eq('and so is its protein', r.found.p, '', r.found);
+    t.ok('the sheet says nobody filled the nutrition in',
+      /nobody has filled in its nutrition/i.test(r.found.text), r.found.text.slice(0, 300));
+    t.ok('and says the boxes are blank rather than zero',
+      /blank, not zero/i.test(r.found.text), r.found.text.slice(0, 300));
+    t.ok('an unknown barcode says so, and quotes the number',
+      /not in the free food database/i.test(r.missing.text) && /123456/.test(r.missing.text),
+      r.missing.text.slice(0, 300));
+    /* The guard that matters most: a normal add must say none of this, or
+       every assertion above would pass just as happily on markup rendered
+       unconditionally for everybody. */
+    t.ok('a normal food add shows no barcode warning at all',
+      !/free food database|nobody has filled/i.test(r.quiet.text), r.quiet.text.slice(0, 300));
+  }
+
+  /* ---- lookupBarcode() actually WIRES the two together -------------------
+     The two blocks above test the data layer and the sheet independently, and
+     two mutants walked straight through both: reverting the found-but-blank
+     branch to a dead end, and pre-filling zeros instead of blanks. Neither
+     check could see it, because neither drives the function that connects
+     them. Same gap CLAUDE.md already records for _screenshotUnusable — a guard
+     proven correct in isolation and then shipped never being called. */
+  {
+    const driveLookup = async (product) => {
+      await page.route(OFF_BC, r => r.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify(product === null ? { status: 0 } : { status: 1, product }),
+      }));
+      const out = await page.evaluate(async () => {
+        try { closeSheet(); } catch (e) {}
+        await lookupBarcode('5012345678900');
+        const s = document.querySelector('#sheet');
+        return {
+          sheetOpen: !!document.querySelector('#fa-name'),
+          name: (document.querySelector('#fa-name') || {}).value,
+          kcal: (document.querySelector('#fa-kcal') || {}).value,
+          p: (document.querySelector('#fa-p') || {}).value,
+          text: s ? s.innerText : '',
+        };
+      });
+      await page.unroute(OFF_BC);
+      return out;
+    };
+
+    const blank = await driveLookup({ product_name: 'Blank Product', brands: 'Testco', nutriments: {} });
+    t.ok('a found-but-blank barcode opens a sheet rather than dead-ending', blank.sheetOpen, blank);
+    t.ok('with the product name already in it', /Blank Product/.test(blank.name || ''), blank);
+    t.eq('and its calories blank, not zero', blank.kcal, '', blank);
+    t.eq('and its protein blank, not zero', blank.p, '', blank);
+    t.ok('and the sheet explains why', /nobody has filled in its nutrition/i.test(blank.text),
+      blank.text.slice(0, 260));
+
+    const none = await driveLookup(null);
+    t.ok('an unknown barcode also opens a sheet instead of a vanishing toast', none.sheetOpen, none);
+    t.ok('naming the barcode it could not find', /5012345678900/.test(none.text), none.text.slice(0, 260));
+
+    const good = await driveLookup({
+      product_name: 'Real Food', serving_size: '40 g',
+      nutriments: { 'energy-kcal_serving': 150, proteins_serving: 12 },
+    });
+    /* The guard: a successful lookup must fill the numbers in and say none of
+       the warning text, or every assertion above would pass on a version that
+       blanked everything for everybody. */
+    t.eq('a working barcode fills the calories in', good.kcal, '150', good);
+    t.eq('and the protein', good.p, '12', good);
+    t.ok('and shows no not-found warning', !/free food database|nobody has filled/i.test(good.text),
+      good.text.slice(0, 260));
+    await page.evaluate(() => { try { closeSheet(); } catch (e) {} });
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
