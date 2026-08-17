@@ -26,8 +26,8 @@ const MINE = /^coreforge-v\d+$/;
    Order is deliberate. FIRST_RUN is derived from what a brand-new athlete
    actually sees — the nine baseline tests, every warm-up and cool-down (they
    run in EVERY session), and the first two weeks of a beginner's programme. The
-   long tail is stills first and video last, because the twelve .mp4 files are
-   the heaviest and the least necessary things here. */
+   long tail is stills first and video last, because the thirteen .mp4 files
+   are the heaviest and the least necessary things here. */
 
 /* Atomic. If these fail there is no app, so the install SHOULD reject. */
 const CORE = ['./', './index.html'];
@@ -96,7 +96,7 @@ const EXTRA = [
   './ex-weightedtwist.jpg','./ex-widepullup.jpg','./ex-windshield.jpg','./notif-hlr.jpg',
   './phys-1.jpg','./phys-2.jpg','./phys-3.jpg','./phys-4.jpg',
   './phys-5.jpg','./ex-atomicpushup.mp4','./ex-birddog.mp4','./ex-burpee.mp4',
-  './ex-halfburpee.mp4','./ex-jumpingjack.mp4','./ex-jumpsquat.mp4','./ex-kbhalo.mp4','./ex-kbheli.mp4',
+  './ex-halfburpee.mp4','./ex-jumpingjack.mp4','./ex-jumpsquat.mp4','./ex-kbhalo.mp4','./ex-kbheli.mp4','./ex-kbtgu.mp4',
   './ex-nordic.mp4','./ex-pistol.mp4','./ex-superpushup.mp4','./wu-march.mp4',
   './screenshot-today.png','./screenshot-fuel.png','./screenshot-progress.png'
 ];

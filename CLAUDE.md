@@ -4378,6 +4378,58 @@ be finished.
 in the same change — a stale count next to a growing list is exactly the kind
 of drift this file's own conventions exist to prevent.
 
+## The rest of the "hard to visualize" video request, and a genuine success (v278, cont'd)
+
+Asked directly, after the jumping-jacks salvage, for prompts targeting
+exercises a STILL photo genuinely fails at — not just any dynamic move, but
+ones where the motion path itself is the content: Turkish Get-Up, kettlebell
+swing/snatch/figure-8/windmill, medicine-ball slam/woodchopper, the dumbbell
+Man Maker, windshield wipers, squat thrust, skater hops, broad jump. The
+template was rewritten first, based on what the jumping-jacks round had just
+proven: "one exercise per generation" was not concrete enough to stop a
+mid-clip cut to a second, different exercise, so the new wording names the
+failure directly — *"do not cut, transition, or change to a different
+exercise… at any point."* Equipment shape was spelled out per item
+(kettlebell vs. medicine ball vs. dumbbell), the same discipline this file
+already states for the kettlebell-vs-dumbbell confusion in `dbthruster`'s own
+prompt history.
+
+**The next generation the athlete sent back was the first one to get
+everything right.** A single continuous Kettlebell Turkish Get-Up, floor to
+standing, matching the app's own `steps` text move for move — bilateral grip
+transitioning to one-handed lockout, post to the elbow, sweep the leg
+through, rise through a half-kneeling lunge to standing. No scene cut, no
+wardrobe flicker, correct kettlebell shape throughout. The no-cut rewrite
+held.
+
+**A clean generation still surfaced a real structural mismatch, and it was
+found by reasoning about the PLAYER, not the clip.** `plRingMediaHTML()`
+always renders `<video … loop>` — unconditionally, for every clip in the
+library. A Get-Up is one-directional: it never returns to its start.
+Looping it plays the rise once, then snaps instantly back to lying on the
+floor — a hard, jarring reset, not the small stutter the jumping-jacks loop
+point had. Every clip shipped before this one is either a genuine hold
+(`birddog`, first ≈ last frame) or a movement that returns close to its own
+starting pose (`burpee`: jump → … → jump). This is the first one that does
+neither, and the gap would not have been visible from the clip alone — it
+only shows up once you ask what the *player* does with it.
+
+**Named plainly and left for the athlete to decide, the same posture as the
+jumping-jacks seam.** Two honest options: ship it and accept the reset (a
+slow, deliberate movement, plausibly read as "starting the next rep" rather
+than as broken), or hold for a second generation of the reverse — the app's
+own `steps` text already describes one ("Reverse the steps back to the floor
+under control"), which would make a true loop and a more complete
+demonstration in one pass. Asked directly; the answer was ship it.
+
+Cropped 1280×720 → 640×640 exactly as the jumping-jacks clip was — centred,
+verified frame-by-frame across the FULL clip (not just start/end) for
+clipping at the highest reach and widest lunge, since a multi-position
+movement has no single "safe" frame to check the way a repeating cardio move
+does. The same crop removed the watermark for free, the same coincidence as
+before and for the same reason: the watermark sits in the same corner on
+every generation from this tool.
+
 ## Nine controls had no name a screen reader could read (v269)
 
 Found in the pre-release sweep, not by a suite: six sliders, two dropdowns, two
