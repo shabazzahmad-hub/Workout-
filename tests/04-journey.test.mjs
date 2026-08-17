@@ -255,6 +255,60 @@ export default async function run() {
     errors.forEach(e => t.fail('page error during the power test timer', e));
   }
 
+  /* ---- Day 1 says what a NORMAL day looks like, not just the test (v277) --
+     "~15 minutes" on the hero only ever described the baseline TEST — a
+     competitor field report flagged that as the exact gap that makes a
+     54-week program feel like a bigger ask than it is on first glance.
+     typicalSessionMin() reuses plBudgetMin() (the guided player's own real
+     estimate) and sessionStats()'s own 35s/33s-per-move warm-up/cool-down
+     pricing — not a second, inventable copy of either number — built from
+     buildSession(0), the athlete's actual first day. Driven through the real
+     render path (go('today')), not by calling the function directly, matching
+     this file's own "nothing here injects state the app would not have
+     produced itself" rule. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page, () => { STATE.baseline = null; save(); render(); });
+    const r = await page.evaluate(() => {
+      go('today');
+      const text = document.querySelector('#v-today').innerText;
+      const m = text.match(/Most training days after this run about ~(\d+) minutes/);
+      return { text, minutes: m ? +m[1] : null };
+    });
+    t.ok('the Day-1 screen names a typical session length', r.minutes != null, r.text.slice(0, 400));
+    t.ok('and it is a real, sane number of minutes', r.minutes > 3 && r.minutes < 90, r.minutes);
+
+    /* Proves the number is actually COMPUTED, not a static string that
+       happens to look dynamic — the exact "dead input" shape this whole
+       file's onboarding-wizard checks already guard against elsewhere. */
+    const moved = await page.evaluate(() => {
+      const lo = typicalSessionMin();
+      const keep = { exp: STATE.profile.experience, cond: STATE.profile.conditioning, goal: STATE.profile.goal };
+      STATE.profile.experience = 'Advanced'; STATE.profile.conditioning = 'high'; STATE.profile.goal = 'gain';
+      const hi = typicalSessionMin();
+      STATE.profile.experience = keep.exp; STATE.profile.conditioning = keep.cond; STATE.profile.goal = keep.goal;
+      return { lo, hi };
+    });
+    t.ok('the estimate moves when the inputs that feed it change', moved.lo !== moved.hi, moved);
+
+    /* A defensive path: if the estimate can't be computed, the sentence must
+       not render at all — no "~null minutes" or an empty fragment left in the
+       paragraph. */
+    const guarded = await page.evaluate(() => {
+      const keep = window.buildSession;
+      window.buildSession = () => { throw new Error('forced'); };
+      const html = baselineIntroHTML();
+      window.buildSession = keep;
+      return html;
+    });
+    t.ok('and the sentence is omitted entirely rather than rendering a broken number',
+      !/Most training days/.test(guarded), guarded.slice(0, 400));
+
+    await page.evaluate(() => { try { closeSheet(); } catch (e) {} });
+    await browser.close();
+    errors.forEach(e => t.fail('page error rendering the Day-1 screen', e));
+  }
+
   /* ---- the baseline test respects a flagged joint (v251) ------------------
      renderAssessStep() used to read EX[t.ex] straight through with no
      safeSwap() call — a maximal-EFFORT battery is a harder ask on a joint
