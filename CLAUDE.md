@@ -4037,6 +4037,21 @@ still hands `"east us"` to Azure.
 
 Eight mutants seeded, eight caught.
 
+**Confirmed working on the athlete's own phone: all three stages passed.** That
+is the entry that matters, for the same reason the v266 percentage-import
+confirmation does. Azure is unreachable from this sandbox, so every check
+written for the neural path drives a stubbed SDK — it proves the staging, the
+branching and the wording, and it can never prove a real key synthesises real
+audio. The green suite was not the ship gate; this was.
+
+Two consequences worth carrying forward. The neural path is now **verified end
+to end**, so the v269–v271 local pitch band (floor 1.18, ceiling 1.45) only
+governs the DEVICE-voice fallback — which, with a key installed, is reached
+only offline. And the nine coaches originally reported as robotic were a
+local-resampling artifact all along: the same personas over real synthesis
+needed no re-voicing at all, which is what the "depth of character has to come
+from the voice HINT, the rate and the script" note above was already arguing.
+
 **Instructions for a job already done are clutter (v273).** The six setup steps
 rendered unconditionally, filling the screen for an athlete whose key was
 already saved and working — the same complaint that drove the Today-tab split
