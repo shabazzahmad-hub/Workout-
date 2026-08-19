@@ -276,6 +276,105 @@ export default async function run() {
       order.photos < order.bodyComp && order.photos < order.strength && order.photos < order.consistency, order);
   }
 
+  /* ---- getting the photos out as real pictures ---------------------------
+     exportData() already embeds them, but a backup restores all-or-nothing:
+     an athlete keeping the photos while deliberately abandoning the run had
+     no way to take one without the other. Photos are the only thing in the
+     app that genuinely cannot be re-created later, so the way out is checked
+     on what it actually WRITES — the download's filename and its bytes — not
+     on the button existing. */
+  {
+    const r = await page.evaluate(async () => {
+      const o = {};
+      // three real photos with distinct bytes, plus a row whose blob is GONE —
+      // the silent case the gallery renders as a broken tile
+      const mk = tint => { const c = document.createElement('canvas'); c.width = c.height = 8;
+        const g = c.getContext('2d'); g.fillStyle = tint; g.fillRect(0, 0, 8, 8);
+        return c.toDataURL('image/jpeg', 0.8); };
+      /* Two DIFFERENT ways a photo goes bad, because they are caught by
+         different halves of the guard: a4's blob is absent entirely (deleted,
+         or a row that outlived its bytes), while a5's blob is present but is
+         not an image — the shape a corrupted or hand-edited import leaves
+         behind. Testing only the absent case lets a guard that checks nothing
+         but `!data` pass, and that guard would hand the browser a download of
+         raw junk named .jpg. */
+      STATE.photos = [
+        { id: 'a1', date: '2026-06-01', pose: 'front' },
+        { id: 'a2', date: '2026-06-01', pose: 'side' },
+        { id: 'a3', date: '2026-08-01', pose: 'back' },
+        { id: 'a4', date: '2026-08-01', pose: 'front' },   // blob deliberately absent
+        { id: 'a5', date: '2026-08-01', pose: 'side' },    // blob present but NOT an image
+      ];
+      await idbPut('ph_a1', mk('#a33'));
+      await idbPut('ph_a2', mk('#3a3'));
+      await idbPut('ph_a3', mk('#33a'));
+      await idbDel('ph_a4');
+      await idbPut('ph_a5', 'not-an-image-at-all');
+      save();
+
+      // capture what savePhotoFiles() actually hands the browser
+      const grabbed = [];
+      const realCreate = document.createElement.bind(document);
+      document.createElement = tag => {
+        const el = realCreate(tag);
+        if (tag === 'a') { const realClick = el.click.bind(el);
+          el.click = () => { grabbed.push({ name: el.download, href: el.href }); }; }
+        return el;
+      };
+      await savePhotoFiles();
+      document.createElement = realCreate;
+
+      o.names = grabbed.map(g => g.name);
+      o.allRealImages = grabbed.every(g => g.href.startsWith('data:image/'));
+      o.distinctBytes = new Set(grabbed.map(g => g.href)).size;
+      o.toast = (document.querySelector('#toast') || {}).textContent || '';
+
+      // a pose that an import could have corrupted must not reach the filename raw
+      o.junkPose = photoFileName({ date: '2026-06-01', pose: '../../etc/passwd' });
+      o.junkDate = photoFileName({ date: 'not-a-date', pose: 'side' });
+
+      // and the empty case says so rather than silently doing nothing
+      STATE.photos = []; save();
+      await savePhotoFiles();
+      o.emptyToast = (document.querySelector('#toast') || {}).textContent || '';
+      return o;
+    });
+    t.eq('every readable photo is written out, and the unreadable one is not', r.names.length, 3, r);
+    t.eq('named by date and pose, so the files sort and read on their own',
+      r.names, ['coreforge-2026-06-01-front.jpg', 'coreforge-2026-06-01-side.jpg', 'coreforge-2026-08-01-back.jpg']);
+    t.ok('each download carries real image bytes, not a placeholder', r.allRealImages, r);
+    t.eq('and they are three DIFFERENT pictures, not the same one three times', r.distinctBytes, 3, r);
+    t.ok('the athlete is told the ones it could not read, rather than them vanishing',
+      /3 photos/.test(r.toast) && /2 could not be read/.test(r.toast), r.toast);
+    t.ok('and nothing that is not an image is ever handed out as a .jpg',
+      !r.names.some(n => /a5|2026-08-01-side/.test(n)), r.names);
+    t.eq('a corrupt pose falls back to a known one instead of reaching the filename',
+      r.junkPose, 'coreforge-2026-06-01-front.jpg');
+    t.eq('a malformed date is labelled undated rather than written raw', r.junkDate, 'coreforge-undated-side.jpg');
+    t.ok('with no photos at all it says so instead of appearing to work',
+      /No progress photos/.test(r.emptyToast), r.emptyToast);
+  }
+
+  /* The button is only worth anything if it is reachable from the screen the
+     athlete is on when they are about to wipe the device. */
+  {
+    const r = await page.evaluate(() => {
+      STATE.photos = [{ id: 'b1', date: '2026-06-01', pose: 'front' }]; save();
+      go('guide'); render();
+      const html = document.querySelector('#v-guide').innerHTML;
+      const withPhotos = { offered: html.includes('savePhotoFiles()'),
+        nearReset: html.indexOf('savePhotoFiles()') < html.indexOf('hardReset()'),
+        counted: /Save my 1 progress photo\b/.test(html) };
+      STATE.photos = []; save(); render();
+      const without = document.querySelector('#v-guide').innerHTML.includes('savePhotoFiles()');
+      return { withPhotos, offeredWithNoPhotos: without };
+    });
+    t.ok('Settings offers the way out', r.withPhotos.offered, r);
+    t.ok('and offers it ABOVE "Reset all data", where it can still be acted on', r.withPhotos.nearReset, r);
+    t.ok('the label counts the real photos rather than guessing', r.withPhotos.counted, r);
+    t.ok('and it stays hidden when there are none to save', !r.offeredWithNoPhotos, r);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
