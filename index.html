@@ -1728,7 +1728,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='281';
+const APP_VERSION='282';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -8160,6 +8160,48 @@ async function hydratePhotos(){
     const data=await idbGet('ph_'+id);if(data){el.src=data;el._loaded=true;}
   }
 }
+/* ---- Getting the photos OUT as real pictures -----------------------------
+   exportData() already embeds every photo in the backup file, and that
+   round-trip is proven — but a backup is an all-or-nothing restore. An
+   athlete who wants a clean slate AND wants to keep the photos had no way
+   to take the pictures without also taking back the run they are trying to
+   leave behind. These are the one thing in the app that cannot be
+   re-created later: a missed weigh-in can be typed in from memory, week 1
+   of your body cannot be re-photographed in week 30.
+
+   Saved one file at a time rather than zipped: no archive library exists
+   here, and a browser download of a data: URI is the one path that works
+   the same on a phone as on a desktop. The gap between saves is what stops
+   mobile Safari/Chrome collapsing a burst of downloads into one. */
+function photoFileName(meta){
+  // pose and date both come from stored data an import could have shaped,
+  // so both go through the same membership/format guards the gallery uses.
+  const pose=poseOf(meta);
+  const d=(meta&&typeof meta.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(meta.date))?meta.date:'undated';
+  return `coreforge-${d}-${pose}.jpg`;
+}
+async function savePhotoFiles(){
+  const ps=(STATE.photos||[]).slice().sort((a,b)=>a.id<b.id?-1:1);
+  if(!ps.length){toast('No progress photos to save');return;}
+  let saved=0,missing=0;
+  for(const meta of ps){
+    let data=null;
+    try{data=await idbGet('ph_'+meta.id);}catch(e){}
+    // A row in STATE.photos whose blob is gone is a real, silent case — the
+    // gallery renders it as a broken tile. Count it and say so rather than
+    // reporting a file that never got written.
+    if(!data||typeof data!=='string'||!data.startsWith('data:image/')){missing++;continue;}
+    try{
+      const a=document.createElement('a');
+      a.href=data;a.download=photoFileName(meta);
+      document.body.appendChild(a);a.click();a.remove();
+      saved++;
+    }catch(e){missing++;}
+    await new Promise(r=>setTimeout(r,350));
+  }
+  toast(saved?`Saved ${saved} photo${saved===1?'':'s'}${missing?` · ${missing} could not be read`:''}`
+             :'Could not read any photo files');
+}
 async function viewPhoto(id){
   const data=await idbGet('ph_'+id);const meta=(STATE.photos||[]).find(p=>p.id===id);
   openSheet(`
@@ -13654,6 +13696,8 @@ function renderGuide(){
     <div class="btnrow"><button class="btn ghost sm" style="width:100%" onclick="exportData()">⬇ Export backup</button><button class="btn ghost sm" style="width:100%" onclick="$('#importFile').click()">⬆ Import backup</button></div>
     <input type="file" id="importFile" aria-label="Choose a backup file to restore" accept="application/json" style="display:none" onchange="importData(event)">
     ${hasPreImportSnapshot()?'<button class="btn ghost sm" style="width:100%;margin-top:8px" onclick="undoImport()">↩ Undo last import</button>':''}
+    ${(STATE.photos||[]).length?`<button class="btn ghost sm" style="width:100%;margin-top:8px" onclick="savePhotoFiles()">🖼️ Save my ${(STATE.photos||[]).length} progress photo${(STATE.photos||[]).length===1?'':'s'} as pictures</button>
+    <p class="tiny muted" style="margin:6px 0 0">Downloads them as image files you keep — separate from the backup, so a reset cannot take them with it.</p>`:''}
     <div class="divider"></div>
     <button class="btn ghost sm" style="width:100%;color:var(--pink)" onclick="hardReset()">Reset all data</button>
   </div>`;

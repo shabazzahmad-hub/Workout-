@@ -677,6 +677,42 @@ v243–v244, v267, v281)*:
    the prompt. `psupport` shipped and was dropped one version later for exactly
    this.
 
+## Progress photos can leave without the run leaving with them (v282)
+
+`exportData()` has always embedded every progress photo in the backup, and the
+round trip is real — seeded photos survive export → `hardReset()` → import
+byte-for-byte identical, verified by driving it. But a backup restores
+**all or nothing**. An athlete who wants a clean slate and wants to keep the
+photos had no move: restoring the file to get the pictures back also restores
+the run they were deliberately walking away from.
+
+**Progress photos are the only thing in this app that genuinely cannot be
+re-created.** A missed weigh-in can be typed in from memory. Week 1 of your own
+body cannot be re-photographed in week 30. That asymmetry is what justifies a
+second way out that no other data type has.
+
+`savePhotoFiles()` writes each one as a real `.jpg` the athlete keeps, named
+`coreforge-<date>-<pose>.jpg` so the files sort and read on their own. Both
+halves of that name come from stored data an import could have shaped, so both
+go through the same guards the gallery uses — `poseOf()` for membership, a
+format test for the date. One file at a time with a gap between saves: no
+archive library exists here, and a burst of downloads gets collapsed into one
+by mobile browsers.
+
+**The button sits ABOVE "Reset all data", and a check enforces that.** A rescue
+route below the destructive button is a rescue route nobody reaches in time.
+
+**Two ways a photo goes bad, and only testing one let a real defect through.**
+The first mutation seeded here — weakening the guard to `if(!data)` — escaped,
+because the only bad row in the check was a blob that was *absent*, which both
+versions catch. A blob that is *present but not an image* (what a corrupted or
+hand-edited import leaves) walked straight past the weak guard and got handed
+to the browser as a download named `.jpg`, with the toast cheerfully reporting
+it as saved. The fix was in the CHECK, not the code: seed both failure shapes.
+This is the same lesson as the escaped `formatFeel()` mutant one version
+earlier — a check that exercises one instance of a class proves nothing about
+the class.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
