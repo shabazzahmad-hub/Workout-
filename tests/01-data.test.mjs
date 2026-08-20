@@ -837,6 +837,87 @@ export default async function run() {
   t.ok('stir-the-pot is genuinely offered once the ball is owned', ball.withGearSweep.sawStirWithGear, ball.withGearSweep);
   t.ok('the hamstring curl is genuinely offered through the glutes pool once the ball is owned', ball.sawHamcurlWithGear, ball);
 
+  /* ---- the balance trainer: a DIFFERENT implement from the stability ball --
+     Both are "a ball" in conversation and neither is the other: the stability
+     ball is a large sphere you lie on or roll, the balance trainer is a rigid-
+     based half-dome you stand ON. Owning one must never imply the other, which
+     is the same "confirm what the kit physically IS" rule the 9.6-inch push-up
+     bars taught. Flags are reasoned from mechanics rather than copied: the
+     floor versions of the squat and the side plank are both UNFLAGGED, and the
+     dome versions are a deliberate escalation because the base moves. */
+  const bt = await page.evaluate(() => {
+    const o = {};
+    const ids = ['btsquat', 'btbalance', 'btsideplank', 'btpushup'];
+    o.equip = {}; ids.forEach(id => { o.equip[id] = EX[id].equip; });
+
+    // owning the OTHER ball must not unlock these, and vice versa
+    STATE.profile.gear = ['stabilityball'];
+    o.ballDoesNotUnlockDome = ids.every(id => !hasGearFor(id));
+    o.ballStillUnlocksItsOwn = ['sbrollout', 'sbhamcurl', 'sbstir'].every(id => hasGearFor(id));
+    STATE.profile.gear = ['balancetrainer'];
+    o.domeUnlocksDome = ids.every(id => hasGearFor(id));
+    o.domeDoesNotUnlockBall = ['sbrollout', 'sbhamcurl', 'sbstir'].every(id => !hasGearFor(id));
+
+    const flags = id => Object.keys(JOINT_RISK).filter(j => JOINT_RISK[j].includes(id)).sort();
+    o.squatFlags = flags('btsquat');
+    o.balanceFlags = flags('btbalance');
+    o.sidePlankFlags = flags('btsideplank');
+    o.pushupFlags = flags('btpushup');
+    // the floor versions these escalate FROM, to prove the escalation is real
+    o.floorSquatFlags = flags('squat');
+    o.floorSidePlankFlags = flags('sideplank');
+    o.floorPushupFlags = flags('pushup');
+
+    const landsSafe = (exId, joint) => {
+      const real = STATE.profile.limitations; STATE.profile.limitations = [joint];
+      const out = safeSwap(exId); STATE.profile.limitations = real;
+      return { to: out, safe: !!EX[out] && !(JOINT_RISK[joint] || []).includes(out) };
+    };
+    o.squatKnee = landsSafe('btsquat', 'knee');
+    o.balanceKnee = landsSafe('btbalance', 'knee');
+    o.sidePlankShoulder = landsSafe('btsideplank', 'shoulder');
+    o.sidePlankWrist = landsSafe('btsideplank', 'wrist');
+    o.pushupWrist = landsSafe('btpushup', 'wrist');
+
+    o.inFocusPool = {
+      btsquat: FOCUS_POOL.legs.includes('btsquat'),
+      btbalance: FOCUS_POOL.legs.includes('btbalance'),
+      btsideplank: FOCUS_POOL.obliques.includes('btsideplank'),
+      btpushup: FOCUS_POOL.chest.includes('btpushup'),
+    };
+
+    // the picker must name both by shape, or they get mis-ticked
+    go('guide'); render();
+    const html = document.querySelector('#v-guide').innerHTML;
+    o.picker = { dome: html.includes('Balance trainer (half-dome)'),
+                 ball: html.includes('Stability ball (large)') };
+    STATE.profile.gear = [];
+    return o;
+  });
+  ['btsquat','btbalance','btsideplank','btpushup'].forEach(id =>
+    t.eq(id + ' requires the balance trainer', bt.equip[id], ['balancetrainer']));
+  t.ok('owning the stability ball does NOT unlock the dome work', bt.ballDoesNotUnlockDome, bt);
+  t.ok('owning the dome does NOT unlock the stability-ball work', bt.domeDoesNotUnlockBall, bt);
+  t.ok('each ball still unlocks its own exercises', bt.ballStillUnlocksItsOwn && bt.domeUnlocksDome, bt);
+  t.eq('the dome squat is knee-flagged', bt.squatFlags, ['knee']);
+  t.eq('and the single-leg stand too', bt.balanceFlags, ['knee']);
+  t.eq('while the FLOOR squat stays unflagged — proving this is a real escalation, not a copy',
+    bt.floorSquatFlags, []);
+  t.eq('the dome side plank is shoulder and wrist flagged — a straight arm on a moving base',
+    bt.sidePlankFlags, ['shoulder', 'wrist']);
+  t.eq('while the FLOOR side plank, a forearm hold, stays unflagged', bt.floorSidePlankFlags, []);
+  t.eq('the dome push-up carries the wrist flag its floor version has, plus a shoulder one',
+    bt.pushupFlags, ['shoulder', 'wrist']);
+  t.eq('confirming the floor push-up is wrist-only', bt.floorPushupFlags, ['wrist']);
+  t.ok('a flagged knee routes the dome squat somewhere safe', bt.squatKnee.safe, bt.squatKnee);
+  t.ok('a flagged knee routes the single-leg stand somewhere safe', bt.balanceKnee.safe, bt.balanceKnee);
+  t.ok('a flagged shoulder routes the dome side plank somewhere safe', bt.sidePlankShoulder.safe, bt.sidePlankShoulder);
+  t.ok('a flagged wrist routes it somewhere safe too', bt.sidePlankWrist.safe, bt.sidePlankWrist);
+  t.ok('a flagged wrist routes the dome push-up somewhere safe', bt.pushupWrist.safe, bt.pushupWrist);
+  t.ok('all four are reachable through the focus bonus', Object.values(bt.inFocusPool).every(v => v), bt.inFocusPool);
+  t.ok('the gear picker names the dome by its shape', bt.picker.dome, bt.picker);
+  t.ok('and renames the sphere so the two cannot be mis-ticked', bt.picker.ball, bt.picker);
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }

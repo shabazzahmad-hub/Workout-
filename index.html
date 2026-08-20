@@ -1198,6 +1198,31 @@ const EX = {
     why:'A forearm plank that never sits still — small circles on the ball turn a static hold into constant anti-rotation work for the whole core.',
     steps:['Set up in a forearm plank with your forearms on top of the ball.','Brace hard and trace small, slow circles with your forearms.','Keep hips and shoulders square to the floor the whole time.','Reverse direction halfway through the time.'],
     cues:['Small circles, not big ones','Hips stay level — do not let them chase the ball','Breathe — do not hold your breath through the brace'],mistakes:['Circles so big the hips twist','Shrugging the shoulders up toward the ears']},
+  /* -- balance trainer (half-dome, rigid base) -------------------------------
+     A DIFFERENT implement from the stability ball above, not a size variant:
+     the dome has a flat rigid base that does not roll, so it is stood ON.
+     Everything here trains the stabilisers around a joint under an unstable
+     base — a demand nothing else in the library places at all. */
+  btsquat:{repCap:20,name:'Balance Trainer Squat',region:'legs',unit:'reps',img:'ex-btsquat.jpg',anchor:null,hardness:0.8,base:12,rest:45,equip:['balancetrainer'],pattern:'squat',
+    why:'A squat where the floor fights back — the ankles, knees and hips work to hold a line the dome keeps trying to take away.',
+    steps:['Step onto the middle of the dome, feet about shoulder width, arms out for balance.','Find your balance before you move at all.','Sit back and down under control, chest tall.','Drive up through the middle of both feet without letting the dome tip.'],
+    cues:['Balance first, depth second','Weight through the whole foot, not the toes','Slow down — speed is what tips it'],
+    mistakes:['Rushing the descent and wobbling out','Going deeper than you can control']},
+  btbalance:{name:'Balance Trainer Single-Leg Stand',region:'stability',unit:'time',img:'ex-btbalance.jpg',anchor:null,hardness:0.85,base:20,rest:30,equip:['balancetrainer'],pattern:'squat',
+    why:'Pure balance — the ankle, knee and hip stabilisers firing continuously to keep one leg under you. The most direct training there is for staying on your feet.',
+    steps:['Step onto the middle of the dome with one foot.','Lift the other foot just clear of the dome, knee soft.','Hold, keeping the standing knee unlocked and the hips level.','Switch legs halfway through the time.'],
+    cues:['Eyes on a fixed point ahead','Standing knee soft, never locked','Hips level — do not hitch one side up'],
+    mistakes:['Locking the standing knee','Holding your breath through the wobble']},
+  btsideplank:{name:'Balance Trainer Side Plank',region:'oblique',unit:'time',img:'ex-btsideplank.jpg',anchor:null,hardness:0.6,base:20,rest:45,equip:['balancetrainer'],pattern:'core',
+    why:'A side plank with the bottom hand on a surface that will not hold still — the obliques hold the line while the shoulder fights the wobble.',
+    steps:['Place one hand on top of the dome, arm straight, shoulder stacked over it.','Walk the feet out and stack them, body in one line.','Lift the hips into the line and hold, top arm reaching up.','Come down under control and switch sides.'],
+    cues:['Shoulder stacked directly over the hand','Straight line, hips high','Push the floor away — do not sag into the shoulder'],
+    mistakes:['Hips dropping toward the floor','Letting the supporting elbow bend and collapse']},
+  btpushup:{repCap:25,name:'Balance Trainer Push-Up',region:'strength',unit:'reps',img:'ex-btpushup.jpg',anchor:null,hardness:0.85,base:10,rest:50,equip:['balancetrainer'],pattern:'pushh',
+    why:'A push-up on an unstable base — the same press, with the shoulder stabilisers working the whole way to stop the dome rocking.',
+    steps:['Grip the edges of the dome, hands just wider than the shoulders.','Set a plank line from head to heels and brace.','Lower the chest toward the dome under control.','Press back up without letting either side of the dome dip.'],
+    cues:['Body stays one rigid line','Elbows about 45°, not flared','Even pressure through both hands'],
+    mistakes:['Hips sagging','One side of the dome dropping as you press']},
   mbslam:{name:'Medicine Ball Slam',region:'dynamic',unit:'reps',img:'ex-mbslam.jpg',anchor:null,hardness:1,base:12,rest:40,equip:['medball'],pattern:'power',
     why:'Full-body power and a core-driven finisher — hips, lats and abs firing on every slam.',
     steps:['Lift the ball overhead, up on the toes.','Slam it hard to the floor, hinging at the hips.','Catch the bounce or pick it up and reset.'],
@@ -1728,7 +1753,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='282';
+const APP_VERSION='283';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2255,13 +2280,13 @@ const GOAL_NOTE={
 };
 const FOCUS_POOL={
   abs:['hollow','hollowflutter','vsit','bearhold','lsit','dragonflag','dragonflagfull','situp','vertcrunch','plankleg','isoclimber','vup','tuckvup','legraise','hiplift','hanglegraise','revcrunch','crunch','bicycle','kneeraise','abroll','abrollstand','mbsitup','flutter','kbrenegade','ropeplank','toetouch','sitthrust','legcircle','kneetoelbow','tucklsit','plegraise','sbrollout','sbstir'],
-  obliques:['sideplank','sideplankreach','situptwist','sidedip','russiantwist','windshield','plankrot','heeltouch','bicycle','copenhagen','standingoblique','mbtwist','kbhalo','dbpallof','mbchop','kbwindmill','kbsuitcase','kbfigure8'],
+  obliques:['sideplank','sideplankreach','situptwist','sidedip','russiantwist','windshield','plankrot','heeltouch','bicycle','copenhagen','standingoblique','mbtwist','kbhalo','dbpallof','mbchop','kbwindmill','kbsuitcase','kbfigure8','btsideplank'],
   full:['burpee','sprawl','bearcrawl','inchworm','squatthrust','mountainclimber','kbswing','dbthruster','halfburpee','squat','pushup','kbhighpull','kneekick','quickpunch'],
-  chest:['pushup','tempopushup','hindupushup','typewriter','inclinepushup','declinepushup','diamondpushup','archerpushup','closepushup','dbfloor','dbbench'],
+  chest:['pushup','tempopushup','hindupushup','typewriter','inclinepushup','declinepushup','diamondpushup','archerpushup','closepushup','dbfloor','dbbench','btpushup'],
   back:['invertedrow','superman','swimmer','scappull','negpullup','pullup','chinup','dbrow','kbrow','kbrenegade'],
   shoulders:['pikepushup','elevatedpike','wallwalk','wallhandstand','dbpress','kbcp'],
   arms:['benchdip','closepushup','dips','dbcurl','diamondpushup'],
-  legs:['wallsit','squat','cossack','sissysquat','reverselunge','splitsquat','bulgarian','walkinglunge','jumpsquat','kbgoblet','dbgoblet'],
+  legs:['wallsit','squat','cossack','sissysquat','reverselunge','splitsquat','bulgarian','walkinglunge','jumpsquat','kbgoblet','dbgoblet','btsquat','btbalance'],
   glutes:['glutebridge','singlebridge','slrdl','hipthrust','kbrdl','dbrdl','nordic','sbhamcurl'],
 };
 // The quiz's "trouble zones" are body-shape words; map them onto training pools so
@@ -2390,6 +2415,7 @@ const GEAR_FALLBACK={
   abroll:'plank',abrollstand:'plank',copenhagen:'sidedip',
   dbbench:'dbfloor',
   sbrollout:'plank',sbstir:'plank',sbhamcurl:'glutebridge',
+  btsquat:'squat',btbalance:'singlebridge',btsideplank:'sideplank',btpushup:'pushup',
 };
 function gearSwap(exId,ladder){
   if(hasGearFor(exId))return exId;
@@ -2993,7 +3019,7 @@ function onboardHTML(){
       <div class="daypick" id="ob-days">${['M','T','W','T','F','S','S'].map((d,i)=>`<button data-d="${(i+1)%7}">${d}</button>`).join('')}</div>
       <div class="tiny muted" style="margin-top:7px">Five days is the floor — tap a day to make it a rest day, but keep at least five.</div></div>
     <div class="field"><label>Equipment you have <span class="tiny muted">· unlocks a Weights session</span></label>
-      <div class="daypick" id="ob-gear" style="flex-wrap:wrap">${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['stabilityball','Stability ball'],['battlerope','Battle rope'],['parallettes','Parallettes / push-up bars'],['bench','Bench / chair'],['bike','Bike + trainer']].map(([k,l])=>`<button data-e="${k}"${mon(P.gear,k)}>${l}</button>`).join('')}</div></div>
+      <div class="daypick" id="ob-gear" style="flex-wrap:wrap">${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['stabilityball','Stability ball (large)'],['balancetrainer','Balance trainer (half-dome)'],['battlerope','Battle rope'],['parallettes','Parallettes / push-up bars'],['bench','Bench / chair'],['bike','Bike + trainer']].map(([k,l])=>`<button data-e="${k}"${mon(P.gear,k)}>${l}</button>`).join('')}</div></div>
     <div class="field"><label>Room to train in</label>
       <div class="daypick" id="ob-space">
         <button data-sp="full"${on(P.tightSpace?'tight':'full','full')}>Clear wall + space</button>
@@ -10217,11 +10243,11 @@ function calcOneRM(){
 /* ---- #6 Injury-aware auto-substitution ---- */
 const JOINTS=[['knee','Knee'],['shoulder','Shoulder'],['wrist','Wrist'],['lowback','Lower back'],['elbow','Elbow']];
 const JOINT_RISK={
-  knee:['pistol','boxpistol','jumpsquat','tuckjump','broadjump','splitjump','bulgarian','burpee','burpeetuck','walkinglunge','sissysquat','cossack','sprawl','latshuffle','nordic','asiansquat','wallsit','skater','squatjack','splitsquat','jumpingjack','sealjack','highknees','buttkick','kneekick','skaterground'],
-  shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','benchdip','dbpress','kbcp','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbtgu','kbthruster','kbwindmill','abrollstand','hanglegraise','lsit','dragonflag','dragonflagfull','plankrot','wallwalk','pseudoplanche','typewriter','hindupushup','pullup','chinup','widepullup','negpullup','deadhang','scappull','invertedrow','invertedrowelev','tablerow','crabwalk','reverseplank','abroll','mbslam','ropeslam','ropewave','kbswing','atomicpushup','declinepushup','burpee','burpeetuck','kneetoelbow','dbbench','tucklsit','plegraise','ppushup','sbrollout'],
+  knee:['pistol','boxpistol','jumpsquat','tuckjump','broadjump','splitjump','bulgarian','burpee','burpeetuck','walkinglunge','sissysquat','cossack','sprawl','latshuffle','nordic','asiansquat','wallsit','skater','squatjack','splitsquat','jumpingjack','sealjack','highknees','buttkick','kneekick','skaterground','btsquat','btbalance'],
+  shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','benchdip','dbpress','kbcp','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbtgu','kbthruster','kbwindmill','abrollstand','hanglegraise','lsit','dragonflag','dragonflagfull','plankrot','wallwalk','pseudoplanche','typewriter','hindupushup','pullup','chinup','widepullup','negpullup','deadhang','scappull','invertedrow','invertedrowelev','tablerow','crabwalk','reverseplank','abroll','mbslam','ropeslam','ropewave','kbswing','atomicpushup','declinepushup','burpee','burpeetuck','kneetoelbow','dbbench','tucklsit','plegraise','ppushup','sbrollout','btsideplank','btpushup'],
   /* fistpushup is deliberately ABSENT: knuckles down keeps the wrist straight,
      which is the whole point of the movement. */
-  wrist:['pushup','kneepushup','inclinepushup','declinepushup','diamondpushup','closepushup','archerpushup','spidermanpushup','superpushup','planktap','mountainclimber','dbrenegade','kbrenegade','dbmanmaker','dbdevil','abroll','abrollstand','ropeplank','extplank','lsit','isoclimber','bearcrawl','crabwalk','plankjack','crossclimber','bearhold','pseudoplanche','typewriter','hindupushup','tempopushup','inchworm','pikepushup','elevatedpike','wallwalk','wallhandstand','hspushup','atomicpushup','burpee','burpeetuck','halfburpee','squatthrust','sprawl','reverseplank','sitthrust','tucklsit','sbrollout','sbstir'],
+  wrist:['pushup','kneepushup','inclinepushup','declinepushup','diamondpushup','closepushup','archerpushup','spidermanpushup','superpushup','planktap','mountainclimber','dbrenegade','kbrenegade','dbmanmaker','dbdevil','abroll','abrollstand','ropeplank','extplank','lsit','isoclimber','bearcrawl','crabwalk','plankjack','crossclimber','bearhold','pseudoplanche','typewriter','hindupushup','tempopushup','inchworm','pikepushup','elevatedpike','wallwalk','wallhandstand','hspushup','atomicpushup','burpee','burpeetuck','halfburpee','squatthrust','sprawl','reverseplank','sitthrust','tucklsit','sbrollout','sbstir','btsideplank','btpushup'],
   lowback:['superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbthruster','kbwindmill','kbhighpull','mbslam','ropeslam','windshield','dragonflag','dragonflagfull','abrollstand','situp','vertcrunch','situptwist','vsit','slrdl','swimmer','legraise','hanglegraise','kneeraise','hiplift','flutter','scissors','vup','tuckvup','russiantwist','weightedtwist','mbtwist','mbchop','mbsitup','seatedtwist','abroll','longplank','extplank','ruck','dipknee','heeltouch','crunch','bicycle','revcrunch','sitthrust','toetouch','legcircle','kneetoelbow','sbrollout','sbhamcurl'],
   elbow:['dips','benchdip','diamondpushup','closepushup','chinup','negpullup','dbcurl','typewriter','pseudoplanche'],
 };
@@ -10276,6 +10302,7 @@ const SAFE_SWAP={
   planktap:'plank',mountainclimber:'march',abroll:'plank',abrollstand:'plank',isoclimber:'plank',ropeplank:'plank',
   bearcrawl:'birddog',bearhold:'plank',crabwalk:'glutebridge',plankjack:'march',
   sbrollout:'plank',sbstir:'plank',sbhamcurl:'glutebridge',
+  btsquat:'squat',btbalance:'singlebridge',btsideplank:'sideplank',btpushup:'pushup',
   crossclimber:'march',plankleg:'plank',plankrot:'sideplank',longplank:'plank',extplank:'plank',
   // posterior chain / hinge
   superman:'birddog',swimmer:'birddog',reverseplank:'glutebridge',hipthrust:'glutebridge',
@@ -13678,7 +13705,7 @@ function renderGuide(){
     <div class="divider" style="margin:10px 0"></div>
     <div style="padding:2px 0"><div class="tiny muted" style="margin-bottom:6px">Equipment you have <span style="opacity:.7">· unlocks the Weights session</span></div>
       <div class="daypick" id="set-gear" style="flex-wrap:wrap">
-        ${''}${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['stabilityball','Stability ball'],['battlerope','Battle rope'],['parallettes','Parallettes / push-up bars'],['bench','Bench / chair']].map(([k,l])=>`<button class="${(STATE.profile.gear||[]).includes(k)?'on':''}" onclick="toggleGear('${k}')">${l}</button>`).join('')}
+        ${''}${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['stabilityball','Stability ball (large)'],['balancetrainer','Balance trainer (half-dome)'],['battlerope','Battle rope'],['parallettes','Parallettes / push-up bars'],['bench','Bench / chair']].map(([k,l])=>`<button class="${(STATE.profile.gear||[]).includes(k)?'on':''}" onclick="toggleGear('${k}')">${l}</button>`).join('')}
         <div style="margin-top:12px"></div>
         <button class="${STATE.profile.tightSpace?'on':''}" onclick="toggleTightSpace()">🏠 Tight space</button>
         <div class="tiny muted" style="margin-top:8px">Handstand work needs a clear wall and about <b>6 ft / 2 m</b> of floor in front of it to walk up safely; the travelling moves need a room you can cross. Tight space swaps both out — you get the hardest floor presses instead, which load the shoulder the same way without needing a clear wall. Straight trade to know about: nothing on the floor fully replaces a handstand push-up, so the very top of the shoulder ladder is a step easier. Everything else is like for like.</div>

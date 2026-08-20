@@ -677,6 +677,62 @@ v243–v244, v267, v281)*:
    the prompt. `psupport` shipped and was dropped one version later for exactly
    this.
 
+## A balance trainer is not a stability ball (v283)
+
+"I now have a balance ball", one round after "I now have an exercise ball" —
+and they are different implements. The stability ball is a large sphere you
+lie on or roll; this is a rigid-based half-dome you stand ON. Confirming that
+from the photo before mapping it to a gear key is the same discipline the
+9.6-inch push-up bars taught: **what the kit physically IS decides the key,
+not what it is called.** Two things that are one word apart in conversation
+got separate keys and shape-bearing labels — `Stability ball (large)` and
+`Balance trainer (half-dome)` — because a mis-ticked box silently prescribes
+work the athlete cannot do.
+
+Four exercises, all trading on the one demand nothing else in the library
+places: an unstable base. `btbalance` is the one with no relative at all —
+pure single-leg proprioception, which is also the highest-carryover item here
+for an athlete in their fifties.
+
+**Every flag is an escalation reasoned from mechanics, and the check proves
+the escalation by asserting the FLOOR version stays unflagged.** Plain `squat`
+and plain `sideplank` carry no joint flags; the dome versions carry knee, and
+shoulder+wrist, because the base moves and — for the side plank — because
+bodyweight goes through a straight arm rather than a forearm. Asserting only
+"the dome version is flagged" would pass just as well if someone had blanket-
+flagged the whole family, so each check pins its floor sibling's empty flag
+list beside it. `btpushup` inherits `pushup`'s wrist flag and adds shoulder;
+the joint angle is the same, the stabiliser demand is not.
+
+**The cross-contamination check is the one that matters most here**, and it
+runs both directions: owning the sphere must not unlock the dome work, owning
+the dome must not unlock the sphere work, and each must still unlock its own.
+A single `equip` typo would otherwise hand an athlete four exercises they have
+no equipment for, and the generic "flagged joints don't leak" sweep cannot
+see that at all.
+
+Five mutants seeded — gear crossover, a dropped knee escalation, a dropped
+shoulder flag, a focus-pool omission, and a revert to the ambiguous picker
+labels; all five caught.
+
+**The real photos, and one more datapoint for the no-batching rule.** The
+athlete asked for a single copy-pasteable prompt covering all four exercises,
+against the standing advice to send them one at a time. It was written to
+demand four separate images in the strongest terms available — "generate them
+one at a time", "never combine", an explicit list of the words *grid, collage,
+contact sheet, split panel* — and the model **still returned a 2x2 collage**,
+with three correct panels and one EMPTY fourth cell. The squat, sent as its
+own prompt in the same session, came back clean and standalone.
+
+So the rule survives its most careful test yet: **the failure is not weak
+prompt wording, and it cannot be fixed by strengthening the instruction.** The
+count of exercises per request is the variable that matters. What batching
+buys is one paste; what it costs is a crop-out-of-a-grid step and a wasted
+generation slot. The panels cropped cleanly here — gutters detected by
+scanning for near-white rows/columns rather than assuming the midpoint, since
+the two rows were NOT equal height — so the round still shipped real artwork,
+but that is salvage, not success.
+
 ## Progress photos can leave without the run leaving with them (v282)
 
 `exportData()` has always embedded every progress photo in the backup, and the
