@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v282';
+const CACHE = 'coreforge-v283';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
@@ -62,6 +62,7 @@ const EXTRA = [
   './ex-abroll.jpg','./ex-abrollstand.jpg','./ex-archerpushup.jpg','./ex-asiansquat.jpg','./ex-atomicpushup.jpg',
   './ex-bearcrawl.jpg','./ex-bearhold.jpg','./ex-benchdip.jpg','./ex-bike.jpg',
   './ex-birddog.jpg','./ex-boxpistol.jpg','./ex-broadjump.jpg','./ex-bulgarian.jpg',
+  './ex-btbalance.jpg','./ex-btpushup.jpg','./ex-btsideplank.jpg','./ex-btsquat.jpg',
   './ex-burpee.jpg','./ex-burpeetuck.jpg','./ex-calfraise.jpg','./ex-chinup.jpg',
   './ex-closepushup.jpg','./ex-copenhagen.jpg','./ex-cossack.jpg','./ex-crabwalk.jpg',
   './ex-crossclimber.jpg','./ex-dbbench.jpg','./ex-dbcarry.jpg','./ex-dbcp.jpg','./ex-dbcurl.jpg',
