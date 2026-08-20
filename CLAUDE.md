@@ -715,6 +715,24 @@ Five mutants seeded — gear crossover, a dropped knee escalation, a dropped
 shoulder flag, a focus-pool omission, and a revert to the ambiguous picker
 labels; all five caught.
 
+**The real photos, and one more datapoint for the no-batching rule.** The
+athlete asked for a single copy-pasteable prompt covering all four exercises,
+against the standing advice to send them one at a time. It was written to
+demand four separate images in the strongest terms available — "generate them
+one at a time", "never combine", an explicit list of the words *grid, collage,
+contact sheet, split panel* — and the model **still returned a 2x2 collage**,
+with three correct panels and one EMPTY fourth cell. The squat, sent as its
+own prompt in the same session, came back clean and standalone.
+
+So the rule survives its most careful test yet: **the failure is not weak
+prompt wording, and it cannot be fixed by strengthening the instruction.** The
+count of exercises per request is the variable that matters. What batching
+buys is one paste; what it costs is a crop-out-of-a-grid step and a wasted
+generation slot. The panels cropped cleanly here — gutters detected by
+scanning for near-white rows/columns rather than assuming the midpoint, since
+the two rows were NOT equal height — so the round still shipped real artwork,
+but that is salvage, not success.
+
 ## Progress photos can leave without the run leaving with them (v282)
 
 `exportData()` has always embedded every progress photo in the backup, and the
