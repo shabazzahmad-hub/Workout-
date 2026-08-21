@@ -819,6 +819,67 @@ strength day against a deload week says nothing, so progression has to be
 read from one anchored movement over time. Every one of those looked like an
 app bug in the first run.
 
+## Fixing one instance is not fixing the class (v285)
+
+v284 hardened `logs` and `prs` after measuring the damage a keyed map left as
+an ARRAY does to a backup. It fixed the two fields the probe happened to
+touch. A 360 audit immediately afterwards fuzzed all 33 top-level fields and
+found **the identical half-guard on eight more** — `swaps`, `restDays`,
+`_opens`, `reassess`, `weekFeel`, `achievements`, `settings`, `profile`,
+`nutrition`, `formatFeel`, plus `baseline`, and `_opens` had no guard at all.
+
+**The lesson is not about arrays.** It is that a fix aimed at one instance of
+a bug leaves the class alive, and the next probe finds it again. The tell was
+right there in v284's own commit: the archived-runs repair already carried
+`!Array.isArray(r.logs)`, so the codebase knew the shape was illegal — the
+question was never "is this shape wrong" but "where else did we write the
+same half-guard", and that question was not asked.
+
+The measured cost, on the three keyed by an integer: `swaps` 1,515 bytes,
+`restDays` 1,506, `_opens` 1,503 — each carrying **300 `null`s** where the
+object shape is a few dozen bytes.
+
+**Severity was established by impact, not by type purity.** A companion probe
+fuzzed 33 fields x 6 junk values — 198 corrupted-state combinations — and
+every single one still rendered, built a session, and left `validateData()`
+clean. Nothing here crashes; the harm is entirely in what gets written to a
+backup and read back on the next import. Fields whose only sin is a wrong
+primitive type (`version`, `onboarded`, `_saved`) were deliberately left
+alone rather than padded with repairs that buy nothing.
+
+The check is now written against the CLASS: it walks every keyed map in one
+loop and asserts none survives as an array and none serialises sparse. Five
+mutants — four reverted guards plus an over-eager always-wipe — all caught.
+
+### Four false alarms the same audit raised, and why each was the probe
+
+Worth recording because each looked exactly like a bug:
+
+- **61 "wrist leaks."** The probe asserted on raw `JOINT_RISK` membership.
+  That ignores `wristRelieved()` — the v267 parallettes relief, where owning
+  push-up bars makes specific presses safe again because the handles keep the
+  wrist neutral. `jointRisky(exId, lims)` exists precisely so this cannot be
+  applied on one path and forgotten on another; a check that bypasses it is
+  re-implementing the rule badly. **Assert through the app's own predicate,
+  never re-derive it.**
+- **`ivTick` and `runFlow` "do not call countdownCue".** `indexOf('function
+  ivTick')` matches `ivTickLead` first — the same substring trap this file
+  documents for pistol/boxpistol — and a fixed 2,600-character window does
+  not reach line 63 of a function in a file with 200-character lines. Anchor
+  on `function NAME(` and take the body to the next top-level function.
+- **`plRingMediaHTML` "missing", then "the player ring does not reuse it".**
+  First from picking the wrong inline `<script>` element, then from guessing
+  the helper was called `plBodyWork` when it is `plRingHTML`.
+- **Unresolvable onclick targets `call` and `progCall`.** Both are
+  template-local arrows evaluated at build time, and they only appeared
+  because `document.body.innerHTML` **contains the app's own source** — the
+  same trap already recorded for `document.body.textContent` and `NaN`.
+
+Every one of those cost more time to disprove than the real bug cost to fix.
+That is the normal ratio for an audit written from outside the code, and it
+is the argument for asserting through the app's own predicates wherever one
+exists.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

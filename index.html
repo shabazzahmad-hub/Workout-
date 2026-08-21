@@ -1753,7 +1753,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='284';
+const APP_VERSION='285';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4914,7 +4914,7 @@ function formatFeel(group){
 function rateFormat(group,format,feel){
   if(!PROGRESSION_GROUPS[group])return;
   const cur=formatFeel(group);
-  if(!STATE.formatFeel||typeof STATE.formatFeel!=='object')STATE.formatFeel={};
+  if(!STATE.formatFeel||typeof STATE.formatFeel!=='object'||Array.isArray(STATE.formatFeel))STATE.formatFeel={};
   STATE.formatFeel[group]=(feel==='easy')
     ?{level:format,streak:(cur.level===format?cur.streak:0)+1}
     :{level:format,streak:0};
@@ -14060,8 +14060,8 @@ function dismissInstall(){const d=document.getElementById('installBanner');if(d)
    restored via import gets the exact same normalization a stored save gets,
    which prevents a legacy backup from white-screening the app. */
 function normalizeState(){
-  if(!STATE.settings||typeof STATE.settings!=='object')STATE.settings={};
-  if(!STATE.profile||typeof STATE.profile!=='object')STATE.profile={};
+  if(!STATE.settings||typeof STATE.settings!=='object'||Array.isArray(STATE.settings))STATE.settings={};
+  if(!STATE.profile||typeof STATE.profile!=='object'||Array.isArray(STATE.profile))STATE.profile={};
   // voice coach defaults for existing installs that predate these settings
   if(STATE.settings.voice===undefined)STATE.settings.voice=true;
   if(STATE.settings.voiceName===undefined)STATE.settings.voiceName='';
@@ -14078,7 +14078,7 @@ function normalizeState(){
   if(typeof STATE.settings.voiceRate!=='number')STATE.settings.voiceRate=0.98;
   if(typeof STATE.settings.repTempo!=='number')STATE.settings.repTempo=3;
   if(typeof STATE.adapt!=='number')STATE.adapt=1;   // adaptive-overload multiplier
-  if(!STATE.nutrition||typeof STATE.nutrition!=='object')STATE.nutrition={goal:'lose',sex:null,age:null,heightCm:null,activity:1.45,kcalTarget:null,days:{}};
+  if(!STATE.nutrition||typeof STATE.nutrition!=='object'||Array.isArray(STATE.nutrition))STATE.nutrition={goal:'lose',sex:null,age:null,heightCm:null,activity:1.45,kcalTarget:null,days:{}};
   /* nutrition.days is THREE athlete inputs in one map — the food log, the water
      count and the habit ticks — and it had no type repair at all, only a
      `!days` container check that a string or an array walks straight past.
@@ -14205,9 +14205,21 @@ function normalizeState(){
     if(Array.isArray(STATE.scoreHistory))STATE.scoreHistory=STATE.scoreHistory.filter(x=>x&&typeof x==='object');
   }catch(e){}
   // containers that get indexed without a guard — a null here white-screened the app
-  if(!STATE.reassess||typeof STATE.reassess!=='object')STATE.reassess={};
-  if(!STATE.weekFeel||typeof STATE.weekFeel!=='object')STATE.weekFeel={};
-  if(!STATE.swaps||typeof STATE.swaps!=='object')STATE.swaps={};
+  /* EVERY keyed map below rejects an ARRAY as well as a non-object.
+     `typeof [] === 'object'`, so a bare typeof test lets a list through — and
+     v284 fixed exactly this for logs/prs after measuring the damage, but only
+     for those two. A follow-up sweep fuzzed all 33 top-level fields and found
+     the same half-guard on eight more. None of them CRASH the app (198
+     corrupted-state combinations all still render, build a session and leave
+     the validator clean) — the harm is in what gets written to a backup:
+     anything keyed by an integer serialises SPARSE, so `swaps`, `restDays`
+     and `_opens` each measured ~1,500 bytes carrying 300 `null`s where the
+     object shape is a few dozen bytes. Those nulls then ride in every export
+     and come back on the next import. Fixed as a class rather than one at a
+     time, which is how the gap survived v284. */
+  if(!STATE.reassess||typeof STATE.reassess!=='object'||Array.isArray(STATE.reassess))STATE.reassess={};
+  if(!STATE.weekFeel||typeof STATE.weekFeel!=='object'||Array.isArray(STATE.weekFeel))STATE.weekFeel={};
+  if(!STATE.swaps||typeof STATE.swaps!=='object'||Array.isArray(STATE.swaps))STATE.swaps={};
   /* `!(ptr>=0)` is a RANGE test standing in for a type test, and it let through
      everything that compares true: the fraction 3.7, the string '12', true,
      null and []. The fraction was the one that hurt — progressPtr indexes
@@ -14224,7 +14236,7 @@ function normalizeState(){
      tests against, so a pointer past the end still lands on the trophy. */
   {const _p=Math.floor(STATE.progressPtr);   // Math.floor already does ToNumber
    STATE.progressPtr=(isFinite(_p)&&_p>0)?Math.min(_p,SESSIONS_PER_CYCLE*TOTAL_CYCLES):0;}
-  if(STATE.baseline!==null&&typeof STATE.baseline!=='object')STATE.baseline=null;
+  if(STATE.baseline!==null&&(typeof STATE.baseline!=='object'||Array.isArray(STATE.baseline)))STATE.baseline=null;
   if(!Array.isArray(STATE.scoreHistory))STATE.scoreHistory=[];
   /* `typeof [] === 'object'`, so a bare typeof test lets an ARRAY through —
      and both of these are keyed maps, never lists. The archived-runs repair
@@ -14547,7 +14559,7 @@ function normalizeState(){
   if(!Array.isArray(STATE.pain))STATE.pain=[];
   STATE.pain=STATE.pain.filter(x=>x&&typeof x==='object'&&typeof x.exId==='string');
   if(!Array.isArray(STATE.photos))STATE.photos=[];
-  if(!STATE.achievements||typeof STATE.achievements!=='object')STATE.achievements={};
+  if(!STATE.achievements||typeof STATE.achievements!=='object'||Array.isArray(STATE.achievements))STATE.achievements={};
   if(STATE.settings.reminderOn===undefined)STATE.settings.reminderOn=false;
   /* MEMBERSHIP, not truthiness — the `diet` bug shape verbatim. This value is
      interpolated straight into an HTML attribute in Settings, so anything that
@@ -14563,7 +14575,8 @@ function normalizeState(){
     if(_r!==STATE.settings.azureRegion)STATE.settings.azureRegion=_r||'eastus';
   }
   if(STATE.settings.weeklyOn===undefined)STATE.settings.weeklyOn=true;
-  if(!STATE.restDays||typeof STATE.restDays!=='object')STATE.restDays={};
+  if(!STATE.restDays||typeof STATE.restDays!=='object'||Array.isArray(STATE.restDays))STATE.restDays={};
+  if(!STATE._opens||typeof STATE._opens!=='object'||Array.isArray(STATE._opens))STATE._opens={};
   if(!Array.isArray(STATE.skipLog))STATE.skipLog=[];   // jump-rope record
   ['ruckLog','gripLog','boxLog'].forEach(k=>{if(!Array.isArray(STATE[k]))STATE[k]=[];});
   if(STATE.settings.hype===undefined)STATE.settings.hype=true;   // motivator on by default

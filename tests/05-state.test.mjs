@@ -488,6 +488,58 @@ export default async function run() {
     await browser.close();
   }
 
+  /* ---- the whole CLASS of keyed maps, not one at a time -----------------
+     v284 fixed logs/prs after measuring backup bloat, then a fuzz of all 33
+     top-level fields found the identical half-guard on eight more. Checking
+     them one at a time is how the gap survived a version, so this asserts the
+     property across every container at once: none may survive as an ARRAY,
+     and the integer-keyed ones must not serialise sparse. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await waitForBoot(page);
+    const r = await page.evaluate(() => {
+      const MAPS = ['logs','prs','swaps','reassess','weekFeel','restDays','_opens',
+                    'achievements','settings','profile','nutrition','formatFeel'];
+      STATE.onboarded = true;
+      const survived = [], bloated = [];
+      MAPS.forEach(k => {
+        STATE[k] = [];
+        STATE[k][300] = { probe: true };     // integer key, far out — the sparse case
+        normalizeState();
+        if (Array.isArray(STATE[k])) survived.push(k);
+        /* Look for the SPARSE-ARRAY signature — runs of bare `null,null` —
+           not for any null at all. Several of these maps legitimately hold
+           null VALUES: nutrition's own default literal is
+           {sex:null, age:null, heightCm:null, kcalTarget:null, ...}, which
+           serialises as `"sex":null` and is entirely correct. */
+        const ser = JSON.stringify(STATE[k] || {});
+        const holes = (ser.match(/null,null/g) || []).length;
+        if (holes > 0) bloated.push(`${k}: ${holes} sparse holes, ${ser.length}b`);
+      });
+      // baseline is the same shape but repairs to null rather than {}
+      STATE.baseline = []; normalizeState();
+      const baselineOk = STATE.baseline === null || (typeof STATE.baseline === 'object' && !Array.isArray(STATE.baseline));
+      // and a REAL map of each must survive untouched — the repair must not
+      // be so eager that it throws away genuine data
+      STATE.logs = { 12: { done: true, ex: {} } };
+      STATE.swaps = { 7: { 0: 'plank' } };
+      STATE.achievements = { first: '2026-01-01' };
+      normalizeState();
+      const kept = !!(STATE.logs[12] && STATE.logs[12].done === true)
+                && !!(STATE.swaps[7] && STATE.swaps[7][0] === 'plank')
+                && STATE.achievements.first === '2026-01-01';
+      let builds = true; try { buildSession(0); } catch (e) { builds = false; }
+      return { survived, bloated, baselineOk, kept, builds, checked: MAPS.length };
+    });
+    t.eq('every keyed map rejects an array', r.survived, []);
+    t.eq('so none of them serialise sparse into a backup', r.bloated, []);
+    t.ok('baseline repairs to null or a real object, never a list', r.baselineOk === true, r);
+    t.ok('while genuine data in those maps survives untouched', r.kept === true, r);
+    t.ok('and the app still builds a session', r.builds === true, r);
+    errors.filter(e => /render/.test(e)).forEach(e => t.fail('the map-class repair reached the render boundary', e));
+    await browser.close();
+  }
+
   srv.close();
   return t.finish();
 }
