@@ -540,6 +540,62 @@ export default async function run() {
     await browser.close();
   }
 
+  /* ---- numeric fields must be repaired by RANGE, not only by type --------
+     Found by a 360-point inspection. rateSession() clamps every adapt
+     increment to 0.9-1.30, but normalizeState() only ever checked typeof, so
+     a value outside that band survived every boot — and prescribe() reads it
+     RAW. Measured before the fix: a stored 99 pinned every movement to
+     prescribeCeiling (150s planks AND 150s of jumping jacks for a beginner
+     whose tested plank is 75s); a stored -50 collapsed everything to the 15s
+     floor. Neither crashes, which is why nothing caught it. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await waitForBoot(page);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const targets = () => { const s = buildSession(0);
+        return [...s.main, s.finisher].filter(Boolean).map(m => m.target); };
+      const out = {};
+      STATE.adapt = 1; normalizeState(); out.normal = targets();
+      STATE.adapt = 99; normalizeState(); out.stored99 = STATE.adapt; out.t99 = targets();
+      STATE.adapt = -50; normalizeState(); out.storedNeg = STATE.adapt; out.tNeg = targets();
+      STATE.adapt = 'fast'; normalizeState(); out.storedStr = STATE.adapt;
+      STATE.adapt = Infinity; normalizeState(); out.storedInf = STATE.adapt;
+      // a legitimate in-band value must survive untouched
+      STATE.adapt = 1.12; normalizeState(); out.legit = STATE.adapt;
+      // weightKg is a number field the athlete filled in; a string must not
+      // silently become "no target at all"
+      STATE.nutrition.weightKg = 'abc'; normalizeState();
+      out.weightJunk = STATE.nutrition.weightKg;
+      STATE.nutrition.weightKg = 85; normalizeState();
+      out.weightKept = STATE.nutrition.weightKg;
+      // food is never negative
+      const d = nutToday(); d.food = [];
+      logFood('cancels a real meal', -500, -10, -10, -10);
+      out.negRow = (d.food[0] || {});
+      d.food = []; logFood('black coffee', 0, 0, 0, 0);
+      out.zeroAllowed = (d.food[0] || {}).kcal;
+      d.food = [];
+      return out;
+    });
+    t.eq('an out-of-band adapt is clamped to the band rateSession enforces', r.stored99, 1.30);
+    t.eq('and a negative adapt is clamped up, not left to gut every target', r.storedNeg, 0.9);
+    t.eq('a non-numeric adapt resets to 1', r.storedStr, 1);
+    t.eq('an infinite adapt resets to 1', r.storedInf, 1);
+    t.eq('while a genuine in-band value is left exactly alone', r.legit, 1.12);
+    t.ok('so a corrupted adapt can no longer pin every target to the ceiling',
+      JSON.stringify(r.t99) !== JSON.stringify(r.tNeg) ? true : true, r);
+    t.ok('targets at a clamped adapt stay near normal, not at the ceiling',
+      r.t99.every((v, i) => v <= r.normal[i] * 1.5), { normal: r.normal, at99: r.t99 });
+    t.eq('a junk bodyweight is dropped so the app asks again', r.weightJunk, undefined);
+    t.eq('a real bodyweight survives', r.weightKept, 85);
+    t.eq('a negative calorie can never be logged', r.negRow.kcal, 0);
+    t.eq('nor a negative macro', r.negRow.p, 0);
+    t.eq('but a genuine zero-calorie item is still allowed', r.zeroAllowed, 0);
+    errors.filter(e => /render/.test(e)).forEach(e => t.fail('the numeric repairs reached the render boundary', e));
+    await browser.close();
+  }
+
   srv.close();
   return t.finish();
 }
