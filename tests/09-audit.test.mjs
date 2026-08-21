@@ -1164,6 +1164,47 @@ export default async function run() {
   t.ok('every day still lands on the protein target after substitution',
     food.worstGap <= 12, { worstGap: food.worstGap });
 
+  /* ---- an anchor is replaced by an ANCHOR -------------------------------
+     Closest protein-per-calorie alone is not enough. For a vegan with soy,
+     tree-nut, peanut and gluten allergies the whole meat category is unsafe,
+     so the sort fell through to "anywhere" and served Spinach in place of
+     Turkey mince — and in place of Salmon — because spinach's ratio (13.3 g
+     per 100 kcal) sits nearer turkey's (17.2) than any pulse's (7.8).
+     It cannot self-correct: spinach is cat 'veg', so the day ends with no
+     anchor, scaleDay()'s `anchorP>0` test fails, and the one dial that moves
+     protein is dead — the day fell further behind the harder the target got.
+     Read the day the app actually builds, not a replay of the sort: a replay
+     would pass whether or not scaleDay() uses it. */
+  {
+    const r = await page.evaluate(() => {
+      const N = STATE.nutrition;
+      const realD = N.diet, realA = N.allergens;
+      const catsOf = day => day.meals.flatMap(m => m.items.map(x => FOODS[x.i][4]));
+      const namesOf = day => day.meals.flatMap(m => m.items.map(x => x.name));
+      N.diet = 'omnivore'; N.allergens = [];
+      const plain = scaleDay(REF_DAYS[10], 165, 2280);
+      N.diet = 'vegan'; N.allergens = ['soy', 'treenut', 'peanut', 'gluten'];
+      const hard = scaleDay(REF_DAYS[10], 165, 2280);
+      N.diet = realD; N.allergens = realA;
+      return {
+        /* Guard: the day this block reasons about must really have anchors to
+           lose, or every assertion below passes on nothing. */
+        plainAnchors: catsOf(plain).filter(c => REF_ANCHOR_CATS.includes(c)).length,
+        hardAnchors: catsOf(hard).filter(c => REF_ANCHOR_CATS.includes(c)).length,
+        hardNames: namesOf(hard),
+        plainP: Math.round(plain.p), hardP: Math.round(hard.p),
+      };
+    });
+    t.ok('guard: the day really does carry anchors for an omnivore', r.plainAnchors >= 2, r);
+    t.ok('the most-substituted diet still gets a protein anchor', r.hardAnchors >= 2, r);
+    t.ok('and it is not a leafy green standing in for the meat',
+      !r.hardNames.includes('Spinach, cooked') || r.hardAnchors >= 2, r);
+    /* The outcome, not the rule that produced it: a day with no anchor cannot
+       be dialled onto its protein target at all. */
+    t.ok('so the substituted day still reaches the target', Math.abs(r.hardP - 165) <= 12, r);
+    t.ok('the same day for an omnivore reaches it too', Math.abs(r.plainP - 165) <= 12, r);
+  }
+
   /* ---- today's plan is a worked day, not a random draw --------------------
      The DAY-level invariants below are unchanged and still matter: the same
      worked days feed the Reference tab and the shopping list, so they must

@@ -260,7 +260,15 @@ export default async function run() {
     const live = refTargets();
     o.usesLive = live.live && live.p === proteinTargetG() && live.kcal === STATE.nutrition.kcalTarget;
     const kt = STATE.nutrition.kcalTarget, ms = STATE.measurements;
+    /* "Nothing known" now has to include the standing protein target as well.
+       It is seeded once at boot, so clearing the weight alone no longer empties
+       the protein side — proteinTargetG() answers from the stored number and
+       refDefaults().p is never reached. The fallback is still live code (clear
+       the target, log no weight); this block just has to build that state
+       rather than assume it. */
+    const pt = STATE.nutrition.proteinTarget;
     STATE.nutrition.kcalTarget = 0; STATE.measurements = []; STATE.nutrition.weightKg = 0;
+    delete STATE.nutrition.proteinTarget;
     const fb = refTargets();
     o.fallsBack = !fb.live && fb.p === refDefaults().p && fb.kcal === refDefaults().kcal;
     let rendered = true;
@@ -269,6 +277,7 @@ export default async function run() {
     o.saysHowToGetThem = /Calculate my targets/.test(document.querySelector('#v-ref').innerHTML);
     o.noNaN = !/NaN|undefined/.test(document.querySelector('#v-ref').innerHTML);
     STATE.nutrition.kcalTarget = kt; STATE.measurements = ms; STATE.nutrition.weightKg = 88;
+    if (pt !== undefined) STATE.nutrition.proteinTarget = pt;
     recalcKcalFromStored();
     return o;
   });

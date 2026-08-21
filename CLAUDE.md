@@ -966,6 +966,73 @@ as **zero failures, i.e. an escape**. Read the mutant back: a mutant that
 breaks the parse tests nothing. Replacing the whole two-line block instead
 produced a valid over-eager mutant, and it was caught by all three checks.
 
+## A standing default is an athlete CHOICE, not a DEFAULT_STATE field (v287)
+
+"Make 165 g of protein my default." The obvious implementation —
+`proteinTarget:165` in `DEFAULT_STATE().nutrition` — is wrong twice, and the
+second way is the one that bites.
+
+`proteinTargetSet()` reads **absent** as "the athlete has not chosen", so a
+default value makes that test true for everybody forever and `proteinTargetCalc()`
+becomes dead code. That is `voicePitch` verbatim. But worse: `loadState()` does
+`Object.assign(DEFAULT_STATE().nutrition, p.nutrition)`, so the key that
+`clearProteinTarget()` deletes **comes straight back on the next load**. The
+"↺ Use calculated" chip would work until you closed the app.
+
+So it is seeded ONCE by `normalizeState()` behind `_protSeed`, the `_toneFix`
+shape: seed when absent, set the flag in **every** branch, and let the flag
+travel in a backup — a file that re-seeds over a deliberate clear is the same
+bug one import later. The flag-in-every-branch half is not theoretical: the
+mutant that set it only inside the branch that wrote a value escaped four
+checks, because everyone who already had a target stayed unflagged and got
+re-seeded the first time they cleared it.
+
+### Raising a target exposed a substitution that had never been right
+
+At 165 g the reference days missed by 19 g on one diet, and chasing it found
+the real defect. `scaleDay()` picked a substitute by **closest
+protein-per-calorie, same category first, then anywhere**. For a vegan with
+soy, tree-nut, peanut and gluten allergies the whole meat category is unsafe,
+so it fell through to "anywhere" and served **Spinach in place of Turkey mince
+— and in place of Salmon** — because spinach's ratio (13.3 g per 100 kcal)
+sits nearer turkey's (17.2) than any pulse's (7.8). Twelve safe pulses were
+sitting there unreachable.
+
+**It could not self-correct, which is what made it worse than a poor choice of
+food.** Spinach is cat `veg`, so the day ended with NO anchor, `scaleDay()`'s
+`anchorP>0` test failed, and `sp` — the one dial that moves protein — stayed
+pinned at 1. The day therefore fell further behind the harder the target got:
+9 g short at 155 g, 19 g at 165 g, 29 g at 175 g. A miss that grows with the
+target is the signature of a dead dial, not a tight day.
+
+The fix is one tier in the sort: **an anchor must be replaced by an anchor.**
+Ratio stays the tiebreak, but only among foods that can carry the protein.
+
+**The trade is real and worth stating.** Across 10 diet combos x 4 target bars
+x 28 days, the worst protein miss went 36 g → 9 g (bar is 12) and the worst
+calorie miss went 400 → 642 (bar is 150); total failures 168 → 169. The
+restrictive-diet problem is **pre-existing and large**, and this does not
+shrink it — it changes its character from an invisible protein shortfall to a
+visible calorie overshoot, which `renderRef()` already reports. For a soy-free
+vegan, 150 g of protein costs ~1,900 kcal from pulses alone; no code fixes
+that, and a day that quietly serves spinach instead is not a fix either.
+
+**Day 15 needed a real trim, and it was already the tightest day going down.**
+`Chickpea and chicken` carried 943 kcal of starch at 1x — at the 0.5 floor
+still 471, against 295 kcal of fixed food and 120 of oil — so an **omnivore**
+already landed 85 kcal over on the 120 g / 1700 kcal bar, spending 85 of a
+150 kcal allowance before any substitution. Honest plant anchors cost 83 more
+and tipped it over. Rice 250→200 g and potato 400→300 g gave the floor
+somewhere to go; the 1.6x cap still reaches the 2,800 kcal bar.
+
+**One mutant was equivalent, and that was measured rather than assumed.**
+Dropping the `wantAnchor` guard (promoting anchors for *every* want, not just
+anchor wants) changed **0 of 162 real substitutions across 814 food x diet
+pairs** — every non-anchor category always has a safe same-category member, so
+that tier is never consulted. The guard is kept as intent and as cover for a
+future food-library change, but no check can catch its removal today. Read the
+mutant back before rewriting the check.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
