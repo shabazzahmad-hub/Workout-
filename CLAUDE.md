@@ -1033,6 +1033,42 @@ that tier is never consulted. The guard is kept as intent and as cover for a
 future food-library change, but no check can catch its removal today. Read the
 mutant back before rewriting the check.
 
+## Drawn is not the same as shown (v288)
+
+"Add a category called macros so it shows protein, fats and carbs, not just
+calories." The macros were **already on screen** — three `_macroBar`s in the
+food card, and every logged row and every food-search result already printed
+`46g P · 0g C · 5g F`. Two things were actually wrong, and neither was
+"the data is missing":
+
+- **The bars show what you have EATEN.** Before anything is logged they read
+  0, so the numbers to *aim for* were nowhere on Fuel. "Today's targets"
+  answered calories and protein and said nothing about the other two thirds of
+  the plate.
+- **Three unlabelled bars under a calorie figure read as decoration.** A
+  heading is what turns them into a section someone can look for. Same lesson
+  as the player photograph at 120px: present is not the same as legible.
+
+So `Today's targets` became a 2x2 — Calories, Protein, Carbs, Fat — and the
+bars got `MACROS EATEN TODAY` over them. **Carbs and fat are labelled
+`calculated`, never `yours`**: only calories and protein are settable, and a
+derived number wearing the label of a control that does not exist is the same
+class of lie as a UI promise with no code behind it. With no calorie target
+there is nothing to derive from, so they show a dash — a `0 g` carb target is
+a prescription, not a blank.
+
+**Reordering a stat grid broke a positional check, and that is the finding
+worth keeping.** The existing repaint check read `v.querySelector('.stat .n')`
+— the FIRST stat — assuming it was protein. Moving Calories to the front made
+it read a figure that correctly never changes, so it would have passed with
+the repaint deleted. It now finds the stat whose label starts `Protein`. Any
+assertion that indexes a list by position is one layout change away from
+passing on nothing.
+
+Five mutants, all caught: dropping the carbs stat, zero instead of a dash,
+dropping the heading, labelling a derived number `yours`, and painting the
+carbs stat with fat's value.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

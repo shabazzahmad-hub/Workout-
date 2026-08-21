@@ -140,9 +140,17 @@ export default async function run() {
       clearProteinTarget();
       go('fuel'); render();
       await new Promise(z => setTimeout(z, 200));
+      /* Read the PROTEIN stat by its label, not the first .stat in the grid.
+         Positional indexing broke silently the moment calories moved to the
+         front of the targets block: the check went on reading a figure that
+         correctly never changes, and would have passed with the repaint
+         deleted. Same family as this suite's other rule — scope the assertion
+         to the thing that was supposed to change. */
       const read = () => {
         const v = document.querySelector('#v-fuel');
-        return { html: v.innerHTML, stat: (v.querySelector('.stat .n') || {}).textContent };
+        const stat = [...v.querySelectorAll('.stat')]
+          .find(s => /^Protein/.test((s.querySelector('.l') || {}).textContent || ''));
+        return { html: v.innerHTML, stat: stat && stat.querySelector('.n').textContent };
       };
       const before = read();
       const plus = [...document.querySelectorAll('#v-fuel button')]
@@ -259,6 +267,72 @@ export default async function run() {
        clear the athlete made on purpose — the same bug, one import later. */
     t.eq('the backup carries the seed flag', r.flag, true);
     t.eq('with the cleared target still absent', r.target, undefined);
+  }
+
+  /* ---- all four targets are on the tab, not just two -------------------
+     Carbs and fat existed only as bars inside the food card, which show what
+     you have EATEN. Before anything is logged those read 0, so the numbers to
+     aim for were nowhere on Fuel. Assert on the rendered TAB — the derived
+     figures are what the athlete reads, and a check on macroTargets() alone
+     would pass whether or not anything put them on screen. */
+  {
+    const r = await page.evaluate(async () => {
+      STATE.profile.weightKg = 86; STATE.nutrition.weightKg = 86;
+      STATE.nutrition.kcalTarget = 2400;
+      setProteinTarget(165);
+      go('fuel'); render();
+      await new Promise(z => setTimeout(z, 200));
+      const v = document.querySelector('#v-fuel');
+      const txt = v.innerText;
+      const mt = macroTargets();
+      /* Scope to the targets grid, not the whole tab: the food card carries
+         its own "Carbs"/"Fat" bars, so a page-wide search for the word passes
+         whether or not the targets block gained anything. */
+      const label = [...v.querySelectorAll('.section-label')]
+        .find(e => /Today's targets/.test(e.textContent));
+      const grid = label && label.nextElementSibling;
+      const stats = grid ? [...grid.querySelectorAll('.stat')].map(s => ({
+        n: (s.querySelector('.n') || {}).textContent,
+        l: (s.querySelector('.l') || {}).textContent })) : [];
+      return { mt, stats, hasMacroHeading: /MACROS EATEN TODAY/.test(txt),
+        noNaN: !/NaN|undefined/.test(v.innerHTML) };
+    });
+    t.eq('the targets block carries four figures, not two', r.stats.length, 4);
+    const by = n => r.stats.find(s => (s.l || '').startsWith(n));
+    t.ok('calories are still there', !!by('Calories'), r.stats);
+    t.ok('protein is still there', !!by('Protein'), r.stats);
+    t.ok('carbs are on the tab now', !!by('Carbs'), r.stats);
+    t.ok('and so is fat', !!by('Fat'), r.stats);
+    /* The painted number must be the derived one, not a placeholder. */
+    t.eq('the carb figure is the calculated one', by('Carbs') && by('Carbs').n, r.mt.c + 'g');
+    t.eq('the fat figure is the calculated one', by('Fat') && by('Fat').n, r.mt.f + 'g');
+    /* Only calories and protein are settable. Labelling a derived number as
+       "yours" would advertise a control that does not exist. */
+    t.ok('carbs and fat say they are calculated',
+      /calculated/.test(by('Carbs').l) && /calculated/.test(by('Fat').l), r.stats);
+    t.ok('the eaten-macros bars are named as a section', r.hasMacroHeading, r);
+    t.ok('and nothing renders NaN or undefined', r.noNaN, r);
+  }
+  {
+    /* Before a calorie target exists there is nothing to derive from. Show a
+       dash, not a zero — a 0 g carb target is a prescription, not a blank. */
+    const r = await page.evaluate(async () => {
+      const kt = STATE.nutrition.kcalTarget;
+      STATE.nutrition.kcalTarget = null;
+      go('fuel'); render();
+      await new Promise(z => setTimeout(z, 200));
+      const v = document.querySelector('#v-fuel');
+      const label = [...v.querySelectorAll('.section-label')]
+        .find(e => /Today's targets/.test(e.textContent));
+      const stats = [...label.nextElementSibling.querySelectorAll('.stat')]
+        .map(s => ({ n: s.querySelector('.n').textContent, l: s.querySelector('.l').textContent }));
+      STATE.nutrition.kcalTarget = kt;
+      return { stats, noNaN: !/NaN|undefined/.test(v.innerHTML) };
+    });
+    const by = n => r.stats.find(s => (s.l || '').startsWith(n));
+    t.eq('with no calorie target the carb figure is a dash', by('Carbs') && by('Carbs').n, '—');
+    t.eq('and so is the fat figure', by('Fat') && by('Fat').n, '—');
+    t.ok('still no NaN anywhere', r.noNaN, r);
   }
 
   srv.close();
