@@ -880,6 +880,92 @@ That is the normal ratio for an audit written from outside the code, and it
 is the argument for asserting through the app's own predicates wherever one
 exists.
 
+## A 360-point inspection, and the range check that was a type check (v286)
+
+Asked for a genuine top-to-bottom inspection rather than another targeted
+probe — the observation being that every previous check had found something,
+which is evidence of narrow coverage, not of a rotten app. 365 individually
+named checkpoints across thirteen sections: exercise library, program engine,
+injury safety, progression, baseline, nutrition targets, meal planning, food
+logging, state, data safety, player and timers, special training, UI and
+security.
+
+**351 passed. 14 failed. Three were real, and one of those mattered.**
+
+### The one that mattered
+
+```js
+if(typeof STATE.adapt!=='number')STATE.adapt=1;
+```
+
+`rateSession()` clamps every increment to **0.9-1.30**. This repair only ever
+checked `typeof` — so a value outside that band survived every boot, and
+`prescribe()` reads it **RAW**. Measured on a Beginner whose tested plank is
+75 seconds:
+
+| stored `adapt` | plank | jacks | crunch |
+|---|---|---|---|
+| 1 (normal) | 45s | 25s | 8 |
+| 99 | **150s** | **150s** | **30** |
+| -50 | **15s** | **15s** | **3** |
+
+Nothing crashes — `prescribeCeiling()` caps the blow-up at 150s, which is
+exactly why no suite ever noticed. But 150-second planks AND 150 seconds of
+jumping jacks, on every movement of every session, is a badly wrong
+prescription that persists across relaunches with nothing on screen to
+explain it. Reachable from a corrupted or hand-edited import — the same
+threat model `importData()` already guards everywhere else.
+
+This is the mirror image of the `progressPtr` defect already recorded here: a
+**range test doing a type test's job**, run the other way round. The clamp now
+matches the band the incrementer itself enforces, and the check pins both
+ends plus an in-band value that must survive untouched.
+
+Two smaller ones alongside it: `nutrition.weightKg` accepted a string, which
+does not crash (`latestWeightKg()` reads `n.weightKg>0`, a string fails that,
+and it silently falls through to null) — but "silently produces no calorie
+target" is a field the athlete filled in going missing, so a non-number is
+dropped and the app asks again. And `logFood()` rounded a negative straight
+through, where one -500 row cancels a real meal out of the day's total.
+
+### Eleven of the fourteen were the inspection, not the app
+
+Recorded because each cost more to disprove than the real bug cost to fix,
+and every one is a trap this file already names:
+
+- **`week` is 1-based** (1..6 against `WEEKS_PER_CYCLE` 6); the check asserted
+  0-based.
+- **Warm-up items are plain strings, cool-down items are objects keyed `n`** —
+  the check demanded `.name` on both.
+- **`computeAssessment()` does not stamp protocol/testCount** — the assessment
+  FLOW does, when it writes the record. Checked the wrong function.
+- **The goal key is `gain`, not `build`** — so "a bulk exceeds maintenance"
+  compared maintenance against itself.
+- **The meal plan rebuilds on a diet change via `_planStillValid()`, not via
+  the stamp** — the stamp exists for inputs that leave the recipes legal, like
+  a calorie target. The recipes genuinely changed; only the stamp did not.
+- **A reference day is literally named "halal / no pork"** — a substring search
+  for pork matched the label promising its absence.
+- **`cueVol` is clamped by `cueVolPref()`, which also writes the clamped value
+  back** — the stored 99 is never read raw, so there is nothing to fix.
+- And the harness itself: serialising each check with `fn.toString()` to run it
+  in the page **destroys closures**, so 85 checks that captured a loop variable
+  reported "j is not defined" and looked like 85 failures.
+
+**The ratio is the point.** Eleven false alarms to three real findings is
+normal for an audit written from outside the code, and it is the argument for
+asserting through the app's own predicates — `jointRisky()`, `cueVolPref()`,
+`_planStillValid()` — rather than re-deriving each rule in the probe.
+
+### And one bad mutant worth recording
+
+The over-eager mutant for the adapt clamp (`STATE.adapt=1` replacing only the
+`if` line) left an `else` with no `if`, so the page never parsed and the suite
+crashed instead of reporting checks — which a grep for failure lines counted
+as **zero failures, i.e. an escape**. Read the mutant back: a mutant that
+breaks the parse tests nothing. Replacing the whole two-line block instead
+produced a valid over-eager mutant, and it was caught by all three checks.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

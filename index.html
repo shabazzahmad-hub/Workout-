@@ -1753,7 +1753,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='285';
+const APP_VERSION='286';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -9207,8 +9207,15 @@ function foodTotals(){const d=nutToday();const f=d.food||[];
   return {kcal:f.reduce((a,x)=>a+(x.kcal||0),0),p:f.reduce((a,x)=>a+(x.p||0),0),
           c:f.reduce((a,x)=>a+(x.c||0),0),f:f.reduce((a,x)=>a+(x.f||0),0),n:f.length};}
 function logFood(name,kcal,p,c,f,meal,portion){const d=nutToday();if(!Array.isArray(d.food))d.food=[];
-  d.food.push({name:String(name||'Meal').slice(0,60),kcal:Math.round(kcal||0),p:Math.round(p||0),
-    c:Math.round(c||0),f:Math.round(f||0),meal:meal||currentMealSlot(),at:Date.now(),
+  /* Food is never negative. `Math.round(kcal||0)` accepted a negative straight
+     through, and a single -500 row silently CANCELS a real meal out of the
+     day's total — an athlete would see a plausible number that simply is not
+     what they ate. Not reachable by typing today, but an import or a
+     mis-parsed AI/barcode reply is exactly the path everything else here
+     guards. Clamp at zero; a zero-calorie row (black coffee) stays legal. */
+  const _nn=v=>Math.max(0,Math.round(v||0));
+  d.food.push({name:String(name||'Meal').slice(0,60),kcal:_nn(kcal),p:_nn(p),
+    c:_nn(c),f:_nn(f),meal:meal||currentMealSlot(),at:Date.now(),
     /* Only written when there IS one. A manual add carries no portion, and an
        empty key on every row would grow every backup for nothing. */
     ...(cleanPortion(portion)?{portion:cleanPortion(portion)}:{})});
@@ -14077,8 +14084,27 @@ function normalizeState(){
      first, the exact bug the migration exists to fix. */
   if(typeof STATE.settings.voiceRate!=='number')STATE.settings.voiceRate=0.98;
   if(typeof STATE.settings.repTempo!=='number')STATE.settings.repTempo=3;
-  if(typeof STATE.adapt!=='number')STATE.adapt=1;   // adaptive-overload multiplier
+  /* RANGE, not just type. rateSession() clamps every increment to 0.9-1.30,
+     but this repair only ever checked typeof — so a value outside that band,
+     from a corrupted or hand-edited import, survived every boot and was read
+     RAW by prescribe(). Measured: a stored 99 pins every movement to
+     prescribeCeiling() (150s planks AND 150s of jumping jacks for a beginner
+     whose tested plank is 75s), and a stored -50 collapses everything to the
+     15s floor. Neither crashes — the ceiling caps the damage — but both are a
+     badly wrong prescription that persists across relaunches with nothing on
+     screen to explain it. Same family as "a range test doing a type test's
+     job", run the other way round. */
+  if(typeof STATE.adapt!=='number'||!isFinite(STATE.adapt))STATE.adapt=1;   // adaptive-overload multiplier
+  else STATE.adapt=clamp(STATE.adapt,0.9,1.30);                            // the band rateSession() itself enforces
+  // clamp removed                            // the band rateSession() itself enforces
   if(!STATE.nutrition||typeof STATE.nutrition!=='object'||Array.isArray(STATE.nutrition))STATE.nutrition={goal:'lose',sex:null,age:null,heightCm:null,activity:1.45,kcalTarget:null,days:{}};
+  /* weightKg drives the calorie target, the protein target and every bodyweight
+     estimate. A string here does not crash — latestWeightKg() reads `n.weightKg>0`,
+     which a string fails, so it silently falls through to measurements and then to
+     null — but "silently produces no target" is not a repair, it is a field the
+     athlete filled in going missing. Drop a non-number so the app asks again. */
+  if(STATE.nutrition.weightKg!=null&&(typeof STATE.nutrition.weightKg!=='number'||!isFinite(STATE.nutrition.weightKg)||STATE.nutrition.weightKg<=0))
+    delete STATE.nutrition.weightKg;
   /* nutrition.days is THREE athlete inputs in one map — the food log, the water
      count and the habit ticks — and it had no type repair at all, only a
      `!days` container check that a string or an array walks straight past.
