@@ -1753,7 +1753,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='283';
+const APP_VERSION='284';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -14226,8 +14226,20 @@ function normalizeState(){
    STATE.progressPtr=(isFinite(_p)&&_p>0)?Math.min(_p,SESSIONS_PER_CYCLE*TOTAL_CYCLES):0;}
   if(STATE.baseline!==null&&typeof STATE.baseline!=='object')STATE.baseline=null;
   if(!Array.isArray(STATE.scoreHistory))STATE.scoreHistory=[];
-  if(!STATE.logs||typeof STATE.logs!=='object')STATE.logs={};
-  if(!STATE.prs||typeof STATE.prs!=='object')STATE.prs={};
+  /* `typeof [] === 'object'`, so a bare typeof test lets an ARRAY through —
+     and both of these are keyed maps, never lists. The archived-runs repair
+     forty lines above already rejects exactly this shape
+     (`!Array.isArray(r.logs)`); the live maps had only half that guard.
+
+     It is not cosmetic. logs is keyed by progressPtr, so an athlete 300
+     sessions in whose logs arrived as an array from a corrupted import
+     serialises as a SPARSE array: measured at 1,573 bytes carrying 300
+     `null`s where the object shape is 79 bytes. Those nulls then travel in
+     every backup and come back on the next import. Same family as
+     "truthiness is not a membership test" — a container check has to test
+     the container's real shape, not just that it is an object. */
+  if(!STATE.logs||typeof STATE.logs!=='object'||Array.isArray(STATE.logs))STATE.logs={};
+  if(!STATE.prs||typeof STATE.prs!=='object'||Array.isArray(STATE.prs))STATE.prs={};
   // deep-profile defaults for installs created before the equipment/diet quiz
   /* This branch was unreachable. load() and importData() both do
      Object.assign(DEFAULT_STATE().profile, saved.profile), and the default gear
