@@ -1753,7 +1753,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='287';
+const APP_VERSION='288';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -10141,8 +10141,11 @@ function intakeHTML(){
   if(kcalT){const pct=Math.min(100,Math.round(t.kcal/kcalT*100));
     h+=`<div class="pbar${t.kcal>kcalT?'':' green'}" style="margin-top:8px"><i style="width:${pct}%"></i></div>
       <div class="tiny muted" style="margin-top:4px">${t.kcal<=kcalT?(kcalT-t.kcal)+' kcal left today':(t.kcal-kcalT)+' kcal over — that\'s one day, not the week.'}${adj>0?` <span style="color:var(--green);font-weight:700">· +${adj} earned from today's movement</span>`:''}</div>`;}
-  // macro split
-  h+=`<div class="row" style="gap:10px;margin-top:12px">
+  /* Named, not just drawn. Three unlabelled bars under a calorie figure read as
+     decoration — the athlete asked for macros to be shown and these were already
+     on screen. A heading is what turns them into a section you can look for. */
+  h+=`<div class="tiny" style="font-weight:800;letter-spacing:.4px;margin-top:14px;opacity:.75">MACROS EATEN TODAY</div>`;
+  h+=`<div class="row" style="gap:10px;margin-top:6px">
       ${_macroBar('Protein',t.p,mt?mt.p:0,'var(--fire-l)')}
       ${_macroBar('Carbs',t.c,mt?mt.c:0,'#3fd7e8')}
       ${_macroBar('Fat',t.f,mt?mt.f:0,'var(--gold)')}
@@ -12895,9 +12898,22 @@ function renderFuel(){
     <div class="tiny muted" style="margin:-8px 2px 14px">${GOAL_NOTE[n.goal]||''}</div>`;
   // daily targets
   const _pSet=proteinTargetSet(),_pCalc=proteinTargetCalc();
+  /* Carbs and fat used to exist only as bars inside the food card, which show
+     what you have EATEN against a target. Before anything is logged those bars
+     read 0 and the numbers to aim for were nowhere on the tab — so the targets
+     block answered "how many calories and how much protein" and said nothing
+     about the other two thirds of the plate. All four now sit together; the
+     grid wraps 2x2 on a phone. Carbs and fat are DERIVED (macroTargets: fat
+     ~27% of calories with an absolute and a per-kg floor, carbs fill the rest),
+     so they are labelled as calculated and never as a target the athlete set —
+     only calories and protein are settable, and saying otherwise would offer a
+     control that does not exist. */
+  const _mt=macroTargets();
   h+=`<div class="section-label">Today's targets</div><div class="grid2">
-    <div class="stat"><div class="n" style="color:var(--fire-l)">${prot?prot+'g':'—'}</div><div class="l">Protein${_pSet?' · yours':(_pCalc?' · calculated':'')}</div></div>
     <div class="stat"><div class="n" style="color:var(--gold)">${n.kcalTarget?n.kcalTarget:'—'}</div><div class="l">Calories${n.kcalTarget?'':' (set below)'}</div></div>
+    <div class="stat"><div class="n" style="color:var(--fire-l)">${prot?prot+'g':'—'}</div><div class="l">Protein${_pSet?' · yours':(_pCalc?' · calculated':'')}</div></div>
+    <div class="stat"><div class="n" style="color:#3fd7e8">${_mt?_mt.c+'g':'—'}</div><div class="l">Carbs${_mt?' · calculated':''}</div></div>
+    <div class="stat"><div class="n" style="color:var(--gold)">${_mt?_mt.f+'g':'—'}</div><div class="l">Fat${_mt?' · calculated':''}</div></div>
   </div>`;
   /* Protein was the one target the athlete could not state. It was computed
      from bodyweight and goal, full stop — so somebody who wanted 165 g had no
