@@ -439,6 +439,55 @@ export default async function run() {
     await browser.close();
   }
 
+  /* ---- logs and prs are keyed MAPS, never lists --------------------------
+     `typeof [] === 'object'`, so a bare typeof test lets an array straight
+     through. The archived-runs repair already rejects exactly this shape
+     (`!Array.isArray(r.logs)`); the live maps carried only half that guard.
+
+     It is not cosmetic, which is why the size is asserted and not just the
+     type: logs is keyed by progressPtr, so an athlete 300 sessions in whose
+     logs arrived as an array serialises SPARSE — a single real session
+     becomes ~1.5 KB of mostly `null` against 79 bytes for the object shape,
+     and those nulls then travel in every backup and return on the next
+     import. Asserted on the RAW stored value, not through a reader that
+     sanitises its own access. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await waitForBoot(page);
+    const r = await page.evaluate(() => {
+      STATE.onboarded = true;
+      STATE.logs = []; STATE.logs[300] = { done: true, ex: { plank: { sets: [true] } }, completedAt: '2026-08-01' };
+      STATE.prs = []; STATE.prs.plank = 75;
+      normalizeState();
+      const out = {
+        logsIsArray: Array.isArray(STATE.logs),
+        prsIsArray: Array.isArray(STATE.prs),
+        logsSerialised: JSON.stringify(STATE.logs).length,
+        nullsInLogs: (JSON.stringify(STATE.logs).match(/null/g) || []).length,
+      };
+      // a genuine object map must survive untouched — the repair must not be
+      // so eager that it throws away real training history
+      STATE.logs = { 12: { done: true, ex: { plank: { sets: [true] } } } };
+      STATE.prs = { plank: 75 };
+      normalizeState();
+      out.realLogsKept = STATE.logs && STATE.logs[12] && STATE.logs[12].done === true;
+      out.realPrsKept = STATE.prs && STATE.prs.plank === 75;
+      // and the app still works on top of the repaired shape
+      let builds = true; try { buildSession(0); } catch (e) { builds = false; }
+      out.builds = builds;
+      return out;
+    });
+    t.ok('an array of logs is repaired to a real keyed map', !r.logsIsArray, r);
+    t.ok('an array of prs is repaired too', !r.prsIsArray, r);
+    t.ok('so a backup carries no sparse-array nulls', r.nullsInLogs === 0, r);
+    t.ok('and stays small rather than bloating ~20x', r.logsSerialised < 200, r);
+    t.ok('a genuine object map of logs is left untouched', r.realLogsKept === true, r);
+    t.ok('and genuine PRs survive', r.realPrsKept === true, r);
+    t.ok('the app still builds a session afterwards', r.builds === true, r);
+    errors.filter(e => /render/.test(e)).forEach(e => t.fail('the map repair reached the render boundary', e));
+    await browser.close();
+  }
+
   srv.close();
   return t.finish();
 }

@@ -769,6 +769,56 @@ This is the same lesson as the escaped `formatFeel()` mutant one version
 earlier — a check that exercises one instance of a class proves nothing about
 the class.
 
+## A container check has to test the container's real shape (v284)
+
+Found by a pre-flight audit, not by a suite — the athlete asked for the seams
+to be checked before committing to a real training block, so the probe drove
+information ACROSS subsystems rather than asking whether screens render:
+does a measured max reach the prescription, does 40 honest sessions actually
+raise the target, does rating EASY differ from HARD, does a flagged joint
+propagate into every path including the focus bonus, does the meal plan
+rebuild when the target moves, does everything survive a reload.
+
+All of that held. What did not:
+
+```js
+if(!STATE.logs||typeof STATE.logs!=='object')STATE.logs={};
+```
+
+**`typeof [] === 'object'`, so an ARRAY walks straight through** — and `logs`
+and `prs` are keyed maps, never lists. The repair for ARCHIVED runs forty
+lines above already rejects exactly this shape
+(`...&&!Array.isArray(r.logs)`); the live maps carried only half the same
+guard. The codebase already knew the shape was illegal and checked for it in
+one place and not the other.
+
+It is not cosmetic, which is why the fix is asserted on SIZE and not only on
+type. `logs` is keyed by `progressPtr`, so an athlete 300 sessions in whose
+logs arrived as an array from a corrupted import serialises **sparse**:
+measured at **1,573 bytes carrying 300 `null`s** where the object shape is
+**79 bytes**. Those nulls then travel in every backup and come back on the
+next import. Same family as "truthiness is not a membership test" and
+"`!= null` is not is-absent" — the guard tested the wrong property of the
+value.
+
+Three mutants, all caught, and the third is the one worth keeping: replacing
+the guard with an unconditional `STATE.logs={}` fails a check that a genuine
+object map of real training history is left UNTOUCHED. A repair that always
+wipes would satisfy every "is it an array now?" assertion while destroying
+the data it exists to protect.
+
+**Four of the five things the audit first flagged were the probe, not the
+app**, and separating them was most of the work: `commitSession()` returns
+`undefined` on success AND refusal (read the log it wrote, not its return
+value); `sessionWork()` counts `st.sets` as an ARRAY of marked sets, so a
+faked `sets:3` reads as zero work and the completion gate correctly refused;
+`exAdapt` is written only by `rateExercise()`, a chip the athlete taps, so
+zero entries after 40 unattended sessions is correct; and total session
+volume is not comparable across session TYPES — a HIIT day against a
+strength day against a deload week says nothing, so progression has to be
+read from one anchored movement over time. Every one of those looked like an
+app bug in the first run.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
