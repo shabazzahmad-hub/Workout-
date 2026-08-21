@@ -1753,7 +1753,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='286';
+const APP_VERSION='287';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -11440,6 +11440,9 @@ function latestWeightKg(){
 }
 // ~1.8 g/kg for fat loss; a steeper cut needs more to hold onto muscle
 const PROT_MIN=40,PROT_MAX=400;
+/* The number a fresh install starts on. Seeded once by normalizeState() as an
+   athlete choice, never as a DEFAULT_STATE field — see the seed for why. */
+const PROT_DEFAULT=165;
 /* An explicit choice outranks the calculation, and is read BEFORE the weight
    guard so it still works for someone who has not logged a weight yet.
    Absent by default — a value here means "the athlete set this". */
@@ -12223,8 +12226,17 @@ const REF_DAYS=[
     {slot:'Snack',items:[['Almonds',28],['Apple',1]]}]},
   {name:'Chickpea and chicken',meals:[
     {slot:'Breakfast',items:[['Egg',3],['GF oats',80],['Peach',1]]},
-    {slot:'Lunch',items:[['Chickpeas',250],['White rice, cooked',250],['Tomatoes',300],['Olive oil',14]]},
-    {slot:'Dinner',items:[['Chicken breast',150],['Potato',400],['Green beans',250]]},
+    /* The starch base came down from 250 g rice / 400 g potato. This is the
+       tightest day in the set going DOWNWARD: it carried 943 kcal of starch at
+       1x, and even at the 0.5 floor that is 471 kcal against 295 kcal of fixed
+       food and 120 of oil — so an omnivore already landed 85 kcal over on the
+       120 g / 1700 kcal bar, spending 85 of a 150 kcal allowance before any
+       substitution. Honest plant anchors cost 83 kcal more than the meat ones,
+       which tipped it to 170 and over the bar. Trimming the base is what gives
+       the floor somewhere to go; the 1.6x cap still lets the day stretch to the
+       2,800 kcal bar. */
+    {slot:'Lunch',items:[['Chickpeas',250],['White rice, cooked',200],['Tomatoes',300],['Olive oil',14]]},
+    {slot:'Dinner',items:[['Chicken breast',150],['Potato',300],['Green beans',250]]},
     {slot:'Snack',items:[['Cottage cheese',200],['Grapes',150]]}]},
   {name:'Sardines on the go',meals:[
     {slot:'Breakfast',items:[['Skyr',200],['GF oats',70],['Almonds',28],['Banana',1]]},
@@ -12352,8 +12364,25 @@ function scaleDay(day,targetP,targetK){
       /* Same category FIRST, then anywhere. Restricting to the category meant a
          vegan lost every meat item outright rather than getting tofu, and the
          day collapsed 20-40 g under its protein target. */
+      /* An anchor must be replaced by an ANCHOR, and closest-ratio alone does
+         not deliver that. For a vegan with soy, tree-nut, peanut and gluten
+         allergies the whole meat category is unsafe, so the sort fell through
+         to "anywhere" and handed back Spinach for Turkey mince — and for
+         Salmon — because spinach's protein-per-calorie (13.3) sits nearer
+         turkey's (17.2) than any lentil's (7.8). Twelve safe pulses were
+         available and none was reachable.
+         It cannot self-correct, which is what makes it worse than a poor
+         choice of food: spinach is cat 'veg', so the day ends up with no
+         anchor at all, scaleDay()'s `anchorP>0` test fails, and sp stays
+         pinned at 1 — the single dial that moves protein is dead. The day
+         therefore falls further behind the harder the target gets: measured
+         at 9 g short on a 155 g target, 19 g at 165 g, 29 g at 175 g.
+         Ratio is the right tiebreak, but only among foods that can carry the
+         protein. A non-anchor want keeps the old two-tier order exactly. */
+      const wantAnchor=REF_ANCHOR_CATS.includes(want[4]);
+      const tier=x=>x[4]===want[4]?0:((wantAnchor&&REF_ANCHOR_CATS.includes(x[4]))?1:2);
       const alt=FOODS.map((x,xi)=>[x,xi]).filter(([x])=>foodOk(x)).sort((a,b)=>{
-        const sa=a[0][4]===want[4]?0:1,sb=b[0][4]===want[4]?0:1;
+        const sa=tier(a[0]),sb=tier(b[0]);
         if(sa!==sb)return sa-sb;
         return Math.abs(foodEfficiency(a[0])-foodEfficiency(want))-Math.abs(foodEfficiency(b[0])-foodEfficiency(want));
       })[0];
@@ -12874,7 +12903,7 @@ function renderFuel(){
      from bodyweight and goal, full stop — so somebody who wanted 165 g had no
      way to say so, and every amount on the Reference tab and the whole
      shopping list stayed sized to a number they disagreed with. */
-  {const _base=prot||_pCalc||150;
+  {const _base=prot||_pCalc||PROT_DEFAULT;
    h+=`<div class="row" style="gap:8px;align-items:center;margin:8px 2px 0;flex-wrap:wrap">
     <span class="tiny muted" style="font-weight:800;letter-spacing:.04em">PROTEIN TARGET</span>
     <button class="chip" onclick="setProteinTarget(${_base-5})" aria-label="5 grams less">−5</button>
@@ -14173,6 +14202,20 @@ function normalizeState(){
   {const _pt=STATE.nutrition.proteinTarget;
    if(_pt!==undefined&&(typeof _pt!=='number'||!isFinite(_pt)||_pt<PROT_MIN||_pt>PROT_MAX))
      delete STATE.nutrition.proteinTarget;}
+  /* The standing protein target, seeded ONCE. It is deliberately NOT a
+     DEFAULT_STATE value: proteinTargetSet() reads absent as "the athlete has
+     not chosen", so a default there would make that test true forever and kill
+     proteinTargetCalc() — the voicePitch trap verbatim. It would also break the
+     "use calculated" chip, because loadState() merges stored nutrition OVER
+     DEFAULT_STATE().nutrition, so the deleted key would come back on the next
+     load. The flag is what makes clearProteinTarget() stick, and it travels in
+     a backup on purpose — an old file re-seeding over a deliberate clear is the
+     same bug one import later. Runs after the repair above so junk is dropped
+     first, and leaves any other stored number alone as a real choice. */
+  if(!STATE.nutrition._protSeed){
+    if(STATE.nutrition.proteinTarget===undefined)STATE.nutrition.proteinTarget=PROT_DEFAULT;
+    STATE.nutrition._protSeed=true;
+  }
   /* kcalTarget had NO type repair at all, and it is the number every food
      surface is measured against. A stored string '2400' made todayKcalBudget()
      concatenate rather than add. Coerce a numeric string back to a number

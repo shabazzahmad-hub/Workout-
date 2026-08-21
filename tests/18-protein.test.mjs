@@ -175,6 +175,92 @@ export default async function run() {
     t.eq('and hands back to the calculation', r.used, r.calc);
   }
 
+  /* ---- 165 g is the standing target, seeded once ------------------------
+     The athlete asked for 165 g to be where the app starts. The tempting fix
+     is a DEFAULT_STATE value, and it is wrong twice over: proteinTargetSet()
+     reads absent as "not chosen", so a default makes that test true forever
+     and kills proteinTargetCalc() (voicePitch, verbatim) — and loadState()
+     merges stored nutrition OVER DEFAULT_STATE().nutrition, so the key deleted
+     by clearProteinTarget() would come straight back on the next load. It is
+     seeded once behind a flag instead. Each block below builds its own state:
+     what the block before left behind is not a contract. */
+  {
+    const r = await page.evaluate(() => {
+      /* A genuinely fresh install: no flag, no target, and a weight that makes
+         the calculation land somewhere ELSE, so a seed that merely agreed with
+         the calculator could not be mistaken for a working seed. */
+      STATE.profile.weightKg = 86; STATE.profile.goal = 'lose';
+      delete STATE.nutrition.proteinTarget; delete STATE.nutrition._protSeed;
+      const calcBefore = proteinTargetCalc();
+      normalizeState();                       // the boot path, not a hand-read
+      return { stored: STATE.nutrition.proteinTarget, used: proteinTargetG(),
+        flag: STATE.nutrition._protSeed, calc: calcBefore,
+        inDefault: DEFAULT_STATE().nutrition.proteinTarget };
+    });
+    t.eq('a fresh install starts on 165 g', r.stored, 165);
+    t.eq('and 165 g is the number everything reads', r.used, 165);
+    t.ok('the calculation for this athlete says something else', r.calc !== 165, r);
+    t.eq('the seed marks itself done', r.flag, true);
+    /* The structural guard. This is what a later "simplification" into a
+       DEFAULT_STATE field would break, and nothing else here would notice. */
+    t.eq('165 is NOT a DEFAULT_STATE field', r.inDefault, undefined);
+  }
+  {
+    const r = await page.evaluate(() => {
+      STATE.profile.weightKg = 86;
+      STATE.nutrition.proteinTarget = 200; delete STATE.nutrition._protSeed;
+      normalizeState();
+      const kept = STATE.nutrition.proteinTarget, flag = STATE.nutrition._protSeed;
+      /* The flag has to be set on the boot path whether or not this boot
+         actually seeded anything. Setting it only inside the branch that wrote
+         a value leaves everyone who already had a target unflagged — so the
+         first time THEY ask for the calculation back, the next boot re-seeds
+         165 over it. Same shape as dietRepaired: set in one branch, and the
+         other branches have to account for it too. */
+      clearProteinTarget(); normalizeState();
+      return { kept, flag, afterClear: STATE.nutrition.proteinTarget };
+    });
+    t.eq('a number the athlete already chose is left alone', r.kept, 200);
+    t.eq('and the boot still marks the seed done', r.flag, true);
+    t.eq('so clearing it later is not undone on the next boot', r.afterClear, undefined);
+  }
+  {
+    const r = await page.evaluate(() => {
+      STATE.profile.weightKg = 86;
+      delete STATE.nutrition.proteinTarget; delete STATE.nutrition._protSeed;
+      normalizeState();                       // seed it, as a fresh install would
+      clearProteinTarget();                   // then ask for the calculation back
+      normalizeState();                       // and reload
+      return { stored: STATE.nutrition.proteinTarget, used: proteinTargetG(),
+        calc: proteinTargetCalc() };
+    });
+    /* Without the flag this is the bug: "use calculated" works until you close
+       the app, and the seed puts 165 back every single load. */
+    t.eq('asking for the calculation back survives a reload', r.stored, undefined);
+    t.eq('and the calculated number is what gets used', r.used, r.calc);
+  }
+  {
+    const r = await page.evaluate(async () => {
+      STATE.profile.weightKg = 86;
+      delete STATE.nutrition.proteinTarget; delete STATE.nutrition._protSeed;
+      normalizeState(); clearProteinTarget();
+      let blob = null;
+      const realURL = URL.createObjectURL, realClick = HTMLAnchorElement.prototype.click;
+      URL.createObjectURL = b => { blob = b; return 'blob:stub'; };
+      HTMLAnchorElement.prototype.click = function () {};
+      try { await exportData(); } finally {
+        URL.createObjectURL = realURL; HTMLAnchorElement.prototype.click = realClick;
+      }
+      const backup = JSON.parse(await blob.text());
+      return { flag: backup.nutrition && backup.nutrition._protSeed,
+        target: backup.nutrition && backup.nutrition.proteinTarget };
+    });
+    /* If the flag did not travel, restoring this file would re-seed 165 over a
+       clear the athlete made on purpose — the same bug, one import later. */
+    t.eq('the backup carries the seed flag', r.flag, true);
+    t.eq('with the cleared target still absent', r.target, undefined);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
