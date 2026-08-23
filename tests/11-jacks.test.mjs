@@ -255,6 +255,133 @@ export default async function run() {
     t.ok('every space substitute is a real exercise', r.allExist, r);
   }
 
+  /* ---- rucking: the third way to pay the step target -------------------
+     Deliberately NOT modelled like the bike. On a trainer intensity is a dial,
+     so BIKE_LEVELS can be a fixed MET table. Under a ruck the intensity is the
+     load RELATIVE TO the athlete, so the MET is computed from their own
+     bodyweight — 45 lb is moderate for a 250 lb man and hard for a 150 lb one.
+     If that arithmetic over-credits, a ruck quietly eats the deficit it is
+     supposed to serve, which is this suite's whole reason for existing. */
+  {
+    const r = await page.evaluate(() => {
+      STATE.nutrition.weightKg = 86.2;          // 190 lb
+      STATE.profile.weightKg = 86.2;
+      const o = {};
+      setRuckLoad(25); setRuckPace('brisk');
+      o.met25 = +ruckMET('brisk').toFixed(3);
+      o.steps25 = ruckStepsPerMin('brisk');
+      setRuckLoad(45);
+      o.met45 = +ruckMET('brisk').toFixed(3);
+      o.steps45 = ruckStepsPerMin('brisk');
+      /* The SAME plate on a heavier athlete has to be worth LESS per minute —
+         that is the whole reason this is computed rather than tabulated. */
+      STATE.nutrition.weightKg = 130; STATE.profile.weightKg = 130;
+      o.met45heavy = +ruckMET('brisk').toFixed(3);
+      STATE.nutrition.weightKg = 86.2; STATE.profile.weightKg = 86.2;
+      setRuckLoad(25);
+      /* An unloaded walk is the floor: gross 3.8 minus 1.0 resting. */
+      const kg = 86.2, unloadedNet = 3.8 - 1;
+      o.unloadedNet = +unloadedNet.toFixed(3);
+      o.pct25 = Math.round(ruckLoadPct() * 100);
+      setRuckLoad(45); o.pct45 = Math.round(ruckLoadPct() * 100);
+      setRuckLoad(25);
+      return o;
+    });
+    /* Net, not gross. stepKcal() is calibrated net of resting, so a gross ruck
+       figure would credit ~20% more than was earned — the exact mistake the
+       bike's own comment exists to prevent. */
+    t.ok('a loaded walk is worth more than an unloaded one', r.met25 > r.unloadedNet, r);
+    t.ok('and a heavier plate is worth more again', r.met45 > r.met25, r);
+    /* The property a fixed MET table cannot express. */
+    t.ok('the same plate is worth LESS to a heavier athlete', r.met45heavy < r.met45, r);
+    t.eq('the load share is reported as a percentage of bodyweight', r.pct25, 13);
+    t.eq('and moves with the plate', r.pct45, 24);
+    /* Sanity against the real world: brisk rucking is 110-120 steps a minute,
+       and a figure well outside that means the arithmetic drifted. */
+    t.ok('brisk under a 25 lb plate lands near real rucking cadence',
+      r.steps25 >= 100 && r.steps25 <= 130, r);
+    t.ok('and a 45 lb plate is higher but not absurd',
+      r.steps45 > r.steps25 && r.steps45 <= 160, r);
+  }
+  {
+    const r = await page.evaluate(() => {
+      STATE.nutrition.weightKg = 86.2; STATE.profile.weightKg = 86.2;
+      const o = {};
+      setCardioMode('ruck');
+      o.mode = cardioMode();
+      setRuckLoad(25); setRuckPace('brisk'); setRuckUnit('min'); setRuckVal(45);
+      const w = ruckWork();
+      o.min = w.min; o.steps = w.steps; o.kcal = w.kcal;
+      o.miles = +(w.km * 0.621371).toFixed(2);
+      /* Every way of paying the target ADDS. An athlete who walked, rode and
+         rucked in one day earned all three — a ruck that replaced the others
+         in stepEquivalent() would silently delete work already done. */
+      /* Zero the walked steps FIRST. The seeded athlete already has some, so
+         SETTING them to 3000 was overwriting a larger number and the delta
+         came back negative — the check was measuring its own bad setup. */
+      const realSteps = nutToday().steps;
+      nutToday().steps = 0;
+      const only = stepEquivalent();
+      nutToday().steps = 3000;
+      o.addsToWalking = stepEquivalent() - only;
+      nutToday().steps = realSteps;
+      /* Switching currency re-expresses the SAME ruck, it does not
+         reinterpret the number: 45 minutes must come back as ~2.4 miles. */
+      setRuckUnit('dist');
+      o.asDist = +(movement().rval * 0.621371).toFixed(1);
+      setRuckUnit('min');
+      o.backToMin = movement().rval;
+      /* An unknown mode must not be STORED. Reading it back through
+         cardioMode() proves nothing — that getter sanitises its own read, so
+         it answers 'jacks' whether or not the junk went into STATE and would
+         then travel in every backup. Assert on STATE. */
+      setCardioMode('helicopter');
+      o.junkStored = STATE.nutrition.cardioMode;
+      o.junkMode = cardioMode();
+      setCardioMode('ruck');
+      return o;
+    });
+    t.eq('ruck is a real cardio mode', r.mode, 'ruck');
+    t.eq('45 logged minutes stay 45', r.min, 45);
+    /* 3.2 mph for 45 min is 2.4 miles — the pace table and the distance
+       conversion have to agree, or the athlete is told a lie either way. */
+    t.eq('and cover the distance that pace implies', r.miles, 2.4);
+    t.ok('the ruck is worth real steps', r.steps > 4000 && r.steps < 6500, r);
+    t.ok('and real calories', r.kcal > 150 && r.kcal < 320, r);
+    t.eq('walked steps still count on top of it', r.addsToWalking, 3000);
+    t.eq('switching to distance re-expresses the same ruck', r.asDist, 2.4);
+    t.eq('and switching back returns the minutes', r.backToMin, 45);
+    t.eq('an unknown mode is never written to STATE', r.junkStored, 'jacks');
+    t.eq('and reads back as the fallback', r.junkMode, 'jacks');
+  }
+  {
+    /* Junk in the stored plate must not travel in a backup. ruckLoadLb()
+       clamps its own read, so asserting on the OUTPUT proves nothing — assert
+       the junk is gone from STATE. */
+    const r = await page.evaluate(() => {
+      const o = {};
+      STATE.profile.ruckLb = 9999; normalizeState();
+      o.absurd = STATE.profile.ruckLb;
+      STATE.profile.ruckLb = 'heavy'; normalizeState();
+      o.stringy = STATE.profile.ruckLb;
+      STATE.profile.ruckLb = -5; normalizeState();
+      o.negative = STATE.profile.ruckLb;
+      STATE.profile.ruckLb = 30; normalizeState();
+      o.valid = STATE.profile.ruckLb;
+      STATE.profile.ruckPace = 'Brisk'; normalizeState();   // capital B is not a pace
+      o.badPace = STATE.profile.ruckPace;
+      STATE.profile.ruckPace = 'hills'; normalizeState();
+      o.goodPace = STATE.profile.ruckPace;
+      return o;
+    });
+    t.eq('an absurd plate is dropped', r.absurd, undefined);
+    t.eq('a string plate is dropped', r.stringy, undefined);
+    t.eq('a negative plate is dropped', r.negative, undefined);
+    t.eq('a real plate survives untouched', r.valid, 30);
+    t.eq('a pace that is not in the list is dropped', r.badPace, undefined);
+    t.eq('and a real one survives', r.goodPace, 'hills');
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

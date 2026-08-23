@@ -1282,6 +1282,57 @@ matters more here than usual because this one is itself a bug report. It
 repaints on every keystroke through `updQtyTotal()`, and on sheet OPEN — an
 import that dropped a macro has to say so before Save is tapped, not after.
 
+## A ruck is not a bike, and the difference is the whole model (v294)
+
+"I just bought a GORUCK Rucker 5.0 (25L)" with 25, 30 and 45 lb plates.
+Rucking is now the third way to pay the step target, beside jumping jacks and
+the bike — and it is deliberately NOT modelled like either.
+
+**On a trainer, intensity is a dial**, so `BIKE_LEVELS` can be a fixed table of
+METs. **Under a ruck, intensity is the load RELATIVE TO the athlete** — 45 lb
+is a moderate ruck for a 250 lb man and a hard one for a 150 lb one — so the
+MET has to be computed from their own bodyweight, not looked up. The energy
+cost of walking scales close to linearly with TOTAL mass moved, which is the
+dominant term for back-carried loads under about a third of bodyweight:
+
+```
+gross = pace.gross x (bodyweight + load) / bodyweight
+net   = gross - 1.0        <- resting cost, same convention as BIKE_LEVELS
+```
+
+Net, because `stepKcal()` is calibrated net; a gross ruck figure would credit
+~20% more than was earned, which is the exact mistake the bike's own comment
+exists to prevent. The check that pins this is **"the same plate is worth LESS
+to a heavier athlete"** — a property a fixed table cannot express at all.
+
+Sanity against the world, which is what stops the arithmetic drifting: brisk
+under a 25 lb plate lands at **115 steps/min**, and real rucking cadence at
+3.2 mph is 110-120.
+
+**The load share is computed, because it is the number nobody works out for
+themselves.** 45 lb on a 190 lb athlete is 24%; the usual guidance is to start
+near 10% and build toward a third over months. It warns past 20% and does not
+block — the athlete is holding the plate.
+
+**Per-minute distance is meaningless for walking.** The bike covers 0.23-0.4 km
+in a minute; a ruck covers 0.086, which renders as "0.1 km a minute" and tells
+nobody anything. The card shows the SPEED instead.
+
+### Two checks that were testing themselves
+
+- `setCardioMode('helicopter')` then reading `cardioMode()` passes whether or
+  not the junk was stored, because that getter sanitises its own read — and the
+  junk would then travel in every backup. **Assert on `STATE`.** The mutant
+  that dropped the membership test escaped until that changed.
+- Suite 07 compared `JSON.stringify(movement())` against a hardcoded literal,
+  so a third mode adding three fields broke it — and it compared key ORDER too.
+  Assert the property (nothing undefined, every counter a real zero), not the
+  serialisation.
+
+And one setup bug worth the same note as the rest: the additivity check SET
+walked steps to 3000 on a seeded athlete who already had more, so the delta
+came back negative. Zero it first, then add.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

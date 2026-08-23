@@ -1774,7 +1774,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='293';
+const APP_VERSION='294';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -11096,6 +11096,66 @@ const BIKE_LEVELS=[
    cue:'1 min hard / 1 min easy — the same job in the least time'},
 ];
 function bikeLevel(k){return BIKE_LEVELS.find(b=>b.k===k)||BIKE_LEVELS[1];}
+/* ---- Rucking: the third way to pay the step target ----------------------
+   It is deliberately NOT modelled like the bike. On a trainer the intensity is
+   a dial, so BIKE_LEVELS can be a fixed table of METs. Under a ruck the
+   intensity is how heavy the load is RELATIVE TO YOU — 45 lb is a moderate
+   ruck for a 250 lb man and a hard one for a 150 lb woman — so the MET has to
+   be computed from the athlete's own bodyweight, not looked up.
+
+   The energy cost of walking scales close to linearly with the TOTAL mass
+   being moved, and that is the dominant term for back-carried loads under
+   about a third of bodyweight. So the pace table holds the UNLOADED gross
+   figure and the load multiplies it:
+
+     gross = pace.gross x (bodyweight + load) / bodyweight
+     net   = gross - 1.0        <- the resting cost, same as BIKE_LEVELS
+
+   Net, because stepKcal() is calibrated net; comparing a gross ruck figure
+   against a net walking figure would credit ~20% more than was earned. */
+const RUCK_PACES=[
+  {k:'easy', label:'Easy',  mph:2.5, gross:3.0, rpe:'RPE 3–4',
+   cue:'conversational the whole way — recovery pace, and where a first ruck belongs'},
+  {k:'brisk',label:'Brisk', mph:3.2, gross:3.8, rpe:'RPE 5–6',
+   cue:'short sentences, breathing clearly audible — the default'},
+  {k:'fast', label:'Fast',  mph:3.8, gross:5.0, rpe:'RPE 7–8',
+   cue:'a few words at a time, close to the point you would rather jog'},
+  {k:'hills',label:'Hills', mph:2.8, gross:6.0, rpe:'RPE 7–9',
+   cue:'slower over the ground, harder on the legs and lungs — the best value here'},
+];
+function ruckPace(k){return RUCK_PACES.find(p=>p.k===k)||RUCK_PACES[1];}
+/* The plate, carried forward as the athlete's default the same way bikeLevel
+   is. Stored in POUNDS because that is what is stamped on a ruck plate
+   everywhere they are sold, and converted at the point of use — the opposite
+   of the bodyweight convention on purpose, and the label always says lb. */
+const RUCK_PLATES=[10,20,25,30,35,45];
+const RUCK_LB_MAX=60;
+function ruckLoadLb(){
+  const v=STATE.profile&&STATE.profile.ruckLb;
+  return (typeof v==='number'&&isFinite(v)&&v>0)?Math.min(v,RUCK_LB_MAX):RUCK_PLATES[2];
+}
+function ruckLoadKg(){return ruckLoadLb()*0.453592;}
+/* Share of bodyweight is the number that decides whether a load is sensible,
+   which is why it is computed rather than left for the athlete to work out. */
+function ruckLoadPct(){
+  const kg=latestWeightKg();
+  return (kg>0)?ruckLoadKg()/kg:0;
+}
+function ruckMET(k){
+  const kg=latestWeightKg()||80;
+  const gross=ruckPace(k).gross*(kg+ruckLoadKg())/kg;
+  return Math.max(0.5,gross-1);
+}
+/* Unlike bikeStepsPerMin(), these are NOT pure functions of the level — they
+   read the stored load and the athlete's weight, so they move when either
+   does. That is the point. */
+function ruckStepsPerMin(k){return Math.round(ruckMET(k)*35);}
+function ruckKcalPerMin(k){return ruckMET(k)*3.5*(latestWeightKg()||80)/200;}
+function ruckKmPerMin(k){return ruckPace(k).mph*1.60934/60;}
+function ruckMinutesFor(steps,k){
+  const per=ruckStepsPerMin(k);
+  return (per>0&&steps>0)?Math.ceil(steps/per):0;
+}
 // Mirrors stepKcal()'s constant. Kept as one function so the two can never drift.
 function kcalPerStep(){return 0.0005*(latestWeightKg()||80);}
 function bikeKcalPerMin(k){return bikeLevel(k).met*3.5*(latestWeightKg()||80)/200;}
@@ -11123,6 +11183,7 @@ function bikeNeed(steps,k){
     kcal:Math.ceil(steps*kcalPerStep())};
 }
 const BIKE_UNITS=[['min','Minutes'],['dist','Distance'],['kcal','Calories']];
+const RUCK_UNITS=[['min','Minutes'],['dist','Distance'],['kcal','Calories']];
 
 /* ---- Making the step target up with jumping jacks -------------------------
    The bike was the only way to pay a step debt, and a trainer is the least
@@ -11172,12 +11233,15 @@ const JACK_UNITS=[['min','Minutes'],['reps','Reps'],['kcal','Calories']];
 function jackUnitLabel(u){return u==='min'?'min':(u==='reps'?'reps':'kcal');}
 /* Which currency the Movement card is working in. Jacks by default: they need
    nothing, they travel, and the bike is a thing you have to be at home to use. */
+/* MEMBERSHIP, not a chain of equality tests — the third mode is exactly where
+   a `m==='bike'?'bike':'jacks'` shape starts silently swallowing new values. */
+const CARDIO_MODES=['jacks','bike','ruck'];
 function cardioMode(){
-  try{const m=STATE.nutrition&&STATE.nutrition.cardioMode;return m==='bike'?'bike':'jacks';}
+  try{const m=STATE.nutrition&&STATE.nutrition.cardioMode;return CARDIO_MODES.includes(m)?m:'jacks';}
   catch(e){return 'jacks';}
 }
 function setCardioMode(m){
-  const n=nut();n.cardioMode=(m==='bike')?'bike':'jacks';
+  const n=nut();n.cardioMode=CARDIO_MODES.includes(m)?m:'jacks';
   save();renderFuel();haptic(8);
 }
 function bikeUnitLabel(u){return u==='min'?'min':(u==='dist'?distUnit():'kcal');}
@@ -11194,8 +11258,14 @@ function movement(){
   const unit=BIKE_UNITS.some(u=>u[0]===t.bikeUnit)?t.bikeUnit:'min';
   const jlvl=JACK_LEVELS.some(b=>b.k===t.jackLvl)?t.jackLvl:'steady';
   const junit=JACK_UNITS.some(u=>u[0]===t.jackUnit)?t.jackUnit:'min';
+  /* Same carry-forward as bikeLvl: nutToday() is a fresh object every day, so
+     without the profile fallback the pace would reset every morning. */
+  const rlvl=RUCK_PACES.some(p=>p.k===t.ruckLvl)?t.ruckLvl
+    :(((STATE.profile&&STATE.profile.ruckPace)&&RUCK_PACES.some(p=>p.k===STATE.profile.ruckPace))?STATE.profile.ruckPace:'brisk');
+  const runit=RUCK_UNITS.some(u=>u[0]===t.ruckUnit)?t.ruckUnit:'min';
   return {steps:Math.round(num(t.steps,100000)),val:num(t.bikeVal,100000),unit,lvl,
-    jval:num(t.jackVal,100000),junit,jlvl};
+    jval:num(t.jackVal,100000),junit,jlvl,
+    rval:num(t.ruckVal,100000),runit,rlvl};
 }
 /* The jack session in every currency at once, same shape as bikeRide(). */
 function jackMinutes(){
@@ -11262,7 +11332,24 @@ function bikeRide(){
 }
 /* What the day is worth in steps: walked, jacked and ridden together. All
    three are the same currency by construction, so they simply add. */
-function stepEquivalent(){return movement().steps+bikeRide().steps+jackWork().steps;}
+function ruckMinutes(){
+  const m=movement();
+  if(!m.rval)return 0;
+  if(m.runit==='min')return Math.min(600,m.rval);
+  if(m.runit==='dist')return Math.min(600,m.rval/ruckKmPerMin(m.rlvl));   // canonical km
+  return Math.min(600,m.rval/ruckKcalPerMin(m.rlvl));
+}
+// The ruck in all three currencies at once, same shape as bikeRide().
+function ruckWork(){
+  const m=movement(),min=ruckMinutes();
+  return {min:Math.round(min),
+    steps:Math.round(min*ruckStepsPerMin(m.rlvl)),
+    km:min*ruckKmPerMin(m.rlvl),
+    kcal:Math.round(min*ruckKcalPerMin(m.rlvl))};
+}
+/* Every way of paying the target counts, and they add. An athlete who walked,
+   rode and rucked in one day earned all three. */
+function stepEquivalent(){return movement().steps+bikeRide().steps+jackWork().steps+ruckWork().steps;}
 /* recalcKcalFromStored() prices activity ONCE, from a fixed onboarding answer
    (sitting / lightly active / moderately active / ...), and never looks at it
    again. A day that clears the step target by 8,000 and a day that clears it
@@ -11356,6 +11443,48 @@ function setBikeUnit(u){
    Which makes calories the input to trust when you are not sure which chip to
    pick — it is the only one that cannot be thrown off by picking wrong. The
    card says so. */
+function setRuckVal(v){
+  const t=nutToday();const m=movement();
+  let n=Math.max(0,+v||0);
+  if(m.runit==='dist')n=showToKm(n);
+  const cap=m.runit==='min'?600:(m.runit==='dist'?100:8000);
+  t.ruckVal=Math.min(cap,Math.round(n*100)/100);
+  syncStepHabit();save();renderFuel();
+}
+function addRuckVal(d){
+  const m=movement();
+  const shown=m.runit==='dist'?kmToShow(m.rval):m.rval;
+  setRuckVal(Math.max(0,Math.round((shown+d)*10)/10));
+  haptic(8);
+}
+function ruckStep(u){return u==='min'?5:(u==='dist'?0.5:50);}
+/* Switching currency re-expresses the SAME ruck, exactly as setBikeUnit does. */
+function setRuckUnit(u){
+  if(!RUCK_UNITS.some(x=>x[0]===u))return;
+  const t=nutToday();const m=movement();const min=ruckMinutes();
+  t.ruckUnit=u;
+  if(min>0){
+    t.ruckVal=u==='min'?Math.round(min)
+      :(u==='dist'?Math.round(min*ruckKmPerMin(m.rlvl)*100)/100
+                  :Math.round(min*ruckKcalPerMin(m.rlvl)));
+  }
+  syncStepHabit();save();renderFuel();
+}
+function setRuckPace(k){
+  const t=nutToday();t.ruckLvl=ruckPace(k).k;
+  if(!STATE.profile)STATE.profile={};
+  STATE.profile.ruckPace=ruckPace(k).k;
+  syncStepHabit();save();renderFuel();
+}
+/* The plate. Changing it changes what every minute already logged today was
+   worth, which is correct — you did not carry two different loads on one walk,
+   so the figure re-prices rather than splitting. */
+function setRuckLoad(lb){
+  const n=Math.max(1,Math.min(RUCK_LB_MAX,Math.round(+lb||0)));
+  if(!STATE.profile)STATE.profile={};
+  STATE.profile.ruckLb=n;
+  syncStepHabit();save();renderFuel();haptic(8);
+}
 function setBikeLvl(k){
   const t=nutToday();t.bikeLvl=bikeLevel(k).k;
   // Persist as the athlete's carried-forward default — bikeLvl itself is a
@@ -11546,17 +11675,65 @@ function movementHTML(){
   h+=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Make it up with</div>
     <div class="daypick" style="margin:0 0 4px">
       <button class="${mode==='jacks'?'on':''}" onclick="setCardioMode('jacks')">🤸 Jumping jacks</button>
-      <button class="${mode==='bike'?'on':''}" onclick="setCardioMode('bike')">🚴 Bike</button></div>
+      <button class="${mode==='bike'?'on':''}" onclick="setCardioMode('bike')">🚴 Bike</button>
+      <button class="${mode==='ruck'?'on':''}" onclick="setCardioMode('ruck')">🎒 Ruck</button></div>
     <div class="tiny muted" style="margin-bottom:12px">${mode==='jacks'
       ? 'Nothing to set up and nothing to carry — a hotel room or a friend&#39;s spare floor is enough.'
-      : 'Lowest-impact option, and the easiest to hold a steady effort on. Needs the trainer.'}</div>`;
+      : mode==='bike'
+      ? 'Lowest-impact option, and the easiest to hold a steady effort on. Needs the trainer.'
+      : 'Walking under load. Outdoors, no impact to speak of, and the only one here that also loads your legs and spine while it does the cardio.'}</div>`;
   if(work.min&&mode==='bike')
     h+=`<div class="tiny muted" style="margin:-6px 0 12px">Also logged today: <b>${work.reps.toLocaleString()} jacks</b> (${work.steps.toLocaleString()} steps). Both count.</div>`;
   if(ride.min&&mode==='jacks')
     h+=`<div class="tiny muted" style="margin:-6px 0 12px">Also logged today: <b>${ride.min} min</b> on the bike (${ride.steps.toLocaleString()} steps). Both count.</div>`;
   h+= mode==='bike' ? bikeBlockHTML(m,short,need,lvl,ride,shownVal)
+    : mode==='ruck' ? ruckBlockHTML(m,short)
                     : jackBlockHTML(m,short,jneed,jlvl,work);
   h+=`</div>`;
+  return h;
+}
+function ruckBlockHTML(m,short){
+  const p=ruckPace(m.rlvl),work=ruckWork(),lb=ruckLoadLb(),pct=ruckLoadPct();
+  const shown=m.runit==='dist'?r1(kmToShow(m.rval)):m.rval;
+  const need=short>0?ruckMinutesFor(short,m.rlvl):0;
+  let h=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">What is in the ruck</div>
+    <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${RUCK_PLATES.map(w=>
+      `<button class="${lb===w?'on':''}" onclick="setRuckLoad(${w})">${w} lb</button>`).join('')}</div>`;
+  /* The share of bodyweight is the number that decides whether a load is
+     sensible, and it is the one nobody works out for themselves. Stated
+     always, warned on past 20% — the usual guidance is to start near 10% and
+     build toward a third over months, so this is a nudge, not a block: the
+     athlete is holding the plate and gets to decide. */
+  if(pct>0){
+    const s=Math.round(pct*100);
+    h+= s>20
+      ? `<div class="note warn" style="margin:6px 0 12px"><b>${lb} lb is ${s}% of your bodyweight.</b> Rucking is usually started nearer 10% and built toward a third over months — the load sits high and narrow in a small pack, and the lower back feels it before the legs do. A lighter plate for longer is the better trade while you are new to it.</div>`
+      : `<div class="tiny muted" style="margin-bottom:12px"><b>${s}% of your bodyweight</b> — a sensible working load.</div>`;
+  }else{
+    h+=`<div class="tiny muted" style="margin-bottom:12px">Log your bodyweight and this will also tell you what share of it you are carrying.</div>`;
+  }
+  h+=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">How you walked it</div>
+    <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${RUCK_PACES.map(x=>
+      `<button class="${m.rlvl===x.k?'on':''}" onclick="setRuckPace('${x.k}')">${x.label}</button>`).join('')}</div>
+    <div class="tiny muted" style="margin-bottom:12px">${_ve(p.rpe)} · ${_ve(p.cue)}</div>
+    <div class="tiny muted" style="margin-bottom:12px">Worth <b>${ruckStepsPerMin(m.rlvl)} steps</b> and <b>${Math.round(ruckKcalPerMin(m.rlvl))} kcal</b> a minute, at about <b>${r1(kmToShow(ruckKmPerMin(m.rlvl)*60))} ${distUnit()}/h</b>.
+      ${/* Speed per HOUR, not distance per minute. The bike gets away with
+            per-minute because it covers 0.23-0.4 km in one; a ruck covers
+            0.086, which rounds to "0.1 km a minute" and tells the athlete
+            nothing at all. */''}</div>`;
+  if(need>0)h+=`<div class="tiny muted" style="margin-bottom:10px">You are <b>${short.toLocaleString()}</b> steps short — about <b>${need} min</b> under that plate at this pace.</div>`;
+  h+=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log the ruck as</div>
+    <div class="tiny muted" style="margin:-2px 0 8px">The plate and the pace both change what a minute is worth. <b>Calories are the input that cannot be thrown off by picking the wrong pace</b> — the same algebra as the bike: the MET cancels out of a calorie figure.</div>
+    <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${RUCK_UNITS.map(([k,l])=>
+      `<button class="${m.runit===k?'on':''}" onclick="setRuckUnit('${k}')">${l==='Distance'?distUnit().toUpperCase():l}</button>`).join('')}</div>
+    <div class="row" style="justify-content:space-between;align-items:flex-end;gap:10px">
+      <div class="field" style="flex:1;margin:0"><label>${_ve(m.runit==='min'?'Minutes':(m.runit==='dist'?'Distance ('+distUnit()+')':'Calories'))}</label>
+        <input id="mv-ruck" type="number" inputmode="decimal" min="0" step="${m.runit==='dist'?'0.1':'1'}" value="${shown||''}" placeholder="0" onchange="setRuckVal(this.value)"></div>
+      <div class="btnrow" style="flex:0 0 auto;gap:8px">
+        <button class="chip" onclick="addRuckVal(-${ruckStep(m.runit)})" aria-label="Less">–</button>
+        <button class="chip" onclick="addRuckVal(${ruckStep(m.runit)})" aria-label="More">+</button></div>
+    </div>`;
+  if(work.min)h+=`<div class="note ok" style="margin-top:10px"><b>${work.min} min</b> under ${lb} lb · <b>${work.steps.toLocaleString()} steps</b> · <b>${r1(kmToShow(work.km))} ${distUnit()}</b> · <b>${work.kcal} kcal</b></div>`;
   return h;
 }
 function bikeBlockHTML(m,short,need,lvl,ride,shownVal){
@@ -14552,6 +14729,15 @@ function normalizeState(){
      explicit "yes I own a pull-up bar" with a no. Every bar and bench movement
      vanished from their program permanently. Recover on EMPTY as well. */
   if(!Array.isArray(STATE.profile.gear))STATE.profile.gear=[];
+  /* The ruck plate. ruckLoadLb() clamps its own read, so junk here breaks
+     nothing on screen — but an unclamped value travels in every backup and
+     comes straight back on the next import, which is the cueVol shape. Drop it
+     and let the default answer instead. MEMBERSHIP for the pace, not
+     truthiness: 'Brisk' with a capital B is not a pace. */
+  {const v=STATE.profile.ruckLb;
+   if(v!==undefined&&(typeof v!=='number'||!isFinite(v)||v<=0||v>RUCK_LB_MAX))delete STATE.profile.ruckLb;}
+  {const p=STATE.profile.ruckPace;
+   if(p!==undefined&&!RUCK_PACES.some(x=>x.k===p))delete STATE.profile.ruckPace;}
   if(!STATE.profile.gear.length&&!STATE.profile._gearLegacy){
     if(STATE.profile.hasBar===true)STATE.profile.gear.push('bar');
     if(STATE.profile.hasBench===true)STATE.profile.gear.push('bench');
