@@ -111,6 +111,111 @@ export default async function run() {
     t.ok('nor starve it', corrupt.tiny >= 1200, corrupt);
   }
 
+  /* ==== 1b. a goal whose success looks like a FLAT scale ==================
+     'recomp' prescribed 0.9x maintenance while its own note promised fat loss
+     "at the same time" and the picker called it Tone up. The contradiction
+     reached the athlete three ways: a ~250 kcal deficit they never chose,
+     calorieCheck() reading a held line as stalled and advising a FURTHER cut,
+     and the weight chart painting a flat line grey because "good" was
+     hardcoded to down for every goal but gain. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {};
+      const iso = d => { const x = new Date(); x.setDate(x.getDate() - d); return x.toISOString().slice(0, 10); };
+      const setup = (goal, perWeek) => {
+        STATE.measurements = [];
+        for (let d = 56; d >= 0; d -= 4)
+          STATE.measurements.push({ date: iso(d), weight: +(86 - perWeek * ((56 - d) / 7)).toFixed(2) });
+        const n = nut();
+        n.sex = 'male'; n.age = 52; n.heightCm = 178; n.weightKg = 86; n.activity = 1.45;
+        n.kcalAdj = 0; delete n.kcalAdjAt;
+        setNutGoal(goal);            // writes BOTH goal fields, the way the picker does
+        recalcKcalFromStored();
+      };
+      /* The target itself. Recomposition means the scale holds, so the number
+         it prescribes has to BE maintenance — anything else and the other two
+         fixes are papering over a deficit the athlete never asked for. */
+      setup('recomp', 0);
+      out.tdee = nut().tdee;
+      out.recompTarget = nut().kcalTarget;
+      setup('lose', 0); out.loseTarget = nut().kcalTarget;
+      setup('maintain', 0); out.maintainTarget = nut().kcalTarget;
+      setup('gain', 0); out.gainTarget = nut().kcalTarget;
+
+      /* THE reported defect: a held scale on a stable goal is the goal being
+         met, and must not produce advice to eat less. */
+      setup('recomp', 0);
+      out.held = calorieCheck();
+      setup('recomp', 0.05);           // inside the deadband — a scale never lands on zero
+      out.noise = calorieCheck();
+      /* ...but silence in BOTH directions is a disable, not a fix. A stable
+         goal has an intended rate and it is zero, which is measurable. */
+      setup('recomp', -0.3);           // drifting UP
+      const up = calorieCheck();
+      out.up = up && { v: up.verdict, cut: up.step < 0 };
+      out.upHTML = up ? calorieCheckHTML() : '';
+      setup('recomp', 0.3);            // drifting DOWN
+      const down = calorieCheck();
+      out.down = down && { v: down.verdict, raise: down.step > 0 };
+      /* The floor: an ordinary cut must still be checked exactly as before. */
+      setup('lose', 0);
+      const stalled = calorieCheck();
+      out.loseStalled = stalled && stalled.verdict;
+
+      /* The chart's colour, read off the painted markup. */
+      const chart = (goal, deltaKg) => {
+        setup(goal, -deltaKg / 8);     // perWeek over the 8-week window
+        const h = weightChartHTML();
+        return { green: /var\(--green\)/.test(h), held: /· held/.test(h), drift: /· drifting/.test(h) };
+      };
+      out.chart = {
+        recompHeld: chart('recomp', 0), recompUp: chart('recomp', 3), recompDown: chart('recomp', -3),
+        recompNoise: chart('recomp', 0.4),
+        loseDown: chart('lose', -3), loseUp: chart('lose', 3),
+        gainUp: chart('gain', 3), gainDown: chart('gain', -3),
+      };
+      nut().kcalAdj = 0; delete nut().kcalAdjAt; setNutGoal('recomp'); recalcKcalFromStored();
+      return out;
+    });
+    /* The target. Pinned against TDEE itself, not a number, so it cannot drift. */
+    t.eq('recomposition eats at maintenance, not in a deficit', r.recompTarget, r.tdee);
+    t.eq('and so does maintain', r.maintainTarget, r.tdee);
+    t.ok('while fat loss is still a real deficit', r.loseTarget < r.tdee - 250, r);
+    t.ok('and building is still a real surplus', r.gainTarget > r.tdee + 100, r);
+    /* The reported defect. */
+    t.eq('a held scale on a stable goal produces no advice to cut', r.held, null);
+    t.eq('and neither does ordinary scale noise', r.noise, null);
+    /* The other half — without this the check is simply switched off. */
+    t.eq('but drifting UP is caught', r.up && r.up.v, 'drift');
+    t.ok('and the offer is to eat less', r.up && r.up.cut, r.up);
+    t.eq('drifting DOWN is caught too', r.down && r.down.v, 'drift');
+    t.ok('and there the offer is to eat more', r.down && r.down.raise, r.down);
+    /* The copy has to be the stable-goal copy. "The scale is barely moving" is
+       praise on this goal, so the stalled wording would say the opposite of
+       what it means. */
+    t.ok('drift gets its own wording, not the stalled copy',
+      /drifting up/.test(r.upHTML) && !/barely moving/.test(r.upHTML), r.upHTML.slice(0, 160));
+    /* The floor: the goals that were already right must stay right. */
+    t.eq('an ordinary cut that stalls is still caught', r.loseStalled, 'stalled');
+    /* The chart. A flat line is the WIN on this goal and read grey. */
+    t.ok('a held line is green on a stable goal', r.chart.recompHeld.green, r.chart);
+    t.ok('and says so in words, not only in colour', r.chart.recompHeld.held, r.chart);
+    t.ok('scale noise still reads as held', r.chart.recompNoise.green, r.chart);
+    /* Symmetric on purpose: a sustained drop is an accidental cut, not a
+       recomposition, and the athlete is better off knowing. */
+    t.ok('drifting up is not green', !r.chart.recompUp.green, r.chart);
+    t.ok('and neither is drifting down', !r.chart.recompDown.green, r.chart);
+    t.ok('both are named as drift', r.chart.recompUp.drift && r.chart.recompDown.drift, r.chart);
+    /* And the goals that were already right. A mutant that made every goal
+       stable satisfies every assertion above and fails these. */
+    t.ok('a cutting athlete losing weight is still green', r.chart.loseDown.green, r.chart);
+    t.ok('a cutting athlete gaining weight is still grey', !r.chart.loseUp.green, r.chart);
+    t.ok('a bulking athlete gaining weight is still green', r.chart.gainUp.green, r.chart);
+    t.ok('a bulking athlete losing weight is still grey', !r.chart.gainDown.green, r.chart);
+    t.ok('and neither goal borrows the stable wording',
+      !r.chart.loseDown.held && !r.chart.gainUp.held, r.chart);
+  }
+
   /* ============ 2. "that hurt" =========================================== */
   {
     const r = await page.evaluate(async () => {
