@@ -412,6 +412,98 @@ export default async function run() {
       r.overflow < 175, r);
   }
 
+  /* ---- the baseline test is a timed surface too, and had no photo at all ---
+     Reported from a phone mid-onboarding: "still encountering exercises with
+     timers that prioritise the timer over showing me the exercise." The
+     baseline sheet was a label, an 80px number and a hint — no ring, no
+     picture. The photo sat on the step BEHIND it, so tapping Start replaced
+     the form reference with a bare number at the moment it was needed most.
+     Assert on the PAINTED box, not on the markup: a ring that renders at zero
+     size, or a photo the browser failed to load, satisfies a querySelector. */
+  {
+    /* Restore the phone. The block above ends at 667x320 landscape to prove the
+       ring shrinks under height pressure, and never puts it back — so this
+       block inherited a 154px ring and read the photo as a 134px thumbnail,
+       which is the very thing it exists to rule out. What the block before you
+       left on screen is not a contract, and that includes the viewport. */
+    await page.setViewportSize(PHONE);
+    const r = await page.evaluate(async () => {
+      assessState = { idx: 0, results: {}, reassess: 0 };
+      renderAssessStep();
+      await new Promise(z => setTimeout(z, 120));
+      startBaselineTimer();
+      await new Promise(z => setTimeout(z, 120));
+      const ring = document.querySelector('#btRing');
+      const media = ring && ring.querySelector('.pl-ringmedia img, .pl-ringmedia video');
+      const inner = ring && ring.querySelector('.inner');
+      const readySolid = ring && ring.classList.contains('solid');
+      const readyOpacity = inner && getComputedStyle(inner).opacity;
+      /* Force the effort phase through the app's own painter, not by editing
+         the class — a check that sets the class it then reads proves nothing. */
+      _bt.ready = 1;
+      await new Promise(z => setTimeout(z, 2400));
+      const mr = media && media.getBoundingClientRect();
+      const rr = ring && ring.getBoundingClientRect();
+      const out = {
+        hasMedia: !!media, src: media && (media.getAttribute('src') || '').split('/').pop(),
+        mediaW: mr ? Math.round(mr.width) : 0, mediaH: mr ? Math.round(mr.height) : 0,
+        ringW: rr ? Math.round(rr.width) : 0,
+        readySolid, readyOpacity,
+        holdSolid: ring && ring.classList.contains('solid'),
+        holdOpacity: inner && getComputedStyle(inner).opacity,
+        label: (document.querySelector('#btLbl') || {}).textContent,
+      };
+      try { stopBaselineTimer(); closeSheet(); } catch (e) {}
+      return out;
+    });
+    t.ok('the baseline timer shows the movement', r.hasMedia, r);
+    t.eq('and it is the movement the test asks for', r.src, 'ex-plank.jpg');
+    t.ok('the photo is big, not a thumbnail', r.mediaW >= 150 && r.mediaH >= 150, r);
+    t.ok('it fills most of the ring', r.mediaW > r.ringW * 0.7, r);
+    /* Guard: if the painter never reached the effort phase, every opacity
+       assertion below is reading the ready state and passes on nothing. */
+    t.ok('guard: the timer really did reach the effort phase', /ELAPSED|TIME LEFT/.test(r.label || ''), r);
+    t.eq('the clock gives way to the photo during the effort', r.holdOpacity, '0.37');
+    t.ok('and it is solid through the 3-2-1 into position', r.readySolid === true, r);
+    t.eq('at full strength there', r.readyOpacity, '1');
+  }
+
+  /* ---- one veil, six surfaces ------------------------------------------
+     This treatment has drifted three separate times: the player and HIIT had
+     it, the warm-up flow had a photo and no veil, and the hold timer, the rep
+     cadence and the baseline test had no photo at all. The number now lives in
+     one custom property. A hardcoded opacity on any timed surface is the
+     drift starting again, so fail on the literal rather than on the effect. */
+  {
+    const r = await page.evaluate(() => {
+      const css = [...document.querySelectorAll('style')].map(s => s.textContent).join('\n');
+      const rule = n => (css.match(new RegExp('\\.' + n + '[^{]*\\{[^}]*\\}', 'g')) || []).join(' ');
+      return {
+        veil: getComputedStyle(document.documentElement).getPropertyValue('--plveil').trim(),
+        /* The BASE rule only, anchored on its own `position:` declaration.
+           `.pl-ring.rest .pl-center{opacity:1}` also contains the selector and
+           legitimately hardcodes solid; matching it failed the no-literal
+           assertion on correct code, twice — a bare `.pl-center{` prefix still
+           matches inside the longer descendant selector. */
+        plCenter: (css.match(/\.pl-center\{position[^}]*\}/) || [''])[0],
+        restRule: rule('pl-ring.rest'),
+        innerRule: (css.match(/\.timerring \.inner\{[^}]*\}/) || [''])[0],
+        /* Both themes must define it — a value defined only under one leaves
+           the other resolving to nothing and the clock fully opaque. */
+        defs: (css.match(/--plveil:/g) || []).length,
+      };
+    });
+    t.eq('the veil is the requested 37%', r.veil, '.37');
+    t.ok('the player ring reads it from the variable, not a literal',
+      /opacity:var\(--plveil\)/.test(r.plCenter) && !/opacity:\s*\.?\d/.test(r.plCenter), r);
+    /* The rest exception is deliberate and must survive: rest has no
+       ten-second spoken cue, so it is the one clock with nothing behind it. */
+    t.ok('and rest still keeps its solid clock', /opacity:1/.test(r.restRule), r);
+    t.ok('and so does every .timerring surface',
+      /opacity:var\(--plveil\)/.test(r.innerRule), r);
+    t.ok('both themes define it', r.defs >= 2, r);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
