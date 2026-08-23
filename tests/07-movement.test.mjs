@@ -221,7 +221,22 @@ export default async function run() {
     const o = {}, T = nutToday();
     delete T.steps; delete T.bikeVal; delete T.bikeUnit; delete T.bikeLvl; T.habits = {};
     if (STATE.profile) delete STATE.profile.bikeLevel;
-    o.emptyReadsZero = JSON.stringify(movement()) === JSON.stringify({ steps: 0, val: 0, unit: 'min', lvl: 'steady', jval: 0, junit: 'min', jlvl: 'steady' });
+    /* Assert the PROPERTY, not an exact serialisation. This compared
+       JSON.stringify(movement()) against a hardcoded literal, so it broke the
+       moment a third cardio mode added three fields — and it compared key
+       ORDER too. What it means to check is that nothing reads as undefined and
+       every counter starts at a real zero, whatever fields exist. */
+    {
+      const mv = movement();
+      const nums = ['steps', 'val', 'jval', 'rval'];
+      const strs = ['unit', 'lvl', 'junit', 'jlvl', 'runit', 'rlvl'];
+      o.emptyReadsZero =
+        nums.every(k => mv[k] === 0) &&
+        strs.every(k => typeof mv[k] === 'string' && mv[k].length > 0) &&
+        Object.values(mv).every(v => v !== undefined && v !== null &&
+          !(typeof v === 'number' && !isFinite(v)));
+      o.emptyShape = mv;
+    }
     o.emptyEquivZero = stepEquivalent() === 0 && bikeMinutes() === 0;
     setSteps(4200);
     o.steps = movement().steps;
