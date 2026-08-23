@@ -1476,6 +1476,76 @@ of the eight. The bottom of the push-up would have carried only one, and the
 wide-feet plank is already what `plankjack` shows. One request, one image, no
 collage — the count per request is still the only variable that matters.
 
+## A goal whose success is a flat line (v298)
+
+"I've changed one of my goals from weight loss to recomposition — losing fat
+and building muscle, and trying to maintain the body weight." The goal already
+existed. It was called **Tone up**, its note promised fat loss *"at the same
+time"*, and it prescribed **0.9 x maintenance** — a ~250 kcal deficit the
+athlete never chose. That contradiction reached them three ways, and each way
+is a rule already in this file.
+
+- **A promise in UI text is a specification.** `recomp` had no tip line of its
+  own, so it fell through to the fat-loss copy promising a *"~300-500 kcal/day
+  deficit"* on the one goal whose entire point is that the scale holds.
+- **`calorieCheck()` read a held line as stalled.** It derives the expected
+  rate from target-vs-TDEE, saw a deficit, expected half a pound a week off,
+  and told an athlete doing exactly the right thing to **cut further**.
+- **The weight chart painted a flat line grey.** `goodDirection` was
+  `goal==='gain' ? change>=0 : change<=0` — down is green for everyone else.
+  Same blind spot v239 fixed for bulking, one goal over.
+
+The fix is one list. `STABLE_GOALS` (`recomp`, `maintain`) is read by all three
+consumers, and it **takes the goal as an argument** so the chart keeps reading
+`profile.goal` and the target keeps reading `nutrition.goal` while the
+membership test exists once — `normalizeState()` already syncs the two with
+profile as the source of truth.
+
+**The target moving to maintenance is what makes the other two honest.** With
+`recomp` at 1.0x TDEE, `calorieCheck()`'s existing maintenance bail fires on
+its own — no second rule. Fixing the check without the target would have left
+the app prescribing a deficit and then refusing to measure it.
+
+### Switching a check off is not fixing it
+
+That bail is exactly where this nearly shipped broken. With `expected` read off
+the target, a recomp athlete gets `null` in **both** directions: held is silent
+(correct) and drifting up by 2 kg is *also* silent (a disable dressed as a fix).
+
+**A weight-stable goal has an intended rate and it is exactly zero, which is
+measurable.** So `expected` is forced to 0, `STABLE_DRIFT_KG_WK` (0.1 kg/week)
+is the deadband that makes "held" a real answer rather than a coin flip, and
+the verdict is `drift` — not `stalled`, because *"the scale is barely moving"*
+is **praise** on this goal and the stalled copy would say the opposite of what
+it means.
+
+**The hold band is symmetric, and that is a decision.** A sustained drop is not
+a recomposition either; it is an accidental cut, and on the goal that exists to
+protect muscle the athlete is better off knowing. The band is 1% of the
+starting weight, which carries its own units and so works in kilograms and
+pounds alike.
+
+**Colour alone does not say what it means**, so `· held` / `· drifting` is on
+the glass beside the number.
+
+Eight mutants, all caught. The two worth keeping: making **every** goal stable
+satisfies every assertion about recomp and fails the floors (a cutting athlete
+losing weight must stay green, a bulking athlete gaining must stay green); and
+the **one-sided** hold band passes every "flat is green" check while reading a
+runaway cut as success. Both are why each stable-goal check has its
+already-correct sibling pinned beside it.
+
+### The protein request that needed no code
+
+Asked in the same breath to "increase the protein to 1.8 g/kg". The app was
+**already** at 1.8 for this goal — `proteinTargetCalc()` uses 2.2 only for
+`shred` — and the Fuel tab already renders the calculated figure inside the
+`↺ Use calculated (NNN g)` chip. What was in effect was the athlete's own
+hand-set 165 g, which outranks the calculation by design (v287). One tap, no
+change. Worth recording because the instinct was to write code for it: **read
+what the app does before changing what it does**, and a request to change a
+number is not evidence the number is wrong.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

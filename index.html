@@ -1805,7 +1805,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='297';
+const APP_VERSION='298';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2325,11 +2325,38 @@ const GOALS=[['lose','🔥 Lose fat'],['shred','🔪 Shred'],['recomp','⚖️ T
 const GOAL_NOTE={
   lose:'Steady fat loss — a moderate deficit that keeps your strength.',
   shred:'Aggressive lean-out — steeper deficit, more protein, higher-rep conditioning. Best in short blocks.',
-  recomp:'Lose fat and build at the same time on a slight deficit.',
+  recomp:'Lose fat and build muscle at the same time, with the scale held steady.',
   core:'Midsection first — every session adds an abs/oblique bonus and eats near maintenance.',
   maintain:'Hold your weight and let the training reshape you.',
   gain:'Build muscle on a slight surplus with heavier, lower-rep work.',
 };
+/* The goals whose success looks like a FLAT scale. Kept in one place because
+   three separate consumers ask the question — the calorie target, the weight
+   chart's colour, and calorieCheck() through the target it produces — and a
+   second copy of the list is a second place for it to drift.
+
+   `recomp` used to prescribe 0.9x maintenance while its own note promised
+   fat loss "at the same time", and the goal picker calls it Tone up. That
+   contradiction reached the athlete three ways: the target quietly ran a
+   ~250 kcal deficit, calorieCheck() then EXPECTED half a pound a week off
+   and read a held line as stalled — advising a further cut — and the weight
+   chart painted a flat line grey because "good" was hardcoded to down for
+   every goal except gain. Recomposition means the weight holds while the
+   composition moves, so the target is maintenance and all three agree. */
+const STABLE_GOALS=['recomp','maintain'];
+/* How far the trend may wander before a weight-stable goal calls it drift.
+   A scale never lands on zero, so a deadband is what makes "held" a real
+   answer rather than a coin flip: 0.1 kg a week is about a quarter of a pound,
+   and roughly 1.3 kg over a three-month block. Below it, nothing to correct. */
+const STABLE_DRIFT_KG_WK=0.1;
+/* Takes the goal so each caller reads the field it already reads — the chart
+   asks about profile.goal, the target about nutrition.goal — while the
+   membership test itself exists once. normalizeState() keeps the two in step
+   with profile as the source of truth. */
+function weightStableGoal(g){
+  try{return STABLE_GOALS.includes(g!==undefined?g:(STATE.profile&&STATE.profile.goal));}
+  catch(e){return false;}
+}
 const FOCUS_POOL={
   abs:['hollow','hollowflutter','vsit','bearhold','lsit','dragonflag','dragonflagfull','situp','vertcrunch','plankleg','isoclimber','vup','tuckvup','legraise','hiplift','hanglegraise','revcrunch','crunch','bicycle','kneeraise','abroll','abrollstand','mbsitup','flutter','kbrenegade','ropeplank','toetouch','sitthrust','legcircle','kneetoelbow','tucklsit','plegraise','sbrollout','sbstir'],
   obliques:['sideplank','sideplankreach','situptwist','sidedip','russiantwist','windshield','plankrot','heeltouch','bicycle','copenhagen','standingoblique','mbtwist','kbhalo','dbpallof','mbchop','kbwindmill','kbsuitcase','kbfigure8','btsideplank'],
@@ -10981,12 +11008,27 @@ function weightChartHTML(){
      COLOR is goal-relative. A 'gain' athlete moving up is the same green a
      'lose' athlete moving down gets — it was hardcoded to "down is green"
      regardless of goal, so a bulking athlete's real progress read as neutral
-     and a bulking athlete's setback (losing weight) read as green. */
-  const goodDirection=(STATE.profile.goal==='gain')?(change>=0):(change<=0);
+     and a bulking athlete's setback (losing weight) read as green.
+
+     The same blind spot, one goal over: for a weight-STABLE goal the win is a
+     flat line, and "down is green" painted it grey — the athlete doing exactly
+     what recomposition asks for was told, in colour, that nothing was working.
+     Read through a hold band rather than a direction, because a scale never
+     lands on zero: 1% of the starting weight, which carries its own units and
+     so works in kilograms and pounds alike, with a floor for a light athlete.
+     Symmetric on purpose. A sustained drop is not recomposition either — it is
+     an accidental cut, and it is worth knowing about. */
+  const holdBand=Math.max(0.5,Math.abs(first)*0.01);
+  const stable=weightStableGoal();
+  const goodDirection=stable?(Math.abs(change)<=holdBand)
+    :(STATE.profile.goal==='gain')?(change>=0):(change<=0);
+  /* Colour alone does not say what it means, and on this goal the meaning is
+     the whole point — so the word is on the glass beside the number. */
+  const stableNote=stable?(goodDirection?' · held':' · drifting'):'';
   const chart=ms.length>=2?lineChart(vals,dates,'var(--teal)',wu):`<div class="center" style="margin-top:10px"><div style="font-size:26px;font-weight:900">${last}${wu}</div></div>`;
   const spot=raw[raw.length-1];
   return `<div class="divider" style="margin:14px 0"></div><b>Weight (${wu})</b> <span class="tiny muted">· 7-day average</span>${chart}
-    <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">Start ${first}${wu}</span><span class="tiny" style="color:${goodDirection?'var(--green)':'var(--muted)'};font-weight:800">${change<=0?'▼ ':'▲ +'}${Math.abs(change).toFixed(1)}${wu}</span><span class="tiny muted">Now ${last}${wu}</span></div>
+    <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">Start ${first}${wu}</span><span class="tiny" style="color:${goodDirection?'var(--green)':'var(--muted)'};font-weight:800">${change<=0?'▼ ':'▲ +'}${Math.abs(change).toFixed(1)}${wu}${stableNote}</span><span class="tiny muted">Now ${last}${wu}</span></div>
     ${ms.length>=3?`<div class="tiny muted" style="margin-top:6px">Averaged, so one heavy morning does not read as a setback. Today's actual reading: <b>${spot}${wu}</b>.</div>`:''}`;
 }
 /* Reusable dated line graph (SVG). vals[i] plotted against dates[i]. */
@@ -13442,6 +13484,10 @@ function renderFuel(){
       :n.goal==='gain'?'To build muscle, eat in a <b>slight surplus</b> (~150–300 kcal/day) with plenty of protein. Tap the calculator below for your exact number.'
       :n.goal==='shred'?'Shredding runs a <b>~450–700 kcal/day deficit</b> with protein pushed to ~2.2 g/kg to protect muscle. Hard but short — run it in blocks, not year-round. Tap the calculator below.'
       :n.goal==='core'?'Core focus eats <b>just under maintenance</b> (~5%) so your abs work is fuelled while bodyfat still drifts down. Tap the calculator below.'
+      /* Without its own line this fell through to the fat-loss copy, which
+         promised a 300-500 kcal deficit on a goal whose whole point is that
+         the scale holds. A promise in UI text is a specification. */
+      :n.goal==='recomp'?'Recomposition eats <b>at maintenance</b>. The scale holds steady while the training and the protein move what is under it — so judge this one by the mirror, the tape and your strength numbers, not the weight. Tap the calculator below.'
       :'For fat loss, eat in a <b>~300–500 kcal/day deficit</b> — enough to lean out, slow enough to keep your strength. Tap the calculator below for your exact number.';
     h+=`<div class="note info" style="margin-top:12px">${tip}</div>`;}
   // intake logging (quick-add + photo AI)
@@ -13558,7 +13604,7 @@ function kcalTargetPreview(adjOverride){
   // shred runs a steeper cut than 'lose'; core sits just under maintenance so the
   // midsection work is fuelled while bodyfat still drifts down
   const shredDef=clamp(Math.round(tdee*0.27),450,700);
-  let t=n.goal==='gain'?tdee*1.1:(n.goal==='maintain'?tdee:(n.goal==='recomp'?tdee*0.9:(n.goal==='core'?tdee*0.95:(n.goal==='shred'?tdee-shredDef:tdee-loseDef))));
+  let t=n.goal==='gain'?tdee*1.1:(weightStableGoal(n.goal)?tdee:(n.goal==='core'?tdee*0.95:(n.goal==='shred'?tdee-shredDef:tdee-loseDef)));
   /* A correction measured against the athlete's own scale, applied before the
      floor so it can never push anyone under it. Mifflin-St Jeor plus an
      activity multiplier is a population estimate: it is routinely 200-300 kcal
@@ -13627,8 +13673,15 @@ function calorieCheck(){
   try{
     const n=nut();
     if(!(n.tdee>0)||!(n.kcalTarget>0))return null;
+    /* A weight-stable goal HAS an intended rate and it is exactly zero, which
+       is measurable — so it gets checked rather than skipped. Reading the rate
+       off the target instead would make the check silent in both directions
+       the moment the target equals maintenance, which is a disable dressed up
+       as a fix: an athlete drifting up on a recomposition would be told
+       nothing at all. */
+    const stable=weightStableGoal(n.goal);
     // signed: negative means the plan expects weight to come off
-    const expected=(n.kcalTarget-n.tdee)*7/KCAL_PER_KG;
+    const expected=stable?0:(n.kcalTarget-n.tdee)*7/KCAL_PER_KG;
     /* A gain plan needs checking exactly as much as a cut. This used to bail on
        anything that was not a deficit, so an athlete bulking for three months
        and gaining nothing — or gaining a kilo a week of mostly fat — got no
@@ -13637,10 +13690,14 @@ function calorieCheck(){
        goal DIRECTION in the brief and the weight chart and never reached here.
        Maintenance stays out: there is no intended rate to measure against. */
     const gaining=expected>0.05;
-    if(!gaining&&expected>-0.05)return null;   // maintenance — no prescribed rate to verify
+    // a target that neither cuts nor bulks, on a goal that is not weight-stable
+    // either — no prescribed rate to verify
+    if(!stable&&!gaining&&expected>-0.05)return null;
     const tr=trendKgPerWeek(56);
     if(!tr)return null;
     const observed=tr.kgPerWeek;
+    // Held, inside the deadband. That is the goal being met, not a finding.
+    if(stable&&Math.abs(observed)<=STABLE_DRIFT_KG_WK)return null;
     /* The gap in kg/week converted straight back into kcal/day, signed so that
        it CLOSES the gap. Written the other way round first, which told a
        stalled dieter to eat 300 kcal MORE — the exact opposite of the advice,
@@ -13658,7 +13715,11 @@ function calorieCheck(){
        over-delivering either way. */
     const ratio=expected!==0?observed/expected:0;
     let verdict='ontrack';
-    if(ratio<0.4)verdict='stalled';        // moving far less than promised (or the wrong way)
+    /* A stable goal is neither stalled nor fast — those words describe a
+       journey, and this one is meant to stand still. It has drifted, and the
+       only question is which way. */
+    if(stable)verdict='drift';
+    else if(ratio<0.4)verdict='stalled';   // moving far less than promised (or the wrong way)
     else if(ratio>1.75)verdict='fast';     // moving faster than is useful
     return {expected,observed,verdict,step,trend:tr,gaining,
       adj:(typeof n.kcalAdj==='number')?n.kcalAdj:0,
@@ -13713,6 +13774,16 @@ function calorieCheckHTML(){
   const offer=wouldMove?buttons(cutting?'Drop to':'Raise to'):(cutting?flooredNote:buttons('Raise to'));
   const trendLine=`Over ${c.trend.days} days you have gone ${shown(c.trend.from)} → ${shown(c.trend.to)} ${wu} — about <b>${kg(c.observed)} a week</b>, where ${c.target} kcal should give <b>${kg(c.expected)}</b>.`;
   const estimateNote=`<div class="tiny muted" style="margin-top:8px">The calculator estimates your maintenance from height, weight, age and an activity guess. It is commonly a few hundred calories out either way. Your scale is the better instrument, so use it.</div>`;
+  /* A weight-stable goal reads its own line. "The scale is barely moving" is
+     praise here, not a warning, so the stalled copy below would say the
+     opposite of what it means. */
+  if(c.verdict==='drift'){
+    const up=c.observed>0;
+    return `<div class="note warn"><b>Your weight is drifting ${up?'up':'down'}.</b> Over ${c.trend.days} days you have gone ${shown(c.trend.from)} → ${shown(c.trend.to)} ${wu} — about <b>${kg(c.observed)} a week</b>. This goal holds the scale steady and lets the training change what is underneath it, so right now you are on ${up?'a slow bulk':'a slow cut'} instead.
+      ${estimateNote}
+      ${offer}
+      <div class="tiny muted" style="margin-top:8px">${up?'Worth ruling out first: drinks and cooking oil going unlogged, weekends that undo the week, and a new training block holding water.':'Worth ruling out first: whether you are actually eating the target. Under-eating here costs the muscle you are training for, and that is the one thing this goal exists to protect.'}</div></div>`;
+  }
   if(c.verdict==='stalled'){
     if(c.gaining){
       return `<div class="note warn"><b>You are not gaining.</b> ${trendLine}
