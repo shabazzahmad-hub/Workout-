@@ -1546,6 +1546,57 @@ change. Worth recording because the instinct was to write code for it: **read
 what the app does before changing what it does**, and a request to change a
 number is not evidence the number is wrong.
 
+## A multiplier the ceiling had been erasing for years (v299)
+
+"Raise it to 2.2 for recomp." One line in `proteinTargetCalc()`, and the change
+would have shipped doing **nothing at all**.
+
+The multiplier is only one of two inputs. A lean-mass ceiling sits underneath
+it — `g=Math.min(g, lean*2.4)` — and 2.4 g/kg of LEAN beats 2.2 g/kg of TOTAL
+for anyone above about **8% body fat** (2.2 > 2.4x(1−bf) only while bf < 8.3%).
+So the ceiling was deciding the answer for every real athlete, and the goal
+multiplier was decoration. Measured at 86 kg and 28% body fat, before the fix:
+
+| goal | multiplier | prescribed |
+|---|---|---|
+| lose | 1.8 | **150 g** |
+| shred | 2.2 | **150 g** |
+| recomp | 1.8 | **150 g** |
+
+**`shred` has carried a 2.2 for many versions and it has never once reached an
+athlete.** Same shape as the `voicePitch` trap: a guard that is true for
+everybody forever, killing the code behind it. Nothing threw, nothing looked
+wrong in the diff, and the number on screen was defensible — which is exactly
+why it survived.
+
+So the ceiling moves with the multiplier. The goals that earn more protein earn
+a correspondingly higher ceiling (2.8 g/kg lean), both stay inside the evidence
+band for a cut (~2.3–3.1 g/kg lean), and the guard still bites everywhere: at
+86 kg / 28% it allows 175 g against an uncapped 189, and at 110 kg / 36% it
+allows 195 g against an uncapped 242 — the overshoot it was written for.
+
+**The lesson is where to point the check.** The first version of this block
+asserted `calc / weight === 2.2`, which is a statement about the *multiplier*,
+not about the athlete. It failed on correct code — and it would have passed on
+a 2.2 that the ceiling was quietly discarding. **Assert the number that reaches
+the athlete**, and exercise BOTH mechanisms: an ordinary athlete where the
+ceiling binds, and a lean one where the multiplier does. A check at only one of
+them passes on half the code.
+
+**And do not pin a floor to its siblings.** The first floors read
+`lose === core === maintain === gain`, which stays true when every goal rises
+together — two mutants escaped through exactly that gap (`perKg=2.2` and
+`leanCap=2.8` unconditionally). The floors now derive from the app's own
+constants, and the constants themselves are pinned, because they are the
+specification rather than an implementation detail.
+
+**The tip names the aim, not a number it cannot always hit.** "~2.2 g/kg" is
+false precision once the ceiling binds — the athlete at 28% gets 2.03. It says
+*"toward 2.2 g/kg, bounded by your lean mass"*, and the Fuel chip shows the
+real figure beside it.
+
+Eight mutants, all caught after the floors were rewritten.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

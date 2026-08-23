@@ -1805,7 +1805,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='298';
+const APP_VERSION='299';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -11986,7 +11986,36 @@ function latestWeightKg(){
   if(ms.length)return ms[ms.length-1].weight;   // measurements[].weight is canonical kg
   return null;
 }
-// ~1.8 g/kg for fat loss; a steeper cut needs more to hold onto muscle
+/* 1.8 g/kg is the baseline. Two goals earn more, for the same reason rather
+   than by coincidence: neither gives the athlete a surplus to build on, so
+   protein is the only lever left holding muscle in place.
+     - shred runs a steep deficit.
+     - recomp is asked to ADD muscle at maintenance, which is the hardest case
+       in the app and was on the baseline until v299.
+   Kept as a map so the goals that get the higher figure are a list in one
+   place rather than a condition to edit. The lean-mass cap below still
+   applies on top — 2.2 x total mass overshoots badly at high body fat. */
+const PROT_PER_KG_BASE=1.8;
+const PROT_PER_KG={shred:2.2,recomp:2.2};
+/* The ceiling underneath, in grams per kg of LEAN mass, and it is the number
+   that actually decides the answer for most people — which is why it moves
+   with the multiplier rather than staying put.
+
+   A flat 2.4 lean cap beats 2.2 x TOTAL for anyone above about 8% body fat
+   (2.2 > 2.4 x (1-bf) only while bf < 8.3%), so it was silently erasing the
+   goal difference for every real athlete. Measured at 86 kg and 28% body fat:
+   fat loss, shred and recomposition all returned an identical 150 g. shred
+   has carried a 2.2 multiplier for many versions and it has been doing
+   nothing at all — the same shape as the voicePitch trap, a guard that is
+   true for everybody forever killing the code behind it.
+
+   So the goals that earn more protein earn a correspondingly higher ceiling,
+   and BOTH stay inside the evidence band for a cut (~2.3-3.1 g/kg lean). The
+   guard still bites in every case: at 86 kg / 28% it allows 175 g against an
+   uncapped 189, and at 110 kg / 36% it allows 195 g against an uncapped 242,
+   which is the overshoot it was written for. */
+const PROT_LEAN_CAP_BASE=2.4;
+const PROT_LEAN_CAP={shred:2.8,recomp:2.8};
 const PROT_MIN=40,PROT_MAX=400;
 /* The number a fresh install starts on. Seeded once by normalizeState() as an
    athlete choice, never as a DEFAULT_STATE field — see the seed for why. */
@@ -11999,11 +12028,12 @@ function proteinTargetSet(){
   return (typeof v==='number'&&isFinite(v)&&v>=PROT_MIN&&v<=PROT_MAX)?v:null;
 }
 function proteinTargetCalc(){const kg=latestWeightKg();if(!kg)return null;
-  const perKg=(STATE.profile.goal==='shred')?2.2:1.8;
+  const perKg=PROT_PER_KG[STATE.profile.goal]||PROT_PER_KG_BASE;
   /* Scaling off TOTAL mass overshoots at high body fat — a 110 kg athlete at 35%
      was prescribed 240 g, over 40% of their calories. Cap against lean mass. */
   let g=kg*perKg;
-  try{const bf=curBF();if(bf>0){const lean=kg*(1-bf/100);g=Math.min(g,lean*2.4);}}catch(e){}
+  const leanCap=PROT_LEAN_CAP[STATE.profile.goal]||PROT_LEAN_CAP_BASE;
+  try{const bf=curBF();if(bf>0){const lean=kg*(1-bf/100);g=Math.min(g,lean*leanCap);}}catch(e){}
   return Math.round(g/5)*5;}
 function proteinTargetG(){return proteinTargetSet()||proteinTargetCalc();}
 /* Stores and repaints. A control that saves a number and leaves the old one on
@@ -13487,7 +13517,7 @@ function renderFuel(){
       /* Without its own line this fell through to the fat-loss copy, which
          promised a 300-500 kcal deficit on a goal whose whole point is that
          the scale holds. A promise in UI text is a specification. */
-      :n.goal==='recomp'?'Recomposition eats <b>at maintenance</b>. The scale holds steady while the training and the protein move what is under it — so judge this one by the mirror, the tape and your strength numbers, not the weight. Tap the calculator below.'
+      :n.goal==='recomp'?'Recomposition eats <b>at maintenance</b>, with protein pushed <b>as high as it usefully goes</b> — toward 2.2 g/kg, bounded by your lean mass. You are asking your body to add muscle without a surplus to build from, so protein is the lever that does it. The scale holds steady while the training moves what is under it, so judge this one by the mirror, the tape and your strength numbers, not the weight. Tap the calculator below.'
       :'For fat loss, eat in a <b>~300–500 kcal/day deficit</b> — enough to lean out, slow enough to keep your strength. Tap the calculator below for your exact number.';
     h+=`<div class="note info" style="margin-top:12px">${tip}</div>`;}
   // intake logging (quick-add + photo AI)
