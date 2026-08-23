@@ -54,6 +54,122 @@ export default async function run() {
     t.ok('and the shopping list moves with it', r.chicken > 0, r);
   }
 
+  /* ---- the goals that earn more than the baseline ------------------------
+     1.8 g/kg is the baseline. Two goals earn 2.2 for the SAME reason rather
+     than by coincidence: neither hands the athlete a surplus to build from,
+     so protein is the only lever left holding muscle in place. shred runs a
+     steep deficit; recomp is asked to ADD muscle at maintenance.
+
+     The multiplier alone does NOT decide the answer, and assuming it did is
+     how the first version of this block failed. A lean-mass ceiling sits
+     underneath, and a flat 2.4 g/kg lean beats 2.2 x TOTAL for anyone above
+     about 8% body fat — so it was erasing the goal difference for every real
+     athlete. Measured at 86 kg / 28%: fat loss, shred and recomposition all
+     returned an identical 150 g, which means shred's long-standing 2.2 had
+     been doing nothing at all. So assert the number that REACHES the athlete,
+     not the multiplier that was one of two inputs to it. */
+  {
+    const r = await page.evaluate(() => {
+      const real = STATE.profile.goal, realT = STATE.nutrition.proteinTarget;
+      const realW = STATE.nutrition.weightKg, realH = STATE.nutrition.heightCm, realA = STATE.nutrition.age;
+      delete STATE.nutrition.proteinTarget;      // the calculation, not an override
+      const at = (kg, cm, age) => {
+        STATE.nutrition.weightKg = kg; STATE.nutrition.heightCm = cm;
+        STATE.nutrition.age = age; STATE.nutrition.sex = 'male';
+        const bf = curBF(), lean = kg * (1 - bf / 100);
+        /* What the BASELINE goals must produce, derived from the app's own
+           constants rather than from each other. Comparing the baseline goals
+           to their siblings is how the first version of this let two mutants
+           through: raising every goal together keeps them all equal, so
+           `lose === core === maintain === gain` stays true while everybody's
+           protein quietly went up. */
+        const o = { kg, bf, lean, raw22: kg * 2.2,
+          baseExpect: Math.round(Math.min(kg * PROT_PER_KG_BASE, lean * PROT_LEAN_CAP_BASE) / 5) * 5 };
+        for (const g of ['lose', 'shred', 'recomp', 'core', 'maintain', 'gain']) {
+          STATE.profile.goal = g; STATE.nutrition.goal = g;
+          o[g] = proteinTargetCalc();
+        }
+        return o;
+      };
+      const out = {
+        /* An ordinary athlete, where the CEILING decides the answer. */
+        mid: at(86, 178, 52),
+        /* A lean one, where the MULTIPLIER decides it. Both mechanisms have to
+           be exercised: a check at only one of them passes on half the code. */
+        lean: at(70, 178, 30),
+        /* The case the ceiling was written for: 110 kg at 35%+ was once
+           prescribed 240 g, over 40% of their calories. */
+        heavy: at(110, 178, 45),
+        consts: { perKg: PROT_PER_KG_BASE, leanCap: PROT_LEAN_CAP_BASE,
+          high: [PROT_PER_KG.recomp, PROT_PER_KG.shred],
+          highCap: [PROT_LEAN_CAP.recomp, PROT_LEAN_CAP.shred] },
+      };
+      STATE.nutrition.weightKg = realW; STATE.nutrition.heightCm = realH; STATE.nutrition.age = realA;
+      STATE.profile.goal = real; STATE.nutrition.goal = real;
+      if (realT !== undefined) STATE.nutrition.proteinTarget = realT;
+      return out;
+    });
+    /* The thing that was actually asked for: more protein on this goal, and
+       enough of it to reach the athlete. Comparing against the SAME athlete's
+       fat-loss figure is what makes this a real raise rather than a constant. */
+    t.ok('recomposition prescribes more protein than ordinary fat loss',
+      r.mid.recomp > r.mid.lose, r.mid);
+    t.eq('and it matches shred, which needs it for the same reason',
+      r.mid.recomp, r.mid.shred);
+    t.ok('the raise is a real one, not a rounding step',
+      r.mid.recomp - r.mid.lose >= 20, r.mid);
+    /* The floors. A mutant that simply raised the baseline for everybody
+       satisfies both assertions above and fails every one of these. */
+    t.eq('ordinary fat loss is still on the baseline', r.mid.lose, r.mid.baseExpect);
+    t.eq('so is a core block', r.mid.core, r.mid.baseExpect);
+    t.eq('so is maintaining', r.mid.maintain, r.mid.baseExpect);
+    t.eq('and a lean athlete on fat loss is too', r.lean.lose, r.lean.baseExpect);
+    /* Building gets a surplus to work with, which is why it does not need the
+       higher figure. */
+    t.eq('and so is building muscle', r.mid.gain, r.mid.baseExpect);
+    /* The constants themselves are the specification, so pin them. Everything
+       above is derived from them and would follow them anywhere. */
+    t.eq('the baseline is 1.8 g per kg of bodyweight', r.consts.perKg, 1.8);
+    t.eq('under a ceiling of 2.4 g per kg of LEAN mass', r.consts.leanCap, 2.4);
+    t.eq('recomposition and a shred get 2.2', r.consts.high, [2.2, 2.2]);
+    t.eq('under a ceiling of 2.8', r.consts.highCap, [2.8, 2.8]);
+    /* The ceiling still bites, in both places it should. Without this a mutant
+       that simply deletes the cap passes every assertion above. */
+    t.ok('the ceiling still holds an ordinary athlete under 2.2 x total',
+      r.mid.recomp < r.mid.raw22, r.mid);
+    t.ok('and holds a heavy athlete far under it — the case it was written for',
+      r.heavy.recomp < r.heavy.raw22 - 40, r.heavy);
+    t.ok('the ceiling is read off LEAN mass, not total',
+      Math.abs(r.heavy.recomp - r.heavy.lean * 2.8) <= 5, r.heavy);
+    /* ...and where the ceiling is loose, the multiplier is what binds. */
+    t.ok('a lean athlete is bounded by the multiplier instead',
+      Math.abs(r.lean.recomp - r.lean.raw22) <= 5, r.lean);
+    t.ok('and still gets more than they would on fat loss',
+      r.lean.recomp > r.lean.lose, r.lean);
+  }
+
+  /* ---- and the screen says the figure the code uses ----------------------
+     A promise in UI text is a specification, and this goal's tip now names a
+     number. If the two ever drift, the tip is the thing the athlete reads. */
+  {
+    const r = await page.evaluate(() => {
+      const real = STATE.nutrition.goal, realT = STATE.nutrition.kcalTarget;
+      setNutGoal('recomp'); STATE.nutrition.kcalTarget = null;
+      renderFuel();
+      const h = document.querySelector('#v-fuel').innerHTML;
+      const o = { tip: /toward 2\.2 g\/kg/.test(h), maint: /at maintenance/.test(h) };
+      setNutGoal('lose');
+      renderFuel();
+      const hl = document.querySelector('#v-fuel').innerHTML;
+      o.loseUnchanged = /300–500 kcal\/day deficit/.test(hl) && !/toward 2\.2 g\/kg/.test(hl);
+      STATE.nutrition.kcalTarget = realT; setNutGoal(real);
+      return o;
+    });
+    t.ok('the recomposition tip names the protein it is aiming at', r.tip, r);
+    t.ok('and still says the calories sit at maintenance', r.maint, r);
+    t.ok('while the fat-loss tip is untouched', r.loseUnchanged, r);
+  }
+
   /* ---- every day still lands on it -------------------------------------- */
   {
     /* A target the days cannot reach is worse than no target — the amounts
