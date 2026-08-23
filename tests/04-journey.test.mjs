@@ -180,7 +180,9 @@ export default async function run() {
           const el = document.querySelector('#assess-val');
           el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true }));
         }, ENTER[cur.id]);
-        await page.evaluate(() => assessNav(1));
+        // assessNav(1) now lands on the 2-minute rest between tests; skip it the
+        // way the athlete can, rather than pretending the rest is not there.
+        await page.evaluate(() => { assessNav(1); if (typeof _ar !== 'undefined' && _ar) skipAssessRest(); });
         await page.waitForTimeout(120);
       }
       t.eq('all 10 tests are walked', walked.length, 10);
@@ -232,6 +234,7 @@ export default async function run() {
       const el = document.querySelector('#assess-val');
       el.value = '60'; el.dispatchEvent(new Event('input', { bubbles: true }));
       assessNav(1);
+      if (typeof _ar !== 'undefined' && _ar) skipAssessRest();
     });
     await page.waitForTimeout(150);
     const label = await page.evaluate(() => (document.querySelector('#sheet label') || {}).textContent || '');
@@ -345,6 +348,7 @@ export default async function run() {
         const el = document.querySelector('#assess-val');
         el.value = '10'; el.dispatchEvent(new Event('input', { bubbles: true }));
         assessNav(1);
+        if (typeof _ar !== 'undefined' && _ar) skipAssessRest();
       });
       await page.waitForTimeout(100);
     }
@@ -366,6 +370,7 @@ export default async function run() {
         const el = document.querySelector('#assess-val');
         el.value = '10'; el.dispatchEvent(new Event('input', { bubbles: true }));
         assessNav(1);
+        if (typeof _ar !== 'undefined' && _ar) skipAssessRest();
         await new Promise(r => setTimeout(r, 30));
       }
       const s = document.querySelector('#sheet');
@@ -516,6 +521,131 @@ export default async function run() {
     t.ok('a meaningful number of controls were exercised', clicked > 150, clicked + ' buttons clicked');
     await browser.close();
     errors.forEach(e => t.fail('page error while clicking through the tabs', e));
+  }
+
+  /* ---- the two-minute rest between tests is now a FEATURE ---------------
+     The battery's own guidance says, in bold, "Rest 2 minutes between tests —
+     these are maximal efforts, and a short rest measures your recovery instead
+     of your strength." Nothing enforced it or even helped: assessNav() went
+     straight to the next test. A promise in UI text is a specification, and
+     this one had no code behind it. Reported by an athlete who realised
+     afterwards he had taken thirty or forty seconds between some of them —
+     and whose two lowest scores were the two tests that follow another trunk
+     test. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      openAssessment();
+      await new Promise(z => setTimeout(z, 150));
+      const o = {};
+      const put = v => { const e = document.querySelector('#assess-val');
+        e.value = String(v); e.dispatchEvent(new Event('input', { bubbles: true })); };
+      put(129); assessNav(1);
+      await new Promise(z => setTimeout(z, 150));
+      o.restShown = !!document.querySelector('#arRing');
+      o.clock = (document.querySelector('#arNum') || {}).textContent;
+      /* The clock must be SOLID: rest has no ten-second spoken cue, so it is
+         the one timer with nothing behind it — the same rule the player's rest
+         screen follows. */
+      o.solid = !!(document.querySelector('#arRing') || { classList: { contains: () => false } }).classList.contains('solid');
+      /* Previews what is COMING, so the athlete can get set. */
+      o.media = !!document.querySelector('#arRing .pl-ringmedia img, #arRing .pl-ringmedia video');
+      /* Scope this to the row that names it, and require the name of the test
+         that is COMING — a page-wide substring search would pass on the label
+         of the test just finished. Read textContent, not innerText: `.tt` is
+         uppercased in CSS, so innerText returns "UP NEXT". */
+      o.nextName = TESTS[assessState.idx + 1].name;
+      const up = [...document.querySelectorAll('#sheet .timerbox .tt')]
+        .find(e => /^Up next/.test(e.textContent));
+      o.upRow = up ? up.textContent : null;
+      o.namesNext = !!(up && up.textContent.includes(o.nextName));
+      /* And it must NOT have advanced yet — the rest is between the tests. */
+      o.idxHeld = assessState.idx;
+      /* Guard before anything that assumes the rest exists. Without this a
+         mutant that skips the rest entirely kills the block with a TypeError
+         on the line below, and the suite reports "the file threw" instead of
+         naming the check that failed. */
+      if (!_ar) { o.noRest = true; return o; }
+      /* Run it out. */
+      _ar.left = 2;
+      await new Promise(z => setTimeout(z, 2600));
+      o.afterExpiry = { idx: assessState.idx, onTest: !!document.querySelector('#assess-val'),
+        rests: (assessState.rests || []).slice() };
+      /* Skipping records the seconds actually TAKEN, not a zero — the athlete
+         did rest, just not the full two minutes, and a re-test comparison
+         wants the real number. */
+      put(12); assessNav(1);
+      await new Promise(z => setTimeout(z, 150));
+      if (!_ar) { o.noRest = true; return o; }
+      _ar.left = 80;                       // 40 of the 120 taken
+      skipAssessRest();
+      await new Promise(z => setTimeout(z, 150));
+      o.afterSkip = (assessState.rests || []).slice();
+      /* Stepping BACK to fix a mistyped number is not a new effort and must
+         not cost two minutes. */
+      assessNav(-1);
+      await new Promise(z => setTimeout(z, 150));
+      o.back = { idx: assessState.idx, onRest: !!document.querySelector('#arRing') };
+      /* Cancelling mid-rest must not leave an interval running against a
+         screen that is gone — it would re-open the battery a minute later. */
+      if (o.back.onRest) return o;         // a mutant that rests on Back has no field to type into
+      put(30); assessNav(1);
+      await new Promise(z => setTimeout(z, 150));
+      assessQuit();
+      o.quitClears = (typeof _ar === 'undefined') || _ar === null;
+      return o;
+    });
+    /* The guards above return early rather than throw, so give the later
+       assertions something to read and let them report by name. */
+    r.afterExpiry = r.afterExpiry || {}; r.afterSkip = r.afterSkip || []; r.back = r.back || {};
+    t.ok('tapping Next test rests before the next one', r.restShown, r);
+    t.eq('for the full two minutes', r.clock, '2:00');
+    t.ok('the rest clock is solid — it has no ten-second cue behind it', r.solid, r);
+    t.ok('and it previews the movement coming up', r.media && r.namesNext, r);
+    t.eq('the next test does not start until the rest is done', r.idxHeld, 0);
+    t.eq('when the clock runs out it advances', r.afterExpiry.idx, 1);
+    t.ok('and lands on the test, ready to go', r.afterExpiry.onTest, r);
+    t.eq('a full rest is recorded as the full two minutes', r.afterExpiry.rests[0], 120);
+    /* The discriminating one: a skip that records 0 would say the athlete
+       never rested, which is not what happened and would mislead a re-test. */
+    t.eq('skipping records the seconds actually taken, not zero', r.afterSkip[1], 40);
+    t.eq('stepping back does not cost a rest', r.back.onRest, false);
+    t.ok('and it really did step back', r.back.idx === 1, r.back);
+    t.ok('cancelling mid-rest stops the clock', r.quitClears, r);
+    await browser.close();
+    errors.forEach(e => t.fail('page error during the between-test rest', e));
+  }
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    /* Rest discipline travels WITH the numbers, the same reason TEST_PROTOCOL
+       is stamped: a v1 and a v2 taken under different rest are not the same
+       measurement and a comparison should be able to say so. */
+    const r = await page.evaluate(async () => {
+      openAssessment();
+      await new Promise(z => setTimeout(z, 150));
+      const put = v => { const e = document.querySelector('#assess-val');
+        e.value = String(v); e.dispatchEvent(new Event('input', { bubbles: true })); };
+      const V = [129, 12, 30, 50, 60, 57, 10, 20, 32, 15];
+      for (let i = 0; i < V.length; i++) {
+        put(V[i]); assessNav(1);
+        await new Promise(z => setTimeout(z, 60));
+        if (typeof _ar !== 'undefined' && _ar) { _ar.left = 60; skipAssessRest(); }
+        await new Promise(z => setTimeout(z, 60));
+      }
+      await new Promise(z => setTimeout(z, 250));
+      const b = STATE.baseline || {};
+      return { restsTaken: b.restsTaken, restsFull: b.restsFull, median: b.restMedian,
+        protocol: b.protocol, score: b.score };
+    });
+    t.eq('the record counts every rest gap', r.restsTaken, 9);
+    t.eq('and how many were taken in full', r.restsFull, 0);
+    t.eq('with the median actually rested', r.median, 60);
+    t.ok('alongside the protocol stamp it sits next to', r.protocol > 0, r);
+    t.ok('and the battery still scores', r.score > 0, r);
+    await browser.close();
+    errors.forEach(e => t.fail('page error while stamping rest discipline', e));
   }
 
   srv.close();
