@@ -1240,9 +1240,120 @@ export default async function run() {
       const bare = await _visionEstimate('data:image/png;base64,AA==', 'p', { backoff: [0] });
       o.bareStillMissing = _macrosMissing(bare);
 
+      /* The shape a model following the OLD prompt actually returned, and the
+         one the athlete hit: it was told to "return 0 for that ONE field" when
+         a number is not shown, so it answered zero grams and never filled the
+         percentage fields at all. Zero grams WITH a split must still convert —
+         `!p` is true for both absent and 0, and a check that only ever feeds
+         the absent shape proves nothing about the zero shape. */
+      window._geminiCall = async () => reply({ name: 'Today', kcal: 517, protein: 0, carbs: 0, fat: 0, proteinPct: 39, carbsPct: 3, fatPct: 58 });
+      const zeroed = await _visionEstimate('data:image/png;base64,AA==', 'p', { backoff: [0] });
+      o.zeroed = { p: zeroed.p, c: zeroed.c, f: zeroed.f, missing: _macrosMissing(zeroed) };
+
       window._geminiCall = real;
       return o;
     });
+    /* 517 kcal at 39/3/58 — the athlete's own screenshot, to the gram. */
+    t.eq('zero grams beside a split still converts (protein)', r.zeroed.p, 50);
+    t.eq('and carbs', r.zeroed.c, 4);
+    t.eq('and fat', r.zeroed.f, 33);
+    t.ok('and is not reported as macros-missing', !r.zeroed.missing, r.zeroed);
+    /* ---- the athlete can type the split themselves ---------------------
+       The model is a black box this sandbox cannot reach, so the percentage
+       path needs a route that does not depend on it. Lose It never prints
+       grams at all — the numbers on the athlete's glass were "58% Fat · 3%
+       Carbs · 39% Protein" and nothing else. Drive the real sheet. */
+    {
+      const m = await page.evaluate(async () => {
+        const o = {}, real = window._geminiCall;
+        const reply = obj => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(obj) }] }, finishReason: 'STOP' }] });
+        window._geminiCall = async () => reply({ name: 'Breakfast', kcal: 517 });
+        const est = await _visionEstimate('data:image/png;base64,AA==', 'p', { backoff: [0] });
+        window._geminiCall = real;
+        /* Mirror what the import path itself does on a macros-missing
+           reading: hand the fields over BLANK, not pre-filled with zeros, so
+           the athlete types a real number instead of silently accepting a
+           protein figure nobody measured. Asserted through the app's own
+           predicate rather than re-deriving "are macros missing". */
+        let handed = est;
+        if (_macrosMissing(handed)) handed = Object.assign({}, handed, { p: undefined, c: undefined, f: undefined, macrosMissing: true });
+        openQuickAdd(handed);
+        await new Promise(z => setTimeout(z, 200));
+        /* Find the BUTTON the athlete taps, not just the boxes. A mutant that
+           deleted the button left the inputs in place and escaped a check that
+           only queried for them and then called applyPctSplit() directly —
+           measuring the function, not the route to it. */
+        o.pctBtn = [...document.querySelectorAll('#sheet button')]
+          .filter(b => /applyPctSplit/.test(b.getAttribute('onclick') || '')).length;
+        o.offersPct = !!document.querySelector('#fa-pctP') && o.pctBtn === 1;
+        const seen = [];
+        const realToast = window.toast; window.toast = m => seen.push(String(m));
+        const tapConvert = () => { seen.length = 0;
+          [...document.querySelectorAll('#sheet button')]
+            .find(b => /applyPctSplit/.test(b.getAttribute('onclick') || '')).click();
+          return seen.join(' | '); };
+        /* Guard: the boxes must start BLANK. A zero here is a measurement —
+           "the athlete ate no carbs" — and the whole v260 lesson is that a
+           zero macro on a real-calorie row is a failed reading, not a fact. */
+        o.startsBlank = document.querySelector('#fa-p').value === '';
+        const put = (id, v) => { document.querySelector('#' + id).value = String(v); };
+        put('fa-pctP', 39); put('fa-pctC', 3); put('fa-pctF', 58);
+        o.goodMsg = tapConvert();
+        o.p = document.querySelector('#fa-p').value;
+        o.c = document.querySelector('#fa-c').value;
+        o.f = document.querySelector('#fa-f').value;
+        o.total = document.querySelector('#fa-total').textContent;
+        /* A split that does not add up must be refused, not silently scaled —
+           it means the athlete mistyped or read the wrong ring. */
+        put('fa-pctP', 39); put('fa-pctC', 3); put('fa-pctF', 5);
+        o.badMsg = tapConvert();
+        o.afterBadSplit = document.querySelector('#fa-p').value;
+        window.toast = realToast;
+        closeSheet();
+        return o;
+      });
+      t.ok('the import warning offers a percentage entry', m.offersPct, m);
+      t.ok('guard: the gram boxes start blank, not zero', m.startsBlank, m);
+      t.eq('typing the split fills protein', m.p, '50');
+      t.eq('and carbs', m.c, '4');
+      t.eq('and fat', m.f, '33');
+      t.ok('and the running total repaints with it', /50g P/.test(m.total), m);
+      t.eq('a split that does not add up is refused, leaving the last good value',
+        m.afterBadSplit, '50');
+      /* Silently doing nothing reads as broken. Say why — a mutant that
+         dropped the message changed nothing a value-only check could see. */
+      t.ok('and it says why rather than doing nothing', /add up to about 100/i.test(m.badMsg), m);
+      t.ok('a good split confirms the grams it worked out', /50g protein/i.test(m.goodMsg), m);
+    }
+
+    /* ---- the prompt asks for the form the data is actually in -----------
+       v262's lesson verbatim: when a reading comes back empty, the question is
+       not only "did the model fail" but "did we ask for the form the data is
+       in". The old prompt listed GRAMS as the return contract and told the
+       model to "return 0 for that ONE field" when a number was not shown — so
+       for a percentage-only screenshot it answered zeros and never filled the
+       percentage fields. Both halves had to go. */
+    {
+      const q = await page.evaluate(() => {
+        const src = _visionEstimate.toString() + '\n' + (window.foodScreenshot ? foodScreenshot.toString() : '');
+        const all = [...document.querySelectorAll('script')].map(s => s.textContent).join('\n');
+        const i = all.indexOf('This is a screenshot from a nutrition-tracking app');
+        const prompt = i < 0 ? '' : all.slice(i, all.indexOf("',", i));
+        return { found: i >= 0, prompt, srcLen: src.length };
+      });
+      t.ok('guard: the import prompt was located', q.found && q.prompt.length > 200, { len: q.prompt.length });
+      t.ok('it names all three percentage fields',
+        /proteinPct/.test(q.prompt) && /carbsPct/.test(q.prompt) && /fatPct/.test(q.prompt), {});
+      t.ok('it offers the split as a COMPLETE answer, not an aside',
+        /COMPLETE answer/i.test(q.prompt), {});
+      /* The sentence that caused this. It must not tell the model to answer a
+         missing number with a zero — omitting the field is the honest reply,
+         and the app already reads absent and 0 the same way. */
+      t.ok('it never asks for a zero in place of a number it could not read',
+        !/return 0 for that ONE field/i.test(q.prompt), {});
+      t.ok('it asks for the calories EATEN, not the remaining budget',
+        /not the remaining budget/i.test(q.prompt), {});
+    }
     t.eq('a percentage-only screenshot yields real protein grams', r.p, 92);
     t.eq('real carb grams', r.c, 76);
     t.eq('real fat grams', r.f, 25);

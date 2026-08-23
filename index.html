@@ -1774,7 +1774,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='291';
+const APP_VERSION='292';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -9405,6 +9405,23 @@ function _faNum(id){const el=$('#'+id);const v=el?parseFloat(el.value):0;return 
 function updQtyTotal(){const el=$('#fa-total');if(!el)return;const q=_faQty();
   el.innerHTML='= <b>'+Math.round(_faNum('fa-kcal')*q)+'</b> kcal · <b>'+Math.round(_faNum('fa-p')*q)+'</b>g P · <b>'
     +Math.round(_faNum('fa-c')*q)+'</b>g C · <b>'+Math.round(_faNum('fa-f')*q)+'</b>g F';}
+/* The escape hatch for a tracker that never prints grams.
+   The athlete's own screenshot showed "58% Fat · 3% Carbs · 39% Protein" and
+   nothing else — the model read the calorie total and correctly reported no
+   macros, because there were none to read IN GRAMS. The numbers were on the
+   glass the whole time, in a form the app can convert exactly. This reuses
+   _macrosFromPct(), so the percentage path has ONE implementation whether the
+   split arrives from the model or from the athlete's fingers. */
+function applyPctSplit(){
+  const num=id=>{const e=$('#'+id);const v=e?e.value.trim():'';return v===''?null:v;};
+  const kcal=Math.max(0,Math.round(+($('#fa-kcal')||{}).value||0));
+  if(!kcal){toast('Add the calorie total first');return;}
+  const g=_macrosFromPct(kcal,num('fa-pctP'),num('fa-pctC'),num('fa-pctF'));
+  if(!g){toast('Enter all three percentages — they should add up to about 100');return;}
+  $('#fa-p').value=g.p;$('#fa-c').value=g.c;$('#fa-f').value=g.f;
+  updQtyTotal();haptic(8);
+  toast(`${g.p}g protein · ${g.c}g carbs · ${g.f}g fat`);
+}
 function saveFood(){
   const name=($('#fa-name').value||'').trim()||'Meal';
   const perK=_faNum('fa-kcal'),perP=_faNum('fa-p'),perC=_faNum('fa-c'),perF=_faNum('fa-f');
@@ -9715,7 +9732,15 @@ function openQuickAdd(pre){
     </div>`:''}
     ${(filled&&!editing)?(pre.macrosMissing?`<div class="note warn" style="margin:8px 0">
       <div style="font-weight:800">${_ve(pre.name||'Food')} · ${pre.kcal} kcal</div>
-      <div class="tiny" style="margin-top:4px">⚠️ <b>No macros found</b> in that screenshot — only the calorie total. The protein, carbs and fat boxes above are <b>blank, not zero</b>. Fill them in, or import again from a screen that shows the macro breakdown.</div>
+      <div class="tiny" style="margin-top:4px">⚠️ <b>No macros found</b> in that screenshot — only the calorie total. The protein, carbs and fat boxes above are <b>blank, not zero</b>.</div>
+      <div class="tiny" style="margin-top:8px;font-weight:800">Does your tracker show a percentage split instead?</div>
+      <div class="tiny muted" style="margin-top:2px">Most of them print it under the calorie ring — <b>58% Fat · 3% Carbs · 39% Protein</b>. Type those three numbers and the grams are worked out exactly.</div>
+      <div class="btnrow" style="gap:6px;margin-top:8px;align-items:flex-end">
+        <div class="field" style="flex:1;margin:0"><label>% P</label><input id="fa-pctP" type="number" inputmode="numeric" placeholder="%"></div>
+        <div class="field" style="flex:1;margin:0"><label>% C</label><input id="fa-pctC" type="number" inputmode="numeric" placeholder="%"></div>
+        <div class="field" style="flex:1;margin:0"><label>% F</label><input id="fa-pctF" type="number" inputmode="numeric" placeholder="%"></div>
+        <button class="btn sm primary" style="flex:0 0 auto;width:auto;padding:12px 14px" onclick="applyPctSplit()">Convert</button>
+      </div>
     </div>`:`<div style="margin:8px 0;padding:10px 12px;border-radius:12px;background:rgba(46,204,113,.12);border:1px solid var(--green)">
       <div style="font-weight:800">${_ve(pre.name||'Food')}</div>
       ${pre.portion?`<div class="tiny" style="margin-top:3px;font-weight:700">📏 Estimated portion: ${_ve(pre.portion)}</div>`:''}
@@ -10139,7 +10164,7 @@ function estimateFoodFromImage(dataUrl,opts){
    has. Same _visionEstimate() plumbing (model fallback, JSON schema, the
    physiological clamp), only the prompt changes: read, do not calculate. */
 function estimateFoodFromScreenshot(dataUrl,opts){
-  return _visionEstimate(dataUrl,'This is a screenshot from a nutrition-tracking app (such as Lose It or MyFitnessPal) or a nutrition label. The calories and macros have ALREADY been calculated and are displayed somewhere in this image. Your job is to READ them, not to estimate them — do NOT recalculate or round beyond what is shown. Look everywhere in the image: totals rows, summary headers, progress rings or bars, budget/remaining rows, and per-item lists. Macros may be labelled in full ("Protein", "Carbohydrates", "Fat") or abbreviated ("P", "C", "F", "Prot", "Carb"). IMPORTANT: many trackers show the macro split as PERCENTAGES in a ring, donut or coloured bar (for example "25% Fat, 34% Carbs, 41% Protein") rather than in grams. If you see percentages, put them in "proteinPct", "carbsPct" and "fatPct" and leave the gram fields out — do NOT try to convert them yourself, the app does that exactly. If you see grams, use "protein", "carbs" and "fat". If both are shown, give the grams. Return: "name" = the food, meal or day label shown (e.g. "Lunch", "Chicken salad", "Today"); "kcal" = the whole-number calorie total; and whole-number GRAMS for "protein", "carbs" and "fat". If a single total or summary is shown, use it. If only individual foods are listed with no total, sum them into one entry. If a number is genuinely not shown anywhere, return 0 for that ONE field but still return every other number you did find — a partial reading is useful. Also return "portion": a short description of the serving or quantity shown, if visible, under 40 characters. Only if the image contains no nutrition numbers at all should you return kcal:0 and protein:0.',opts);
+  return _visionEstimate(dataUrl,'This is a screenshot from a nutrition-tracking app (such as Lose It or MyFitnessPal) or a nutrition label. The calories and macros have ALREADY been calculated and are displayed somewhere in this image. Your job is to READ them, not to estimate them — do NOT recalculate or round beyond what is shown. Look everywhere in the image: totals rows, summary headers, progress rings or bars, budget/remaining rows, and per-item lists. Macros may be labelled in full ("Protein", "Carbohydrates", "Fat") or abbreviated ("P", "C", "F", "Prot", "Carb"). THE MACRO SPLIT IS OFTEN SHOWN ONLY AS PERCENTAGES, printed under the calorie ring as a coloured bar with a legend — for example "58% Fat · 3% Carbs · 39% Protein". When a percentage split is the only macro information in the image, fill "proteinPct", "carbsPct" and "fatPct" with those numbers and OMIT the gram fields entirely. That is a COMPLETE answer: do NOT try to convert them yourself, the app does that exactly, and do not return zero grams instead, because zero means "ate none" and would throw away a split that is plainly visible. If grams are shown, use "protein", "carbs" and "fat". If both grams and percentages are shown, give the grams. Return: "name" = the food, meal or day label shown (e.g. "Lunch", "Chicken salad", "Today"); "kcal" = the whole-number calorie total that was EATEN — not the remaining budget, the amount left, or the daily goal; and EITHER whole-number grams in "protein", "carbs" and "fat" OR the percentage split in "proteinPct", "carbsPct" and "fatPct". If a single total or summary is shown, use it. If only individual foods are listed with no total, sum them into one entry. If one number is genuinely not shown anywhere, OMIT that field rather than guessing, and still return every other number you did find — a partial reading is useful, but a zero is a measurement and would be a lie. Also return "portion": a short description of the serving or quantity shown, if visible, under 40 characters. Only if the image contains no nutrition numbers at all should you return kcal:0.',opts);
 }
 function foodPhoto(){
   if(!foodAIReady()){toast('Add a free Gemini key in Settings ⚙️ for photo estimates');openQuickAdd();return;}

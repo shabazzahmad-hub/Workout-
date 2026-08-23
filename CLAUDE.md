@@ -1202,6 +1202,51 @@ sign-off line (`'Time. Strong hold.'`) ran after it — so the last line of each
 test came out in a different voice from the nine that preceded it. The order in
 `baselineStop()` is load-bearing, not cosmetic.
 
+## The prompt contradicted itself, and the model obeyed the wrong half (v292)
+
+"The app is not recognizing the macros even though it is clearly in the
+screenshot." It was — as **percentages**: `58% Fat · 3% Carbs · 39% Protein`
+under the calorie ring, which is all Lose It ever prints. v262 added
+`_macrosFromPct()` for exactly this and the arithmetic was correct. The reading
+still came back empty.
+
+**The prompt told the model two incompatible things.** It described the
+percentage fields in an aside, then set the return contract as *"whole-number
+GRAMS for protein, carbs and fat"* and closed with *"if a number is genuinely
+not shown anywhere, return 0 for that ONE field."* Grams genuinely were not
+shown. So the model did as it was told: `protein:0, carbs:0, fat:0`, and never
+filled `proteinPct` at all. `_macrosFromPct()` needs all three slices, got
+none, and returned null.
+
+Both halves had to go. The split is now stated as a **COMPLETE answer** inside
+the return contract, and a number that cannot be read is **omitted, never
+zeroed** — which is also the honest instruction, since `!p` already treats
+absent and 0 alike and v260 established that a zero macro on a real-calorie row
+is a failed reading, not a measurement. The prompt also now says `kcal` is what
+was **eaten**, not the remaining budget: that screen showed 1,784 / 517 / 1,267
+and only one of them is the answer.
+
+**A prompt fix cannot be verified from here**, so the percentage path got a
+route that does not depend on the model at all: three `% P / % C / % F` boxes in
+the macros-missing warning, feeding the same `_macrosFromPct()`. One
+implementation, whether the split arrives from the model or from the athlete's
+fingers.
+
+### Two escaped mutants, both measuring the input instead of the route
+
+- Deleting the **Convert button** escaped, because the check queried for the
+  input boxes and then called `applyPctSplit()` directly. The boxes survived,
+  the button did not, and the feature was unusable. **Click the control the
+  athlete taps.**
+- Making a bad split fail **silently** escaped, because the check only asserted
+  the gram value was unchanged — which is equally true of doing nothing. The
+  toast is the behaviour; assert the toast.
+
+Seven mutants, all caught after that. And one check failure that was the check:
+handing `p:0` to `openQuickAdd()` shows `0` in the box, but the real import path
+blanks the fields first (`{p:undefined,c:undefined,f:undefined}`) precisely so
+the athlete types a real number. The block now mirrors that path.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
