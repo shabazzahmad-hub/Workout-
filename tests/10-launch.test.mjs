@@ -191,6 +191,89 @@ const { browser, page, errors } = await launch(port);
     return { advanced: lbl() !== b };
   });
   if (!imp.skip) s.ok('a valid imperial body advances (70 in / 190 lb is not "too small")', imp.advanced === true, imp);
+
+  /* ---- the message has to name the mistake, not restate the range --------
+     Reported from the phone: an athlete who is 5'10" typed 178 — their height
+     in CENTIMETRES — into a box set to inches. The app correctly refused it
+     and said "47-91", which is true and names nothing; the number they needed
+     was 70 and nothing on screen said so. Read the toast the app actually
+     shows, not obStepError()'s return value — a message that never reaches
+     the screen is not a message. */
+  /* On its OWN page: the block above advanced the wizard past step 1, and
+     step 1 is the only step that validates these fields — so tapping Next
+     here would have gated a different step entirely and every toast came back
+     empty. What the block before you left on screen is not a contract. */
+  const p2b = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await p2b.goto(base, { waitUntil: 'networkidle' }); await waitForBoot(p2b);
+  const hint = await p2b.evaluate(async () => {
+    const seen = [];
+    const realToast = window.toast;
+    window.toast = m => { seen.push(String(m)); };
+    const put = (id, v) => { const e = document.querySelector('#' + id); e.value = String(v); e.dispatchEvent(new Event('input', { bubbles: true })); };
+    const unit = u => { const b = [...document.querySelectorAll('#ob-unit button')].find(x => x.dataset.u === u); if (b) b.click(); };
+    /* A tap that PASSES advances the wizard, and step 1 is the only step that
+       validates these fields — so every case after the first success was
+       silently gating step 2 and came back with no toast at all. Walk back to
+       step 1 after each tap, and report the step we were actually on. */
+    const step = () => document.querySelector('#ob-steplbl').textContent;
+    const tap = () => {
+      seen.length = 0;
+      const was = step();
+      document.querySelector('#ob-next').click();
+      const moved = step() !== was;
+      if (moved) { const b = document.querySelector('#ob-back'); if (b) b.click(); }
+      return { msg: seen.join(' | '), advanced: moved, on: was };
+    };
+    const out = {};
+    unit('in');
+    put('ob-age', 47); put('ob-weight', 190);
+    put('ob-height', 178); out.cmInInches = tap();       // the reported case
+    put('ob-height', 12);  out.justWrong = tap();        // not a unit mix-up
+    unit('cm');
+    put('ob-weight', 86);
+    put('ob-height', 70);  out.inchesInCm = tap();       // the mirror image
+    /* The sibling that does NOT error on its own: 86 is inside the legal
+       66-550 lb range, so it advanced silently and every calorie number below
+       was built from 39 kg. */
+    unit('in');
+    put('ob-height', 70); put('ob-weight', 86); out.kgInPounds = tap();
+    put('ob-weight', 190); out.realBodyOk = tap();
+    /* The gate's EDGES, not just its middle. A cross-check like this earns its
+       keep only if it cannot fire on a real person, and 190 lb at 5'10" (BMI
+       27) sits so far inside that a floor moved up to 20 or a ceiling moved
+       down to 40 would never be noticed — that mutant escaped. These two are
+       lean and heavy real bodies, and both must pass untouched. */
+    put('ob-height', 70); put('ob-weight', 132); out.leanBodyOk = tap();   // BMI 18.9
+    put('ob-height', 70); put('ob-weight', 300); out.heavyBodyOk = tap();  // BMI 43.0
+    window.toast = realToast;
+    return out;
+  });
+  s.ok('the reported case names centimetres', /centimet/i.test(hint.cmInInches.msg), hint);
+  s.ok('and gives the number to type instead', /\b70\b/.test(hint.cmInInches.msg), hint);
+  /* A wrong number that is NOT a unit mix-up must not be told it is one. */
+  s.ok('a plainly wrong height gets the range and no false explanation',
+    /47/.test(hint.justWrong.msg) && !/centimet|inches that is/i.test(hint.justWrong.msg), hint);
+  s.ok('the mirror image names inches', /inches/i.test(hint.inchesInCm.msg), hint);
+  s.ok('and converts it', /\b178\b/.test(hint.inchesInCm.msg), hint);
+  /* Only the PAIR is wrong here — 86 lb is a legal number on its own. */
+  s.ok('a weight in the wrong unit is caught against the height',
+    /does not add up/i.test(hint.kgInPounds.msg), hint);
+  s.ok('and says what to type instead', /\b190\b/.test(hint.kgInPounds.msg), hint);
+  s.ok('a real body still passes silently and advances', hint.realBodyOk.msg === '' && hint.realBodyOk.advanced, hint);
+  s.ok('a lean real athlete is not accused of a typo (BMI 18.9)', hint.leanBodyOk.msg === '' && hint.leanBodyOk.advanced, hint);
+  s.ok('nor a heavy one (BMI 43.0)', hint.heavyBodyOk.msg === '' && hint.heavyBodyOk.advanced, hint);
+  /* Guard: an empty toast on every case would satisfy the two negative checks
+     above on nothing at all, which is exactly how this block first failed. */
+  /* Guard, widened after the first version of it missed exactly this: assert
+     EVERY case was taken on step 1. A tap on any later step produces no toast,
+     which satisfies each negative check on nothing. */
+  s.ok('guard: every case was taken on the step that validates these fields',
+    Object.values(hint).every(x => x && x.on === hint.cmInInches.on), hint);
+  s.ok('guard: the rejected cases really did produce a message',
+    hint.cmInInches.msg !== '' && hint.justWrong.msg !== '' && hint.kgInPounds.msg !== '', hint);
+  s.ok('guard: and the rejected cases did not advance',
+    !hint.cmInInches.advanced && !hint.justWrong.advanced && !hint.kgInPounds.advanced, hint);
+  await p2b.close();
   await p2.close();
 }
 

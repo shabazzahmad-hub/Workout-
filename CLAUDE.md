@@ -1069,6 +1069,54 @@ Five mutants, all caught: dropping the carbs stat, zero instead of a dash,
 dropping the heading, labelling a derived number `yours`, and painting the
 carbs stat with fat's value.
 
+## A range is not an explanation (v289)
+
+The first defect a real athlete hit, on the first screen. He is 5'10" and
+typed **178** into a box set to inches — his height in centimetres. The app
+refused it, correctly, and said *"Add your height in inches (47–91)."*
+
+That message restates the rule and names nothing. The number he needed was
+**70** and nothing on screen said so. The app has both units, both ranges and
+the conversion factor; it had everything required to say "178 looks like
+centimetres" and said the range instead.
+
+`unitMixupHint()` adds that suffix when — and only when — the entered number
+is a plausible height in the OTHER unit. **A wrong number that is not a unit
+mix-up must not be told it is one**, so 12 still gets the bare range. Both
+validation sites call it: the wizard and the calorie-target sheet, which are
+twins and had already been caught drifting once. The second site's own comment
+described the mirror-image mistake (inches typed while set to cm, giving a
+TDEE of 1591 instead of 2570) and still only printed the range.
+
+### The sibling that does not error at all is worse
+
+Height at least fails loudly. **Weight does not.** The imperial range is
+66–550 lb, so an athlete typing kilograms lands *inside* it — 86 reads as
+86 lb, or 39 kg — and every calorie number downstream is built from it with
+nothing on screen to say so. Neither figure is implausible alone; **the pair
+is.** 86 lb at 5'10" is a BMI of 12.4, which is not a lean person, it is a
+wrong unit. `bmiImplausible()` gates at 13/60, far outside the human range in
+both directions, so it can only ever catch an error.
+
+### Two escaped mutants, both the same trap, and it is this repo's oldest one
+
+Raising the BMI floor to 20 and lowering the ceiling to 40 both survived —
+mutants that would **reject real lean and heavy athletes**. The first reason
+was a weak check: the only "real body" case was 190 lb at 5'10" (BMI 27),
+nowhere near either edge. **A guard earns its keep only if a check proves it
+cannot fire on a legitimate input**, so the edges are now pinned at BMI 18.9
+and 43.0.
+
+The second reason was worse and had already been recorded: **a tap that PASSES
+advances the wizard**, and step 1 is the only step that validates these
+fields. So every case after the first success was silently gating step 2,
+produced no toast, and satisfied each negative assertion on nothing. The first
+version of this block failed the same way and its guard only covered the cases
+that ran *before* the first success. Every case now walks back to step 1, and
+the guard asserts every case was taken on the same step. `plEnterReady(false)`
+first, then the thing you mean to test — the wizard is the same rule with a
+different button.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
