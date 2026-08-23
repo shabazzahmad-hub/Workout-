@@ -918,6 +918,105 @@ export default async function run() {
   t.ok('the gear picker names the dome by its shape', bt.picker.dome, bt.picker);
   t.ok('and renames the sphere so the two cannot be mis-ticked', bt.picker.ball, bt.picker);
 
+  /* ---- loaded ruck work ------------------------------------------------
+     Four movements chosen by searching the roster by MOVEMENT, not by name:
+     there was no step-up anywhere in the library, and no back-loaded hinge —
+     every existing hinge is front-loaded or single-leg. */
+  {
+    const r = await page.evaluate(() => {
+      const IDS = ['ruckstepup', 'rucksquat', 'ruckgm', 'ruckcarry'];
+      const risk = j => (JOINT_RISK[j] || []);
+      const flags = k => ['knee', 'lowback', 'shoulder', 'wrist', 'elbow']
+        .filter(j => risk(j).includes(k));
+      return {
+        exist: IDS.filter(k => !EX[k]),
+        imgs: IDS.map(k => EX[k] && EX[k].img),
+        patterns: IDS.map(k => EX[k].pattern),
+        /* JOINT_RISK membership asserted DIRECTLY, per exercise. A generic
+           "flagged joints do not leak" sweep cannot prove a new entry was ever
+           flagged — it never enters the risky bucket if nothing asked. */
+        stepup: flags('ruckstepup'),
+        squat: flags('rucksquat'),
+        gm: flags('ruckgm'),
+        carry: flags('ruckcarry'),
+        /* The FLOOR versions, which prove the escalation is reasoned rather
+           than a blanket flag on anything with a load. */
+        floorSquat: flags('squat'),
+        floorGoblet: flags('kbgoblet'),
+        floorCarry: flags('kbcarry'),
+        swaps: IDS.map(k => SAFE_SWAP[k] || null),
+        fallbacks: IDS.map(k => GEAR_FALLBACK[k] || null),
+        swapsReal: IDS.every(k => !SAFE_SWAP[k] || !!EX[SAFE_SWAP[k]]),
+        fallbacksReal: IDS.every(k => !GEAR_FALLBACK[k] || !!EX[GEAR_FALLBACK[k]]),
+      };
+    });
+    t.eq('all four ruck movements exist', r.exist.length, 0);
+    t.ok('each ships a real photo', r.imgs.every(i => /^ex-ruck\w+\.jpg$/.test(i)), r.imgs);
+    t.eq('the step-up fills the missing unilateral-leg slot', r.patterns[0], 'lunge');
+    t.eq('the squat is a squat', r.patterns[1], 'squat');
+    t.eq('and the good morning is the back-loaded HINGE the library lacked', r.patterns[2], 'hinge');
+    /* Each flag reasoned from mechanics. */
+    t.eq('a loaded single-leg step-up flags the knee', JSON.stringify(r.stepup), JSON.stringify(['knee']));
+    t.eq('an axially-loaded squat flags the low back', JSON.stringify(r.squat), JSON.stringify(['lowback']));
+    t.eq('and so does a back-loaded hinge', JSON.stringify(r.gm), JSON.stringify(['lowback']));
+    /* The discriminator. Blanket-flagging everything with "ruck" in the name
+       would satisfy every check above and this is the one it fails. */
+    t.eq('a symmetrical bear-hug carry is deliberately NOT flagged', r.carry.length, 0);
+    /* And the floors, which prove the escalation rather than a family flag. */
+    t.eq('plain squat stays unflagged', r.floorSquat.length, 0);
+    t.eq('the goblet squat stays unflagged — the ruck is on the SPINE', r.floorGoblet.length, 0);
+    t.eq('the farmer\'s carry stays unflagged too', r.floorCarry.length, 0);
+    t.ok('every swap target is a real exercise', r.swapsReal, r.swaps);
+    t.ok('and so is every gear fallback', r.fallbacksReal, r.fallbacks);
+    t.eq('a flagged hinge lands where every other flagged hinge lands', r.swaps[2], 'glutebridge');
+  }
+  {
+    /* Gear gating, both directions. A single `equip` typo would hand an
+       athlete four movements they have no kit for, and the generic sweeps
+       cannot see that at all. */
+    const r = await page.evaluate(() => {
+      const IDS = ['ruckstepup', 'rucksquat', 'ruckgm', 'ruckcarry'];
+      const real = STATE.profile.gear;
+      const withGear = g => { STATE.profile.gear = g; return IDS.filter(hasGearFor); };
+      const o = {
+        none: withGear([]),
+        ruckOnly: withGear(['ruck']),
+        ruckAndBench: withGear(['ruck', 'bench']),
+        benchOnly: withGear(['bench']),
+        /* Owning a different implement must NOT unlock ruck work. */
+        ballOnly: withGear(['stabilityball', 'balancetrainer', 'kettlebell', 'dumbbell']),
+      };
+      /* ...and owning the ruck must not unlock somebody else's work. */
+      STATE.profile.gear = ['ruck'];
+      o.ruckUnlocksBall = ['sbrollout', 'btsquat', 'kbgoblet'].filter(hasGearFor);
+      /* Ruck March stays open to everyone: any bag with books is fine for
+         WALKING, which is what its own steps say. */
+      STATE.profile.gear = [];
+      o.marchStillOpen = hasGearFor('ruck');
+      STATE.profile.gear = real;
+      return o;
+    });
+    t.eq('with no kit, none of the four are offered', r.none.length, 0);
+    t.eq('the pack alone unlocks three', r.ruckOnly.length, 3);
+    t.ok('but not the step-up, which also needs a box', !r.ruckOnly.includes('ruckstepup'), r);
+    t.eq('pack plus a box unlocks all four', r.ruckAndBench.length, 4);
+    t.eq('a box on its own unlocks none of them', r.benchOnly.length, 0);
+    t.eq('and neither does owning every other implement', r.ballOnly.length, 0);
+    t.eq('owning the pack does not unlock anyone else\'s work', r.ruckUnlocksBall.length, 0);
+    /* The deliberate exception, and the reason it is one. */
+    t.ok('Ruck March itself stays open to everyone', r.marchStillOpen, r);
+  }
+  {
+    /* Read the SOURCE, not a rendered screen: the two pickers are built in
+       different functions and have drifted before, so what matters is that the
+       entry exists in BOTH literals. */
+    const src2 = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const hits = (src2.match(/\['ruck','Weighted rucksack \+ plate'\]/g) || []).length;
+    /* Named by what the kit physically IS. "Rucksack" alone would be ticked by
+       anyone who owns a school bag; the plate is the part that matters. */
+    t.eq('the gear entry is in BOTH pickers, named by what the kit is', hits, 2);
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }
