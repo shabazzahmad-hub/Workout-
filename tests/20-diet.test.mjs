@@ -1326,6 +1326,91 @@ export default async function run() {
       t.ok('a good split confirms the grams it worked out', /50g protein/i.test(m.goodMsg), m);
     }
 
+    /* ---- ONE missing macro was invisible everywhere ---------------------
+       Both completeness tests required ALL THREE macros to be zero, so a
+       reading that dropped exactly one sailed through with no warning and a
+       bar reading "Carbs 0/198g" as though the athlete had eaten none. The
+       athlete's own import: 1141 kcal read as 102 g protein and 50 g fat,
+       with the screenshot plainly showing 72.9 g of carbs. */
+    {
+      const g = await page.evaluate(() => ({
+        /* The real reading, to the number. 102*4 + 50*9 = 858 of 1141. */
+        real: macroEnergyGap(1141, 102, 0, 50),
+        /* A complete reading must NOT be accused — this is the guard that
+           stops the warning firing on every normal row. */
+        complete: macroEnergyGap(1141, 102, 73, 50),
+        /* Two unknowns cannot be split between them, so say nothing. */
+        twoMissing: macroEnergyGap(1141, 102, 0, 0),
+        allMissing: macroEnergyGap(1141, 0, 0, 0),
+        /* A genuinely carb-free food is a real thing and must pass clean:
+           200 kcal of oil is 22 g fat and nothing else. */
+        pureFat: macroEnergyGap(198, 0, 0, 22),
+        /* Small rounding on a big meal is not a missing macro. NOTE this case
+           has all three macros present, so it returns null on the miss-count
+           before the size guard is ever consulted — it does NOT test the
+           floor, and a mutant that deleted the floor escaped because of it. */
+        rounding: macroEnergyGap(1000, 50, 100, 44),
+        /* These two DO test it, one half each, and both are legitimately
+           carb-free foods that must not be accused. Three eggs: 420 kcal,
+           36 g protein and 30 g fat account for 414 — a 6 kcal gap is
+           rounding, and the FLOOR is the only thing that says so. */
+        smallGap: macroEnergyGap(420, 36, 0, 30),
+        /* A big fatty meal: 906 of 1000 kcal accounted for. A 94 kcal gap
+           clears the 40 kcal floor and is caught only by the 12% share. */
+        shareGap: macroEnergyGap(1000, 60, 0, 74),
+        noKcal: macroEnergyGap(0, 0, 10, 0),
+      }));
+      t.ok('a dropped macro is detected', !!g.real, g);
+      t.eq('and named', g.real.which, 'carbs');
+      t.eq('with the unaccounted energy', g.real.gap, 283);
+      /* 71 g derived against the 72.9 g actually on the screenshot. */
+      t.eq('and the grams that energy represents', g.real.grams, 71);
+      t.eq('a complete reading is left alone', g.complete, null);
+      t.eq('two missing macros cannot be split, so nothing is claimed', g.twoMissing, null);
+      t.eq('nor three', g.allMissing, null);
+      t.eq('a genuinely fat-only food is not accused', g.pureFat, null);
+      t.eq('nor is ordinary rounding', g.rounding, null);
+      t.eq('a 6 kcal gap on a carb-free food is rounding, not a miss (floor)', g.smallGap, null);
+      t.eq('and a 94 kcal gap on a 1000 kcal meal is still under the share', g.shareGap, null);
+      t.eq('and no calories means no claim', g.noKcal, null);
+    }
+    {
+      /* Through the real sheet: the note has to appear on OPEN, name the
+         macro, fill it on tap, and clear itself once the box is filled. */
+      const m = await page.evaluate(async () => {
+        const o = {};
+        openQuickAdd({ name: 'Sun, Aug 23', kcal: 1141, p: 102, c: 0, f: 50 });
+        await new Promise(z => setTimeout(z, 200));
+        const gapText = () => (document.querySelector('#fa-gap') || {}).textContent || '';
+        o.onOpen = gapText();
+        const btn = () => [...document.querySelectorAll('#fa-gap button')]
+          .find(b => /fillMacroGap/.test(b.getAttribute('onclick') || ''));
+        o.hasButton = !!btn();
+        btn().click();
+        o.carbsAfter = document.querySelector('#fa-c').value;
+        o.total = document.querySelector('#fa-total').textContent;
+        /* The note must clear itself — one that lingers after the problem is
+           fixed reads as broken, and this one is reporting a problem. */
+        o.afterFill = gapText();
+        /* And typing a value by hand clears it the same way. */
+        openQuickAdd({ name: 'X', kcal: 1141, p: 102, c: 0, f: 50 });
+        await new Promise(z => setTimeout(z, 200));
+        document.querySelector('#fa-c').value = '73';
+        updQtyTotal();
+        o.afterTyping = gapText();
+        closeSheet();
+        return o;
+      });
+      t.ok('the sheet warns on open, before Save is ever tapped', /unaccounted/i.test(m.onOpen), m);
+      t.ok('and names the macro that is missing', /carbs/i.test(m.onOpen), m);
+      t.ok('it offers to work the grams out', m.hasButton, m);
+      t.eq('tapping it fills the carbs box', m.carbsAfter, '71');
+      /* textContent, so the <b> tags are already gone — match what is READ. */
+      t.ok('and the running total moves with it', /71g C/.test(m.total), m);
+      t.eq('the warning clears once filled', m.afterFill.trim(), '');
+      t.eq('and clears when typed by hand too', m.afterTyping.trim(), '');
+    }
+
     /* ---- the prompt asks for the form the data is actually in -----------
        v262's lesson verbatim: when a reading comes back empty, the question is
        not only "did the model fail" but "did we ask for the form the data is
