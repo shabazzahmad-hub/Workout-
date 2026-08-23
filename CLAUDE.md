@@ -1247,6 +1247,41 @@ handing `p:0` to `openQuickAdd()` shows `0` in the box, but the real import path
 blanks the fields first (`{p:undefined,c:undefined,f:undefined}`) precisely so
 the athlete types a real number. The block now mirrors that path.
 
+## One missing macro was invisible; three were not (v293)
+
+"The fat was not imported." It was — fat and protein both came through. It was
+**carbs** that arrived as 0, and the reason nothing said so is the finding:
+`macrosUncaptured()` and `_macrosMissing()` both require **all three** macros to
+be zero. A reading that dropped exactly one sailed through with no warning at
+all, and the tab printed `Carbs 0/198g` as though the athlete had eaten none.
+That is the same lie v260 named, one macro at a time instead of three.
+
+**Calories are not an independent number.** `kcal = 4p + 4c + 9f`, and when a
+tracker's own figures are on the glass that identity holds to within rounding —
+so a large shortfall means a macro was not read. On the reading that prompted
+this: 102 g protein and 50 g fat account for **858 of 1,141 kcal**, leaving
+**283 — which is 71 g of carbs against the 72.9 g the screenshot showed.**
+
+`macroEnergyGap()` fires only when **exactly one** macro is zero: with two
+unknowns the gap cannot be split between them, and with none it is rounding,
+fibre or alcohol. It is offered on a button rather than filled in silently,
+because a derived number the athlete never saw on their own screen should be
+theirs to accept.
+
+**A guard needs a check that proves it cannot fire on a legitimate input, and
+the case has to actually REACH the guard.** The first "ordinary rounding is not
+a missing macro" case passed all three macros, so it returned null on the
+miss-count before the size guard was ever consulted — and a mutant deleting
+both the 40 kcal floor and the 12% share escaped clean. The floor and the share
+are now pinned by one legitimately carb-free food each: three eggs (420 kcal, a
+6 kcal gap — floor) and a big fatty meal (1000 kcal, a 94 kcal gap — share).
+Nine mutants, all caught after that.
+
+**A warning that lingers after the problem is fixed reads as broken**, which
+matters more here than usual because this one is itself a bug report. It
+repaints on every keystroke through `updQtyTotal()`, and on sheet OPEN — an
+import that dropped a macro has to say so before Save is tapped, not after.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

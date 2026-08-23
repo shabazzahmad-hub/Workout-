@@ -1774,7 +1774,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='292';
+const APP_VERSION='293';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -9351,6 +9351,35 @@ function logFood(name,kcal,p,c,f,meal,portion){const d=nutToday();if(!Array.isAr
 function macrosUncaptured(f){
   return !!f&&(+f.kcal||0)>=50&&!((+f.p||0)>0)&&!((+f.c||0)>0)&&!((+f.f||0)>0);
 }
+/* Both completeness tests above require ALL THREE macros to be zero, so a
+   reading that dropped exactly ONE was invisible everywhere — no warning, no
+   flag, and a bar reading "Carbs 0/198g" as though the athlete had eaten none.
+   That is the same lie v260 named, one macro at a time instead of three.
+
+   Calories are not an independent number: kcal = 4p + 4c + 9f. When a
+   tracker's own figures are on the glass that identity holds to within
+   rounding, so a large shortfall means a macro was not read. Measured on the
+   reading that prompted this: 102 g protein and 50 g fat account for 858 of
+   1,141 kcal, leaving 283 — which is 71 g of carbs against the 72.9 g the
+   screenshot actually showed.
+
+   Only ONE missing macro is actionable: with two unknowns the gap cannot be
+   split, and with none it is just rounding, fibre or alcohol. */
+function macroEnergyGap(kcal,p,c,f){
+  kcal=+kcal||0;p=+p||0;c=+c||0;f=+f||0;
+  if(!(kcal>0))return null;
+  const miss=[];
+  if(!(p>0))miss.push('protein');
+  if(!(c>0))miss.push('carbs');
+  if(!(f>0))miss.push('fat');
+  if(miss.length!==1)return null;
+  const gap=kcal-(p*4+c*4+f*9);
+  /* Both a floor and a share: 40 kcal is inside rounding on a big meal, and
+     12% keeps a genuinely fat-free or carb-free food from being accused. */
+  if(gap<40||gap<kcal*0.12)return null;
+  const which=miss[0];
+  return {which,gap:Math.round(gap),grams:Math.round(gap/(which==='fat'?9:4))};
+}
 function uncapturedCount(){
   const d=nutToday();return (Array.isArray(d.food)?d.food:[]).filter(macrosUncaptured).length;
 }
@@ -9404,7 +9433,34 @@ function _faNum(id){const el=$('#'+id);const v=el?parseFloat(el.value):0;return 
 // Live "= total" line reflecting per-serving values × quantity.
 function updQtyTotal(){const el=$('#fa-total');if(!el)return;const q=_faQty();
   el.innerHTML='= <b>'+Math.round(_faNum('fa-kcal')*q)+'</b> kcal · <b>'+Math.round(_faNum('fa-p')*q)+'</b>g P · <b>'
-    +Math.round(_faNum('fa-c')*q)+'</b>g C · <b>'+Math.round(_faNum('fa-f')*q)+'</b>g F';}
+    +Math.round(_faNum('fa-c')*q)+'</b>g C · <b>'+Math.round(_faNum('fa-f')*q)+'</b>g F';
+  faGapPaint();}
+/* Recomputed on every keystroke, so the warning clears the moment the athlete
+   fills the box in — a note that lingers after the problem is fixed reads as
+   broken, and this one is telling them something is wrong. */
+function faGapPaint(){
+  const box=$('#fa-gap');if(!box)return;
+  const g=macroEnergyGap(_faNum('fa-kcal'),_faNum('fa-p'),_faNum('fa-c'),_faNum('fa-f'));
+  if(!g){box.innerHTML='';return;}
+  const L={protein:'protein',carbs:'carbs',fat:'fat'}[g.which];
+  box.innerHTML=`<div class="note warn" style="margin:8px 0">
+    <div style="font-weight:800">${g.gap} kcal is unaccounted for</div>
+    <div class="tiny" style="margin-top:4px">The macros entered add up to less energy than the calorie total, and <b>${L}</b> is the one left at zero. That is what a reading which missed one line looks like. Check the screenshot — if it shows a ${L} figure, type it in.</div>
+    <button class="btn sm ghost" style="width:auto;margin-top:8px;padding:10px 14px" onclick="fillMacroGap()">Use ${g.grams} g ${L} (from the calories)</button>
+   </div>`;
+}
+/* Exact arithmetic, not a guess about the food: with two macros known the
+   third follows from kcal = 4p + 4c + 9f. Offered on a button rather than
+   filled in silently, because a derived number the athlete did not see on
+   their own screen should be their choice to accept. */
+function fillMacroGap(){
+  const g=macroEnergyGap(_faNum('fa-kcal'),_faNum('fa-p'),_faNum('fa-c'),_faNum('fa-f'));
+  if(!g){toast('Nothing to fill');return;}
+  const id={protein:'fa-p',carbs:'fa-c',fat:'fa-f'}[g.which];
+  const el=$('#'+id);if(!el)return;
+  el.value=g.grams;updQtyTotal();haptic(8);
+  toast(`${g.grams} g ${g.which} — worked out from the calories`);
+}
 /* The escape hatch for a tracker that never prints grams.
    The athlete's own screenshot showed "58% Fat · 3% Carbs · 39% Protein" and
    nothing else — the model read the calorie total and correctly reported no
@@ -9723,6 +9779,7 @@ function openQuickAdd(pre){
           ${MEALS.map(([k,l])=>`<option value="${k}"${k===slot?' selected':''}>${l}</option>`).join('')}
         </select></div>
     </div>
+    <div id="fa-gap"></div>
     <div class="tiny" id="fa-total" style="font-weight:800;margin:8px 2px 4px">= ${pre.kcal||0} kcal · ${pre.p||0}g P · ${pre.c||0}g C · ${pre.f||0}g F</div>
     ${(pre.barcodeBlank&&!editing)?`<div class="note warn" style="margin:8px 0">
       <div style="font-weight:800">${pre.name?_ve(pre.name):'Barcode not recognised'}</div>
@@ -9751,6 +9808,9 @@ function openQuickAdd(pre){
     <div class="section-label" style="margin-top:14px">Quick picks <span class="tiny muted">· whole foods</span></div>
     <div style="display:flex;flex-wrap:wrap;gap:6px">${COMMON_FOODS.map((f,i)=>`<button class="chip" onclick="quickPick(${i})">${f.name.split(' (')[0]} · ${f.kcal}</button>`).join('')}</div>`}
     <div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
+  /* Paint it on OPEN, not only on the next keystroke — an import that dropped
+     a macro has to say so before the athlete taps Save, not after. */
+  faGapPaint();
 }
 /* ---- Photo → calorie estimate via Google Gemini (free tier) ----
    Uses the user's own free Google AI Studio key (aistudio.google.com/apikey),
