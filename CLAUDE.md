@@ -1379,6 +1379,56 @@ four separate images, no collage — against v283, where a single carefully
 worded combined prompt returned a 2x2 grid with an empty cell. The variable is
 the count per request, and nothing else.
 
+## The instruction was on the screen and nothing enforced it (v296)
+
+The battery's own guidance says, in bold, *"Rest 2 minutes between tests —
+these are maximal efforts, and a short rest measures your recovery instead of
+your strength."* `assessNav()` went straight to the next test. **A promise in
+UI text is a specification** — this is the fourth entry under that rule, after
+`safeMode()`, the restart confirm and the finish screen.
+
+The athlete found it the way the others were found: by using the app. He took
+thirty or forty seconds between some efforts because nothing on screen was
+counting, and his two lowest scores were the two tests that follow another
+trunk test. **The numbers this battery produces anchor every prescription for a
+year**, which is why an unenforced rest here costs more than an unenforced rest
+anywhere else in the app.
+
+`startAssessRest()` opens a 2:00 countdown between tests. Three properties are
+reasoned rather than incidental:
+
+- **The clock is SOLID.** Rest has no ten-second spoken cue, so it is the one
+  timer with nothing behind it — the same exception `.timerring.solid` already
+  carries in the player. Every other timed surface veils at `--plveil`.
+- **It previews the movement COMING**, with `plRingMediaHTML(ex)` behind the
+  clock, so the two minutes are spent getting set rather than waiting. The
+  discriminating check is that it names the NEXT test, not the one just
+  finished — a page-wide substring search passes on either.
+- **Stepping BACK does not cost a rest.** Re-entering a number you mistyped is
+  not a maximal effort. `if(dir>0)` is the whole of it, and the mutant that
+  drops the direction test is caught by a check that walks back one step.
+
+**A skip records the seconds actually TAKEN, not a zero.** The athlete who
+tapped Skip at 0:40 did rest, just not fully, and a re-test comparison wants the
+real number. The record stamps `restsTaken`, `restsFull` and `restMedian` beside
+`TEST_PROTOCOL`, for exactly the reason the protocol stamp exists: a v1 and a v2
+run under different rest are not the same measurement, and the app should be
+able to say so instead of reading the gap as progress.
+
+### Two test lessons, both already in this file
+
+**`innerText` returns the RENDERED text, and `.tt` is uppercased in CSS.** The
+preview check asserted `/Up next/` against `innerText` and failed on a screen
+that was perfectly correct — the DOM says `Up next`, the glass says `UP NEXT`.
+Read `textContent`, scoped to the element, and require the next test's name.
+
+**A guard has to sit before the first line that assumes the thing exists.** The
+"no rest at all" mutant killed the block with a TypeError on `_ar.left`, so the
+suite reported *"the test file itself threw"* rather than naming a failed check.
+That is still red, so it is still a catch — but a throw hides which property
+broke, and the same shape one step further along **hung** a suite in v267. Guard
+immediately, return the partial result, and let the named assertions report.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

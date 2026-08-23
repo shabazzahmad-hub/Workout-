@@ -1800,7 +1800,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='295';
+const APP_VERSION='296';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -5835,6 +5835,9 @@ function baselineStop(){ // user tapped Stop
   backToAssessStep(true);
 }
 function baselineCancel(){stopBaselineTimer();renderAssessStep();}
+/* Closing the sheet mid-rest must not leave an interval running against a
+   screen that is no longer there. */
+function assessQuit(){stopAssessRest();stopBaselineTimer();closeSheet();}
 function backToAssessStep(focus){
   renderAssessStep();
   if(focus)setTimeout(()=>{const inp=$('#assess-val');if(inp){inp.focus();inp.select&&inp.select();}},160);
@@ -5865,6 +5868,73 @@ function baselineTimerHTML(t){
   </div>
   <button class="btn primary" id="btAction" onclick="baselineStop()" style="display:none">■ Stop &amp; save</button>`;
 }
+/* ---- The rest BETWEEN tests --------------------------------------------
+   The battery's own guidance says, in bold, "Rest 2 minutes between tests —
+   these are maximal efforts, and a short rest measures your recovery instead
+   of your strength." Nothing enforced it, or even helped: assessNav() went
+   straight to the next test. A promise in UI text is a specification, and this
+   one had no code behind it — reported by an athlete who realised afterwards
+   he had taken thirty or forty seconds between some of them.
+
+   It is a nudge, not a gate. Skipping is allowed and the guidance already says
+   the battery can be split over two days; what was missing was any way to KNOW
+   when two minutes had passed without holding a second device. */
+const ASSESS_REST_SEC=120;
+let _ar=null;
+function stopAssessRest(){if(_ar){clearInterval(_ar.iv);_ar=null;}}
+/* Recorded per gap, so a re-test comparison can say whether the two runs were
+   taken under the same conditions — the same reason TEST_PROTOCOL is stamped.
+   A number, not a boolean: "rested 30s" and "skipped entirely" are different. */
+function assessRests(){
+  if(!assessState)return [];
+  if(!Array.isArray(assessState.rests))assessState.rests=[];
+  return assessState.rests;
+}
+function startAssessRest(nextIdx){
+  stopAssessRest();
+  const t=TESTS[nextIdx];const ex=EX[safeSwap(t.ex)];
+  _ar={left:ASSESS_REST_SEC,idx:nextIdx,started:Date.now()};
+  openSheet(assessRestHTML(t,ex));
+  paint();
+  _ar.iv=setInterval(()=>{
+    if(!_ar)return;
+    _ar.left--;
+    if(_ar.left<=3&&_ar.left>0)beep(660,.08);
+    if(_ar.left<=0){beep(880,.28);haptic(30);assessRestDone(true);return;}
+    paint();
+  },1000);
+  function paint(){
+    const n=$('#arNum');if(n)n.textContent=fmtTime(Math.max(0,_ar.left));
+  }
+}
+/* `full` is whether the clock ran out on its own. Skipping early records the
+   seconds that WERE taken rather than a zero — the athlete did rest, just not
+   the full two minutes, and a re-test comparison wants the real number. */
+function assessRestDone(full){
+  if(!_ar)return;
+  const taken=full?ASSESS_REST_SEC:Math.max(0,ASSESS_REST_SEC-_ar.left);
+  const idx=_ar.idx;
+  stopAssessRest();
+  assessRests().push(Math.round(taken));
+  assessState.idx=idx;renderAssessStep();
+}
+function skipAssessRest(){assessRestDone(false);}
+function assessRestHTML(t,ex){
+  return `
+  <div class="row" style="justify-content:space-between;margin-bottom:8px"><div class="tiny muted">Rest before test ${assessState.idx+2} of ${TESTS.length}</div><button class="chip" onclick="assessQuit()">Cancel</button></div>
+  <div class="timerbox" style="padding:10px 0 6px">
+    <div class="timerring solid" id="arRing">
+      ${plRingMediaHTML(ex)}
+      <div class="inner">
+        <div class="tt">REST</div>
+        <div class="tnum rest" id="arNum">2:00</div>
+      </div>
+    </div>
+    <div class="tt" style="margin-top:10px">Up next · ${_ve(t.name)}</div>
+    <div class="tiny muted" style="margin-top:4px">These are maximal efforts. A short rest measures your recovery, not your strength.</div>
+  </div>
+  <button class="btn ghost" style="margin-top:12px" onclick="skipAssessRest()">Skip — I am ready now</button>`;
+}
 function assessNav(dir){
   const t=TESTS[assessState.idx];const v=parseFloat($('#assess-val').value);
   if(dir>0){if(!(v>=0)||$('#assess-val').value===''){toast('Enter your result (0 is fine)');return;}assessState.results[t.id]=v;}
@@ -5872,6 +5942,9 @@ function assessNav(dir){
   const ni=assessState.idx+dir;
   if(ni<0)return;
   if(ni>=TESTS.length){finishAssessment();return;}
+  /* Forward only. Stepping BACK to re-enter a number you mistyped is not a new
+     effort and must not cost two minutes. */
+  if(dir>0){startAssessRest(ni);return;}
   assessState.idx=ni;renderAssessStep();
 }
 /* Re-testing re-measures the athlete, so the within-block adapt multiplier returns
@@ -5941,7 +6014,13 @@ function finishAssessment(){
      alternates the movement domains; v1 ran four maximal trunk efforts in a
      row, so a v1 baseline and a v2 re-test are not measuring the same thing
      and a comparison between them should say so rather than read as progress. */
-  const rec={date:todayISO(),results:assessState.results,score:a.score,level:a.level,maxes:a.maxes,testCount:TESTS.length,protocol:TEST_PROTOCOL};
+  /* Rest discipline travels WITH the numbers. TEST_PROTOCOL already exists so
+     a v1 and a v2 are not compared blindly; how long the athlete actually
+     rested between maximal efforts is the same kind of fact about the run. */
+  const _rests=assessRests();
+  const rec={date:todayISO(),results:assessState.results,score:a.score,level:a.level,maxes:a.maxes,testCount:TESTS.length,protocol:TEST_PROTOCOL,
+    restsFull:_rests.filter(x=>x>=ASSESS_REST_SEC).length,restsTaken:_rests.length,
+    restMedian:_rests.length?_rests.slice().sort((x,y)=>x-y)[Math.floor(_rests.length/2)]:null};
   /* Ask BEFORE writing anything. An interstitial that appears after the commit
      would be a notification, not a check. */
   const drop=retestDrop(a);
