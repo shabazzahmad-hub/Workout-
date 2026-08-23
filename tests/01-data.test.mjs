@@ -1006,6 +1006,91 @@ export default async function run() {
     /* The deliberate exception, and the reason it is one. */
     t.ok('Ruck March itself stays open to everyone', r.marchStillOpen, r);
   }
+
+  /* ---- the 8-count push-up ---------------------------------------------
+     Searched by MOVEMENT, not by name. The library had squatthrust, burpee,
+     burpeetuck and plankjack — every beat of the drill separately, and the
+     drill itself nowhere. The 8-count chains a squat, a plank, a leg spread
+     and a MANDATORY push-up into one count; the burpee's own steps offer its
+     push-up as optional ("add a push-up to make it harder"), which is the
+     difference that earns this its own entry. */
+  {
+    const r = await page.evaluate(() => {
+      const risk = j => (JOINT_RISK[j] || []);
+      const flags = k => ['knee', 'lowback', 'shoulder', 'wrist', 'elbow']
+        .filter(j => risk(j).includes(k));
+      const hard = k => EX[k] && EX[k].hardness;
+      const mono = arr => arr.every((k, i) => i === 0 || hard(arr[i - 1]) >= hard(k));
+      const real = STATE.profile.limitations;
+      const routes = j => { STATE.profile.limitations = [j];
+        const to = safeSwap('count8');
+        return { to, safe: to !== 'count8' && !jointRisky(to, [j]) }; };
+      const o = {
+        exists: !!EX.count8,
+        img: EX.count8 && EX.count8.img,
+        unit: EX.count8 && EX.count8.unit,
+        region: EX.count8 && EX.count8.region,
+        hardness: hard('count8'),
+        /* JOINT_RISK membership asserted DIRECTLY, per exercise — a generic
+           "flagged joints do not leak" sweep never puts a new entry in the
+           risky bucket at all if nothing asked for it. */
+        mine: flags('count8'),
+        /* The floors that prove the flags are reasoned rather than copied off
+           the nearest sibling in the same family. */
+        burpee: flags('burpee'),
+        squatthrust: flags('squatthrust'),
+        /* Ladders must stay non-increasing in hardness. */
+        cardioBL: mono(LADDERS.cardioBL), cardioFinL: mono(LADDERS.cardioFinL),
+        hiitFinL: mono(LADDERS.hiitFinL),
+        inLadders: ['cardioBL', 'cardioFinL', 'hiitFinL'].filter(k => LADDERS[k].includes('count8')),
+        inHiit: HIIT_POOL.includes('count8'),
+        inFocus: (FOCUS_POOL.full || []).includes('count8'),
+        swap: SAFE_SWAP.count8,
+        swapReal: !!EX[SAFE_SWAP.count8],
+        /* No gear at all — it is a floor and a body. */
+        gearFree: (EX.count8.equip || []).length === 0,
+      };
+      o.wristRoute = routes('wrist');
+      o.shoulderRoute = routes('shoulder');
+      STATE.profile.limitations = real;
+      return o;
+    });
+    t.ok('the 8-count push-up exists', r.exists, r);
+    t.eq('it ships a photo', r.img, 'ex-count8.jpg');
+    t.eq('timed, like the rest of the burpee family', r.unit, 'time');
+    t.eq('and filed as cardio', r.region, 'cardio');
+    /* Calibrated against the nearest siblings: harder than a plain burpee
+       (0.7) because the push-up is not optional, easier than a maximal tuck
+       jump (0.6). Higher hardness means easier. */
+    t.ok('its hardness sits between the burpee and the tuck-jump burpee',
+      r.hardness < 0.7 && r.hardness > 0.6, r.hardness);
+    /* Each flag reasoned from mechanics: bodyweight through the hands for the
+       plank, the leg spread and a full push-up. */
+    t.eq('it flags the shoulder and the wrist', JSON.stringify(r.mine),
+      JSON.stringify(['shoulder', 'wrist']));
+    /* THE discriminator. Copying the burpee's flag set — the obvious thing to
+       do for a movement in the same family — satisfies every check above and
+       fails this one. There is no jump and no landing in an 8-count: you stand
+       up on the eighth count. The squat thrust, the one sibling that also has
+       no jump, carries no knee flag either. */
+    t.ok('but NOT the knee — there is no jump and no landing',
+      !r.mine.includes('knee'), r.mine);
+    t.ok('while the burpee, which does jump, IS knee flagged',
+      r.burpee.includes('knee'), r.burpee);
+    t.ok('and the squat thrust, which does not, is wrist-only',
+      JSON.stringify(r.squatthrust) === JSON.stringify(['wrist']), r.squatthrust);
+    t.ok('a flagged wrist routes it somewhere safe', r.wristRoute.safe, r.wristRoute);
+    t.ok('a flagged shoulder routes it somewhere safe too', r.shoulderRoute.safe, r.shoulderRoute);
+    t.eq('its swap is the same drill with the push-up taken out', r.swap, 'squatthrust');
+    t.ok('and that swap is a real exercise', r.swapReal, r);
+    t.eq('it joins all three ladders it belongs in', r.inLadders.length, 3);
+    t.ok('the base cardio ladder stays non-increasing in hardness', r.cardioBL, r);
+    t.ok('so does the cardio finisher ladder', r.cardioFinL, r);
+    t.ok('and the HIIT finisher ladder', r.hiitFinL, r);
+    t.ok('it is reachable from the HIIT pool', r.inHiit, r);
+    t.ok('and from the full-body focus pool', r.inFocus, r);
+    t.ok('it needs no equipment', r.gearFree, r);
+  }
   {
     /* Read the SOURCE, not a rendered screen: the two pickers are built in
        different functions and have drifted before, so what matters is that the

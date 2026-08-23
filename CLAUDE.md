@@ -1429,6 +1429,53 @@ That is still red, so it is still a catch — but a throw hides which property
 broke, and the same shape one step further along **hung** a suite in v267. Guard
 immediately, return the partial result, and let the named assertions report.
 
+## Every beat of the drill, and not the drill (v297)
+
+"Do we have the 8-count push-ups?" No — and the roster search is what made
+that answer interesting. The library had **every beat of it separately**:
+`squatthrust` (squat, kick out, kick in, stand), `burpee` (that plus a jump),
+`burpeetuck`, and `plankjack` (the legs-out-and-in beat, in a plank). The
+drill that chains them was nowhere.
+
+**What earns it its own entry is one word in the burpee's own steps.** The
+burpee offers its push-up as optional — *"add a push-up to make it harder"*.
+In an 8-count the push-up is counts 5 and 6; it is not a variation, it is the
+movement. That is a real pressing demand inside a conditioning movement, which
+nothing else in the cardio region has.
+
+`hardness` 0.65 is calibrated against the two nearest siblings, not guessed:
+harder than a plain burpee (0.7) because the push-up is mandatory, easier than
+a maximal tuck-jump burpee (0.6). That places it after the burpee in both
+cardio ladders and between the two in `hiitFinL`, all three of which stay
+non-increasing.
+
+**The discriminating flag is the one that is ABSENT.** Wrist and shoulder are
+obvious — bodyweight through the hands for the plank, the leg spread and a full
+push-up. Knee is the interesting call: `burpee` and `burpeetuck` both carry it,
+and copying a sibling's flag set is exactly what the checklist warns against.
+**An 8-count has no jump and no landing — you stand up on the eighth count.**
+`squatthrust`, the one sibling that also has no jump, carries wrist and nothing
+else, and that is the shape this matches. The check pins all three: the new
+entry has no knee flag, the burpee does, and the squat thrust is wrist-only.
+Blanket-flagging the family satisfies every other assertion in the block.
+
+Eight mutants, all caught. Two are worth keeping as a pair: copying the
+burpee's knee flag, and copying the burpee's `hardness` — the second one is
+caught not by a check about the exercise at all but by the ladder-monotonicity
+assertion, because 0.7 after 0.7 stops the descent. A calibration mistake shows
+up as a structural failure one map away from where it was made.
+
+**A still of an eight-position movement is a CHOICE, and it has to be made
+deliberately.** Every other photo in the library shows the one shape its
+exercise has. This one has eight, they are numbered, and the obvious failure is
+a prompt that asks for a step-by-step strip — the highest collage risk yet, for
+exactly the reason v283 identified. The frame picked is the **top of the
+push-up, feet together**, because that position is *both* count 2 (the plank
+after the feet kick back) and count 6 (the press-up), so one image carries two
+of the eight. The bottom of the push-up would have carried only one, and the
+wide-feet plank is already what `plankjack` shows. One request, one image, no
+collage — the count per request is still the only variable that matters.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

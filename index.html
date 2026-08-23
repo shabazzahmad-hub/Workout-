@@ -1189,6 +1189,11 @@ const EX = {
     steps:['Stand tall, brace the core.','Jump up and drive both knees toward the chest.','Land soft with bent knees.','Immediately rebound into the next jump for the time.'],
     cues:['Knees to chest at the peak','Land soft and quiet','Stay tall on landing'],
     mistakes:['Stiff landings','Leaning forward to reach the knees']},
+  count8:{name:'8-Count Push-Up',region:'cardio',unit:'time',img:'ex-count8.jpg',anchor:null,hardness:0.65,base:22,rest:40,
+    why:'The military drill that chains a squat, a plank, a leg spread and a push-up into one count. Full-body conditioning with a real pressing demand, which a burpee only has if you add one.',
+    steps:['Stand tall. Count 1 — squat and plant both hands on the floor.','Count 2 — kick both feet back into a strong plank.','Count 3 — jump the feet out wide. Count 4 — jump them back together.','Count 5 — lower into a push-up. Count 6 — press back up.','Count 7 — jump the feet back to your hands. Count 8 — stand tall.'],
+    cues:['Brace hard — the hips must not sag','Full push-up, chest to fist height','Count it out loud to hold the rhythm'],
+    mistakes:['Skipping the push-up when it gets hard','Piking the hips on the leg spread','Rushing the count and losing the plank']},
   burpeetuck:{name:'Tuck-Jump Burpee',region:'cardio',unit:'time',img:'ex-burpeetuck.jpg',anchor:null,hardness:0.6,base:22,rest:40,
     why:'A burpee finished with an explosive tuck jump — the ultimate full-body conditioning and core burner.',
     steps:['Squat, hands down, jump the feet back to a plank (add a push-up).','Jump the feet back in.','Explode into a tuck jump, knees to chest.','Land soft and flow into the next rep.'],
@@ -1635,8 +1640,8 @@ const LADDERS = {
      conditioning slots when 'bike' is in his gear — see bikeSwap(). */
   cardioAL:   ['jumpingjack','sealjack','squatjack','fastfeet','highknees','latshuffle','skater','skaterground'],
   cardioBikeL:['bike','bike','bike','bike','bike','bike','bike'],
-  cardioBL:   ['buttkick','inchworm','crabwalk','squatthrust','sprawl','halfburpee','bearcrawl','burpee'],
-  cardioFinL: ['jumpingjack','sealjack','squatjack','highknees','crossclimber','plankjack','squatthrust','halfburpee','burpee'],
+  cardioBL:   ['buttkick','inchworm','crabwalk','squatthrust','sprawl','halfburpee','bearcrawl','burpee','count8'],
+  cardioFinL: ['jumpingjack','sealjack','squatjack','highknees','crossclimber','plankjack','squatthrust','halfburpee','burpee','count8'],
   // ==== Phase 2 (week 13+) full-body split ladders ====
   chestL:     ['inclinepushup','kneepushup','pushup','fistpushup','hindupushup','declinepushup','diamondpushup','spidermanpushup','tempopushup','atomicpushup','archerpushup','superpushup'],
   /* The wall walk is how you LEARN the position; it sat after the pike
@@ -1665,7 +1670,7 @@ const LADDERS = {
   hingeL:     ['glutebridge','slrdl','hipthrust','singlebridge','nordic'],
   calfL:      ['calfraise','singlecalf'],
   legPowerL:  ['jumpsquat','splitjump','broadjump'],
-  hiitFinL:   ['jumpingjack','tuckjump','burpee','burpeetuck','atomicpushup'],
+  hiitFinL:   ['jumpingjack','tuckjump','burpee','count8','burpeetuck','atomicpushup'],
 };
 // Phase 1 (weeks 1–6, PHASE1_CYCLES=1) — core/abs/HIIT program, 7 days a week.
 const SESSIONS = [
@@ -1800,7 +1805,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='296';
+const APP_VERSION='297';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2328,7 +2333,7 @@ const GOAL_NOTE={
 const FOCUS_POOL={
   abs:['hollow','hollowflutter','vsit','bearhold','lsit','dragonflag','dragonflagfull','situp','vertcrunch','plankleg','isoclimber','vup','tuckvup','legraise','hiplift','hanglegraise','revcrunch','crunch','bicycle','kneeraise','abroll','abrollstand','mbsitup','flutter','kbrenegade','ropeplank','toetouch','sitthrust','legcircle','kneetoelbow','tucklsit','plegraise','sbrollout','sbstir'],
   obliques:['sideplank','sideplankreach','situptwist','sidedip','russiantwist','windshield','plankrot','heeltouch','bicycle','copenhagen','standingoblique','mbtwist','kbhalo','dbpallof','mbchop','kbwindmill','kbsuitcase','kbfigure8','btsideplank'],
-  full:['burpee','sprawl','bearcrawl','inchworm','squatthrust','mountainclimber','kbswing','dbthruster','halfburpee','squat','pushup','kbhighpull','kneekick','quickpunch'],
+  full:['burpee','count8','sprawl','bearcrawl','inchworm','squatthrust','mountainclimber','kbswing','dbthruster','halfburpee','squat','pushup','kbhighpull','kneekick','quickpunch'],
   chest:['pushup','tempopushup','hindupushup','typewriter','inclinepushup','declinepushup','diamondpushup','archerpushup','closepushup','dbfloor','dbbench','btpushup'],
   back:['invertedrow','superman','swimmer','scappull','negpullup','pullup','chinup','dbrow','kbrow','kbrenegade'],
   shoulders:['pikepushup','elevatedpike','wallwalk','wallhandstand','dbpress','kbcp'],
@@ -5471,7 +5476,7 @@ function ivRingHTML(color,ex,cls){return `
   </div>`;}
 /* Standalone HIIT pool for the Special section — pure high-intensity moves,
    run any day without consuming a program session. */
-const HIIT_POOL=['jumpingjack','highknees','buttkick','skater','squatthrust','burpee','mountainclimber','tuckjump','flutter','scissors','burpeetuck'];
+const HIIT_POOL=['jumpingjack','highknees','buttkick','skater','squatthrust','burpee','mountainclimber','tuckjump','flutter','scissors','burpeetuck','count8'];
 function _runHiit(sess,list,format){
   if(!list.length)return;
   ivClear();      // never leave a previous interval ticking alongside the new one
@@ -10563,10 +10568,10 @@ const JOINT_RISK={
      and splitsquat which are both here. Plain `squat` and both goblet squats
      stay unflagged — the escalation is the one leg, not the ruck. */
   knee:['ruckstepup','pistol','boxpistol','jumpsquat','tuckjump','broadjump','splitjump','bulgarian','burpee','burpeetuck','walkinglunge','sissysquat','cossack','sprawl','latshuffle','nordic','asiansquat','wallsit','skater','squatjack','splitsquat','jumpingjack','sealjack','highknees','buttkick','kneekick','skaterground','btsquat','btbalance'],
-  shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','benchdip','dbpress','kbcp','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbtgu','kbthruster','kbwindmill','abrollstand','hanglegraise','lsit','dragonflag','dragonflagfull','plankrot','wallwalk','pseudoplanche','typewriter','hindupushup','pullup','chinup','widepullup','negpullup','deadhang','scappull','invertedrow','invertedrowelev','tablerow','crabwalk','reverseplank','abroll','mbslam','ropeslam','ropewave','kbswing','atomicpushup','declinepushup','burpee','burpeetuck','kneetoelbow','dbbench','tucklsit','plegraise','ppushup','sbrollout','btsideplank','btpushup'],
+  shoulder:['count8','hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','benchdip','dbpress','kbcp','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbtgu','kbthruster','kbwindmill','abrollstand','hanglegraise','lsit','dragonflag','dragonflagfull','plankrot','wallwalk','pseudoplanche','typewriter','hindupushup','pullup','chinup','widepullup','negpullup','deadhang','scappull','invertedrow','invertedrowelev','tablerow','crabwalk','reverseplank','abroll','mbslam','ropeslam','ropewave','kbswing','atomicpushup','declinepushup','burpee','burpeetuck','kneetoelbow','dbbench','tucklsit','plegraise','ppushup','sbrollout','btsideplank','btpushup'],
   /* fistpushup is deliberately ABSENT: knuckles down keeps the wrist straight,
      which is the whole point of the movement. */
-  wrist:['pushup','kneepushup','inclinepushup','declinepushup','diamondpushup','closepushup','archerpushup','spidermanpushup','superpushup','planktap','mountainclimber','dbrenegade','kbrenegade','dbmanmaker','dbdevil','abroll','abrollstand','ropeplank','extplank','lsit','isoclimber','bearcrawl','crabwalk','plankjack','crossclimber','bearhold','pseudoplanche','typewriter','hindupushup','tempopushup','inchworm','pikepushup','elevatedpike','wallwalk','wallhandstand','hspushup','atomicpushup','burpee','burpeetuck','halfburpee','squatthrust','sprawl','reverseplank','sitthrust','tucklsit','sbrollout','sbstir','btsideplank','btpushup'],
+  wrist:['count8','pushup','kneepushup','inclinepushup','declinepushup','diamondpushup','closepushup','archerpushup','spidermanpushup','superpushup','planktap','mountainclimber','dbrenegade','kbrenegade','dbmanmaker','dbdevil','abroll','abrollstand','ropeplank','extplank','lsit','isoclimber','bearcrawl','crabwalk','plankjack','crossclimber','bearhold','pseudoplanche','typewriter','hindupushup','tempopushup','inchworm','pikepushup','elevatedpike','wallwalk','wallhandstand','hspushup','atomicpushup','burpee','burpeetuck','halfburpee','squatthrust','sprawl','reverseplank','sitthrust','tucklsit','sbrollout','sbstir','btsideplank','btpushup'],
   /* ruckgm is the textbook case: every other loaded hinge in the library
      (kbrdl, dbrdl, slrdl) carries this flag. rucksquat earns it for a reason
      the goblet squats do not — the load sits AXIALLY on the spine rather than
@@ -10610,7 +10615,7 @@ const SAFE_SWAP={
   ruckstepup:'squat',rucksquat:'squat',ruckgm:'glutebridge',
   sissysquat:'squat',cossack:'squat',splitsquat:'glutebridge',asiansquat:'glutebridge',
   wallsit:'glutebridge',nordic:'glutebridge',slrdl:'glutebridge',
-  burpee:'squatthrust',burpeetuck:'squatthrust',squatthrust:'march',sprawl:'march',
+  burpee:'squatthrust',burpeetuck:'squatthrust',count8:'squatthrust',squatthrust:'march',sprawl:'march',
   halfburpee:'march',skater:'march',squatjack:'march',jumpingjack:'march',sealjack:'march',
   highknees:'march',buttkick:'march',latshuffle:'marchplace',fastfeet:'marchplace',
   inchworm:'march',ropewave:'march',kneekick:'march',skaterground:'march',
