@@ -754,6 +754,68 @@ export default async function run() {
     t.ok('and they are still there to open', r.saved.hasSteps, r);
   }
 
+  /* ---- the baseline battery gets one steady voice ----------------------
+     Auto rolls a new coach at every timer start, so a ten-test battery met
+     ten different personas during the one session where the athlete is
+     holding maximal form and listening for a count. */
+  {
+    const r = await page.evaluate(async () => {
+      STATE.settings.coach = 'auto';
+      assessState = { idx: 0, results: {}, reassess: 0 };
+      const seen = [];
+      /* Run several tests and record who speaks each time. One test proves
+         nothing — the defect is that the voice CHANGES between them. */
+      for (let i = 0; i < 4; i++) {
+        assessState.idx = i;
+        renderAssessStep();
+        await new Promise(z => setTimeout(z, 60));
+        startBaselineTimer();
+        await new Promise(z => setTimeout(z, 60));
+        seen.push(currentPersona().id);
+        stopBaselineTimer();
+      }
+      /* Outside the battery, auto must still rotate — pinning the voice
+         everywhere is the over-eager version of this fix. */
+      const outside = [];
+      for (let i = 0; i < 6; i++) { autoRoll(); outside.push(currentPersona().id); }
+      return { seen, outside, unique: [...new Set(seen)].length,
+        outsideUnique: [...new Set(outside)].length };
+    });
+    t.eq('every baseline test uses the same coach', r.unique, 1);
+    t.eq('and it is the Wrestling Coach', r.seen[0], 'wrestle');
+    /* Guard: with 38 coaches in a shuffle bag, six rolls landing on one id
+       would mean the rotation is broken, not that this check is strict. */
+    t.ok('auto still rotates outside the battery', r.outsideUnique > 1, r);
+  }
+  {
+    const r = await page.evaluate(async () => {
+      /* An explicit pick outranks the default, the same way a hand-set
+         protein target outranks the calculation. */
+      STATE.settings.coach = 'viking';
+      assessState = { idx: 0, results: {}, reassess: 0 };
+      renderAssessStep();
+      await new Promise(z => setTimeout(z, 60));
+      startBaselineTimer();
+      await new Promise(z => setTimeout(z, 60));
+      const during = currentPersona().id;
+      stopBaselineTimer();
+      const after = currentPersona().id;
+      /* The trap this fix had to avoid: assessState is NEVER set back to null,
+         so keying the override off it would pin the voice for the life of the
+         app. assessState is still truthy right here. */
+      const stillHasAssessState = !!assessState;
+      STATE.settings.coach = 'auto';
+      const autoAfter = (autoRoll(), currentPersona().id);
+      return { during, after, stillHasAssessState, autoAfter };
+    });
+    t.eq('a coach the athlete chose is used in the battery too', r.during, 'viking');
+    t.eq('and still outside it', r.after, 'viking');
+    t.ok('guard: assessState is still set, so the override is not keyed to it',
+      r.stillHasAssessState, r);
+    t.ok('and auto goes back to rotating once the battery is over',
+      typeof r.autoAfter === 'string' && r.autoAfter.length > 0, r);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

@@ -1774,7 +1774,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='290';
+const APP_VERSION='291';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -5760,7 +5760,7 @@ function stopBaselineTimer(){if(_bt){clearInterval(_bt.iv);_bt=null;}}
 function coachSay(txt){try{if(typeof coachSpeak==='function')coachSpeak(txt);}catch(e){}}
 function startBaselineTimer(){
   const t=TESTS[assessState.idx];const dur=t.dur||0; // dur>0 => count down; else count up
-  stopBaselineTimer();autoRoll();try{if(typeof primeVoice==='function')primeVoice();}catch(e){}
+  stopBaselineTimer();try{if(typeof primeVoice==='function')primeVoice();}catch(e){}
   beatStart();   // background beat during the baseline test too (matches the workouts)
   openSheet(baselineTimerHTML(t));
   _bt={iv:setInterval(tick,1000),mode:'ready',ready:3,elapsed:0,dur:dur,tid:t.id};
@@ -5799,8 +5799,11 @@ function startBaselineTimer(){
 }
 function baselineStop(){ // user tapped Stop
   const dur=_bt&&_bt.dur,elapsed=_bt?_bt.elapsed:0,running=_bt&&_bt.mode==='run';
-  stopBaselineTimer();
+  /* Speak BEFORE clearing _bt. stopBaselineTimer() nulls it, and the override
+     keys off it — sign off after and the last line of the test comes out in a
+     different voice from the nine that preceded it. */
   if(running&&!dur){const t=TESTS[assessState.idx];assessState.results[t.id]=elapsed;if(!motivate('done'))coachSay('Time. Strong hold.');}
+  stopBaselineTimer();
   backToAssessStep(true);
 }
 function baselineCancel(){stopBaselineTimer();renderAssessStep();}
@@ -7237,6 +7240,19 @@ const COACHES=[
    rest:["Breathe. Restore your center.","Sheathe the blade. Recover.","Well trained. Reset.","Still the mind. Recover.","Honor the rest. Continue soon."],
    done:["Trained with honor. Well done.","Discipline shown. Respect.","The way continues. Great work.","Mind and body as one. Done.","A true student. Well done."]},
 ];
+/* The baseline battery gets ONE steady voice.
+   Auto rolls a new coach at every timer start, so a ten-test battery met ten
+   different personas during the single session where the athlete is holding
+   maximal form and listening for a count. That is the one place a changing
+   voice costs something.
+   An explicit pick still wins. A coach the athlete chose in Settings outranks
+   this default, the same way a hand-set protein target outranks the
+   calculation — this only fills in for 'auto'. */
+const ASSESS_COACH='wrestle';
+function assessCoachId(){
+  const c=STATE.settings&&STATE.settings.coach;
+  return (!c||c==='auto')?ASSESS_COACH:c;
+}
 /* Auto mode ('auto'): rotate through a random coach each exercise, so the voice
    changes from time to time without you picking one. _autoId holds the current pick. */
 let _autoId=null,_autoBag=[];
@@ -7253,6 +7269,12 @@ function rollAutoPersona(){
 // Roll a new random coach for this exercise when in Auto mode. Call at each timer start.
 function autoRoll(){if(STATE.settings.coach==='auto')rollAutoPersona();}
 function currentPersona(){
+  /* `_bt` is non-null exactly while a baseline test timer is running, which is
+     exactly when the battery speaks — so the override cannot leak past it.
+     `assessState` looks like the obvious signal and is NOT: nothing ever sets
+     it back to null, so it stays truthy for the life of the app after the
+     first assessment and would pin this voice everywhere. */
+  if(_bt){const p=COACHES.find(c=>c.id===assessCoachId());if(p)return p;}
   if(STATE.settings.coach==='auto'){
     if(!_autoId)rollAutoPersona();
     return COACHES.find(c=>c.id===_autoId)||COACHES[0];
