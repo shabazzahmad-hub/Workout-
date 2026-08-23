@@ -1170,6 +1170,38 @@ Every one of these blocks first passed on nothing, for the same reason:
   twice — a bare `.pl-center{` prefix still matches inside a longer descendant
   selector. Anchor on a declaration only the base rule has.
 
+## Auto changes coach every EFFORT, not every session (v291)
+
+Asked how often Auto switches. The answer is per timed effort, and it was a
+surprise worth writing down: `autoRoll()` fires at **six** call sites — the
+guided player's work start, HIIT, the hold/rest timer, the rep cadence, quick
+workouts, and (until this round) every baseline test. `rollAutoPersona()` is a
+shuffle bag over **38** coaches: all 38 play once before any repeat, and the
+bag reshuffles with a swap that prevents a back-to-back repeat across the seam.
+
+So a ten-test baseline battery met **ten different personas** — during the one
+session where the athlete is holding maximal form and listening for a count.
+That is the single place a changing voice costs something, so the battery now
+pins one: `ASSESS_COACH` (`wrestle`).
+
+**An explicit pick still wins.** `assessCoachId()` only fills in for `'auto'`,
+the same shape as a hand-set protein target outranking the calculation. The
+mutant that made the override unconditional is caught by a check that picks a
+coach in Settings and asserts the battery uses it.
+
+**`assessState` is the obvious signal and it is WRONG.** Nothing ever sets it
+back to null — it is assigned once when the battery opens and stays truthy for
+the life of the app, so keying the override off it pins the wrestling coach on
+every screen forever. `_bt` is the correct one: non-null exactly while a
+baseline timer runs, which is exactly when the battery speaks. A check asserts
+`assessState` is *still truthy* after the battery, so a future refactor back to
+it fails immediately.
+
+**Speak before you clear the flag.** `stopBaselineTimer()` nulls `_bt`, and the
+sign-off line (`'Time. Strong hold.'`) ran after it — so the last line of each
+test came out in a different voice from the nine that preceded it. The order in
+`baselineStop()` is load-bearing, not cosmetic.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
