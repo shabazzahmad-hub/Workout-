@@ -1419,6 +1419,32 @@ const EX = {
     steps:['Load a pack with 10–20% of your bodyweight, sitting high and tight against your back.','Cinch the straps so it does not bounce; chest strap fastened.','Walk at a brisk, purposeful pace — quick short steps, tall posture, eyes up.','Keep it steady and unbroken for the distance or time; no jogging under load.'],
     cues:['Tall chest, shoulders back under the load','Brisk, short, quick steps','Breathe steadily through the nose'],
     mistakes:['Pack hanging low and swinging','Slouching forward under the weight','Loading too heavy too soon']},
+  /* Loaded ruck work. Ruck March above is deliberately NOT gear-gated — any
+     bag with books in it is fine for WALKING, which is what its own steps say.
+     These four are gated on owning a real pack, and that is a considered line
+     rather than an inconsistency: a satchel that shifts on your back is a
+     nuisance on a walk and genuinely unsafe under a loaded hinge. Confirm what
+     the kit physically IS before mapping it to a key. */
+  ruckstepup:{name:'Ruck Step-Up',region:'legs',unit:'reps',img:'ex-ruckstepup.jpg',anchor:null,hardness:1,base:10,rest:60,equip:['ruck','bench'],pattern:'lunge',
+    why:'The roster had no step-up at all, and it is the most transferable loaded leg movement there is — every stair, every kerb, every hill. Under a ruck the hands stay free and the load sits where you actually carry it in life.',
+    steps:['Set a box or sturdy bench at about knee height.','Place one whole foot flat on the box — heel on, not just the toes.','Drive through that heel to stand tall on the box; do not push off the back foot.','Lower under control, touch the floor lightly, and repeat. Count each leg.'],
+    cues:['Whole foot on the box, heel down','Drive through the front heel','Stand fully tall at the top'],
+    mistakes:['Pushing off the trailing foot','Only the toes on the box','Dropping down instead of lowering']},
+  rucksquat:{name:'Ruck Squat',region:'legs',unit:'reps',img:'ex-rucksquat.jpg',anchor:null,hardness:1,base:12,rest:60,equip:['ruck'],pattern:'squat',
+    why:'Your first squat with the load on your BACK rather than in front of you. A goblet squat is carried anteriorly; a ruck sits on the spine, which is a different demand on the trunk and the exact one that carries over to picking anything up.',
+    steps:['Cinch the pack high and tight so it cannot swing.','Feet about shoulder width, toes slightly out.','Sit down between your hips until the thighs are parallel, chest up.','Drive through the whole foot to stand tall.'],
+    cues:['Chest up under the load','Knees track over the toes','Whole foot pressing the floor'],
+    mistakes:['Pack hanging low and swinging','Chest folding forward','Heels lifting at the bottom']},
+  ruckgm:{name:'Ruck Good Morning',region:'legs',unit:'reps',img:'ex-ruckgm.jpg',anchor:null,hardness:0.9,base:12,rest:60,equip:['ruck'],pattern:'hinge',
+    why:'The library had no back-loaded hinge — every hinge in it is either front-loaded or single-leg. This is the one that teaches the hips to move while the spine stays still, under a load you can actually feel.',
+    steps:['Pack high and tight; hands resting on the straps.','Soft knees, then push the hips straight back.','Fold forward only as far as the back stays completely flat.','Drive the hips forward to stand tall.'],
+    cues:['Hips back, not knees forward','Flat back the whole way','Feel the hamstrings, not the low back'],
+    mistakes:['Rounding the back at the bottom','Bending the knees instead of hinging','Going deeper than the hamstrings allow']},
+  ruckcarry:{name:'Ruck Bear-Hug Carry',region:'strength',unit:'time',img:'ex-ruckcarry.jpg',anchor:null,hardness:1,base:40,rest:50,equip:['ruck'],pattern:'core',
+    why:'A suitcase carry is one-sided; this is symmetrical and in front of you, which is how a box or a child is actually carried. The trunk works flat out just to keep you upright.',
+    steps:['Hug the loaded pack tight against your chest, elbows tucked in.','Stand tall — ribs down, do not lean back.','Walk at a steady, controlled pace for the time.','Keep breathing; do not hold your breath.'],
+    cues:['Squeeze the pack into your chest','Ribs down, tall spine','Short, steady steps'],
+    mistakes:['Leaning back to balance the load','Letting the pack slide down','Holding your breath']},
   shadowbox:{name:'Shadow Boxing',region:'cardio',unit:'time',img:'ex-shadowbox.jpg',anchor:null,hardness:1,base:60,rest:60,
     why:'Zero equipment, zero noise and no jumping — the conditioning you can do in a hotel room at midnight. Rounds of punching in the air build the engine, footwork and rotational core control all at once.',
     steps:['Stand in a light boxing stance, hands up at the chin, elbows in.','Stay on the balls of the feet with small, quick steps — never crossing them.','Throw straight punches and hooks in short combinations, rotating from the hips and core.','Keep moving for the whole round: punch, step, reset. Breathe out sharply on every shot.'],
@@ -1774,7 +1800,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='294';
+const APP_VERSION='295';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2307,8 +2333,8 @@ const FOCUS_POOL={
   back:['invertedrow','superman','swimmer','scappull','negpullup','pullup','chinup','dbrow','kbrow','kbrenegade'],
   shoulders:['pikepushup','elevatedpike','wallwalk','wallhandstand','dbpress','kbcp'],
   arms:['benchdip','closepushup','dips','dbcurl','diamondpushup'],
-  legs:['wallsit','squat','cossack','sissysquat','reverselunge','splitsquat','bulgarian','walkinglunge','jumpsquat','kbgoblet','dbgoblet','btsquat','btbalance'],
-  glutes:['glutebridge','singlebridge','slrdl','hipthrust','kbrdl','dbrdl','nordic','sbhamcurl'],
+  legs:['ruckstepup','rucksquat','wallsit','squat','cossack','sissysquat','reverselunge','splitsquat','bulgarian','walkinglunge','jumpsquat','kbgoblet','dbgoblet','btsquat','btbalance'],
+  glutes:['ruckgm','glutebridge','singlebridge','slrdl','hipthrust','kbrdl','dbrdl','nordic','sbhamcurl'],
 };
 // The quiz's "trouble zones" are body-shape words; map them onto training pools so
 // the answer actually steers the bonus instead of being stored and ignored.
@@ -2425,6 +2451,8 @@ function hasGearFor(exId){const e=EX[exId];if(!e||!e.equip||!e.equip.length)retu
 const GEAR_FALLBACK={
   // no parallettes owned → the closest thing that needs nothing at all
   plegraise:'legraise',ppushup:'pushup',
+  // no pack (or no box for the step-up) → the closest pattern needing neither
+  ruckstepup:'splitsquat',rucksquat:'squat',ruckgm:'slrdl',ruckcarry:'bearhold',
   /* Every one of these used to land on 'superman'. A Superman is a prone back
      EXTENSION — it does not pull anything. A bar-free athlete got zero pulling
      for the whole program. They now land on a row that needs only a door or a
@@ -3040,7 +3068,7 @@ function onboardHTML(){
       <div class="daypick" id="ob-days">${['M','T','W','T','F','S','S'].map((d,i)=>`<button data-d="${(i+1)%7}">${d}</button>`).join('')}</div>
       <div class="tiny muted" style="margin-top:7px">Five days is the floor — tap a day to make it a rest day, but keep at least five.</div></div>
     <div class="field"><label>Equipment you have <span class="tiny muted">· unlocks a Weights session</span></label>
-      <div class="daypick" id="ob-gear" style="flex-wrap:wrap">${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['stabilityball','Stability ball (large)'],['balancetrainer','Balance trainer (half-dome)'],['battlerope','Battle rope'],['parallettes','Parallettes / push-up bars'],['bench','Bench / chair'],['bike','Bike + trainer']].map(([k,l])=>`<button data-e="${k}"${mon(P.gear,k)}>${l}</button>`).join('')}</div></div>
+      <div class="daypick" id="ob-gear" style="flex-wrap:wrap">${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['stabilityball','Stability ball (large)'],['balancetrainer','Balance trainer (half-dome)'],['ruck','Weighted rucksack + plate'],['battlerope','Battle rope'],['parallettes','Parallettes / push-up bars'],['bench','Bench / chair'],['bike','Bike + trainer']].map(([k,l])=>`<button data-e="${k}"${mon(P.gear,k)}>${l}</button>`).join('')}</div></div>
     <div class="field"><label>Room to train in</label>
       <div class="daypick" id="ob-space">
         <button data-sp="full"${on(P.tightSpace?'tight':'full','full')}>Clear wall + space</button>
@@ -10452,12 +10480,22 @@ function calcOneRM(){
 /* ---- #6 Injury-aware auto-substitution ---- */
 const JOINTS=[['knee','Knee'],['shoulder','Shoulder'],['wrist','Wrist'],['lowback','Lower back'],['elbow','Elbow']];
 const JOINT_RISK={
-  knee:['pistol','boxpistol','jumpsquat','tuckjump','broadjump','splitjump','bulgarian','burpee','burpeetuck','walkinglunge','sissysquat','cossack','sprawl','latshuffle','nordic','asiansquat','wallsit','skater','squatjack','splitsquat','jumpingjack','sealjack','highknees','buttkick','kneekick','skaterground','btsquat','btbalance'],
+  /* ruckstepup: loaded SINGLE-LEG knee work, directly comparable to bulgarian
+     and splitsquat which are both here. Plain `squat` and both goblet squats
+     stay unflagged — the escalation is the one leg, not the ruck. */
+  knee:['ruckstepup','pistol','boxpistol','jumpsquat','tuckjump','broadjump','splitjump','bulgarian','burpee','burpeetuck','walkinglunge','sissysquat','cossack','sprawl','latshuffle','nordic','asiansquat','wallsit','skater','squatjack','splitsquat','jumpingjack','sealjack','highknees','buttkick','kneekick','skaterground','btsquat','btbalance'],
   shoulder:['hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','benchdip','dbpress','kbcp','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbtgu','kbthruster','kbwindmill','abrollstand','hanglegraise','lsit','dragonflag','dragonflagfull','plankrot','wallwalk','pseudoplanche','typewriter','hindupushup','pullup','chinup','widepullup','negpullup','deadhang','scappull','invertedrow','invertedrowelev','tablerow','crabwalk','reverseplank','abroll','mbslam','ropeslam','ropewave','kbswing','atomicpushup','declinepushup','burpee','burpeetuck','kneetoelbow','dbbench','tucklsit','plegraise','ppushup','sbrollout','btsideplank','btpushup'],
   /* fistpushup is deliberately ABSENT: knuckles down keeps the wrist straight,
      which is the whole point of the movement. */
   wrist:['pushup','kneepushup','inclinepushup','declinepushup','diamondpushup','closepushup','archerpushup','spidermanpushup','superpushup','planktap','mountainclimber','dbrenegade','kbrenegade','dbmanmaker','dbdevil','abroll','abrollstand','ropeplank','extplank','lsit','isoclimber','bearcrawl','crabwalk','plankjack','crossclimber','bearhold','pseudoplanche','typewriter','hindupushup','tempopushup','inchworm','pikepushup','elevatedpike','wallwalk','wallhandstand','hspushup','atomicpushup','burpee','burpeetuck','halfburpee','squatthrust','sprawl','reverseplank','sitthrust','tucklsit','sbrollout','sbstir','btsideplank','btpushup'],
-  lowback:['superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbthruster','kbwindmill','kbhighpull','mbslam','ropeslam','windshield','dragonflag','dragonflagfull','abrollstand','situp','vertcrunch','situptwist','vsit','slrdl','swimmer','legraise','hanglegraise','kneeraise','hiplift','flutter','scissors','vup','tuckvup','russiantwist','weightedtwist','mbtwist','mbchop','mbsitup','seatedtwist','abroll','longplank','extplank','ruck','dipknee','heeltouch','crunch','bicycle','revcrunch','sitthrust','toetouch','legcircle','kneetoelbow','sbrollout','sbhamcurl'],
+  /* ruckgm is the textbook case: every other loaded hinge in the library
+     (kbrdl, dbrdl, slrdl) carries this flag. rucksquat earns it for a reason
+     the goblet squats do not — the load sits AXIALLY on the spine rather than
+     in front of it. The bear-hug carry is deliberately left out — a symmetrical
+     hug with an upright trunk is no worse than the unflagged farmer's carry,
+     and flagging everything with 'ruck' in the name is the copy-a-sibling's-set
+     mistake this file warns about. */
+  lowback:['rucksquat','ruckgm','superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbthruster','kbwindmill','kbhighpull','mbslam','ropeslam','windshield','dragonflag','dragonflagfull','abrollstand','situp','vertcrunch','situptwist','vsit','slrdl','swimmer','legraise','hanglegraise','kneeraise','hiplift','flutter','scissors','vup','tuckvup','russiantwist','weightedtwist','mbtwist','mbchop','mbsitup','seatedtwist','abroll','longplank','extplank','ruck','dipknee','heeltouch','crunch','bicycle','revcrunch','sitthrust','toetouch','legcircle','kneetoelbow','sbrollout','sbhamcurl'],
   elbow:['dips','benchdip','diamondpushup','closepushup','chinup','negpullup','dbcurl','typewriter','pseudoplanche'],
 };
 /* One flat literal edited by three feature waves ended up with 126 properties
@@ -10486,6 +10524,11 @@ const SAFE_SWAP={
   // legs / plyometrics
   pistol:'squat',boxpistol:'squat',jumpsquat:'squat',tuckjump:'squat',broadjump:'squat',
   splitjump:'reverselunge',bulgarian:'splitsquat',walkinglunge:'reverselunge',
+  /* Ruck work for a flagged joint drops the LOAD rather than the movement, the
+     same shape as the balance-trainer squat landing on a plain squat. The good
+     morning lands on a glute bridge, because that is where every other flagged
+     loaded hinge in this map lands. */
+  ruckstepup:'squat',rucksquat:'squat',ruckgm:'glutebridge',
   sissysquat:'squat',cossack:'squat',splitsquat:'glutebridge',asiansquat:'glutebridge',
   wallsit:'glutebridge',nordic:'glutebridge',slrdl:'glutebridge',
   burpee:'squatthrust',burpeetuck:'squatthrust',squatthrust:'march',sprawl:'march',
@@ -14140,7 +14183,7 @@ function renderGuide(){
     <div class="divider" style="margin:10px 0"></div>
     <div style="padding:2px 0"><div class="tiny muted" style="margin-bottom:6px">Equipment you have <span style="opacity:.7">· unlocks the Weights session</span></div>
       <div class="daypick" id="set-gear" style="flex-wrap:wrap">
-        ${''}${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['stabilityball','Stability ball (large)'],['balancetrainer','Balance trainer (half-dome)'],['battlerope','Battle rope'],['parallettes','Parallettes / push-up bars'],['bench','Bench / chair']].map(([k,l])=>`<button class="${(STATE.profile.gear||[]).includes(k)?'on':''}" onclick="toggleGear('${k}')">${l}</button>`).join('')}
+        ${''}${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['stabilityball','Stability ball (large)'],['balancetrainer','Balance trainer (half-dome)'],['ruck','Weighted rucksack + plate'],['battlerope','Battle rope'],['parallettes','Parallettes / push-up bars'],['bench','Bench / chair']].map(([k,l])=>`<button class="${(STATE.profile.gear||[]).includes(k)?'on':''}" onclick="toggleGear('${k}')">${l}</button>`).join('')}
         <div style="margin-top:12px"></div>
         <button class="${STATE.profile.tightSpace?'on':''}" onclick="toggleTightSpace()">🏠 Tight space</button>
         <div class="tiny muted" style="margin-top:8px">Handstand work needs a clear wall and about <b>6 ft / 2 m</b> of floor in front of it to walk up safely; the travelling moves need a room you can cross. Tight space swaps both out — you get the hardest floor presses instead, which load the shoulder the same way without needing a clear wall. Straight trade to know about: nothing on the floor fully replaces a handstand push-up, so the very top of the shoulder ladder is a step easier. Everything else is like for like.</div>

@@ -1333,6 +1333,52 @@ And one setup bug worth the same note as the rest: the additivity check SET
 walked steps to 3000 on a seeded athlete who already had more, so the delta
 came back negative. Zero it first, then add.
 
+## Four loaded ruck movements, chosen by MOVEMENT not by name (v295)
+
+The roster search came first, and it changed the list. **There was no step-up
+anywhere in the library** — not one, in 155 exercises — and **no back-loaded
+hinge**: all four `hinge` movements are front-loaded or single-leg. Those two
+gaps decided two of the four. The squat and the bear-hug carry earn their
+places on load POSITION: a goblet squat is carried anteriorly, a ruck sits on
+the spine; a farmer's carry is one-sided, a bear hug is symmetrical and in
+front.
+
+**Ruck March was already in the library and is deliberately NOT gear-gated** —
+any bag with books is fine for WALKING, which is what its own steps say. The
+four new ones are gated on `ruck`, and that is a considered line rather than an
+inconsistency: a satchel that shifts is a nuisance on a walk and genuinely
+unsafe under a loaded hinge. A check pins the exception so nobody "tidies" it.
+
+**Every flag is reasoned from mechanics, and the discriminating check is the
+one that must NOT fire.** `ruckstepup` takes knee (loaded single-leg, the same
+as the flagged `bulgarian` and `splitsquat`); `rucksquat` and `ruckgm` take
+lowback (axial spinal load, where every other loaded hinge already is);
+**`ruckcarry` takes nothing at all**. Blanket-flagging everything with 'ruck'
+in the name satisfies every other assertion and fails that one. The floors are
+pinned beside it — plain `squat`, `kbgoblet` and `kbcarry` all stay unflagged,
+which is what proves the escalation is reasoned rather than a family flag.
+
+`equip` is an AND (`e.equip.every(...)`), so the step-up asks for `['ruck',
+'bench']` and is the one movement the pack alone does not unlock.
+
+### A comment that quotes code breaks the duplicate-key check
+
+Two checks failed on prose. The `SAFE_SWAP`/`JOINT_RISK` duplicate-key guard
+scans the **source text** for anything shaped like `word:` — so a comment
+containing `btsquat:'squat'` reported a duplicate `btsquat`, and one containing
+`ABSENT:` reported a duplicate `ABSENT`. That guard has caught real shadowed
+keys (`boxpistol`'s two `repCap`s), so **reword the comment, never weaken the
+check**. Write prose that does not look like code.
+
+And the substring trap again, caught by the assert rather than by a defect:
+`'btsquat','btbalance'` is the tail of BOTH `JOINT_RISK.knee` and
+`FOCUS_POOL.legs`. Anchor on the KEY (`knee:['pistol'`), not on the tail.
+
+**The photos came back right, one prompt at a time.** Four separate requests,
+four separate images, no collage — against v283, where a single carefully
+worded combined prompt returned a 2x2 grid with an empty cell. The variable is
+the count per request, and nothing else.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
