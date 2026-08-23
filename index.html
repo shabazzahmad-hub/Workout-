@@ -1753,7 +1753,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='288';
+const APP_VERSION='289';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3098,12 +3098,19 @@ function wireOnboard(){
       const age=num('ob-age');
       if(!isFinite(age)||age<13||age>100)
         return {id:'ob-age',msg:'Add your age (13–100) — every calorie and training target is built from it.'};
-      let ht=num('ob-height'); if(im&&isFinite(ht))ht*=2.54;
+      const htRaw=num('ob-height');
+      let ht=htRaw; if(im&&isFinite(ht))ht*=2.54;
       if(!isFinite(ht)||ht<120||ht>230)
-        return {id:'ob-height',msg:im?'Add your height in inches (47–91).':'Add your height in cm (120–230).'};
-      let wt=num('ob-weight'); if(im&&isFinite(wt))wt*=0.453592;
+        return {id:'ob-height',msg:(im?'Add your height in inches (47–91).':'Add your height in cm (120–230).')+unitMixupHint(htRaw,im)};
+      const wtRaw=num('ob-weight');
+      let wt=wtRaw; if(im&&isFinite(wt))wt*=0.453592;
       if(!isFinite(wt)||wt<30||wt>250)
         return {id:'ob-weight',msg:im?'Add your weight in pounds (66–550).':'Add your weight in kg (30–250).'};
+      /* Checked against the height, because alone the number is legal. */
+      if(bmiImplausible(wt,ht))
+        return {id:'ob-weight',msg:im
+          ? `${wtRaw} lb at ${Math.round(ht/2.54)} in does not add up. If ${wtRaw} is kilograms, the number here is about ${Math.round(wtRaw/0.453592)}.`
+          : `${wtRaw} kg at ${Math.round(ht)} cm does not add up. If ${wtRaw} is pounds, the number here is about ${Math.round(wtRaw*0.453592)}.`};
       return null;
     }
     /* The day-picker's own copy says "keep at least five" — nothing enforced
@@ -8037,6 +8044,32 @@ function mBump(f,d){const id=f==='w'?'#m-waist':'#m-weight';const inp=$(id);inp.
    install — permanently, because no measurement row could ever be deleted. */
 function plausibleKg(kg){return kg>=25&&kg<=350;}
 function plausibleWaistCm(cm){return cm>=40&&cm<=250;}
+/* A range in an error message restates the rule and names nothing. An athlete
+   who is 5'10" typed 178 — their height in CENTIMETRES — into a box set to
+   inches, and was told "47-91", which is true and does not help: the number
+   they need is 70 and nothing on screen said so. The mistake is always the
+   same one, in one direction or the other, so say which one it was and do the
+   conversion. Returns a suffix, or '' when the number is not explainable that
+   way — a wrong number that is not a unit mix-up must not be told it is. */
+function unitMixupHint(raw,imp){
+  if(!isFinite(raw))return '';
+  if(imp&&raw>=120&&raw<=230)return ` ${raw} looks like centimetres — in inches that is about ${Math.round(raw/2.54)}.`;
+  if(!imp&&raw>=47&&raw<=91)return ` ${raw} looks like inches — in centimetres that is about ${Math.round(raw*2.54)}.`;
+  return '';
+}
+/* The height mix-up at least ERRORS. Its sibling does not: the imperial weight
+   range is 66-550 lb, so an athlete typing their weight in kilograms lands
+   inside it — 86 reads as 86 lb, or 39 kg — and every calorie number downstream
+   is built from it with nothing on screen to say so. Neither figure is
+   implausible ALONE; the pair is. 86 lb at 5'10" is a BMI of 12.4, which is not
+   a lean person, it is a wrong unit. The gate is deliberately far outside the
+   human range in both directions so it can only catch an error: a very lean
+   athlete at 5'10" sits near 17, and severe obesity near 50. */
+function bmiImplausible(kg,cm){
+  if(!(kg>0&&cm>0))return false;
+  const b=kg/Math.pow(cm/100,2);
+  return b<13||b>60;
+}
 /* NOT plausibleKg() — that floor (25kg) is calibrated for human BODYWEIGHT.
    A logged dumbbell/kettlebell load is a different quantity that legitimately
    goes well below it (a 2.5kg dumbbell is a real logged set), so this only
@@ -13256,6 +13289,7 @@ function saveTDEE(){
   const sex=openTDEE._sex||n.sex;const age=parseFloat($('#td-age').value);
   let ht=parseFloat($('#td-ht').value);let wt=parseFloat($('#td-wt').value);
   if(!(sex&&age>0&&ht>0&&wt>0)){toast('Fill in all fields');return;}
+  const htRaw=ht,wtRaw=wt;
   if(imp){ht=ht*2.54;wt=wt*0.453592;}
   if(!plausibleKg(wt)){toast('Weight looks off — expected '+(imp?'55–770 lb':'25–350 kg'));return;}
   /* Was `!plausibleWaistCm(ht) && !(ht>=120&&ht<=230)`, which is true only
@@ -13264,8 +13298,14 @@ function saveTDEE(){
      was accepted, giving a TDEE of 1591 instead of 2570 and a target floored to
      1500, whose only feedback is "raised to a safe minimum" — which reads as
      reassurance rather than as "your height is wrong". */
-  if(!(ht>=120&&ht<=230)){toast('Height looks off — expected '+(imp?'47–91 in':'120–230 cm'));return;}
+  if(!(ht>=120&&ht<=230)){toast('Height looks off — expected '+(imp?'47–91 in':'120–230 cm')+unitMixupHint(htRaw,imp));return;}
   if(!(age>=14&&age<=100)){toast('Age looks off — expected 14–100');return;}
+  /* The twin of the height check, and the one that does NOT error on its own:
+     a weight typed in the wrong unit lands inside the legal range and every
+     calorie number below is built from it silently. Only the pair is wrong. */
+  if(bmiImplausible(wt,ht)){toast(imp
+    ? `${wtRaw} lb at ${Math.round(ht/2.54)} in does not add up — if that is kilograms, enter about ${Math.round(wtRaw/0.453592)}.`
+    : `${wtRaw} kg at ${Math.round(ht)} cm does not add up — if that is pounds, enter about ${Math.round(wtRaw*0.453592)}.`);return;}
   n.sex=sex;n.age=age;n.heightCm=Math.round(ht);n.weightKg=Math.round(wt*10)/10;n.activity=parseFloat($('#td-act').value)||1.45;
   // mirror to the profile copy — the quiz prefills from profile.*, so writing
   // only the nutrition side meant one tap of Next reverted these answers
