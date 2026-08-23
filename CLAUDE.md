@@ -1117,6 +1117,59 @@ the guard asserts every case was taken on the same step. `plEnterReady(false)`
 first, then the thing you mean to test — the wizard is the same rule with a
 different button.
 
+## The player has SIX twins, not three (v290)
+
+"Still encountering exercises with timers that prioritise the timer over
+showing me the exercise" — reported from the phone, mid-baseline-battery. The
+existing note said a timed effort is rendered in three places. It is rendered
+in **six**, and only two of them had ever had the treatment:
+
+| surface | function | photo | clock |
+|---|---|---|---|
+| guided player | `plRingHTML` | yes | veiled |
+| HIIT | `ivRingHTML` | yes | veiled |
+| warm-up / cool-down | `flowHTML` | yes | **solid** |
+| hold / rest timer | `timerHTML` | **none** | solid |
+| rep cadence | `repHTML` | **none** | solid |
+| **baseline test** | `baselineTimerHTML` | **none, no ring at all** | solid |
+
+The baseline sheet was a label, an 80px number and a hint. The exercise photo
+sits on the step *behind* it, so tapping Start replaced the form reference with
+a bare number — at the one moment the athlete is actually holding the position.
+That is the same "it's like there is no view of that exercise" report as v236,
+two years of versions later, on a surface nobody had counted.
+
+**The veil is now one custom property, `--plveil` (.37), defined in both
+themes.** Six copies of a number is how this drifted three separate ways; the
+check fails on a hardcoded opacity in the base rule rather than on the effect,
+because the effect is identical right up until someone edits one copy.
+
+The rest exception survives and is pinned by its own check: **rest keeps a
+solid clock** because it has no ten-second spoken cue, so it is the one timer
+with nothing behind it. `.timerring.solid` carries the same halo the player's
+rest clock uses. A 3-2-1 into position is solid for the same reason.
+
+**A `const` arrow read by a function called ABOVE it is a temporal dead zone
+error**, and it took the whole baseline timer down the first time it ran.
+`paintReady()` is invoked on the line before the helper definitions, so
+`btRing` had to be a function *declaration*. Nothing about the diff looked
+wrong; driving the real path is what found it in seconds.
+
+### The same test trap, three times in one session
+
+Every one of these blocks first passed on nothing, for the same reason:
+
+- **Suite 10**: a wizard tap that PASSES advances the step, and step 1 is the
+  only step that validates. Every case after the first success gated step 2.
+- **Suite 16**: the block above ends at **667x320 landscape** to prove the ring
+  shrinks under height pressure, and never restores it — so the new block
+  inherited a 154px ring and measured the photo as a 134px thumbnail, which is
+  the exact defect it exists to rule out. **The viewport is part of the state a
+  block has to build.**
+- And the CSS-text assertion matched `.pl-ring.rest .pl-center{opacity:1}`
+  twice — a bare `.pl-center{` prefix still matches inside a longer descendant
+  selector. Anchor on a declaration only the base rule has.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

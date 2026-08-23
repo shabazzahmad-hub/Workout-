@@ -37,6 +37,10 @@
     --ink:#f7f9fc; --muted:#9ba8bd; --dim:#6c7c92; --muted2:#657184;
     --fire:#5de0b7; --fire-d:#2db996; --fire-l:#8becd0; --accInk:#03140f; --accSoft:rgba(93,224,183,.13);
     --plhalo:rgba(2,6,12,.95);
+    /* How far the clock gives way to the photograph during an effort. One
+       number, read by every timed surface, so the six of them cannot drift
+       apart again — they already had, three ways. */
+    --plveil:.37;
     --violet:#70a7ff; --violet-d:#4a82df;
     --teal:#70a7ff; --teal-d:#4a82df;
     --green:#55d98c; --green-d:#2fae66;
@@ -55,6 +59,7 @@
     --ink:#102035; --muted:#59697d; --dim:#7d8b9c;
     --fire:#127f67; --fire-d:#0d6d58; --fire-l:#0f6e59; --accInk:#ffffff; --accSoft:rgba(18,127,103,.12);
     --plhalo:rgba(255,255,255,.97);
+    --plveil:.37;
     --violet:#2c67c8; --violet-d:#22539f; --teal:#2c67c8; --teal-d:#22539f;
     --green:#147a46; --green-d:#0f6036; --pink:#b82f45; --pink-d:#942436; --gold:#9b6d00;
     --blue:#2c67c8; --brandInk:#ffffff;
@@ -226,7 +231,7 @@
   @keyframes breathe{0%,100%{transform:scale(.78);opacity:.28}50%{transform:scale(1.06);opacity:.6}}
   /* The clock reads as a watermark behind the movement. Ten seconds out it
      starts speaking anyway, which is what makes this affordable. */
-  .pl-center{position:relative;text-align:center;opacity:.4}
+  .pl-center{position:relative;text-align:center;opacity:var(--plveil)}
   .pl-num{font-size:72px;font-weight:900;letter-spacing:-2px;font-variant-numeric:tabular-nums;line-height:1}
   .pl-sub{font-size:12px;font-weight:800;letter-spacing:1.4px;color:var(--ink);text-transform:uppercase;margin-top:4px}
   .pl-set{font-size:12px;font-weight:800;letter-spacing:1.2px;color:var(--fire-l);text-transform:uppercase}
@@ -406,7 +411,23 @@
      min() lets it shrink to fit instead of pushing Stop/Done off-screen. */
   .timerring{position:relative;height:min(330px,88vw,48vh);min-height:130px;width:auto;aspect-ratio:1;margin:0 auto}
   .timerring svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
-  .timerring .inner{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  /* The same rule the player ring already follows, applied to the OTHER four
+     timed surfaces. The clock reads as a watermark and the movement is the
+     thing being looked at. `position:relative` puts the clock above the photo
+     in the stacking order without a scrim between them. */
+  .timerring .inner{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    opacity:var(--plveil)}
+  /* Solid is for a phase with nothing behind it: a 3-2-1 into position, and a
+     rest clock. Both are short, neither has the ten-second spoken cue that
+     makes the watermark affordable during an effort. The halo darkens the few
+     pixels around each glyph and leaves the photograph alone. */
+  .timerring.solid .inner{opacity:1}
+  .timerring.solid .inner .tnum,.timerring.solid .inner .tt{
+    text-shadow:0 0 5px var(--plhalo),0 0 12px var(--plhalo),0 0 22px var(--plhalo),0 2px 3px var(--plhalo)}
+  /* 72px was sized for a full-width box, not for the inside of a disc — it
+     overflowed the ring on a narrow phone. */
+  .timerring .inner .tnum{font-size:clamp(34px,12vw,60px);margin:2px 0}
+  .timerring .inner .tt{max-width:80%}
   /* Assessment */
   .assess-step{display:none}.assess-step.active{display:block}
   .measure-input{display:flex;gap:10px;align-items:stretch}
@@ -1753,7 +1774,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='289';
+const APP_VERSION='290';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -5744,8 +5765,16 @@ function startBaselineTimer(){
   openSheet(baselineTimerHTML(t));
   _bt={iv:setInterval(tick,1000),mode:'ready',ready:3,elapsed:0,dur:dur,tid:t.id};
   paintReady();coachSay('Get ready.');
-  function paintReady(){const b=$('#btBig');if(b){b.textContent=_bt.ready;b.className='tnum rest';}const l=$('#btLbl');if(l)l.textContent='GET READY';const h=$('#btHint');if(h)h.textContent='Get into position…';}
-  function paintRun(){const b=$('#btBig');if(b){b.textContent=dur?fmtTime(Math.max(0,dur-_bt.elapsed)):fmtTime(_bt.elapsed);b.className='tnum go';}const l=$('#btLbl');if(l)l.textContent=dur?'TIME LEFT':'HOLD — ELAPSED';const h=$('#btHint');if(h)h.textContent=dur?'Go! Count every rep.':'Hold your best form. Tap Stop when you break.';const a=$('#btAction');if(a){a.style.display='block';a.textContent=dur?'■ Stop early':'■ Stop & save';}}
+  /* Solid for the 3-2-1 into position, a watermark once the effort is running.
+     Same trade the player already makes: during the effort the clock gives way
+     to the photograph, because the athlete is holding a plank and cannot look
+     at a number anyway. */
+  /* A function DECLARATION, not a const arrow: paintReady() is called on the
+     line above these definitions, so a const here is still in its temporal
+     dead zone when the first paint runs and the whole baseline timer throws. */
+  function btRing(v){const r=$('#btRing');if(r)r.classList.toggle('solid',v);}
+  function paintReady(){const b=$('#btBig');if(b){b.textContent=_bt.ready;b.className='tnum rest';}const l=$('#btLbl');if(l)l.textContent='GET READY';const h=$('#btHint');if(h)h.textContent='Get into position…';btRing(true);}
+  function paintRun(){const b=$('#btBig');if(b){b.textContent=dur?fmtTime(Math.max(0,dur-_bt.elapsed)):fmtTime(_bt.elapsed);b.className='tnum go';}const l=$('#btLbl');if(l)l.textContent=dur?'TIME LEFT':'HOLD — ELAPSED';const h=$('#btHint');if(h)h.textContent=dur?'Go! Count every rep.':'Hold your best form. Tap Stop when you break.';const a=$('#btAction');if(a){a.style.display='block';a.textContent=dur?'■ Stop early':'■ Stop & save';}btRing(false);}
   function tick(){
     if(!_bt)return;
     if(_bt.mode==='ready'){
@@ -5779,13 +5808,29 @@ function backToAssessStep(focus){
   renderAssessStep();
   if(focus)setTimeout(()=>{const inp=$('#assess-val');if(inp){inp.focus();inp.select&&inp.select();}},160);
 }
+/* The movement, during the effort — not only on the screen before it.
+   This sheet used to be a label, an 80px number and a hint: no photograph and
+   no ring at all. The exercise picture sat on the step BEHIND this sheet, so
+   the moment the athlete tapped Start it was replaced by a bare number, at the
+   one point they most need the form reference. Reported from a phone during
+   the baseline battery: "it prioritises the timer over showing me the
+   exercise."
+   safeSwap() is applied here for the same reason renderAssessStep() applies
+   it — a shoulder-flagged athlete is tested on the substitute, so showing the
+   original movement would contradict the swap notice one screen back. */
 function baselineTimerHTML(t){
+  const ex=EX[safeSwap(t.ex)];
   return `
   <div class="row" style="justify-content:space-between;margin-bottom:8px"><div class="tiny muted">${t.name}</div><button class="chip" onclick="baselineCancel()">Cancel</button></div>
-  <div class="timerbox" style="padding:22px 0 6px">
-    <div class="tt" id="btLbl">GET READY</div>
-    <div class="tnum rest" id="btBig" style="font-size:80px">3</div>
-    <div class="tiny muted" id="btHint" style="margin-top:2px">Get into position…</div>
+  <div class="timerbox" style="padding:10px 0 6px">
+    <div class="timerring solid" id="btRing">
+      ${plRingMediaHTML(ex)}
+      <div class="inner">
+        <div class="tt" id="btLbl">GET READY</div>
+        <div class="tnum rest" id="btBig">3</div>
+      </div>
+    </div>
+    <div class="tiny muted" id="btHint" style="margin-top:10px">Get into position…</div>
   </div>
   <button class="btn primary" id="btAction" onclick="baselineStop()" style="display:none">■ Stop &amp; save</button>`;
 }
@@ -7433,19 +7478,25 @@ function beatStep(s,t){
 function openExerciseTimer(exId){
   const sess=buildSession(STATE.progressPtr);const m=[...sess.main,sess.finisher].find(x=>x.exId===exId);
   const ex=EX[exId];
-  if(m.unit==='time'){runTimer('hold',m.target,ex.name,m.rest,()=>markSetFromTimer(exId));}
-  else{runTimer('rest',m.rest,ex.name+' — rest',0,null);}
+  if(m.unit==='time'){runTimer('hold',m.target,ex.name,m.rest,()=>markSetFromTimer(exId),false,ex);}
+  else{runTimer('rest',m.rest,ex.name+' — rest',0,null,false,ex);}
 }
-function runTimer(mode,seconds,label,restAfter,onDone,quiet){
+function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex){
   let remain=seconds;const total=seconds;
   const isHold=mode==='hold';
-  openSheet(timerHTML(label,remain,isHold,total));
+  openSheet(timerHTML(label,remain,isHold,total,ex));
   autoRoll();primeVoice();beatStart();
   const C=2*Math.PI*100;
   // 5-second loud GET READY countdown before a hold begins (rest timers start straight away)
   let phase=isHold?'ready':'run', ready=5;
   const setPhase=(txt)=>{const t=$('#tphase');if(t)t.textContent=txt;};
+  /* Solid through the 3-2-1, a watermark once the hold is running. A rest
+     timer never enters 'run' this way and keeps the solid class it shipped
+     with — rest has no ten-second cue, so it is the one clock with nothing
+     behind it. */
+  const tRing=v=>{const r=$('#tRing');if(r)r.classList.toggle('solid',v);};
   if(phase==='ready'){
+    tRing(true);
     const n=$('#tnum');if(n){n.textContent='5';n.className='tnum rest';}setPhase('GET READY');
     beep(1000,.15,0.7);
     if(!quiet&&!motivate('start'))coachSpeak('Get ready.');
@@ -7455,7 +7506,7 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet){
       ready--;
       if(ready>0){beep(1000,.15,0.7);if(ready<=3)coachSay(String(ready));const n=$('#tnum');if(n)n.textContent=ready;return;}
       beepGo();haptic(30);coachSay('Go!');
-      phase='run';const n=$('#tnum');if(n){n.textContent=fmtTime(remain);n.className='tnum '+(isHold?'go':'rest');}setPhase(isHold?'HOLD':'REST');
+      phase='run';tRing(!isHold);const n=$('#tnum');if(n){n.textContent=fmtTime(remain);n.className='tnum '+(isHold?'go':'rest');}setPhase(isHold?'HOLD':'REST');
       return;
     }
     remain--;
@@ -7485,12 +7536,19 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet){
   timer={iv:setInterval(tick,1000),mode};
   update();
 }
-function timerHTML(label,secs,isHold,total){
+/* A hold timer with no picture of the hold. This surface, the rep cadence and
+   the baseline test all shipped as a ring and a number while the player and
+   HIIT put the movement inside the ring — the fourth, fifth and sixth copies
+   of a treatment that was only ever applied to the first two.
+   A REST timer stays solid: rest has no ten-second spoken cue, so it is the
+   one clock with nothing behind it. */
+function timerHTML(label,secs,isHold,total,ex){
   const C=2*Math.PI*100;
   return `
   <div class="timerbox">
     <div class="tt">${label}</div>
-    <div class="timerring">
+    <div class="timerring ${isHold?'':'solid'}" id="tRing">
+      ${plRingMediaHTML(ex)}
       <svg width="220" height="220" viewBox="0 0 220 220">
         <circle cx="110" cy="110" r="100" fill="none" stroke="var(--line)" stroke-width="12"/>
         <circle id="tring" cx="110" cy="110" r="100" fill="none" stroke="${isHold?'var(--green)':'var(--fire)'}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="0"/>
@@ -7518,14 +7576,14 @@ let _repTok=0;
 function startGuidedReps(exId){
   const sess=buildSession(STATE.progressPtr);const m=[...sess.main,sess.finisher].find(x=>x.exId===exId);
   const ex=EX[exId];
-  runRepCadence(m.target,ex.name,m.rest,()=>markSetFromTimer(exId));
+  runRepCadence(m.target,ex.name,m.rest,()=>markSetFromTimer(exId),ex);
 }
 function cancelReps(){_repTok++;stopTimer();closeSheet();}
-function runRepCadence(reps,label,restAfter,onDone){
+function runRepCadence(reps,label,restAfter,onDone,ex){
   const total=Math.max(1,reps);let n=0;
   const tempo=Math.max(1.5,Math.min(6,(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3));
   const C=2*Math.PI*100;
-  openSheet(repHTML(label,total));
+  openSheet(repHTML(label,total,ex));
   autoRoll();primeVoice();beatStart();
   const setP=(t)=>{const e=$('#rcphase');if(e)e.textContent=t;};
   function paint(){const nn=$('#rcNum');if(nn)nn.textContent=n;const rr=$('#rcRing');if(rr)rr.style.strokeDashoffset=C*(1-n/total);}
@@ -7561,12 +7619,13 @@ function runRepCadence(reps,label,restAfter,onDone){
   stopTimer();
   timer={iv:setInterval(readyTick,1000),mode:'reps'};
 }
-function repHTML(label,total){
+function repHTML(label,total,ex){
   const C=2*Math.PI*100;
   return `
   <div class="timerbox">
     <div class="tt">${label}</div>
-    <div class="timerring">
+    <div class="timerring" id="rcRingBox">
+      ${plRingMediaHTML(ex)}
       <svg width="220" height="220" viewBox="0 0 220 220">
         <circle cx="110" cy="110" r="100" fill="none" stroke="var(--line)" stroke-width="12"/>
         <circle id="rcRing" cx="110" cy="110" r="100" fill="none" stroke="var(--fire)" stroke-width="12" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C}"/>
