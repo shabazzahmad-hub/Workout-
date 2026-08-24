@@ -890,6 +890,98 @@ export default async function run() {
     t.eq('a thrown second call keeps the first reading', rr.survivesThrow.p, 102);
     t.eq('all of it', JSON.stringify(rr.survivesThrow), JSON.stringify({ p: 102, f: 50, kcal: 1141 }));
     t.ok('a zero from the second look is not taken as an answer', rr.zeroIgnored, rr);
+
+    /* ---- a calculated number stays visibly calculated ---------------------
+       Reported from the phone with a screenshot of the logged row: the
+       tracker showed 91.3 g of carbs, the app logged 86, and NOTHING on the
+       row said the number had been worked out rather than read.
+
+       86 was arithmetically right — 82 g protein and 37 g fat account for 661
+       of 1,005 kcal, leaving 344, which is 86 g. It is 5 g light because Lose
+       It's own figures do not balance: 81.6 + 91.3 + 37.2 comes to 1,026 kcal
+       against the 1,005 it reports. That gap is the built-in cost of deriving,
+       and it is exactly why the athlete has to be able to SEE that a number
+       was derived — v301 said so in the sheet, and saveFood() then dropped the
+       stamp on the floor. */
+    const st = await page.evaluate(async () => {
+      const o = {}, real = window._geminiCall;
+      const reply = obj => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(obj) }] }, finishReason: 'STOP' }] });
+      const d = nutToday(); d.food = []; nut().kcalTarget = 2090;
+      const fuel = () => { renderFuel(); return document.querySelector('#v-fuel').innerHTML; };
+      /* The athlete's reading verbatim, with both passes failing on carbs. */
+      window._geminiCall = async () => reply({ name: 'Breakfast', kcal: 1005, protein: 82, fat: 37 });
+      const imported = async () => {
+        let e = await estimateFoodFromScreenshot('data:image/png;base64,AA==');
+        e = await _resolveScreenshotMacros('data:image/png;base64,AA==', e, { budget: 8000 });
+        return _fillMacroFromKcal(e);
+      };
+      const est = await imported();
+      o.grams = est.c;
+      openQuickAdd(est);
+      await new Promise(z => setTimeout(z, 150));
+      saveFood();
+      await new Promise(z => setTimeout(z, 150));
+      o.row = d.food[0] ? { c: d.food[0].c, calc: d.food[0].calc } : null;
+      o.rowSays = /carbs calculated from the calories, not read/.test(fuel());
+      /* Correcting it by hand makes it a measurement again, and the marker
+         would then be a lie. */
+      d.food = [];
+      openQuickAdd(est);
+      await new Promise(z => setTimeout(z, 150));
+      document.querySelector('#fa-c').value = '91'; updQtyTotal();
+      saveFood();
+      await new Promise(z => setTimeout(z, 150));
+      o.corrected = d.food[0] ? { c: d.food[0].c, calc: d.food[0].calc || null } : null;
+      o.correctedQuiet = !/calculated from the calories/.test(fuel());
+      /* And a reading that came back COMPLETE must carry no marker at all —
+         otherwise the marker means nothing. */
+      d.food = [];
+      window._geminiCall = async () => reply({ name: 'Breakfast', kcal: 1005, protein: 82, carbs: 91, fat: 37 });
+      const good = await imported();
+      o.goodDerived = good.macroDerived || null;
+      openQuickAdd(good);
+      await new Promise(z => setTimeout(z, 150));
+      saveFood();
+      await new Promise(z => setTimeout(z, 150));
+      o.goodRow = d.food[0] ? { c: d.food[0].c, calc: d.food[0].calc || null } : null;
+      o.goodQuiet = !/calculated from the calories/.test(fuel());
+      /* A junk value from an import must not reach innerHTML — membership,
+         not truthiness. */
+      d.food = [{ name: 'X', kcal: 400, p: 20, c: 30, f: 10, meal: 's',
+        calc: '<img src=x onerror=window.__pwn2=1>' }];
+      const h = fuel();
+      o.junkRejected = !/onerror/.test(h) && !document.querySelector('#v-fuel img[src="x"]');
+      /* ...and logFood's OWN guard, driven through logFood rather than by
+         writing the row by hand. The render-side test above passes even with
+         this one deleted — two guards, and a check that only exercises the
+         second proves nothing about the first. Junk stored here would travel
+         in every backup, which is the harm v285 measured. */
+      d.food = [];
+      logFood('Junk', 400, 20, 30, 10, 's', '', '<img src=x onerror=1>');
+      o.logFoodRejects = d.food[0] && d.food[0].calc === undefined;
+      d.food = [];
+      logFood('Real', 400, 20, 30, 10, 's', '', 'carbs');
+      o.logFoodAccepts = d.food[0] && d.food[0].calc === 'carbs';
+      d.food = []; window._geminiCall = real;
+      return o;
+    });
+    /* The number itself, from the athlete's own screenshot. */
+    t.eq('the derivation gives 86 g on that reading', st.grams, 86);
+    t.eq('and the row stores WHICH macro was calculated', st.row && st.row.calc, 'carbs');
+    t.eq('with the value it wrote', st.row && st.row.c, 86);
+    t.ok('the logged row says so on screen', st.rowSays, st);
+    /* Correcting it clears the marker — otherwise it lies. */
+    t.eq('correcting the number by hand keeps the correction', st.corrected && st.corrected.c, 91);
+    t.eq('and drops the calculated marker', st.corrected && st.corrected.calc, null);
+    t.ok('so nothing on screen calls it calculated', st.correctedQuiet, st);
+    /* The floor: a complete reading must be unmarked, or the marker is noise. */
+    t.eq('a fully-read import derives nothing', st.goodDerived, null);
+    t.eq('and its row carries no marker', st.goodRow && st.goodRow.calc, null);
+    t.ok('nor any wording on screen', st.goodQuiet, st);
+    /* It reaches innerHTML, and importData() accepts arbitrary JSON. */
+    t.ok('a junk calc value from an import cannot inject', st.junkRejected, st);
+    t.ok('and logFood refuses to store one in the first place', st.logFoodRejects, st);
+    t.ok('while still storing a real one', st.logFoodAccepts, st);
     t.eq('the import fills it in from the calories', r.filledC, 71);
     t.eq('and stamps which macro it derived', r.stamp && r.stamp.which, 'carbs');
     t.eq('with the energy gap it worked from', r.stamp && r.stamp.gap, 283);
@@ -1688,6 +1780,23 @@ export default async function run() {
         !/return 0 for that ONE field/i.test(q.prompt), {});
       t.ok('it asks for the calories EATEN, not the remaining budget',
         /not the remaining budget/i.test(q.prompt), {});
+      /* The athlete has set his tracker to GRAMS permanently, and grams is the
+         layout that kept failing: the same coloured bar under the ring, but
+         with "37.2g Fat · 91.3g Carbs · 81.6g Protein" in it. The prompt used
+         to describe that bar only as a PERCENTAGE thing, in capitals, which is
+         the description the model was pattern-matching. It must now name the
+         grams form, and say all three numbers are wanted — it is always the
+         MIDDLE one, carbs, that goes missing. */
+      t.ok('it names the grams legend under the ring, not only the percentage one',
+        /g Fat/.test(q.prompt) && /g Carbs/.test(q.prompt), {});
+      t.ok('and insists all three numbers in it are returned',
+        /THREE NUMBERS IN THAT LEGEND AND YOU MUST RETURN ALL THREE/.test(q.prompt), {});
+      t.ok('calling out the middle value, which is the one that goes missing',
+        /MIDDLE value is the one most often missed/.test(q.prompt), {});
+      t.ok('with rounding stated, since the legend carries decimals',
+        /nearest whole gram/i.test(q.prompt), {});
+      /* The percentage path must survive the rebalance. */
+      t.ok('the percentage form is still described', /58% Fat/.test(q.prompt), {});
     }
     t.eq('a percentage-only screenshot yields real protein grams', r.p, 92);
     t.eq('real carb grams', r.c, 76);

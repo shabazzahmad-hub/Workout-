@@ -1805,7 +1805,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='303';
+const APP_VERSION='304';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -9505,7 +9505,7 @@ function cleanPortion(v){return (typeof v==='string')?v.replace(/\s+/g,' ').trim
 function foodTotals(){const d=nutToday();const f=d.food||[];
   return {kcal:f.reduce((a,x)=>a+(x.kcal||0),0),p:f.reduce((a,x)=>a+(x.p||0),0),
           c:f.reduce((a,x)=>a+(x.c||0),0),f:f.reduce((a,x)=>a+(x.f||0),0),n:f.length};}
-function logFood(name,kcal,p,c,f,meal,portion){const d=nutToday();if(!Array.isArray(d.food))d.food=[];
+function logFood(name,kcal,p,c,f,meal,portion,calc){const d=nutToday();if(!Array.isArray(d.food))d.food=[];
   /* Food is never negative. `Math.round(kcal||0)` accepted a negative straight
      through, and a single -500 row silently CANCELS a real meal out of the
      day's total — an athlete would see a plausible number that simply is not
@@ -9517,7 +9517,11 @@ function logFood(name,kcal,p,c,f,meal,portion){const d=nutToday();if(!Array.isAr
     c:_nn(c),f:_nn(f),meal:meal||currentMealSlot(),at:Date.now(),
     /* Only written when there IS one. A manual add carries no portion, and an
        empty key on every row would grow every backup for nothing. */
-    ...(cleanPortion(portion)?{portion:cleanPortion(portion)}:{})});
+    ...(cleanPortion(portion)?{portion:cleanPortion(portion)}:{}),
+    /* Which macro, if any, was worked out from the calories rather than read.
+       A MEMBERSHIP test, not truthiness: this reaches innerHTML and an import
+       can carry anything. */
+    ...(_MACRO_KEY[calc]?{calc}:{})});
   syncProteinHabit();save();toast('Logged ✓');closeSheet();renderFuel();try{checkAchievements();}catch(e){}}
 /* A logged row with real calories and NOTHING in any macro field was never
    MEASURED at zero — it is arithmetically impossible, since calories come from
@@ -9692,12 +9696,23 @@ function saveFood(){
      already in the label is what carries the multiple, so scaling this too would
      double-count it on screen. */
   const portion=String(saveFood._portion||'').slice(0,40);
+  /* Only if the athlete LEFT the derived number alone. Correcting it by hand
+     makes it a measurement again, and the marker would then be a lie. Compared
+     per serving, before the quantity multiplier, which is the number the fill
+     actually wrote into the box. */
+  let calc='';
+  {const d=saveFood._derived;
+   if(d&&_MACRO_KEY[d.which]){
+     const typed=d.which==='protein'?perP:(d.which==='carbs'?perC:perF);
+     if(Math.round(typed)===Math.round(d.grams))calc=d.which;
+   }}
+  saveFood._derived=null;
   const ei=saveFood._editIdx;
   if(typeof ei==='number'){        // editing an existing entry: replace in place
-    const d=nutToday();if(d.food&&d.food[ei]){d.food[ei]={name:label.slice(0,60),kcal,p:pr,c:cb,f:ft,meal,at:d.food[ei].at||Date.now(),...(portion?{portion}:{})};save();}
+    const d=nutToday();if(d.food&&d.food[ei]){d.food[ei]={name:label.slice(0,60),kcal,p:pr,c:cb,f:ft,meal,at:d.food[ei].at||Date.now(),...(portion?{portion}:{}),...(calc?{calc}:{})};save();}
     saveFood._editIdx=null;saveFood._portion='';toast('Updated ✓');closeSheet();renderFuel();return;
   }
-  logFood(label,kcal,pr,cb,ft,meal,portion);
+  logFood(label,kcal,pr,cb,ft,meal,portion,calc);
   saveFood._portion='';
 }
 /* ---- Food search: local database first (instant, offline), then Open Food
@@ -10016,6 +10031,13 @@ function openQuickAdd(pre){
     <div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
   /* Paint it on OPEN, not only on the next keystroke — an import that dropped
      a macro has to say so before the athlete taps Save, not after. */
+  /* Carried to saveFood() so a DERIVED number stays visibly derived after it
+     is logged. v301 stamped it on the estimate and showed a note in the sheet,
+     but saveFood() writes only name/kcal/p/c/f — so the moment the row was
+     saved the calculated figure became indistinguishable from a read one.
+     Reported from the phone: carbs read 86 where the tracker showed 91.3, and
+     nothing on the logged row said the number had been worked out. */
+  saveFood._derived=(pre&&pre.macroDerived)||null;
   faGapPaint();
 }
 /* ---- Photo → calorie estimate via Google Gemini (free tier) ----
@@ -10430,7 +10452,7 @@ function estimateFoodFromImage(dataUrl,opts){
    has. Same _visionEstimate() plumbing (model fallback, JSON schema, the
    physiological clamp), only the prompt changes: read, do not calculate. */
 function estimateFoodFromScreenshot(dataUrl,opts){
-  return _visionEstimate(dataUrl,'This is a screenshot from a nutrition-tracking app (such as Lose It or MyFitnessPal) or a nutrition label. The calories and macros have ALREADY been calculated and are displayed somewhere in this image. Your job is to READ them, not to estimate them — do NOT recalculate or round beyond what is shown. Look everywhere in the image: totals rows, summary headers, progress rings or bars, budget/remaining rows, and per-item lists. Macros may be labelled in full ("Protein", "Carbohydrates", "Fat") or abbreviated ("P", "C", "F", "Prot", "Carb"). THE MACRO SPLIT IS OFTEN SHOWN ONLY AS PERCENTAGES, printed under the calorie ring as a coloured bar with a legend — for example "58% Fat · 3% Carbs · 39% Protein". When a percentage split is the only macro information in the image, fill "proteinPct", "carbsPct" and "fatPct" with those numbers and OMIT the gram fields entirely. That is a COMPLETE answer: do NOT try to convert them yourself, the app does that exactly, and do not return zero grams instead, because zero means "ate none" and would throw away a split that is plainly visible. If grams are shown, use "protein", "carbs" and "fat". If both grams and percentages are shown, give the grams. Return: "name" = the food, meal or day label shown (e.g. "Lunch", "Chicken salad", "Today"); "kcal" = the whole-number calorie total that was EATEN — not the remaining budget, the amount left, or the daily goal; and EITHER whole-number grams in "protein", "carbs" and "fat" OR the percentage split in "proteinPct", "carbsPct" and "fatPct". If a single total or summary is shown, use it. If only individual foods are listed with no total, sum them into one entry. If one number is genuinely not shown anywhere, OMIT that field rather than guessing, and still return every other number you did find — a partial reading is useful, but a zero is a measurement and would be a lie. Also return "portion": a short description of the serving or quantity shown, if visible, under 40 characters. Only if the image contains no nutrition numbers at all should you return kcal:0.',opts);
+  return _visionEstimate(dataUrl,'This is a screenshot from a nutrition-tracking app (such as Lose It or MyFitnessPal) or a nutrition label. The calories and macros have ALREADY been calculated and are displayed somewhere in this image. Your job is to READ them, not to estimate them — do NOT recalculate or round beyond what is shown. Look everywhere in the image: totals rows, summary headers, progress rings or bars, budget/remaining rows, and per-item lists. Macros may be labelled in full ("Protein", "Carbohydrates", "Fat") or abbreviated ("P", "C", "F", "Prot", "Carb"). THE MACRO SPLIT IS VERY OFTEN PRINTED UNDER THE CALORIE RING AS A COLOURED BAR WITH A THREE-PART LEGEND IN GRAMS — for example "37.2g Fat · 91.3g Carbs · 81.6g Protein". THERE ARE THREE NUMBERS IN THAT LEGEND AND YOU MUST RETURN ALL THREE. Read them left to right and do not stop after the first one. The MIDDLE value is the one most often missed — check specifically that you have read it. Round each to the nearest whole gram (91.3 becomes 91) and put them in "protein", "carbs" and "fat". That same bar is sometimes printed as PERCENTAGES instead — for example "58% Fat · 3% Carbs · 39% Protein". When a percentage split is the only macro information in the image, fill "proteinPct", "carbsPct" and "fatPct" with those numbers and OMIT the gram fields entirely. That is a COMPLETE answer: do NOT try to convert them yourself, the app does that exactly, and do not return zero grams instead, because zero means "ate none" and would throw away a split that is plainly visible. If grams are shown, use "protein", "carbs" and "fat". If both grams and percentages are shown, give the grams. Return: "name" = the food, meal or day label shown (e.g. "Lunch", "Chicken salad", "Today"); "kcal" = the whole-number calorie total that was EATEN — not the remaining budget, the amount left, or the daily goal; and EITHER whole-number grams in "protein", "carbs" and "fat" OR the percentage split in "proteinPct", "carbsPct" and "fatPct". If a single total or summary is shown, use it. If only individual foods are listed with no total, sum them into one entry. If one number is genuinely not shown anywhere, OMIT that field rather than guessing, and still return every other number you did find — a partial reading is useful, but a zero is a measurement and would be a lie. Also return "portion": a short description of the serving or quantity shown, if visible, under 40 characters. Only if the image contains no nutrition numbers at all should you return kcal:0.',opts);
 }
 /* Which single gram macro came back absent — and only when exactly one did,
    because with two unknowns there is nothing specific to go back and look for. */
@@ -10683,7 +10705,7 @@ function intakeHTML(){
       rows.forEach(({f,i})=>{
         h+=`<div class="kv" style="border-top:1px solid var(--line);gap:6px">
           <button onclick="editFood(${i})" style="flex:1;min-width:0;text-align:left;background:none;border:none;color:var(--ink);cursor:pointer;padding:8px 0">
-            ${_ve(f.name)} <span class="tiny muted">· ${f.kcal} kcal · ${macrosUncaptured(f)?'':`${f.p}p${f.c?' · '+f.c+'c':''}${f.f?' · '+f.f+'f':''}`}</span>${macrosUncaptured(f)?`<span class="tiny" style="color:var(--gold);font-weight:700">⚠️ macros not captured — tap to add</span>`:(gp=>gp?`<span class="tiny" style="color:var(--gold);font-weight:700">⚠️ ${gp.which} missing — tap to add ~${gp.grams} g</span>`:'')(foodMacroGap(f))}${f.portion?`<span class="tiny muted"> · 📏 ${_ve(f.portion)}</span>`:''}</button>
+            ${_ve(f.name)} <span class="tiny muted">· ${f.kcal} kcal · ${macrosUncaptured(f)?'':`${f.p}p${f.c?' · '+f.c+'c':''}${f.f?' · '+f.f+'f':''}`}</span>${macrosUncaptured(f)?`<span class="tiny" style="color:var(--gold);font-weight:700">⚠️ macros not captured — tap to add</span>`:(gp=>gp?`<span class="tiny" style="color:var(--gold);font-weight:700">⚠️ ${gp.which} missing — tap to add ~${gp.grams} g</span>`:'')(foodMacroGap(f))}${_MACRO_KEY[f.calc]?`<span class="tiny muted"> · ${_ve(f.calc)} calculated from the calories, not read</span>`:''}${f.portion?`<span class="tiny muted"> · 📏 ${_ve(f.portion)}</span>`:''}</button>
           <button class="chip" style="flex:0 0 auto" onclick="removeFood(${i})">✕</button></div>`;
       });
     });
