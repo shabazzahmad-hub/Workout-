@@ -1633,6 +1633,98 @@ genuinely carb-free row (three eggs, 420 kcal, a 6 kcal gap) and an all-three-
 missing row that must keep its own different warning and must not be
 double-counted.
 
+## Read the number; do not compute it (v301)
+
+"Why do I have to enter it manually? This defeats the purpose of importing the
+screenshot." It did, and the complaint is the fix.
+
+The prompt was not at fault — it says plainly to OMIT a number it cannot read
+and never to return zero. The model dropped carbs anyway. What was wrong is
+what the app did next: `foodScreenshot()` branched on **all three** macros
+missing (blank the fields, warn) and did **nothing at all** for exactly one —
+the case the calorie identity solves outright. So the reading arrived with a
+zero in the box and the athlete was asked to tap an offer, on the one feature
+whose entire purpose is not typing numbers in.
+
+This is the third version of the same one-versus-three asymmetry: v293 fixed it
+in the add sheet, v300 on a logged row, and it was still sitting on the import.
+**Fixing one instance is not fixing the class** — and the class here is not
+"macros", it is *every branch written for all-three that never got its
+exactly-one sibling*.
+
+**It is not a guess.** `kcal = 4p + 4c + 9f`; the model read two of the three
+and the calories it read name the third. 102 g protein and 50 g fat account for
+858 of 1,141 kcal, leaving 283 — the 71 g of carbs the athlete's own tracker
+was showing on screen.
+
+**Screenshot path only, and that is the point of the identity.** A screenshot
+carries numbers another tracker already computed, so kcal and the macros agree
+by construction. A food PHOTO estimates all four independently and the identity
+says nothing there, so deriving one from the others would invent precision that
+never existed. A check pins `foodPhoto()` NOT calling it.
+
+**A derived figure has to be visible as one.** It is stamped `macroDerived`, the
+sheet says where the number came from and what gap it closed, and Save is still
+the athlete's tap — which is what keeps v293's "a number the athlete never saw
+should be theirs to accept" true while removing the work.
+
+### The arithmetic was still the wrong answer
+
+The first version of this shipped the derivation as THE fix. The athlete pushed
+back, and was right: *"The number is already given. It should just take what
+it's given from the screenshot. It needs not do arithmetic."*
+
+The identity is exact, but it is a workaround for a **reading** failure. The
+figure was on the glass; the model did not return it. So one missing macro now
+buys a second, NARROW look at the same image — one that knows exactly what is
+absent and what was already read, so it can say where to look. The derivation
+is what happens when that fails too.
+
+**Why a second call rather than a better single prompt.** The first pass has to
+describe every layout a tracker might use, so no part of it can be emphatic
+about one number. The re-read has one job. It runs only when exactly one macro
+is missing, so the ordinary import still costs one call — and two missing gets
+no second look at all, because there is nothing specific to go and find.
+
+**The response schema is enforced** (`responseMimeType` plus `responseSchema`),
+so a wider set of key aliases would have fixed nothing: the model cannot return
+`carbohydrates` when the schema declares `carbs`. It returned nothing at all,
+and `required` is only `name` and `kcal`. Worth checking before theorising
+about the parse.
+
+**The image is hoisted for the same reason.** Whichever downscale actually
+reached the model is what the second look must re-read — re-encoding at a
+different size asks about a different picture.
+
+The discriminating check gives the re-read a value the identity would NOT
+produce: the mock returns **73 g** where the derivation computes **71**. A check
+asserting only `carbs > 0` passes on either, and the entire point is which one
+wins.
+
+### Two escapes, and only one was a weak check
+
+**Calling the helper is not driving the route.** The mutant that deleted
+`est=_fillMacroFromKcal(est)` from `foodScreenshot()` walked straight through,
+because the check called `_fillMacroFromKcal` directly. Four more escaped the
+same way on the re-read round — including one that reordered the two so the
+arithmetic won anyway — so the ORDER is asserted on the source too. The caller is a
+file-picker callback nothing can drive, so the wiring is asserted on the
+SOURCE — `foodScreenshot.toString()` calls it, and after the all-three branch.
+Same family as the v292 Convert button: exercise the route, not the input.
+
+**The other was an equivalent mutant.** Removing `_macrosMissing` from
+`_fillMacroFromKcal` changes nothing: `macroEnergyGap()` already returns null
+unless exactly one macro is absent, so an all-three reading can never reach the
+fill. The guard is kept as intent and the comment says no check can catch its
+removal — the same call as v287's `wantAnchor`. **Read the mutant back before
+rewriting the check.**
+
+**And a mock that does not count is a check that counts nothing.** Two
+"spends no second call" checks passed on a mock with no counter in it at all,
+so a mutant that re-read on EVERY import was invisible. Both now count what
+the resolver spends, with the first pass excluded and a guard asserting the
+case really was the shape it claims.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

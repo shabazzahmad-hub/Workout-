@@ -1805,7 +1805,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='300';
+const APP_VERSION='301';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -9943,6 +9943,10 @@ function openQuickAdd(pre){
         ? `That barcode found the product, but <b>nobody has filled in its nutrition</b> in the free food database. Every box above is <b>blank, not zero</b> — copy the numbers off the label.`
         : `That barcode is not in the free food database${pre.barcodeCode?' ('+_ve(String(pre.barcodeCode))+')':''}. Type the name and the numbers off the label.`}</div>
     </div>`:''}
+    ${(filled&&!editing&&pre.macroDerived)?`<div class="note info" style="margin:8px 0">
+      <div style="font-weight:800">${_ve(pre.name||'Food')} · ${pre.kcal} kcal</div>
+      <div class="tiny" style="margin-top:4px">The <b>${_ve(pre.macroDerived.which)}</b> were not readable in that screenshot, so they are <b>worked out from the calories</b>: ${pre.kcal} kcal less the protein and fat that were read leaves ${pre.macroDerived.gap} kcal, which is <b>${pre.macroDerived.grams} g</b>. Change it if your tracker says otherwise.</div>
+    </div>`:''}
     ${(filled&&!editing)?(pre.macrosMissing?`<div class="note warn" style="margin:8px 0">
       <div style="font-weight:800">${_ve(pre.name||'Food')} · ${pre.kcal} kcal</div>
       <div class="tiny" style="margin-top:4px">⚠️ <b>No macros found</b> in that screenshot — only the calorie total. The protein, carbs and fat boxes above are <b>blank, not zero</b>.</div>
@@ -10382,6 +10386,65 @@ function estimateFoodFromImage(dataUrl,opts){
 function estimateFoodFromScreenshot(dataUrl,opts){
   return _visionEstimate(dataUrl,'This is a screenshot from a nutrition-tracking app (such as Lose It or MyFitnessPal) or a nutrition label. The calories and macros have ALREADY been calculated and are displayed somewhere in this image. Your job is to READ them, not to estimate them — do NOT recalculate or round beyond what is shown. Look everywhere in the image: totals rows, summary headers, progress rings or bars, budget/remaining rows, and per-item lists. Macros may be labelled in full ("Protein", "Carbohydrates", "Fat") or abbreviated ("P", "C", "F", "Prot", "Carb"). THE MACRO SPLIT IS OFTEN SHOWN ONLY AS PERCENTAGES, printed under the calorie ring as a coloured bar with a legend — for example "58% Fat · 3% Carbs · 39% Protein". When a percentage split is the only macro information in the image, fill "proteinPct", "carbsPct" and "fatPct" with those numbers and OMIT the gram fields entirely. That is a COMPLETE answer: do NOT try to convert them yourself, the app does that exactly, and do not return zero grams instead, because zero means "ate none" and would throw away a split that is plainly visible. If grams are shown, use "protein", "carbs" and "fat". If both grams and percentages are shown, give the grams. Return: "name" = the food, meal or day label shown (e.g. "Lunch", "Chicken salad", "Today"); "kcal" = the whole-number calorie total that was EATEN — not the remaining budget, the amount left, or the daily goal; and EITHER whole-number grams in "protein", "carbs" and "fat" OR the percentage split in "proteinPct", "carbsPct" and "fatPct". If a single total or summary is shown, use it. If only individual foods are listed with no total, sum them into one entry. If one number is genuinely not shown anywhere, OMIT that field rather than guessing, and still return every other number you did find — a partial reading is useful, but a zero is a measurement and would be a lie. Also return "portion": a short description of the serving or quantity shown, if visible, under 40 characters. Only if the image contains no nutrition numbers at all should you return kcal:0.',opts);
 }
+/* Which single gram macro came back absent — and only when exactly one did,
+   because with two unknowns there is nothing specific to go back and look for. */
+function _missingMacro(est){
+  if(!est||!(est.kcal>0))return null;
+  const m=[];
+  if(!(est.p>0))m.push('protein');
+  if(!(est.c>0))m.push('carbs');
+  if(!(est.f>0))m.push('fat');
+  return m.length===1?m[0]:null;
+}
+const _MACRO_KEY={protein:'p',carbs:'c',fat:'f'};
+/* A second, NARROW look at the same image for the one number the first pass
+   dropped.
+
+   The athlete's objection, and it is the right one: "the number is already
+   given, it should just take what it's given — it needs not do arithmetic."
+   Deriving carbs from the calorie identity is exact, but it is a workaround
+   for a READING failure, and the reading is what should be fixed. The figure
+   was on the glass; the model simply did not return it.
+
+   Why a second call rather than a better single prompt: the first pass has to
+   describe every layout a tracker might use, so no part of it can be emphatic
+   about one number. This one knows exactly what is missing and what was
+   already read, so it can say where to look and what the answer must be near.
+   It runs ONLY when exactly one macro is absent, so the ordinary path still
+   costs one call. */
+function rereadMacroFromScreenshot(dataUrl,which,est,opts){
+  const known=[];
+  if(est.p>0)known.push(est.p+' g of protein');
+  if(est.c>0)known.push(est.c+' g of carbs');
+  if(est.f>0)known.push(est.f+' g of fat');
+  return _visionEstimate(dataUrl,
+    'This is a screenshot from a nutrition-tracking app. A previous pass over this same image already read '+
+    (known.length?known.join(' and '):'the calorie total')+' and '+est.kcal+' calories, but it MISSED the '+which+'. '+
+    'The '+which+' figure IS in this image — find it. It may be small, abbreviated ("'+
+    (which==='carbs'?'C" or "Carb" or "Carbohydrates':which==='protein'?'P" or "Prot':'F" or "Fat')+
+    '"), printed under a coloured ring or bar, or sitting in a row beside the numbers already read. '+
+    'It may carry a decimal point — round it to the nearest whole gram. '+
+    'Return it as "'+(which==='protein'?'protein':which==='carbs'?'carbs':'fat')+'" in grams, together with "kcal" '+
+    'set to '+est.kcal+' and "name" set to the label shown. Do NOT calculate it from the calories and the other '+
+    'macros — READ it off the image. If after looking carefully it genuinely is not printed anywhere, omit the '+
+    'field rather than returning a zero or a guess.',opts);
+}
+/* Read first, derive only if the read fails. Named rather than inlined because
+   the caller is a file-picker callback nothing can drive. */
+async function _resolveScreenshotMacros(dataUrl,est,opts){
+  const which=_missingMacro(est);
+  if(!which)return est;
+  try{
+    const again=await rereadMacroFromScreenshot(dataUrl,which,est,opts);
+    const k=_MACRO_KEY[which];
+    const v=Math.round(+(again&&again[k])||0);
+    /* Only take it if the second look actually found a number. A zero is the
+       model saying it still cannot see it, which is the honest answer and
+       must not overwrite anything. */
+    if(v>0)return Object.assign({},est,{[k]:v,macroReread:which});
+  }catch(e){}
+  return est;
+}
 function foodPhoto(){
   if(!foodAIReady()){toast('Add a free Gemini key in Settings ⚙️ for photo estimates');openQuickAdd();return;}
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.setAttribute('capture','environment');
@@ -10423,6 +10486,42 @@ function _screenshotUnusable(est){return !(est&&est.kcal>0)&&!(est&&est.p>0);}
    that the macros were not found, rather than presenting a complete-looking
    entry that quietly holds the protein bar at zero. */
 function _macrosMissing(est){return !!(est&&est.kcal>0&&!(est.p>0)&&!(est.c>0)&&!(est.f>0));}
+/* ONE macro missing is a different case from all three, and it is the one the
+   app can solve outright. The import handled all-three and did nothing at all
+   here — so a reading that dropped exactly one arrived with a zero in the box
+   and the athlete was asked to work it out by hand, on the one feature whose
+   whole purpose is not typing numbers in. "This defeats the purpose of
+   importing the screenshot", and it did.
+
+   It is not a guess. kcal = 4p + 4c + 9f; the model read two of the three, and
+   the calories IT READ name the third exactly. Measured on the reading that
+   prompted this: 102 g protein and 50 g fat account for 858 of 1,141 kcal,
+   leaving 283 — which is 71 g of carbs against the 72.9 g the athlete's own
+   tracker was showing on screen.
+
+   Screenshot path only, and that is the point of the identity: a screenshot
+   carries numbers another tracker already computed, so kcal and the macros
+   agree by construction. A food PHOTO is an estimate of all four independently
+   and the identity says nothing there, so deriving one from the others would
+   be inventing precision that never existed.
+
+   Named rather than inlined because the caller is a file-picker callback, and
+   a guard only reachable by driving a real file picker is a guard nothing can
+   check — the same reason _screenshotUnusable() exists. */
+function _fillMacroFromKcal(est){
+  /* The _macrosMissing half is intent, not a working guard, and no check can
+     catch its removal: macroEnergyGap() already returns null unless EXACTLY
+     one macro is absent, so an all-three reading can never reach the fill.
+     Kept because the branch order is the thing being stated. */
+  if(!est||_macrosMissing(est))return est;
+  const g=macroEnergyGap(est.kcal,est.p,est.c,est.f);
+  if(!g)return est;
+  const key=g.which==='fat'?'f':(g.which==='carbs'?'c':'p');
+  /* Stamped, because a derived figure has to be visible as one. The sheet says
+     where it came from and Save is still the athlete's tap. */
+  return Object.assign({},est,{[key]:g.grams,
+    macroDerived:{which:g.which,grams:g.grams,gap:g.gap}});
+}
 function foodScreenshot(){
   if(!foodAIReady()){toast('Add a free Gemini key in Settings ⚙️ to import a screenshot');openQuickAdd();return;}
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';
@@ -10442,15 +10541,18 @@ function foodScreenshot(){
          down to ~104 KB, still 646px wide, which is more than the 590px that
          made v253 unreadable. Preferring legibility and falling back to
          deliverability beats failing with a perfect image nobody received. */
-      try{let est;
+      /* Hoisted: whichever image actually reached the model is the one a
+         second look has to re-read. Re-encoding at a different size would ask
+         about a different picture. */
+      try{let est,du0;
         try{
-          const du=await _downscale(rd.result,2048,0.92);
-          est=await estimateFoodFromScreenshot(du,{onRetry:busy,budget:30000});
+          du0=await _downscale(rd.result,2048,0.92);
+          est=await estimateFoodFromScreenshot(du0,{onRetry:busy,budget:30000});
         }catch(e1){
           if(!_connectionLevel(e1&&e1.status))throw e1;
           toast('Slow connection — trying a lighter image…',3000);
-          const du2=await _downscale(rd.result,1400,0.85);
-          est=await estimateFoodFromScreenshot(du2,{onRetry:busy,budget:20000});
+          du0=await _downscale(rd.result,1400,0.85);
+          est=await estimateFoodFromScreenshot(du0,{onRetry:busy,budget:20000});
         }
         // The prompt is told to return zeros rather than guess when it can't find
         // real numbers — that is success from the model's own honesty, but it is
@@ -10460,13 +10562,25 @@ function foodScreenshot(){
            view. Hand the fields over BLANK rather than pre-filled with zeros,
            so the athlete types a real number instead of silently accepting a
            protein figure nobody measured. */
+        /* READ before you derive. One macro missing gets a second, narrow look
+           at the same image asking for that number specifically — the figure
+           was on the athlete's screen, and taking it is always better than
+           working it out. Budgeted separately and small: this is a bonus pass,
+           and it must never make a good import feel slow. */
+        est=await _resolveScreenshotMacros(du0,est,{onRetry:busy,budget:12000,ms:12000});
         if(_macrosMissing(est))est=Object.assign({},est,{p:undefined,c:undefined,f:undefined,macrosMissing:true});
+        /* Only if the second look ALSO came back without it. */
+        else est=_fillMacroFromKcal(est);
         if(gen!==_sheetGen){toast('📋 Imported '+(est.name||'food')+' · ~'+est.kcal+' kcal — tap ➕ to log it',6000);return;}
         openQuickAdd(est);
         toast(est.macrosMissing
           ? '📋 '+(est.name||'Food')+' · '+est.kcal+' kcal — but no macros in that screenshot. Add protein before saving.'
+          : est.macroReread
+          ? '📋 '+(est.name||'Food')+' · '+est.kcal+' kcal — the '+est.macroReread+' needed a second look but were read off the image. Tap Save to log.'
+          : est.macroDerived
+          ? '📋 '+(est.name||'Food')+' · '+est.kcal+' kcal — the '+est.macroDerived.which+' were not readable even on a second look, so they are worked out from the calories ('+est.macroDerived.grams+' g). Tap Save to log.'
           : '📋 '+(est.name||'Food')+(est.portion?' · '+est.portion:'')+' · ~'+est.kcal+' kcal, '+est.p+'g — tap Save to log',
-          est.macrosMissing?7000:5000);
+          (est.macrosMissing||est.macroDerived||est.macroReread)?7000:5000);
       }catch(e){toast('Screenshot import failed — '+_aiErrText(e),6000);
         if(gen===_sheetGen)openQuickAdd();}};
     rd.readAsDataURL(f);};

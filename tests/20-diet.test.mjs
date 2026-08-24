@@ -725,6 +725,187 @@ export default async function run() {
     t.ok('the guard fires on both zero', r.guardTrueOnBothZero, r);
     t.ok('but not when either number is real', r.guardFalseWithKcal && r.guardFalseWithProtein, r);
   }
+
+  /* ---- the import closes a one-macro gap itself -------------------------
+     "Why do I have to enter it manually? This defeats the purpose of
+     importing the screenshot." It did. The import branched on ALL THREE
+     macros missing and did nothing at all for exactly one — the case the
+     calorie identity solves outright — so a reading that dropped carbs
+     arrived with a zero in the box and an offer the athlete had to tap.
+
+     Driven through the REAL pipeline with only the network mocked, because
+     the whole claim is that a model reply lands filled in. */
+  {
+    const r = await page.evaluate(async () => {
+      const o = {}, real = window._geminiCall;
+      const reply = obj => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(obj) }] }, finishReason: 'STOP' }] });
+      /* The athlete's actual reading, verbatim: carbs absent from the reply. */
+      window._geminiCall = async () => reply({ name: 'Dinner', kcal: 1141, protein: 102, fat: 50 });
+      const est = await estimateFoodFromScreenshot('data:image/png;base64,AA==');
+      /* The pipeline coerces an absent field to 0, which is precisely why the
+         derivation has to exist: without it a zero reaches the log. */
+      o.pipelineZeroes = est.c === 0 && est.p === 102 && est.f === 50;
+      const filled = _fillMacroFromKcal(est);
+      o.filledC = filled.c;
+      o.stamp = filled.macroDerived;
+      /* The sheet has to SAY the number was derived — an unlabelled figure
+         the athlete never saw on their own screen is the thing v293 refused
+         to do silently, and stamping it is what makes filling it honest. */
+      openQuickAdd(filled);
+      await new Promise(z => setTimeout(z, 150));
+      const sh = document.querySelector('#sheet').innerHTML;
+      o.sheetSays = /worked out from the calories/.test(sh);
+      o.sheetNamesGrams = /<b>71 g<\/b>/.test(sh);
+      o.boxHas = document.querySelector('#fa-c').value;
+      /* ...and the old "tap to work it out" offer must be GONE, because the
+         gap is closed. Leaving both is a screen contradicting itself. */
+      o.noStaleOffer = !/fillMacroGap\(\)/.test(sh);
+      closeSheet();
+      /* The floors. Each is a reply that must NOT be touched. */
+      o.complete = _fillMacroFromKcal({ kcal: 600, p: 40, c: 50, f: 20 });
+      o.eggs = _fillMacroFromKcal({ kcal: 420, p: 36, c: 0, f: 30 });   // really carb-free
+      o.allThree = _fillMacroFromKcal({ kcal: 800, p: 0, c: 0, f: 0 });
+      o.twoMissing = _fillMacroFromKcal({ kcal: 900, p: 60, c: 0, f: 0 });
+      /* A missing FAT is derived at 9 kcal/g, not 4 — the wrong divisor is a
+         silent 2.25x error that every carbs-only check would miss. */
+      o.fatCase = _fillMacroFromKcal({ kcal: 1000, p: 50, c: 100, f: 0 });
+      window._geminiCall = real;
+      return o;
+    });
+    /* The WIRING, not just the helper. foodScreenshot()'s only caller is a
+       file-picker callback nothing can drive, and calling _fillMacroFromKcal
+       directly proved the arithmetic while a mutant that deleted the call
+       walked straight through. Read the source, the same way this file
+       already reads _geminiCall's. */
+    const wired = await page.evaluate(() => {
+      const src = foodScreenshot.toString();
+      return { calls: /_fillMacroFromKcal\(/.test(src),
+        afterMissing: src.indexOf('_macrosMissing') < src.indexOf('_fillMacroFromKcal'),
+        photoDoesNot: !/_fillMacroFromKcal\(/.test(foodPhoto.toString()),
+        /* READ before derive: the resolver must be called, and BEFORE the
+           fallback. A mutant that reorders them, or that hands the fallback a
+           blanked reading, is invisible to any check that calls the two
+           helpers itself. */
+        rereads: /_resolveScreenshotMacros\(/.test(src),
+        readBeforeDerive: src.indexOf('_resolveScreenshotMacros') < src.indexOf('_fillMacroFromKcal'),
+        fallbackGetsTheReading: /else est=_fillMacroFromKcal\(est\);/.test(src),
+        photoDoesNotReread: !/_resolveScreenshotMacros\(/.test(foodPhoto.toString()) };
+    });
+    t.ok('the screenshot import actually calls the fill', wired.calls, wired);
+    t.ok('and does so only after the all-three branch', wired.afterMissing, wired);
+    /* A food PHOTO estimates all four numbers independently, so the calorie
+       identity says nothing there — deriving one from the others would invent
+       precision that never existed. */
+    t.ok('the photo estimate deliberately does NOT derive macros', wired.photoDoesNot, wired);
+    t.ok('the import asks for a second look at a missing macro', wired.rereads, wired);
+    t.ok('and does so BEFORE falling back to arithmetic', wired.readBeforeDerive, wired);
+    t.ok('the fallback is handed the reading itself, not a blanked copy', wired.fallbackGetsTheReading, wired);
+    t.ok('and a food photo never asks for a second look either', wired.photoDoesNotReread, wired);
+    t.ok('an absent macro reaches the pipeline as a zero', r.pipelineZeroes, r);
+
+    /* ---- READ before you derive -----------------------------------------
+       "The number is already given. It should just take what it's given from
+       the screenshot. It needs not do arithmetic." Right, and the arithmetic
+       was treating a READING failure as the answer. The figure was on the
+       athlete's glass; the model did not return it. So one macro missing now
+       buys a second, NARROW look at the same image that asks for that number
+       specifically, and the derivation is only what happens when that fails
+       too. */
+    const rr = await page.evaluate(async () => {
+      const o = {}, real = window._geminiCall;
+      const reply = obj => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(obj) }] }, finishReason: 'STOP' }] });
+      let calls = [];
+      const isReread = b => /MISSED the/.test(JSON.stringify(b).slice(0, 4000));
+      /* First pass drops carbs; the re-read finds 73 — deliberately NOT the
+         71 the identity would derive, so the check can tell which number won. */
+      window._geminiCall = async (m, b) => {
+        calls.push(isReread(b) ? 'reread' : 'first');
+        return calls.length === 1 ? reply({ name: 'Dinner', kcal: 1141, protein: 102, fat: 50 })
+          : reply({ name: 'Dinner', kcal: 1141, carbs: 73 });
+      };
+      const est = await estimateFoodFromScreenshot('data:image/png;base64,AA==');
+      const fixed = await _resolveScreenshotMacros('data:image/png;base64,AA==', est, { budget: 12000 });
+      o.calls = calls.slice();
+      o.readValue = fixed.c; o.readStamp = fixed.macroReread; o.notDerived = !fixed.macroDerived;
+      /* A complete reading must not spend a second call. */
+      window._geminiCall = async (m, b) => { calls.push(isReread(b) ? 'reread' : 'first');
+        return reply({ name: 'Bowl', kcal: 450, protein: 40, carbs: 35, fat: 12 }); };
+      const good = await estimateFoodFromScreenshot('data:image/png;base64,AA==');
+      calls = [];                    // count only what the RESOLVER spends
+      await _resolveScreenshotMacros('data:image/png;base64,AA==', good, { budget: 12000 });
+      o.completeCalls = calls.length;
+      /* Two missing cannot be looked for specifically — no second call. */
+      window._geminiCall = async (m, b) => { calls.push(isReread(b) ? 'reread' : 'first');
+        return reply({ name: 'Row', kcal: 900, protein: 60 }); };
+      const two = await estimateFoodFromScreenshot('data:image/png;base64,AA==');
+      calls = [];
+      await _resolveScreenshotMacros('data:image/png;base64,AA==', two, { budget: 12000 });
+      o.twoMissingCalls = calls.length;
+      o.twoReallyMissing = !(two.c > 0) && !(two.f > 0) && two.p === 60;
+      /* When the second look ALSO comes back without it, the derivation is
+         what catches the athlete — the fallback, not the first answer. */
+      calls = [];
+      window._geminiCall = async (m, b) => {
+        calls.push(isReread(b) ? 'reread' : 'first');
+        return calls.length === 1 ? reply({ name: 'Dinner', kcal: 1141, protein: 102, fat: 50 })
+          : reply({ name: 'Dinner', kcal: 1141 });
+      };
+      const e2 = await estimateFoodFromScreenshot('data:image/png;base64,AA==');
+      const r2 = await _resolveScreenshotMacros('data:image/png;base64,AA==', e2, { budget: 12000 });
+      o.fallback = { reread: r2.macroReread, derived: _fillMacroFromKcal(r2).macroDerived };
+      /* A failing second call must never cost the first reading. */
+      window._geminiCall = async (m, b) => {
+        if (isReread(b)) throw Object.assign(new Error('boom'), { status: 500 });
+        return reply({ name: 'Dinner', kcal: 1141, protein: 102, fat: 50 });
+      };
+      const e3 = await estimateFoodFromScreenshot('data:image/png;base64,AA==');
+      const r3 = await _resolveScreenshotMacros('data:image/png;base64,AA==', e3, { budget: 2000, backoff: [0] });
+      o.survivesThrow = { p: r3.p, f: r3.f, kcal: r3.kcal };
+      /* A zero from the second look is the model saying it still cannot see
+         it. That is honest and must not overwrite anything. */
+      window._geminiCall = async (m, b) => isReread(b)
+        ? reply({ name: 'Dinner', kcal: 1141, carbs: 0 })
+        : reply({ name: 'Dinner', kcal: 1141, protein: 102, fat: 50 });
+      const e4 = await estimateFoodFromScreenshot('data:image/png;base64,AA==');
+      const r4 = await _resolveScreenshotMacros('data:image/png;base64,AA==', e4, { budget: 12000 });
+      o.zeroIgnored = !r4.macroReread;
+      window._geminiCall = real;
+      return o;
+    });
+    t.eq('one missing macro buys a second, targeted look', JSON.stringify(rr.calls), JSON.stringify(['first', 'reread']));
+    /* THE discriminator. 73 is what the image said; 71 is what the identity
+       would have computed. A check that only asserted "carbs > 0" would pass
+       on either, and the whole point is that the READ number wins. */
+    t.eq('and the number READ off the image is the one used', rr.readValue, 73);
+    t.eq('stamped as read, not derived', rr.readStamp, 'carbs');
+    t.ok('so no derivation happens at all', rr.notDerived, rr);
+    /* The floors: the ordinary path must not pay for this. */
+    t.eq('a complete reading spends no second call', rr.completeCalls, 0);
+    t.eq('and neither does one missing two macros', rr.twoMissingCalls, 0);
+    t.ok('guard: that case really was missing two', rr.twoReallyMissing, rr);
+    /* The fallback still exists, one step further back than before. */
+    t.eq('when the second look fails too, nothing is stamped as read', rr.fallback.reread, undefined);
+    t.eq('and the derivation catches it', rr.fallback.derived && rr.fallback.derived.grams, 71);
+    /* Robustness: a bonus pass must never make the import worse. */
+    t.eq('a thrown second call keeps the first reading', rr.survivesThrow.p, 102);
+    t.eq('all of it', JSON.stringify(rr.survivesThrow), JSON.stringify({ p: 102, f: 50, kcal: 1141 }));
+    t.ok('a zero from the second look is not taken as an answer', rr.zeroIgnored, rr);
+    t.eq('the import fills it in from the calories', r.filledC, 71);
+    t.eq('and stamps which macro it derived', r.stamp && r.stamp.which, 'carbs');
+    t.eq('with the energy gap it worked from', r.stamp && r.stamp.gap, 283);
+    t.eq('the box really carries it', r.boxHas, '71');
+    t.ok('the sheet says the number was derived, not read', r.sheetSays, r);
+    t.ok('and names the grams', r.sheetNamesGrams, r);
+    t.ok('the now-redundant "work it out" offer is gone', r.noStaleOffer, r);
+    /* The floors, because a guard earns its keep only if a check proves it
+       cannot fire on a legitimate reading. */
+    t.eq('a complete reading is untouched', r.complete.macroDerived, undefined);
+    t.eq('a genuinely carb-free food is untouched', r.eggs.macroDerived, undefined);
+    t.eq('a reading missing ALL THREE keeps its own path', r.allThree.macroDerived, undefined);
+    t.eq('and two missing cannot be split, so it is left alone', r.twoMissing.macroDerived, undefined);
+    /* 1000 - (50*4 + 100*4) = 400 kcal of fat, at 9 kcal/g = 44 g. */
+    t.eq('a missing fat is derived at 9 kcal per gram, not 4', r.fatCase.f, 44);
+  }
   {
     // the entry point actually reaches the athlete, on the real Fuel tab
     const r = await page.evaluate(() => {
