@@ -891,6 +891,45 @@ export default async function run() {
     t.eq('all of it', JSON.stringify(rr.survivesThrow), JSON.stringify({ p: 102, f: 50, kcal: 1141 }));
     t.ok('a zero from the second look is not taken as an answer', rr.zeroIgnored, rr);
 
+    /* ---- the second look costs ONE call, not nine -----------------------
+       "I do not have much token for Gemini." The re-read was given a time
+       budget and nothing else, so it inherited _visionEstimate's full
+       3-models x 3-rounds loop: on a flaky connection a single bonus pass
+       could spend NINE calls against a metered key. Measured at 9 uncapped
+       and 1 capped.
+
+       There is nothing to retry FOR, either — if the second look comes back
+       empty the derivation catches it, so a retry storm buys nothing. */
+    const cap = await page.evaluate(async () => {
+      const o = {}, real = window._geminiCall;
+      let calls = [];
+      window._geminiCall = async (m) => { calls.push(m); throw Object.assign(new Error('busy'), { status: 503 }); };
+      /* Worst case: every call fails transiently, which is what makes the
+         loop spin. */
+      try { await _visionEstimate('data:image/png;base64,AA==', 'x', { budget: 20000, ms: 400 }); } catch (e) {}
+      o.uncapped = calls.length;
+      calls = [];
+      try { await _visionEstimate('data:image/png;base64,AA==', 'x',
+        { budget: 20000, ms: 400, backoff: [0], models: [foodAIModels()[0]] }); } catch (e) {}
+      o.capped = calls.length;
+      o.usedRememberedModel = calls[0] === foodAIModels()[0];
+      /* And the import must actually PASS the cap — capping the helper while
+         the caller keeps the old options is the v301 wiring trap again. */
+      const src = foodScreenshot.toString();
+      o.importCaps = /backoff:\[0\]/.test(src) && /models:\[foodAIModels\(\)\[0\]\]/.test(src);
+      /* The FIRST pass must keep its retries — capping that would trade a
+         quota saving for imports that fail on a flaky connection. */
+      o.firstPassUncapped = !/estimateFoodFromScreenshot\(du0,\{[^}]*backoff/.test(src);
+      window._geminiCall = real;
+      return o;
+    });
+    t.ok('guard: an uncapped pass really does spin over models and rounds', cap.uncapped >= 6, cap);
+    t.eq('a capped pass spends exactly one call', cap.capped, 1);
+    t.ok('and spends it on the model that already worked', cap.usedRememberedModel, cap);
+    t.ok('the import passes the cap to the re-read', cap.importCaps, cap);
+    /* The floor. */
+    t.ok('while the FIRST pass keeps its retries', cap.firstPassUncapped, cap);
+
     /* ---- a calculated number stays visibly calculated ---------------------
        Reported from the phone with a screenshot of the logged row: the
        tracker showed 91.3 g of carbs, the app logged 86, and NOTHING on the
