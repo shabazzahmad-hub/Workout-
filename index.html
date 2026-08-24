@@ -1532,10 +1532,10 @@ const EX = {
     steps:['Sit with knees bent and hands planted behind you, fingers toward your feet.','Press the hips up so only hands and feet touch the floor.','Walk forward using the opposite hand and foot.','Keep the hips high the whole way, then walk back.'],
     cues:['Hips stay lifted','Chest open to the ceiling','Small controlled steps'],
     mistakes:['Letting the hips drop toward the floor','Rushing and losing the height']},
-  inchworm:{name:'Inchworm Walkout',region:'dynamic',unit:'reps',img:'ex-inchworm.jpg',anchor:null,hardness:1.15,base:10,rest:40,
+  inchworm:{name:'Inchworm Walkout',region:'dynamic',unit:'reps',img:'ex-inchworm.jpg',vid:'ex-inchworm.mp4',anchor:null,hardness:1.15,base:10,rest:40,
     why:'Warms and works the whole body — hamstrings stretch, then the core braces hard through the walkout. A staple in fat-loss circuits.',
-    steps:['Stand tall, then hinge and place the hands on the floor.','Walk the hands out until you reach a strong plank.','Pause and brace hard for a beat.','Walk the hands back to the feet and stand tall.'],
-    cues:['Legs as straight as comfortable','Brace at the plank','Walk the hands, do not jump'],
+    steps:['Stand tall, then hinge at the hips and place the hands on the floor. Keep the legs as straight as you can.','Walk the hands out, one at a time, until you reach a strong plank.','Pause and brace hard for a beat.','Now walk the FEET in toward the hands, one at a time, until you are folded over again.','Stand tall and repeat.'],
+    cues:['Legs as straight as comfortable','Brace at the plank','Walk the hands and feet — never jump them'],
     mistakes:['Hips sagging at the plank','Bending the knees to cheat the reach']},
   /* ==== Tension battery — powers the Build-muscle slot ==== */
   tempopushup:{name:'Tempo Push-Up',region:'chest',unit:'reps',img:'ex-tempopushup.jpg',anchor:'push',hardness:0.5,base:10,rest:65,pattern:'pushh',
@@ -1805,7 +1805,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='304';
+const APP_VERSION='305';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -10361,8 +10361,17 @@ async function _visionEstimate(dataUrl,promptText,opts){
        total, because 4/4/9 arithmetic is exact in code and a coin flip in a
        language model. */
     responseSchema:{type:'OBJECT',properties:{name:{type:'STRING'},kcal:{type:'INTEGER'},protein:{type:'INTEGER'},carbs:{type:'INTEGER'},fat:{type:'INTEGER'},proteinPct:{type:'NUMBER'},carbsPct:{type:'NUMBER'},fatPct:{type:'NUMBER'},portion:{type:'STRING'}},required:['name','kcal']}}};
-  const models=foodAIModels();let lastErr=null;
   const o_=opts||{};
+  /* A caller can cap the model list. The screenshot RE-READ is a bonus pass,
+     and without this it inherited the full 3-models x 3-rounds loop — so "one
+     extra look" could cost up to nine calls against a metered key. It now gets
+     exactly one call: the model that just answered, one round, no fallback.
+
+     This line must sit BELOW `o_`, not above it: reading o_ before its const
+     is a temporal dead zone error that throws on EVERY import, not only on a
+     re-read. It shipped that way for exactly as long as it took a probe to
+     call the function — the same trap as v290's btRing. */
+  const models=(o_.models&&o_.models.length)?o_.models.slice():foodAIModels();let lastErr=null;
   const backoff=o_.backoff||AI_RETRY_BACKOFF_MS;
   const budget=o_.budget||AI_TOTAL_BUDGET_MS;
   const started=Date.now();
@@ -10635,7 +10644,12 @@ function foodScreenshot(){
            was on the athlete's screen, and taking it is always better than
            working it out. Budgeted separately and small: this is a bonus pass,
            and it must never make a good import feel slow. */
-        est=await _resolveScreenshotMacros(du0,est,{onRetry:busy,budget:12000,ms:12000});
+        /* One call, not nine. backoff:[0] is a single round and models is the
+           one that just succeeded — a second look is worth one call, never a
+           retry storm on a metered key. If it comes back empty the derivation
+           catches it, so there is nothing to retry FOR. */
+        est=await _resolveScreenshotMacros(du0,est,
+          {budget:12000,ms:12000,backoff:[0],models:[foodAIModels()[0]]});
         if(_macrosMissing(est))est=Object.assign({},est,{p:undefined,c:undefined,f:undefined,macrosMissing:true});
         /* Only if the second look ALSO came back without it. */
         else est=_fillMacroFromKcal(est);

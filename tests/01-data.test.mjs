@@ -1007,6 +1007,39 @@ export default async function run() {
     t.ok('Ruck March itself stays open to everyone', r.marchStillOpen, r);
   }
 
+  /* ---- the Inchworm Walkout's words must match its video -----------------
+     The written steps said "walk the hands back to the feet". Both the
+     athlete's own reference clip and the generated video walk the FEET in
+     instead — which is the travelling inchworm, the form that gives the
+     exercise its name. A video sitting beside a contradicting instruction is
+     the same defect as a promise in UI text with no code behind it, so the
+     words moved to match the picture rather than the other way round. */
+  {
+    const r = await page.evaluate(() => {
+      const ex = EX.inchworm, steps = (ex.steps || []).join(' | ');
+      return {
+        vid: ex.vid,
+        emitsVideo: /ex-inchworm\.mp4/.test(plRingMediaHTML(ex)),
+        saysFeetIn: /walk the FEET in/i.test(steps),
+        saysHandsBack: /walk the hands back/i.test(steps),
+        walksHandsOut: /walk the hands out/i.test(steps),
+        neverJump: (ex.cues || []).some(c => /never jump/i.test(c)),
+        /* The floor: a movement whose steps SAY hands-out must still say it. */
+        squatThrustUntouched: (EX.squatthrust.steps || []).join(' ').length > 40,
+      };
+    });
+    t.eq('the inchworm ships a video', r.vid, 'ex-inchworm.mp4');
+    t.ok('and the player emits it rather than the photo', r.emitsVideo, r);
+    /* THE point of this block: the words describe what the clip shows. */
+    t.ok('the steps say the FEET walk in, which is what the video shows', r.saysFeetIn, r);
+    t.ok('and no longer say the hands walk back', !r.saysHandsBack, r);
+    /* The floors — the rest of the movement is unchanged. */
+    t.ok('the hands still walk OUT on the way there', r.walksHandsOut, r);
+    t.ok('and the no-jump cue survives, which is what stops it being a burpee',
+      r.neverJump, r);
+    t.ok('guard: a sibling movement still has real steps', r.squatThrustUntouched, r);
+  }
+
   /* ---- the 8-count push-up ---------------------------------------------
      Searched by MOVEMENT, not by name. The library had squatthrust, burpee,
      burpeetuck and plankjack — every beat of the drill separately, and the

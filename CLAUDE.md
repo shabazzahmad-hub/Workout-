@@ -1883,6 +1883,69 @@ still travels in every backup, which is the harm v285 measured. And nothing
 asserted the prompt's content at all, so the whole grams instruction could be
 removed silently. Two guards mean two checks.
 
+## The video was right and the words were wrong (v305)
+
+The Inchworm Walkout generated cleanly on the first attempt — one person, no
+jump, legs straight, hands walking out one at a time to a real plank. After
+three failures on the 8-count that is worth recording: **the movement the model
+could not render was the one with a push-up buried inside a conditioning
+sequence.** An inchworm has no push-up, it is a common movement with plenty of
+training footage behind it, and it came back right immediately.
+
+What did not match was the app. Its step 4 read *"Walk the hands back to the
+feet and stand tall."* Both the athlete's own reference clip and the generated
+video walk the **FEET in** toward the planted hands — which is the travelling
+inchworm, the form the exercise is named for.
+
+**The words moved to match the picture, not the other way round.** A video
+sitting beside a contradicting instruction is the same defect as a promise in UI
+text with no code behind it, and here the picture was the more standard form.
+The check pins both halves: the steps must say the feet walk in, and must still
+say the hands walk out — losing either describes half a movement.
+
+**The no-jump cue is what stops it being a burpee**, so it is pinned too. That
+is the single line separating this from `squatthrust`, and it is the instruction
+the generator most wanted to ignore.
+
+### The bonus pass that could cost nine calls
+
+"I do not have much token for Gemini." The v301 re-read was given a time budget
+and nothing else, so it inherited `_visionEstimate`'s full **3 models x 3 rounds**
+loop: on a flaky connection one bonus look could spend **nine** calls against a
+metered key. Measured at 9 uncapped, 1 capped.
+
+It now passes `backoff:[0]` and a single model — the one that just answered.
+**There is nothing to retry FOR:** if the second look comes back empty the
+derivation catches it, so a retry storm buys nothing and costs everything. The
+FIRST pass keeps its retries, and a check pins that, because capping it would
+trade a quota saving for imports that fail on a bad connection.
+
+**A time budget is not a call budget.** `budget`/`ms` bound how long a pass may
+take; neither bounds how many requests it makes inside that time. On a metered
+API the second number is the one that matters.
+
+And the fix shipped a temporal dead zone on its first attempt: `const models=
+(o_.models…)` was placed ABOVE `const o_=opts||{}`, which throws on **every**
+import, not only on a re-read. Caught in seconds by a probe that actually called
+the function — the same trap as v290's `btRing`, and the same lesson: driving
+the real path finds what reading the diff does not.
+
+### What made three prompts fail and this one work
+
+Position beat emphasis every time (v303), and that held here — "one man, alone"
+first, the anti-jump rule second. But the deciding variable was the movement
+itself. Ranked by how much the model fought back:
+
+| movement | push-up inside it? | result |
+|---|---|---|
+| 8-count push-up | yes, mandatory | 3 failures, never rendered |
+| squat thrust | no | correct, salvaged from a failed 8-count run |
+| inchworm walkout | no | correct first time |
+
+**Before writing another video prompt, ask whether the movement contains a
+press.** If it does, expect the model to substitute the pattern it knows and
+budget for the still instead.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
