@@ -816,6 +816,62 @@ export default async function run() {
       typeof r.autoAfter === 'string' && r.autoAfter.length > 0, r);
   }
 
+  /* ---- why every coach sounds the same ---------------------------------
+     Reported from the phone: "I'm only hearing a female voice, I'm not
+     hearing any of the other coaches." The rotation is not the suspect — 38
+     personas play through a shuffle bag before any repeat, and that is
+     checked above. What a persona SOUNDS like is, and two things collapse
+     the whole cast onto one voice. Neither is visible from here, so the app
+     has to measure it on the device and say which one it is. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {}, realName = STATE.settings.voiceName, realVoices = COACH_VOICES;
+      const fake = names => { COACH_VOICES = names.map(n => ({ name: n, lang: 'en-US' }));
+        assignCoachVoices(); };
+
+      /* 1. A picked voice overrides EVERY coach — by design, and the copy
+         under the picker never said so. */
+      fake(['Samantha', 'Daniel', 'Karen', 'Alex', 'Moira', 'Fred']);
+      STATE.settings.voiceName = 'Samantha';
+      const forced = voiceCheckHTML();
+      o.forcedNamed = /Every coach is using one voice/.test(forced) && /Samantha/.test(forced);
+      o.forcedOffersFix = /setCoachVoice\(''\)/.test(forced);
+      o.diagForced = voiceDiag().forced;
+      /* It has to say so even BEFORE the device has loaded its voice list —
+         which is exactly the state an athlete is in when they open Settings
+         to ask why. Ordering this after the list check hid it completely. */
+      COACH_VOICES = [];
+      o.forcedWithNoList = /Every coach is using one voice/.test(voiceCheckHTML());
+
+      /* 2. A device with one usable English voice. */
+      STATE.settings.voiceName = '';
+      fake(['Google US English']);
+      o.oneVoice = /only offers 1 English voice/.test(voiceCheckHTML());
+
+      /* 3. The healthy case must NOT warn — a guard that always fires is
+         noise, and would make the two real explanations worthless. */
+      fake(['Samantha', 'Daniel', 'Karen', 'Alex', 'Moira', 'Fred']);
+      const good = voiceCheckHTML();
+      o.healthyQuiet = !/Every coach is using one voice/.test(good) && !/only offers/.test(good);
+      o.healthyCounts = /different voices/.test(good);
+      o.distinct = voiceDiag().distinct;
+
+      STATE.settings.voiceName = realName; COACH_VOICES = realVoices; assignCoachVoices();
+      return o;
+    });
+    t.ok('a picked voice is reported as overriding every coach', r.forcedNamed, r);
+    t.ok('and names the voice that is doing it', r.forcedNamed, r);
+    t.ok('with one tap to hand the coaches back their own voices', r.forcedOffersFix, r);
+    t.eq('the diagnostic reads the real setting', r.diagForced, 'Samantha');
+    /* The ordering bug this check exists to prevent. */
+    t.ok('and it says so even before the voice list has loaded', r.forcedWithNoList, r);
+    t.ok('a one-voice phone is reported as a one-voice phone', r.oneVoice, r);
+    /* The floors. */
+    t.ok('a healthy phone gets no warning at all', r.healthyQuiet, r);
+    t.ok('just a count of what is in use', r.healthyCounts, r);
+    t.eq('and the coaches really are spread across them', r.distinct, 6);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
