@@ -1805,7 +1805,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='301';
+const APP_VERSION='302';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4704,7 +4704,6 @@ function plTickHold(){
     else if(pick===2){coachSpeak('Inhale slow… and exhale.');plS('#plSub','BREATHE');setTimeout(()=>{if(PLAYER&&PLAYER.phase==='work')plS('#plSub','HOLD');},2200);}
     else motivate('during');
   }
-  if(PLAYER.remain===3)coachSpeak('Three. Two. One.');
   countdownCue(PLAYER.remain,PLAYER.total);
   if(PLAYER.remain<=0){beepGo();haptic(30);plAfterSet();return;}
   plS('#plNum',fmtTime(PLAYER.remain));plRingSet(PLAYER.remain/PLAYER.total);
@@ -4806,7 +4805,6 @@ function plTickRest(){
      never faster than one second per tick. */
   const byTick=PLAYER.remain-1;
   PLAYER.remain=PLAYER.deadline?Math.min(byTick,Math.ceil((PLAYER.deadline-Date.now())/1000)):byTick;
-  if(PLAYER.remain===3)coachSpeak('Three. Two. One.');
   if(PLAYER.remain<=3&&PLAYER.remain>0){beepDuck(300);beep(920,.17,0.92);}
   if(PLAYER.remain<=0){plClear();whenPointerFree('pl',plRestDone);return;}   // never swap the buttons out from under a finger
   plS('#plNum',fmtTime(PLAYER.remain));plRingSet(PLAYER.remain/PLAYER.total);
@@ -5600,7 +5598,6 @@ function ivTick(){
   const byTick=INTV.remain-1;
   INTV.remain=INTV.deadline?Math.min(byTick,Math.ceil((INTV.deadline-Date.now())/1000)):byTick;
   if(INTV.phase==='work')INTV.workElapsed++;
-  if(INTV.remain===3)coachSpeak('Three. Two. One.');
   if(INTV.phase==='work')countdownCue(INTV.remain,INTV.total);
   else if(INTV.remain<=3&&INTV.remain>0){beepDuck(300);beep(920,.17,0.92);}
   if(INTV.remain<=0){beepGo();haptic(30);ivClear();INTV.i++;
@@ -6864,6 +6861,46 @@ function openRestSheet(){
    HTML attribute is a real, cheap-to-guard-against case; it just isn't what
    makes removeMeasure's call site safe. */
 function _ve(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+/* ---- Voice check ---------------------------------------------------------
+   Reported from the phone: "I'm only hearing a female voice, not any of the
+   other coaches." There are 38 personas and a shuffle bag that plays all of
+   them before repeating, so the rotation is not the suspect — what a persona
+   SOUNDS like is, and that depends entirely on what the device offers and on
+   whether a voice has been forced.
+
+   Two things can collapse the whole cast onto one voice, and neither is
+   visible from here or from the athlete's side:
+     - A picked voice in Settings. coachVoiceFor() returns it for EVERY coach,
+       by design, and the copy under the picker never said so.
+     - A device that exposes one usable English voice. assignCoachVoices()
+       then has nothing to spread the personas across.
+   This sandbox cannot see either, so the app measures it on the device and
+   says which one it is — the same reason runAIDiagnostic() exists. */
+function voiceDiag(){
+  let pool=[];try{pool=englishVoicePool()||[];}catch(e){}
+  const forced=(STATE.settings&&STATE.settings.voiceName)||'';
+  const byVoice={};
+  try{COACHES.forEach(c=>{const v=COACH_VOICE_MAP[c.id];if(v&&v.name)byVoice[v.name]=(byVoice[v.name]||0)+1;});}catch(e){}
+  return {all:(COACH_VOICES||[]).length,en:pool.length,coaches:(COACHES||[]).length,
+    distinct:Object.keys(byVoice).length,forced,byVoice};
+}
+function voiceCheckHTML(){
+  const d=voiceDiag();
+  /* The forced case FIRST, and before the "no voices yet" line: it is knowable
+     from the setting alone, it explains the symptom completely, and it is one
+     tap from fixed. Ordering it after the voice-list check hid it entirely
+     until the list happened to be loaded — which is exactly the state an
+     athlete is in when they open Settings to ask why. */
+  if(d.forced)return `<div class="note warn" style="margin:8px 0">
+    <b>Every coach is using one voice.</b> You have picked <b>${_ve(d.forced)}</b> above, and a picked voice overrides all ${d.coaches} coaches — so they all sound the same person however often Auto switches.
+    <div class="btnrow" style="margin-top:8px"><button class="btn sm primary" onclick="setCoachVoice('')">Give each coach its own voice</button></div></div>`;
+  if(!d.all)return `<div class="tiny muted" style="margin-top:6px">Tap <b>▶ Test voice</b> once to let this phone load its voices, then check back.</div>`;
+  if(d.distinct<=1)return `<div class="note warn" style="margin:8px 0">
+    <b>This phone only offers ${d.en} English voice${d.en===1?'':'s'}</b>, so all ${d.coaches} coaches have to share ${d.distinct===1?'it':'what there is'}. The words and the delivery still change with each coach; the voice cannot.
+    <div class="tiny" style="margin-top:6px">More voices usually arrive with the system text-to-speech pack — on Android, Settings → Accessibility → Text-to-speech; on iPhone, Settings → Accessibility → Spoken Content → Voices. Or turn on <b>Premium AI voices</b> below, which gives every coach a genuinely different voice.</div></div>`;
+  return `<div class="note ok" style="margin:8px 0"><b>${d.distinct} different voices</b> in use across ${d.coaches} coaches, from the ${d.en} this phone offers.</div>`;
+}
+function runVoiceCheck(){loadCoachVoices();setTimeout(()=>{try{renderGuide();}catch(e){}toast('Voice check updated',2500);},250);}
 function voiceOptionsHTML(){
   if(!COACH_VOICES.length)return '<option value="">Tap "Test voice" to load voices…</option>';
   const en=COACH_VOICES.filter(v=>/^en/i.test(v.lang));
@@ -7532,6 +7569,17 @@ function beepGo(){beepDuck(560);beep(1320,.32,0.95,'square');setTimeout(()=>beep
 
    Skipped on efforts of fourteen seconds or less, where a ten-second countdown
    is most of the exercise and becomes noise rather than information. */
+/* The spoken triple used to sit beside the per-second cue on every timed
+   surface, so the last three seconds were counted TWICE, out of step: the line
+   takes about a second and a half to say, running across seconds 3 and 2,
+   while the beeps fire cleanly at 3, 2 and 1. Reported from the phone as "a
+   3, 2, 1 and then again it repeats 2, 1" — which is exactly what two
+   overlapping countdowns of the same three seconds sound like.
+
+   The beeps win. They are per-second and exact, they carry the ten-second
+   marker and the 9-4 ticks that the voice cannot, and the last three include
+   a buzz so a silenced phone still gets them. A voice line cannot be any of
+   that, and a second countdown on top of one that already works is noise. */
 function countdownCue(remain,total){
   try{
     if(!(remain>0))return;
@@ -7679,7 +7727,6 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex){
       if(remain===10&&total>13)coachSpeak('Ten seconds. Get ready.');
       else if(total>=24&&el===Math.round(total/2))motivate('rest');
     }
-    if(remain===3)coachSpeak('Three. Two. One.');
     // rest keeps the plain 3-2-1 so the two phases stay distinguishable by ear
     if(isHold)countdownCue(remain,total); else if(remain<=3&&remain>0){beepDuck(300);beep(920,.17,0.92);}
     if(remain<=0){
@@ -7945,7 +7992,6 @@ function runFlow(items,title,color){
     const byTick=remain-1;
     remain=deadline?Math.min(byTick,Math.ceil((deadline-Date.now())/1000)):byTick;
     if(remain===5&&total>10)coachSpeak('Five seconds.');
-    if(remain===3)coachSpeak('Three. Two. One.');
     countdownCue(remain,total);
     if(remain<=0){
       idx++;
@@ -14434,7 +14480,9 @@ function renderGuide(){
   h+=`
     <div style="padding:6px 0 2px"><div class="tiny muted" style="margin-bottom:5px">Coach voice</div>
       <select aria-label="Coach voice" onchange="setCoachVoice(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px">${voiceOptionsHTML()}</select>
-      <div class="tiny muted" style="margin-top:5px">Pick a specific voice, or leave on Auto to use the deepest one your phone has.</div>
+      <div class="tiny muted" style="margin-top:5px">Leave this on Auto so each coach keeps its own voice. Picking one here makes <b>every</b> coach use it.</div>
+      ${voiceCheckHTML()}
+      <div class="row" style="justify-content:space-between;padding:4px 0"><span class="muted sm">Which voices is this phone using?</span><button class="chip" onclick="runVoiceCheck()">🔎 Voice check</button></div>
     </div>
     <div class="divider" style="margin:10px 0"></div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Premium AI voices <span class="tiny muted">· online · Azure neural</span></span><button class="chip ${STATE.settings.neuralOn?'on':''}" onclick="toggleNeural()">${STATE.settings.neuralOn?'On':'Off'}</button></div>

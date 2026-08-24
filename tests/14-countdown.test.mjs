@@ -298,6 +298,36 @@ export default async function run() {
     t.eq('and louder', r.max, '2');
   }
 
+  /* ---- ONE countdown, not two ------------------------------------------
+     Reported from the phone, mid-session: "when it's time to rest there is a
+     3, 2, 1 and then again it repeats 2, 1." Every timed surface spoke
+     "Three. Two. One." at remain===3 AND fired the per-second cue at 3, 2 and
+     1. The spoken line takes about a second and a half, so it runs across
+     seconds 3 and 2 while the beeps tick cleanly underneath — two countdowns
+     of the same three seconds, out of step. */
+  {
+    const r = await page.evaluate(() => {
+      const fns = { hold: plTickHold, rest: plTickRest, hiit: ivTick, timer: runTimer, flow: runFlow };
+      const o = { spoken: {}, cues: {} };
+      Object.keys(fns).forEach(k => {
+        const src = fns[k].toString();
+        o.spoken[k] = /Three\. Two\. One\./.test(src);
+        /* ...and the surface must still HAVE a last-three cue. Deleting both
+           would satisfy every "no double" assertion and leave the athlete
+           with silence. */
+        o.cues[k] = /countdownCue\(/.test(src) || /beep\(920/.test(src);
+      });
+      return o;
+    });
+    Object.keys(r.spoken).forEach(k => {
+      t.ok(`the ${k} timer does not speak a second countdown over the beeps`, !r.spoken[k], r.spoken);
+    });
+    /* The floor. A cue still has to fire on every one of them. */
+    Object.keys(r.cues).forEach(k => {
+      t.ok(`the ${k} timer still cues the last three seconds`, r.cues[k], r.cues);
+    });
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

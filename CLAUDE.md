@@ -1725,6 +1725,68 @@ so a mutant that re-read on EVERY import was invisible. Both now count what
 the resolver spends, with the first pass excluded and a guard asserting the
 case really was the shape it claims.
 
+## Two countdowns of the same three seconds (v302)
+
+Reported mid-session, day four: *"when it's time to rest there is a 3, 2, 1 and
+then again it repeats 2, 1."* Every timed surface spoke `'Three. Two. One.'` at
+`remain===3` **and** fired the per-second cue at 3, 2 and 1. The spoken line
+takes about a second and a half, so it runs across seconds 3 and 2 while the
+beeps tick cleanly underneath. Two countdowns of the same three seconds, out of
+step.
+
+**It was on all five surfaces, not one** — the guided player's hold and its
+rest, HIIT, the hold/rep timer and the warm-up flow. Reported on rest because
+that is where it is most exposed: rest has no ten-second marker, so the last
+three seconds are the only sound in it.
+
+**The beeps win.** They are per-second and exact; they carry the ten-second
+marker and the 9-4 ticks that a voice line cannot; and the last three include a
+buzz so a silenced phone still gets them. A second countdown on top of one that
+already works is noise. The check pins both halves — no surface speaks a second
+countdown, and every surface still cues the last three seconds — because
+deleting *both* satisfies every "no double" assertion and leaves silence.
+
+## A voice picker that silently retires the whole cast (v302)
+
+*"I'm only hearing a female voice, I'm not hearing any of the other coaches."*
+The rotation was not the suspect: 38 personas play through a shuffle bag before
+any repeat, and that has its own check. What a persona SOUNDS like is, and two
+things collapse the cast onto one voice:
+
+- **A picked voice in Settings.** `coachVoiceFor()` returns it for EVERY coach,
+  by design — and the copy under the picker said *"leave on Auto to use the
+  deepest one your phone has"*, which describes a preference, not an override of
+  all 38. **A control whose real effect is not the one its label describes is
+  the same defect class as a promise in UI text with no code behind it.**
+- **A device with one usable English voice.** `assignCoachVoices()` splits the
+  pool by name and hands them round; with nothing to spread across, everyone
+  shares one.
+
+Neither is visible from this sandbox, so the app measures it on the device and
+says which one it is — the same reason `runAIDiagnostic()` exists. The forced
+case names the voice and offers one tap to hand the coaches back their own.
+
+**Order the branches by what is KNOWABLE, not by what is convenient.** The first
+version checked the voice list first and returned "tap Test voice" before ever
+reaching the forced-voice warning — so the one explanation that is knowable from
+a stored setting alone was hidden in exactly the state an athlete is in when
+they open Settings to ask why. The probe caught it because headless Chromium has
+zero voices; a check now pins it.
+
+**And the healthy case must stay quiet.** A guard that always fires makes the
+two real explanations worthless, so a phone with six voices gets a count and no
+warning at all. Eight mutants, all caught, including one that warns on
+everything.
+
+### The warm-up videos were never made
+
+Same report: *"we've made all of the videos for the warm up but the warm-up
+session only has the very first one."* Not a bug. `ls *.mp4` — **only
+`wu-march.mp4` exists**; the other seven warm-up moves carry `img` and no `vid`,
+and `showFlowMedia()` correctly falls back to the photo. Twelve `ex-*.mp4` files
+exist, none of them warm-up. Check the assets before reading the code: the code
+was doing exactly the right thing with the data it had.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
