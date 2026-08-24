@@ -1411,6 +1411,75 @@ export default async function run() {
       t.eq('and clears when typed by hand too', m.afterTyping.trim(), '');
     }
 
+    /* ---- ...and the row that was already saved --------------------------
+       All of the above runs INSIDE the add sheet. A row that got saved anyway
+       — or one logged before the check existed — said nothing at all: the ⚠️
+       on a logged row is gated on macrosUncaptured(), which needs ALL THREE
+       macros at zero, so a reading that dropped exactly one sailed through and
+       the tab printed "Carbs 0/196g" as though the athlete had eaten none.
+       That is the same lie the gap check was written to stop, one screen
+       further along. Reported from the phone with the row still on it. */
+    {
+      const m = await page.evaluate(async () => {
+        const o = {}, d = nutToday();
+        nut().kcalTarget = 2090;
+        const fuel = () => { renderFuel(); return document.querySelector('#v-fuel').innerHTML; };
+        /* The athlete's actual row, verbatim. */
+        d.food = []; logFood('Dinner', 1141, 102, 0, 50);
+        const h = fuel();
+        o.gap = foodMacroGap(d.food[0]);
+        o.rowFlag = /carbs missing — tap to add/.test(h);
+        o.rowNames = /~71 g/.test(h);
+        o.dayWarn = /missing one macro/.test(h);
+        /* It must NOT borrow the all-three-missing wording: that one says the
+           macros were never recorded, which is a different problem with a
+           different fix. */
+        o.notMislabelled = !/macros not captured/.test(h);
+        o.counts = { partial: partialMacroCount(), uncaptured: uncapturedCount() };
+        /* Tapping the row has to reach the offer that fills the number in —
+           a flag with no route to a fix is just a nag. */
+        editFood(0);
+        await new Promise(z => setTimeout(z, 150));
+        o.offer = /Use 71 g carbs \(from the calories\)/.test(document.querySelector('#sheet').innerHTML);
+        fillMacroGap();
+        await new Promise(z => setTimeout(z, 60));
+        const box = document.querySelector('#fa-c');
+        o.filled = box && box.value;
+        closeSheet();
+        /* The floors. Each one is a legitimate row that must NOT be accused. */
+        d.food = []; logFood('Complete meal', 600, 40, 50, 20);
+        o.completeQuiet = !/missing — tap to add/.test(fuel()) && partialMacroCount() === 0;
+        d.food = []; logFood('Three eggs', 420, 36, 0, 30);      // really is carb-free
+        o.eggsQuiet = partialMacroCount() === 0;
+        /* All three missing keeps its own, different warning. */
+        d.food = []; logFood('Mystery', 800, 0, 0, 0);
+        const h3 = fuel();
+        o.allThree = { own: /macros not captured/.test(h3),
+          notPartial: partialMacroCount() === 0, uncaptured: uncapturedCount() === 1 };
+        d.food = [];
+        return o;
+      });
+      t.eq('a saved row missing one macro is detected', m.gap && m.gap.which, 'carbs');
+      t.ok('the row itself says so', m.rowFlag, m);
+      t.ok('and names the grams the calories imply', m.rowNames, m);
+      t.ok('the day-level warning says so too', m.dayWarn, m);
+      /* The discriminator: borrowing the all-three-missing copy satisfies a
+         page-wide "is there a warning" search and says the wrong thing. */
+      t.ok('without borrowing the all-three-missing wording', m.notMislabelled, m);
+      t.eq('it is counted as partial, not uncaptured', m.counts.partial, 1);
+      t.eq('and does not inflate the uncaptured count', m.counts.uncaptured, 0);
+      /* A flag with no route to a fix is a nag. Click through to the offer. */
+      t.ok('tapping the row reaches the offer', m.offer, m);
+      t.eq('and taking it fills in the carbs', m.filled, '71');
+      /* The floors, because a guard earns its keep only if a check proves it
+         cannot fire on a legitimate row. */
+      t.ok('a complete row is not accused', m.completeQuiet, m);
+      t.ok('nor is a genuinely carb-free one', m.eggsQuiet, m);
+      t.ok('a row missing ALL THREE keeps its own warning', m.allThree.own, m.allThree);
+      t.ok('and is not double-counted as a partial', m.allThree.notPartial, m.allThree);
+      t.ok('while still counting as uncaptured', m.allThree.uncaptured, m.allThree);
+    }
+
     /* ---- the prompt asks for the form the data is actually in -----------
        v262's lesson verbatim: when a reading comes back empty, the question is
        not only "did the model fail" but "did we ask for the form the data is
