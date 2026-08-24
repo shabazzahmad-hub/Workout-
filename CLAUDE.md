@@ -1597,6 +1597,42 @@ real figure beside it.
 
 Eight mutants, all caught after the floors were rewritten.
 
+## A check that only runs on the way IN (v300)
+
+"The app is still not polling the carbs from the screenshot." It was not the
+import. `macroEnergyGap()` was correct and would have fired on the exact row —
+102 g protein and 50 g fat account for 858 of 1,141 kcal, leaving 283, which is
+71 g of carbs. **It just never ran on a row that was already saved.**
+
+v293 wired the gap check into `updQtyTotal()` and into the add sheet's open. Both
+are on the way IN. The Fuel tab's own ⚠️ on a logged row is gated on
+`macrosUncaptured()`, which requires **all three** macros at zero — so a row that
+dropped exactly one had no badge, no day-level warning, and a bar reading
+`Carbs 0/196g` as though the athlete had eaten none. Same lie the gap check
+exists to stop, one screen further along.
+
+**A check belongs wherever the bad state can be OBSERVED, not only where it can
+be created.** A row can arrive already broken — saved before the check existed,
+restored from a backup, or saved anyway because the athlete tapped past the
+warning. The route in is not the only route.
+
+`foodMacroGap(f)` asks `macroEnergyGap()` about a stored row rather than
+re-deriving the rule, so the 40 kcal floor and the 12% share that keep it off a
+legitimately carb-free food live in exactly one place. The two states stay
+separate everywhere — badge, wording and count — because they need different
+fixes: all three missing means the macros were never recorded, while one missing
+means the calories already name the answer.
+
+**The badge names the grams, and that is the point of it.** "Carbs missing" is a
+nag; "carbs missing — tap to add ~71 g" is the fix, and the row's tap already
+reached `editFood()` → `openQuickAdd()` → `faGapPaint()`, so the offer was
+waiting there the whole time. The mutant that strips the grams is caught.
+
+Seven mutants, all caught. The floors are what make it honest: a complete row, a
+genuinely carb-free row (three eggs, 420 kcal, a 6 kcal gap) and an all-three-
+missing row that must keep its own different warning and must not be
+double-counted.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
