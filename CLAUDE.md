@@ -1787,6 +1787,49 @@ and `showFlowMedia()` correctly falls back to the photo. Twelve `ex-*.mp4` files
 exist, none of them warm-up. Check the assets before reading the code: the code
 was doing exactly the right thing with the data it had.
 
+## Three attempts at one video, and what the failures measured (v303)
+
+The 8-count push-up is the strongest case in the library for a video: eight
+numbered positions, and the still can only carry two of them. Three
+generations, and **not one contained a push-up**. Measured at full resolution
+each time — the elbows never bend, in any frame, in any attempt.
+
+**Position in the prompt beat emphasis in the prompt, and that was measurable.**
+Attempt one put "one person only" in a DO NOT list at the end and got a
+duplicate man standing beside the mat for the whole clip. Attempt two moved it
+to the top and the duplicate vanished for seven of ten seconds. Attempt three
+kept it at the top and the duplicate was gone entirely. Meanwhile "THE MOST
+IMPORTANT PART OF THIS VIDEO", in capitals, in the middle, was ignored three
+times running.
+
+**The model substitutes a movement it knows for the one described.** Squat,
+hands down, kick the feet back, stand is a burpee-shaped motion with thousands
+of training examples behind it, and it is retrieved as ONE unit. The push-up and
+the lateral leg spread sit inside that unit's window and are simply not in the
+retrieved pattern. Removing the name, removing the standing, and calling it "a
+push-up video" did not dislodge it — attempt three produced a plank with the
+knees tucking forward, which is a mountain climber.
+
+So: **stop and keep the still.** The frame chosen for `ex-count8.jpg` is the top
+of the push-up with the feet together, because that position is both count 2 and
+count 6, and the app reads all eight counts aloud during the set.
+
+### The salvage, and the control that stopped a false alarm
+
+Attempt two's first 4.4 seconds are a clean single-person **squat thrust** —
+stand, squat, hands down, feet back to plank, feet in, stand — which is exactly
+`squatthrust`'s four steps, and that exercise had no video. Cropped 720x720 from
+x=150 (which also crops out the generator's watermark), scaled to the house
+640x640/24fps/silent, and wired up.
+
+**The video would not load in the harness, and the control is what proved that
+was not the video.** `canPlayType('video/mp4; codecs="avc1.42E01E")` returns
+EMPTY in this sandbox's headless Chromium, and the known-good `ex-burpee.mp4`
+fails to load identically. Without loading an existing asset as a control, the
+obvious next move is to re-encode a file that was never broken. **When a new
+asset fails a check, run the check against an old asset before touching the new
+one.**
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
