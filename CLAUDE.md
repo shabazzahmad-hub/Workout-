@@ -1830,6 +1830,59 @@ obvious next move is to re-encode a file that was never broken. **When a new
 asset fails a check, run the check against an old asset before touching the new
 one.**
 
+## The derived number stopped being visibly derived (v304)
+
+"The carbs tab stated 91 grams, the app saw 86, why the difference?" 86 was not
+a misreading. It was v301's fallback doing exactly what it was built for:
+
+| | |
+|---|---|
+| protein 82 x 4 | 328 kcal |
+| fat 37 x 9 | 333 kcal |
+| accounted | 661 of 1,005 |
+| left over | 344 kcal = **86 g** |
+
+**It is 5 g light because the TRACKER's own numbers do not balance.**
+81.6 + 91.3 + 37.2 comes to 1,026 kcal against the 1,005 Lose It reports — a
+21 kcal gap, which is 5.3 g of carbs. Real trackers never balance to the gram:
+fibre, rounding, and per-food values more precise than the ones they print. That
+error is the built-in cost of deriving, and it is the whole argument for reading
+the number instead.
+
+**So the athlete has to be able to SEE that a figure was derived — and after
+saving, he could not.** v301 stamped `macroDerived` on the estimate and the
+sheet said where the number came from, but `saveFood()` writes only
+`name/kcal/p/c/f/meal/at/portion` and dropped the stamp on the floor. One tap
+later the calculated 86 was indistinguishable from a measured one, and the row
+read `82p · 86c · 37f` with nothing to question. **A note that lives only in the
+sheet is not a record.**
+
+The marker now travels onto the row, and three properties are reasoned:
+
+- **It clears if the athlete corrects the number.** A hand-typed value is a
+  measurement again, and the marker would be a lie. Compared per SERVING,
+  before the quantity multiplier, because that is the number the fill wrote.
+- **A fully-read import carries nothing.** A marker on every row means nothing.
+- **Membership, not truthiness**, in both the store and the render: `calc`
+  reaches `innerHTML` and `importData()` accepts arbitrary JSON.
+
+### The prompt was describing the wrong version of the athlete's own screen
+
+The failing layout is the coloured bar under the calorie ring with
+`37.2g Fat · 91.3g Carbs · 81.6g Protein` in it. The prompt described that exact
+bar — **in capitals** — as the PERCENTAGE case, and gave grams one short
+sentence. The model was pattern-matching the loudest description of the layout
+it could see, and it is always the **middle** value that goes missing while the
+two at the ends come through. So the grams form now leads, names all three
+numbers, calls out the middle one, and states the rounding.
+
+**Two mutants escaped first, and both were defence-in-depth blind spots.**
+Deleting `logFood()`'s membership test survived, because the junk check wrote
+`d.food` directly and only ever exercised the RENDER guard — junk stored there
+still travels in every backup, which is the harm v285 measured. And nothing
+asserted the prompt's content at all, so the whole grams instruction could be
+removed silently. Two guards mean two checks.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
