@@ -2075,6 +2075,164 @@ export default async function run() {
     await page.evaluate(() => { try { closeSheet(); } catch (e) {} });
   }
 
+  /* ---- A tracker's dashboard is a RUNNING TOTAL, not a meal ---------------
+     Reported after a real day. Lose It's dashboard was imported once after
+     breakfast (1,005 kcal) and again after lunch (1,235). The second
+     screenshot ALREADY CONTAINED the first, so logging both gave 2,240 kcal
+     on a day where 1,235 was eaten, and put the athlete over budget on food
+     he had not had.
+
+     Every case drives saveFood() — the button the athlete taps — rather than
+     calling logFood() directly, because the replace lives in saveFood() and a
+     check that calls the helper is not driving the route. */
+  {
+    const shot = await page.evaluate(() => {
+      const o = {};
+      const clear = () => { const d = nutToday(); d.food = []; };
+      const openShot = pre => { _shotSeparate = false;
+        openQuickAdd(Object.assign({ fromShot: true }, pre)); };
+      const sheetText = () => { const s = document.querySelector('#sheet');
+        return s ? s.textContent : ''; };
+
+      clear();
+      /* First import of the day: there is nothing to replace, so the sheet
+         must say nothing at all. A note that fires on every import is a note
+         nobody reads. */
+      openShot({ name: 'Mon, Aug 24', kcal: 1005, p: 82, c: 86, f: 37 });
+      o.firstSaysNothing = !/REPLACES|ADDED to your earlier/.test(sheetText());
+      saveFood();
+      o.first = { rows: nutToday().food.length, kcal: foodTotals().kcal,
+        src: nutToday().food[0] && nutToday().food[0].src };
+
+      /* Second import of the same day: it contains the first. */
+      openShot({ name: 'Mon, Aug 24', kcal: 1235, p: 102, c: 106, f: 50 });
+      o.secondWarns = /This REPLACES your earlier import \(1005 kcal\)/.test(sheetText());
+      saveFood();
+      o.second = { rows: nutToday().food.length, kcal: foodTotals().kcal,
+        p: foodTotals().p, src: nutToday().food[0] && nutToday().food[0].src };
+
+      /* The escape hatch. A per-meal screenshot is a real thing, so the
+         athlete can still add one — but it takes a deliberate tap. */
+      openShot({ name: 'Snack', kcal: 400, p: 10, c: 10, f: 10 });
+      const btn = Array.from(document.querySelectorAll('#sheet button'))
+        .find(b => /separate entry/i.test(b.textContent));
+      o.hasSeparateButton = !!btn;
+      if (btn) btn.click();
+      o.separateWarns = /ADDED to your earlier import/.test(sheetText());
+      saveFood();
+      o.separate = { rows: nutToday().food.length, kcal: foodTotals().kcal,
+        /* A deliberately-separate import is a MEAL, not the day's running
+           total, so it must NOT carry the marker. Marking it made the next
+           import replace that meal and leave the real day total standing
+           beside it — measured at 2,635 kcal where 1,800 was eaten. */
+        srcs: nutToday().food.map(x => x.src || '-').join(',') };
+
+      /* And the choice does not stick. One deliberate tap must not silently
+         change every import that follows.
+
+         The leak path is a toggle that is ABANDONED. Saving already clears
+         the flag; closing the sheet does not, so the choice would still be
+         armed for the next screenshot. Proved here with no reset, which is
+         what makes the reset in foodScreenshot() load-bearing. */
+      openQuickAdd({ name: 'Scratch', kcal: 300, p: 5, c: 5, f: 5, fromShot: true });
+      const abandon = Array.from(document.querySelectorAll('#sheet button'))
+        .find(b => /separate entry/i.test(b.textContent));
+      if (abandon) abandon.click();
+      closeSheet();
+      o.flagSurvives = _shotSeparate === true;
+      openQuickAdd({ name: 'Mon, Aug 24', kcal: 1400, p: 110, c: 120, f: 55, fromShot: true });
+      o.stillSeparate = /ADDED to your earlier import/.test(sheetText());
+      closeSheet();
+      /* foodScreenshot()'s only caller is a file-picker callback nothing can
+         drive, so the reset is asserted on the SOURCE — and on its ORDER,
+         because a reset placed after the sheet is built arms the wrong one. */
+      const fs = foodScreenshot.toString();
+      o.resetsOnImport = /_shotSeparate\s*=\s*false\s*;[\s\S]{0,80}openQuickAdd\(Object\.assign\(\{\}\s*,\s*est\s*,\s*\{\s*fromShot\s*:\s*true/.test(fs);
+
+      openShot({ name: 'Mon, Aug 24', kcal: 1400, p: 110, c: 120, f: 55 });
+      o.choiceResets = /This REPLACES your earlier import/.test(sheetText());
+      saveFood();
+      o.afterReset = { rows: nutToday().food.length, kcal: foodTotals().kcal };
+
+      /* THE FLOOR. A manual add, a quick pick and a barcode are single foods
+         and must always stack. A version that replaced everything would
+         satisfy every assertion above. */
+      openQuickAdd({ name: 'Apple', kcal: 95, p: 0, c: 25, f: 0 });
+      saveFood();
+      o.manual = { rows: nutToday().food.length, kcal: foodTotals().kcal };
+      openQuickAdd({ name: 'Egg', kcal: 78, p: 6, c: 0, f: 5 });
+      saveFood();
+      o.manual2 = { rows: nutToday().food.length, kcal: foodTotals().kcal };
+      return o;
+    });
+    t.ok('the first import of the day says nothing about replacing', shot.firstSaysNothing, shot);
+    t.eq('and logs one row', shot.first.rows, 1, shot.first);
+    t.eq('marked as coming from a screenshot', shot.first.src, 'shot', shot.first);
+    t.eq('at its own calories', shot.first.kcal, 1005, shot.first);
+    t.ok('a second import of the same day warns that it replaces the first', shot.secondWarns, shot);
+    t.eq('and leaves ONE row, not two', shot.second.rows, 1, shot.second);
+    /* The number from the report. 1,005 + 1,235 = 2,240 was the bug. */
+    t.eq('carrying the second total only', shot.second.kcal, 1235, shot.second);
+    t.eq('macros replaced too, not summed', shot.second.p, 102, shot.second);
+    t.eq('and the replacement is still marked as a screenshot', shot.second.src, 'shot', shot.second);
+    t.ok('an "add as a separate entry" button is offered', shot.hasSeparateButton, shot);
+    t.ok('and tapping it says the two will be added together', shot.separateWarns, shot);
+    t.eq('a deliberately separate import adds a row', shot.separate.rows, 2, shot.separate);
+    t.eq('and adds its calories', shot.separate.kcal, 1635, shot.separate);
+    t.eq('and is a meal, not a second running total', shot.separate.srcs, 'shot,-', shot.separate);
+    t.ok('the separate choice really does survive on its own', shot.flagSurvives, shot);
+    t.ok('so an un-reset sheet would still be on separate', shot.stillSeparate, shot);
+    t.ok('which is why the import itself resets it, before building the sheet', shot.resetsOnImport, shot);
+    t.ok('the next import is back on replace by default', shot.choiceResets, shot);
+    t.eq('and replaces rather than stacking', shot.afterReset.rows, 2, shot.afterReset);
+    t.eq('leaving the newest total plus the separate row', shot.afterReset.kcal, 1800, shot.afterReset);
+    t.eq('a hand-typed food always adds a row', shot.manual.rows, 3, shot.manual);
+    t.eq('and a second one adds another', shot.manual2.rows, 4, shot.manual2);
+    t.eq('with both counted', shot.manual2.kcal, 1973, shot.manual2);
+
+    /* Yesterday's import is a different day's total and must be untouched. */
+    const days = await page.evaluate(() => {
+      const o = {};
+      STATE.nutrition.days = {};
+      const y = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+      STATE.nutrition.days[y] = { food: [{ name: 'Sun', kcal: 2000, p: 100, c: 100, f: 50,
+        meal: 'b', at: 1, src: 'shot' }] };
+      nutToday().food = [];
+      _shotSeparate = false;
+      openQuickAdd({ name: 'Mon', kcal: 1200, p: 90, c: 90, f: 40, fromShot: true });
+      o.noWarning = !/REPLACES/.test(document.querySelector('#sheet').textContent);
+      saveFood();
+      o.today = nutToday().food.length;
+      o.yesterday = STATE.nutrition.days[y].food.length;
+      o.yesterdayKcal = STATE.nutrition.days[y].food[0].kcal;
+
+      /* Correcting a number on an imported row keeps its marker, or the next
+         screenshot stacks on top of it — the same bug, one tap further on. */
+      openQuickAdd(Object.assign({}, nutToday().food[0], { editIdx: 0, kcal: 1250 }));
+      saveFood();
+      o.editKeepsSrc = nutToday().food[0].src;
+      return o;
+    });
+    t.ok('an import on a new day does not offer to replace yesterday', days.noWarning, days);
+    t.eq('and logs its own row', days.today, 1, days);
+    t.eq("yesterday's import is left alone", days.yesterday, 1, days);
+    t.eq('at its own calories', days.yesterdayKcal, 2000, days);
+    t.eq('editing an imported row keeps its screenshot marker', days.editKeepsSrc, 'shot', days);
+
+    /* MEMBERSHIP, not truthiness: `src` reaches innerHTML through the row and
+       importData() accepts arbitrary JSON. */
+    const junk = await page.evaluate(() => {
+      nutToday().food = [];
+      logFood('X', 100, 1, 1, 1, 'b', '', '', '<img src=x onerror=alert(1)>');
+      const a = nutToday().food[0].src;
+      logFood('Y', 100, 1, 1, 1, 'b', '', '', 'shot');
+      return { junk: a, good: nutToday().food[1].src };
+    });
+    t.eq('a junk source value is not stored', junk.junk, undefined, junk);
+    t.eq("but 'shot' is", junk.good, 'shot', junk);
+    await page.evaluate(() => { try { closeSheet(); } catch (e) {} nutToday().food = []; save(); });
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

@@ -1805,7 +1805,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='305';
+const APP_VERSION='306';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -9502,10 +9502,51 @@ function currentMealSlot(){const h=new Date().getHours();return h<11?'b':(h<16?'
    "[object Object]", which would render as a portion beside a real meal. Whitespace
    collapses because the diary row is one line, and a stored newline breaks it. */
 function cleanPortion(v){return (typeof v==='string')?v.replace(/\s+/g,' ').trim().slice(0,40):'';}
+/* ---- A tracker's dashboard is a RUNNING TOTAL, not a meal -----------------
+   Reported after a real day: Lose It's dashboard was imported once after
+   breakfast (1,005 kcal) and again after lunch (1,235). The second screenshot
+   ALREADY CONTAINED the first — Lose It had added them together — so logging
+   both gave 2,240 kcal for a day on which 1,235 was eaten, and pushed the
+   athlete over budget on food he had not had.
+
+   The row itself carries the evidence: both imports came in named "Mon, Aug
+   24", a DATE rather than a meal, because the dashboard is the whole day.
+
+   So a second screenshot import REPLACES the first of the day rather than
+   adding to it. That is the common case and it is what the numbers mean. The
+   athlete can still add one separately — a per-meal screenshot is a real thing
+   — but it has to be a deliberate tap, because the silent default was the one
+   that produced a wrong number nobody could see was wrong. */
+function prevShotIdx(){
+  const d=nutToday();const f=Array.isArray(d.food)?d.food:[];
+  for(let i=f.length-1;i>=0;i--)if(f[i]&&f[i].src==='shot')return i;
+  return -1;
+}
+let _shotSeparate=false;
+function toggleShotSeparate(){_shotSeparate=!_shotSeparate;try{openQuickAdd(openQuickAdd._last||{});}catch(e){}}
+/* Say what Save is about to do, BEFORE it is tapped. A replace that happens
+   silently is the same defect in the other direction — the athlete would see
+   one row where they logged two and have no way to know why. */
+function shotReplaceHTML(){
+  const pi=prevShotIdx();if(pi<0)return '';
+  const d=nutToday();const prev=d.food[pi]||{};
+  const was=Math.round(prev.kcal||0);
+  return _shotSeparate
+    ? `<div class="note warn" style="margin:8px 0">
+        <div style="font-weight:800">This will be ADDED to your earlier import</div>
+        <div class="tiny" style="margin-top:4px">Your day already has an imported total of <b>${was} kcal</b>, and this one will be added on top of it. Only do this if the screenshot covers one meal rather than the whole day.</div>
+        <button class="btn sm ghost" style="width:auto;margin-top:8px;padding:10px 14px" onclick="toggleShotSeparate()">↺ Replace the earlier import instead</button>
+       </div>`
+    : `<div class="note info" style="margin:8px 0">
+        <div style="font-weight:800">This REPLACES your earlier import (${was} kcal)</div>
+        <div class="tiny" style="margin-top:4px">Your tracker's dashboard is a <b>running total for the day</b>, so this screenshot already contains the earlier one. Adding both would count breakfast twice.</div>
+        <button class="btn sm ghost" style="width:auto;margin-top:8px;padding:10px 14px" onclick="toggleShotSeparate()">Add as a separate entry instead</button>
+       </div>`;
+}
 function foodTotals(){const d=nutToday();const f=d.food||[];
   return {kcal:f.reduce((a,x)=>a+(x.kcal||0),0),p:f.reduce((a,x)=>a+(x.p||0),0),
           c:f.reduce((a,x)=>a+(x.c||0),0),f:f.reduce((a,x)=>a+(x.f||0),0),n:f.length};}
-function logFood(name,kcal,p,c,f,meal,portion,calc){const d=nutToday();if(!Array.isArray(d.food))d.food=[];
+function logFood(name,kcal,p,c,f,meal,portion,calc,src){const d=nutToday();if(!Array.isArray(d.food))d.food=[];
   /* Food is never negative. `Math.round(kcal||0)` accepted a negative straight
      through, and a single -500 row silently CANCELS a real meal out of the
      day's total — an athlete would see a plausible number that simply is not
@@ -9521,7 +9562,12 @@ function logFood(name,kcal,p,c,f,meal,portion,calc){const d=nutToday();if(!Array
     /* Which macro, if any, was worked out from the calories rather than read.
        A MEMBERSHIP test, not truthiness: this reaches innerHTML and an import
        can carry anything. */
-    ...(_MACRO_KEY[calc]?{calc}:{})});
+    ...(_MACRO_KEY[calc]?{calc}:{}),
+    /* Where the row came from. Only 'shot' is meaningful today — a tracker's
+       dashboard screenshot, which is a RUNNING TOTAL for the day and not a
+       meal. Membership, not truthiness: it reaches innerHTML and an import
+       can carry anything. */
+    ...(src==='shot'?{src:'shot'}:{})});
   syncProteinHabit();save();toast('Logged ✓');closeSheet();renderFuel();try{checkAchievements();}catch(e){}}
 /* A logged row with real calories and NOTHING in any macro field was never
    MEASURED at zero — it is arithmetically impossible, since calories come from
@@ -9709,10 +9755,34 @@ function saveFood(){
   saveFood._derived=null;
   const ei=saveFood._editIdx;
   if(typeof ei==='number'){        // editing an existing entry: replace in place
-    const d=nutToday();if(d.food&&d.food[ei]){d.food[ei]={name:label.slice(0,60),kcal,p:pr,c:cb,f:ft,meal,at:d.food[ei].at||Date.now(),...(portion?{portion}:{}),...(calc?{calc}:{})};save();}
+    /* `src` is carried across an edit. Correcting a number on an imported row
+       does not stop it being the day's running total, and losing the marker
+       would let the NEXT screenshot stack on top of it instead of replacing
+       it — the exact bug this exists to prevent, one tap further along. */
+    const d=nutToday();if(d.food&&d.food[ei]){const wasSrc=d.food[ei].src;d.food[ei]={name:label.slice(0,60),kcal,p:pr,c:cb,f:ft,meal,at:d.food[ei].at||Date.now(),...(portion?{portion}:{}),...(calc?{calc}:{}),...(wasSrc==='shot'?{src:'shot'}:{})};save();}
     saveFood._editIdx=null;saveFood._portion='';toast('Updated ✓');closeSheet();renderFuel();return;
   }
-  logFood(label,kcal,pr,cb,ft,meal,portion,calc);
+  /* A dashboard screenshot is the day so far. If one was already imported
+     today, this one contains it — replace rather than stack. */
+  if(saveFood._fromShot&&!_shotSeparate){
+    const pi=prevShotIdx();
+    if(pi>=0){
+      const d=nutToday();const was=d.food[pi]&&d.food[pi].kcal;
+      d.food[pi]={name:label.slice(0,60),kcal,p:pr,c:cb,f:ft,meal,at:Date.now(),
+        ...(portion?{portion}:{}),...(calc?{calc}:{}),src:'shot'};
+      saveFood._portion='';saveFood._fromShot=false;_shotSeparate=false;
+      syncProteinHabit();save();
+      toast('Replaced your earlier import ('+was+' kcal) — your tracker\'s dashboard is the running total for the day.',7000);
+      closeSheet();renderFuel();try{checkAchievements();}catch(e){}
+      return;
+    }
+  }
+  /* Only a row that IS the day's running total carries the marker. A
+     deliberately-separate import is a per-meal screenshot — a food, not a
+     total — so marking it would make the NEXT import replace that meal and
+     leave the real day total standing beside it. */
+  logFood(label,kcal,pr,cb,ft,meal,portion,calc,(saveFood._fromShot&&!_shotSeparate)?'shot':'');
+  saveFood._fromShot=false;_shotSeparate=false;
   saveFood._portion='';
 }
 /* ---- Food search: local database first (instant, offline), then Open Food
@@ -10024,6 +10094,7 @@ function openQuickAdd(pre){
       ${pre.portion?`<div class="tiny" style="margin-top:3px;font-weight:700">📏 Estimated portion: ${_ve(pre.portion)}</div>`:''}
       <div class="tiny muted" style="margin-top:2px">Per serving as shown — approximate. Set the quantity, tweak if needed, then tap <b>Save</b> to log it.</div>
     </div>`):'<div style="height:6px"></div>'}
+    ${(pre.fromShot&&!editing)?shotReplaceHTML():''}
     <button class="btn primary" onclick="saveFood()">${editing?'Update item':(filled?'Save to log':'Save')}</button>
     ${editing?'':`${foodsSectionHTML()}
     <div class="section-label" style="margin-top:14px">Quick picks <span class="tiny muted">· whole foods</span></div>
@@ -10038,6 +10109,8 @@ function openQuickAdd(pre){
      Reported from the phone: carbs read 86 where the tracker showed 91.3, and
      nothing on the logged row said the number had been worked out. */
   saveFood._derived=(pre&&pre.macroDerived)||null;
+  saveFood._fromShot=!!(pre&&pre.fromShot);
+  openQuickAdd._last=pre||{};
   faGapPaint();
 }
 /* ---- Photo → calorie estimate via Google Gemini (free tier) ----
@@ -10654,7 +10727,11 @@ function foodScreenshot(){
         /* Only if the second look ALSO came back without it. */
         else est=_fillMacroFromKcal(est);
         if(gen!==_sheetGen){toast('📋 Imported '+(est.name||'food')+' · ~'+est.kcal+' kcal — tap ➕ to log it',6000);return;}
-        openQuickAdd(est);
+        /* A fresh import starts on the default. Toggling to "separate" and
+           then closing the sheet must not leave that choice armed for the
+           next screenshot — the silent default is what caused the bug. */
+        _shotSeparate=false;
+        openQuickAdd(Object.assign({},est,{fromShot:true}));
         toast(est.macrosMissing
           ? '📋 '+(est.name||'Food')+' · '+est.kcal+' kcal — but no macros in that screenshot. Add protein before saving.'
           : est.macroReread

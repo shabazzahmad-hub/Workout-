@@ -1946,6 +1946,59 @@ itself. Ranked by how much the model fought back:
 press.** If it does, expect the model to substitute the pattern it knows and
 budget for the still instead.
 
+## A dashboard is a running total, not a meal (v306)
+
+Reported after a real training day. Lose It's dashboard was imported once
+after breakfast and again after lunch:
+
+| import | tracker showed | app logged |
+|---|---|---|
+| after breakfast | 1,005 kcal | 1,005 |
+| after lunch | 1,235 kcal (breakfast **included**) | +1,235 |
+| day total | **1,235** | **2,240** |
+
+The second screenshot already contained the first, because that is what a
+tracker's dashboard IS. Logging both counted breakfast twice and pushed the
+athlete over budget on food he had not eaten.
+
+**The evidence was on the row the whole time and nothing read it.** Both
+imports came in named *"Mon, Aug 24"* — a DATE, not a meal — because the
+dashboard is the whole day. The app had no idea a row came from a screenshot:
+`logFood()` stored name, calories, macros and meal, and nothing said where the
+number came from. So `src:'shot'` is now stored, by MEMBERSHIP not truthiness,
+and a second import of the same day **replaces** the first.
+
+**A deliberately-separate import must NOT carry the marker, and that was a real
+defect the check caught.** A per-meal screenshot is a genuine thing, so there is
+an escape hatch — but the first version marked the separate row as a running
+total too, and `prevShotIdx()` takes the LAST one. The next import therefore
+replaced the *meal* and left the real day total standing beside it: measured at
+**2,635 kcal where 1,800 was eaten**, which is worse than the bug being fixed.
+A separate import is a food, not a total.
+
+**Say what Save is about to do, before it is tapped.** A silent replace is the
+same defect in the other direction — one row where two were logged, with nothing
+on screen to explain it. The first import of a day says nothing at all, because
+a note that fires every time is a note nobody reads.
+
+**The choice does not stick, and the leak path is an ABANDONED toggle.**
+`saveFood()` already clears the flag, so the check that asserted "the flag
+survives" right after a save was measuring nothing — the mutant that deleted the
+reset in `foodScreenshot()` escaped clean. The real path is tapping *Add as a
+separate entry* and then closing the sheet: the flag is still armed, and every
+import after it stacks silently. The block now drives that, and the reset is
+asserted on the SOURCE and on its ORDER, because `foodScreenshot()` is a
+file-picker callback nothing can drive and a reset placed after the sheet is
+built arms the wrong one.
+
+**`src` is carried across an edit.** Correcting a number on an imported row does
+not stop it being the day's running total, and dropping the marker would let the
+next screenshot stack on top of it — the same bug, one tap further along.
+
+Ten mutants, all caught. The floors are what make it honest: a hand-typed food,
+a quick pick and a barcode must always add a row, and an import on a new day must
+leave yesterday's total alone.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
