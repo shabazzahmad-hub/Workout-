@@ -109,20 +109,24 @@ export default async function run() {
       delete T.steps; delete T.jackVal; delete T.bikeVal;
       nut().cardioMode = 'jacks';
       setSteps(2000);
-      go('fuel'); await new Promise(z => setTimeout(z, 120));
-      const html = () => document.querySelector('#v-fuel').innerHTML;
+      /* The Movement card moved to Today ▸ Workout in v311 — it is work you
+         DO, and it was filed under what you EAT. Scoped to the view that
+         actually holds it, not to the tab it was first written for. */
+      setTodayTab('workout'); go('today'); await new Promise(z => setTimeout(z, 120));
+      const host = () => document.querySelector('#v-today');
+      const html = () => host().innerHTML;
       const o = {};
-      o.jackInput = !!document.querySelector('#mv-jack');
-      o.noBikeInput = !document.querySelector('#mv-bike');
+      o.jackInput = !!document.querySelector('#v-today #mv-jack');
+      o.noBikeInput = !document.querySelector('#v-today #mv-bike');
       o.offersBothModes = /Jumping jacks/.test(html()) && /🚴 Bike/.test(html());
-      o.quotesReps = /reps<\/b>/.test(html()) || /reps\b/.test(document.querySelector('#v-fuel').textContent);
-      o.mentionsQuiet = /Step jacks/.test(document.querySelector('#v-fuel').textContent);
-      o.noNaN = !/NaN|Infinity|undefined/.test(document.querySelector('#v-fuel').textContent);
+      o.quotesReps = /reps<\/b>/.test(html()) || /reps\b/.test(host().textContent);
+      o.mentionsQuiet = /Step jacks/.test(host().textContent);
+      o.noNaN = !/NaN|Infinity|undefined/.test(host().textContent);
       setCardioMode('bike'); await new Promise(z => setTimeout(z, 120));
-      o.afterSwitchBike = !!document.querySelector('#mv-bike');
-      o.afterSwitchNoJack = !document.querySelector('#mv-jack');
+      o.afterSwitchBike = !!document.querySelector('#v-today #mv-bike');
+      o.afterSwitchNoJack = !document.querySelector('#v-today #mv-jack');
       setCardioMode('jacks'); await new Promise(z => setTimeout(z, 120));
-      o.switchesBack = !!document.querySelector('#mv-jack');
+      o.switchesBack = !!document.querySelector('#v-today #mv-jack');
       return o;
     });
     t.ok('the Movement card opens on jumping jacks', r.jackInput && r.noBikeInput, r);
@@ -142,7 +146,8 @@ export default async function run() {
       nut().cardioMode = 'jacks';
       setJackLvl('steady'); setJackUnit('min'); setJackVal(15);
       setCardioMode('bike'); await new Promise(z => setTimeout(z, 120));
-      const txt = document.querySelector('#v-fuel').textContent;
+      setTodayTab('workout'); renderToday();
+      const txt = document.querySelector('#v-today').textContent;
       return { mentionsJacks: /Also logged today/.test(txt) && /jacks/.test(txt),
         weekly: ridesThisWeek() };
     });
@@ -380,6 +385,144 @@ export default async function run() {
     t.eq('a real plate survives untouched', r.valid, 30);
     t.eq('a pace that is not in the list is dropped', r.badPace, undefined);
     t.eq('and a real one survives', r.goodPace, 'hills');
+  }
+
+  /* ---- The movement block lives where the WORK is ------------------------
+     "Why is this section under fuel, since this is part of the workout I
+      should be doing? It is not intuitive."
+
+     Right. A step target, a jumping-jack make-up and a guided timer are things
+     you DO. They were filed under what you EAT because of where the number
+     goes (movement earns calorie room, v220) rather than what the athlete does
+     with it. */
+  {
+    const move = await page.evaluate(async () => {
+      const o = {};
+      const txt = sel => (document.querySelector(sel) || { innerText: '' }).innerText;
+      setTodayTab('workout'); renderToday(); renderFuel();
+
+      /* ONE implementation. The controls are on Today and nowhere else — a
+         second copy is how two surfaces drift apart. */
+      o.todayControls = !!document.querySelector('#v-today #mv-steps');
+      o.fuelControls = !!document.querySelector('#v-fuel #mv-steps');
+      o.todayMakeUp = /MAKE IT UP WITH/i.test(txt('#v-today'));
+      o.fuelMakeUp = /MAKE IT UP WITH/i.test(txt('#v-fuel'));
+
+      /* PROGRESS reviews the day — "where I can review the daily workout
+         completed and steps, jumping jacks, bike, rucking and quick workout".
+         It holds no controls except the one that takes you back to log more. */
+      renderProgress();
+      o.progressSummary = /Today's activity/i.test(txt('#v-progress'))
+        && /Log more/i.test(txt('#v-progress'));
+      o.progressNoControls = !document.querySelector('#v-progress #mv-steps');
+      o.fuelNoSummary = !/Today's activity/i.test(txt('#v-fuel'));
+
+      /* AFTER the session button. Above it would read as something you must
+         finish before the session counts as done. */
+      const html = document.querySelector('#v-today').innerHTML;
+      o.afterSessionButton = html.indexOf('finishSession') < html.indexOf('mv-steps');
+
+      /* Both views carry the number, so a change on one must repaint the
+         other. Twelve controls used to hardcode renderFuel(). */
+      /* Assert on the app's OWN total, not a literal: this suite logs jack
+         work in earlier blocks, so the equivalent is not just the steps. What
+         is being tested here is the REPAINT, not the arithmetic. */
+      setSteps(4000);
+      await new Promise(r => setTimeout(r, 40));
+      const total = stepEquivalent().toLocaleString();
+      o.total = total;
+      o.todayShows = txt('#v-today').includes(total);
+      o.progressShows = txt('#v-progress').includes(total);
+      /* GUARD: the number really did move, or both lines above pass on a
+         value that was already on screen. */
+      setSteps(0); await new Promise(r => setTimeout(r, 40));
+      o.clearedFromBoth = !txt('#v-today').includes(total) && !txt('#v-progress').includes(total);
+      setSteps(4000); await new Promise(r => setTimeout(r, 40));
+
+      /* The mode buttons still work from their new home. */
+      setCardioMode('bike');
+      await new Promise(r => setTimeout(r, 40));
+      o.modeStored = nut().cardioMode;
+      o.blockSurvives = !!document.querySelector('#v-today #mv-steps');
+      setCardioMode('jacks');
+      await new Promise(r => setTimeout(r, 40));
+
+      /* DRIVE THE LINK THE ATHLETE TAPS, not the handler behind it. A check
+         that calls setTodayTab() directly passes with the button deleted. */
+      go('progress'); renderProgress();
+      const btn = [...document.querySelectorAll('#v-progress button')]
+        .find(b => /Log more/.test(b.textContent));
+      o.hasLink = !!btn;
+      if (btn) btn.click();
+      await new Promise(r => setTimeout(r, 60));
+      o.landedOnToday = document.querySelector('#v-today').classList.contains('active');
+      o.landedOnTab = TODAY_TAB;
+      o.blockVisible = !!document.querySelector('#v-today #mv-steps');
+      return o;
+    });
+    t.ok('the movement controls are on Today', move.todayControls, move);
+    t.ok('and not on Fuel', !move.fuelControls, move);
+    t.ok('the make-up options moved with them', move.todayMakeUp, move);
+    t.ok('and are not duplicated on Fuel', !move.fuelMakeUp, move);
+    t.ok('Progress reviews the day', move.progressSummary, move);
+    t.ok('and the review holds no controls of its own', move.progressNoControls, move);
+    t.ok('Fuel no longer carries it at all', move.fuelNoSummary, move);
+    t.ok('the block sits AFTER the session button, not before it',
+      move.afterSessionButton, move);
+    t.ok('logging steps on Today repaints Today', move.todayShows, move);
+    t.ok('and repaints the Progress review too', move.progressShows, move);
+    t.ok('guard: the number really did change on both', move.clearedFromBoth, move);
+    t.eq('the cardio mode buttons still work from Today', move.modeStored, 'bike', move);
+    t.ok('and the block survives the repaint', move.blockSurvives, move);
+    t.ok('Progress offers a link back to logging', move.hasLink, move);
+    t.ok('which actually lands on Today', move.landedOnToday, move);
+    t.eq('on the Workout tab', move.landedOnTab, 'workout', move);
+    t.ok('with the block on screen', move.blockVisible, move);
+
+    /* ---- and the review actually reviews EVERYTHING ---------------------- */
+    const review = await page.evaluate(async () => {
+      const o = {}; const txt = () => document.querySelector('#v-progress').innerText;
+      const T = nutToday();
+      delete T.steps; delete T.jackVal; delete T.bikeVal; delete T.ruckVal;
+      STATE.quickLog = {}; save(); renderProgress();
+      /* An empty day still names the card and says what will appear. */
+      o.emptyNames = /Today's activity/i.test(txt());
+      o.emptyHint = /show up here once you log them/i.test(txt());
+      /* Ask whether the ROW exists, not whether the word appears — the
+         empty-state hint names these activities in prose. */
+      const rowFor = k => !!document.querySelector(`#v-progress [data-act="${k}"]`);
+      o.emptyHasNoJacks = !rowFor('jacks') && !rowFor('bike') && !rowFor('ruck') && !rowFor('quick');
+
+      setSteps(4000);
+      nut().cardioMode = 'jacks'; setJackLvl('steady'); setJackUnit('min'); setJackVal(12);
+      nut().cardioMode = 'bike'; setBikeLvl('steady'); setBikeUnit('min'); setBikeVal(20);
+      nut().cardioMode = 'ruck'; setRuckPace('brisk'); setRuckLoad(25);
+      if (typeof setRuckUnit === 'function') setRuckUnit('min');
+      if (typeof setRuckVal === 'function') setRuckVal(30);
+      STATE.quickLog[todayISO()] = 2; save(); renderProgress();
+      const p = txt();
+      const has = k => !!document.querySelector(`#v-progress [data-act="${k}"]`);
+      o.steps = has('steps') && /4,000/.test(p);
+      o.jacks = has('jacks');
+      o.bike = has('bike');
+      o.ruck = has('ruck');
+      o.quick = has('quick') && /2 sessions/.test(p);
+      o.session = has('session');
+      o.hintGone = !/show up here once you log them/i.test(p);
+      return o;
+    });
+    /* GUARD: the empty state is genuinely empty, or every "it appears" line
+       below passes on a card that always showed everything. */
+    t.ok('an untouched day names the card', review.emptyNames, review);
+    t.ok('and says what will appear once logged', review.emptyHint, review);
+    t.ok('guard: with nothing logged, nothing is listed', review.emptyHasNoJacks, review);
+    t.ok('the session line is always there', review.session, review);
+    t.ok('steps are reviewed', review.steps, review);
+    t.ok('jumping jacks are reviewed', review.jacks, review);
+    t.ok('the bike is reviewed', review.bike, review);
+    t.ok('rucking is reviewed', review.ruck, review);
+    t.ok('and quick workouts are counted', review.quick, review);
+    t.ok('the empty-day hint goes once there is something to show', review.hintGone, review);
   }
 
   srv.close();

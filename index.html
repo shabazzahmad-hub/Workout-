@@ -1807,7 +1807,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='310';
+const APP_VERSION='311';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3671,6 +3671,11 @@ function workoutTabHTML(sess,log,doneCount,totalCount,wkNum){
   h+=`</div>`;
   h+=`<div class="section-label">Finisher · burn it out</div><div class="exlist">${exCardHTML(sess.finisher,log,99)}</div>`;
   h+=`<button class="btn ${doneCount>=totalCount?'green':'primary'}" id="finishSession">${doneCount>=totalCount?'✓ Complete Session':'Mark Session Complete'}</button>`;
+  /* AFTER the session button, not before it: this is separate work with its own
+     target, and putting it above would read as something you must finish before
+     the session counts as done. */
+  h+=movementHTML();
+  h+=rideTargetHTML();
   return h;
 }
 function _overloadNoteInner(sess){
@@ -8359,6 +8364,7 @@ function renderProgress(){
   /* Moved off Today in v246. This is the tab that reports these numbers, and the
      ring below it gives the Core Score its detail — summary first, then depth. */
   h+=homeSummaryHTML();
+  h+=todayActivityHTML();
   h+=`<button class="btn ghost" style="margin:0 0 8px" onclick="weeklyRecap()">🎙️ Weekly recap — hear it from your coach</button>`;
   h+=`<button class="btn ghost" style="margin:0 0 12px" onclick="openStandards()">🏅 Strength standards &amp; 1RM calculator</button>`;
   // core score ring + level
@@ -11991,9 +11997,29 @@ function cardioMode(){
   try{const m=STATE.nutrition&&STATE.nutrition.cardioMode;return CARDIO_MODES.includes(m)?m:'jacks';}
   catch(e){return 'jacks';}
 }
+/* THE MOVEMENT BLOCK LIVES ON TODAY. It is work you DO — a step target, a
+   jumping-jack make-up, a guided timer — and it was filed under what you EAT,
+   because of where the number goes rather than what the athlete does with it.
+   Reported: "why is this section under fuel, since this is part of the workout
+   I should be doing? it is not intuitive."
+
+   Fuel keeps a read-only summary, because movement genuinely earns calorie
+   room (v220) — but the summary holds no controls, so there is no second copy
+   of the logic to drift.
+
+   Every control repaints through HERE rather than naming a view. Twelve call
+   sites hardcoded renderFuel(), which is exactly how a block becomes welded to
+   the tab it was first written for. */
+function repaintMovement(){
+  try{if(typeof renderToday==='function')renderToday();}catch(e){}
+  /* Fuel prices the food budget off movement (v220) and Progress reviews the
+     day, so all three carry the number and all three repaint. */
+  try{if(typeof renderFuel==='function')renderFuel();}catch(e){}
+  try{if(typeof renderProgress==='function')renderProgress();}catch(e){}
+}
 function setCardioMode(m){
   const n=nut();n.cardioMode=CARDIO_MODES.includes(m)?m:'jacks';
-  save();renderFuel();haptic(8);
+  save();repaintMovement();haptic(8);
 }
 function bikeUnitLabel(u){return u==='min'?'min':(u==='dist'?distUnit():'kcal');}
 /* Fail-safe read. A day loaded from an old save, a hand-edited backup or an
@@ -12038,7 +12064,7 @@ function setJackVal(v){
   const n=Math.max(0,+v||0);
   const cap=m.junit==='min'?300:(m.junit==='reps'?9000:3000);
   t.jackVal=Math.min(cap,Math.round(n*100)/100);
-  syncStepHabit();save();renderFuel();
+  syncStepHabit();save();repaintMovement();
 }
 function addJackVal(d){
   const m=movement();
@@ -12057,12 +12083,12 @@ function setJackUnit(u){
       :(u==='reps'?Math.round(min*jackRepsPerMin(m.jlvl))
                   :Math.round(min*jackKcalPerMin(m.jlvl)));
   }
-  syncStepHabit();save();renderFuel();
+  syncStepHabit();save();repaintMovement();
 }
 function setJackLvl(k){
   if(!JACK_LEVELS.some(b=>b.k===k))return;
   const t=nutToday();t.jackLvl=k;
-  syncStepHabit();save();renderFuel();haptic(8);
+  syncStepHabit();save();repaintMovement();haptic(8);
 }
 /* Whatever was entered, in minutes — the one place the three currencies meet.
    Everything downstream reads this, so they can never disagree with each other. */
@@ -12145,7 +12171,7 @@ function todayKcalBudget(){
 }
 function setSteps(v){
   const t=nutToday();t.steps=Math.max(0,Math.min(100000,Math.round(+v||0)));
-  syncStepHabit();save();renderFuel();
+  syncStepHabit();save();repaintMovement();
 }
 /* Stored in the unit it was entered in — except distance, which is converted to
    canonical km on the way in, exactly like every other distance in the app. */
@@ -12155,7 +12181,7 @@ function setBikeVal(v){
   if(m.unit==='dist')n=showToKm(n);
   const cap=m.unit==='min'?600:(m.unit==='dist'?300:8000);
   t.bikeVal=Math.min(cap,Math.round(n*100)/100);
-  syncStepHabit();save();renderFuel();
+  syncStepHabit();save();repaintMovement();
 }
 function addBikeVal(d){
   const m=movement();
@@ -12176,7 +12202,7 @@ function setBikeUnit(u){
       :(u==='dist'?Math.round(min*bikeKmPerMin(m.lvl)*100)/100
                   :Math.round(min*bikeKcalPerMin(m.lvl)));
   }
-  syncStepHabit();save();renderFuel();
+  syncStepHabit();save();repaintMovement();
 }
 /* How the intensity chip bites depends on which currency was logged, and the
    difference is real rather than an implementation detail:
@@ -12200,7 +12226,7 @@ function setRuckVal(v){
   if(m.runit==='dist')n=showToKm(n);
   const cap=m.runit==='min'?600:(m.runit==='dist'?100:8000);
   t.ruckVal=Math.min(cap,Math.round(n*100)/100);
-  syncStepHabit();save();renderFuel();
+  syncStepHabit();save();repaintMovement();
 }
 function addRuckVal(d){
   const m=movement();
@@ -12219,13 +12245,13 @@ function setRuckUnit(u){
       :(u==='dist'?Math.round(min*ruckKmPerMin(m.rlvl)*100)/100
                   :Math.round(min*ruckKcalPerMin(m.rlvl)));
   }
-  syncStepHabit();save();renderFuel();
+  syncStepHabit();save();repaintMovement();
 }
 function setRuckPace(k){
   const t=nutToday();t.ruckLvl=ruckPace(k).k;
   if(!STATE.profile)STATE.profile={};
   STATE.profile.ruckPace=ruckPace(k).k;
-  syncStepHabit();save();renderFuel();
+  syncStepHabit();save();repaintMovement();
 }
 /* The plate. Changing it changes what every minute already logged today was
    worth, which is correct — you did not carry two different loads on one walk,
@@ -12234,7 +12260,7 @@ function setRuckLoad(lb){
   const n=Math.max(1,Math.min(RUCK_LB_MAX,Math.round(+lb||0)));
   if(!STATE.profile)STATE.profile={};
   STATE.profile.ruckLb=n;
-  syncStepHabit();save();renderFuel();haptic(8);
+  syncStepHabit();save();repaintMovement();haptic(8);
 }
 function setBikeLvl(k){
   const t=nutToday();t.bikeLvl=bikeLevel(k).k;
@@ -12243,7 +12269,7 @@ function setBikeLvl(k){
   // without this the level silently reset to 'steady' every single morning.
   if(!STATE.profile)STATE.profile={};
   STATE.profile.bikeLevel=bikeLevel(k).k;
-  syncStepHabit();save();renderFuel();
+  syncStepHabit();save();repaintMovement();
 }
 /* ---- Bike intensity progression, from real ride feedback ----------------
    BIKE_LEVELS had a real dial and zero memory of how any ride at any level
@@ -12389,6 +12415,58 @@ function rideTargetHTML(){
       <div><b>${r.mins} min</b>${breakdown?` <span class="tiny muted">· ${_ve(breakdown)}</span>`:''}<div class="tiny muted">Target ${RIDE_TARGET.n} × ${RIDE_TARGET.min} min easy</div></div>
       <span class="tiny muted">${Math.round(r.mins*jackKcalPerMin('easy'))} kcal</span></div>
     <div class="note info" style="margin:10px 0 0"><b>Easy means easy.</b> Full sentences, nothing burning. This is the volume that shifts body fat without taking anything out of your sessions — the intervals in your workouts are already doing the hard part. Jumping jacks, a walk or the bike all count; pick whichever you will actually do today.</div>
+  </div>`;
+}
+/* TODAY, REVIEWED — on the tab that reports things.
+   "The summary should be under progress, where I can review the daily workout
+    completed and steps, jumping jacks, bike, rucking and quick workout."
+
+   The CONTROLS are on Today ▸ Workout, because that is where you do the work.
+   This is the read-only other half: one card that answers "what did I actually
+   do today". It holds no buttons except the one that takes you back to log
+   more, so there is a single implementation and nothing to drift. */
+function todayActivityHTML(){
+  const tgt=stepTarget(),eq=stepEquivalent();
+  const pct=Math.min(100,Math.round(eq/Math.max(1,tgt)*100));
+  const hit=eq>=tgt;
+  const m=movement(),j=jackWork(),b=bikeRide(),rk=ruckWork();
+  const d=todayISO();
+  const quick=(STATE.quickLog&&STATE.quickLog[d])||0;
+  /* The session counts as done only when the LOG says so — the same source
+     every lifetime counter reads, not a screen the athlete happened to open. */
+  let sessionDone=false,sessionName='';
+  try{
+    const log=(STATE.logs||{})[STATE.progressPtr];
+    sessionDone=!!(log&&log.done&&log.completedAt===d);
+    const sess=buildSession(STATE.progressPtr);
+    sessionName=(sess&&sess.session&&sess.session.name)||'';
+  }catch(e){}
+  /* Each row carries data-act so a check can ask whether the ROW exists
+     rather than whether a word appears on the page — the empty-state hint
+     names these activities in prose, and a page-wide substring search matches
+     the hint as readily as the row. */
+  const row=(key,icon,label,value,sub)=>`<div class="row" data-act="${key}" style="justify-content:space-between;align-items:baseline;padding:7px 0;border-top:1px solid var(--line)">
+      <div><b>${icon} ${label}</b>${sub?`<div class="tiny muted">${sub}</div>`:''}</div>
+      <div style="text-align:right;font-variant-numeric:tabular-nums">${value}</div></div>`;
+  let rows='';
+  rows+=row('session',sessionDone?'✅':'⬜','Today\'s session',
+    sessionDone?'<b style="color:var(--green)">Done</b>':'<span class="tiny muted">Not yet</span>',
+    _ve(sessionName));
+  rows+=row('steps','👟','Steps walked',m.steps?m.steps.toLocaleString():'—');
+  if(j.min>0)rows+=row('jacks','🤸','Jumping jacks',j.min+' min',j.reps.toLocaleString()+' reps · '+j.kcal+' kcal');
+  if(b.min>0)rows+=row('bike','🚴','Bike',b.min+' min',b.dist+' '+distUnit()+' · '+b.kcal+' kcal');
+  if(rk.min>0)rows+=row('ruck','🎒','Ruck',rk.min+' min',Math.round(kmToShow(rk.km)*10)/10+' '+distUnit()+' · '+rk.kcal+' kcal');
+  if(quick>0)rows+=row('quick','⚡','Quick workouts',quick+(quick===1?' session':' sessions'));
+  const nothingElse=!j.min&&!b.min&&!rk.min&&!quick;
+  return `<div class="section-label">Today's activity</div><div class="card pad">
+    <div class="row" style="justify-content:space-between;align-items:baseline">
+      <div><b style="font-size:19px;color:${hit?'var(--green)':'var(--gold)'}">${eq.toLocaleString()} / ${tgt.toLocaleString()}</b>
+        <div class="tiny muted">steps and everything that counts as steps</div></div>
+      <button class="btn sm ghost" style="width:auto;padding:10px 14px" onclick="setTodayTab('workout');go('today')">Log more ▸</button>
+    </div>
+    <div class="pbar" style="margin-top:10px;margin-bottom:4px"><i style="width:${pct}%;background:linear-gradient(90deg,#7ee08a,#2fa84f)"></i></div>
+    ${rows}
+    ${nothingElse?`<div class="tiny muted" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line)">Jumping jacks, the bike, a ruck and quick workouts all show up here once you log them.</div>`:''}
   </div>`;
 }
 function movementHTML(){
@@ -12927,7 +13005,7 @@ function eatWin(){
 function setEatWindow(patch){
   const n=nut();const cur=eatWin();
   n.eatWindow=Object.assign({},cur,patch);
-  save();renderFuel();
+  save();repaintMovement();
 }
 function toggleEatWindow(){const w=eatWin();setEatWindow({on:!w.on});
   toast(eatWin().on?'Eating window on — same calories, fewer hours':'Eating window off');}
@@ -14142,8 +14220,7 @@ function renderFuel(){
       <div class="btnrow" style="flex:0 0 auto;gap:8px"><button class="btn sm ghost" onclick="logWater(-1)" style="width:44px">–</button><button class="btn sm primary" onclick="logWater(1)" style="width:44px">＋</button></div></div>
     <div class="pbar" style="margin-top:12px"><i style="width:${wpct}%;background:linear-gradient(90deg,#3fd7e8,#12b5c9)"></i></div>
   </div>`;
-  h+=movementHTML();
-  h+=rideTargetHTML();
+
   // habit checklist
   /* Count the DECLARED habits, not every truthy key in the map. A private
      bookkeeping flag written alongside them read as a completed habit: 3,000
