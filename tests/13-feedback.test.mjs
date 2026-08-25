@@ -658,7 +658,18 @@ export default async function run() {
         };
       };
       const o = {};
-      o.underfed = run('core', 24);           // the reported case
+      /* THE REPORTED CASE, as it can still arise. The timeframe now SETS the
+         deficit (v310), so picking 24 weeks makes 24 weeks — which is the
+         point, and the original screenshot's exact state is no longer
+         reachable. What remains is an athlete who has OVERRIDDEN their
+         calories to something shallower than their own date needs: the
+         explanation has to reach them too, and blaming safety would be just
+         as false there. */
+      o.underfed = (() => { const r = run('lose', 24);
+        STATE.nutrition.kcalTarget = STATE.nutrition.tdee - 170;   // hand-set, too shallow
+        const html = projectionHTML();
+        return { wk: +(html.match(/~(\d+) wk/) || [])[1] || null,
+          rate: +(html.match(/~([\d.]+)lb\/wk/) || [])[1] || null, text: strip(html) }; })();
       o.cutting = run('lose', 24);            // a real deficit makes the date
       o.tooFast = run('lose', 8);             // genuinely unsafe
       o.roomy = run('lose', 60);              // no complaint at all
@@ -671,6 +682,9 @@ export default async function run() {
 
     /* THE REPORTED CASE. The date really does slip — that part was right. */
     t.ok('an under-prescribed deficit still slides the date', proj.underfed.wk > 24, proj.underfed);
+    /* And the timeframe, when it IS set, now makes the date instead. */
+    t.ok('picking 24 weeks now actually lands on 24 weeks',
+      proj.cutting.wk <= 25, proj.cutting);
     /* …but it must NOT be blamed on safety, because safety allows ~1.9 lb/wk
        and the date needs ~1.0. */
     t.ok('and it is no longer blamed on an unsafe pace',
@@ -714,6 +728,121 @@ export default async function run() {
       t.ok(`${g} still offers the switch if they want the scale to move`,
         /Fat loss/.test(r.text), r.text.slice(0, 200));
     });
+  }
+
+  /* ---- The timeframe is a PLAN, not a label ------------------------------
+     "You should be able to dynamically adjust macros, goals, exercise among
+      everything based on those questions of whether you're doing a 12 week
+      program, 6 months or a 1 year program."
+
+     `profile.timelineWeeks` had exactly ONE consumer in the whole app: the
+     projection chart. It never reached the calorie target, the protein target,
+     the conditioning volume or the step goal — so 12 weeks and a year were
+     prescribed byte-identical nutrition, and the projection then blamed the
+     athlete's own date for being unsafe.
+
+     The check that finds this class is not "does the setting save" — it is
+     SET A, fingerprint the plan, SET B, fingerprint again, assert they
+     differ. */
+  {
+    const plan = await page.evaluate(() => {
+      const LB = 0.453592;
+      const setup = (wks, cond) => {
+        STATE.profile.unit = 'in'; STATE.profile.sex = 'male'; STATE.profile.age = 52;
+        STATE.profile.goal = 'lose'; STATE.nutrition.goal = 'lose';
+        STATE.profile.conditioning = cond || 'moderate';
+        STATE.nutrition.sex = 'male'; STATE.nutrition.age = 52;
+        STATE.nutrition.heightCm = 178; STATE.nutrition.activity = 1.45;
+        STATE.nutrition.weightKg = 190 * LB;
+        STATE.profile.timelineWeeks = wks || null;
+        STATE.measurements = [{ date: new Date().toISOString().slice(0, 10),
+          weight: 190 * LB, bodyfat: 27 }];
+        STATE.profile.goalWeightLb = 165;
+        delete STATE.nutrition.proteinTarget; delete STATE.nutrition._protSeed;
+        recalcKcalFromStored();
+      };
+      /* Fingerprint the CARDIO VOLUME of the real program, over a spread of
+         sessions — a single session proves nothing about a multiplier. */
+      const cardioVol = () => { let v = 0;
+        for (let p = 0; p < 378; p += 9) { const s = buildSession(p);
+          if (!s || !s.main) continue;
+          [...s.main, s.finisher].filter(Boolean).forEach(m => { const e = EX[m.exId];
+            if (e && (e.region === 'cardio' || e.region === 'dynamic')) v += m.sets * m.target; }); }
+        return v; };
+      const snap = (wks, cond) => { setup(wks, cond); const p = kcalTargetPreview();
+        return { kcal: p.target, deficit: p.tdee - p.target, protein: proteinTargetCalc(),
+          steps: stepTarget(), cond: condLevel(), vol: cardioVol() }; };
+      const o = { short: snap(12), mid: snap(24), long: snap(52), none: snap(0) };
+      /* THE FLOOR THAT MUST NOT MOVE: "just starting" is a statement about what
+         this body can take, and a deadline does not change it. */
+      o.beginner = snap(12, 'low');
+      /* THE SAFETY CAP, and finding a case where it BINDS took work: the
+         calorie floor (max(BMR x 1.1, 1500)) normally bites first, so at an
+         ordinary activity level removing the 1%/week cap changes nothing and
+         the mutant walks straight through. It is reachable on a very active
+         athlete, where the floor sits far enough below TDEE to leave room. */
+      setup(12); STATE.nutrition.activity = 1.75; recalcKcalFromStored();
+      const kgNow = latestWeightKg();
+      o.capped = { rate: timelineRateKgWk(), safe: kgNow * 0.01,
+        raw: (kgNow - projTargetKg()) / 12,
+        deficit: timelineDeficit(),
+        kcal: kcalTargetPreview().target, floor: kcalTargetPreview().floor,
+        tdee: kcalTargetPreview().tdee };
+      /* A weight-stable goal is never paced by a date (v298). */
+      setup(12); STATE.profile.goal = 'recomp'; STATE.nutrition.goal = 'recomp';
+      recalcKcalFromStored();
+      o.recompShort = { kcal: kcalTargetPreview().target, deficit: timelineDeficit(),
+        steps: stepTarget(), cond: condLevel() };
+      setup(52); STATE.profile.goal = 'recomp'; STATE.nutrition.goal = 'recomp';
+      recalcKcalFromStored();
+      o.recompLong = { kcal: kcalTargetPreview().target };
+      return o;
+    });
+
+    /* CALORIES — the direct answer to "can I do this in 6 months". */
+    t.ok('a 12-week plan eats less than a 6-month plan',
+      plan.short.kcal < plan.mid.kcal, plan);
+    t.ok('and a 6-month plan eats less than a year',
+      plan.mid.kcal < plan.long.kcal, plan);
+    t.ok('the year-long plan is a genuinely gentler cut',
+      plan.long.deficit < plan.mid.deficit - 100, plan);
+
+    /* PROTEIN — and asserted on the number that REACHES the athlete, because
+       the lean-mass ceiling decides for most bodies (v299). */
+    t.ok('a hard timeline raises the protein target', plan.short.protein > plan.long.protein, plan);
+    t.eq('and a gentle one leaves it at the goal default',
+      plan.long.protein, plan.none.protein, plan);
+
+    /* STEPS and CONDITIONING. */
+    t.ok('a hard timeline raises the step goal', plan.short.steps > plan.long.steps, plan);
+    t.eq('a hard timeline raises conditioning one notch', plan.short.cond, 'high', plan);
+    t.eq('a gentle one leaves it alone', plan.long.cond, 'moderate', plan);
+    /* The training itself must actually differ — a setting that stores a value
+       nothing reads is exactly the defect being fixed. */
+    t.ok('and the real program carries more cardio volume',
+      plan.short.vol > plan.long.vol, { short: plan.short.vol, long: plan.long.vol });
+
+    /* THE SAFETY CAP. A date can never buy a faster cut than 1% of bodyweight
+       a week — the same limit the projection uses, so the two can never
+       disagree about what is possible. */
+    t.ok('guard: the raw pace this date asks for really is above the cap',
+      plan.capped.raw > plan.capped.safe, plan.capped);
+    t.ok('guard: and the calorie floor is NOT what is binding here',
+      plan.capped.kcal > plan.capped.floor, plan.capped);
+    t.eq('the timeline rate is capped at 1% of bodyweight a week',
+      Math.round(plan.capped.rate * 1000), Math.round(plan.capped.safe * 1000), plan.capped);
+    t.eq('and the deficit that reaches the athlete is the capped one',
+      plan.capped.deficit, Math.round(plan.capped.safe * 7700 / 7), plan.capped);
+
+    /* THE FLOORS. */
+    t.eq('"just starting" keeps its conditioning level even on a deadline',
+      plan.beginner.cond, 'low', plan.beginner);
+    t.ok('and its program stays lighter than a moderate athlete\'s',
+      plan.beginner.vol < plan.short.vol, { beginner: plan.beginner.vol, short: plan.short.vol });
+    t.eq('a weight-stable goal is never paced by a date', plan.recompShort.deficit, null, plan.recompShort);
+    t.eq('so 12 weeks and a year prescribe the same calories on recomp',
+      plan.recompShort.kcal, plan.recompLong.kcal, plan);
+    t.eq('and it never raises conditioning either', plan.recompShort.cond, 'moderate', plan.recompShort);
   }
 
   const failed = t.finish(errors);

@@ -2240,6 +2240,89 @@ Seven mutants, all caught. The two that matter are the over-eager pair: never
 saying "unsafe" fails the 8-week crash target, and treating a stable goal as a
 cut fails the recomp checks.
 
+## The timeframe was a label, not a plan (v310)
+
+*"You should be able to dynamically adjust macros, goals, exercise among
+everything based on those questions of whether you're doing a 12 week program,
+6 months or a 1 year program."*
+
+`profile.timelineWeeks` — "~12 weeks / ~6 months / ~1 year" in the quiz — had
+**exactly one consumer in the whole app**: the projection chart. It never
+reached the calorie target, the protein target, the conditioning volume or the
+step goal. Two athletes who picked opposite ends of that question were
+prescribed **byte-identical nutrition and byte-identical training**, and the
+projection then told the one in a hurry that their own date was unsafe — because
+nothing had been adjusted to make it.
+
+That is `voicePitch` and `PLAYER.tempo` for the third time: a control the
+athlete sets that almost nothing reads. Its label, *"sets your projection
+pace"*, was honest about the code and wrong about the product.
+
+Measured at 190 lb → 165 lb, 27% body fat, goal *lose*:
+
+| timeframe | kcal | protein | steps | conditioning | cardio volume |
+|---|---|---|---|---|---|
+| 12 weeks | 1890 | 175 g | 12,000 | high | 9,526 |
+| 6 months | 1970 | 175 g | 12,000 | high | 9,526 |
+| 1 year | 2250 | 150 g | 10,000 | moderate | 8,284 |
+| none | 1990 | 150 g | 10,000 | moderate | 8,284 |
+
+**The timeframe REPLACES the goal's stock deficit rather than adding to it, and
+it moves in both directions on purpose.** A year means a gentler cut, not the
+same cut with a longer chart. The goal still decides protein tier, rep ranges
+and whether there is a deficit at all.
+
+Three rules outrank it, and each has its own check:
+
+- **Never faster than 1% of bodyweight a week** — the same cap the projection
+  uses, so the two can never disagree about what is possible.
+- **Never below the calorie floor.** At 12 weeks the floor is what binds, and
+  the projection then says so honestly instead of pretending the date is met.
+- **Never at all on a weight-stable goal.** recomp and maintain eat at
+  maintenance BY DESIGN (v298); a date does not change that.
+
+**Protein follows the cut the athlete is actually on, not the word they picked.**
+A 12-week timeline on a *lose* goal runs a deeper deficit than *shred* does by
+default, so it earns the same protection — and v299's warning applies directly:
+the lean-mass ceiling decides for most bodies, so the ceiling moves with the
+multiplier or the change does nothing at all.
+
+**Conditioning moves ONE notch, and never from 'low'.** Cardio volume is the one
+training lever that can safely carry a deadline — strength progression is
+already auto-regulated by `adapt()` and readiness, and forcing it is how people
+get hurt. *"Just starting"* is a statement about what this body can take right
+now, and a date does not change that: the same call `safeSwap()` makes about a
+flagged joint. Measured, the beginner's program stays at 6,953 against 9,526.
+
+### The escaped mutant: a cap the floor was hiding
+
+Deleting the 1%/week safety cap **escaped every check**, because at an ordinary
+activity level the calorie floor bites first — so removing the cap changed
+nothing anyone could see. The floor is `BMR x 1.1` and TDEE is `BMR x activity`,
+so the headroom is `BMR x (activity − 1.1)`: at 1.45 that is ~600 kcal against a
+946 kcal safe deficit, and the floor always wins. The cap only becomes the
+binding limit on a **very active** athlete. The check now sets activity to 1.75
+and pins two guards first — that the raw pace really is above the cap, and that
+the floor is *not* what is binding — before asserting the capped number.
+
+**A guard that cannot fire in the case you tested is not tested.** Same family
+as v289's BMI edges and v293's size guard reached only after a miss-count.
+
+### Two things the change broke in its own checks, both real
+
+The v309 projection checks were written against the OLD behaviour, where a
+timeline could not reach the calorie target. Picking 24 weeks now lands on 24
+weeks — so the under-prescribed explanation had to be re-aimed at the state
+where it can still arise: an athlete who has **hand-set** their calories
+shallower than their own date needs.
+
+And **a flat one-week rounding tolerance was too tight for a long plan.** The
+calorie target is rounded to the nearest 10, which on a 60-week plan costs two
+weeks before anything has gone wrong — so a correctly-paced year-long plan
+complained about itself. The slack now scales at 5%.
+
+Eight mutants, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

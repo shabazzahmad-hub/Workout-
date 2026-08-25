@@ -1807,7 +1807,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='309';
+const APP_VERSION='310';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2253,7 +2253,7 @@ function prescribe(exId,pos){
   if(typeof comebackEaseActive==='function'&&comebackEaseActive()){target*=0.8;sets=Math.max(1,sets-1);}   // non-punishing ease-in after a layoff
   if(typeof exAdaptFor==='function')target*=exAdaptFor(exId);   // per-exercise progression from your ratings
   // conditioning level (from the quiz) scales cardio/dynamic work up or down
-  if(ex.region==='cardio'||ex.region==='dynamic'){const c=(STATE.profile&&STATE.profile.conditioning)||'moderate';target*=(c==='low'?0.85:(c==='high'?1.15:1));}
+  if(ex.region==='cardio'||ex.region==='dynamic'){const c=condLevel();target*=(c==='low'?0.85:(c==='high'?1.15:1));}
   /* Primary goal shapes the WHOLE program, not just the optional Weights session.
      Until now prescribe() never read profile.goal, so switching Lose fat -> Shred
      -> Build muscle produced a byte-identical workout — the "I changed my goal and
@@ -3108,7 +3108,7 @@ function onboardHTML(){
       <div class="field" style="flex:1;margin:0"><label>Goal weight (<span id="ob-gwtu">${wu}</span>) <span class="tiny muted">· optional</span></label><input id="ob-goalwt" type="number" inputmode="decimal" placeholder="${im?'175':'79'}" value="${gwtD}"></div>
       <div class="field" style="flex:1;margin:0"><label>Goal waist (<span id="ob-gwsu">${hu}</span>) <span class="tiny muted">· optional</span></label><input id="ob-goalwaist" type="number" inputmode="decimal" placeholder="${im?'32':'81'}" value="${gwsD}"></div>
     </div>
-    <div class="field"><label>Timeframe <span class="tiny muted">· sets your projection pace</span></label>
+    <div class="field"><label>Timeframe <span class="tiny muted">· sets your calories, protein, steps and conditioning</span></label>
       <div class="daypick" id="ob-timeline" style="flex-wrap:wrap"><button data-w="12"${on(P.timelineWeeks,12)}>~12 weeks</button><button data-w="24"${on(P.timelineWeeks,24)}>~6 months</button><button data-w="52"${on(P.timelineWeeks,52)}>~1 year</button><button data-w="0"${(!P.timelineWeeks?' class="on"':'')}>No deadline</button></div></div>`)}
 
   ${step(3,'Focus &amp; priority',`
@@ -11727,11 +11727,12 @@ function projectionHTML(){
    different one. */
 function projWhyHTML(bind,tlw,weeks,diff,imp,wu){
   if(!(tlw>0))return `A realistic pace at a moderate deficit.`;
-  /* One week of rounding is not a missed date. `weeks` is a Math.ceil of a
-     fractional number of weeks, so an exact match routinely lands one week
-     over — and complaining about that is noise that teaches the athlete to
-     ignore this line. */
-  if(weeks<=tlw+1)return `Paced to the ~${tlw}-week timeline you picked.`;
+  /* Rounding is not a missed date, and the slack has to SCALE. `weeks` is a
+     Math.ceil, and the calorie target is itself rounded to the nearest 10 —
+     which on a 60-week plan costs two weeks before anything has gone wrong.
+     A flat one-week tolerance made a correctly-paced year-long plan complain
+     about itself, and a line that cries wolf is a line the athlete skips. */
+  if(weeks<=tlw+Math.max(1,Math.ceil(tlw*0.05)))return `Paced to the ~${tlw}-week timeline you picked.`;
   const disp=k=>imp?Math.round(k/0.453592*10)/10:Math.round(k*10)/10;
   const need=diff/tlw;                       // kg/wk to make the date
   const needKcal=Math.round(need*7700/7);    // the daily deficit that produces it
@@ -11781,8 +11782,31 @@ function transformationHTML(){
    off a cut. The target scales with the goal because a maintenance athlete has
    no reason to chase the same number as someone shredding. */
 const STEP_TARGETS={shred:10000,lose:10000,recomp:8000,core:8000,maintain:7000,gain:7000};
+/* Conditioning volume as the timeline actually asks for it.
+
+   A tight deadline needs more energy out, and cardio volume is the one
+   training lever that can carry that safely — strength progression is already
+   auto-regulated by adapt() and readiness, and forcing it is how people get
+   hurt on a deadline.
+
+   ONE notch, and never from 'low'. "Just starting" is a statement about what
+   this athlete's body can take right now, and a date does not change that —
+   the same call safeSwap() makes about a flagged joint. */
+function condLevel(){
+  try{
+    const base=(STATE.profile&&STATE.profile.conditioning)||'moderate';
+    if(base==='moderate'&&typeof timelineIsAggressive==='function'&&timelineIsAggressive())return 'high';
+    return base;
+  }catch(e){return 'moderate';}
+}
 function stepTarget(){
-  try{const g=(STATE.profile&&STATE.profile.goal)||'lose';return STEP_TARGETS[g]||8000;}
+  try{const g=(STATE.profile&&STATE.profile.goal)||'lose';
+    const base=STEP_TARGETS[g]||8000;
+    /* Movement earns calorie room (v220), so a tighter deadline asks for more
+       of it — capped, because a step goal nobody hits is a step goal nobody
+       reads. */
+    if(typeof timelineIsAggressive==='function'&&timelineIsAggressive())return Math.min(12000,Math.round(base*1.2/500)*500);
+    return base;}
   catch(e){return 8000;}
 }
 /* ~0.04 kcal per step is the usual rough figure for an adult; it scales with
@@ -12586,11 +12610,19 @@ function proteinTargetSet(){
   return (typeof v==='number'&&isFinite(v)&&v>=PROT_MIN&&v<=PROT_MAX)?v:null;
 }
 function proteinTargetCalc(){const kg=latestWeightKg();if(!kg)return null;
-  const perKg=PROT_PER_KG[STATE.profile.goal]||PROT_PER_KG_BASE;
+  /* The tier follows the CUT THE ATHLETE IS ACTUALLY ON, not just the goal
+     they named. A 12-week timeline on a 'lose' goal prescribes a deeper
+     deficit than 'shred' does by default — so it earns the same protection.
+     v299's warning applies: the lean-mass ceiling decides for most bodies, so
+     the ceiling has to move with the multiplier or this does nothing at all. */
+  const hard=(typeof timelineIsAggressive==='function')&&timelineIsAggressive();
+  const perKg=hard?Math.max(PROT_PER_KG[STATE.profile.goal]||PROT_PER_KG_BASE,PROT_PER_KG.shred)
+    :(PROT_PER_KG[STATE.profile.goal]||PROT_PER_KG_BASE);
   /* Scaling off TOTAL mass overshoots at high body fat — a 110 kg athlete at 35%
      was prescribed 240 g, over 40% of their calories. Cap against lean mass. */
   let g=kg*perKg;
-  const leanCap=PROT_LEAN_CAP[STATE.profile.goal]||PROT_LEAN_CAP_BASE;
+  const leanCap=hard?Math.max(PROT_LEAN_CAP[STATE.profile.goal]||PROT_LEAN_CAP_BASE,PROT_LEAN_CAP.shred)
+    :(PROT_LEAN_CAP[STATE.profile.goal]||PROT_LEAN_CAP_BASE);
   try{const bf=curBF();if(bf>0){const lean=kg*(1-bf/100);g=Math.min(g,lean*leanCap);}}catch(e){}
   return Math.round(g/5)*5;}
 function proteinTargetG(){return proteinTargetSet()||proteinTargetCalc();}
@@ -14048,6 +14080,16 @@ function renderFuel(){
     <div class="stat"><div class="n" style="color:#3fd7e8">${_mt?_mt.c+'g':'—'}</div><div class="l">Carbs${_mt?' · calculated':''}</div></div>
     <div class="stat"><div class="n" style="color:var(--gold)">${_mt?_mt.f+'g':'—'}</div><div class="l">Fat${_mt?' · calculated':''}</div></div>
   </div>`;
+  /* THE TIMEFRAME HAS TO BE READABLE IN THE OUTPUT, or it is the voicePitch
+     trap again — a control the athlete sets, that now moves four numbers, with
+     nothing on screen connecting the two. Named here because Fuel is where
+     three of the four land. */
+  {const _tld=(typeof timelineDeficit==='function')?timelineDeficit():null;
+   if(_tld!==null&&STATE.profile.timelineWeeks>0){
+     const _w=STATE.profile.timelineWeeks;
+     const _lbl=_w===52?'~1 year':(_w===24?'~6 months':'~'+_w+' weeks');
+     h+=`<div class="tiny muted" style="margin:6px 2px 0">⏱ Paced to your <b>${_lbl}</b> timeframe — a <b>${_tld}</b> kcal daily deficit${(typeof timelineIsAggressive==='function'&&timelineIsAggressive())?`, with protein and step targets raised to match`:``}. Change it in Settings ▸ Setup.</div>`;
+   }}
   /* Protein was the one target the athlete could not state. It was computed
      from bodyweight and goal, full stop — so somebody who wanted 165 g had no
      way to say so, and every amount on the Reference tab and the whole
@@ -14184,6 +14226,56 @@ function dietBreakBanner(){
    for three weeks and repeated the same no-op forever. A second copy of the
    floor in the label would just be a second thing to drift, so the predictor
    and the setter are the same code, asked a different question. */
+/* ---- THE TIMEFRAME IS A PLAN, NOT A LABEL --------------------------------
+   `profile.timelineWeeks` — "~12 weeks / ~6 months / ~1 year" in the quiz —
+   had exactly ONE consumer in the whole app: the projection chart. It never
+   reached the calorie target, the protein target, the conditioning volume or
+   the step goal. So an athlete who picked 12 weeks and an athlete who picked a
+   year were prescribed byte-identical nutrition, and the projection then told
+   the first one their own date was "faster than is safe" — because the app had
+   never adjusted anything to make it.
+
+   That is the voicePitch trap once more: a control the athlete sets that
+   almost nothing reads. The label said "sets your projection pace", which was
+   honest about the code and wrong about the product.
+
+   The timeline now sets the SIZE of the deficit, bounded at both ends by rules
+   that outrank it:
+     - never faster than 1% of bodyweight a week (the same cap the projection
+       uses, so the two can never disagree)
+     - never below the calorie floor (max(BMR x 1.1, 1500/1200))
+     - never at all on a weight-stable goal — recomp and maintain eat at
+       maintenance BY DESIGN (v298), and a date does not change that
+     - only when the athlete has actually named a goal weight; with no target
+       there is nothing to pace toward and the goal's own deficit stands.
+   Returns null when it does not apply, so every caller can tell "no opinion"
+   from "zero". */
+function timelineDeficit(){
+  const rate=timelineRateKgWk();
+  return rate===null?null:Math.max(0,Math.round(rate*7700/7));
+}
+/* The timeframe expressed as a RATE, so every consumer downstream reads the
+   same number rather than each re-deriving it from weeks. Returns kg/week, or
+   null when the timeline does not apply (see timelineDeficit). */
+function timelineRateKgWk(){
+  try{
+    const wks=STATE.profile.timelineWeeks;
+    if(!(wks>0))return null;
+    const n=nut();
+    if(weightStableGoal(n.goal)||n.goal==='gain')return null;
+    const kg=latestWeightKg(),tkg=projTargetKg();
+    if(!(kg>0)||!(tkg>0)||tkg>=kg)return null;
+    return Math.min((kg-tkg)/wks,kg*0.01);
+  }catch(e){return null;}
+}
+/* AGGRESSIVE means the deficit is big enough that muscle is genuinely at risk,
+   not that the athlete picked a word in a quiz. 0.35 kg/wk is ~0.8 lb — the
+   point where the evidence starts asking for the higher protein tier. */
+const TIMELINE_HARD_KGWK=0.35;
+function timelineIsAggressive(){
+  const r=timelineRateKgWk();
+  return r!==null&&r>=TIMELINE_HARD_KGWK;
+}
 function kcalTargetPreview(adjOverride){
   const n=nut();if(!(n.sex&&n.age&&n.heightCm&&n.weightKg))return null;
   const bmr=mifflinBMR(n.sex,n.weightKg,n.heightCm,n.age);const tdee=bmr*(n.activity||1.45);
@@ -14193,6 +14285,12 @@ function kcalTargetPreview(adjOverride){
   // midsection work is fuelled while bodyfat still drifts down
   const shredDef=clamp(Math.round(tdee*0.27),450,700);
   let t=n.goal==='gain'?tdee*1.1:(weightStableGoal(n.goal)?tdee:(n.goal==='core'?tdee*0.95:(n.goal==='shred'?tdee-shredDef:tdee-loseDef)));
+  /* The timeframe REPLACES the goal's stock deficit rather than adding to it,
+     and it moves in both directions on purpose: a year means a gentler cut,
+     not the same one with a longer chart. The goal still decides protein, the
+     rep ranges and whether there is a deficit at all. */
+  const tld=timelineDeficit();
+  if(tld!==null)t=tdee-tld;
   /* A correction measured against the athlete's own scale, applied before the
      floor so it can never push anyone under it. Mifflin-St Jeor plus an
      activity multiplier is a population estimate: it is routinely 200-300 kcal
