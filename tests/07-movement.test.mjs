@@ -365,7 +365,10 @@ export default async function run() {
        explicitly rather than relying on it being what you get by default. */
     nut().cardioMode = 'bike';
     setSteps(3000); setBikeLvl('steady'); setBikeUnit('min'); setBikeVal(10);
-    const v = () => document.querySelector('#v-fuel');
+    /* The Movement card moved to Today ▸ Workout in v311 — it is work you DO.
+       Scoped to the view that holds it, not the tab it was written for. */
+    setTodayTab('workout'); renderToday();
+    const v = () => document.querySelector('#v-today');
     const need = bikeNeed(stepTarget() - stepEquivalent(), 'steady');
     const o = {
       mounted: /Movement/.test(v().innerHTML),
@@ -547,6 +550,8 @@ export default async function run() {
       save(); go('fuel'); renderFuel();
     });
     const live = await page.evaluate(() => {
+      /* This block is about the FOOD card's live ring and carb bar, which are
+         Fuel's own — only the Movement controls moved. */
       const v = document.querySelector('#v-fuel');
       const base = nut().kcalTarget;
       const adj = movementKcalAdj();
@@ -587,8 +592,8 @@ export default async function run() {
     // and with nothing earned, the ring shows no phantom credit
     const clean = await page.evaluate(() => {
       const T = nutToday(); T.steps = 0; T.jackVal = 0; T.bikeVal = 0; T.habits = {}; save();
-      renderFuel();
-      return document.querySelector('#v-fuel').innerHTML;
+      setTodayTab('workout'); renderToday(); renderFuel();
+      return document.querySelector('#v-today').innerHTML;
     });
     t.ok('an athlete who has not moved sees no earned-calories note', !/earned from today's movement/.test(clean), clean.slice(0, 200));
   }
@@ -598,8 +603,8 @@ export default async function run() {
     const cardR = await page.evaluate(() => {
       const T = nutToday();
       T.steps = stepTarget() + 4000; T.jackVal = 0; T.bikeVal = 0; T.habits = {};
-      save(); renderFuel();
-      return document.querySelector('#v-fuel').innerHTML;
+      save(); setTodayTab('workout'); renderToday(); renderFuel();
+      return document.querySelector('#v-today').innerHTML;
     });
     t.ok('walking past target ALONE (no jacks, no bike) still shows the earned note — ' +
       'the existing "target met" banner only fired when jacks or the bike carried part of it',
@@ -1145,10 +1150,11 @@ export default async function run() {
   /* ---- the entry buttons actually render in the Fuel-tab blocks ---------- */
   {
     const r = await page.evaluate(() => {
-      setCardioMode('jacks'); go('fuel'); render();
-      const jackHtml = document.querySelector('#v-fuel').innerHTML;
+      setTodayTab('workout');
+      setCardioMode('jacks'); go('today'); render();
+      const jackHtml = document.querySelector('#v-today').innerHTML;
       setCardioMode('bike'); render();
-      const bikeHtml = document.querySelector('#v-fuel').innerHTML;
+      const bikeHtml = document.querySelector('#v-today').innerHTML;
       return { jackHtml, bikeHtml };
     });
     t.ok('the jacks block offers the timer', /openMakeupTimer\('jacks'\)/.test(r.jackHtml), r.jackHtml.length);

@@ -2323,6 +2323,56 @@ complained about itself. The slack now scales at 5%.
 
 Eight mutants, all caught.
 
+## A thing you DO, filed under what you EAT (v311)
+
+*"Why is this section under fuel, since this is part of the workout I should be
+doing? It is not intuitive."*
+
+The Movement block — a step target, a jumping-jack make-up, a bike, a ruck and a
+guided timer — sat on the **Fuel** tab. It was put there for a real reason:
+movement earns calorie room on the surplus (v220), so the number feeds the food
+budget. But that is where the number GOES, not what the athlete DOES, and the
+tab an athlete reaches for is the one that matches the verb.
+
+Split by verb, and the split is what makes it work:
+
+| where | what |
+|---|---|
+| **Today ▸ Workout** | every control — steps, mode, intensity, the timer |
+| **Progress** | `todayActivityHTML()` — the day reviewed, no controls |
+| Fuel | nothing new; its food card already prices the earned calories |
+
+**AFTER the session button, not before it.** Above it would read as something
+you must finish before the session counts as done, and it is separate work with
+its own target.
+
+**Twelve controls hardcoded `renderFuel()`**, which is exactly how a block
+becomes welded to the tab it was first written for. They repaint through
+`repaintMovement()` now — one place, three views, and moving it again is one
+edit rather than a hunt.
+
+**The review holds no controls, so there is nothing to drift.** That is the
+whole reason the second surface is safe: Progress reads the same
+`movement()`/`jackWork()`/`bikeRide()`/`ruckWork()` functions and offers one
+button, which navigates. A mutant that mounts the real block on Progress as
+well is caught by a check asserting the review has no inputs of its own.
+
+### The empty-state hint matched the check looking for the rows
+
+*"With nothing logged, nothing is listed"* searched the page for
+`Jumping jacks` — and the empty-state hint says *"Jumping jacks, the bike, a
+ruck and quick workouts all show up here once you log them."* The guard failed
+on correct code.
+
+The fix is the one this file already prescribes for `SAFE_SWAP` comments and for
+`document.body.innerHTML` containing the app's own source: **ask whether the
+ROW exists, not whether the word appears.** Each row now carries
+`data-act="jacks"`, and the check queries the element.
+
+Nine mutants, all caught. The two that matter are the placement pair: putting
+the block back on Fuel fails thirteen checks, and mounting it on BOTH fails the
+one that says the review has no controls.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
