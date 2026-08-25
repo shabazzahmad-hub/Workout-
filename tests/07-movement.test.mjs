@@ -1364,6 +1364,73 @@ export default async function run() {
     t.ok('and nothing hits the error boundary', !r2.threw, r2);
   }
 
+  /* ---- One cadence for every movement was the whole problem -------------
+     "It is clocked at the same pace for all exercises and many exercises
+      require more than the same pace of doing... those movements are compound
+      movements and therefore take more time."
+
+     Measured before the fix: of 124 rep-based movements, 121 paced at exactly
+     3.0 s and the other three at 2.0 s. A Turkish get-up and a crunch were the
+     same rep. */
+  {
+    const cad = await page.evaluate(() => {
+      const o = {};
+      const secs = {};
+      for (const k in EX) { if (EX[k].unit !== 'reps') continue; secs[k] = repSecondsFor(k, 3); }
+      o.distinct = [...new Set(Object.values(secs))].sort((a, b) => a - b);
+      o.n = Object.keys(secs).length;
+      /* A sequence is not a slow rep. Each of these is several positions. */
+      o.getup = secs.kbtgu; o.manmaker = secs.dbmanmaker; o.wallwalk = secs.wallwalk;
+      o.pistol = secs.pistol; o.crunch = secs.crunch; o.plainSquat = secs.squat;
+      /* THE FLOOR, and it is what a blanket bump would fail: an ordinary
+         controlled rep is unchanged. A version that simply slowed everything
+         down would satisfy every "compound is slower" assertion here. */
+      o.ordinary = ['crunch', 'squat', 'pushup', 'situp', 'vup', 'glutebridge']
+        .map(k => secs[k]);
+      /* The dial reaches the player again — PLAYER.tempo was never assigned,
+         so repSecondsFor() saw undefined and fell back to 3 for everybody. */
+      o.dialMoves = { fast: repSecondsFor('pushup', 1.5), slow: repSecondsFor('pushup', 6) };
+      /* …but it cannot undercut a declared floor. */
+      o.floorHolds = { fast: repSecondsFor('kbtgu', 1.5), slow: repSecondsFor('kbtgu', 6) };
+      /* And the player actually READS the setting rather than the dead field. */
+      const src = plEnterWork.toString();
+      o.readsSetting = /repSecondsFor\(m\.exId,\s*repTempoSetting\(\)\)/.test(src);
+      o.deadFieldGone = !/PLAYER\.tempo/.test(src);
+      /* A declared movement counts at its MIDPOINT, not at a 3:1 tempo split —
+         a 22 s get-up called at second 16 then stands in silence. */
+      o.share = { declared: repEccShare('kbtgu'), plain: repEccShare('crunch') };
+      /* Every declared value must be a real positive number, or the floor
+         silently does nothing. */
+      o.bad = Object.keys(EX).filter(k => {
+        const v = EX[k].repSec;
+        return v !== undefined && !(typeof v === 'number' && isFinite(v) && v > 0);
+      });
+      /* A floor below the default is not a floor — it would be dead data. */
+      o.pointless = Object.keys(EX).filter(k => typeof EX[k].repSec === 'number' && EX[k].repSec <= 3);
+      return o;
+    });
+    t.ok('the cadence is no longer one number for everything',
+      cad.distinct.length >= 5, cad.distinct);
+    t.ok('a Turkish get-up takes far longer than a crunch',
+      cad.getup >= 15 && cad.getup > cad.crunch * 4, cad);
+    t.ok('a man-maker and a wall walk are sequences, not reps',
+      cad.manmaker >= 6 && cad.wallwalk >= 6, cad);
+    t.ok('a pistol squat is slower than a plain squat',
+      cad.pistol > cad.plainSquat, cad);
+    t.eq('an ordinary controlled rep is unchanged at 3 s',
+      cad.ordinary.join(','), '3,3,3,3,3,3', cad);
+    t.ok('the athlete\'s cadence dial reaches the player again',
+      cad.dialMoves.fast === 1.5 && cad.dialMoves.slow === 6, cad.dialMoves);
+    t.ok('and the player reads the SETTING, not the field that was never assigned',
+      cad.readsSetting && cad.deadFieldGone, cad);
+    t.ok('but the dial cannot rush a declared sequence',
+      cad.floorHolds.fast === cad.floorHolds.slow && cad.floorHolds.fast >= 15, cad.floorHolds);
+    t.eq('a declared movement is counted at its midpoint', cad.share.declared, 0.5, cad.share);
+    t.eq('an ordinary rep keeps its tempo split', cad.share.plain, null, cad.share);
+    t.eq('every declared cadence is a real positive number', cad.bad.join(','), '', cad);
+    t.eq('and none of them sits at or below the default', cad.pointless.join(','), '', cad);
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }

@@ -715,12 +715,12 @@ const EX = {
     steps:['Sit between two dip bars, parallettes, or press hands into the floor beside the hips.','Push down hard and lift the hips clear of the ground, shoulders down away from the ears.','Tuck the knees to start; extend the legs toward straight as you get stronger.','Hold for time with the legs squeezed and toes pointed.'],
     cues:['Push the floor/bars away — shoulders down','Squeeze the quads and point the toes','Chest tall, don\'t collapse forward'],
     mistakes:['Shrugging the shoulders up','Holding the breath','Letting the hips sink back to the floor']},
-  dragonflag:{repCap:10,pattern:'core',name:'Bent-Knee Dragon Flag',region:'anterior',unit:'reps',img:'ex-dragonflag.jpg',anchor:null,hardness:0.15,base:6,rest:70,optional:true,equip:['bar'],
+  dragonflag:{repSec:4.5,repCap:10,pattern:'core',name:'Bent-Knee Dragon Flag',region:'anterior',unit:'reps',img:'ex-dragonflag.jpg',anchor:null,hardness:0.15,base:6,rest:70,optional:true,equip:['bar'],
     why:'Bruce Lee\'s signature core move and the toughest anti-extension exercise in calisthenics — the whole body becomes one rigid lever against gravity. Bending the knees shortens that lever so you can own the movement before going full straight-leg.',
     steps:['Lie on your back on the mat and reach both arms overhead to grip a fixed anchor (the upright of your pull-up rig) behind your head.','Pull down hard with the lats so your shoulders and upper back stay pressed into the floor — they never leave it.','Brace and lift everything below the shoulder blades, hips pushed up so the body is one straight line from shoulders to knees, knees bent about 90°.','Lower under control without letting the hips sag, stopping before your back touches, then drive back up.'],
     cues:['Shoulders stay glued to the floor','Squeeze the glutes — no sag at the waist','Lower slowly; the negative is the whole exercise'],
     mistakes:['Piking at the hips into a candlestick','Letting the low back arch off the floor','Dropping fast instead of controlling the descent']},
-  dragonflagfull:{repCap:8,pattern:'core',name:'Full Dragon Flag',region:'anterior',unit:'reps',img:'ex-dragonflagfull.jpg',anchor:null,hardness:0.10,base:5,rest:80,optional:true,equip:['bar'],
+  dragonflagfull:{repSec:5,repCap:8,pattern:'core',name:'Full Dragon Flag',region:'anterior',unit:'reps',img:'ex-dragonflagfull.jpg',anchor:null,hardness:0.10,base:5,rest:80,optional:true,equip:['bar'],
     why:'The full straight-leg version of Bruce Lee\'s signature move — no bend anywhere to shorten the lever, so the entire body works as one rigid plank against gravity.',
     steps:['Lie on your back and grip a fixed anchor behind your head, same setup as the bent-knee version.','Pull down hard through the lats so the shoulders never leave the floor.','Brace and lift the entire body — legs fully straight — into one rigid line from shoulders to toes.','Lower as slowly as control allows, stopping before the back touches, then drive back up.'],
     cues:['Legs locked straight the whole rep','Shoulders glued down, always','The slower the lower, the more it works'],
@@ -1011,7 +1011,7 @@ const EX = {
     steps:['Do NOT kick up. Start in a push-up position with your feet against the wall, then walk your feet up the wall and your hands in toward it.','Stack hands, shoulders and hips in a straight line.','Brace the core and squeeze everything tight.','Hold for time, breathing steadily.','TO COME DOWN: walk the feet back down the wall the same way you went up. If you ever feel stuck, bend one arm and turn your chest to that side to step down — never straighten up and fall backwards.'],
     cues:['Push tall through the shoulders','Ribs down, glutes squeezed','Look between the hands'],
     mistakes:['Kicking up instead of walking up','Going upside down with no plan for getting down','Banana back (over-arching)','Holding the breath']},
-  hspushup:{repCap:8,name:'Wall Handstand Push-Up',region:'shoulders',unit:'reps',img:'ex-hspushup.jpg',anchor:'push',hardness:0.15,base:4,rest:75,
+  hspushup:{repSec:4,repCap:8,name:'Wall Handstand Push-Up',region:'shoulders',unit:'reps',img:'ex-hspushup.jpg',anchor:'push',hardness:0.15,base:4,rest:75,
     why:'The king of bodyweight shoulder strength — a full vertical press of your own bodyweight.',
     steps:['Walk up into a wall handstand as above — never kick — with the hands slightly wider than the shoulders.','Brace hard and lower the head toward the floor under control.','Stop just short, then press back to full extension.','Keep the body tight and straight throughout.'],
     cues:['Controlled negative','Full lockout at the top','Stay tight — no arching'],
@@ -1101,12 +1101,12 @@ const EX = {
     mistakes:['Going too deep too soon','Shrugging the shoulders up']},
 
   /* ==== LEGS ==== */
-  splitsquat:{name:'Split Squat',region:'legs',unit:'reps',img:'ex-splitsquat.jpg',anchor:'squat',hardness:0.55,base:12,rest:50,
+  splitsquat:{repSec:4,name:'Split Squat',region:'legs',unit:'reps',img:'ex-splitsquat.jpg',anchor:'squat',hardness:0.55,base:12,rest:50,
     why:'A staggered stance loads one leg at a time for real single-leg strength and balance. Count each side.',
     steps:['Stand in a long split stance, torso upright.','Lower straight down until the back knee nearly touches.','Keep the front knee over the ankle.','Drive through the front heel to stand. Finish one side, then switch.'],
     cues:['Straight up and down','Front knee tracks the toes','Torso tall'],
     mistakes:['Front knee caving in','Leaning forward']},
-  bulgarian:{name:'Bulgarian Split Squat',region:'legs',unit:'reps',img:'ex-bulgarian.jpg',anchor:'squat',hardness:0.4,base:10,rest:60,
+  bulgarian:{repSec:4,name:'Bulgarian Split Squat',region:'legs',unit:'reps',img:'ex-bulgarian.jpg',anchor:'squat',hardness:0.4,base:10,rest:60,
     why:'Back foot elevated makes it one of the toughest, most effective single-leg builders for quads and glutes. Count each side.',
     steps:['Place the top of your back foot on a bench behind you.','Front foot far enough forward, torso upright.','Lower until the front thigh is about parallel.','Drive through the front heel to stand. Switch sides.'],
     cues:['Weight in the front heel','Upright chest','Control the descent'],
@@ -1116,12 +1116,12 @@ const EX = {
     steps:['Step forward into a lunge, both knees ~90°.','Keep the torso tall and core braced.','Drive through the front heel to step the back foot through.','Continue alternating, walking forward.'],
     cues:['Long, controlled steps','Front knee over ankle','Chest up'],
     mistakes:['Short choppy steps','Front knee collapsing in']},
-  boxpistol:{repCap:14,name:'Box Pistol Squat',region:'legs',unit:'reps',img:'ex-boxpistol.jpg',anchor:'squat',hardness:0.25,base:8,rest:65,
+  boxpistol:{repSec:4,repCap:14,name:'Box Pistol Squat',region:'legs',unit:'reps',img:'ex-boxpistol.jpg',anchor:'squat',hardness:0.25,base:8,rest:65,
     why:'A single-leg squat to a box — builds toward the full pistol with control and balance. Count each side.',
     steps:['Stand on one leg in front of a bench or box, other leg extended forward.','Sit back and down to lightly touch the box.','Keep the heel down and chest up.','Drive up through the heel to stand. Switch sides.'],
     cues:['Reach the free leg forward for balance','Heel stays planted','Control down, power up'],
     mistakes:['Crashing onto the box','Heel lifting']},
-  pistol:{repCap:10,name:'Pistol Squat',region:'legs',unit:'reps',img:'ex-pistol.jpg',vid:'ex-pistol.mp4',anchor:'squat',hardness:0.15,base:5,rest:75,
+  pistol:{repSec:4.5,repCap:10,name:'Pistol Squat',region:'legs',unit:'reps',img:'ex-pistol.jpg',vid:'ex-pistol.mp4',anchor:'squat',hardness:0.15,base:5,rest:75,
     why:'A full one-leg squat — elite single-leg strength, mobility and balance. Count each side.',
     steps:['Stand on one leg, the other extended straight in front.','Sit down slowly all the way to the bottom, heel flat.','Keep the chest up and free leg off the floor.','Drive back up to standing. Switch sides.'],
     cues:['Slow, controlled descent','Weight through the heel','Free leg stays lifted'],
@@ -1136,7 +1136,7 @@ const EX = {
     steps:['Upper back against a bench, feet flat, knees bent.','Drive through the heels and squeeze the glutes.','Lift the hips to a flat tabletop, shins vertical.','Lower under control and repeat.'],
     cues:['Chin tucked, ribs down','Full glute squeeze at the top','Shins vertical at the top'],
     mistakes:['Over-arching the back','Pushing through the toes']},
-  nordic:{repCap:8,name:'Nordic Curl',region:'legs',unit:'reps',img:'ex-nordic.jpg',vid:'ex-nordic.mp4',anchor:'squat',hardness:0.12,base:5,rest:70,
+  nordic:{repSec:5,repCap:8,name:'Nordic Curl',region:'legs',unit:'reps',img:'ex-nordic.jpg',vid:'ex-nordic.mp4',anchor:'squat',hardness:0.12,base:5,rest:70,
     why:'One of the hardest hamstring builders — lowering your whole body with the hamstrings bulletproofs the knees.',
     steps:['Kneel with your ankles anchored (under a couch or held).','Body straight from knees to head, core braced.','Lower forward as slowly as you can, resisting with the hamstrings.','Catch with the hands and push back, or pull yourself up. Repeat.'],
     cues:['Stay straight — no bending at the hips','Resist every inch','Use hands only as needed'],
@@ -1177,7 +1177,7 @@ const EX = {
     steps:['Start in a lunge position, both knees bent.','Explode straight up and switch legs in the air.','Land softly in the opposite lunge.','Absorb and immediately jump again.'],
     cues:['Land soft and balanced','Torso stays tall','Quick, controlled switches'],
     mistakes:['Crashing the landing','Front knee caving']},
-  broadjump:{repCap:10,name:'Broad Jump',region:'legs',unit:'reps',img:'ex-broadjump.jpg',anchor:'power',hardness:0.6,base:8,rest:55,
+  broadjump:{repSec:4,repCap:10,name:'Broad Jump',region:'legs',unit:'reps',img:'ex-broadjump.jpg',anchor:'power',hardness:0.6,base:8,rest:55,
     why:'Maximal horizontal power from the hips and legs — pure athleticism and a strong posterior chain.',
     steps:['Stand tall, hinge slightly and swing the arms back.','Explode forward and up, driving through the hips.','Reach for distance, then land soft with bent knees.','Reset and repeat with control.'],
     cues:['Big arm swing','Drive through the hips','Stick a soft landing'],
@@ -1203,20 +1203,20 @@ const EX = {
   /* ===== HOME-GYM / WEIGHTS LIBRARY (military kit) — used by the Weights session =====
      Built for the athlete's actual gear: ab roller, medicine ball, kettlebells, battle
      rope, dip bar, pull-up bar. Each carries `equip` (gear) + `pattern` (movement). */
-  abroll:{repCap:12,name:'Kneeling Ab Rollout',region:'anterior',unit:'reps',img:'ex-abroll.jpg',anchor:null,hardness:1,base:8,rest:45,equip:['abroller'],pattern:'core',
+  abroll:{repSec:4.5,repCap:12,name:'Kneeling Ab Rollout',region:'anterior',unit:'reps',img:'ex-abroll.jpg',anchor:null,hardness:1,base:8,rest:45,equip:['abroller'],pattern:'core',
     why:'The ab wheel loads the entire front core under a long lever — brutal, honest anti-extension strength.',
     steps:['Kneel and grip the roller under the shoulders.','Brace hard and roll forward, keeping a flat back.','Pull the roller back with the abs, hips tucked.'],
     cues:['Ribs down, glutes tight','Never let the low back sag','Only roll as far as you can control'],mistakes:['Sagging hips','Rolling too far, too soon']},
-  abrollstand:{repCap:6,name:'Standing Ab-Wheel Rollout',region:'anterior',unit:'reps',img:'ex-abrollstand.jpg',anchor:null,hardness:0.5,base:4,rest:70,equip:['abroller'],pattern:'core',optional:true,
+  abrollstand:{repSec:4.5,repCap:6,name:'Standing Ab-Wheel Rollout',region:'anterior',unit:'reps',img:'ex-abrollstand.jpg',anchor:null,hardness:0.5,base:4,rest:70,equip:['abroller'],pattern:'core',optional:true,
     why:'The full-lever progression from the kneeling rollout — starting upright removes the knee anchor entirely, so the whole body has to control the fall and the return.',
     steps:['Stand tall gripping the ab wheel with both hands, wheel on the floor in front of your feet.','Brace hard and roll the wheel forward, hinging at the hips as your body lowers toward the floor.','Go only as far as you can control — most people stop well short of full extension at first.','Pull back to standing by driving the hips forward and pulling the wheel back in, core braced the whole way.'],
     cues:['Brace before you move, not after','Hips drive the return, not the arms','Stop the descent before you lose the brace'],
     mistakes:['Letting the hips sag toward the floor','Trying for full range before earning it on the kneeling version']},
-  sbrollout:{repCap:10,name:'Stability Ball Rollout',region:'anterior',unit:'reps',img:'ex-sbrollout.jpg',anchor:null,hardness:0.9,base:6,rest:45,equip:['stabilityball'],pattern:'core',
+  sbrollout:{repSec:4.5,repCap:10,name:'Stability Ball Rollout',region:'anterior',unit:'reps',img:'ex-sbrollout.jpg',anchor:null,hardness:0.9,base:6,rest:45,equip:['stabilityball'],pattern:'core',
     why:'The same anti-extension rollout as the ab wheel, but the ball adds a real wobble — the core has to fight sideways drift as well as the fall.',
     steps:['Kneel with your forearms on top of the ball.','Brace hard and roll the ball forward, keeping a flat back.','Pull it back in with the abs, hips tucked, without the ball drifting off line.'],
     cues:['Ribs down, glutes tight','Fight the wobble — do not chase it','Only roll as far as you can control'],mistakes:['Sagging hips','Letting the ball drift side to side']},
-  sbhamcurl:{repCap:15,name:'Stability Ball Hamstring Curl',region:'stability',unit:'reps',img:'ex-sbhamcurl.jpg',anchor:null,hardness:0.7,base:10,rest:40,equip:['stabilityball'],pattern:'core',
+  sbhamcurl:{repSec:4,repCap:15,name:'Stability Ball Hamstring Curl',region:'stability',unit:'reps',img:'ex-sbhamcurl.jpg',anchor:null,hardness:0.7,base:10,rest:40,equip:['stabilityball'],pattern:'core',
     why:'A hip bridge and a leg curl in one rep — hamstrings and glutes drive the bridge, and the ball rolling under your heels is the leg curl.',
     steps:['Lie on your back, heels on top of the ball, arms flat on the floor for balance.','Bridge your hips up until your body is one straight line from shoulders to heels.','Bend the knees to curl the ball in toward your glutes, then straighten back out.','Lower your hips back down under control.'],
     cues:['Squeeze the glutes at the top of the bridge','Keep the hips level — no sagging to one side','Move the ball slowly, do not let it fly'],mistakes:['Hips dropping before the curl finishes','Using the arms to muscle the bridge up']},
@@ -1234,7 +1234,7 @@ const EX = {
     steps:['Step onto the middle of the dome, feet about shoulder width, arms out for balance.','Find your balance before you move at all.','Sit back and down under control, chest tall.','Drive up through the middle of both feet without letting the dome tip.'],
     cues:['Balance first, depth second','Weight through the whole foot, not the toes','Slow down — speed is what tips it'],
     mistakes:['Rushing the descent and wobbling out','Going deeper than you can control']},
-  btbalance:{name:'Balance Trainer Single-Leg Stand',region:'stability',unit:'time',img:'ex-btbalance.jpg',anchor:null,hardness:0.85,base:20,rest:30,equip:['balancetrainer'],pattern:'squat',
+  btbalance:{side:'switch',name:'Balance Trainer Single-Leg Stand',region:'stability',unit:'time',img:'ex-btbalance.jpg',anchor:null,hardness:0.85,base:20,rest:30,equip:['balancetrainer'],pattern:'squat',
     why:'Pure balance — the ankle, knee and hip stabilisers firing continuously to keep one leg under you. The most direct training there is for staying on your feet.',
     steps:['Step onto the middle of the dome with one foot.','Lift the other foot just clear of the dome, knee soft.','Hold, keeping the standing knee unlocked and the hips level.','Switch legs halfway through the time.'],
     cues:['Eyes on a fixed point ahead','Standing knee soft, never locked','Hips level — do not hitch one side up'],
@@ -1274,26 +1274,28 @@ const EX = {
     why:'A front-loaded squat that builds the legs and core while keeping the torso tall and safe.',
     steps:['Hold the bell at the chest with both hands.','Sit down between the hips to depth.','Drive through the heels to stand tall.'],
     cues:['Elbows inside the knees','Chest up','Full depth then drive'],mistakes:['Heels lifting','Rounding forward']},
-  kbcp:{name:'Kettlebell Clean & Press',region:'strength',unit:'reps',img:'ex-kbcp.jpg',anchor:null,hardness:1.1,base:8,rest:70,equip:['kettlebell'],pattern:'pushv',
+  kbcp:{repSec:4.5,name:'Kettlebell Clean & Press',region:'strength',unit:'reps',img:'ex-kbcp.jpg',anchor:null,hardness:1.1,base:8,rest:70,equip:['kettlebell'],pattern:'pushv',
     why:'A total-body strength builder — clean to the shoulder, press overhead. Legs, back, shoulders, core.',
-    steps:['Clean the bell(s) to the shoulder.','Brace and press overhead to lockout.','Lower to the shoulder, then to the floor. Repeat.'],
+    side:'switch',
+    steps:['Clean the bell to the shoulder.','Brace and press overhead to lockout.','Lower to the shoulder, then to the floor.','Do half the reps on that side, then SWITCH HANDS and finish the set.'],
     cues:['Tame the arc on the clean','Ribs down on the press','Full lockout overhead'],mistakes:['Banging the wrist','Arching the low back']},
   kbsnatch:{name:'Kettlebell Snatch',region:'strength',unit:'reps',img:'ex-kbsnatch.jpg',anchor:null,hardness:1.2,base:8,rest:70,equip:['kettlebell'],pattern:'power',
     why:'An explosive hip-to-overhead throw in one motion — the single best total-body power and conditioning kettlebell movement.',
     steps:['Hike the bell back between the legs like a swing.','Snap the hips and pull it up close to the body.','Punch the hand through as the bell flips overhead to lockout.','Lower back to the hike position under control. Switch hands and repeat. Count each side as a rep.'],
     cues:['Power from the hips, not the arm','Let the bell float — do not muscle it up','Punch through at the top for a soft landing'],mistakes:['Muscling it up with the shoulder','Letting the bell bang the wrist or forearm']},
-  kbtgu:{name:'Kettlebell Turkish Get-Up',region:'strength',unit:'reps',img:'ex-kbtgu.jpg',vid:'ex-kbtgu.mp4',anchor:null,hardness:1.25,base:6,rest:90,equip:['kettlebell'],pattern:'power',
+  kbtgu:{repSec:22,name:'Kettlebell Turkish Get-Up',region:'strength',unit:'reps',img:'ex-kbtgu.jpg',vid:'ex-kbtgu.mp4',anchor:null,hardness:1.25,base:6,rest:90,equip:['kettlebell'],pattern:'power',
     why:'Ground to standing under load, through every position in between — the single best total-body strength, stability and shoulder-health movement there is.',
     steps:['Lie on your back holding the bell in one hand, arm locked straight up.','Roll to the elbow, then post up onto the hand, bell locked overhead the whole time.','Sweep the back leg through and rise to a lunge, then stand tall.','Reverse the steps back to the floor under control. Switch sides. Count each side as a rep.'],
     cues:['Eyes on the bell the entire rep','Lock the arm out and keep it stacked overhead','Move slow and controlled through each position'],mistakes:['Letting the arm bend or drift from vertical','Rushing through the transitions']},
-  kbthruster:{name:'Kettlebell Thruster',region:'strength',unit:'reps',img:'ex-kbthruster.jpg',anchor:null,hardness:1.15,base:8,rest:65,equip:['kettlebell'],pattern:'power',
+  kbthruster:{repSec:4,name:'Kettlebell Thruster',region:'strength',unit:'reps',img:'ex-kbthruster.jpg',anchor:null,hardness:1.15,base:8,rest:65,equip:['kettlebell'],pattern:'power',
     why:"A squat-to-press in one — the kettlebell's version of the classic total-body power and conditioning builder.",
     steps:['Hold the bell(s) at the shoulders, drop into a front squat.','Drive up explosively and press overhead in one motion.','Lower to the shoulders and flow into the next rep.'],
     cues:['Use the leg drive','Full lockout overhead','Brace the core throughout'],mistakes:['Pressing before standing','Arching the back']},
   kbrow:{name:'Kettlebell Bent-Over Row',region:'back',unit:'reps',img:'ex-kbrow.jpg',anchor:null,hardness:1,base:10,rest:55,equip:['kettlebell'],pattern:'pull',
     why:'Horizontal pulling for a thick, strong back — balances all the pressing and pull-ups.',
-    steps:['Hinge to ~45°, flat back, bell(s) hanging.','Row to the hip, squeezing the shoulder blade.','Lower with a full stretch.'],
-    cues:['Pull to the hip','Flat back','No twisting'],mistakes:['Standing too upright','Yanking with the arm']},
+    side:'switch',
+    steps:['Hinge to ~45°, flat back, bell hanging from one hand.','Row to the hip, squeezing the shoulder blade.','Lower with a full stretch.','Do half the reps on that side, then SWITCH HANDS and finish the set.'],
+    cues:['Pull to the hip','Flat back','No twisting'],mistakes:['Standing too upright','Yanking with the arm','Finishing the set without switching hands']},
   kbrdl:{name:'Kettlebell Romanian Deadlift',region:'legs',unit:'reps',img:'ex-kbrdl.jpg',anchor:null,hardness:1,base:12,rest:60,equip:['kettlebell'],pattern:'hinge',
     why:'Builds the hamstrings, glutes and lower back — the posterior chain most people neglect.',
     steps:['Hold the bell(s) at the thighs, soft knees.','Push the hips back, lowering down the shins.','Squeeze the glutes to stand tall.'],
@@ -1306,7 +1308,7 @@ const EX = {
     why:'A loaded carry that builds a crushing grip, a braced anti-tilt core and total-body strength — one of the most transferable drills there is.',
     steps:['Stand tall with a kettlebell in each hand at your sides.','Brace the core and pull the shoulders down and back.','Walk with short, controlled steps for the time.','Keep the torso upright — do not lean or tilt.'],
     cues:['Chest up, shoulders back','Squeeze the handles hard','Steady, even steps'],mistakes:['Leaning or tilting to one side','Shuffling / rushing the steps']},
-  kbhalo:{name:'Kettlebell Halo',region:'oblique',unit:'time',img:'ex-kbhalo.jpg',vid:'ex-kbhalo.mp4',anchor:null,hardness:1,base:30,rest:45,equip:['kettlebell'],pattern:'core',
+  kbhalo:{side:'switch',name:'Kettlebell Halo',region:'oblique',unit:'time',img:'ex-kbhalo.jpg',vid:'ex-kbhalo.mp4',anchor:null,hardness:1,base:30,rest:45,equip:['kettlebell'],pattern:'core',
     why:'The bell circles AROUND YOUR HEAD, held upside-down close to you — builds shoulder mobility and a braced, anti-rotation core.',
     steps:['Hold: grip the kettlebell upside-down by the horns (handle down, bell pointing up) with both hands, tucked close to your chest and head.','Path: circle it slowly around your head — past one ear, behind the head, past the other ear, and back to the front — keeping it hugging you the whole way.','Only your arms move: keep the hips, torso and legs locked and still — this is the difference from the Helicopter.','Reverse direction halfway through the time.'],
     cues:['Bell inverted (horns down), hugging the head','Ribs down, core braced, hips still','Slow, tight circles'],mistakes:['Swaying the hips or leaning back','Letting the bell drift wide away from the head']},
@@ -1314,9 +1316,9 @@ const EX = {
     why:'The bell swings in a big circle IN FRONT of the body — up and OVER THE TOP — held by the handle. Trains the shoulders, grip and a braced, anti-extension core.',
     steps:['Hold: grip the kettlebell by the handle with both hands, arms hanging in front of you, bell down — a different grip from the Halo.','Path: swing it in a big circle in front of your body — up the front, over the top overhead, and back down — one smooth vertical loop, like a rotor blade.','Keep the torso tall and braced so the shoulders and arms do the work, not the low back.','Reverse direction halfway through the time.'],
     cues:['Both hands on the handle, big circle in front','Up the front, over the top, back down','Brace hard — no arching the low back'],mistakes:['Arching or leaning back as it goes overhead','Bending the elbows and shrinking the circle']},
-  kbwindmill:{name:'Kettlebell Windmill',region:'oblique',unit:'reps',img:'ex-kbwindmill.jpg',anchor:null,hardness:1.05,base:8,rest:60,equip:['kettlebell'],pattern:'core',
+  kbwindmill:{repSec:5,side:'switch',name:'Kettlebell Windmill',region:'oblique',unit:'reps',img:'ex-kbwindmill.jpg',anchor:null,hardness:1.05,base:8,rest:60,equip:['kettlebell'],pattern:'core',
     why:'A locked-out overhead hold and a hip hinge combined — the obliques resist the lean while the shoulder learns real overhead stability.',
-    steps:['Hold the bell overhead in one hand, arm locked straight, feet turned slightly away from that side.','Push the hips back on the working side and hinge sideways, reaching the free hand down toward the floor.','Keep the overhead arm locked directly above you the entire time — eyes on the bell.','Reverse the hinge to stand back up. Finish all reps on one side before switching.'],
+    steps:['Hold the bell overhead in one hand, arm locked straight, feet turned slightly away from that side.','Push the hips back on the working side and hinge sideways, reaching the free hand down toward the floor.','Keep the overhead arm locked directly above you the entire time — eyes on the bell.','Reverse the hinge to stand back up.','Do half the reps on that side, then SWITCH HANDS and finish the set.'],
     cues:['Eyes on the bell overhead','Hinge from the hip, not the low back','The overhead arm never bends'],
     mistakes:['Letting the overhead arm drift forward','Rounding the low back instead of hinging']},
   kbsuitcase:{name:'Kettlebell Suitcase Carry',region:'oblique',unit:'time',img:'ex-kbsuitcase.jpg',anchor:null,hardness:1,base:40,rest:50,equip:['kettlebell'],pattern:'core',
@@ -1329,7 +1331,7 @@ const EX = {
     steps:['Stand in a quarter-squat, feet wide, hinged slightly forward.','Pass the kettlebell from hand to hand behind one leg, around the front, then behind the other.','Keep the hinge steady — the bell moves, the torso stays low and stable.','One full loop around both legs is one rep.'],
     cues:['Stay low in the hinge the whole time','Let the hips absorb the momentum','Smooth hand-offs, do not rush'],
     mistakes:['Standing up out of the hinge between reps','Yanking the bell instead of a smooth pass']},
-  kbrenegade:{name:'Kettlebell Renegade Row',region:'anterior',unit:'reps',img:'ex-kbrenegade.jpg',anchor:null,hardness:1.1,base:8,rest:55,equip:['kettlebell'],pattern:'core',
+  kbrenegade:{repSec:4.5,name:'Kettlebell Renegade Row',region:'anterior',unit:'reps',img:'ex-kbrenegade.jpg',anchor:null,hardness:1.1,base:8,rest:55,equip:['kettlebell'],pattern:'core',
     why:'A plank row that hammers the anti-rotation core while building the back — a rounder base than a dumbbell makes the balance demand even more honest.',
     steps:['High plank gripping a kettlebell in each hand, feet wide for balance.','Row one bell to the hip while keeping the hips square.','Set it down under control and row the other side.','Count each side as a rep.'],
     cues:['Hips stay square — fight the rotation','Wide feet for a stable base','Slow and controlled, no yanking'],
@@ -1368,19 +1370,19 @@ const EX = {
     why:'Single-leg strength and balance for the quads and glutes — evens out side-to-side weakness.',
     steps:['Hold a dumbbell in each hand at your sides.','Step back and lower the back knee toward the floor.','Drive through the front heel to stand. Alternate.'],
     cues:['Tall torso','Front knee over ankle','Controlled step back'],mistakes:['Short steps','Knee caving in']},
-  dbthruster:{name:'Dumbbell Thruster',region:'strength',unit:'reps',img:'ex-dbthruster.jpg',anchor:null,hardness:1.1,base:10,rest:65,equip:['dumbbell'],pattern:'power',
+  dbthruster:{repSec:4,name:'Dumbbell Thruster',region:'strength',unit:'reps',img:'ex-dbthruster.jpg',anchor:null,hardness:1.1,base:10,rest:65,equip:['dumbbell'],pattern:'power',
     why:'A squat-to-press in one — a total-body power and conditioning builder that torches calories.',
     steps:['Dumbbells at the shoulders, drop into a front squat.','Drive up explosively and press both bells overhead in one motion.','Lower to the shoulders and flow into the next rep.'],
     cues:['Use the leg drive','Full lockout overhead','Brace the core throughout'],mistakes:['Pressing before standing','Arching the back']},
-  dbcp:{name:'Dumbbell Clean & Press',region:'strength',unit:'reps',img:'ex-dbcp.jpg',anchor:null,hardness:1.15,base:8,rest:70,equip:['dumbbell'],pattern:'pushv',
+  dbcp:{repSec:4.5,name:'Dumbbell Clean & Press',region:'strength',unit:'reps',img:'ex-dbcp.jpg',anchor:null,hardness:1.15,base:8,rest:70,equip:['dumbbell'],pattern:'pushv',
     why:'A total-body strength builder — clean both bells to the shoulders, then press overhead. Legs, back, shoulders and core all work together.',
     steps:['Hinge and clean both dumbbells from the floor to the shoulders in one motion.','Brace and press both bells overhead to lockout.','Lower to the shoulders, then to the floor. Repeat.'],
     cues:['Drive with the legs and hips on the clean','Ribs down on the press','Full lockout overhead'],mistakes:['Curling the bells up instead of cleaning','Arching the low back on the press']},
-  dbmanmaker:{name:'Dumbbell Man Maker',region:'strength',unit:'reps',img:'ex-dbmanmaker.jpg',anchor:null,hardness:1.3,base:6,rest:80,equip:['dumbbell'],pattern:'power',
+  dbmanmaker:{repSec:8,name:'Dumbbell Man Maker',region:'strength',unit:'reps',img:'ex-dbmanmaker.jpg',anchor:null,hardness:1.3,base:6,rest:80,equip:['dumbbell'],pattern:'power',
     why:'The ultimate total-body finisher — a push-up, a row each side, a clean and a thruster in one continuous rep. Hits nearly every muscle and torches calories.',
     steps:['From a high plank gripping both dumbbells, do a push-up.','Row one bell to the hip, then the other.','Jump or step the feet up outside the bells and stand, cleaning them to the shoulders.','Press or thrust both bells overhead, set them down and repeat.'],
     cues:['Hips stay level through the rows','Explode up out of the clean','Full lockout overhead'],mistakes:['Twisting the hips on the row','Rushing the transition and losing form']},
-  dbdevil:{name:"Dumbbell Devil's Press",region:'strength',unit:'reps',img:'ex-dbdevil.jpg',anchor:null,hardness:1.35,base:6,rest:85,equip:['dumbbell'],pattern:'power',
+  dbdevil:{repSec:5,name:"Dumbbell Devil's Press",region:'strength',unit:'reps',img:'ex-dbdevil.jpg',anchor:null,hardness:1.35,base:6,rest:85,equip:['dumbbell'],pattern:'power',
     why:'A burpee into a double dumbbell snatch overhead — one of the most brutal total-body conditioning moves there is. Legs, back, shoulders, core and lungs all pay for it.',
     steps:['Squat down and place both dumbbells on the floor, hands on top.','Jump the feet back to a plank, then jump them back in.','Explode up, swinging both bells from the floor to overhead in one motion.','Lower the bells back to the floor and repeat.'],
     cues:['Drive through the legs, not the arms, on the swing up','Full lockout overhead','Land soft, chest up'],mistakes:['Muscling the bells up with the arms','Losing the plank position on the jump back']},
@@ -1388,7 +1390,7 @@ const EX = {
     why:'Direct arm work to build and strengthen the biceps — a balance to all the pressing.',
     steps:['Stand tall, a dumbbell in each hand, palms forward.','Curl both bells to the shoulders, elbows pinned to the sides.','Lower slowly under control.'],
     cues:['Elbows stay still','No swinging','Slow on the way down'],mistakes:['Using the back to swing','Half reps']},
-  dbrenegade:{name:'Dumbbell Renegade Row',region:'anterior',unit:'reps',img:'ex-dbrenegade.jpg',anchor:null,hardness:1.1,base:10,rest:55,equip:['dumbbell'],pattern:'core',
+  dbrenegade:{repSec:4.5,name:'Dumbbell Renegade Row',region:'anterior',unit:'reps',img:'ex-dbrenegade.jpg',anchor:null,hardness:1.1,base:10,rest:55,equip:['dumbbell'],pattern:'core',
     why:'A plank row that hammers the anti-rotation core while building the back — brutal and honest.',
     steps:['High plank gripping a dumbbell in each hand, feet wide for balance.','Row one bell to the hip while keeping the hips square.','Lower and row the other side. Count each side as a rep.'],
     cues:['Hips stay level — no rotation','Feet wide for balance','Brace hard'],mistakes:['Hips twisting','Rushing the reps']},
@@ -1532,7 +1534,7 @@ const EX = {
     steps:['Sit with knees bent and hands planted behind you, fingers toward your feet.','Press the hips up so only hands and feet touch the floor.','Walk forward using the opposite hand and foot.','Keep the hips high the whole way, then walk back.'],
     cues:['Hips stay lifted','Chest open to the ceiling','Small controlled steps'],
     mistakes:['Letting the hips drop toward the floor','Rushing and losing the height']},
-  inchworm:{name:'Inchworm Walkout',region:'dynamic',unit:'reps',img:'ex-inchworm.jpg',vid:'ex-inchworm.mp4',anchor:null,hardness:1.15,base:10,rest:40,
+  inchworm:{repSec:5,name:'Inchworm Walkout',region:'dynamic',unit:'reps',img:'ex-inchworm.jpg',vid:'ex-inchworm.mp4',anchor:null,hardness:1.15,base:10,rest:40,
     why:'Warms and works the whole body — hamstrings stretch, then the core braces hard through the walkout. A staple in fat-loss circuits.',
     steps:['Stand tall, then hinge at the hips and place the hands on the floor. Keep the legs as straight as you can.','Walk the hands out, one at a time, until you reach a strong plank.','Pause and brace hard for a beat.','Now walk the FEET in toward the hands, one at a time, until you are folded over again.','Stand tall and repeat.'],
     cues:['Legs as straight as comfortable','Brace at the plank','Walk the hands and feet — never jump them'],
@@ -1543,37 +1545,37 @@ const EX = {
     steps:['Set up in a strong push-up position, hands under the shoulders.','Lower for a slow count of three, staying rigid.','Pause for one count with the chest an inch off the floor.','Press back up under control and repeat.'],
     cues:['Three seconds down, no faster','Elbows about 45 degrees from the body','Body stays one straight line'],
     mistakes:['Dropping fast and bouncing','Hips sagging as you tire']},
-  hindupushup:{name:'Hindu Push-Up',region:'chest',unit:'reps',img:'ex-hindupushup.jpg',anchor:'push',hardness:0.75,base:10,rest:65,pattern:'pushh',
+  hindupushup:{repSec:4,name:'Hindu Push-Up',region:'chest',unit:'reps',img:'ex-hindupushup.jpg',anchor:'push',hardness:0.75,base:10,rest:65,pattern:'pushh',
     why:'A sweeping push-up that builds chest and shoulders through a huge range of motion while opening the spine and hips.',
     steps:['Start in a downward-dog position, hips high, hands wide.','Sweep the chest down and forward, close to the floor.','Finish by pressing the chest up with the hips low, arms straight.','Reverse the arc back to the start.'],
     cues:['One flowing arc, not two moves','Chest skims low through the middle','Push the hips back at the top'],
     mistakes:['Jerking through the sweep','Cutting the range short']},
-  typewriter:{repCap:10,name:'Typewriter Push-Up',region:'chest',unit:'reps',img:'ex-typewriter.jpg',anchor:'push',hardness:0.35,base:8,rest:75,pattern:'pushh',
+  typewriter:{repSec:4,repCap:10,name:'Typewriter Push-Up',region:'chest',unit:'reps',img:'ex-typewriter.jpg',anchor:'push',hardness:0.35,base:8,rest:75,pattern:'pushh',
     why:'Shifting your weight onto one arm loads that side close to a one-arm push-up — a serious strength and size builder with no equipment.',
     steps:['Take a wide push-up stance and lower the chest to the floor.','Staying low, shift your weight across to one hand, straightening the other arm.','Slide back across to the opposite side, chest still low.','Press up to the start and repeat.'],
     cues:['Stay low as you slide across','Straight arm stays locked','Hips square to the floor'],
     mistakes:['Rising up between sides','Letting the hips twist']},
-  pseudoplanche:{repCap:10,name:'Pseudo Planche Push-Up',region:'chest',unit:'reps',img:'ex-pseudoplanche.jpg',anchor:'push',hardness:0.3,base:8,rest:75,pattern:'pushh',
+  pseudoplanche:{repSec:4,repCap:10,name:'Pseudo Planche Push-Up',region:'chest',unit:'reps',img:'ex-pseudoplanche.jpg',anchor:'push',hardness:0.3,base:8,rest:75,pattern:'pushh',
     why:'Leaning forward over the hands shifts huge load onto the shoulders and upper chest — the bodyweight route to real pressing strength and size.',
     steps:['Set up in a push-up with the hands beside the waist, fingers turned slightly out.','Lean the shoulders forward well past the hands.','Keep that forward lean and lower the chest.','Press back up without losing the lean.'],
     cues:['Shoulders stay ahead of the hands','Body locked in one line','Protract — push the floor away at the top'],
     mistakes:['Losing the lean as you press','Hips dropping into an arch']},
-  cossack:{name:'Cossack Squat',region:'legs',unit:'reps',img:'ex-cossack.jpg',anchor:'squat',hardness:0.4,base:10,rest:60,pattern:'squat',
+  cossack:{repSec:4,name:'Cossack Squat',region:'legs',unit:'reps',img:'ex-cossack.jpg',anchor:'squat',hardness:0.4,base:10,rest:60,pattern:'squat',
     why:'A deep side-to-side squat that builds the legs and glutes while opening the hips and inner thighs. Hits ranges a normal squat never reaches.',
     steps:['Stand with the feet very wide, toes slightly out.','Shift your weight over one leg and sit down into a deep squat on that side.','Keep the other leg straight with the toes up.','Push back to the centre and repeat on the other side. Count each side as a rep.'],
     cues:['Heel of the working leg stays down','Chest up out of the hole','Straight leg stays straight'],
     mistakes:['Rounding the back to get lower','Heel lifting on the working side']},
-  sissysquat:{repCap:12,name:'Sissy Squat',region:'legs',unit:'reps',img:'ex-sissysquat.jpg',anchor:'squat',hardness:0.55,base:10,rest:65,pattern:'squat',
+  sissysquat:{repSec:4,repCap:12,name:'Sissy Squat',region:'legs',unit:'reps',img:'ex-sissysquat.jpg',anchor:'squat',hardness:0.55,base:10,rest:65,pattern:'squat',
     why:'Isolates the quads through a long stretch under load — one of the few bodyweight moves that genuinely builds quad size.',
     steps:['Stand tall, hold something light for balance if needed.','Rise onto the balls of the feet.','Drive the knees forward and lean the torso back, staying in one straight line from knee to head.','Lower as far as control allows, then squeeze the quads to return.'],
     cues:['Hips, torso and head stay in one line','Move slowly — never bounce','Only go as deep as the knees allow'],
     mistakes:['Bending at the hips','Dropping fast into the bottom']},
-  slrdl:{name:'Single-Leg Romanian Deadlift',region:'legs',unit:'reps',img:'ex-slrdl.jpg',anchor:'squat',hardness:0.8,base:10,rest:60,pattern:'hinge',
+  slrdl:{repSec:4,name:'Single-Leg Romanian Deadlift',region:'legs',unit:'reps',img:'ex-slrdl.jpg',anchor:'squat',hardness:0.8,base:10,rest:60,pattern:'hinge',
     why:'Builds the hamstrings and glutes one side at a time while training balance — it fixes the left-right strength gaps that hold squats back.',
     steps:['Stand on one leg with a soft knee.','Hinge at the hip, sending the free leg straight back as the chest lowers.','Keep the hips square and the back flat.','Squeeze the glute of the standing leg to stand tall. Count each side as a rep.'],
     cues:['Hips stay level — do not open up','Back flat throughout','Push the back heel to the wall behind you'],
     mistakes:['Rotating the hip open','Rounding the lower back']},
-  wallwalk:{repCap:6,name:'Wall Walk',region:'shoulders',unit:'reps',img:'ex-wallwalk.jpg',anchor:'push',hardness:0.2,base:6,rest:75,pattern:'pushh',
+  wallwalk:{repSec:8,repCap:6,name:'Wall Walk',region:'shoulders',unit:'reps',img:'ex-wallwalk.jpg',anchor:'push',hardness:0.2,base:6,rest:75,pattern:'pushh',
     why:'Walking up to a wall handstand loads the shoulders under your full bodyweight — the strongest bodyweight builder for shoulder size and stability.',
     steps:['Start in a plank with the feet against the base of a wall.','Walk the feet up the wall while stepping the hands closer in.','Go as high as you can safely control, keeping the ribs down.','Walk back down under control. Each up-and-down is one rep.'],
     cues:['Ribs tucked, no big arch','Push the floor away hard','Come down as slowly as you went up'],
@@ -1805,7 +1807,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='306';
+const APP_VERSION='307';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2787,15 +2789,49 @@ function openSettings(){haptic(10);navTo('guide');setTimeout(()=>{const s=$('#se
    exact second rest expires, Pause lost at a phase boundary). Track the pointer
    and let timer-driven transitions defer their DOM swap the few milliseconds
    until the finger lifts. Keyed so a deferred transition can't queue twice. */
-let _ptrDown=false;const _ptrQ=new Map();
-document.addEventListener('pointerdown',()=>{_ptrDown=true;},true);
-document.addEventListener('pointerup',()=>{_ptrDown=false;
-  if(_ptrQ.size){const q=[..._ptrQ.values()];_ptrQ.clear();setTimeout(()=>q.forEach(f=>{try{f();}catch(e){}}),0);}
+/* This gate is a DEFERRAL, never a cancellation — and the first version could
+   become the second permanently.
+
+   A touch gets implicit pointer capture on whatever it landed on. If a timer
+   replaces that element before the finger lifts — plAfterSet() rewrites
+   #plBody with no gate of its own — the pointerup fires at an element that is
+   no longer in the document, so it never reaches this listener. `_ptrDown`
+   then stays true FOREVER and every later whenPointerFree() call queues a
+   callback nothing will ever run.
+
+   Reported from the phone: the rest timer counted down and then "just shuts
+   off rather than going into the next set". It had not shut off. plRestDone()
+   was sitting in this queue, and so was every ivStep() after it.
+
+   So the flush has three independent ways to fire, and the watchdog is the one
+   that cannot be defeated by a detached element. A finger resting on the glass
+   for a second is not mid-tap. */
+const PTR_FLUSH_MS=900;
+let _ptrDown=false;const _ptrQ=new Map();let _ptrWD=null;
+function _ptrFlush(){
+  _ptrDown=false;
+  if(_ptrWD){clearTimeout(_ptrWD);_ptrWD=null;}
+  if(!_ptrQ.size)return;
+  const q=[..._ptrQ.values()];_ptrQ.clear();
+  setTimeout(()=>q.forEach(f=>{try{f();}catch(e){}}),0);
+}
+document.addEventListener('pointerdown',()=>{
+  /* A NEW tap proves the previous one is over, whatever became of its
+     pointerup. Flush first, then arm. */
+  if(_ptrQ.size)_ptrFlush();
+  _ptrDown=true;
 },true);
-document.addEventListener('pointercancel',()=>{_ptrDown=false;
-  if(_ptrQ.size){const q=[..._ptrQ.values()];_ptrQ.clear();setTimeout(()=>q.forEach(f=>{try{f();}catch(e){}}),0);}
-},true);
-function whenPointerFree(key,fn){if(!_ptrDown){fn();return;}_ptrQ.set(key,fn);}
+document.addEventListener('pointerup',_ptrFlush,true);
+document.addEventListener('pointercancel',_ptrFlush,true);
+/* Removing the capture target fires this on the element itself. It does not
+   reach a detached node's ancestors, which is exactly the hole above — but it
+   costs nothing to catch the cases where the node is still attached. */
+document.addEventListener('lostpointercapture',_ptrFlush,true);
+function whenPointerFree(key,fn){
+  if(!_ptrDown){fn();return;}
+  _ptrQ.set(key,fn);
+  if(!_ptrWD)_ptrWD=setTimeout(_ptrFlush,PTR_FLUSH_MS);
+}
 
 /* Bumped on every sheet open/close. Async work that intends to write into "the
    sheet the user was looking at when this started" captures the value and
@@ -3661,6 +3697,7 @@ function exCardHTML(m,log,idx){
       <div class="grow">
         <div class="ex-name">${ex.name}</div>
         <div class="ex-region">${m.focus?'<span class="tag" style="background:var(--fire-l);color:var(--accInk);font-weight:800">🎯 Your focus</span> ':''}<span class="tag ${ex.region}">${ex.region}</span> &nbsp;${m.sets} × ${targetStr}</div>
+        ${sideSwitch(m.exId)?`<div class="tiny" style="margin-top:3px;font-weight:800;color:var(--gold)">🔄 One side at a time — switch halfway through EACH set</div>`:''}
       </div>
       <div class="ex-rx"><div class="big">${m.sets}×${m.unit==='time'?fmtTime(m.target):m.target}</div><div class="sub">rest ${m.rest}s${m.tempo?' · '+_ve(m.tempo):''}</div></div>
     </div>
@@ -4114,10 +4151,41 @@ function eccOf(ex){if(!ex||ex.unit!=='reps')return 0;return (ex.region==='cardio
    sessions that ran exactly to plan, because it was priced against a number the
    pacing ignored. Explosive work keeps its own faster cadence; everything else
    obeys the athlete's Rep cadence setting. */
+/* ONE NUMBER FOR EVERY MOVEMENT WAS THE WHOLE PROBLEM.
+
+   Measured: of 124 rep-based movements, 121 paced at exactly 3.0 s and the
+   other three at 2.0 s. A Turkish get-up and a crunch were the same rep.
+   Reported from the phone: "it is clocked at the same pace for all exercises
+   and many exercises require more than the same pace — squats, push-ups,
+   V-ups and crawls are compound movements and therefore take more time."
+
+   Right, and there are two separate faults behind it.
+
+   FIRST: the athlete's own Rep cadence setting never reached the player.
+   plEnterWork() passed PLAYER.tempo, and nothing in this file has ever
+   ASSIGNED PLAYER.tempo — so `tempo||3` collapsed to 3 for everybody, forever.
+   That is the voicePitch trap again: a control that stores a value nothing
+   reads. plBudgetMin() and sessionStats() did read the setting, so the clock
+   was priced against a cadence the pacing ignored.
+
+   SECOND: a dial cannot express a sequence. A get-up is not a slow rep, it is
+   five positions; a man-maker is a burpee plus two rows plus a clean plus a
+   press. `repSec` on the exercise is a FLOOR the dial cannot undercut — a fast
+   cadence is a preference about tempo lifts, not permission to do a get-up in
+   three seconds. The dial still moves everything above its floor. */
 function repSecondsFor(exId,tempo){
-  const e=eccOf(EX[exId]);
+  const ex=EX[exId];const e=eccOf(ex);
   if(!e)return 0;
-  return (e<=1)?2:Math.max(1.5,Math.min(6,tempo||3));
+  const dial=(e<=1)?2:Math.max(1.5,Math.min(6,tempo||3));
+  const need=(ex&&typeof ex.repSec==='number'&&isFinite(ex.repSec)&&ex.repSec>0)?ex.repSec:0;
+  return Math.max(dial,need);
+}
+/* A declared movement is a SEQUENCE, so its count belongs at the midpoint, not
+   at the 3:1 eccentric split a tempo lift uses. At 22 s a get-up would
+   otherwise be called at second 16 and then stand in silence. */
+function repEccShare(exId){
+  const ex=EX[exId];
+  return (ex&&typeof ex.repSec==='number'&&ex.repSec>0)?0.5:null;
 }
 function repTempoSetting(){
   const v=STATE.settings&&STATE.settings.repTempo;
@@ -4598,7 +4666,7 @@ function plBodyWork(color){
   const m=plCur();const ex=EX[m.exId];
   $('#plBody').innerHTML=`
     <div class="pl-region"><span class="tag ${ex.region}">${ex.region}</span>
-      <span class="pl-set" id="plSet">Set ${PLAYER.s+1} of ${m.sets}</span> ${climbNote(m)}${loadCeilingNote(m)}</div>
+      <span class="pl-set" id="plSet">Set ${PLAYER.s+1} of ${m.sets}</span> ${climbNote(m)}${loadCeilingNote(m)}${sideSwitch(m.exId)?'<span class="pl-set" style="color:var(--gold)"> · 🔄 switch sides halfway</span>':''}</div>
     <div class="pl-name">${ex.name}</div>
     ${plRingHTML(color,ex)}
     <div class="pl-coach" id="plCoach"></div>
@@ -4616,18 +4684,32 @@ function plBodyWork(color){
 }
 function plEnterReady(first){
   plClear();plChrome();
-  const m=plCur();const isTime=m.unit==='time';
+  const m=plCur();const ex=EX[m.exId]||{name:'Next movement'};const isTime=m.unit==='time';
   plBodyWork(isTime?'var(--green)':'var(--fire)');
   PLAYER.phase='ready';PLAYER.ready=first?5:3;
   plS('#plNum',PLAYER.ready);plS('#plSub','GET READY');plS('#plCoach','Get into position…');plRingSet(1);
   autoRoll();beep(1000,.15,0.7);
+  /* SAY WHAT IS COMING, BEFORE IT STARTS. The get-ready screen showed the name
+     and counted down, and the coach named the movement only on the FIRST set of
+     each exercise — so sets two and three arrived as a bare "Go!". Reported
+     from the phone: "before the exercise starts, the exercise should be
+     announced also, not just time and start. Count in time and reps."
+
+     Both, then: the name AND what is being asked for. This is the one line the
+     ready phase exists to deliver, which is why the spoken digits below had to
+     go — synth.cancel() on the next utterance would have killed it, exactly as
+     it killed the warm-up's "Next up" announcement. */
+  plSay(ex.name+'. '+(m.unit==='time'?(fmtTime(m.target)+'.'):(m.target+' reps.'))
+    +(sideSwitch(m.exId)?' One side at a time — switch halfway.':''));
   if(!PLAYER.running){plS('#plToggle','Resume');return;}
   PLAYER.tid=setInterval(plTickReady,1000);
 }
 function plTickReady(){
   if(!PLAYER)return;
   PLAYER.ready--;
-  if(PLAYER.ready>0){beep(1000,.18,0.9);if(PLAYER.ready<=3)coachSay(String(PLAYER.ready));plS('#plNum',PLAYER.ready);return;}
+  /* No spoken digits. The beep already marks every second, and a digit spoken
+     one second after the announcement cancels it mid-word. */
+  if(PLAYER.ready>0){beep(1000,.18,0.9);plS('#plNum',PLAYER.ready);return;}
   beepGo();haptic(30);coachSay('Go!');plEnterWork();
 }
 // Rotate to the next spoken/shown form cue for the current exercise.
@@ -4659,7 +4741,9 @@ function plEnterWork(){
   const firstSet=PLAYER.s===0;
   // On the first set of each exercise, coach WHAT it is + HOW it strengthens you,
   // then the first form cue. Later sets get a quick form cue.
-  const intro=firstSet?(ex.name+'. '+(ex.why?ex.why+' ':'')):'';
+  /* The NAME belongs to plEnterReady() now — it is said before every set, not
+     only the first. What is left here is the why, which is a first-set thing. */
+  const intro=(firstSet&&ex.why)?(ex.why+' '):'';
   plS('#plCoach', firstSet&&ex.why ? ex.why : PLAYER.cues[0]);
   const pulse=$('#plPulse');
   if(isTime){
@@ -4673,9 +4757,15 @@ function plEnterWork(){
     const ecc=eccOf(ex);
     // the whole rep lasts what the athlete asked for; the eccentric keeps its
     // share of it, so the "lower slow" cue still lands in the right place
-    const _rs=repSecondsFor(m.exId,PLAYER.tempo)||(ecc+1);
+    /* Read the athlete's own Rep cadence setting. This used to read a field on
+       the player object that nothing ever assigned, so the slider had no
+       effect on the pacing at all — see repSecondsFor()'s note. (Named there
+       and not here: a check scans this function's source for that field, and
+       prose that looks like code fails it.) */
+    const _rs=repSecondsFor(m.exId,repTempoSetting())||(ecc+1);
+    const _share=repEccShare(m.exId);
     PLAYER.ecc=ecc;PLAYER.repDurMs=Math.round(_rs*1000);
-    PLAYER.eccMs=Math.round(PLAYER.repDurMs*(ecc/(ecc+1)));
+    PLAYER.eccMs=Math.round(PLAYER.repDurMs*(_share!==null?_share:(ecc/(ecc+1))));
     PLAYER.repN=0;PLAYER.repMs=0;PLAYER.repCounted=false;PLAYER.total=Math.max(1,m.target);
     plS('#plNum','0');plS('#plSub','OF '+m.target+' REPS');plRingSet(0);
     const tempoLine=ecc>=2?('Controlled tempo. Lower for '+ecc+' seconds, then drive up. '+PLAYER.cues[0]):('Fast and explosive. '+PLAYER.cues[0]);
@@ -4696,17 +4786,26 @@ function plTickHold(){
   PLAYER.remain=PLAYER.deadline?Math.min(byTick,Math.ceil((PLAYER.deadline-Date.now())/1000)):byTick;
   PLAYER.elapsed++;
   const el=PLAYER.total-PLAYER.remain;
-  if(PLAYER.remain===10&&PLAYER.total>16){if(!motivate('push'))coachSpeak('Ten seconds. Hold strong.');}
-  else if(el>0&&el%8===0&&PLAYER.remain>5){
-    // cycle: form cue → breathing → motivate, so coaching runs throughout the hold
-    const pick=Math.floor(el/8)%3;
-    if(pick===1){coachSpeak(plNextCue());}
-    else if(pick===2){coachSpeak('Inhale slow… and exhale.');plS('#plSub','BREATHE');setTimeout(()=>{if(PLAYER&&PLAYER.phase==='work')plS('#plSub','HOLD');},2200);}
-    else motivate('during');
-  }
+  /* PAINT AND BEEP FIRST, TALK AFTER. Speech used to run before the number was
+     written, and starting an utterance can stall the main thread long enough
+     for the next tick to arrive late — which the wall-clock floor then pays
+     for by skipping a second outright. */
   countdownCue(PLAYER.remain,PLAYER.total);
   if(PLAYER.remain<=0){beepGo();haptic(30);plAfterSet();return;}
   plS('#plNum',fmtTime(PLAYER.remain));plRingSet(PLAYER.remain/PLAYER.total);
+  const halfSec=Math.floor(PLAYER.total/2);
+  if(PLAYER.remain===halfSec&&sideSwitch(plCur().exId)&&PLAYER.total>=8){
+    beep(660,.12,0.8);setTimeout(()=>beep(880,.12,0.8),140);haptic(30);
+    plS('#plCoach',SIDE_LINE);plSay(SIDE_LINE);
+  }
+  else if(PLAYER.remain===10&&PLAYER.total>16){plHype('push','Ten seconds. Hold strong.');}
+  else if(el>0&&el%8===0&&PLAYER.remain>5){
+    // cycle: form cue → breathing → motivate, so coaching runs throughout the hold
+    const pick=Math.floor(el/8)%3;
+    if(pick===1){plSay(plNextCue());}
+    else if(pick===2){plSay('Inhale slow… and exhale.');plS('#plSub','BREATHE');setTimeout(()=>{if(PLAYER&&PLAYER.phase==='work')plS('#plSub','HOLD');},2200);}
+    else plHype('during');
+  }
 }
 // Tempo rep engine: eccentric ("lower…") then concentric ("up!") — 100ms ticks.
 function plTickRep(){
@@ -4717,10 +4816,24 @@ function plTickRep(){
     beep(880,.08);haptic(16);
     const half=Math.ceil(m.target/2);
     plS('#plNum',String(PLAYER.repN));plRingSet(PLAYER.repN/PLAYER.total);
-    // Every 4th rep, coach a form cue; otherwise call the count.
-    if(PLAYER.repN>1&&PLAYER.repN%4===0&&PLAYER.repN<m.target){coachSpeak(plNextCue());}
-    else if(m.target>=8&&PLAYER.repN===half){if(!motivate('during'))coachSpeak('Up! '+PLAYER.repN);}
-    else coachSpeak(PLAYER.ecc>=2?('Up! '+PLAYER.repN):String(PLAYER.repN));
+    /* THE COUNT IS NEVER DROPPED. Coaching used to REPLACE it — every 4th rep
+       spoke a form cue instead of the number, and the halfway rep spoke a
+       motivational line instead — so a 20-rep set was counted aloud as
+       1 2 3 _ 5 6 7 _ 9 _ 11 _ 13 14 15 _ 17 18 19 20, missing five of
+       twenty. Reported from the phone as the app "skipping a few numbers".
+
+       The number goes FIRST in the utterance, because the next rep's
+       synth.cancel() will cut whatever is still playing — so the count
+       always lands and only the coaching can be clipped. */
+    const num=(PLAYER.ecc>=2?'Up! ':'')+PLAYER.repN;
+    /* The switch call OUTRANKS the coaching and the hype: a form cue you miss
+       costs one rep of quality, a missed switch costs the whole other side. */
+    const swap=(PLAYER.repN===half&&sideSwitch(m.exId)&&m.target>1);
+    const extra=swap?SIDE_LINE
+      :((PLAYER.repN>1&&PLAYER.repN%4===0&&PLAYER.repN<m.target)?plNextCue()
+      :((m.target>=8&&PLAYER.repN===half)?(motivateLine('during')||''):''));
+    plSay(extra?(num+'. '+extra):num);
+    if(swap){beep(660,.12,0.8);setTimeout(()=>beep(880,.12,0.8),140);haptic(30);plS('#plCoach',SIDE_LINE);}
   }
   if(PLAYER.repMs>=PLAYER.repDurMs){
     if(PLAYER.repN>=m.target){haptic(30);plClear();plAfterSet();return;}
@@ -7484,18 +7597,28 @@ function _hypeDeviceSpeak(text,persona){
   }catch(e){return false;}
 }
 // Speak a random motivational line of the given kind (start|during|push|rest|done).
-function motivate(kind,force){
+/* The line WITHOUT speaking it, so a caller that must not lose its own words
+   can put the coaching after them in one utterance — see plTickRep(), where
+   the rep number has to survive the next rep's synth.cancel(). Returns '' when
+   hype is off or the persona has nothing to say, which reads as falsy at every
+   call site exactly as motivate()'s false did. */
+function motivateLine(kind,force){
   if(!force){
-    if(STATE.settings.voice===false)return false;
-    if(STATE.settings.hype===false)return false;
+    if(STATE.settings.voice===false)return '';
+    if(STATE.settings.hype===false)return '';
   }
   const p=currentPersona();const lines=p[kind]||p.during||[];
-  if(!lines.length)return false;
+  if(!lines.length)return '';
   let i=Math.floor(Math.random()*lines.length);
   if(lines.length>1&&_lastHype[kind]===i)i=(i+1)%lines.length; // avoid immediate repeat
   _lastHype[kind]=i;
+  return String(lines[i]||'');
+}
+function motivate(kind,force){
+  const line=motivateLine(kind,force);
+  if(!line)return false;
   try{if(typeof primeVoice==='function')primeVoice();}catch(e){}
-  return hypeSpeak(lines[i],p);
+  return hypeSpeak(line,currentPersona());
 }
 function personaOptionsHTML(){
   const sel=STATE.settings.coach||'auto';
@@ -7580,6 +7703,50 @@ function beepGo(){beepDuck(560);beep(1320,.32,0.95,'square');setTimeout(()=>beep
    marker and the 9-4 ticks that the voice cannot, and the last three include
    a buzz so a silenced phone still gets them. A voice line cannot be any of
    that, and a second countdown on top of one that already works is noise. */
+/* SPEAK AFTER THE PAINT, ALWAYS.
+
+   _deviceSpeak() calls speechSynthesis.cancel() and then speak(). On Android
+   that pair regularly blocks the main thread for several hundred milliseconds,
+   and a one-second interval that starts a second late does not get a grace
+   period — plTickHold() and runFlow()'s tick both FLOOR `remain` at what the
+   wall clock says is really left, so the stall is paid for by a number that is
+   never displayed and a beep that is never heard.
+
+   Measured: a tick arriving 1.6 s late printed 11, 10, 8 — the 9 simply gone.
+   Reported from the phone as the app "skipping a few numbers", in both the
+   warm-up and the working sets, and the seconds named were the ones right
+   after a spoken line.
+
+   The floor is correct and stays: real time really did pass. What is wrong is
+   spending it inside the tick. Deferring the utterance lets the tick finish —
+   number painted, ring moved, beep fired — before the synthesiser is touched. */
+/* A ONE-SIDED movement has to change sides INSIDE the set, not across sets.
+
+   Reported from the phone about the Kettlebell Bent-Over Row: "it doesn't tell
+   you to switch hands, so with three sets you do two on one hand and one on
+   the other." Exactly right, and the fix is not an even set count — prescribe()
+   owns the set count for real reasons, and forcing it even here would distort
+   the volume everywhere else. The set is the thing that has to be balanced.
+
+   The library already worked this way everywhere else and said so in prose —
+   "Count each side as a rep", "Switch legs halfway through the time" — on
+   fifteen movements. Three said nothing at all (kbrow, kbcp, kbwindmill) and
+   two said it where only a reader would find it, never the coach (btbalance,
+   kbhalo). `side:'switch'` is the single place the rule now lives, so the
+   steps, the session card and the guided player cannot drift apart again. */
+function sideSwitch(exId){try{return (EX[exId]||{}).side==='switch';}catch(e){return false;}}
+const SIDE_LINE='Switch sides now.';
+function plSay(text){
+  if(!text)return;
+  setTimeout(()=>{try{coachSpeak(text);}catch(e){}},0);
+}
+/* The hype path deferred WHOLE, rather than picking the line here and speaking
+   it through coachSpeak() — hypeSpeak() is its own delivery (its own rate and
+   emphasis), and flattening a persona's push line into the counting voice
+   would quietly change what every coach sounds like at ten seconds. */
+function plHype(kind,fallback){
+  setTimeout(()=>{try{if(!motivate(kind)&&fallback)coachSpeak(fallback);}catch(e){}},0);
+}
 function countdownCue(remain,total){
   try{
     if(!(remain>0))return;
@@ -7720,12 +7887,14 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex){
     }
     remain--;
     const el=total-remain;                         // seconds elapsed so far
+    /* Deferred for the same reason plTickHold() defers — an utterance started
+       inside the tick can stall the main thread past the next one. */
     if(isHold){
-      if(remain===10&&total>16){if(!motivate('push'))coachSpeak('Ten seconds. Hold strong.');}
-      else if(el>0&&el%10===0&&remain>4)motivate('during');   // periodic push through the hold
+      if(remain===10&&total>16){plHype('push','Ten seconds. Hold strong.');}
+      else if(el>0&&el%10===0&&remain>4)plHype('during');   // periodic push through the hold
     }else{
-      if(remain===10&&total>13)coachSpeak('Ten seconds. Get ready.');
-      else if(total>=24&&el===Math.round(total/2))motivate('rest');
+      if(remain===10&&total>13)plSay('Ten seconds. Get ready.');
+      else if(total>=24&&el===Math.round(total/2))plHype('rest');
     }
     // rest keeps the plain 3-2-1 so the two phases stay distinguishable by ear
     if(isHold)countdownCue(remain,total); else if(remain<=3&&remain>0){beepDuck(300);beep(920,.17,0.92);}
@@ -7981,7 +8150,15 @@ function runFlow(items,title,color){
     }
     if(phase==='transition'){
       trans--;
-      if(trans>0){beep(1000,.15,0.7);if(trans<=3)coachSay(String(trans));set('#flowNum',trans);return;}
+      /* No SPOKEN digits here. _deviceSpeak() calls synth.cancel() on every
+         line, so the 3-2-1 killed "Next up. Arm Circles. Get into position."
+         one second after it started — reported from the phone as the flow
+         going "straight into the other exercise without even announcing the
+         name". The beep already marks each second, which is the same call
+         v302 made when two countdowns fought over the last three seconds:
+         the beeps are the countdown, and a voice line on top of them is not
+         a second opinion, it is an interruption. */
+      if(trans>0){beep(1000,.15,0.7);set('#flowNum',trans);return;}
       beepGo(); phase='run'; startItem(false); return;
     }
     /* Wall-clock FLOOR, the same one plTickHold() and ivTick() carry. A bare
@@ -7991,8 +8168,8 @@ function runFlow(items,title,color){
        no wake lock is most of them. */
     const byTick=remain-1;
     remain=deadline?Math.min(byTick,Math.ceil((deadline-Date.now())/1000)):byTick;
-    if(remain===5&&total>10)coachSpeak('Five seconds.');
     countdownCue(remain,total);
+    if(remain===5&&total>10)plSay('Five seconds.');
     if(remain<=0){
       idx++;
       if(idx>=items.length){
@@ -15602,6 +15779,19 @@ function normalizeState(){
    This runs at boot and logs; it never blocks the app. */
 function validateData(){
   const errs=[];
+  /* A one-sided movement and the words that tell you so must travel together.
+     The defect this catches shipped three times: kbrow, kbcp and kbwindmill
+     each loaded one arm and their steps never mentioned the other, so three
+     sets meant two on one side and one on the other. Checked BOTH directions,
+     because either half alone is a lie — a flag with silent steps coaches
+     nobody who reads, and steps that promise a switch with no flag means the
+     guided player never calls it. */
+  Object.keys(EX).forEach(k=>{
+    const e=EX[k];const txt=[...(e.steps||[]),...(e.cues||[]),e.why||''].join(' ');
+    const says=/switch (hand|side|leg)|each side|other side|reverse direction/i.test(txt);
+    if(e.side==='switch'&&!says)errs.push('EX.'+k+' is flagged side:"switch" but its steps never say to switch');
+    if(e.side!==undefined&&e.side!=='switch')errs.push('EX.'+k+' has an unknown side value "'+e.side+'"');
+  });
   const testUnit={};TESTS.forEach(t=>testUnit[t.id]=t.unit);
   // TEST_DEFAULTS must cover exactly the same ids as TESTS — a test added
   // without a default leaves maxes[id] undefined for anyone who skips it,
