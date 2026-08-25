@@ -361,6 +361,75 @@ export default async function run() {
   t.ok('so does tearing the player down', leaks.stoppedOnTeardown, leaks);
   t.ok('a tick with no session running is harmless', leaks.tickWithoutPlayerSafe, leaks);
 
+  /* ---- The pointer gate is a DEFERRAL, never a cancellation --------------
+     whenPointerFree() holds a timer-driven DOM swap until the finger lifts, so
+     a tap is never destroyed mid-press. It could hold it FOREVER.
+
+     A touch takes implicit pointer capture on whatever it landed on. When a
+     timer replaces that element — plAfterSet() rewrites #plBody with no gate
+     of its own — the pointerup fires at a node that is no longer in the
+     document and never reaches the listener. `_ptrDown` stuck true, and every
+     later whenPointerFree() call queued a callback nothing would ever run.
+
+     Reported from the phone: "after the rest period it just shuts off rather
+     than going into the next set". It had not shut off. plRestDone() was in
+     that queue, and so was every ivStep() after it. */
+  {
+    const gate = await page.evaluate(async () => {
+      const o = {};
+      const host = document.createElement('div'); document.body.appendChild(host);
+      const orphan = () => {
+        host.innerHTML = '<button id="pb">t</button>';
+        const b = document.getElementById('pb');
+        b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+        host.innerHTML = '';                       // the swap the gate exists for
+        b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+        return b;                                  // detached: never reaches document
+      };
+
+      orphan();
+      let ran = false; whenPointerFree('pl', () => { ran = true; });
+      /* GUARD: the callback really was deferred, or every assertion below
+         passes on a gate that was never armed at all. */
+      o.wasDeferred = !ran;
+      await new Promise(r => setTimeout(r, 1400));
+      o.watchdogRan = ran;
+
+      /* A NEW tap proves the old one is over, whatever became of its
+         pointerup — so the queue must not have to wait out the watchdog. */
+      orphan();
+      let ran2 = false; whenPointerFree('pl', () => { ran2 = true; });
+      o.stillDeferred = !ran2;
+      document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 30));
+      o.freshTapFlushed = ran2;
+      document.body.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+
+      /* THE FLOOR. With no finger down the callback runs at once — a gate that
+         simply always deferred would satisfy everything above while adding
+         most of a second to every phase change in the app. */
+      let ran3 = false; whenPointerFree('pl', () => { ran3 = true; });
+      o.freePointerIsImmediate = ran3;
+      /* And an ordinary completed tap still defers, then runs on the pointerup
+         rather than on the watchdog. */
+      document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      let ran4 = false; whenPointerFree('pl', () => { ran4 = true; });
+      o.normalTapDefers = !ran4;
+      document.body.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 30));
+      o.normalTapRuns = ran4;
+      host.remove();
+      return o;
+    });
+    t.ok('guard: a queued callback really is deferred while a finger is down', gate.wasDeferred, gate);
+    t.ok('an orphaned pointerdown cannot strand the queue for ever', gate.watchdogRan, gate);
+    t.ok('guard: the second case was deferred too', gate.stillDeferred, gate);
+    t.ok('and a fresh tap flushes it without waiting for the watchdog', gate.freshTapFlushed, gate);
+    t.ok('with no finger down the callback runs immediately', gate.freePointerIsImmediate, gate);
+    t.ok('an ordinary tap still defers the swap', gate.normalTapDefers, gate);
+    t.ok('and runs it the moment the finger lifts', gate.normalTapRuns, gate);
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }

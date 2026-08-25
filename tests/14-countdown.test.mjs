@@ -328,6 +328,165 @@ export default async function run() {
     });
   }
 
+  /* ---- Speaking must not eat the seconds it is spoken over ---------------
+     Three reports from one session, all of them the same shape: a voice line
+     and a per-second job fighting over the same seconds.
+
+       "after one exercise it goes straight into the other exercise after
+        counting down, without even announcing the name"
+       "while doing the warm-up it is skipping some numbers"
+       "while doing the actual exercises it is skipping a few numbers" */
+  {
+    /* 1. The transition announcement must survive. _deviceSpeak() calls
+          synth.cancel() on EVERY line, so a spoken 3-2-1 one second later
+          killed the name outright. */
+    const flow = await page.evaluate(async () => {
+      const said = []; let vnow = 1000000;
+      const realNow = Date.now.bind(Date); Date.now = () => vnow;
+      const realSpeak = window.coachSpeak;
+      window.coachSpeak = txt => { said.push({ s: vnow, t: String(txt) }); return true; };
+      const realSI = window.setInterval;
+      window.setInterval = (fn, ms) => ms !== 1000 ? realSI(fn, ms)
+        : realSI(() => { vnow += 1000; fn(); }, 8);
+      runFlow([{ n: 'March', secs: 12, cue: 'Knees up.', img: '' },
+               { n: 'Arm Circles', secs: 12, cue: 'Big.', img: '' }], 'Warm-up', 'x');
+      await new Promise(r => realSI(r, 700));
+      try { flowStop(); } catch (e) {}
+      window.setInterval = realSI; Date.now = realNow;
+      await new Promise(r => setTimeout(r, 60));
+      window.coachSpeak = realSpeak;
+      const t0 = said.length ? said[0].s : 0;
+      const announce = said.find(x => /Arm Circles/.test(x.t));
+      const after = announce ? said.filter(x => x.s > announce.s) : [];
+      return {
+        announced: !!announce,
+        /* THE discriminator: how long the announcement gets before anything
+           else speaks over it. A digit one second later is a cancellation. */
+        quietFor: after.length ? (after[0].s - announce.s) / 1000 : 99,
+        nextLine: after.length ? after[0].t : '',
+        spokenDigits: said.filter(x => /^[123]$/.test(x.t.trim())).length,
+        all: said.map(x => ((x.s - t0) / 1000) + 's: ' + x.t),
+      };
+    });
+    t.ok('the warm-up announces the move that is coming', flow.announced, flow.all);
+    t.ok('and nothing speaks over it for at least three seconds',
+      flow.quietFor >= 3, { quietFor: flow.quietFor, nextLine: flow.nextLine });
+    /* The transition still BEEPS every second — the beeps are the countdown,
+       the same call v302 made. Only the spoken digits went. The 5-4-3-2-1 at
+       the very start of the flow keeps its digits: nothing competes there. */
+    t.eq('and the transition speaks no digits at all', flow.spokenDigits, 3, flow.all);
+
+    /* 2. Every rep is counted ALOUD. Coaching used to replace the number. */
+    const reps = await page.evaluate(async (exId) => {
+      const said = []; const realSpeak = window.coachSpeak;
+      window.coachSpeak = txt => { said.push(String(txt)); return true; };
+      const keep = { plS: window.plS, plRingSet: window.plRingSet, beep: window.beep,
+        haptic: window.haptic, plAfterSet: window.plAfterSet, plClear: window.plClear,
+        plCur: window.plCur };
+      window.plS = () => {}; window.plRingSet = () => {}; window.beep = () => {};
+      window.haptic = () => {}; window.plAfterSet = () => {}; window.plClear = () => {};
+      window.plCur = () => ({ exId, target: 20, sets: 3, unit: 'reps', rest: 60 });
+      PLAYER = { phase: 'work', repMs: 0, repCounted: false, repN: 0, elapsed: 0,
+        ecc: 2, eccMs: 2000, repDurMs: 4000, total: 20,
+        cues: ['Elbows in.', 'Brace hard.', 'Full range.'], cueIdx: 0 };
+      for (let k = 0; k < 20 * 40; k++) plTickRep();
+      await new Promise(r => setTimeout(r, 80));
+      Object.assign(window, keep); window.coachSpeak = realSpeak;
+      const missing = [];
+      for (let n = 1; n <= 20; n++) {
+        if (!said.some(x => new RegExp('(^|\\D)' + n + '(\\D|$)').test(x))) missing.push(n);
+      }
+      return { said, missing, coached: said.filter(x => /Elbows in|Brace hard|Full range/.test(x)).length };
+    }, 'pushup');
+    /* Measured before the fix: 4, 8, 10, 12 and 16 were never spoken in a
+       20-rep set — a fifth of the count, silently replaced by coaching. */
+    t.eq('every rep of a 20-rep set is counted aloud', reps.missing.join(','), '', reps.said);
+    /* The floor: the coaching did not simply get deleted to make that true. */
+    t.ok('and the form cues are still coached', reps.coached >= 3, reps.said);
+    t.ok('with the number FIRST, so the next rep cannot cut it off',
+      reps.said.every(x => /^(Up! )?\d/.test(x)), reps.said);
+
+    /* 3. A late tick must not be paid for out of the display, so nothing is
+          spoken from inside a tick any more. Asserted on the SOURCE: these are
+          interval callbacks, and a check that calls them with a stubbed clock
+          cannot see where the utterance was started from. */
+    const src = await page.evaluate(() => ({
+      hold: plTickHold.toString(),
+      rep: plTickRep.toString(),
+      flow: runFlow.toString(),
+      paintsFirst: (() => { const b = plTickHold.toString();
+        return b.indexOf("plS('#plNum'") < b.indexOf('plHype('); })(),
+    }));
+    /* And plSay() really DEFERS. Asserting that the ticks call it instead of
+       coachSpeak() proves only the name changed — a synchronous plSay() puts
+       the stall straight back on the critical path and every source assertion
+       here stays green. Measure the behaviour. */
+    const defers = await page.evaluate(async () => {
+      const real = window.coachSpeak; let n = 0;
+      window.coachSpeak = () => { n++; return true; };
+      plSay('probe'); const sync = n;
+      await new Promise(r => setTimeout(r, 30)); const later = n;
+      /* An empty line must not schedule anything at all. */
+      plSay(''); await new Promise(r => setTimeout(r, 20)); const afterEmpty = n;
+      window.coachSpeak = real;
+      return { sync, later, afterEmpty };
+    });
+    t.eq('plSay speaks nothing synchronously', defers.sync, 0, defers);
+    t.eq('and speaks it once the tick has finished', defers.later, 1, defers);
+    t.eq('an empty line is not spoken at all', defers.afterEmpty, 1, defers);
+    t.ok('the hold tick starts no utterance of its own', !/[^l]coachSpeak\(/.test(src.hold), src.hold.slice(0, 400));
+    t.ok('nor the rep tick', !/[^l]coachSpeak\(/.test(src.rep), src.rep.slice(0, 400));
+    t.ok('the hold tick paints the number BEFORE it coaches', src.paintsFirst, src.hold.slice(0, 400));
+    t.ok('and the flow tick defers its five-second call', /plSay\('Five seconds\.'\)/.test(src.flow));
+
+    /* 4. The player names the movement before EVERY set, not only the first.
+          "Before the exercise start, the exercise should be announced also.
+           Not just time and start. Count in time and reps." */
+    const ready = await page.evaluate(async () => {
+      const said = []; const realSpeak = window.coachSpeak;
+      window.coachSpeak = txt => { said.push(String(txt)); return true; };
+      const keep = { plClear: window.plClear, plChrome: window.plChrome,
+        plBodyWork: window.plBodyWork, plS: window.plS, plRingSet: window.plRingSet,
+        beep: window.beep, autoRoll: window.autoRoll, plCur: window.plCur };
+      window.plClear = () => {}; window.plChrome = () => {}; window.plBodyWork = () => {};
+      window.plS = () => {}; window.plRingSet = () => {}; window.beep = () => {};
+      window.autoRoll = () => {};
+      const run = async (exId, unit, target, setIdx) => {
+        await new Promise(r => setTimeout(r, 60));
+        said.length = 0;
+        window.plCur = () => ({ exId, target, sets: 3, unit, rest: 55 });
+        PLAYER = { phase: 'ready', s: setIdx, i: 0, items: [{ exId }], running: false,
+          ready: 3, budget: 20 };
+        plEnterReady(setIdx === 0);
+        await new Promise(r => setTimeout(r, 60));
+        return said.slice();
+      };
+      const o = {};
+      const first = await run('pushup', 'reps', 12, 0);
+      o.firstSet = first.join(' | ');
+      /* THE ONE THAT WAS BROKEN: the name was only ever said on set 1. */
+      const third = await run('pushup', 'reps', 12, 2);
+      o.laterSet = third.join(' | ');
+      const held = await run('plank', 'time', 45, 1);
+      o.timed = held.join(' | ');
+      Object.assign(window, keep); window.coachSpeak = realSpeak;
+      return o;
+    });
+    t.ok('the first set is announced by name', /Push-?Up/i.test(ready.firstSet), ready);
+    t.ok('and so is the third', /Push-?Up/i.test(ready.laterSet), ready);
+    /* Both halves of the ask: the name AND what is being asked for. */
+    t.ok('with the reps asked for', /12 reps/.test(ready.laterSet), ready);
+    t.ok('a timed movement is named too', /Plank/i.test(ready.timed), ready);
+    t.ok('and given its duration, not a rep count', /0?:?45|45/.test(ready.timed) && !/reps/.test(ready.timed), ready);
+
+    /* And the ready countdown speaks no digits over it, for the same reason
+       the warm-up transition does not. */
+    const readySrc = await page.evaluate(() => plTickReady.toString());
+    t.ok('the ready countdown speaks no digits', !/coachSay\(String/.test(readySrc), readySrc);
+    t.ok('but still beeps every second', /beep\(/.test(readySrc), readySrc);
+    t.ok("and still says 'Go!'", /coachSay\('Go!'\)/.test(readySrc), readySrc);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

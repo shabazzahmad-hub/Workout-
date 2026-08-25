@@ -1999,6 +1999,151 @@ Ten mutants, all caught. The floors are what make it honest: a hand-typed food,
 a quick pick and a barcode must always add a row, and an import on a new day must
 leave yesterday's total alone.
 
+## A voice line and a per-second job cannot share the same second (v307)
+
+Seven reports from one training session, and five of them are one defect wearing
+different clothes. `_deviceSpeak()` calls `speechSynthesis.cancel()` on **every**
+utterance, so any line spoken one second after another kills it mid-word — and
+starting an utterance on Android stalls the main thread long enough that the
+next timer tick arrives late.
+
+- *"after one exercise it goes straight into the other exercise without even
+  announcing the name"* — `enterTransition()` said *"Next up. Arm Circles. Get
+  into position."* and the spoken 3-2-1 cancelled it **one second later**. It
+  never once played to the end.
+- *"before the exercise starts, the exercise should be announced also"* — the
+  player named the movement only on the FIRST set of each exercise, so sets two
+  and three arrived as a bare "Go!".
+- *"it is skipping some numbers"*, in the warm-up **and** in the working sets.
+  Two separate causes, below.
+
+**The beeps are the countdown; a voice on top of them is not a second opinion,
+it is an interruption.** That was already the v302 call and it had only been
+applied to one surface. The spoken digits are gone from the warm-up transition
+and from the player's get-ready — both still beep every second, and the get-ready
+still says "Go!".
+
+### A late tick is paid for out of the display
+
+`plTickHold()` and the flow tick FLOOR `remain` at what the wall clock says is
+really left, which is correct — real time really did pass. Measured: a tick
+arriving 1.6 s late printed **11, 10, 8**. The 9 was simply gone, and so was its
+beep.
+
+The fix is not to remove the floor, it is to stop spending the second inside the
+tick. `plSay()`/`plHype()` defer the utterance so the tick finishes — number
+painted, ring moved, beep fired — before the synthesiser is touched, and
+`plTickHold()` now paints **before** it coaches rather than after.
+
+**A source assertion could not catch this.** A mutant that made `plSay()`
+synchronous escaped four checks, because they all asserted the ticks call
+`plSay` rather than `coachSpeak` — which stays true. The name changing is not
+the fix. The block now stubs `coachSpeak`, calls `plSay`, and asserts nothing
+was spoken **synchronously**.
+
+### The other skipped numbers were not timing at all
+
+Coaching *replaced* the count. Every 4th rep spoke a form cue instead of the
+number and the halfway rep spoke a hype line instead, so a 20-rep set was
+counted aloud as `1 2 3 _ 5 6 7 _ 9 _ 11 _ 13 14 15 _ 17 18 19 20` — **five of
+twenty missing**. The number now goes FIRST in one utterance with the coaching
+after it, because the next rep's `cancel()` will cut whatever is still playing:
+the count always lands and only the coaching can be clipped.
+
+## The pointer gate could defer a callback for ever (v307)
+
+*"After the rest period it just shuts off rather than going into the next set."*
+It had not shut off. `plRestDone()` was sitting in a queue nothing would ever
+drain.
+
+`whenPointerFree()` holds a timer-driven DOM swap until the finger lifts, so a
+tap is never destroyed mid-press. A touch takes **implicit pointer capture** on
+whatever it landed on — and when a timer replaces that element (`plAfterSet()`
+rewrites `#plBody` with no gate of its own), the `pointerup` fires at a node that
+is **no longer in the document** and never reaches a `document` listener.
+`_ptrDown` stuck `true` permanently, and every later `whenPointerFree()` call —
+`plRestDone`, every `ivStep`, `ivDone` — queued a callback that never ran.
+
+Three independent ways to flush now, and the **watchdog** is the one that cannot
+be defeated by a detached element: a finger resting on the glass for 900 ms is
+not mid-tap. A fresh `pointerdown` also flushes, because a new tap proves the
+old one is over whatever became of its `pointerup`.
+
+**The floors are what keep it a deferral rather than a disable**: with no finger
+down the callback runs immediately, and an ordinary completed tap still defers
+and then runs on the `pointerup` — not on the watchdog. A gate that always
+waited out the watchdog would satisfy every "it eventually ran" assertion while
+adding most of a second to every phase change in the app.
+
+## A one-sided movement balances INSIDE the set (v307)
+
+*"The kettlebell bent-over row has three sets and it doesn't tell you to switch
+hands — you'll do two sets on one hand and one on the other. It needs to be
+either two sets or four sets."*
+
+Right about the imbalance, and the set count is the wrong lever: `prescribe()`
+owns it for real reasons and forcing it even here would distort volume
+everywhere else. **The SET is what has to balance**, which is how the other
+fifteen one-sided movements already worked — *"Count each side as a rep"*,
+*"Switch legs halfway through the time"*.
+
+Three said nothing at all (`kbrow`, `kbcp`, `kbwindmill`) and two said it only in
+prose the coach never read (`btbalance`, `kbhalo`). `side:'switch'` is now the
+single place the rule lives, so the steps, the session card and the guided player
+cannot drift apart — and `validateData()` checks the pairing **both directions**,
+because either half alone is a lie.
+
+**The discriminating check is the one that must NOT fire.** `dbrow` holds a bell
+in each hand, `dbcp` cleans both, `kbgoblet` is two hands on one bell — a blanket
+family flag satisfies every "the row is flagged" assertion and fails those.
+
+**The call is not only spoken.** A phone on silent in a gym hears nothing and the
+athlete is looking at the ring, so the switch also gets a rising two-tone cue and
+a line on the coach row. The mutant that deleted both left every spoken assertion
+green — count the tones by FREQUENCY (660 Hz is unique to the switch cue; the rep
+engine's own count tone is 880), and wait past the 140 ms that separates the pair.
+
+## One cadence for every movement was the whole problem (v307)
+
+*"It is clocked at the same pace for all exercises and many exercises require
+more than the same pace — squats, push-ups, V-ups and crawls are compound
+movements and therefore take more time."*
+
+Measured: of **124** rep-based movements, **121 paced at exactly 3.0 s** and the
+other three at 2.0 s. A Turkish get-up and a crunch were the same rep. Two
+separate faults sat behind that.
+
+**The athlete's own Rep cadence setting never reached the player.**
+`plEnterWork()` passed `PLAYER.tempo`, and nothing in this file has ever
+*assigned* `PLAYER.tempo` — so `tempo||3` collapsed to 3 for everybody, forever.
+That is `voicePitch` again: a control that stores a value nothing reads. Worse,
+`plBudgetMin()` and `sessionStats()` DID read the setting, so the session clock
+was priced against a cadence the pacing ignored.
+
+**And a dial cannot express a sequence.** A get-up is not a slow rep, it is five
+positions; a man-maker is a burpee plus two rows plus a clean plus a press.
+`repSec` on the exercise is a **floor the dial cannot undercut** — a fast cadence
+is a preference about tempo lifts, not permission to do a get-up in three
+seconds. 31 movements declare one; the spread is now 2 / 3 / 4 / 4.5 / 5 / 8 / 22
+seconds instead of two values.
+
+A declared movement also counts at its **midpoint** rather than the 3:1 eccentric
+split a tempo lift uses — at 22 s a get-up would otherwise be called at second 16
+and then stand in silence.
+
+**The floor that makes it honest: an ordinary controlled rep is unchanged at 3 s.**
+A mutant that simply slowed everything down (`dial=6`) satisfies every
+"compound movements are slower" assertion and fails that one.
+
+**Two edits nearly went in on a bad anchor.** `pistol:{` matches in `EX` *and* in
+the progression-target map at the same indentation — the same pistol/boxpistol
+family this file already documents. The patch script's `assert count==1` turned
+it into a clean no-op instead of a half-applied edit, and the fix was to require
+`region:` on the line. And a comment naming the dead field failed a check that
+scans that function's source for it: **reword the prose, never weaken the check.**
+
+Twenty mutants across the seven fixes, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

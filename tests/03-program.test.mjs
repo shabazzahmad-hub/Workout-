@@ -169,6 +169,126 @@ export default async function run() {
   t.ok('a four-joint athlete still gets pressing work',
     (fourJoint.byRegion.chest || 0) + (fourJoint.byRegion.strength || 0) > 0, fourJoint.byRegion);
 
+  /* ---- A one-sided movement balances INSIDE the set ----------------------
+     Reported from the phone about the Kettlebell Bent-Over Row: "it doesn't
+     tell you to switch hands, so with three sets you do two on one hand and
+     one on the other. It needs to be either two sets or four to balance."
+
+     Exactly right about the imbalance, and the fix is not the set count —
+     prescribe() owns that for real reasons and forcing it even here would
+     distort volume everywhere else. The SET is what has to balance, which is
+     how the other fifteen one-sided movements in this library already work. */
+  {
+    const side = await page.evaluate(async () => {
+      const o = {};
+      o.flagged = Object.keys(EX).filter(k => EX[k].side === 'switch').sort();
+      /* The three that loaded one arm and said nothing about the other. */
+      o.reported = ['kbcp', 'kbrow', 'kbwindmill'].every(k => EX[k].side === 'switch');
+      /* The two that said it in prose where only a reader would find it. */
+      o.prose = ['btbalance', 'kbhalo'].every(k => EX[k].side === 'switch');
+      /* THE FLOOR, and it is what a blanket flag would fail: two-handed
+         movements must NOT be flagged. dbrow holds a bell in each hand, dbcp
+         cleans both, and kbgoblet is two hands on one bell. */
+      o.twoHanded = ['dbrow', 'dbcp', 'kbgoblet', 'kbcarry', 'ruckcarry']
+        .filter(k => EX[k].side === 'switch');
+      /* Flag and words travel together, both directions. */
+      o.silentFlag = o.flagged.filter(k => {
+        const e = EX[k];
+        return !/switch (hand|side|leg)|each side|other side|reverse direction/i
+          .test([...(e.steps || []), ...(e.cues || []), e.why || ''].join(' '));
+      });
+
+      /* The guided player CALLS it — the steps alone are not the fix, since
+         the player is hands-free and nobody is reading. */
+      const said = []; const realSpeak = window.coachSpeak;
+      window.coachSpeak = txt => { said.push(String(txt)); return true; };
+      const keep = { plS: window.plS, plRingSet: window.plRingSet, beep: window.beep,
+        haptic: window.haptic, plAfterSet: window.plAfterSet, plClear: window.plClear,
+        plCur: window.plCur };
+      /* The call is not only spoken. A phone on silent in a gym hears nothing,
+         and the athlete is hands-free and looking at the ring — so the beep and
+         the on-screen line are part of the fix, not decoration. Counted here
+         because a mutant that deleted them left every spoken assertion green. */
+      let freqs = [], coachPaint = [];
+      window.plS = (sel, v) => { if (sel === '#plCoach') coachPaint.push(String(v)); };
+      window.plRingSet = () => {}; window.beep = f => { freqs.push(f); };
+      window.haptic = () => {}; window.plAfterSet = () => {}; window.plClear = () => {};
+      /* plSay() DEFERS the utterance, which is the whole point of it — so the
+         lines have to be read after the microtask queue drains, not on the
+         line after the last tick. The first version of this block read `said`
+         synchronously and measured an empty array. */
+      const runReps = async exId => {
+        await new Promise(r => setTimeout(r, 80));
+        said.length = 0;
+        window.plCur = () => ({ exId, target: 10, sets: 3, unit: 'reps', rest: 55 });
+        PLAYER = { phase: 'work', repMs: 0, repCounted: false, repN: 0, elapsed: 0,
+          ecc: 2, eccMs: 2000, repDurMs: 4000, total: 10, cues: ['Flat back'], cueIdx: 0 };
+        for (let k = 0; k < 10 * 40; k++) plTickRep();
+        /* 250 ms, not 80: the second tone of the switch pair is scheduled
+           140 ms out so the two read as a rising pair rather than a chord. */
+        await new Promise(r => setTimeout(r, 250));
+        return said.slice();
+      };
+      freqs = []; coachPaint = [];
+      const oneSided = await runReps('kbrow');
+      o.repSwitchTones = freqs.filter(f => f === 660).length;
+      o.repPairFollows = freqs.filter(f => f === 880).length >= 11; o.repPaint = coachPaint.filter(x => /switch sides/i.test(x)).length;
+      o.callsIt = oneSided.some(x => /switch sides/i.test(x));
+      /* HALFWAY, not at the end — a call after the last rep is no call. */
+      o.callsItHalfway = oneSided.findIndex(x => /switch sides/i.test(x)) === 4;   // rep 5 of 10
+      o.counted = oneSided.length;
+      freqs = []; coachPaint = [];
+      const bothHands = await runReps('dbrow');
+      o.twoHandedSwitchTones = freqs.filter(f => f === 660).length;
+      o.twoHandedStillCounts = freqs.filter(f => f === 880).length; o.twoHandedPaint = coachPaint.filter(x => /switch sides/i.test(x)).length;
+      o.twoHandedSilent = !bothHands.some(x => /switch sides/i.test(x));
+
+      /* And a one-sided HOLD, where there are no reps to hang it on. */
+      said.length = 0;
+      const keep2 = { countdownCue: window.countdownCue, beepGo: window.beepGo,
+        motivate: window.motivate };
+      window.countdownCue = () => {}; window.beepGo = () => {}; window.motivate = () => false;
+      freqs = []; coachPaint = [];
+      window.plCur = () => ({ exId: 'btbalance', target: 40, sets: 2, unit: 'time', rest: 45 });
+      PLAYER = { phase: 'work', remain: 40, total: 40, deadline: 0, elapsed: 0 };
+      for (let k = 0; k < 39; k++) plTickHold();
+      await new Promise(r => setTimeout(r, 250));
+      o.holdCallsIt = said.filter(x => /switch sides/i.test(x)).length;
+      o.holdSwitchTones = freqs.filter(f => f === 660).length; o.holdPaint = coachPaint.filter(x => /switch sides/i.test(x)).length;
+      /* The floor for holds: a two-sided hold stays silent. */
+      said.length = 0;
+      window.plCur = () => ({ exId: 'plank', target: 40, sets: 2, unit: 'time', rest: 45 });
+      PLAYER = { phase: 'work', remain: 40, total: 40, deadline: 0, elapsed: 0 };
+      for (let k = 0; k < 39; k++) plTickHold();
+      await new Promise(r => setTimeout(r, 80));
+      o.holdFloorSilent = !said.some(x => /switch sides/i.test(x));
+      Object.assign(window, keep, keep2); window.coachSpeak = realSpeak;
+      return o;
+    });
+    t.ok('the reported row and its two siblings are flagged one-sided', side.reported, side.flagged);
+    t.ok('so are the two that only said it in prose', side.prose, side.flagged);
+    t.eq('a two-handed movement is never flagged', side.twoHanded.join(','), '', side);
+    t.eq('every flagged movement says so in its own steps', side.silentFlag.join(','), '', side);
+    t.ok('the guided player calls the switch on a one-sided set', side.callsIt, side);
+    t.ok('at the halfway rep, not after the last one', side.callsItHalfway, side);
+    t.eq('and still counts all ten reps', side.counted, 10, side);
+    t.ok('a two-handed row is never told to switch', side.twoHandedSilent, side);
+    /* Two tones per call, so it is audible on a silenced phone, plus the line
+       on the glass for anyone who missed both. */
+    t.eq('the switch has its own tone on a rep set', side.repSwitchTones, 1, side);
+    t.ok('followed by the second half of the pair', side.repPairFollows, side);
+    t.eq('and is written on the coach line', side.repPaint, 1, side);
+    t.eq('a two-handed row gets no switch tone', side.twoHandedSwitchTones, 0, side);
+    /* GUARD: the two-handed case really did run — a zero from a set that
+       never ticked would satisfy the line above on nothing. */
+    t.eq('but still counts its ten reps out loud', side.twoHandedStillCounts, 10, side);
+    t.eq('and writes no switch line', side.twoHandedPaint, 0, side);
+    t.eq('a one-sided hold gets the tone too', side.holdSwitchTones, 1, side);
+    t.eq('and writes it', side.holdPaint, 1, side);
+    t.eq('a one-sided HOLD is called exactly once', side.holdCallsIt, 1, side);
+    t.ok('and a two-sided hold stays silent', side.holdFloorSilent, side);
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }
