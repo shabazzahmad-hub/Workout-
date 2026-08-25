@@ -2144,6 +2144,48 @@ scans that function's source for it: **reword the prose, never weaken the check.
 
 Twenty mutants across the seven fixes, all caught.
 
+## The same defect on the surfaces the last round did not touch (v308)
+
+A sweep for more of what v307 had just fixed, run by scanning for the SHAPE of
+each defect rather than by using the app again. Four more, and the first is the
+one the athlete had already asked for.
+
+**`if(!motivate(...))X` makes the hype line REPLACE X**, and `motivate()` returns
+true whenever voice and hype are on — which is the default. v307 fixed that for
+the rep count in `plTickRep()`. It was still live in two places:
+
+- **HIIT never named the exercise.** Measured over 12 rounds: the movement was
+  named **0 times out of 12**. The athlete had asked, one round earlier, for the
+  exercise to be announced before it starts; the guided player was fixed and its
+  interval twin was not.
+- **The standalone rep-cadence timer dropped the halfway count** — `plTickRep()`'s
+  twin, with the identical defect, one function away.
+
+Both now put the information FIRST in one utterance with the coaching after it,
+the same call v307 made: the next line's `synth.cancel()` can only clip the
+flavour.
+
+**The baseline battery spoke a digit over its own announcement on EVERY second.**
+Every other countdown in the app guards its spoken digits with `<=3`; this one
+had no guard at all, so `'Get ready.'` was cancelled a second later and again
+and again. The beeps already mark those seconds. And while it was there, the
+battery now names the test it is about to measure — the announcement is kept
+**synchronous** on purpose, because v291 keys the battery's coach off `_bt` being
+non-null and a deferred utterance is one more place that ordering could drift.
+
+**A failing check with no detail crashed the reporter.** `JSON.stringify(undefined)`
+returns `undefined`, not a string, so `.slice()` threw and the run was reported as
+*"the test file itself threw"* rather than naming the check. Two of six mutants
+were caught that way — still red, but you could not see which check caught them.
+`t.finish()` now prints `(no detail)`. The lesson is the same one this file
+already records about a throw hiding which property broke: **red is not enough,
+it has to say what.**
+
+Six mutants, all caught. Two floors carry the weight: HIIT must still coach
+after the name (an over-eager fix that deleted the hype passes every "is it
+named?" assertion), and the hype must not come first (which satisfies "both
+are spoken" while putting the information back where a cancel eats it).
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
