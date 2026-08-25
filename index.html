@@ -1807,7 +1807,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='307';
+const APP_VERSION='308';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -5695,8 +5695,16 @@ function ivStep(idx){
   ivS('#ivNum',fmtTime(INTV.remain));ivS('#ivSub',isWork?'WORK':'REST');ivRingSet(1);
   const pulse=$('#ivPulse');if(pulse){if(isWork&&INTV.running)pulse.classList.add('on');else pulse.classList.remove('on');}
   autoRoll();
-  if(isWork){beepDuck(300);beep(1320,.16,0.95);if(!motivate('during'))coachSpeak('Work! '+ex.name);}
-  else coachSpeak('Rest.');
+  /* THE NAME IS INFORMATION; THE HYPE IS FLAVOUR. `if(!motivate(...))` made the
+     hype line REPLACE the announcement, and motivate() returns true whenever
+     voice and hype are on — which is the default. Measured: the exercise was
+     named 0 times out of 12. Same defect as the rep count, one surface over,
+     and the same fix: the name goes first in ONE utterance so the next line's
+     synth.cancel() can only clip the coaching. */
+  if(isWork){beepDuck(300);beep(1320,.16,0.95);
+    const h=motivateLine('during');
+    plSay('Work! '+ex.name+(h?'. '+h:''));}
+  else plSay('Rest.');
   if(INTV.running)INTV.tid=setInterval(ivTick,1000);
 }
 function ivTick(){
@@ -5934,7 +5942,12 @@ function startBaselineTimer(){
   beatStart();   // background beat during the baseline test too (matches the workouts)
   openSheet(baselineTimerHTML(t));
   _bt={iv:setInterval(tick,1000),mode:'ready',ready:3,elapsed:0,dur:dur,tid:t.id};
-  paintReady();coachSay('Get ready.');
+  /* Name the test, the same way every other surface now names what is coming.
+     NOT deferred: v291 keys the battery's coach off `_bt` being non-null, and
+     a deferred utterance is one more place that ordering could drift. The
+     ready tick here has no wall-clock floor, so a stalled second runs long
+     rather than skipping a number. */
+  paintReady();coachSay(t.name+'. Get ready.');
   /* Solid for the 3-2-1 into position, a watermark once the effort is running.
      Same trade the player already makes: during the effort the clock gives way
      to the photograph, because the athlete is holding a plank and cannot look
@@ -5949,7 +5962,11 @@ function startBaselineTimer(){
     if(!_bt)return;
     if(_bt.mode==='ready'){
       _bt.ready--;
-      if(_bt.ready>0){beep(660,.09);coachSay(String(_bt.ready));paintReady();}
+      /* No spoken digit. It cancelled the announcement one second after it
+         started, and unlike every other countdown here it had no `<=3` guard
+         at all — it spoke over the name on every single second. The beep
+         already marks them. */
+      if(_bt.ready>0){beep(660,.09);paintReady();}
       else{beep(990,.14);haptic(20);if(!motivate('start'))coachSay('Go!');_bt.mode='run';_bt.elapsed=0;paintRun();}
       return;
     }
@@ -7978,8 +7995,11 @@ function runRepCadence(reps,label,restAfter,onDone,ex){
   function step(){
     n++;
     beep(760,.06);haptic(14);
-    if(total>=8&&n===half){if(!motivate('during'))coachSpeak(String(n));}   // mid-set push
-    else coachSpeak(String(n));
+    /* The count is never dropped here either — plTickRep()'s twin, and it had
+       the identical defect: a hype line at the halfway rep REPLACED the number
+       rather than following it. */
+    const h=(total>=8&&n===half)?motivateLine('during'):'';
+    plSay(String(n)+(h?'. '+h:''));
     paint();
     if(n>=total){
       stopTimer();

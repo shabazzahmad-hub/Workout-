@@ -135,8 +135,16 @@ export function suite(name) {
       const passed = checks - failures.length;
       if (failures.length) {
         console.log(`\n✗ ${name} — ${failures.length} failed, ${passed} passed`);
-        failures.forEach(f => console.log(
-          `    ✗ ${f.label}\n      ${typeof f.detail === 'string' ? f.detail : JSON.stringify(f.detail).slice(0, 500)}`));
+        /* JSON.stringify(undefined) returns undefined, not a string, so a
+           failing check called WITHOUT a detail argument crashed the reporter
+           here — and the run was then reported as "the test file itself threw"
+           rather than naming the check that failed. A mutant caught by such a
+           check is still red, but you cannot see which one it was. */
+        failures.forEach(f => {
+          const d = typeof f.detail === 'string' ? f.detail
+            : (f.detail === undefined ? '(no detail)' : String(JSON.stringify(f.detail)));
+          console.log(`    ✗ ${f.label}\n      ${d.slice(0, 500)}`);
+        });
       } else {
         console.log(`✓ ${name} — ${checks} checks`);
       }

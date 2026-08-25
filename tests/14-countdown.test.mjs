@@ -485,6 +485,78 @@ export default async function run() {
     t.ok('the ready countdown speaks no digits', !/coachSay\(String/.test(readySrc), readySrc);
     t.ok('but still beeps every second', /beep\(/.test(readySrc), readySrc);
     t.ok("and still says 'Go!'", /coachSay\('Go!'\)/.test(readySrc), readySrc);
+
+    /* 5. THE SAME DEFECT ON THE SURFACES v307 DID NOT TOUCH. Fixing one
+          instance is not fixing the class — `if(!motivate(...))X` makes the
+          hype line REPLACE X, and motivate() returns true whenever voice and
+          hype are on, which is the default. */
+    const sweep = await page.evaluate(async () => {
+      const o = {}; const said = [];
+      const real = { speak: window.coachSpeak, hype: window.hypeSpeak };
+      window.coachSpeak = txt => { said.push(String(txt)); return true; };
+      window.hypeSpeak = txt => { said.push('HYPE:' + txt); return true; };
+      const keep = { ivClear: window.ivClear, ivRenderStep: window.ivRenderStep,
+        ivS: window.ivS, ivRingSet: window.ivRingSet, autoRoll: window.autoRoll,
+        beep: window.beep, beepDuck: window.beepDuck };
+      window.ivClear = () => {}; window.ivRenderStep = () => {}; window.ivS = () => {};
+      window.ivRingSet = () => {}; window.autoRoll = () => {}; window.beep = () => {};
+      window.beepDuck = () => {};
+      INTV = { i: 0, seq: [{ exId: 'burpee', type: 'work', secs: 30 }],
+        running: false, total: 30, workElapsed: 0 };
+      /* TWELVE rounds, not one. The hype line is picked at random, so a single
+         round passes on a coin flip — measured at 0 named out of 12 before. */
+      let named = 0, hyped = 0;
+      for (let k = 0; k < 12; k++) {
+        said.length = 0; ivStep(0);
+        await new Promise(r => setTimeout(r, 20));
+        if (said.some(x => /Burpee/i.test(x))) named++;
+        if (said.some(x => /Burpee[.,]\s+\S/i.test(x))) hyped++;
+      }
+      o.hiitNamed = named; o.hiitStillHypes = hyped;
+      Object.assign(window, keep);
+      window.coachSpeak = real.speak; window.hypeSpeak = real.hype;
+      return o;
+    });
+    t.eq('HIIT names the movement on every single round', sweep.hiitNamed, 12, sweep);
+    /* The floor: the hype was not simply deleted to make that true. */
+    t.ok('and still coaches after the name', sweep.hiitStillHypes >= 10, sweep);
+
+    /* The source shape, on the three surfaces where a hype line could still
+       swallow information the athlete asked for. */
+    const noSwallow = await page.evaluate(() => ({
+      hiit: /if\(!motivate\([^)]*\)\)coachSpeak\('Work!/.test(ivStep.toString()),
+      baselineDigits: /coachSay\(String\(_bt\.ready\)\)/.test(startBaselineTimer.toString()),
+      baselineNames: /coachSay\(t\.name\+/.test(startBaselineTimer.toString()),
+    }));
+    t.ok('the hype line can no longer replace the HIIT name', !noSwallow.hiit);
+    t.ok('the baseline speaks no digit over its own announcement', !noSwallow.baselineDigits);
+    t.ok('and names the test that is about to be measured', noSwallow.baselineNames);
+
+    /* The standalone rep-cadence timer is plTickRep()'s twin and had the
+       identical defect. Driven for real: the whole set, counted aloud. */
+    const cadence = await page.evaluate(async () => {
+      const said = []; const real = { speak: window.coachSpeak, hype: window.hypeSpeak };
+      window.coachSpeak = txt => { said.push(String(txt)); return true; };
+      window.hypeSpeak = txt => { said.push(String(txt)); return true; };
+      const realSI = window.setInterval;
+      /* Run its two intervals — the 5-second lead-in and the rep step — fast. */
+      window.setInterval = (fn, ms) => realSI(fn, 6);
+      runRepCadence(20, 'Probe', 0, null, EX.pushup);
+      await new Promise(r => realSI(r, 900));
+      try { stopTimer(); closeSheet(); } catch (e) {}
+      window.setInterval = realSI;
+      await new Promise(r => setTimeout(r, 60));
+      window.coachSpeak = real.speak; window.hypeSpeak = real.hype;
+      const missing = [];
+      for (let n = 1; n <= 20; n++) {
+        if (!said.some(x => new RegExp('(^|\\D)' + n + '(\\D|$)').test(x))) missing.push(n);
+      }
+      return { missing, said: said.slice(0, 26) };
+    });
+    /* GUARD: the timer really ran, or an empty transcript has no missing
+       numbers and the check passes on nothing. */
+    t.ok('guard: the rep-cadence timer actually ran', cadence.said.length > 5, cadence);
+    t.eq('and counted every rep of the set aloud', cadence.missing.join(','), '', cadence);
   }
 
   srv.close();
