@@ -2186,6 +2186,60 @@ after the name (an over-eager fix that deleted the hype passes every "is it
 named?" assertion), and the hype must not come first (which satisfies "both
 are spoken" while putting the information back where a cancel eats it).
 
+## Blaming safety for a limit safety did not set (v309)
+
+*"This is predicting I reach 165 lb by January 2028 — isn't it possible to do
+this in 6 months, since that is one of the questions when setting up your
+goals?"*
+
+Yes, and the app said otherwise in a sentence that was simply false:
+
+> Your 24-week target needs a faster pace than is safe — this is the quickest
+> healthy route.
+
+25 lb in 24 weeks is **~1.0 lb/week — 0.55% of bodyweight**, and
+`projectionHTML()`'s OWN safety cap (`byRate = kg*0.01`) allows **1.9 lb/week**.
+Safety was never the binding constraint. What bound was `byDeficit`: the
+athlete's calorie target sat about **170 kcal below maintenance**, which
+supports 0.34 lb/week — so the date slid from June to **January 2028**.
+
+Three caps compete and the code kept only the winner's VALUE, never its
+identity. `projBind` now records which one bound, and the note says so. This is
+the v289 lesson again in a new place: **the app had everything it needed to name
+the real reason and printed a different one**, leaving the athlete nothing to
+act on. The new copy names the deficit it actually has, states that the pace
+they want IS safe, and gives the number to change.
+
+**The floor that keeps it honest: a pace that really is unsafe must still say
+so.** An 8-week target needs 3.1 lb/week, and that sentence is correct there —
+so safety is tested FIRST, and a check pins the crash-diet case. A fix that
+deleted the safety wording passes every assertion about the reported case.
+
+**And the calories it would take may themselves be unsafe.** If the required
+deficit would put the athlete below `kcalTargetPreview()`'s floor, the note says
+that instead of offering a target the app would refuse to prescribe — the same
+rule the setter already follows. `floor` and `bmr` are now returned from that
+function so the projection can tell the two failures apart.
+
+### A weight-stable goal is not an under-prescribed cut
+
+`recomp` and `maintain` sit AT maintenance by design (v298), so the deficit is
+~0 and the arithmetic produced **"4158 wk" and a date in the year 2106** — which
+reads as broken, not deliberate. Worse, the new explanation would have told a
+recomp athlete to *eat less*, contradicting the goal they deliberately chose.
+
+A stable goal now projects **no date at all** and says why: the aim is to change
+shape while the scale holds, and the physique pictures are the measure. The
+switch to Fat loss is offered, never prescribed.
+
+**One week of `Math.ceil` rounding is not a missed date.** An exact 24-week plan
+lands on 25 and complained about itself; the tolerance is `tlw+1`, because a
+line that cries wolf is a line the athlete learns to skip.
+
+Seven mutants, all caught. The two that matter are the over-eager pair: never
+saying "unsafe" fails the 8-week crash target, and treating a stable goal as a
+cut fails the recomp checks.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

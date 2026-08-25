@@ -1807,7 +1807,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='308';
+const APP_VERSION='309';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -11662,7 +11662,18 @@ function projectionHTML(){
   if(!(kg>0))return `<div class="note info" style="margin-top:10px">Log your body weight (Body composition ▸ <b>+ Log</b>) to see your projection to goal.</div>`;
   if(!(tkg>0))return `<div class="note info" style="margin-top:10px">Pick a target physique above to project your timeline.</div>`;
   const losing=tkg<kg, diff=Math.abs(kg-tkg);
+  let projBind='timeline';
   if(diff<0.5)return `<div class="note" style="margin-top:10px;border-color:var(--green)"><b style="color:var(--green)">🎯 You're at your target weight.</b> Hold it and let your training reveal the definition.</div>`;
+  /* NO FAKE DATE ON A WEIGHT-STABLE GOAL. recomp and maintain sit AT
+     maintenance by design (v298), so the projected rate is ~0 and the
+     arithmetic produced "4158 wk" and a date in the year 2106 — which reads as
+     broken rather than as a deliberate choice. Say what the goal actually is
+     and where progress will show up instead. */
+  if(losing&&typeof weightStableGoal==='function'&&weightStableGoal(nut().goal))
+    return `<div class="note info" style="margin-top:10px"><b>Your goal holds your weight steady.</b>
+      Your Fuel goal is set to <b>${nut().goal==='maintain'?'maintain':'recomposition'}</b>, which eats at maintenance on purpose — so there is no deficit and no date to project.
+      That is the point of it: the aim is to lose fat and build muscle while the scale stays put, and the physique pictures above are what should change.
+      <div class="tiny muted" style="margin-top:6px">Want the scale to move to ${disp(tkg)}${wu} instead? Set your Fuel goal to <b>Fat loss</b> and a date appears here.</div></div>`;
   let rate=losing?Math.max(0.2,Math.min(1.0,kg*0.007)):Math.max(0.15,Math.min(0.4,kg*0.0025));
   let weeks=Math.max(1,Math.ceil(diff/rate));
   // Honour the timeline the athlete chose in the quiz ("sets your projection pace"),
@@ -11681,6 +11692,23 @@ function projectionHTML(){
        a kilo a week from a 343 kcal surplus. */
     const byDeficit=dfc>0?dfc*7/7700:0;
     const capped=losing?Math.min(wanted,byRate,byDeficit):Math.min(wanted,0.5);
+    /* WHICH cap bound is the whole explanation, and the app used to throw it
+       away. Reported from the phone: a 190 lb athlete asking for 165 lb in 24
+       weeks was told "your 24-week target needs a faster pace than is safe".
+       It does not. That is 1.0 lb/week — 0.55% of bodyweight — and this
+       function's OWN safety cap (byRate) allows 1.9 lb/week. What actually
+       bound was byDeficit: a 168 kcal target supports 0.34 lb/week, so the
+       date slid to January 2028.
+
+       Blaming safety for a limit safety did not set is the same defect class
+       as a promise in UI text with no code behind it, and it leaves the
+       athlete with nothing to do. Safety is checked FIRST, because when it
+       really is the binding limit that is the more important thing to say. */
+    if(losing&&wanted>0){
+      if(wanted>byRate)projBind='safety';
+      else if(byDeficit>0&&wanted>byDeficit)projBind='deficit';
+      else if(byDeficit<=0)projBind='nodeficit';
+    }
     if(capped>0){rate=capped;weeks=Math.max(1,Math.ceil(diff/rate));}
   }
   const start=Date.now(),end=start+weeks*7*86400000;
@@ -11691,7 +11719,45 @@ function projectionHTML(){
       <div><div style="font-size:21px;font-weight:900">${disp(tkg)}${wu} <span class="tiny muted" style="font-weight:600">by</span> ${monthLbl}</div></div>
       <div class="tiny muted" style="text-align:right">~${weeks} wk<br>~${dispRate}${wu}/wk</div>
     </div>${projectionChartSVG(start,end,kg,tkg,actual,wu,imp)}
-    <div class="tiny muted" style="margin-top:6px">${tlw>0&&weeks>tlw?`Your ${tlw}-week target needs a faster pace than is safe — this is the quickest healthy route.`:(tlw>0?`Paced to the ~${tlw}-week timeline you picked.`:`A realistic pace at a moderate ${losing?'deficit':'surplus'}.`)} Log weight weekly — the teal dots track you against the plan.</div>`;
+    <div class="tiny muted" style="margin-top:6px">${projWhyHTML(projBind,tlw,weeks,diff,imp,wu)} Log weight weekly — the teal dots track you against the plan.</div>`;
+}
+/* WHY the date is what it is — naming the constraint that actually set it, and
+   what the athlete can do about it. "A range is not an explanation" (v289) and
+   this was the same shape: the app knew the real reason and printed a
+   different one. */
+function projWhyHTML(bind,tlw,weeks,diff,imp,wu){
+  if(!(tlw>0))return `A realistic pace at a moderate deficit.`;
+  /* One week of rounding is not a missed date. `weeks` is a Math.ceil of a
+     fractional number of weeks, so an exact match routinely lands one week
+     over — and complaining about that is noise that teaches the athlete to
+     ignore this line. */
+  if(weeks<=tlw+1)return `Paced to the ~${tlw}-week timeline you picked.`;
+  const disp=k=>imp?Math.round(k/0.453592*10)/10:Math.round(k*10)/10;
+  const need=diff/tlw;                       // kg/wk to make the date
+  const needKcal=Math.round(need*7700/7);    // the daily deficit that produces it
+  if(bind==='safety')
+    return `Your ${tlw}-week target needs ~${disp(need)}${wu}/wk, which is faster than is safe — this is the quickest healthy route.`;
+  const p=(typeof kcalTargetPreview==='function')?kcalTargetPreview():null;
+  const n=nut();
+  /* A WEIGHT-STABLE GOAL IS NOT AN UNDER-PRESCRIBED CUT. On recomp or maintain
+     the target IS maintenance by design (v298), so telling the athlete to eat
+     less contradicts the goal they deliberately chose. Say what is actually
+     true and leave the choice with them. */
+  if(typeof weightStableGoal==='function'&&weightStableGoal(n.goal))
+    return `Your Fuel goal is set to <b>hold your weight</b>, so the app is not prescribing a deficit and the scale is not projected to move. Recomposition changes your <b>shape</b>, not the number — the physique pictures above are the better measure. Switch your Fuel goal to <b>Fat loss</b> if you want a date for ${disp(diff)}${wu} off the scale.`;
+  const wouldEat=(p&&p.tdee)?p.tdee-needKcal:0;
+  /* Even when the PACE is safe, the calories it needs may not be. Say that
+     instead, rather than offering a target the app would refuse to prescribe —
+     the same rule kcalTargetPreview() already follows. */
+  if(p&&p.floor&&wouldEat>0&&wouldEat<p.floor)
+    return `Your ${tlw}-week target needs ~${disp(need)}${wu}/wk, which would mean eating about <b>${Math.round(wouldEat/10)*10}</b> kcal a day — below your safe floor of <b>${Math.round(p.floor/10)*10}</b>. This is the quickest healthy route.`;
+  const have=(p&&p.tdee&&n.kcalTarget)?Math.max(0,p.tdee-n.kcalTarget):0;
+  const fix=wouldEat>0?` To hit the date, set your Fuel goal to <b>Fat loss</b>, or lower your daily target to about <b>${Math.round(wouldEat/10)*10}</b> kcal.`:'';
+  if(bind==='nodeficit'||have<=0)
+    return `<b>The pace is not the problem — your calories are.</b> Your ${tlw}-week target needs ~${disp(need)}${wu}/wk, which is a safe pace. But your calorie target is at maintenance, so there is no deficit to lose from.${fix}`;
+  if(bind==='deficit')
+    return `<b>The pace is not the problem — your calories are.</b> Your ${tlw}-week target needs ~${disp(need)}${wu}/wk, which is a safe pace. Your calorie target is only <b>${have}</b> kcal below maintenance, and that supports about ${disp(diff/weeks)}${wu}/wk.${fix}`;
+  return `Your ${tlw}-week target needs a faster pace than is safe — this is the quickest healthy route.`;
 }
 function transformationHTML(){
   const cb=curBF();
@@ -14148,7 +14214,10 @@ function kcalTargetPreview(adjOverride){
      collapsed to the same number. isFemale() already handles every spelling. */
   const floor=Math.max(bmr*1.1, isFemale()?1200:1500);
   const floored=t<floor-1;
-  return {tdee:Math.round(tdee),adj,floored,target:Math.round(Math.max(t,floor)/10)*10};
+  /* `floor` and `bmr` are returned so the weight projection can tell the two
+     reasons a date slips apart: a pace that is genuinely unsafe, and a calorie
+     target that is simply not deep enough to produce it. */
+  return {tdee:Math.round(tdee),bmr:Math.round(bmr),floor:Math.round(floor),adj,floored,target:Math.round(Math.max(t,floor)/10)*10};
 }
 function recalcKcalFromStored(){
   const n=nut();const p=kcalTargetPreview();if(!p)return;

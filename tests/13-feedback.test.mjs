@@ -622,6 +622,100 @@ export default async function run() {
   }
 
   srv.close();
+  /* ---- The projection must name the constraint that actually set the date --
+     Reported from the phone with a screenshot: a 190 lb athlete asking for
+     165 lb in 24 weeks was told
+
+       "Your 24-week target needs a faster pace than is safe —
+        this is the quickest healthy route"
+
+     and given January 2028, at 0.3 lb/week. That sentence is FALSE. 25 lb in
+     24 weeks is ~1.0 lb/week — 0.55% of bodyweight — and this function's own
+     safety cap allows 1.9 lb/week. Safety was never the binding limit. What
+     bound was the calorie target: a ~170 kcal deficit supports 0.34 lb/week.
+
+     Same class as v289: the app knew the real reason and printed a different
+     one, leaving the athlete nothing to act on. */
+  {
+    const proj = await page.evaluate(() => {
+      const LB = 0.453592;
+      const strip = h => h.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+      const run = (goal, weeks) => {
+        STATE.profile.unit = 'in'; STATE.profile.sex = 'male'; STATE.profile.age = 52;
+        STATE.profile.goal = goal; STATE.nutrition.goal = goal;
+        STATE.nutrition.sex = 'male'; STATE.nutrition.age = 52;
+        STATE.nutrition.heightCm = 178; STATE.nutrition.activity = 1.45;
+        STATE.profile.timelineWeeks = weeks;
+        STATE.nutrition.weightKg = 190 * LB;
+        STATE.measurements = [{ date: new Date().toISOString().slice(0, 10), weight: 190 * LB }];
+        STATE.profile.goalWeightLb = 165;
+        recalcKcalFromStored();
+        const html = projectionHTML();
+        return {
+          wk: +(html.match(/~(\d+) wk/) || [])[1] || null,
+          rate: +(html.match(/~([\d.]+)lb\/wk/) || [])[1] || null,
+          text: strip(html),
+        };
+      };
+      const o = {};
+      o.underfed = run('core', 24);           // the reported case
+      o.cutting = run('lose', 24);            // a real deficit makes the date
+      o.tooFast = run('lose', 8);             // genuinely unsafe
+      o.roomy = run('lose', 60);              // no complaint at all
+      o.recomp = run('recomp', 24);           // weight-stable by design
+      o.maintain = run('maintain', 24);
+      /* The app's own safe cap, so the check cannot drift from the code. */
+      o.safeCapLbWk = +((190 * LB * 0.01) / LB).toFixed(2);
+      return o;
+    });
+
+    /* THE REPORTED CASE. The date really does slip — that part was right. */
+    t.ok('an under-prescribed deficit still slides the date', proj.underfed.wk > 24, proj.underfed);
+    /* …but it must NOT be blamed on safety, because safety allows ~1.9 lb/wk
+       and the date needs ~1.0. */
+    t.ok('and it is no longer blamed on an unsafe pace',
+      !/faster pace than is safe/.test(proj.underfed.text), proj.underfed.text.slice(0, 200));
+    t.ok('the calorie target is named as the real reason',
+      /calories are|below maintenance/i.test(proj.underfed.text), proj.underfed.text.slice(0, 200));
+    t.ok('and the athlete is told the pace itself is safe',
+      /is a safe pace/i.test(proj.underfed.text), proj.underfed.text.slice(0, 200));
+    t.ok('with something to actually do about it',
+      /Fat loss|lower your daily target/i.test(proj.underfed.text), proj.underfed.text.slice(0, 200));
+    t.ok('guard: the safe cap really is well above the pace needed',
+      proj.safeCapLbWk > 1.5, proj);
+
+    /* THE FLOOR THAT KEEPS IT HONEST — a pace that IS unsafe must still say
+       so. A fix that simply deleted the safety wording passes everything
+       above. */
+    t.ok('an 8-week crash target is still called unsafe',
+      /faster than is safe/.test(proj.tooFast.text), proj.tooFast.text.slice(0, 200));
+    t.ok('and does not blame the calories for it',
+      !/calories are/i.test(proj.tooFast.text), proj.tooFast.text.slice(0, 200));
+
+    /* A real deficit makes the date, and one week of Math.ceil rounding is not
+       a missed date — complaining about that teaches the athlete to ignore
+       this line. */
+    t.ok('a real deficit is not complained about at all',
+      /Paced to the ~24-week timeline/.test(proj.cutting.text), proj.cutting.text.slice(0, 200));
+    t.ok('nor is a roomy timeline',
+      /Paced to the ~60-week timeline/.test(proj.roomy.text), proj.roomy.text.slice(0, 200));
+
+    /* A WEIGHT-STABLE GOAL IS NOT AN UNDER-PRESCRIBED CUT. Telling a recomp
+       athlete to eat less contradicts the goal they chose (v298) — and the
+       arithmetic produced "4158 wk" and a date in the year 2106, which reads
+       as broken rather than deliberate. */
+    ['recomp', 'maintain'].forEach(g => {
+      const r = proj[g];
+      t.eq(`${g} projects no date at all`, r.wk, null, r);
+      t.ok(`${g} says the goal holds the weight on purpose`,
+        /holds your weight steady/i.test(r.text), r.text.slice(0, 200));
+      t.ok(`${g} is never told to cut harder`,
+        !/lower your daily target/i.test(r.text), r.text.slice(0, 200));
+      t.ok(`${g} still offers the switch if they want the scale to move`,
+        /Fat loss/.test(r.text), r.text.slice(0, 200));
+    });
+  }
+
   const failed = t.finish(errors);
   await browser.close();
   return failed;
