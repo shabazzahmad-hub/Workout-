@@ -459,6 +459,51 @@ export default async function () {
     }
   }
 
+  /* ---------- 10b. the harness must not hand back a covered page -----------
+     The check above failed one CI run in three with `hit: "sgrad"` — the
+     SPLASH's own gradient. `.splash` is a full-screen `z-index:400` overlay
+     dismissed 850ms after the first draw, and waitForBoot resolved on a
+     rendered view at about 626ms, so it returned a page with an opaque sheet
+     over the whole app and called it booted.
+
+     Nothing that reads TEXT could tell, which is why it survived so long — but
+     every check that hit-tests, clicks or screenshots was racing a timer it did
+     not know about, and an unrelated change shifting the timing by a few
+     milliseconds is all it took to lose. Fixing it inside the one check that
+     noticed would have left the class alive, so waitForBoot waits for it.
+
+     MEASURED AT THE MOMENT BOOT RESOLVES, on a fresh load. The first version of
+     this block sat where the failure happened, four seconds in — by which time
+     the splash is gone whatever waitForBoot does, so the mutant that deletes
+     the wait walked straight through it. A check that cannot fire in the case
+     you tested is not tested. */
+  {
+    const pg = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await pg.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
+    await waitForBoot(pg);
+    /* Read SYNCHRONOUSLY in the first evaluate after the wait — any further
+       await hands the splash's own 850ms timer the chance to fire and the
+       assertion passes on that instead. */
+    const r = await pg.evaluate(() => {
+      const sp = document.getElementById('splash');
+      const v = document.querySelector('.view.active');
+      const el = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
+      return {
+        splashGone: !sp || sp.classList.contains('hide'),
+        rendered: !!v && v.innerHTML.length > 400,
+        hit: el ? (el.id || el.className || el.tagName) : 'null',
+      };
+    });
+    await pg.close();
+    /* The floor: waiting for the splash must not have turned waitForBoot into
+       a wait for nothing. A mutant that returns before the app has drawn
+       satisfies every "no overlay" assertion. */
+    t.ok('boot still waits for the app to actually render', r.rendered, r);
+    t.ok('and the splash is dismissed before it hands back', r.splashGone, r);
+    t.ok('so a hit-test in the middle of the page reaches the app, not an overlay',
+      !/splash|sgrad/.test(String(r.hit)), r);
+  }
+
   /* ---------- 11. HIIT and the flow counted callbacks, not seconds -------
      v238 gave the guided player a wall-clock anchor because Chrome throttles a
      hidden tab's timers to roughly one callback a minute. Both twins were left

@@ -71,11 +71,33 @@ export async function launch(port) {
    for the app, not for the network — a fixed sleep passes on a fast machine and
    fails on a slower CI runner, which reads as a broken app rather than as a
    check measuring the wrong thing. A rendered active view is the signal: it can
-   only happen after load() has resolved. */
+   only happen after load() has resolved.
+
+   AND THE SPLASH HAS TO BE GONE. `.splash` is a full-screen `z-index:400`
+   overlay dismissed 850ms after the first draw and removed 600ms after that;
+   a rendered view resolves at about 626ms, so this used to hand back a page
+   with an opaque sheet over the whole app and call it booted. Nothing that
+   reads TEXT could tell, which is why it survived — but `elementFromPoint`
+   returns the splash's own gradient, so every reachability check in the suite
+   was racing a timer it did not know about. Suite 23's lift-input check lost
+   that race about one run in three the moment an unrelated change shifted the
+   timing by a few milliseconds, and read as a layering bug in the player.
+
+   Waiting for it here rather than in the one check that noticed: the overlay
+   covers every view, so any check that clicks, hit-tests or screenshots has
+   the same exposure, and a fix in one of them leaves the class alive.
+
+   The rendered-view test below is kept as intent, and NO CHECK CAN CATCH ITS
+   REMOVAL: boot schedules `setTimeout(hideSplash,850)` on the line after
+   render(), so a hidden splash already implies a drawn app and dropping the
+   first condition is an equivalent mutant. Read the mutant back before
+   rewriting the check that "missed" it. */
 export function waitForBoot(page, timeout = 15000) {
   return page.waitForFunction(() => {
     const v = document.querySelector('.view.active');
-    return !!v && v.innerHTML.length > 400;
+    if (!v || v.innerHTML.length <= 400) return false;
+    const sp = document.getElementById('splash');
+    return !sp || sp.classList.contains('hide');
   }, null, { timeout });
 }
 
