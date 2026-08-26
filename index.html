@@ -1807,7 +1807,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='320';
+const APP_VERSION='321';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -1971,11 +1971,88 @@ function estimateMaxes(m){
     push:Math.round(12*s),pull:Math.round(7*s),squat:Math.round(22*s),power:Math.round(10*s),
     stamina:Math.round(12*s)},clean);
 }
+/* A flagged joint changes WHICH movement earns a test's number, and v320
+   established that this makes the number incomparable to an un-flagged run. It
+   also makes it the wrong number to PRESCRIBE from — which the comment on
+   renderAssessStep() explicitly denied ("every downstream anchor/maxes read is
+   unaffected"). It is not. prescribe() does
+
+       target = maxes[anchor] * frac * ex.hardness
+
+   and `hardness` is DEFINED as a fraction of the anchor test's max, so a value
+   measured on a substitute sits on a different scale entirely.
+
+   Measured, one athlete, one true capacity, week 1 of block 1:
+
+     flag      test   measured on             Dead Bug  Crunch  Toe Touch
+     none      lower  Reverse Crunch (h 1.0)        10      10          8
+     lowback   lower  Dead Bug       (h 1.4)        15      15         12
+
+   Flagging a joint raised every target in the flagged region by 40-50%. The
+   shoulder case is the same shape, +38% on the Towel Door Row that all eight
+   pull movements land on. And the pull test's OWN instruction warns about
+   exactly this hazard — "this number scales every row and pull-up you will be
+   given, so a back extension like the Superman would badly over-prescribe
+   them" — while the app went and substituted an easier movement itself.
+
+   `hardness` IS the conversion factor. It is already how the app relates the
+   two movements to one scale, so the anchor-equivalent max is
+
+       recorded * hardness(original) / hardness(substitute)
+
+   THE GUARD IS THE POINT, and it is what stops this being a universal
+   converter. Only a substitute that measures the SAME quantity in the SAME
+   units is re-scaled:
+
+     lower   revcrunch(lower,reps)  -> deadbug(lower,reps)    re-scale
+     pull    invertedrow(pull,reps) -> towelrow(pull,reps)    re-scale
+     push    pushup(push,reps)      -> fistpushup(push,reps)  re-scale
+     dyn     bicycle(dyn,TIME)      -> deadbug(lower,REPS)    leave alone
+     power   jumpsquat(power,reps)  -> squat(SQUAT,reps)      leave alone
+
+   A jump squat and a bodyweight squat are BOTH hardness 1.0 and are not the
+   same measurement at all: explosive power is a quality `hardness` cannot
+   express, and inventing a ratio there would be worse than declining to. It
+   costs nothing to decline — measured, 0 of 3 power-anchored and 0 of 1
+   dyn-anchored movements survive their own flag's swap, so neither anchor is
+   ever read for the athlete whose test was substituted.
+
+   The RECORD keeps the raw number. v320 needs it raw to plot a real point, and
+   an athlete who did 20 dead bugs did 20 dead bugs. The conversion happens on
+   the way to prescribe(), never on the way to storage. A record with no `subs`
+   at all is a legacy record: nothing is converted, because nothing is known. */
+const ANCHOR_EQUIV_BAND=[0.5,2];
+function anchorEquiv(testId,value,subs){
+  try{
+    if(!subs||typeof subs!=='object')return value;      // legacy record — unknown, so untouched
+    const subId=subs[testId];
+    if(!subId)return value;                             // this test was not substituted
+    const t=TESTS.find(x=>x.id===testId);
+    const orig=t&&EX[t.ex], sub=EX[subId];
+    if(!t||!orig||!sub)return value;
+    if(sub.anchor!==testId)return value;                // measures a different quantity
+    if(sub.unit!==orig.unit)return value;               // measures it in different units
+    const ho=+orig.hardness, hs=+sub.hardness;
+    if(!isFinite(ho)||!isFinite(hs)||ho<=0||hs<=0)return value;
+    const r=ho/hs;
+    if(r<ANCHOR_EQUIV_BAND[0]||r>ANCHOR_EQUIV_BAND[1])return value;   // a calibration that far apart is not a re-scale
+    const v=+value;
+    if(!isFinite(v)||v<0)return value;
+    return Math.round(v*r);
+  }catch(e){return value;}
+}
+function anchorEquivMaxes(maxes,subs){
+  const out={};
+  try{Object.keys(maxes||{}).forEach(k=>{out[k]=anchorEquiv(k,maxes[k],subs);});}
+  catch(e){return maxes||{};}
+  return out;
+}
 function currentMaxes(cycle){
   // cycle 0 uses baseline; later cycles use reassessment if present, else baseline
-  const base=(STATE.baseline&&STATE.baseline.maxes)||{};
-  if(cycle>0 && STATE.reassess[cycle] && STATE.reassess[cycle].maxes)
-    return estimateMaxes(Object.assign({},base,STATE.reassess[cycle].maxes));
+  const b=STATE.baseline||{};
+  const base=anchorEquivMaxes(b.maxes||{},b.subs);
+  const r=(cycle>0 && STATE.reassess && STATE.reassess[cycle] && STATE.reassess[cycle].maxes)?STATE.reassess[cycle]:null;
+  if(r)return estimateMaxes(Object.assign({},base,anchorEquivMaxes(r.maxes,r.subs)));
   return estimateMaxes(base);
 }
 const LEVEL_TIER={Beginner:0,Intermediate:1,Advanced:2};
@@ -2717,9 +2794,14 @@ function sessionVolume(sess){
 }
 
 /* ============================ CORE SCORE ============================ */
-function computeAssessment(results){
+/* `subs` is scored, not just anchored. t.bench is calibrated for the ORIGINAL
+   movement, so 20 dead bugs against the Reverse Crunch benchmark of 25 reads as
+   80% of a test the athlete never took — and the score sets `level`, which
+   scales every UNANCHORED exercise through LEVEL_FACTOR. Same defect, one
+   consumer over. The stored `maxes` below stay RAW; only the scoring converts. */
+function computeAssessment(results,subs){
   let sum=0,n=0;
-  TESTS.forEach(t=>{const v=+results[t.id]||0;sum+=clamp(v/t.bench*100,0,100);n++;});
+  TESTS.forEach(t=>{const v=anchorEquiv(t.id,+results[t.id]||0,subs);sum+=clamp(v/t.bench*100,0,100);n++;});
   const score=Math.round(sum/n);
   const level=score<38?'Beginner':(score<68?'Intermediate':'Advanced');
   /* `+results.plank||30` treated a MEASURED ZERO as a missing answer. The
@@ -6115,9 +6197,13 @@ function renderAssessStep(){
      for 20 seconds. safeSwap() already knows a safe substitute for every one
      of the five test moves that carries a flag (pushup, invertedrow,
      jumpsquat, revcrunch, bicycle) — this just has to actually call it. The
-     score still saves under the test's own id (t.id), so every downstream
-     anchor/maxes read is unaffected; only which movement earns that number
-     changes, same as any other flagged-joint substitution in the app. */
+     score still saves under the test's own id (t.id).
+
+     It used to say here that "every downstream anchor/maxes read is
+     unaffected". That was false, and saying so is how it survived: the number
+     is on the substitute's scale, and prescribe() multiplies it by a hardness
+     calibrated against the ORIGINAL. See anchorEquiv() — the read sites
+     convert, the record stays raw. */
   const exId=safeSwap(t.ex);const ex=EX[exId];
   const swapped=exId!==t.ex;
   const joint=swapped?assessSwapJoint(t.ex):null;
@@ -6428,7 +6514,10 @@ function discardRetest(){
   }catch(e){closeSheet();}
 }
 function finishAssessment(){
-  const a=computeAssessment(assessState.results);
+  /* One call to assessSubs(), used for BOTH the score and the stamp. Computing
+     it twice is how the two drift if the flags ever change mid-battery. */
+  const _subs=assessSubs();
+  const a=computeAssessment(assessState.results,_subs);
   /* PROTOCOL stamps HOW the numbers were taken, not just what they were. v2
      alternates the movement domains; v1 ran four maximal trunk efforts in a
      row, so a v1 baseline and a v2 re-test are not measuring the same thing
@@ -6440,7 +6529,7 @@ function finishAssessment(){
   const rec={date:todayISO(),results:assessState.results,score:a.score,level:a.level,maxes:a.maxes,testCount:TESTS.length,protocol:TEST_PROTOCOL,
     /* Stamped even when empty, so an absent `subs` reliably means "recorded
        before this existed" and sameMovement() can fail closed on it. */
-    subs:assessSubs(),
+    subs:_subs,
     restsFull:_rests.filter(x=>x>=ASSESS_REST_SEC).length,restsTaken:_rests.length,
     restMedian:_rests.length?_rests.slice().sort((x,y)=>x-y)[Math.floor(_rests.length/2)]:null};
   /* Ask BEFORE writing anything. An interstitial that appears after the commit

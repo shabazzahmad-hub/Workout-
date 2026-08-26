@@ -3045,6 +3045,80 @@ driving the route — the fifth time this file has recorded that.
 
 Five mutants, all caught after that rewrite.
 
+## The swap changed the RULER and the app kept prescribing from it (v321)
+
+v320 stopped the app COMPARING two baselines taken on different movements. It
+was still PRESCRIBING from one, and the comment that let it ship said so in as
+many words:
+
+> The score still saves under the test's own id (t.id), so every downstream
+> anchor/maxes read is **unaffected**; only which movement earns that number
+> changes.
+
+It is affected. `prescribe()` does `maxes[anchor] * frac * ex.hardness`, and
+**`hardness` is DEFINED as a fraction of the anchor test's max** — so a count
+recorded on a substitute is on a different scale entirely. **A comment claiming
+an invariant is not the invariant**, for the third time in this file, and this
+one was written by the fix that introduced the defect.
+
+Measured, one body, one true capacity, week 1 of block 1:
+
+| flag | test measured on | Dead Bug | Crunch | Toe Touch |
+|---|---|---|---|---|
+| none | Reverse Crunch (h 1.0) | 10 | 10 | 8 |
+| lowback | Dead Bug (h 1.4) | **15** | **15** | **12** |
+
+**Flagging a joint made the app prescribe 40-50% MORE work in the flagged
+region** — the one place it should have prescribed less. The shoulder case is
+the same shape, +38% on the Towel Door Row that **all eight** pull movements
+land on. And the pull test's own instruction warns about exactly this hazard —
+*"this number scales every row and pull-up you will be given, so a back
+extension like the Superman would badly over-prescribe them"* — while the app
+went and substituted an easier movement itself.
+
+`hardness` IS the conversion factor: `recorded * hardness(orig) / hardness(sub)`.
+
+**The guard is the point, and it is what stops this being a universal
+converter.** Only a substitute measuring the SAME quantity in the SAME units is
+re-scaled. `dyn` (bicycle, TIME → dead bug, REPS) and `power` (jump squat →
+squat) are left alone: a jump squat and a squat are **both hardness 1.0** and
+are not the same measurement at all, because explosive power is a quality
+`hardness` cannot express. Declining costs nothing — measured, **0 of 3
+power-anchored and 0 of 1 dyn-anchored movements survive their own flag's
+swap**, so neither anchor is ever read for the athlete whose test was swapped.
+
+**The record stays RAW**, because v320 needs it raw to plot a real point and an
+athlete who did 20 dead bugs did 20 dead bugs. The conversion happens on the way
+to `prescribe()`, never on the way to storage. **A record with no `subs` is not
+converted** — nothing is known about it, and converting would be inventing.
+
+**The Core Score converts too, and that is not a display nicety.** `t.bench` is
+calibrated for the original movement, and the score sets `level`, which scales
+every UNANCHORED exercise through `LEVEL_FACTOR`. Same defect, one consumer over
+— the class, not the instance.
+
+### Two escaped mutants, and only one was a weak check
+
+- **Dropping the ANCHOR guard escaped**, because both cases I had pinned were
+  blind to it: `dyn` is still caught by the unit guard, and `power` is
+  `jumpsquat(1.0) → squat(1.0)`, so the ratio is 1 and the mutant is
+  *equivalent there*. The one reachable swap that can tell them apart is
+  `stamina`: `burpee(0.7, time) → squatthrust(0.95, time)` — same unit,
+  different anchor, ratio 0.737. A weak check, not a bad mutant.
+- **Dropping the UNIT guard is unreachable on today's library.** `validateData()
+  already enforces that an anchored exercise carries its anchor test's unit
+  (measured: 0 mismatches across all 155), so "same anchor" implies "same unit".
+  It is kept as cover for a future `EX` edit and exercised directly by flipping
+  a unit in the check — the same technique the hardness-band guard uses.
+
+**And a mutation harness that greps for `FAILED — N checks` misses a single
+failure**, which prints `check` singular. Two mutants read as escapes until the
+detector was rewritten to test for *"All checks passed"* instead. Same family as
+the v286 mutant that broke the parse and counted as zero failures: **read the
+run, not a pattern you hoped would match it.**
+
+Eight mutants, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
