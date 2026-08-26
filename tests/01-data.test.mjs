@@ -691,7 +691,9 @@ export default async function run() {
     // the chip-rendering assertion below would pass on an empty tab.
     STATE.baseline = { date: todayISO(), score: 60, level: 'Intermediate', testCount: TESTS.length,
       maxes: { plank: 60, side: 40, hollow: 35, lower: 15, dyn: 30, push: 20, pull: 12, squat: 25, power: 12, stamina: 15 } };
-    go('progress'); renderProgress();
+    /* Progress gained sub-tabs in v312 — this content lives on one pane,
+       so select it rather than relying on which pane happens to open. */
+    go('progress'); setProgressTab('strength'); renderProgress();
     const capt = (document.querySelector('#v-progress') || {}).innerText || '';
     o.oldClaimGone = !/truest measure of core strength/i.test(capt);
 

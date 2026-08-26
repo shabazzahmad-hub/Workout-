@@ -1807,7 +1807,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='311';
+const APP_VERSION='312';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3585,6 +3585,23 @@ function todayWorkoutHTML(){
   else if(TODAY_TAB==='cooldown')h+=cooldownTabHTML();
   else h+=workoutTabHTML(sess,log,doneCount,totalCount,wkNum);
   return h;
+}
+let PROGRESS_TAB='summary';
+const PROGRESS_TABS=[['summary','📊 Summary'],['body','📷 Body'],['strength','💪 Strength'],['awards','🏅 Awards']];
+/* MEMBERSHIP, not truthiness — this reaches innerHTML through the strip and a
+   stale value from an older build must land somewhere real. */
+function progressTab(){return PROGRESS_TABS.some(t=>t[0]===PROGRESS_TAB)?PROGRESS_TAB:'summary';}
+function setProgressTab(k){
+  if(!PROGRESS_TABS.some(t=>t[0]===k))return;
+  PROGRESS_TAB=k;try{haptic(8);}catch(e){}
+  renderProgress();
+  /* Back to the top: a tab that keeps the previous pane's scroll position
+     opens part-way down a screen the athlete has never seen. */
+  try{window.scrollTo(0,0);}catch(e){}
+}
+function progressTabsHTML(){
+  const cur=progressTab();
+  return `<div class="todaytabs">${PROGRESS_TABS.map(([k,l])=>`<button class="ttab ${cur===k?'on':''}" onclick="setProgressTab('${k}')">${l}</button>`).join('')}</div>`;
 }
 function todayTabsHTML(){
   const tabs=[['brief','📋 Brief'],['warmup','🌡️ Warm-up'],['workout','💪 Workout'],['cooldown','🧘 Cool-down']];
@@ -8363,6 +8380,21 @@ function renderProgress(){
   let h=`<h2 class="vtitle">Progress</h2><div class="vsub">Everything auto-saved on this device.</div>`;
   /* Moved off Today in v246. This is the tab that reports these numbers, and the
      ring below it gives the Core Score its detail — summary first, then depth. */
+  /* ---- PROGRESS GETS SUB-TABS ------------------------------------------
+     "This should have its own tab, I think" — about Achievements, which sat
+     at the bottom of a very long scroll.
+
+     A SEVENTH bottom tab does not fit: measured, it would be 59px wide at
+     412px (46px on a 320px phone) and the word "Achievements" needs 71px.
+     So Progress carries its own strip, exactly the pattern Today already uses
+     for Brief / Warm-up / Workout / Cool-down — one tap, nothing buried, and
+     the bottom bar stays legible.
+
+     Every pane still renders from the same functions; only WHEN they are
+     built changed. */
+  const P=progressTab();
+  h+=progressTabsHTML();
+  if(P==='summary'){
   h+=homeSummaryHTML();
   h+=todayActivityHTML();
   h+=`<button class="btn ghost" style="margin:0 0 8px" onclick="weeklyRecap()">🎙️ Weekly recap — hear it from your coach</button>`;
@@ -8375,18 +8407,6 @@ function renderProgress(){
     h+=`<div class="card pad center">${ringHTML(latest.score,'Core Score')}<div style="margin-top:10px"><span class="chip on">${_ve(lvl)}</span></div>
       ${STATE.scoreHistory.length>1?scoreTrendHTML():'<div class="tiny muted" style="margin-top:10px">Re-test after each 6-week block to see your climb.</div>'}</div>`;
   }
-  // visual physique goal + forward projection
-  h+=transformationHTML();
-  /* Progress photos sits directly below the goal picker, not after five
-     unrelated sections (the stat grid, body composition, strength test,
-     consistency heatmap) the way it used to. Both cards answer the same
-     question — what does my body look like, and how is it changing — one as
-     an aspirational reference, one as real proof. There is no data reason they
-     were ever apart: the goal card's body-fat estimate reads latestWeightKg()
-     plus height/age, never the waist chart that used to sit between them.
-     Moved at the athlete's own request, after confirming there was nothing
-     tying the two apart. */
-  h+=`<div class="section-label">Progress photos</div>${photosHTML()}`;
   // snapshot: 6 headline metrics
   const sessionsDone=sessionsDoneCount();
   const streak=computeStreak();
@@ -8404,6 +8424,27 @@ function renderProgress(){
     <div class="stat"><div class="n" style="color:var(--fire-l)">${estCalories()}</div><div class="l">Kcal 🔥</div></div>
   </div>
   <div class="tiny muted center" style="margin:8px 0 2px">Lifetime volume: <b>${vol.sets} sets</b> · <b>${vol.reps} reps</b> · <b>${fmtTime(vol.hold)} holds</b></div>`;
+  // consistency heatmap
+  h+=`<div class="section-label">Consistency</div>`;
+  h+=`<div class="card pad">
+    <div class="row" style="justify-content:space-between"><b>Last 28 days</b><span class="tiny muted">${last28Count()} trained</span></div>
+    ${heatmapHTML()}
+    <div class="row" style="justify-content:space-between;margin-top:10px"><span class="tiny muted">🔥 trained · ▫️ rest</span><span class="tiny muted">Training load <b style="color:${loadIndexPct()>=0?'var(--green)':'var(--muted)'}">${loadIndexPct()>=0?'+':''}${loadIndexPct()}%</b> vs start</span></div>
+  </div>`;
+  }
+  if(P==='body'){
+  // visual physique goal + forward projection
+  h+=transformationHTML();
+  /* Progress photos sits directly below the goal picker, not after five
+     unrelated sections (the stat grid, body composition, strength test,
+     consistency heatmap) the way it used to. Both cards answer the same
+     question — what does my body look like, and how is it changing — one as
+     an aspirational reference, one as real proof. There is no data reason they
+     were ever apart: the goal card's body-fat estimate reads latestWeightKg()
+     plus height/age, never the waist chart that used to sit between them.
+     Moved at the athlete's own request, after confirming there was nothing
+     tying the two apart. */
+  h+=`<div class="section-label">Progress photos</div>${photosHTML()}`;
   // body composition (waist + goal + weight + BMI)
   h+=`<div class="section-label">Body composition</div>`;
   h+=`<div class="card pad">
@@ -8418,20 +8459,13 @@ function renderProgress(){
      Progress". Until now that button did not exist anywhere in the app, and
      openAssessment() was reachable only from the two Today gates — so a test
      taken while ill scaled six weeks of training with no way to correct it. */
+  }
+  if(P==='strength'){
   h+=`<div class="section-label">Strength test</div><div class="card pad">
     <div class="row" style="justify-content:space-between;align-items:center">
       <div style="min-width:0"><b>${STATE.baseline?(STATE.baseline.estimated?'Estimated, never tested':(latestTestDate()?('Last tested '+_ve(latestTestDate())):'Tested — date not recorded')):'Not tested yet'}</b>
         <div class="tiny muted" style="margin-top:2px">Every target for the block is scaled off this. Tested tired? Do it again — the newest result wins.</div></div>
       <button class="btn sm primary" style="flex:0 0 auto" onclick="retestNow()">Re-test</button></div></div>`;
-  // consistency heatmap
-  h+=`<div class="section-label">Consistency</div>`;
-  h+=`<div class="card pad">
-    <div class="row" style="justify-content:space-between"><b>Last 28 days</b><span class="tiny muted">${last28Count()} trained</span></div>
-    ${heatmapHTML()}
-    <div class="row" style="justify-content:space-between;margin-top:10px"><span class="tiny muted">🔥 trained · ▫️ rest</span><span class="tiny muted">Training load <b style="color:${loadIndexPct()>=0?'var(--green)':'var(--muted)'}">${loadIndexPct()>=0?'+':''}${loadIndexPct()}%</b> vs start</span></div>
-  </div>`;
-  // achievements
-  h+=achievementsHTML();
   // strength trend charts (baseline + re-tests)
   h+=strengthTrendHTML();
   h+=sessionHistoryHTML();
@@ -8444,6 +8478,11 @@ function renderProgress(){
   // score history
   if(STATE.scoreHistory.length){
     h+=`<div class="section-label">Assessment history</div><div class="card pad">${STATE.scoreHistory.filter(Boolean).map((s,i)=>`<div class="kv"><span>${i===0?'Baseline':'Re-test '+i}${s.date?' · '+_ve(s.date):''}</span><b>${s.score==null?'—':s.score+'/100'} · ${_ve(s.level||(STATE.baseline&&STATE.baseline.level)||'—')}</b></div>`).join('')}</div>`;
+  }
+  }
+  if(P==='awards'){
+  // achievements
+  h+=achievementsHTML();
   }
   v.innerHTML=h;
   hydratePhotos();   // async-fill progress photos from IndexedDB
@@ -11993,6 +12032,9 @@ function jackUnitLabel(u){return u==='min'?'min':(u==='reps'?'reps':'kcal');}
 /* MEMBERSHIP, not a chain of equality tests — the third mode is exactly where
    a `m==='bike'?'bike':'jacks'` shape starts silently swallowing new values. */
 const CARDIO_MODES=['jacks','bike','ruck'];
+/* The quiz's own three answers. Kept as a list so the repair and the picker
+   cannot drift apart — the mistake CARDIO_MODES' repair made for a version. */
+const CONDITIONING_LEVELS=['low','moderate','high'];
 function cardioMode(){
   try{const m=STATE.nutrition&&STATE.nutrition.cardioMode;return CARDIO_MODES.includes(m)?m:'jacks';}
   catch(e){return 'jacks';}
@@ -15531,7 +15573,25 @@ function normalizeState(){
            kcal:num(x.kcal,20000),p:num(x.p,2000),c:num(x.c,2000),f:num(x.f,2000),
            meal:['b','l','d','s'].includes(x.meal)?x.meal:'l',
            at:(typeof x.at==='number'&&isFinite(x.at))?x.at:0,
-           ...(cleanPortion(x.portion)?{portion:cleanPortion(x.portion)}:{})}));
+           ...(cleanPortion(x.portion)?{portion:cleanPortion(x.portion)}:{}),
+           /* A REPAIR THAT REBUILDS A ROW FROM A HAND-WRITTEN FIELD LIST DROPS
+              EVERY FIELD ADDED AFTER IT WAS WRITTEN.
+
+              `calc` (v304 — this macro was worked out, not read) and `src`
+              (v306 — this row is a tracker's running total for the day) were
+              both silently erased on every boot, because this map predates
+              them. Measured: log a dashboard import, close the app, reopen,
+              import the day's new total — prevShotIdx() found nothing, no
+              warning appeared, and the two rows stacked to 3,035 kcal on a day
+              1,800 was eaten. v306's whole fix worked only until the app was
+              closed.
+
+              Carried with the SAME membership tests logFood() uses at the
+              write site, since both reach innerHTML. validateData() now
+              round-trips a fully populated row through this repair, so the
+              next field added cannot go missing the same way. */
+           ...(_MACRO_KEY[x.calc]?{calc:x.calc}:{}),
+           ...(x.src==='shot'?{src:'shot'}:{})}));
    });
    STATE.nutrition.days=days;}
   /* A diet is not a boolean. `!STATE.nutrition.diet` caught '' and null and
@@ -15840,9 +15900,22 @@ function normalizeState(){
      escapes: with the value constrained the sinks cannot be reached at all,
      and every consumer already means "in or cm" by it. */
   if(STATE.profile.unit!=='in')STATE.profile.unit='cm';
-  if(!STATE.profile.conditioning)STATE.profile.conditioning='moderate';
+  /* MEMBERSHIP, not truthiness — the diet bug's shape exactly. `!x` catches
+     '' and null and nothing else, so an array, an object or any other string
+     from a hand-edited or foreign backup walked straight through and then
+     travelled in every backup after it. condLevel() reads this and its value
+     reaches a multiplier. */
+  if(!CONDITIONING_LEVELS.includes(STATE.profile.conditioning))STATE.profile.conditioning='moderate';
   if(!STATE.profile.mobility)STATE.profile.mobility='ok';
-  if(STATE.profile.timelineWeeks===undefined)STATE.profile.timelineWeeks=null;
+  /* A timeframe is a positive number of weeks, or null for "no deadline".
+     Anything else — an array, an object, a NaN — read as falsy at every
+     consumer, so nothing broke, but it persisted into every backup and came
+     back on the next import. Same harm v285 measured. */
+  {const _tw=STATE.profile.timelineWeeks;
+   if(!(typeof _tw==='number'&&isFinite(_tw)&&_tw>0))STATE.profile.timelineWeeks=null;}
+  {const _gw=STATE.profile.goalWeightLb;
+   if(_gw!==undefined&&_gw!==null&&!(typeof _gw==='number'&&isFinite(_gw)&&_gw>0))
+     STATE.profile.goalWeightLb=null;}
   /* One-time SEEDS — sensible starting values, not corrections. They must never
      overwrite an answer the athlete has already given, so they only run before
      onboarding. Previously they fired whenever their flag was missing, which
@@ -15949,9 +16022,19 @@ function normalizeState(){
      index — resumeInfo() re-validates, but the field is dropped here so a
      non-object can never reach it in the first place. */
   if(STATE._plResume!=null&&(typeof STATE._plResume!=='object'||Array.isArray(STATE._plResume)))delete STATE._plResume;
-  /* Anything other than 'bike' means jacks — the portable default is also the
-     safe landing place for a corrupt value. */
-  if(STATE.nutrition&&STATE.nutrition.cardioMode!=='bike'&&STATE.nutrition.cardioMode!=null)
+  /* MEMBERSHIP AGAINST THE LIST, never a hardcoded legal value.
+
+     This read `!== 'bike'` and was written when jacks and the bike were the
+     only two modes. v294 added rucking to CARDIO_MODES and did not come back
+     here — so 'ruck' failed the test and was rewritten to 'jacks' on EVERY
+     boot. Measured: tap Ruck, close the app, reopen, and the choice is gone.
+     It never survived a backup either, because the repair runs on the way in.
+
+     The legal set lives in one place (CARDIO_MODES) exactly so this cannot
+     happen; the repair just was not asking it. Same family as the diet
+     truthiness bug — a fixed set of legal values needs a membership test, and
+     jacks remains the safe landing place for anything unrecognised. */
+  if(STATE.nutrition&&STATE.nutrition.cardioMode!=null&&!CARDIO_MODES.includes(STATE.nutrition.cardioMode))
     STATE.nutrition.cardioMode='jacks';
   /* The jack fields are read through movement(), which already coerces, but a
      string here would survive into a backup and out again. */
@@ -16043,6 +16126,15 @@ function normalizeState(){
    This runs at boot and logs; it never blocks the app. */
 function validateData(){
   const errs=[];
+  /* NOTE: two repair-shape checks were tried here and moved to the SUITES
+     (05-state, 07-movement) instead. Both had to call normalizeState() to
+     drive the real repair, and validateData() runs on the athlete's device at
+     boot — where re-running every repair clears flags other code owns, and
+     `dietRepaired` is one of them. A validator READS; it does not mutate.
+
+     The drift they guard against is real (a repair that names a legal value or
+     a field list by hand goes stale the moment the set grows), and it belongs
+     in CI, where a mutation test can prove the check actually fails. */
   /* A one-sided movement and the words that tell you so must travel together.
      The defect this catches shipped three times: kbrow, kbcp and kbwindmill
      each loaded one arm and their steps never mentioned the other, so three

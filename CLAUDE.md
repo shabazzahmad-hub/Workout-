@@ -2373,6 +2373,81 @@ Nine mutants, all caught. The two that matter are the placement pair: putting
 the block back on Fuel fails thirteen checks, and mounting it on BOTH fails the
 one that says the review has no controls.
 
+## A repair that names a value by hand goes stale when the set grows (v312)
+
+A full re-audit — every previous probe re-run against the six versions shipped
+that day, plus new ones. The suite was green and the validator clean throughout.
+**Three real bugs, and two of them were the same mistake in two places.**
+
+### The markers that vanished when the app closed
+
+`normalizeState()`'s food repair rebuilds each row from a hand-written field
+list. It predates `calc` (v304 — this macro was worked out, not read) and `src`
+(v306 — this row is a tracker's running total), so **both were erased on every
+boot**.
+
+Measured end to end: log a dashboard import, close the app, reopen, import the
+day's new total — `prevShotIdx()` found nothing, no warning appeared, and the
+rows stacked to **3,035 kcal on a day 1,800 was eaten.** v306's whole fix worked
+only until the app was closed, which is every real day.
+
+### The cardio mode that could not be kept
+
+```js
+if(STATE.nutrition.cardioMode!=='bike' && ...!=null)
+  STATE.nutrition.cardioMode='jacks';
+```
+
+Written when jacks and the bike were the only two modes. v294 added rucking to
+`CARDIO_MODES` and never came back here, so **'ruck' was rewritten to 'jacks' on
+every boot** — tap Ruck, close the app, reopen, and the choice is gone. It never
+survived a backup either, because the repair runs on the way in.
+
+**Both are one class: a repair that names its legal values, or its legal
+FIELDS, by hand.** The legal set already lived in one place; the repair just was
+not asking it. A scan of `normalizeState()` found exactly one other
+hand-written-value repair (`profile.unit`, a genuine two-value set) and no other
+hand-written field list.
+
+### And truthiness where membership belongs, again
+
+`if(!STATE.profile.conditioning)` caught `''` and `null` and nothing else, so an
+array or an object from a hand-edited backup walked through and then travelled
+in every backup after it — the harm v285 measured. `timelineWeeks` and
+`goalWeightLb` had no shape repair at all. Nothing crashed; the cost is entirely
+in what a backup carries.
+
+### The validator must not mutate
+
+Both drift guards were written into `validateData()` first, and both had to call
+`normalizeState()` to drive the real repair. That **cleared `dietRepaired`** —
+a flag other code owns — and nine checks in suite 20 went red. `validateData()`
+runs at boot on the athlete's own device: it READS, it does not repair.
+
+The guards moved to the suites (05-state, 07-movement), which is where a
+mutation test can prove they actually fail. Nine mutants, all caught.
+
+## Progress gets sub-tabs, because a seventh bottom tab does not fit (v312)
+
+*"This should have its own tab, I think"* — about Achievements, which sat at the
+bottom of a very long scroll.
+
+**Measured before choosing:** a seventh bottom tab would be **59px wide at
+412px** (46px at 320px) and the word *Achievements* needs **71px**. It does not
+fit at any phone width without renaming it.
+
+So Progress carries its own strip — Summary · Body · Strength · Awards — the
+pattern Today already uses for Brief / Warm-up / Workout / Cool-down. Each pane
+shows only its own sections, which is what makes it a split rather than a
+scroll, and `progressTab()` is a membership test because the value reaches
+`innerHTML`.
+
+**Three suites broke, and every one was a check that had gone looking on the
+whole tab**: the strength-trend chips (01), the Re-test button (09) and the
+photo inputs (19). Each now selects its pane. Suite 19's ordering check was
+re-aimed rather than patched: *"photos come before the strength test"* became
+*"the strength test is on its own pane"*, which is the stronger statement.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

@@ -88,7 +88,9 @@ export default async function run() {
   const retest = await page.evaluate(() => {
     const o = {};
     o.fnExists = typeof retestNow === 'function';
-    go('progress');
+    /* Progress gained sub-tabs in v312 — this content lives on one pane,
+       so select it rather than relying on which pane happens to open. */
+    go('progress'); setProgressTab('strength');
     const v = document.querySelector('#v-progress');
     o.buttonOnProgress = !!v.querySelector('[onclick^="retestNow"]');
     o.saysWhatItIsFor = /newest result wins/.test(v.innerHTML);
@@ -105,7 +107,9 @@ export default async function run() {
     const rb = STATE.baseline;
     STATE.baseline = { score: 50, level: 'Beginner', maxes: { push: 10 } };
     o.noDateSafe = latestTestDate() === null;
-    go('progress');
+    /* Progress gained sub-tabs in v312 — this content lives on one pane,
+       so select it rather than relying on which pane happens to open. */
+    go('progress'); setProgressTab('strength');
     o.noUndefinedOnScreen = !/undefined/.test(document.querySelector('#v-progress').innerHTML);
     STATE.baseline = rb;
     return o;

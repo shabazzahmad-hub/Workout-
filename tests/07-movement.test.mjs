@@ -1437,6 +1437,55 @@ export default async function run() {
     t.eq('and none of them sits at or below the default', cad.pointless.join(','), '', cad);
   }
 
+  /* ---- A repair that names a legal value by hand drifts when the set grows -
+     Found by a backup round-trip audit, not by any suite: set the cardio mode
+     to Ruck, close the app, reopen — and it is Jumping jacks again.
+
+       if(STATE.nutrition.cardioMode!=='bike' && ...!=null)
+         STATE.nutrition.cardioMode='jacks';
+
+     That was written when jacks and the bike were the only two modes. v294
+     added rucking to CARDIO_MODES and never came back here, so 'ruck' failed
+     the hand-written test and was rewritten on EVERY boot. It never survived a
+     backup either, because the repair runs on the way in.
+
+     Driven through the BOOT PATH, because planting a value into STATE proves
+     nothing about a repair that only runs in normalizeState(). */
+  {
+    const modes = await page.evaluate(() => {
+      const o = { survived: [], lost: [] };
+      const keep = STATE.nutrition.cardioMode;
+      CARDIO_MODES.forEach(m => {
+        setCardioMode(m);
+        normalizeState();
+        (STATE.nutrition.cardioMode === m ? o.survived : o.lost).push(m);
+      });
+      /* THE FLOOR: an unrecognised value must still be repaired, and jacks is
+         the safe landing place — a fix that simply deleted the repair passes
+         every line above. */
+      STATE.nutrition.cardioMode = 'helicopter';
+      normalizeState();
+      o.junkRepaired = STATE.nutrition.cardioMode;
+      STATE.nutrition.cardioMode = null;
+      normalizeState();
+      o.nullLeftAlone = STATE.nutrition.cardioMode === null;
+      STATE.nutrition.cardioMode = keep;
+      return o;
+    });
+    t.eq('every legal cardio mode survives a boot', modes.lost.join(','), '', modes);
+    t.eq('and all of them are checked', modes.survived.length, 3, modes);
+    t.eq('an unrecognised mode still falls back to jacks', modes.junkRepaired, 'jacks', modes);
+    t.ok('an absent mode is left absent', modes.nullLeftAlone, modes);
+
+    /* And the same thing across a real reload, which is how it was found. */
+    await page.evaluate(() => { setCardioMode('ruck'); save(); });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForBoot(page);
+    const afterReload = await page.evaluate(() => nut().cardioMode);
+    t.eq('Ruck is still Ruck after closing and reopening the app', afterReload, 'ruck');
+    await page.evaluate(() => { setCardioMode('jacks'); save(); });
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }

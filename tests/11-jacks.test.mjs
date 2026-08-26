@@ -525,6 +525,71 @@ export default async function run() {
     t.ok('the empty-day hint goes once there is something to show', review.hintGone, review);
   }
 
+  /* ---- Progress gets sub-tabs -------------------------------------------
+     "This should have its own tab, I think" — about Achievements, which sat at
+     the bottom of a very long scroll.
+
+     A SEVENTH bottom tab does not fit. Measured: it would be 59px wide at
+     412px (46px at 320px) and the word "Achievements" needs 71px. So Progress
+     carries its own strip, the pattern Today already uses. */
+  {
+    const tabs = await page.evaluate(() => {
+      const o = { panes: {} }; const txt = () => document.querySelector('#v-progress').innerText;
+      go('progress');
+      for (const [k] of PROGRESS_TABS) {
+        setProgressTab(k);
+        const t = txt();
+        o.panes[k] = { len: t.length, junk: (t.match(/NaN|undefined|Infinity|\[object/) || [''])[0] };
+      }
+      setProgressTab('summary');
+      o.summary = /Today's activity/i.test(txt()) && /Consistency/i.test(txt());
+      setProgressTab('body');
+      o.body = /Physique goal/i.test(txt()) && /Progress photos/i.test(txt()) && /Body composition/i.test(txt());
+      setProgressTab('strength');
+      o.strength = /Strength test/i.test(txt()) && /Personal bests/i.test(txt());
+      setProgressTab('awards');
+      o.awards = /Achievements/i.test(txt());
+      /* Each pane shows ONLY its own — a strip that renders everything on
+         every pane is not a split, and it leaves Achievements buried. */
+      o.awardsOnly = !/Progress photos|Personal bests|Consistency/i.test(txt());
+
+      /* DRIVE THE BUTTON the athlete taps, not setProgressTab(). */
+      setProgressTab('summary');
+      o.buttonCount = document.querySelectorAll('#v-progress .ttab').length;
+      const btn = [...document.querySelectorAll('#v-progress .ttab')]
+        .find(b => /Awards/.test(b.textContent));
+      o.hasAwardsButton = !!btn;
+      if (btn) btn.click();
+      o.clickLands = PROGRESS_TAB === 'awards' && /Achievements/i.test(txt());
+
+      /* MEMBERSHIP, not truthiness: a stale value from an older build reaches
+         innerHTML through the strip and must land somewhere real. */
+      PROGRESS_TAB = 'nonsense'; renderProgress();
+      o.junkFallsBack = /Today's activity/i.test(txt());
+      /* Start from a KNOWN GOOD tab, or the setter's refusal is indistinguishable
+         from the junk that was already there. */
+      setProgressTab('body');
+      setProgressTab('nonsense');
+      o.setterRejectsJunk = PROGRESS_TAB === 'body';
+      setProgressTab('summary');
+      return o;
+    });
+    t.eq('Progress has four sub-tabs', tabs.buttonCount, 4, tabs);
+    Object.keys(tabs.panes).forEach(k => {
+      t.eq(`the ${k} pane renders no junk`, tabs.panes[k].junk, '', tabs.panes);
+      t.ok(`the ${k} pane has content`, tabs.panes[k].len > 100, tabs.panes);
+    });
+    t.ok('Summary carries today and consistency', tabs.summary, tabs);
+    t.ok('Body carries the physique goal, photos and composition', tabs.body, tabs);
+    t.ok('Strength carries the test and personal bests', tabs.strength, tabs);
+    t.ok('Awards carries the achievements', tabs.awards, tabs);
+    t.ok('and Awards shows nothing else — it is a split, not a scroll', tabs.awardsOnly, tabs);
+    t.ok('the Awards button exists', tabs.hasAwardsButton, tabs);
+    t.ok('and tapping it lands on the achievements', tabs.clickLands, tabs);
+    t.ok('a stale tab value falls back to Summary', tabs.junkFallsBack, tabs);
+    t.ok('and the setter refuses a value that is not a tab', tabs.setterRejectsJunk, tabs);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

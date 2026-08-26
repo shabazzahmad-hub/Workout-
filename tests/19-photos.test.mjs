@@ -23,7 +23,7 @@ const PIXEL = Buffer.from(
    from the metadata, while the images hydrate from IndexedDB afterwards. */
 const seedPhotos = list => page => page.evaluate(ps => {
   STATE.photos = ps.map(([date, pose]) => ({ id: date + '-' + pose + '-0', date, pose }));
-  save(); go('progress'); renderProgress();
+  save(); go('progress'); setProgressTab('body'); renderProgress();
 }, list);
 
 /* The two captions under the Before → Now pair, e.g. "2026-01-01 · front". */
@@ -47,7 +47,7 @@ export default async function run() {
   /* ---- the back view exists, and it survives the round trip -------------- */
   {
     const r = await page.evaluate(() => {
-      go('progress'); renderProgress();
+      go('progress'); setProgressTab('body'); renderProgress();
       const html = document.querySelector('#v-progress').innerHTML;
       return { front: html.includes("capturePhoto('front')"),
         side: html.includes("capturePhoto('side')"),
@@ -184,7 +184,7 @@ export default async function run() {
     await waitForBoot(page);
     // assert the junk is GONE FROM STATE — not that poseOf() papered over it
     const r = await page.evaluate(() => {
-      go('progress'); renderProgress();
+      go('progress'); setProgressTab('body'); renderProgress();
       return { kept: (STATE.photos || []).length,
         poses: (STATE.photos || []).map(p => p.pose),
         types: (STATE.photos || []).map(p => typeof p.pose),
@@ -205,7 +205,7 @@ export default async function run() {
      capture, and with multiple, so a catch-up is one trip to the gallery. */
   {
     const r = await page.evaluate(() => {
-      go('progress'); renderProgress();
+      go('progress'); setProgressTab('body'); renderProgress();
       const cam = document.querySelector('#photoInput');
       const pick = document.querySelector('#photoPickInput');
       const html = document.querySelector('#v-progress').innerHTML;
@@ -229,7 +229,7 @@ export default async function run() {
     // three files in one go, all landing on the chosen pose
     await page.evaluate(async () => {
       for (const p of STATE.photos) await idbDel('ph_' + p.id);
-      STATE.photos = []; save(); go('progress'); renderProgress();
+      STATE.photos = []; save(); go('progress'); setProgressTab('body'); renderProgress();
       pickPhotos('back');
     });
     await page.setInputFiles('#photoPickInput', [
@@ -264,16 +264,29 @@ export default async function run() {
      can differ if a helper renders more than its own section-label. */
   {
     const order = await page.evaluate(() => {
-      go('progress'); renderProgress();
+      go('progress'); setProgressTab('body'); renderProgress();
       const labels = [...document.querySelectorAll('#v-progress .section-label')].map(e => e.textContent.trim());
       const idx = name => labels.findIndex(l => l.includes(name));
-      return { labels, transformation: idx('Your transformation'), photos: idx('Progress photos'),
-        bodyComp: idx('Body composition'), strength: idx('Strength test'), consistency: idx('Consistency') };
+      const o = { labels, transformation: idx('Your transformation'), photos: idx('Progress photos'),
+        bodyComp: idx('Body composition') };
+      /* Strength and Consistency moved to their own panes in v312, so they are
+         no longer on this one at all — which is a stronger statement than
+         "photos come first", and is asserted as such. */
+      setProgressTab('strength');
+      o.strengthElsewhere = [...document.querySelectorAll('#v-progress .section-label')]
+        .some(e => /Strength test/.test(e.textContent));
+      setProgressTab('summary');
+      o.consistencyElsewhere = [...document.querySelectorAll('#v-progress .section-label')]
+        .some(e => /Consistency/.test(e.textContent));
+      setProgressTab('body');
+      return o;
     });
     t.ok('both section labels are present', order.transformation >= 0 && order.photos >= 0, order.labels);
     t.eq('Progress photos is the very next section after Your transformation', order.photos, order.transformation + 1, order);
-    t.ok('and it now comes BEFORE body composition, not five sections after it',
-      order.photos < order.bodyComp && order.photos < order.strength && order.photos < order.consistency, order);
+    t.ok('and it comes BEFORE body composition, not five sections after it',
+      order.photos < order.bodyComp, order);
+    t.ok('the strength test is on its own pane now', order.strengthElsewhere, order);
+    t.ok('and consistency on the summary', order.consistencyElsewhere, order);
   }
 
   /* ---- getting the photos out as real pictures ---------------------------
