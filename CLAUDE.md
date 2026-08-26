@@ -3145,6 +3145,40 @@ run, not a pattern you hoped would match it.**
 
 Eight mutants, all caught.
 
+### The fourth consumer, and the one the athlete reads first (v321)
+
+`testBreakdownHTML()` is the screen shown the second the battery ends. Before
+this it printed, to an athlete who had just done 40 Single-Leg Dead Bugs:
+
+> **Burpees (max reps in 60s) — 40 reps · +22 · 133% of the 30 reps benchmark ·
+> past it**
+
+Named after a movement they did not do, scored against its benchmark, and
+congratulated on a **+22** whose 18 was a real burpee. That is v320's own defect,
+on the most prominent surface it has, and v320 fixed `retestDrop()` and the
+strength trend and never came here. **The class had four members, not one.**
+
+**Two states were not enough, and the first attempt shipped the error.** A swap
+the app can re-scale (`push`, `pull`, `lower`) gets the equivalent share and says
+it is scaled. A swap it CANNOT (`stamina`, `power`, `dyn`) must get **no share at
+all** — printing "133% · past it · an estimate" invents precisely the number
+`anchorRescale()` just declined to compute. The rule now lives in one place and
+answers both questions: the ratio when a re-scale is honest, `0` when it is not.
+
+**A withheld delta needs a sentence, and the two reasons are different
+sentences.** A silent blank where a number used to be is the same defect facing
+the other way. A prior with no `subs` stamp *(every phone is carrying one)*
+cannot be checked; a prior measured on a different movement genuinely is not
+comparable. Saying "not comparable" to the first is wrong, and a note that fires
+on a clean like-for-like re-test is a note nobody reads — so the floor pins that
+an ordinary improvement still shows `+4` and carries no explanation at all.
+
+**And a check in suite 21 failed on correct code.** It built its prior record
+before `subs` existed, so the fail-closed rule withheld the delta it asserted.
+The record was incomplete, not the rule — a **like-for-like prior is one that
+says it substituted nothing** (`subs:{}`), which is what that block always meant.
+Ten mutants across the row and the note, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

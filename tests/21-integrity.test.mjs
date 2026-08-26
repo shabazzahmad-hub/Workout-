@@ -464,13 +464,16 @@ export default async function run() {
       const html = testBreakdownHTML(a);
       const el = document.createElement('div'); el.innerHTML = html; const txt = el.textContent;
       // and a re-test against a same-protocol prior, to check the delta appears
+      /* subs:{} — written before v320 existed, and a record with no stamp now
+         fails closed by design. A LIKE-FOR-LIKE prior is one that says it
+         substituted nothing, which is what this block means to test. */
       STATE.baseline = { date: '2026-01-01', results: Object.fromEntries(TESTS.map(t => [t.id, t.bench])),
-        protocol: TEST_PROTOCOL, score: 80, level: 'Advanced' };
+        protocol: TEST_PROTOCOL, subs: {}, score: 80, level: 'Advanced' };
       assessState = { idx: TESTS.length, results: res, reassess: 1 };
       const el2 = document.createElement('div'); el2.innerHTML = testBreakdownHTML(a); const txt2 = el2.textContent;
       // ...and against an OLD-protocol prior, where a delta would be misleading
       STATE.baseline = { date: '2026-01-01', results: Object.fromEntries(TESTS.map(t => [t.id, t.bench])),
-        protocol: 1, score: 80, level: 'Advanced' };
+        protocol: 1, subs: {}, score: 80, level: 'Advanced' };
       const el3 = document.createElement('div'); el3.innerHTML = testBreakdownHTML(a); const txt3 = el3.textContent;
       assessState = keepA; STATE.baseline = keepB;
       return { score: a.score, has150: /150%/.test(txt), pastIt: /past it/.test(txt),

@@ -1807,6 +1807,126 @@ export default async function run() {
     t.eq('and the side plank', r.prs.sideplank, 20, r.prs);
   }
 
+  /* The results screen is the FOURTH consumer, and the one the athlete reads
+     the second the battery ends. Before this it said "Burpees (max reps in
+     60s) — 40 reps · +22 · 133% of the 30 reps benchmark · past it" to someone
+     who had just done 40 Single-Leg Dead Bugs against a previous 18 that WAS a
+     burpee. Named wrong, scored wrong, and congratulated on a rise that was a
+     change of ruler. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = {
+        lims: STATE.profile.limitations,
+        baseline: JSON.parse(JSON.stringify(STATE.baseline || {})),
+      };
+      const prevResults = { plank:60,power:12,push:20,side:40,squat:30,hollow:35,pull:12,lower:14,dyn:50,stamina:18 };
+      STATE.baseline = { date:'2026-01-01', protocol:TEST_PROTOCOL, subs:{},
+        results: prevResults, maxes:{}, score:50, level:'Intermediate' };
+      STATE.profile.limitations = ['wrist'];
+      const subs = assessSubs();
+      const results = Object.assign({}, prevResults, { stamina: 40, squat: 34 });
+      assessState = { idx: TESTS.length - 1, results, reassess: 1 };
+      const div = document.createElement('div');
+      div.innerHTML = testBreakdownHTML(computeAssessment(results, subs));
+      const rows = [...div.querySelectorAll('div[style*="border-top"]')]
+        .map(x => x.textContent.replace(/\s+/g, ' ').trim());
+      const find = frag => rows.find(x => x.indexOf(frag) === 0) || '';
+      const out = {
+        subs,
+        burpeeTitled: rows.find(x => /^Burpees/.test(x)) || '',
+        marchRow:  find(EX.march.name),
+        fistRow:   find(EX.fistpushup.name),
+        pushupRow: rows.find(x => /^Push-Ups/.test(x)) || '',
+        squatRow:  find(TESTS.find(t => t.id === 'squat').name),
+        rowCount:  rows.length,
+      };
+      STATE.profile.limitations = keep.lims;
+      STATE.baseline = keep.baseline;
+      return out;
+    });
+    t.ok('guard: the battery substituted push and stamina, and left squat alone',
+      r.subs.push === 'fistpushup' && r.subs.stamina === 'march' && !r.subs.squat, r);
+    t.ok('guard: every test still produced a row', r.rowCount === 10, r);
+    t.ok('a swapped row is named after the movement actually performed', /Dead Bug/.test(r.marchRow), r);
+    t.eq('and no row is TITLED with the movement that was not done', r.burpeeTitled, '', r);
+    t.eq('nor claims a push-up that was not done', r.pushupRow, '', r);
+    t.ok('and the row says it was swapped', /swapped/.test(r.marchRow), r);
+    /* THE ONE THAT MATTERS. 40 against a previous 18 is +22 of nothing. */
+    t.ok('a swapped test shows NO delta against a differently-measured previous run',
+      !/\+22/.test(r.marchRow), r);
+    /* THE FLOOR. An un-substituted test that really did improve must still be
+       congratulated — a fix that withheld every delta passes the check above. */
+    t.ok('while an un-swapped test that really improved keeps its delta',
+      /\+4/.test(r.squatRow), r);
+    t.ok('and an un-swapped row is not marked swapped', !/swapped/.test(r.squatRow), r);
+    /* THREE states, and this is the one two states got wrong. burpee -> march is
+       NOT re-scalable (different anchor, different unit), so the row must show
+       no share at all. It used to print "133% of the 30 reps benchmark · past
+       it" for 40 dead bugs — and calling that an estimate would have been
+       inventing the number anchorRescale() declines to compute. */
+    t.ok('an unconvertible swap shows NO benchmark share', !/%/.test(r.marchRow), r);
+    t.eq('and does not congratulate the athlete for passing it', /past it/.test(r.marchRow), false, r);
+    t.ok('and says why there is nothing to compare against', /No benchmark/.test(r.marchRow), r);
+    /* A swap the app CAN re-scale keeps its share and says it is scaled: 20 Fist
+       Push-Ups -> 21 push-up-equivalent -> 60% of the 35-rep benchmark. */
+    t.ok('a re-scalable swap keeps a share', /60%/.test(r.fistRow), r);
+    t.ok('and says the figure is scaled from the swap', /estimate/.test(r.fistRow), r);
+    /* THE FLOOR under both: an ordinary un-swapped row keeps its plain share and
+       claims nothing about a swap. */
+    t.ok('an un-swapped row keeps its plain benchmark share', /85%/.test(r.squatRow), r);
+    t.ok('and says nothing about scaling or missing benchmarks',
+      !/estimate/.test(r.squatRow) && !/No benchmark/.test(r.squatRow), r);
+  }
+
+  /* Withholding a delta SILENTLY is the same defect in the other direction: the
+     athlete reads a blank where a number used to be and has nothing to act on.
+     Two reasons, two sentences — a record from before the stamp existed is not
+     the same situation as a movement that genuinely changed. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = {
+        lims: STATE.profile.limitations,
+        baseline: JSON.parse(JSON.stringify(STATE.baseline || {})),
+      };
+      const prevResults = Object.fromEntries(TESTS.map(x => [x.id, 10]));
+      const results = Object.fromEntries(TESTS.map(x => [x.id, 14]));
+      const txt = () => {
+        const d = document.createElement('div');
+        d.innerHTML = testBreakdownHTML(computeAssessment(results, assessSubs()));
+        return d.textContent.replace(/\s+/g, ' ');
+      };
+      const base = extra => Object.assign({ date: '2026-01-01', protocol: TEST_PROTOCOL,
+        results: prevResults, score: 50, level: 'Intermediate' }, extra);
+
+      STATE.profile.limitations = [];
+      STATE.baseline = base({ subs: {} });
+      assessState = { idx: TESTS.length - 1, results, reassess: 1 };
+      const clean = txt();
+
+      STATE.baseline = base({});                       // no stamp at all — pre-v320
+      const legacy = txt();
+
+      STATE.profile.limitations = ['wrist'];           // stamped both sides, movement changed
+      STATE.baseline = base({ subs: {} });
+      const swapped = txt();
+
+      STATE.profile.limitations = keep.lims;
+      STATE.baseline = keep.baseline;
+      return { clean, legacy, swapped };
+    });
+    /* THE FLOOR: a genuine like-for-like re-test says nothing at all. A note that
+       always fires is a note nobody reads. */
+    t.ok('guard: a like-for-like re-test still shows its improvement', /\+4/.test(r.clean), r.clean);
+    t.ok('and carries no explanation, because there is nothing to explain',
+      !/No change shown on some tests/.test(r.clean), r.clean);
+    t.ok('a prior with no swap stamp says the app could not check it',
+      /predates the app recording which movement/.test(r.legacy), r.legacy);
+    t.ok('a prior measured on a different movement says THAT instead',
+      /different movement this time/.test(r.swapped), r.swapped);
+    t.ok('and the two explanations are not the same sentence',
+      !/predates the app recording which movement/.test(r.swapped), r.swapped);
+  }
+
   {
     const r = await page.evaluate(() => {
       openPlayer();
