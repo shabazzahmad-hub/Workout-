@@ -3555,6 +3555,53 @@ is a genuine cut, and the bounce is capped against the last uncut week.
 
 Ten mutants, all caught after those three rewrites.
 
+## Distance or load, never both in the same week (v326)
+
+v325 scheduled the running and left the rucking as a **sentence** — *"build the
+distance or the load, never both"* — with nothing scheduling it. Same
+countdown-not-a-plan gap `prep.date` had, one variable over.
+
+**A ruck is carried by the same tissue that absorbs every step**, so the two
+variables are raised one at a time and the screen says which one is moving.
+A four-week cycle: distance, distance, LOAD with the distance held, down week.
+
+Measured across sixteen weeks from a standing start:
+
+```
+w1  5.0km 10lb distance     w9   7.3km 20lb distance
+w2  5.5km 10lb distance     w10  8.1km 20lb distance
+w3  5.5km 15lb LOAD         w11  8.1km 25lb LOAD
+w4  5.5km 15lb DOWN         w12  8.1km 25lb DOWN
+```
+
+**Zero weeks where both climbed.** 5 km → 9.7 km and 10 lb → 30 lb over the
+block, which is the "build toward a third of bodyweight over MONTHS" rate
+rather than a number arrived at.
+
+**Both ceilings are live, and a check at one passes on half the code.** The
+bodyweight ceiling (a third) binds for a lighter athlete — 55 kg gives 40 lb —
+and `RUCK_LB_MAX` binds for a heavier one. With no bodyweight on file it falls
+back to the plate maximum, which is the conservative direction: a fixed number
+cannot be wrong about a body it does not know.
+
+### The escaped mutant found a double writer in my own code
+
+`down` was set inside the loop AND re-derived after it. The mutant that removed
+the loop's down branch left the trailing writer setting the flag anyway — so
+week 4 **climbed the distance and still rendered as a rest week**, and the check
+counting flags saw nothing wrong.
+
+Two fixes, and the code one matters more: `down` is now owned by the loop and
+nowhere else, and the check asserts the DISTANCE does not climb rather than
+that a flag is set. **Measure the payload, not the container** — third time this
+session, and the first where the redundant writer was the actual defect rather
+than the check's blind spot.
+
+**The floors are what keep "never both" from being satisfied by nothing ever
+climbing**: the distance must climb across the block, the load must climb, there
+must really be load weeks and down weeks in sixteen, and the distance must HOLD
+on a load week. Ten mutants, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
