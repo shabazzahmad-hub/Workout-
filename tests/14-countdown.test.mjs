@@ -372,9 +372,17 @@ export default async function run() {
     t.ok('and nothing speaks over it for at least three seconds',
       flow.quietFor >= 3, { quietFor: flow.quietFor, nextLine: flow.nextLine });
     /* The transition still BEEPS every second — the beeps are the countdown,
-       the same call v302 made. Only the spoken digits went. The 5-4-3-2-1 at
-       the very start of the flow keeps its digits: nothing competes there. */
-    t.eq('and the transition speaks no digits at all', flow.spokenDigits, 3, flow.all);
+       the same call v302 made. Only the spoken digits went.
+
+       THIS CHECK USED TO EXPECT 3, and its own comment claimed "the 5-4-3-2-1
+       at the very start of the flow keeps its digits: nothing competes there."
+       That was false, and the label above it ("no digits at all") disagreed
+       with the number it asserted — which is how it survived. The flow's
+       opening line is spoken at t=0 and the first digit lands at t=2s, so a
+       longer title or a slower voice loses the end of it; the same shape on
+       the rep cadence was measured losing 308ms of "Guided set. 13 reps. Get
+       ready." A check pinning the old behaviour is how a defect stays put. */
+    t.eq('and NO digit is spoken anywhere in the flow', flow.spokenDigits, 0, flow.all);
 
     /* 2. Every rep is counted ALOUD. Coaching used to replace the number. */
     const reps = await page.evaluate(async (exId) => {
@@ -557,6 +565,89 @@ export default async function run() {
        numbers and the check passes on nothing. */
     t.ok('guard: the rep-cadence timer actually ran', cadence.said.length > 5, cadence);
     t.eq('and counted every rep of the set aloud', cadence.missing.join(','), '', cadence);
+  }
+
+  /* ---- a get-ready must not talk over its own announcement (v317) --------
+     v302 established that the beeps ARE the countdown and a voice on top of
+     them is an interruption, and v307 applied it to the guided player's own
+     get-ready. FOUR sibling countdowns never got it: HIIT's lead-in, the
+     hold/rest timer, the rep cadence, and the warm-up/cool-down flow — whose
+     OWN transition phase carries a comment explaining the rule three lines
+     below the line that broke it.
+
+     Measured on the rep cadence before the fix: "Guided set. 13 reps. Get
+     ready." is spoken at 47ms and needs until 2355ms; the spoken "3" landed at
+     2047ms and _deviceSpeak() cancels, so the last 308ms — the word "ready" —
+     never played.
+
+     BOTH HALVES ARE PINNED. Deleting the beeps as well satisfies every "no
+     spoken digits" assertion and leaves a silent countdown, so each surface is
+     asserted to still cue every second. */
+  {
+    const r = await page.evaluate(async () => {
+      const o = {};
+      const said = []; const beeps = [];
+      let start = 0;
+      const rs = window.coachSpeak, ry = window.coachSay, rb = window.beep;
+      window.coachSpeak = t => said.push([Date.now() - start, String(t)]);
+      window.coachSay = t => said.push([Date.now() - start, String(t)]);
+      window.beep = (...a) => beeps.push([Date.now() - start, a[0]]);
+      /* ~2.6 words a second at the app's rate — the same arithmetic used to
+         measure the defect, so the check and the finding agree. */
+      const dur = s => Math.round(String(s).split(/\s+/).filter(Boolean).length / 2.6 * 1000);
+      const run = async (fn, ms) => {
+        said.length = 0; beeps.length = 0; start = Date.now();
+        try { fn(); } catch (e) { return { threw: e.message }; }
+        await new Promise(r => setTimeout(r, ms));
+        const digits = said.filter(([, x]) => /^\s*[0-9]\s*$/.test(x));
+        const collisions = [];
+        said.forEach(([t0, txt], i) => {
+          if (/^\s*[0-9]\s*$/.test(txt)) return;
+          const ends = t0 + dur(txt);
+          said.slice(i + 1).forEach(([t1, x1]) => {
+            if (/^\s*[0-9]\s*$/.test(x1) && t1 < ends) collisions.push([txt, x1, ends - t1]);
+          });
+        });
+        return { lines: said.map(x => x[1]), digits: digits.map(x => x[1]),
+          beepCount: beeps.length, collisions };
+      };
+      const sess = buildSession(STATE.progressPtr);
+      const repMove = [...sess.main, sess.finisher].find(x => x.unit === 'reps');
+      o.hadRepMove = !!repMove;
+      if (repMove) o.repCadence = await run(() => startGuidedReps(repMove.exId), 4300);
+      try { cancelReps(); } catch (e) {}
+      o.flow = await run(() => runWarmup(), 4300);
+      try { flowStop(false); } catch (e) {} try { closeSheet(); } catch (e) {}
+      window.coachSpeak = rs; window.coachSay = ry; window.beep = rb;
+      return o;
+    });
+
+    t.ok('guard: the session had a rep-based movement to pace', r.hadRepMove, r);
+    t.ok('guard: the rep cadence really announced the set',
+      (r.repCadence.lines || []).some(x => /reps/i.test(x)), r.repCadence);
+    t.eq('the rep-cadence get-ready speaks no digits', r.repCadence.digits, [], r.repCadence);
+    t.eq('so nothing cuts off its announcement', r.repCadence.collisions, [], r.repCadence);
+    /* THE FLOOR: the seconds are still cued. A fix that deleted the beeps too
+       passes every assertion above and leaves the athlete counting silence. */
+    t.ok('and every second of it still beeps', r.repCadence.beepCount >= 4, r.repCadence);
+
+    t.ok('guard: the warm-up flow really announced itself',
+      (r.flow.lines || []).some(x => /get ready/i.test(x)), r.flow);
+    t.eq('the flow get-ready speaks no digits', r.flow.digits, [], r.flow);
+    t.eq('so nothing cuts off its announcement', r.flow.collisions, [], r.flow);
+    t.ok('and every second of it still beeps', r.flow.beepCount >= 4, r.flow);
+  }
+
+  /* The other two surfaces are asserted on the SOURCE: HIIT's lead-in and the
+     hold timer's get-ready both need state a check cannot cheaply build, and
+     the defect is a single call that either is there or is not. Every
+     get-ready in the app is swept at once, so a fifth one added later with the
+     old shape fails here rather than reaching a phone. */
+  {
+    const src = await page.evaluate(() => document.documentElement.innerHTML);
+    const spoken = (src.match(/coachSay\(String\(/g) || []).length;
+    t.eq('no get-ready anywhere speaks its countdown digits', spoken, 0,
+      { found: spoken });
   }
 
   srv.close();
