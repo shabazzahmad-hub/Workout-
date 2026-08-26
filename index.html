@@ -1807,7 +1807,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='314';
+const APP_VERSION='315';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -6857,7 +6857,10 @@ function briefSegments(){
   /* Never speak an invented target. These used to fall back to 175 lb / 12% —
      numbers the athlete never chose — and the coach read them out every morning. */
   if(!(goalW>0)){
-    mission = `You have not set a goal weight yet. Open the Progress tab and pick one, or just train and let the tape measure tell the story. Either way — today, we work.`;
+    /* True from v315 and not before: setGoalWeight() now sits on Progress ▸
+       Body, beside the weight chart. Until then this sentence sent the athlete
+       to a tab with no such control on it. */
+    mission = `You have not set a goal weight yet. Open Progress, tap Body, and set one — or just train and let the tape measure tell the story. Either way, today we work.`;
   }else if(kg){const lb=Math.round(kg*2.20462), toGo=lb-goalW, gaining=STATE.profile.goal==='gain';
     /* toGo>0 means CURRENT is above the target. For a lose/maintain goal that
        means ground left to cover; for a 'gain' goal it means the target is
@@ -6877,7 +6880,9 @@ function briefSegments(){
         : `You are under ${goalW} pounds — outstanding. Today we hold the line.`;
     }
   }else{
-    mission=`The mission: down to ${goalW} pounds${bf}. Log your weight in the Fuel tab so I can track every pound with you. Today, we get to work.`;
+    /* Fuel has no weight control at all — the calculator asks for a weight but
+       does not log one. logMeasure() is on Progress, beside the chart. */
+    mission=`The mission: down to ${goalW} pounds${bf}. Log your weight on the Progress tab so I can track every pound with you. Today, we get to work.`;
   }
   segs.push({icon:'🎯',title:'Your mission',say:mission});
   // 3 — today's session
@@ -6904,7 +6909,12 @@ function briefSegments(){
       : `Fuel: open the Fuel tab and tap Calculate my targets, so I can set your exact calories and protein. Eat in a moderate deficit and keep protein high.`});
   // 9 — meals (from today's generated plan)
   try{const plan=currentMealPlan(); const names=(plan&&plan.meals?plan.meals.map(recipeById).filter(Boolean).map(r=>r.name):[]);
-    if(names.length)segs.push({icon:'🥗',title:'Your meals',say:`Your meal plan today: ${_briefList(names)}. The full recipes are in the Fuel tab.`});
+    /* "in the Fuel tab" was false: v245 removed the plan card from Fuel at the
+       athlete's request and the worked days live on Reference. The coach named
+       three meals out loud every morning and pointed at a screen where none of
+       them existed. When a block moves, grep the copy for the old address —
+       and a spoken address is the one nobody can double-check by looking. */
+    if(names.length)segs.push({icon:'🥗',title:'Your meals',say:`Your meal plan today: ${_briefList(names)}. The full recipes are on the Reference tab, under Food.`});
   }catch(e){}
   // 10 — hydration
   const cups=waterTargetCups(), oz=Math.round(cups*8);
@@ -8596,6 +8606,9 @@ function renderProgress(){
     <div class="row" style="justify-content:space-between"><b>Waist (${unit})</b><div class="btnrow" style="gap:7px"><button class="btn sm ghost" onclick="setWaistGoal()">🎯 Goal</button><button class="btn sm primary" onclick="logMeasure()">+ Log</button></div></div>
     ${measureChartHTML()}
     ${waistGoalHTML()}
+    <div class="divider" style="margin:14px 0 10px"></div>
+    <div class="row" style="justify-content:space-between"><b>Weight (${unit==='in'?'lb':'kg'})</b><div class="btnrow" style="gap:7px"><button class="btn sm ghost" onclick="setGoalWeight()">🎯 Goal</button><button class="btn sm primary" onclick="logMeasure()">+ Log</button></div></div>
+    ${goalWeightLineHTML()}
     ${weightChartHTML()}
     ${bmiLineHTML()}
   </div>`;
@@ -8689,6 +8702,50 @@ function setWaistGoal(){
     <button class="btn primary" onclick="saveWaistGoal()">Save goal</button>`);
 }
 function gBump(d){const inp=$('#g-waist');inp.value=Math.max(0,((+inp.value||(+inp.placeholder||0))+d)).toFixed(1);}
+/* GOAL WEIGHT had no setter anywhere outside the setup wizard, and it is the
+   single number the whole projection is built on: projTargetKg() reads it,
+   timelineRateKgWk() reads it, and the coach reads it aloud every morning. To
+   change it the athlete had to reopen the profile quiz and walk its steps —
+   for one number, on the tab where the weight chart already lives.
+
+   Two sentences in the brief already told them to do it here ("Open the
+   Progress tab and pick one"), which was simply false. A promise in UI text is
+   a specification. */
+function setGoalWeight(){
+  const p=STATE.profile, im=p.unit==='in';
+  const cur=p.goalWeightLb>0?(im?p.goalWeightLb:Math.round(p.goalWeightLb*0.453592)):'';
+  const now=latestWeightKg();
+  const nowShow=now>0?(im?Math.round(now/0.453592):Math.round(now*10)/10):null;
+  openSheet(`<h3>Set your goal weight</h3>
+    <p class="muted sm" style="margin:2px 0 12px">The weight you are working toward. Your projection, your pace and your daily calorie target are all built on this number.${nowShow!=null?` You are <b>${nowShow} ${im?'lb':'kg'}</b> now.`:''}</p>
+    <div class="field"><label>Goal weight (${im?'lb':'kg'})</label>
+      <div class="numrow"><button onclick="gwBump(-1)">–</button><input id="g-weight" type="number" inputmode="decimal" value="${cur}" placeholder="${im?'165':'75'}"><button onclick="gwBump(1)">+</button></div></div>
+    <button class="btn primary" onclick="saveGoalWeight()">Save goal</button>
+    ${p.goalWeightLb>0?`<button class="btn ghost sm" style="margin-top:8px" onclick="clearGoalWeight()">Clear it — just train</button>`:''}`);
+}
+function gwBump(d){const inp=$('#g-weight');inp.value=Math.max(0,((+inp.value||(+inp.placeholder||0))+d)).toFixed(0);}
+function saveGoalWeight(){
+  const p=STATE.profile, im=p.unit==='in';
+  const v=parseFloat($('#g-weight').value);
+  const kg=im?v*0.453592:v;
+  /* Same clamp the wizard and logMeasure() use. It shipped as the ONLY writer
+     without one once already: a fat-fingered value here would set the pace for
+     a year of training. */
+  if(!(v>0)||!plausibleKg(kg)){toast('Enter a realistic goal weight');return;}
+  p.goalWeightLb=Math.round(kg/0.453592);
+  /* The body-fat target and the goal weight are two ways of saying the same
+     thing, and recomputeTargetWeight() OVERWRITES this from goalBodyFat. A
+     hand-set weight is the athlete's own answer and outranks the derived one —
+     the same call as a hand-set protein target beating the calculation — so
+     the derived body-fat figure is dropped rather than left to win on the next
+     body-level tap. */
+  delete p.goalBodyFat;
+  save();closeSheet();toast('Goal weight set 🎯');render();
+}
+function clearGoalWeight(){
+  delete STATE.profile.goalWeightLb;delete STATE.profile.goalBodyFat;
+  save();closeSheet();toast('Goal weight cleared');render();
+}
 function saveWaistGoal(){const g=parseFloat($('#g-waist').value);const cm=waistToCm(g);if(!(g>0)||!plausibleWaistCm(cm)){toast('Enter a realistic goal');return;}STATE.profile.goalWaist=r1(cm);save();closeSheet();toast('Goal set 🎯');renderProgress();}
 function mBump(f,d){const id=f==='w'?'#m-waist':'#m-weight';const inp=$(id);inp.value=Math.max(0,((+inp.value||(+inp.placeholder||0))+d)).toFixed(1);}
 /* The wizard already clamps these; the two other writers did not, so a
@@ -11837,6 +11894,22 @@ function setBodyLevel(which,level){
   save();renderProgress();
 }
 function projTargetKg(){const g=STATE.profile.goalWeightLb;return g>0?g*0.453592:null;}
+/* States the goal in the athlete's own units beside the chart it drives, and
+   says plainly when there is none — the coach reads that same absence out as
+   "you have not set a goal weight yet", and the two must not disagree. */
+function goalWeightLineHTML(){
+  const g=STATE.profile.goalWeightLb, im=STATE.profile.unit==='in';
+  if(!(g>0))return `<div class="tiny muted" data-goalwt="none" style="margin:2px 2px 6px">No goal weight set — tap <b>🎯 Goal</b>, or just train and let the tape measure tell the story.</div>`;
+  const show=im?g:Math.round(g*0.453592), u=im?'lb':'kg';
+  const now=latestWeightKg();
+  let gap='';
+  if(now>0){
+    const nowShow=im?Math.round(now/0.453592):Math.round(now*10)/10;
+    const d=Math.round(Math.abs(nowShow-show)*10)/10;
+    gap=d<0.5?' · you are there':` · ${d} ${u} ${nowShow>show?'to go':'under it'}`;
+  }
+  return `<div class="tiny muted" data-goalwt="set" style="margin:2px 2px 6px">🎯 Goal weight <b style="color:var(--gold)">${show} ${u}</b>${gap}</div>`;
+}
 // Time-based projection line (dashed) with monthly milestones and your logged weights overlaid.
 function projectionChartSVG(start,end,startK,endK,actual,wu,imp){
   const W=320,H=140,padL=6,padR=6,padT=16,padB=20;
@@ -12706,7 +12779,10 @@ function movementHTML(){
      the target, so clearing it on walked steps alone (a real, common case)
      showed no confirmation of anything at all, let alone the credit. */
   {const adj=movementKcalAdj();
-   if(adj>0)h+=`<div class="note ok" style="margin:0 0 10px">🔥 <b>+${adj} kcal earned today</b> — ${(eq-tgt).toLocaleString()} steps past target. That room is already on your live total in Fuel above.</div>`;}
+   /* "in Fuel above" was written when this block lived on Fuel. v311 moved it
+      to Today ▸ Workout, so there is nothing above it — the total it refers to
+      is a tab away. */
+   if(adj>0)h+=`<div class="note ok" style="margin:0 0 10px">🔥 <b>+${adj} kcal earned today</b> — ${(eq-tgt).toLocaleString()} steps past target. That room is already on your live total over on <b>Fuel</b>.</div>`;}
   /* Jacks lead because they are the ones that travel. The bike is right here
      next to them for the days he is at home and would rather ride. */
   h+=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Make it up with</div>
