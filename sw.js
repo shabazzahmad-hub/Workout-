@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v316';
+const CACHE = 'coreforge-v317';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
@@ -98,7 +98,7 @@ const EXTRA = [
   './ex-vup.jpg','./ex-walkinglunge.jpg','./ex-wallhandstand.jpg','./ex-wallwalk.jpg','./ex-warriorthree.jpg',
   './ex-weightedtwist.jpg','./ex-widepullup.jpg','./ex-windshield.jpg','./notif-hlr.jpg',
   './phys-1.jpg','./phys-2.jpg','./phys-3.jpg','./phys-4.jpg',
-  './phys-5.jpg','./ex-atomicpushup.mp4','./ex-birddog.mp4','./ex-burpee.mp4','./ex-squatthrust.mp4','./ex-inchworm.mp4',
+  './phys-5.jpg','./ex-atomicpushup.mp4','./ex-birddog.mp4','./ex-burpee.mp4','./ex-squatthrust.mp4','./ex-inchworm.mp4','./ex-cossack.mp4',
   './ex-halfburpee.mp4','./ex-jumpingjack.mp4','./ex-jumpsquat.mp4','./ex-kbhalo.mp4','./ex-kbheli.mp4','./ex-kbtgu.mp4',
   './ex-nordic.mp4','./ex-pistol.mp4','./ex-superpushup.mp4','./wu-march.mp4',
   './screenshot-today.png','./screenshot-fuel.png','./screenshot-progress.png'

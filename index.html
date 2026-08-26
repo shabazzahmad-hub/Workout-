@@ -1560,7 +1560,7 @@ const EX = {
     steps:['Set up in a push-up with the hands beside the waist, fingers turned slightly out.','Lean the shoulders forward well past the hands.','Keep that forward lean and lower the chest.','Press back up without losing the lean.'],
     cues:['Shoulders stay ahead of the hands','Body locked in one line','Protract — push the floor away at the top'],
     mistakes:['Losing the lean as you press','Hips dropping into an arch']},
-  cossack:{repSec:4,name:'Cossack Squat',region:'legs',unit:'reps',img:'ex-cossack.jpg',anchor:'squat',hardness:0.4,base:10,rest:60,pattern:'squat',
+  cossack:{repSec:4,name:'Cossack Squat',region:'legs',unit:'reps',img:'ex-cossack.jpg',vid:'ex-cossack.mp4',anchor:'squat',hardness:0.4,base:10,rest:60,pattern:'squat',
     why:'A deep side-to-side squat that builds the legs and glutes while opening the hips and inner thighs. Hits ranges a normal squat never reaches.',
     steps:['Stand with the feet very wide, toes slightly out.','Shift your weight over one leg and sit down into a deep squat on that side.','Keep the other leg straight with the toes up.','Push back to the centre and repeat on the other side. Count each side as a rep.'],
     cues:['Heel of the working leg stays down','Chest up out of the hole','Straight leg stays straight'],
@@ -1807,7 +1807,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='316';
+const APP_VERSION='317';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -5872,7 +5872,17 @@ function startHiitSpecial(format){
 }
 function ivTickLead(){
   if(!INTV)return;INTV.lead--;
-  if(INTV.lead>0){beep(1000,.18,0.9);if(INTV.lead<=3)coachSay(String(INTV.lead));ivS('#ivNum',INTV.lead);return;}
+  /* NO SPOKEN DIGITS. The beeps already mark every second of a get-ready, and
+     _deviceSpeak() calls synth.cancel() on every line — so a digit spoken two
+     seconds in cuts off the announcement that came before it. Measured on the
+     rep cadence: "Guided set. 13 reps. Get ready." needs 2355ms and the spoken
+     "3" lands at 2047ms, taking the last 308ms with it.
+
+     The beeps are the countdown; a voice on top is not a second opinion, it is
+     an interruption. That was the v302 call for the last three seconds of an
+     effort and the v307 call for the guided player's own get-ready — this is
+     the same rule reaching the four sibling countdowns that never got it. */
+    if(INTV.lead>0){beep(1000,.18,0.9);ivS('#ivNum',INTV.lead);return;}
   beepGo();haptic(30);coachSay('Go!');ivClear();ivStep(0);
 }
 function ivRenderStep(idx){
@@ -8116,7 +8126,17 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex){
   function tick(){
     if(phase==='ready'){
       ready--;
-      if(ready>0){beep(1000,.15,0.7);if(ready<=3)coachSay(String(ready));const n=$('#tnum');if(n)n.textContent=ready;return;}
+      /* NO SPOKEN DIGITS. The beeps already mark every second of a get-ready, and
+     _deviceSpeak() calls synth.cancel() on every line — so a digit spoken two
+     seconds in cuts off the announcement that came before it. Measured on the
+     rep cadence: "Guided set. 13 reps. Get ready." needs 2355ms and the spoken
+     "3" lands at 2047ms, taking the last 308ms with it.
+
+     The beeps are the countdown; a voice on top is not a second opinion, it is
+     an interruption. That was the v302 call for the last three seconds of an
+     effort and the v307 call for the guided player's own get-ready — this is
+     the same rule reaching the four sibling countdowns that never got it. */
+    if(ready>0){beep(1000,.15,0.7);const n=$('#tnum');if(n)n.textContent=ready;return;}
       beepGo();haptic(30);coachSay('Go!');
       phase='run';tRing(!isHold);const n=$('#tnum');if(n){n.textContent=fmtTime(remain);n.className='tnum '+(isHold?'go':'rest');}setPhase(isHold?'HOLD':'REST');
       return;
@@ -8206,7 +8226,17 @@ function runRepCadence(reps,label,restAfter,onDone,ex){
   beep(1000,.15,0.7);coachSpeak('Guided set. '+total+' reps. Get ready.');
   function readyTick(){
     ready--;
-    if(ready>0){beep(1000,.15,0.7);if(ready<=3)coachSay(String(ready));const e=$('#rcNum');if(e)e.textContent=ready;return;}
+    /* NO SPOKEN DIGITS. The beeps already mark every second of a get-ready, and
+     _deviceSpeak() calls synth.cancel() on every line — so a digit spoken two
+     seconds in cuts off the announcement that came before it. Measured on the
+     rep cadence: "Guided set. 13 reps. Get ready." needs 2355ms and the spoken
+     "3" lands at 2047ms, taking the last 308ms with it.
+
+     The beeps are the countdown; a voice on top is not a second opinion, it is
+     an interruption. That was the v302 call for the last three seconds of an
+     effort and the v307 call for the guided player's own get-ready — this is
+     the same rule reaching the four sibling countdowns that never got it. */
+    if(ready>0){beep(1000,.15,0.7);const e=$('#rcNum');if(e)e.textContent=ready;return;}
     beepGo();haptic(30);coachSay('Go!');clearInterval(timer.iv);
     const e=$('#rcNum');if(e){e.textContent='0';e.className='tnum go';}setP('OF '+total+' REPS');
     timer={iv:setInterval(step,tempo*1000),mode:'reps'};
@@ -8384,7 +8414,17 @@ function runFlow(items,title,color){
   function tick(){
     if(phase==='ready'){
       ready--;
-      if(ready>0){beep(1000,.15,0.7);if(ready<=3)coachSay(String(ready));set('#flowNum',ready);return;}
+      /* NO SPOKEN DIGITS. The beeps already mark every second of a get-ready, and
+     _deviceSpeak() calls synth.cancel() on every line — so a digit spoken two
+     seconds in cuts off the announcement that came before it. Measured on the
+     rep cadence: "Guided set. 13 reps. Get ready." needs 2355ms and the spoken
+     "3" lands at 2047ms, taking the last 308ms with it.
+
+     The beeps are the countdown; a voice on top is not a second opinion, it is
+     an interruption. That was the v302 call for the last three seconds of an
+     effort and the v307 call for the guided player's own get-ready — this is
+     the same rule reaching the four sibling countdowns that never got it. */
+    if(ready>0){beep(1000,.15,0.7);set('#flowNum',ready);return;}
       phase='run'; startItem(true); return;
     }
     if(phase==='transition'){

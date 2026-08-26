@@ -2780,6 +2780,100 @@ The usual ratio, and every one is a trap this file already names:
 - **"Four dead handlers."** `Math.round`, `.trim()`, `.toFixed()`, `.click()` —
   method calls, not functions.
 
+## One countdown was fixed and its four siblings were not (v317)
+
+v302 settled the rule — **the beeps ARE the countdown, and a voice on top of
+them is not a second opinion, it is an interruption** — and v307 applied it to
+the guided player's own get-ready. An audit found it had reached exactly one of
+**five** get-ready countdowns:
+
+| surface | announces | then spoke |
+|---|---|---|
+| guided player (`plTickReady`) | the movement and the target | *(fixed v307)* |
+| HIIT lead-in (`ivTickLead`) | the round | 3, 2, 1 |
+| hold / rest timer | *"Get ready."* / *"Rest. 45 seconds."* | 3, 2, 1 |
+| rep cadence | *"Guided set. 13 reps. Get ready."* | 3, 2, 1 |
+| warm-up / cool-down flow | *"Warm-up. Get ready."* | 3, 2, 1 |
+
+**Measured rather than argued.** On the rep cadence the announcement is spoken
+at 47 ms and needs until 2,355 ms; the spoken *"3"* lands at **2,047 ms**, and
+`_deviceSpeak()` cancels — so the last **308 ms**, the word *"ready"*, never
+played. The athlete hears *"Guided set. Thirteen reps. Get—"* then *"three,
+two, one."*
+
+The flow is the sharpest case: its **transition** phase carries a comment
+explaining this exact rule, three lines below the `ready` branch that still had
+the defect. Same function.
+
+### A check was pinning the old behaviour, again
+
+`t.eq('and the transition speaks no digits at all', flow.spokenDigits, 3)` —
+the label says *no digits* and the assertion demands **three**, under a comment
+claiming *"the 5-4-3-2-1 at the very start of the flow keeps its digits:
+nothing competes there."* The disagreement between the label and the number is
+how it survived, and the comment's claim is the thing that was measured false.
+
+That is the third time this session: a check holding a defect in place rather
+than catching it (v313's `Fuel → Movement` pointer, v314's tiles-on-Program,
+this). **When a rule changes, grep the suite for checks that assert the old
+one.**
+
+### Both halves, or the fix is a mute button
+
+Deleting the beeps as well satisfies every "no spoken digits" assertion and
+leaves a silent countdown. Each surface is pinned twice — no digits AND every
+second still cued — and a sixth check sweeps the whole source so a future
+get-ready written in the old shape fails here rather than reaching a phone.
+Six mutants, all caught, including the two over-eager ones (beeps deleted, and
+the announcement itself deleted).
+
+## The no-press rule holds, and the crop is the real work (v317)
+
+The Cossack Squat came back **correct on the first attempt** — one man, no
+jump, the straight leg genuinely straight with the toes up, both heels down,
+chest tall. That is the third datapoint for the rule v305 established:
+
+| movement | press inside it? | attempts |
+|---|---|---|
+| 8-count push-up | yes, mandatory | 3, never rendered |
+| squat thrust | no | correct |
+| inchworm walkout | no | correct first time |
+| **Cossack squat** | **no** | **correct first time** |
+
+**Before writing a video prompt, ask whether the movement contains a press.**
+Nothing else has predicted the outcome as reliably.
+
+Two things the prompt got right and should be kept: *"one man, alone"* as the
+FIRST line (position beats emphasis), and the movement spelled out as numbered
+MECHANICS rather than named — naming it invites the model to retrieve the
+pattern as one unit, which is exactly how the 8-count failed.
+
+### What still has to be fixed by hand, every time
+
+The generation was clean and the FILE was not. Two faults, both at the right
+edge, and neither visible until a frame is read at full resolution:
+
+- the generator's **sparkle watermark**, bottom right;
+- a **rope hanging in the studio**, top right — background clutter no prompt
+  line had excluded.
+
+`crop=720:720:280:0` removed both, then `scale=640:640,fps=24`, audio dropped.
+The prompt now carries *"nothing hanging or visible in the background — an
+empty grey wall only"*, but **expect to crop regardless**: the watermark has
+appeared on every generation so far and asking for its absence has never once
+worked.
+
+**Read frames at full resolution before accepting a clip.** A contact sheet is
+enough to judge the MOVEMENT and useless for judging the FILE — at tile size
+both faults are a few grey pixels.
+
+### And the patch script's assert earned its keep again
+
+The first attempt anchored on `cossack:{name:'Cossack Squat'`, and the real
+line is `cossack:{repSec:4,name:…` — v307 added the cadence field in front of
+the name. The `assert count==1` turned a bad anchor into a clean no-op instead
+of a half-applied edit, which is the whole reason that rule exists.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
