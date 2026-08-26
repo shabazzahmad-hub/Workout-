@@ -2356,6 +2356,111 @@ export default async function run() {
     t.ok('a record with no stamp reads as week one — it prescribes less, not more',
       en.noStampIsWeekOne, en);
     t.ok('and a junk stamp is dropped', en.junkStampDropped, en);
+
+    /* ---- the ruck ladder (v326) --------------------------------------------
+       v325 scheduled the running and left the rucking as a SENTENCE — "build
+       the distance or the load, never both" — with nothing scheduling it. Same
+       countdown-not-a-plan gap prep.date had, one variable over.
+
+       THE RULE IS DISTANCE OR LOAD, NEVER BOTH IN THE SAME WEEK. A ruck is
+       carried by the same tissue that absorbs every step, so raising two
+       things at once is how a back goes. */
+    const rk = await page.evaluate(() => {
+      const keep = { prep: JSON.parse(JSON.stringify(STATE.prep || {})),
+                     days: JSON.parse(JSON.stringify(nut().days || {})),
+                     kg: STATE.nutrition.weightKg, lb: STATE.profile.ruckLb };
+      const iso = d => { const x = new Date(); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); };
+      const o = {};
+      STATE.nutrition.weightKg = 86;
+
+      STATE.prep = {};
+      o.noDate = !!ruckLadderWeek().noDate;
+      o.noDateRendersNothing = ruckLadderHTML() === '';
+
+      STATE.prep = { date: iso(180), planFrom: iso(0) };
+      const w1 = ruckLadderWeek();
+      o.floor = { km: w1.km, lb: w1.lb, estimated: w1.estimated,
+                  floorKm: PREP_RUCK_FLOOR_KM, lightestPlate: RUCK_PLATES[0] };
+      o.floorSaysSo = /Starting light, because nothing is logged yet/.test(ruckLadderHTML());
+
+      // walk sixteen weeks
+      const weeks = [];
+      for (let w = 0; w < 16; w++) { STATE.prep.planFrom = iso(-7 * w);
+        const x = ruckLadderWeek();
+        weeks.push({ wk: x.wk, km: x.curve, lb: x.lb, down: x.down, climbing: x.climbing }); }
+      o.weeks = weeks;
+      const both = [];
+      for (let i = 1; i < weeks.length; i++) {
+        if (weeks[i].km > weeks[i - 1].km + 0.05 && weeks[i].lb > weeks[i - 1].lb) both.push(weeks[i].wk); }
+      o.bothClimbed = both;
+      o.kmClimbed = weeks[weeks.length - 1].km > weeks[0].km;
+      o.lbClimbed = weeks[weeks.length - 1].lb > weeks[0].lb;
+      o.downWeeks = weeks.filter(w => w.down).length;
+      /* MEASURE THE CUT, not the flag. A mutant that removed the loop's down
+         branch left the flag set by a second writer and walked through a check
+         that counted flags — week 4 climbed and still rendered as a rest. */
+      o.downWeeksReallyCut = weeks.every((w, i) => i === 0 || !w.down || w.km <= weeks[i - 1].km + 0.05);
+      o.downShown = weeks.filter(w => w.down).map(w => ({ wk: w.wk, km: w.km, prev: (weeks[w.wk - 2] || {}).km }));
+      o.loadWeeks = weeks.filter(w => w.climbing === 'load').length;
+      // and the distance HOLDS on a load week
+      o.heldOnLoadWeek = weeks.every((w, i) => i === 0 || w.climbing !== 'load' || Math.abs(w.km - weeks[i - 1].km) < 0.06);
+
+      /* Both ceilings are live. The bodyweight one binds for a lighter athlete
+         and the plate maximum binds for a heavier one — a check at only one of
+         them passes on half the code. */
+      o.ceilings = [55, 70, 110].map(kg => { STATE.nutrition.weightKg = kg; return ruckLoadCeilLb(); });
+      STATE.nutrition.weightKg = null;
+      o.ceilNoWeight = ruckLoadCeilLb();
+      STATE.nutrition.weightKg = 86;
+
+      // with rucks logged it builds from what the athlete actually carries
+      const days = nut().days;
+      for (let i = 1; i <= 21; i++) { const d = iso(-i);
+        days[d] = days[d] || { water: 0, habits: {} };
+        if (i % 3 === 0) { days[d].ruckVal = 6; days[d].ruckUnit = 'dist'; days[d].ruckLvl = 'brisk'; } }
+      STATE.profile.ruckLb = 30;
+      STATE.prep.planFrom = iso(0);
+      const fromLogs = ruckLadderWeek();
+      o.fromLogs = { km: fromLogs.km, lb: fromLogs.lb, estimated: fromLogs.estimated };
+      o.trailing = Math.round(trailingRuckKm() * 10) / 10;
+
+      STATE.prep = keep.prep; nut().days = keep.days;
+      STATE.nutrition.weightKg = keep.kg; STATE.profile.ruckLb = keep.lb;
+      return o;
+    });
+
+    t.ok('with no test date there is no ruck plan', rk.noDate, rk);
+    t.ok('and nothing is rendered for one', rk.noDateRendersNothing, rk);
+    /* THE RULE. */
+    t.eq('across sixteen weeks, distance and load never climb together',
+      rk.bothClimbed, [], { bothClimbed: rk.bothClimbed, weeks: rk.weeks });
+    /* THE FLOORS UNDER IT — "never both" is trivially satisfied by nothing
+       ever climbing, which would be a plan that goes nowhere. */
+    t.ok('the distance really does climb across the block', rk.kmClimbed, rk.weeks);
+    t.ok('and so does the load', rk.lbClimbed, rk.weeks);
+    t.ok('guard: there really are load weeks in sixteen', rk.loadWeeks >= 3, rk);
+    t.ok('and down weeks', rk.downWeeks >= 3, rk);
+    t.ok('a down week does not climb — the flag and the distance agree',
+      rk.downWeeksReallyCut, rk.downShown);
+    t.ok('the distance HOLDS on a week the load climbs', rk.heldOnLoadWeek, rk.weeks);
+    /* Nothing logged opens light and says the number is a floor. */
+    t.eq('with nothing logged it opens at the floor distance', rk.floor.km, rk.floor.floorKm, rk);
+    t.eq('under the lightest plate', rk.floor.lb, rk.floor.lightestPlate, rk);
+    t.eq('and the floor is a genuinely light opening', rk.floor.floorKm, 5, rk);
+    t.eq('and the lightest plate really is the lightest', rk.floor.lightestPlate, 10, rk);
+    t.ok('and it says the number is a floor, not a measurement', rk.floorSaysSo, rk);
+    /* BOTH ceilings, because a check at one passes on half the code. */
+    t.ok('a lighter athlete is capped by their bodyweight, not the plate rack',
+      rk.ceilings[0] < 60 && rk.ceilings[0] > 20, rk.ceilings);
+    t.eq('and a heavier one by the plate maximum', rk.ceilings[2], 60, rk.ceilings);
+    t.ok('guard: the two ceilings really are different', rk.ceilings[0] !== rk.ceilings[2], rk.ceilings);
+    t.eq('with no bodyweight on file it falls back to the plate maximum', rk.ceilNoWeight, 60, rk);
+    /* And it reads what the athlete actually does. */
+    t.ok('guard: the seeded rucks really are ~12 km a week',
+      rk.trailing > 8 && rk.trailing < 20, rk);
+    t.eq('with rucks logged it builds from the real distance', rk.fromLogs.km, rk.trailing, rk);
+    t.eq('and from the plate they actually carry', rk.fromLogs.lb, 30, rk);
+    t.ok('and stops calling it an estimate', !rk.fromLogs.estimated, rk);
     /* THE FLOOR under the note. */
     t.eq('floor: with the sandbag owned there is nothing to say', r.kitNoteWithBag, '', r);
     t.ok('and the sheet is quiet about kit', r.sheetWithBagQuiet, r);

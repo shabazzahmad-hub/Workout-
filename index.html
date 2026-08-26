@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='325';
+const APP_VERSION='326';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4238,6 +4238,8 @@ const PREP_DOWN_CUT=0.7;          // a down week is this share of the week befor
 const PREP_FLOOR_KM=8;            // where an athlete with nothing logged starts
 const PREP_TAPER_DAYS=10;         // freshness in, volume out
 const PREP_RUCK_STEP_LB=5;        // and the load never climbs in the same week as the distance
+const PREP_RUCK_FLOOR_KM=5;       // an opening ruck week for someone with nothing logged
+const PREP_RUCK_CEIL_SHARE=1/3;   // the load stops climbing here, whatever the plates say
 function _dayRunKm(t){
   try{
     if(!t||typeof t!=='object')return 0;
@@ -4271,6 +4273,94 @@ function trailingRunKm(){
     const used=buckets.filter(b=>b>0);
     return used.reduce((a,b)=>a+b,0)/used.length;
   }catch(e){return null;}
+}
+function _dayRuckKm(t){
+  try{
+    if(!t||typeof t!=='object')return 0;
+    const lvl=RUCK_PACES.some(p=>p.k===t.ruckLvl)?t.ruckLvl:'brisk';
+    const v=(typeof t.ruckVal==='number'&&isFinite(t.ruckVal)&&t.ruckVal>0)?t.ruckVal:0;
+    if(!v)return 0;
+    const u=RUCK_UNITS.some(x=>x[0]===t.ruckUnit)?t.ruckUnit:'min';
+    if(u==='dist')return Math.min(100,v);
+    const min=u==='min'?Math.min(600,v):Math.min(600,v/ruckKcalPerMin(lvl));
+    return min*ruckKmPerMin(lvl);
+  }catch(e){return 0;}
+}
+/* The same trailing read the running plan uses. Nothing logged returns null —
+   "unknown", which is not the same answer as zero. */
+function trailingRuckKm(){
+  try{
+    const days=(nut().days)||{};
+    const now=new Date(todayISO()+'T00:00:00').getTime();
+    const buckets=[0,0,0,0];let any=false;
+    Object.keys(days).forEach(d=>{
+      const ms=new Date(d+'T00:00:00').getTime();
+      if(!isFinite(ms))return;
+      const wk=Math.floor((now-ms)/(7*86400000));
+      if(wk<0||wk>3)return;
+      const km=_dayRuckKm(days[d]);
+      if(km>0){buckets[wk]+=km;any=true;}
+    });
+    if(!any)return null;
+    const used=buckets.filter(b=>b>0);
+    return used.reduce((a,b)=>a+b,0)/used.length;
+  }catch(e){return null;}
+}
+/* The load stops climbing at a third of bodyweight. That is the far end of the
+   usual guidance — start near a tenth, build toward a third over MONTHS — and
+   the ladder walks there in 5 lb steps rather than arriving. With no bodyweight
+   on file it falls back to the plate ceiling, which is the conservative
+   direction: a fixed number cannot be wrong about a body it does not know. */
+function ruckLoadCeilLb(){
+  const kg=latestWeightKg();
+  if(!(kg>0))return RUCK_LB_MAX;
+  return Math.min(RUCK_LB_MAX,Math.round(kg*PREP_RUCK_CEIL_SHARE/0.453592));
+}
+/* THE RULE: DISTANCE OR LOAD, NEVER BOTH IN THE SAME WEEK.
+   Rucking hurts people in a way running does not, because the load is carried
+   by the same tissue that has to absorb every step — so the two variables are
+   raised one at a time and the plan says which one is moving.
+
+   A four-week cycle: distance climbs, distance climbs, LOAD climbs and the
+   distance is held, then a down week that cuts both. Adding a plate on the
+   same week the distance goes up is how a back goes. */
+function ruckLadderWeek(){
+  const left=prepWeeksLeft();
+  if(left===null)return {noDate:true};
+  const wk=prepWeekNo(), phase=prepPhase();
+  const base=trailingRuckKm();
+  const startKm=(base!==null&&base>0)?base:PREP_RUCK_FLOOR_KM;
+  const startLb=(base!==null&&base>0)?ruckLoadLb():RUCK_PLATES[0];
+  const ceil=ruckLoadCeilLb();
+  /* Walk the cycle forward so the two variables can never move together, and
+     so the week's answer does not depend on what was rendered last time. */
+  let km=startKm, lb=startLb, climbing='distance', down=false, capped=false;
+  for(let w=2;w<=wk;w++){
+    const slot=((w-1)%4)+1;                       // 1,2 distance · 3 load · 4 down
+    if(slot===4){down=true;climbing='neither';continue;}
+    down=false;
+    if(slot===3){
+      climbing='load';
+      if(lb+PREP_RUCK_STEP_LB<=ceil)lb+=PREP_RUCK_STEP_LB; else capped=true;
+    }else{
+      climbing='distance';
+      km*=PREP_RAMP;
+    }
+  }
+  /* `down` is owned by the LOOP and nowhere else. It used to be re-derived
+     here as well, which meant a week could be treated as a climbing week by
+     the loop and still RENDER as a down week — a mutant that removed the
+     loop's down branch escaped exactly that way, because the check read the
+     flag rather than the distance. One writer. */
+  if(wk===1){climbing='distance';down=false;}
+  let shown=km;
+  if(down)shown*=PREP_DOWN_CUT;
+  if(phase==='taper')shown*=0.6;
+  return {left,phase,wk,down,capped,climbing,
+    km:Math.round(shown*10)/10,curve:Math.round(km*10)/10,lb,ceil,
+    startKm:Math.round(startKm*10)/10,startLb,
+    estimated:base===null,
+    share:(latestWeightKg()>0)?Math.round(lb*0.453592/latestWeightKg()*100):null};
 }
 /* Which week of the block, counting FORWARD from today rather than backward
    from a start date the athlete never gave. Week 1 is this week. */
@@ -4351,7 +4441,33 @@ function enduranceHTML(){
     ${w.down?`<div class="tiny muted" style="margin-top:6px">Next week goes back to <b>${_ve(String(w.curve===w.km?w.curve:Math.round(w.curve*PREP_RAMP*10)/10))} ${distUnit()}</b>. That looks like a jump against this week and is not one — it is ${Math.round((PREP_RAMP-1)*100)}% up on the last week you were not cutting.</div>`:''}
     <div class="tiny muted" style="margin-top:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">This week</div>
     ${w.sessions.map(id=>`<button class="btn ghost" style="text-align:left;display:block;padding:12px;width:100%;margin-top:6px" onclick="startRunSession('${id}')">▶ ${_ve(names[id]||id)}</button>`).join('')}
-    <div class="tiny muted" style="margin-top:10px">Plus your rucking — build the DISTANCE or the LOAD in a week, never both. The load goes up in ${PREP_RUCK_STEP_LB} lb steps and only once the distance has held.</div>
+  </div>${ruckLadderHTML()}`;
+}
+/* The ruck half. It used to be a sentence of guidance under the running plan —
+   "build the distance or the load, never both" — with nothing scheduling it,
+   which is the same countdown-not-a-plan gap prep.date had. */
+function ruckLadderHTML(){
+  const w=ruckLadderWeek();
+  if(w.noDate)return '';
+  const moving=w.down?'Nothing — this is the down week.'
+    :(w.climbing==='load'
+      ? (w.capped
+        ? 'The <b>load</b> would climb this week and it has reached its ceiling, so the distance holds instead.'
+        : 'The <b>load</b>, by '+PREP_RUCK_STEP_LB+' lb. The distance HOLDS.')
+      : 'The <b>distance</b>. The load holds.');
+  return `<div class="section-label" style="margin-top:14px">Rucking</div><div class="card pad">
+    <div class="row" style="justify-content:space-between;align-items:baseline">
+      <div><b style="font-size:17px">${_ve(String(w.lb))} lb</b>
+        <div class="tiny muted">${w.share!==null?w.share+'% of your bodyweight':'log your weight to see the share'}</div></div>
+      <div style="text-align:right"><b style="font-size:19px">${_ve(String(w.km))} ${distUnit()}</b>
+        <div class="tiny muted">this week</div></div>
+    </div>
+    <div class="note ${w.down?'ok':'info'}" style="margin:10px 0 0"><b>What moves this week:</b> ${moving}</div>
+    ${w.capped?`<div class="note warn" style="margin:10px 0 0"><b>The load stops here at ${_ve(String(w.ceil))} lb.</b> That is about a third of your bodyweight, which is the far end of what rucking guidance asks for. From here the distance carries the progression. You can carry more if you choose to — the app will not add it for you.</div>`:''}
+    ${w.estimated
+      ? `<div class="note warn" style="margin:10px 0 0"><b>Starting light, because nothing is logged yet.</b> It opens at ${PREP_RUCK_FLOOR_KM} ${distUnit()} under a ${RUCK_PLATES[0]} lb plate. Log a few rucks and it will build from what you actually carry.</div>`
+      : `<div class="tiny muted" style="margin-top:8px">Built from the <b>${_ve(String(w.startKm))} ${distUnit()}</b> a week you have been logging.</div>`}
+    <div class="tiny muted" style="margin-top:10px">Distance <b>or</b> load, never both in the same week. A ruck is carried by the same tissue that absorbs every step, so raising two things at once is how a back goes.</div>
   </div>`;
 }
 function openEndurance(){
