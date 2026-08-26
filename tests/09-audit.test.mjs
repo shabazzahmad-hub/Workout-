@@ -2214,6 +2214,148 @@ export default async function run() {
     t.eq('a negative target is dropped', ar.repaired.ttTarget, undefined, ar.repaired);
     t.eq('floor: a real time beside a junk one survives', ar.goodSurvives, 700, ar);
     t.ok('and only the junk one is dropped', ar.badTargetDropped, ar);
+
+    /* ---- the endurance block (v325) ---------------------------------------
+       `prep.date` was stored and counted down and NOTHING scheduled against
+       it — the timelineWeeks defect verbatim. THE 10% RULE IS THE POINT:
+       running volume that climbs faster than about a tenth a week is how
+       people arrive at selection injured rather than fit.
+
+       And the rule governs the CURVE, not the step back up out of a down
+       week. A naive week-on-week assertion would fail on correct code and
+       then get "fixed" by removing the down weeks, which is the opposite of
+       what the plan needs. */
+    const en = await page.evaluate(() => {
+      const keep = JSON.parse(JSON.stringify(STATE.prep || {}));
+      const keepDays = JSON.parse(JSON.stringify(nut().days || {}));
+      const iso = d => { const x = new Date(); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); };
+      const o = {};
+
+      STATE.prep = {};
+      o.noDate = !!enduranceWeek().noDate;
+      o.noDateSaysSo = /Set your test date and this becomes a plan/.test(enduranceHTML());
+
+      // nothing logged: it opens LOW and says the number is a floor
+      STATE.prep = { date: iso(140), planFrom: iso(0) };
+      const w1 = enduranceWeek();
+      o.floorStart = { km: w1.km, estimated: w1.estimated, floor: PREP_FLOOR_KM };
+      o.floorSaysSo = /Starting low, because nothing is logged yet/.test(enduranceHTML());
+
+      // with real logged running it builds from what the athlete actually does
+      const days = nut().days;
+      for (let i = 1; i <= 21; i++) { const d = iso(-i);
+        days[d] = days[d] || { water: 0, habits: {} };
+        if (i % 2 === 0) { days[d].runVal = 5; days[d].runUnit = 'dist'; days[d].runLvl = 'steady'; } }
+      o.trailing = Math.round(trailingRunKm() * 10) / 10;
+      STATE.prep.planFrom = iso(0);
+      const r1 = enduranceWeek();
+      o.fromLogs = { km: r1.km, estimated: r1.estimated };
+
+      // the ramp across eight weeks
+      const weeks = [];
+      for (let w = 0; w < 8; w++) { STATE.prep.planFrom = iso(-7 * w);
+        const e = enduranceWeek(); weeks.push({ wk: e.wk, km: e.km, curve: e.curve, down: e.down }); }
+      o.weeks = weeks;
+      /* Read the app's OWN cap rather than restating it, and allow for the
+         curve being rounded to one decimal for display — 18.3/16.7 reads as
+         1.1038 against an exact 1.10. The allowance is the rounding, not
+         slack in the rule. */
+      o.cap = PREP_RAMP;
+      o.curveClimb = weeks.slice(1).map((w, i) => w.curve / weeks[i].curve);
+      o.curveWithinCap = weeks.slice(1).every((w, i) => w.curve <= weeks[i].curve * PREP_RAMP + 0.1);
+      /* MEASURE THE PAYLOAD, NOT THE CONTAINER. `curve` is what the screen
+         explains; `km` is what the athlete actually runs. A mutant that
+         flattened km to the starting distance left curve climbing and walked
+         through every assertion above. */
+      const norm = weeks.filter(w => !w.down);
+      o.kmClimbs = norm.slice(1).every((w, i) => w.km > norm[i].km);
+      o.kmWithinCap = norm.slice(1).every((w, i) => w.km <= norm[i].km * Math.pow(PREP_RAMP, w.wk - norm[i].wk) + 0.1);
+      o.downWeeks = weeks.filter(w => w.down).map(w => ({ wk: w.wk, km: w.km, curve: w.curve }));
+      const bounce = [];
+      weeks.forEach((w, i) => { if (i < 2 || !weeks[i - 1].down) return;
+        bounce.push({ from: weeks[i - 2].km, to: w.km, weeksApart: 2 }); });
+      o.bounce = bounce;
+
+      STATE.prep.planFrom = iso(0);
+      o.phases = [200, 80, 40, 10].map(d => { STATE.prep.date = iso(d); return prepPhase(); });
+      STATE.prep.date = iso(10); const taper = enduranceWeek().km;
+      STATE.prep.date = iso(140); const full = enduranceWeek().km;
+      o.taperCuts = taper < full;
+
+      /* Changing the test date must NOT restart a block already trained, and
+         SETTING THE FIELD IS NOT DRIVING THE ROUTE — the stamping code lives
+         in saveForceDate(), so a mutant that re-stamps on every save walked
+         straight through a check that assigned STATE.prep.date by hand. */
+      STATE.prep = { date: iso(140), planFrom: iso(-35) };
+      const before = prepWeekNo(), stampedBefore = STATE.prep.planFrom;
+      openForceDate();
+      const di = document.querySelector('#fq-date');
+      if (di) { di.value = iso(90); saveForceDate(); }
+      try { closeSheet(); } catch (e) {}
+      o.drovenSave = !!di && STATE.prep.date === iso(90);
+      o.planFromKept = STATE.prep.planFrom === stampedBefore && prepWeekNo() === before;
+      /* And the FLOOR: a first-ever save must stamp one, or nothing ever
+         progresses past week 1. */
+      STATE.prep = {};
+      openForceDate();
+      const di2 = document.querySelector('#fq-date');
+      if (di2) { di2.value = iso(140); saveForceDate(); }
+      try { closeSheet(); } catch (e) {}
+      o.firstSaveStamps = typeof STATE.prep.planFrom === 'string';
+      /* A record with no stamp reads as week 1 — the fail-safe direction,
+         because it prescribes LESS, not more. */
+      delete STATE.prep.planFrom;
+      o.noStampIsWeekOne = prepWeekNo() === 1;
+      STATE.prep.planFrom = 'soon';
+      normalizeState();
+      o.junkStampDropped = STATE.prep.planFrom === undefined;
+
+      STATE.prep = keep; nut().days = keepDays;
+      return o;
+    });
+
+    t.ok('with no test date there is no plan, and it says so', en.noDate && en.noDateSaysSo, en);
+    /* PIN THE VALUE, not just "it equals its own constant" — comparing the app
+       to itself passes however high the floor is raised, and guessing high is
+       the failure that costs a tendon. */
+    t.eq('the opening floor is a genuinely conservative number', en.floorStart.floor, 8, en);
+    t.eq('with nothing logged it opens there', en.floorStart.km, 8, en);
+    t.ok('and says the number is a floor, not a measurement', en.floorSaysSo, en);
+    t.ok('guard: the seeded runs really are ~17 km a week',
+      en.trailing > 12 && en.trailing < 22, en);
+    t.eq('with runs logged it builds from what the athlete actually does',
+      en.fromLogs.km, en.trailing, en);
+    t.ok('and stops calling the figure an estimate', !en.fromLogs.estimated, en);
+    /* THE RULE. */
+    t.eq('guard: the cap is the app\'s own constant, not a number restated here',
+      en.cap, 1.10, en);
+    t.ok('the underlying curve never climbs faster than the cap',
+      en.curveWithinCap, { curveClimb: en.curveClimb, weeks: en.weeks });
+    /* And the number the athlete actually runs. */
+    t.ok('the prescribed distance really climbs week on week', en.kmClimbs, en.weeks);
+    t.ok('and never faster than the cap either', en.kmWithinCap, en.weeks);
+    t.ok('guard: and it really does climb — a flat curve satisfies the cap trivially',
+      en.curveClimb.every(x => x > 1.0), { curveClimb: en.curveClimb });
+    /* Every fourth week is a real cut. A plan with no down weeks is a plan
+       that ends in a deload the athlete did not choose. */
+    t.ok('guard: there is at least one down week in eight', en.downWeeks.length >= 1, en);
+    t.ok('a down week is a genuine cut against its own curve',
+      en.downWeeks.every(w => w.km < w.curve * 0.85), en.downWeeks);
+    /* And the bounce out of one is still capped against the last UNCUT week —
+       a naive week-on-week assertion fails here on correct code. */
+    t.ok('guard: there is a bounce out of a down week to check', en.bounce.length >= 1, en);
+    t.ok('coming out of a down week is capped against the last uncut week',
+      en.bounce.every(b => b.to <= b.from * Math.pow(en.cap, b.weeksApart) + 0.1), en.bounce);
+    t.eq('the phases run base, build, sharpen, taper', en.phases,
+      ['base', 'build', 'sharpen', 'taper'], en);
+    t.ok('and the taper actually cuts volume', en.taperCuts, en);
+    /* Changing the date must not restart a block already trained. */
+    t.ok('guard: the save really was driven through the sheet', en.drovenSave, en);
+    t.ok('changing the test date keeps the plan running from when it started', en.planFromKept, en);
+    t.ok('floor: a first-ever save does stamp one', en.firstSaveStamps, en);
+    t.ok('a record with no stamp reads as week one — it prescribes less, not more',
+      en.noStampIsWeekOne, en);
+    t.ok('and a junk stamp is dropped', en.junkStampDropped, en);
     /* THE FLOOR under the note. */
     t.eq('floor: with the sandbag owned there is nothing to say', r.kitNoteWithBag, '', r);
     t.ok('and the sheet is quiet about kit', r.sheetWithBagQuiet, r);

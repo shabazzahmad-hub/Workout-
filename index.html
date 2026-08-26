@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='324';
+const APP_VERSION='325';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4213,6 +4213,151 @@ function startRunSession(id){
   setTodayTab('workout');go('today');
   toast(x.name+' — log it when you are back');
 }
+/* ============ THE ENDURANCE BLOCK ====================================
+   `prep.date` was stored and counted down and NOTHING scheduled against it —
+   which is the timelineWeeks defect verbatim: a control the athlete sets that
+   almost nothing reads. This is the wire.
+
+   THE 10% RULE IS THE WHOLE POINT. Running volume that climbs faster than
+   about a tenth a week is how people arrive at selection injured rather than
+   fit, and it is the one number a plan can get wrong without anyone noticing
+   until it hurts. So the ramp is capped, the cap is pinned by a check, and the
+   plan will happily take longer rather than climb faster.
+
+   IT STARTS FROM WHAT THE ATHLETE IS ACTUALLY DOING, not from a table. Their
+   real trailing weekly distance is read out of the logged days — the same "read
+   the DATA, not a flag" discipline the safety predicates follow. With nothing
+   logged it opens at a deliberately low floor and says so, because guessing
+   high is the failure that costs a tendon.
+
+   Every FOURTH week is a down week. That is not a rest from the plan, it is
+   part of it: adaptation happens in the easy week, and a block with no down
+   weeks is a block that ends in a deload you did not choose. */
+const PREP_RAMP=1.10;             // the most weekly distance may climb
+const PREP_DOWN_CUT=0.7;          // a down week is this share of the week before
+const PREP_FLOOR_KM=8;            // where an athlete with nothing logged starts
+const PREP_TAPER_DAYS=10;         // freshness in, volume out
+const PREP_RUCK_STEP_LB=5;        // and the load never climbs in the same week as the distance
+function _dayRunKm(t){
+  try{
+    if(!t||typeof t!=='object')return 0;
+    const lvl=RUN_PACES.some(p=>p.k===t.runLvl)?t.runLvl:'steady';
+    const v=(typeof t.runVal==='number'&&isFinite(t.runVal)&&t.runVal>0)?t.runVal:0;
+    if(!v)return 0;
+    const u=RUN_UNITS.some(x=>x[0]===t.runUnit)?t.runUnit:'min';
+    if(u==='dist')return Math.min(100,v);
+    const min=u==='min'?Math.min(600,v):Math.min(600,v/runKcalPerMin(lvl));
+    return min*runKmPerMin(lvl);
+  }catch(e){return 0;}
+}
+/* The athlete's real trailing weekly distance. Averaged over the last four
+   ISO weeks that carry ANY logged movement, so a fortnight off does not read
+   as "they run nothing" — the same shape acwr() uses for training load. */
+function trailingRunKm(){
+  try{
+    const days=(nut().days)||{};
+    const now=new Date(todayISO()+'T00:00:00').getTime();
+    const buckets=[0,0,0,0];
+    let any=false;
+    Object.keys(days).forEach(d=>{
+      const ms=new Date(d+'T00:00:00').getTime();
+      if(!isFinite(ms))return;
+      const wk=Math.floor((now-ms)/(7*86400000));
+      if(wk<0||wk>3)return;
+      const km=_dayRunKm(days[d]);
+      if(km>0){buckets[wk]+=km;any=true;}
+    });
+    if(!any)return null;                        // nothing logged is not zero — it is unknown
+    const used=buckets.filter(b=>b>0);
+    return used.reduce((a,b)=>a+b,0)/used.length;
+  }catch(e){return null;}
+}
+/* Which week of the block, counting FORWARD from today rather than backward
+   from a start date the athlete never gave. Week 1 is this week. */
+function prepWeeksLeft(){const w=forceWeeksLeft();return (w===null||w<0)?null:w;}
+function prepWeekNo(){
+  try{
+    const f=prep().planFrom;
+    if(typeof f!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(f))return 1;
+    const ms=new Date(todayISO()+'T00:00:00').getTime()-new Date(f+'T00:00:00').getTime();
+    if(!isFinite(ms)||ms<0)return 1;
+    return Math.max(1,Math.floor(ms/(7*86400000))+1);
+  }catch(e){return 1;}
+}
+function prepPhase(){
+  const left=prepWeeksLeft();
+  if(left===null)return null;
+  if(left<=2)return 'taper';
+  if(left<=6)return 'sharpen';
+  if(left<=12)return 'build';
+  return 'base';
+}
+const PREP_PHASE_NOTE={
+  base:'Almost all of it easy. You are building the engine, and the pace that builds it is slower than feels productive.',
+  build:'The easy running stays. One tempo and one interval session go on top of it, not instead of it.',
+  sharpen:'Volume holds, the hard sessions get closer to test pace. This is where the time trial should start moving.',
+  taper:'Volume comes down and the intensity stays. You cannot gain fitness now — you can only arrive tired, so do not.',
+};
+/* This week's distance, and the ramp that got there. Returns nulls rather
+   than numbers when there is no date, because a plan with no deadline is not a
+   plan — the app says so instead of inventing a schedule. */
+function enduranceWeek(){
+  const left=prepWeeksLeft(), phase=prepPhase();
+  if(left===null)return {noDate:true};
+  const base=trailingRunKm();
+  const start=(base!==null&&base>0)?base:PREP_FLOOR_KM;
+  /* Weeks ELAPSED since the plan opened, so the ramp compounds forward. It is
+     counted from `planFrom`, stamped when the test date is first set, NOT from
+     the test date itself — changing the date must not restart a block the
+     athlete has already been training. A record with no stamp reads as week 1,
+     which is the fail-safe direction: it prescribes LESS, not more. */
+  const wk=prepWeekNo();
+  const down=(wk%4===0);
+  let km=start*Math.pow(PREP_RAMP,Math.max(0,wk-1));
+  if(down)km*=PREP_DOWN_CUT;
+  if(phase==='taper')km*=0.6;
+  km=Math.round(km*10)/10;
+  /* The CURVE is what the 10% rule governs — the underlying progression, not
+     the bounce out of a down week. Coming back from a planned easy week to the
+     curve looks like a big jump against last week and is a normal 10% per week
+     against the last week that was not cut. Both numbers are returned so the
+     screen can say which one it means. */
+  const curve=Math.round(start*Math.pow(PREP_RAMP,Math.max(0,wk-1))*10)/10;
+  const climbed=Math.round((curve/Math.max(0.1,start)-1)*100);
+  return {left,phase,wk,down,km,curve,start:Math.round(start*10)/10,
+          estimated:base===null,climbed,
+          note:PREP_PHASE_NOTE[phase]||'',
+          sessions:phase==='base'?['base','base','long']
+            :phase==='build'?['base','tempo','long']
+            :phase==='sharpen'?['tempo','intervals','long']
+            :['base','tempo']};
+}
+function enduranceHTML(){
+  const w=enduranceWeek();
+  if(w.noDate)return `<div class="note info"><b>Set your test date and this becomes a plan.</b> Without one the app cannot tell a base-building week from a taper, and a schedule invented around no deadline is worse than none.</div>`;
+  const names={base:'Base run',long:'Long run',tempo:'Tempo run',intervals:'6 × 400 m'};
+  return `<div class="card pad">
+    <div class="row" style="justify-content:space-between;align-items:baseline">
+      <div><b style="font-size:17px">Week ${w.wk} · ${_ve(w.phase)}</b>
+        <div class="tiny muted">${w.left} week${w.left===1?'':'s'} to go</div></div>
+      <div style="text-align:right"><b style="font-size:19px">${_ve(String(w.km))} ${distUnit()}</b>
+        <div class="tiny muted">running this week</div></div>
+    </div>
+    ${w.down?`<div class="note ok" style="margin:10px 0 0"><b>Down week.</b> Volume is cut on purpose — the adaptation happens here, not in the hard weeks.</div>`:''}
+    <div class="tiny muted" style="margin-top:10px">${_ve(w.note)}</div>
+    ${w.estimated
+      ? `<div class="note warn" style="margin:10px 0 0"><b>Starting low, because nothing is logged yet.</b> The plan opens at ${PREP_FLOOR_KM} ${distUnit()} a week and climbs from there. Log a few runs and it will build from what you actually do instead.</div>`
+      : `<div class="tiny muted" style="margin-top:6px">Built from the <b>${_ve(String(w.start))} ${distUnit()}</b> a week you have been logging, climbing no more than <b>${Math.round((PREP_RAMP-1)*100)}%</b> a week.</div>`}
+    ${w.down?`<div class="tiny muted" style="margin-top:6px">Next week goes back to <b>${_ve(String(w.curve===w.km?w.curve:Math.round(w.curve*PREP_RAMP*10)/10))} ${distUnit()}</b>. That looks like a jump against this week and is not one — it is ${Math.round((PREP_RAMP-1)*100)}% up on the last week you were not cutting.</div>`:''}
+    <div class="tiny muted" style="margin-top:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">This week</div>
+    ${w.sessions.map(id=>`<button class="btn ghost" style="text-align:left;display:block;padding:12px;width:100%;margin-top:6px" onclick="startRunSession('${id}')">▶ ${_ve(names[id]||id)}</button>`).join('')}
+    <div class="tiny muted" style="margin-top:10px">Plus your rucking — build the DISTANCE or the LOAD in a week, never both. The load goes up in ${PREP_RUCK_STEP_LB} lb steps and only once the distance has held.</div>
+  </div>`;
+}
+function openEndurance(){
+  openSheet(`<h3>🏃 This week's endurance</h3>${enduranceHTML()}
+    <div class="tiny muted" style="margin-top:12px">Running volume that climbs faster than about a tenth a week is how people arrive at selection injured rather than fit. This plan will take longer rather than climb faster, and that is the trade it is making on purpose. The rule governs the trend, not the step back up out of a down week.</div>`);
+}
 function openForcePrep(){
   const wk=forceWeeksLeft();
   const rows=FORCE_EVENTS.map(ev=>{
@@ -4238,6 +4383,7 @@ function openForcePrep(){
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openForceLog()">✎ Log a result</button>
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openForceDate()">📅 ${prep().date?'Change my test date':'Set my test date'}</button>
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openArmyRun()">🏃 Army running</button>
+    <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openEndurance()">📈 This week's endurance</button>
     <div class="tiny muted" style="margin-top:10px">The four tasks are done back to back on the day, with rest between each. Training them separately first is the point of this block — the full run-through is a measurement, not a workout.</div>
   `);
 }
@@ -4327,7 +4473,12 @@ function saveForceDate(){
   const v=($('#fq-date')||{}).value||'';
   if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){toast('Pick a date');return;}
   if(!STATE.prep||typeof STATE.prep!=='object'||Array.isArray(STATE.prep))STATE.prep={};
-  STATE.prep.date=v;save();closeSheet();toast('Test date set 📅');openForcePrep();
+  STATE.prep.date=v;
+  /* Stamped ONCE. Changing the test date must not restart a block the athlete
+     has already been training — the plan keeps running from when they started. */
+  if(typeof STATE.prep.planFrom!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(STATE.prep.planFrom))
+    STATE.prep.planFrom=todayISO();
+  save();closeSheet();toast('Test date set 📅');openForcePrep();
 }
 function clearForceDate(){
   if(STATE.prep&&typeof STATE.prep==='object')delete STATE.prep.date;
@@ -16958,6 +17109,7 @@ function normalizeState(){
    if(P.date!==undefined&&!(typeof P.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(P.date)))delete P.date;
    /* The run times are SECONDS. A non-number is dropped, not zeroed — a zero
       would render as a 0:00 time trial, which is not a measurement. */
+   if(P.planFrom!==undefined&&!(typeof P.planFrom==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(P.planFrom)))delete P.planFrom;
    ['ttBest','ttTarget'].forEach(k=>{
      const v=P[k];
      if(v!==undefined&&(typeof v!=='number'||!isFinite(v)||v<=0))delete P[k];
