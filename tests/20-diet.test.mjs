@@ -84,11 +84,24 @@ export default async function run() {
     await waitForBoot(page);
     const r = await page.evaluate(() => {
       go('fuel'); renderFuel(); go('guide'); renderGuide();
-      return { fuel: /Check your diet setting/.test(document.querySelector('#v-fuel').innerText),
-        settings: /Check your diet setting/.test(document.querySelector('#v-guide').innerText) };
+      const fv = document.querySelector('#v-fuel');
+      const gv = document.querySelector('#v-guide');
+      return { fuel: /Check your diet setting/.test(fv.innerText),
+        settings: /Check your diet setting/.test(gv.innerText),
+        fuelHasPicker: /setDiet\('halal'\)/.test(fv.innerHTML),
+        settingsHasPicker: /setDiet\(/.test(gv.innerHTML) };
     });
-    t.ok('the Fuel tab says the diet was not recognised', r.fuel, r);
-    t.ok('and so does the picker in Settings', r.settings, r);
+    /* THE REQUIREMENT IS THAT THE PROMPT SITS WHERE THE ATHLETE CAN ACT ON IT,
+       which is beside the picker. This asserted "and so does the picker in
+       Settings" — a statement about WHERE the picker was, not about what the
+       prompt is for. v324 moved the picker to Fuel because it is about food,
+       and the check failed on correct code. The prompt must be on the same
+       surface as the picker; on a surface with no picker it is a dead end. */
+    t.ok('guard: the picker is on Fuel', r.fuelHasPicker, r);
+    t.ok('guard: and no longer in Settings', !r.settingsHasPicker, r);
+    t.ok('the tab with the picker says the diet was not recognised', r.fuel, r);
+    t.ok('and the tab without one does not raise a prompt it cannot act on',
+      !r.settings, r);
     const after = await page.evaluate(() => {
       setDiet('halal');
       const o = { diet: STATE.nutrition.diet, flag: STATE.nutrition.dietRepaired };

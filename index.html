@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='323';
+const APP_VERSION='324';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -14141,7 +14141,7 @@ function dataHealthNoteHTML(){
     <button class="btn ghost sm" style="width:100%;margin-top:8px" onclick="dismissDataHealth()">Got it</button></div>`;
 }
 function dismissDataHealth(){delete STATE._dataRepaired;save();render();}
-function toggleWholeFood(){const n=nut();n.wholeFoodOnly=!wholeOnly();generateMealPlan();save();if(typeof TAB!=='undefined'&&TAB==='fuel')renderFuel();try{renderGuide();}catch(e){}}
+function toggleWholeFood(){const n=nut();n.wholeFoodOnly=!wholeOnly();generateMealPlan();save();repaintDiet();}
 function recipeById(id){return RECIPES.find(r=>r.id===id);}
 function dietOk(r){
   const d=STATE.nutrition.diet||'omnivore';
@@ -15351,6 +15351,7 @@ function renderFuel(){
   h+=`<div class="section-label">My goal</div><div class="daypick goalpick" style="margin:0 2px 14px">
     ${GOALS.map(([g,l])=>`<button class="${n.goal===g?'on':''}" onclick="setNutGoal('${g}')">${l}</button>`).join('')}</div>
     <div class="tiny muted" style="margin:-8px 2px 14px">${GOAL_NOTE[n.goal]||''}</div>`;
+  h+=dietBlockHTML();
   // daily targets
   const _pSet=proteinTargetSet(),_pCalc=proteinTargetCalc();
   /* Carbs and fat used to exist only as bars inside the food card, which show
@@ -16314,11 +16315,10 @@ function renderGuide(){
         <button class="${STATE.profile.tightSpace?'on':''}" onclick="toggleTightSpace()">🏠 Tight space</button>
         <div class="tiny muted" style="margin-top:8px">Handstand work needs a clear wall and about <b>6 ft / 2 m</b> of floor in front of it to walk up safely; the travelling moves need a room you can cross. Tight space swaps both out — you get the hardest floor presses instead, which load the shoulder the same way without needing a clear wall. Straight trade to know about: nothing on the floor fully replaces a handstand push-up, so the very top of the shoulder ladder is a step easier. Everything else is like for like.</div>
       </div></div>
-    <div style="padding:8px 0 2px"><div class="tiny muted" style="margin-bottom:6px">Diet preference <span style="opacity:.7">· shapes meal plans</span></div>
-      <div class="daypick" id="set-diet" style="flex-wrap:wrap">
-        ${DIET_OPTS.map(([k,l])=>`<button class="${(STATE.nutrition.diet||'omnivore')===k?'on':''}" onclick="setDiet('${k}')">${l}</button>`).join('')}
-      </div>${dietRepairNoteHTML()}</div>
-    <div class="row" style="justify-content:space-between;padding:8px 0 2px"><span>Whole foods only <span class="tiny muted">· 🥦 skip processed / powders in meal plans</span></span><button class="chip ${wholeOnly()?'on':''}" onclick="toggleWholeFood()">${wholeOnly()?'On':'Off'}</button></div>
+    ${/* Diet and whole-foods moved to Fuel — they are about food. A pointer,
+          not a stale address: the check asserts both that this names Fuel and
+          that Fuel actually holds the controls. */''}
+    <div class="tiny muted" style="padding:10px 0 2px">Your <b>diet</b> and <b>whole foods only</b> are on the <b>Fuel</b> tab now, with the rest of your food settings.</div>
   </div>`;
   // backup
   h+=`<div class="section-label">Your data</div><div class="card pad">
@@ -16480,9 +16480,36 @@ function toggleGear(k){
   STATE.profile.hasBar=g.has('bar');STATE.profile.hasBench=g.has('bench');   // keep legacy flags in sync
   haptic(8);save();renderGuide();
 }
+/* HOW YOU EAT LIVES ON FUEL. The diet picker and the whole-foods toggle sat in
+   Settings, filed under "change my preferences" — but they are about FOOD, and
+   Fuel is the tab an athlete reaches for when the verb is eating. Reported:
+   "this is related to food, so this should be under the fuel tab".
+
+   Same call as v311 (Movement was on Fuel because of where its number GOES,
+   not what the athlete DOES) and v314 (the exercise library was in Settings).
+   The tab that matches the verb wins.
+
+   ONE repaint helper, because that is the half v311 had to fix afterwards:
+   twelve controls hardcoded renderFuel() and had to be hunted down when the
+   block moved. setDiet() called renderGuide() and toggleWholeFood() called
+   both by hand. Moving it again is now one edit. */
+function dietBlockHTML(){
+  return `<div class="section-label">How I eat</div><div class="card pad" style="margin-bottom:14px">
+    <div class="tiny muted" style="margin-bottom:6px">Diet preference <span style="opacity:.7">· shapes your meal plans and every recipe you are offered</span></div>
+    <div class="daypick" id="set-diet" style="flex-wrap:wrap">
+      ${DIET_OPTS.map(([k,l])=>`<button class="${(STATE.nutrition.diet||'omnivore')===k?'on':''}" onclick="setDiet('${k}')">${l}</button>`).join('')}
+    </div>
+    <div class="row" style="justify-content:space-between;align-items:center;padding:12px 0 2px"><span>Whole foods only <span class="tiny muted">· 🥦 skip processed food and powders in meal plans</span></span><button class="chip ${wholeOnly()?'on':''}" onclick="toggleWholeFood()">${wholeOnly()?'On':'Off'}</button></div>
+  </div>`;
+}
+function repaintDiet(){
+  try{if(typeof TAB!=='undefined'&&TAB==='fuel')renderFuel();
+      else if(typeof TAB!=='undefined'&&TAB==='guide')renderGuide();
+      else render();}catch(e){}
+}
 function setDiet(k){if(!DIET_KEYS.includes(k))return;   // the picker is the only writer; keep it to real keys
   STATE.nutrition.diet=k;delete STATE.nutrition.dietRepaired;
-  if(STATE.nutrition.plan)STATE.nutrition.plan=null;haptic(8);save();renderGuide();}
+  if(STATE.nutrition.plan)STATE.nutrition.plan=null;haptic(8);save();repaintDiet();}
 /* Photo BYTES live in IndexedDB under ph_<id>; STATE.photos holds only
    {id,date,pose}, so JSON.stringify(STATE) silently produced a backup with no
    photos in it — while the render error boundary and hardReset() both tell the

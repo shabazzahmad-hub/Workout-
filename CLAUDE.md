@@ -3467,6 +3467,43 @@ cannot pass on an empty list.
 
 Ten mutants, all caught.
 
+## How you eat lives on FUEL (v324)
+
+"This is related to food, so this should be under the fuel tab." The diet
+picker and the whole-foods toggle sat in **Settings**, filed under "change my
+preferences" — and they are about FOOD. Fuel is the tab an athlete reaches for
+when the verb is eating.
+
+Third time this call has been made: v311 moved Movement off Fuel (it was there
+because of where its NUMBER went, not what the athlete DID), v314 moved the
+exercise library out of Settings. **The tab that matches the verb wins.**
+
+It sits between **My goal** and **Today's targets**, because the diet shapes
+what those targets are spent on.
+
+**ONE repaint helper, because that is the half v311 had to fix afterwards.**
+Twelve controls hardcoded `renderFuel()` and had to be hunted down when the
+block moved; `setDiet()` called `renderGuide()` and `toggleWholeFood()` called
+both by hand. `repaintDiet()` repaints the surface the control is ON, so moving
+it again is one edit.
+
+**A pointer, not a stale address**, and the check asserts BOTH halves — that
+Settings names Fuel, and that Fuel actually holds the controls. Checking only
+the wording passes on a sentence naming a tab for a feature that was deleted;
+checking only the feature passes while a stale pointer sends the athlete
+somewhere else. That is exactly how the v311 regression survived.
+
+### And a check that pinned WHERE the picker was, not what the prompt is for
+
+Suite 20: `t.ok('and so does the picker in Settings', r.settings)`. The block's
+own comment says *"the prompt appears where the athlete can act on it"* — and
+the assertion had hardened that into a claim about which tab the picker lived
+on. It failed on correct code.
+
+The real requirement is that the unrecognised-diet prompt sits **beside the
+picker**; on a surface with no picker it is a dead end. It now asserts that,
+with guards pinning where the picker actually is. Five mutants, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
