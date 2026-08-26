@@ -3264,6 +3264,31 @@ entry twice — asking whether ONE entry appeared in both copies, not whether th
 two copies AGREED. The replacement drives the Settings picker and compares what
 it offers against `GEAR_KEYS`.
 
+### The fourth sibling path to skip the gear check, and it was mine
+
+Also found by auditing my own change. `startForceTrain()` built its items from
+raw `EX[k]` and never asked `hasGearFor()`. Measured: an athlete with no
+sandbag tapping **"Train the four tasks"** was handed **all four**, three of
+which they physically cannot do.
+
+Every other path that picks a movement asks — `builderPool()`, `gearSwap()`,
+`weightsPool()` — and this one did not. That is the exact shape this file
+already records for `safeSwap()` being forgotten by five sibling paths, one
+subsystem over: **a new path that picks an exercise has to ask every question
+the old ones ask.**
+
+**It names what is missing rather than substituting**, for the same reason the
+joint case does: a bodyweight squat in place of a sandbag lift leaves the
+athlete unready for the thing they will actually be asked to do. The rushes
+need no kit, so a bagless athlete still gets real work.
+
+**Two of the five mutants escaped, and both were floors I had already written
+down elsewhere.** A note that always fires is a note nobody reads — nothing
+asserted the kit note is ABSENT with the bag owned. And the "nothing available
+at all" refusal is unreachable on today's library, because the rushes need no
+kit; it is now exercised directly by giving them an `equip` inside the check,
+the same technique the hardness-band and unit guards use.
+
 ### Presence is not membership, in a VALIDATOR rule this time
 
 Found by auditing my own change, an hour after writing it. `pattern` was given

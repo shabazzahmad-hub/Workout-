@@ -2035,6 +2035,45 @@ export default async function run() {
       STATE.profile.limitations = [];
       o.riskClean = forceRiskHTML();
 
+      /* NO SANDBAG. Every other path that picks a movement asks hasGearFor() —
+         builderPool(), gearSwap(), weightsPool() — and this one did not, so a
+         bagless athlete tapping "Train the four tasks" was handed all four,
+         three of which they physically cannot do. */
+      STATE.profile.gear = ['bar', 'bench'];
+      closeSheet(); openForcePrep();
+      o.bagSheetWarns = /You need a 20 kg sandbag/.test(sheet());
+      o.bagSheetNames = /Sandbag Lift/.test(sheet());
+      o.bagSheetSaysNoSubs = /a stand-in would leave you unready/.test(sheet());
+      startForceTrain();
+      o.baglessIds = (PLAYER && PLAYER.items || []).map(i => i.exId);
+      o.baglessAllDoable = o.baglessIds.every(k => hasGearFor(k));
+      try { playerQuit(); } catch (e) {}
+      closeSheet();
+
+      /* THE FLOOR: a note that always fires is a note nobody reads. With the
+         bag owned there must be nothing to say at all. */
+      STATE.profile.gear = ['bar', 'bench', 'sandbag'];
+      o.kitNoteWithBag = forceKitHTML();
+      openForcePrep();
+      o.sheetWithBagQuiet = !/You need a 20 kg sandbag/.test(sheet());
+      o.buttonSaysFour = /Train the four tasks/.test(sheet());
+      closeSheet();
+
+      /* The "nothing available at all" guard is unreachable on today's library
+         because the rushes need no kit. Exercise it directly, the same way the
+         hardness-band guard is exercised, so a future EX edit that gives them
+         an equip requirement does not walk straight through. */
+      const rushEquip = EX.rushes.equip;
+      EX.rushes.equip = ['sandbag'];
+      STATE.profile.gear = ['bar', 'bench'];
+      o.availWhenNothing = forceAvailable().length;
+      startForceTrain();
+      o.builtWhenNothing = !!(PLAYER && PLAYER.items && PLAYER.items.length);
+      o.refusalToast = (document.querySelector('#toast') || {}).textContent || '';
+      try { playerQuit(); } catch (e) {}
+      EX.rushes.equip = rushEquip;
+      closeSheet();
+
       STATE.profile.gear = keep.gear; STATE.profile.limitations = keep.lims;
       STATE.prep = keep.prep;
       STATE.profile.parq = keep.parq; STATE.profile.parqDone = keep.parqDone;
@@ -2090,6 +2129,26 @@ export default async function run() {
     t.ok('a flagged joint is named rather than swapped away', /Sandbag Lift/.test(r.riskNames), r);
     t.ok('and the warning says they are not swapped here', /not swapped here/.test(r.riskNames), r);
     t.eq('floor: an unflagged athlete sees no warning at all', r.riskClean, '', r);
+    /* Gear, and it does NOT substitute — same call as the joint case. */
+    t.ok('without a sandbag the sheet says so plainly', r.bagSheetWarns, r);
+    t.ok('and names which tasks need it', r.bagSheetNames, r);
+    t.ok('and says nothing is stood in for', r.bagSheetSaysNoSubs, r);
+    t.eq('the session drops what cannot be done rather than handing it over',
+      r.baglessIds, ['rushes'], r);
+    t.ok('so every movement in it is one the athlete can actually perform',
+      r.baglessAllDoable, r);
+    /* THE FLOOR: the rushes need no kit at all, so a bagless athlete still
+       gets real work rather than an empty session. */
+    t.ok('and there is still something to train', r.baglessIds.length > 0, r);
+    /* THE FLOOR under the note. */
+    t.eq('floor: with the sandbag owned there is nothing to say', r.kitNoteWithBag, '', r);
+    t.ok('and the sheet is quiet about kit', r.sheetWithBagQuiet, r);
+    t.ok('and the button offers all four', r.buttonSaysFour, r);
+    /* And the refusal, exercised directly because it is unreachable today. */
+    t.eq('guard: with nothing available at all, nothing is available', r.availWhenNothing, 0, r);
+    t.ok('a session with no performable movement is refused, not built empty',
+      !r.builtWhenNothing, r);
+    t.ok('and says why', /sandbag/i.test(r.refusalToast), r);
   }
 
   {

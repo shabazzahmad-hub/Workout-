@@ -4072,6 +4072,30 @@ function fmtForce(ev,v){
   if(v===null)return '—';
   return ev.max===null?(v>0?'Completed':'Not yet'):fmtTime(Math.round(v));
 }
+/* Which tasks the athlete can actually PERFORM. Every other path that picks a
+   movement asks this — builderPool(), gearSwap(), weightsPool() — and this one
+   did not, so a bagless athlete tapping "Train the four tasks" was handed all
+   four, three of which they physically cannot do. Fourth sibling path to skip
+   the gear check, which is the same shape safeSwap() was forgotten by five
+   times.
+
+   It does NOT substitute. A bodyweight squat in place of a sandbag lift leaves
+   the athlete unprepared for the thing they will be asked to do, exactly as a
+   joint swap would — so the missing ones are NAMED and left out. The rushes
+   need no kit at all, so there is always real work here. */
+function forceAvailable(){
+  try{return FORCE_EVENTS.filter(e=>EX[e.ex]&&hasGearFor(e.ex));}catch(e){return [];}
+}
+function forceMissing(){
+  try{return FORCE_EVENTS.filter(e=>EX[e.ex]&&!hasGearFor(e.ex));}catch(e){return [];}
+}
+function forceKitHTML(){
+  const miss=forceMissing();
+  if(!miss.length)return '';
+  return `<div class="note warn"><b>You need a 20 kg sandbag for ${miss.length===1?'one':miss.length} of these.</b>
+    ${_ve(miss.map(e=>e.name).join(', '))} — tick <b>Sandbag</b> in Settings once you have one.
+    Nothing is substituted here: these are the actual test events, and a stand-in would leave you unready for the real thing.</div>`;
+}
 function openForcePrep(){
   const wk=forceWeeksLeft();
   const rows=FORCE_EVENTS.map(ev=>{
@@ -4092,7 +4116,8 @@ function openForcePrep(){
       This app has no internet access and cannot check them for you.</div>
     ${wk!==null?`<div class="note fire"><b>${wk>0?wk+' week'+(wk===1?'':'s')+' to go':(wk===0?'This week':'Your test date has passed')}</b>${wk>0?' — that is what the build is paced to.':''}</div>`:''}
     <div class="card pad">${rows}</div>
-    <button class="btn primary" style="width:100%;margin-top:10px" onclick="startForceTrain()">▶ Train the four tasks</button>
+    ${forceKitHTML()}
+    <button class="btn primary" style="width:100%;margin-top:10px" onclick="startForceTrain()">▶ Train ${forceAvailable().length===FORCE_EVENTS.length?'the four tasks':'what you have kit for'}</button>
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openForceLog()">✎ Log a result</button>
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openForceDate()">📅 ${prep().date?'Change my test date':'Set my test date'}</button>
     <div class="tiny muted" style="margin-top:10px">The four tasks are done back to back on the day, with rest between each. Training them separately first is the point of this block — the full run-through is a measurement, not a workout.</div>
@@ -4107,13 +4132,16 @@ function startForceTrain(){
     else openClearance();
     return;
   }
-  const ids=FORCE_EVENTS.map(e=>e.ex).filter(k=>EX[k]);
-  if(!ids.length){toast('The FORCE movements are missing');return;}
+  const avail=forceAvailable(), miss=forceMissing();
+  if(!avail.length){toast('You need a 20 kg sandbag for these');return;}
+  const ids=avail.map(e=>e.ex);
   const items=ids.map(k=>{const ex=EX[k];
     return {exId:k,unit:ex.unit,target:ex.unit==='time'?(ex.base||30):(ex.base||12),
             rest:ex.rest||60,sets:ex.unit==='reps'?3:2};});
   closeSheet();
-  openPlayer({items,free:true,title:'FORCE prep',focus:'The four tasks'});
+  if(miss.length)toast('Training '+avail.length+' of '+FORCE_EVENTS.length+' — no sandbag yet');
+  openPlayer({items,free:true,title:'FORCE prep',
+    focus:miss.length?(avail.length+' of '+FORCE_EVENTS.length+' tasks'):'The four tasks'});
 }
 /* WARN, do not silently swap. The athlete is training four named test events
    on purpose — substituting one leaves them unprepared for the thing they
@@ -4121,7 +4149,7 @@ function startForceTrain(){
    Same call as the custom builder (v267) and the baseline battery. */
 function forceRiskHTML(){
   try{
-    const risky=FORCE_EVENTS.map(e=>e.ex).filter(k=>EX[k]&&safeSwap(k)!==k);
+    const risky=forceAvailable().map(e=>e.ex).filter(k=>EX[k]&&safeSwap(k)!==k);
     if(!risky.length)return '';
     const names=risky.map(k=>EX[k].name).join(', ');
     return `<div class="note warn"><b>You flagged a joint ${risky.length>1?'some of these load':'this one loads'}.</b> ${_ve(names)} — the programme routes around ${risky.length>1?'them':'it'} elsewhere, but these are the actual test events, so they are not swapped here. If it pinches or feels wrong, stop.</div>`;
