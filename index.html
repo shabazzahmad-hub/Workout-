@@ -1807,7 +1807,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='313';
+const APP_VERSION='314';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2766,6 +2766,13 @@ function go(tab){
    ideas" on the rest-day sheet) became dead ends that promised food and showed
    none. The worked days still live on Reference, so the anchor moved with them. */
 function openMealPlan(){
+  /* Reference has two panes from v314, and the meal days live on one of them.
+     Landing on the tab is no longer the same as landing on the content: if the
+     athlete last left Reference on Moves, `go('ref')` renders a library and the
+     #mealplan anchor this scrolls to does not exist — the exact dead end v245's
+     own fix was written to close, one layer further in. Set the pane first.
+     When a block moves behind a tab, every route into it names the tab. */
+  REF_TAB='food';
   go('ref');
   setTimeout(()=>{try{const el=document.getElementById('mealplan');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){}},80);
 }
@@ -3671,6 +3678,23 @@ function todayWorkoutHTML(){
   else h+=workoutTabHTML(sess,log,doneCount,totalCount,wkNum);
   return h;
 }
+/* Reference answers "look something up", and it holds two libraries that have
+   nothing to do with each other: what to eat, and how to move. One long scroll
+   with a food list on top buried 138 movements below it. */
+let REF_TAB='food';
+const REF_TABS=[['food','🍽️ Food'],['moves','🏋️ Moves']];
+/* MEMBERSHIP, not truthiness — this reaches innerHTML through the strip. */
+function refTab(){return REF_TABS.some(t=>t[0]===REF_TAB)?REF_TAB:'food';}
+function setRefTab(k){
+  if(!REF_TABS.some(t=>t[0]===k))return;
+  REF_TAB=k;try{haptic(8);}catch(e){}
+  renderRef();
+  try{window.scrollTo(0,0);}catch(e){}
+}
+function refTabsHTML(){
+  const cur=refTab();
+  return `<div class="todaytabs">${REF_TABS.map(([k,l])=>`<button class="ttab ${cur===k?'on':''}" onclick="setRefTab('${k}')">${l}</button>`).join('')}</div>`;
+}
 let PROGRESS_TAB='summary';
 const PROGRESS_TABS=[['summary','📊 Summary'],['body','📷 Body'],['strength','💪 Strength'],['awards','🏅 Awards']];
 /* MEMBERSHIP, not truthiness — this reaches innerHTML through the strip and a
@@ -3730,21 +3754,25 @@ function cooldownTabHTML(){
    so it is one function rather than two hand-kept reads of STATE.restDays. */
 function restedTodayFlag(){return !!(STATE.restDays&&STATE.restDays[todayISO()]);}
 function workoutTabHTML(sess,log,doneCount,totalCount,wkNum){
-  /* Today shows TODAY'S WORKOUT and nothing else. Two grids used to sit here and
-     were removed at the athlete's request as clutter on the one screen they open
-     to train:
+  /* Today LEADS with today's workout. Two grids used to sit ABOVE it and were
+     removed at the athlete's request as clutter on the one screen they open to
+     train — that request was about position, and it still holds.
 
-       - six alternate-session tiles (Weights, Special, Meal plan, Quick, Recover,
-         Rest day) — none of them about today's session. They now live on the
-         Program tab, which is already the "what else can I train" screen and
-         already carried its own Quick Workouts button.
-       - the six-stat summary (Week, Streak, Sessions, Core Score, Waist, Badges),
-         moved to Progress, which exists precisely to report those numbers.
+       - the six-stat summary (Week, Streak, Sessions, Core Score, Waist, Badges)
+         went to Progress, which exists precisely to report those numbers, and
+         has stayed there.
+       - the alternate-session tiles (Weights, Special, Quick, Recover, Rest day)
+         went to Program in v246 and came BACK in v314 — to the bottom of this
+         tab, below the session and below Movement. Program is the 54-week
+         calendar; an athlete wanting a five-minute substitute for today had no
+         reason to open it. Below the work they are an answer to a question
+         already asked, not clutter in front of the answer. See altSessionHTML().
 
-     The HIIT tile STAYS, and the distinction is the whole point of the split: it
-     converts THIS session's circuit into intervals, so it is about today in a way
-     none of the others were. The Meal plan tile was not carried over — v245
-     removed the card it scrolled to, so it had already become a dead link. */
+     The HIIT tile STAYS at the top, and the distinction is the whole point of
+     the split: it converts THIS session's circuit into intervals, so it is
+     about today in a way none of the others are. The Meal plan tile was not
+     carried over — v245 removed the card it scrolled to, so it had already
+     become a dead link. */
   let h=`<button class="btn t-teal" style="margin:0 0 10px" onclick="openPlayer()">▶ Guided workout — hands-free player</button>
   ${sess.session.key==='metcon'?`<div class="tilegrid"><button class="tile accent" onclick="openHiitChooser()"><span class="ti">⚡</span>HIIT<br>intervals</button></div>`:''}`;
   h+=deloadBanner();
@@ -3791,7 +3819,29 @@ function workoutTabHTML(sess,log,doneCount,totalCount,wkNum){
      the session counts as done. */
   h+=movementHTML();
   h+=rideTargetHTML();
+  h+=altSessionHTML();
   return h;
+}
+/* The five alternate-session tiles. They live at the BOTTOM of Today's workout
+   tab, and the position is the whole design: above the session they are the
+   clutter v246 removed at the athlete's request, and on Program they were
+   filed under a 54-week calendar nobody opens looking for a five-minute
+   substitute. Below the work, they answer a question the athlete has already
+   asked — "not this today, then what?"
+   The heading changes with the state, because after a completed session
+   "instead of" is false: the work is done and these are extras. */
+function altSessionHTML(){
+  const rested=restedTodayFlag();
+  const done=todayDone()||todayStoppedForPain();
+  return `<div class="section-label">${done?'Something else today?':'Not today\u2019s session?'}</div>
+  <div class="tilegrid" style="margin-bottom:6px">
+    ${hasWeights()?`<button class="tile" onclick="startWeights()"><span class="ti">\ud83c\udfcb\ufe0f</span>Weights</button>`:''}
+    <button class="tile" onclick="openSpecial()"><span class="ti">\ud83c\udf96\ufe0f</span>Special</button>
+    <button class="tile" onclick="openQuickList()"><span class="ti">\u26a1</span>Quick<br>5\u201310 min</button>
+    <button class="tile" onclick="openRestSheet()"><span class="ti">\ud83d\ude0c</span>Recover</button>
+    <button class="tile" onclick="${rested?'openRestSheet()':'startRestDay()'}"><span class="ti">\ud83d\udecc</span>${rested?'Rest logged':'Rest day'}</button>
+  </div>
+  <div class="tiny muted" style="margin:0 3px 4px">${done?'Today is already logged \u2014 none of these will take the next session off your plan.':'None of these touch your program. Your next planned session stays where it is.'}</div>`;
 }
 function _overloadNoteInner(sess){
   const w=sess.week;
@@ -8407,18 +8457,13 @@ function renderProgram(){
   const totalWeeks=WEEKS_PER_CYCLE*TOTAL_CYCLES;
   const phaseName=phaseOf(viewCycle)===1?'Phase 1 · Core & Abs':'Phase 2 · Full-Body + Core';
   let h=`<h2 class="vtitle">Your Program</h2><div class="vsub">${totalWeeks}-week journey · weeks 1–6 core &amp; abs, then a full-body split. The load climbs every week.</div>`;
-  /* The alternate-session tiles, moved off Today in v246. Quick Workouts already
-     had its own button on this tab; it folds into the grid rather than sitting
-     beside a near-identical tile, which would be the clutter this move exists to
-     undo. Rest day is state-aware exactly as it was on Today. */
-  const _rested=restedTodayFlag();
-  h+=`<div class="tilegrid" style="margin-bottom:14px">
-    ${hasWeights()?`<button class="tile" onclick="startWeights()"><span class="ti">🏋️</span>Weights</button>`:''}
-    <button class="tile" onclick="openSpecial()"><span class="ti">🎖️</span>Special</button>
-    <button class="tile" onclick="openQuickList()"><span class="ti">⚡</span>Quick<br>5–10 min</button>
-    <button class="tile" onclick="openRestSheet()"><span class="ti">😌</span>Recover</button>
-    <button class="tile" onclick="${_rested?'openRestSheet()':'startRestDay()'}"><span class="ti">🛌</span>${_rested?'Rest logged':'Rest day'}</button>
-  </div>`;
+  /* The alternate-session tiles used to sit here. They are choices about TODAY —
+     "not the planned session, something else instead" — and Program is the
+     54-week calendar, so an athlete looking for a five-minute substitute had no
+     reason to open it. They are on Today from v314, BELOW the session rather
+     than above it: v246 took them off Today because six tiles on top of the one
+     screen you open to train is clutter, and that is still true. Below the work
+     they are an answer to a question the athlete has already asked. */
   // overall progress
   const totalS=SESSIONS_PER_CYCLE*TOTAL_CYCLES;const done=Math.min(STATE.progressPtr,totalS);
   h+=`<div class="card pad"><div class="row" style="justify-content:space-between;margin-bottom:8px"><b>${totalWeeks}-week progress</b><span class="muted sm">${done}/${totalS} sessions</span></div><div class="pbar"><i style="width:${done/totalS*100}%"></i></div>
@@ -8502,26 +8547,28 @@ function renderProgress(){
     const latest=STATE.scoreHistory[STATE.scoreHistory.length-1]
       ||{score:STATE.baseline.score,level:STATE.baseline.level};
     const lvl=latest.level||(STATE.baseline&&STATE.baseline.level)||levelOf(0);
+    h+=`<div class="section-label">Core Score</div>`;
     h+=`<div class="card pad center">${ringHTML(latest.score,'Core Score')}<div style="margin-top:10px"><span class="chip on">${_ve(lvl)}</span></div>
       ${STATE.scoreHistory.length>1?scoreTrendHTML():'<div class="tiny muted" style="margin-top:10px">Re-test after each 6-week block to see your climb.</div>'}</div>`;
   }
-  // snapshot: 6 headline metrics
-  const sessionsDone=sessionsDoneCount();
-  const streak=computeStreak();
+  /* LIFETIME totals. Sessions, day streak and this-week used to be repeated
+     here from the grid at the top of the tab; they are gone from this grid, not
+     from the app. The prose line that used to follow ("Lifetime volume: N sets
+     · N reps · N holds") is gone too — it restated numbers a grid renders more
+     legibly, and reps appeared in both. */
   const tut=totalTUT();
   const vol=totalVolume();
-  const thisWk=sessionsThisWeek();
-  h+=`<div class="grid3">
-    <div class="stat"><div class="n" style="color:var(--fire-l)">${sessionsDone}</div><div class="l">Sessions</div></div>
-    <div class="stat"><div class="n" style="color:var(--green)">${streak}</div><div class="l">Day streak</div></div>
-    <div class="stat"><div class="n" style="color:var(--teal)">${thisWk}<span style="font-size:12px;color:var(--muted)">/${weeklyTarget()}</span></div><div class="l">This week</div></div>
-  </div>
-  <div class="grid3" style="margin-top:10px">
+  h+=`<div class="section-label">Lifetime</div>
+  <div class="grid3">
+    <div class="stat"><div class="n" style="color:var(--fire-l)">${sessionsDoneCount()}</div><div class="l">Sessions</div></div>
     <div class="stat"><div class="n">${tut}</div><div class="l">Min trained</div></div>
-    <div class="stat"><div class="n">${vol.reps}</div><div class="l">Reps logged</div></div>
     <div class="stat"><div class="n" style="color:var(--fire-l)">${estCalories()}</div><div class="l">Kcal 🔥</div></div>
   </div>
-  <div class="tiny muted center" style="margin:8px 0 2px">Lifetime volume: <b>${vol.sets} sets</b> · <b>${vol.reps} reps</b> · <b>${fmtTime(vol.hold)} holds</b></div>`;
+  <div class="grid3" style="margin-top:10px">
+    <div class="stat"><div class="n">${vol.sets}</div><div class="l">Sets</div></div>
+    <div class="stat"><div class="n">${vol.reps}</div><div class="l">Reps</div></div>
+    <div class="stat"><div class="n">${fmtTime(vol.hold)}</div><div class="l">Holds</div></div>
+  </div>`;
   // consistency heatmap
   h+=`<div class="section-label">Consistency</div>`;
   h+=`<div class="card pad">
@@ -8926,7 +8973,13 @@ function allDonePairs(){
   return out;
 }
 function sessionsDoneCount(){return allDoneLogs().length;}
-function bestHabitDay(){let m=0;const d=(STATE.nutrition&&STATE.nutrition.days)||{};Object.values(d).forEach(x=>{const c=HABITS.filter(hb=>x.habits&&x.habits[hb.k]).length;if(c>m)m=c;});return m;}
+/* Count the REQUIRED habits, the same set Fuel's "Daily habits · n/4" counter
+   uses. It used to count every habit including the optional calorie one, so an
+   athlete who did everything the screen says matters read 4/4 with a green tick
+   on the day and still never unlocked Perfect Day. The badge asked for a habit
+   the app had deliberately stopped asking for — restriction was dropped as a
+   streak condition on purpose, and the badge was the one place it survived. */
+function bestHabitDay(){let m=0;const d=(STATE.nutrition&&STATE.nutrition.days)||{};Object.values(d).forEach(x=>{const c=HABITS.filter(hb=>!hb.optional&&x.habits&&x.habits[hb.k]).length;if(c>m)m=c;});return m;}
 /* Rope milestones for the badge checks (log lives in STATE.skipLog). */
 function skipTotalMins(){return skipLog().reduce((a,x)=>a+(x.mins||0),0);}
 function skipSessionCount(){return skipLog().length;}
@@ -8935,6 +8988,11 @@ function _weekKeyOf(iso){const d=new Date(String(iso)+'T00:00:00');if(isNaN(d))r
   const s=new Date(d.getFullYear(),0,1);return d.getFullYear()+'-W'+Math.floor(((d-s)/86400000+s.getDay())/7);}
 function bestSkipWeek(){const by={};skipLog().forEach(x=>{const k=_weekKeyOf(x.date);by[k]=(by[k]||0)+(x.mins||0);});
   return Object.keys(by).reduce((m,k)=>Math.max(m,by[k]),0);}
+/* A badge's description may be a function, so a count it quotes can be derived
+   from the app's own constant rather than restated as a literal. Every read site
+   goes through here — three of them, and a fourth that forgot would print
+   "() => ..." onto the glass. */
+function achDesc(a){try{return typeof a.desc==='function'?a.desc():(a.desc||'');}catch(e){return '';}}
 const ACHIEVEMENTS=[
   {id:'first',emoji:'🎬',name:'First Rep',desc:'Complete your first workout',check:()=>sessionsDoneCount()>=1},
   {id:'baseline',emoji:'📋',name:'Know Your Numbers',desc:'Finish the baseline assessment',check:()=>!!STATE.baseline},
@@ -8960,7 +9018,11 @@ const ACHIEVEMENTS=[
   {id:'waist5',emoji:'🎯',name:'Waist Winner',desc:'Waist down 12 cm (5 in) from start',check:()=>waistDrop()>=12},
   {id:'photo',emoji:'📸',name:'Picture Proof',desc:'Add your first progress photo',check:()=>(STATE.photos||[]).length>=1},
   {id:'hydrate',emoji:'💧',name:'Hydrated',desc:'Hit your water goal in a day',check:()=>{const d=(STATE.nutrition&&STATE.nutrition.days)||{};return Object.values(d).some(x=>(x.water||0)>=waterTargetCups());}},
-  {id:'perfectday',emoji:'🥇',name:'Perfect Day',desc:'All 5 daily habits in one day',check:()=>bestHabitDay()>=5},
+  /* desc is a FUNCTION here, not a string. HABITS is declared far below this
+     array, so a template literal evaluated at parse time is a temporal dead
+     zone error — the same trap that took the baseline timer down in v290. It
+     is also the only way the number cannot drift from habitsRequired(). */
+  {id:'perfectday',emoji:'🥇',name:'Perfect Day',desc:()=>'All '+habitsRequired()+' daily habits in one day',check:()=>bestHabitDay()>=habitsRequired()},
   /* — Skipping (jump rope) — */
   {id:'skip1',emoji:'🪢',name:'Rope Started',desc:'Log your first skipping session',check:()=>skipSessionCount()>=1},
   {id:'skipblock',emoji:'⏱️',name:'Full Block',desc:'27+ minutes of skipping in one session',check:()=>bestSkipSession()>=27},
@@ -9001,7 +9063,7 @@ function _celebrateNow(list){
       <div style="font-size:64px;line-height:1">${a.emoji}</div>
       <h3 style="margin:10px 0 2px">Achievement unlocked!</h3>
       <div style="font-size:18px;font-weight:900;color:var(--gold)">${a.name}</div>
-      <p class="sm muted" style="margin:6px 0 0">${a.desc}</p>
+      <p class="sm muted" style="margin:6px 0 0">${achDesc(a)}</p>
       ${list.length>1?`<p class="tiny muted" style="margin-top:8px">+${list.length-1} more unlocked 🎉</p>`:''}
     </div>
     <button class="btn primary" style="margin-top:14px" onclick="shareMilestoneById('${a.id}')">📤 Share this win</button>
@@ -9204,7 +9266,7 @@ function shareMilestone(a){
     x.font='120px Archivo,system-ui,sans-serif';x.fillText(a.emoji||'🏆',S/2,300);
     x.fillStyle='#8becd0';x.font='800 40px Archivo,system-ui,sans-serif';x.fillText('ACHIEVEMENT UNLOCKED',S/2,410);
     x.fillStyle='#f7f9fc';x.font='900 78px Archivo,system-ui,sans-serif';let y=_wrapText(x,a.name||'',S/2,520,920,88);
-    x.fillStyle='#9ba8bd';x.font='600 34px Archivo,system-ui,sans-serif';_wrapText(x,a.desc||'',S/2,y+70,860,46);
+    x.fillStyle='#9ba8bd';x.font='600 34px Archivo,system-ui,sans-serif';_wrapText(x,achDesc(a),S/2,y+70,860,46);
     x.fillStyle='#5de0b7';x.font='900 56px Archivo,system-ui,sans-serif';x.fillText('CoreForge',S/2,980);
     x.fillStyle='#6c7c92';x.font='700 28px Archivo,system-ui,sans-serif';x.fillText('CORE & FULL-BODY',S/2,1026);
     c.toBlob(blob=>{if(!blob){toast('Could not make card');return;}
@@ -11438,7 +11500,7 @@ function achievementsHTML(){
       ${ACHIEVEMENTS.map(a=>{const on=!!STATE.achievements[a.id];return `<div style="text-align:center;opacity:${on?1:.32}">
         <div style="font-size:30px;line-height:1;filter:${on?'none':'grayscale(1)'}">${a.emoji}</div>
         <div class="tiny" style="font-weight:800;margin-top:4px;line-height:1.15">${a.name}</div>
-        <div class="tiny muted" style="font-size:9.5px;line-height:1.1;margin-top:2px">${on?'✓ '+_ve(String(STATE.achievements[a.id]).slice(5)):a.desc}</div>
+        <div class="tiny muted" style="font-size:9.5px;line-height:1.1;margin-top:2px">${on?'✓ '+_ve(String(STATE.achievements[a.id]).slice(5)):achDesc(a)}</div>
       </div>`;}).join('')}
     </div></div>`;
 }
@@ -14112,12 +14174,55 @@ function _recipePlanHTML(){
   return h;
 }
 
+/* The exercise library — 138 movements, grouped by region and filtered to the
+   gear the athlete actually owns. It used to be the THIRD section of the
+   Settings tab, above the settings themselves, which is a reference work filed
+   under "change my preferences". Reference is the look-it-up tab; this is the
+   half of it that is not food. */
+function exLibraryHTML(){
+  let h='';
+  // exercise library — grouped by region, filtered to the gear you actually have
+  // (so equipment variants like the dumbbell vs kettlebell goblet squat don't double up).
+  const _g=STATE.profile.gear||[];
+  const libHasGear=k=>{const e=EX[k].equip;return !e||e.every(x=>_g.includes(x));};
+  const libKeys=Object.keys(EX).filter(libHasGear);
+  h+=`<div class="section-label">Exercise library · ${libKeys.length}</div>`;
+  const REGION_GROUPS=[['anterior','Abs & anterior core'],['oblique','Obliques & waist'],['lower','Lower abs'],['stability','Stability & posterior'],['dynamic','Dynamic finishers'],['chest','Chest'],['back','Back'],['shoulders','Shoulders'],['arms','Arms'],['legs','Legs'],['strength','Compound strength'],['cardio','Cardio / HIIT']];
+  const seen={};
+  REGION_GROUPS.forEach(([region,label])=>{
+    const list=libKeys.filter(k=>EX[k].region===region&&!seen[k]);
+    if(!list.length)return;
+    h+=`<div class="tiny muted" style="font-weight:800;letter-spacing:.6px;text-transform:uppercase;margin:16px 3px 6px">${label} · ${list.length}</div><div class="card"><div style="padding:2px 0">`;
+    list.forEach(k=>{seen[k]=1;const ex=EX[k];
+      h+=`<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer;align-items:center;gap:10px" onclick="openExerciseInfo('${k}')"><span style="display:flex;align-items:center;gap:10px;min-width:0">${ex.img?`<img src="${ex.img}" alt="" loading="lazy" onerror="this.style.display='none'" style="width:34px;height:34px;border-radius:9px;object-fit:cover;flex:0 0 auto;background:var(--card2)">`:''}<span style="min-width:0"><b>${ex.name}</b> <span class="tag ${ex.region}" style="margin-left:2px">${ex.region}</span></span></span><span class="muted">ⓘ</span></button>`;
+    });
+    h+=`</div></div>`;
+  });
+  // any exercise whose region isn't in the groups above (safety net)
+  const leftovers=libKeys.filter(k=>!seen[k]);
+  if(leftovers.length){
+    h+=`<div class="tiny muted" style="font-weight:800;text-transform:uppercase;margin:16px 3px 6px">More · ${leftovers.length}</div><div class="card"><div style="padding:2px 0">`;
+    leftovers.forEach(k=>{const ex=EX[k];h+=`<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer" onclick="openExerciseInfo('${k}')"><span><b>${ex.name}</b> <span class="tag ${ex.region}" style="margin-left:4px">${ex.region}</span></span><span class="muted">ⓘ</span></button>`;});
+    h+=`</div></div>`;
+  }
+  return h;
+}
 function renderRef(){
   const v=$('#v-ref');
+  const R=refTab();
+  if(R==='moves'){
+    v.innerHTML=`<h2 class="vtitle">Reference</h2><div class="vsub">Look it up — what to eat, and how to move.</div>`
+      +refTabsHTML()
+      +`<div class="note info">Every movement the app can put in front of you, filtered to the kit you own. Tap one for the how-to, the photo and the joints it loads.</div>`
+      +exLibraryHTML();
+    return;
+  }
   const T=refTargets();
   const eaten=foodTotals();
   const pLeft=Math.max(0,T.p-eaten.p),kLeft=T.kcal-eaten.kcal;
-  let h=`<h2 class="vtitle">Reference</h2><div class="vsub">Every amount below is costed in grams of protein and calories, against your own targets.</div>`;
+  let h=`<h2 class="vtitle">Reference</h2><div class="vsub">Look it up — what to eat, and how to move.</div>`;
+  h+=refTabsHTML();
+  h+=`<div class="tiny muted" style="margin:0 3px 10px">Every amount below is costed in grams of protein and calories, against your own targets.</div>`;
 
   /* ---- today, live ---- */
   h+=`<div class="section-label">Today, live</div><div class="grid2">
@@ -14957,21 +15062,27 @@ function homeSummaryHTML(){
   const pos=posOf(Math.min(STATE.progressPtr,SESSIONS_PER_CYCLE*TOTAL_CYCLES-1));
   const wk=(pos.cycle*WEEKS_PER_CYCLE)+pos.week;
   const streak=computeStreak();
-  const sess=sessionsDoneCount();
   const wd=waistDropShow();const unit=STATE.profile.unit;
-  const latest=STATE.scoreHistory[STATE.scoreHistory.length-1];
   // Show the athlete's ACTUAL waist (what they typed), with the trend as a suffix —
   // the tile used to show only the delta under a "Waist in" label, which read as a
   // measurement and was badly confusing.
   const wNow=currentWaistShow();
   const wdTxt=wNow==null?'—':(wNow.toFixed(1)+(wd>0?' ▼':(wd<0?' ▲':'')));
+  /* WHERE YOU ARE, and nothing that belongs to another section. Sessions and
+     Core Score used to sit in this grid AND again 20 lines below it — Core
+     Score as a full ring, Sessions in the lifetime grid — so the same figure
+     was on the glass twice with different labels ("Streak" here, "Day streak"
+     there). Two numbers that agree are not reassurance, they are a reader
+     wondering which one is the real one. Every figure on this tab now has
+     exactly one home: here for today, the ring for the score, the lifetime
+     grid for the totals. */
   return `<div class="grid3" style="margin-bottom:12px">
     <div class="stat"><div class="n" style="color:var(--fire-l)">${wk}<span style="font-size:12px;color:var(--muted)"> /${WEEKS_PER_CYCLE*TOTAL_CYCLES}</span></div><div class="l">Week</div></div>
-    <div class="stat"><div class="n" style="color:var(--green)">${streak}</div><div class="l">Streak</div></div>
-    <div class="stat"><div class="n" style="color:var(--teal)">${sess}</div><div class="l">Sessions</div></div>
-    <div class="stat"><div class="n">${(latest&&latest.score!=null&&isFinite(latest.score))?latest.score:'—'}</div><div class="l">Core Score</div></div>
+    <div class="stat"><div class="n" style="color:var(--teal)">${sessionsThisWeek()}<span style="font-size:12px;color:var(--muted)">/${weeklyTarget()}</span></div><div class="l">This week</div></div>
+    <div class="stat"><div class="n" style="color:var(--green)">${streak}</div><div class="l">Day streak</div></div>
     <button class="stat" style="cursor:pointer" onclick="logMeasure()"><div class="n" style="color:${wNow==null?'var(--muted)':(wd>0?'var(--green)':'var(--ink)')}">${wdTxt}</div><div class="l">${wNow==null?'Log waist':'Waist '+unit}</div></button>
-    <div class="stat"><div class="n" style="color:var(--gold)">${Object.keys(STATE.achievements||{}).length}</div><div class="l">Badges</div></div>
+    <button class="stat" style="cursor:pointer" onclick="setProgressTab('awards')"><div class="n" style="color:var(--gold)">${Object.keys(STATE.achievements||{}).length}</div><div class="l">Badges</div></button>
+    <button class="stat" style="cursor:pointer" onclick="setProgressTab('body')"><div class="n">📷</div><div class="l">Photos</div></button>
   </div>`;
 }
 /* Roll up what was actually logged for a completed session. */
@@ -15105,7 +15216,7 @@ function toggleWeekly(){
 function renderGuide(){
   const v=$('#v-guide');
   if(OB_EDIT&&OB_HOST==='v-guide'){obMount(v);return;}   // editor opened from Settings lives here
-  let h=`<h2 class="vtitle">Settings</h2><div class="vsub">Your profile &amp; goals, preferences, exercise library and your data.</div>`;
+  let h=`<h2 class="vtitle">Settings</h2><div class="vsub">Your profile &amp; goals, preferences and your data. The exercise library moved to <b>Reference ▸ Moves</b>.</div>`;
   // profile / retake the quiz (non-destructive) — FIRST, before anything else on this tab
   h+=`<div class="section-label">Profile &amp; goals</div><div class="card pad">
     <p class="sm muted" style="margin-top:0">Your answers from the setup quiz — sex, size, goal, focus areas, injuries, equipment and more. Update them any time and your plan re-tunes. <b>Your progress and history are kept.</b></p>
@@ -15125,30 +15236,7 @@ function renderGuide(){
     </ul>
     <div class="note warn" style="margin-bottom:0"><b>Honest note: spot-reduction isn't real, and neither is a six-week six-pack.</b> Core work builds the muscle; the deficit uncovers it, and that part is arithmetic. Expect the <b>tape to move in 3–4 weeks</b> — that is the number to watch. Visible abs is roughly 12–14% body fat for a man, and getting there from 25% is 11–13 kg of fat, which at a sane 0.5 kg a week is <b>6–9 months</b>. Anyone promising it faster is selling something. Track your waist weekly in Progress; that is where you will see this working long before the mirror shows it.</div>
   </div>`;
-  // exercise library — grouped by region, filtered to the gear you actually have
-  // (so equipment variants like the dumbbell vs kettlebell goblet squat don't double up).
-  const _g=STATE.profile.gear||[];
-  const libHasGear=k=>{const e=EX[k].equip;return !e||e.every(x=>_g.includes(x));};
-  const libKeys=Object.keys(EX).filter(libHasGear);
-  h+=`<div class="section-label">Exercise library · ${libKeys.length}</div>`;
-  const REGION_GROUPS=[['anterior','Abs & anterior core'],['oblique','Obliques & waist'],['lower','Lower abs'],['stability','Stability & posterior'],['dynamic','Dynamic finishers'],['chest','Chest'],['back','Back'],['shoulders','Shoulders'],['arms','Arms'],['legs','Legs'],['strength','Compound strength'],['cardio','Cardio / HIIT']];
-  const seen={};
-  REGION_GROUPS.forEach(([region,label])=>{
-    const list=libKeys.filter(k=>EX[k].region===region&&!seen[k]);
-    if(!list.length)return;
-    h+=`<div class="tiny muted" style="font-weight:800;letter-spacing:.6px;text-transform:uppercase;margin:16px 3px 6px">${label} · ${list.length}</div><div class="card"><div style="padding:2px 0">`;
-    list.forEach(k=>{seen[k]=1;const ex=EX[k];
-      h+=`<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer;align-items:center;gap:10px" onclick="openExerciseInfo('${k}')"><span style="display:flex;align-items:center;gap:10px;min-width:0">${ex.img?`<img src="${ex.img}" alt="" loading="lazy" onerror="this.style.display='none'" style="width:34px;height:34px;border-radius:9px;object-fit:cover;flex:0 0 auto;background:var(--card2)">`:''}<span style="min-width:0"><b>${ex.name}</b> <span class="tag ${ex.region}" style="margin-left:2px">${ex.region}</span></span></span><span class="muted">ⓘ</span></button>`;
-    });
-    h+=`</div></div>`;
-  });
-  // any exercise whose region isn't in the groups above (safety net)
-  const leftovers=libKeys.filter(k=>!seen[k]);
-  if(leftovers.length){
-    h+=`<div class="tiny muted" style="font-weight:800;text-transform:uppercase;margin:16px 3px 6px">More · ${leftovers.length}</div><div class="card"><div style="padding:2px 0">`;
-    leftovers.forEach(k=>{const ex=EX[k];h+=`<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer" onclick="openExerciseInfo('${k}')"><span><b>${ex.name}</b> <span class="tag ${ex.region}" style="margin-left:4px">${ex.region}</span></span><span class="muted">ⓘ</span></button>`;});
-    h+=`</div></div>`;
-  }
+
   // settings / data
   h+=DISCLAIMER();
   h+=`<div class="section-label" id="settingsAnchor" style="scroll-margin-top:70px">Settings</div><div class="card pad">
