@@ -442,7 +442,13 @@ export default async function run() {
       allCalories: BIKE_LEVELS.every(b => v.innerHTML.includes(bikeNeed(stepTarget(), b.k).kcal + ' kcal')),
       quotesTarget: v.innerHTML.includes(stepTarget().toLocaleString() + ' steps'),
       explainsFlatCalories: /does not care how fast you spin/.test(v.innerHTML),
-      pointsAtFuel: /Fuel → Movement/.test(v.innerHTML),
+      /* This pinned "Fuel → Movement" — the destination Movement was on when
+         the check was written. v311 moved the block to Today and left the two
+         sentences behind, so the check was holding a pointer that had become
+         false. It now asserts BOTH halves: it names where Movement actually
+         is, and it no longer names where it is not. */
+      pointsAtMovement: /Today ▸ Workout ▸ Movement/.test(v.innerHTML),
+      noStalePointer: !/Fuel → Movement/.test(v.innerHTML),
       noNaN: !/NaN|undefined/.test(v.innerHTML),
     };
   });
@@ -453,7 +459,8 @@ export default async function run() {
   t.ok('and the calories', ref.allCalories, ref);
   t.ok('against the athlete\'s own step target', ref.quotesTarget, ref);
   t.ok('it explains why the calorie column never changes', ref.explainsFlatCalories, ref);
-  t.ok('and it says where to log the ride', ref.pointsAtFuel, ref);
+  t.ok('and it says where to log the ride', ref.pointsAtMovement, ref);
+  t.ok('and does not send the athlete to the tab it used to be on', ref.noStalePointer, ref);
   t.ok('nothing renders as NaN', ref.noNaN, ref);
 
   /* ---- movement earns room in the food budget, but only the surplus -------

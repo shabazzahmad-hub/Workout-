@@ -1,7 +1,7 @@
 /* The athlete's journey, driven through the real UI: the wizard, the baseline
    battery, the four Today panes, the guided player, and every button on every
    tab. Nothing here injects state that the app would not have produced itself. */
-import { serve, launch, suite, seedAthlete } from './lib/harness.mjs';
+import { serve, launch, suite, seedAthlete, waitForBoot, ATHLETE } from './lib/harness.mjs';
 
 export default async function run() {
   const t = suite('athlete journey');
@@ -646,6 +646,151 @@ export default async function run() {
     t.ok('and the battery still scores', r.score > 0, r);
     await browser.close();
     errors.forEach(e => t.fail('page error while stamping rest discipline', e));
+  }
+
+  /* ---- TODAY, AFTER TODAY IS DONE ---------------------------------------
+     Reported: "Today's tab is showing me a workout for tomorrow even though I
+     have completed today's workout already. Nowhere under the Today tab am I
+     seeing that I have completed today's workout."
+
+     Two defects behind it. `STATE.progressPtr` is a QUEUE position and
+     advances on completion, so Today rendered the NEXT session under the word
+     TODAY — with a Start button and a Mark-Session-Complete button. And the
+     one acknowledgement that existed, doneForTodayHTML(), was gated on
+     `minimumDayMet()` = trainedToday() AND two HABIT ticks — so finishing the
+     session did not earn the line saying you had finished it.
+
+     TWO TRAPS THIS FILE NAMES, both deliberately walked into here:
+       - seedAthlete starts at pointer 0, which IS day zero of a week. This
+         block runs from a MID-WEEK pointer.
+       - ticking habits would hide the mutant that restores the minimumDayMet
+         gate, so this block ticks NONE. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await page.evaluate(seed => { eval(seed)(); }, ATHLETE);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForBoot(page);
+
+    const r = await page.evaluate(() => {
+      const o = {}; const T = () => document.querySelector('#v-today').innerText;
+      STATE.logs = {}; STATE.progressPtr = 3; delete STATE._trainAgain;
+      nutToday().habits = {}; save();
+      o.dayInWeek = posOf(3).dayInWeek;                     // guard: NOT day zero
+      o.habitsTicked = Object.keys(nutToday().habits || {}).length;   // guard: none
+      const s = buildSession(3); const log = ensureLog();
+      [...s.main, s.finisher].filter(Boolean).forEach(m => {
+        log.ex[m.exId] = { sets: Array.from({ length: m.sets }, () => true),
+          done: true, actual: m.target }; });
+      save(); commitSession('right');
+      o.name = s.session.name;
+      o.queuePtr = STATE.progressPtr;                       // the ENGINE moved on
+      setTodayTab('workout'); renderToday();
+      const t = T();
+      o.shownSession = (t.match(/SESSION (\d+) \/ \d+/) || [])[1];
+      o.namesCompleted = t.includes(s.session.name);
+      o.saysDone = /Session done/i.test(t);
+      o.nextIsLabelled = /Next session · not today's/i.test(t);
+      o.noCompleteButton = !document.querySelector('#v-today #finishSession');
+      o.noSetDots = document.querySelectorAll('#v-today .setdot').length === 0;
+      /* DERIVED, not a flag — so a re-render lands on the same screen. */
+      renderToday(); o.survivesRerender = /Session done/i.test(T());
+      /* And Progress agrees, on the same day. */
+      go('progress'); setProgressTab('summary'); renderProgress();
+      const p = document.querySelector('#v-progress').innerText;
+      o.progressNamesCompleted = p.includes(s.session.name);
+      o.progressNoNotYet = !/Not yet/i.test(p);
+      return o;
+    });
+
+    t.ok('guard: this runs from a MID-WEEK pointer, not day zero', r.dayInWeek !== 0, r);
+    t.eq('guard: and with NO habits ticked', r.habitsTicked, 0, r);
+    t.eq('the queue pointer still advances', r.queuePtr, 4, r);
+    /* THE REPORTED BUG: Today showed session 5 here. */
+    t.eq('but Today shows the session that was just finished', r.shownSession, '4', r);
+    t.ok('and names it', r.namesCompleted, r);
+    t.ok('and says it is done — with no habits ticked', r.saysDone, r);
+    t.ok('the next session is present but labelled as NOT today\'s', r.nextIsLabelled, r);
+    t.ok('there is no Mark-Session-Complete button for work already logged', r.noCompleteButton, r);
+    t.ok('and no set dots to tap on a finished session', r.noSetDots, r);
+    t.ok('the done state is derived, so it survives a re-render', r.survivesRerender, r);
+    t.ok('Progress names the same completed session', r.progressNamesCompleted, r);
+    t.ok('and no longer says "Not yet" on a day that was trained', r.progressNoNotYet, r);
+
+    /* IT SURVIVES A RELOAD — the state is read from the log, never a flag. */
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForBoot(page);
+    const after = await page.evaluate(() => {
+      setTodayTab('workout'); renderToday();
+      const t = document.querySelector('#v-today').innerText;
+      return { done: /Session done/i.test(t), shown: (t.match(/SESSION (\d+)/) || [])[1] };
+    });
+    t.ok('closing and reopening the app still shows today as done', after.done, after);
+    t.eq('and still on the session that was finished', after.shown, '4', after);
+
+    /* THE FLOORS. A queue is not a calendar: the next session must stay
+       REACHABLE, and an untrained day must be completely unaffected. */
+    const floors = await page.evaluate(async () => {
+      const o = {};
+      const realConfirm = window.confirm; window.confirm = () => true;
+      setTodayTab('workout'); go('today'); renderToday();
+      const btn = [...document.querySelectorAll('#v-today button')]
+        .find(b => /Train again/i.test(b.textContent));
+      o.offersTrainAgain = !!btn;
+      if (btn) btn.click();
+      await new Promise(r => setTimeout(r, 60));
+      renderToday();
+      const t = document.querySelector('#v-today').innerText;
+      o.trainAgainShowsNext = (t.match(/SESSION (\d+)/) || [])[1];
+      o.trainAgainIsLive = !!document.querySelector('#v-today #finishSession');
+      window.confirm = realConfirm;
+
+      /* A day with NO session logged must look exactly as it always did. */
+      STATE.logs = {}; STATE.progressPtr = 3; delete STATE._trainAgain; save();
+      renderToday();
+      const u = document.querySelector('#v-today').innerText;
+      o.untrainedShowsLive = !!document.querySelector('#v-today #finishSession');
+      o.untrainedNoDoneCard = !/Session done/i.test(u);
+      o.untrainedNoNextCard = !/Next session · not today's/i.test(u);
+      return o;
+    });
+    t.ok('the next session is still reachable on the same day', floors.offersTrainAgain, floors);
+    t.eq('and choosing it puts the queue back on screen', floors.trainAgainShowsNext, '5', floors);
+    t.ok('as a live, startable session', floors.trainAgainIsLive, floors);
+    t.ok('a day with nothing logged still shows a live session', floors.untrainedShowsLive, floors);
+    t.ok('with no done card', floors.untrainedNoDoneCard, floors);
+    t.ok('and no next-session card', floors.untrainedNoNextCard, floors);
+
+    /* A PAIN STOP IS NOT A COMPLETION. commitSession() records it as
+       stoppedForPain and NOT done, so the app must not congratulate it. */
+    const pain = await page.evaluate(() => {
+      STATE.logs = {}; STATE.progressPtr = 3; delete STATE._trainAgain; save();
+      const log = ensureLog();
+      log.stoppedForPain = todayISO(); log.done = false; log.completedAt = todayISO();
+      STATE.progressPtr = 4; save();
+      setTodayTab('workout'); renderToday();
+      const t = document.querySelector('#v-today').innerText;
+      return { saysStopped: /stopped for pain/i.test(t),
+        noCongratulation: !/Session done/i.test(t),
+        saysPointerMoved: /program still moved on/i.test(t),
+        shown: (t.match(/SESSION (\d+)/) || [])[1] };
+    });
+    t.ok('a pain stop says so', pain.saysStopped, pain);
+    t.ok('and is never congratulated as a completed session', pain.noCongratulation, pain);
+    t.ok('and says out loud that the program moved on', pain.saysPointerMoved, pain);
+    t.eq('while still showing the session it happened on', pain.shown, '4', pain);
+
+    /* Reference must not point at a screen that moved (v311 moved Movement
+       from Fuel to Today and left two sentences behind). */
+    const ref = await page.evaluate(() => {
+      go('ref'); render();
+      const r = document.querySelector('#v-ref').innerText;
+      return { stale: /Fuel → Movement/.test(r), points: /Today ▸ Workout ▸ Movement/.test(r) };
+    });
+    t.ok('Reference no longer points at Fuel for Movement', !ref.stale, ref);
+    t.ok('it points at where Movement actually lives', ref.points, ref);
+
+    errors.forEach(e => t.fail('page error in the done-today block', e));
+    await browser.close();
   }
 
   srv.close();
