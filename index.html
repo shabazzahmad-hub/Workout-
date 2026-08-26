@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='322';
+const APP_VERSION='324';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4096,6 +4096,123 @@ function forceKitHTML(){
     ${_ve(miss.map(e=>e.name).join(', '))} — tick <b>Sandbag</b> in Settings once you have one.
     Nothing is substituted here: these are the actual test events, and a stand-in would leave you unready for the real thing.</div>`;
 }
+/* ============ ARMY RUNNING ============================================
+   The FORCE Evaluation has no run in it, and running is still the aerobic
+   base every military fitness standard sits on — including the CSOR
+   pre-screen and the general fitness the reserve expects. So it lives beside
+   the FORCE tasks rather than inside them.
+
+   THE TIMED RUN HAS NO PASS FIGURE BAKED IN, AND THAT IS DELIBERATE. v322's
+   FORCE figures are stamped with a date and a "confirm with your unit" note
+   because a published standard moves. For the run the honest position is
+   weaker still: the required time depends on the trade, the age band and
+   which test the unit uses, and this app cannot know any of them. So it
+   MEASURES the run, plots the trend, and lets the athlete type in the target
+   they were actually given. A number invented here would be trained to.
+
+   The sessions are the four stimuli that build a timed run, plus the one
+   combination that is specific to soldiering. Each is `w`/`r`/`n` minutes so
+   the existing interval engine drives it — no fifth timer. */
+const RUN_TT_M=2400;                       // the distance the time trial is run over
+const RUN_SESSIONS=[
+  {id:'base', name:'Base run', pace:'easy', mins:35,
+   why:'The pace most people skip and the one that builds the engine. Conversational the whole way — if you cannot talk, you are running it wrong.'},
+  {id:'long', name:'Long run', pace:'easy', mins:60,
+   why:'The same effort, held longer. This is what makes a ruck march feel shorter, and it is the session that most changes how the last mile feels.'},
+  {id:'tempo', name:'Tempo run', pace:'tempo', mins:20,
+   why:'Comfortably hard, held for 20 minutes. Raises the pace you can hold before you start to fade — which is exactly what a timed run measures.'},
+  {id:'intervals', name:'6 × 400 m', pace:'intervals', mins:18,
+   why:'Six hard 400s with equal jogging between. Speed for the time trial. Stop the session if the last one is slower than the first by more than a few seconds.'},
+  {id:'tt', name:'2.4 km time trial', pace:'intervals', mins:12, test:true,
+   why:'The measurement, not a workout. Warm up properly, run it honestly, and log the time. Once every three or four weeks is plenty.'},
+  {id:'brick', name:'Run then ruck', pace:'steady', mins:45,
+   why:'20 minutes running straight into 25 minutes under the pack. The legs that have to carry the load are already tired, which is the point and is also what a selection day feels like.'},
+];
+const RUN_SESSION_IDS=RUN_SESSIONS.map(x=>x.id);
+function runSession(id){return RUN_SESSIONS.find(x=>x.id===id)||null;}
+/* The athlete's own required time, in seconds. ABSENT means "not given one",
+   which is a different answer from "no target" and must not render as one. */
+function runTTTarget(){
+  try{const v=prep().ttTarget;
+    return (typeof v==='number'&&isFinite(v)&&v>0)?v:null;
+  }catch(e){return null;}
+}
+function runTTBest(){
+  try{const v=prep().ttBest;
+    return (typeof v==='number'&&isFinite(v)&&v>0)?v:null;
+  }catch(e){return null;}
+}
+function runTTVerdict(){
+  const t=runTTTarget(), b=runTTBest();
+  if(t===null||b===null)return null;
+  return b<=t?'pass':'short';
+}
+function openArmyRun(){
+  const best=runTTBest(), tgt=runTTTarget(), v=runTTVerdict();
+  openSheet(`
+    <h3>🏃 Army running</h3>
+    <div class="note info">The FORCE Evaluation has no run in it. Running is still the aerobic base underneath everything else you are being asked to do, and it is what a ruck march is built on.</div>
+    <div class="card pad">
+      <div class="kv"><span><b>2.4 km time trial</b><div class="tiny muted" style="margin-top:2px">Your best</div></span>
+        <span style="text-align:right"><b>${best!==null?fmtTime(best):'—'}</b>
+          <div class="tiny muted">${tgt!==null?'target '+fmtTime(tgt):'no target set'}</div>
+          ${v?`<div style="margin-top:3px">${v==='pass'
+            ?'<span class="tag" style="background:var(--green);color:#000">meets it</span>'
+            :'<span class="tag" style="background:var(--fire)">short</span>'}</div>`:''}</span></div>
+    </div>
+    ${tgt===null?`<div class="note warn"><b>No target time is built in, on purpose.</b> What you have to run depends on your trade, your age band and which test your unit uses — this app cannot know any of those, and a number invented here is one you would train to. Ask, then type it in.</div>`:''}
+    <button class="btn ghost" style="width:100%;margin-bottom:12px" onclick="openRunTT()">✎ ${tgt===null?'Set my target and log a time':'Log a time or change the target'}</button>
+    <div class="section-label">The sessions</div>
+    ${RUN_SESSIONS.map(x=>`<button class="btn ghost" style="text-align:left;display:block;padding:14px;width:100%;margin-bottom:8px" onclick="startRunSession('${x.id}')">
+      <b style="font-size:15px">${_ve(x.name)}${x.test?' · measured':''}</b>
+      <div class="tiny muted" style="margin-top:3px;font-weight:600">${_ve(runPace(x.pace).label)} · about ${x.mins} min</div>
+      <div class="tiny muted" style="margin-top:4px">${_ve(x.why)}</div></button>`).join('')}
+    <div class="tiny muted" style="margin-top:6px">Two easy runs for every hard one is the ratio that keeps people running. The base run is not the filler — it is the session.</div>
+  `);
+}
+function openRunTT(){
+  const b=runTTBest(), t=runTTTarget();
+  openSheet(`
+    <h3>2.4 km time trial</h3>
+    <div class="note info">Times in <b>minutes and seconds</b> — enter 11:56 as <b>11</b> and <b>56</b>.</div>
+    <div class="field"><label>Your best time</label>
+      <div class="row" style="gap:8px"><input id="tt-bm" type="number" inputmode="numeric" min="0" placeholder="min" value="${b!==null?Math.floor(b/60):''}">
+        <input id="tt-bs" type="number" inputmode="numeric" min="0" max="59" placeholder="sec" value="${b!==null?b%60:''}"></div></div>
+    <div class="field"><label>The time you have been told to hit — leave blank if you have not been given one</label>
+      <div class="row" style="gap:8px"><input id="tt-tm" type="number" inputmode="numeric" min="0" placeholder="min" value="${t!==null?Math.floor(t/60):''}">
+        <input id="tt-ts" type="number" inputmode="numeric" min="0" max="59" placeholder="sec" value="${t!==null?t%60:''}"></div></div>
+    <button class="btn primary" style="width:100%" onclick="saveRunTT()">Save</button>
+  `);
+}
+function _ttSecs(mId,sId){
+  const m=($('#'+mId)||{}).value, sec=($('#'+sId)||{}).value;
+  if((m===''||m===undefined)&&(sec===''||sec===undefined))return undefined;   // blank means not given
+  const mm=parseFloat(m||0), ss=parseFloat(sec||0);
+  if(!isFinite(mm)||!isFinite(ss)||mm<0||ss<0||ss>=60)return null;            // null means bad input
+  const total=Math.round(mm*60+ss);
+  return total>0?total:null;
+}
+function saveRunTT(){
+  const b=_ttSecs('tt-bm','tt-bs'), t=_ttSecs('tt-tm','tt-ts');
+  if(b===null||t===null){toast('Enter a real time — seconds under 60');return;}
+  if(!STATE.prep||typeof STATE.prep!=='object'||Array.isArray(STATE.prep))STATE.prep={};
+  if(b===undefined)delete STATE.prep.ttBest; else STATE.prep.ttBest=b;
+  if(t===undefined)delete STATE.prep.ttTarget; else STATE.prep.ttTarget=t;
+  save();closeSheet();toast('Logged ✅');openArmyRun();
+}
+/* Sets the run mode to the session's pace and pre-fills its length, then hands
+   the athlete back to the Movement card to log what they actually did. It does
+   NOT log the run for them — a session you were offered is not a session you
+   ran, which is the same rule the completion gate enforces for the program. */
+function startRunSession(id){
+  const x=runSession(id);
+  if(!x){toast('No such session');return;}
+  setCardioMode('run');
+  setRunPace(x.pace);
+  closeSheet();
+  setTodayTab('workout');go('today');
+  toast(x.name+' — log it when you are back');
+}
 function openForcePrep(){
   const wk=forceWeeksLeft();
   const rows=FORCE_EVENTS.map(ev=>{
@@ -4120,6 +4237,7 @@ function openForcePrep(){
     <button class="btn primary" style="width:100%;margin-top:10px" onclick="startForceTrain()">▶ Train ${forceAvailable().length===FORCE_EVENTS.length?'the four tasks':'what you have kit for'}</button>
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openForceLog()">✎ Log a result</button>
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openForceDate()">📅 ${prep().date?'Change my test date':'Set my test date'}</button>
+    <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openArmyRun()">🏃 Army running</button>
     <div class="tiny muted" style="margin-top:10px">The four tasks are done back to back on the day, with rest between each. Training them separately first is the point of this block — the full run-through is a measurement, not a workout.</div>
   `);
 }
@@ -12782,6 +12900,56 @@ const RUCK_PACES=[
    cue:'slower over the ground, harder on the legs and lungs — the best value here'},
 ];
 function ruckPace(k){return RUCK_PACES.find(p=>p.k===k)||RUCK_PACES[1];}
+/* ---- Running: the fourth way to pay the step target ----------------------
+   Modelled like the BIKE and not like the ruck, and the reason is the same
+   reason the ruck is not modelled like the bike. Under a pack the intensity is
+   the load RELATIVE TO the athlete, so its MET has to be computed. On a run the
+   intensity is PACE, which is a dial the athlete sets — so a fixed table is
+   right here, exactly as it is for the trainer.
+
+   THE LEVEL IS DEFINED BY THE EFFORT, NOT BY THE SPEED. The km/h figure is
+   nominal — what it is for is turning minutes into a distance estimate. Which
+   band an athlete is in is decided by the talk test and the RPE in the cue,
+   because 8 km/h is an easy jog for one person and a tempo effort for another,
+   and the app has no run test to tell them apart. Same convention BIKE_LEVELS
+   already uses.
+
+   Net METs and steps/min = MET x 35, the same arithmetic as the jacks, the bike
+   and the ruck, so the four currencies can never disagree. The step figure is
+   an ENERGY equivalent, not a footfall count — at these METs it runs well above
+   real running cadence, and the card says so rather than printing a number a
+   runner would rightly distrust.
+
+   Sanity against the world: steady (9.7 km/h, ~6:12/km) for 30 minutes prices
+   at ~440 kcal for an 86 kg athlete, which is where the ACSM equations put it. */
+const RUN_PACES=[
+  {k:'easy',  label:'Easy',   kmh:8.0,  gross:8.3,  rpe:'RPE 3-4',
+   cue:'full sentences the whole way — most of your running belongs here, and it is the pace people skip'},
+  {k:'steady',label:'Steady', kmh:9.7,  gross:9.8,  rpe:'RPE 5-6',
+   cue:'short sentences only, breathing clearly audible — the default'},
+  {k:'tempo', label:'Tempo',  kmh:11.3, gross:11.0, rpe:'RPE 7-8',
+   cue:'a few words at a time — comfortably hard, and holdable for 20 to 30 minutes'},
+  {k:'intervals',label:'Intervals',kmh:12.9,gross:11.8,rpe:'RPE 8-9 in bursts',
+   cue:'hard efforts with easy jogging between — on a treadmill, set the pace and let it hold you to it'},
+];
+const RUN_UNITS=[['min','Minutes'],['dist','Distance'],['kcal','Calories']];
+function runPace(k){return RUN_PACES.find(p=>p.k===k)||RUN_PACES[1];}
+function runMET(k){return Math.max(0.5,runPace(k).gross-1);}
+function runStepsPerMin(k){return Math.round(runMET(k)*35);}
+function runKcalPerMin(k){return runMET(k)*3.5*(latestWeightKg()||80)/200;}
+function runKmPerMin(k){return runPace(k).kmh/60;}
+function runMinutesFor(steps,k){
+  const per=runStepsPerMin(k);
+  return (per>0&&steps>0)?Math.ceil(steps/per):0;
+}
+/* Pace as minutes per kilometre — the number a runner actually thinks in, and
+   the one a treadmill is set by. Distance per MINUTE would read as "0.2 km",
+   which is the mirror of why the ruck card shows speed instead. */
+function runPaceLabel(k){
+  const perKm=60/runPace(k).kmh;
+  const mm=Math.floor(perKm), ss=Math.round((perKm-mm)*60);
+  return mm+':'+String(ss).padStart(2,'0')+' /km';
+}
 /* The plate, carried forward as the athlete's default the same way bikeLevel
    is. Stored in POUNDS because that is what is stamped on a ruck plate
    everywhere they are sold, and converted at the point of use — the opposite
@@ -12893,7 +13061,7 @@ function jackUnitLabel(u){return u==='min'?'min':(u==='reps'?'reps':'kcal');}
    nothing, they travel, and the bike is a thing you have to be at home to use. */
 /* MEMBERSHIP, not a chain of equality tests — the third mode is exactly where
    a `m==='bike'?'bike':'jacks'` shape starts silently swallowing new values. */
-const CARDIO_MODES=['jacks','bike','ruck'];
+const CARDIO_MODES=['jacks','bike','ruck','run'];
 /* The quiz's own three answers. Kept as a list so the repair and the picker
    cannot drift apart — the mistake CARDIO_MODES' repair made for a version. */
 const CONDITIONING_LEVELS=['low','moderate','high'];
@@ -12944,9 +13112,15 @@ function movement(){
   const rlvl=RUCK_PACES.some(p=>p.k===t.ruckLvl)?t.ruckLvl
     :(((STATE.profile&&STATE.profile.ruckPace)&&RUCK_PACES.some(p=>p.k===STATE.profile.ruckPace))?STATE.profile.ruckPace:'brisk');
   const runit=RUCK_UNITS.some(u=>u[0]===t.ruckUnit)?t.ruckUnit:'min';
+  /* Same carry-forward as bikeLvl and ruckLvl: nutToday() is a fresh object
+     every day, so without the profile fallback the pace resets every morning. */
+  const nlvl=RUN_PACES.some(p=>p.k===t.runLvl)?t.runLvl
+    :(((STATE.profile&&STATE.profile.runPace)&&RUN_PACES.some(p=>p.k===STATE.profile.runPace))?STATE.profile.runPace:'steady');
+  const nunit=RUN_UNITS.some(u=>u[0]===t.runUnit)?t.runUnit:'min';
   return {steps:Math.round(num(t.steps,100000)),val:num(t.bikeVal,100000),unit,lvl,
     jval:num(t.jackVal,100000),junit,jlvl,
-    rval:num(t.ruckVal,100000),runit,rlvl};
+    rval:num(t.ruckVal,100000),runit,rlvl,
+    nval:num(t.runVal,100000),nunit,nlvl};
 }
 /* The jack session in every currency at once, same shape as bikeRide(). */
 function jackMinutes(){
@@ -13028,9 +13202,24 @@ function ruckWork(){
     km:min*ruckKmPerMin(m.rlvl),
     kcal:Math.round(min*ruckKcalPerMin(m.rlvl))};
 }
+function runMinutes(){
+  const m=movement();
+  if(!m.nval)return 0;
+  if(m.nunit==='min')return Math.min(600,m.nval);
+  if(m.nunit==='dist')return Math.min(600,m.nval/runKmPerMin(m.nlvl));   // canonical km
+  return Math.min(600,m.nval/runKcalPerMin(m.nlvl));
+}
+// The run in all three currencies at once, same shape as ruckWork().
+function runWork(){
+  const m=movement(),min=runMinutes();
+  return {min:Math.round(min),
+    steps:Math.round(min*runStepsPerMin(m.nlvl)),
+    km:min*runKmPerMin(m.nlvl),
+    kcal:Math.round(min*runKcalPerMin(m.nlvl))};
+}
 /* Every way of paying the target counts, and they add. An athlete who walked,
-   rode and rucked in one day earned all three. */
-function stepEquivalent(){return movement().steps+bikeRide().steps+jackWork().steps+ruckWork().steps;}
+   rode, rucked and ran in one day earned all four. */
+function stepEquivalent(){return movement().steps+bikeRide().steps+jackWork().steps+ruckWork().steps+runWork().steps;}
 /* recalcKcalFromStored() prices activity ONCE, from a fixed onboarding answer
    (sitting / lightly active / moderately active / ...), and never looks at it
    again. A day that clears the step target by 8,000 and a day that clears it
@@ -13149,6 +13338,39 @@ function setRuckUnit(u){
       :(u==='dist'?Math.round(min*ruckKmPerMin(m.rlvl)*100)/100
                   :Math.round(min*ruckKcalPerMin(m.rlvl)));
   }
+  syncStepHabit();save();repaintMovement();
+}
+function setRunVal(v){
+  const t=nutToday();const m=movement();
+  let n=Math.max(0,+v||0);
+  if(m.nunit==='dist')n=showToKm(n);
+  const cap=m.nunit==='min'?600:(m.nunit==='dist'?100:8000);
+  t.runVal=Math.min(cap,Math.round(n*100)/100);
+  syncStepHabit();save();repaintMovement();
+}
+function addRunVal(d){
+  const m=movement();
+  const shown=m.nunit==='dist'?kmToShow(m.nval):m.nval;
+  setRunVal(Math.max(0,Math.round((shown+d)*10)/10));
+  haptic(8);
+}
+function runStep(u){return u==='min'?5:(u==='dist'?0.5:50);}
+/* Switching currency re-expresses the SAME run, exactly as setRuckUnit does. */
+function setRunUnit(u){
+  if(!RUN_UNITS.some(x=>x[0]===u))return;
+  const t=nutToday();const m=movement();const min=runMinutes();
+  t.runUnit=u;
+  if(min>0){
+    t.runVal=u==='min'?Math.round(min)
+      :(u==='dist'?Math.round(min*runKmPerMin(m.nlvl)*100)/100
+                  :Math.round(min*runKcalPerMin(m.nlvl)));
+  }
+  syncStepHabit();save();repaintMovement();
+}
+function setRunPace(k){
+  const t=nutToday();t.runLvl=runPace(k).k;
+  if(!STATE.profile)STATE.profile={};
+  STATE.profile.runPace=runPace(k).k;
   syncStepHabit();save();repaintMovement();
 }
 function setRuckPace(k){
@@ -13333,7 +13555,7 @@ function todayActivityHTML(){
   const tgt=stepTarget(),eq=stepEquivalent();
   const pct=Math.min(100,Math.round(eq/Math.max(1,tgt)*100));
   const hit=eq>=tgt;
-  const m=movement(),j=jackWork(),b=bikeRide(),rk=ruckWork();
+  const m=movement(),j=jackWork(),b=bikeRide(),rk=ruckWork(),rn=runWork();
   const d=todayISO();
   const quick=(STATE.quickLog&&STATE.quickLog[d])||0;
   /* The session counts as done only when the LOG says so — the same source
@@ -13366,8 +13588,9 @@ function todayActivityHTML(){
   if(j.min>0)rows+=row('jacks','🤸','Jumping jacks',j.min+' min',j.reps.toLocaleString()+' reps · '+j.kcal+' kcal');
   if(b.min>0)rows+=row('bike','🚴','Bike',b.min+' min',b.dist+' '+distUnit()+' · '+b.kcal+' kcal');
   if(rk.min>0)rows+=row('ruck','🎒','Ruck',rk.min+' min',Math.round(kmToShow(rk.km)*10)/10+' '+distUnit()+' · '+rk.kcal+' kcal');
+  if(rn.min>0)rows+=row('run','🏃','Run',rn.min+' min',Math.round(kmToShow(rn.km)*10)/10+' '+distUnit()+' · '+rn.kcal+' kcal');
   if(quick>0)rows+=row('quick','⚡','Quick workouts',quick+(quick===1?' session':' sessions'));
-  const nothingElse=!j.min&&!b.min&&!rk.min&&!quick;
+  const nothingElse=!j.min&&!b.min&&!rk.min&&!rn.min&&!quick;
   return `<div class="section-label">Today's activity</div><div class="card pad">
     <div class="row" style="justify-content:space-between;align-items:baseline">
       <div><b style="font-size:19px;color:${hit?'var(--green)':'var(--gold)'}">${eq.toLocaleString()} / ${tgt.toLocaleString()}</b>
@@ -13376,7 +13599,7 @@ function todayActivityHTML(){
     </div>
     <div class="pbar" style="margin-top:10px;margin-bottom:4px"><i style="width:${pct}%;background:linear-gradient(90deg,#7ee08a,#2fa84f)"></i></div>
     ${rows}
-    ${nothingElse?`<div class="tiny muted" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line)">Jumping jacks, the bike, a ruck and quick workouts all show up here once you log them.</div>`:''}
+    ${nothingElse?`<div class="tiny muted" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line)">Jumping jacks, the bike, a ruck, a run and quick workouts all show up here once you log them.</div>`:''}
   </div>`;
 }
 function movementHTML(){
@@ -13418,20 +13641,53 @@ function movementHTML(){
     <div class="daypick" style="margin:0 0 4px">
       <button class="${mode==='jacks'?'on':''}" onclick="setCardioMode('jacks')">🤸 Jumping jacks</button>
       <button class="${mode==='bike'?'on':''}" onclick="setCardioMode('bike')">🚴 Bike</button>
-      <button class="${mode==='ruck'?'on':''}" onclick="setCardioMode('ruck')">🎒 Ruck</button></div>
+      <button class="${mode==='ruck'?'on':''}" onclick="setCardioMode('ruck')">🎒 Ruck</button>
+      <button class="${mode==='run'?'on':''}" onclick="setCardioMode('run')">🏃 Run</button></div>
     <div class="tiny muted" style="margin-bottom:12px">${mode==='jacks'
       ? 'Nothing to set up and nothing to carry — a hotel room or a friend&#39;s spare floor is enough.'
       : mode==='bike'
       ? 'Lowest-impact option, and the easiest to hold a steady effort on. Needs the trainer.'
-      : 'Walking under load. Outdoors, no impact to speak of, and the only one here that also loads your legs and spine while it does the cardio.'}</div>`;
+      : mode==='ruck'
+      ? 'Walking under load. Outdoors, no impact to speak of, and the only one here that also loads your legs and spine while it does the cardio.'
+      : 'The aerobic base every military fitness standard is built on. Treadmill or road — the app only needs the effort and how long you were out.'}</div>`;
   if(work.min&&mode==='bike')
     h+=`<div class="tiny muted" style="margin:-6px 0 12px">Also logged today: <b>${work.reps.toLocaleString()} jacks</b> (${work.steps.toLocaleString()} steps). Both count.</div>`;
   if(ride.min&&mode==='jacks')
     h+=`<div class="tiny muted" style="margin:-6px 0 12px">Also logged today: <b>${ride.min} min</b> on the bike (${ride.steps.toLocaleString()} steps). Both count.</div>`;
   h+= mode==='bike' ? bikeBlockHTML(m,short,need,lvl,ride,shownVal)
+    : mode==='run' ? runBlockHTML(m,short)
     : mode==='ruck' ? ruckBlockHTML(m,short)
                     : jackBlockHTML(m,short,jneed,jlvl,work);
   h+=`</div>`;
+  return h;
+}
+function runBlockHTML(m,short){
+  const p=runPace(m.nlvl),work=runWork();
+  const shown=m.nunit==='dist'?r1(kmToShow(m.nval)):m.nval;
+  const need=short>0?runMinutesFor(short,m.nlvl):0;
+  let h=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">How hard you ran it</div>
+    <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${RUN_PACES.map(x=>
+      `<button class="${m.nlvl===x.k?'on':''}" onclick="setRunPace('${x.k}')">${x.label}</button>`).join('')}</div>
+    <div class="tiny muted" style="margin-bottom:12px">${_ve(p.rpe)} · ${_ve(p.cue)}</div>
+    ${/* Pace per KM, because that is the number a runner thinks in and the one
+          a treadmill is set by. The talk test decides the band, not the speed —
+          8 km/h is an easy jog for one athlete and a tempo effort for another,
+          and this app has no run test to tell them apart. */''}
+    <div class="tiny muted" style="margin-bottom:12px">About <b>${_ve(runPaceLabel(m.nlvl))}</b> · worth <b>${Math.round(runKcalPerMin(m.nlvl))} kcal</b> a minute.
+      <div style="margin-top:3px">The step figure below is an <b>energy equivalent</b>, not a count of footfalls — a run earns far more per minute than a walk, and this is how the app prices that against your target.</div></div>`;
+  if(need>0)h+=`<div class="tiny muted" style="margin-bottom:10px">You are <b>${short.toLocaleString()}</b> steps short — about <b>${need} min</b> at this pace.</div>`;
+  h+=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log the run as</div>
+    <div class="tiny muted" style="margin:-2px 0 8px"><b>Log the distance if you know it.</b> Running costs about the same per kilometre however fast you go — measured across these four paces, the same 5 km comes out within 9% — so picking the wrong pace barely moves the number. Minutes are the one input the pace really does change.</div>
+    <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${RUN_UNITS.map(([k,l])=>
+      `<button class="${m.nunit===k?'on':''}" onclick="setRunUnit('${k}')">${l==='Distance'?distUnit().toUpperCase():l}</button>`).join('')}</div>
+    <div class="row" style="justify-content:space-between;align-items:flex-end;gap:10px">
+      <div class="field" style="flex:1;margin:0"><label>${_ve(m.nunit==='min'?'Minutes':(m.nunit==='dist'?'Distance ('+distUnit()+')':'Calories'))}</label>
+        <input id="mv-run" type="number" inputmode="decimal" min="0" step="${m.nunit==='dist'?'0.1':'1'}" value="${shown||''}" placeholder="0" onchange="setRunVal(this.value)"></div>
+      <div class="btnrow" style="flex:0 0 auto;gap:8px">
+        <button class="chip" onclick="addRunVal(-${runStep(m.nunit)})" aria-label="Less">–</button>
+        <button class="chip" onclick="addRunVal(${runStep(m.nunit)})" aria-label="More">+</button></div>
+    </div>`;
+  if(work.min>0)h+=`<div class="tiny muted" style="margin-top:10px">That is <b>${work.min} min</b> · <b>${r1(kmToShow(work.km))} ${distUnit()}</b> · <b>${work.kcal} kcal</b> · <b>${work.steps.toLocaleString()}</b> steps toward today.</div>`;
   return h;
 }
 function ruckBlockHTML(m,short){
@@ -13885,7 +14141,7 @@ function dataHealthNoteHTML(){
     <button class="btn ghost sm" style="width:100%;margin-top:8px" onclick="dismissDataHealth()">Got it</button></div>`;
 }
 function dismissDataHealth(){delete STATE._dataRepaired;save();render();}
-function toggleWholeFood(){const n=nut();n.wholeFoodOnly=!wholeOnly();generateMealPlan();save();if(typeof TAB!=='undefined'&&TAB==='fuel')renderFuel();try{renderGuide();}catch(e){}}
+function toggleWholeFood(){const n=nut();n.wholeFoodOnly=!wholeOnly();generateMealPlan();save();repaintDiet();}
 function recipeById(id){return RECIPES.find(r=>r.id===id);}
 function dietOk(r){
   const d=STATE.nutrition.diet||'omnivore';
@@ -15095,6 +15351,7 @@ function renderFuel(){
   h+=`<div class="section-label">My goal</div><div class="daypick goalpick" style="margin:0 2px 14px">
     ${GOALS.map(([g,l])=>`<button class="${n.goal===g?'on':''}" onclick="setNutGoal('${g}')">${l}</button>`).join('')}</div>
     <div class="tiny muted" style="margin:-8px 2px 14px">${GOAL_NOTE[n.goal]||''}</div>`;
+  h+=dietBlockHTML();
   // daily targets
   const _pSet=proteinTargetSet(),_pCalc=proteinTargetCalc();
   /* Carbs and fat used to exist only as bars inside the food card, which show
@@ -16058,11 +16315,10 @@ function renderGuide(){
         <button class="${STATE.profile.tightSpace?'on':''}" onclick="toggleTightSpace()">🏠 Tight space</button>
         <div class="tiny muted" style="margin-top:8px">Handstand work needs a clear wall and about <b>6 ft / 2 m</b> of floor in front of it to walk up safely; the travelling moves need a room you can cross. Tight space swaps both out — you get the hardest floor presses instead, which load the shoulder the same way without needing a clear wall. Straight trade to know about: nothing on the floor fully replaces a handstand push-up, so the very top of the shoulder ladder is a step easier. Everything else is like for like.</div>
       </div></div>
-    <div style="padding:8px 0 2px"><div class="tiny muted" style="margin-bottom:6px">Diet preference <span style="opacity:.7">· shapes meal plans</span></div>
-      <div class="daypick" id="set-diet" style="flex-wrap:wrap">
-        ${DIET_OPTS.map(([k,l])=>`<button class="${(STATE.nutrition.diet||'omnivore')===k?'on':''}" onclick="setDiet('${k}')">${l}</button>`).join('')}
-      </div>${dietRepairNoteHTML()}</div>
-    <div class="row" style="justify-content:space-between;padding:8px 0 2px"><span>Whole foods only <span class="tiny muted">· 🥦 skip processed / powders in meal plans</span></span><button class="chip ${wholeOnly()?'on':''}" onclick="toggleWholeFood()">${wholeOnly()?'On':'Off'}</button></div>
+    ${/* Diet and whole-foods moved to Fuel — they are about food. A pointer,
+          not a stale address: the check asserts both that this names Fuel and
+          that Fuel actually holds the controls. */''}
+    <div class="tiny muted" style="padding:10px 0 2px">Your <b>diet</b> and <b>whole foods only</b> are on the <b>Fuel</b> tab now, with the rest of your food settings.</div>
   </div>`;
   // backup
   h+=`<div class="section-label">Your data</div><div class="card pad">
@@ -16224,9 +16480,36 @@ function toggleGear(k){
   STATE.profile.hasBar=g.has('bar');STATE.profile.hasBench=g.has('bench');   // keep legacy flags in sync
   haptic(8);save();renderGuide();
 }
+/* HOW YOU EAT LIVES ON FUEL. The diet picker and the whole-foods toggle sat in
+   Settings, filed under "change my preferences" — but they are about FOOD, and
+   Fuel is the tab an athlete reaches for when the verb is eating. Reported:
+   "this is related to food, so this should be under the fuel tab".
+
+   Same call as v311 (Movement was on Fuel because of where its number GOES,
+   not what the athlete DOES) and v314 (the exercise library was in Settings).
+   The tab that matches the verb wins.
+
+   ONE repaint helper, because that is the half v311 had to fix afterwards:
+   twelve controls hardcoded renderFuel() and had to be hunted down when the
+   block moved. setDiet() called renderGuide() and toggleWholeFood() called
+   both by hand. Moving it again is now one edit. */
+function dietBlockHTML(){
+  return `<div class="section-label">How I eat</div><div class="card pad" style="margin-bottom:14px">
+    <div class="tiny muted" style="margin-bottom:6px">Diet preference <span style="opacity:.7">· shapes your meal plans and every recipe you are offered</span></div>
+    <div class="daypick" id="set-diet" style="flex-wrap:wrap">
+      ${DIET_OPTS.map(([k,l])=>`<button class="${(STATE.nutrition.diet||'omnivore')===k?'on':''}" onclick="setDiet('${k}')">${l}</button>`).join('')}
+    </div>
+    <div class="row" style="justify-content:space-between;align-items:center;padding:12px 0 2px"><span>Whole foods only <span class="tiny muted">· 🥦 skip processed food and powders in meal plans</span></span><button class="chip ${wholeOnly()?'on':''}" onclick="toggleWholeFood()">${wholeOnly()?'On':'Off'}</button></div>
+  </div>`;
+}
+function repaintDiet(){
+  try{if(typeof TAB!=='undefined'&&TAB==='fuel')renderFuel();
+      else if(typeof TAB!=='undefined'&&TAB==='guide')renderGuide();
+      else render();}catch(e){}
+}
 function setDiet(k){if(!DIET_KEYS.includes(k))return;   // the picker is the only writer; keep it to real keys
   STATE.nutrition.diet=k;delete STATE.nutrition.dietRepaired;
-  if(STATE.nutrition.plan)STATE.nutrition.plan=null;haptic(8);save();renderGuide();}
+  if(STATE.nutrition.plan)STATE.nutrition.plan=null;haptic(8);save();repaintDiet();}
 /* Photo BYTES live in IndexedDB under ph_<id>; STATE.photos holds only
    {id,date,pose}, so JSON.stringify(STATE) silently produced a backup with no
    photos in it — while the render error boundary and hardReset() both tell the
@@ -16672,7 +16955,13 @@ function normalizeState(){
      const v=P.results[k];
      if(!FORCE_IDS.includes(k)||typeof v!=='number'||!isFinite(v)||v<0)delete P.results[k];
    });
-   if(P.date!==undefined&&!(typeof P.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(P.date)))delete P.date;}
+   if(P.date!==undefined&&!(typeof P.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(P.date)))delete P.date;
+   /* The run times are SECONDS. A non-number is dropped, not zeroed — a zero
+      would render as a 0:00 time trial, which is not a measurement. */
+   ['ttBest','ttTarget'].forEach(k=>{
+     const v=P[k];
+     if(v!==undefined&&(typeof v!=='number'||!isFinite(v)||v<=0))delete P[k];
+   });}
   // deep-profile defaults for installs created before the equipment/diet quiz
   /* This branch was unreachable. load() and importData() both do
      Object.assign(DEFAULT_STATE().profile, saved.profile), and the default gear
@@ -16691,6 +16980,10 @@ function normalizeState(){
    if(v!==undefined&&(typeof v!=='number'||!isFinite(v)||v<=0||v>RUCK_LB_MAX))delete STATE.profile.ruckLb;}
   {const p=STATE.profile.ruckPace;
    if(p!==undefined&&!RUCK_PACES.some(x=>x.k===p))delete STATE.profile.ruckPace;}
+  /* MEMBERSHIP, not truthiness — 'Steady' with a capital S is not a pace, and
+     this reaches innerHTML by way of the picker's selected state. */
+  {const p=STATE.profile.runPace;
+   if(p!==undefined&&!RUN_PACES.some(x=>x.k===p))delete STATE.profile.runPace;}
   if(!STATE.profile.gear.length&&!STATE.profile._gearLegacy){
     if(STATE.profile.hasBar===true)STATE.profile.gear.push('bar');
     if(STATE.profile.hasBench===true)STATE.profile.gear.push('bench');

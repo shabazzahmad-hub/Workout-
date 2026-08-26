@@ -910,6 +910,77 @@ const { browser, page, errors } = await launch(port);
   }
 }
 
+  /* ---- how you eat lives on FUEL (v324) ------------------------------------
+     The diet picker and the whole-foods toggle sat in Settings, filed under
+     "change my preferences" — but they are about FOOD, and Fuel is the tab an
+     athlete reaches for when the verb is eating. Reported: "this is related to
+     food, so this should be under the fuel tab".
+
+     Asserted BOTH ways, which is the half the v311 regression missed: the copy
+     must name where the controls are AND the destination must actually hold
+     them. Checking only the wording passes on a sentence naming a tab for a
+     feature that was deleted; checking only the feature passes while a stale
+     pointer sends the athlete somewhere else. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = { onb: STATE.onboarded, diet: STATE.nutrition.diet,
+                     whole: STATE.nutrition.wholeFoodOnly, tab: TAB };
+      STATE.onboarded = true;
+      go('fuel'); render();
+      const fv = document.querySelector('#v-fuel').innerHTML;
+      go('guide'); render();
+      const gv = document.querySelector('#v-guide').innerHTML;
+
+      // the control repaints the surface it is ON, from Fuel
+      go('fuel'); render();
+      setDiet('vegan');
+      const afterDiet = document.querySelector('#v-fuel').innerHTML;
+      const dietBtnOn = [...document.querySelectorAll('#v-fuel button')]
+        .some(b => (b.getAttribute('onclick') || '').indexOf("setDiet('vegan')") >= 0
+                && b.className.indexOf('on') >= 0);
+      const wholeBefore = wholeOnly();
+      toggleWholeFood();
+      const btn = [...document.querySelectorAll('#v-fuel button')]
+        .find(b => (b.getAttribute('onclick') || '').indexOf('toggleWholeFood') >= 0);
+      const o = {
+        fuelHasPicker: /setDiet\('halal'\)/.test(fv),
+        fuelHasToggle: /toggleWholeFood\(\)/.test(fv),
+        fuelHasHeading: />How I eat</.test(fv),
+        settingsHasPicker: /setDiet\(/.test(gv),
+        settingsHasToggle: /toggleWholeFood\(\)/.test(gv),
+        settingsPointsAtFuel: /are on the <b>Fuel<\/b> tab now/.test(gv),
+        dietStored: STATE.nutrition.diet,
+        dietBtnOn,
+        wholeFlipped: wholeOnly() !== wholeBefore,
+        toggleRepainted: btn ? btn.textContent.trim() === (wholeOnly() ? 'On' : 'Off') : false,
+        order: ['My goal', 'How I eat', "Today's targets"].map(x => afterDiet.indexOf(x)),
+      };
+      STATE.nutrition.diet = keep.diet;
+      if (keep.whole === undefined) delete STATE.nutrition.wholeFoodOnly;
+      else STATE.nutrition.wholeFoodOnly = keep.whole;
+      STATE.onboarded = keep.onb;
+      go(keep.tab || 'today');
+      return o;
+    });
+    s.ok('the diet picker is on Fuel', r.fuelHasPicker, r);
+    s.ok('so is the whole-foods toggle', r.fuelHasToggle, r);
+    s.ok('under a heading that says what it is', r.fuelHasHeading, r);
+    s.ok('and it sits between the goal and the targets it shapes',
+      r.order[0] >= 0 && r.order[0] < r.order[1] && r.order[1] < r.order[2], r);
+    /* Moved, not copied — the same figure in two places is v314's own finding. */
+    s.ok('the picker is gone from Settings', !r.settingsHasPicker, r);
+    s.ok('and so is the toggle', !r.settingsHasToggle, r);
+    /* A pointer, not a stale address. Both halves. */
+    s.ok('Settings names where they went', r.settingsPointsAtFuel, r);
+    /* THE CONTROLS STILL WORK, and they repaint the surface they are on. That
+       is the half v311 had to fix afterwards: twelve controls hardcoded
+       renderFuel() and had to be hunted down when the block moved. */
+    s.eq('picking a diet on Fuel stores it', r.dietStored, 'vegan', r);
+    s.ok('and repaints Fuel so the choice shows as selected', r.dietBtnOn, r);
+    s.ok('the whole-foods toggle flips', r.wholeFlipped, r);
+    s.ok('and repaints its own button', r.toggleRepainted, r);
+  }
+
 srv.close();
 const failed = s.finish(errors);
 await browser.close();

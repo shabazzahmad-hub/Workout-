@@ -1477,10 +1477,17 @@ export default async function run() {
       normalizeState();
       o.nullLeftAlone = STATE.nutrition.cardioMode === null;
       STATE.nutrition.cardioMode = keep;
+      o.all = CARDIO_MODES.slice();
       return o;
     });
     t.eq('every legal cardio mode survives a boot', modes.lost.join(','), '', modes);
-    t.eq('and all of them are checked', modes.survived.length, 3, modes);
+    /* This asserted a hardcoded 3 — the very "a hand-written value goes stale
+       when the set grows" defect the block was written to catch, in the check
+       itself. v323 added a fourth mode and it failed on correct code. Compare
+       against the list, which cannot drift, with a FLOOR under it so the check
+       cannot pass on an empty one. */
+    t.eq('and all of them are checked', modes.survived, modes.all, modes);
+    t.ok('guard: there is a real set of modes to check', modes.all.length >= 4, modes);
     t.eq('an unrecognised mode still falls back to jacks', modes.junkRepaired, 'jacks', modes);
     t.ok('an absent mode is left absent', modes.nullLeftAlone, modes);
 
@@ -1491,6 +1498,127 @@ export default async function run() {
     const afterReload = await page.evaluate(() => nut().cardioMode);
     t.eq('Ruck is still Ruck after closing and reopening the app', afterReload, 'ruck');
     await page.evaluate(() => { setCardioMode('jacks'); save(); });
+  }
+
+  /* ---- running, the fourth way to pay the target (v323) --------------------
+     Modelled like the BIKE and not like the ruck, and for the mirror reason:
+     under a pack the intensity is the load relative to the athlete so its MET
+     must be computed, while on a run the intensity is PACE, which is a dial. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = { w: STATE.nutrition.weightKg, mode: nut().cardioMode,
+                     pace: STATE.profile.runPace };
+      STATE.nutrition.weightKg = 86;
+      setCardioMode('run');
+      const o = {};
+      o.isAMode = CARDIO_MODES.indexOf('run') >= 0;
+
+      /* THE SAME RUN IN THREE CURRENCIES. Switching the unit re-expresses one
+         run rather than logging a second one — the trap setBikeUnit was
+         written to avoid. */
+      setRunPace('steady'); setRunUnit('min'); setRunVal(30);
+      const byMin = runWork();
+      setRunUnit('dist'); const byDist = runWork();
+      setRunUnit('kcal'); const byKcal = runWork();
+      setRunUnit('min');
+      o.threeWays = { byMin, byDist, byKcal };
+
+      /* SANITY AGAINST THE WORLD, which is what stops the arithmetic drifting.
+         Running costs about 1 kcal per kg per km, so an 86 kg athlete covering
+         4.85 km should land near 400 kcal net. */
+      o.steady30 = { km: +byMin.km.toFixed(2), kcal: byMin.kcal };
+
+      /* AND THE PROPERTY THAT MAKES DISTANCE THE RIGHT INPUT: running costs
+         about the same per km however fast you go, so the same 5 km prices
+         within a few percent at every pace. A fixed MET table that did not
+         respect that would fan out badly here. */
+      const same5k = RUN_PACES.map(p => { setRunPace(p.k); setRunUnit('dist'); setRunVal(5);
+        return { pace: p.k, kcal: runWork().kcal, min: runWork().min }; });
+      const kc = same5k.map(x => x.kcal);
+      o.same5k = same5k;
+      o.spreadPct = Math.round((Math.max.apply(null, kc) - Math.min.apply(null, kc)) / Math.min.apply(null, kc) * 100);
+      /* The floor under it: the MINUTES must still differ, or the table has no
+         pace in it at all and the spread is trivially zero. */
+      o.minutesDiffer = same5k[0].min > same5k[3].min;
+
+      // it adds to the day like every other mode
+      setRunPace('steady'); setRunUnit('min'); setRunVal(30);
+      o.runSteps = runWork().steps;
+      o.stepEquivalentIncludesRun = stepEquivalent() >= runWork().steps;
+
+      // junk fails safe, and the stored pace is a MEMBERSHIP test
+      STATE.profile.runPace = 'Steady';
+      normalizeState();
+      o.capitalPaceDropped = STATE.profile.runPace === undefined;
+      const t2 = nutToday();
+      const kv = t2.runVal, kl = t2.runLvl;
+      t2.runVal = 'abc'; t2.runLvl = 'helicopter';
+      o.junkReadsAsNothing = runWork().min === 0;
+      o.junkPaceFallsBack = movement().nlvl === 'steady';
+      t2.runVal = kv; t2.runLvl = kl;
+
+      STATE.nutrition.weightKg = keep.w;
+      STATE.profile.runPace = keep.pace;
+      setCardioMode(keep.mode || 'jacks');
+      return o;
+    });
+
+    t.ok('running is a cardio mode', r.isAMode, r);
+    t.eq('logging by distance describes the same run as logging by minutes',
+      r.threeWays.byDist, r.threeWays.byMin, r.threeWays);
+    t.eq('and so does logging by calories', r.threeWays.byKcal.min, r.threeWays.byMin.min, r.threeWays);
+    /* Against the world, not against itself. */
+    t.ok('30 min steady covers about 4.9 km',
+      r.steady30.km > 4.6 && r.steady30.km < 5.1, r.steady30);
+    t.ok('and prices near 1 kcal per kg per km — ~400 for an 86 kg athlete',
+      r.steady30.kcal > 360 && r.steady30.kcal < 440, r.steady30);
+    /* THE PROPERTY, and the floor that stops it passing on a table with no
+       pace variation in it. */
+    t.ok('guard: the paces really are different speeds', r.minutesDiffer, r.same5k);
+    t.ok('the same 5 km costs within 15% at every pace — running is priced per km, not per minute',
+      r.spreadPct <= 15, { spreadPct: r.spreadPct, same5k: r.same5k });
+    t.ok('a run counts toward the day like every other mode', r.stepEquivalentIncludesRun, r);
+    t.ok('and is worth real steps', r.runSteps > 0, r);
+    /* Junk fails safe, and the repair is a membership test — the stored pace
+       reaches innerHTML through the picker's selected state. */
+    t.ok('a pace with the wrong case is dropped from the profile', r.capitalPaceDropped, r);
+    t.ok('a junk value reads as nothing logged, never NaN', r.junkReadsAsNothing, r);
+    t.ok('and a junk pace falls back rather than throwing', r.junkPaceFallsBack, r);
+  }
+
+  /* The run has to be REACHABLE and REVIEWABLE — v311 split the controls onto
+     Today and the read-only review onto Progress, and a new mode has to land on
+     both or it is half-added. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = { mode: nut().cardioMode, onb: STATE.onboarded };
+      STATE.onboarded = true;
+      setCardioMode('run'); setRunPace('steady'); setRunUnit('min'); setRunVal(30);
+      go('today'); TODAY_TAB = 'workout'; render();
+      const tv = document.querySelector('#v-today').innerHTML;
+      go('progress'); PROGRESS_TAB = 'summary'; render();
+      const pv = document.querySelector('#v-progress').innerHTML;
+      const o = {
+        picker: /setCardioMode\('run'\)/.test(tv),
+        card: /id="mv-run"/.test(tv) && /setRunPace\('tempo'\)/.test(tv),
+        saysEnergyEquivalent: /energy equivalent/.test(tv),
+        saysLogDistance: /Log the distance if you know it/.test(tv),
+        reviewRow: /data-act="run"/.test(pv),
+        reviewHasNoControls: !/id="mv-run"/.test(pv) && !/setRunPace\(/.test(pv),
+      };
+      setCardioMode(keep.mode || 'jacks'); STATE.onboarded = keep.onb;
+      return o;
+    });
+    t.ok('the mode picker offers Run', r.picker, r);
+    t.ok('and the card renders its paces and its input', r.card, r);
+    /* A runner seeing 9,240 "steps" for 30 minutes would rightly distrust it.
+       The step figure is an energy equivalent and the card says so. */
+    t.ok('the card says the step figure is an energy equivalent', r.saysEnergyEquivalent, r);
+    t.ok('and points the athlete at distance as the input', r.saysLogDistance, r);
+    t.ok('the run appears in the Progress review', r.reviewRow, r);
+    /* THE FLOOR: the review is read-only. A mutant that mounts the real block
+       on Progress as well is caught here, same as v311. */
+    t.ok('and the review holds no controls of its own', r.reviewHasNoControls, r);
   }
 
   await browser.close(); srv.close();

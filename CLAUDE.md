@@ -3391,6 +3391,119 @@ every one of these standards rests on. Rucking, jacks and the bike are the
 three cardio modes; a fourth is the next round, and the endurance programme
 depends on it.
 
+## Running is a dial, so it is modelled like the BIKE (v323)
+
+The fourth way to pay the step target, and the mirror of the ruck's own
+reasoning. **Under a pack the intensity is the load RELATIVE TO the athlete**,
+so `ruckMET()` computes it from bodyweight. **On a run the intensity is PACE**,
+which is a dial the athlete sets — so a fixed table is right here, exactly as it
+is for the trainer.
+
+**The level is defined by the EFFORT, not by the speed.** The km/h figure is
+nominal and exists to turn minutes into a distance estimate. Which band an
+athlete is in is decided by the talk test and the RPE in the cue, because
+8 km/h is an easy jog for one person and a tempo effort for another and this app
+has no run test to tell them apart. Same convention `BIKE_LEVELS` already uses.
+
+**And the property that makes DISTANCE the right input.** Running costs about
+the same per kilometre however fast you go, and the table respects that:
+measured, the same 5 km prices at **412 / 410 / 400 / 378 kcal** across the four
+paces — a **9% spread**. So an athlete who picks the wrong band barely moves the
+number, provided they log the distance. Minutes are the one input the pace
+really does change, and the card says so.
+
+That is now a pinned invariant, with a floor under it: the MINUTES must still
+differ across the four paces, or the table has no pace in it at all and the
+spread is trivially zero. The mutant that flattened `intervals` to 8 km/h is
+caught by exactly that pair.
+
+**Sanity against the world, which is what stops the arithmetic drifting.** 30
+minutes steady covers 4.85 km at 6:11/km and prices at 397 kcal for an 86 kg
+athlete — running costs ~1 kcal per kg per km, so ~400 net is right.
+
+**The step figure is an ENERGY equivalent, not a footfall count**, and the card
+says so. At these METs it lands near 300/min against a real running cadence of
+~170, so a runner seeing "9,240 steps" for half an hour would rightly distrust
+it. Steps in this app have always been a calorie proxy — `MET x 35` is
+calibrated so the currency and `stepKcal()` agree — and the ruck simply happened
+to land on real walking cadence too. Running is where the difference becomes
+visible, so it gets stated rather than hidden.
+
+### Army running, and a standard the app refuses to invent
+
+The FORCE Evaluation has no run in it. Running is still the aerobic base
+underneath everything else a reserve athlete is being asked to do, so it sits
+beside the four tasks rather than inside them: six sessions — base, long,
+tempo, 6x400, the 2.4 km time trial, and a run-into-ruck brick — plus the time
+trial as a measured event.
+
+**The timed run has NO pass figure baked in, and that is a stronger position
+than v322 took.** The FORCE figures are stamped with a date and a "confirm with
+your unit" note because a published standard moves. For the run the honest
+answer is weaker still: **the required time depends on the trade, the age band
+and which test the unit uses**, none of which this app can know. So it measures
+the run and lets the athlete type in the target they were actually given, and
+says on screen why there is no number there. A figure invented here is one that
+would be trained to.
+
+Three consequences the checks pin:
+
+- **A best time with NO target is still not a verdict.** Measuring is not
+  passing, and the mutant that reads "no target" as "passed" is caught by it.
+- **The explanation stops firing once a target is set** — a note that always
+  fires is a note nobody reads.
+- **Offered is not done.** `startRunSession()` sets the mode and the pace and
+  hands the athlete back to Today; it logs nothing on their behalf. That is the
+  completion gate's rule applied one surface over, and the mutant that
+  pre-fills the minutes is caught.
+
+### An existing check hardcoded the count, which is the defect it was written for
+
+`t.eq('and all of them are checked', modes.survived.length, 3)` — the v312 block
+that exists *because* a hand-written repair went stale when `CARDIO_MODES` grew
+had a hand-written **3** in its own assertion, and a fourth mode failed it on
+correct code. It now compares against `CARDIO_MODES` itself, with a floor so it
+cannot pass on an empty list.
+
+Ten mutants, all caught.
+
+## How you eat lives on FUEL (v324)
+
+"This is related to food, so this should be under the fuel tab." The diet
+picker and the whole-foods toggle sat in **Settings**, filed under "change my
+preferences" — and they are about FOOD. Fuel is the tab an athlete reaches for
+when the verb is eating.
+
+Third time this call has been made: v311 moved Movement off Fuel (it was there
+because of where its NUMBER went, not what the athlete DID), v314 moved the
+exercise library out of Settings. **The tab that matches the verb wins.**
+
+It sits between **My goal** and **Today's targets**, because the diet shapes
+what those targets are spent on.
+
+**ONE repaint helper, because that is the half v311 had to fix afterwards.**
+Twelve controls hardcoded `renderFuel()` and had to be hunted down when the
+block moved; `setDiet()` called `renderGuide()` and `toggleWholeFood()` called
+both by hand. `repaintDiet()` repaints the surface the control is ON, so moving
+it again is one edit.
+
+**A pointer, not a stale address**, and the check asserts BOTH halves — that
+Settings names Fuel, and that Fuel actually holds the controls. Checking only
+the wording passes on a sentence naming a tab for a feature that was deleted;
+checking only the feature passes while a stale pointer sends the athlete
+somewhere else. That is exactly how the v311 regression survived.
+
+### And a check that pinned WHERE the picker was, not what the prompt is for
+
+Suite 20: `t.ok('and so does the picker in Settings', r.settings)`. The block's
+own comment says *"the prompt appears where the athlete can act on it"* — and
+the assertion had hardened that into a claim about which tab the picker lived
+on. It failed on correct code.
+
+The real requirement is that the unrecognised-diet prompt sits **beside the
+picker**; on a surface with no picker it is a dead end. It now asserts that,
+with guards pinning where the picker actually is. Five mutants, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
