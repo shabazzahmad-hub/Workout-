@@ -1507,6 +1507,426 @@ export default async function run() {
 
   // ---- plAfterSet() must say something when a completed set fails to log,
   // instead of the athlete finding out later that the count never saved.
+  /* ---- a change of MOVEMENT is not a change of strength (v320) ------------
+     safeSwap() protects a flagged joint during the baseline battery, so the
+     number that comes back measures a DIFFERENT exercise — and nothing
+     recorded which. Measured on a wrist-flagged athlete: `stamina` is Burpees
+     and resolves to marching in place. Baseline 40 on the substitute, re-test
+     18 on real burpees once the wrist recovered — an athlete who genuinely
+     improved, whose stamina number more than halved, with nothing on the glass
+     to say the ruler had changed.
+
+     That is exactly what TEST_PROTOCOL already exists to prevent, one variable
+     down: a v1 and a v2 taken under different conditions are not the same
+     measurement. `subs` is now stamped on every record and both consumers ask
+     it — retestDrop() and the strength trend. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      STATE.profile.limitations = ['wrist']; save();
+      o.subsWrist = assessSubs();
+      STATE.profile.limitations = []; save();
+      o.subsNone = assessSubs();
+
+      const flagged = { subs: { stamina: 'march' } }, clean = { subs: {} };
+      o.differentMovement = sameMovement(flagged, clean, 'stamina');
+      o.sameMovement = sameMovement(clean, clean, 'stamina');
+      o.untouchedTest = sameMovement(flagged, clean, 'plank');
+      /* An older record has no `subs` at all — unknown, not equal. It must fail
+         CLOSED, or every phone carrying a pre-v320 baseline silently claims a
+         like-for-like comparison it cannot vouch for. */
+      o.legacyFailsClosed = sameMovement({}, clean, 'stamina');
+
+      /* DRIVE THE REAL WRITER. Hand-building records exercises sameMovement()
+         and the trend and NOTHING about the save path — a mutant that deleted
+         `subs:assessSubs()` from the record literal walked straight through
+         four checks. finishAssessment() is what an athlete's last tap reaches. */
+      STATE.profile.limitations = ['wrist'];
+      STATE.baseline = null; STATE.reassess = {}; STATE.scoreHistory = [];
+      assessState = { idx: 0, results: {}, reassess: 0 };
+      TESTS.forEach(t => { assessState.results[t.id] = 20; });
+      save();
+      try { finishAssessment(); } catch (e) { o.finishThrew = e.message; }
+      o.savedSubs = (STATE.baseline || {}).subs || null;
+      o.writerStampsSubs = !!(o.savedSubs && Object.keys(o.savedSubs).length > 0);
+      /* And the floor: an athlete with nothing flagged records an EMPTY map,
+         not a missing one — absent has to keep meaning "before the stamp". */
+      STATE.profile.limitations = [];
+      STATE.baseline = null;
+      assessState = { idx: 0, results: {}, reassess: 0 };
+      TESTS.forEach(t => { assessState.results[t.id] = 20; });
+      save();
+      try { finishAssessment(); } catch (e) {}
+      o.cleanSubs = (STATE.baseline || {}).subs;
+      o.cleanStampsEmpty = !!(o.cleanSubs && Object.keys(o.cleanSubs).length === 0);
+      try { closeSheet(); } catch (e) {}
+
+      /* Drive the real trend: a substituted baseline, a clean re-test. */
+      STATE.baseline = { date: '2026-07-01', score: 63, level: 'Beginner',
+        testCount: TESTS.length, protocol: TEST_PROTOCOL,
+        subs: { stamina: 'march' }, maxes: { stamina: 40, plank: 60 } };
+      STATE.reassess = { 1: { date: '2026-08-15', score: 74, level: 'Intermediate',
+        testCount: TESTS.length, protocol: TEST_PROTOCOL,
+        subs: {}, maxes: { stamina: 18, plank: 75 } } };
+      save();
+      /* GUARD: `subs` has to survive assessSeries(), which builds the chart's
+         points. It was dropped there on the first attempt and EVERY metric read
+         as not-comparable — a marker that lives only in the stored record is
+         not a record. */
+      const series = assessSeries();
+      o.seriesCarriesSubs = series.length >= 2 && series.every(x => x.subs !== undefined);
+
+      strengthSel = 'stamina';
+      const swapped = strengthTrendHTML();
+      o.swappedSaysSo = /not comparable/.test(swapped);
+      o.swappedWithholdsVerdict = !/▲|▼/.test(swapped);
+      o.swappedStillPlots = /svg/i.test(swapped);
+      /* THE FLOOR: a test that was NEVER substituted must still get its
+         verdict. A change that simply withheld every verdict satisfies both
+         assertions above and guts the feature. */
+      strengthSel = 'plank';
+      const plain = strengthTrendHTML();
+      o.plainKeepsVerdict = /▲|▼/.test(plain);
+      o.plainNoWarning = !/not comparable/.test(plain);
+      return o;
+    });
+
+    t.ok('guard: a flagged wrist really does substitute a test',
+      Object.keys(r.subsWrist).length > 0, r.subsWrist);
+    t.eq('and nothing is substituted with no joint flagged', r.subsNone, {});
+    t.eq('two records that used different movements are not the same', r.differentMovement, false, r);
+    t.eq('two records that used the same movement are', r.sameMovement, true, r);
+    t.eq('a test neither record substituted is the same', r.untouchedTest, true, r);
+    t.eq('a record from before the stamp fails closed', r.legacyFailsClosed, false, r);
+    t.ok('the real save path stamps the substitutions', r.writerStampsSubs, r);
+    t.ok('and stamps an empty map when nothing was substituted', r.cleanStampsEmpty, r);
+    t.ok('the substitutions survive into the chart series', r.seriesCarriesSubs, r);
+    t.ok('a metric measured on two different movements says so', r.swappedSaysSo, r);
+    t.ok('and withholds the up/down verdict', r.swappedWithholdsVerdict, r);
+    t.ok('while still plotting both real measurements', r.swappedStillPlots, r);
+    t.ok('a metric measured the same way both times keeps its verdict', r.plainKeepsVerdict, r);
+    t.ok('and carries no warning', r.plainNoWarning, r);
+  }
+
+  /* ---- a substituted test is on a DIFFERENT SCALE, not just a different
+     movement (v321) -----------------------------------------------------------
+     v320 stopped the app COMPARING across a swap. It still PRESCRIBED from one.
+     prescribe() does maxes[anchor] * frac * ex.hardness, and hardness is defined
+     as a fraction of the anchor test's max — so a Dead Bug count (hardness 1.4)
+     read as a Reverse Crunch max inflates every lower-anchored target by 40%.
+     Measured before the fix: Dead Bug 10 -> 15, Crunch 10 -> 15, Toe Touch
+     8 -> 12, Towel Door Row 8 -> 11. Flagging a joint made the app prescribe
+     MORE work in the flagged region.
+
+     THE DISCRIMINATING CHECK is not "the number changed" — it is that one body
+     with one true capacity gets the SAME target whether or not it was flagged.
+     Everything else here is a floor under that, because the obvious over-eager
+     fix (convert every substituted value, or convert everything) satisfies the
+     headline assertion and breaks a floor. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = {
+        lims: STATE.profile.limitations,
+        baseline: JSON.parse(JSON.stringify(STATE.baseline || {})),
+        reassess: JSON.parse(JSON.stringify(STATE.reassess || {})),
+      };
+      const o = {};
+      function targets(key, val, lims, subs, list) {
+        STATE.profile.limitations = lims;
+        STATE.baseline.maxes = Object.assign({}, STATE.baseline.maxes, { [key]: val });
+        STATE.baseline.subs = subs;
+        STATE.reassess = {};
+        const out = {};
+        list.forEach(k => { try { out[k] = prescribe(k, { cycle: 0, week: 1 }).target; } catch (e) { out[k] = 'ERR'; } });
+        return out;
+      }
+      const L = ['deadbug', 'crunch', 'toetouch', 'legraise'];
+      // true Reverse Crunch max 14; the same body measured on Dead Bugs (h 1.4) records ~20
+      o.lowerUnflagged = targets('lower', 14, [], {}, L);
+      o.lowerFlagged   = targets('lower', 20, ['lowback'], { lower: 'deadbug' }, L);
+      o.lowerLegacy    = targets('lower', 20, ['lowback'], undefined, L);
+      const P = ['towelrow', 'invertedrow', 'tablerow'];
+      o.pullUnflagged  = targets('pull', 12, [], {}, P);
+      o.pullFlagged    = targets('pull', 16, ['shoulder'], { pull: 'towelrow' }, P);
+
+      // the conversion itself, and every guard that must NOT fire
+      o.convLower   = anchorEquiv('lower', 20, { lower: 'deadbug' });      // easier sub -> DOWN
+      o.convPull    = anchorEquiv('pull', 16, { pull: 'towelrow' });       // easier sub -> DOWN
+      o.convPush    = anchorEquiv('push', 20, { push: 'fistpushup' });     // HARDER sub -> UP
+      o.guardDyn    = anchorEquiv('dyn', 60, { dyn: 'deadbug' });          // time -> reps, other anchor
+      o.guardPower  = anchorEquiv('power', 30, { power: 'squat' });        // explosive -> not
+      /* The one reachable swap that shares a UNIT with its original and is
+         anchored elsewhere. jumpsquat->squat happens to be hardness 1.0 both
+         sides, so it cannot tell a missing anchor guard from a present one;
+         burpee(0.7,time) -> squatthrust(0.95,time) can, and does. */
+      o.guardStamina = anchorEquiv('stamina', 40, { stamina: 'squatthrust' });
+      /* The unit guard cannot fire on today's library: validateData() enforces
+         that an anchored exercise carries its anchor test's unit, so "same
+         anchor" already implies "same unit". Exercise it directly, the same way
+         the band guard is exercised, so a future EX edit that breaks that
+         invariant does not walk straight through. */
+      const ub = EX.deadbug.unit;
+      EX.deadbug.unit = 'time';
+      o.guardUnit = anchorEquiv('lower', 20, { lower: 'deadbug' });
+      EX.deadbug.unit = ub;
+      o.guardNoSub  = anchorEquiv('lower', 20, {});
+      o.guardLegacy = anchorEquiv('lower', 20, undefined);
+      o.guardJunkId = anchorEquiv('lower', 20, { lower: 'nosuchmove' });
+      o.guardJunkV  = anchorEquiv('lower', 'abc', { lower: 'deadbug' });
+
+      // a calibration too far apart to be a re-scale is left alone, not multiplied by 10
+      const hb = EX.deadbug.hardness;
+      EX.deadbug.hardness = 0.1;
+      o.guardBand = anchorEquiv('lower', 20, { lower: 'deadbug' });
+      EX.deadbug.hardness = hb;
+
+      // the SCORE reads the same equivalent — it sets level, which scales the unanchored branch
+      o.scoreRaw   = computeAssessment({ lower: 20 }, {}).score;
+      o.scoreSwap  = computeAssessment({ lower: 20 }, { lower: 'deadbug' }).score;
+      o.maxesStayRaw = computeAssessment({ lower: 20 }, { lower: 'deadbug' }).maxes.lower;
+
+      STATE.profile.limitations = keep.lims;
+      STATE.baseline = keep.baseline;
+      STATE.reassess = keep.reassess;
+      return o;
+    });
+
+    t.ok('guard: the un-flagged athlete really was prescribed something',
+      r.lowerUnflagged.deadbug > 0 && r.pullUnflagged.towelrow > 0, r);
+    t.eq('one body, one capacity: a flagged low back gets the SAME lower-ab targets',
+      r.lowerFlagged, r.lowerUnflagged, r);
+    t.eq('and a flagged shoulder gets the SAME pull targets',
+      r.pullFlagged, r.pullUnflagged, r);
+    /* THE FLOOR. A record written before the stamp existed does not know what it
+       measured, so it is left exactly as it was — converting it would be
+       inventing. Every phone is carrying one of these. */
+    t.ok('a record from before the stamp is left untouched, not converted',
+      r.lowerLegacy.deadbug > r.lowerUnflagged.deadbug, r);
+
+    // direction: an EASIER substitute must lower the anchor, a HARDER one must raise it
+    t.eq('a Dead Bug count converts DOWN to a Reverse Crunch max', r.convLower, 14, r);
+    t.eq('a Towel Row count converts DOWN to an Inverted Row max', r.convPull, 12, r);
+    t.eq('a Fist Push-Up count converts UP — it is the harder movement', r.convPush, 21, r);
+
+    // the guards, each of which a blanket converter would trip
+    t.eq('a substitute measured in other units is not re-scaled', r.guardDyn, 60, r);
+    t.eq('a substitute anchored to another test is not re-scaled', r.guardPower, 30, r);
+    t.eq('nor one that shares the unit but measures another quality', r.guardStamina, 40, r);
+    t.eq('nor one whose unit no longer matches its original', r.guardUnit, 20, r);
+    t.eq('a test that was not substituted is untouched', r.guardNoSub, 20, r);
+    t.eq('a legacy record with no subs at all is untouched', r.guardLegacy, 20, r);
+    t.eq('an unresolvable substitute id is untouched', r.guardJunkId, 20, r);
+    t.eq('a junk value is untouched', r.guardJunkV, 'abc', r);
+    t.eq('a hardness ratio outside the band is untouched, not multiplied', r.guardBand, 20, r);
+
+    t.ok('guard: the two scores really are computed from the same raw input',
+      typeof r.scoreRaw === 'number' && typeof r.scoreSwap === 'number', r);
+    t.ok('the Core Score reads the equivalent too — it is what sets level',
+      r.scoreSwap < r.scoreRaw, r);
+    t.eq('but the stored max stays RAW — v320 plots the real measurement', r.maxesStayRaw, 20, r);
+  }
+
+  /* The writer has to hand the swaps to the scorer. Calling computeAssessment()
+     with a subs map proves the helper works and nothing about the route: the
+     mutant that drops the argument from finishAssessment() leaves every check
+     above green. Drive the real save. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = {
+        lims: STATE.profile.limitations,
+        baseline: JSON.parse(JSON.stringify(STATE.baseline || {})),
+        scoreHistory: (STATE.scoreHistory || []).slice(),
+      };
+      STATE.profile.limitations = ['wrist'];
+      STATE.baseline = null;
+      const results = {};
+      TESTS.forEach(x => { results[x.id] = 20; });
+      assessState = { idx: TESTS.length - 1, results, reassess: null };
+      let saved = null;
+      try { finishAssessment(); saved = STATE.baseline; } catch (e) { saved = { err: e.message }; }
+      try { closeSheet(); } catch (e) {}
+      const subs = saved && saved.subs;
+      const expectSwap = computeAssessment(results, subs).score;
+      const expectRaw  = computeAssessment(results, {}).score;
+      STATE.profile.limitations = keep.lims;
+      STATE.baseline = keep.baseline;
+      STATE.scoreHistory = keep.scoreHistory;
+      return { savedScore: saved && saved.score, subs, expectSwap, expectRaw };
+    });
+    t.ok('guard: the real save ran and stamped a substitution',
+      r.subs && Object.keys(r.subs).length > 0, r);
+    t.ok('guard: the swap really does change the score for this input',
+      r.expectSwap !== r.expectRaw, r);
+    t.eq('the real save path scores against the substituted movement',
+      r.savedScore, r.expectSwap, r);
+  }
+
+  /* A personal record belongs to the movement that was PERFORMED. This block is
+     the third consumer of the same defect and the one that writes a claim the
+     athlete can read back: keyed on the test's nominal exercise, 20 Fist
+     Push-Ups became a 20-rep PUSH-UP record, 20 Towel Door Rows a 20-rep
+     INVERTED ROW, and 20 Single-Leg Dead Bugs a 20-rep BURPEE — three bests on
+     three movements never done, feeding strengthLevel(). */
+  {
+    const r = await page.evaluate(() => {
+      const keep = {
+        lims: STATE.profile.limitations,
+        baseline: JSON.parse(JSON.stringify(STATE.baseline || {})),
+        prs: JSON.parse(JSON.stringify(STATE.prs || {})),
+        scoreHistory: (STATE.scoreHistory || []).slice(),
+      };
+      STATE.prs = {};
+      STATE.profile.limitations = ['wrist', 'shoulder'];
+      STATE.baseline = null;
+      const results = {}; TESTS.forEach(x => { results[x.id] = 20; });
+      assessState = { idx: TESTS.length - 1, results, reassess: null };
+      const subs = assessSubs();
+      let err = null;
+      try { finishAssessment(); } catch (e) { err = e.message; }
+      try { closeSheet(); } catch (e) {}
+      const prs = JSON.parse(JSON.stringify(STATE.prs || {}));
+      STATE.profile.limitations = keep.lims;
+      STATE.baseline = keep.baseline;
+      STATE.prs = keep.prs;
+      STATE.scoreHistory = keep.scoreHistory;
+      return { subs, prs, err };
+    });
+    t.ok('guard: the battery really did substitute push, pull and stamina',
+      !r.err && r.subs && r.subs.push === 'fistpushup' && r.subs.pull === 'towelrow'
+      && r.subs.stamina === 'march', r);
+    t.eq('a Fist Push-Up set is a Fist Push-Up record', r.prs.fistpushup, 20, r.prs);
+    t.eq('and awards no Push-Up record for push-ups never done', r.prs.pushup, undefined, r.prs);
+    t.eq('a Towel Door Row set is a Towel Door Row record', r.prs.towelrow, 20, r.prs);
+    t.eq('and awards no Inverted Row record', r.prs.invertedrow, undefined, r.prs);
+    t.eq('and awards no Burpee record for dead bugs', r.prs.burpee, undefined, r.prs);
+    /* THE FLOOR. This block exists so the plank, side plank, squat and dead hang
+       can be rated at all — nothing ever prescribes them as working sets. A fix
+       that dropped un-substituted tests would satisfy every assertion above. */
+    t.eq('a test that was NOT substituted still records its own PR', r.prs.plank, 20, r.prs);
+    t.eq('and so does the squat', r.prs.squat, 20, r.prs);
+    t.eq('and the side plank', r.prs.sideplank, 20, r.prs);
+  }
+
+  /* The results screen is the FOURTH consumer, and the one the athlete reads
+     the second the battery ends. Before this it said "Burpees (max reps in
+     60s) — 40 reps · +22 · 133% of the 30 reps benchmark · past it" to someone
+     who had just done 40 Single-Leg Dead Bugs against a previous 18 that WAS a
+     burpee. Named wrong, scored wrong, and congratulated on a rise that was a
+     change of ruler. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = {
+        lims: STATE.profile.limitations,
+        baseline: JSON.parse(JSON.stringify(STATE.baseline || {})),
+      };
+      const prevResults = { plank:60,power:12,push:20,side:40,squat:30,hollow:35,pull:12,lower:14,dyn:50,stamina:18 };
+      STATE.baseline = { date:'2026-01-01', protocol:TEST_PROTOCOL, subs:{},
+        results: prevResults, maxes:{}, score:50, level:'Intermediate' };
+      STATE.profile.limitations = ['wrist'];
+      const subs = assessSubs();
+      const results = Object.assign({}, prevResults, { stamina: 40, squat: 34 });
+      assessState = { idx: TESTS.length - 1, results, reassess: 1 };
+      const div = document.createElement('div');
+      div.innerHTML = testBreakdownHTML(computeAssessment(results, subs));
+      const rows = [...div.querySelectorAll('div[style*="border-top"]')]
+        .map(x => x.textContent.replace(/\s+/g, ' ').trim());
+      const find = frag => rows.find(x => x.indexOf(frag) === 0) || '';
+      const out = {
+        subs,
+        burpeeTitled: rows.find(x => /^Burpees/.test(x)) || '',
+        marchRow:  find(EX.march.name),
+        fistRow:   find(EX.fistpushup.name),
+        pushupRow: rows.find(x => /^Push-Ups/.test(x)) || '',
+        squatRow:  find(TESTS.find(t => t.id === 'squat').name),
+        rowCount:  rows.length,
+      };
+      STATE.profile.limitations = keep.lims;
+      STATE.baseline = keep.baseline;
+      return out;
+    });
+    t.ok('guard: the battery substituted push and stamina, and left squat alone',
+      r.subs.push === 'fistpushup' && r.subs.stamina === 'march' && !r.subs.squat, r);
+    t.ok('guard: every test still produced a row', r.rowCount === 10, r);
+    t.ok('a swapped row is named after the movement actually performed', /Dead Bug/.test(r.marchRow), r);
+    t.eq('and no row is TITLED with the movement that was not done', r.burpeeTitled, '', r);
+    t.eq('nor claims a push-up that was not done', r.pushupRow, '', r);
+    t.ok('and the row says it was swapped', /swapped/.test(r.marchRow), r);
+    /* THE ONE THAT MATTERS. 40 against a previous 18 is +22 of nothing. */
+    t.ok('a swapped test shows NO delta against a differently-measured previous run',
+      !/\+22/.test(r.marchRow), r);
+    /* THE FLOOR. An un-substituted test that really did improve must still be
+       congratulated — a fix that withheld every delta passes the check above. */
+    t.ok('while an un-swapped test that really improved keeps its delta',
+      /\+4/.test(r.squatRow), r);
+    t.ok('and an un-swapped row is not marked swapped', !/swapped/.test(r.squatRow), r);
+    /* THREE states, and this is the one two states got wrong. burpee -> march is
+       NOT re-scalable (different anchor, different unit), so the row must show
+       no share at all. It used to print "133% of the 30 reps benchmark · past
+       it" for 40 dead bugs — and calling that an estimate would have been
+       inventing the number anchorRescale() declines to compute. */
+    t.ok('an unconvertible swap shows NO benchmark share', !/%/.test(r.marchRow), r);
+    t.eq('and does not congratulate the athlete for passing it', /past it/.test(r.marchRow), false, r);
+    t.ok('and says why there is nothing to compare against', /No benchmark/.test(r.marchRow), r);
+    /* A swap the app CAN re-scale keeps its share and says it is scaled: 20 Fist
+       Push-Ups -> 21 push-up-equivalent -> 60% of the 35-rep benchmark. */
+    t.ok('a re-scalable swap keeps a share', /60%/.test(r.fistRow), r);
+    t.ok('and says the figure is scaled from the swap', /estimate/.test(r.fistRow), r);
+    /* THE FLOOR under both: an ordinary un-swapped row keeps its plain share and
+       claims nothing about a swap. */
+    t.ok('an un-swapped row keeps its plain benchmark share', /85%/.test(r.squatRow), r);
+    t.ok('and says nothing about scaling or missing benchmarks',
+      !/estimate/.test(r.squatRow) && !/No benchmark/.test(r.squatRow), r);
+  }
+
+  /* Withholding a delta SILENTLY is the same defect in the other direction: the
+     athlete reads a blank where a number used to be and has nothing to act on.
+     Two reasons, two sentences — a record from before the stamp existed is not
+     the same situation as a movement that genuinely changed. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = {
+        lims: STATE.profile.limitations,
+        baseline: JSON.parse(JSON.stringify(STATE.baseline || {})),
+      };
+      const prevResults = Object.fromEntries(TESTS.map(x => [x.id, 10]));
+      const results = Object.fromEntries(TESTS.map(x => [x.id, 14]));
+      const txt = () => {
+        const d = document.createElement('div');
+        d.innerHTML = testBreakdownHTML(computeAssessment(results, assessSubs()));
+        return d.textContent.replace(/\s+/g, ' ');
+      };
+      const base = extra => Object.assign({ date: '2026-01-01', protocol: TEST_PROTOCOL,
+        results: prevResults, score: 50, level: 'Intermediate' }, extra);
+
+      STATE.profile.limitations = [];
+      STATE.baseline = base({ subs: {} });
+      assessState = { idx: TESTS.length - 1, results, reassess: 1 };
+      const clean = txt();
+
+      STATE.baseline = base({});                       // no stamp at all — pre-v320
+      const legacy = txt();
+
+      STATE.profile.limitations = ['wrist'];           // stamped both sides, movement changed
+      STATE.baseline = base({ subs: {} });
+      const swapped = txt();
+
+      STATE.profile.limitations = keep.lims;
+      STATE.baseline = keep.baseline;
+      return { clean, legacy, swapped };
+    });
+    /* THE FLOOR: a genuine like-for-like re-test says nothing at all. A note that
+       always fires is a note nobody reads. */
+    t.ok('guard: a like-for-like re-test still shows its improvement', /\+4/.test(r.clean), r.clean);
+    t.ok('and carries no explanation, because there is nothing to explain',
+      !/No change shown on some tests/.test(r.clean), r.clean);
+    t.ok('a prior with no swap stamp says the app could not check it',
+      /predates the app recording which movement/.test(r.legacy), r.legacy);
+    t.ok('a prior measured on a different movement says THAT instead',
+      /different movement this time/.test(r.swapped), r.swapped);
+    t.ok('and the two explanations are not the same sentence',
+      !/predates the app recording which movement/.test(r.swapped), r.swapped);
+  }
+
   {
     const r = await page.evaluate(() => {
       openPlayer();
@@ -1830,6 +2250,8 @@ export default async function run() {
       typeof r.ratio === 'number' && Math.abs(r.ratio - 1) < 0.05, r);
     await ctx.close();
   }
+
+  await tzb.close();
 
   await tzb.close();
 

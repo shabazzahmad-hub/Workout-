@@ -1807,7 +1807,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='319';
+const APP_VERSION='321';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -1971,11 +1971,100 @@ function estimateMaxes(m){
     push:Math.round(12*s),pull:Math.round(7*s),squat:Math.round(22*s),power:Math.round(10*s),
     stamina:Math.round(12*s)},clean);
 }
+/* A flagged joint changes WHICH movement earns a test's number, and v320
+   established that this makes the number incomparable to an un-flagged run. It
+   also makes it the wrong number to PRESCRIBE from — which the comment on
+   renderAssessStep() explicitly denied ("every downstream anchor/maxes read is
+   unaffected"). It is not. prescribe() does
+
+       target = maxes[anchor] * frac * ex.hardness
+
+   and `hardness` is DEFINED as a fraction of the anchor test's max, so a value
+   measured on a substitute sits on a different scale entirely.
+
+   Measured, one athlete, one true capacity, week 1 of block 1:
+
+     flag      test   measured on             Dead Bug  Crunch  Toe Touch
+     none      lower  Reverse Crunch (h 1.0)        10      10          8
+     lowback   lower  Dead Bug       (h 1.4)        15      15         12
+
+   Flagging a joint raised every target in the flagged region by 40-50%. The
+   shoulder case is the same shape, +38% on the Towel Door Row that all eight
+   pull movements land on. And the pull test's OWN instruction warns about
+   exactly this hazard — "this number scales every row and pull-up you will be
+   given, so a back extension like the Superman would badly over-prescribe
+   them" — while the app went and substituted an easier movement itself.
+
+   `hardness` IS the conversion factor. It is already how the app relates the
+   two movements to one scale, so the anchor-equivalent max is
+
+       recorded * hardness(original) / hardness(substitute)
+
+   THE GUARD IS THE POINT, and it is what stops this being a universal
+   converter. Only a substitute that measures the SAME quantity in the SAME
+   units is re-scaled:
+
+     lower   revcrunch(lower,reps)  -> deadbug(lower,reps)    re-scale
+     pull    invertedrow(pull,reps) -> towelrow(pull,reps)    re-scale
+     push    pushup(push,reps)      -> fistpushup(push,reps)  re-scale
+     dyn     bicycle(dyn,TIME)      -> deadbug(lower,REPS)    leave alone
+     power   jumpsquat(power,reps)  -> squat(SQUAT,reps)      leave alone
+
+   A jump squat and a bodyweight squat are BOTH hardness 1.0 and are not the
+   same measurement at all: explosive power is a quality `hardness` cannot
+   express, and inventing a ratio there would be worse than declining to. It
+   costs nothing to decline — measured, 0 of 3 power-anchored and 0 of 1
+   dyn-anchored movements survive their own flag's swap, so neither anchor is
+   ever read for the athlete whose test was substituted.
+
+   The RECORD keeps the raw number. v320 needs it raw to plot a real point, and
+   an athlete who did 20 dead bugs did 20 dead bugs. The conversion happens on
+   the way to prescribe(), never on the way to storage. A record with no `subs`
+   at all is a legacy record: nothing is converted, because nothing is known. */
+const ANCHOR_EQUIV_BAND=[0.5,2];
+/* The rule lives HERE, in one copy, because three surfaces need to know the
+   answer and one of them needs it as a yes/no rather than as a number. Returns
+   the ratio when a substitution can honestly be re-scaled, and 0 when it cannot
+   — a test that was never substituted also returns 0, so callers ask `subs[id]`
+   separately when they need to tell "unchanged" from "unconvertible". */
+function anchorRescale(testId,subs){
+  try{
+    if(!subs||typeof subs!=='object')return 0;      // legacy record — unknown, so untouched
+    const subId=subs[testId];
+    if(!subId)return 0;                             // this test was not substituted
+    const t=TESTS.find(x=>x.id===testId);
+    const orig=t&&EX[t.ex], sub=EX[subId];
+    if(!t||!orig||!sub)return 0;
+    if(sub.anchor!==testId)return 0;                // measures a different quantity
+    if(sub.unit!==orig.unit)return 0;               // measures it in different units
+    const ho=+orig.hardness, hs=+sub.hardness;
+    if(!isFinite(ho)||!isFinite(hs)||ho<=0||hs<=0)return 0;
+    const r=ho/hs;
+    if(r<ANCHOR_EQUIV_BAND[0]||r>ANCHOR_EQUIV_BAND[1])return 0;   // a calibration that far apart is not a re-scale
+    return r;
+  }catch(e){return 0;}
+}
+function anchorEquiv(testId,value,subs){
+  try{
+    const r=anchorRescale(testId,subs);
+    if(!r)return value;
+    const v=+value;
+    if(!isFinite(v)||v<0)return value;
+    return Math.round(v*r);
+  }catch(e){return value;}
+}
+function anchorEquivMaxes(maxes,subs){
+  const out={};
+  try{Object.keys(maxes||{}).forEach(k=>{out[k]=anchorEquiv(k,maxes[k],subs);});}
+  catch(e){return maxes||{};}
+  return out;
+}
 function currentMaxes(cycle){
   // cycle 0 uses baseline; later cycles use reassessment if present, else baseline
-  const base=(STATE.baseline&&STATE.baseline.maxes)||{};
-  if(cycle>0 && STATE.reassess[cycle] && STATE.reassess[cycle].maxes)
-    return estimateMaxes(Object.assign({},base,STATE.reassess[cycle].maxes));
+  const b=STATE.baseline||{};
+  const base=anchorEquivMaxes(b.maxes||{},b.subs);
+  const r=(cycle>0 && STATE.reassess && STATE.reassess[cycle] && STATE.reassess[cycle].maxes)?STATE.reassess[cycle]:null;
+  if(r)return estimateMaxes(Object.assign({},base,anchorEquivMaxes(r.maxes,r.subs)));
   return estimateMaxes(base);
 }
 const LEVEL_TIER={Beginner:0,Intermediate:1,Advanced:2};
@@ -2717,9 +2806,14 @@ function sessionVolume(sess){
 }
 
 /* ============================ CORE SCORE ============================ */
-function computeAssessment(results){
+/* `subs` is scored, not just anchored. t.bench is calibrated for the ORIGINAL
+   movement, so 20 dead bugs against the Reverse Crunch benchmark of 25 reads as
+   80% of a test the athlete never took — and the score sets `level`, which
+   scales every UNANCHORED exercise through LEVEL_FACTOR. Same defect, one
+   consumer over. The stored `maxes` below stay RAW; only the scoring converts. */
+function computeAssessment(results,subs){
   let sum=0,n=0;
-  TESTS.forEach(t=>{const v=+results[t.id]||0;sum+=clamp(v/t.bench*100,0,100);n++;});
+  TESTS.forEach(t=>{const v=anchorEquiv(t.id,+results[t.id]||0,subs);sum+=clamp(v/t.bench*100,0,100);n++;});
   const score=Math.round(sum/n);
   const level=score<38?'Beginner':(score<68?'Intermediate':'Advanced');
   /* `+results.plank||30` treated a MEASURED ZERO as a missing answer. The
@@ -6115,9 +6209,13 @@ function renderAssessStep(){
      for 20 seconds. safeSwap() already knows a safe substitute for every one
      of the five test moves that carries a flag (pushup, invertedrow,
      jumpsquat, revcrunch, bicycle) — this just has to actually call it. The
-     score still saves under the test's own id (t.id), so every downstream
-     anchor/maxes read is unaffected; only which movement earns that number
-     changes, same as any other flagged-joint substitution in the app. */
+     score still saves under the test's own id (t.id).
+
+     It used to say here that "every downstream anchor/maxes read is
+     unaffected". That was false, and saying so is how it survived: the number
+     is on the substitute's scale, and prescribe() multiplies it by a hardness
+     calibrated against the ORIGINAL. See anchorEquiv() — the read sites
+     convert, the record stays raw. */
   const exId=safeSwap(t.ex);const ex=EX[exId];
   const swapped=exId!==t.ex;
   const joint=swapped?assessSwapJoint(t.ex):null;
@@ -6126,7 +6224,8 @@ function renderAssessStep(){
     <div class="row" style="justify-content:space-between;margin-bottom:6px"><div class="tiny muted">Test ${i+1} of ${total}</div><button class="chip" onclick="closeSheet()">Cancel</button></div>
     <div class="pbar" style="margin-bottom:14px"><i style="width:${(i)/total*100}%"></i></div>
     <h3>${t.name}</h3>
-    ${swapped?`<div class="note fire" style="margin-bottom:10px">Swapped to <b>${_ve(ex.name)}</b> — you flagged your ${_ve((joint||'joint').toLowerCase())}, and this tests the same capacity without the risk.</div>`:''}
+    ${swapped?`<div class="note fire" style="margin-bottom:10px">Swapped to <b>${_ve(ex.name)}</b> — you flagged your ${_ve((joint||'joint').toLowerCase())}, so this is the closest safe way to measure you here.
+      <div class="tiny" style="margin-top:6px;opacity:.9">It is a different movement, so this number is not comparable to the un-flagged test. Your record notes the swap, and the trend will say so rather than read it as a change in strength.</div></div>`:''}
     ${ex.img?`<img class="exphoto" src="${ex.img}" alt="">`:emblemHTML(ex)}
     <div class="note info">${swapped?assessSwapInstr(t):t.instr}</div>
     ${(t.unit==='time'||t.dur)?`<button class="btn green" style="margin-bottom:12px" onclick="startBaselineTimer()">▶ ${t.dur?`Start ${t.dur}s timer`:'Start timer'}</button>`:''}
@@ -6346,6 +6445,35 @@ function rebaseAdapt(){STATE.adapt=1;STATE.exAdapt={};}
    implausible as real detraining, ASK. Both answers are legitimate. A genuine
    regression after an eight-week layoff or an injury is real data and must be
    recordable — this only refuses to assume. */
+/* WHICH TESTS WERE MEASURED ON A DIFFERENT MOVEMENT. safeSwap() protects a
+   flagged joint during the battery — correctly — but the number that comes back
+   is then a measurement of a DIFFERENT exercise, and nothing recorded that.
+
+   Measured on a wrist-flagged athlete: `stamina` is Burpees, and safeSwap()
+   resolves it to a Single-Leg Dead Bug. Baseline 40 on the dead bug, re-test 18
+   on real burpees once the wrist recovered — an athlete who genuinely improved,
+   whose stamina number more than halved, with nothing to say the movement
+   changed.
+
+   That is precisely the reasoning TEST_PROTOCOL already exists for: a v1
+   baseline and a v2 re-test were not taken under the same conditions, and the
+   app should be able to say so rather than read the gap as progress. The
+   substituted movement is the same kind of variable, one level down. */
+function assessSubs(){
+  const out={};
+  try{TESTS.forEach(t=>{const sw=safeSwap(t.ex);if(sw!==t.ex)out[t.id]=sw;});}catch(e){}
+  return out;
+}
+/* Did this test measure the SAME movement in both records? An absent `subs` is
+   an older record from before the stamp existed — unknown, not equal, so it
+   fails closed and the comparison is skipped rather than trusted. */
+function sameMovement(recA,recB,testId){
+  try{
+    const a=recA&&recA.subs, b=recB&&recB.subs;
+    if(!a||!b||typeof a!=='object'||typeof b!=='object')return false;
+    return (a[testId]||null)===(b[testId]||null);
+  }catch(e){return false;}
+}
 function retestDrop(a){
   try{
     const prev=assessState&&assessState.reassess
@@ -6356,9 +6484,20 @@ function retestDrop(a){
     if(prev.testCount&&prev.testCount!==TESTS.length)return null;
     const pct=(prev.score-a.score)/prev.score;
     if(pct<0.25)return null;
-    // which movements fell away, so the question can name them
+    /* which movements fell away, so the question can name them — and ONLY
+       where both records measured the same movement. safeSwap() protects a
+       flagged joint by testing a substitute, so a wrist that has recovered
+       turns a Single-Leg Dead Bug back into Burpees and the number drops by
+       more than half on an athlete who improved. That is a change of ruler,
+       not a loss of capacity, and naming it here would ask the athlete to
+       explain a regression that did not happen.
+
+       This is the same guard the testCount line above already makes — "a
+       like-for-like comparison only" — one variable further in. */
+    const _nowSubs={subs:assessSubs()};
     const worse=[];
     TESTS.forEach(t=>{
+      if(!sameMovement(prev,_nowSubs,t.id))return;
       const now=+assessState.results[t.id]||0;
       const was=+((prev.results||{})[t.id])||0;
       if(was>0&&now<was*0.75)worse.push({name:t.name,was,now,unit:t.unit});
@@ -6387,7 +6526,10 @@ function discardRetest(){
   }catch(e){closeSheet();}
 }
 function finishAssessment(){
-  const a=computeAssessment(assessState.results);
+  /* One call to assessSubs(), used for BOTH the score and the stamp. Computing
+     it twice is how the two drift if the flags ever change mid-battery. */
+  const _subs=assessSubs();
+  const a=computeAssessment(assessState.results,_subs);
   /* PROTOCOL stamps HOW the numbers were taken, not just what they were. v2
      alternates the movement domains; v1 ran four maximal trunk efforts in a
      row, so a v1 baseline and a v2 re-test are not measuring the same thing
@@ -6397,6 +6539,9 @@ function finishAssessment(){
      rested between maximal efforts is the same kind of fact about the run. */
   const _rests=assessRests();
   const rec={date:todayISO(),results:assessState.results,score:a.score,level:a.level,maxes:a.maxes,testCount:TESTS.length,protocol:TEST_PROTOCOL,
+    /* Stamped even when empty, so an absent `subs` reliably means "recorded
+       before this existed" and sameMovement() can fail closed on it. */
+    subs:_subs,
     restsFull:_rests.filter(x=>x>=ASSESS_REST_SEC).length,restsTaken:_rests.length,
     restMedian:_rests.length?_rests.slice().sort((x,y)=>x-y)[Math.floor(_rests.length/2)]:null};
   /* Ask BEFORE writing anything. An interstitial that appears after the commit
@@ -6426,10 +6571,27 @@ function commitAssessment(a,rec){
      ever be rated: the program never prescribes the plank, side plank, squat or
      dead hang as working sets (they are the measuring sticks, not the work), so
      those rows sat permanently unrated no matter how long the athlete trained. */
+  /* A PR is recorded against the movement the athlete ACTUALLY PERFORMED, not
+     against the test's nominal exercise. This keyed on t.ex, so a wrist-flagged
+     athlete who did 20 Fist Push-Ups was awarded a 20-rep PUSH-UP record, a
+     shoulder-flagged one a 20-rep INVERTED ROW for 20 Towel Door Rows, and a
+     20-rep BURPEE for 20 Single-Leg Dead Bugs — three personal bests on three
+     movements they had not done, feeding strengthLevel() and the Strength
+     Standards rating. Third consumer of the v320/v321 defect: a substituted
+     measurement read as if it were the original. The four rows this block
+     exists to rate (plank, side plank, squat, dead hang) are never swapped, so
+     they are unaffected.
+
+     The typeof test on rec.subs is intent, not a live guard: `_subs[t.id]||t.ex`
+     already falls back for a string, an array or anything else an import could
+     carry, so no check can catch its removal. Recorded as an equivalent mutant
+     rather than papered over with an assertion that would pass on nothing. */
   try{
     if(!STATE.prs)STATE.prs={};
+    const _subs=(rec&&rec.subs&&typeof rec.subs==='object')?rec.subs:{};
     TESTS.forEach(t=>{const v=+assessState.results[t.id];
-      if(v>0&&EX[t.ex]&&v>(STATE.prs[t.ex]||0))STATE.prs[t.ex]=v;});
+      const exId=_subs[t.id]||t.ex;
+      if(v>0&&EX[exId]&&v>(STATE.prs[exId]||0))STATE.prs[exId]=v;});
   }catch(e){console.error('[assessment PRs]',e);}
   setTimeout(checkAchievements,300);
   save();
@@ -6467,33 +6629,68 @@ function testBreakdownHTML(a){
       ? (STATE.baseline&&STATE.baseline.results?STATE.baseline:null) : null;
     const prev=(prevRec&&prevRec.results)||null;
     const sameProtocol=!!prevRec&&(+prevRec.protocol||1)===(+TEST_PROTOCOL||1);
+    /* The FOURTH consumer of a substituted result, and the most visible one:
+       this is the screen the athlete reads the moment the battery ends. It
+       showed "Burpees (max reps in 60s) — 40 reps · +22 · 133% of the 30 reps
+       benchmark · past it" to someone who had just done 40 Single-Leg Dead
+       Bugs against a previous 18 that WAS a burpee. v320 fixed retestDrop()
+       and the strength trend and never came here.
+       Three things follow, and the row needs all three: it is named after the
+       movement performed, its share of the benchmark reads the anchor
+       equivalent so it agrees with the score above it, and the delta is
+       WITHHELD across a change of movement — through sameMovement(), the app's
+       own predicate, rather than re-deriving the rule here. */
+    const nowSubs=assessSubs();
+    const nowRec={subs:nowSubs};
+    let heldDelta=false;   // a delta withheld because the ruler changed, or is unknown
     const fmt=(t,v)=>t.unit==='time'?fmtTime(Math.round(v)):Math.round(v)+' reps';
     const rows=TESTS.map(t=>{
       const v=+res[t.id];
       if(!isFinite(v))return '';
-      const pct=Math.round(v/t.bench*100);          // deliberately NOT clamped
-      const over=pct>=100;
+      const subId=nowSubs[t.id];
+      const shownName=(subId&&EX[subId])?EX[subId].name:t.name;
+      /* Three states, because two is not enough. A swap the app can re-scale
+         (push, pull, lower) gets the equivalent share and says it is scaled. A
+         swap it CANNOT re-scale (stamina, power, dyn) gets no share at all: 40
+         Single-Leg Dead Bugs is not "133% of the 30-rep Burpee benchmark · past
+         it", and calling that figure an estimate would be inventing the very
+         number anchorRescale() just declined to compute. */
+      const scaled=!!anchorRescale(t.id,nowSubs);
+      const noBench=!!subId&&!scaled;
+      const pct=noBench?null:Math.round(anchorEquiv(t.id,v,nowSubs)/t.bench*100);   // deliberately NOT clamped
+      const over=pct!==null&&pct>=100;
       let delta='';
-      if(prev&&isFinite(+prev[t.id])&&sameProtocol){
+      const comparable=sameMovement(prevRec,nowRec,t.id);
+      if(prev&&isFinite(+prev[t.id])&&sameProtocol&&!comparable)heldDelta=true;
+      if(prev&&isFinite(+prev[t.id])&&sameProtocol&&comparable){
         const d=v-(+prev[t.id]);
         if(Math.abs(d)>=(t.unit==='time'?1:1)){
           delta=`<span class="tiny" style="color:${d>0?'var(--green)':'var(--fire-l)'};font-weight:800">${d>0?'+':''}${t.unit==='time'?fmtTime(Math.abs(Math.round(d))).replace(/^/,d>0?'':'-'):Math.round(d)}</span>`;
         }else delta='<span class="tiny muted">level</span>';
       }
-      const bar=Math.max(2,Math.min(140,pct));
+      const bar=Math.max(2,Math.min(140,pct===null?0:pct));
       return `<div style="padding:7px 0;border-top:1px solid var(--line)">
         <div class="row" style="justify-content:space-between;align-items:baseline">
-          <span class="sm"><b>${_ve(t.name)}</b></span>
+          <span class="sm"><b>${_ve(shownName)}</b>${subId?'<span class="tiny muted"> · swapped</span>':''}</span>
           <span class="sm"><b>${fmt(t,v)}</b> ${delta}</span></div>
         <div style="height:6px;border-radius:4px;background:var(--card2);overflow:hidden;margin-top:4px">
           <i style="display:block;height:100%;width:${bar/1.4}%;background:${over?'var(--green)':'var(--fire)'}"></i></div>
-        <div class="tiny muted" style="margin-top:2px">${pct}% of the ${fmt(t,t.bench)} benchmark${over?' · <b style="color:var(--green)">past it</b>':''}</div>
+        <div class="tiny muted" style="margin-top:2px">${noBench
+          ?`No benchmark — this is a different movement from the ${_ve(t.name)} test, so there is nothing to compare it against`
+          :`${pct}% of the ${fmt(t,t.bench)} ${_ve(t.name)} benchmark${over?' · <b style="color:var(--green)">past it</b>':''}${scaled?' · scaled from your swap, so it is an estimate':''}`}</div>
       </div>`;
     }).join('');
     if(!rows)return '';
+    /* Say WHY a delta is missing. Withholding it silently is the same defect in
+       the other direction: the athlete reads a blank where a number used to be
+       and has nothing to act on. Two separate reasons, two separate sentences —
+       a record from before the swap stamp existed is not the same situation as
+       a movement that genuinely changed. */
     const note=prevRec&&!sameProtocol
       ? '<div class="tiny muted" style="margin-top:8px">No change shown against your last assessment: it was taken under the older test order, so the two are not measuring the same thing. From here on they will be.</div>'
-      : '';
+      : (heldDelta
+        ? `<div class="tiny muted" style="margin-top:8px">No change shown on some tests: ${prevRec&&prevRec.subs?'a flagged joint means they were measured on a different movement this time, so the two numbers are not comparable':'your last assessment predates the app recording which movement each test used, so it cannot be checked against this one'}. From here on they will be.</div>`
+        : '');
     return `<div class="card pad" style="margin-top:6px"><h3 style="font-size:14px">Test by test</h3>
       <p class="sm muted" style="margin-top:-4px">The score above stops at 100. These do not — this is where progress past the benchmark shows up.</p>
       ${rows}${note}</div>`;
@@ -11902,12 +12099,17 @@ let strengthSel='plank';
 function setStrengthMetric(k){strengthSel=k;renderProgress();}
 function assessSeries(){
   const list=[];
-  if(STATE.baseline&&STATE.baseline.maxes)list.push({date:STATE.baseline.date,maxes:STATE.baseline.maxes});
+  /* `subs` travels WITH the maxes. It was left behind here on the first
+     attempt, so every metric read as "measured on a different movement" and
+     the trend withheld a verdict on all of them — a marker that lives only in
+     the stored record is not a record, the same shape as the macroDerived
+     stamp saveFood() used to drop. */
+  if(STATE.baseline&&STATE.baseline.maxes)list.push({date:STATE.baseline.date,maxes:STATE.baseline.maxes,subs:STATE.baseline.subs});
   /* skipReassess() carries the previous block's maxes forward stamped with
      today's date and flagged deferred. Plotting those drew a dead-flat strength
      trend from tests that never happened — which reads as a plateau, which is
      exactly the signal that makes someone abandon a program that was working. */
-  Object.keys(STATE.reassess||{}).map(Number).sort((a,b)=>a-b).forEach(k=>{const r=STATE.reassess[k];if(r&&r.maxes&&!r.deferred)list.push({date:r.date,maxes:r.maxes});});
+  Object.keys(STATE.reassess||{}).map(Number).sort((a,b)=>a-b).forEach(k=>{const r=STATE.reassess[k];if(r&&r.maxes&&!r.deferred)list.push({date:r.date,maxes:r.maxes,subs:r.subs});});
   return list;
 }
 function strengthTrendHTML(){
@@ -11915,12 +12117,22 @@ function strengthTrendHTML(){
   const m=STRENGTH_METRICS.find(x=>x.k===strengthSel)||STRENGTH_METRICS[0];
   const disp=v=>m.unit==='time'?fmtTime(v):v+' reps';
   const chips=STRENGTH_METRICS.map(x=>`<button class="chip ${x.k===strengthSel?'on':''}" onclick="setStrengthMetric('${x.k}')">${x.label}</button>`).join(' ');
-  const pts=series.map(s=>({date:s.date,v:(s.maxes&&s.maxes[m.k])||0})).filter(p=>p.v>0);
+  const pts=series.map(s=>({date:s.date,v:(s.maxes&&s.maxes[m.k])||0,rec:s})).filter(p=>p.v>0);
+  /* A DELTA ACROSS A CHANGE OF MOVEMENT IS NOT PROGRESS. safeSwap() tests a
+     substitute while a joint is flagged, so the same metric can be a Dead Bug
+     in one record and Burpees in the next — measured at 40 then 18 on an
+     athlete who improved. The chart still plots every point, because each one
+     is a real thing that happened; what is withheld is the ▲/▼ verdict, which
+     is the part that would be a lie. */
+  const _mixed=pts.length>=2&&pts.some(p=>!sameMovement(pts[0].rec,p.rec,m.k));
   let body;
   if(pts.length>=2){
     const vals=pts.map(p=>p.v),dates=pts.map(p=>p.date);const first=vals[0],last=vals[vals.length-1],d=last-first;
     body=lineChart(vals,dates,'var(--fire)',m.unit==='time'?'s':'')+
-      `<div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">${disp(first)}</span><span class="tiny" style="font-weight:800;color:${d>=0?'var(--green)':'var(--pink)'}">${d>=0?'▲ +':'▼ '}${m.unit==='time'?fmtTime(Math.abs(d)):Math.abs(d)+' reps'}</span><span class="tiny muted">${disp(last)}</span></div>`;
+      `<div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">${disp(first)}</span>${_mixed
+        ? `<span class="tiny" style="font-weight:800;color:var(--gold)">— not comparable</span>`
+        : `<span class="tiny" style="font-weight:800;color:${d>=0?'var(--green)':'var(--pink)'}">${d>=0?'▲ +':'▼ '}${m.unit==='time'?fmtTime(Math.abs(d)):Math.abs(d)+' reps'}</span>`}<span class="tiny muted">${disp(last)}</span></div>`
+      +(_mixed?`<div class="tiny muted" style="margin-top:6px;color:var(--gold)">A flagged joint meant this test used a <b>different movement</b> in one of these records, so the change is not a like-for-like comparison.</div>`:'');
   }else if(!pts.length){
     // an imported backup can carry baseline.maxes as {} — pts[0] then threw and
     // took the whole Progress tab down through the render boundary

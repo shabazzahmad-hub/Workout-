@@ -2979,6 +2979,234 @@ once worked. Locate them rather than guessing: scanning for the rope's dark
 column put it at x=1014, which is what set `crop=720:720:280:0` instead of a
 centred crop that would have kept it.
 
+## A change of RULER is not a change of strength (v320)
+
+`safeSwap()` protects a flagged joint during the baseline battery — correctly,
+and v251 added it for exactly that reason. What nothing recorded is that the
+number coming back then measures a **different exercise**.
+
+Seven swaps are reachable in the battery. Three of them do not preserve the
+capacity the test exists to measure:
+
+| swap | flagged | capacity |
+|---|---|---|
+| `invertedrow → towelrow` | shoulder | preserved |
+| `burpee → squatthrust` | shoulder, knee | preserved |
+| `pushup → fistpushup` | wrist | preserved |
+| `revcrunch → deadbug` | lowback | preserved |
+| **`jumpsquat → squat`** | knee | explosive becomes non-explosive |
+| **`bicycle → deadbug`** | lowback | dynamic becomes static |
+| **`burpee → march`** | wrist | maximal conditioning becomes marching |
+
+And the notice said, of every one of them, *"this tests the same capacity
+without the risk."*
+
+**Measured end to end.** A wrist-flagged athlete records `stamina` **40** on the
+substitute; six weeks later the wrist is better and real burpees give **18**.
+The athlete improved and their stamina number more than halved, with nothing on
+the glass to say the ruler had changed.
+
+That is precisely what `TEST_PROTOCOL` already exists to prevent, one variable
+down: a v1 and a v2 taken under different conditions are not the same
+measurement, and the app should say so rather than read the gap as progress.
+`subs` is now stamped on every record and both consumers ask it —
+`retestDrop()`, which already made the same guard on `testCount` (*"a
+like-for-like comparison only"*), and the strength trend, which withholds the
+▲/▼ verdict while still plotting both real points.
+
+**A legacy record fails closed.** Every phone is carrying a baseline with no
+`subs` at all. Unknown is not equal, so `sameMovement()` returns false and the
+comparison is skipped rather than trusted.
+
+### Two collisions, and the one-joint cases are the common ones
+
+15 of 37 realistic flag combinations land two tests on the same movement.
+A **knee** alone makes `power` and `squat` both the Bodyweight Squat; a
+**lowback** alone makes `lower` and `dyn` both the Dead Bug. The protocols
+still differ (20 seconds versus open), so the numbers are not identical — but
+the athlete does the same exercise twice and the second is measured tired.
+
+### The marker that lived only in the record
+
+`assessSeries()` builds the chart's points as `{date, maxes}` and dropped
+`subs`, so on the first attempt EVERY metric read as not-comparable and the
+trend withheld every verdict. Same shape as the `macroDerived` stamp
+`saveFood()` used to drop in v304: **a marker that survives only in storage is
+not a record.** The floor check — a test that was never substituted keeps its
+verdict — is what caught it.
+
+### And the mutant that proved four checks tested nothing
+
+Deleting `subs:assessSubs()` from the record literal walked straight through,
+because every check hand-built its records and exercised `sameMovement()` and
+the trend but never the WRITER. `finishAssessment()` is what an athlete's last
+tap reaches, and driving it is what catches this. Calling the helper is not
+driving the route — the fifth time this file has recorded that.
+
+Five mutants, all caught after that rewrite.
+
+## The swap changed the RULER and the app kept prescribing from it (v321)
+
+v320 stopped the app COMPARING two baselines taken on different movements. It
+was still PRESCRIBING from one, and the comment that let it ship said so in as
+many words:
+
+> The score still saves under the test's own id (t.id), so every downstream
+> anchor/maxes read is **unaffected**; only which movement earns that number
+> changes.
+
+It is affected. `prescribe()` does `maxes[anchor] * frac * ex.hardness`, and
+**`hardness` is DEFINED as a fraction of the anchor test's max** — so a count
+recorded on a substitute is on a different scale entirely. **A comment claiming
+an invariant is not the invariant**, for the third time in this file, and this
+one was written by the fix that introduced the defect.
+
+Measured, one body, one true capacity, week 1 of block 1:
+
+| flag | test measured on | Dead Bug | Crunch | Toe Touch |
+|---|---|---|---|---|
+| none | Reverse Crunch (h 1.0) | 10 | 10 | 8 |
+| lowback | Dead Bug (h 1.4) | **15** | **15** | **12** |
+
+**Flagging a joint made the app prescribe 40-50% MORE work in the flagged
+region** — the one place it should have prescribed less. The shoulder case is
+the same shape, +38% on the Towel Door Row that **all eight** pull movements
+land on. And the pull test's own instruction warns about exactly this hazard —
+*"this number scales every row and pull-up you will be given, so a back
+extension like the Superman would badly over-prescribe them"* — while the app
+went and substituted an easier movement itself.
+
+`hardness` IS the conversion factor: `recorded * hardness(orig) / hardness(sub)`.
+
+**The guard is the point, and it is what stops this being a universal
+converter.** Only a substitute measuring the SAME quantity in the SAME units is
+re-scaled. `dyn` (bicycle, TIME → dead bug, REPS) and `power` (jump squat →
+squat) are left alone: a jump squat and a squat are **both hardness 1.0** and
+are not the same measurement at all, because explosive power is a quality
+`hardness` cannot express. Declining costs nothing — measured, **0 of 3
+power-anchored and 0 of 1 dyn-anchored movements survive their own flag's
+swap**, so neither anchor is ever read for the athlete whose test was swapped.
+
+**The record stays RAW**, because v320 needs it raw to plot a real point and an
+athlete who did 20 dead bugs did 20 dead bugs. The conversion happens on the way
+to `prescribe()`, never on the way to storage. **A record with no `subs` is not
+converted** — nothing is known about it, and converting would be inventing.
+
+**The Core Score converts too, and that is not a display nicety.** `t.bench` is
+calibrated for the original movement, and the score sets `level`, which scales
+every UNANCHORED exercise through `LEVEL_FACTOR`. Same defect, one consumer over
+— the class, not the instance.
+
+### And a third consumer: a personal record on a movement never performed
+
+`commitAssessment()` writes a PR for every test result, keyed on **`t.ex`** —
+the test's nominal exercise, not the one performed. Measured on an athlete with
+a flagged wrist and shoulder:
+
+| performed | recorded as |
+|---|---|
+| 20 Fist Push-Ups | **Push-Up 20** |
+| 20 Towel Door Rows | **Inverted Row 20** |
+| 20 Single-Leg Dead Bugs | **Burpee 20** |
+
+Three personal bests on three movements the athlete had not done, feeding
+`strengthLevel()` and the Strength Standards rating. Same class as the anchor
+and the score — **fixing one instance is not fixing the class**, and this round
+found the class had three members, not one.
+
+**The floor is what keeps the fix honest.** This block exists so the plank, side
+plank, squat and dead hang can be rated at all — nothing ever prescribes them as
+working sets. A fix that simply skipped substituted tests satisfies every "no
+false PR" assertion and silently kills the four rows the block was written for,
+so each of those is pinned beside it. Four mutants; three caught, and the fourth
+(dropping the `typeof rec.subs` test) is **equivalent** — `_subs[t.id]||t.ex`
+already falls back for every non-object, so no check can catch its removal. Read
+the mutant back before rewriting the check.
+
+### Two escaped mutants, and only one was a weak check
+
+- **Dropping the ANCHOR guard escaped**, because both cases I had pinned were
+  blind to it: `dyn` is still caught by the unit guard, and `power` is
+  `jumpsquat(1.0) → squat(1.0)`, so the ratio is 1 and the mutant is
+  *equivalent there*. The one reachable swap that can tell them apart is
+  `stamina`: `burpee(0.7, time) → squatthrust(0.95, time)` — same unit,
+  different anchor, ratio 0.737. A weak check, not a bad mutant.
+- **Dropping the UNIT guard is unreachable on today's library.** `validateData()
+  already enforces that an anchored exercise carries its anchor test's unit
+  (measured: 0 mismatches across all 155), so "same anchor" implies "same unit".
+  It is kept as cover for a future `EX` edit and exercised directly by flipping
+  a unit in the check — the same technique the hardness-band guard uses.
+
+**And a mutation harness that greps for `FAILED — N checks` misses a single
+failure**, which prints `check` singular. Two mutants read as escapes until the
+detector was rewritten to test for *"All checks passed"* instead. Same family as
+the v286 mutant that broke the parse and counted as zero failures: **read the
+run, not a pattern you hoped would match it.**
+
+Eight mutants, all caught.
+
+### The class is now swept, and the one-time step was measured, not assumed
+
+Six places read a test result or a max. All six are accounted for:
+`currentMaxes()`, `computeAssessment()`, the PR writer and
+`testBreakdownHTML()` (v321); `retestDrop()` and `assessSeries()`/the strength
+trend (v320). A grep for `.results[` and `.maxes` returns nothing else.
+
+**Correcting a number creates a step in the athlete's own history, and the
+honest thing is to measure it rather than hope.** A flagged athlete's stored
+Core Score was computed the old way; their next one is computed the new way, so
+a genuine like-for-like re-test reads as a small drop. Measured across every
+flag combination, at 80% of every benchmark:
+
+| flagged | swaps | old score | new score | step |
+|---|---|---|---|---|
+| lowback | lower, dyn | 80 | 78 | **3%** |
+| shoulder | pull, stamina | 80 | 78 | **3%** |
+| wrist | push, stamina | 80 | 80 | 0% |
+| knee | power, stamina | 80 | 80 | 0% |
+| all four | six tests | 80 | 76 | **5%** |
+
+`retestDrop()` fires at **25%**, so the step cannot raise a false "was it an off
+day?" prompt on anyone. Wrist and knee are unmoved because their swaps are the
+two the app declines to re-scale, and `push` converts *upward* — the fist
+push-up is the harder movement. Accepted and recorded rather than fixed: the
+step is toward the true number, and it is an order of magnitude below the guard
+that would misread it.
+
+### The fourth consumer, and the one the athlete reads first (v321)
+
+`testBreakdownHTML()` is the screen shown the second the battery ends. Before
+this it printed, to an athlete who had just done 40 Single-Leg Dead Bugs:
+
+> **Burpees (max reps in 60s) — 40 reps · +22 · 133% of the 30 reps benchmark ·
+> past it**
+
+Named after a movement they did not do, scored against its benchmark, and
+congratulated on a **+22** whose 18 was a real burpee. That is v320's own defect,
+on the most prominent surface it has, and v320 fixed `retestDrop()` and the
+strength trend and never came here. **The class had four members, not one.**
+
+**Two states were not enough, and the first attempt shipped the error.** A swap
+the app can re-scale (`push`, `pull`, `lower`) gets the equivalent share and says
+it is scaled. A swap it CANNOT (`stamina`, `power`, `dyn`) must get **no share at
+all** — printing "133% · past it · an estimate" invents precisely the number
+`anchorRescale()` just declined to compute. The rule now lives in one place and
+answers both questions: the ratio when a re-scale is honest, `0` when it is not.
+
+**A withheld delta needs a sentence, and the two reasons are different
+sentences.** A silent blank where a number used to be is the same defect facing
+the other way. A prior with no `subs` stamp *(every phone is carrying one)*
+cannot be checked; a prior measured on a different movement genuinely is not
+comparable. Saying "not comparable" to the first is wrong, and a note that fires
+on a clean like-for-like re-test is a note nobody reads — so the floor pins that
+an ordinary improvement still shows `+4` and carries no explanation at all.
+
+**And a check in suite 21 failed on correct code.** It built its prior record
+before `subs` existed, so the fail-closed rule withheld the delta it asserted.
+The record was incomplete, not the rule — a **like-for-like prior is one that
+says it substituted nothing** (`subs:{}`), which is what that block always meant.
+Ten mutants across the row and the note, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
