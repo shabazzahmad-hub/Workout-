@@ -2622,6 +2622,87 @@ correct to ignore it; the real over-eager fix deletes the tile, and re-seeding i
 that way was caught immediately. Eleven mutants, all caught after those two
 rewrites.
 
+## When a block moves, its copy does not (v315)
+
+v313 fixed two sentences on Reference still pointing at "Fuel → Movement". That
+was one instance. A sweep of every tab name in user-facing copy found **four
+more**, and two of them the coach READS ALOUD every morning — which is the worst
+version of this, because an athlete cannot double-check a spoken address by
+looking at it.
+
+| the copy said | where the thing actually is |
+|---|---|
+| *"The full recipes are in the Fuel tab"* | Reference — v245 removed the plan card from Fuel |
+| *"Log your weight in the Fuel tab"* | Progress — Fuel has **no** weight control at all |
+| *"already on your live total in Fuel above"* | a tab away — v311 moved that block to Today |
+| *"Open the Progress tab and pick a goal weight"* | nowhere: no such control existed |
+
+**Each is asserted BOTH ways**: the copy names the tab, and the destination
+really has the thing. Checking only the wording passes on a sentence naming a
+tab for a feature that was deleted; checking only the feature passes while the
+sentence still points elsewhere. That is exactly how the v311 regression
+survived — a check was pinning the OLD address.
+
+### The goal weight had no setter outside the setup wizard
+
+`profile.goalWeightLb` is what `projTargetKg()` and `timelineRateKgWk()` are
+built on, and what the coach reads out every morning. To change it the athlete
+had to reopen the profile quiz and walk its steps, for one number, on a screen
+that is not the one with the weight chart on it. Two sentences in the brief
+already told them to set it on Progress. **A promise in UI text is a
+specification**, and this one had no code behind it at all.
+
+`setGoalWeight()` now sits on Progress ▸ Body beside the chart, with the same
+`plausibleKg()` clamp every other writer uses — it shipped once as the only
+writer without one, and a fat-fingered value here sets the pace for a year.
+
+**A hand-set goal outranks the derived one, and that needs an explicit delete.**
+`recomputeTargetWeight()` writes `goalWeightLb` FROM `goalBodyFat`, so leaving
+the body-fat target in place would let the next body-level tap silently
+overwrite the athlete's own answer. Same call as a hand-set protein target
+beating the calculation. The check proves it by calling
+`recomputeTargetWeight()` after the save and asserting the number survives.
+
+### Two escaped mutants, both the traps this file already names
+
+- **A page-wide search matched the WAIST goal's own "to go"**, so deleting the
+  weight goal's gap text passed. `[data-goalwt="set"]` scopes it to the row that
+  changed. Same shape as the v267 warning icon that existed in two places and
+  was asserted in one.
+- **In imperial the unit conversion is its own inverse** — 165 lb typed, 165 lb
+  stored — so a mutant that ignored the unit entirely was *equivalent* there.
+  Only a metric case tells them apart: 75 kg must store as 165. **Exercise both
+  mechanisms, or the check passes on half the code.**
+
+### And the harness had been calling the app booted while a splash covered it
+
+CI went red on one check with `hit: "sgrad"` — the splash's own gradient
+element, named in the failure detail. `.splash` is a full-screen `z-index:400`
+overlay dismissed 850 ms after the first draw; `waitForBoot` resolved on a
+rendered view at about **626 ms**. Measured at the moment it handed back:
+`splashExists:true, hidden:false`.
+
+So **every check that hit-tests, clicks or screenshots was racing a timer it did
+not know about.** Nothing that reads TEXT could tell, which is why it survived —
+and an unrelated change shifting the timing by a few milliseconds was enough to
+lose the race about one run in three.
+
+**Re-running proves nothing about a load-dependent race** (0 of 8 red on one
+attempt, 1 of 3 on another). Demonstrated deterministically instead: with the
+splash present the lift input hit-tests as `sgrad` and reads unreachable; with
+it dismissed the same code hits `lf-l-0` and reads reachable.
+
+Fixed in `waitForBoot`, not in the one check that noticed — the overlay covers
+every view, so a fix in one check leaves the class alive.
+
+**The first pin was worthless and a mutant proved it.** It sat where the failure
+happened, four seconds in, by which time the splash is gone whatever
+`waitForBoot` does — so the mutant deleting the wait walked straight through. It
+now measures the contract on a fresh page at the moment boot resolves. And the
+rendered-view condition is kept as intent with **no check able to catch its
+removal**: boot schedules `hideSplash` on the line after `render()`, so a hidden
+splash already implies a drawn app. An equivalent mutant, recorded as one.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

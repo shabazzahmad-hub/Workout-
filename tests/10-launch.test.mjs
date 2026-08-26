@@ -702,6 +702,214 @@ const { browser, page, errors } = await launch(port);
   s.ok('with the prose line that restated them gone', r.noVolumeProse, r);
 }
 
+/* ---- copy that names a tab has to name the right one (v315) --------------
+   Four sentences pointed at screens the thing they named had already left.
+   Two of them the COACH READS ALOUD every morning, which is the worst version
+   of this: an athlete cannot double-check a spoken address by looking at it.
+
+     - "The full recipes are in the Fuel tab" — v245 removed the plan card from
+       Fuel at the athlete's request; the worked days are on Reference.
+     - "Log your weight in the Fuel tab" — Fuel has no weight control at all.
+       logMeasure() is on Progress, beside the chart.
+     - "already on your live total in Fuel above" — v311 moved that block to
+       Today, so there is nothing above it.
+     - "Open the Progress tab and pick [a goal weight]" — no such control
+       existed anywhere outside the setup wizard until this version.
+
+   Each is asserted BOTH ways: the copy names the tab the thing is on, and the
+   destination really has it. Checking only the wording passes on a sentence
+   that names a tab for a feature that was deleted; checking only the feature
+   passes while the sentence still points somewhere else. That is precisely how
+   the v311 regression survived — a check was pinning the OLD address. */
+{
+  const r = await page.evaluate(() => {
+    const o = {};
+    const T = t => { go(t); return document.querySelector('#v-' + t).textContent; };
+
+    // --- 1. the meal-plan address, spoken ---
+    const segs = briefSegments();
+    const meals = segs.find(x => /meal plan today/i.test(x.say || ''));
+    o.mealsSpoken = !!meals;
+    o.mealsSay = meals ? meals.say : '';
+    o.mealsNamesRef = /Reference/i.test(o.mealsSay);
+    o.mealsNamesFuel = /Fuel tab/i.test(o.mealsSay);
+    setRefTab('food');
+    o.refReallyHasDays = /worked days|meal plan/i.test(T('ref'));
+    o.fuelHasNoPlan = !/worked days|Today's plan/i.test(T('fuel'));
+
+    // --- 2. where weight is logged ---
+    o.fuelWeightControls = [...document.querySelectorAll('#v-fuel [onclick]')]
+      .map(e => e.getAttribute('onclick')).filter(x => /logMeasure/.test(x)).length;
+    go('progress'); setProgressTab('body'); renderProgress();
+    o.progressLogsWeight = [...document.querySelectorAll('#v-progress [onclick]')]
+      .some(e => /logMeasure/.test(e.getAttribute('onclick')));
+    return o;
+  });
+  s.ok('the brief still names the day\'s meals', r.mealsSpoken, r);
+  s.ok('and sends the athlete to Reference for the recipes', r.mealsNamesRef, r);
+  s.eq('not to Fuel, where the plan card no longer is', r.mealsNamesFuel, false, r);
+  s.ok('Reference really does carry the days', r.refReallyHasDays, r);
+  s.ok('and Fuel really does not', r.fuelHasNoPlan, r);
+  s.eq('Fuel has no weight logger to send anyone to', r.fuelWeightControls, 0, r);
+  s.ok('Progress ▸ Body does', r.progressLogsWeight, r);
+
+  /* The spoken mission lines, driven through briefSegments() with the goal
+     weight both set and unset — the two branches print different addresses and
+     a check that only runs one of them measures half the code. */
+  const m = await page.evaluate(() => {
+    const keep = STATE.profile.goalWeightLb;
+    const say = () => (briefSegments().find(x => x.title === 'Your mission') || {}).say || '';
+    STATE.profile.goalWeightLb = 165; STATE.nutrition.weightKg = null;
+    STATE.measurements = [];
+    const noWeight = say();
+    STATE.profile.goalWeightLb = null;
+    const noGoal = say();
+    STATE.profile.goalWeightLb = keep;
+    STATE.nutrition.weightKg = 88;
+    STATE.measurements = [{ date: todayISO(), weight: 88, waist: 96 }];
+    save();
+    return { noWeight, noGoal };
+  });
+  s.ok('with no logged weight the coach sends you to Progress, not Fuel',
+    /Progress/i.test(m.noWeight) && !/Fuel/i.test(m.noWeight), m);
+  s.ok('and with no goal weight it names the pane the control is on',
+    /Progress/i.test(m.noGoal) && /Body/i.test(m.noGoal), m);
+
+  // --- 3. the earned-calorie note, which moved tabs in v311 ---
+  const e = await page.evaluate(() => {
+    setSteps(stepTarget() + 4000); save();
+    go('today'); setTodayTab('workout'); renderToday();
+    const line = (document.querySelector('#v-today').textContent
+      .match(/[^\n]{0,40}kcal earned today[^\n]{0,140}/i) || [])[0] || '';
+    const onFuel = /kcal earned today/i.test(document.querySelector('#v-fuel').textContent);
+    setSteps(0); save();
+    return { line, onFuel };
+  });
+  s.ok('the earned-calorie note is on Today', !!e.line, e);
+  s.eq('and not on Fuel', e.onFuel, false, e);
+  s.eq('so it does not claim the total it names is "above"', /above/i.test(e.line), false, e);
+  s.ok('it points at the tab that total really is on', /Fuel/i.test(e.line), e);
+}
+
+/* ---- the goal weight is settable outside the setup wizard (v315) ----------
+   profile.goalWeightLb is what projTargetKg() and timelineRateKgWk() are built
+   on and what the coach reads aloud every morning, and it had NO setter
+   anywhere but the profile quiz — so changing one number meant walking the
+   whole wizard. Two sentences in the brief already told the athlete to set it
+   on Progress, which was simply false.
+
+   Driven through the sheet the athlete taps, not by calling the writer: a
+   control that stores correctly from a direct call and is mounted nowhere is
+   the same defect. */
+{
+  const r = await page.evaluate(async () => {
+    const o = {};
+    STATE.profile.unit = 'in';
+    delete STATE.profile.goalWeightLb; delete STATE.profile.goalBodyFat; save();
+    go('progress'); setProgressTab('body'); renderProgress();
+    const v = document.querySelector('#v-progress');
+    o.emptyStateSaysHow = /no goal weight set/i.test(v.textContent);
+    const btn = [...v.querySelectorAll('button')]
+      .find(b => /Goal/.test(b.textContent) && /setGoalWeight/.test(b.getAttribute('onclick') || ''));
+    o.hasButton = !!btn;
+    if (!btn) return o;                       // guard before anything assumes the sheet
+    btn.click();
+    await new Promise(res => setTimeout(res, 40));
+    o.sheetOpen = !!document.querySelector('#g-weight');
+    if (!o.sheetOpen) return o;
+
+    // a junk value must be refused, and must not store anything
+    document.querySelector('#g-weight').value = '9';
+    saveGoalWeight();
+    o.junkRefused = !(STATE.profile.goalWeightLb > 0);
+    o.sheetStillOpen = !!document.querySelector('#g-weight');
+
+    // a real one is stored, in POUNDS, whatever unit the box was in
+    document.querySelector('#g-weight').value = '165';
+    saveGoalWeight();
+    await new Promise(res => setTimeout(res, 40));
+    o.storedLb = STATE.profile.goalWeightLb;
+    o.projTargetKg = Math.round(projTargetKg() * 10) / 10;
+
+    renderProgress();
+    /* SCOPED to the goal-weight row. A page-wide search matched the WAIST
+       goal's own "to go" and passed with the gap deleted — the same trap as
+       the v267 warning icon that existed in two places and was asserted in
+       one. */
+    const row = document.querySelector('#v-progress [data-goalwt="set"]');
+    o.hasRow = !!row;
+    o.lineShowsGoal = !!row && /165 lb/.test(row.textContent);
+    o.lineShowsGap = !!row && /to go|under it|you are there/i.test(row.textContent);
+
+    /* METRIC too. In imperial the conversion is its own inverse — 165 in,
+       165 stored — so a mutant that ignores the unit entirely is EQUIVALENT
+       there and escaped. Only kg tells the two apart. */
+    STATE.profile.unit = 'cm';
+    delete STATE.profile.goalWeightLb; save();
+    setProgressTab('body'); renderProgress();
+    const b2 = [...document.querySelectorAll('#v-progress button')]
+      .find(x => /setGoalWeight/.test(x.getAttribute('onclick') || ''));
+    if (b2) {
+      b2.click();
+      const inp = document.querySelector('#g-weight');
+      if (inp) { inp.value = '75'; saveGoalWeight(); }
+      o.metricStoredLb = STATE.profile.goalWeightLb;
+      setProgressTab('body'); renderProgress();
+      const r2 = document.querySelector('#v-progress [data-goalwt="set"]');
+      o.metricLine = r2 ? r2.textContent.trim() : '';
+    }
+    STATE.profile.unit = 'in';
+    return o;
+  });
+  s.ok('Progress ▸ Body offers a goal-weight control', r.hasButton, r);
+  s.ok('and says so when none is set', r.emptyStateSaysHow, r);
+  s.ok('tapping it opens the sheet', r.sheetOpen, r);
+  s.ok('an implausible weight is refused', r.junkRefused, r);
+  s.ok('and the sheet stays open so it can be corrected', r.sheetStillOpen, r);
+  s.eq('a real goal is stored in pounds', r.storedLb, 165, r);
+  s.eq('and the projection reads the same number', r.projTargetKg, 74.8, r);
+  s.ok('the tab renders a goal-weight row of its own', r.hasRow, r);
+  s.ok('which states the goal', r.lineShowsGoal, r);
+  s.ok('and how far there is to go', r.lineShowsGap, r);
+  /* 75 kg is 165 lb. A mutant that stored the typed number would leave 75. */
+  s.eq('a metric entry is converted to the stored pounds', r.metricStoredLb, 165, r);
+  s.ok('and reads back in kilograms', /75 kg/.test(r.metricLine || ''), r);
+
+  /* A hand-set goal outranks the derived one. recomputeTargetWeight() writes
+     goalWeightLb FROM goalBodyFat, so leaving the body-fat target in place
+     would let the next body-level tap silently overwrite the athlete's own
+     answer — the same call as a hand-set protein target beating the
+     calculation. */
+  const own = await page.evaluate(() => {
+    STATE.profile.goalBodyFat = 12; save();
+    document.querySelector('#v-progress');
+    setProgressTab('body'); renderProgress();
+    const btn = [...document.querySelectorAll('#v-progress button')]
+      .find(b => /setGoalWeight/.test(b.getAttribute('onclick') || ''));
+    /* Guard BEFORE the first line that assumes it exists. The mutant that
+       unmounts the control left this undefined and the block died on
+       `btn.click()`, so the run reported "the test file itself threw" instead
+       of naming a failed check — still red, so still a catch, but a throw
+       hides which property broke and the same shape one step further along
+       hung a whole suite in v267. */
+    if (!btn) return { mounted: false };
+    btn.click();
+    if (!document.querySelector('#g-weight')) return { mounted: true, sheet: false };
+    document.querySelector('#g-weight').value = '170';
+    saveGoalWeight();
+    const afterSave = { lb: STATE.profile.goalWeightLb, bf: STATE.profile.goalBodyFat };
+    recomputeTargetWeight();
+    return { afterSave, afterRecompute: STATE.profile.goalWeightLb };
+  });
+  s.ok('the goal-weight control is still mounted for this block', own.afterSave, own);
+  if (own.afterSave) {
+    s.eq('a hand-set goal weight is what gets stored', own.afterSave.lb, 170, own);
+    s.eq('and the derived body-fat target is dropped', own.afterSave.bf, undefined, own);
+    s.eq('so recomputing cannot overwrite the athlete\'s own answer',
+      own.afterRecompute, 170, own);
+  }
+}
+
 srv.close();
 const failed = s.finish(errors);
 await browser.close();
