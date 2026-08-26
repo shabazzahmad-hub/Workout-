@@ -596,6 +596,123 @@ export default async function run() {
     await browser.close();
   }
 
+  /* ---- A REPAIR THAT REBUILDS A ROW FROM A HAND-WRITTEN FIELD LIST -------
+     normalizeState()'s food repair maps each row to a fixed set of fields, so
+     every field added AFTER it was written is silently dropped on the next
+     boot. Two were: `calc` (v304 — this macro was worked out, not read) and
+     `src` (v306 — this row is a tracker's running total for the day).
+
+     Measured before the fix: log a dashboard import, close the app, reopen,
+     import the day's new total — prevShotIdx() found nothing, no warning
+     appeared, and the rows stacked to 3,035 kcal on a day 1,800 was eaten.
+     v306's whole fix worked only until the app was closed.
+
+     Driven through a REAL RELOAD, because that is the path that loses it. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await page.evaluate(seed => { eval(seed)(); }, ATHLETE);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForBoot(page);
+    await page.evaluate(() => {
+      const d = nutToday(); d.food = [];
+      logFood('Mon, Aug 24', 1235, 102, 106, 50, 'b', '2 servings', 'carbs', 'shot');
+      save();
+    });
+    const before = await page.evaluate(() => nutToday().food[0]);
+    /* GUARD: the markers were really written, or the reload proves nothing. */
+    t.eq('guard: a screenshot import is marked when logged', before.src, 'shot', before);
+    t.eq('guard: and a derived macro is marked too', before.calc, 'carbs', before);
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForBoot(page);
+    const after = await page.evaluate(() => nutToday().food[0]);
+    t.eq('the running-total marker survives closing the app', after.src, 'shot', after);
+    t.eq('so does the derived-macro marker', after.calc, 'carbs', after);
+    t.eq('and the portion, which always did', after.portion, '2 servings', after);
+
+    /* THE CONSEQUENCE, which is what the athlete actually reported. */
+    const second = await page.evaluate(() => {
+      const o = {};
+      o.foundPrevious = prevShotIdx();
+      _shotSeparate = false;
+      openQuickAdd({ name: 'Mon, Aug 24', kcal: 1800, p: 150, c: 150, f: 70, fromShot: true });
+      o.warns = /REPLACES/.test(document.querySelector('#sheet').textContent);
+      saveFood();
+      o.rows = nutToday().food.length; o.dayTotal = foodTotals().kcal;
+      return o;
+    });
+    t.eq('a second import after a reload still finds the first', second.foundPrevious, 0, second);
+    t.ok('and still warns that it replaces it', second.warns, second);
+    t.eq('leaving ONE row, not two', second.rows, 1, second);
+    t.eq('at the second total, not the sum', second.dayTotal, 1800, second);
+
+    /* And a junk marker is still refused on the way through — the repair
+       carries these fields by MEMBERSHIP, not by copying whatever is there. */
+    const junk = await page.evaluate(() => {
+      const d = nutToday();
+      d.food = [{ name: 'X', kcal: 100, p: 1, c: 1, f: 1, meal: 'b', at: 1,
+        src: '<img onerror=1>', calc: 'proteinz' }];
+      normalizeState();
+      const r = (nutToday().food || [])[0] || {};
+      return { src: r.src, calc: r.calc, rowKept: !!r.name };
+    });
+    t.ok('guard: the row itself is kept', junk.rowKept, junk);
+    t.eq('a junk source marker is dropped', junk.src, undefined, junk);
+    t.eq('and a junk calculated marker too', junk.calc, undefined, junk);
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
+  /* ---- Truthiness where a MEMBERSHIP test belongs ------------------------
+     `if(!STATE.profile.conditioning)` caught '' and null and nothing else, so
+     an array or an object from a hand-edited or foreign backup walked through
+     and then travelled in every backup after it. Nothing crashed — the harm is
+     entirely in what gets written to a backup and read back, the same harm
+     v285 measured on the keyed maps. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await waitForBoot(page);
+    const r = await page.evaluate(() => {
+      const JUNK = [[], {}, 'sideways', 0, true, NaN];
+      const out = { cond: [], tl: [], gw: [] };
+      JUNK.forEach(j => {
+        STATE.profile.conditioning = j; normalizeState();
+        if (!['low', 'moderate', 'high'].includes(STATE.profile.conditioning))
+          out.cond.push(JSON.stringify(j) + '→' + JSON.stringify(STATE.profile.conditioning));
+        STATE.profile.timelineWeeks = j; normalizeState();
+        const tw = STATE.profile.timelineWeeks;
+        if (!(tw === null || (typeof tw === 'number' && isFinite(tw) && tw > 0)))
+          out.tl.push(JSON.stringify(j) + '→' + JSON.stringify(tw));
+        STATE.profile.goalWeightLb = j; normalizeState();
+        const gw = STATE.profile.goalWeightLb;
+        if (!(gw === null || gw === undefined || (typeof gw === 'number' && isFinite(gw) && gw > 0)))
+          out.gw.push(JSON.stringify(j) + '→' + JSON.stringify(gw));
+      });
+      /* THE FLOORS: a real answer must survive untouched, or a repair that
+         always overwrites satisfies every line above while destroying the
+         athlete's own choices. */
+      STATE.profile.conditioning = 'high';
+      STATE.profile.timelineWeeks = 24;
+      STATE.profile.goalWeightLb = 165;
+      normalizeState();
+      out.kept = { cond: STATE.profile.conditioning, tl: STATE.profile.timelineWeeks,
+        gw: STATE.profile.goalWeightLb };
+      /* And "no deadline" is a real answer, not junk. */
+      STATE.profile.timelineWeeks = null; normalizeState();
+      out.nullTimeline = STATE.profile.timelineWeeks;
+      return out;
+    });
+    t.eq('junk never survives as a conditioning level', r.cond.join(' '), '', r);
+    t.eq('nor as a timeframe', r.tl.join(' '), '', r);
+    t.eq('nor as a goal weight', r.gw.join(' '), '', r);
+    t.eq('a real conditioning answer is left alone', r.kept.cond, 'high', r);
+    t.eq('a real timeframe is left alone', r.kept.tl, 24, r);
+    t.eq('a real goal weight is left alone', r.kept.gw, 165, r);
+    t.eq('and "no deadline" stays null', r.nullTimeline, null, r);
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
   srv.close();
   return t.finish();
 }
