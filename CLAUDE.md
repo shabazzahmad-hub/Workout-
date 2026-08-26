@@ -3264,6 +3264,46 @@ entry twice — asking whether ONE entry appeared in both copies, not whether th
 two copies AGREED. The replacement drives the Settings picker and compares what
 it offers against `GEAR_KEYS`.
 
+### A dead-control sweep that found nothing, and six probe bugs on the way
+
+`voicePitch`, `PLAYER.tempo` and `timelineWeeks` were all the same defect — a
+control the athlete sets that almost nothing reads — so the class is worth
+sweeping rather than waiting for a fourth. The method is the one this file
+prescribes: **set A, fingerprint the program, set B, fingerprint again, assert
+they differ.**
+
+**Six controls flagged dead on the first pass. All six were the probe.** In
+order of discovery:
+
+- **`kcalTarget` and `buildWarmup` do not exist.** The probe called both inside
+  a `try/catch`, so the calorie target and the warm-up were silently absent
+  from every fingerprint — which is why `timelineWeeks`, `nutrition.activity`
+  and `profile.mobility` all read as dead. The real names are
+  `kcalTargetPreview()` and `mobilityFlow(jointAwareWarmup(WARMUP_FLOW))`.
+- **`profile.daysPerWeek` does not exist.** The field is `profile.days`, an
+  ARRAY of weekday numbers, and writing a number there made `goalSlots()` throw
+  on an undefined session — a crash that looked like a real bug and was entirely
+  self-inflicted.
+- **`nutrition.cardioMode` is absent from `DEFAULT_STATE` on purpose**, so a
+  field-existence guard flags it. Absent means "the athlete has not chosen" and
+  `cardioMode()` falls back to jacks — a legitimate shape, not a missing field,
+  and the distinction has to be encoded in the guard rather than argued with.
+- **`cardioMode` reads on the RENDER**, not in any of the builders the
+  fingerprint covered.
+- **`timelineDeficit()` needs a current weight AND a goal weight below it.**
+  The seeded athlete has neither, so the probe never reached the code. A guard
+  that cannot fire in the case you tested is not tested — for the third time
+  this session.
+
+Given a real 86 kg athlete with a 165 lb goal, the timeline is very much alive:
+**1950 kcal / 180 g at 12 weeks, 2060 / 180 at 24, 2330 / 155 at 52.**
+
+**The fix that generalises is a guard on the probe, not on the app**: assert
+every field path exists in `DEFAULT_STATE()` and every function name is a
+function, and bail naming what is missing, before measuring anything. Half of
+the first dead-control probe's findings were the same mistake, and writing that
+down did not stop it happening again — a guard does.
+
 ### The fourth sibling path to skip the gear check, and it was mine
 
 Also found by auditing my own change. `startForceTrain()` built its items from
