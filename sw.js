@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v318';
+const CACHE = 'coreforge-v319';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
@@ -98,10 +98,18 @@ const EXTRA = [
   './ex-vup.jpg','./ex-walkinglunge.jpg','./ex-wallhandstand.jpg','./ex-wallwalk.jpg','./ex-warriorthree.jpg',
   './ex-weightedtwist.jpg','./ex-widepullup.jpg','./ex-windshield.jpg','./notif-hlr.jpg',
   './phys-1.jpg','./phys-2.jpg','./phys-3.jpg','./phys-4.jpg',
-  './phys-5.jpg','./ex-atomicpushup.mp4','./ex-birddog.mp4','./ex-burpee.mp4','./ex-squatthrust.mp4','./ex-inchworm.mp4','./ex-cossack.mp4',
-  './ex-halfburpee.mp4','./ex-jumpingjack.mp4','./ex-jumpsquat.mp4','./ex-kbhalo.mp4','./ex-kbheli.mp4','./ex-kbtgu.mp4',
-  './ex-nordic.mp4','./ex-pistol.mp4','./ex-superpushup.mp4','./wu-march.mp4',
-  './screenshot-today.png','./screenshot-fuel.png','./screenshot-progress.png'
+  './phys-5.jpg',
+  './screenshot-today.png','./screenshot-fuel.png','./screenshot-progress.png',
+  /* VIDEO SORTS LAST, and nothing may follow it. 17 clips at ~3.7 MB against
+     379 KB of screenshots — the heaviest and least necessary assets, topped up
+     only once everything an athlete actually needs is already on the phone.
+     The three screenshots used to trail the videos; they are small, so they
+     belong ahead of them. */
+  './ex-atomicpushup.mp4','./ex-birddog.mp4','./ex-burpee.mp4','./ex-squatthrust.mp4',
+  './ex-inchworm.mp4','./ex-cossack.mp4','./ex-abroll.mp4',
+  './ex-halfburpee.mp4','./ex-jumpingjack.mp4','./ex-jumpsquat.mp4','./ex-kbhalo.mp4',
+  './ex-kbheli.mp4','./ex-kbtgu.mp4','./ex-nordic.mp4','./ex-pistol.mp4',
+  './ex-superpushup.mp4','./wu-march.mp4'
 ];
 
 /* The union, and still the single source of truth for "what ships offline". */

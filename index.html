@@ -1203,7 +1203,7 @@ const EX = {
   /* ===== HOME-GYM / WEIGHTS LIBRARY (military kit) — used by the Weights session =====
      Built for the athlete's actual gear: ab roller, medicine ball, kettlebells, battle
      rope, dip bar, pull-up bar. Each carries `equip` (gear) + `pattern` (movement). */
-  abroll:{repSec:4.5,repCap:12,name:'Kneeling Ab Rollout',region:'anterior',unit:'reps',img:'ex-abroll.jpg',anchor:null,hardness:1,base:8,rest:45,equip:['abroller'],pattern:'core',
+  abroll:{repSec:4.5,repCap:12,name:'Kneeling Ab Rollout',region:'anterior',unit:'reps',img:'ex-abroll.jpg',vid:'ex-abroll.mp4',anchor:null,hardness:1,base:8,rest:45,equip:['abroller'],pattern:'core',
     why:'The ab wheel loads the entire front core under a long lever — brutal, honest anti-extension strength.',
     steps:['Kneel and grip the roller under the shoulders.','Brace hard and roll forward, keeping a flat back.','Pull the roller back with the abs, hips tucked.'],
     cues:['Ribs down, glutes tight','Never let the low back sag','Only roll as far as you can control'],mistakes:['Sagging hips','Rolling too far, too soon']},
@@ -1807,7 +1807,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='318';
+const APP_VERSION='319';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,

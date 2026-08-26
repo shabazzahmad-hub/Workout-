@@ -2930,6 +2930,55 @@ EVERY goal read as a surplus, and letting the contradiction check swallow the
 ordinary cut. Both satisfy every assertion about bulking and fail the floor
 that a real cut is unchanged — which is the goal most athletes are actually on.
 
+## The no-press rule was not the whole rule (v319)
+
+The Windmill came back wrong and the Kneeling Ab Rollout came back right, and
+the pair together corrects the video guidance.
+
+**The Windmill contains no press, and it still failed.** What came back was a
+**Cossack squat** under an overhead bell — one leg extended, the other in a
+deep squat, chest dropping between them — with the bell lowered to the rack at
+seconds 7 and 9. The overhead arm bending is the one thing the prompt named as
+critical, in capitals. He also looked at the floor rather than up at the bell,
+which is the app's own first cue.
+
+So the model substituted **the movement it had rendered one request earlier**.
+
+The rule from v305 said to ask whether a movement contains a press. That is
+necessary and not sufficient. The better question is: **does a more common
+movement sit next door?** A windmill's neighbour — a deep lateral squat under
+an overhead load — is far better represented than the windmill itself, so that
+is what was retrieved.
+
+| movement | press inside? | close common neighbour? | result |
+|---|---|---|---|
+| Cossack squat | no | no | correct, first time |
+| Inchworm walkout | no | no | correct, first time |
+| Squat thrust | no | no | correct |
+| 8-count push-up | **yes** | burpee | 3 failures |
+| Kettlebell windmill | no | **Cossack squat** | failed |
+| **Kneeling ab rollout** | **no** | **none** | **correct, first time** |
+
+The ab rollout is the cleanest datapoint for the fix: the wheel is
+**unmistakable equipment** and nothing else in the world is kneeling and
+rolling one, so there is no neighbour to retrieve. Twenty frames read at full
+resolution — arms straight in every one, back flat, knees on the mat, two
+complete cycles.
+
+**Describe the equipment PHYSICALLY, not by name.** "A single small rubber
+wheel with a straight metal handle passing through its centre" is the same
+discipline that established the athlete's 9.6-inch push-up bars are not a dip
+station. And name the substitution you fear: *"he does not do a push-up"*
+belongs in any prompt where a press could plausibly be grafted in.
+
+**The watermark and the studio clutter are now four for four.** Every clip has
+carried the generator's sparkle bottom-right, and three have carried a rope
+hanging top-right — including this one, despite the prompt gaining an explicit
+"nothing hanging in the background, an empty grey wall only". Asking has never
+once worked. Locate them rather than guessing: scanning for the rope's dark
+column put it at x=1014, which is what set `crop=720:720:280:0` instead of a
+centred crop that would have kept it.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
