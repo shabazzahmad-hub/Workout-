@@ -730,6 +730,79 @@ export default async function run() {
     });
   }
 
+  /* ---- a bulk is not an under-prescribed cut either (v318) ----------------
+     v298 gave recomp and maintain their own answer because the projection was
+     telling a weight-stable athlete to eat less. GAIN was left reading the
+     cut's copy — the "fixing one instance is not fixing the class" shape this
+     repo keeps re-finding.
+
+     Measured on a 190 lb athlete bulking toward 205 lb: the target is 2,740
+     against a 2,490 TDEE — a 250 kcal SURPLUS — and the line under the chart
+     read "A realistic pace at a moderate deficit."
+
+     And the timeline claim was false on this goal. timelineRateKgWk() returns
+     null for gain on purpose, so the target is 2,740 at 12 weeks, at 24 and at
+     52 — yet the copy said "Paced to the ~24-week timeline you picked" because
+     the projected weeks happened to land near the number. */
+  {
+    const r = await page.evaluate(() => {
+      const set = (goal, goalLb, wk) => {
+        Object.assign(STATE.nutrition, { weightKg: 86, goal, sex: 'male', age: 52,
+          heightCm: 178, activity: 1.45 });
+        Object.assign(STATE.profile, { goal, timelineWeeks: wk, goalWeightLb: goalLb, unit: 'in' });
+        STATE.measurements = [{ date: todayISO(), weight: 86, waist: 96 }];
+        try { recalcKcalFromStored(); } catch (e) {}
+        save();
+        const p = kcalTargetPreview();
+        return {
+          text: (projectionHTML() || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(),
+          surplus: p ? Math.round(p.target - p.tdee) : null,
+          /* GUARD: on this goal the timeline genuinely does nothing, which is
+             the whole reason the old sentence was a lie. */
+          timelinePaced: (typeof timelineDeficit === 'function') ? timelineDeficit() : 'n/a',
+          targetAt: p ? p.target : null,
+        };
+      };
+      return {
+        bulkNoTl: set('gain', 205, null),
+        bulk24:   set('gain', 205, 24),
+        bulk52:   set('gain', 205, 52),
+        conflict: set('gain', 165, 24),   // Gain, with a goal weight BELOW current
+        cut24:    set('lose', 165, 24),   // the floor: a real cut is unchanged
+      };
+    });
+
+    t.ok('guard: the bulk really is eating a surplus', r.bulk24.surplus > 100, r.bulk24);
+    t.eq('guard: and the timeline genuinely paces nothing on a bulk',
+      r.bulk24.timelinePaced, null, r.bulk24);
+    t.eq('guard: so the target is identical at 24 and 52 weeks',
+      r.bulk24.targetAt, r.bulk52.targetAt, { a: r.bulk24.targetAt, b: r.bulk52.targetAt });
+
+    t.ok('a bulk is never described as a deficit',
+      !/deficit/i.test(r.bulkNoTl.text), r.bulkNoTl.text.slice(0, 200));
+    t.ok('it is described as a surplus', /surplus/i.test(r.bulkNoTl.text), r.bulkNoTl.text.slice(0, 200));
+    t.ok('and never claims a timeline paced it',
+      !/Paced to the/.test(r.bulk24.text), r.bulk24.text.slice(0, 200));
+    t.ok('it says plainly that the timeline drives a cut, not a bulk',
+      /not a bulk/i.test(r.bulk24.text), r.bulk24.text.slice(0, 200));
+
+    /* The two settings can disagree — the goal weight points the CHART and the
+       Fuel goal points the FOOD. Name the contradiction rather than drawing a
+       confident line through it. */
+    t.ok('a Gain goal with a lower goal weight is called out',
+      /settings disagree/i.test(r.conflict.text), r.conflict.text.slice(0, 200));
+    t.ok('and it names both places to change it',
+      /goal weight/i.test(r.conflict.text) && /Fuel goal/i.test(r.conflict.text),
+      r.conflict.text.slice(0, 250));
+
+    /* THE FLOOR. A change that simply muted the cut's copy passes every
+       assertion above and breaks the goal most athletes are actually on. */
+    t.ok('a real cut still says it was paced by its timeline',
+      /Paced to the ~24-week timeline/.test(r.cut24.text), r.cut24.text.slice(0, 200));
+    t.ok('and is still described as a deficit somewhere',
+      r.cut24.surplus < 0, r.cut24);
+  }
+
   /* ---- The timeframe is a PLAN, not a label ------------------------------
      "You should be able to dynamically adjust macros, goals, exercise among
       everything based on those questions of whether you're doing a 12 week
