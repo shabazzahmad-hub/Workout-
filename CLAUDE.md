@@ -3145,6 +3145,34 @@ run, not a pattern you hoped would match it.**
 
 Eight mutants, all caught.
 
+### The class is now swept, and the one-time step was measured, not assumed
+
+Six places read a test result or a max. All six are accounted for:
+`currentMaxes()`, `computeAssessment()`, the PR writer and
+`testBreakdownHTML()` (v321); `retestDrop()` and `assessSeries()`/the strength
+trend (v320). A grep for `.results[` and `.maxes` returns nothing else.
+
+**Correcting a number creates a step in the athlete's own history, and the
+honest thing is to measure it rather than hope.** A flagged athlete's stored
+Core Score was computed the old way; their next one is computed the new way, so
+a genuine like-for-like re-test reads as a small drop. Measured across every
+flag combination, at 80% of every benchmark:
+
+| flagged | swaps | old score | new score | step |
+|---|---|---|---|---|
+| lowback | lower, dyn | 80 | 78 | **3%** |
+| shoulder | pull, stamina | 80 | 78 | **3%** |
+| wrist | push, stamina | 80 | 80 | 0% |
+| knee | power, stamina | 80 | 80 | 0% |
+| all four | six tests | 80 | 76 | **5%** |
+
+`retestDrop()` fires at **25%**, so the step cannot raise a false "was it an off
+day?" prompt on anyone. Wrist and knee are unmoved because their swaps are the
+two the app declines to re-scale, and `push` converts *upward* — the fist
+push-up is the harder movement. Accepted and recorded rather than fixed: the
+step is toward the true number, and it is an order of magnitude below the guard
+that would misread it.
+
 ### The fourth consumer, and the one the athlete reads first (v321)
 
 `testBreakdownHTML()` is the screen shown the second the battery ends. Before
