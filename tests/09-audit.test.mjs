@@ -1927,6 +1927,230 @@ export default async function run() {
       !/predates the app recording which movement/.test(r.swapped), r.swapped);
   }
 
+  const FORCE_EVENTS_EX = ['sbaglift', 'sbagshuttle', 'rushes', 'sbagdrag'];
+  /* ---- the FORCE Evaluation prep block (v322) ------------------------------
+     A published fitness standard MOVES — the US Army replaced the ACFT's event
+     list mid-2025 — and this app cannot reach the internet to check. A figure
+     shown with confidence that is a year stale is worse than no figure,
+     because the athlete trains to it. So the screen stamps what it knows and
+     when, and says whose job it is to confirm. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = {
+        gear: (STATE.profile.gear || []).slice(),
+        lims: STATE.profile.limitations,
+        prep: JSON.parse(JSON.stringify(STATE.prep || {})),
+        parq: STATE.profile.parq, parqDone: STATE.profile.parqDone,
+        medCleared: STATE.profile.medCleared,
+      };
+      STATE.profile.gear = ['bar', 'bench', 'sandbag'];
+      STATE.profile.limitations = [];
+      STATE.prep = {};
+      const sheet = () => (document.querySelector('#sheet') || {}).textContent.replace(/\s+/g, ' ') || '';
+      const o = {};
+
+      /* An earlier block in this file leaves the athlete un-onboarded, so Today
+         renders the welcome screen and NO tiles at all. Build the state this
+         block asserts on, and guard that the tile row really rendered — the
+         check would otherwise pass on nothing the day someone deletes it. */
+      keep.onboarded = STATE.onboarded;
+      STATE.onboarded = true;
+      go('today'); TODAY_TAB = 'workout'; render();
+      const tv = document.querySelector('#v-today').innerHTML;
+      o.altRowRendered = /openRestSheet\(\)/.test(tv);
+      o.tileOnToday = /openForcePrep\(\)/.test(tv);
+      /* Order matters: v246 removed these tiles from Today at the athlete's
+         request as clutter and v314 brought them back BELOW the session. A
+         bare "the tile is on Today" assertion passes on exactly the layout
+         that was rejected. */
+      o.tileAfterSession = tv.indexOf('openForcePrep()') > tv.indexOf('id="finishSession"');
+
+      openForcePrep();
+      o.saysConfirm = /Confirm these figures with your unit/.test(sheet());
+      o.stampsAsOf  = sheet().indexOf(FORCE_ASOF) >= 0;
+      o.saysNoInternet = /cannot check them for you/.test(sheet());
+      o.unmeasuredCount = (sheet().match(/not measured/g) || []).length;
+      o.namesEvents = FORCE_EVENTS.every(e => sheet().indexOf(e.name) >= 0);
+
+      // one under the standard, one over, one pass/fail task
+      setForceResultQuiet('lift', 190);
+      setForceResultQuiet('rush', 60);
+      setForceResultQuiet('drag', 1);
+      closeSheet(); openForcePrep();
+      o.verdicts = FORCE_IDS.map(id => forceVerdict(id));
+      o.showsMeets = /meets it/.test(sheet());
+      o.showsShort = /short/.test(sheet());
+      o.stillUnmeasured = (sheet().match(/not measured/g) || []).length;
+
+      // a date paces the build
+      const d = new Date(); d.setDate(d.getDate() + 70);
+      STATE.prep.date = d.toISOString().slice(0, 10);
+      closeSheet(); openForcePrep();
+      o.weeks = forceWeeksLeft();
+      o.showsWeeks = /10 weeks to go/.test(sheet());
+
+      // junk in the stored block must not reach the screen or the next backup
+      STATE.prep = { results: { lift: 'abc', bogus: 5, rush: -3, drag: 1 }, date: 'soon' };
+      normalizeState();
+      o.repaired = JSON.parse(JSON.stringify(STATE.prep));
+
+      // an array where the block belongs
+      STATE.prep = [];
+      normalizeState();
+      o.arrayRepaired = !Array.isArray(STATE.prep) && typeof STATE.prep === 'object';
+
+      // SAFETY: a flagged, uncleared health screen does not get handed
+      // four maximal efforts under load
+      STATE.prep = {};
+      STATE.profile.parq = ['heart']; STATE.profile.parqDone = true; STATE.profile.medCleared = false;
+      closeSheet();
+      startForceTrain();
+      o.safeModeBlocked = !(PLAYER && PLAYER.items);
+      o.safeModeSheet = sheet().slice(0, 120);
+      try { playerQuit(); } catch (e) {}
+      closeSheet();
+
+      // cleared: the session builds, and it builds the four real tasks
+      STATE.profile.parq = []; STATE.profile.medCleared = true;
+      startForceTrain();
+      o.built = !!(PLAYER && PLAYER.items);
+      o.builtIds = (PLAYER && PLAYER.items || []).map(i => i.exId);
+      try { playerQuit(); } catch (e) {}
+
+      /* WITH A JOINT FLAGGED. The check above runs unflagged, so safeSwap() is
+         the identity there and a mutant that silently substitutes is
+         EQUIVALENT — it escaped exactly that way. The whole product decision
+         is that these four are NOT swapped, and only a flagged athlete can
+         tell the two behaviours apart. */
+      STATE.profile.limitations = ['lowback', 'wrist'];
+      o.wouldSwap = FORCE_EVENTS.map(e => safeSwap(e.ex));
+      startForceTrain();
+      o.flaggedIds = (PLAYER && PLAYER.items || []).map(i => i.exId);
+      try { playerQuit(); } catch (e) {}
+      STATE.profile.limitations = [];
+
+      // WARN, do not swap: a flagged joint names the movement and keeps it
+      STATE.profile.limitations = ['lowback'];
+      o.riskNames = forceRiskHTML();
+      STATE.profile.limitations = [];
+      o.riskClean = forceRiskHTML();
+
+      /* NO SANDBAG. Every other path that picks a movement asks hasGearFor() —
+         builderPool(), gearSwap(), weightsPool() — and this one did not, so a
+         bagless athlete tapping "Train the four tasks" was handed all four,
+         three of which they physically cannot do. */
+      STATE.profile.gear = ['bar', 'bench'];
+      closeSheet(); openForcePrep();
+      o.bagSheetWarns = /You need a 20 kg sandbag/.test(sheet());
+      o.bagSheetNames = /Sandbag Lift/.test(sheet());
+      o.bagSheetSaysNoSubs = /a stand-in would leave you unready/.test(sheet());
+      startForceTrain();
+      o.baglessIds = (PLAYER && PLAYER.items || []).map(i => i.exId);
+      o.baglessAllDoable = o.baglessIds.every(k => hasGearFor(k));
+      try { playerQuit(); } catch (e) {}
+      closeSheet();
+
+      /* THE FLOOR: a note that always fires is a note nobody reads. With the
+         bag owned there must be nothing to say at all. */
+      STATE.profile.gear = ['bar', 'bench', 'sandbag'];
+      o.kitNoteWithBag = forceKitHTML();
+      openForcePrep();
+      o.sheetWithBagQuiet = !/You need a 20 kg sandbag/.test(sheet());
+      o.buttonSaysFour = /Train the four tasks/.test(sheet());
+      closeSheet();
+
+      /* The "nothing available at all" guard is unreachable on today's library
+         because the rushes need no kit. Exercise it directly, the same way the
+         hardness-band guard is exercised, so a future EX edit that gives them
+         an equip requirement does not walk straight through. */
+      const rushEquip = EX.rushes.equip;
+      EX.rushes.equip = ['sandbag'];
+      STATE.profile.gear = ['bar', 'bench'];
+      o.availWhenNothing = forceAvailable().length;
+      startForceTrain();
+      o.builtWhenNothing = !!(PLAYER && PLAYER.items && PLAYER.items.length);
+      o.refusalToast = (document.querySelector('#toast') || {}).textContent || '';
+      try { playerQuit(); } catch (e) {}
+      EX.rushes.equip = rushEquip;
+      closeSheet();
+
+      STATE.profile.gear = keep.gear; STATE.profile.limitations = keep.lims;
+      STATE.prep = keep.prep;
+      STATE.profile.parq = keep.parq; STATE.profile.parqDone = keep.parqDone;
+      STATE.profile.medCleared = keep.medCleared;
+      STATE.onboarded = keep.onboarded;
+      try { closeSheet(); } catch (e) {}
+      return o;
+    });
+
+    t.ok('guard: the alternate-session tile row really rendered', r.altRowRendered, r);
+    t.ok('the FORCE tile is on Today', r.tileOnToday, r);
+    t.ok('and it sits BELOW the session, not in front of it', r.tileAfterSession, r);
+    t.ok('the sheet names every event', r.namesEvents, r);
+    /* The honesty half. Without these the screen states a fitness standard as
+       fact, from an app that cannot check it. */
+    t.ok('it says to confirm the figures with your unit', r.saysConfirm, r);
+    t.ok('and stamps when it last knew them', r.stampsAsOf, r);
+    t.ok('and says it cannot check them itself', r.saysNoInternet, r);
+    /* Absent is "not measured", which is a different answer from "failed" and
+       must never render as one. */
+    t.eq('with nothing logged, all four read as not measured', r.unmeasuredCount, 4, r);
+    t.eq('a time under the standard passes', r.verdicts[0], 'pass', r);
+    t.eq('a time over it is short', r.verdicts[2], 'fail', r);
+    t.eq('the pass/fail drag reads its own way', r.verdicts[3], 'pass', r);
+    t.eq('and an event never logged stays unmeasured', r.verdicts[1], null, r);
+    t.ok('the screen shows both verdicts', r.showsMeets && r.showsShort, r);
+    t.eq('and still says not measured for the one that is not', r.stillUnmeasured, 1, r);
+    t.eq('a test date is counted in weeks', r.weeks, 10, r);
+    t.ok('and shown', r.showsWeeks, r);
+    /* Three levels of repair, because a container check is not a type repair
+       and one map holds several inputs. */
+    t.eq('a junk time is dropped, not zeroed', r.repaired.results.lift, undefined, r.repaired);
+    t.eq('an unknown event id is dropped', r.repaired.results.bogus, undefined, r.repaired);
+    t.eq('a negative time is dropped', r.repaired.results.rush, undefined, r.repaired);
+    t.eq('and the good entry beside them survives', r.repaired.results.drag, 1, r.repaired);
+    t.eq('a junk date is dropped', r.repaired.date, undefined, r.repaired);
+    t.ok('an array where the block belongs is repaired', r.arrayRepaired, r);
+    /* SAFETY, and it fails closed. These are four maximal efforts under load —
+       the same call the baseline battery makes. */
+    t.ok('a flagged, uncleared health screen does not get the session', r.safeModeBlocked, r);
+    t.ok('and is sent to the health screen instead', r.safeModeSheet.length > 0, r);
+    t.ok('floor: a cleared athlete DOES get it', r.built, r);
+    t.eq('and gets the four real test events', r.builtIds,
+      ['sbaglift', 'sbagshuttle', 'rushes', 'sbagdrag'], r);
+    t.ok('guard: with a joint flagged, safeSwap WOULD move at least two of them',
+      r.wouldSwap.filter((k, i) => k !== FORCE_EVENTS_EX[i]).length >= 2,
+      { wouldSwap: r.wouldSwap });
+    t.eq('and it still builds the four real test events, not the substitutes',
+      r.flaggedIds, ['sbaglift', 'sbagshuttle', 'rushes', 'sbagdrag'], r);
+    /* WARN, do not silently swap: these are the actual test events, and
+       substituting one leaves the athlete unprepared for the thing they will
+       be asked to do. Same call as the custom builder. */
+    t.ok('a flagged joint is named rather than swapped away', /Sandbag Lift/.test(r.riskNames), r);
+    t.ok('and the warning says they are not swapped here', /not swapped here/.test(r.riskNames), r);
+    t.eq('floor: an unflagged athlete sees no warning at all', r.riskClean, '', r);
+    /* Gear, and it does NOT substitute — same call as the joint case. */
+    t.ok('without a sandbag the sheet says so plainly', r.bagSheetWarns, r);
+    t.ok('and names which tasks need it', r.bagSheetNames, r);
+    t.ok('and says nothing is stood in for', r.bagSheetSaysNoSubs, r);
+    t.eq('the session drops what cannot be done rather than handing it over',
+      r.baglessIds, ['rushes'], r);
+    t.ok('so every movement in it is one the athlete can actually perform',
+      r.baglessAllDoable, r);
+    /* THE FLOOR: the rushes need no kit at all, so a bagless athlete still
+       gets real work rather than an empty session. */
+    t.ok('and there is still something to train', r.baglessIds.length > 0, r);
+    /* THE FLOOR under the note. */
+    t.eq('floor: with the sandbag owned there is nothing to say', r.kitNoteWithBag, '', r);
+    t.ok('and the sheet is quiet about kit', r.sheetWithBagQuiet, r);
+    t.ok('and the button offers all four', r.buttonSaysFour, r);
+    /* And the refusal, exercised directly because it is unreachable today. */
+    t.eq('guard: with nothing available at all, nothing is available', r.availWhenNothing, 0, r);
+    t.ok('a session with no performable movement is refused, not built empty',
+      !r.builtWhenNothing, r);
+    t.ok('and says why', /sandbag/i.test(r.refusalToast), r);
+  }
+
   {
     const r = await page.evaluate(() => {
       openPlayer();

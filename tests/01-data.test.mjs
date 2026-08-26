@@ -1127,14 +1127,171 @@ export default async function run() {
     t.ok('it needs no equipment', r.gearFree, r);
   }
   {
-    /* Read the SOURCE, not a rendered screen: the two pickers are built in
-       different functions and have drifted before, so what matters is that the
-       entry exists in BOTH literals. */
+    /* The two pickers were built in different functions from two hand-written
+       literals, and they HAD drifted: onboarding offered 13 items and Settings
+       offered 12. The missing one was `bike`, which bikeSwap() and hasTrainer()
+       both read and toggleGear() is the only writer of — so an athlete who
+       bought a trainer after setup could never tell the app.
+
+       The old check here counted the literal twice and could not see that at
+       all: it asked whether ONE entry appeared in both copies, not whether the
+       two copies agreed. Asserting the shared list exists is the weaker half;
+       what matters is what the athlete can actually reach, so the Settings
+       picker is DRIVEN and compared against the list itself. */
     const src2 = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-    const hits = (src2.match(/\['ruck','Weighted rucksack \+ plate'\]/g) || []).length;
+    const r = await page.evaluate(() => {
+      go('guide');
+      const offered = [...document.querySelectorAll('#v-guide button')]
+        .map(b => ((b.getAttribute('onclick') || '').match(/toggleGear\('([a-z]+)'\)/) || [])[1])
+        .filter(Boolean);
+      return { offered, keys: GEAR_KEYS.slice(), opts: GEAR_OPTS.length };
+    });
+    t.ok('guard: the Settings picker really rendered', r.offered.length > 5, r);
+    t.eq('every piece of kit the app knows about is settable in Settings',
+      r.offered.slice().sort(), r.keys.slice().sort(), r);
+    t.ok('including the bike, which only onboarding used to offer',
+      r.offered.includes('bike'), r);
+    t.ok('and the sandbag the FORCE work needs', r.offered.includes('sandbag'), r);
+    /* One list, so the two pickers cannot drift again. Both render sites read
+       it rather than restating it. */
+    t.eq('the kit list exists exactly once', (src2.match(/const GEAR_OPTS=/g) || []).length, 1);
+    /* Count the RENDER sites, not every read: GEAR_KEYS derives from the same
+       list and is a third, legitimate, non-picker use of it. */
+    t.eq('and both pickers read it rather than restating it',
+      (src2.match(/GEAR_OPTS\.map\(\(\[k,l\]\)/g) || []).length, 2);
     /* Named by what the kit physically IS. "Rucksack" alone would be ticked by
-       anyone who owns a school bag; the plate is the part that matters. */
-    t.eq('the gear entry is in BOTH pickers, named by what the kit is', hits, 2);
+       anyone who owns a school bag; the plate is the part that matters, and the
+       sandbag's weight is the part that matters for the FORCE tasks. */
+    t.ok('the ruck entry names the plate', /\['ruck','Weighted rucksack \+ plate'\]/.test(src2));
+    t.ok('the sandbag entry names its weight', /\['sandbag','Sandbag \(20 kg \/ 45 lb\)'\]/.test(src2));
+  }
+
+  /* ---- the four Canadian FORCE Evaluation tasks (v322) ---------------------
+     The roster search by MOVEMENT found no drag, no shuttle, no rush and no
+     floor-to-shelf lift anywhere in 155 exercises — the nearest relatives were
+     a suitcase carry and a bear-hug carry, neither of which asks for what
+     these ask for. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = { gear: (STATE.profile.gear || []).slice(), lims: STATE.profile.limitations };
+      const jr = (k, j) => (JOINT_RISK[j] || []).includes(k);
+      STATE.profile.gear = ['bar', 'bench'];
+      const without = ['sbaglift', 'sbagshuttle', 'sbagdrag', 'rushes'].map(k => hasGearFor(k));
+      STATE.profile.gear = ['bar', 'bench', 'sandbag'];
+      const withBag = ['sbaglift', 'sbagshuttle', 'sbagdrag', 'rushes'].map(k => hasGearFor(k));
+      STATE.profile.gear = ['bar', 'bench', 'ruck'];
+      const withRuckOnly = ['sbaglift', 'sbagshuttle', 'sbagdrag'].map(k => hasGearFor(k));
+      const out = {
+        without, withBag, withRuckOnly,
+        exist: ['sbaglift', 'sbagshuttle', 'rushes', 'sbagdrag'].map(k => !!EX[k]),
+        imgs:  ['sbaglift', 'sbagshuttle', 'rushes', 'sbagdrag'].map(k => (EX[k] || {}).img),
+        // every escalation, asserted DIRECTLY — a generic "flags do not leak"
+        // sweep never puts a new entry in the risky bucket, so it proves nothing
+        liftLow: jr('sbaglift', 'lowback'),   dragLow: jr('sbagdrag', 'lowback'),
+        shuttleKnee: jr('sbagshuttle', 'knee'), rushKnee: jr('rushes', 'knee'),
+        rushWrist: jr('rushes', 'wrist'),     dragShoulder: jr('sbagdrag', 'shoulder'),
+        // and every flag that must NOT be there
+        liftKnee: jr('sbaglift', 'knee'),     liftShoulder: jr('sbaglift', 'shoulder'),
+        dragKnee: jr('sbagdrag', 'knee'),     shuttleWrist: jr('sbagshuttle', 'wrist'),
+        shuttleShoulder: jr('sbagshuttle', 'shoulder'), rushLow: jr('rushes', 'lowback'),
+        // the FLOOR siblings: unflagged, which is what proves the escalation is
+        // reasoned rather than a family flag stamped on everything with a bag
+        carryShoulder: jr('kbcarry', 'shoulder'), ruckcarryShoulder: jr('ruckcarry', 'shoulder'),
+        gobletLow: jr('kbgoblet', 'lowback'),  squatKnee: jr('squat', 'knee'),
+        thrustShoulder: jr('squatthrust', 'shoulder'),
+        // swaps resolve
+        swaps: ['sbaglift', 'sbagshuttle', 'sbagdrag', 'rushes']
+          .map(k => [SAFE_SWAP[k], LOWBACK_SWAP[k], GEAR_FALLBACK[k]])
+          .flat().filter(Boolean).every(t => !!EX[t]),
+      };
+      STATE.profile.gear = keep.gear; STATE.profile.limitations = keep.lims;
+      return out;
+    });
+    t.ok('all four FORCE movements exist', r.exist.every(Boolean), r);
+    /* Cross-contamination, BOTH directions. A single equip typo would hand an
+       athlete three movements they have no kit for, and the generic sweeps
+       cannot see that at all. */
+    t.eq('without a sandbag the three bag tasks are locked', r.without.slice(0, 3), [false, false, false], r);
+    t.ok('but the rushes need no equipment at all', r.without[3], r);
+    t.eq('with a sandbag all four are available', r.withBag, [true, true, true, true], r);
+    t.eq('and a ruck plate is NOT a sandbag', r.withRuckOnly, [false, false, false], r);
+    // escalations
+    t.ok('the sandbag lift is flagged for the low back', r.liftLow, r);
+    t.ok('so is the drag', r.dragLow, r);
+    t.ok('the loaded shuttle is flagged for the knee', r.shuttleKnee, r);
+    t.ok('so are the rushes', r.rushKnee, r);
+    t.ok('the rushes are flagged for the wrist', r.rushWrist, r);
+    t.ok('the drag is flagged for the shoulder — the load sits behind the torso', r.dragShoulder, r);
+    // the flags that must not fire
+    t.ok('a bilateral floor-to-shelf lift is not a knee flag', !r.liftKnee, r);
+    t.ok('nor a shoulder one — the bag never goes overhead', !r.liftShoulder, r);
+    t.ok('a backwards walk under load is not a knee flag', !r.dragKnee, r);
+    t.ok('the shuttle never touches the ground, so no wrist flag', !r.shuttleWrist, r);
+    t.ok('and no shoulder flag', !r.shuttleShoulder, r);
+    t.ok('the rushes put no load on the spine, so no low-back flag', !r.rushLow, r);
+    /* THE FLOORS. Blanket-flagging the family satisfies every assertion above
+       and fails every one of these. */
+    t.ok('floor: a suitcase carry stays unflagged for the shoulder', !r.carryShoulder, r);
+    t.ok('floor: so does the bear-hug carry', !r.ruckcarryShoulder, r);
+    t.ok('floor: a goblet squat stays unflagged for the low back', !r.gobletLow, r);
+    t.ok('floor: a bodyweight squat stays unflagged for the knee', !r.squatKnee, r);
+    t.ok('floor: a squat thrust stays unflagged for the shoulder', !r.thrustShoulder, r);
+    t.ok('every FORCE swap target is a real exercise', r.swaps, r);
+    /* A pattern the Weights circuit never asks for is exactly as unreachable
+       as no pattern at all, and the "has equip but no pattern" rule passes it.
+       Found by inventing `carry` and `sprint` here: both satisfied the
+       validator and neither could ever be picked — measured at 0 appearances
+       in 400 circuits.
+
+       "The validator is clean" proves nothing about a validator RULE: it stays
+       clean whether the rule exists or not. Break the data in front of it and
+       require the specific complaint, then restore. console.error is muted
+       because validateData() logs and the harness counts a console error as a
+       page failure. */
+    const v = await page.evaluate(() => {
+      const CIRCUIT = WEIGHTS_PATTERNS.concat(WEIGHTS_PATTERNS_EXTRA);
+      const orphans = Object.keys(EX).filter(k => EX[k].pattern && !CIRCUIT.includes(EX[k].pattern));
+      const err = console.error; console.error = () => {};
+      const keep = EX.sbagdrag.pattern;
+      EX.sbagdrag.pattern = 'carry';                 // the exact value that escaped
+      const seeded = validateData();
+      EX.sbagdrag.pattern = keep;
+      const restored = validateData();
+      console.error = err;
+      return {
+        orphans, keep,
+        seededComplains: seeded.some(e => /sbagdrag.*pattern "carry".*never asks for/.test(e)),
+        restoredClean: restored.length === 0,
+        circuit: CIRCUIT,
+      };
+    });
+    t.eq('no exercise carries a pattern the circuit never asks for', v.orphans, [], v);
+    t.eq('the sandbag drag matches every other carry in the library', v.keep, 'core', v);
+    t.ok('the validator complains about an invented pattern', v.seededComplains, v);
+    t.ok('and is clean again once it is restored', v.restoredClean, v);
+    /* One copy of the list, and the BUILDER must read it. Asserting the
+       declaration exists is the weaker half and a mutant walked straight
+       through it: reverting the builder to its own inline literal leaves the
+       declaration standing while re-creating the two-hand-kept-copies drift
+       that caused this. Assert on the function's own source — the circuit is
+       randomised, so no single built session can prove which list it used. */
+    const idxSrc = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    t.eq('the circuit list is declared once', (idxSrc.match(/const WEIGHTS_PATTERNS=/g) || []).length, 1);
+    const reads = await page.evaluate(() => ({
+      builder: buildWeightsSession.toString(),
+      validator: validateData.toString(),
+    }));
+    t.ok('the Weights circuit reads it rather than restating it',
+      /WEIGHTS_PATTERNS\.forEach/.test(reads.builder), reads.builder.slice(0, 200));
+    t.ok('and so does the validator', /WEIGHTS_PATTERNS\.includes/.test(reads.validator));
+    t.eq('no inline copy of the pattern order is left anywhere',
+      (idxSrc.match(/\['squat','hinge','pushh'/g) || []).length, 1);
+    // artwork on disk and in a precache tier
+    const swSrc = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+    r.imgs.forEach(img => {
+      t.ok('artwork exists on disk: ' + img, fs.existsSync(path.join(ROOT, img)));
+      t.ok('and is precached: ' + img, swSrc.indexOf("'./" + img + "'") >= 0);
+    });
   }
 
   await browser.close(); srv.close();

@@ -3207,6 +3207,190 @@ The record was incomplete, not the rule — a **like-for-like prior is one that
 says it substituted nothing** (`subs:{}`), which is what that block always meant.
 Ten mutants across the row and the note, all caught.
 
+## A published standard is a fact with a date on it (v322)
+
+"I am preparing to join the army reserve" — the Canadian one, FORCE Evaluation,
+three to six months out, with a 20 kg sandbag and somewhere to sprint.
+
+**The roster search by MOVEMENT is what shaped the round.** Across 155
+exercises there was no drag, no shuttle, no rush and no floor-to-shelf lift.
+The nearest relatives were a suitcase carry and a bear-hug carry, and neither
+asks for what these ask for. So four new movements, one per FORCE task.
+
+**The figures are stamped with a date and the screen says whose job it is to
+confirm them.** This is the honest handling of a number the app cannot check: a
+published fitness standard moves — the US Army replaced the ACFT's event list
+mid-2025 — and a figure shown with confidence that is a year stale is *worse*
+than no figure, because the athlete trains to it. `FORCE_ASOF` is on the glass
+beside the numbers, with "this app has no internet access and cannot check them
+for you". Same discipline as `TEST_PROTOCOL`: state the conditions rather than
+implying there are none.
+
+**Absent is "not measured", which is not "failed".** `forceVerdict()` returns
+null for an event never logged, and the row says so. A mutant that read absent
+as a fail is caught by the check that all four start unmeasured.
+
+**Warn, do not swap — and the check that proves it needed a FLAG.** These are
+four named test events; substituting one leaves the athlete unprepared for the
+thing they will actually be asked to do, so `startForceTrain()` builds the real
+four and `forceRiskHTML()` names what is flagged. The mutant that routed them
+through `safeSwap()` **escaped**, because the block ran with no limitations
+set — `safeSwap` is the identity there and the mutant was equivalent. Only a
+flagged athlete can tell the two behaviours apart. A weak check, not a bad
+mutant, and the third time this session.
+
+**The safety gate is the baseline battery's, for the battery's reason.** Four
+maximal efforts under load is the one other place in the app that asks for a
+true max, so a flagged-and-uncleared health screen is sent to the clearance
+screen instead. It fails closed, and the floor pins that a cleared athlete
+still gets the session.
+
+### The gear list had drifted, and the missing entry was load-bearing
+
+Found on the way to adding `sandbag`. The kit list existed as **two hand-written
+literals** — onboarding offered 13 items, Settings offered 12 — and the missing
+one was `bike`. That is not cosmetic: `bikeSwap()` substitutes the trainer into
+conditioning slots and `hasTrainer()` gates the bike work, both off that key,
+and `toggleGear()` is the only writer after setup. **Buy a trainer after
+onboarding and you could never tell the app; sell one and you could never
+untell it.** Picking "Bike" on the Movement card does not set it either — that
+is `nutrition.cardioMode`, a different fact.
+
+Same shape as the five-diets drift, same fix: one `GEAR_OPTS`, each picker
+still rendering its own markup.
+
+**The old check could not see it, and that is the lesson.** It counted the ruck
+entry twice — asking whether ONE entry appeared in both copies, not whether the
+two copies AGREED. The replacement drives the Settings picker and compares what
+it offers against `GEAR_KEYS`.
+
+### A dead-control sweep that found nothing, and six probe bugs on the way
+
+`voicePitch`, `PLAYER.tempo` and `timelineWeeks` were all the same defect — a
+control the athlete sets that almost nothing reads — so the class is worth
+sweeping rather than waiting for a fourth. The method is the one this file
+prescribes: **set A, fingerprint the program, set B, fingerprint again, assert
+they differ.**
+
+**Six controls flagged dead on the first pass. All six were the probe.** In
+order of discovery:
+
+- **`kcalTarget` and `buildWarmup` do not exist.** The probe called both inside
+  a `try/catch`, so the calorie target and the warm-up were silently absent
+  from every fingerprint — which is why `timelineWeeks`, `nutrition.activity`
+  and `profile.mobility` all read as dead. The real names are
+  `kcalTargetPreview()` and `mobilityFlow(jointAwareWarmup(WARMUP_FLOW))`.
+- **`profile.daysPerWeek` does not exist.** The field is `profile.days`, an
+  ARRAY of weekday numbers, and writing a number there made `goalSlots()` throw
+  on an undefined session — a crash that looked like a real bug and was entirely
+  self-inflicted.
+- **`nutrition.cardioMode` is absent from `DEFAULT_STATE` on purpose**, so a
+  field-existence guard flags it. Absent means "the athlete has not chosen" and
+  `cardioMode()` falls back to jacks — a legitimate shape, not a missing field,
+  and the distinction has to be encoded in the guard rather than argued with.
+- **`cardioMode` reads on the RENDER**, not in any of the builders the
+  fingerprint covered.
+- **`timelineDeficit()` needs a current weight AND a goal weight below it.**
+  The seeded athlete has neither, so the probe never reached the code. A guard
+  that cannot fire in the case you tested is not tested — for the third time
+  this session.
+
+Given a real 86 kg athlete with a 165 lb goal, the timeline is very much alive:
+**1950 kcal / 180 g at 12 weeks, 2060 / 180 at 24, 2330 / 155 at 52.**
+
+**The fix that generalises is a guard on the probe, not on the app**: assert
+every field path exists in `DEFAULT_STATE()` and every function name is a
+function, and bail naming what is missing, before measuring anything. Half of
+the first dead-control probe's findings were the same mistake, and writing that
+down did not stop it happening again — a guard does.
+
+### The fourth sibling path to skip the gear check, and it was mine
+
+Also found by auditing my own change. `startForceTrain()` built its items from
+raw `EX[k]` and never asked `hasGearFor()`. Measured: an athlete with no
+sandbag tapping **"Train the four tasks"** was handed **all four**, three of
+which they physically cannot do.
+
+Every other path that picks a movement asks — `builderPool()`, `gearSwap()`,
+`weightsPool()` — and this one did not. That is the exact shape this file
+already records for `safeSwap()` being forgotten by five sibling paths, one
+subsystem over: **a new path that picks an exercise has to ask every question
+the old ones ask.**
+
+**It names what is missing rather than substituting**, for the same reason the
+joint case does: a bodyweight squat in place of a sandbag lift leaves the
+athlete unready for the thing they will actually be asked to do. The rushes
+need no kit, so a bagless athlete still gets real work.
+
+**Two of the five mutants escaped, and both were floors I had already written
+down elsewhere.** A note that always fires is a note nobody reads — nothing
+asserted the kit note is ABSENT with the bag owned. And the "nothing available
+at all" refusal is unreachable on today's library, because the rushes need no
+kit; it is now exercised directly by giving them an `equip` inside the check,
+the same technique the hardness-band and unit guards use.
+
+### Presence is not membership, in a VALIDATOR rule this time
+
+Found by auditing my own change, an hour after writing it. `pattern` was given
+the invented values `carry` and `sprint` for the new work — and both passed
+`validateData()`, because its rule is
+
+```js
+if(e.equip&&e.equip.length&&!e.pattern)errs.push(k+': has equip but no pattern — unreachable in the Weights circuit');
+```
+
+The rule's own message names the harm exactly, and it tests that a pattern
+EXISTS rather than that it is one the circuit asks for. The circuit asks from
+an explicit list, so **a pattern outside that list is exactly as unreachable as
+no pattern at all.** Measured: `sbagshuttle` and `sbagdrag` appeared **0 times
+in 400 circuits**, having satisfied every check.
+
+That is this file's most-repeated shape — truthiness for membership, `!= null`
+for absent, a range test doing a type test's job — reaching a validator rule
+rather than a repair. The list is now `WEIGHTS_PATTERNS`, read by the builder
+AND the validator, and the rule tests membership for every exercise rather
+than only geared ones.
+
+**Every carry already in the library is `pattern:'core'`.** Inventing a
+taxonomy value when the app already has one for the job is the same mistake as
+inventing a gear key: look at what the siblings do first.
+
+**And the check for it needed the builder to READ the list, not merely for the
+list to exist.** The mutant that reverted the builder to its own inline literal
+walked straight through a check counting the declaration — the declaration
+still stands, and the two-hand-kept-copies drift is back. Four mutants, all
+caught after that rewrite.
+
+### Three harness bugs in one session, all the same shape
+
+- A mutation detector greping `FAILED — N checks` misses a single failure,
+  which prints `check` (v321).
+- **`node tests/run.mjs 01 09` runs ONE file.** Three mutants read as escapes
+  because suite 09 never ran at all — the runner says "running 1 test file"
+  and the loop did not read it.
+- A `re.sub` rewriting the mutant table wrote a literal newline into a Python
+  string and broke every subsequent seed. Loudly, which is the only reason it
+  cost minutes rather than a false all-clear.
+
+**Read the run, not the pattern you hoped would match it.**
+
+### Two more traps this file already names, hit again
+
+- **A comment that quotes code breaks the duplicate-key check.** Four comments
+  reading `FORCE:` were counted as a duplicate key named `FORCE`. Reword the
+  prose, never weaken the check.
+- **Each block builds the state it asserts on.** The tile check failed because
+  an earlier block in suite 09 leaves the athlete un-onboarded, so Today
+  rendered the welcome screen and no tiles at all. It now sets `onboarded`,
+  guards that the tile row rendered, and asserts the tile sits BELOW the
+  session — a bare "it is on Today" passes on exactly the layout v246 rejected.
+
+**Deferred, and stated rather than quietly dropped:** there is still no running
+in this app — no run mode, no pace, no distance — and it is the aerobic base
+every one of these standards rests on. Rucking, jacks and the bike are the
+three cardio modes; a fourth is the next round, and the endurance programme
+depends on it.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
