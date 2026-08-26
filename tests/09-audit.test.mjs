@@ -1507,6 +1507,107 @@ export default async function run() {
 
   // ---- plAfterSet() must say something when a completed set fails to log,
   // instead of the athlete finding out later that the count never saved.
+  /* ---- a change of MOVEMENT is not a change of strength (v320) ------------
+     safeSwap() protects a flagged joint during the baseline battery, so the
+     number that comes back measures a DIFFERENT exercise — and nothing
+     recorded which. Measured on a wrist-flagged athlete: `stamina` is Burpees
+     and resolves to marching in place. Baseline 40 on the substitute, re-test
+     18 on real burpees once the wrist recovered — an athlete who genuinely
+     improved, whose stamina number more than halved, with nothing on the glass
+     to say the ruler had changed.
+
+     That is exactly what TEST_PROTOCOL already exists to prevent, one variable
+     down: a v1 and a v2 taken under different conditions are not the same
+     measurement. `subs` is now stamped on every record and both consumers ask
+     it — retestDrop() and the strength trend. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      STATE.profile.limitations = ['wrist']; save();
+      o.subsWrist = assessSubs();
+      STATE.profile.limitations = []; save();
+      o.subsNone = assessSubs();
+
+      const flagged = { subs: { stamina: 'march' } }, clean = { subs: {} };
+      o.differentMovement = sameMovement(flagged, clean, 'stamina');
+      o.sameMovement = sameMovement(clean, clean, 'stamina');
+      o.untouchedTest = sameMovement(flagged, clean, 'plank');
+      /* An older record has no `subs` at all — unknown, not equal. It must fail
+         CLOSED, or every phone carrying a pre-v320 baseline silently claims a
+         like-for-like comparison it cannot vouch for. */
+      o.legacyFailsClosed = sameMovement({}, clean, 'stamina');
+
+      /* DRIVE THE REAL WRITER. Hand-building records exercises sameMovement()
+         and the trend and NOTHING about the save path — a mutant that deleted
+         `subs:assessSubs()` from the record literal walked straight through
+         four checks. finishAssessment() is what an athlete's last tap reaches. */
+      STATE.profile.limitations = ['wrist'];
+      STATE.baseline = null; STATE.reassess = {}; STATE.scoreHistory = [];
+      assessState = { idx: 0, results: {}, reassess: 0 };
+      TESTS.forEach(t => { assessState.results[t.id] = 20; });
+      save();
+      try { finishAssessment(); } catch (e) { o.finishThrew = e.message; }
+      o.savedSubs = (STATE.baseline || {}).subs || null;
+      o.writerStampsSubs = !!(o.savedSubs && Object.keys(o.savedSubs).length > 0);
+      /* And the floor: an athlete with nothing flagged records an EMPTY map,
+         not a missing one — absent has to keep meaning "before the stamp". */
+      STATE.profile.limitations = [];
+      STATE.baseline = null;
+      assessState = { idx: 0, results: {}, reassess: 0 };
+      TESTS.forEach(t => { assessState.results[t.id] = 20; });
+      save();
+      try { finishAssessment(); } catch (e) {}
+      o.cleanSubs = (STATE.baseline || {}).subs;
+      o.cleanStampsEmpty = !!(o.cleanSubs && Object.keys(o.cleanSubs).length === 0);
+      try { closeSheet(); } catch (e) {}
+
+      /* Drive the real trend: a substituted baseline, a clean re-test. */
+      STATE.baseline = { date: '2026-07-01', score: 63, level: 'Beginner',
+        testCount: TESTS.length, protocol: TEST_PROTOCOL,
+        subs: { stamina: 'march' }, maxes: { stamina: 40, plank: 60 } };
+      STATE.reassess = { 1: { date: '2026-08-15', score: 74, level: 'Intermediate',
+        testCount: TESTS.length, protocol: TEST_PROTOCOL,
+        subs: {}, maxes: { stamina: 18, plank: 75 } } };
+      save();
+      /* GUARD: `subs` has to survive assessSeries(), which builds the chart's
+         points. It was dropped there on the first attempt and EVERY metric read
+         as not-comparable — a marker that lives only in the stored record is
+         not a record. */
+      const series = assessSeries();
+      o.seriesCarriesSubs = series.length >= 2 && series.every(x => x.subs !== undefined);
+
+      strengthSel = 'stamina';
+      const swapped = strengthTrendHTML();
+      o.swappedSaysSo = /not comparable/.test(swapped);
+      o.swappedWithholdsVerdict = !/▲|▼/.test(swapped);
+      o.swappedStillPlots = /svg/i.test(swapped);
+      /* THE FLOOR: a test that was NEVER substituted must still get its
+         verdict. A change that simply withheld every verdict satisfies both
+         assertions above and guts the feature. */
+      strengthSel = 'plank';
+      const plain = strengthTrendHTML();
+      o.plainKeepsVerdict = /▲|▼/.test(plain);
+      o.plainNoWarning = !/not comparable/.test(plain);
+      return o;
+    });
+
+    t.ok('guard: a flagged wrist really does substitute a test',
+      Object.keys(r.subsWrist).length > 0, r.subsWrist);
+    t.eq('and nothing is substituted with no joint flagged', r.subsNone, {});
+    t.eq('two records that used different movements are not the same', r.differentMovement, false, r);
+    t.eq('two records that used the same movement are', r.sameMovement, true, r);
+    t.eq('a test neither record substituted is the same', r.untouchedTest, true, r);
+    t.eq('a record from before the stamp fails closed', r.legacyFailsClosed, false, r);
+    t.ok('the real save path stamps the substitutions', r.writerStampsSubs, r);
+    t.ok('and stamps an empty map when nothing was substituted', r.cleanStampsEmpty, r);
+    t.ok('the substitutions survive into the chart series', r.seriesCarriesSubs, r);
+    t.ok('a metric measured on two different movements says so', r.swappedSaysSo, r);
+    t.ok('and withholds the up/down verdict', r.swappedWithholdsVerdict, r);
+    t.ok('while still plotting both real measurements', r.swappedStillPlots, r);
+    t.ok('a metric measured the same way both times keeps its verdict', r.plainKeepsVerdict, r);
+    t.ok('and carries no warning', r.plainNoWarning, r);
+  }
+
   {
     const r = await page.evaluate(() => {
       openPlayer();
@@ -1830,6 +1931,8 @@ export default async function run() {
       typeof r.ratio === 'number' && Math.abs(r.ratio - 1) < 0.05, r);
     await ctx.close();
   }
+
+  await tzb.close();
 
   await tzb.close();
 

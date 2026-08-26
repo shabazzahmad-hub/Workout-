@@ -1807,7 +1807,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='319';
+const APP_VERSION='320';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -6126,7 +6126,8 @@ function renderAssessStep(){
     <div class="row" style="justify-content:space-between;margin-bottom:6px"><div class="tiny muted">Test ${i+1} of ${total}</div><button class="chip" onclick="closeSheet()">Cancel</button></div>
     <div class="pbar" style="margin-bottom:14px"><i style="width:${(i)/total*100}%"></i></div>
     <h3>${t.name}</h3>
-    ${swapped?`<div class="note fire" style="margin-bottom:10px">Swapped to <b>${_ve(ex.name)}</b> — you flagged your ${_ve((joint||'joint').toLowerCase())}, and this tests the same capacity without the risk.</div>`:''}
+    ${swapped?`<div class="note fire" style="margin-bottom:10px">Swapped to <b>${_ve(ex.name)}</b> — you flagged your ${_ve((joint||'joint').toLowerCase())}, so this is the closest safe way to measure you here.
+      <div class="tiny" style="margin-top:6px;opacity:.9">It is a different movement, so this number is not comparable to the un-flagged test. Your record notes the swap, and the trend will say so rather than read it as a change in strength.</div></div>`:''}
     ${ex.img?`<img class="exphoto" src="${ex.img}" alt="">`:emblemHTML(ex)}
     <div class="note info">${swapped?assessSwapInstr(t):t.instr}</div>
     ${(t.unit==='time'||t.dur)?`<button class="btn green" style="margin-bottom:12px" onclick="startBaselineTimer()">▶ ${t.dur?`Start ${t.dur}s timer`:'Start timer'}</button>`:''}
@@ -6346,6 +6347,35 @@ function rebaseAdapt(){STATE.adapt=1;STATE.exAdapt={};}
    implausible as real detraining, ASK. Both answers are legitimate. A genuine
    regression after an eight-week layoff or an injury is real data and must be
    recordable — this only refuses to assume. */
+/* WHICH TESTS WERE MEASURED ON A DIFFERENT MOVEMENT. safeSwap() protects a
+   flagged joint during the battery — correctly — but the number that comes back
+   is then a measurement of a DIFFERENT exercise, and nothing recorded that.
+
+   Measured on a wrist-flagged athlete: `stamina` is Burpees, and safeSwap()
+   resolves it to a Single-Leg Dead Bug. Baseline 40 on the dead bug, re-test 18
+   on real burpees once the wrist recovered — an athlete who genuinely improved,
+   whose stamina number more than halved, with nothing to say the movement
+   changed.
+
+   That is precisely the reasoning TEST_PROTOCOL already exists for: a v1
+   baseline and a v2 re-test were not taken under the same conditions, and the
+   app should be able to say so rather than read the gap as progress. The
+   substituted movement is the same kind of variable, one level down. */
+function assessSubs(){
+  const out={};
+  try{TESTS.forEach(t=>{const sw=safeSwap(t.ex);if(sw!==t.ex)out[t.id]=sw;});}catch(e){}
+  return out;
+}
+/* Did this test measure the SAME movement in both records? An absent `subs` is
+   an older record from before the stamp existed — unknown, not equal, so it
+   fails closed and the comparison is skipped rather than trusted. */
+function sameMovement(recA,recB,testId){
+  try{
+    const a=recA&&recA.subs, b=recB&&recB.subs;
+    if(!a||!b||typeof a!=='object'||typeof b!=='object')return false;
+    return (a[testId]||null)===(b[testId]||null);
+  }catch(e){return false;}
+}
 function retestDrop(a){
   try{
     const prev=assessState&&assessState.reassess
@@ -6356,9 +6386,20 @@ function retestDrop(a){
     if(prev.testCount&&prev.testCount!==TESTS.length)return null;
     const pct=(prev.score-a.score)/prev.score;
     if(pct<0.25)return null;
-    // which movements fell away, so the question can name them
+    /* which movements fell away, so the question can name them — and ONLY
+       where both records measured the same movement. safeSwap() protects a
+       flagged joint by testing a substitute, so a wrist that has recovered
+       turns a Single-Leg Dead Bug back into Burpees and the number drops by
+       more than half on an athlete who improved. That is a change of ruler,
+       not a loss of capacity, and naming it here would ask the athlete to
+       explain a regression that did not happen.
+
+       This is the same guard the testCount line above already makes — "a
+       like-for-like comparison only" — one variable further in. */
+    const _nowSubs={subs:assessSubs()};
     const worse=[];
     TESTS.forEach(t=>{
+      if(!sameMovement(prev,_nowSubs,t.id))return;
       const now=+assessState.results[t.id]||0;
       const was=+((prev.results||{})[t.id])||0;
       if(was>0&&now<was*0.75)worse.push({name:t.name,was,now,unit:t.unit});
@@ -6397,6 +6438,9 @@ function finishAssessment(){
      rested between maximal efforts is the same kind of fact about the run. */
   const _rests=assessRests();
   const rec={date:todayISO(),results:assessState.results,score:a.score,level:a.level,maxes:a.maxes,testCount:TESTS.length,protocol:TEST_PROTOCOL,
+    /* Stamped even when empty, so an absent `subs` reliably means "recorded
+       before this existed" and sameMovement() can fail closed on it. */
+    subs:assessSubs(),
     restsFull:_rests.filter(x=>x>=ASSESS_REST_SEC).length,restsTaken:_rests.length,
     restMedian:_rests.length?_rests.slice().sort((x,y)=>x-y)[Math.floor(_rests.length/2)]:null};
   /* Ask BEFORE writing anything. An interstitial that appears after the commit
@@ -11902,12 +11946,17 @@ let strengthSel='plank';
 function setStrengthMetric(k){strengthSel=k;renderProgress();}
 function assessSeries(){
   const list=[];
-  if(STATE.baseline&&STATE.baseline.maxes)list.push({date:STATE.baseline.date,maxes:STATE.baseline.maxes});
+  /* `subs` travels WITH the maxes. It was left behind here on the first
+     attempt, so every metric read as "measured on a different movement" and
+     the trend withheld a verdict on all of them — a marker that lives only in
+     the stored record is not a record, the same shape as the macroDerived
+     stamp saveFood() used to drop. */
+  if(STATE.baseline&&STATE.baseline.maxes)list.push({date:STATE.baseline.date,maxes:STATE.baseline.maxes,subs:STATE.baseline.subs});
   /* skipReassess() carries the previous block's maxes forward stamped with
      today's date and flagged deferred. Plotting those drew a dead-flat strength
      trend from tests that never happened — which reads as a plateau, which is
      exactly the signal that makes someone abandon a program that was working. */
-  Object.keys(STATE.reassess||{}).map(Number).sort((a,b)=>a-b).forEach(k=>{const r=STATE.reassess[k];if(r&&r.maxes&&!r.deferred)list.push({date:r.date,maxes:r.maxes});});
+  Object.keys(STATE.reassess||{}).map(Number).sort((a,b)=>a-b).forEach(k=>{const r=STATE.reassess[k];if(r&&r.maxes&&!r.deferred)list.push({date:r.date,maxes:r.maxes,subs:r.subs});});
   return list;
 }
 function strengthTrendHTML(){
@@ -11915,12 +11964,22 @@ function strengthTrendHTML(){
   const m=STRENGTH_METRICS.find(x=>x.k===strengthSel)||STRENGTH_METRICS[0];
   const disp=v=>m.unit==='time'?fmtTime(v):v+' reps';
   const chips=STRENGTH_METRICS.map(x=>`<button class="chip ${x.k===strengthSel?'on':''}" onclick="setStrengthMetric('${x.k}')">${x.label}</button>`).join(' ');
-  const pts=series.map(s=>({date:s.date,v:(s.maxes&&s.maxes[m.k])||0})).filter(p=>p.v>0);
+  const pts=series.map(s=>({date:s.date,v:(s.maxes&&s.maxes[m.k])||0,rec:s})).filter(p=>p.v>0);
+  /* A DELTA ACROSS A CHANGE OF MOVEMENT IS NOT PROGRESS. safeSwap() tests a
+     substitute while a joint is flagged, so the same metric can be a Dead Bug
+     in one record and Burpees in the next — measured at 40 then 18 on an
+     athlete who improved. The chart still plots every point, because each one
+     is a real thing that happened; what is withheld is the ▲/▼ verdict, which
+     is the part that would be a lie. */
+  const _mixed=pts.length>=2&&pts.some(p=>!sameMovement(pts[0].rec,p.rec,m.k));
   let body;
   if(pts.length>=2){
     const vals=pts.map(p=>p.v),dates=pts.map(p=>p.date);const first=vals[0],last=vals[vals.length-1],d=last-first;
     body=lineChart(vals,dates,'var(--fire)',m.unit==='time'?'s':'')+
-      `<div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">${disp(first)}</span><span class="tiny" style="font-weight:800;color:${d>=0?'var(--green)':'var(--pink)'}">${d>=0?'▲ +':'▼ '}${m.unit==='time'?fmtTime(Math.abs(d)):Math.abs(d)+' reps'}</span><span class="tiny muted">${disp(last)}</span></div>`;
+      `<div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">${disp(first)}</span>${_mixed
+        ? `<span class="tiny" style="font-weight:800;color:var(--gold)">— not comparable</span>`
+        : `<span class="tiny" style="font-weight:800;color:${d>=0?'var(--green)':'var(--pink)'}">${d>=0?'▲ +':'▼ '}${m.unit==='time'?fmtTime(Math.abs(d)):Math.abs(d)+' reps'}</span>`}<span class="tiny muted">${disp(last)}</span></div>`
+      +(_mixed?`<div class="tiny muted" style="margin-top:6px;color:var(--gold)">A flagged joint meant this test used a <b>different movement</b> in one of these records, so the change is not a like-for-like comparison.</div>`:'');
   }else if(!pts.length){
     // an imported backup can carry baseline.maxes as {} — pts[0] then threw and
     // took the whole Progress tab down through the render boundary

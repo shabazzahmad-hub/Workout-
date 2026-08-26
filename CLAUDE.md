@@ -2979,6 +2979,72 @@ once worked. Locate them rather than guessing: scanning for the rope's dark
 column put it at x=1014, which is what set `crop=720:720:280:0` instead of a
 centred crop that would have kept it.
 
+## A change of RULER is not a change of strength (v320)
+
+`safeSwap()` protects a flagged joint during the baseline battery — correctly,
+and v251 added it for exactly that reason. What nothing recorded is that the
+number coming back then measures a **different exercise**.
+
+Seven swaps are reachable in the battery. Three of them do not preserve the
+capacity the test exists to measure:
+
+| swap | flagged | capacity |
+|---|---|---|
+| `invertedrow → towelrow` | shoulder | preserved |
+| `burpee → squatthrust` | shoulder, knee | preserved |
+| `pushup → fistpushup` | wrist | preserved |
+| `revcrunch → deadbug` | lowback | preserved |
+| **`jumpsquat → squat`** | knee | explosive becomes non-explosive |
+| **`bicycle → deadbug`** | lowback | dynamic becomes static |
+| **`burpee → march`** | wrist | maximal conditioning becomes marching |
+
+And the notice said, of every one of them, *"this tests the same capacity
+without the risk."*
+
+**Measured end to end.** A wrist-flagged athlete records `stamina` **40** on the
+substitute; six weeks later the wrist is better and real burpees give **18**.
+The athlete improved and their stamina number more than halved, with nothing on
+the glass to say the ruler had changed.
+
+That is precisely what `TEST_PROTOCOL` already exists to prevent, one variable
+down: a v1 and a v2 taken under different conditions are not the same
+measurement, and the app should say so rather than read the gap as progress.
+`subs` is now stamped on every record and both consumers ask it —
+`retestDrop()`, which already made the same guard on `testCount` (*"a
+like-for-like comparison only"*), and the strength trend, which withholds the
+▲/▼ verdict while still plotting both real points.
+
+**A legacy record fails closed.** Every phone is carrying a baseline with no
+`subs` at all. Unknown is not equal, so `sameMovement()` returns false and the
+comparison is skipped rather than trusted.
+
+### Two collisions, and the one-joint cases are the common ones
+
+15 of 37 realistic flag combinations land two tests on the same movement.
+A **knee** alone makes `power` and `squat` both the Bodyweight Squat; a
+**lowback** alone makes `lower` and `dyn` both the Dead Bug. The protocols
+still differ (20 seconds versus open), so the numbers are not identical — but
+the athlete does the same exercise twice and the second is measured tired.
+
+### The marker that lived only in the record
+
+`assessSeries()` builds the chart's points as `{date, maxes}` and dropped
+`subs`, so on the first attempt EVERY metric read as not-comparable and the
+trend withheld every verdict. Same shape as the `macroDerived` stamp
+`saveFood()` used to drop in v304: **a marker that survives only in storage is
+not a record.** The floor check — a test that was never substituted keeps its
+verdict — is what caught it.
+
+### And the mutant that proved four checks tested nothing
+
+Deleting `subs:assessSubs()` from the record literal walked straight through,
+because every check hand-built its records and exercised `sameMovement()` and
+the trend but never the WRITER. `finishAssessment()` is what an athlete's last
+tap reaches, and driving it is what catches this. Calling the helper is not
+driving the route — the fifth time this file has recorded that.
+
+Five mutants, all caught after that rewrite.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
