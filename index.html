@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='330';
+const APP_VERSION='331';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4114,6 +4114,17 @@ function forceKitHTML(){
    combination that is specific to soldiering. Each is `w`/`r`/`n` minutes so
    the existing interval engine drives it — no fifth timer. */
 const RUN_TT_M=2400;                       // the distance the time trial is run over
+/* …and the LABEL comes from it. The constant was declared, commented, and
+   never read once, while the distance and the words beside it were spelled
+   out by hand in three places — the session row, the Progress card and the
+   entry sheet. That is the
+   two-hand-kept-literals shape this file already paid for with the five diets
+   and the gear list: editing the constant moved nothing, and editing one
+   string left the other two disagreeing with it. */
+function runTTLabel(){
+  const km=RUN_TT_M/1000;
+  return (km===Math.round(km)?String(km):km.toFixed(1))+' km time trial';
+}
 const RUN_SESSIONS=[
   {id:'base', name:'Base run', pace:'easy', mins:35,
    why:'The pace most people skip and the one that builds the engine. Conversational the whole way — if you cannot talk, you are running it wrong.'},
@@ -4123,12 +4134,11 @@ const RUN_SESSIONS=[
    why:'Comfortably hard, held for 20 minutes. Raises the pace you can hold before you start to fade — which is exactly what a timed run measures.'},
   {id:'intervals', name:'6 × 400 m', pace:'intervals', mins:18,
    why:'Six hard 400s with equal jogging between. Speed for the time trial. Stop the session if the last one is slower than the first by more than a few seconds.'},
-  {id:'tt', name:'2.4 km time trial', pace:'intervals', mins:12, test:true,
+  {id:'tt', name:runTTLabel(), pace:'intervals', mins:12, test:true,
    why:'The measurement, not a workout. Warm up properly, run it honestly, and log the time. Once every three or four weeks is plenty.'},
   {id:'brick', name:'Run then ruck', pace:'steady', mins:45,
    why:'20 minutes running straight into 25 minutes under the pack. The legs that have to carry the load are already tired, which is the point and is also what a selection day feels like.'},
 ];
-const RUN_SESSION_IDS=RUN_SESSIONS.map(x=>x.id);
 function runSession(id){return RUN_SESSIONS.find(x=>x.id===id)||null;}
 /* The athlete's own required time, in seconds. ABSENT means "not given one",
    which is a different answer from "no target" and must not render as one. */
@@ -4153,7 +4163,7 @@ function openArmyRun(){
     <h3>🏃 Army running</h3>
     <div class="note info">The FORCE Evaluation has no run in it. Running is still the aerobic base underneath everything else you are being asked to do, and it is what a ruck march is built on.</div>
     <div class="card pad">
-      <div class="kv"><span><b>2.4 km time trial</b><div class="tiny muted" style="margin-top:2px">Your best</div></span>
+      <div class="kv"><span><b>${_ve(runTTLabel())}</b><div class="tiny muted" style="margin-top:2px">Your best</div></span>
         <span style="text-align:right"><b>${best!==null?fmtTime(best):'—'}</b>
           <div class="tiny muted">${tgt!==null?'target '+fmtTime(tgt):'no target set'}</div>
           ${v?`<div style="margin-top:3px">${v==='pass'
@@ -4173,7 +4183,7 @@ function openArmyRun(){
 function openRunTT(){
   const b=runTTBest(), t=runTTTarget();
   openSheet(`
-    <h3>2.4 km time trial</h3>
+    <h3>${_ve(runTTLabel())}</h3>
     <div class="note info">Times in <b>minutes and seconds</b> — enter 11:56 as <b>11</b> and <b>56</b>.</div>
     <div class="field"><label>Your best time</label>
       <div class="row" style="gap:8px"><input id="tt-bm" type="number" inputmode="numeric" min="0" placeholder="min" value="${b!==null?Math.floor(b/60):''}">
@@ -4236,7 +4246,13 @@ function startRunSession(id){
 const PREP_RAMP=1.10;             // the most weekly distance may climb
 const PREP_DOWN_CUT=0.7;          // a down week is this share of the week before
 const PREP_FLOOR_KM=8;            // where an athlete with nothing logged starts
-const PREP_TAPER_DAYS=10;         // freshness in, volume out
+/* The taper, in the unit the phase model actually works in. This was
+   PREP_TAPER_DAYS=10 — never read, and wrong: prepPhase() tapers at two WEEKS
+   to go, so the constant claimed 10 days while the code did 14, and editing it
+   changed nothing. A number that looks like a setting and is not is the
+   voicePitch trap; it is now the only place the boundary lives. */
+const PREP_TAPER_WEEKS=2;         // freshness in, volume out
+const PREP_SHARPEN_WEEKS=6;       // where the climb stops and the hard work starts
 /* Volume PLATEAUS when the hard sessions arrive. The sharpen note has always
    said "volume holds" and the curve climbed 10% a week straight through it —
    measured over a 20-week block, weeks 15-18 ran 30.4 -> 36.8 -> 40.4 km, the
@@ -4391,13 +4407,13 @@ function prepWeekNo(){
 function prepClimbWeeks(){
   const left=prepWeeksLeft(), wk=prepWeekNo();
   if(left===null)return wk;
-  return Math.max(1,wk+(left-6));
+  return Math.max(1,wk+(left-PREP_SHARPEN_WEEKS));
 }
 function prepPhase(){
   const left=prepWeeksLeft();
   if(left===null)return null;
-  if(left<=2)return 'taper';
-  if(left<=6)return 'sharpen';
+  if(left<=PREP_TAPER_WEEKS)return 'taper';
+  if(left<=PREP_SHARPEN_WEEKS)return 'sharpen';
   if(left<=12)return 'build';
   return 'base';
 }

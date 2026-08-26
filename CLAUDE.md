@@ -3796,6 +3796,52 @@ makes it a statement about jacks rather than about the total.
 `specialcardio` intervals are the one session with a real intensity dial
 (`BIKE_LEVELS`) behind them. Not every two-way branch over this set is a bug.
 
+## Three constants that were declared and never read (v331)
+
+A sweep of every top-level ALLCAPS `const` against how often it is actually
+READ. Three were never read once, and each was a different failure:
+
+- **`RUN_TT_M`** carried a comment naming it as the time trial's distance, and
+  the distance was spelled out by hand in **three** places instead — the
+  session row, the Progress card and the entry sheet. Editing the constant
+  moved nothing; editing one string left the other two disagreeing with it.
+  That is the five-diets shape exactly. `runTTLabel()` is now the only copy.
+- **`PREP_TAPER_DAYS`** was not merely unread, it was **wrong**. It said 10
+  days; `prepPhase()` tapers at two WEEKS. A number that looks like a setting,
+  disagrees with the behaviour it names, and changes nothing when edited is the
+  `voicePitch` trap in its purest form. It is now `PREP_TAPER_WEEKS`, in the
+  unit the phase model works in, and it is the only place the boundary lives.
+- **`RUN_SESSION_IDS`** was dead outright — `runSession()` already does the
+  membership test it existed for.
+
+**And v330's own `prepClimbWeeks()` had introduced a second copy of the sharpen
+boundary** beside `prepPhase()`'s. Fixing one instance is not fixing the class,
+including when the instance is the one you shipped an hour earlier.
+
+### Five of eight mutants escaped first, and both reasons are already in this file
+
+- **The first inline `<script>` on this page is two characters long.** The
+  source scan used `querySelector('script:not([src])')` and read it, so four
+  mutants that hardcoded the distance back walked straight through. Take the
+  BIGGEST script, and guard that the text really contains the app.
+- **A top-level `const` is not a `window` property.** `typeof
+  window.PREP_TAPER_DAYS === 'undefined'` is true whether or not the constant
+  exists, so the "the dead constants are gone" check passed on nothing. Scan
+  the source for the DECLARATION.
+
+A rendered-text check could not have caught any of the four either: a hardcoded
+string that happens to match today's constant is indistinguishable on screen.
+The counts are what discriminate — three call sites, and the derivation itself
+reading `RUN_TT_M`.
+
+**And the fix's own comment broke two of its own checks**, which is the trap
+this file records for `SAFE_SWAP` prose: a comment quoting the literal it
+forbids is counted by the scan that forbids it. Reword the prose, never weaken
+the check. The declaration `function runTTLabel()` also matches a
+`runTTLabel()` call-site pattern, so the count subtracts it.
+
+Eight mutants, all caught after those rewrites.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

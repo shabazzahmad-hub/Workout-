@@ -2509,6 +2509,134 @@ export default async function run() {
     t.ok('and base’s note still says almost all of it is easy',
       /easy/i.test(pn.notes.base), pn.notes.base);
     }
+    /* ---- constants that were declared and never read (v331) --------------
+
+       A sweep for every ALLCAPS top-level const and how often it is READ found
+       three that were never read once:
+
+         RUN_TT_M        "the distance the time trial is run over" — while
+                         "2.4 km time trial" was written out by hand in THREE
+                         places. Editing the constant moved nothing; editing
+                         one string left the other two disagreeing with it.
+                         The five-diets shape, again.
+         PREP_TAPER_DAYS "freshness in, volume out" — and WRONG: prepPhase()
+                         tapers at two WEEKS, so it claimed 10 days while the
+                         code did 14. A number that looks like a setting and
+                         is not is the voicePitch trap.
+         RUN_SESSION_IDS dead outright — runSession() already membership-tests.
+
+       And v330's own prepClimbWeeks() had introduced a SECOND copy of the
+       sharpen boundary beside prepPhase()'s. Fixing one instance is not
+       fixing the class, including when the instance is your own. */
+    const dc = await page.evaluate(() => {
+      const o = {};
+      o.namesExist = typeof runTTLabel === 'function'
+        && typeof RUN_TT_M === 'number'
+        && typeof PREP_TAPER_WEEKS === 'number' && typeof PREP_SHARPEN_WEEKS === 'number';
+      if (!o.namesExist) return o;
+      const iso = d => { const x = new Date(); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); };
+      const keep = JSON.parse(JSON.stringify(STATE.prep || {}));
+
+      /* The label is DERIVED, and the check reads the constant rather than
+         restating "2.4 km" — asserting the literal would pass on a hardcoded
+         string, which is the defect. */
+      o.label = runTTLabel();
+      o.wantsKm = String(RUN_TT_M / 1000);
+      o.labelFromConstant = o.label.indexOf(o.wantsKm) === 0;
+      /* Every surface must move with it. Rendered text, not the source. */
+      o.ttSessionName = (RUN_SESSIONS.find(x => x.id === 'tt') || {}).name;
+      STATE.prep = { date: iso(60), planFrom: iso(0) };
+      const seen = () => document.body.innerText.replace(/\s+/g, ' ');
+      try { openArmyRun(); o.onArmyCard = seen().indexOf(o.label) >= 0; } catch (e) { o.onArmyCard = 'threw'; }
+      try { closeSheet(); } catch (e) {}
+      try { openRunTT(); o.onEntrySheet = seen().indexOf(o.label) >= 0; } catch (e) { o.onEntrySheet = 'threw'; }
+      try { closeSheet(); } catch (e) {}
+      /* FLOOR: no surface still carries a hand-written distance, and each of
+         the three really CALLS the derivation.
+
+         Scan the SOURCE, because a hardcoded string that happens to match
+         today's constant is indistinguishable on screen — four mutants that
+         reverted the label escaped a rendered-text check. And take the
+         BIGGEST inline script: the first one on this page is two characters
+         long, which is the wrong-script-element trap already recorded here. */
+      const src = [...document.querySelectorAll('script:not([src])')]
+        .map(e => e.textContent).sort((a, b) => b.length - a.length)[0];
+      o.srcIsApp = src.indexOf('function runTTLabel') >= 0;
+      o.handWritten = (src.match(/2\.4 km time trial/g) || []).length;
+      /* Three sites must each call it: the session row, the army card, the
+         entry sheet. Counting the calls is what makes reverting ONE of them
+         fail rather than only reverting all three. */
+      /* Call sites only — `function runTTLabel()` matches the same pattern,
+         so counting raw occurrences reads one too many. */
+      o.labelCalls = (src.match(/runTTLabel\(\)/g) || []).length
+        - (src.match(/function\s+runTTLabel\(\)/g) || []).length;
+      /* And the derivation reads the constant rather than restating it. */
+      o.labelSrc = runTTLabel.toString();
+      o.labelReadsConstant = /RUN_TT_M/.test(o.labelSrc);
+
+      /* The taper and sharpen boundaries live in exactly one place each. */
+      STATE.prep = { planFrom: iso(0) };
+      o.phaseAt = {};
+      [200, 80, 45, 20, 15, 8].forEach(d => { STATE.prep.date = iso(d); o.phaseAt[d] = prepPhase(); });
+      /* Read the boundary out of the app, then prove the phase really turns
+         there — a check that restated 2 and 6 would pass on any constant. */
+      const atWeeks = w => { STATE.prep.date = iso(w * 7 + 1); return prepPhase(); };
+      o.taperInside = atWeeks(PREP_TAPER_WEEKS - 1);
+      o.taperOutside = atWeeks(PREP_TAPER_WEEKS + 1);
+      o.sharpenInside = atWeeks(PREP_SHARPEN_WEEKS - 1);
+      o.sharpenOutside = atWeeks(PREP_SHARPEN_WEEKS + 1);
+      /* prepClimbWeeks() must read the SAME boundary, not a second copy —
+         v330 shipped one. Move the plateau and the climb must move with it. */
+      o.climbSrc = prepClimbWeeks.toString();
+      o.climbUsesConstant = /PREP_SHARPEN_WEEKS/.test(o.climbSrc);
+      o.climbHasLiteral = /\bleft\s*-\s*6\b/.test(o.climbSrc);
+
+      /* A top-level `const` is NOT a window property, so `typeof
+         window.PREP_TAPER_DAYS === 'undefined'` is true whether or not the
+         constant exists — the check passed on nothing and a mutant restoring
+         it walked straight through. Scan the source for the DECLARATION. */
+      o.deadGone = !/\bconst\s+RUN_SESSION_IDS\s*=/.test(src)
+        && !/\bconst\s+PREP_TAPER_DAYS\s*=/.test(src);
+      STATE.prep = keep;
+      return o;
+    });
+
+    t.ok('guard: every name this block calls exists', dc.namesExist, dc);
+    if (!dc.namesExist) {
+      t.ok('guard: the block collected something to assert on', false, dc);
+    } else {
+      /* The label is built from the constant, on every surface. */
+      t.ok('the time-trial label is derived from RUN_TT_M', dc.labelFromConstant,
+        { label: dc.label, wants: dc.wantsKm });
+      t.eq('and the session row uses it', dc.ttSessionName, dc.label);
+      t.ok('and the army-running card shows it', dc.onArmyCard === true, dc);
+      t.ok('and the entry sheet shows it', dc.onEntrySheet === true, dc);
+      /* FLOOR: and nothing writes the distance out by hand any more. Three
+         copies is how the five diets drifted. */
+      t.ok('guard: the source scanned really is the app', dc.srcIsApp, dc);
+      t.eq('no surface hardcodes the distance any more', dc.handWritten, 0);
+      t.eq('and all three sites call the derivation', dc.labelCalls, 3);
+      t.ok('which itself reads the constant', dc.labelReadsConstant, dc.labelSrc);
+
+      /* The phase boundaries are single-sourced, and really bite where the
+         constants say. Restating 2 and 6 here would pass on any value. */
+      t.ok('the taper starts inside PREP_TAPER_WEEKS', dc.taperInside === 'taper',
+        { weeks: dc.taperInside });
+      t.ok('and has not started outside it', dc.taperOutside !== 'taper',
+        { weeks: dc.taperOutside });
+      t.ok('sharpening starts inside PREP_SHARPEN_WEEKS', dc.sharpenInside === 'sharpen',
+        { weeks: dc.sharpenInside });
+      t.ok('and has not started outside it', dc.sharpenOutside !== 'sharpen',
+        { weeks: dc.sharpenOutside });
+      /* v330 introduced a second copy of the sharpen boundary in its own new
+         function. Assert on the SOURCE, because a literal 6 and the constant
+         are indistinguishable from the output while both are 6. */
+      t.ok('the volume plateau reads the same boundary constant', dc.climbUsesConstant, dc.climbSrc);
+      t.ok('and does not carry a second copy of the number', !dc.climbHasLiteral, dc.climbSrc);
+
+      t.ok('and the constants that were never read are gone', dc.deadGone, dc);
+    }
+
 
     /* ---- the ruck ladder (v326) --------------------------------------------
        v325 scheduled the running and left the rucking as a SENTENCE — "build
