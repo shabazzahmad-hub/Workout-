@@ -1460,13 +1460,13 @@ const EX = {
   sbaglift:{name:'Sandbag Lift',region:'strength',unit:'reps',img:'ex-sbaglift.jpg',anchor:null,hardness:1,repCap:30,base:14,rest:60,equip:['sandbag'],pattern:'hinge',
     why:'The first FORCE task: 30 lifts of a 20 kg bag above 1.0 m, alternating sides. It is a floor-to-shelf lift repeated to the point it becomes a conditioning event, which is exactly how it feels on the day.',
     steps:['Set two marks about 1.25 m apart and pick a shelf or rail at 1.0 m.','Squat to the bag, grip it high on the body, keep your back flat.','Drive with the legs and place the bag on the shelf — place it, do not throw it.','Take it down, step across, and repeat to the other side.','Count each placement as a rep. Breathe out on every lift.'],cues:['Bag high on the chest, not hanging off your fingers','Drive with the legs, the arms only guide it','Place it on the shelf, never throw it'],mistakes:['Rounding the back to reach the bag faster','Bending the arms to lift instead of the legs','Going out too fast and stalling at rep 20']},
-  sbagshuttle:{name:'Loaded Shuttle',region:'cardio',unit:'time',img:'ex-sbagshuttle.jpg',anchor:null,hardness:1,base:110,rest:75,equip:['sandbag'],pattern:'carry',
+  sbagshuttle:{name:'Loaded Shuttle',region:'cardio',unit:'time',img:'ex-sbagshuttle.jpg',anchor:null,hardness:1,base:110,rest:75,equip:['sandbag'],pattern:'core',
     why:'The second FORCE task: 20 m shuttles, alternating one loaded with the 20 kg bag and one free. The turns are what cost you — the bag has to stop and start with you every time.',
     steps:['Mark two lines 20 m apart with a clear turning area at each end.','Carry the bag high on the chest, elbows in, and run the 20 m.','Set the bag down at the line, turn, and run the next 20 m free.','Pick it up again at the far end and keep alternating.','Do not drop the bag from height — place it, or you will be doing it with a sore back.'],cues:['Bag hugged high, elbows tucked in','Short steps into the turn, then drive out','Same pace loaded and free'],mistakes:['Letting the bag slide to the waist','Wide, slow turns that cost seconds','Sprinting the free lap and dying on the loaded one']},
-  rushes:{name:'20 m Rushes',region:'cardio',unit:'time',img:'ex-rushes.jpg',anchor:null,hardness:1,base:45,rest:75,pattern:'sprint',
+  rushes:{name:'20 m Rushes',region:'cardio',unit:'time',img:'ex-rushes.jpg',anchor:null,hardness:1,base:45,rest:75,
     why:'The third FORCE task: sprint 20 m dropping flat every 10 m, then back. It is the only thing in this library that trains getting up off the ground fast, over and over, which is a real skill and not just fitness.',
     steps:['Mark a 20 m lane with a line at the 10 m point.','Sprint to the 10 m line and drop flat — chest and thighs both touch.','Get up fast and sprint to the 20 m line, then drop flat again.','Turn and repeat back down the lane.','Land on your forearms, not on locked wrists. Turn your head to one side.'],cues:['Go down onto the forearms, not the hands','Pull one knee under you to stand','Head up and moving before you are fully upright'],mistakes:['Catching yourself on straight arms','Standing all the way up before running','Slowing down over the last five metres']},
-  sbagdrag:{name:'Sandbag Drag',region:'strength',unit:'time',img:'ex-sbagdrag.jpg',anchor:null,hardness:1,base:35,rest:90,equip:['sandbag'],pattern:'carry',
+  sbagdrag:{name:'Sandbag Drag',region:'strength',unit:'time',img:'ex-sbagdrag.jpg',anchor:null,hardness:1,base:35,rest:90,equip:['sandbag'],pattern:'core',
     why:'The fourth FORCE task: one bag on your back, four more dragged 20 m behind you, walking backwards, without stopping. It is the task most people fail, and it is trained by doing it.',
     steps:['Load one bag across your back and grip the handles of the others behind you.','Set your feet wide and lean back against the load with a braced trunk.','Walk backwards in short, driving steps. Look over one shoulder.','Do not stop. A pause is a fail on the day, so train it as one.','Build to the full load over weeks — start with fewer bags.'],cues:['Lean back against the load, do not pull with the arms','Short, driving steps','Look over one shoulder every few steps'],mistakes:['Standing upright and yanking with the arms','Long steps that stall the load','Stopping to re-grip — train it unbroken']},
   ruckcarry:{name:'Ruck Bear-Hug Carry',region:'strength',unit:'time',img:'ex-ruckcarry.jpg',anchor:null,hardness:1,base:40,rest:50,equip:['ruck'],pattern:'core',
@@ -5143,6 +5143,20 @@ function saveLiftLog(exIds){
   toast(n?('Logged '+n+' movement'+(n===1?'':'s')):'Nothing logged');
   try{render();}catch(e){}
 }
+/* The patterns the Weights circuit actually ASKS FOR, in the order it asks.
+   It was an inline literal read by one caller, which made every other pattern
+   value in EX silently unreachable there — and validateData()'s own rule
+   ("has equip but no pattern — unreachable in the Weights circuit") could not
+   see it, because it tested that a pattern EXISTS rather than that it is one
+   the circuit uses. Presence is not membership, which is this file's
+   most-repeated shape.
+
+   Found by inventing `carry` and `sprint` for the FORCE work: both passed the
+   validator and neither could ever be picked. Measured at 0 appearances in
+   400 circuits. Every carry already in the library uses `core`, so the sandbag
+   work matches its own siblings rather than a new taxonomy. */
+const WEIGHTS_PATTERNS=['squat','hinge','pushh','pull','pushv','lunge','core'];
+const WEIGHTS_PATTERNS_EXTRA=['cardio','power'];
 function buildWeightsSession(){
   const pool=weightsPool();if(!pool.length)return null;
   const byPat={};pool.forEach(k=>{const p=EX[k].pattern||'other';(byPat[p]=byPat[p]||[]).push(k);});
@@ -5172,9 +5186,9 @@ function buildWeightsSession(){
     items.push({exId:safe,unit:ex.unit,target:weightsTargetFor(safe),rest:ex.rest||55,sets});};
   const items=[],used=new Set();
   // balanced full-body military circuit
-  ['squat','hinge','pushh','pull','pushv','lunge','core'].forEach(pat=>addItem(pick(pat),items,used));
+  WEIGHTS_PATTERNS.forEach(pat=>addItem(pick(pat),items,used));
   // conditioning finisher (battle rope / med-ball)
-  for(const pat of ['cardio','power']){if(items.length>=8)break;addItem(pick(pat),items,used);}
+  for(const pat of WEIGHTS_PATTERNS_EXTRA){if(items.length>=8)break;addItem(pick(pat),items,used);}
   /* Anything the athlete owns that carries no pattern still belongs in the
      circuit rather than being silently unreachable. */
   if(items.length<5)for(const k of (byPat.other||[])){if(items.length>=6)break;addItem(k,items,used);}
@@ -17065,6 +17079,12 @@ function validateData(){
       errs.push(k+': base '+e.base+' exceeds its own repCap '+e.repCap);
     if(e.unit==='time'&&e.repCap)errs.push(k+': repCap on a timed hold is dead');
     if(e.equip&&e.equip.length&&!e.pattern)errs.push(k+': has equip but no pattern — unreachable in the Weights circuit');
+    /* PRESENCE IS NOT MEMBERSHIP. A pattern the circuit never asks for is
+       exactly as unreachable as no pattern at all, and the rule above passes
+       it. Checked for every exercise, not only geared ones, so an invented
+       taxonomy value fails loudly here instead of disappearing. */
+    if(e.pattern&&!WEIGHTS_PATTERNS.includes(e.pattern)&&!WEIGHTS_PATTERNS_EXTRA.includes(e.pattern))
+      errs.push(k+': pattern "'+e.pattern+'" is one the Weights circuit never asks for');
     if(!(e.hardness>0))errs.push(k+': missing hardness');
     if(!e.steps||!e.cues||!e.mistakes)errs.push(k+': incomplete coaching copy');
   });

@@ -3264,6 +3264,38 @@ entry twice — asking whether ONE entry appeared in both copies, not whether th
 two copies AGREED. The replacement drives the Settings picker and compares what
 it offers against `GEAR_KEYS`.
 
+### Presence is not membership, in a VALIDATOR rule this time
+
+Found by auditing my own change, an hour after writing it. `pattern` was given
+the invented values `carry` and `sprint` for the new work — and both passed
+`validateData()`, because its rule is
+
+```js
+if(e.equip&&e.equip.length&&!e.pattern)errs.push(k+': has equip but no pattern — unreachable in the Weights circuit');
+```
+
+The rule's own message names the harm exactly, and it tests that a pattern
+EXISTS rather than that it is one the circuit asks for. The circuit asks from
+an explicit list, so **a pattern outside that list is exactly as unreachable as
+no pattern at all.** Measured: `sbagshuttle` and `sbagdrag` appeared **0 times
+in 400 circuits**, having satisfied every check.
+
+That is this file's most-repeated shape — truthiness for membership, `!= null`
+for absent, a range test doing a type test's job — reaching a validator rule
+rather than a repair. The list is now `WEIGHTS_PATTERNS`, read by the builder
+AND the validator, and the rule tests membership for every exercise rather
+than only geared ones.
+
+**Every carry already in the library is `pattern:'core'`.** Inventing a
+taxonomy value when the app already has one for the job is the same mistake as
+inventing a gear key: look at what the siblings do first.
+
+**And the check for it needed the builder to READ the list, not merely for the
+list to exist.** The mutant that reverted the builder to its own inline literal
+walked straight through a check counting the declaration — the declaration
+still stands, and the two-hand-kept-copies drift is back. Four mutants, all
+caught after that rewrite.
+
 ### Three harness bugs in one session, all the same shape
 
 - A mutation detector greping `FAILED — N checks` misses a single failure,

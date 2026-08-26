@@ -1237,6 +1237,55 @@ export default async function run() {
     t.ok('floor: a bodyweight squat stays unflagged for the knee', !r.squatKnee, r);
     t.ok('floor: a squat thrust stays unflagged for the shoulder', !r.thrustShoulder, r);
     t.ok('every FORCE swap target is a real exercise', r.swaps, r);
+    /* A pattern the Weights circuit never asks for is exactly as unreachable
+       as no pattern at all, and the "has equip but no pattern" rule passes it.
+       Found by inventing `carry` and `sprint` here: both satisfied the
+       validator and neither could ever be picked — measured at 0 appearances
+       in 400 circuits.
+
+       "The validator is clean" proves nothing about a validator RULE: it stays
+       clean whether the rule exists or not. Break the data in front of it and
+       require the specific complaint, then restore. console.error is muted
+       because validateData() logs and the harness counts a console error as a
+       page failure. */
+    const v = await page.evaluate(() => {
+      const CIRCUIT = WEIGHTS_PATTERNS.concat(WEIGHTS_PATTERNS_EXTRA);
+      const orphans = Object.keys(EX).filter(k => EX[k].pattern && !CIRCUIT.includes(EX[k].pattern));
+      const err = console.error; console.error = () => {};
+      const keep = EX.sbagdrag.pattern;
+      EX.sbagdrag.pattern = 'carry';                 // the exact value that escaped
+      const seeded = validateData();
+      EX.sbagdrag.pattern = keep;
+      const restored = validateData();
+      console.error = err;
+      return {
+        orphans, keep,
+        seededComplains: seeded.some(e => /sbagdrag.*pattern "carry".*never asks for/.test(e)),
+        restoredClean: restored.length === 0,
+        circuit: CIRCUIT,
+      };
+    });
+    t.eq('no exercise carries a pattern the circuit never asks for', v.orphans, [], v);
+    t.eq('the sandbag drag matches every other carry in the library', v.keep, 'core', v);
+    t.ok('the validator complains about an invented pattern', v.seededComplains, v);
+    t.ok('and is clean again once it is restored', v.restoredClean, v);
+    /* One copy of the list, and the BUILDER must read it. Asserting the
+       declaration exists is the weaker half and a mutant walked straight
+       through it: reverting the builder to its own inline literal leaves the
+       declaration standing while re-creating the two-hand-kept-copies drift
+       that caused this. Assert on the function's own source — the circuit is
+       randomised, so no single built session can prove which list it used. */
+    const idxSrc = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    t.eq('the circuit list is declared once', (idxSrc.match(/const WEIGHTS_PATTERNS=/g) || []).length, 1);
+    const reads = await page.evaluate(() => ({
+      builder: buildWeightsSession.toString(),
+      validator: validateData.toString(),
+    }));
+    t.ok('the Weights circuit reads it rather than restating it',
+      /WEIGHTS_PATTERNS\.forEach/.test(reads.builder), reads.builder.slice(0, 200));
+    t.ok('and so does the validator', /WEIGHTS_PATTERNS\.includes/.test(reads.validator));
+    t.eq('no inline copy of the pattern order is left anywhere',
+      (idxSrc.match(/\['squat','hinge','pushh'/g) || []).length, 1);
     // artwork on disk and in a precache tier
     const swSrc = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
     r.imgs.forEach(img => {
