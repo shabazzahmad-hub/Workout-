@@ -1447,6 +1447,28 @@ const EX = {
     steps:['Pack high and tight; hands resting on the straps.','Soft knees, then push the hips straight back.','Fold forward only as far as the back stays completely flat.','Drive the hips forward to stand tall.'],
     cues:['Hips back, not knees forward','Flat back the whole way','Feel the hamstrings, not the low back'],
     mistakes:['Rounding the back at the bottom','Bending the knees instead of hinging','Going deeper than the hamstrings allow']},
+  /* ---- The Canadian FORCE Evaluation, as four trainable movements ----------
+     The CAF gates service on four tasks done with a 20 kg sandbag. Nothing in
+     this library trained any of them: the roster search by MOVEMENT (not by
+     name) found no drag, no shuttle, no rush and no floor-to-shelf lift — the
+     closest relatives were a suitcase carry and a bear-hug carry, neither of
+     which asks for what these ask for.
+
+     Every flag below is reasoned from the mechanics and each has its FLOOR
+     pinned in the suite, because a blanket "anything with a sandbag is
+     dangerous" set satisfies every positive assertion and is not a reason. */
+  sbaglift:{name:'Sandbag Lift',region:'strength',unit:'reps',img:'ex-sbaglift.jpg',anchor:null,hardness:1,repCap:30,base:14,rest:60,equip:['sandbag'],pattern:'hinge',
+    why:'The first FORCE task: 30 lifts of a 20 kg bag above 1.0 m, alternating sides. It is a floor-to-shelf lift repeated to the point it becomes a conditioning event, which is exactly how it feels on the day.',
+    steps:['Set two marks about 1.25 m apart and pick a shelf or rail at 1.0 m.','Squat to the bag, grip it high on the body, keep your back flat.','Drive with the legs and place the bag on the shelf — place it, do not throw it.','Take it down, step across, and repeat to the other side.','Count each placement as a rep. Breathe out on every lift.'],cues:['Bag high on the chest, not hanging off your fingers','Drive with the legs, the arms only guide it','Place it on the shelf, never throw it'],mistakes:['Rounding the back to reach the bag faster','Bending the arms to lift instead of the legs','Going out too fast and stalling at rep 20']},
+  sbagshuttle:{name:'Loaded Shuttle',region:'cardio',unit:'time',img:'ex-sbagshuttle.jpg',anchor:null,hardness:1,base:110,rest:75,equip:['sandbag'],pattern:'carry',
+    why:'The second FORCE task: 20 m shuttles, alternating one loaded with the 20 kg bag and one free. The turns are what cost you — the bag has to stop and start with you every time.',
+    steps:['Mark two lines 20 m apart with a clear turning area at each end.','Carry the bag high on the chest, elbows in, and run the 20 m.','Set the bag down at the line, turn, and run the next 20 m free.','Pick it up again at the far end and keep alternating.','Do not drop the bag from height — place it, or you will be doing it with a sore back.'],cues:['Bag hugged high, elbows tucked in','Short steps into the turn, then drive out','Same pace loaded and free'],mistakes:['Letting the bag slide to the waist','Wide, slow turns that cost seconds','Sprinting the free lap and dying on the loaded one']},
+  rushes:{name:'20 m Rushes',region:'cardio',unit:'time',img:'ex-rushes.jpg',anchor:null,hardness:1,base:45,rest:75,pattern:'sprint',
+    why:'The third FORCE task: sprint 20 m dropping flat every 10 m, then back. It is the only thing in this library that trains getting up off the ground fast, over and over, which is a real skill and not just fitness.',
+    steps:['Mark a 20 m lane with a line at the 10 m point.','Sprint to the 10 m line and drop flat — chest and thighs both touch.','Get up fast and sprint to the 20 m line, then drop flat again.','Turn and repeat back down the lane.','Land on your forearms, not on locked wrists. Turn your head to one side.'],cues:['Go down onto the forearms, not the hands','Pull one knee under you to stand','Head up and moving before you are fully upright'],mistakes:['Catching yourself on straight arms','Standing all the way up before running','Slowing down over the last five metres']},
+  sbagdrag:{name:'Sandbag Drag',region:'strength',unit:'time',img:'ex-sbagdrag.jpg',anchor:null,hardness:1,base:35,rest:90,equip:['sandbag'],pattern:'carry',
+    why:'The fourth FORCE task: one bag on your back, four more dragged 20 m behind you, walking backwards, without stopping. It is the task most people fail, and it is trained by doing it.',
+    steps:['Load one bag across your back and grip the handles of the others behind you.','Set your feet wide and lean back against the load with a braced trunk.','Walk backwards in short, driving steps. Look over one shoulder.','Do not stop. A pause is a fail on the day, so train it as one.','Build to the full load over weeks — start with fewer bags.'],cues:['Lean back against the load, do not pull with the arms','Short, driving steps','Look over one shoulder every few steps'],mistakes:['Standing upright and yanking with the arms','Long steps that stall the load','Stopping to re-grip — train it unbroken']},
   ruckcarry:{name:'Ruck Bear-Hug Carry',region:'strength',unit:'time',img:'ex-ruckcarry.jpg',anchor:null,hardness:1,base:40,rest:50,equip:['ruck'],pattern:'core',
     why:'A suitcase carry is one-sided; this is symmetrical and in front of you, which is how a box or a child is actually carried. The trunk works flat out just to keep you upright.',
     steps:['Hug the loaded pack tight against your chest, elbows tucked in.','Stand tall — ribs down, do not lean back.','Walk at a steady, controlled pace for the time.','Keep breathing; do not hold your breath.'],
@@ -1807,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='321';
+const APP_VERSION='322';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2571,6 +2593,30 @@ function correctiveBonus(pos,used){
 function hasGearFor(exId){const e=EX[exId];if(!e||!e.equip||!e.equip.length)return true;
   const g=STATE.profile.gear||[];return e.equip.every(x=>g.includes(x));}
 // Where to land when a whole ladder needs kit they don't own.
+/* ONE copy of the kit list. It existed as two hand-written literals — the
+   onboarding picker and the Settings picker — and they had already drifted:
+   onboarding offered 13 items, Settings offered 12, and the missing one was
+   `bike`. That is not cosmetic. bikeSwap() substitutes the trainer into
+   conditioning slots and hasTrainer() gates the bike work, both off this key,
+   and toggleGear() is the ONLY writer after setup — so an athlete who bought a
+   trainer later could never tell the app, and one who sold theirs could never
+   untell it. Picking "Bike" on the Movement card does not set it either:
+   that is nutrition.cardioMode, a different fact.
+
+   Same shape as DIET_OPTS and the five-diets drift, and the same fix. Each
+   picker still renders its own button markup; only the LIST is shared.
+
+   `sandbag` is here for the Canadian FORCE Evaluation work — every one of its
+   four tasks is done with a 20 kg bag, and three of them cannot be approximated
+   with a ruck plate because the bag has to be gripped, thrown to a shelf and
+   dragged. */
+const GEAR_OPTS=[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],
+  ['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],
+  ['stabilityball','Stability ball (large)'],['balancetrainer','Balance trainer (half-dome)'],
+  ['ruck','Weighted rucksack + plate'],['sandbag','Sandbag (20 kg / 45 lb)'],
+  ['battlerope','Battle rope'],['parallettes','Parallettes / push-up bars'],
+  ['bench','Bench / chair'],['bike','Bike + trainer']];
+const GEAR_KEYS=GEAR_OPTS.map(g=>g[0]);
 const GEAR_FALLBACK={
   // no parallettes owned → the closest thing that needs nothing at all
   plegraise:'legraise',ppushup:'pushup',
@@ -2588,6 +2634,10 @@ const GEAR_FALLBACK={
   dbbench:'dbfloor',
   sbrollout:'plank',sbstir:'plank',sbhamcurl:'glutebridge',
   btsquat:'squat',btbalance:'singlebridge',btsideplank:'sideplank',btpushup:'pushup',
+  /* No bag: the lift becomes the unloaded squat pattern, the shuttle becomes a
+     plain sprint, and the drag becomes the hardest no-gear ground struggle
+     there is. Rushes need no kit at all and have no entry. */
+  sbaglift:'squat',sbagshuttle:'sprint',sbagdrag:'bearcrawl',
 };
 function gearSwap(exId,ladder){
   if(hasGearFor(exId))return exId;
@@ -3237,7 +3287,7 @@ function onboardHTML(){
       <div class="daypick" id="ob-days">${['M','T','W','T','F','S','S'].map((d,i)=>`<button data-d="${(i+1)%7}">${d}</button>`).join('')}</div>
       <div class="tiny muted" style="margin-top:7px">Five days is the floor — tap a day to make it a rest day, but keep at least five.</div></div>
     <div class="field"><label>Equipment you have <span class="tiny muted">· unlocks a Weights session</span></label>
-      <div class="daypick" id="ob-gear" style="flex-wrap:wrap">${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['stabilityball','Stability ball (large)'],['balancetrainer','Balance trainer (half-dome)'],['ruck','Weighted rucksack + plate'],['battlerope','Battle rope'],['parallettes','Parallettes / push-up bars'],['bench','Bench / chair'],['bike','Bike + trainer']].map(([k,l])=>`<button data-e="${k}"${mon(P.gear,k)}>${l}</button>`).join('')}</div></div>
+      <div class="daypick" id="ob-gear" style="flex-wrap:wrap">${GEAR_OPTS.map(([k,l])=>`<button data-e="${k}"${mon(P.gear,k)}>${l}</button>`).join('')}</div></div>
     <div class="field"><label>Room to train in</label>
       <div class="daypick" id="ob-space">
         <button data-sp="full"${on(P.tightSpace?'tight':'full','full')}>Clear wall + space</button>
@@ -3956,6 +4006,187 @@ function workoutTabHTML(sess,log,doneCount,totalCount,wkNum){
    asked — "not this today, then what?"
    The heading changes with the state, because after a completed session
    "instead of" is false: the work is done and these are extras. */
+/* ============ THE CANADIAN FORCE EVALUATION ============================
+   The CAF gates service on four tasks with a 20 kg sandbag. Nothing in this
+   app trained any of them, and nothing measured them.
+
+   THE FIGURES ARE STAMPED WITH A DATE AND THE SCREEN SAYS TO CONFIRM THEM.
+   A published fitness standard moves — the US Army replaced the ACFT's event
+   list mid-2025 — and a number shown with confidence that is a year stale is
+   worse than no number, because the athlete trains to it. This app cannot
+   reach the internet to check, so it says what it knows, when it knew it, and
+   whose job it is to confirm. Same discipline as TEST_PROTOCOL: state the
+   conditions the number was taken under rather than implying there are none.
+
+   `max` is SECONDS and lower is better on every timed event, which is the
+   opposite of every other number in this app — hence `lower:true` on the
+   record rather than a convention a reader has to remember. The drag is
+   pass/fail: there is no time to beat, you either move it 20 m unbroken or
+   you do not. */
+const FORCE_ASOF='August 2026';
+const FORCE_EVENTS=[
+  {id:'lift',    ex:'sbaglift',    name:'Sandbag Lift',  max:210,
+   detail:'30 lifts of a 20 kg bag above 1.0 m, alternating sides'},
+  {id:'shuttle', ex:'sbagshuttle', name:'Loaded Shuttles', max:321,
+   detail:'10 × 20 m, alternating loaded with the bag and free'},
+  {id:'rush',    ex:'rushes',      name:'20 m Rushes',   max:51,
+   detail:'2 × 20 m, flat on the ground every 10 m — 80 m total'},
+  {id:'drag',    ex:'sbagdrag',    name:'Sandbag Drag',  max:null,
+   detail:'80 kg dragged 20 m without stopping — pass or fail'},
+];
+const FORCE_IDS=FORCE_EVENTS.map(e=>e.id);
+function forceEvent(id){return FORCE_EVENTS.find(e=>e.id===id)||null;}
+/* Reads only. A missing or junk prep block is "nothing recorded", never a
+   throw on a render path — the error boundary retries THROUGH normalizeState()
+   and a tab that cannot be repaired never comes back (v284). */
+function prep(){
+  try{const p=STATE.prep;return (p&&typeof p==='object'&&!Array.isArray(p))?p:{};}
+  catch(e){return {};}
+}
+function forceResult(id){
+  try{const r=prep().results;
+    if(!r||typeof r!=='object')return null;
+    const v=r[id];
+    return (typeof v==='number'&&isFinite(v)&&v>=0)?v:null;
+  }catch(e){return null;}
+}
+/* MEMBERSHIP and a real number, both, because this reaches innerHTML and
+   importData() accepts arbitrary JSON. Absent is "not measured", which is a
+   different answer from "failed" and must never render as one. */
+function forceVerdict(id){
+  const ev=forceEvent(id); if(!ev)return null;
+  const v=forceResult(id);
+  if(v===null)return null;
+  if(ev.max===null)return v>0?'pass':'fail';       // the drag logs 1 for done, 0 for not
+  return v<=ev.max?'pass':'fail';
+}
+function forceWeeksLeft(){
+  try{const d=prep().date;
+    if(typeof d!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(d))return null;
+    const ms=new Date(d+'T00:00:00').getTime()-new Date(todayISO()+'T00:00:00').getTime();
+    if(!isFinite(ms))return null;
+    return Math.ceil(ms/(7*86400000));
+  }catch(e){return null;}
+}
+function fmtForce(ev,v){
+  if(v===null)return '—';
+  return ev.max===null?(v>0?'Completed':'Not yet'):fmtTime(Math.round(v));
+}
+function openForcePrep(){
+  const wk=forceWeeksLeft();
+  const rows=FORCE_EVENTS.map(ev=>{
+    const v=forceResult(ev.id), verdict=forceVerdict(ev.id);
+    const tag=verdict==='pass'?'<span class="tag" style="background:var(--green);color:#000">meets it</span>'
+      :(verdict==='fail'?'<span class="tag" style="background:var(--fire)">short</span>'
+      :'<span class="tag muted">not measured</span>');
+    return `<div class="kv" style="align-items:flex-start">
+      <span><b>${_ve(ev.name)}</b><div class="tiny muted" style="margin-top:2px">${_ve(ev.detail)}</div></span>
+      <span style="text-align:right"><b>${fmtForce(ev,v)}</b>
+        <div class="tiny muted">${ev.max===null?'no time limit':'max '+fmtTime(ev.max)}</div>
+        <div style="margin-top:3px">${tag}</div></span></div>`;
+  }).join('');
+  openSheet(`
+    <h3>🍁 FORCE Evaluation prep</h3>
+    <div class="note info"><b>Confirm these figures with your unit before you train to them.</b>
+      They are what the app knows as of <b>${FORCE_ASOF}</b>, and a published fitness standard moves.
+      This app has no internet access and cannot check them for you.</div>
+    ${wk!==null?`<div class="note fire"><b>${wk>0?wk+' week'+(wk===1?'':'s')+' to go':(wk===0?'This week':'Your test date has passed')}</b>${wk>0?' — that is what the build is paced to.':''}</div>`:''}
+    <div class="card pad">${rows}</div>
+    <button class="btn primary" style="width:100%;margin-top:10px" onclick="startForceTrain()">▶ Train the four tasks</button>
+    <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openForceLog()">✎ Log a result</button>
+    <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openForceDate()">📅 ${prep().date?'Change my test date':'Set my test date'}</button>
+    <div class="tiny muted" style="margin-top:10px">The four tasks are done back to back on the day, with rest between each. Training them separately first is the point of this block — the full run-through is a measurement, not a workout.</div>
+  `);
+}
+/* The same call the baseline battery makes, for the same reason: these are
+   maximal efforts under load, and an athlete whose health screen is flagged
+   and not cleared does not get handed one. It fails CLOSED. */
+function startForceTrain(){
+  if(typeof safeMode==='function'&&safeMode()){
+    if(typeof parqDone==='function'&&!parqDone())openHealthCheck();
+    else openClearance();
+    return;
+  }
+  const ids=FORCE_EVENTS.map(e=>e.ex).filter(k=>EX[k]);
+  if(!ids.length){toast('The FORCE movements are missing');return;}
+  const items=ids.map(k=>{const ex=EX[k];
+    return {exId:k,unit:ex.unit,target:ex.unit==='time'?(ex.base||30):(ex.base||12),
+            rest:ex.rest||60,sets:ex.unit==='reps'?3:2};});
+  closeSheet();
+  openPlayer({items,free:true,title:'FORCE prep',focus:'The four tasks'});
+}
+/* WARN, do not silently swap. The athlete is training four named test events
+   on purpose — substituting one leaves them unprepared for the thing they
+   will actually be asked to do, which is worse than knowing it is risky.
+   Same call as the custom builder (v267) and the baseline battery. */
+function forceRiskHTML(){
+  try{
+    const risky=FORCE_EVENTS.map(e=>e.ex).filter(k=>EX[k]&&safeSwap(k)!==k);
+    if(!risky.length)return '';
+    const names=risky.map(k=>EX[k].name).join(', ');
+    return `<div class="note warn"><b>You flagged a joint ${risky.length>1?'some of these load':'this one loads'}.</b> ${_ve(names)} — the programme routes around ${risky.length>1?'them':'it'} elsewhere, but these are the actual test events, so they are not swapped here. If it pinches or feels wrong, stop.</div>`;
+  }catch(e){return '';}
+}
+function openForceLog(){
+  openSheet(`
+    <h3>Log a FORCE result</h3>
+    ${forceRiskHTML()}
+    <div class="note info">Enter what you actually did. A number you did not measure is worse than a blank — the gap is the whole point of this screen.</div>
+    ${FORCE_EVENTS.map(ev=>ev.max===null?`
+      <div class="field"><label>${_ve(ev.name)} — did you move it the full 20 m without stopping?</label>
+        <div class="daypick"><button onclick="setForceResult('${ev.id}',1)" class="${forceResult(ev.id)>0?'on':''}">Yes</button><button onclick="setForceResult('${ev.id}',0)" class="${forceResult(ev.id)===0?'on':''}">Not yet</button></div></div>`
+      :`<div class="field"><label>${_ve(ev.name)} — your time in seconds (max ${fmtTime(ev.max)})</label>
+        <input id="fq-${ev.id}" type="number" inputmode="numeric" value="${forceResult(ev.id)!==null&&ev.max!==null?forceResult(ev.id):''}" placeholder="0"></div>`).join('')}
+    <button class="btn primary" style="width:100%;margin-top:6px" onclick="saveForceTimes()">Save</button>
+  `);
+}
+function setForceResult(id,v){
+  if(!FORCE_IDS.includes(id))return;
+  const n=+v; if(!isFinite(n)||n<0)return;
+  if(!STATE.prep||typeof STATE.prep!=='object'||Array.isArray(STATE.prep))STATE.prep={};
+  if(!STATE.prep.results||typeof STATE.prep.results!=='object'||Array.isArray(STATE.prep.results))STATE.prep.results={};
+  STATE.prep.results[id]=n;
+  save();haptic(8);openForceLog();
+}
+function saveForceTimes(){
+  let wrote=0;
+  FORCE_EVENTS.forEach(ev=>{
+    if(ev.max===null)return;
+    const el=$('#fq-'+ev.id); if(!el||el.value==='')return;
+    const n=parseFloat(el.value);
+    if(!isFinite(n)||n<0){toast('Enter a real time for '+ev.name);return;}
+    setForceResultQuiet(ev.id,n);wrote++;
+  });
+  save();closeSheet();
+  toast(wrote?'Logged ✅':'Nothing to save');
+  openForcePrep();
+}
+function setForceResultQuiet(id,n){
+  if(!FORCE_IDS.includes(id))return;
+  if(!STATE.prep||typeof STATE.prep!=='object'||Array.isArray(STATE.prep))STATE.prep={};
+  if(!STATE.prep.results||typeof STATE.prep.results!=='object'||Array.isArray(STATE.prep.results))STATE.prep.results={};
+  STATE.prep.results[id]=n;
+}
+function openForceDate(){
+  openSheet(`
+    <h3>When is your evaluation?</h3>
+    <div class="note info">The date is what paces the build. Without one the app cannot tell a base-building week from a sharpening week.</div>
+    <div class="field"><label>Test date</label>
+      <input id="fq-date" type="date" value="${_ve(prep().date||'')}"></div>
+    <button class="btn primary" style="width:100%" onclick="saveForceDate()">Save</button>
+    ${prep().date?`<button class="btn ghost" style="width:100%;margin-top:8px" onclick="clearForceDate()">Clear it</button>`:''}
+  `);
+}
+function saveForceDate(){
+  const v=($('#fq-date')||{}).value||'';
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){toast('Pick a date');return;}
+  if(!STATE.prep||typeof STATE.prep!=='object'||Array.isArray(STATE.prep))STATE.prep={};
+  STATE.prep.date=v;save();closeSheet();toast('Test date set 📅');openForcePrep();
+}
+function clearForceDate(){
+  if(STATE.prep&&typeof STATE.prep==='object')delete STATE.prep.date;
+  save();closeSheet();openForcePrep();
+}
 function altSessionHTML(){
   const rested=restedTodayFlag();
   const done=todayDone()||todayStoppedForPain();
@@ -3964,6 +4195,7 @@ function altSessionHTML(){
     ${hasWeights()?`<button class="tile" onclick="startWeights()"><span class="ti">\ud83c\udfcb\ufe0f</span>Weights</button>`:''}
     <button class="tile" onclick="openSpecial()"><span class="ti">\ud83c\udf96\ufe0f</span>Special</button>
     <button class="tile" onclick="openQuickList()"><span class="ti">\u26a1</span>Quick<br>5\u201310 min</button>
+    <button class="tile" onclick="openForcePrep()"><span class="ti">\ud83c\udf41</span>FORCE<br>prep</button>
     <button class="tile" onclick="openRestSheet()"><span class="ti">\ud83d\ude0c</span>Recover</button>
     <button class="tile" onclick="${rested?'openRestSheet()':'startRestDay()'}"><span class="ti">\ud83d\udecc</span>${rested?'Rest logged':'Rest day'}</button>
   </div>
@@ -11624,11 +11856,26 @@ const JOINT_RISK={
   /* ruckstepup: loaded SINGLE-LEG knee work, directly comparable to bulgarian
      and splitsquat which are both here. Plain `squat` and both goblet squats
      stay unflagged — the escalation is the one leg, not the ruck. */
-  knee:['ruckstepup','pistol','boxpistol','jumpsquat','tuckjump','broadjump','splitjump','bulgarian','burpee','burpeetuck','walkinglunge','sissysquat','cossack','sprawl','latshuffle','nordic','asiansquat','wallsit','skater','squatjack','splitsquat','jumpingjack','sealjack','highknees','buttkick','kneekick','skaterground','btsquat','btbalance'],
-  shoulder:['count8','hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','benchdip','dbpress','kbcp','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbtgu','kbthruster','kbwindmill','abrollstand','hanglegraise','lsit','dragonflag','dragonflagfull','plankrot','wallwalk','pseudoplanche','typewriter','hindupushup','pullup','chinup','widepullup','negpullup','deadhang','scappull','invertedrow','invertedrowelev','tablerow','crabwalk','reverseplank','abroll','mbslam','ropeslam','ropewave','kbswing','atomicpushup','declinepushup','burpee','burpeetuck','kneetoelbow','dbbench','tucklsit','plegraise','ppushup','sbrollout','btsideplank','btpushup'],
+  knee:['ruckstepup','pistol','boxpistol','jumpsquat','tuckjump','broadjump','splitjump','bulgarian','burpee','burpeetuck','walkinglunge','sissysquat','cossack','sprawl','latshuffle','nordic','asiansquat','wallsit','skater','squatjack','splitsquat','jumpingjack','sealjack','highknees','buttkick','kneekick','skaterground','btsquat','btbalance',
+    /* For the FORCE tasks — the shuttle is repeated hard acceleration and a 180-degree turn
+       carrying 20 kg, which is where latshuffle, skater and squatjack already
+       sit; the rushes are get-up-off-the-floor-fast, which is where sprawl
+       sits. sbaglift and sbagdrag are deliberately ABSENT — a bilateral
+       floor-to-shelf lift is a loaded squat (kbgoblet, unflagged) and a
+       backwards drag is a walk under load (kbcarry, unflagged). */
+    'sbagshuttle','rushes'],
+  shoulder:['count8','hspushup','wallhandstand','pikepushup','elevatedpike','superpushup','archerpushup','dips','benchdip','dbpress','kbcp','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbtgu','kbthruster','kbwindmill','abrollstand','hanglegraise','lsit','dragonflag','dragonflagfull','plankrot','wallwalk','pseudoplanche','typewriter','hindupushup','pullup','chinup','widepullup','negpullup','deadhang','scappull','invertedrow','invertedrowelev','tablerow','crabwalk','reverseplank','abroll','mbslam','ropeslam','ropewave','kbswing','atomicpushup','declinepushup','burpee','burpeetuck','kneetoelbow','dbbench','tucklsit','plegraise','ppushup','sbrollout','btsideplank','btpushup',
+    /* For the FORCE tasks — the drag holds the load BEHIND the torso with the arms extended,
+       which is the shoulder position a carry never asks for — kbcarry hangs at
+       the side and ruckcarry is hugged in front, and both stay unflagged. */
+    'sbagdrag'],
   /* fistpushup is deliberately ABSENT: knuckles down keeps the wrist straight,
      which is the whole point of the movement. */
-  wrist:['count8','pushup','kneepushup','inclinepushup','declinepushup','diamondpushup','closepushup','archerpushup','spidermanpushup','superpushup','planktap','mountainclimber','dbrenegade','kbrenegade','dbmanmaker','dbdevil','abroll','abrollstand','ropeplank','extplank','lsit','isoclimber','bearcrawl','crabwalk','plankjack','crossclimber','bearhold','pseudoplanche','typewriter','hindupushup','tempopushup','inchworm','pikepushup','elevatedpike','wallwalk','wallhandstand','hspushup','atomicpushup','burpee','burpeetuck','halfburpee','squatthrust','sprawl','reverseplank','sitthrust','tucklsit','sbrollout','sbstir','btsideplank','btpushup'],
+  wrist:['count8','pushup','kneepushup','inclinepushup','declinepushup','diamondpushup','closepushup','archerpushup','spidermanpushup','superpushup','planktap','mountainclimber','dbrenegade','kbrenegade','dbmanmaker','dbdevil','abroll','abrollstand','ropeplank','extplank','lsit','isoclimber','bearcrawl','crabwalk','plankjack','crossclimber','bearhold','pseudoplanche','typewriter','hindupushup','tempopushup','inchworm','pikepushup','elevatedpike','wallwalk','wallhandstand','hspushup','atomicpushup','burpee','burpeetuck','halfburpee','squatthrust','sprawl','reverseplank','sitthrust','tucklsit','sbrollout','sbstir','btsideplank','btpushup',
+    /* For the FORCE tasks — a rush drops flat and pushes straight back up, the same hands-down
+       cost sprawl and squatthrust already carry. The shuttle never touches the
+       ground and is deliberately absent. */
+    'rushes'],
   /* ruckgm is the textbook case: every other loaded hinge in the library
      (kbrdl, dbrdl, slrdl) carries this flag. rucksquat earns it for a reason
      the goblet squats do not — the load sits AXIALLY on the spine rather than
@@ -11636,7 +11883,12 @@ const JOINT_RISK={
      hug with an upright trunk is no worse than the unflagged farmer's carry,
      and flagging everything with 'ruck' in the name is the copy-a-sibling's-set
      mistake this file warns about. */
-  lowback:['rucksquat','ruckgm','superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbthruster','kbwindmill','kbhighpull','mbslam','ropeslam','windshield','dragonflag','dragonflagfull','abrollstand','situp','vertcrunch','situptwist','vsit','slrdl','swimmer','legraise','hanglegraise','kneeraise','hiplift','flutter','scissors','vup','tuckvup','russiantwist','weightedtwist','mbtwist','mbchop','mbsitup','seatedtwist','abroll','longplank','extplank','ruck','dipknee','heeltouch','crunch','bicycle','revcrunch','sitthrust','toetouch','legcircle','kneetoelbow','sbrollout','sbhamcurl'],
+  lowback:['rucksquat','ruckgm','superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbthruster','kbwindmill','kbhighpull','mbslam','ropeslam','windshield','dragonflag','dragonflagfull','abrollstand','situp','vertcrunch','situptwist','vsit','slrdl','swimmer','legraise','hanglegraise','kneeraise','hiplift','flutter','scissors','vup','tuckvup','russiantwist','weightedtwist','mbtwist','mbchop','mbsitup','seatedtwist','abroll','longplank','extplank','ruck','dipknee','heeltouch','crunch','bicycle','revcrunch','sitthrust','toetouch','legcircle','kneetoelbow','sbrollout','sbhamcurl',
+    /* For the FORCE tasks — every loaded hinge in this library is already here, and the
+       sandbag lift is thirty of them against the clock. The drag is a braced
+       anti-flexion effort under 80 kg. The rushes and the shuttle put no load
+       on the spine at all and are absent. */
+    'sbaglift','sbagdrag'],
   elbow:['dips','benchdip','diamondpushup','closepushup','chinup','negpullup','dbcurl','typewriter','pseudoplanche'],
 };
 /* One flat literal edited by three feature waves ended up with 126 properties
@@ -11701,6 +11953,9 @@ const SAFE_SWAP={
   superman:'birddog',swimmer:'birddog',reverseplank:'glutebridge',hipthrust:'glutebridge',
   dbrdl:'glutebridge',kbrdl:'glutebridge',kbswing:'kbgoblet',kbhighpull:'kbgoblet',mbslam:'mbsitup',ropeslam:'ropewave',
   ruck:'march',sitthrust:'glutebridge',
+  /* FORCE work lands on the same no-gear places every other flagged loaded or
+     explosive movement lands, so a flagged athlete still trains something. */
+  sbaglift:'glutebridge',sbagdrag:'glutebridge',sbagshuttle:'march',rushes:'march',
   // midsection
   windshield:'bicycle',hanglegraise:'legraise',lsit:'hollow',dragonflag:'hollow',dragonflagfull:'hollow',revcrunch:'legraise',
   situp:'crunch',vertcrunch:'crunch',vsit:'hollow',hollowflutter:'hollow',
@@ -11720,6 +11975,7 @@ const LOWBACK_SWAP={
   longplank:'plank',extplank:'plank',ruck:'march',dipknee:'kneeplank',windshield:'birddog',
   dragonflag:'plank',dragonflagfull:'plank',lsit:'plank',abroll:'plank',abrollstand:'plank',swimmer:'birddog',slrdl:'glutebridge',
   toetouch:'deadbug',legcircle:'deadbug',kneetoelbow:'deadbug',sbrollout:'plank',
+  sbaglift:'glutebridge',sbagdrag:'glutebridge',sbagshuttle:'march',
 };
 /* Both maps are hand-maintained literals, and a duplicate key in a literal is
    silent — JS keeps the last one. That is exactly how the hiplift defect shipped.
@@ -15755,7 +16011,7 @@ function renderGuide(){
     <div class="divider" style="margin:10px 0"></div>
     <div style="padding:2px 0"><div class="tiny muted" style="margin-bottom:6px">Equipment you have <span style="opacity:.7">· unlocks the Weights session</span></div>
       <div class="daypick" id="set-gear" style="flex-wrap:wrap">
-        ${''}${[['bar','Pull-up bar'],['dip','Dip bar / station'],['kettlebell','Kettlebells'],['dumbbell','Dumbbells'],['medball','Medicine ball'],['abroller','Ab roller'],['stabilityball','Stability ball (large)'],['balancetrainer','Balance trainer (half-dome)'],['ruck','Weighted rucksack + plate'],['battlerope','Battle rope'],['parallettes','Parallettes / push-up bars'],['bench','Bench / chair']].map(([k,l])=>`<button class="${(STATE.profile.gear||[]).includes(k)?'on':''}" onclick="toggleGear('${k}')">${l}</button>`).join('')}
+        ${''}${GEAR_OPTS.map(([k,l])=>`<button class="${(STATE.profile.gear||[]).includes(k)?'on':''}" onclick="toggleGear('${k}')">${l}</button>`).join('')}
         <div style="margin-top:12px"></div>
         <button class="${STATE.profile.tightSpace?'on':''}" onclick="toggleTightSpace()">🏠 Tight space</button>
         <div class="tiny muted" style="margin-top:8px">Handstand work needs a clear wall and about <b>6 ft / 2 m</b> of floor in front of it to walk up safely; the travelling moves need a room you can cross. Tight space swaps both out — you get the hardest floor presses instead, which load the shoulder the same way without needing a clear wall. Straight trade to know about: nothing on the floor fully replaces a handstand push-up, so the very top of the shoulder ladder is a step easier. Everything else is like for like.</div>
@@ -16353,6 +16609,28 @@ function normalizeState(){
      the container's real shape, not just that it is an object. */
   if(!STATE.logs||typeof STATE.logs!=='object'||Array.isArray(STATE.logs))STATE.logs={};
   if(!STATE.prs||typeof STATE.prs!=='object'||Array.isArray(STATE.prs))STATE.prs={};
+  /* The selection-prep block. It describes the athlete's GOAL — the standard
+     they are training for, the date, and what they have measured — so it
+     belongs in a backup and is deliberately NOT in TRANSIENT_KEYS.
+
+     Repaired at three levels, because a container check is not a type repair
+     and one map holds several inputs (v284): the block, the results map, and
+     each entry. An unknown event id is dropped rather than kept, because
+     `results` is walked by FORCE_IDS and a junk key would only ever travel in
+     backups. A non-number is dropped, not zeroed — a zero on the drag means
+     "I could not move it", which is a real measurement, and inventing one is
+     the falsy-zero mistake this file has already paid for twice.
+
+     `date` is a format test, not truthiness: it reaches innerHTML and
+     forceWeeksLeft() does Date arithmetic on it. */
+  if(!STATE.prep||typeof STATE.prep!=='object'||Array.isArray(STATE.prep))STATE.prep={};
+  {const P=STATE.prep;
+   if(!P.results||typeof P.results!=='object'||Array.isArray(P.results))P.results={};
+   Object.keys(P.results).forEach(k=>{
+     const v=P.results[k];
+     if(!FORCE_IDS.includes(k)||typeof v!=='number'||!isFinite(v)||v<0)delete P.results[k];
+   });
+   if(P.date!==undefined&&!(typeof P.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(P.date)))delete P.date;}
   // deep-profile defaults for installs created before the equipment/diet quiz
   /* This branch was unreachable. load() and importData() both do
      Object.assign(DEFAULT_STATE().profile, saved.profile), and the default gear

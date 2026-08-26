@@ -3207,6 +3207,93 @@ The record was incomplete, not the rule — a **like-for-like prior is one that
 says it substituted nothing** (`subs:{}`), which is what that block always meant.
 Ten mutants across the row and the note, all caught.
 
+## A published standard is a fact with a date on it (v322)
+
+"I am preparing to join the army reserve" — the Canadian one, FORCE Evaluation,
+three to six months out, with a 20 kg sandbag and somewhere to sprint.
+
+**The roster search by MOVEMENT is what shaped the round.** Across 155
+exercises there was no drag, no shuttle, no rush and no floor-to-shelf lift.
+The nearest relatives were a suitcase carry and a bear-hug carry, and neither
+asks for what these ask for. So four new movements, one per FORCE task.
+
+**The figures are stamped with a date and the screen says whose job it is to
+confirm them.** This is the honest handling of a number the app cannot check: a
+published fitness standard moves — the US Army replaced the ACFT's event list
+mid-2025 — and a figure shown with confidence that is a year stale is *worse*
+than no figure, because the athlete trains to it. `FORCE_ASOF` is on the glass
+beside the numbers, with "this app has no internet access and cannot check them
+for you". Same discipline as `TEST_PROTOCOL`: state the conditions rather than
+implying there are none.
+
+**Absent is "not measured", which is not "failed".** `forceVerdict()` returns
+null for an event never logged, and the row says so. A mutant that read absent
+as a fail is caught by the check that all four start unmeasured.
+
+**Warn, do not swap — and the check that proves it needed a FLAG.** These are
+four named test events; substituting one leaves the athlete unprepared for the
+thing they will actually be asked to do, so `startForceTrain()` builds the real
+four and `forceRiskHTML()` names what is flagged. The mutant that routed them
+through `safeSwap()` **escaped**, because the block ran with no limitations
+set — `safeSwap` is the identity there and the mutant was equivalent. Only a
+flagged athlete can tell the two behaviours apart. A weak check, not a bad
+mutant, and the third time this session.
+
+**The safety gate is the baseline battery's, for the battery's reason.** Four
+maximal efforts under load is the one other place in the app that asks for a
+true max, so a flagged-and-uncleared health screen is sent to the clearance
+screen instead. It fails closed, and the floor pins that a cleared athlete
+still gets the session.
+
+### The gear list had drifted, and the missing entry was load-bearing
+
+Found on the way to adding `sandbag`. The kit list existed as **two hand-written
+literals** — onboarding offered 13 items, Settings offered 12 — and the missing
+one was `bike`. That is not cosmetic: `bikeSwap()` substitutes the trainer into
+conditioning slots and `hasTrainer()` gates the bike work, both off that key,
+and `toggleGear()` is the only writer after setup. **Buy a trainer after
+onboarding and you could never tell the app; sell one and you could never
+untell it.** Picking "Bike" on the Movement card does not set it either — that
+is `nutrition.cardioMode`, a different fact.
+
+Same shape as the five-diets drift, same fix: one `GEAR_OPTS`, each picker
+still rendering its own markup.
+
+**The old check could not see it, and that is the lesson.** It counted the ruck
+entry twice — asking whether ONE entry appeared in both copies, not whether the
+two copies AGREED. The replacement drives the Settings picker and compares what
+it offers against `GEAR_KEYS`.
+
+### Three harness bugs in one session, all the same shape
+
+- A mutation detector greping `FAILED — N checks` misses a single failure,
+  which prints `check` (v321).
+- **`node tests/run.mjs 01 09` runs ONE file.** Three mutants read as escapes
+  because suite 09 never ran at all — the runner says "running 1 test file"
+  and the loop did not read it.
+- A `re.sub` rewriting the mutant table wrote a literal newline into a Python
+  string and broke every subsequent seed. Loudly, which is the only reason it
+  cost minutes rather than a false all-clear.
+
+**Read the run, not the pattern you hoped would match it.**
+
+### Two more traps this file already names, hit again
+
+- **A comment that quotes code breaks the duplicate-key check.** Four comments
+  reading `FORCE:` were counted as a duplicate key named `FORCE`. Reword the
+  prose, never weaken the check.
+- **Each block builds the state it asserts on.** The tile check failed because
+  an earlier block in suite 09 leaves the athlete un-onboarded, so Today
+  rendered the welcome screen and no tiles at all. It now sets `onboarded`,
+  guards that the tile row rendered, and asserts the tile sits BELOW the
+  session — a bare "it is on Today" passes on exactly the layout v246 rejected.
+
+**Deferred, and stated rather than quietly dropped:** there is still no running
+in this app — no run mode, no pace, no distance — and it is the aerobic base
+every one of these standards rests on. Rucking, jacks and the bike are the
+three cardio modes; a fourth is the next round, and the endurance programme
+depends on it.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
