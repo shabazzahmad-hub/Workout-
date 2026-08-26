@@ -1761,6 +1761,52 @@ export default async function run() {
       r.savedScore, r.expectSwap, r);
   }
 
+  /* A personal record belongs to the movement that was PERFORMED. This block is
+     the third consumer of the same defect and the one that writes a claim the
+     athlete can read back: keyed on the test's nominal exercise, 20 Fist
+     Push-Ups became a 20-rep PUSH-UP record, 20 Towel Door Rows a 20-rep
+     INVERTED ROW, and 20 Single-Leg Dead Bugs a 20-rep BURPEE — three bests on
+     three movements never done, feeding strengthLevel(). */
+  {
+    const r = await page.evaluate(() => {
+      const keep = {
+        lims: STATE.profile.limitations,
+        baseline: JSON.parse(JSON.stringify(STATE.baseline || {})),
+        prs: JSON.parse(JSON.stringify(STATE.prs || {})),
+        scoreHistory: (STATE.scoreHistory || []).slice(),
+      };
+      STATE.prs = {};
+      STATE.profile.limitations = ['wrist', 'shoulder'];
+      STATE.baseline = null;
+      const results = {}; TESTS.forEach(x => { results[x.id] = 20; });
+      assessState = { idx: TESTS.length - 1, results, reassess: null };
+      const subs = assessSubs();
+      let err = null;
+      try { finishAssessment(); } catch (e) { err = e.message; }
+      try { closeSheet(); } catch (e) {}
+      const prs = JSON.parse(JSON.stringify(STATE.prs || {}));
+      STATE.profile.limitations = keep.lims;
+      STATE.baseline = keep.baseline;
+      STATE.prs = keep.prs;
+      STATE.scoreHistory = keep.scoreHistory;
+      return { subs, prs, err };
+    });
+    t.ok('guard: the battery really did substitute push, pull and stamina',
+      !r.err && r.subs && r.subs.push === 'fistpushup' && r.subs.pull === 'towelrow'
+      && r.subs.stamina === 'march', r);
+    t.eq('a Fist Push-Up set is a Fist Push-Up record', r.prs.fistpushup, 20, r.prs);
+    t.eq('and awards no Push-Up record for push-ups never done', r.prs.pushup, undefined, r.prs);
+    t.eq('a Towel Door Row set is a Towel Door Row record', r.prs.towelrow, 20, r.prs);
+    t.eq('and awards no Inverted Row record', r.prs.invertedrow, undefined, r.prs);
+    t.eq('and awards no Burpee record for dead bugs', r.prs.burpee, undefined, r.prs);
+    /* THE FLOOR. This block exists so the plank, side plank, squat and dead hang
+       can be rated at all — nothing ever prescribes them as working sets. A fix
+       that dropped un-substituted tests would satisfy every assertion above. */
+    t.eq('a test that was NOT substituted still records its own PR', r.prs.plank, 20, r.prs);
+    t.eq('and so does the squat', r.prs.squat, 20, r.prs);
+    t.eq('and the side plank', r.prs.sideplank, 20, r.prs);
+  }
+
   {
     const r = await page.evaluate(() => {
       openPlayer();

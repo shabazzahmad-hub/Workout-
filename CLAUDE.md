@@ -3097,6 +3097,32 @@ calibrated for the original movement, and the score sets `level`, which scales
 every UNANCHORED exercise through `LEVEL_FACTOR`. Same defect, one consumer over
 — the class, not the instance.
 
+### And a third consumer: a personal record on a movement never performed
+
+`commitAssessment()` writes a PR for every test result, keyed on **`t.ex`** —
+the test's nominal exercise, not the one performed. Measured on an athlete with
+a flagged wrist and shoulder:
+
+| performed | recorded as |
+|---|---|
+| 20 Fist Push-Ups | **Push-Up 20** |
+| 20 Towel Door Rows | **Inverted Row 20** |
+| 20 Single-Leg Dead Bugs | **Burpee 20** |
+
+Three personal bests on three movements the athlete had not done, feeding
+`strengthLevel()` and the Strength Standards rating. Same class as the anchor
+and the score — **fixing one instance is not fixing the class**, and this round
+found the class had three members, not one.
+
+**The floor is what keeps the fix honest.** This block exists so the plank, side
+plank, squat and dead hang can be rated at all — nothing ever prescribes them as
+working sets. A fix that simply skipped substituted tests satisfies every "no
+false PR" assertion and silently kills the four rows the block was written for,
+so each of those is pinned beside it. Four mutants; three caught, and the fourth
+(dropping the `typeof rec.subs` test) is **equivalent** — `_subs[t.id]||t.ex`
+already falls back for every non-object, so no check can catch its removal. Read
+the mutant back before rewriting the check.
+
 ### Two escaped mutants, and only one was a weak check
 
 - **Dropping the ANCHOR guard escaped**, because both cases I had pinned were

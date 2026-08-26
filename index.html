@@ -6559,10 +6559,27 @@ function commitAssessment(a,rec){
      ever be rated: the program never prescribes the plank, side plank, squat or
      dead hang as working sets (they are the measuring sticks, not the work), so
      those rows sat permanently unrated no matter how long the athlete trained. */
+  /* A PR is recorded against the movement the athlete ACTUALLY PERFORMED, not
+     against the test's nominal exercise. This keyed on t.ex, so a wrist-flagged
+     athlete who did 20 Fist Push-Ups was awarded a 20-rep PUSH-UP record, a
+     shoulder-flagged one a 20-rep INVERTED ROW for 20 Towel Door Rows, and a
+     20-rep BURPEE for 20 Single-Leg Dead Bugs — three personal bests on three
+     movements they had not done, feeding strengthLevel() and the Strength
+     Standards rating. Third consumer of the v320/v321 defect: a substituted
+     measurement read as if it were the original. The four rows this block
+     exists to rate (plank, side plank, squat, dead hang) are never swapped, so
+     they are unaffected.
+
+     The typeof test on rec.subs is intent, not a live guard: `_subs[t.id]||t.ex`
+     already falls back for a string, an array or anything else an import could
+     carry, so no check can catch its removal. Recorded as an equivalent mutant
+     rather than papered over with an assertion that would pass on nothing. */
   try{
     if(!STATE.prs)STATE.prs={};
+    const _subs=(rec&&rec.subs&&typeof rec.subs==='object')?rec.subs:{};
     TESTS.forEach(t=>{const v=+assessState.results[t.id];
-      if(v>0&&EX[t.ex]&&v>(STATE.prs[t.ex]||0))STATE.prs[t.ex]=v;});
+      const exId=_subs[t.id]||t.ex;
+      if(v>0&&EX[exId]&&v>(STATE.prs[exId]||0))STATE.prs[exId]=v;});
   }catch(e){console.error('[assessment PRs]',e);}
   setTimeout(checkAchievements,300);
   save();
