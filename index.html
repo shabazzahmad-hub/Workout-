@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='327';
+const APP_VERSION='328';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -6485,7 +6485,7 @@ function startSpecialCardio(exId,format){
 function openMakeupTimer(mode){
   const isBike=mode==='bike';
   const isJacks=mode==='jacks';
-  const label=makeupCredit(mode).label;
+  const label=cardioInfo(mode).label;
   let body=`<h3>⏱️ ${label} timer</h3>
     <p class="muted sm" style="margin:2px 0 14px">However you make it up, the minutes feed straight into today's step target when you're done.</p>
     <button class="btn t-teal" style="width:100%" onclick="openMakeupStopwatch('${_ve(mode)}')">⏱️ Stopwatch — start and stop as you go</button>
@@ -6545,7 +6545,7 @@ let MUT=null;
 function openMakeupStopwatch(mode){
   if(MUT&&MUT.tid)clearInterval(MUT.tid);
   MUT=swStart({mode,secs:0,tid:null,running:true});
-  const label=makeupCredit(mode).label;
+  const label=cardioInfo(mode).label;
   openSheet(`<h3>⏱️ ${label} stopwatch</h3>
     <p class="muted sm" style="margin:2px 0 14px">Counting up. Tap <b>Stop &amp; log</b> when you're done and the minutes go straight into today's movement.</p>
     <div style="text-align:center;margin:10px 0 18px"><div id="mut-num" style="font-size:56px;font-weight:900;letter-spacing:1px">0:00</div></div>
@@ -13282,6 +13282,21 @@ function bikeNeed(steps,k){
     // independent of intensity: the same energy however fast you spin
     kcal:Math.ceil(steps*kcalPerStep())};
 }
+/* The ruck's and the run's own gap-closers, in the same three currencies and
+   rounded UP for the same reason. kcal is steps x kcalPerStep() in all four:
+   energy is energy, whatever carried it. */
+function ruckNeed(steps,k){
+  if(!(steps>0))return {min:0,dist:0,kcal:0};
+  return {min:ruckMinutesFor(steps,k),
+    dist:Math.ceil(kmToShow(steps/ruckStepsPerMin(k)*ruckKmPerMin(k))*10)/10,
+    kcal:Math.ceil(steps*kcalPerStep())};
+}
+function runNeed(steps,k){
+  if(!(steps>0))return {min:0,dist:0,kcal:0};
+  return {min:runMinutesFor(steps,k),
+    dist:Math.ceil(kmToShow(steps/runStepsPerMin(k)*runKmPerMin(k))*10)/10,
+    kcal:Math.ceil(steps*kcalPerStep())};
+}
 const BIKE_UNITS=[['min','Minutes'],['dist','Distance'],['kcal','Calories']];
 const RUCK_UNITS=[['min','Minutes'],['dist','Distance'],['kcal','Calories']];
 
@@ -13723,13 +13738,44 @@ function rateBikeAndClose(feel){
    a m==='bike'?'bike':'jacks' shape starts silently swallowing new values" —
    and the third and fourth modes both arrived without anyone coming back here.
    One table now, so a fifth mode is a row rather than a branch. */
-const MAKEUP_CREDIT={
-  jacks:{label:'🤸 Jumping jacks',unit:()=>movement().junit,setUnit:setJackUnit,add:addJackVal},
-  bike: {label:'🚴 Bike',        unit:()=>movement().unit, setUnit:setBikeUnit,add:addBikeVal},
-  ruck: {label:'🎒 Ruck',        unit:()=>movement().runit,setUnit:setRuckUnit,add:addRuckVal},
-  run:  {label:'🏃 Run',         unit:()=>movement().nunit,setUnit:setRunUnit, add:addRunVal},
+/* v328 widened this from the timer's credit table into the ONE per-mode table.
+   The Movement card had two more of the same binary branch — the "steps to go"
+   advice and the "Also logged today" cross-note were both `bike ? ... : jacks`,
+   and "Target met" was gated on `work.min||ride.min`, which names jacks and the
+   bike and nothing else. A second table restating these four labels is how the
+   five diets came to exist as three separate literals; one table, four rows. */
+const CARDIO_INFO={
+  jacks:{label:'🤸 Jumping jacks',short:'jumping jacks',did:'of jumping jacks',
+    unit:()=>movement().junit,setUnit:setJackUnit,add:addJackVal,
+    work:()=>jackWork(),
+    advice:short=>{const m=movement(),n=jackNeed(short,m.jlvl);
+      return `${_ve(jackLevel(m.jlvl).label)} jumping jacks, that is <b>${n.min} min</b>, <b>${n.reps.toLocaleString()} reps</b>, or <b>${n.kcal} kcal</b>. No kit, no wall, anywhere you can stand.`;}},
+  bike: {label:'🚴 Bike',        short:'the bike',did:'on the bike',
+    unit:()=>movement().unit, setUnit:setBikeUnit,add:addBikeVal,
+    work:()=>bikeRide(),
+    advice:short=>{const m=movement(),n=bikeNeed(short,m.lvl);
+      return `${_ve(bikeLevel(m.lvl).label)} on the trainer, that is <b>${n.min} min</b>, <b>${n.dist} ${distUnit()}</b>, or <b>${n.kcal} kcal</b> — whichever your bike shows you.`;}},
+  ruck: {label:'🎒 Ruck',        short:'the ruck',did:'under the ruck',
+    unit:()=>movement().runit,setUnit:setRuckUnit,add:addRuckVal,
+    work:()=>ruckWork(),
+    advice:short=>{const m=movement(),n=ruckNeed(short,m.rlvl);
+      return `${_ve(ruckPace(m.rlvl).label)} under <b>${ruckLoadLb()} lb</b>, that is <b>${n.min} min</b>, <b>${n.dist} ${distUnit()}</b>, or <b>${n.kcal} kcal</b>. Outdoors, and it loads your legs while it pays the target.`;}},
+  run:  {label:'🏃 Run',         short:'the run',did:'of running',
+    unit:()=>movement().nunit,setUnit:setRunUnit, add:addRunVal,
+    work:()=>runWork(),
+    advice:short=>{const m=movement(),n=runNeed(short,m.nlvl);
+      return `${_ve(runPace(m.nlvl).label)} running, that is <b>${n.min} min</b>, <b>${n.dist} ${distUnit()}</b>, or <b>${n.kcal} kcal</b>. Treadmill or road — the effort is what counts, not the ground.`;}},
 };
-function makeupCredit(mode){return MAKEUP_CREDIT[CARDIO_MODES.includes(mode)?mode:'jacks'];}
+function cardioInfo(mode){return CARDIO_INFO[CARDIO_MODES.includes(mode)?mode:'jacks'];}
+/* Every mode that carried some of today, in CARDIO_MODES order. The one place
+   the card asks "what actually happened today", so no surface can answer it
+   with a two-value branch again. */
+function cardioDone(){
+  return CARDIO_MODES.map(k=>{const w=cardioInfo(k).work();
+    return {k,min:w.min||0,steps:w.steps||0,label:CARDIO_INFO[k].label,
+      short:CARDIO_INFO[k].short,did:CARDIO_INFO[k].did};})
+    .filter(x=>x.min>0);
+}
 function creditMakeup(mode,mins,feel){
   let msg='Logged '+mins+' min to today’s movement';
   if(mode==='bike'&&feel){
@@ -13737,7 +13783,7 @@ function creditMakeup(mode,mins,feel){
     const next=bikeLevelSuggestion();
     if(next)msg='📈 3 easy rides at this level — try "'+next.label+'" next time?';
   }
-  const c=makeupCredit(mode);
+  const c=cardioInfo(mode);
   if(c.unit()!=='min')c.setUnit('min');
   c.add(mins);
   toast(msg);
@@ -13902,16 +13948,27 @@ function movementHTML(){
     <div class="field" style="margin-bottom:10px"><label>Steps walked today</label>
       <input id="mv-steps" type="number" inputmode="numeric" min="0" value="${m.steps||''}" placeholder="0"
         onchange="setSteps(this.value)"></div>`;
+  /* The gap is answered ONCE, here, for whichever mode the athlete picked.
+     This was `bike ? bike : jacks`, so a ruck or run athlete was told to do
+     jumping jacks — while their own block, four lines down, correctly named
+     the minutes under the plate. Measured: "39 min of jacks" above "70 min
+     under that plate", same card, same 8,000-step gap. The blocks no longer
+     restate it, so there is one figure with one home. */
   if(short>0){
-    h+= mode==='bike'
-      ? `<div class="note info" style="margin:0 0 10px"><b>${short.toLocaleString()} steps to go.</b>
-      ${lvl.label} on the trainer, that is <b>${need.min} min</b>, <b>${need.dist} ${distUnit()}</b>, or <b>${need.kcal} kcal</b> — whichever your bike shows you.</div>`
-      : `<div class="note info" style="margin:0 0 10px"><b>${short.toLocaleString()} steps to go.</b>
-      ${jlvl.label} jumping jacks, that is <b>${jneed.min} min</b>, <b>${jneed.reps.toLocaleString()} reps</b>, or <b>${jneed.kcal} kcal</b>. No kit, no wall, anywhere you can stand.</div>`;
-  }else if(work.min||ride.min){
-    const carried=work.steps+ride.steps;
-    const by=work.min&&ride.min?'Jacks and the bike':(work.min?'Jumping jacks':'The bike');
-    h+=`<div class="note ok" style="margin:0 0 10px"><b>Target met.</b> ${by} carried ${carried.toLocaleString()} of it.</div>`;
+    h+=`<div class="note info" style="margin:0 0 10px"><b>${short.toLocaleString()} steps to go.</b>
+      ${cardioInfo(mode).advice(short)}</div>`;
+  }else{
+    /* Every mode that carried some of today, not the two that happened to
+       exist when this was written. A 120-minute ruck carrying 13,800 steps
+       against an 8,000 target got no acknowledgement at all. */
+    const done=cardioDone();
+    if(done.length){
+      const carried=done.reduce((a,x)=>a+x.steps,0);
+      const names=done.map(x=>x.short);
+      const by=names.length===1?names[0]
+        :names.slice(0,-1).join(', ')+' and '+names[names.length-1];
+      h+=`<div class="note ok" style="margin:0 0 10px"><b>Target met.</b> ${_ve(by.charAt(0).toUpperCase()+by.slice(1))} carried ${carried.toLocaleString()} of it.</div>`;
+    }
   }
   /* A standalone check against movementKcalAdj() rather than folding into the
      branches above — those only fire when jacks or the bike carried part of
@@ -13937,10 +13994,15 @@ function movementHTML(){
       : mode==='ruck'
       ? 'Walking under load. Outdoors, no impact to speak of, and the only one here that also loads your legs and spine while it does the cardio.'
       : 'The aerobic base every military fitness standard is built on. Treadmill or road — the app only needs the effort and how long you were out.'}</div>`;
-  if(work.min&&mode==='bike')
-    h+=`<div class="tiny muted" style="margin:-6px 0 12px">Also logged today: <b>${work.reps.toLocaleString()} jacks</b> (${work.steps.toLocaleString()} steps). Both count.</div>`;
-  if(ride.min&&mode==='jacks')
-    h+=`<div class="tiny muted" style="margin:-6px 0 12px">Also logged today: <b>${ride.min} min</b> on the bike (${ride.steps.toLocaleString()} steps). Both count.</div>`;
+  /* Anything logged under a mode that is NOT the one on screen, so switching
+     modes never hides work already done. This was two hardcoded pairs —
+     jacks-while-on-bike and bike-while-on-jacks — and said nothing about the
+     other ten reachable combinations. */
+  {const others=cardioDone().filter(x=>x.k!==mode);
+   if(others.length)
+     h+=`<div class="tiny muted" style="margin:-6px 0 12px">Also logged today: ${
+       others.map(x=>`<b>${x.min} min</b> ${_ve(x.did)} (${x.steps.toLocaleString()} steps)`).join(', ')
+     }. It all counts.</div>`;}
   h+= mode==='bike' ? bikeBlockHTML(m,short,need,lvl,ride,shownVal)
     : mode==='run' ? runBlockHTML(m,short)
     : mode==='ruck' ? ruckBlockHTML(m,short)
@@ -13951,7 +14013,6 @@ function movementHTML(){
 function runBlockHTML(m,short){
   const p=runPace(m.nlvl),work=runWork();
   const shown=m.nunit==='dist'?r1(kmToShow(m.nval)):m.nval;
-  const need=short>0?runMinutesFor(short,m.nlvl):0;
   let h=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">How hard you ran it</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${RUN_PACES.map(x=>
       `<button class="${m.nlvl===x.k?'on':''}" onclick="setRunPace('${x.k}')">${x.label}</button>`).join('')}</div>
@@ -13962,7 +14023,9 @@ function runBlockHTML(m,short){
           and this app has no run test to tell them apart. */''}
     <div class="tiny muted" style="margin-bottom:12px">About <b>${_ve(runPaceLabel(m.nlvl))}</b> · worth <b>${Math.round(runKcalPerMin(m.nlvl))} kcal</b> a minute.
       <div style="margin-top:3px">The step figure below is an <b>energy equivalent</b>, not a count of footfalls — a run earns far more per minute than a walk, and this is how the app prices that against your target.</div></div>`;
-  if(need>0)h+=`<div class="tiny muted" style="margin-bottom:10px">You are <b>${short.toLocaleString()}</b> steps short — about <b>${need} min</b> at this pace.</div>`;
+  /* The gap belongs to the note at the top of the card, which now answers it
+     for all four modes. Two sentences quoting the same figure is the "same
+     number, two labels" the Progress summary was cleaned of. */
   h+=`<button class="btn t-teal" style="width:100%;margin-bottom:12px" onclick="openMakeupTimer('run')">⏱️ Time it — guided timer, logs itself</button>
     <div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log the run as</div>
     <div class="tiny muted" style="margin:-2px 0 8px"><b>Log the distance if you know it.</b> Running costs about the same per kilometre however fast you go — measured across these four paces, the same 5 km comes out within 9% — so picking the wrong pace barely moves the number. Minutes are the one input the pace really does change.</div>
@@ -13981,7 +14044,6 @@ function runBlockHTML(m,short){
 function ruckBlockHTML(m,short){
   const p=ruckPace(m.rlvl),work=ruckWork(),lb=ruckLoadLb(),pct=ruckLoadPct();
   const shown=m.runit==='dist'?r1(kmToShow(m.rval)):m.rval;
-  const need=short>0?ruckMinutesFor(short,m.rlvl):0;
   let h=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">What is in the ruck</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${RUCK_PLATES.map(w=>
       `<button class="${lb===w?'on':''}" onclick="setRuckLoad(${w})">${w} lb</button>`).join('')}</div>`;
@@ -14007,7 +14069,7 @@ function ruckBlockHTML(m,short){
             per-minute because it covers 0.23-0.4 km in one; a ruck covers
             0.086, which rounds to "0.1 km a minute" and tells the athlete
             nothing at all. */''}</div>`;
-  if(need>0)h+=`<div class="tiny muted" style="margin-bottom:10px">You are <b>${short.toLocaleString()}</b> steps short — about <b>${need} min</b> under that plate at this pace.</div>`;
+  /* Same as the run block: the gap is answered once, at the top of the card. */
   h+=`<button class="btn t-teal" style="width:100%;margin-bottom:12px" onclick="openMakeupTimer('ruck')">⏱️ Time it — guided timer, logs itself</button>
     <div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log the ruck as</div>
     <div class="tiny muted" style="margin:-2px 0 8px">The plate and the pace both change what a minute is worth. <b>Calories are the input that cannot be thrown off by picking the wrong pace</b> — the same algebra as the bike: the MET cancels out of a calorie figure.</div>
