@@ -3602,6 +3602,52 @@ climbing**: the distance must climb across the block, the load must climb, there
 must really be load weeks and down weeks in sixteen, and the distance must HOLD
 on a load week. Ten mutants, all caught.
 
+## The timer knew two of the four cardio modes (v327)
+
+*"Is this timer linked to the exercises here — jumping jacks, bike, rucking and
+running?"* Measured: **no**. The guided timer had exactly two callers,
+`openMakeupTimer('bike')` and `openMakeupTimer('jacks')`, and the ruck and run
+cards had no timer button at all — so the honest answer to the question was that
+two of the four modes were never wired to it.
+
+Underneath that, three functions were `bike ? … : jacks` branches whose ELSE
+swallowed **everything that was not the bike**:
+
+```js
+const isBike = mode==='bike';
+… isBike ? bikeRide() : jackWork()
+```
+
+So a ruck or a run reaching that timer would have been credited as **jumping
+jacks**. Measured on a 30-minute ruck at 45 lb: 154 kcal of real work read back
+as 271 — a **76% over-credit**, spent straight into the food budget, because
+movement earns calorie room on the surplus.
+
+**A two-way branch is a membership test with one member.** `MAKEUP_CREDIT` is
+now a table keyed by mode and `makeupCredit(mode)` reads it, falling back to
+jacks only for a value `CARDIO_MODES` does not contain. That is the same shape
+as `DIET_OPTS`, `GEAR_OPTS`, `CARDIO_MODES` and `WEIGHTS_PATTERNS` — the legal
+set in one place, asked rather than restated — and it is the fourth time this
+session that a hand-written two-value branch went stale when the set grew.
+
+**Rucking and running get the stopwatch and NOT the work/rest block.** Jacks are
+intervals and the bike has ride durations; a ruck and a run are one continuous
+effort, and offering a 30-on/30-off block for them would be prescribing a
+session shape neither wants. The card says so rather than leaving an empty
+panel — a screen with a control missing and no sentence explaining it reads as
+broken.
+
+**The floor is what stops the fix being "give everything a stopwatch".** A
+mutant that hands every mode the work/rest block satisfies every "the ruck can
+be timed" assertion and is caught by the pair of checks pinning that only jacks
+get the block and that the continuous efforts say why they do not.
+
+Nine mutants, all caught. One of them first read as an escape and was a **bad
+mutant** — it left an `else` with no `if`, so the page never parsed and the
+suite crashed instead of reporting checks. Re-seeded as `const isJacks=true;`
+it was caught by name. **Read the mutant back**, for the second time in this
+file.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='326';
+const APP_VERSION='327';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -6484,11 +6484,16 @@ function startSpecialCardio(exId,format){
    THIS feature starts. */
 function openMakeupTimer(mode){
   const isBike=mode==='bike';
-  const label=isBike?'🚴 Bike':'🤸 Jumping jacks';
+  const isJacks=mode==='jacks';
+  const label=makeupCredit(mode).label;
   let body=`<h3>⏱️ ${label} timer</h3>
     <p class="muted sm" style="margin:2px 0 14px">However you make it up, the minutes feed straight into today's step target when you're done.</p>
-    <button class="btn t-teal" style="width:100%" onclick="openMakeupStopwatch('${mode}')">⏱️ Stopwatch — start and stop as you go</button>
-    <div class="section-label">${isBike?'Or pick a duration':'Or a structured block'}</div>`;
+    <button class="btn t-teal" style="width:100%" onclick="openMakeupStopwatch('${_ve(mode)}')">⏱️ Stopwatch — start and stop as you go</button>
+    ${(isBike||isJacks)?`<div class="section-label">${isBike?'Or pick a duration':'Or a structured block'}</div>`:''}`;
+  /* A ruck and a run are ONE continuous effort — you set off and you come back.
+     The work/rest block is what jacks need and the duration list is what a
+     trainer needs; offering either here would be a control with nothing behind
+     it. The stopwatch is the whole tool, and that is not a gap. */
   if(isBike){
     body+=`<div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${[10,15,20,30,45].map(mn=>
       `<button onclick="startBikeMakeup(${mn})">${mn} min</button>`).join('')}</div>
@@ -6496,13 +6501,15 @@ function openMakeupTimer(mode){
         <div class="field" style="flex:1;margin:0"><label>Custom minutes</label><input id="mut-bike-custom" type="number" inputmode="numeric" placeholder="25" min="1"></div>
         <button class="btn primary" onclick="startBikeMakeupCustom()">Start</button>
       </div>`;
-  }else{
+  }else if(isJacks){
     body+=`<div class="btnrow" style="gap:8px;align-items:flex-end">
         <div class="field" style="flex:1;margin:0"><label>Work (min)</label><input id="mut-jk-w" type="number" inputmode="numeric" value="10" min="1"></div>
         <div class="field" style="flex:1;margin:0"><label>Rest (min)</label><input id="mut-jk-r" type="number" inputmode="numeric" value="2" min="0"></div>
         <div class="field" style="flex:1;margin:0"><label>Rounds</label><input id="mut-jk-n" type="number" inputmode="numeric" value="2" min="1"></div>
       </div>
       <button class="btn primary" style="margin-top:10px;width:100%" onclick="startJackMakeup()">▶ Start block</button>`;
+  }else{
+    body+=`<div class="tiny muted" style="margin:2px 0 4px">One continuous effort — start it when you set off and stop it when you are back. The minutes land on today's total either way.</div>`;
   }
   body+=`<div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Cancel</button>`;
   openSheet(body);
@@ -6538,7 +6545,7 @@ let MUT=null;
 function openMakeupStopwatch(mode){
   if(MUT&&MUT.tid)clearInterval(MUT.tid);
   MUT=swStart({mode,secs:0,tid:null,running:true});
-  const label=mode==='bike'?'🚴 Bike':'🤸 Jumping jacks';
+  const label=makeupCredit(mode).label;
   openSheet(`<h3>⏱️ ${label} stopwatch</h3>
     <p class="muted sm" style="margin:2px 0 14px">Counting up. Tap <b>Stop &amp; log</b> when you're done and the minutes go straight into today's movement.</p>
     <div style="text-align:center;margin:10px 0 18px"><div id="mut-num" style="font-size:56px;font-weight:900;letter-spacing:1px">0:00</div></div>
@@ -13706,20 +13713,33 @@ function rateBikeAndClose(feel){
    currency) regardless of which timer mode was used. Additive, matching
    the existing +/- nudge buttons and "close it" quick-fill — a timed block
    run after some manual entry stacks on top of it rather than overwriting. */
+/* MEMBERSHIP, not `bike ? ... : jacks`. This was three binary branches whose
+   ELSE swallowed every value that was not 'bike' — so a 30-minute ruck or run
+   credited 30 minutes of JUMPING JACKS. Measured: a 30-minute ruck under 30 lb
+   is 154 kcal and read as 271, a 76% over-credit going straight into the food
+   budget.
+
+   CARDIO_MODES' own comment predicted this exactly — "the third mode is where
+   a m==='bike'?'bike':'jacks' shape starts silently swallowing new values" —
+   and the third and fourth modes both arrived without anyone coming back here.
+   One table now, so a fifth mode is a row rather than a branch. */
+const MAKEUP_CREDIT={
+  jacks:{label:'🤸 Jumping jacks',unit:()=>movement().junit,setUnit:setJackUnit,add:addJackVal},
+  bike: {label:'🚴 Bike',        unit:()=>movement().unit, setUnit:setBikeUnit,add:addBikeVal},
+  ruck: {label:'🎒 Ruck',        unit:()=>movement().runit,setUnit:setRuckUnit,add:addRuckVal},
+  run:  {label:'🏃 Run',         unit:()=>movement().nunit,setUnit:setRunUnit, add:addRunVal},
+};
+function makeupCredit(mode){return MAKEUP_CREDIT[CARDIO_MODES.includes(mode)?mode:'jacks'];}
 function creditMakeup(mode,mins,feel){
   let msg='Logged '+mins+' min to today’s movement';
-  if(mode==='bike'){
-    if(feel){
-      rateBikeRide(feel);
-      const next=bikeLevelSuggestion();
-      if(next)msg='📈 3 easy rides at this level — try "'+next.label+'" next time?';
-    }
-    if(movement().unit!=='min')setBikeUnit('min');
-    addBikeVal(mins);
-  }else{
-    if(movement().junit!=='min')setJackUnit('min');
-    addJackVal(mins);
+  if(mode==='bike'&&feel){
+    rateBikeRide(feel);
+    const next=bikeLevelSuggestion();
+    if(next)msg='📈 3 easy rides at this level — try "'+next.label+'" next time?';
   }
+  const c=makeupCredit(mode);
+  if(c.unit()!=='min')c.setUnit('min');
+  c.add(mins);
   toast(msg);
 }
 function creditMakeupAndClose(mode,mins,feel){creditMakeup(mode,mins,feel);hiitQuit();}
@@ -13943,7 +13963,8 @@ function runBlockHTML(m,short){
     <div class="tiny muted" style="margin-bottom:12px">About <b>${_ve(runPaceLabel(m.nlvl))}</b> · worth <b>${Math.round(runKcalPerMin(m.nlvl))} kcal</b> a minute.
       <div style="margin-top:3px">The step figure below is an <b>energy equivalent</b>, not a count of footfalls — a run earns far more per minute than a walk, and this is how the app prices that against your target.</div></div>`;
   if(need>0)h+=`<div class="tiny muted" style="margin-bottom:10px">You are <b>${short.toLocaleString()}</b> steps short — about <b>${need} min</b> at this pace.</div>`;
-  h+=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log the run as</div>
+  h+=`<button class="btn t-teal" style="width:100%;margin-bottom:12px" onclick="openMakeupTimer('run')">⏱️ Time it — guided timer, logs itself</button>
+    <div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log the run as</div>
     <div class="tiny muted" style="margin:-2px 0 8px"><b>Log the distance if you know it.</b> Running costs about the same per kilometre however fast you go — measured across these four paces, the same 5 km comes out within 9% — so picking the wrong pace barely moves the number. Minutes are the one input the pace really does change.</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${RUN_UNITS.map(([k,l])=>
       `<button class="${m.nunit===k?'on':''}" onclick="setRunUnit('${k}')">${l==='Distance'?distUnit().toUpperCase():l}</button>`).join('')}</div>
@@ -13987,7 +14008,8 @@ function ruckBlockHTML(m,short){
             0.086, which rounds to "0.1 km a minute" and tells the athlete
             nothing at all. */''}</div>`;
   if(need>0)h+=`<div class="tiny muted" style="margin-bottom:10px">You are <b>${short.toLocaleString()}</b> steps short — about <b>${need} min</b> under that plate at this pace.</div>`;
-  h+=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log the ruck as</div>
+  h+=`<button class="btn t-teal" style="width:100%;margin-bottom:12px" onclick="openMakeupTimer('ruck')">⏱️ Time it — guided timer, logs itself</button>
+    <div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log the ruck as</div>
     <div class="tiny muted" style="margin:-2px 0 8px">The plate and the pace both change what a minute is worth. <b>Calories are the input that cannot be thrown off by picking the wrong pace</b> — the same algebra as the bike: the MET cancels out of a calorie figure.</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${RUCK_UNITS.map(([k,l])=>
       `<button class="${m.runit===k?'on':''}" onclick="setRuckUnit('${k}')">${l==='Distance'?distUnit().toUpperCase():l}</button>`).join('')}</div>

@@ -1621,6 +1621,98 @@ export default async function run() {
     t.ok('and the review holds no controls of its own', r.reviewHasNoControls, r);
   }
 
+  const CARDIO_MODES_FOR_TEST = await page.evaluate(() => CARDIO_MODES.slice());
+
+  /* ---- the makeup timer knows all four cardio modes (v327) -----------------
+     Reported from the phone: "is this timer linked to the exercises here?"
+     It was not. openMakeupTimer, openMakeupStopwatch and creditMakeup were
+     three `bike ? ... : jacks` branches whose ELSE swallowed everything, so a
+     ruck or a run would have credited JUMPING JACKS. Measured before the fix:
+     a 30-minute ruck under 30 lb is 154 kcal and read as 271 — a 76%
+     over-credit going straight into the food budget.
+
+     CARDIO_MODES' own comment predicted this: "the third mode is where a
+     m==='bike'?'bike':'jacks' shape starts silently swallowing new values".
+     The third AND fourth arrived without anyone coming back. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = { mode: nut().cardioMode, kg: STATE.nutrition.weightKg, onb: STATE.onboarded };
+      STATE.nutrition.weightKg = 86; STATE.onboarded = true;
+      const zero = () => { const t = nutToday(); t.jackVal = 0; t.bikeVal = 0; t.ruckVal = 0; t.runVal = 0; };
+      const where = () => ({ jacks: jackWork().min, bike: bikeRide().min, ruck: ruckWork().min, run: runWork().min });
+      const o = { credits: {}, cards: {}, sheets: {} };
+
+      /* EVERY mode credits ITS OWN activity and NOTHING else. */
+      CARDIO_MODES.forEach(m => { zero(); creditMakeup(m, 30); o.credits[m] = where(); });
+      /* And junk falls back rather than throwing — it reaches a setter. */
+      zero(); creditMakeup('helicopter', 30); o.junk = where();
+      zero();
+
+      /* Every card offers the button, and passes ITS OWN mode. A card that
+         passed 'jacks' would render and credit the wrong activity. */
+      CARDIO_MODES.forEach(m => { setCardioMode(m); go('today'); TODAY_TAB = 'workout'; render();
+        const html = document.querySelector('#v-today').innerHTML;
+        o.cards[m] = { own: html.indexOf("openMakeupTimer('" + m + "')") >= 0,
+                       count: (html.match(/openMakeupTimer\(/g) || []).length }; });
+
+      CARDIO_MODES.forEach(m => { openMakeupTimer(m);
+        const txt = document.querySelector('#sheet').textContent.replace(/\s+/g, ' ');
+        o.sheets[m] = { named: txt.indexOf(MAKEUP_CREDIT[m].label.replace(/^\S+\s/, '')) >= 0,
+                        stopwatch: /Stopwatch/.test(txt),
+                        block: /Start block/.test(txt),
+                        durations: /45 min/.test(txt),
+                        continuous: /One continuous effort/.test(txt) };
+        try { closeSheet(); } catch (e) {} });
+
+      /* The stopwatch names the mode too — it used to say "Jumping jacks" for
+         anything that was not the bike. */
+      openMakeupStopwatch('ruck');
+      o.stopwatchNamesRuck = /Ruck/.test(document.querySelector('#sheet').textContent);
+      try { makeupStopwatchCancel(); } catch (e) {}
+
+      /* One table, so a fifth mode is a row rather than a branch. */
+      o.tableCoversEveryMode = CARDIO_MODES.every(m => !!MAKEUP_CREDIT[m]);
+      o.tableHasNoStrays = Object.keys(MAKEUP_CREDIT).every(k => CARDIO_MODES.indexOf(k) >= 0);
+
+      setCardioMode(keep.mode || 'jacks');
+      STATE.nutrition.weightKg = keep.kg; STATE.onboarded = keep.onb;
+      return o;
+    });
+
+    /* THE DEFECT. Each mode's minutes land on that mode and nowhere else. */
+    CARDIO_MODES_FOR_TEST.forEach(m => {
+      t.eq('timing a ' + m + ' session credits ' + m, r.credits[m][m], 30, r.credits[m]);
+      t.ok('and credits nothing else',
+        Object.keys(r.credits[m]).every(k => k === m || r.credits[m][k] === 0), r.credits[m]);
+    });
+    /* Junk reaches a setter, so it must land somewhere safe rather than throw
+       or vanish — jacks is the same fallback cardioMode() uses. */
+    t.eq('an unrecognised mode falls back to jacks rather than disappearing', r.junk.jacks, 30, r.junk);
+    /* Every card, and each passing its OWN mode. */
+    CARDIO_MODES_FOR_TEST.forEach(m => {
+      t.ok('the ' + m + ' card offers the timer', r.cards[m].own, r.cards[m]);
+      t.eq('and offers exactly one', r.cards[m].count, 1, r.cards[m]);
+    });
+    /* Named for the mode, on both surfaces. */
+    CARDIO_MODES_FOR_TEST.forEach(m => t.ok('the ' + m + ' timer is named for it', r.sheets[m].named, r.sheets[m]));
+    t.ok('and so is the stopwatch', r.stopwatchNamesRuck, r);
+    /* The RIGHT tools, not just any tools. A work/rest block is what jacks
+       need; a duration list is what a trainer needs; a ruck or a run is one
+       continuous effort and gets the stopwatch alone. Offering a block for a
+       ruck would be a control with nothing behind it. */
+    t.ok('every mode gets the stopwatch', CARDIO_MODES_FOR_TEST.every(m => r.sheets[m].stopwatch), r.sheets);
+    t.ok('only jacks get a work/rest block', r.sheets.jacks.block
+      && !r.sheets.bike.block && !r.sheets.ruck.block && !r.sheets.run.block, r.sheets);
+    t.ok('only the bike gets a duration list', r.sheets.bike.durations
+      && !r.sheets.jacks.durations && !r.sheets.ruck.durations && !r.sheets.run.durations, r.sheets);
+    t.ok('and the continuous efforts say so', r.sheets.ruck.continuous && r.sheets.run.continuous, r.sheets);
+    t.ok('while the block-based ones do not',
+      !r.sheets.jacks.continuous && !r.sheets.bike.continuous, r.sheets);
+    /* One table. A fifth mode is a row, not a branch — which is the whole
+       reason this defect existed. */
+    t.ok('the credit table covers every cardio mode', r.tableCoversEveryMode, r);
+    t.ok('and carries no strays', r.tableHasNoStrays, r);
+  }
   await browser.close(); srv.close();
   return t.finish(errors);
 }
