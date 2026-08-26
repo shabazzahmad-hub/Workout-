@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='328';
+const APP_VERSION='329';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -13744,25 +13744,53 @@ function rateBikeAndClose(feel){
    and "Target met" was gated on `work.min||ride.min`, which names jacks and the
    bike and nothing else. A second table restating these four labels is how the
    five diets came to exist as three separate literals; one table, four rows. */
+/* One reading of a STORED day's number. Not `movement()`, which carries the
+   athlete's CURRENT level forward as a default — right for today, wrong for a
+   day already in the past, which recorded whatever it recorded. */
+function _dv(v){return (typeof v==='number'&&isFinite(v)&&v>0)?v:0;}
 const CARDIO_INFO={
-  jacks:{label:'🤸 Jumping jacks',short:'jumping jacks',did:'of jumping jacks',
+  jacks:{label:'🤸 Jumping jacks',short:'jumping jacks',did:'of jumping jacks',verb:'jumping',
     unit:()=>movement().junit,setUnit:setJackUnit,add:addJackVal,
     work:()=>jackWork(),
+    dayMin:d=>{const v=_dv(d&&d.jackVal);if(!v)return 0;
+      const l=JACK_LEVELS.some(b=>b.k===(d&&d.jackLvl))?d.jackLvl:'steady';
+      const u=JACK_UNITS.some(x=>x[0]===(d&&d.jackUnit))?d.jackUnit:'min';
+      return Math.min(600,u==='min'?v:(u==='reps'?v/jackRepsPerMin(l):v/jackKcalPerMin(l)));},
+    dayKcal:d=>{const l=JACK_LEVELS.some(b=>b.k===(d&&d.jackLvl))?d.jackLvl:'steady';
+      return CARDIO_INFO.jacks.dayMin(d)*jackKcalPerMin(l);},
     advice:short=>{const m=movement(),n=jackNeed(short,m.jlvl);
       return `${_ve(jackLevel(m.jlvl).label)} jumping jacks, that is <b>${n.min} min</b>, <b>${n.reps.toLocaleString()} reps</b>, or <b>${n.kcal} kcal</b>. No kit, no wall, anywhere you can stand.`;}},
-  bike: {label:'🚴 Bike',        short:'the bike',did:'on the bike',
+  bike: {label:'🚴 Bike',        short:'the bike',did:'on the bike',verb:'riding',
     unit:()=>movement().unit, setUnit:setBikeUnit,add:addBikeVal,
     work:()=>bikeRide(),
+    dayMin:d=>{const v=_dv(d&&d.bikeVal);if(!v)return 0;
+      const l=BIKE_LEVELS.some(b=>b.k===(d&&d.bikeLvl))?d.bikeLvl:'steady';
+      const u=BIKE_UNITS.some(x=>x[0]===(d&&d.bikeUnit))?d.bikeUnit:'min';
+      return Math.min(600,u==='min'?v:(u==='dist'?v/bikeKmPerMin(l):v/bikeKcalPerMin(l)));},
+    dayKcal:d=>{const l=BIKE_LEVELS.some(b=>b.k===(d&&d.bikeLvl))?d.bikeLvl:'steady';
+      return CARDIO_INFO.bike.dayMin(d)*bikeKcalPerMin(l);},
     advice:short=>{const m=movement(),n=bikeNeed(short,m.lvl);
       return `${_ve(bikeLevel(m.lvl).label)} on the trainer, that is <b>${n.min} min</b>, <b>${n.dist} ${distUnit()}</b>, or <b>${n.kcal} kcal</b> — whichever your bike shows you.`;}},
-  ruck: {label:'🎒 Ruck',        short:'the ruck',did:'under the ruck',
+  ruck: {label:'🎒 Ruck',        short:'the ruck',did:'under the ruck',verb:'rucking',
     unit:()=>movement().runit,setUnit:setRuckUnit,add:addRuckVal,
     work:()=>ruckWork(),
+    dayMin:d=>{const v=_dv(d&&d.ruckVal);if(!v)return 0;
+      const l=RUCK_PACES.some(b=>b.k===(d&&d.ruckLvl))?d.ruckLvl:'brisk';
+      const u=RUCK_UNITS.some(x=>x[0]===(d&&d.ruckUnit))?d.ruckUnit:'min';
+      return Math.min(600,u==='min'?v:(u==='dist'?v/ruckKmPerMin(l):v/ruckKcalPerMin(l)));},
+    dayKcal:d=>{const l=RUCK_PACES.some(b=>b.k===(d&&d.ruckLvl))?d.ruckLvl:'brisk';
+      return CARDIO_INFO.ruck.dayMin(d)*ruckKcalPerMin(l);},
     advice:short=>{const m=movement(),n=ruckNeed(short,m.rlvl);
       return `${_ve(ruckPace(m.rlvl).label)} under <b>${ruckLoadLb()} lb</b>, that is <b>${n.min} min</b>, <b>${n.dist} ${distUnit()}</b>, or <b>${n.kcal} kcal</b>. Outdoors, and it loads your legs while it pays the target.`;}},
-  run:  {label:'🏃 Run',         short:'the run',did:'of running',
+  run:  {label:'🏃 Run',         short:'the run',did:'of running',verb:'running',
     unit:()=>movement().nunit,setUnit:setRunUnit, add:addRunVal,
     work:()=>runWork(),
+    dayMin:d=>{const v=_dv(d&&d.runVal);if(!v)return 0;
+      const l=RUN_PACES.some(b=>b.k===(d&&d.runLvl))?d.runLvl:'steady';
+      const u=RUN_UNITS.some(x=>x[0]===(d&&d.runUnit))?d.runUnit:'min';
+      return Math.min(600,u==='min'?v:(u==='dist'?v/runKmPerMin(l):v/runKcalPerMin(l)));},
+    dayKcal:d=>{const l=RUN_PACES.some(b=>b.k===(d&&d.runLvl))?d.runLvl:'steady';
+      return CARDIO_INFO.run.dayMin(d)*runKcalPerMin(l);},
     advice:short=>{const m=movement(),n=runNeed(short,m.nlvl);
       return `${_ve(runPace(m.nlvl).label)} running, that is <b>${n.min} min</b>, <b>${n.dist} ${distUnit()}</b>, or <b>${n.kcal} kcal</b>. Treadmill or road — the effort is what counts, not the ground.`;}},
 };
@@ -13835,29 +13863,31 @@ function hasTrainer(){try{return ((STATE.profile&&STATE.profile.gear)||[]).inclu
    option, and now the default — saw a permanently empty progress bar for
    conditioning he had actually done. */
 function ridesThisWeek(){
-  const n=nut();let rides=0,mins=0,jackMin=0,rideMin=0;
+  const n=nut();let rides=0,mins=0,kcal=0;
+  const perMode={};CARDIO_MODES.forEach(k=>perMode[k]=0);
   for(let i=0;i<7;i++){
     const d=new Date();d.setDate(d.getDate()-i);
     const day=n.days&&n.days[localISO(d)];if(!day)continue;
     let dayMin=0;
-    const v=(typeof day.bikeVal==='number'&&isFinite(day.bikeVal)&&day.bikeVal>0)?day.bikeVal:0;
-    if(v){
-      const lvl=BIKE_LEVELS.some(b=>b.k===day.bikeLvl)?day.bikeLvl:'steady';
-      const u=BIKE_UNITS.some(x=>x[0]===day.bikeUnit)?day.bikeUnit:'min';
-      const m=(u==='min')?v:(u==='dist'?v/bikeKmPerMin(lvl):v/bikeKcalPerMin(lvl));
-      dayMin+=m;rideMin+=m;
-    }
-    const jv=(typeof day.jackVal==='number'&&isFinite(day.jackVal)&&day.jackVal>0)?day.jackVal:0;
-    if(jv){
-      const jl=JACK_LEVELS.some(b=>b.k===day.jackLvl)?day.jackLvl:'steady';
-      const ju=JACK_UNITS.some(x=>x[0]===day.jackUnit)?day.jackUnit:'min';
-      const m=(ju==='min')?jv:(ju==='reps'?jv/jackRepsPerMin(jl):jv/jackKcalPerMin(jl));
-      dayMin+=m;jackMin+=m;
-    }
+    /* Every mode, read through the one table. This counted the bike only, was
+       fixed once for jacks (see the comment above), and then the ruck and the
+       run arrived without anyone coming back — so an athlete doing 2 x 45 min
+       under a plate read 0/2 and an empty bar for conditioning genuinely done.
+       Measured before the fix: rucking 0 min, riding the same minutes 90. */
+    CARDIO_MODES.forEach(k=>{
+      const m=cardioInfo(k).dayMin(day);
+      if(!(m>0))return;
+      dayMin+=m;perMode[k]+=m;
+      /* Priced at the mode's own rate. Charging every minute at the jacks
+         rate is the same defect one number over — a ruck under 45 lb does not
+         cost what a jumping jack costs. */
+      kcal+=cardioInfo(k).dayKcal(day);
+    });
     if(!dayMin)continue;
     mins+=dayMin;if(dayMin>=RIDE_TARGET.min*0.7)rides++;
   }
-  return {rides,mins:Math.round(mins),jackMin:Math.round(jackMin),rideMin:Math.round(rideMin)};
+  const per={};CARDIO_MODES.forEach(k=>per[k]=Math.round(perMode[k]));
+  return {rides,mins:Math.round(mins),kcal:Math.round(kcal),perMode:per};
 }
 function rideTargetHTML(){
   /* Shown to everyone now. The gate was hasTrainer(), which hid the whole
@@ -13865,15 +13895,17 @@ function rideTargetHTML(){
      fewest options were the ones told nothing. */
   const r=ridesThisWeek();const done=Math.min(RIDE_TARGET.n,r.rides);
   const pct=Math.min(100,Math.round(r.mins/(RIDE_TARGET.n*RIDE_TARGET.min)*100));
-  const breakdown=(r.jackMin&&r.rideMin)?`${r.jackMin} jumping · ${r.rideMin} riding`
-    :(r.jackMin?'jumping jacks':(r.rideMin?'on the bike':''));
+  /* Every mode that put minutes in, in CARDIO_MODES order. Two hardcoded
+     names could only ever describe two of the four. */
+  const breakdown=CARDIO_MODES.filter(k=>r.perMode[k]>0)
+    .map(k=>`${r.perMode[k]} ${CARDIO_INFO[k].verb}`).join(' · ');
   return `<div class="section-label">Easy conditioning · <span style="color:${done>=RIDE_TARGET.n?'var(--green)':'var(--gold)'}">${done}/${RIDE_TARGET.n} this week</span></div>
   <div class="card pad">
     <div class="pbar" style="margin:2px 0 10px"><i style="width:${pct}%;background:linear-gradient(90deg,#7ee08a,#2fa84f)"></i></div>
     <div class="row" style="justify-content:space-between;align-items:baseline">
       <div><b>${r.mins} min</b>${breakdown?` <span class="tiny muted">· ${_ve(breakdown)}</span>`:''}<div class="tiny muted">Target ${RIDE_TARGET.n} × ${RIDE_TARGET.min} min easy</div></div>
-      <span class="tiny muted">${Math.round(r.mins*jackKcalPerMin('easy'))} kcal</span></div>
-    <div class="note info" style="margin:10px 0 0"><b>Easy means easy.</b> Full sentences, nothing burning. This is the volume that shifts body fat without taking anything out of your sessions — the intervals in your workouts are already doing the hard part. Jumping jacks, a walk or the bike all count; pick whichever you will actually do today.</div>
+      <span class="tiny muted">${r.kcal} kcal</span></div>
+    <div class="note info" style="margin:10px 0 0"><b>Easy means easy.</b> Full sentences, nothing burning. This is the volume that shifts body fat without taking anything out of your sessions — the intervals in your workouts are already doing the hard part. Jumping jacks, the bike, a ruck and a run all count — pick whichever you will actually do today. Plain walking pays your <b>step target</b> above instead, not this one: the app can see a step count but cannot tell a deliberate walk from a busy day.</div>
   </div>`;
 }
 /* TODAY, REVIEWED — on the tab that reports things.
@@ -17907,6 +17939,75 @@ function validateData(){
      being the lowest-impact rung the copy pointing athletes at them is a lie. */
   if(JACK_LEVELS[0].k!=='step'||JACK_LEVELS[0].impact!=='low')
     errs.push('JACK_LEVELS: the low-impact option is no longer first');
+  /* ---- the ruck and the run ----------------------------------------------
+     There are FOUR cardio ladders and this checked two of them. The two it
+     skipped are the two the army-prep programme is built on, and they are the
+     ones whose arithmetic is hardest to eyeball: the ruck's MET is computed
+     from bodyweight and load rather than looked up, so a bad figure there
+     moves with the athlete and never looks obviously wrong. Same contract as
+     the bike and the jacks — harder pays more, and every currency quoted
+     against a 10,000-step debt has to actually cover it. */
+  const ruckKeys={};
+  RUCK_PACES.forEach((b,i)=>{
+    if(ruckKeys[b.k])errs.push('RUCK_PACES: duplicate key "'+b.k+'"');
+    ruckKeys[b.k]=1;
+    if(!b.label||!b.cue||!b.rpe)errs.push('RUCK_PACES.'+b.k+': incomplete coaching copy');
+    if(!(b.gross>0))errs.push('RUCK_PACES.'+b.k+': no gross MET value');
+    if(i&&b.gross<=RUCK_PACES[i-1].gross)
+      errs.push('RUCK_PACES.'+b.k+' ('+b.gross+') is not harder than '+RUCK_PACES[i-1].k);
+    if(!(ruckMET(b.k)>0))errs.push('RUCK_PACES.'+b.k+': nets out at no work at all');
+    if(ruckMET(b.k)>=14)errs.push('RUCK_PACES.'+b.k+': '+ruckMET(b.k)+' net METs is beyond sustained human output');
+    if(!(ruckStepsPerMin(b.k)>0))errs.push('RUCK_PACES.'+b.k+': converts to no steps');
+    // a ruck is WALKING under load, so the speed has to be a walking speed
+    if(!(b.mph>=2&&b.mph<=5))errs.push('RUCK_PACES.'+b.k+': '+b.mph+' mph is not a rucking pace');
+    const rm=ruckMinutesFor(10000,b.k);
+    if(!(rm>0)||rm*ruckStepsPerMin(b.k)<10000)
+      errs.push('RUCK_PACES.'+b.k+': '+rm+' min does not actually cover 10,000 steps');
+    const rn=ruckNeed(10000,b.k);
+    if(showToKm(rn.dist)/ruckKmPerMin(b.k)*ruckStepsPerMin(b.k)<10000)
+      errs.push('RUCK_PACES.'+b.k+': '+rn.dist+' '+distUnit()+' falls short of 10,000 steps');
+    if(rn.kcal<10000*kcalPerStep())
+      errs.push('RUCK_PACES.'+b.k+': '+rn.kcal+' kcal falls short of 10,000 steps');
+  });
+  /* The property that makes a LOAD ladder different from a level table: the
+     same plate is worth less to a heavier athlete, because the MET is computed
+     from total mass moved rather than looked up. A fixed table cannot express
+     that at all, so losing it silently would turn the ruck back into a bike. */
+  try{
+    const w=latestWeightKg();
+    if(w>0&&ruckLoadLb()>0&&ruckMET('brisk')<=(RUCK_PACES.find(p=>p.k==='brisk')||{gross:0}).gross-1)
+      errs.push('RUCK_PACES: the carried load is no longer raising the MET');
+  }catch(e){errs.push('ruck load check threw: '+e);}
+  const runKeys={};
+  RUN_PACES.forEach((b,i)=>{
+    if(runKeys[b.k])errs.push('RUN_PACES: duplicate key "'+b.k+'"');
+    runKeys[b.k]=1;
+    if(!b.label||!b.cue||!b.rpe)errs.push('RUN_PACES.'+b.k+': incomplete coaching copy');
+    if(!(b.gross>0))errs.push('RUN_PACES.'+b.k+': no gross MET value');
+    if(i&&b.gross<=RUN_PACES[i-1].gross)
+      errs.push('RUN_PACES.'+b.k+' ('+b.gross+') is not harder than '+RUN_PACES[i-1].k);
+    if(i&&b.kmh<=RUN_PACES[i-1].kmh)
+      errs.push('RUN_PACES.'+b.k+' is harder than '+RUN_PACES[i-1].k+' but no faster');
+    if(runMET(b.k)>=20)errs.push('RUN_PACES.'+b.k+': '+runMET(b.k)+' net METs is beyond sustained human output');
+    if(!(runStepsPerMin(b.k)>0))errs.push('RUN_PACES.'+b.k+': converts to no steps');
+    if(!(b.kmh>=6&&b.kmh<=22))errs.push('RUN_PACES.'+b.k+': '+b.kmh+' km/h is not a running speed');
+    const nm=runMinutesFor(10000,b.k);
+    if(!(nm>0)||nm*runStepsPerMin(b.k)<10000)
+      errs.push('RUN_PACES.'+b.k+': '+nm+' min does not actually cover 10,000 steps');
+    const nn=runNeed(10000,b.k);
+    if(showToKm(nn.dist)/runKmPerMin(b.k)*runStepsPerMin(b.k)<10000)
+      errs.push('RUN_PACES.'+b.k+': '+nn.dist+' '+distUnit()+' falls short of 10,000 steps');
+    if(nn.kcal<10000*kcalPerStep())
+      errs.push('RUN_PACES.'+b.k+': '+nn.kcal+' kcal falls short of 10,000 steps');
+  });
+  /* Running costs about the same per KILOMETRE however fast you go — that is
+     why distance is the input the pace barely moves, and the card says so. */
+  try{
+    const per=RUN_PACES.map(b=>5*runKcalPerMin(b.k)/runKmPerMin(b.k)/5);
+    const lo=Math.min.apply(null,per), hi=Math.max.apply(null,per);
+    if(lo>0&&hi/lo>1.25)
+      errs.push('RUN_PACES: cost per '+distUnit()+' varies '+Math.round((hi/lo-1)*100)+'% across paces — the card promises it barely moves');
+  }catch(e){errs.push('run cost-per-km check threw: '+e);}
     // ---- the Reference tables ------------------------------------------------
   // A tapped food writes straight into the day's macro totals, and every figure
   // the tab shows is computed off these rows, so a bad row is both wrong on

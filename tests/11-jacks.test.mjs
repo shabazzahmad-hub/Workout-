@@ -152,7 +152,16 @@ export default async function run() {
         weekly: ridesThisWeek() };
     });
     t.ok('jacks logged today are still shown when viewing the bike', r.mentionsJacks, r);
-    t.ok('the weekly conditioning target counts jack minutes', r.weekly.jackMin >= 14, r.weekly);
+    /* v329 replaced jackMin/rideMin with a per-mode map, because two named
+       fields could only ever describe two of the four cardio modes. The
+       requirement is unchanged and is now read off the map — and the floor
+       beside it is what makes it a statement about JACKS rather than about
+       the total: a fix that credited the minutes to some other mode would
+       satisfy `mins >= 14` on its own. */
+    t.ok('the weekly conditioning target counts jack minutes', r.weekly.perMode.jacks >= 14, r.weekly);
+    t.ok('and credits them to jacks, not to another mode',
+      r.weekly.perMode.bike === 0 && r.weekly.perMode.ruck === 0 && r.weekly.perMode.run === 0,
+      r.weekly);
   }
 
   /* ---- the programme no longer forces the bike on anyone ----------------- */

@@ -3719,6 +3719,83 @@ where the change was made.** And the cross-note quotes each mode's `did` phrase
 (*"of running"*), not its `short` one (*"the run"*), because *"20 min on
 jumping jacks"* is not English.
 
+## The conditioning bar reported nothing for the one athlete it was built for (v329)
+
+Found by sweeping for the SHAPE of v327 and v328 rather than by using the app:
+every function that knows jacks AND the bike but not the ruck or the run.
+Four hits, three real.
+
+**`ridesThisWeek()` read `day.bikeVal` and `day.jackVal` and nothing else.**
+Measured against the 2 x 35 min "Easy conditioning" target:
+
+| the week | the bar reads |
+|---|---|
+| 2 x 45 min riding | 2/2 · 90 min |
+| 2 x 45 min jacks | 2/2 · 90 min |
+| **2 x 45 min rucking** | **0/2 · 0 min** |
+| **2 x 40 min running** | **0/2 · 0 min** |
+
+**Its own comment records this being fixed once already.** It counted rides
+only, until an athlete doing the same work with jumping jacks saw a
+permanently empty bar. Then the ruck (v294) and the run (v323) arrived and
+nobody came back — so the fix for one instance left the class alive, for the
+third time in three versions. And the week it fails on is precisely the week
+the army-prep programme prescribes.
+
+**A walk counted for nothing, and the card said it counted.** *"Jumping jacks,
+a walk or the bike all count"* — `ridesThisWeek()` never read `day.steps` at
+all, so 24,000 steps over two days read 0/2. Fifth entry under **a promise in
+UI text is a specification**.
+
+The copy now names what really counts AND says where walking does count
+instead — the step target, one card up. Deleting the false half without
+answering the question it raises just moves the dead end.
+
+**The energy was priced at one mode's rate for all of them.** The card showed
+`r.mins * jackKcalPerMin('easy')`, so 90 minutes under a 45 lb plate was
+charged at the jumping-jack rate. Each mode now prices its own minutes — the
+same defect v327 fixed one number over.
+
+**`validateData()` checked two of the four cardio ladders.** `BIKE_LEVELS` and
+`JACK_LEVELS` get MET ordering, speed sanity and a "does this really cover
+10,000 steps" test in all three currencies; `RUCK_PACES` and `RUN_PACES` got
+nothing. The ruck is the one that needed it most: its MET is **computed from
+bodyweight and load** rather than looked up, so a bad figure moves with the
+athlete and never looks obviously wrong. Two properties are pinned that a
+fixed table could not express at all — that the carried load really raises the
+MET, and that running costs about the same per kilometre across all four paces,
+which is the claim the run card makes on screen.
+
+### `_dv()` and the escaped mutant that was ALMOST equivalent
+
+`+v||0` in place of the `typeof`/`isFinite`/`>0` test escaped, and reading it
+back is what found the real difference. `'lots'` is `NaN` either way. A
+negative is refused downstream by the `if(!(m>0))return` guard. But a numeric
+**string** coerces: `'45'` would be counted as 45 minutes in the weekly total
+while `movement()` — which reads today's number with `typeof v==='number'` —
+scores the same stored row as nothing. **The two readers have to agree**, or
+one day is worth 45 minutes in the weekly bar and zero on the card. The check
+now pins both sides, with a guard asserting today's reader really does refuse
+it.
+
+Eleven mutants, all caught after that. The floors are what keep the fix from
+being "count everything": 24,000 walked steps is still not two cardio sessions,
+and two 10-minute efforts still do not meet a 35-minute target.
+
+### And a check in another suite that read a field, not a requirement
+
+Suite 11 asserted `r.weekly.jackMin >= 14`. The per-mode map replaced
+`jackMin`/`rideMin` — two named fields can only ever describe two of four
+modes — so it failed on correct code. Re-aimed rather than patched: it now
+reads `perMode.jacks` **and** pins that the other three are zero, which is what
+makes it a statement about jacks rather than about the total.
+
+### The false alarm, recorded so nobody "fixes" it
+
+`ivDone()` is bike-scoped on purpose and its own comment says why: the
+`specialcardio` intervals are the one session with a real intensity dial
+(`BIKE_LEVELS`) behind them. Not every two-way branch over this set is a bug.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
