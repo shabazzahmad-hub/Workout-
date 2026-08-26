@@ -3504,6 +3504,57 @@ The real requirement is that the unrecognised-diet prompt sits **beside the
 picker**; on a surface with no picker it is a dead end. It now asserts that,
 with guards pinning where the picker actually is. Five mutants, all caught.
 
+## A date nothing schedules against is a countdown, not a plan (v325)
+
+`prep.date` was stored and shown as "10 weeks to go" and **nothing scheduled
+against it**. That is `timelineWeeks` verbatim, one round after writing the
+lesson down: a control the athlete sets that almost nothing reads.
+
+**THE 10% RULE IS THE WHOLE POINT.** Running volume that climbs faster than
+about a tenth a week is how people arrive at selection injured rather than fit,
+and it is the one number a plan can get wrong without anyone noticing until it
+hurts. The ramp is capped, the cap is pinned, and **the plan will take longer
+rather than climb faster.**
+
+**It starts from what the athlete is actually doing.** `trailingRunKm()` reads
+their real weekly distance out of the logged days — the same "read the DATA,
+not a flag" discipline the safety predicates follow. With nothing logged it
+opens at a deliberately low floor **and says so**, because guessing high is the
+failure that costs a tendon.
+
+**Every fourth week is a down week**, and that is part of the plan rather than
+a rest from it. A block with no down weeks ends in a deload the athlete did not
+choose.
+
+### The rule governs the CURVE, not the bounce out of a down week
+
+Measured across eight weeks: `16.7 → 18.3 → 20.2 → 15.5 → 24.4 → …`. Week on
+week that reads **+10, +10, −23, +57**, and the +57 is not a violation — it is
+the return to the underlying curve, which is 10% per week compounded against
+the last week that was **not** cut (20.2 × 1.1² = 24.4, exactly on the cap).
+
+**A naive week-on-week assertion fails here on correct code**, and the obvious
+way to "fix" it is to delete the down weeks — which is the opposite of what the
+plan needs. So the check states the real rule: the curve is capped, a down week
+is a genuine cut, and the bounce is capped against the last uncut week.
+
+### Three escaped mutants, and every one is a lesson already in this file
+
+- **The floor check compared the app to itself.** `t.eq(km, PREP_FLOOR_KM)`
+  passes however high the floor is raised — a mutant moving it from 8 km to
+  **40 km a week** walked straight through. Pin the VALUE, not the identity.
+  Same shape as v299's "do not pin a floor to its siblings".
+- **Setting the field is not driving the route.** The stamp that stops a
+  changed test date restarting a trained block lives in `saveForceDate()`, and
+  the check assigned `STATE.prep.date` by hand. It now opens the sheet and
+  drives the save. Sixth time.
+- **Measure the payload, not the container.** Every ramp assertion read
+  `curve`, which is the number the screen EXPLAINS. A mutant that flattened
+  `km` — the distance the athlete actually runs — left `curve` climbing and
+  passed everything.
+
+Ten mutants, all caught after those three rewrites.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
