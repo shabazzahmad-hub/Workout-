@@ -2703,6 +2703,83 @@ rendered-view condition is kept as intent with **no check able to catch its
 removal**: boot schedules `hideSplash` on the line after `render()`, so a hidden
 splash already implies a drawn app. An equivalent mutant, recorded as one.
 
+## The flag said WHEN, and the question was WHICH (v316)
+
+An audit of the three versions shipped that day. Two mechanical sweeps came
+back empty — **275 handler names in the source, none dead**, and **139 element
+ids read, none missing** — and the real finding came from driving state across
+a boundary instead.
+
+`_trainAgain` records "today's session is done; show me the next one anyway".
+v313 stored it as a bare **date string**, and a date cannot say whether the
+session the athlete was looking at is still the one behind the pointer. Two
+functions move that pointer and neither cleared the flag:
+
+- **`undoSession()`** rewinds it. Undo a session and re-do it the same day, and
+  Today showed the NEXT one under the word TODAY with a **Mark Session
+  Complete** button on it — the v313 defect exactly, which is how you burn the
+  next session by accident.
+- **`restartProgram()`** resets it to 0 and archives the run.
+
+**Nulling it in each writer works until the next writer forgets**, and that is
+this repo's most-repeated shape. It stamps the pointer it was granted from
+instead — `{date, from}` — so any pointer move voids the request with no writer
+involved. Same fix as `_planStamp`, one subsystem over.
+
+**A stamp cannot cover the undo, and finding that out cost a red suite.**
+Re-doing the session puts the pointer back to the *same value*, so the stamp
+matches again and resurrects a request made about a completion the athlete
+erased. Un-logging is an explicit "that did not happen" — the one signal a
+stamp cannot infer — so `undoSession()` deletes the flag outright.
+
+**The legacy shape has to fail closed.** Every phone is carrying a v313 date
+string right now. `trainAgainAsked()` accepts only the object, so a string reads
+as no request — at worst one extra tap of a button still on screen, and the
+screen it lands on is the session actually finished.
+
+### The mutant that proved a guard was doing nothing
+
+With undo and restart both *deleting* the flag, nothing exercised the stamp
+comparison at all: a mutant that stored `from` and never read it walked
+straight through. The case only the stamp can catch is **train again, then
+really train again** — the request was about the first completion, and a
+date-only test says yes forever, offering a THIRD session with a Complete
+button. That check now exists, and it is the only thing that catches the mutant.
+
+### `restartProgram()` was the one reset that never asked the list
+
+`TRANSIENT_KEYS` already names every key describing a live session; the export
+and the import both ask it. This function reset `logs`, `baseline`, `reassess`,
+`weekFeel` and `swaps` by hand and asked nothing — so a `_plResume` left
+pointing at slot 0 matched the NEW block's slot 0 and offered to resume a
+session out of the run that had just been archived.
+
+The floor beside it: a restart **archives** the run, it does not delete it. An
+over-eager clear that also dropped `STATE.runs` satisfies every "the scratch is
+gone" assertion and breaks the confirm's own promise that history stays saved.
+
+### A block that destroys shared state has to put it back
+
+`restartProgram()` nulls the baseline, so the three checks after this new block
+rendered the assessment gate instead of a workout and failed on correct code.
+"Each block builds the state it asserts on" has a second half nobody had needed
+until now: a block that *breaks* what the others rely on re-seeds before it ends.
+
+### Four false alarms, three of them on the same surface
+
+The usual ratio, and every one is a trap this file already names:
+
+- **"Set 2 never announces the exercise."** The name belongs to
+  `plEnterReady()`, and the probe called `plEnterWork()` directly. Driven
+  properly, the movement is named before every set.
+- **"The first announcement is spoken twice."** `openPlayer()` already calls
+  `plEnterReady(true)`; the probe called it again. Once, in the real path.
+- **"Today shows a live session one before the end of the program."** A
+  300-character slice cut off the done card, and a stale flag from an earlier
+  block was still set.
+- **"Four dead handlers."** `Math.round`, `.trim()`, `.toFixed()`, `.click()` —
+  method calls, not functions.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
