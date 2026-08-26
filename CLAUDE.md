@@ -2448,6 +2448,75 @@ photo inputs (19). Each now selects its pane. Suite 19's ordering check was
 re-aimed rather than patched: *"photos come before the strength test"* became
 *"the strength test is on its own pane"*, which is the stronger statement.
 
+## The pointer the ENGINE uses is not the one TODAY should show (v313)
+
+*"Today's tab is currently showing me a workout for tomorrow even though today
+I have completed the workout already. Nowhere under the Today tab am I seeing
+that I have completed today's workout."*
+
+Two defects, and the second is the one that made the first invisible.
+
+**`STATE.progressPtr` is a QUEUE position, and it advances the moment a session
+is committed.** That is correct for the engine — the program is consumed in
+order, not by date. But `todayWorkoutHTML()` read it directly, so the instant
+the athlete finished, Today rendered the NEXT session under the word TODAY,
+with a Start button and a **Mark Session Complete** button. That is not merely
+silent: it is how you accidentally burn the next session.
+
+`todayPtr()` is now Today's own pointer. It stays on the session that BELONGS
+to today — the one just finished, while it was finished today — and the queue
+pointer is untouched. **The fix is entirely in what is rendered.** Gating the
+queue on a date would trade a display bug for a data-model bug, and this repo
+already learned that lesson the hard way when `restartProgram()` reset a
+pointer that keys a map.
+
+**And the one acknowledgement that existed could not fire on its own.**
+`doneForTodayHTML()` was gated on `minimumDayMet()` — `trainedToday() && two
+HABIT ticks` from protein / water / sleep / steps. **Two different facts had one
+banner**, so finishing the session did not earn the line saying you had
+finished it. The habits are a day floor; the session is the session. The done
+card now fires on the log alone, and `minimumDayMet()` keeps only the job it
+was written for.
+
+**A finished session is not an offer.** Once today's is done the exercise list
+and the completion button are replaced by the RECORD of it, and the next
+session appears last, labelled `Next session · not today's`, with a priced
+confirm behind *"Train again anyway"*. The queue genuinely permits a second
+session and hiding it would cost the honest cases more than it saves — what is
+not permitted is dressing it as the day's prescribed work.
+
+**A pain stop is never congratulated.** `commitSession()` records
+`stoppedForPain` and NOT done, so the card says so, claims no completion, and
+states out loud that the program moved on — because that surprise is exactly
+what produced this report.
+
+**The done state is DERIVED, never a flag** (`log.completedAt === todayISO()`),
+so a re-render, a tab switch, a reload and midnight all land on the right
+screen with nothing scheduled.
+
+### The check had to walk into two traps this file already names
+
+`seedAthlete` starts at pointer 0, which IS day zero of a week — so the block
+runs from a **mid-week** pointer. And ticking any habit would hide the mutant
+that restores the `minimumDayMet()` gate, so it ticks **none**. Both are
+asserted as guards before anything else, because a block that silently lost
+either would pass on nothing.
+
+Nine mutants, all caught. The floors carry the weight: an untrained day must
+still show a live, startable session, and the next session must stay reachable.
+
+### And a v311 regression the review found
+
+v311 moved the Movement block from Fuel to Today ▸ Workout and left **two
+sentences on Reference** pointing at *"Fuel → Movement"* — a screen that no
+longer exists. The athlete follows the instruction and hits a dead end. A
+check was pinning the old destination too, so the suite was holding the
+regression in place rather than catching it: it now asserts BOTH that the copy
+names where Movement is and that it does not name where it is not.
+
+**When a block moves, grep the copy for the old address.** A promise in UI text
+is a specification, and a stale pointer is a broken one.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

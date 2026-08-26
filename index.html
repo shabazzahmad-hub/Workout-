@@ -1807,7 +1807,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='312';
+const APP_VERSION='313';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3530,12 +3530,97 @@ function restartProgram(){
 function heroImageFor(sess){
   return 'hero.jpg';   // branded physique hero on the Today card
 }
+/* ---- THE POINTER THE ENGINE USES IS NOT THE ONE TODAY SHOULD SHOW --------
+   `STATE.progressPtr` is a QUEUE position: completing a session advances it
+   immediately, which is correct for the engine — the program is consumed in
+   order, not by date. Today then rendered buildSession(progressPtr) and so put
+   the NEXT session under the word TODAY, with a Start button and a "Mark
+   Session Complete" button, the moment the athlete finished.
+
+   Reported: "Today's tab is showing me a workout for tomorrow even though I
+   have completed today's workout already. Nowhere under the Today tab am I
+   seeing that I have completed today's workout."
+
+   So Today gets its own pointer. It stays on the session that BELONGS to
+   today — the one just finished, while it was finished today — and the queue
+   pointer is left exactly as it was. The fix is entirely in what is rendered;
+   gating the queue on a date would trade a display bug for a data-model bug. */
+/* The record of what was actually done, in place of an offer to do it. */
+function sessionDoneCardHTML(sess,log,doneSets){
+  const items=[...sess.main,sess.finisher].filter(Boolean);
+  const movesDone=items.filter(m=>log.ex[m.exId]&&log.ex[m.exId].done).length;
+  const partial=!!log.partial||movesDone<items.length;
+  const mins=(typeof log.wallSec==='number'&&log.wallSec>0)?Math.round(log.wallSec/60):null;
+  if(todayStoppedForPain()){
+    /* No "well done", no streak claim — commitSession() records this as
+       stoppedForPain and NOT done, so the app must not congratulate it. It
+       says the pointer moved out loud, because that surprise is exactly what
+       produced this report. */
+    return `<div class="note warn"><b>🩹 Session ${sess.ptr!=null?sess.ptr+1:''} — you stopped for pain.</b>
+      Right call. That is what the button is for, and it is <b>not</b> logged as a completed session.
+      Your program still moved on, so the next one is below — and tell me where it hurt and I will work around it.</div>`;
+  }
+  return `<div class="note ok">
+    <div style="font-size:17px;font-weight:900">✅ ${partial?'Session done — partial':'Session done'}</div>
+    <div style="margin-top:4px">${_ve(sess.session.name)} — <b>${movesDone} of ${items.length}</b> moves, <b>${doneSets}</b> sets${mins?(', ~<b>'+mins+'</b> min'):''}. Logged today.</div>
+    ${minimumDayMet()?`<div class="tiny" style="margin-top:8px">That is today done. You trained and you covered the basics — everything below is optional. Come back tomorrow.</div>`:`<div class="tiny muted" style="margin-top:8px">Anything below this is optional — but it still counts today.</div>`}
+  </div>`;
+}
+/* The next session is real and reachable, and it is NOT today's. The program
+   is a queue, not a calendar, so nothing makes it illegal to train again — but
+   it must never again be dressed as the day's prescribed work. */
+function nextSessionHTML(){
+  const p=STATE.progressPtr;
+  if(p>=SESSIONS_PER_CYCLE*TOTAL_CYCLES)return '';
+  let n;try{n=buildSession(p);}catch(e){return '';}
+  if(!n||!n.main)return '';
+  const items=[...n.main,n.finisher].filter(Boolean);
+  return `<div class="section-label" style="margin-top:16px">Next session · not today's</div>
+    <div class="card pad">
+      <div><b>Session ${p+1} · ${_ve(n.session.name)}</b>
+        <div class="tiny muted" style="margin-top:3px">${items.length} moves · ~${plBudgetMin(items,repTempoSetting())} min</div></div>
+      <div class="tiny muted" style="margin-top:8px">Sessions are a queue, not a calendar — this one waits until you start it.</div>
+      <button class="btn sm ghost" style="width:auto;margin-top:10px;padding:10px 14px" onclick="trainAgainToday()">Train again anyway</button>
+    </div>`;
+}
+/* Reachable, and priced. */
+function trainAgainToday(){
+  if(!confirm('You already trained today. A second session logs as the next one and moves your program on — recovery is where the muscle is made. Sure?'))return;
+  STATE._trainAgain=todayISO();save();
+  try{render();}catch(e){}
+}
+function todayPtr(){
+  try{
+    const p=STATE.progressPtr,prev=p-1;
+    if(prev<0)return p;
+    if(STATE._trainAgain===todayISO())return p;   // they asked for the next one
+    const l=(STATE.logs||{})[prev];
+    if(l&&l.completedAt===todayISO()&&(l.done||l.stoppedForPain))return prev;
+    return p;
+  }catch(e){return STATE.progressPtr;}
+}
+/* Is the session Today is showing already finished, and finished TODAY? A
+   DERIVED state, never a flag — so a relaunch, a tab switch and a reload all
+   land on the same screen, and midnight ends it with nothing scheduled. */
+function todayDone(){
+  try{
+    const l=(STATE.logs||{})[todayPtr()];
+    return !!(l&&l.completedAt===todayISO()&&l.done);
+  }catch(e){return false;}
+}
+function todayStoppedForPain(){
+  try{
+    const l=(STATE.logs||{})[todayPtr()];
+    return !!(l&&l.stoppedForPain===todayISO()&&!l.done);
+  }catch(e){return false;}
+}
 function todayWorkoutHTML(){
   /* armComeback() moved to renderToday(): it WRITES STATE.comeback and calls
      save(), and doing that inside an HTML builder meant the render error boundary
      could re-run a half-applied mutation that had already been persisted. */
-  const sess=buildSession(STATE.progressPtr);
-  const log=STATE.logs[STATE.progressPtr]||{ex:{}};
+  const _tp=todayPtr();
+  const sess=buildSession(_tp);
+  const log=STATE.logs[_tp]||{ex:{}};
   const vol=sessionVolume(sess);
   const wkNum=(sess.cycle*WEEKS_PER_CYCLE)+sess.week;
   const doneCount=sess.main.concat(sess.finisher).filter(m=>log.ex[m.exId]&&log.ex[m.exId].done).length;
@@ -3550,7 +3635,7 @@ function todayWorkoutHTML(){
   const R=sess.session.key;
   const heroImg=heroImageFor(sess);
   const sessAll=SESSIONS_PER_CYCLE*TOTAL_CYCLES;   // 378 sessions across the full year
-  const sessGlobal=Math.min(STATE.progressPtr+1,sessAll);
+  const sessGlobal=Math.min(_tp+1,sessAll);
   let h=`
   <div class="herophoto ${R}">
     <img src="${heroImg}" alt="" onerror="this.style.display='none'">
@@ -3683,11 +3768,24 @@ function workoutTabHTML(sess,log,doneCount,totalCount,wkNum){
   if(sess.pos.dayInWeek===0){
     h+=`<div class="note fire">📈 <b>Week ${wkNum} — ${overloadHeadline(sess)}.</b> ${overloadNote(sess)}</div>`;
   }
+  /* A FINISHED SESSION IS NOT AN OFFER. Rendering the set dots and "Mark
+     Session Complete" for work already logged is how an athlete accidentally
+     burns the next session — so once today's is done, the list is replaced by
+     the record of it and the next one is shown as NEXT, never as today's. */
+  if(todayDone()||todayStoppedForPain()){
+    /* Counted here rather than passed in: workoutTabHTML() receives sess and
+       log, and the caller's own doneSets is not in scope. */
+    const _sets=[...sess.main,sess.finisher].filter(Boolean)
+      .reduce((a,m)=>{const st=log.ex[m.exId];return a+((st&&Array.isArray(st.sets))?st.sets.filter(Boolean).length:0);},0);
+    h+=sessionDoneCardHTML(sess,log,_sets);
+    h+=nextSessionHTML();
+  }else{
   h+=`<div class="section-label">Main work</div><div class="exlist">`;
   sess.main.forEach((m,i)=>h+=exCardHTML(m,log,i));
   h+=`</div>`;
   h+=`<div class="section-label">Finisher · burn it out</div><div class="exlist">${exCardHTML(sess.finisher,log,99)}</div>`;
   h+=`<button class="btn ${doneCount>=totalCount?'green':'primary'}" id="finishSession">${doneCount>=totalCount?'✓ Complete Session':'Mark Session Complete'}</button>`;
+  }
   /* AFTER the session button, not before it: this is separate work with its own
      target, and putting it above would read as something you must finish before
      the session counts as done. */
@@ -12476,11 +12574,16 @@ function todayActivityHTML(){
   const quick=(STATE.quickLog&&STATE.quickLog[d])||0;
   /* The session counts as done only when the LOG says so — the same source
      every lifetime counter reads, not a screen the athlete happened to open. */
-  let sessionDone=false,sessionName='';
+  /* READ THE SESSION TODAY OWNS, not the queue's next one. This row named the
+     upcoming session and reported it "Not yet" on a day the athlete had
+     trained — contradicting the workout history two sub-tabs away. */
+  let sessionDone=false,sessionName='',sessionPain=false;
   try{
-    const log=(STATE.logs||{})[STATE.progressPtr];
+    const tp=(typeof todayPtr==='function')?todayPtr():STATE.progressPtr;
+    const log=(STATE.logs||{})[tp];
     sessionDone=!!(log&&log.done&&log.completedAt===d);
-    const sess=buildSession(STATE.progressPtr);
+    sessionPain=!!(log&&log.stoppedForPain===d&&!log.done);
+    const sess=buildSession(tp);
     sessionName=(sess&&sess.session&&sess.session.name)||'';
   }catch(e){}
   /* Each row carries data-act so a check can ask whether the ROW exists
@@ -12491,8 +12594,9 @@ function todayActivityHTML(){
       <div><b>${icon} ${label}</b>${sub?`<div class="tiny muted">${sub}</div>`:''}</div>
       <div style="text-align:right;font-variant-numeric:tabular-nums">${value}</div></div>`;
   let rows='';
-  rows+=row('session',sessionDone?'✅':'⬜','Today\'s session',
-    sessionDone?'<b style="color:var(--green)">Done</b>':'<span class="tiny muted">Not yet</span>',
+  rows+=row('session',sessionDone?'✅':(sessionPain?'🩹':'⬜'),'Today\'s session',
+    sessionDone?'<b style="color:var(--green)">Done</b>'
+      :(sessionPain?'<b style="color:var(--gold)">Stopped</b>':'<span class="tiny muted">Not yet</span>'),
     _ve(sessionName));
   rows+=row('steps','👟','Steps walked',m.steps?m.steps.toLocaleString():'—');
   if(j.min>0)rows+=row('jacks','🤸','Jumping jacks',j.min+' min',j.reps.toLocaleString()+' reps · '+j.kcal+' kcal');
@@ -14125,7 +14229,7 @@ function renderRef(){
   /* ---- making the step target up on the bike ---- */
   const tgt=stepTarget();
   h+=`<div class="section-label">Steps on the trainer</div>`;
-  h+=`<div class="note info">Your target is <b>${tgt.toLocaleString()} steps</b>. That is an energy target wearing a step count, so the bike can pay it. Log the ride in <b>Fuel → Movement</b> and it counts toward the day.</div>`;
+  h+=`<div class="note info">Your target is <b>${tgt.toLocaleString()} steps</b>. That is an energy target wearing a step count, so the bike can pay it. Log the ride in <b>Today ▸ Workout ▸ Movement</b> and it counts toward the day.</div>`;
   h+=`<div class="card" style="padding:0 12px">
     <div class="kv" style="border:none;padding:9px 2px 5px">
       <span class="tiny muted" style="letter-spacing:.08em;text-transform:uppercase;font-weight:800">Effort</span>
@@ -14143,7 +14247,7 @@ function renderRef(){
   });
   h+=`</div>`;
   h+=`<div class="note info" style="margin-top:10px"><b>The rule of thumb is MET × 35.</b> Steady riding is about 5.8 METs net of just sitting there, so roughly <b>200 steps a minute</b>. Bodyweight cancels out of that conversion — it only changes the calories beside it.</div>`;
-  h+=`<div class="note info"><b>The calorie column is the same in every row.</b> ${Math.ceil(tgt*kcalPerStep())} kcal is what ${tgt.toLocaleString()} steps costs you, and it does not care how fast you spin — riding harder only buys the same energy in less time. Log whichever of the three your bike shows: <b>Fuel → Movement</b> takes all of them.</div>`;
+  h+=`<div class="note info"><b>The calorie column is the same in every row.</b> ${Math.ceil(tgt*kcalPerStep())} kcal is what ${tgt.toLocaleString()} steps costs you, and it does not care how fast you spin — riding harder only buys the same energy in less time. Log whichever of the three your bike shows: <b>Today ▸ Workout ▸ Movement</b> takes all of them.</div>`;
   h+=`<div class="note warn"><b>Your bike's calorie readout runs high.</b> A console reports gross calories; every figure here is net of what you would have burned sitting still. If the screen says 300, count about 255.</div>`;
   h+=`<div class="note warn"><b>On a trainer, trust the clock over the distance.</b> What a turbo puts on its screen depends on the trainer and where the resistance is set. The distance here is what that effort would cover on the road — useful as a target, not a measurement.</div>`;
   h+=`<div class="note warn"><b>It is not a straight swap.</b> Both sides are matched on energy, and energy is what drives the deficit. Walking also loads the skeleton and breaks up sitting, which riding does not. Use the trainer for the days that got away from you.</div>`;
@@ -14836,7 +14940,15 @@ function minimumDayMet(){
     return !!(trainedToday()&&hb>=2);
   }catch(e){return false;}
 }
+/* The day-floor note. It is NOT the acknowledgement that you trained — that
+   was the bug: `minimumDayMet()` is `trainedToday() && two habits ticked`, so
+   finishing the session did not earn the line saying you had finished it. Two
+   different facts had one banner and the one that was reported never fired on
+   its own. sessionDoneCardHTML() owns the acknowledgement now; this stays for
+   the day floor, and is suppressed once that card is on screen so the same
+   sentence is not printed twice. */
 function doneForTodayHTML(){
+  if(todayDone()||todayStoppedForPain())return '';   // the done card carries it
   if(!minimumDayMet())return '';
   return `<div class="note ok"><b>That is today done.</b> You trained and you covered the basics — everything below this is optional. Come back tomorrow.</div>`;
 }
@@ -15337,7 +15449,7 @@ function setDiet(k){if(!DIET_KEYS.includes(k))return;   // the picker is the onl
    restoring an old backup onto a fresh device should not carry forward a flag
    about a repair that happened somewhere else. _backupNudgeDismissed is the
    same shape: a snooze on THIS device's nagging, not a fact about the athlete. */
-const TRANSIENT_KEYS=['_undo','_plResume','_dataRepaired','_backupNudgeDismissed'];
+const TRANSIENT_KEYS=['_undo','_plResume','_dataRepaired','_backupNudgeDismissed','_trainAgain'];
 async function exportData(){
   // Record it on THIS device before cloning, so backupNudgeHTML() stops
   // asking and the exported file itself carries an accurate "as of" stamp.
@@ -16022,6 +16134,10 @@ function normalizeState(){
      index — resumeInfo() re-validates, but the field is dropped here so a
      non-object can never reach it in the first place. */
   if(STATE._plResume!=null&&(typeof STATE._plResume!=='object'||Array.isArray(STATE._plResume)))delete STATE._plResume;
+  /* "I want the next session today" is a decision about ONE day, so a date
+     string or nothing. Anything else is dropped rather than left to travel. */
+  if(STATE._trainAgain!==undefined&&(typeof STATE._trainAgain!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(STATE._trainAgain)))
+    delete STATE._trainAgain;
   /* MEMBERSHIP AGAINST THE LIST, never a hardcoded legal value.
 
      This read `!== 'bike'` and was written when jacks and the bike were the
