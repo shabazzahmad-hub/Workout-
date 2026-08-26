@@ -2357,6 +2357,159 @@ export default async function run() {
       en.noStampIsWeekOne, en);
     t.ok('and a junk stamp is dropped', en.junkStampDropped, en);
 
+    /* ---- the plan matches its own phase notes (v330) ---------------------
+
+       Every note in PREP_PHASE_NOTE is a specification, and three of the four
+       described a plan the code did not produce. Measured over a 20-week
+       block before the fix:
+
+         build   "one tempo AND one interval session"  -> no intervals at all
+         build   "on top of it, not instead of it"     -> a base run REPLACED
+         sharpen "volume holds"                        -> 30.4 -> 36.8 -> 40.4
+         taper   "the intensity stays"                 -> intervals dropped
+
+       The sharpen one is the safety-relevant one: two hard sessions out of
+       three, at the HIGHEST volume of the block, with the easy base run gone.
+       Peak distance and peak intensity in the same three weeks. */
+    const pn = await page.evaluate(() => {
+      const o = {};
+      const keep = JSON.parse(JSON.stringify(STATE.prep || {}));
+      const iso = d => { const x = new Date(); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); };
+      /* A top-level `const` is NOT a window property — only function
+         declarations are — so `window.PREP_PHASE_SESSIONS` reads undefined
+         however healthy the app is. Reference the bare identifier. */
+      o.namesExist = ['enduranceWeek', 'prepPhase', 'prepClimbWeeks'].every(n => typeof window[n] === 'function')
+        && typeof PREP_PHASE_SESSIONS === 'object' && typeof PREP_PHASE_NOTE === 'object'
+        && Array.isArray(RUN_SESSIONS);
+      if (!o.namesExist) return o;
+
+      /* Walk a real 20-week block by moving planFrom back a week at a time,
+         so every reading comes from the app's own phase arithmetic rather
+         than from a phase name assigned by the check. */
+      o.weeks = [];
+      for (let w = 1; w <= 20; w++) {
+        STATE.prep = { planFrom: iso(-(w - 1) * 7), date: iso((21 - w) * 7) };
+        const e = enduranceWeek();
+        o.weeks.push({ wk: e.wk, left: e.left, phase: e.phase, km: e.km,
+                       curve: e.curve, down: !!e.down, sess: e.sessions.slice() });
+      }
+      o.phasesSeen = Array.from(new Set(o.weeks.map(w => w.phase)));
+      o.notes = JSON.parse(JSON.stringify(PREP_PHASE_NOTE));
+      o.table = JSON.parse(JSON.stringify(PREP_PHASE_SESSIONS));
+      /* The easy-run id, read off the app rather than restated. */
+      o.easyIds = RUN_SESSIONS.filter(s => s.pace === 'easy').map(s => s.id);
+      o.hardIds = RUN_SESSIONS.filter(s => s.pace === 'tempo' || s.pace === 'intervals').map(s => s.id);
+      /* Minutes, so the balance can be stated in the currency that matters
+         rather than in session counts. */
+      o.mins = {}; RUN_SESSIONS.forEach(x => o.mins[x.id] = x.mins);
+      STATE.prep = keep;
+      return o;
+    });
+
+    t.ok('guard: every name this block calls exists', pn.namesExist, pn);
+    /* Guard immediately, before the first line that assumes the payload
+       exists. Without this the block THREW rather than naming a failed
+       check, which hides which property broke. */
+    if (!pn.namesExist || !Array.isArray(pn.weeks)) {
+      t.ok('guard: the block collected a 20-week plan to assert on', false, pn);
+    } else {
+    t.ok('guard: all four phases really occur in a 20-week block',
+      ['base', 'build', 'sharpen', 'taper'].every(p => pn.phasesSeen.indexOf(p) >= 0), pn.phasesSeen);
+    t.ok('guard: the app declares easy and hard sessions to compare',
+      pn.easyIds.length >= 1 && pn.hardIds.length >= 2, { easy: pn.easyIds, hard: pn.hardIds });
+
+    const byPhase = p => pn.weeks.filter(w => w.phase === p);
+
+    /* EVERY phase keeps its easy running. Roughly four fifths of endurance
+       running should be easy at every level, and sharpen used to be
+       two-thirds hard.
+
+       "Has at least one easy session" is NOT the assertion — the LONG RUN is
+       also pace:'easy', so deleting the short base run leaves it true. Two
+       mutants escaped on exactly that. The requirement is a BALANCE: never
+       more hard sessions than easy ones, and more easy minutes than hard. */
+    ['base', 'build', 'sharpen', 'taper'].forEach(p => {
+      const wk = byPhase(p)[0];
+      const easy = wk.sess.filter(id => pn.easyIds.indexOf(id) >= 0);
+      const hard = wk.sess.filter(id => pn.hardIds.indexOf(id) >= 0);
+      const sum = ids => ids.reduce((a, id) => a + (pn.mins[id] || 0), 0);
+      t.ok('the ' + p + ' phase never runs more hard sessions than easy ones',
+        easy.length >= hard.length, { phase: p, sess: wk.sess, easy, hard });
+      t.ok('and spends more minutes easy than hard in ' + p,
+        sum(easy) > sum(hard), { phase: p, easyMin: sum(easy), hardMin: sum(hard) });
+    });
+
+    /* build's note names a tempo AND an interval session, and says they go on
+       top rather than instead. Both halves are assertions about the plan. */
+    {
+      const b = byPhase('build')[0], base = byPhase('base')[0];
+      t.ok('build runs the tempo session its note promises', b.sess.indexOf('tempo') >= 0, b);
+      t.ok('and the interval session its note promises', b.sess.indexOf('intervals') >= 0, b);
+      t.ok('and they go ON TOP — build has more sessions than base, not the same count',
+        b.sess.length > base.sess.length, { base: base.sess, build: b.sess });
+      /* FLOOR: the easy running the note says "stays" really is still there. */
+      t.ok('and the easy running stays',
+        b.sess.filter(id => pn.easyIds.indexOf(id) >= 0).length >= 1, b);
+    }
+
+    /* sharpen's note says volume HOLDS. Read the payload — the distance the
+       athlete runs — across every sharpen week that is not a planned cut. */
+    {
+      const sh = byPhase('sharpen').filter(w => !w.down);
+      t.ok('guard: there are at least two full sharpen weeks to compare', sh.length >= 2, sh);
+      const first = sh[0].km;
+      t.ok('volume holds across sharpen, as its note says',
+        sh.every(w => Math.abs(w.km - first) <= 0.2), sh.map(w => w.wk + ':' + w.km).join(' '));
+      /* …and the underlying CURVE stops climbing too, not just the shown
+         number — a taper-style multiplier on a still-climbing curve would
+         satisfy the line above while the plan underneath kept growing. */
+      const curves = byPhase('sharpen').map(w => w.curve);
+      t.ok('and the curve underneath it stops climbing as well',
+        curves.every(c => Math.abs(c - curves[0]) <= 0.2), curves);
+    }
+
+    /* FLOOR: it must still CLIMB where it is supposed to. A plan that never
+       climbed at all would satisfy "volume holds" perfectly. */
+    {
+      const early = pn.weeks.filter(w => (w.phase === 'base' || w.phase === 'build') && !w.down);
+      t.ok('guard: there are early weeks to check', early.length >= 4, early.length);
+      t.ok('but the volume genuinely climbs through base and build',
+        early[early.length - 1].curve > early[0].curve * 1.5,
+        { from: early[0].curve, to: early[early.length - 1].curve });
+      /* and the plateau is a number the athlete EARNED, not a constant: it is
+         where the climb reached, so a bigger starting week gives a bigger
+         plateau. A hardcoded ceiling would fail this. */
+      t.ok('and the plateau is where the climb reached, not a fixed ceiling',
+        byPhase('sharpen')[0].curve > early[0].curve * 1.5,
+        { start: early[0].curve, plateau: byPhase('sharpen')[0].curve });
+    }
+
+    /* taper: volume down from the plateau, intensity kept. */
+    {
+      const tp = byPhase('taper'), sh = byPhase('sharpen').filter(w => !w.down);
+      t.ok('guard: there is a taper and a sharpen plateau to compare',
+        tp.length >= 1 && sh.length >= 1, { tp: tp.length, sh: sh.length });
+      t.ok('the taper cuts volume against the plateau it came off',
+        tp.every(w => w.km < sh[0].km * 0.8), { taper: tp.map(w => w.km), plateau: sh[0].km });
+      t.ok('and the intensity stays, as its note says',
+        tp.every(w => w.sess.some(id => pn.hardIds.indexOf(id) >= 0)), tp.map(w => w.sess));
+      /* FLOOR: "intensity stays" must not mean "nothing changed" — the taper
+         is a smaller week, not the sharpen week with a different label. */
+      t.ok('but the taper really is a lighter week than sharpen',
+        tp[0].sess.length < sh[0].sess.length, { taper: tp[0].sess, sharpen: sh[0].sess });
+    }
+
+    /* And the notes still SAY these things. Change one and change the plan
+       with it — that is the whole defect this block exists for. */
+    t.ok('build’s note still promises a tempo and an interval session',
+      /tempo/i.test(pn.notes.build) && /interval/i.test(pn.notes.build), pn.notes.build);
+    t.ok('sharpen’s note still says volume holds', /volume holds/i.test(pn.notes.sharpen), pn.notes.sharpen);
+    t.ok('taper’s note still says the intensity stays',
+      /intensity stays/i.test(pn.notes.taper), pn.notes.taper);
+    t.ok('and base’s note still says almost all of it is easy',
+      /easy/i.test(pn.notes.base), pn.notes.base);
+    }
+
     /* ---- the ruck ladder (v326) --------------------------------------------
        v325 scheduled the running and left the rucking as a SENTENCE — "build
        the distance or the load, never both" — with nothing scheduling it. Same

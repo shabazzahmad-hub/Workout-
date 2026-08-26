@@ -1628,6 +1628,8 @@ export default async function run() {
     const o = {}; CARDIO_MODES.forEach(m => o[m] = CARDIO_INFO[m].short); return o; });
   const CARDIO_DID = await page.evaluate(() => {
     const o = {}; CARDIO_MODES.forEach(m => o[m] = CARDIO_INFO[m].did); return o; });
+  const CARDIO_VERB = await page.evaluate(() => {
+    const o = {}; CARDIO_MODES.forEach(m => o[m] = CARDIO_INFO[m].verb); return o; });
 
   /* ---- the makeup timer knows all four cardio modes (v327) -----------------
      Reported from the phone: "is this timer linked to the exercises here?"
@@ -1931,6 +1933,246 @@ export default async function run() {
     t.ok('and an inherited key is refused too, not passed through',
       r.fallbackInherited, r);
     t.eq('and an empty day reports no mode at all', r.doneEmpty, 0);
+  }
+
+
+  /* ---- Easy conditioning counts all four cardio modes (v329) --------------
+
+     `ridesThisWeek()` read `day.bikeVal` and `day.jackVal` and nothing else.
+     Its own comment records this being fixed once already — it counted rides
+     only until an athlete doing the same work with jacks saw a permanently
+     empty bar — and then the ruck (v294) and the run (v323) arrived and
+     nobody came back. Measured before the fix, against a 2 x 35 min target:
+
+       2 x 45 min rucking -> 0/2, 0 min      2 x 45 min riding -> 2/2, 90 min
+       2 x 40 min running -> 0/2, 0 min      2 x 45 min jacks  -> 2/2, 90 min
+
+     That is exactly the week the army-prep programme prescribes, so the one
+     athlete this was built for was the one it reported nothing for.
+
+     And the card promised "Jumping jacks, a walk or the bike all count".
+     A walk counted for nothing: the function never read `day.steps` at all,
+     so 24,000 steps over two days read 0/2. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      const strip = h => h.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
+      const n = nut();
+      const key = off => { const d = new Date(); d.setDate(d.getDate() - off); return localISO(d); };
+      const seed = (off, f) => { n.days[key(off)] = Object.assign({ water: 0, habits: {} }, f); };
+      const card = () => { try { return strip(rideTargetHTML()); }
+                           catch (e) { return 'THREW: ' + e.message; } };
+
+      /* GUARDS first — the last probe written for this file reported four
+         defects that were all one wrong function name. */
+      o.namesExist = ['ridesThisWeek', 'rideTargetHTML', 'localISO', 'cardioInfo']
+        .every(x => typeof window[x] === 'function');
+      o.rowsRead = CARDIO_MODES.every(m => typeof CARDIO_INFO[m].dayMin === 'function'
+        && typeof CARDIO_INFO[m].dayKcal === 'function' && !!CARDIO_INFO[m].verb);
+      n.days = {};
+      o.emptyRides = ridesThisWeek().rides;
+      o.cardRenders = card().indexOf('Easy conditioning') >= 0;
+      if (!o.namesExist || !o.rowsRead || o.emptyRides !== 0 || !o.cardRenders) return o;
+
+      /* Two sessions of 45 minutes, one mode at a time. The target is
+         2 x 35 min, so every one of these is a met week. */
+      const set = {
+        jacks: f => { f.jackUnit = 'min'; f.jackVal = 45; },
+        bike:  f => { f.bikeUnit = 'min'; f.bikeVal = 45; },
+        ruck:  f => { f.ruckUnit = 'min'; f.ruckVal = 45; },
+        run:   f => { f.runUnit  = 'min'; f.runVal  = 45; },
+      };
+      o.byMode = {};
+      CARDIO_MODES.forEach(m => {
+        n.days = {};
+        const a = {}, b = {}; set[m](a); set[m](b);
+        seed(1, a); seed(3, b);
+        const w = ridesThisWeek();
+        o.byMode[m] = { rides: w.rides, mins: w.mins, kcal: w.kcal,
+                        mine: w.perMode[m], card: card() };
+      });
+
+      /* A mixed week adds rather than picking one. */
+      n.days = {};
+      seed(1, { ruckUnit: 'min', ruckVal: 45 });
+      seed(3, { runUnit: 'min', runVal: 40 });
+      { const w = ridesThisWeek();
+        o.mixed = { rides: w.rides, mins: w.mins, per: w.perMode, card: card() }; }
+
+      /* FLOOR: a plain step count is NOT an easy-cardio session, and the copy
+         no longer claims it is. 24,000 steps over two days must still read
+         zero — a fix that simply counted everything would pass every
+         assertion above and make the target meaningless. */
+      n.days = {}; seed(1, { steps: 12000 }); seed(3, { steps: 12000 });
+      { const w = ridesThisWeek(); o.walked = { rides: w.rides, mins: w.mins }; }
+
+      /* FLOOR: a short session is not a full one. The bar is 70% of 35 min. */
+      n.days = {}; seed(1, { ruckUnit: 'min', ruckVal: 10 }); seed(3, { ruckUnit: 'min', ruckVal: 10 });
+      { const w = ridesThisWeek(); o.tooShort = { rides: w.rides, mins: w.mins }; }
+
+      /* The promise, and where it points instead. */
+      n.days = {};
+      const c = card();
+      o.promise = (c.match(/[^.]*all count[^.]*/) || [''])[0];
+      o.saysWalkPaysSteps = /step target/i.test(c);
+      o.stillClaimsWalk = /a walk[ ,]/i.test(o.promise);
+
+      /* Every unit converts, not just minutes — the table's day reader owns
+         all three currencies for all four modes now. */
+      n.days = {};
+      seed(1, { ruckUnit: 'dist', ruckVal: 4 });
+      o.ruckByDistance = ridesThisWeek().perMode.ruck;
+      n.days = {}; seed(1, { runUnit: 'dist', runVal: 8 });
+      o.runByDistance = ridesThisWeek().perMode.run;
+
+      /* A stored day is read as STORED. movement() carries the athlete's
+         current level forward as a default, which is right for today and
+         wrong for a day already in the past. */
+      n.days = {}; seed(2, { ruckUnit: 'min', ruckVal: 60, ruckLvl: 'easy' });
+      const easyMin = ridesThisWeek().perMode.ruck;
+      n.days = {}; seed(2, { ruckUnit: 'min', ruckVal: 60, ruckLvl: 'hills' });
+      o.storedLevelRead = { easy: easyMin, hills: ridesThisWeek().perMode.ruck,
+        easyKcal: 0 };
+      // minutes are the same; the ENERGY is what the level changes
+      n.days = {}; seed(2, { ruckUnit: 'min', ruckVal: 60, ruckLvl: 'easy' });
+      o.storedLevelRead.easyKcal = ridesThisWeek().kcal;
+      n.days = {}; seed(2, { ruckUnit: 'min', ruckVal: 60, ruckLvl: 'hills' });
+      o.storedLevelRead.hillsKcal = ridesThisWeek().kcal;
+
+      /* Junk in a stored day is dropped, not counted. importData() accepts
+         arbitrary JSON and these rows travel in every backup.
+
+         A NUMERIC STRING is the case that matters, and the first version of
+         this check missed it. `+v||0` looks equivalent to the type test —
+         'lots' is NaN either way, and a negative is refused downstream by the
+         `m>0` guard — but '45' coerces to 45 and would be COUNTED. movement()
+         reads today's number with `typeof v==='number'`, so the same stored
+         row would then be worth 45 minutes in the weekly total and nothing on
+         the card. The two readers must agree. */
+      n.days = {};
+      seed(1, { ruckUnit: 'min', ruckVal: 'lots' });
+      seed(2, { runUnit: 'min', runVal: -50 });
+      seed(3, { bikeUnit: 'min', bikeVal: NaN });
+      o.junk = { rides: ridesThisWeek().rides, mins: ridesThisWeek().mins };
+      n.days = {};
+      seed(1, { ruckUnit: 'min', ruckVal: '45' });
+      seed(3, { runUnit: 'min', runVal: '45' });
+      o.numericString = { rides: ridesThisWeek().rides, mins: ridesThisWeek().mins,
+                          per: ridesThisWeek().perMode };
+      /* …and the guard: the same value really is refused by today's reader,
+         so this is the two agreeing rather than one being arbitrarily strict. */
+      { const tt = nutToday(); tt.ruckUnit = 'min'; tt.ruckVal = '45';
+        o.todayAlsoRefuses = movement().rval === 0 && ruckWork().min === 0;
+        tt.ruckVal = 45;
+        o.todayAcceptsRealNumber = ruckWork().min === 45;
+        tt.ruckVal = 0; }
+
+      n.days = {};
+      /* The validator covers all FOUR cardio ladders now, not two. */
+      const v = validateData.toString();
+      o.validator = { bike: /BIKE_LEVELS\.forEach/.test(v), jacks: /JACK_LEVELS\.forEach/.test(v),
+                      ruck: /RUCK_PACES\.forEach/.test(v),  run: /RUN_PACES\.forEach/.test(v) };
+      const ce = console.error; console.error = () => {};
+      o.validatorClean = (validateData() || []).length;
+      /* ruckMET() is computed from bodyweight, so the ruck rules have to hold
+         across real bodies rather than at one seeded weight. */
+      o.cleanByWeight = {};
+      [55, 80, 110, 150].forEach(kg => { nut().weightKg = kg;
+        o.cleanByWeight[kg] = (validateData() || []).length; });
+      nut().weightKg = 86;
+      /* And the new rules must actually FIRE on a broken ladder, or "the
+         validator is clean" proves nothing about them. */
+      const bump = (arr, k, field, val) => { const row = arr.find(x => x.k === k);
+        const was = row[field]; row[field] = val;
+        const hit = (validateData() || []).filter(e => e.indexOf(field === 'mph' ? 'mph' : '') >= 0);
+        const all = validateData() || []; row[field] = was; return all; };
+      o.ruckRuleBites = bump(RUCK_PACES, 'brisk', 'mph', 40)
+        .some(e => /RUCK_PACES\.brisk/.test(e));
+      o.runRuleBites = bump(RUN_PACES, 'steady', 'kmh', 90)
+        .some(e => /RUN_PACES\.steady/.test(e));
+      o.stillCleanAfter = (validateData() || []).length;
+      console.error = ce;
+      return o;
+    });
+
+    t.ok('guard: every name this block calls exists', r.namesExist, r);
+    t.ok('guard: every mode has a stored-day reader and a verb', r.rowsRead, r);
+    t.ok('guard: an empty week counts nothing', r.emptyRides === 0, r);
+    t.ok('guard: the card renders', r.cardRenders, r);
+
+    /* Two 45-minute sessions is a met week in ANY of the four modes. */
+    CARDIO_MODES_FOR_TEST.forEach(m => {
+      t.eq('two 45-minute sessions of ' + m + ' meet the weekly target', r.byMode[m].rides, 2);
+      t.eq('and the minutes are counted (' + m + ')', r.byMode[m].mins, 90);
+      t.eq('and they are credited to ' + m + ' itself', r.byMode[m].mine, 90);
+      t.ok('and the card names ' + m + ' in the breakdown',
+        r.byMode[m].card.indexOf('90 ' + CARDIO_VERB[m]) >= 0,
+        { want: '90 ' + CARDIO_VERB[m], card: r.byMode[m].card.slice(0, 130) });
+      /* Priced at the mode's own rate. Charging every minute at the jacks
+         rate was the old behaviour and is the same defect one number over. */
+      t.ok('and the calories are the mode’s own, not a flat rate',
+        r.byMode[m].kcal > 0, r.byMode[m]);
+    });
+    /* FLOOR: the four modes really are priced differently, or "its own rate"
+       is satisfied by any constant. */
+    t.ok('and the four modes really are priced differently',
+      new Set(CARDIO_MODES_FOR_TEST.map(m => r.byMode[m].kcal)).size >= 3,
+      CARDIO_MODES_FOR_TEST.map(m => m + ':' + r.byMode[m].kcal).join(' '));
+
+    /* A mixed week adds. */
+    t.eq('a ruck and a run in one week both count', r.mixed.rides, 2);
+    t.eq('and their minutes add', r.mixed.mins, 85);
+    t.ok('and the breakdown names both',
+      r.mixed.card.indexOf('45 rucking') >= 0 && r.mixed.card.indexOf('40 running') >= 0,
+      r.mixed.card.slice(0, 150));
+
+    /* FLOORS. A fix that counted everything would pass every check above. */
+    t.eq('but 24,000 steps of ordinary walking is not two cardio sessions', r.walked.rides, 0);
+    t.eq('and contributes no conditioning minutes', r.walked.mins, 0);
+    t.eq('and two 10-minute efforts do not meet a 35-minute target', r.tooShort.rides, 0);
+
+    /* The promise now matches the code, both ways round. */
+    t.ok('the card names every mode that really counts',
+      /jumping jacks/i.test(r.promise) && /bike/i.test(r.promise)
+      && /ruck/i.test(r.promise) && /run/i.test(r.promise), { promise: r.promise });
+    t.ok('and no longer claims a plain walk counts here', !r.stillClaimsWalk, { promise: r.promise });
+    /* …and says where walking DOES count, rather than leaving it worthless. */
+    t.ok('and points walking at the step target instead', r.saysWalkPaysSteps, r);
+
+    /* Distance and calories convert too, for the two modes that never had a
+       stored-day reader at all. */
+    t.ok('a ruck logged in distance still counts', r.ruckByDistance > 0, r);
+    t.ok('and a run logged in distance still counts', r.runByDistance > 0, r);
+
+    /* The day is read as STORED. Same minutes, different energy. */
+    t.eq('a stored pace does not change the minutes', r.storedLevelRead.easy, r.storedLevelRead.hills);
+    t.ok('but it does change the energy', r.storedLevelRead.hillsKcal > r.storedLevelRead.easyKcal,
+      r.storedLevelRead);
+
+    /* A backup can carry anything. */
+    t.eq('junk in a stored day counts as no sessions', r.junk.rides, 0);
+    t.eq('and as no minutes', r.junk.mins, 0);
+    /* The discriminating case: a numeric STRING coerces, so `+v||0` would
+       count it while movement() would not. */
+    t.ok('guard: today’s reader refuses a numeric string', r.todayAlsoRefuses, r);
+    t.ok('guard: and accepts the same value as a real number', r.todayAcceptsRealNumber, r);
+    t.eq('so the weekly count refuses it too — no sessions', r.numericString.rides, 0);
+    t.eq('and no minutes', r.numericString.mins, 0);
+
+    /* The validator covers four ladders, not two — and the new rules bite. */
+    t.ok('the validator checks the bike ladder', r.validator.bike, r.validator);
+    t.ok('and the jacks ladder', r.validator.jacks, r.validator);
+    t.ok('and the ruck ladder', r.validator.ruck, r.validator);
+    t.ok('and the run ladder', r.validator.run, r.validator);
+    t.eq('and it is clean on the real data', r.validatorClean, 0);
+    /* ruckMET() moves with bodyweight, so one seeded weight proves little. */
+    Object.keys(r.cleanByWeight).forEach(kg =>
+      t.eq('and clean at ' + kg + ' kg', r.cleanByWeight[kg], 0));
+    /* "The validator is clean" stays true whether a rule exists or not. Break
+       the data in front of it and require the specific complaint. */
+    t.ok('a rucking pace of 40 mph is reported', r.ruckRuleBites, r);
+    t.ok('a running speed of 90 km/h is reported', r.runRuleBites, r);
+    t.eq('and the data is restored afterwards', r.stillCleanAfter, 0);
   }
 
   await browser.close(); srv.close();
