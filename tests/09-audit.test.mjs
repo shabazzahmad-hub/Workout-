@@ -528,6 +528,87 @@ export default async function run() {
   t.ok('logging enough protein ticks the protein habit', hab.proteinTicked, hab);
   t.ok('and dropping below the target unticks it', hab.proteinUnticked, hab);
 
+  /* ---- Perfect Day asks for what the screen says matters (v314) ------------
+     Fuel counts "Daily habits · n/4" — habitsRequired(), the calorie one being
+     deliberately optional since restriction was dropped as a streak condition.
+     The badge counted all five and its description said "All 5 daily habits",
+     so an athlete who did everything the screen asks read 4/4 with a green
+     tick on the day and never unlocked it. The badge asked for the one habit
+     the app had stopped asking for.
+
+     The DISCRIMINATING check is the one that must not fire: making the badge
+     unlock on any old day satisfies every "it unlocks on the required set"
+     assertion, so a day with one habit short is pinned beside it. */
+  const pd = await page.evaluate(() => {
+    const o = {}, d = nutToday(), badge = ACHIEVEMENTS.find(a => a.id === 'perfectday');
+    const req = HABITS.filter(h => !h.optional), opt = HABITS.filter(h => h.optional);
+    o.required = habitsRequired();
+    o.thereIsAnOptionalOne = opt.length > 0;
+    /* The description is a FUNCTION so its number comes from habitsRequired()
+       rather than being restated. Reading it through achDesc() here proves the
+       resolver works and NOTHING about the badge grid — a read site that forgot
+       the resolver prints the function body onto the glass and this stays
+       green. Calling the helper is not driving the route, so the grid itself
+       is rendered and read back below. */
+    o.desc = achDesc(badge);
+    o.descNamesRequired = achDesc(badge).includes(String(habitsRequired()));
+
+    STATE.nutrition.days = {}; const day = nutToday();
+    // one short of the required set: must NOT unlock
+    day.habits = {}; req.slice(0, -1).forEach(h => day.habits[h.k] = true);
+    o.shortCount = bestHabitDay(); o.shortUnlocks = badge.check();
+    // the optional habit does not make up the shortfall
+    opt.forEach(h => day.habits[h.k] = true);
+    o.shortPlusOptionalUnlocks = badge.check();
+    // every REQUIRED habit, and nothing else: must unlock
+    day.habits = {}; req.forEach(h => day.habits[h.k] = true);
+    o.fullCount = bestHabitDay(); o.fullUnlocks = badge.check();
+    /* And what Fuel prints for that same day, read off the rendered tab rather
+       than recomputed — the two numbers disagreeing is the whole defect. */
+    go('fuel'); renderFuel();
+    o.fuelLine = (document.querySelector('#v-fuel').textContent
+      .match(/Daily habits · (\d+)\/(\d+)/) || []).slice(1, 3);
+    STATE.nutrition.days = {}; save();
+    return o;
+  });
+  t.ok('there is an optional habit for this to be about', pd.thereIsAnOptionalOne, pd);
+  t.ok('doing every required habit unlocks Perfect Day', pd.fullUnlocks, pd);
+  t.eq('and the day counts as the full required set', pd.fullCount, pd.required, pd);
+  t.eq('one habit short does not unlock it', pd.shortUnlocks, false, pd);
+  t.eq('and the optional habit cannot make up that shortfall', pd.shortPlusOptionalUnlocks, false, pd);
+  t.eq('Fuel prints the same denominator the badge asks for',
+    pd.fuelLine[1], String(pd.required), pd);
+  t.eq('and on a perfect day Fuel agrees the day is full', pd.fuelLine[0], String(pd.required), pd);
+  t.ok('the badge description names that number rather than restating one', pd.descNamesRequired, pd);
+  t.ok('and resolves to real text, not a function body', /^All \d+ daily habits/.test(pd.desc), pd);
+
+  /* The RENDERED grid, because that is where a forgotten resolver shows. Every
+     badge is read, not only the one that changed: the resolver exists so any
+     future badge may carry a computed description, and a check that only looks
+     at Perfect Day proves nothing about the site that renders the other forty. */
+  const grid = await page.evaluate(() => {
+    STATE.achievements = {};                       // locked, so the DESC renders
+    go('progress'); setProgressTab('awards'); renderProgress();
+    const v = document.querySelector('#v-progress');
+    const cells = [...v.querySelectorAll('.card .tiny.muted')].map(e => e.textContent.trim());
+    const pd = ACHIEVEMENTS.find(a => a.id === 'perfectday');
+    return {
+      cells: cells.length,
+      badges: ACHIEVEMENTS.length,
+      // a function printed instead of resolved leaves its source on the glass
+      leaked: cells.filter(c => /=>|function\s*\(|habitsRequired/.test(c)),
+      showsPerfectDay: cells.some(c => c === achDesc(pd)),
+      // the floor: the other badges still print their own plain-string text
+      showsPlainOnes: cells.filter(c => /workouts completed|training streak/.test(c)).length,
+    };
+  });
+  /* Anchored on ACHIEVEMENTS.length, not a magic number — a bar of "> 30"
+     drifts the moment a badge is added or removed and then measures nothing. */
+  t.eq('the badge grid renders a line for every badge', grid.cells, grid.badges, grid);
+  t.eq('no badge prints a function body instead of its description', grid.leaked, [], grid);
+  t.ok('Perfect Day\'s computed description is what reaches the glass', grid.showsPerfectDay, grid);
+  t.ok('and the plain-string badges still print theirs', grid.showsPlainOnes > 3, grid);
+
   // ---- nothing interrupts a live session ------------------------------------
   const live = await page.evaluate(() => {
     const o = {};

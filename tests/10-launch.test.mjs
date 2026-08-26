@@ -469,25 +469,45 @@ const { browser, page, errors } = await launch(port);
   await pc.close();
 }
 
-/* ---- Today is today's workout, nothing else (v246) -----------------------
-   Two grids were removed from the Today tab at the athlete's request: six
-   alternate-session tiles and the six-stat summary. Both MOVED rather than
-   died, so this asserts on both ends — gone from Today AND present on the tab
-   that now owns them. Checking only the removal would pass just as happily on
-   a version that deleted them outright, which is not what was asked for. */
+/* ---- Today LEADS with today's workout (v246, re-aimed v314) --------------
+   Two grids were removed from the top of Today at the athlete's request. The
+   six-stat summary moved to Progress and stayed there. The alternate-session
+   tiles went to Program in v246 and came back in v314 — to the BOTTOM of this
+   tab, because the original request was about position and Program is a
+   54-week calendar nobody opens looking for a five-minute substitute.
+
+   So the assertion is no longer "gone from Today". It is ORDER: the tiles are
+   present, and every one of them sits below the session's own controls. A
+   bare "the tiles are on Today" check passes on exactly the layout v246
+   rejected, and a bare "they are on Program" check was holding the wrong
+   destination in place. Both ends are pinned, both ways. */
 {
   const r = await page.evaluate(() => {
     const o = {};
     const txt = el => (el && el.innerText) || '';
     const html = el => (el && el.innerHTML) || '';
 
-    go('today'); renderToday();
+    go('today'); setTodayTab('workout'); renderToday();
     const today = document.querySelector('#v-today');
     o.todayLen = txt(today).trim().length;
-    // the six moved tiles, by the handler each one carried
-    o.todayTiles = ['startWeights(', 'openSpecial(', 'openMealPlan(', 'openQuickList(',
+    // the moved tiles, by the handler each one carried
+    o.todayTiles = ['startWeights(', 'openSpecial(', 'openQuickList(',
       'openRestSheet(', 'startRestDay('].filter(fn => html(today).includes(fn));
+    // the dead tile is not carried back: v245 removed the card it scrolled to
+    o.todayMealPlan = html(today).includes('openMealPlan(');
     o.todayStats = !!today.querySelector('.grid3 [onclick^="logMeasure"]');
+    /* ORDER is the requirement, not presence. Measured against the session's
+       own Mark-Complete button — the last thing that belongs to today's work —
+       so a tile that crept back above the exercise list fails even though it
+       is still technically "on Today". Every handler is measured, not just the
+       first: a mutant that moved one tile up passes a check that only reads
+       the earliest index. */
+    const _fin = html(today).indexOf('id="finishSession"');
+    o.finishIdx = _fin;
+    o.tilesAboveSession = ['startWeights(', 'openSpecial(', 'openQuickList(',
+      'openRestSheet(', 'startRestDay(']
+      .filter(fn => { const i = html(today).indexOf(fn); return i >= 0 && i < _fin; });
+    o.altLabelled = /not today.s session|something else today/i.test(txt(today));
     // what MUST still be there: today's actual session
     o.keepsPlayer = html(today).includes('openPlayer(');
     /* Section labels and stat labels are uppercased by CSS text-transform, and
@@ -499,12 +519,11 @@ const { browser, page, errors } = await launch(port);
 
     go('program'); renderProgram();
     const prog = document.querySelector('#v-program');
-    o.progTiles = ['openSpecial(', 'openQuickList(', 'openRestSheet('].filter(fn => html(prog).includes(fn));
-    o.progHasRest = html(prog).includes('startRestDay(') || html(prog).includes('openRestSheet(');
-    // the standalone Quick button folded INTO the grid — not both
-    o.progQuickCount = (html(prog).match(/openQuickList\(/g) || []).length;
-    // the dead tile is not carried over: v245 removed the card it scrolled to
-    o.progMealPlan = html(prog).includes('openMealPlan(');
+    o.progTiles = ['startWeights(', 'openSpecial(', 'openQuickList(', 'openRestSheet(',
+      'startRestDay('].filter(fn => html(prog).includes(fn));
+    /* Program keeps what it is FOR — the 54-week calendar — so this is the
+       floor that stops the move becoming a deletion of the tab's own content. */
+    o.progKeepsCalendar = !!prog.querySelector('.calday') && /week 1/i.test(txt(prog));
 
     go('progress'); renderProgress();
     const prg = document.querySelector('#v-progress');
@@ -519,17 +538,19 @@ const { browser, page, errors } = await launch(port);
     o.progressShowsBadges = /badges/i.test(txt(prg));
     return o;
   });
-  s.eq('no alternate-session tiles remain on Today', r.todayTiles, []);
-  s.eq('and the six-stat summary is gone from Today', r.todayStats, false);
+  s.eq('all five alternate-session tiles are on Today', r.todayTiles.length, 5, r);
+  s.eq('and every one of them sits BELOW the session controls', r.tilesAboveSession, [], r);
+  s.ok('the session button they are measured against really is there', r.finishIdx > 0, r);
+  s.ok('the block says what it is for', r.altLabelled, r);
+  s.eq('the dead Meal plan tile is not carried back', r.todayMealPlan, false, r);
+  s.eq('and the six-stat summary is still gone from Today', r.todayStats, false);
   s.ok('Today still leads with the guided player', r.keepsPlayer, r);
   s.ok('and still shows the main work', r.keepsMainWork, r);
   s.ok('and the finisher', r.keepsFinisher, r);
   s.ok('and still lists today\'s actual exercises', r.keepsExercises > 0, r);
   s.ok('Today still renders a real page, not a stub', r.todayLen > 200, r);
-  s.eq('the session tiles now live on Program', r.progTiles.length, 3, r);
-  s.ok('including the rest-day control', r.progHasRest, r);
-  s.eq('with Quick Workouts appearing once, not beside a duplicate button', r.progQuickCount, 1, r);
-  s.eq('the dead Meal plan tile is not carried over', r.progMealPlan, false, r);
+  s.eq('the session tiles no longer sit on the 54-week calendar', r.progTiles, [], r);
+  s.ok('but Program keeps the calendar itself', r.progKeepsCalendar, r);
   s.ok('the stat summary now lives on Progress', r.progressStats, r);
   s.ok('showing the week', r.progressShowsWeek, r);
   s.ok('and the badge count', r.progressShowsBadges, r);
@@ -561,6 +582,124 @@ const { browser, page, errors } = await launch(port);
   s.eq('the meal-ideas button lands on Reference, where the days now live', r.tab, 'ref');
   s.ok('the anchor it scrolls to actually exists on that tab', r.anchorExists, r);
   s.ok('and that tab really shows meals', r.showsMeals, r);
+}
+
+/* ---- Reference is the look-it-up tab, and it holds two libraries (v314) ---
+   138 movements used to be the THIRD section of Settings, above the settings
+   themselves — a reference work filed under "change my preferences". It moved
+   behind a Moves pane on Reference.
+
+   Both ends are asserted, and so is the ROUTE: openMealPlan() lands on
+   Reference and scrolls to a #mealplan anchor that only exists on the Food
+   pane, so a version that forgot to name the pane is a dead end for an athlete
+   who last left Reference on Moves. That is the same defect v245's own fix
+   closed, one layer further in. */
+{
+  const r = await page.evaluate(() => {
+    const o = {};
+    const H = id => document.querySelector(id).innerHTML;
+    const T = id => document.querySelector(id).textContent;
+    go('guide'); renderGuide();
+    o.libInSettings = /Exercise library ·/.test(H('#v-guide'));
+    /* The floor: Settings keeps being Settings. A move that emptied the tab
+       satisfies every "the library is gone from here" assertion. */
+    o.settingsKeepsControls = H('#v-guide').includes('id="settingsAnchor"')
+      && H('#v-guide').includes('toggleSetting(');
+
+    go('ref'); setRefTab('food'); renderRef();
+    o.foodPaneHasLib = /Exercise library ·/.test(H('#v-ref'));
+    o.foodPaneHasFood = /Food list/i.test(T('#v-ref'));
+    setRefTab('moves');
+    o.movesPaneHasLib = /Exercise library ·/.test(H('#v-ref'));
+    /* Count the info buttons, not the heading. A heading that says "· 138"
+       with an empty list underneath satisfies a substring check. */
+    o.movesInfoButtons = document.querySelectorAll('#v-ref [onclick^="openExerciseInfo"]').length;
+    o.movesPaneHasFood = /Food list/i.test(T('#v-ref'));
+    /* TWO guards, so two checks. The setter refuses a name that is not a real
+       pane, and the reader falls back when REF_TAB is ALREADY junk — which is
+       the case a stored value from an older build produces, and the only one
+       that can reach innerHTML. A check that only calls the setter measures
+       the reader on nothing. */
+    setRefTab('moves');
+    setRefTab('nonsense'); o.setterRefused = REF_TAB;
+    REF_TAB = 'nonsense'; o.readerFellBack = refTab();
+    renderRef();
+    o.junkPaneRendersFood = /Food list/i.test(T('#v-ref'));
+    o.junkNameNotOnGlass = !H('#v-ref').includes('nonsense');
+    REF_TAB = 'moves';
+    return o;
+  });
+  s.eq('the exercise library is no longer buried in Settings', r.libInSettings, false, r);
+  s.ok('and Settings still has its actual settings', r.settingsKeepsControls, r);
+  s.ok('the library lives on Reference ▸ Moves', r.movesPaneHasLib, r);
+  s.ok('with every movement listed, not just the heading', r.movesInfoButtons > 100, r);
+  s.eq('and no food on that pane', r.movesPaneHasFood, false, r);
+  s.ok('Reference ▸ Food is still the food list', r.foodPaneHasFood, r);
+  s.eq('and does not carry the library too', r.foodPaneHasLib, false, r);
+  s.eq('the pane setter refuses a name that is not a pane', r.setterRefused, 'moves', r);
+  s.eq('and a junk value already in REF_TAB reads back as Food', r.readerFellBack, 'food', r);
+  s.ok('so a stale stored pane still renders real content', r.junkPaneRendersFood, r);
+  s.ok('and the junk name never reaches innerHTML', r.junkNameNotOnGlass, r);
+
+  // the route in: it must name the pane, not just the tab
+  const route = await page.evaluate(async () => {
+    setRefTab('moves');            // the athlete's last position
+    openMealPlan();
+    await new Promise(r => setTimeout(r, 200));
+    const v = document.querySelector('#v-' + TAB);
+    return { tab: TAB, pane: refTab(), anchor: !!(v && v.querySelector('#mealplan')) };
+  });
+  s.eq('the meal-ideas route still lands on Reference', route.tab, 'ref', route);
+  s.eq('and switches to the pane the days are actually on', route.pane, 'food', route);
+  s.ok('so its scroll anchor exists', route.anchor, route);
+}
+
+/* ---- every figure on Progress ▸ Summary has exactly one home (v314) -------
+   Sessions, the streak and the Core Score each rendered twice: once in the
+   grid at the top of the tab, once again 20 lines below — the score as a full
+   ring, sessions in the lifetime grid, the streak under a second label ("Day
+   streak"). Two numbers that agree are not reassurance, they are a reader
+   wondering which one is real.
+
+   Asserted by counting the RENDERED stat labels rather than by naming the
+   three that were wrong: a check that only knows about Sessions passes on the
+   next duplicate someone adds. The floors below it are what stop a de-dup
+   becoming a deletion. */
+{
+  const r = await page.evaluate(() => {
+    go('progress'); setProgressTab('summary'); renderProgress();
+    const v = document.querySelector('#v-progress');
+    const counts = {};
+    v.querySelectorAll('.stat .l').forEach(el => {
+      const k = el.textContent.trim().toLowerCase();
+      counts[k] = (counts[k] || 0) + 1;
+    });
+    const txt = v.textContent;
+    return {
+      dups: Object.entries(counts).filter(([, n]) => n > 1),
+      labelCount: Object.keys(counts).length,
+      // the figures themselves must all still be reachable
+      hasWeek: 'week' in counts,
+      hasSessions: 'sessions' in counts,
+      hasStreak: Object.keys(counts).some(k => /streak/.test(k)),
+      hasCoreScore: /core score/i.test(txt),
+      hasThisWeek: 'this week' in counts,
+      hasMinutes: 'min trained' in counts,
+      // the prose line that restated the volume grid is gone
+      noVolumeProse: !/lifetime volume:/i.test(txt),
+      hasVolume: 'sets' in counts && 'reps' in counts && 'holds' in counts,
+    };
+  });
+  s.eq('no figure is printed twice on the summary', r.dups, [], r);
+  s.ok('and the summary still carries a real set of figures', r.labelCount >= 10, r);
+  s.ok('the programme week survives', r.hasWeek, r);
+  s.ok('this week survives', r.hasThisWeek, r);
+  s.ok('the streak survives', r.hasStreak, r);
+  s.ok('lifetime sessions survive', r.hasSessions, r);
+  s.ok('minutes trained survive', r.hasMinutes, r);
+  s.ok('the Core Score survives', r.hasCoreScore, r);
+  s.ok('and the volume totals survive as a grid', r.hasVolume, r);
+  s.ok('with the prose line that restated them gone', r.noVolumeProse, r);
 }
 
 srv.close();

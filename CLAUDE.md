@@ -2517,6 +2517,111 @@ names where Movement is and that it does not name where it is not.
 **When a block moves, grep the copy for the old address.** A promise in UI text
 is a specification, and a stale pointer is a broken one.
 
+## Things live where you would go looking for them (v314)
+
+"Look at the app from an amateur athlete's perspective and his intuitive
+reasoning — where things should be. Things should not just be placed in places
+just to make use of space."
+
+Four things were in the wrong place. A fifth reported problem was not real, and
+separating them was most of the work — the usual ratio for an audit written from
+outside the code.
+
+**The exercise library was inside Settings.** 138 movements, the third section
+of that tab, above the settings themselves — a reference work filed under
+"change my preferences". Reference is the look-it-up tab, so Reference now has
+two panes (`REF_TABS`: Food, Moves), the same shape Progress got in v312.
+
+**A block that moves behind a tab needs every route into it to name the tab.**
+`openMealPlan()` did `go('ref')` and scrolled to a `#mealplan` anchor. With two
+panes, landing on the tab is no longer the same as landing on the content: an
+athlete who last left Reference on Moves got a library and a scroll to nothing.
+That is precisely the dead end v245's own fix closed, one layer further in.
+`REF_TAB='food'` before `go('ref')`, and a check drives the route rather than
+reading the function.
+
+**The five alternate-session tiles were on Program.** Weights, Special, Quick,
+Recover, Rest day are choices about TODAY — "not the planned session, something
+else instead" — and Program is the 54-week calendar. Nobody opens a year-long
+plan looking for a five-minute substitute.
+
+They were on Today until v246 removed them **at the athlete's request** as
+clutter. That request was about POSITION, and it still holds, so they come back
+BELOW the session and below Movement rather than above it — where they answer a
+question the athlete has already asked instead of standing in front of the
+answer. The check is therefore about ORDER, not presence: every one of the five
+handlers must sit after `id="finishSession"`. A bare "the tiles are on Today"
+assertion passes on exactly the layout v246 rejected.
+
+**And the v246 comment asserting they live on Program had to be rewritten, not
+left.** A comment claiming an invariant is not the invariant — this file already
+records a case where the previous fix's own comment was the thing that made the
+next bug survive.
+
+### Two numbers that agree are not reassurance
+
+Progress ▸ Summary printed **Sessions twice, the streak twice and the Core Score
+twice** — once in the grid at the top, once again twenty lines below, the score
+as a full ring and the streak under a second label ("Streak" / "Day streak").
+Nothing was wrong with any of the figures. A reader seeing the same number in
+two places with two labels does not feel doubly informed; they wonder which one
+is the real one.
+
+Each figure now has one home: the top grid is *where you are* (week, this week,
+streak) plus three tappable shortcuts, the ring is the score, and a Lifetime grid
+carries the totals. The prose line that restated the volume grid is gone.
+
+**Count the rendered labels, do not name the three that were wrong.** A check
+that knows about Sessions passes on the next duplicate somebody adds. It walks
+every `.stat .l` and asserts none appears twice — with a floor under it for each
+figure that must survive, because a de-dup that deletes satisfies every
+"printed once" assertion. The mutant that dropped the Lifetime Sessions tile is
+caught by that floor and by nothing else.
+
+### The badge asked for the one habit the app had stopped asking for
+
+Fuel counts `Daily habits · n/4` — `habitsRequired()`, the calorie habit being
+deliberately optional since restriction was dropped as a streak condition.
+Perfect Day counted **all five** and its description said *"All 5 daily habits"*.
+So an athlete who did everything the screen says matters read **4/4 with a green
+tick on the day and never unlocked it**.
+
+The description is now a **function**, not a string, so its number comes from
+`habitsRequired()` rather than being restated. Two reasons it cannot be a
+template literal: `HABITS` is declared thousands of lines below `ACHIEVEMENTS`,
+so evaluating one at parse time is a temporal dead zone error — the v290 `btRing`
+trap — and a literal is a second copy of a number that will drift.
+
+**Calling the resolver is not driving the route, and that escaped a mutant.**
+The check read `achDesc(badge)` and stayed green with a read site reverted to
+`a.desc`, which prints the function's own source onto the glass. It now renders
+the Awards grid and asserts no cell contains `=>`, across **every** badge — the
+resolver exists so any future badge may compute its text, and a check aimed at
+Perfect Day proves nothing about the site that renders the other forty.
+
+**The discriminating check is the one that must not fire.** A badge that unlocks
+on any old day satisfies every "it unlocks on the required set" assertion, so a
+day one habit short is pinned beside it — and a day one short *plus the optional
+habit*, which is the exact state the old code rewarded.
+
+### The one that was not real
+
+*"Mid-session, Today defaults to the Brief sub-tab and the resume offer is
+nowhere."* Measured on a real reload with a live `_plResume`: `TODAY_TAB` is a
+script-scope `let` initialised to `'workout'`, so a relaunch lands on the
+workout, and the header prints `0/5 exercises · 2/13 sets · 15%` on all four
+sub-tabs. The earlier reading came from a probe that set `TODAY_TAB='brief'`
+itself and then reported the value back.
+
+Same for *"Quick is a dead end reading 'No quick workout selected'"* — that
+string is reachable only from a stale `QUICK_ID`, and a reload lands on Today.
+
+**Two lazy mutants, and reading them back is what caught it.** `hidden` on a
+grid leaves every element in the DOM, so a check that counts `.stat .l` is
+correct to ignore it; the real over-eager fix deletes the tile, and re-seeding it
+that way was caught immediately. Eleven mutants, all caught after those two
+rewrites.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
