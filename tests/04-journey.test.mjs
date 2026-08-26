@@ -760,6 +760,149 @@ export default async function run() {
     t.ok('with no done card', floors.untrainedNoDoneCard, floors);
     t.ok('and no next-session card', floors.untrainedNoNextCard, floors);
 
+    /* ---- the request is about a SESSION, not about a DAY (v316) ---------
+       `_trainAgain` was a bare date string, and a date alone cannot say whether
+       the session the athlete was looking at is still the one behind the
+       pointer. Two writers move that pointer and neither cleared the flag:
+
+         - undoSession() rewinds it, so undo-then-redo the same day re-opened
+           the v313 defect exactly — Today showed the NEXT session under TODAY
+           with a Mark Session Complete button on it.
+         - restartProgram() resets it to 0 and archives the run.
+
+       Nulling it in each writer works until the next writer forgets, which is
+       this repo's most-repeated bug. It stamps the pointer instead, so any
+       pointer move voids the request with no writer involved — the _planStamp
+       fix, one subsystem over.
+
+       Driven through the REAL undo path: a hand-built _undo is refused by
+       undoInfo() and the block then measures an undo that never happened. */
+    const stale = await page.evaluate(async () => {
+      const o = {}; const realConfirm = window.confirm; window.confirm = () => true;
+      const P = 4, pos = posOf(P);
+      STATE.progressPtr = P + 1;
+      STATE.logs = { [P]: { ex: {}, done: true, completedAt: todayISO() } };
+      STATE._undo = snapshotForUndo(P, pos.cycle + '-' + pos.week);
+      STATE._undo.ptr = P; STATE._undo.date = todayISO();
+      STATE._trainAgain = { date: todayISO(), from: P + 1 };
+      save();
+      o.undoWasReal = !!undoInfo();          // guard: the undo below really runs
+      undoSession();
+      o.rewound = STATE.progressPtr;
+      /* The pointer stamp cannot cover an undo on its own: re-doing the session
+         puts the pointer back to the SAME value, so the stamp would match again
+         and resurrect a request made about a completion the athlete erased.
+         Un-logging is an explicit "that did not happen". */
+      o.clearedByUndo = STATE._trainAgain === undefined;
+      /* Re-do the same session, the same day. */
+      STATE.logs[P] = { ex: {}, done: true, completedAt: todayISO() };
+      STATE.progressPtr = P + 1; save(); setTodayTab('workout'); renderToday();
+      const t = document.querySelector('#v-today').innerText;
+      o.after = { todayPtr: todayPtr(), done: todayDone(),
+        saysDone: /Session done/i.test(t),
+        offersComplete: !!document.querySelector('#v-today #finishSession') };
+      /* CONTROL: the identical state with no flag at all. The two must agree —
+         that is what proves the flag stopped mattering, rather than the screen
+         happening to look right for some other reason. */
+      delete STATE._trainAgain; save(); renderToday();
+      const c = document.querySelector('#v-today').innerText;
+      o.control = { todayPtr: todayPtr(), done: todayDone(),
+        saysDone: /Session done/i.test(c),
+        offersComplete: !!document.querySelector('#v-today #finishSession') };
+      /* A v313 bare-string value is what every phone is carrying right now.
+         It must fail CLOSED — show the session that was actually finished. */
+      STATE._trainAgain = todayISO(); save();
+      o.legacyString = { todayPtr: todayPtr(), done: todayDone() };
+      window.confirm = realConfirm;
+      return o;
+    });
+    t.ok('guard: the undo under test really ran', stale.undoWasReal, stale);
+    t.eq('and rewound the pointer', stale.rewound, 4, stale);
+    t.ok('un-logging a session voids the train-again request', stale.clearedByUndo, stale);
+    t.ok('undo-then-redo the same day still shows the session that was done',
+      stale.after.saysDone, stale);
+    t.eq('and matches a run with no stale request at all',
+      stale.after, stale.control, stale);
+    t.ok('no Complete button on work already logged', !stale.after.offersComplete, stale);
+    t.eq('a v313 bare-string request fails closed', stale.legacyString,
+      { todayPtr: 4, done: true }, stale);
+
+    /* AND THE SECOND SESSION ENDS THE REQUEST. This is the case only the
+       pointer stamp can catch, and the first version of this block missed it:
+       undo and restart both delete the flag outright, so with those two covered
+       nothing exercised the comparison at all and a mutant that stored the
+       stamp without ever reading it walked straight through.
+
+       The athlete finishes today's session, taps Train again, and finishes the
+       next one too. The request was about the FIRST completion; the second one
+       is now what today is. A date-only test says yes forever and Today shows a
+       THIRD session with a Mark Session Complete button on it. */
+    const second = await page.evaluate(() => {
+      const o = {}; const realConfirm = window.confirm; window.confirm = () => true;
+      STATE.progressPtr = 5;
+      STATE.logs = { 4: { ex: {}, done: true, completedAt: todayISO() } };
+      delete STATE._trainAgain; save();
+      trainAgainToday();
+      o.granted = { todayPtr: todayPtr(), from: (STATE._trainAgain || {}).from };
+      /* now really train it */
+      STATE.logs[5] = { ex: {}, done: true, completedAt: todayISO() };
+      STATE.progressPtr = 6; save(); setTodayTab('workout'); renderToday();
+      const t = document.querySelector('#v-today').innerText;
+      o.afterSecond = { todayPtr: todayPtr(), done: todayDone(),
+        saysDone: /Session done/i.test(t),
+        offersComplete: !!document.querySelector('#v-today #finishSession') };
+      window.confirm = realConfirm;
+      return o;
+    });
+    t.eq('guard: the request really was granted on the pointer it was made from',
+      second.granted, { todayPtr: 5, from: 5 }, second);
+    t.eq('training that second session makes IT today\'s', second.afterSecond.todayPtr, 5, second);
+    t.ok('and Today says so', second.afterSecond.saysDone, second);
+    t.ok('rather than offering a third with a Complete button',
+      !second.afterSecond.offersComplete, second);
+
+    /* ---- restarting the program drops the live-session scratch (v316) ----
+       TRANSIENT_KEYS is already the list of keys that describe a live session;
+       the export and the import both ask it, and this was the one place that
+       reset the run without asking. A _plResume left pointing at slot 0 matched
+       the NEW block's slot 0 and offered to resume a session out of the run
+       that had just been archived. */
+    const restart = await page.evaluate(() => {
+      const o = {}; const realConfirm = window.confirm; window.confirm = () => true;
+      STATE.progressPtr = 5;
+      STATE.logs = { 4: { ex: {}, done: true, completedAt: todayISO() } };
+      STATE._trainAgain = { date: todayISO(), from: 5 };
+      STATE._plResume = { date: todayISO(), ptr: 0, i: 1, setsDone: 2 };
+      STATE._undo = { ptr: 4, date: todayISO() };
+      save();
+      o.scratchBefore = TRANSIENT_KEYS.filter(k => STATE[k] !== undefined);
+      restartProgram();
+      o.ptr = STATE.progressPtr;
+      o.scratchAfter = TRANSIENT_KEYS.filter(k => STATE[k] !== undefined);
+      o.resumeOffered = !!resumeInfo();
+      /* The floor: a restart ARCHIVES the run, it does not delete it. A clear
+         that also dropped the history satisfies every "scratch is gone" check
+         and breaks the confirm's own promise that history stays saved. */
+      o.runsArchived = (STATE.runs || []).length;
+      o.archivedRowsKept = Object.keys((STATE.runs || [])[0]?.logs || {}).length;
+      window.confirm = realConfirm;
+      return o;
+    });
+    t.ok('guard: there really was live-session scratch to drop',
+      restart.scratchBefore.length >= 3, restart);
+    t.eq('restarting drops every transient key', restart.scratchAfter, [], restart);
+    t.eq('and resets the pointer', restart.ptr, 0, restart);
+    t.ok('so nothing offers to resume a session out of the archived run',
+      !restart.resumeOffered, restart);
+    t.eq('while the finished run is archived, not deleted', restart.runsArchived, 1, restart);
+    t.ok('with its logged sessions kept', restart.archivedRowsKept > 0, restart);
+
+    /* restartProgram() nulls the baseline, so every block after this one would
+       render the assessment gate instead of a workout. Each block builds the
+       state it asserts on — and a block that DESTROYS shared state has to put
+       it back, or the next three checks measure a screen nobody asked for. */
+    await seedAthlete(page);
+
     /* A PAIN STOP IS NOT A COMPLETION. commitSession() records it as
        stoppedForPain and NOT done, so the app must not congratulate it. */
     const pain = await page.evaluate(() => {

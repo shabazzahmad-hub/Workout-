@@ -1807,7 +1807,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='315';
+const APP_VERSION='316';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3529,6 +3529,13 @@ function restartProgram(){
   }
   STATE.logs={};
   STATE.baseline=null;STATE.reassess={};STATE.progressPtr=0;STATE.weekFeel={};STATE.swaps={};
+  /* The live-session scratch describes the run being archived, not the one
+     starting. TRANSIENT_KEYS is already the list of exactly those keys — the
+     export and the import both ask it — and this function was the one place
+     that reset the run without asking. A _plResume left pointing at slot 0
+     matched the new block's slot 0 and offered to resume a session out of the
+     archived run. */
+  TRANSIENT_KEYS.forEach(k=>{delete STATE[k];});
   rebaseAdapt();
   save();go('today');
 }
@@ -3591,16 +3598,41 @@ function nextSessionHTML(){
     </div>`;
 }
 /* Reachable, and priced. */
+/* STAMP THE POINTER THE REQUEST WAS GRANTED FOR, not just the date. This was a
+   bare date string, and a date alone cannot tell whether the session the
+   athlete was looking at is still the session behind the pointer.
+
+   Two writers moved that pointer and neither cleared the flag. Undo a session
+   and re-do it the same day, or restart the program and train, and todayPtr()
+   read a request made about a DIFFERENT session — so Today showed the NEXT one
+   under the word TODAY, with a Mark Session Complete button on it. That is the
+   v313 defect exactly, and it is how you burn the next session by accident.
+
+   Nulling it in each writer would work until the next writer forgets, which is
+   precisely the class of bug this repo keeps re-finding. Stamping the input the
+   decision was made under is the same fix as _planStamp: any pointer move
+   voids the request automatically and no writer has to remember. */
 function trainAgainToday(){
   if(!confirm('You already trained today. A second session logs as the next one and moves your program on — recovery is where the muscle is made. Sure?'))return;
-  STATE._trainAgain=todayISO();save();
+  STATE._trainAgain={date:todayISO(),from:STATE.progressPtr};save();
   try{render();}catch(e){}
+}
+/* MEMBERSHIP on the shape, not truthiness. A bare string is what v313 stored,
+   and importData() accepts arbitrary JSON — either reads as "no request", which
+   at worst costs one extra tap of a button that is still on screen. Failing
+   closed here means showing the session the athlete actually finished. */
+function trainAgainAsked(){
+  try{
+    const r=STATE._trainAgain;
+    if(!r||typeof r!=='object')return false;
+    return r.date===todayISO()&&r.from===STATE.progressPtr;
+  }catch(e){return false;}
 }
 function todayPtr(){
   try{
     const p=STATE.progressPtr,prev=p-1;
     if(prev<0)return p;
-    if(STATE._trainAgain===todayISO())return p;   // they asked for the next one
+    if(trainAgainAsked())return p;   // they asked for the next one, on THIS pointer
     const l=(STATE.logs||{})[prev];
     if(l&&l.completedAt===todayISO()&&(l.done||l.stoppedForPain))return prev;
     return p;
@@ -4111,6 +4143,13 @@ function undoSession(){
     if(u.achievements)STATE.achievements=JSON.parse(JSON.stringify(u.achievements));
     STATE.progressPtr=u.ptr;
     delete STATE._undo;
+    /* Un-logging a session voids any request made about it. The pointer stamp
+       on _trainAgain cannot cover this one on its own: undo rewinds the pointer
+       and re-doing the session puts it back to the SAME value, so the stamp
+       matches again and the request is resurrected against a completion the
+       athlete erased. An explicit "that session did not happen" is the one
+       signal a stamp cannot infer. */
+    delete STATE._trainAgain;
     save();go('today');render();
     toast('Session un-logged — you are back on session '+(u.ptr+1));
   }catch(e){console.error('[undo]',e);toast('Could not undo that');}
