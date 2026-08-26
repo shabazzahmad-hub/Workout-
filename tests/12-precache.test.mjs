@@ -46,9 +46,19 @@ export default async function run() {
     t.ok('and is a small fraction of the whole', installKB / 1024 < totalMB * 0.25, { installKB, totalMB });
     t.ok('the deferred tail is the bulk of it', bytes(EXTRA) > bytes([...CORE, ...MIN]) * 2,
       { extraKB: Math.round(bytes(EXTRA) / 1024), installKB });
-    t.ok('video is deferred to the very end of the tail',
-      EXTRA.filter(u => u.endsWith('.mp4')).every(u => EXTRA.indexOf(u) > EXTRA.length - 20),
-      EXTRA.slice(-14));
+    /* Video is heaviest and least necessary, so it is topped up last. This used
+       to be "within the last 20 entries", which is a magic number that drifts:
+       adding a 17th clip pushed the FIRST video out of the window and the check
+       went red on a correct change. Express the RULE instead — nothing that is
+       not a video may follow a video — and it cannot drift as clips are added. */
+    const firstVid = EXTRA.findIndex(u => u.endsWith('.mp4'));
+    const afterFirstVid = firstVid < 0 ? [] : EXTRA.slice(firstVid).filter(u => !u.endsWith('.mp4'));
+    t.ok('guard: there are videos in the tail to order', firstVid >= 0, { firstVid });
+    t.eq('nothing but video follows the first video', afterFirstVid, [], EXTRA.slice(-6));
+    /* The floor: "last" must still mean the END of the tail, not a video-only
+       list that some other tier quietly precedes. */
+    t.ok('and the videos really are at the end of the tail',
+      EXTRA[EXTRA.length - 1].endsWith('.mp4'), EXTRA.slice(-3));
     t.ok('the first-run tier covers the baseline tests and the flows',
       FIRST.includes('./ex-plank.jpg') && FIRST.includes('./wu-march.jpg') && FIRST.includes('./cd-childs.jpg'),
       FIRST.slice(0, 6));
