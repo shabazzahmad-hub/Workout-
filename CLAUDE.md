@@ -3648,6 +3648,77 @@ suite crashed instead of reporting checks. Re-seeded as `const isJacks=true;`
 it was caught by name. **Read the mutant back**, for the second time in this
 file.
 
+## The card gave two different answers to the same question (v328)
+
+The audit that followed v327 found the identical defect one function over, and
+three times in `movementHTML()`. The card answers three questions and two of
+them were `bike ? … : jacks`:
+
+| the note | what it did |
+|---|---|
+| "N steps to go — here is what closes it" | the ELSE told a **ruck or run** athlete to do jumping jacks |
+| "Target met. X carried N of it" | gated on `work.min\|\|ride.min` — jacks or the bike, nothing else |
+| "Also logged today" | two hardcoded pairs out of twelve |
+
+**The first one printed a contradiction on a single screen.** A ruck athlete
+8,000 steps short read *"Steady jumping jacks, that is 39 min"* at the top of
+the card and, four lines down inside their own ruck block, *"You are 8,000
+steps short — about 70 min under that plate at this pace."* Same card, same
+gap, two modes and two numbers.
+
+**Two designs had collided and nobody reconciled them.** Jacks and the bike
+answer the gap in the TOP note and their blocks say nothing about it; the ruck
+(v294) and the run (v323) answer it in their OWN blocks and nobody came back to
+the top note. So the top note's else-branch fell through to jacks for both.
+
+The gap is now answered **once**, at the top, for whichever mode is picked —
+and the ruck and run blocks lost their duplicate sentence. Two labels on one
+number is what v314 cleaned off Progress.
+
+**The second was silence where an acknowledgement belonged.** Measured against
+an 8,000-step target: a 120-minute ruck carrying **13,800** steps and a
+60-minute run carrying **18,480** both produced no "Target met" line at all,
+while 200 minutes of jacks produced one.
+
+`CARDIO_INFO` — v327's credit table — is now the ONE per-mode table, carrying
+the label, the phrase, the work reader and the gap advice. A second table
+restating these four names is how the five diets came to exist as three
+separate literals.
+
+### Three escaped mutants, and only one was a weak check in the ordinary sense
+
+- **The minutes check compared the app to itself.** `r.mins.ruck` was read out
+  of `ruckNeed()` — the same helper the note calls — so a mutant that made
+  `ruckNeed()` return **jacks** minutes moved both sides of the assertion and
+  passed. The expected figure is now derived from `ruckStepsPerMin()`, with a
+  guard that the four rates genuinely differ. **Pin the value, not the
+  identity** — v325's lesson, in a new place.
+- **`CARDIO_INFO[mode]||CARDIO_INFO.jacks` looks equivalent to the membership
+  test and is not.** For an unknown string it really is equivalent, which is
+  why `cardioInfo('helicopter')` could not tell them apart. An **inherited**
+  key can: `CARDIO_INFO['constructor']` is truthy, so the `||` fallback hands
+  back `Object.prototype.constructor` while the membership test refuses it.
+  The check now exercises that, with a guard asserting the inherited key really
+  is truthy first.
+- **Naming both modes is not crediting both.** `carried=done[0].steps` passed
+  every "two modes are named" assertion while reporting one mode's steps. The
+  check now asserts the credited figure is the SUM and is larger than either
+  mode alone.
+
+Ten mutants, all caught after those three rewrites. The floors carry the usual
+weight: a day walked off on your own feet claims no mode carried it, the mode
+you are looking at is never "also" logged, and the jacks and bike advice must
+still name jacks and the trainer — an over-eager fix that advised jacks
+everywhere satisfies every "the note exists" assertion.
+
+**And five check failures on correct code, both traps already in this file.** A
+fixed 200-character window ran past the note into the "Make it up with" picker,
+which names every mode on every card — so *"the ruck advice does not mention
+jumping jacks"* failed on a screen that was right. **Scope the assertion to
+where the change was made.** And the cross-note quotes each mode's `did` phrase
+(*"of running"*), not its `short` one (*"the run"*), because *"20 min on
+jumping jacks"* is not English.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

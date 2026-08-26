@@ -1622,6 +1622,12 @@ export default async function run() {
   }
 
   const CARDIO_MODES_FOR_TEST = await page.evaluate(() => CARDIO_MODES.slice());
+  /* Pulled from the app's own table rather than restated here — a second copy
+     of these four names in the suite is the drift the table exists to stop. */
+  const CARDIO_SHORT = await page.evaluate(() => {
+    const o = {}; CARDIO_MODES.forEach(m => o[m] = CARDIO_INFO[m].short); return o; });
+  const CARDIO_DID = await page.evaluate(() => {
+    const o = {}; CARDIO_MODES.forEach(m => o[m] = CARDIO_INFO[m].did); return o; });
 
   /* ---- the makeup timer knows all four cardio modes (v327) -----------------
      Reported from the phone: "is this timer linked to the exercises here?"
@@ -1657,7 +1663,7 @@ export default async function run() {
 
       CARDIO_MODES.forEach(m => { openMakeupTimer(m);
         const txt = document.querySelector('#sheet').textContent.replace(/\s+/g, ' ');
-        o.sheets[m] = { named: txt.indexOf(MAKEUP_CREDIT[m].label.replace(/^\S+\s/, '')) >= 0,
+        o.sheets[m] = { named: txt.indexOf(CARDIO_INFO[m].label.replace(/^\S+\s/, '')) >= 0,
                         stopwatch: /Stopwatch/.test(txt),
                         block: /Start block/.test(txt),
                         durations: /45 min/.test(txt),
@@ -1671,8 +1677,8 @@ export default async function run() {
       try { makeupStopwatchCancel(); } catch (e) {}
 
       /* One table, so a fifth mode is a row rather than a branch. */
-      o.tableCoversEveryMode = CARDIO_MODES.every(m => !!MAKEUP_CREDIT[m]);
-      o.tableHasNoStrays = Object.keys(MAKEUP_CREDIT).every(k => CARDIO_MODES.indexOf(k) >= 0);
+      o.tableCoversEveryMode = CARDIO_MODES.every(m => !!CARDIO_INFO[m]);
+      o.tableHasNoStrays = Object.keys(CARDIO_INFO).every(k => CARDIO_MODES.indexOf(k) >= 0);
 
       setCardioMode(keep.mode || 'jacks');
       STATE.nutrition.weightKg = keep.kg; STATE.onboarded = keep.onb;
@@ -1713,6 +1719,220 @@ export default async function run() {
     t.ok('the credit table covers every cardio mode', r.tableCoversEveryMode, r);
     t.ok('and carries no strays', r.tableHasNoStrays, r);
   }
+
+  /* ---- the Movement card's three notes know all four modes (v328) ---------
+
+     Same defect as the timer above, one function over, three times. The card
+     answers three questions and two of them were `bike ? ... : jacks`:
+
+       - "N steps to go" advice        -> the ELSE told a ruck or run athlete
+                                          to do jumping jacks, while their own
+                                          block four lines down correctly named
+                                          the minutes under the plate. Measured:
+                                          "39 min of jacks" printed directly
+                                          above "70 min under that plate", same
+                                          card, same 8,000-step gap.
+       - "Target met. X carried N"     -> gated on `work.min||ride.min`, so a
+                                          120-minute ruck carrying 13,800 steps
+                                          against an 8,000 target said nothing.
+       - "Also logged today"           -> two hardcoded pairs out of twelve.
+
+     The gap is now answered ONCE, at the top, for whichever mode is picked —
+     the ruck and run blocks lost their duplicate sentence, because the same
+     number under two labels is what v314 cleaned off Progress. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      const strip = h => h.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
+      const clear = () => { const t = nutToday();
+        ['steps','bikeVal','jackVal','ruckVal','runVal'].forEach(k => t[k] = 0); };
+      const card = () => { try { return strip(movementHTML()); }
+                           catch (e) { return 'THREW: ' + e.message; } };
+
+      /* GUARDS. Half of the first probe written for this reported four defects
+         that were all one missing function name — movementCardHTML() does not
+         exist. Assert the fixture works before believing anything it says. */
+      o.namesExist = ['movementHTML','cardioInfo','cardioDone','ruckNeed','runNeed']
+        .every(n => typeof window[n] === 'function');
+      clear();
+      o.target = stepTarget();
+      o.emptyEquiv = stepEquivalent();
+      { const t = nutToday(); t.jackUnit = 'min'; t.jackVal = 20; }
+      o.fixtureMoves = jackWork().min === 20 && jackWork().steps > 0;
+      o.cardRenders = card().indexOf('Movement') >= 0;
+      if (!o.namesExist || !o.fixtureMoves || !o.cardRenders || !(o.target > 0)) return o;
+
+      // --- 1. the gap, per mode -------------------------------------------
+      o.gap = {};
+      CARDIO_MODES.forEach(m => {
+        clear(); STATE.nutrition.cardioMode = m;
+        const s = card(), i = s.indexOf('steps to go');
+        o.gap[m] = {
+          shown: i >= 0,
+          /* Scoped to the NOTE. A fixed 200-character slice ran past it into
+             the "Make it up with" picker, which names every mode on every
+             card — so "the ruck advice does not mention jacks" failed on
+             correct code. Cut where the note ends. */
+          text: i < 0 ? '' : s.slice(i + 13, i + 13 + (() => {
+            const rest = s.slice(i + 13), end = rest.indexOf('Make it up with');
+            return end < 0 ? 200 : end; })()),
+          // the gap must be answered ONCE on the whole card, not twice
+          restatements: (s.match(/steps short|steps to go/g) || []).length,
+        };
+      });
+      // the minutes each mode's own arithmetic says will close it
+      /* Derived from steps-per-minute, NOT from the *Need() helpers the note
+         itself calls. Reading r.mins out of ruckNeed() compares the app to
+         itself: a mutant that made ruckNeed() return jacks minutes moved both
+         sides of the assertion and escaped. Pin the value, not the identity. */
+      { clear(); const m = movement();
+        const up = (steps, per) => (per > 0 && steps > 0) ? Math.ceil(steps / per) : 0;
+        o.mins = { jacks: up(o.target, jackStepsPerMin(m.jlvl)),
+                   bike:  up(o.target, bikeStepsPerMin(m.lvl)),
+                   ruck:  up(o.target, ruckStepsPerMin(m.rlvl)),
+                   run:   up(o.target, runStepsPerMin(m.nlvl)) };
+        // and the per-minute rates really do differ, or the check is trivial
+        o.ratesDiffer = new Set([jackStepsPerMin(m.jlvl), bikeStepsPerMin(m.lvl),
+          ruckStepsPerMin(m.rlvl), runStepsPerMin(m.nlvl)]).size >= 3; }
+
+      // --- 2. "Target met", per mode --------------------------------------
+      const met = (mode, setup) => { clear(); const t = nutToday(); setup(t);
+        STATE.nutrition.cardioMode = mode;
+        const s = card(), i = s.indexOf('Target met');
+        return { shown: i >= 0, text: i < 0 ? '' : s.slice(i, i + 120),
+                 equiv: stepEquivalent() }; };
+      o.met = {
+        jacks: met('jacks', t => { t.jackUnit = 'min'; t.jackVal = 200; }),
+        bike:  met('bike',  t => { t.bikeUnit = 'min'; t.bikeVal = 200; }),
+        ruck:  met('ruck',  t => { t.ruckUnit = 'min'; t.ruckVal = 120; }),
+        run:   met('run',   t => { t.runUnit  = 'min'; t.runVal  = 60;  }),
+        // two modes at once, and the mode on screen is not the bigger one
+        two:   met('ruck',  t => { t.ruckUnit = 'min'; t.ruckVal = 120;
+                                   t.jackUnit = 'min'; t.jackVal = 30; }),
+        // FLOOR: walked on your own feet — no mode carried it, so no claim
+        walked: met('jacks', t => { t.steps = 99999; }),
+      };
+
+      // --- 3. the cross-note ----------------------------------------------
+      const cross = (logged, mode) => { clear(); const t = nutToday();
+        ({ jacks: () => { t.jackUnit = 'min'; t.jackVal = 20; },
+           bike:  () => { t.bikeUnit = 'min'; t.bikeVal = 20; },
+           ruck:  () => { t.ruckUnit = 'min'; t.ruckVal = 40; },
+           run:   () => { t.runUnit  = 'min'; t.runVal  = 30; } })[logged]();
+        STATE.nutrition.cardioMode = mode;
+        const s = card(), i = s.indexOf('Also logged today');
+        return { shown: i >= 0, text: i < 0 ? '' : s.slice(i, i + 110) }; };
+      o.cross = {};
+      CARDIO_MODES.forEach(logged => CARDIO_MODES.forEach(mode => {
+        o.cross[logged + '_on_' + mode] = cross(logged, mode);
+      }));
+      // two other modes at once, named together
+      { clear(); const t = nutToday();
+        t.ruckUnit = 'min'; t.ruckVal = 40; t.runUnit = 'min'; t.runVal = 30;
+        STATE.nutrition.cardioMode = 'jacks';
+        const s = card(), i = s.indexOf('Also logged today');
+        o.crossBoth = i < 0 ? '' : s.slice(i, i + 140); }
+
+      // --- the table is the one place these live --------------------------
+      o.infoCoversEveryMode = CARDIO_MODES.every(m =>
+        CARDIO_INFO[m] && CARDIO_INFO[m].short && CARDIO_INFO[m].did
+        && typeof CARDIO_INFO[m].work === 'function'
+        && typeof CARDIO_INFO[m].advice === 'function');
+      o.infoHasNoStrays = Object.keys(CARDIO_INFO).every(k => CARDIO_MODES.indexOf(k) >= 0);
+      o.shortsUnique = new Set(CARDIO_MODES.map(m => CARDIO_INFO[m].short)).size === CARDIO_MODES.length;
+      o.didsUnique   = new Set(CARDIO_MODES.map(m => CARDIO_INFO[m].did)).size === CARDIO_MODES.length;
+      // an unknown mode falls back rather than throwing — cardioMode()'s own rule
+      o.fallback = cardioInfo('helicopter') === CARDIO_INFO.jacks;
+      /* `CARDIO_INFO[mode]||CARDIO_INFO.jacks` looks equivalent and is not:
+         an inherited key is truthy, so a `||` fallback hands back
+         Object.prototype.constructor. Only a membership test refuses it. */
+      o.fallbackInherited = cardioInfo('constructor') === CARDIO_INFO.jacks;
+      o.fallbackProtoIsTruthy = !!CARDIO_INFO['constructor'];
+      // cardioDone() reports nothing on an empty day
+      clear(); o.doneEmpty = cardioDone().length;
+      return o;
+    });
+
+    t.ok('guard: every name this block calls exists', r.namesExist, r);
+    t.ok('guard: the fixture actually moves the numbers', r.fixtureMoves, r);
+    t.ok('guard: the card renders', r.cardRenders, r);
+    t.ok('guard: there is a real gap to close', r.target > 0 && r.emptyEquiv === 0, r);
+
+    /* 1 — the gap. Each mode is told what closes it in ITS OWN terms. The
+       discriminating assertion is the MINUTES: every mode named jumping jacks
+       before, so "the note exists" passes on the defect. */
+    CARDIO_MODES_FOR_TEST.forEach(m => {
+      t.ok('the ' + m + ' athlete is told what closes the gap', r.gap[m].shown, r.gap[m]);
+      t.ok('and it is quoted in ' + m + '’s own minutes (' + r.mins[m] + ')',
+        r.gap[m].text.indexOf(r.mins[m] + ' min') >= 0, { text: r.gap[m].text, want: r.mins[m] });
+      /* One figure, one home. The ruck and run blocks used to restate it, so
+         the card carried two different answers to the same question. */
+      t.eq('and the card answers the gap exactly once on ' + m, r.gap[m].restatements, 1);
+    });
+    /* FLOOR: the four are genuinely different answers. A fix that quoted the
+       same number four times would satisfy every assertion above. */
+    t.ok('guard: the four modes are paid at genuinely different rates', r.ratesDiffer, r.mins);
+    t.ok('the four modes really do quote different minutes',
+      new Set([r.mins.jacks, r.mins.bike, r.mins.ruck, r.mins.run]).size >= 3, r.mins);
+    /* FLOOR: no mode's advice mentions another mode's kit. This is what makes
+       "told to do jumping jacks while on ruck" fail rather than pass. */
+    t.ok('and the ruck advice does not mention jumping jacks',
+      !/jumping jacks/i.test(r.gap.ruck.text), r.gap.ruck);
+    t.ok('and the run advice does not mention jumping jacks',
+      !/jumping jacks/i.test(r.gap.run.text), r.gap.run);
+    t.ok('while the jacks advice still does', /jumping jacks/i.test(r.gap.jacks.text), r.gap.jacks);
+    t.ok('and the bike advice still names the trainer', /trainer/i.test(r.gap.bike.text), r.gap.bike);
+
+    /* 2 — "Target met" fires for whatever carried the day. */
+    CARDIO_MODES_FOR_TEST.forEach(m => {
+      t.ok('a day carried by ' + m + ' is acknowledged', r.met[m].shown, r.met[m]);
+      t.ok('and it names ' + m + ' rather than something else',
+        r.met[m].text.toLowerCase().indexOf(CARDIO_SHORT[m]) >= 0,
+        { text: r.met[m].text, want: CARDIO_SHORT[m] });
+      t.ok('and it credits the steps ' + m + ' really carried',
+        r.met[m].text.indexOf(r.met[m].equiv.toLocaleString()) >= 0,
+        { text: r.met[m].text, equiv: r.met[m].equiv });
+    });
+    t.ok('two modes in one day are both named', r.met.two.shown
+      && /jumping jacks/i.test(r.met.two.text) && /ruck/i.test(r.met.two.text), r.met.two);
+    /* And the figure is the SUM. Naming both while crediting one satisfies
+       every assertion above — `done[0].steps` escaped until this existed. */
+    t.ok('and the steps credited are both modes added together',
+      r.met.two.text.indexOf(r.met.two.equiv.toLocaleString()) >= 0
+      && r.met.two.equiv > r.met.ruck.equiv,
+      { text: r.met.two.text, sum: r.met.two.equiv, ruckAlone: r.met.ruck.equiv });
+    /* FLOOR: a note that always fires is a note nobody reads. Walking the
+       target off on your own feet is not "the ruck carried it". */
+    t.ok('but a day walked on foot claims no mode carried it', !r.met.walked.shown, r.met.walked);
+
+    /* 3 — the cross-note, every pair. */
+    CARDIO_MODES_FOR_TEST.forEach(logged => CARDIO_MODES_FOR_TEST.forEach(mode => {
+      const k = logged + '_on_' + mode, cell = r.cross[k];
+      if (logged === mode) {
+        // FLOOR: the mode you are looking at is not "also" logged
+        t.ok('nothing is called "also logged" on its own card (' + k + ')', !cell.shown, cell);
+      } else {
+        t.ok('work under ' + logged + ' is still visible on the ' + mode + ' card', cell.shown, cell);
+        t.ok('and it names ' + logged + ' (' + k + ')',
+          cell.text.toLowerCase().indexOf(CARDIO_DID[logged]) >= 0,
+          { text: cell.text, want: CARDIO_DID[logged] });
+      }
+    }));
+    t.ok('two other modes are named together, not one of them',
+      /ruck/i.test(r.crossBoth) && /run/i.test(r.crossBoth), { text: r.crossBoth });
+
+    /* The one table. A fifth mode is a row; there is no branch left to forget. */
+    t.ok('the cardio table carries a label, a phrase, work and advice for every mode',
+      r.infoCoversEveryMode, r);
+    t.ok('and no strays', r.infoHasNoStrays, r);
+    t.ok('and no two modes share a name', r.shortsUnique && r.didsUnique, r);
+    t.ok('an unknown mode falls back to jacks rather than throwing', r.fallback, r);
+    t.ok('guard: an inherited key really is truthy', r.fallbackProtoIsTruthy, r);
+    t.ok('and an inherited key is refused too, not passed through',
+      r.fallbackInherited, r);
+    t.eq('and an empty day reports no mode at all', r.doneEmpty, 0);
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }
