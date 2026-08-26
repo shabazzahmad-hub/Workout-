@@ -3429,6 +3429,34 @@ calibrated so the currency and `stepKcal()` agree — and the ruck simply happen
 to land on real walking cadence too. Running is where the difference becomes
 visible, so it gets stated rather than hidden.
 
+### Army running, and a standard the app refuses to invent
+
+The FORCE Evaluation has no run in it. Running is still the aerobic base
+underneath everything else a reserve athlete is being asked to do, so it sits
+beside the four tasks rather than inside them: six sessions — base, long,
+tempo, 6x400, the 2.4 km time trial, and a run-into-ruck brick — plus the time
+trial as a measured event.
+
+**The timed run has NO pass figure baked in, and that is a stronger position
+than v322 took.** The FORCE figures are stamped with a date and a "confirm with
+your unit" note because a published standard moves. For the run the honest
+answer is weaker still: **the required time depends on the trade, the age band
+and which test the unit uses**, none of which this app can know. So it measures
+the run and lets the athlete type in the target they were actually given, and
+says on screen why there is no number there. A figure invented here is one that
+would be trained to.
+
+Three consequences the checks pin:
+
+- **A best time with NO target is still not a verdict.** Measuring is not
+  passing, and the mutant that reads "no target" as "passed" is caught by it.
+- **The explanation stops firing once a target is set** — a note that always
+  fires is a note nobody reads.
+- **Offered is not done.** `startRunSession()` sets the mode and the pace and
+  hands the athlete back to Today; it logs nothing on their behalf. That is the
+  completion gate's rule applied one surface over, and the mutant that
+  pre-fills the minutes is caught.
+
 ### An existing check hardcoded the count, which is the defect it was written for
 
 `t.eq('and all of them are checked', modes.survived.length, 3)` — the v312 block

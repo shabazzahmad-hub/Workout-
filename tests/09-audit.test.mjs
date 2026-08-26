@@ -2140,6 +2140,80 @@ export default async function run() {
     /* THE FLOOR: the rushes need no kit at all, so a bagless athlete still
        gets real work rather than an empty session. */
     t.ok('and there is still something to train', r.baglessIds.length > 0, r);
+
+    /* ---- army running (v323) ----------------------------------------------
+       The FORCE Evaluation has no run in it, and running is still the aerobic
+       base underneath everything else. THE TIMED RUN HAS NO PASS FIGURE BAKED
+       IN, and that is the point: what you have to run depends on the trade,
+       the age band and which test the unit uses, none of which this app can
+       know. A number invented here is one the athlete would train to. */
+    const ar = await page.evaluate(() => {
+      const keep = JSON.parse(JSON.stringify(STATE.prep || {}));
+      const sheet = () => (document.querySelector('#sheet') || {}).textContent.replace(/\s+/g, ' ');
+      const o = {};
+      STATE.prep = {};
+      openArmyRun();
+      o.namesEverySession = RUN_SESSIONS.every(x => sheet().indexOf(x.name) >= 0);
+      o.sessionCount = RUN_SESSIONS.length;
+      o.saysNoTargetBuiltIn = /No target time is built in, on purpose/.test(sheet());
+      o.noVerdict = runTTVerdict();
+
+      STATE.prep.ttTarget = 716; STATE.prep.ttBest = 700;
+      o.under = runTTVerdict();
+      STATE.prep.ttBest = 740;
+      o.over = runTTVerdict();
+      closeSheet(); openArmyRun();
+      o.showsVerdict = /short/.test(sheet());
+      /* THE FLOOR: a note that always fires is a note nobody reads. Once a
+         target is set there is nothing to explain. */
+      o.quietOnceSet = !/No target time is built in/.test(sheet());
+      /* And a best with NO target is still not a verdict — measuring is not
+         the same as passing. */
+      delete STATE.prep.ttTarget;
+      o.bestWithoutTarget = runTTVerdict();
+
+      /* Starting a session sets the pace and hands the athlete back to Today.
+         It does NOT log the run for them — a session you were offered is not a
+         session you ran, the same rule the completion gate enforces. */
+      STATE.prep = {}; setRunVal(0);
+      startRunSession('tempo');
+      o.started = { mode: cardioMode(), pace: movement().nlvl,
+                    loggedForThem: runWork().min, tab: TODAY_TAB };
+
+      // junk in the stored times must not reach the screen or the next backup
+      STATE.prep = { ttBest: 'fast', ttTarget: -5, results: {} };
+      normalizeState();
+      o.repaired = JSON.parse(JSON.stringify(STATE.prep));
+      // and a real time beside them survives
+      STATE.prep = { ttBest: 700, ttTarget: 'soon', results: {} };
+      normalizeState();
+      o.goodSurvives = STATE.prep.ttBest;
+      o.badTargetDropped = STATE.prep.ttTarget === undefined;
+
+      STATE.prep = keep;
+      try { closeSheet(); } catch (e) {}
+      return o;
+    });
+    t.ok('guard: there is a real set of running sessions', ar.sessionCount >= 5, ar);
+    t.ok('the army running sheet names every one', ar.namesEverySession, ar);
+    /* The honesty half, and the reason this differs from the FORCE figures:
+       there those are stamped and confirmable, here no figure exists to stamp. */
+    t.ok('it says no target time is built in, and why', ar.saysNoTargetBuiltIn, ar);
+    t.eq('with nothing logged there is no verdict', ar.noVerdict, null, ar);
+    t.eq('and a time with no target is still not a verdict', ar.bestWithoutTarget, null, ar);
+    t.eq('a time under the athlete\'s own target passes', ar.under, 'pass', ar);
+    t.eq('and one over it is short', ar.over, 'short', ar);
+    t.ok('the verdict reaches the screen', ar.showsVerdict, ar);
+    t.ok('floor: once a target is set the explanation stops firing', ar.quietOnceSet, ar);
+    /* Offered is not done. */
+    t.eq('starting a session sets the run mode', ar.started.mode, 'run', ar);
+    t.eq('and its pace', ar.started.pace, 'tempo', ar);
+    t.eq('and sends the athlete to the tab that logs it', ar.started.tab, 'workout', ar);
+    t.eq('but logs nothing on their behalf', ar.started.loggedForThem, 0, ar);
+    t.eq('a junk best time is dropped, not zeroed', ar.repaired.ttBest, undefined, ar.repaired);
+    t.eq('a negative target is dropped', ar.repaired.ttTarget, undefined, ar.repaired);
+    t.eq('floor: a real time beside a junk one survives', ar.goodSurvives, 700, ar);
+    t.ok('and only the junk one is dropped', ar.badTargetDropped, ar);
     /* THE FLOOR under the note. */
     t.eq('floor: with the sandbag owned there is nothing to say', r.kitNoteWithBag, '', r);
     t.ok('and the sheet is quiet about kit', r.sheetWithBagQuiet, r);

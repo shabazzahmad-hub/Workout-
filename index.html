@@ -4096,6 +4096,123 @@ function forceKitHTML(){
     ${_ve(miss.map(e=>e.name).join(', '))} — tick <b>Sandbag</b> in Settings once you have one.
     Nothing is substituted here: these are the actual test events, and a stand-in would leave you unready for the real thing.</div>`;
 }
+/* ============ ARMY RUNNING ============================================
+   The FORCE Evaluation has no run in it, and running is still the aerobic
+   base every military fitness standard sits on — including the CSOR
+   pre-screen and the general fitness the reserve expects. So it lives beside
+   the FORCE tasks rather than inside them.
+
+   THE TIMED RUN HAS NO PASS FIGURE BAKED IN, AND THAT IS DELIBERATE. v322's
+   FORCE figures are stamped with a date and a "confirm with your unit" note
+   because a published standard moves. For the run the honest position is
+   weaker still: the required time depends on the trade, the age band and
+   which test the unit uses, and this app cannot know any of them. So it
+   MEASURES the run, plots the trend, and lets the athlete type in the target
+   they were actually given. A number invented here would be trained to.
+
+   The sessions are the four stimuli that build a timed run, plus the one
+   combination that is specific to soldiering. Each is `w`/`r`/`n` minutes so
+   the existing interval engine drives it — no fifth timer. */
+const RUN_TT_M=2400;                       // the distance the time trial is run over
+const RUN_SESSIONS=[
+  {id:'base', name:'Base run', pace:'easy', mins:35,
+   why:'The pace most people skip and the one that builds the engine. Conversational the whole way — if you cannot talk, you are running it wrong.'},
+  {id:'long', name:'Long run', pace:'easy', mins:60,
+   why:'The same effort, held longer. This is what makes a ruck march feel shorter, and it is the session that most changes how the last mile feels.'},
+  {id:'tempo', name:'Tempo run', pace:'tempo', mins:20,
+   why:'Comfortably hard, held for 20 minutes. Raises the pace you can hold before you start to fade — which is exactly what a timed run measures.'},
+  {id:'intervals', name:'6 × 400 m', pace:'intervals', mins:18,
+   why:'Six hard 400s with equal jogging between. Speed for the time trial. Stop the session if the last one is slower than the first by more than a few seconds.'},
+  {id:'tt', name:'2.4 km time trial', pace:'intervals', mins:12, test:true,
+   why:'The measurement, not a workout. Warm up properly, run it honestly, and log the time. Once every three or four weeks is plenty.'},
+  {id:'brick', name:'Run then ruck', pace:'steady', mins:45,
+   why:'20 minutes running straight into 25 minutes under the pack. The legs that have to carry the load are already tired, which is the point and is also what a selection day feels like.'},
+];
+const RUN_SESSION_IDS=RUN_SESSIONS.map(x=>x.id);
+function runSession(id){return RUN_SESSIONS.find(x=>x.id===id)||null;}
+/* The athlete's own required time, in seconds. ABSENT means "not given one",
+   which is a different answer from "no target" and must not render as one. */
+function runTTTarget(){
+  try{const v=prep().ttTarget;
+    return (typeof v==='number'&&isFinite(v)&&v>0)?v:null;
+  }catch(e){return null;}
+}
+function runTTBest(){
+  try{const v=prep().ttBest;
+    return (typeof v==='number'&&isFinite(v)&&v>0)?v:null;
+  }catch(e){return null;}
+}
+function runTTVerdict(){
+  const t=runTTTarget(), b=runTTBest();
+  if(t===null||b===null)return null;
+  return b<=t?'pass':'short';
+}
+function openArmyRun(){
+  const best=runTTBest(), tgt=runTTTarget(), v=runTTVerdict();
+  openSheet(`
+    <h3>🏃 Army running</h3>
+    <div class="note info">The FORCE Evaluation has no run in it. Running is still the aerobic base underneath everything else you are being asked to do, and it is what a ruck march is built on.</div>
+    <div class="card pad">
+      <div class="kv"><span><b>2.4 km time trial</b><div class="tiny muted" style="margin-top:2px">Your best</div></span>
+        <span style="text-align:right"><b>${best!==null?fmtTime(best):'—'}</b>
+          <div class="tiny muted">${tgt!==null?'target '+fmtTime(tgt):'no target set'}</div>
+          ${v?`<div style="margin-top:3px">${v==='pass'
+            ?'<span class="tag" style="background:var(--green);color:#000">meets it</span>'
+            :'<span class="tag" style="background:var(--fire)">short</span>'}</div>`:''}</span></div>
+    </div>
+    ${tgt===null?`<div class="note warn"><b>No target time is built in, on purpose.</b> What you have to run depends on your trade, your age band and which test your unit uses — this app cannot know any of those, and a number invented here is one you would train to. Ask, then type it in.</div>`:''}
+    <button class="btn ghost" style="width:100%;margin-bottom:12px" onclick="openRunTT()">✎ ${tgt===null?'Set my target and log a time':'Log a time or change the target'}</button>
+    <div class="section-label">The sessions</div>
+    ${RUN_SESSIONS.map(x=>`<button class="btn ghost" style="text-align:left;display:block;padding:14px;width:100%;margin-bottom:8px" onclick="startRunSession('${x.id}')">
+      <b style="font-size:15px">${_ve(x.name)}${x.test?' · measured':''}</b>
+      <div class="tiny muted" style="margin-top:3px;font-weight:600">${_ve(runPace(x.pace).label)} · about ${x.mins} min</div>
+      <div class="tiny muted" style="margin-top:4px">${_ve(x.why)}</div></button>`).join('')}
+    <div class="tiny muted" style="margin-top:6px">Two easy runs for every hard one is the ratio that keeps people running. The base run is not the filler — it is the session.</div>
+  `);
+}
+function openRunTT(){
+  const b=runTTBest(), t=runTTTarget();
+  openSheet(`
+    <h3>2.4 km time trial</h3>
+    <div class="note info">Times in <b>minutes and seconds</b> — enter 11:56 as <b>11</b> and <b>56</b>.</div>
+    <div class="field"><label>Your best time</label>
+      <div class="row" style="gap:8px"><input id="tt-bm" type="number" inputmode="numeric" min="0" placeholder="min" value="${b!==null?Math.floor(b/60):''}">
+        <input id="tt-bs" type="number" inputmode="numeric" min="0" max="59" placeholder="sec" value="${b!==null?b%60:''}"></div></div>
+    <div class="field"><label>The time you have been told to hit — leave blank if you have not been given one</label>
+      <div class="row" style="gap:8px"><input id="tt-tm" type="number" inputmode="numeric" min="0" placeholder="min" value="${t!==null?Math.floor(t/60):''}">
+        <input id="tt-ts" type="number" inputmode="numeric" min="0" max="59" placeholder="sec" value="${t!==null?t%60:''}"></div></div>
+    <button class="btn primary" style="width:100%" onclick="saveRunTT()">Save</button>
+  `);
+}
+function _ttSecs(mId,sId){
+  const m=($('#'+mId)||{}).value, sec=($('#'+sId)||{}).value;
+  if((m===''||m===undefined)&&(sec===''||sec===undefined))return undefined;   // blank means not given
+  const mm=parseFloat(m||0), ss=parseFloat(sec||0);
+  if(!isFinite(mm)||!isFinite(ss)||mm<0||ss<0||ss>=60)return null;            // null means bad input
+  const total=Math.round(mm*60+ss);
+  return total>0?total:null;
+}
+function saveRunTT(){
+  const b=_ttSecs('tt-bm','tt-bs'), t=_ttSecs('tt-tm','tt-ts');
+  if(b===null||t===null){toast('Enter a real time — seconds under 60');return;}
+  if(!STATE.prep||typeof STATE.prep!=='object'||Array.isArray(STATE.prep))STATE.prep={};
+  if(b===undefined)delete STATE.prep.ttBest; else STATE.prep.ttBest=b;
+  if(t===undefined)delete STATE.prep.ttTarget; else STATE.prep.ttTarget=t;
+  save();closeSheet();toast('Logged ✅');openArmyRun();
+}
+/* Sets the run mode to the session's pace and pre-fills its length, then hands
+   the athlete back to the Movement card to log what they actually did. It does
+   NOT log the run for them — a session you were offered is not a session you
+   ran, which is the same rule the completion gate enforces for the program. */
+function startRunSession(id){
+  const x=runSession(id);
+  if(!x){toast('No such session');return;}
+  setCardioMode('run');
+  setRunPace(x.pace);
+  closeSheet();
+  setTodayTab('workout');go('today');
+  toast(x.name+' — log it when you are back');
+}
 function openForcePrep(){
   const wk=forceWeeksLeft();
   const rows=FORCE_EVENTS.map(ev=>{
@@ -4120,6 +4237,7 @@ function openForcePrep(){
     <button class="btn primary" style="width:100%;margin-top:10px" onclick="startForceTrain()">▶ Train ${forceAvailable().length===FORCE_EVENTS.length?'the four tasks':'what you have kit for'}</button>
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openForceLog()">✎ Log a result</button>
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openForceDate()">📅 ${prep().date?'Change my test date':'Set my test date'}</button>
+    <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openArmyRun()">🏃 Army running</button>
     <div class="tiny muted" style="margin-top:10px">The four tasks are done back to back on the day, with rest between each. Training them separately first is the point of this block — the full run-through is a measurement, not a workout.</div>
   `);
 }
@@ -16810,7 +16928,13 @@ function normalizeState(){
      const v=P.results[k];
      if(!FORCE_IDS.includes(k)||typeof v!=='number'||!isFinite(v)||v<0)delete P.results[k];
    });
-   if(P.date!==undefined&&!(typeof P.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(P.date)))delete P.date;}
+   if(P.date!==undefined&&!(typeof P.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(P.date)))delete P.date;
+   /* The run times are SECONDS. A non-number is dropped, not zeroed — a zero
+      would render as a 0:00 time trial, which is not a measurement. */
+   ['ttBest','ttTarget'].forEach(k=>{
+     const v=P[k];
+     if(v!==undefined&&(typeof v!=='number'||!isFinite(v)||v<=0))delete P[k];
+   });}
   // deep-profile defaults for installs created before the equipment/diet quiz
   /* This branch was unreachable. load() and importData() both do
      Object.assign(DEFAULT_STATE().profile, saved.profile), and the default gear
