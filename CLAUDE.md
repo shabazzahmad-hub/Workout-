@@ -3391,6 +3391,54 @@ every one of these standards rests on. Rucking, jacks and the bike are the
 three cardio modes; a fourth is the next round, and the endurance programme
 depends on it.
 
+## Running is a dial, so it is modelled like the BIKE (v323)
+
+The fourth way to pay the step target, and the mirror of the ruck's own
+reasoning. **Under a pack the intensity is the load RELATIVE TO the athlete**,
+so `ruckMET()` computes it from bodyweight. **On a run the intensity is PACE**,
+which is a dial the athlete sets — so a fixed table is right here, exactly as it
+is for the trainer.
+
+**The level is defined by the EFFORT, not by the speed.** The km/h figure is
+nominal and exists to turn minutes into a distance estimate. Which band an
+athlete is in is decided by the talk test and the RPE in the cue, because
+8 km/h is an easy jog for one person and a tempo effort for another and this app
+has no run test to tell them apart. Same convention `BIKE_LEVELS` already uses.
+
+**And the property that makes DISTANCE the right input.** Running costs about
+the same per kilometre however fast you go, and the table respects that:
+measured, the same 5 km prices at **412 / 410 / 400 / 378 kcal** across the four
+paces — a **9% spread**. So an athlete who picks the wrong band barely moves the
+number, provided they log the distance. Minutes are the one input the pace
+really does change, and the card says so.
+
+That is now a pinned invariant, with a floor under it: the MINUTES must still
+differ across the four paces, or the table has no pace in it at all and the
+spread is trivially zero. The mutant that flattened `intervals` to 8 km/h is
+caught by exactly that pair.
+
+**Sanity against the world, which is what stops the arithmetic drifting.** 30
+minutes steady covers 4.85 km at 6:11/km and prices at 397 kcal for an 86 kg
+athlete — running costs ~1 kcal per kg per km, so ~400 net is right.
+
+**The step figure is an ENERGY equivalent, not a footfall count**, and the card
+says so. At these METs it lands near 300/min against a real running cadence of
+~170, so a runner seeing "9,240 steps" for half an hour would rightly distrust
+it. Steps in this app have always been a calorie proxy — `MET x 35` is
+calibrated so the currency and `stepKcal()` agree — and the ruck simply happened
+to land on real walking cadence too. Running is where the difference becomes
+visible, so it gets stated rather than hidden.
+
+### An existing check hardcoded the count, which is the defect it was written for
+
+`t.eq('and all of them are checked', modes.survived.length, 3)` — the v312 block
+that exists *because* a hand-written repair went stale when `CARDIO_MODES` grew
+had a hand-written **3** in its own assertion, and a fourth mode failed it on
+correct code. It now compares against `CARDIO_MODES` itself, with a floor so it
+cannot pass on an empty list.
+
+Ten mutants, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
