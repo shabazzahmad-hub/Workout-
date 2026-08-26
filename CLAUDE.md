@@ -2874,6 +2874,62 @@ line is `cossack:{repSec:4,name:…` — v307 added the cadence field in front o
 the name. The `assert count==1` turned a bad anchor into a clean no-op instead
 of a half-applied edit, which is the whole reason that rule exists.
 
+## A bulk is not an under-prescribed cut either (v318)
+
+An audit of the numbers rather than the screens — the class of defect that
+produces a defensible-looking figure and never throws, which is where this
+app's worst bugs have lived.
+
+Two sweeps came back clean and are worth recording as coverage: **all 378
+sessions build** (97 distinct movements, 16-37 minutes, no target over its own
+`repCap`, no bad unit, every one with a warm-up), and **60 nutrition
+combinations** — five goals x four timelines x three body sizes — hold every
+invariant: no target below the safety floor beyond rounding, no bulk running a
+deficit, no cut running a surplus, protein always inside 1.2-3.2 g/kg, and the
+pace never above the 1%/week cap.
+
+The third sweep found it. `projWhyHTML()` is written entirely in the language
+of a CUT, and every branch of it was reaching a bulking athlete:
+
+| what the athlete set | what the line under the chart said |
+|---|---|
+| Gain, no timeline | *"A realistic pace at a moderate **deficit**."* |
+| Gain, 24-week timeline | *"**Paced to the ~24-week timeline** you picked."* |
+
+Measured on 190 lb bulking toward 205 lb: the target is **2,740** against a
+TDEE of **2,490** — a 250 kcal **surplus** — described as a deficit.
+
+**v298 fixed exactly this for recomp and maintain** by giving weight-stable
+goals their own answer. `gain` was left reading the cut's copy. That is the
+"fixing one instance is not fixing the class" shape again, and the fix that
+introduced `STABLE_GOALS` is the one that should have caught it.
+
+**And the timeline claim was false on that goal.** `timelineRateKgWk()` returns
+null for `gain` on purpose (v310), so nothing is paced by it — the target is
+2,740 at 12 weeks, at 24 and at 52. The sentence appeared only because the
+projected weeks happened to land near the number the athlete picked, which is a
+coincidence of the rate cap rather than a prescription. The check pins that
+directly: the guard asserts `timelineDeficit()` is null and the 24- and 52-week
+targets are identical, *then* asserts the copy does not claim otherwise.
+
+### The two settings can disagree, and nothing noticed
+
+The goal weight decides which way the CHART points. The Fuel goal decides which
+way the FOOD points. Set Gain and leave a goal weight below your current weight
+— one tap apart in the quiz, and easy to leave behind after changing your mind
+— and the chart projected **down** at 1.3 lb/wk while the target prescribed a
+**surplus**, each perfectly confident and neither aware of the other.
+
+Name the contradiction rather than drawing a line through it: the app has both
+numbers and can say which one to change. Same call as v289's unit mix-up and
+v309's binding cap — a confident wrong answer leaves the athlete nothing to act
+on.
+
+Five mutants, all caught. The two that matter are the over-eager pair: making
+EVERY goal read as a surplus, and letting the contradiction check swallow the
+ordinary cut. Both satisfy every assertion about bulking and fail the floor
+that a real cut is unchanged — which is the goal most athletes are actually on.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

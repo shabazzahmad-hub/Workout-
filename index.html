@@ -1807,7 +1807,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='317';
+const APP_VERSION='318';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -12076,13 +12076,53 @@ function projectionHTML(){
       <div><div style="font-size:21px;font-weight:900">${disp(tkg)}${wu} <span class="tiny muted" style="font-weight:600">by</span> ${monthLbl}</div></div>
       <div class="tiny muted" style="text-align:right">~${weeks} wk<br>~${dispRate}${wu}/wk</div>
     </div>${projectionChartSVG(start,end,kg,tkg,actual,wu,imp)}
-    <div class="tiny muted" style="margin-top:6px">${projWhyHTML(projBind,tlw,weeks,diff,imp,wu)} Log weight weekly — the teal dots track you against the plan.</div>`;
+    <div class="tiny muted" style="margin-top:6px">${projWhyHTML(projBind,tlw,weeks,diff,imp,wu,losing)} Log weight weekly — the teal dots track you against the plan.</div>`;
 }
 /* WHY the date is what it is — naming the constraint that actually set it, and
    what the athlete can do about it. "A range is not an explanation" (v289) and
    this was the same shape: the app knew the real reason and printed a
    different one. */
-function projWhyHTML(bind,tlw,weeks,diff,imp,wu){
+function projWhyHTML(bind,tlw,weeks,diff,imp,wu,losing){
+  /* A BULK IS NOT AN UNDER-PRESCRIBED CUT, and every branch below was written
+     in the language of one. v298 fixed exactly this for recomp and maintain by
+     giving weight-stable goals their own answer; gain was left reading the
+     cut's copy, which is the "fixing one instance is not fixing the class"
+     shape this file keeps recording.
+
+     Measured on a 190 lb athlete bulking toward 205 lb: the target is 2,740
+     against a TDEE of 2,490 — a 250 kcal SURPLUS — and the line underneath the
+     chart read "A realistic pace at a moderate deficit."
+
+     And the timeline claim was false on this goal. timelineRateKgWk() returns
+     null for gain on purpose, so nothing is paced by it: the target is 2,740
+     at 12 weeks, at 24 and at 52. The sentence said "Paced to the ~24-week
+     timeline you picked" because the projected weeks happened to land near the
+     number — a coincidence of the rate cap, not a prescription. */
+  /* THE TWO SETTINGS CAN DISAGREE, and nothing used to notice. The goal
+     weight decides which way the CHART points; the Fuel goal decides which way
+     the FOOD points. Set Gain and leave a goal weight below your current
+     weight — one tap apart in the quiz, and easy to leave behind after
+     changing your mind — and the chart projected DOWN while the target
+     prescribed a surplus, each perfectly confident.
+
+     Measured: 190 lb now, goal weight 165 lb, Fuel goal Gain. Chart: "165 lb
+     by January 2027, ~1.3 lb/wk". Target: 2,740 against a 2,490 TDEE.
+
+     Name the contradiction rather than drawing a line through it — the app has
+     both numbers and can say which one to change. Same call as v289 and v309:
+     a confident wrong answer leaves the athlete nothing to act on. */
+  const n_=(typeof nut==='function')?nut():{};
+  const stable_=(typeof weightStableGoal==='function')&&weightStableGoal(n_.goal);
+  if(!stable_&&(n_.goal==='gain')===!!losing)
+    return `<b>Your two settings disagree.</b> Your goal weight is ${losing?'below':'above'} your current weight, so this chart points ${losing?'down':'up'} — but your Fuel goal is set to <b>${n_.goal==='gain'?'Gain':'Fat loss'}</b>, which feeds you ${n_.goal==='gain'?'a surplus':'a deficit'}. One of the two needs changing: set the goal weight on Progress ▸ Body, or the Fuel goal on Fuel.`;
+  const gaining=losing===false;
+  if(gaining){
+    if(!(tlw>0))return `A steady pace at a moderate surplus — enough to build on without adding fat faster than you can use it.`;
+    /* Say plainly that the timeline does not drive a bulk, rather than claiming
+       it does. The surplus is set by the goal, and it is the same at every
+       timeline the athlete could pick. */
+    return `Your ~${tlw}-week timeline sets the pace for a <b>cut</b>, not a bulk — this date comes from the steady surplus your Gain goal prescribes, which is the same whichever timeline you pick. Muscle does not arrive faster for being asked.`;
+  }
   if(!(tlw>0))return `A realistic pace at a moderate deficit.`;
   /* Rounding is not a missed date, and the slack has to SCALE. `weeks` is a
      Math.ceil, and the calorie target is itself rounded to the nearest 10 —
