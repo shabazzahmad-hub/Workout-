@@ -4280,6 +4280,59 @@ pinned beside it, so a `distShow()` that converted for everybody fails four
 checks.
 
 
+## A date in the PAST is not a date that was never set (v338)
+
+Found by driving the army-prep surfaces at six points either side of the test
+date — the state every probe so far had skipped, because they all used a date
+in the future.
+
+Nothing threw, nothing printed `NaN`, and the weeks-remaining figure clamped at
+zero rather than going negative. What was wrong was the sentence:
+
+> **Set your test date and this becomes a plan.**
+
+…shown to an athlete who **had** set one. `prepWeeksLeft()` folds two different
+facts into one `null` — *no date was ever set* and *the date has gone by* — and
+the plan reported the first for both.
+
+**The sibling that already knew is in the same file.** `openForcePrep()` has
+said *"Your test date has passed"* since it was written, from the same
+`forceWeeksLeft()`, and its button already reads *Change my test date*. Only
+the endurance plan never learned it.
+
+Naming the wrong reason leaves the athlete nothing to act on, which is the same
+defect as blaming safety for a limit safety did not set and as printing a range
+where the answer was a unit mix-up. So the notice names the date, says there is
+no block left to schedule, and carries the one control that fixes it.
+
+**The floors are what stop the fix being "say passed for everybody."** No date
+at all must keep the original message, and a date still ahead must still build
+a real week — including one landing THIS week, so the notice cannot fire early.
+The boundary is real: a date one day gone still shows the taper, because the
+test may be that week.
+
+### An equivalent mutant, converted into a catchable one
+
+`prepDatePassed()` is consulted ONLY inside the no-plan branch, so a version
+answering "passed" for a date still **ahead** changes nothing any rendered
+check can see — the branch is never entered while a plan exists. A mutant
+moving the threshold from `w<0` to `w<20` escaped every screen assertion.
+
+Rather than record it as equivalent, the predicate's own contract is pinned
+directly — false for a future date, true for a past one — the same technique
+the seconds carry uses. A guard consulted in one narrow branch still has to
+mean what it is named.
+
+**And one escape that was a bad mutant.** Dropping `passed` from the
+`{noDate:true}` literal appeared to escape; the seed had landed on the FIRST of
+two identical lines, which is `ruckLadderWeek()` — and that renderer returns an
+empty string on no-date regardless, so nothing observable changed. Seeded
+against `enduranceWeek()` it is caught by five checks. **Read the mutant back**,
+and when a line appears twice, anchor on the function.
+
+Six mutants, all caught after those two rewrites.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

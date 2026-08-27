@@ -3512,6 +3512,75 @@ export default async function run() {
       !ref.imp.includes(ref.fastest + ' mi/h'), ref.imp.slice(0, 400));
   }
 
+  // ---- a date in the PAST is not a date that was never set ----------------
+  /* prepWeeksLeft() folds two different facts into one null, so the endurance
+     plan told an athlete who HAD set a test date to "set your test date and
+     this becomes a plan". The FORCE prep sheet has said "Your test date has
+     passed" since it was written — same fact, same file, and the plan is the
+     sibling that never learned it.
+
+     Naming the wrong reason leaves the athlete nothing to act on, which is the
+     same defect as blaming safety for a limit safety did not set (v309) and as
+     printing a range where the answer was a unit mix-up (v289).
+
+     The floors are what stop the fix being "say passed for everybody": no date
+     at all must keep the original message, and a date still ahead must still
+     produce a real plan — including one landing THIS week, so the notice
+     cannot fire early. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      for (const n of ['enduranceHTML', 'prepDatePassed', 'prepDateLabel', 'openForceDate'])
+        if (typeof window[n] !== 'function') (o.absent = o.absent || []).push(n);
+      if (o.absent) return o;
+      STATE.profile.gear = ['ruck', 'bike']; STATE.nutrition.weightKg = 86; save();
+      const iso = d => { const x = new Date(); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); };
+      const at = d => { if (d === null) delete STATE.prep; else STATE.prep = { date: iso(d) };
+        save(); const el = document.createElement('div'); el.innerHTML = enduranceHTML();
+        return { txt: (el.innerText || el.textContent || '').replace(/\s+/g, ' '),
+                 html: el.innerHTML, passed: prepDatePassed(), label: prepDateLabel() }; };
+      o.none = at(null);
+      o.future = at(84);
+      o.thisWeek = at(2);
+      o.gone = at(-30);
+      o.longGone = at(-400);
+      STATE.prep = { date: iso(84) }; save();
+      return o;
+    });
+    t.ok('guard: all three states produced a screen', !r.absent &&
+      r.none.txt.length > 30 && r.future.txt.length > 30 && r.gone.txt.length > 30, r);
+    // the floor: nothing set is still "set one"
+    t.ok('with no test date at all the plan still asks for one',
+      /Set your test date and this becomes a plan/.test(r.none.txt), r.none.txt.slice(0, 140));
+    t.ok('and does not claim a date has passed', r.none.passed === false, r.none);
+    /* prepDatePassed() is consulted ONLY inside the no-plan branch, so a
+       version that answered "passed" for a date still ahead changes nothing a
+       rendered check can see — an equivalent mutant through this renderer.
+       Its contract is pinned directly instead, the same way the seconds carry
+       is, so the predicate cannot quietly stop meaning what it is named. */
+    t.ok('the predicate itself is false for a date still ahead',
+      r.future.passed === false && r.thisWeek.passed === false, r);
+    t.ok('and true only once the date is behind',
+      r.gone.passed === true && r.longGone.passed === true, r);
+    // the floor: a live date still builds a plan, including one landing this week
+    t.ok('a date months away still builds a real week',
+      /running this week/.test(r.future.txt) && !/has passed/.test(r.future.txt), r.future.txt.slice(0, 140));
+    t.ok('and so does one landing in a couple of days — the notice does not fire early',
+      /running this week/.test(r.thisWeek.txt) && !/has passed/.test(r.thisWeek.txt), r.thisWeek.txt.slice(0, 140));
+    // the finding
+    t.ok('a test date that has gone by says so',
+      /Your test date has passed/.test(r.gone.txt), r.gone.txt.slice(0, 200));
+    t.ok('and never tells an athlete who set one to set one',
+      !/Set your test date and this becomes a plan/.test(r.gone.txt), r.gone.txt.slice(0, 200));
+    t.ok('it names the date rather than only the fact',
+      r.gone.label.length > 4 && r.gone.txt.includes(r.gone.label), { label: r.gone.label, got: r.gone.txt.slice(0, 200) });
+    t.ok('and offers the one action that fixes it',
+      /openForceDate\(\)/.test(r.gone.html), r.gone.html.slice(0, 300));
+    t.ok('a date a year gone reads the same way, not as a plan',
+      /Your test date has passed/.test(r.longGone.txt) && !/running this week/.test(r.longGone.txt),
+      r.longGone.txt.slice(0, 160));
+  }
+
   // ---- the run card names the athlete's own unit in prose, too -------------
   /* The sentence explaining WHY distance is the input said "per kilometre" to
      everybody. A number converted above a word that is not is half a fix. */
