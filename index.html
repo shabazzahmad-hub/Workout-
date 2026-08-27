@@ -16073,7 +16073,7 @@ function renderRef(){
     h+=`<div class="kv" style="border-top:1px solid var(--line);padding:10px 2px">
       <span style="min-width:0"><b>${_ve(b.label)}</b>
         <div class="tiny muted" style="margin-top:2px">${_ve(b.rpe)} · ${_ve(b.cue)}</div>
-        <div class="tiny" style="color:var(--green);margin-top:2px">${bikeStepsPerMin(b.k)} steps a minute · about ${b.kmh} km/h on the road</div></span>
+        <div class="tiny" style="color:var(--green);margin-top:2px">${bikeStepsPerMin(b.k)} steps a minute · about ${r1(kmToShow(b.kmh))} ${distUnit()}/h on the road</div></span>
       <span style="flex:0 0 auto;text-align:right;white-space:nowrap">
         <b style="color:var(--fire-l)">${nd.min} min</b>
         <div class="tiny muted" style="margin-top:2px">${nd.dist} ${distUnit()}</div>

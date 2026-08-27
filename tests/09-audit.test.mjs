@@ -3480,6 +3480,36 @@ export default async function run() {
        for the figure their unit will actually quote at them. */
     t.eq('the named time trial stays in its published unit for a metric athlete', r.metric.tt, '2.4 km time trial', r);
     t.eq('and for an imperial one', r.imp.tt, '2.4 km time trial', r);
+
+    /* Sweeping the CLASS rather than the two sites that prompted the round
+       found one more: Reference's bike-levels table printed a raw `km/h` with
+       the unit hardcoded into the sentence. Honest — the number and the label
+       agreed — but the bike CARD two screens away shows the same table in
+       mi/h, and one table described in two units is the "same number, two
+       labels" the Progress summary was cleaned of. */
+    const ref = await page.evaluate(() => {
+      const o = {};
+      /* #v-ref, not #view-ref — and scoped to it, because document.body's own
+         innerHTML contains the app's source. Reference has two panes since
+         v314, so landing on the tab is not the same as landing on the pane. */
+      const read = () => { REF_TAB = 'food'; renderRef();
+        const v = document.querySelector('#v-ref');
+        return v ? (v.innerText || v.textContent || '').replace(/\s+/g, ' ') : '(no view)'; };
+      STATE.profile.unit = 'cm'; save(); o.metric = read();
+      STATE.profile.unit = 'in'; save(); o.imp = read();
+      STATE.profile.unit = 'cm'; save();
+      o.fastest = BIKE_LEVELS[BIKE_LEVELS.length - 1].kmh;
+      o.fastestMi = Math.round(BIKE_LEVELS[BIKE_LEVELS.length - 1].kmh * 0.621371 * 10) / 10;
+      return o;
+    });
+    t.ok('guard: the bike-levels table really is on Reference',
+      /on the road/.test(ref.metric) && /on the road/.test(ref.imp), ref.metric.slice(0, 120));
+    t.ok('a metric athlete reads the bike levels in km/h',
+      ref.metric.includes(ref.fastest + ' km/h on the road'), { want: ref.fastest, got: ref.metric.slice(0, 400) });
+    t.ok('an imperial athlete reads them in mi/h',
+      ref.imp.includes(ref.fastestMi + ' mi/h on the road'), { want: ref.fastestMi, got: ref.imp.slice(0, 400) });
+    t.ok('and never the raw km/h figure wearing a mile label',
+      !ref.imp.includes(ref.fastest + ' mi/h'), ref.imp.slice(0, 400));
   }
 
   // ---- the run card names the athlete's own unit in prose, too -------------

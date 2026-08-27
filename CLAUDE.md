@@ -4253,9 +4253,31 @@ defect. Reverting that one site passed clean. It now pins the converted VALUE,
 with the raw figure explicitly refused beside it. Third time this session:
 **measure the payload, not the container.**
 
-Ten mutants, all caught after that rewrite. The floor throughout is the metric
-athlete: every assertion about conversion has its unchanged sibling pinned
-beside it, so a `distShow()` that converted for everybody fails four checks.
+### Sweeping the class found one more, which is the point of sweeping
+
+The two sites that prompted the round were the plans. A scan of **every**
+remaining `${distUnit()}` site — asking of each whether a conversion was in
+reach — turned up Reference's bike-levels table printing a raw `${b.kmh} km/h`
+with the unit hardcoded into the sentence. Honest, in that the number and the
+label agreed, but the bike CARD two screens away shows the same table in
+`mi/h`: one table described in two units is the "same number, two labels" the
+Progress summary was cleaned of.
+
+Every other `${distUnit()}` site was already correct, and confirming that by
+MEASUREMENT rather than by reading is what made the scan worth running —
+`bikeNeed()`, `ruckNeed()`, `runNeed()` and `bikeRide()` all convert at source,
+so the four `.dist` call sites that look bare are not.
+
+**And the check for it failed first on `#view-ref`, which does not exist.** The
+guard caught it — the same `#view-guide` slip made twice in one session, and
+the reason `document.body` is never the fallback: its `innerHTML` contains the
+app's own source. Reference has had two panes since v314, so the check sets the
+pane as well as the tab.
+
+Twelve mutants, all caught after that rewrite. The floor throughout is the
+metric athlete: every assertion about conversion has its unchanged sibling
+pinned beside it, so a `distShow()` that converted for everybody fails four
+checks.
 
 
 ## Rendering
