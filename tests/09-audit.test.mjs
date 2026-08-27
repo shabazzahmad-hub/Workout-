@@ -2636,6 +2636,165 @@ export default async function run() {
 
       t.ok('and the constants that were never read are gone', dc.deadGone, dc);
     }
+    /* ---- the two plans, added together (v332) ---------------------------
+
+       Found by driving the army-prep athlete across subsystems rather than by
+       reading code. The endurance plan ramps from what was logged RUNNING and
+       the ruck ladder from what was logged RUCKING; each caps its own curve at
+       10% a week, and each has a floor for an athlete with nothing logged IN
+       THAT MODE. Neither read the other — and a rucked kilometre and a run
+       kilometre are absorbed by the same tissue. Measured before the fix:
+
+         rucks 25 km/wk, never runs -> 27.5 ruck + 8.8 run = 36.3, +45% in ONE WEEK
+         runs  25 km/wk, never rucks -> 27.5 run + 5.5 ruck = 33.0, +32% in one week
+
+       and no surface showed the combined figure at all.
+
+       THE FIX WARNS, IT DOES NOT RESIZE, and three measured wrong turns are
+       why. A flat cap cut a legal 6.7%/wk plan; a compounding one constrained
+       nothing; and proportional scaling under a one-week cap suppressed the
+       plan being FOLLOWED because of a plan being ignored — "is the other mode
+       on its floor?" stays true forever for an athlete who never takes it up. */
+    const fl = await page.evaluate(() => {
+      const o = {};
+      o.namesExist = ['trailingFootKm', 'footNewMode', 'fitFootKm', 'footLoadHTML',
+                      'enduranceWeek', 'ruckLadderWeek'].every(n => typeof window[n] === 'function');
+      if (!o.namesExist) return o;
+      const keepPrep = JSON.parse(JSON.stringify(STATE.prep || {}));
+      const keepDays = JSON.parse(JSON.stringify(nut().days || {}));
+      const keepKg = STATE.nutrition.weightKg, keepLb = STATE.profile.ruckLb;
+      const iso = d => { const x = new Date(); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); };
+      const strip = h => h.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
+      STATE.nutrition.weightKg = 86; STATE.profile.ruckLb = 30;
+      const n = nut();
+      /* `climb` makes the logged weeks RISE, which is what an athlete
+         following the plan actually does. A flat six weeks of logs while the
+         plan climbs is not a legal athlete, it is one who has fallen behind —
+         and the warning correctly fires on them, which is how the first
+         version of this block failed on correct code. */
+      const shot = (rk, rn, w, climb) => { n.days = {};
+        for (let x = 0; x < 6; x++) {
+          const f = climb ? Math.pow(1 / 1.10, x) : 1;   // x=0 is the most recent week
+          if (rk) n.days[iso(-(x * 7 + 1))] = { water: 0, habits: {}, ruckUnit: 'dist', ruckVal: rk / f };
+          if (rn) n.days[iso(-(x * 7 + 3))] = { water: 0, habits: {}, runUnit: 'dist', runVal: rn / f };
+        }
+        STATE.prep = { date: iso((16 - w) * 7), planFrom: iso(-w * 7) };
+        const E = enduranceWeek(), L = ruckLadderWeek();
+        return { logged: Math.round(((trailingRuckKm() || 0) + (trailingRunKm() || 0)) * 10) / 10,
+                 ruck: L.km, run: E.km, sum: Math.round((L.km + E.km) * 10) / 10,
+                 reported: E.footTotal, ruckReported: L.footTotal,
+                 step: E.footStep, from: E.footFrom, big: !!E.footBig, ruckBig: !!L.footBig,
+                 newMode: E.footNew, added: E.footAdded,
+                 card: strip(enduranceHTML()), ruckCard: strip(ruckLadderHTML()),
+                 /* …and it must be VISIBLE. strip() keeps the text of a
+                    `hidden` element, so a mutant that hid the note rather
+                    than deleting it walked through a text-only assertion. */
+                 hiddenNote: /<[^>]*\bhidden\b[^>]*>[^<]*(together|on your feet)/.test(enduranceHTML())
+                   || /<[^>]*\bhidden\b[^>]*>[^<]*(together|on your feet)/.test(ruckLadderHTML()) }; };
+
+      /* An athlete who has actually been following the plan: both modes
+         logged, and the logs RISING at the same 10% the plan uses. */
+      o.balanced = shot(18.6, 12.4, 6, true);
+      o.rucker   = shot(25, 0, 1);          // takes up running
+      o.runner   = shot(0, 25, 1);          // takes up rucking
+      o.nothing  = shot(0, 0, 1);           // a genuine beginner
+      o.late     = shot(24.8, 18.2, 12, true);   // deep into a block, kept up
+      /* …and the athlete who has NOT kept up is warned, which is correct:
+         their legs only know what they have actually done. */
+      o.behind   = shot(14, 7, 12);
+
+      /* GUARD: the two functions read each other one level deep. A raw read
+         must terminate and carry no combined figure of its own. */
+      shot(25, 0, 1);
+      o.rawTerminates = (() => { try { const a = enduranceWeek(true), b = ruckLadderWeek(true);
+        return !!a && !!b && a.footTotal === null && b.footTotal === null; } catch (e) { return 'threw: ' + e.message; } })();
+      o.warnPct = 0;
+
+      STATE.prep = keepPrep; nut().days = keepDays;
+      STATE.nutrition.weightKg = keepKg; STATE.profile.ruckLb = keepLb;
+      return o;
+    });
+
+    t.ok('guard: every name this block calls exists', fl.namesExist, fl);
+    if (!fl.namesExist) {
+      t.ok('guard: the block collected something to assert on', false, fl);
+    } else {
+      t.ok('guard: reading a plan raw terminates and carries no combined figure',
+        fl.rawTerminates === true, fl);
+
+      /* NEITHER PLAN IS RESIZED. This is the whole design decision, and the
+         floor that catches every version of the fix that got it wrong: the
+         numbers each plan reports are its own. */
+      [['balanced', 'a legal plan'], ['rucker', 'a rucker taking up running'],
+       ['runner', 'a runner taking up rucking'], ['late', 'a plan deep into a block'],
+       ['behind', 'an athlete behind their plan']].forEach(([k, label]) => {
+        const c = fl[k];
+        t.eq('the combined figure for ' + label + ' is the plain sum', c.reported, c.sum);
+        t.ok('and ' + label + ' still gets real work in both modes',
+          c.ruck > 0 && c.run > 0, { ruck: c.ruck, run: c.run });
+      });
+      /* FLOOR: a plan already inside its own rule keeps every kilometre, and
+         the total is free to grow across a block. A cap held the total at
+         +10% forever, which is a plateau, not a plan. */
+      t.ok('a legal plan is left entirely alone', !fl.balanced.big, fl.balanced);
+      t.ok('and the total grows across the block',
+        fl.late.sum > fl.balanced.sum, { wk6: fl.balanced.sum, wk12: fl.late.sum });
+
+      /* THE WARNING fires on the two introduction cases and names the step. */
+      [['rucker', 'a rucker taking up running'], ['runner', 'a runner taking up rucking']].forEach(([k, label]) => {
+        const c = fl[k];
+        t.ok('guard: ' + label + ' really has history in one mode only', c.logged > 0, c);
+        /* The precise condition: this athlete has NO history in one mode and
+           real history in the other, so that mode opens at its floor. */
+        t.ok('guard: ' + label + ' really has one brand-new mode',
+          c.newMode === (k === 'rucker' ? 'run' : 'ruck'), c);
+        t.ok(label + ' is warned that the new mode lands on top', c.big, c);
+        t.ok('and the warning names how much is new', c.added > 0, c);
+        t.ok('and what it is on top of', c.step !== null && c.step > 0,
+          { step: c.step, from: c.from });
+        t.ok('and names what it is a step up FROM', c.from !== null && c.from > 0, c);
+        t.ok('and the warning is on the running card',
+          c.card.indexOf('on your feet this week') >= 0, c.card.slice(0, 200));
+        t.ok('and on the rucking card too', c.ruckBig && c.ruckCard.indexOf('on your feet this week') >= 0,
+          c.ruckCard.slice(0, 200));
+      });
+
+      /* FLOOR: a note that always fires is a note nobody reads. A legal plan
+         still SHOWS the total — that is the second half of the fix — but does
+         not claim anything is wrong with it. */
+      t.ok('a legal plan still shows the combined distance',
+        fl.balanced.card.indexOf(String(fl.balanced.sum)) >= 0, fl.balanced.card.slice(0, 200));
+      t.ok('and shows it — not merely renders it hidden', !fl.balanced.hiddenNote, fl.balanced);
+      t.ok('and on the rucking card',
+        fl.balanced.ruckCard.indexOf(String(fl.balanced.sum)) >= 0, fl.balanced.ruckCard.slice(0, 200));
+      t.ok('but is not warned', !fl.balanced.big && fl.balanced.card.indexOf('% up on the') < 0,
+        fl.balanced.card.slice(0, 200));
+      t.ok('and neither is a plan deep into a block', !fl.late.big, fl.late);
+      /* FLOOR: but an athlete who has NOT kept up IS warned. Their legs know
+         only what they have done — the step is real for them even though the
+         plan itself is legal. A warning that only ever read the plan would
+         miss the one athlete it matters to. */
+      t.ok('guard: the athlete behind their plan really is behind',
+        fl.behind.logged < fl.behind.sum * 0.8, fl.behind);
+      /* …and is NOT warned, because nothing is landing on top: both modes are
+         already being done. Comparing the plan against the trailing average
+         instead warned EVERY athlete from about week three, because each
+         plan's curve compounds FROM that average — measured at +77% for a
+         model athlete who had kept up perfectly. */
+      t.ok('but is not told a mode is brand new', !fl.behind.big, fl.behind);
+      /* FLOOR: a beginner has no history to step up FROM, so no warning is
+         possible — and the floors stand untouched. */
+      t.ok('a beginner with nothing logged keeps both floors and is not warned',
+        !fl.nothing.big && fl.nothing.ruck > 0 && fl.nothing.run > 0, fl.nothing);
+      /* A beginner has nothing in EITHER mode, so neither is "new on top of"
+         the other — there is nothing to land on. */
+      t.ok('and no mode is called brand new', fl.nothing.newMode === null, fl.nothing);
+
+      /* Both cards report the SAME figure — one renderer, read twice. */
+      t.eq('the two cards agree on the combined figure',
+        fl.rucker.reported, fl.rucker.ruckReported);
+    }
+
 
 
     /* ---- the ruck ladder (v326) --------------------------------------------

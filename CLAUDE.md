@@ -3842,6 +3842,71 @@ the check. The declaration `function runTTLabel()` also matches a
 
 Eight mutants, all caught after those rewrites.
 
+## Two plans, each obeying the rule, that nobody added together (v332)
+
+Found by driving the army-prep athlete ACROSS subsystems rather than by another
+static sweep — the method that found the v284 container bug. Most of it held:
+the plan builds from what is actually logged, the ruck ladder raises distance
+or load but never both, the conditioning bar counts it, nothing rendered wrong.
+
+What did not: the endurance plan ramps from what was logged RUNNING and the
+ruck ladder from what was logged RUCKING. Each caps its own curve at 10% a
+week, and each has a floor for an athlete with nothing logged IN THAT MODE.
+Neither reads the other — and **a rucked kilometre and a run kilometre are
+absorbed by the same tissue.** Measured:
+
+| the athlete | logged/wk | prescribed week 1 | step |
+|---|---|---|---|
+| rucks and runs | 21 km | 31 km over 6 weeks | 6.7%/wk — legal |
+| **rucks 25 km, never runs** | 25 km | 27.5 ruck + 8.8 run = **36.3** | **+45% in one week** |
+| **runs 25 km, never rucks** | 25 km | 27.5 run + 5.5 ruck = **33.0** | **+32% in one week** |
+
+And **no surface showed the combined figure at all** — 27.5 on one card, 8.8 on
+another, and 36.3 nowhere.
+
+### Four measured wrong turns, and the arithmetic that made three of them moot
+
+**Two series that each climb no more than 10% a week sum to a series that
+climbs no more than 10% a week.** Both plans already cap their own curve, so the
+combined RATE never needed policing at all. Three fixes were built and measured
+before that sank in:
+
+- **A flat cap on the trailing total** cut a legal 6.7%/wk plan's running from
+  12.4 km to **4.5**, and by week 12 the ruck alone had outgrown the cap anyway
+  — the total went 18% over while the run had already been cut to nothing.
+- **A compounding cap** was no constraint whatever: 43 km against a 72 km cap.
+- **Proportional scaling under a one-week cap** was arithmetically correct and
+  worse in practice. "Is the other mode on its floor?" stays true FOREVER for an
+  athlete who never takes that mode up, so a runner who does not ruck had their
+  running held at 14 km while their own curve climbed to 32. It suppressed the
+  plan being followed because of a plan being ignored.
+- **Comparing the combined plan against the 4-week trailing average** warns
+  EVERYBODY, because each plan's curve compounds FROM that average — by week
+  seven the plan is trailing x 1.1^6, +77% for every athlete alive including one
+  who has kept up perfectly.
+
+The real step is narrow: **a mode with NO history at all, opening at its floor,
+beside a mode the athlete is already doing.** That is `footNewMode()`, and it is
+the whole condition.
+
+**And the fix WARNS rather than resizing.** The athlete decides which sessions
+they do; the same call the custom builder makes for a flagged joint and the
+FORCE session makes for missing kit — name it, never silently substitute. The
+note says how much is new, what it lands on top of, and what to do about it.
+
+### The `hidden` mutant, again
+
+A mutant that rendered the combined total with a `hidden` attribute escaped,
+because `strip()` keeps the text of a hidden element. v314 already recorded
+`hidden` as a lazy mutant and re-seeded as a deletion; the deletion is caught,
+and the check now also refuses a hidden note outright, so both shapes fail.
+
+Eleven mutants, all caught. The floors carry the weight: a legal plan keeps
+every kilometre and is not warned, the total is free to grow across a block, a
+beginner with nothing in either mode is not told anything is new, and an athlete
+merely BEHIND their plan is not warned either — nothing is landing on top of
+them.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
