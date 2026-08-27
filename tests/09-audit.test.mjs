@@ -3053,6 +3053,177 @@ export default async function run() {
       t.ok('and both cards use the same renderer, so they cannot drift',
         ca.sameRenderer, ca);
     }
+    /* ---- the Progress render cliff on old logs (v335) --------------------
+
+       `commitSession()` stores the session's item list on the log. A log
+       written BEFORE it did has to be rebuilt from the program engine to be
+       counted at all — and Progress walks every session three times over:
+       totalVolume(), and totalTUTSplit() twice, because totalTUT() and
+       estCalories() each ask for it independently.
+
+       Measured on a year of history (300 sessions, 365 nutrition days):
+
+         logs carrying `items`  ->  Progress renders in   1 ms
+         logs without it        ->  Progress renders in 123 ms
+
+       allDonePairs() is 0.07 ms and one logItemsFor() is 0.15; three hundred
+       of them is 37.9. It is the rebuild inside the walk — the same shape as
+       the acwr() regression already recorded here.
+
+       THE CHECK COUNTS REBUILDS, NOT MILLISECONDS. A timing assertion in CI
+       is a flake waiting to happen; the number of times buildSession() is
+       called is the payload and it is exact. */
+    const pm = await page.evaluate(async () => {
+      const o = {};
+      o.namesExist = typeof logItemsFor === 'function' && typeof buildSession === 'function'
+        && typeof render === 'function';
+      if (!o.namesExist) return o;
+      const keepLogs = STATE.logs, keepPtr = STATE.progressPtr, keepTab = (typeof PROGRESS_TAB !== 'undefined') ? PROGRESS_TAB : null;
+      const iso = d => { const x = new Date(); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); };
+
+      /* Legacy logs: real ex[] data, but NO items array. */
+      const mk = withItems => { STATE.logs = {};
+        for (let i = 0; i < 40; i++) {
+          const s = buildSession(i);
+          const items = [...s.main, s.finisher].filter(Boolean);
+          const l = { done: true, completedAt: iso(-Math.floor(i / 2)), sets: [1, 1, 1], vol: 1200, ex: {} };
+          items.forEach(m => { l.ex[m.exId] = { sets: [1, 1, 1], actual: m.target }; });
+          if (withItems) l.items = items.map(m => ({ exId: m.exId, sets: m.sets, target: m.target, unit: m.unit, rest: m.rest || 45 }));
+          STATE.logs[i] = l;
+        }
+        STATE.progressPtr = 40; };
+
+      /* Count rebuilds BY POINTER. Raw call counts include legitimate callers
+         — today's own session is built once per paint — and switching tab
+         inside the counted block triggers extra renders, which is how the
+         first version of this check reported 203 for 40 sessions. DUPLICATES
+         are the exact signal: the same session rebuilt twice in one paint is
+         the waste, and nothing else is. */
+      const countBuilds = fn => {
+        const real = window.buildSession; const seen = [];
+        window.buildSession = function (p) { seen.push(+p); return real.apply(this, arguments); };
+        try { fn(); } finally { window.buildSession = real; }
+        return { n: seen.length, distinct: new Set(seen).size, dupes: seen.length - new Set(seen).size };
+      };
+      mk(false); setProgressTab('summary'); go('progress');
+      o.legacyRender = countBuilds(() => render());
+      /* The same three readers with the memo dead and alive, so the saving is
+         measured rather than inferred from a wall clock. */
+      o.noMemo = countBuilds(() => { _itemsMemo = null; totalVolume(); totalTUT(); estCalories(); });
+      o.withMemo = countBuilds(() => { _itemsMemo = new Map(); totalVolume(); totalTUT(); estCalories(); _itemsMemo = null; });
+      mk(true);
+      o.modernRender = countBuilds(() => render());
+
+      /* THE FLOOR THAT MAKES IT SAFE: every number is identical whether the
+         memo is live or not. A cache over lifetime totals that changed one of
+         them would be far worse than a slow tab. */
+      mk(false);
+      _itemsMemo = null;
+      const cold = { vol: JSON.stringify(totalVolume()), tut: totalTUT(), kcal: estCalories() };
+      _itemsMemo = new Map();
+      const warm = { vol: JSON.stringify(totalVolume()), tut: totalTUT(), kcal: estCalories() };
+      _itemsMemo = null;
+      o.cold = cold; o.warm = warm;
+      o.identical = JSON.stringify(cold) === JSON.stringify(warm);
+      /* guard: the totals are real numbers, not zeroes agreeing with zeroes */
+      o.realTotals = cold.tut > 0 && cold.kcal > 0 && JSON.parse(cold.vol).sets > 0;
+
+      /* The memo must not outlive its paint. */
+      render();
+      o.clearedAfterRender = _itemsMemo === null;
+      /* …including when the render THROWS — the error boundary retries, and a
+         memo left behind could hand a stale session to the next paint. */
+      const realRT = window.renderToday;
+      window.renderToday = () => { throw new Error('probe'); };
+      const ce = console.error; console.error = () => {};
+      try { go('today'); render(); } catch (e) {} finally { window.renderToday = realRT; console.error = ce; }
+      o.clearedAfterThrow = _itemsMemo === null;
+
+      /* Nothing a renderer calls may WRITE a memo dependency — see the
+         assertions in Node for why this is the invariant the memo rests on. */
+      mk(false);
+      const depWrites = [];
+      /* Record EVERY assignment, not only the ones that change the value. The
+         invariant is that a renderer does not WRITE these — a mutant that
+         assigned the value already in place escaped a change-only watcher,
+         and it is the write that breaks the memo's premise, not the delta. */
+      ['adapt', 'progressPtr'].forEach(k => { let v = STATE[k];
+        Object.defineProperty(STATE, k, { configurable: true,
+          get() { return v; },
+          set(nv) { depWrites.push(k + ':=' + nv); v = nv; } }); });
+      const before = { b: JSON.stringify(STATE.baseline || null),
+                       l: JSON.stringify(STATE.profile.limitations || null),
+                       s: JSON.stringify(STATE.swaps || null) };
+      ['today', 'program', 'fuel', 'progress', 'ref', 'guide'].forEach(tab => { go(tab); render(); });
+      setProgressTab('summary'); go('progress'); render();
+      o.depWrites = depWrites.slice(0, 6);
+      o.baselineChanged = JSON.stringify(STATE.baseline || null) !== before.b;
+      o.limitationsChanged = JSON.stringify(STATE.profile.limitations || null) !== before.l;
+      o.swapsChanged = JSON.stringify(STATE.swaps || null) !== before.s;
+      /* guard: a watcher that never fires would report "no writes" on any
+         codebase at all. Prove it can see one. */
+      const seenBefore = depWrites.length;
+      STATE.progressPtr = STATE.progressPtr;      // an assignment, not a change
+      o.watcherWorks = depWrites.length > seenBefore;
+      ['adapt', 'progressPtr'].forEach(k => { const v = STATE[k];
+        delete STATE[k]; STATE[k] = v; });
+
+      /* The fast path is untouched: a log carrying items never rebuilds. */
+      mk(true);
+      const pairs = allDonePairs();
+      o.storedItemsReturned = pairs.length > 0 && logItemsFor(pairs[0][0], pairs[0][1]) === STATE.logs[pairs[0][0]].items;
+
+      STATE.logs = keepLogs; STATE.progressPtr = keepPtr;
+      if (keepTab !== null) setProgressTab(keepTab);
+      return o;
+    });
+
+    t.ok('guard: every name this block calls exists', pm.namesExist, pm);
+    if (!pm.namesExist) {
+      t.ok('guard: the block collected something to assert on', false, pm);
+    } else {
+      /* guard: three walks over the same 40 sessions really do repeat work */
+      t.eq('guard: without the memo the three readers rebuild 120 times', pm.noMemo.n, 120);
+      t.eq('guard: and only 40 of those are distinct sessions', pm.noMemo.distinct, 40);
+      t.eq('guard: so 80 of them are the same session built again', pm.noMemo.dupes, 80);
+      /* THE PAYLOAD: with the memo, every one of those duplicates is gone. */
+      t.eq('with the memo the same three readers rebuild 40 times', pm.withMemo.n, 40);
+      t.eq('and no session is ever built twice', pm.withMemo.dupes, 0);
+      /* …and that holds through a whole Progress render, not just the three
+         readers called by hand. */
+      t.eq('a Progress render builds no session twice', pm.legacyRender.dupes, 0);
+      /* FLOOR: and a log carrying its items is not rebuilt at all — the only
+         session built during a modern render is today's own. */
+      t.ok('a log carrying its item list is never rebuilt',
+        pm.modernRender.distinct <= 1, pm.modernRender);
+      t.eq('and nothing is built twice there either', pm.modernRender.dupes, 0);
+      t.ok('and logItemsFor hands back the stored array itself', pm.storedItemsReturned, pm);
+
+      /* THE FLOOR THAT MAKES A CACHE OVER LIFETIME TOTALS ACCEPTABLE. */
+      t.ok('guard: the totals are real figures, not zeroes', pm.realTotals, pm.cold);
+      t.ok('every lifetime figure is identical with the memo live or dead',
+        pm.identical, { cold: pm.cold, warm: pm.warm });
+
+      /* A memo that outlived its paint could hand a stale session to the next. */
+      t.ok('the memo is dropped when the render finishes', pm.clearedAfterRender, pm);
+      t.ok('and when the render throws', pm.clearedAfterThrow, pm);
+
+      /* THE INVARIANT THE WHOLE MEMO RESTS ON, asserted rather than assumed.
+         buildSession(p) reads adapt, the baseline, the limitations and the
+         swaps. Caching it within a paint is only safe because nothing a
+         renderer calls WRITES any of them — and a comment claiming an
+         invariant is not the invariant, which this file has recorded three
+         times. Measured across all six tabs: zero writes.
+
+         If a future renderer ever does write one, the memo goes silently
+         stale and this is what says so. */
+      t.eq('no render writes anything the memo depends on', pm.depWrites, []);
+      t.ok('and the baseline, limitations and swaps are untouched too',
+        !pm.baselineChanged && !pm.limitationsChanged && !pm.swapsChanged, pm);
+      /* guard: the watcher really would have seen a write. */
+      t.ok('guard: the dependency watcher fires on a real write', pm.watcherWorks, pm);
+    }
+
 
 
 

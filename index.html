@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='334';
+const APP_VERSION='335';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3103,6 +3103,9 @@ function initBackButton(){
 
 /* ============================ RENDER ROUTER ============================ */
 function render(){
+  /* One paint, one memo. Opened here and dropped in the `finally` below, so a
+     rebuilt session is computed at most once per render and never survives it. */
+  _itemsMemo=new Map();
   /* Error boundary. A single bad value anywhere in a renderer used to escape and
      leave every tab blank — and because the bad state was already saved, the app
      stayed blank on every relaunch. Now we repair the state and retry once. */
@@ -3117,6 +3120,16 @@ function render(){
       v.innerHTML=`<div class="note warn" style="margin:16px"><b>Something went wrong drawing this screen.</b><div class="tiny muted" style="margin-top:6px">${_ve(String(e2&&e2.message||e2).slice(0,120))}</div><button class="btn ghost sm" style="margin-top:10px" onclick="exportData()">⬇ Export a backup first</button><button class="btn primary sm" style="margin-top:6px" onclick="location.reload()">Reload</button></div>`;
     }
   }
+  /* Dropped whatever happened above, including the error-boundary retry — a
+     memo that outlived its paint could hand a stale session to the next one.
+
+     `finally` rather than a trailing statement is defence only, and NO CHECK
+     CAN CATCH ITS REMOVAL: the boundary above swallows everything, so a plain
+     call after the try/catch runs on exactly the same paths. It is kept
+     against a future change that lets the boundary rethrow — the same call as
+     v287's wantAnchor and v301's _macrosMissing, both recorded as equivalent
+     mutants rather than papered over with a check that proves nothing. */
+  finally{_clearItemsMemo();}
 }
 function _render(){
   updatePill();
@@ -16786,9 +16799,34 @@ function homeSummaryHTML(){
 /* Roll up what was actually logged for a completed session. */
 // The frozen prescription for a logged session; legacy logs (no snapshot) fall
 // back to rebuilding — imperfect for them, but new logs never drift again.
+/* A LOG WRITTEN BEFORE commitSession() STORED ITS ITEM LIST has to be rebuilt
+   from the program engine to be counted at all — and Progress walks every
+   session three times over (totalVolume, and totalTUTSplit twice, because
+   totalTUT() and estCalories() each ask for it). Measured on a year of
+   history:
+
+     logs carrying `items`  ->  Progress renders in   1 ms
+     logs without it        ->  Progress renders in 123 ms
+
+   allDonePairs() is 0.07 ms and one logItemsFor() is 0.15 ms; three hundred of
+   them is 37.9. It is the rebuild inside the walk, which is the same shape as
+   the acwr() regression this file already records.
+
+   The cache is cleared at the top of every render(), so it can only ever
+   collapse repeated identical work WITHIN one paint. buildSession(p) is a pure
+   function of the pointer and the state, and the state cannot change midway
+   through a render — so this changes no number on any screen, which is what
+   makes it safe to do to lifetime totals. */
+let _itemsMemo=null;
+function _clearItemsMemo(){_itemsMemo=null;}
 function logItemsFor(p,l){
   if(l&&Array.isArray(l.items)&&l.items.length)return l.items;
-  const s=buildSession(+p);return [...s.main,s.finisher].filter(Boolean);
+  const k=+p;
+  if(_itemsMemo){const hit=_itemsMemo.get(k);if(hit)return hit;}
+  const s=buildSession(k);
+  const out=[...s.main,s.finisher].filter(Boolean);
+  if(_itemsMemo)_itemsMemo.set(k,out);
+  return out;
 }
 function sessionStats(p,full){
   const l=STATE.logs[p]||{ex:{}};
