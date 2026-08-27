@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='347';
+const APP_VERSION='348';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -1939,7 +1939,30 @@ const SESSIONS_PER_WEEK=7, WEEKS_PER_CYCLE=6, SESSIONS_PER_CYCLE=SESSIONS_PER_WE
    than the week 4 that would be ideal, because the 6-week block IS the re-test
    cadence and splitting it mid-block would desynchronise every anchor. */
 const PHASE1_CYCLES=1;   // block 1 = weeks 1–6: core/abs/HIIT. Full-body from week 7.
-const TOTAL_CYCLES=9;    // 9 six-week blocks = 54 weeks (a full year+): Phase 1 then full-body split
+const TOTAL_CYCLES=9;    // 9 six-week blocks = 378 sessions: Phase 1 then full-body split
+/* 54 weeks is 378 sessions at SEVEN a week, and the wizard's own floor is
+   FIVE. So the Program tab's "54-week journey" was true for nobody who took
+   the default: measured, an athlete on 5 days a week consumes the same 378
+   sessions in 75.6 weeks — 17.4 months, not 12 — and the screen said 54 with
+   no qualification at all. The program is a QUEUE of sessions; how long it
+   takes is set by how often you train, which the app already knows. Same
+   class as v347's calendar-day gap: a duration claimed without asking the
+   schedule. */
+function programWeeks(){
+  try{const t=Math.max(1,weeklyTarget());
+    return Math.ceil((SESSIONS_PER_CYCLE*TOTAL_CYCLES)/t);}catch(e){return WEEKS_PER_CYCLE*TOTAL_CYCLES;}
+}
+/* The legal timeframes, in one place. The label rule already existed as two
+   hand-written copies — the quiz picker and the Fuel pacing note — which is
+   the five-diets drift one step from happening. An off-list value can arrive
+   from an imported backup, so the fallback derives rather than throwing. */
+const TIMELINE_OPTS=[{w:12,label:'~12 weeks'},{w:24,label:'~6 months'},{w:52,label:'~1 year'}];
+function timelineLabel(w){
+  const n=+w;if(!(n>0))return '';
+  const hit=TIMELINE_OPTS.find(o=>o.w===n);
+  if(hit)return hit.label;
+  return n>=16?('~'+Math.round(n/4.345)+' months'):('~'+n+' weeks');
+}
 function phaseOf(cycle){return cycle<PHASE1_CYCLES?1:2;}
 function sessionsFor(cycle){return phaseOf(cycle)===1?SESSIONS:PHASE2_SESSIONS;}
 
@@ -3242,7 +3265,7 @@ function onboardHTML(){
     <div class="hp-body">
       <div class="hp-focus">${edit?'Update your':'Welcome to'}</div>
       <h1>CoreForge</h1>
-      <div class="hp-focus" style="opacity:.9">${edit?'Change anything — your progress is kept':'Core &amp; abs first — then a full year of full-body training'}</div>
+      <div class="hp-focus" style="opacity:.9">${edit?'Change anything — your progress is kept':'Core &amp; abs first — then full-body training for the rest of the program'}</div>
     </div>
   </div>
   <div class="note fire" style="margin-bottom:12px">${edit?'Update any answer and tap <b>Save changes</b>. Your program and nutrition re-tune to match — nothing is reset.':'Answer a few questions and CoreForge tailors your whole plan — training, focus, equipment and meals — to <b>you</b>.'}</div>
@@ -3273,7 +3296,7 @@ function onboardHTML(){
       <div class="field" style="flex:1;margin:0"><label>Goal waist (<span id="ob-gwsu">${hu}</span>) <span class="tiny muted">· optional</span></label><input id="ob-goalwaist" type="number" inputmode="decimal" placeholder="${im?'32':'81'}" value="${gwsD}"></div>
     </div>
     <div class="field"><label>Timeframe <span class="tiny muted">· sets your calories, protein, steps and conditioning</span></label>
-      <div class="daypick" id="ob-timeline" style="flex-wrap:wrap"><button data-w="12"${on(P.timelineWeeks,12)}>~12 weeks</button><button data-w="24"${on(P.timelineWeeks,24)}>~6 months</button><button data-w="52"${on(P.timelineWeeks,52)}>~1 year</button><button data-w="0"${(!P.timelineWeeks?' class="on"':'')}>No deadline</button></div></div>`)}
+      <div class="daypick" id="ob-timeline" style="flex-wrap:wrap">${TIMELINE_OPTS.map(o=>`<button data-w="${o.w}"${on(P.timelineWeeks,o.w)}>${o.label}</button>`).join('')}<button data-w="0"${(!P.timelineWeeks?' class="on"':'')}>No deadline</button></div></div>`)}
 
   ${step(3,'Focus &amp; priority',`
     <div class="field"><label>#1 area you most want to improve <span class="tiny muted">· drives a targeted bonus move every session</span></label>
@@ -10155,14 +10178,43 @@ function openExerciseInfo(exId){
 }
 
 /* ============================ PROGRAM VIEW ============================ */
+/* TWO HORIZONS, AND NOTHING RECONCILED THEM. Reported from the phone: "why is
+   one section starting week one of 54 when in another section I set 6 months
+   to goal?" They are different things and neither screen said so. The
+   timeframe is a NUTRITION deadline — v310 has it setting calories, protein,
+   steps and conditioning, and deliberately NOT strength progression, because
+   that is auto-regulated by adapt() and readiness and forcing it is how people
+   get hurt. The program is the training arc underneath, consumed a session at
+   a time, and it does not end when the scale does.
+
+   It POINTS at the projection rather than restating its date: projectionHTML()
+   owns that arithmetic and a second copy is a second place for it to drift. It
+   fires only when a timeframe is actually set — a note that always fires is a
+   note nobody reads. */
+function programVsGoalHTML(){
+  try{
+    const w=STATE.profile&&STATE.profile.timelineWeeks;
+    if(!(w>0))return '';
+    const lbl=timelineLabel(w);if(!lbl)return '';
+    return `<div class="note info" style="margin-top:10px"><b>Your goal date and this program are two different clocks.</b>
+      The <b>${lbl}</b> you picked is about your <b>weight</b> — it sets your calories, protein, steps and conditioning.
+      This program is the <b>training</b> underneath it: ${SESSIONS_PER_CYCLE*TOTAL_CYCLES} sessions taken at your own pace, and it keeps going after you hit your goal weight.
+      <div class="tiny muted" style="margin-top:6px">The date you are on track for is on <b>Progress ▸ Body</b>.</div></div>`;
+  }catch(e){return '';}
+}
 function renderProgram(){
   const v=$('#v-program');
-  if(!STATE.baseline){v.innerHTML=`<h2 class="vtitle">Program</h2><div class="note info">Complete your <b>baseline assessment</b> on the Today tab to generate your personalised year-long program.</div>`;return;}
+  if(!STATE.baseline){v.innerHTML=`<h2 class="vtitle">Program</h2><div class="note info">Complete your <b>baseline assessment</b> on the Today tab to generate your personalised ${TOTAL_CYCLES}-block program.</div>`;return;}
   const curPos=STATE.progressPtr<SESSIONS_PER_CYCLE*TOTAL_CYCLES?posOf(STATE.progressPtr):null;
   const viewCycle=curPos?curPos.cycle:TOTAL_CYCLES-1;
-  const totalWeeks=WEEKS_PER_CYCLE*TOTAL_CYCLES;
   const phaseName=phaseOf(viewCycle)===1?'Phase 1 · Core & Abs':'Phase 2 · Full-Body + Core';
-  let h=`<h2 class="vtitle">Your Program</h2><div class="vsub">${totalWeeks}-week journey · weeks 1–6 core &amp; abs, then a full-body split. The load climbs every week.</div>`;
+  /* The week count is DERIVED from the athlete's own schedule, not from the
+     7-days-a-week shape of the queue. Saying "at your N days a week" is what
+     makes the number checkable — without it a reader has no way to tell a
+     right number from a wrong one. */
+  const _pw=programWeeks(),_wt=weeklyTarget();
+  let h=`<h2 class="vtitle">Your Program</h2><div class="vsub">${SESSIONS_PER_CYCLE*TOTAL_CYCLES} sessions in ${TOTAL_CYCLES} blocks of ${WEEKS_PER_CYCLE} weeks — about <b>${_pw} weeks</b> at your ${_wt} sessions a week. Weeks 1–6 are core &amp; abs, then a full-body split. The load climbs every week.</div>`;
+  h+=programVsGoalHTML();
   /* The alternate-session tiles used to sit here. They are choices about TODAY —
      "not the planned session, something else instead" — and Program is the
      54-week calendar, so an athlete looking for a five-minute substitute had no
@@ -10172,7 +10224,7 @@ function renderProgram(){
      they are an answer to a question the athlete has already asked. */
   // overall progress
   const totalS=SESSIONS_PER_CYCLE*TOTAL_CYCLES;const done=Math.min(STATE.progressPtr,totalS);
-  h+=`<div class="card pad"><div class="row" style="justify-content:space-between;margin-bottom:8px"><b>${totalWeeks}-week progress</b><span class="muted sm">${done}/${totalS} sessions</span></div><div class="pbar"><i style="width:${done/totalS*100}%"></i></div>
+  h+=`<div class="card pad"><div class="row" style="justify-content:space-between;margin-bottom:8px"><b>Program progress</b><span class="muted sm">${done}/${totalS} sessions</span></div><div class="pbar"><i style="width:${done/totalS*100}%"></i></div>
     <div class="tiny muted" style="margin-top:8px">Block ${viewCycle+1} of ${TOTAL_CYCLES} · <b style="color:var(--fire-l)">${phaseName}</b> · re-test after each block keeps you progressing</div></div>`;
   // week-by-week for current cycle
   for(let wk=1;wk<=WEEKS_PER_CYCLE;wk++){
@@ -16680,7 +16732,7 @@ function renderFuel(){
   {const _tld=(typeof timelineDeficit==='function')?timelineDeficit():null;
    if(_tld!==null&&STATE.profile.timelineWeeks>0){
      const _w=STATE.profile.timelineWeeks;
-     const _lbl=_w===52?'~1 year':(_w===24?'~6 months':'~'+_w+' weeks');
+     const _lbl=timelineLabel(_w);
      h+=`<div class="tiny muted" style="margin:6px 2px 0">⏱ Paced to your <b>${_lbl}</b> timeframe — a <b>${_tld}</b> kcal daily deficit${(typeof timelineIsAggressive==='function'&&timelineIsAggressive())?`, with protein and step targets raised to match`:``}. Change it in Settings ▸ Setup.</div>`;
    }}
   /* Protein was the one target the athlete could not state. It was computed

@@ -5115,6 +5115,85 @@ with **no** rest day in it must still fire, a genuine two-session lay-off must
 still be named, and a banner that never mentions rest days when none were
 rested — a note that always fires is a note nobody reads.
 
+## 54 weeks was true for nobody who took the default (v348)
+
+Two screenshots, one question: *"why is one section starting week one of 54
+even in another section I just secured the 6 months to goal?"* Two separate
+findings, and only one of them is a wrong number.
+
+### The wrong number
+
+`SESSIONS_PER_WEEK` is **7**, so `WEEKS_PER_CYCLE * TOTAL_CYCLES` is 54 weeks
+**only if you train seven days a week**. The wizard's own floor is **five**, and
+its copy says so — *"Five days is the floor"*. Measured on the reporting
+athlete's own schedule:
+
+| pace | 378 sessions takes |
+|---|---|
+| 7 a week | 54 weeks |
+| 6 a week | 63 weeks |
+| **5 a week** | **75.6 weeks — 17.4 months** |
+
+The Program tab said **"54-week journey"** and **"54-week progress"** with no
+qualification at all, the pre-baseline note promised a *"year-long program"*,
+and the onboarding hero promised *"a full year of full-body training"*. Nothing
+threw and the number was plausible, which is why it survived.
+
+**The program is a QUEUE of sessions; how long it takes is set by how often you
+train, and the app already knew.** `programWeeks()` derives it from
+`weeklyTarget()`. Same class as v347's calendar-day gap, one subsystem over: a
+duration claimed without asking the schedule.
+
+**The subtitle names the pace it was computed from** — *"about 76 weeks at your
+5 sessions a week"* — because that is what makes the figure checkable. A bare
+number gives a reader no way to tell a right one from a wrong one, and the
+mutant that strips the pace is caught by its own check.
+
+**The floor is the seven-day athlete, who really is on 54 weeks.** A fix that
+deleted the number, or one that printed 76 for everybody, satisfies every
+assertion about the reporting athlete and fails there. Six days a week is
+pinned at 63 beside it, so the count tracks the pace rather than being two
+hardcoded cases.
+
+**`/54` on Progress ▸ Summary was deliberately left alone.** That tile counts
+PROGRAM weeks, derived from the pointer — there really are 54 weeks of
+curriculum, and the header chip reads the same way. The defect was only ever a
+program length restated as a CALENDAR duration.
+
+### The second finding: two clocks, and nothing reconciled them
+
+Measured: the Program tab mentioned the timeframe **not once**. They are
+genuinely different things — v310 has `timelineWeeks` setting calories,
+protein, steps and conditioning and deliberately **not** strength progression,
+because that is auto-regulated by `adapt()` and readiness and forcing it is how
+people get hurt. So the goal date is a **nutrition** deadline and the program is
+the **training** underneath it, which does not end when the scale does.
+
+Neither screen said so, so the pair read as a contradiction. `programVsGoalHTML()`
+says it, and it **points at Progress ▸ Body rather than restating the date** —
+`projectionHTML()` owns that arithmetic and a second copy is a second place for
+it to drift. It fires only when a timeframe is set: this one is a whole
+paragraph, and a note that always fires is a note nobody reads.
+
+### The label rule already existed twice
+
+`~12 weeks / ~6 months / ~1 year` was hand-written in the quiz picker **and**
+re-derived as a ternary in the Fuel pacing note — the five-diets drift one step
+from happening. `TIMELINE_OPTS` is the one list and `timelineLabel()` the one
+reader, with a derived fallback because an imported backup can carry an
+off-list value.
+
+**The check drives the picker rather than counting the declaration.** A mutant
+that reverts to hand-written buttons leaves the list standing, so a check on
+`TIMELINE_OPTS` alone passes on exactly the drift it exists to stop. Same escape
+v322 recorded for `WEIGHTS_PATTERNS`.
+
+**And the editor pins itself to the ACTIVE view.** Only Today and Settings host
+it, so `openProfileEdit()` called from Program mounts nothing and the check read
+an empty list — a failure on correct code. Go to Today first.
+
+Thirteen mutants, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

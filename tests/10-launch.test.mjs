@@ -556,6 +556,106 @@ const { browser, page, errors } = await launch(port);
   s.ok('and the badge count', r.progressShowsBadges, r);
 }
 
+/* ---- the program's length is the athlete's pace, not the queue's shape ----
+   Reported from the phone with two screenshots: "why is one section starting
+   week one of 54 when in another section I set 6 months to goal?" 54 weeks is
+   378 sessions at SEVEN a week and the wizard's own floor is FIVE, so the
+   headline was true for nobody who took the default. Same class as v347: a
+   duration claimed without asking the schedule. */
+{
+  const { browser: pb, page: pg } = await launch(port);
+  await seedAthlete(pg);
+  const r = await pg.evaluate(() => {
+    const o = {}, txt = () => document.querySelector('#v-program').innerText;
+    const at = (days, tlw) => { STATE.profile.days = days.slice();
+      STATE.profile.timelineWeeks = tlw; save(); go('program'); renderProgram(); };
+
+    o.total = SESSIONS_PER_CYCLE * TOTAL_CYCLES;      // 378
+    o.queueShape = SESSIONS_PER_WEEK;                 // 7 — what 54 assumed
+
+    // his schedule: five days a week
+    at([1, 2, 4, 5, 6], 24);
+    o.fiveWeekly = weeklyTarget();
+    o.fiveWeeks = programWeeks();
+    o.fiveDerived = Math.ceil(o.total / o.fiveWeekly);
+    const five = txt();
+    o.fiveSaysReal = five.includes('about 76 weeks');
+    o.fiveDropsThe54 = !/54[- ]week/.test(five);
+    o.fiveNamesThePace = /at your 5 sessions a week/.test(five);
+    o.fiveNoYearClaim = !/year-long|a full year/i.test(five);
+
+    /* Floor: a SEVEN-day athlete really is on 54 weeks, so a fix that simply
+       deleted the number, or one that always printed 76, fails here. */
+    at([0, 1, 2, 3, 4, 5, 6], null);
+    o.sevenWeeks = programWeeks();
+    o.sevenSays54 = txt().includes('about 54 weeks');
+
+    // six days sits between them — the count tracks the pace, it is not two cases
+    at([0, 1, 2, 3, 4, 5], null);
+    o.sixWeeks = programWeeks();
+
+    /* The two clocks. The note names the timeframe and points at the ONE place
+       that owns the date — restating it would be a second copy to drift. */
+    at([1, 2, 4, 5, 6], 24);
+    const withTl = txt();
+    o.saysTwoClocks = /two different clocks/i.test(withTl);
+    o.namesTheTimeframe = withTl.includes('~6 months');
+    o.saysItKeepsGoing = /keeps going after you hit your goal weight/i.test(withTl);
+    o.pointsAtBody = /Progress ▸ Body/.test(withTl);
+    o.doesNotRestateTheDate = !/\d{4}/.test(withTl.split('two different clocks')[1] || '');
+
+    /* Floor: no timeframe set, no note — a note that always fires is a note
+       nobody reads, and this one is a whole paragraph. */
+    at([1, 2, 4, 5, 6], null);
+    o.quietWithNoTimeframe = !/two different clocks/i.test(txt());
+
+    // one reader for the labels: the picker and the Fuel note used to restate them
+    o.labels = TIMELINE_OPTS.map(x => timelineLabel(x.w));
+    o.labelOffList = timelineLabel(26);        // an imported backup can carry one
+    o.labelZero = timelineLabel(0);
+    /* Drive the real route: openProfileEdit() mounts the wizard. Reading the
+       rendered buttons is what proves the picker comes FROM the list — a check
+       that only counted the declaration passes with a hand-written picker still
+       sitting beside it. */
+    o.pickerFromTheList = (() => {
+      /* The editor pins itself to the ACTIVE view, and only Today and Settings
+         host it — opened from Program nothing mounts and the check reads []. */
+      go('today'); render();
+      try { openProfileEdit(); } catch (e) { return ['threw: ' + e.message]; }
+      const btns = [...document.querySelectorAll('#ob-timeline button[data-w]')]
+        .map(b => b.dataset.w + ':' + b.textContent.trim());
+      OB_EDIT = false; OB_HOST = null; try { obClear(); } catch (e) {}
+      return btns;
+    })();
+
+    at([1, 2, 4, 5, 6], 24);
+    return o;
+  });
+  s.eq('guard: the queue really is shaped seven-a-week', r.queueShape, 7, r);
+  s.eq('guard: and the seeded athlete really trains five', r.fiveWeekly, 5, r);
+  s.eq('378 sessions at 5 a week is 76 weeks, not 54', r.fiveWeeks, 76, r);
+  s.eq('and that is derived from the schedule, not a second literal', r.fiveWeeks, r.fiveDerived, r);
+  s.ok('the Program tab prints the real figure', r.fiveSaysReal, r);
+  s.ok('and no longer claims 54 weeks', r.fiveDropsThe54, r);
+  s.ok('and names the pace it was computed from', r.fiveNamesThePace, r);
+  s.ok('and drops the "full year" claim with it', r.fiveNoYearClaim, r);
+  s.eq('floor: a seven-day athlete really is on 54 weeks', r.sevenWeeks, 54, r);
+  s.ok('and the tab says so', r.sevenSays54, r);
+  s.eq('six days a week lands between the two', r.sixWeeks, 63, r);
+  s.ok('the tab says the goal date and the program are two clocks', r.saysTwoClocks, r);
+  s.ok('naming the timeframe the athlete actually picked', r.namesTheTimeframe, r);
+  s.ok('and saying the program outlasts the goal weight', r.saysItKeepsGoing, r);
+  s.ok('and pointing at the one screen that owns the date', r.pointsAtBody, r);
+  s.ok('without restating that date here', r.doesNotRestateTheDate, r);
+  s.ok('floor: with no timeframe set the note stays away', r.quietWithNoTimeframe, r);
+  s.eq('the timeframe labels come from one list', r.labels, ['~12 weeks', '~6 months', '~1 year'], r);
+  s.eq('an off-list value from a backup still reads sensibly', r.labelOffList, '~6 months', r);
+  s.eq('and no timeframe has no label at all', r.labelZero, '', r);
+  s.eq('the quiz picker renders from that same list', r.pickerFromTheList,
+    ['12:~12 weeks', '24:~6 months', '52:~1 year', '0:No deadline'], r);
+  await pb.close();
+}
+
 /* ---- "Meal ideas" must land on meals, not an empty tab -------------------
    Regression from v245: removing Fuel's plan card orphaned openMealPlan(),
    which still scrolled to a #mealplan anchor that no longer existed. Its own
