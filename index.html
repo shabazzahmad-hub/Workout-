@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='333';
+const APP_VERSION='334';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4067,6 +4067,36 @@ function combatResult(k){
     return (typeof v==='number'&&isFinite(v)&&v>0)?v:null;
   }catch(e){return null;}
 }
+/* A TIME TOO GOOD TO BE A TIME. The card names a window — 50 to 60 minutes —
+   and the verdict only ever checked the upper end, so a 20-minute entry read
+   as a PASS. Five kilometres in twenty minutes is 15 km/h; under 77 lb the
+   window is 5-6 km/h. The same hole let a one-second circuit pass.
+
+   That is a promise in UI text with no code behind it, found by auditing this
+   file's own change an hour after shipping it.
+
+   It is NOT reported as a failure. Arriving inside 50 minutes may or may not
+   fail the real evaluation, and this app does not know — what it does know is
+   that the number is outside the window it printed, which usually means a
+   short course, a light bag or a slip of the thumb. So it says that and lets
+   the athlete decide, the same call the FORCE kit note and the joint warning
+   make.
+
+   The circuit's floor is DERIVED from the events rather than invented: half
+   the sum of the individual standards. Beating every event by more than half
+   its allowed time is not a performance, it is a mis-entry — and because it
+   reads FORCE_EVENTS, it moves if those figures ever do. */
+function combatFloor(k){
+  try{
+    if(k==='march')return COMBAT_MARCH_MIN[0]*60;
+    const sum=FORCE_EVENTS.reduce((a,e)=>a+(typeof e.max==='number'?e.max:0),0);
+    return sum>0?Math.round(sum/2):null;
+  }catch(e){return null;}
+}
+function combatImplausible(k){
+  const v=combatResult(k), f=combatFloor(k);
+  return (v!==null&&f!==null&&v<f);
+}
 function combatVerdict(k){
   const v=combatResult(k);
   if(v===null)return null;                       // not measured is not failed
@@ -4809,12 +4839,18 @@ function openCombat(){
   openSheet(`
     <h3>🎖️ FORCE Combat</h3>
     <div class="note info">The Army's own standard, and the same four events as your annual FORCE test — but run as <b>one continuous circuit</b>, in a fixed order, wearing about <b>${COMBAT_FFO_KG} kg</b> of kit, against a single clock. The rest between events is what is taken away.</div>
+    ${/* The SAME renderer the FORCE prep card uses. This card offered the
+          whole standard and a Run button with no word about the sandbag three
+          of the four events need — v322's own lesson, one card over. One
+          renderer, so the two can never say different things. */''}
+    ${forceKitHTML()}
     ${forceRiskHTML()}
     <div class="section-label" style="margin-top:14px">The circuit</div>
     <div class="card pad">
       <div class="kv"><span><b>All four, in order, under ${fmtTime(COMBAT_CIRCUIT_MAX)}</b>
         <div class="tiny muted" style="margin-top:2px">${_ve(combatOrder().map(e=>e.name).join(' → '))}</div></span>
         <span style="text-align:right"><b>${ct===null?'—':_ve(fmtTime(ct))}</b><div>${chip(cv)}</div></span></div>
+      ${combatImplausible('circuit')?`<div class="note warn" style="margin:10px 0 0"><b>${_ve(fmtTime(ct))} is faster than this circuit can be run.</b> Every event would have to be beaten by more than half its allowed time. Check the number — and check you ran all four with the bag.</div>`:''}
       <button class="btn t-teal" style="width:100%;margin-top:10px" onclick="startCombatCircuit()">▶ Run the circuit</button>
     </div>
     <div class="section-label" style="margin-top:14px">The march</div>
@@ -4822,6 +4858,7 @@ function openCombat(){
       <div class="kv"><span><b>${COMBAT_MARCH_KM} km carrying ${COMBAT_MARCH_KG} kg (${combatMarchLb()} lb)</b>
         <div class="tiny muted" style="margin-top:2px">In ${COMBAT_MARCH_MIN[0]}–${COMBAT_MARCH_MIN[1]} minutes</div></span>
         <span style="text-align:right"><b>${mt===null?'—':_ve(fmtTime(mt))}</b><div>${chip(mv)}</div></span></div>
+      ${combatImplausible('march')?`<div class="note warn" style="margin:10px 0 0"><b>${_ve(fmtTime(mt))} is faster than the ${COMBAT_MARCH_MIN[0]}–${COMBAT_MARCH_MIN[1]} minute window.</b> That is ${_ve(String(Math.round(COMBAT_MARCH_KM/(mt/3600)*10)/10))} km/h under ${combatMarchLb()} lb, against about ${_ve(String(Math.round(COMBAT_MARCH_KM/(COMBAT_MARCH_MIN[0]/60)*10)/10))} km/h at the fast end of the window. Usually that means a shorter course, a lighter bag or a slip of the thumb — check it. This app cannot tell you whether arriving early fails the real thing; your unit can.</div>`:''}
       ${gap?`<div class="note warn" style="margin:10px 0 0"><b>${gap.need} lb is heavier than this app will train you to.</b> The ruck ladder stops at <b>${gap.ceil} lb</b> — a third of your bodyweight — because that is the load a back tolerates week after week. The standard is still ${gap.need} lb, so the last ${gap.short} lb is short, deliberate exposure close to the date, not something to build into your weekly rucking. Your unit's own preparation is the guide for that part.</div>`:''}
     </div>
     <button class="btn ghost" style="width:100%;margin-top:12px" onclick="openCombatLog()">Log a result</button>

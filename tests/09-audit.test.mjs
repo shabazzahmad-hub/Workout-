@@ -2935,6 +2935,125 @@ export default async function run() {
       t.ok('and names the kit load worn for it',
         cb.card.indexOf(String(cb.ffoKg) + ' kg') >= 0, { want: cb.ffoKg, card: cb.card.slice(0, 300) });
     }
+    /* ---- auditing v333 an hour after shipping it (v334) -------------------
+
+       Two defects, both in code written the same evening, and both are
+       lessons already in this file.
+
+       THE KIT NOTE. `forceKitHTML()` returns real content and openForcePrep()
+       renders it. openCombat() did not reference it at all — so an athlete
+       with no sandbag saw the whole FORCE Combat standard and a "Run the
+       circuit" button, with nothing saying three of the four events need kit
+       they do not own. That is v322's own finding, one card over.
+
+       THE HALF-ENFORCED WINDOW. The march card printed "In 50-60 minutes" and
+       the verdict only checked the upper end, so a 20-minute entry read as a
+       PASS. Five kilometres in twenty minutes is 15 km/h; under 77 lb the
+       window is 5-6. A one-second circuit passed the same way. A promise in UI
+       text with no code behind it. */
+    const ca = await page.evaluate(() => {
+      const o = {};
+      o.namesExist = ['combatFloor', 'combatImplausible', 'openCombat', 'forceKitHTML']
+        .every(n => typeof window[n] === 'function');
+      if (!o.namesExist) return o;
+      const keepPrep = JSON.parse(JSON.stringify(STATE.prep || {}));
+      const keepGear = (STATE.profile.gear || []).slice();
+      const txt = () => document.body.innerText.replace(/\s+/g, ' ');
+      const card = () => { let t = ''; try { openCombat(); t = txt(); } catch (e) { t = 'THREW ' + e.message; }
+        try { closeSheet(); } catch (e) {} return t; };
+
+      /* The circuit floor is DERIVED from the events, not invented — so it
+         moves if those standards ever do. */
+      o.eventSum = FORCE_EVENTS.reduce((a, e) => a + (typeof e.max === 'number' ? e.max : 0), 0);
+      o.floors = { circuit: combatFloor('circuit'), march: combatFloor('march') };
+      o.marchWindowLo = COMBAT_MARCH_MIN[0];
+
+      const imp = (k, v) => { STATE.prep = { [k === 'circuit' ? 'combatCircuit' : 'combatMarch']: v };
+        return combatImplausible(k); };
+      o.circuit = { one: imp('circuit', 1), half: imp('circuit', o.floors.circuit - 1),
+                    onFloor: imp('circuit', o.floors.circuit),
+                    real: imp('circuit', 800), slow: imp('circuit', 960) };
+      o.march = { twenty: imp('march', 20 * 60), justUnder: imp('march', o.floors.march - 60),
+                  onFloor: imp('march', o.floors.march),
+                  real: imp('march', 55 * 60), slow: imp('march', 65 * 60) };
+      /* …and an unmeasured result is not implausible either — there is no
+         number to be implausible about. */
+      STATE.prep = {}; o.unmeasured = { c: combatImplausible('circuit'), m: combatImplausible('march') };
+
+      /* IMPLAUSIBLE IS NOT A FAIL. The app does not know whether arriving
+         early fails the real evaluation, so it must not say that it does. */
+      STATE.prep = { combatMarch: 20 * 60 };
+      o.stillPasses = combatVerdict('march');
+
+      /* The notes on the glass. */
+      STATE.prep = { combatMarch: 20 * 60, combatCircuit: 60 };
+      const bad = card();
+      o.noteMarch = /faster than the \d+–\d+ minute window/.test(bad);
+      o.noteCircuit = /faster than this circuit can be run/.test(bad);
+      /* and it names the SPEED, which is what makes the number obviously
+         wrong rather than merely flagged */
+      o.kmh = (bad.match(/That is ([\d.]+) km\/h under (\d+) lb/) || []).slice(1);
+      /* FLOOR: a note that always fires is a note nobody reads. */
+      STATE.prep = { combatMarch: 55 * 60, combatCircuit: 800 };
+      o.legitQuiet = !/faster than/.test(card());
+
+      /* The kit note, both ways round. */
+      STATE.profile.gear = keepGear.filter(g => g !== 'sandbag');
+      o.kitWhenMissing = /tick .?Sandbag.? in Settings/i.test(card());
+      STATE.profile.gear = keepGear.filter(g => g !== 'sandbag').concat('sandbag');
+      o.kitQuietWhenOwned = !/tick .?Sandbag.? in Settings/i.test(card());
+      /* …and it is the SAME renderer the FORCE prep card uses, so the two can
+         never say different things. */
+      o.sameRenderer = /forceKitHTML/.test(openCombat.toString())
+        && /forceKitHTML/.test(openForcePrep.toString());
+
+      STATE.prep = keepPrep; STATE.profile.gear = keepGear;
+      return o;
+    });
+
+    t.ok('guard: every name this block calls exists', ca.namesExist, ca);
+    if (!ca.namesExist) {
+      t.ok('guard: the block collected something to assert on', false, ca);
+    } else {
+      /* The floors are derived, not invented. */
+      t.ok('guard: the four events really declare timed standards', ca.eventSum > 0, ca);
+      t.eq('the circuit floor is half the sum of the event standards',
+        ca.floors.circuit, Math.round(ca.eventSum / 2));
+      t.eq('and the march floor is the window’s own lower bound',
+        ca.floors.march, ca.marchWindowLo * 60);
+
+      /* Implausible times are flagged; real ones are not. */
+      t.ok('a one-second circuit is flagged', ca.circuit.one, ca.circuit);
+      t.ok('and anything under the floor', ca.circuit.half, ca.circuit);
+      t.ok('but a time ON the floor is accepted', !ca.circuit.onFloor, ca.circuit);
+      t.ok('and a real passing time is not flagged', !ca.circuit.real, ca.circuit);
+      t.ok('nor a slow one — that is a fail, not an impossibility', !ca.circuit.slow, ca.circuit);
+      t.ok('a twenty-minute loaded march is flagged', ca.march.twenty, ca.march);
+      t.ok('and anything under the window', ca.march.justUnder, ca.march);
+      t.ok('but a time ON the window is accepted', !ca.march.onFloor, ca.march);
+      t.ok('and a real time inside it is not flagged', !ca.march.real, ca.march);
+      t.ok('nor a slow one', !ca.march.slow, ca.march);
+      /* FLOOR: nothing entered is not an implausible entry. */
+      t.ok('and a result never entered is not flagged either',
+        !ca.unmeasured.c && !ca.unmeasured.m, ca.unmeasured);
+
+      /* The app does not claim to know something it does not. */
+      t.eq('an implausible time is still not reported as a FAILURE', ca.stillPasses, 'pass');
+
+      /* On the glass. */
+      t.ok('the march note appears', ca.noteMarch, ca);
+      t.ok('the circuit note appears', ca.noteCircuit, ca);
+      t.ok('and the march note names the implied speed and the load',
+        ca.kmh.length === 2 && +ca.kmh[0] > 10 && +ca.kmh[1] === 77, ca.kmh);
+      t.ok('while a legitimate pair of results says nothing at all', ca.legitQuiet, ca);
+
+      /* The kit note, and one renderer for it. */
+      t.ok('the Combat card names the missing sandbag', ca.kitWhenMissing, ca);
+      t.ok('and stays quiet once it is owned', ca.kitQuietWhenOwned, ca);
+      t.ok('and both cards use the same renderer, so they cannot drift',
+        ca.sameRenderer, ca);
+    }
+
 
 
 
