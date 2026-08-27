@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='336';
+const APP_VERSION='337';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4699,12 +4699,12 @@ function enduranceWeek(raw){
    thing beside the running and another beside the rucking. */
 function footLoadHTML(w){
   if(!w||w.footTotal===null||w.footTotal===undefined)return '';
-  const tot=_ve(String(w.footTotal))+' '+distUnit();
+  const tot=_ve(distShow(w.footTotal));
   if(!w.footBig)
     return `<div class="tiny muted" style="margin-top:6px">Rucking and running together: <b>${tot}</b> on your feet this week. That total is what your legs actually absorb — neither number means much on its own.</div>`;
   const what=w.footNew==='run'?'running':'rucking';
   const other=w.footNew==='run'?'rucking':'running';
-  return `<div class="note warn" style="margin:8px 0 0"><b>${_ve(String(w.footAdded))} ${distUnit()} of ${what} is brand new on top of your ${other}.</b> This plan sizes ${what} against your own ${what}, and you have none logged — so it opens at its starting distance and lands on top of everything else, taking you to <b>${tot}</b> on your feet this week against the ${_ve(String(w.footFrom))} ${distUnit()} you have been doing. Your legs do not know which plan a kilometre came from. Start the ${what} shorter than it says, or hold the ${other} where it is this week — the same rule as building the ruck distance or the load, never both.</div>`;
+  return `<div class="note warn" style="margin:8px 0 0"><b>${_ve(distShow(w.footAdded))} of ${what} is brand new on top of your ${other}.</b> This plan sizes ${what} against your own ${what}, and you have none logged — so it opens at its starting distance and lands on top of everything else, taking you to <b>${tot}</b> on your feet this week against the ${_ve(String(w.footFrom))} ${distUnit()} you have been doing. Your legs do not know which plan a kilometre came from. Start the ${what} shorter than it says, or hold the ${other} where it is this week — the same rule as building the ruck distance or the load, never both.</div>`;
 }
 function enduranceHTML(){
   const w=enduranceWeek();
@@ -4714,16 +4714,16 @@ function enduranceHTML(){
     <div class="row" style="justify-content:space-between;align-items:baseline">
       <div><b style="font-size:17px">Week ${w.wk} · ${_ve(w.phase)}</b>
         <div class="tiny muted">${w.left} week${w.left===1?'':'s'} to go</div></div>
-      <div style="text-align:right"><b style="font-size:19px">${_ve(String(w.km))} ${distUnit()}</b>
+      <div style="text-align:right"><b style="font-size:19px">${_ve(distShow(w.km))}</b>
         <div class="tiny muted">running this week</div></div>
     </div>
     ${footLoadHTML(w)}
     ${w.down?`<div class="note ok" style="margin:10px 0 0"><b>Down week.</b> Volume is cut on purpose — the adaptation happens here, not in the hard weeks.</div>`:''}
     <div class="tiny muted" style="margin-top:10px">${_ve(w.note)}</div>
     ${w.estimated
-      ? `<div class="note warn" style="margin:10px 0 0"><b>Starting low, because nothing is logged yet.</b> The plan opens at ${PREP_FLOOR_KM} ${distUnit()} a week and climbs from there. Log a few runs and it will build from what you actually do instead.</div>`
-      : `<div class="tiny muted" style="margin-top:6px">Built from the <b>${_ve(String(w.start))} ${distUnit()}</b> a week you have been logging, climbing no more than <b>${Math.round((PREP_RAMP-1)*100)}%</b> a week.</div>`}
-    ${w.down?`<div class="tiny muted" style="margin-top:6px">Next week goes back to <b>${_ve(String(w.curve===w.km?w.curve:Math.round(w.curve*PREP_RAMP*10)/10))} ${distUnit()}</b>. That looks like a jump against this week and is not one — it is ${Math.round((PREP_RAMP-1)*100)}% up on the last week you were not cutting.</div>`:''}
+      ? `<div class="note warn" style="margin:10px 0 0"><b>Starting low, because nothing is logged yet.</b> The plan opens at ${_ve(distShow(PREP_FLOOR_KM))} a week and climbs from there. Log a few runs and it will build from what you actually do instead.</div>`
+      : `<div class="tiny muted" style="margin-top:6px">Built from the <b>${_ve(distShow(w.start))}</b> a week you have been logging, climbing no more than <b>${Math.round((PREP_RAMP-1)*100)}%</b> a week.</div>`}
+    ${w.down?`<div class="tiny muted" style="margin-top:6px">Next week goes back to <b>${_ve(distShow(w.curve===w.km?w.curve:Math.round(w.curve*PREP_RAMP*10)/10))}</b>. That looks like a jump against this week and is not one — it is ${Math.round((PREP_RAMP-1)*100)}% up on the last week you were not cutting.</div>`:''}
     <div class="tiny muted" style="margin-top:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">This week</div>
     ${w.sessions.map(id=>`<button class="btn ghost" style="text-align:left;display:block;padding:12px;width:100%;margin-top:6px" onclick="startRunSession('${id}')">▶ ${_ve(names[id]||id)}</button>`).join('')}
   </div>${ruckLadderHTML()}`;
@@ -4744,15 +4744,15 @@ function ruckLadderHTML(){
     <div class="row" style="justify-content:space-between;align-items:baseline">
       <div><b style="font-size:17px">${_ve(String(w.lb))} lb</b>
         <div class="tiny muted">${w.share!==null?w.share+'% of your bodyweight':'log your weight to see the share'}</div></div>
-      <div style="text-align:right"><b style="font-size:19px">${_ve(String(w.km))} ${distUnit()}</b>
+      <div style="text-align:right"><b style="font-size:19px">${_ve(distShow(w.km))}</b>
         <div class="tiny muted">this week</div></div>
     </div>
     ${footLoadHTML(w)}
     <div class="note ${w.down?'ok':'info'}" style="margin:10px 0 0"><b>What moves this week:</b> ${moving}</div>
     ${w.capped?`<div class="note warn" style="margin:10px 0 0"><b>The load stops here at ${_ve(String(w.ceil))} lb.</b> That is about a third of your bodyweight, which is the far end of what rucking guidance asks for. From here the distance carries the progression. You can carry more if you choose to — the app will not add it for you.</div>`:''}
     ${w.estimated
-      ? `<div class="note warn" style="margin:10px 0 0"><b>Starting light, because nothing is logged yet.</b> It opens at ${PREP_RUCK_FLOOR_KM} ${distUnit()} under a ${RUCK_PLATES[0]} lb plate. Log a few rucks and it will build from what you actually carry.</div>`
-      : `<div class="tiny muted" style="margin-top:8px">Built from the <b>${_ve(String(w.startKm))} ${distUnit()}</b> a week you have been logging.</div>`}
+      ? `<div class="note warn" style="margin:10px 0 0"><b>Starting light, because nothing is logged yet.</b> It opens at ${_ve(distShow(PREP_RUCK_FLOOR_KM))} under a ${RUCK_PLATES[0]} lb plate. Log a few rucks and it will build from what you actually carry.</div>`
+      : `<div class="tiny muted" style="margin-top:8px">Built from the <b>${_ve(distShow(w.startKm))}</b> a week you have been logging.</div>`}
     <div class="tiny muted" style="margin-top:10px">Distance <b>or</b> load, never both in the same week. A ruck is carried by the same tissue that absorbs every step, so raising two things at once is how a back goes.</div>
   </div>`;
 }
@@ -13582,13 +13582,22 @@ function runMinutesFor(steps,k){
   const per=runStepsPerMin(k);
   return (per>0&&steps>0)?Math.ceil(steps/per):0;
 }
-/* Pace as minutes per kilometre — the number a runner actually thinks in, and
-   the one a treadmill is set by. Distance per MINUTE would read as "0.2 km",
-   which is the mirror of why the ruck card shows speed instead. */
+/* Pace as minutes per unit of DISTANCE — the number a runner actually thinks
+   in, and the one a treadmill is set by. Distance per MINUTE would read as
+   "0.2 km", which is the mirror of why the ruck card shows speed instead.
+
+   In the athlete's OWN unit. The ruck card one block down has converted its
+   speed through kmToShow() since it was written; this one printed "/km" above
+   an input box the same card labels MI. A pace you cannot compare with the
+   distance you are about to type is not a pace you can use.
+
+   The seconds are carried, not clamped: 9.995 min/mi rounds to 60 seconds and
+   would otherwise print "9:60". */
 function runPaceLabel(k){
-  const perKm=60/runPace(k).kmh;
-  const mm=Math.floor(perKm), ss=Math.round((perKm-mm)*60);
-  return mm+':'+String(ss).padStart(2,'0')+' /km';
+  const per=60/kmToShow(runPace(k).kmh);
+  let mm=Math.floor(per), ss=Math.round((per-mm)*60);
+  if(ss===60){mm++;ss=0;}
+  return mm+':'+String(ss).padStart(2,'0')+' /'+distUnit();
 }
 /* The plate, carried forward as the athlete's default the same way bikeLevel
    is. Stored in POUNDS because that is what is stamped on a ruck plate
@@ -13634,6 +13643,16 @@ function bikeMinutesFor(steps,k){
 /* Distance follows the app's units convention: stored canonically in km,
    shown in whichever unit the athlete reads. */
 function distUnit(){return isImperial()?'mi':'km';}
+/* A distance in the athlete's own unit, converted AND labelled in ONE place.
+   The endurance and ruck plans shipped writing the two halves as separate
+   expressions — `${w.km} ${distUnit()}` — so the LABEL respected the setting
+   and the NUMBER never did. An imperial athlete read the plan's 8 km as
+   "8 mi": 61% more running than prescribed, in week 1, on the one plan in this
+   app whose entire purpose is to cap weekly growth at 10%. Every other
+   distance surface here already went through kmToShow(); the plan was the one
+   subsystem that did not, which is why the helper exists rather than a ninth
+   hand-written pair. */
+function distShow(km){return (Math.round(kmToShow(km)*10)/10)+' '+distUnit();}
 function kmToShow(km){return isImperial()?km*0.621371:km;}
 function showToKm(v){return isImperial()?v/0.621371:v;}
 /* What it takes to cover a step debt, in all three currencies. Each is rounded
@@ -14426,7 +14445,7 @@ function runBlockHTML(m,short){
      number, two labels" the Progress summary was cleaned of. */
   h+=`<button class="btn t-teal" style="width:100%;margin-bottom:12px" onclick="openMakeupTimer('run')">⏱️ Time it — guided timer, logs itself</button>
     <div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log the run as</div>
-    <div class="tiny muted" style="margin:-2px 0 8px"><b>Log the distance if you know it.</b> Running costs about the same per kilometre however fast you go — measured across these four paces, the same 5 km comes out within 9% — so picking the wrong pace barely moves the number. Minutes are the one input the pace really does change.</div>
+    <div class="tiny muted" style="margin:-2px 0 8px"><b>Log the distance if you know it.</b> Running costs about the same per ${isImperial()?'mile':'kilometre'} however fast you go — measured across these four paces, the same ${isImperial()?'3 miles':'5 km'} comes out within 9% — so picking the wrong pace barely moves the number. Minutes are the one input the pace really does change.</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${RUN_UNITS.map(([k,l])=>
       `<button class="${m.nunit===k?'on':''}" onclick="setRunUnit('${k}')">${l==='Distance'?distUnit().toUpperCase():l}</button>`).join('')}</div>
     <div class="row" style="justify-content:space-between;align-items:flex-end;gap:10px">

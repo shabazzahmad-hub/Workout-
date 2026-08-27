@@ -3381,6 +3381,131 @@ export default async function run() {
     }
   }
 
+  // ---- the plan's LABEL respected the unit setting and its NUMBER did not --
+  /* Every distance surface in this app converts through kmToShow() — the bike
+     card, the ruck card, the run card's own advice line, the Progress activity
+     rows. The endurance and ruck PLANS did not: they wrote the two halves of a
+     figure as separate expressions, `${w.km} ${distUnit()}`, so an imperial
+     athlete was shown the plan's 8 km as "8 mi".
+
+     That is 61% more running than prescribed, in week 1, on the one plan in
+     this app whose entire purpose is to cap weekly growth at 10% — the injury
+     the plan exists to prevent, delivered by the plan.
+
+     Both mechanisms are exercised, because a check at one unit passes on half
+     the code: the metric athlete's figure must be UNCHANGED (a "convert
+     everything" fix that also converted for them fails here), and the imperial
+     athlete's must be the real converted VALUE rather than merely a different
+     one. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      for (const n of ['enduranceHTML', 'ruckLadderHTML', 'enduranceWeek', 'ruckLadderWeek',
+                       'distShow', 'kmToShow', 'runPaceLabel', 'runTTLabel'])
+        if (typeof window[n] !== 'function') (o.absent = o.absent || []).push(n);
+      if (o.absent) return o;
+      STATE.profile.gear = ['ruck', 'sandbag', 'bike'];
+      STATE.nutrition.weightKg = 86;
+      STATE.prep = { date: '2026-12-01' };
+      save();
+      const txt = h => { const d = document.createElement('div'); d.innerHTML = h;
+        return (d.innerText || d.textContent || '').replace(/\s+/g, ' '); };
+      const grab = () => ({
+        runKm: enduranceWeek().km, ruckKm: ruckLadderWeek().km,
+        footKm: enduranceWeek().footTotal,
+        end: txt(enduranceHTML()), ruck: txt(ruckLadderHTML()),
+        paceSteady: runPaceLabel('steady'), tt: runTTLabel(),
+        pacesAll: RUN_PACES.map(p => runPaceLabel(p.k)),
+      });
+      STATE.profile.unit = 'cm'; save(); o.metric = grab();
+      STATE.profile.unit = 'in'; save(); o.imp = grab();
+      o.trueRunMi = Math.round(o.imp.runKm * 0.621371 * 10) / 10;
+      o.trueRuckMi = Math.round(o.imp.ruckKm * 0.621371 * 10) / 10;
+      o.trueFootMi = Math.round(o.imp.footKm * 0.621371 * 10) / 10;
+      STATE.profile.unit = 'cm'; save();
+      return o;
+    });
+    t.ok('guard: the plan really produced a running distance to argue about',
+      !r.absent && r.imp && r.imp.runKm > 0 && r.imp.ruckKm > 0, r);
+    t.ok('guard: and the two units genuinely differ for it',
+      r.trueRunMi !== r.imp.runKm, r);
+    // the metric athlete is untouched — the floor an over-eager fix fails
+    t.ok('a metric athlete still reads the plan in kilometres',
+      r.metric.end.includes(r.metric.runKm + ' km running this week'), r.metric.end.slice(0, 160));
+    t.ok('and their ruck week too',
+      r.metric.ruck.includes(r.metric.ruckKm + ' km this week'), r.metric.ruck.slice(0, 160));
+    // the imperial athlete reads the CONVERTED figure, pinned by value
+    t.ok('an imperial athlete reads the converted running distance',
+      r.imp.end.includes(r.trueRunMi + ' mi running this week'), { want: r.trueRunMi, got: r.imp.end.slice(0, 160) });
+    t.ok('and never the raw kilometre figure wearing a mile label',
+      !r.imp.end.includes(r.imp.runKm + ' mi running this week'), r.imp.end.slice(0, 160));
+    t.ok('the ruck week converts too',
+      r.imp.ruck.includes(r.trueRuckMi + ' mi this week'), { want: r.trueRuckMi, got: r.imp.ruck.slice(0, 160) });
+    t.ok('guard: the combined foot total is a real figure to convert',
+      r.imp.footKm > 0 && r.trueFootMi !== r.imp.footKm, r);
+    t.ok('and so does the combined distance on your feet',
+      r.imp.end.includes('together: ' + r.trueFootMi + ' mi on your feet'),
+      { want: r.trueFootMi, got: r.imp.end.slice(0, 240) });
+    t.ok('never the raw kilometre total wearing a mile label',
+      !r.imp.end.includes('together: ' + r.imp.footKm + ' mi on your feet'),
+      r.imp.end.slice(0, 240));
+
+    // ---- the run card's pace, which the ruck card next door already converts
+    t.eq('the run pace is per kilometre for a metric athlete', r.metric.paceSteady, '6:11 /km', r);
+    t.eq('and per mile for an imperial one', r.imp.paceSteady, '9:57 /mi', r);
+    t.ok('and no pace ever prints a sixtieth second',
+      ![...r.metric.pacesAll, ...r.imp.pacesAll].some(x => /:60\b/.test(x)),
+      [r.metric.pacesAll, r.imp.pacesAll]);
+    /* None of the four real paces lands on a rounded 60th second, so the carry
+       cannot fire on today's table and a mutant deleting it would walk through
+       the sweep above. Exercised directly instead — the same technique the
+       hardness-band and anchor-unit guards use — with a synthetic pace chosen
+       so 60/kmh comes to 7.996 minutes: 0.996 x 60 rounds to 60. */
+    const sixty = await page.evaluate(() => {
+      STATE.profile.unit = 'cm'; save();
+      RUN_PACES.push({ k: '_probe60', kmh: 60 / 7.996, label: 'probe', rpe: '', cue: '', met: 9 });
+      const raw = 60 / kmToShow(60 / 7.996);
+      const out = { label: runPaceLabel('_probe60'), mins: raw,
+                    secs: Math.round((raw - Math.floor(raw)) * 60) };
+      RUN_PACES.pop();
+      return out;
+    });
+    t.eq('guard: the synthetic pace really does round its seconds to 60', sixty.secs, 60, sixty);
+    t.eq('a pace whose seconds round to 60 carries into the minute', sixty.label, '8:00 /km', sixty);
+
+    // ---- the floor: a PUBLISHED standard keeps the unit it was published in
+    /* The CAF's own test is 2.4 km, the way FORCE's sandbag is 20 kg and its
+       shuttle is 20 m. Converting a named standard to "1.5 mi" would satisfy
+       every assertion above and is the wrong answer — the athlete is training
+       for the figure their unit will actually quote at them. */
+    t.eq('the named time trial stays in its published unit for a metric athlete', r.metric.tt, '2.4 km time trial', r);
+    t.eq('and for an imperial one', r.imp.tt, '2.4 km time trial', r);
+  }
+
+  // ---- the run card names the athlete's own unit in prose, too -------------
+  /* The sentence explaining WHY distance is the input said "per kilometre" to
+     everybody. A number converted above a word that is not is half a fix. */
+  {
+    const r = await page.evaluate(() => {
+      STATE.nutrition.cardioMode = 'run'; STATE.nutrition.weightKg = 86; save();
+      const txt = () => { const d = document.createElement('div'); d.innerHTML = movementHTML();
+        const s = (d.innerText || d.textContent || '').replace(/\s+/g, ' ');
+        const i = s.indexOf('Running costs'); return i < 0 ? '' : s.slice(i, i + 140); };
+      const o = {};
+      STATE.profile.unit = 'cm'; save(); o.metric = txt();
+      STATE.profile.unit = 'in'; save(); o.imp = txt();
+      STATE.profile.unit = 'cm'; save();
+      return o;
+    });
+    t.ok('guard: the sentence is on the card at all', r.metric.length > 40 && r.imp.length > 40, r);
+    t.ok('a metric athlete is told the cost is per kilometre',
+      /per kilometre/.test(r.metric) && !/per mile/.test(r.metric), r.metric);
+    t.ok('an imperial athlete is told it is per mile',
+      /per mile/.test(r.imp) && !/per kilometre/.test(r.imp), r.imp);
+    t.ok('and the worked example is in their unit as well',
+      /3 miles/.test(r.imp) && /5 km/.test(r.metric), r);
+  }
+
   await browser.close();
 
   // ---- the readiness deload, in the timezone it was broken in --------------
@@ -3667,8 +3792,6 @@ export default async function run() {
       typeof r.ratio === 'number' && Math.abs(r.ratio - 1) < 0.05, r);
     await ctx.close();
   }
-
-  await tzb.close();
 
   await tzb.close();
 
