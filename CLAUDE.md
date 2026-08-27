@@ -4465,7 +4465,22 @@ with no repaint, every button rendered as selected, and the new field stripped
 from the backup. **A new STATE field gets a round-trip check of its own**,
 because that is precisely how v336 was found.
 
-Eighteen mutants, all caught. The default is **Operator**, because everything
+### Switching path mid-block, an edge the paths themselves created
+
+The ladder recomputes rather than remembering, so an athlete who changes their
+mind sees the plate move. Measured: the two ladders are offset by exactly one
+slot, so the gap is **never more than a single 5 lb step** and closes again
+within two weeks — bounded, self-correcting and in the conservative direction.
+
+**No note, and that is the finding.** A note firing on a rare action with a
+self-correcting effect is a note nobody reads. What is worth protecting is the
+BOUND: a future path pair two slots apart would drop the plate 10 lb with
+nothing on screen to explain it. So the bound is pinned rather than assumed,
+against the app's own `PREP_RUCK_STEP_LB` rather than a number restated in the
+check, with a guard that the ladders really do diverge somewhere — otherwise
+"never more than one step" passes on two identical paths.
+
+Twenty mutants, all caught. The default is **Operator**, because everything
 else this app knows about the Canadian standards is load carriage — FORCE's
 sandbag and shuttle, FORCE Combat's 25 kg fighting order and 35 kg march.
 

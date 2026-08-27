@@ -3562,6 +3562,7 @@ export default async function run() {
       o.op = fp('operator');
       o.as = fp('assaulter');
       o.pathKeys = PREP_PATH_KEYS.slice();
+      o.stepLb = PREP_RUCK_STEP_LB;   // the app's own step, not a number restated here
       // the default, with nothing stored
       STATE.prep = { date: ahead(112) }; save();
       o.defaultPath = prepPath();
@@ -3639,6 +3640,20 @@ export default async function run() {
       t.eq('both paths raise the plate the same number of times',
         loadWeeks(r.op), loadWeeks(r.as), { operator: loadWeeks(r.op), assaulter: loadWeeks(r.as) });
       t.eq('both paths end on the same plate', r.op[15].lb, r.as[15].lb, { op: r.op[15].lb, as: r.as[15].lb });
+      /* SWITCHING PATH MID-BLOCK is an edge the paths themselves created, and
+         the ladder recomputes rather than remembering — so an athlete who
+         changes their mind sees the plate move. Measured, the two ladders are
+         offset by exactly one slot, so the gap is never more than a single
+         5 lb step and it closes again within two weeks. That is a bounded,
+         self-correcting, conservative move and needs no note; a gap of two
+         steps would be a plate dropping 10 lb with nothing on screen to
+         explain it, which is why the bound is pinned rather than assumed. */
+      const gap = r.op.map((w, i) => Math.abs(w.lb - r.as[i].lb));
+      t.ok('switching path never moves the plate by more than one step',
+        Math.max(...gap) <= r.stepLb,
+        { gaps: gap.join(','), step: r.stepLb });
+      t.ok('guard: and the two ladders really do diverge somewhere',
+        Math.max(...gap) > 0, gap.join(','));
       t.eq('the Operator path never raises distance and load in one week', raisedBoth(r.op), 0,
         r.op.map(w => w.w + ':' + w.climb + ':' + w.ruckKm));
       t.eq('and neither does the Assaulter path', raisedBoth(r.as), 0,
