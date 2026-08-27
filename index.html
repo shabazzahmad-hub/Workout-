@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='331';
+const APP_VERSION='332';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4300,6 +4300,99 @@ function trailingRunKm(){
     return used.reduce((a,b)=>a+b,0)/used.length;
   }catch(e){return null;}
 }
+/* ---- the two plans, added together ---------------------------------------
+   The endurance plan ramps from what was logged RUNNING and the ruck ladder
+   from what was logged RUCKING, each capped at PREP_RAMP, and each with a
+   floor for an athlete with nothing logged IN THAT MODE. Neither read the
+   other — and a rucked kilometre and a run kilometre are absorbed by the same
+   tissue.
+
+   The floor is the part that bites. It exists for a beginner with nothing at
+   all, and it fires for an experienced athlete who simply has not done that
+   one thing. Measured on an athlete rucking 25 km a week and never running:
+   week one prescribed 27.5 km under the plate plus 8.8 km of running out of
+   the floor — 36.3 km, a 45% jump against a 10% rule. The mirror case, a
+   runner who has never rucked, jumped 32%.
+
+   So the cap is applied to the SUM, which is the number the tissue actually
+   sees, and the mode with less history gives way — introducing something new
+   is what has to fit around the work already being done, not the other way
+   round. This is the ruck ladder's own "distance or load, never both" rule
+   one level up: two plans each obeying their own rule that nobody added. */
+function trailingFootKm(){
+  const a=trailingRuckKm(), b=trailingRunKm();
+  if(a===null&&b===null)return null;            // nothing logged is not zero
+  return (a||0)+(b||0);
+}
+/* WARN, DO NOT SILENTLY RESIZE — and arriving there took three wrong turns
+   worth recording, because each looked right until it was measured.
+
+   Two series that each climb no more than 10% a week sum to a series that
+   climbs no more than 10% a week. Both plans already cap their own curve, so
+   the combined RATE never needed policing. The single unguarded moment is the
+   STEP: a mode with nothing logged opens at its FLOOR, and that floor is
+   judged against that mode alone. Measured, an athlete rucking 25 km a week
+   who takes up running was handed 8.8 km on top in one week — 36.3 km against
+   a 10% rule, a 45% jump.
+
+   Three fixes were tried and measured before this one:
+     - a flat cap on the trailing total CUT a legal 6.7%/wk plan from 12.4 km
+       of running to 4.5, and by week 12 the ruck alone had outgrown it anyway;
+     - a compounding cap was no constraint at all — 43 km against a 72 km cap;
+     - proportional scaling under a one-week cap was arithmetically right and
+       WORSE in practice: "is the other mode on its floor?" stays true forever
+       for an athlete who never takes that mode up, so a runner who does not
+       ruck had their running held at 14 km while their own curve climbed to
+       32. It suppressed the plan being followed because of a plan being
+       ignored.
+
+   The athlete is the one who decides which sessions they actually do, so this
+   states the combined figure and says when the step is large. That is the same
+   call the custom builder makes for a flagged joint and the FORCE session
+   makes for missing kit: name it, do not silently substitute. */
+/* WHICH mode is brand new, if either. This is the precise condition, and
+   getting there took one more measured wrong turn than the three above:
+   comparing the combined plan against the 4-week trailing average warns
+   EVERYBODY, because each plan's curve compounds FROM that average — by week
+   seven the plan is trailing x 1.1^6 = +77% for every athlete alive, whether
+   they have kept up or not. That is not a step, it is the programme.
+
+   The real step is narrow and it is the one that was measured: a mode with NO
+   history at all, opening at its floor, beside a mode the athlete is already
+   doing. Week on week both curves are capped at 10% and two series capped at
+   10% sum to a series capped at 10%, so nothing else needs saying. */
+function footNewMode(){
+  try{
+    const rk=trailingRuckKm(), rn=trailingRunKm();
+    if(rk!==null&&rn===null)return 'run';        // rucks, has never run
+    if(rn!==null&&rk===null)return 'ruck';       // runs, has never rucked
+    return null;                                  // both, or neither
+  }catch(e){return null;}
+}
+/* Fit the two prescriptions under the combined cap by scaling BOTH in
+   proportion, never by taking one to zero.
+
+   The first version cut the mode with the shorter history and it was wrong in
+   the way that matters: a rucker who has never run was prescribed ZERO
+   running, on a programme whose whole aerobic base is running. Introducing a
+   second mode means doing a little less of the first and a little of the new
+   one — which is what proportional scaling says, and what a coach would. */
+/* The combined figure and whether the step is worth flagging. It never
+   changes either plan's number — see above. */
+function fitFootKm(ruckKm,runKm){
+  try{
+    const a=+ruckKm||0, b=+runKm||0;
+    const nw=footNewMode();
+    const added=nw==='run'?b:(nw==='ruck'?a:0);
+    const t=trailingFootKm();
+    return {ruckKm:a,runKm:b,total:Math.round((a+b)*10)/10,
+            newMode:nw, added:Math.round(added*10)/10,
+            step:(nw&&t>0)?Math.round(added/t*100):null,
+            big:!!(nw&&added>0),
+            from:(t===null)?null:Math.round(t*10)/10};
+  }catch(e){return {ruckKm:+ruckKm||0,runKm:+runKm||0,total:null,newMode:null,
+                    added:0,step:null,big:false,from:null};}
+}
 function _dayRuckKm(t){
   try{
     if(!t||typeof t!=='object')return 0;
@@ -4350,7 +4443,7 @@ function ruckLoadCeilLb(){
    A four-week cycle: distance climbs, distance climbs, LOAD climbs and the
    distance is held, then a down week that cuts both. Adding a plate on the
    same week the distance goes up is how a back goes. */
-function ruckLadderWeek(){
+function ruckLadderWeek(raw){
   const left=prepWeeksLeft();
   if(left===null)return {noDate:true};
   const wk=prepWeekNo(), phase=prepPhase();
@@ -4382,8 +4475,18 @@ function ruckLadderWeek(){
   let shown=km;
   if(down)shown*=PREP_DOWN_CUT;
   if(phase==='taper')shown*=0.6;
-  return {left,phase,wk,down,capped,climbing,
-    km:Math.round(shown*10)/10,curve:Math.round(km*10)/10,lb,ceil,
+  /* Fitted against the run plan's ask for the same week, the mirror of what
+     enduranceWeek() does. Both read the other RAW, so they compute the same
+     fit from the same pair and cannot disagree. */
+  let rShown=Math.round(shown*10)/10, fit=null;
+  if(!raw){try{const E=enduranceWeek(true);
+    if(E&&!E.noDate&&E.km>0)fit=fitFootKm(rShown,E.km);}catch(e){fit=null;}}
+  const footTotal=fit?fit.total:null;
+  const footFrom=fit?fit.from:null, footStep=fit?fit.step:null;
+  const footNew=fit?fit.newMode:null, footAdded=fit?fit.added:0;
+  const footBig=!!(fit&&fit.big);
+  return {left,phase,wk,down,capped,climbing,footTotal,footFrom,footStep,footBig,footNew,footAdded,
+    km:rShown,curve:Math.round(km*10)/10,lb,ceil,
     startKm:Math.round(startKm*10)/10,startLb,
     estimated:base===null,
     share:(latestWeightKg()>0)?Math.round(lb*0.453592/latestWeightKg()*100):null};
@@ -4447,7 +4550,10 @@ const PREP_PHASE_NOTE={
 /* This week's distance, and the ramp that got there. Returns nulls rather
    than numbers when there is no date, because a plan with no deadline is not a
    plan — the app says so instead of inventing a schedule. */
-function enduranceWeek(){
+/* `raw` returns this plan's own number BEFORE the combined cap. It exists so
+   the two plans can fit against each other without recursing: each calls the
+   other with raw=true, which never calls back. */
+function enduranceWeek(raw){
   const left=prepWeeksLeft(), phase=prepPhase();
   if(left===null)return {noDate:true};
   const base=trailingRunKm();
@@ -4478,10 +4584,31 @@ function enduranceWeek(){
   const curve=Math.round(start*Math.pow(PREP_RAMP,climbTo)*10)/10;
   const climbed=Math.round((curve/Math.max(0.1,start)-1)*100);
   const plateaued=PREP_PLATEAU_PHASES.indexOf(phase)>=0&&wk>plateauWk;
+  /* Fitted against the ruck ladder's own ask for the same week. Each plan
+     obeyed the 10% rule alone and they combined into a 45% jump. */
+  let fit=null;
+  if(!raw){try{const L=ruckLadderWeek(true);
+    if(L&&!L.noDate&&L.km>0)fit=fitFootKm(L.km,km);}catch(e){fit=null;}}
+  const footTotal=fit?fit.total:null;
+  const footFrom=fit?fit.from:null, footStep=fit?fit.step:null;
+  const footNew=fit?fit.newMode:null, footAdded=fit?fit.added:0;
+  const footBig=!!(fit&&fit.big);
   return {left,phase,wk,down,km,curve,start:Math.round(start*10)/10,
           estimated:base===null,climbed,plateaued,plateauWk,
+          footTotal,footFrom,footStep,footBig,footNew,footAdded,
           note:PREP_PHASE_NOTE[phase]||'',
           sessions:PREP_PHASE_SESSIONS[phase]||PREP_PHASE_SESSIONS.base};
+}
+/* One renderer, read by both cards, so the combined figure cannot say one
+   thing beside the running and another beside the rucking. */
+function footLoadHTML(w){
+  if(!w||w.footTotal===null||w.footTotal===undefined)return '';
+  const tot=_ve(String(w.footTotal))+' '+distUnit();
+  if(!w.footBig)
+    return `<div class="tiny muted" style="margin-top:6px">Rucking and running together: <b>${tot}</b> on your feet this week. That total is what your legs actually absorb — neither number means much on its own.</div>`;
+  const what=w.footNew==='run'?'running':'rucking';
+  const other=w.footNew==='run'?'rucking':'running';
+  return `<div class="note warn" style="margin:8px 0 0"><b>${_ve(String(w.footAdded))} ${distUnit()} of ${what} is brand new on top of your ${other}.</b> This plan sizes ${what} against your own ${what}, and you have none logged — so it opens at its starting distance and lands on top of everything else, taking you to <b>${tot}</b> on your feet this week against the ${_ve(String(w.footFrom))} ${distUnit()} you have been doing. Your legs do not know which plan a kilometre came from. Start the ${what} shorter than it says, or hold the ${other} where it is this week — the same rule as building the ruck distance or the load, never both.</div>`;
 }
 function enduranceHTML(){
   const w=enduranceWeek();
@@ -4494,6 +4621,7 @@ function enduranceHTML(){
       <div style="text-align:right"><b style="font-size:19px">${_ve(String(w.km))} ${distUnit()}</b>
         <div class="tiny muted">running this week</div></div>
     </div>
+    ${footLoadHTML(w)}
     ${w.down?`<div class="note ok" style="margin:10px 0 0"><b>Down week.</b> Volume is cut on purpose — the adaptation happens here, not in the hard weeks.</div>`:''}
     <div class="tiny muted" style="margin-top:10px">${_ve(w.note)}</div>
     ${w.estimated
@@ -4523,6 +4651,7 @@ function ruckLadderHTML(){
       <div style="text-align:right"><b style="font-size:19px">${_ve(String(w.km))} ${distUnit()}</b>
         <div class="tiny muted">this week</div></div>
     </div>
+    ${footLoadHTML(w)}
     <div class="note ${w.down?'ok':'info'}" style="margin:10px 0 0"><b>What moves this week:</b> ${moving}</div>
     ${w.capped?`<div class="note warn" style="margin:10px 0 0"><b>The load stops here at ${_ve(String(w.ceil))} lb.</b> That is about a third of your bodyweight, which is the far end of what rucking guidance asks for. From here the distance carries the progression. You can carry more if you choose to — the app will not add it for you.</div>`:''}
     ${w.estimated
