@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='346';
+const APP_VERSION='347';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -10862,6 +10862,43 @@ function loadCeilingNote(m){
   }catch(e){return '';}
 }
 /* #4 — Smart missed-day catch-up banner (streak-safe). */
+/* The one reader of the days the athlete signed up for. isTrainingDay() had its
+   own `||[]`, which reads a junk-shaped profile as NO training days at all and
+   silently kills the evening reminder; absent means "not chosen", so it falls
+   back to every day rather than to none. */
+function scheduledDays(){
+  try{const d=STATE.profile&&STATE.profile.days;
+    return (Array.isArray(d)&&d.length)?d:[0,1,2,3,4,5,6];}catch(e){return [0,1,2,3,4,5,6];}
+}
+/* A rest day is not a missed session, and both banners were counting CALENDAR
+   days. An athlete on Mon/Tue/Thu/Fri/Sun who trained Tuesday and took the
+   Wednesday he had himself picked as rest was told "Welcome back — it's been 2
+   days" on Thursday morning, having missed nothing at all. The app already
+   knows both halves of the answer — the days he signed up for (profile.days)
+   and the days he logged off (STATE.restDays) — and neither banner asked.
+
+   armComeback() is deliberately NOT converted. It reads the calendar gap too,
+   but comebackGap() already scales the threshold to the schedule, and measured
+   across every schedule the app offers the longest LEGITIMATE gap stays under
+   it: 5 days a week gives a 2-day gap against a 5-day threshold, 3 days a week
+   a 3-day gap against 5, and 2 days a week a 6-day gap against 7. There is no
+   false arm to fix, and re-tuning the ease is a change to training load that
+   nothing here asked for. */
+function gapSince(){
+  const last=lastTrainedISO();if(!last)return null;
+  const rest=STATE.restDays||{};const sched=scheduledDays();
+  const t=new Date();t.setHours(0,0,0,0);
+  const d=new Date(last+'T00:00:00');
+  if(isNaN(d))return null;
+  let missed=0,off=0,days=0;
+  for(let i=0;i<3650;i++){
+    d.setDate(d.getDate()+1);
+    if(d>=t)break;                       /* today is not missed — the day is not over */
+    days++;
+    if(sched.indexOf(d.getDay())>=0&&!rest[localISO(d)])missed++;else off++;
+  }
+  return {missed,off,days};
+}
 function daysSinceTrained(){
   const set=trainedDaysSet();if(!set.size)return null;
   const t=new Date();
@@ -10908,13 +10945,20 @@ function noteOpen(){
     save();
   }catch(e){}
 }
+/* Counts TRAINING days here without training. A rest day is transparent: it is
+   not drift, and it must not break the run either — nobody is expected to open
+   the app on a day they picked off. trainedDaysSet() is hoisted out of the
+   loop; rebuilding it per iteration is the acwr() shape. */
 function driftingDays(){
   try{
-    const o=STATE._opens||{};let n=0;
+    const o=STATE._opens||{};const trained=trainedDaysSet();
+    const rest=STATE.restDays||{};const sched=scheduledDays();
+    let n=0;
     for(let i=0;i<7;i++){
       const d=new Date();d.setDate(d.getDate()-i);const k=localISO(d);
+      if(trained.has(k))break;
+      if(sched.indexOf(d.getDay())<0||rest[k])continue;
       if(!o[k])break;
-      if(trainedDaysSet().has(k))break;
       n++;
     }
     return n;
@@ -10956,15 +11000,19 @@ function dismissResume(){plClearResume();toast('Starting fresh');render();}
 function driftBanner(){
   const n=driftingDays();
   if(n<3)return '';
-  return `<div class="note info"><b>Three days here, none of them training.</b> That is usually time, not willpower — so do not open the full session. <b>Five minutes</b> counts: it holds your streak, it fills the heatmap, and it is how a week gets rescued.
+  return `<div class="note info"><b>${n} training days here, and none of them trained.</b> That is usually time, not willpower — so do not open the full session. <b>Five minutes</b> counts: it holds your streak, it fills the heatmap, and it is how a week gets rescued.
     <button class="btn sm primary" style="width:100%;margin-top:10px" onclick="openQuickList()">⚡ Show me the 5-minute version</button></div>`;
 }
 function catchUpBanner(){
-  const g=daysSinceTrained();
-  if(g===null||g<2)return '';
+  const g=gapSince();
+  if(!g||g.missed<1)return '';
+  const m=g.missed;
   const ease=comebackEaseActive();
   const extra=ease?` I've <b>eased your next ${STATE.comeback.left} session${STATE.comeback.left>1?'s':''}</b> — lighter volume so you ramp back up safely, no punishment and no starting over.`:'';
-  return `<div class="note info" style="margin-top:12px">👋 <b>Welcome back — it's been ${g} days.</b> Nothing is lost — your program waits exactly where you left it.${extra} Short on time today? <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="openQuickList()">⚡ 15-min catch-up</button></div>`;
+  /* Only when there really were rest days in the gap — a line that fires every
+     time is a line nobody reads. */
+  const restNote=g.off?` Your ${g.off} rest day${g.off>1?'s':''} ${g.off>1?'do':'does'} not count against you.` : '';
+  return `<div class="note info" style="margin-top:12px">👋 <b>Welcome back — ${m} training day${m>1?'s':''} since your last session.</b> Nothing is lost — your program waits exactly where you left it.${restNote}${extra} Short on time today? <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="openQuickList()">⚡ 15-min catch-up</button></div>`;
 }
 /* The only copy of an athlete's progress lives in this browser's storage — a
    lost phone or a cleared cache takes it with it, and nothing ever prompted a
@@ -13314,7 +13362,7 @@ function weeklyTarget(){
   try{const d=STATE.profile&&STATE.profile.days;
     return (Array.isArray(d)&&d.length)?d.length:SESSIONS_PER_WEEK;}catch(e){return SESSIONS_PER_WEEK;}
 }
-function isTrainingDay(){const days=STATE.profile.days||[];return days.includes(new Date().getDay());}
+function isTrainingDay(){return scheduledDays().indexOf(new Date().getDay())>=0;}
 function toggleReminders(){
   if(STATE.settings.reminderOn){STATE.settings.reminderOn=false;save();renderGuide();return;}
   if('Notification'in window&&Notification.permission!=='granted'){

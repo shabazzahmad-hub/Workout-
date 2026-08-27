@@ -5047,6 +5047,74 @@ control that offers something else cannot write it raw.
 
 Nine mutants caught, one equivalent.
 
+## A rest day is not a missed session (v347)
+
+Reported from the phone, off a screenshot of the athlete's own schedule:
+*"Wednesday is set as one of my rest days, however it says it has been 2 days
+since I trained."* It had. He trained Tuesday, rested Wednesday because
+Wednesday is a day **he picked off**, and Thursday morning the app opened with
+**"Welcome back — it's been 2 days."** He had missed nothing.
+
+Both banners counted **calendar days**:
+
+| function | read | never asked |
+|---|---|---|
+| `catchUpBanner()` | `daysSinceTrained()` | `profile.days`, `STATE.restDays` |
+| `driftBanner()` | `driftingDays()` | the same two |
+
+**The app had both halves of the answer and neither banner asked for either.**
+`profile.days` is the schedule the wizard collected; `STATE.restDays` is the
+day he tapped *Take a rest day*. `isTrainingDay()` already read the first —
+in **one** place, the evening reminder.
+
+`gapSince()` measures the gap in **sessions**, not days, and returns
+`{missed, off, days}` so the banner can name what it is NOT counting. A rest
+day the athlete actually rested is not a debt, so the line only appears when
+there were some: *"Your 1 rest day does not count against you."*
+
+**Today is never a missed session.** The day is not over. `if(d>=t)break;` is
+the whole of it, and the mutant that drops the `=` is caught by six checks.
+
+### Drift: a rest day is transparent, and it must not BREAK the run either
+
+`driftingDays()` walks back from today and stopped on the first day the app was
+not opened. Nobody opens the app on a day they picked off — so a rest day now
+neither counts nor breaks. The discriminating check seeds opens on every day
+**except** the rest day: the old code stopped at 1, the new one reaches 6.
+
+**Trained wins over rested, and the order is load-bearing.** The mutant that
+puts the rest test first passes every "a rest day is skipped" assertion and
+fails the one case that matters — training on a rest day must still clear the
+drift. It is caught by exactly one check.
+
+### armComeback() reads the calendar gap too, and was deliberately left alone
+
+The instinct is the class rule — *fixing one instance is not fixing the class*.
+Measured first, and the class has two members, not three: `comebackGap()`
+already scales its threshold to the schedule, and the longest **legitimate**
+gap stays under it on every schedule the app offers — 5 days a week gives a
+2-day gap against a 5-day threshold, 3 days a week a 3-day gap against 5, and
+2 days a week a 6-day gap against 7. **There is no false arm to fix**, and
+re-tuning the ease moves training load nobody asked to move. v298's rule:
+*read what the app does before changing what it does.*
+
+### The existing drift check passed or failed by the weekday it ran on
+
+`seedAthlete` trains five days a week (`days:[1,2,4,5,6]`), so a **three**-day
+window straddles one of his two rest days on two weekdays in seven. The v190
+check seeded exactly three opens. With rest days honoured it went red on
+correct code — on a Thursday, not on a Monday. Seven days of opens, so the
+window covers five training days whatever day the suite runs.
+
+Same family as `seedAthlete` starting at pointer 0: **the calendar is part of
+the state a block has to build.** Write the schedule relative to TODAY rather
+than hardcoding weekdays.
+
+Thirteen mutants, all caught. The floors carry the weight: the same two-day gap
+with **no** rest day in it must still fire, a genuine two-session lay-off must
+still be named, and a banner that never mentions rest days when none were
+rested — a note that always fires is a note nobody reads.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
