@@ -5316,6 +5316,88 @@ branch still has to mean what it is named.**
 
 Seven mutants, all caught after that.
 
+## Two kinds of one-sided, and they need opposite fixes (v351)
+
+Reported from the phone: *"the first exercise was side plank, and they only
+have three sets. Therefore you'll work on two sides and the other side you'll
+only work on once. Any exercise whereby it's on a side, it has to be four sets,
+not three."*
+
+**v307 answered almost exactly this request with the opposite fix, and v307 was
+right — about the kettlebell row.** There the set is what balances:
+`side:'switch'` speaks *"Switch sides now."* halfway through, and the set count
+stays where `prescribe()` put it.
+
+**That is wrong for a side plank, and the reason is the anchor.** `sideplank`
+is anchored to the `side` baseline test, which measures ONE side to failure, and
+the single-leg squats are calibrated per leg. So the prescribed number is a
+PER-SIDE number — switching halfway would hand back half the hold against a
+benchmark taken on one, under-prescribing the very movement the number came
+from. The athlete's own instinct was the correct model and my first
+recommendation was wrong.
+
+| kind | flag | what balances | example |
+|---|---|---|---|
+| target covers BOTH sides | `side:'switch'` | the SET, mid-way | Kettlebell Halo |
+| target is PER SIDE | `side:'perSet'` | the set COUNT, even | Side Plank |
+
+Twelve movements are `perSet` — the five side-plank variants, the four
+single-leg squats, single-leg glute bridge, single-leg calf raise and Warrior
+III. `kbsuitcase` joined the switchers: a one-handed carry whose own steps
+already said *"switch hands partway through"*.
+
+**The discriminator is in the steps and it is clean.** *"Count each side as a
+rep"* means the movement alternates within the set and needs nothing —
+`march`, `slrdl`, `sideplankreach`, the lunges, the twists, the climbers.
+*"Switch sides"* / *"Finish one side, then switch"* means one side per set. 55
+candidates came out of a name-and-prose sweep; reading the steps cut it to
+thirteen.
+
+### The direction of the rounding is the decision
+
+`evenSets()` rounds UP by default — 3 to 4, which is what was asked for — and
+**DOWN whenever an easing rule is in force**. Safe mode, deload, a readiness
+slump and the comeback ease all exist to take work away, and none of them
+should be handed a set back by a rounding rule. Measured: a flagged athlete's
+side plank goes to **two** sets, not four, and clearing the flag puts it back
+to four.
+
+It never drops below **two** — one set cannot be balanced at all — and it is
+applied LAST in `prescribe()`, after every modifier, because a rule applied
+earlier is one a later clamp can quietly make odd again.
+
+**An even count balances nothing if the athlete does not know to alternate**,
+so the player names the side on every set — spoken and on the ring
+(`LEFT SIDE` / `RIGHT SIDE`). The mutant that names the same side every set
+passes every "it says a side" assertion and is caught by set 2.
+
+### The sweep is the check, not the side plank
+
+"Side plank is 4" passes on a hardcoded special case. The check walks **all 378
+sessions** and asserts no `perSet` movement is ever odd or below two — with a
+guard that the sweep actually met some (measured: 8 distinct movements, 226
+appearances). The floors are a squat and a push-up, unchanged at 3: the mutant
+that rounds EVERY movement to even satisfies every side-plank assertion and
+fails there.
+
+### Three traps, all already in this file
+
+- **`sideplank:{` matches TWICE** — the `EX` literal and the progression-target
+  map, at the same indentation. The patch script's `assert count == 1` turned it
+  into a clean no-op; the fix was to require `region:` on the line.
+- **`validateData()` LOGS**, and the harness counts a console error as a page
+  failure, so the check that seeds a junk side value has to mute
+  `console.error` around it.
+- **`seedAthlete` starts at pointer 0**, which is week-1 core work and carries
+  no per-side movement at all. The guard caught it; the block now walks the
+  program for a session holding both a per-side and a two-sided movement, so the
+  floor has something to stand on — and puts the pointer back afterwards.
+
+And the membership rule for `side` **already existed**; widening that one copy
+was the fix, not adding a second. `SIDE_MODES` is the legal set.
+
+Twelve mutants, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

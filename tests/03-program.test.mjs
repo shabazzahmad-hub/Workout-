@@ -289,6 +289,151 @@ export default async function run() {
     t.ok('and a two-sided hold stays silent', side.holdFloorSilent, side);
   }
 
+
+  /* ---- a set that is ONE side needs an even number of sets (v351) ---------
+     Reported from the phone: "the first exercise was side plank, and they only
+     have three sets — therefore you'll work on two sides and the other side
+     you'll only work on once."
+
+     v307 balanced the kettlebell row INSIDE the set (`side:'switch'`), which is
+     right when the prescribed number covers both sides. It is wrong here: the
+     side plank is anchored to the `side` baseline test, which measures ONE side
+     to failure, so switching halfway would hand back half the hold against a
+     benchmark taken on one. The set stays one side; the COUNT goes even. */
+  {
+    const sd = await page.evaluate(() => {
+      const o = {};
+      o.perSide = Object.keys(EX).filter(k => EX[k].side === 'perSet').sort();
+      o.switching = Object.keys(EX).filter(k => EX[k].side === 'switch').sort();
+      o.modes = SIDE_MODES.slice();
+
+      // the reported case
+      o.sidePlank = prescribe('sideplank', posOf(0)).sets;
+      /* FLOOR: a two-sided movement is untouched. A rule that rounded every
+         exercise up satisfies every assertion about the side plank. */
+      o.squat = prescribe('squat', posOf(0)).sets;
+      o.pushup = prescribe('pushup', posOf(0)).sets;
+
+      /* THE SWEEP. Not "side plank is 4" — every per-side movement, in every
+         session of the whole program, must be even and at least two. */
+      const total = SESSIONS_PER_CYCLE * TOTAL_CYCLES;
+      const bad = []; const seen = {};
+      for (let p = 0; p < total; p++) {
+        const s = buildSession(p);
+        for (const m of [...s.main, s.finisher].filter(Boolean)) {
+          if (!EX[m.exId] || EX[m.exId].side !== 'perSet') continue;
+          seen[m.exId] = (seen[m.exId] || 0) + 1;
+          if (m.sets % 2 || m.sets < 2) bad.push({ p, ex: m.exId, sets: m.sets });
+        }
+      }
+      o.oddInProgram = bad.length;
+      o.distinctPerSideSeen = Object.keys(seen).length;   // guard: the sweep saw some
+      o.timesSeen = Object.values(seen).reduce((a, b) => a + b, 0);
+
+      /* The direction follows what the app is already doing to the session.
+         Easing rules exist to take work away; none of them should be handed a
+         set back by a rounding rule. */
+      o.evenUp = evenSets(3, false);
+      o.evenDown = evenSets(3, true);
+      o.evenLeavesEven = [evenSets(2, false), evenSets(2, true), evenSets(4, false)];
+      o.neverBelowTwo = [evenSets(1, true), evenSets(0, true), evenSets(1, false)];
+
+      /* Driven, not just the helper: an uncleared health screen puts the
+         athlete in safe mode, and the count must come DOWN to two, not up. */
+      const realP = JSON.stringify(STATE.profile.parq), realD = STATE.profile.parqDone;
+      STATE.profile.parq = ['heart']; STATE.profile.parqDone = true;
+      o.safeModeOn = safeMode();
+      o.sidePlankInSafeMode = prescribe('sideplank', posOf(0)).sets;
+      STATE.profile.parq = JSON.parse(realP); STATE.profile.parqDone = realD;
+      o.backToNormal = prescribe('sideplank', posOf(0)).sets;
+
+      // the steps of every per-side movement must say to switch, and the
+      // validator must enforce both directions
+      o.validatorClean = validateData().filter(x => /side/.test(x));
+      const realSide = EX.sideplank.side;
+      const realErr = console.error;
+      console.error = () => {};        // validateData() logs; the harness counts that
+      EX.sideplank.side = 'sometimes';
+      o.validatorCatchesJunk = validateData().some(x => /sideplank.*unknown side/.test(x));
+      EX.sideplank.side = realSide;
+      console.error = realErr;
+
+      return o;
+    });
+    t.ok('guard: the sweep actually met per-side movements', sd.distinctPerSideSeen >= 6, sd);
+    t.ok('guard: and met them many times', sd.timesSeen > 100, sd);
+    t.eq('no per-side movement gets an odd set count anywhere in the program', sd.oddInProgram, 0, sd);
+    t.eq('the reported side plank is four sets, not three', sd.sidePlank, 4, sd);
+    t.eq('floor: a two-sided squat is untouched', sd.squat, 3, sd);
+    t.eq('floor: and so is a push-up', sd.pushup, 3, sd);
+    t.eq('rounding goes UP by default', sd.evenUp, 4, sd);
+    t.eq('and DOWN when the app is already easing off', sd.evenDown, 2, sd);
+    t.eq('an even count is left alone either way', sd.evenLeavesEven, [2, 2, 4], sd);
+    t.eq('and it never drops below two — one set cannot be balanced', sd.neverBelowTwo, [2, 2, 2], sd);
+    t.ok('guard: the safe-mode case really is in safe mode', sd.safeModeOn, sd);
+    t.eq('a flagged athlete gets two sets, not four', sd.sidePlankInSafeMode, 2, sd);
+    t.eq('and clearing the flag puts it back to four', sd.backToNormal, 4, sd);
+    t.eq('the validator has no complaint about any side flag', sd.validatorClean, [], sd);
+    t.ok('but it does reject a side value outside the legal set', sd.validatorCatchesJunk, sd);
+    t.eq('and that legal set lives in one place', sd.modes, ['switch', 'perSet'], sd);
+    t.ok('the twelve per-side movements are the side planks and the single-leg work',
+      sd.perSide.length === 12 && sd.perSide.includes('sideplank') && sd.perSide.includes('pistol')
+      && sd.perSide.includes('warriorthree'), sd);
+    t.ok('and the mid-set switchers are a separate, smaller set',
+      sd.switching.includes('kbrow') && sd.switching.includes('kbsuitcase')
+      && !sd.switching.includes('sideplank'), sd);
+
+    /* The player has to SAY which side, or an even count balances nothing —
+       the athlete has no way to know he is meant to alternate. */
+    const say = await page.evaluate(() => {
+      const said = []; const realSpeak = window.coachSpeak, realPlSay = window.plSay;
+      window.coachSpeak = t2 => { said.push(String(t2)); return true; };
+      window.plSay = t2 => { said.push(String(t2)); return true; };
+      const o = {};
+      /* seedAthlete starts at pointer 0, which is week-1 core work and carries
+         no per-side movement at all — the guard caught it. Walk the program for
+         a session that has one AND a two-sided one, so the floor has something
+         to stand on. */
+      const realPtr = STATE.progressPtr;
+      let found = -1;
+      for (let p = 0; p < SESSIONS_PER_CYCLE * TOTAL_CYCLES && found < 0; p++) {
+        const s2 = buildSession(p);
+        const items = [...s2.main, s2.finisher].filter(Boolean);
+        if (items.some(m => EX[m.exId] && EX[m.exId].side === 'perSet')
+            && items.some(m => EX[m.exId] && !EX[m.exId].side)) found = p;
+      }
+      o.foundAt = found;
+      if (found >= 0) STATE.progressPtr = found;
+      openPlayer();
+      const i = PLAYER ? PLAYER.items.findIndex(m => EX[m.exId] && EX[m.exId].side === 'perSet') : -1;
+      const j = PLAYER ? PLAYER.items.findIndex(m => EX[m.exId] && !EX[m.exId].side) : -1;
+      if (i < 0 || j < 0) { o.guard = 'no per-side or no plain movement in this session'; }
+      else {
+        PLAYER.i = i; PLAYER.s = 0; said.length = 0; plEnterReady(false);
+        o.set1 = said.join(' | '); o.sub1 = ($('#plSub') || {}).textContent;
+        PLAYER.s = 1; said.length = 0; plEnterReady(false);
+        o.set2 = said.join(' | '); o.sub2 = ($('#plSub') || {}).textContent;
+        PLAYER.s = 2; said.length = 0; plEnterReady(false);
+        o.set3 = said.join(' | ');
+        // FLOOR: a two-sided movement must claim no side at all
+        PLAYER.i = j; PLAYER.s = 0; said.length = 0; plEnterReady(false);
+        o.plain = said.join(' | '); o.plainSub = ($('#plSub') || {}).textContent;
+      }
+      window.coachSpeak = realSpeak; window.plSay = realPlSay;
+      try { plQuit(true); } catch (e) { try { plClear(); } catch (e2) {} }
+      STATE.progressPtr = realPtr; save();      // put the shared pointer back
+      return o;
+    });
+    t.ok('guard: the session had both a per-side and a two-sided movement', !say.guard, say);
+    t.ok('set 1 of a per-side movement names the first side', /Left side/.test(say.set1), say);
+    t.ok('and set 2 names the other one', /Right side/.test(say.set2), say);
+    t.ok('and set 3 comes back to the first', /Left side/.test(say.set3), say);
+    t.ok('the screen shows it too', /LEFT SIDE/.test(say.sub1 || ''), say);
+    t.ok('and follows the set', /RIGHT SIDE/.test(say.sub2 || ''), say);
+    t.ok('floor: a two-sided movement claims no side', !/Left side|Right side/.test(say.plain), say);
+    t.ok('and its screen says GET READY as before', /GET READY/.test(say.plainSub || ''), say);
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }

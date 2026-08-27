@@ -782,22 +782,22 @@ const EX = {
     cues:['Keep legs as straight as you can','Meet in the middle','Slow negative'],
     mistakes:['Bending the knees','Crashing down out of control']},
   /* -- lateral / oblique ladder -- */
-  kneeside:{name:'Knee Side Plank',region:'oblique',unit:'time',img:'ex-kneeside.jpg',anchor:'side',hardness:1.5,base:20,rest:40,
+  kneeside:{side:'perSet',name:'Knee Side Plank',region:'oblique',unit:'time',img:'ex-kneeside.jpg',anchor:'side',hardness:1.5,base:20,rest:40,
     why:'Builds the obliques and the deep lateral core that stabilises the trunk — the accessible entry to side-plank strength.',
     steps:['Lie on your side, forearm down with elbow under shoulder, knees bent.','Stack your hips and shoulders.','Lift your hips so your body forms a straight line from head to knees.','Hold, then repeat on the other side.'],
     cues:['Elbow directly under shoulder','Push the hip up toward the ceiling','Don\'t let the top shoulder roll forward'],
     mistakes:['Hips sagging down','Rotating the chest toward the floor']},
-  sideplank:{name:'Side Plank',region:'oblique',unit:'time',img:'ex-sideplank.jpg',anchor:'side',hardness:1.0,base:30,rest:45,
+  sideplank:{side:'perSet',name:'Side Plank',region:'oblique',unit:'time',img:'ex-sideplank.jpg',anchor:'side',hardness:1.0,base:30,rest:45,
     why:'The premier oblique and lateral-core exercise — proven to build the muscles that define and stabilise the waist.',
     steps:['Lie on your side, forearm down, elbow under shoulder, legs straight and stacked.','Brace and lift your hips into a straight line head-to-heels.','Reach the top arm to the ceiling or rest it on your hip.','Hold the line, then switch sides.'],
     cues:['Straight line, hips high','Squeeze the down-side obliques','Stack the feet (or stagger for balance)'],
     mistakes:['Hips dropping toward the floor','Body drifting into a slouch']},
-  sidedip:{name:'Side Plank Hip Dips',region:'oblique',unit:'reps',img:'ex-sidedip.jpg',hardness:0.7,base:14,rest:50,
+  sidedip:{side:'perSet',name:'Side Plank Hip Dips',region:'oblique',unit:'reps',img:'ex-sidedip.jpg',hardness:0.7,base:14,rest:50,
     why:'Adds dynamic loading to the side plank — the obliques work through a range instead of just holding.',
     steps:['Set up in a strong side plank on your forearm.','Lower your hips a few inches toward the floor with control.','Drive them back up past the straight line, squeezing the obliques.','Repeat, then switch sides. Count each dip as a rep.'],
     cues:['Control the lower, drive the lift','Keep the line — no twisting','Squeeze at the top'],
     mistakes:['Rushing and losing the plank line','Rotating the torso']},
-  copenhagen:{name:'Copenhagen Plank (bent)',region:'oblique',unit:'time',img:'ex-copenhagen.jpg',anchor:'side',hardness:0.55,base:15,rest:55,optional:true,
+  copenhagen:{side:'perSet',name:'Copenhagen Plank (bent)',region:'oblique',unit:'time',img:'ex-copenhagen.jpg',anchor:'side',hardness:0.55,base:15,rest:55,optional:true,
     why:'One of the most intense oblique and inner-thigh exercises there is — elite for a strong, resilient midsection.',
     steps:['Set up a side plank with your top shin/knee resting on a chair or bench.','Keep the bottom leg on the floor for now (bent-knee version).','Lift your hips into a straight side-plank line, supported by the top leg.','Hold, then switch sides. Skip if you have no bench.'],
     cues:['Squeeze the top inner thigh into the bench','Hips high and level','Brace the whole side'],
@@ -1101,12 +1101,12 @@ const EX = {
     mistakes:['Going too deep too soon','Shrugging the shoulders up']},
 
   /* ==== LEGS ==== */
-  splitsquat:{repSec:4,name:'Split Squat',region:'legs',unit:'reps',img:'ex-splitsquat.jpg',anchor:'squat',hardness:0.55,base:12,rest:50,
+  splitsquat:{side:'perSet',repSec:4,name:'Split Squat',region:'legs',unit:'reps',img:'ex-splitsquat.jpg',anchor:'squat',hardness:0.55,base:12,rest:50,
     why:'A staggered stance loads one leg at a time for real single-leg strength and balance. Count each side.',
     steps:['Stand in a long split stance, torso upright.','Lower straight down until the back knee nearly touches.','Keep the front knee over the ankle.','Drive through the front heel to stand. Finish one side, then switch.'],
     cues:['Straight up and down','Front knee tracks the toes','Torso tall'],
     mistakes:['Front knee caving in','Leaning forward']},
-  bulgarian:{repSec:4,name:'Bulgarian Split Squat',region:'legs',unit:'reps',img:'ex-bulgarian.jpg',anchor:'squat',hardness:0.4,base:10,rest:60,
+  bulgarian:{side:'perSet',repSec:4,name:'Bulgarian Split Squat',region:'legs',unit:'reps',img:'ex-bulgarian.jpg',anchor:'squat',hardness:0.4,base:10,rest:60,
     why:'Back foot elevated makes it one of the toughest, most effective single-leg builders for quads and glutes. Count each side.',
     steps:['Place the top of your back foot on a bench behind you.','Front foot far enough forward, torso upright.','Lower until the front thigh is about parallel.','Drive through the front heel to stand. Switch sides.'],
     cues:['Weight in the front heel','Upright chest','Control the descent'],
@@ -1116,17 +1116,17 @@ const EX = {
     steps:['Step forward into a lunge, both knees ~90°.','Keep the torso tall and core braced.','Drive through the front heel to step the back foot through.','Continue alternating, walking forward.'],
     cues:['Long, controlled steps','Front knee over ankle','Chest up'],
     mistakes:['Short choppy steps','Front knee collapsing in']},
-  boxpistol:{repSec:4,repCap:14,name:'Box Pistol Squat',region:'legs',unit:'reps',img:'ex-boxpistol.jpg',anchor:'squat',hardness:0.25,base:8,rest:65,
+  boxpistol:{side:'perSet',repSec:4,repCap:14,name:'Box Pistol Squat',region:'legs',unit:'reps',img:'ex-boxpistol.jpg',anchor:'squat',hardness:0.25,base:8,rest:65,
     why:'A single-leg squat to a box — builds toward the full pistol with control and balance. Count each side.',
     steps:['Stand on one leg in front of a bench or box, other leg extended forward.','Sit back and down to lightly touch the box.','Keep the heel down and chest up.','Drive up through the heel to stand. Switch sides.'],
     cues:['Reach the free leg forward for balance','Heel stays planted','Control down, power up'],
     mistakes:['Crashing onto the box','Heel lifting']},
-  pistol:{repSec:4.5,repCap:10,name:'Pistol Squat',region:'legs',unit:'reps',img:'ex-pistol.jpg',vid:'ex-pistol.mp4',anchor:'squat',hardness:0.15,base:5,rest:75,
+  pistol:{side:'perSet',repSec:4.5,repCap:10,name:'Pistol Squat',region:'legs',unit:'reps',img:'ex-pistol.jpg',vid:'ex-pistol.mp4',anchor:'squat',hardness:0.15,base:5,rest:75,
     why:'A full one-leg squat — elite single-leg strength, mobility and balance. Count each side.',
     steps:['Stand on one leg, the other extended straight in front.','Sit down slowly all the way to the bottom, heel flat.','Keep the chest up and free leg off the floor.','Drive back up to standing. Switch sides.'],
     cues:['Slow, controlled descent','Weight through the heel','Free leg stays lifted'],
     mistakes:['Losing balance backward','Rounding hard at the bottom']},
-  singlebridge:{name:'Single-Leg Glute Bridge',region:'legs',unit:'reps',img:'ex-singlebridge.jpg',anchor:'squat',hardness:0.65,base:12,rest:45,
+  singlebridge:{side:'perSet',name:'Single-Leg Glute Bridge',region:'legs',unit:'reps',img:'ex-singlebridge.jpg',anchor:'squat',hardness:0.65,base:12,rest:45,
     why:'One leg doubles the glute and hamstring demand while the core resists rotation. Count each side.',
     steps:['Lie on your back, one knee bent, the other leg extended.','Press through the planted heel and squeeze the glute.','Lift the hips level and straight.','Lower with control. Finish one side, then switch.'],
     cues:['Hips stay level','Squeeze the glute at the top','Ribs down'],
@@ -1146,7 +1146,7 @@ const EX = {
     steps:['Stand tall, feet hip-width (use a step for more range).','Press up onto the balls of your feet as high as possible.','Pause and squeeze at the top.','Lower slowly under control.'],
     cues:['Full height at the top','Slow, controlled descent','Stay balanced and tall'],
     mistakes:['Bouncing','Cutting the range short']},
-  singlecalf:{name:'Single-Leg Calf Raise',region:'legs',unit:'reps',img:'ex-singlecalf.jpg',anchor:'squat',hardness:0.6,base:12,rest:40,
+  singlecalf:{side:'perSet',name:'Single-Leg Calf Raise',region:'legs',unit:'reps',img:'ex-singlecalf.jpg',anchor:'squat',hardness:0.6,base:12,rest:40,
     why:'One leg doubles the load for real calf strength and balance. Count each side.',
     steps:['Balance on one foot (hold a wall for support).','Press up as high as possible onto the ball of the foot.','Squeeze at the top.','Lower slowly. Switch sides.'],
     cues:['Full range each rep','Control the lowering','Light touch on the wall'],
@@ -1239,7 +1239,7 @@ const EX = {
     steps:['Step onto the middle of the dome with one foot.','Lift the other foot just clear of the dome, knee soft.','Hold, keeping the standing knee unlocked and the hips level.','Switch legs halfway through the time.'],
     cues:['Eyes on a fixed point ahead','Standing knee soft, never locked','Hips level — do not hitch one side up'],
     mistakes:['Locking the standing knee','Holding your breath through the wobble']},
-  btsideplank:{name:'Balance Trainer Side Plank',region:'oblique',unit:'time',img:'ex-btsideplank.jpg',anchor:null,hardness:0.6,base:20,rest:45,equip:['balancetrainer'],pattern:'core',
+  btsideplank:{side:'perSet',name:'Balance Trainer Side Plank',region:'oblique',unit:'time',img:'ex-btsideplank.jpg',anchor:null,hardness:0.6,base:20,rest:45,equip:['balancetrainer'],pattern:'core',
     why:'A side plank with the bottom hand on a surface that will not hold still — the obliques hold the line while the shoulder fights the wobble.',
     steps:['Place one hand on top of the dome, arm straight, shoulder stacked over it.','Walk the feet out and stack them, body in one line.','Lift the hips into the line and hold, top arm reaching up.','Come down under control and switch sides.'],
     cues:['Shoulder stacked directly over the hand','Straight line, hips high','Push the floor away — do not sag into the shoulder'],
@@ -1321,7 +1321,7 @@ const EX = {
     steps:['Hold the bell overhead in one hand, arm locked straight, feet turned slightly away from that side.','Push the hips back on the working side and hinge sideways, reaching the free hand down toward the floor.','Keep the overhead arm locked directly above you the entire time — eyes on the bell.','Reverse the hinge to stand back up.','Do half the reps on that side, then SWITCH HANDS and finish the set.'],
     cues:['Eyes on the bell overhead','Hinge from the hip, not the low back','The overhead arm never bends'],
     mistakes:['Letting the overhead arm drift forward','Rounding the low back instead of hinging']},
-  kbsuitcase:{name:'Kettlebell Suitcase Carry',region:'oblique',unit:'time',img:'ex-kbsuitcase.jpg',anchor:null,hardness:1,base:40,rest:50,equip:['kettlebell'],pattern:'core',
+  kbsuitcase:{side:'switch',name:'Kettlebell Suitcase Carry',region:'oblique',unit:'time',img:'ex-kbsuitcase.jpg',anchor:null,hardness:1,base:40,rest:50,equip:['kettlebell'],pattern:'core',
     why:'One bell, one side — the obliques fight the tip instead of just bracing, a real anti-lateral-flexion stimulus a bilateral carry cannot give.',
     steps:['Stand tall holding one kettlebell at your side, like a suitcase.','Brace hard and walk with short, controlled steps.','Resist leaning toward the loaded side — stay tall and level.','Switch hands partway through if going for total time.'],
     cues:['Shoulders level, do not lean','Ribs down, brace the whole way','Short, controlled steps'],
@@ -1510,7 +1510,7 @@ const EX = {
     why:'Flips the plank to hammer the posterior chain — glutes, hamstrings and lower back — while the core resists sagging. Balances all the front-side ab work for a strong, injury-proof midsection.',
     steps:['Sit with legs straight, hands planted behind you under the shoulders, fingers toward your feet.','Press through the hands and heels and lift the hips.','Form a straight line from heels to shoulders, chest open to the ceiling.','Hold, breathing steadily; lower with control.'],
     cues:['Squeeze the glutes','Chest tall, hips high','Neck long and neutral'],mistakes:['Hips sagging','Shrugging into the shoulders']},
-  warriorthree:{name:'Warrior III',region:'stability',unit:'time',img:'ex-warriorthree.jpg',anchor:null,hardness:0.35,base:20,rest:40,
+  warriorthree:{side:'perSet',name:'Warrior III',region:'stability',unit:'time',img:'ex-warriorthree.jpg',anchor:null,hardness:0.35,base:20,rest:40,
     why:'A single-leg balance hold that trains the standing leg, hips and core to stabilise together — the kind of control that carries straight into every other single-leg movement in the program.',
     steps:['Stand tall, shift your weight fully onto one leg.','Hinge forward at the hip while lifting the other leg straight back, until torso and rear leg are roughly parallel to the floor.','Reach your arms forward in line with your torso, or keep them at your sides — whichever holds the balance steadier.','Hold, keeping the standing knee soft and the hips square to the floor, then switch sides next set.'],
     cues:['Keep the hips square — don\'t let the raised-leg side roll open','Soft bend in the standing knee, never locked','Find one spot on the floor ahead and hold your eyes there'],
@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='350';
+const APP_VERSION='351';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2446,6 +2446,15 @@ function prescribe(exId,pos){
      not coaching, it is noise — a 4-second eccentric has no meaning in a hold. */
   if(ex.unit==='reps'&&cycle>=5&&(ex.anchor||STRENGTH_REGIONS[ex.region])&&ex.region!=='stability'){
     tempo=['3s down','3s down · 1s pause','4s down · 2s pause'][Math.min(2,cycle-5)]||null;
+  }
+  /* LAST, after every modifier — a rule applied earlier is one a later clamp
+     can quietly make odd again. */
+  if(typeof sidePerSet==='function'&&sidePerSet(exId)){
+    const easing=(typeof safeMode==='function'&&safeMode())
+      ||(typeof deloadOn==='function'&&deloadOn(pos))
+      ||(typeof readinessMult==='function'&&readinessMult()<0.85)
+      ||(typeof comebackEaseActive==='function'&&comebackEaseActive());
+    sets=evenSets(sets,easing);
   }
   return {sets,target,unit:ex.unit,rest,tempo};
 }
@@ -6339,7 +6348,12 @@ function plEnterReady(first){
      ready phase exists to deliver, which is why the spoken digits below had to
      go — synth.cancel() on the next utterance would have killed it, exactly as
      it killed the warm-up's "Next up" announcement. */
-  plSay(ex.name+'. '+(m.unit==='time'?(fmtTime(m.target)+'.'):(m.target+' reps.'))
+  /* A per-side movement has to say WHICH side, or an even set count balances
+     nothing — the athlete has no way to know the app expects him to alternate. */
+  const perSide=sidePerSet(m.exId)?sideForSet(PLAYER.s):'';
+  if(perSide)plS('#plSub',perSide.toUpperCase());
+  plSay(ex.name+'. '+(perSide?perSide+'. ':'')
+    +(m.unit==='time'?(fmtTime(m.target)+'.'):(m.target+' reps.'))
     +(sideSwitch(m.exId)?' One side at a time — switch halfway.':''));
   if(!PLAYER.running){plS('#plToggle','Resume');return;}
   PLAYER.tid=setInterval(plTickReady,1000);
@@ -9667,6 +9681,37 @@ function beepGo(){beepDuck(560);beep(1320,.32,0.95,'square');setTimeout(()=>beep
    kbhalo). `side:'switch'` is the single place the rule now lives, so the
    steps, the session card and the guided player cannot drift apart again. */
 function sideSwitch(exId){try{return (EX[exId]||{}).side==='switch';}catch(e){return false;}}
+/* TWO KINDS OF ONE-SIDED, AND THEY NEED OPPOSITE FIXES.
+
+   v307 balanced the kettlebell row INSIDE the set — `side:'switch'`, a spoken
+   cue halfway through — and that is right when the prescribed number covers
+   BOTH sides, as a halo or a windmill does.
+
+   It is wrong for a side plank, and reported as such: "the first exercise was
+   side plank, and they only have three sets, therefore you'll work on two
+   sides and the other side you'll only work on once." The target there is a
+   PER-SIDE number — sideplank is anchored to the `side` baseline test, which
+   measures one side to failure, and the single-leg squats are calibrated per
+   leg. Switching halfway would hand the athlete HALF the hold on each side
+   against a benchmark taken on one, which under-prescribes the very movement
+   the number came from.
+
+   So the set stays one side, and the SET COUNT is what has to be even. */
+const SIDE_MODES=['switch','perSet'];
+function sidePerSet(exId){try{return (EX[exId]||{}).side==='perSet';}catch(e){return false;}}
+const SIDE_FIRST='Left side',SIDE_SECOND='Right side';
+function sideForSet(s){return (s%2===0)?SIDE_FIRST:SIDE_SECOND;}
+/* Round to EVEN so both sides get the same number of sets, and never below two
+   — one set cannot be balanced at all. The DIRECTION follows what the app is
+   already doing to this session: normally up (3 -> 4, which is what was asked
+   for), but down whenever an easing rule is in force, because safe mode,
+   deload, a readiness slump and the comeback ease all exist to take work away
+   and none of them should be handed a set back by a rounding rule. */
+function evenSets(n,easing){
+  const v=Math.max(1,n|0);
+  if(v%2===0)return Math.max(2,v);
+  return Math.max(2,easing?v-1:v+1);
+}
 const SIDE_LINE='Switch sides now.';
 function plSay(text){
   if(!text)return;
@@ -18892,7 +18937,11 @@ function validateData(){
     const e=EX[k];const txt=[...(e.steps||[]),...(e.cues||[]),e.why||''].join(' ');
     const says=/switch (hand|side|leg)|each side|other side|reverse direction/i.test(txt);
     if(e.side==='switch'&&!says)errs.push('EX.'+k+' is flagged side:"switch" but its steps never say to switch');
-    if(e.side!==undefined&&e.side!=='switch')errs.push('EX.'+k+' has an unknown side value "'+e.side+'"');
+    /* Both directions, and both kinds. A per-side movement whose steps never
+       mention a side is a set the athlete has no way to run correctly. */
+    if(e.side==='perSet'&&!says)errs.push('EX.'+k+' is flagged side:"perSet" but its steps never say to switch sides');
+
+    if(e.side!==undefined&&SIDE_MODES.indexOf(e.side)<0)errs.push('EX.'+k+' has an unknown side value "'+e.side+'"');
   });
   const testUnit={};TESTS.forEach(t=>testUnit[t.id]=t.unit);
   // TEST_DEFAULTS must cover exactly the same ids as TESTS — a test added
