@@ -430,6 +430,55 @@ export default async function run() {
     t.ok('and runs it the moment the finger lifts', gate.normalTapRuns, gate);
   }
 
+  // ---- HIIT: the pause label is DERIVED, not hardcoded ---------------------
+  /* ivRenderStep() rebuilds the whole body, and hiitSkip() reaches it while
+     paused — so a hardcoded "Pause" told the athlete a frozen round was live.
+     Both of the guided player's twins already fixed this (plEnterReady and
+     plEnterRest each fall back to 'Resume'); the third surface never got it.
+     Measured before the fix: after a paused skip the button read "Pause" with
+     INTV.running false and no interval running, and tapping it RESUMED and
+     re-labelled to "Pause" — the same word either side of the tap. */
+  {
+    const r = await page.evaluate(() => {
+      const read = () => ({
+        toggle: (document.querySelector('#ivToggle') || {}).textContent || null,
+        bar: (document.querySelector('#ivPaused') || {}).textContent,
+        running: INTV ? INTV.running : null,
+        tid: INTV ? !!INTV.tid : null,
+        i: INTV ? INTV.i : null });
+      const o = {};
+      startHiitSpecial('tabata'); ivClear();
+      INTV.lead = 1; ivTickLead(); ivClear();          // -> the first work step
+      o.work = read();
+      hiitToggle(); o.paused = read();                 // pause
+      hiitSkip();   o.skipped = read();                // rebuild the body WHILE paused
+      hiitToggle(); o.resumed = read();                // and the tap must resume
+      hiitQuit();
+      // THE FLOOR: a skip that was never paused still reads Pause and runs.
+      startHiitSpecial('tabata'); ivClear();
+      INTV.lead = 1; ivTickLead(); ivClear();
+      hiitSkip(); o.liveSkip = read();
+      hiitQuit();
+      return o;
+    });
+    t.eq('guard: the HIIT round starts live and labelled Pause', r.work.toggle, 'Pause', r.work);
+    t.eq('guard: and it starts with no paused line', r.work.bar, '', r.work);
+    t.eq('pausing HIIT labels the button Resume', r.paused.toggle, 'Resume', r.paused);
+    t.eq('and says PAUSED on the glass', r.paused.bar, 'PAUSED', r.paused);
+    t.eq('guard: skipping while paused really advanced the step', r.skipped.i, r.paused.i + 1, r);
+    t.eq('guard: and left the round genuinely frozen', r.skipped.tid, false, r.skipped);
+    t.eq('a rebuilt body still says Resume, not Pause', r.skipped.toggle, 'Resume', r.skipped);
+    t.eq('and still says PAUSED', r.skipped.bar, 'PAUSED', r.skipped);
+    t.eq('tapping it then resumes', r.resumed.toggle, 'Pause', r.resumed);
+    t.eq('and the clock really starts again', r.resumed.tid, true, r.resumed);
+    t.eq('and the paused line clears', r.resumed.bar, '', r.resumed);
+    /* THE FLOOR. A label that always read Resume, or a PAUSED line that always
+       showed, satisfies every assertion above and is worse than the defect. */
+    t.eq('a skip on a RUNNING round still reads Pause', r.liveSkip.toggle, 'Pause', r.liveSkip);
+    t.eq('and shows no paused line', r.liveSkip.bar, '', r.liveSkip);
+    t.eq('and is still ticking', r.liveSkip.tid, true, r.liveSkip);
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }
