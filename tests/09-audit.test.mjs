@@ -3512,6 +3512,107 @@ export default async function run() {
       !ref.imp.includes(ref.fastest + ' mi/h'), ref.imp.slice(0, 400));
   }
 
+  // ---- a runless week the athlete WAS logging is a measured zero ----------
+  /* trailingRunKm() averaged `buckets.filter(b => b > 0)` — every runless week
+     thrown away. Measured, all three of these landed on the same 20 km
+     prescription: someone who ran 20 km a week for a month, someone who ran
+     20 km ONCE three weeks ago and used the app daily since, and someone who
+     ran 20 km once and vanished. Three weeks detrained, then 20 km climbing to
+     22 — the injury the 10% rule exists to prevent, arriving through the plan.
+
+     The distinction the app can actually make is the one it already makes
+     about food: a week with NO day entries is unknown and skipped, a week the
+     athlete was using the app and did not run is a measured zero. That second
+     floor is the discriminating one — an athlete who runs without opening the
+     app must not be punished, so a fix that simply counted every week as zero
+     fails it. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      for (const n of ['trailingRunKm', 'trailingRunStats', 'enduranceWeek', 'enduranceHTML'])
+        if (typeof window[n] !== 'function') (o.absent = o.absent || []).push(n);
+      if (o.absent) return o;
+      STATE.profile.gear = ['ruck', 'bike']; STATE.nutrition.weightKg = 86;
+      STATE.prep = { date: (() => { const x = new Date(); x.setDate(x.getDate() + 84); return x.toISOString().slice(0, 10); })() };
+      const iso = d => { const x = new Date(); x.setDate(x.getDate() - d); return x.toISOString().slice(0, 10); };
+      /* [days ago, km run that day, was the app in use that week] */
+      const run = spec => {
+        STATE.nutrition.days = {};
+        spec.forEach(([ago, km, used]) => {
+          const d = STATE.nutrition.days[iso(ago)] = {};
+          if (km > 0) { d.runUnit = 'dist'; d.runVal = km; }
+          if (used) d.steps = 6000;
+        });
+        save();
+        const el = document.createElement('div'); el.innerHTML = enduranceHTML();
+        const t = (el.innerText || el.textContent || '').replace(/\s+/g, ' ');
+        const w = enduranceWeek();
+        return { base: trailingRunKm(), km: w.km, blank: w.blank, est: w.estimated, txt: t };
+      };
+      o.consistent = run([[2, 20, 1], [9, 20, 1], [16, 20, 1], [23, 20, 1]]);
+      o.lapsedLogging = run([[23, 20, 1], [16, 0, 1], [9, 0, 1], [2, 0, 1]]);
+      o.lapsedSilent = run([[23, 20, 1]]);
+      o.totalGap = run([[95, 30, 1], [100, 30, 1]]);
+      STATE.nutrition.days = {}; save();
+      return o;
+    });
+    t.ok('guard: the three athletes really did produce plans', !r.absent &&
+      r.consistent.km > 0 && r.lapsedLogging.km > 0 && r.lapsedSilent.km > 0, r);
+    // the floor: a consistent runner is untouched, and told nothing
+    t.eq('four weeks of steady running reads as that weekly figure', r.consistent.base, 20, r.consistent);
+    t.eq('and no runless weeks are reported', r.consistent.blank, 0, r.consistent);
+    t.ok('so the card says nothing about missing weeks',
+      !/weeks had no runs/.test(r.consistent.txt), r.consistent.txt.slice(0, 200));
+    // the finding
+    t.eq('one run in four weeks, with the app in daily use, reads as the average',
+      r.lapsedLogging.base, 5, r.lapsedLogging);
+    t.eq('and the runless weeks are counted, not skipped', r.lapsedLogging.blank, 3, r.lapsedLogging);
+    t.ok('and the card says why the figure is what it is',
+      /3 of the last 4 weeks had no runs/.test(r.lapsedLogging.txt),
+      r.lapsedLogging.txt.slice(r.lapsedLogging.txt.indexOf('Built from'), 240));
+    // the floor that stops "count every week as zero"
+    t.eq('an athlete who runs but does not open the app is not punished for it',
+      r.lapsedSilent.base, 20, r.lapsedSilent);
+    t.eq('their weeks read as unknown rather than as zeros', r.lapsedSilent.blank, 0, r.lapsedSilent);
+    // and nothing at all in the window is still the floor, not a zero
+    t.eq('nothing inside the window is unknown, not zero', r.totalGap.base, null, r.totalGap);
+    t.ok('so the plan opens at its floor and says it is estimating', r.totalGap.est === true, r.totalGap);
+  }
+
+  /* And the RUCK sibling, because the two plans ask the same question of
+     different data and the whole point of one shared reader is that neither
+     can drift from it. A mutant reverting only the ruck half escaped every
+     check above — fixing one instance is not fixing the class, and neither is
+     checking one. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      if (typeof trailingRuckKm !== 'function' || typeof trailingRuckStats !== 'function')
+        return { absent: true };
+      const iso = d => { const x = new Date(); x.setDate(x.getDate() - d); return x.toISOString().slice(0, 10); };
+      const ruck = spec => {
+        STATE.nutrition.days = {};
+        spec.forEach(([ago, km, used]) => {
+          const d = STATE.nutrition.days[iso(ago)] = {};
+          if (km > 0) { d.ruckUnit = 'dist'; d.ruckVal = km; }
+          if (used) d.steps = 6000;
+        });
+        save();
+        return { base: trailingRuckKm(), blank: (trailingRuckStats() || {}).blank };
+      };
+      o.consistent = ruck([[2, 12, 1], [9, 12, 1], [16, 12, 1], [23, 12, 1]]);
+      o.lapsedLogging = ruck([[23, 12, 1], [16, 0, 1], [9, 0, 1], [2, 0, 1]]);
+      o.lapsedSilent = ruck([[23, 12, 1]]);
+      STATE.nutrition.days = {}; save();
+      return o;
+    });
+    t.ok('guard: the ruck reader answered at all', !r.absent && r.consistent.base > 0, r);
+    t.eq('four steady weeks of rucking read as that weekly figure', r.consistent.base, 12, r.consistent);
+    t.eq('one ruck in four logged weeks reads as the average', r.lapsedLogging.base, 3, r.lapsedLogging);
+    t.eq('and its runless weeks are counted too', r.lapsedLogging.blank, 3, r.lapsedLogging);
+    t.eq('a rucker who does not open the app is not punished either', r.lapsedSilent.base, 12, r.lapsedSilent);
+  }
+
   // ---- a date in the PAST is not a date that was never set ----------------
   /* prepWeeksLeft() folds two different facts into one null, so the endurance
      plan told an athlete who HAD set a test date to "set your test date and
