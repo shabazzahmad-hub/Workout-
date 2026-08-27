@@ -986,6 +986,56 @@ export default async function () {
     t.eq('every button has a name a screen reader can read', r.buttons.unnamed, 0, r.buttons);
   }
 
+  // ---- a device credential is not in any backup, so clearing it asks -------
+  /* exportData() strips azureKey and foodAiKey on purpose, so a backup holds no
+     opinion about either and a restore cannot undo the tap. clearAzureKey()
+     confirmed; the Gemini key was cleared by a bare setFoodAiKey('') on a chip
+     a few pixels from the password field, with a toast reading "Cleared".
+     The route is driven through the CHIP, not the helper — the difference the
+     Convert-button escape was made of. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {}, asks = [], orig = window.confirm;
+      const chip = () => [...document.querySelectorAll('#v-guide .chip')]
+        .find(b => (b.textContent || '').trim() === 'Clear key');
+      STATE.settings.foodAiKey = 'AIza-test'; STATE.settings.azureKey = 'az-test'; save();
+      go('guide'); renderGuide();
+      o.chipFound = !!chip();
+      window.confirm = m => { asks.push(m); return false; };
+      if (chip()) chip().click();
+      o.askedOnDecline = asks.length;
+      o.declineKeptKey = STATE.settings.foodAiKey === 'AIza-test';
+      window.confirm = m => { asks.push(m); return true; };
+      if (chip()) chip().click();
+      o.acceptCleared = !STATE.settings.foodAiKey;
+      o.geminiMsg = asks[0] || '';
+      // the twin
+      asks.length = 0;
+      clearAzureKey();
+      o.azCleared = !STATE.settings.azureKey;
+      o.azMsg = asks[0] || '';
+      // THE FLOOR: SAVING a key must not ask anything.
+      asks.length = 0;
+      setFoodAiKey('AIza-again');
+      o.saveAsked = asks.length;
+      o.saveWorked = STATE.settings.foodAiKey === 'AIza-again';
+      window.confirm = orig;
+      STATE.settings.foodAiKey = ''; STATE.settings.azureKey = ''; save();
+      return o;
+    });
+    t.ok('guard: the Clear key chip is on screen with a key saved', r.chipFound, r);
+    t.eq('clearing the Gemini key asks first', r.askedOnDecline, 1, r);
+    t.ok('and saying no keeps the key', r.declineKeptKey, r);
+    t.ok('saying yes really clears it', r.acceptCleared, r);
+    t.ok('the Gemini confirm says a backup cannot bring it back', /backup/i.test(r.geminiMsg), r.geminiMsg);
+    t.ok('the Azure twin still clears', r.azCleared, r);
+    t.ok('and its confirm says the same thing', /backup/i.test(r.azMsg), r.azMsg);
+    /* THE FLOOR. A confirm bolted onto the setter would satisfy every
+       assertion above and make entering a key a two-tap chore. */
+    t.eq('saving a key asks nothing', r.saveAsked, 0, r);
+    t.ok('and stores it', r.saveWorked, r);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

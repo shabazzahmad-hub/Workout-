@@ -4635,6 +4635,146 @@ tail. Only a move inserted BEFORE the first video isolates the new checks — an
 seeded that way, each of the five fails exactly one, by name.
 
 
+## The third surface never got the fix its twins already had (v343)
+
+Found by driving pause, resume, skip and +15s for real — a set of controls no
+probe had ever pressed. The guided player held up everywhere: pausing banks
+the time and the hold does not lose a second (58 → paused two minutes → 58 →
+57), rest is pushed out by exactly the time away, +15s and skip-rest are
+no-ops outside rest, and every mid-session control taken while paused —
+swap, skip, set-done, the swap menu, the pain panel — leaves the player
+paused, timerless and correctly labelled.
+
+**HIIT did not.** `ivRenderStep()` rebuilds the whole body and hardcoded
+`>Pause<`, and `hiitSkip()` reaches it while paused. Measured:
+
+| | button | INTV.running | timer |
+|---|---|---|---|
+| paused | Resume | false | none |
+| **then skip** | **Pause** | **false** | **none** |
+| then tap it | Pause | true | running |
+
+So a frozen round showed a button saying *Pause*, and tapping it **resumed**
+and re-labelled to *Pause* again — the same word either side of the tap,
+saying nothing about what just happened. The clock sat still at 10s with the
+screen claiming it was live.
+
+**Both of the guided player's twins had already fixed this.**
+`plEnterReady()` ends with `if(!PLAYER.running){plS('#plToggle','Resume');
+return;}` and `plEnterRest()` carries the same else-branch. `ivStep()` is the
+third surface and never got it — *the player has twins and they drift*, for
+the fourth time in this file.
+
+**The PAUSED line is the second signal**, because a state that rests on one
+word is one forgotten re-render away from lying again. It carries no total:
+the player banks paused seconds because its session clock is an
+accountability figure, and HIIT has no session clock — `INTV.workElapsed`
+only advances inside a running tick, so paused time is already excluded from
+the credit. A count here would be bookkeeping with no consumer.
+
+**The floor is a skip that was never paused**, which must still read Pause,
+show no paused line and still be ticking. A label that always said Resume, or
+a PAUSED line that always showed, satisfies every other assertion and is
+worse than the defect.
+
+### Two false alarms, both the probe
+
+- **"The stopwatches credit paused time as work."** `swSecs()` read 60 s, then
+  0 after a pause. The probe had moved `pausedAt` five minutes into the past
+  while leaving `at` where it was, which is not a state real time can reach —
+  the correct simulation of five minutes passing is to move **every** stored
+  timestamp back. Redone that way all three stopwatches read 60 / 60 / 60.
+- **"A deferred callback throws after its surface is torn down."**
+  `whenPointerFree('iv', ivDone)` passes `ivDone` bare while the sibling one
+  line below is guarded (`()=>{if(INTV)ivStep();}`), and `ivDone` dereferences
+  `INTV.phase`. It cannot throw: `_ptrFlush()` runs every queued callback
+  inside its own `try/catch`. The guard is central, not per-callback.
+
+## A key that no backup can bring back, cleared by one tap (v343)
+
+`clearAzureKey()` asks first. The Gemini key was cleared by a bare
+`setFoodAiKey('')` on a chip sitting a few pixels from the password field,
+with **no confirm at all** and a toast reading *"Cleared"*.
+
+**Both are DEVICE credentials, and that is exactly why this one needed
+asking.** `exportData()` strips `azureKey` and `foodAiKey` on purpose, so a
+backup holds no opinion about either and a restore cannot undo the tap. An
+athlete who thinks *"I have a backup"* is wrong about this one field, and
+nothing on screen said so — so **both** confirms now say it, and name where
+the replacement comes from (Google AI Studio, the Azure portal).
+
+Same asymmetry class as v336, pointed the other way: there the key survived
+the destructive action and died on the gentle one; here one of a pair
+confirmed and its twin did not. **Fixing one instance is not fixing the
+class**, and the class is two members wide.
+
+**The floor is that SAVING a key asks nothing.** A confirm bolted onto the
+setter satisfies every assertion about clearing and turns entering a key into
+a two-tap chore. And the check clicks the CHIP rather than calling
+`clearFoodAiKey()` — the difference the v292 Convert button was made of, and
+the sixth time this file has recorded it.
+
+The row deletions were checked alongside and deliberately left alone:
+`removeFood`, `removeAct` and `removeSkip` drop one log row each, and a row
+can be typed back. A key cannot.
+
+Ten mutants, all caught.
+
+## "Logged" for a Save that erased two measured times (v343)
+
+Third instance of the same shape in one round. `saveRunTT()` toasted
+**`Logged ✅` unconditionally**, in all three states:
+
+| the tap | what happened | what it said |
+|---|---|---|
+| Save on an untouched sheet | nothing written | **Logged ✅** |
+| a real time typed | both stored | Logged ✅ |
+| both boxes cleared | **both times erased** | **Logged ✅** |
+
+Blank-means-delete is deliberate and stays: `openRunTT()` pre-fills from what
+is stored, so an empty box is the athlete taking a value away, and it is the
+only way to unset a target they were never given. **The sentence was the bug,
+not the delete.**
+
+`saveForceTimes()` — the sibling sheet **340 lines below**, on the same prep
+screen — already counted what its writer accepted and said *"Nothing to
+save"* when it accepted none, with a comment explaining exactly why. This one
+never got it.
+
+**A write beside a clear reports the write.** That is the thing the athlete
+came to do, and the cleared value shows on the card they land back on.
+
+### Fixing that one found the class, which had three members
+
+A sweep of every `save*()` that DELETES on a blank field turned up
+`saveCombat()` with the identical shape — `toast('Saved')` unconditionally,
+so an untouched Save claimed one and a cleared Save erased two measured
+FORCE Combat results while claiming one. Three savers on the same prep
+screen: `saveForceTimes()` guarded, `saveRunTT()` and `saveCombat()` not.
+
+The rest of the sweep is coverage worth recording: `saveForceDate()`,
+`saveGoalWeight()`, `saveWaistGoal()` and `removeMeasure()` all validate or
+count before they speak, and `saveGoalWeight()` already carries a separate
+*"Goal weight cleared"*. **The class is three wide and all three are now
+correct** — checked by sweep rather than by fixing what happened to be in
+front of me.
+
+Eleven mutants, all caught. Two are the pair that matter: always `Logged ✅`
+(the original), and always `Nothing to save` — which satisfies both
+untouched-sheet assertions and breaks the only case anybody uses.
+
+### The false alarm the same sweep raised
+
+`mealPlanHTML()` carries *"Add a protein anchor — see the Reference tab"* on
+a card that RENDERS on Reference — a pointer at the tab the reader is standing
+on, left behind when v245 moved the plan off Fuel. It is not athlete-
+reachable: the function has **no caller**, kept deliberately (its comment says
+so) because suite 02 drives it as the safety surface for the meal generator.
+The live `renderRef()` day card reports the same gap in far more detail, with
+concrete grams and no tab pointer at all — so v287's claim that the overshoot
+is *"visible, which renderRef() already reports"* still holds. Checked rather
+than assumed.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

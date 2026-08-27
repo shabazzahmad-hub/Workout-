@@ -4068,6 +4068,97 @@ export default async function run() {
       /3 miles/.test(r.imp) && /5 km/.test(r.metric), r);
   }
 
+  // ---- the time-trial sheet says what actually happened --------------------
+  /* It toasted "Logged \u2705" in all three states: a Save on an untouched sheet
+     where nothing was written, and a Save with both boxes cleared where two
+     measured times were ERASED. Blank-means-delete is deliberate \u2014 openRunTT()
+     pre-fills from what is stored, so an empty box is the athlete taking a
+     value away and the only way to unset a target. The sentence was the bug.
+     saveForceTimes(), the sibling sheet 340 lines below, already said
+     "Nothing to save" when its writer accepted nothing. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {}, said = [], orig = window.toast;
+      window.toast = m => { said.push(m); };
+      const fill = (bm, bs, tm, ts) => {
+        const set = (id, v) => { const e = document.querySelector('#' + id); if (e) e.value = v; };
+        set('tt-bm', bm); set('tt-bs', bs); set('tt-tm', tm); set('tt-ts', ts);
+      };
+      const run = (bm, bs, tm, ts) => {
+        openRunTT(); fill(bm, bs, tm, ts); said.length = 0; saveRunTT();
+        return { toast: said[0], best: runTTBest(), target: runTTTarget() };
+      };
+      delete STATE.prep; save();
+      o.startsEmpty = runTTBest() === null && runTTTarget() === null;
+      o.empty = run('', '', '', '');
+      o.real = run(11, 56, 12, 0);
+      openRunTT();
+      o.prefilled = (document.querySelector('#tt-bm') || {}).value;
+      closeSheet();
+      o.cleared = run('', '', '', '');
+      run(11, 56, 12, 0);
+      o.mixed = run(10, 30, '', '');
+      o.loneClear = run('', '', '', '');
+      window.toast = orig;
+      delete STATE.prep; save();
+      return o;
+    });
+    t.ok('guard: the sheet starts with no stored time', r.startsEmpty, r);
+    t.eq('Save on an untouched sheet says nothing was saved', r.empty.toast, 'Nothing to save', r.empty);
+    t.eq('and really wrote nothing', r.empty.best, null, r.empty);
+    /* THE FLOOR. A toast that always said "Nothing to save" satisfies the two
+       assertions above and breaks the only case that matters. */
+    t.eq('a real time still says Logged', r.real.toast, 'Logged \u2705', r.real);
+    t.eq('and stores the best time', r.real.best, 716, r.real);
+    t.eq('and stores the target', r.real.target, 720, r.real);
+    t.eq('guard: reopening the sheet pre-fills what is stored', r.prefilled, '11', r);
+    t.ok('clearing both boxes says they were cleared', /cleared/i.test(r.cleared.toast || ''), r.cleared);
+    t.ok('and never claims a log', !/logged/i.test(r.cleared.toast || ''), r.cleared);
+    t.eq('and the erase is real', r.cleared.best, null, r.cleared);
+    t.eq('a write beside a clear still reports the write', r.mixed.toast, 'Logged \u2705', r.mixed);
+    t.eq('and the written value landed', r.mixed.best, 630, r.mixed);
+    t.ok('a lone clear names which value went', /best time cleared/i.test(r.loneClear.toast || ''), r.loneClear);
+  }
+
+  // ---- and the same sheet's sibling, because one instance is not the class --
+  /* Three savers on the prep screen share the blank-means-delete shape.
+     saveForceTimes() already counted what its writer accepted; saveRunTT() and
+     saveCombat() both claimed success unconditionally. Fixing one leaves the
+     class alive, which is how this one was found. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {}, said = [], orig = window.toast;
+      window.toast = m => { said.push(m); };
+      const run = (c, m) => {
+        openCombatLog();
+        const set = (id, v) => { const e = document.querySelector('#' + id); if (e) e.value = v; };
+        set('cb-circuit', c); set('cb-march', m);
+        said.length = 0; saveCombat();
+        return { toast: said[0], circuit: combatResult('circuit'), march: combatResult('march') };
+      };
+      delete STATE.prep; save();
+      o.startsEmpty = combatResult('circuit') === null && combatResult('march') === null;
+      o.empty = run('', '');
+      o.real = run(880, 55);
+      o.cleared = run('', '');
+      run(880, 55);
+      o.mixed = run(900, '');
+      o.loneClear = run('', '');
+      window.toast = orig;
+      delete STATE.prep; save();
+      return o;
+    });
+    t.ok('guard: the combat sheet starts with nothing logged', r.startsEmpty, r);
+    t.eq('Save on an untouched combat sheet says nothing was saved', r.empty.toast, 'Nothing to save', r.empty);
+    t.eq('a real result still says Saved', r.real.toast, 'Saved', r.real);
+    t.eq('and stores the circuit time', r.real.circuit, 880, r.real);
+    t.eq('and stores the march in seconds', r.real.march, 3300, r.real);
+    t.ok('clearing both says they were cleared', /cleared/i.test(r.cleared.toast || ''), r.cleared);
+    t.eq('and the erase is real', r.cleared.circuit, null, r.cleared);
+    t.eq('a write beside a clear still reports the write', r.mixed.toast, 'Saved', r.mixed);
+    t.ok('a lone clear names which result went', /circuit result cleared/i.test(r.loneClear.toast || ''), r.loneClear);
+  }
+
   await browser.close();
 
   // ---- the readiness deload, in the timezone it was broken in --------------

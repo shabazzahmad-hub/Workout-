@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='342';
+const APP_VERSION='343';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4302,9 +4302,25 @@ function saveRunTT(){
   const b=_ttSecs('tt-bm','tt-bs'), t=_ttSecs('tt-tm','tt-ts');
   if(b===null||t===null){toast('Enter a real time — seconds under 60');return;}
   if(!STATE.prep||typeof STATE.prep!=='object'||Array.isArray(STATE.prep))STATE.prep={};
+  /* SAY WHAT HAPPENED. This toasted "Logged ✅" unconditionally, in all three
+     states — including tapping Save on an untouched sheet, where nothing was
+     written at all, and clearing both boxes, where two measured times were
+     ERASED and the app congratulated the athlete on logging them.
+
+     Blank-means-delete is deliberate: openRunTT() pre-fills from what is
+     stored, so an empty box is the athlete taking a value away, and it is the
+     only way to unset a target. What was wrong is the sentence, not the
+     delete. saveForceTimes() — the sibling sheet 340 lines below — already
+     counted what the writer accepted and said "Nothing to save" when it
+     accepted none. This one never got it. */
+  const had={b:STATE.prep.ttBest!==undefined,t:STATE.prep.ttTarget!==undefined};
   if(b===undefined)delete STATE.prep.ttBest; else STATE.prep.ttBest=b;
   if(t===undefined)delete STATE.prep.ttTarget; else STATE.prep.ttTarget=t;
-  save();closeSheet();toast('Logged ✅');openArmyRun();
+  const wrote=(b!==undefined?1:0)+(t!==undefined?1:0);
+  const cleared=(b===undefined&&had.b?1:0)+(t===undefined&&had.t?1:0);
+  save();closeSheet();
+  toast(wrote?'Logged ✅':(cleared?(cleared>1?'Time and target cleared':(had.b&&b===undefined?'Best time cleared':'Target cleared')):'Nothing to save'));
+  openArmyRun();
 }
 /* Sets the run mode to the session's pace and pre-fills its length, then hands
    the athlete back to the Movement card to log what they actually did. It does
@@ -5126,10 +5142,19 @@ function saveCombat(){
   /* Seconds in the store, both of them, so one reader serves both. Absent
      means "not measured" — deleted rather than zeroed, because a zero would
      render as a 0:00 result, which is not a measurement. */
+  /* SAY WHAT HAPPENED — the third member of this class on one screen.
+     saveForceTimes() already counted what its writer accepted; saveRunTT() and
+     this one both toasted success unconditionally, so a Save on an untouched
+     sheet claimed one, and a Save with both boxes emptied claimed one while
+     ERASING two measured results. The delete is right (an absent result means
+     "not measured", and a zero would render as 0:00) — the sentence was not. */
+  const had={c:P.combatCircuit!==undefined,m:P.combatMarch!==undefined};
   if(c===null)delete P.combatCircuit; else P.combatCircuit=c;
   if(m===null)delete P.combatMarch;   else P.combatMarch=m*60;
+  const wrote=(c!==null?1:0)+(m!==null?1:0);
+  const cleared=(c===null&&had.c?1:0)+(m===null&&had.m?1:0);
   save();closeSheet();render();
-  toast('Saved');
+  toast(wrote?'Saved':(cleared?(cleared>1?'Both results cleared':(had.c&&c===null?'Circuit result cleared':'March result cleared')):'Nothing to save'));
 }
 function openForceLog(){
   openSheet(`
@@ -7261,6 +7286,28 @@ function ivTickLead(){
     if(INTV.lead>0){beep(1000,.18,0.9);ivS('#ivNum',INTV.lead);return;}
   beepGo();haptic(30);coachSay('Go!');ivClear();ivStep(0);
 }
+/* THE LABEL IS DERIVED, NEVER HARDCODED. ivRenderStep() rebuilds the whole
+   body, and hiitSkip() reaches it while paused — INTV.running false, no
+   interval running — so a hardcoded "Pause" told the athlete a frozen round
+   was live. Tapping that button then RESUMED and re-labelled to "Pause"
+   again, so the word was identical either side of the tap and said nothing.
+
+   Both of the guided player's twins already fixed this: plEnterReady() does
+   plS('#plToggle','Resume') and plEnterRest() has the same else-branch.
+   ivStep() is the third surface and never got it — the player has twins and
+   they drift.
+
+   The PAUSED line is the second signal, because a state that rests on one
+   word is one forgotten re-render away from lying again. It carries no total:
+   the player banks paused seconds because its session clock is an
+   accountability figure, and HIIT has no session clock — INTV.workElapsed
+   only advances inside a running tick, so paused time is already excluded
+   from the credit. A count here would be bookkeeping with no consumer. */
+function ivPaintPaused(){
+  if(!INTV)return;
+  const t=$('#ivToggle');if(t)t.textContent=INTV.running?'Pause':'Resume';
+  const p=$('#ivPaused');if(p)p.textContent=INTV.running?'':'PAUSED';
+}
 function ivRenderStep(idx){
   const step=INTV.seq[idx];const ex=EX[step.exId]||{name:'Work',region:'cardio',img:''};const isWork=step.type==='work';
   const bg=ex.img||'';
@@ -7274,8 +7321,9 @@ function ivRenderStep(idx){
       ${ivRingHTML(isWork?'var(--green)':'var(--fire-l)',ex,isWork?'':'rest')}
       <div class="pl-set">${step.round?('ROUND '+step.round+(step.rounds?(' / '+step.rounds):'')):'Keep moving'}</div>
       <div class="pl-coach" id="ivCoach">${isWork?'Max effort — every rep counts.':'Breathe. Reset.'}</div>
+      <div class="pl-pausedbar" id="ivPaused">${INTV.running?'':'PAUSED'}</div>
       <div class="pl-actions">
-        <button class="btn ghost" id="ivToggle" onclick="hiitToggle()">Pause</button>
+        <button class="btn ghost" id="ivToggle" onclick="hiitToggle()">${INTV.running?'Pause':'Resume'}</button>
         <button class="btn ghost" onclick="hiitSkip()">Skip</button>
         <button class="btn primary" onclick="hiitQuit()">End</button>
       </div>
@@ -7421,7 +7469,7 @@ function logHiitAndClose(group,format,mins){
 }
 function hiitToggle(){
   if(!INTV)return;INTV.running=!INTV.running;
-  const t=$('#ivToggle');if(t)t.textContent=INTV.running?'Pause':'Resume';
+  ivPaintPaused();
   const pulse=$('#ivPulse');
   if(!INTV.running){ivClear();if(pulse)pulse.classList.remove('on');return;}
   // Resuming re-anchors the deadline to what was left, so a pause is not counted as elapsed time.
@@ -8768,8 +8816,22 @@ function saveAzureKey(v){
   if(v&&STATE.settings.neuralOn)testNeural();
 }
 function editAzureKey(){_editKey=true;if(TAB==='guide')renderGuide();}
+/* THE SAME GUARD ITS TWIN ALREADY HAD. The Gemini key was cleared by a bare
+   `setFoodAiKey('')` on a chip sitting a few pixels from the password field,
+   with no confirm and a toast reading "Cleared" — while clearAzureKey(), the
+   other half of the same pair, asked first.
+
+   Both are DEVICE credentials: exportData() strips them on purpose, so a
+   backup holds no opinion about either and a restore cannot undo the tap.
+   That is precisely why this one needs asking, and why both confirms now say
+   so — an athlete who thinks "I have a backup" is wrong about this one field
+   and nothing on screen used to tell them. */
+function clearFoodAiKey(){
+  if(typeof confirm==='function'&&!confirm('Remove your saved Gemini key? A key is never written into a backup, so a restore cannot bring it back — you would have to issue a new one from Google AI Studio. Photo and screenshot food import stops working until you do.'))return;
+  setFoodAiKey('');
+}
 function clearAzureKey(){
-  if(typeof confirm==='function'&&!confirm('Remove your saved Azure key? Premium voices will fall back to the device voices until you add it again.'))return;
+  if(typeof confirm==='function'&&!confirm('Remove your saved Azure key? A key is never written into a backup, so a restore cannot bring it back — you would have to copy it from the Azure portal again. Premium voices fall back to the device voices until you do.'))return;
   STATE.settings.azureKey='';_neuralCacheClear();_editKey=false;save();
   toast&&toast('Azure key removed');
   if(TAB==='guide')renderGuide();
@@ -17273,7 +17335,7 @@ function renderGuide(){
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Deload week <span class="tiny muted">· lighter sets &amp; targets to recover</span></span><button class="chip ${deloadOn()?'on':''}" onclick="toggleDeload()">${deloadOn()?'On':'Off'}</button></div>
     <div style="padding:6px 0 2px"><div class="tiny muted" style="margin-bottom:6px">Work around an injury <span style="opacity:.7">· auto-swaps risky moves</span></div>
       <div style="display:flex;flex-wrap:wrap;gap:6px">${JOINTS.map(([k,l])=>`<button class="chip ${((STATE.profile.limitations||[]).includes(k))?'on':''}" onclick="toggleLimitation('${k}')">${l}</button>`).join('')}</div></div>
-    <div style="padding:6px 0 2px"><div class="row" style="justify-content:space-between;margin-bottom:6px"><span class="tiny muted">AI food photo <span style="opacity:.7">· 📷 Snap → calories, via Google Gemini (free)</span></span>${STATE.settings.foodAiKey?`<button class="chip" onclick="setFoodAiKey('')">Clear key</button>`:''}</div>
+    <div style="padding:6px 0 2px"><div class="row" style="justify-content:space-between;margin-bottom:6px"><span class="tiny muted">AI food photo <span style="opacity:.7">· 📷 Snap → calories, via Google Gemini (free)</span></span>${STATE.settings.foodAiKey?`<button class="chip" onclick="clearFoodAiKey()">Clear key</button>`:''}</div>
       <input type="password" aria-label="Google Gemini API key" value="" onchange="if(this.value.trim())setFoodAiKey(this.value)" placeholder="${STATE.settings.foodAiKey?'🔒 Saved · type to replace':'Google Gemini API key'}" style="width:100%;padding:10px;border-radius:10px;background:var(--card2);color:var(--ink);border:1px solid var(--line)">
       <div class="tiny muted" style="margin-top:5px">Get a <b>free</b> key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="display:inline-block;padding:8px 0">aistudio.google.com/apikey</a> — no billing. Stays only on this phone. Estimates are approximate — always confirm.</div>
       ${STATE.settings.foodAiKey?`<button class="btn sm ghost" style="width:100%;margin-top:8px" onclick="runAIDiagnostic()">🔬 Test the AI connection</button>`:''}</div>
