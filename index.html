@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='337';
+const APP_VERSION='338';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4541,7 +4541,7 @@ function ruckLoadCeilLb(){
    same week the distance goes up is how a back goes. */
 function ruckLadderWeek(raw){
   const left=prepWeeksLeft();
-  if(left===null)return {noDate:true};
+  if(left===null)return {noDate:true,passed:prepDatePassed()};
   const wk=prepWeekNo(), phase=prepPhase();
   const base=trailingRuckKm();
   const startKm=(base!==null&&base>0)?base:PREP_RUCK_FLOOR_KM;
@@ -4590,6 +4590,20 @@ function ruckLadderWeek(raw){
 /* Which week of the block, counting FORWARD from today rather than backward
    from a start date the athlete never gave. Week 1 is this week. */
 function prepWeeksLeft(){const w=forceWeeksLeft();return (w===null||w<0)?null:w;}
+/* prepWeeksLeft() folds two different facts into one null — "no date was ever
+   set" and "the date has gone by" — and the plan then told an athlete who HAD
+   set a date to set one. The FORCE prep sheet has said "Your test date has
+   passed" since it was written; the plan is the sibling that never learned it,
+   from the same fact, in the same file. Naming the wrong reason leaves the
+   athlete nothing to act on, which is the same defect as blaming safety for a
+   limit safety did not set. */
+function prepDatePassed(){const w=forceWeeksLeft();return w!==null&&w<0;}
+function prepDateLabel(){
+  const d=prep().date;
+  if(typeof d!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(d))return '';
+  try{return new Date(d+'T00:00:00').toLocaleDateString(undefined,{month:'long',day:'numeric',year:'numeric'});}
+  catch(e){return d;}
+}
 function prepWeekNo(){
   try{
     const f=prep().planFrom;
@@ -4651,7 +4665,7 @@ const PREP_PHASE_NOTE={
    other with raw=true, which never calls back. */
 function enduranceWeek(raw){
   const left=prepWeeksLeft(), phase=prepPhase();
-  if(left===null)return {noDate:true};
+  if(left===null)return {noDate:true,passed:prepDatePassed()};
   const base=trailingRunKm();
   const start=(base!==null&&base>0)?base:PREP_FLOOR_KM;
   /* Weeks ELAPSED since the plan opened, so the ramp compounds forward. It is
@@ -4708,6 +4722,8 @@ function footLoadHTML(w){
 }
 function enduranceHTML(){
   const w=enduranceWeek();
+  if(w.passed)return `<div class="note info"><b>Your test date has passed.</b> ${_ve(prepDateLabel())} has been and gone, so there is no block left to schedule. Set a new date and the plan rebuilds from what you have been logging since.
+    <button class="btn ghost" style="width:100%;margin-top:10px" onclick="openForceDate()">📅 Set a new test date</button></div>`;
   if(w.noDate)return `<div class="note info"><b>Set your test date and this becomes a plan.</b> Without one the app cannot tell a base-building week from a taper, and a schedule invented around no deadline is worse than none.</div>`;
   const names={base:'Base run',long:'Long run',tempo:'Tempo run',intervals:'6 × 400 m'};
   return `<div class="card pad">
