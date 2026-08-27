@@ -4451,7 +4451,21 @@ declaration** — a temporal dead zone that would have thrown on every load.
 `npm run check` only parses; it cannot see it. The same `btRing` trap, caught
 by driving the page.
 
-Fourteen mutants, all caught. The default is **Operator**, because everything
+### Auditing it an hour later found the check, not the code
+
+The routes all held when driven — clicking the picker stores the path, the
+sheet repaints with the new one selected, and `prep.path` travels in a backup
+and comes back on a restore. **The CHECK was the weak part**: it searched the
+markup for `setPrepPath(` rather than tapping the button, so a picker rendered
+with a dead handler would have kept the string and done nothing. Same lesson as
+v292's Convert button, and the fifth time this file has recorded it.
+
+Four more mutants once it clicked instead of scanning — a dead handler, a store
+with no repaint, every button rendered as selected, and the new field stripped
+from the backup. **A new STATE field gets a round-trip check of its own**,
+because that is precisely how v336 was found.
+
+Eighteen mutants, all caught. The default is **Operator**, because everything
 else this app knows about the Canadian standards is load carriage — FORCE's
 sandbag and shuttle, FORCE Combat's 25 kg fighting order and 35 kg march.
 

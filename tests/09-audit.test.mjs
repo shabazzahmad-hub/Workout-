@@ -3582,12 +3582,27 @@ export default async function run() {
       STATE.prep = { date: ahead(112), path: 'assaulter' };
       normalizeState();
       o.repairKeepsGood = STATE.prep.path;
-      // and the picker is on the sheet the athlete opens
+      /* CLICK the control the athlete taps, rather than searching the markup
+         for the handler's name: a button rendered with a dead onclick keeps
+         the string and does nothing. Same lesson as v292's Convert button. */
       STATE.prep = { date: ahead(112) }; save();
       openForcePrep();
       const sheet = document.querySelector('#sheet');
-      o.sheetHasPicker = !!(sheet && /setPrepPath\(/.test(sheet.innerHTML));
       o.sheetNamesBoth = !!(sheet && PREP_PATH_KEYS.every(k => sheet.innerHTML.includes(PREP_PATHS[k].label)));
+      const btns = [...document.querySelectorAll('#sheet .daypick button')]
+        .filter(b => /Operator|Assaulter/.test(b.textContent));
+      o.pickerButtons = btns.length;
+      const assa = btns.find(b => /Assaulter/.test(b.textContent));
+      if (assa) assa.click();
+      o.afterTap = STATE.prep.path;
+      /* and the sheet repaints with the new pick selected — storing a value
+         nothing shows back is half a control. */
+      const lit = [...document.querySelectorAll('#sheet .daypick button.on')]
+        .map(b => b.textContent.trim()).filter(t => /Operator|Assaulter/.test(t));
+      o.litAfterTap = lit;
+      const opb = [...document.querySelectorAll('#sheet .daypick button')].find(b => /Operator/.test(b.textContent));
+      if (opb) opb.click();
+      o.afterSecondTap = STATE.prep.path;
       try { closeSheet(); } catch (e) {}
       STATE.prep = {}; save();
       return o;
@@ -3673,8 +3688,12 @@ export default async function run() {
         r.repairedAway, undefined, r);
       t.eq('and a real one written the same way survives that repair',
         r.repairKeepsGood, 'assaulter', r);
-      t.ok('the picker sits on the prep sheet the athlete opens', r.sheetHasPicker, r);
+      t.eq('the prep sheet offers one button per path', r.pickerButtons, r.pathKeys.length, r);
       t.ok('and names both paths', r.sheetNamesBoth, r);
+      t.eq('tapping a path stores it', r.afterTap, 'assaulter', r);
+      t.eq('and the sheet repaints showing only that one selected',
+        JSON.stringify(r.litAfterTap), JSON.stringify(['🏃 Assaulter']), r);
+      t.eq('and tapping the other switches back', r.afterSecondTap, 'operator', r);
     }
   }
 

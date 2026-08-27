@@ -343,6 +343,49 @@ export default async function () {
     await seedAthlete(page);
   }
 
+  /* ---------- 5f. a NEW state field has to survive the round trip ---------
+     v340 added prep.path, and v336 was found by driving exactly this: export →
+     import, checking that what the athlete set comes back. A field that is
+     stored, rendered and repaired but silently dropped by a restore is a
+     control the athlete loses on their next new phone. */
+  {
+    const r = await page.evaluate(async () => {
+      const o = {};
+      if (typeof setPrepPath !== 'function' || typeof prepPath !== 'function') return { absent: true };
+      const ahead = d => { const x = new Date(); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); };
+      STATE.prep = { date: ahead(112), path: 'assaulter' }; save();
+      let blob = null;
+      const rb = window.URL.createObjectURL, rc = HTMLAnchorElement.prototype.click;
+      window.URL.createObjectURL = b => { blob = b; return 'blob:x'; };
+      HTMLAnchorElement.prototype.click = function () {};
+      await exportData();
+      window.URL.createObjectURL = rb; HTMLAnchorElement.prototype.click = rc;
+      const text = blob ? await blob.text() : '';
+      o.inBackup = text ? JSON.parse(text).prep.path : null;
+      // the device moves to the other path, then restores the file
+      STATE.prep = { date: ahead(112), path: 'operator' }; save();
+      o.before = prepPath();
+      const kc = window.confirm; window.confirm = () => true;
+      await new Promise(res => {
+        importData({ target: { files: [new File([text], 'b.json', { type: 'application/json' })] } });
+        const iv = setInterval(() => { if (STATE.prep && STATE.prep.path === 'assaulter') { clearInterval(iv); res(); } }, 60);
+        setTimeout(() => { clearInterval(iv); res(); }, 3000);
+      });
+      window.confirm = kc;
+      o.after = prepPath();
+      o.stored = STATE.prep.path;
+      STATE.prep = {}; save();
+      return o;
+    });
+    t.ok('guard: the device really was on the other path first',
+      !r.absent && r.before === 'operator', r);
+    t.eq('the training path travels in a backup', r.inBackup, 'assaulter', r);
+    t.eq('and comes back on a restore', r.after, 'assaulter', r);
+    t.eq('stored on STATE, not merely reported by the getter', r.stored, 'assaulter', r);
+    await page.evaluate(() => { STATE.onboarded = false; });
+    await seedAthlete(page);
+  }
+
   /* ---------- 6. nutrition.kcalTarget had no type repair ----------------
      todayKcalBudget() did `k + movementKcalAdj()`, so a stored STRING
      CONCATENATED: '2400' + 600 rendered "24000 kcal left today" on Fuel while
