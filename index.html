@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='345';
+const APP_VERSION='346';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3529,6 +3529,7 @@ function obReadForm(){
   // or ms[0]/ms[last] stop meaning "start" and "now"
   if(wOk||wtOk)upsertMeasure(wOk?r1(wCm):null,kg);
   try{recalcKcalFromStored();}catch(e){}   // (re)compute calorie/macro targets from the answers
+  syncDerivedHabits();   // the wizard can move bodyweight, which moves the water goal
 }
 
 /* The athlete flagged something on the health check. Rather than silently
@@ -10492,6 +10493,7 @@ function saveMeasure(){
   // keep the working body weight (used for protein/water/BMI/TDEE) in sync with the newest logged weight
   if(b>0){STATE.nutrition.weightKg=b;
     if(STATE.nutrition.kcalTarget&&typeof recalcKcalFromStored==='function'){try{recalcKcalFromStored();}catch(e){}}}
+  syncDerivedHabits();
   save();closeSheet();toast('Measurement saved');renderProgress();checkAchievements();
 }
 
@@ -11386,6 +11388,7 @@ function removeMeasure(date){
   if(STATE.measurements.length===before){toast('Not found');return;}
   const last=(STATE.measurements||[]).filter(m=>m.weight>0).slice(-1)[0];
   if(last){STATE.nutrition.weightKg=last.weight;try{recalcKcalFromStored();}catch(e){}}
+  syncDerivedHabits();
   save();toast('Deleted');renderProgress();
 }
 function measureListHTML(){
@@ -11700,6 +11703,33 @@ function shotReplaceHTML(){
 function foodTotals(){const d=nutToday();const f=d.food||[];
   return {kcal:f.reduce((a,x)=>a+(x.kcal||0),0),p:f.reduce((a,x)=>a+(x.p||0),0),
           c:f.reduce((a,x)=>a+(x.c||0),0),f:f.reduce((a,x)=>a+(x.f||0),0),n:f.length};}
+/* THE ONE PLACE A FOOD ROW IS WRITTEN, and the one place the protein habit is
+   kept in step with it.
+
+   logRefMeal() — "Log this meal" on a Reference day — pushed its rows straight
+   into nutToday().food and never called syncProteinHabit(). Measured: 165 g is
+   the target; typing 200 g by hand ticks the habit, while logging the app's own
+   reference meals to 166 g does not, and it never heals — not on renderFuel(),
+   not on a full render, because a renderer must not mutate (v312). So an
+   athlete who hit their protein using the meal plan the app built for them was
+   not credited for it, and Perfect Day stayed locked.
+
+   Folding the sync INTO the push is what stops a third writer forgetting it
+   again — the same call setForceResultQuiet() made for the checkpoint stamp.
+   It recomputes from foodTotals(), so it is idempotent and per-row is fine. */
+function foodRow(name,kcal,p,c,f,meal,portion,calc,src){
+  const _nn=v=>Math.max(0,Math.round(v||0));
+  return {name:String(name||'Meal').slice(0,60),kcal:_nn(kcal),p:_nn(p),
+    c:_nn(c),f:_nn(f),meal:meal||currentMealSlot(),at:Date.now(),
+    ...(cleanPortion(portion)?{portion:cleanPortion(portion)}:{}),
+    ...(_MACRO_KEY[calc]?{calc}:{}),
+    ...(src==='shot'?{src:'shot'}:{})};
+}
+function pushFoodRow(name,kcal,p,c,f,meal,portion,calc,src){
+  const d=nutToday();if(!Array.isArray(d.food))d.food=[];
+  d.food.push(foodRow(name,kcal,p,c,f,meal,portion,calc,src));
+  syncProteinHabit();
+}
 function logFood(name,kcal,p,c,f,meal,portion,calc,src){const d=nutToday();if(!Array.isArray(d.food))d.food=[];
   /* Food is never negative. `Math.round(kcal||0)` accepted a negative straight
      through, and a single -500 row silently CANCELS a real meal out of the
@@ -11707,22 +11737,13 @@ function logFood(name,kcal,p,c,f,meal,portion,calc,src){const d=nutToday();if(!A
      what they ate. Not reachable by typing today, but an import or a
      mis-parsed AI/barcode reply is exactly the path everything else here
      guards. Clamp at zero; a zero-calorie row (black coffee) stays legal. */
-  const _nn=v=>Math.max(0,Math.round(v||0));
-  d.food.push({name:String(name||'Meal').slice(0,60),kcal:_nn(kcal),p:_nn(p),
-    c:_nn(c),f:_nn(f),meal:meal||currentMealSlot(),at:Date.now(),
-    /* Only written when there IS one. A manual add carries no portion, and an
-       empty key on every row would grow every backup for nothing. */
-    ...(cleanPortion(portion)?{portion:cleanPortion(portion)}:{}),
-    /* Which macro, if any, was worked out from the calories rather than read.
-       A MEMBERSHIP test, not truthiness: this reaches innerHTML and an import
-       can carry anything. */
-    ...(_MACRO_KEY[calc]?{calc}:{}),
-    /* Where the row came from. Only 'shot' is meaningful today — a tracker's
-       dashboard screenshot, which is a RUNNING TOTAL for the day and not a
-       meal. Membership, not truthiness: it reaches innerHTML and an import
-       can carry anything. */
-    ...(src==='shot'?{src:'shot'}:{})});
-  syncProteinHabit();save();toast('Logged ✓');closeSheet();renderFuel();try{checkAchievements();}catch(e){}}
+  /* foodRow() holds the shape: the zero floor (a single -500 row silently
+     CANCELS a real meal out of the day's total), the 60-character name cap,
+     the portion only when there IS one, and MEMBERSHIP rather than truthiness
+     on `calc` and `src` — both reach innerHTML and an import can carry
+     anything. */
+  pushFoodRow(name,kcal,p,c,f,meal,portion,calc,src);
+  save();toast('Logged ✓');closeSheet();renderFuel();try{checkAchievements();}catch(e){}}
 /* A logged row with real calories and NOTHING in any macro field was never
    MEASURED at zero — it is arithmetically impossible, since calories come from
    protein, carbs and fat and nothing else. So it is a reading that failed, not
@@ -14151,7 +14172,19 @@ const MOBILITY_LEVELS=['low','ok','good'];
    stalls a cut, under-stating it costs a little food. Anything that is not a
    number carries no intent at all, so it takes the app's own default — the
    same value a fresh install gets. */
-const ACTIVITY_OPTS=[[1.2,'Mostly sitting'],[1.375,'Lightly active'],[1.45,'Moderately active'],[1.6,'Very active']];
+/* FIVE, not four. v345 hoisted this list out of the WIZARD's picker and made
+   normalizeState() snap to it — and missed a THIRD copy: the calorie-target
+   sheet's <select>, which has always offered "Extremely active" (1.75) as
+   well. So the repair shipped one round ago was silently snapping 1.75 down to
+   1.6 — about 260 kcal on a 1750 BMR — for every athlete who had picked it,
+   with nothing on screen to say so. Fixing one instance is not fixing the
+   class, and here the missed instance made my own repair destructive.
+
+   Keeping 1.75 legal is the non-destructive resolution: nobody loses a stored
+   choice, and the wizard gains a level the app already priced on another
+   screen. Both controls now render from this list, so a fourth copy cannot be
+   written by hand. */
+const ACTIVITY_OPTS=[[1.2,'Mostly sitting'],[1.375,'Lightly active'],[1.45,'Moderately active'],[1.6,'Very active'],[1.75,'Extremely active']];
 const ACTIVITY_VALUES=ACTIVITY_OPTS.map(a=>a[0]);
 const ACTIVITY_DEFAULT=1.45;
 function activityLevel(v){
@@ -14642,6 +14675,36 @@ function syncProteinHabit(){
   if(!t.habits||typeof t.habits!=='object')t.habits={};
   t.habits.protein=foodTotals().p>=tgt;
 }
+/* A DERIVED HABIT IS A VERDICT AGAINST A TARGET, AND THE TARGET MOVES.
+   Three of the five habits are derived from data — protein, water and steps —
+   and each was kept in step with its own NUMBER and never with its TARGET.
+   Measured: eat 165 g against a 165 g target (ticked), then raise the target
+   to 220 g, and the tick stays on at 165/220 with Fuel reporting "Daily
+   habits · 1/4"; it never heals, because a renderer must not mutate. The
+   water goal moves with bodyweight, so logging a heavier weight after
+   drinking the old goal does the same thing — and that is a routine sequence,
+   not a rare one.
+
+   A wrong tick is not cosmetic: it extends the nutrition streak by a day and
+   can unlock Perfect Day.
+
+   The three syncs are cheap and idempotent, so every setter that moves one of
+   these targets calls all three through here rather than remembering which
+   habit it touched. It is guarded on today's day entry already existing —
+   with nothing logged there is no derived habit to correct, and creating the
+   entry here would add an empty row to every backup. */
+function syncWaterHabit(){
+  const t=nutToday();
+  if(!t.habits||typeof t.habits!=='object')t.habits={};
+  t.habits.water=(t.water||0)>=waterTargetCups();
+}
+function syncDerivedHabits(){
+  try{
+    const n=nut();
+    if(!n.days||!n.days[todayISO()])return;   // nothing logged today
+    syncProteinHabit();syncWaterHabit();syncStepHabit();
+  }catch(e){}
+}
 function syncStepHabit(){
   const t=nutToday();const m=movement();
   /* The early return has to consider what was ALREADY logged, not just what is
@@ -15070,11 +15133,13 @@ function setProteinTarget(g){
   const v=Math.round(clamp(parseInt(g)||0,PROT_MIN,PROT_MAX)/5)*5;
   STATE.nutrition.proteinTarget=v;
   STATE.nutrition.plan=null;            // the day's meals are sized to the target
+  syncDerivedHabits();
   save();haptic(8);
   try{renderFuel();}catch(e){}
 }
 function clearProteinTarget(){
   if(STATE.nutrition){delete STATE.nutrition.proteinTarget;STATE.nutrition.plan=null;}
+  syncDerivedHabits();
   save();haptic(8);toast('Back to the calculated target');
   try{renderFuel();}catch(e){}
 }
@@ -16113,8 +16178,7 @@ function logRefMeal(di,mi){
   const d=scaledDays()[di];const m=d&&d.meals[mi];if(!m)return;
   const slot=refSlotKey(m.slot);const t=nutToday();
   if(!Array.isArray(t.food))t.food=[];
-  m.items.forEach(x=>t.food.push({name:(x.name+' '+x.label).slice(0,60),kcal:x.kcal,p:x.p,
-    c:x.c,f:x.f,meal:slot,at:Date.now()}));
+  m.items.forEach(x=>pushFoodRow(x.name+' '+x.label,x.kcal,x.p,x.c,x.f,slot));
   save();haptic(12);toast(m.items.length+' items logged · '+m.p+'g ✓');
   renderRef();try{renderFuel();}catch(e){}try{checkAchievements();}catch(e){}
 }
@@ -16665,7 +16729,7 @@ function setNutGoal(g){nut().goal=g;STATE.profile.goal=g;noteGoalPhase();if(nut(
    mis-tap left "Hit water goal" checked above a card reading 0/13 — the exact
    contradiction syncStepHabit()'s own comment says it exists to prevent, never
    carried across to water. */
-function logWater(d){const t=nutToday();t.water=clamp((t.water||0)+d,0,20);if(!t.habits||typeof t.habits!=='object')t.habits={};t.habits.water=t.water>=waterTargetCups();save();renderFuel();checkAchievements();}
+function logWater(d){const t=nutToday();t.water=clamp((t.water||0)+d,0,20);syncWaterHabit();save();renderFuel();checkAchievements();}
 function toggleHabit(k){const t=nutToday();if(!t.habits)t.habits={};t.habits[k]=!t.habits[k];save();haptic(10);renderFuel();checkAchievements();}
 function mifflinBMR(sex,kg,cm,age){return 10*kg+6.25*cm-5*age+(sex==='female'?-161:5);}
 /* GOAL_NOTE.shred says "best in short blocks" and nothing enforced it. Track how
@@ -16984,11 +17048,7 @@ function openTDEE(){
     <div class="field"><label>Weight (${imp?'lb':'kg'})</label><input id="td-wt" type="number" inputmode="decimal" value="${n.weightKg?(imp?(n.weightKg/0.453592).toFixed(0):n.weightKg):(latestWeightKg()?(imp?(latestWeightKg()/0.453592).toFixed(0):latestWeightKg().toFixed(0)):'')}" placeholder="${imp?'e.g. 185':'e.g. 84'}"></div>
     <div class="field"><label>Activity level</label>
       <select id="td-act" style="width:100%;padding:12px;border-radius:12px;background:var(--card2);color:var(--ink);border:1.5px solid var(--line);font-size:16px">
-        <option value="1.2"${n.activity==1.2?' selected':''}>Mostly sitting</option>
-        <option value="1.375"${n.activity==1.375?' selected':''}>Lightly active</option>
-        <option value="1.45"${(!n.activity||n.activity==1.45)?' selected':''}>Moderately active</option>
-        <option value="1.6"${n.activity==1.6?' selected':''}>Very active</option>
-        <option value="1.75"${n.activity==1.75?' selected':''}>Extremely active</option>
+        ${ACTIVITY_OPTS.map(([v,l])=>`<option value="${v}"${activityLevel(n.activity)===v?' selected':''}>${_ve(l)}</option>`).join('')}
       </select></div>
     <button class="btn primary" onclick="saveTDEE()">Calculate &amp; save</button>
   `);
@@ -17016,7 +17076,14 @@ function saveTDEE(){
   if(bmiImplausible(wt,ht)){toast(imp
     ? `${wtRaw} lb at ${Math.round(ht/2.54)} in does not add up — if that is kilograms, enter about ${Math.round(wtRaw/0.453592)}.`
     : `${wtRaw} kg at ${Math.round(ht)} cm does not add up — if that is pounds, enter about ${Math.round(wtRaw*0.453592)}.`);return;}
-  n.sex=sex;n.age=age;n.heightCm=Math.round(ht);n.weightKg=Math.round(wt*10)/10;n.activity=parseFloat($('#td-act').value)||1.45;
+  n.sex=sex;n.age=age;n.heightCm=Math.round(ht);n.weightKg=Math.round(wt*10)/10;
+  /* EQUIVALENT TODAY, kept as intent. The <select> above renders only
+     ACTIVITY_OPTS, so parseFloat() of its value is always already legal and a
+     mutant replacing this with `||1.45` changes nothing a check can see — the
+     same call as v287's wantAnchor and v301's _macrosMissing. It is here so a
+     future control that offers something else cannot write it raw. */
+  n.activity=activityLevel(parseFloat($('#td-act').value));
+  syncDerivedHabits();
   // mirror to the profile copy — the quiz prefills from profile.*, so writing
   // only the nutrition side meant one tap of Next reverted these answers
   STATE.profile.sex=sex;STATE.profile.age=age;STATE.profile.heightCm=n.heightCm;STATE.profile.activity=n.activity;

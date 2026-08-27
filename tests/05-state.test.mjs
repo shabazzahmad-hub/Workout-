@@ -739,7 +739,7 @@ export default async function run() {
           out.legal.push(v + '\u2192' + STATE.profile.activity + '/' + STATE.nutrition.activity);
       });
       // out-of-set numbers snap DOWN into the set; non-numbers take the default
-      const CASES = [[1.55, 1.45], [1.9, 1.6], [-3, LEGAL[0]], [0, LEGAL[0]],
+      const CASES = [[1.55, 1.45], [1.65, 1.6], [1.9, 1.75], [-3, LEGAL[0]], [0, LEGAL[0]],
         ['brisk', ACTIVITY_DEFAULT], [null, ACTIVITY_DEFAULT], [[], ACTIVITY_DEFAULT],
         [{}, ACTIVITY_DEFAULT], [NaN, ACTIVITY_DEFAULT], [true, ACTIVITY_DEFAULT]];
       CASES.forEach(([given, want]) => {
@@ -750,7 +750,7 @@ export default async function run() {
             '/' + STATE.nutrition.activity + ' want ' + want);
       });
       // and nothing may survive outside the set at all
-      [[], {}, 'sideways', 0, true, NaN, 1.55, 99].forEach(j => {
+      [[], {}, 'sideways', 0, true, NaN, 1.55, 1.65, 99].forEach(j => {
         STATE.profile.activity = j; normalizeState();
         if (!LEGAL.includes(STATE.profile.activity))
           out.junk.push('escaped: ' + JSON.stringify(j) + '\u2192' + JSON.stringify(STATE.profile.activity));
@@ -772,16 +772,31 @@ export default async function run() {
       const btns = [...document.querySelectorAll('#ob-act button')];
       out.rendered = btns.map(b => parseFloat(b.dataset.a));
       out.selected = btns.filter(b => b.classList.contains('on')).map(b => parseFloat(b.dataset.a));
+      closeSheet();
+      // the third copy: the calorie-target sheet's <select>
+      STATE.profile.activity = 1.75; STATE.nutrition.activity = 1.75;
+      normalizeState();
+      out.keeps175 = STATE.nutrition.activity;
+      openTDEE();
+      out.selOpts = [...document.querySelectorAll('#td-act option')].map(o => parseFloat(o.value));
+      closeSheet();
       return out;
     });
-    t.eq('guard: the wizard really offers four activity levels', r.optionCount, 4, r);
+    t.eq('guard: the wizard really offers five activity levels', r.optionCount, 5, r);
     t.eq('every level the wizard offers survives the repair', r.legal.join(' '), '', r);
     t.eq('and nothing outside the set does', r.junk.join(' | '), '', r);
     t.eq('mobility is a membership test, not truthiness', r.mob.join(' | '), '', r);
-    t.eq('the picker renders the one list', r.rendered.join(','), '1.2,1.375,1.45,1.6', r);
+    t.eq('the picker renders the one list', r.rendered.join(','), '1.2,1.375,1.45,1.6,1.75', r);
     /* An out-of-set stored value used to leave NOTHING selected, which is what
        let the next Done rewrite it silently. */
     t.eq('and always has exactly one option selected', r.selected.length, 1, r);
+    /* The calorie-target sheet has always offered "Extremely active" (1.75).
+       v345 hoisted the list out of the WIZARD's picker only, so the repair it
+       shipped was snapping that stored choice down to 1.6 — about 260 kcal on
+       a 1750 BMR — for every athlete who had picked it. Both controls now
+       render the same list, and 1.75 is legal. */
+    t.ok('the calorie sheet renders the same list', r.selOpts.join(',') === r.rendered.join(','), r);
+    t.eq('and 1.75 survives the repair', r.keeps175, 1.75, r);
     errors.forEach(e => t.fail('page error', e));
     await browser.close();
   }

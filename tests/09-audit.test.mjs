@@ -4329,6 +4329,96 @@ export default async function run() {
     t.ok('and never claims the day ended', !r.advance.spoke, r.advance);
   }
 
+  // ---- every food writer keeps the protein habit in step -------------------
+  /* logRefMeal() - "Log this meal" on a Reference day - pushed its rows
+     straight into nutToday().food and never called syncProteinHabit().
+     Measured against a 165 g target: typing 200 g by hand ticks the habit,
+     logging the app's own reference meals to 166 g does not, and it never
+     heals because a renderer must not mutate. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      const reset = () => { const t = nutToday(); t.food = []; t.habits = {}; save(); };
+      const state = () => ({ p: Math.round(foodTotals().p), tgt: proteinTargetG(),
+        tick: !!(nutToday().habits || {}).protein, rows: (nutToday().food || []).length });
+      /* The target is pinned rather than inherited, so this is a check about
+         the WIRING and not about whether one reference day happens to clear
+         whatever target the seeded athlete carries. */
+      setProteinTarget(100);
+      reset(); logFood('Big protein day', 1200, 200, 50, 30, 'l');
+      o.byHand = state();
+      reset();
+      scaledDays()[0].meals.forEach((m, mi) => logRefMeal(0, mi));
+      o.byRefMeal = state();
+      renderFuel();
+      o.afterRender = state();
+      // FLOOR: reference meals that fall short must NOT tick it
+      setProteinTarget(220);
+      reset(); logRefMeal(0, 0);
+      o.oneMeal = state();
+      reset(); clearProteinTarget();
+      return o;
+    });
+    t.ok('guard: logging by hand clears the protein target', r.byHand.p >= r.byHand.tgt, r.byHand);
+    t.ok('and ticks the habit', r.byHand.tick, r.byHand);
+    t.ok('guard: the reference meals clear it too', r.byRefMeal.p >= r.byRefMeal.tgt, r.byRefMeal);
+    t.ok('guard: and really wrote rows', r.byRefMeal.rows > 1, r.byRefMeal);
+    t.ok('logging them ticks the same habit', r.byRefMeal.tick, r.byRefMeal);
+    t.ok('and it survives a render', r.afterRender.tick, r.afterRender);
+    /* THE FLOOR. A writer that always ticked would satisfy everything above. */
+    t.ok('guard: one meal alone falls short of the target', r.oneMeal.p < r.oneMeal.tgt, r.oneMeal);
+    t.ok('and does not tick it', !r.oneMeal.tick, r.oneMeal);
+  }
+
+  // ---- a derived habit is a verdict against a target, and targets move ------
+  /* protein, water and steps are derived from data; each was kept in step with
+     its own NUMBER and never with its TARGET. Eat 165 g against a 165 g target
+     (ticked), raise the target to 220, and the tick stayed on at 165/220 with
+     Fuel reporting "Daily habits 1/4". The water goal moves with bodyweight,
+     so logging a heavier weight after drinking the old goal did the same. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      const t0 = nutToday(); t0.food = []; t0.habits = {}; t0.water = 0; save();
+      // protein, both directions
+      setProteinTarget(165);
+      logFood('Chicken', 900, 165, 20, 20, 'l');
+      o.pHit = { tgt: proteinTargetG(), tick: !!nutToday().habits.protein };
+      setProteinTarget(220);
+      o.pRaised = { tgt: proteinTargetG(), eaten: Math.round(foodTotals().p),
+        tick: !!nutToday().habits.protein };
+      setProteinTarget(100);
+      o.pLowered = { tgt: proteinTargetG(), tick: !!nutToday().habits.protein };
+      clearProteinTarget();
+      o.pCleared = { tgt: proteinTargetG(), tick: !!nutToday().habits.protein };
+      // water, through the real route: log a heavier weight from Progress
+      const t = nutToday(); t.food = []; t.habits = {}; t.water = 0;
+      STATE.nutrition.weightKg = 70; save();
+      const need = waterTargetCups();
+      for (let i = 0; i < need; i++) logWater(1);
+      o.wHit = { tgt: waterTargetCups(), cups: nutToday().water, tick: !!nutToday().habits.water };
+      logMeasure();
+      const wIn = document.querySelector('#m-weight');
+      o.sheetOpened = !!wIn;
+      if (wIn) { wIn.value = 140; saveMeasure(); }
+      o.wAfter = { tgt: waterTargetCups(), cups: nutToday().water,
+        tick: !!nutToday().habits.water, kg: STATE.nutrition.weightKg };
+      const t2 = nutToday(); t2.food = []; t2.habits = {}; t2.water = 0; save();
+      return o;
+    });
+    t.ok('guard: eating the target ticks the protein habit', r.pHit.tick, r.pHit);
+    t.eq('guard: and raising the target really moved it', r.pRaised.tgt, 220, r.pRaised);
+    t.ok('guard: the athlete is now short', r.pRaised.eaten < r.pRaised.tgt, r.pRaised);
+    t.ok('raising the target un-ticks it', !r.pRaised.tick, r.pRaised);
+    /* THE FLOOR, and it is what stops the fix being "always un-tick". */
+    t.ok('lowering it back ticks it again', r.pLowered.tick, r.pLowered);
+    t.ok('and clearing the hand-set target re-derives it', typeof r.pCleared.tick === 'boolean', r.pCleared);
+    t.ok('guard: the water goal is met', r.wHit.tick && r.wHit.cups >= r.wHit.tgt, r.wHit);
+    t.ok('guard: the measurement sheet opened', r.sheetOpened, r);
+    t.ok('guard: a heavier weight really raised the water goal', r.wAfter.tgt > r.wHit.tgt, r);
+    t.ok('and the water habit follows it down', !r.wAfter.tick, r.wAfter);
+  }
+
   await browser.close();
 
   // ---- the readiness deload, in the timezone it was broken in --------------
