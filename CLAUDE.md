@@ -3972,6 +3972,58 @@ fail, exactly on the standard **is** a pass, a real time survives the repair
 that drops junk, and a heavier athlete whose own ceiling cleared the load
 would not be warned at all.
 
+## Auditing my own change an hour after shipping it (v334)
+
+Two defects in v333, both of them lessons already in this file, both written
+the same evening.
+
+### The kit note was on one card and not its twin
+
+`forceKitHTML()` returns real content and `openForcePrep()` renders it.
+`openCombat()` did not reference it at all — so an athlete with no sandbag saw
+the whole FORCE Combat standard and a **Run the circuit** button, with nothing
+saying three of the four events need kit they do not own.
+
+That is v322's own finding — *a new path has to ask every question the old ones
+ask* — repeated one card over, an hour later. The fix uses the SAME renderer
+rather than a second note, so the two cards cannot say different things, and
+the mutant that drops it is caught by that as well as by the text.
+
+### The card named a window and the verdict enforced half of it
+
+The march card printed **"In 50–60 minutes"** and `combatVerdict()` only ever
+checked the upper end. Measured: a **20-minute** entry read as a **PASS**. Five
+kilometres in twenty minutes is **15 km/h**, and the window is 5–6 km/h — under
+**77 lb**. A one-second circuit passed the same way.
+
+A promise in UI text with no code behind it, in code shipped an hour earlier.
+
+**It is NOT reported as a failure**, and that restraint is the point. Whether
+arriving inside 50 minutes fails the real evaluation is something this app does
+not know. What it does know is that the number sits outside the window it
+printed, which in practice means a short course, a light bag or a slip of the
+thumb. So it says exactly that, names the implied speed — *"15 km/h under 77
+lb"* — and leaves the verdict alone. The mutant that turns implausible into
+`'fail'` is caught.
+
+**The circuit's floor is DERIVED, not invented: half the sum of the individual
+event standards.** Beating every event by more than half its allowed time is
+not a performance. Because it reads `FORCE_EVENTS`, it moves if those figures
+ever do — and the mutant that replaces it with a hardcoded 120 is caught by an
+assertion that compares it against the sum, not against a number restated in
+the check.
+
+Ten mutants, all caught. The floors carry the usual weight: a time exactly ON
+the floor is accepted, a slow time is a failure rather than an impossibility, a
+result never entered is neither, and a legitimate pair of results produces no
+note at all.
+
+**The ratio worth recording.** v331 found that v330's own new code had
+introduced a second copy of a boundary. v334 found two defects in v333. Three
+rounds running, the audit's best finding was in the round immediately before
+it — which is an argument for auditing the change you just shipped before
+looking anywhere else.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
