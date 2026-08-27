@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='343';
+const APP_VERSION='344';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -6613,8 +6613,13 @@ function playerAddRest(){if(PLAYER&&PLAYER.phase==='rest'){PLAYER.remain+=15;PLA
 function playerSkipRest(){if(PLAYER&&PLAYER.phase==='rest')plRestDone();}
 function playerTeardown(){if(!PLAYER)return;plClearResume();wakeOff();plClear();plClockStop();beatStop();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;
   setTimeout(()=>{try{if(!$('#player').classList.contains('open'))$('#player').innerHTML='';}catch(e){}},400);
-  // Any teardown of the player = the user bailed (natural finish goes through playerFeel, which advances instead) → end the guided day.
-  if(typeof dayflowActive==='function'&&dayflowActive())dayflowCancel(true);
+  /* Any teardown of the player = the user bailed (natural finish goes through
+     playerFeel, which advances instead) → end the guided day, and SAY SO: the
+     cool-down Sarge promised is not coming, which is the one thing quitting
+     the player does not make obvious. Both callers are a deliberate exit —
+     the ✕ and the Back handler. See flowStop() for why the other two cancel
+     paths stay silent. */
+  if(typeof dayflowActive==='function'&&dayflowActive())dayflowCancel();
   if(TAB==='today')renderToday();}
 function playerQuit(){const had=!!PLAYER;playerTeardown();if(had&&history.state&&history.state.cf==='player'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
 function playerFeel(feel){
@@ -8416,7 +8421,22 @@ function _briefTarget(m){return m.unit==='time'?(m.target>=60?fmtTime(m.target):
 /* Build the ordered brief: each segment has an on-screen card (icon/title/text) and a
    spoken line (say). The screen text and the audio stay in lock-step. */
 function briefSegments(){
-  const sess=buildSession(STATE.progressPtr);
+  /* todayPtr(), NOT progressPtr — v313's finding on the surface v313 did not
+     reach. The queue pointer advances the moment a session is committed, which
+     is correct for the engine and wrong for anything that says the word
+     "today". Measured on the day an athlete finished session 2: the Workout
+     pane said "✅ Session done" and labelled the next one "NEXT SESSION · NOT
+     TODAY'S", while the brief a few lines above SPOKE "Today is Obliques &
+     Love Handles" — the very session the pane called not today's. Two
+     surfaces on one screen disagreeing about what today is, and the brief is
+     the half that is read ALOUD, which an athlete cannot double-check by
+     looking at it.
+
+     todayPtr() already folds in trainAgainAsked(), so an athlete who chose a
+     second session gets a brief that correctly describes it as today's. */
+  const _tp=todayPtr();
+  const sess=buildSession(_tp);
+  const _bDone=todayDone(), _bPain=todayStoppedForPain(), _bOver=_bDone||_bPain;
   const wkNum=(sess.cycle*WEEKS_PER_CYCLE)+sess.week;
   const dayNum=((sess.pos&&sess.pos.dayInWeek)||0)+1;
   const vol=sessionVolume(sess);
@@ -8461,6 +8481,22 @@ function briefSegments(){
     mission=`The mission: down to ${goalW} pounds${bf}. Log your weight on the Progress tab so I can track every pound with you. Today, we get to work.`;
   }
   segs.push({icon:'🎯',title:'Your mission',say:mission});
+  /* 3-7 — the work, or the RECORD of it. Every one of these five segments is
+     written in the future tense ("We open with", "Then the main work", "Finish
+     with"), so on a day already trained they prescribe work that is behind the
+     athlete. A pain stop is never congratulated — v313's rule — so it gets its
+     own line rather than the done one. */
+  if(_bOver){
+    segs.push({icon:_bDone?'✅':'🛑',title:_bDone?"Today's session — done":"Today's session — stopped",
+      say:_bDone
+        ? `${sess.session.name} is already logged today. That is the work done — recovery is where the muscle is made, so eat, sleep, and let it land.`
+        : `You stopped ${sess.session.name} today because something hurt, and that was the right call. There is nothing to push through this morning — let that settle.`});
+    if(STATE.progressPtr!==_tp){
+      const nxt=buildSession(STATE.progressPtr);
+      segs.push({icon:'⏭️',title:'Next session',
+        say:`Next in the queue is ${nxt.session.name}. ${nxt.session.focus}. That is the next session, not today's — it waits until you start it.`});
+    }
+  }else{
   // 3 — today's session
   segs.push({icon:'🔥',title:"Today's session",
     say:`Today is ${sess.session.name}. ${sess.session.focus}. That's ${sess.main.length+1} exercises, about ${vol.minutes} minutes of work.`});
@@ -8477,6 +8513,7 @@ function briefSegments(){
   // 7 — cool-down
   segs.push({icon:'🧘',title:'Cool-down · ~4 min',
     say:`Then cool down with stretches for the abs and low back. A few minutes of recovery so you come back stronger tomorrow.`});
+  }
   // 8 — fuel
   const kcal=todayKcalBudget(), prot=proteinTargetG();
   segs.push({icon:'🍽️',title:'Fuel',
@@ -8506,7 +8543,9 @@ function briefSegments(){
   }
   // 11 — close / handoff
   segs.push({icon:'🚀',title:'Lock in',
-    say:`That's the brief${who}. Warm up, lock in, and let's get to work. I'll coach you through every rep.`});
+    say:_bOver
+      ? `That's the brief${who}. Today's training is behind you — hit your food and your water, and I'll see you at the next session.`
+      : `That's the brief${who}. Warm up, lock in, and let's get to work. I'll coach you through every rep.`});
   return segs;
 }
 
@@ -8653,7 +8692,18 @@ function flowStop(done){
   if(typeof dayflowActive==='function'&&dayflowActive()){
     const key=(DAYFLOW_STEPS[(DAYFLOW&&DAYFLOW.i)||0]||{}).key;
     if(done&&(key==='warmup'||key==='cooldown')){dfHandoff();closeSheet();dayflowAdvance(key);return;}
-    dayflowCancel(true);
+    /* A DELIBERATE TAP SAYS THE DAY ENDED; AN INCIDENTAL DISMISSAL DOES NOT.
+       startMyDay() promises "Sarge takes it from here", and three of the four
+       ways out of the flow are cancels. Two of them are a button the athlete
+       chose — Stop here, and quitting the player — and both passed `true`, so
+       they ended the guided day in complete silence: the athlete tapped Stop
+       on a warm-up they had already done, finished their session, and no
+       cool-down ever came with nothing on screen having said why.
+
+       The silent sites stay silent on purpose: closeSheet() and the back
+       handler fire on ANY sheet dismissal during the flow, and a toast there
+       would be noise rather than news. */
+    dayflowCancel();
   }
   closeSheet();
 }
@@ -8665,6 +8715,18 @@ const DAYFLOW_STEPS=[
 ];
 function dayflowActive(){return !!(DAYFLOW&&DAYFLOW.active);}
 function startMyDay(){
+  /* A FINISHED SESSION IS NOT AN OFFER — v313's rule, on the route it did not
+     cover. Step 3 of this flow is openPlayer(), which opens the QUEUE session,
+     so on a day already trained "Start my day" walked the athlete straight
+     into the session the Workout pane a few lines below labels "NEXT SESSION ·
+     NOT TODAY'S" — bypassing the priced confirm v313 put on the direct route.
+     Same question, same words, one place: once they have asked, trainAgainAsked()
+     is true, todayPtr() moves with it, and the whole flow (the brief included)
+     correctly describes the new session as today's. */
+  if(todayDone()&&!trainAgainAsked()){
+    if(!confirm('You already trained today. Running the day again starts the NEXT session and moves your program on — recovery is where the muscle is made. Sure?'))return;
+    STATE._trainAgain={date:todayISO(),from:STATE.progressPtr};save();
+  }
   try{haptic(14);}catch(e){}
   DAYFLOW={active:true,i:0};
   TODAY_TAB='brief';
