@@ -3907,6 +3907,71 @@ beginner with nothing in either mode is not told anything is new, and an athlete
 merely BEHIND their plan is not warned either — nothing is landing on top of
 them.
 
+## The standard he asked about had already been replaced (v333)
+
+"What military training can you research and implement as it relates to the
+Canadian Armed Forces soldier first course?"
+
+The Canadian Army's soldier-first fitness standard **used to be the Battle
+Fitness Test** — 13 km carrying 24.5 kg in 2:26:20 — and **FORCE Combat has
+replaced it**. Finding that out was most of the value of the round: building
+the BFT would have been building a retired requirement, and an athlete would
+have trained to it for months with nothing on screen saying it had stopped
+being the standard. That is precisely the hazard `FORCE_ASOF` exists for, and
+`COMBAT_ASOF` now sits beside it for the same reason.
+
+**The research also confirmed the figures already shipped.** The official
+CFMWS manual gives the four events as 51 s, 3:30, 5:21 and pass/fail; v322's
+`FORCE_EVENTS` carries 51, 210, 321 and null. Exact match. A round that only
+verified existing numbers would still have been worth running.
+
+### What FORCE Combat is, and why it is not a second copy of a screen
+
+The same four events as the annual evaluation — **run as one continuous circuit,
+in a fixed order, in full fighting order (25 kg), against a single clock, under
+15 minutes.** Plus a 5 km march under 35 kg in 50-60 minutes.
+
+**The rest between events is the whole difference**, so the card says that in
+as many words, and a check pins the sentence. Without it this is a duplicate of
+a screen the athlete already has.
+
+`combatOrder()` maps the order onto `FORCE_EVENTS` rather than restating four
+times, because a second copy of a number is a second place for it to drift —
+and the mutant that gave the circuit its own times is caught by an assertion
+that the two are the SAME objects, not merely equal.
+
+### The load the app refuses to train, said out loud
+
+**35 kg is 77 lb. `RUCK_LB_MAX` is 60, and the ruck ladder's own ceiling is a
+third of bodyweight — 63 lb at 86 kg.** So the march standard sits ABOVE
+anything this app will progress an athlete to, deliberately.
+
+The tempting move is to clamp the number to what the app can express. That is
+the worst available option: the athlete trains to a figure that is not the
+standard and does not know it. `combatMarchGap()` states both numbers and says
+the last stretch is short, deliberate exposure near the date rather than
+weekly volume — and points at the unit's own preparation for it. The mutant
+that clamps `combatMarchLb()` to `RUCK_LB_MAX` is caught.
+
+### Two throws where named failures belonged
+
+Both are traps already recorded here and both were hit again in one round:
+
+- **A top-level `const` is not on `window`, and is not visible in Node
+  either.** Referencing `COMBAT_FFO_KG` from an assertion made the block
+  report *"the test file itself threw"* rather than naming a check. Carry page
+  constants out in the payload.
+- **Guard before the first line that dereferences.** Two mutants — clamping
+  the load, and never returning a gap — were caught by a `TypeError` on
+  `cb.gap.need` rather than by name. Still red, but a throw hides which
+  property broke. The guard now sits immediately before the dereference and
+  both mutants fail by name.
+
+Eleven mutants, all caught. The floors: a result never entered is **not** a
+fail, exactly on the standard **is** a pass, a real time survives the repair
+that drops junk, and a heavier athlete whose own ceiling cleared the load
+would not be warned at all.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

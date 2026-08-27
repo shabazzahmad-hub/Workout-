@@ -2794,6 +2794,148 @@ export default async function run() {
       t.eq('the two cards agree on the combined figure',
         fl.rucker.reported, fl.rucker.ruckReported);
     }
+    /* ---- FORCE Combat, the Army standard (v333) --------------------------
+
+       Researched at the athlete's request. The Canadian Army's soldier-first
+       standard used to be the Battle Fitness Test — 13 km carrying 24.5 kg in
+       2:26:20 — and FORCE COMBAT HAS REPLACED IT. That is why COMBAT_ASOF
+       exists beside FORCE_ASOF: a retired standard is the most dangerous kind
+       of number in a training app, because an athlete trains to it and nothing
+       on screen says it stopped being the requirement.
+
+       FORCE Combat is the SAME four events as the annual evaluation, run as
+       one continuous circuit in a fixed order, in full fighting order, against
+       a single clock — plus a 5 km march under 35 kg. The events are read from
+       FORCE_EVENTS rather than restated, because a second copy of four times
+       is a second place for them to drift.
+
+       Cross-checked against the official manual: the app's existing 210 s,
+       321 s, 51 s and pass/fail figures match it exactly. */
+    const cb = await page.evaluate(() => {
+      const o = {};
+      o.namesExist = ['openCombat', 'openCombatLog', 'saveCombat', 'startCombatCircuit',
+                      'combatVerdict', 'combatResult', 'combatOrder', 'combatMarchLb',
+                      'combatMarchGap'].every(n => typeof window[n] === 'function')
+        && typeof COMBAT_CIRCUIT_MAX === 'number' && Array.isArray(COMBAT_ORDER);
+      if (!o.namesExist) return o;
+      const keep = JSON.parse(JSON.stringify(STATE.prep || {}));
+      const keepKg = STATE.nutrition.weightKg;
+      const seen = () => document.body.innerText.replace(/\s+/g, ' ');
+
+      /* The order IS the test, not a presentation choice. */
+      o.order = combatOrder().map(e => e.id);
+      o.orderCoversAll = o.order.length === FORCE_IDS.length
+        && o.order.every(id => FORCE_IDS.indexOf(id) >= 0);
+      /* …and it reads the SAME events, so the times cannot drift apart. */
+      o.sameTimes = combatOrder().every(e => forceEvent(e.id) === e);
+
+      /* Verdicts. Absent is "not measured", which is not "failed". */
+      STATE.prep = {};
+      o.unmeasured = { c: combatVerdict('circuit'), m: combatVerdict('march') };
+      STATE.prep = { combatCircuit: COMBAT_CIRCUIT_MAX - 100, combatMarch: (COMBAT_MARCH_MIN[1] - 5) * 60 };
+      o.pass = { c: combatVerdict('circuit'), m: combatVerdict('march') };
+      STATE.prep = { combatCircuit: COMBAT_CIRCUIT_MAX + 100, combatMarch: (COMBAT_MARCH_MIN[1] + 10) * 60 };
+      o.fail = { c: combatVerdict('circuit'), m: combatVerdict('march') };
+      /* The boundary: exactly on the standard is a pass. */
+      STATE.prep = { combatCircuit: COMBAT_CIRCUIT_MAX, combatMarch: COMBAT_MARCH_MIN[1] * 60 };
+      o.onTheLine = { c: combatVerdict('circuit'), m: combatVerdict('march') };
+
+      /* A backup can carry anything. */
+      STATE.prep = { combatCircuit: 'fast', combatMarch: -5 };
+      normalizeState();
+      o.junkGone = STATE.prep.combatCircuit === undefined && STATE.prep.combatMarch === undefined;
+      /* FLOOR: and a real result SURVIVES the repair. A repair that always
+         wiped would satisfy the line above and destroy the measurement. */
+      STATE.prep = { combatCircuit: 800, combatMarch: 3300 };
+      normalizeState();
+      o.realSurvives = STATE.prep.combatCircuit === 800 && STATE.prep.combatMarch === 3300;
+
+      /* The load the app will not train anyone to, said out loud. */
+      STATE.nutrition.weightKg = 86;
+      o.marchLb = combatMarchLb();
+      o.gap = combatMarchGap();
+      STATE.prep = { date: '2026-12-01' };
+      try { openCombat(); o.card = seen(); } catch (e) { o.card = 'THREW ' + e.message; }
+      try { closeSheet(); } catch (e) {}
+      /* FLOOR: a very heavy athlete whose own ceiling clears the standard is
+         NOT warned. A note that always fires is a note nobody reads — and
+         RUCK_LB_MAX would have to move for this, so it is exercised directly. */
+      o.noGapWhenCeilingClears = (() => {
+        const need = combatMarchLb();
+        return need <= RUCK_LB_MAX ? 'unreachable' : (combatMarchGap() !== null);
+      })();
+
+      /* Carried out of the page. A top-level const is not on `window` and is
+         not visible in Node either — referencing one from an assertion threw
+         and the block reported "the test file itself threw" instead of naming
+         a check. Same trap as PREP_PHASE_SESSIONS two blocks up. */
+      o.ffoKg = COMBAT_FFO_KG;
+      o.circuitMax = COMBAT_CIRCUIT_MAX;
+      o.marchWindow = COMBAT_MARCH_MIN.slice();
+
+      STATE.prep = keep; STATE.nutrition.weightKg = keepKg;
+      return o;
+    });
+
+    t.ok('guard: every name this block calls exists', cb.namesExist, cb);
+    if (!cb.namesExist) {
+      t.ok('guard: the block collected something to assert on', false, cb);
+    } else {
+      /* The order is the test. */
+      t.eq('the circuit runs rushes, lift, shuttles, drag in that order',
+        cb.order, ['rush', 'lift', 'shuttle', 'drag'], cb.order);
+      t.ok('and covers every FORCE event, with no strays', cb.orderCoversAll, cb.order);
+      /* The times are not restated — the circuit reads the same event objects
+         the annual evaluation does, so they cannot drift apart. */
+      t.ok('and reads the same events the annual evaluation does', cb.sameTimes, cb);
+
+      /* Verdicts, including the boundary and the not-measured case. */
+      t.ok('a result never entered is NOT a fail',
+        cb.unmeasured.c === null && cb.unmeasured.m === null, cb.unmeasured);
+      t.ok('inside the standard is a pass', cb.pass.c === 'pass' && cb.pass.m === 'pass', cb.pass);
+      t.ok('outside it is not', cb.fail.c === 'fail' && cb.fail.m === 'fail', cb.fail);
+      t.ok('and exactly on the standard is a pass',
+        cb.onTheLine.c === 'pass' && cb.onTheLine.m === 'pass', cb.onTheLine);
+
+      /* A backup can carry anything, and a real result must survive the repair. */
+      t.ok('junk from an import is dropped, not read as a result', cb.junkGone, cb);
+      t.ok('and a real result survives the repair', cb.realSurvives, cb);
+
+      /* THE HONEST CONSTRAINT. 35 kg is 77 lb; the ladder stops at 60. The app
+         says so rather than quietly clamping the standard, because an athlete
+         training to a clamped number would not know it was not the standard. */
+      t.eq('the march load is stated in pounds as well', cb.marchLb, 77);
+      /* Guard IMMEDIATELY, before the first line that dereferences cb.gap.
+         Two mutants — clamping the load, and never returning a gap — were
+         caught by a TypeError rather than by a named check, which is still
+         red but hides which property broke. */
+      const gapOK = cb.gap !== null && typeof cb.gap === 'object'
+        && cb.gap.need > cb.gap.ceil;
+      t.ok('guard: it really is heavier than the ladder will go', gapOK, cb.gap);
+      if (gapOK) {
+        t.ok('and the card says the load is beyond what it will train you to',
+          cb.card.indexOf('heavier than this app will train you to') >= 0, cb.card.slice(0, 200));
+        t.ok('and names both numbers, not just the shortfall',
+          cb.card.indexOf(String(cb.gap.need)) >= 0 && cb.card.indexOf(String(cb.gap.ceil)) >= 0, cb.gap);
+      }
+
+      /* The date stamp, for the same reason FORCE_ASOF has one — and this one
+         matters more, because it replaced a standard people still train to. */
+      t.ok('the figures are stamped with a date', cb.card.indexOf('as of') >= 0, cb.card.slice(0, 300));
+      t.ok('and say the app cannot check them',
+        cb.card.indexOf('cannot check them for you') >= 0, cb.card.slice(0, 400));
+      t.ok('and name the standard it replaced',
+        /Battle Fitness Test/.test(cb.card), cb.card.slice(0, 400));
+
+      /* The circuit's whole difference from the annual evaluation is that the
+         rest is gone. If the card does not say that, it is just a second copy
+         of a screen the athlete already has. */
+      t.ok('the card says the rest between events is what is taken away',
+        /rest between events is what is taken away/.test(cb.card), cb.card.slice(0, 300));
+      t.ok('and names the kit load worn for it',
+        cb.card.indexOf(String(cb.ffoKg) + ' kg') >= 0, { want: cb.ffoKg, card: cb.card.slice(0, 300) });
+    }
+
 
 
 

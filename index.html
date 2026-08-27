@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='332';
+const APP_VERSION='333';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4035,6 +4035,59 @@ const FORCE_EVENTS=[
    detail:'80 kg dragged 20 m without stopping — pass or fail'},
 ];
 const FORCE_IDS=FORCE_EVENTS.map(e=>e.id);
+/* ---- FORCE Combat: the ARMY standard, and the one that replaced a test ----
+   The four events above are the CAF-wide annual evaluation, taken one at a
+   time with a rest between each. The Army asks for the same four run as ONE
+   CONTINUOUS CIRCUIT in full fighting order, in a fixed order, against a
+   single clock — plus a loaded march.
+
+   It replaced the Battle Fitness Test (13 km carrying 24.5 kg in 2:26:20).
+   Recording that here because a retired standard is the most dangerous kind
+   of number in a training app: an athlete trains to it, and nothing on screen
+   says it stopped being the requirement. Same reason FORCE_ASOF exists.
+
+   The individual times below are NOT restated — the circuit reads the same
+   FORCE_EVENTS the annual evaluation does, because they are the same events
+   and a second copy is a second place to drift. */
+const COMBAT_ASOF='August 2026';
+/* The order is part of the test, not a presentation choice. */
+const COMBAT_ORDER=['rush','lift','shuttle','drag'];
+const COMBAT_CIRCUIT_MAX=900;      // 15 minutes, transitions included
+const COMBAT_FFO_KG=25;            // full fighting order worn for the circuit
+const COMBAT_MARCH_KM=5;
+const COMBAT_MARCH_KG=35;
+const COMBAT_MARCH_MIN=[50,60];    // the window, not a single number
+function combatOrder(){
+  try{return COMBAT_ORDER.map(id=>forceEvent(id)).filter(Boolean);}catch(e){return [];}
+}
+/* Reads only, and fails closed. A missing or junk value is "not measured",
+   which is a different answer from "failed" and must not render as one. */
+function combatResult(k){
+  try{const v=prep()[k==='circuit'?'combatCircuit':'combatMarch'];
+    return (typeof v==='number'&&isFinite(v)&&v>0)?v:null;
+  }catch(e){return null;}
+}
+function combatVerdict(k){
+  const v=combatResult(k);
+  if(v===null)return null;                       // not measured is not failed
+  if(k==='circuit')return v<=COMBAT_CIRCUIT_MAX?'pass':'fail';
+  return v<=COMBAT_MARCH_MIN[1]*60?'pass':'fail';
+}
+/* The march load in POUNDS, the unit every plate is stamped in. */
+function combatMarchLb(){return Math.round(COMBAT_MARCH_KG/0.453592);}
+/* THE LOAD THE APP WILL NOT TRAIN YOU TO, and why it says so out loud.
+   35 kg is 77 lb. RUCK_LB_MAX is 60, and the ladder's own ceiling is a third
+   of bodyweight — 63 lb for an 86 kg athlete. So the march standard sits
+   ABOVE what this app will progress anyone to, deliberately. Silently
+   clamping the number would be the worst of both: the athlete trains to a
+   figure that is not the standard and does not know it. */
+function combatMarchGap(){
+  try{
+    const need=combatMarchLb();
+    const ceil=(typeof ruckLoadCeilLb==='function')?ruckLoadCeilLb():RUCK_LB_MAX;
+    return (need>ceil)?{need:need,ceil:ceil,short:need-ceil}:null;
+  }catch(e){return null;}
+}
 function forceEvent(id){return FORCE_EVENTS.find(e=>e.id===id)||null;}
 /* Reads only. A missing or junk prep block is "nothing recorded", never a
    throw on a render path — the error boundary retries THROUGH normalizeState()
@@ -4688,9 +4741,10 @@ function openForcePrep(){
     <button class="btn primary" style="width:100%;margin-top:10px" onclick="startForceTrain()">▶ Train ${forceAvailable().length===FORCE_EVENTS.length?'the four tasks':'what you have kit for'}</button>
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openForceLog()">✎ Log a result</button>
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openForceDate()">📅 ${prep().date?'Change my test date':'Set my test date'}</button>
+    <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openCombat()">🎖️ FORCE Combat — the Army standard</button>
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openArmyRun()">🏃 Army running</button>
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openEndurance()">📈 This week's endurance</button>
-    <div class="tiny muted" style="margin-top:10px">The four tasks are done back to back on the day, with rest between each. Training them separately first is the point of this block — the full run-through is a measurement, not a workout.</div>
+    <div class="tiny muted" style="margin-top:10px">The four tasks are done back to back on the day, with rest between each. Training them separately first is the point of this block — the full run-through is a measurement, not a workout. <b>FORCE Combat</b> is the Army's version of the same four, run as one circuit with the rest taken away.</div>
   `);
 }
 /* The same call the baseline battery makes, for the same reason: these are
@@ -4724,6 +4778,78 @@ function forceRiskHTML(){
     const names=risky.map(k=>EX[k].name).join(', ');
     return `<div class="note warn"><b>You flagged a joint ${risky.length>1?'some of these load':'this one loads'}.</b> ${_ve(names)} — the programme routes around ${risky.length>1?'them':'it'} elsewhere, but these are the actual test events, so they are not swapped here. If it pinches or feels wrong, stop.</div>`;
   }catch(e){return '';}
+}
+/* The circuit as a session: the four events in the ORDER the test uses, back
+   to back with no rest between them, because the absence of the rest IS the
+   difference from the annual evaluation. */
+function startCombatCircuit(){
+  if(typeof safeMode==='function'&&safeMode()){
+    if(typeof parqDone==='function'&&!parqDone())openHealthCheck();
+    else openClearance();
+    return;
+  }
+  const avail=combatOrder().filter(e=>EX[e.ex]&&hasGearFor(e.ex));
+  if(!avail.length){toast('You need a 20 kg sandbag for these');return;}
+  const items=avail.map(e=>{const ex=EX[e.ex];
+    return {exId:e.ex,unit:ex.unit,target:ex.unit==='time'?(ex.base||30):(ex.base||12),
+            rest:0,sets:1};});
+  closeSheet();
+  if(avail.length<COMBAT_ORDER.length)
+    toast('Running '+avail.length+' of '+COMBAT_ORDER.length+' — no sandbag yet');
+  openPlayer({items,free:true,title:'FORCE Combat circuit',
+    focus:'One clock, no rest between events'});
+}
+function openCombat(){
+  const gap=combatMarchGap();
+  const cv=combatVerdict('circuit'), mv=combatVerdict('march');
+  const ct=combatResult('circuit'), mt=combatResult('march');
+  const chip=v=>v===null?'<span class="tiny muted">not measured</span>'
+    :(v==='pass'?'<span class="tiny" style="color:var(--green)">passed</span>'
+              :'<span class="tiny" style="color:var(--gold)">not yet</span>');
+  openSheet(`
+    <h3>🎖️ FORCE Combat</h3>
+    <div class="note info">The Army's own standard, and the same four events as your annual FORCE test — but run as <b>one continuous circuit</b>, in a fixed order, wearing about <b>${COMBAT_FFO_KG} kg</b> of kit, against a single clock. The rest between events is what is taken away.</div>
+    ${forceRiskHTML()}
+    <div class="section-label" style="margin-top:14px">The circuit</div>
+    <div class="card pad">
+      <div class="kv"><span><b>All four, in order, under ${fmtTime(COMBAT_CIRCUIT_MAX)}</b>
+        <div class="tiny muted" style="margin-top:2px">${_ve(combatOrder().map(e=>e.name).join(' → '))}</div></span>
+        <span style="text-align:right"><b>${ct===null?'—':_ve(fmtTime(ct))}</b><div>${chip(cv)}</div></span></div>
+      <button class="btn t-teal" style="width:100%;margin-top:10px" onclick="startCombatCircuit()">▶ Run the circuit</button>
+    </div>
+    <div class="section-label" style="margin-top:14px">The march</div>
+    <div class="card pad">
+      <div class="kv"><span><b>${COMBAT_MARCH_KM} km carrying ${COMBAT_MARCH_KG} kg (${combatMarchLb()} lb)</b>
+        <div class="tiny muted" style="margin-top:2px">In ${COMBAT_MARCH_MIN[0]}–${COMBAT_MARCH_MIN[1]} minutes</div></span>
+        <span style="text-align:right"><b>${mt===null?'—':_ve(fmtTime(mt))}</b><div>${chip(mv)}</div></span></div>
+      ${gap?`<div class="note warn" style="margin:10px 0 0"><b>${gap.need} lb is heavier than this app will train you to.</b> The ruck ladder stops at <b>${gap.ceil} lb</b> — a third of your bodyweight — because that is the load a back tolerates week after week. The standard is still ${gap.need} lb, so the last ${gap.short} lb is short, deliberate exposure close to the date, not something to build into your weekly rucking. Your unit's own preparation is the guide for that part.</div>`:''}
+    </div>
+    <button class="btn ghost" style="width:100%;margin-top:12px" onclick="openCombatLog()">Log a result</button>
+    <div class="tiny muted" style="margin-top:12px">These figures are what this app knows as of <b>${_ve(COMBAT_ASOF)}</b>. FORCE Combat replaced the older Battle Fitness Test, and a published standard moves — this app has no internet access and cannot check them for you. Confirm with your unit.</div>
+  `);
+}
+function openCombatLog(){
+  openSheet(`
+    <h3>Log a FORCE Combat result</h3>
+    <div class="note info">Enter what you actually did. A number you did not measure is worse than a blank.</div>
+    <div class="field"><label>The circuit — your total time in seconds (max ${fmtTime(COMBAT_CIRCUIT_MAX)})</label>
+      <input id="cb-circuit" type="number" inputmode="numeric" value="${combatResult('circuit')||''}" placeholder="0"></div>
+    <div class="field"><label>The ${COMBAT_MARCH_KM} km march — your time in MINUTES (window ${COMBAT_MARCH_MIN[0]}–${COMBAT_MARCH_MIN[1]})</label>
+      <input id="cb-march" type="number" inputmode="numeric" value="${combatResult('march')?Math.round(combatResult('march')/60):''}" placeholder="0"></div>
+    <button class="btn primary" style="width:100%;margin-top:6px" onclick="saveCombat()">Save</button>
+  `);
+}
+function saveCombat(){
+  const P=STATE.prep=(STATE.prep&&typeof STATE.prep==='object'&&!Array.isArray(STATE.prep))?STATE.prep:{};
+  const num=el=>{const n=Math.round(+(($(el)||{}).value)||0);return (isFinite(n)&&n>0)?n:null;};
+  const c=num('#cb-circuit'), m=num('#cb-march');
+  /* Seconds in the store, both of them, so one reader serves both. Absent
+     means "not measured" — deleted rather than zeroed, because a zero would
+     render as a 0:00 result, which is not a measurement. */
+  if(c===null)delete P.combatCircuit; else P.combatCircuit=c;
+  if(m===null)delete P.combatMarch;   else P.combatMarch=m*60;
+  save();closeSheet();render();
+  toast('Saved');
 }
 function openForceLog(){
   openSheet(`
@@ -17532,7 +17658,10 @@ function normalizeState(){
    /* The run times are SECONDS. A non-number is dropped, not zeroed — a zero
       would render as a 0:00 time trial, which is not a measurement. */
    if(P.planFrom!==undefined&&!(typeof P.planFrom==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(P.planFrom)))delete P.planFrom;
-   ['ttBest','ttTarget'].forEach(k=>{
+   /* Both new fields are SECONDS, and both are dropped rather than zeroed for
+      the same reason the run times are: a zero renders as a 0:00 result, which
+      is not a measurement. importData() accepts arbitrary JSON. */
+   ['ttBest','ttTarget','combatCircuit','combatMarch'].forEach(k=>{
      const v=P[k];
      if(v!==undefined&&(typeof v!=='number'||!isFinite(v)||v<=0))delete P[k];
    });}
