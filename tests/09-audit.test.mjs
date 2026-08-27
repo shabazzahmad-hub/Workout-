@@ -2376,10 +2376,11 @@ export default async function run() {
       const keep = JSON.parse(JSON.stringify(STATE.prep || {}));
       const iso = d => { const x = new Date(); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); };
       /* A top-level `const` is NOT a window property — only function
-         declarations are — so `window.PREP_PHASE_SESSIONS` reads undefined
+         declarations are — so `window.PREP_PATHS` reads undefined
          however healthy the app is. Reference the bare identifier. */
       o.namesExist = ['enduranceWeek', 'prepPhase', 'prepClimbWeeks'].every(n => typeof window[n] === 'function')
-        && typeof PREP_PHASE_SESSIONS === 'object' && typeof PREP_PHASE_NOTE === 'object'
+        && typeof PREP_PATHS === 'object' && typeof PREP_PHASE_NOTE === 'object'
+        && typeof prepSessions === 'function'
         && Array.isArray(RUN_SESSIONS);
       if (!o.namesExist) return o;
 
@@ -2388,14 +2389,22 @@ export default async function run() {
          than from a phase name assigned by the check. */
       o.weeks = [];
       for (let w = 1; w <= 20; w++) {
-        STATE.prep = { planFrom: iso(-(w - 1) * 7), date: iso((21 - w) * 7) };
+        STATE.prep = { planFrom: iso(-(w - 1) * 7), date: iso((21 - w) * 7), path: 'assaulter' };
         const e = enduranceWeek();
         o.weeks.push({ wk: e.wk, left: e.left, phase: e.phase, km: e.km,
                        curve: e.curve, down: !!e.down, sess: e.sessions.slice() });
       }
       o.phasesSeen = Array.from(new Set(o.weeks.map(w => w.phase)));
-      o.notes = JSON.parse(JSON.stringify(PREP_PHASE_NOTE));
-      o.table = JSON.parse(JSON.stringify(PREP_PHASE_SESSIONS));
+      /* This block was written for the ASSAULTER plan and asserts that plan
+         matches its own notes. Since v340 the default path is Operator, whose
+         build phase deliberately runs no track intervals — so the path is set
+         explicitly rather than inherited, and the operator plan gets its own
+         note-matching block of its own. */
+      o.notes = JSON.parse(JSON.stringify(PREP_PATHS.assaulter.notes));
+      /* The per-path table, since v340 — the balance assertions below read
+         the BUILT plan, so they hold whichever path is current. */
+      o.table = JSON.parse(JSON.stringify(PREP_PATHS.assaulter.sessions));
+      o.pathUnderTest = prepPath();
       /* The easy-run id, read off the app rather than restated. */
       o.easyIds = RUN_SESSIONS.filter(s => s.pace === 'easy').map(s => s.id);
       o.hardIds = RUN_SESSIONS.filter(s => s.pace === 'tempo' || s.pace === 'intervals').map(s => s.id);
@@ -2868,7 +2877,7 @@ export default async function run() {
       /* Carried out of the page. A top-level const is not on `window` and is
          not visible in Node either — referencing one from an assertion threw
          and the block reported "the test file itself threw" instead of naming
-         a check. Same trap as PREP_PHASE_SESSIONS two blocks up. */
+         a check. Same trap as PREP_PATHS two blocks up. */
       o.ffoKg = COMBAT_FFO_KG;
       o.circuitMax = COMBAT_CIRCUIT_MAX;
       o.marchWindow = COMBAT_MARCH_MIN.slice();
@@ -3510,6 +3519,163 @@ export default async function run() {
       ref.imp.includes(ref.fastestMi + ' mi/h on the road'), { want: ref.fastestMi, got: ref.imp.slice(0, 400) });
     t.ok('and never the raw km/h figure wearing a mile label',
       !ref.imp.includes(ref.fastest + ' mi/h'), ref.imp.slice(0, 400));
+  }
+
+  // ---- two training paths, and the safety rules that outrank them ---------
+  /* The block already knew how to ramp running and rucking. What it could not
+     express is which of the two the athlete is training FOR — load carriage or
+     running speed — so the bias was accidental rather than chosen.
+
+     THE BIAS IS THE MIX, NEVER THE VOLUME. That is the whole safety argument
+     and it is what these floors pin: both paths must run the SAME weekly
+     distance, take the SAME down weeks, reach the SAME load ceiling, and never
+     raise distance and load in one week. A path that moved volume would be a
+     way around the 10% cap, which is the one rule this plan exists to enforce.
+
+     And the paths must genuinely DIFFER — set A, fingerprint the program, set
+     B, fingerprint again, assert they are not the same. A control the athlete
+     sets that changes nothing is this repo's most-repeated dead-code shape. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      for (const n of ['prepPath', 'setPrepPath', 'prepSessions', 'prepPhaseNote',
+                       'enduranceWeek', 'ruckLadderWeek', 'openForcePrep'])
+        if (typeof window[n] !== 'function') (o.absent = o.absent || []).push(n);
+      if (typeof PREP_PATHS !== 'object') (o.absent = o.absent || []).push('PREP_PATHS');
+      if (o.absent) return o;
+      STATE.profile.gear = ['ruck', 'sandbag', 'bike']; STATE.nutrition.weightKg = 86;
+      const ahead = d => { const x = new Date(); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); };
+      const back = d => { const x = new Date(); x.setDate(x.getDate() - d); return x.toISOString().slice(0, 10); };
+      /* Walk a real 16-week block: the date comes closer as the plan's start
+         recedes, so the phase arithmetic is the app's and not the check's. */
+      const fp = path => {
+        const weeks = [];
+        for (let w = 1; w <= 16; w++) {
+          STATE.prep = { date: ahead(112 - (w - 1) * 7), path, planFrom: back((w - 1) * 7) };
+          save();
+          const e = enduranceWeek(), l = ruckLadderWeek();
+          weeks.push({ w, phase: e.phase, km: e.km, sess: e.sessions.slice(),
+                       note: e.note, ruckKm: l.km, lb: l.lb, climb: l.climbing, down: !!l.down });
+        }
+        return weeks;
+      };
+      o.op = fp('operator');
+      o.as = fp('assaulter');
+      o.pathKeys = PREP_PATH_KEYS.slice();
+      // the default, with nothing stored
+      STATE.prep = { date: ahead(112) }; save();
+      o.defaultPath = prepPath();
+      // junk on the way IN must not reach STATE, and must not clear a good value
+      try { setPrepPath('assaulter'); } catch (e) { o.setThrew = String(e.message); }
+      o.afterGood = STATE.prep.path;
+      try { setPrepPath('helicopter'); } catch (e) { o.junkThrew = String(e.message); }
+      o.afterJunk = STATE.prep.path;
+      /* TWO GUARDS MEAN TWO CHECKS. The setter is one route; importData()
+         accepts arbitrary JSON and writes STATE directly, which only ever
+         meets the normalizeState() repair. A mutant deleting that repair
+         escaped every assertion above, because nothing drove the boot path.
+         Assert the junk is gone from STATE, not from prepPath() — that getter
+         sanitises its own read and would pass either way. */
+      STATE.prep = { date: ahead(112), path: 'helicopter' };
+      normalizeState();
+      o.repairedAway = STATE.prep.path;
+      STATE.prep = { date: ahead(112), path: 'assaulter' };
+      normalizeState();
+      o.repairKeepsGood = STATE.prep.path;
+      // and the picker is on the sheet the athlete opens
+      STATE.prep = { date: ahead(112) }; save();
+      openForcePrep();
+      const sheet = document.querySelector('#sheet');
+      o.sheetHasPicker = !!(sheet && /setPrepPath\(/.test(sheet.innerHTML));
+      o.sheetNamesBoth = !!(sheet && PREP_PATH_KEYS.every(k => sheet.innerHTML.includes(PREP_PATHS[k].label)));
+      try { closeSheet(); } catch (e) {}
+      STATE.prep = {}; save();
+      return o;
+    });
+    t.ok('guard: every name this block calls exists, and both blocks were built',
+      !r.absent && Array.isArray(r.op) && r.op.length === 16 && r.as.length === 16, r);
+    if (!r.absent && Array.isArray(r.op)) {
+      const hard = ws => ws.filter(w => w.sess.indexOf('intervals') >= 0).length;
+      const totalKm = ws => Math.round(ws.reduce((a, w) => a + w.km, 0));
+      const loadWeeks = ws => ws.filter(w => w.climb === 'load').length;
+      const downWeeks = ws => ws.filter(w => w.down).length;
+      const raisedBoth = ws => { let n = 0; for (let i = 1; i < ws.length; i++)
+        if (ws[i].climb === 'load' && ws[i].ruckKm > ws[i - 1].ruckKm) n++; return n; };
+
+      // ---- the paths genuinely differ
+      t.ok('the two paths do not build the same block',
+        JSON.stringify(r.op) !== JSON.stringify(r.as), null);
+      t.ok('the Operator path runs fewer interval weeks than the Assaulter path',
+        hard(r.op) < hard(r.as), { operator: hard(r.op), assaulter: hard(r.as) });
+      t.ok('guard: and the Assaulter path really runs some',
+        hard(r.as) > 0, { assaulter: hard(r.as) });
+      t.ok('the Operator path reaches each plate a week sooner',
+        r.op.some((w, i) => w.lb > r.as[i].lb) && !r.op.some((w, i) => w.lb < r.as[i].lb),
+        { operator: r.op.map(w => w.lb).join(','), assaulter: r.as.map(w => w.lb).join(',') });
+
+      // ---- THE FLOORS: the safety rules outrank the path
+      t.eq('both paths run the same total distance — the bias is the mix, not the volume',
+        totalKm(r.op), totalKm(r.as), { operator: totalKm(r.op), assaulter: totalKm(r.as) });
+      t.ok('guard: and that total is a real figure, not two zeroes agreeing',
+        totalKm(r.op) > 50, totalKm(r.op));
+      t.eq('both paths take the same number of down weeks',
+        downWeeks(r.op), downWeeks(r.as), { operator: downWeeks(r.op), assaulter: downWeeks(r.as) });
+      t.ok('guard: and there really are down weeks to count', downWeeks(r.op) > 0, downWeeks(r.op));
+      t.eq('both paths raise the plate the same number of times',
+        loadWeeks(r.op), loadWeeks(r.as), { operator: loadWeeks(r.op), assaulter: loadWeeks(r.as) });
+      t.eq('both paths end on the same plate', r.op[15].lb, r.as[15].lb, { op: r.op[15].lb, as: r.as[15].lb });
+      t.eq('the Operator path never raises distance and load in one week', raisedBoth(r.op), 0,
+        r.op.map(w => w.w + ':' + w.climb + ':' + w.ruckKm));
+      t.eq('and neither does the Assaulter path', raisedBoth(r.as), 0,
+        r.as.map(w => w.w + ':' + w.climb + ':' + w.ruckKm));
+
+      // ---- every phase keeps an easy run, on BOTH paths
+      ['base', 'build', 'sharpen', 'taper'].forEach(p => {
+        [['operator', r.op], ['assaulter', r.as]].forEach(([name, ws]) => {
+          const wk = ws.filter(w => w.phase === p);
+          if (!wk.length) return;
+          t.ok('the ' + name + ' ' + p + ' phase keeps its easy running',
+            wk.every(w => w.sess.indexOf('base') >= 0), { phase: p, path: name, sess: wk[0].sess });
+        });
+      });
+
+      // ---- a promise in UI text is a specification, on EVERY path
+      /* v330 fixed exactly this and giving one path a different plan brought it
+         straight back: the shared build note promised an interval session the
+         Operator path deliberately does not run. Each path's note has to
+         describe that path's own plan. */
+      const buildOp = r.op.find(w => w.phase === 'build');
+      const buildAs = r.as.find(w => w.phase === 'build');
+      t.ok('guard: both paths have a build week to read', !!buildOp && !!buildAs, { buildOp, buildAs });
+      if (buildOp && buildAs) {
+        /* A bare /interval/ test cannot tell "runs an interval session" from
+           "track intervals WAIT for the sharpen phase" — the Operator note
+           says the second, and the first version of this check read it as the
+           first. Pin what each note actually specifies instead. */
+        t.ok('the Operator build phase runs no intervals',
+          buildOp.sess.indexOf('intervals') < 0, buildOp);
+        t.ok('and its note says so rather than promising them',
+          /wait|not yet|later|no track/i.test(buildOp.note) && !/one interval|an interval session/i.test(buildOp.note),
+          { note: buildOp.note });
+        t.ok('and the Assaulter build note still promises the intervals it does run',
+          /interval/i.test(buildAs.note) && buildAs.sess.indexOf('intervals') >= 0,
+          { note: buildAs.note, sess: buildAs.sess });
+        t.ok('the two paths are not handed the same note',
+          buildOp.note !== buildAs.note, { op: buildOp.note, as: buildAs.note });
+      }
+
+      // ---- the control itself
+      t.eq('with nothing chosen the path falls back to Operator', r.defaultPath, 'operator', r);
+      t.eq('a real path is stored', r.afterGood, 'assaulter', r);
+      t.eq('and junk never reaches STATE, nor clears the value already there',
+        r.afterJunk, 'assaulter', r);
+      t.eq('a path written straight into STATE by an import is repaired away on boot',
+        r.repairedAway, undefined, r);
+      t.eq('and a real one written the same way survives that repair',
+        r.repairKeepsGood, 'assaulter', r);
+      t.ok('the picker sits on the prep sheet the athlete opens', r.sheetHasPicker, r);
+      t.ok('and names both paths', r.sheetNamesBoth, r);
+    }
   }
 
   // ---- a runless week the athlete WAS logging is a measured zero ----------
