@@ -4966,6 +4966,87 @@ Eleven mutants, all caught. The floors carry the weight: every value the
 wizard actually offers survives untouched, a real new age is still written,
 and a repair that always overwrites fails four checks.
 
+## A sibling writer that skipped the habit, and a habit that outlived its target (v346)
+
+Two sweeps came back clean and are worth recording as coverage: **all 197
+exercise info sheets** render with steps, a photo, no throw and no `undefined`;
+and **every route that can move the step total** — `setSteps` and
+`creditMakeup` across all four cardio modes, above and below the target —
+keeps the step habit exactly in step.
+
+The food side did not.
+
+### The reference meals never ticked the protein habit
+
+There are two writers into `nutToday().food`. `logFood()` is the guarded one.
+`logRefMeal()` — *"Log this meal"* on a Reference day — pushed its rows
+straight in and never called `syncProteinHabit()`. Measured against a 165 g
+target:
+
+| how the protein was logged | protein | habit ticked |
+|---|---|---|
+| typed by hand | 200 g | **yes** |
+| logged from the app's own reference meals | 166 g | **no** |
+
+And it never heals — not on `renderFuel()`, not on a full render, because a
+renderer must not mutate (v312). So an athlete who hit their protein using the
+meal plan the app built for them was not credited for it, and Perfect Day
+stayed locked.
+
+**Folding the sync INTO the push is what stops a third writer forgetting it.**
+`pushFoodRow()` is now the one place a row is written and the one place the
+habit is kept in step — the same call `setForceResultQuiet()` made for the
+checkpoint stamp. `foodRow()` holds the shape, so the zero floor, the name cap
+and the membership tests on `calc` and `src` exist once.
+
+### A derived habit is a verdict against a target, and the target moves
+
+Three of the five habits are derived — protein, water, steps — and each was
+kept in step with its own NUMBER and never with its TARGET.
+
+Measured: eat 165 g against a 165 g target (ticked), raise the target to 220,
+and the tick stays on at 165/220 with Fuel reporting **"Daily habits · 1/4"**.
+The water goal moves with **bodyweight**, so logging a heavier weight after
+drinking the old goal does the same — and that is a routine sequence, not a
+rare one. A wrong tick is not cosmetic: it extends the nutrition streak by a
+day and can unlock Perfect Day.
+
+`syncDerivedHabits()` runs all three, and every setter that moves one of these
+targets calls it rather than remembering which habit it touched. **It is
+guarded on today's day entry already existing** — with nothing logged there is
+no derived habit to correct, and creating the entry here would add an empty row
+to every backup.
+
+**The floor is that lowering the target ticks it again.** A fix that only ever
+un-ticked would satisfy every assertion about the raise.
+
+## Fixing one instance is not fixing the class, and the missed one made my own repair destructive (v346)
+
+v345 hoisted the activity multipliers out of the **wizard's** picker into
+`ACTIVITY_OPTS` and taught `normalizeState()` to snap to it. There was a THIRD
+copy: the calorie-target sheet's `<select>`, hand-written, offering **five**
+options — including *Extremely active* (1.75), which the wizard has never
+offered.
+
+So the repair shipped one round earlier was **silently snapping a stored 1.75
+down to 1.6** — about 260 kcal on a 1750 BMR — for every athlete who had picked
+it on that screen, with nothing to say so. Worse, a `<select>` with no matching
+option displays its FIRST entry, so an out-of-set athlete opening that sheet saw
+*"Mostly sitting"* and saving it wrote **1.2**.
+
+**Keeping 1.75 legal is the non-destructive resolution**: nobody loses a stored
+choice, and the wizard gains a level the app already priced on another screen.
+Both controls now render from the one list, so a fourth copy cannot be written
+by hand.
+
+**And one equivalent mutant, recorded rather than papered over.** Replacing
+`activityLevel(parseFloat($('#td-act').value))` with `||1.45` changes nothing a
+check can see, because the select now renders only legal values — the same call
+as v287's `wantAnchor` and v301's `_macrosMissing`. It is kept so a future
+control that offers something else cannot write it raw.
+
+Nine mutants caught, one equivalent.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
