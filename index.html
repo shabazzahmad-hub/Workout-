@@ -4668,19 +4668,26 @@ function prepMidHTML(){
   const mid=prepMidISO();
   if(!mid)return '';
   const cp=prepCheckpoint();
-  if(cp==='initial'){
-    const wk=prepMidWeeksAway();
-    if(wk===null)return '';
-    return `<div class="tiny muted" style="margin-top:8px">Midpoint assessment in <b>${wk} week${wk===1?'':'s'}</b> — you re-run the four tasks then, and the app shows what moved.</div>`;
-  }
-  const init=prepCheck('initial'), now=prepCheck(cp==='final'?'final':'mid');
+  const init=prepCheck('initial');
+  /* The record is found INDEPENDENTLY of the current checkpoint. Pushing the
+     test date out moves the midpoint, which put the athlete back in the
+     initial window — and the first version returned the countdown there and
+     nothing else, so an assessment they had already recorded simply vanished
+     from the card. A dated record is history: it renders whenever it exists,
+     and only the PROMPT above it depends on where the block is now. */
+  const fin=prepCheck('final'), midRec=prepCheck('mid');
+  const now=fin||midRec;
+  const label=fin?'Final':'Midpoint';
+  let head='';
   if(prepMidDue()){
-    return `<div class="note warn" style="margin:10px 0 0"><b>Midpoint assessment due.</b>
+    head=`<div class="note warn" style="margin:10px 0 0"><b>Midpoint assessment due.</b>
       You are halfway to your test date. Re-run the four tasks and log the times — that is what turns the second half of the block into a correction rather than a guess.
       ${init?'':'<div style="margin-top:6px">Nothing was logged before the halfway point, so this one becomes your first record rather than a comparison.</div>'}</div>`;
+  }else if(cp==='initial'){
+    const wk=prepMidWeeksAway();
+    if(wk!==null)head=`<div class="tiny muted" style="margin-top:8px">Midpoint assessment in <b>${wk} week${wk===1?'':'s'}</b> — you re-run the four tasks then, and the app shows what moved.</div>`;
   }
-  if(!now)return '';
-  const label=cp==='final'?'Final':'Midpoint';
+  if(!now)return head;
   const rows=FORCE_EVENTS.map(ev=>{
     const a=init&&typeof init.results[ev.id]==='number'?init.results[ev.id]:null;
     const b=typeof now.results[ev.id]==='number'?now.results[ev.id]:null;
@@ -4699,7 +4706,7 @@ function prepMidHTML(){
     return `<div class="kv"><span>${_ve(ev.name)}<div class="tiny muted">was ${_ve(fmtTime(Math.round(a)))}</div></span>
       <span style="text-align:right"><b>${_ve(shown)}</b><div>${tag}</div></span></div>`;
   }).join('');
-  return `<div class="section-label" style="margin-top:14px">${label} assessment</div>
+  return `${head}<div class="section-label" style="margin-top:14px">${label} assessment</div>
     <div class="card pad">
       <div class="tiny muted" style="margin-bottom:6px">Recorded ${_ve(now.at||'')}${init?' · against what you logged before the halfway point':''}</div>
       ${rows}
@@ -5153,7 +5160,13 @@ function saveForceTimes(){
     const el=$('#fq-'+ev.id); if(!el||el.value==='')return;
     const n=parseFloat(el.value);
     if(!isFinite(n)||n<0){toast('Enter a real time for '+ev.name);return;}
-    setForceResultQuiet(ev.id,n);wrote++;
+    /* Count what the writer ACCEPTED. The toast below says "Logged ✅" off
+       this counter, and incrementing it unconditionally let it claim a save
+       the writer had declined. Unreachable today — every value is validated
+       two lines up and every id comes from FORCE_EVENTS — so NO CHECK CAN
+       CATCH ITS REMOVAL; it is kept as intent, the same call as v287's
+       wantAnchor and v301's _macrosMissing. */
+    if(setForceResultQuiet(ev.id,n))wrote++;
   });
   save();closeSheet();
   toast(wrote?'Logged ✅':'Nothing to save');

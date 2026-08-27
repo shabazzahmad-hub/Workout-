@@ -3574,6 +3574,25 @@ export default async function run() {
                   nonsense: { results: { lift: 1 } }, initial: { results: {} } } };
       normalizeState();
       o.repaired = JSON.parse(JSON.stringify(prep().checks || {}));
+      /* A DATED RECORD IS HISTORY, so it renders whenever it exists — not only
+         while the block happens to be past its midpoint. Pushing the test date
+         out moves the midpoint and puts the athlete back in the initial
+         window; the first version returned the countdown there and nothing
+         else, so an assessment they had already recorded vanished from the
+         card. Only the PROMPT depends on where the block is now. */
+      STATE.prep = { date: d(28), planFrom: d(-28) }; save();
+      setForceResultQuiet('lift', 172);
+      o.beforeMove = { cp: prepCheckpoint(), card: txt(prepMidHTML()) };
+      STATE.prep.date = d(112); save();               // the evaluation is rescheduled
+      o.afterMove = { cp: prepCheckpoint(), card: txt(prepMidHTML()),
+                      kept: JSON.parse(JSON.stringify(prep().checks || {})) };
+
+      /* And the FINAL window, which nothing else here reached — a mutant that
+         labelled every record "Midpoint" escaped until this case existed. */
+      STATE.prep = { date: d(-1), planFrom: d(-113) }; save();
+      setForceResultQuiet('lift', 160);
+      o.final = { cp: prepCheckpoint(), card: txt(prepMidHTML()) };
+
       /* CALLING THE HELPER IS NOT DRIVING THE ROUTE. Every assertion above
          reads prepMidHTML() directly, so a mutant that simply stopped
          rendering it on the prep sheet walked straight through — the same
@@ -3645,6 +3664,20 @@ export default async function run() {
       t.eq('a malformed date is dropped', (r.repaired.mid || {}).at, undefined, r.repaired);
       t.eq('and the real result beside them survives', ((r.repaired.mid || {}).results || {}).lift, 172, r.repaired);
       // and it is on the sheet the athlete actually opens, not only in the helper
+      t.eq('guard: a result logged after the test date lands in the final window', r.final.cp, 'final', r.final);
+      t.ok('and its record is labelled Final, not Midpoint',
+        /Final assessment/.test(r.final.card) && !/Midpoint assessment Recorded/.test(r.final.card),
+        r.final.card.slice(0, 200));
+      t.eq('guard: recording at the midpoint really put the block there', r.beforeMove.cp, 'mid', r.beforeMove);
+      t.eq('pushing the test date out moves the block back to its initial window',
+        r.afterMove.cp, 'initial', r.afterMove);
+      t.ok('the record already made survives that move',
+        !!(r.afterMove.kept.mid && r.afterMove.kept.mid.results.lift === 172), r.afterMove.kept);
+      t.ok('and stays on the card rather than vanishing until the new midpoint',
+        /Midpoint assessment Recorded/.test(r.afterMove.card) && /2:52/.test(r.afterMove.card),
+        r.afterMove.card.slice(0, 220));
+      t.ok('with the countdown to the NEW midpoint above it',
+        /Midpoint assessment in/.test(r.afterMove.card), r.afterMove.card.slice(0, 220));
       t.ok('the prep sheet shows the assessment when it is due', r.sheetShowsDue, r);
       t.ok('and shows how far off it is when it is not', r.sheetShowsComing, r);
     }

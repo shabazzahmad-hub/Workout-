@@ -4550,7 +4550,28 @@ the glass rather than only a colour: *"was 3:10 · 2:52 · −18s faster"*.
   mutant left `mid` undefined and the assertions THREW instead of naming which
   property broke.
 
-Twelve mutants, all caught after those two check rewrites.
+### Auditing it found the edge the feature itself created
+
+**Rescheduling the evaluation moves the midpoint**, which puts the athlete back
+in the initial window — and the first version returned the countdown there and
+nothing else, so an assessment they had **already recorded vanished from the
+card**. Measured by driving it: record at the midpoint, push the date out three
+months, and the record was gone from the screen while still sitting in STATE.
+
+A dated record is HISTORY. It renders whenever it exists; only the PROMPT above
+it depends on where the block is now. The record itself keeps its own label and
+date — relabelling it would be rewriting what the athlete actually did, and
+discarding it would lose a real measurement.
+
+And `saveForceTimes()` incremented its `wrote` counter unconditionally, so the
+"Logged ✅" toast could claim a save the writer had declined. Unreachable today
+— every value is validated two lines up and every id comes from `FORCE_EVENTS`
+— so **no check can catch its removal**; kept as intent, the same call as
+v287's `wantAnchor`.
+
+Fifteen mutants, all caught after three check rewrites. The third: a mutant
+labelling every record "Midpoint" escaped because nothing reached the FINAL
+window with a record in it.
 
 
 ## Rendering
