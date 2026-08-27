@@ -254,6 +254,95 @@ export default async function () {
     t.ok('and says the keys are kept', /api keys stay/i.test(r.src), r.src.slice(0, 200));
   }
 
+  /* ---------- 5e. restoring a backup must not erase the device's keys ------
+     The mirror of 5b, and the reason carryDeviceCreds() exists as ONE function
+     rather than as two copies of the same three lines.
+
+     exportData() strips both keys, so a backup file holds no opinion about
+     them — and importData() merged the file's settings over DEFAULT_STATE(),
+     whose blanks then won. Measured before the fix: a device with a Gemini key
+     restoring its OWN backup went foodAIReady() true to false, the AI food
+     import silently stopped working, and the only thing on screen was "Backup
+     restored". The app was protecting the key against the MORE destructive
+     action and erasing it on the LESS destructive one.
+
+     Four floors, because "keep the keys" is satisfiable in several wrong ways:
+     the backup must STILL carry neither key (putting them in the file would
+     pass every survives-a-restore assertion and is the one thing this app
+     promises never to do); the restore must still genuinely replace athlete
+     data (a fix that kept everything passes too); and a device with NO key of
+     its own must take the FILE's region, or a new phone loses the region it
+     was exported with. */
+  {
+    const r = await page.evaluate(async () => {
+      const grab = async () => {
+        let blob = null;
+        const rb = window.URL.createObjectURL, rc = HTMLAnchorElement.prototype.click;
+        window.URL.createObjectURL = b => { blob = b; return 'blob:x'; };
+        HTMLAnchorElement.prototype.click = function () {};
+        await exportData();
+        window.URL.createObjectURL = rb; HTMLAnchorElement.prototype.click = rc;
+        return blob ? await blob.text() : null;
+      };
+      const restore = async (text, sentinel) => {
+        const kc = window.confirm; window.confirm = () => true;
+        await new Promise(res => {
+          importData({ target: { files: [new File([text], 'b.json', { type: 'application/json' })] } });
+          const iv = setInterval(() => { if (STATE.profile && STATE.profile.name === sentinel) { clearInterval(iv); res(); } }, 60);
+          setTimeout(() => { clearInterval(iv); res(); }, 3000);
+        });
+        window.confirm = kc;
+      };
+      const o = {};
+      // A backup taken with one region, on a device that has since been pointed
+      // at another — so "the device's region wins" cannot pass by coincidence.
+      STATE.profile.name = 'BACKUP-ME';
+      STATE.settings.azureKey = 'AZ-DEVICE'; STATE.settings.azureRegion = 'westeurope';
+      STATE.settings.foodAiKey = 'GEMINI-DEVICE';
+      STATE.nutrition.diet = 'vegan'; STATE.prs = { pushup: 41 };
+      save();
+      const text = await grab();
+      o.fileHasAzure = text.includes('AZ-DEVICE');
+      o.fileHasGemini = text.includes('GEMINI-DEVICE');
+      o.fileRegion = JSON.parse(text).settings.azureRegion;
+
+      // the device moves on: different athlete data, a different region
+      STATE.profile.name = 'MOVED-ON'; STATE.nutrition.diet = 'omnivore';
+      STATE.prs = {}; STATE.settings.azureRegion = 'canadacentral';
+      save();
+      await restore(text, 'BACKUP-ME');
+      o.readyAfter = foodAIReady();
+      o.azureAfter = STATE.settings.azureKey;
+      o.geminiAfter = STATE.settings.foodAiKey;
+      o.regionAfter = STATE.settings.azureRegion;
+      o.dietAfter = STATE.nutrition.diet;          // floor: athlete data really was replaced
+      o.prAfter = (STATE.prs || {}).pushup;
+
+      // and the same file onto a device carrying no key at all
+      STATE.settings.azureKey = ''; STATE.settings.foodAiKey = '';
+      STATE.settings.azureRegion = 'eastus'; STATE.profile.name = 'BLANK-DEVICE';
+      save();
+      await restore(text, 'BACKUP-ME');
+      o.blankRegion = STATE.settings.azureRegion;
+      o.blankAzure = STATE.settings.azureKey;
+      return o;
+    });
+    t.ok('guard: the backup file carries a region to argue with', r.fileRegion === 'westeurope', r);
+    t.ok('the backup still carries no Azure key', r.fileHasAzure === false, r);
+    t.ok('the backup still carries no Gemini key', r.fileHasGemini === false, r);
+    t.eq('the Gemini key survives restoring a backup', r.geminiAfter, 'GEMINI-DEVICE', r);
+    t.ok('so the AI food import still works afterwards', r.readyAfter === true, r);
+    t.eq('the Azure key survives restoring a backup', r.azureAfter, 'AZ-DEVICE', r);
+    t.eq("and takes the DEVICE's region, not the file's", r.regionAfter, 'canadacentral', r);
+    t.eq('a device with no key of its own takes the file’s region', r.blankRegion, 'westeurope', r);
+    t.eq('and gains no key it never had', r.blankAzure, '', r);
+    // floors: the restore is still a restore
+    t.eq('the backup’s diet really did replace the device’s', r.dietAfter, 'vegan', r);
+    t.eq('and so did its personal records', r.prAfter, 41, r);
+    await page.evaluate(() => { STATE.onboarded = false; });
+    await seedAthlete(page);
+  }
+
   /* ---------- 6. nutrition.kcalTarget had no type repair ----------------
      todayKcalBudget() did `k + movementKcalAdj()`, so a stored STRING
      CONCATENATED: '2400' + 600 rendered "24000 kcal left today" on Fuel while

@@ -4125,6 +4125,64 @@ it proves the watcher can see an assignment that changes nothing — without it,
 Two further mutants, both caught: a renderer writing `adapt`, and a renderer
 moving `progressPtr`.
 
+## The key survived the erase and died on the restore (v336)
+
+Found by driving a full backup round trip — export, `hardReset()`, import —
+rather than by asking whether a screen renders. The athlete data came back
+byte-identical, including v333's two new `prep` fields. **The device
+credentials did not.**
+
+`exportData()` STRIPS `azureKey` and `foodAiKey`, which is correct and is the
+whole point: a backup is a shareable file and a key is not athlete data. So a
+backup file holds **no opinion** about them. `importData()` then did
+
+```js
+STATE.settings=Object.assign(DEFAULT_STATE().settings, p.settings);
+```
+
+and `DEFAULT_STATE()`'s blanks won. That is not restoring anything — it is
+deleting a key the file never carried.
+
+**Measured on a device with a Gemini key restoring its OWN backup:**
+`foodAIReady()` goes true to false, the AI food import silently stops working,
+and the only thing on screen is *"Backup restored"*.
+
+`hardReset()` has carried both keys across since v276 — with a nine-line
+comment explaining exactly why. So **the app protected the key against the MORE
+destructive action (erase everything) and erased it on the LESS destructive one
+(put a backup back).** Fixing one instance is not fixing the class, and the
+class here has two members, not one: the rule now lives in `carryDeviceCreds()`
+and both paths ask it.
+
+**The region travels WITH the key, and on the import path that is a real
+decision rather than a restatement.** After a reset there is nothing but the
+default to fall back to; after an import the FILE carries a region of its own.
+So the device's region wins only when the device's key wins — otherwise a new
+phone, which has no key at all, would lose the region it was exported with.
+
+**Four floors, because "keep the keys" is satisfiable in several wrong ways.**
+The backup must STILL carry neither key — putting them in the file passes every
+survives-a-restore assertion and is the one thing this app promises never to
+do. The restore must still genuinely replace athlete data — a fix that kept
+everything passes too, so the backup's diet and personal records are pinned as
+having landed. And the blank-device case is what catches the two over-eager
+mutants: keeping the region unconditionally, and keeping the device's whole
+settings object.
+
+Seven mutants, all caught.
+
+**And one reading that was the probe, not the app.** The first pass reported
+Settings still showing `🔒 Saved` after the keys were erased. `#view-guide`
+does not exist, so the probe fell back to `document.body` — whose `innerHTML`
+**contains the app's own source**, the trap this file already records twice for
+`textContent` and `NaN`. Both badges are correctly gated on the key.
+
+`neuralOn` staying true with no key behind it is NOT a defect and was left
+alone: `neuralReady()` requires the key, so the voice fails closed, and the
+Settings panel renders the key input whenever the toggle is on — the screen
+asks for the missing half rather than failing silently.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

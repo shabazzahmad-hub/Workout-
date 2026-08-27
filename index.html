@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='335';
+const APP_VERSION='336';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -17324,6 +17324,35 @@ async function exportData(){
   toast('Backup downloaded'+(n?(' · '+n+' photo'+(n===1?'':'s')+' included'):'')+(missing>0?(' · '+missing+' photo file'+(missing===1?'':'s')+' missing'):''));
   try{render();}catch(e){}   // the "no backup in a while" nudge clears immediately, not on the next unrelated render
 }
+/* API keys are a DEVICE credential, and exportData() strips them — so a backup
+   file holds no opinion about them at all. That is what makes "restore" the one
+   word that does not describe what a merge over DEFAULT_STATE()'s blanks does to
+   a live key: it deletes a key the file never carried.
+
+   hardReset() has carried them across since v276 and importData() did not, so
+   the app protected the key against the MORE destructive action (erase
+   everything) and erased it on the LESS destructive one (put a backup back).
+   Measured on a device with a Gemini key restoring its own backup: foodAIReady()
+   goes true to false, the AI food import stops working, and the only thing on
+   screen is "Backup restored". Same class as every other fixed-one-instance
+   entry in this file, so the rule now lives in ONE function that both paths ask
+   rather than in two that can drift.
+
+   The region travels WITH the key (v272, v276): a key pointed at a region it was
+   not issued for fails opaquely and names nothing. It is kept only when a key is
+   kept — on the import path the file carries a region of its own, and that one
+   should land when there is no key of ours for it to contradict. Re-normalised
+   on the way back for the same reason every other read of it is: a value stored
+   before that fix existed must not skip it. */
+function carryDeviceCreds(old){
+  const s=(old&&old.settings)||{};
+  if(!STATE.settings)STATE.settings={};
+  if(s.azureKey){
+    STATE.settings.azureKey=s.azureKey;
+    if(s.azureRegion)STATE.settings.azureRegion=_azRegionNorm(s.azureRegion)||'eastus';
+  }
+  if(s.foodAiKey)STATE.settings.foodAiKey=s.foodAiKey;
+}
 function importData(e){
   const f=e.target.files[0];if(!f)return;const r=new FileReader();
   r.onload=()=>{try{
@@ -17344,6 +17373,7 @@ function importData(e){
     if(!confirm('Replace your current progress with this backup ('+when+')? Your current data will be saved first so you can undo this if it is a mistake.'))return;
     try{localStorage.setItem(PREIMPORT_KEY,JSON.stringify(STATE));}catch(e){}
     const d=DEFAULT_STATE();
+    const _dev=STATE;   // read the credentials off the OUTGOING state, before it is replaced
     // Deep-merge the nested objects exactly like load() does. A shallow assign
     // let a backup that predates a field replace the whole sub-object, which
     // silently killed sound/haptics — or, with a null in the wrong place,
@@ -17362,6 +17392,7 @@ function importData(e){
        v195-v198 already contains them, and those files will be restored long
        after this build. */
     TRANSIENT_KEYS.forEach(k=>{delete STATE[k];});
+    carryDeviceCreds(_dev);
     normalizeState();save();
     if(ph){
       const ids=Object.keys(ph);
@@ -17424,13 +17455,9 @@ function hardReset(){
      silently reintroduce that failure on the very next premium-voice attempt.
      Re-normalised on the way back in for the same reason it is on every other
      read: a value carried from before that fix existed must not skip it. */
-  const _keepAzureKey=STATE.settings&&STATE.settings.azureKey;
-  const _keepAzureRegion=STATE.settings&&STATE.settings.azureRegion;
-  const _keepFoodAiKey=STATE.settings&&STATE.settings.foodAiKey;
+  const _dev=STATE;
   STATE=DEFAULT_STATE();normalizeState();
-  if(_keepAzureKey)STATE.settings.azureKey=_keepAzureKey;
-  if(_keepAzureRegion)STATE.settings.azureRegion=_azRegionNorm(_keepAzureRegion)||'eastus';
-  if(_keepFoodAiKey)STATE.settings.foodAiKey=_keepFoodAiKey;
+  carryDeviceCreds(_dev);
   save();applyTheme();go('today');
 }
 
