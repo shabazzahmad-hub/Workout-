@@ -4775,6 +4775,111 @@ concrete grams and no tab pointer at all — so v287's claim that the overshoot
 is *"visible, which renderRef() already reports"* still holds. Checked rather
 than assumed.
 
+## The brief SPOKE the session the screen called "not today's" (v344)
+
+Found by driving the guided day end to end — brief → warm-up → workout →
+cool-down — which no probe had ever run. The flow itself held: every hand-off
+fires, `TODAY_TAB` follows it, and the day-complete sheet lands.
+
+What did not is v313's own finding, on the surface v313 did not reach.
+`STATE.progressPtr` advances the moment a session is committed — correct for
+the engine, wrong for anything that says the word *today* — and
+`briefSegments()` reads it raw. Measured on the day an athlete finished
+session 2:
+
+| surface | reads | says |
+|---|---|---|
+| header | `todayPtr()` | Full-Body Burn · SESSION 2 |
+| Workout pane | `todayPtr()` | ✅ Session done · *"NEXT SESSION · NOT TODAY'S: Obliques"* |
+| **morning brief** | **`progressPtr`** | ***"Today is Obliques & Love Handles."*** |
+
+Two surfaces on one screen disagreeing about what today is — and the brief is
+the half that is **read aloud**, which is the worst version of it. v315 already
+recorded the reason: *a spoken address is the one nobody can double-check by
+looking.*
+
+**Pointing it at `todayPtr()` is only half a fix, because five of the segments
+are written in the future tense.** *"We open with a warm-up… Then the main
+work… Finish with…"* prescribes, and on a day already trained that describes
+work the athlete has behind them. So on a finished day those five collapse to
+two: the record, and the next session labelled as next. The sign-off goes with
+them — *"Warm up, lock in, and let's get to work"* is false on the same day.
+
+**A pain stop gets its own line and is never congratulated** — v313's rule, and
+`todayStoppedForPain()` already separates the two states.
+
+**`trainAgainAsked()` composes for free.** `todayPtr()` already folds it in, so
+an athlete who chose a second session gets a brief that correctly calls it
+today's, with no second rule.
+
+### The route in was the other half
+
+Step 3 of the guided day is `openPlayer()`, which opens the QUEUE session. So
+on a day already trained, **"Start my day" walked straight into the session the
+pane a few lines below labels "not today's"** — bypassing the priced confirm
+v313 put on the direct route. Same question, same words, one place: once they
+have asked, `trainAgainAsked()` is true and the whole flow, brief included,
+correctly describes the new session as today's.
+
+**The floor is that an ordinary day asks nothing.** A confirm on every "Start
+my day" satisfies every assertion about the trained day and turns the app's
+primary button into a two-tap chore.
+
+## Two of the three deliberate exits from the guided day said nothing (v344)
+
+`startMyDay()` toasts *"Sarge takes it from here"*. Three of the four ways out
+are cancels, and `dayflowCancel(silent)` already had the sentence — *"Daily
+flow ended — you can finish the rest anytime"* — wired to exactly **one** of
+them, the "Exit daily flow" button.
+
+| path | tap | said |
+|---|---|---|
+| "Exit daily flow" | deliberate | yes |
+| **Stop on the warm-up** | **deliberate** | **nothing** |
+| **quitting the player** | **deliberate** | **nothing** |
+| `closeSheet()` / Back | incidental | nothing (correct) |
+
+So an athlete who tapped Stop on a warm-up they had already done finished their
+session and no cool-down ever came, with nothing on screen having said the flow
+had ended.
+
+**The silent half stays silent on purpose**, and that is the floor:
+`closeSheet()` fires on ANY sheet dismissal during the flow, so a toast there
+is noise rather than news. A cancel that always spoke satisfies both of the
+checks above and fails that one.
+
+The fix is two call sites dropping their `true`. The default already speaks —
+which is the shape that should have made this impossible, and did not, because
+both sites passed the flag explicitly.
+
+### Three false alarms, and the first cost the most to disprove
+
+- **"A log row with no `ex` map kills the Today tab for ever."** It reproduces
+  — `log.ex[m.exId]` throws in `todayWorkoutHTML()`, the boundary retries
+  *through* `normalizeState()`, and `ensureLog()` hands a present-but-broken row
+  straight back to every writer. But `normalizeState()` already repairs it:
+  `else if(!L[k].ex||typeof L[k].ex!=='object')L[k].ex={}`. Fuzzed the whole
+  container as well — string, array, number, boolean, null, a nested
+  non-object, a frozen object — **nothing throws and every shape ends as a
+  clean map.** The throw was my probe writing a row and rendering without the
+  boot path.
+- **`runFlow()` matches on the DISPLAY TITLE** to pick which step to advance
+  (`title==='Warm-up'?'warmup':…`), and it has a third caller, `startMobility()`,
+  whose titles are neither. Unreachable: `startMobility()` calls `closeSheet()`
+  first, which cancels the day, so the `null` never reaches `dayflowAdvance()`.
+  Brittle, not broken.
+- **A rest day in the program.** There is none — rest is a logged CHOICE
+  (`restDays`), not a program slot, so the flow cannot walk into one.
+
+### And a self-comparing guard I wrote and caught on re-reading
+
+`t.eq('…Today stays on the session just done', r.doneState.ptr, r.doneState.ptr)`
+passes on any value at all. It now pins `todayPtr()` against the finished
+pointer and the queue pointer against `finished + 1`, so the two really are
+different numbers before anything is asserted about which one the brief used.
+
+Twelve mutants, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

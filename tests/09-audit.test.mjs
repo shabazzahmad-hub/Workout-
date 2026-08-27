@@ -4159,6 +4159,176 @@ export default async function run() {
     t.ok('a lone clear names which result went', /circuit result cleared/i.test(r.loneClear.toast || ''), r.loneClear);
   }
 
+  // ---- the morning brief speaks TODAY's session, not the queue's -----------
+  /* v313 found that progressPtr advances the moment a session is committed, so
+     anything saying "today" has to read todayPtr(). It fixed todayWorkoutHTML()
+     and never reached briefSegments(). Measured on the day an athlete finished
+     session 2: the Workout pane said "Session done" and labelled the next one
+     "NEXT SESSION - NOT TODAY'S", while the brief above it SPOKE "Today is
+     Obliques & Love Handles" - the session the pane had just called not
+     today's. The spoken half is the one an athlete cannot double-check. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      const brief = () => briefSegments().map(s => s.say).join(' | ');
+      let p = STATE.progressPtr;
+      while (posOf(p).dayInWeek === 0) p++;          // seedAthlete starts at day zero
+      STATE.progressPtr = p;
+      delete STATE.logs[p]; delete STATE._trainAgain; save();
+      o.today = buildSession(p).session.name;
+      o.next = buildSession(p + 1).session.name;
+      o.distinct = o.today !== o.next;
+      const b0 = brief();
+      o.untrained = { names: b0.includes('Today is ' + o.today),
+        namesNext: b0.includes(o.next), work: /let.s get to work/.test(b0),
+        prescribes: /Then the main work/.test(b0) };
+      // finished today
+      STATE.logs[p] = { date: todayISO(), ex: {}, feel: 'right', done: true, completedAt: todayISO() };
+      STATE.progressPtr = p + 1; save();
+      const b1 = brief();
+      o.doneState = { ptr: todayPtr(), finished: p, queue: STATE.progressPtr, done: todayDone() };
+      o.done = { saysDone: /already logged today/.test(b1),
+        namesFinished: b1.includes(o.today),
+        nextAsNext: /Next in the queue is /.test(b1) && b1.includes(o.next),
+        neverNextAsToday: !b1.includes('Today is ' + o.next),
+        dropsPrescription: !/Then the main work/.test(b1),
+        signOff: /behind you/.test(b1), work: /let.s get to work/.test(b1) };
+      // stopped for pain is never congratulated
+      // stoppedForPain stores the DATE, not a boolean — commitSession writes todayISO()
+      STATE.logs[p] = { date: todayISO(), ex: {}, done: false, stoppedForPain: todayISO(), completedAt: todayISO() };
+      save();
+      const b2 = brief();
+      o.painState = { ptr: todayPtr(), done: todayDone(), pain: todayStoppedForPain() };
+      o.pain = { saysStopped: /because something hurt/.test(b2),
+        neverCongratulates: !/already logged today/.test(b2) };
+      // clean up
+      delete STATE.logs[p]; STATE.progressPtr = p; delete STATE._trainAgain; save();
+      return o;
+    });
+    t.ok('guard: today and the next session are different workouts', r.distinct, r);
+    t.ok('an ordinary day names today\u2019s session', r.untrained.names, r.untrained);
+    t.ok('and never names the next one', !r.untrained.namesNext, r.untrained);
+    t.ok('and still walks through the work', r.untrained.prescribes && r.untrained.work, r.untrained);
+    t.eq('guard: the queue pointer really moved on', r.doneState.queue, r.doneState.finished + 1, r.doneState);
+    t.eq('guard: but Today stays on the session just done', r.doneState.ptr, r.doneState.finished, r.doneState);
+    t.ok('guard: and the app knows today is done', r.doneState.done, r.doneState);
+    t.ok('the brief says the session is already logged', r.done.saysDone, r.done);
+    t.ok('and names the one that was finished', r.done.namesFinished, r.done);
+    t.ok('and labels the queue session as NEXT', r.done.nextAsNext, r.done);
+    /* THE ONE THAT MATTERS. This is the sentence that was spoken wrong. */
+    t.ok('and never calls the next session today\u2019s', r.done.neverNextAsToday, r.done);
+    t.ok('and stops prescribing work already done', r.done.dropsPrescription, r.done);
+    t.ok('and the sign-off does not say get to work', !r.done.work && r.done.signOff, r.done);
+    t.ok('guard: a pain stop keeps Today on that session', r.painState.pain, r.painState);
+    t.ok('a pain stop says what happened', r.pain.saysStopped, r.pain);
+    t.ok('and is never congratulated', r.pain.neverCongratulates, r.pain);
+  }
+
+  // ---- and the route into it: a finished session is not an offer -----------
+  /* Step 3 of the guided day is openPlayer(), which opens the QUEUE session.
+     On a day already trained "Start my day" walked straight into the session
+     the Workout pane labels "not today's", bypassing the priced confirm v313
+     put on the direct route. Same question, one place. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {}, asked = [], orig = window.confirm;
+      let p = STATE.progressPtr;
+      while (posOf(p).dayInWeek === 0) p++;
+      STATE.progressPtr = p; delete STATE.logs[p]; delete STATE._trainAgain; save();
+      // FLOOR: an untrained day asks nothing
+      window.confirm = m => { asked.push(m); return false; };
+      startMyDay();
+      o.untrained = { asked: asked.length, started: dayflowActive() };
+      dayflowCancel(true);
+      // trained today
+      STATE.logs[p] = { date: todayISO(), ex: {}, feel: 'right', done: true, completedAt: todayISO() };
+      STATE.progressPtr = p + 1; save();
+      asked.length = 0;
+      startMyDay();
+      o.declined = { asked: asked.length, started: dayflowActive(), flag: trainAgainAsked(),
+        wording: asked[0] || '' };
+      window.confirm = m => { asked.push(m); return true; };
+      startMyDay();
+      o.accepted = { started: dayflowActive(), flag: trainAgainAsked(), ptr: todayPtr() };
+      // and the brief then calls the new session today's
+      const b = briefSegments().map(s => s.say).join(' | ');
+      o.briefFollows = b.includes('Today is ' + buildSession(STATE.progressPtr).session.name);
+      dayflowCancel(true); window.confirm = orig;
+      delete STATE.logs[p]; STATE.progressPtr = p; delete STATE._trainAgain; save();
+      return o;
+    });
+    /* THE FLOOR. A confirm on every Start my day turns the app's primary
+       button into a two-tap chore and satisfies every assertion below. */
+    t.eq('an untrained day asks nothing', r.untrained.asked, 0, r.untrained);
+    t.ok('and starts the flow straight away', r.untrained.started, r.untrained);
+    t.eq('a day already trained asks once', r.declined.asked, 1, r.declined);
+    t.ok('and saying no starts nothing', !r.declined.started, r.declined);
+    t.ok('and records no request', !r.declined.flag, r.declined);
+    t.ok('the question says it starts the NEXT session', /NEXT session/.test(r.declined.wording), r.declined);
+    t.ok('saying yes starts the flow', r.accepted.started, r.accepted);
+    t.ok('and records the request once', r.accepted.flag, r.accepted);
+    t.ok('after which the brief calls that session today\u2019s', r.briefFollows, r);
+  }
+
+  // ---- a deliberate exit from the guided day says the day ended ------------
+  /* startMyDay() promises "Sarge takes it from here". Three of the four ways
+     out are cancels, and two of them are a button the athlete chose - Stop on
+     the warm-up, and quitting the player - yet both passed `true` and ended
+     the day in silence: the athlete tapped Stop on a warm-up they had already
+     done, finished their session, and no cool-down ever came with nothing on
+     screen having said why. The incidental paths stay silent on purpose. */
+  {
+    const r = await page.evaluate(async () => {
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const o = {}, said = [], orig = window.toast;
+      window.toast = m => said.push(m);
+      const toWarmup = async () => {
+        startMyDay(); briefStop(); dfHandoff(); closeSheet(); dayflowAdvance('brief');
+        await wait(600);
+      };
+      const ended = () => said.some(m => /Daily flow ended/.test(m));
+      // A - Stop on the warm-up
+      await toWarmup(); said.length = 0;
+      o.stopArmed = dayflowActive();
+      flowStop(false);
+      o.stop = { active: dayflowActive(), spoke: ended() };
+      dayflowCancel(true); closeSheet();
+      // B - quit the player mid-workout
+      await toWarmup(); flowStop(true); await wait(600);
+      o.quitArmed = dayflowActive() && !!PLAYER;
+      said.length = 0;
+      playerQuit(); await wait(150);
+      o.quit = { active: dayflowActive(), spoke: ended() };
+      dayflowCancel(true); closeSheet();
+      // C - FLOOR: an incidental sheet dismissal stays silent
+      await toWarmup(); said.length = 0;
+      closeSheet();
+      o.dismiss = { active: dayflowActive(), spoke: ended() };
+      dayflowCancel(true); closeSheet();
+      // D - FLOOR: a normal advance never says the day ended
+      await toWarmup(); said.length = 0;
+      flowStop(true); await wait(600);
+      o.advance = { active: dayflowActive(), spoke: ended() };
+      try { playerQuit(); } catch (e) {}
+      dayflowCancel(true); closeSheet();
+      window.toast = orig;
+      return o;
+    });
+    t.ok('guard: the guided day really reached the warm-up', r.stopArmed, r);
+    t.ok('Stop on the warm-up ends the day', !r.stop.active, r.stop);
+    t.ok('and says so', r.stop.spoke, r.stop);
+    t.ok('guard: the flow really reached the player', r.quitArmed, r);
+    t.ok('quitting the player ends the day', !r.quit.active, r.quit);
+    t.ok('and says so', r.quit.spoke, r.quit);
+    /* THE FLOORS. closeSheet() fires on ANY dismissal during the flow, so a
+       toast there is noise; and a normal hand-off is not an ending at all.
+       A cancel that always spoke satisfies both checks above. */
+    t.ok('guard: an incidental dismissal still ends the day', !r.dismiss.active, r.dismiss);
+    t.ok('but says nothing', !r.dismiss.spoke, r.dismiss);
+    t.ok('a normal hand-off keeps the day running', r.advance.active, r.advance);
+    t.ok('and never claims the day ended', !r.advance.spoke, r.advance);
+  }
+
   await browser.close();
 
   // ---- the readiness deload, in the timezone it was broken in --------------
