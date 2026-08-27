@@ -713,6 +713,79 @@ export default async function run() {
     await browser.close();
   }
 
+  /* ---- activity and mobility: the legal set had no repair at all ---------
+     `activity` multiplies every calorie number in the app and normalizeState()
+     had NO test on it - not membership, not type. The picker highlights by
+     exact match, so an out-of-set value from a hand-edited backup left the
+     activity row with nothing selected, and obReadForm()'s hand-written 1.45
+     fallback rewrote it on the next Done. Measured on an 86 kg athlete:
+     stored 1.9 showed a 3330 kcal target and became 2540 after one profile
+     edit; stored 'brisk' made kcalTargetPreview() return null outright.
+     `mobility` was the truthiness-for-membership shape one line above it. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await waitForBoot(page);
+    const r = await page.evaluate(() => {
+      const out = { legal: [], junk: [], mob: [] };
+      const LEGAL = ACTIVITY_VALUES.slice();
+      out.optionCount = LEGAL.length;
+      /* THE FLOOR FIRST: every value the wizard actually offers survives
+         untouched, or a repair that always overwrites satisfies everything
+         below while resetting the athlete's own answer on every boot. */
+      LEGAL.forEach(v => {
+        STATE.profile.activity = v; STATE.nutrition.activity = v;
+        normalizeState();
+        if (STATE.profile.activity !== v || STATE.nutrition.activity !== v)
+          out.legal.push(v + '\u2192' + STATE.profile.activity + '/' + STATE.nutrition.activity);
+      });
+      // out-of-set numbers snap DOWN into the set; non-numbers take the default
+      const CASES = [[1.55, 1.45], [1.9, 1.6], [-3, LEGAL[0]], [0, LEGAL[0]],
+        ['brisk', ACTIVITY_DEFAULT], [null, ACTIVITY_DEFAULT], [[], ACTIVITY_DEFAULT],
+        [{}, ACTIVITY_DEFAULT], [NaN, ACTIVITY_DEFAULT], [true, ACTIVITY_DEFAULT]];
+      CASES.forEach(([given, want]) => {
+        STATE.profile.activity = given; STATE.nutrition.activity = given;
+        normalizeState();
+        if (STATE.profile.activity !== want || STATE.nutrition.activity !== want)
+          out.junk.push(JSON.stringify(given) + '\u2192' + STATE.profile.activity +
+            '/' + STATE.nutrition.activity + ' want ' + want);
+      });
+      // and nothing may survive outside the set at all
+      [[], {}, 'sideways', 0, true, NaN, 1.55, 99].forEach(j => {
+        STATE.profile.activity = j; normalizeState();
+        if (!LEGAL.includes(STATE.profile.activity))
+          out.junk.push('escaped: ' + JSON.stringify(j) + '\u2192' + JSON.stringify(STATE.profile.activity));
+      });
+      // mobility: membership, not truthiness
+      ['low', 'ok', 'good'].forEach(v => {
+        STATE.profile.mobility = v; normalizeState();
+        if (STATE.profile.mobility !== v) out.mob.push('lost ' + v);
+      });
+      [[], {}, 'sideways', 0, true, NaN, 'OK', 'stiff'].forEach(j => {
+        STATE.profile.mobility = j; normalizeState();
+        if (!['low', 'ok', 'good'].includes(STATE.profile.mobility))
+          out.mob.push(JSON.stringify(j) + '\u2192' + JSON.stringify(STATE.profile.mobility));
+      });
+      /* ONE list, asked by the picker rather than restated in the markup:
+         a second copy is a second place for it to drift. */
+      STATE.profile.activity = 1.55; STATE.onboarded = true; save();
+      go('today'); openProfileEdit();
+      const btns = [...document.querySelectorAll('#ob-act button')];
+      out.rendered = btns.map(b => parseFloat(b.dataset.a));
+      out.selected = btns.filter(b => b.classList.contains('on')).map(b => parseFloat(b.dataset.a));
+      return out;
+    });
+    t.eq('guard: the wizard really offers four activity levels', r.optionCount, 4, r);
+    t.eq('every level the wizard offers survives the repair', r.legal.join(' '), '', r);
+    t.eq('and nothing outside the set does', r.junk.join(' | '), '', r);
+    t.eq('mobility is a membership test, not truthiness', r.mob.join(' | '), '', r);
+    t.eq('the picker renders the one list', r.rendered.join(','), '1.2,1.375,1.45,1.6', r);
+    /* An out-of-set stored value used to leave NOTHING selected, which is what
+       let the next Done rewrite it silently. */
+    t.eq('and always has exactly one option selected', r.selected.length, 1, r);
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
   srv.close();
   return t.finish();
 }

@@ -4880,6 +4880,92 @@ different numbers before anything is asserted about which one the brief used.
 
 Twelve mutants, all caught.
 
+## A blank box is "about to retype", not "I have no age" (v345)
+
+Found by driving the setup wizard end to end, then its twin — the profile
+editor `OB_EDIT` reuses the same seven steps from Settings or Today. The
+first-run path is clean: step 1 blocks bad input with the v289 unit hint, the
+day picker blocks below five, the label and the final button track the step,
+and everything commits. The health screen says in as many words *"Tap anything
+that applies to you. If none do, leave them all off"*, so walking through it
+untouched is a real answer and `safeMode()` correctly clears.
+
+**The editor is where it bites.** `obBlocked()` guards the Next button, but two
+routes reach `obReadForm()` without it: tapping **Done** — which is what the
+step-1 Back button says in edit mode — and **switching tabs mid-edit**, which
+commits on the way out. Neither validates.
+
+Every body metric on that form reads a blank box as "keep what is stored":
+
+```js
+const ht=parseFloat($('#ob-height').value); if(ht>0)P.heightCm=...
+let kg=null; if(wtOk){kg=wtKg; N.weightKg=kg;}
+const gwt=parseFloat($('#ob-goalwt').value); if(okKg(k))P.goalWeightLb=...
+```
+
+Age did not:
+
+```js
+{const _a=parseInt($('#ob-age').value);P.age=(_a>0)?clamp(_a,10,100):null;}
+```
+
+Measured: clear the age and the height together, tap Done — **the height came
+back 178 and the age came back null**, with a toast reading *"Saved ✓ · waist
+96 cm"*. One field out of six on one form, and it is the one every calorie
+number is built from. `kcalTargetPreview()` then returns null, so *"Calculate
+my targets"* quietly stops working until the athlete notices the empty box.
+
+The stored target itself survives — `recalcKcalFromStored()` bails on a null
+preview — so this is a one-way door rather than data loss, which is why it had
+never been reported. **`timelineWeeks` nulling on blank is NOT the same shape**
+and was left alone: its picker carries an explicit *No deadline* button, so
+null there is a chosen answer rather than a lost one.
+
+## The field that multiplies every calorie had no repair at all (v345)
+
+Found one line later, by asking why a profile edit moved an unrelated athlete's
+target. `normalizeState()` had **no test on `nutrition.activity` or
+`profile.activity`** — not membership, not type — and the four multipliers the
+wizard offers existed in exactly one place: the markup.
+
+The picker highlights by exact match, so an out-of-set value leaves the
+activity row with **nothing selected**, and `obReadForm()`'s hand-written
+`1.45` fallback then rewrites it on the next Done. Measured on an 86 kg
+athlete, with values `importData()` accepts from any hand-edited backup:
+
+| stored | picker | target | after one profile edit |
+|---|---|---|---|
+| 1.2 / 1.375 / 1.45 / 1.6 | selected | — | unchanged |
+| **1.55** | **nothing selected** | 2720 | **2540** |
+| **1.9** | nothing selected | 3330 | **2540** |
+| **`'brisk'`** | nothing selected | **null** | 2540 |
+| **−3** | nothing selected | 1930 | 2540 |
+
+A string activity makes `kcalTargetPreview()` return null outright — the same
+symptom as the lost age, from a different direction — and a negative one prices
+a lower TDEE with no complaint.
+
+`ACTIVITY_OPTS` is now the one list, asked by the picker and by the repair.
+**A number snaps DOWN into the set rather than to the nearest**, because the
+two ways of being wrong are not symmetrical: over-stating activity silently
+stalls a cut, under-stating it costs a little food. Anything that is not a
+number carries no intent at all, so it takes the app's own default — the value
+a fresh install gets.
+
+**And `mobility` was the truthiness-for-membership shape one line above it.**
+`if(!STATE.profile.mobility)` caught `''` and `null` and let every other string
+past, so an unrecognised value read as "not low" and `mobilityFlow()` skipped
+the 25% longer holds a stiff athlete asked for. `MOBILITY_LEVELS` now decides.
+
+**The picker normalises what it highlights**, not only what it stores, so even
+before the repair has run there is always exactly one option selected — which
+is the state that let the silent rewrite happen. A mutant that drops that and
+keeps everything else is caught by it.
+
+Eleven mutants, all caught. The floors carry the weight: every value the
+wizard actually offers survives untouched, a real new age is still written,
+and a repair that always overwrites fails four checks.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
