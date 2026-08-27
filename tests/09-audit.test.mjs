@@ -914,9 +914,12 @@ export default async function run() {
       n.days[localISO(d)] = { water: 0, habits: bad ? {} : { protein: 1, water: 1, sleep: 1, steps: 1 } }; }
     o.streakSurvivesTwoBadDays = nutritionStreak() > 25;
     n.days = JSON.parse(realD);
-    // drifting: three opens with no training offers the short version
+    /* drifting: opens with no training offers the short version. Seven days of
+       opens, not three — the seeded athlete rests two days a week, and a
+       three-day window straddles one of them on two weekdays in seven, so the
+       old seed passed or failed by the day the suite happened to run. */
     const realO = STATE._opens; STATE._opens = {};
-    for (let i = 0; i < 3; i++) { const d = new Date(); d.setDate(d.getDate() - i); STATE._opens[localISO(d)] = 1; }
+    for (let i = 0; i < 7; i++) { const d = new Date(); d.setDate(d.getDate() - i); STATE._opens[localISO(d)] = 1; }
     STATE.logs = {}; STATE.quickLog = {};
     o.driftDetected = driftingDays() >= 3 && /5-minute/.test(driftBanner());
     STATE.quickLog[todayISO()] = 1;
@@ -943,6 +946,119 @@ export default async function run() {
   t.ok('and training clears it', stick.trainingClearsIt, stick);
   t.ok('the app says when the day is done', stick.saysDone, stick);
   t.ok('and stays quiet when it is not', stick.quietOtherwise, stick);
+
+  // ---- a rest day is not a missed session (v347) ---------------------------
+  /* Reported from the phone: "Wednesday is set as one of my rest days, but it
+     says it has been 2 days since I trained." Both banners counted CALENDAR
+     days. The app already stored the schedule (profile.days) and the logged
+     rest days (STATE.restDays) and neither banner asked for either. */
+  const rday = await page.evaluate(() => {
+    const o = {};
+    const realDays = STATE.profile.days.slice(), realLogs = STATE.logs,
+          realQ = STATE.quickLog, realR = STATE.restDays, realO = STATE._opens,
+          realC = STATE.comeback;
+    const iso = n => { const d = new Date(); d.setDate(d.getDate() - n); return localISO(d); };
+    const dow = n => { const d = new Date(); d.setDate(d.getDate() - n); return d.getDay(); };
+    const ALL = [0, 1, 2, 3, 4, 5, 6];
+    /* Every case builds its own state — what the case before left behind is
+       not a contract, and the weekday the suite runs on is not one either, so
+       the schedule is written relative to TODAY rather than hardcoded. */
+    const reset = () => { STATE.logs = {}; STATE.quickLog = {}; STATE.restDays = {};
+                          STATE._opens = {}; STATE.comeback = null; };
+
+    // the report itself: trained two days ago, yesterday was a day he picked off
+    reset();
+    STATE.profile.days = ALL.filter(d => d !== dow(1));
+    STATE.quickLog[iso(2)] = 1;
+    o.calendarGapIsTwo = daysSinceTrained() === 2;   // guard: the old number really is 2
+    o.missedNothing = gapSince().missed === 0;
+    o.oneRestDayInTheGap = gapSince().off === 1;
+    o.silentAfterARestDay = catchUpBanner() === '';
+
+    // floor: the same two-day gap with no rest day in it IS a missed session
+    reset();
+    STATE.profile.days = ALL.slice();
+    STATE.quickLog[iso(2)] = 1;
+    o.floorSameGapStillFires = gapSince().missed === 1 && catchUpBanner() !== '';
+
+    // a real lay-off fires, and counts SESSIONS rather than days
+    reset();
+    STATE.profile.days = ALL.slice();
+    STATE.quickLog[iso(3)] = 1;
+    const h = catchUpBanner();
+    o.missedTwo = gapSince().missed === 2;
+    o.namesSessions = /2 training days since your last session/.test(h);
+    o.dropsTheDayCount = !/it's been/.test(h);
+    o.noRestNoteWhenNoneWereRested = !/count against you/.test(h);
+
+    // a HAND-LOGGED rest day counts as rest even when the schedule says train
+    reset();
+    STATE.profile.days = ALL.slice();
+    STATE.quickLog[iso(3)] = 1;
+    STATE.restDays[iso(1)] = true; STATE.restDays[iso(2)] = true;
+    o.loggedRestCounts = gapSince().missed === 0 && catchUpBanner() === '';
+
+    // when rest days really were skipped, the banner names them
+    reset();
+    STATE.profile.days = ALL.filter(d => d !== dow(1));
+    STATE.quickLog[iso(3)] = 1;
+    o.restNoteMissedOne = gapSince().missed === 1;
+    o.restNoteAppears = /Your 1 rest day does not count against you/.test(catchUpBanner());
+
+    // trained today: there is nothing to welcome anybody back from
+    reset();
+    STATE.profile.days = ALL.slice();
+    STATE.quickLog[todayISO()] = 1;
+    o.quietWhenTrainedToday = gapSince().missed === 0 && catchUpBanner() === '';
+
+    /* Drift: a rest day is transparent. It is not drift, and a rest day he
+       never opened must not END the run either — the old code broke on the
+       first unopened day and stopped counting at 1. */
+    reset();
+    STATE.profile.days = ALL.filter(d => d !== dow(1));
+    for (let i = 0; i < 7; i++) if (i !== 1) STATE._opens[iso(i)] = 1;
+    o.driftSkipsRestAndKeepsGoing = driftingDays() === 6;
+    const h3 = driftBanner();
+    o.driftStillFires = /5-minute/.test(h3);
+    o.driftNamesTheCount = /6 training days here/.test(h3);
+
+    // and training today clears it even when today itself is a rest day
+    reset();
+    STATE.profile.days = ALL.filter(d => d !== dow(0));
+    for (let i = 0; i < 7; i++) STATE._opens[iso(i)] = 1;
+    STATE.quickLog[todayISO()] = 1;
+    o.trainingClearsDriftOnARestDay = driftingDays() === 0 && driftBanner() === '';
+
+    /* One reader for the schedule. An absent list means "not chosen", which is
+       every day; isTrainingDay()'s own `|| []` read it as NO training days and
+       silently killed the evening reminder for ever. */
+    reset();
+    delete STATE.profile.days;
+    o.absentScheduleIsEveryDay = scheduledDays().length === 7 && isTrainingDay() === true;
+
+    STATE.profile.days = realDays; STATE.logs = realLogs; STATE.quickLog = realQ;
+    STATE.restDays = realR; STATE._opens = realO; STATE.comeback = realC;
+    save();
+    return o;
+  });
+  t.ok('guard: the calendar gap over a rest day really is two days', rday.calendarGapIsTwo, rday);
+  t.ok('guard: and that gap really did contain one rest day', rday.oneRestDayInTheGap, rday);
+  t.ok('a scheduled rest day is not a missed session', rday.missedNothing, rday);
+  t.ok('so the welcome-back banner stays quiet the morning after one', rday.silentAfterARestDay, rday);
+  t.ok('floor: the same gap with no rest day in it still fires', rday.floorSameGapStillFires, rday);
+  t.ok('a real lay-off counts the sessions missed', rday.missedTwo, rday);
+  t.ok('and the banner names training days, not calendar days', rday.namesSessions, rday);
+  t.ok('and no longer says "it\'s been N days"', rday.dropsTheDayCount, rday);
+  t.ok('a hand-logged rest day counts as rest too', rday.loggedRestCounts, rday);
+  t.ok('guard: the rest-note case really did miss one session', rday.restNoteMissedOne, rday);
+  t.ok('and the banner says the rest day did not count against him', rday.restNoteAppears, rday);
+  t.ok('floor: with nothing rested the banner does not mention rest days', rday.noRestNoteWhenNoneWereRested, rday);
+  t.ok('trained today, nothing to welcome back from', rday.quietWhenTrainedToday, rday);
+  t.ok('drift skips a rest day and keeps counting past it', rday.driftSkipsRestAndKeepsGoing, rday);
+  t.ok('floor: drift still offers the 5-minute version', rday.driftStillFires, rday);
+  t.ok('and the drift banner names the count it measured', rday.driftNamesTheCount, rday);
+  t.ok('training today clears drift even on a rest day', rday.trainingClearsDriftOnARestDay, rday);
+  t.ok('an absent schedule means every day, not no days', rday.absentScheduleIsEveryDay, rday);
 
   // ---- warm-ups honour the injury flags, and rests survive a sleeping phone --
   const flow = await page.evaluate(() => {
