@@ -4333,6 +4333,56 @@ and when a line appears twice, anchor on the function.
 Six mutants, all caught after those two rewrites.
 
 
+## A runless week the athlete WAS logging is a measured zero (v339)
+
+Found by driving an athlete who trains, stops for a while, and comes back — a
+state every previous probe had skipped, because they all seeded steady history.
+
+`trailingRunKm()` averaged `buckets.filter(b => b > 0)`, which throws every
+runless week away. Measured, three very different athletes landed on the
+**identical 20 km prescription**:
+
+| the athlete | the plan said |
+|---|---|
+| ran 20 km every week for four weeks | 20 km |
+| ran 20 km **once**, three weeks ago, using the app daily since | **20 km** |
+| ran 20 km once and never opened the app again | 20 km |
+
+The middle row is the defect. Three weeks detrained, then 20 km climbing to 22
+— **the injury the 10% rule exists to prevent, arriving through the plan.**
+
+This is the `actualRatio()` defect one subsystem over, and the rule this file
+already states: **a skipped session is not a completed one, and a measured zero
+is not a missing answer.** The comment beside the filter even said so about the
+whole window (*"nothing logged is not zero — it is unknown"*) and then applied
+the opposite reasoning week by week.
+
+**The distinction the app can actually make is the one it already makes about
+food.** A week with NO day entries at all is unknown and skipped — an athlete
+who runs and does not open the app must not be punished for it. A week the
+athlete WAS using the app and did not run is a zero, and it counts. After the
+fix the three rows read 20 / **5** / 20.
+
+**The base can drop a long way, so the card says why**: *"3 of the last 4 weeks
+had no runs at all, counted as the zero they were rather than skipped."* It
+fires only when there is something to say — a note that always fires is a note
+nobody reads, and a mutant that always fires it is caught by the consistent
+runner.
+
+`_trailingWeeks(readKm)` is now the one reader, because the running plan and the
+ruck ladder ask the same question of different data — and two copies of that
+question had already drifted into the same defect.
+
+### The escaped mutant was my own lesson, landing on me
+
+Reverting only the RUCK half escaped every check, because the block exercised
+running alone. **Fixing one instance is not fixing the class — and neither is
+checking one.** The ruck sibling now has its own three cases beside the run's,
+and the mutant is caught by name.
+
+Six mutants, all caught after that.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

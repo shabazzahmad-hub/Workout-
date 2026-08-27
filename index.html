@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='338';
+const APP_VERSION='339';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4377,25 +4377,49 @@ function _dayRunKm(t){
 /* The athlete's real trailing weekly distance. Averaged over the last four
    ISO weeks that carry ANY logged movement, so a fortnight off does not read
    as "they run nothing" — the same shape acwr() uses for training load. */
-function trailingRunKm(){
-  try{
-    const days=(nut().days)||{};
-    const now=new Date(todayISO()+'T00:00:00').getTime();
-    const buckets=[0,0,0,0];
-    let any=false;
-    Object.keys(days).forEach(d=>{
-      const ms=new Date(d+'T00:00:00').getTime();
-      if(!isFinite(ms))return;
-      const wk=Math.floor((now-ms)/(7*86400000));
-      if(wk<0||wk>3)return;
-      const km=_dayRunKm(days[d]);
-      if(km>0){buckets[wk]+=km;any=true;}
-    });
-    if(!any)return null;                        // nothing logged is not zero — it is unknown
-    const used=buckets.filter(b=>b>0);
-    return used.reduce((a,b)=>a+b,0)/used.length;
-  }catch(e){return null;}
+/* The four trailing weeks, averaged over the weeks that COUNT — the one place
+   the rule lives, because both plans ask the same question of different data
+   and two copies of it drifted into the same defect.
+
+   BOTH halves of this matter, and the first version only had one of them.
+   `buckets.filter(b=>b>0)` threw every runless week away, so an athlete who
+   ran 20 km ONCE and not since read exactly the same as one who ran 20 km
+   every week for a month — measured, all three cases landed on a 20 km
+   prescription. Three weeks detrained, then 20 km climbing to 22: the injury
+   the 10% rule exists to prevent, arriving through the plan.
+
+   The distinction the app can actually make is the one it already makes about
+   food: a week with NO day entries at all is unknown and skipped, because an
+   athlete who runs and does not open the app should not be punished for it.
+   A week the athlete WAS using the app and did not run is a measured zero, and
+   a measured zero is not a missing answer.
+
+   `weeks` is returned alongside so the card can say which it counted — a base
+   that drops because three weeks were empty is only legible if it says so. */
+function _trailingWeeks(readKm){
+  const days=(nut().days)||{};
+  const now=new Date(todayISO()+'T00:00:00').getTime();
+  const km=[0,0,0,0], seen=[false,false,false,false];
+  let any=false;
+  Object.keys(days).forEach(d=>{
+    const ms=new Date(d+'T00:00:00').getTime();
+    if(!isFinite(ms))return;
+    const wk=Math.floor((now-ms)/(7*86400000));
+    if(wk<0||wk>3)return;
+    seen[wk]=true;
+    const v=readKm(days[d]);
+    if(v>0){km[wk]+=v;any=true;}
+  });
+  if(!any)return null;                          // nothing logged is not zero — it is unknown
+  const used=[];
+  for(let i=0;i<4;i++) if(seen[i]) used.push(km[i]);
+  if(!used.length)return null;
+  return { avg:used.reduce((a,b)=>a+b,0)/used.length,
+           weeks:used.length, blank:used.filter(v=>v===0).length };
 }
+function trailingRunStats(){try{return _trailingWeeks(_dayRunKm);}catch(e){return null;}}
+function trailingRuckStats(){try{return _trailingWeeks(_dayRuckKm);}catch(e){return null;}}
+function trailingRunKm(){const t=trailingRunStats();return t?t.avg:null;}
 /* ---- the two plans, added together ---------------------------------------
    The endurance plan ramps from what was logged RUNNING and the ruck ladder
    from what was logged RUCKING, each capped at PREP_RAMP, and each with a
@@ -4503,24 +4527,7 @@ function _dayRuckKm(t){
 }
 /* The same trailing read the running plan uses. Nothing logged returns null —
    "unknown", which is not the same answer as zero. */
-function trailingRuckKm(){
-  try{
-    const days=(nut().days)||{};
-    const now=new Date(todayISO()+'T00:00:00').getTime();
-    const buckets=[0,0,0,0];let any=false;
-    Object.keys(days).forEach(d=>{
-      const ms=new Date(d+'T00:00:00').getTime();
-      if(!isFinite(ms))return;
-      const wk=Math.floor((now-ms)/(7*86400000));
-      if(wk<0||wk>3)return;
-      const km=_dayRuckKm(days[d]);
-      if(km>0){buckets[wk]+=km;any=true;}
-    });
-    if(!any)return null;
-    const used=buckets.filter(b=>b>0);
-    return used.reduce((a,b)=>a+b,0)/used.length;
-  }catch(e){return null;}
-}
+function trailingRuckKm(){const t=trailingRuckStats();return t?t.avg:null;}
 /* The load stops climbing at a third of bodyweight. That is the far end of the
    usual guidance — start near a tenth, build toward a third over MONTHS — and
    the ladder walks there in 5 lb steps rather than arriving. With no bodyweight
@@ -4666,7 +4673,8 @@ const PREP_PHASE_NOTE={
 function enduranceWeek(raw){
   const left=prepWeeksLeft(), phase=prepPhase();
   if(left===null)return {noDate:true,passed:prepDatePassed()};
-  const base=trailingRunKm();
+  const stats=trailingRunStats();
+  const base=stats?stats.avg:null;
   const start=(base!==null&&base>0)?base:PREP_FLOOR_KM;
   /* Weeks ELAPSED since the plan opened, so the ramp compounds forward. It is
      counted from `planFrom`, stamped when the test date is first set, NOT from
@@ -4704,6 +4712,7 @@ function enduranceWeek(raw){
   const footNew=fit?fit.newMode:null, footAdded=fit?fit.added:0;
   const footBig=!!(fit&&fit.big);
   return {left,phase,wk,down,km,curve,start:Math.round(start*10)/10,
+    blank:stats?stats.blank:0, counted:stats?stats.weeks:0,
           estimated:base===null,climbed,plateaued,plateauWk,
           footTotal,footFrom,footStep,footBig,footNew,footAdded,
           note:PREP_PHASE_NOTE[phase]||'',
@@ -4738,7 +4747,7 @@ function enduranceHTML(){
     <div class="tiny muted" style="margin-top:10px">${_ve(w.note)}</div>
     ${w.estimated
       ? `<div class="note warn" style="margin:10px 0 0"><b>Starting low, because nothing is logged yet.</b> The plan opens at ${_ve(distShow(PREP_FLOOR_KM))} a week and climbs from there. Log a few runs and it will build from what you actually do instead.</div>`
-      : `<div class="tiny muted" style="margin-top:6px">Built from the <b>${_ve(distShow(w.start))}</b> a week you have been logging, climbing no more than <b>${Math.round((PREP_RAMP-1)*100)}%</b> a week.</div>`}
+      : `<div class="tiny muted" style="margin-top:6px">Built from the <b>${_ve(distShow(w.start))}</b> a week you have been logging${w.blank>0?` — <b>${w.blank} of the last ${w.counted} weeks had no runs at all</b>, counted as the zero they were rather than skipped`:''}, climbing no more than <b>${Math.round((PREP_RAMP-1)*100)}%</b> a week.</div>`}
     ${w.down?`<div class="tiny muted" style="margin-top:6px">Next week goes back to <b>${_ve(distShow(w.curve===w.km?w.curve:Math.round(w.curve*PREP_RAMP*10)/10))}</b>. That looks like a jump against this week and is not one — it is ${Math.round((PREP_RAMP-1)*100)}% up on the last week you were not cutting.</div>`:''}
     <div class="tiny muted" style="margin-top:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">This week</div>
     ${w.sessions.map(id=>`<button class="btn ghost" style="text-align:left;display:block;padding:12px;width:100%;margin-top:6px" onclick="startRunSession('${id}')">▶ ${_ve(names[id]||id)}</button>`).join('')}
