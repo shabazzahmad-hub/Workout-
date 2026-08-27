@@ -4484,9 +4484,13 @@ Twenty mutants, all caught. The default is **Operator**, because everything
 else this app knows about the Canadian standards is load carriage — FORCE's
 sandbag and shuttle, FORCE Combat's 25 kg fighting order and 35 kg march.
 
-**Still not built, and deliberately:** a midpoint assessment tied to the prep
-block, and swimming as a fifth cardio mode. Neither FORCE nor FORCE Combat has
-a swim, so the app would measure it and have no standard to prescribe against.
+**The midpoint assessment shipped as v341** — see the section below.
+
+**Swimming was considered and DECLINED by the athlete, and it is not an open
+item.** Neither FORCE nor FORCE Combat has a swim, so the app would measure it
+and have no published standard to prescribe against — it would be a currency
+with nothing to convert into, which is the opposite of what every other cardio
+mode here earns its place by doing. Do not re-propose it.
 
 
 ## A block is worth measuring more than once (v341)
