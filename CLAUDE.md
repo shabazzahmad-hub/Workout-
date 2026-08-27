@@ -4024,6 +4024,85 @@ rounds running, the audit's best finding was in the round immediately before
 it — which is an argument for auditing the change you just shipped before
 looking anywhere else.
 
+## A rebuild inside a walk, and the four sweeps that found nothing (v335)
+
+"Keep cleaning it up so that it functions like a professional application."
+Six axes swept. Five came back clean, and recording that is the point of
+running them:
+
+| swept | result |
+|---|---|
+| every screen with NOTHING logged | all 13 explain themselves; no blanks, no `NaN`, no `undefined` |
+| accessible names on every control | zero unnamed, every tab |
+| horizontal overflow at 320px and 412px | none |
+| tap targets — 67 controls under 40px, hit-tested | all reachable across 40x40 |
+| hostile input — a 132-char name, an XSS payload, a 300-char food name, 999,999,999 steps | escaped, capped, no overflow |
+| twelve rapid tab switches mid-render | no throw, still renders |
+
+**The tap-target sweep is the one worth keeping as method.** `ex-check` is a
+30x30 box and the first probe reported it as too small — `button.ex-check::after`
+paints an invisible 44x44 hit area over it, which `getBoundingClientRect()`
+cannot see. The fix was to hit-test `elementFromPoint` at the corners of a 40x40
+box, **with `ex-check` itself as the guard**: if the control that is known to
+have the expansion does not pass, the technique is broken and every finding is
+the probe. It failed that guard twice — once measuring boxes, once measuring
+elements below the fold — before it measured anything real.
+
+### The finding, and why it is conditional
+
+Progress ▸ Summary took **123 ms** with a year of history. Every other screen
+was 1-10 ms.
+
+`commitSession()` stores the session's item list on the log. A log written
+BEFORE it did has to be rebuilt from the program engine to be counted at all —
+and Progress walks every session three times over: `totalVolume()`, and
+`totalTUTSplit()` **twice**, because `totalTUT()` and `estCalories()` each ask
+for it independently.
+
+| logs | Progress renders in |
+|---|---|
+| carrying `items` (written by current code) | **1 ms** |
+| without it (written by an older version) | **123 ms** |
+
+`allDonePairs()` is 0.07 ms and one `logItemsFor()` is 0.15; three hundred of
+them is 37.9. **It is the rebuild inside the walk** — the same shape as the
+`acwr()` regression already recorded here.
+
+Measured exactly, by counting `buildSession` calls rather than milliseconds:
+**120 calls, 40 distinct, 80 duplicates** for three walks over forty sessions.
+A render-scoped memo takes it to **40 calls and zero duplicates**, and 123 ms
+to 40.
+
+**It is 3x, not 100x, and saying so matters.** The first walk still rebuilds
+every session; the memo only collapses the second and third. Backfilling
+`items` onto old logs would remove the last of it and was rejected: rendering
+must not write to stored data — v312's "the validator must not mutate", one
+subsystem over.
+
+### The floor that makes a cache over lifetime totals acceptable
+
+A memo that changed a lifetime figure would be far worse than a slow tab. So
+the check pins every one of them identical with the memo live and dead —
+reps, holds, sets, minutes and calories — with a guard that they are real
+figures rather than zeroes agreeing with zeroes.
+
+**Count duplicates, not calls.** The first version of this check counted raw
+`buildSession` calls and reported **203 for 40 sessions**, because today's own
+session is legitimately built once per paint and because switching tab inside
+the counted block triggers extra renders. The same session built twice in one
+paint is the waste, and nothing else is.
+
+### And one equivalent mutant, recorded rather than papered over
+
+`finally{_clearItemsMemo()}` versus a trailing call after the try/catch: the
+error boundary swallows everything, so both run on exactly the same paths.
+**No check can catch the removal of the `finally`.** It is kept against a
+future change that lets the boundary rethrow — the same call as v287's
+`wantAnchor` and v301's `_macrosMissing`.
+
+Seven mutants, all caught once that one was re-seeded as something a check
+could see.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
