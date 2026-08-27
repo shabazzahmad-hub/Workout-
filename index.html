@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='339';
+const APP_VERSION='340';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4556,12 +4556,13 @@ function ruckLadderWeek(raw){
   const ceil=ruckLoadCeilLb();
   /* Walk the cycle forward so the two variables can never move together, and
      so the week's answer does not depend on what was rendered last time. */
+  const loadSlot=prepPathDef().loadSlot;
   let km=startKm, lb=startLb, climbing='distance', down=false, capped=false;
   for(let w=2;w<=wk;w++){
-    const slot=((w-1)%4)+1;                       // 1,2 distance · 3 load · 4 down
+    const slot=((w-1)%4)+1;                       // one slot raises load · slot 4 is the down week
     if(slot===4){down=true;climbing='neither';continue;}
     down=false;
-    if(slot===3){
+    if(slot===loadSlot){
       climbing='load';
       if(lb+PREP_RUCK_STEP_LB<=ceil)lb+=PREP_RUCK_STEP_LB; else capped=true;
     }else{
@@ -4647,12 +4648,6 @@ function prepPhase(){
    An EASY RUN IN EVERY PHASE is the rule, including the taper. Roughly four
    fifths of endurance running should be easy at every level, and a phase that
    is two-thirds hard is not a sharpening block, it is an injury. */
-const PREP_PHASE_SESSIONS={
-  base:   ['base','base','long'],
-  build:  ['base','tempo','intervals','long'],
-  sharpen:['base','tempo','intervals','long'],
-  taper:  ['base','intervals'],
-};
 const PREP_PHASE_NOTE={
   base:'Almost all of it easy. You are building the engine, and the pace that builds it is slower than feels productive.',
   build:'The easy running stays. One tempo and one interval session go on top of it, not instead of it.',
@@ -4664,6 +4659,101 @@ const PREP_PHASE_NOTE={
   sharpen:'Volume holds — it stops climbing here on purpose — and the hard sessions get closer to test pace. This is where the time trial should start moving.',
   taper:'Volume comes down and the intensity stays — a short, sharp session keeps the legs awake. You cannot gain fitness now — you can only arrive tired, so do not.',
 };
+/* TWO TRAINING PATHS. The block already knew how to ramp running and rucking;
+   what it had no way to express is which of the two the athlete is training
+   FOR. Load carriage and running speed are different jobs, and a plan that
+   treats them as one is a plan biased by accident rather than on purpose.
+
+   THE BIAS IS THE MIX, NEVER THE VOLUME. Both paths ramp under the same 10%
+   a week cap, hit the same bodyweight load ceiling, and take the same down
+   week — the safety rules outrank the path exactly the way they outrank the
+   timeline (v310). What changes is what the athlete is asked to DO inside the
+   same weekly distance, and how often the plate goes up.
+
+   An EASY RUN IN EVERY PHASE survives both paths. Roughly four fifths of
+   endurance running should be easy at every level, and the balance check that
+   caught three earlier drifts reads the built plan rather than this table, so
+   it holds a new path to the same rule.
+
+   `loadSlot` is which week of the four-week ruck cycle raises the plate.
+   Slot 4 is the down week and can never be it. Operator climbs load sooner
+   (slot 2) because carrying is the job; Assaulter climbs it later (slot 3) and
+   spends the extra week on distance. Either way exactly one slot in four
+   raises load and exactly one is a down week, so "distance OR load, never
+   both" is structural and survives any legal slot. */
+const PREP_PATHS={
+  operator:{
+    label:'🎒 Operator', short:'Operator',
+    blurb:'Load carriage, strength and durability. Long rucking, the plate climbing sooner, and easy aerobic running underneath it.',
+    loadSlot:2,
+    sessions:{
+      base:   ['base','base','long'],
+      build:  ['base','base','tempo','long'],
+      sharpen:['base','tempo','intervals','long'],
+      taper:  ['base','base'],
+    },
+    /* EVERY NOTE IS A SPECIFICATION, and giving one path a different plan
+       without giving it different notes is how v330's defect came back — the
+       shared build note promised an interval session this path deliberately
+       does not run, and the suite caught it within a minute. */
+    notes:{
+      base:'Almost all of it easy. You are building the engine, and the pace that builds it is slower than feels productive.',
+      build:'The easy running stays and one tempo run goes on top of it. Track intervals wait for the sharpen phase — under load it is the aerobic base that carries you.',
+      sharpen:'The volume stops climbing and the work gets harder. One tempo, one interval session, and the long run stays.',
+      taper:'Volume comes down and nothing gets sharper. On this path you want to arrive fresh under load, not fast.',
+    },
+  },
+  assaulter:{
+    label:'🏃 Assaulter', short:'Assaulter',
+    blurb:'Running performance and speed. Tempo and interval work from the build phase on, with the plate climbing a week later.',
+    loadSlot:3,
+    sessions:{
+      base:   ['base','base','long'],
+      build:  ['base','tempo','intervals','long'],
+      sharpen:['base','tempo','intervals','long'],
+      taper:  ['base','intervals'],
+    },
+    notes:PREP_PHASE_NOTE,
+  },
+};
+const PREP_PATH_KEYS=Object.keys(PREP_PATHS);
+/* Membership, not truthiness — `path` reaches innerHTML and importData()
+   accepts arbitrary JSON. The fallback is OPERATOR because everything else
+   this app knows about the Canadian standards is load carriage: FORCE's
+   sandbag and shuttle, and FORCE Combat's 25 kg fighting order and 35 kg
+   march. An athlete who has not chosen is far likelier to be training for
+   those than for a track. */
+function prepPath(){const k=prep().path;return PREP_PATHS[k]?k:'operator';}
+function prepPathDef(){return PREP_PATHS[prepPath()];}
+function prepSessions(phase){
+  const t=prepPathDef().sessions;
+  return t[phase]||t.base;
+}
+function prepPhaseNote(phase){
+  const n=prepPathDef().notes||PREP_PHASE_NOTE;
+  return n[phase]||'';
+}
+/* Membership on the WAY IN as well as on the way out. A getter that sanitises
+   its own read hides junk in STATE, which then travels in every backup — the
+   trap setCardioMode() was caught by, so the check asserts on STATE and not on
+   prepPath(). */
+function setPrepPath(k){
+  if(!PREP_PATH_KEYS.includes(k)){toast('Unknown path');return;}
+  if(!STATE.prep||typeof STATE.prep!=='object'||Array.isArray(STATE.prep))STATE.prep={};
+  STATE.prep.path=k;save();
+  toast(PREP_PATHS[k].short+' path set');
+  try{openForcePrep();}catch(e){try{render();}catch(_){}}
+}
+function prepPathHTML(){
+  const cur=prepPath();
+  return `<div class="section-label" style="margin-top:14px">Your training path</div>
+    <div class="card pad">
+      <div class="daypick" style="flex-wrap:wrap;margin:0 0 8px">${PREP_PATH_KEYS.map(k=>
+        `<button class="${cur===k?'on':''}" onclick="setPrepPath('${k}')">${_ve(PREP_PATHS[k].label)}</button>`).join('')}</div>
+      <div class="tiny muted">${_ve(PREP_PATHS[cur].blurb)}</div>
+      <div class="tiny muted" style="margin-top:8px">Both paths ramp under the same 10% a week cap and stop at the same load ceiling. The path changes what you do inside that week, not how much.</div>
+    </div>`;
+}
 /* This week's distance, and the ramp that got there. Returns nulls rather
    than numbers when there is no date, because a plan with no deadline is not a
    plan — the app says so instead of inventing a schedule. */
@@ -4715,8 +4805,8 @@ function enduranceWeek(raw){
     blank:stats?stats.blank:0, counted:stats?stats.weeks:0,
           estimated:base===null,climbed,plateaued,plateauWk,
           footTotal,footFrom,footStep,footBig,footNew,footAdded,
-          note:PREP_PHASE_NOTE[phase]||'',
-          sessions:PREP_PHASE_SESSIONS[phase]||PREP_PHASE_SESSIONS.base};
+          note:prepPhaseNote(phase),
+          sessions:prepSessions(phase)};
 }
 /* One renderer, read by both cards, so the combined figure cannot say one
    thing beside the running and another beside the rucking. */
@@ -4805,6 +4895,7 @@ function openForcePrep(){
       This app has no internet access and cannot check them for you.</div>
     ${wk!==null?`<div class="note fire"><b>${wk>0?wk+' week'+(wk===1?'':'s')+' to go':(wk===0?'This week':'Your test date has passed')}</b>${wk>0?' — that is what the build is paced to.':''}</div>`:''}
     <div class="card pad">${rows}</div>
+    ${prepPathHTML()}
     ${forceKitHTML()}
     <button class="btn primary" style="width:100%;margin-top:10px" onclick="startForceTrain()">▶ Train ${forceAvailable().length===FORCE_EVENTS.length?'the four tasks':'what you have kit for'}</button>
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openForceLog()">✎ Log a result</button>
@@ -17807,6 +17898,12 @@ function normalizeState(){
    /* Both new fields are SECONDS, and both are dropped rather than zeroed for
       the same reason the run times are: a zero renders as a 0:00 result, which
       is not a measurement. importData() accepts arbitrary JSON. */
+   /* The path decides the session mix and which week raises the plate, and it
+      reaches innerHTML. Membership, and the junk is DROPPED rather than
+      rewritten to the default — absent already reads as operator, so storing
+      it would be a second way to say the same thing that then travels in every
+      backup. */
+   if(P.path!==undefined&&!PREP_PATH_KEYS.includes(P.path))delete P.path;
    ['ttBest','ttTarget','combatCircuit','combatMarch'].forEach(k=>{
      const v=P[k];
      if(v!==undefined&&(typeof v!=='number'||!isFinite(v)||v<=0))delete P[k];

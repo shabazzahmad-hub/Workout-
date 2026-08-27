@@ -4383,6 +4383,112 @@ and the mutant is caught by name.
 Six mutants, all caught after that.
 
 
+## Two training paths, and the safety rules that outrank them (v340)
+
+From a selection-prep program the athlete pointed at. Most of what it describes
+the app already had — phased periodisation (`prepPhase()`), capped running and
+ruck progressions, assessments, conditioning, recovery. **Three things were
+genuinely missing, and the structural one is this: the block knew how to ramp
+running and rucking and had no way to say which of the two the athlete was
+training FOR.** The bias was accidental rather than chosen.
+
+`PREP_PATHS` is the one legal set — **Operator** (load carriage, durability)
+and **Assaulter** (running speed) — asked rather than restated, the same shape
+as `DIET_OPTS`, `CARDIO_MODES` and `GEAR_OPTS`.
+
+**THE BIAS IS THE MIX, NEVER THE VOLUME.** That is the whole safety argument.
+Measured across a real 16-week block:
+
+| | Operator | Assaulter |
+|---|---|---|
+| interval weeks | **4** | **12** |
+| total running | **217 km** | **217 km** |
+| down weeks | 4 | 4 |
+| plate steps | 4 | 4, one week later |
+| weeks raising distance AND load | **0** | **0** |
+
+Same distance, same recovery, same ceiling, same "distance or load, never
+both". What changes is what the athlete does inside that week, and when the
+plate goes up. A path that moved volume would be a way around the 10% cap,
+which is the one rule this plan exists to enforce — so every one of those rows
+is a pinned floor, not a description.
+
+`loadSlot` is which week of the four-week ruck cycle raises the plate. Slot 4
+is the down week and can never be it, so exactly one slot in four raises load
+and exactly one is a down week — **"never both" is structural and survives any
+legal slot** rather than needing its own guard per path.
+
+### Giving one path a different plan brought v330's defect straight back
+
+The shared build note promised *"one tempo and one interval session"*. Operator
+deliberately runs no track intervals until sharpen. **A promise in UI text is a
+specification**, and the suite caught it within a minute of the change — two
+existing checks went red naming exactly that. The notes are now per-path, and
+each path's note describes that path's own plan.
+
+**The check for it was wrong twice before it was right.** A bare `/interval/i`
+test cannot tell *"runs an interval session"* from *"track intervals WAIT for
+the sharpen phase"* — the Operator note says the second and the check read it
+as the first, failing on correct copy. It now pins what each note actually
+specifies.
+
+### Two guards mean two checks, again
+
+The mutant that deleted the `normalizeState()` repair for `prep.path` escaped
+everything, because the block drove `setPrepPath()` — the setter — and nothing
+drove the boot path. `importData()` accepts arbitrary JSON and writes STATE
+directly, so the repair is the only thing standing there. The check now writes
+junk straight into `STATE.prep` and calls `normalizeState()`, and asserts the
+junk is gone from **STATE** rather than from `prepPath()`, which sanitises its
+own read and would pass either way.
+
+Its floor is the over-eager twin: a repair that deletes EVERY path satisfies
+every "junk is gone" assertion and silently discards the athlete's choice on
+every boot.
+
+**And `PREP_PATHS` referenced `PREP_PHASE_NOTE` 73 lines before its
+declaration** — a temporal dead zone that would have thrown on every load.
+`npm run check` only parses; it cannot see it. The same `btRing` trap, caught
+by driving the page.
+
+### Auditing it an hour later found the check, not the code
+
+The routes all held when driven — clicking the picker stores the path, the
+sheet repaints with the new one selected, and `prep.path` travels in a backup
+and comes back on a restore. **The CHECK was the weak part**: it searched the
+markup for `setPrepPath(` rather than tapping the button, so a picker rendered
+with a dead handler would have kept the string and done nothing. Same lesson as
+v292's Convert button, and the fifth time this file has recorded it.
+
+Four more mutants once it clicked instead of scanning — a dead handler, a store
+with no repaint, every button rendered as selected, and the new field stripped
+from the backup. **A new STATE field gets a round-trip check of its own**,
+because that is precisely how v336 was found.
+
+### Switching path mid-block, an edge the paths themselves created
+
+The ladder recomputes rather than remembering, so an athlete who changes their
+mind sees the plate move. Measured: the two ladders are offset by exactly one
+slot, so the gap is **never more than a single 5 lb step** and closes again
+within two weeks — bounded, self-correcting and in the conservative direction.
+
+**No note, and that is the finding.** A note firing on a rare action with a
+self-correcting effect is a note nobody reads. What is worth protecting is the
+BOUND: a future path pair two slots apart would drop the plate 10 lb with
+nothing on screen to explain it. So the bound is pinned rather than assumed,
+against the app's own `PREP_RUCK_STEP_LB` rather than a number restated in the
+check, with a guard that the ladders really do diverge somewhere — otherwise
+"never more than one step" passes on two identical paths.
+
+Twenty mutants, all caught. The default is **Operator**, because everything
+else this app knows about the Canadian standards is load carriage — FORCE's
+sandbag and shuttle, FORCE Combat's 25 kg fighting order and 35 kg march.
+
+**Still not built, and deliberately:** a midpoint assessment tied to the prep
+block, and swimming as a fifth cardio mode. Neither FORCE nor FORCE Combat has
+a swim, so the app would measure it and have no standard to prescribe against.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
