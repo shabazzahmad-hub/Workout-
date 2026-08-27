@@ -479,6 +479,114 @@ export default async function run() {
     t.eq('and is still ticking', r.liveSkip.tid, true, r.liveSkip);
   }
 
+
+  /* ---- a rest that expired off-screen must not need a TAP (v350) ----------
+     Reported from the phone: "the rest timer comes down and the exercise does
+     not start the second set, you manually have to press to start the second
+     set." NOT reproduced by driving the chain — work -> rest -> ready -> work
+     completes with no tap, and the v307 stuck-pointer case is rescued by its
+     watchdog. What the player DID depend on was its interval continuing to
+     fire, which a backgrounded tab or a locked screen does not guarantee. Every
+     phase is anchored to a wall-clock deadline, so a tick that fires late
+     catches up; a tick that never fires again catches up never. */
+  {
+    const rs = await page.evaluate(async () => {
+      const keep = { si: window.setInterval, ci: window.clearInterval, now: Date.now,
+                     speak: window.coachSpeak, beep: window.beep, go: window.beepGo };
+      let fn = null, id = 0;
+      window.setInterval = (f, ms) => (ms === 1000 || ms === 100)
+        ? (fn = f, ++id) : keep.si.call(window, f, ms);
+      window.clearInterval = i => { if (i && i <= id) fn = null; else keep.ci.call(window, i); };
+      let virt = 5000000; Date.now = () => virt;
+      window.coachSpeak = () => true; window.beep = () => {}; window.beepGo = () => {};
+      const tick = n => { for (let i = 0; i < n; i++) { virt += 1000; if (fn) fn(); } };
+      const o = {};
+      const toRest = () => { openPlayer(); tick(6); tick(PLAYER.total + 2); };
+
+      /* 1. The reported case: the interval is killed outright while the screen
+            is off, and the rest deadline passes with nothing to advance it. */
+      toRest();
+      o.reachedRest = PLAYER.phase === 'rest';
+      const restLen = PLAYER.remain;
+      plClear(); fn = null;                        // the OS reclaims the timer
+      virt += (restLen + 20) * 1000;               // 20s past the end of the rest
+      o.stuckWhileAway = PLAYER.phase === 'rest' && !fn;   // guard: really stuck
+      document.dispatchEvent(new Event('visibilitychange'));
+      o.movedOnReturn = PLAYER.phase === 'ready';
+      o.tickIsAliveAgain = !!fn;
+      tick(4);
+      o.secondSetStarted = PLAYER.phase === 'work' && PLAYER.s === 1;
+      try { plQuit(true); } catch (e) { try { plClear(); } catch (e2) {} }
+
+      /* 2. FLOOR: a rest with time still on it must NOT be cut short. Coming
+            back to the phone is not the same as skipping the rest. */
+      toRest();
+      const left = PLAYER.remain;
+      plClear(); fn = null;
+      virt += 5000;                                // only five of forty-odd seconds
+      document.dispatchEvent(new Event('visibilitychange'));
+      o.stillResting = PLAYER.phase === 'rest';
+      o.restCountedRealTimeOnly = left - PLAYER.remain;   // 5, not the whole rest
+      try { plQuit(true); } catch (e) { try { plClear(); } catch (e2) {} }
+
+      /* 3. FLOOR: a PAUSED player stays paused. Re-arming a paused session
+            would restart a workout the athlete deliberately stopped. */
+      toRest();
+      playerToggle();                              // pause
+      o.paused = PLAYER.running === false;
+      const wasRemain = PLAYER.remain;
+      virt += 60000;
+      document.dispatchEvent(new Event('visibilitychange'));
+      o.stayedPaused = PLAYER.running === false && PLAYER.phase === 'rest';
+      o.pausedClockDidNotMove = PLAYER.remain === wasRemain;
+      try { plQuit(true); } catch (e) { try { plClear(); } catch (e2) {} }
+
+      /* 3b. plArmTick()'s own running guard is reachable only THROUGH another
+             running check — plResync() returns early and playerToggle() only
+             calls it on the resume branch — so removing it escaped every check
+             above. Pin the function's own contract directly rather than
+             recording it as equivalent: whoever calls it, it must not start a
+             timer on a player that is not running. */
+      toRest();
+      playerToggle();                              // pause
+      plClear(); fn = null;
+      plArmTick();
+      o.armTickRefusesAPausedPlayer = !fn;
+      playerToggle();                              // resume
+      o.armTickArmsARunningPlayer = !!fn;
+      try { plQuit(true); } catch (e) { try { plClear(); } catch (e2) {} }
+
+      /* 4. FLOOR: with no player at all, a tab switch must do nothing. */
+      PLAYER = null;
+      let threw = false;
+      try { document.dispatchEvent(new Event('visibilitychange')); } catch (e) { threw = true; }
+      o.noPlayerNoThrow = !threw;
+
+      /* 5. The ready countdown counts TICKS and the rep cadence accumulates
+            elapsed ms — forcing either steals time the athlete has not had. */
+      o.resyncSrc = plResync.toString();
+      Object.assign(window, { setInterval: keep.si, clearInterval: keep.ci,
+                              coachSpeak: keep.speak, beep: keep.beep, beepGo: keep.go });
+      Date.now = keep.now;
+      return o;
+    });
+    t.ok('guard: the player really reached a rest', rs.reachedRest, rs);
+    t.ok('guard: and killing the tick really did strand it there', rs.stuckWhileAway, rs);
+    t.ok('coming back to the phone moves an expired rest on', rs.movedOnReturn, rs);
+    t.ok('and the tick is running again', rs.tickIsAliveAgain, rs);
+    t.ok('so the second set starts with no tap', rs.secondSetStarted, rs);
+    t.ok('floor: a rest with time left is NOT cut short', rs.stillResting, rs);
+    t.eq('and it only counts the real seconds that passed', rs.restCountedRealTimeOnly, 5, rs);
+    t.ok('guard: the pause case really paused', rs.paused, rs);
+    t.ok('floor: a paused player stays paused on return', rs.stayedPaused, rs);
+    t.ok('and its clock does not move', rs.pausedClockDidNotMove, rs);
+    t.ok('floor: no player, no throw', rs.noPlayerNoThrow, rs);
+    t.ok('arming the tick refuses a paused player', rs.armTickRefusesAPausedPlayer, rs);
+    t.ok('and still arms a running one', rs.armTickArmsARunningPlayer, rs);
+    t.ok('the ready countdown is never force-ticked', !/plTickReady\(\)/.test(rs.resyncSrc), rs);
+    t.ok('and neither is the rep cadence', !/plTickRep\(\)/.test(rs.resyncSrc), rs);
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }

@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='349';
+const APP_VERSION='350';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -6634,12 +6634,48 @@ function playerToggle(){
   }
   plClockTick();
   const t=$('#plToggle');if(t)t.textContent=PLAYER.running?'Pause':'Resume';
+  if(!PLAYER.running){plClear();const p0=$('#plPulse');if(p0)p0.classList.remove('on');return;}
+  plArmTick();
+}
+/* THE TICK IS NOT A CONTRACT, AND THE PLAYER WAS TREATING IT AS ONE.
+   Every phase here is anchored to a wall-clock deadline, so a THROTTLED tick
+   catches up the moment it fires. A tick that never fires again catches up
+   never — and a backgrounded tab, a locked screen, or an OS that reclaims the
+   interval leaves the rest sitting at zero with nothing to advance it.
+
+   Reported from the phone: "the rest timer comes down and the exercise does not
+   start the second set, you manually have to press to start the second set."
+
+   NOT REPRODUCED IN THE SANDBOX, and that is worth saying rather than claiming
+   a root cause. Driven end to end the chain work -> rest -> ready -> work
+   completes with no tap, on a timed hold and on a rep set alike, and the
+   stuck-pointer case (v307) is rescued by its own watchdog. So this does not
+   chase the cause. It removes the DEPENDENCY: on every return to the page the
+   player re-arms its tick and runs one immediately, reconciling against the
+   deadline it already stores. A rest that expired while the screen was off
+   resolves on sight, with no tap. */
+function plArmTick(){
+  if(!PLAYER||!PLAYER.running)return;
+  plClear();
   const pulse=$('#plPulse');
-  if(!PLAYER.running){plClear();if(pulse)pulse.classList.remove('on');return;}
   if(PLAYER.phase==='ready')PLAYER.tid=setInterval(plTickReady,1000);
   else if(PLAYER.phase==='work'){const m=plCur();if(m.unit==='time'){if(pulse)pulse.classList.add('on');PLAYER.tid=setInterval(plTickHold,1000);}else PLAYER.tid=setInterval(plTickRep,100);}
   else if(PLAYER.phase==='rest')PLAYER.tid=setInterval(plTickRest,1000);
 }
+function plResync(){
+  try{
+    if(!PLAYER||!PLAYER.running||PLAYER.phase==='done')return;
+    plArmTick();
+    /* Run one tick NOW rather than waiting up to a second for the interval —
+       on a rest that already expired, this tick is what starts the next set.
+       ONLY the deadline-anchored phases: plTickReady counts TICKS and plTickRep
+       accumulates elapsed milliseconds, so forcing either one steals time the
+       athlete has not had. */
+    if(PLAYER.phase==='rest')plTickRest();
+    else if(PLAYER.phase==='work'&&plCur().unit==='time')plTickHold();
+  }catch(e){}
+}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')plResync();});
 function playerSkip(){
   if(!PLAYER)return;plClear();PLAYER.pendingNext=false;
   const pulse=$('#plPulse');if(pulse)pulse.classList.remove('on');

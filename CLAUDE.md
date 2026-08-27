@@ -5264,6 +5264,58 @@ Thirteen mutants, all caught. The floors carry the weight: standing to standing
 must stay at four seconds, two moves in the same tagged position must stay
 short, and an over-eager fix that made every gap seven seconds fails both.
 
+## The tick is not a contract, and the player was treating it as one (v350)
+
+Reported from the phone mid-session: *"after one set of the exercise, the rest
+timer comes down and then the exercise does not start the second set — you
+manually have to press to start the second set again. That defeats the purpose
+of resting and completing all the sets as one unit."*
+
+**NOT REPRODUCED, and that is worth recording rather than inventing a root
+cause.** Driven end to end with a fake clock, the chain
+`work -> rest -> ready -> work` completes with **no tap** — on a timed hold and
+on a rep-counted set alike — and the v307 stuck-pointer case is rescued by its
+own 900 ms watchdog (measured: `_ptrDown` true, rest expires, phase still
+`rest`, one queued callback, then `ready` after the watchdog).
+
+So the fix does not chase the cause. It removes the **dependency**.
+
+Every phase in the player is anchored to a wall-clock deadline, so a tick that
+fires LATE catches up the moment it fires — that is the throttling case
+`plTickRest()`'s floor already exists for. A tick that **never fires again**
+catches up never, and a backgrounded tab, a locked screen or an OS that
+reclaims the interval leaves the rest sitting at zero with nothing to advance
+it. The wake lock is re-acquired on `visibilitychange`; the TIMER was not.
+
+`plResync()` re-arms on every return to the page and runs one tick
+immediately, which reconciles against the deadline already stored. Measured:
+kill the interval mid-rest, jump 20 s past its end — still `rest`, no timer —
+then one `visibilitychange` and it is `ready`, ticking, and in `work` on set 2
+four seconds later.
+
+**Only the deadline-anchored phases are force-ticked.** `plTickReady()` counts
+TICKS and `plTickRep()` accumulates elapsed milliseconds, so forcing either
+steals time the athlete has not had. Two mutants that force them are caught by
+a source assertion, because the theft is invisible in a phase snapshot.
+
+**The floors are what stop it becoming a skip button.** A rest with time still
+on it must not be cut short — coming back to the phone is not skipping the rest
+— and it must count only the real seconds that passed (five, not the whole
+rest). A PAUSED player must stay paused: re-arming one would restart a workout
+the athlete deliberately stopped.
+
+### The escaped mutant was a guard reachable only through another guard
+
+Removing `!PLAYER.running` from `plArmTick()` escaped every check, because
+`plResync()` returns early on a paused player and `playerToggle()` only reaches
+`plArmTick()` on its resume branch. Rather than record it as equivalent, the
+function's own contract is pinned directly — call `plArmTick()` on a paused
+player and assert it arms nothing, with the running case beside it. Same
+technique as v338's `prepDatePassed()`: **a guard consulted in one narrow
+branch still has to mean what it is named.**
+
+Seven mutants, all caught after that.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
