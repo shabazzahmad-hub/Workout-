@@ -4578,6 +4578,63 @@ labelling every record "Midpoint" escaped because nothing reached the FINAL
 window with a record in it.
 
 
+## The offline tier had drifted from what a first run meets (v342)
+
+Found by driving the app's oldest promise: install, go offline, reload. It
+works — the worker activates, the pack tops up 55 → 169 → 235 → **251** and
+plateaus, and an offline reload boots with every tab rendering. Booting is not
+the same as being USABLE, though, and the tier that decides what arrives FIRST
+had gone stale.
+
+`FIRST_RUN` is the batch that lands before the other 144 files. It is a **FIFTH
+hand-kept place that has to move when a baseline test is added**, and it had
+drifted exactly the way `TESTS`, `TEST_DEFAULTS`, `estimateMaxes()` and
+`skipBaseline()` each did before it:
+
+| missing from the early tier | what it is |
+|---|---|
+| `ex-burpee.jpg` | the **tenth baseline test**, added in v252 |
+| `ex-fistpushup.jpg` | what a **wrist-flagged** athlete does instead of a push-up |
+| `ex-legraise.jpg` | the **lowback** substitute |
+| `ex-squatthrust.jpg` | the **shoulder/knee** substitute |
+| four more | photos a beginner meets in the first fortnight |
+
+**The flagged athlete — the one this app takes the most care with — met MORE
+missing photos than an unflagged one.** Three of the five substitutes a
+baseline swap can hand out were at the back of the queue.
+
+**Moving a file between tiers costs no download.** The same 251 files are
+fetched either way; the tier only decides what arrives first. So there is no
+trade here at all — the fix is strictly better.
+
+### The check has to DERIVE the requirement, not restate it
+
+A second hand-written list would drift the same way the first did, so the check
+reads `TESTS`, `SAFE_SWAP` and a real beginner's first fourteen sessions out of
+the running app and asserts every one of those photos lands in an early tier.
+
+**And it found a ninth file the hand fix had missed.** The first version pinned
+ONE beginner, `targets:['abs']` — but the first fortnight is not a fixed set, it
+depends on the focus areas the quiz collected. Sweeping five target
+combinations immediately turned up `ex-swimmer.jpg`, which a back-and-shoulders
+beginner meets in week one. A check that pins a single athlete quietly excuses
+everything the other athletes meet.
+
+**The floor is the one that keeps the tiering meaningful**: the early tiers must
+stay a fraction of the whole pack. A "fix" that promoted all of `EXTRA` into
+`FIRST_RUN` satisfies every assertion above while restoring the very download
+the tiers exist to avoid — and it is caught.
+
+### Read the mutant back, again
+
+The first four mutants DELETED a file rather than moving it, so they were caught
+by the pre-existing "every shipped asset is in some tier" check and proved
+nothing about the new ones. Re-seeded as a **move into EXTRA**, they were then
+caught by the video-ordering checks instead, because appending lands after the
+tail. Only a move inserted BEFORE the first video isolates the new checks — and
+seeded that way, each of the five fails exactly one, by name.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

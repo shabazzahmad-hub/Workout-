@@ -29,6 +29,81 @@ export default async function run() {
     const dupes = all.filter((u, i) => all.indexOf(u) !== i);
     t.eq('no asset appears in two tiers', dupes, []);
 
+    /* ---- FIRST_RUN must hold what a first run actually MEETS ---------------
+       The tier decides what arrives before the other 144 files. It is a FIFTH
+       hand-kept place that has to move when a baseline test is added, and it
+       had drifted exactly the way the other four did: Burpees arrived as the
+       tenth test in v252 and its photo sat at the back of the queue, along with
+       three of the five SAFE_SWAP substitutes — so a wrist- or shoulder-flagged
+       athlete, the one the app takes the most care with, met MORE missing
+       photos than an unflagged one.
+
+       So the requirement is derived from the app's own data — TESTS, SAFE_SWAP
+       and a real beginner's first fourteen sessions — rather than from a second
+       hand-written list that could drift the same way. */
+    {
+      const early = new Set([...CORE, ...MIN, ...FIRST]);
+      const c2 = await chromium.launchPersistentContext('', { serviceWorkers: 'block', viewport: { width: 390, height: 844 } });
+      const pg2 = c2.pages()[0] || await c2.newPage();
+      await pg2.goto(base, { waitUntil: 'domcontentloaded' });
+      await pg2.waitForFunction(() => typeof TESTS !== 'undefined' && typeof buildSession === 'function', null, { timeout: 15000 });
+      const need = await pg2.evaluate(() => {
+        const img = k => (EX[k] || {}).img || null;
+        const tests = TESTS.map(t => ({ id: t.id, img: img(t.ex) }));
+        const subs = [];
+        TESTS.forEach(t => { const sw = SAFE_SWAP[t.ex]; if (sw) subs.push({ from: t.ex, to: sw, img: img(sw) }); });
+        /* A real BEGINNER with no gear — the athlete this tier is FOR. Seeding
+           an Advanced athlete with a bar and bench asks for movements a first
+           fortnight never reaches, and reports fifteen false misses.
+
+           And SEVERAL beginners, not one: the first fortnight is not a fixed
+           set, it depends on the focus areas the quiz collected. Pinning a
+           single `targets` list quietly excused three photos a differently
+           focused beginner meets in week one, and a mutant that slid one back
+           to EXTRA was then caught only by an unrelated ordering check. */
+        STATE.onboarded = true;
+        const first = new Set();
+        [['abs'], ['abs', 'full'], ['full'], ['abs', 'legs'], ['back', 'shoulders']].forEach(targets => {
+          Object.assign(STATE.profile, { experience: 'Beginner', gear: [], hasBar: false,
+            hasBench: false, limitations: [], days: [1, 2, 4, 5, 6], targets });
+          STATE.baseline = { date: todayISO(), score: 30, level: 'Beginner', testCount: TESTS.length, subs: {},
+            maxes: { plank: 30, side: 15, hollow: 12, lower: 6, push: 8, pull: 2, squat: 20, dyn: 20, power: 8, stamina: 6 } };
+          STATE.adapt = 1; STATE.logs = {};
+          for (let p = 0; p < 14; p++) {
+            try { const s = buildSession(p);
+              [...s.main, s.finisher].filter(Boolean).forEach(m => { const i = img(m.exId); if (i) first.add(i); });
+            } catch (e) {}
+          }
+        });
+        const flow = a => (typeof a === 'undefined' ? [] : a.map(x => x && x.img).filter(Boolean));
+        return { tests, subs, first: [...first],
+                 wu: flow(typeof WARMUP_FLOW !== 'undefined' ? WARMUP_FLOW : undefined),
+                 cd: flow(typeof COOLDOWN_FLOW !== 'undefined' ? COOLDOWN_FLOW : undefined) };
+      });
+      await c2.close();
+      const missing = f => f && !early.has('./' + f);
+
+      t.ok('guard: the page handed back a real roster to check',
+        need.tests.length >= 8 && need.first.length >= 20 && need.subs.length >= 1,
+        { tests: need.tests.length, first: need.first.length, subs: need.subs.length });
+      t.eq('every baseline test photo arrives in an early tier',
+        need.tests.filter(x => missing(x.img)).map(x => x.id + ':' + x.img), []);
+      /* The flagged athlete is the one who most needs this to be right. */
+      t.eq('and so does every substitute a flagged athlete is handed instead',
+        need.subs.filter(x => missing(x.img)).map(x => x.from + '->' + x.to), []);
+      t.eq('the warm-up arrives early', need.wu.filter(missing), []);
+      t.eq('the cool-down arrives early', need.cd.filter(missing), []);
+      t.eq("and everything a beginner's first fortnight asks for",
+        need.first.filter(missing), []);
+      /* FLOOR: the tier is an EARLY subset, not the whole pack — the split is
+         the entire point, and a fix that just moved EXTRA into FIRST_RUN would
+         satisfy every assertion above while restoring the download it exists
+         to avoid. */
+      t.ok('the early tiers are still a fraction of the whole pack',
+        early.size < (CORE.length + MIN.length + FIRST.length + EXTRA.length) * 0.5,
+        { early: early.size, all: CORE.length + MIN.length + FIRST.length + EXTRA.length });
+    }
+
     const onDisk = fs.readdirSync(ROOT).filter(f => /\.(jpg|mp4|png|woff2|webmanifest)$/.test(f)).map(f => './' + f);
     const missing = onDisk.filter(u => !all.includes(u));
     t.eq('every shipped asset is in some tier', missing, []);
