@@ -5194,6 +5194,76 @@ an empty list — a failure on correct code. Go to Today first.
 
 Thirteen mutants, all caught.
 
+## The transition was there and nobody could hear it (v349)
+
+Reported from the phone after a real warm-up: *"there is a five seconds
+countdown to the end of an exercise, and it goes straight into the next
+exercise... you need to change position whether it's come off the floor, go on
+the mat, whether it's from standing to downward dog."*
+
+`runFlow()` has had a `TRANSITION=4` bridge since it was written. **Driving the
+real warm-up is what explained the report** — the transition existed and was
+inaudible:
+
+```
+35s beep  36s beep  37s beep  38s beep  39s beep
+40s beep "Five seconds."   41s beep  42s beep  43s beep  44s beep
+45s beep "Next up. Arm Circles. Get into position."   <- the transition
+46s beep  47s beep  48s beep   49s GO GO
+```
+
+**Fifteen identical 1000 Hz beeps from second 35 to second 48**, with nothing
+in that run marking where the stretch ended and the repositioning began. The
+one signal that said "move now" was a spoken line laid over an unbroken beep
+train. Reading the code says there is a transition; listening to it says there
+is not.
+
+### Three things, and the gap is the one that matters
+
+**A GAP IS WHAT MAKES IT A SEPARATE PHASE.** The window now opens with its own
+cue, goes SILENT while the athlete is actually moving, and only counts in over
+the last three seconds. Beeping every second is what put it inside the run.
+
+**The cue FALLS, and that is why it is audible.** Every other paired cue in the
+app rises — `beepGo` 1320→1760, the ten-second marker 520→880, the side-switch
+660→880. A falling pair (880→520) is the one shape none of them can be confused
+with. The check records tones by FREQUENCY, because "a beep happened" cannot
+tell a countdown tick from a reposition cue and telling them apart is the whole
+fix.
+
+**THE REPOSITION TIME IS A PROPERTY OF THE CHANGE, NOT A CONSTANT.** Four flat
+seconds is fine for arm circles into torso twists and nowhere near enough to
+get from Hip Circles down onto your back. Every flow move now declares the
+position it is performed in (`pos`), and `transSecs()` gives 4 for no change
+and 7 for a real one. The warm-up makes three such changes; the cool-down three
+more.
+
+**An UNKNOWN position on either side reads as a CHANGE and gets the longer
+window.** Over-waiting costs four seconds; under-waiting starts the next move
+on the floor while the athlete is still standing. The mutant that made
+`a===b` (so two `undefined`s match) is caught by exactly that check.
+
+**Naming the position is the point of having the data.** *"Get into position"*
+tells a man lying on his back nothing; *"Lie on your back"*, *"Onto your hands
+and knees"*, *"Come up to standing"* tell him what to do without looking at the
+phone. A handover with no position change must NOT claim one — the mutant that
+sets `moved=true` unconditionally is caught by the standing-to-standing floor.
+
+**And the handover fired two GO tones 0 ms apart** — `startItem()` calls
+`beepGo()` itself and the transition branch called it again. That reads as a
+stutter, not emphasis.
+
+### The check found a move I had missed
+
+The sweep asserting *every* shipped flow move carries a `pos` failed on
+**Child's Pose** — my hand-tagging pass had covered the other sixteen. A check
+written against the CLASS catches what a hand edit forgets; one written against
+the three moves I happened to think about would not have.
+
+Thirteen mutants, all caught. The floors carry the weight: standing to standing
+must stay at four seconds, two moves in the same tagged position must stay
+short, and an over-eager fix that made every gap seven seconds fails both.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

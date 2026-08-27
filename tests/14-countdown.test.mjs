@@ -384,6 +384,123 @@ export default async function run() {
        ready." A check pinning the old behaviour is how a defect stays put. */
     t.eq('and NO digit is spoken anywhere in the flow', flow.spokenDigits, 0, flow.all);
 
+  /* ---- the reposition window between flow moves (v349) --------------------
+     Reported from the phone after a real warm-up: "there is a five seconds
+     countdown to the end of an exercise, and it goes straight into the next
+     exercise... you need to change position whether it's come off the floor,
+     go on the mat." The transition existed. Measured, it was inaudible: the
+     flow fired FIFTEEN identical 1000 Hz beeps from second 35 to second 48
+     with nothing in that run marking where the stretch ended. */
+  const repo = await page.evaluate(async () => {
+    /* Drive the REAL flow with a fake clock, recording every tone by
+       FREQUENCY — "a beep happened" cannot tell a countdown tick from a
+       reposition cue, and telling them apart is the entire fix. */
+    const drive = (items, ticks) => {
+      const log = []; let sec = 0;
+      const keep = { speak: window.coachSpeak, beep: window.beep, go: window.beepGo,
+                     si: window.setInterval, ci: window.clearInterval, now: Date.now };
+      window.coachSpeak = t => { log.push({ sec, ev: 'say', t: String(t) }); return true; };
+      window.beep = f => log.push({ sec, ev: 'beep', f });
+      window.beepGo = () => log.push({ sec, ev: 'go' });
+      let fn = null;
+      window.setInterval = f => { fn = f; return 1; };
+      window.clearInterval = () => {};
+      let virt = 1000000; Date.now = () => virt;
+      const frames = [];
+      runFlow(items, 'Warm-up', 'x');
+      const snap = () => ({ sec, num: ($('#flowNum') || {}).textContent,
+                            name: ($('#flowName') || {}).textContent,
+                            cue: ($('#flowCue') || {}).textContent });
+      frames.push(snap());
+      for (let i = 1; i <= ticks; i++) { sec = i; virt += 1000; if (fn) fn(); frames.push(snap()); }
+      Object.assign(window, { coachSpeak: keep.speak, beep: keep.beep, beepGo: keep.go,
+                              setInterval: keep.si, clearInterval: keep.ci });
+      Date.now = keep.now;
+      try { flowStop(); } catch (e) {}
+      return { log, frames };
+    };
+    const o = {};
+
+    /* --- the real warm-up, as he ran it ------------------------------------ */
+    const real = drive(mobilityFlow(jointAwareWarmup(WARMUP_FLOW)), 200);
+    const say = t => real.log.find(x => x.ev === 'say' && new RegExp(t).test(x.t));
+    const glute = say('Glute Bridges');            // standing -> on your back
+    o.namesTheChange = !!glute && /Lie on your back/.test(glute.t);
+    const birddog = say('Bird Dog');               // on your back -> hands and knees
+    o.namesTheOtherChange = !!birddog && /hands and knees/.test(birddog.t);
+    const arms = say('Arm Circles');               // standing -> standing
+    o.sameSpotClaimsNoChange = !!arms && !/Lie on|hands and knees|standing/.test(arms.t);
+
+    if (!glute) return Object.assign(o, { guard: 'no glute transition reached' });
+
+    /* THE MEASUREMENT. From the reposition cue to the GO that starts the move:
+       how long, and is any of it SILENT? A gap is what makes it a separate
+       phase — beeping every second put it inside an unbroken run. */
+    const goAfter = real.log.find(x => x.ev === 'go' && x.sec > glute.sec);
+    o.floorWindow = goAfter ? goAfter.sec - glute.sec : 0;
+    const between = real.log.filter(x => x.sec > glute.sec && x.sec < goAfter.sec);
+    const soundedAt = new Set(between.map(x => x.sec));
+    o.silentSeconds = [];
+    for (let s = glute.sec + 1; s < goAfter.sec; s++) if (!soundedAt.has(s)) o.silentSeconds.push(s);
+
+    /* The cue that opens it must not be a countdown tick. Every other paired
+       cue in the app RISES; this one falls, so it cannot be confused. */
+    const opener = real.log.filter(x => x.ev === 'beep' && x.sec === glute.sec).map(x => x.f);
+    o.opensWithItsOwnTone = opener.length > 0 && !opener.includes(1000) && !opener.includes(920);
+
+    /* Exactly ONE go tone. startItem() fires beepGo() itself and the transition
+       branch fired a second 0 ms later, which reads as a stutter. */
+    o.goTonesAtHandover = real.log.filter(x => x.ev === 'go' && x.sec === goAfter.sec).length;
+
+    /* Floor: standing -> standing gets the SHORT window. A fix that simply
+       made every gap seven seconds satisfies every assertion above. */
+    const armsGo = real.log.find(x => x.ev === 'go' && x.sec > arms.sec);
+    o.sameSpotWindow = armsGo ? armsGo.sec - arms.sec : 0;
+
+    // the screen says which position, on the transition frames
+    const f = real.frames.find(x => x.sec === glute.sec);
+    o.screenSaysHow = !!f && /Lie on your back — Glute Bridges/.test(f.cue || '');
+    o.screenShowsTheNextMove = !!f && /Glute Bridges/.test(f.name || '');
+
+    /* --- an UNTAGGED pair must get the long window, not the short one ------- */
+    const unknown = drive([{ n: 'A', secs: 6, cue: 'a', img: '' },
+                           { n: 'B', secs: 6, cue: 'b', img: '' }], 30);
+    const uSay = unknown.log.find(x => x.ev === 'say' && /B/.test(x.t));
+    const uGo = uSay && unknown.log.find(x => x.ev === 'go' && x.sec > uSay.sec);
+    o.unknownGetsTheLongWindow = (uSay && uGo) ? uGo.sec - uSay.sec : 0;
+
+    /* --- and two moves sharing a tagged position get the short one --------- */
+    const same = drive([{ n: 'A', secs: 6, pos: 'fours', cue: 'a', img: '' },
+                        { n: 'B', secs: 6, pos: 'fours', cue: 'b', img: '' }], 30);
+    const sSay = same.log.find(x => x.ev === 'say' && /B/.test(x.t));
+    const sGo = sSay && same.log.find(x => x.ev === 'go' && x.sec > sSay.sec);
+    o.taggedSameWindow = (sSay && sGo) ? sGo.sec - sSay.sec : 0;
+
+    // every shipped flow move declares where it is performed
+    const tagged = f2 => f2.filter(x => !x.pos).map(x => x.n);
+    o.untaggedWarm = tagged(WARMUP_FLOW);
+    o.untaggedCool = tagged(COOLDOWN_FLOW);
+    o.untaggedJointAdds = Object.keys(WARMUP_JOINT_ADD).filter(k => !WARMUP_JOINT_ADD[k].pos);
+    return o;
+  });
+  t.ok('guard: the warm-up really reached the standing-to-floor change', !repo.guard, repo);
+  t.eq('every warm-up move declares the position it is done in', repo.untaggedWarm, [], repo);
+  t.eq('and every cool-down move', repo.untaggedCool, [], repo);
+  t.eq('and every joint-aware addition', repo.untaggedJointAdds, [], repo);
+  t.ok('the coach names the position change, not just "get into position"', repo.namesTheChange, repo);
+  t.ok('and names it for the floor-to-floor change too', repo.namesTheOtherChange, repo);
+  t.ok('floor: two standing moves claim no position change', repo.sameSpotClaimsNoChange, repo);
+  t.eq('a real position change gets seven seconds', repo.floorWindow, 7, repo);
+  t.ok('and some of that window is SILENT — a gap is what separates it',
+    repo.silentSeconds.length >= 3, repo);
+  t.ok('it opens with a tone that is not a countdown tick', repo.opensWithItsOwnTone, repo);
+  t.eq('and the handover fires exactly one go tone', repo.goTonesAtHandover, 1, repo);
+  t.eq('floor: standing to standing stays short', repo.sameSpotWindow, 4, repo);
+  t.eq('two moves in the same tagged position stay short', repo.taggedSameWindow, 4, repo);
+  t.eq('an untagged pair fails safe to the long window', repo.unknownGetsTheLongWindow, 7, repo);
+  t.ok('the screen names the position too', repo.screenSaysHow, repo);
+  t.ok('and shows the move that is coming', repo.screenShowsTheNextMove, repo);
+
     /* 2. Every rep is counted ALOUD. Coaching used to replace the number. */
     const reps = await page.evaluate(async (exId) => {
       const said = []; const realSpeak = window.coachSpeak;
