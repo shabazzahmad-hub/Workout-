@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='344';
+const APP_VERSION='345';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3293,7 +3293,7 @@ function onboardHTML(){
     <div class="field"><label>Flexibility / mobility <span class="tiny muted">· tunes warm-up &amp; cool-down</span></label>
       <div class="daypick" id="ob-mob"><button data-m="low"${on(P.mobility,'low')}>Stiff / limited</button><button data-m="ok"${on(P.mobility||'ok','ok')}>Average</button><button data-m="good"${on(P.mobility,'good')}>Very mobile</button></div></div>
     <div class="field"><label>Daily activity (outside workouts)</label>
-      <div class="daypick" id="ob-act" style="flex-wrap:wrap"><button data-a="1.2"${on(P.activity,1.2)}>Mostly sitting</button><button data-a="1.375"${on(P.activity,1.375)}>Lightly active</button><button data-a="1.45"${on(P.activity||1.45,1.45)}>Moderately active</button><button data-a="1.6"${on(P.activity,1.6)}>Very active</button></div></div>`)}
+      <div class="daypick" id="ob-act" style="flex-wrap:wrap">${ACTIVITY_OPTS.map(([v,l])=>`<button data-a="${v}"${on(activityLevel(P.activity),v)}>${_ve(l)}</button>`).join('')}</div></div>`)}
 
   ${step(5,'Schedule &amp; equipment',`
     <div class="field"><label>Training days per week</label>
@@ -3455,10 +3455,23 @@ function obReadForm(){
   P.unit=($('#ob-unit button.on')||{dataset:{u:'cm'}}).dataset.u;
   const im=P.unit==='in';
   P.sex=($('#ob-sex button.on')||{dataset:{s:'male'}}).dataset.s;
-  {const _a=parseInt($('#ob-age').value);P.age=(_a>0)?clamp(_a,10,100):null;}
+  /* A BLANK BOX IS "I AM ABOUT TO RETYPE THIS", NOT "I HAVE NO AGE".
+     Every other body metric on this form already reads it that way — height,
+     weight, waist, goal weight and goal waist all keep their stored value when
+     the box is empty. Age was the one that wrote null over a good number.
+
+     obBlocked() guards the Next button, but two routes reach obReadForm()
+     WITHOUT it: tapping "Done" (the step-1 Back button in edit mode) and
+     switching tabs mid-edit, which commits on the way out. Measured: clear the
+     age to retype it, tap Done, and the stored 45 became null while the height
+     cleared beside it survived — with a toast reading "Saved ✓". The stored
+     calorie target survives, but kcalTargetPreview() returns null, so
+     "Calculate my targets" quietly stops working until the athlete notices the
+     empty box. A fresh install still starts at null; nothing writes it. */
+  {const _a=parseInt($('#ob-age').value);if(_a>0)P.age=clamp(_a,10,100);}
   const ht=parseFloat($('#ob-height').value); if(ht>0)P.heightCm=clamp(Math.round(im?ht*2.54:ht),90,250);
   P.experience=($('#ob-exp button.on')||{dataset:{x:'Intermediate'}}).dataset.x;
-  P.activity=parseFloat(($('#ob-act button.on')||{dataset:{a:'1.45'}}).dataset.a)||1.45;
+  P.activity=activityLevel(parseFloat(($('#ob-act button.on')||{dataset:{a:String(ACTIVITY_DEFAULT)}}).dataset.a));
   P.conditioning=($('#ob-cond button.on')||{dataset:{c:'moderate'}}).dataset.c;
   P.mobility=($('#ob-mob button.on')||{dataset:{m:'ok'}}).dataset.m;
   /* obBlocked()'s step-5 gate is the primary defense; this is the write path
@@ -14113,6 +14126,41 @@ const CARDIO_MODES=['jacks','bike','ruck','run'];
 /* The quiz's own three answers. Kept as a list so the repair and the picker
    cannot drift apart — the mistake CARDIO_MODES' repair made for a version. */
 const CONDITIONING_LEVELS=['low','moderate','high'];
+const MOBILITY_LEVELS=['low','ok','good'];
+/* THE FOUR MULTIPLIERS THE WIZARD OFFERS ARE THE ONLY LEGAL VALUES, and until
+   now nothing said so: normalizeState() had no repair for `activity` at all —
+   not a membership test, not a type test, nothing — on the one field that
+   multiplies every calorie number in the app. Measured on an 86 kg athlete,
+   with a value importData() will accept from any hand-edited backup:
+
+     stored 1.55  -> no button selected, target 2720, silently 2540 after one
+                     profile edit
+     stored 1.9   -> no button selected, target 3330, silently 2540
+     stored 'brisk' -> kcalTargetPreview() returns NULL, so "Calculate my
+                     targets" quietly stops working with nothing to fix it
+     stored -3    -> a lower TDEE, no complaint
+
+   The picker highlights by exact match, so an out-of-set value leaves the
+   activity row with NOTHING selected, and obReadForm()'s hand-written 1.45
+   fallback then rewrites it on the next Done. Same shape as the five diets
+   (v218) and the cardio modes (v312): the set existed in exactly one place —
+   the markup — and nothing else could ask it.
+
+   A NUMBER snaps DOWN into the set rather than to the nearest, because the two
+   ways of being wrong are not symmetrical: over-stating activity silently
+   stalls a cut, under-stating it costs a little food. Anything that is not a
+   number carries no intent at all, so it takes the app's own default — the
+   same value a fresh install gets. */
+const ACTIVITY_OPTS=[[1.2,'Mostly sitting'],[1.375,'Lightly active'],[1.45,'Moderately active'],[1.6,'Very active']];
+const ACTIVITY_VALUES=ACTIVITY_OPTS.map(a=>a[0]);
+const ACTIVITY_DEFAULT=1.45;
+function activityLevel(v){
+  if(typeof v!=='number'||!isFinite(v))return ACTIVITY_DEFAULT;
+  if(ACTIVITY_VALUES.includes(v))return v;
+  let out=ACTIVITY_VALUES[0];
+  ACTIVITY_VALUES.forEach(a=>{if(a<=v&&a>out)out=a;});
+  return out;
+}
 function cardioMode(){
   try{const m=STATE.nutrition&&STATE.nutrition.cardioMode;return CARDIO_MODES.includes(m)?m:'jacks';}
   catch(e){return 'jacks';}
@@ -18351,7 +18399,14 @@ function normalizeState(){
      travelled in every backup after it. condLevel() reads this and its value
      reaches a multiplier. */
   if(!CONDITIONING_LEVELS.includes(STATE.profile.conditioning))STATE.profile.conditioning='moderate';
-  if(!STATE.profile.mobility)STATE.profile.mobility='ok';
+  /* MEMBERSHIP, not truthiness — the shape this file has paid for more than any
+     other. `if(!mobility)` caught '' and null and let every other string past,
+     and mobilityFlow() then read an unrecognised value as "not low" and skipped
+     the 25% longer holds a stiff athlete asked for. */
+  if(!MOBILITY_LEVELS.includes(STATE.profile.mobility))STATE.profile.mobility='ok';
+  STATE.profile.activity=activityLevel(STATE.profile.activity);
+  if(STATE.nutrition&&typeof STATE.nutrition==='object'&&!Array.isArray(STATE.nutrition))
+    STATE.nutrition.activity=activityLevel(STATE.nutrition.activity);
   /* A timeframe is a positive number of weeks, or null for "no deadline".
      Anything else — an array, an object, a NaN — read as falsy at every
      consumer, so nothing broke, but it persisted into every backup and came

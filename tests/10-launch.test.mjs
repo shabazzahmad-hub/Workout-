@@ -981,6 +981,71 @@ const { browser, page, errors } = await launch(port);
     s.ok('and repaints its own button', r.toggleRepainted, r);
   }
 
+  // ---- a blank box is "about to retype", not "I have no age" ---------------
+  /* obBlocked() guards the Next button, but two routes reach obReadForm()
+     WITHOUT it: tapping "Done" (the step-1 Back button in edit mode) and
+     switching tabs mid-edit, which commits on the way out. Age was the only
+     body metric on the form that wrote null over a good stored number - height,
+     weight, waist, goal weight and goal waist all keep theirs. Measured: clear
+     both boxes, tap Done, and the height survived while the age did not, with a
+     toast reading "Saved OK". kcalTargetPreview() then returns null, so
+     "Calculate my targets" quietly stops working. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const o = {}, said = [], orig = window.toast;
+      window.toast = m => said.push(m);
+      const seed = () => {
+        STATE.profile.age = 45; STATE.nutrition.age = 45;
+        STATE.profile.heightCm = 178; STATE.nutrition.heightCm = 178;
+        STATE.nutrition.weightKg = 86; STATE.onboarded = true; save();
+      };
+      const openEditor = () => { go('today'); openProfileEdit(); };
+      // A - tap Done with age AND height cleared
+      seed(); openEditor();
+      o.mounted = !!document.querySelector('#ob-age');
+      o.prefilled = (document.querySelector('#ob-age') || {}).value;
+      o.backLabel = (document.querySelector('#ob-back') || {}).textContent;
+      document.querySelector('#ob-age').value = '';
+      document.querySelector('#ob-height').value = '';
+      said.length = 0;
+      document.querySelector('#ob-back').click();
+      o.done = { age: STATE.profile.age, nAge: STATE.nutrition.age,
+        height: STATE.profile.heightCm, spoke: said.slice(0, 1) };
+      // B - switch tabs mid-edit, which commits on the way out
+      seed(); openEditor();
+      document.querySelector('#ob-age').value = '';
+      go('fuel');
+      o.tabSwitch = { age: STATE.profile.age, editOff: OB_EDIT === false };
+      // C - a REAL new age is still written
+      seed(); openEditor();
+      document.querySelector('#ob-age').value = '52';
+      document.querySelector('#ob-back').click();
+      o.retyped = { age: STATE.profile.age, nAge: STATE.nutrition.age };
+      // D - the calorie preview survives, which is what the loss cost
+      o.preview = (() => { const p = kcalTargetPreview(); return p ? p.target : null; })();
+      window.toast = orig;
+      return o;
+    });
+    s.ok('guard: the profile editor mounts with the stored age in the box', r.mounted && r.prefilled === '45', r);
+    s.eq('guard: step 1 of the editor closes with Done', r.backLabel, 'Done', r);
+    s.eq('a cleared age box keeps the stored age', r.done.age, 45, r.done);
+    s.eq('and keeps it on the nutrition side too', r.done.nAge, 45, r.done);
+    /* The sibling that always behaved this way - it is what made the age an
+       outlier rather than a policy. */
+    s.eq('guard: its height sibling already kept its value', r.done.height, 178, r.done);
+    s.eq('switching tabs mid-edit keeps it as well', r.tabSwitch.age, 45, r.tabSwitch);
+    s.ok('guard: and the tab switch really closed the editor', r.tabSwitch.editOff, r.tabSwitch);
+    /* THE FLOOR. A write path that ignored the box entirely satisfies every
+       line above and makes the age uneditable. */
+    s.eq('a real new age is still written', r.retyped.age, 52, r.retyped);
+    s.eq('and syncs to nutrition', r.retyped.nAge, 52, r.retyped);
+    s.ok('and the calorie target can still be calculated', r.preview > 0, r);
+    errors.forEach(e => s.fail('page error', e));
+    await browser.close();
+  }
+
 srv.close();
 const failed = s.finish(errors);
 await browser.close();
