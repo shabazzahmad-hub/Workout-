@@ -4489,6 +4489,91 @@ block, and swimming as a fifth cardio mode. Neither FORCE nor FORCE Combat has
 a swim, so the app would measure it and have no standard to prescribe against.
 
 
+## A block is worth measuring more than once (v341)
+
+The second of the three things the selection-prep program had that this app did
+not. It already recorded FORCE results — what it had no way to say is **WHEN a
+result was taken relative to the block**, so every re-test overwrote the last
+one and the athlete could not see whether sixteen weeks of training had moved
+anything.
+
+**The checkpoint is DERIVED from the date, never stored as a flag.** Before the
+halfway point is `initial`, from halfway until the test is `mid`, on or after
+the test date is `final`. Deriving it means a re-render, a tab switch, a reload
+and midnight all land on the right answer with nothing scheduled — the same
+reason the done-for-today card is derived rather than stored.
+
+**It fails closed, and that is the floor that matters most.** With no test date,
+or no `planFrom` stamp, there is no block and therefore no checkpoint: results
+record exactly as before and nothing new appears, so an athlete who is not
+running a prep block sees no change at all.
+
+`results` still holds the LATEST figure every existing reader uses. The
+checkpoint is a dated record BESIDE it, not a replacement — which is what keeps
+`forceVerdict()`, the prep card and the FORCE Combat sheet untouched.
+
+### One writer, because the stamp can only go in one place
+
+`setForceResult()` repeated `setForceResultQuiet()`'s body inline, so a result
+logged from the tile and one logged from the sheet reached the same field by
+different code paths. Adding the checkpoint stamp to both is how the two would
+have drifted. It now calls the quiet one, which is the only writer.
+
+### Only the four events, deliberately
+
+The timed run keeps a single BEST with no date on it, so it cannot say which
+checkpoint it was set in. Dating it is its own change; inventing a checkpoint
+for an undated number would be v304's "a marker that survives only in storage
+is not a record" facing the other way.
+
+### The comparison is the point of the prompt
+
+`prepMidDue()` stops the moment ANY of the four is recorded in the window — a
+note that keeps firing after the athlete has acted is a note they learn to
+skip, and the card itself shows what is still blank. **An event never re-run
+reads "not re-tested"**, not `0:00` and not a failure, the same call
+`forceVerdict()` already makes about an unlogged event.
+
+These are TIMES, so **lower is better**, and the delta carries its direction on
+the glass rather than only a colour: *"was 3:10 · 2:52 · −18s faster"*.
+
+### Three traps hit again in one round
+
+- **A comment that quotes a literal breaks the scan that forbids it.** Naming
+  the run's distance in a comment tripped v331's hardcoded-distance check.
+  Reword the prose, never weaken the check — fourth time.
+- **Calling the helper is not driving the route.** Every assertion read
+  `prepMidHTML()` directly, so a mutant that stopped rendering it on the prep
+  sheet walked straight through. The check now opens `openForcePrep()` and
+  reads `#sheet` — the same escape v292, v301 and v340 each produced.
+- **Guard before the first line that dereferences.** The over-eager repair
+  mutant left `mid` undefined and the assertions THREW instead of naming which
+  property broke.
+
+### Auditing it found the edge the feature itself created
+
+**Rescheduling the evaluation moves the midpoint**, which puts the athlete back
+in the initial window — and the first version returned the countdown there and
+nothing else, so an assessment they had **already recorded vanished from the
+card**. Measured by driving it: record at the midpoint, push the date out three
+months, and the record was gone from the screen while still sitting in STATE.
+
+A dated record is HISTORY. It renders whenever it exists; only the PROMPT above
+it depends on where the block is now. The record itself keeps its own label and
+date — relabelling it would be rewriting what the athlete actually did, and
+discarding it would lose a real measurement.
+
+And `saveForceTimes()` incremented its `wrote` counter unconditionally, so the
+"Logged ✅" toast could claim a save the writer had declined. Unreachable today
+— every value is validated two lines up and every id comes from `FORCE_EVENTS`
+— so **no check can catch its removal**; kept as intent, the same call as
+v287's `wantAnchor`.
+
+Fifteen mutants, all caught after three check rewrites. The third: a mutant
+labelling every record "Midpoint" escaped because nothing reached the FINAL
+window with a record in it.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

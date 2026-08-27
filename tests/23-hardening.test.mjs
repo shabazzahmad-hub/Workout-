@@ -353,7 +353,12 @@ export default async function () {
       const o = {};
       if (typeof setPrepPath !== 'function' || typeof prepPath !== 'function') return { absent: true };
       const ahead = d => { const x = new Date(); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); };
-      STATE.prep = { date: ahead(112), path: 'assaulter' }; save();
+      STATE.prep = { date: ahead(112), path: 'assaulter',
+        /* v341's dated checkpoint records travel in the same file. A record of
+           what the athlete scored halfway through a block is exactly the kind
+           of thing a restore must bring back — it cannot be re-created. */
+        checks: { initial: { at: '2026-07-01', results: { lift: 190 } },
+                  mid: { at: '2026-08-01', results: { lift: 172, shuttle: 285 } } } }; save();
       let blob = null;
       const rb = window.URL.createObjectURL, rc = HTMLAnchorElement.prototype.click;
       window.URL.createObjectURL = b => { blob = b; return 'blob:x'; };
@@ -362,6 +367,7 @@ export default async function () {
       window.URL.createObjectURL = rb; HTMLAnchorElement.prototype.click = rc;
       const text = blob ? await blob.text() : '';
       o.inBackup = text ? JSON.parse(text).prep.path : null;
+      o.checksInBackup = text ? JSON.parse(text).prep.checks : null;
       // the device moves to the other path, then restores the file
       STATE.prep = { date: ahead(112), path: 'operator' }; save();
       o.before = prepPath();
@@ -374,6 +380,7 @@ export default async function () {
       window.confirm = kc;
       o.after = prepPath();
       o.stored = STATE.prep.path;
+      o.checksAfter = JSON.parse(JSON.stringify(STATE.prep.checks || {}));
       STATE.prep = {}; save();
       return o;
     });
@@ -382,6 +389,12 @@ export default async function () {
     t.eq('the training path travels in a backup', r.inBackup, 'assaulter', r);
     t.eq('and comes back on a restore', r.after, 'assaulter', r);
     t.eq('stored on STATE, not merely reported by the getter', r.stored, 'assaulter', r);
+    t.ok('the dated assessment records travel in the backup too',
+      !!(r.checksInBackup && r.checksInBackup.mid && r.checksInBackup.mid.results.lift === 172), r.checksInBackup);
+    t.ok('and both checkpoints come back on a restore',
+      r.checksAfter.initial && r.checksAfter.initial.results.lift === 190
+      && r.checksAfter.mid && r.checksAfter.mid.results.shuttle === 285, r.checksAfter);
+    t.eq('with their dates intact', (r.checksAfter.mid || {}).at, '2026-08-01', r.checksAfter);
     await page.evaluate(() => { STATE.onboarded = false; });
     await seedAthlete(page);
   }

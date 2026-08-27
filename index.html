@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='340';
+const APP_VERSION='341';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4606,6 +4606,119 @@ function prepWeeksLeft(){const w=forceWeeksLeft();return (w===null||w<0)?null:w;
    athlete nothing to act on, which is the same defect as blaming safety for a
    limit safety did not set. */
 function prepDatePassed(){const w=forceWeeksLeft();return w!==null&&w<0;}
+/* THE THREE CHECKPOINTS OF A PREP BLOCK.
+
+   A 16-week block is worth measuring more than once, and the app already
+   recorded FORCE results — what it had no way to say is WHEN a result was
+   taken relative to the block, so every re-test overwrote the last one and the
+   athlete could not see whether the training had moved anything.
+
+   The checkpoint is DERIVED from the date, never a flag: before the halfway
+   point is `initial`, from halfway until the test is `mid`, and on or after
+   the test date is `final`. Deriving it means a re-render, a tab switch, a
+   reload and midnight all land on the right answer with nothing scheduled —
+   the same reason the done-for-today card is derived rather than stored.
+
+   It FAILS CLOSED. With no test date, or no `planFrom` stamp, there is no
+   block and therefore no checkpoint — results are still recorded exactly as
+   before, so an athlete who is not running a prep block sees no change at all. */
+const PREP_CHECKS=['initial','mid','final'];
+function prepMidISO(){
+  const p=prep();
+  if(typeof p.date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(p.date))return null;
+  if(typeof p.planFrom!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(p.planFrom))return null;
+  const a=new Date(p.planFrom+'T00:00:00').getTime(), b=new Date(p.date+'T00:00:00').getTime();
+  if(!isFinite(a)||!isFinite(b)||b<=a)return null;
+  return new Date(a+(b-a)/2).toISOString().slice(0,10);
+}
+function prepCheckpoint(){
+  const p=prep(), mid=prepMidISO();
+  if(!mid)return null;
+  const now=todayISO();
+  if(now>=p.date)return 'final';
+  return now>=mid?'mid':'initial';
+}
+function prepCheck(k){
+  const c=prep().checks;
+  if(!c||typeof c!=='object'||Array.isArray(c))return null;
+  const slot=c[k];
+  if(!slot||typeof slot!=='object'||Array.isArray(slot))return null;
+  const r=slot.results;
+  if(!r||typeof r!=='object'||Array.isArray(r)||!Object.keys(r).length)return null;
+  return slot;
+}
+/* Due, and not yet answered. It stops the moment ANY of the four is recorded
+   in this window — a note that keeps firing after the athlete has acted is a
+   note they learn to skip, and the comparison below shows what is still blank. */
+function prepMidDue(){return prepCheckpoint()==='mid'&&!prepCheck('mid');}
+/* How many weeks until the midpoint, for the not-yet-due case. Null once it
+   has passed, so the card can tell "coming" from "here". */
+/* What the athlete sees. Three states, and the third is the point of the other
+   two: DUE (re-run the four tasks), COMING (in N weeks, so it is not a
+   surprise), and DONE (what changed since the initial).
+
+   Only the four FORCE events, deliberately. The timed run keeps a single BEST
+   with no date on it, so it cannot say which checkpoint it was set in — dating
+   it is its own change, and inventing a checkpoint for an undated number would
+   be exactly the "a marker that survives only in storage is not a record"
+   mistake facing the other way. (Naming the event rather than its distance
+   here is not style: the drift scan counts that literal wherever it appears,
+   comments included.) */
+function prepMidHTML(){
+  const mid=prepMidISO();
+  if(!mid)return '';
+  const cp=prepCheckpoint();
+  const init=prepCheck('initial');
+  /* The record is found INDEPENDENTLY of the current checkpoint. Pushing the
+     test date out moves the midpoint, which put the athlete back in the
+     initial window — and the first version returned the countdown there and
+     nothing else, so an assessment they had already recorded simply vanished
+     from the card. A dated record is history: it renders whenever it exists,
+     and only the PROMPT above it depends on where the block is now. */
+  const fin=prepCheck('final'), midRec=prepCheck('mid');
+  const now=fin||midRec;
+  const label=fin?'Final':'Midpoint';
+  let head='';
+  if(prepMidDue()){
+    head=`<div class="note warn" style="margin:10px 0 0"><b>Midpoint assessment due.</b>
+      You are halfway to your test date. Re-run the four tasks and log the times — that is what turns the second half of the block into a correction rather than a guess.
+      ${init?'':'<div style="margin-top:6px">Nothing was logged before the halfway point, so this one becomes your first record rather than a comparison.</div>'}</div>`;
+  }else if(cp==='initial'){
+    const wk=prepMidWeeksAway();
+    if(wk!==null)head=`<div class="tiny muted" style="margin-top:8px">Midpoint assessment in <b>${wk} week${wk===1?'':'s'}</b> — you re-run the four tasks then, and the app shows what moved.</div>`;
+  }
+  if(!now)return head;
+  const rows=FORCE_EVENTS.map(ev=>{
+    const a=init&&typeof init.results[ev.id]==='number'?init.results[ev.id]:null;
+    const b=typeof now.results[ev.id]==='number'?now.results[ev.id]:null;
+    /* ABSENT IS NOT ZERO and it is not a failure — an event never re-run says
+       so, the same way forceVerdict() reports an unlogged event. */
+    if(b===null)return `<div class="kv"><span>${_ve(ev.name)}</span><span class="tiny muted">not re-tested</span></div>`;
+    const shown=ev.max===null?(b>0?'Completed':'Not yet'):fmtTime(Math.round(b));
+    if(a===null||ev.max===null)
+      return `<div class="kv"><span>${_ve(ev.name)}</span><span><b>${_ve(shown)}</b></span></div>`;
+    /* These are TIMES: lower is better, and a delta with no direction attached
+       is the defect a signed nudge check exists to catch. */
+    const d=Math.round(a-b);
+    const better=d>0;
+    const tag=d===0?'<span class="tiny muted">no change</span>'
+      :`<span class="tiny" style="color:var(--${better?'green':'fire'})">${better?'−':'+'}${fmtTime(Math.abs(d))} ${better?'faster':'slower'}</span>`;
+    return `<div class="kv"><span>${_ve(ev.name)}<div class="tiny muted">was ${_ve(fmtTime(Math.round(a)))}</div></span>
+      <span style="text-align:right"><b>${_ve(shown)}</b><div>${tag}</div></span></div>`;
+  }).join('');
+  return `${head}<div class="section-label" style="margin-top:14px">${label} assessment</div>
+    <div class="card pad">
+      <div class="tiny muted" style="margin-bottom:6px">Recorded ${_ve(now.at||'')}${init?' · against what you logged before the halfway point':''}</div>
+      ${rows}
+      ${init?'':`<div class="tiny muted" style="margin-top:8px">There is nothing from before the halfway point to compare against, so these are figures rather than changes.</div>`}
+    </div>`;
+}
+function prepMidWeeksAway(){
+  const mid=prepMidISO();
+  if(!mid)return null;
+  const ms=new Date(mid+'T00:00:00').getTime()-new Date(todayISO()+'T00:00:00').getTime();
+  return ms<=0?null:Math.ceil(ms/(7*86400000));
+}
 function prepDateLabel(){
   const d=prep().date;
   if(typeof d!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(d))return '';
@@ -4895,6 +5008,7 @@ function openForcePrep(){
       This app has no internet access and cannot check them for you.</div>
     ${wk!==null?`<div class="note fire"><b>${wk>0?wk+' week'+(wk===1?'':'s')+' to go':(wk===0?'This week':'Your test date has passed')}</b>${wk>0?' — that is what the build is paced to.':''}</div>`:''}
     <div class="card pad">${rows}</div>
+    ${prepMidHTML()}
     ${prepPathHTML()}
     ${forceKitHTML()}
     <button class="btn primary" style="width:100%;margin-top:10px" onclick="startForceTrain()">▶ Train ${forceAvailable().length===FORCE_EVENTS.length?'the four tasks':'what you have kit for'}</button>
@@ -5031,11 +5145,12 @@ function openForceLog(){
   `);
 }
 function setForceResult(id,v){
-  if(!FORCE_IDS.includes(id))return;
   const n=+v; if(!isFinite(n)||n<0)return;
-  if(!STATE.prep||typeof STATE.prep!=='object'||Array.isArray(STATE.prep))STATE.prep={};
-  if(!STATE.prep.results||typeof STATE.prep.results!=='object'||Array.isArray(STATE.prep.results))STATE.prep.results={};
-  STATE.prep.results[id]=n;
+  /* One writer. This used to repeat setForceResultQuiet()'s body inline, so a
+     result logged from the tile and one logged from the sheet took different
+     code paths to the same field — and the checkpoint stamp would have had to
+     be added to both. */
+  if(!setForceResultQuiet(id,n))return;
   save();haptic(8);openForceLog();
 }
 function saveForceTimes(){
@@ -5045,17 +5160,36 @@ function saveForceTimes(){
     const el=$('#fq-'+ev.id); if(!el||el.value==='')return;
     const n=parseFloat(el.value);
     if(!isFinite(n)||n<0){toast('Enter a real time for '+ev.name);return;}
-    setForceResultQuiet(ev.id,n);wrote++;
+    /* Count what the writer ACCEPTED. The toast below says "Logged ✅" off
+       this counter, and incrementing it unconditionally let it claim a save
+       the writer had declined. Unreachable today — every value is validated
+       two lines up and every id comes from FORCE_EVENTS — so NO CHECK CAN
+       CATCH ITS REMOVAL; it is kept as intent, the same call as v287's
+       wantAnchor and v301's _macrosMissing. */
+    if(setForceResultQuiet(ev.id,n))wrote++;
   });
   save();closeSheet();
   toast(wrote?'Logged ✅':'Nothing to save');
   openForcePrep();
 }
 function setForceResultQuiet(id,n){
-  if(!FORCE_IDS.includes(id))return;
+  if(!FORCE_IDS.includes(id))return false;
+  if(!isFinite(n)||n<0)return false;
   if(!STATE.prep||typeof STATE.prep!=='object'||Array.isArray(STATE.prep))STATE.prep={};
   if(!STATE.prep.results||typeof STATE.prep.results!=='object'||Array.isArray(STATE.prep.results))STATE.prep.results={};
   STATE.prep.results[id]=n;
+  /* And into the checkpoint this result was taken in, so a 16-week block can
+     be measured more than once. `results` stays the LATEST — every existing
+     reader is untouched — and the checkpoint is the dated record beside it. */
+  const cp=prepCheckpoint();
+  if(cp){
+    const C=STATE.prep.checks=(STATE.prep.checks&&typeof STATE.prep.checks==='object'&&!Array.isArray(STATE.prep.checks))?STATE.prep.checks:{};
+    const slot=C[cp]=(C[cp]&&typeof C[cp]==='object'&&!Array.isArray(C[cp]))?C[cp]:{};
+    if(!slot.results||typeof slot.results!=='object'||Array.isArray(slot.results))slot.results={};
+    slot.results[id]=n;
+    slot.at=todayISO();
+  }
+  return true;
 }
 function openForceDate(){
   openSheet(`
@@ -17904,6 +18038,27 @@ function normalizeState(){
       it would be a second way to say the same thing that then travels in every
       backup. */
    if(P.path!==undefined&&!PREP_PATH_KEYS.includes(P.path))delete P.path;
+   /* The dated checkpoint records. importData() accepts arbitrary JSON, so
+      every level is repaired: the container, each checkpoint slot (membership,
+      not truthiness — `initial` is not a free-form key), its results map, and
+      each result. A bad row is dropped rather than zeroed, the same call the
+      raw results make: a zero renders as a 0:00 time, which is not a
+      measurement. An empty slot is removed outright so prepCheck() cannot hand
+      the comparison a record with nothing in it. */
+   if(P.checks!==undefined){
+     if(!P.checks||typeof P.checks!=='object'||Array.isArray(P.checks))delete P.checks;
+     else Object.keys(P.checks).forEach(k=>{
+       const slot=P.checks[k];
+       if(!PREP_CHECKS.includes(k)||!slot||typeof slot!=='object'||Array.isArray(slot)){delete P.checks[k];return;}
+       if(typeof slot.at!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(slot.at))delete slot.at;
+       if(!slot.results||typeof slot.results!=='object'||Array.isArray(slot.results))slot.results={};
+       Object.keys(slot.results).forEach(id=>{
+         const v=slot.results[id];
+         if(!FORCE_IDS.includes(id)||typeof v!=='number'||!isFinite(v)||v<0)delete slot.results[id];
+       });
+       if(!Object.keys(slot.results).length)delete P.checks[k];
+     });
+   }
    ['ttBest','ttTarget','combatCircuit','combatMarch'].forEach(k=>{
      const v=P[k];
      if(v!==undefined&&(typeof v!=='number'||!isFinite(v)||v<=0))delete P[k];

@@ -3521,6 +3521,168 @@ export default async function run() {
       !ref.imp.includes(ref.fastest + ' mi/h'), ref.imp.slice(0, 400));
   }
 
+  // ---- a 16-week block is worth measuring more than once -------------------
+  /* The app already recorded FORCE results; what it had no way to say is WHEN
+     a result was taken relative to the block, so every re-test overwrote the
+     last and the athlete could not see whether the training moved anything.
+
+     The checkpoint is DERIVED from the date, never stored as a flag, so a
+     re-render, a reload and midnight all land on the right answer. And it
+     FAILS CLOSED: no test date means no block, no checkpoint and no prompt —
+     which is the floor that keeps an athlete who is not running a prep block
+     from seeing any change at all. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      for (const n of ['prepCheckpoint', 'prepMidISO', 'prepMidDue', 'prepMidHTML',
+                       'prepCheck', 'setForceResultQuiet', 'prepMidWeeksAway'])
+        if (typeof window[n] !== 'function') (o.absent = o.absent || []).push(n);
+      if (o.absent) return o;
+      const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+      const txt = h => { const e = document.createElement('div'); e.innerHTML = h;
+        return (e.innerText || e.textContent || '').replace(/\s+/g, ' '); };
+      const at = (startAgo, toTest) => { STATE.prep = { date: d(toTest), planFrom: d(-startAgo) }; save();
+        return { cp: prepCheckpoint(), due: prepMidDue(), away: prepMidWeeksAway(), card: txt(prepMidHTML()) }; };
+
+      o.early = at(28, 84);        // 4 weeks into 16
+      o.atMid = at(56, 56);        // halfway
+      o.past  = at(112, -1);       // the test has been and gone
+      // FLOOR: no block at all
+      STATE.prep = {}; save();
+      o.noDate = { cp: prepCheckpoint(), mid: prepMidISO(), due: prepMidDue(), card: txt(prepMidHTML()) };
+      // and a result logged with no block still records, exactly as before
+      o.noBlockWrote = setForceResultQuiet('lift', 200);
+      o.noBlockResult = prep().results.lift;
+      o.noBlockChecks = prep().checks;
+
+      // a real block: log three in the initial window, two better ones at the midpoint
+      STATE.prep = { date: d(84), planFrom: d(-28) }; save();
+      ['lift', 'shuttle', 'rush'].forEach((id, i) => setForceResultQuiet(id, [190, 300, 48][i]));
+      o.initialSlot = JSON.parse(JSON.stringify((prep().checks || {}).initial || {}));
+      STATE.prep.date = d(28); STATE.prep.planFrom = d(-28); save();
+      o.dueBeforeLogging = prepMidDue();
+      o.cardWhenDue = txt(prepMidHTML());
+      ['lift', 'shuttle'].forEach((id, i) => setForceResultQuiet(id, [172, 285][i]));
+      o.dueAfterLogging = prepMidDue();
+      o.card = txt(prepMidHTML());
+      o.latest = JSON.parse(JSON.stringify(prep().results));
+      o.midSlot = JSON.parse(JSON.stringify((prep().checks || {}).mid || {}));
+
+      // junk written straight into STATE by an import
+      STATE.prep = { date: d(28), planFrom: d(-28),
+        checks: { mid: { at: 'yesterday', results: { lift: 172, bogus: 5, shuttle: 'fast' } },
+                  nonsense: { results: { lift: 1 } }, initial: { results: {} } } };
+      normalizeState();
+      o.repaired = JSON.parse(JSON.stringify(prep().checks || {}));
+      /* A DATED RECORD IS HISTORY, so it renders whenever it exists — not only
+         while the block happens to be past its midpoint. Pushing the test date
+         out moves the midpoint and puts the athlete back in the initial
+         window; the first version returned the countdown there and nothing
+         else, so an assessment they had already recorded vanished from the
+         card. Only the PROMPT depends on where the block is now. */
+      STATE.prep = { date: d(28), planFrom: d(-28) }; save();
+      setForceResultQuiet('lift', 172);
+      o.beforeMove = { cp: prepCheckpoint(), card: txt(prepMidHTML()) };
+      STATE.prep.date = d(112); save();               // the evaluation is rescheduled
+      o.afterMove = { cp: prepCheckpoint(), card: txt(prepMidHTML()),
+                      kept: JSON.parse(JSON.stringify(prep().checks || {})) };
+
+      /* And the FINAL window, which nothing else here reached — a mutant that
+         labelled every record "Midpoint" escaped until this case existed. */
+      STATE.prep = { date: d(-1), planFrom: d(-113) }; save();
+      setForceResultQuiet('lift', 160);
+      o.final = { cp: prepCheckpoint(), card: txt(prepMidHTML()) };
+
+      /* CALLING THE HELPER IS NOT DRIVING THE ROUTE. Every assertion above
+         reads prepMidHTML() directly, so a mutant that simply stopped
+         rendering it on the prep sheet walked straight through — the same
+         escape v292's Convert button and v301's fill produced, and the same
+         one the path picker was rewritten for one version earlier. */
+      STATE.prep = { date: d(28), planFrom: d(-28) }; save();
+      openForcePrep();
+      const sheet = document.querySelector('#sheet');
+      o.sheetShowsDue = !!(sheet && /Midpoint assessment due/.test(sheet.innerText || sheet.textContent || ''));
+      try { closeSheet(); } catch (e) {}
+      STATE.prep = { date: d(84), planFrom: d(-28) }; save();
+      openForcePrep();
+      const sheet2 = document.querySelector('#sheet');
+      o.sheetShowsComing = !!(sheet2 && /Midpoint assessment in/.test(sheet2.innerText || sheet2.textContent || ''));
+      try { closeSheet(); } catch (e) {}
+      STATE.prep = {}; save();
+      return o;
+    });
+    t.ok('guard: every name this block calls exists', !r.absent, r);
+    if (!r.absent) {
+      // the checkpoint is derived, and it fails closed
+      t.eq('four weeks into a sixteen-week block is the initial window', r.early.cp, 'initial', r.early);
+      t.eq('and the card says how far off the midpoint is', r.early.away, 4, r.early);
+      t.ok('naming it rather than only counting', /Midpoint assessment in/.test(r.early.card), r.early.card);
+      t.eq('halfway to the test date is the midpoint window', r.atMid.cp, 'mid', r.atMid);
+      t.eq('and after the test date it is the final one', r.past.cp, 'final', r.past);
+      // FLOOR: an athlete with no prep block sees none of this
+      t.eq('with no test date there is no checkpoint at all', r.noDate.cp, null, r.noDate);
+      t.eq('and no midpoint to be due', r.noDate.due, false, r.noDate);
+      t.eq('and the card renders nothing', r.noDate.card, '', r.noDate);
+      t.ok('a result logged outside a block still records', r.noBlockWrote === true && r.noBlockResult === 200, r);
+      t.eq('and creates no checkpoint record', r.noBlockChecks, undefined, r);
+
+      // the prompt: fires when due, stops once answered
+      t.ok('at the midpoint with nothing logged the assessment is due', r.dueBeforeLogging === true, r);
+      t.ok('and the card says so', /Midpoint assessment due/.test(r.cardWhenDue), r.cardWhenDue.slice(0, 160));
+      t.ok('once a result is logged it stops asking', r.dueAfterLogging === false, r);
+      t.ok('and a note that has stopped firing is gone from the card',
+        !/Midpoint assessment due/.test(r.card), r.card.slice(0, 160));
+
+      // the comparison is the point of the prompt
+      t.ok('the initial window kept its own dated record',
+        r.initialSlot.results && r.initialSlot.results.lift === 190 && !!r.initialSlot.at, r.initialSlot);
+      t.ok('and the midpoint kept a separate one',
+        r.midSlot.results && r.midSlot.results.lift === 172, r.midSlot);
+      t.ok('a faster time reads as an improvement, not merely as a change',
+        /faster/.test(r.card) && !/slower/.test(r.card), r.card.slice(0, 300));
+      t.ok('and it names what the figure was before',
+        /was 3:10/.test(r.card), r.card.slice(0, 300));
+      /* ABSENT IS NOT ZERO and it is not a failure — the two events that were
+         never re-run say so rather than reading as 0:00 or as short. */
+      t.ok('an event never re-tested says so',
+        /not re-tested/.test(r.card) && !/0:00/.test(r.card), r.card.slice(0, 300));
+      // the existing readers are untouched
+      t.ok('prep.results still holds the LATEST figure every other reader uses',
+        r.latest.lift === 172 && r.latest.shuttle === 285 && r.latest.rush === 48, r.latest);
+
+      // the repair, driven through the boot path
+      /* Guard before the first line that dereferences a slot: a repair that
+         wipes everything leaves `mid` undefined, and the assertions below
+         would THROW rather than naming which property broke. */
+      t.ok('guard: the repair left a mid slot to inspect',
+        !!(r.repaired && r.repaired.mid && r.repaired.mid.results), r.repaired);
+      t.eq('an unknown checkpoint key is repaired away', r.repaired.nonsense, undefined, r.repaired);
+      t.eq('a checkpoint whose results are all junk is removed', r.repaired.initial, undefined, r.repaired);
+      t.eq('a bad event id is dropped', ((r.repaired.mid || {}).results || {}).bogus, undefined, r.repaired);
+      t.eq('a non-number result is dropped rather than zeroed',
+        ((r.repaired.mid || {}).results || {}).shuttle, undefined, r.repaired);
+      t.eq('a malformed date is dropped', (r.repaired.mid || {}).at, undefined, r.repaired);
+      t.eq('and the real result beside them survives', ((r.repaired.mid || {}).results || {}).lift, 172, r.repaired);
+      // and it is on the sheet the athlete actually opens, not only in the helper
+      t.eq('guard: a result logged after the test date lands in the final window', r.final.cp, 'final', r.final);
+      t.ok('and its record is labelled Final, not Midpoint',
+        /Final assessment/.test(r.final.card) && !/Midpoint assessment Recorded/.test(r.final.card),
+        r.final.card.slice(0, 200));
+      t.eq('guard: recording at the midpoint really put the block there', r.beforeMove.cp, 'mid', r.beforeMove);
+      t.eq('pushing the test date out moves the block back to its initial window',
+        r.afterMove.cp, 'initial', r.afterMove);
+      t.ok('the record already made survives that move',
+        !!(r.afterMove.kept.mid && r.afterMove.kept.mid.results.lift === 172), r.afterMove.kept);
+      t.ok('and stays on the card rather than vanishing until the new midpoint',
+        /Midpoint assessment Recorded/.test(r.afterMove.card) && /2:52/.test(r.afterMove.card),
+        r.afterMove.card.slice(0, 220));
+      t.ok('with the countdown to the NEW midpoint above it',
+        /Midpoint assessment in/.test(r.afterMove.card), r.afterMove.card.slice(0, 220));
+      t.ok('the prep sheet shows the assessment when it is due', r.sheetShowsDue, r);
+      t.ok('and shows how far off it is when it is not', r.sheetShowsComing, r);
+    }
+  }
+
   // ---- two training paths, and the safety rules that outrank them ---------
   /* The block already knew how to ramp running and rucking. What it could not
      express is which of the two the athlete is training FOR — load carriage or
