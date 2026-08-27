@@ -4103,6 +4103,28 @@ future change that lets the boundary rethrow — the same call as v287's
 Seven mutants, all caught once that one was re-seeded as something a check
 could see.
 
+### The invariant the memo rests on, asserted rather than assumed
+
+A self-audit of this very change asked the obvious question: `buildSession(p)`
+reads `adapt`, the baseline, the limitations and the swaps, so caching it
+within a paint is only safe if **nothing a renderer calls writes any of them**.
+The comment said so. *A comment claiming an invariant is not the invariant* —
+this file has recorded that three times.
+
+Measured across all six tabs: **zero writes**, and the baseline, limitations
+and swaps untouched. So the premise holds, and it is now a check rather than a
+sentence: a future renderer that writes one of them makes the memo silently
+stale, and that is what says so.
+
+**Record every ASSIGNMENT, not every change.** The first version watched for a
+changed value, and a mutant that had `renderProgress()` write the value already
+in place escaped it. The violation is the write, not the delta. A guard beside
+it proves the watcher can see an assignment that changes nothing — without it,
+"no renderer writes these" is a sentence that passes on any codebase at all.
+
+Two further mutants, both caught: a renderer writing `adapt`, and a renderer
+moving `progressPtr`.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

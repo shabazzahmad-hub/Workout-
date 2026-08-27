@@ -3139,6 +3139,35 @@ export default async function run() {
       try { go('today'); render(); } catch (e) {} finally { window.renderToday = realRT; console.error = ce; }
       o.clearedAfterThrow = _itemsMemo === null;
 
+      /* Nothing a renderer calls may WRITE a memo dependency — see the
+         assertions in Node for why this is the invariant the memo rests on. */
+      mk(false);
+      const depWrites = [];
+      /* Record EVERY assignment, not only the ones that change the value. The
+         invariant is that a renderer does not WRITE these — a mutant that
+         assigned the value already in place escaped a change-only watcher,
+         and it is the write that breaks the memo's premise, not the delta. */
+      ['adapt', 'progressPtr'].forEach(k => { let v = STATE[k];
+        Object.defineProperty(STATE, k, { configurable: true,
+          get() { return v; },
+          set(nv) { depWrites.push(k + ':=' + nv); v = nv; } }); });
+      const before = { b: JSON.stringify(STATE.baseline || null),
+                       l: JSON.stringify(STATE.profile.limitations || null),
+                       s: JSON.stringify(STATE.swaps || null) };
+      ['today', 'program', 'fuel', 'progress', 'ref', 'guide'].forEach(tab => { go(tab); render(); });
+      setProgressTab('summary'); go('progress'); render();
+      o.depWrites = depWrites.slice(0, 6);
+      o.baselineChanged = JSON.stringify(STATE.baseline || null) !== before.b;
+      o.limitationsChanged = JSON.stringify(STATE.profile.limitations || null) !== before.l;
+      o.swapsChanged = JSON.stringify(STATE.swaps || null) !== before.s;
+      /* guard: a watcher that never fires would report "no writes" on any
+         codebase at all. Prove it can see one. */
+      const seenBefore = depWrites.length;
+      STATE.progressPtr = STATE.progressPtr;      // an assignment, not a change
+      o.watcherWorks = depWrites.length > seenBefore;
+      ['adapt', 'progressPtr'].forEach(k => { const v = STATE[k];
+        delete STATE[k]; STATE[k] = v; });
+
       /* The fast path is untouched: a log carrying items never rebuilds. */
       mk(true);
       const pairs = allDonePairs();
@@ -3178,6 +3207,21 @@ export default async function run() {
       /* A memo that outlived its paint could hand a stale session to the next. */
       t.ok('the memo is dropped when the render finishes', pm.clearedAfterRender, pm);
       t.ok('and when the render throws', pm.clearedAfterThrow, pm);
+
+      /* THE INVARIANT THE WHOLE MEMO RESTS ON, asserted rather than assumed.
+         buildSession(p) reads adapt, the baseline, the limitations and the
+         swaps. Caching it within a paint is only safe because nothing a
+         renderer calls WRITES any of them — and a comment claiming an
+         invariant is not the invariant, which this file has recorded three
+         times. Measured across all six tabs: zero writes.
+
+         If a future renderer ever does write one, the memo goes silently
+         stale and this is what says so. */
+      t.eq('no render writes anything the memo depends on', pm.depWrites, []);
+      t.ok('and the baseline, limitations and swaps are untouched too',
+        !pm.baselineChanged && !pm.limitationsChanged && !pm.swapsChanged, pm);
+      /* guard: the watcher really would have seen a write. */
+      t.ok('guard: the dependency watcher fires on a real write', pm.watcherWorks, pm);
     }
 
 
