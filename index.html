@@ -1741,23 +1741,23 @@ const COOLDOWN = [
 ];
 /* Guided flows: name + seconds + coaching cue. Run through the loud countdown timer. */
 const WARMUP_FLOW = [
-  {n:'March in Place',      secs:40, cue:'Drive the knees up and pump the arms. Wake the body up.', img:'wu-march.jpg', vid:'wu-march.mp4'},
-  {n:'Arm Circles',         secs:30, cue:'Big slow circles forward, then reverse halfway through.', img:'wu-armcircles.jpg'},
-  {n:'Standing Torso Twists', secs:30, cue:'Feet planted, rotate side to side and open up the spine.', img:'wu-torsotwist.jpg'},
-  {n:'Hip Circles',         secs:30, cue:'Hands on the hips, make big circles each direction.', img:'wu-hipcircles.jpg'},
-  {n:'Glute Bridges',       secs:30, cue:'Squeeze the glutes at the top and brace the core.', img:'wu-glutebridge.jpg'},
-  {n:'Bird Dog',            secs:40, cue:'Opposite arm and leg, slow and controlled. Alternate sides.', img:'wu-birddog.jpg'},
-  {n:'Cat–Cow',             secs:30, cue:'Arch then round the spine, breathe with the movement.', img:'wu-catcow.jpg'},
-  {n:'Standing Knee Hugs',  secs:30, cue:'Pull one knee to the chest, alternate, find your balance.', img:'wu-kneehug.jpg'},
+  {n:'March in Place',      secs:40, pos:'stand', cue:'Drive the knees up and pump the arms. Wake the body up.', img:'wu-march.jpg', vid:'wu-march.mp4'},
+  {n:'Arm Circles',         secs:30, pos:'stand', cue:'Big slow circles forward, then reverse halfway through.', img:'wu-armcircles.jpg'},
+  {n:'Standing Torso Twists', secs:30, pos:'stand', cue:'Feet planted, rotate side to side and open up the spine.', img:'wu-torsotwist.jpg'},
+  {n:'Hip Circles',         secs:30, pos:'stand', cue:'Hands on the hips, make big circles each direction.', img:'wu-hipcircles.jpg'},
+  {n:'Glute Bridges',       secs:30, pos:'back', cue:'Squeeze the glutes at the top and brace the core.', img:'wu-glutebridge.jpg'},
+  {n:'Bird Dog',            secs:40, pos:'fours', cue:'Opposite arm and leg, slow and controlled. Alternate sides.', img:'wu-birddog.jpg'},
+  {n:'Cat–Cow',             secs:30, pos:'fours', cue:'Arch then round the spine, breathe with the movement.', img:'wu-catcow.jpg'},
+  {n:'Standing Knee Hugs',  secs:30, pos:'stand', cue:'Pull one knee to the chest, alternate, find your balance.', img:'wu-kneehug.jpg'},
 ];
 const COOLDOWN_FLOW = [
-  {n:"Child's Pose",        secs:40, cue:'Sit back on the heels, reach forward, breathe into the low back.', img:'cd-childs.jpg'},
-  {n:'Cobra Stretch',       secs:30, cue:'Lie face-down and press the chest up, lengthen the abs.', img:'cd-cobra.jpg'},
-  {n:'Supine Twist — Left', secs:30, cue:'On your back, drop both knees to the left, arms out wide.', img:'cd-twistleft.jpg'},
-  {n:'Supine Twist — Right',secs:30, cue:'Now drop both knees to the right. Relax and breathe.', img:'cd-twistright.jpg'},
-  {n:'Cat–Cow',             secs:30, cue:'Slowly alternate arching and rounding the spine.', img:'cd-catcow.jpg'},
-  {n:'Knees to Chest',      secs:30, cue:'Hug both knees in and gently rock to release the low back.', img:'cd-knees.jpg'},
-  {n:'Deep Breathing',      secs:40, cue:'Lie back and take six slow belly breaths. Wind all the way down.', img:'cd-breathing.jpg'},
+  {n:"Child's Pose",        secs:40, pos:'fours', cue:'Sit back on the heels, reach forward, breathe into the low back.', img:'cd-childs.jpg'},
+  {n:'Cobra Stretch',       secs:30, pos:'front', cue:'Lie face-down and press the chest up, lengthen the abs.', img:'cd-cobra.jpg'},
+  {n:'Supine Twist — Left', secs:30, pos:'back', cue:'On your back, drop both knees to the left, arms out wide.', img:'cd-twistleft.jpg'},
+  {n:'Supine Twist — Right',secs:30, pos:'back', cue:'Now drop both knees to the right. Relax and breathe.', img:'cd-twistright.jpg'},
+  {n:'Cat–Cow',             secs:30, pos:'fours', cue:'Slowly alternate arching and rounding the spine.', img:'cd-catcow.jpg'},
+  {n:'Knees to Chest',      secs:30, pos:'back', cue:'Hug both knees in and gently rock to release the low back.', img:'cd-knees.jpg'},
+  {n:'Deep Breathing',      secs:40, pos:'back', cue:'Lie back and take six slow belly breaths. Wind all the way down.', img:'cd-breathing.jpg'},
 ];
 
 /* Baseline tests shown on day 1 */
@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='348';
+const APP_VERSION='349';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -9554,6 +9554,16 @@ function beepDuck(ms){
   }catch(e){}
 }
 // loud double-tone GO cue (cuts through noise)
+/* Every other paired cue in this app RISES — beepGo 1320->1760, the ten-second
+   marker 520->880, the side-switch 660->880. So "change your position" gets the
+   one shape none of them can be confused with: a FALLING pair. Reported from
+   the phone after a real warm-up — "there is a five seconds countdown to the
+   end of an exercise, and it goes straight into the next exercise" — and the
+   measurement is why: the flow fired FIFTEEN identical 1000 Hz beeps from
+   second 35 to second 48 with nothing in that run marking where the stretch
+   ended and the repositioning began. The transition was there. It was
+   inaudible. */
+function repositionCue(){try{beepDuck(420);beep(880,.16,0.80);setTimeout(()=>beep(520,.22,0.88),150);haptic(20);}catch(e){}}
 function beepGo(){beepDuck(560);beep(1320,.32,0.95,'square');setTimeout(()=>beep(1760,.30,0.95,'square'),120);}
 
 /* ---- The last ten seconds of a timed effort -------------------------------
@@ -9989,9 +9999,9 @@ function safeFlow(items){
    reusing 'Glute Bridges' or 'Arm Circles' verbatim would let safeFlow()
    immediately strip the very item just added for that exact joint. */
 const WARMUP_JOINT_ADD={
-  shoulder:{n:'Shoulder Activation',secs:20,cue:'Lift the chest and arms together, squeeze the shoulder blades. Gentle — this wakes the shoulder up, it is not a max hold.',img:'ex-superman.jpg'},
-  knee:{n:'Knee Prep — Glute Bridge',secs:30,cue:'Press through the heels, squeeze the glutes at the top. Strong glutes take the load off the knees before you move.',img:'ex-glutebridge.jpg'},
-  lowback:{n:'Spine Stability Prep',secs:30,cue:'Opposite arm and leg, brace and move slow. Grooves a stable spine before you load it.',img:'ex-birddog.jpg',vid:'ex-birddog.mp4'},
+  shoulder:{n:'Shoulder Activation',secs:20,pos:'front', cue:'Lift the chest and arms together, squeeze the shoulder blades. Gentle — this wakes the shoulder up, it is not a max hold.',img:'ex-superman.jpg'},
+  knee:{n:'Knee Prep — Glute Bridge',secs:30,pos:'back', cue:'Press through the heels, squeeze the glutes at the top. Strong glutes take the load off the knees before you move.',img:'ex-glutebridge.jpg'},
+  lowback:{n:'Spine Stability Prep',secs:30,pos:'fours', cue:'Opposite arm and leg, brace and move slow. Grooves a stable spine before you load it.',img:'ex-birddog.jpg',vid:'ex-birddog.mp4'},
 };
 function jointAwareWarmup(items){
   try{
@@ -10010,8 +10020,15 @@ function jointAwareWarmup(items){
 }
 function runFlow(items,title,color){
   items=safeFlow(items);
-  let idx=0,phase='ready',ready=5,trans=0,remain=0,total=Math.max(1,items[0].secs),deadline=0;
-  const TRANSITION=4;   // seconds to reposition between moves (floor <-> standing)
+  let idx=0,phase='ready',ready=5,trans=0,transTotal=0,remain=0,total=Math.max(1,items[0].secs),deadline=0;
+  /* THE REPOSITION TIME IS A PROPERTY OF THE CHANGE, NOT A CONSTANT. Four
+     seconds flat is fine for arm circles into torso twists — both standing —
+     and nowhere near enough to get from Hip Circles down onto your back for
+     Glute Bridges. The warm-up makes three such changes and the cool-down
+     three more. An UNKNOWN position on either side reads as a change and gets
+     the longer window: over-waiting costs four seconds, under-waiting means
+     starting the next move on the floor while still standing. */
+  const TRANS_SAME=4, TRANS_MOVE=7;
   const C=2*Math.PI*100;
   openSheet(flowHTML(title,items.length,color||'var(--fire)'));
   /* The flow is as hands-free as the player and HIIT — it talks you through
@@ -10043,13 +10060,26 @@ function runFlow(items,title,color){
     beepGo(); haptic(30);
     coachSpeak(first?(it.n+'. '+(it.cue||'')):(it.cue||it.n)); ring(1);
   }
-  // Short "get into position" bridge before the NEXT move (floor <-> standing).
+  /* Naming the position the athlete is moving TO is the whole point of having
+     the data. "Get into position" tells a man lying on his back nothing; "Come
+     up to standing" tells him what to do without looking at the phone. */
+  const POS_MOVE={stand:'Come up to standing',back:'Lie on your back',
+                  front:'Lie face-down',fours:'Onto your hands and knees'};
+  function transSecs(from,to){
+    const a=from&&from.pos,b=to&&to.pos;
+    return (a&&b&&a===b)?TRANS_SAME:TRANS_MOVE;
+  }
+  // The "get into position" bridge before the NEXT move.
   function enterTransition(){
-    const it=items[idx]; phase='transition'; trans=TRANSITION;
-    set('#flowName',it.n); set('#flowCue','Get into position — '+it.n);
+    const it=items[idx],prev=items[idx-1];
+    phase='transition'; trans=transSecs(prev,it); transTotal=trans;
+    const moved=!(prev&&it&&prev.pos&&it.pos&&prev.pos===it.pos);
+    const how=(moved&&POS_MOVE[it&&it.pos])||'Get into position';
+    set('#flowName',it.n); set('#flowCue',how+' — '+it.n);
     set('#flowStep',(idx+1)+' / '+items.length); set('#flowNum',trans);
-    showFlowMedia(it); ring(1); beep(1000,.15,0.7);
-    coachSpeak('Next up. '+it.n+'. Get into position.');
+    showFlowMedia(it); ring(1);
+    repositionCue();
+    coachSpeak('Next up. '+it.n+'. '+how+'.');
   }
   function tick(){
     if(phase==='ready'){
@@ -10069,6 +10099,7 @@ function runFlow(items,title,color){
     }
     if(phase==='transition'){
       trans--;
+      ring(transTotal?trans/transTotal:1);
       /* No SPOKEN digits here. _deviceSpeak() calls synth.cancel() on every
          line, so the 3-2-1 killed "Next up. Arm Circles. Get into position."
          one second after it started — reported from the phone as the flow
@@ -10077,8 +10108,16 @@ function runFlow(items,title,color){
          v302 made when two countdowns fought over the last three seconds:
          the beeps are the countdown, and a voice line on top of them is not
          a second opinion, it is an interruption. */
-      if(trans>0){beep(1000,.15,0.7);set('#flowNum',trans);return;}
-      beepGo(); phase='run'; startItem(false); return;
+      /* A GAP IS WHAT MAKES IT A SEPARATE PHASE. Beeping every second here put
+         the transition inside an unbroken run of identical beeps reaching back
+         to the effort's own ten-second marker, so nothing in the sound said the
+         stretch had ended — which is exactly what was reported. The falling
+         reposition cue opens it, the middle is SILENT while the athlete is
+         actually moving, and only the last three seconds count in. */
+      if(trans>0){if(trans<=3)beep(1000,.15,0.7);set('#flowNum',trans);return;}
+      /* startItem() fires beepGo() itself — the extra one here made the handover
+         sound two GO tones 0 ms apart, which reads as a stutter, not emphasis. */
+      phase='run'; startItem(false); return;
     }
     /* Wall-clock FLOOR, the same one plTickHold() and ivTick() carry. A bare
        `remain--` counts CALLBACKS, and a throttled tab delivers roughly one a
