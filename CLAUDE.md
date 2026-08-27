@@ -4183,6 +4183,103 @@ Settings panel renders the key input whenever the toggle is on — the screen
 asks for the missing half rather than failing silently.
 
 
+## The label respected the unit setting and the number never did (v337)
+
+Found by asking one question of every surface added since v294: **what does an
+imperial athlete actually see?** The ruck card converts. The bike card
+converts. The run card's advice line converts. The Progress activity rows
+convert. The endurance and ruck **plans** did not — and they were the newest.
+
+They wrote the two halves of a figure as separate expressions:
+
+```js
+`${w.km} ${distUnit()}`
+```
+
+`distUnit()` reads `profile.unit`; `w.km` is raw kilometres. So the plan's
+**8 km** was printed to an imperial athlete as **"8 mi"**.
+
+| the plan means | it printed | the truth |
+|---|---|---|
+| 8 km running | **8 mi** | 5.0 mi |
+| 5 km rucking | **5 mi** | 3.1 mi |
+| 13 km on your feet | **13 mi** | 8.1 mi |
+
+**That is 61% more running than prescribed, in week 1, on the one plan in this
+app whose entire purpose is to cap weekly growth at 10%** — the injury the plan
+exists to prevent, delivered by the plan itself. Nothing threw, the number was
+plausible, and the label was the only thing that had been thought about.
+
+`distShow(km)` converts and labels in **one expression**, because two halves of
+one figure written as two expressions is exactly how they came to disagree.
+
+### The run card printed `/km` above its own `MI` box
+
+Same round, same class. `runPaceLabel()` returned minutes per kilometre for
+everybody, while the input box three lines below it is labelled with
+`distUnit()`. The athlete read *"About 6:11 /km"* and then typed a distance
+into a box that says **MI**. The ruck card one block down has converted its
+speed through `kmToShow()` since it was written.
+
+The prose went with it: *"Running costs about the same per kilometre … the same
+5 km comes out within 9%"* is a sentence, and a converted number above an
+unconverted word is half a fix.
+
+### What deliberately does NOT convert
+
+**A published standard keeps the unit it was published in.** The CAF's own test
+is a **2.4 km** time trial, its shuttle is **20 m**, its sandbag is **20 kg**
+and the march is **5 km under 35 kg**. Converting a named standard to "1.5 mi"
+would satisfy every assertion about the athlete's units and is the wrong
+answer — the athlete is training toward the figure their own unit will quote at
+them. `runTTLabel()` is pinned in both units for exactly this reason, and it is
+the check that catches the over-eager "convert everything" mutant.
+
+`6 × 400 m` stays too: a lap is 400 m on every track in the world.
+
+### Two check lessons, both already in this file
+
+**The seconds carry could not fire on today's data.** None of the four real
+paces rounds to a 60th second, so a mutant deleting `if(ss===60){mm++;ss=0;}`
+walked through a sweep of all eight labels. Exercised directly instead — a
+synthetic pace chosen so `60/kmh` comes to 7.996 minutes — the same technique
+the hardness-band and anchor-unit guards use. **A guard that cannot fire in the
+case you tested is not tested.**
+
+**And one mutant escaped by measuring the label instead of the payload.** The
+combined-foot-volume check asked `/together: [\d.]+ mi on your feet/`, which is
+satisfied by the raw kilometre number wearing a mile label — which IS the
+defect. Reverting that one site passed clean. It now pins the converted VALUE,
+with the raw figure explicitly refused beside it. Third time this session:
+**measure the payload, not the container.**
+
+### Sweeping the class found one more, which is the point of sweeping
+
+The two sites that prompted the round were the plans. A scan of **every**
+remaining `${distUnit()}` site — asking of each whether a conversion was in
+reach — turned up Reference's bike-levels table printing a raw `${b.kmh} km/h`
+with the unit hardcoded into the sentence. Honest, in that the number and the
+label agreed, but the bike CARD two screens away shows the same table in
+`mi/h`: one table described in two units is the "same number, two labels" the
+Progress summary was cleaned of.
+
+Every other `${distUnit()}` site was already correct, and confirming that by
+MEASUREMENT rather than by reading is what made the scan worth running —
+`bikeNeed()`, `ruckNeed()`, `runNeed()` and `bikeRide()` all convert at source,
+so the four `.dist` call sites that look bare are not.
+
+**And the check for it failed first on `#view-ref`, which does not exist.** The
+guard caught it — the same `#view-guide` slip made twice in one session, and
+the reason `document.body` is never the fallback: its `innerHTML` contains the
+app's own source. Reference has had two panes since v314, so the check sets the
+pane as well as the tab.
+
+Twelve mutants, all caught after that rewrite. The floor throughout is the
+metric athlete: every assertion about conversion has its unchanged sibling
+pinned beside it, so a `distShow()` that converted for everybody fails four
+checks.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
