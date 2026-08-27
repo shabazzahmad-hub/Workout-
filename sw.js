@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v341';
+const CACHE = 'coreforge-v342';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
@@ -42,72 +42,85 @@ const SHELL_MIN = [
 ];
 
 /* What a new athlete meets in their first fortnight. */
+/* What a NEW athlete meets before the background top-up reaches EXTRA: every
+   baseline test, every SAFE_SWAP substitute those tests can hand a flagged
+   athlete, the warm-up and cool-down, and a beginner's first fortnight.
+
+   This is a FIFTH hand-kept place that has to move when a test is added, and it
+   had drifted exactly the way the other four did: Burpees arrived as the tenth
+   test in v252 and its photo stayed at the back of a 144-file queue, along with
+   three of the five substitutes — so a WRIST- or SHOULDER-flagged athlete, the
+   one the app takes the most care with, met more missing photos than an
+   unflagged one. Suite 12 now derives the requirement from TESTS, SAFE_SWAP and
+   a real beginner's first fourteen sessions rather than trusting this list.
+
+   Moving a file here costs no download: the same pack is fetched either way,
+   this only decides what arrives first. */
 const FIRST_RUN = [
   './cd-breathing.jpg','./cd-catcow.jpg','./cd-childs.jpg','./cd-cobra.jpg',
   './cd-knees.jpg','./cd-twistleft.jpg','./cd-twistright.jpg','./ex-bicycle.jpg',
-  './ex-buttkick.jpg','./ex-crunch.jpg','./ex-deadbug.jpg','./ex-glutebridge.jpg',
-  './ex-heeltouch.jpg','./ex-hollow.jpg','./ex-inchworm.jpg','./ex-invertedrow.jpg',
-  './ex-jumpingjack.jpg','./ex-jumpsquat.jpg','./ex-kneeplank.jpg','./ex-kneepushup.jpg','./ex-kneeside.jpg',
-  './ex-marchplace.jpg','./ex-plank.jpg','./ex-pushup.jpg','./ex-revcrunch.jpg',
-  './ex-sealjack.jpg','./ex-sideplank.jpg','./ex-situp.jpg','./ex-squat.jpg',
-  './ex-towelrow.jpg','./ex-tuckhollow.jpg','./ex-wallsit.jpg','./wu-armcircles.jpg',
-  './wu-birddog.jpg','./wu-catcow.jpg','./wu-glutebridge.jpg','./wu-hipcircles.jpg',
-  './wu-kneehug.jpg','./wu-march.jpg','./wu-torsotwist.jpg'
+  './ex-burpee.jpg','./ex-buttkick.jpg','./ex-crunch.jpg','./ex-deadbug.jpg',
+  './ex-fistpushup.jpg','./ex-glutebridge.jpg','./ex-heeltouch.jpg','./ex-hollow.jpg',
+  './ex-inchworm.jpg','./ex-invertedrow.jpg','./ex-jumpingjack.jpg','./ex-jumpsquat.jpg',
+  './ex-kneekick.jpg','./ex-kneeplank.jpg','./ex-kneepushup.jpg','./ex-kneeside.jpg',
+  './ex-legraise.jpg','./ex-marchplace.jpg','./ex-mountainclimber.jpg','./ex-plank.jpg',
+  './ex-pushup.jpg','./ex-quickpunch.jpg','./ex-revcrunch.jpg','./ex-sealjack.jpg',
+  './ex-sideplank.jpg','./ex-situp.jpg','./ex-squat.jpg','./ex-squatthrust.jpg',
+  './ex-swimmer.jpg','./ex-toetouch.jpg','./ex-towelrow.jpg','./ex-tuckhollow.jpg',
+  './ex-wallsit.jpg','./wu-armcircles.jpg','./wu-birddog.jpg','./wu-catcow.jpg',
+  './wu-glutebridge.jpg','./wu-hipcircles.jpg','./wu-kneehug.jpg','./wu-march.jpg',
+  './wu-torsotwist.jpg'
 ];
 
 /* The other 144. Stills, then video. The three screenshot-*.png files at the
    end are only ever read by the browser's OWN install-prompt UI, never
    fetched by the running app — least essential, hence EXTRA. */
 const EXTRA = [
-  './ex-abroll.jpg','./ex-abrollstand.jpg','./ex-archerpushup.jpg','./ex-asiansquat.jpg','./ex-atomicpushup.jpg',
-  './ex-bearcrawl.jpg','./ex-bearhold.jpg','./ex-benchdip.jpg','./ex-bike.jpg',
-  './ex-birddog.jpg','./ex-boxpistol.jpg','./ex-broadjump.jpg','./ex-bulgarian.jpg',
-  './ex-btbalance.jpg','./ex-btpushup.jpg','./ex-btsideplank.jpg','./ex-btsquat.jpg',
-  './ex-ruckstepup.jpg','./ex-rucksquat.jpg','./ex-ruckgm.jpg','./ex-ruckcarry.jpg',
-  './ex-sbaglift.jpg','./ex-sbagshuttle.jpg','./ex-rushes.jpg','./ex-sbagdrag.jpg',
-  './ex-burpee.jpg','./ex-burpeetuck.jpg','./ex-count8.jpg','./ex-calfraise.jpg','./ex-chinup.jpg',
-  './ex-closepushup.jpg','./ex-copenhagen.jpg','./ex-cossack.jpg','./ex-crabwalk.jpg',
-  './ex-crossclimber.jpg','./ex-dbbench.jpg','./ex-dbcarry.jpg','./ex-dbcp.jpg','./ex-dbcurl.jpg',
-  './ex-dbdevil.jpg','./ex-dbfloor.jpg','./ex-dbgoblet.jpg',
-  './ex-dblunge.jpg','./ex-dbmanmaker.jpg','./ex-dbpress.jpg','./ex-dbrdl.jpg','./ex-dbrenegade.jpg',
-  './ex-dbrow.jpg','./ex-dbthruster.jpg','./ex-dbtwist.jpg','./ex-dbpallof.jpg','./ex-deadhang.jpg',
-  './ex-declinepushup.jpg','./ex-diamondpushup.jpg','./ex-dipknee.jpg','./ex-dips.jpg',
-  './ex-dragonflag.jpg','./ex-dragonflagfull.jpg','./ex-elevatedpike.jpg','./ex-extplank.jpg','./ex-fastfeet.jpg','./ex-fistpushup.jpg',
+  './ex-abroll.jpg','./ex-abrollstand.jpg','./ex-archerpushup.jpg','./ex-asiansquat.jpg',
+  './ex-atomicpushup.jpg','./ex-bearcrawl.jpg','./ex-bearhold.jpg','./ex-benchdip.jpg',
+  './ex-bike.jpg','./ex-birddog.jpg','./ex-boxpistol.jpg','./ex-broadjump.jpg',
+  './ex-bulgarian.jpg','./ex-btbalance.jpg','./ex-btpushup.jpg','./ex-btsideplank.jpg',
+  './ex-btsquat.jpg','./ex-ruckstepup.jpg','./ex-rucksquat.jpg','./ex-ruckgm.jpg',
+  './ex-ruckcarry.jpg','./ex-sbaglift.jpg','./ex-sbagshuttle.jpg','./ex-rushes.jpg',
+  './ex-sbagdrag.jpg','./ex-burpeetuck.jpg','./ex-count8.jpg','./ex-calfraise.jpg',
+  './ex-chinup.jpg','./ex-closepushup.jpg','./ex-copenhagen.jpg','./ex-cossack.jpg',
+  './ex-crabwalk.jpg','./ex-crossclimber.jpg','./ex-dbbench.jpg','./ex-dbcarry.jpg',
+  './ex-dbcp.jpg','./ex-dbcurl.jpg','./ex-dbdevil.jpg','./ex-dbfloor.jpg',
+  './ex-dbgoblet.jpg','./ex-dblunge.jpg','./ex-dbmanmaker.jpg','./ex-dbpress.jpg',
+  './ex-dbrdl.jpg','./ex-dbrenegade.jpg','./ex-dbrow.jpg','./ex-dbthruster.jpg',
+  './ex-dbtwist.jpg','./ex-dbpallof.jpg','./ex-deadhang.jpg','./ex-declinepushup.jpg',
+  './ex-diamondpushup.jpg','./ex-dipknee.jpg','./ex-dips.jpg','./ex-dragonflag.jpg',
+  './ex-dragonflagfull.jpg','./ex-elevatedpike.jpg','./ex-extplank.jpg','./ex-fastfeet.jpg',
   './ex-flutter.jpg','./ex-halfburpee.jpg','./ex-hanglegraise.jpg','./ex-highknees.jpg',
   './ex-hindupushup.jpg','./ex-hiplift.jpg','./ex-hipthrust.jpg','./ex-hollowflutter.jpg',
   './ex-hollowrock.jpg','./ex-hspushup.jpg','./ex-inclinepushup.jpg','./ex-invertedrowelev.jpg',
-  './ex-isoclimber.jpg','./ex-kbcarry.jpg','./ex-kbcp.jpg',
-  './ex-kbgoblet.jpg','./ex-kbhalo.jpg','./ex-kbheli.jpg','./ex-kblunge.jpg',
-  './ex-kbrdl.jpg','./ex-kbrow.jpg','./ex-kbsnatch.jpg','./ex-kbswing.jpg',
-  './ex-kbtgu.jpg','./ex-kbthruster.jpg','./ex-kbwindmill.jpg','./ex-kbsuitcase.jpg',
-  './ex-kbfigure8.jpg','./ex-kbrenegade.jpg','./ex-kbhighpull.jpg','./ex-kneekick.jpg','./ex-kneeraise.jpg','./ex-kneetoelbow.jpg',
-  './ex-latshuffle.jpg','./ex-legcircle.jpg','./ex-legraise.jpg','./ex-longplank.jpg','./ex-lsit.jpg',
-  './ex-march.jpg','./ex-mbsitup.jpg','./ex-mbslam.jpg','./ex-mbtwist.jpg','./ex-mbchop.jpg',
-  './ex-mountainclimber.jpg','./ex-negpullup.jpg','./ex-nordic.jpg','./ex-pikepushup.jpg',
-  './ex-pistol.jpg','./ex-plegraise.jpg','./ex-ppushup.jpg','./ex-tucklsit.jpg','./ex-plankjack.jpg','./ex-plankleg.jpg','./ex-plankrot.jpg',
-  './ex-planktap.jpg','./ex-pseudoplanche.jpg','./ex-pullup.jpg','./ex-quickpunch.jpg','./ex-reverselunge.jpg',
-  './ex-reverseplank.jpg','./ex-ropeslam.jpg','./ex-ropewave.jpg','./ex-ropeplank.jpg','./ex-ruck.jpg',
+  './ex-isoclimber.jpg','./ex-kbcarry.jpg','./ex-kbcp.jpg','./ex-kbgoblet.jpg',
+  './ex-kbhalo.jpg','./ex-kbheli.jpg','./ex-kblunge.jpg','./ex-kbrdl.jpg',
+  './ex-kbrow.jpg','./ex-kbsnatch.jpg','./ex-kbswing.jpg','./ex-kbtgu.jpg',
+  './ex-kbthruster.jpg','./ex-kbwindmill.jpg','./ex-kbsuitcase.jpg','./ex-kbfigure8.jpg',
+  './ex-kbrenegade.jpg','./ex-kbhighpull.jpg','./ex-kneeraise.jpg','./ex-kneetoelbow.jpg',
+  './ex-latshuffle.jpg','./ex-legcircle.jpg','./ex-longplank.jpg','./ex-lsit.jpg',
+  './ex-march.jpg','./ex-mbsitup.jpg','./ex-mbslam.jpg','./ex-mbtwist.jpg',
+  './ex-mbchop.jpg','./ex-negpullup.jpg','./ex-nordic.jpg','./ex-pikepushup.jpg',
+  './ex-pistol.jpg','./ex-plegraise.jpg','./ex-ppushup.jpg','./ex-tucklsit.jpg',
+  './ex-plankjack.jpg','./ex-plankleg.jpg','./ex-plankrot.jpg','./ex-planktap.jpg',
+  './ex-pseudoplanche.jpg','./ex-pullup.jpg','./ex-reverselunge.jpg','./ex-reverseplank.jpg',
+  './ex-ropeslam.jpg','./ex-ropewave.jpg','./ex-ropeplank.jpg','./ex-ruck.jpg',
   './ex-russiantwist.jpg','./ex-sbhamcurl.jpg','./ex-sbrollout.jpg','./ex-sbstir.jpg',
-  './ex-scappull.jpg','./ex-scissors.jpg','./ex-seatedtwist.jpg',
-  './ex-shadowbox.jpg','./ex-sidedip.jpg','./ex-sideplankreach.jpg','./ex-singlebridge.jpg',
-  './ex-singlecalf.jpg','./ex-sissysquat.jpg','./ex-sitthrust.jpg','./ex-situptwist.jpg','./ex-skater.jpg','./ex-skaterground.jpg',
-  './ex-skip.jpg','./ex-slrdl.jpg','./ex-spidermanpushup.jpg','./ex-splitjump.jpg',
-  './ex-splitsquat.jpg','./ex-sprawl.jpg','./ex-sprint.jpg','./ex-squatjack.jpg',
-  './ex-squatthrust.jpg','./ex-standingoblique.jpg','./ex-superman.jpg','./ex-superpushup.jpg',
-  './ex-swimmer.jpg','./ex-tablerow.jpg','./ex-tempopushup.jpg','./ex-toetouch.jpg','./ex-tuckjump.jpg',
+  './ex-scappull.jpg','./ex-scissors.jpg','./ex-seatedtwist.jpg','./ex-shadowbox.jpg',
+  './ex-sidedip.jpg','./ex-sideplankreach.jpg','./ex-singlebridge.jpg','./ex-singlecalf.jpg',
+  './ex-sissysquat.jpg','./ex-sitthrust.jpg','./ex-situptwist.jpg','./ex-skater.jpg',
+  './ex-skaterground.jpg','./ex-skip.jpg','./ex-slrdl.jpg','./ex-spidermanpushup.jpg',
+  './ex-splitjump.jpg','./ex-splitsquat.jpg','./ex-sprawl.jpg','./ex-sprint.jpg',
+  './ex-squatjack.jpg','./ex-standingoblique.jpg','./ex-superman.jpg','./ex-superpushup.jpg',
+  './ex-tablerow.jpg','./ex-tempopushup.jpg','./ex-tuckjump.jpg',
   './ex-tuckvup.jpg','./ex-typewriter.jpg','./ex-vertcrunch.jpg','./ex-vsit.jpg',
-  './ex-vup.jpg','./ex-walkinglunge.jpg','./ex-wallhandstand.jpg','./ex-wallwalk.jpg','./ex-warriorthree.jpg',
-  './ex-weightedtwist.jpg','./ex-widepullup.jpg','./ex-windshield.jpg','./notif-hlr.jpg',
-  './phys-1.jpg','./phys-2.jpg','./phys-3.jpg','./phys-4.jpg',
-  './phys-5.jpg',
-  './screenshot-today.png','./screenshot-fuel.png','./screenshot-progress.png',
-  /* VIDEO SORTS LAST, and nothing may follow it. 17 clips at ~3.7 MB against
-     379 KB of screenshots — the heaviest and least necessary assets, topped up
-     only once everything an athlete actually needs is already on the phone.
-     The three screenshots used to trail the videos; they are small, so they
-     belong ahead of them. */
-  './ex-atomicpushup.mp4','./ex-birddog.mp4','./ex-burpee.mp4','./ex-squatthrust.mp4',
-  './ex-inchworm.mp4','./ex-cossack.mp4','./ex-abroll.mp4',
+  './ex-vup.jpg','./ex-walkinglunge.jpg','./ex-wallhandstand.jpg','./ex-wallwalk.jpg',
+  './ex-warriorthree.jpg','./ex-weightedtwist.jpg','./ex-widepullup.jpg','./ex-windshield.jpg',
+  './notif-hlr.jpg','./phys-1.jpg','./phys-2.jpg','./phys-3.jpg',
+  './phys-4.jpg','./phys-5.jpg','./screenshot-today.png','./screenshot-fuel.png',
+  './screenshot-progress.png','./ex-atomicpushup.mp4','./ex-birddog.mp4','./ex-burpee.mp4',
+  './ex-squatthrust.mp4','./ex-inchworm.mp4','./ex-cossack.mp4','./ex-abroll.mp4',
   './ex-halfburpee.mp4','./ex-jumpingjack.mp4','./ex-jumpsquat.mp4','./ex-kbhalo.mp4',
   './ex-kbheli.mp4','./ex-kbtgu.mp4','./ex-nordic.mp4','./ex-pistol.mp4',
   './ex-superpushup.mp4','./wu-march.mp4'
