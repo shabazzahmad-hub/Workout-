@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='360';
+const APP_VERSION='361';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -7322,6 +7322,7 @@ function openSpecial(){
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="specialChooser('bike')"><b style="font-size:15px">🚴 Bike trainer</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Indoor ride intervals on your road bike + trainer</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="specialChooser('sprint')"><b style="font-size:15px">🏃 Sprint runs</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Max-effort sprint intervals with recovery</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="openGrinder()"><b style="font-size:15px">🪨 The Grinder</b><div class="tiny muted" style="margin-top:3px;font-weight:600">One unbroken effort — no rest between movements, one clock</div></button>
+      <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="openHoldTests()"><b style="font-size:15px">⏱️ Hold to failure</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Plank, dead hang, wall sit — one hold, timed to your limit</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="openOps()"><b style="font-size:15px">🎖️ Benchmark Ops</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Timed hero workouts — chase your best time</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="openBuilder()"><b style="font-size:15px">🛠️ Custom workout</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Build your own session from any moves</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="openMobility()"><b style="font-size:15px">🧘 Mobility &amp; stretch</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Guided flows to loosen up &amp; recover</div></button>
@@ -9810,6 +9811,201 @@ function nearGrindOpen(el,tid){const g=grindAtOpen(tid);return g>=0&&Math.abs(el
    thirds of the published benchmark when there is no prior. Same reasoning as
    the ruck MET being computed from bodyweight rather than looked up — a fixed
    number cannot be right about a body it does not know. */
+/* ---- THE HOLD TEST: one movement, held to failure (v361) -------------------
+   Measured before building it: the baseline battery measures four to-failure
+   holds, and taking one of them means taking a TEN-test battery whose numbers
+   anchor every prescription for a year. Outside it, `gripmax` was the app's
+   only standalone max effort — one movement (dead hang), and a three-minute
+   COUNTDOWN rather than a hold, so it cannot record anything past 3:00.
+
+   So there was no way to ask "how long can I hold this today" and watch the
+   answer move. That is what this is.
+
+   IT DOES NOT TOUCH THE BASELINE OR THE PRESCRIPTION, and that is the whole
+   design. TEST_PROTOCOL exists because a number taken under different
+   conditions is not the same measurement — the battery is taken rested, in a
+   fixed order, with two minutes between efforts. A plank done on a Tuesday
+   after a session is a real number and it is NOT that one. It gets its own
+   record and its own trend, and currentMaxes() never reads it. */
+const HOLD_TESTS=[
+  {id:'plank',   exId:'plank',    name:'Forearm Plank',  what:'trunk endurance'},
+  {id:'hang',    exId:'deadhang', name:'Dead Hang',      what:'grip and shoulders'},
+  {id:'wallsit', exId:'wallsit',  name:'Wall Sit',       what:'legs under time'},
+  {id:'side',    exId:'sideplank',name:'Side Plank',     what:'the weaker side'},
+  {id:'hollow',  exId:'hollow',   name:'Hollow Body Hold',what:'anterior chain'},
+];
+function holdTest(id){return HOLD_TESTS.filter(t=>t.id===id)[0]||null;}
+function holdLog(){if(!Array.isArray(STATE.holdLog))STATE.holdLog=[];return STATE.holdLog;}
+/* A HOLD DONE FRESH AND A HOLD DONE AFTER A SESSION ARE NOT COMPARABLE, and
+   the app already knows which this was. Without recording it the trend
+   silently mixes the two and reads as progress or a slide that never happened
+   — TEST_PROTOCOL's own discipline, at the scale of a single effort. */
+function holdFreshNow(){try{return !trainedToday();}catch(e){return false;}}
+function logHold(id,secs,fresh){
+  const t=holdTest(id);if(!t)return null;
+  secs=Math.max(0,Math.round(+secs||0));
+  if(!secs)return null;                    // a hold that never started is not a result
+  const rec={date:todayISO(),id:t.id,secs,fresh:fresh===true,at:Date.now()};
+  const l=holdLog();l.push(rec);if(l.length>200)l.splice(0,l.length-200);
+  save();return rec;
+}
+/* LIKE FOR LIKE ONLY. The best is the best FRESH hold, because that is the
+   number a re-test is trying to beat; a fatigued effort is kept and shown but
+   never sets the bar. Returns 0 when nothing fresh has been recorded, which
+   reads as "no bar yet" rather than as a zero the athlete scored. */
+function holdBest(id,fresh){
+  const f=holdLog().filter(r=>r&&r.id===id&&(fresh===false||r.fresh===true));
+  return f.length?Math.max.apply(null,f.map(r=>r.secs||0)):0;
+}
+function holdLast(id){
+  const f=holdLog().filter(r=>r&&r.id===id).sort((a,b)=>(a.at||0)-(b.at||0));
+  return f.length?f[f.length-1]:null;
+}
+/* The delta is withheld unless BOTH efforts were fresh — the same fail-closed
+   call v320 made about a substituted baseline. Two numbers taken in different
+   states are not a trend, and saying they are is worse than saying nothing. */
+function holdTrend(id){
+  const f=holdLog().filter(r=>r&&r.id===id&&r.fresh===true).sort((a,b)=>(a.at||0)-(b.at||0));
+  if(f.length<2)return null;
+  const last=f[f.length-1],prev=f[f.length-2];
+  return {last:last.secs,prev:prev.secs,delta:last.secs-prev.secs,date:last.date,prevDate:prev.date};
+}
+/* ---- the screen and the timer ------------------------------------------- */
+function fmtDelta(d){return (d>0?'+':(d<0?'−':''))+Math.abs(d)+'s';}
+/* The tracker half of the feature. It lives on Progress ▸ Strength beside the
+   baseline trend and NOT inside it, because these are a different measurement
+   taken under different conditions — the two sitting in one chart would say
+   they are comparable, and they are not. */
+function holdTrackerHTML(){
+  const any=holdLog().length;
+  let h=`<div class="section-label">Hold to failure · your own record</div>`;
+  if(!any){
+    return h+`<div class="note info">No holds tested yet. Special training ▸ <b>Hold to failure</b> times a plank, a dead hang or a wall sit to your limit and keeps the number here.</div>`;
+  }
+  h+=`<div class="card pad">`;
+  HOLD_TESTS.forEach(t=>{
+    const rows=holdLog().filter(r=>r&&r.id===t.id);
+    if(!rows.length)return;
+    const best=holdBest(t.id),tr=holdTrend(t.id),last=holdLast(t.id);
+    const ex=EX[t.exId]||{name:t.name};
+    h+=`<div class="kv" data-holdrow="${t.id}"><span>${_ve(ex.name)}</span><b>${best>0?fmtTime(best):'—'}${
+      tr?` <span style="color:${tr.delta>=0?'var(--green)':'var(--fire-l)'}">${fmtDelta(tr.delta)}</span>`
+        :(last&&!last.fresh?` <span class="tiny muted">after training</span>`:'')}</b></div>`;
+  });
+  h+=`</div>`;
+  /* WHY A NUMBER IS NOT MOVING IS WORTH SAYING. A best that only fresh holds
+     can set, with every recent effort taken after a session, otherwise looks
+     like a plateau the athlete cannot explain. */
+  const fatiguedOnly=HOLD_TESTS.filter(t=>{
+    const rows=holdLog().filter(r=>r&&r.id===t.id);
+    return rows.length&&!rows.some(r=>r.fresh===true);
+  });
+  if(fatiguedOnly.length)h+=`<div class="tiny muted" style="margin-top:6px">${fatiguedOnly.length===1?'One hold has':fatiguedOnly.length+' holds have'} only been tested after training, so ${fatiguedOnly.length===1?'it has':'they have'} no best yet — test fresh to set one.</div>`;
+  h+=`<div class="tiny muted" style="margin-top:6px">Separate from your baseline on purpose: the battery is taken rested and in a fixed order, and these are not.</div>`;
+  return h;
+}
+function holdRowHTML(t){
+  const best=holdBest(t.id),last=holdLast(t.id),tr=holdTrend(t.id);
+  const ex=EX[safeSwap(t.exId)]||EX[t.exId]||{name:t.name};
+  const risky=jointRisky(t.exId,STATE.profile.limitations)&&safeSwap(t.exId)!==t.exId;
+  return `<button class="btn ghost" data-hold="${t.id}" style="text-align:left;display:block;padding:14px" onclick="startHoldTest('${t.id}')">
+    <b style="font-size:15px">${_ve(ex.name)}</b>
+    <div class="tiny muted" style="margin-top:3px;font-weight:600">${t.what}${risky?' · swapped for a flagged joint':''}</div>
+    <div class="tiny" style="margin-top:6px;font-weight:700">
+      ${best>0?`Best ${fmtTime(best)}`:'Not tested yet'}${last&&last.secs?` · last ${fmtTime(last.secs)}${last.fresh?'':' (after training)'}`:''}
+      ${tr?` · <span style="color:${tr.delta>=0?'var(--green)':'var(--fire-l)'}">${fmtDelta(tr.delta)} on the one before</span>`:''}
+    </div></button>`;
+}
+function openHoldTests(){
+  const anyFatigued=holdLog().some(r=>r&&r.fresh===false);
+  openSheet(`<h3>⏱️ Hold to failure</h3>
+    <p class="muted sm" style="margin:2px 0 10px">One movement, held until your form goes. The clock counts <b>up</b> and does not stop you — you decide when it is over, and that decision is the test.</p>
+    <p class="tiny muted" style="margin:0 0 12px">These are yours to watch over time. They do <b>not</b> change your program or your baseline: the battery is taken rested and in a fixed order, and a hold done on an ordinary Tuesday is a real number but not that one.</p>
+    ${holdFreshNow()?`<p class="tiny" style="margin:0 0 12px;font-weight:700;color:var(--green)">You have not trained today — this one counts as a fresh test.</p>`
+      :`<p class="tiny muted" style="margin:0 0 12px;font-weight:700">You have already trained today, so this will be recorded as an after-training hold and will not set your best. Test fresh to move the number.</p>`}
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${HOLD_TESTS.map(holdRowHTML).join('')}
+    </div>
+    ${anyFatigued?`<p class="tiny muted" style="margin-top:12px">A hold marked <i>after training</i> is kept and shown, and is left out of the trend — two efforts taken in different states are not a comparison.</p>`:''}
+    <div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
+}
+let _ht=null;
+function stopHoldTimer(){if(_ht){clearInterval(_ht.iv);_ht=null;}}
+function startHoldTest(id){
+  const t=holdTest(id);if(!t)return;
+  /* safeSwap for the same reason the baseline battery applies it AND says so:
+     this is a maximal effort, so a silent substitution would be wrong — the
+     screen names the movement actually being held. */
+  const exId=safeSwap(t.exId),ex=EX[exId]||{name:t.name};
+  stopHoldTimer();try{primeVoice();}catch(e){}
+  const fresh=holdFreshNow();
+  openSheet(`
+  <div class="row" style="justify-content:space-between;margin-bottom:8px"><div class="tiny muted">${_ve(ex.name)} · ${fresh?'fresh test':'after training'}</div><button class="chip" onclick="cancelHoldTest()">Cancel</button></div>
+  <div class="timerbox" style="padding:10px 0 6px">
+    <div class="timerring solid" id="htRing">
+      ${plRingMediaHTML(ex)}
+      <div class="inner">
+        <div class="tt" id="htLbl">GET READY</div>
+        <div class="tnum rest" id="htBig">3</div>
+      </div>
+    </div>
+    <div class="tiny muted" id="htHint" style="margin-top:10px">Get into position…</div>
+  </div>
+  <button class="btn primary" id="htAction" onclick="stopHoldTest()" style="display:none">■ I am done — save it</button>`);
+  _ht={iv:setInterval(htTick,1000),mode:'ready',ready:3,elapsed:0,id:t.id,exId:exId,fresh:fresh,grindSaid:false};
+  htPaintReady();coachSay(ex.name+'. Hold until your form goes.');
+  /* Function DECLARATIONS: htPaintReady() runs on the line above, so a const
+     arrow here is still in its temporal dead zone and takes the whole timer
+     down — the btRing trap, verbatim. */
+  function htRing(v){const r=$('#htRing');if(r)r.classList.toggle('solid',v);}
+  function htPaintReady(){const b=$('#htBig');if(b){b.textContent=_ht.ready;b.className='tnum rest';}
+    const l=$('#htLbl');if(l)l.textContent='GET READY';
+    const h=$('#htHint');if(h)h.textContent='Get into position…';htRing(true);}
+  function htPaintRun(){const b=$('#htBig');if(b){b.textContent=fmtTime(_ht.elapsed);b.className='tnum go';}
+    const l=$('#htLbl');if(l)l.textContent='HOLD — ELAPSED';
+    const best=holdBest(_ht.id);
+    const h=$('#htHint');if(h)h.textContent=best>0?('Your best is '+fmtTime(best)+'. Hold your form.'):'Hold your form. Stop when it goes.';
+    const a=$('#htAction');if(a)a.style.display='block';htRing(false);}
+  function htTick(){
+    if(!_ht)return;
+    if(_ht.mode==='ready'){
+      _ht.ready--;
+      // No spoken digit: the beeps mark them and a digit cancels the announcement.
+      if(_ht.ready>0){beep(660,.09);htPaintReady();}
+      else{beep(990,.14);haptic(20);if(!motivate('start'))coachSay('Go!');_ht.mode='run';_ht.elapsed=0;_ht.grindSaid=false;htPaintRun();}
+      return;
+    }
+    _ht.elapsed++;
+    /* THE HARD PART, NAMED — at two thirds of their own best on THIS hold,
+       which is the only number that knows where their hard part is. With no
+       prior there is no bar and nothing is said. */
+    const g=grindAtBest(holdBest(_ht.id));
+    if(!_ht.grindSaid&&g>0&&_ht.elapsed===g){_ht.grindSaid=true;const gl=grindLine();if(gl)coachSay(gl);}
+    else if(_ht.elapsed>0&&_ht.elapsed%10===0&&!(g>0&&Math.abs(_ht.elapsed-g)<=1))motivate('during');
+    htPaintRun();
+  }
+}
+function cancelHoldTest(){stopHoldTimer();openHoldTests();}
+function stopHoldTest(){
+  if(!_ht)return;
+  const {id,elapsed,fresh,mode}=_ht;
+  stopHoldTimer();
+  if(mode!=='run'||!elapsed){toast('Nothing to save yet');openHoldTests();return;}
+  const best=holdBest(id);
+  const rec=logHold(id,elapsed,fresh);
+  if(!motivate('done'))coachSay('Time. '+fmtTime(elapsed)+'.');
+  /* A new personal best is only a best when it was taken fresh, and the toast
+     says which — a number that reads as a record and was not one is the kind
+     of quiet lie a marker exists to prevent. */
+  const isPB=rec&&fresh&&elapsed>best;
+  toast(isPB?('New best — '+fmtTime(elapsed)+' 🏆'):(fmtTime(elapsed)+(fresh?' logged':' logged (after training)')));
+  openHoldTests();
+}
+function grindAtBest(best){
+  if(!(best>0))return -1;
+  const at=Math.round(best*2/3);
+  return at>=12?at:-1;        // nothing to name inside the first few seconds
+}
 function grindAtOpen(testId){
   try{
     const t=(TESTS||[]).filter(x=>x.id===testId)[0];
@@ -9817,9 +10013,7 @@ function grindAtOpen(testId){
     let best=0;
     try{const m=currentMaxes();if(m&&m[testId]>0)best=m[testId];}catch(e){}
     if(!(best>0))best=t.bench||0;
-    if(!(best>0))return -1;
-    const at=Math.round(best*2/3);
-    return at>=12?at:-1;      // nothing to name inside the first few seconds
+    return grindAtBest(best);
   }catch(e){return -1;}
 }
 // Speak a random motivational line of the given kind (start|during|push|rest|done).
@@ -9866,7 +10060,10 @@ let timer=null;
 let _autoCloseT=null;
 function autoClose(ms,fn){clearTimeout(_autoCloseT);_autoCloseT=setTimeout(()=>{_autoCloseT=null;fn();},ms);}
 function cancelAutoClose(){if(_autoCloseT){clearTimeout(_autoCloseT);_autoCloseT=null;}}
-function stopTimer(){cancelAutoClose();if(timer){clearInterval(timer.iv);timer=null;}if(typeof _bt!=='undefined'&&_bt){clearInterval(_bt.iv);_bt=null;}}
+function stopTimer(){cancelAutoClose();if(timer){clearInterval(timer.iv);timer=null;}if(typeof _bt!=='undefined'&&_bt){clearInterval(_bt.iv);_bt=null;}
+  /* An interval must never outlive the sheet it paints. _ht ticks against
+     #htBig, so a dismissed sheet left it writing to a node that is gone. */
+  if(typeof _ht!=='undefined'&&_ht){clearInterval(_ht.iv);_ht=null;}}
 /* How loud the cues are, as a multiplier over every beep in the app. A single
    number rather than forty edited call sites, so the relative balance between
    a soft tick and the GO tone survives someone turning the whole thing up.
@@ -10788,6 +10985,7 @@ function renderProgress(){
       <button class="btn sm primary" style="flex:0 0 auto" onclick="retestNow()">Re-test</button></div></div>`;
   // strength trend charts (baseline + re-tests)
   h+=strengthTrendHTML();
+  h+=holdTrackerHTML();
   h+=sessionHistoryHTML();
   // PRs
   h+=`<div class="section-label">Personal bests · best prescribed &amp; completed</div>`;
@@ -19142,6 +19340,15 @@ function normalizeState(){
        finish — the same call medCleared() needed, because a backup that
        serialises the flag as the string 'false' is truthy and would turn every
        stopped session into a completed one, and the streak into a lie. */
+    /* Same shape as the grinder log, and `fresh` is the field that has to be
+       strict: a backup serialising it as the string 'false' is TRUTHY, and a
+       fatigued hold reading as a fresh one would set a best that was never
+       set — medCleared()'s defect, two fields over. */
+    if(!Array.isArray(STATE.holdLog))STATE.holdLog=[];
+    STATE.holdLog=STATE.holdLog.filter(x=>x&&typeof x==='object'&&isDateISO(x.date)&&holdTest(x.id))
+      .map(x=>({date:x.date,id:x.id,secs:Math.max(0,Math.round(+x.secs||0)),
+                fresh:x.fresh===true,at:+x.at||0}))
+      .filter(x=>x.secs>0);
     if(!Array.isArray(STATE.grindLog))STATE.grindLog=[];
     STATE.grindLog=STATE.grindLog.filter(x=>x&&typeof x==='object'&&isDateISO(x.date))
       .map(x=>({date:x.date,format:isGrinder(x.format)?x.format:'',done:x.done===true,
