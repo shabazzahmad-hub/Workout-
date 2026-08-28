@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='361';
+const APP_VERSION='362';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -6895,6 +6895,7 @@ function grinderLeft(){
     return left;
   }catch(e){return 0;}
 }
+function ivSessionSecs(){try{return (INTV&&INTV.seq)?INTV.seq.reduce((a,b)=>a+b.secs,0):0;}catch(e){return 0;}}
 function grinderLeftLabel(){const l=grinderLeft();return l>0?(fmtTime(l)+' LEFT'):'LAST STATION';}
 function fmtInfo(k){return HIIT_FORMATS[k]||SKIP_FORMATS[k]||SPECIAL_FORMATS[k]||ENDURANCE_FORMATS[k]||GRINDER_FORMATS[k]||{name:'Session',desc:''};}
 /* ---- Progression for the three groups with a real volume order -----------
@@ -7610,7 +7611,18 @@ function ivStep(idx){
   if(typeof idx==='number')INTV.i=idx;
   const step=INTV.seq[INTV.i];const ex=EX[step.exId]||{name:'Work'};const isWork=step.type==='work';
   ivClear();INTV.phase=isWork?'work':'rest';INTV.remain=step.secs;INTV.total=Math.max(1,step.secs);
-  INTV.grindSaid=false;     // one per round, cleared where the round begins
+  /* A GRINDER IS ONE EFFORT, NOT SIX. In HIIT each round is its own effort
+     with rest between, so the acknowledgement resets per round. A grinder
+     has no rest — it is one continuous piece of work — so resetting per
+     station said it six times in six minutes, which is a nag and
+     contradicts v359's own rule. Measured before this: 6 lines in a
+     6-station grinder.
+     THE POINT MOVING TO THE SESSION IS WHAT ACTUALLY FIXES IT, and this
+     guard is cover. Measured: session-elapsed runs 1..360 monotonically
+     and equals the point exactly ONCE, so restoring the per-station reset
+     changes nothing — an equivalent mutant, kept as intent against a
+     future change that makes the point station-scoped again. */
+  if(!isGrinder(INTV.format))INTV.grindSaid=false;
   INTV.deadline=Date.now()+step.secs*1000;   // wall-clock anchor — see ivTick()
   ivRenderStep(INTV.i);
   ivS('#ivNum',fmtTime(INTV.remain));ivS('#ivSub',isWork?'WORK':'REST');ivRingSet(1);
@@ -7644,8 +7656,15 @@ function ivTick(){
   /* Work only. A rest interval has no hard part to name, and saying so
      there would cost the phases the difference the ear uses to tell them
      apart — the same reason countdownCue() is kept off rest. */
-  if(INTV.phase==='work'&&!INTV.grindSaid&&(INTV.total-INTV.remain)===grindAt(INTV.total)){
-    INTV.grindSaid=true;const g=grindLine();if(g)plSay(g);}
+  /* THE LAST THIRD IS A PROPERTY OF THE EFFORT — and a grinder's effort is
+     the whole session, so its point is two thirds of the way through THAT,
+     not two thirds of the way into whichever minute it happens to be in. */
+  if(INTV.phase==='work'&&!INTV.grindSaid){
+    const gr=isGrinder(INTV.format);
+    const at=gr?grindAt(ivSessionSecs()):grindAt(INTV.total);
+    const el=gr?(ivSessionSecs()-grinderLeft()):(INTV.total-INTV.remain);
+    if(at>0&&el===at){INTV.grindSaid=true;const g=grindLine();if(g)plSay(g);}
+  }
   else if(INTV.remain<=3&&INTV.remain>0){beepDuck(300);beep(920,.17,0.92);}
   if(INTV.remain<=0){beepGo();haptic(30);ivClear();INTV.i++;
     if(INTV.i>=INTV.seq.length){whenPointerFree('iv',ivDone);return;}
@@ -7690,8 +7709,12 @@ function ivDone(){
      no completion record of any kind. HIIT_FORMATS/ENDURANCE_FORMATS are
      each documented as distinct stimuli with no natural harder/easier
      order, so this tracks time-at-format rather than suggesting a switch. */
-  const isTrackedNoOrder=sess.session.key==='specialhiit'||(sess.session.key==='specialcardio'&&!isBike);
-  const trackedGroup=sess.session.key==='specialhiit'?'hiit':'endurance';
+  /* The grinder joins its siblings here. It already writes its OWN record
+     — whether you finished — but its minutes went nowhere, while Special
+     HIIT one branch away offered exactly that. Two bonus conditioning
+     sessions, one offer between them. */
+  const isTrackedNoOrder=sess.session.key==='specialhiit'||isGrind||(sess.session.key==='specialcardio'&&!isBike);
+  const trackedGroup=(sess.session.key==='specialhiit'||isGrind)?'hiit':'endurance';
   $('#ivBody').innerHTML=`
     <div class="pl-name" style="margin-bottom:2px">${isGrind?'You finished it 🪨':(isMakeup?(makeupIsBike?'Ride logged 🚴':'Jacks logged 🤸'):(isSkip?'Rope work done 🪢':'Circuit complete 🔥'))}</div>
     <div class="pl-coach" style="margin-bottom:14px">${fmtInfo(INTV.format).name} · ${sess.session.name}</div>

@@ -6510,6 +6510,52 @@ its `else` orphaned, which tests nothing. **Read the mutant back.**
 
 Twenty-three mutants, all caught after those rewrites.
 
+## A grinder is one effort, not six (v362)
+
+Found by auditing v360 an hour after shipping it — for the fourth round running
+the best finding was in the round immediately before, which is the argument for
+auditing the change you just shipped before looking anywhere else.
+
+Reusing the HIIT engine brought its **per-round** semantics with it, and a
+grinder has no rest: it is one continuous piece of work. Two consequences,
+both measured:
+
+- `INTV.grindSaid` was cleared at every station, so v359's acknowledgement was
+  spoken **six times in a six-minute grinder** — a nag, and a direct
+  contradiction of that round's own "one per effort" rule.
+- The point was two thirds of a **station** (40 seconds into whichever minute
+  it was in) rather than two thirds of the **effort**, which for a grinder is
+  the whole session. That is v359's own headline lesson landing on v360.
+
+`ivSessionSecs()` gives the whole sequence, and the grinder's point is 240 of
+360 seconds. **The floor beside it is that HIIT rounds keep their own** — they
+really are separate efforts with rest between, so a fix that reset once
+globally would silence five rounds of a Tabata.
+
+### And its minutes went nowhere
+
+Special HIIT's finish screen offers *"✅ Log N min to my record"* through
+`isTrackedNoOrder`; the grinder's replaced the stats and never joined it. So a
+finished grinder wrote its own record — whether you finished — and the work
+itself was not logged anywhere, while the sibling session one branch away
+offered exactly that.
+
+Measured and NOT a defect, recorded so nobody "fixes" it: **neither** session
+moves `ridesThisWeek()`. That bar counts cardio modes, not bonus sessions, and
+Special HIIT has always behaved the same way.
+
+### The equivalent mutant, measured rather than assumed
+
+Restoring the per-station flag reset **escaped every check**, and reading it
+back explains why: once the point is session-scoped, session-elapsed runs
+1..360 monotonically and equals the point exactly **once**, so the reset cannot
+change the outcome. The point moving is what fixes the bug; the guard is cover
+against a future change that makes the point station-scoped again. Kept as
+intent, with no check able to catch its removal — the same call as v287's
+`wantAnchor`.
+
+Six mutants, five caught and one equivalent.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
