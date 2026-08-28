@@ -2538,6 +2538,146 @@ export default async function () {
     t.ok('and a finished grinder can log its minutes', g2.six.logBtn, g2.six);
   }
 
+  /* ---- LEAN RECOMP: Tone up's volume with a real deficit (v363) ---------
+     Asked for as "increase the rep sets like in Tone up but drop belly fat
+     like Shred". Measuring first CORRECTED the premise — Tone up already gives
+     more reps than Shred (14,147 against 13,192); what Shred buys is 620 fewer
+     calories, more hold time, shorter rest and more cardio. So the rep half
+     was never the gap.
+     The load-bearing property is therefore that this goal's rep volume is
+     IDENTICAL to Tone up's, and everything below is built around proving that
+     and proving the table refactor moved nothing else. */
+  {
+    const lr = await page.evaluate(() => {
+      const o = {};
+      const kp = STATE.profile, kn = STATE.nutrition, kb = STATE.baseline;
+      /* EACH BLOCK BUILDS THE STATE IT ASSERTS ON. An earlier block here
+         leaves STATE.baseline null, and estimateMaxes() then hands back
+         DEFAULTS — so every prescribed target shrinks and the rep totals
+         halve. The guard below caught exactly that. */
+      STATE.baseline = { date: todayISO(), score: 70, level: 'Advanced', testCount: TESTS.length,
+        maxes: { plank: 150, side: 95, hollow: 70, lower: 30, dyn: 55, push: 48, pull: 22, squat: 62, power: 20, stamina: 24 } };
+      Object.assign(STATE.profile, { age: 41, heightCm: 178, sex: 'male', activity: 1.45, bodyFat: 28 });
+      Object.assign(STATE.nutrition, { age: 41, heightCm: 178, sex: 'male', activity: 1.45, weightKg: 86 });
+      delete STATE.nutrition.proteinTarget;   // read the CALCULATION, not a hand-set value
+      delete STATE.nutrition.kcalTarget;
+      delete STATE.profile.timelineWeeks;
+      delete STATE.nutrition.kcalAdj;
+
+      const scan = g => {
+        STATE.profile.goal = g; STATE.nutrition.goal = g;
+        let reps = 0, holdS = 0, sets = 0, restS = 0, cardio = 0, slots = 0;
+        for (let p = 0; p < 378; p += 3) {
+          const s = buildSession(p);
+          (s.main || []).concat(s.finisher ? [s.finisher] : []).forEach(m => {
+            if (!m || !EX[m.exId]) return;
+            slots++; sets += m.sets || 0; restS += (m.rest || 0) * (m.sets || 0);
+            if (EX[m.exId].region === 'cardio') cardio++;
+            if (m.unit === 'time') holdS += m.target * (m.sets || 0);
+            else reps += m.target * (m.sets || 0);
+          });
+        }
+        const p = kcalTargetPreview();
+        return { reps: Math.round(reps), holdMin: Math.round(holdS / 60), sets, slots,
+          rest: Math.round(restS / sets), cardioPct: Math.round(cardio / slots * 100),
+          kcal: p ? p.target : null, protein: proteinTargetCalc(),
+          steps: STEP_TARGETS[g], stable: weightStableGoal(g) };
+      };
+      o.g = {};
+      GOALS.map(x => x[0]).forEach(g => { o.g[g] = scan(g); });
+      STATE.nutrition.goal = 'maintain';
+      o.tdee = Math.round(kcalTargetPreview().tdee);
+
+      // membership, because the goal id reaches innerHTML
+      o.ids = GOALS.map(x => x[0]);
+      o.inRegistry = o.ids.indexOf('leanrecomp') >= 0;
+      /* THE TABLE'S FALLBACK. The nested ternary this replaced had an ELSE
+         that swallowed every goal it did not name; the table must land an
+         unknown goal on the same place that else did — 'lose' — rather than
+         throwing or reading an inherited key. */
+      STATE.nutrition.goal = 'helicopter'; STATE.profile.goal = 'helicopter';
+      o.junkKcal = (kcalTargetPreview() || {}).target;
+      STATE.nutrition.goal = 'constructor'; STATE.profile.goal = 'constructor';
+      o.inheritedKcal = (kcalTargetPreview() || {}).target;
+
+      // the picker and the tip, driven
+      STATE.profile.goal = 'leanrecomp'; STATE.nutrition.goal = 'leanrecomp';
+      delete STATE.nutrition.kcalTarget;
+      go('fuel'); render();
+      const fv = document.querySelector('#v-fuel');
+      o.picker = /setNutGoal\('leanrecomp'\)/.test(fv.innerHTML);
+      o.tipText = (fv.innerText.match(/Lean recomp is Tone up[^]*?calculator below\./) || [''])[0];
+      o.bad = /NaN|undefined|\[object/.test(fv.innerText);
+
+      STATE.profile = kp; STATE.nutrition = kn; STATE.baseline = kb;
+      return o;
+    });
+
+    t.ok('the goal is in the registry', lr.inRegistry, lr.ids);
+    /* Guard before the first dereference: without it, a goal missing from
+       GOALS makes every assertion below THROW rather than name itself. */
+    if (!lr.g.leanrecomp) t.fail('lean recomp is not a goal at all', JSON.stringify(lr.ids));
+    const LR = lr.g.leanrecomp || {}, RC = lr.g.recomp || {}, SH = lr.g.shred || {};
+    t.ok('and reachable from the Fuel picker', lr.picker, lr);
+    t.ok('with no bad text on the tab', !lr.bad, lr);
+
+    /* THE WHOLE POINT OF THE GOAL. Measured across all 378 sessions: the rep
+       volume must be Tone up's exactly, not merely "high". The first build
+       gave it Shred's cardio slot and landed at 12,053 — the LOWEST in the
+       app — while the tip promised the opposite. */
+    t.ok('guard: the sweep measured a real program, not an empty one', RC.reps > 10000, RC);
+    t.eq('lean recomp keeps it, rep for rep', LR.reps, RC.reps);
+    t.eq('and the same hold time', LR.holdMin, RC.holdMin);
+    t.eq('the same number of slots', LR.slots, RC.slots);
+    t.eq('and the same share of cardio', LR.cardioPct, RC.cardioPct);
+    /* The measurement that corrected the premise, pinned so nobody "fixes"
+       the goal by giving it Shred's slots: Shred has FEWER reps, not more. */
+    t.ok('Shred really does have fewer reps than Tone up', SH.reps < RC.reps, { sh: SH.reps, rc: RC.reps });
+
+    /* What it takes from Shred instead: density, calories and steps. */
+    t.ok('rest is shorter than Tone up\'s', LR.rest < RC.rest, { lr: LR.rest, rc: RC.rest });
+    t.ok('but not as short as Shred\'s', LR.rest > SH.rest, { lr: LR.rest, sh: SH.rest });
+    t.eq('the step target matches the fat-loss goals', LR.steps, 10000);
+    t.ok('where Tone up sits lower', RC.steps < LR.steps, { rc: RC.steps, lr: LR.steps });
+
+    // calories: a real cut, and it sits IN the gap rather than at either end
+    t.eq('guard: maintenance for this body is 2570', lr.tdee, 2570);
+    t.eq('lean recomp eats ~12% under maintenance', LR.kcal, 2260);
+    t.ok('which is below Tone up', LR.kcal < RC.kcal, { lr: LR.kcal, rc: RC.kcal });
+    t.ok('and above Shred', LR.kcal > SH.kcal, { lr: LR.kcal, sh: SH.kcal });
+    t.eq('protein stays on the 2.2 g/kg tier', LR.protein, RC.protein);
+    t.eq('which is Shred\'s tier too', LR.protein, SH.protein);
+    /* NOT weight-stable: the scale is meant to move, so calorieCheck(), the
+       weight chart's colour and the projection all treat it as a cut. */
+    t.ok('it is not a weight-stable goal', !LR.stable, LR);
+    t.ok('where Tone up is', RC.stable, RC);
+
+    /* THE TABLE REFACTOR MUST HAVE MOVED NOTHING ELSE. Replacing a nested
+       ternary is exactly the change that silently reprices another goal. */
+    t.eq('Tone up still eats at maintenance', RC.kcal, 2570);
+    t.eq('Shred is unchanged', SH.kcal, 1950);
+    t.eq('Lose fat is unchanged', lr.g.lose.kcal, 2070);
+    t.eq('Strong core is unchanged', lr.g.core.kcal, 2440);
+    t.eq('Maintain is unchanged', lr.g.maintain.kcal, 2570);
+    t.eq('and Build muscle is unchanged', lr.g.gain.kcal, 2830);
+    /* An unknown goal must land where the old else landed — on fat loss —
+       rather than throwing, and an INHERITED key must not read as a rule. */
+    t.eq('an unknown goal falls back to the fat-loss deficit', lr.junkKcal, 2070);
+    t.eq('and so does an inherited key', lr.inheritedKcal, 2070);
+
+    /* A PROMISE IN UI TEXT IS A SPECIFICATION, and this tip's first version
+       claimed the rep volume while the code delivered the lowest in the app.
+       Every number in it is pinned against the code that produces it. */
+    t.ok('the tip renders', !!lr.tipText, lr.tipText);
+    t.ok('naming the ~12% deficit it actually runs', /~12% below maintenance/.test(lr.tipText), lr.tipText);
+    t.ok('the 2.2 g/kg protein it actually prescribes', /2\.2 g\/kg/.test(lr.tipText), lr.tipText);
+    t.ok('and that the session is unchanged rep for rep', /rep for rep/.test(lr.tipText), lr.tipText);
+    /* It must NOT claim the thing that was removed: the first version promised
+       "an extra conditioning slot", which the measurement showed was the very
+       thing costing the reps. */
+    t.ok('it does not claim an extra conditioning slot', !/conditioning slot/.test(lr.tipText), lr.tipText);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
