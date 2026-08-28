@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='354';
+const APP_VERSION='355';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -15850,7 +15850,21 @@ function parqFlagged(){return parqFlags().length>0;}
    parqFlags() returns [] for a missing array, safeMode() goes false, and the
    maximal battery unlocks for someone who never answered the screen. */
 function parqDone(){try{return !!(STATE.profile&&STATE.profile.parqDone&&Array.isArray(STATE.profile.parq));}catch(e){return false;}}
-function medCleared(){try{return !!(STATE.profile&&STATE.profile.medCleared);}catch(e){return false;}}
+/* `!!` ON A RAW STORED FLAG IS THE DEFECT THIS FILE OPENS WITH, ON THE SIBLING.
+   parqDone() was fixed to require the answers behind it; medCleared() is the
+   OTHER half of the same gate — safeMode() is
+   `!parqDone() || (parqFlagged() && !medCleared())` — and it was still a bare
+   truthiness read. Measured on an athlete who declared a heart condition: the
+   values 'x', 1, {}, [], -1, [0] and the STRING 'false' all read as cleared,
+   safe mode went off, and the prescription rose 25-40% (plank rotation 14s to
+   19s, vertical crunch 16 to 22, nordic 4 to 6). 'false' is the one a
+   hand-edited or foreign backup really produces, and it is truthy.
+
+   Clearance is a deliberate tap. Only the boolean `true` is one. Anything else
+   means the record cannot be trusted, and the two ways of being wrong are not
+   symmetrical: one costs a re-tap of a screen, the other prescribes a maximal
+   battery to someone with a declared heart condition. */
+function medCleared(){try{return !!(STATE.profile&&STATE.profile.medCleared===true);}catch(e){return false;}}
 /* Unanswered is NOT the same as cleared. Every athlete who upgraded from a
    pre-v177 build has no parq field at all, so parqFlagged() was false and the
    8-test maximal battery unlocked itself for the entire installed base — the
@@ -18993,6 +19007,12 @@ function normalizeState(){
      hand-edited backup arrives in, and skipping them left parqDone true with no
      answers behind it — an unanswered screen reading as a clean one. */
   if(!Array.isArray(P.parq)){P.parq=[];P.parqDone=false;P.medCleared=false;}
+  /* And when parq IS a valid array these two flags were left exactly as the
+     backup carried them, so junk survived every boot and travelled onward.
+     Both are yes/no answers to a question the athlete was asked; anything that
+     is not the boolean true is not an answer. Fails closed on purpose. */
+  P.parqDone=(P.parqDone===true);
+  P.medCleared=(P.medCleared===true);
    if(N){
      if(typeof N.allergens==='string')
        N.allergens=N.allergens.split(/[,;]+/).map(s=>s.trim().toLowerCase()).filter(s=>ALLERGENS.some(a=>a[0]===s));
@@ -19114,6 +19134,36 @@ function normalizeState(){
   STATE.profile.activity=activityLevel(STATE.profile.activity);
   if(STATE.nutrition&&typeof STATE.nutrition==='object'&&!Array.isArray(STATE.nutrition))
     STATE.nutrition.activity=activityLevel(STATE.nutrition.activity);
+  /* THE GOAL SYNC HAD FOUR SIBLINGS AND ONLY IT WAS EVER WRITTEN. Age, height,
+     sex and activity each live in BOTH profile and nutrition, and the split is
+     not cosmetic: the profile copies are what the WIZARD AND EDITOR SHOW
+     (`value="${dv(P.age)}"`), while every calculation reads the nutrition
+     copies — kcalTargetPreview(), estBodyFat(), isFemale(). Both writers keep
+     them in step, so nothing repaired a divergence, and importData() accepts
+     arbitrary JSON.
+
+     Measured on one 86 kg body, profile 25 / nutrition 52: the editor renders
+     25 and the target is computed from 52. Worse when the nutrition copy is
+     ABSENT and the profile has it — kcalTargetPreview() bails on
+     `!(n.sex&&n.age&&n.heightCm&&n.weightKg)`, so "Calculate my targets"
+     silently does nothing while the answer is on the screen beside it. Same
+     symptom as v345's lost age, reached from the other side.
+
+     One loop, so a sixth field cannot be forgotten. Profile wins a genuine
+     disagreement — it is what the athlete last typed and what they are looking
+     at — but a value present on only ONE side is copied across rather than
+     dropped, which is the direction that matters for an older backup. Absent
+     on both stays absent: there is no sensible default age, height or sex, and
+     inventing one is worse than knowing it is missing. */
+  {const P=STATE.profile,N=STATE.nutrition;
+   if(N&&typeof N==='object'&&!Array.isArray(N)){
+     ['age','heightCm','sex','activity'].forEach(f=>{
+       const p_=P[f],n_=N[f],hasP=p_!=null,hasN=n_!=null;
+       if(hasP&&hasN){if(p_!==n_)N[f]=p_;}
+       else if(hasP)N[f]=p_;
+       else if(hasN)P[f]=n_;
+     });
+   }}
   /* A timeframe is a positive number of weeks, or null for "no deadline".
      Anything else — an array, an object, a NaN — read as falsy at every
      consumer, so nothing broke, but it persisted into every backup and came

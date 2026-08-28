@@ -1211,6 +1211,211 @@ export default async function () {
     t.ok('floor: an UNticked habit is a value, not an absence', mm.habitFalseKept, mm);
   }
 
+  /* ---- the goal sync had four siblings (v355) ------------------------------
+     Age, height, sex and activity each live in BOTH profile and nutrition. The
+     profile copies are what the wizard and editor SHOW; every calculation reads
+     the nutrition copies. Both writers keep them in step, so nothing repaired a
+     divergence — and importData() accepts arbitrary JSON. */
+  {
+    const sy = await page.evaluate(() => {
+      const o = {}; const realErr = console.error; console.error = () => {};
+      const base = () => {
+        STATE.profile.sex = 'male';      STATE.nutrition.sex = 'male';
+        STATE.profile.age = 52;          STATE.nutrition.age = 52;
+        STATE.profile.heightCm = 178;    STATE.nutrition.heightCm = 178;
+        STATE.profile.activity = 1.45;   STATE.nutrition.activity = 1.45;
+        STATE.nutrition.weightKg = 86;   STATE.profile.goalWeightLb = 165;
+      };
+      const t = () => { const q = kcalTargetPreview(); return q && q.target; };
+      base(); normalizeState();
+      o.agreed = t();
+
+      /* A DIVERGENCE: the editor shows one number, the calculation uses another.
+         Each is pinned with the target it produces, because "they now match" is
+         also true of a repair that overwrote BOTH with the wrong one. */
+      o.diverge = {};
+      [['age', 25], ['heightCm', 160], ['activity', 1.75], ['sex', 'female']].forEach(([f, v]) => {
+        base(); STATE.profile[f] = v; normalizeState();
+        o.diverge[f] = { shown: STATE.profile[f], used: STATE.nutrition[f], target: t() };
+      });
+
+      /* The nutrition copy ABSENT with the profile holding the answer.
+         kcalTargetPreview() bails on !(n.sex && n.age && n.heightCm && n.weightKg),
+         so "Calculate my targets" silently did nothing. */
+      o.missing = {};
+      [['age', 52], ['heightCm', 178], ['sex', 'male']].forEach(([f]) => {
+        base(); delete STATE.nutrition[f]; normalizeState();
+        o.missing[f] = { profile: STATE.profile[f], nutrition: STATE.nutrition[f], target: t() };
+      });
+
+      /* THE OTHER DIRECTION, which is what matters for an older backup: a value
+         present only on the NUTRITION side is copied across, not dropped. */
+      o.nutOnly = {};
+      [['age', 44], ['heightCm', 165], ['sex', 'female'], ['activity', 1.2]].forEach(([f, v]) => {
+        base(); delete STATE.profile[f]; STATE.nutrition[f] = v; normalizeState();
+        o.nutOnly[f] = { profile: STATE.profile[f], nutrition: STATE.nutrition[f] };
+      });
+
+      /* FLOOR: absent on BOTH sides stays absent. There is no sensible default
+         age, height or sex, and a repair that invents one is worse than a field
+         the wizard can ask for again. */
+      base();
+      ['age', 'heightCm', 'sex'].forEach(f => { delete STATE.profile[f]; delete STATE.nutrition[f]; });
+      normalizeState();
+      o.bothAbsent = ['age', 'heightCm', 'sex'].map(f =>
+        (STATE.profile[f] === undefined && STATE.nutrition[f] === undefined) ? f + ':absent' : f + ':INVENTED');
+
+      /* FLOOR: an athlete whose copies already agree is untouched. */
+      base(); normalizeState();
+      o.untouched = [STATE.profile.age, STATE.nutrition.age, STATE.profile.sex,
+                     STATE.nutrition.sex, STATE.profile.heightCm, STATE.nutrition.activity];
+
+      /* And the editor really does render the profile copy — which is what makes
+         a divergence visible rather than merely stored. */
+      /* Through the BOOT path, which is where the mirror lives and the only
+         route a divergence can arrive by — both writers write both copies, so
+         only an import creates one, and importData() calls normalizeState(). */
+      base(); STATE.profile.age = 25; normalizeState(); go('today'); render();
+      try { openProfileEdit(); } catch (e) {}
+      const el = document.querySelector('#ob-age');
+      o.editorShows = el ? el.value : '(no field)';
+      o.editorAgrees = el ? (+el.value === STATE.nutrition.age) : false;
+      try { closeSheet(); } catch (e) {}
+      base(); normalizeState(); save(); console.error = realErr;
+      return o;
+    });
+    t.ok('guard: a body with both copies agreeing gets a real target', sy.agreed > 1200, sy);
+    ['age', 'heightCm', 'activity', 'sex'].forEach(f => {
+      t.eq('the two copies of ' + f + ' cannot disagree after a boot',
+        sy.diverge[f].shown, sy.diverge[f].used, sy.diverge[f]);
+    });
+    /* Pinned VALUES, not just agreement: a repair that overwrote both with the
+       stale number would satisfy every "they match" assertion. */
+    t.eq('and the profile copy is the one that wins', sy.diverge.age.shown, 25, sy.diverge.age);
+    t.ok('so the target really moves with it', sy.diverge.age.target > sy.agreed, sy.diverge.age);
+    t.ok('a shorter athlete gets a smaller target', sy.diverge.heightCm.target < sy.agreed, sy.diverge.heightCm);
+    t.ok('a more active one a bigger target', sy.diverge.activity.target > sy.agreed, sy.diverge.activity);
+    t.ok('and a woman is not priced as a man', sy.diverge.sex.target < sy.agreed, sy.diverge.sex);
+    ['age', 'heightCm', 'sex'].forEach(f => {
+      t.eq('a missing nutrition ' + f + ' is filled from the profile',
+        sy.missing[f].nutrition, sy.missing[f].profile, sy.missing[f]);
+    });
+    t.ok('so the calorie target stops silently returning nothing',
+      sy.missing.age.target > 1200 && sy.missing.heightCm.target > 1200 && sy.missing.sex.target > 1200, sy.missing);
+    ['age', 'heightCm', 'sex', 'activity'].forEach(f => {
+      t.eq('an older backup carrying only the nutrition ' + f + ' keeps it',
+        sy.nutOnly[f].profile, sy.nutOnly[f].nutrition, sy.nutOnly[f]);
+    });
+    t.eq('floor: absent on both sides stays absent', sy.bothAbsent,
+      ['age:absent', 'heightCm:absent', 'sex:absent'], sy.bothAbsent);
+    t.eq('floor: copies that already agree are untouched', sy.untouched,
+      [52, 52, 'male', 'male', 178, 1.45], sy.untouched);
+    t.eq('the editor renders the profile copy', sy.editorShows, '25', sy);
+    t.ok('and it now names the number the calculation uses', sy.editorAgrees, sy);
+  }
+
+  /* ---- clearance is a tap, not a truthy value (v355) -----------------------
+     `medCleared()` was `!!STATE.profile.medCleared` — a bare truthiness read on
+     a raw stored flag, which is the defect this repo's notes OPEN with, on the
+     sibling flag. parqDone() was fixed to require the answers behind it;
+     medCleared() is the other half of the same gate and never was. */
+  {
+    const cl = await page.evaluate(() => {
+      const o = {}; const realErr = console.error; console.error = () => {};
+      const snap = JSON.stringify(STATE);
+      const flag = (Array.isArray(PARQ) ? [PARQ[0][0] || PARQ[0].k || PARQ[0]] : ['heart']);
+      o.flag = flag;
+      const boot = v => {
+        STATE = JSON.parse(snap);
+        STATE.profile.parq = flag.slice();      // a REAL declared condition
+        STATE.profile.parqDone = true;
+        STATE.profile.medCleared = v;
+        normalizeState();
+        return { stored: STATE.profile.medCleared, cleared: medCleared(),
+                 flagged: parqFlagged(), safe: safeMode() };
+      };
+      /* The string 'false' is the one a hand-edited or foreign export really
+         produces, and it is truthy — so it leads the list rather than sitting
+         in it. */
+      o.junk = {};
+      ['false', 'x', 1, {}, [], -1, [0], 'true'].forEach((v, i) => { o.junk['j' + i] = boot(v); });
+      o.real = boot(true);
+      o.declined = boot(false);
+
+      /* What safe mode is FOR: it must actually change the prescription, or the
+         whole gate is decoration. Measured on the same pointer. */
+      const sess = () => JSON.stringify(buildSession(40).main.map(m => m.exId + ':' + m.sets + 'x' + m.target));
+      boot(true);  const clearedSession = sess();
+      boot('x');   const junkSession = sess();
+      boot(false); const guardedSession = sess();
+      o.guardBites = clearedSession !== guardedSession;   // guard: it does something
+      o.junkIsGuarded = junkSession === guardedSession;
+      o.clearedIsNot  = junkSession !== clearedSession;
+
+      /* FLOOR: a genuine clearance still works, through the button the athlete
+         actually taps — not by assigning the field. */
+      STATE = JSON.parse(snap);
+      STATE.profile.parq = flag.slice(); STATE.profile.parqDone = true;
+      STATE.profile.medCleared = false; normalizeState();
+      try { confirmClearance(); } catch (e) { o.confirmErr = String(e.message).slice(0, 60); }
+      normalizeState();
+      o.afterConfirm = { stored: STATE.profile.medCleared, cleared: medCleared(), safe: safeMode() };
+
+      /* FLOOR: an athlete with NO declared condition is not put into safe mode
+         by any of this — an over-eager fix that refused every clearance would
+         satisfy every assertion above. */
+      STATE = JSON.parse(snap);
+      STATE.profile.parq = []; STATE.profile.parqDone = true;
+      STATE.profile.medCleared = false; normalizeState();
+      o.noCondition = { flagged: parqFlagged(), safe: safeMode() };
+
+      /* THE READ SITE HAS ITS OWN CONTRACT, and every check above boots first —
+         so the repair scrubs the junk and medCleared() never sees any. Two
+         guards mean two checks: call it with junk in STATE and NO boot, which
+         is the state a future writer or a render before normalizeState() would
+         leave. A guard consulted only behind another guard still has to mean
+         what it is named. */
+      o.rawRead = {};
+      ['false', 'x', 1, {}, [], -1, [0], 'true'].forEach((v, i) => {
+        STATE = JSON.parse(snap);
+        STATE.profile.parq = flag.slice(); STATE.profile.parqDone = true;
+        STATE.profile.medCleared = v;                 // deliberately NOT booted
+        o.rawRead['r' + i] = { cleared: medCleared(), safe: safeMode() };
+      });
+      STATE = JSON.parse(snap);
+      STATE.profile.parq = flag.slice(); STATE.profile.parqDone = true;
+      STATE.profile.medCleared = true;                // the real thing, unbooted
+      o.rawRealCleared = medCleared();
+
+      /* And the junk does not travel: both flags are booleans after a boot. */
+      boot({});
+      o.types = [typeof STATE.profile.medCleared, typeof STATE.profile.parqDone];
+      STATE = JSON.parse(snap); normalizeState(); save(); console.error = realErr;
+      return o;
+    });
+    t.ok('guard: safe mode really changes what is prescribed', cl.guardBites, cl);
+    Object.keys(cl.junk).forEach(k => {
+      t.eq('junk in the clearance flag does not clear it (' + k + ')', cl.junk[k].cleared, false, cl.junk[k]);
+      t.ok('so a declared condition keeps safe mode on (' + k + ')', cl.junk[k].safe === true, cl.junk[k]);
+      t.eq('and the junk does not survive the boot (' + k + ')', cl.junk[k].stored, false, cl.junk[k]);
+    });
+    t.ok('and the guarded session is what a junk-flagged athlete gets', cl.junkIsGuarded, cl);
+    t.ok('guard: a genuinely cleared athlete gets a different one', cl.clearedIsNot, cl);
+    t.eq('floor: a real boolean true still clears', cl.real.cleared, true, cl.real);
+    t.eq('floor: and turns safe mode off', cl.real.safe, false, cl.real);
+    t.eq('floor: tapping the confirm button still clears', cl.afterConfirm.cleared, true, cl.afterConfirm);
+    t.eq('floor: and it survives the boot', cl.afterConfirm.stored, true, cl.afterConfirm);
+    t.eq('floor: an athlete with no declared condition is not flagged', cl.noCondition.flagged, false, cl.noCondition);
+    t.eq('floor: and is not in safe mode', cl.noCondition.safe, false, cl.noCondition);
+    Object.keys(cl.rawRead).forEach(k => {
+      t.eq('medCleared() itself refuses junk with no boot behind it (' + k + ')',
+        cl.rawRead[k].cleared, false, cl.rawRead[k]);
+      t.eq('so safe mode stays on (' + k + ')', cl.rawRead[k].safe, true, cl.rawRead[k]);
+    });
+    t.eq('floor: and it still accepts a real true with no boot', cl.rawRealCleared, true, cl);
+    t.eq('both health flags are booleans after a boot', cl.types, ['boolean', 'boolean'], cl.types);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

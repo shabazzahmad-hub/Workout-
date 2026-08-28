@@ -5674,6 +5674,207 @@ all caught after that, including the three over-eager twins — refusing every
 goal, every body level and every sex satisfies every "junk is refused"
 assertion and breaks the controls outright.
 
+## The goal sync had four siblings and only it was ever written (v355)
+
+`normalizeState()` has reconciled `profile.goal` against `nutrition.goal` for
+many versions, with a comment saying exactly why: *"They are meant to be one
+value; repair either side if a backup or a partial write left them out of
+step."* **Age, height, sex and activity live in both objects too, and none of
+them ever got it.**
+
+The split is not cosmetic. The **profile** copies are what the wizard and the
+profile editor SHOW — `value="${dv(P.age)}"`, the sex chips, the height box.
+Every **calculation** reads the nutrition copies: `kcalTargetPreview()`,
+`estBodyFat()`, `isFemale()`. Both writers set both, so nothing ever repaired a
+divergence — and `importData()` accepts arbitrary JSON.
+
+Measured on one 86 kg body, profile 25 against nutrition 52: **the editor
+renders 25 and the calorie target is computed from 52.** The gap is not small,
+and activity is the worst of the four:
+
+| diverged | target used | what the shown value gives | gap |
+|---|---|---|---|
+| activity 1.45 / 1.75 | 2490 | 3010 | **520 kcal** |
+| sex male / female | 2490 | 2250 | **240 kcal** |
+| age 52 / 25 | 2490 | 2690 | **200 kcal** |
+| height 178 / 160 | 2490 | 2330 | **160 kcal** |
+
+**The absent case is worse than the disagreeing one.** With the nutrition copy
+missing and the profile holding the answer, `kcalTargetPreview()` bails on
+`!(n.sex&&n.age&&n.heightCm&&n.weightKg)` and returns null — so *"Calculate my
+targets"* silently does nothing while the number is on the screen beside it.
+That is v345's lost age reached from the other side.
+
+**One loop, so a sixth field cannot be forgotten.** Profile wins a genuine
+disagreement — it is what the athlete last typed and what they are looking at
+— but a value present on only ONE side is copied across rather than dropped,
+which is the direction that matters for an older backup. Absent on both stays
+absent: there is no sensible default age, height or sex, and v354 already made
+that call for sex.
+
+Seven mutants, all caught. The three that matter are the direction pair —
+mirroring only one way leaves half the class alive — and the two over-eager
+twins: inventing a default when both are absent, and overwriting copies that
+already agree.
+
+### And clearance was a truthy value, not a tap
+
+The same round, found by fuzzing the safety predicates rather than the screens.
+`safeMode()` is `!parqDone() || (parqFlagged() && !medCleared())`. This file
+OPENS with the story of `parqDone()` being `!!STATE.profile.parqDone` — a
+boolean read with no check that the answers behind it existed — and its fix.
+**`medCleared()` is the other half of the same gate and was never touched:**
+
+```js
+function medCleared(){try{return !!(STATE.profile&&STATE.profile.medCleared);}catch(e){return false;}}
+```
+
+Measured on an athlete who had declared a **heart condition**, with `parqDone`
+true and a valid `parq` array — so the boot repair's only branch
+(`if(!Array.isArray(P.parq))`) never fired:
+
+| stored `medCleared` | reads as cleared | safe mode |
+|---|---|---|
+| `'false'` | **yes** | **off** |
+| `'x'`, `1`, `{}`, `[]`, `-1`, `[0]` | **yes** | **off** |
+| `true` | yes | off |
+| `false`, `0`, `''`, `null` | no | on |
+
+**The string `'false'` is the one that actually happens** — a hand-edited or
+foreign export serialises the flag as text — and it is truthy.
+
+It is not cosmetic. Safe mode changes the prescription, measured on the same
+pointer: plank rotation **14s → 19s**, vertical crunch **16 → 22**, nordic
+**4 → 6** — 25-40% more work, in the flagged region, for someone the screen
+exists to protect.
+
+**Clearance is a deliberate tap, so only the boolean `true` is one.** Both
+flags are now coerced at the boot AND tested strictly at the read site, because
+two guards mean two checks — and the first mutation run proved it: reverting
+`medCleared()` to bare truthiness **escaped every check**, since all of them
+booted first and the repair had already scrubbed the junk. The read site now
+has its own block that hands it junk with no boot behind it.
+
+Eight mutants, all caught after that. Three are the over-eager twins — never
+accepting a clearance, forcing every athlete into safe mode, and a repair that
+wipes a real one — each caught by a floor: the confirm button still clears, the
+clearance survives a boot, and an athlete with no declared condition is never
+put into safe mode at all.
+
+**Two false alarms from the same fuzz, and both were the probe.** `parq:[]` with
+a done flag read as "cleared with no answers" — but an empty array IS the
+answer; the screen says *"if none apply, leave them all off"*. And
+`jointRisky()` **throws** on a string `lims` — which is correct fail-closed
+design, not a leak: `safeSwap()` guards its own read
+(`Array.isArray(...)?...:[]`), and `offerable()` and `swapStillValid()` both
+catch into `false`, the restrictive answer. Making it return `false` silently
+would fail OPEN, which is strictly worse.
+
+### The check has to drive the BOOT path
+
+The first version set the divergence, rendered, and asserted the editor and the
+calculation agreed. It failed on correct code: the mirror lives in
+`normalizeState()`, not in a renderer. That is the right place and the only one
+needed — both writers write both copies, so **only an import can create a
+divergence, and `importData()` calls `normalizeState()`.**
+
+### Five sweeps that came back clean, recorded as coverage
+
+- **The end of the program.** All 378 sessions build with no unknown exercise
+  and nothing empty; Today shows PROGRAM COMPLETE at the last pointer and past
+  it; the Program calendar shows the current block's six weeks with one marked.
+  The engine's `posOf()` does roll into a tenth block past the end, but Today
+  never renders it — the completion screen is reached first.
+- **A full backup round trip on a rich athlete** — 20+ set fields, export →
+  `hardReset()` → import. Nothing lost, no key in the file, both device
+  credentials still on the phone after the reset.
+- **38 sheets driven, zero throws**, no `NaN`, no `undefined`, none empty. The
+  six "empty" hits were the probe: three browser APIs (`showSaveFilePicker`)
+  and three tab-navigation functions that are not sheets at all.
+- **Every promise sentence on every screen and sheet**, extracted by pattern
+  (*never / always / will / keeps / stays / counts / does not*) and checked
+  against the code. The two testable ones — *"Bonus only; won't affect your
+  program"* and its custom-builder twin — hold: `plEnterDone()`'s
+  `if(PLAYER.free)` branch returns before any program commit, and the lift log
+  credits the day (`quickLog`) rather than consuming a session.
+- **Every registry member is reachable in a picker** — 13 registries, the
+  inverse of the v322 drift where onboarding offered 13 gear items and Settings
+  offered 12.
+
+### The complete injection sweep, and the class the clearance bug belonged to
+
+Two more, both clean, both worth recording because they close a gap the earlier
+sweeps could not see:
+
+- **The IMPORT path, not the writers.** v354 drove 74 `set*()` writers with a
+  hostile payload; `importData()` writes STATE directly and never touches one
+  of them. So the payload went into **every string an import can carry** across
+  **37 top-level fields** — names, dates, poses, exercise ids, diet, gear,
+  limitations, coach, region, meal plan, swaps, achievements, the baseline and
+  its `subs` — then a boot, then every screen, pane and sheet. **No injection,
+  no throw, no page error.**
+- **The class `medCleared` belonged to.** A source scan for a function whose
+  whole body is a truthiness read of a stored flag returns exactly three:
+  `medCleared` (fixed), `parqDone` (already checks the array behind it) and
+  `tightSpace` — which is repaired at boot AND whose junk reads *restrictively*
+  (a tight room removes movements), so it fails closed already. `return
+  !!STATE.x` appears nowhere else. The class is three wide and all three are
+  correct.
+
+### Four more sweeps, all clean, and the numbers they cover
+
+Run after the fix, on axes no probe had swept:
+
+- **972 sessions across 18 athlete configurations** — six limitation sets x
+  three experience levels, every seventh pointer of the program. Zero problems
+  against six invariants: no flagged joint reaches the athlete, no movement
+  needs kit they do not own, every target and set count is a finite positive
+  number, nothing exceeds its own `repCap`, every `perSet` movement gets an
+  even count of at least two, and no hold falls outside 5-150 s.
+- **480 nutrition combinations** — five goals x four timelines x four bodies x
+  five activity levels. The only 16 hits were **one** athlete (45 kg, 150 cm,
+  70, sedentary) whose TDEE is 1052 against a 1200 floor, so a "lose" goal
+  really does sit above maintenance. That is the safety floor doing its job,
+  and Fuel says so on the glass: *"raised to a safe minimum"*. Two further
+  readings were the probe — `openTDEE()` is an input FORM with no prediction on
+  it, so there is nothing there to contradict, and the 3.67 g/kg protein was a
+  hand-set target surviving a weight change, which v287 makes deliberate.
+- **All 30 achievements.** None throws on a fresh athlete or a maximal one,
+  every one is reachable, and no description renders as a function's source.
+  The first pass reported **thirteen unreachable** and all thirteen were the
+  probe: `waistDrop()` reads `measurements` not `measures`, `scoreGain()` reads
+  `scoreHistory` not `reassess`, `prs[k]` is a NUMBER not an object, the skip
+  badges read a dedicated `skipLog`, and a photo row without an `id` is
+  correctly filtered by the repair. **Confirm the control's real shape before
+  believing the result** — five times in one session.
+- **Cross-subsystem flow.** All five cardio modes credit different energy for
+  the same 30 minutes and all five reach the weekly conditioning bar; the step
+  habit ticks and un-ticks with the target; a logged 175 g against a 165 g
+  protein target ticks the habit, raising the target to 265 clears it, and
+  lowering it back ticks it again (v346's derived habits, both directions).
+
+### Four false alarms, and every one is a trap this file already names
+
+- **The end-of-program probe read the WELCOME screen.** It never seeded an
+  athlete, so all three pointers rendered onboarding step 1.
+- **Four food controls read as dead** because the fingerprint asked
+  `kcalTargetPreview()` and `proteinTargetCalc()` — the *predictor* and the
+  *calculation*. The effective readers are `todayKcalBudget()` and
+  `proteinTargetSet()`, and a hand-set target outranking the calculation is the
+  designed behaviour (v287).
+- **The meal plan read as dead** because the fingerprint was
+  `JSON.stringify(plan).length`. Two different plans can be the same number of
+  characters. **Measure the payload, not the container** — my own entry, landing
+  on me.
+- **The custom-workout probe never ran the player**, calling `plMarkSet`,
+  `plNext` and `plFinish`, none of which exist. The real one is
+  `playerSetDone()`, and the player then parks in `rest` until the clock moves.
+
+Two more copies of `hasGearFor()`'s body were found inline in `weightsPool()`
+and `builderPool()`. Measured equivalent on today's library and left alone
+rather than refactored blind — recorded here so the next reader knows the rule
+has three homes.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
