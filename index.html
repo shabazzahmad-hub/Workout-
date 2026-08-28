@@ -11182,6 +11182,13 @@ function saveGoalWeight(){
 }
 function clearGoalWeight(){
   delete STATE.profile.goalWeightLb;delete STATE.profile.goalBodyFat;
+  /* THE MIRROR OF saveGoalWeight(), and it was missed in the same round that
+     fixed its twin — found by sweeping all 48 zero-argument writers rather
+     than by reading. Clearing the goal weight makes timelineRateKgWk() null,
+     so timelineIsAggressive() goes false and BOTH targets drop back: steps
+     12,000 to 10,000 and protein 180 g to 155 g. That LOWERS the bar, so the
+     habits should tick ON — they stayed off. Same class, opposite direction. */
+  syncDerivedHabits();
   save();closeSheet();toast('Goal weight cleared');render();
 }
 function saveWaistGoal(){const g=parseFloat($('#g-waist').value);const cm=waistToCm(g);if(!(g>0)||!plausibleWaistCm(cm)){toast('Enter a realistic goal');return;}STATE.profile.goalWaist=r1(cm);save();closeSheet();toast('Goal set 🎯');renderProgress();}

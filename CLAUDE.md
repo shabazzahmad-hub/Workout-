@@ -6677,6 +6677,29 @@ assertion about the raise), a setter that moves nothing must leave a real tick
 alone, and the sync must not create a day row out of nothing, which would put
 an empty entry in every backup.
 
+### And a FOURTH writer, found by sweeping rather than reading
+
+Fixing those three left `clearGoalWeight()` — the mirror of the twin fixed in
+the same round. Clearing the goal weight makes `timelineRateKgWk()` null, so
+both targets drop back (12,000 → 10,000 steps, 180 → 155 g), which LOWERS the
+bar: the habits should tick ON and stayed off. **Fixing one instance is not
+fixing the class**, landing inside the round that quotes it.
+
+It was found by driving all **48 zero-argument writers** in the app and asking
+of each whether any derived habit was left disagreeing with its own target —
+not by reading the diff. So the shipped check is written against the CLASS:
+seven writers, each driven, each asserted to leave the habit agreeing.
+
+**The class check was wrong twice before it was right, and both are entries in
+this file.** Its first version used ONE setup for all seven, which left the
+protein habit already OFF — so a mutant deleting `setProteinTarget()`'s sync
+changed nothing observable and escaped: *a guard that cannot fire in the case
+you tested is not tested.* Each case now builds a state where its own move
+crosses the athlete's logged value, and **the FLIP is the guard** — a case
+whose tick does not change cannot catch a missing sync at all. And the failure
+detail had to be narrowed to the failing cases: dumping all seven truncated
+past the one that mattered, so red did not say what.
+
 ### Three false alarms, and every one is a trap already in this file
 
 - **"The projection prints the stable-goal copy for lean recomp."** It does
@@ -6690,7 +6713,9 @@ an empty entry in every backup.
   adding `prep.results:{}` — a legitimate container repair. The probe compared
   a pre-normalize snapshot against a post-normalize one.
 
-Eleven mutants, all caught. One was a **bad mutant**: renaming
+Fifteen mutants, all caught. Three were **bad mutants**: two seeds
+PREPENDED a dead `if(0)sync()` instead of removing the real call, so the
+program was unchanged; and renaming
 `syncProteinHabit` breaks its callers, so the suite threw rather than naming a
 check — that tests nothing, and the real over-eager case is the one that makes
 the step sync always answer false.

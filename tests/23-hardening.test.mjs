@@ -2777,6 +2777,91 @@ export default async function () {
     /* With nothing logged there is no derived habit to correct, and creating a
        day row here would add an empty entry to every backup. */
     t.ok('the sync does not create a day row out of nothing', !dh.F.madeRow, dh.F);
+
+    /* THE CLASS, NOT THE INSTANCE. The checks above name the writers I happened
+       to think of, and that is exactly how clearGoalWeight() was missed in the
+       same round that fixed its twin — found only by sweeping every
+       zero-argument writer in the app. This drives each writer that can move
+       one of these targets and asserts the habit FOLLOWED.
+
+       EACH CASE BUILDS A STATE WHERE ITS OWN MOVE IS DETECTABLE. The first
+       version used one setup for all of them, which left the protein habit
+       already OFF — so a mutant deleting setProteinTarget()'s sync changed
+       nothing observable and escaped. A guard that cannot fire in the case you
+       tested is not tested. */
+    const cls = await page.evaluate(() => {
+      /* steps: `have` against a target the case moves. protein: the same. */
+      const setup = (steps, prot, extra) => {
+        Object.assign(STATE.profile, { age: 41, heightCm: 178, sex: 'male', activity: 1.45,
+          bodyFat: 28, goal: 'lose', unit: 'in', goalWeightLb: 150, timelineWeeks: 24 });
+        Object.assign(STATE.nutrition, { age: 41, heightCm: 178, sex: 'male', activity: 1.45,
+          weightKg: 86, goal: 'lose' });
+        delete STATE.nutrition.proteinTarget; delete STATE.profile.goalBodyFat;
+        if (extra) extra();
+        const t = nutToday();
+        t.steps = steps; t.water = 10;
+        t.food = [{ name: 'x', kcal: 800, p: prot, c: 0, f: 0, meal: 'lunch', at: 1 }];
+        t.habits = {}; syncDerivedHabits();
+      };
+      const tick = k => !!(nutToday().habits || {})[k];
+      const o = { cases: [] };
+      const run = (name, steps, prot, fn, watch, extra) => {
+        setup(steps, prot, extra);
+        const b = { tick: tick(watch), s: stepTarget(), p: proteinTargetG() };
+        let err = null;
+        try { fn(); } catch (e) { err = String(e.message); }
+        const a = { tick: tick(watch), s: stepTarget(), p: proteinTargetG() };
+        const want = watch === 'steps' ? (stepEquivalent() >= stepTarget())
+          : ((nutToday().food || []).reduce((x, f) => x + (+f.p || 0), 0) >= proteinTargetG());
+        o.cases.push({ name, watch, err, before: b, after: a,
+          movedTarget: watch === 'steps' ? b.s !== a.s : b.p !== a.p,
+          flipped: b.tick !== a.tick, agrees: a.tick === want });
+      };
+      /* Aggressive baseline (goal weight 150 on a 24-week timeline): 12,000
+         steps and 180 g. Each case below moves its own watched target ACROSS
+         the athlete's logged value, so the tick must flip — which is what makes
+         it able to catch a missing sync at all. */
+      run('setNutGoal', 11000, 190, () => setNutGoal('maintain'), 'steps');
+      run('saveGoalWeight', 11000, 190, () => {
+        const e = document.createElement('input'); e.id = 'g-weight'; e.value = '185';
+        document.body.appendChild(e); try { saveGoalWeight(); } finally { e.remove(); } }, 'steps');
+      run('clearGoalWeight', 11000, 190, () => clearGoalWeight(), 'steps');
+      /* Starts GENTLE so the recompute can make it aggressive — from 150 the
+         derived weight barely moves and nothing is measurable. */
+      run('recomputeTargetWeight', 11000, 190, () => {
+        STATE.profile.goalWeightLb = 185; STATE.profile.goalBodyFat = 10;
+        recomputeTargetWeight(); }, 'steps', () => { STATE.profile.goalWeightLb = 185; });
+      /* setSteps moves the VALUE, not the target — the same requirement seen
+         from the other side, and the sync still has to follow. */
+      run('setSteps', 11000, 190, () => setSteps(20000), 'steps');
+      /* protein: 190 g against the aggressive 180 g starts TICKED, and a
+         hand-set 200 g must un-tick it. */
+      run('setProteinTarget', 11000, 190, () => setProteinTarget(200), 'protein');
+      /* The hand-set 200 g goes in the SETUP, so the case itself is only the
+         CLEAR — otherwise the tick is off and on again inside one case and the
+         before/after snapshot shows no flip, which cannot discriminate. */
+      run('clearProteinTarget', 11000, 190, () => clearProteinTarget(), 'protein',
+        () => { STATE.nutrition.proteinTarget = 200; });
+      /* A goal change on a NON-aggressive athlete: lose is 155 g, lean recomp
+         is 180 g, and 160 g logged sits between them. */
+      run('setNutGoal(protein)', 11000, 160, () => setNutGoal('leanrecomp'), 'protein',
+        () => { delete STATE.profile.timelineWeeks; });
+      return o;
+    });
+    t.eq('every writer that can move a derived target was driven', cls.cases.length, 8, cls);
+    /* GUARD: a sweep where nothing moved proves nothing. Each case must have
+       genuinely shifted the target it is watching, and flipped the tick. */
+    /* THE FLIP IS THE GUARD. A case where the tick does not change cannot
+       catch a missing sync at all — which is how the first version of this
+       sweep let setProteinTarget's mutant through. Whether the TARGET or the
+       logged VALUE moved is beside the point; crossing is what matters. */
+    const noFlip = cls.cases.filter(c => !c.flipped).map(c => c.name);
+    t.eq('guard: every case crosses the athlete\'s logged value', noFlip, [],
+      JSON.stringify(cls.cases.filter(c=>!c.flipped).map(c=>({n:c.name,w:c.watch,b:c.before,a:c.after,e:c.err}))));
+    const threw = cls.cases.filter(c => c.err).map(c => c.name + ':' + c.err);
+    t.eq('guard: and none of them threw', threw, [], cls);
+    const disagree = cls.cases.filter(c => !c.agrees).map(c => c.name + ':' + c.watch);
+    t.eq('no writer leaves a habit disagreeing with its own target', disagree, [], cls);
   }
 
   /* ---- EVERY GOAL EXPLAINS ITSELF (v364) --------------------------------
