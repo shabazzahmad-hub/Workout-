@@ -6621,6 +6621,80 @@ defect had both halves, and seeded that way it is caught by four checks.
 
 Thirteen mutants, all caught.
 
+## A derived habit is a verdict against a target, and the target moves (v364)
+
+Two findings, and the first was in the round shipped an hour earlier — the
+fifth time running that the audit's best finding was the previous round.
+
+### A map whose fallback is SILENCE must be complete
+
+v363 added a seventh goal. The picker renders from `GOALS`, so the button
+appeared correctly. **`GOAL_NOTE` is a hand-written map read as
+`GOAL_NOTE[g]||''`** — and it stayed at six entries, so tapping *Lean recomp*
+in the setup wizard showed the goal selected with **nothing under it**
+explaining what it does. Nothing threw; nothing looked wrong in the diff.
+
+A registry sweep across eleven registries found exactly one gap, and the
+distinction is what makes it worth writing down: **`PROT_PER_KG` is
+deliberately sparse** — its fallback is `PROT_PER_KG_BASE`, a real tier — while
+`GOAL_NOTE`'s fallback is an empty string. *A per-goal map whose fallback is a
+real DEFAULT may be partial; one whose fallback is silence must be complete.*
+`validateData()` now enforces the lockstep **both directions**, the same shape
+`TESTS`/`TEST_DEFAULTS` has: a missing note is a blank explanation, and an
+orphaned note is dead copy nobody will ever see.
+
+### Three writers moved a derived target and only the wizard synced
+
+v346 established the rule — *every setter that moves one of these targets calls
+`syncDerivedHabits()` rather than remembering which habit it touched* — and
+wired the setters that move a target's NUMBER. It did not sweep the writers
+that move a target **indirectly**, and there are three:
+
+| writer | what it moves | synced? |
+|---|---|---|
+| `setNutGoal` | `STEP_TARGETS[goal]` and the protein tier | **no** |
+| `saveGoalWeight` | the PACE, which flips `timelineIsAggressive()` | **no** |
+| `recomputeTargetWeight` | the same field, from a body-LEVEL tap | **no** |
+| `obReadForm` (the wizard) | both | yes |
+
+Measured: 7,500 steps on Maintain (7,000) is a legitimate tick; switching to
+Lean recomp raises the bar to 10,000 and **the tick stayed on**. Protein the
+same — 160 g logged against 155 g, switch to a goal wanting 180 g, still
+ticked. And the goal weight is the writer nobody would think of, because it
+names neither a habit nor a target: on a 24-week timeline, **185 lb gives
+10,000 steps and 155 g while 150 lb gives 12,000 and 180 g**, and both ticks
+survived the change.
+
+It is not cosmetic, which v346 already measured: a wrong tick extends the
+nutrition streak by a day and can unlock Perfect Day.
+
+**Fixing the sheet alone would have left half the class alive** — a body-level
+tap reaches the same field through `recomputeTargetWeight()`, a different door.
+
+The floors carry the usual weight: the fix must work **both directions**
+(lowering the bar ticks it again — a fix that only un-ticks passes every
+assertion about the raise), a setter that moves nothing must leave a real tick
+alone, and the sync must not create a day row out of nothing, which would put
+an empty entry in every backup.
+
+### Three false alarms, and every one is a trap already in this file
+
+- **"The projection prints the stable-goal copy for lean recomp."** It does
+  not. Views never clear `innerHTML`, so a page-wide text search over Progress
+  matched a **stale pane** painted before the goal changed. Driven per goal
+  through `projectionHTML()` directly, every goal gets the right copy.
+- **"`MAKEUP_CREDIT` is a missing map."** There is no such constant — I
+  invented the name in the probe. The real one is `CARDIO_INFO`, and it is
+  complete. *Confirm the control's real shape before believing the result.*
+- **"The backup round trip is lossy."** The only delta was `normalizeState()`
+  adding `prep.results:{}` — a legitimate container repair. The probe compared
+  a pre-normalize snapshot against a post-normalize one.
+
+Eleven mutants, all caught. One was a **bad mutant**: renaming
+`syncProteinHabit` breaks its callers, so the suite threw rather than naming a
+check — that tests nothing, and the real over-eager case is the one that makes
+the step sync always answer false.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

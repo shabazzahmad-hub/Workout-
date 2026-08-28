@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='363';
+const APP_VERSION='364';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2537,10 +2537,21 @@ const SEX_OPTS=['male','female'];
    parses and cannot see it; driving the page found it in one run. */
 function focusKeys(){return Object.keys(FOCUS_POOL);}
 function goalKeys(){return GOALS.map(g=>g[0]);}
+/* EVERY GOAL NEEDS A LINE HERE, and unlike PROT_PER_KG this map has no base to
+   fall back to — the read site is `GOAL_NOTE[g]||''`, so a missing goal shows
+   the button selected with NOTHING under it explaining what it does. That is
+   how v363 shipped: the goal was added to GOALS, the picker rendered it from
+   the registry correctly, and the one sentence describing it was blank.
+
+   The distinction is worth keeping: a per-goal map whose fallback is a real
+   DEFAULT may be partial (PROT_PER_KG falls back to PROT_PER_KG_BASE and is
+   deliberately sparse); a map whose fallback is SILENCE must be complete.
+   validateData() enforces this one, so an eighth goal cannot ship blank. */
 const GOAL_NOTE={
   lose:'Steady fat loss — a moderate deficit that keeps your strength.',
   shred:'Aggressive lean-out — steeper deficit, more protein, higher-rep conditioning. Best in short blocks.',
   recomp:'Lose fat and build muscle at the same time, with the scale held steady.',
+  leanrecomp:'Tone up with a real deficit under it — the same sessions, rep for rep, eating ~12% below maintenance.',
   core:'Midsection first — every session adds an abs/oblique bonus and eats near maintenance.',
   maintain:'Hold your weight and let the training reshape you.',
   gain:'Build muscle on a slight surplus with heavier, lower-rep work.',
@@ -11161,6 +11172,12 @@ function saveGoalWeight(){
      the derived body-fat figure is dropped rather than left to win on the next
      body-level tap. */
   delete p.goalBodyFat;
+  /* The goal weight sets the PACE, and the pace flips timelineIsAggressive()
+     — which moves the protein tier AND the step target. Measured on a
+     24-week timeline: 185 lb gives 155 g and 10,000 steps, 150 lb gives
+     180 g and 12,000. Both derived habits were left ticked against the
+     easier bar. Same class as setNutGoal() above. */
+  syncDerivedHabits();
   save();closeSheet();toast('Goal weight set 🎯');render();
 }
 function clearGoalWeight(){
@@ -14670,7 +14687,12 @@ function physRow(which){
 }
 function recomputeTargetWeight(){
   const kg=latestWeightKg(),cb=curBF(),gb=STATE.profile.goalBodyFat;
-  if(kg>0&&cb!=null&&gb>0&&gb<cb){const lean=kg*(1-cb/100);STATE.profile.goalWeightLb=Math.round((lean/(1-gb/100))/0.453592);}
+  if(kg>0&&cb!=null&&gb>0&&gb<cb){const lean=kg*(1-cb/100);STATE.profile.goalWeightLb=Math.round((lean/(1-gb/100))/0.453592);
+    /* It writes the SAME field saveGoalWeight() does, so it moves the same
+       two derived targets and needs the same sync. This is the path a body
+       LEVEL tap reaches, which is why fixing only the sheet would have left
+       half the class alive. */
+    if(typeof syncDerivedHabits==='function')syncDerivedHabits();}
 }
 function setBodyLevel(which,level){
   /* levelBF() does PHYS_LEVELS[clamp(level,1,5)-1].bf, and clamp(NaN) is NaN —
@@ -17913,7 +17935,18 @@ function renderFuel(){
 }
 function setNutGoal(g){
   if(goalKeys().indexOf(g)<0)return;   // reaches innerHTML on every tab
-  nut().goal=g;STATE.profile.goal=g;noteGoalPhase();if(nut().kcalTarget)recalcKcalFromStored();save();renderFuel();}
+  nut().goal=g;STATE.profile.goal=g;noteGoalPhase();if(nut().kcalTarget)recalcKcalFromStored();
+  /* THE GOAL MOVES TWO DERIVED TARGETS — STEP_TARGETS[goal] and the protein
+     tier — and a derived habit is a verdict against a target, not a number.
+     Measured before this: 7,500 steps on Maintain (7,000) is a legitimate
+     tick; switching to Lean recomp raises the bar to 10,000 and the tick
+     STAYED ON. Same for protein — 160 g logged against 155 g, switch to a
+     goal wanting 180 g, still ticked. A wrong tick is not cosmetic: it
+     extends the nutrition streak by a day and can unlock Perfect Day.
+     v346's rule, one setter over: every writer that moves one of these
+     calls the sync rather than remembering which habit it touched. */
+  syncDerivedHabits();
+  save();renderFuel();}
 /* Recompute BOTH ways. This only ever ticked on the way up, so undoing a
    mis-tap left "Hit water goal" checked above a card reading 0/13 — the exact
    contradiction syncStepHabit()'s own comment says it exists to prevent, never
@@ -20117,6 +20150,20 @@ function validateData(){
     Object.keys(m).forEach(k=>{if(!EX[m[k]])errs.push(n+'.'+k+' -> unknown exercise "'+m[k]+'"');});
   });
   Object.keys(JOINT_RISK).forEach(j=>JOINT_RISK[j].forEach(k=>{if(!EX[k])errs.push('JOINT_RISK.'+j+': unknown exercise "'+k+'"');}));
+  /* ---- every goal explains itself ----------------------------------------
+     GOAL_NOTE is read as `GOAL_NOTE[g]||''`, so a goal missing from it shows
+     the picker button selected with NOTHING under it. Nothing throws and
+     nothing looks wrong in the diff — v363 shipped exactly that, adding the
+     goal to GOALS while the map that describes it stayed at six entries.
+     Checked BOTH directions, the same lockstep TESTS/TEST_DEFAULTS gets:
+     a note for a goal that no longer exists is dead copy nobody will see. */
+  try{
+    const gk=GOALS.map(g=>g[0]);
+    gk.forEach(g=>{const t=GOAL_NOTE[g];
+      if(typeof t!=='string'||!t.trim())errs.push('GOAL_NOTE: no note for goal "'+g+'" — the picker shows it with a blank explanation');});
+    Object.keys(GOAL_NOTE).forEach(g=>{
+      if(gk.indexOf(g)<0)errs.push('GOAL_NOTE: note for "'+g+'", which is not a goal');});
+  }catch(e){errs.push('GOAL_NOTE: could not be checked — '+e.message);}
   /* ---- the recipe bank -----------------------------------------------------
      FOODS had eleven per-row assertions; RECIPES — the allergen tags, which are
      the only thing between a declared allergy and the plate — had none. That is
