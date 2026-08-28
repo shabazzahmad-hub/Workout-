@@ -5973,6 +5973,19 @@ log row, and a predicate that refuses every date.
 - **Layout at five phone widths in both themes** — 320, 360, 412, 430 and 768,
   13 panes each: **130 renders, zero horizontal overflow**, no element sticking
   out past the viewport, no throw.
+- **Every feedback loop that decides how hard tomorrow is**, driven rather than
+  read: the `adapt` band is repaired at BOTH ends and in-band values are left
+  alone (99 → 1.3, −50 → 0.9, 1.3 and 0.9 and 1 untouched, `'1.2'`/`null`/`{}`
+  → 1); adapt reaches the prescription monotonically (61 / 68 / 76 across
+  0.9 / 1.0 / 1.3); a readiness slump EASES (69 → 48); deload eases
+  (138 → 116); safe mode eases (68 → 50); **every ease at once is the easiest
+  of all** (32); and nothing drives a target to zero or a hold under 5 s.
+
+  **Four probe errors in that one axis**, which is the usual ratio: there is no
+  `rateSession()` — the increment lives inside `commitSession()`; pointer 40 is
+  week 6 of 6 and therefore ALREADY a deload week, so the flag correctly
+  changed nothing there; and `JSON.stringify(1.30)` is `"1.3"`, so two lookups
+  read `undefined` and reported a defect in code that was right.
 
 **And one false alarm worth recording, because it was 65 findings.** The library
 sweep first asserted that a `safeSwap()` substitute must measure the same UNIT
