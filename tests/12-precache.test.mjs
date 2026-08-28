@@ -495,6 +495,79 @@ export default async function run() {
 
   await ctx.close();
 
+  /* ---- A FIRST INSTALL MUST FILL ITS OWN PACK (v357) -----------------------
+     The top-up ping was guarded on `navigator.serviceWorker.controller` at the
+     instant `ready` resolves. Those are two different moments, and on a genuine
+     first install `ready` wins: controller is still null, the guard skips, the
+     catch swallows it, and nothing ever re-sends.
+
+     Measured on a brand-new profile that was never reloaded: the worker reached
+     `activated`, the page reported itself controlled two seconds later, and the
+     pack sat at 12 of 251 files for forty seconds. The athlete installs, uses
+     it once, closes it, goes offline — and has the shell and no exercise
+     photographs at all. Only a SECOND visit started it, which is why every
+     earlier probe missed this: they all reloaded.
+
+     This block must therefore NEVER reload. A fresh persistent context, one
+     navigation, and watch. */
+  {
+    const ctx = await chromium.launchPersistentContext('',
+      { serviceWorkers: 'allow', viewport: { width: 390, height: 844 } });
+    const pg = await ctx.newPage();
+    await pg.goto(base, { waitUntil: 'domcontentloaded' });
+    await pg.waitForFunction(() => document.querySelector('.view.active'), null, { timeout: 20000 });
+
+    const declared = (() => {
+      const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+      const names = new Set();
+      sw.split('\n').forEach(l => {
+        const m = l.match(/'([^']*\.(?:html|js|json|png|jpg|mp4|webmanifest|ico|svg))'/g);
+        if (m) m.forEach(x => names.add(x.replace(/'/g, '')));
+      });
+      return names.size;
+    })();
+    t.ok('guard: sw.js really declares a big pack', declared > 200, { declared });
+
+    const count = () => pg.evaluate(async () => {
+      const ks = await caches.keys();
+      const mine = ks.filter(k => /^coreforge-v\d+$/.test(k));
+      return mine.length ? (await (await caches.open(mine[0])).keys()).length : 0;
+    });
+    /* The install is async — reading the count the instant the view paints
+       gives 0 and fails on correct code. Wait for the tier to land. */
+    let install = 0, iw = 0;
+    while (iw < 20000) { install = await count(); if (install > 0) break; await pg.waitForTimeout(500); iw += 500; }
+    t.ok('the install tier lands quickly and is small', install > 0 && install < 60, { install, ms: iw });
+
+    /* Give it a generous window, and stop as soon as it is done. */
+    let n = install, waited = 0;
+    while (waited < 60000) {
+      await pg.waitForTimeout(2000); waited += 2000;
+      n = await count();
+      if (n >= declared) break;
+    }
+    t.ok('a first install fills the whole offline pack on its own, with no second visit',
+      n >= declared, { reached: n, declared, install, secondsWaited: waited / 1000 });
+
+    /* THE FLOOR that stops "fix" being "download everything at install": the
+       install tier must still be a small fraction of the pack, or the worker
+       sits in `installing` for the whole download the way it used to. */
+    t.ok('and the install itself still took only a fraction of it',
+      install < declared / 4, { install, declared });
+
+    /* And it must STOP — a top-up that loops re-downloads the pack for ever. */
+    const settled = await count();
+    await pg.waitForTimeout(4000);
+    t.eq('the top-up plateaus rather than looping', await count(), settled, { settled });
+
+    /* The page never became a second load: prove it, or the check passes on
+       exactly the behaviour it exists to rule out. */
+    t.eq('guard: this was ONE navigation, never reloaded',
+      await pg.evaluate(() => performance.getEntriesByType('navigation').length), 1);
+
+    await ctx.close();
+  }
+
   srv.close();
   return t.finish([]);
 }

@@ -6001,6 +6001,80 @@ RETURNS the id and keeps it in a script-scope `let`, so reading a stored field
 gave `'auto'` 114 times. Sixth time this session. **Confirm the control's real
 shape before believing the result.**
 
+## A first install never filled its own offline pack (v357)
+
+The app's oldest promise, and it was only half-kept for anyone who installed it
+and did not open it twice.
+
+The top-up ping was guarded on `navigator.serviceWorker.controller` **at the
+instant `ready` resolves**. Those are two different moments, and on a genuine
+first install `ready` wins. Measured at that exact instant: **`reg.active`
+exists (state `activating`) and `controller` is NULL.** The guard skips, the
+`catch(e){}` swallows it, and nothing ever re-sends.
+
+Measured on a brand-new profile that was never reloaded:
+
+| | files cached |
+|---|---|
+| after install | **12 of 251** |
+| after 40 seconds | **12** |
+| after the fix, 14 seconds | **251** |
+
+The athlete installs the app, uses it once, closes it, goes offline — and has
+the shell and **no exercise photographs at all**. Only opening it a SECOND time
+started the top-up (12 → 37 → 79 → 121 → 169 → 211 → 252), which is exactly why
+every earlier probe missed it: **they all reloaded.** Suite 12's own checks post
+`cf-topup` by hand, so they proved the worker's side and never the page's.
+
+The fix posts to `reg.active` — the registration `ready` resolves with, whose
+active worker is guaranteed to exist at that point — plus a one-shot
+`controllerchange` re-send, plus the controller for the ordinary second load.
+
+**Which of the three is load-bearing was measured, not assumed.** `activate`
+calls `clients.claim()`, so control arrives after about **250 ms** — too fast
+for the pack to grow in between. So `controllerchange` alone is enough today,
+and two mutants that leave only it **escape every check**. There is no
+observable window to discriminate on, so they are recorded as equivalent rather
+than papered over with a check that cannot fail. `reg.active` is kept because it
+is the EARLIER and spec-guaranteed signal: delete `clients.claim()` from the
+worker and it becomes the only mechanism left. Same call as v287's `wantAnchor`.
+
+**The check must never reload, and it has to prove it did not.** A fresh
+persistent context, one navigation, and `performance.getEntriesByType(
+'navigation').length === 1` asserted — otherwise the check passes on exactly
+the behaviour it exists to rule out. Its floor is the install tier staying a
+small fraction of the pack, so "fix" cannot become "download everything at
+install", which is the regression the tiers were built to prevent.
+
+**And the install is ASYNC.** Reading the cache count the instant the view
+paints gives 0 and fails on correct code; the check polls for the tier to land.
+
+### Four sweeps that came back clean
+
+- **The destructive paths, driven with the confirm answered.** Undo rewinds the
+  pointer and clears the stale `_trainAgain` (v316); restart archives all 20
+  logs, resets the pointer, clears live-session scratch and keeps photos,
+  records and measurements, with `allDoneLogs()` still reading the archive;
+  `hardReset()` clears everything except the three device credentials and
+  leaves no pre-import snapshot. **Three probe errors first**: all three are
+  gated behind `confirm()`, which returns FALSE in a headless page, and
+  `undoSession()` needs the `_undo` snapshot `commitSession()` writes — without
+  it, it correctly toasts "Nothing to undo".
+- **Every validator rule actually FIRES.** Ten rules broken one at a time — a
+  bad anchor, a unit mismatch, a base over its own `repCap`, an unknown
+  `pattern`, a ladder that climbs, a swap to a non-exercise, an illegal `side`,
+  a persona below the pitch floor, a reference day with no meals, a test missing
+  from `TEST_DEFAULTS` — all ten complained with a specific message and all ten
+  restored to zero. A clean validator says nothing about whether a rule exists.
+- **Real names, not attack payloads**: an apostrophe, a double quote, an
+  ampersand, an accent, an emoji, a 58-character name, angle brackets, a
+  backslash, only spaces and a newline — across four panes at 360px. No raw
+  HTML entity ever reached the glass, nothing overflowed, nothing threw.
+- **The offline promise itself**: the worker reaches `activated`, the pack
+  plateaus rather than looping, an offline reload boots and renders all six
+  tabs, and **a neighbouring app's cache and service-worker registration both
+  survive a CoreForge update** — the origin-wide rule still holds.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

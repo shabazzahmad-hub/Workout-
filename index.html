@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='356';
+const APP_VERSION='357';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -19882,8 +19882,47 @@ async function boot(){
        and the worker only stays alive to do it while a page is holding it, so
        this ping is what actually drives it. Sent on every load, so a pack left
        half-finished picks up where it stopped. */
-    navigator.serviceWorker.ready.then(()=>{
-      try{if(navigator.serviceWorker.controller)navigator.serviceWorker.controller.postMessage({type:'cf-topup'});}catch(e){}
+    /* POST TO THE REGISTRATION'S ACTIVE WORKER, NOT TO `controller`.
+       `ready` resolving and the page becoming CONTROLLED are two different
+       moments, and on a genuine first install `ready` wins: controller is
+       still null, the guard skips, the catch swallows it, and nothing ever
+       re-sends. Measured on a brand-new profile that was never reloaded — the
+       worker reached `activated`, the page reported itself controlled two
+       seconds later, and the pack sat at **12 of 251 files for forty seconds**
+       and would have sat there for ever. The athlete installs the app, uses it
+       once, closes it, goes offline, and has the shell and nothing else: no
+       exercise photographs at all.
+
+       Only opening the app a SECOND time started it (12 -> 37 -> 79 -> 121 ->
+       169 -> 211 -> 252), which is why every earlier probe missed this — they
+       all reloaded.
+
+       Measured at the exact instant `ready` resolves on a first install:
+       `reg.active` EXISTS (state `activating`) and `controller` is NULL. That
+       window is the whole defect.
+
+       `ready` resolves WITH the registration, so posting to `reg.active` works
+       whether or not this page is controlled yet. `controllerchange` re-sends
+       once if control arrives later, and the controller itself covers the
+       ordinary second load. topUp() skips whatever is already cached, so a
+       duplicate ping costs nothing.
+
+       WHICH OF THE THREE IS LOAD-BEARING WAS MEASURED, NOT ASSUMED. `activate`
+       calls `clients.claim()`, so control arrives after about **250 ms** — too
+       fast for the pack to grow in between, which means `controllerchange`
+       alone is enough today and two mutants that leave only it escape every
+       check. There is no observable window to discriminate on, so they are
+       recorded as equivalent rather than papered over with a check that cannot
+       fail. `reg.active` is kept because it is the EARLIER and spec-guaranteed
+       signal: delete `clients.claim()` from the worker and it becomes the only
+       mechanism left. Same call as v287's `wantAnchor`. */
+    navigator.serviceWorker.ready.then(reg=>{
+      const ping=()=>{try{
+        const w=(reg&&reg.active)||navigator.serviceWorker.controller;
+        if(w)w.postMessage({type:'cf-topup'});
+      }catch(e){}};
+      ping();
+      navigator.serviceWorker.addEventListener('controllerchange',ping,{once:true});
     }).catch(()=>{});
   }).catch(()=>{});}catch(e){}}   // the outer try/catch only guards the SYNCHRONOUS call; register() can reject too
 }
