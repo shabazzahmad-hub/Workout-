@@ -6074,6 +6074,40 @@ paints gives 0 and fails on correct code; the check polls for the tier to land.
   plateaus rather than looping, an offline reload boots and renders all six
   tabs, and **a neighbouring app's cache and service-worker registration both
   survive a CoreForge update** — the origin-wide rule still holds.
+- **The player's three TWINS, each driven to its own end.** HIIT runs
+  `lead → work/rest x13 → done` on its own ticks with no spoken digits (v302
+  and v317 hold) and the movement named (v308). The warm-up flow completes all
+  eight moves to `✓ Done`, fires **seven reposition cues** (the v349 falling
+  880→520 pair, the one shape no other cue uses) and **stops the beat**. The
+  baseline battery walks all ten tests, 0 through 9, with the v296 two-minute
+  rest between each and no timer left armed.
+
+  **Five probe errors in that one axis.** `startWarmup` and `startAssessment`
+  do not exist; `runFlow` keeps its whole state in CLOSURE LOCALS so there is
+  nothing to poke — its interval has to be pumped instead; the flow names its
+  move in `#flowName`, not `.pl-name`; `autoClose()` uses setTimeout, so
+  pumping only intervals made the beat look stuck for ever when
+  `closeSheet()` stops it; and **`assessNav()` reads the DOM input
+  `#assess-val`, not `assessState.results`** — setting the state directly
+  leaves the field empty and the battery correctly refuses to advance.
+
+- **Nothing leaks across repeated open-and-close cycles**, which is what drains
+  a phone left running for days. Measured with Chromium's own
+  `Performance.getMetrics` and collection forced before every reading: opening
+  and closing all 38 sheets twelve times over holds at **519 listeners and
+  11,088 nodes, flat from the third cycle on**, with the heap at 3.5 MB; and
+  the player, HIIT and the flow add **exactly zero**. No interval timer is ever
+  left armed.
+
+  **The measurement is the whole finding here.** An adds-minus-removes tally
+  reported "+11 listeners per cycle, climbing" and a node-identity probe
+  reported "the same node accumulates" — both wrong, because a listener on an
+  element that gets REPLACED is collected with it, and neither counter can see
+  collection. A raw live count is wrong too: it climbs for four cycles and then
+  DROPS, which is GC, not a fix. Only forcing collection before each reading
+  measures what the browser genuinely cannot reclaim. My own crude verdict line
+  printed "a real leak" three times and the data said otherwise every time.
+
 - **A whole session driven through the player**, by firing its own ticks rather
   than sleeping: 6 movements, 15 sets, the cycle `ready → work → rest` fifteen
   times and then `done`, with **14 rest phases — correctly none after the last
