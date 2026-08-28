@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='372';
+const APP_VERSION='373';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -14132,8 +14132,22 @@ function saveActivityRead(){
     }
     put(p.run,setRunUnit,setRunVal);
     put(p.ruck,setRuckUnit,setRuckVal);
-    if(p.bike.min>0){setBikeVal(p.bike.min);wrote++;}
-    if(p.jacks.min>0){setJackVal(p.jacks.min);wrote++;}
+    /* THE UNIT TRAVELS WITH THE NUMBER. These two wrote MINUTES into a field
+       whose stored unit the athlete may have left on something else, and the
+       readers then priced the number in that unit. Measured on a real import:
+
+         bike, unit left on distance   30 min imported -> read as 30 km
+                                       = 100 min = 893 kcal, against ~268
+         jacks, unit left on reps      20 min imported -> read as 20 REPS
+                                       = 0.4 min = 3 kcal
+
+       Over-crediting is the worse direction: movement earns calorie room on
+       the surplus, so 893 kcal goes straight into the food budget. Skipping,
+       the run and the ruck all set their unit; these two were the two that
+       did not. Same shape as v337's label-and-number written as two
+       expressions — the pair has to move together. */
+    if(p.bike.min>0){setBikeUnit('min');setBikeVal(p.bike.min);wrote++;}
+    if(p.jacks.min>0){setJackUnit('min');setJackVal(p.jacks.min);wrote++;}
     if(p.skip.min>0){setSkipUnit('min');setSkipVal(p.skip.min);wrote++;}
   }catch(e){}
   /* Says what it did, never a flat "Saved". v343: three savers on one screen

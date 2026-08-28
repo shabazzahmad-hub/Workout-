@@ -7327,6 +7327,55 @@ real number rather than a fixed phrase. Both mutants are caught.
 
 Twelve mutants across the round, all caught.
 
+## The watch import wrote minutes without saying they were minutes (v373)
+
+`saveActivityRead()` sets the unit for the run, the ruck and skipping. For the
+bike and the jacks it wrote a bare number — and the readers priced it in
+whatever unit the athlete had last left the field on. Measured on a real
+import:
+
+| mode | field left on | imported | read back as |
+|---|---|---|---|
+| bike | distance | 30 min | **30 km = 100 min = 893 kcal**, against ~268 |
+| jacks | reps | 20 min | **20 REPS = 0.4 min = 3 kcal** |
+
+**Over-crediting is the worse direction**, because movement earns calorie room
+on the surplus — so 893 kcal goes straight into the food budget for a ride
+worth 268.
+
+Same shape as v337's label and number written as two expressions: **the pair
+has to move together.** Three of the five modes already did it; these were the
+two that did not.
+
+**The floors are the three that were already right**, and they are what stops
+the fix being "force minutes everywhere": a run that carries a DISTANCE must
+still store a distance, and the mutant that forces `min` there is caught.
+
+Five mutants, all caught.
+
+### Three false alarms in the same sweep, and all three were the probe
+
+The round began with the dead-control sweep — *is there a control the athlete
+sets that the program never reads?* Ten controls, fingerprinted across 60
+built sessions plus the warm-up, calorie target, meal plan and both prep
+plans. Three came back dead and **every one was the probe**:
+
+- **`settings.repTempo`** — the fingerprint covered the session BUILDER and
+  not the player. It moves `plBudgetMin()` from 21 minutes to 28.
+- **`profile.timelineWeeks`** — `kcalTargetPreview()` reads the PROFILE copies
+  of height, age and sex, and the probe had set only the nutrition ones. Given
+  both, it is very much alive: **1950 / 2240 / 2510 kcal** at 12 / 24 / 52
+  weeks.
+- **`nutrition.meals`** — fed a `5`, which the app never offers, without
+  calling `normalizeState()`. The boot repair coerces it (`>=4 ? 4 : 3`) and
+  the picker offers only two values. With 3 and 4 the plan really changes.
+
+A guard written first — *every field path must exist in `DEFAULT_STATE()` and
+every function must be a function* — also caught **three invented field
+names** before any measurement ran. That guard is the one thing that keeps
+this sweep honest; v322 recorded the same lesson after half of a dead-control
+probe's findings turned out to be its own bad key names.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

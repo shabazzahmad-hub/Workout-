@@ -4160,6 +4160,70 @@ export default async function () {
     t.ok('and reads the last week as one week', /One week out|This week/.test(brief.tomorrow.say), brief.tomorrow.say);
   }
 
+
+  /* v373 — THE WATCH IMPORT WROTE MINUTES WITHOUT SAYING THEY WERE MINUTES.
+     saveActivityRead() sets the unit for the run, the ruck and skipping, and
+     wrote a bare number for the bike and the jacks — so the readers priced it
+     in whatever unit the athlete had last left the field on. Measured:
+
+       bike, unit left on distance   30 min imported -> read as 30 km
+                                     = 100 min = 893 kcal, against ~268
+       jacks, unit left on reps      20 min imported -> read as 20 REPS
+                                     = 0.4 min = 3 kcal
+
+     Over-crediting is the worse direction — movement earns calorie room on
+     the surplus, so 893 kcal goes straight into the food budget. */
+  {
+    const act = await page.evaluate(() => {
+      const day = () => nutToday();
+      const fresh = () => { STATE.nutrition.days = {}; save(); };
+      const imp = o => { _actRead = Object.assign(
+        { steps: 0, run: { km: 0, min: 0 }, ruck: { km: 0, min: 0 },
+          bike: { min: 0 }, jacks: { min: 0 }, skip: { min: 0 }, unplaced: [] }, o);
+        saveActivityRead(); };
+      const out = {};
+      /* Each mode imported with the field left on a DIFFERENT unit — the
+         state that made the number mean something else. */
+      fresh(); setBikeUnit('dist'); setBikeVal(12); imp({ bike: { min: 30 } });
+      out.bike = { unit: day().bikeUnit, val: day().bikeVal,
+                   min: CARDIO_INFO.bike.dayMin(day()),
+                   kcal: Math.round(CARDIO_INFO.bike.dayKcal(day())) };
+      fresh(); setJackUnit('reps'); setJackVal(400); imp({ jacks: { min: 20 } });
+      out.jacks = { unit: day().jackUnit, val: day().jackVal,
+                    min: CARDIO_INFO.jacks.dayMin(day()),
+                    kcal: Math.round(CARDIO_INFO.jacks.dayKcal(day())) };
+      /* The three that were already right — the floors that show the shape. */
+      fresh(); setSkipUnit('kcal'); setSkipVal(300); imp({ skip: { min: 25 } });
+      out.skip = { unit: day().skipUnit, val: day().skipVal,
+                   min: CARDIO_INFO.skip.dayMin(day()) };
+      fresh(); setRunUnit('min'); imp({ run: { km: 5, min: 30 } });
+      out.run = { unit: day().runUnit, val: day().runVal };
+      fresh(); setRuckUnit('dist'); imp({ ruck: { km: 0, min: 45 } });
+      out.ruck = { unit: day().ruckUnit, val: day().ruckVal };
+      fresh();
+      return out;
+    });
+
+    /* THE FINDING: the unit travels with the number. */
+    t.eq('an imported bike ride is stored as minutes', act.bike.unit, 'min', act.bike);
+    t.eq('and reads back as the minutes imported', act.bike.min, 30, act.bike);
+    t.ok('so the energy is the ride, not a distance',
+      act.bike.kcal > 200 && act.bike.kcal < 400, act.bike);
+    t.eq('imported jacks are stored as minutes', act.jacks.unit, 'min', act.jacks);
+    t.eq('and read back as the minutes imported', act.jacks.min, 20, act.jacks);
+    t.ok('so they are not priced as twenty reps',
+      act.jacks.kcal > 100, act.jacks);
+
+    /* THE FLOORS: the three that already set their unit still do, and the two
+       that carry a DISTANCE still store one. A fix that forced 'min'
+       everywhere would break the run. */
+    t.eq('skipping still sets its own unit', act.skip.unit, 'min', act.skip);
+    t.eq('and still reads back', act.skip.min, 25, act.skip);
+    t.eq('a run with a distance is still stored as a distance', act.run.unit, 'dist', act.run);
+    t.eq('and a ruck with only minutes falls to minutes', act.ruck.unit, 'min', act.ruck);
+    t.eq('with the minutes it was given', act.ruck.val, 45, act.ruck);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
