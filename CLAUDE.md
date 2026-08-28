@@ -5913,6 +5913,39 @@ Six mutants, all caught, including the two over-eager twins: bucketing by month
 (too wide) and by day (too narrow) both satisfy "the New Year week counts every
 day" and fail the floors beside it.
 
+### And a row with no usable date is not a record of anything
+
+Found by auditing the week-bucket change an hour after making it — the ratio
+this file already records, where the best finding is in the round immediately
+before. `_weekKeyOf()` returns the raw string when it cannot parse a date, so
+**a junk-dated row forms its OWN week bucket and can beat a real week.**
+Measured: a row dated `'not-a-date'` worth 30 minutes against a genuine week
+worth 20, and `bestSkipWeek()` reported **30**.
+
+The four activity logs (`skipLog`, `ruckLog`, `gripLog`, `boxLog`) repaired
+`mins` and never looked at `date` — while the `liftLog` repair forty lines up
+already required one. **One instance guarded, four siblings not**, for the
+fourth time in three rounds.
+
+And `liftLog`'s own test was `typeof r.date === 'string'`, which `'not-a-date'`
+passes. `isDateISO()` is now the one predicate all five ask.
+
+**The round trip is what makes it right, and it subsumes the shape test.**
+`localISO()` can only ever emit `YYYY-MM-DD`, so `localISO(d) === v` forces the
+shape as well as the parse — `'2025-13-45'` matches the pattern and is not a
+day, `'2025-02-29'` is not a day in 2025, and `'2025-6-2'` never round-trips.
+
+**Which makes the regex an EQUIVALENT guard, and that was measured rather than
+assumed.** Across sixteen inputs — `'2025-6-2'`, `' 2025-06-02'`,
+`'02025-06-02'`, `'2025-06-02T10:00'`, `'2025-02-29'` and the rest — dropping it
+changes **nothing**, so no check can catch its removal. Kept as a cheap
+early-out and as intent, the same call as v287's `wantAnchor`. **Read the mutant
+back before rewriting the check** — it was the only escape of the round and it
+was a bad mutant, not a weak check.
+
+Six more mutants, all caught, including both over-eager twins: dropping every
+log row, and a predicate that refuses every date.
+
 ### Five sweeps that came back clean
 
 - **The exercise library's own data**, 197 entries: no `SAFE_SWAP` or
@@ -5931,6 +5964,15 @@ day" and fail the floors beside it.
   answers for every one, and every neural pitch shift sits inside the band
   `validateData()` enforces. The shuffle bag plays **all 38 before any repeat**,
   with **zero back-to-back repeats across three full bags**.
+- **The food and macro pipeline**: a day's totals are the exact sum of its
+  rows; a negative row cannot cancel a real meal (600 kcal stays 600);
+  `macroEnergyGap()` gives **71 g** on the real reported case and correctly
+  returns null for two missing, none missing, a legitimately carb-free meal and
+  a big fatty one — all four floors hold. 95 foods and 33 recipes, every diet
+  and allergen tag legal.
+- **Layout at five phone widths in both themes** — 320, 360, 412, 430 and 768,
+  13 panes each: **130 renders, zero horizontal overflow**, no element sticking
+  out past the viewport, no throw.
 
 **And one false alarm worth recording, because it was 65 findings.** The library
 sweep first asserted that a `safeSwap()` substitute must measure the same UNIT

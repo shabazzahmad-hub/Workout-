@@ -1480,6 +1480,82 @@ export default async function () {
     t.eq('an unparseable date still comes back as itself', wk.junkKey, 'not-a-date', wk);
   }
 
+  /* ---- a row with no usable date is not a record (v356) --------------------
+     The four activity logs repaired `mins` and never looked at `date`, while
+     the liftLog repair forty lines up already required one. One instance
+     guarded, four siblings not. */
+  {
+    const dl = await page.evaluate(() => {
+      const o = {}; const realErr = console.error; console.error = () => {};
+      const snap = JSON.stringify(STATE);
+
+      /* THE PAYLOAD, not the row count: _weekKeyOf returns the raw string when
+         it cannot parse, so a junk-dated row forms its OWN week bucket and can
+         BEAT a real week. */
+      STATE.skipLog = [{ date: 'not-a-date', mins: 30 }, { date: null, mins: 40 },
+                       { date: '2025-06-02', mins: 20 }];
+      const before = bestSkipWeek();
+      normalizeState();
+      o.junkBeatRealBefore = before;
+      o.afterRepair = bestSkipWeek();
+      o.rowsLeft = STATE.skipLog.map(r => r.date);
+
+      /* FLOOR: a real row is untouched, and its minutes still count. */
+      STATE = JSON.parse(snap);
+      STATE.skipLog = [{ date: '2025-06-02', mins: 30 }, { date: '2025-06-03', mins: 25 }];
+      normalizeState();
+      o.realKept = STATE.skipLog.length;
+      o.realWeek = bestSkipWeek();
+
+      /* The same repair on all four logs, not just the one the probe touched. */
+      STATE = JSON.parse(snap);
+      ['skipLog', 'ruckLog', 'gripLog', 'boxLog'].forEach(k => {
+        STATE[k] = [{ date: 'nope', mins: 10 }, { date: '2025-06-02', mins: 10 }];
+      });
+      normalizeState();
+      o.perLog = {}; ['skipLog', 'ruckLog', 'gripLog', 'boxLog'].forEach(k => {
+        o.perLog[k] = (STATE[k] || []).map(r => r.date);
+      });
+
+      /* And liftLog, whose own test was `typeof === 'string'` — which
+         'not-a-date' passes. */
+      STATE = JSON.parse(snap);
+      STATE.liftLog = [{ date: 'not-a-date', exId: 'kbgoblet', loadKg: 20, reps: 8 },
+                       { date: '2025-06-02', exId: 'kbgoblet', loadKg: 20, reps: 8 }];
+      normalizeState();
+      o.liftLeft = (STATE.liftLog || []).map(r => r.date);
+
+      /* The predicate's own contract: shape AND parse. '2025-13-45' matches the
+         pattern and is not a day. */
+      o.pred = {
+        good: isDateISO('2025-06-02'),
+        notADate: isDateISO('not-a-date'),
+        month13: isDateISO('2025-13-01'),
+        day45: isDateISO('2025-06-45'),
+        feb30: isDateISO('2025-02-30'),
+        leapReal: isDateISO('2024-02-29'),
+        leapFake: isDateISO('2025-02-29'),
+        nullish: isDateISO(null),
+        number: isDateISO(20250602),
+        short: isDateISO('2025-6-2'),
+      };
+      STATE = JSON.parse(snap); normalizeState(); save(); console.error = realErr; return o;
+    });
+    t.eq('guard: a junk-dated row really did beat a real week', dl.junkBeatRealBefore, 40, dl);
+    t.eq('after the repair the real week wins', dl.afterRepair, 20, dl);
+    t.eq('and only the dated row survives', dl.rowsLeft, ['2025-06-02'], dl);
+    t.eq('floor: two real rows are both kept', dl.realKept, 2, dl);
+    t.eq('floor: and their week still totals', dl.realWeek, 55, dl);
+    ['skipLog', 'ruckLog', 'gripLog', 'boxLog'].forEach(k => {
+      t.eq('the same repair reaches ' + k, dl.perLog[k], ['2025-06-02'], dl.perLog);
+    });
+    t.eq('and liftLog, whose test a junk string passed', dl.liftLeft, ['2025-06-02'], dl);
+    t.ok('floor: a real date is a date', dl.pred.good, dl.pred);
+    t.ok('floor: and a real leap day is a date', dl.pred.leapReal, dl.pred);
+    ['notADate', 'month13', 'day45', 'feb30', 'leapFake', 'nullish', 'number', 'short']
+      .forEach(k => t.eq('isDateISO refuses ' + k, dl.pred[k], false, dl.pred));
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
