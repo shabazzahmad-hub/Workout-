@@ -2475,6 +2475,69 @@ export default async function () {
     t.ok('and the log travels in a backup', ht.inBackup, ht);
   }
 
+  /* ---- A GRINDER IS ONE EFFORT, NOT SIX (v362) --------------------------
+     Found by auditing v360 an hour after shipping it — the ratio this file
+     already records. Reusing the HIIT engine inherited its PER-ROUND
+     semantics, and a grinder has no rest: it is one continuous piece of work.
+     Measured before the fix: SIX grind lines in a six-minute grinder, which
+     is a nag and contradicts v359's own "one per effort" rule. And its
+     minutes went nowhere, while Special HIIT one branch away offered exactly
+     that log. */
+  {
+    const g2 = await page.evaluate(async () => {
+      const o = {};
+      const flush = () => new Promise(r => setTimeout(r, 20));
+      const G = /hard part|Burning muscles|Shaking here|honest part|Fatigue now|last third|does not get easier/;
+      const runGrind = async (fmt) => {
+        STATE.grindLog = [];
+        const said = []; const real = window.coachSpeak;
+        window.coachSpeak = x => said.push([Math.round(ivSessionSecs() - grinderLeft()), String(x)]);
+        startGrinder(fmt);
+        await new Promise(r => setTimeout(r, 120));
+        INTV.lead = 0; ivTickLead(); await flush();
+        let n = 0;
+        while (INTV && INTV.phase !== 'done' && n++ < 1400) { INTV.deadline = 0; ivTick(); await flush(); }
+        const fin = (document.querySelector('#ivBody') || {}).innerText || '';
+        window.coachSpeak = real;
+        const hits = said.filter(x => G.test(x[1]));
+        hiitQuit(); await flush();
+        return { n: hits.length, at: hits.map(x => x[0]), logBtn: /Log \d+ min to my record/.test(fin) };
+      };
+      o.six = await runGrind('grind6');
+      o.sixWant = grindAt(360);          // the SESSION's last third, not a station's
+      o.stationWant = grindAt(60);       // what the old code used
+      /* THE FLOOR: HIIT rounds ARE separate efforts, with rest between, so
+         each keeps its own acknowledgement. A fix that reset only once would
+         satisfy every "the grinder says it once" assertion and silence five
+         rounds of a Tabata. */
+      const said = []; const real = window.coachSpeak;
+      window.coachSpeak = x => said.push(String(x));
+      INTV = { i: 0, format: 'tabata',
+        seq: [{ type: 'work', secs: 45, exId: 'burpee' }, { type: 'rest', secs: 20, exId: 'burpee' },
+              { type: 'work', secs: 45, exId: 'burpee' }],
+        phase: 'work', remain: 45, total: 45, grindSaid: false, running: false,
+        workElapsed: 0, deadline: 0,
+        sess: { session: { name: 'x', key: 'specialhiit' }, ptr: -1, pos: {} } };
+      let n = 0;
+      while (INTV && INTV.i < 3 && n++ < 400) { INTV.deadline = 0; ivTick(); await flush(); }
+      window.coachSpeak = real;
+      o.hiitRounds = said.filter(x => G.test(x)).length;
+      INTV = null;
+      return o;
+    });
+
+    t.eq('a six-minute grinder is acknowledged exactly once', g2.six.n, 1);
+    /* Two thirds of the SESSION (240s of 360), not two thirds of a station
+       (40s). A station-based point fires six times and lands at 40. */
+    t.eq('at two thirds of the whole session', g2.six.at, [g2.sixWant]);
+    t.eq('guard: which is 240 seconds, not the 40 a station would give', g2.sixWant, 240);
+    t.eq('guard: and a station really would have given 40', g2.stationWant, 40);
+    /* The floor: a HIIT round IS its own effort, and two work rounds get two. */
+    t.eq('but HIIT rounds each keep their own', g2.hiitRounds, 2);
+    /* Its minutes went nowhere while its sibling offered the log. */
+    t.ok('and a finished grinder can log its minutes', g2.six.logBtn, g2.six);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
