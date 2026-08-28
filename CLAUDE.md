@@ -5549,6 +5549,131 @@ the source and using it as the anchor fixed both immediately.
 
 Eleven mutants, all caught.
 
+## The membership rule stopped at the READ site (v354)
+
+A full audit with a free hand to fix. Two sweeps came back clean and are worth
+recording as coverage: **all 13 screens and panes render** loaded and fresh
+with no `NaN`, no `undefined` and no throw; and every registry added this
+session — `CARDIO_MODES`, `SIDE_MODES`, `TIMELINE_OPTS`, `ACTIVITY_OPTS`,
+`MOBILITY_LEVELS` — is asked rather than restated at every consumer.
+
+The finding is that this file's most-repeated rule had only ever been applied
+where a value is READ BACK. **Nine `set*()` writers took whatever they were
+handed.** `normalizeState()` is a boot repair, so a value written by a tap and
+read on the same render never passes through it at all.
+
+**Two of them put a live DOM node on the page.** `setNutGoal()` writes
+`nutrition.goal`, which reaches `innerHTML` on **all six tabs**; `setPersona()`
+on two. `importData()` accepts arbitrary JSON, so this is a real injection path
+and not self-XSS — the same reasoning that made `_saved` and an achievement
+date user content.
+
+**Two others threw on anything but their own control's value.**
+`setBodyLevel()` does `PHYS_LEVELS[clamp(level,1,5)-1].bf` and `clamp(NaN)` is
+`NaN`; `setFoodAiKey()` did `(v||'').trim()`.
+
+And `setSwap()` accepted a swap target that is not an exercise, which then
+reaches `prescribe()` and the session card.
+
+### Two boot repairs that were never written
+
+- **`sex` had no repair at all.** It feeds Mifflin-St Jeor, and every reader
+  tests for `'female'` — so **any junk reads as male**. Measured on one body:
+  BMR 1793 against 1627, a calorie target of **2280 against 2020**. A corrupted
+  profile silently prices a woman as a man, 260 kcal a day, with nothing on
+  screen to say so. **Absent stays absent**: the wizard asks for it, and
+  inventing a sex is worse than knowing it is missing.
+- **`focusPrimary` was guarded by truthiness**, so every other string survived
+  and `focusBonus()` looked it up in `FOCUS_POOL` and found nothing. Measured:
+  **41 distinct exercises across a cycle with a real focus, 40 with junk.** The
+  program really does differ and nothing says why. It falls back to the
+  athlete's own first target rather than to `abs`, because their answer is
+  better evidence than a default.
+
+### The fix that stopped the page loading
+
+`const FOCUS_KEYS=Object.keys(FOCUS_POOL)` was placed ~35 lines ABOVE
+`FOCUS_POOL`'s own declaration — a temporal dead zone error that **stopped the
+app booting outright**. `npm run check` only parses and cannot see it; the
+first driven run found it in seconds. They are functions. Same trap as v290's
+`btRing`, and the same lesson: **driving the real path finds what reading the
+diff does not.**
+
+### Three probe errors, and each looked exactly like a dead control
+
+The usual ratio for an audit written from outside the code:
+
+- **`settings.tone` does not exist** — the field is `settings.voiceTone`, so
+  junk written to the invented key changed nothing and read as a dead control.
+- **`experience` junk is harmless because the MEASURED level wins.** It had to
+  be tested on a **Beginner** baseline; the seeded athlete is Advanced, where
+  the two agree and the input is genuinely inert.
+- **`sex` needed `'male'`/`'female'`, not `'m'`/`'f'`.** With the wrong values
+  both readings came back male, and the control looked dead when it was the
+  probe that was wrong. **Confirm the control's real shape before believing
+  the result** — third time this file has recorded it.
+
+### Two sweeps that came back clean, recorded as coverage
+
+- **74 writers driven with a hostile payload**, every tab rendered looking for
+  the injected ELEMENT: no injection, no page error. `toast()` uses
+  `textContent`, and every picker renders from its registry rather than from
+  stored values, so neither is an injection path.
+- **Render cost with a year of history** — 300 sessions, 365 food days, 52
+  weigh-ins, every tab and pane. Everything is 0-28 ms except Progress ▸
+  Summary, and that is v335's known legacy-log path: **2 ms** with the `items`
+  current code writes, ~120 ms without. The memo holds — measured the way v335
+  prescribes, by counting DUPLICATES rather than calls: **301 `buildSession`
+  calls for 300 logs, zero duplicates.** v335 measured the legacy cost and
+  declined to backfill because a renderer must not write to stored data, and
+  that decision stands.
+- **Every tab pointer in rendered copy, read off the real screens** rather than
+  grepped out of the source — six of them, all naming the right destination.
+  Grepping the source instead reports mostly comments; one of those was stale
+  (a header saying "jump to the Fuel tab" three lines above the comment
+  explaining that it goes to Reference) and was reworded.
+
+### The container was checked and its MEMBERS were not
+
+Sweeping the whole writer surface afterwards — 74 `set*`/`toggle*`/`pick*`
+functions driven with a hostile payload, every tab rendered looking for the
+injected ELEMENT — found **no injection left and no page error**. What it did
+find is three keyed sets carrying a container check and nothing below it:
+`profile.gear`, `profile.limitations` and the day's `habits`.
+
+**A junk member changes no behaviour**, and that was measured rather than
+assumed: the built session is byte-identical, `hasGearFor()` does an `every()`
+that never matches, and a junk joint matches nothing in `JOINT_RISK`. The harm
+is that **every picker renders from the REGISTRY** and marks each key it finds
+— so a stored key outside the registry is **invisible and cannot be un-ticked**,
+and it travels in every backup and comes back on the next import. An
+unreachable entry in the safety array is one lookup change away from being
+live.
+
+The legal set already existed in one place for all three. The repair just was
+not asking it — the same shape as v312's hand-written cardio mode and v285's
+half-guard, one layer further down: **the container was the right thing to
+check and the wrong level to stop at.**
+
+**`false` is a value, not an absence.** An unticked habit is a real answer, so
+the filter drops keys outside `HABITS` and leaves `false` alone — the mutant
+that deletes a falsy tick is caught by its own check.
+
+Nineteen mutants across the round, all caught, including all six over-eager
+twins: a repair that always wipes satisfies every "the junk is gone" assertion
+while clearing a flagged joint, the athlete's kit and their ticks.
+
+### The escaped mutant tested the branch that cannot fail
+
+Deleting `setBodyLevel()`'s type guard escaped, because the check drove
+`'cur'` — and only the **`'goal'`** branch reaches `levelBF()`. The `'cur'`
+branch has its own harm, which nothing asserted: junk stored there travels in
+every backup, the cost v285 measured. Both branches, the range as well as the
+type, and the STORED value rather than the absence of a throw. Twelve mutants,
+all caught after that, including the three over-eager twins — refusing every
+goal, every body level and every sex satisfies every "junk is refused"
+assertion and breaks the controls outright.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
