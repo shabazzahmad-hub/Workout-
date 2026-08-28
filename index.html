@@ -6431,8 +6431,29 @@ function buildWeightsSession(){
   const items=[],used=new Set();
   // balanced full-body military circuit
   WEIGHTS_PATTERNS.forEach(pat=>addItem(pick(pat),items,used));
-  // conditioning finisher (battle rope / med-ball)
-  for(const pat of WEIGHTS_PATTERNS_EXTRA){if(items.length>=8)break;addItem(pick(pat),items,used);}
+  /* ONE FINISHER SLOT, AND A FIXED PATTERN ORDER DECIDED WHO GOT IT.
+     Seven base patterns fill seven slots and the cap is eight, so the loop
+     added the FIRST extra and broke — and `cardio` has exactly one member in
+     the whole library while `power` has nine. Measured over 200 circuits:
+
+       owns every piece of kit      cardio 200, power   0
+       owns kettlebell/db/medball   cardio   0, power 200
+
+     So nine movements — the snatch, the get-up, the thruster, the man-maker,
+     the devil press, the slams — were unreachable for the athlete who owns
+     the MOST kit, and buying a battle rope took them away. That is v322's
+     `pattern` defect (0 appearances in 400 circuits) one line over, with the
+     order of a two-item array as the cause.
+
+     The finisher is drawn from every conditioning movement the athlete owns
+     rather than from whichever pattern happens to be first, so all ten share
+     the slot. Still at most two, still capped at eight: a short circuit (a
+     base pattern the athlete has no kit for) can take a second, exactly as
+     before. */
+  {const extras=WEIGHTS_PATTERNS_EXTRA.reduce((a,p)=>a.concat(byPat[p]||[]),[]);
+   for(let i=extras.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));const t=extras[i];extras[i]=extras[j];extras[j]=t;}
+   let added=0;
+   for(const k of extras){if(items.length>=8||added>=2)break;const before=items.length;addItem(k,items,used);if(items.length>before)added++;}}
   /* Anything the athlete owns that carries no pattern still belongs in the
      circuit rather than being silently unreachable. */
   if(items.length<5)for(const k of (byPat.other||[])){if(items.length>=6)break;addItem(k,items,used);}

@@ -3651,6 +3651,80 @@ export default async function () {
     t.eq('and it is clean again once restored', cardio.cleanAfter, 0);
   }
 
+
+  /* v368 (same round) — THE FINISHER SLOT WENT TO WHICHEVER PATTERN WAS
+     FIRST IN A TWO-ITEM ARRAY. Seven base patterns fill seven slots, the cap
+     is eight, so the loop added `WEIGHTS_PATTERNS_EXTRA[0]` and broke — and
+     `cardio` has exactly ONE member in the library while `power` has nine.
+
+     Measured over 200 circuits before the fix:
+       owns every piece of kit      cardio 200, power   0
+       owns kettlebell/db/medball   cardio   0, power 200
+
+     Nine movements were unreachable for the athlete who owns the MOST kit,
+     and buying a battle rope took them away. v322's `pattern` defect (0
+     appearances in 400 circuits) one line over. */
+  {
+    const w = await page.evaluate(() => {
+      const run = (gear, n) => {
+        STATE.profile.gear = gear.slice(); STATE.profile.limitations = [];
+        const moves = {}, pats = {}; let slots = 0, over = 0;
+        for (let i = 0; i < n; i++) {
+          const c = buildWeightsSession() || [];
+          slots += c.length; if (c.length > 8) over++;
+          c.forEach(x => {
+            const p = (EX[x.exId] || {}).pattern || 'other';
+            pats[p] = (pats[p] || 0) + 1;
+            if (WEIGHTS_PATTERNS_EXTRA.indexOf(p) >= 0) moves[x.exId] = (moves[x.exId] || 0) + 1;
+          });
+        }
+        return { moves, pats, avg: slots / n, over };
+      };
+      const keep = STATE.profile.gear;
+      const o = { full: run(GEAR_KEYS, 300), some: run(['kettlebell', 'dumbbell', 'medball'], 300) };
+      /* Every conditioning movement a fully-kitted athlete OWNS, from the
+         registry rather than a hand-written list. */
+      STATE.profile.gear = GEAR_KEYS.slice();
+      o.owned = weightsPool().filter(k => WEIGHTS_PATTERNS_EXTRA.indexOf(EX[k].pattern) >= 0).sort();
+      o.extras = WEIGHTS_PATTERNS_EXTRA.slice();
+      o.base = WEIGHTS_PATTERNS.slice();
+      STATE.profile.gear = keep;
+      return o;
+    });
+
+    /* Guard: the imbalance this is about is real — one pattern has far more
+       members than the other, which is what made a fixed order fatal. */
+    t.ok('guard: the athlete owns conditioning movements in both extra patterns',
+      w.extras.every(p => w.owned.some(k => k)), w.extras);
+    t.ok('guard: there are at least eight of them', w.owned.length >= 8, w.owned);
+
+    /* THE FINDING: every one of them is reachable. */
+    const never = w.owned.filter(k => !w.full.moves[k]);
+    t.eq('every conditioning finisher the athlete owns can be drawn', never, [], w.full.moves);
+
+    /* MORE KIT MUST NOT MEAN FEWER MOVEMENTS. This is the property the defect
+       violated, and it is the one a hand-written pattern order breaks again. */
+    const lost = Object.keys(w.some.moves).filter(k => !w.full.moves[k]);
+    t.eq('buying more kit never removes a finisher', lost, [], { some: w.some.moves, full: w.full.moves });
+
+    /* THE FLOORS: the circuit is unchanged in shape. */
+    t.eq('the circuit is still capped at eight', w.full.over, 0);
+    t.ok('and still fills all seven base patterns',
+      w.base.every(p => w.full.pats[p] === 300), w.full.pats);
+    t.ok('a partly-equipped athlete still gets a finisher',
+      Object.keys(w.some.moves).length > 0, w.some.moves);
+    t.ok('and their circuit is the same length',
+      Math.abs(w.full.avg - w.some.avg) < 0.01, { full: w.full.avg, some: w.some.avg });
+
+    /* NO SINGLE MOVEMENT OWNS THE SLOT. The defect was one movement taking
+       100% of it; a fix that simply reversed the order would hand 100% to a
+       different one. */
+    const total = Object.values(w.full.moves).reduce((a, b) => a + b, 0);
+    const top = Math.max.apply(null, Object.values(w.full.moves));
+    t.ok('no one finisher takes more than half the slot', top < total * 0.5,
+      { top, total, moves: w.full.moves });
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

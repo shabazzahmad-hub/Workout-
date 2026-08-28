@@ -7060,7 +7060,48 @@ the registry exists to stop. Both are now asserted on the source.
 `console.error` — the harness counts a console error as a page failure. Hit
 again, for the third time in this file.
 
-Eight mutants, all caught.
+### The finisher slot went to whichever pattern was first in a two-item array
+
+Found by the sweep that asks the opposite question: **which exercises can no
+path ever reach?** Across 378 sessions x five athlete configurations, plus
+every pool, ladder and swap map, eleven of 197 came back unreached. Three
+(`sprint`, `ruck`, `skip`) are cardio-mode entries the probe could not see and
+`warriorthree` is reachable in the custom builder — but the other seven were
+real, and the cause is one line.
+
+Seven base patterns fill seven slots, `items.slice(0,8)` is the cap, so the
+finisher loop added `WEIGHTS_PATTERNS_EXTRA[0]` and broke. **`cardio` has
+exactly ONE member in the whole library and `power` has nine.** Measured over
+200 circuits:
+
+| athlete | cardio | power |
+|---|---|---|
+| owns every piece of kit | **200** | **0** |
+| owns kettlebell, dumbbell, medball | 0 | 200 |
+
+So the snatch, the get-up, the thruster, the man-maker, the devil press and
+the slams were unreachable **for the athlete who owns the most kit** — and
+buying a battle rope is what took them away. That is v322's `pattern` defect
+(0 appearances in 400 circuits) one line over, with the ORDER of a two-item
+array as the cause instead of a value outside the list.
+
+The finisher is now drawn from every conditioning movement the athlete owns,
+shuffled, rather than from whichever pattern sorts first. Measured after: all
+ten appear 26-36 times in 300 circuits, and the circuit is still eight slots.
+
+**"More kit must never mean fewer movements" is the check that states the real
+property.** A fix that merely reversed the order passes every "power is
+reachable" assertion and hands 100% of the slot to a different movement; that
+mutant is caught by the "no one finisher takes more than half the slot" check
+beside it.
+
+**And one equivalent mutant, measured rather than assumed.** Lifting the
+`items.length>=8 || added>=2` guard changes nothing: extras are appended AFTER
+the base patterns and `items.slice(0,8)` is the operative cap, so only the
+first two can ever survive whatever the loop does. Kept as intent and as the
+expression of the "at most two finishers" rule.
+
+Thirteen mutants across the round, twelve caught and one equivalent.
 
 ## Rendering
 
