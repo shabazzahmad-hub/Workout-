@@ -1160,6 +1160,57 @@ export default async function () {
     t.ok('the key helpers are functions, not consts read before their source', wr.keysAreFunctions, wr);
   }
 
+  /* ---- the container was checked and its MEMBERS were not (v354) ---------
+     Three keyed sets carried a container check and nothing below it. A junk
+     member changes no behaviour — measured, the built session is byte-identical
+     — but the pickers all render from the REGISTRY and mark each key they find,
+     so a stored key outside it is invisible and cannot be un-ticked, and it
+     travels in every backup. */
+  {
+    const mm = await page.evaluate(() => {
+      const o = {}; const realErr = console.error; console.error = () => {};
+      const snap = JSON.stringify(STATE);
+      STATE = JSON.parse(snap);
+      STATE.profile.limitations = ['shoulder', 'zzz', '<img src=x>', 'knee'];
+      STATE.profile.gear = ['bar', 'zzz', 'kettlebell', '<img src=x>'];
+      nutToday().habits = { protein: true, zzz: true, '<img src=x>': true };
+      const before = JSON.stringify(STATE).length;
+      normalizeState();
+      o.lim = STATE.profile.limitations.slice();
+      o.gear = STATE.profile.gear.slice();
+      o.habits = Object.keys(nutToday().habits);
+      o.saved = before - JSON.stringify(STATE).length;
+      /* guard: the junk really was inert, so this is about what a backup
+         carries and what the athlete can reach — not about a broken session. */
+      STATE = JSON.parse(snap); STATE.profile.limitations = ['shoulder'];
+      const a = JSON.stringify(buildSession(12).main.map(m => m.exId));
+      STATE.profile.limitations = ['shoulder', 'zzz'];
+      o.junkWasInert = a === JSON.stringify(buildSession(12).main.map(m => m.exId));
+      /* FLOOR: a repair that always wiped would satisfy every assertion above
+         and silently clear a flagged joint, the athlete's kit and their ticks. */
+      STATE = JSON.parse(snap);
+      STATE.profile.limitations = ['shoulder', 'knee'];
+      STATE.profile.gear = ['bar', 'kettlebell', 'bench'];
+      nutToday().habits = { protein: true, water: false, sleep: true };
+      normalizeState();
+      o.limKept = STATE.profile.limitations.slice();
+      o.gearKept = STATE.profile.gear.slice();
+      o.habitsKept = Object.keys(nutToday().habits).sort();
+      o.habitFalseKept = nutToday().habits.water === false;
+      STATE = JSON.parse(snap); normalizeState(); save();
+      console.error = realErr; return o;
+    });
+    t.ok('guard: a junk member really was inert in the program', mm.junkWasInert, mm);
+    t.eq('a joint outside JOINTS does not survive a boot', mm.lim, ['shoulder', 'knee'], mm);
+    t.eq('nor a gear key outside GEAR_KEYS', mm.gear, ['bar', 'kettlebell'], mm);
+    t.eq('nor a habit key outside HABITS', mm.habits, ['protein'], mm);
+    t.ok('and the backup gets smaller for it', mm.saved > 0, mm);
+    t.eq('floor: every real flagged joint survives', mm.limKept, ['shoulder', 'knee'], mm);
+    t.eq('floor: and every real piece of kit', mm.gearKept, ['bar', 'kettlebell', 'bench'], mm);
+    t.eq('floor: and every real habit key', mm.habitsKept, ['protein', 'sleep', 'water'], mm);
+    t.ok('floor: an UNticked habit is a value, not an absence', mm.habitFalseKept, mm);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

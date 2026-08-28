@@ -18668,7 +18668,9 @@ function normalizeState(){
      if(!day||typeof day!=='object'||Array.isArray(day)){delete days[k];return;}
      day.water=num(day.water,20);   // same ceiling logWater() clamps to
      if(!day.habits||typeof day.habits!=='object'||Array.isArray(day.habits))day.habits={};
-     else Object.keys(day.habits).forEach(h=>{day.habits[h]=!!day.habits[h];});
+     else Object.keys(day.habits).forEach(h=>{
+       if(!HABITS.some(x=>x.k===h))delete day.habits[h];   // every consumer reads HABITS, so a stored key outside it is dead weight in the backup
+       else day.habits[h]=!!day.habits[h];});
      /* A bad ROW is dropped, a bad FIELD inside a good row is zeroed — same rule
         as liftLog. The row is the only record that a meal happened, but one NaN
         in one field makes every total on the tab read NaN. Days with no food
@@ -18934,6 +18936,14 @@ function normalizeState(){
      this reaches innerHTML by way of the picker's selected state. */
   {const p=STATE.profile.runPace;
    if(p!==undefined&&!RUN_PACES.some(x=>x.k===p))delete STATE.profile.runPace;}
+  /* THE CONTAINER WAS CHECKED AND ITS MEMBERS WERE NOT. A junk key here is
+     inert — hasGearFor() does an every() against the list, so it never matches
+     — but the picker renders from GEAR_OPTS and marks each key it finds, so a
+     stored key that is not in the registry is INVISIBLE and cannot be
+     un-ticked. It then travels in every backup and comes back on the next
+     import. Same for limitations and the habit ticks below: the legal set
+     already exists in one place; the repair just was not asking it. */
+  STATE.profile.gear=STATE.profile.gear.filter(k=>GEAR_KEYS.indexOf(k)>=0);
   if(!STATE.profile.gear.length&&!STATE.profile._gearLegacy){
     if(STATE.profile.hasBar===true)STATE.profile.gear.push('bar');
     if(STATE.profile.hasBench===true)STATE.profile.gear.push('bench');
@@ -18974,6 +18984,11 @@ function normalizeState(){
        - quickLog as an array silently swallowed every quick session. */
   {const P=STATE.profile,N=STATE.nutrition;
    if(!Array.isArray(P.limitations))P.limitations=[];
+   /* The safety array. A junk joint matches nothing in JOINT_RISK today, so it
+      hides no risk — but the chip row renders from JOINTS, so the athlete can
+      neither see it nor clear it, and every path that widens a lookup makes an
+      unreachable entry live. Keep what is legal, drop what is not. */
+   P.limitations=P.limitations.filter(j=>JOINTS.some(x=>x[0]===j));
    /* No `!=null` guard. null and undefined are exactly the shapes an older or
      hand-edited backup arrives in, and skipping them left parqDone true with no
      answers behind it — an unanswered screen reading as a clean one. */

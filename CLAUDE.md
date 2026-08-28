@@ -5613,6 +5613,36 @@ The usual ratio for an audit written from outside the code:
   probe that was wrong. **Confirm the control's real shape before believing
   the result** — third time this file has recorded it.
 
+### The container was checked and its MEMBERS were not
+
+Sweeping the whole writer surface afterwards — 74 `set*`/`toggle*`/`pick*`
+functions driven with a hostile payload, every tab rendered looking for the
+injected ELEMENT — found **no injection left and no page error**. What it did
+find is three keyed sets carrying a container check and nothing below it:
+`profile.gear`, `profile.limitations` and the day's `habits`.
+
+**A junk member changes no behaviour**, and that was measured rather than
+assumed: the built session is byte-identical, `hasGearFor()` does an `every()`
+that never matches, and a junk joint matches nothing in `JOINT_RISK`. The harm
+is that **every picker renders from the REGISTRY** and marks each key it finds
+— so a stored key outside the registry is **invisible and cannot be un-ticked**,
+and it travels in every backup and comes back on the next import. An
+unreachable entry in the safety array is one lookup change away from being
+live.
+
+The legal set already existed in one place for all three. The repair just was
+not asking it — the same shape as v312's hand-written cardio mode and v285's
+half-guard, one layer further down: **the container was the right thing to
+check and the wrong level to stop at.**
+
+**`false` is a value, not an absence.** An unticked habit is a real answer, so
+the filter drops keys outside `HABITS` and leaves `false` alone — the mutant
+that deletes a falsy tick is caught by its own check.
+
+Nineteen mutants across the round, all caught, including all six over-eager
+twins: a repair that always wipes satisfies every "the junk is gone" assertion
+while clearing a flagged joint, the athlete's kit and their ticks.
+
 ### The escaped mutant tested the branch that cannot fail
 
 Deleting `setBodyLevel()`'s type guard escaped, because the check drove
