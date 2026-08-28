@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v351';
+const CACHE = 'coreforge-v352';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
@@ -36,7 +36,7 @@ const CORE = ['./', './index.html'];
    a missing font must never cost the athlete the whole offline cache. */
 const SHELL_MIN = [
   './manifest.webmanifest','./archivo.woff2','./icon-192-v2.png',
-  './icon-512-v2.png','./hero.jpg','./coach-sarge.jpg',
+  './hero.jpg','./coach-sarge.jpg',
   './icon-192-maskable.png','./icon-512-maskable.png','./icon-180-apple.png',
   './privacy.html','./terms.html'
 ];
@@ -56,7 +56,18 @@ const SHELL_MIN = [
 
    Moving a file here costs no download: the same pack is fetched either way,
    this only decides what arrives first. */
+/* The 512px launcher icon sits at the head of this tier rather than in the
+   install tier. It is an INSTALL-time asset — the splash and the store listing
+   — not a first-paint one; the 192px icons draw the tab and the home screen.
+   Moving it here keeps the install tier under its 2 MB budget as the code
+   grows, and costs no download: the same pack is fetched either way, and this
+   tier is topped up in batches of six the moment the worker activates.
+
+   Keep prose OUT of the array itself. These lists are parsed by pulling every
+   quoted string between the brackets, so one apostrophe in a comment inside
+   them opens a quote and swallows the whole tier. */
 const FIRST_RUN = [
+  './icon-512-v2.png',
   './cd-breathing.jpg','./cd-catcow.jpg','./cd-childs.jpg','./cd-cobra.jpg',
   './cd-knees.jpg','./cd-twistleft.jpg','./cd-twistright.jpg','./ex-bicycle.jpg',
   './ex-burpee.jpg','./ex-buttkick.jpg','./ex-crunch.jpg','./ex-deadbug.jpg',

@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='351';
+const APP_VERSION='352';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -12808,6 +12808,7 @@ const _aiSleep=ms=>new Promise(r=>setTimeout(r,ms));
    the numbers rather than staring at a spinner. */
 const AI_RETRY_BACKOFF_MS=[0,1200,3000];
 async function _visionEstimate(dataUrl,promptText,opts){
+  const o0=opts||{};
   const mime=(String(dataUrl).match(/^data:([^;,]+)/)||[,'image/jpeg'])[1];
   const b64=String(dataUrl).replace(/^data:[^,]+,/,'');
   // Force structured JSON output (responseMimeType + schema) so the model can't
@@ -12828,8 +12829,14 @@ async function _visionEstimate(dataUrl,promptText,opts){
        actually shown; the grams are then derived HERE, from the calorie
        total, because 4/4/9 arithmetic is exact in code and a coin flip in a
        language model. */
-    responseSchema:{type:'OBJECT',properties:{name:{type:'STRING'},kcal:{type:'INTEGER'},protein:{type:'INTEGER'},carbs:{type:'INTEGER'},fat:{type:'INTEGER'},proteinPct:{type:'NUMBER'},carbsPct:{type:'NUMBER'},fatPct:{type:'NUMBER'},portion:{type:'STRING'}},required:['name','kcal']}}};
-  const o_=opts||{};
+    /* The schema is the ONE thing a second kind of screenshot needs to change.
+       Everything else in this function — the model list, the per-call timeout,
+       AI_TOTAL_BUDGET_MS, the transient-status classifier and the on-device
+       diagnostic — is exactly what a sibling vision path would have had to
+       reinvent and would have got wrong. So the caller passes a schema and
+       shares the rest. */
+    responseSchema:(o0.schema)||{type:'OBJECT',properties:{name:{type:'STRING'},kcal:{type:'INTEGER'},protein:{type:'INTEGER'},carbs:{type:'INTEGER'},fat:{type:'INTEGER'},proteinPct:{type:'NUMBER'},carbsPct:{type:'NUMBER'},fatPct:{type:'NUMBER'},portion:{type:'STRING'}},required:['name','kcal']}}};
+  const o_=o0;
   /* A caller can cap the model list. The screenshot RE-READ is a bonus pass,
      and without this it inherited the full 3-models x 3-rounds loop — so "one
      extra look" could cost up to nine calls against a metered key. It now gets
@@ -13066,6 +13073,211 @@ function _fillMacroFromKcal(est){
      where it came from and Save is still the athlete's tap. */
   return Object.assign({},est,{[key]:g.grams,
     macroDerived:{which:g.which,grams:g.grams,gap:g.gap}});
+}
+/* ============ ACTIVITY SCREENSHOT ============
+   "I am not sure what activities I will do from day to day but I want the
+   flexibility to upload a screenshot and allow that information to be received
+   in the app."
+
+   The FLEXIBILITY is the requirement, so nothing here is keyed to one watch or
+   one layout. The model reports what it SEES — a name, a distance, a duration
+   string — and every judgement that can be made in code is made in code. */
+
+/* Garmin names an activity after the PLACE, not the type: the real screen
+   reads "Carstairs Running", "Jump Rope 34". So the mapping is on the movement
+   WORD inside the name, never on the whole string — the same discipline that
+   makes the roster searched by movement rather than by name substring.
+
+   Anything this cannot place returns null, and the sheet NAMES it rather than
+   filing it under the nearest mode. A wrong home is worse than no home: it
+   credits work the athlete did not do in a currency that feeds the food
+   budget. That is also what makes this general — the next activity he tries
+   lands in the same honest bucket. */
+function activityKind(raw){
+  const t=String(raw||'').toLowerCase();
+  if(/\bruck|rucking/.test(t))return 'ruck';
+  if(/\brun|jog|treadmill/.test(t))return 'run';
+  if(/cycl|biking|\bbike|\bride|spin/.test(t))return 'bike';
+  if(/jumping jack|\bjacks\b/.test(t))return 'jacks';
+  return null;
+}
+/* "25:44" and "1:05:20" are what the screen shows. Parsing them HERE rather
+   than asking the model for minutes keeps the arithmetic exact — the same call
+   v262 made about the 4/4/9 macro split. */
+function hmsToMin(v){
+  if(typeof v==='number'&&isFinite(v)&&v>0)return v;
+  const parts=String(v||'').trim().split(':').map(x=>parseFloat(x));
+  if(!parts.length||parts.some(x=>!isFinite(x)||x<0))return 0;
+  const [a,b,c]=parts.length===3?parts:(parts.length===2?[0,parts[0],parts[1]]:[0,parts[0],0]);
+  const min=a*60+b+(c||0)/60;
+  return (isFinite(min)&&min>0)?Math.min(600,min):0;
+}
+/* Spread over its own lines because the duplicate-field guard scans the SOURCE
+   for anything shaped like `word:` — a single line carrying `type:` twice reads
+   to it exactly like a shadowed key, and that guard has caught real ones. Fix
+   the formatting, never the check. */
+const ACTIVITY_ROW={
+  type:'OBJECT',
+  properties:{
+    kind:{type:'STRING'},
+    distance:{type:'NUMBER'},
+    distanceUnit:{type:'STRING'},
+    duration:{type:'STRING'},
+    kcal:{type:'INTEGER'}},
+  required:['kind']};
+const ACTIVITY_SCHEMA={
+  type:'OBJECT',
+  properties:{
+    activities:{type:'ARRAY',items:ACTIVITY_ROW},
+    steps:{type:'INTEGER'}},
+  required:['activities']};
+const ACTIVITY_PROMPT=`This is a screenshot from a fitness watch or tracker app, showing one day's recorded activities.
+
+Return every activity row you can see, in order, as the "activities" array.
+
+For each row:
+- "kind": the activity's NAME exactly as written on screen. Do not translate it or tidy it. Names are often a place plus a type, like "Carstairs Running" — return the whole thing.
+- "distance": the distance number if one is shown, e.g. 2.23. Omit it if the row shows no distance.
+- "distanceUnit": "mi" or "km", whichever the screen shows beside that number. Omit if there is no distance.
+- "duration": the elapsed time EXACTLY as printed, e.g. "25:44" or "1:05:20". Do not convert it to minutes.
+- "kcal": the calories for that row, if shown.
+
+Also return "steps" if — and only if — an all-day step COUNT is on this screen. A distance is not a step count. Omit it otherwise.
+
+Read only what is printed. Do not calculate a value from other values, and do not guess. Omit any field you cannot read rather than returning a zero for it.`;
+
+/* The BAND is normally a judgement about effort (RUN_PACES is defined by the
+   talk test, not by speed), and a screenshot cannot know how it felt. But it
+   does carry the distance AND the time, so the measured speed is the best
+   available guess — far better than leaving 3.3 measured miles priced at
+   whatever band was left over from last week. Nearest band, never invented:
+   with no distance or no time there is nothing to measure and it is left
+   alone. */
+function paceBandFor(km,min){
+  if(!(km>0)||!(min>0))return null;
+  const kmh=km/(min/60);
+  let best=null,gap=Infinity;
+  for(const p of RUN_PACES){const d=Math.abs(p.kmh-kmh);if(d<gap){gap=d;best=p.k;}}
+  return best;
+}
+/* Sums by MODE, because a day is routinely two runs — his own screenshot was
+   2.23 mi and 1.07 mi — and the Movement card has one box per mode. Returns
+   the unplaceable rows alongside, never instead. */
+function activityPlan(est){
+  const out={run:{min:0,km:0},ruck:{min:0,km:0},bike:{min:0,km:0},jacks:{min:0,km:0},
+             steps:0,unplaced:[],read:0};
+  try{
+    const rows=(est&&Array.isArray(est.activities))?est.activities:[];
+    for(const r of rows){
+      if(!r||typeof r!=='object')continue;
+      out.read++;
+      const min=hmsToMin(r.duration);
+      const d=(typeof r.distance==='number'&&isFinite(r.distance)&&r.distance>0)?r.distance:0;
+      const km=d?(String(r.distanceUnit||'').toLowerCase().indexOf('mi')>=0?d*1.609344:d):0;
+      const k=activityKind(r.kind);
+      if(!k){out.unplaced.push({name:String(r.kind||'Activity').slice(0,60),min:Math.round(min)});continue;}
+      out[k].min+=min; out[k].km+=km;
+    }
+    const st=est&&est.steps;
+    if(typeof st==='number'&&isFinite(st)&&st>0)out.steps=Math.min(200000,Math.round(st));
+  }catch(e){}
+  return out;
+}
+/* The route the athlete taps. Mirrors foodScreenshot() deliberately: the same
+   key gate, the same two-sizes fallback (legibility first, deliverability
+   second), the same _sheetGen guard so a slow read never writes into a sheet
+   he has since opened and typed into. */
+let _actRead=null;
+function activityScreenshot(){
+  if(!foodAIReady()){toast('Add a free Gemini key in Settings ⚙️ to read a screenshot');return;}
+  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';
+  inp.onchange=()=>{const f=inp.files&&inp.files[0];if(!f)return;const rd=new FileReader();
+    rd.onerror=()=>toast('Could not read that image');
+    rd.onload=async()=>{toast('Reading your activity…');const gen=_sheetGen;
+      const busy=(n,of)=>toast('Google\'s AI is busy — retrying ('+n+'/'+(of-1)+')…',2500);
+      const opts={schema:ACTIVITY_SCHEMA,onRetry:busy};
+      try{
+        let est;
+        try{est=await _visionEstimate(await _downscale(rd.result,2048,0.92),ACTIVITY_PROMPT,Object.assign({budget:30000},opts));}
+        catch(e1){
+          if(!_connectionLevel(e1&&e1.status))throw e1;
+          toast('Slow connection — trying a lighter image…',3000);
+          est=await _visionEstimate(await _downscale(rd.result,1400,0.85),ACTIVITY_PROMPT,Object.assign({budget:20000},opts));
+        }
+        const plan=activityPlan(est);
+        if(!plan.read&&!plan.steps)throw new Error('no activities found on that screenshot');
+        if(gen!==_sheetGen){toast('Read '+plan.read+' activities — open Movement to review',5000);}
+        _actRead=plan; openActivityReview();
+      }catch(err){
+        _actRead=null;
+        toast('Could not read it — '+_aiErrText(err),7000);
+      }};
+    rd.readAsDataURL(f);};
+  inp.click();
+}
+/* NOTHING IS WRITTEN UNTIL HE TAPS SAVE. The food import made the same call
+   (v301: "Save is still the athlete's tap"), and it matters more here — these
+   numbers pay the step target, which earns calorie room on the surplus. */
+function openActivityReview(){
+  const p=_actRead;if(!p)return;
+  const u=distUnit(),show=km=>r1(kmToShow(km));
+  const row=(k,label)=>{
+    const v=p[k];if(!(v.min>0||v.km>0))return '';
+    return `<div class="kv"><span><b>${label}</b></span><span class="muted">${
+      v.km>0?show(v.km)+' '+u+' · ':''}${Math.round(v.min)} min</span></div>`;
+  };
+  const placed=['run','ruck','bike','jacks'].map(k=>row(k,{run:'Run',ruck:'Ruck',bike:'Bike',jacks:'Jumping jacks'}[k])).join('');
+  /* Named, never filed under the nearest mode and never silently dropped. He
+     decides where it goes; the app says what it could not place. */
+  const un=p.unplaced.length?`<div class="note info" style="margin-top:10px"><b>Could not place ${p.unplaced.length===1?'this':'these'}:</b>
+      ${p.unplaced.map(x=>`${_ve(x.name)}${x.min?' ('+x.min+' min)':''}`).join(', ')}.
+      The app pays the step target with jumping jacks, the bike, a ruck or a run — nothing else has a slot yet.
+      <button class="btn sm ghost" style="width:100%;margin-top:8px" onclick="actCountAsJacks()">Count ${p.unplaced.reduce((a,b)=>a+b.min,0)} min as jumping jacks</button></div>`:'';
+  const st=p.steps?`<div class="kv"><span><b>Steps</b></span><span class="muted">${p.steps.toLocaleString()}</span></div>`:'';
+  const nothing=!placed&&!st;
+  openSheet(`<h2 style="margin:2px 0 4px">Read from your screenshot</h2>
+    <p class="muted sm" style="margin:0 0 12px">${p.read} activit${p.read===1?'y':'ies'} read. Check it, then save — nothing is logged until you do.</p>
+    <div class="card pad">${st}${placed}${nothing?'<div class="muted sm">Nothing here maps to a movement the app tracks.</div>':''}</div>
+    ${un}
+    <div class="btnrow" style="margin-top:12px">
+      <button class="btn ghost" onclick="closeSheet()">Cancel</button>
+      <button class="btn primary" onclick="saveActivityRead()" ${nothing?'disabled':''}>Save to today</button>
+    </div>`);
+}
+function actCountAsJacks(){
+  if(!_actRead)return;
+  const mins=_actRead.unplaced.reduce((a,b)=>a+b.min,0);
+  if(!(mins>0)){toast('No minutes to move');return;}
+  _actRead.jacks.min+=mins;_actRead.unplaced=[];
+  openActivityReview();
+}
+/* Writes through the app's OWN setters, so every clamp, membership test and
+   repaint they carry applies here too. A second writer is how a field ends up
+   with half its guards. */
+function saveActivityRead(){
+  const p=_actRead;if(!p)return;
+  let wrote=0;
+  try{
+    if(p.steps>0){setSteps(p.steps);wrote++;}
+    const put=(v,setUnit,setVal,setLvlKey)=>{
+      if(v.km>0){setUnit('dist');setVal(kmToShow(v.km));wrote++;}
+      else if(v.min>0){setUnit('min');setVal(v.min);wrote++;}
+    };
+    if(p.run.km>0&&p.run.min>0){
+      const band=paceBandFor(p.run.km,p.run.min);
+      if(band)try{setRunPace(band);}catch(e){}
+    }
+    put(p.run,setRunUnit,setRunVal);
+    put(p.ruck,setRuckUnit,setRuckVal);
+    if(p.bike.min>0){setBikeVal(p.bike.min);wrote++;}
+    if(p.jacks.min>0){setJackVal(p.jacks.min);wrote++;}
+  }catch(e){}
+  /* Says what it did, never a flat "Saved". v343: three savers on one screen
+     claimed a write they had declined. */
+  if(!wrote){toast('Nothing to save');return;}
+  _actRead=null;closeSheet();
+  toast('Logged '+wrote+' from your screenshot ✓');
+  try{repaintMovement();}catch(e){}
 }
 function foodScreenshot(){
   if(!foodAIReady()){toast('Add a free Gemini key in Settings ⚙️ to import a screenshot');openQuickAdd();return;}
@@ -15067,6 +15279,7 @@ function movementHTML(){
   const shownVal=m.unit==='dist'?Math.round(kmToShow(m.val)*10)/10:m.val;
   let h=`<div class="section-label">Movement · <span style="color:${eq>=tgt?'var(--green)':'var(--gold)'}">${eq.toLocaleString()} / ${tgt.toLocaleString()}</span></div><div class="card pad">
     <div class="pbar" style="margin:2px 0 12px"><i style="width:${pct}%;background:linear-gradient(90deg,#7ee08a,#2fa84f)"></i></div>
+    ${foodAIReady()?`<button class="btn ghost" style="width:100%;margin-bottom:10px" onclick="activityScreenshot()">📷 Read my watch screenshot</button>`:''}
     <div class="field" style="margin-bottom:10px"><label>Steps walked today</label>
       <input id="mv-steps" type="number" inputmode="numeric" min="0" value="${m.steps||''}" placeholder="0"
         onchange="setSteps(this.value)"></div>`;

@@ -2175,6 +2175,163 @@ export default async function run() {
     t.eq('and the data is restored afterwards', r.stillCleanAfter, 0);
   }
 
+
+  /* ---- reading a watch screenshot into Movement (v352) --------------------
+     "I am not sure what activities I will do from day to day but I want the
+     flexibility to upload a screenshot and allow that information to be
+     received in our app."
+
+     The network is mocked throughout — this sandbox cannot reach Gemini, so
+     every check here proves the WIRING and the arithmetic, never the model. */
+  {
+    const act = await page.evaluate(() => {
+      const o = {};
+      STATE.profile.unit = 'in'; save();          // imperial athlete
+
+      /* 1. His real Garmin screen: two runs and a jump rope, names that are
+            PLACES ("Carstairs Running"), times as MM:SS, distance in miles. */
+      const real = { activities: [
+        { kind: 'Carstairs Running', distance: 2.23, distanceUnit: 'mi', duration: '25:44' },
+        { kind: 'Jump Rope 34', duration: '35:21', kcal: 405 },
+        { kind: 'Carstairs Running', distance: 1.07, distanceUnit: 'mi', duration: '10:42' } ] };
+      const p = activityPlan(real);
+      o.read = p.read;
+      o.runMiles = Math.round(kmToShow(p.run.km) * 100) / 100;   // 2.23 + 1.07
+      o.runMin = Math.round(p.run.min * 100) / 100;              // 25:44 + 10:42
+      o.unplacedNames = p.unplaced.map(x => x.name);
+      o.unplacedMin = p.unplaced.map(x => x.min);
+      /* THE HONESTY CHECK. An activity with no slot must not be quietly filed
+         under the nearest mode — that credits work in a currency which feeds
+         the food budget. */
+      o.jumpRopeWentNowhere = p.jacks.min === 0 && p.bike.min === 0 && p.ruck.min === 0;
+
+      /* 2. Matched on the movement WORD, never the whole name. */
+      o.kinds = ['Carstairs Running', 'Morning Ruck', 'Zwift Cycling', 'Jumping Jacks',
+                 'Jump Rope 34', 'Pool Swim', 'Treadmill'].map(activityKind);
+
+      /* 3. The duration is parsed in CODE, from the string the screen shows. */
+      o.hms = [hmsToMin('25:44'), hmsToMin('1:05:20'), hmsToMin('45'),
+               hmsToMin(12), hmsToMin('abc'), hmsToMin(''), hmsToMin('-3:00'),
+               /* '3:-30' comes out POSITIVE (2.5) if the parts are not checked
+                  individually, so the final min>0 guard cannot catch it. */
+               hmsToMin('3:-30')]
+                 .map(x => Math.round(x * 100) / 100);
+
+      /* 4. Miles convert, kilometres do not. */
+      const mi = activityPlan({ activities: [{ kind: 'Run', distance: 10, distanceUnit: 'mi', duration: '60:00' }] });
+      const km = activityPlan({ activities: [{ kind: 'Run', distance: 10, distanceUnit: 'km', duration: '60:00' }] });
+      o.tenMilesKm = Math.round(mi.run.km * 100) / 100;
+      o.tenKmKm = Math.round(km.run.km * 100) / 100;
+
+      /* 5. A distance is not a step count. */
+      o.stepsAbsent = p.steps;
+      o.stepsTaken = activityPlan({ activities: [{ kind: 'Walk', duration: '30:00' }], steps: 11200 }).steps;
+
+      /* 6. NOTHING IS WRITTEN UNTIL SAVE. */
+      nutToday().runVal = 0; nutToday().runUnit = 'min'; setSteps(0);
+      _actRead = activityPlan(real); openActivityReview();
+      o.sheetText = document.querySelector('#sheet').innerText;
+      o.beforeSave = { runVal: nutToday().runVal || 0, steps: movement().steps };
+      saveActivityRead();
+      /* r1() rounds to ONE decimal — 5.31 would read as 5.3 and the check
+         would be asserting the rounding, not the stored value. */
+      o.afterSave = { runVal: Math.round(nutToday().runVal * 100) / 100, runUnit: nutToday().runUnit,
+                      band: nutToday().runLvl };
+      /* The read is CONSUMED. Leaving it in the buffer means a second tap of
+         Save writes the same run again — the day credited twice. */
+      o.bufferCleared = _actRead === null;
+      nutToday().runVal = 0;
+      saveActivityRead();                       // a second tap must do nothing
+      o.secondSaveWrote = Math.round((nutToday().runVal || 0) * 100) / 100;
+
+      /* 7. The pace band comes from the measured pace, and is left alone when
+            there is nothing to measure. */
+      o.bandFromPace = paceBandFor(5.31, 36.43);
+      o.bandNoDistance = paceBandFor(0, 30);
+      o.bandNoTime = paceBandFor(5, 0);
+      o.bandFast = paceBandFor(5, 20);           // 15 km/h
+
+      /* 8. "Count as jacks" is HIS tap, and it moves the minutes. */
+      _actRead = activityPlan(real);
+      openActivityReview();                     // merely LOOKING moves nothing
+      o.jacksAfterOpen = Math.round(_actRead.jacks.min);
+      o.unplacedAfterOpen = _actRead.unplaced.length;
+      const beforeJacks = _actRead.jacks.min;
+      actCountAsJacks();
+      o.jacksAfterTap = Math.round(_actRead.jacks.min);
+      o.jacksBeforeTap = beforeJacks;
+      o.unplacedCleared = _actRead.unplaced.length;
+      try { closeSheet(); } catch (e) {}
+
+      /* 9. Save reports what it DID. v343: three savers on one screen claimed
+            a write they had declined. */
+      _actRead = { run: { min: 0, km: 0 }, ruck: { min: 0, km: 0 }, bike: { min: 0, km: 0 },
+                   jacks: { min: 0, km: 0 }, steps: 0, unplaced: [], read: 0 };
+      let said = ''; const realToast = window.toast; window.toast = m => { said = String(m); };
+      saveActivityRead();
+      window.toast = realToast;
+      o.emptySaveSays = said;
+      o.emptySaveKeptSheet = !!_actRead;         // it did NOT clear and claim success
+
+      /* 10. An activity name reaches innerHTML — it must be escaped. */
+      _actRead = activityPlan({ activities: [{ kind: '<img src=x onerror=alert(1)>', duration: '5:00' }] });
+      openActivityReview();
+      o.noInjectedNode = !document.querySelector('#sheet img[onerror]');
+      try { closeSheet(); } catch (e) {}
+      _actRead = null;
+
+      /* 11. ONE vision path. The activity route passes a SCHEMA and reuses the
+             shared caller — it must not re-implement the model list, the
+             budget or the transient classifier. */
+      const src = activityScreenshot.toString();
+      o.usesSharedCaller = /_visionEstimate\(/.test(src);
+      o.passesItsOwnSchema = /ACTIVITY_SCHEMA/.test(src);
+      o.doesNotReinventModels = !/foodAIModels\(|AI_RETRY_BACKOFF_MS|_transientAIStatus/.test(src);
+      o.keepsTheLighterRetry = /_connectionLevel/.test(src);
+      o.schemaIsOverridable = /o0\.schema/.test(_visionEstimate.toString());
+      return o;
+    });
+    t.eq('all three rows on the real screenshot are read', act.read, 3, act);
+    t.eq('the two runs are summed', act.runMiles, 3.3, act);
+    t.eq('and so are their times', act.runMin, 36.43, act);
+    t.eq('a Garmin name is matched on the movement word, not the whole name', act.kinds,
+      ['run', 'ruck', 'bike', 'jacks', null, null, 'run'], act);
+    t.eq('the jump rope is named, with its minutes', act.unplacedNames, ['Jump Rope 34'], act);
+    t.eq('35:21 reads as 35 minutes', act.unplacedMin, [35], act);
+    t.ok('and it is NOT filed under the nearest mode', act.jumpRopeWentNowhere, act);
+    t.eq('MM:SS and H:MM:SS are parsed in code, junk reads as nothing', act.hms,
+      [25.73, 65.33, 45, 12, 0, 0, 0, 0], act);
+    t.eq('ten miles is 16.09 km', act.tenMilesKm, 16.09, act);
+    t.eq('floor: ten kilometres stays ten', act.tenKmKm, 10, act);
+    t.eq('a distance is never read as a step count', act.stepsAbsent, 0, act);
+    t.eq('but a real step figure is taken', act.stepsTaken, 11200, act);
+    t.ok('the review sheet says nothing is logged yet', /nothing is logged until you do/i.test(act.sheetText), act);
+    t.ok('and shows the summed run', /3\.3 mi/.test(act.sheetText), act);
+    t.eq('opening the review writes NOTHING', act.beforeSave, { runVal: 0, steps: 0 }, act);
+    t.eq('saving writes the distance', act.afterSave.runVal, 5.31, act);
+    t.eq('as a distance, not minutes', act.afterSave.runUnit, 'dist', act);
+    t.eq('and sets the pace band from the measured pace', act.afterSave.band, 'easy', act);
+    t.ok('the read is consumed, not left in the buffer', act.bufferCleared, act);
+    t.eq('so a second tap of Save credits nothing twice', act.secondSaveWrote, 0, act);
+    t.eq('the band helper agrees', act.bandFromPace, 'easy', act);
+    t.eq('a fast measured pace lands on a faster band', act.bandFast, 'intervals', act);
+    t.eq('floor: no distance, no band', act.bandNoDistance, null, act);
+    t.eq('floor: no time, no band', act.bandNoTime, null, act);
+    t.eq('opening the review moves nothing into jacks', act.jacksAfterOpen, 0, act);
+    t.eq('and leaves the unplaced row where it is', act.unplacedAfterOpen, 1, act);
+    t.eq('guard: the unplaced minutes were not already in jacks', act.jacksBeforeTap, 0, act);
+    t.eq('his tap moves them there', act.jacksAfterTap, 35, act);
+    t.eq('and clears the unplaced list', act.unplacedCleared, 0, act);
+    t.ok('a save with nothing in it says so', /nothing to save/i.test(act.emptySaveSays), act);
+    t.ok('and does not claim a write', act.emptySaveKeptSheet, act);
+    t.ok('an activity name is escaped before it reaches innerHTML', act.noInjectedNode, act);
+    t.ok('the activity route uses the shared vision caller', act.usesSharedCaller, act);
+    t.ok('passing its own schema', act.passesItsOwnSchema, act);
+    t.ok('which the shared caller honours', act.schemaIsOverridable, act);
+    t.ok('and does NOT re-implement the model list or retry policy', act.doesNotReinventModels, act);
+    t.ok('while keeping the lighter-image fallback for a stalled connection', act.keepsTheLighterRetry, act);
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }
