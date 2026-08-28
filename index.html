@@ -2114,13 +2114,26 @@ function currentMaxes(cycle){
 }
 const LEVEL_TIER={Beginner:0,Intermediate:1,Advanced:2};
 const LEVEL_NAME=['Beginner','Intermediate','Advanced'];
+/* One membership test for the three tiers, read by levelOf() and by the boot
+   repair. Junk falls to Beginner rather than to the middle: the two ways of
+   being wrong are not symmetrical — under-prescribing costs one tap to fix,
+   over-prescribing hands a true novice an intermediate ladder. */
+function levelName(v){return LEVEL_NAME.indexOf(v)>=0?v:'Beginner';}
 function levelOf(cycle){
   // measured level wins — the baseline/re-test is real data, the quiz answer is a claim
   let lv;
   if(cycle>0 && STATE.reassess[cycle]) lv=STATE.reassess[cycle].level;
   else if(STATE.baseline&&STATE.baseline.level) lv=STATE.baseline.level;
   // before the baseline test, seed the starting level from the quiz's experience answer
-  else return (STATE.profile&&STATE.profile.experience)||'Intermediate';
+  /* MEMBERSHIP, not "whatever is stored". This is the ONLY path that returns
+     the quiz answer raw, and it is the one a brand-new athlete lives on until
+     they take the baseline — exactly when a true beginner is most at risk.
+     `LEVEL_FACTOR[level]||1` and `LEVEL_TIER[lv]??1` both fall back to the
+     INTERMEDIATE value, so an out-of-set string is silently promoted a tier:
+     measured, a lowercase 'beginner' from an imported backup got factor 1.0
+     instead of 0.8 and intermediate ladder rungs — the +25% the comment below
+     already describes, arriving by a different door. */
+  else return levelName(STATE.profile&&STATE.profile.experience);
   // ...but let the athlete's own experience answer nudge it one tier, so changing
   // it in the quiz actually does something instead of being silently ignored.
   /* DOWNWARD ONLY. The line above says the measured level wins and the quiz
@@ -19182,6 +19195,10 @@ function normalizeState(){
      and mobilityFlow() then read an unrecognised value as "not low" and skipped
      the 25% longer holds a stiff athlete asked for. */
   if(!MOBILITY_LEVELS.includes(STATE.profile.mobility))STATE.profile.mobility='ok';
+  /* `experience` had NO repair at all, so any value survived every boot and
+     travelled in every backup. Two guards mean two checks: this one keeps the
+     junk out of STATE, levelName() keeps it out of the prescription. */
+  STATE.profile.experience=levelName(STATE.profile.experience);
   STATE.profile.activity=activityLevel(STATE.profile.activity);
   if(STATE.nutrition&&typeof STATE.nutrition==='object'&&!Array.isArray(STATE.nutrition))
     STATE.nutrition.activity=activityLevel(STATE.nutrition.activity);

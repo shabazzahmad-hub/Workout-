@@ -1556,6 +1556,100 @@ export default async function () {
       .forEach(k => t.eq('isDateISO refuses ' + k, dl.pred[k], false, dl.pred));
   }
 
+  /* ---- the level before the baseline was whatever was stored (v357) --------
+     levelOf()'s pre-baseline branch returned `profile.experience` RAW, and the
+     field had no repair at all. LEVEL_FACTOR[level]||1 and LEVEL_TIER[lv]??1
+     both fall back to the INTERMEDIATE value, so an out-of-set string is
+     silently promoted a tier — on the one path a brand-new athlete lives on
+     until they take the baseline. */
+  {
+    const lv = await page.evaluate(() => {
+      const o = {}; const realErr = console.error; console.error = () => {};
+      const snap = JSON.stringify(STATE);
+      o.legal = LEVEL_NAME.slice();
+      o.factorKeys = Object.keys(LEVEL_FACTOR).sort();
+      /* guard: the three tables really do describe the same three tiers, or
+         everything below is asserting against a moving target. */
+      o.tablesAgree = JSON.stringify(o.factorKeys) === JSON.stringify(LEVEL_NAME.slice().sort())
+        && JSON.stringify(Object.keys(LEVEL_TIER).sort()) === JSON.stringify(LEVEL_NAME.slice().sort());
+
+      const at = exp => {
+        STATE = JSON.parse(snap);
+        delete STATE.baseline; STATE.reassess = {};
+        STATE.profile.experience = exp;
+        normalizeState();
+        const level = levelOf(0);
+        return { stored: STATE.profile.experience, level,
+                 factor: LEVEL_FACTOR[level], tier: LEVEL_TIER[level],
+                 prog: JSON.stringify(buildSession(3).main.map(m => m.exId + ':' + m.target)) };
+      };
+      o.rows = {};
+      ['Beginner', 'Intermediate', 'Advanced', 'beginner', 'ADVANCED', 'expert', 'zzz', '', null, 42, {}, []]
+        .forEach(v => { o.rows[JSON.stringify(v)] = at(v); });
+
+      /* THE READ SITE HAS ITS OWN CONTRACT. Every case above boots first, so
+         the repair scrubs the junk and levelOf() never sees any — reverting it
+         to the raw return escaped all of them. Two guards mean two checks:
+         call it with junk in STATE and NO boot behind it, which is what a
+         render before normalizeState(), or a future writer, would leave. */
+      o.raw = {};
+      ['beginner', 'expert', 'zzz', 42, {}].forEach(v => {
+        STATE = JSON.parse(snap);
+        delete STATE.baseline; STATE.reassess = {};
+        STATE.profile.experience = v;          // deliberately NOT booted
+        const level = levelOf(0);
+        o.raw[JSON.stringify(v)] = { level, factor: LEVEL_FACTOR[level], tier: LEVEL_TIER[level] };
+      });
+      STATE = JSON.parse(snap);
+      delete STATE.baseline; STATE.reassess = {};
+      STATE.profile.experience = 'Advanced';   // the real thing, unbooted
+      o.rawRealAdvanced = levelOf(0);
+      STATE = JSON.parse(snap); normalizeState(); save(); console.error = realErr; return o;
+    });
+    t.ok('guard: LEVEL_NAME, LEVEL_TIER and LEVEL_FACTOR describe the same three tiers',
+      lv.tablesAgree, { legal: lv.legal, factorKeys: lv.factorKeys });
+
+    /* FLOOR FIRST: every level the wizard really offers survives untouched and
+       keeps its own factor. A repair that flattened everything to Beginner
+       satisfies every "junk is refused" assertion and breaks the app. */
+    ['Beginner', 'Intermediate', 'Advanced'].forEach(n => {
+      const r = lv.rows[JSON.stringify(n)];
+      t.eq('floor: ' + n + ' survives the boot', r.stored, n, r);
+      t.eq('floor: and is the level used', r.level, n, r);
+      t.ok('floor: with its own factor', typeof r.factor === 'number', r);
+    });
+    t.ok('guard: the three tiers really do prescribe differently',
+      new Set(['Beginner', 'Intermediate', 'Advanced'].map(n => lv.rows[JSON.stringify(n)].prog)).size === 3,
+      { b: lv.rows['"Beginner"'].prog, i: lv.rows['"Intermediate"'].prog, a: lv.rows['"Advanced"'].prog });
+
+    /* And nothing outside the set reaches the prescription. A lowercase
+       'beginner' from an imported backup was the real case: factor 1.0 and
+       intermediate ladder rungs for someone who said they were a novice. */
+    ['beginner', 'ADVANCED', 'expert', 'zzz', '', null, 42, {}, []].forEach(v => {
+      const r = lv.rows[JSON.stringify(v)];
+      t.eq('an out-of-set experience does not survive the boot (' + JSON.stringify(v) + ')',
+        r.stored, 'Beginner', r);
+      t.eq('nor reach levelOf() (' + JSON.stringify(v) + ')', r.level, 'Beginner', r);
+      t.eq('so the factor is the beginner one, not the middle (' + JSON.stringify(v) + ')',
+        r.factor, lv.rows['"Beginner"'].factor, r);
+    });
+    /* the DISCRIMINATING one: junk must land on Beginner, NOT on the tier the
+       ||1 fallback used to give it. */
+    Object.keys(lv.raw).forEach(k => {
+      t.eq('levelOf() itself refuses junk with no boot behind it (' + k + ')',
+        lv.raw[k].level, 'Beginner', lv.raw[k]);
+      t.eq('so the factor is never the middle one (' + k + ')',
+        lv.raw[k].factor, lv.rows['"Beginner"'].factor, lv.raw[k]);
+      t.eq('nor the middle ladder tier (' + k + ')', lv.raw[k].tier, 0, lv.raw[k]);
+    });
+    t.eq('floor: and it still returns a real level unbooted', lv.rawRealAdvanced, 'Advanced', lv);
+    t.ok('junk is not silently promoted to the intermediate tier',
+      lv.rows['"beginner"'].prog === lv.rows['"Beginner"'].prog
+      && lv.rows['"beginner"'].prog !== lv.rows['"Intermediate"'].prog,
+      { junk: lv.rows['"beginner"'].prog, beginner: lv.rows['"Beginner"'].prog,
+        intermediate: lv.rows['"Intermediate"'].prog });
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

@@ -6049,6 +6049,62 @@ install", which is the regression the tiers were built to prevent.
 **And the install is ASYNC.** Reading the cache count the instant the view
 paints gives 0 and fails on correct code; the check polls for the tier to land.
 
+### And the level before the baseline was whatever was stored
+
+Found by driving the pipeline every session is built on: does a measured number
+reach the prescription? Nine of the ten baseline tests move the program.
+Chasing the tenth found something else.
+
+`levelOf()` has one branch that returns the quiz answer RAW —
+`else return (STATE.profile.experience)||'Intermediate'` — and it is the branch
+a brand-new athlete lives on **until they take the baseline**, which is exactly
+when a true beginner is most at risk. `profile.experience` had **no repair in
+`normalizeState()` at all**, so any value survived every boot.
+
+Both consumers fall back to the MIDDLE tier:
+`LEVEL_FACTOR[level]||1` and `LEVEL_TIER[lv]??1`. So an out-of-set string is
+silently promoted. Measured with no baseline on file:
+
+| stored | level used | factor | ladder rungs |
+|---|---|---|---|
+| `'Beginner'` | Beginner | **0.8** | beginner |
+| `'beginner'` | beginner | **1.0** | **intermediate** |
+| `'expert'`, `'zzz'`, `42` | as stored | **1.0** | **intermediate** |
+
+A lowercase `'beginner'` out of an imported backup is prescribed as an
+Intermediate — the +25% on every unanchored target that `levelOf()`'s own
+comment already describes, arriving by a different door.
+
+**Junk falls to Beginner, not to the middle.** The two ways of being wrong are
+not symmetrical: under-prescribing costs one tap to fix, over-prescribing hands
+a true novice an intermediate ladder. `levelName()` is the one membership test,
+asked by `levelOf()` and by the boot repair.
+
+**Two guards mean two checks, for the second time in three rounds.** Reverting
+`levelOf()` to the raw return escaped every check, because all of them booted
+first and the repair had already scrubbed the junk. The read site now has its
+own block that hands it junk with no boot behind it. Eight mutants, all caught
+after that — including the case-insensitive match that would let `'beginner'`
+straight back through, and the two over-eager twins.
+
+### The false alarm this round, and why the notes are what settled it
+
+The tenth test, `stamina`, moves nothing in the program — halving and doubling
+a recorded burpee count leaves 30 sessions byte-identical, and **no exercise in
+the library anchors to it**. That reads exactly like the `voicePitch` trap.
+
+It is not one. v252 scoped it deliberately and wrote down why: `EX.burpee` is
+`unit:'time'` because HIIT circuits and cardio finishers are always prescribed
+as timed rounds, and anchoring it to a `unit:'reps'` test would require changing
+that unit and silently altering every one of those call sites. `maxes.stamina`
+is recorded for the Core Score, the level and the Strength Trends chart, and
+not for a prescription.
+
+**Its own claim was then checked rather than taken on trust**: changing ONLY
+stamina moves the Core Score (92 → 100), the max is stored, and it is in
+`STRENGTH_METRICS`. The recorded intent is accurate. **Read the notes before
+calling a design a defect — and then check what the notes claim.**
+
 ### Four sweeps that came back clean
 
 - **The destructive paths, driven with the confirm answered.** Undo rewinds the
