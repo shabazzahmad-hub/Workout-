@@ -8970,6 +8970,28 @@ function briefSegments(){
     mission=`The mission: down to ${goalW} pounds${bf}. Log your weight on the Progress tab so I can track every pound with you. Today, we get to work.`;
   }
   segs.push({icon:'🎯',title:'Your mission',say:mission});
+  /* THE BRIEF NEVER MENTIONED THE EVALUATION — not at twelve weeks, not the
+     day before it. Measured across every phase: silent every time, while the
+     prep card counted down and the taper eased the session underneath it.
+     This is the segment the coach READS ALOUD, and v315's rule is that a
+     spoken line is the one an athlete cannot double-check by looking.
+
+     It sits beside the mission because that is what it is: for sixteen weeks
+     the evaluation IS the mission. It says nothing at all when no block is
+     running, so a note that always fires is not what this becomes. */
+  try{
+    const _pw=prepWeeksLeft();
+    if(_pw!==null){
+      const _ph=prepPhase();
+      const _when=_pw<=0?'This week':(_pw===1?'One week out':(_pw+' weeks out'));
+      const _what=_ph==='taper'
+        ? `${_when} from your evaluation, and this is the taper. The sessions ease off, the running comes down and the plate stays where it is. You cannot add fitness now — you can only arrive tired, so we do not.`
+        : _ph==='sharpen'
+        ? `${_when} from your evaluation. The volume stops climbing here and the work gets sharper — this is the part that shows up on test day.`
+        : `${_when} from your evaluation. We are still building, so the volume climbs and the easy work stays easy.`;
+      segs.push({icon:'🎖️',title:'Your test date',say:_what});
+    }
+  }catch(e){}
   /* 3-7 — the work, or the RECORD of it. Every one of these five segments is
      written in the future tense ("We open with", "Then the main work", "Finish
      with"), so on a day already trained they prescribe work that is behind the

@@ -7306,7 +7306,26 @@ week**, so both readings agreed — recorded in v365 as a probe error and hit
 again here. The check now picks a pointer that is not one, and a guard asserts
 it.
 
-Seven mutants, all caught.
+### And the brief never mentioned the evaluation at all
+
+Measured across every phase — no date, build, sharpen, taper, the day before:
+**silent every time**, while the prep card counted down beside it and, after
+the fix above, the session quietly eased underneath it.
+
+The brief is the segment the coach **reads aloud**, and v315's rule is that a
+spoken line is the one an athlete cannot double-check by looking. For sixteen
+weeks the evaluation IS the mission, so the segment sits beside it.
+
+**It says something different per phase**, because one line repeated satisfies
+every "it is mentioned" assertion and tells the athlete nothing: the build
+says the volume still climbs, the sharpen says it stops, and the taper says
+the sessions ease and why — *"you can only arrive tired, so we do not"*, the
+plan's own words, now spoken on the morning it applies.
+
+**It says nothing at all when no block is running**, and the countdown is a
+real number rather than a fixed phrase. Both mutants are caught.
+
+Twelve mutants across the round, all caught.
 
 ## Rendering
 

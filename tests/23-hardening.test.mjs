@@ -4108,6 +4108,56 @@ export default async function () {
     });
     t.eq('the taper trigger answers no when the phase check throws', closed.eased, false, closed);
     t.ok('and a real calendar deload survives it', closed.calendarSurvived, closed);
+
+    /* v372 (same round) — AND THE BRIEF NEVER MENTIONED THE EVALUATION. Not at
+       twelve weeks, not the day before it: measured silent at every phase,
+       while the prep card counted down and — after the fix above — the session
+       eased underneath it with nothing spoken to explain why. The brief is the
+       segment the coach READS ALOUD, and v315's rule is that a spoken line is
+       the one an athlete cannot double-check by looking. */
+    const brief = await page.evaluate(() => {
+      const D = n => localISO(new Date(Date.now() + 864e5 * n));
+      const at = to => {
+        STATE.prep = to === null ? { results: {} }
+          : { planFrom: D(-100), date: D(to), path: 'operator', results: {} };
+        const segs = briefSegments() || [];
+        const seg = segs.find(x => x && x.title === 'Your test date');
+        const all = JSON.stringify(segs);
+        return { phase: prepPhase(), has: !!seg, say: seg ? seg.say : '',
+                 segments: segs.length, mentionsAnywhere: /evaluation/i.test(all) };
+      };
+      return { none: at(null), build: at(84), sharpen: at(21), taper: at(10), tomorrow: at(1) };
+    });
+
+    t.eq('guard: the phases really are what the block says',
+      [brief.build.phase, brief.sharpen.phase, brief.taper.phase],
+      ['build', 'sharpen', 'taper'], brief);
+
+    /* THE FLOOR FIRST: an athlete with no test date hears nothing about one.
+       A segment that always fires is one nobody listens to. */
+    t.ok('an athlete with no test date gets no such segment', !brief.none.has, brief.none);
+    t.ok('and the word is not spoken anywhere in their brief',
+      !brief.none.mentionsAnywhere, brief.none);
+
+    /* THE FINDING. */
+    ['build', 'sharpen', 'taper', 'tomorrow'].forEach(k => {
+      t.ok('the brief names the evaluation in the ' + k + ' state', brief[k].has, brief[k]);
+    });
+    /* IT SAYS SOMETHING DIFFERENT PER PHASE — a single line repeated would
+       pass every "it is mentioned" assertion and tell the athlete nothing. */
+    t.ok('the taper brief says the sessions ease off',
+      /taper/i.test(brief.taper.say) && /ease/i.test(brief.taper.say), brief.taper.say);
+    t.ok('and says why, in the plan\'s own words',
+      /arrive tired/i.test(brief.taper.say), brief.taper.say);
+    t.ok('the build brief says the volume is still climbing',
+      /climb/i.test(brief.build.say), brief.build.say);
+    t.ok('the sharpen brief says it stops climbing',
+      /stops climbing/i.test(brief.sharpen.say), brief.sharpen.say);
+    t.ok('the three phases do not share one line',
+      brief.build.say !== brief.sharpen.say && brief.sharpen.say !== brief.taper.say, brief);
+    /* THE COUNTDOWN IS REAL, not a fixed phrase. */
+    t.ok('it counts the weeks left', /12 weeks out/.test(brief.build.say), brief.build.say);
+    t.ok('and reads the last week as one week', /One week out|This week/.test(brief.tomorrow.say), brief.tomorrow.say);
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
