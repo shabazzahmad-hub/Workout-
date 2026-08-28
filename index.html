@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='358';
+const APP_VERSION='359';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -6468,6 +6468,7 @@ function plEnterWork(){
   plSaveResume();
   const m=plCur();const ex=EX[m.exId];const isTime=m.unit==='time';
   PLAYER.phase='work';
+  PLAYER.grindSaid=false;   // one acknowledgement per effort; a repeat is a nag
   PLAYER.cues=(ex.cues&&ex.cues.length)?ex.cues.slice():['Brace your core and own every rep.'];
   PLAYER.cueIdx=0;
   const firstSet=PLAYER.s===0;
@@ -6531,7 +6532,8 @@ function plTickHold(){
     plS('#plCoach',SIDE_LINE);plSay(SIDE_LINE);
   }
   else if(PLAYER.remain===10&&PLAYER.total>16){plHype('push','Ten seconds. Hold strong.');}
-  else if(el>0&&el%8===0&&PLAYER.remain>5){
+  else if(!PLAYER.grindSaid&&el===grindAt(PLAYER.total)){PLAYER.grindSaid=true;const g=grindLine();if(g)plSay(g);}
+  else if(el>0&&el%8===0&&PLAYER.remain>5&&!nearGrind(el,PLAYER.total)){
     // cycle: form cue → breathing → motivate, so coaching runs throughout the hold
     const pick=Math.floor(el/8)%3;
     if(pick===1){plSay(plNextCue());}
@@ -7505,6 +7507,7 @@ function ivStep(idx){
   if(typeof idx==='number')INTV.i=idx;
   const step=INTV.seq[INTV.i];const ex=EX[step.exId]||{name:'Work'};const isWork=step.type==='work';
   ivClear();INTV.phase=isWork?'work':'rest';INTV.remain=step.secs;INTV.total=Math.max(1,step.secs);
+  INTV.grindSaid=false;     // one per round, cleared where the round begins
   INTV.deadline=Date.now()+step.secs*1000;   // wall-clock anchor — see ivTick()
   ivRenderStep(INTV.i);
   ivS('#ivNum',fmtTime(INTV.remain));ivS('#ivSub',isWork?'WORK':'REST');ivRingSet(1);
@@ -7535,6 +7538,11 @@ function ivTick(){
   INTV.remain=INTV.deadline?Math.min(byTick,Math.ceil((INTV.deadline-Date.now())/1000)):byTick;
   if(INTV.phase==='work')INTV.workElapsed++;
   if(INTV.phase==='work')countdownCue(INTV.remain,INTV.total);
+  /* Work only. A rest interval has no hard part to name, and saying so
+     there would cost the phases the difference the ear uses to tell them
+     apart — the same reason countdownCue() is kept off rest. */
+  if(INTV.phase==='work'&&!INTV.grindSaid&&(INTV.total-INTV.remain)===grindAt(INTV.total)){
+    INTV.grindSaid=true;const g=grindLine();if(g)plSay(g);}
   else if(INTV.remain<=3&&INTV.remain>0){beepDuck(300);beep(920,.17,0.92);}
   if(INTV.remain<=0){beepGo();haptic(30);ivClear();INTV.i++;
     if(INTV.i>=INTV.seq.length){whenPointerFree('iv',ivDone);return;}
@@ -7787,19 +7795,21 @@ function startBaselineTimer(){
          at all — it spoke over the name on every single second. The beep
          already marks them. */
       if(_bt.ready>0){beep(660,.09);paintReady();}
-      else{beep(990,.14);haptic(20);if(!motivate('start'))coachSay('Go!');_bt.mode='run';_bt.elapsed=0;paintRun();}
+      else{beep(990,.14);haptic(20);if(!motivate('start'))coachSay('Go!');_bt.mode='run';_bt.elapsed=0;_bt.grindSaid=false;paintRun();}
       return;
     }
     _bt.elapsed++;
     if(dur){
       const left=dur-_bt.elapsed;
       if(left===10){if(!motivate('push'))coachSay('Ten seconds left.');}
-      else if(_bt.elapsed>0&&_bt.elapsed%10===0&&left>4)motivate('during');
+      else if(!_bt.grindSaid&&_bt.elapsed===grindAt(dur)){_bt.grindSaid=true;const g=grindLine();if(g)coachSay(g);}
+      else if(_bt.elapsed>0&&_bt.elapsed%10===0&&left>4&&!nearGrind(_bt.elapsed,dur))motivate('during');
       if(left<=3&&left>0)beep(660,.08);
       if(left<=0){beep(880,.28);haptic(30);if(!motivate('done'))coachSay('Time. Enter your reps.');stopBaselineTimer();backToAssessStep(false);return;}
     }else{
       // open-ended hold: push periodically the longer they hold
-      if(_bt.elapsed>0&&_bt.elapsed%10===0)motivate('during');
+      if(!_bt.grindSaid&&_bt.elapsed===grindAtOpen(_bt.tid)){_bt.grindSaid=true;const g=grindLine();if(g)coachSay(g);}
+      else if(_bt.elapsed>0&&_bt.elapsed%10===0&&!nearGrindOpen(_bt.elapsed,_bt.tid))motivate('during');
     }
     paintRun();
   }
@@ -9612,6 +9622,89 @@ function _hypeDeviceSpeak(text,persona){
     duckFor(u);synth.speak(u);return true;
   }catch(e){return false;}
 }
+/* ---- THE HARD PART, NAMED (v359) -------------------------------------------
+   Measured across the whole corpus: 190 `push` lines over 38 coaches, and
+   exactly TWO of them name what the effort FEELS like. Every other one is
+   exhortation — "final push", "empty the tank", "do not quit". Being told to
+   try harder and being told that burning legs are the set working are not the
+   same message, and the second is the one that keeps somebody in a plank.
+
+   Shared rather than per-persona ON PURPOSE. What these carry is a FACT about
+   the effort, not a character trait: the fatigue really is the point of the
+   set, whichever coach is speaking. 38 hand-written copies of one fact is 38
+   places for it to drift, and the persona flavour already lives in the push
+   and during pools either side of it.
+
+   THEY NAME EFFORT AND NEVER A SYMPTOM. `npm run check` enforces that across
+   the whole corpus — burn and fatigue may be coached, a symptom may not — and
+   these sit deliberately close to that line. They also never argue against
+   stopping: the stop button is one tap away and must stay that way.
+   Acknowledging the grind is not the same as talking somebody out of a stop. */
+const GRIND_LINES=[
+  'This is the hard part. It is meant to feel like this.',
+  'Burning muscles are the work happening. Keep the shape.',
+  'Shaking here is normal. Steady breath, steady form.',
+  'This is the honest part of the set.',
+  'Fatigue now is the point of the effort, not a fault.',
+  'The last third is where it counts. Breathe through it.',
+  'It does not get easier from here. You get better at holding it.'
+];
+/* The floor exists twice over: a short effort has no last third worth naming,
+   and the line must never land on the ten-second push marker — two coaching
+   lines a second apart is the double-countdown defect wearing new clothes. At
+   the floor the line lands at second 24 with 12 still to run. */
+const GRIND_MIN_S=36;
+let _lastGrind=-1;
+function grindLine(){
+  try{
+    if(STATE.settings.voice===false)return '';
+    if(STATE.settings.hype===false)return '';
+  }catch(e){return '';}
+  let i=Math.floor(Math.random()*GRIND_LINES.length);
+  if(GRIND_LINES.length>1&&_lastGrind===i)i=(i+1)%GRIND_LINES.length;
+  _lastGrind=i;
+  return GRIND_LINES[i];
+}
+/* THE LAST THIRD IS A PROPERTY OF THE EFFORT, NOT A FIXED TEN SECONDS.
+   Measured over all 1,700 timed holds the program prescribes: ten seconds is
+   22% of the average hold and 10.5% of the longest, so a 95-second plank got
+   one line at second 85 and nothing at all through the part that decides it.
+   Returns the ELAPSED second to speak at, or -1 for an effort with no grind. */
+function grindAt(total){
+  if(!(total>=GRIND_MIN_S))return -1;
+  const el=Math.round(total*2/3);
+  /* >11, not >10. A line at remain 11 puts the ten-second marker ONE second
+     later, and _deviceSpeak() cancels — so the acknowledgement would be cut
+     mid-word by the very marker it was placed to avoid. */
+  return (total-el)>11?el:-1;
+}
+/* AN UTTERANCE TAKES ABOUT A SECOND AND A HALF, so the periodic form and
+   breathing cues have to give up the second either side of the grind line.
+   Measured before this: on a 50-second hold the cue landed at 32 and the
+   grind line at 33, and on a 95-second one the grind line at 63 was cut by
+   the breathing cue at 64. Same defect as the two countdowns of the same
+   three seconds — a voice line and a per-second job cannot share a second. */
+function nearGrind(el,total){const g=grindAt(total);return g>=0&&Math.abs(el-g)<=1;}
+function nearGrindOpen(el,tid){const g=grindAtOpen(tid);return g>=0&&Math.abs(el-g)<=1;}
+/* An open-ended hold has no total, so its last third cannot be computed — and
+   it is the one effort where the grind matters most, because the athlete's own
+   decision to stop IS the measurement. The hard part is therefore relative to
+   THIS athlete: two thirds of their own best on this test, falling back to two
+   thirds of the published benchmark when there is no prior. Same reasoning as
+   the ruck MET being computed from bodyweight rather than looked up — a fixed
+   number cannot be right about a body it does not know. */
+function grindAtOpen(testId){
+  try{
+    const t=(TESTS||[]).filter(x=>x.id===testId)[0];
+    if(!t)return -1;
+    let best=0;
+    try{const m=currentMaxes();if(m&&m[testId]>0)best=m[testId];}catch(e){}
+    if(!(best>0))best=t.bench||0;
+    if(!(best>0))return -1;
+    const at=Math.round(best*2/3);
+    return at>=12?at:-1;      // nothing to name inside the first few seconds
+  }catch(e){return -1;}
+}
 // Speak a random motivational line of the given kind (start|during|push|rest|done).
 /* The line WITHOUT speaking it, so a caller that must not lose its own words
    can put the coaching after them in one utterance — see plTickRep(), where
@@ -9924,7 +10017,7 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex){
   autoRoll();primeVoice();beatStart();
   const C=2*Math.PI*100;
   // 5-second loud GET READY countdown before a hold begins (rest timers start straight away)
-  let phase=isHold?'ready':'run', ready=5;
+  let phase=isHold?'ready':'run', ready=5, _grindSaid=false;
   const setPhase=(txt)=>{const t=$('#tphase');if(t)t.textContent=txt;};
   /* Solid through the 3-2-1, a watermark once the hold is running. A rest
      timer never enters 'run' this way and keeps the solid class it shipped
@@ -9961,7 +10054,8 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex){
        inside the tick can stall the main thread past the next one. */
     if(isHold){
       if(remain===10&&total>16){plHype('push','Ten seconds. Hold strong.');}
-      else if(el>0&&el%10===0&&remain>4)plHype('during');   // periodic push through the hold
+      else if(!_grindSaid&&el===grindAt(total)){_grindSaid=true;const g=grindLine();if(g)plSay(g);}
+      else if(el>0&&el%10===0&&remain>4&&!nearGrind(el,total))plHype('during');   // periodic push through the hold
     }else{
       if(remain===10&&total>13)plSay('Ten seconds. Get ready.');
       else if(total>=24&&el===Math.round(total/2))plHype('rest');

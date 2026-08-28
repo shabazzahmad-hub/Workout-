@@ -1743,6 +1743,220 @@ export default async function () {
     t.ok('every pool member is a real exercise', sh.pool.every(k => !!k) && sh.pool.length > 0, sh.pool);
   }
 
+  /* ---- THE HARD PART, NAMED (v359) ------------------------------------
+     Measured across the corpus before this: 190 `push` lines over 38 coaches
+     and exactly TWO name what the effort feels like. The rest are exhortation.
+     The checks below pin four things the fix rests on — the line lands in the
+     last THIRD (not at a fixed ten seconds), it lands once, it never shares a
+     second with another utterance, and the surfaces that should stay silent
+     do. Each has its floor beside it, because "say it everywhere" and "say it
+     nowhere" both satisfy half the block. */
+  {
+    const G = /hard part|Burning muscles|Shaking here|honest part|Fatigue now|last third|does not get easier/;
+    const g = await page.evaluate(async (Gsrc) => {
+      const G = new RegExp(Gsrc);
+      const o = {};
+      const flush = () => new Promise(r => setTimeout(r, 4));
+      /* EACH BLOCK BUILDS THE STATE IT ASSERTS ON. An earlier block in this
+         suite leaves STATE.baseline null, and estimateMaxes() then hands
+         back DEFAULTS — so the open-hold half of this block was measuring
+         an athlete who had never tested, with a plank max of 40. */
+      const _baseKeep = STATE.baseline;
+      STATE.baseline = { date: todayISO(), score: 70, level: 'Advanced', testCount: TESTS.length,
+        maxes: { plank: 150, side: 95, hollow: 70, lower: 30, dyn: 55, push: 48, pull: 22, squat: 62, power: 20, stamina: 24 } };
+
+      // --- the pool, and the arithmetic that places it
+      o.lines = GRIND_LINES.length;
+      o.min = GRIND_MIN_S;
+      o.at = {}; [20, 30, 35, 36, 40, 50, 60, 95, 150].forEach(t => o.at[t] = grindAt(t));
+      /* THE MARKER MUST NEVER BE ADJACENT. _deviceSpeak() cancels, so a line
+         placed at remain 11 is cut mid-word by the ten-second marker itself. */
+      o.minRemain = 999; o.adjacent = [];
+      for (let t = 1; t <= 200; t++) {
+        const x = grindAt(t); if (x < 0) continue;
+        o.minRemain = Math.min(o.minRemain, t - x);
+        if ((t - x) <= 11) o.adjacent.push(t);
+      }
+      // hype off means silence, the same contract motivateLine() carries
+      const hb = STATE.settings.hype; STATE.settings.hype = false;
+      o.hypeOff = grindLine(); STATE.settings.hype = hb;
+      const vb = STATE.settings.voice; STATE.settings.voice = false;
+      o.voiceOff = grindLine(); STATE.settings.voice = vb;
+      o.hypeOn = grindLine();
+
+      // --- the guided player's hold, driven second by second
+      const drivePl = async (total) => {
+        const said = []; const real = window.coachSpeak; let cur = 0;
+        window.coachSpeak = t => said.push([cur, String(t)]);
+        PLAYER = { phase: 'work', remain: total, total: total, s: 0, i: 0,
+          items: [{ exId: 'plank', unit: 'time', target: total, sets: 1 }],
+          cues: ['Brace.'], cueIdx: 0, grindSaid: false, running: true };
+        for (let k = 0; k < total - 1; k++) {
+          cur = total - PLAYER.remain + 1;
+          try { plTickHold(); } catch (e) { break; }
+          await flush();
+          if (!PLAYER || PLAYER.phase !== 'work') break;
+        }
+        window.coachSpeak = real;
+        const hits = said.filter(x => G.test(x[1]));
+        /* AN UTTERANCE TAKES ~1.5s, so nothing else may sit within a second of
+           it — otherwise the acknowledgement is cut by a form cue. */
+        const clash = hits.length ? said.filter(x => !G.test(x[1]) && Math.abs(x[0] - hits[0][0]) <= 1) : [];
+        return { n: hits.length, at: hits.map(x => x[0]), clash: clash.length, total: said.length };
+      };
+      o.p50 = await drivePl(50);
+      o.p95 = await drivePl(95);
+      o.p36 = await drivePl(36);
+      o.p20 = await drivePl(20);   // floor: no last third worth naming
+      o.p35 = await drivePl(35);   // floor: one second under the gate
+
+      // --- HIIT: work has a hard part, rest does not
+      const driveIv = async (secs, type) => {
+        const said = []; const real = window.coachSpeak; let cur = 0;
+        window.coachSpeak = t => said.push([cur, String(t)]);
+        INTV = { i: 0, seq: [{ type: type, secs: secs, exId: 'burpee' }], phase: type,
+          remain: secs, total: secs, grindSaid: false, running: false, workElapsed: 0, deadline: 0 };
+        for (let k = 0; k < secs - 1; k++) {
+          cur = secs - INTV.remain + 1;
+          try { ivTick(); } catch (e) { break; }
+          await flush();
+          if (!INTV || INTV.remain <= 0) break;
+        }
+        window.coachSpeak = real;
+        return said.filter(x => G.test(x[1])).map(x => x[0]);
+      };
+      o.ivWork = await driveIv(45, 'work');
+      o.ivRest = await driveIv(45, 'rest');
+      o.ivShort = await driveIv(20, 'work');
+
+      // --- the baseline battery's OPEN hold: the point is the athlete's own max
+      o.maxPlank = (currentMaxes() || {}).plank;
+      o.openAt = grindAtOpen('plank');
+      /* A LEANER ATHLETE'S HARD PART ARRIVES SOONER. A fixed constant cannot
+         express that at all, which is the whole argument for reading the max. */
+      const mb = STATE.baseline;
+      try {
+        STATE.baseline = JSON.parse(JSON.stringify(mb));
+        STATE.baseline.maxes.plank = 60;
+        o.openAtWeak = grindAtOpen('plank');
+      } catch (e) { o.openAtWeak = -1; }
+      /* AND ITS OWN FLOOR, WHICH ONLY A SMALL MAX CAN REACH. Both cases
+         above sit far above it, so a mutant deleting `at>=12` was invisible
+         — a guard that cannot fire in the case you tested is not tested. */
+      try {
+        STATE.baseline = JSON.parse(JSON.stringify(mb));
+        STATE.baseline.maxes.plank = 15;
+        o.openAtTiny = grindAtOpen('plank');
+      } catch (e) { o.openAtTiny = 'ERR'; }
+      STATE.baseline = mb;
+
+      const runBaseline = async (testId, setAt) => {
+        assessState = { idx: TESTS.map(t => t.id).indexOf(testId), results: {} };
+        const said = []; const real = window.coachSpeak;
+        window.coachSpeak = t => said.push(String(t));
+        startBaselineTimer();
+        await new Promise(r => setTimeout(r, 60));
+        _bt.mode = 'run'; _bt.grindSaid = false; _bt.elapsed = setAt - 1;
+        await new Promise(r => setTimeout(r, 1150));
+        stopBaselineTimer(); closeSheet();
+        window.coachSpeak = real;
+        return said.filter(x => G.test(x)).length;
+      };
+      o.openHit = await runBaseline('plank', o.openAt);
+      o.openEarly = await runBaseline('plank', o.openAt - 20);
+      // --- the warm-up flow is deliberately silent: a stretch is not a grind
+      o.flowSilent = !/grindLine|grindAt/.test(String(runFlow));
+      /* THE NEIGHBOUR GUARD, AS A CLASS. Every surface with a PERIODIC cue
+         has to yield the second either side of the grind line, or the cue
+         cancels it mid-word. The guided player is driven above; the other
+         two need a 36-second effort to reach and cannot be, so their guard
+         is read off the source — the same call foodScreenshot()'s wiring
+         gets. Match the EXPRESSION, not the name: `nearGrind` appearing
+         anywhere in the function would pass on the grind line alone. */
+      o.yield = {
+        player: /el%8===0&&PLAYER\.remain>5&&!nearGrind\(el,PLAYER\.total\)/.test(String(plTickHold)),
+        timer: /el%10===0&&remain>4&&!nearGrind\(el,total\)/.test(String(runTimer)),
+        baseFixed: /_bt\.elapsed%10===0&&left>4&&!nearGrind\(_bt\.elapsed,dur\)/.test(String(startBaselineTimer)),
+        baseOpen: /_bt\.elapsed%10===0&&!nearGrindOpen\(_bt\.elapsed,_bt\.tid\)/.test(String(startBaselineTimer))
+      };
+      // --- and every surface that SHOULD have it, does
+      o.wired = {
+        player: /grindAt\(/.test(String(plTickHold)),
+        timer: /grindAt\(/.test(String(runTimer)),
+        hiit: /grindAt\(/.test(String(ivTick)),
+        baseline: /grindAt\(|grindAtOpen\(/.test(String(startBaselineTimer))
+      };
+      STATE.baseline = _baseKeep;
+      return o;
+    }, G.source);
+
+    t.eq('the grind pool has real lines in it', g.lines > 3, true, g.lines);
+    t.eq('and the floor is a whole effort, not a couple of seconds', g.min, 36);
+
+    t.eq('a 20-second hold has no last third worth naming', g.at[20], -1);
+    t.eq('nor a 35-second one, one under the gate', g.at[35], -1);
+    t.eq('a 36-second hold names it at the two-thirds mark', g.at[36], 24);
+    t.eq('a 50-second hold at 33', g.at[50], 33);
+    /* THE LAST THIRD IS A PROPERTY OF THE EFFORT. Ten seconds is 10.5% of the
+       longest hold in the program — this is the check that a fixed marker
+       cannot pass. */
+    t.eq('and a 95-second hold at 63, not at 85', g.at[95], 63);
+    t.eq('a 150-second hold scales with it too', g.at[150], 100);
+
+    t.eq('no legal grind second is adjacent to the ten-second marker', g.adjacent, []);
+    t.eq('the closest one still leaves a clear second either side', g.minRemain >= 12, true, g.minRemain);
+
+    t.eq('hype off means the line is silent', g.hypeOff, '');
+    t.eq('voice off means the same', g.voiceOff, '');
+    t.ok('and with both on there really is a line to say', !!g.hypeOn, g.hypeOn);
+
+    // ---- the guided player
+    t.eq('a 50-second hold is acknowledged exactly once', g.p50.n, 1);
+    t.eq('at the second grindAt() named', g.p50.at, [33]);
+    /* MEASURE THE CLASH, NOT THE PRESENCE. Before the neighbour guard the form
+       cue landed at 32 and the line at 33, so one of the two was cancelled
+       mid-word and the check would still have seen both. */
+    t.eq('with nothing else spoken within a second of it', g.p50.clash, 0);
+    t.eq('a 95-second hold is acknowledged once, at 63', g.p95.at, [63]);
+    t.eq('and nothing collides there either', g.p95.clash, 0);
+    t.eq('a 36-second hold, at the floor, still gets it', g.p36.at, [24]);
+    // floors: an effort with no grind must stay exactly as it was
+    t.eq('a 20-second hold gets no grind line at all', g.p20.n, 0);
+    t.eq('nor a 35-second one', g.p35.n, 0);
+    t.ok('but a short hold is still coached', g.p20.total > 0, g.p20);
+
+    // ---- HIIT
+    t.eq('a 45-second work round is acknowledged once, at 30', g.ivWork, [30]);
+    /* Rest has no hard part, and saying it has costs the ear the difference
+       between the two phases — the same reason countdownCue() is kept off it. */
+    t.eq('a 45-second REST round says nothing of the kind', g.ivRest, []);
+    t.eq('and a 20-second round is too short to have a third', g.ivShort, []);
+
+    // ---- the baseline battery's open hold
+    t.eq('guard: this block seeded its own 150-second plank max', g.maxPlank, 150);
+    t.eq('the open hold names it at two thirds of THEIR OWN max', g.openAt, Math.round(g.maxPlank * 2 / 3));
+    t.eq('driven for real, the line lands there', g.openHit, 1);
+    t.eq('and does not land twenty seconds earlier', g.openEarly, 0);
+    /* The discriminating floor: a fixed number would give the same answer to
+       both athletes. A weaker athlete's hard part genuinely arrives sooner. */
+    t.eq('a weaker athlete reaches their hard part sooner', g.openAtWeak, 40);
+    t.ok('which a fixed constant could not express', g.openAtWeak < g.openAt, g);
+    /* The floor beneath the floor: a 15-second plank has no third worth
+       naming either, and 10 seconds in is not a grind, it is the start. */
+    t.eq('a 15-second plank max gets no open-hold line at all', g.openAtTiny, -1);
+
+    // ---- who gets it and who does not
+    t.ok('the warm-up and cool-down flow stays silent — a stretch is not a grind', g.flowSilent, g);
+    t.ok('the guided player is wired', g.wired.player, g.wired);
+    t.ok('the standalone hold timer is wired', g.wired.timer, g.wired);
+    t.ok('HIIT is wired', g.wired.hiit, g.wired);
+    t.ok('and the baseline battery is wired', g.wired.baseline, g.wired);
+    t.ok('the player\'s periodic cue yields the second either side', g.yield.player, g.yield);
+    t.ok('the standalone hold timer\'s does too', g.yield.timer, g.yield);
+    t.ok('the battery\'s fixed-duration cue does too', g.yield.baseFixed, g.yield);
+    t.ok('and its open-hold cue, against the open-hold point', g.yield.baseOpen, g.yield);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
