@@ -2307,7 +2307,12 @@ export default async function () {
          technique suite 04 uses on the baseline timer. Re-implementing the
          branch here would pass with the branch deleted from the app. */
       const driveHold = async (id, best, at) => {
-        STATE.holdLog = best ? [{ date: todayISO(), id: id, secs: best, fresh: true, at: 1 }] : [];
+        /* The prior has to say WHICH MOVEMENT it was held on, or v367's
+           same-movement rule correctly refuses to treat it as this athlete's
+           bar — the record was incomplete, not the rule. Same shape as v321's
+           like-for-like prior needing `subs:{}`. */
+        STATE.holdLog = best ? [{ date: todayISO(), id: id, secs: best, fresh: true, at: 1,
+                                  exId: holdMovement(holdTest(id)) }] : [];
         STATE.logs = {};
         const said = []; const real = window.coachSpeak;
         window.coachSpeak = x => said.push(String(x));
@@ -3267,6 +3272,125 @@ export default async function () {
     t.eq('with all five rows tappable', kit['owns a bar'].tappable.length, 5, kit['owns a bar']);
     t.ok('and nothing is listed as missing kit',
       !kit['owns a bar'].needsKit.length && !kit['owns a bar'].note, kit['owns a bar']);
+  }
+
+
+  /* ===================================================================
+     v367 — A CHANGE OF RULER IS NOT A CHANGE OF STRENGTH, in the hold
+     tracker this time. safeSwap() protects a flagged joint here exactly as it
+     does in the baseline battery (v320), and the number coming back then
+     measures a DIFFERENT movement — shoulder turns the Dead Hang into a Bird
+     Dog, knee turns the Wall Sit into a Glute Bridge. The record carried only
+     the test id, so the two mixed.
+
+     Measured end to end before the fix: a Bird Dog held 5:00 while the
+     shoulder was flagged, then a real 45-second Dead Hang six weeks later,
+     and the row read "Dead Hang · Best 5:00 · last 45s · -255s on the one
+     before". */
+  {
+    /* Driven through the REAL route both times — stopHoldTest() is what an
+       athlete's last tap reaches, and calling logHold() directly is what let
+       v320's own writer bug survive four checks. */
+    const driveTwo = `(lims) => {
+      STATE.profile.limitations = lims; STATE.holdLog = []; STATE.logs = {}; save();
+      const hold = secs => { startHoldTest('hang'); if (!_ht) return false;
+        _ht.mode = 'run'; _ht.elapsed = secs; stopHoldTest(); closeSheet(); return true; };
+      if (!hold(60)) return null;
+      STATE.holdLog[0].at = 1;
+      STATE.holdLog[0].date = localISO(new Date(Date.now() - 864e5 * 30));
+      hold(75);
+      PROGRESS_TAB = 'strength'; go('progress'); render();
+      const kv = document.querySelector('[data-holdrow="hang"]');
+      return { records: STATE.holdLog.map(r => ({ exId: r.exId, secs: r.secs })),
+               best: holdBest('hang'), trend: holdTrend('hang'),
+               other: holdIncomparable('hang'),
+               tracker: kv ? kv.innerText.replace(/\\n/g, ' ') : null };
+    }`;
+    const hold = await page.evaluate(([fn]) => {
+      const run = eval('(' + fn + ')');
+      const o = { clean: run([]), shoulder: run(['shoulder']), knee: null };
+      /* The knee swap, so the finding is proved on the CLASS rather than on
+         the one movement it was reported against. */
+      STATE.profile.limitations = ['knee'];
+      o.knee = { performs: safeSwap('wallsit'), floor: safeSwap('plank') };
+      /* THE REPORTED DEFECT: holds on the substitute, then the real movement. */
+      STATE.profile.limitations = ['shoulder']; STATE.holdLog = []; STATE.logs = {};
+      const sub = safeSwap('deadhang');
+      STATE.holdLog.push({ date: '2026-01-01', id: 'hang', secs: 300, fresh: true, at: 1, exId: sub });
+      STATE.profile.limitations = [];
+      STATE.holdLog.push({ date: '2026-02-12', id: 'hang', secs: 45, fresh: true, at: 2, exId: 'deadhang' });
+      o.mixed = { sub, best: holdBest('hang'), trend: holdTrend('hang'), other: holdIncomparable('hang') };
+      openHoldTests();
+      const sh = document.getElementById('sheet');
+      const row = sh.querySelector('[data-hold="hang"]');
+      o.mixed.rowText = row ? row.innerText.replace(/\n/g, ' ') : null;
+      o.mixed.saysWhy = !!sh.querySelector('[data-holdother="hang"]');
+      closeSheet();
+      /* A LEGACY ROW carries no movement at all. Unknown is not equal, so it
+         is kept as history and left out of the comparison. */
+      STATE.holdLog = [{ date: '2026-01-01', id: 'hang', secs: 300, fresh: true, at: 1 },
+                       { date: '2026-02-01', id: 'hang', secs: 280, fresh: true, at: 2 }];
+      o.legacy = { best: holdBest('hang'), trend: holdTrend('hang'),
+                   other: holdIncomparable('hang'), last: (holdLast('hang') || {}).secs };
+      /* The repair keeps a real movement and refuses junk. */
+      STATE.holdLog = [{ date: '2026-01-01', id: 'hang', secs: 60, fresh: true, at: 1, exId: 'deadhang' },
+                       { date: '2026-01-02', id: 'hang', secs: 61, fresh: true, at: 2, exId: 'not-a-move' },
+                       { date: '2026-01-03', id: 'hang', secs: 62, fresh: true, at: 3, exId: { x: 1 } }];
+      normalizeState();
+      o.repaired = STATE.holdLog.map(r => r.exId === undefined ? 'absent' : r.exId);
+      return o;
+    }, [driveTwo]);
+
+    /* Guard: the two substitutions this round is about really happen. */
+    t.eq('guard: a flagged shoulder really substitutes the dead hang',
+      hold.shoulder.records[0].exId, 'birddog', hold.shoulder);
+    t.eq('guard: and a flagged knee substitutes the wall sit',
+      hold.knee.performs, 'glutebridge', hold.knee);
+    t.ok('guard: the floor movements are not substituted at all',
+      hold.knee.floor === 'plank' && hold.clean.records[0].exId === 'deadhang', hold);
+
+    /* THE WRITER: the movement actually held is stamped, by the real route. */
+    t.eq('an unflagged athlete records the dead hang',
+      hold.clean.records.map(r => r.exId), ['deadhang', 'deadhang'], hold.clean);
+    t.eq('a flagged athlete records what they actually held',
+      hold.shoulder.records.map(r => r.exId), ['birddog', 'birddog'], hold.shoulder);
+
+    /* THE FLOORS. Both athletes still get a best and a real trend on their
+       own movement — a fix that withheld everything satisfies every
+       assertion about the mixed case and deletes the feature. */
+    t.eq('the unflagged athlete keeps their best', hold.clean.best, 75, hold.clean);
+    t.eq('and a real trend', hold.clean.trend && hold.clean.trend.delta, 15, hold.clean);
+    t.eq('the flagged athlete keeps a best on the substitute', hold.shoulder.best, 75, hold.shoulder);
+    t.eq('and a real trend of their own', hold.shoulder.trend && hold.shoulder.trend.delta, 15, hold.shoulder);
+    t.eq('neither has anything left uncompared',
+      [hold.clean.other, hold.shoulder.other], [0, 0], hold);
+
+    /* NAME THE MOVEMENT THE NUMBER WAS SET ON. */
+    t.ok('the tracker names the dead hang for the unflagged athlete',
+      /Dead Hang/.test(hold.clean.tracker || ''), hold.clean);
+    t.ok('and names the BIRD DOG for the flagged one',
+      /Bird Dog/.test(hold.shoulder.tracker || ''), hold.shoulder);
+    t.ok('never the movement they did not do',
+      !/Dead Hang/.test(hold.shoulder.tracker || ''), hold.shoulder);
+
+    /* THE REPORTED DEFECT, on the current head. */
+    t.eq('the bird-dog hold no longer sets the dead-hang best', hold.mixed.best, 45, hold.mixed);
+    t.eq('and no delta is drawn across the two movements', hold.mixed.trend, null, hold.mixed);
+    t.eq('the incomparable one is counted', hold.mixed.other, 1, hold.mixed);
+    t.ok('the row shows no false regression',
+      !/−255s|-255s/.test(hold.mixed.rowText || ''), hold.mixed);
+    /* A WITHHELD NUMBER NEEDS A SENTENCE. */
+    t.ok('and the row says why it is not compared', hold.mixed.saysWhy, hold.mixed);
+
+    /* UNKNOWN IS NOT EQUAL — and is still history. */
+    t.eq('a record written before the stamp sets no best', hold.legacy.best, 0, hold.legacy);
+    t.eq('and draws no trend', hold.legacy.trend, null, hold.legacy);
+    t.eq('but it is kept, not deleted', hold.legacy.last, 280, hold.legacy);
+    t.eq('and counted as uncomparable', hold.legacy.other, 2, hold.legacy);
+
+    /* MEMBERSHIP, not truthiness: exId reaches innerHTML through the row. */
+    t.eq('the repair keeps a real movement and refuses junk',
+      hold.repaired, ['deadhang', 'absent', 'absent'], hold.repaired);
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));

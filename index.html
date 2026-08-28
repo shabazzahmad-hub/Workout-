@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='366';
+const APP_VERSION='367';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -9932,11 +9932,30 @@ function holdLog(){if(!Array.isArray(STATE.holdLog))STATE.holdLog=[];return STAT
    silently mixes the two and reads as progress or a slide that never happened
    — TEST_PROTOCOL's own discipline, at the scale of a single effort. */
 function holdFreshNow(){try{return !trainedToday();}catch(e){return false;}}
-function logHold(id,secs,fresh){
+/* A CHANGE OF RULER IS NOT A CHANGE OF STRENGTH — v320, in a feature written
+   after that lesson and without it. safeSwap() protects a flagged joint here
+   exactly as it does in the baseline battery, and the number coming back then
+   measures a DIFFERENT movement. Two of the five are reachable and neither
+   preserves the capacity the test exists to measure:
+
+     shoulder  Dead Hang -> Bird Dog        (bodyweight hang -> light stability)
+     knee      Wall Sit  -> Glute Bridge    (legs to failure -> easy hold)
+
+   Measured end to end: a shoulder-flagged athlete held a Bird Dog for 5:00,
+   six weeks later held a real 45-second Dead Hang, and the row read
+   "Dead Hang · Best 5:00 · last 45s · -255s on the one before" — a best they
+   never set, on a movement they had not done, and a genuinely good result
+   reported as a large regression.
+
+   So the record stamps the movement, and both readers ask it. Same shape as
+   `subs` on a baseline: the record stays RAW, and the COMPARISON is what is
+   withheld. */
+function logHold(id,secs,fresh,exId){
   const t=holdTest(id);if(!t)return null;
   secs=Math.max(0,Math.round(+secs||0));
   if(!secs)return null;                    // a hold that never started is not a result
-  const rec={date:todayISO(),id:t.id,secs,fresh:fresh===true,at:Date.now()};
+  const rec={date:todayISO(),id:t.id,secs,fresh:fresh===true,at:Date.now(),
+             exId:(EX[exId]?exId:holdMovement(t))};
   const l=holdLog();l.push(rec);if(l.length>200)l.splice(0,l.length-200);
   save();return rec;
 }
@@ -9944,9 +9963,27 @@ function logHold(id,secs,fresh){
    number a re-test is trying to beat; a fatigued effort is kept and shown but
    never sets the bar. Returns 0 when nothing fresh has been recorded, which
    reads as "no bar yet" rather than as a zero the athlete scored. */
+/* UNKNOWN IS NOT EQUAL. Every record written before v367 carries no movement
+   at all, so it cannot be shown to be the same one and is left out of the
+   comparison rather than assumed into it — the call v320 made about a baseline
+   with no `subs` stamp. It is still HISTORY: holdLast() keeps it and the
+   tracker prints it, because the athlete really did hold that long. */
+function holdSameMovement(r,exId){return !!(r&&typeof r.exId==='string'&&r.exId===exId);}
+/* Which movement this test performs for THIS athlete right now — so a flagged
+   athlete's bar is their best on the substitute, and a cleared one's bar is
+   their best on the real movement. Both are honest; mixing them is not. */
+function holdWantEx(id){const t=holdTest(id);return t?holdMovement(t):null;}
 function holdBest(id,fresh){
-  const f=holdLog().filter(r=>r&&r.id===id&&(fresh===false||r.fresh===true));
+  const want=holdWantEx(id);
+  const f=holdLog().filter(r=>r&&r.id===id&&(fresh===false||r.fresh===true)&&holdSameMovement(r,want));
   return f.length?Math.max.apply(null,f.map(r=>r.secs||0)):0;
+}
+/* Rows that exist for this test but cannot be compared to what it measures
+   today — so "no best yet" beside a screen full of numbers has a reason on it
+   rather than reading as a bug. */
+function holdIncomparable(id){
+  const want=holdWantEx(id);
+  return holdLog().filter(r=>r&&r.id===id&&!holdSameMovement(r,want)).length;
 }
 function holdLast(id){
   const f=holdLog().filter(r=>r&&r.id===id).sort((a,b)=>(a.at||0)-(b.at||0));
@@ -9956,7 +9993,8 @@ function holdLast(id){
    call v320 made about a substituted baseline. Two numbers taken in different
    states are not a trend, and saying they are is worse than saying nothing. */
 function holdTrend(id){
-  const f=holdLog().filter(r=>r&&r.id===id&&r.fresh===true).sort((a,b)=>(a.at||0)-(b.at||0));
+  const want=holdWantEx(id);
+  const f=holdLog().filter(r=>r&&r.id===id&&r.fresh===true&&holdSameMovement(r,want)).sort((a,b)=>(a.at||0)-(b.at||0));
   if(f.length<2)return null;
   const last=f[f.length-1],prev=f[f.length-2];
   return {last:last.secs,prev:prev.secs,delta:last.secs-prev.secs,date:last.date,prevDate:prev.date};
@@ -9978,10 +10016,15 @@ function holdTrackerHTML(){
     const rows=holdLog().filter(r=>r&&r.id===t.id);
     if(!rows.length)return;
     const best=holdBest(t.id),tr=holdTrend(t.id),last=holdLast(t.id);
-    const ex=EX[t.exId]||{name:t.name};
+    /* NAME THE MOVEMENT THE NUMBER WAS SET ON, not the test's nominal one: a
+       flagged athlete's bar belongs to the substitute, and printing the
+       original's name over it is the lie this round exists to stop. */
+    const ex=EX[holdMovement(t)]||EX[t.exId]||{name:t.name};
+    const other=holdIncomparable(t.id);
     h+=`<div class="kv" data-holdrow="${t.id}"><span>${_ve(ex.name)}</span><b>${best>0?fmtTime(best):'—'}${
       tr?` <span style="color:${tr.delta>=0?'var(--green)':'var(--fire-l)'}">${fmtDelta(tr.delta)}</span>`
         :(last&&!last.fresh?` <span class="tiny muted">after training</span>`:'')}</b></div>`;
+    if(!best&&other)h+=`<div class="tiny muted" data-holdotherrow="${t.id}" style="margin:-4px 0 6px">${other} earlier ${other===1?'hold':'holds'} on a different movement — kept, not compared.</div>`;
   });
   h+=`</div>`;
   /* WHY A NUMBER IS NOT MOVING IS WORTH SAYING. A best that only fresh holds
@@ -10020,15 +10063,18 @@ function holdRowHTML(t){
   const best=holdBest(t.id),last=holdLast(t.id),tr=holdTrend(t.id);
   const ex=EX[holdMovement(t)]||EX[t.exId]||{name:t.name};
   const risky=jointRisky(t.exId,STATE.profile.limitations)&&holdMovement(t)!==t.exId;
+  const other=holdIncomparable(t.id);
   const need=holdKitMissing(t);
   if(need)return `<div class="kv" data-holdkit="${t.id}"><span>${_ve(ex.name)}</span><b class="tiny muted">needs ${_ve(need)}</b></div>`;
   return `<button class="btn ghost" data-hold="${t.id}" style="text-align:left;display:block;padding:14px" onclick="startHoldTest('${t.id}')">
     <b style="font-size:15px">${_ve(ex.name)}</b>
     <div class="tiny muted" style="margin-top:3px;font-weight:600">${t.what}${risky?' · swapped for a flagged joint':''}</div>
     <div class="tiny" style="margin-top:6px;font-weight:700">
-      ${best>0?`Best ${fmtTime(best)}`:'Not tested yet'}${last&&last.secs?` · last ${fmtTime(last.secs)}${last.fresh?'':' (after training)'}`:''}
+      ${best>0?`Best ${fmtTime(best)}`:(other?`No best on ${_ve(ex.name)} yet`:'Not tested yet')}${last&&last.secs?` · last ${fmtTime(last.secs)}${last.fresh?'':' (after training)'}`:''}
       ${tr?` · <span style="color:${tr.delta>=0?'var(--green)':'var(--fire-l)'}">${fmtDelta(tr.delta)} on the one before</span>`:''}
-    </div></button>`;
+    </div>
+    ${other?`<div class="tiny muted" data-holdother="${t.id}" style="margin-top:4px;font-weight:600">${other} earlier ${other===1?'hold is':'holds are'} on a different movement, so ${other===1?'it is':'they are'} kept but not compared.</div>`:''}
+    </button>`;
 }
 /* Locked: the numbers already recorded still show, and nothing is tappable.
    Rendering the ordinary rows greyed out would leave a live onclick behind a
@@ -10130,11 +10176,11 @@ function startHoldTest(id){
 function cancelHoldTest(){stopHoldTimer();openHoldTests();}
 function stopHoldTest(){
   if(!_ht)return;
-  const {id,elapsed,fresh,mode}=_ht;
+  const {id,elapsed,fresh,mode,exId}=_ht;
   stopHoldTimer();
   if(mode!=='run'||!elapsed){toast('Nothing to save yet');openHoldTests();return;}
   const best=holdBest(id);
-  const rec=logHold(id,elapsed,fresh);
+  const rec=logHold(id,elapsed,fresh,exId);
   if(!motivate('done'))coachSay('Time. '+fmtTime(elapsed)+'.');
   /* A new personal best is only a best when it was taken fresh, and the toast
      says which — a number that reads as a record and was not one is the kind
@@ -19597,8 +19643,15 @@ function normalizeState(){
        set — medCleared()'s defect, two fields over. */
     if(!Array.isArray(STATE.holdLog))STATE.holdLog=[];
     STATE.holdLog=STATE.holdLog.filter(x=>x&&typeof x==='object'&&isDateISO(x.date)&&holdTest(x.id))
-      .map(x=>({date:x.date,id:x.id,secs:Math.max(0,Math.round(+x.secs||0)),
-                fresh:x.fresh===true,at:+x.at||0}))
+      .map(x=>{const o={date:x.date,id:x.id,secs:Math.max(0,Math.round(+x.secs||0)),
+                fresh:x.fresh===true,at:+x.at||0};
+        /* The movement travels with the record, by MEMBERSHIP — it decides
+           whether two holds are comparable, and it reaches innerHTML through
+           the tracker's row label. A row written before v367 has none, and
+           absent is the honest answer: it fails closed rather than being
+           guessed at the nominal movement. */
+        if(EX[x.exId])o.exId=x.exId;
+        return o;})
       .filter(x=>x.secs>0);
     if(!Array.isArray(STATE.grindLog))STATE.grindLog=[];
     STATE.grindLog=STATE.grindLog.filter(x=>x&&typeof x==='object'&&isDateISO(x.date))

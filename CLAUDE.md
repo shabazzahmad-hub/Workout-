@@ -6918,6 +6918,69 @@ exists exactly once.
 
 Fifteen mutants across the round, all caught.
 
+## A change of ruler, in the tracker written after that lesson (v367)
+
+v320 established it for the baseline battery and v321 for the prescription:
+**`safeSwap()` protects a flagged joint, and the number coming back then
+measures a DIFFERENT movement.** v361's hold tracker calls `safeSwap()` for
+exactly that reason — its own comment cites the battery — and then recorded
+only the test id. Two of the five holds are reachable and neither preserves
+the capacity the test exists to measure:
+
+| flagged | test | performs |
+|---|---|---|
+| shoulder | Dead Hang | **Bird Dog** |
+| knee | Wall Sit | **Glute Bridge** |
+
+Measured end to end. A shoulder-flagged athlete held a Bird Dog for **5:00**;
+six weeks later, cleared, they held a real **45-second Dead Hang** — a good
+dead hang — and the row read:
+
+> **Dead Hang · Best 5:00 · last 45s · −255s on the one before**
+
+A best they never set, on a movement they had not done, and a real result
+reported as a large regression. Nothing threw.
+
+**The record stamps the movement and both readers ask it.** `holdBest()` and
+`holdTrend()` compare like for like only; the record stays RAW and the
+COMPARISON is what is withheld — the same split `subs` uses on a baseline.
+
+**Which movement is "the same" is the one this test performs for THIS athlete
+today.** A flagged athlete's bar is their best Bird Dog; a cleared one's bar is
+their best Dead Hang. Both are honest, and mixing them is the defect. The
+tracker names the movement the number was set on rather than the test's
+nominal one — printing "Dead Hang" over a bird-dog best is the lie in one
+word.
+
+**Unknown is not equal.** Every record written before this carries no movement
+at all, so it is kept as history, shown, and left out of the comparison rather
+than guessed at the nominal movement — v320's call about a baseline with no
+`subs` stamp. **A withheld number needs a sentence**, so the row says how many
+earlier holds are on a different movement and that they are kept, not compared.
+
+**The floors are what stop the fix being a delete.** Both athletes must still
+get a best and a real trend on their own movement, driven through
+`stopHoldTest()` rather than by calling `logHold()` — the writer bug that
+survived four checks in v320. A `holdSameMovement()` that answers false for
+everything satisfies every assertion about the mixed case and deletes the
+feature; a repair that drops the incomparable rows satisfies them too and
+destroys real history. Both are caught.
+
+### Two existing checks failed on correct code, and the record was what was wrong
+
+`driveHold()` seeded a prior with no movement on it, so the same-movement rule
+correctly refused to treat it as this athlete's bar and the grind-line point
+never fired. **The record was incomplete, not the rule** — a like-for-like
+prior is one that says which movement it was held on, exactly as v321's prior
+needed `subs:{}`.
+
+**And a `\n` inside a template literal is a real newline**, so a
+`replace(/\n/g,' ')` written into a function-as-a-string broke the regex and
+the suite reported *"the test file itself threw"* rather than naming a check.
+Escape it as `\\n` when the helper is carried into the page as text.
+
+Ten mutants, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
