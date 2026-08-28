@@ -3082,6 +3082,193 @@ export default async function () {
     t.ok('and the button names the goal it switches to', brk.copy.namesGoal, brk.copy);
   }
 
+
+  /* ===================================================================
+     v366 — ONE GATE FOR EVERY TRUE MAX EFFORT.
+
+     The baseline battery's own screen promises that a test to failure "stays
+     locked until you have spoken to a doctor". Measured on an athlete who
+     declared a heart condition and was not cleared: the battery refused, and
+     `Hold to failure` started anyway — five live rows, an open-ended clock,
+     and nothing on screen mentioning the health check. `gripmax` ("one
+     all-out hang") was ungated too.
+
+     THE FLOORS ARE WHAT KEEP THIS A GATE RATHER THAN A DELETION: an ordinary
+     timed hang must never be blocked, and a cleared athlete must get every
+     one of them back. A fix that blocked everybody satisfies every assertion
+     about the flagged athlete and breaks the app for the athletes it is not
+     for. */
+  {
+    const states = [
+      ['flagged and uncleared', () => { STATE.profile.parq = ['heart']; STATE.profile.parqDone = true; STATE.profile.medCleared = false; }],
+      ['screen never answered', () => { STATE.profile.parq = []; STATE.profile.parqDone = false; STATE.profile.medCleared = false; }],
+      ['flagged then cleared', () => { STATE.profile.parq = ['heart']; STATE.profile.parqDone = true; STATE.profile.medCleared = true; }],
+      ['nothing flagged', () => { STATE.profile.parq = []; STATE.profile.parqDone = true; STATE.profile.medCleared = false; }],
+    ];
+    const seen = {};
+    for (const [label, setup] of states) {
+      await seedAthlete(page, setup);
+      seen[label] = await page.evaluate(() => {
+        const o = { safe: safeMode() };
+        assessState = null; openAssessment(); o.battery = !!assessState; closeSheet();
+        startHoldTest('plank');
+        o.hold = !!(typeof _ht !== 'undefined' && _ht);
+        if (typeof _ht !== 'undefined' && _ht) { clearInterval(_ht.iv); _ht = null; }
+        closeSheet();
+        INTV = null; startSpecialFormat('gripmax'); o.gripmax = !!INTV; if (INTV) hiitQuit();
+        INTV = null; startSpecialFormat('grip30'); o.grip30 = !!INTV; if (INTV) hiitQuit();
+        openHoldTests();
+        const sh = document.getElementById('sheet');
+        o.lockNote = !!sh.querySelector('[data-holdlock]');
+        o.route = /Answer the health check|cleared by a doctor/.test(sh.innerText);
+        o.liveRows = sh.querySelectorAll('[data-hold]').length;
+        o.lockedRows = sh.querySelectorAll('[data-holdlocked]').length;
+        closeSheet();
+        openGrip();
+        const g = document.getElementById('sheet');
+        const b = g.querySelector('[data-fmt="gripmax"]');
+        const b2 = g.querySelector('[data-fmt="grip30"]');
+        o.gripLock = !!(b && /🔒/.test(b.innerText));
+        o.grip30Lock = !!(b2 && /🔒/.test(b2.innerText));
+        closeSheet();
+        return o;
+      });
+    }
+    /* Guard first: the two blocked states really are blocked and the two open
+       ones really are open, or every assertion below passes on one state. */
+    t.eq('guard: safe mode is on for exactly the two flagged states',
+      states.map(([l]) => seen[l].safe), [true, true, false, false], seen);
+
+    ['flagged and uncleared', 'screen never answered'].forEach(l => {
+      t.ok('the battery refuses (' + l + ')', !seen[l].battery, seen[l]);
+      t.ok('the hold to failure refuses (' + l + ')', !seen[l].hold, seen[l]);
+      t.ok('the max hang test refuses (' + l + ')', !seen[l].gripmax, seen[l]);
+      /* A LOCKED BUTTON WITH NO SENTENCE IS A DEAD END. */
+      t.ok('the hold sheet says why (' + l + ')', seen[l].lockNote, seen[l]);
+      t.ok('and offers the screen that unlocks it (' + l + ')', seen[l].route, seen[l]);
+      t.eq('no hold row is tappable (' + l + ')', seen[l].liveRows, 0, seen[l]);
+      t.eq('the past numbers still show (' + l + ')', seen[l].lockedRows, 5, seen[l]);
+      t.ok('the grip picker marks the max test locked (' + l + ')', seen[l].gripLock, seen[l]);
+      /* THE FLOOR: an ordinary timed hang is not a max effort. */
+      t.ok('an ordinary hang block still starts (' + l + ')', seen[l].grip30, seen[l]);
+      t.ok('and is not marked locked (' + l + ')', !seen[l].grip30Lock, seen[l]);
+    });
+    ['flagged then cleared', 'nothing flagged'].forEach(l => {
+      t.ok('the battery starts (' + l + ')', seen[l].battery, seen[l]);
+      t.ok('the hold to failure starts (' + l + ')', seen[l].hold, seen[l]);
+      t.ok('the max hang test starts (' + l + ')', seen[l].gripmax, seen[l]);
+      t.ok('and nothing is marked locked (' + l + ')',
+        !seen[l].lockNote && !seen[l].gripLock && seen[l].liveRows === 5, seen[l]);
+    });
+
+    /* The rule lives in ONE place. Four paths had copied the same five lines
+       by hand and two never got them, so the check is written against the
+       CLASS: every max-effort entry point calls the one gate, and the gate
+       itself fails closed. */
+    const wiring = await page.evaluate(() => {
+      const src = [...document.querySelectorAll('script:not([src])')]
+        .map(x => x.textContent).sort((a, b) => b.length - a.length)[0];
+      const body = name => {
+        const i = src.indexOf('function ' + name + '(');
+        if (i < 0) return null;
+        const j = src.indexOf('\nfunction ', i + 1);
+        return src.slice(i, j < 0 ? i + 4000 : j);
+      };
+      const names = ['openAssessment', 'startForceTrain', 'startCombatCircuit', 'startHoldTest', 'startSpecialFormat'];
+      const o = { calls: {}, missing: [] };
+      names.forEach(n => {
+        const b = body(n);
+        if (b === null) { o.missing.push(n); return; }
+        o.calls[n] = /maxEffortBlocked\(\)/.test(b);
+      });
+      /* The gate must not be re-derived anywhere: a second copy of the
+         route-to-clearance decision is a second place for it to drift. Anchor
+         on the ROUTING line, not on a bare safeMode() read — safeMode() is
+         legitimately read elsewhere (prescribe() eases the session, the
+         fasting card adds a warning) and counting those flags correct code. */
+      o.routings = (src.match(/if\(!parqDone\(\)\)openHealthCheck\(\); ?else openClearance\(\);/g) || []).length;
+      o.gripmaxDeclaresMax = SPECIAL_FORMATS.gripmax.max === true;
+      o.grip30DeclaresMax = SPECIAL_FORMATS.grip30.max === true;
+      return o;
+    });
+    t.eq('guard: every max-effort entry point was found in the source', wiring.missing, []);
+    Object.keys(wiring.calls).forEach(n => {
+      t.ok(n + '() asks the one gate', wiring.calls[n], wiring.calls);
+    });
+    t.eq('and the route-to-clearance decision exists exactly once', wiring.routings, 1);
+    t.ok('the max hang test declares itself a max effort', wiring.gripmaxDeclaresMax);
+    t.ok('and an ordinary hang block does not', !wiring.grip30DeclaresMax);
+
+    /* FAILS CLOSED. A safety predicate that throws answers "blocked", never
+       "fine" — the rule this file opens with, on a new gate. */
+    const closed = await page.evaluate(() => {
+      const real = window.parqDone;
+      let blocked = null;
+      try {
+        parqDone = () => { throw new Error('boom'); };
+        blocked = maxEffortBlocked();
+      } finally { parqDone = real; }
+      return { blocked, restored: maxEffortBlocked() === false };
+    });
+    t.ok('the gate blocks when the health check throws', closed.blocked === true, closed);
+    t.ok('guard: and lets a clean athlete through once restored', closed.restored, closed);
+  }
+
+
+  /* v366 (same round) — THE DEAD HANG NEEDS A BAR AND NOTHING ASKED.
+     Four of the five holds need no kit, so the one that does sat in the menu
+     unmarked. Measured on an athlete with an empty gear list: the row rendered
+     and the timer STARTED on a movement they cannot perform. startHoldTest()
+     ran safeSwap() and never hasGearFor() — the question startForceTrain()
+     skipped in v322, one picking path over.
+
+     IT NAMES THE KIT RATHER THAN SUBSTITUTING: a hold test measures ONE
+     movement, and a stand-in measures a different capacity under the same
+     label (v320). THE FLOOR is the athlete who owns a bar — a fix that simply
+     dropped the row satisfies every assertion below and deletes a real test. */
+  {
+    const kit = {};
+    for (const [label, gear] of [['no bar', []], ['owns a bar', ['bar', 'bench', 'dip']]]) {
+      await seedAthlete(page, new Function('', 'STATE.profile.gear=' + JSON.stringify(gear) +
+        ';STATE.profile.hasBar=' + (gear.length ? 'true' : 'false') + ';save();'));
+      kit[label] = await page.evaluate(() => {
+        const o = { owns: hasGearFor('deadhang') };
+        openHoldTests();
+        const sh = document.getElementById('sheet');
+        o.tappable = [...sh.querySelectorAll('[data-hold]')].map(b => b.getAttribute('data-hold'));
+        o.needsKit = [...sh.querySelectorAll('[data-holdkit]')].map(b => b.getAttribute('data-holdkit'));
+        o.namesTheKit = /needs Pull-?up bar/i.test(sh.innerText);
+        o.note = !!sh.querySelector('[data-holdkitnote]');
+        closeSheet();
+        startHoldTest('hang');
+        o.started = !!(typeof _ht !== 'undefined' && _ht);
+        o.movement = (typeof _ht !== 'undefined' && _ht) ? _ht.exId : null;
+        if (typeof _ht !== 'undefined' && _ht) { clearInterval(_ht.iv); _ht = null; }
+        closeSheet();
+        return o;
+      });
+    }
+    t.eq('guard: the two athletes really differ on the bar',
+      [kit['no bar'].owns, kit['owns a bar'].owns], [false, true], kit);
+
+    t.ok('with no bar the dead hang will not start', !kit['no bar'].started, kit['no bar']);
+    t.eq('and it is not offered as a tappable row', kit['no bar'].tappable.indexOf('hang'), -1, kit['no bar']);
+    t.eq('it is listed with what it needs instead', kit['no bar'].needsKit, ['hang'], kit['no bar']);
+    t.ok('and the kit is NAMED, not merely marked', kit['no bar'].namesTheKit, kit['no bar']);
+    t.ok('the sheet says a hold is listed rather than swapped', kit['no bar'].note, kit['no bar']);
+    /* NOT SUBSTITUTED: a stand-in would measure a different capacity. */
+    t.eq('nothing was substituted for it', kit['no bar'].movement, null, kit['no bar']);
+    /* THE FLOOR: the four kit-free holds are untouched. */
+    t.eq('the four kit-free holds are still offered',
+      kit['no bar'].tappable, ['plank', 'wallsit', 'side', 'hollow'], kit['no bar']);
+
+    t.ok('an athlete with a bar still gets the dead hang', kit['owns a bar'].started, kit['owns a bar']);
+    t.eq('and it really is the dead hang', kit['owns a bar'].movement, 'deadhang', kit['owns a bar']);
+    t.eq('with all five rows tappable', kit['owns a bar'].tappable.length, 5, kit['owns a bar']);
+    t.ok('and nothing is listed as missing kit',
+      !kit['owns a bar'].needsKit.length && !kit['owns a bar'].note, kit['owns a bar']);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
