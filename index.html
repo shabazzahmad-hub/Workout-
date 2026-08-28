@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='364';
+const APP_VERSION='365';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2556,6 +2556,29 @@ const GOAL_NOTE={
   maintain:'Hold your weight and let the training reshape you.',
   gain:'Build muscle on a slight surplus with heavier, lower-rep work.',
 };
+/* ---- THE GOALS THAT RUN A SUSTAINED CUT (v365) ---------------------------
+   The diet-break guardrail counts how long an athlete has been in a deficit,
+   and it was a hand-written `g==='shred'||g==='lose'` that went stale the
+   moment a seventh goal arrived. Measured against maintenance for one body:
+
+     shred 24.1%  ·  lose 19.5%  ·  LEAN RECOMP 12.1%  ·  core 5.1%
+
+   Lean recomp runs a real cut and the clock never started for it — and worse,
+   switching to it from a cut WIPED the clock: an athlete ten weeks in read
+   zero, so the twelve-week guardrail was pushed indefinitely into the future
+   while they carried on eating at a deficit.
+
+   `core` stays out at 5.1%, which is today's behaviour and a deliberate line:
+   its own copy calls it "just under maintenance so your abs work is fuelled",
+   and the guardrail exists for a sustained MEANINGFUL cut, not for any number
+   below TDEE.
+
+   TWO LISTS THAT COINCIDE ARE NOT ONE LIST. goalSlots() also tests
+   `shred||lose` and must NOT read this one: it asks which goals trade a
+   training slot for cardio, and lean recomp is excluded there on purpose —
+   that swap is what cost it the rep volume it exists to keep (v363). */
+const DEFICIT_GOALS=['shred','lose','leanrecomp'];
+function deficitGoal(g){return DEFICIT_GOALS.indexOf(g)>=0;}
 /* The goals whose success looks like a FLAT scale. Kept in one place because
    three separate consumers ask the question — the calorie target, the weight
    chart's colour, and calorieCheck() through the target it produces — and a
@@ -17978,18 +18001,42 @@ function noteGoalPhase(){
        deficit — so the banner could never be cleared again, and every
        maintenance phase was counted as deficit time. createdAt remains the
        fallback only for an install that has never recorded a start. */
-    if(g==='shred'||g==='lose'){if(!STATE.profile._shredStart)STATE.profile._shredStart=
+    if(deficitGoal(g)){if(!STATE.profile._shredStart)STATE.profile._shredStart=
       (STATE.profile._everDeficit?todayISO():null)||
       STATE.profile.createdAt||((STATE.measurements||[])[0]||{}).date||todayISO();}
-    if(g==='shred'||g==='lose')STATE.profile._everDeficit=1;
+    if(deficitGoal(g))STATE.profile._everDeficit=1;
     else STATE.profile._shredStart=null;
   }catch(e){}
+}
+/* WHICH maintenance goal to break TO, and it is not always the same one.
+   A diet break exists to protect muscle, and this button offered `maintain`
+   to everybody — which drops protein from 2.2 g/kg to 1.8. Measured on one
+   body: a shred or lean-recomp athlete went from 180 g to 155 g at exactly the
+   moment protein matters most, which is backwards.
+
+   Both candidates are weight-stable, so either clears the deficit clock. The
+   one that KEEPS the athlete's protein tier is the right offer: `recomp` for
+   the 2.2 g/kg goals, `maintain` otherwise. For lean recomp it also makes the
+   training literally identical — same reps, same holds, same sets, same cardio
+   share — which is what the copy claims. */
+function dietBreakTarget(){
+  try{
+    const g=STATE.profile&&STATE.profile.goal;
+    const hi=(typeof PROT_PER_KG!=='undefined')&&PROT_PER_KG[g]>=(PROT_PER_KG.shred||2.2);
+    return hi?'recomp':'maintain';
+  }catch(e){return 'maintain';}
 }
 function dietBreakBanner(){
   const w=shredWeeks();
   if(w<12)return '';
-  return `<div class="note fire">🍽️ <b>You have been in a deficit for ${w} weeks.</b> That is long enough that appetite, energy and recovery all start working against you. Take <b>2 weeks at maintenance</b> — same training, more food. You will keep the muscle, reset the hormones, and come back to the cut working properly.
-    <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="setNutGoal('maintain');toast('Switched to maintenance — well played')">Switch to maintenance</button></div>`;
+  const to=dietBreakTarget();
+  const label=(GOALS.filter(x=>x[0]===to)[0]||[to,to])[1];
+  /* The copy promises only what the switch actually delivers. "Same training"
+     was never true across every goal — the rep multipliers differ — so what is
+     claimed is the thing that IS true of both offers: the protein stays and
+     the food goes up. */
+  return `<div class="note fire">🍽️ <b>You have been in a deficit for ${w} weeks.</b> That is long enough that appetite, energy and recovery all start working against you. Take <b>2 weeks at maintenance</b> — keep training, keep the protein, add the food. You will keep the muscle, reset the hormones, and come back to the cut working properly.
+    <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="setNutGoal('${to}');toast('Switched to ${_ve(label)} — well played')">Switch to ${_ve(label)}</button></div>`;
 }
 /* The floor lives here and NOWHERE else. calorieCheckHTML() used to label its
    button `c.target + c.step` — the arithmetic result, not the number the app
