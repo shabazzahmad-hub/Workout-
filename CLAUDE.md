@@ -5748,6 +5748,38 @@ divergence, and `importData()` calls `normalizeState()`.**
   inverse of the v322 drift where onboarding offered 13 gear items and Settings
   offered 12.
 
+### Four more sweeps, all clean, and the numbers they cover
+
+Run after the fix, on axes no probe had swept:
+
+- **972 sessions across 18 athlete configurations** — six limitation sets x
+  three experience levels, every seventh pointer of the program. Zero problems
+  against six invariants: no flagged joint reaches the athlete, no movement
+  needs kit they do not own, every target and set count is a finite positive
+  number, nothing exceeds its own `repCap`, every `perSet` movement gets an
+  even count of at least two, and no hold falls outside 5-150 s.
+- **480 nutrition combinations** — five goals x four timelines x four bodies x
+  five activity levels. The only 16 hits were **one** athlete (45 kg, 150 cm,
+  70, sedentary) whose TDEE is 1052 against a 1200 floor, so a "lose" goal
+  really does sit above maintenance. That is the safety floor doing its job,
+  and Fuel says so on the glass: *"raised to a safe minimum"*. Two further
+  readings were the probe — `openTDEE()` is an input FORM with no prediction on
+  it, so there is nothing there to contradict, and the 3.67 g/kg protein was a
+  hand-set target surviving a weight change, which v287 makes deliberate.
+- **All 30 achievements.** None throws on a fresh athlete or a maximal one,
+  every one is reachable, and no description renders as a function's source.
+  The first pass reported **thirteen unreachable** and all thirteen were the
+  probe: `waistDrop()` reads `measurements` not `measures`, `scoreGain()` reads
+  `scoreHistory` not `reassess`, `prs[k]` is a NUMBER not an object, the skip
+  badges read a dedicated `skipLog`, and a photo row without an `id` is
+  correctly filtered by the repair. **Confirm the control's real shape before
+  believing the result** — five times in one session.
+- **Cross-subsystem flow.** All five cardio modes credit different energy for
+  the same 30 minutes and all five reach the weekly conditioning bar; the step
+  habit ticks and un-ticks with the target; a logged 175 g against a 165 g
+  protein target ticks the habit, raising the target to 265 clears it, and
+  lowering it back ticks it again (v346's derived habits, both directions).
+
 ### Four false alarms, and every one is a trap this file already names
 
 - **The end-of-program probe read the WELCOME screen.** It never seeded an
