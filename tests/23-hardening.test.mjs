@@ -4006,6 +4006,110 @@ export default async function () {
       paths.every(p => plate[p].lastStepLeft > 2), plate);
   }
 
+
+  /* v372 — THE TAPER EASED TWO OF THE THREE TRAINING STREAMS. The running plan
+     cuts volume in the last fortnight and the ruck ladder cuts distance while
+     holding the plate — and the strength program ran at FULL volume through
+     both, up to the day before the evaluation. Measured at 12 weeks out, 3
+     weeks out and the day before: 5 movements, 10 sets, byte-identical.
+
+     `PREP_PHASE_NOTE.taper` is a specification and it says "you cannot gain
+     fitness now — you can only arrive tired, so do not". v370 and v371 fixed
+     that contradiction in words; this is the one place it cost real
+     freshness. A FOURTH automatic deload trigger, not a new mechanism. */
+  {
+    const ease = await page.evaluate(() => {
+      const D = n => localISO(new Date(Date.now() + 864e5 * n));
+      const sum = p => { const s = buildSession(p);
+        return { sets: (s.main || []).reduce((a, m) => a + m.sets, 0),
+                 work: (s.main || []).reduce((a, m) => a + m.target * m.sets, 0) }; };
+      /* NOT pointer 40: it is week 6 of 6 and therefore already a deload, so
+         both readings agree and the check passes on nothing. */
+      let p = 0; for (p = 0; p < 378; p++) { const q = posOf(p); if (q.week !== WEEKS_PER_CYCLE && q.week >= 3) break; }
+      STATE.progressPtr = p;
+      const at = (from, to) => {
+        STATE.prep = to === null ? { results: {} }
+          : { planFrom: D(from), date: D(to), path: 'operator', results: {} };
+        const b = deloadBanner();
+        return { phase: prepPhase(), deload: deloadOn(), ...sum(p),
+                 taperBanner: /Taper — lighter load on purpose/.test(b),
+                 anyBanner: !!b };
+      };
+      const o = { ptr: p, week: posOf(p).week };
+      o.noDate = at(0, null); o.build = at(-40, 70);
+      o.sharpen = at(-80, 21); o.taper = at(-90, 10); o.dayBefore = at(-97, 1);
+      STATE.settings.autoDeload = false;
+      o.optedOut = at(-90, 10);
+      delete STATE.settings.autoDeload;
+      /* A calendar deload keeps its own wording — the taper copy must not
+         swallow the other reasons. */
+      STATE.prep = { results: {} };
+      let d = 0; for (d = 0; d < 378; d++) if (posOf(d).week === WEEKS_PER_CYCLE) break;
+      STATE.progressPtr = d;
+      o.calendar = { deload: deloadOn(), banner: deloadBanner(),
+                     taperBanner: /Taper — lighter load/.test(deloadBanner()) };
+      STATE.progressPtr = p;
+      return o;
+    });
+
+    t.ok('guard: the measured week is not already a deload week',
+      ease.week !== 6, { week: ease.week, ptr: ease.ptr });
+    t.eq('guard: the phases really are what the block says',
+      [ease.build.phase, ease.sharpen.phase, ease.taper.phase, ease.dayBefore.phase],
+      ['build', 'sharpen', 'taper', 'taper'], ease);
+
+    /* THE FLOORS FIRST: nothing outside the taper moves. v310's rule is that
+       a deadline may never ADD work; a fix that eased every phase would break
+       the block it exists to build. */
+    t.ok('an athlete with no test date is untouched', !ease.noDate.deload, ease.noDate);
+    t.ok('so is the build phase', !ease.build.deload, ease.build);
+    t.ok('and the sharpen phase', !ease.sharpen.deload, ease.sharpen);
+    t.eq('their sessions are identical',
+      [ease.noDate.sets, ease.build.sets, ease.sharpen.sets],
+      [ease.noDate.sets, ease.noDate.sets, ease.noDate.sets], ease);
+
+    /* THE FINDING. */
+    t.ok('the taper eases the strength program', ease.taper.deload, ease.taper);
+    t.ok('and so does the day before the evaluation', ease.dayBefore.deload, ease.dayBefore);
+    t.ok('the sets really come down',
+      ease.taper.sets < ease.noDate.sets, { taper: ease.taper.sets, normal: ease.noDate.sets });
+    t.ok('and the work with them',
+      ease.taper.work < ease.noDate.work * 0.75, { taper: ease.taper.work, normal: ease.noDate.work });
+
+    /* A QUIET 44% CUT READS AS A BUG. */
+    t.ok('the taper names itself as the reason', ease.taper.taperBanner, ease.taper);
+    t.ok('and there is no banner when nothing is eased', !ease.noDate.anyBanner, ease.noDate);
+    /* The taper copy must not swallow the other reasons. */
+    t.ok('guard: a calendar deload week still eases', ease.calendar.deload, ease.calendar);
+    t.ok('and keeps its own wording', !ease.calendar.taperBanner, ease.calendar);
+
+    /* AN ATHLETE WHO TURNED AUTOMATIC DELOADS OFF KEEPS THAT CHOICE — the
+       taper is a fourth automatic trigger, not an override of one. */
+    t.ok('opting out of automatic deloads still opts out in the taper',
+      !ease.optedOut.deload, ease.optedOut);
+    t.eq('and their session is unchanged', ease.optedOut.sets, ease.noDate.sets, ease.optedOut);
+
+    /* IT FAILS CLOSED, AND THAT MATTERS MORE THAN IT LOOKS. deloadOn() catches
+       for the WHOLE composite, so a throw from the new trigger would discard
+       the calendar week and the readiness slump with it — turning a real
+       deload OFF. Nothing reachable exercises that, so the contract is pinned
+       directly, the v338 prepDatePassed() shape. */
+    const closed = await page.evaluate(() => {
+      const real = window.prepPhase;
+      let out = null, kept = null;
+      try {
+        let d = 0; for (d = 0; d < 378; d++) if (posOf(d).week === WEEKS_PER_CYCLE) break;
+        STATE.progressPtr = d; STATE.prep = { results: {} };
+        prepPhase = () => { throw new Error('boom'); };
+        out = prepTaperEase();
+        kept = deloadOn();
+      } finally { prepPhase = real; }
+      return { eased: out, calendarSurvived: kept };
+    });
+    t.eq('the taper trigger answers no when the phase check throws', closed.eased, false, closed);
+    t.ok('and a real calendar deload survives it', closed.calendarSurvived, closed);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='371';
+const APP_VERSION='372';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -12291,12 +12291,29 @@ function loadSpike(){const r=acwr();return r!=null&&r>=1.5;}
 /* Deload used to be a manual switch in Settings that nothing ever set, so a
    compliant athlete ran 378 sessions with no planned unloading and weeks 5-6 of
    every block ADDED a set. The last week of each block is now a real deload. */
+/* THE TAPER EASED TWO OF THE THREE TRAINING STREAMS. The running plan cuts
+   volume in the last fortnight and the ruck ladder cuts distance and holds the
+   plate — and the strength program ran at full volume through both, up to the
+   day before the evaluation. Measured at 12 weeks out, 3 weeks out and the day
+   before: 5 movements, 10 sets, byte-identical every time.
+
+   `PREP_PHASE_NOTE.taper` is a specification, and it says "you cannot gain
+   fitness now — you can only arrive tired, so do not". Applying that to the
+   run and the ruck and not to the sessions is the same contradiction v370 and
+   v371 fixed in words, in the one place it costs the athlete real freshness.
+
+   It is a FOURTH automatic trigger rather than a new mechanism, so it eases
+   exactly as the other three do (measured: 12 sets and 390 units of work
+   become 8 and 218) and an athlete who has turned automatic deloads off keeps
+   that choice. v310's rule is untouched: a deadline may never ADD work. This
+   only ever removes it, in the fortnight the taper exists for. */
+function prepTaperEase(){try{return prepPhase()==='taper';}catch(e){return false;}}
 function deloadOn(pos){
   try{
     if(STATE.settings&&STATE.settings.deload===true)return true;
     if(STATE.settings&&STATE.settings.autoDeload===false)return false;
     const p=pos||posOf(STATE.progressPtr);
-    return (p&&p.week===WEEKS_PER_CYCLE)||readinessSlump()||loadSpike();
+    return (p&&p.week===WEEKS_PER_CYCLE)||readinessSlump()||loadSpike()||prepTaperEase();
   }catch(e){return false;}
 }
 /* deloadOn() is now a COMPOSITE (manual flag OR scheduled week 6 OR a readiness
@@ -12326,7 +12343,14 @@ function deloadBanner(){
   const manual=STATE.settings&&STATE.settings.deload===true;
   const calendar=(pos=>pos&&pos.week===WEEKS_PER_CYCLE)(posOf(STATE.progressPtr));
   const spikeOnly=!manual&&!calendar&&!readinessSlump()&&typeof loadSpike==='function'&&loadSpike();
-  const msg=spikeOnly
+  /* NAME THE REASON. A session that quietly drops 44% reads as a bug, and the
+     taper's reason is the one an athlete most needs to hear: it is not a
+     setback, it is the plan. Ordered before the spike so the nearer, more
+     specific cause wins when both are true. */
+  const taperOnly=!manual&&!calendar&&prepTaperEase();
+  const msg=taperOnly
+    ? '🎯 <b>Taper — lighter load on purpose.</b> Your evaluation is close, so sets and targets ease off. You cannot gain fitness in the last weeks; you can only arrive tired. The running and the rucking come down with it.'
+    : spikeOnly
     ? '📈 <b>Weekly volume spiked — lighter load.</b> Your logged sets this week are well above your recent average. Targets are eased so you recover and rebuild stronger.'
     : '🌙 <b>Deload week — lighter load.</b> Sets and targets are eased so you recover and rebuild stronger.';
   return `<div class="note info" style="margin-top:12px">${msg} <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="toggleDeload()">End deload</button></div>`;

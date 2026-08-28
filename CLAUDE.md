@@ -7258,6 +7258,56 @@ arithmetic. **Drive the plan and read the plate.**
 
 Eleven mutants across the round, all caught.
 
+## The taper eased two of the three training streams (v372)
+
+v370 and v371 fixed the taper contradiction in WORDS. This is the place it
+cost real freshness.
+
+The running plan cuts volume in the last fortnight. The ruck ladder cuts
+distance and holds the plate. **The strength program ran at full volume
+through both** — measured at 12 weeks out, 3 weeks out and the day before the
+evaluation: 5 movements, 10 sets, byte-identical every time.
+
+`PREP_PHASE_NOTE.taper` is a specification, and it says *"you cannot gain
+fitness now — you can only arrive tired, so do not."* The app applied that to
+two streams out of three.
+
+**A FOURTH AUTOMATIC DELOAD TRIGGER, not a new mechanism.** `deloadOn()` is
+already a composite — manual flag, calendar week 6, readiness slump, load
+spike — and the taper joins it, so it eases exactly as the other three do.
+Measured: **12 sets and 390 units of work become 8 and 218.**
+
+**v310's rule is untouched.** A deadline may never ADD work; that is why the
+timeline never moved strength progression. This only ever removes it, in the
+fortnight the taper exists for, and the floors pin that nothing outside the
+taper changes at all: no test date, build and sharpen are byte-identical.
+
+**A quiet 44% cut reads as a bug**, so the banner names the taper as the
+reason — and the taper copy must not swallow the others, which the calendar
+floor catches.
+
+**An athlete who turned automatic deloads off keeps that choice.** The taper
+is a fourth automatic trigger, not an override of one; the mutant that lets it
+through the opt-out is caught.
+
+### It fails closed, and that matters more than it looks
+
+`deloadOn()` catches for the WHOLE composite, so a throw from the new trigger
+would discard the calendar week and the readiness slump with it — turning a
+REAL deload off. Nothing reachable exercises that path, so the contract is
+pinned directly (the v338 `prepDatePassed()` shape): the trigger answers no on
+a throw, and a genuine calendar deload survives it.
+
+### And the probe walked into a trap this file already records
+
+The first measurement used pointer 40 and reported that the deload flag
+changed nothing. **Pointer 40 is week 6 of 6 and therefore already a deload
+week**, so both readings agreed — recorded in v365 as a probe error and hit
+again here. The check now picks a pointer that is not one, and a guard asserts
+it.
+
+Seven mutants, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
