@@ -5398,6 +5398,80 @@ was the fix, not adding a second. `SIDE_MODES` is the legal set.
 
 Twelve mutants, all caught.
 
+## Reading a watch screenshot into Movement (v352)
+
+*"I am not sure what activities I will do from day to day but I want the
+flexibility to upload a screenshot and allow that information to be received in
+our app."*
+
+**The FLEXIBILITY is the requirement**, so nothing here is keyed to one watch or
+one layout. The model reports what it SEES — a name, a distance, a duration
+string — and every judgement that can be made in code is made in code.
+
+### One vision path, not a sibling
+
+`_visionEstimate()` already carries the model list, the per-call timeout,
+`AI_TOTAL_BUDGET_MS`, the transient-status classifier and the on-device
+diagnostic. A second vision route would have had to reinvent all of it, which
+is exactly how five sibling paths in this app came to forget a question the
+original asks. **The caller passes a SCHEMA and shares the rest** — the one
+thing a second kind of screenshot genuinely needs to change.
+
+`o0` has to be declared ABOVE the body literal that reads it. A const read
+before its declaration is a temporal dead zone error that throws on EVERY
+import, which is precisely how the v305 re-read shipped broken.
+
+### What is decided in code, and why
+
+**The activity NAME is a place, not a type.** The real screen reads *"Carstairs
+Running"* and *"Jump Rope 34"*, so `activityKind()` matches on the movement WORD
+inside the name — the same discipline that makes the roster searched by movement
+rather than by name substring.
+
+**Durations are parsed here, not by the model.** `"25:44"` is what the screen
+shows; `hmsToMin()` converts it. Asking a language model for minutes is the same
+mistake as asking it for the 4/4/9 macro split — exact in code, a coin flip in a
+model. A per-part negative check is load-bearing: `'3:-30'` comes out POSITIVE
+(2.5) if only the total is guarded, so the final `min>0` cannot catch it.
+
+**Rows are summed by mode**, because a day is routinely two runs — his own
+screenshot was 2.23 mi and 1.07 mi — and the Movement card has one box per mode.
+
+**An activity with no slot is NAMED, never filed under the nearest mode.** A
+wrong home credits work in a currency that feeds the food budget. That is also
+what makes this general: the next activity he tries lands in the same honest
+bucket, with one button to count it as jacks if he wants it there. The mutant
+that files it under jacks and the mutant that drops it silently are both caught.
+
+**The band is set from the measured pace.** `RUN_PACES` is defined by the talk
+test and a screenshot cannot know how it felt — but it carries distance AND
+time, so the measured speed beats leaving 3.3 real miles priced at whatever band
+was left from last week. With no distance or no time there is nothing to measure
+and it is left alone.
+
+**Nothing is written until Save**, and the read is CONSUMED on the way out.
+Leaving it in the buffer means a second tap credits the day twice — a mutant
+that dropped `_actRead=null` escaped until a check drove a second save.
+
+### Two gates fired on this round, and both were right
+
+**The duplicate-field guard.** `activities:{type:'ARRAY',items:{type:'OBJECT'…}}`
+carries `type:` twice on one line, which reads to the source scan exactly like a
+shadowed key. Reformat across lines; never weaken the check.
+
+**The 2 MB install-tier budget.** The new code took `CORE + SHELL_MIN` to exactly
+2048 KB. The 512px launcher icon moved to `FIRST_RUN` — an install-time asset,
+not a first-paint one, and moving a file between tiers costs no download.
+
+**And the tier lists are parsed by pulling every quoted string between the
+brackets**, so one apostrophe in a comment INSIDE the array opens a quote and
+swallows the whole tier. Nine checks went red on prose. Same class as a comment
+quoting code breaking the duplicate-key guard: keep prose outside the array.
+
+Fifteen mutants, all caught. Three escaped first — one was a no-op mutant of my
+own, and reading it back is what showed the other two were weak checks rather
+than bad mutants.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
