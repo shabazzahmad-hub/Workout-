@@ -6087,6 +6087,33 @@ own block that hands it junk with no boot behind it. Eight mutants, all caught
 after that — including the case-insensitive match that would let `'beginner'`
 straight back through, and the two over-eager twins.
 
+### The class that bug belonged to, swept
+
+`TABLE[x] || default` and `TABLE[x] ?? default` both hide an out-of-set key, and
+the danger is entirely in WHAT the default is. A scan of every ALLCAPS table
+indexed by a variable found **28** such lookups. Twenty-four fall back to `[]`,
+`{}` or `''` — neutral, and fail closed, which is right.
+
+Four fall back to a value that is itself a REAL member, so an unknown key is
+silently treated as that member:
+
+| lookup | falls back to | covered by |
+|---|---|---|
+| `LEVEL_FACTOR[level] \|\| 1` | Intermediate | `levelName()` upstream |
+| `LEVEL_TIER[level] ?? 1` | Intermediate | `levelName()` upstream |
+| `LEVEL_TIER[lv] \|\| 0` | Beginner (safe direction) | `levelName()` upstream |
+| `STEP_TARGETS[g] \|\| 8000` | a real target | `profile.goal`'s boot repair |
+
+All four are now unreachable, three of them by the fix above and the fourth by
+the goal membership repair that already existed. **The one-instance fix would
+have left three siblings alive**; the scan is what showed there were none left
+after it.
+
+And the scan hit this file's own oldest trap: the regex matched **the comment I
+had just written**, because it quotes `LEVEL_FACTOR[level]||1` verbatim. A
+probe reading source is subject to the same rule as `validateData()`'s
+duplicate-key guard — write prose that does not look like code.
+
 ### The false alarm this round, and why the notes are what settled it
 
 The tenth test, `stamina`, moves nothing in the program — halving and doubling
