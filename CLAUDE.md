@@ -6720,6 +6720,116 @@ program was unchanged; and renaming
 check — that tests nothing, and the real over-eager case is the one that makes
 the step sync always answer false.
 
+## The diet-break clock knew two of the three cuts (v365)
+
+`noteGoalPhase()` counts how long an athlete has been eating at a deficit, so
+the twelve-week diet-break guardrail can fire. It was a hand-written
+`g==='shred'||g==='lose'`, and it went stale the moment a seventh goal arrived.
+
+Measured against maintenance for one body:
+
+| goal | under maintenance | clock ran |
+|---|---|---|
+| shred | 24.1% | yes |
+| lose | 19.5% | yes |
+| **leanrecomp** | **12.1%** | **no** |
+| core | 5.1% | no (deliberate) |
+| recomp / maintain | 0% | no |
+| gain | −10.1% | no |
+
+**The second half is worse than the first.** The `else` branch nulls the stamp,
+so switching from a cut TO lean recomp — still a cut — **wiped the clock**: an
+athlete ten weeks in read **zero**, and the guardrail was pushed indefinitely
+into the future while they carried on eating at a deficit. The function's own
+comment describes exactly this hazard, one goal over.
+
+`core` stays out at 5.1%, which is today's behaviour and a deliberate line: its
+own copy calls it *"just under maintenance so your abs work is fuelled"*, and
+the guardrail exists for a sustained MEANINGFUL cut, not for any number below
+TDEE.
+
+### Two lists that coincide are not one list
+
+`goalSlots()` also tests `shred||lose`, and the tempting move is to give both
+sites `DEFICIT_GOALS`. That would be wrong and would silently undo the previous
+round: lean recomp is excluded THERE on purpose, because the cardio slot swap
+replaces a rep accessory with a timed movement and costs it the rep volume it
+exists to keep (v363).
+
+So they stay separate, and the floor is pinned: lean recomp keeps Tone up's 25%
+cardio share rather than the fat-loss goals' 35%, and a check asserts
+`goalSlots()` does not read the deficit list at all. The mutant that merges
+them is caught by exactly that.
+
+**The membership list is drawn from measured deficits, and the checks pin those
+percentages** — a goal silently repriced would move which side of the line it
+belongs on, and a list restated from opinion could not notice.
+
+Seven mutants, all caught, including both over-eager twins: counting every
+non-stable goal as a cut, and never clearing the clock (which makes the banner
+unclearable — the defect the function's own comment records).
+
+### And the break it offers dropped the protein it exists to protect
+
+The same banner had a second per-goal assumption baked in: its button switched
+everybody to `maintain`. **A diet break exists to keep the muscle**, and
+`maintain` sits on the 1.8 g/kg tier — so a shred or lean-recomp athlete went
+from **180 g to 155 g at exactly the moment protein matters most.** Backwards.
+
+Both candidates are weight-stable, so either clears the clock. The one that
+KEEPS the tier is the right offer: `recomp` for the 2.2 g/kg goals, `maintain`
+otherwise — which already held the tier for `lose` and `core`, so those two do
+not move. Measured, protein is now preserved on all four:
+
+| break from | offers | protein |
+|---|---|---|
+| lean recomp | Tone up | 180 → 180 |
+| shred | Tone up | 180 → 180 |
+| lose | Maintain | 155 → 155 |
+| core | Maintain | 155 → 155 |
+
+**And the copy had to change, because it was promising something no goal
+delivered.** "Same training, more food" is false wherever the rep multipliers
+differ — which is every pair except lean recomp to Tone up. It now claims only
+what the switch actually delivers (*keep training, keep the protein, add the
+food*) and the button names the goal it is switching to, so a fix that changed
+the destination and left the label saying "maintenance" fails its own check.
+
+The floors are the two goals that were never wrong: sending everybody to Tone
+up satisfies every assertion about shred and lean recomp and moves `lose` and
+`core` for no reason. Thirteen mutants across the round, all caught.
+
+### Four axes swept clean in the same round
+
+- **The destructive paths against the session's new logs.** `restartProgram()`
+  archives the run, clears `logs`, resets the pointer, and correctly KEEPS
+  `grindLog`, `holdLog`, `skipLog`, `liftLog`, the personal records, the
+  measurements and the prep block — they are lifetime records, not the block.
+  `hardReset()` clears all of it and keeps only the three device credentials.
+- **140 nutrition combinations** — seven goals x five bodies x four timelines.
+  No `NaN`, no target below 1,000 kcal, no protein outside 1.0-3.2 g/kg, no
+  cut above TDEE, no bulk below it; 38 correctly floored.
+- **Re-entrancy on the new controls.** Starting a grinder twice leaves one
+  sequence and one timer; double-tapping Stop writes one row; the hold test
+  clears its old interval on a restart and writes one row on a double stop; no
+  timer is left armed.
+- **A bonus session cannot clobber a paused program session.** `_plResume` is
+  written on reaching WORK, survives untouched through a whole grinder and a
+  hold test, and is cleared only by a deliberate quit.
+
+### Three false alarms, and two are traps this file already names
+
+- **`confirm()` returns FALSE in a headless page**, so the first destructive
+  sweep reported that nothing changed on either path. `addInitScript` did not
+  hold it; setting `window.confirm` INSIDE the evaluate did.
+- **`_plResume` "is never written."** It is written by `plEnterWork()`, and
+  `openPlayer()` starts in the READY phase — the probe never drove the ready
+  countdown down, so it measured a state the resume does not exist in.
+- **"Saving a goal weight twice stores 364."** The seeded athlete is METRIC and
+  the probe typed 165 meaning pounds, so 165 kg round-trips to 364 lb. The
+  writer is idempotent. *Confirm the control's real shape before believing the
+  result.*
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

@@ -2906,6 +2906,182 @@ export default async function () {
     t.eq('and is clean once both are restored', gn.cleanAfter, 0, gn);
   }
 
+  /* ---- THE DIET-BREAK CLOCK KNEW TWO OF THE THREE CUTS (v365) -----------
+     noteGoalPhase() was a hand-written `g==='shred'||g==='lose'`, and it went
+     stale the moment a seventh goal arrived. Measured against maintenance:
+     shred 24.1%, lose 19.5%, LEAN RECOMP 12.1%, core 5.1%. Lean recomp runs a
+     real cut and the clock never started — and switching to it from a cut
+     WIPED the clock, so an athlete ten weeks in read zero and the twelve-week
+     guardrail was pushed indefinitely into the future while they carried on
+     eating at a deficit. */
+  {
+    const db = await page.evaluate(() => {
+      const o = {};
+      Object.assign(STATE.profile, { age: 41, heightCm: 178, sex: 'male', activity: 1.45, bodyFat: 28 });
+      Object.assign(STATE.nutrition, { age: 41, heightCm: 178, sex: 'male', activity: 1.45, weightKg: 86 });
+      delete STATE.nutrition.kcalTarget; delete STATE.nutrition.proteinTarget;
+      const wks = n => localISO(new Date(Date.now() - 1000 * 60 * 60 * 24 * 7 * n));
+
+      /* How far under maintenance each goal actually eats — the evidence the
+         membership list is drawn from, rather than a restated opinion. */
+      o.pct = {};
+      GOALS.map(g => g[0]).forEach(g => {
+        STATE.profile.goal = g; STATE.nutrition.goal = g;
+        const p = kcalTargetPreview();
+        o.pct[g] = Math.round((1 - p.target / p.tdee) * 1000) / 10;
+      });
+
+      // the clock starts on every deficit goal and on no other
+      o.starts = {};
+      GOALS.map(g => g[0]).forEach(g => {
+        delete STATE.profile._shredStart; delete STATE.profile._everDeficit;
+        setNutGoal(g); o.starts[g] = !!STATE.profile._shredStart;
+      });
+
+      // a cut in progress SURVIVES the switch — the half that was worse
+      STATE.profile._shredStart = wks(10); STATE.profile._everDeficit = 1;
+      setNutGoal('lose'); const before = shredWeeks();
+      setNutGoal('leanrecomp');
+      o.carried = { before, after: shredWeeks() };
+      /* …and a genuine maintenance phase still CLEARS it. Without this, a fix
+         that simply never reset would make the banner unclearable — which is
+         the defect the function's own comment records. */
+      setNutGoal('recomp');
+      o.clearedByMaintenance = { weeks: shredWeeks(), start: STATE.profile._shredStart };
+
+      // the banner itself
+      STATE.profile._shredStart = wks(14); STATE.profile._everDeficit = 1;
+      setNutGoal('leanrecomp'); o.banner14 = (dietBreakBanner() || '').length > 0;
+      STATE.profile._shredStart = wks(4); setNutGoal('leanrecomp');
+      o.banner4 = (dietBreakBanner() || '').length > 0;
+
+      /* THE FLOOR, AND IT IS THE POINT OF THE ROUND. goalSlots() also tests
+         shred||lose, and lean recomp is excluded THERE on purpose — that swap
+         is what cost it the rep volume it exists to keep (v363). Two lists
+         that coincide are not one list, and sharing them would silently undo
+         the previous round. */
+      const cardio = g => {
+        STATE.profile.goal = g; let c = 0, n = 0;
+        for (let p = 0; p < 120; p += 3) {
+          const s = buildSession(p);
+          (s.main || []).concat(s.finisher ? [s.finisher] : []).forEach(m => {
+            if (!m || !EX[m.exId]) return; n++;
+            if (EX[m.exId].region === 'cardio') c++;
+          });
+        }
+        return Math.round(c / n * 100);
+      };
+      o.cardioPct = { recomp: cardio('recomp'), leanrecomp: cardio('leanrecomp'),
+        lose: cardio('lose'), shred: cardio('shred') };
+      o.slotsSourceShared = /DEFICIT_GOALS|deficitGoal/.test(String(goalSlots));
+      return o;
+    });
+
+    /* The membership list is drawn from measured deficits, so pin them: a goal
+       silently repriced would move which side of the line it belongs on. */
+    t.eq('guard: shred and lose really are deep cuts',
+      { s: db.pct.shred > 20, l: db.pct.lose > 15 }, { s: true, l: true }, db.pct);
+    t.eq('guard: lean recomp really is a cut too', db.pct.leanrecomp > 8, true, db.pct);
+    t.eq('guard: and core really is only just under maintenance', db.pct.core < 8, true, db.pct);
+    t.eq('guard: while the stable goals eat at maintenance',
+      { r: db.pct.recomp, m: db.pct.maintain }, { r: 0, m: 0 }, db.pct);
+
+    t.eq('the deficit clock starts on every real cut, and on nothing else', db.starts,
+      { lose: true, shred: true, recomp: false, leanrecomp: true, core: false,
+        maintain: false, gain: false });
+
+    t.eq('guard: the athlete really was ten weeks into a cut', db.carried.before, 10);
+    /* The worse half: switching to another cut must not restart the clock. */
+    t.eq('switching to lean recomp carries the cut, not resets it', db.carried.after, 10);
+    /* …but a real maintenance phase still ends it, or the banner can never be
+       cleared and every maintenance week counts as deficit time. */
+    t.eq('a maintenance phase still clears it', db.clearedByMaintenance.weeks, 0);
+    t.eq('and drops the stamp entirely', db.clearedByMaintenance.start, null);
+
+    t.ok('the diet-break banner fires on lean recomp at 14 weeks', db.banner14, db);
+    t.ok('but not at 4 weeks', !db.banner4, db);
+
+    /* THE FLOOR. Sharing the list with goalSlots() would give lean recomp
+       Shred's cardio slot and silently undo v363's whole point. */
+    t.eq('lean recomp still has Tone up\'s cardio share', db.cardioPct.leanrecomp, db.cardioPct.recomp);
+    t.ok('which is lower than the fat-loss goals\'',
+      db.cardioPct.leanrecomp < db.cardioPct.lose, db.cardioPct);
+    t.eq('guard: and lose and shred really do carry more', db.cardioPct.lose, db.cardioPct.shred);
+    t.ok('the slot builder does not read the deficit list', !db.slotsSourceShared, db);
+
+    /* ---- AND WHICH MAINTENANCE GOAL THE BREAK OFFERS -------------------
+       The banner exists to protect muscle, and it offered `maintain` to
+       everybody — which drops protein from 2.2 g/kg to 1.8. Measured: a shred
+       or lean-recomp athlete went 180 g to 155 g at exactly the moment protein
+       matters most. Both candidates are weight-stable, so either clears the
+       clock; the one that KEEPS the tier is the right offer. */
+    const brk = await page.evaluate(() => {
+      const o = { offers: {}, protein: {} };
+      Object.assign(STATE.profile, { age: 41, heightCm: 178, sex: 'male', activity: 1.45, bodyFat: 28 });
+      Object.assign(STATE.nutrition, { age: 41, heightCm: 178, sex: 'male', activity: 1.45, weightKg: 86 });
+      const wks = n => localISO(new Date(Date.now() - 1000 * 60 * 60 * 24 * 7 * n));
+      const protOf = g => {
+        const a = STATE.profile.goal, b = STATE.nutrition.goal;
+        STATE.profile.goal = g; STATE.nutrition.goal = g;
+        delete STATE.nutrition.proteinTarget;
+        const v = proteinTargetCalc();
+        STATE.profile.goal = a; STATE.nutrition.goal = b;
+        return v;
+      };
+      ['leanrecomp', 'shred', 'lose', 'core'].forEach(g => {
+        STATE.profile.goal = g; STATE.nutrition.goal = g;
+        delete STATE.nutrition.proteinTarget;
+        STATE.profile._shredStart = wks(14); STATE.profile._everDeficit = 1;
+        const h = dietBreakBanner() || '';
+        const to = (h.match(/setNutGoal\('(\w+)'\)/) || [])[1] || null;
+        o.offers[g] = to;
+        o.protein[g] = to ? { from: proteinTargetCalc(), to: protOf(to) } : null;
+        if (g === 'leanrecomp') {
+          o.copy = { sameTraining: /same training/i.test(h),
+            keepProtein: /keep the protein/i.test(h),
+            namesGoal: /Switch to [^<]*Tone up/.test(h) };
+        }
+      });
+      /* Tapping it must actually work: switch the goal, clear the clock, and
+         make the banner go away — otherwise it nags forever. */
+      STATE.profile.goal = 'leanrecomp'; STATE.nutrition.goal = 'leanrecomp';
+      STATE.profile._shredStart = wks(14); STATE.profile._everDeficit = 1;
+      const to = dietBreakTarget();
+      setNutGoal(to);
+      o.afterTap = { goal: STATE.profile.goal, weeks: shredWeeks(),
+        stable: weightStableGoal(to), bannerGone: (dietBreakBanner() || '') === '' };
+      return o;
+    });
+
+    /* The 2.2 g/kg goals break to Tone up, which holds the tier… */
+    t.eq('a lean-recomp break goes to Tone up, not Maintain', brk.offers.leanrecomp, 'recomp');
+    t.eq('and so does a shred break', brk.offers.shred, 'recomp');
+    /* …while the 1.8 goals keep the plain maintenance offer, which already
+       held THEIR tier. A fix that sent everybody to Tone up would pass every
+       assertion above and change two goals that were never wrong. */
+    t.eq('a fat-loss break still goes to Maintain', brk.offers.lose, 'maintain');
+    t.eq('and so does a core break', brk.offers.core, 'maintain');
+    /* THE REQUIREMENT ITSELF, not the goal name: protein must not drop. */
+    Object.keys(brk.protein).forEach(g => {
+      t.ok('the ' + g + ' break keeps its protein tier',
+        brk.protein[g] && brk.protein[g].to >= brk.protein[g].from, brk.protein[g]);
+    });
+    t.eq('guard: and the high tier really is higher than the low one',
+      brk.protein.leanrecomp.from > brk.protein.lose.from, true, brk.protein);
+
+    t.eq('tapping it switches the goal', brk.afterTap.goal, 'recomp');
+    t.eq('clears the deficit clock', brk.afterTap.weeks, 0);
+    t.ok('lands on a weight-stable goal', brk.afterTap.stable, brk.afterTap);
+    t.ok('and the banner goes away', brk.afterTap.bannerGone, brk.afterTap);
+
+    /* A PROMISE IN UI TEXT IS A SPECIFICATION. "Same training" was never true
+       across every goal — the rep multipliers differ — so the copy claims only
+       what the switch actually delivers, and names the goal it switches to. */
+    t.ok('the copy no longer claims the training is unchanged', !brk.copy.sameTraining, brk.copy);
+    t.ok('it claims the protein is kept, which is true', brk.copy.keepProtein, brk.copy);
+    t.ok('and the button names the goal it switches to', brk.copy.namesGoal, brk.copy);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
