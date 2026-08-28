@@ -5801,6 +5801,26 @@ divergence, and `importData()` calls `normalizeState()`.**
   inverse of the v322 drift where onboarding offered 13 gear items and Settings
   offered 12.
 
+### The complete injection sweep, and the class the clearance bug belonged to
+
+Two more, both clean, both worth recording because they close a gap the earlier
+sweeps could not see:
+
+- **The IMPORT path, not the writers.** v354 drove 74 `set*()` writers with a
+  hostile payload; `importData()` writes STATE directly and never touches one
+  of them. So the payload went into **every string an import can carry** across
+  **37 top-level fields** — names, dates, poses, exercise ids, diet, gear,
+  limitations, coach, region, meal plan, swaps, achievements, the baseline and
+  its `subs` — then a boot, then every screen, pane and sheet. **No injection,
+  no throw, no page error.**
+- **The class `medCleared` belonged to.** A source scan for a function whose
+  whole body is a truthiness read of a stored flag returns exactly three:
+  `medCleared` (fixed), `parqDone` (already checks the array behind it) and
+  `tightSpace` — which is repaired at boot AND whose junk reads *restrictively*
+  (a tight room removes movements), so it fails closed already. `return
+  !!STATE.x` appears nowhere else. The class is three wide and all three are
+  correct.
+
 ### Four more sweeps, all clean, and the numbers they cover
 
 Run after the fix, on axes no probe had swept:
