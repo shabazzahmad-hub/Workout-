@@ -1211,6 +1211,109 @@ export default async function () {
     t.ok('floor: an UNticked habit is a value, not an absence', mm.habitFalseKept, mm);
   }
 
+  /* ---- the goal sync had four siblings (v355) ------------------------------
+     Age, height, sex and activity each live in BOTH profile and nutrition. The
+     profile copies are what the wizard and editor SHOW; every calculation reads
+     the nutrition copies. Both writers keep them in step, so nothing repaired a
+     divergence — and importData() accepts arbitrary JSON. */
+  {
+    const sy = await page.evaluate(() => {
+      const o = {}; const realErr = console.error; console.error = () => {};
+      const base = () => {
+        STATE.profile.sex = 'male';      STATE.nutrition.sex = 'male';
+        STATE.profile.age = 52;          STATE.nutrition.age = 52;
+        STATE.profile.heightCm = 178;    STATE.nutrition.heightCm = 178;
+        STATE.profile.activity = 1.45;   STATE.nutrition.activity = 1.45;
+        STATE.nutrition.weightKg = 86;   STATE.profile.goalWeightLb = 165;
+      };
+      const t = () => { const q = kcalTargetPreview(); return q && q.target; };
+      base(); normalizeState();
+      o.agreed = t();
+
+      /* A DIVERGENCE: the editor shows one number, the calculation uses another.
+         Each is pinned with the target it produces, because "they now match" is
+         also true of a repair that overwrote BOTH with the wrong one. */
+      o.diverge = {};
+      [['age', 25], ['heightCm', 160], ['activity', 1.75], ['sex', 'female']].forEach(([f, v]) => {
+        base(); STATE.profile[f] = v; normalizeState();
+        o.diverge[f] = { shown: STATE.profile[f], used: STATE.nutrition[f], target: t() };
+      });
+
+      /* The nutrition copy ABSENT with the profile holding the answer.
+         kcalTargetPreview() bails on !(n.sex && n.age && n.heightCm && n.weightKg),
+         so "Calculate my targets" silently did nothing. */
+      o.missing = {};
+      [['age', 52], ['heightCm', 178], ['sex', 'male']].forEach(([f]) => {
+        base(); delete STATE.nutrition[f]; normalizeState();
+        o.missing[f] = { profile: STATE.profile[f], nutrition: STATE.nutrition[f], target: t() };
+      });
+
+      /* THE OTHER DIRECTION, which is what matters for an older backup: a value
+         present only on the NUTRITION side is copied across, not dropped. */
+      o.nutOnly = {};
+      [['age', 44], ['heightCm', 165], ['sex', 'female'], ['activity', 1.2]].forEach(([f, v]) => {
+        base(); delete STATE.profile[f]; STATE.nutrition[f] = v; normalizeState();
+        o.nutOnly[f] = { profile: STATE.profile[f], nutrition: STATE.nutrition[f] };
+      });
+
+      /* FLOOR: absent on BOTH sides stays absent. There is no sensible default
+         age, height or sex, and a repair that invents one is worse than a field
+         the wizard can ask for again. */
+      base();
+      ['age', 'heightCm', 'sex'].forEach(f => { delete STATE.profile[f]; delete STATE.nutrition[f]; });
+      normalizeState();
+      o.bothAbsent = ['age', 'heightCm', 'sex'].map(f =>
+        (STATE.profile[f] === undefined && STATE.nutrition[f] === undefined) ? f + ':absent' : f + ':INVENTED');
+
+      /* FLOOR: an athlete whose copies already agree is untouched. */
+      base(); normalizeState();
+      o.untouched = [STATE.profile.age, STATE.nutrition.age, STATE.profile.sex,
+                     STATE.nutrition.sex, STATE.profile.heightCm, STATE.nutrition.activity];
+
+      /* And the editor really does render the profile copy — which is what makes
+         a divergence visible rather than merely stored. */
+      /* Through the BOOT path, which is where the mirror lives and the only
+         route a divergence can arrive by — both writers write both copies, so
+         only an import creates one, and importData() calls normalizeState(). */
+      base(); STATE.profile.age = 25; normalizeState(); go('today'); render();
+      try { openProfileEdit(); } catch (e) {}
+      const el = document.querySelector('#ob-age');
+      o.editorShows = el ? el.value : '(no field)';
+      o.editorAgrees = el ? (+el.value === STATE.nutrition.age) : false;
+      try { closeSheet(); } catch (e) {}
+      base(); normalizeState(); save(); console.error = realErr;
+      return o;
+    });
+    t.ok('guard: a body with both copies agreeing gets a real target', sy.agreed > 1200, sy);
+    ['age', 'heightCm', 'activity', 'sex'].forEach(f => {
+      t.eq('the two copies of ' + f + ' cannot disagree after a boot',
+        sy.diverge[f].shown, sy.diverge[f].used, sy.diverge[f]);
+    });
+    /* Pinned VALUES, not just agreement: a repair that overwrote both with the
+       stale number would satisfy every "they match" assertion. */
+    t.eq('and the profile copy is the one that wins', sy.diverge.age.shown, 25, sy.diverge.age);
+    t.ok('so the target really moves with it', sy.diverge.age.target > sy.agreed, sy.diverge.age);
+    t.ok('a shorter athlete gets a smaller target', sy.diverge.heightCm.target < sy.agreed, sy.diverge.heightCm);
+    t.ok('a more active one a bigger target', sy.diverge.activity.target > sy.agreed, sy.diverge.activity);
+    t.ok('and a woman is not priced as a man', sy.diverge.sex.target < sy.agreed, sy.diverge.sex);
+    ['age', 'heightCm', 'sex'].forEach(f => {
+      t.eq('a missing nutrition ' + f + ' is filled from the profile',
+        sy.missing[f].nutrition, sy.missing[f].profile, sy.missing[f]);
+    });
+    t.ok('so the calorie target stops silently returning nothing',
+      sy.missing.age.target > 1200 && sy.missing.heightCm.target > 1200 && sy.missing.sex.target > 1200, sy.missing);
+    ['age', 'heightCm', 'sex', 'activity'].forEach(f => {
+      t.eq('an older backup carrying only the nutrition ' + f + ' keeps it',
+        sy.nutOnly[f].profile, sy.nutOnly[f].nutrition, sy.nutOnly[f]);
+    });
+    t.eq('floor: absent on both sides stays absent', sy.bothAbsent,
+      ['age:absent', 'heightCm:absent', 'sex:absent'], sy.bothAbsent);
+    t.eq('floor: copies that already agree are untouched', sy.untouched,
+      [52, 52, 'male', 'male', 178, 1.45], sy.untouched);
+    t.eq('the editor renders the profile copy', sy.editorShows, '25', sy);
+    t.ok('and it now names the number the calculation uses', sy.editorAgrees, sy);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

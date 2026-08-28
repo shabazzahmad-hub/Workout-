@@ -5674,6 +5674,102 @@ all caught after that, including the three over-eager twins — refusing every
 goal, every body level and every sex satisfies every "junk is refused"
 assertion and breaks the controls outright.
 
+## The goal sync had four siblings and only it was ever written (v355)
+
+`normalizeState()` has reconciled `profile.goal` against `nutrition.goal` for
+many versions, with a comment saying exactly why: *"They are meant to be one
+value; repair either side if a backup or a partial write left them out of
+step."* **Age, height, sex and activity live in both objects too, and none of
+them ever got it.**
+
+The split is not cosmetic. The **profile** copies are what the wizard and the
+profile editor SHOW — `value="${dv(P.age)}"`, the sex chips, the height box.
+Every **calculation** reads the nutrition copies: `kcalTargetPreview()`,
+`estBodyFat()`, `isFemale()`. Both writers set both, so nothing ever repaired a
+divergence — and `importData()` accepts arbitrary JSON.
+
+Measured on one 86 kg body, profile 25 against nutrition 52: **the editor
+renders 25 and the calorie target is computed from 52.** The gap is not small,
+and activity is the worst of the four:
+
+| diverged | target used | what the shown value gives | gap |
+|---|---|---|---|
+| activity 1.45 / 1.75 | 2490 | 3010 | **520 kcal** |
+| sex male / female | 2490 | 2250 | **240 kcal** |
+| age 52 / 25 | 2490 | 2690 | **200 kcal** |
+| height 178 / 160 | 2490 | 2330 | **160 kcal** |
+
+**The absent case is worse than the disagreeing one.** With the nutrition copy
+missing and the profile holding the answer, `kcalTargetPreview()` bails on
+`!(n.sex&&n.age&&n.heightCm&&n.weightKg)` and returns null — so *"Calculate my
+targets"* silently does nothing while the number is on the screen beside it.
+That is v345's lost age reached from the other side.
+
+**One loop, so a sixth field cannot be forgotten.** Profile wins a genuine
+disagreement — it is what the athlete last typed and what they are looking at
+— but a value present on only ONE side is copied across rather than dropped,
+which is the direction that matters for an older backup. Absent on both stays
+absent: there is no sensible default age, height or sex, and v354 already made
+that call for sex.
+
+Seven mutants, all caught. The three that matter are the direction pair —
+mirroring only one way leaves half the class alive — and the two over-eager
+twins: inventing a default when both are absent, and overwriting copies that
+already agree.
+
+### The check has to drive the BOOT path
+
+The first version set the divergence, rendered, and asserted the editor and the
+calculation agreed. It failed on correct code: the mirror lives in
+`normalizeState()`, not in a renderer. That is the right place and the only one
+needed — both writers write both copies, so **only an import can create a
+divergence, and `importData()` calls `normalizeState()`.**
+
+### Five sweeps that came back clean, recorded as coverage
+
+- **The end of the program.** All 378 sessions build with no unknown exercise
+  and nothing empty; Today shows PROGRAM COMPLETE at the last pointer and past
+  it; the Program calendar shows the current block's six weeks with one marked.
+  The engine's `posOf()` does roll into a tenth block past the end, but Today
+  never renders it — the completion screen is reached first.
+- **A full backup round trip on a rich athlete** — 20+ set fields, export →
+  `hardReset()` → import. Nothing lost, no key in the file, both device
+  credentials still on the phone after the reset.
+- **38 sheets driven, zero throws**, no `NaN`, no `undefined`, none empty. The
+  six "empty" hits were the probe: three browser APIs (`showSaveFilePicker`)
+  and three tab-navigation functions that are not sheets at all.
+- **Every promise sentence on every screen and sheet**, extracted by pattern
+  (*never / always / will / keeps / stays / counts / does not*) and checked
+  against the code. The two testable ones — *"Bonus only; won't affect your
+  program"* and its custom-builder twin — hold: `plEnterDone()`'s
+  `if(PLAYER.free)` branch returns before any program commit, and the lift log
+  credits the day (`quickLog`) rather than consuming a session.
+- **Every registry member is reachable in a picker** — 13 registries, the
+  inverse of the v322 drift where onboarding offered 13 gear items and Settings
+  offered 12.
+
+### Four false alarms, and every one is a trap this file already names
+
+- **The end-of-program probe read the WELCOME screen.** It never seeded an
+  athlete, so all three pointers rendered onboarding step 1.
+- **Four food controls read as dead** because the fingerprint asked
+  `kcalTargetPreview()` and `proteinTargetCalc()` — the *predictor* and the
+  *calculation*. The effective readers are `todayKcalBudget()` and
+  `proteinTargetSet()`, and a hand-set target outranking the calculation is the
+  designed behaviour (v287).
+- **The meal plan read as dead** because the fingerprint was
+  `JSON.stringify(plan).length`. Two different plans can be the same number of
+  characters. **Measure the payload, not the container** — my own entry, landing
+  on me.
+- **The custom-workout probe never ran the player**, calling `plMarkSet`,
+  `plNext` and `plFinish`, none of which exist. The real one is
+  `playerSetDone()`, and the player then parks in `rest` until the clock moves.
+
+Two more copies of `hasGearFor()`'s body were found inline in `weightsPool()`
+and `builderPool()`. Measured equivalent on today's library and left alone
+rather than refactored blind — recorded here so the next reader knows the rule
+has three homes.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
