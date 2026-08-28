@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='353';
+const APP_VERSION='354';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2467,6 +2467,25 @@ function prescribe(exId,pos){
    core  = midsection-first (near-maintenance calories, strength reps, and the
    focus bonus is forced onto abs/obliques regardless of the target picker). */
 const GOALS=[['lose','🔥 Lose fat'],['shred','🔪 Shred'],['recomp','⚖️ Tone up'],['core','🎯 Strong core & abs'],['maintain','💪 Maintain'],['gain','📈 Build muscle']];
+/* MEMBERSHIP AT THE WRITE SITE. An audit drove junk into every set*() writer
+   and then rendered every tab looking for the injected ELEMENT rather than the
+   substring. Two of them put a live DOM node on the page: setNutGoal() on all
+   six tabs and setPersona() on two. importData() accepts arbitrary JSON, so
+   this is a real path and not self-XSS — the same threat model the escaping
+   rule already names.
+
+   The repairs in normalizeState() would have cleaned both on the NEXT boot.
+   That is not good enough for a value that reaches innerHTML in the same
+   paint, and it is the reason the rule is "escape it AND validate it": two
+   guards mean two chances, and the render guard is the one that is already
+   there. */
+const SEX_OPTS=['male','female'];
+/* FUNCTIONS, not consts. FOCUS_POOL is declared ~35 lines BELOW this point, so
+   `const FOCUS_KEYS=Object.keys(FOCUS_POOL)` is a temporal dead zone error that
+   stops the page loading outright — the v290 btRing trap. `npm run check` only
+   parses and cannot see it; driving the page found it in one run. */
+function focusKeys(){return Object.keys(FOCUS_POOL);}
+function goalKeys(){return GOALS.map(g=>g[0]);}
 const GOAL_NOTE={
   lose:'Steady fat loss — a moderate deficit that keeps your strength.',
   shred:'Aggressive lean-out — steeper deficit, more protein, higher-rep conditioning. Best in short blocks.',
@@ -2689,6 +2708,9 @@ function gearSwap(exId,ladder){
    reopening the app. Old pointers are pruned so this can't grow forever. ---- */
 function sessionSwaps(ptr){return (STATE.swaps&&STATE.swaps[ptr])||null;}
 function setSwap(ptr,key,exId){
+  /* A swap target that is not a real exercise reaches prescribe() and the
+     session card. EX is the legal set and it is right here. */
+  if(!EX[exId])return;
   if(!STATE.swaps)STATE.swaps={};
   if(!STATE.swaps[ptr])STATE.swaps[ptr]={};
   STATE.swaps[ptr][key]=exId;
@@ -9563,7 +9585,10 @@ function personaOptionsHTML(){
   const auto=`<option value="auto"${sel==='auto'?' selected':''}>🎲 Auto — surprise me (rotates)</option>`;
   return auto+COACHES.map(c=>`<option value="${c.id}"${c.id===sel?' selected':''}>${c.emoji} ${_ve(c.name)}</option>`).join('');
 }
-function setPersona(id){STATE.settings.coach=id;if(id==='auto')rollAutoPersona();save();previewPersona();}
+function setPersona(id){
+  /* 'auto' is a legal choice that is NOT a coach id — the rotation. */
+  if(id!=='auto'&&!COACHES.some(c=>c.id===id))return;
+  STATE.settings.coach=id;if(id==='auto')rollAutoPersona();save();previewPersona();}
 function previewPersona(){try{primeVoice();}catch(e){}if(STATE.settings.coach==='auto')rollAutoPersona();motivate('during',true);}
 
 /* ============================ TIMERS ============================ */
@@ -12546,7 +12571,7 @@ function _rememberGoodModel(m){
     if(m&&STATE.settings.foodAiModelOk!==m){STATE.settings.foodAiModelOk=m;save();}
   }catch(e){}
 }
-function setFoodAiKey(v){if(!STATE.settings)STATE.settings={};STATE.settings.foodAiKey=(v||'').trim();save();toast(STATE.settings.foodAiKey?'Gemini key saved 🔒':'Cleared');if(TAB==='guide')renderGuide();}
+function setFoodAiKey(v){if(!STATE.settings)STATE.settings={};STATE.settings.foodAiKey=String(v==null?'':v).trim();save();toast(STATE.settings.foodAiKey?'Gemini key saved 🔒':'Cleared');if(TAB==='guide')renderGuide();}
 /* ---- AI connection diagnostic -------------------------------------------
    Four separate failures of the photo/screenshot import in one day (timeout,
    image fidelity, 503, timeout again) were each diagnosed from a single line
@@ -13762,7 +13787,11 @@ function toggleReminders(){
       if(p==='granted')toast('Reminders on');else toast('Allow notifications to get reminders');});
   }else{STATE.settings.reminderOn=true;save();toast('Reminders on');renderGuide();}
 }
-function setReminderTime(v){if(v){STATE.settings.reminderTime=v;save();}}
+function setReminderTime(v){
+  /* Rendered in Settings and split on ':' by checkReminder(), so a non-time
+     here is both a display problem and a NaN in the hour comparison. */
+  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(v||'')))return;
+  STATE.settings.reminderTime=v;save();}
 // Robust notification sender. Prefers the service worker (required on Android),
 // but if the SW isn't ready within a moment it falls back to the Notification
 // constructor — otherwise a missing/asleep SW makes notifications fail SILENTLY.
@@ -14083,6 +14112,11 @@ function recomputeTargetWeight(){
   if(kg>0&&cb!=null&&gb>0&&gb<cb){const lean=kg*(1-cb/100);STATE.profile.goalWeightLb=Math.round((lean/(1-gb/100))/0.453592);}
 }
 function setBodyLevel(which,level){
+  /* levelBF() does PHYS_LEVELS[clamp(level,1,5)-1].bf, and clamp(NaN) is NaN —
+     so anything that is not a number threw on the way in. */
+  const n=Math.round(+level);
+  if(!(isFinite(n)&&n>=1&&n<=PHYS_LEVELS.length))return;
+  level=n;
   if(which==='cur')STATE.profile.bodyCur=level;
   else{STATE.profile.bodyGoal=level;STATE.profile.goalBodyFat=levelBF(level);recomputeTargetWeight();}
   save();renderProgress();
@@ -17298,7 +17332,9 @@ function renderFuel(){
   </div>`;
   v.innerHTML=h;
 }
-function setNutGoal(g){nut().goal=g;STATE.profile.goal=g;noteGoalPhase();if(nut().kcalTarget)recalcKcalFromStored();save();renderFuel();}
+function setNutGoal(g){
+  if(goalKeys().indexOf(g)<0)return;   // reaches innerHTML on every tab
+  nut().goal=g;STATE.profile.goal=g;noteGoalPhase();if(nut().kcalTarget)recalcKcalFromStored();save();renderFuel();}
 /* Recompute BOTH ways. This only ever ticked on the way up, so undoing a
    mis-tap left "Hit water goal" checked above a card reading 0/13 — the exact
    contradiction syncStepHabit()'s own comment says it exists to prevent, never
@@ -19027,7 +19063,22 @@ function normalizeState(){
    else STATE.scoreHistory=[];
   }
   // comprehensive-quiz defaults for installs created before it
-  if(!STATE.profile.focusPrimary)STATE.profile.focusPrimary=(STATE.profile.targets&&STATE.profile.targets[0])||'abs';
+  /* Truthiness caught '' and null and NOTHING else, so any other string
+     survived every boot — and focusBonus() looks the value up in FOCUS_POOL,
+     so an unrecognised one silently drops the bonus the athlete chose.
+     Measured: 41 distinct exercises across a cycle with a real focus, 40 with
+     junk. The program really does differ; nothing on screen says why. */
+  {const FK=focusKeys();
+   if(FK.indexOf(STATE.profile.focusPrimary)<0)
+     STATE.profile.focusPrimary=(FK.indexOf((STATE.profile.targets||[])[0])>=0?STATE.profile.targets[0]:'abs');}
+  /* Sex had no repair at all. It feeds Mifflin-St Jeor, and every reader tests
+     for 'female' — so ANY junk reads as male. Measured on one body: BMR 1793
+     against 1627, a calorie target of 2280 against 2020. A corrupted profile
+     silently prices a woman as a man, 260 kcal a day, with nothing on screen
+     to say so. Absent stays absent: the wizard asks for it, and inventing a
+     sex is worse than knowing it is missing. */
+  if(STATE.profile.sex!=null&&SEX_OPTS.indexOf(STATE.profile.sex)<0)delete STATE.profile.sex;
+  if(STATE.nutrition&&STATE.nutrition.sex!=null&&SEX_OPTS.indexOf(STATE.nutrition.sex)<0)delete STATE.nutrition.sex;
   if(!Array.isArray(STATE.profile.troubleZones))STATE.profile.troubleZones=[];
   /* `unit` has exactly two legal values and reaches innerHTML unescaped at six
      sites on the Progress render path. A membership test is the fix, not six

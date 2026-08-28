@@ -5549,6 +5549,81 @@ the source and using it as the anchor fixed both immediately.
 
 Eleven mutants, all caught.
 
+## The membership rule stopped at the READ site (v354)
+
+A full audit with a free hand to fix. Two sweeps came back clean and are worth
+recording as coverage: **all 13 screens and panes render** loaded and fresh
+with no `NaN`, no `undefined` and no throw; and every registry added this
+session — `CARDIO_MODES`, `SIDE_MODES`, `TIMELINE_OPTS`, `ACTIVITY_OPTS`,
+`MOBILITY_LEVELS` — is asked rather than restated at every consumer.
+
+The finding is that this file's most-repeated rule had only ever been applied
+where a value is READ BACK. **Nine `set*()` writers took whatever they were
+handed.** `normalizeState()` is a boot repair, so a value written by a tap and
+read on the same render never passes through it at all.
+
+**Two of them put a live DOM node on the page.** `setNutGoal()` writes
+`nutrition.goal`, which reaches `innerHTML` on **all six tabs**; `setPersona()`
+on two. `importData()` accepts arbitrary JSON, so this is a real injection path
+and not self-XSS — the same reasoning that made `_saved` and an achievement
+date user content.
+
+**Two others threw on anything but their own control's value.**
+`setBodyLevel()` does `PHYS_LEVELS[clamp(level,1,5)-1].bf` and `clamp(NaN)` is
+`NaN`; `setFoodAiKey()` did `(v||'').trim()`.
+
+And `setSwap()` accepted a swap target that is not an exercise, which then
+reaches `prescribe()` and the session card.
+
+### Two boot repairs that were never written
+
+- **`sex` had no repair at all.** It feeds Mifflin-St Jeor, and every reader
+  tests for `'female'` — so **any junk reads as male**. Measured on one body:
+  BMR 1793 against 1627, a calorie target of **2280 against 2020**. A corrupted
+  profile silently prices a woman as a man, 260 kcal a day, with nothing on
+  screen to say so. **Absent stays absent**: the wizard asks for it, and
+  inventing a sex is worse than knowing it is missing.
+- **`focusPrimary` was guarded by truthiness**, so every other string survived
+  and `focusBonus()` looked it up in `FOCUS_POOL` and found nothing. Measured:
+  **41 distinct exercises across a cycle with a real focus, 40 with junk.** The
+  program really does differ and nothing says why. It falls back to the
+  athlete's own first target rather than to `abs`, because their answer is
+  better evidence than a default.
+
+### The fix that stopped the page loading
+
+`const FOCUS_KEYS=Object.keys(FOCUS_POOL)` was placed ~35 lines ABOVE
+`FOCUS_POOL`'s own declaration — a temporal dead zone error that **stopped the
+app booting outright**. `npm run check` only parses and cannot see it; the
+first driven run found it in seconds. They are functions. Same trap as v290's
+`btRing`, and the same lesson: **driving the real path finds what reading the
+diff does not.**
+
+### Three probe errors, and each looked exactly like a dead control
+
+The usual ratio for an audit written from outside the code:
+
+- **`settings.tone` does not exist** — the field is `settings.voiceTone`, so
+  junk written to the invented key changed nothing and read as a dead control.
+- **`experience` junk is harmless because the MEASURED level wins.** It had to
+  be tested on a **Beginner** baseline; the seeded athlete is Advanced, where
+  the two agree and the input is genuinely inert.
+- **`sex` needed `'male'`/`'female'`, not `'m'`/`'f'`.** With the wrong values
+  both readings came back male, and the control looked dead when it was the
+  probe that was wrong. **Confirm the control's real shape before believing
+  the result** — third time this file has recorded it.
+
+### The escaped mutant tested the branch that cannot fail
+
+Deleting `setBodyLevel()`'s type guard escaped, because the check drove
+`'cur'` — and only the **`'goal'`** branch reaches `levelBF()`. The `'cur'`
+branch has its own harm, which nothing asserted: junk stored there travels in
+every backup, the cost v285 measured. Both branches, the range as well as the
+type, and the STORED value rather than the absence of a throw. Twelve mutants,
+all caught after that, including the three over-eager twins — refusing every
+goal, every body level and every sex satisfies every "junk is refused"
+assertion and breaks the controls outright.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

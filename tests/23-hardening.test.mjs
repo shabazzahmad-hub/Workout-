@@ -1036,6 +1036,130 @@ export default async function () {
     t.ok('and stores it', r.saveWorked, r);
   }
 
+
+  /* ---- membership at the WRITE site (v354) --------------------------------
+     From a full audit: junk was driven into every set*() writer and every tab
+     was then rendered looking for the injected ELEMENT, not the substring.
+     Two writers put a live DOM node on the page — setNutGoal() on all six
+     tabs, setPersona() on two. importData() accepts arbitrary JSON, so that is
+     a real path and not self-XSS. */
+  {
+    const wr = await page.evaluate(() => {
+      const o = {}; const realErr = console.error; console.error = () => {};
+      const P = '<img src=x data-inj="1">';
+      const snap = JSON.stringify(STATE);
+      const TABS = ['today','program','fuel','progress','ref','guide'];
+
+      /* THE ELEMENT, not the substring — a legitimate thumbnail uses onerror
+         as a missing-image fallback, so a text search reports 126 false hits. */
+      o.injected = [];
+      [['setNutGoal', () => setNutGoal(P)],
+       ['setPersona', () => setPersona(P)],
+       ['setReminderTime', () => setReminderTime(P)],
+       ['setSwap', () => setSwap(0, 'x', P)]].forEach(([n, run]) => {
+        STATE = JSON.parse(snap); try { run(); } catch (e) {}
+        TABS.forEach(t => { try { go(t); render(); } catch (e) {}
+          if (document.querySelector('[data-inj]')) o.injected.push(n + '@' + t); });
+      });
+      STATE = JSON.parse(snap);
+
+      /* FLOOR: every control still works. A guard that refuses everything
+         satisfies each assertion above and breaks the app. */
+      setNutGoal('shred');       o.goalSet = STATE.nutrition.goal;
+      setPersona('auto');        o.personaAuto = STATE.settings.coach;
+      setPersona(COACHES[1].id); o.personaReal = STATE.settings.coach;
+      setBodyLevel('cur', 3);    o.bodySet = STATE.profile.bodyCur;
+      setReminderTime('18:30');  o.timeSet = STATE.settings.reminderTime;
+
+      // and junk is refused rather than stored
+      const g0 = STATE.nutrition.goal;  setNutGoal('zzz');
+      o.goalJunkRefused = STATE.nutrition.goal === g0;
+      const p0 = STATE.settings.coach;  setPersona('zzz');
+      o.personaJunkRefused = STATE.settings.coach === p0;
+      const t0 = STATE.settings.reminderTime; setReminderTime('99:99');
+      o.timeJunkRefused = STATE.settings.reminderTime === t0;
+      const s0 = JSON.stringify(STATE.swaps); setSwap(0, 'x', 'not_an_exercise');
+      o.swapJunkRefused = JSON.stringify(STATE.swaps) === s0;
+
+      /* Two writers THREW on anything but their own control's value —
+         setBodyLevel via clamp(NaN) and setFoodAiKey via (v||'').trim. */
+      o.threw = [];
+      [['setBodyLevel-goal', () => setBodyLevel('goal', 'zzz')],
+       ['setBodyLevel-goal-obj', () => setBodyLevel('goal', {})],
+       ['setBodyLevel-cur', () => setBodyLevel('cur', 'zzz')],
+       ['setFoodAiKey', () => setFoodAiKey({})],
+       ['setFoodAiKey-null', () => setFoodAiKey(null)]].forEach(([n, run]) => {
+        try { run(); } catch (e) { o.threw.push(n); } });
+      /* Only the 'goal' branch reaches levelBF(), so a check on 'cur' alone
+         exercises the branch that CANNOT throw — and 'cur' has its own harm:
+         junk stored there travels in every backup. Both branches, and the
+         stored value, or the guard is tested on half of what it guards. */
+      const b0 = STATE.profile.bodyCur, g0b = STATE.profile.bodyGoal;
+      setBodyLevel('cur', 'zzz'); setBodyLevel('goal', {});
+      o.bodyJunkRefused = STATE.profile.bodyCur === b0 && STATE.profile.bodyGoal === g0b;
+      setBodyLevel('cur', 9); setBodyLevel('goal', 0);
+      o.bodyRangeRefused = STATE.profile.bodyCur === b0 && STATE.profile.bodyGoal === g0b;
+
+      /* THE BOOT REPAIRS. sex feeds Mifflin-St Jeor and every reader tests for
+         'female', so ANY junk reads as male — measured at BMR 1793 against
+         1627 and a target of 2280 against 2020 on one body. */
+      STATE = JSON.parse(snap);
+      const kc = v => { STATE.profile.sex = v; STATE.nutrition.sex = v;
+        const q = kcalTargetPreview(); return q && q.target; };
+      o.male = kc('male'); o.female = kc('female');
+      o.sexMatters = o.male !== o.female;
+      STATE.profile.sex = 'zzz'; STATE.nutrition.sex = 'zzz'; normalizeState();
+      o.sexJunkGone = STATE.profile.sex === undefined && STATE.nutrition.sex === undefined;
+      STATE.profile.sex = 'female'; STATE.nutrition.sex = 'female'; normalizeState();
+      o.sexRealKept = STATE.profile.sex;
+
+      /* focusPrimary was guarded by truthiness, so any other string survived —
+         and focusBonus() looks it up in FOCUS_POOL, silently dropping the
+         bonus the athlete chose. */
+      STATE = JSON.parse(snap);
+      const fpr = () => { const seen = {}; for (let p = 0; p < 42; p++) {
+        const x = buildSession(p);
+        [...x.main, x.finisher].filter(Boolean).forEach(m => seen[m.exId] = 1); }
+        return Object.keys(seen).sort().join(','); };
+      STATE.profile.focusPrimary = 'obliques'; const real = fpr();
+      STATE.profile.focusPrimary = 'zzz';      const junk = fpr();
+      o.focusJunkChangedProgram = real !== junk;      // guard: it really mattered
+      normalizeState();
+      o.focusRepairedTo = STATE.profile.focusPrimary;
+      o.focusIsLegal = focusKeys().indexOf(STATE.profile.focusPrimary) >= 0;
+      STATE.profile.focusPrimary = 'obliques'; normalizeState();
+      o.focusRealKept = STATE.profile.focusPrimary;
+
+      /* FOCUS_POOL is declared BELOW these helpers, so a const would be a
+         temporal dead zone error that stops the page loading. Functions. */
+      o.keysAreFunctions = typeof focusKeys === 'function' && typeof goalKeys === 'function';
+      STATE = JSON.parse(snap); normalizeState(); save();
+      console.error = realErr;
+      return o;
+    });
+    t.eq('no writer puts a live node on any tab', wr.injected, [], wr);
+    t.eq('floor: the goal is still settable', wr.goalSet, 'shred', wr);
+    t.eq('floor: auto is still a legal persona', wr.personaAuto, 'auto', wr);
+    t.ok('floor: and so is a real coach', !!wr.personaReal && wr.personaReal !== 'auto', wr);
+    t.eq('floor: the body level is still settable', wr.bodySet, 3, wr);
+    t.eq('floor: and the reminder time', wr.timeSet, '18:30', wr);
+    t.ok('a goal outside the legal set is refused', wr.goalJunkRefused, wr);
+    t.ok('and a persona that is not a coach', wr.personaJunkRefused, wr);
+    t.ok('and a time that is not a time', wr.timeJunkRefused, wr);
+    t.ok('and a swap to something that is not an exercise', wr.swapJunkRefused, wr);
+    t.eq('no writer throws on hostile input', wr.threw, [], wr);
+    t.ok('and junk in a body level is not stored either', wr.bodyJunkRefused, wr);
+    t.ok('nor a level outside the five the app has', wr.bodyRangeRefused, wr);
+    t.ok('guard: sex really does change the calorie target', wr.sexMatters,
+      { male: wr.male, female: wr.female });
+    t.ok('junk in sex is dropped, not read as male', wr.sexJunkGone, wr);
+    t.eq('floor: a real sex survives the repair', wr.sexRealKept, 'female', wr);
+    t.ok('guard: a junk focus really did change the program', wr.focusJunkChangedProgram, wr);
+    t.ok('and the repair puts it back inside FOCUS_POOL', wr.focusIsLegal, wr);
+    t.eq('floor: a real focus survives the repair', wr.focusRealKept, 'obliques', wr);
+    t.ok('the key helpers are functions, not consts read before their source', wr.keysAreFunctions, wr);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
