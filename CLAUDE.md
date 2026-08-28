@@ -6364,6 +6364,78 @@ suite, so its guard is read as the whole EXPRESSION, not the name.
 
 Fourteen mutants, thirteen caught, one equivalent.
 
+## Every session in this app had rest built into it (v360)
+
+"An unbroken-effort session type." Measured before building anything: across
+**60 prescribed sessions, all 274 sets carry at least 25 seconds of rest**, and
+of the seventeen interval formats that existed the only one with no rest was
+`gripmax` — **one** hang, one movement, one round. Nothing ran unbroken across
+several movements.
+
+That gap is the point of the feature. Every other session here is a
+prescription you execute; a grinder is a QUESTION — will you still be moving at
+the end. So the record stores **whether you finished**, not how long you moved,
+and the streak counts consecutive finishes.
+
+### It is a sequence with no rest step, not a session that hides its rests
+
+`buildIntervals()` emits work steps and returns. "No rest prompts" is therefore
+a property of the DATA, and the four surfaces that can render a rest have
+nothing to remember. Suppressing rests at each renderer is four places to
+forget — the shape this file records five times over.
+
+Everything else comes free: the ring, the photograph, the countdown cue, the
+wake lock, the pause, and v359's grind line now firing once per station.
+
+**The floor is that every other format is untouched.** Deleting rest from
+`buildIntervals()` outright satisfies every "the grinder has no rest"
+assertion and silently rewrites Tabata, EMOM and every skipping block. Each is
+pinned with its own rest count beside the grinder's zero.
+
+### Skip is gone and Stop is not, and the split is the safety argument
+
+Skipping a station is the one thing that breaks an unbroken effort, so that
+button has no place here. **Stopping is never removed from any surface in this
+app** — it stays, it is named *Stop* rather than *End*, and it writes a record
+marked `done:false` that the streak breaks on. A session that claimed a finish
+nobody made would be the completion gate's own defect, one surface over.
+
+**A flagged athlete matters more here than anywhere**, because there is no Skip
+— a station they cannot safely do is one they could only escape by ending the
+session. `startGrinder()` runs `safeSwap`, `spaceSwap` and `hasGearFor`, the
+same questions the four sibling paths that forgot them eventually learned.
+
+### One clock, because the number that decides it is how much is LEFT
+
+With no rests to count the stations down by, the remaining time is otherwise
+nowhere on screen. `grinderLeft()` sums the current station's remainder and
+every station after it.
+
+### Four escaped mutants, and every one is an entry already in this file
+
+- **Stop removed, and the check passed.** `o.chrome.stop` searched the whole
+  `#hiit` markup for `hiitQuit()` — and the header ✕ calls it too, so the
+  assertion was satisfied by a button that was never in question. **Scope the
+  assertion to where the change was made**: `#hiit .pl-actions`.
+- **The total clock's repaint deleted, and the check passed.** It read the
+  label after a tick that ENDED a station — and a station change re-renders the
+  whole body, writing the label fresh. Only a tick INSIDE a station can tell
+  the per-tick repaint from its absence, so the check now ticks 60 to 59 and
+  requires `5:59 LEFT`.
+- **The gear check is unreachable on today's pool.** Measured: all 12
+  `HIIT_POOL` movements are bodyweight and need no kit at all, so
+  `hasGearFor()` is the identity there. Rather than record it equivalent it is
+  exercised directly — one pool movement is given an `equip` inside the check —
+  the same technique the hardness-band and anchor-unit guards use.
+- **Nothing exercised the 200-row cap**, so a log that grows for ever inside
+  every backup was invisible. That is the cost v285 measured, one field over.
+
+**And a repair that dropped every row was caught by a THROW rather than by
+name**, because the assertions after it dereference `repaired[0]`. Guard
+immediately before the first dereference, and let the named checks report.
+
+Seventeen mutants, all caught after those rewrites.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

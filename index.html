@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='359';
+const APP_VERSION='360';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -6862,7 +6862,41 @@ const SPECIAL_FORMATS={
   box5x3:{name:'5 × 3 min',desc:'Five 3-minute rounds, 1 min rest. A full fight.',w:3,r:1,n:5,exId:'shadowbox',act:'box'},
   box6x2:{name:'6 × 2 min',desc:'Six 2-minute rounds, 45s rest. Faster turnaround.',w:2,r:0.75,n:6,exId:'shadowbox',act:'box'},
 };
-function fmtInfo(k){return HIIT_FORMATS[k]||SKIP_FORMATS[k]||SPECIAL_FORMATS[k]||ENDURANCE_FORMATS[k]||{name:'Session',desc:''};}
+/* ---- THE GRINDER: one unbroken effort (v360) -------------------------------
+   Measured across the whole app before building this: every one of 274 sets in
+   60 prescribed sessions carries at least 25 seconds of rest, and the only
+   zero-rest format in the seventeen that existed was `gripmax` — ONE hang, one
+   movement, one round. Nothing here ran unbroken across several movements.
+
+   That gap is the point. Every other session in this app is a prescription you
+   execute; a grinder is a QUESTION — will you still be moving at the end. The
+   measurement is not the volume, it is whether you finished, which is why the
+   record stores completion rather than minutes.
+
+   IT IS BUILT AS A SEQUENCE WITH NO REST STEP, NOT AS A SESSION THAT HIDES ITS
+   RESTS. buildIntervals() emits work steps and nothing else, so "no rest
+   prompts" is a property of the data rather than four surfaces each remembering
+   to suppress something. The whole HIIT engine — the ring, the photograph, the
+   countdown cue, the wake lock, the pause — comes with it unchanged. */
+const GRINDER_FORMATS={
+  grind6:{name:'The Six',desc:'Six movements, 60 seconds each, straight through. No rest, one clock. Six minutes that will feel longer.',secs:60,stations:6},
+  grind12:{name:'The Twelve',desc:'Twelve minutes unbroken, 60 seconds a movement. The circuit comes round twice and the second lap is the session.',secs:60,stations:12},
+  grind20:{name:'The Twenty',desc:'Twenty minutes with nothing scheduled off. Pace it from the first minute — this is the one that is decided in the last five.',secs:60,stations:20},
+};
+function isGrinder(fmt){return Object.prototype.hasOwnProperty.call(GRINDER_FORMATS,fmt);}
+/* ONE CLOCK FOR THE WHOLE THING. The ring counts the station; what decides
+   whether somebody keeps going is how much is LEFT, and with no rest to
+   count the stations down by, that number is otherwise nowhere on screen. */
+function grinderLeft(){
+  try{
+    if(!INTV||!isGrinder(INTV.format))return 0;
+    let left=INTV.remain>0?INTV.remain:0;
+    for(let i=INTV.i+1;i<INTV.seq.length;i++)left+=INTV.seq[i].secs;
+    return left;
+  }catch(e){return 0;}
+}
+function grinderLeftLabel(){const l=grinderLeft();return l>0?(fmtTime(l)+' LEFT'):'LAST STATION';}
+function fmtInfo(k){return HIIT_FORMATS[k]||SKIP_FORMATS[k]||SPECIAL_FORMATS[k]||ENDURANCE_FORMATS[k]||GRINDER_FORMATS[k]||{name:'Session',desc:''};}
 /* ---- Progression for the three groups with a real volume order -----------
    Skip and grip/box already log every session; nothing ever asked how it
    felt or suggested going harder, the way BIKE_LEVELS/bikeLevelSuggestion()
@@ -6948,6 +6982,27 @@ const ACTS={
   grip:{name:'Grip & Hang',emoji:'🧗',logKey:'gripLog',verb:'hung'},
   box:{name:'Shadow Boxing',emoji:'🥊',logKey:'boxLog',verb:'boxed'},
 };
+/* A GRINDER'S RECORD IS WHETHER YOU FINISHED, not how long you moved. Every
+   other session here logs minutes because minutes are the work; here the work
+   is the decision to still be moving at the end, so `done` is the field and
+   the stations reached are the detail beside it.
+
+   A STOP IS RECORDED AND NEVER CONGRATULATED. That is the completion gate's
+   own rule (v313): a button that punishes you for pressing it does not get
+   pressed, and a session that claims a finish nobody made is worse than one
+   that says plainly it ended early. */
+function grindLog(){if(!Array.isArray(STATE.grindLog))STATE.grindLog=[];return STATE.grindLog;}
+function logGrind(format,done,stations,total){
+  const rec={date:todayISO(),format:String(format||''),done:done===true,
+             stations:Math.max(0,Math.round(+stations||0)),total:Math.max(0,Math.round(+total||0)),at:Date.now()};
+  const l=grindLog();l.push(rec);if(l.length>200)l.splice(0,l.length-200);save();return rec;
+}
+function grindStreak(){
+  /* Consecutive FINISHED grinders, most recent first — it stops at the first
+     one that was stopped early, because that is what a streak means. */
+  const l=grindLog().slice().sort((a,b)=>(b.at||0)-(a.at||0));
+  let n=0;for(const r of l){if(r&&r.done===true)n++;else break;}return n;
+}
 function actLog(k){const key=ACTS[k].logKey;if(!Array.isArray(STATE[key]))STATE[key]=[];return STATE[key];}
 function logAct(k,mins,extra){
   mins=Math.max(0,Math.round((mins||0)*10)/10);if(!mins&&!(extra&&extra.secs))return;
@@ -7216,6 +7271,14 @@ function ivRingSet(f){const r=$('#ivRing');if(r)r.style.strokeDashoffset=IV_C*(1
 function ivClear(){if(INTV&&INTV.tid){clearInterval(INTV.tid);INTV.tid=null;}}
 function buildIntervals(list,format){
   const out=[];const at=i=>list[i%list.length];
+  /* THE GRINDER EMITS NO REST STEP AT ALL, and that is the whole of "unbroken".
+     Suppressing rests at the four surfaces that render one is four places to
+     forget; a sequence that never contains one cannot be broken by a renderer. */
+  const gr=GRINDER_FORMATS[format];
+  if(gr){
+    for(let r=0;r<gr.stations;r++)out.push({type:'work',secs:gr.secs,exId:at(r).exId,round:r+1,rounds:gr.stations});
+    return out;
+  }
   // Skipping blocks: long work bouts with a full rest between rounds.
   const sk=SKIP_FORMATS[format]||SPECIAL_FORMATS[format]||ENDURANCE_FORMATS[format];
   if(sk){
@@ -7258,6 +7321,7 @@ function openSpecial(){
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="openBox()"><b style="font-size:15px">🥊 Shadow Boxing</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Timed rounds — no gear, no noise, apartment-safe</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="specialChooser('bike')"><b style="font-size:15px">🚴 Bike trainer</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Indoor ride intervals on your road bike + trainer</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="specialChooser('sprint')"><b style="font-size:15px">🏃 Sprint runs</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Max-effort sprint intervals with recovery</div></button>
+      <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="openGrinder()"><b style="font-size:15px">🪨 The Grinder</b><div class="tiny muted" style="margin-top:3px;font-weight:600">One unbroken effort — no rest between movements, one clock</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="openOps()"><b style="font-size:15px">🎖️ Benchmark Ops</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Timed hero workouts — chase your best time</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="openBuilder()"><b style="font-size:15px">🛠️ Custom workout</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Build your own session from any moves</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="openMobility()"><b style="font-size:15px">🧘 Mobility &amp; stretch</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Guided flows to loosen up &amp; recover</div></button>
@@ -7425,6 +7489,37 @@ function startHiit(format){
   const list=[...sess.main,sess.finisher].filter(m=>m&&m.exId);
   _runHiit(sess,list,format);
 }
+function openGrinder(){
+  const st=grindStreak(),n=grindLog().length;
+  openSheet(`<h3>🪨 The Grinder</h3>
+    <p class="muted sm" style="margin:2px 0 10px">Today's movements, back to back, with <b>nothing scheduled off</b>. One clock runs the whole thing. The measure is not how much you did — it is whether you were still moving at the end.</p>
+    <p class="tiny muted" style="margin:0 0 12px">Stopping is always there if you need it, and it is recorded as a stop rather than a finish. There is no Skip: skipping a station is the one thing that breaks an unbroken effort.</p>
+    ${n?`<div class="grid2" style="margin-bottom:12px">
+      <div class="stat"><div class="n">${st}</div><div class="l">Unbroken in a row</div></div>
+      <div class="stat"><div class="n">${n}</div><div class="l">Grinders started</div></div>
+    </div>`:''}
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${Object.keys(GRINDER_FORMATS).map(k=>`<button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="startGrinder('${k}')"><b style="font-size:15px">${GRINDER_FORMATS[k].name}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${GRINDER_FORMATS[k].desc}</div></button>`).join('')}
+    </div>
+    <div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Cancel</button>`);
+}
+/* Built from the SAME filtered pool Special HIIT uses, for the same reason it
+   was given one: HIIT_POOL raw handed a flagged athlete nine contraindicated
+   movements. A new path that picks an exercise asks every question the old
+   ones ask — safeSwap, spaceSwap, hasGearFor — and this one is unbroken, so a
+   movement it cannot do is not a station it can skip past. */
+function startGrinder(format){
+  closeSheet();
+  if(!isGrinder(format))return;
+  const seen=new Set();
+  const list=HIIT_POOL.filter(k=>EX[k])
+    .map(k=>spaceSwap(safeSwap(k)))
+    .filter(k=>EX[k]&&hasGearFor(k)&&!seen.has(k)&&seen.add(k))
+    .map(exId=>({exId,unit:EX[exId].unit,target:EX[exId].base||30,rest:0,sets:1}));
+  if(!list.length){toast('No movements available for a grinder right now');return;}
+  const sess={session:{name:'The Grinder',key:'grinder',focus:'One unbroken effort'},ptr:-1,pos:{}};
+  _runHiit(sess,list,format);
+}
 function startHiitSpecial(format){
   closeSheet();
   /* HIIT_POOL is a flat literal and this path used it RAW. startHiit() goes
@@ -7484,6 +7579,12 @@ function ivPaintPaused(){
 }
 function ivRenderStep(idx){
   const step=INTV.seq[idx];const ex=EX[step.exId]||{name:'Work',region:'cardio',img:''};const isWork=step.type==='work';
+  /* SKIP IS GONE ON A GRINDER AND STOP IS NOT, and the split is the whole
+     safety argument. Skipping a station is what breaks an unbroken effort,
+     so the button that does it has no place here. Stopping is never removed
+     from any surface in this app — it stays, it is named Stop rather than
+     End, and ivDone() records it honestly instead of congratulating it. */
+  const grind=isGrinder(INTV.format);
   const bg=ex.img||'';
   $('#hiit').innerHTML=`
     <div class="pl-bg"${bg?` style="background-image:url('${bg}')"`:''}></div>
@@ -7494,12 +7595,13 @@ function ivRenderStep(idx){
       <div class="pl-name">${isWork?ex.name:'Rest — next: '+ex.name}</div>
       ${ivRingHTML(isWork?'var(--green)':'var(--fire-l)',ex,isWork?'':'rest')}
       <div class="pl-set">${step.round?('ROUND '+step.round+(step.rounds?(' / '+step.rounds):'')):'Keep moving'}</div>
-      <div class="pl-coach" id="ivCoach">${isWork?'Max effort — every rep counts.':'Breathe. Reset.'}</div>
+      ${grind?`<div class="pl-set" id="ivTotal" style="opacity:.85">${grinderLeftLabel()}</div>`:''}
+      <div class="pl-coach" id="ivCoach">${isWork?(grind?'Keep moving. Nothing is scheduled off.':'Max effort — every rep counts.'):'Breathe. Reset.'}</div>
       <div class="pl-pausedbar" id="ivPaused">${INTV.running?'':'PAUSED'}</div>
       <div class="pl-actions">
         <button class="btn ghost" id="ivToggle" onclick="hiitToggle()">${INTV.running?'Pause':'Resume'}</button>
-        <button class="btn ghost" onclick="hiitSkip()">Skip</button>
-        <button class="btn primary" onclick="hiitQuit()">End</button>
+        ${grind?'':`<button class="btn ghost" onclick="hiitSkip()">Skip</button>`}
+        <button class="btn primary" onclick="hiitQuit()">${grind?'Stop':'End'}</button>
       </div>
     </div>`;
 }
@@ -7548,9 +7650,13 @@ function ivTick(){
     if(INTV.i>=INTV.seq.length){whenPointerFree('iv',ivDone);return;}
     whenPointerFree('iv',()=>{if(INTV)ivStep();});return;}
   ivS('#ivNum',fmtTime(INTV.remain));ivRingSet(INTV.remain/INTV.total);
+  if(isGrinder(INTV.format))ivS('#ivTotal',grinderLeftLabel());
 }
 function ivDone(){
   ivClear();beatStop();INTV.phase='done';
+  const isGrind=isGrinder(INTV.format);
+  if(isGrind&&!INTV.logged){INTV.logged=true;
+    logGrind(INTV.format,true,INTV.seq.length,Math.round(INTV.workElapsed||0));}
   const mins=Math.max(1,Math.round(INTV.workElapsed/60*10)/10);
   const sess=INTV.sess;const isMetcon=sess.session.key==='metcon'&&sess.ptr===STATE.progressPtr;
   const isSkip=sess.session.key==='skip';
@@ -7586,12 +7692,14 @@ function ivDone(){
   const isTrackedNoOrder=sess.session.key==='specialhiit'||(sess.session.key==='specialcardio'&&!isBike);
   const trackedGroup=sess.session.key==='specialhiit'?'hiit':'endurance';
   $('#ivBody').innerHTML=`
-    <div class="pl-name" style="margin-bottom:2px">${isMakeup?(makeupIsBike?'Ride logged 🚴':'Jacks logged 🤸'):(isSkip?'Rope work done 🪢':'Circuit complete 🔥')}</div>
+    <div class="pl-name" style="margin-bottom:2px">${isGrind?'You finished it 🪨':(isMakeup?(makeupIsBike?'Ride logged 🚴':'Jacks logged 🤸'):(isSkip?'Rope work done 🪢':'Circuit complete 🔥'))}</div>
     <div class="pl-coach" style="margin-bottom:14px">${fmtInfo(INTV.format).name} · ${sess.session.name}</div>
     <div class="grid2" style="width:100%;max-width:440px">
       <div class="stat"><div class="n" style="color:var(--fire-l)">${fmtTime(INTV.workElapsed||1)}</div><div class="l">Work time</div></div>
-      <div class="stat"><div class="n" style="color:var(--teal)">${mins}</div><div class="l">Minutes</div></div>
+      ${isGrind?`<div class="stat"><div class="n" style="color:var(--teal)">${grindStreak()}</div><div class="l">Unbroken in a row</div></div>`
+               :`<div class="stat"><div class="n" style="color:var(--teal)">${mins}</div><div class="l">Minutes</div></div>`}
     </div>
+    ${isGrind?`<div class="tiny muted" style="margin-top:12px">Every station, no rest taken. That is the whole point of it.</div>`:''}
     ${isBike?`<div class="tiny muted" style="margin-top:14px">How did that ride feel?</div>
     <div class="row" style="gap:8px;margin-top:6px;width:100%;max-width:440px">
       <button class="btn ghost" style="flex:1" onclick="rateBikeAndClose('easy')">😎 Easy</button>
@@ -7661,7 +7769,16 @@ function hiitSkip(){if(!INTV)return;ivClear();INTV.i++;if(INTV.i>=INTV.seq.lengt
 function hiitTeardown(){if(!INTV)return;wakeOff();ivClear();beatStop();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;
   setTimeout(()=>{try{if(!$('#hiit').classList.contains('open'))$('#hiit').innerHTML='';}catch(e){}},400);
   if(TAB==='today')renderToday();}
-function hiitQuit(){const had=!!INTV;hiitTeardown();if(had&&history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
+function hiitQuit(){
+  /* Stopping a grinder is a real outcome and gets a real record. Without
+     this the only thing written is the finish, so a stopped session simply
+     never happened — and a streak built on "sessions that were logged"
+     would count every one of them, which is the opposite of the truth. */
+  if(INTV&&isGrinder(INTV.format)&&INTV.phase!=='done'&&!INTV.logged){
+    INTV.logged=true;
+    logGrind(INTV.format,false,INTV.i,Math.round(INTV.workElapsed||0));
+  }
+  const had=!!INTV;hiitTeardown();if(had&&history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
 function hiitLogDone(){
   if(!INTV)return;   // double-tap guard
   wakeOff();ivClear();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;tapShield(400);
@@ -19020,6 +19137,16 @@ function normalizeState(){
       if(Array.isArray(STATE[kk]))STATE[kk]=STATE[kk].filter(x=>x&&typeof x==='object'&&isDateISO(x.date))
         .map(x=>({...x,mins:+x.mins||0}));   // string mins concatenated: "0105 MIN ALL TIME"
     });
+    /* The grinder log carries an OUTCOME rather than minutes, so it repairs on
+       its own terms: `done` is a deliberate boolean and only `true` is a
+       finish — the same call medCleared() needed, because a backup that
+       serialises the flag as the string 'false' is truthy and would turn every
+       stopped session into a completed one, and the streak into a lie. */
+    if(!Array.isArray(STATE.grindLog))STATE.grindLog=[];
+    STATE.grindLog=STATE.grindLog.filter(x=>x&&typeof x==='object'&&isDateISO(x.date))
+      .map(x=>({date:x.date,format:isGrinder(x.format)?x.format:'',done:x.done===true,
+                stations:Math.max(0,Math.round(+x.stations||0)),total:Math.max(0,Math.round(+x.total||0)),
+                at:+x.at||0}));
     if(Array.isArray(STATE.scoreHistory))STATE.scoreHistory=STATE.scoreHistory.filter(x=>x&&typeof x==='object');
   }catch(e){}
   // containers that get indexed without a guard — a null here white-screened the app

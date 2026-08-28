@@ -1957,6 +1957,220 @@ export default async function () {
     t.ok('and its open-hold cue, against the open-hold point', g.yield.baseOpen, g.yield);
   }
 
+  /* ---- THE GRINDER: one unbroken effort (v360) --------------------------
+     Measured before building it: every one of 274 sets in 60 prescribed
+     sessions carries at least 25 seconds of rest, and the only zero-rest
+     format among the seventeen was gripmax — ONE hang, one movement. Nothing
+     ran unbroken across several movements.
+     The floors carry most of the weight here: "no rest" is satisfiable by
+     deleting rest everywhere, and "you must finish" is satisfiable by taking
+     the stop button away. Both would be worse than the gap. */
+  {
+    const gr = await page.evaluate(async () => {
+      const o = {};
+      const flush = () => new Promise(r => setTimeout(r, 3));
+      const list = HIIT_POOL.filter(x => EX[x]).map(x => ({ exId: x }));
+
+      // --- the sequence itself carries no rest step, per format
+      o.seq = {};
+      Object.keys(GRINDER_FORMATS).forEach(k => {
+        const q = buildIntervals(list, k);
+        o.seq[k] = { steps: q.length, rest: q.filter(x => x.type === 'rest').length,
+          total: q.reduce((a, b) => a + b.secs, 0), stations: GRINDER_FORMATS[k].stations,
+          want: GRINDER_FORMATS[k].stations * GRINDER_FORMATS[k].secs };
+      });
+      /* THE FLOOR: an ordinary interval format must be untouched. "No rest"
+         implemented by deleting rest from buildIntervals() satisfies every
+         assertion above and breaks every other session in the app. */
+      o.tabataRest = buildIntervals(list, 'tabata').filter(x => x.type === 'rest').length;
+      o.emomRest = buildIntervals(list, 'emom').filter(x => x.type === 'rest').length;
+      o.skipRest = buildIntervals(list, 'skip93x3').filter(x => x.type === 'rest').length;
+
+      // --- membership, because the format id reaches innerHTML and an import
+      //     can carry anything
+      o.isG = { real: isGrinder('grind6'), junk: isGrinder('helicopter'),
+        inherited: isGrinder('constructor'), other: isGrinder('tabata') };
+
+      STATE.grindLog = [];
+      // --- drive one to the end
+      startGrinder('grind6');
+      await new Promise(r => setTimeout(r, 120));
+      o.opened = !!INTV; o.fmt = INTV && INTV.format;
+      o.sess = INTV && { key: INTV.sess.session.key, ptr: INTV.sess.ptr };
+      const ptrBefore = STATE.progressPtr;
+      INTV.lead = 0; ivTickLead(); await flush();
+      const html = document.querySelector('#hiit').innerHTML;
+      /* SKIP IS GONE AND STOP IS NOT. Removing both would satisfy "there is no
+         skip" and leave an athlete locked into a session they need out of. */
+      /* SCOPED TO THE ACTION ROW, not the page. The header ✕ also calls
+         hiitQuit(), so a page-wide search reports a Stop button that is not
+         there — the mutant that removed it walked straight through. */
+      const acts = (document.querySelector('#hiit .pl-actions') || {}).innerHTML || '';
+      o.chrome = { skip: /hiitSkip\(\)/.test(acts), stop: /hiitQuit\(\)/.test(acts),
+        actsFound: !!document.querySelector('#hiit .pl-actions'),
+        totalClock: !!document.querySelector('#ivTotal') };
+      o.totalAtStart = (document.querySelector('#ivTotal') || {}).textContent;
+      /* AND IT HAS TO MOVE WITHIN A STATION. Crossing a boundary re-renders
+         the whole body, which writes the label fresh — so a tick that ends a
+         station cannot tell the per-tick repaint from its absence. Ticking
+         once INSIDE station 1 can: only the repaint produces 5:59. */
+      INTV.remain = 60; INTV.deadline = 0; ivTick(); await flush();
+      o.totalMidStation = (document.querySelector('#ivTotal') || {}).textContent;
+      o.remainMid = INTV && INTV.remain;
+      let guard = 0;
+      while (INTV && INTV.phase !== 'done' && guard++ < 400) {
+        INTV.remain = 1; INTV.deadline = 0; ivTick(); await flush();
+      }
+      o.donePhase = INTV ? INTV.phase : 'gone';
+      o.doneText = (document.querySelector('#ivBody') || {}).innerText || '';
+      hiitQuit(); await flush();
+      o.finished = JSON.parse(JSON.stringify(STATE.grindLog));
+      o.streakDone = grindStreak();
+      o.ptrMoved = STATE.progressPtr !== ptrBefore;
+
+      // --- and stop one early
+      startGrinder('grind6');
+      await new Promise(r => setTimeout(r, 120));
+      INTV.lead = 0; ivTickLead(); await flush();
+      INTV.remain = 1; INTV.deadline = 0; ivTick(); await flush();
+      hiitQuit(); await flush();
+      o.stopped = JSON.parse(JSON.stringify(STATE.grindLog)).slice(-1)[0];
+      o.streakStopped = grindStreak();
+
+      // --- a flagged athlete gets no station they cannot do, and no station
+      //     they could only escape by skipping — which this session removes
+      const limKeep = STATE.profile.limitations;
+      STATE.profile.limitations = ['shoulder', 'wrist', 'knee', 'lowback'];
+      startGrinder('grind6');
+      await new Promise(r => setTimeout(r, 120));
+      o.flagged = INTV ? INTV.seq.map(x => x.exId) : [];
+      o.flaggedRisky = o.flagged.filter(id => jointRisky(id, STATE.profile.limitations));
+      hiitQuit(); await flush();
+      STATE.profile.limitations = limKeep;
+
+      /* THE GEAR GUARD IS UNREACHABLE ON TODAY'S POOL — measured, all 12
+         HIIT_POOL movements are bodyweight and need no kit — so it is
+         exercised directly by giving one an equip the athlete lacks, the
+         same technique the hardness-band and anchor-unit guards use. */
+      {
+        const victim = HIIT_POOL.filter(k => EX[k])[0];
+        const keepEq = EX[victim].equip, keepGear = STATE.profile.gear;
+        EX[victim].equip = ['sandbag']; STATE.profile.gear = [];
+        startGrinder('grind20');
+        await new Promise(r => setTimeout(r, 120));
+        o.gearGuard = { victim, seq: INTV ? INTV.seq.map(x => x.exId) : null };
+        hiitQuit(); await flush();
+        EX[victim].equip = keepEq; STATE.profile.gear = keepGear;
+      }
+      // --- the log is capped, so it cannot grow for ever inside every backup
+      STATE.grindLog = [];
+      for (let i = 0; i < 250; i++) logGrind('grind6', true, 6, 360);
+      o.capped = STATE.grindLog.length;
+      o.cappedKeepsNewest = STATE.grindLog[STATE.grindLog.length - 1].done === true;
+
+      // --- the boot repair: a new STATE field gets one
+      STATE.grindLog = [
+        { date: todayISO(), format: 'grind6', done: 'false', stations: '6', total: '360', at: 1 },
+        { date: 'not-a-date', format: 'grind6', done: true, stations: 6, total: 360, at: 2 },
+        { date: todayISO(), format: 'helicopter', done: true, stations: 6, total: 360, at: 3 },
+        'junk', null,
+        { date: todayISO(), format: 'grind12', done: true, stations: 12, total: 720, at: 4 }
+      ];
+      normalizeState();
+      o.repaired = JSON.parse(JSON.stringify(STATE.grindLog));
+      STATE.grindLog = 'wrecked'; normalizeState(); o.wrecked = STATE.grindLog;
+
+      // --- and it travels in a backup
+      STATE.grindLog = [{ date: todayISO(), format: 'grind20', done: true, stations: 20, total: 1200, at: 9 }];
+      const clone = JSON.parse(JSON.stringify(STATE));
+      TRANSIENT_KEYS.forEach(k => { delete clone[k]; });
+      o.inBackup = Array.isArray(clone.grindLog) && clone.grindLog.length === 1 && clone.grindLog[0].format === 'grind20';
+      STATE.grindLog = [];
+      return o;
+    });
+
+    // the sequence
+    Object.keys(gr.seq).forEach(k => {
+      t.eq('the ' + k + ' sequence contains no rest step at all', gr.seq[k].rest, 0);
+      t.eq('and runs the stations it promises', gr.seq[k].steps, gr.seq[k].stations);
+      t.eq('for exactly the minutes on the card', gr.seq[k].total, gr.seq[k].want);
+    });
+    /* The floors: deleting rest from buildIntervals() outright satisfies every
+       assertion above and silently rewrites every other session in the app. */
+    t.eq('an ordinary Tabata still has its rests', gr.tabataRest, 7);
+    t.eq('EMOM still has its rests', gr.emomRest > 0, true, gr.emomRest);
+    t.eq('and a skipping block still has its rests', gr.skipRest > 0, true, gr.skipRest);
+
+    t.ok('a real grinder format is recognised', gr.isG.real, gr.isG);
+    t.ok('junk is not', !gr.isG.junk, gr.isG);
+    /* `GRINDER_FORMATS[f]||...` looks equivalent to a membership test and is
+       not: an INHERITED key is truthy, so the || form hands back
+       Object.prototype.constructor while hasOwnProperty refuses it. */
+    t.ok('an inherited key is not', !gr.isG.inherited, gr.isG);
+    t.ok('and neither is another registry\'s format', !gr.isG.other, gr.isG);
+
+    // the session it opens
+    t.ok('the grinder opens', gr.opened, gr);
+    t.eq('under its own session key', gr.sess.key, 'grinder');
+    t.eq('and off the program queue', gr.sess.ptr, -1);
+    t.ok('guard: the action row rendered at all', gr.chrome.actsFound, gr.chrome);
+    t.ok('the total clock is on screen', gr.chrome.totalClock, gr.chrome);
+    t.eq('reading the whole session, not the station', gr.totalAtStart, '6:00 LEFT');
+    t.eq('guard: that tick stayed inside the first station', gr.remainMid, 59);
+    t.eq('and it counts down every second, not only at a station change', gr.totalMidStation, '5:59 LEFT');
+    /* Skip is what breaks an unbroken effort, so it goes. Stop never does —
+       and a fix that removed both would pass every "there is no skip" check. */
+    t.ok('there is no Skip button', !gr.chrome.skip, gr.chrome);
+    t.ok('but Stop is still there', gr.chrome.stop, gr.chrome);
+
+    // finishing
+    t.eq('running every station finishes it', gr.donePhase, 'done');
+    t.ok('and says so', /finished it/i.test(gr.doneText), gr.doneText.slice(0, 90));
+    t.eq('one record is written', gr.finished.length, 1);
+    t.eq('marked done', gr.finished[0].done, true);
+    t.eq('with every station reached', gr.finished[0].stations, 6);
+    t.eq('and the streak counts it', gr.streakDone, 1);
+    /* Bonus only: it must not consume a program session, the same promise the
+       custom builder and Special HIIT already make. */
+    t.ok('the program pointer does not move', !gr.ptrMoved, gr);
+
+    // stopping
+    t.eq('stopping early writes a record too', gr.stopped.done, false);
+    t.eq('naming how far they got', gr.stopped.stations, 1);
+    /* A STOP IS NOT A FINISH. A streak that counted every logged session would
+       count this one, which is the opposite of what the streak means. */
+    t.eq('and the streak breaks on it', gr.streakStopped, 0);
+
+    // a flagged athlete
+    t.ok('a flagged athlete still gets a grinder', gr.flagged.length > 0, gr.flagged);
+    /* It matters more here than anywhere: there is no Skip, so a station they
+       cannot safely do is one they can only escape by ending the session. */
+    t.eq('with no station their flags forbid', gr.flaggedRisky, []);
+    t.ok('guard: the gear case really built a sequence', !!gr.gearGuard.seq, gr.gearGuard);
+    t.eq('a movement whose kit they do not own is not a station',
+      gr.gearGuard.seq.indexOf(gr.gearGuard.victim), -1, gr.gearGuard);
+    /* A log that grows for ever travels in every backup — the cost v285
+       measured, one field over. */
+    t.eq('the grinder log is capped', gr.capped, 200);
+    t.ok('and the cap keeps the newest, not the oldest', gr.cappedKeepsNewest, gr);
+
+    // the repair
+    t.eq('junk rows are dropped, and the real ones are not', gr.repaired.length, 3);
+    if (gr.repaired.length !== 3) {
+      t.fail('the repair did not leave three rows to check', JSON.stringify(gr.repaired));
+    } else {
+    /* The string 'false' is TRUTHY, and a backup that serialises the flag that
+       way would turn every stopped session into a finish — medCleared()'s own
+       defect, one field over. */
+    t.eq("the string 'false' does not read as a finish", gr.repaired[0].done, false);
+    t.eq('and its string counts become numbers', gr.repaired[0].stations, 6);
+    t.eq('an unknown format is blanked, not kept', gr.repaired[1].format, '');
+    t.eq('a real row survives untouched', gr.repaired[2].format, 'grind12');
+    }
+    t.eq('and a wrecked container becomes an empty list', gr.wrecked, []);
+    t.ok('the log travels in a backup', gr.inBackup, gr);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
