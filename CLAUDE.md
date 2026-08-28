@@ -5875,6 +5875,132 @@ and `builderPool()`. Measured equivalent on today's library and left alone
 rather than refactored blind — recorded here so the next reader knows the rule
 has three homes.
 
+## A week bucket built from millisecond arithmetic (v356)
+
+`_weekKeyOf()` and `weekKey()` both computed a week from
+`Math.floor(((d - Jan1) / 86400000 + Jan1.getDay()) / 7)`. Two copies of one
+rule, and **the right algorithm was already sitting in the same file**:
+`weekStartD()` takes the Monday of a date's week from local date parts, with no
+millisecond arithmetic at all.
+
+Measured across three whole calendar years in the athlete's own timezone:
+
+- **The year boundary splits one real week into up to THREE buckets.** Monday
+  30 Dec 2024 to Sunday 5 Jan 2025 is exactly one Monday-Sunday week. Fifteen
+  minutes of skipping on each of its seven days is 105 minutes, and
+  `bestSkipWeek()` reported **60**. The athlete does the work and the *"90+
+  minutes of skipping in one week"* badge never unlocks.
+- **The spring DST week holds EIGHT calendar dates** — 2024-W10, 2025-W10 and
+  2026-W10 all did, because springing forward loses an hour and the floor keeps
+  one extra day. That error favours the athlete, but it makes "in one week"
+  false in the other direction.
+
+**The severity is small and stated as such.** No reminder was ever missed:
+measured across the same three years, no two Saturdays and no two Fridays ever
+shared a bucket, so `weekKey()`'s de-duplication of the weekly weigh-in never
+suppressed one. The undercount on a badge is the only athlete-visible cost.
+`weekKey()` is unified anyway, so a future consumer cannot inherit the defect
+the other copy already had.
+
+After the fix every bucket spans exactly seven days across all three years, and
+no seven-day window touches more than two of them.
+
+**`weekStartD()` is a function DECLARATION further down the file**, so calling
+it from `_weekKeyOf()` above is hoisted and safe — the same distinction the
+v290 `btRing` trap turns on, this time working in our favour.
+
+Six mutants, all caught, including the two over-eager twins: bucketing by month
+(too wide) and by day (too narrow) both satisfy "the New Year week counts every
+day" and fail the floors beside it.
+
+### And a row with no usable date is not a record of anything
+
+Found by auditing the week-bucket change an hour after making it — the ratio
+this file already records, where the best finding is in the round immediately
+before. `_weekKeyOf()` returns the raw string when it cannot parse a date, so
+**a junk-dated row forms its OWN week bucket and can beat a real week.**
+Measured: a row dated `'not-a-date'` worth 30 minutes against a genuine week
+worth 20, and `bestSkipWeek()` reported **30**.
+
+The four activity logs (`skipLog`, `ruckLog`, `gripLog`, `boxLog`) repaired
+`mins` and never looked at `date` — while the `liftLog` repair forty lines up
+already required one. **One instance guarded, four siblings not**, for the
+fourth time in three rounds.
+
+And `liftLog`'s own test was `typeof r.date === 'string'`, which `'not-a-date'`
+passes. `isDateISO()` is now the one predicate all five ask.
+
+**The round trip is what makes it right, and it subsumes the shape test.**
+`localISO()` can only ever emit `YYYY-MM-DD`, so `localISO(d) === v` forces the
+shape as well as the parse — `'2025-13-45'` matches the pattern and is not a
+day, `'2025-02-29'` is not a day in 2025, and `'2025-6-2'` never round-trips.
+
+**Which makes the regex an EQUIVALENT guard, and that was measured rather than
+assumed.** Across sixteen inputs — `'2025-6-2'`, `' 2025-06-02'`,
+`'02025-06-02'`, `'2025-06-02T10:00'`, `'2025-02-29'` and the rest — dropping it
+changes **nothing**, so no check can catch its removal. Kept as a cheap
+early-out and as intent, the same call as v287's `wantAnchor`. **Read the mutant
+back before rewriting the check** — it was the only escape of the round and it
+was a bad mutant, not a weak check.
+
+Six more mutants, all caught, including both over-eager twins: dropping every
+log row, and a predicate that refuses every date.
+
+### Five sweeps that came back clean
+
+- **The exercise library's own data**, 197 entries: no `SAFE_SWAP` or
+  `LOWBACK_SWAP` cycle, every chain terminates (longest 4), every swap target is
+  a real exercise, every `safeSwap()` lands somewhere genuinely unflagged, every
+  ladder is non-increasing in `hardness`, every anchored exercise shares its
+  anchor test's unit, every `equip` key is in `GEAR_KEYS`, every `side` is in
+  `SIDE_MODES`, and `FOCUS_POOL`/`CORRECTIVE_POOL` name only real exercises.
+- **Eight real clock boundaries**, driven with the clock faked before page load
+  in `America/Denver`: either side of New Year midnight, month end, both spring
+  forward hours, the repeated fall-back hour, leap day and the day after. 13
+  panes each — **104 renders, zero problems**, no `NaN`, no `Invalid Date`, and
+  `todayISO()` correct at every one.
+- **The coach subsystem**: 38 personas, no duplicate ids, none malformed, none
+  throws or returns an empty line on any of eight line types, `coachVoiceFor()`
+  answers for every one, and every neural pitch shift sits inside the band
+  `validateData()` enforces. The shuffle bag plays **all 38 before any repeat**,
+  with **zero back-to-back repeats across three full bags**.
+- **The food and macro pipeline**: a day's totals are the exact sum of its
+  rows; a negative row cannot cancel a real meal (600 kcal stays 600);
+  `macroEnergyGap()` gives **71 g** on the real reported case and correctly
+  returns null for two missing, none missing, a legitimately carb-free meal and
+  a big fatty one — all four floors hold. 95 foods and 33 recipes, every diet
+  and allergen tag legal.
+- **Layout at five phone widths in both themes** — 320, 360, 412, 430 and 768,
+  13 panes each: **130 renders, zero horizontal overflow**, no element sticking
+  out past the viewport, no throw.
+- **Every feedback loop that decides how hard tomorrow is**, driven rather than
+  read: the `adapt` band is repaired at BOTH ends and in-band values are left
+  alone (99 → 1.3, −50 → 0.9, 1.3 and 0.9 and 1 untouched, `'1.2'`/`null`/`{}`
+  → 1); adapt reaches the prescription monotonically (61 / 68 / 76 across
+  0.9 / 1.0 / 1.3); a readiness slump EASES (69 → 48); deload eases
+  (138 → 116); safe mode eases (68 → 50); **every ease at once is the easiest
+  of all** (32); and nothing drives a target to zero or a hold under 5 s.
+
+  **Four probe errors in that one axis**, which is the usual ratio: there is no
+  `rateSession()` — the increment lives inside `commitSession()`; pointer 40 is
+  week 6 of 6 and therefore ALREADY a deload week, so the flag correctly
+  changed nothing there; and `JSON.stringify(1.30)` is `"1.3"`, so two lookups
+  read `undefined` and reported a defect in code that was right.
+
+**And one false alarm worth recording, because it was 65 findings.** The library
+sweep first asserted that a `safeSwap()` substitute must measure the same UNIT
+as the movement it replaces, and reported 65 violations. That rule holds only
+for the BASELINE BATTERY, where the score is recorded under the test's own id
+(v320, v321). On the progression path `safeSwap()` runs BEFORE `prescribe()`, so
+the target is computed for the substitute's own unit and nothing is ever
+mismatched — which the 972-session sweep had already proved. Narrowed to
+`TESTS`, the count is zero.
+
+**The rotation read as completely broken and was the probe**: `rollAutoPersona()`
+RETURNS the id and keeps it in a script-scope `let`, so reading a stored field
+gave `'auto'` 114 times. Sixth time this session. **Confirm the control's real
+shape before believing the result.**
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
