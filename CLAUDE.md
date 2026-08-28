@@ -6074,6 +6074,13 @@ paints gives 0 and fails on correct code; the check polls for the tier to land.
   plateaus rather than looping, an offline reload boots and renders all six
   tabs, and **a neighbouring app's cache and service-worker registration both
   survive a CoreForge update** — the origin-wide rule still holds.
+- **A whole session driven through the player**, by firing its own ticks rather
+  than sleeping: 6 movements, 15 sets, the cycle `ready → work → rest` fifteen
+  times and then `done`, with **14 rest phases — correctly none after the last
+  set — and ZERO taps.** Every phase hands over on its own, which is the v350
+  report ("after the rest timer the next set does not start") confirmed fixed
+  on the real mechanism. `PLAYER` is a script-scope `let`, so `window.PLAYER`
+  is undefined and the bare identifier is what works — the same trap as `STATE`.
 
 ## Rendering
 
