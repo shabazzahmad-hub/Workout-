@@ -7258,6 +7258,124 @@ arithmetic. **Drive the plan and read the plate.**
 
 Eleven mutants across the round, all caught.
 
+## The taper eased two of the three training streams (v372)
+
+v370 and v371 fixed the taper contradiction in WORDS. This is the place it
+cost real freshness.
+
+The running plan cuts volume in the last fortnight. The ruck ladder cuts
+distance and holds the plate. **The strength program ran at full volume
+through both** — measured at 12 weeks out, 3 weeks out and the day before the
+evaluation: 5 movements, 10 sets, byte-identical every time.
+
+`PREP_PHASE_NOTE.taper` is a specification, and it says *"you cannot gain
+fitness now — you can only arrive tired, so do not."* The app applied that to
+two streams out of three.
+
+**A FOURTH AUTOMATIC DELOAD TRIGGER, not a new mechanism.** `deloadOn()` is
+already a composite — manual flag, calendar week 6, readiness slump, load
+spike — and the taper joins it, so it eases exactly as the other three do.
+Measured: **12 sets and 390 units of work become 8 and 218.**
+
+**v310's rule is untouched.** A deadline may never ADD work; that is why the
+timeline never moved strength progression. This only ever removes it, in the
+fortnight the taper exists for, and the floors pin that nothing outside the
+taper changes at all: no test date, build and sharpen are byte-identical.
+
+**A quiet 44% cut reads as a bug**, so the banner names the taper as the
+reason — and the taper copy must not swallow the others, which the calendar
+floor catches.
+
+**An athlete who turned automatic deloads off keeps that choice.** The taper
+is a fourth automatic trigger, not an override of one; the mutant that lets it
+through the opt-out is caught.
+
+### It fails closed, and that matters more than it looks
+
+`deloadOn()` catches for the WHOLE composite, so a throw from the new trigger
+would discard the calendar week and the readiness slump with it — turning a
+REAL deload off. Nothing reachable exercises that path, so the contract is
+pinned directly (the v338 `prepDatePassed()` shape): the trigger answers no on
+a throw, and a genuine calendar deload survives it.
+
+### And the probe walked into a trap this file already records
+
+The first measurement used pointer 40 and reported that the deload flag
+changed nothing. **Pointer 40 is week 6 of 6 and therefore already a deload
+week**, so both readings agreed — recorded in v365 as a probe error and hit
+again here. The check now picks a pointer that is not one, and a guard asserts
+it.
+
+### And the brief never mentioned the evaluation at all
+
+Measured across every phase — no date, build, sharpen, taper, the day before:
+**silent every time**, while the prep card counted down beside it and, after
+the fix above, the session quietly eased underneath it.
+
+The brief is the segment the coach **reads aloud**, and v315's rule is that a
+spoken line is the one an athlete cannot double-check by looking. For sixteen
+weeks the evaluation IS the mission, so the segment sits beside it.
+
+**It says something different per phase**, because one line repeated satisfies
+every "it is mentioned" assertion and tells the athlete nothing: the build
+says the volume still climbs, the sharpen says it stops, and the taper says
+the sessions ease and why — *"you can only arrive tired, so we do not"*, the
+plan's own words, now spoken on the morning it applies.
+
+**It says nothing at all when no block is running**, and the countdown is a
+real number rather than a fixed phrase. Both mutants are caught.
+
+Twelve mutants across the round, all caught.
+
+## The watch import wrote minutes without saying they were minutes (v373)
+
+`saveActivityRead()` sets the unit for the run, the ruck and skipping. For the
+bike and the jacks it wrote a bare number — and the readers priced it in
+whatever unit the athlete had last left the field on. Measured on a real
+import:
+
+| mode | field left on | imported | read back as |
+|---|---|---|---|
+| bike | distance | 30 min | **30 km = 100 min = 893 kcal**, against ~268 |
+| jacks | reps | 20 min | **20 REPS = 0.4 min = 3 kcal** |
+
+**Over-crediting is the worse direction**, because movement earns calorie room
+on the surplus — so 893 kcal goes straight into the food budget for a ride
+worth 268.
+
+Same shape as v337's label and number written as two expressions: **the pair
+has to move together.** Three of the five modes already did it; these were the
+two that did not.
+
+**The floors are the three that were already right**, and they are what stops
+the fix being "force minutes everywhere": a run that carries a DISTANCE must
+still store a distance, and the mutant that forces `min` there is caught.
+
+Five mutants, all caught.
+
+### Three false alarms in the same sweep, and all three were the probe
+
+The round began with the dead-control sweep — *is there a control the athlete
+sets that the program never reads?* Ten controls, fingerprinted across 60
+built sessions plus the warm-up, calorie target, meal plan and both prep
+plans. Three came back dead and **every one was the probe**:
+
+- **`settings.repTempo`** — the fingerprint covered the session BUILDER and
+  not the player. It moves `plBudgetMin()` from 21 minutes to 28.
+- **`profile.timelineWeeks`** — `kcalTargetPreview()` reads the PROFILE copies
+  of height, age and sex, and the probe had set only the nutrition ones. Given
+  both, it is very much alive: **1950 / 2240 / 2510 kcal** at 12 / 24 / 52
+  weeks.
+- **`nutrition.meals`** — fed a `5`, which the app never offers, without
+  calling `normalizeState()`. The boot repair coerces it (`>=4 ? 4 : 3`) and
+  the picker offers only two values. With 3 and 4 the plan really changes.
+
+A guard written first — *every field path must exist in `DEFAULT_STATE()` and
+every function must be a function* — also caught **three invented field
+names** before any measurement ran. That guard is the one thing that keeps
+this sweep honest; v322 recorded the same lesson after half of a dead-control
+probe's findings turned out to be its own bad key names.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
