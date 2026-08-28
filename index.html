@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='356';
+const APP_VERSION='357';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2114,13 +2114,26 @@ function currentMaxes(cycle){
 }
 const LEVEL_TIER={Beginner:0,Intermediate:1,Advanced:2};
 const LEVEL_NAME=['Beginner','Intermediate','Advanced'];
+/* One membership test for the three tiers, read by levelOf() and by the boot
+   repair. Junk falls to Beginner rather than to the middle: the two ways of
+   being wrong are not symmetrical — under-prescribing costs one tap to fix,
+   over-prescribing hands a true novice an intermediate ladder. */
+function levelName(v){return LEVEL_NAME.indexOf(v)>=0?v:'Beginner';}
 function levelOf(cycle){
   // measured level wins — the baseline/re-test is real data, the quiz answer is a claim
   let lv;
   if(cycle>0 && STATE.reassess[cycle]) lv=STATE.reassess[cycle].level;
   else if(STATE.baseline&&STATE.baseline.level) lv=STATE.baseline.level;
   // before the baseline test, seed the starting level from the quiz's experience answer
-  else return (STATE.profile&&STATE.profile.experience)||'Intermediate';
+  /* MEMBERSHIP, not "whatever is stored". This is the ONLY path that returns
+     the quiz answer raw, and it is the one a brand-new athlete lives on until
+     they take the baseline — exactly when a true beginner is most at risk.
+     `LEVEL_FACTOR[level]||1` and `LEVEL_TIER[lv]??1` both fall back to the
+     INTERMEDIATE value, so an out-of-set string is silently promoted a tier:
+     measured, a lowercase 'beginner' from an imported backup got factor 1.0
+     instead of 0.8 and intermediate ladder rungs — the +25% the comment below
+     already describes, arriving by a different door. */
+  else return levelName(STATE.profile&&STATE.profile.experience);
   // ...but let the athlete's own experience answer nudge it one tier, so changing
   // it in the quiz actually does something instead of being silently ignored.
   /* DOWNWARD ONLY. The line above says the measured level wins and the quiz
@@ -19182,6 +19195,10 @@ function normalizeState(){
      and mobilityFlow() then read an unrecognised value as "not low" and skipped
      the 25% longer holds a stiff athlete asked for. */
   if(!MOBILITY_LEVELS.includes(STATE.profile.mobility))STATE.profile.mobility='ok';
+  /* `experience` had NO repair at all, so any value survived every boot and
+     travelled in every backup. Two guards mean two checks: this one keeps the
+     junk out of STATE, levelName() keeps it out of the prescription. */
+  STATE.profile.experience=levelName(STATE.profile.experience);
   STATE.profile.activity=activityLevel(STATE.profile.activity);
   if(STATE.nutrition&&typeof STATE.nutrition==='object'&&!Array.isArray(STATE.nutrition))
     STATE.nutrition.activity=activityLevel(STATE.nutrition.activity);
@@ -19882,8 +19899,47 @@ async function boot(){
        and the worker only stays alive to do it while a page is holding it, so
        this ping is what actually drives it. Sent on every load, so a pack left
        half-finished picks up where it stopped. */
-    navigator.serviceWorker.ready.then(()=>{
-      try{if(navigator.serviceWorker.controller)navigator.serviceWorker.controller.postMessage({type:'cf-topup'});}catch(e){}
+    /* POST TO THE REGISTRATION'S ACTIVE WORKER, NOT TO `controller`.
+       `ready` resolving and the page becoming CONTROLLED are two different
+       moments, and on a genuine first install `ready` wins: controller is
+       still null, the guard skips, the catch swallows it, and nothing ever
+       re-sends. Measured on a brand-new profile that was never reloaded — the
+       worker reached `activated`, the page reported itself controlled two
+       seconds later, and the pack sat at **12 of 251 files for forty seconds**
+       and would have sat there for ever. The athlete installs the app, uses it
+       once, closes it, goes offline, and has the shell and nothing else: no
+       exercise photographs at all.
+
+       Only opening the app a SECOND time started it (12 -> 37 -> 79 -> 121 ->
+       169 -> 211 -> 252), which is why every earlier probe missed this — they
+       all reloaded.
+
+       Measured at the exact instant `ready` resolves on a first install:
+       `reg.active` EXISTS (state `activating`) and `controller` is NULL. That
+       window is the whole defect.
+
+       `ready` resolves WITH the registration, so posting to `reg.active` works
+       whether or not this page is controlled yet. `controllerchange` re-sends
+       once if control arrives later, and the controller itself covers the
+       ordinary second load. topUp() skips whatever is already cached, so a
+       duplicate ping costs nothing.
+
+       WHICH OF THE THREE IS LOAD-BEARING WAS MEASURED, NOT ASSUMED. `activate`
+       calls `clients.claim()`, so control arrives after about **250 ms** — too
+       fast for the pack to grow in between, which means `controllerchange`
+       alone is enough today and two mutants that leave only it escape every
+       check. There is no observable window to discriminate on, so they are
+       recorded as equivalent rather than papered over with a check that cannot
+       fail. `reg.active` is kept because it is the EARLIER and spec-guaranteed
+       signal: delete `clients.claim()` from the worker and it becomes the only
+       mechanism left. Same call as v287's `wantAnchor`. */
+    navigator.serviceWorker.ready.then(reg=>{
+      const ping=()=>{try{
+        const w=(reg&&reg.active)||navigator.serviceWorker.controller;
+        if(w)w.postMessage({type:'cf-topup'});
+      }catch(e){}};
+      ping();
+      navigator.serviceWorker.addEventListener('controllerchange',ping,{once:true});
     }).catch(()=>{});
   }).catch(()=>{});}catch(e){}}   // the outer try/catch only guards the SYNCHRONOUS call; register() can reject too
 }

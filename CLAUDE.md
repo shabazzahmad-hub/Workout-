@@ -6001,6 +6001,234 @@ RETURNS the id and keeps it in a script-scope `let`, so reading a stored field
 gave `'auto'` 114 times. Sixth time this session. **Confirm the control's real
 shape before believing the result.**
 
+## A first install never filled its own offline pack (v357)
+
+The app's oldest promise, and it was only half-kept for anyone who installed it
+and did not open it twice.
+
+The top-up ping was guarded on `navigator.serviceWorker.controller` **at the
+instant `ready` resolves**. Those are two different moments, and on a genuine
+first install `ready` wins. Measured at that exact instant: **`reg.active`
+exists (state `activating`) and `controller` is NULL.** The guard skips, the
+`catch(e){}` swallows it, and nothing ever re-sends.
+
+Measured on a brand-new profile that was never reloaded:
+
+| | files cached |
+|---|---|
+| after install | **12 of 251** |
+| after 40 seconds | **12** |
+| after the fix, 14 seconds | **251** |
+
+The athlete installs the app, uses it once, closes it, goes offline — and has
+the shell and **no exercise photographs at all**. Only opening it a SECOND time
+started the top-up (12 → 37 → 79 → 121 → 169 → 211 → 252), which is exactly why
+every earlier probe missed it: **they all reloaded.** Suite 12's own checks post
+`cf-topup` by hand, so they proved the worker's side and never the page's.
+
+The fix posts to `reg.active` — the registration `ready` resolves with, whose
+active worker is guaranteed to exist at that point — plus a one-shot
+`controllerchange` re-send, plus the controller for the ordinary second load.
+
+**Which of the three is load-bearing was measured, not assumed.** `activate`
+calls `clients.claim()`, so control arrives after about **250 ms** — too fast
+for the pack to grow in between. So `controllerchange` alone is enough today,
+and two mutants that leave only it **escape every check**. There is no
+observable window to discriminate on, so they are recorded as equivalent rather
+than papered over with a check that cannot fail. `reg.active` is kept because it
+is the EARLIER and spec-guaranteed signal: delete `clients.claim()` from the
+worker and it becomes the only mechanism left. Same call as v287's `wantAnchor`.
+
+**The check must never reload, and it has to prove it did not.** A fresh
+persistent context, one navigation, and `performance.getEntriesByType(
+'navigation').length === 1` asserted — otherwise the check passes on exactly
+the behaviour it exists to rule out. Its floor is the install tier staying a
+small fraction of the pack, so "fix" cannot become "download everything at
+install", which is the regression the tiers were built to prevent.
+
+**And the install is ASYNC.** Reading the cache count the instant the view
+paints gives 0 and fails on correct code; the check polls for the tier to land.
+
+### And the level before the baseline was whatever was stored
+
+Found by driving the pipeline every session is built on: does a measured number
+reach the prescription? Nine of the ten baseline tests move the program.
+Chasing the tenth found something else.
+
+`levelOf()` has one branch that returns the quiz answer RAW —
+`else return (STATE.profile.experience)||'Intermediate'` — and it is the branch
+a brand-new athlete lives on **until they take the baseline**, which is exactly
+when a true beginner is most at risk. `profile.experience` had **no repair in
+`normalizeState()` at all**, so any value survived every boot.
+
+Both consumers fall back to the MIDDLE tier:
+`LEVEL_FACTOR[level]||1` and `LEVEL_TIER[lv]??1`. So an out-of-set string is
+silently promoted. Measured with no baseline on file:
+
+| stored | level used | factor | ladder rungs |
+|---|---|---|---|
+| `'Beginner'` | Beginner | **0.8** | beginner |
+| `'beginner'` | beginner | **1.0** | **intermediate** |
+| `'expert'`, `'zzz'`, `42` | as stored | **1.0** | **intermediate** |
+
+A lowercase `'beginner'` out of an imported backup is prescribed as an
+Intermediate — the +25% on every unanchored target that `levelOf()`'s own
+comment already describes, arriving by a different door.
+
+**Junk falls to Beginner, not to the middle.** The two ways of being wrong are
+not symmetrical: under-prescribing costs one tap to fix, over-prescribing hands
+a true novice an intermediate ladder. `levelName()` is the one membership test,
+asked by `levelOf()` and by the boot repair.
+
+**Two guards mean two checks, for the second time in three rounds.** Reverting
+`levelOf()` to the raw return escaped every check, because all of them booted
+first and the repair had already scrubbed the junk. The read site now has its
+own block that hands it junk with no boot behind it. Eight mutants, all caught
+after that — including the case-insensitive match that would let `'beginner'`
+straight back through, and the two over-eager twins.
+
+### The class that bug belonged to, swept
+
+`TABLE[x] || default` and `TABLE[x] ?? default` both hide an out-of-set key, and
+the danger is entirely in WHAT the default is. A scan of every ALLCAPS table
+indexed by a variable found **28** such lookups. Twenty-four fall back to `[]`,
+`{}` or `''` — neutral, and fail closed, which is right.
+
+Four fall back to a value that is itself a REAL member, so an unknown key is
+silently treated as that member:
+
+| lookup | falls back to | covered by |
+|---|---|---|
+| `LEVEL_FACTOR[level] \|\| 1` | Intermediate | `levelName()` upstream |
+| `LEVEL_TIER[level] ?? 1` | Intermediate | `levelName()` upstream |
+| `LEVEL_TIER[lv] \|\| 0` | Beginner (safe direction) | `levelName()` upstream |
+| `STEP_TARGETS[g] \|\| 8000` | a real target | `profile.goal`'s boot repair |
+
+All four are now unreachable, three of them by the fix above and the fourth by
+the goal membership repair that already existed. **The one-instance fix would
+have left three siblings alive**; the scan is what showed there were none left
+after it.
+
+And the scan hit this file's own oldest trap: the regex matched **the comment I
+had just written**, because it quotes `LEVEL_FACTOR[level]||1` verbatim. A
+probe reading source is subject to the same rule as `validateData()`'s
+duplicate-key guard — write prose that does not look like code.
+
+### The false alarm this round, and why the notes are what settled it
+
+The tenth test, `stamina`, moves nothing in the program — halving and doubling
+a recorded burpee count leaves 30 sessions byte-identical, and **no exercise in
+the library anchors to it**. That reads exactly like the `voicePitch` trap.
+
+It is not one. v252 scoped it deliberately and wrote down why: `EX.burpee` is
+`unit:'time'` because HIIT circuits and cardio finishers are always prescribed
+as timed rounds, and anchoring it to a `unit:'reps'` test would require changing
+that unit and silently altering every one of those call sites. `maxes.stamina`
+is recorded for the Core Score, the level and the Strength Trends chart, and
+not for a prescription.
+
+**Its own claim was then checked rather than taken on trust**: changing ONLY
+stamina moves the Core Score (92 → 100), the max is stored, and it is in
+`STRENGTH_METRICS`. The recorded intent is accurate. **Read the notes before
+calling a design a defect — and then check what the notes claim.**
+
+### Two more sweeps, and one that would be a real bug in most apps
+
+- **A comma-decimal phone.** Driven in `de-DE`, `fr-FR`, `ar-EG` and `hi-IN`:
+  every screen renders, nothing prints `NaN`, and — the thing that matters —
+  **all 30 numeric fields in the app are `type="number"`, not one is a text
+  field with a numeric keyboard.** The browser normalises a `type=number` value
+  to a dot whatever the locale, and measured directly, setting `"86,5"` on one
+  leaves it **empty** rather than silently truncating: the app's own "enter a
+  number" validation then catches it. A German athlete's 86,5 kg cannot become
+  86. That is the right design and it holds.
+
+  **The first pass reported seven problems and all seven were the probe.** It
+  asserted that a number the app PRINTS can be read back by `parseFloat` —
+  which fails on `en-US` too (`(12345).toLocaleString()` is `"12,345"`, and
+  `parseFloat` gives 12). Formatting for display and parsing input are
+  different paths and the app never round-trips between them. **Assert the
+  route, not a property you assumed it had.**
+
+- **The whole onboarding wizard, from a genuinely fresh install** — no seeded
+  athlete, nothing in storage. All seven steps advance, each accepts what it
+  asks for, it ends on the Baseline Test screen, `onboarded` is set, all six
+  tabs render, and the first session builds sensibly for a beginner
+  (`kneeplank 3x30`). It also confirms the profile/nutrition mirror through the
+  REAL path rather than a poked field: age 41/41, height 178/178, sex
+  male/male in both copies.
+
+  `obNext()` does not exist — the step counter and the Next handler are CLOSURE
+  LOCALS inside `obMount()`. The only way in is to click `#ob-next`, which is
+  what the athlete does and what this file's own rule prescribes anyway.
+
+### Four sweeps that came back clean
+
+- **The destructive paths, driven with the confirm answered.** Undo rewinds the
+  pointer and clears the stale `_trainAgain` (v316); restart archives all 20
+  logs, resets the pointer, clears live-session scratch and keeps photos,
+  records and measurements, with `allDoneLogs()` still reading the archive;
+  `hardReset()` clears everything except the three device credentials and
+  leaves no pre-import snapshot. **Three probe errors first**: all three are
+  gated behind `confirm()`, which returns FALSE in a headless page, and
+  `undoSession()` needs the `_undo` snapshot `commitSession()` writes — without
+  it, it correctly toasts "Nothing to undo".
+- **Every validator rule actually FIRES.** Ten rules broken one at a time — a
+  bad anchor, a unit mismatch, a base over its own `repCap`, an unknown
+  `pattern`, a ladder that climbs, a swap to a non-exercise, an illegal `side`,
+  a persona below the pitch floor, a reference day with no meals, a test missing
+  from `TEST_DEFAULTS` — all ten complained with a specific message and all ten
+  restored to zero. A clean validator says nothing about whether a rule exists.
+- **Real names, not attack payloads**: an apostrophe, a double quote, an
+  ampersand, an accent, an emoji, a 58-character name, angle brackets, a
+  backslash, only spaces and a newline — across four panes at 360px. No raw
+  HTML entity ever reached the glass, nothing overflowed, nothing threw.
+- **The offline promise itself**: the worker reaches `activated`, the pack
+  plateaus rather than looping, an offline reload boots and renders all six
+  tabs, and **a neighbouring app's cache and service-worker registration both
+  survive a CoreForge update** — the origin-wide rule still holds.
+- **The player's three TWINS, each driven to its own end.** HIIT runs
+  `lead → work/rest x13 → done` on its own ticks with no spoken digits (v302
+  and v317 hold) and the movement named (v308). The warm-up flow completes all
+  eight moves to `✓ Done`, fires **seven reposition cues** (the v349 falling
+  880→520 pair, the one shape no other cue uses) and **stops the beat**. The
+  baseline battery walks all ten tests, 0 through 9, with the v296 two-minute
+  rest between each and no timer left armed.
+
+  **Five probe errors in that one axis.** `startWarmup` and `startAssessment`
+  do not exist; `runFlow` keeps its whole state in CLOSURE LOCALS so there is
+  nothing to poke — its interval has to be pumped instead; the flow names its
+  move in `#flowName`, not `.pl-name`; `autoClose()` uses setTimeout, so
+  pumping only intervals made the beat look stuck for ever when
+  `closeSheet()` stops it; and **`assessNav()` reads the DOM input
+  `#assess-val`, not `assessState.results`** — setting the state directly
+  leaves the field empty and the battery correctly refuses to advance.
+
+- **Nothing leaks across repeated open-and-close cycles**, which is what drains
+  a phone left running for days. Measured with Chromium's own
+  `Performance.getMetrics` and collection forced before every reading: opening
+  and closing all 38 sheets twelve times over holds at **519 listeners and
+  11,088 nodes, flat from the third cycle on**, with the heap at 3.5 MB; and
+  the player, HIIT and the flow add **exactly zero**. No interval timer is ever
+  left armed.
+
+  **The measurement is the whole finding here.** An adds-minus-removes tally
+  reported "+11 listeners per cycle, climbing" and a node-identity probe
+  reported "the same node accumulates" — both wrong, because a listener on an
+  element that gets REPLACED is collected with it, and neither counter can see
+  collection. A raw live count is wrong too: it climbs for four cycles and then
+  DROPS, which is GC, not a fix. Only forcing collection before each reading
+  measures what the browser genuinely cannot reclaim. My own crude verdict line
+  printed "a real leak" three times and the data said otherwise every time.
+
+- **A whole session driven through the player**, by firing its own ticks rather
+  than sleeping: 6 movements, 15 sets, the cycle `ready → work → rest` fifteen
+  times and then `done`, with **14 rest phases — correctly none after the last
+  set — and ZERO taps.** Every phase hands over on its own, which is the v350
+  report ("after the rest timer the next set does not start") confirmed fixed
+  on the real mechanism. `PLAYER` is a script-scope `let`, so `window.PLAYER`
+  is undefined and the bare identifier is what works — the same trap as `STATE`.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
