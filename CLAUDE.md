@@ -6284,6 +6284,86 @@ Seven mutants, all caught after that rewrite. The floors carry the weight: the
 volume must not move, the no-kit athlete must still get real work, and a flagged
 athlete must get no rehearsal at all.
 
+## Being told to try harder is not being told it is meant to hurt (v359)
+
+"Endurance and stamina and MENTAL TOUGHNESS is very important." Measured the
+corpus before writing anything: **190 `push` lines across 38 coaches, and
+exactly two of them name what the effort feels like.** Every other one is
+exhortation — *"final push"*, *"empty the tank"*, *"do not quit on me"*.
+
+Those are different messages. Being told to try harder adds pressure; being
+told that burning legs are the set working removes the suspicion that
+something is wrong. The second is what keeps somebody in a plank, and the app
+had almost none of it.
+
+**Shared, not per-persona, and that is a decision.** What a grind line carries
+is a FACT about the effort — the fatigue really is the point of the set,
+whichever coach is speaking. 38 hand-written copies of one fact is 38 places
+for it to drift, and the persona flavour already lives in the `push` and
+`during` pools either side of it.
+
+**They name EFFORT and never a symptom**, which is the line `npm run check`
+already draws across the whole corpus: burn and fatigue may be coached, pain
+may not. They also never argue against stopping — the stop-for-pain button is
+one tap away and acknowledging the grind is not the same as talking somebody
+out of a stop.
+
+### The last third is a property of the effort, not a fixed ten seconds
+
+The existing marker fires at `remain===10`. Measured over all **1,700 timed
+holds** the program prescribes: that is **22% of the average hold and 10.5% of
+the longest**, so a 95-second plank got one line at second 85 and nothing at
+all through the part that decides it. `grindAt()` returns the two-thirds mark
+— 24s on a 36-second hold, 63s on a 95-second one.
+
+**The open-ended baseline hold is the sharpest case and had no late coaching
+at all.** It has no total, so its last third cannot be computed — and it is the
+one effort where the athlete's own decision to stop IS the measurement. So the
+hard part is relative to THIS athlete: `grindAtOpen()` takes two thirds of
+their own best on that test, falling back to two thirds of the published
+benchmark. Same reasoning as the ruck MET being computed from bodyweight
+rather than looked up — a fixed number cannot be right about a body it does not
+know. Measured: a 150-second plank names it at 100, a 60-second one at 40.
+
+### A voice line and a per-second job cannot share a second, again
+
+Driving it found the defect the code review would not have. On a 50-second hold
+the form cue lands at 32 and the grind line at 33; on a 95-second one the grind
+line at 63 is cut by the breathing cue at 64. `_deviceSpeak()` cancels, so one
+of the two is lost mid-word every time — v307's defect in new clothes.
+
+The periodic cues now yield the second either side (`nearGrind`), and the check
+**measures the clash rather than the presence**: before the guard, both lines
+were still spoken and an assertion that the grind line exists would have passed
+on a line the athlete never heard.
+
+### Who gets it, and who deliberately does not
+
+Four surfaces: the guided player's hold, the standalone hold timer, HIIT
+**work**, and the baseline battery. **HIIT rest gets nothing** — rest has no
+hard part, and saying it has costs the ear the difference between the phases,
+the same reason `countdownCue()` is kept off it. **The warm-up and cool-down
+flow gets nothing** — a stretch is not a grind, and calling one hard would be
+the app lying about the effort in front of it.
+
+### One equivalent mutant, measured rather than assumed
+
+`grindAt()` guards `(total-el)>11` so the line can never sit one second before
+the ten-second marker. Swept across 5,000 totals: **behind the 36-second floor,
+no total gives remain 11 at all**, so `>11` and `>10` are the same program. It
+is kept as cover for a lowered floor and recorded as uncatchable — the same
+call as v287's `wantAnchor`. The floor itself is pinned by its own mutant.
+
+**Two escapes were real weak checks, and both are entries already in this
+file.** The open hold's `at>=12` floor was invisible because both cases tested
+sat far above it — *a guard that cannot fire in the case you tested is not
+tested* — so a 15-second plank max is now pinned. And the standalone hold timer
+was asserted **wired** by a source scan for the function name, which stays true
+with the neighbour guard deleted; a 36-second effort cannot be driven inside a
+suite, so its guard is read as the whole EXPRESSION, not the name.
+
+Fourteen mutants, thirteen caught, one equivalent.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
