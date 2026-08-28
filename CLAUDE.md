@@ -7137,6 +7137,64 @@ button still works.
 
 Five mutants, all caught.
 
+## The prompt asked for four maximal efforts during the taper (v370)
+
+The same card v369 fixed, one question further on: **when does the midpoint
+window close?** It did not. `prepMidDue()` was `checkpoint==='mid'`, and the
+mid checkpoint runs from halfway to the test date — so the prompt fired
+through the sharpen phase, through the taper, and **on the day before the
+evaluation**.
+
+`PREP_PHASE_NOTE.taper` says, in the app's own words:
+
+> Volume comes down and the intensity stays... **You cannot gain fitness now —
+> you can only arrive tired, so do not.**
+
+And four lines away the card said *"Re-run the four tasks"* — four maximal
+efforts under load. Two sentences the app owns, on one block, in flat
+contradiction. **A note in `PREP_PHASE_NOTE` is a specification**, which that
+map's own comment already says.
+
+**The window closes when the taper opens, and that is the taper's rule rather
+than a new one.** It is also honest on the prompt's own terms: a midpoint
+assessment is what *"turns the second half of the block into a correction"*,
+and inside the taper there is no second half left to correct.
+
+### And its first sentence was simply false
+
+> **You are halfway to your test date.**
+
+True on the first day of the window and nowhere else. Measured: it said that
+**three weeks out on a twelve-week block**, and the day before the evaluation.
+It now names the window it is in and how long is left to use it — true, and
+actionable, which the old line was not.
+
+**A window that closed with nothing in it says so.** Silence would read as the
+earlier prompt having been a glitch, and keeping the prompt asks for the one
+thing the taper exists to prevent. The note names the taper length from
+`PREP_TAPER_WEEKS` rather than restating it, and logging the evaluation itself
+is never taken away.
+
+**Three floors carry the round.** The build and sharpen phases must still be
+asked for the assessment — a window that is never open satisfies every
+"the taper is not asked" assertion and deletes the checkpoint. An athlete who
+DID record a midpoint must see no missed note and keep their record. And the
+window must not close a phase early, which the sharpen floor catches.
+
+### The check failed on correct code, on a trap already in this file
+
+`.section-label` is uppercased in CSS, and **`innerText` returns the RENDERED
+text** — so `/Midpoint/` failed on a screen that was perfectly right. Read
+`textContent`. That is v296's finding verbatim, hit again three-quarters of a
+suite later.
+
+And two guards were wrong before they were right: 13 weeks left is `base`, not
+`build` (`build` is `left<=12`), and 6 weeks left is already `sharpen`
+(`PREP_SHARPEN_WEEKS` is 6). **A guard that asserts the wrong phase boundary
+fails on correct code and tells you nothing about the defect.**
+
+Seven mutants, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

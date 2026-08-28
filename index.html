@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='369';
+const APP_VERSION='370';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4825,7 +4825,22 @@ function prepCheck(k){
 /* Due, and not yet answered. It stops the moment ANY of the four is recorded
    in this window — a note that keeps firing after the athlete has acted is a
    note they learn to skip, and the comparison below shows what is still blank. */
-function prepMidDue(){return prepCheckpoint()==='mid'&&!prepCheck('mid');}
+/* THE WINDOW CLOSES WHEN THE TAPER OPENS, and that is the taper's own rule
+   rather than a new one. PREP_PHASE_NOTE.taper says, in as many words, "you
+   cannot gain fitness now — you can only arrive tired, so do not" — and this
+   prompt asked for FOUR MAXIMAL EFFORTS UNDER LOAD right through it, up to the
+   day before the evaluation. Two sentences the app owns, on the same block,
+   in flat contradiction.
+
+   It is also the honest window on its own terms: a midpoint assessment is
+   what "turns the second half of the block into a correction", and inside the
+   taper there is no second half left to correct. */
+function prepMidWindowOpen(){return prepCheckpoint()==='mid'&&prepPhase()!=='taper';}
+function prepMidDue(){return prepMidWindowOpen()&&!prepCheck('mid');}
+/* The window opened and closed with nothing recorded. Saying so beats both
+   alternatives: silence reads as the prompt having been a glitch, and keeping
+   the prompt asks for the one thing the taper exists to prevent. */
+function prepMidMissed(){return prepCheckpoint()==='mid'&&prepPhase()==='taper'&&!prepCheck('mid');}
 /* How many weeks until the midpoint, for the not-yet-due case. Null once it
    has passed, so the card can tell "coming" from "here". */
 /* What the athlete sees. Three states, and the third is the point of the other
@@ -4866,11 +4881,18 @@ function prepMidHTML(){
      withheld. */
   const locked=safeMode();
   if(prepMidDue()){
+    /* "You are halfway to your test date" was FALSE everywhere but the first
+       day of the window: it said so three weeks out on a twelve-week block,
+       and the day before the evaluation. It names the window it is in and how
+       long is left to use it, which is both true and actionable. */
+    const wl=prepWeeksLeft();
     head=`<div class="note warn" style="margin:10px 0 0"><b>Midpoint assessment due.</b>
-      You are halfway to your test date. ${locked
+      You are past the halfway point of your block, with ${wl===null?'time':('<b>'+wl+' week'+(wl===1?'':'s')+'</b>')} before the taper starts. ${locked
         ?'Log the times if your unit tests you — that is what turns the second half of the block into a correction rather than a guess. The app\'s own run of the four tasks stays locked until your health check is cleared.'
         :'Re-run the four tasks and log the times — that is what turns the second half of the block into a correction rather than a guess.'}
       ${init?'':'<div style="margin-top:6px">Nothing was logged before the halfway point, so this one becomes your first record rather than a comparison.</div>'}</div>`;
+  }else if(prepMidMissed()){
+    head=`<div class="tiny muted" style="margin-top:8px" data-midmissed="1">The midpoint window has closed — you are in the taper now. <b>Do not run an assessment to catch it up</b>: you cannot gain fitness in the last ${PREP_TAPER_WEEKS} weeks, only arrive tired. Log the evaluation itself when you take it.</div>`;
   }else if(cp==='initial'){
     const wk=prepMidWeeksAway();
     if(wk!==null)head=`<div class="tiny muted" style="margin-top:8px">Midpoint assessment in <b>${wk} week${wk===1?'':'s'}</b> — ${locked?'log the times if your unit tests you then':'you re-run the four tasks then'}, and the app shows what moved.</div>`;
