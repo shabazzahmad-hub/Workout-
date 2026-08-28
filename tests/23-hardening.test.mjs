@@ -2171,6 +2171,310 @@ export default async function () {
     t.ok('the log travels in a backup', gr.inBackup, gr);
   }
 
+  /* ---- HOLD TO FAILURE: one movement, timed to the limit (v361) ---------
+     Measured before building it: the battery measures four to-failure holds
+     and taking one means taking a TEN-test battery, and outside it `gripmax`
+     was the only standalone max effort — dead hang only, and a three-minute
+     countdown rather than a hold, so it could not record past 3:00.
+     The load-bearing property is that a fresh hold and a hold done after a
+     session are kept apart. Without it the trend silently mixes the two. */
+  {
+    const ht = await page.evaluate(async () => {
+      const o = {};
+      const flush = () => new Promise(r => setTimeout(r, 20));
+      STATE.holdLog = []; STATE.logs = {};      // untrained today => fresh
+      o.freshWhenUntrained = holdFreshNow();
+      /* EACH BLOCK BUILDS THE STATE IT ASSERTS ON — an earlier block here
+         leaves STATE.baseline null, and estimateMaxes() then hands back
+         defaults. And the real requirement is not a particular number: it
+         is that logging holds moves NOTHING, so both ends are measured. */
+      const _bKeep = STATE.baseline;
+      STATE.baseline = { date: todayISO(), score: 70, level: 'Advanced', testCount: TESTS.length,
+        maxes: { plank: 150, side: 95, hollow: 70, lower: 30, dyn: 55, push: 48, pull: 22, squat: 62, power: 20, stamina: 24 } };
+      o.maxesBefore = JSON.stringify(currentMaxes());
+
+      // --- the registry reaches innerHTML, so membership not truthiness
+      o.reg = HOLD_TESTS.map(t => t.id);
+      o.lookup = { real: !!holdTest('plank'), junk: !!holdTest('helicopter'),
+        inherited: !!holdTest('constructor') };
+      o.everyExReal = HOLD_TESTS.every(t => !!EX[t.exId]);
+      o.everyExTimed = HOLD_TESTS.every(t => EX[t.exId].unit === 'time');
+
+      // --- driven for real, off the Special training menu
+      openSpecial();
+      o.onSpecialMenu = /openHoldTests\(\)/.test(document.querySelector('#sheet').innerHTML);
+      openHoldTests();
+      o.rows = [...document.querySelectorAll('[data-hold]')].map(b => b.getAttribute('data-hold'));
+      o.saysFresh = /counts as a fresh test/.test(document.querySelector('#sheet').innerHTML);
+      startHoldTest('plank');
+      await new Promise(r => setTimeout(r, 60));
+      o.timerOpened = !!_ht;
+      o.timerFresh = _ht && _ht.fresh;
+      /* IT COUNTS UP AND HAS NO CAP. gripmax counts DOWN from three minutes,
+         so it cannot record a hold longer than that — the defect this exists
+         to fix. Well past 3:00 must still be a real recorded number. */
+      _ht.mode = 'run'; _ht.elapsed = 47;
+      stopHoldTest(); await flush();
+      o.firstRow = JSON.parse(JSON.stringify(STATE.holdLog))[0];
+      o.bestAfterOne = holdBest('plank');
+      o.trendAfterOne = holdTrend('plank');      // one point is not a trend
+
+      logHold('plank', 62, true);
+      o.trendTwo = holdTrend('plank');
+      o.bestTwo = holdBest('plank');
+      logHold('plank', 250, true);               // past gripmax's 3:00 ceiling
+      o.bestPast3min = holdBest('plank');
+
+      /* THE DISCRIMINATING CASE: a LONGER hold taken after training must not
+         set the best and must not enter the trend. A tracker that took the
+         maximum of everything would report a personal best the athlete never
+         set fresh, and then show it falling for months. */
+      logHold('plank', 400, false);
+      o.bestAfterFatigued = holdBest('plank');
+      o.trendAfterFatigued = holdTrend('plank');
+      o.fatiguedIsStored = holdLog().filter(r => r.id === 'plank' && r.secs === 400).length;
+      /* A HOLD THAT NEVER STARTED IS NOT A RESULT — a cancel, or a Stop
+         tapped on the 3-2-1, would otherwise write a zero-second row that
+         travels in every backup and reads as an effort that was made. */
+      const beforeZero = holdLog().length;
+      o.zeroReturn = logHold('plank', 0, true);
+      o.zeroWrote = holdLog().length - beforeZero;
+
+      // --- and the app decides fresh-or-not from the DATA, not from a prompt
+      const logKeep = STATE.logs;
+      STATE.logs = {}; STATE.logs[STATE.progressPtr] = { done: true, completedAt: todayISO(), sets: 1, ex: {} };
+      o.freshWhenTrained = holdFreshNow();
+      startHoldTest('hang');
+      await new Promise(r => setTimeout(r, 60));
+      o.trainedTimerFresh = _ht && _ht.fresh;
+      _ht.mode = 'run'; _ht.elapsed = 99; stopHoldTest(); await flush();
+      o.hangRow = holdLog().filter(r => r.id === 'hang')[0];
+      o.hangBest = holdBest('hang');            // fatigued only => no bar yet
+      STATE.logs = logKeep;
+
+      /* IT MUST NOT TOUCH THE BASELINE OR THE PRESCRIPTION. The battery is
+         taken rested, in a fixed order, with two minutes between efforts, and
+         its numbers scale every target for a year. A Tuesday plank is a real
+         number and is not that one. */
+      o.maxesAfter = JSON.stringify(currentMaxes());
+      o.maxesUnmoved = (currentMaxes() || {}).plank;
+      o.baselineUnmoved = STATE.baseline ? STATE.baseline.maxes.plank : null;
+      o.readsHoldLog = /holdLog|holdBest/.test(String(currentMaxes)) ||
+                       /holdLog|holdBest/.test(String(estimateMaxes)) ||
+                       /holdLog|holdBest/.test(String(prescribe));
+
+      // --- the tracker renders where a tracker belongs
+      go('progress'); setProgressTab('strength'); render(); await flush();
+      const v = document.querySelector('#v-progress');
+      o.tracker = /Hold to failure/.test(v.innerHTML);
+      o.trackerRow = (v.querySelector('[data-holdrow="plank"]') || {}).innerText || '';
+      o.trackerHang = (v.querySelector('[data-holdrow="hang"]') || {}).innerText || '';
+      /* SCOPED TO THE NOTE, not the page. The ROW for a fatigued-only hold
+         also says "after training", so a page-wide search is satisfied by
+         the row and the note itself goes untested. */
+      o.fatiguedNote = /only been tested after training/.test(v.innerHTML);
+      o.notInBaselineChart = !/data-holdrow/.test(String(strengthTrendHTML()));
+
+      /* THE NOTE MUST NOT ALWAYS FIRE. A note that appears whatever the log
+         says is a note nobody reads — and it would be wrong for an athlete
+         whose every hold WAS taken fresh. */
+      const _hKeep = STATE.holdLog;
+      STATE.holdLog = [{ date: todayISO(), id: 'plank', secs: 60, fresh: true, at: 1 }];
+      render(); await flush();
+      o.noteWhenAllFresh = /only been tested after training/.test(
+        (document.querySelector('#v-progress') || {}).innerHTML || '');
+      // and the log is capped, so it cannot grow for ever inside every backup
+      STATE.holdLog = [];
+      for (let i = 0; i < 250; i++) logHold('plank', 30 + i, true);
+      o.capped = STATE.holdLog.length;
+      o.cappedKeepsNewest = holdBest('plank');
+      STATE.holdLog = _hKeep;
+      /* AN INTERVAL MUST NOT OUTLIVE THE SHEET IT PAINTS. _ht ticks against
+         #htBig, so a dismissed sheet left it writing to a node that is gone. */
+      startHoldTest('wallsit');
+      await new Promise(r => setTimeout(r, 60));
+      o.tickerLive = !!_ht;
+      closeSheet(); await flush();
+      o.tickerAfterClose = !!_ht;
+
+      /* THE HARD PART, NAMED, AT THIS ATHLETE'S OWN POINT. A constant would
+         give the same answer to a 60-second plank and a 150-second one, so
+         the check drives TWO bests and requires two different seconds. */
+      const G = /hard part|Burning muscles|Shaking here|honest part|Fatigue now|last third|does not get easier/;
+      /* DRIVE THE REAL TICK, not a copy of it. htTick() is a closure local
+         driven by the interval, so the only way in is to park the clock one
+         second before the point and let ONE genuine tick cross it — the same
+         technique suite 04 uses on the baseline timer. Re-implementing the
+         branch here would pass with the branch deleted from the app. */
+      const driveHold = async (id, best, at) => {
+        STATE.holdLog = best ? [{ date: todayISO(), id: id, secs: best, fresh: true, at: 1 }] : [];
+        STATE.logs = {};
+        const said = []; const real = window.coachSpeak;
+        window.coachSpeak = x => said.push(String(x));
+        startHoldTest(id);
+        await new Promise(r => setTimeout(r, 60));
+        _ht.mode = 'run'; _ht.grindSaid = false; _ht.elapsed = at - 1;
+        await new Promise(r => setTimeout(r, 1150));   // one real tick crosses it
+        const landed = _ht ? _ht.elapsed : -1;
+        const hit = said.filter(x => G.test(x)).length;
+        stopHoldTimer(); closeSheet();
+        window.coachSpeak = real;
+        return { landed, hit };
+      };
+      o.point150 = grindAtBest(150); o.point60 = grindAtBest(60);
+      o.at150 = await driveHold('plank', 150, o.point150);        // lands
+      o.off150 = await driveHold('plank', 150, o.point60);        // 40 is NOT their point
+      o.at60 = await driveHold('plank', 60, o.point60);           // lands
+      o.grindNone = await driveHold('plank', 0, 40);              // no bar, nothing to say
+      /* THE MOVEMENT ACTUALLY HELD IS THE ONE THE FLAG ALLOWS, and the
+         screen names it — the baseline battery's own call, for its reason:
+         this is a maximal effort, so a silent substitution would be wrong. */
+      const limK = STATE.profile.limitations;
+      STATE.profile.limitations = ['shoulder'];
+      startHoldTest('hang'); await new Promise(r => setTimeout(r, 60));
+      o.swapped = { exId: _ht && _ht.exId, named: /Bird Dog/i.test((document.querySelector('#sheet') || {}).innerText || '') };
+      stopHoldTimer(); closeSheet(); await flush();
+      STATE.profile.limitations = [];
+      startHoldTest('hang'); await new Promise(r => setTimeout(r, 60));
+      o.unswapped = _ht && _ht.exId;
+      stopHoldTimer(); closeSheet(); await flush();
+      STATE.profile.limitations = limK;
+
+      // --- the empty state explains itself
+      const keep = STATE.holdLog; STATE.holdLog = [];
+      render(); await flush();
+      o.empty = (document.querySelector('#v-progress') || {}).innerText || '';
+      o.emptyExplains = /Hold to failure/.test(o.empty);
+      STATE.holdLog = keep;
+
+      // --- the boot repair
+      STATE.holdLog = [
+        { date: todayISO(), id: 'plank', secs: 60, fresh: 'false', at: 1 },  // truthy string
+        { date: 'not-a-date', id: 'plank', secs: 60, fresh: true, at: 2 },
+        { date: todayISO(), id: 'helicopter', secs: 60, fresh: true, at: 3 },
+        { date: todayISO(), id: 'plank', secs: 0, fresh: true, at: 4 },
+        'junk', null,
+        { date: todayISO(), id: 'wallsit', secs: '75', fresh: true, at: 5 }
+      ];
+      normalizeState();
+      o.repaired = JSON.parse(JSON.stringify(STATE.holdLog));
+      STATE.holdLog = 'wrecked'; normalizeState(); o.wrecked = STATE.holdLog;
+
+      // --- and it travels in a backup
+      STATE.holdLog = [{ date: todayISO(), id: 'wallsit', secs: 88, fresh: true, at: 9 }];
+      const clone = JSON.parse(JSON.stringify(STATE));
+      TRANSIENT_KEYS.forEach(k => { delete clone[k]; });
+      o.inBackup = Array.isArray(clone.holdLog) && clone.holdLog.length === 1 && clone.holdLog[0].secs === 88;
+      STATE.holdLog = [];
+      STATE.baseline = _bKeep;
+      return o;
+    });
+
+    t.eq('there are five holds to test', ht.reg.length, 5);
+    t.ok('every one names a real exercise', ht.everyExReal, ht.reg);
+    t.ok('and every one is a timed movement', ht.everyExTimed, ht.reg);
+    t.ok('a real hold id resolves', ht.lookup.real, ht.lookup);
+    t.ok('junk does not', !ht.lookup.junk, ht.lookup);
+    t.ok('and neither does an inherited key', !ht.lookup.inherited, ht.lookup);
+
+    t.ok('it is reachable from Special training', ht.onSpecialMenu, ht);
+    t.eq('and lists every hold', ht.rows, ht.reg);
+    t.ok('the timer opens', ht.timerOpened, ht);
+
+    // fresh
+    t.ok('an untrained day is a fresh test', ht.freshWhenUntrained, ht);
+    t.ok('and the sheet says so', ht.saysFresh, ht);
+    t.eq('the timer carries it', ht.timerFresh, true);
+    t.eq('a 47-second hold is stored', ht.firstRow.secs, 47);
+    t.eq('marked fresh', ht.firstRow.fresh, true);
+    t.eq('and it is the best so far', ht.bestAfterOne, 47);
+    /* One point is not a trend, and reporting one would be inventing a
+       direction out of a single number. */
+    t.eq('one hold gives no trend yet', ht.trendAfterOne, null);
+    t.eq('two fresh holds do', ht.trendTwo.delta, 15);
+    t.eq('and the best moves with them', ht.bestTwo, 62);
+    /* gripmax counts DOWN from three minutes and cannot record past 3:00.
+       This one counts up, so 250 seconds is a number. */
+    t.eq('a hold past three minutes is recorded, not capped', ht.bestPast3min, 250);
+
+    // fatigued — the discriminating half
+    t.eq('a longer hold taken after training does NOT set the best', ht.bestAfterFatigued, 250);
+    t.eq('nor does it enter the trend', ht.trendAfterFatigued.last, 250);
+    /* But it is kept. Dropping it would satisfy every "it does not set the
+       best" assertion and throw away a real effort the athlete made. */
+    t.eq('and it is still stored', ht.fatiguedIsStored, 1);
+
+    /* READ THE DATA, NOT A PROMPT. The athlete is never asked whether they
+       trained today — the log already knows. */
+    t.ok('a trained day is not a fresh test', !ht.freshWhenTrained, ht);
+    t.eq('the timer carries that too', ht.trainedTimerFresh, false);
+    if (!ht.hangRow) {
+      t.fail('the after-training hold was not recorded at all', JSON.stringify(ht));
+    } else {
+      t.eq('the hold is recorded as after-training', ht.hangRow.fresh, false);
+    }
+    t.eq('and with nothing fresh there is no best yet, not a zero', ht.hangBest, 0);
+
+    // it stays out of the prescription
+    t.eq('guard: this block seeded a real 150-second plank baseline', ht.maxesUnmoved, 150);
+    t.eq('the baseline is untouched by a hold test', ht.baselineUnmoved, 150);
+    /* Not merely one number: EVERY max the program is built from is
+       byte-identical before and after four holds, one of them 400s. */
+    t.eq('and every max the program reads is unchanged', ht.maxesAfter, ht.maxesBefore);
+    t.ok('no prescription path reads the hold log', !ht.readsHoldLog, ht);
+    t.ok('and it is not folded into the baseline chart', ht.notInBaselineChart, ht);
+
+    // the tracker
+    t.ok('the tracker renders on Progress ▸ Strength', ht.tracker, ht);
+    t.ok('showing the best and the change', /4:10/.test(ht.trackerRow) && /\+15s|\+188s/.test(ht.trackerRow), ht.trackerRow);
+    /* A number that is not moving needs a reason on the glass. A hold only
+       ever tested after training has no best, and a blank with no explanation
+       reads as broken. */
+    t.ok('a fatigued-only hold row says why it has no best', /after training/i.test(ht.trackerHang), ht.trackerHang);
+    t.ok('and the card carries the note explaining it', ht.fatiguedNote, ht);
+    t.ok('but an athlete who tested fresh gets no such note', !ht.noteWhenAllFresh, ht);
+    /* A log that grows for ever travels in every backup — the cost v285
+       measured, two fields over. */
+    t.eq('the hold log is capped', ht.capped, 200);
+    t.eq('and the cap keeps the newest, not the oldest', ht.cappedKeepsNewest, 279);
+    t.ok('guard: the hold timer really was running', ht.tickerLive, ht);
+    t.ok('and closing the sheet stops it', !ht.tickerAfterClose, ht);
+    t.eq('a 150-second best puts the hard part at 100', ht.point150, 100);
+    t.eq('a 60-second best puts it at 40', ht.point60, 40);
+    t.eq('guard: the driven tick really landed on the point', ht.at150.landed, 100);
+    t.eq('and the line is spoken there', ht.at150.hit, 1);
+    /* A CONSTANT COULD NOT DO THIS. Second 40 is the 60-second athlete's hard
+       part and not this one's, so a fixed point fails exactly here. */
+    t.eq('but not at the other athlete\'s point', ht.off150.hit, 0);
+    t.eq('and the 60-second athlete gets it at 40', ht.at60.hit, 1);
+    t.eq('with no bar yet, nothing is said', ht.grindNone.hit, 0);
+    /* A maximal effort is never silently substituted: the movement is
+       swapped for a flagged joint AND the screen names what is being held. */
+    t.eq('a shoulder-flagged athlete holds the substitute', ht.swapped.exId, 'birddog');
+    t.ok('and the screen names it', ht.swapped.named, ht.swapped);
+    /* The floor: an unflagged athlete gets the real movement. A build that
+       substituted everybody passes every assertion above. */
+    t.eq('an unflagged athlete holds the real one', ht.unswapped, 'deadhang');
+    t.eq('a hold that never started writes nothing', ht.zeroWrote, 0);
+    t.eq('and reports that it recorded nothing', ht.zeroReturn, null);
+    t.ok('and with nothing tested the empty state explains itself', ht.emptyExplains, ht.empty.slice(0, 120));
+
+    // the repair
+    t.eq('junk rows are dropped', ht.repaired.length, 2);
+    if (ht.repaired.length !== 2) {
+      t.fail('the repair did not leave two rows to check', JSON.stringify(ht.repaired));
+    } else {
+      /* The string 'false' is TRUTHY. A backup serialising the flag that way
+         would turn a fatigued hold into a fresh one and set a best that was
+         never set — medCleared()'s defect, two fields over. */
+      t.eq("the string 'false' does not read as fresh", ht.repaired[0].fresh, false);
+      t.eq('a string duration becomes a number', ht.repaired[1].secs, 75);
+      t.eq('and the real row keeps its id', ht.repaired[1].id, 'wallsit');
+    }
+    t.eq('a wrecked container becomes an empty list', ht.wrecked, []);
+    t.ok('and the log travels in a backup', ht.inBackup, ht);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

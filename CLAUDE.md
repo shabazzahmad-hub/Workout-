@@ -6436,6 +6436,80 @@ immediately before the first dereference, and let the named checks report.
 
 Seventeen mutants, all caught after those rewrites.
 
+## The only standalone max effort was capped at three minutes (v361)
+
+"A hold-to-failure test and tracker." Measured before building it: the baseline
+battery measures **four** to-failure holds — and taking one means taking a
+**ten**-test battery whose numbers anchor every prescription for a year.
+Outside it, `gripmax` was the app's only standalone max effort: **one movement
+(dead hang), and `w:3, r:0, n:1` — a three-minute COUNTDOWN**, so it cannot
+record anything past 3:00.
+
+So there was no way to ask *how long can I hold this today* and watch the
+answer move. `HOLD_TESTS` is five holds — plank, dead hang, wall sit, side
+plank, hollow — on a clock that counts UP with no cap.
+
+### It does not touch the baseline or the prescription, and that is the design
+
+`TEST_PROTOCOL` exists because a number taken under different conditions is not
+the same measurement: the battery is taken rested, in a fixed order, with two
+minutes between efforts. **A plank done on an ordinary Tuesday is a real number
+and is not that one.** So `holdLog` is its own record with its own trend, and
+nothing on the prescription path reads it — pinned by a check that every max
+the program is built from is byte-identical before and after four holds, one of
+them 400 seconds.
+
+### Fresh and fatigued are kept apart, and the app reads the DATA
+
+A hold done fresh and a hold done after a session are not comparable, and the
+log already knows which this was — the athlete is never asked. `holdFreshNow()`
+is `!trainedToday()`.
+
+**Only a fresh hold sets the best, and only fresh holds enter the trend.** The
+discriminating case is a LONGER fatigued hold: a tracker taking the maximum of
+everything reports a personal best the athlete never set fresh, and then shows
+it falling for months. Measured: 400 seconds after training leaves the best at
+250 and the trend untouched.
+
+**But the fatigued effort is kept.** Throwing it away satisfies every "it does
+not set the best" assertion and discards work that was really done. And **why a
+number is not moving is worth saying** — a hold only ever tested after training
+has no best at all, and a blank with no explanation reads as broken.
+
+**One point is not a trend.** Reporting a direction from a single number is
+inventing one.
+
+### The hard part is named at THIS athlete's own point
+
+v359's `grindAtOpen()` rule is hoisted into `grindAtBest(best)` so the tracker
+asks the same question of a different bar: two thirds of their own best on that
+hold. A 150-second best names it at 100, a 60-second best at 40 — **a property
+a constant cannot express**, which is exactly what the check requires by
+driving both and demanding that second 40 is silent for the 150-second athlete.
+
+### Five escaped mutants, and every one is an entry already in this file
+
+- **The check re-implemented `htTick()`'s grind branch** instead of driving it,
+  so a constant substituted into the app was invisible. `htTick` is a closure
+  local driven by an interval, so the only way in is to park the clock one
+  second before the point and let ONE real tick cross it — suite 04's own
+  technique on the baseline timer. **Calling the helper is not driving the
+  route**, for the seventh time.
+- **The fatigued-only NOTE was untested**, because the ROW for the same hold
+  also says *after training* and a page-wide search was satisfied by the row.
+  **Scope the assertion to where the change was made.**
+- **`safeSwap()` was not exercised at all**, with the floor beside it: an
+  unflagged athlete must still hold the real movement, or a build that
+  substituted everybody passes.
+- **A zero-second hold**, and **the 200-row cap**, had nothing pointed at them.
+
+**And two mutants were caught by a THROW rather than by name** — the assertions
+after them dereference a row the mutant removed. Guard immediately before the
+first dereference. A third broke the parse outright: removing an `if` line left
+its `else` orphaned, which tests nothing. **Read the mutant back.**
+
+Twenty-three mutants, all caught after those rewrites.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
