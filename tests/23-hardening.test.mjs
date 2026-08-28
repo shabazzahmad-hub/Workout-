@@ -3803,6 +3803,96 @@ export default async function () {
     t.ok('and they can still log a result', mid.locked.canLog, mid.locked);
   }
 
+
+  /* v370 — THE MIDPOINT PROMPT RAN THROUGH THE TAPER, AND CLAIMED A HALFWAY
+     THAT HAD LONG PASSED. `PREP_PHASE_NOTE.taper` says in as many words "you
+     cannot gain fitness now — you can only arrive tired, so do not", and this
+     prompt asked for FOUR MAXIMAL EFFORTS UNDER LOAD right through it, up to
+     the day before the evaluation. Two sentences the app owns, on one block,
+     in flat contradiction.
+
+     And its opening line — "You are halfway to your test date" — was false
+     everywhere but the first day of the window: it said so three weeks out on
+     a twelve-week block. */
+  {
+    const prep = await page.evaluate(() => {
+      const D = n => localISO(new Date(Date.now() + 864e5 * n));
+      const at = (from, to) => {
+        STATE.prep = { planFrom: D(from), date: D(to), path: 'operator', results: {} };
+        openForcePrep();
+        const sh = document.getElementById('sheet');
+        const txt = sh.innerText;
+        const o = { phase: prepPhase(), weeksLeft: prepWeeksLeft(),
+          due: prepMidDue(), open: prepMidWindowOpen(), missed: prepMidMissed(),
+          asksForIt: /Re-run the four tasks|Log the times if your unit/.test(txt),
+          claimsHalfway: /You are halfway to your test date/.test(txt),
+          missedNote: !!sh.querySelector('[data-midmissed]'),
+          saysDoNot: /Do not run an assessment to catch it up/.test(txt),
+          canLog: [...sh.querySelectorAll('button')].some(b => /Log a result/.test(b.innerText)),
+          render: txt.length > 200 };
+        closeSheet();
+        return o;
+      };
+      const o = { mid: at(-80, 70), sharpen: at(-59, 21), taperIn: at(-66, 14),
+                  taperEnd: at(-79, 1), taperWeeks: PREP_TAPER_WEEKS,
+                  sharpenWeeks: PREP_SHARPEN_WEEKS };
+      /* A midpoint that WAS recorded must not draw the missed note. */
+      STATE.prep = { planFrom: D(-79), date: D(1), path: 'operator', results: {},
+        checks: { mid: { date: D(-30), results: { shuttle: 210 } } } };
+      o.recorded = { missed: prepMidMissed(), due: prepMidDue() };
+      openForcePrep();
+      const sh = document.getElementById('sheet');
+      o.recorded.note = !!sh.querySelector('[data-midmissed]');
+      /* textContent, not innerText: `.section-label` is uppercased in CSS and
+         innerText returns the RENDERED text, so /Midpoint/ failed on a screen
+         that was perfectly correct — the v296 trap, verbatim. */
+      o.recorded.showsRecord = /Midpoint assessment/.test(sh.textContent);
+      closeSheet();
+      return o;
+    });
+
+    t.eq('guard: the four points really span the phases the block defines',
+      [prep.mid.phase, prep.sharpen.phase, prep.taperIn.phase, prep.taperEnd.phase],
+      ['build', 'sharpen', 'taper', 'taper'],
+      { phases: [prep.mid.phase, prep.sharpen.phase, prep.taperIn.phase, prep.taperEnd.phase],
+        weeks: [prep.mid.weeksLeft, prep.sharpen.weeksLeft, prep.taperIn.weeksLeft, prep.taperEnd.weeksLeft],
+        sharpenWeeks: prep.sharpenWeeks, taperWeeks: prep.taperWeeks });
+
+    /* THE WINDOW: open before the taper, closed inside it. */
+    t.ok('the midpoint window is open in the build phase', prep.mid.open, prep.mid);
+    t.ok('and still open in the sharpen phase', prep.sharpen.open, prep.sharpen);
+    t.ok('it closes when the taper starts', !prep.taperIn.open, prep.taperIn);
+    t.ok('and stays closed the day before the test', !prep.taperEnd.open, prep.taperEnd);
+
+    /* THE CONTRADICTION: no maximal assessment is asked for in the taper. */
+    t.ok('the taper is not asked for four maximal efforts', !prep.taperIn.asksForIt, prep.taperIn);
+    t.ok('nor is the day before the evaluation', !prep.taperEnd.asksForIt, prep.taperEnd);
+    /* THE FLOOR: it is still asked for where it belongs. */
+    t.ok('the build phase is still asked for it', prep.mid.asksForIt, prep.mid);
+    t.ok('and so is the sharpen phase', prep.sharpen.asksForIt, prep.sharpen);
+
+    /* A FALSE SENTENCE IS A DEFECT EVEN WHEN THE ADVICE IS RIGHT. */
+    t.ok('the prompt no longer claims you are halfway three weeks out',
+      !prep.sharpen.claimsHalfway, prep.sharpen);
+    t.ok('nor anywhere else', !prep.mid.claimsHalfway, prep.mid);
+
+    /* A WINDOW THAT CLOSED WITH NOTHING IN IT SAYS SO. Silence would read as
+       the earlier prompt having been a glitch. */
+    t.ok('the taper explains the window has closed', prep.taperIn.missedNote, prep.taperIn);
+    t.ok('and says not to catch it up', prep.taperIn.saysDoNot, prep.taperIn);
+    t.ok('logging the evaluation itself is still offered', prep.taperIn.canLog, prep.taperIn);
+
+    /* THE OTHER FLOOR: an athlete who DID record a midpoint gets no such note,
+       and their record still renders. A note that always fires is a note
+       nobody reads. */
+    t.ok('an athlete who recorded a midpoint sees no missed note', !prep.recorded.note, prep.recorded);
+    t.ok('and nothing is due for them', !prep.recorded.due, prep.recorded);
+    t.ok('their record still shows', prep.recorded.showsRecord, prep.recorded);
+
+    /* The copy quotes the taper length from the app's own constant. */
+    t.eq('guard: the taper is the length the block model says', prep.taperWeeks, 2);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
