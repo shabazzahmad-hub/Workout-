@@ -2307,7 +2307,12 @@ export default async function () {
          technique suite 04 uses on the baseline timer. Re-implementing the
          branch here would pass with the branch deleted from the app. */
       const driveHold = async (id, best, at) => {
-        STATE.holdLog = best ? [{ date: todayISO(), id: id, secs: best, fresh: true, at: 1 }] : [];
+        /* The prior has to say WHICH MOVEMENT it was held on, or v367's
+           same-movement rule correctly refuses to treat it as this athlete's
+           bar — the record was incomplete, not the rule. Same shape as v321's
+           like-for-like prior needing `subs:{}`. */
+        STATE.holdLog = best ? [{ date: todayISO(), id: id, secs: best, fresh: true, at: 1,
+                                  exId: holdMovement(holdTest(id)) }] : [];
         STATE.logs = {};
         const said = []; const real = window.coachSpeak;
         window.coachSpeak = x => said.push(String(x));
@@ -3267,6 +3272,227 @@ export default async function () {
     t.eq('with all five rows tappable', kit['owns a bar'].tappable.length, 5, kit['owns a bar']);
     t.ok('and nothing is listed as missing kit',
       !kit['owns a bar'].needsKit.length && !kit['owns a bar'].note, kit['owns a bar']);
+  }
+
+
+  /* ===================================================================
+     v367 — A CHANGE OF RULER IS NOT A CHANGE OF STRENGTH, in the hold
+     tracker this time. safeSwap() protects a flagged joint here exactly as it
+     does in the baseline battery (v320), and the number coming back then
+     measures a DIFFERENT movement — shoulder turns the Dead Hang into a Bird
+     Dog, knee turns the Wall Sit into a Glute Bridge. The record carried only
+     the test id, so the two mixed.
+
+     Measured end to end before the fix: a Bird Dog held 5:00 while the
+     shoulder was flagged, then a real 45-second Dead Hang six weeks later,
+     and the row read "Dead Hang · Best 5:00 · last 45s · -255s on the one
+     before". */
+  {
+    /* Driven through the REAL route both times — stopHoldTest() is what an
+       athlete's last tap reaches, and calling logHold() directly is what let
+       v320's own writer bug survive four checks. */
+    const driveTwo = `(lims) => {
+      STATE.profile.limitations = lims; STATE.holdLog = []; STATE.logs = {}; save();
+      const hold = secs => { startHoldTest('hang'); if (!_ht) return false;
+        _ht.mode = 'run'; _ht.elapsed = secs; stopHoldTest(); closeSheet(); return true; };
+      if (!hold(60)) return null;
+      STATE.holdLog[0].at = 1;
+      STATE.holdLog[0].date = localISO(new Date(Date.now() - 864e5 * 30));
+      hold(75);
+      PROGRESS_TAB = 'strength'; go('progress'); render();
+      const kv = document.querySelector('[data-holdrow="hang"]');
+      return { records: STATE.holdLog.map(r => ({ exId: r.exId, secs: r.secs })),
+               best: holdBest('hang'), trend: holdTrend('hang'),
+               other: holdIncomparable('hang'),
+               tracker: kv ? kv.innerText.replace(/\\n/g, ' ') : null };
+    }`;
+    const hold = await page.evaluate(([fn]) => {
+      const run = eval('(' + fn + ')');
+      const o = { clean: run([]), shoulder: run(['shoulder']), knee: null };
+      /* The knee swap, so the finding is proved on the CLASS rather than on
+         the one movement it was reported against. */
+      STATE.profile.limitations = ['knee'];
+      o.knee = { performs: safeSwap('wallsit'), floor: safeSwap('plank') };
+      /* THE REPORTED DEFECT: holds on the substitute, then the real movement. */
+      STATE.profile.limitations = ['shoulder']; STATE.holdLog = []; STATE.logs = {};
+      const sub = safeSwap('deadhang');
+      STATE.holdLog.push({ date: '2026-01-01', id: 'hang', secs: 300, fresh: true, at: 1, exId: sub });
+      STATE.profile.limitations = [];
+      STATE.holdLog.push({ date: '2026-02-12', id: 'hang', secs: 45, fresh: true, at: 2, exId: 'deadhang' });
+      o.mixed = { sub, best: holdBest('hang'), trend: holdTrend('hang'), other: holdIncomparable('hang') };
+      openHoldTests();
+      const sh = document.getElementById('sheet');
+      const row = sh.querySelector('[data-hold="hang"]');
+      o.mixed.rowText = row ? row.innerText.replace(/\n/g, ' ') : null;
+      o.mixed.saysWhy = !!sh.querySelector('[data-holdother="hang"]');
+      closeSheet();
+      /* A LEGACY ROW carries no movement at all. Unknown is not equal, so it
+         is kept as history and left out of the comparison. */
+      STATE.holdLog = [{ date: '2026-01-01', id: 'hang', secs: 300, fresh: true, at: 1 },
+                       { date: '2026-02-01', id: 'hang', secs: 280, fresh: true, at: 2 }];
+      o.legacy = { best: holdBest('hang'), trend: holdTrend('hang'),
+                   other: holdIncomparable('hang'), last: (holdLast('hang') || {}).secs };
+      /* The repair keeps a real movement and refuses junk. */
+      STATE.holdLog = [{ date: '2026-01-01', id: 'hang', secs: 60, fresh: true, at: 1, exId: 'deadhang' },
+                       { date: '2026-01-02', id: 'hang', secs: 61, fresh: true, at: 2, exId: 'not-a-move' },
+                       { date: '2026-01-03', id: 'hang', secs: 62, fresh: true, at: 3, exId: { x: 1 } }];
+      normalizeState();
+      o.repaired = STATE.holdLog.map(r => r.exId === undefined ? 'absent' : r.exId);
+      return o;
+    }, [driveTwo]);
+
+    /* Guard: the two substitutions this round is about really happen. */
+    t.eq('guard: a flagged shoulder really substitutes the dead hang',
+      hold.shoulder.records[0].exId, 'birddog', hold.shoulder);
+    t.eq('guard: and a flagged knee substitutes the wall sit',
+      hold.knee.performs, 'glutebridge', hold.knee);
+    t.ok('guard: the floor movements are not substituted at all',
+      hold.knee.floor === 'plank' && hold.clean.records[0].exId === 'deadhang', hold);
+
+    /* THE WRITER: the movement actually held is stamped, by the real route. */
+    t.eq('an unflagged athlete records the dead hang',
+      hold.clean.records.map(r => r.exId), ['deadhang', 'deadhang'], hold.clean);
+    t.eq('a flagged athlete records what they actually held',
+      hold.shoulder.records.map(r => r.exId), ['birddog', 'birddog'], hold.shoulder);
+
+    /* THE FLOORS. Both athletes still get a best and a real trend on their
+       own movement — a fix that withheld everything satisfies every
+       assertion about the mixed case and deletes the feature. */
+    t.eq('the unflagged athlete keeps their best', hold.clean.best, 75, hold.clean);
+    t.eq('and a real trend', hold.clean.trend && hold.clean.trend.delta, 15, hold.clean);
+    t.eq('the flagged athlete keeps a best on the substitute', hold.shoulder.best, 75, hold.shoulder);
+    t.eq('and a real trend of their own', hold.shoulder.trend && hold.shoulder.trend.delta, 15, hold.shoulder);
+    t.eq('neither has anything left uncompared',
+      [hold.clean.other, hold.shoulder.other], [0, 0], hold);
+
+    /* NAME THE MOVEMENT THE NUMBER WAS SET ON. */
+    t.ok('the tracker names the dead hang for the unflagged athlete',
+      /Dead Hang/.test(hold.clean.tracker || ''), hold.clean);
+    t.ok('and names the BIRD DOG for the flagged one',
+      /Bird Dog/.test(hold.shoulder.tracker || ''), hold.shoulder);
+    t.ok('never the movement they did not do',
+      !/Dead Hang/.test(hold.shoulder.tracker || ''), hold.shoulder);
+
+    /* THE REPORTED DEFECT, on the current head. */
+    t.eq('the bird-dog hold no longer sets the dead-hang best', hold.mixed.best, 45, hold.mixed);
+    t.eq('and no delta is drawn across the two movements', hold.mixed.trend, null, hold.mixed);
+    t.eq('the incomparable one is counted', hold.mixed.other, 1, hold.mixed);
+    t.ok('the row shows no false regression',
+      !/−255s|-255s/.test(hold.mixed.rowText || ''), hold.mixed);
+    /* A WITHHELD NUMBER NEEDS A SENTENCE. */
+    t.ok('and the row says why it is not compared', hold.mixed.saysWhy, hold.mixed);
+
+    /* UNKNOWN IS NOT EQUAL — and is still history. */
+    t.eq('a record written before the stamp sets no best', hold.legacy.best, 0, hold.legacy);
+    t.eq('and draws no trend', hold.legacy.trend, null, hold.legacy);
+    t.eq('but it is kept, not deleted', hold.legacy.last, 280, hold.legacy);
+    t.eq('and counted as uncomparable', hold.legacy.other, 2, hold.legacy);
+
+    /* MEMBERSHIP, not truthiness: exId reaches innerHTML through the row. */
+    t.eq('the repair keeps a real movement and refuses junk',
+      hold.repaired, ['deadhang', 'absent', 'absent'], hold.repaired);
+  }
+
+
+  /* v367 (same round) — A LOCKED BUTTON WITH NO SENTENCE IS A DEAD END, on
+     the two cards v366 did not reach. maxEffortBlocked() correctly refuses on
+     the tap, but the FORCE and FORCE Combat cards still showed a live
+     "Train the four tasks" and "Run the circuit" with no mention of the
+     health check — so the athlete tapped and landed on the clearance screen
+     with no idea what they had just done. One renderer now, for the reason
+     forceKitHTML() is one: three surfaces saying the same thing.
+
+     THE FLOOR is the cleared athlete, who must get every start button back
+     and no note at all — a note that always fires is a note nobody reads. */
+  {
+    const lock = {};
+    for (const [label, setup] of [
+      ['locked', () => { STATE.profile.parq = ['heart']; STATE.profile.parqDone = true; STATE.profile.medCleared = false; STATE.profile.gear = ['bar', 'bench', 'dip', 'sandbag']; }],
+      ['cleared', () => { STATE.profile.parq = []; STATE.profile.parqDone = true; STATE.profile.medCleared = false; STATE.profile.gear = ['bar', 'bench', 'dip', 'sandbag']; }],
+    ]) {
+      await seedAthlete(page, setup);
+      lock[label] = await page.evaluate(() => {
+        const read = fn => {
+          fn();
+          const sh = document.getElementById('sheet');
+          const btns = [...sh.querySelectorAll('button')].map(b => b.innerText.trim());
+          const o = { note: !!sh.querySelector('[data-maxlock]'),
+                      start: btns.some(b => /Train the four|Train what you have|Run the circuit/.test(b)),
+                      route: btns.some(b => /cleared by a doctor|Answer the health check/.test(b)),
+                      /* the rest of the card must survive — a note that ate
+                         the screen would satisfy every assertion below */
+                      logBtn: btns.some(b => /Log a result/.test(b)) };
+          closeSheet();
+          return o;
+        };
+        return { safe: safeMode(), force: read(() => openForcePrep()), combat: read(() => openCombat()),
+                 holds: read(() => openHoldTests()) };
+      });
+    }
+    t.eq('guard: one athlete is in safe mode and the other is not',
+      [lock.locked.safe, lock.cleared.safe], [true, false], lock);
+
+    ['force', 'combat', 'holds'].forEach(card => {
+      t.ok('the ' + card + ' card says why it is locked', lock.locked[card].note, lock.locked[card]);
+      t.ok('and offers the screen that unlocks it', lock.locked[card].route, lock.locked[card]);
+      t.ok('with no live start button on it', !lock.locked[card].start, lock.locked[card]);
+      /* THE FLOOR. */
+      t.ok('a cleared athlete gets the ' + card + ' card with no note', !lock.cleared[card].note, lock.cleared[card]);
+    });
+    t.ok('a cleared athlete can start the FORCE tasks', lock.cleared.force.start, lock.cleared.force);
+    t.ok('and the FORCE Combat circuit', lock.cleared.combat.start, lock.cleared.combat);
+    /* THE REST OF THE CARD SURVIVES: logging a past result is not a max
+       effort and is never taken away. */
+    t.ok('a locked athlete can still log a FORCE result', lock.locked.force.logBtn, lock.locked.force);
+    t.ok('and a FORCE Combat result', lock.locked.combat.logBtn, lock.locked.combat);
+
+    /* ONE renderer, not three copies of the sentence. */
+    const one = await page.evaluate(() => {
+      const src = [...document.querySelectorAll('script:not([src])')]
+        .map(x => x.textContent).sort((a, b) => b.length - a.length)[0];
+      return { hasApp: /function maxEffortBlocked/.test(src),
+               callers: (src.match(/maxLockNoteHTML\(/g) || []).length,
+               copies: (src.match(/stays locked until you have spoken to a doctor/g) || []).length };
+    });
+    /* THE RENDERER'S OWN CONTRACT, pinned directly. Every caller already
+       guards on safeMode(), so its internal guard is consulted in no branch a
+       screen can reach — v338's prepDatePassed() shape. A guard that cannot
+       be exercised through the UI still has to mean what it is named. */
+    const contract = await page.evaluate(() => {
+      const real = { p: STATE.profile.parq, d: STATE.profile.parqDone, m: STATE.profile.medCleared };
+      const at = (parq, done, cleared) => {
+        STATE.profile.parq = parq; STATE.profile.parqDone = done; STATE.profile.medCleared = cleared;
+        return maxLockNoteHTML('A test');
+      };
+      const o = { clean: at([], true, false), unscreened: at([], false, false),
+                  flagged: at(['heart'], true, false), cleared: at(['heart'], true, true) };
+      STATE.profile.parq = real.p; STATE.profile.parqDone = real.d; STATE.profile.medCleared = real.m;
+      return { clean: o.clean, unscreenedRoutes: /Answer the health check/.test(o.unscreened),
+               flaggedRoutes: /cleared by a doctor/.test(o.flagged), clearedIsEmpty: o.cleared === '' };
+    });
+    /* A THROW PUTS NO JUNK ON THE GLASS. The GATE is what fails closed (it
+       blocks); this note is cosmetic, so its own failure mode is silence —
+       the athlete still meets the gate on the tap. */
+    const threw = await page.evaluate(() => {
+      const real = window.parqDone;
+      let out = null;
+      try { parqDone = () => { throw new Error('boom'); }; out = maxLockNoteHTML('A test'); }
+      finally { parqDone = real; }
+      return { out, restored: typeof maxLockNoteHTML('A test') === 'string' };
+    });
+    t.eq('the locked note renders nothing when the health check throws', threw.out, '');
+    t.ok('guard: and still works once restored', threw.restored, threw);
+
+    t.eq('the renderer says nothing to an athlete who needs no gate', contract.clean, '');
+    t.ok('and nothing to one who has been cleared', contract.clearedIsEmpty, contract);
+    t.ok('an unscreened athlete is sent to the health check', contract.unscreenedRoutes, contract);
+    t.ok('a flagged one is sent to the clearance screen', contract.flaggedRoutes, contract);
+
+    t.ok('guard: the source scan really found the app', one.hasApp, one);
+    t.eq('the locked note has one definition and three call sites', one.callers, 4, one);
+    /* The battery's own screen keeps its longer wording; the three cards
+       share one. Two is the definition plus the battery, not a third copy. */
+    t.ok('and the sentence is not copied per card', one.copies <= 2, one);
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));

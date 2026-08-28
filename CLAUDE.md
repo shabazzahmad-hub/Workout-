@@ -6918,6 +6918,100 @@ exists exactly once.
 
 Fifteen mutants across the round, all caught.
 
+## A change of ruler, in the tracker written after that lesson (v367)
+
+v320 established it for the baseline battery and v321 for the prescription:
+**`safeSwap()` protects a flagged joint, and the number coming back then
+measures a DIFFERENT movement.** v361's hold tracker calls `safeSwap()` for
+exactly that reason — its own comment cites the battery — and then recorded
+only the test id. Two of the five holds are reachable and neither preserves
+the capacity the test exists to measure:
+
+| flagged | test | performs |
+|---|---|---|
+| shoulder | Dead Hang | **Bird Dog** |
+| knee | Wall Sit | **Glute Bridge** |
+
+Measured end to end. A shoulder-flagged athlete held a Bird Dog for **5:00**;
+six weeks later, cleared, they held a real **45-second Dead Hang** — a good
+dead hang — and the row read:
+
+> **Dead Hang · Best 5:00 · last 45s · −255s on the one before**
+
+A best they never set, on a movement they had not done, and a real result
+reported as a large regression. Nothing threw.
+
+**The record stamps the movement and both readers ask it.** `holdBest()` and
+`holdTrend()` compare like for like only; the record stays RAW and the
+COMPARISON is what is withheld — the same split `subs` uses on a baseline.
+
+**Which movement is "the same" is the one this test performs for THIS athlete
+today.** A flagged athlete's bar is their best Bird Dog; a cleared one's bar is
+their best Dead Hang. Both are honest, and mixing them is the defect. The
+tracker names the movement the number was set on rather than the test's
+nominal one — printing "Dead Hang" over a bird-dog best is the lie in one
+word.
+
+**Unknown is not equal.** Every record written before this carries no movement
+at all, so it is kept as history, shown, and left out of the comparison rather
+than guessed at the nominal movement — v320's call about a baseline with no
+`subs` stamp. **A withheld number needs a sentence**, so the row says how many
+earlier holds are on a different movement and that they are kept, not compared.
+
+**The floors are what stop the fix being a delete.** Both athletes must still
+get a best and a real trend on their own movement, driven through
+`stopHoldTest()` rather than by calling `logHold()` — the writer bug that
+survived four checks in v320. A `holdSameMovement()` that answers false for
+everything satisfies every assertion about the mixed case and deletes the
+feature; a repair that drops the incomparable rows satisfies them too and
+destroys real history. Both are caught.
+
+### Two existing checks failed on correct code, and the record was what was wrong
+
+`driveHold()` seeded a prior with no movement on it, so the same-movement rule
+correctly refused to treat it as this athlete's bar and the grind-line point
+never fired. **The record was incomplete, not the rule** — a like-for-like
+prior is one that says which movement it was held on, exactly as v321's prior
+needed `subs:{}`.
+
+**And a `\n` inside a template literal is a real newline**, so a
+`replace(/\n/g,' ')` written into a function-as-a-string broke the regex and
+the suite reported *"the test file itself threw"* rather than naming a check.
+Escape it as `\\n` when the helper is carried into the page as text.
+
+### And the two cards v366 did not reach
+
+Found by asking the same question of every screen the gate protects: v366 gave
+the hold sheet a locked note, and **the FORCE and FORCE Combat cards still
+showed a live "Train the four tasks" and "Run the circuit" with no mention of
+the health check.** `maxEffortBlocked()` correctly refuses on the tap, so the
+athlete tapped and landed on the clearance screen with no idea what they had
+just done. *A locked button with no sentence is a dead end*, one round after
+writing that down — and the gate has been on those two cards since v322.
+
+`maxLockNoteHTML()` is the one renderer, for the reason `forceKitHTML()` is
+one: three surfaces saying the same thing, and two of them said nothing.
+
+**The rest of each card survives.** Logging a past result is not a maximal
+effort and is never taken away — a note that ate the screen would satisfy
+every "it says why" assertion.
+
+**One escaped mutant was fixed by pinning the renderer's own contract**, and
+one is genuinely equivalent:
+
+- Every caller already guards on `safeMode()`, so the renderer's internal
+  guard is consulted in no branch a screen can reach — v338's
+  `prepDatePassed()` shape. It is pinned directly instead: silent for a clean
+  athlete and for a cleared one, routing to the health check when unscreened
+  and to clearance when flagged, and **silent when the check throws** — the
+  GATE is what fails closed, so the note's own failure mode is saying nothing.
+- `_ve(what)` cannot be caught. Every caller passes a literal, so no reachable
+  route feeds it user content; it is kept as cover for a future caller. Read
+  the mutant back before rewriting the check — the same call as v287's
+  `wantAnchor`.
+
+Seventeen mutants across the round, sixteen caught and one equivalent.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
