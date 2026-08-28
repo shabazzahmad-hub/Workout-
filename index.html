@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='352';
+const APP_VERSION='353';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -7217,7 +7217,9 @@ function startSpecialCardio(exId,format){
    THIS feature starts. */
 function openMakeupTimer(mode){
   const isBike=mode==='bike';
-  const isJacks=mode==='jacks';
+  /* Skipping is done in SETS with rests in them — the same shape jacks need,
+     and not the one continuous effort a ruck or a run is. */
+  const isJacks=mode==='jacks'||mode==='skip';
   const label=cardioInfo(mode).label;
   let body=`<h3>⏱️ ${label} timer</h3>
     <p class="muted sm" style="margin:2px 0 14px">However you make it up, the minutes feed straight into today's step target when you're done.</p>
@@ -13099,6 +13101,10 @@ function activityKind(raw){
   if(/\brun|jog|treadmill/.test(t))return 'run';
   if(/cycl|biking|\bbike|\bride|spin/.test(t))return 'bike';
   if(/jumping jack|\bjacks\b/.test(t))return 'jacks';
+  /* Skipping earned its own mode in v353, so a rope no longer lands in the
+     unplaceable bucket. Matched on the movement word like every other kind:
+     his own screen said "Jump Rope 34". */
+  if(/jump rope|jumprope|skipping|\bskip\b|\brope\b/.test(t))return 'skip';
   return null;
 }
 /* "25:44" and "1:05:20" are what the screen shows. Parsing them HERE rather
@@ -13165,7 +13171,7 @@ function paceBandFor(km,min){
    the unplaceable rows alongside, never instead. */
 function activityPlan(est){
   const out={run:{min:0,km:0},ruck:{min:0,km:0},bike:{min:0,km:0},jacks:{min:0,km:0},
-             steps:0,unplaced:[],read:0};
+             skip:{min:0,km:0},steps:0,unplaced:[],read:0};
   try{
     const rows=(est&&Array.isArray(est.activities))?est.activities:[];
     for(const r of rows){
@@ -13226,7 +13232,7 @@ function openActivityReview(){
     return `<div class="kv"><span><b>${label}</b></span><span class="muted">${
       v.km>0?show(v.km)+' '+u+' · ':''}${Math.round(v.min)} min</span></div>`;
   };
-  const placed=['run','ruck','bike','jacks'].map(k=>row(k,{run:'Run',ruck:'Ruck',bike:'Bike',jacks:'Jumping jacks'}[k])).join('');
+  const placed=CARDIO_MODES.map(k=>row(k,CARDIO_INFO[k].label)).join('');
   /* Named, never filed under the nearest mode and never silently dropped. He
      decides where it goes; the app says what it could not place. */
   const un=p.unplaced.length?`<div class="note info" style="margin-top:10px"><b>Could not place ${p.unplaced.length===1?'this':'these'}:</b>
@@ -13271,6 +13277,7 @@ function saveActivityRead(){
     put(p.ruck,setRuckUnit,setRuckVal);
     if(p.bike.min>0){setBikeVal(p.bike.min);wrote++;}
     if(p.jacks.min>0){setJackVal(p.jacks.min);wrote++;}
+    if(p.skip.min>0){setSkipUnit('min');setSkipVal(p.skip.min);wrote++;}
   }catch(e){}
   /* Says what it did, never a flat "Saved". v343: three savers on one screen
      claimed a write they had declined. */
@@ -14570,12 +14577,47 @@ function jackNeed(steps,k){
     kcal:Math.ceil(steps*kcalPerStep())};   // energy is energy, whatever the pace
 }
 const JACK_UNITS=[['min','Minutes'],['reps','Reps'],['kcal','Calories']];
+/* ===== SKIPPING — the fifth way to pay the step target =====
+   Asked for after a real session the app had nowhere to put: 35 minutes of
+   jump rope on the watch, and four cardio modes none of which was it.
+
+   CALIBRATED AGAINST HIS OWN WATCH, NOT A TEXTBOOK. Published tables put
+   continuous rope work at 11-12 METs, and a real session is not continuous —
+   it has trips, rests and rope changes in it. His measured 35:21 burned
+   405 kcal, which at 86 kg is 11.5 kcal/min and therefore about 7.6 NET METs.
+   So `steady` is set there and the others are reasoned around it. A number
+   taken from a table would have over-credited every session by nearly half,
+   and this one feeds the food budget.
+
+   Every level sits ABOVE its jumping-jack sibling (4.5 / 6.0 / 7.5), which is
+   the right relationship: a rope is harder than a jack at the same effort. */
+const SKIP_LEVELS=[
+  {k:'easy',label:'Easy',met:6.0,rpm:90,rpe:'RPE 4–5',
+   cue:'basic bounce, frequent trips and rests — where everybody starts'},
+  {k:'steady',label:'Steady',met:7.5,rpm:120,rpe:'RPE 6–7',
+   cue:'a working rhythm with short breaks — the default, and what a real session averages'},
+  {k:'hard',label:'Hard',met:10.0,rpm:150,rpe:'RPE 8–9',
+   cue:'continuous fast singles or double-unders — very few people hold this for long'},
+];
+const SKIP_UNITS=[['min','Minutes'],['reps','Skips'],['kcal','Calories']];
+function skipLevel(k){return SKIP_LEVELS.find(b=>b.k===k)||SKIP_LEVELS[1];}
+function skipStepsPerMin(k){return Math.round(skipLevel(k).met*35);}
+function skipKcalPerMin(k){return skipLevel(k).met*3.5*(latestWeightKg()||80)/200;}
+function skipRepsPerMin(k){return skipLevel(k).rpm;}
+function skipMinutesFor(steps,k){
+  const per=skipStepsPerMin(k);
+  return (per>0&&steps>0)?Math.ceil(steps/per):0;
+}
+function skipNeed(steps,k){
+  const min=skipMinutesFor(steps,k);
+  return {min,reps:Math.round(min*skipRepsPerMin(k)),kcal:Math.round(min*skipKcalPerMin(k))};
+}
 function jackUnitLabel(u){return u==='min'?'min':(u==='reps'?'reps':'kcal');}
 /* Which currency the Movement card is working in. Jacks by default: they need
    nothing, they travel, and the bike is a thing you have to be at home to use. */
 /* MEMBERSHIP, not a chain of equality tests — the third mode is exactly where
    a `m==='bike'?'bike':'jacks'` shape starts silently swallowing new values. */
-const CARDIO_MODES=['jacks','bike','ruck','run'];
+const CARDIO_MODES=['jacks','bike','ruck','run','skip'];
 /* The quiz's own three answers. Kept as a list so the repair and the picker
    cannot drift apart — the mistake CARDIO_MODES' repair made for a version. */
 const CONDITIONING_LEVELS=['low','moderate','high'];
@@ -14678,10 +14720,14 @@ function movement(){
   const nlvl=RUN_PACES.some(p=>p.k===t.runLvl)?t.runLvl
     :(((STATE.profile&&STATE.profile.runPace)&&RUN_PACES.some(p=>p.k===STATE.profile.runPace))?STATE.profile.runPace:'steady');
   const nunit=RUN_UNITS.some(u=>u[0]===t.runUnit)?t.runUnit:'min';
+  const slvl=SKIP_LEVELS.some(b=>b.k===t.skipLvl)?t.skipLvl
+    :(((STATE.profile&&STATE.profile.skipLevel)&&SKIP_LEVELS.some(b=>b.k===STATE.profile.skipLevel))?STATE.profile.skipLevel:'steady');
+  const sunit=SKIP_UNITS.some(u=>u[0]===t.skipUnit)?t.skipUnit:'min';
   return {steps:Math.round(num(t.steps,100000)),val:num(t.bikeVal,100000),unit,lvl,
     jval:num(t.jackVal,100000),junit,jlvl,
     rval:num(t.ruckVal,100000),runit,rlvl,
-    nval:num(t.runVal,100000),nunit,nlvl};
+    nval:num(t.runVal,100000),nunit,nlvl,
+    sval:num(t.skipVal,100000),sunit,slvl};
 }
 /* The jack session in every currency at once, same shape as bikeRide(). */
 function jackMinutes(){
@@ -14697,6 +14743,46 @@ function jackWork(){
     reps:Math.round(min*jackRepsPerMin(m.jlvl)),
     kcal:Math.round(min*jackKcalPerMin(m.jlvl)),
     steps:Math.round(min*jackStepsPerMin(m.jlvl))};
+}
+function skipMinutes(){
+  const m=movement();
+  if(!m.sval)return 0;
+  if(m.sunit==='min')return Math.min(300,m.sval);
+  if(m.sunit==='reps')return Math.min(300,m.sval/skipRepsPerMin(m.slvl));
+  return Math.min(300,m.sval/skipKcalPerMin(m.slvl));
+}
+function skipWork(){
+  const m=movement(),min=skipMinutes();
+  return {min:Math.round(min),
+    reps:Math.round(min*skipRepsPerMin(m.slvl)),
+    kcal:Math.round(min*skipKcalPerMin(m.slvl)),
+    steps:Math.round(min*skipStepsPerMin(m.slvl))};
+}
+function setSkipVal(v){
+  const t=nutToday();const m=movement();
+  const n=Math.max(0,+v||0);
+  const cap=m.sunit==='min'?300:(m.sunit==='reps'?20000:3000);
+  t.skipVal=Math.min(cap,Math.round(n*100)/100);
+  syncStepHabit();save();repaintMovement();
+}
+function addSkipVal(d){setSkipVal((movement().sval||0)+d);}
+function setSkipUnit(u){
+  if(!SKIP_UNITS.some(x=>x[0]===u))return;
+  const t=nutToday();const m=movement();const min=skipMinutes();
+  t.skipUnit=u;
+  if(min>0){
+    t.skipVal=u==='min'?Math.round(min)
+      :(u==='reps'?Math.round(min*skipRepsPerMin(m.slvl))
+                  :Math.round(min*skipKcalPerMin(m.slvl)));
+  }
+  syncStepHabit();save();repaintMovement();
+}
+function setSkipLvl(k){
+  if(!SKIP_LEVELS.some(b=>b.k===k))return;
+  const t=nutToday();t.skipLvl=k;
+  if(!STATE.profile)STATE.profile={};
+  STATE.profile.skipLevel=k;
+  syncStepHabit();save();repaintMovement();haptic(8);
 }
 function setJackVal(v){
   const t=nutToday();const m=movement();
@@ -14780,7 +14866,12 @@ function runWork(){
 }
 /* Every way of paying the target counts, and they add. An athlete who walked,
    rode, rucked and ran in one day earned all four. */
-function stepEquivalent(){return movement().steps+bikeRide().steps+jackWork().steps+ruckWork().steps+runWork().steps;}
+/* Reads CARDIO_MODES rather than naming each mode, so a sixth cannot be added
+   without being counted — this line was the hand-written list that left the
+   ruck and the run out of the weekly bar for two versions. */
+function stepEquivalent(){
+  return movement().steps+CARDIO_MODES.reduce((a,k)=>a+(cardioInfo(k).work().steps||0),0);
+}
 /* recalcKcalFromStored() prices activity ONCE, from a fixed onboarding answer
    (sitting / lightly active / moderately active / ...), and never looks at it
    again. A day that clears the step target by 8,000 and a day that clears it
@@ -15022,6 +15113,8 @@ function rateBikeAndClose(feel){
 function _dv(v){return (typeof v==='number'&&isFinite(v)&&v>0)?v:0;}
 const CARDIO_INFO={
   jacks:{label:'🤸 Jumping jacks',short:'jumping jacks',did:'of jumping jacks',verb:'jumping',
+    valKey:'jackVal',lvlKey:'jackLvl',unitKey:'jackUnit',levels:()=>JACK_LEVELS,units:()=>JACK_UNITS,
+    note:'Nothing to set up and nothing to carry — a hotel room or a friend&#39;s spare floor is enough.',
     unit:()=>movement().junit,setUnit:setJackUnit,add:addJackVal,
     work:()=>jackWork(),
     dayMin:d=>{const v=_dv(d&&d.jackVal);if(!v)return 0;
@@ -15033,6 +15126,8 @@ const CARDIO_INFO={
     advice:short=>{const m=movement(),n=jackNeed(short,m.jlvl);
       return `${_ve(jackLevel(m.jlvl).label)} jumping jacks, that is <b>${n.min} min</b>, <b>${n.reps.toLocaleString()} reps</b>, or <b>${n.kcal} kcal</b>. No kit, no wall, anywhere you can stand.`;}},
   bike: {label:'🚴 Bike',        short:'the bike',did:'on the bike',verb:'riding',
+    valKey:'bikeVal',lvlKey:'bikeLvl',unitKey:'bikeUnit',levels:()=>BIKE_LEVELS,units:()=>BIKE_UNITS,
+    note:'Lowest-impact option, and the easiest to hold a steady effort on. Needs the trainer.',
     unit:()=>movement().unit, setUnit:setBikeUnit,add:addBikeVal,
     work:()=>bikeRide(),
     dayMin:d=>{const v=_dv(d&&d.bikeVal);if(!v)return 0;
@@ -15044,6 +15139,8 @@ const CARDIO_INFO={
     advice:short=>{const m=movement(),n=bikeNeed(short,m.lvl);
       return `${_ve(bikeLevel(m.lvl).label)} on the trainer, that is <b>${n.min} min</b>, <b>${n.dist} ${distUnit()}</b>, or <b>${n.kcal} kcal</b> — whichever your bike shows you.`;}},
   ruck: {label:'🎒 Ruck',        short:'the ruck',did:'under the ruck',verb:'rucking',
+    valKey:'ruckVal',lvlKey:'ruckLvl',unitKey:'ruckUnit',levels:()=>RUCK_PACES,units:()=>RUCK_UNITS,
+    note:'Walking under load. Outdoors, no impact to speak of, and the only one here that also loads your legs and spine while it does the cardio.',
     unit:()=>movement().runit,setUnit:setRuckUnit,add:addRuckVal,
     work:()=>ruckWork(),
     dayMin:d=>{const v=_dv(d&&d.ruckVal);if(!v)return 0;
@@ -15055,6 +15152,8 @@ const CARDIO_INFO={
     advice:short=>{const m=movement(),n=ruckNeed(short,m.rlvl);
       return `${_ve(ruckPace(m.rlvl).label)} under <b>${ruckLoadLb()} lb</b>, that is <b>${n.min} min</b>, <b>${n.dist} ${distUnit()}</b>, or <b>${n.kcal} kcal</b>. Outdoors, and it loads your legs while it pays the target.`;}},
   run:  {label:'🏃 Run',         short:'the run',did:'of running',verb:'running',
+    valKey:'runVal',lvlKey:'runLvl',unitKey:'runUnit',levels:()=>RUN_PACES,units:()=>RUN_UNITS,
+    note:'The aerobic base every military fitness standard is built on. Treadmill or road — the app only needs the effort and how long you were out.',
     unit:()=>movement().nunit,setUnit:setRunUnit, add:addRunVal,
     work:()=>runWork(),
     dayMin:d=>{const v=_dv(d&&d.runVal);if(!v)return 0;
@@ -15065,6 +15164,19 @@ const CARDIO_INFO={
       return CARDIO_INFO.run.dayMin(d)*runKcalPerMin(l);},
     advice:short=>{const m=movement(),n=runNeed(short,m.nlvl);
       return `${_ve(runPace(m.nlvl).label)} running, that is <b>${n.min} min</b>, <b>${n.dist} ${distUnit()}</b>, or <b>${n.kcal} kcal</b>. Treadmill or road — the effort is what counts, not the ground.`;}},
+  skip: {label:'🪢 Skipping',    short:'the rope',did:'of skipping',verb:'skipping',
+    valKey:'skipVal',lvlKey:'skipLvl',unitKey:'skipUnit',levels:()=>SKIP_LEVELS,units:()=>SKIP_UNITS,
+    note:'Hardest calorie burn per minute here, and it packs into a pocket. High impact, so it asks more of the knees and calves than jacks do.',
+    unit:()=>movement().sunit,setUnit:setSkipUnit,add:addSkipVal,
+    work:()=>skipWork(),
+    dayMin:d=>{const v=_dv(d&&d.skipVal);if(!v)return 0;
+      const l=SKIP_LEVELS.some(b=>b.k===(d&&d.skipLvl))?d.skipLvl:'steady';
+      const u=SKIP_UNITS.some(x=>x[0]===(d&&d.skipUnit))?d.skipUnit:'min';
+      return Math.min(600,u==='min'?v:(u==='reps'?v/skipRepsPerMin(l):v/skipKcalPerMin(l)));},
+    dayKcal:d=>{const l=SKIP_LEVELS.some(b=>b.k===(d&&d.skipLvl))?d.skipLvl:'steady';
+      return CARDIO_INFO.skip.dayMin(d)*skipKcalPerMin(l);},
+    advice:short=>{const m=movement(),n=skipNeed(short,m.slvl);
+      return `${_ve(skipLevel(m.slvl).label)} on the rope, that is <b>${n.min} min</b>, <b>${n.reps.toLocaleString()} skips</b>, or <b>${n.kcal} kcal</b>. A rope and a flat patch of floor — the highest calorie burn per minute of any mode here.`;}},
 };
 function cardioInfo(mode){return CARDIO_INFO[CARDIO_MODES.includes(mode)?mode:'jacks'];}
 /* Every mode that carried some of today, in CARDIO_MODES order. The one place
@@ -15317,18 +15429,13 @@ function movementHTML(){
   /* Jacks lead because they are the ones that travel. The bike is right here
      next to them for the days he is at home and would rather ride. */
   h+=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Make it up with</div>
-    <div class="daypick" style="margin:0 0 4px">
-      <button class="${mode==='jacks'?'on':''}" onclick="setCardioMode('jacks')">🤸 Jumping jacks</button>
-      <button class="${mode==='bike'?'on':''}" onclick="setCardioMode('bike')">🚴 Bike</button>
-      <button class="${mode==='ruck'?'on':''}" onclick="setCardioMode('ruck')">🎒 Ruck</button>
-      <button class="${mode==='run'?'on':''}" onclick="setCardioMode('run')">🏃 Run</button></div>
-    <div class="tiny muted" style="margin-bottom:12px">${mode==='jacks'
-      ? 'Nothing to set up and nothing to carry — a hotel room or a friend&#39;s spare floor is enough.'
-      : mode==='bike'
-      ? 'Lowest-impact option, and the easiest to hold a steady effort on. Needs the trainer.'
-      : mode==='ruck'
-      ? 'Walking under load. Outdoors, no impact to speak of, and the only one here that also loads your legs and spine while it does the cardio.'
-      : 'The aerobic base every military fitness standard is built on. Treadmill or road — the app only needs the effort and how long you were out.'}</div>`;
+    /* Both the buttons and the one-line pitch are rendered from CARDIO_MODES.
+       They were two hand-written lists — a picker of four and a four-branch
+       ternary — and a fifth mode is precisely when that drifts: the buttons
+       would have gained skipping while the note silently described running. */
+    <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${CARDIO_MODES.map(k=>
+      `<button class="${mode===k?'on':''}" onclick="setCardioMode('${k}')">${CARDIO_INFO[k].label}</button>`).join('')}</div>
+    <div class="tiny muted" style="margin-bottom:12px">${cardioInfo(mode).note||''}</div>`;
   /* Anything logged under a mode that is NOT the one on screen, so switching
      modes never hides work already done. This was two hardcoded pairs —
      jacks-while-on-bike and bike-while-on-jacks — and said nothing about the
@@ -15341,6 +15448,7 @@ function movementHTML(){
   h+= mode==='bike' ? bikeBlockHTML(m,short,need,lvl,ride,shownVal)
     : mode==='run' ? runBlockHTML(m,short)
     : mode==='ruck' ? ruckBlockHTML(m,short)
+    : mode==='skip' ? skipBlockHTML(m,short)
                     : jackBlockHTML(m,short,jneed,jlvl,work);
   h+=`</div>`;
   return h;
@@ -15447,6 +15555,39 @@ function bikeBlockHTML(m,short,need,lvl,ride,shownVal){
   }
   h+=`<div class="note warn" style="margin-top:10px;margin-bottom:0"><b>On a trainer, trust the clock over the distance.</b> What a turbo puts on its screen depends on the trainer and where the resistance is set — the distance here is what that effort covers on the road. Time and calories are the honest inputs.</div>`;
   h+=`<div class="note warn" style="margin-bottom:0"><b>And the bike pays the calories, not everything else.</b> Walking loads the skeleton and breaks up sitting, which riding does not. Use the trainer for the days that got away from you, not as the plan.</div>`;
+  return h;
+}
+/* Same three-currency shape as the jacks block — skipping has no distance
+   either, so minutes / skips / calories are the honest currencies. */
+function skipBlockHTML(m,short){
+  const l=skipLevel(m.slvl),work=skipWork(),need=skipNeed(short,m.slvl);
+  const step=m.sunit==='min'?5:(m.sunit==='reps'?50:50);
+  let h=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">How hard you went</div>
+    <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${SKIP_LEVELS.map(b=>
+      `<button class="${m.slvl===b.k?'on':''}" onclick="setSkipLvl('${b.k}')">${b.label}</button>`).join('')}</div>
+    <div class="tiny muted" style="margin-bottom:12px">${_ve(l.rpe)} · ${_ve(l.cue)} · <b>${skipStepsPerMin(m.slvl)} steps</b>, <b>${skipRepsPerMin(m.slvl)} skips</b> and <b>${Math.round(skipKcalPerMin(m.slvl))} kcal</b> a minute</div>
+    <button class="btn t-teal" style="width:100%;margin-bottom:12px" onclick="openMakeupTimer('skip')">⏱️ Time it — guided timer, logs itself</button>
+    <div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log it as</div>
+    <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${SKIP_UNITS.map(([k,lb])=>
+      `<button class="${m.sunit===k?'on':''}" onclick="setSkipUnit('${k}')">${lb}</button>`).join('')}</div>
+    <div class="row" style="justify-content:space-between;align-items:flex-end;gap:10px">
+      <div class="field" style="flex:1;margin:0"><label>${_ve(m.sunit==='min'?'Minutes':(m.sunit==='reps'?'Skips':'Calories'))}</label>
+        <input id="mv-skip" type="number" inputmode="decimal" min="0" step="1" value="${m.sval||''}" placeholder="0" onchange="setSkipVal(this.value)"></div>
+      <div class="btnrow" style="flex:0 0 auto;gap:8px">
+        <button class="btn sm ghost" onclick="addSkipVal(-${step})" style="width:44px">–${step}</button>
+        <button class="btn sm primary" onclick="addSkipVal(${step})" style="width:44px">+${step}</button></div></div>`;
+  if(work.min){
+    h+=`<div class="kv" style="padding:10px 2px 0;border-top:1px solid var(--line);margin-top:10px">
+      <span class="tiny muted">That is</span>
+      <b class="tiny">${work.min} min · ${work.reps.toLocaleString()} skips · ${work.kcal} kcal · ${work.steps.toLocaleString()} steps</b></div>`;
+  }
+  if(short>0){
+    h+=`<button class="btn sm ghost" style="width:100%;margin-top:10px" onclick="addSkipVal(${m.sunit==='min'?need.min:(m.sunit==='reps'?need.reps:need.kcal)})">Log the ${m.sunit==='min'?need.min+' min':(m.sunit==='reps'?need.reps.toLocaleString()+' skips':need.kcal+' kcal')} that closes it</button>`;
+  }
+  /* The same honesty the bike and jacks blocks carry: this pays the calories,
+     it does not load the skeleton the way walking under load does. And it is
+     the one mode with a real impact cost, so that is said rather than implied. */
+  h+=`<div class="note warn" style="margin-top:10px;margin-bottom:0"><b>High impact — build into it.</b> A rope asks a lot of the calves and Achilles, more than jacks do. Short sets on a forgiving floor first, and stop for a niggle rather than through it.</div>`;
   return h;
 }
 /* The portable half. Same three-currency shape as the ride, and the same
@@ -19046,9 +19187,18 @@ function normalizeState(){
     const _d=(STATE.nutrition&&STATE.nutrition.days)||{};
     Object.keys(_d).forEach(k=>{
       const day=_d[k];if(!day||typeof day!=='object')return;
-      if(day.jackVal!=null&&(typeof day.jackVal!=='number'||!isFinite(day.jackVal)||day.jackVal<0))delete day.jackVal;
-      if(day.jackLvl!=null&&!JACK_LEVELS.some(b=>b.k===day.jackLvl))delete day.jackLvl;
-      if(day.jackUnit!=null&&!JACK_UNITS.some(u=>u[0]===day.jackUnit))delete day.jackUnit;
+      /* EVERY cardio mode, not just jacks. This repaired jackVal/jackLvl/
+         jackUnit and nothing else, so a hand-edited backup could put a string
+         in runVal or a junk level in ruckLvl and it would survive every boot
+         and travel in every backup after it. Driven from CARDIO_MODES so a
+         sixth mode cannot be added without its day fields being repaired. */
+      CARDIO_MODES.forEach(mk=>{
+        const c=CARDIO_INFO[mk];if(!c)return;
+        const vk=c.valKey,lk=c.lvlKey,uk=c.unitKey;
+        if(day[vk]!=null&&(typeof day[vk]!=='number'||!isFinite(day[vk])||day[vk]<0))delete day[vk];
+        if(day[lk]!=null&&!c.levels().some(b=>b.k===day[lk]))delete day[lk];
+        if(day[uk]!=null&&!c.units().some(u=>u[0]===day[uk]))delete day[uk];
+      });
     });
   }catch(e){}
   /* Pain reports drive a safety prompt, so a non-array here must not be able to
