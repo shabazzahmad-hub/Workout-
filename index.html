@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='362';
+const APP_VERSION='363';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2191,7 +2191,16 @@ const CARDIO_LADS=['cardioAL','cardioBL','cardioFinL','finisherL','legPowerL','h
 function goalSlots(session,pos){
   const slots=(session.slots||[]).slice();
   let goal='lose';try{goal=(STATE.profile&&STATE.profile.goal)||'lose';}catch(e){}
-  if(goal==='recomp'||goal==='maintain')return slots;
+  /* LEAN RECOMP KEEPS TONE UP'S SPLIT, and that is a measured decision
+     rather than an omission. The first build gave it Shred's cardio slot,
+     and driving the whole program showed why that is wrong: a cardio
+     ladder replaces a REP accessory with a TIMED movement, so the reps
+     fell to 12,053 — the LOWEST of any goal, below even Shred's 13,192 —
+     on the one goal whose entire purpose is keeping Tone up's 14,147.
+     Trading reps for conditioning minutes is exactly what was NOT asked
+     for. The fat comes off the deficit, the shorter rest and the higher
+     step target; the training stays Tone up's. */
+  if(goal==='recomp'||goal==='maintain'||goal==='leanrecomp')return slots;
   const day=(pos&&pos.dayInWeek)||0, cyc=(pos&&pos.cycle)||0;
   const pick=arr=>arr[(cyc*7+day)%arr.length];    // deterministic, rotates across the week
   /* Slot 0 is the day's primary movement — the press on Push Day, the squat on
@@ -2421,6 +2430,11 @@ function prescribe(exId,pos){
     if(!(typeof deloadOn==='function'&&deloadOn(pos)))sets=Math.min(sets+1,5);}
   else if(goal==='core'){gMul=isCore?(ex.unit==='time'?1.10:1.15):0.95;restMul=isCore?1:0.95;}
   else if(goal==='recomp'){gMul=1.05;}
+  /* TONE UP'S REP MULTIPLIER, NOT SHRED'S — that is the whole point of the
+     goal. What it takes from Shred is the DENSITY (rest between the two,
+     0.9 against Tone up's 1.0 and Shred's 0.8) and the cardio slot below,
+     because those are the levers that move fat rather than reps. */
+  else if(goal==='leanrecomp'){gMul=1.05;restMul=0.9;}
   target*=gMul;
   /* SAFE MODE — the health screen's promise, enforced. An athlete who flags a
      condition is told, in as many words, that they can still train and that
@@ -2479,7 +2493,31 @@ function prescribe(exId,pos){
    shred = a harder cut (steeper deficit, more protein, higher-rep metabolic work),
    core  = midsection-first (near-maintenance calories, strength reps, and the
    focus bonus is forced onto abs/obliques regardless of the target picker). */
-const GOALS=[['lose','🔥 Lose fat'],['shred','🔪 Shred'],['recomp','⚖️ Tone up'],['core','🎯 Strong core & abs'],['maintain','💪 Maintain'],['gain','📈 Build muscle']];
+const GOALS=[['lose','🔥 Lose fat'],['shred','🔪 Shred'],['recomp','⚖️ Tone up'],['leanrecomp','🪞 Lean recomp'],['core','🎯 Strong core & abs'],['maintain','💪 Maintain'],['gain','📈 Build muscle']];
+/* ---- LEAN RECOMP: Tone up's volume with a real deficit (v363) --------------
+   Asked for directly: "increase the rep sets like in Tone up but drop belly
+   fat like Shred." Measured across the whole 378-session program on an 86 kg
+   body before writing anything, and the measurement CORRECTED the premise —
+   Tone up already gives MORE reps than Shred, 14,147 against 13,192. What
+   Shred actually buys is not reps at all:
+
+     620 kcal/day less  ·  48% more hold time  ·  41s rest against 54s
+     ·  31% of slots cardio against 20%
+
+   And protein is already identical on the two (180 g), which is v299's work.
+
+   So the rep half was never the gap. The gap is that Tone up is DEFINED by the
+   scale holding (v298) — it eats at maintenance on purpose, and giving it a
+   deficit would contradict its own copy and break the three consumers
+   STABLE_GOALS drives. Meanwhile Shred at 1,950 sits exactly ON the safety
+   floor for this body, so there is a 620 kcal chasm between them with only
+   'core' at 2,440 inside it — and core drops protein to 155 g and cuts the
+   rep volume.
+
+   This goal is that gap: Tone up's rep multiplier and its 2.2 g/kg protein,
+   with a mild ~12% deficit and the cardio slot Shred gets. It is NOT weight
+   stable — the scale is meant to move down — so calorieCheck(), the weight
+   chart and the projection all correctly treat it as a cut. */
 /* MEMBERSHIP AT THE WRITE SITE. An audit drove junk into every set*() writer
    and then rendered every tab looking for the injected ELEMENT rather than the
    substring. Two of them put a live DOM node on the page: setNutGoal() on all
@@ -14850,7 +14888,7 @@ function transformationHTML(){
    to 10k is about 120 kcal a day — a quarter of a pound a week, which is weeks
    off a cut. The target scales with the goal because a maintenance athlete has
    no reason to chase the same number as someone shredding. */
-const STEP_TARGETS={shred:10000,lose:10000,recomp:8000,core:8000,maintain:7000,gain:7000};
+const STEP_TARGETS={shred:10000,lose:10000,leanrecomp:10000,recomp:8000,core:8000,maintain:7000,gain:7000};
 /* Conditioning volume as the timeline actually asks for it.
 
    A tight deadline needs more energy out, and cardio volume is the one
@@ -16209,7 +16247,7 @@ function latestWeightKg(){
    place rather than a condition to edit. The lean-mass cap below still
    applies on top — 2.2 x total mass overshoots badly at high body fat. */
 const PROT_PER_KG_BASE=1.8;
-const PROT_PER_KG={shred:2.2,recomp:2.2};
+const PROT_PER_KG={shred:2.2,recomp:2.2,leanrecomp:2.2};
 /* The ceiling underneath, in grams per kg of LEAN mass, and it is the number
    that actually decides the answer for most people — which is why it moves
    with the multiplier rather than staying put.
@@ -16228,7 +16266,7 @@ const PROT_PER_KG={shred:2.2,recomp:2.2};
    uncapped 189, and at 110 kg / 36% it allows 195 g against an uncapped 242,
    which is the overshoot it was written for. */
 const PROT_LEAN_CAP_BASE=2.4;
-const PROT_LEAN_CAP={shred:2.8,recomp:2.8};
+const PROT_LEAN_CAP={shred:2.8,recomp:2.8,leanrecomp:2.8};
 const PROT_MIN=40,PROT_MAX=400;
 /* The number a fresh install starts on. Seeded once by normalizeState() as an
    athlete choice, never as a DEFAULT_STATE field — see the seed for why. */
@@ -17808,6 +17846,10 @@ function renderFuel(){
          promised a 300-500 kcal deficit on a goal whose whole point is that
          the scale holds. A promise in UI text is a specification. */
       :n.goal==='recomp'?'Recomposition eats <b>at maintenance</b>, with protein pushed <b>as high as it usefully goes</b> — toward 2.2 g/kg, bounded by your lean mass. You are asking your body to add muscle without a surplus to build from, so protein is the lever that does it. The scale holds steady while the training moves what is under it, so judge this one by the mirror, the tape and your strength numbers, not the weight. Tap the calculator below.'
+      /* EVERY NUMBER IN THIS SENTENCE IS THE ONE THE CODE USES. ~12% is
+         GOAL_KCAL.leanrecomp.mult, 2.2 g/kg is PROT_PER_KG.leanrecomp, and the
+         rep multiplier really is Tone up's 1.05 rather than Shred's 1.25. */
+      :n.goal==='leanrecomp'?'Lean recomp is Tone up with a real deficit under it — <b>~12% below maintenance</b>, protein still at <b>~2.2 g/kg</b> bounded by your lean mass, and <b>the same session, rep for rep</b>. The fat comes off the deficit, the <b>shorter rest</b> between sets and a <b>10,000-step</b> target, not from trading your reps for cardio. The scale should drift down slowly — if it holds flat for a month you are on Tone up in all but name, and if it drops fast you have cut too hard. Tap the calculator below.'
       :'For fat loss, eat in a <b>~300–500 kcal/day deficit</b> — enough to lean out, slow enough to keep your strength. Tap the calculator below for your exact number.';
     h+=`<div class="note info" style="margin-top:12px">${tip}</div>`;}
   // intake logging (quick-add + photo AI)
@@ -17975,7 +18017,26 @@ function kcalTargetPreview(adjOverride){
   // shred runs a steeper cut than 'lose'; core sits just under maintenance so the
   // midsection work is fuelled while bodyfat still drifts down
   const shredDef=clamp(Math.round(tdee*0.27),450,700);
-  let t=n.goal==='gain'?tdee*1.1:(weightStableGoal(n.goal)?tdee:(n.goal==='core'?tdee*0.95:(n.goal==='shred'?tdee-shredDef:tdee-loseDef)));
+  /* A TABLE, NOT A NESTED TERNARY. This was
+     `gain?1.1 : stable?1 : core?0.95 : shred?-shredDef : -loseDef` — a
+     hand-written per-goal branch whose ELSE swallowed every goal it did not
+     name, which is exactly how the cardio-mode repair and the five diets came
+     apart when their sets grew. A seventh goal is when that bites, so the
+     legal set lives in one place and is asked rather than restated.
+     `mult` and `def` are alternatives: a goal names one or the other. */
+  const GOAL_KCAL={
+    gain:{mult:1.1},
+    core:{mult:0.95},
+    leanrecomp:{mult:0.88},   // ~12% under — a real cut, well clear of the floor
+    shred:{def:shredDef},
+    lose:{def:loseDef},
+  };
+  let t;
+  if(weightStableGoal(n.goal))t=tdee;
+  else{
+    const rule=Object.prototype.hasOwnProperty.call(GOAL_KCAL,n.goal)?GOAL_KCAL[n.goal]:GOAL_KCAL.lose;
+    t=rule.mult!==undefined?tdee*rule.mult:tdee-rule.def;
+  }
   /* The timeframe REPLACES the goal's stock deficit rather than adding to it,
      and it moves in both directions on purpose: a year means a gentler cut,
      not the same one with a longer chart. The goal still decides protein, the

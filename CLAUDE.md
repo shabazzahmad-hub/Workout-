@@ -6556,6 +6556,71 @@ intent, with no check able to catch its removal — the same call as v287's
 
 Six mutants, five caught and one equivalent.
 
+## The measurement corrected the request (v363)
+
+*"Is it possible to increase the exercise rep sets like in Tone up but drop
+belly fat like the Shred option?"*
+
+Measured across all 378 sessions on an 86 kg body before writing a line, and
+**the premise was backwards in the athlete's favour: Tone up already gives MORE
+reps than Shred** — 14,147 against 13,192. What Shred actually buys is not reps
+at all:
+
+| | reps | hold | rest | cardio slots | kcal | protein |
+|---|---|---|---|---|---|---|
+| Tone up | **14,147** | 464 min | 54s | 20% | 2,570 | 180 g |
+| Shred | 13,192 | **689 min** | **41s** | **31%** | **1,950** | 180 g |
+
+Protein was already identical (v299's work). So the rep half was never the gap.
+
+**The gap is that Tone up is DEFINED by the scale holding** (v298) — it eats at
+maintenance on purpose, and giving it a deficit would contradict its own copy
+and break the three consumers `STABLE_GOALS` drives. Meanwhile **Shred at 1,950
+sits exactly ON the safety floor** for this body, so it cannot go lower. Between
+them was a **620 kcal chasm** with only `core` at 2,440 inside it — and core
+drops protein to 155 g and cuts the rep volume.
+
+`leanrecomp` is that gap: Tone up's rep multiplier and its 2.2 g/kg protein, a
+~12% deficit, shorter rest and the 10,000-step target. Measured after:
+**14,147 reps — byte-identical to Tone up** — at 2,260 kcal with 48s rest.
+
+### The first build promised the rep volume and delivered the LOWEST in the app
+
+It was given Shred's cardio slot, on the reasoning that cardio is a fat-loss
+lever. Driving the whole program showed why that is wrong: **a cardio ladder
+replaces a REP accessory with a TIMED movement**, so the reps fell to
+**12,053 — below every other goal, Shred included** — on the one goal whose
+entire purpose is keeping Tone up's 14,147. Hold time rose 464 → 658 minutes.
+
+And the tip, written an hour earlier, said *"the same rep volume Tone up gives
+you"*. A promise in UI text with no code behind it, in code that had not
+shipped yet. The fix is that lean recomp keeps Tone up's split entirely: the
+fat comes off the deficit, the rest and the steps.
+
+**Reading the diff would not have found it.** The slot swap looks obviously
+right until you count what it costs.
+
+### The nested ternary became a table, because a seventh goal is when it bites
+
+`kcalTargetPreview()` had
+`gain?1.1 : stable?1 : core?0.95 : shred?-shredDef : -loseDef` — a hand-written
+per-goal branch whose ELSE swallowed every goal it did not name. That is the
+cardio-mode repair and the five diets exactly. `GOAL_KCAL` is now the one
+table, asked by membership so an **inherited** key cannot read as a rule, with
+the unknown case landing where the old else landed. The check that matters
+most is that **all six existing goals are byte-identical** afterwards: a table
+refactor is precisely the change that silently reprices a goal nobody was
+looking at.
+
+### The escaped mutant reverted one half of a two-part fix
+
+Removing `leanrecomp` from the early return alone made it match *no* branch,
+so nothing was swapped — an equivalent mutant, not an escape. The shipped
+defect had both halves, and seeded that way it is caught by four checks.
+**Read the mutant back**: a fix with two edits needs a mutant with two.
+
+Thirteen mutants, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
