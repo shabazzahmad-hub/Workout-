@@ -3893,6 +3893,119 @@ export default async function () {
     t.eq('guard: the taper is the length the block model says', prep.taperWeeks, 2);
   }
 
+
+  /* v371 — THE RUCK CARD CLAIMED TO BE BUILDING DISTANCE WHILE THE TAPER CUT
+     IT BY A THIRD. `climbing` is computed from the four-week cycle slot, which
+     knows nothing about the phase. Measured at two weeks out: the distance
+     went 10.7 km -> 7.1 km and the card read "What moves this week: The
+     distance. The load holds." The running card beside it, on the same block
+     and the same week, said correctly "volume comes down and nothing gets
+     sharper". Two cards on one screen disagreeing about the same week. */
+  {
+    const ruck = await page.evaluate(() => {
+      const D = n => localISO(new Date(Date.now() + 864e5 * n));
+      const text = html => { const d = document.createElement('div'); d.innerHTML = html; return d.textContent.replace(/\s+/g, ' '); };
+      const at = w => {
+        STATE.prep = { planFrom: D(-(20 - w) * 7), date: D(w * 7), path: 'operator', results: {} };
+        const u = ruckLadderWeek(), e = enduranceWeek();
+        return { left: u.left, phase: u.phase, km: u.km, lb: u.lb, down: u.down,
+                 climbing: u.climbing, runKm: e.km,
+                 card: text(ruckLadderHTML()), runCard: text(enduranceHTML ? enduranceHTML() : '') };
+      };
+      const o = {};
+      [6, 4, 3, 2, 1].forEach(w => { o['w' + w] = at(w); });
+      return o;
+    });
+
+    /* Guard: the taper really does cut both, or there is nothing to describe. */
+    t.ok('guard: the taper cuts the ruck distance',
+      ruck.w2.km < ruck.w3.km * 0.85, { taper: ruck.w2.km, before: ruck.w3.km });
+    t.ok('guard: and cuts the running too', ruck.w2.runKm < ruck.w4.runKm, ruck);
+    t.eq('guard: the weeks span sharpen into taper',
+      [ruck.w4.phase, ruck.w3.phase, ruck.w2.phase], ['sharpen', 'sharpen', 'taper'], ruck);
+
+    /* THE FINDING: no card claims to be building anything in the taper. */
+    t.ok('the taper card does not claim the distance is moving',
+      !/What moves this week: The distance/.test(ruck.w2.card), ruck.w2.card.slice(0, 200));
+    t.ok('nor that the load is', !/The load, by/.test(ruck.w2.card), ruck.w2.card.slice(0, 200));
+    t.ok('it says the volume comes down', /volume comes down/i.test(ruck.w2.card), ruck.w2.card.slice(0, 200));
+    t.eq('and the week reports it as the taper, not a build slot', ruck.w2.climbing, 'taper', ruck.w2);
+
+    /* THE TWO CARDS AGREE. The running card was already honest; the point is
+       that they now say the same thing about the same week. */
+    t.ok('the running card says volume comes down in the same week',
+      /volume comes down/i.test(ruck.w2.runCard), ruck.w2.runCard.slice(0, 200));
+
+    /* THE FLOORS. A build week must still name what it is building — a fix
+       that said "nothing is being built" everywhere satisfies every taper
+       assertion and deletes the plan's whole point. */
+    t.ok('a distance week still says the distance is moving',
+      /What moves this week: The distance/.test(ruck.w4.card), ruck.w4.card.slice(0, 200));
+    t.eq('and reports it as one', ruck.w4.climbing, 'distance', ruck.w4);
+    t.ok('a load week still says the load is moving',
+      /The load, by/.test(ruck.w3.card), ruck.w3.card.slice(0, 200));
+    t.eq('and reports it as one', ruck.w3.climbing, 'load', ruck.w3);
+    /* THE DOWN WEEK KEEPS ITS OWN ANSWER, in the taper as everywhere else:
+       "this is the down week" is accurate there too. */
+    t.ok('a down week inside the taper still names itself',
+      /this is the down week/i.test(ruck.w1.card), ruck.w1.card.slice(0, 200));
+    t.eq('and is not relabelled', ruck.w1.climbing, 'neither', ruck.w1);
+    t.ok('guard: that week really is a down week and in the taper',
+      ruck.w1.down === true && ruck.w1.phase === 'taper', ruck.w1);
+
+    /* NEVER BOTH still holds through the taper — the plan's oldest rule. */
+    t.ok('the load holds while the taper cuts the distance',
+      ruck.w2.lb === ruck.w3.lb, { taper: ruck.w2.lb, before: ruck.w3.lb });
+
+    /* THE PLATE ITSELF, not just the label. The two ladders are offset by one
+       slot (v340), so the operator's fourth load step landed at three weeks
+       out — sharpen, fine — and the ASSAULTER'S landed at TWO weeks out,
+       inside the taper: 30 lb -> 35 lb a fortnight before the evaluation, on
+       the path whose own note says "arrive fresh under load".
+
+       Every earlier check counted the STEPS and none asked WHEN, which is why
+       it survived — and the fairness check that finally went red did so
+       because the label moved, not because it was looking at the timing. */
+    const plate = await page.evaluate(() => {
+      const D = n => localISO(new Date(Date.now() + 864e5 * n));
+      const out = {};
+      Object.keys(PREP_PATHS).forEach(path => {
+        const rows = []; let prev = null;
+        for (let w = 16; w >= 1; w--) {
+          STATE.prep = { planFrom: D(-(20 - w) * 7), date: D(w * 7), path, results: {} };
+          const u = ruckLadderWeek();
+          rows.push({ left: u.left, phase: u.phase, lb: u.lb, km: u.km,
+                      up: prev !== null && u.lb > prev });
+          prev = u.lb;
+        }
+        out[path] = { final: rows[rows.length - 1].lb,
+                      steps: rows.filter(r => r.up).length,
+                      inTaper: rows.filter(r => r.up && r.phase === 'taper').length,
+                      taperWeeks: rows.filter(r => r.phase === 'taper').length,
+                      lastStepLeft: (rows.filter(r => r.up).pop() || {}).left };
+      });
+      return out;
+    });
+    const paths = Object.keys(plate);
+    t.ok('guard: both training paths were measured', paths.length >= 2, paths);
+    t.ok('guard: and each block really has a taper in it',
+      paths.every(p => plate[p].taperWeeks >= 2), plate);
+
+    /* THE FINDING. */
+    paths.forEach(p => {
+      t.eq('the ' + p + ' path never raises the plate in the taper', plate[p].inTaper, 0, plate[p]);
+      /* THE FLOOR: the step is not DROPPED. Dropping it leaves one path
+         lighter for the whole block, which is a bias in VOLUME — the one
+         thing v340 says the two paths may never differ in. */
+      t.eq('and still takes all four steps', plate[p].steps, 4, plate[p]);
+    });
+    t.ok('both paths finish the block on the same plate',
+      plate[paths[0]].final === plate[paths[1]].final,
+      { a: plate[paths[0]].final, b: plate[paths[1]].final });
+    t.ok('and the last step lands before the taper on both',
+      paths.every(p => plate[p].lastStepLeft > 2), plate);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

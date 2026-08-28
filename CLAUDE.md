@@ -7195,6 +7195,69 @@ fails on correct code and tells you nothing about the defect.**
 
 Seven mutants, all caught.
 
+## Two cards on one screen, disagreeing about the same week (v371)
+
+v370 closed the midpoint window at the taper. The next question of the same
+block — *does anything else prescribe against the taper?* — found the ruck
+card doing it in one sentence.
+
+`climbing` is computed from the four-week cycle slot, which knows nothing
+about the phase. Measured at two weeks out:
+
+| card | says |
+|---|---|
+| running | *"Volume comes down and nothing gets sharper."* |
+| **rucking** | *"What moves this week: **The distance**. The load holds."* |
+
+…while the ruck distance was cut **10.7 km → 7.1 km**, a third of it. The
+running card was already honest; the ruck card, on the same screen and the
+same week, claimed the opposite.
+
+**Set in `ruckLadderWeek()` rather than in the renderer**, so a future
+consumer gets the truth instead of only this one card — the same call
+`side:'switch'` makes for the steps, the session card and the player.
+
+**The down week keeps its own answer.** *"Nothing — this is the down week"* is
+accurate inside the taper too, so `climbing` stays `'neither'` there and the
+mutant that relabels it is caught.
+
+**Three floors carry the round.** A distance week must still say the distance
+is moving and a load week the load — a fix that said "nothing is being built"
+everywhere satisfies every taper assertion and deletes the plan's whole point.
+And the oldest rule of this plan still holds through the taper: the load holds
+while the distance falls, never both moving.
+
+### And the same question of the NUMBER found a real one
+
+The label fix broke a v340 check — *"both paths raise the plate the same
+number of times"* — and that failure was the finding. The two ladders are
+offset by one slot, so:
+
+| path | fourth plate step |
+|---|---|
+| operator | 3 weeks out — sharpen |
+| **assaulter** | **2 weeks out — inside the taper** |
+
+**30 lb → 35 lb, a fortnight before the evaluation**, on the path whose own
+note says *"you want to arrive fresh under load"*. Nothing caught it because
+every check counted the STEPS and none asked WHEN — and the check that finally
+went red did so because the LABEL moved, not because it was looking at timing.
+
+**The step is not dropped.** Dropping it leaves the assaulter 5 lb lighter for
+the whole block, which is a bias in VOLUME — the one thing v340 says the two
+paths may never differ in. It is taken at the last working week before the
+taper instead, so both paths reach the same plate under the same ceiling and
+neither adds load in the fortnight that exists to shed it. Measured after:
+four steps each, 35 lb each, zero steps in the taper.
+
+**And the boundary was off by one on the first attempt.** Week `w` has
+`left = totalWk - w`, so the taper opens at `totalWk - TAPER_WEEKS`, not one
+later. The wrong version let the assaulter's step through unchanged — caught
+by measuring the ladder path by path, not by any assertion about the
+arithmetic. **Drive the plan and read the plate.**
+
+Eleven mutants across the round, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
