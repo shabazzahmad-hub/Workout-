@@ -6830,6 +6830,94 @@ up satisfies every assertion about shred and lean recomp and moves `lose` and
   writer is idempotent. *Confirm the control's real shape before believing the
   result.*
 
+## The one test the app refuses to give you, given by another door (v366)
+
+The baseline battery's own screen has promised for many versions, in bold,
+that a test to failure "is the most demanding thing this app will ever ask of
+you, so it stays locked until you have spoken to a doctor". Measured on an
+athlete who declared a **heart condition** and was never cleared:
+
+| surface | what it asks for | in safe mode |
+|---|---|---|
+| baseline battery | ten maximal efforts | **locked** |
+| six-week re-test | the same ten | **locked** |
+| FORCE / FORCE Combat | four maximal efforts under load | **locked** |
+| **Hold to failure** (v361) | five **open-ended** holds, no clock ceiling | **started** |
+| **`gripmax`** | "one all-out hang" | **started** |
+
+Five live rows, a clock that counts up and does not stop you, and nothing on
+the screen mentioning the health check.
+
+**`startHoldTest()` already called `safeSwap()`** — it asked one of the two
+questions the battery asks and not the other. That is the exact shape
+`safeSwap()` itself was forgotten by five sibling paths in, and the shape
+`startForceTrain()` skipped `hasGearFor()` in: **a new path that asks for a max
+has to ask every question the old ones ask.**
+
+**Three paths had copied the same five lines by hand and two never got them**,
+so the rule now lives in `maxEffortBlocked()` and every entry point asks it. It
+has a side effect on purpose — the athlete lands on the screen that unlocks the
+thing they just tapped, not on a dead toast — and it **fails closed**: if the
+check throws, the answer is blocked, never fine. The check that catches that is
+the one that makes `parqDone()` throw.
+
+**A format that asks for a true max declares it.** `gripmax` carries
+`max:true`, so `startSpecialFormat()` gates on the property rather than on a
+name, and the next max format is covered the day it is added rather than the
+day somebody remembers. It is bounded at three minutes, which is why it reads
+as a format rather than a test — and it is still a named maximal effort on the
+very movement the battery gates.
+
+**A locked button with no sentence is a dead end**, so the sheet says why and
+carries the one control that unlocks it. The past numbers still render: history
+is history, and hiding it would punish the athlete for answering the screen
+honestly. The rows are replaced rather than greyed out — a disabled *look* over
+a live `onclick` sends them to the clearance screen with no idea what they just
+did.
+
+**The floors are what keep this a gate rather than a deletion.** An ordinary
+timed hang (`grip30`, five 30-second hangs with rest) is not a max effort and
+is never blocked; a cleared athlete gets all five holds and the max hang back.
+The mutant that blocks everybody satisfies every assertion about the flagged
+athlete and breaks the app for the athletes it is not for, and the mutant that
+locks every grip format does the same one picker over.
+
+### The same sheet had skipped the other question too
+
+Found by asking, of the same five rows, what ELSE every picking path asks.
+**The Dead Hang needs a pull-up bar** and the other four holds need nothing —
+so the one that does sat in the menu unmarked. Measured on an athlete with an
+empty gear list: the row rendered and the timer **started** on a movement they
+cannot perform. `startHoldTest()` ran `safeSwap()` and never `hasGearFor()`,
+which is `startForceTrain()`'s v322 defect one picking path over.
+
+**It NAMES the kit rather than substituting**, for the reason v320 established:
+a hold test measures ONE movement, and a stand-in measures a different capacity
+under the same label. There is no honest substitute for a dead hang.
+
+`holdMovement(t)` is now the one place that decides which movement a hold test
+performs, so the row and the starter cannot disagree about what is being asked
+for — including about whether the athlete owns the kit for it.
+
+**The floor is the athlete who owns a bar.** A fix that simply dropped the row
+satisfies every assertion about the athlete without one and deletes a real
+test; a `holdKitMissing()` that answers yes for everything satisfies them too
+and deletes all five. Both are caught.
+
+**The Grinder was measured and deliberately NOT gated.** It is a prescribed
+circuit of 60-second stations — the same family as Special HIIT, which has
+never been gated — not a test taken to failure. Safe mode already eases every
+prescribed session; a gate here would be over-reach, and over-gating is its own
+harm.
+
+**And the re-derivation check had to anchor on the ROUTING line, not on a bare
+`safeMode()` read.** `prescribe()` reads it to ease the session and the fasting
+card reads it to add a warning; counting those flagged correct code. The
+assertion is that `if(!parqDone())openHealthCheck(); else openClearance();`
+exists exactly once.
+
+Fifteen mutants across the round, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

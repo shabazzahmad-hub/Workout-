@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='365';
+const APP_VERSION='366';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -5236,11 +5236,7 @@ function openForcePrep(){
    maximal efforts under load, and an athlete whose health screen is flagged
    and not cleared does not get handed one. It fails CLOSED. */
 function startForceTrain(){
-  if(typeof safeMode==='function'&&safeMode()){
-    if(typeof parqDone==='function'&&!parqDone())openHealthCheck();
-    else openClearance();
-    return;
-  }
+  if(maxEffortBlocked())return;
   const avail=forceAvailable(), miss=forceMissing();
   if(!avail.length){toast('You need a 20 kg sandbag for these');return;}
   const ids=avail.map(e=>e.ex);
@@ -5268,11 +5264,7 @@ function forceRiskHTML(){
    to back with no rest between them, because the absence of the rest IS the
    difference from the annual evaluation. */
 function startCombatCircuit(){
-  if(typeof safeMode==='function'&&safeMode()){
-    if(typeof parqDone==='function'&&!parqDone())openHealthCheck();
-    else openClearance();
-    return;
-  }
+  if(maxEffortBlocked())return;
   const avail=combatOrder().filter(e=>EX[e.ex]&&hasGearFor(e.ex));
   if(!avail.length){toast('You need a 20 kg sandbag for these');return;}
   const items=avail.map(e=>{const ex=EX[e.ex];
@@ -6929,7 +6921,7 @@ const SPECIAL_FORMATS={
   grip30:{name:'Hangs 30s × 5',desc:'5 hangs of 30 seconds, 60s rest. Grip endurance.',w:0.5,r:1,n:5,exId:'deadhang',act:'grip'},
   grip45:{name:'Hangs 45s × 5',desc:'5 hangs of 45 seconds, 90s rest. Serious forearm work.',w:0.75,r:1.5,n:5,exId:'deadhang',act:'grip'},
   grip60:{name:'Hangs 60s × 4',desc:'4 hangs of a full minute, 2 min rest. Advanced.',w:1,r:2,n:4,exId:'deadhang',act:'grip'},
-  gripmax:{name:'Max hang test',desc:'One all-out hang. Sets your Dead Hang standard.',w:3,r:0,n:1,exId:'deadhang',act:'grip'},
+  gripmax:{name:'Max hang test',desc:'One all-out hang. Sets your Dead Hang standard.',w:3,r:0,n:1,exId:'deadhang',act:'grip',max:true},
   box3x3:{name:'3 × 3 min',desc:'Three 3-minute rounds, 1 min rest. Classic starter.',w:3,r:1,n:3,exId:'shadowbox',act:'box'},
   box5x3:{name:'5 × 3 min',desc:'Five 3-minute rounds, 1 min rest. A full fight.',w:3,r:1,n:5,exId:'shadowbox',act:'box'},
   box6x2:{name:'6 × 2 min',desc:'Six 2-minute rounds, 45s rest. Faster turnaround.',w:2,r:0.75,n:6,exId:'shadowbox',act:'box'},
@@ -7110,7 +7102,9 @@ function actHistoryHTML(k){
       <button class="chip" onclick="removeAct('${k}',${i})">✕</button></div>`).join('')+`</div>`;
 }
 function startSpecialFormat(format){
-  closeSheet();const f=SPECIAL_FORMATS[format];if(!f)return;
+  const f=SPECIAL_FORMATS[format];if(!f)return;
+  if(f.max&&maxEffortBlocked())return;   // an all-out hang is a test to failure
+  closeSheet();
   const list=[{exId:f.exId,unit:'time',target:Math.round(f.w*60),rest:Math.round(f.r*60),sets:1}];
   const sess={session:{name:ACTS[f.act].name,key:f.act,focus:'Special conditioning'},ptr:-1,pos:{}};
   _runHiit(sess,list,format);
@@ -7161,7 +7155,9 @@ function openGrip(){
     ${actRiskNoteHTML('deadhang','Hanging loads the shoulders, elbows and wrists under your full bodyweight')}
     <div class="section-label" style="margin-top:0">Hang sets</div>
     <div style="display:flex;flex-direction:column;gap:10px">
-      ${Object.keys(SPECIAL_FORMATS).filter(k=>SPECIAL_FORMATS[k].act==='grip').map(k=>`<button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="startSpecialFormat('${k}')"><b style="font-size:15px">${SPECIAL_FORMATS[k].name}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${SPECIAL_FORMATS[k].desc}</div></button>`).join('')}
+      ${Object.keys(SPECIAL_FORMATS).filter(k=>SPECIAL_FORMATS[k].act==='grip').map(k=>{
+        const lock=maxEffortFormat(k)&&safeMode();
+        return `<button class="btn ghost" data-fmt="${k}" style="text-align:left;display:block;padding:14px" onclick="startSpecialFormat('${k}')"><b style="font-size:15px">${lock?'🔒 ':''}${SPECIAL_FORMATS[k].name}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${lock?'A max test stays locked until the health check is cleared — the timed hangs above are yours to do.':SPECIAL_FORMATS[k].desc}</div></button>`;}).join('')}
     </div>
     <div class="section-label">Log a hang</div>
     <div class="btnrow" style="gap:8px;align-items:flex-end">
@@ -7903,7 +7899,7 @@ function openAssessment(reassessCycle){
   /* Defence in depth: the intro screens hide the start button, but a stale
      render, a restored scroll position or a direct call must not be able to
      start a maximal battery on an unscreened or uncleared athlete. */
-  if(safeMode()){ if(!parqDone())openHealthCheck(); else openClearance(); return; }
+  if(maxEffortBlocked())return;
   assessState={idx:0,results:{},reassess:reassessCycle};
   renderAssessStep();
 }
@@ -9999,10 +9995,33 @@ function holdTrackerHTML(){
   h+=`<div class="tiny muted" style="margin-top:6px">Separate from your baseline on purpose: the battery is taken rested and in a fixed order, and these are not.</div>`;
   return h;
 }
+/* ONE PLACE DECIDES WHICH MOVEMENT A HOLD TEST ACTUALLY PERFORMS, so the row
+   and the starter cannot disagree about what is being asked for — including
+   about whether the athlete owns the kit for it. */
+function holdMovement(t){try{return safeSwap(t.exId);}catch(e){return t.exId;}}
+/* THE DEAD HANG NEEDS A PULL-UP BAR AND NOTHING ASKED. Four of the five holds
+   need no kit at all, so the bar one sat in the menu unmarked: measured on an
+   athlete with an empty gear list, the row rendered and the timer STARTED on
+   a movement they cannot perform. startHoldTest() ran safeSwap() and never
+   hasGearFor() — the same question startForceTrain() skipped in v322, one
+   picking path over.
+
+   IT NAMES THE KIT RATHER THAN SUBSTITUTING, for the reason v320 established:
+   a hold test measures ONE movement, and a substitute measures a different
+   capacity under the same label. There is no honest stand-in for a dead hang. */
+function holdKitMissing(t){const k=holdMovement(t);return !hasGearFor(k)?gearNeededFor(k):null;}
+function gearNeededFor(exId){
+  const e=EX[exId];if(!e||!Array.isArray(e.equip))return '';
+  const own=(STATE.profile&&Array.isArray(STATE.profile.gear))?STATE.profile.gear:[];
+  return e.equip.filter(g=>!own.includes(g))
+    .map(g=>((GEAR_OPTS.find(o=>o[0]===g)||[])[1]||g)).join(' + ');
+}
 function holdRowHTML(t){
   const best=holdBest(t.id),last=holdLast(t.id),tr=holdTrend(t.id);
-  const ex=EX[safeSwap(t.exId)]||EX[t.exId]||{name:t.name};
-  const risky=jointRisky(t.exId,STATE.profile.limitations)&&safeSwap(t.exId)!==t.exId;
+  const ex=EX[holdMovement(t)]||EX[t.exId]||{name:t.name};
+  const risky=jointRisky(t.exId,STATE.profile.limitations)&&holdMovement(t)!==t.exId;
+  const need=holdKitMissing(t);
+  if(need)return `<div class="kv" data-holdkit="${t.id}"><span>${_ve(ex.name)}</span><b class="tiny muted">needs ${_ve(need)}</b></div>`;
   return `<button class="btn ghost" data-hold="${t.id}" style="text-align:left;display:block;padding:14px" onclick="startHoldTest('${t.id}')">
     <b style="font-size:15px">${_ve(ex.name)}</b>
     <div class="tiny muted" style="margin-top:3px;font-weight:600">${t.what}${risky?' · swapped for a flagged joint':''}</div>
@@ -10011,16 +10030,38 @@ function holdRowHTML(t){
       ${tr?` · <span style="color:${tr.delta>=0?'var(--green)':'var(--fire-l)'}">${fmtDelta(tr.delta)} on the one before</span>`:''}
     </div></button>`;
 }
+/* Locked: the numbers already recorded still show, and nothing is tappable.
+   Rendering the ordinary rows greyed out would leave a live onclick behind a
+   disabled look — the athlete taps, the gate fires, and the clearance screen
+   arrives with no explanation of what they just did. */
+function holdLockedRowsHTML(){
+  return HOLD_TESTS.map(t=>{
+    const best=holdBest(t.id),ex=EX[holdMovement(t)]||EX[t.exId]||{name:t.name};
+    return `<div class="kv" data-holdlocked="${t.id}"><span>🔒 ${_ve(ex.name)}</span><b>${best>0?fmtTime(best):'—'}</b></div>`;
+  }).join('');
+}
 function openHoldTests(){
   const anyFatigued=holdLog().some(r=>r&&r.fresh===false);
+  /* A LOCKED BUTTON WITH NO SENTENCE IS A DEAD END. The gate in startHoldTest()
+     is what actually stops the effort; this is what tells the athlete why and
+     hands them the one screen that unlocks it. The past holds still render —
+     history is history, and hiding it would be punishing them for answering
+     the health screen honestly. */
+  const locked=safeMode();
   openSheet(`<h3>⏱️ Hold to failure</h3>
     <p class="muted sm" style="margin:2px 0 10px">One movement, held until your form goes. The clock counts <b>up</b> and does not stop you — you decide when it is over, and that decision is the test.</p>
     <p class="tiny muted" style="margin:0 0 12px">These are yours to watch over time. They do <b>not</b> change your program or your baseline: the battery is taken rested and in a fixed order, and a hold done on an ordinary Tuesday is a real number but not that one.</p>
-    ${holdFreshNow()?`<p class="tiny" style="margin:0 0 12px;font-weight:700;color:var(--green)">You have not trained today — this one counts as a fresh test.</p>`
+    ${locked?`<div class="note warn" data-holdlock="1">${!parqDone()
+        ?`<b>One quick health check first.</b> A test to failure is the most demanding thing this app will ever ask of you, so we screen before you do it. Takes a few seconds.
+          <button class="btn sm primary" style="width:auto;margin-top:10px" onclick="openHealthCheck()">Answer the health check</button>`
+        :`<b>Hold on — you flagged something on the health check.</b> A test to failure is the most demanding thing this app will ever ask of you, so it stays locked until you have spoken to a doctor. You can still train: every session is held well short of failure.
+          <button class="btn sm primary" style="width:auto;margin-top:10px" onclick="openClearance()">I've been cleared by a doctor</button>`}</div>`
+      :holdFreshNow()?`<p class="tiny" style="margin:0 0 12px;font-weight:700;color:var(--green)">You have not trained today — this one counts as a fresh test.</p>`
       :`<p class="tiny muted" style="margin:0 0 12px;font-weight:700">You have already trained today, so this will be recorded as an after-training hold and will not set your best. Test fresh to move the number.</p>`}
     <div style="display:flex;flex-direction:column;gap:10px">
-      ${HOLD_TESTS.map(holdRowHTML).join('')}
+      ${locked?holdLockedRowsHTML():HOLD_TESTS.map(holdRowHTML).join('')}
     </div>
+    ${(!locked&&HOLD_TESTS.some(holdKitMissing))?`<p class="tiny muted" style="margin-top:10px" data-holdkitnote="1">A hold you do not own the kit for is listed with what it needs rather than swapped for something else — a substitute would measure a different capacity under the same name.</p>`:''}
     ${anyFatigued?`<p class="tiny muted" style="margin-top:12px">A hold marked <i>after training</i> is kept and shown, and is left out of the trend — two efforts taken in different states are not a comparison.</p>`:''}
     <div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
 }
@@ -10028,10 +10069,16 @@ let _ht=null;
 function stopHoldTimer(){if(_ht){clearInterval(_ht.iv);_ht=null;}}
 function startHoldTest(id){
   const t=holdTest(id);if(!t)return;
+  /* Held until your form goes IS a test to failure, so it asks the same
+     question the battery asks. Gated here as well as on the sheet: two guards
+     mean two checks, and a stale render must not be able to start one. */
+  if(maxEffortBlocked())return;
+  const need=holdKitMissing(t);
+  if(need){toast('That one needs '+need);return;}
   /* safeSwap for the same reason the baseline battery applies it AND says so:
      this is a maximal effort, so a silent substitution would be wrong — the
      screen names the movement actually being held. */
-  const exId=safeSwap(t.exId),ex=EX[exId]||{name:t.name};
+  const exId=holdMovement(t),ex=EX[exId]||{name:t.name};
   stopHoldTimer();try{primeVoice();}catch(e){}
   const fresh=holdFreshNow();
   openSheet(`
@@ -16483,6 +16530,39 @@ function medCleared(){try{return !!(STATE.profile&&STATE.profile.medCleared===tr
    8-test maximal battery unlocked itself for the entire installed base — the
    population the screen was written for. Until it is answered, safe mode is on. */
 function safeMode(){return !parqDone()||(parqFlagged()&&!medCleared());}
+/* ---- ONE GATE FOR EVERY TRUE MAX EFFORT ----------------------------------
+   The baseline battery's own screen promises, in bold, that "a test to failure
+   is the most demanding thing this app will ever ask of you, so it stays
+   locked until you have spoken to a doctor" — and it was the only surface
+   enforcing it for years. Four paths copied the same five lines by hand
+   (openAssessment, startForceTrain, startCombatCircuit) and two never got
+   them at all:
+
+     - HOLD TO FAILURE (v361), five open-ended holds with no clock ceiling.
+       Measured on an athlete who declared a heart condition and was not
+       cleared: the battery refused and the hold test started, five live rows,
+       with nothing on screen mentioning the health check. It already ran
+       safeSwap() — it asked one of the two questions and not the other, which
+       is exactly the shape safeSwap() itself was forgotten by five sibling
+       paths in.
+     - `gripmax`, "Max hang test · one all-out hang". Bounded at three minutes,
+       which is why it reads as a format rather than a test, and it is still a
+       named maximal effort on the same movement the battery gates.
+
+   So the rule lives in ONE place and every max-effort path asks it. It has a
+   side effect on purpose — the athlete is sent to the screen that unlocks the
+   thing they just tapped, rather than to a dead toast — and it FAILS CLOSED:
+   if the check throws, the answer is "blocked", never "fine". */
+function maxEffortBlocked(){
+  try{
+    if(!safeMode())return false;
+    if(!parqDone())openHealthCheck(); else openClearance();
+    return true;
+  }catch(e){return true;}
+}
+/* A format that asks for a true max declares it, so a future one is covered by
+   the gate the day it is added rather than the day somebody remembers. */
+function maxEffortFormat(f){try{return !!(SPECIAL_FORMATS[f]&&SPECIAL_FORMATS[f].max);}catch(e){return false;}}
 function confirmClearance(){
   STATE.profile.medCleared=true;STATE.profile.parqDone=true;save();closeSheet();
   toast('Noted — tests unlocked');render();
