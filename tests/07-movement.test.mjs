@@ -1647,7 +1647,8 @@ export default async function run() {
       const keep = { mode: nut().cardioMode, kg: STATE.nutrition.weightKg, onb: STATE.onboarded };
       STATE.nutrition.weightKg = 86; STATE.onboarded = true;
       const zero = () => { const t = nutToday(); t.jackVal = 0; t.bikeVal = 0; t.ruckVal = 0; t.runVal = 0; };
-      const where = () => ({ jacks: jackWork().min, bike: bikeRide().min, ruck: ruckWork().min, run: runWork().min });
+      const where = () => { const o2 = {};
+        CARDIO_MODES.forEach(mk => o2[mk] = cardioInfo(mk).work().min || 0); return o2; };
       const o = { credits: {}, cards: {}, sheets: {} };
 
       /* EVERY mode credits ITS OWN activity and NOTHING else. */
@@ -1746,8 +1747,8 @@ export default async function run() {
     const r = await page.evaluate(() => {
       const o = {};
       const strip = h => h.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
-      const clear = () => { const t = nutToday();
-        ['steps','bikeVal','jackVal','ruckVal','runVal'].forEach(k => t[k] = 0); };
+      const clear = () => { const t = nutToday(); t.steps = 0;
+        CARDIO_MODES.forEach(mk => t[CARDIO_INFO[mk].valKey] = 0); };
       const card = () => { try { return strip(movementHTML()); }
                            catch (e) { return 'THREW: ' + e.message; } };
 
@@ -1789,13 +1790,17 @@ export default async function run() {
          sides of the assertion and escaped. Pin the value, not the identity. */
       { clear(); const m = movement();
         const up = (steps, per) => (per > 0 && steps > 0) ? Math.ceil(steps / per) : 0;
-        o.mins = { jacks: up(o.target, jackStepsPerMin(m.jlvl)),
-                   bike:  up(o.target, bikeStepsPerMin(m.lvl)),
-                   ruck:  up(o.target, ruckStepsPerMin(m.rlvl)),
-                   run:   up(o.target, runStepsPerMin(m.nlvl)) };
+        /* Each mode's steps-a-minute read from the app itself — log one
+           minute and see what it credits. Exact, and it cannot go stale when a
+           mode is added, which five hand-written maps in this suite did. */
+        const perMin = {};
+        CARDIO_MODES.forEach(mk => { const c = CARDIO_INFO[mk]; clear();
+          const t2 = nutToday(); t2[c.unitKey] = 'min'; t2[c.valKey] = 1;
+          perMin[mk] = c.work().steps || 0; });
+        clear();
+        o.mins = {}; CARDIO_MODES.forEach(mk => o.mins[mk] = up(o.target, perMin[mk]));
         // and the per-minute rates really do differ, or the check is trivial
-        o.ratesDiffer = new Set([jackStepsPerMin(m.jlvl), bikeStepsPerMin(m.lvl),
-          ruckStepsPerMin(m.rlvl), runStepsPerMin(m.nlvl)]).size >= 3; }
+        o.ratesDiffer = new Set(Object.values(perMin)).size >= 3; }
 
       // --- 2. "Target met", per mode --------------------------------------
       const met = (mode, setup) => { clear(); const t = nutToday(); setup(t);
@@ -1803,24 +1808,32 @@ export default async function run() {
         const s = card(), i = s.indexOf('Target met');
         return { shown: i >= 0, text: i < 0 ? '' : s.slice(i, i + 120),
                  equiv: stepEquivalent() }; };
-      o.met = {
-        jacks: met('jacks', t => { t.jackUnit = 'min'; t.jackVal = 200; }),
-        bike:  met('bike',  t => { t.bikeUnit = 'min'; t.bikeVal = 200; }),
-        ruck:  met('ruck',  t => { t.ruckUnit = 'min'; t.ruckVal = 120; }),
-        run:   met('run',   t => { t.runUnit  = 'min'; t.runVal  = 60;  }),
+      /* Built from CARDIO_MODES rather than named one by one, so a fifth mode
+         is covered the moment it is added instead of throwing here. 200
+         minutes clears the target on the least dense mode and every other one
+         over-clears it, which is what this block is asserting. */
+      o.met = {};
+      CARDIO_MODES.forEach(mk => { const c = CARDIO_INFO[mk];
+        o.met[mk] = met(mk, t => { t[c.unitKey] = 'min'; t[c.valKey] = 200; }); });
+      Object.assign(o.met, {
         // two modes at once, and the mode on screen is not the bigger one
-        two:   met('ruck',  t => { t.ruckUnit = 'min'; t.ruckVal = 120;
+        /* The SAME ruck minutes the solo case logs, plus jacks on top — so
+           "the sum beats one mode alone" holds by construction rather than by
+           two hand-picked numbers that a changed seed can invert. */
+        two:   met('ruck',  t => { t.ruckUnit = 'min'; t.ruckVal = 200;
                                    t.jackUnit = 'min'; t.jackVal = 30; }),
         // FLOOR: walked on your own feet — no mode carried it, so no claim
         walked: met('jacks', t => { t.steps = 99999; }),
-      };
+      });
 
       // --- 3. the cross-note ----------------------------------------------
+      /* The LOOP already reads CARDIO_MODES; this setter was a hand-written
+         map of four, so a fifth mode threw here rather than failing a named
+         check. Driven from the registry's own field names, it cannot go stale
+         again. */
       const cross = (logged, mode) => { clear(); const t = nutToday();
-        ({ jacks: () => { t.jackUnit = 'min'; t.jackVal = 20; },
-           bike:  () => { t.bikeUnit = 'min'; t.bikeVal = 20; },
-           ruck:  () => { t.ruckUnit = 'min'; t.ruckVal = 40; },
-           run:   () => { t.runUnit  = 'min'; t.runVal  = 30; } })[logged]();
+        const c = CARDIO_INFO[logged];
+        t[c.unitKey] = 'min'; t[c.valKey] = 30;
         STATE.nutrition.cardioMode = mode;
         const s = card(), i = s.indexOf('Also logged today');
         return { shown: i >= 0, text: i < 0 ? '' : s.slice(i, i + 110) }; };
@@ -1976,12 +1989,12 @@ export default async function run() {
 
       /* Two sessions of 45 minutes, one mode at a time. The target is
          2 x 35 min, so every one of these is a met week. */
-      const set = {
-        jacks: f => { f.jackUnit = 'min'; f.jackVal = 45; },
-        bike:  f => { f.bikeUnit = 'min'; f.bikeVal = 45; },
-        ruck:  f => { f.ruckUnit = 'min'; f.ruckVal = 45; },
-        run:   f => { f.runUnit  = 'min'; f.runVal  = 45; },
-      };
+      /* From the registry, not a hand-written map — the third such map in this
+         suite, and all three threw on a fifth mode instead of failing by name.
+         The loops below already read CARDIO_MODES; only the setters lagged. */
+      const set = {};
+      CARDIO_MODES.forEach(mk => { const c = CARDIO_INFO[mk];
+        set[mk] = f => { f[c.unitKey] = 'min'; f[c.valKey] = 45; }; });
       o.byMode = {};
       CARDIO_MODES.forEach(m => {
         n.days = {};
@@ -2190,9 +2203,15 @@ export default async function run() {
 
       /* 1. His real Garmin screen: two runs and a jump rope, names that are
             PLACES ("Carstairs Running"), times as MM:SS, distance in miles. */
+      /* v353 gave skipping its own mode, so his rope is now PLACED. The
+         unplaceable path still has to work, and proving it needs something the
+         app genuinely has no slot for — a swim. When a requirement changes the
+         check is part of the change; pinning the rope as orphaned would have
+         held the old behaviour in place. */
       const real = { activities: [
         { kind: 'Carstairs Running', distance: 2.23, distanceUnit: 'mi', duration: '25:44' },
         { kind: 'Jump Rope 34', duration: '35:21', kcal: 405 },
+        { kind: 'Pool Swim', duration: '35:21' },
         { kind: 'Carstairs Running', distance: 1.07, distanceUnit: 'mi', duration: '10:42' } ] };
       const p = activityPlan(real);
       o.read = p.read;
@@ -2203,7 +2222,9 @@ export default async function run() {
       /* THE HONESTY CHECK. An activity with no slot must not be quietly filed
          under the nearest mode — that credits work in a currency which feeds
          the food budget. */
-      o.jumpRopeWentNowhere = p.jacks.min === 0 && p.bike.min === 0 && p.ruck.min === 0;
+      o.swimWentNowhere = p.jacks.min === 0 && p.bike.min === 0 && p.ruck.min === 0
+                          && Math.round(p.skip.min) === 35 && p.run.min > 0;
+      o.ropeIsPlacedNow = Math.round(p.skip.min);
 
       /* 2. Matched on the movement WORD, never the whole name. */
       o.kinds = ['Carstairs Running', 'Morning Ruck', 'Zwift Cycling', 'Jumping Jacks',
@@ -2291,14 +2312,15 @@ export default async function run() {
       o.schemaIsOverridable = /o0\.schema/.test(_visionEstimate.toString());
       return o;
     });
-    t.eq('all three rows on the real screenshot are read', act.read, 3, act);
+    t.eq('all four rows are read', act.read, 4, act);
+    t.eq('and the rope now lands in its own mode', act.ropeIsPlacedNow, 35, act);
     t.eq('the two runs are summed', act.runMiles, 3.3, act);
     t.eq('and so are their times', act.runMin, 36.43, act);
     t.eq('a Garmin name is matched on the movement word, not the whole name', act.kinds,
-      ['run', 'ruck', 'bike', 'jacks', null, null, 'run'], act);
-    t.eq('the jump rope is named, with its minutes', act.unplacedNames, ['Jump Rope 34'], act);
+      ['run', 'ruck', 'bike', 'jacks', 'skip', null, 'run'], act);
+    t.eq('an activity with no mode is NAMED, with its minutes', act.unplacedNames, ['Pool Swim'], act);
     t.eq('35:21 reads as 35 minutes', act.unplacedMin, [35], act);
-    t.ok('and it is NOT filed under the nearest mode', act.jumpRopeWentNowhere, act);
+    t.ok('and it is NOT filed under the nearest mode', act.swimWentNowhere, act);
     t.eq('MM:SS and H:MM:SS are parsed in code, junk reads as nothing', act.hms,
       [25.73, 65.33, 45, 12, 0, 0, 0, 0], act);
     t.eq('ten miles is 16.09 km', act.tenMilesKm, 16.09, act);
@@ -2307,6 +2329,7 @@ export default async function run() {
     t.eq('but a real step figure is taken', act.stepsTaken, 11200, act);
     t.ok('the review sheet says nothing is logged yet', /nothing is logged until you do/i.test(act.sheetText), act);
     t.ok('and shows the summed run', /3\.3 mi/.test(act.sheetText), act);
+    t.ok('and the rope beside it', /Skipping/.test(act.sheetText), act);
     t.eq('opening the review writes NOTHING', act.beforeSave, { runVal: 0, steps: 0 }, act);
     t.eq('saving writes the distance', act.afterSave.runVal, 5.31, act);
     t.eq('as a distance, not minutes', act.afterSave.runUnit, 'dist', act);
@@ -2330,6 +2353,111 @@ export default async function run() {
     t.ok('which the shared caller honours', act.schemaIsOverridable, act);
     t.ok('and does NOT re-implement the model list or retry policy', act.doesNotReinventModels, act);
     t.ok('while keeping the lighter-image fallback for a stalled connection', act.keepsTheLighterRetry, act);
+  }
+
+
+  /* ---- skipping, the fifth cardio mode (v353) -----------------------------
+     Asked for after a real session the app had nowhere to put: 35 minutes of
+     jump rope on the watch, and four modes none of which was it. */
+  {
+    const sk = await page.evaluate(() => {
+      const o = {};
+      STATE.nutrition.weightKg = 86; save();
+      o.modes = CARDIO_MODES.slice();
+
+      /* CALIBRATED AGAINST HIS OWN WATCH. Published tables put continuous rope
+         work at 11-12 METs; a real session has trips and rests in it. His
+         35:21 burned 405 kcal, which at 86 kg is ~7.6 net METs. A textbook
+         number would have over-credited every session by nearly half — and
+         this figure feeds the food budget. */
+      setCardioMode('skip'); setSkipUnit('min'); setSkipLvl('steady'); setSkipVal(35.35);
+      const w = skipWork();
+      o.hisKcal = w.kcal;                       // Garmin measured 405
+      o.errPct = Math.round(Math.abs(w.kcal - 405) / 405 * 1000) / 10;
+      o.hisSteps = w.steps;
+      o.hisSkips = w.reps;
+
+      /* Every level sits ABOVE its jumping-jack sibling — a rope is harder
+         than a jack at the same effort, and a table that did not say so would
+         be wrong about the one thing the athlete can feel. */
+      o.aboveJacks = SKIP_LEVELS.map(l => l.met)
+        .every((m2, i) => m2 > [4.5, 6.0, 7.5][i]);
+      o.metsClimb = SKIP_LEVELS.map(l => l.met);
+
+      /* It pays the step target like every other mode, and stepEquivalent()
+         reads CARDIO_MODES rather than a hand-written sum — the line that once
+         left the ruck and the run out of the weekly bar for two versions. */
+      const t = nutToday(); t.steps = 0; t.jackVal = 0; t.bikeVal = 0; t.ruckVal = 0; t.runVal = 0; save();
+      o.stepEq = stepEquivalent();
+      o.stepEqIsTheRope = o.stepEq === w.steps;
+      o.stepEqReadsTheRegistry = /CARDIO_MODES/.test(stepEquivalent.toString());
+
+      /* The guided timer credits it with no per-mode change — creditMakeup()
+         reads the registry. */
+      setSkipVal(0);
+      creditMakeup('skip', 12);
+      o.timerCredited = skipWork().min;
+
+      /* The screenshot reader now has a real home for a rope. */
+      o.kinds = ['Jump Rope 34', 'Skipping', 'Rope work', 'Carstairs Running', 'Pool Swim']
+        .map(activityKind);
+      const plan = activityPlan({ activities: [{ kind: 'Jump Rope 34', duration: '35:21' }] });
+      o.readerMin = Math.round(plan.skip.min);
+      o.readerUnplaced = plan.unplaced.length;
+
+      /* THE DAY REPAIR IS NOW THE CLASS, NOT ONE MODE. It covered jackVal /
+         jackLvl / jackUnit and nothing else, so a hand-edited backup could put
+         a string in runVal or a junk level in ruckLvl and it survived every
+         boot and travelled in every backup after it. */
+      const d = nutToday();
+      d.runVal = 'lots'; d.ruckLvl = 'sprinting'; d.bikeUnit = 'furlongs';
+      d.skipVal = -5; d.jackLvl = 'nope';
+      const realErr = console.error; console.error = () => {};
+      normalizeState();
+      console.error = realErr;
+      o.junkGone = [d.runVal, d.ruckLvl, d.bikeUnit, d.skipVal, d.jackLvl]
+        .map(x => x === undefined);
+      /* FLOOR: a repair that wipes everything satisfies every "junk is gone"
+         assertion and destroys the day it exists to protect. */
+      d.runVal = 20; d.ruckLvl = 'brisk'; d.skipVal = 15; d.skipLvl = 'hard';
+      normalizeState();
+      o.goodKept = [d.runVal, d.ruckLvl, d.skipVal, d.skipLvl];
+
+      /* The picker and its one-line pitch render from the registry. They were
+         a hand-written list of four and a four-branch ternary — a fifth mode
+         is exactly when those drift apart. */
+      go('today'); TODAY_TAB = 'workout'; renderToday();
+      const txt = document.querySelector('#v-today').innerText;
+      o.pickerNamesEveryMode = CARDIO_MODES.every(k =>
+        txt.indexOf(CARDIO_INFO[k].label.replace(/^\S+\s/, '')) >= 0);
+      o.everyModeHasANote = CARDIO_MODES.every(k => !!CARDIO_INFO[k].note);
+      o.noteOnScreen = /packs into a pocket/.test(txt);
+      /* NOT /High impact/ — the mode's own one-line pitch says that too, so
+         the check passed with the block warning deleted. Anchor on a phrase
+         only the warning carries. */
+      o.warnsAboutImpact = /calves and Achilles/i.test(txt);
+      return o;
+    });
+    t.eq('skipping is the fifth cardio mode', sk.modes,
+      ['jacks', 'bike', 'ruck', 'run', 'skip'], sk);
+    t.ok('his measured session prices within 3% of what the watch said',
+      sk.errPct <= 3, { appKcal: sk.hisKcal, watch: 405, errPct: sk.errPct });
+    t.ok('every rope level is harder than its jumping-jack sibling', sk.aboveJacks, sk);
+    t.eq('and the levels climb', sk.metsClimb, [6, 7.5, 10], sk);
+    t.ok('the rope pays the step target', sk.stepEqIsTheRope, sk);
+    t.ok('and the total reads the registry, not a hand-written sum', sk.stepEqReadsTheRegistry, sk);
+    t.eq('the guided timer credits it with no per-mode change', sk.timerCredited, 12, sk);
+    t.eq('a rope on a screenshot now lands in its own mode', sk.kinds,
+      ['skip', 'skip', 'skip', 'run', null], sk);
+    t.eq('so his 35:21 is placed, not orphaned', sk.readerMin, 35, sk);
+    t.eq('with nothing left unplaced', sk.readerUnplaced, 0, sk);
+    t.eq('junk in ANY mode day field is repaired, not just jacks', sk.junkGone,
+      [true, true, true, true, true], sk);
+    t.eq('floor: a real day is left untouched', sk.goodKept, [20, 'brisk', 15, 'hard'], sk);
+    t.ok('the mode picker names every mode in the registry', sk.pickerNamesEveryMode, sk);
+    t.ok('and every mode carries its own one-line pitch', sk.everyModeHasANote, sk);
+    t.ok('which is what the screen actually shows', sk.noteOnScreen, sk);
+    t.ok('the block warns about the impact cost a rope really has', sk.warnsAboutImpact, sk);
   }
 
   await browser.close(); srv.close();

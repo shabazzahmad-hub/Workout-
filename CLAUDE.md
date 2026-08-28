@@ -5472,6 +5472,83 @@ Fifteen mutants, all caught. Three escaped first — one was a no-op mutant of m
 own, and reading it back is what showed the other two were weak checks rather
 than bad mutants.
 
+## Skipping, and calibrating against the athlete's own watch (v353)
+
+The fifth cardio mode, asked for after a real session the app had nowhere to
+put: 35 minutes of jump rope on the watch, and four modes none of which was it.
+
+### The MET table came from his watch, not a textbook
+
+Published tables put continuous rope work at **11-12 METs**. A real session is
+not continuous — it has trips, rests and rope changes in it. His measured
+**35:21 burned 405 kcal**, which at 86 kg is 11.5 kcal/min and therefore about
+**7.6 net METs**. `steady` is set there and the other two are reasoned around
+it. The result prices his session at **399 kcal against the watch's 405 —
+1.5% out**.
+
+A textbook number would have over-credited every session by nearly half, and
+this figure feeds the food budget. **Where the athlete has measured the thing,
+the measurement beats the table.**
+
+Every level sits ABOVE its jumping-jack sibling (6.0/7.5/10.0 against
+4.5/6.0/7.5), which is the one relationship the athlete can feel directly: a
+rope is harder than a jack at the same effort.
+
+### Adding the fifth mode was mostly free, and that was the point
+
+v327-v329 replaced the two-value branches with `CARDIO_MODES` and
+`CARDIO_INFO`. So `creditMakeup()`, `cardioDone()`, `ridesThisWeek()` and the
+weekly bar all picked skipping up with **no per-mode change at all**. Three
+places still held hand-written lists and every one of them was a drift waiting
+to happen:
+
+- **`stepEquivalent()`** was a hand-written sum — the same line that once left
+  the ruck and the run out of the weekly bar for two versions. It reads the
+  registry now.
+- **The mode picker and its one-line pitch** were a list of four and a
+  four-branch ternary. A fifth mode is exactly when those come apart: the
+  buttons would have gained skipping while the note silently described running.
+  The pitch moved into `CARDIO_INFO[k].note`.
+- **The day-field repair covered `jackVal`/`jackLvl`/`jackUnit` and nothing
+  else.** Bike, ruck and run had none, so a hand-edited backup could put a
+  string in `runVal` and it survived every boot and travelled in every backup
+  after it. Driven from `CARDIO_MODES` now, with each mode naming its own
+  fields (`valKey`, `lvlKey`, `unitKey`) — the v285 lesson: a fix aimed at one
+  instance leaves the class alive.
+
+### FIVE hand-written per-mode maps in the test suite, and all five THREW
+
+Every loop in suite 07 already read `CARDIO_MODES`; the setters beside them did
+not. So a fifth mode did not fail a named check — it threw, and the suite
+reported *"the test file itself threw"* rather than saying what broke. `clear()`,
+the `met` seeds, `cross`, `set` and `mins` all now build from
+`CARDIO_INFO`'s own field names.
+
+**A check that loops the registry but writes through a hand-written map is only
+half converted**, and the half that lags is invisible until the set grows.
+
+### The v352 checks pinned the OLD behaviour, correctly, and had to move
+
+v352 asserted the jump rope was unplaceable and NAMED. v353 gives it a home, so
+those checks failed on correct code. The unplaceable path still has to work, so
+it is proved with a **swim** — something the app genuinely has no slot for.
+*When a requirement changes, the check is part of the change*; pinning the rope
+as orphaned would have held the old behaviour in place.
+
+### Two escaped mutants, both mine
+
+`display:none` on the impact warning escaped because `strip()` keeps the text
+of a hidden element — the lazy-mutant trap already recorded in v314 and v332.
+Re-seeded as a deletion, it then escaped again: the check matched
+`/High impact/`, which the mode's own one-line pitch **also** contains. Anchored
+on `calves and Achilles`, a phrase only the warning carries, it is caught.
+
+**Take a mutation anchor VERBATIM from the file.** Two seeds read as bad
+because a `\b` in a hand-retyped regex did not match; reading the line out of
+the source and using it as the anchor fixed both immediately.
+
+Eleven mutants, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
