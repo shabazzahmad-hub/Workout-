@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='368';
+const APP_VERSION='369';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4854,13 +4854,26 @@ function prepMidHTML(){
   const now=fin||midRec;
   const label=fin?'Final':'Midpoint';
   let head='';
+  /* SAY WHAT THIS ATHLETE CAN ACTUALLY DO. The prompt told everybody to
+     "re-run the four tasks", and v366's gate refuses to run them for an
+     uncleared athlete — so the screen instructed an action it blocked, with
+     the lock note four lines below saying the opposite. A promise in UI text
+     is a specification, and two sentences on one screen cannot disagree.
+
+     The checkpoint is still DUE, and the prompt still fires: the evaluation is
+     administered by a unit, not by this app, so an athlete who is tested
+     elsewhere has a real number to type in. Only the half the app hosts is
+     withheld. */
+  const locked=safeMode();
   if(prepMidDue()){
     head=`<div class="note warn" style="margin:10px 0 0"><b>Midpoint assessment due.</b>
-      You are halfway to your test date. Re-run the four tasks and log the times — that is what turns the second half of the block into a correction rather than a guess.
+      You are halfway to your test date. ${locked
+        ?'Log the times if your unit tests you — that is what turns the second half of the block into a correction rather than a guess. The app\'s own run of the four tasks stays locked until your health check is cleared.'
+        :'Re-run the four tasks and log the times — that is what turns the second half of the block into a correction rather than a guess.'}
       ${init?'':'<div style="margin-top:6px">Nothing was logged before the halfway point, so this one becomes your first record rather than a comparison.</div>'}</div>`;
   }else if(cp==='initial'){
     const wk=prepMidWeeksAway();
-    if(wk!==null)head=`<div class="tiny muted" style="margin-top:8px">Midpoint assessment in <b>${wk} week${wk===1?'':'s'}</b> — you re-run the four tasks then, and the app shows what moved.</div>`;
+    if(wk!==null)head=`<div class="tiny muted" style="margin-top:8px">Midpoint assessment in <b>${wk} week${wk===1?'':'s'}</b> — ${locked?'log the times if your unit tests you then':'you re-run the four tasks then'}, and the app shows what moved.</div>`;
   }
   if(!now)return head;
   const rows=FORCE_EVENTS.map(ev=>{
