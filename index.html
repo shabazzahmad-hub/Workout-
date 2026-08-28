@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='357';
+const APP_VERSION='358';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2892,6 +2892,12 @@ function buildSession(ptr){
      flagged joints leave nothing in its family, fall back to marching in place,
      which is safe on every joint list. */
   if(!finEx||!EX[finEx])finEx=(main.some(m=>m.exId==='march')?'marchplace':'march');
+  /* In the sharpen phase only, and only when a legal rehearsal exists, this one
+     slot becomes the test instead of a generic burnout. Same slot, same sets,
+     same unit — no minute is added. A null answer leaves the finisher exactly
+     as it was, which is what makes it a no-op for every athlete with no test
+     date, and in base, build and taper. */
+  {const sharp=sharpenFinisher(pos,used,finEx);if(sharp)finEx=sharp;}
   used.add(finEx);
   const finisher={exId:finEx,...prescribe(finEx,pos),slot:finLadName};
   finisher.sets=1;   // a finisher is always one all-out burnout round
@@ -4933,6 +4939,43 @@ const PREP_PATH_KEYS=Object.keys(PREP_PATHS);
    sandbag and shuttle, and FORCE Combat's 25 kg fighting order and 35 kg
    march. An athlete who has not chosen is far likelier to be training for
    those than for a track. */
+/* ---- SHARPEN: rehearse the test, do not add to it -------------------------
+   The prep block schedules running and rucking and the daily program never
+   knew a test was coming — measured, an athlete four weeks out in the SHARPEN
+   phase got a byte-identical session to one with no test date at all, on
+   either path. Meanwhile a WEIGHT deadline does raise conditioning a notch, so
+   the scale reached the training and the test did not.
+
+   The fix deliberately moves EMPHASIS AND NOT VOLUME. The prep block already
+   adds up to 20 km of running and 9 km of rucking a week; bumping conditioning
+   on top is precisely the injury the 10% rule exists to prevent. So exactly
+   ONE slot changes — the finisher, which is already a single all-out cardio
+   round — and it changes to something that rehearses the real test.
+
+   Ordered most test-specific first. The two that need no kit sit high enough
+   that an athlete with no sandbag still rehearses: `rushes` IS a FORCE event,
+   and `latshuffle` is the shuttle's change of direction without the bag. */
+const PREP_SHARPEN_POOL=['sbagshuttle','rushes','sbagdrag','latshuffle','sbaglift'];
+/* Every path that picks an exercise has to ask every question the others ask —
+   this file records safeSwap() being forgotten by five sibling paths and
+   hasGearFor() by a sixth. So: owned, safe for every flagged joint, fits the
+   room, not already in the session, and the SAME UNIT as the finisher it
+   replaces, so the prescription keeps its shape rather than turning a timed
+   burnout into a rep count. */
+function sharpenFinisher(pos,used,curExId){
+  try{
+    if(prepPhase()!=='sharpen')return null;
+    const cur=EX[curExId];if(!cur)return null;
+    const cands=PREP_SHARPEN_POOL.filter(k=>{
+      const e=EX[k];
+      return e&&e.unit===cur.unit&&!used.has(k)&&hasGearFor(k)
+        &&safeSwap(k)===k&&spaceSwap(k)===k;
+    });
+    if(!cands.length)return null;
+    // deterministic rotation, the same shape focusBonus() uses
+    return cands[(pos.cycle*7+(pos.dayInWeek||0))%cands.length];
+  }catch(e){return null;}
+}
 function prepPath(){const k=prep().path;return PREP_PATHS[k]?k:'operator';}
 function prepPathDef(){return PREP_PATHS[prepPath()];}
 function prepSessions(phase){

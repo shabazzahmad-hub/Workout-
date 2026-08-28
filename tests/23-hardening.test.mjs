@@ -1650,6 +1650,99 @@ export default async function () {
         intermediate: lv.rows['"Intermediate"'].prog });
   }
 
+  /* ---- SHARPEN rehearses the test, and adds nothing (v358) -----------------
+     The prep block scheduled running and rucking and the daily program never
+     knew a test was coming: measured, an athlete four weeks out in the SHARPEN
+     phase got a byte-identical session to one with no test date at all, on
+     either path — while a WEIGHT deadline does raise conditioning a notch.
+
+     The fix moves EMPHASIS AND NOT VOLUME, because the prep block already adds
+     up to 20 km of running and 9 km of rucking a week and piling conditioning
+     on top is the injury the 10% rule exists to prevent. Exactly one slot
+     changes: the finisher, which is already a single all-out cardio round. */
+  {
+    const sh = await page.evaluate(() => {
+      const o = {}; const realErr = console.error; console.error = () => {};
+      const snap = JSON.stringify(STATE);
+      const iso = off => { const d = new Date(); d.setDate(d.getDate() + off); return d.toISOString().slice(0, 10); };
+      const FULL = ['ruck', 'sandbag', 'bar', 'bench', 'kettlebell', 'dumbbell'];
+      const setup = (weeksOut, gear, lims) => {
+        STATE = JSON.parse(snap);
+        STATE.nutrition.weightKg = 86; STATE.profile.sex = 'male';
+        STATE.profile.age = 41; STATE.profile.heightCm = 178;
+        STATE.profile.gear = gear.slice(); STATE.profile.limitations = lims.slice();
+        STATE.profile.tightSpace = false;
+        if (weeksOut === null) delete STATE.prep;
+        else STATE.prep = { date: iso(weeksOut * 7), path: 'operator', planFrom: iso(-(16 - weeksOut) * 7) };
+        normalizeState();
+      };
+      const scan = () => {
+        const fins = {}; const units = {}; let slots = 0, total = 0;
+        for (let p = 0; p < 378; p += 5) {
+          const s = buildSession(p);
+          total += s.main.length + (s.finisher ? 1 : 0);
+          if (s.finisher) {
+            slots++; fins[s.finisher.exId] = (fins[s.finisher.exId] || 0) + 1;
+            /* PER POINTER, so the swap can be compared against the movement it
+               actually replaced. Asserting only that a unit EXISTS is measuring
+               the container: every exercise has one. */
+            units[p] = (EX[s.finisher.exId] || {}).unit;
+          }
+        }
+        return { fins, slots, total, units };
+      };
+      setup(null, FULL, []);  o.noDate = scan();
+      setup(16, FULL, []);    o.base = scan();    o.basePhase = prepPhase();
+      setup(4, FULL, []);     o.sharpen = scan(); o.sharpenPhase = prepPhase();
+      setup(1, FULL, []);     o.taper = scan();   o.taperPhase = prepPhase();
+      setup(4, [], []);       o.noKit = scan();
+      setup(4, FULL, ['knee', 'shoulder', 'wrist', 'lowback']); o.flagged = scan();
+      /* A flagged athlete gets correctiveBonus() ADDED ON TOP (v227), so their
+         slot count is legitimately higher. Compare them with themselves. */
+      setup(null, FULL, ['knee', 'shoulder', 'wrist', 'lowback']); o.flaggedNoDate = scan();
+      o.pool = PREP_SHARPEN_POOL.slice();
+      o.riskyFlagged = Object.keys(o.flagged.fins).filter(k => jointRisky(k, ['knee', 'shoulder', 'wrist', 'lowback']));
+      o.gearedNoKit = Object.keys(o.noKit.fins).filter(k => (EX[k].equip || []).length);
+      o.rehearsals = Object.keys(o.sharpen.fins).filter(k => PREP_SHARPEN_POOL.includes(k));
+      /* The swap must keep the finisher's UNIT, pointer by pointer — a timed
+         all-out round must not become a rep count. */
+      o.unitChanged = Object.keys(o.noDate.units)
+        .filter(p => o.sharpen.units[p] !== o.noDate.units[p])
+        .slice(0, 6).map(p => p + ': ' + o.noDate.units[p] + ' -> ' + o.sharpen.units[p]);
+      o.unitChangedNoKit = Object.keys(o.noDate.units)
+        .filter(p => o.noKit.units[p] !== o.noDate.units[p]).length;
+      STATE = JSON.parse(snap); normalizeState(); save(); console.error = realErr; return o;
+    });
+    t.eq('guard: 16 weeks out really is the base phase', sh.basePhase, 'base', sh);
+    t.eq('guard: 4 weeks out really is the sharpen phase', sh.sharpenPhase, 'sharpen', sh);
+    t.eq('guard: 1 week out really is the taper', sh.taperPhase, 'taper', sh);
+
+    /* THE VOLUME FLOOR, first and hardest: not one extra slot, anywhere. */
+    [['base', sh.base, sh.noDate], ['sharpen', sh.sharpen, sh.noDate], ['taper', sh.taper, sh.noDate],
+     ['no kit', sh.noKit, sh.noDate], ['flagged', sh.flagged, sh.flaggedNoDate]].forEach(([n, r, ref]) => {
+      t.eq('no slot is added in ' + n, r.total, ref.total, { got: r.total, ref: ref.total });
+      t.eq('and the finisher count is unchanged in ' + n, r.slots, ref.slots, { got: r.slots, ref: ref.slots });
+    });
+
+    /* Only SHARPEN changes anything. */
+    t.eq('the base phase is byte-identical to having no test date',
+      JSON.stringify(sh.base.fins), JSON.stringify(sh.noDate.fins), sh.base.fins);
+    t.eq('and so is the taper',
+      JSON.stringify(sh.taper.fins), JSON.stringify(sh.noDate.fins), sh.taper.fins);
+    t.ok('the sharpen phase does change the finishers',
+      JSON.stringify(sh.sharpen.fins) !== JSON.stringify(sh.noDate.fins), sh.sharpen.fins);
+    t.ok('and what it changes them to rehearses the test', sh.rehearsals.length >= 3, sh.rehearsals);
+
+    /* Every question the sibling paths ask, asked here too. */
+    t.eq('a flagged athlete is never handed a risky rehearsal', sh.riskyFlagged, [], sh.flagged.fins);
+    t.eq('an athlete with no sandbag is never handed one', sh.gearedNoKit, [], sh.noKit.fins);
+    t.ok('but a bagless athlete still rehearses what needs no kit',
+      Object.keys(sh.noKit.fins).some(k => k === 'rushes' || k === 'latshuffle'), sh.noKit.fins);
+    t.eq('the swap keeps the finisher\'s own unit, pointer by pointer', sh.unitChanged, [], sh.unitChanged);
+    t.eq('and with no kit too', sh.unitChangedNoKit, 0, sh);
+    t.ok('every pool member is a real exercise', sh.pool.every(k => !!k) && sh.pool.length > 0, sh.pool);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

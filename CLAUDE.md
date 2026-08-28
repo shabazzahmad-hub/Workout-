@@ -6229,6 +6229,61 @@ calling a design a defect — and then check what the notes claim.**
   on the real mechanism. `PLAYER` is a script-scope `let`, so `window.PLAYER`
   is undefined and the bare identifier is what works — the same trap as `STATE`.
 
+## The prep block changed the program not at all (v358)
+
+"Remember we are gearing a section of the program to prepare for military
+training, therefore endurance and stamina and mental toughness is very
+important." Measured first, and the measurement is the finding: **setting a
+test date changed the daily program by nothing.**
+
+| the athlete | movements | cardio slots |
+|---|---|---|
+| no test date | 92 | 81 of 441 |
+| 16 weeks out | **identical** | **identical** |
+| 4 weeks out | **identical** | **identical** |
+| Operator vs Assaulter path | **identical** | **identical** |
+
+`prepPhase()` had exactly **one** reader in the whole app — `ruckLadderWeek()`.
+The running plan, the ruck ladder and the checkpoint all knew about the block;
+the session builder did not. That is `timelineWeeks` for the fourth time: a
+control the athlete sets that almost nothing reads.
+
+**THE EMPHASIS MOVES, THE VOLUME DOES NOT.** That is the athlete's own call and
+it is also the safety argument — the same one `PREP_PATHS` rests on. Adding
+minutes near a test date is how people arrive at selection injured, and the
+10% cap exists precisely so a deadline cannot buy volume. So `sharpenFinisher()`
+**swaps** the conditioning finisher for a test-specific movement and adds
+nothing: the slot count, the finisher count and the session length are pinned
+identical across every phase.
+
+**Only in `sharpen`, never in base or taper.** Base is where the aerobic
+foundation is built and rehearsing the test there costs the base; the taper is
+for arriving fresh. The check pins both — no-date, base and taper must produce
+a **byte-identical** finisher distribution, so a mutant that widens the phase
+gate fails on the phase that was supposed to be untouched.
+
+**It asks every question the other picking paths ask.** `hasGearFor()`,
+`safeSwap()` and `spaceSwap()` — the fifth sibling path in this app that picks
+an exercise, and the first one written already knowing that. Measured: a
+bagless athlete gets rushes and lateral shuffles and no sandbag work at all; an
+athlete with four joints flagged gets march, dead bug and fist push-ups and
+**no risky rehearsal**. Rehearsing the test on a flagged joint is the one place
+this could have hurt someone.
+
+### The escaped mutant measured the container
+
+Dropping `e.unit===cur.unit` escaped, because the check asserted the finisher
+still HAD a unit — which is true of every exercise in the library. The swap was
+silently turning a timed burnout into a rep count and back, six times across the
+program. The check now captures the finisher's unit **per pointer** and asserts
+the sharpen map matches the no-date map exactly. **Measure the payload, not the
+container** — fourth time this file has recorded it, and the first where the
+payload was a property of the thing rather than the thing itself.
+
+Seven mutants, all caught after that rewrite. The floors carry the weight: the
+volume must not move, the no-kit athlete must still get real work, and a flagged
+athlete must get no rehearsal at all.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
