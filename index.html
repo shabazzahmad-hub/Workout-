@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='370';
+const APP_VERSION='371';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4732,14 +4732,44 @@ function ruckLadderWeek(raw){
   /* Walk the cycle forward so the two variables can never move together, and
      so the week's answer does not depend on what was rendered last time. */
   const loadSlot=prepPathDef().loadSlot;
-  let km=startKm, lb=startLb, climbing='distance', down=false, capped=false;
+  /* THE PLATE DOES NOT GO UP IN THE TAPER, and the two paths made that
+     path-dependent by accident. Their ladders are offset by one slot (v340),
+     so the operator's fourth load step landed at three weeks out — sharpen,
+     fine — and the ASSAULTER'S landed at TWO weeks out, inside the taper.
+     Measured: 30 lb -> 35 lb a fortnight before the evaluation, on the path
+     whose own note says "you want to arrive fresh under load".
+
+     Nothing caught it because every check counted the STEPS and none asked
+     WHEN. THE STEP IS NOT DROPPED: dropping it would leave the assaulter 5 lb
+     lighter for the whole block, which is a bias in VOLUME and the one thing
+     the two paths may never differ in. It is taken at the last working week
+     before the taper instead, so both paths reach the same plate under the
+     same ceiling and neither adds load in the fortnight that exists to shed
+     it. */
+  const totalWk=wk+left;
+  /* Week w has `left = totalWk - w`, and the taper is `left <= TAPER_WEEKS` —
+     so it opens at `totalWk - TAPER_WEEKS`, not one later. The off-by-one put
+     the boundary a week late and let the assaulter's step through, which the
+     path-by-path measurement caught rather than any assertion about the
+     arithmetic. */
+  const taperFrom=Math.max(2,totalWk-PREP_TAPER_WEEKS);
+  let wantSteps=0;
+  for(let t=2;t<=totalWk;t++)if(((t-1)%4)+1===loadSlot)wantSteps++;
+  let catchUp=0;                                  // last working week before the taper
+  for(let t=2;t<taperFrom;t++)if(((t-1)%4)+1!==4)catchUp=t;
+  let km=startKm, lb=startLb, climbing='distance', down=false, capped=false, took=0;
+  const raise=()=>{if(lb+PREP_RUCK_STEP_LB<=ceil){lb+=PREP_RUCK_STEP_LB;took++;}else capped=true;};
   for(let w=2;w<=wk;w++){
     const slot=((w-1)%4)+1;                       // one slot raises load · slot 4 is the down week
+    const inTaper=w>=taperFrom;
     if(slot===4){down=true;climbing='neither';continue;}
     down=false;
-    if(slot===loadSlot){
-      climbing='load';
-      if(lb+PREP_RUCK_STEP_LB<=ceil)lb+=PREP_RUCK_STEP_LB; else capped=true;
+    if(slot===loadSlot&&!inTaper){
+      climbing='load';raise();
+    }else if(w===catchUp&&took<wantSteps){
+      /* Every step the block owes that would have fallen in the taper, taken
+         here. Still one week, still never beside a distance climb. */
+      climbing='load';while(took<wantSteps&&!capped)raise();
     }else{
       climbing='distance';
       km*=PREP_RAMP;
@@ -4753,7 +4783,17 @@ function ruckLadderWeek(raw){
   if(wk===1){climbing='distance';down=false;}
   let shown=km;
   if(down)shown*=PREP_DOWN_CUT;
-  if(phase==='taper')shown*=0.6;
+  /* THE TAPER CUTS THE VOLUME, AND THE CARD HAS TO SAY THAT. `climbing` is
+     computed from the four-week cycle slot, which knows nothing about the
+     phase — so at two weeks out the ruck card read "What moves this week: The
+     distance. The load holds." while the distance was cut from 10.7 km to
+     7.1 km, a third of it. The running card beside it said, correctly,
+     "volume comes down and nothing gets sharper".
+
+     Set here rather than in the renderer, so any future consumer gets the
+     truth instead of only this one card. The DOWN week keeps its own answer:
+     "this is the down week" is accurate in the taper too. */
+  if(phase==='taper'){shown*=0.6;if(!down)climbing='taper';}
   /* Fitted against the run plan's ask for the same week, the mirror of what
      enduranceWeek() does. Both read the other RAW, so they compute the same
      fit from the same pair and cannot disagree. */
@@ -5210,6 +5250,7 @@ function ruckLadderHTML(){
   const w=ruckLadderWeek();
   if(w.noDate)return '';
   const moving=w.down?'Nothing — this is the down week.'
+    :w.climbing==='taper'?'Nothing is being built. The <b>volume comes down</b> and the load holds — the last weeks are for arriving fresh under it, not for one more hard week.'
     :(w.climbing==='load'
       ? (w.capped
         ? 'The <b>load</b> would climb this week and it has reached its ceiling, so the distance holds instead.'
