@@ -3393,6 +3393,108 @@ export default async function () {
       hold.repaired, ['deadhang', 'absent', 'absent'], hold.repaired);
   }
 
+
+  /* v367 (same round) — A LOCKED BUTTON WITH NO SENTENCE IS A DEAD END, on
+     the two cards v366 did not reach. maxEffortBlocked() correctly refuses on
+     the tap, but the FORCE and FORCE Combat cards still showed a live
+     "Train the four tasks" and "Run the circuit" with no mention of the
+     health check — so the athlete tapped and landed on the clearance screen
+     with no idea what they had just done. One renderer now, for the reason
+     forceKitHTML() is one: three surfaces saying the same thing.
+
+     THE FLOOR is the cleared athlete, who must get every start button back
+     and no note at all — a note that always fires is a note nobody reads. */
+  {
+    const lock = {};
+    for (const [label, setup] of [
+      ['locked', () => { STATE.profile.parq = ['heart']; STATE.profile.parqDone = true; STATE.profile.medCleared = false; STATE.profile.gear = ['bar', 'bench', 'dip', 'sandbag']; }],
+      ['cleared', () => { STATE.profile.parq = []; STATE.profile.parqDone = true; STATE.profile.medCleared = false; STATE.profile.gear = ['bar', 'bench', 'dip', 'sandbag']; }],
+    ]) {
+      await seedAthlete(page, setup);
+      lock[label] = await page.evaluate(() => {
+        const read = fn => {
+          fn();
+          const sh = document.getElementById('sheet');
+          const btns = [...sh.querySelectorAll('button')].map(b => b.innerText.trim());
+          const o = { note: !!sh.querySelector('[data-maxlock]'),
+                      start: btns.some(b => /Train the four|Train what you have|Run the circuit/.test(b)),
+                      route: btns.some(b => /cleared by a doctor|Answer the health check/.test(b)),
+                      /* the rest of the card must survive — a note that ate
+                         the screen would satisfy every assertion below */
+                      logBtn: btns.some(b => /Log a result/.test(b)) };
+          closeSheet();
+          return o;
+        };
+        return { safe: safeMode(), force: read(() => openForcePrep()), combat: read(() => openCombat()),
+                 holds: read(() => openHoldTests()) };
+      });
+    }
+    t.eq('guard: one athlete is in safe mode and the other is not',
+      [lock.locked.safe, lock.cleared.safe], [true, false], lock);
+
+    ['force', 'combat', 'holds'].forEach(card => {
+      t.ok('the ' + card + ' card says why it is locked', lock.locked[card].note, lock.locked[card]);
+      t.ok('and offers the screen that unlocks it', lock.locked[card].route, lock.locked[card]);
+      t.ok('with no live start button on it', !lock.locked[card].start, lock.locked[card]);
+      /* THE FLOOR. */
+      t.ok('a cleared athlete gets the ' + card + ' card with no note', !lock.cleared[card].note, lock.cleared[card]);
+    });
+    t.ok('a cleared athlete can start the FORCE tasks', lock.cleared.force.start, lock.cleared.force);
+    t.ok('and the FORCE Combat circuit', lock.cleared.combat.start, lock.cleared.combat);
+    /* THE REST OF THE CARD SURVIVES: logging a past result is not a max
+       effort and is never taken away. */
+    t.ok('a locked athlete can still log a FORCE result', lock.locked.force.logBtn, lock.locked.force);
+    t.ok('and a FORCE Combat result', lock.locked.combat.logBtn, lock.locked.combat);
+
+    /* ONE renderer, not three copies of the sentence. */
+    const one = await page.evaluate(() => {
+      const src = [...document.querySelectorAll('script:not([src])')]
+        .map(x => x.textContent).sort((a, b) => b.length - a.length)[0];
+      return { hasApp: /function maxEffortBlocked/.test(src),
+               callers: (src.match(/maxLockNoteHTML\(/g) || []).length,
+               copies: (src.match(/stays locked until you have spoken to a doctor/g) || []).length };
+    });
+    /* THE RENDERER'S OWN CONTRACT, pinned directly. Every caller already
+       guards on safeMode(), so its internal guard is consulted in no branch a
+       screen can reach — v338's prepDatePassed() shape. A guard that cannot
+       be exercised through the UI still has to mean what it is named. */
+    const contract = await page.evaluate(() => {
+      const real = { p: STATE.profile.parq, d: STATE.profile.parqDone, m: STATE.profile.medCleared };
+      const at = (parq, done, cleared) => {
+        STATE.profile.parq = parq; STATE.profile.parqDone = done; STATE.profile.medCleared = cleared;
+        return maxLockNoteHTML('A test');
+      };
+      const o = { clean: at([], true, false), unscreened: at([], false, false),
+                  flagged: at(['heart'], true, false), cleared: at(['heart'], true, true) };
+      STATE.profile.parq = real.p; STATE.profile.parqDone = real.d; STATE.profile.medCleared = real.m;
+      return { clean: o.clean, unscreenedRoutes: /Answer the health check/.test(o.unscreened),
+               flaggedRoutes: /cleared by a doctor/.test(o.flagged), clearedIsEmpty: o.cleared === '' };
+    });
+    /* A THROW PUTS NO JUNK ON THE GLASS. The GATE is what fails closed (it
+       blocks); this note is cosmetic, so its own failure mode is silence —
+       the athlete still meets the gate on the tap. */
+    const threw = await page.evaluate(() => {
+      const real = window.parqDone;
+      let out = null;
+      try { parqDone = () => { throw new Error('boom'); }; out = maxLockNoteHTML('A test'); }
+      finally { parqDone = real; }
+      return { out, restored: typeof maxLockNoteHTML('A test') === 'string' };
+    });
+    t.eq('the locked note renders nothing when the health check throws', threw.out, '');
+    t.ok('guard: and still works once restored', threw.restored, threw);
+
+    t.eq('the renderer says nothing to an athlete who needs no gate', contract.clean, '');
+    t.ok('and nothing to one who has been cleared', contract.clearedIsEmpty, contract);
+    t.ok('an unscreened athlete is sent to the health check', contract.unscreenedRoutes, contract);
+    t.ok('a flagged one is sent to the clearance screen', contract.flaggedRoutes, contract);
+
+    t.ok('guard: the source scan really found the app', one.hasApp, one);
+    t.eq('the locked note has one definition and three call sites', one.callers, 4, one);
+    /* The battery's own screen keeps its longer wording; the three cards
+       share one. Two is the definition plus the battery, not a third copy. */
+    t.ok('and the sentence is not copied per card', one.copies <= 2, one);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

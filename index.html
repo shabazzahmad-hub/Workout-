@@ -5223,7 +5223,8 @@ function openForcePrep(){
     ${prepMidHTML()}
     ${prepPathHTML()}
     ${forceKitHTML()}
-    <button class="btn primary" style="width:100%;margin-top:10px" onclick="startForceTrain()">▶ Train ${forceAvailable().length===FORCE_EVENTS.length?'the four tasks':'what you have kit for'}</button>
+    ${safeMode()?maxLockNoteHTML('The four FORCE tasks')
+      :`<button class="btn primary" style="width:100%;margin-top:10px" onclick="startForceTrain()">▶ Train ${forceAvailable().length===FORCE_EVENTS.length?'the four tasks':'what you have kit for'}</button>`}
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openForceLog()">✎ Log a result</button>
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openForceDate()">📅 ${prep().date?'Change my test date':'Set my test date'}</button>
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openCombat()">🎖️ FORCE Combat — the Army standard</button>
@@ -5298,7 +5299,8 @@ function openCombat(){
         <div class="tiny muted" style="margin-top:2px">${_ve(combatOrder().map(e=>e.name).join(' → '))}</div></span>
         <span style="text-align:right"><b>${ct===null?'—':_ve(fmtTime(ct))}</b><div>${chip(cv)}</div></span></div>
       ${combatImplausible('circuit')?`<div class="note warn" style="margin:10px 0 0"><b>${_ve(fmtTime(ct))} is faster than this circuit can be run.</b> Every event would have to be beaten by more than half its allowed time. Check the number — and check you ran all four with the bag.</div>`:''}
-      <button class="btn t-teal" style="width:100%;margin-top:10px" onclick="startCombatCircuit()">▶ Run the circuit</button>
+      ${safeMode()?maxLockNoteHTML('The FORCE Combat circuit')
+        :`<button class="btn t-teal" style="width:100%;margin-top:10px" onclick="startCombatCircuit()">▶ Run the circuit</button>`}
     </div>
     <div class="section-label" style="margin-top:14px">The march</div>
     <div class="card pad">
@@ -10097,11 +10099,7 @@ function openHoldTests(){
   openSheet(`<h3>⏱️ Hold to failure</h3>
     <p class="muted sm" style="margin:2px 0 10px">One movement, held until your form goes. The clock counts <b>up</b> and does not stop you — you decide when it is over, and that decision is the test.</p>
     <p class="tiny muted" style="margin:0 0 12px">These are yours to watch over time. They do <b>not</b> change your program or your baseline: the battery is taken rested and in a fixed order, and a hold done on an ordinary Tuesday is a real number but not that one.</p>
-    ${locked?`<div class="note warn" data-holdlock="1">${!parqDone()
-        ?`<b>One quick health check first.</b> A test to failure is the most demanding thing this app will ever ask of you, so we screen before you do it. Takes a few seconds.
-          <button class="btn sm primary" style="width:auto;margin-top:10px" onclick="openHealthCheck()">Answer the health check</button>`
-        :`<b>Hold on — you flagged something on the health check.</b> A test to failure is the most demanding thing this app will ever ask of you, so it stays locked until you have spoken to a doctor. You can still train: every session is held well short of failure.
-          <button class="btn sm primary" style="width:auto;margin-top:10px" onclick="openClearance()">I've been cleared by a doctor</button>`}</div>`
+    ${locked?`<div data-holdlock="1">${maxLockNoteHTML('A hold to failure')}</div>`
       :holdFreshNow()?`<p class="tiny" style="margin:0 0 12px;font-weight:700;color:var(--green)">You have not trained today — this one counts as a fresh test.</p>`
       :`<p class="tiny muted" style="margin:0 0 12px;font-weight:700">You have already trained today, so this will be recorded as an after-training hold and will not set your best. Test fresh to move the number.</p>`}
     <div style="display:flex;flex-direction:column;gap:10px">
@@ -16605,6 +16603,25 @@ function maxEffortBlocked(){
     if(!parqDone())openHealthCheck(); else openClearance();
     return true;
   }catch(e){return true;}
+}
+/* ONE RENDERER FOR THE LOCKED NOTE, for the reason forceKitHTML() is one:
+   three surfaces say the same thing and two of them said nothing at all.
+   maxEffortBlocked() correctly refuses on the tap — the FORCE and FORCE
+   Combat cards still showed a live "Train the four tasks" and "Run the
+   circuit" with no mention of the health check, so the athlete tapped and
+   landed on the clearance screen with no idea what they had just done. A
+   locked button with no sentence is a dead end, whichever screen it is on.
+   Returns '' for a cleared athlete: a note that always fires is a note
+   nobody reads. */
+function maxLockNoteHTML(what){
+  try{
+    if(!safeMode())return '';
+    return `<div class="note warn" data-maxlock="1" style="margin-top:10px">${!parqDone()
+      ?`<b>One quick health check first.</b> ${_ve(what)} is a maximal effort, so we screen before you do it. Takes a few seconds.
+        <button class="btn sm primary" style="width:auto;margin-top:10px" onclick="openHealthCheck()">Answer the health check</button>`
+      :`<b>Hold on — you flagged something on the health check.</b> ${_ve(what)} is a maximal effort, so it stays locked until you have spoken to a doctor. You can still train: every session is held well short of failure.
+        <button class="btn sm primary" style="width:auto;margin-top:10px" onclick="openClearance()">I've been cleared by a doctor</button>`}</div>`;
+  }catch(e){return '';}
 }
 /* A format that asks for a true max declares it, so a future one is covered by
    the gate the day it is added rather than the day somebody remembers. */

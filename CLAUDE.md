@@ -6979,7 +6979,38 @@ needed `subs:{}`.
 the suite reported *"the test file itself threw"* rather than naming a check.
 Escape it as `\\n` when the helper is carried into the page as text.
 
-Ten mutants, all caught.
+### And the two cards v366 did not reach
+
+Found by asking the same question of every screen the gate protects: v366 gave
+the hold sheet a locked note, and **the FORCE and FORCE Combat cards still
+showed a live "Train the four tasks" and "Run the circuit" with no mention of
+the health check.** `maxEffortBlocked()` correctly refuses on the tap, so the
+athlete tapped and landed on the clearance screen with no idea what they had
+just done. *A locked button with no sentence is a dead end*, one round after
+writing that down — and the gate has been on those two cards since v322.
+
+`maxLockNoteHTML()` is the one renderer, for the reason `forceKitHTML()` is
+one: three surfaces saying the same thing, and two of them said nothing.
+
+**The rest of each card survives.** Logging a past result is not a maximal
+effort and is never taken away — a note that ate the screen would satisfy
+every "it says why" assertion.
+
+**One escaped mutant was fixed by pinning the renderer's own contract**, and
+one is genuinely equivalent:
+
+- Every caller already guards on `safeMode()`, so the renderer's internal
+  guard is consulted in no branch a screen can reach — v338's
+  `prepDatePassed()` shape. It is pinned directly instead: silent for a clean
+  athlete and for a cleared one, routing to the health check when unscreened
+  and to clearance when flagged, and **silent when the check throws** — the
+  GATE is what fails closed, so the note's own failure mode is saying nothing.
+- `_ve(what)` cannot be caught. Every caller passes a literal, so no reachable
+  route feeds it user content; it is kept as cover for a future caller. Read
+  the mutant back before rewriting the check — the same call as v287's
+  `wantAnchor`.
+
+Seventeen mutants across the round, sixteen caught and one equivalent.
 
 ## Rendering
 
