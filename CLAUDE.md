@@ -6132,6 +6132,36 @@ stamina moves the Core Score (92 → 100), the max is stored, and it is in
 `STRENGTH_METRICS`. The recorded intent is accurate. **Read the notes before
 calling a design a defect — and then check what the notes claim.**
 
+### Two more sweeps, and one that would be a real bug in most apps
+
+- **A comma-decimal phone.** Driven in `de-DE`, `fr-FR`, `ar-EG` and `hi-IN`:
+  every screen renders, nothing prints `NaN`, and — the thing that matters —
+  **all 30 numeric fields in the app are `type="number"`, not one is a text
+  field with a numeric keyboard.** The browser normalises a `type=number` value
+  to a dot whatever the locale, and measured directly, setting `"86,5"` on one
+  leaves it **empty** rather than silently truncating: the app's own "enter a
+  number" validation then catches it. A German athlete's 86,5 kg cannot become
+  86. That is the right design and it holds.
+
+  **The first pass reported seven problems and all seven were the probe.** It
+  asserted that a number the app PRINTS can be read back by `parseFloat` —
+  which fails on `en-US` too (`(12345).toLocaleString()` is `"12,345"`, and
+  `parseFloat` gives 12). Formatting for display and parsing input are
+  different paths and the app never round-trips between them. **Assert the
+  route, not a property you assumed it had.**
+
+- **The whole onboarding wizard, from a genuinely fresh install** — no seeded
+  athlete, nothing in storage. All seven steps advance, each accepts what it
+  asks for, it ends on the Baseline Test screen, `onboarded` is set, all six
+  tabs render, and the first session builds sensibly for a beginner
+  (`kneeplank 3x30`). It also confirms the profile/nutrition mirror through the
+  REAL path rather than a poked field: age 41/41, height 178/178, sex
+  male/male in both copies.
+
+  `obNext()` does not exist — the step counter and the Next handler are CLOSURE
+  LOCALS inside `obMount()`. The only way in is to click `#ob-next`, which is
+  what the athlete does and what this file's own rule prescribes anyway.
+
 ### Four sweeps that came back clean
 
 - **The destructive paths, driven with the confirm answered.** Undo rewinds the
