@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='355';
+const APP_VERSION='356';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -10937,8 +10937,29 @@ function bestHabitDay(){let m=0;const d=(STATE.nutrition&&STATE.nutrition.days)|
 function skipTotalMins(){return skipLog().reduce((a,x)=>a+(x.mins||0),0);}
 function skipSessionCount(){return skipLog().length;}
 function bestSkipSession(){return skipLog().reduce((m,x)=>Math.max(m,x.mins||0),0);}
+/* A WEEK BUCKET BUILT FROM MILLISECOND ARITHMETIC IS NEITHER DST-SAFE NOR
+   YEAR-SAFE, and this file already had the right algorithm sitting in it.
+   The old form was `Math.floor(((d - Jan1) / 86400000 + Jan1.getDay()) / 7)`,
+   which fails two ways, measured across three whole calendar years in the
+   athlete's own timezone:
+
+     - THE YEAR BOUNDARY splits one real week into up to THREE buckets. Monday
+       30 Dec 2024 to Sunday 5 Jan 2025 is exactly one Monday-Sunday week; 15
+       minutes of skipping on each of its seven days is 105 minutes, and
+       bestSkipWeek() reported **60**. The athlete does the work and the "90+
+       minutes in one week" badge never unlocks.
+     - THE SPRING DST WEEK holds EIGHT calendar dates (2024-W10, 2025-W10 and
+       2026-W10 all did), because springing forward loses an hour and the
+       floor keeps one extra day. That one favours the athlete, but it makes
+       "in one week" false either way.
+
+   weekStartD() takes the Monday of a date's week using local date parts, with
+   no millisecond arithmetic at all — DST-proof and year-proof by construction.
+   Measured over the same three years it produces 157 buckets, none oversized.
+   It is a function DECLARATION further down the file, so it is hoisted and
+   safe to call from here. */
 function _weekKeyOf(iso){const d=new Date(String(iso)+'T00:00:00');if(isNaN(d))return String(iso);
-  const s=new Date(d.getFullYear(),0,1);return d.getFullYear()+'-W'+Math.floor(((d-s)/86400000+s.getDay())/7);}
+  return localISO(weekStartD(d));}
 function bestSkipWeek(){const by={};skipLog().forEach(x=>{const k=_weekKeyOf(x.date);by[k]=(by[k]||0)+(x.mins||0);});
   return Object.keys(by).reduce((m,k)=>Math.max(m,by[k]),0);}
 /* A badge's description may be a function, so a count it quotes can be derived
@@ -18056,7 +18077,13 @@ async function renderCompare(){
 }
 /* Saturday weekly progress check-in */
 function isSaturday(){return new Date().getDay()===6;}
-function weekKey(){const d=new Date();const s=new Date(d.getFullYear(),0,1);return d.getFullYear()+'-W'+Math.floor(((d-s)/86400000+s.getDay())/7);}
+/* The same bucket for TODAY, and it was a second copy of the same broken
+   arithmetic — the shape this file records over and over. It de-duplicates the
+   weekly weigh-in reminder (`_weeklyRemindedWeek !== wk`), and measured across
+   three years no two Saturdays ever shared a bucket, so no reminder was
+   actually missed. It is unified anyway: one algorithm, so a future consumer
+   cannot inherit the defect the other copy already had. */
+function weekKey(){return _weekKeyOf(localISO(new Date()));}
 function weeklyBannerHTML(){
   if(STATE.settings.weeklyOn===false||!isSaturday())return '';
   return `<div class="note warn"><b>📸 Saturday check-in.</b> Take a progress photo, measure your waist, and weigh in — same day each week is the most accurate way to track change.

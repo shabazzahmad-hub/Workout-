@@ -1416,6 +1416,70 @@ export default async function () {
     t.eq('both health flags are booleans after a boot', cl.types, ['boolean', 'boolean'], cl.types);
   }
 
+  /* ---- a week bucket built from millisecond arithmetic (v356) --------------
+     `Math.floor(((d - Jan1) / 86400000 + Jan1.getDay()) / 7)` is neither
+     DST-safe nor year-safe, and this file already had the right algorithm in
+     it. Written to hold in ANY timezone: the year-boundary case is about the
+     calendar rollover, not the clock. */
+  {
+    const wk = await page.evaluate(() => {
+      const o = {}; const realErr = console.error; console.error = () => {};
+      const run = (start, n) => { const out = []; const d0 = new Date(start + 'T00:00:00');
+        for (let i = 0; i < n; i++) { const d = new Date(d0); d.setDate(d0.getDate() + i); out.push(localISO(d)); }
+        return out; };
+      /* guard: 30 Dec 2024 really is a Monday, so this span really is one
+         Monday-Sunday week — otherwise the case proves nothing. */
+      o.startsMonday = new Date('2024-12-30T00:00:00').getDay() === 1;
+      o.ordinaryStartsMonday = new Date('2025-06-02T00:00:00').getDay() === 1;
+
+      /* THE PAYLOAD, not the key: 15 minutes on each of seven days is 105, and
+         bestSkipWeek() reported 60 across the year boundary. Drive the real
+         reader, not _weekKeyOf directly. */
+      const best = dates => {
+        STATE.skipLog = dates.map(d => ({ date: d, mins: 15 }));
+        return bestSkipWeek();
+      };
+      o.newYear = best(run('2024-12-30', 7));
+      o.ordinary = best(run('2025-06-02', 7));
+      /* FLOOR: a bucket must not swallow MORE than a week either — eight days
+         of work is not "in one week". */
+      o.eightDays = best(run('2024-12-30', 8));
+      o.ordinaryEight = best(run('2025-06-02', 8));
+
+      /* Every bucket spans exactly seven days, across three whole calendar
+         years — the property the old arithmetic broke in both directions. */
+      const days = [];
+      for (let y = 2024; y <= 2026; y++) for (let m = 0; m < 12; m++) for (let d = 1; d <= 31; d++) {
+        const dt = new Date(y, m, d); if (dt.getMonth() !== m) continue; days.push(localISO(dt));
+      }
+      o.daysWalked = days.length;
+      const by = {}; days.forEach(d => { const k = _weekKeyOf(d); (by[k] = by[k] || []).push(d); });
+      o.oversized = Object.keys(by).filter(k => by[k].length > 7).map(k => k + ':' + by[k].length);
+      /* and a seven-day window never spans more than two buckets */
+      let over2 = 0;
+      for (let i = 0; i + 6 < days.length; i++) {
+        if (new Set(days.slice(i, i + 7).map(_weekKeyOf)).size > 2) over2++;
+      }
+      o.windowsOverTwo = over2;
+      /* weekKey() is the same bucket for today — one algorithm, not two. */
+      o.todayAgrees = weekKey() === _weekKeyOf(localISO(new Date()));
+      /* and a date it cannot parse still comes back as itself rather than NaN */
+      o.junkKey = _weekKeyOf('not-a-date');
+      STATE.skipLog = []; save(); console.error = realErr; return o;
+    });
+    t.ok('guard: the New Year span really starts on a Monday', wk.startsMonday, wk);
+    t.ok('guard: and so does the ordinary week beside it', wk.ordinaryStartsMonday, wk);
+    t.eq('a real week straddling New Year counts every day of it', wk.newYear, 105, wk);
+    t.eq('floor: an ordinary week is unchanged', wk.ordinary, 105, wk);
+    t.eq('floor: eight days is not one week, at the year boundary', wk.eightDays, 105, wk);
+    t.eq('floor: nor in an ordinary month', wk.ordinaryEight, 105, wk);
+    t.ok('guard: three whole years really were walked', wk.daysWalked > 1090, wk);
+    t.eq('no bucket holds more than seven days', wk.oversized, [], wk);
+    t.eq('and no seven-day window spans more than two buckets', wk.windowsOverTwo, 0, wk);
+    t.ok('weekKey() is the same bucket, not a second copy of the arithmetic', wk.todayAgrees, wk);
+    t.eq('an unparseable date still comes back as itself', wk.junkKey, 'not-a-date', wk);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

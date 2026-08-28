@@ -5875,6 +5875,77 @@ and `builderPool()`. Measured equivalent on today's library and left alone
 rather than refactored blind — recorded here so the next reader knows the rule
 has three homes.
 
+## A week bucket built from millisecond arithmetic (v356)
+
+`_weekKeyOf()` and `weekKey()` both computed a week from
+`Math.floor(((d - Jan1) / 86400000 + Jan1.getDay()) / 7)`. Two copies of one
+rule, and **the right algorithm was already sitting in the same file**:
+`weekStartD()` takes the Monday of a date's week from local date parts, with no
+millisecond arithmetic at all.
+
+Measured across three whole calendar years in the athlete's own timezone:
+
+- **The year boundary splits one real week into up to THREE buckets.** Monday
+  30 Dec 2024 to Sunday 5 Jan 2025 is exactly one Monday-Sunday week. Fifteen
+  minutes of skipping on each of its seven days is 105 minutes, and
+  `bestSkipWeek()` reported **60**. The athlete does the work and the *"90+
+  minutes of skipping in one week"* badge never unlocks.
+- **The spring DST week holds EIGHT calendar dates** — 2024-W10, 2025-W10 and
+  2026-W10 all did, because springing forward loses an hour and the floor keeps
+  one extra day. That error favours the athlete, but it makes "in one week"
+  false in the other direction.
+
+**The severity is small and stated as such.** No reminder was ever missed:
+measured across the same three years, no two Saturdays and no two Fridays ever
+shared a bucket, so `weekKey()`'s de-duplication of the weekly weigh-in never
+suppressed one. The undercount on a badge is the only athlete-visible cost.
+`weekKey()` is unified anyway, so a future consumer cannot inherit the defect
+the other copy already had.
+
+After the fix every bucket spans exactly seven days across all three years, and
+no seven-day window touches more than two of them.
+
+**`weekStartD()` is a function DECLARATION further down the file**, so calling
+it from `_weekKeyOf()` above is hoisted and safe — the same distinction the
+v290 `btRing` trap turns on, this time working in our favour.
+
+Six mutants, all caught, including the two over-eager twins: bucketing by month
+(too wide) and by day (too narrow) both satisfy "the New Year week counts every
+day" and fail the floors beside it.
+
+### Five sweeps that came back clean
+
+- **The exercise library's own data**, 197 entries: no `SAFE_SWAP` or
+  `LOWBACK_SWAP` cycle, every chain terminates (longest 4), every swap target is
+  a real exercise, every `safeSwap()` lands somewhere genuinely unflagged, every
+  ladder is non-increasing in `hardness`, every anchored exercise shares its
+  anchor test's unit, every `equip` key is in `GEAR_KEYS`, every `side` is in
+  `SIDE_MODES`, and `FOCUS_POOL`/`CORRECTIVE_POOL` name only real exercises.
+- **Eight real clock boundaries**, driven with the clock faked before page load
+  in `America/Denver`: either side of New Year midnight, month end, both spring
+  forward hours, the repeated fall-back hour, leap day and the day after. 13
+  panes each — **104 renders, zero problems**, no `NaN`, no `Invalid Date`, and
+  `todayISO()` correct at every one.
+- **The coach subsystem**: 38 personas, no duplicate ids, none malformed, none
+  throws or returns an empty line on any of eight line types, `coachVoiceFor()`
+  answers for every one, and every neural pitch shift sits inside the band
+  `validateData()` enforces. The shuffle bag plays **all 38 before any repeat**,
+  with **zero back-to-back repeats across three full bags**.
+
+**And one false alarm worth recording, because it was 65 findings.** The library
+sweep first asserted that a `safeSwap()` substitute must measure the same UNIT
+as the movement it replaces, and reported 65 violations. That rule holds only
+for the BASELINE BATTERY, where the score is recorded under the test's own id
+(v320, v321). On the progression path `safeSwap()` runs BEFORE `prescribe()`, so
+the target is computed for the substitute's own unit and nothing is ever
+mismatched — which the 972-session sweep had already proved. Narrowed to
+`TESTS`, the count is zero.
+
+**The rotation read as completely broken and was the probe**: `rollAutoPersona()`
+RETURNS the id and keeps it in a script-scope `let`, so reading a stored field
+gave `'auto'` 114 times. Sixth time this session. **Confirm the control's real
+shape before believing the result.**
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
