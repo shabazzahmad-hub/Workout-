@@ -7103,6 +7103,40 @@ expression of the "at most two finishers" rule.
 
 Thirteen mutants across the round, twelve caught and one equivalent.
 
+## The screen instructed what the gate refused (v369)
+
+v366 locked the FORCE tasks for an uncleared athlete and v367 gave the card a
+note saying so. The **midpoint prompt four lines above it** still read:
+
+> Midpoint assessment due. You are halfway to your test date. **Re-run the
+> four tasks** and log the times.
+
+So one screen told the athlete to do a thing and, a few lines down, told them
+they may not. That is *a promise in UI text is a specification* facing the
+other way — the app instructing an action it blocks — and it is the same
+family as the health screen that promised safe mode while `prescribe()` never
+called it.
+
+**The checkpoint is still DUE and the prompt still fires**, which is the part
+that makes the fix right rather than a deletion. **The FORCE evaluation is
+administered by a unit, not by this app**, so an athlete tested elsewhere has
+a real number to type in and `Log a result` was never taken away. Only the
+half the app hosts is withheld, and the prompt says which half and why.
+
+**Fixing one instance is not fixing the class**: `prepMidHTML()` says the same
+sentence twice — once when the assessment is due and once as a countdown in
+the window before it. The countdown had to move too, and the mutant that
+reverts only it is caught by its own check.
+
+**The floors carry the weight.** A cleared athlete's copy is byte-for-byte
+what it was; the mutant that gives everybody the locked wording fails there.
+And hiding the midpoint prompt for a locked athlete satisfies every "they are
+not told to re-run them" assertion while losing the checkpoint the whole block
+is built on — caught by a check that the prompt still appears and the log
+button still works.
+
+Five mutants, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

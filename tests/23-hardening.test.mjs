@@ -3725,6 +3725,84 @@ export default async function () {
       { top, total, moves: w.full.moves });
   }
 
+
+  /* v369 — THE MIDPOINT PROMPT INSTRUCTED WHAT THE GATE REFUSED. It told
+     every athlete to "re-run the four tasks", and v366's gate blocks that for
+     an uncleared one — with the lock note four lines below saying the
+     opposite. Two sentences on one screen cannot disagree.
+
+     The checkpoint is still DUE and the prompt still fires: the FORCE
+     evaluation is administered by a unit, not by this app, so an athlete
+     tested elsewhere has a real number to type in. Only the half the app
+     hosts is withheld. */
+  {
+    const mid = {};
+    for (const [label, safe] of [['locked', true], ['cleared', false]]) {
+      await seedAthlete(page, new Function('', `
+        STATE.profile.parq = ${safe ? "['heart']" : '[]'};
+        STATE.profile.parqDone = true;
+        STATE.profile.medCleared = ${safe ? 'false' : 'true'};
+        STATE.profile.gear = ['bar','bench','dip','sandbag'];
+        const D = n => localISO(new Date(Date.now() + 864e5 * n));
+        STATE.prep = { date: D(40), planFrom: localISO(new Date(Date.now() - 864e5 * 40)),
+                       path: 'operator', results: {} };
+        save();`));
+      mid[label] = await page.evaluate(() => {
+        const o = { safe: safeMode(), checkpoint: prepCheckpoint(), due: prepMidDue() };
+        openForcePrep();
+        const sh = document.getElementById('sheet');
+        const txt = sh.innerText;
+        o.prompt = /Midpoint assessment due/.test(txt);
+        o.tellsThemToRun = /Re-run the four tasks/.test(txt);
+        o.tellsThemToLog = /Log the times if your unit tests you/.test(txt);
+        o.saysLocked = /stays locked until your health check is cleared/.test(txt);
+        o.lockNote = !!sh.querySelector('[data-maxlock]');
+        o.canLog = [...sh.querySelectorAll('button')].some(b => /Log a result/.test(b.innerText));
+        closeSheet();
+        /* The countdown that precedes it says the same thing, one window
+           earlier — fixing one and not the other leaves the class alive. */
+        STATE.prep.date = localISO(new Date(Date.now() + 864e5 * 100));
+        STATE.prep.planFrom = localISO(new Date(Date.now() - 864e5 * 10));
+        o.early = { cp: prepCheckpoint(), due: prepMidDue() };
+        openForcePrep();
+        const t2 = document.getElementById('sheet').innerText;
+        o.early.tellsThemToRun = /you re-run the four tasks then/.test(t2);
+        o.early.tellsThemToLog = /log the times if your unit tests you then/.test(t2);
+        closeSheet();
+        return o;
+      });
+    }
+    t.eq('guard: both athletes are at the midpoint with the prompt due',
+      [mid.locked.checkpoint, mid.cleared.checkpoint, mid.locked.due, mid.cleared.due],
+      ['mid', 'mid', true, true], mid);
+    t.eq('guard: one is in safe mode and the other is not',
+      [mid.locked.safe, mid.cleared.safe], [true, false], mid);
+    t.eq('guard: and the early window really is the initial one',
+      [mid.locked.early.cp, mid.cleared.early.cp], ['initial', 'initial'], mid);
+
+    /* THE FLOOR: a cleared athlete's copy is untouched. */
+    t.ok('a cleared athlete is still told to re-run the four tasks', mid.cleared.tellsThemToRun, mid.cleared);
+    t.ok('and the countdown says the same', mid.cleared.early.tellsThemToRun, mid.cleared.early);
+    t.ok('with no lock note on their card', !mid.cleared.lockNote, mid.cleared);
+
+    /* THE FINDING: the locked athlete is not told to do what is blocked. */
+    t.ok('a locked athlete is NOT told to re-run them', !mid.locked.tellsThemToRun, mid.locked);
+    t.ok('they are told what they can do instead', mid.locked.tellsThemToLog, mid.locked);
+    t.ok('and the prompt names the reason', mid.locked.saysLocked, mid.locked);
+    /* FIXING ONE INSTANCE IS NOT FIXING THE CLASS: the countdown one window
+       earlier says the same sentence. */
+    t.ok('the countdown does not tell them to re-run them either',
+      !mid.locked.early.tellsThemToRun, mid.locked.early);
+    t.ok('and offers the same alternative', mid.locked.early.tellsThemToLog, mid.locked.early);
+
+    /* THE PROMPT STILL FIRES, and logging is still possible — the evaluation
+       is administered by a unit, not by this app. A fix that simply hid the
+       midpoint prompt satisfies every assertion above and loses the
+       checkpoint the block is built on. */
+    t.ok('the midpoint prompt still appears for a locked athlete', mid.locked.prompt, mid.locked);
+    t.ok('and they can still log a result', mid.locked.canLog, mid.locked);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
