@@ -1314,6 +1314,108 @@ export default async function () {
     t.ok('and it now names the number the calculation uses', sy.editorAgrees, sy);
   }
 
+  /* ---- clearance is a tap, not a truthy value (v355) -----------------------
+     `medCleared()` was `!!STATE.profile.medCleared` — a bare truthiness read on
+     a raw stored flag, which is the defect this repo's notes OPEN with, on the
+     sibling flag. parqDone() was fixed to require the answers behind it;
+     medCleared() is the other half of the same gate and never was. */
+  {
+    const cl = await page.evaluate(() => {
+      const o = {}; const realErr = console.error; console.error = () => {};
+      const snap = JSON.stringify(STATE);
+      const flag = (Array.isArray(PARQ) ? [PARQ[0][0] || PARQ[0].k || PARQ[0]] : ['heart']);
+      o.flag = flag;
+      const boot = v => {
+        STATE = JSON.parse(snap);
+        STATE.profile.parq = flag.slice();      // a REAL declared condition
+        STATE.profile.parqDone = true;
+        STATE.profile.medCleared = v;
+        normalizeState();
+        return { stored: STATE.profile.medCleared, cleared: medCleared(),
+                 flagged: parqFlagged(), safe: safeMode() };
+      };
+      /* The string 'false' is the one a hand-edited or foreign export really
+         produces, and it is truthy — so it leads the list rather than sitting
+         in it. */
+      o.junk = {};
+      ['false', 'x', 1, {}, [], -1, [0], 'true'].forEach((v, i) => { o.junk['j' + i] = boot(v); });
+      o.real = boot(true);
+      o.declined = boot(false);
+
+      /* What safe mode is FOR: it must actually change the prescription, or the
+         whole gate is decoration. Measured on the same pointer. */
+      const sess = () => JSON.stringify(buildSession(40).main.map(m => m.exId + ':' + m.sets + 'x' + m.target));
+      boot(true);  const clearedSession = sess();
+      boot('x');   const junkSession = sess();
+      boot(false); const guardedSession = sess();
+      o.guardBites = clearedSession !== guardedSession;   // guard: it does something
+      o.junkIsGuarded = junkSession === guardedSession;
+      o.clearedIsNot  = junkSession !== clearedSession;
+
+      /* FLOOR: a genuine clearance still works, through the button the athlete
+         actually taps — not by assigning the field. */
+      STATE = JSON.parse(snap);
+      STATE.profile.parq = flag.slice(); STATE.profile.parqDone = true;
+      STATE.profile.medCleared = false; normalizeState();
+      try { confirmClearance(); } catch (e) { o.confirmErr = String(e.message).slice(0, 60); }
+      normalizeState();
+      o.afterConfirm = { stored: STATE.profile.medCleared, cleared: medCleared(), safe: safeMode() };
+
+      /* FLOOR: an athlete with NO declared condition is not put into safe mode
+         by any of this — an over-eager fix that refused every clearance would
+         satisfy every assertion above. */
+      STATE = JSON.parse(snap);
+      STATE.profile.parq = []; STATE.profile.parqDone = true;
+      STATE.profile.medCleared = false; normalizeState();
+      o.noCondition = { flagged: parqFlagged(), safe: safeMode() };
+
+      /* THE READ SITE HAS ITS OWN CONTRACT, and every check above boots first —
+         so the repair scrubs the junk and medCleared() never sees any. Two
+         guards mean two checks: call it with junk in STATE and NO boot, which
+         is the state a future writer or a render before normalizeState() would
+         leave. A guard consulted only behind another guard still has to mean
+         what it is named. */
+      o.rawRead = {};
+      ['false', 'x', 1, {}, [], -1, [0], 'true'].forEach((v, i) => {
+        STATE = JSON.parse(snap);
+        STATE.profile.parq = flag.slice(); STATE.profile.parqDone = true;
+        STATE.profile.medCleared = v;                 // deliberately NOT booted
+        o.rawRead['r' + i] = { cleared: medCleared(), safe: safeMode() };
+      });
+      STATE = JSON.parse(snap);
+      STATE.profile.parq = flag.slice(); STATE.profile.parqDone = true;
+      STATE.profile.medCleared = true;                // the real thing, unbooted
+      o.rawRealCleared = medCleared();
+
+      /* And the junk does not travel: both flags are booleans after a boot. */
+      boot({});
+      o.types = [typeof STATE.profile.medCleared, typeof STATE.profile.parqDone];
+      STATE = JSON.parse(snap); normalizeState(); save(); console.error = realErr;
+      return o;
+    });
+    t.ok('guard: safe mode really changes what is prescribed', cl.guardBites, cl);
+    Object.keys(cl.junk).forEach(k => {
+      t.eq('junk in the clearance flag does not clear it (' + k + ')', cl.junk[k].cleared, false, cl.junk[k]);
+      t.ok('so a declared condition keeps safe mode on (' + k + ')', cl.junk[k].safe === true, cl.junk[k]);
+      t.eq('and the junk does not survive the boot (' + k + ')', cl.junk[k].stored, false, cl.junk[k]);
+    });
+    t.ok('and the guarded session is what a junk-flagged athlete gets', cl.junkIsGuarded, cl);
+    t.ok('guard: a genuinely cleared athlete gets a different one', cl.clearedIsNot, cl);
+    t.eq('floor: a real boolean true still clears', cl.real.cleared, true, cl.real);
+    t.eq('floor: and turns safe mode off', cl.real.safe, false, cl.real);
+    t.eq('floor: tapping the confirm button still clears', cl.afterConfirm.cleared, true, cl.afterConfirm);
+    t.eq('floor: and it survives the boot', cl.afterConfirm.stored, true, cl.afterConfirm);
+    t.eq('floor: an athlete with no declared condition is not flagged', cl.noCondition.flagged, false, cl.noCondition);
+    t.eq('floor: and is not in safe mode', cl.noCondition.safe, false, cl.noCondition);
+    Object.keys(cl.rawRead).forEach(k => {
+      t.eq('medCleared() itself refuses junk with no boot behind it (' + k + ')',
+        cl.rawRead[k].cleared, false, cl.rawRead[k]);
+      t.eq('so safe mode stays on (' + k + ')', cl.rawRead[k].safe, true, cl.rawRead[k]);
+    });
+    t.eq('floor: and it still accepts a real true with no boot', cl.rawRealCleared, true, cl);
+    t.eq('both health flags are booleans after a boot', cl.types, ['boolean', 'boolean'], cl.types);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

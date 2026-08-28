@@ -5717,6 +5717,59 @@ mirroring only one way leaves half the class alive — and the two over-eager
 twins: inventing a default when both are absent, and overwriting copies that
 already agree.
 
+### And clearance was a truthy value, not a tap
+
+The same round, found by fuzzing the safety predicates rather than the screens.
+`safeMode()` is `!parqDone() || (parqFlagged() && !medCleared())`. This file
+OPENS with the story of `parqDone()` being `!!STATE.profile.parqDone` — a
+boolean read with no check that the answers behind it existed — and its fix.
+**`medCleared()` is the other half of the same gate and was never touched:**
+
+```js
+function medCleared(){try{return !!(STATE.profile&&STATE.profile.medCleared);}catch(e){return false;}}
+```
+
+Measured on an athlete who had declared a **heart condition**, with `parqDone`
+true and a valid `parq` array — so the boot repair's only branch
+(`if(!Array.isArray(P.parq))`) never fired:
+
+| stored `medCleared` | reads as cleared | safe mode |
+|---|---|---|
+| `'false'` | **yes** | **off** |
+| `'x'`, `1`, `{}`, `[]`, `-1`, `[0]` | **yes** | **off** |
+| `true` | yes | off |
+| `false`, `0`, `''`, `null` | no | on |
+
+**The string `'false'` is the one that actually happens** — a hand-edited or
+foreign export serialises the flag as text — and it is truthy.
+
+It is not cosmetic. Safe mode changes the prescription, measured on the same
+pointer: plank rotation **14s → 19s**, vertical crunch **16 → 22**, nordic
+**4 → 6** — 25-40% more work, in the flagged region, for someone the screen
+exists to protect.
+
+**Clearance is a deliberate tap, so only the boolean `true` is one.** Both
+flags are now coerced at the boot AND tested strictly at the read site, because
+two guards mean two checks — and the first mutation run proved it: reverting
+`medCleared()` to bare truthiness **escaped every check**, since all of them
+booted first and the repair had already scrubbed the junk. The read site now
+has its own block that hands it junk with no boot behind it.
+
+Eight mutants, all caught after that. Three are the over-eager twins — never
+accepting a clearance, forcing every athlete into safe mode, and a repair that
+wipes a real one — each caught by a floor: the confirm button still clears, the
+clearance survives a boot, and an athlete with no declared condition is never
+put into safe mode at all.
+
+**Two false alarms from the same fuzz, and both were the probe.** `parq:[]` with
+a done flag read as "cleared with no answers" — but an empty array IS the
+answer; the screen says *"if none apply, leave them all off"*. And
+`jointRisky()` **throws** on a string `lims` — which is correct fail-closed
+design, not a leak: `safeSwap()` guards its own read
+(`Array.isArray(...)?...:[]`), and `offerable()` and `swapStillValid()` both
+catch into `false`, the restrictive answer. Making it return `false` silently
+would fail OPEN, which is strictly worse.
+
 ### The check has to drive the BOOT path
 
 The first version set the divergence, rendered, and asserted the editor and the

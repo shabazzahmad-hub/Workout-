@@ -15850,7 +15850,21 @@ function parqFlagged(){return parqFlags().length>0;}
    parqFlags() returns [] for a missing array, safeMode() goes false, and the
    maximal battery unlocks for someone who never answered the screen. */
 function parqDone(){try{return !!(STATE.profile&&STATE.profile.parqDone&&Array.isArray(STATE.profile.parq));}catch(e){return false;}}
-function medCleared(){try{return !!(STATE.profile&&STATE.profile.medCleared);}catch(e){return false;}}
+/* `!!` ON A RAW STORED FLAG IS THE DEFECT THIS FILE OPENS WITH, ON THE SIBLING.
+   parqDone() was fixed to require the answers behind it; medCleared() is the
+   OTHER half of the same gate — safeMode() is
+   `!parqDone() || (parqFlagged() && !medCleared())` — and it was still a bare
+   truthiness read. Measured on an athlete who declared a heart condition: the
+   values 'x', 1, {}, [], -1, [0] and the STRING 'false' all read as cleared,
+   safe mode went off, and the prescription rose 25-40% (plank rotation 14s to
+   19s, vertical crunch 16 to 22, nordic 4 to 6). 'false' is the one a
+   hand-edited or foreign backup really produces, and it is truthy.
+
+   Clearance is a deliberate tap. Only the boolean `true` is one. Anything else
+   means the record cannot be trusted, and the two ways of being wrong are not
+   symmetrical: one costs a re-tap of a screen, the other prescribes a maximal
+   battery to someone with a declared heart condition. */
+function medCleared(){try{return !!(STATE.profile&&STATE.profile.medCleared===true);}catch(e){return false;}}
 /* Unanswered is NOT the same as cleared. Every athlete who upgraded from a
    pre-v177 build has no parq field at all, so parqFlagged() was false and the
    8-test maximal battery unlocked itself for the entire installed base — the
@@ -18993,6 +19007,12 @@ function normalizeState(){
      hand-edited backup arrives in, and skipping them left parqDone true with no
      answers behind it — an unanswered screen reading as a clean one. */
   if(!Array.isArray(P.parq)){P.parq=[];P.parqDone=false;P.medCleared=false;}
+  /* And when parq IS a valid array these two flags were left exactly as the
+     backup carried them, so junk survived every boot and travelled onward.
+     Both are yes/no answers to a question the athlete was asked; anything that
+     is not the boolean true is not an answer. Fails closed on purpose. */
+  P.parqDone=(P.parqDone===true);
+  P.medCleared=(P.medCleared===true);
    if(N){
      if(typeof N.allergens==='string')
        N.allergens=N.allergens.split(/[,;]+/).map(s=>s.trim().toLowerCase()).filter(s=>ALLERGENS.some(a=>a[0]===s));
