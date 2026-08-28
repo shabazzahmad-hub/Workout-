@@ -7012,6 +7012,56 @@ one is genuinely equivalent:
 
 Seventeen mutants across the round, sixteen caught and one equivalent.
 
+## The last two hand-written lists over CARDIO_MODES (v368)
+
+`movementHTML()` chose the per-mode block with a five-branch chain, and
+`openMakeupTimer()` chose its shape with `mode==='jacks'||mode==='skip'`. Both
+have an ELSE that swallows everything they do not name — the shape that
+credited a ruck as jumping jacks (v327), told a runner to do jacks (v328) and
+left the ruck and the run out of the weekly bar (v329), three rounds running.
+A sixth mode would have rendered the **jacks block, inputs and all**, under
+its own label.
+
+**Nothing here is a live defect today**, and saying so matters: `cardioMode()`
+is a membership test, so no out-of-set value reaches either surface. This is a
+latent-class fix, and the honest way to make one is to prove it changes
+nothing — every mode's card and make-up sheet is **byte-identical** to what
+the chain produced, measured before and after.
+
+**The lockstep is enforced in `validateData()`**, so an incomplete registry
+fails at boot rather than on a phone: every mode declares a `block` builder
+and a `timer` shape, no two modes share a builder, and no registry key is
+missing from `CARDIO_MODES`.
+
+### Reverting either consumer is byte-identical, so only the source can see it
+
+Two mutants escaped every rendered assertion — putting the chain back, and
+putting the 2-of-5 test back — because on today's five modes they produce
+exactly the same output. That is v322's `WEIGHTS_PATTERNS` lesson: **the check
+needed the consumer to READ the list, not merely for the list to exist.** The
+declaration still stands with the consumer hand-written, which is the drift
+the registry exists to stop. Both are now asserted on the source.
+
+### Three more escapes, all of them lessons already here
+
+- **Measure the payload, not the container.** Every timer-shape assertion read
+  `CARDIO_INFO[k].timer` — the input. A mutant hardcoding every sheet to the
+  work/rest shape left those values untouched and escaped. The check now drives
+  `openMakeupTimer()` and counts the controls the sheet really renders, with
+  the two modes that must NOT have them pinned beside it.
+- **A rule that cannot fire on today's data is not tested.** The orphan rule
+  (`CARDIO_INFO.x` not in `CARDIO_MODES`) is unreachable, so it is exercised
+  directly by adding a junk key and requiring the specific complaint — the same
+  technique the hardness-band and anchor-unit guards use.
+- **A validator rule needs the data broken in front of it.** The shared-builder
+  rule passed on nothing until a check pointed two modes at one builder.
+
+**And `validateData()` LOGS**, so every deliberate break has to mute
+`console.error` — the harness counts a console error as a page failure. Hit
+again, for the third time in this file.
+
+Eight mutants, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

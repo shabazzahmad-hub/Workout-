@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='367';
+const APP_VERSION='368';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -7432,10 +7432,14 @@ function startSpecialCardio(exId,format){
    separate, real gap, deliberately left alone here; this only owns sessions
    THIS feature starts. */
 function openMakeupTimer(mode){
-  const isBike=mode==='bike';
-  /* Skipping is done in SETS with rests in them — the same shape jacks need,
-     and not the one continuous effort a ruck or a run is. */
-  const isJacks=mode==='jacks'||mode==='skip';
+  /* WHICH SHAPE THIS TIMER OFFERS IS A PROPERTY OF THE MODE, not a
+     hand-written 2-of-5 test. Skipping is done in SETS with rests in them —
+     the same shape jacks need — and not the one continuous effort a ruck or a
+     run is; the trainer wants a duration list. Declared on CARDIO_INFO so a
+     sixth mode brings its own answer rather than inheriting whichever branch
+     the ELSE happened to be. */
+  const shape=cardioInfo(mode).timer;
+  const isBike=shape==='durations', isJacks=shape==='block';
   const label=cardioInfo(mode).label;
   let body=`<h3>⏱️ ${label} timer</h3>
     <p class="muted sm" style="margin:2px 0 14px">However you make it up, the minutes feed straight into today's step target when you're done.</p>
@@ -15855,6 +15859,8 @@ const CARDIO_INFO={
     note:'Nothing to set up and nothing to carry — a hotel room or a friend&#39;s spare floor is enough.',
     unit:()=>movement().junit,setUnit:setJackUnit,add:addJackVal,
     work:()=>jackWork(),
+    block:c=>jackBlockHTML(c.m,c.short,c.jneed,c.jlvl,c.work),
+    timer:'block',
     dayMin:d=>{const v=_dv(d&&d.jackVal);if(!v)return 0;
       const l=JACK_LEVELS.some(b=>b.k===(d&&d.jackLvl))?d.jackLvl:'steady';
       const u=JACK_UNITS.some(x=>x[0]===(d&&d.jackUnit))?d.jackUnit:'min';
@@ -15868,6 +15874,8 @@ const CARDIO_INFO={
     note:'Lowest-impact option, and the easiest to hold a steady effort on. Needs the trainer.',
     unit:()=>movement().unit, setUnit:setBikeUnit,add:addBikeVal,
     work:()=>bikeRide(),
+    block:c=>bikeBlockHTML(c.m,c.short,c.need,c.lvl,c.ride,c.shownVal),
+    timer:'durations',
     dayMin:d=>{const v=_dv(d&&d.bikeVal);if(!v)return 0;
       const l=BIKE_LEVELS.some(b=>b.k===(d&&d.bikeLvl))?d.bikeLvl:'steady';
       const u=BIKE_UNITS.some(x=>x[0]===(d&&d.bikeUnit))?d.bikeUnit:'min';
@@ -15881,6 +15889,8 @@ const CARDIO_INFO={
     note:'Walking under load. Outdoors, no impact to speak of, and the only one here that also loads your legs and spine while it does the cardio.',
     unit:()=>movement().runit,setUnit:setRuckUnit,add:addRuckVal,
     work:()=>ruckWork(),
+    block:c=>ruckBlockHTML(c.m,c.short),
+    timer:'stopwatch',
     dayMin:d=>{const v=_dv(d&&d.ruckVal);if(!v)return 0;
       const l=RUCK_PACES.some(b=>b.k===(d&&d.ruckLvl))?d.ruckLvl:'brisk';
       const u=RUCK_UNITS.some(x=>x[0]===(d&&d.ruckUnit))?d.ruckUnit:'min';
@@ -15894,6 +15904,8 @@ const CARDIO_INFO={
     note:'The aerobic base every military fitness standard is built on. Treadmill or road — the app only needs the effort and how long you were out.',
     unit:()=>movement().nunit,setUnit:setRunUnit, add:addRunVal,
     work:()=>runWork(),
+    block:c=>runBlockHTML(c.m,c.short),
+    timer:'stopwatch',
     dayMin:d=>{const v=_dv(d&&d.runVal);if(!v)return 0;
       const l=RUN_PACES.some(b=>b.k===(d&&d.runLvl))?d.runLvl:'steady';
       const u=RUN_UNITS.some(x=>x[0]===(d&&d.runUnit))?d.runUnit:'min';
@@ -15907,6 +15919,8 @@ const CARDIO_INFO={
     note:'Hardest calorie burn per minute here, and it packs into a pocket. High impact, so it asks more of the knees and calves than jacks do.',
     unit:()=>movement().sunit,setUnit:setSkipUnit,add:addSkipVal,
     work:()=>skipWork(),
+    block:c=>skipBlockHTML(c.m,c.short),
+    timer:'block',
     dayMin:d=>{const v=_dv(d&&d.skipVal);if(!v)return 0;
       const l=SKIP_LEVELS.some(b=>b.k===(d&&d.skipLvl))?d.skipLvl:'steady';
       const u=SKIP_UNITS.some(x=>x[0]===(d&&d.skipUnit))?d.skipUnit:'min';
@@ -16183,11 +16197,14 @@ function movementHTML(){
      h+=`<div class="tiny muted" style="margin:-6px 0 12px">Also logged today: ${
        others.map(x=>`<b>${x.min} min</b> ${_ve(x.did)} (${x.steps.toLocaleString()} steps)`).join(', ')
      }. It all counts.</div>`;}
-  h+= mode==='bike' ? bikeBlockHTML(m,short,need,lvl,ride,shownVal)
-    : mode==='run' ? runBlockHTML(m,short)
-    : mode==='ruck' ? ruckBlockHTML(m,short)
-    : mode==='skip' ? skipBlockHTML(m,short)
-                    : jackBlockHTML(m,short,jneed,jlvl,work);
+  /* THE LAST HAND-WRITTEN LIST OVER CARDIO_MODES. A five-branch chain whose
+     ELSE swallows everything it does not name is a membership test with one
+     member — the shape that credited a ruck as jumping jacks in v327 and told
+     a runner to do jacks in v328. A sixth mode would have silently rendered
+     the JACKS block, inputs and all, under its own label. The builder is a
+     property of the mode now, so a new one brings its own or is refused by
+     cardioInfo()'s membership test rather than quietly borrowing one. */
+  h+= cardioInfo(mode).block({m,short,need,lvl,ride,shownVal,jneed,jlvl,work});
   h+=`</div>`;
   return h;
 }
@@ -20487,6 +20504,31 @@ function validateData(){
      moves with the athlete and never looks obviously wrong. Same contract as
      the bike and the jacks — harder pays more, and every currency quoted
      against a 10,000-step debt has to actually cover it. */
+  /* EVERY CARDIO MODE DECLARES ITS OWN SURFACES. `movementHTML()` and
+     `openMakeupTimer()` were the last two hand-written lists over
+     CARDIO_MODES — a five-branch chain and a 2-of-5 test, each with an ELSE
+     that swallowed everything it did not name, which is exactly how a ruck
+     came to be credited as jumping jacks (v327) and a runner told to do them
+     (v328). Both read the registry now, and a mode that arrives without its
+     own answers would inherit the jacks fallback silently, so the lockstep is
+     checked here rather than left to be noticed on a phone. */
+  {const seen={};
+   CARDIO_MODES.forEach(k=>{
+     const i=CARDIO_INFO[k];
+     if(!i){errs.push('CARDIO_INFO: no entry for mode "'+k+'"');return;}
+     if(typeof i.block!=='function')errs.push('CARDIO_INFO.'+k+': no block builder — movementHTML would fall back to jumping jacks');
+     if(['block','durations','stopwatch'].indexOf(i.timer)<0)errs.push('CARDIO_INFO.'+k+': timer shape "'+i.timer+'" is not one the make-up sheet can render');
+     /* Two modes sharing one builder is the copy-paste this exists to catch;
+        it renders another mode's inputs under this mode's label. */
+     if(typeof i.block==='function'){
+       const src=String(i.block);
+       if(seen[src])errs.push('CARDIO_INFO.'+k+': shares its block builder with '+seen[src]);
+       else seen[src]=k;
+     }
+   });
+   Object.keys(CARDIO_INFO).forEach(k=>{
+     if(CARDIO_MODES.indexOf(k)<0)errs.push('CARDIO_INFO.'+k+': not in CARDIO_MODES — unreachable');
+   });}
   const ruckKeys={};
   RUCK_PACES.forEach((b,i)=>{
     if(ruckKeys[b.k])errs.push('RUCK_PACES: duplicate key "'+b.k+'"');

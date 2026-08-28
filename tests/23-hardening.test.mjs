@@ -3495,6 +3495,162 @@ export default async function () {
     t.ok('and the sentence is not copied per card', one.copies <= 2, one);
   }
 
+
+  /* v368 — THE LAST TWO HAND-WRITTEN LISTS OVER CARDIO_MODES.
+     `movementHTML()` chose the per-mode block with a five-branch chain and
+     `openMakeupTimer()` chose its shape with `mode==='jacks'||mode==='skip'`.
+     Both have an ELSE that swallows everything they do not name — the shape
+     that credited a ruck as jumping jacks (v327) and told a runner to do them
+     (v328), three rounds running. A sixth mode would have rendered the JACKS
+     block, inputs and all, under its own label.
+
+     Nothing here is a live defect today: cardioMode() is a membership test,
+     so no out-of-set value reaches either surface. The refactor is proved
+     BEHAVIOUR-PRESERVING rather than argued — every mode's card and make-up
+     sheet is byte-identical to what the chain produced — and the lockstep is
+     enforced in validateData() so an incomplete registry fails at boot
+     instead of on a phone. */
+  {
+    const cardio = await page.evaluate(() => {
+      const o = { modes: CARDIO_MODES.slice(), block: {}, timer: {}, shared: [], cards: {} };
+      const seen = {};
+      CARDIO_MODES.forEach(k => {
+        const i = CARDIO_INFO[k] || {};
+        o.block[k] = typeof i.block;
+        o.timer[k] = i.timer;
+        const src = String(i.block);
+        if (seen[src]) o.shared.push(k + '=' + seen[src]); else seen[src] = k;
+      });
+      /* Each mode's card must actually be ITS card: the ruck names the ruck,
+         the run names the run. A shared builder passes every "it has a block"
+         assertion and renders the wrong one. */
+      CARDIO_MODES.forEach(k => { setCardioMode(k); o.cards[k] = movementHTML(); });
+      /* MEASURE THE PAYLOAD, NOT THE CONTAINER. Reading CARDIO_INFO[k].timer
+         is reading the input; a mutant that hardcoded every sheet to the
+         work/rest shape left those values untouched and escaped. Drive the
+         real sheet and count the controls it actually renders. */
+      o.sheet = {};
+      CARDIO_MODES.forEach(k => {
+        openMakeupTimer(k);
+        const sh = document.getElementById('sheet');
+        o.sheet[k] = { durations: sh.querySelectorAll('[onclick^="startBikeMakeup("]').length,
+                       workRest: !!sh.querySelector('#mut-jk-w'),
+                       stopwatch: !!sh.querySelector('[onclick^="openMakeupStopwatch("]'),
+                       saysContinuous: /one continuous effort/i.test(sh.innerText) };
+        closeSheet();
+      });
+      /* A KEY THE MODE LIST DOES NOT CARRY IS UNREACHABLE, and that rule
+         cannot fire on today's data — exercise it directly. */
+      /* validateData() LOGS, and the harness counts a console error as a page
+         failure — mute it around every deliberate break. */
+      const hush = console.error; console.error = () => {};
+      CARDIO_INFO.helicopter = { label: 'x', block: () => '', timer: 'stopwatch' };
+      const orphan = validateData() || [];
+      delete CARDIO_INFO.helicopter;
+      console.error = hush;
+      o.orphanCaught = orphan.some(e => /CARDIO_INFO\.helicopter: not in CARDIO_MODES/.test(e));
+      o.orphans = Object.keys(CARDIO_INFO).filter(k => CARDIO_MODES.indexOf(k) < 0);
+      /* The validator rule fires when the registry is incomplete. */
+      const keepB = CARDIO_INFO.run.block, keepT = CARDIO_INFO.ruck.timer;
+      const quiet = console.error; console.error = () => {};
+      delete CARDIO_INFO.run.block; CARDIO_INFO.ruck.timer = 'wobble';
+      const errs = validateData() || [];
+      CARDIO_INFO.run.block = keepB; CARDIO_INFO.ruck.timer = keepT;
+      /* The copy-paste this rule exists for: two modes pointing at one
+         builder renders another mode's inputs under this mode's label, and
+         every "it has a block" assertion still passes. */
+      const keepS = CARDIO_INFO.skip.block;
+      CARDIO_INFO.skip.block = CARDIO_INFO.ruck.block;
+      const shared = validateData() || [];
+      CARDIO_INFO.skip.block = keepS;
+      o.complains = { block: errs.some(e => /CARDIO_INFO\.run: no block builder/.test(e)),
+                      timer: errs.some(e => /CARDIO_INFO\.ruck: timer shape/.test(e)),
+                      shared: shared.some(e => /shares its block builder/.test(e)) };
+      o.cleanAfter = (validateData() || []).length;
+      console.error = quiet;
+      return o;
+    });
+
+    t.eq('guard: five cardio modes are registered', cardio.modes.length, 5, cardio.modes);
+    cardio.modes.forEach(k => {
+      t.eq('the ' + k + ' mode declares its own block builder', cardio.block[k], 'function', cardio.block);
+      t.ok('and a timer shape the make-up sheet can render',
+        ['block', 'durations', 'stopwatch'].indexOf(cardio.timer[k]) >= 0, cardio.timer);
+    });
+    t.eq('no two modes share a block builder', cardio.shared, []);
+    t.eq('and nothing in the registry is unreachable', cardio.orphans, []);
+
+    /* THE PAYLOAD, not the container: each card is the right card. */
+    t.ok('the ruck card is the ruck block', /ruck/i.test(cardio.cards.ruck), null);
+    t.ok('the run card is the run block', /Run|running/.test(cardio.cards.run), null);
+    t.ok('the skip card is the skipping block', /rope|skip/i.test(cardio.cards.skip), null);
+    t.ok('and the ruck card is not the jacks one',
+      !/jumping jacks, that is/i.test(cardio.cards.ruck), null);
+
+    /* THE THREE TIMER SHAPES, and why they differ. Jacks and skipping are
+       done in SETS with rests; the trainer wants a duration list; a ruck and
+       a run are one continuous effort and get the stopwatch alone. Asserted
+       on the SHEET, so a mutant that hardcodes one shape for everybody is
+       caught by the two modes that must not have it. */
+    t.eq('jacks and skipping declare the work/rest block shape',
+      [cardio.timer.jacks, cardio.timer.skip], ['block', 'block'], cardio.timer);
+    t.eq('the bike declares durations', cardio.timer.bike, 'durations');
+    t.eq('and the continuous efforts declare the stopwatch only',
+      [cardio.timer.ruck, cardio.timer.run], ['stopwatch', 'stopwatch'], cardio.timer);
+    ['jacks', 'skip'].forEach(k => {
+      t.ok('the ' + k + ' sheet really renders the work/rest inputs', cardio.sheet[k].workRest, cardio.sheet[k]);
+      t.eq('and no duration list', cardio.sheet[k].durations, 0, cardio.sheet[k]);
+    });
+    t.ok('the bike sheet really renders a duration list', cardio.sheet.bike.durations >= 4, cardio.sheet.bike);
+    t.ok('and not the work/rest inputs', !cardio.sheet.bike.workRest, cardio.sheet.bike);
+    ['ruck', 'run'].forEach(k => {
+      t.ok('the ' + k + ' sheet renders neither', !cardio.sheet[k].workRest && !cardio.sheet[k].durations, cardio.sheet[k]);
+      /* A screen with a control missing and no sentence reads as broken. */
+      t.ok('and says why it is the stopwatch alone', cardio.sheet[k].saysContinuous, cardio.sheet[k]);
+    });
+    /* THE FLOOR: every mode keeps the stopwatch. */
+    cardio.modes.forEach(k => t.ok('the ' + k + ' sheet offers the stopwatch', cardio.sheet[k].stopwatch, cardio.sheet[k]));
+
+    /* A CLEAN VALIDATOR PROVES NOTHING ABOUT A VALIDATOR RULE. Break the
+       registry in front of it and require the specific complaint, then
+       restore and require silence. */
+    /* THE CONSUMERS HAVE TO READ THE REGISTRY, not merely for the registry to
+       exist — v322's WEIGHTS_PATTERNS lesson, where a mutant reverting the
+       builder to its own inline literal walked straight through a check that
+       counted the declaration. Reverting either consumer here is BYTE-
+       IDENTICAL on today's five modes, so no rendered assertion can see it;
+       the source is the only place the difference lives. */
+    const reads = await page.evaluate(() => {
+      const src = [...document.querySelectorAll('script:not([src])')]
+        .map(x => x.textContent).sort((a, b) => b.length - a.length)[0];
+      const body = name => {
+        const i = src.indexOf('function ' + name + '(');
+        if (i < 0) return null;
+        const j = src.indexOf('\nfunction ', i + 1);
+        return src.slice(i, j < 0 ? i + 6000 : j);
+      };
+      const mv = body('movementHTML'), mk = body('openMakeupTimer');
+      return {
+        found: !!mv && !!mk,
+        cardReads: /cardioInfo\(mode\)\.block\(/.test(mv || ''),
+        cardChain: /mode===.(bike|run|ruck|skip). ?\?/.test(mv || ''),
+        timerReads: /cardioInfo\(mode\)\.timer/.test(mk || ''),
+        timerChain: /mode===.(jacks|skip|bike|ruck|run)./.test(mk || ''),
+      };
+    });
+    t.ok('guard: both consumers were found in the source', reads.found, reads);
+    t.ok('the movement card asks the registry for its block', reads.cardReads, reads);
+    t.ok('and no longer branches on the mode name', !reads.cardChain, reads);
+    t.ok('the make-up timer asks the registry for its shape', reads.timerReads, reads);
+    t.ok('and no longer branches on the mode name either', !reads.timerChain, reads);
+
+    t.ok('the validator names a mode with no block builder', cardio.complains.block, cardio.complains);
+    t.ok('and one whose timer shape it cannot render', cardio.complains.timer, cardio.complains);
+    t.ok('and two modes pointing at one builder', cardio.complains.shared, cardio.complains);
+    t.ok('and a registry key no mode list carries', cardio.orphanCaught, cardio);
+    t.eq('and it is clean again once restored', cardio.cleanAfter, 0);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
