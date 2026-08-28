@@ -5613,6 +5613,26 @@ The usual ratio for an audit written from outside the code:
   probe that was wrong. **Confirm the control's real shape before believing
   the result** — third time this file has recorded it.
 
+### Two sweeps that came back clean, recorded as coverage
+
+- **74 writers driven with a hostile payload**, every tab rendered looking for
+  the injected ELEMENT: no injection, no page error. `toast()` uses
+  `textContent`, and every picker renders from its registry rather than from
+  stored values, so neither is an injection path.
+- **Render cost with a year of history** — 300 sessions, 365 food days, 52
+  weigh-ins, every tab and pane. Everything is 0-28 ms except Progress ▸
+  Summary, and that is v335's known legacy-log path: **2 ms** with the `items`
+  current code writes, ~120 ms without. The memo holds — measured the way v335
+  prescribes, by counting DUPLICATES rather than calls: **301 `buildSession`
+  calls for 300 logs, zero duplicates.** v335 measured the legacy cost and
+  declined to backfill because a renderer must not write to stored data, and
+  that decision stands.
+- **Every tab pointer in rendered copy, read off the real screens** rather than
+  grepped out of the source — six of them, all naming the right destination.
+  Grepping the source instead reports mostly comments; one of those was stale
+  (a header saying "jump to the Fuel tab" three lines above the comment
+  explaining that it goes to Reference) and was reworded.
+
 ### The container was checked and its MEMBERS were not
 
 Sweeping the whole writer surface afterwards — 74 `set*`/`toggle*`/`pick*`
