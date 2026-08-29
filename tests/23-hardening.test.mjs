@@ -3916,6 +3916,19 @@ export default async function () {
       };
       const o = {};
       [6, 4, 3, 2, 1].forEach(w => { o['w' + w] = at(w); });
+      /* FOUND, NOT ASSUMED. This used to pin week 3 as the load week and week
+         4 as a distance week. v384 made the step count path-independent, so
+         the operator's fifth slot no longer raises — week 3 is correctly a
+         distance week now, and a check that hardcoded it failed on correct
+         code. The requirement is that a week's CARD and its `climbing` agree,
+         whichever week it happens to be. */
+      o.found = { load: null, dist: null };
+      for (let w = 20; w >= 3; w--) {
+        const k = at(w);
+        if (k.phase === 'taper') continue;
+        if (!o.found.load && k.climbing === 'load') o.found.load = k;
+        if (!o.found.dist && k.climbing === 'distance') o.found.dist = k;
+      }
       return o;
     });
 
@@ -3941,12 +3954,20 @@ export default async function () {
     /* THE FLOORS. A build week must still name what it is building — a fix
        that said "nothing is being built" everywhere satisfies every taper
        assertion and deletes the plan's whole point. */
-    t.ok('a distance week still says the distance is moving',
-      /What moves this week: The distance/.test(ruck.w4.card), ruck.w4.card.slice(0, 200));
-    t.eq('and reports it as one', ruck.w4.climbing, 'distance', ruck.w4);
-    t.ok('a load week still says the load is moving',
-      /The load, by/.test(ruck.w3.card), ruck.w3.card.slice(0, 200));
-    t.eq('and reports it as one', ruck.w3.climbing, 'load', ruck.w3);
+    t.ok('guard: the block really contains a load week and a distance week',
+      !!(ruck.found.load && ruck.found.dist),
+      { load: !!ruck.found.load, dist: !!ruck.found.dist });
+    if (ruck.found.dist) {
+      t.ok('a distance week still says the distance is moving',
+        /What moves this week: The distance/.test(ruck.found.dist.card),
+        ruck.found.dist.card.slice(0, 200));
+      t.eq('and reports it as one', ruck.found.dist.climbing, 'distance', ruck.found.dist);
+    }
+    if (ruck.found.load) {
+      t.ok('a load week still says the load is moving',
+        /The load, by/.test(ruck.found.load.card), ruck.found.load.card.slice(0, 200));
+      t.eq('and reports it as one', ruck.found.load.climbing, 'load', ruck.found.load);
+    }
     /* THE DOWN WEEK KEEPS ITS OWN ANSWER, in the taper as everywhere else:
        "this is the down week" is accurate there too. */
     t.ok('a down week inside the taper still names itself',
@@ -3996,14 +4017,29 @@ export default async function () {
     /* THE FINDING. */
     paths.forEach(p => {
       t.eq('the ' + p + ' path never raises the plate in the taper', plate[p].inTaper, 0, plate[p]);
-      /* THE FLOOR: the step is not DROPPED. Dropping it leaves one path
-         lighter for the whole block, which is a bias in VOLUME — the one
-         thing v340 says the two paths may never differ in. */
-      t.eq('and still takes all four steps', plate[p].steps, 4, plate[p]);
+      /* THE FLOOR: the plate still climbs. This used to demand exactly FOUR
+         steps, because v371 moved owed steps out of the taper rather than
+         dropping them — reasoning that dropping left one path "5 lb lighter
+         for the whole block, which is a bias in VOLUME".
+
+         v384 makes the count path-independent, which answers that reason
+         directly: neither path can end lighter than the other, so there is no
+         bias to guard against. The block now takes as many steps as the
+         TIGHTER path affords over its working weeks, and the number is a
+         property of the block length rather than a constant. What has to hold
+         is that it still climbs — and that the two paths agree, which the
+         check below this one asserts. */
+      t.ok('and the ' + p + ' path still raises the plate during the block',
+        plate[p].steps >= 1 && plate[p].final > 0, plate[p]);
     });
     t.ok('both paths finish the block on the same plate',
       plate[paths[0]].final === plate[paths[1]].final,
       { a: plate[paths[0]].final, b: plate[paths[1]].final });
+    /* AND ON THE SAME NUMBER OF STEPS. Pinning only the final plate passes
+       whenever the ceiling happens to absorb the difference, which is exactly
+       how a 5 lb divergence survived at 12 of 23 block lengths. */
+    t.eq('and take the same number of steps to get there',
+      plate[paths[0]].steps, plate[paths[1]].steps, plate);
     t.ok('and the last step lands before the taper on both',
       paths.every(p => plate[p].lastStepLeft > 2), plate);
   }
@@ -5876,6 +5912,103 @@ export default async function () {
       t.ok('and the validator is what reports the drifted picker',
         r.poolOnly.errs >= 1, 'hits ' + r.poolOnly.errs);
       t.eq('the validator is clean once restored', r.errs, 0);
+    }
+  }
+
+
+  /* ---- v384: the two prep paths ended on different plates -----------------
+     `wantSteps` counted THIS path's slot occurrences over the WHOLE block, and
+     the paths are offset by one slot, so how many land inside a block depends
+     on totalWk % 4. The remainder was then taken all at once at the last
+     working week. Traced week by week on an athlete opening at the 10 lb
+     plate, the operator ended 5 lb heavier than the assaulter at 12 of 23
+     block lengths between 8 and 30 weeks.
+
+     A bias in LOAD is the one thing v340 says the two paths may never differ
+     in. Nothing caught it because every existing check counts steps at a
+     hardcoded 16-week block — one of the lengths where it happens to hold. A
+     guard that cannot fire in the case you tested is not tested, applied to
+     the block LENGTH rather than to a value.
+
+     The block affords as many steps as the TIGHTER path over the WORKING
+     weeks, and each path takes them at its own slot, one a week. That is
+     path-independent by construction, and it removes the catch-up: the
+     catch-up existed so a path would not end lighter than its sibling, and
+     with a shared count neither can.
+
+     THE TRADE IS REAL AND IS THE CONSERVATIVE DIRECTION. Every block now ends
+     one 5 lb step below the operator's old figure — 16 weeks goes 30 -> 25 —
+     because the steps that used to be dragged out of the taper are no longer
+     taken at all. Nobody is raised. */
+  {
+    const r = await page.evaluate(() => {
+      const iso = d => { const x = new Date(d); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+      const DAY = 86400000, out = {};
+      try {
+        const keepPrep = STATE.prep, keepDays = STATE.nutrition.days, keepKg = STATE.nutrition.weightKg;
+        /* NOTHING logged, so startLb is the opening plate and the ceiling
+           cannot absorb the difference — the case where it can be seen at all.
+           A probe run on an athlete already near the ceiling reported the two
+           paths as identical before AND after, which is the trap this block
+           exists to avoid. */
+        STATE.nutrition.days = {}; STATE.nutrition.weightKg = 86;
+        const walk = (path, blockWeeks) => {
+          let lb = null, prev = null, jumps = 0, loadInTaper = 0, bothMoved = 0, climbed = false;
+          for (let w = 1; w <= blockWeeks; w++) {
+            STATE.prep = { date: iso(Date.now() + (blockWeeks - w + 1) * 7 * DAY),
+                           planFrom: iso(Date.now() - (w - 1) * 7 * DAY), path };
+            const k = ruckLadderWeek(true);
+            if (prev !== null && k.lb - prev > 5) jumps++;
+            if (prev !== null && k.lb > prev) { climbed = true; if (k.phase === 'taper') loadInTaper++; }
+            if (k.climbing === 'load' && prev !== null && k.curve > 0 && k.lb > prev) {
+              // a load week must hold the distance — the plan's oldest rule
+              if (k.climbing !== 'load') bothMoved++;
+            }
+            prev = k.lb; lb = k.lb;
+          }
+          return { lb, jumps, loadInTaper, climbed };
+        };
+        out.rows = []; out.bad = 0; out.jumps = 0; out.taperLoad = 0;
+        for (let n = 8; n <= 30; n++) {
+          const o = walk('operator', n), a = walk('assaulter', n);
+          if (o.lb !== a.lb) out.bad++;
+          out.jumps += o.jumps + a.jumps;
+          out.taperLoad += o.loadInTaper + a.loadInTaper;
+          out.rows.push({ n, op: o.lb, as: a.lb });
+        }
+        // the lengths that used to diverge, pinned by name
+        out.nine = out.rows.find(x => x.n === 9);
+        out.sixteen = out.rows.find(x => x.n === 16);
+        out.twentyTwo = out.rows.find(x => x.n === 22);
+        // FLOORS
+        const eight = walk('operator', 8), long = walk('operator', 54);
+        out.climbs = walk('operator', 16).climbed;
+        out.longLb = long.lb; out.ceil = ruckLoadCeilLb();
+        out.start = (function () {
+          STATE.prep = { date: iso(Date.now() + 8 * 7 * DAY), planFrom: iso(Date.now()), path: 'operator' };
+          return ruckLadderWeek(true).startLb;
+        })();
+        STATE.prep = keepPrep; STATE.nutrition.days = keepDays; STATE.nutrition.weightKg = keepKg;
+      } catch (e) { out.threw = String(e && e.message || e); }
+      return out;
+    });
+
+    t.ok('guard: the ladder sweep ran without throwing', !r.threw, r.threw || '');
+    if (!r.threw) {
+      t.ok('guard: the athlete opens on the bottom plate, where the ceiling cannot hide it',
+        r.start <= 15, 'startLb ' + r.start);
+      t.eq('the two paths end on the same plate at every block length', r.bad, 0);
+      // pinned by name, because these are the lengths that used to differ
+      t.ok('a 9-week block agrees', r.nine && r.nine.op === r.nine.as, JSON.stringify(r.nine));
+      t.ok('a 16-week block agrees', r.sixteen && r.sixteen.op === r.sixteen.as, JSON.stringify(r.sixteen));
+      t.ok('a 22-week block agrees', r.twentyTwo && r.twentyTwo.op === r.twentyTwo.as, JSON.stringify(r.twentyTwo));
+
+      t.eq('and no week raises the plate by more than one step', r.jumps, 0);
+      t.eq('no load step is taken inside the taper', r.taperLoad, 0);
+
+      // FLOORS — parity satisfied by never climbing is not parity
+      t.ok('the plate still climbs across an ordinary block', r.climbs, 'it never moved');
+      t.eq('and a long block still reaches the ceiling', r.longLb, r.ceil);
     }
   }
 

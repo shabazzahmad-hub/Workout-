@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='383';
+const APP_VERSION='384';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4799,10 +4799,41 @@ function ruckLadderWeek(raw){
      path-by-path measurement caught rather than any assertion about the
      arithmetic. */
   const taperFrom=Math.max(2,totalWk-PREP_TAPER_WEEKS);
-  let wantSteps=0;
-  for(let t=2;t<=totalWk;t++)if(((t-1)%4)+1===loadSlot)wantSteps++;
-  let catchUp=0;                                  // last working week before the taper
-  for(let t=2;t<taperFrom;t++)if(((t-1)%4)+1!==4)catchUp=t;
+  /* PATH-INDEPENDENT, AND ONE STEP A WEEK. A bias in LOAD is the one thing the
+     two paths may never differ in, and wantSteps counted THIS path's slot
+     occurrences over the WHOLE block. The paths are offset by one slot, so how
+     many land inside a block depends on totalWk % 4, and the owed remainder
+     was then taken at the last working week. Traced week by week on an athlete
+     opening at the bottom plate, the operator ended 5 lb HEAVIER than the
+     assaulter at 12 of 23 block lengths between 8 and 30 weeks.
+
+     Nothing caught it because every existing check counts steps at a hardcoded
+     16-week block — one of the lengths where it happens to hold. A guard that
+     cannot fire in the case you tested is not tested, applied to the block
+     LENGTH rather than to a value.
+
+     The block affords as many steps as the TIGHTER path over the WORKING
+     weeks, and each path takes them at its own slot, one a week.
+
+     THAT REMOVES THE CATCH-UP, AND v371'S REASON FOR IT GOES WITH IT. v371
+     kept owed steps rather than dropping them because dropping left one path
+     "5 lb lighter for the whole block, which is a bias in VOLUME" — a
+     statement about the paths differing FROM EACH OTHER. With a shared count
+     neither can be lighter than the other, so the bias it guarded against
+     cannot arise.
+
+     Keeping it now costs something the app never had: the fix that lets the
+     catch-up fire on a path's own slot produces SIX weeks that raise the plate
+     10 lb at once across the same 23 block lengths, where today no week ever
+     raises more than 5. A lighter plate is never an injury and a 10 lb week
+     can be, so the block ends one step below the operator's old figure — 16
+     weeks goes 30 lb to 25 — and nobody is raised. */
+  let wantSteps=Infinity;
+  Object.keys(PREP_PATHS).forEach(pk=>{
+    const sl=PREP_PATHS[pk].loadSlot;let n=0;
+    for(let t=2;t<taperFrom;t++)if(((t-1)%4)+1===sl)n++;
+    if(n<wantSteps)wantSteps=n;});
+  if(!isFinite(wantSteps))wantSteps=0;
   const peak=prepPeak(startKm,PREP_RUCK_PEAK_KM);
   let km=startKm, lb=startLb, climbing='distance', down=false, capped=false, took=0;
   const raise=()=>{if(lb+PREP_RUCK_STEP_LB<=ceil){lb+=PREP_RUCK_STEP_LB;took++;}else capped=true;};
@@ -4811,12 +4842,8 @@ function ruckLadderWeek(raw){
     const inTaper=w>=taperFrom;
     if(slot===4){down=true;climbing='neither';continue;}
     down=false;
-    if(slot===loadSlot&&!inTaper){
+    if(slot===loadSlot&&!inTaper&&took<wantSteps){
       climbing='load';raise();
-    }else if(w===catchUp&&took<wantSteps){
-      /* Every step the block owes that would have fallen in the taper, taken
-         here. Still one week, still never beside a distance climb. */
-      climbing='load';while(took<wantSteps&&!capped)raise();
     }else{
       climbing='distance';
       km=Math.min(km*PREP_RAMP,peak);

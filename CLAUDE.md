@@ -8140,6 +8140,85 @@ immediately before.
   prints.
 
 
+## The two prep paths ended on different plates (v384)
+
+`wantSteps` counted THIS path's slot occurrences over the WHOLE block, and the
+two paths are offset by one slot — so how many land inside a block depends on
+`totalWk % 4`, and the owed remainder was taken all at once at the last working
+week. Traced week by week on an athlete opening at the bottom plate:
+
+| block | operator | assaulter |
+|---|---|---|
+| 11 weeks | 10 → 15 → 20 → **25** | 10 → 15 → **20** |
+| 23 weeks | … → 35 → **40** | … → **35** |
+
+Swept across 8 to 30 weeks: **the operator ended 5 lb heavier at 12 of 23 block
+lengths.** A bias in LOAD is the one thing v340 says the two paths may never
+differ in.
+
+**Nothing caught it because every existing check counts steps at a hardcoded
+16-week block** — one of the lengths where it happens to hold. That is "a guard
+that cannot fire in the case you tested is not tested", applied to the block
+LENGTH rather than to a value.
+
+### Three attempts, and the two wrong ones are the lesson
+
+**A re-derivation agreed with a wrong claim and was itself wrong.** The finding
+arrived from an audit whose own table contradicted its own explanation, so it
+had to be checked. Checking it by transcribing the ladder into Python got the
+right conclusion from bad arithmetic — the sim used a starting plate the app
+never uses. This file already says to **assert through the app's own predicates,
+never re-derive them**; the same applies to disproving a claim.
+
+**The first sweep probe reported "identical before and after".** It ran on an
+athlete already near the 60 lb ceiling, which absorbs the entire difference.
+Only an athlete opening at the bottom plate can show it at all — the guard
+`startLb <= 15` is now the first assertion in the block.
+
+**The first fix introduced something the app never had.** Letting the catch-up
+fire on a path's own slot achieves parity and produces **six weeks that raise
+the plate 10 lb at once** across the same 23 lengths, where today no week ever
+raises more than 5.
+
+### What shipped, and what it costs
+
+The block affords as many steps as the TIGHTER path over the WORKING weeks, and
+each path takes them at its own slot, one a week. Path-independent by
+construction.
+
+**That removes the catch-up, and v371's reason for it goes with it.** v371 kept
+owed steps rather than dropping them because dropping left one path *"5 lb
+lighter for the whole block, which is a bias in VOLUME"* — a statement about the
+paths differing FROM EACH OTHER. With a shared count neither can be lighter than
+the other, so the bias it guarded against cannot arise.
+
+**The trade is real and is the conservative direction.** Every block now ends one
+step below the operator's old figure — 16 weeks goes 30 lb to 25 — because the
+steps that used to be dragged out of the taper are no longer taken at all.
+Nobody is raised. A lighter plate is never an injury and a 10 lb week can be.
+
+| | before | after |
+|---|---|---|
+| lengths where the paths differ | **12 of 23** | **0 of 23** |
+| weeks raising more than one step | 0 | **0** |
+| 54-week block | 60 lb (ceiling) | 60 lb (ceiling) |
+
+### Three existing checks failed on correct code, and each pinned an assumption
+
+- **Two hardcoded WHICH week is a load week.** With a shared count the
+  operator's fifth slot no longer raises, so week 3 is correctly a distance
+  week now. The requirement is that a week's CARD and its `climbing` agree,
+  whichever week it happens to be — so the block FINDS a load week and a
+  distance week rather than assuming them, with a guard that both exist.
+- **One demanded exactly FOUR steps.** The number is a property of the block
+  length, not a constant. What has to hold is that the plate still climbs, and
+  that the two paths agree.
+
+**And pinning only the final plate is not enough**, which is how this survived:
+the ceiling absorbs the difference on any long block. The agreement assertion
+now covers the STEP COUNT as well as the plate.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
