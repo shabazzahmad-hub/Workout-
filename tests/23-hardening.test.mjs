@@ -6060,6 +6060,7 @@ export default async function () {
                      ingredients: /INGREDIENTS/.test(txt), method: /METHOD/.test(txt),
                      toggle: html.indexOf('toggleRecipe(') >= 0,
                      grocery: html.indexOf('openGrocery(') >= 0,
+                     labelled: /today.s <b>recipes<\/b>/i.test(html) && /weighed days/i.test(html),
                      mealplanIds: (html.match(/id="mealplan"/g) || []).length,
                      recipeIds: (html.match(/id="recipeplan"/g) || []).length };
         /* FLOOR: it does NOT go back on Fuel. v245 removed the plan card there
@@ -6130,6 +6131,12 @@ export default async function () {
       t.eq('the worked-days anchor is still unique', r.dest.mealplanIds, 1);
       t.eq('and the recipe card has its own', r.dest.recipeIds, 1);
       t.ok('FLOOR: the plan card does not come back on Fuel', r.fuelClean === true, String(r.fuelClean));
+      /* TWO DATASETS ON ONE PANE, SO EACH SAYS WHICH IT IS. The recipe card can
+         legitimately say "multiply each quantity" — recipes are fixed portions
+         — while the worked days below say they are weighed to the athlete's
+         targets. Adjacent and unlabelled, one screen contradicts itself. */
+      t.ok('and the pane names which dataset is which',
+        r.dest.labelled, JSON.stringify({ labelled: r.dest.labelled }));
 
       // --- 2. the circuit ---
       t.ok('guard: the circuit really built its events with no rest',
