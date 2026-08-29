@@ -668,7 +668,9 @@ export default async function () {
       ivStep(0);
       clearInterval(INTV.tid); INTV.tid = null;      // starve it
       const before = INTV.remain;
-      INTV.deadline = Date.now() - 4000;             // stand in for 5 real seconds lost
+      // monoNow(), not Date.now(): the deadlines moved to the monotonic clock,
+      // and a synthetic timestamp must come from the clock the code reads.
+      INTV.deadline = monoNow() - 4000;              // stand in for 5 real seconds lost
       ivTick();                                      // exactly ONE callback
       const after = INTV ? INTV.remain : null;
       if (typeof hiitTeardown === 'function') hiitTeardown();
@@ -4350,15 +4352,15 @@ export default async function () {
       openPlayer(); await wait(200);
       PLAYER.i = 0; PLAYER.s = 0; plClear(); plEnterRest(3, 'set');
       plClear();                                 // the OS reclaims the interval
-      PLAYER.deadline = Date.now() - 9000;       // the rest ended nine seconds ago
+      PLAYER.deadline = monoNow() - 9000;       // the rest ended nine seconds ago
       R.frozen = { phase: PLAYER.phase, tid: !!PLAYER.tid, stalled: timerStalled(PLAYER) };
       await wait(5200);                          // no tap, no visibilitychange
       R.rescued = { phase: PLAYER.phase, tid: !!PLAYER.tid };
 
       // a PAUSED player is never resumed — that would restart a session the
       // athlete deliberately stopped
-      plClear(); PLAYER.phase = 'rest'; PLAYER.phaseAt = Date.now() - 99000;
-      PLAYER.running = false; PLAYER.deadline = Date.now() - 9000;
+      plClear(); PLAYER.phase = 'rest'; PLAYER.phaseAt = monoNow() - 99000;
+      PLAYER.running = false; PLAYER.deadline = monoNow() - 9000;
       await wait(4500);
       R.paused = { phase: PLAYER.phase, running: PLAYER.running, tid: !!PLAYER.tid };
       PLAYER.running = true;
@@ -4373,7 +4375,7 @@ export default async function () {
       // ...but a tap while genuinely stuck DOES advance, from anywhere on the
       // screen: the three rest buttons measure 123x52, a small target to hit
       // from a plank
-      plClear(); PLAYER.deadline = Date.now() - 9000; PLAYER.phaseAt = Date.now() - 99000;
+      plClear(); PLAYER.deadline = monoNow() - 9000; PLAYER.phaseAt = monoNow() - 99000;
       R.stuckNow = timerStalled(PLAYER);
       document.querySelector('#plBody .pl-name').click(); await wait(200);
       R.rescueTap = PLAYER.phase;
@@ -4402,7 +4404,7 @@ export default async function () {
       STATE.onboarded = true; save();
       startHiit('tabata'); await wait(400);
       ivStep(0); await wait(200);
-      ivClear(); INTV.deadline = Date.now() - 9000;
+      ivClear(); INTV.deadline = monoNow() - 9000;
       R.frozen = { phase: INTV.phase, i: INTV.i, tid: !!INTV.tid, stalled: timerStalled(INTV) };
       await wait(5200);
       R.rescued = { phase: INTV.phase, i: INTV.i, tid: !!INTV.tid };
@@ -4449,7 +4451,7 @@ export default async function () {
      an instant; treating that as a stall would re-arm the phase being left. */
   {
     const r = await page.evaluate(() => {
-      const now = Date.now();
+      const now = monoNow();   // the same clock timerStalled() reads
       const S = (o) => Object.assign({ running: true, phase: 'rest', tid: 1, phaseAt: now, deadline: 0 }, o);
       return {
         nullState: timerStalled(null),
@@ -4484,7 +4486,7 @@ export default async function () {
       openPlayer(); await wait(200);
       PLAYER.i = 0; PLAYER.s = 0;
       plClear(); plEnterRest(2, 'set');
-      PLAYER.deadline = Date.now() - 9000;      // a rest deadline in the past
+      PLAYER.deadline = monoNow() - 9000;      // a rest deadline in the past
       plClear(); plEnterReady(false);
       R.ready = { deadline: PLAYER.deadline, stalled: timerStalled(PLAYER) };
       // a rep-counted movement: find one in this session
@@ -4492,7 +4494,7 @@ export default async function () {
       R.hasRep = idx >= 0;
       if (idx >= 0) {
         PLAYER.i = idx; PLAYER.s = 0;
-        PLAYER.deadline = Date.now() - 9000;
+        PLAYER.deadline = monoNow() - 9000;
         plClear(); plEnterWork();
         R.work = { deadline: PLAYER.deadline, stalled: timerStalled(PLAYER) };
       }
@@ -4824,7 +4826,7 @@ export default async function () {
       R.open = { hasTick: typeof (timer && timer.tick) === 'function', stamped: !!(timer && timer.lastTick) };
       clearInterval(timer.iv);            // the OS reclaims it
       await wait(6500);                   // long enough for a heartbeat
-      R.after = { recovered: !!(timer && timer.iv), fresh: !!(timer && Date.now() - timer.lastTick < 4000) };
+      R.after = { recovered: !!(timer && timer.iv), fresh: !!(timer && monoNow() - timer.lastTick < 4000) };
       flowStop(false); await wait(300);
       return R;
     });
@@ -4839,7 +4841,7 @@ export default async function () {
      and v375's timerStalled() reused. */
   {
     const r = await page.evaluate(() => {
-      const now = Date.now();
+      const now = monoNow();   // the same clock tickStalled() reads
       const S = (o) => Object.assign({ lastTick: now, tick: () => {}, iv: 1 }, o);
       return {
         nullState: tickStalled(null),
@@ -4848,8 +4850,8 @@ export default async function () {
         longGone: tickStalled(S({ lastTick: now - 99000 })),
         noTickFn: tickStalled({ lastTick: now - 99000, iv: 1 }),
         noStamp: tickStalled({ tick: () => {}, iv: 1 }),
-        upFloor: (() => { const o = { startedAt: now - 9000, elapsed: 2 }; return tickUp(o); })(),
-        upNeverSlower: (() => { const o = { startedAt: now - 1000, elapsed: 40 }; return tickUp(o); })()
+        upFloor: (() => { const o = { startedAt: monoNow() - 9000, elapsed: 2 }; return tickUp(o); })(),
+        upNeverSlower: (() => { const o = { startedAt: monoNow() - 1000, elapsed: 40 }; return tickUp(o); })()
       };
     });
     t.eq('tickStalled: nothing open is not a stall', r.nullState, false);
@@ -4961,8 +4963,16 @@ export default async function () {
         junkElapsed: tickUp({ elapsed: 'x' }),
         junkStart: tickUp({ startedAt: 'y', elapsed: 3 }),
         nanStart: tickUp({ startedAt: NaN, elapsed: 2 }),
+        negativeElapsed: tickUp({ elapsed: -9, startedAt: monoNow() - 1000 }),
+        /* THE CLAMP IS ONLY VISIBLE WHEN `real` IS SMALLER THAN THE NEGATIVE
+           COUNT. With startedAt in the PAST, real is positive and Math.max()
+           hides a negative prev — which is exactly why the mutant that removed
+           the clamp ESCAPED. A startedAt in the FUTURE makes real negative, so
+           only the clamp can keep the answer at or above zero. Third time this
+           session a guard was masked by another value in the same expression. */
+        negativeElapsedFutureStart: tickUp({ elapsed: -9, startedAt: monoNow() + 10000 }),
         empty: tickUp({}),
-        negative: tickUp({ elapsed: -9, startedAt: now - 3000 }),
+        negative: tickUp({ elapsed: -9, startedAt: monoNow() - 3000 }),
         /* AN ARRAY IS TRUTHY AND COERCES TO 0. These two produce a huge
            FINITE number, which "is it a number?" cannot see — the first
            version of this check tested only a STRING startedAt, which the
@@ -4973,8 +4983,11 @@ export default async function () {
         zeroStart: tickUp({ elapsed: 0, startedAt: 0 }),
         objectStart: tickUp({ elapsed: 1, startedAt: {} }),
         // and the floor still works on real input
-        real: tickUp({ startedAt: now - 9000, elapsed: 2 }),
-        neverBack: tickUp({ startedAt: now - 1000, elapsed: 40 })
+        /* monoNow(), NOT Date.now(). tickUp reads the monotonic clock now, and
+           feeding it a wall-clock timestamp compares two different time bases —
+           which is what made this check fail on correct code. */
+        real: tickUp({ startedAt: monoNow() - 9000, elapsed: 2 }),
+        neverBack: tickUp({ startedAt: monoNow() - 1000, elapsed: 40 })
       };
       // tickResync must not leave a runaway when the tick it re-arms throws
       let calls = 0;
@@ -5014,6 +5027,358 @@ export default async function () {
     t.eq('floor: a healthy tick is still re-armed', r.goodReturned, true);
     t.eq('and its interval is left running', r.goodIv, true);
     t.ok('and it really keeps ticking', r.goodCalls >= 2, String(r.goodCalls));
+  }
+
+  /* ---------- a duration must not be measured with the wall clock --------
+     Date.now() moves when the phone corrects itself, which Android and iOS do
+     in the background. v377 made the count-up timers read real time and v379
+     stopped them returning NaN — and both used Date.now(). Measured on a
+     3-second hold with the clock shoved forward: +1 hour recorded 3602
+     seconds, +1 minute recorded 62. That number is WRITTEN INTO THE RECORD:
+     it becomes the bar holdBest() reads, and on the battery it anchors a year.
+
+     The backwards direction was already covered by the floor. FORWARDS — the
+     direction that inflates — was wide open.
+
+     performance.now() is monotonic. It counts forward at real speed and
+     nothing can move it. The clock is faked in the PAGE here rather than at
+     the context, so this block can shove it mid-hold. */
+  {
+    const r = await page.evaluate(async () => {
+      const R = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      STATE.onboarded = true;
+      STATE.profile.parq = [false, false, false, false, false, false, false];
+      STATE.profile.parqDone = true; STATE.profile.medCleared = true; save();
+
+      const RealDate = window.Date; let skew = 0;
+      class Shim extends RealDate {
+        constructor(...a) { if (a.length === 0) super(RealDate.now() + skew); else super(...a); }
+        static now() { return RealDate.now() + skew; }
+        static parse(...a) { return RealDate.parse(...a); }
+        static UTC(...a) { return RealDate.UTC(...a); }
+      }
+      window.Date = Shim;
+      try {
+        // guard: the shim really does move the wall clock and NOT the monotonic one
+        const d0 = Date.now(), m0 = monoNow();
+        skew = 3600 * 1000;
+        R.shimMovesWall = Date.now() - d0 > 3500000;
+        R.monoIgnoresIt = Math.abs(monoNow() - m0) < 5000;
+        skew = 0;
+
+        const run = async (jumpMs) => {
+          skew = 0;
+          startHoldTest('plank'); await wait(200);
+          if (!_ht) return { blocked: true };
+          for (let i = 0; i < 4; i++) await wait(1050);
+          const a = _ht.elapsed;
+          await wait(1100);
+          skew = jumpMs;                        // the phone re-syncs its clock
+          await wait(2200);
+          const out = { counted: _ht.elapsed - a };
+          cancelHoldTest(); await wait(150); skew = 0;
+          return out;
+        };
+        R.plusHour = await run(3600 * 1000);
+        R.plusMinute = await run(60 * 1000);
+        R.minusHour = await run(-3600 * 1000);
+        R.noJump = await run(0);
+      } finally { window.Date = RealDate; }
+      return R;
+    });
+    t.eq('guard: the fake clock really moves Date.now()', r.shimMovesWall, true);
+    t.eq('guard: and does NOT move the monotonic clock', r.monoIgnoresIt, true);
+    t.ok('a clock that jumps forward an hour mid-hold adds no seconds to the record',
+      r.plusHour && r.plusHour.counted >= 2 && r.plusHour.counted <= 5,
+      'counted ' + (r.plusHour || {}).counted + ' for ~3 real seconds');
+    t.ok('nor does a one-minute correction', r.plusMinute && r.plusMinute.counted <= 5,
+      'counted ' + (r.plusMinute || {}).counted);
+    t.ok('floor: a backwards jump still cannot wind the count back',
+      r.minusHour && r.minusHour.counted >= 2, 'counted ' + (r.minusHour || {}).counted);
+    t.ok('floor: an undisturbed hold still counts real seconds',
+      r.noJump && r.noJump.counted >= 2 && r.noJump.counted <= 5, 'counted ' + (r.noJump || {}).counted);
+  }
+
+  /* monoNow() must fall back rather than throw where performance.now() is
+     missing or broken — it is consulted on every tick of a maximal effort. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {}; const realPerf = window.performance;
+      out.normal = typeof monoNow() === 'number' && isFinite(monoNow());
+      try {
+        Object.defineProperty(window, 'performance', { value: undefined, configurable: true });
+        out.missing = typeof monoNow() === 'number' && isFinite(monoNow());
+        Object.defineProperty(window, 'performance', { value: { now() { throw new Error('no'); } }, configurable: true });
+        out.throws = typeof monoNow() === 'number' && isFinite(monoNow());
+        Object.defineProperty(window, 'performance', { value: { now() { return NaN; } }, configurable: true });
+        out.nan = typeof monoNow() === 'number' && isFinite(monoNow());
+      } finally { Object.defineProperty(window, 'performance', { value: realPerf, configurable: true }); }
+      return out;
+    });
+    t.eq('monoNow returns a real number normally', r.normal, true);
+    t.eq('and falls back when performance is missing', r.missing, true);
+    t.eq('and when performance.now() throws', r.throws, true);
+    t.eq('and when performance.now() returns NaN', r.nan, true);
+  }
+
+  /* The count-DOWN timers had the same root cause, and I first described it as
+     "annoying rather than corrupting". THE MEASUREMENT CORRECTED THAT. On a
+     two-minute rest with the clock shoved forward: +1 minute left 58 seconds
+     of it, and +1 hour ENDED IT INSTANTLY, dropping straight into the next
+     set. v296 exists so the two minutes between maximal efforts are REAL, so
+     a rest cut short by a background clock correction changes a measurement,
+     not just the mood. Shipping a documented half-fix is worse than one more
+     CI cycle. */
+  {
+    const r = await page.evaluate(async () => {
+      const R = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      STATE.onboarded = true; STATE.progressPtr = 8; save();
+      const RealDate = window.Date; let skew = 0;
+      class Shim extends RealDate {
+        constructor(...a) { if (a.length === 0) super(RealDate.now() + skew); else super(...a); }
+        static now() { return RealDate.now() + skew; }
+        static parse(...a) { return RealDate.parse(...a); }
+        static UTC(...a) { return RealDate.UTC(...a); }
+      }
+      window.Date = Shim;
+      try {
+        const restRun = async (jumpMs) => {
+          skew = 0;
+          openPlayer(); await wait(250);
+          PLAYER.i = 0; PLAYER.s = 0; plClear(); plEnterRest(120, 'set'); await wait(200);
+          const start = PLAYER.remain;
+          await wait(1100);
+          skew = jumpMs;                      // the phone corrects its clock
+          await wait(1600);
+          const out = { lost: start - PLAYER.remain, phase: PLAYER.phase };
+          playerTeardown(); await wait(200); skew = 0;
+          return out;
+        };
+        R.noJump = await restRun(0);
+        R.plusMinute = await restRun(60 * 1000);
+        R.plusHour = await restRun(3600 * 1000);
+        R.minusHour = await restRun(-3600 * 1000);
+      } finally { window.Date = RealDate; }
+      return R;
+    });
+    t.ok('floor: an undisturbed rest counts down normally',
+      r.noJump && r.noJump.lost >= 1 && r.noJump.lost <= 5 && r.noJump.phase === 'rest',
+      JSON.stringify(r.noJump));
+    t.ok('a one-minute clock correction does not eat a minute of the rest',
+      r.plusMinute && r.plusMinute.lost <= 5, 'lost ' + (r.plusMinute || {}).lost + ' seconds');
+    t.ok('and an hour jump does not end the rest outright',
+      r.plusHour && r.plusHour.lost <= 5 && r.plusHour.phase === 'rest',
+      'lost ' + (r.plusHour || {}).lost + ' seconds, phase ' + (r.plusHour || {}).phase);
+    t.ok('floor: a backwards jump still cannot stretch the rest',
+      r.minusHour && r.minusHour.lost >= 1, 'lost ' + (r.minusHour || {}).lost);
+  }
+
+  /* THE FIX TOUCHED THREE SURFACES AND THE CHECK COVERED ONE. Three mutants
+     escaped — HIIT's deadline, the assessment rest's, and the pause
+     arithmetic — because the block above only drives the guided player's rest.
+     "Fixing one instance is not fixing the class", applied to the checks
+     rather than to the code. */
+  {
+    const r = await page.evaluate(async () => {
+      const R = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      STATE.onboarded = true; STATE.progressPtr = 8;
+      STATE.profile.parq = [false, false, false, false, false, false, false];
+      STATE.profile.parqDone = true; STATE.profile.medCleared = true; save();
+      const RealDate = window.Date; let skew = 0;
+      class Shim extends RealDate {
+        constructor(...a) { if (a.length === 0) super(RealDate.now() + skew); else super(...a); }
+        static now() { return RealDate.now() + skew; }
+        static parse(...a) { return RealDate.parse(...a); }
+        static UTC(...a) { return RealDate.UTC(...a); }
+      }
+      window.Date = Shim;
+      try {
+        // HIIT — a round must not be cut short by a background clock correction
+        skew = 0; startHiit('tabata'); await wait(300); ivStep(0); await wait(200);
+        {
+          const start = INTV.remain;
+          await wait(1100); skew = 3600 * 1000; await wait(1600);
+          R.hiit = { lost: start - INTV.remain, i: INTV.i };
+        }
+        hiitTeardown(); await wait(200); skew = 0;
+
+        // the assessment rest — v296 exists so these two minutes are REAL
+        assessState = { idx: 0, results: {}, reassess: false };
+        startAssessRest(1); await wait(300);
+        if (_ar) {
+          const start = _ar.left;
+          await wait(1100); skew = 3600 * 1000; await wait(1600);
+          R.assessRest = { lost: start - _ar.left, left: _ar.left };
+          skew = 0; if (typeof stopAssessRest === 'function') stopAssessRest();
+        } else R.assessRest = { skipped: true };
+        await wait(200);
+
+        // pausing pushes the deadline out by the time actually away. On the
+        // wall clock a jump WHILE PAUSED would stretch the rest by that jump.
+        skew = 0; openPlayer(); await wait(250);
+        PLAYER.i = 0; PLAYER.s = 0; plClear(); plEnterRest(120, 'set'); await wait(200);
+        {
+          /* A LONG ENOUGH PAUSE THAT NOT PUSHING THE DEADLINE IS VISIBLE. At
+             600 ms the "never push it out" mutant cost under a second and a
+             +/-5 s tolerance swallowed it. Four seconds paused means the fix
+             keeps `remain` unchanged, while dropping the push costs four. */
+          const before = PLAYER.remain;
+          playerToggle();                      // pause
+          await wait(1500);
+          skew = 3600 * 1000;                  // the clock corrects while paused
+          await wait(2500);
+          playerToggle();                      // resume
+          /* LONG ENOUGH FOR A TICK TO RUN. `remain` only changes when a tick
+             fires, so reading it 200 ms after resume showed the value from
+             before the pause and the "never push the deadline out" mutant was
+             invisible. */
+          await wait(1300);
+          R.pause = { before, after: PLAYER.remain, gained: PLAYER.remain - before };
+
+          /* MUTANT 7 IS INVISIBLE THROUGH `remain`. The deadline is a FLOOR —
+             Math.min can only make the countdown catch UP, never run slower —
+             so a `held` that is far too large and a `held` that is correct both
+             tick down by one. What a wall-clock `held` really destroys is the
+             CATCH-UP itself: the deadline lands so far out that a starved tick
+             can no longer reconcile against it. So starve one and look. */
+          /* ASSERT ON THE DEADLINE THE PAUSE LEFT, BEFORE TOUCHING IT. The
+             catch-up check below OVERWRITES PLAYER.deadline, which erases the
+             very thing a wall-clock `held` corrupts — so mutant 7 escaped it.
+             A deadline is consistent when the time it has left matches the
+             seconds on screen; a `held` that swallowed an hour of clock jump
+             leaves it an hour out while the display still reads two minutes. */
+          R.deadlineConsistent = Math.abs((PLAYER.deadline - monoNow()) / 1000 - PLAYER.remain);
+
+          plClear(); PLAYER.tid = null;
+          const b2 = PLAYER.remain;
+          PLAYER.deadline = monoNow() - 4000;   // stand in for 5 real seconds lost
+          plTickRest();                          // exactly ONE callback
+          R.catchUp = { before: b2, after: PLAYER.remain, dropped: b2 - PLAYER.remain };
+        }
+        playerTeardown(); await wait(200); skew = 0;
+      } finally { window.Date = RealDate; }
+      return R;
+    });
+    t.ok('guard: the HIIT round really had time on it', r.hiit && r.hiit.i === 0, JSON.stringify(r.hiit));
+    t.ok('a clock correction does not cut a HIIT round short',
+      r.hiit && r.hiit.lost <= 5, 'lost ' + (r.hiit || {}).lost + ' seconds');
+    t.ok('guard: the assessment rest really started', r.assessRest && !r.assessRest.skipped,
+      JSON.stringify(r.assessRest));
+    t.ok('nor the two minutes between two maximal efforts',
+      r.assessRest && r.assessRest.lost <= 5, 'lost ' + (r.assessRest || {}).lost + ' seconds');
+    /* Tight, because both failures are worth catching: a wall-clock `held`
+       would stretch the rest by the whole jump, and never pushing the deadline
+       out would shorten it by the four seconds spent paused. */
+    t.ok('a four-second pause across a clock correction neither stretches nor shortens the rest',
+      r.pause && Math.abs(r.pause.gained) <= 1,
+      'gained ' + (r.pause || {}).gained + ' seconds across the pause');
+    t.ok('and the deadline the pause left still matches the seconds on screen',
+      typeof r.deadlineConsistent === 'number' && r.deadlineConsistent <= 2,
+      'deadline is ' + r.deadlineConsistent + ' seconds away from what the display says');
+    t.ok('and the deadline still works as a catch-up floor after that pause',
+      r.catchUp && r.catchUp.dropped >= 4,
+      'one starved tick dropped ' + (r.catchUp || {}).dropped + ' seconds');
+  }
+
+  /* ---------- the session clock and the stopwatches ----------------------
+     THE "ONE CLOCK" RULE WAS NOT APPLIED COMPLETELY, AND THE SUITE DID NOT
+     CATCH IT. v380 made PLAYER.pauseAt monotonic and left plPausedSec() on the
+     wall clock. Measured while paused: paused-time read 1,787,983,534 seconds,
+     plWallSec() subtracted it and clamped to 0, and the clock on screen showed
+     "0s" the instant the athlete paused.
+
+     And swSecs() — the stopwatch behind the activity, skipping and make-up
+     timers AND Benchmark Ops, whose number is written straight into a personal
+     best — inflated by the whole jump: one second read as 3,601. */
+  {
+    const r = await page.evaluate(async () => {
+      const R = {}; const wait = ms => new Promise(res => setTimeout(res, ms));
+      STATE.onboarded = true; STATE.progressPtr = 8; save();
+
+      // the session clock must survive a pause
+      openPlayer(); await wait(2500);
+      R.running = plWallSec();
+      playerToggle(); await wait(1200);
+      R.whilePaused = { wall: plWallSec(), paused: plPausedSec() };
+      R.clockOnScreen = ((document.getElementById('plClock') || {}).textContent || '').trim();
+      /* THE CLOCK MUST BE FROZEN WHILE PAUSED. "Never count the paused time"
+         leaves the session clock RUNNING through an interruption, which is the
+         very thing pausing exists to prevent — and a check that only asserts
+         the clock is non-zero passes on it. */
+      await wait(2600);
+      R.pausedDrift = plWallSec() - R.whilePaused.wall;
+      playerToggle(); await wait(400);
+      R.afterResume = plWallSec();
+      playerTeardown(); await wait(200);
+
+      // and neither clock may be moved by the phone correcting itself
+      const RealDate = window.Date; let skew = 0;
+      class Shim extends RealDate {
+        constructor(...a) { if (a.length === 0) super(RealDate.now() + skew); else super(...a); }
+        static now() { return RealDate.now() + skew; }
+        static parse(...a) { return RealDate.parse(...a); }
+        static UTC(...a) { return RealDate.UTC(...a); }
+      }
+      window.Date = Shim;
+      try {
+        const st = swStart({ secs: 0, running: true });
+        await wait(1200);
+        const b1 = swSecs(st); skew = 3600 * 1000;
+        R.stopwatch = { before: b1, after: swSecs(st) };
+        skew = 0;
+
+        /* AND A PAUSED STOPWATCH. swPause() keeps its own paused-time tally,
+           and nothing above exercised it — so putting that bookkeeping back on
+           the wall clock was invisible. Pause it, jump the clock, resume. */
+        const st2 = swStart({ secs: 0, running: true });
+        await wait(1200);
+        const p1 = swSecs(st2);
+        /* LONG ENOUGH THAT DRIFT CANNOT ROUND AWAY. At 1.2s of pause, a
+           stopwatch that kept ticking read 2 against a paused 1 — inside a
+           +/-1 tolerance. Three seconds makes the two answers unmistakable. */
+        swPause(st2, false);                 // pause
+        await wait(1500);
+        skew = 3600 * 1000;                  // the phone corrects its clock
+        await wait(1800);
+        R.pausedStopwatch = swSecs(st2);
+        swPause(st2, true);                  // resume
+        skew = 0;
+        await wait(400);
+        R.resumedStopwatch = { before: p1, after: swSecs(st2) };
+
+        openPlayer(); await wait(1200);
+        const w1 = plWallSec(); skew = 3600 * 1000;
+        R.sessionJump = { before: w1, after: plWallSec() };
+        skew = 0;
+        playerTeardown(); await wait(200);
+      } finally { window.Date = RealDate; }
+      return R;
+    });
+    t.ok('guard: the session clock really was running before the pause', r.running >= 1, String(r.running));
+    t.ok('the session clock does not reset to zero when the athlete pauses',
+      r.whilePaused && r.whilePaused.wall >= 1,
+      'reads ' + (r.whilePaused || {}).wall + 's with ' + (r.whilePaused || {}).paused + 's counted as paused');
+    t.ok('and the paused figure is a real number of seconds, not a timestamp',
+      r.whilePaused && r.whilePaused.paused >= 0 && r.whilePaused.paused < 600,
+      String((r.whilePaused || {}).paused));
+    t.ok('so the clock on screen still shows the session, not 0s',
+      !/^0s/.test(r.clockOnScreen || ''), r.clockOnScreen);
+    t.ok('floor: and it keeps counting after the resume', r.afterResume >= 2, String(r.afterResume));
+    t.ok('the session clock is FROZEN while paused, not merely non-zero',
+      typeof r.pausedDrift === 'number' && Math.abs(r.pausedDrift) <= 1,
+      'it moved ' + r.pausedDrift + 's during 2.6s of pause');
+    t.ok('a paused stopwatch does not tick, and a clock jump does not move it',
+      typeof r.pausedStopwatch === 'number' && Math.abs(r.pausedStopwatch - (r.resumedStopwatch || {}).before) <= 1,
+      'paused at ' + (r.resumedStopwatch || {}).before + 's, read ' + r.pausedStopwatch + 's');
+    t.ok('and resuming it does not add the time it was paused',
+      r.resumedStopwatch && Math.abs(r.resumedStopwatch.after - r.resumedStopwatch.before) <= 2,
+      JSON.stringify(r.resumedStopwatch));
+    t.ok('a stopwatch is not inflated by the phone correcting its clock',
+      r.stopwatch && Math.abs(r.stopwatch.after - r.stopwatch.before) <= 2,
+      JSON.stringify(r.stopwatch));
+    t.ok('nor is the session clock',
+      r.sessionJump && Math.abs(r.sessionJump.after - r.sessionJump.before) <= 2,
+      JSON.stringify(r.sessionJump));
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));

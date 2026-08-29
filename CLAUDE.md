@@ -7819,6 +7819,109 @@ Recorded as coverage, because a clean measurement is a result:
   unchanged when there is no usable target — its own comment says so, and no
   screen printed it.
 
+## A duration must not be measured with the wall clock (v380)
+
+Found by fuzzing v379 — the sixth round running where the best finding was in
+the round immediately before, and the third in a row where it was in my own
+new code.
+
+`Date.now()` moves when the phone corrects itself, which Android and iOS do in
+the background. v377 made the count-up timers read real time and v379 stopped
+them returning NaN. **Both used `Date.now()`.** Measured on a 3-second hold
+with the clock shoved forward mid-effort:
+
+| the clock jumps | recorded for a 3-second hold |
+|---|---|
+| **+1 hour** | **3,602 seconds** |
+| **+1 minute** | **62 seconds** |
+| −1 hour | 3 — the floor already covered backwards |
+| no jump | 3 |
+
+**That number is WRITTEN INTO THE RECORD.** A 60-minute plank becomes the bar
+`holdBest()` and `grindAtBest()` read, and on the battery it anchors a year of
+prescriptions.
+
+**I guarded the backwards direction and the junk types, and forwards — the
+direction that INFLATES — was wide open.** v379 added a floor so a backwards
+jump could not wind the count back, and never asked the mirror question.
+
+### performance.now() is the right primitive, and that was measured
+
+It is monotonic: it counts forward at real speed and nothing can move it.
+Against the same +1 hour jump it advanced **1,000 ms while `Date.now()`
+advanced 3,601,000** — and it still tracked 2.5 real seconds exactly, so
+v377's throttle recovery is untouched.
+
+`monoNow()` falls back to `Date.now()` where `performance` is missing, throws,
+or returns NaN. It is consulted on every tick of a maximal effort, so it must
+never throw; four checks pin that contract directly.
+
+### The failing check found a real hole beside its own bug
+
+Three checks went red on the first run, and splitting them mattered:
+
+- **Two were mine.** They fed a `Date.now()`-based `startedAt` to a function
+  that now reads the monotonic clock — two different time bases, which looks
+  exactly like a code defect. A synthetic timestamp must come from the same
+  clock the code under test reads.
+- **One was real.** A negative `elapsed` returned a NEGATIVE count. The old
+  wall clock had masked it, purely because `real` happened to be larger.
+  A count of seconds is never below zero, so `prev` is clamped at 0.
+
+### The clamp's own mutant escaped, and it is the same trap a third time
+
+Removing `Math.max(0, ...)` walked through, because the case tested it with
+`startedAt` in the PAST — so `real` was positive and `Math.max()` hid the
+negative count. **A guard is only visible when the value beside it in the same
+expression cannot supply the answer.** A `startedAt` in the FUTURE makes `real`
+negative, so only the clamp can keep the result at or above zero.
+
+That is the third time in one session a guard was masked by its neighbour: the
+floor hidden by the rescue's catch-up (v379), the `startedAt` type guard hidden
+by the `isFinite` layer (v379), and now the clamp hidden by `real`. The tell is
+always the same — the mutant changes the program and the check does not move.
+
+Eight mutants, all caught, including the over-eager twin that makes `monoNow()`
+always return the wall clock.
+
+### The count-DOWN half, and four rounds of reading the mutant back
+
+I first called the count-down exposure *"annoying rather than corrupting"*.
+**The measurement corrected that.** On a two-minute rest with the clock shoved
+forward: +1 minute left 58 seconds of it, and **+1 hour ended it instantly**,
+dropping straight into the next set. v296 exists so the two minutes between
+maximal efforts are REAL, so that is a corrupted measurement, not a mood. It
+was folded into this version rather than shipped as a documented half-fix.
+
+**Moving the deadlines and leaving the stall detector behind broke seven
+checks.** `performance.now()` is a few thousand and `Date.now()` is ~1.78
+trillion, so every surface read as permanently stalled. **One clock for every
+timer stamp** — deadline, `phaseAt` and `lastTick` all monotonic — is the rule
+that came out of it, and the same rule applies to a synthetic timestamp in a
+check.
+
+Then the mutants, and each escape taught a different lesson:
+
+- **A defect that lives in two places needs a mutant in two places.** Flipping
+  only the deadline WRITE left the read monotonic, so the remaining time was
+  astronomically large, `byTick` always won and the countdown merely ticked —
+  a different bug entirely. Paired write+read mutants are caught at once.
+- **`remain` can never increase.** `Math.min(byTick, …)` means the deadline
+  only ever makes the countdown catch UP. So a `held` that is far too large and
+  a correct one both tick down by one, and mutant 7 was invisible through
+  `remain` no matter how tight the tolerance.
+- **A check that OVERWRITES the state under test erases the defect.** The
+  catch-up check set `PLAYER.deadline` itself, wiping exactly what a wall-clock
+  `held` had corrupted. The fix is to assert on the deadline the pause LEFT:
+  a deadline is consistent when the time it has left matches the seconds on
+  screen, and an hour of swallowed clock jump shows up immediately.
+- **Read the value after the thing that changes it.** The pause check read
+  `remain` 200 ms after resume, before any tick had run, so "never push the
+  deadline out" changed nothing it could see.
+
+Seven count-down mutants, all caught after those four rewrites.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
