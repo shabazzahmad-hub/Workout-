@@ -6151,6 +6151,104 @@ export default async function () {
     }
   }
 
+
+  /* ---- v386: a reschedule destroyed the baseline and inverted the verdict --
+     prepMidISO() is derived from planFrom and the date, so pushing the test
+     date out moves the midpoint and can put TODAY back inside the 'initial'
+     window. The next result then landed in the block's BASELINE slot and
+     overwrote it, and the card — which orders by slot, not by date — read the
+     newest figure as "was".
+
+     Driven end to end on a real 200 -> 190 -> 180 improvement:
+
+       before   initial 180 (the 200 destroyed), mid 190   card "+10s slower"
+       after    initial 200 kept,  mid 180                 card "-20s faster"
+
+     Twenty seconds of progress reported as a ten-second regression, with the
+     baseline gone. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {}, ce = console.error;
+      console.error = () => {};
+      try {
+        const iso = d => { const x = new Date(d); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+        const DAY = 86400000, cp = o => JSON.parse(JSON.stringify(o || null));
+        const keep = STATE.prep;
+        const ev = FORCE_EVENTS.find(e => e.max !== null).id;
+        out.ev = ev;
+        const setBlock = (ago, ahead) => {
+          STATE.prep = Object.assign({}, STATE.prep, {
+            planFrom: iso(Date.now() - ago * 7 * DAY), date: iso(Date.now() + ahead * 7 * DAY) });
+        };
+        STATE.prep = {};
+        const step = (ago, ahead, val) => {
+          setBlock(ago, ahead);
+          const before = prepCheckpoint();
+          setForceResultQuiet(ev, val);
+          return { checkpoint: before, checks: cp(STATE.prep.checks) };
+        };
+        out.s1 = step(1, 19, 200);
+        out.s2 = step(11, 9, 190);
+        out.s3 = step(11, 40, 180);
+        const d = document.createElement('div'); d.innerHTML = prepMidHTML();
+        out.card = d.textContent.replace(/\s+/g, ' ');
+
+        /* FLOOR: an ORDINARY block, with no reschedule, still records into the
+           checkpoint it is actually in and still compares in the right
+           direction. A fix that pinned every write to one slot satisfies every
+           assertion above and breaks the feature. */
+        STATE.prep = {};
+        const o1 = step(1, 19, 210);
+        const o2 = step(11, 9, 195);
+        const d2 = document.createElement('div'); d2.innerHTML = prepMidHTML();
+        out.plain = { s1: o1.checkpoint, s2: o2.checkpoint, checks: o2.checks,
+                      card: d2.textContent.replace(/\s+/g, ' ') };
+
+        /* An out-of-order pair — the shape every phone already carrying a
+           corrupted record has — withholds the delta rather than inventing
+           one. */
+        STATE.prep = { planFrom: iso(Date.now() - 11 * 7 * DAY), date: iso(Date.now() + 9 * 7 * DAY),
+          checks: { initial: { results: { [ev]: 180 }, at: iso(Date.now()) },
+                    mid: { results: { [ev]: 190 }, at: iso(Date.now() - 30 * DAY) } } };
+        const d3 = document.createElement('div'); d3.innerHTML = prepMidHTML();
+        out.stale = d3.textContent.replace(/\s+/g, ' ');
+        STATE.prep = keep;
+      } catch (e) { out.threw = String(e && e.message || e); }
+      console.error = ce;
+      return out;
+    });
+
+    t.ok('guard: the checkpoint sequence ran without throwing', !r.threw, r.threw || '');
+    if (!r.threw) {
+      t.eq('guard: the baseline is recorded in the initial window', r.s1.checkpoint, 'initial');
+      t.eq('guard: the second result is recorded at the midpoint', r.s2.checkpoint, 'mid');
+      /* The reschedule really does put today back in the initial window —
+         without that, this block tests nothing. */
+      t.eq('guard: and the reschedule puts today back before the new midpoint',
+        r.s3.checkpoint, 'initial');
+
+      t.eq('the baseline survives a later result', r.s3.checks.initial.results[r.ev], 200);
+      t.eq('which lands in the latest window instead', r.s3.checks.mid.results[r.ev], 180);
+      t.ok('and the card reports the improvement as faster, not slower',
+        /faster/.test(r.card) && !/slower/.test(r.card), r.card.slice(0, 220));
+
+      // FLOOR — an ordinary block is untouched
+      t.ok('FLOOR: an ordinary block still records into its own checkpoints',
+        r.plain.s1 === 'initial' && r.plain.s2 === 'mid'
+          && r.plain.checks.initial.results[r.ev] === 210
+          && r.plain.checks.mid.results[r.ev] === 195,
+        JSON.stringify(r.plain.checks));
+      t.ok('and still compares in the right direction',
+        /faster/.test(r.plain.card) && !/slower/.test(r.plain.card), r.plain.card.slice(0, 220));
+
+      /* Fails closed. Every phone is carrying records written before the guard,
+         where a later measurement can sit in the earlier slot — comparing them
+         would report progress as a regression. */
+      t.ok('an out-of-order pair withholds the delta rather than inverting it',
+        /not comparable/.test(r.stale) && !/slower/.test(r.stale), r.stale.slice(0, 220));
+    }
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

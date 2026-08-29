@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='385';
+const APP_VERSION='386';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -5030,6 +5030,17 @@ function prepMidHTML(){
       return `<div class="kv"><span>${_ve(ev.name)}</span><span><b>${_ve(shown)}</b></span></div>`;
     /* These are TIMES: lower is better, and a delta with no direction attached
        is the defect a signed nudge check exists to catch. */
+    /* FAILS CLOSED ON AN OUT-OF-ORDER PAIR. Every phone is carrying records
+       written before the guard above, where a later measurement could sit in
+       the earlier slot. Comparing them would report the athlete's improvement
+       as a regression, so an unknown or inverted ordering withholds the delta
+       rather than inventing one — the same call v320 makes about a baseline
+       with no `subs` stamp. Absent dates read as unknown, not as equal. */
+    const _ia=init&&typeof init.at==='string'?init.at:null;
+    const _ib=typeof now.at==='string'?now.at:null;
+    if(!_ia||!_ib||_ia>_ib)
+      return `<div class="kv"><span>${_ve(ev.name)}<div class="tiny muted">not comparable — the earlier record is not dated before this one</div></span>
+        <span style="text-align:right"><b>${_ve(shown)}</b></span></div>`;
     const d=Math.round(a-b);
     const better=d>0;
     const tag=d===0?'<span class="tiny muted">no change</span>'
@@ -5570,7 +5581,23 @@ function setForceResultQuiet(id,n){
   const cp=prepCheckpoint();
   if(cp){
     const C=STATE.prep.checks=(STATE.prep.checks&&typeof STATE.prep.checks==='object'&&!Array.isArray(STATE.prep.checks))?STATE.prep.checks:{};
-    const slot=C[cp]=(C[cp]&&typeof C[cp]==='object'&&!Array.isArray(C[cp]))?C[cp]:{};
+    /* THE WRITE SLOT NEVER GOES BACKWARDS. prepMidISO() is derived from
+       planFrom and the date, so pushing the test date out moves the midpoint
+       and can put TODAY back inside the 'initial' window. The next result then
+       landed in the block's BASELINE slot and overwrote it with a later
+       measurement — and the card, which orders by slot rather than by date,
+       read the newest figure as "was".
+
+       Measured end to end on a real 200 -> 190 -> 180 improvement: the 200
+       baseline was destroyed and the card reported "+10s SLOWER" on twenty
+       seconds of progress. A measurement taken later can never belong to an
+       earlier checkpoint than one already recorded. */
+    let _ci=PREP_CHECKS.indexOf(cp);
+    PREP_CHECKS.forEach((k,i)=>{
+      const q=C[k];
+      if(i>_ci&&q&&q.results&&typeof q.results==='object'&&Object.keys(q.results).length)_ci=i;});
+    const _cp=PREP_CHECKS[_ci]||cp;
+    const slot=C[_cp]=(C[_cp]&&typeof C[_cp]==='object'&&!Array.isArray(C[_cp]))?C[_cp]:{};
     if(!slot.results||typeof slot.results!=='object'||Array.isArray(slot.results))slot.results={};
     slot.results[id]=n;
     slot.at=todayISO();

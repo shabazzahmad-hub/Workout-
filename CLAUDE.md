@@ -8296,6 +8296,67 @@ read the plan that is actually on the glass, then ask the brief about that one.
 says.
 
 
+## A reschedule destroyed the baseline and inverted the verdict (v386)
+
+`prepMidISO()` is derived from `planFrom` and the date, so pushing the test date
+out moves the midpoint and can put TODAY back inside the `initial` window. The
+next result then landed in the block's BASELINE slot and overwrote it — and the
+card, which orders by checkpoint SLOT rather than by date, read the newest
+figure as *"was"*.
+
+Driven end to end on a real 200 → 190 → 180 improvement:
+
+| | initial | mid | the card says |
+|---|---|---|---|
+| before | **180** — the 200 destroyed | 190 | **"+10s slower"** |
+| after | 200 kept | 180 | **"−20s faster"** |
+
+Twenty seconds of progress reported as a ten-second regression, with the
+baseline gone.
+
+**A measurement taken later can never belong to an earlier checkpoint than one
+already recorded**, so the write slot never goes backwards. And the reader
+**fails closed on an out-of-order pair** — every phone is carrying records
+written before the guard, and comparing them would report progress as a
+regression, so an unknown or inverted ordering withholds the delta rather than
+inventing one. That is v320's call about a baseline with no `subs` stamp.
+
+### Two probes disagreed, and one of them was wrong
+
+The first probe reproduced it. A second, written to measure the fix, reported
+**before and after as identical** — which would have meant shipping a fix for
+nothing. Neither could be trusted while they disagreed.
+
+What settled it was a third probe that **deep-copies the state after every
+step** and prints the checkpoint it wrote into. The defect reproduces cleanly
+that way, and the second probe was the faulty one. Reading a live object at the
+end of a sequence shows the FINAL state at every point you thought you had
+captured — the same aliasing trap, one layer up from the app.
+
+### The floored-cut finding did not reproduce, and a CONTROL is what proved it
+
+An audit reported that `calorieCheck()` reads a floored cut as a bulk: the
+safety floor can raise a small sedentary athlete's target above maintenance
+(measured, TDEE 1052 against a 1200 floor), which makes `expected` positive on
+a fat-loss goal.
+
+The arithmetic is right and the behaviour is not there. Driven on exactly that
+athlete, `calorieCheck()` returns **null** on the unfixed code — no verdict, no
+advice, no button. **A control is what makes that trustworthy**: the same
+harness on an ordinary 86 kg athlete returns `{verdict:'stalled', step:-300}`,
+so the setup reaches the code and the floored athlete genuinely produces
+nothing.
+
+A fix was written and **reverted**. Shipping it would have been a change with
+no defect behind it, and this file's own rule for a mutant applies to a fix:
+read it back before believing it.
+
+**Two probe bugs on the way**, both this file's own traps: `trendKgPerWeek()`
+reads `m.weight` and the seed wrote `m.kg`, so the trend was null and every
+reading downstream was measuring nothing; and the aliasing above. Confirm the
+control's real shape before believing the result.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
