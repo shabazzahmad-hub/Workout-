@@ -6012,6 +6012,145 @@ export default async function () {
     }
   }
 
+
+  /* ---- v385: three promises the code did not keep -------------------------
+     1. The morning brief — which the coach READS ALOUD — says "Your meal plan
+        today: A, B and C. The full recipes are on the Reference tab, under
+        Food." Measured on that pane: 0 of 3 names, no INGREDIENTS heading, no
+        METHOD heading, nothing bound to toggleRecipe() or openGrocery().
+        `_recipePlanHTML()` is the only renderer of `r.ing` and `r.steps` in
+        the file and it had NO CALLER. v315 fixed this sentence once by moving
+        the tab NAME, and the destination still did not hold the thing —
+        v315's own rule is to assert BOTH ways.
+     2. plEnterRest() does Math.max(1,dur|0), so a session built with rest:0
+        got a one-second REST screen — tag, +15s and a Skip button — between
+        every movement. The FORCE Combat circuit is the only caller that passes
+        0, and the absence of the rest IS its difference from the annual
+        evaluation, which its own card states.
+     3. The midpoint prompt said "N weeks before the taper starts" using
+        prepWeeksLeft(), which counts to the TEST DATE. The taper opens
+        PREP_TAPER_WEEKS earlier, so the figure was overstated by exactly that:
+        five weeks out it said five, when the answer was three. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {}, ce = console.error;
+      console.error = () => {};
+      try {
+        STATE.onboarded = true; save();
+
+        /* --- 1. the promise, asserted BOTH ways ---
+           PRIMED FIRST. currentMealPlan() rebuilds when the stored plan is
+           stale, so reading the names before the first render captured a plan
+           the render then legitimately replaced — 1 of 3 names matched and it
+           looked like the fix had failed. Render, then read the plan that is
+           actually on the glass, then ask the brief about that one. The real
+           requirement is that the two agree. */
+        REF_TAB = 'food'; go('ref'); renderRef();
+        const plan = STATE.nutrition.plan || currentMealPlan();
+        const names = plan.meals.map(recipeById).filter(Boolean).map(x => x.name);
+        out.spoken = (function () {
+          const said = briefSegments().map(x => x.say || '').join(' ');
+          return { pointsAtRef: /Reference tab, under Food/i.test(said),
+                   namesAll: names.length > 0 && names.every(n => said.indexOf(n) >= 0) };
+        })();
+        renderRef();
+        const v = document.querySelector('#v-ref');
+        const html = v ? v.innerHTML : '', txt = v ? v.textContent : '';
+        out.dest = { found: names.filter(n => txt.indexOf(n) >= 0).length, want: names.length,
+                     ingredients: /INGREDIENTS/.test(txt), method: /METHOD/.test(txt),
+                     toggle: html.indexOf('toggleRecipe(') >= 0,
+                     grocery: html.indexOf('openGrocery(') >= 0,
+                     mealplanIds: (html.match(/id="mealplan"/g) || []).length,
+                     recipeIds: (html.match(/id="recipeplan"/g) || []).length };
+        /* FLOOR: it does NOT go back on Fuel. v245 removed the plan card there
+           at the athlete's request — a prescribed menu standing in front of
+           their own food diary — and that decision stands. */
+        go('fuel'); renderFuel();
+        const fv = document.querySelector('#v-fuel');
+        out.fuelClean = fv ? !/INGREDIENTS/.test(fv.textContent) : null;
+
+        // --- 2. the no-rest circuit ---
+        STATE.profile.parq = []; STATE.profile.parqDone = true; STATE.profile.medCleared = false;
+        STATE.profile.gear = (STATE.profile.gear || []).concat(['sandbag']);
+        normalizeState();
+        startCombatCircuit();
+        if (typeof PLAYER !== 'undefined' && PLAYER) {
+          const seen = []; let guard = 0;
+          out.combat = { items: PLAYER.items.length, restsSet: PLAYER.items.filter(m => m.rest > 0).length };
+          while (PLAYER && PLAYER.phase !== 'done' && guard++ < 40) {
+            seen.push(PLAYER.phase);
+            if (PLAYER.phase === 'ready') plEnterWork();
+            else if (PLAYER.phase === 'work') plAfterSet();
+            else break;
+          }
+          out.combat.phases = seen.join('>');
+          out.combat.restPhases = seen.filter(x => x === 'rest').length;
+          out.combat.works = seen.filter(x => x === 'work').length;
+        }
+        try { playerQuit(); } catch (e) {}
+        /* FLOOR: an ordinary session still rests. A fix that skipped the rest
+           phase for everybody satisfies every assertion above and deletes the
+           rest from every workout in the app. */
+        _custom = ['pushup', 'squat'];
+        startCustom();
+        if (typeof PLAYER !== 'undefined' && PLAYER) {
+          out.custom = { rest: PLAYER.items[0].rest };
+          plEnterWork(); plAfterSet();
+          out.custom.phase = PLAYER.phase;
+        }
+        try { playerQuit(); } catch (e) {}
+
+        // --- 3. the window figure ---
+        const iso = d => { const x = new Date(d); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+        const DAY = 86400000;
+        const at = weeksLeft => {
+          STATE.prep = { date: iso(Date.now() + weeksLeft * 7 * DAY),
+                         planFrom: iso(Date.now() - (20 - weeksLeft) * 7 * DAY),
+                         checks: {}, results: {} };
+          const d = document.createElement('div'); d.innerHTML = prepMidHTML();
+          return { left: prepWeeksLeft(), text: d.textContent.replace(/\s+/g, ' ') };
+        };
+        out.mid = [5, 4, 3].map(at);
+        out.taper = PREP_TAPER_WEEKS;
+      } catch (e) { out.threw = String(e && e.message || e); }
+      console.error = ce;
+      return out;
+    });
+
+    t.ok('guard: the promise checks ran without throwing', !r.threw, r.threw || '');
+    if (!r.threw) {
+      // --- 1. both halves, which is the whole point ---
+      t.ok('the brief still names the recipes and points at Reference under Food',
+        r.spoken.pointsAtRef && r.spoken.namesAll, JSON.stringify(r.spoken));
+      t.eq('and every recipe it names is on that pane', r.dest.found, r.dest.want);
+      t.ok('with the ingredients and the method', r.dest.ingredients && r.dest.method, JSON.stringify(r.dest));
+      t.ok('and the controls that open them', r.dest.toggle && r.dest.grocery, JSON.stringify(r.dest));
+      /* Two elements with one id is a defect this codebase has a standing rule
+         about, and the worked days already own `#mealplan`. */
+      t.eq('the worked-days anchor is still unique', r.dest.mealplanIds, 1);
+      t.eq('and the recipe card has its own', r.dest.recipeIds, 1);
+      t.ok('FLOOR: the plan card does not come back on Fuel', r.fuelClean === true, String(r.fuelClean));
+
+      // --- 2. the circuit ---
+      t.ok('guard: the circuit really built its events with no rest',
+        r.combat && r.combat.items >= 2 && r.combat.restsSet === 0, JSON.stringify(r.combat));
+      t.eq('a no-rest circuit enters no rest phase at all', r.combat.restPhases, 0);
+      t.eq('and still runs every event', r.combat.works, r.combat.items);
+      t.ok('FLOOR: an ordinary session still has a rest between sets',
+        r.custom && r.custom.rest > 0 && r.custom.phase === 'rest', JSON.stringify(r.custom));
+
+      // --- 3. the figure ---
+      r.mid.forEach(m => {
+        const want = Math.max(0, m.left - r.taper);
+        t.ok('the window figure at ' + m.left + ' weeks out names ' + want + ', not ' + m.left,
+          new RegExp('\\b' + want + ' week').test(m.text) && !new RegExp('\\b' + m.left + ' week' + (m.left === 1 ? '\\b' : 's')).test(m.text),
+          m.text.slice(0, 150));
+      });
+      t.ok('and it still says what it is counting to',
+        r.mid.every(m => /before the taper starts/.test(m.text)), r.mid[0].text.slice(0, 150));
+    }
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

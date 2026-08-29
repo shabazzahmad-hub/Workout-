@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='384';
+const APP_VERSION='385';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -5000,9 +5000,15 @@ function prepMidHTML(){
        day of the window: it said so three weeks out on a twelve-week block,
        and the day before the evaluation. It names the window it is in and how
        long is left to use it, which is both true and actionable. */
-    const wl=prepWeeksLeft();
+    /* THE FIGURE COUNTED TO THE WRONG EVENT. `prepWeeksLeft()` is weeks to the
+       TEST DATE and the sentence says "before the taper starts" — which opens
+       PREP_TAPER_WEEKS earlier, so the number was overstated by exactly that
+       every time. Measured: three weeks out it said "3 weeks before the taper
+       starts" when the true answer was 1. */
+    const _wl=prepWeeksLeft();
+    const wl=(_wl===null)?null:Math.max(0,_wl-PREP_TAPER_WEEKS);
     head=`<div class="note warn" style="margin:10px 0 0"><b>Midpoint assessment due.</b>
-      You are past the halfway point of your block, with ${wl===null?'time':('<b>'+wl+' week'+(wl===1?'':'s')+'</b>')} before the taper starts. ${locked
+      You are past the halfway point of your block, with ${wl===null?'time':(wl===0?'<b>the taper starting this week</b>':('<b>'+wl+' week'+(wl===1?'':'s')+'</b> before the taper starts'))}. ${locked
         ?'Log the times if your unit tests you — that is what turns the second half of the block into a correction rather than a guess. The app\'s own run of the four tasks stays locked until your health check is cleared.'
         :'Re-run the four tasks and log the times — that is what turns the second half of the block into a correction rather than a guess.'}
       ${init?'':'<div style="margin-top:6px">Nothing was logged before the halfway point, so this one becomes your first record rather than a comparison.</div>'}</div>`;
@@ -6882,8 +6888,27 @@ function plAfterSet(){
      resumes at the next one. Sets always restart from 0 within an exercise —
      repeating a set is safe, silently skipping one is not. */
   plSaveResume(PLAYER.s<m.sets?PLAYER.i:PLAYER.i+1);
-  if(PLAYER.s<m.sets){if(!motivate('rest'))coachSpeak('Rest.');plEnterRest(m.rest,'set');}
-  else if(PLAYER.i+1<PLAYER.items.length){if(!motivate('rest'))coachSpeak('Nice. Next up.');PLAYER.pendingNext=true;plEnterRest(m.rest,'ex');}
+  /* A DATA ZERO MEANS NO REST. plEnterRest() does Math.max(1,dur|0), so a
+     session built with rest:0 got a one-second REST screen — complete with a
+     REST tag, a +15s button and a Skip — between every movement. The FORCE
+     Combat circuit is the only caller that passes 0, and the absence of the
+     rest IS its whole difference from the annual evaluation: its own card says
+     "no rest between events" and its own comment says so twice. Measured, the
+     rest screen plus the get-ready that follows it put about 4 seconds between
+     each of the four events.
+
+     Every other caller passes `ex.rest||45` or `||60`, and prescribe() clamps
+     the program path to 20-120, so nothing else can reach this branch. */
+  const noRest=!(m.rest>0);
+  if(PLAYER.s<m.sets){
+    if(noRest){plEnterReady(false);return;}
+    if(!motivate('rest'))coachSpeak('Rest.');plEnterRest(m.rest,'set');
+  }else if(PLAYER.i+1<PLAYER.items.length){
+    /* plRestDone() is what normally advances the item; with no rest phase to
+       run, this does it directly. */
+    if(noRest){PLAYER.i++;PLAYER.s=0;plEnterReady(false);return;}
+    if(!motivate('rest'))coachSpeak('Nice. Next up.');PLAYER.pendingNext=true;plEnterRest(m.rest,'ex');
+  }
   else plEnterDone();
 }
 function plEnterRest(dur,type){
@@ -18348,7 +18373,12 @@ function mealPlanHTML(){
   }
   return _recipePlanHTML();
 }
-function _recipePlanHTML(){
+function _recipePlanHTML(anchor){
+  /* The anchor is a parameter because this now renders on Reference BESIDE the
+     worked days, which own `#mealplan`. Two elements with one id is the
+     duplicate-ID class this codebase already has a standing rule about.
+     Defaulting keeps every existing caller and check identical. */
+  const _anch=anchor||'mealplan';
   /* currentMealPlan() generates and save()s a randomly-chosen plan. Called from
      an HTML builder, a render could persist a different plan than the one it
      drew. renderFuel() primes it before assembling any markup. */
@@ -18362,10 +18392,10 @@ function _recipePlanHTML(){
   /* Returning '' here hid the allergen warning and the gap notice along with the
      plan, so an athlete with many allergens saw nothing at all between Today's
      targets and Hydration — no plan, no explanation, no controls. */
-  if(!recs.length)return `<div id="mealplan"></div>${mealGapHTML(plan.missing&&plan.missing.length?plan.missing:mealSlots())}`;
+  if(!recs.length)return `<div id="${_anch}"></div>${mealGapHTML(plan.missing&&plan.missing.length?plan.missing:mealSlots())}`;
   const tot=recs.reduce((s,r)=>s+r.kcal,0),totP=recs.reduce((s,r)=>s+r.p,0);
   const _mt=mealTimes();
-  let h=`<div class="section-label" id="mealplan">Today's meal plan · <span class="tiny muted">${_ve(dietLabel())} · ${recs.length} meals${wholeOnly()?' · <span style="color:var(--green);font-weight:800">🥦 whole foods</span>':''}</span></div><div class="card pad" style="padding-bottom:8px">`;
+  let h=`<div class="section-label" id="${_anch}">Today's meal plan · <span class="tiny muted">${_ve(dietLabel())} · ${recs.length} meals${wholeOnly()?' · <span style="color:var(--green);font-weight:800">🥦 whole foods</span>':''}</span></div><div class="card pad" style="padding-bottom:8px">`;
   h+=`<div class="row" style="justify-content:space-between;margin-bottom:6px"><div><b>${tot} kcal</b> · ${totP}g protein${kcalT?` <span class="tiny muted">of ${kcalT} target</span>`:''}</div><div class="btnrow" style="flex:0 0 auto;gap:6px"><button class="chip" onclick="openGrocery()">🛒 List</button><button class="chip" onclick="regenPlan()">↻ New plan</button></div></div>`;
   recs.forEach((r,_i)=>{const _t=_mt&&_mt[_i];h+=`<button class="kv" style="width:100%;text-align:left;border:none;border-top:1px solid var(--line);background:none;padding:12px 2px;cursor:pointer" onclick="toggleRecipe('${r.id}')">
     <span style="min-width:0"><span style="font-size:18px">${r.emoji}</span> <b>${_ve(r.name)}</b>${_t?` <span class="chip" style="font-size:11px;padding:2px 7px">${_t.label}</span>`:''}<div class="tiny muted" style="margin-top:2px;text-transform:capitalize">${r.type} · ${r.kcal} kcal · ${r.p}p ${r.c}c ${r.f}f</div></span>
@@ -18488,6 +18518,36 @@ function renderRef(){
   h+=`</div>`;
   h+=`<div class="note info" style="margin-top:10px"><b>Read the last number.</b> Grams of protein per 100 kcal is what matters on a cut — it says how much protein a food buys for its calories. Prawns, cod and tinned tuna score 23–24; salmon scores 12. Both are good food, only one lets you eat more of it.</div>`;
   h+=`<div class="note warn"><b>Seitan is not on this list on purpose.</b> It is the highest-protein vegetarian food there is and it is pure wheat gluten. Every plant-protein list you read will recommend it.</div>`;
+
+  /* THE BRIEF NAMED THREE RECIPES AND POINTED AT A SCREEN THAT HAD NONE.
+     The morning brief — which the coach READS ALOUD — says "Your meal plan
+     today: A, B and C. The full recipes are on the Reference tab, under Food."
+     Measured on that pane: none of the three names appeared anywhere, no
+     INGREDIENTS heading, no METHOD heading, and nothing bound to
+     toggleRecipe() or openGrocery(). `_recipePlanHTML()` is the only renderer
+     of `r.ing` and `r.steps` in the file and it had NO CALLER: v245 removed
+     the plan card from Fuel at the athlete's request, and the recipes went
+     with it.
+
+     v315 already fixed this sentence once — it used to name the Fuel tab — and
+     moved the tab NAME while the destination still did not hold the thing.
+     v315's own rule is to assert BOTH ways, and only one half had been done.
+
+     It goes on REFERENCE and not back on Fuel, which keeps the athlete's own
+     request intact: they did not want a prescribed menu standing in front of
+     their food diary. Reference is the look-it-up tab, and a recipe is
+     something you look up. */
+  /* TWO DATASETS ON ONE PANE, SO EACH SAYS WHICH IT IS. The recipes are
+     cookable dishes at FIXED portions, so the plan card can legitimately tell
+     a bigger athlete to scale them; the month of days below is weighed onto
+     the athlete's targets and says "no multiplying required". Adjacent and
+     unlabelled, those two read as one screen contradicting itself — which is
+     the defect this round exists to fix, not one to introduce. */
+  {const _plan=currentMealPlan();   // primed before any markup, per its own comment
+   if(_plan&&_plan.meals&&_plan.meals.length){
+     h+=`<div class="tiny muted" style="margin:14px 3px 0">Below: today's <b>recipes</b> — dishes to cook, at the portions they are written for. Under them, a month of <b>weighed days</b> sized to your own targets.</div>`;
+     h+=_recipePlanHTML('recipeplan');
+   }}
 
   /* ---- worked days, scaled onto the athlete's targets ---- */
   h+=`<div class="section-label" id="mealplan">${REF_DAYS.length} worked days · <span class="tiny muted">four weeks, then it repeats</span></div>`;

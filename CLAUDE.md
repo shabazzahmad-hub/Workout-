@@ -8219,6 +8219,83 @@ the ceiling absorbs the difference on any long block. The agreement assertion
 now covers the STEP COUNT as well as the plate.
 
 
+## Three promises the code did not keep (v385)
+
+### The coach read out an address that was empty
+
+The morning brief says, aloud, every morning:
+
+> *"Your meal plan today: Steak & Eggs Skillet, Chicken Shawarma Wrap and
+> Baked Salmon & Sweet Potato. The full recipes are on the Reference tab,
+> under Food."*
+
+Measured on that pane: **0 of the 3 names, no INGREDIENTS heading, no METHOD
+heading**, and nothing bound to `toggleRecipe()` or `openGrocery()`.
+`_recipePlanHTML()` is the only renderer of `r.ing` and `r.steps` in the whole
+file, and it had **no caller** — v245 removed the plan card from Fuel at the
+athlete's request and the recipes went with it, leaving the sentence behind.
+
+**v315 already fixed this sentence once.** It used to name the Fuel tab; v315
+moved the tab NAME and the destination still did not hold the thing. v315's own
+rule is to assert BOTH ways, and only one half had ever been done. A spoken
+address is the one an athlete cannot double-check by looking.
+
+**It goes on Reference, not back on Fuel.** The athlete's v245 request was
+about a prescribed menu standing in front of their own food diary, and that
+decision stands — a floor check pins that Fuel stays clean.
+
+### Two datasets on one pane, so each says which it is
+
+Putting the recipes there created the very defect this round exists to fix.
+The recipe card can legitimately say *"Multiply each quantity by 1.4"* —
+recipes are cookable dishes at FIXED portions — while the worked days below it
+say *"weighed out for your targets, no multiplying required"*. Adjacent and
+unlabelled, one screen contradicts itself.
+
+A line above them now names which is which. **This was caught by a suite-09
+check going red, not by reading the diff** — and the check was right: its
+subject is the weighed month, and a page-wide search could not tell the two
+datasets apart. It is scoped to the worked days now, with a guard that the
+slice really landed there.
+
+**And the anchor had to become a parameter.** `_recipePlanHTML()` hardcoded
+`id="mealplan"`, which the worked days already own — two elements with one id
+is a standing rule here. Defaulting it keeps every existing caller and check
+byte-identical.
+
+### A data zero meant "one second", not "none"
+
+`plEnterRest()` does `Math.max(1,dur|0)`, so a session built with `rest:0` got
+a one-second REST screen — with a REST tag, a +15s button and a **Skip** — in
+front of every movement. The FORCE Combat circuit is the only caller that
+passes 0, and **the absence of the rest IS its difference from the annual
+evaluation**, which its own card and its own comment both state.
+
+Measured: `ready > work > rest` on the first handover, against
+`ready > work > ready > work > …` and **zero rest phases** after.
+
+Safe to scope narrowly, and that was checked rather than assumed: every other
+`openPlayer()` caller passes `ex.rest||45` or `||60`, and `prescribe()` clamps
+the program path to 20-120, so nothing else can reach the branch. The floor is
+an ordinary custom session, which must still rest between sets.
+
+### The window figure counted to the wrong event
+
+The midpoint prompt says *"N weeks before the taper starts"* and N was
+`prepWeeksLeft()` — weeks to the TEST DATE. The taper opens `PREP_TAPER_WEEKS`
+earlier, so the figure was overstated by exactly that, every time: five weeks
+out it said **five** when the answer was **three**.
+
+### The check that failed on correct code was reading a rebuilt plan
+
+`currentMealPlan()` rebuilds when the stored plan is stale, so reading the
+names BEFORE the first render captured a plan the render then legitimately
+replaced — 1 of 3 matched and it looked like the fix had failed. Render first,
+read the plan that is actually on the glass, then ask the brief about that one.
+**The real requirement is that the two agree**, which is what the check now
+says.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
