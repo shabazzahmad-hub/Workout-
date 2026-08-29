@@ -7418,6 +7418,91 @@ places and was asserted in one.
 
 Seven mutants, all caught.
 
+## The rescue existed and it cost the athlete their position (v375)
+
+Reported from the phone for the SECOND time: *"after one set followed by the
+rest time, everything stops and I am forced to press [the] hold timer to start
+the other set... sometimes I am already in the exercise position thinking I am
+starting the next set only to realize after the rest countdown everything stops
+and I am forced to leave my exercise position, get to the phone."*
+
+v350 investigated the first report, **could not reproduce the stall**, and
+removed a dependency rather than chasing a cause: `plResync()` on
+`visibilitychange` re-arms the tick and reconciles against the stored deadline.
+That was right and it was not enough. **It is still a rescue that needs the
+athlete at the phone**, which is the whole of the complaint.
+
+Measured this time, with the interval killed and no `visibilitychange` fired:
+
+| state | what happens |
+|---|---|
+| tick alive | rest ends, the next set starts. No tap. |
+| **tick reclaimed** | **phase stays `rest` for ever — `tid` null, `remain` frozen at 3** |
+| the athlete wakes the phone | it recovers instantly |
+
+**One rescue path, and it is the one that costs the position.** The three rest
+buttons measure **123 x 52** and neither the ring nor the photo is tappable, so
+when it does stall the athlete must walk over AND hit a small target.
+
+### The heartbeat owns its own interval
+
+`plClear()` is what the phase code uses to drop a tick, and it is also what a
+frozen page effectively does. So the guard cannot live on `PLAYER.tid`. It is
+its own 2-second interval that nothing in the phase code touches.
+
+**A phase change legitimately leaves `tid` null for an instant**, so a missing
+tick only counts once the phase has been settled for `PL_STALL_MS`. Without
+that, the guard would fire between `plClear()` and the next `setInterval` and
+re-arm the phase that is being LEFT. `phaseAt` is stamped at all four phase
+assignments for exactly this.
+
+**It is armed once at boot, not by each opener.** Arming per surface is how a
+third surface gets forgotten, and this file records that shape five times over.
+The cost with nothing open is two null tests every two seconds.
+
+### Tap anywhere — but only while it is actually stuck
+
+Making the whole screen skip the rest would be worse than the bug: one stray
+touch would cost the athlete their whole rest. The screen advances only while
+`timerStalled()` is true, which is a state a working session never reaches. The
+listener is on the bubble phase so a real button still acts first. The mutant
+that drops the stall test is caught by the floor: a tap during a working rest
+must not skip it.
+
+### HIIT is the twin v350 did not reach
+
+The guided player got a resync on every return to the page. **Its interval
+sibling got nothing at all** — no `visibilitychange` listener, no re-arm — so a
+HIIT round whose tick the OS reclaimed sat frozen with no rescue whatever. Same
+hole, one surface over, and the fourth time the player's twins have drifted.
+
+One predicate answers for both. `PLAYER` and `INTV` are different objects with
+the same four fields that matter, and two copies of the test is two places for
+it to drift. `hiitToggle()` now shares `ivArmTick()` with the resync instead of
+repeating which tick each phase needs.
+
+### The deadline a phase does not own
+
+`plEnterRest()` sets `PLAYER.deadline`; the get-ready and a rep set never
+cleared it, so both opened holding a deadline that had **already passed**.
+Harmless until something read it — and the heartbeat reads it, so a perfectly
+healthy set would have been declared stuck on its first beat. Both clear it
+now, and two checks pin that a fresh get-ready and a fresh rep set never read
+as stalled.
+
+### The contract is pinned directly
+
+`timerStalled()` is consulted from three narrow branches, so its own contract is
+asserted rather than only its effects — the shape v338's `prepDatePassed()`
+needed. Nine cases: nothing open, paused, done, healthy, a phase that just
+switched, a tick that vanished, a deadline long gone, a deadline a moment gone,
+and a surface with no phase yet.
+
+The floors carry the round, and every over-eager mutant fails one of them: a
+paused player must stay paused (resuming one restarts a session the athlete
+deliberately stopped), an ordinary rest must still count down and must survive
+a tap, and an ordinary HIIT round must be left alone.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
