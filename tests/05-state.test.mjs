@@ -716,6 +716,95 @@ export default async function run() {
     await browser.close();
   }
 
+  /* ---- v391: one of a pair guarded, its twin not ------------------------
+     Found by taking v390's class one level down — nested fields the app
+     writes that no repair covers. Two of them, and both are this file's
+     most-quoted lesson:
+
+       profile.bodyCur   its sibling bodyGoal is written by the same picker,
+         and neither was repaired. A junk level made
+         `PHYS_LEVELS[clamp(NaN,1,5)-1]` undefined and `.bf` THREW inside
+         transformationHTML() — a RENDERER — so Progress ▸ Body died on the
+         error boundary, which retries THROUGH normalizeState(), and with no
+         repair there the tab never came back across relaunches. The worst
+         class in this repo.
+       nutrition.allergies  the free-text box beside the allergens LIST, which
+         is repaired. A non-string threw on `.replace()` rendering the profile
+         form and on `.toLowerCase()` in the food filter.
+
+     Two guards mean two checks: levelBF() fails closed at the read site, and
+     the boot repair is the other half. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await waitForBoot(page);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const out = {};
+      const t = f => { try { return f(); } catch (e) { return 'THREW ' + String(e && e.message).slice(0, 50); } };
+
+      /* THE READ SITE, with the boot repair deliberately NOT run — this is
+         what stops the render boundary being reached at all. */
+      out.read = {};
+      ['abc', {}, [], -3, 99, null].forEach(v => { out.read[JSON.stringify(v) || 'undef'] = t(() => String(levelBF(v))); });
+      out.readReal = t(() => String(levelBF(3)));
+      out.levelSet = { legal: physLevel(3), high: physLevel(99), junk: physLevel('abc'), rounds: physLevel(2.4) };
+
+      // the tab that used to die, and stay dead
+      STATE.profile.bodyCur = 'abc'; delete STATE.nutrition.bodyFat;
+      out.tabFirst = t(() => { PROGRESS_TAB = 'body'; go('progress'); render();
+        return /went wrong/.test(document.querySelector('.view.active').innerText) ? 'BOUNDARY' : 'renders'; });
+      out.tabRetry = t(() => { render();
+        return /went wrong/.test(document.querySelector('.view.active').innerText) ? 'BOUNDARY' : 'renders'; });
+
+      // THE BOOT REPAIR
+      STATE.profile.bodyCur = 'abc'; STATE.profile.bodyGoal = 99;
+      STATE.profile.goalBodyFat = 'x'; STATE.nutrition.allergies = 42;
+      normalizeState();
+      out.repaired = { bodyCur: STATE.profile.bodyCur === undefined, bodyGoal: STATE.profile.bodyGoal === undefined,
+                       goalBodyFat: STATE.profile.goalBodyFat === undefined, allergies: STATE.nutrition.allergies === undefined };
+
+      /* FLOORS. A repair that always wipes satisfies every "the junk is gone"
+         assertion and throws away the athlete's own physique answers. */
+      STATE.profile.bodyCur = 2; STATE.profile.bodyGoal = 4;
+      STATE.profile.goalBodyFat = levelBF(4); STATE.nutrition.allergies = 'mushrooms';
+      normalizeState();
+      out.kept = { bodyCur: STATE.profile.bodyCur, bodyGoal: STATE.profile.bodyGoal,
+                   goalBodyFat: STATE.profile.goalBodyFat, allergies: STATE.nutrition.allergies,
+                   derived: levelBF(4) };
+
+      // absent stays absent — the repair must not invent a physique answer
+      ['bodyCur', 'bodyGoal', 'goalBodyFat'].forEach(k => delete STATE.profile[k]);
+      delete STATE.nutrition.allergies;
+      const pre = JSON.stringify(STATE); normalizeState();
+      out.absentDiff = JSON.stringify(STATE) === pre ? 'none' : 'CHANGED';
+      return out;
+    });
+
+    t.ok('guard: a real physique level still resolves to a body-fat figure',
+      r.readReal !== 'null' && !/THREW/.test(r.readReal), r.readReal);
+    t.ok('a junk physique level returns nothing instead of throwing',
+      Object.keys(r.read).every(k => r.read[k] === 'null'), JSON.stringify(r.read));
+    t.ok('and the legal set is a membership test, not a clamp',
+      r.levelSet.legal === 3 && r.levelSet.high === 0 && r.levelSet.junk === 0 && r.levelSet.rounds === 2,
+      JSON.stringify(r.levelSet));
+    t.eq('so the screen that used to die on it renders', r.tabFirst, 'renders');
+    t.eq('and it is still rendering on the retry the boundary would have made', r.tabRetry, 'renders');
+
+    t.ok('the boot repair drops every junk physique field and the free-text allergy',
+      r.repaired.bodyCur && r.repaired.bodyGoal && r.repaired.goalBodyFat && r.repaired.allergies,
+      JSON.stringify(r.repaired));
+    t.ok('while the athlete’s real answers survive untouched',
+      r.kept.bodyCur === 2 && r.kept.bodyGoal === 4 && r.kept.allergies === 'mushrooms',
+      JSON.stringify(r.kept));
+    t.ok('and the derived body-fat target is re-derived from the level, not guessed',
+      r.kept.goalBodyFat === r.kept.derived && typeof r.kept.derived === 'number',
+      JSON.stringify(r.kept));
+    t.eq('no physique answer is invented for an athlete who never gave one', r.absentDiff, 'none');
+
+    errors.filter(e => /render/.test(e)).forEach(e => t.fail('the physique repair reached the render boundary', e));
+    await browser.close();
+  }
+
   /* ---- v390: every top-level field the app writes has a repair -----------
      Written against the CLASS, because the block above fixes eight instances
      and the next on-demand field added will be the ninth. The list is DERIVED

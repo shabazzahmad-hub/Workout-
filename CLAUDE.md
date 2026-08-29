@@ -8796,6 +8796,65 @@ board's stamp deleted. The board's caveat note now carries `data-d90note` and
 the check reads that element. **Scope the assertion to where the change was
 made** — the third page-wide match in two rounds.
 
+## One of a pair guarded, its twin not — one level down (v391)
+
+v390 fixed the top-level fields no repair covered. Taking the same question one
+level down — **nested fields the app writes that no repair covers** — found 14,
+and two of them are this file's most-quoted lesson landing again.
+
+### The one that bricks a screen
+
+`profile.bodyCur` and `profile.bodyGoal` are written by the same picker and
+**neither had a repair**. `levelBF()` did
+
+```js
+const L=PHYS_LEVELS[clamp(level,1,5)-1];return isFemale()?L.bfF:L.bf;
+```
+
+and `clamp('abc',1,5)` is `NaN`, so `PHYS_LEVELS[NaN-1]` is `undefined` and
+`.bf` **throws** — inside `transformationHTML()`, which is a RENDERER.
+
+Measured: **Progress ▸ Body died on the error boundary, and the boundary
+retries THROUGH `normalizeState()`** — which had nothing for this field, so the
+retry produced the identical error and the tab **never came back across
+relaunches**. That is the `nutrition.days` defect of v284 exactly, on a field
+reachable from any hand-edited or corrupted import.
+
+`nutrition.allergies` is the second: the free-text box sitting beside the
+allergens **list**, which is repaired. A non-string threw on `.replace()`
+rendering the profile form and on `.toLowerCase()` in the food filter. Two
+fields one line apart, one guarded and one not.
+
+### Two guards, two checks, and the read site is the one that matters
+
+`levelBF()` fails closed — a level outside the set returns **null**, not a
+throw — because it is on a render path and the boot repair cannot help a value
+that arrives mid-session. `physLevel()` is the membership test, asked by the
+repair and by `levelBF()` rather than `clamp(x,1,5)` restated at each site: a
+clamp is what turned an illegal value into a *different* illegal value in the
+first place, and the check pins that `physLevel(99)` is **0**, not 5.
+
+**`goalBodyFat` is DERIVED, so it is re-derived rather than guessed.** It is
+written from `bodyGoal` by `levelBF()`, so when the level survives the repair
+recomputes it, and when the level goes it goes too. Keeping a stale derived
+number beside a repaired level is the v304 shape one field over.
+
+### The floors, and the one that catches the over-eager twin
+
+A repair that always wipes satisfies every "the junk is gone" assertion and
+throws away the athlete's own physique answers, which they set by tapping a
+picture of a body. So a real level 2 and level 4 survive untouched, the free
+text survives, the derived figure matches what `levelBF()` computes, and
+**absent stays absent** — the rule v390 had just paid for.
+
+### And the scan that found it had a false negative of its own
+
+Its "is this field mentioned in `normalizeState()`?" heuristic reported
+`bodyGoal` as repaired. It is not: the name appears only inside a **migration
+condition** (`!STATE.profile.bodyGoal`). The scan was reading a mention, not a
+repair — the same trap as a comment that quotes code breaking the scan for that
+code. Read what the mention actually is before believing it.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

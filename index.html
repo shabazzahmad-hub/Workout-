@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='390';
+const APP_VERSION='391';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -15615,13 +15615,22 @@ const PHYS_LEVELS=[
   {id:5,name:'Shredded',bf:10,bfF:18},
 ];
 function isFemale(){const s=(STATE.nutrition&&STATE.nutrition.sex)||STATE.profile.sex;return s==='female'||s==='F'||s==='f';}
-function levelBF(level){const L=PHYS_LEVELS[clamp(level,1,5)-1];return isFemale()?L.bfF:L.bf;}
+/* FAILS CLOSED, because this is a READ SITE on a render path. A junk level
+   made `PHYS_LEVELS[clamp(NaN,1,5)-1]` undefined and `.bf` threw inside
+   transformationHTML() — so Progress ▸ Body died on the error boundary, which
+   retries THROUGH normalizeState(), and with no repair for the field the tab
+   never came back across relaunches. Two guards mean two checks: the boot
+   repair below is the other one. */
+function levelBF(level){const L=PHYS_LEVELS[physLevel(level)-1];return L?(isFemale()?L.bfF:L.bf):null;}
+/* The legal set, in one place, asked by the pickers, the repair and levelBF()
+   rather than restated as `clamp(x,1,5)` in each. 0 means "not one of them". */
+function physLevel(v){const n=Math.round(+v);return (isFinite(n)&&n>=1&&n<=PHYS_LEVELS.length)?n:0;}
 // Deurenberg body-fat estimate from BMI + age + sex (no calipers needed).
 function estBodyFat(){const n=STATE.nutrition||{};const kg=latestWeightKg();const h=n.heightCm,age=n.age;
   if(!(kg>0&&h>0&&age>0))return null;
   const bmi=kg/Math.pow(h/100,2);
   return clamp(Math.round(1.20*bmi+0.23*age-10.8*(isFemale()?0:1)-5.4),3,60);}
-function curBF(){const e=estBodyFat();if(e!=null)return e;if(STATE.profile.bodyCur)return levelBF(STATE.profile.bodyCur);return null;}
+function curBF(){const e=estBodyFat();if(e!=null)return e;const b=levelBF(STATE.profile.bodyCur);return (typeof b==='number')?b:null;}
 // A schematic front-view silhouette whose waist narrows and abs appear as it leans out.
 function physRow(which){
   const sel=which==='cur'?(STATE.profile.bodyCur||0):(STATE.profile.bodyGoal||0);
@@ -20876,6 +20885,26 @@ function normalizeState(){
      else if(Array.isArray(N.allergens))
        N.allergens=N.allergens.filter(a=>ALLERGENS.some(x=>x[0]===a));
      else if(N.allergens!=null)delete N.allergens;
+  /* The free-text allergy box is a SEPARATE field from the allergens list, and
+     only one of the pair was ever guarded. A non-string threw on `.replace()`
+     rendering the profile form and on `.toLowerCase()` in the food filter.
+     Fixing one instance is not fixing the class, and here the class was two
+     fields one line apart. */
+  if(N.allergies!==undefined&&typeof N.allergies!=='string')delete N.allergies;
+  /* The physique levels. bodyCur is the one that bricks a screen: a junk value
+     threw inside transformationHTML() and the error boundary retries THROUGH
+     this function, so with no repair here Progress ▸ Body never came back.
+     goalBodyFat is DERIVED from bodyGoal by levelBF(), so it is re-derived
+     rather than guessed when the level survives, and dropped when it does not. */
+  {const P2=STATE.profile;
+   ['bodyCur','bodyGoal'].forEach(k=>{
+     if(P2[k]===undefined)return;
+     const lv=physLevel(P2[k]);
+     if(lv)P2[k]=lv;else delete P2[k];});
+   if(P2.goalBodyFat!==undefined){
+     const g=+P2.goalBodyFat;
+     if(P2.bodyGoal!==undefined){const d=levelBF(P2.bodyGoal);if(typeof d==='number')P2.goalBodyFat=d;else delete P2.goalBodyFat;}
+     else if(!(isFinite(g)&&g>0&&g<70))delete P2.goalBodyFat;}}
    }
    if(!STATE.quickLog||typeof STATE.quickLog!=='object'||Array.isArray(STATE.quickLog))STATE.quickLog={};
    if(!STATE.shopTicks||typeof STATE.shopTicks!=='object'||Array.isArray(STATE.shopTicks))STATE.shopTicks={};
