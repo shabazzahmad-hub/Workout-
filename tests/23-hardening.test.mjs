@@ -4848,8 +4848,8 @@ export default async function () {
         longGone: tickStalled(S({ lastTick: now - 99000 })),
         noTickFn: tickStalled({ lastTick: now - 99000, iv: 1 }),
         noStamp: tickStalled({ tick: () => {}, iv: 1 }),
-        upFloor: (() => { const o = { startedAt: now - 9000, elapsed: 2 }; return tickUp(o); })(),
-        upNeverSlower: (() => { const o = { startedAt: now - 1000, elapsed: 40 }; return tickUp(o); })()
+        upFloor: (() => { const o = { startedAt: monoNow() - 9000, elapsed: 2 }; return tickUp(o); })(),
+        upNeverSlower: (() => { const o = { startedAt: monoNow() - 1000, elapsed: 40 }; return tickUp(o); })()
       };
     });
     t.eq('tickStalled: nothing open is not a stall', r.nullState, false);
@@ -4961,8 +4961,16 @@ export default async function () {
         junkElapsed: tickUp({ elapsed: 'x' }),
         junkStart: tickUp({ startedAt: 'y', elapsed: 3 }),
         nanStart: tickUp({ startedAt: NaN, elapsed: 2 }),
+        negativeElapsed: tickUp({ elapsed: -9, startedAt: monoNow() - 1000 }),
+        /* THE CLAMP IS ONLY VISIBLE WHEN `real` IS SMALLER THAN THE NEGATIVE
+           COUNT. With startedAt in the PAST, real is positive and Math.max()
+           hides a negative prev — which is exactly why the mutant that removed
+           the clamp ESCAPED. A startedAt in the FUTURE makes real negative, so
+           only the clamp can keep the answer at or above zero. Third time this
+           session a guard was masked by another value in the same expression. */
+        negativeElapsedFutureStart: tickUp({ elapsed: -9, startedAt: monoNow() + 10000 }),
         empty: tickUp({}),
-        negative: tickUp({ elapsed: -9, startedAt: now - 3000 }),
+        negative: tickUp({ elapsed: -9, startedAt: monoNow() - 3000 }),
         /* AN ARRAY IS TRUTHY AND COERCES TO 0. These two produce a huge
            FINITE number, which "is it a number?" cannot see — the first
            version of this check tested only a STRING startedAt, which the
@@ -4973,8 +4981,11 @@ export default async function () {
         zeroStart: tickUp({ elapsed: 0, startedAt: 0 }),
         objectStart: tickUp({ elapsed: 1, startedAt: {} }),
         // and the floor still works on real input
-        real: tickUp({ startedAt: now - 9000, elapsed: 2 }),
-        neverBack: tickUp({ startedAt: now - 1000, elapsed: 40 })
+        /* monoNow(), NOT Date.now(). tickUp reads the monotonic clock now, and
+           feeding it a wall-clock timestamp compares two different time bases —
+           which is what made this check fail on correct code. */
+        real: tickUp({ startedAt: monoNow() - 9000, elapsed: 2 }),
+        neverBack: tickUp({ startedAt: monoNow() - 1000, elapsed: 40 })
       };
       // tickResync must not leave a runaway when the tick it re-arms throws
       let calls = 0;
@@ -5014,6 +5025,98 @@ export default async function () {
     t.eq('floor: a healthy tick is still re-armed', r.goodReturned, true);
     t.eq('and its interval is left running', r.goodIv, true);
     t.ok('and it really keeps ticking', r.goodCalls >= 2, String(r.goodCalls));
+  }
+
+  /* ---------- a duration must not be measured with the wall clock --------
+     Date.now() moves when the phone corrects itself, which Android and iOS do
+     in the background. v377 made the count-up timers read real time and v379
+     stopped them returning NaN — and both used Date.now(). Measured on a
+     3-second hold with the clock shoved forward: +1 hour recorded 3602
+     seconds, +1 minute recorded 62. That number is WRITTEN INTO THE RECORD:
+     it becomes the bar holdBest() reads, and on the battery it anchors a year.
+
+     The backwards direction was already covered by the floor. FORWARDS — the
+     direction that inflates — was wide open.
+
+     performance.now() is monotonic. It counts forward at real speed and
+     nothing can move it. The clock is faked in the PAGE here rather than at
+     the context, so this block can shove it mid-hold. */
+  {
+    const r = await page.evaluate(async () => {
+      const R = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      STATE.onboarded = true;
+      STATE.profile.parq = [false, false, false, false, false, false, false];
+      STATE.profile.parqDone = true; STATE.profile.medCleared = true; save();
+
+      const RealDate = window.Date; let skew = 0;
+      class Shim extends RealDate {
+        constructor(...a) { if (a.length === 0) super(RealDate.now() + skew); else super(...a); }
+        static now() { return RealDate.now() + skew; }
+        static parse(...a) { return RealDate.parse(...a); }
+        static UTC(...a) { return RealDate.UTC(...a); }
+      }
+      window.Date = Shim;
+      try {
+        // guard: the shim really does move the wall clock and NOT the monotonic one
+        const d0 = Date.now(), m0 = monoNow();
+        skew = 3600 * 1000;
+        R.shimMovesWall = Date.now() - d0 > 3500000;
+        R.monoIgnoresIt = Math.abs(monoNow() - m0) < 5000;
+        skew = 0;
+
+        const run = async (jumpMs) => {
+          skew = 0;
+          startHoldTest('plank'); await wait(200);
+          if (!_ht) return { blocked: true };
+          for (let i = 0; i < 4; i++) await wait(1050);
+          const a = _ht.elapsed;
+          await wait(1100);
+          skew = jumpMs;                        // the phone re-syncs its clock
+          await wait(2200);
+          const out = { counted: _ht.elapsed - a };
+          cancelHoldTest(); await wait(150); skew = 0;
+          return out;
+        };
+        R.plusHour = await run(3600 * 1000);
+        R.plusMinute = await run(60 * 1000);
+        R.minusHour = await run(-3600 * 1000);
+        R.noJump = await run(0);
+      } finally { window.Date = RealDate; }
+      return R;
+    });
+    t.eq('guard: the fake clock really moves Date.now()', r.shimMovesWall, true);
+    t.eq('guard: and does NOT move the monotonic clock', r.monoIgnoresIt, true);
+    t.ok('a clock that jumps forward an hour mid-hold adds no seconds to the record',
+      r.plusHour && r.plusHour.counted >= 2 && r.plusHour.counted <= 5,
+      'counted ' + (r.plusHour || {}).counted + ' for ~3 real seconds');
+    t.ok('nor does a one-minute correction', r.plusMinute && r.plusMinute.counted <= 5,
+      'counted ' + (r.plusMinute || {}).counted);
+    t.ok('floor: a backwards jump still cannot wind the count back',
+      r.minusHour && r.minusHour.counted >= 2, 'counted ' + (r.minusHour || {}).counted);
+    t.ok('floor: an undisturbed hold still counts real seconds',
+      r.noJump && r.noJump.counted >= 2 && r.noJump.counted <= 5, 'counted ' + (r.noJump || {}).counted);
+  }
+
+  /* monoNow() must fall back rather than throw where performance.now() is
+     missing or broken — it is consulted on every tick of a maximal effort. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {}; const realPerf = window.performance;
+      out.normal = typeof monoNow() === 'number' && isFinite(monoNow());
+      try {
+        Object.defineProperty(window, 'performance', { value: undefined, configurable: true });
+        out.missing = typeof monoNow() === 'number' && isFinite(monoNow());
+        Object.defineProperty(window, 'performance', { value: { now() { throw new Error('no'); } }, configurable: true });
+        out.throws = typeof monoNow() === 'number' && isFinite(monoNow());
+        Object.defineProperty(window, 'performance', { value: { now() { return NaN; } }, configurable: true });
+        out.nan = typeof monoNow() === 'number' && isFinite(monoNow());
+      } finally { Object.defineProperty(window, 'performance', { value: realPerf, configurable: true }); }
+      return out;
+    });
+    t.eq('monoNow returns a real number normally', r.normal, true);
+    t.eq('and falls back when performance is missing', r.missing, true);
+    t.eq('and when performance.now() throws', r.throws, true);
+    t.eq('and when performance.now() returns NaN', r.nan, true);
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));

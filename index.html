@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='379';
+const APP_VERSION='380';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -6987,6 +6987,30 @@ function timerStalled(S){
    Same shape as the count-down floor: real time is a FLOOR, never a ceiling,
    so the clock can never run slower than the wall and can never be driven
    faster than one second per tick by a clock jump. */
+/* A DURATION MUST NOT BE MEASURED WITH THE WALL CLOCK.
+
+   Date.now() moves when the phone corrects itself — an ordinary event, since
+   Android and iOS re-sync the clock in the background. v377 made the count-up
+   timers read real time and v379 stopped them returning NaN, and both used
+   Date.now(). Measured on a 3-second hold when the clock jumped forward:
+
+     +1 hour   -> 3602 seconds recorded
+     +1 minute ->   62 seconds recorded
+     -1 hour   ->    3 seconds (the floor already covered backwards)
+
+   That number is WRITTEN INTO THE RECORD. A 60-minute plank becomes the bar
+   holdBest() and grindAtBest() read, and on the battery it anchors a year of
+   prescriptions. I guarded the backwards direction and the junk types, and
+   forwards — the direction that INFLATES — was wide open.
+
+   performance.now() is monotonic: it counts forward at real speed and nothing
+   can move it. Measured against the same +1 hour jump, it advanced 1,000 ms
+   while Date.now() advanced 3,601,000 — and it still tracked 2.5 real seconds
+   exactly, so v377's throttle recovery is untouched. */
+function monoNow(){
+  try{const t=performance.now();return (typeof t==='number'&&isFinite(t))?t:Date.now();}
+  catch(e){return Date.now();}
+}
 function tickUp(S){
   try{
     /* NEVER RETURN NaN. This counts a MAXIMAL EFFORT — one number anchors
@@ -6998,13 +7022,16 @@ function tickUp(S){
        set to real numbers — kept because the two ways of being wrong are not
        symmetrical: one second short is a rounding error, and NaN is a lost
        test. A check exercises it directly, since no route feeds it junk. */
-    const prev=(typeof S.elapsed==='number'&&isFinite(S.elapsed))?S.elapsed:0;
+    /* Clamped at 0. A negative `elapsed` returned a NEGATIVE count — masked
+       before only because the wall-clock `real` happened to be larger. A
+       count of seconds is never below zero. */
+    const prev=(typeof S.elapsed==='number'&&isFinite(S.elapsed))?Math.max(0,S.elapsed):0;
     /* `> 0`, not merely finite. An ARRAY coerces to 0 and is TRUTHY, so a
        `startedAt` of [] made the subtraction Date.now()-0 and reported
        1,787,973,936 seconds as the length of a hold — a huge FINITE number
        that no isFinite() layer can see. A zero timestamp is not a start. */
-    const start=(typeof S.startedAt==='number'&&isFinite(S.startedAt)&&S.startedAt>0)?S.startedAt:Date.now();
-    const real=Math.floor((Date.now()-start)/1000);
+    const start=(typeof S.startedAt==='number'&&isFinite(S.startedAt)&&S.startedAt>0)?S.startedAt:monoNow();
+    const real=Math.floor((monoNow()-start)/1000);
     const out=Math.max(prev+1, isFinite(real)?real:0);
     return isFinite(out)?out:prev+1;
   }catch(e){const p=(typeof S==='object'&&S&&typeof S.elapsed==='number'&&isFinite(S.elapsed))?S.elapsed:0;return p+1;}
@@ -8378,7 +8405,7 @@ function startBaselineTimer(){
          at all — it spoke over the name on every single second. The beep
          already marks them. */
       if(_bt.ready>0){beep(660,.09);paintReady();}
-      else{beep(990,.14);haptic(20);if(!motivate('start'))coachSay('Go!');_bt.mode='run';_bt.elapsed=0;_bt.startedAt=Date.now();_bt.grindSaid=false;paintRun();}
+      else{beep(990,.14);haptic(20);if(!motivate('start'))coachSay('Go!');_bt.mode='run';_bt.elapsed=0;_bt.startedAt=monoNow();_bt.grindSaid=false;paintRun();}
       return;
     }
     _bt.elapsed=tickUp(_bt);
@@ -10561,7 +10588,7 @@ function startHoldTest(id){
       _ht.ready--;
       // No spoken digit: the beeps mark them and a digit cancels the announcement.
       if(_ht.ready>0){beep(660,.09);htPaintReady();}
-      else{beep(990,.14);haptic(20);if(!motivate('start'))coachSay('Go!');_ht.mode='run';_ht.elapsed=0;_ht.startedAt=Date.now();_ht.grindSaid=false;htPaintRun();}
+      else{beep(990,.14);haptic(20);if(!motivate('start'))coachSay('Go!');_ht.mode='run';_ht.elapsed=0;_ht.startedAt=monoNow();_ht.grindSaid=false;htPaintRun();}
       return;
     }
     _ht.elapsed=tickUp(_ht);
