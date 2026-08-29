@@ -765,8 +765,11 @@ export default async function run() {
 
       /* FLOORS. A repair that always wipes satisfies every "the junk is gone"
          assertion and throws away the athlete's own physique answers. */
+      /* goalBodyFat is set to a WRONG figure beside a valid level, because the
+         first version set it to levelBF(4) — the answer it then asserted — so
+         a mutant that never re-derived left it equal and escaped clean. */
       STATE.profile.bodyCur = 2; STATE.profile.bodyGoal = 4;
-      STATE.profile.goalBodyFat = levelBF(4); STATE.nutrition.allergies = 'mushrooms';
+      STATE.profile.goalBodyFat = 99; STATE.nutrition.allergies = 'mushrooms';
       normalizeState();
       out.kept = { bodyCur: STATE.profile.bodyCur, bodyGoal: STATE.profile.bodyGoal,
                    goalBodyFat: STATE.profile.goalBodyFat, allergies: STATE.nutrition.allergies,
@@ -796,12 +799,102 @@ export default async function run() {
     t.ok('while the athlete’s real answers survive untouched',
       r.kept.bodyCur === 2 && r.kept.bodyGoal === 4 && r.kept.allergies === 'mushrooms',
       JSON.stringify(r.kept));
-    t.ok('and the derived body-fat target is re-derived from the level, not guessed',
-      r.kept.goalBodyFat === r.kept.derived && typeof r.kept.derived === 'number',
-      JSON.stringify(r.kept));
+    t.ok('and a stale derived body-fat target is RE-DERIVED from the level it belongs to',
+      r.kept.goalBodyFat === r.kept.derived && typeof r.kept.derived === 'number'
+        && r.kept.goalBodyFat !== 99, JSON.stringify(r.kept));
     t.eq('no physique answer is invented for an athlete who never gave one', r.absentDiff, 'none');
 
     errors.filter(e => /render/.test(e)).forEach(e => t.fail('the physique repair reached the render boundary', e));
+    await browser.close();
+  }
+
+  /* ---- v391: the deficit clock printed NaN to the athlete ----------------
+     `shredWeeks()` did `new Date(todayISO()) - new Date(stamp)`, and
+     `new Date('abc')` is Invalid Date — so the result was NaN, and `NaN<12` is
+     FALSE, meaning the guardrail did not skip, it FIRED:
+
+       "You have been in a deficit for NaN weeks."
+
+     A number stamp gave 2956 weeks and an ancient one 6608. A stamp in the
+     FUTURE gave -29, which silently DISABLED the 12-week diet-break guardrail
+     for someone on a long cut — the thing v365 exists to enforce. All of it
+     survived every boot. Two guards, two checks: the read site fails closed,
+     and the repair drops the junk so noteGoalPhase() re-seeds from evidence. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await waitForBoot(page);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const out = {};
+      const iso = d => { const x = new Date(Date.now() - d * 86400000);
+        return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+      STATE.profile.goal = 'shred'; STATE.nutrition.goal = 'shred';
+
+      // THE READ SITE, with the boot repair deliberately not run
+      out.weeks = {}; out.banner = {};
+      const cases = { real: iso(98), junk: 'abc', num: 12345, obj: {}, arr: [],
+                      future: iso(-200), ancient: '1900-01-01', badDate: '2025-13-45' };
+      Object.keys(cases).forEach(k => {
+        STATE.profile._shredStart = cases[k];
+        try { out.weeks[k] = String(shredWeeks());
+              const h = dietBreakBanner();
+              out.banner[k] = h === '' ? 'silent' : (h.match(/deficit for [^<]*/) || ['?'])[0];
+        } catch (e) { out.weeks[k] = 'THREW ' + String(e && e.message).slice(0, 40); }
+      });
+
+      /* THE BOOT REPAIR. It clears the junk, and noteGoalPhase() then re-seeds
+         the clock from evidence — so the property is "no junk survives", not
+         "the field is null". Asserting null failed on correct code. */
+      const sane = v => v === null || v === undefined || (isDateISO(v) && v <= todayISO());
+      STATE.profile._shredStart = 'abc'; normalizeState();
+      out.junkCleared = sane(STATE.profile._shredStart); out.junkBecame = JSON.stringify(STATE.profile._shredStart);
+      STATE.profile._shredStart = iso(-200); normalizeState();
+      out.futureCleared = sane(STATE.profile._shredStart);
+      STATE.profile._shredStart = '1900-01-01'; normalizeState();
+      out.ancientCleared = sane(STATE.profile._shredStart);
+      out.ancientWeeks = shredWeeks();
+      /* FLOOR: the gate must be provably unable to fire on a legitimate input.
+         A three-year cut is long, and real. */
+      STATE.profile._shredStart = iso(3 * 365); normalizeState();
+      out.longCutKept = STATE.profile._shredStart === iso(3 * 365);
+      out.longCutWeeks = shredWeeks();
+      // FLOOR: a genuine stamp survives, and still reports the real figure
+      STATE.profile._shredStart = iso(98); normalizeState();
+      out.realKept = STATE.profile._shredStart === iso(98);
+      out.realWeeks = shredWeeks();
+      delete STATE.profile._shredStart;
+      return out;
+    });
+
+    t.eq('a real 14-week cut still reports 14 weeks', r.weeks.real, '14');
+    t.ok('and the guardrail still fires on it',
+      /deficit for 14 weeks/.test(r.banner.real), r.banner.real);
+    t.ok('no junk stamp reports a week count at all',
+      ['junk', 'num', 'obj', 'arr', 'badDate'].every(k => r.weeks[k] === '0'),
+      JSON.stringify(r.weeks));
+    t.ok('so the athlete is never told they have been cutting for NaN weeks',
+      Object.keys(r.banner).every(k => !/NaN/.test(r.banner[k])), JSON.stringify(r.banner));
+    t.ok('and a stamp in the future is not a start date either',
+      r.weeks.future === '0', r.weeks.future);
+
+    t.ok('the boot repair clears a junk stamp so the clock can re-seed',
+      r.junkCleared === true, JSON.stringify(r));
+    t.ok('and clears one dated in the future', r.futureCleared === true, JSON.stringify(r));
+    /* A cut cannot have started before the account existed. '1900-01-01' is a
+       valid past date and reported 6608 weeks, firing the banner permanently
+       with a figure nobody can act on. */
+    t.ok('and one dated before the athlete’s own account existed',
+      r.ancientCleared === true && r.ancientWeeks < 500,
+      JSON.stringify({ cleared: r.ancientCleared, weeks: r.ancientWeeks }));
+    /* FLOOR: a repair that always nulls satisfies both assertions above and
+       pushes the guardrail permanently out of reach, which is the defect v365
+       measured from the other direction. */
+    t.ok('while a three-year cut is not treated as an error — the gate can only catch one',
+      r.longCutKept === true && r.longCutWeeks > 150, JSON.stringify({ kept: r.longCutKept, weeks: r.longCutWeeks }));
+    t.ok('while a genuine stamp survives the boot and still reports its real figure',
+      r.realKept === true && r.realWeeks === 14, JSON.stringify({ kept: r.realKept, weeks: r.realWeeks }));
+
+    errors.filter(e => /render/.test(e)).forEach(e => t.fail('the deficit-clock repair reached the render boundary', e));
     await browser.close();
   }
 

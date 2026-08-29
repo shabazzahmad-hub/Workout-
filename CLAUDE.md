@@ -8847,6 +8847,42 @@ picture of a body. So a real level 2 and level 4 survive untouched, the free
 text survives, the derived figure matches what `levelBF()` computes, and
 **absent stays absent** — the rule v390 had just paid for.
 
+### The deficit clock printed NaN to the athlete
+
+The third field the same sweep turned up, and the harm runs both ways.
+`shredWeeks()` did `new Date(todayISO()) - new Date(stamp)`, and
+`new Date('abc')` is Invalid Date — so the result was `NaN`. **`NaN < 12` is
+FALSE**, so the guardrail did not skip, it FIRED:
+
+> 🍽️ **You have been in a deficit for NaN weeks.**
+
+| stored `_shredStart` | weeks | the banner |
+|---|---|---|
+| a real 14-week cut | 14 | correct |
+| `'abc'` / `{}` / `[]` / `'2025-13-45'` | **NaN** | **"for NaN weeks"** |
+| `12345` | **2956** | "for 2956 weeks" |
+| `'1900-01-01'` | **6608** | "for 6608 weeks" |
+| a date in the FUTURE | **−29** | **silent — the guardrail is disabled** |
+
+All of it survived every boot. The silent case is the one that matters most: it
+is exactly the harm v365 measured from the other direction, arriving through an
+import instead of a goal switch.
+
+**The repair clears the junk and `noteGoalPhase()` then re-seeds from
+evidence**, which is why the check asserts *no junk survives* rather than *the
+field is null* — the first version demanded null and failed on correct code.
+
+**And the bound on an ancient stamp was tried two ways.** Keying it to
+`profile.createdAt` is principled — a cut cannot predate the account — and was
+**reverted after it failed a floor**: `loadState()` fills a missing `createdAt`
+with TODAY, so a restored backup would have had its genuine months-old stamp
+dropped. Dropping a real stamp pushes the guardrail 12 weeks out; keeping a
+silly one only shows a silly number, so the two failures are not symmetrical.
+The gate is now far outside any real cut the way `bmiImplausible()`'s 13/60
+gates are far outside any real body, and **a check pins that a three-year cut
+survives it** — a guard earns its keep only if it provably cannot fire on a
+legitimate input.
+
 ### And the scan that found it had a false negative of its own
 
 Its "is this field mentioned in `normalizeState()`?" heuristic reported
@@ -8854,6 +8890,14 @@ Its "is this field mentioned in `normalizeState()`?" heuristic reported
 condition** (`!STATE.profile.bodyGoal`). The scan was reading a mention, not a
 repair — the same trap as a comment that quotes code breaking the scan for that
 code. Read what the mention actually is before believing it.
+
+### The escaped mutant set the value to the answer it then asserted
+
+The re-derivation check wrote `goalBodyFat = levelBF(4)` before calling
+`normalizeState()` and then asserted the field equalled `levelBF(4)`. A mutant
+that never re-derived left it equal and walked straight through. It seeds a
+**wrong** figure beside a valid level now, and requires the repair to correct
+it.
 
 ## Rendering
 

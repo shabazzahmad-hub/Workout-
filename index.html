@@ -19018,9 +19018,22 @@ function toggleHabit(k){const t=nutToday();if(!t.habits)t.habits={};t.habits[k]=
 function mifflinBMR(sex,kg,cm,age){return 10*kg+6.25*cm-5*age+(sex==='female'?-161:5);}
 /* GOAL_NOTE.shred says "best in short blocks" and nothing enforced it. Track how
    long the athlete has been cutting so the app can prompt a maintenance phase. */
+/* FAILS CLOSED on a stamp that is not a real past date. `new Date('abc')` is
+   Invalid Date, so the subtraction was NaN — and `NaN<12` is FALSE, so the
+   guardrail did not skip, it FIRED, printing "You have been in a deficit for
+   NaN weeks." A number stamp gave 2956 weeks and an ancient one 6608; a FUTURE
+   date gave -29, which silently disabled the guardrail for someone on a long
+   cut. All of it survived every boot. The repair drops a junk stamp so
+   noteGoalPhase() re-seeds it from evidence, which is why 0 is the right
+   answer here rather than a guess at how long the cut has run. */
+/* Far outside any real cut, the way bmiImplausible()'s 13/60 gates are far
+   outside any real body — it can only ever catch an error. */
+const SHRED_MAX_YEARS=10;
 function shredWeeks(){
-  try{const s=STATE.profile._shredStart;if(!s)return 0;
-    return Math.floor((new Date(todayISO())-new Date(s))/604800000);}catch(e){return 0;}
+  try{const s=STATE.profile._shredStart;
+    if(!isDateISO(s))return 0;
+    const w=Math.floor((new Date(todayISO())-new Date(s))/604800000);
+    return (isFinite(w)&&w>0)?w:0;}catch(e){return 0;}
 }
 function noteGoalPhase(){
   try{const g=STATE.profile.goal;
@@ -20891,6 +20904,26 @@ function normalizeState(){
      Fixing one instance is not fixing the class, and here the class was two
      fields one line apart. */
   if(N.allergies!==undefined&&typeof N.allergies!=='string')delete N.allergies;
+  /* The deficit clock's stamp. Same shape as the activity-log dates: a field
+     the app does DATE ARITHMETIC on, with no repair, reachable from an import.
+     Dropped rather than guessed — noteGoalPhase() re-seeds it from evidence
+     the app already holds. A stamp in the FUTURE is not a date the cut can
+     have started on. */
+  {const P3=STATE.profile;
+   /* '1900-01-01' is a perfectly valid past date and reported 6608 weeks,
+      firing the banner permanently with a figure nobody can act on. Bounding
+      it by profile.createdAt was tried and REVERTED: loadState() fills a
+      missing createdAt with TODAY, so a restored backup would have had its
+      genuine months-old stamp dropped — and dropping a real stamp pushes the
+      guardrail 12 weeks out, which is the harm v365 measured, while keeping a
+      silly one only shows a silly number. So the gate is far outside any real
+      cut in the way bmiImplausible() is far outside any real body: it can only
+      ever catch an error, and a check pins that a THREE-YEAR cut survives. */
+   const floorISO=(()=>{const d=new Date();d.setFullYear(d.getFullYear()-SHRED_MAX_YEARS);
+     return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
+   if(P3._shredStart!==undefined&&P3._shredStart!==null
+      &&!(isDateISO(P3._shredStart)&&P3._shredStart<=todayISO()
+          &&P3._shredStart>=floorISO))P3._shredStart=null;}
   /* The physique levels. bodyCur is the one that bricks a screen: a junk value
      threw inside transformationHTML() and the error boundary retries THROUGH
      this function, so with no repair here Progress ▸ Body never came back.
