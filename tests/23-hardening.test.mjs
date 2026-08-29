@@ -4595,7 +4595,15 @@ export default async function () {
       const R = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
       let started = 0, stopped = 0;
       const Real = window.SpeechRecognition || window.webkitSpeechRecognition;
+      /* EACH BLOCK BUILDS THE STATE IT ASSERTS ON. The block above ends with a
+         real recogniser still open — the heartbeat closes it on its own beat,
+         up to PL_GUARD_MS later — so without this the stub below is never
+         constructed and both counts read 0 on correct code. Passed standalone
+         and failed in the full run, which is exactly how a block-order
+         dependency shows itself. */
+      STATE.settings.voiceCmd = false; save(); voiceCmdStop();
       window.SpeechRecognition = function () { this.start = () => { started++; }; this.stop = () => { stopped++; if (this.onend) this.onend(); }; };
+      R.cleanStart = (_vrec === null);
       STATE.onboarded = true; STATE.progressPtr = 8; STATE.settings.voiceCmd = true; save();
       openPlayer(); await wait(2600);
       R.started = started;
@@ -4611,6 +4619,7 @@ export default async function () {
       window.SpeechRecognition = Real;
       return R;
     });
+    t.eq('guard: no recogniser was left open by the block before', r.cleanStart, true);
     t.ok('the heartbeat opens the microphone while a session is running', r.started >= 1, String(r.started));
     t.ok('and closes it when the session ends', r.stopped >= 1, String(r.stopped));
     t.eq('floor: with the setting off it is never opened', r.startedWhenOff, 0);
