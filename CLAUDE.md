@@ -8456,6 +8456,59 @@ shape exactly), a handler losing its only `onclick`, and a whole cluster head
 going dark.
 
 
+## Two writers of one field, and a stale safety argument (v388)
+
+Found by sweeping three source-level classes at once. **Three of the four came
+back clean**, and recording that is the point of running them:
+
+| swept | result |
+|---|---|
+| renderers that assign to `STATE` | **0** of 1,140 functions (265 assignments, all in real writers) |
+| renderers that call a mutating helper | **3**, every one documented and deliberate |
+| functions that mutate `STATE` with no caller persisting it | **0** — 12 candidates, all lazy-init accessors or saved by their callers |
+| `STATE.x.y` paths with 3+ distinct writers | **4**, and two were span mis-attributions |
+
+**A guard is what makes a clean sweep trustworthy.** Every one of these
+analyses first reported an implausible number — 0 paths with many writers, 0
+renderers assigning — and the guards (how many assignments were found at all,
+who the top writers are) are what separated "the app is clean" from "the regex
+matched nothing".
+
+### The trap: two writers, one of which skipped the source of truth
+
+`hasBar`/`hasBench` are a legacy mirror of `gear[]`. `toggleGear()` and
+`normalizeState()` both derive them FROM gear. `toggleSetting()` flipped the
+flag and left gear alone — so a control wired to either branch would have
+**appeared to work and been silently reverted on the next boot**, which is the
+`cardioMode` defect exactly.
+
+Nothing reaches those branches today, and that is precisely when it is cheap to
+make them correct rather than delete them or leave the trap: they route to the
+one writer now.
+
+### The stale safety argument was in code I had just written
+
+`_recipePlanHTML()`'s comment named `renderFuel()` as the caller that primes the
+plan before any markup is built — the whole justification for calling a
+generator that `save()`s from an HTML builder. `renderFuel()` stopped priming
+when v245 removed the only markup on Fuel that read the plan, and its own
+comment eleven hundred lines below says so. v385 made `renderRef()` the primer
+and did not update the argument.
+
+### The mutant that proved the check was reading a comment
+
+The first version asserted that the named caller really calls
+`currentMealPlan(` — by searching the function's source. **`renderFuel()`'s own
+comment contains that exact text**, explaining that its priming call was
+REMOVED. So the scan said it primes when it is the function that stopped, and
+the mutant naming `renderFuel()` escaped clean.
+
+A comment that quotes code breaks a scan for that code — already recorded here
+for the duplicate-key guard and for `document.body.innerHTML`. The check strips
+comments first now, with a guard that the stripper has not simply deleted
+everything.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

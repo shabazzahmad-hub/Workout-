@@ -6256,6 +6256,95 @@ export default async function () {
     }
   }
 
+
+  /* ---- v388: two writers of one field, and a stale safety argument ---------
+     `hasBar`/`hasBench` are a legacy mirror of `gear[]`. toggleGear() and
+     normalizeState() both derive them FROM gear; toggleSetting() flipped the
+     flag and left gear alone. Nothing reaches those branches today, which is
+     exactly when it is cheap to make them correct rather than leave a trap: a
+     control wired to either would have appeared to work and been silently
+     reverted on the next boot.
+
+     And `_recipePlanHTML()`'s comment named renderFuel() as the caller that
+     primes the plan before any markup is built — the safety argument for
+     calling a generator from an HTML builder at all. renderFuel() stopped
+     priming when v245 removed the only markup on Fuel that read the plan, and
+     v385 made renderRef() the primer. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {}, ce = console.error;
+      console.error = () => {};
+      try {
+        const keep = (STATE.profile.gear || []).slice();
+
+        STATE.profile.gear = ['bar', 'bench'];
+        normalizeState();
+        out.derived = { bar: STATE.profile.hasBar, bench: STATE.profile.hasBench };
+
+        // the legacy toggle must move gear, not just the mirror
+        toggleSetting('hasBar');
+        out.afterToggle = { inGear: STATE.profile.gear.indexOf('bar') >= 0, flag: STATE.profile.hasBar };
+        normalizeState();   // the boot path is what used to revert it
+        out.afterBoot = { inGear: STATE.profile.gear.indexOf('bar') >= 0, flag: STATE.profile.hasBar };
+        toggleSetting('hasBar');   // back
+        out.restored = { inGear: STATE.profile.gear.indexOf('bar') >= 0, flag: STATE.profile.hasBar };
+
+        // FLOOR: an ordinary setting still toggles, and does not touch gear
+        const before = !!STATE.settings.hype;
+        toggleSetting('hype');
+        out.plain = { flipped: !!STATE.settings.hype !== before,
+                      gearUntouched: STATE.profile.gear.length === 2 };
+        toggleSetting('hype');
+
+        STATE.profile.gear = keep; normalizeState(); save();
+
+        /* The priming caller has to be real. A comment naming a function that
+           no longer primes is the safety argument for this builder, and it was
+           wrong — so assert the named one actually calls it. */
+        const srcOf = f => { try { return f.toString(); } catch (e) { return ''; } };
+        /* STRIP THE COMMENTS FIRST. renderFuel()'s own comment contains the
+           text "currentMealPlan()" — explaining that its priming call was
+           REMOVED — so a scan of the raw source says it primes when it is the
+           very function that stopped. A comment that quotes code breaks a scan
+           for that code, which is why the mutant naming renderFuel() escaped
+           the first version of this check. */
+        const noComments = t => t.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ');
+        const note = srcOf(_recipePlanHTML);
+        const named = (note.match(/THAT CALLER IS (\w+)\(\)/) || [])[1] || null;
+        let fn = null; try { fn = named ? eval(named) : null; } catch (e) {}
+        out.primer = { named, isFn: typeof fn === 'function',
+                       reallyPrimes: typeof fn === 'function'
+                         && noComments(srcOf(fn)).indexOf('currentMealPlan(') >= 0 };
+        // guard: the stripper does not simply delete everything
+        out.stripOk = noComments(srcOf(_recipePlanHTML)).indexOf('_planStillValid') >= 0;
+      } catch (e) { out.threw = String(e && e.message || e); }
+      console.error = ce;
+      return out;
+    });
+
+    t.ok('guard: the legacy checks ran without throwing', !r.threw, r.threw || '');
+    if (!r.threw) {
+      t.ok('guard: the flags are derived from gear to start with',
+        r.derived.bar === true && r.derived.bench === true, JSON.stringify(r.derived));
+      t.ok('the legacy toggle moves gear itself, not just the mirror',
+        r.afterToggle.inGear === false && r.afterToggle.flag === false, JSON.stringify(r.afterToggle));
+      /* This is the one that matters: the old branch passed the assertion above
+         and was reverted here, because normalizeState() rewrites the flag from
+         gear on every boot. */
+      t.ok('and the next boot does not revert it',
+        r.afterBoot.inGear === false && r.afterBoot.flag === false, JSON.stringify(r.afterBoot));
+      t.ok('toggling back restores both', r.restored.inGear && r.restored.flag, JSON.stringify(r.restored));
+      // FLOOR — an ordinary setting is untouched by the routing
+      t.ok('FLOOR: an ordinary setting still toggles and leaves gear alone',
+        r.plain.flipped && r.plain.gearUntouched, JSON.stringify(r.plain));
+
+      t.ok('guard: the comment stripper keeps the code', r.stripOk === true, String(r.stripOk));
+      t.ok('guard: the named caller resolves to a function', r.primer.isFn, JSON.stringify(r.primer));
+      t.ok('the plan builder names a caller that really primes it',
+        r.primer.named && r.primer.reallyPrimes, JSON.stringify(r.primer));
+    }
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
