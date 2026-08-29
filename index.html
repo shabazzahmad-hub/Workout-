@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='382';
+const APP_VERSION='383';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2630,7 +2630,16 @@ const TROUBLE_POOL={belly:'abs',lovehandles:'obliques',chest:'chest',arms:'arms'
 const FOCUS_AREAS=[['abs','Abs & core'],['full','Full body'],['chest','Chest'],['back','Back'],['shoulders','Shoulders'],['arms','Arms'],['legs','Legs'],['glutes','Glutes']];
 const TROUBLE_AREAS=[['belly','Belly'],['lovehandles','Love handles'],['chest','Chest'],['arms','Arms'],['thighs','Thighs'],['posture','Posture / back']];
 function focusAreaKey(k){return FOCUS_AREAS.some(x=>x[0]===k)?k:null;}
-function troubleZoneKey(k){return Object.prototype.hasOwnProperty.call(TROUBLE_POOL,k)&&TROUBLE_AREAS.some(x=>x[0]===k)?k:null;}
+/* THE POOL DECIDES, NOT THE PICKER. This shipped one version earlier requiring
+   membership in BOTH lists, which is identical today — validateData() pins them
+   equal — and is the wrong test for a repair that DELETES stored athlete data.
+   Under a future mismatch the two readings are not symmetrical: a zone in the
+   POOL but missing from the picker is a real steer the athlete answered, and
+   dropping it destroys their answer; a zone in the picker but missing from the
+   pool is merely inert. So the repair asks the map that actually steers the
+   program, and the validator is what catches a picker that has drifted.
+   Own-property, not truthiness: TROUBLE_POOL['constructor'] is truthy. */
+function troubleZoneKey(k){return Object.prototype.hasOwnProperty.call(TROUBLE_POOL,k)?k:null;}
 /* Joint-specific corrective/stability work. Until now a flagged joint was
    only ever AVOIDED — safeSwap routes around anything risky, but nothing
    ever added anything back. Avoidance protects a joint from getting WORSE;
@@ -6113,6 +6122,7 @@ function repEccShare(exId){
   const ex=EX[exId];
   return (ex&&typeof ex.repSec==='number'&&ex.repSec>0)?0.5:null;
 }
+const REP_TEMPO_MIN=1, REP_TEMPO_MAX=6;   // the band setRepTempo() and the boot repair share
 function repTempoSetting(){
   const v=STATE.settings&&STATE.settings.repTempo;
   return (typeof v==='number')?Math.max(1.5,Math.min(6,v)):3;
@@ -10012,7 +10022,7 @@ function neuralPitchFor(cfgPitch){
 }
 function setCoachPitch(v){STATE.settings.voicePitch=Math.max(0,Math.min(2,parseFloat(v)||0.6));save();}
 function setCoachRate(v){STATE.settings.voiceRate=Math.max(.5,Math.min(1.5,parseFloat(v)||0.98));save();}
-function setRepTempo(v){STATE.settings.repTempo=Math.max(1,Math.min(6,parseFloat(v)||3));save();}
+function setRepTempo(v){STATE.settings.repTempo=clamp(parseFloat(v)||3,REP_TEMPO_MIN,REP_TEMPO_MAX);save();}
 function setBeatVol(v){STATE.settings.beatVol=Math.max(0.05,Math.min(1,parseFloat(v)||0.55));save();haptic(6);if(BEAT&&BEAT.on){BEAT.vol=beatVolPref()*0.9;const g=BEAT.master.gain,t=BEAT.ac.currentTime;g.cancelScheduledValues(t);g.setValueAtTime(Math.max(0.0002,g.value),t);g.exponentialRampToValueAtTime(Math.max(0.0002,BEAT.vol),t+0.2);}}
 let _beatPrevT=null;
 function beatPreview(){beatStart();if(_beatPrevT)clearTimeout(_beatPrevT);_beatPrevT=setTimeout(()=>{if(!$('#scrim').classList.contains('open'))beatStop();},5000);}
@@ -11833,6 +11843,22 @@ function mBump(f,d){const id=f==='w'?'#m-waist':'#m-weight';const inp=$(id);inp.
    goal, and a "380" waist flattened both trend charts for the life of the
    install — permanently, because no measurement row could ever be deleted. */
 function plausibleKg(kg){return kg>=25&&kg<=350;}
+/* AGE AND HEIGHT HAD NO SHAPE REPAIR AT ALL, and v355's mirror then COPIED
+   whatever they held into nutrition — where every calculation reads them.
+   Neither crashes and both are wrong with a plausible-looking number on the
+   glass. Measured on one 86 kg body, values importData() accepts from any
+   hand-edited backup:
+
+     age:true      -> 5*true is 5, so a 59-year-old is priced as 1: +290 kcal/day
+     age:'zzz'     -> 5*'zzz' is NaN, so the target vanishes with no explanation
+     heightCm:true -> 6.25*1 instead of 6.25*178: -540 kcal/day
+
+   The bounds are the ones the app already enforces on a typed value, so a
+   stored number the athlete could never have entered is not kept.
+   Dropped rather than clamped: v345's rule — "silently produces no target" is
+   a field the athlete filled in going missing, so the app asks again. */
+function plausibleAge(a){return typeof a==='number'&&isFinite(a)&&a>=10&&a<=100;}
+function plausibleHeightCm(cm){return typeof cm==='number'&&isFinite(cm)&&cm>=120&&cm<=230;}
 function plausibleWaistCm(cm){return cm>=40&&cm<=250;}
 /* A range in an error message restates the rule and names nothing. An athlete
    who is 5'10" typed 178 — their height in CENTIMETRES — into a box set to
@@ -20042,7 +20068,20 @@ function normalizeState(){
      nothing left to remove it again — reintroducing, on every boot after the
      first, the exact bug the migration exists to fix. */
   if(typeof STATE.settings.voiceRate!=='number')STATE.settings.voiceRate=0.98;
-  if(typeof STATE.settings.repTempo!=='number')STATE.settings.repTempo=3;
+  /* A RANGE TEST'S JOB DONE BY A TYPE TEST — the v286 `adapt` defect verbatim,
+     one field over. setRepTempo() clamps to 1-6 and this only ever checked the
+     type, so a stored 999 survived every boot. The PLAYER clamps at its own
+     read sites, so the pacing is right and nothing crashes; totalTUTSplit()
+     and sessionStats() read it RAW and multiply it by every rep ever logged,
+     which is how a lifetime total reads "10,410 min trained · 75,901 kcal".
+     Clamped to the band the setter itself enforces. */
+  if(typeof STATE.settings.repTempo!=='number'||!isFinite(STATE.settings.repTempo))STATE.settings.repTempo=3;
+  else STATE.settings.repTempo=clamp(STATE.settings.repTempo,REP_TEMPO_MIN,REP_TEMPO_MAX);
+  /* Membership, not truthiness. coachFor() falls back to COACHES[0] for an
+     unknown id, so nothing breaks — but the junk survives every boot, travels
+     in every backup, and leaves the picker with nothing selected. */
+  {const _c=STATE.settings.coach;
+   if(_c!==undefined&&_c!=='auto'&&!COACHES.some(x=>x.id===_c))STATE.settings.coach='auto';}
   /* RANGE, not just type. rateSession() clamps every increment to 0.9-1.30,
      but this repair only ever checked typeof — so a value outside that band,
      from a corrupted or hand-edited import, survived every boot and was read
@@ -20638,6 +20677,14 @@ function normalizeState(){
      dropped, which is the direction that matters for an older backup. Absent
      on both stays absent: there is no sensible default age, height or sex, and
      inventing one is worse than knowing it is missing. */
+  /* Repaired on BOTH sides FIRST. The mirror copies whichever side has a
+     value, so junk repaired on one side and not the other is copied across
+     rather than dropped — the fix has to run before the loop, not after it. */
+  {const _P=STATE.profile,_N=(STATE.nutrition&&typeof STATE.nutrition==='object'&&!Array.isArray(STATE.nutrition))?STATE.nutrition:null;
+   [_P,_N].forEach(o=>{if(!o)return;
+     if(o.age!==undefined&&o.age!==null&&!plausibleAge(o.age))delete o.age;
+     if(o.heightCm!==undefined&&o.heightCm!==null&&!plausibleHeightCm(o.heightCm))delete o.heightCm;
+   });}
   {const P=STATE.profile,N=STATE.nutrition;
    if(N&&typeof N==='object'&&!Array.isArray(N)){
      ['age','heightCm','sex','activity'].forEach(f=>{

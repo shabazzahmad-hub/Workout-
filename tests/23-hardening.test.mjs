@@ -5698,6 +5698,187 @@ export default async function () {
     }
   }
 
+
+  /* ---- v383: a range test's job done by a type test, and two fields with no
+     repair at all ----------------------------------------------------------
+     `if(typeof STATE.settings.repTempo!=='number')` is the v286 `adapt` defect
+     verbatim, one field over: setRepTempo() clamps to 1-6 and the boot repair
+     only ever checked the TYPE, so a stored 999 survived every boot. The
+     player clamps at its own read sites, so the pacing stays right and nothing
+     crashes — totalTUTSplit() reads it RAW. Measured over 40 logged sessions:
+     168 minutes of lifetime work reads as 28,354.
+
+     `age` and `heightCm` had no shape repair AT ALL, and v355's mirror then
+     copies whichever side holds a value into the half every calculation reads.
+     Measured on one 86 kg / 178 cm / 59-year-old body:
+
+       age:true       calorie target 1950 -> 2360   (5*true is 5, so 59 prices as 1)
+       age:'zzz'      target ERASED (null)
+       heightCm:true  target 1950 -> 1500
+
+     The repair has to run BEFORE the mirror, or junk on one side is copied
+     across rather than dropped. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {}, ce = console.error;
+      console.error = () => {};
+      try {
+        const N = STATE.nutrition, P = STATE.profile;
+        N.sex = 'male'; N.age = 59; N.heightCm = 178; N.weightKg = 86; N.activity = 1.45;
+        P.sex = 'male'; P.age = 59; P.heightCm = 178; P.activity = 1.45;
+        normalizeState();
+        const kcal = () => { const q = kcalTargetPreview(); return q ? q.target : null; };
+        out.base = kcal();
+
+        // --- repTempo, measured on real logged sets ---
+        STATE.onboarded = true;
+        const keepLogs = STATE.logs;
+        STATE.logs = {};
+        for (let p = 0; p < 40; p++) {
+          const sess = buildSession(p), ex = {};
+          sess.main.forEach(m => { ex[m.exId] = { actual: m.target, sets: new Array(m.sets).fill(true) }; });
+          const d = new Date(Date.now() - (40 - p) * 86400000);
+          STATE.logs[p] = { done: true, ex, completedAt: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') };
+        }
+        const tut = () => Math.round(totalTUTSplit().work);
+        STATE.settings.repTempo = 3; out.tutNormal = tut();
+        STATE.settings.repTempo = 999; out.tutRaw = tut();
+        STATE.settings.repTempo = 6; out.tutAtSix = tut();   // what the clamp should land on
+        STATE.settings.repTempo = 999;
+        normalizeState(); out.tempoHigh = STATE.settings.repTempo; out.tutFixed = tut();
+        STATE.settings.repTempo = 0.1; normalizeState(); out.tempoLow = STATE.settings.repTempo;
+        STATE.settings.repTempo = 3.5; normalizeState(); out.tempoOk = STATE.settings.repTempo;
+        STATE.settings.repTempo = 'x'; normalizeState(); out.tempoJunk = STATE.settings.repTempo;
+        STATE.settings.repTempo = 3;
+        STATE.logs = keepLogs;
+
+        // --- age and height: the harm, measured through the real predictor ---
+        const withVal = o => { Object.assign(N, o); Object.assign(P, o); return kcal(); };
+        out.harmAge = withVal({ age: true });
+        out.harmAgeStr = withVal({ age: 'zzz' });
+        out.harmHt = withVal({ age: 59, heightCm: true });
+
+        // --- the repair drops both copies ---
+        P.age = true; N.age = true; P.heightCm = 178; N.heightCm = 178;
+        normalizeState();
+        out.repAge = { p: P.age === undefined, n: N.age === undefined };
+        P.age = 59; N.age = 59; P.heightCm = true; N.heightCm = true;
+        normalizeState();
+        out.repHt = { p: P.heightCm === undefined, n: N.heightCm === undefined };
+
+        /* THE ORDER IS LOAD-BEARING. With junk on ONE side only, a repair that
+           ran after the mirror would have copied it across instead. */
+        delete P.age; N.age = true; normalizeState();
+        out.oneSide = { p: P.age === undefined, n: N.age === undefined };
+        P.age = 59; N.age = 999; normalizeState();
+        out.disagree = { p: P.age, n: N.age };
+
+        // FLOOR — real values survive and the target comes back
+        P.age = 59; N.age = 59; P.heightCm = 178; N.heightCm = 178; normalizeState();
+        out.restored = { age: N.age, ht: N.heightCm, kcal: kcal() };
+        // FLOOR — the edges of the legal band are kept, not clipped
+        P.age = 10; N.age = 10; P.heightCm = 120; N.heightCm = 120; normalizeState();
+        out.edgeLo = { age: N.age, ht: N.heightCm };
+        P.age = 100; N.age = 100; P.heightCm = 230; N.heightCm = 230; normalizeState();
+        out.edgeHi = { age: N.age, ht: N.heightCm };
+        P.age = 59; N.age = 59; P.heightCm = 178; N.heightCm = 178; normalizeState();
+
+        // --- coach: membership, not truthiness ---
+        STATE.settings.coach = 'helicopter'; normalizeState(); out.coachJunk = STATE.settings.coach;
+        STATE.settings.coach = 'auto'; normalizeState(); out.coachAuto = STATE.settings.coach;
+        STATE.settings.coach = COACHES[3].id; normalizeState();
+        out.coachReal = STATE.settings.coach === COACHES[3].id;
+        STATE.settings.coach = 'auto';
+
+        /* v382's own troubleZoneKey asked TWO lists. Identical today, and the
+           wrong test for a repair that DELETES: a zone in the POOL but missing
+           from the picker is a real steer, and erasing it destroys the
+           athlete's answer. The pool decides; the validator catches a drifted
+           picker. */
+        STATE.profile.troubleZones = ['belly', 'helicopter', 'constructor'];
+        normalizeState(); out.tz = STATE.profile.troubleZones.slice();
+        out.poolOnly = (function () {
+          const saved = TROUBLE_AREAS.pop();          // a pool zone with no button
+          STATE.profile.troubleZones = [saved[0]];
+          normalizeState();
+          const kept = STATE.profile.troubleZones.slice();
+          const errs = validateData().filter(e => new RegExp(saved[0], 'i').test(e)).length;
+          TROUBLE_AREAS.push(saved);
+          return { kept, errs };
+        })();
+        STATE.profile.troubleZones = [];
+        out.errs = validateData().length;
+        save();
+      } catch (e) { out.threw = String(e && e.message || e); }
+      console.error = ce;
+      return out;
+    });
+
+    t.ok('guard: the scalar checks ran without throwing', !r.threw, r.threw || '');
+    if (!r.threw) {
+      /* Not a hardcoded figure: the seeded athlete carries their own goal and
+         timeline, so the target is theirs. What matters is that there IS one
+         to move. */
+      t.ok('guard: the athlete has a real calorie target to move',
+        typeof r.base === 'number' && r.base > 1000, String(r.base));
+
+      // --- repTempo ---
+      t.ok('guard: a stored 999 really does inflate the lifetime total',
+        r.tutRaw > r.tutNormal * 100, r.tutNormal + ' min -> ' + r.tutRaw + ' min');
+      t.eq('an out-of-band cadence is clamped to the band the setter enforces', r.tempoHigh, 6);
+      /* Priced at the clamped cadence, not at the default — the holds do not
+         scale with rep tempo, so it is not a clean multiple of the tempo-3
+         figure and a check that assumed one failed on correct code. */
+      t.eq('and the lifetime total is priced at the clamped cadence', r.tutFixed, r.tutAtSix);
+      t.ok('which is back in the same order of magnitude as a real one',
+        r.tutFixed < r.tutRaw / 100, r.tutRaw + ' -> ' + r.tutFixed);
+      t.eq('the low end is clamped too', r.tempoLow, 1);
+      t.eq('an in-band cadence is left exactly alone', r.tempoOk, 3.5);
+      t.eq('and a non-number takes the default', r.tempoJunk, 3);
+
+      // --- age and height ---
+      t.ok('guard: a boolean age really did move the calorie target',
+        r.harmAge > r.base + 300, r.base + ' -> ' + r.harmAge);
+      /* On an athlete with every other field present it does not bail — it
+         computes, and a string in the arithmetic gives NaN. Worse than null:
+         null is caught by the `!p` guards downstream and a NaN prints. */
+      t.ok('guard: a string age really did destroy the target',
+        r.harmAgeStr === null || (typeof r.harmAgeStr === 'number' && !isFinite(r.harmAgeStr)),
+        String(r.harmAgeStr));
+      t.ok('guard: a boolean height really did move it the other way',
+        r.harmHt < r.base - 300, r.base + ' -> ' + r.harmHt);
+      t.ok('a junk age is dropped from BOTH copies', r.repAge.p && r.repAge.n, JSON.stringify(r.repAge));
+      t.ok('and so is a junk height', r.repHt.p && r.repHt.n, JSON.stringify(r.repHt));
+      /* The order is what this one proves: repaired after the mirror, the junk
+         would have been copied across rather than dropped. */
+      t.ok('junk on one side only is dropped, not mirrored across',
+        r.oneSide.p && r.oneSide.n, JSON.stringify(r.oneSide));
+      t.ok('and an out-of-range nutrition copy loses to the real profile one',
+        r.disagree.p === 59 && r.disagree.n === 59, JSON.stringify(r.disagree));
+
+      // FLOORS — a repair that dropped everything satisfies every check above
+      t.eq('a real age survives', r.restored.age, 59);
+      t.eq('a real height survives', r.restored.ht, 178);
+      t.eq('and the calorie target comes back unchanged', r.restored.kcal, r.base);
+      t.ok('the bottom of the legal band is kept, not clipped',
+        r.edgeLo.age === 10 && r.edgeLo.ht === 120, JSON.stringify(r.edgeLo));
+      t.ok('and so is the top', r.edgeHi.age === 100 && r.edgeHi.ht === 230, JSON.stringify(r.edgeHi));
+
+      // --- coach ---
+      t.eq('an unknown coach id falls back to auto', r.coachJunk, 'auto');
+      t.eq('auto is left alone', r.coachAuto, 'auto');
+      t.ok('and a real pick survives', r.coachReal, 'a chosen coach was overwritten');
+
+      // --- the v382 self-correction ---
+      t.eq('a junk trouble zone is still dropped', JSON.stringify(r.tz), '["belly"]');
+      t.ok('a POOL zone with no picker button is KEPT, not erased',
+        r.poolOnly.kept.length === 1, JSON.stringify(r.poolOnly.kept));
+      t.ok('and the validator is what reports the drifted picker',
+        r.poolOnly.errs >= 1, 'hits ' + r.poolOnly.errs);
+      t.eq('the validator is clean once restored', r.errs, 0);
+    }
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

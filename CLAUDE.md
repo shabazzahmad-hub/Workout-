@@ -8063,6 +8063,83 @@ it, one at a time, requiring the specific complaint, then restoring — with
 console error as a page failure.
 
 
+## A range test's job, done by a type test — three more fields (v383)
+
+```js
+if(typeof STATE.settings.repTempo!=='number')STATE.settings.repTempo=3;
+```
+
+That is the v286 `adapt` defect verbatim, one field over. `setRepTempo()`
+clamps to 1-6 and the boot repair only ever checked the TYPE, so a stored 999
+survived every boot. The PLAYER clamps at its own read sites, which is why the
+pacing stays right and nothing crashes — and `totalTUTSplit()` reads it **RAW**.
+Measured over 40 logged sessions:
+
+| stored cadence | lifetime work |
+|---|---|
+| 3 (normal) | **168 min** |
+| 999 | **28,354 min** |
+
+**And `age` and `heightCm` had no shape repair at all**, while v355's mirror
+copies whichever side holds a value into the half every calculation reads.
+Measured on one 86 kg / 178 cm / 59-year-old body, with values `importData()`
+accepts from any hand-edited backup:
+
+| stored | calorie target |
+|---|---|
+| `age:59` (real) | 1950 |
+| `age:true` | **2360** — `5*true` is 5, so 59 prices as 1 |
+| `age:'zzz'` | **NaN** on a populated athlete, `null` on a partial one |
+| `heightCm:true` | **1500** |
+
+**The repair has to run BEFORE the mirror.** With junk on one side only, a
+repair that ran after would copy it across rather than drop it — and that is
+the check that proves the ordering, not any assertion about the values.
+
+**Dropped rather than clamped**, which is v345's rule: "silently produces no
+target" is a field the athlete filled in going missing, so the app asks again.
+The bounds are the ones the app already enforces on a typed value (age 10-100,
+height 120-230 cm), so a stored number the athlete could never have entered is
+not kept — and both edges are pinned, because a guard that clips a legitimate
+value is the mirror-image defect.
+
+`settings.coach` was truthiness-only. `coachFor()` falls back to `COACHES[0]`
+for an unknown id so nothing breaks, but the junk survived every boot, travelled
+in every backup, and left the picker with nothing selected.
+
+### The self-correction: the destructive path takes the SAFER list
+
+v382's own `troubleZoneKey()` required membership in **both** `TROUBLE_POOL` and
+`TROUBLE_AREAS`. Identical today — `validateData()` pins them equal — and the
+wrong test for a repair that **deletes** stored athlete data, because the two
+failure directions are not symmetrical:
+
+| future mismatch | asking both lists | asking the pool alone |
+|---|---|---|
+| zone in the POOL, no picker button | **the athlete's real answer is erased** | kept; the validator complains |
+| zone in the picker, not in the pool | erased | erased — it was inert anyway |
+
+The repair asks the map that actually steers the program; the validator is what
+catches a picker that has drifted. Found by auditing my own change an hour after
+shipping it — the sixth round running where the best finding was in the round
+immediately before.
+
+### Three checks failed on correct code, and one of them was informative
+
+- **The base calorie target is not a universal number.** The check hardcoded
+  1950 from a fresh-install probe; the seeded athlete carries their own goal and
+  timeline. Assert that there IS a target to move, not what it is.
+- **The holds do not scale with rep cadence.** The check asserted the repaired
+  lifetime total was exactly twice the tempo-3 figure. It is not: the clamp
+  lands on 6, and only the rep half doubles. Measure the expected figure at the
+  clamped cadence rather than deriving it from the default.
+- **A string age gives NaN, not null** — and that was worth knowing. On a
+  partial athlete `kcalTargetPreview()` bails and returns null; on a fully
+  populated one it computes, and the string lands in the arithmetic. NaN is the
+  worse of the two: `null` is caught by the `!p` guards downstream, and a NaN
+  prints.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
