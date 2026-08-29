@@ -1296,6 +1296,118 @@ export default async function run() {
     });
   }
 
+
+  /* ---- every function is reachable from a root ---------------------------
+     v385 found that `_recipePlanHTML()` — the only renderer of a recipe's
+     ingredients and method in the file — had NO CALLER, so the whole recipe
+     view was unreachable from every screen while the morning brief read its
+     address aloud. Its head `mealPlanHTML()` was uncalled, and everything
+     below it went dark with it: toggleRecipe, openGrocery, regenPlan and
+     mealGapHTML each had 0 reachable call sites.
+
+     A direct-caller count cannot see that — `_recipePlanHTML` HAD a caller.
+     It takes transitive reachability from the real roots: the page's own
+     markup (an onclick= in the body is a call site the script never mentions),
+     the top-level code, and boot().
+
+     THE GUARDS MATTER MORE THAN THE RESULT. Every version of this analysis
+     that was wrong reported hundreds of orphans, not a handful — a broken
+     traversal looks exactly like a broken app. So it asserts that boot() was
+     found, that most functions are reachable, and that the script it parsed is
+     the app's. */
+  {
+    const idx = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    // the app's script is the biggest inline one without a src
+    let best = null;
+    for (const m of idx.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g))
+      if (!best || m[1].length > best[1].length) best = m;
+    t.ok('guard: found the app script', !!best && best[1].indexOf('function normalizeState') >= 0);
+
+    if (best) {
+      // strip comments, respecting strings and template literals
+      const code = best[1];
+      let out = '', i = 0, st = null;
+      while (i < code.length) {
+        const c = code[i], nx = code[i + 1];
+        if (!st) {
+          if (c === '/' && nx === '*') { const j = code.indexOf('*/', i + 2); i = j < 0 ? code.length : j + 2; out += ' '; continue; }
+          if (c === '/' && nx === '/') { const j = code.indexOf('\n', i); i = j < 0 ? code.length : j; continue; }
+          if (c === '"' || c === "'" || c === '`') { st = c; out += c; i++; continue; }
+          out += c; i++; continue;
+        }
+        if (c === '\\') { out += code.slice(i, i + 2); i += 2; continue; }
+        if (c === st) st = null;
+        out += c; i++;
+      }
+      const clean = out;
+
+      const decl = [...clean.matchAll(/^(?:async\s+)?function\s+([A-Za-z0-9_$]+)\s*\(/gm)]
+        .map(m => [m[1], m.index]);
+      const names = new Set(decl.map(d => d[0]));
+      t.ok('guard: the declaration pattern found the whole roster', names.size > 900, String(names.size));
+      t.ok('guard: boot() is among them — otherwise the roots are wrong', names.has('boot'));
+
+      /* A one-liner has no `}` in column 0, so a line-anchored search runs past
+         it and swallows every top-level registry that follows — which made a
+         dozen live builders read as unreachable. Match the brace. */
+      const bodyEnd = start => {
+        let i = clean.indexOf('{', start);
+        if (i < 0) return null;
+        let depth = 0, q = null;
+        while (i < clean.length) {
+          const c = clean[i];
+          if (q) { if (c === '\\') { i += 2; continue; } if (c === q) q = null; i++; continue; }
+          if (c === '"' || c === "'" || c === '`') { q = c; i++; continue; }
+          if (c === '{') depth++;
+          else if (c === '}') { depth--; if (!depth) return i + 1; }
+          i++;
+        }
+        return null;
+      };
+      const bounds = decl.map(([nm, st2], k) => {
+        const en = bodyEnd(st2) ?? (k + 1 < decl.length ? decl[k + 1][1] : clean.length);
+        return [nm, st2, en];
+      });
+      const bodies = new Map(bounds.map(([nm, st2, en]) => [nm, clean.slice(st2, en)]));
+
+      let top = '', prev = 0;
+      for (const [, st2, en] of bounds) { top += clean.slice(prev, st2); prev = Math.max(prev, en); }
+      top += clean.slice(prev);
+      // the markup outside the script is a root: onclick="openSettings()"
+      top += '\n' + idx.slice(0, best.index) + idx.slice(best.index + best[0].length);
+
+      const refs = (text, self) => {
+        const found = new Set();
+        for (const m of text.matchAll(/\b([A-Za-z0-9_$]+)\s*[(),;\]}]/g))
+          if (names.has(m[1]) && m[1] !== self) found.add(m[1]);
+        return found;
+      };
+      const reach = new Set();
+      const work = [...refs(top, null), 'boot'];
+      while (work.length) {
+        const f = work.pop();
+        if (reach.has(f)) continue;
+        reach.add(f);
+        for (const g of refs(bodies.get(f) || '', f)) if (!reach.has(g)) work.push(g);
+      }
+      t.ok('guard: the traversal reached most of the roster, so it is not itself broken',
+        reach.size > names.size * 0.9, reach.size + ' of ' + names.size);
+
+      /* Kept on purpose and documented in the source: the suites are their
+         only call site. mealPlanHTML() is suite 02's safety surface for the
+         meal generator, todaysWorkedDay() is its helper, and logFoodFromList()
+         is suite 06's bad-index guard. Deleting one of those on a call-site
+         count is exactly the mistake v387 records. */
+      const KEPT = new Set(['mealPlanHTML', 'todaysWorkedDay', 'logFoodFromList']);
+      const orphans = [...names].filter(n => !reach.has(n) && !KEPT.has(n)).sort();
+      t.eq('no function is unreachable from the markup, the top level or boot()',
+        orphans.length, 0, orphans.slice(0, 20));
+      // and the allowlist does not rot: each entry must still be genuinely uncalled
+      KEPT.forEach(k => t.ok('the kept-on-purpose entry ' + k + ' is still uncalled',
+        !reach.has(k), k + ' now has a caller — take it off the list'));
+    }
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }

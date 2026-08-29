@@ -8402,6 +8402,60 @@ recipe view was unreachable from every screen in the app:
 | `mealGapHTML` | 0 | 2 |
 
 
+## Every function is reachable from a root, and now a check says so
+
+v385 found that `_recipePlanHTML()` — the only renderer of a recipe's
+ingredients and method in the whole file — had **no caller**, so the recipe view
+was unreachable from every screen while the morning brief read its address
+aloud. Nothing noticed for many versions.
+
+**A direct-caller count could not have caught it.** `_recipePlanHTML` HAD a
+caller: `mealPlanHTML()`, which itself had none. The head went dark and took
+the cluster with it — `toggleRecipe`, `openGrocery`, `regenPlan` and
+`mealGapHTML` all had 0 reachable call sites. It takes TRANSITIVE reachability
+from the real roots.
+
+**The roots are three, and missing any one of them breaks the answer:**
+
+- **the page's own markup** — `onclick="openSettings()"` in the body is a call
+  site the script never mentions;
+- **the top-level code**, which is where the registries live: `CARDIO_INFO`
+  names its per-mode builders as bare identifiers;
+- **`boot()`**, reached from the load listener.
+
+Measured on the app today: **1,137 of 1,140 top-level functions reachable, 3
+orphans, and all three are kept on purpose** — `mealPlanHTML` is suite 02's
+safety surface for the meal generator, `todaysWorkedDay` is its helper, and
+`logFoodFromList` is suite 06's bad-index guard. The allowlist is checked in
+both directions, so an entry that gains a real caller has to come off it.
+
+### The guards matter more than the result
+
+Every wrong version of this analysis reported **hundreds** of orphans, not a
+handful — a broken traversal looks exactly like a rotten app, and the four
+wrong ones each looked plausible:
+
+- **`async function` was not matched**, so `boot` was not in the roster at all
+  and reachability came back as **1**.
+- **The body ran to the next declaration**, which attributed every top-level
+  registry between two functions to the one above it. A dozen live builders
+  read as unreachable.
+- **A line-anchored `^}` search ran past a one-liner.** `_dv()` is a single
+  line, so its span swallowed `CARDIO_INFO` whole and `bikeBlockHTML` looked
+  dead. Brace matching, skipping strings and template literals, is what fixed
+  it.
+- **The static markup was not read**, so `openSettings` — called only from a
+  button in the page body — read as an orphan.
+
+So the check asserts `boot()` was found, that the roster is over 900 functions,
+that the script it parsed is the app's, and that **over 90% of the roster is
+reachable** before it trusts the orphan list at all.
+
+Three mutants, all caught: a live renderer losing its only caller (the v385
+shape exactly), a handler losing its only `onclick`, and a whole cluster head
+going dark.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
