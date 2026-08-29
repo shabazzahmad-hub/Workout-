@@ -5381,6 +5381,170 @@ export default async function () {
       JSON.stringify(r.sessionJump));
   }
 
+
+  /* ---- v381: the prep ramp had no ceiling, and a new block reused an old
+     stamp -------------------------------------------------------------------
+     The 10% rule caps the RATE. Nothing capped the TOTAL, and the plateau only
+     ever applied to `sharpen` and `taper` — so a long BASE phase compounded
+     unopposed. Measured on a legitimate 54-week block from a 19.3 km/week
+     base, with no stale stamp involved at all: 336.5 km a week at week 31,
+     872.9 at week 41, 1,871 at week 51.
+
+     And `planFrom` was stamped once and never again, which is right for moving
+     a date still ahead and wrong the moment the previous evaluation has been
+     and gone. Measured: the new block opened at week 53 — 2,739 km of running
+     a week and a 60 lb plate on day one.
+
+     THE FLOORS CARRY THE ROUND. A cap satisfied by never climbing at all is
+     not a cap, so an ordinary 16-week block must still build; an athlete
+     already running more than the ceiling must never be prescribed LESS than
+     they already do; and a genuine reschedule must KEEP its stamp, or the fix
+     restarts every block the athlete moves a date on. */
+  {
+    const r = await page.evaluate(() => {
+      const iso = d => { const x = new Date(d); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+      const DAY = 86400000, out = {};
+      const logKm = (runWk, ruckWk) => {
+        STATE.nutrition.days = {};
+        for (let d = 1; d <= 28; d++) STATE.nutrition.days[iso(Date.now() - d * DAY)] =
+          { opened: true, runVal: runWk / 7, runUnit: 'dist', runLvl: 'steady',
+            ruckVal: ruckWk / 7, ruckUnit: 'dist', ruckLvl: 'brisk' };
+        STATE.nutrition.weightKg = 86;
+      };
+      const at = (wk, totalWk) => {
+        STATE.prep = { date: iso(Date.now() + (totalWk - wk + 1) * 7 * DAY),
+                       planFrom: iso(Date.now() - (wk - 1) * 7 * DAY), path: 'operator' };
+        const e = enduranceWeek(true), k = ruckLadderWeek(true);
+        return { wk: prepWeekNo(), run: e.curve, ruck: k.curve, atPeak: e.atPeak,
+                 ruckAtPeak: k.atPeak, peak: e.peak, ruckPeak: k.peak, start: e.start };
+      };
+      try {
+        out.mult = PREP_PEAK_MULT; out.ceil = PREP_PEAK_KM; out.ruckCeil = PREP_RUCK_PEAK_KM;
+
+        // the long block that produced the finding
+        logKm(20, 10);
+        out.long = [1, 11, 21, 31, 41, 51].map(w => at(w, 54));
+
+        // FLOOR: an ordinary 16-week block must still BUILD
+        out.short = [1, 8].map(w => at(w, 16));
+
+        // FLOOR: an athlete already past the ceiling is never cut
+        logKm(90, 40);
+        out.big = at(1, 54);
+        out.bigLater = at(20, 54);
+
+        // FLOOR: the beginner's ceiling is relative to their OWN start
+        STATE.nutrition.days = {};
+        STATE.prep = { date: iso(Date.now() + 30 * 7 * DAY), planFrom: iso(Date.now() - 30 * 7 * DAY), path: 'operator' };
+        out.beginner = { wk: prepWeekNo(), run: enduranceWeek(true).curve, ruck: ruckLadderWeek(true).curve };
+
+        // prepPeak's own contract, exercised directly — it is consulted from
+        // two narrow branches, so its meaning is pinned rather than inferred.
+        out.peakFn = { small: prepPeak(8, 60), mid: prepPeak(20, 60), big: prepPeak(90, 60),
+                       junk: prepPeak('x', 60), zero: prepPeak(0, 60), noCeil: prepPeak(20, 0) };
+
+        // ---- the stamp, driven through the real save route ----
+        logKm(20, 10);
+        const drive = v => { openForceDate(); document.querySelector('#fq-date').value = v; saveForceDate(); closeSheet(); };
+        STATE.prep = { date: iso(Date.now() - 30 * DAY), planFrom: iso(Date.now() - 400 * DAY) };
+        drive(iso(Date.now() + 12 * 7 * DAY));
+        out.newBlock = { planFrom: STATE.prep.planFrom, today: iso(Date.now()), wk: prepWeekNo(),
+                         run: enduranceWeek(true).curve, ruck: ruckLadderWeek(true).curve, lb: ruckLadderWeek(true).lb };
+
+        const keptStamp = iso(Date.now() - 56 * DAY);
+        STATE.prep = { date: iso(Date.now() + 40 * DAY), planFrom: keptStamp };
+        drive(iso(Date.now() + 90 * DAY));
+        out.reschedule = { planFrom: STATE.prep.planFrom, want: keptStamp, wk: prepWeekNo() };
+
+        STATE.prep = {};
+        drive(iso(Date.now() + 12 * 7 * DAY));
+        out.first = { planFrom: STATE.prep.planFrom, today: iso(Date.now()) };
+
+        STATE.prep = { date: iso(Date.now() + 40 * DAY), planFrom: iso(Date.now() - 200 * DAY) };
+        clearForceDate(); closeSheet();
+        out.cleared = { has: STATE.prep.planFrom !== undefined };
+        drive(iso(Date.now() + 12 * 7 * DAY));
+        out.afterClear = { wk: prepWeekNo() };
+
+        // the ceiling is SAID, not applied in silence
+        STATE.prep = { date: iso(Date.now() + 24 * 7 * DAY), planFrom: iso(Date.now() - 30 * 7 * DAY), path: 'operator' };
+        const html = enduranceHTML() + ruckLadderHTML();
+        out.note = { run: /reached its ceiling/i.test(html), holds: html.indexOf('Volume holds at') >= 0 };
+        STATE.prep = { date: iso(Date.now() + 15 * 7 * DAY), planFrom: iso(Date.now() - 1 * 7 * DAY), path: 'operator' };
+        out.quietNote = { run: /reached its ceiling/i.test(enduranceHTML() + ruckLadderHTML()) };
+      } catch (e) { out.threw = String(e && e.message || e); }
+      return out;
+    });
+
+    t.ok('guard: the ramp checks ran without throwing', !r.threw, r.threw || '');
+    if (!r.threw) {
+      // guard: the block really did reach the weeks that produced the finding
+      t.eq('guard: the long block walks to week 51', (r.long[5] || {}).wk, 51);
+      t.ok('guard: it opens on the real trailing base, not the floor',
+        Math.abs((r.long[0] || {}).run - 19.3) < 0.5, JSON.stringify(r.long[0]));
+
+      t.ok('a long base phase no longer compounds past its ceiling',
+        r.long.every(w => w.run <= r.long[0].run * r.mult + 0.1),
+        r.long.map(w => 'wk' + w.wk + ':' + w.run).join(' '));
+      t.ok('and no week of it runs past the absolute ceiling either',
+        r.long.every(w => w.run <= r.ceil + 0.1),
+        r.long.map(w => 'wk' + w.wk + ':' + w.run).join(' '));
+      t.ok('the rucked distance is capped too, and lower',
+        r.long.every(w => w.ruck <= r.ruckCeil + 0.1) && r.ruckCeil < r.ceil,
+        r.long.map(w => 'wk' + w.wk + ':' + w.ruck).join(' '));
+      t.ok('the curve reaching the ceiling is reported, not applied in silence',
+        r.long[41 >= 0 ? 4 : 4].atPeak === true && r.long[4].ruckAtPeak === true,
+        JSON.stringify(r.long[4]));
+
+      // FLOOR — a cap satisfied by never climbing is not a cap
+      t.ok('an ordinary 16-week block still builds',
+        r.short[1].run > r.short[0].run * 1.2,
+        'wk1 ' + r.short[0].run + ' -> wk8 ' + r.short[1].run);
+      t.ok('and week 8 of it is nowhere near the ceiling, so nothing was flattened',
+        r.short[1].atPeak === false, JSON.stringify(r.short[1]));
+
+      // FLOOR — never prescribe LESS than the athlete already does
+      /* Pinned against the app's OWN computed start, not against the number
+         the seed asked for — the trailing average is taken over ISO weeks, so
+         28 days of logs come to 86.8, and a check restating 90 fails on
+         correct code. */
+      t.ok('guard: this athlete really is past the absolute ceiling',
+        r.big.start > r.ceil, 'start ' + r.big.start + ' vs ceiling ' + r.ceil);
+      t.eq('an athlete already past the ceiling is left where they are, not cut',
+        r.big.run, r.big.start);
+      t.eq('and is still there twenty weeks later — no climb, and no cut',
+        r.bigLater.run, r.big.start);
+
+      // FLOOR — the ceiling is relative to the athlete's own start
+      t.ok('the beginner ceiling is a multiple of THEIR start, not the absolute one',
+        r.beginner.run > 15 && r.beginner.run < 25,
+        'beginner week ' + r.beginner.wk + ' runs ' + r.beginner.run);
+
+      // prepPeak's own contract
+      t.eq('prepPeak multiplies a small start', r.peakFn.small, 8 * r.mult);
+      t.eq('prepPeak takes the absolute ceiling when the multiple exceeds it', r.peakFn.big, 90);
+      t.eq('prepPeak never returns below the start', r.peakFn.mid, Math.min(20 * r.mult, r.ceil));
+      t.eq('prepPeak on junk is zero, not NaN', r.peakFn.junk, 0);
+      t.eq('prepPeak with no ceiling still returns the start', r.peakFn.noCeil, 20);
+
+      // ---- the stamp ----
+      t.eq('a NEW block re-stamps planFrom to today', r.newBlock.planFrom, r.newBlock.today);
+      t.eq('so it opens at week 1', r.newBlock.wk, 1);
+      t.ok('and prescribes the athlete’s own base, not a year of compounding',
+        r.newBlock.run < 25 && r.newBlock.ruck < 15 && r.newBlock.lb <= 30,
+        JSON.stringify(r.newBlock));
+      t.eq('a RESCHEDULE keeps the stamp it already had', r.reschedule.planFrom, r.reschedule.want);
+      t.eq('so the block it is already running is not restarted', r.reschedule.wk, 9);
+      t.eq('a first-ever date stamps today', r.first.planFrom, r.first.today);
+      t.ok('clearing the date clears the stamp with it', r.cleared.has === false, JSON.stringify(r.cleared));
+      t.eq('so the next date set opens a fresh block', r.afterClear.wk, 1);
+
+      // the note
+      t.ok('the card says the build has reached its ceiling', r.note.run && r.note.holds, JSON.stringify(r.note));
+      t.ok('and says nothing at all on a block that is still climbing', r.quietNote.run === false, JSON.stringify(r.quietNote));
+    }
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

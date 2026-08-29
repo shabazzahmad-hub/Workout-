@@ -7922,6 +7922,81 @@ Then the mutants, and each escape taught a different lesson:
 Seven count-down mutants, all caught after those four rewrites.
 
 
+## The 10% rule caps the RATE and nothing capped the TOTAL (v381)
+
+The plan's own comment has said for many versions that the ramp is capped and
+the cap is pinned by a check. It caps the **rate**. Measured on a legitimate
+54-week block from a 19.3 km/week base, with no stale stamp and nothing else
+wrong:
+
+| week | phase | running | rucking |
+|---|---|---|---|
+| 1 | base | 19.3 km | 9.6 km |
+| 21 | base | 129.7 km | 25.0 km |
+| 31 | base | 336.5 km | 40.3 km |
+| 41 | base | **872.9 km** | 64.9 km |
+| 51 | sharpen | **1,871 km** | **95.0 km** |
+
+A marathon a day, every day, prescribed by the plan whose whole purpose is to
+stop somebody arriving at selection injured.
+
+**`PREP_PLATEAU_PHASES` is `['sharpen','taper']`**, so the volume held once the
+hard sessions arrived — and a long BASE phase compounded unopposed for as many
+weeks as the athlete had. Two series each capped at 10% a week sum to a series
+capped at 10% a week, which is true and was the only question anyone asked.
+Nobody asked what the number reaches.
+
+**TWO CEILINGS, because each covers what the other cannot.** A multiple of the
+athlete's OWN start protects the one who opened at the 8 km floor, for whom a
+flat 60 km would be a sevenfold jump. An absolute ceiling protects the one who
+opened high, for whom 2.5x a big base is far past anything these standards ask
+— FORCE has no run in it at all, and the app's own time trial is 2.4 km.
+
+**It is a MAX against `start`, never a cut.** An athlete already running more
+than the ceiling is left where they are rather than prescribed less than they
+already do: a plan that tells you to run less than you did last month is not a
+cap, it is a different bug. That is the floor two mutants fail on, and the
+check pins it against the app's **own computed start** — the trailing average
+is taken over ISO weeks, so 28 days of a 90 km seed comes to 86.8, and a check
+restating 90 fails on correct code.
+
+**`km` and `curve` are two halves of one figure**, so the clamp is one
+expression read twice. Writing it into only one is how a card comes to print a
+number the plan does not use — v337's lesson, one subsystem over.
+
+### A reschedule keeps the stamp; a new block does not
+
+`planFrom` was stamped once and never again. That is right for moving a date
+still ahead — the plan keeps running from when the athlete started — and wrong
+the moment the previous evaluation has been and gone. The next one is a **new
+block**, and `prepWeekNo()` counts from the stamp, so a stamp a year old opened
+it at **week 53**: measured, **2,739 km of running a week and a 60 lb plate on
+day one**.
+
+`clearForceDate()` now drops the stamp with the date, because leaving it behind
+is the same defect by a second door.
+
+The test is `todayISO()>=prevDate`, read BEFORE the new date overwrites it —
+the same day-exact compare `prepCheckpoint()` already uses for `final`, rather
+than `prepDatePassed()`, which is week-rounded and answers a different question.
+
+### A quiet cap reads as a bug
+
+`plateaued` was already returned and **no renderer read it**. The two reasons
+the volume stops climbing are different sentences, so they are different flags:
+`plateaued` is the sharpen phase holding it, `atPeak` is the build having
+reached its ceiling. The ruck card's load-cap note promised *"from here the
+distance carries the progression"* — false once the distance is capped too, so
+it says the true thing instead. A promise in UI text is a specification, and
+this round would have created one.
+
+**The floors carry the round.** A cap satisfied by never climbing is not a cap,
+so an ordinary 16-week block must still build (19.3 to 26.3 km by week 8,
+unchanged) and week 8 must be nowhere near the ceiling. The beginner's ceiling
+must be a multiple of THEIR start (20 km, not 60). And the note must say
+nothing at all on a block still climbing.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
