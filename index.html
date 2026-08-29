@@ -5404,6 +5404,16 @@ function day90Rows(){
   const out=[];
   const mx=(()=>{try{return currentMaxes()||{};}catch(e){return {};}})();
   const num=v=>(typeof v==='number'&&isFinite(v)&&v>0)?v:null;
+  /* currentMaxes() runs estimateMaxes(), which fills in STARTING ASSUMPTIONS
+     when no baseline exists — so a brand-new athlete read "8 reps · your
+     baseline max" and "40s · your best fresh hold" for a test they had never
+     taken, and was marked below the target on it. A default presented as a
+     measurement is the defect v260 named; on a board whose whole job is to say
+     what you have measured against a standard it is the worst place for it.
+     Absent is NOT MEASURED, which is not failed. */
+  const hasBase=(()=>{try{const b=STATE.baseline;
+    return !!(b&&b.maxes&&typeof b.maxes==='object'&&Object.keys(b.maxes).length);}catch(e){return false;}})();
+  const NO_BASE='No baseline test on file yet — take it and this fills in with a real number.';
 
   /* Aerobic. runTTBest() is RUN_TT_M, not 5 km, so it is reported at its own
      distance and the package's figure is shown beside it unscored. */
@@ -5422,7 +5432,7 @@ function day90Rows(){
      the same three-state model testBreakdownHTML() uses. A swap the app cannot
      re-scale is not reachable on today's library and is refused anyway rather
      than scored against a benchmark it was never measured on. */
-  {const v=num(mx.push);
+  {const v=hasBase?num(mx.push):null;
    const subs=(()=>{try{const q=STATE.baseline&&STATE.baseline.subs;return (q&&typeof q==='object'&&!Array.isArray(q))?q:null;}catch(e){return null;}})();
    const subId=subs?subs.push:null, subName=(subId&&EX[subId])?EX[subId].name:null;
    const scaled=!!anchorRescale('push',subs);
@@ -5431,25 +5441,29 @@ function day90Rows(){
      got:v?String(Math.round(v))+' reps':null,
      gotLabel:v?(noRuler?('your baseline '+subName):(scaled?('scaled from your '+subName):'your baseline max')):null,
      scored:!noRuler, ok:v!==null&&v>=35, near:v!==null&&v>=28,
-     why:noRuler?('The baseline battery measured '+subName+', which is not scored against a push-up target.')
-        :(scaled?('Your wrist flag swapped this test for '+subName+', so this is the push-up equivalent rather than a count you did.'):null)});}
+     why:!hasBase?NO_BASE
+        :(noRuler?('The baseline battery measured '+subName+', which is not scored against a push-up target.')
+        :(scaled?('Your wrist flag swapped this test for '+subName+', so this is the push-up equivalent rather than a count you did.'):null))});}
 
   /* Pull-ups. The battery's `pull` test is Inverted Rows — a different movement,
      so a real pull-up personal record is the only honest source. */
   {const pr=(()=>{try{return num(bestFor('pullup'));}catch(e){return null;}})();
-   const row=num(mx.pull);
+   const row=hasBase?num(mx.pull):null;
    out.push({k:'pull', label:'Pull-ups', target:'6-10+ strict',
      got:pr?String(Math.round(pr))+' reps':(row?String(Math.round(row))+' inverted rows':null),
      gotLabel:pr?'your pull-up record':(row?'your baseline Inverted Rows':null),
      scored:!!pr, ok:pr!==null&&pr>=6, near:pr!==null&&pr>=4,
      why:pr?null:(row?'The baseline battery tests Inverted Rows, not pull-ups. Different movement, so it is not scored against this.'
-                     :'Nothing on file for either movement yet.')});}
+                     :(hasBase?'Nothing on file for either movement yet.':NO_BASE))});}
 
   // Plank — the hold tracker, taken fresh, is the measurement this target means
-  {const h=num((typeof holdBest==='function')?holdBest('plank',true):null)||num(mx.plank);
+  {const hold=num((typeof holdBest==='function')?holdBest('plank',true):null);
+   const h=hold||(hasBase?num(mx.plank):null);
    out.push({k:'plank', label:'Plank', target:'2:00+ controlled',
-     got:h?fmtTime(Math.round(h)):null, gotLabel:h?'your best fresh hold':null,
-     scored:true, ok:h!==null&&h>=120, near:h!==null&&h>=95});}
+     got:h?fmtTime(Math.round(h)):null,
+     gotLabel:h?(hold?'your best fresh hold':'your baseline plank'):null,
+     scored:true, ok:h!==null&&h>=120, near:h!==null&&h>=95,
+     why:h?null:NO_BASE});}
 
   /* Ruck: the best SINGLE outing, which is what a distance-and-load target
      means — the weekly total is a different quantity. */

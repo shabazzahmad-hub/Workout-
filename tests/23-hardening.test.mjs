@@ -6439,6 +6439,23 @@ export default async function () {
         STATE.pain = keepPain;
         for (let d = 0; d < 5; d++) delete STATE.logs[900 + d];
 
+        /* A BRAND-NEW ATHLETE. currentMaxes() runs estimateMaxes(), which fills
+           in starting ASSUMPTIONS with no baseline on file — so the board read
+           "8 reps · your baseline max" and "40s · your best fresh hold" for
+           tests never taken, and marked them below the target. A default
+           presented as a measurement (v260), on the one board whose job is to
+           say what has been measured. */
+        const keepBase = STATE.baseline, keepHold = STATE.holdLog, keepPrs = STATE.prs;
+        STATE.baseline = null; STATE.holdLog = []; STATE.prs = {};
+        out.fresh = byK(day90Rows());
+        out.freshMx = { push: (currentMaxes() || {}).push, plank: (currentMaxes() || {}).plank };
+        /* FLOOR: a real pull-up record is a MEASUREMENT, not a default, so it
+           survives having no baseline — otherwise "blank when fresh" would be
+           satisfied by a board that blanks a number the athlete really set. */
+        STATE.prs = { pullup: 8 };
+        out.freshWithPR = byK(day90Rows()).pull;
+        STATE.baseline = keepBase; STATE.holdLog = keepHold; STATE.prs = keepPrs;
+
         openForcePrep();
         const sh = document.querySelector('#sheet');
         const html = sh ? sh.innerHTML : '', txt = sh ? sh.textContent.replace(/\s+/g, ' ') : '';
@@ -6500,6 +6517,22 @@ export default async function () {
         r.unloaded.near === false && r.unloaded.ok === false, JSON.stringify(r.unloaded));
       t.ok('and names the load it was carried under',
         /20 kg/.test(r.full.ruck.got || ''), JSON.stringify(r.full.ruck));
+      /* The guard is what makes this a real check: estimateMaxes() must still be
+         handing out a number, or "the board shows nothing" passes on nothing. */
+      t.ok('guard: with no baseline the app still has starting assumptions to leak',
+        r.freshMx.push > 0 && r.freshMx.plank > 0, JSON.stringify(r.freshMx));
+      t.ok('a brand-new athlete is told nothing is measured, not given the defaults',
+        r.fresh.push.got === null && r.fresh.plank.got === null && r.fresh.pull.got === null,
+        JSON.stringify({ push: r.fresh.push, plank: r.fresh.plank, pull: r.fresh.pull }));
+      t.ok('and each blank row says why it is blank',
+        /baseline test/i.test(r.fresh.push.why || '') && /baseline test/i.test(r.fresh.plank.why || ''),
+        JSON.stringify({ push: r.fresh.push.why, plank: r.fresh.plank.why }));
+      /* FLOOR: a measured zero is still data. Sessions this week is a real
+         count, so it reports 0 rather than going blank with the rest. */
+      t.ok('while a real pull-up record survives with no baseline — it is a measurement',
+        r.freshWithPR.got === '8 reps' && r.freshWithPR.scored === true, JSON.stringify(r.freshWithPR));
+      t.ok('while a genuine zero is still reported as a zero',
+        r.fresh.freq.got === '0 this week' && !r.fresh.freq.why, JSON.stringify(r.fresh.freq));
       t.ok('guard: a flagged wrist really does swap the push test, and the app re-scales it',
         r.pushSubs.sub === 'fistpushup' && r.pushSubs.rescale > 0, JSON.stringify(r.pushSubs));
       t.ok('a scaled push figure says it was scaled and names the movement performed',

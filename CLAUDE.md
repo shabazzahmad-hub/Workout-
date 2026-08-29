@@ -8680,6 +8680,34 @@ not to a third:
 **A target that names two things is scored on two things, or the tag lies.**
 That is the rule the three of them share, and it is worth stating once.
 
+### And a brand-new athlete was shown the app's own assumptions as their results
+
+Found by driving the board with **nothing on file** — the state every probe so
+far had skipped, because they all seeded an athlete first. `currentMaxes()`
+runs `estimateMaxes()`, which fills in **starting assumptions** when no
+baseline exists, so the board read:
+
+> **Push-ups — 8 reps · your baseline max · below**
+> **Plank — 40s · your best fresh hold · below**
+
+for tests the athlete had **never taken**, and marked them short of the target
+on it. The plank row was two lies in one: the number came from the baseline
+defaults and the label named the hold tracker.
+
+**A default presented as a measurement** is the defect v260 named, and this is
+the worst place in the app for it — the board's entire job is to say what has
+been measured against a standard. Absent is *not measured*, which is not
+*failed*, exactly as `forceVerdict()` already answers for an unlogged event.
+Each blank row now says why it is blank and what fills it in.
+
+**Three floors keep it from becoming "show nothing".** A **guard** asserts
+`estimateMaxes()` really is still handing out a number, or "the board shows
+nothing" passes on nothing. A **measured zero is still data** — sessions this
+week reports `0`, it does not go blank with the rest. And a **real pull-up
+record survives having no baseline**, because it is a measurement rather than a
+default: without that floor, a board that blanked a number the athlete really
+set would pass every assertion above.
+
 ### Two sweeps that came back clean, recorded as coverage
 
 - **The prep surfaces at legal extremes.** The military-prep code is the newest
@@ -8692,6 +8720,14 @@ That is the rule the three of them share, and it is worth stating once.
   to be a real function first. The first pass reported 40 failures and all of
   them were one invented name, `openEndurancePlan`, drowning everything else —
   the real one is `openEndurance`.
+- **The custom builder driven end to end**, through real taps rather than by
+  poking `_custom` — which is what v355's probe did, with invented function
+  names. Three chips tapped, saved as a favourite through its own button,
+  started through its own button: 3 moves, `free:true`, a live program
+  `_plResume` **untouched**, the pointer unmoved and no log written (a bonus
+  session does not consume a program session), and the favourite survives a
+  boot. One reading was the probe: the session's name lives at
+  `PLAYER.sess.session.name`, not `PLAYER.title`.
 - **`save()` under a full phone.** Already handled and worth recording rather
   than re-fixing: a quota failure sets `_lsOk=false`, warns once, and `load()`
   then picks whichever copy is genuinely **newer** rather than preferring
