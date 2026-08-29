@@ -8572,8 +8572,6 @@ Every one is a trap already in this file, and all four were the CHECK:
   hardcoded-distance scan counts. Reword the prose, never weaken the check —
   the fifth time.
 
-Eight mutants, all caught.
-
 ## The fields DEFAULT_STATE never declares (v390)
 
 v285 fuzzed *"all 33 top-level fields"* and v284 before it fixed `logs` and
@@ -8780,6 +8778,11 @@ set would pass every assertion above.
   then picks whichever copy is genuinely **newer** rather than preferring
   localStorage — both behaviours carry comments explaining the defect they were
   written for.
+
+**Three checks had to be rewritten before the mutants were caught.** Two are
+recorded above — the stamp satisfied by a stamp that was never in question, and
+the two guards that masked each other so nothing threw either way. The third is
+below.
 
 ### And the v389 stamp check was satisfied by a stamp that was never in question
 
