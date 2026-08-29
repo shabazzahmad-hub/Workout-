@@ -898,6 +898,75 @@ export default async function run() {
     await browser.close();
   }
 
+  /* ---- v391: the setter coerces, the reader was bare truthiness ----------
+     setFoodAiKey() does String(v).trim(), so every key the athlete TYPES is a
+     string. A key from an IMPORTED FILE never meets the setter, and
+     carryDeviceCreds() only overrides it when this device already holds one —
+     so on a phone with no key, a file's `{}`, `[]`, `42` or `true` landed,
+     Settings showed the saved badge, foodAIReady() said yes, and every call
+     failed. One of a pair guarded and its twin not, a fourth time. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await waitForBoot(page);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const out = { read: {}, neural: {} };
+      // THE READ SITES, with the boot repair deliberately not run
+      [42, {}, [], true, '', '   '].forEach(v => {
+        STATE.settings.foodAiKey = v;
+        out.read[JSON.stringify(v)] = foodAIReady();
+      });
+      STATE.settings.foodAiKey = 'AIza-real-looking-key';
+      out.realKeyReady = foodAIReady();
+
+      STATE.settings.neuralOn = true;
+      [[42, 'eastus'], ['k', 42], [{}, {}], ['', 'eastus']].forEach(([k, rg]) => {
+        STATE.settings.azureKey = k; STATE.settings.azureRegion = rg;
+        out.neural[JSON.stringify([k, rg])] = neuralReady();
+      });
+      STATE.settings.azureKey = 'realkey'; STATE.settings.azureRegion = 'eastus';
+      out.realNeuralReady = neuralReady();
+
+      // THE BOOT REPAIR
+      STATE.settings.foodAiKey = {}; STATE.settings.azureKey = 42; STATE.settings.azureRegion = [];
+      normalizeState();
+      out.dropped = { food: STATE.settings.foodAiKey === undefined,
+                      az: STATE.settings.azureKey === undefined,
+                      rg: STATE.settings.azureRegion === undefined };
+      // FLOOR: a real key survives the boot — this is the one field an athlete
+      // cannot get back from a backup, because backups never carry it
+      STATE.settings.foodAiKey = 'AIza-real'; STATE.settings.azureKey = 'realkey';
+      STATE.settings.azureRegion = 'eastus';
+      normalizeState();
+      out.kept = { food: STATE.settings.foodAiKey, az: STATE.settings.azureKey, rg: STATE.settings.azureRegion };
+      // FLOOR: a backup still carries neither key
+      out.backupClean = (() => { const c = JSON.parse(JSON.stringify(STATE));
+        if (c.settings) { delete c.settings.azureKey; delete c.settings.foodAiKey; }
+        return !c.settings.azureKey && !c.settings.foodAiKey; })();
+      delete STATE.settings.foodAiKey; delete STATE.settings.azureKey; STATE.settings.neuralOn = false;
+      return out;
+    });
+
+    t.ok('guard: a real key still reads as ready', r.realKeyReady === true, r.realKeyReady);
+    t.ok('a key that is not a string never reads as ready',
+      Object.keys(r.read).every(k => r.read[k] === false), JSON.stringify(r.read));
+    t.ok('guard: a real neural key and region still read as ready', r.realNeuralReady === true, r.realNeuralReady);
+    t.ok('and the neural path refuses a junk key or a junk region the same way',
+      Object.keys(r.neural).every(k => r.neural[k] === false), JSON.stringify(r.neural));
+    t.ok('the boot repair drops a credential that is not a string',
+      r.dropped.food && r.dropped.az && r.dropped.rg, JSON.stringify(r.dropped));
+    /* FLOOR: these are the ONE thing no backup can restore, because exportData()
+       strips them on purpose — a repair that dropped a real key would be the
+       worst possible over-eager twin. */
+    t.ok('while a real credential survives the boot untouched',
+      r.kept.food === 'AIza-real' && r.kept.az === 'realkey' && r.kept.rg === 'eastus',
+      JSON.stringify(r.kept));
+    t.ok('and a backup still carries neither key', r.backupClean === true, r.backupClean);
+
+    errors.filter(e => /render/.test(e)).forEach(e => t.fail('the credential repair reached the render boundary', e));
+    await browser.close();
+  }
+
   /* ---- v390: every top-level field the app writes has a repair -----------
      Written against the CLASS, because the block above fixes eight instances
      and the next on-demand field added will be the ninth. The list is DERIVED

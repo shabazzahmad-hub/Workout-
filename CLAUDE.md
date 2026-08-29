@@ -8883,6 +8883,30 @@ gates are far outside any real body, and **a check pins that a three-year cut
 survives it** — a guard earns its keep only if it provably cannot fire on a
 legitimate input.
 
+### The setter coerces and the reader was bare truthiness
+
+The fourth instance of this version's own theme, found by driving the ten
+remaining nested fields through their real readers rather than reading them.
+Nine were fine — `beatTempoPref()` clamps, `skipLevel` does a membership test,
+the booleans read truthy — and one was not:
+
+```js
+function foodAIReady(){return !!(STATE.settings&&STATE.settings.foodAiKey);}
+```
+
+`setFoodAiKey()` does `String(v).trim()`, so every key the athlete **types** is
+a string. **A key from an imported FILE never meets the setter**, and
+`carryDeviceCreds()` only overrides it when this device already holds one — so
+on a phone with no key, a file's `{}`, `[]`, `42` or `true` lands, Settings
+shows the saved badge, `foodAIReady()` says yes, and every call fails.
+`neuralReady()` had the identical shape for the Azure key AND its region.
+
+**Dropped at boot, never coerced: a mangled key is not a key.** And the floor
+here matters more than most, because these are **the one thing no backup can
+restore** — `exportData()` strips them on purpose — so a repair that dropped a
+real key would be the worst over-eager twin in the app. A real key surviving
+the boot is pinned, and so is the backup still carrying neither.
+
 ### And the scan that found it had a false negative of its own
 
 Its "is this field mentioned in `normalizeState()`?" heuristic reported

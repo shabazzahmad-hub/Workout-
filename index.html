@@ -9276,7 +9276,7 @@ const COACH_NEURAL={
   britmajor:{v:'en-GB-RyanNeural',rate:'+8%',pitch:'-2st'},   // British parade-ground sergeant major — brisk, deep, clipped
 };
 function neuralCfgFor(persona){return (persona&&COACH_NEURAL[persona.id])||NEURAL_DEFAULT;}
-function neuralReady(){const s=STATE.settings;return !!(s.neuralOn&&s.azureKey&&s.azureRegion);}
+function neuralReady(){try{const s=STATE.settings||{};return !!(s.neuralOn&&_keyStr(s.azureKey)&&_keyStr(s.azureRegion));}catch(e){return false;}}
 function neuralAvailable(){return neuralReady()&&(navigator.onLine!==false);}
 const _neuralCache=new Map();          // cacheKey -> object URL (per-session; kills repeat API calls)
 /* Every entry holds a Blob alive for the page lifetime. .clear() dropped the Map
@@ -14034,7 +14034,14 @@ function openQuickAdd(pre){
    Uses the user's own free Google AI Studio key (aistudio.google.com/apikey),
    stored ONLY on this device. Estimates are approximate and always land in the
    quick-add form for the user to confirm. Falls back to manual add on any error. */
-function foodAIReady(){return !!(STATE.settings&&STATE.settings.foodAiKey);}
+/* A NON-EMPTY STRING, not merely truthy. setFoodAiKey() coerces and trims, so
+   every key the athlete types is a string — but a key from an IMPORTED FILE
+   never meets the setter, and carryDeviceCreds() only overrides it when this
+   device already has one. So `{}`, `[]`, `42` and `true` all read as ready,
+   Settings showed "🔒 Saved", and every call failed. One of a pair guarded and
+   its twin not, for the fourth time this version. */
+function _keyStr(v){return (typeof v==='string')?v.trim():'';}
+function foodAIReady(){try{return !!_keyStr(STATE.settings&&STATE.settings.foodAiKey);}catch(e){return false;}}
 // Try current free-tier vision models in order; a retired/renamed model returns 404
 // and we fall through to the next. A user-set model (Settings) is honored first.
 /* `gemini-flash-latest` FIRST, and it is an alias rather than a pinned
@@ -20909,6 +20916,13 @@ function normalizeState(){
      Dropped rather than guessed — noteGoalPhase() re-seeds it from evidence
      the app already holds. A stamp in the FUTURE is not a date the cut can
      have started on. */
+  /* The device credentials. They are stripped from every backup, so they never
+     travel — but importData() assigns the FILE's settings over the defaults and
+     carryDeviceCreds() only wins when this device already holds a key, so a
+     file's junk lands on a phone that has none. Dropped, never coerced: a
+     mangled key is not a key. */
+  ['foodAiKey','azureKey','azureRegion'].forEach(k=>{
+    if(STATE.settings[k]!==undefined&&typeof STATE.settings[k]!=='string')delete STATE.settings[k];});
   {const P3=STATE.profile;
    /* '1900-01-01' is a perfectly valid past date and reported 6608 weeks,
       firing the banner permanently with a figure nobody can act on. Bounding
