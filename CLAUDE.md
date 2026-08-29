@@ -8920,6 +8920,34 @@ below. Every fix has its over-eager twin seeded beside it, and the credential
 one is the sharpest in the app: a repair that dropped a REAL key destroys the
 only thing a backup cannot restore.
 
+### The promise sweep, re-run across the newest surfaces
+
+v355 swept every promise sentence once; v381-v391 added a lot of copy since.
+Re-run: **39 promise sentences across 27 surfaces** (six tabs, all four Today
+panes, all four Progress panes, both Reference panes, twelve sheets), extracted
+by pattern — *never / always / will / won't / keeps / stays / counts / does
+not / cannot*. **Every testable one is backed.**
+
+The two worth recording, because both are claims a check can make:
+
+- *"Special training ▸ Hold to failure…"* is a tab POINTER, this repo's
+  recurring stale-address class. Asserted BOTH ways: the button really is
+  inside `openSpecial()`.
+- *"Bonus conditioning… it won't affect your plan or streak."* Driven: a
+  Special format run to completion on its own ticks leaves the pointer, the
+  training streak, the nutrition streak, the trained-today flag, the log count
+  and the live resume all identical.
+
+**And the first run of that second measurement proved nothing** — the seeded
+athlete's streak was **0** before and after, so "unchanged" was two zeroes
+agreeing. Seeded with five real training days and five logged food days it
+reads **5 before and 5 after**, with a guard that the figures are non-zero and
+a control that the snapshot sees a change when one is made.
+
+Two probe errors on the way, the usual ratio: `streakDays()` and
+`openHoldTest()` do not exist — the real names are `computeStreak()` and
+`openHoldTests()`.
+
 ### The class is now closed at all three levels
 
 - **Level 1**, top-level fields — v390, eight fixed.
