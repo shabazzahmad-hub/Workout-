@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='388';
+const APP_VERSION='390';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -5382,6 +5382,137 @@ function openEndurance(){
   openSheet(`<h3>🏃 This week's endurance</h3>${enduranceHTML()}
     <div class="tiny muted" style="margin-top:12px">Running volume that climbs faster than about a tenth a week is how people arrive at selection injured rather than fit. This plan will take longer rather than climb faster, and that is the trade it is making on purpose. The rule governs the trend, not the step back up out of a down week.</div>`);
 }
+/* ---- the day-90 board ------------------------------------------------------
+   From the athlete's own Reserve Infantry preparation package. They are
+   ADVISORY PREPARATION GOALS and not CAF pass standards — the package says so
+   itself, and says the unit's joining instructions control. Stamped like
+   FORCE_ASOF for the same reason: a figure shown with confidence that has gone
+   stale is worse than no figure, because it is trained to.
+
+   TWO OF THE SIX CANNOT BE SCORED AND SAY SO. The package wants a 5 km time and
+   this app measures a shorter time trial (runTTLabel() names it, and the drift
+   scan counts that literal wherever it appears, comments included); it wants
+   strict pull-ups and the
+   battery tests Inverted Rows, which is a different movement at a different
+   benchmark (20 rows against 6-10 pull-ups). Converting either would be the
+   change-of-ruler defect v320 and v321 exist to stop — a confident number on a
+   measurement that was never taken. The rows show what the app DID measure,
+   name it, and leave the target unscored. */
+const DAY90_ASOF='August 2026';
+const DAY90_SRC='your Reserve Infantry preparation package';
+function day90Rows(){
+  const out=[];
+  const mx=(()=>{try{return currentMaxes()||{};}catch(e){return {};}})();
+  const num=v=>(typeof v==='number'&&isFinite(v)&&v>0)?v:null;
+  /* currentMaxes() runs estimateMaxes(), which fills in STARTING ASSUMPTIONS
+     when no baseline exists — so a brand-new athlete read "8 reps · your
+     baseline max" and "40s · your best fresh hold" for a test they had never
+     taken, and was marked below the target on it. A default presented as a
+     measurement is the defect v260 named; on a board whose whole job is to say
+     what you have measured against a standard it is the worst place for it.
+     Absent is NOT MEASURED, which is not failed. */
+  const hasBase=(()=>{try{const b=STATE.baseline;
+    return !!(b&&b.maxes&&typeof b.maxes==='object'&&Object.keys(b.maxes).length);}catch(e){return false;}})();
+  const NO_BASE='No baseline test on file yet — take it and this fills in with a real number.';
+
+  /* Aerobic. runTTBest() is RUN_TT_M, not 5 km, so it is reported at its own
+     distance and the package's figure is shown beside it unscored. */
+  {const b=num((typeof runTTBest==='function')?runTTBest():null);
+   out.push({k:'run', label:'5 km run', target:'about 27:30, working toward 25:00',
+     got:b?fmtTime(Math.round(b)):null, gotLabel:b?('your best '+runTTLabel()):null,
+     scored:false,
+     why:b?'A different distance from the 5 km this target is set over, so it is not scored against it.'
+          :'No time trial logged yet. The app measures the '+runTTLabel()+', which is a different distance from this target.'});}
+
+  /* Push-ups. The battery tests this movement — unless a flagged WRIST swapped
+     it for Fist Push-Ups, the one substitution reachable here (measured: no
+     other joint touches this test, and `plank` is never substituted at all).
+     currentMaxes() has already converted that through anchorEquiv(), so the
+     figure is honest to score — but it is a SCALED ESTIMATE and has to say so,
+     the same three-state model testBreakdownHTML() uses. A swap the app cannot
+     re-scale is not reachable on today's library and is refused anyway rather
+     than scored against a benchmark it was never measured on. */
+  {const v=hasBase?num(mx.push):null;
+   const subs=(()=>{try{const q=STATE.baseline&&STATE.baseline.subs;return (q&&typeof q==='object'&&!Array.isArray(q))?q:null;}catch(e){return null;}})();
+   const subId=subs?subs.push:null, subName=(subId&&EX[subId])?EX[subId].name:null;
+   const scaled=!!anchorRescale('push',subs);
+   const noRuler=!!subName&&!scaled;
+   out.push({k:'push', label:'Push-ups', target:'35-45+ strict, continuous',
+     got:v?String(Math.round(v))+' reps':null,
+     gotLabel:v?(noRuler?('your baseline '+subName):(scaled?('scaled from your '+subName):'your baseline max')):null,
+     scored:!noRuler, ok:v!==null&&v>=35, near:v!==null&&v>=28,
+     why:!hasBase?NO_BASE
+        :(noRuler?('The baseline battery measured '+subName+', which is not scored against a push-up target.')
+        :(scaled?('Your wrist flag swapped this test for '+subName+', so this is the push-up equivalent rather than a count you did.'):null))});}
+
+  /* Pull-ups. The battery's `pull` test is Inverted Rows — a different movement,
+     so a real pull-up personal record is the only honest source. */
+  {const pr=(()=>{try{return num(bestFor('pullup'));}catch(e){return null;}})();
+   const row=hasBase?num(mx.pull):null;
+   out.push({k:'pull', label:'Pull-ups', target:'6-10+ strict',
+     got:pr?String(Math.round(pr))+' reps':(row?String(Math.round(row))+' inverted rows':null),
+     gotLabel:pr?'your pull-up record':(row?'your baseline Inverted Rows':null),
+     scored:!!pr, ok:pr!==null&&pr>=6, near:pr!==null&&pr>=4,
+     why:pr?null:(row?'The baseline battery tests Inverted Rows, not pull-ups. Different movement, so it is not scored against this.'
+                     :(hasBase?'Nothing on file for either movement yet.':NO_BASE))});}
+
+  // Plank — the hold tracker, taken fresh, is the measurement this target means
+  {const hold=num((typeof holdBest==='function')?holdBest('plank',true):null);
+   const h=hold||(hasBase?num(mx.plank):null);
+   out.push({k:'plank', label:'Plank', target:'2:00+ controlled',
+     got:h?fmtTime(Math.round(h)):null,
+     gotLabel:h?(hold?'your best fresh hold':'your baseline plank'):null,
+     scored:true, ok:h!==null&&h>=120, near:h!==null&&h>=95,
+     why:h?null:NO_BASE});}
+
+  /* Ruck: the best SINGLE outing, which is what a distance-and-load target
+     means — the weekly total is a different quantity. */
+  {let bestKm=0,bestLb=0;
+   try{const D=STATE.nutrition.days||{};
+     Object.keys(D).forEach(d=>{const t=D[d];const km=_dayRuckKm(t);
+       if(km>bestKm){bestKm=km;bestLb=(typeof t.ruckLb==='number'&&isFinite(t.ruckLb))?t.ruckLb:0;}});
+   }catch(e){}
+   const kg=bestLb?Math.round(bestLb*0.453592):0;
+   out.push({k:'ruck', label:'Ruck', target:'10-12 km at 18-20 kg, brisk walk',
+     got:bestKm>0?(distShow(Math.round(bestKm*10)/10)+(kg?(' at '+kg+' kg'):'')):null,
+     gotLabel:bestKm>0?'your longest single ruck':null,
+     /* Both halves, or the tag lies. `near` on the distance alone called a
+        9 km walk with an EMPTY bag "close" to 10 km under 20 kg — and the
+        load is the half that makes it a ruck. 80% of each. */
+     scored:true, ok:bestKm>=10&&kg>=18, near:bestKm>=8&&kg>=14});}
+
+  /* Training frequency. The target names TWO things and the app can answer
+     both, so it scores both — a row that scored only the sessions called an
+     athlete "on target" while their own logs showed a pain pattern the app was
+     already prompting them about. Asked through painPattern(), never
+     re-derived. */
+  {const n=(typeof sessionsThisWeek==='function')?sessionsThisWeek():0;
+   const ph=(typeof painPattern==='function')?painPattern():null;
+   out.push({k:'freq', label:'Training frequency', target:'5 useful days a week, no persistent pain',
+     got:n+' this week', gotLabel:'sessions logged', scored:true,
+     ok:n>=5&&!ph, near:n>=4&&!ph,
+     why:ph?(ph.n+' sessions where '+ph.region+' work hurt. The frequency is only half this target — flag the joint and keep training around it.'):null});}
+  return out;
+}
+function day90HTML(){
+  const rows=day90Rows().map(r=>{
+    const tag=!r.scored?'<span class="tag muted">not comparable</span>'
+      :(r.got===null?'<span class="tag muted">not measured</span>'
+      :(r.ok?'<span class="tag" style="background:var(--green);color:#000">on target</span>'
+      :(r.near?'<span class="tag" style="background:var(--gold);color:#000">close</span>'
+      :'<span class="tag" style="background:var(--fire)">below</span>')));
+    return `<div class="kv" style="align-items:flex-start" data-d90="${_ve(r.k)}">
+      <span><b>${_ve(r.label)}</b><div class="tiny muted" style="margin-top:2px">${_ve(r.target)}</div>
+        ${r.why?`<div class="tiny muted" style="margin-top:3px">${_ve(r.why)}</div>`:''}</span>
+      <span style="text-align:right"><b>${r.got===null?'—':_ve(r.got)}</b>
+        ${r.gotLabel?`<div class="tiny muted">${_ve(r.gotLabel)}</div>`:''}
+        <div style="margin-top:3px">${tag}</div></span></div>`;}).join('');
+  return `<div class="section-label" style="margin-top:14px">Day-90 targets</div>
+    <div class="note info" data-d90note="1"><b>These are preparation goals, not pass standards.</b>
+      They come from ${_ve(DAY90_SRC)} (${_ve(DAY90_ASOF)}), which says itself that it does not
+      replace CAF orders and that your unit's joining instructions control. Confirm them before you train to them.</div>
+    <div class="card pad">${rows}</div>`;
+}
 function openForcePrep(){
   const wk=forceWeeksLeft();
   const rows=FORCE_EVENTS.map(ev=>{
@@ -5389,7 +5520,7 @@ function openForcePrep(){
     const tag=verdict==='pass'?'<span class="tag" style="background:var(--green);color:#000">meets it</span>'
       :(verdict==='fail'?'<span class="tag" style="background:var(--fire)">short</span>'
       :'<span class="tag muted">not measured</span>');
-    return `<div class="kv" style="align-items:flex-start">
+    return `<div class="kv" style="align-items:flex-start" data-force="${_ve(ev.id)}">
       <span><b>${_ve(ev.name)}</b><div class="tiny muted" style="margin-top:2px">${_ve(ev.detail)}</div></span>
       <span style="text-align:right"><b>${fmtForce(ev,v)}</b>
         <div class="tiny muted">${ev.max===null?'no time limit':'max '+fmtTime(ev.max)}</div>
@@ -5402,6 +5533,7 @@ function openForcePrep(){
       This app has no internet access and cannot check them for you.</div>
     ${wk!==null?`<div class="note fire"><b>${wk>0?wk+' week'+(wk===1?'':'s')+' to go':(wk===0?'This week':'Your test date has passed')}</b>${wk>0?' — that is what the build is paced to.':''}</div>`:''}
     <div class="card pad">${rows}</div>
+    ${day90HTML()}
     ${prepMidHTML()}
     ${prepPathHTML()}
     ${forceKitHTML()}
@@ -6354,14 +6486,26 @@ function painCount(region){
    actually flag in Settings. Only regions with a real joint entry appear. */
 const PAIN_JOINT={shoulders:'shoulder',chest:'shoulder',back:'shoulder',arms:'elbow',
   legs:'knee',glutes:'knee',lowback:'lowback',oblique:'lowback',anterior:'lowback'};
-function painPromptHTML(){
+/* The app's own definition of a persistent pattern — "twice is a pattern, not
+   a bad day" — in ONE place. It was stated inline here and the day-90 board
+   needed the same answer for a target that names it, so a second copy would
+   have been a second place for it to drift. A joint already flagged is
+   excluded: the athlete has adopted the swap and is training around it, which
+   is the opposite of an unaddressed pattern. */
+const PAIN_PATTERN_MIN=2;
+function painPattern(){
   try{
-    const lims=(STATE.profile&&STATE.profile.limitations)||[];
+    const lims=(STATE.profile&&Array.isArray(STATE.profile.limitations))?STATE.profile.limitations:[];
     const hits=Object.keys(PAIN_JOINT)
       .map(r=>({region:r,joint:PAIN_JOINT[r],n:painCount(r)}))
-      .filter(x=>x.n>=2&&!lims.includes(x.joint));
-    if(!hits.length)return '';
-    const h=hits.sort((a,b)=>b.n-a.n)[0];
+      .filter(x=>x.n>=PAIN_PATTERN_MIN&&!lims.includes(x.joint));
+    return hits.length?hits.sort((a,b)=>b.n-a.n)[0]:null;
+  }catch(e){return null;}
+}
+function painPromptHTML(){
+  try{
+    const h=painPattern();
+    if(!h)return '';
     return `<div class="note warn"><b>That is ${h.n} sessions where ${_ve(h.region)} work hurt.</b> Twice is a pattern, not a bad day. Flagging the joint swaps the movements that load it out of every session from here — you keep training, just around it.
       <div class="btnrow" style="margin-top:10px"><button class="btn sm primary" onclick="adoptPainLimit('${h.joint}')">Work around my ${_ve(h.joint)}</button><button class="btn sm ghost" onclick="dismissPain('${h.region}')">It is fine</button></div>
       <div class="tiny muted" style="margin-top:8px">Pain that persists past a couple of weeks is worth a physio, not an app.</div></div>`;
@@ -12432,6 +12576,10 @@ function comebackEaseActive(){return !!(STATE.comeback&&STATE.comeback.left>0);}
    week: the ease armed 26 times in 26 weeks, 51 of his 52 sessions ran at
    sets-1 and target x0.8, and he was told "it's been 6 days" every Saturday.
    At 5 days a week this is still 5; at 2 days a week it is 7. */
+/* The band armComeback() clamps to. The boot repair asks these rather than
+   restating them: a repair that names its own numbers is a second copy of a
+   rule, and this file already records what that costs. */
+const COMEBACK_MIN=2, COMEBACK_MAX=8;
 function comebackGap(){
   const w=(typeof weeklyTarget==='function')?weeklyTarget():5;
   return Math.max(5,Math.round(7/Math.max(1,w))+3);
@@ -12439,7 +12587,7 @@ function comebackGap(){
 function armComeback(){
   const g=daysSinceTrained(),last=lastTrainedISO();
   if(g!=null&&g>=comebackGap()&&last&&(!STATE.comeback||STATE.comeback.trig!==last)){
-    STATE.comeback={left:clamp(Math.round(g/4),2,8),days:g,trig:last};save();
+    STATE.comeback={left:clamp(Math.round(g/4),COMEBACK_MIN,COMEBACK_MAX),days:g,trig:last};save();
   }
 }
 /* Opens-without-training is what week-5 attrition looks like before it looks
@@ -12693,7 +12841,7 @@ function customRiskHTML(){
 }
 function openBuilder(){
   const pool=builderPool();const byReg={};pool.forEach(k=>{const r=EX[k].region;(byReg[r]=byReg[r]||[]).push(k);});
-  const favs=STATE.customFav||[];
+  const favs=(Array.isArray(STATE.customFav)?STATE.customFav:[]).filter(f=>f&&Array.isArray(f.items));
   openSheet(`<h3>🛠️ Custom workout</h3>
     <p class="muted sm" style="margin:2px 0 10px">Tap moves to build your own session. Runs guided; won't affect your program.</p>
     ${_custom.length?`<div class="card pad" style="margin-bottom:10px"><div class="tiny muted" style="margin-bottom:6px">Your session · ${_custom.length} moves</div>${_custom.map(k=>`<div class="kv"><span>${safeSwap(k)!==k?'⚠️ ':''}${EX[k].name}</span><button class="chip" onclick="removeCustom('${k}')">✕</button></div>`).join('')}
@@ -12705,10 +12853,18 @@ function openBuilder(){
     <div style="height:10px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
 }
 function startCustom(){
+  /* The boot repair scrubs customFav, and this is the READ site: _custom is
+     filled from a saved favourite, so a key naming an exercise that no longer
+     exists reached `ex.unit` and threw. Two guards mean two checks. */
+  _custom=_custom.filter(k=>EX[k]);
   if(!_custom.length){toast('Add some moves first');return;}
   const items=_custom.map(k=>{const ex=EX[k];const t=ex.unit==='time'?(ex.base||30):(ex.base||12);return {exId:k,unit:ex.unit,target:t,rest:ex.rest||45,sets:3};});
   closeSheet();openPlayer({items,free:true,title:'Custom Workout',focus:'Your session'});
 }
+/* A favourite is one hand-typed prompt at a time, so the cap is not about the
+   athlete — it is about what an import can carry into every backup after it.
+   Same reason the activity logs are capped. */
+const FAV_MAX=100;
 function saveCustomFav(){
   if(!_custom.length)return;
   const name=prompt('Name this workout','My Workout');if(!name)return;
@@ -12721,8 +12877,10 @@ function saveCustomFav(){
    entirely. Route through the builder — where it renders — whenever there is
    something to say; an unflagged favorite still starts in one tap. */
 function startFav(i){
-  const f=(STATE.customFav||[])[i];if(!f)return;
-  _custom=[...f.items];
+  const favs=Array.isArray(STATE.customFav)?STATE.customFav:[];
+  const f=favs[i];if(!f||!Array.isArray(f.items))return;
+  _custom=f.items.filter(k=>EX[k]);
+  if(!_custom.length){toast('That favorite has no moves left');return;}
   if(_custom.some(k=>EX[k]&&safeSwap(k)!==k)){openBuilder();return;}
   startCustom();
 }
@@ -20491,6 +20649,62 @@ function normalizeState(){
      the container's real shape, not just that it is an object. */
   if(!STATE.logs||typeof STATE.logs!=='object'||Array.isArray(STATE.logs))STATE.logs={};
   if(!STATE.prs||typeof STATE.prs!=='object'||Array.isArray(STATE.prs))STATE.prs={};
+  /* Eight top-level fields are created ON DEMAND rather than declared in
+     DEFAULT_STATE, so every fuzz sweep that enumerated DEFAULT_STATE's keys
+     walked straight past them and none had a repair. importData() accepts
+     arbitrary JSON, so "not declared" is not "not reachable". Measured:
+
+       opsPR as an ARRAY  — `arr['sprintdrag']=42` reads back 42 in memory and
+         JSON.stringify gives `[]`, so the personal record is silently LOST on
+         every save. The v284 keyed-map-as-a-list defect, on a field that
+         sweep could not see.
+       customFav junk     — openBuilder() THREW on a string and on a row with
+         no items, so the custom builder was a dead button with nothing on
+         screen saying why; a row naming an exercise that does not exist threw
+         inside startCustom() instead.
+       comeback.left      — armComeback() clamps to COMEBACK_MIN..COMEBACK_MAX
+         and the repair never checked, so a stored 99999 eased every session
+         by target x0.8 and sets-1 FOR EVER: measured still 99,949 to go after
+         fifty sessions, with nothing on screen to explain the lighter work.
+         The v286 `adapt` shape — a type test where a BAND was enforced by the
+         only writer.
+
+     A row is dropped rather than guessed at, and the whole comeback is
+     dropped rather than clamped, because both are courtesies rather than
+     records: the worst a delete costs is an ease the athlete never asked for.
+     A favourite is NOT dropped for one bad move — the names are hand-typed
+     and the rest of the list is real work. */
+  /* ABSENT STAYS ABSENT. Creating this container unconditionally buys nothing
+     — opBest() guards its own read and the writer creates it — and costs two
+     things: an empty object in every backup from then on, and, because boot
+     flags _dataRepaired on ANY diff across normalizeState(), a "we repaired
+     your data" note shown to every athlete who has never run an ops challenge,
+     about nothing. Measured: `opsPR` was the one key that appeared out of
+     nowhere on an otherwise clean athlete. */
+  if(STATE.opsPR!==undefined){
+    if(!STATE.opsPR||typeof STATE.opsPR!=='object'||Array.isArray(STATE.opsPR))STATE.opsPR={};
+    Object.keys(STATE.opsPR).forEach(k=>{const v=STATE.opsPR[k];
+      if(!(typeof v==='number'&&isFinite(v)&&v>0))delete STATE.opsPR[k];});
+  }
+  {const c=STATE.comeback;
+   const okC=c&&typeof c==='object'&&!Array.isArray(c)
+     &&typeof c.left==='number'&&isFinite(c.left)
+     &&c.left>=1&&c.left<=COMEBACK_MAX&&c.left===Math.round(c.left);
+   if(c!==undefined&&!okC)delete STATE.comeback;}
+  if(STATE.customFav!==undefined){
+    if(!Array.isArray(STATE.customFav))delete STATE.customFav;
+    else{
+      STATE.customFav=STATE.customFav.map(f=>{
+        if(!f||typeof f!=='object'||Array.isArray(f))return null;
+        const items=(Array.isArray(f.items)?f.items:[]).filter(k=>typeof k==='string'&&EX[k]);
+        if(!items.length)return null;
+        return {name:(typeof f.name==='string'&&f.name)?f.name.slice(0,40):'Saved workout',items};
+      }).filter(Boolean).slice(0,FAV_MAX);
+    }
+  }
+  ['_saved','_remindedOn','_weeklyPrepWeek','_weeklyRemindedWeek'].forEach(k=>{
+    if(STATE[k]!==undefined&&typeof STATE[k]!=='string')delete STATE[k];});
+  if(STATE._savedAt!==undefined&&!(typeof STATE._savedAt==='number'&&isFinite(STATE._savedAt)))delete STATE._savedAt;
   /* The selection-prep block. It describes the athlete's GOAL — the standard
      they are training for, the date, and what they have measured — so it
      belongs in a backup and is deliberately NOT in TRANSIENT_KEYS.

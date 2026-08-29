@@ -6345,6 +6345,242 @@ export default async function () {
     }
   }
 
+
+  /* ---- v389: the day-90 board, and the two rows it refuses to score --------
+     From the athlete's own Reserve Infantry preparation package. They are
+     ADVISORY preparation goals, not CAF pass standards — the package says so
+     itself — so the board carries that on the glass, stamped, the same way
+     FORCE_ASOF is.
+
+     TWO OF THE SIX CANNOT BE SCORED HONESTLY. The package wants a 5 km time and
+     this app measures a 2.4 km time trial; it wants strict pull-ups and the
+     baseline battery tests INVERTED ROWS, a different movement at a different
+     benchmark (20 rows against 6-10 pull-ups). Scoring either would be the
+     change-of-ruler defect v320 and v321 exist to stop. They show what was
+     actually measured, name it, and leave the target unscored. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {}, ce = console.error;
+      console.error = () => {};
+      try {
+        const iso = d => { const x = new Date(d); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+        const DAY = 86400000;
+        const keep = { base: STATE.baseline, hold: STATE.holdLog, days: STATE.nutrition.days, prs: STATE.prs };
+
+        // an athlete with a baseline but no pull-up record and no time trial
+        STATE.prs = {}; STATE.holdLog = []; STATE.nutrition.days = {};
+        delete STATE.prep.ttBest;
+        const byK = rows => { const m = {}; rows.forEach(x => m[x.k] = x); return m; };
+        out.bare = byK(day90Rows());
+
+        // now a real one
+        STATE.holdLog = [{ date: iso(new Date()), id: 'plank', secs: 135, fresh: true, exId: 'plank', at: Date.now() }];
+        STATE.nutrition.days[iso(new Date(Date.now() - 3 * DAY))] =
+          { opened: true, ruckVal: 11, ruckUnit: 'dist', ruckLvl: 'brisk', ruckLb: 45 };
+        STATE.prs = { pullup: 8 };
+        normalizeState();
+        out.full = byK(day90Rows());
+        // the app's OWN figures, so the checks do not restate numbers
+        out.want = { push: (currentMaxes() || {}).push,
+                     ruckShown: distShow(11), imperial: isImperial() };
+
+        /* The ruck target is a distance AND a load. `near` on the distance
+           alone called a 9 km walk with an EMPTY bag "close" to 10 km under
+           20 kg, and the load is the half that makes it a ruck. */
+        const keepDays = STATE.nutrition.days;
+        STATE.nutrition.days = {};
+        STATE.nutrition.days[iso(new Date(Date.now() - 4 * DAY))] =
+          { opened: true, ruckVal: 9, ruckUnit: 'dist', ruckLvl: 'brisk', ruckLb: 0 };
+        out.unloaded = byK(day90Rows()).ruck;
+        STATE.nutrition.days = keepDays;
+
+        /* THE PUSH ROW'S OWN RULER. A flagged wrist swaps this test for Fist
+           Push-Ups — measured as the ONLY substitution reachable on any of the
+           six rows (plank is never substituted at all). currentMaxes() has
+           converted it, so it is honest to score and dishonest to call it a
+           count the athlete did. */
+        const keepLims = STATE.profile.limitations;
+        STATE.profile.limitations = ['wrist'];
+        const wSubs = assessSubs();
+        out.pushSubs = { sub: wSubs.push, rescale: anchorRescale('push', wSubs) };
+        STATE.baseline.subs = wSubs;
+        out.pushScaled = byK(day90Rows()).push;
+        /* The third state — substituted and NOT re-scalable — cannot be reached
+           on today's library, so it is exercised DIRECTLY rather than recorded
+           as equivalent: a swap the app declines to convert must not be scored
+           against a benchmark it was never measured on. */
+        STATE.baseline.subs = { push: 'plank' };
+        out.pushNoRuler = byK(day90Rows()).push;
+        out.noRulerRescale = anchorRescale('push', { push: 'plank' });
+        STATE.baseline.subs = {};
+        STATE.profile.limitations = keepLims;
+        out.pushPlain = byK(day90Rows()).push;
+
+        /* The frequency target names TWO things — five days AND no persistent
+           pain — and the app can answer both. Scoring only the sessions called
+           an athlete "on target" while their own logs showed a pattern the app
+           was already prompting them about. */
+        const keepPain = STATE.pain, keepLogs = STATE.logs;
+        STATE.pain = []; STATE.logs = keepLogs;
+        const wk = weekStartD(new Date());
+        for (let d = 0; d < 5; d++) {
+          const day = new Date(wk.getTime() + d * DAY);
+          if (day > new Date()) break;
+          STATE.logs[900 + d] = { done: true, completedAt: iso(day), ex: {} };
+        }
+        out.freqClean = byK(day90Rows()).freq;
+        for (let k = 0; k < 3; k++) STATE.pain.push({ region: 'shoulders', date: iso(new Date(Date.now() - k * DAY)), ptr: 900 + k });
+        out.painN = painCount('shoulders');
+        out.freqPain = byK(day90Rows()).freq;
+        // FLOOR: a joint the athlete has already flagged is not an unaddressed pattern
+        STATE.profile.limitations = ['shoulder'];
+        out.freqAdopted = byK(day90Rows()).freq;
+        STATE.profile.limitations = keepLims;
+        STATE.pain = keepPain;
+        for (let d = 0; d < 5; d++) delete STATE.logs[900 + d];
+
+        /* A BRAND-NEW ATHLETE. currentMaxes() runs estimateMaxes(), which fills
+           in starting ASSUMPTIONS with no baseline on file — so the board read
+           "8 reps · your baseline max" and "40s · your best fresh hold" for
+           tests never taken, and marked them below the target. A default
+           presented as a measurement (v260), on the one board whose job is to
+           say what has been measured. */
+        const keepBase = STATE.baseline, keepHold = STATE.holdLog, keepPrs = STATE.prs;
+        STATE.baseline = null; STATE.holdLog = []; STATE.prs = {};
+        out.fresh = byK(day90Rows());
+        out.freshMx = { push: (currentMaxes() || {}).push, plank: (currentMaxes() || {}).plank };
+        /* FLOOR: a real pull-up record is a MEASUREMENT, not a default, so it
+           survives having no baseline — otherwise "blank when fresh" would be
+           satisfied by a board that blanks a number the athlete really set. */
+        STATE.prs = { pullup: 8 };
+        out.freshWithPR = byK(day90Rows()).pull;
+        /* And the plank row NAMES whichever source its number came from: the
+           hold tracker when there is a fresh hold, the baseline otherwise.
+           One label for both is the same lie in one word. */
+        STATE.baseline = keepBase; STATE.holdLog = []; STATE.prs = keepPrs;
+        out.plankFromBase = byK(day90Rows()).plank;
+        STATE.holdLog = keepHold;
+        out.plankFromHold = byK(day90Rows()).plank;
+
+        openForcePrep();
+        const sh = document.querySelector('#sheet');
+        const html = sh ? sh.innerHTML : '', txt = sh ? sh.textContent.replace(/\s+/g, ' ') : '';
+        out.sheet = { rows: (html.match(/data-d90=/g) || []).length,
+                      caveat: /preparation goals, not pass standards/i.test(txt),
+                      /* Scoped to the board's OWN note. FORCE_ASOF and COMBAT_ASOF
+                         are the same string and already print on this sheet, so a
+                         page-wide indexOf was satisfied by a stamp that was never in
+                         question — the mutant dropping this one escaped clean. */
+                      noteFound: !!sh.querySelector('[data-d90note]'),
+                      stamped: !!sh.querySelector('[data-d90note]') &&
+                               sh.querySelector('[data-d90note]').textContent.indexOf(DAY90_ASOF) >= 0,
+                      notComparable: (txt.match(/not comparable/g) || []).length,
+                      nan: /\bNaN\b/.test(txt), undef: /\bundefined\b/.test(txt) };
+        closeSheet();
+
+        STATE.baseline = keep.base; STATE.holdLog = keep.hold;
+        STATE.nutrition.days = keep.days; STATE.prs = keep.prs; save();
+      } catch (e) { out.threw = String(e && e.message || e); }
+      console.error = ce;
+      return out;
+    });
+
+    t.ok('guard: the board built without throwing', !r.threw, r.threw || '');
+    if (!r.threw) {
+      t.eq('the board renders every target', r.sheet.rows, 6);
+      t.ok('guard: the board’s own caveat note was found to scope the stamp to',
+        r.sheet.noteFound, JSON.stringify(r.sheet));
+      t.ok('with the advisory caveat and its date on the glass',
+        r.sheet.caveat && r.sheet.stamped, JSON.stringify(r.sheet));
+      t.ok('and no broken figures', !r.sheet.nan && !r.sheet.undef, JSON.stringify(r.sheet));
+
+      /* THE TWO IT REFUSES TO SCORE. A board that scored these would report a
+         2.4 km time against a 5 km target, and inverted rows against pull-ups. */
+      t.ok('the 5 km row is never scored — the app measures a different distance',
+        r.bare.run.scored === false && r.full.run.scored === false, JSON.stringify(r.bare.run));
+      t.ok('and it says which distance it does measure',
+        /time trial/i.test(r.bare.run.why || ''), r.bare.run.why);
+      t.ok('inverted rows are not scored against a pull-up target',
+        r.bare.pull.scored === false, JSON.stringify(r.bare.pull));
+      t.ok('and the row names the movement that was actually tested',
+        /Inverted Rows/i.test(r.bare.pull.why || ''), r.bare.pull.why);
+      /* FLOOR: a REAL pull-up record is scored — a row that never scores is not
+         a target, it is a label. */
+      t.ok('a real pull-up record IS scored',
+        r.full.pull.scored === true && r.full.pull.ok === true, JSON.stringify(r.full.pull));
+
+      // the rows that read real measurements
+      t.ok('the plank reads the hold tracker, not the baseline',
+        r.full.plank.got === '2:15', JSON.stringify(r.full.plank));
+      /* Pinned against what the app itself renders, not against the raw km: an
+         imperial athlete correctly sees 6.8 mi for an 11 km ruck, and a check
+         restating "11" fails on correct code. The load stays in kg either way,
+         which is how the package states it. */
+      t.ok('the ruck reads the longest single outing, converted to the athlete’s unit',
+        (r.full.ruck.got || '').indexOf(r.want.ruckShown) === 0,
+        JSON.stringify({ got: r.full.ruck.got, want: r.want.ruckShown, imperial: r.want.imperial }));
+      t.ok('a long walk with an empty bag is not “close” to a loaded ruck',
+        r.unloaded.near === false && r.unloaded.ok === false, JSON.stringify(r.unloaded));
+      t.ok('and names the load it was carried under',
+        /20 kg/.test(r.full.ruck.got || ''), JSON.stringify(r.full.ruck));
+      /* The guard is what makes this a real check: estimateMaxes() must still be
+         handing out a number, or "the board shows nothing" passes on nothing. */
+      t.ok('guard: with no baseline the app still has starting assumptions to leak',
+        r.freshMx.push > 0 && r.freshMx.plank > 0, JSON.stringify(r.freshMx));
+      t.ok('a brand-new athlete is told nothing is measured, not given the defaults',
+        r.fresh.push.got === null && r.fresh.plank.got === null && r.fresh.pull.got === null,
+        JSON.stringify({ push: r.fresh.push, plank: r.fresh.plank, pull: r.fresh.pull }));
+      t.ok('and each blank row says why it is blank',
+        /baseline test/i.test(r.fresh.push.why || '') && /baseline test/i.test(r.fresh.plank.why || ''),
+        JSON.stringify({ push: r.fresh.push.why, plank: r.fresh.plank.why }));
+      /* FLOOR: a measured zero is still data. Sessions this week is a real
+         count, so it reports 0 rather than going blank with the rest. */
+      t.ok('the plank row names the baseline when that is where its number came from',
+        r.plankFromBase.got !== null && r.plankFromBase.gotLabel === 'your baseline plank',
+        JSON.stringify(r.plankFromBase));
+      t.ok('and names the hold tracker when a real fresh hold exists',
+        r.plankFromHold.gotLabel === 'your best fresh hold', JSON.stringify(r.plankFromHold));
+      t.ok('while a real pull-up record survives with no baseline — it is a measurement',
+        r.freshWithPR.got === '8 reps' && r.freshWithPR.scored === true, JSON.stringify(r.freshWithPR));
+      t.ok('while a genuine zero is still reported as a zero',
+        r.fresh.freq.got === '0 this week' && !r.fresh.freq.why, JSON.stringify(r.fresh.freq));
+      t.ok('guard: a flagged wrist really does swap the push test, and the app re-scales it',
+        r.pushSubs.sub === 'fistpushup' && r.pushSubs.rescale > 0, JSON.stringify(r.pushSubs));
+      t.ok('a scaled push figure says it was scaled and names the movement performed',
+        r.pushScaled.scored === true && /Fist Push-Up/.test(r.pushScaled.gotLabel || '')
+          && /Fist Push-Up/.test(r.pushScaled.why || ''), JSON.stringify(r.pushScaled));
+      t.ok('guard: the unconvertible swap really is one the app declines to re-scale',
+        r.noRulerRescale === 0, r.noRulerRescale);
+      t.ok('and a swap the app cannot re-scale is not scored against the push-up target',
+        r.pushNoRuler.scored === false && /not scored/.test(r.pushNoRuler.why || ''),
+        JSON.stringify(r.pushNoRuler));
+      /* FLOOR: an athlete with no flag is told nothing at all — a note that
+         always fires is a note nobody reads. */
+      t.ok('while an unswapped push test carries no explanation and is scored',
+        r.pushPlain.scored === true && !r.pushPlain.why
+          && r.pushPlain.gotLabel === 'your baseline max', JSON.stringify(r.pushPlain));
+      t.ok('guard: the pain pattern the app itself would prompt about was really built',
+        r.painN >= 2, JSON.stringify({ n: r.painN, freq: r.freqPain }));
+      t.ok('a week of sessions with no pain pattern meets the frequency target',
+        r.freqClean.ok === true && !r.freqClean.why, JSON.stringify(r.freqClean));
+      t.ok('but the same week is not "on target" while a pain pattern stands',
+        r.freqPain.ok === false && r.freqPain.near === false && /hurt/.test(r.freqPain.why || ''),
+        JSON.stringify(r.freqPain));
+      /* FLOOR: flagging the joint IS the fix, so an athlete training around one
+         is not held short by it — otherwise the row would punish the athlete
+         for doing the thing the app asked them to do. */
+      t.ok('while an athlete who has flagged that joint is on target again',
+        r.freqAdopted.ok === true && !r.freqAdopted.why, JSON.stringify(r.freqAdopted));
+      t.ok('push-ups read the baseline max',
+        (r.full.push.got || '') === Math.round(r.want.push) + ' reps',
+        JSON.stringify({ got: r.full.push.got, baseline: r.want.push }));
+
+      // FLOOR — nothing measured says so rather than scoring a zero as "below"
+      t.ok('an unmeasured row shows no figure at all',
+        r.bare.ruck.got === null, JSON.stringify(r.bare.ruck));
+    }
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

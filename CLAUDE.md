@@ -8509,6 +8509,293 @@ comments first now, with a guard that the stripper has not simply deleted
 everything.
 
 
+## A target board that scores four rows and refuses two (v389)
+
+From a Reserve Infantry preparation package the athlete sent over. The first
+question was whether it deserved a tab, and the measurement said no: about 60%
+of what it describes was already built — the FORCE events, the ruck ladder, the
+running plan, the phase model — and a seventh bottom tab was measured at
+**59px against the 71px a word needs** back in v312. Two sources of truth for
+one standard is this repo's most-repeated drift, so it went **inside** the prep
+sheet the athlete already opens.
+
+**THE ROW THAT REFUSES TO SCORE IS THE POINT OF THE BOARD.** Six targets, and
+two of them are measured by this app with a different ruler:
+
+| target | the app measures | scored |
+|---|---|---|
+| 5 km run | a shorter time trial (`runTTLabel()`) | **no** |
+| Pull-ups | Inverted Rows (the `pull` test) | **no**, unless a real pull-up record exists |
+| Push-ups | push-ups | yes |
+| Plank | the fresh hold best | yes |
+| Ruck | the longest single outing | yes |
+| Frequency | sessions this week | yes |
+
+Converting either would be the change-of-ruler defect v320 and v321 exist to
+stop — a number taken on one movement, printed under another movement's name.
+An inverted row is not a pull-up and 2.4 km is not 5 km. **A withheld score
+needs a sentence**, so each of those two rows says which movement or distance
+the app actually measured and why the comparison is not made. The inverted-row
+figure is still SHOWN: it is a real number, and hiding it would punish the
+athlete for the app testing a different movement.
+
+**A real `STATE.prs.pullup` record IS scored**, and that floor is what stops
+the fix being "never score the hard rows" — the mutant that scores nothing at
+all is caught by it.
+
+**The best SINGLE ruck, not the weekly total.** "10-12 km at 18-20 kg" is a
+statement about one outing; summing a week to meet it would report a target met
+by three short walks. And the distance goes through `distShow()` — the v337
+lesson, where a plan printed `8 km` as `8 mi` because the label and the number
+were two expressions.
+
+**The caveat is on the glass and stamped.** The package says itself that it
+does not replace CAF orders and that joining instructions control, so the board
+says exactly that and carries `DAY90_ASOF`. Same discipline as `FORCE_ASOF` and
+`COMBAT_ASOF`: a published figure is a fact with a date on it, and one shown
+with confidence a year stale is worse than none, because the athlete trains to
+it.
+
+### Adding to a shared sheet broke four checks that were reading the whole page
+
+Every one is a trap already in this file, and all four were the CHECK:
+
+- **Two "not measured" counts were page-wide.** The board legitimately renders
+  its own `not measured` tags, so counting them across `#sheet` reported six
+  where four was correct. Scoped to `#sheet [data-force]`, with a guard that
+  the four event rows were really found. *Scope the assertion to where the
+  change was made* — the v267 warning icon, again.
+- **A label count was pinned at exactly 3.** The board adds a fifth call to the
+  same label helper, so `t.eq(...,3)` failed on correct code. The requirement
+  was always *at least* three.
+- **My own comment contained the literal `2.4 km time trial`**, which v331's
+  hardcoded-distance scan counts. Reword the prose, never weaken the check —
+  the fifth time.
+
+## The fields DEFAULT_STATE never declares (v390)
+
+v285 fuzzed *"all 33 top-level fields"* and v284 before it fixed `logs` and
+`prs`. Both enumerated **`Object.keys(DEFAULT_STATE())`** — and eight top-level
+fields are created **on demand** rather than declared there, so two separate
+class sweeps walked straight past every one of them and **none had a repair**.
+
+`importData()` accepts arbitrary JSON. **"Not declared" is not "not
+reachable."**
+
+| field | measured before the fix |
+|---|---|
+| `opsPR` as an ARRAY | `arr['sprintdrag']=42` reads back **42** in memory and `JSON.stringify` gives **`[]`** — the personal record is silently **lost on every save** |
+| `customFav` junk | `openBuilder()` **threw** on a string and on a row with no `items`, so the custom builder was a **dead button** with nothing on screen saying why |
+| `customFav` naming a missing exercise | threw inside `startCustom()` on `ex.unit` — the tap did nothing |
+| `comeback.left` | a stored **99999** eased every session by `target x0.8` and `sets-1` **for ever** — still **99,949 to go after fifty sessions** |
+
+The `opsPR` one is the v284 keyed-map-as-a-list defect exactly, on a field that
+sweep could not see. The `comeback` one is the v286 `adapt` shape: **a band
+that only the writer enforced** — `armComeback()` clamps to 2..8 and the repair
+never checked — so the repair now asks `COMEBACK_MIN`/`COMEBACK_MAX` rather
+than restating them.
+
+**A courtesy is dropped; a record is repaired.** The whole `comeback` goes
+rather than being clamped, because the worst a delete costs is an ease the
+athlete never asked for. A favourites list is **not** dropped for one bad move:
+the names are hand-typed and the rest of the list is real work, so the bad
+move goes and the favourite stays. Both over-eager twins fail their own floor.
+
+**Two guards mean two checks — and the second one hid the first.** `startFav()`
+also filters to real exercises, and its check runs with the boot repair
+deliberately **not** run. It still **escaped**, because `startCustom()` carries
+its own filter one function later: with `startFav()`'s guard reverted the junk
+key is stripped there and **nothing throws either way**, so a check asking only
+whether it survived proved nothing. What differs is what the athlete is TOLD —
+*"that favorite has no moves left"* names the favourite, while
+`startCustom()`'s *"add some moves first"* points at a builder they are not
+looking at. **Assert the message, not the absence of a throw.** Same family as
+v380's clamp hidden by its neighbour: a guard is only visible when the value
+beside it cannot supply the answer.
+
+**And the board reads the pull-up record through `bestFor()`**, the app's own
+accessor with its own type guard, rather than reaching into `STATE.prs`
+directly. Found by auditing v389 an hour after writing it: re-deriving a read
+the app already owns is the same mistake as a probe that bypasses
+`jointRisky()`.
+
+### Absent stays absent, or every athlete is told their data was repaired
+
+Caught by auditing my own repair before it shipped. The first version created
+`opsPR` unconditionally, which buys nothing — `opBest()` guards its own read and
+the writer creates it — and costs two things. It puts an empty object in every
+backup from then on; and boot flags `_dataRepaired` on **any** diff across
+`normalizeState()`, so the first launch after this shipped would have shown a
+*"we repaired your data"* note to **every athlete who has never run an ops
+challenge**, about nothing.
+
+Measured by diffing a settled state either side of the repair: `opsPR` was the
+one key that appeared out of nowhere. `comeback` and `customFav` were already
+guarded with `!== undefined`; this one was not.
+
+**The wider question was then measured rather than assumed: does the note fire
+spuriously today?** No. A returning athlete on the same version diffs to
+**nothing**, and 33 containers are created only when genuinely absent — which
+for a returning athlete they are not. A one-time diff on the first launch after
+an upgrade is exactly what the note is for; what `opsPR` would have added was a
+diff on that launch for *every* athlete, over a field none of them use.
+
+So the invariant is pinned rather than the instance: **`normalizeState()` leaves
+a settled state alone.** A repair that changes it fires the note on every boot,
+for ever, for everybody — which is the worst version of this and the one no
+per-field check would catch.
+
+**And the check for it had to settle the state first.** Its first version ran
+where earlier blocks in the same page had left junk in `STATE`, so the second
+`normalizeState()` legitimately changed something and the check failed on
+correct code. It reports WHAT appeared and what moved, so a failure says which.
+
+### The check is derived from the source, because the hand-written list is what failed
+
+The existing class check walks a **hand-written list of twelve maps**. That list
+is exactly what let these eight through. The new one reads the app's own script
+in the page, takes every `STATE.x=` assignment plus every `DEFAULT_STATE` key,
+subtracts what `normalizeState()`'s body mentions, and requires the remainder to
+be empty — so the **ninth** on-demand field fails here the day it is added.
+
+**The detector is asserted BOTH ways**, or an empty gap list proves nothing: a
+field known to be repaired must report repaired, and a field that does not exist
+must report unrepaired. Plus the v331 guard — **the first inline `<script>` on
+this page is two characters long**, and reading it reports every field as
+unrepaired.
+
+**One documented exception, on an allowlist checked both directions.**
+`version` is declared and has **no reader anywhere in the app**, so a repair for
+it is padding — the call v285 already made and wrote down. It is listed rather
+than quietly excluded, and a second check fails if anything on the list later
+gains a repair, so nobody sits on it for ever.
+
+### Auditing v389 an hour later found two more, both mine
+
+For the sixth round running the best finding was in the round immediately
+before. Both are rules already in this file, applied to two of the six rows and
+not to a third:
+
+- **The push row printed a scaled estimate as a measurement.** A flagged
+  **wrist** swaps that battery test for Fist Push-Ups, and `currentMaxes()`
+  converts it through `anchorEquiv()` — so the figure is honest to score and
+  dishonest to call *"your baseline max"*. A derived number that stopped being
+  visibly derived, which is v304 exactly. It now says *"scaled from your Fist
+  Push-Up"*, the same three-state model `testBreakdownHTML()` already uses, and
+  the third state — a swap the app declines to convert — is refused rather than
+  scored.
+
+  **Measured rather than assumed, and the measurement narrowed the fix.** Eight
+  joints against ten tests: `push` is substituted by **wrist alone**, and
+  `plank` is **never substituted at all** — so the plank row needed nothing.
+  The unconvertible state is unreachable on today's library, so it is
+  **exercised directly** in the check rather than recorded as equivalent.
+
+- **The ruck "close" tag ignored the load.** `near: bestKm>=8` called a **9 km
+  walk with an empty bag** close to *10-12 km at 18-20 kg* — and the load is
+  the half that makes it a ruck. Both halves now, at 80% each.
+
+- **And the same shape a third time, found by applying that lesson to the other
+  rows.** The frequency target reads *"5 useful days a week, **no persistent
+  pain**"* and the row scored the days alone — so an athlete was called *on
+  target* while their own logs carried a pain pattern the app was, on another
+  screen, already prompting them about. The app's own rule — *"twice is a
+  pattern, not a bad day"* — was stated inline inside `painPromptHTML()`, so it
+  is hoisted to `painPattern()` and both ask it rather than a second copy
+  drifting. **A joint the athlete has already FLAGGED is not an unaddressed
+  pattern**: adopting the swap is the fix, and a row that kept punishing them
+  for it would punish the athlete for doing what the app asked.
+
+**A target that names two things is scored on two things, or the tag lies.**
+That is the rule the three of them share, and it is worth stating once.
+
+### And a brand-new athlete was shown the app's own assumptions as their results
+
+Found by driving the board with **nothing on file** — the state every probe so
+far had skipped, because they all seeded an athlete first. `currentMaxes()`
+runs `estimateMaxes()`, which fills in **starting assumptions** when no
+baseline exists, so the board read:
+
+> **Push-ups — 8 reps · your baseline max · below**
+> **Plank — 40s · your best fresh hold · below**
+
+for tests the athlete had **never taken**, and marked them short of the target
+on it. The plank row was two lies in one: the number came from the baseline
+defaults and the label named the hold tracker.
+
+**A default presented as a measurement** is the defect v260 named, and this is
+the worst place in the app for it — the board's entire job is to say what has
+been measured against a standard. Absent is *not measured*, which is not
+*failed*, exactly as `forceVerdict()` already answers for an unlogged event.
+Each blank row now says why it is blank and what fills it in.
+
+**Three floors keep it from becoming "show nothing".** A **guard** asserts
+`estimateMaxes()` really is still handing out a number, or "the board shows
+nothing" passes on nothing. A **measured zero is still data** — sessions this
+week reports `0`, it does not go blank with the rest. And a **real pull-up
+record survives having no baseline**, because it is a measurement rather than a
+default: without that floor, a board that blanked a number the athlete really
+set would pass every assertion above.
+
+### Two sweeps that came back clean, recorded as coverage
+
+- **The prep surfaces at legal extremes.** The military-prep code is the newest
+  in the app (v322-v341, v381-v389) and had never been driven at the edges. 48
+  combinations — three bodies (45 kg / 140 cm / age 70, 150 kg / 200 cm / age
+  17, and an ordinary athlete), eight test dates from tomorrow to four years
+  **past**, both prep paths — across eight sheets plus Today and Progress, and
+  both plan builders. **Zero NaN, zero Infinity, zero absurd figures, zero
+  throws.** The guard that made it worth running: every sheet name is asserted
+  to be a real function first. The first pass reported 40 failures and all of
+  them were one invented name, `openEndurancePlan`, drowning everything else —
+  the real one is `openEndurance`.
+- **No duplicate live element id anywhere.** Four ids appear twice in the
+  SOURCE (`mealplan`, `plCoach`, `plLiftPanel`, `plToggle`), which is the class
+  this file records as a long-running source of stale elements shadowing live
+  ones. Measured across 33 surfaces — six tabs, all four Today panes, all four
+  Progress panes, both Reference panes, fifteen sheets and the player's ready,
+  work and rest phases: **zero**. Only one of each pair is ever mounted.
+
+  **And the first run of that sweep proved nothing.** It reported zero with a
+  detector that could not see a duplicate at all — the id it injected,
+  `view-today`, does not exist; the real one is `v-today`. A clean sweep with
+  no both-ways guard on its own detector is not a result. Fixed, the detector
+  sees the injected duplicate and the zero stands.
+- **The board at its widest.** Six rows each carrying their longest
+  explanation — a fresh athlete with a flagged wrist, so every row has a note —
+  at 320, 360 and 412px in both themes: **no element past the viewport, no
+  horizontal body scroll**, 36 renders.
+- **The custom builder driven end to end**, through real taps rather than by
+  poking `_custom` — which is what v355's probe did, with invented function
+  names. Three chips tapped, saved as a favourite through its own button,
+  started through its own button: 3 moves, `free:true`, a live program
+  `_plResume` **untouched**, the pointer unmoved and no log written (a bonus
+  session does not consume a program session), and the favourite survives a
+  boot. One reading was the probe: the session's name lives at
+  `PLAYER.sess.session.name`, not `PLAYER.title`.
+- **`save()` under a full phone.** Already handled and worth recording rather
+  than re-fixing: a quota failure sets `_lsOk=false`, warns once, and `load()`
+  then picks whichever copy is genuinely **newer** rather than preferring
+  localStorage — both behaviours carry comments explaining the defect they were
+  written for.
+
+**Twenty-four mutants across v389 and v390, all caught** — after three checks
+were rewritten. Two are recorded above: the stamp satisfied by a stamp that was
+never in question, and the two guards that masked each other so nothing threw
+either way. The third is below. Every fix has its over-eager twin seeded beside
+it, and each of those is caught by a floor rather than by the check the fix was
+written for — the defaults leaking back in is caught by one check, and *no
+athlete ever having a baseline* by a different one.
+
+### And the v389 stamp check was satisfied by a stamp that was never in question
+
+The mutant dropping `DAY90_ASOF` from the board **escaped**. `FORCE_ASOF`,
+`COMBAT_ASOF` and `DAY90_ASOF` are all the string `August 2026`, and the FORCE
+card prints its own on the same sheet — so a page-wide `indexOf` passed with the
+board's stamp deleted. The board's caveat note now carries `data-d90note` and
+the check reads that element. **Scope the assertion to where the change was
+made** — the third page-wide match in two rounds.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

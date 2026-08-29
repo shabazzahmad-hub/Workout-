@@ -283,6 +283,13 @@ export default async function run() {
       ];
       const o = { count: painCount('shoulders'), prompt: painPromptHTML() };
       o.offers = /Work around my shoulder/.test(o.prompt);
+      /* The copy NAMES the threshold — "Twice is a pattern, not a bad day" —
+         so the word and the constant are two copies of one number. The rule
+         itself now lives in painPattern(), read by the prompt and by the
+         day-90 board; raising PAIN_PATTERN_MIN without rewriting the sentence
+         would leave the screen claiming something the code no longer does. */
+      o.min = PAIN_PATTERN_MIN;
+      o.copySaysTwice = /Twice is a pattern/.test(o.prompt);
       // one report is a bad day, not a pattern
       STATE.pain = [{ exId: 'dips', region: 'shoulders', date: iso(1), ptr: 2 }];
       o.singleReportSilent = painPromptHTML() === '';
@@ -302,6 +309,9 @@ export default async function run() {
     });
     t.eq('two separate sessions is a pattern', pattern.count, 2);
     t.ok('and the app offers to work around the joint', pattern.offers, pattern);
+    t.ok('and the sentence naming the threshold still matches the constant behind it',
+      pattern.min === 2 && pattern.copySaysTwice === true,
+      JSON.stringify({ min: pattern.min, saysTwice: pattern.copySaysTwice }));
     t.ok('one report stays quiet', pattern.singleReportSilent, pattern);
     t.ok('twice in one session is still one session', pattern.sameSessionCountsOnce, pattern);
     t.ok('reports from months ago do not count', pattern.oldIgnored, pattern);
