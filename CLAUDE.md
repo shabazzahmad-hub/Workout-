@@ -8779,10 +8779,13 @@ set would pass every assertion above.
   localStorage — both behaviours carry comments explaining the defect they were
   written for.
 
-**Three checks had to be rewritten before the mutants were caught.** Two are
-recorded above — the stamp satisfied by a stamp that was never in question, and
-the two guards that masked each other so nothing threw either way. The third is
-below.
+**Twenty-four mutants across v389 and v390, all caught** — after three checks
+were rewritten. Two are recorded above: the stamp satisfied by a stamp that was
+never in question, and the two guards that masked each other so nothing threw
+either way. The third is below. Every fix has its over-eager twin seeded beside
+it, and each of those is caught by a floor rather than by the check the fix was
+written for — the defaults leaking back in is caught by one check, and *no
+athlete ever having a baseline* by a different one.
 
 ### And the v389 stamp check was satisfied by a stamp that was never in question
 
