@@ -7503,6 +7503,77 @@ paused player must stay paused (resuming one restarts a session the athlete
 deliberately stopped), an ordinary rest must still count down and must survive
 a tap, and an ordinary HIIT round must be left alone.
 
+## Say "continue", and the next set starts (v376)
+
+Asked for immediately after v375: *"so I can just say continue and the new set
+starts."* v375 removed the STALL. This removes the TAP — the athlete holds
+their position and never reaches for the phone at all.
+
+**ONE WORD, AND IT ONLY EVER MOVES FORWARD.** That is the whole safety
+argument, and it is a deliberate limit rather than an unfinished feature. A
+misheard *"stop"* would end a session; a misheard *"continue"* costs at most an
+early rest, and the `+15s` button puts it straight back. So there is no voice
+command that stops, pauses, quits or skips an exercise: the stop-for-pain
+button stays a deliberate tap, which is this app's oldest safety rule and not
+something a microphone gets a vote in. The check for it is a source assertion,
+because the absence of a route cannot be driven.
+
+**It listens only where the word can act** — the player's rest, and either
+surface while `timerStalled()`. Listening through a working set would spend the
+microphone and the battery on a phase where the word does nothing, and every
+extra second of listening is another chance to mishear.
+
+### The app talks itself forward, and that is not hypothetical
+
+The coach names the next movement during rest. The library carries steps
+reading *"Continue alternating, walking forward."* Anything heard while the
+synthesiser is speaking — plus a 900 ms tail — is thrown away, and without that
+guard the app walks itself into the next set. The mutant that drops it is
+caught by a check that primes the tail and asserts the rest survives, with the
+floor beside it: once the tail has passed, the athlete is heard again.
+
+**A guard that always refused would satisfy every "the coach cannot trigger
+it" assertion** and make the feature do nothing at all. That floor is what
+catches it.
+
+### Absent, not off
+
+`settings.voiceCmd` is **absent** until the athlete taps it — the `voicePitch`
+rule, and a microphone is the last thing in this app that should open by
+default. The mutant that flips the test to `!==false` opens the microphone for
+everybody and is caught.
+
+It reaches a chip and a rest screen and `importData()` accepts arbitrary JSON,
+so it is repaired at boot: **`!== undefined`, not `!= null`**, because absent is
+the contract and a stored `null` is a junk key that travels in every backup.
+
+### Armed by the heartbeat, for the heartbeat's own reason
+
+v375's guard already knows which surface is open, so it opens and closes the
+recogniser too. Arming per opener is how a third surface gets forgotten — the
+shape this file records five times over — and it means the microphone
+**closes** when the session ends rather than depending on a teardown
+remembering. A recogniser left running is a battery and privacy cost with
+nothing on screen to explain it, and the mutant that never stops it is caught.
+
+**A refused microphone turns the setting off** rather than retrying for ever:
+Chrome's `onend` fires immediately against a denied permission, so an
+unconditional restart is a spin loop the athlete cannot see.
+
+### The confirmation is heard, not seen
+
+A rising two-tone (700 → 1050 Hz) fires **only when the word actually moved
+something**, so it can never confirm a word that did nothing. It is distinct
+from the falling reposition pair (880 → 520) and the flat rep count (880) —
+this app has three paired cues and each has to be tellable apart by ear alone,
+because that is the whole point of a hands-free signal.
+
+The rest screen names the word it is listening for. A feature the athlete
+cannot see is one they will not use, and the rest screen is where it acts.
+
+Twelve mutants, all caught, including both over-eager twins: a word that can
+act in any phase, and a repair that wipes a real choice.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

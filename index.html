@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='375';
+const APP_VERSION='376';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -6801,7 +6801,8 @@ function plEnterRest(dur,type){
       <button class="btn ghost" onclick="playerAddRest()">+15s</button>
       <button class="btn ghost" id="plToggle" onclick="playerToggle()">Pause</button>
       <button class="btn primary" onclick="playerSkipRest()">Skip ▶</button>
-    </div>`;
+    </div>
+    ${voiceCmdOn()&&voiceCmdSupported()?'<div class="tiny muted" style="margin-top:6px">\u{1F399}\uFE0F Say “continue” to start the next set</div>':''}`;
   plS('#plNum',fmtTime(PLAYER.remain));plS('#plSub','REST');plRingSet(1);
   if(PLAYER.running)PLAYER.tid=setInterval(plTickRest,1000);else plS('#plToggle','Resume');
 }
@@ -6973,6 +6974,7 @@ function timerStalled(S){
 function plGuardTick(){
   try{if(timerStalled(PLAYER))plResync();}catch(e){}
   try{if(timerStalled(INTV))ivResync();}catch(e){}
+  try{voiceCmdSync();}catch(e){}
 }
 /* TAP ANYWHERE — BUT ONLY WHILE IT IS ACTUALLY STUCK. The rest screen's three
    buttons measure 123x52, a small target to hit from a plank without standing
@@ -6989,6 +6991,123 @@ document.addEventListener('click',e=>{
     else if(t.closest('#hiit'))ivTapRescue();
   }catch(_e){}
 });
+/* ===== SAY "CONTINUE" AND THE NEXT SET STARTS =====
+
+   Asked for straight after the rest hand-off report: "so I can just say
+   continue and the new set starts." The heartbeat above removes the STALL;
+   this removes the TAP. The athlete holds their position and never reaches
+   for the phone.
+
+   ONE WORD, AND IT ONLY EVER MOVES FORWARD. A misheard "stop" would end a
+   session; a misheard "continue" costs at most an early rest, and the +15s
+   button puts it straight back. So there is deliberately no voice command
+   that stops, pauses or quits — the stop-for-pain button stays a deliberate
+   tap, which is this app's oldest safety rule and not something a microphone
+   gets a vote in.
+
+   IT LISTENS ONLY WHERE IT CAN ACT: the player's rest, and either surface
+   while it is stalled. Listening through a work phase would spend the
+   microphone and the battery on a phase where the word does nothing.
+
+   AND IT IGNORES THE APP'S OWN VOICE. The coach names the next movement
+   during rest, and the library carries steps like "Continue alternating,
+   walking forward" — so anything heard while the synthesiser is speaking,
+   plus a short tail, is thrown away. Without that the app talks itself into
+   the next set. */
+const VOICE_CMD_WORD='continue';
+const VOICE_ECHO_TAIL_MS=900;
+let _vrec=null,_vrWant=false,_vrSpokeAt=0;
+function voiceCmdSupported(){try{return !!(window.SpeechRecognition||window.webkitSpeechRecognition);}catch(e){return false;}}
+/* Absent means the athlete has not chosen. A default here would make the
+   "has the athlete turned this on?" test true for everybody forever, which is
+   the voicePitch trap — and a microphone is the last thing to open by
+   default. */
+function voiceCmdOn(){try{return STATE.settings.voiceCmd===true;}catch(e){return false;}}
+/* Where the word means something. Anywhere else it is ignored outright. */
+function voiceCmdActionable(){
+  try{
+    if(PLAYER&&PLAYER.phase&&PLAYER.phase!=='done')return PLAYER.phase==='rest'||timerStalled(PLAYER);
+    if(INTV&&INTV.phase&&INTV.phase!=='done')return timerStalled(INTV);
+  }catch(e){}
+  return false;
+}
+/* The ONE place that decides what the word does. Forward only, and it returns
+   whether it actually moved anything so the confirmation cannot fire on a
+   word that did nothing. */
+function voiceCmdAdvance(){
+  try{
+    if(PLAYER&&PLAYER.phase&&PLAYER.phase!=='done'){
+      if(timerStalled(PLAYER)){plResync();return true;}
+      if(PLAYER.phase==='rest'){plRestDone();return true;}
+      return false;
+    }
+    if(INTV&&INTV.phase&&INTV.phase!=='done'&&timerStalled(INTV)){ivResync();return true;}
+  }catch(e){}
+  return false;
+}
+function voiceCmdEcho(){
+  try{if(window.speechSynthesis&&speechSynthesis.speaking){_vrSpokeAt=Date.now();return true;}}catch(e){}
+  return Date.now()-_vrSpokeAt<VOICE_ECHO_TAIL_MS;
+}
+function voiceCmdHeard(text){
+  try{
+    if(!voiceCmdOn())return false;
+    if(voiceCmdEcho())return false;
+    if(!new RegExp('\\b'+VOICE_CMD_WORD+'\\b','i').test(String(text||'')))return false;
+    if(!voiceCmdActionable())return false;
+    if(!voiceCmdAdvance())return false;
+    /* Heard AND acted. A rising pair, so the athlete knows without looking —
+       and distinct from the falling reposition cue and the flat count tone. */
+    beep(700,.1,0.85);setTimeout(()=>beep(1050,.12,0.9),120);haptic(20);
+    return true;
+  }catch(e){return false;}
+}
+function voiceCmdStart(){
+  try{
+    if(_vrec||!voiceCmdOn()||!voiceCmdSupported())return;
+    const C=window.SpeechRecognition||window.webkitSpeechRecognition;
+    const r=new C();
+    r.continuous=true;r.interimResults=true;r.lang='en-US';
+    r.onresult=(e)=>{try{for(let i=e.resultIndex;i<e.results.length;i++)voiceCmdHeard(e.results[i][0].transcript);}catch(_e){}};
+    r.onerror=(e)=>{
+      const err=e&&e.error;
+      /* A refused microphone must turn the setting OFF rather than retry for
+         ever — an onend loop against a denied permission is a battery drain
+         with nothing on screen to explain it. */
+      if(err==='not-allowed'||err==='service-not-allowed'){
+        _vrWant=false;_vrec=null;
+        try{STATE.settings.voiceCmd=false;save();}catch(_e){}
+        toast('Voice command needs the microphone — turned off');
+        try{if(TAB==='guide')renderGuide();}catch(_e){}
+      }
+    };
+    // Chrome ends recognition after a silence; keep it up while a session is open
+    r.onend=()=>{if(_vrWant&&_vrec){try{_vrec.start();}catch(e){}}else{_vrec=null;}};
+    _vrec=r;_vrWant=true;
+    r.start();
+  }catch(e){_vrec=null;_vrWant=false;}
+}
+function voiceCmdStop(){
+  _vrWant=false;
+  try{if(_vrec)_vrec.stop();}catch(e){}
+  _vrec=null;
+}
+/* Armed by the heartbeat rather than by each opener, for the reason the
+   heartbeat itself is: a third surface would not be forgotten. */
+function voiceCmdSync(){
+  let open=false;
+  try{open=!!((PLAYER&&PLAYER.phase&&PLAYER.phase!=='done')||(INTV&&INTV.phase&&INTV.phase!=='done'));}catch(e){open=false;}
+  const want=open&&voiceCmdOn()&&voiceCmdSupported();
+  if(want&&!_vrec)voiceCmdStart();
+  else if(!want&&_vrec)voiceCmdStop();
+}
+function toggleVoiceCmd(){
+  if(!voiceCmdOn()&&!voiceCmdSupported()){toast('This browser has no speech recognition');return;}
+  STATE.settings.voiceCmd=!voiceCmdOn();save();
+  if(!voiceCmdOn())voiceCmdStop();
+  renderGuide();
+  toast(voiceCmdOn()?'Say “continue” during rest to start the next set':'Voice command off');
+}
 plGuardOn();
 function playerSkip(){
   if(!PLAYER)return;plClear();PLAYER.pendingNext=false;
@@ -19192,6 +19311,10 @@ function renderGuide(){
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Saturday progress check-in <span class="tiny muted">· push + brief countdown</span></span><button class="chip ${STATE.settings.weeklyOn!==false?'on':''}" onclick="toggleWeekly()">${STATE.settings.weeklyOn!==false?'On':'Off'}</button></div>
     <button class="btn ghost sm" style="width:100%;margin-top:2px" onclick="testReminderNotif()">🔔 Send a test notification</button>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Voice coach <span class="tiny muted">· deep</span></span><button class="chip ${STATE.settings.voice!==false?'on':''}" onclick="toggleSetting('voice')">${STATE.settings.voice!==false?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Say “continue” to start the next set <span class="tiny muted">· hands-free</span></span><button class="chip ${voiceCmdOn()?'on':''}" onclick="toggleVoiceCmd()" ${voiceCmdSupported()?'':'aria-disabled="true"'}>${voiceCmdOn()?'On':'Off'}</button></div>
+    <div class="tiny muted" style="padding:2px 0 6px">${voiceCmdSupported()
+      ?'Listens only during rest, and only for that one word. It never stops, pauses or ends a session — that stays a deliberate tap.'
+      :'This browser has no speech recognition, so the switch cannot do anything on this phone.'}</div>
     <div style="padding:4px 0 2px">
       <div class="row" style="justify-content:space-between"><span class="tiny muted">Beep &amp; countdown volume</span><span class="tiny muted" id="cvLbl">${Math.round(cueVolPref()*100/1.25)}%</span></div>
       <input type="range" aria-label="Beep and countdown volume" min="0.2" max="2" step="0.05" value="${cueVolPref()}" oninput="$('#cvLbl').textContent=Math.round(this.value*100/1.25)+'%'" onchange="setCueVol(this.value);beep(920,.17,0.92)" style="width:100%">
@@ -19702,6 +19825,10 @@ function normalizeState(){
   if(!STATE.profile||typeof STATE.profile!=='object'||Array.isArray(STATE.profile))STATE.profile={};
   // voice coach defaults for existing installs that predate these settings
   if(STATE.settings.voice===undefined)STATE.settings.voice=true;
+  /* Absent is the contract for "the athlete has not chosen", so !== undefined
+     rather than != null — a stored null is a junk key that travels in every
+     backup. */
+  if(STATE.settings.voiceCmd!==undefined&&typeof STATE.settings.voiceCmd!=='boolean')delete STATE.settings.voiceCmd;
   if(STATE.settings.voiceName===undefined)STATE.settings.voiceName='';
   /* voicePitch must NOT default here. Every reader (localPitchFor(), the
      Settings slider) already treats "absent" as "no manual override, use the

@@ -4506,6 +4506,191 @@ export default async function () {
     t.eq('so a fresh rep set never reads as stalled', r.work && r.work.stalled, false);
   }
 
+  /* ---------- say "continue" and the next set starts --------------------
+     Asked for straight after the rest hand-off report: "so I can just say
+     continue and the new set starts." The heartbeat above removes the STALL;
+     this removes the TAP.
+
+     ONE WORD, AND IT ONLY EVER MOVES FORWARD. A misheard "stop" would end a
+     session; a misheard "continue" costs at most an early rest, which +15s
+     puts straight back. */
+  {
+    const r = await page.evaluate(async () => {
+      const R = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      R.support = voiceCmdSupported();
+      delete STATE.settings.voiceCmd;
+      R.offByDefault = voiceCmdOn();
+
+      STATE.onboarded = true; STATE.progressPtr = 8; save();
+      STATE.settings.voiceCmd = true; save();
+      openPlayer(); await wait(200);
+      PLAYER.i = 0; PLAYER.s = 0; plClear(); plEnterRest(60, 'set');
+      R.inRest = { phase: PLAYER.phase, actionable: voiceCmdActionable() };
+
+      R.wrongWord = voiceCmdHeard('bananas and rice');
+      R.afterWrong = PLAYER.phase;
+      R.rightWord = voiceCmdHeard('ok continue please');
+      R.afterRight = PLAYER.phase;
+
+      // during a working set the word means nothing — listening there would
+      // spend the microphone on a phase where it cannot act
+      plClear(); plEnterWork(); await wait(100);
+      R.inWork = { phase: PLAYER.phase, actionable: voiceCmdActionable() };
+      R.workWord = voiceCmdHeard('continue');
+      R.afterWorkWord = PLAYER.phase;
+
+      // ...and with the setting OFF the word does nothing at all
+      plClear(); plEnterRest(60, 'set');
+      STATE.settings.voiceCmd = false; save();
+      R.offWord = voiceCmdHeard('continue');
+      R.afterOffWord = PLAYER.phase;
+      playerTeardown(); await wait(200);
+      return R;
+    });
+    t.eq('guard: this browser really does have speech recognition', r.support, true);
+    t.eq('the voice command is absent by default — the athlete has not chosen', r.offByDefault, false);
+    t.ok('guard: the player really is resting and the word can act there',
+      r.inRest && r.inRest.phase === 'rest' && r.inRest.actionable === true, JSON.stringify(r.inRest));
+    t.eq('floor: a word that is not the command does nothing', r.wrongWord, false);
+    t.eq('and the rest is left alone', r.afterWrong, 'rest');
+    t.eq('saying "continue" during rest starts the next set', r.rightWord, true);
+    t.ok('and the rest really ended', r.afterRight !== 'rest', String(r.afterRight));
+    t.eq('guard: a working set is not somewhere the word can act', r.inWork && r.inWork.actionable, false);
+    t.eq('floor: saying it during a working set does nothing', r.workWord, false);
+    t.eq('and the set carries on', r.afterWorkWord, 'work');
+    t.eq('floor: with the setting off the word does nothing', r.offWord, false);
+    t.eq('and the rest carries on', r.afterOffWord, 'rest');
+  }
+
+  /* IT IGNORES THE APP'S OWN VOICE. The coach names the next movement during
+     rest, and the library carries steps like "Continue alternating, walking
+     forward" — so without this the app talks itself into the next set. */
+  {
+    const r = await page.evaluate(async () => {
+      const R = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      STATE.onboarded = true; STATE.progressPtr = 8; STATE.settings.voiceCmd = true; save();
+      openPlayer(); await wait(200);
+      PLAYER.i = 0; PLAYER.s = 0; plClear(); plEnterRest(60, 'set');
+      _vrSpokeAt = Date.now();                    // the app just spoke
+      R.duringEcho = voiceCmdHeard('continue');
+      R.phaseDuringEcho = PLAYER.phase;
+      _vrSpokeAt = Date.now() - (VOICE_ECHO_TAIL_MS + 500);   // the tail has passed
+      R.afterEcho = voiceCmdHeard('continue');
+      R.phaseAfterEcho = PLAYER.phase;
+      playerTeardown(); await wait(200);
+      return R;
+    });
+    t.eq('a "continue" heard while the app is talking is thrown away', r.duringEcho, false);
+    t.eq('so the rest is not ended by the coach', r.phaseDuringEcho, 'rest');
+    t.eq('floor: once the tail has passed the athlete is heard again', r.afterEcho, true);
+    t.ok('and the rest really ended', r.phaseAfterEcho !== 'rest', String(r.phaseAfterEcho));
+  }
+
+  /* The microphone is opened by the heartbeat, not by each opener — the same
+     reason the heartbeat itself is armed once at boot. And it must CLOSE: a
+     recogniser left running after the session is a battery and privacy cost
+     with nothing on screen to explain it. */
+  {
+    const r = await page.evaluate(async () => {
+      const R = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      let started = 0, stopped = 0;
+      const Real = window.SpeechRecognition || window.webkitSpeechRecognition;
+      /* EACH BLOCK BUILDS THE STATE IT ASSERTS ON. The block above ends with a
+         real recogniser still open — the heartbeat closes it on its own beat,
+         up to PL_GUARD_MS later — so without this the stub below is never
+         constructed and both counts read 0 on correct code. Passed standalone
+         and failed in the full run, which is exactly how a block-order
+         dependency shows itself. */
+      STATE.settings.voiceCmd = false; save(); voiceCmdStop();
+      window.SpeechRecognition = function () { this.start = () => { started++; }; this.stop = () => { stopped++; if (this.onend) this.onend(); }; };
+      R.cleanStart = (_vrec === null);
+      STATE.onboarded = true; STATE.progressPtr = 8; STATE.settings.voiceCmd = true; save();
+      openPlayer(); await wait(2600);
+      R.started = started;
+      playerTeardown(); await wait(2600);
+      R.stopped = stopped;
+
+      // with the setting OFF nothing is ever opened
+      started = 0; stopped = 0;
+      STATE.settings.voiceCmd = false; save();
+      openPlayer(); await wait(2600);
+      R.startedWhenOff = started;
+      playerTeardown(); await wait(300);
+      window.SpeechRecognition = Real;
+      return R;
+    });
+    t.eq('guard: no recogniser was left open by the block before', r.cleanStart, true);
+    t.ok('the heartbeat opens the microphone while a session is running', r.started >= 1, String(r.started));
+    t.ok('and closes it when the session ends', r.stopped >= 1, String(r.stopped));
+    t.eq('floor: with the setting off it is never opened', r.startedWhenOff, 0);
+  }
+
+  /* FORWARD ONLY. There is deliberately no voice command that stops, pauses or
+     quits — the stop-for-pain button stays a deliberate tap, which is this
+     app's oldest safety rule and not something a microphone gets a vote in.
+     Asserted on the SOURCE because the absence of a route cannot be driven. */
+  {
+    const r = await page.evaluate(() => ({
+      advance: voiceCmdAdvance.toString(),
+      heard: voiceCmdHeard.toString(),
+      word: VOICE_CMD_WORD
+    }));
+    const body = r.advance + r.heard;
+    t.eq('there is exactly one command word', r.word, 'continue');
+    t.ok('no voice path quits a session', !/hiitQuit|plEnterDone|playerTeardown|hardReset/.test(body), body.slice(0, 200));
+    t.ok('no voice path pauses a session', !/playerToggle|hiitToggle/.test(body), body.slice(0, 200));
+    t.ok('no voice path skips a whole exercise', !/playerSkip\b|hiitSkip/.test(body), body.slice(0, 200));
+    t.ok('and it only acts where the word can act', /voiceCmdActionable\(\)/.test(r.heard), r.heard.slice(0, 200));
+  }
+
+  /* The setting reaches a chip and a rest screen, and importData() accepts
+     arbitrary JSON — so it is repaired at boot. Absent is the contract for
+     "not chosen", which is why the test is !== undefined and not != null: a
+     stored null is a junk key that travels in every backup. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {};
+      for (const junk of ['yes', 1, 0, {}, [], null]) {
+        STATE.settings.voiceCmd = junk;
+        normalizeState();
+        out[JSON.stringify(junk)] = Object.prototype.hasOwnProperty.call(STATE.settings, 'voiceCmd')
+          ? JSON.stringify(STATE.settings.voiceCmd) : 'absent';
+      }
+      STATE.settings.voiceCmd = true; normalizeState();
+      out.realTrue = STATE.settings.voiceCmd;
+      STATE.settings.voiceCmd = false; normalizeState();
+      out.realFalse = STATE.settings.voiceCmd;
+      delete STATE.settings.voiceCmd; normalizeState();
+      out.absentStaysAbsent = Object.prototype.hasOwnProperty.call(STATE.settings, 'voiceCmd') ? 'present' : 'absent';
+      return out;
+    });
+    ['"yes"', '1', '0', '{}', '[]', 'null'].forEach(k =>
+      t.eq('a junk voiceCmd (' + k + ') is dropped at boot', r[k], 'absent'));
+    t.eq('floor: a real yes survives', r.realTrue, true);
+    t.eq('floor: a real no survives', r.realFalse, false);
+    t.eq('floor: absent stays absent', r.absentStaysAbsent, 'absent');
+  }
+
+  /* The rest screen names the word it is listening for. A feature the athlete
+     cannot see is one they will not use, and it is the screen where it acts. */
+  {
+    const r = await page.evaluate(async () => {
+      const R = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      STATE.onboarded = true; STATE.progressPtr = 8; save();
+      STATE.settings.voiceCmd = true; save();
+      openPlayer(); await wait(200);
+      PLAYER.i = 0; PLAYER.s = 0; plClear(); plEnterRest(60, 'set');
+      R.on = document.getElementById('plBody').textContent;
+      STATE.settings.voiceCmd = false; save();
+      plClear(); plEnterRest(60, 'set');
+      R.off = document.getElementById('plBody').textContent;
+      playerTeardown(); await wait(200);
+      return R;
+    });
+    t.ok('the rest screen says which word starts the next set', /continue/i.test(r.on), r.on.slice(0, 160));
+    t.ok('floor: and says nothing about it when the setting is off', !/say .continue/i.test(r.off), r.off.slice(0, 160));
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
