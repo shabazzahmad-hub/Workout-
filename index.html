@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='376';
+const APP_VERSION='377';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -6971,9 +6971,58 @@ function timerStalled(S){
     return !!(S.deadline&&now>S.deadline+PL_STALL_MS);
   }catch(e){return false;}
 }
+/* A TICK IS NOT A SECOND, AND FIVE SURFACES WERE TREATING IT AS ONE.
+
+   plTickHold() has had a wall-clock FLOOR since it was written, with a comment
+   explaining exactly why: Chrome throttles a hidden tab to about one tick a
+   minute, and an OS can reclaim the interval outright. The count-UP timers
+   never got one — they did `elapsed++` and nothing else.
+
+   MEASURED, with the ticks stopped for six real seconds: the hold test lost 8
+   seconds and the baseline test lost 7, and neither recovered at all. Those
+   are the two numbers in this app that measure a MAXIMAL EFFORT — one anchors
+   every prescription for a year, the other sets a personal best — so
+   under-reporting them is worse than a frozen screen, and it is silent.
+
+   Same shape as the count-down floor: real time is a FLOOR, never a ceiling,
+   so the clock can never run slower than the wall and can never be driven
+   faster than one second per tick by a clock jump. */
+function tickUp(S){
+  try{
+    const real=Math.floor((Date.now()-(S.startedAt||Date.now()))/1000);
+    return Math.max((S.elapsed||0)+1, real);
+  }catch(e){return (S.elapsed||0)+1;}
+}
+/* v375 gave the guided player and HIIT a heartbeat. There are SEVEN timed
+   surfaces in this app, not two — the warm-up flow, the baseline test, the
+   hold test, the assessment rest and the hold/rep timer had no rescue at all.
+   Fixing one instance is not fixing the class, and neither is fixing two.
+
+   These five keep their own tick in a closure, so each hands its own function
+   to the object the heartbeat can see rather than the heartbeat guessing. */
+function timedSurfaces(){
+  const out=[];
+  const add=(f)=>{try{const S=f();if(S)out.push(S);}catch(e){}};
+  add(()=>_bt); add(()=>_ht); add(()=>_ar); add(()=>timer);
+  return out;
+}
+function tickStalled(S){
+  try{return !!(S&&S.lastTick&&typeof S.tick==='function'&&Date.now()-S.lastTick>PL_STALL_MS);}catch(e){return false;}
+}
+function tickResync(S){
+  try{
+    if(!tickStalled(S))return false;
+    if(S.iv)clearInterval(S.iv);
+    S.lastTick=Date.now();
+    S.iv=setInterval(S.tick,S.every||1000);
+    S.tick();   // one now, so a phase that already expired resolves at once
+    return true;
+  }catch(e){return false;}
+}
 function plGuardTick(){
   try{if(timerStalled(PLAYER))plResync();}catch(e){}
   try{if(timerStalled(INTV))ivResync();}catch(e){}
+  try{timedSurfaces().forEach(tickResync);}catch(e){}
   try{voiceCmdSync();}catch(e){}
 }
 /* TAP ANYWHERE — BUT ONLY WHILE IT IS ACTUALLY STUCK. The rest screen's three
@@ -8278,7 +8327,7 @@ function startBaselineTimer(){
   stopBaselineTimer();try{if(typeof primeVoice==='function')primeVoice();}catch(e){}
   beatStart();   // background beat during the baseline test too (matches the workouts)
   openSheet(baselineTimerHTML(t));
-  _bt={iv:setInterval(tick,1000),mode:'ready',ready:3,elapsed:0,dur:dur,tid:t.id};
+  _bt={iv:setInterval(tick,1000),mode:'ready',ready:3,elapsed:0,dur:dur,tid:t.id,tick:tick,lastTick:Date.now()};
   /* Name the test, the same way every other surface now names what is coming.
      NOT deferred: v291 keys the battery's coach off `_bt` being non-null, and
      a deferred utterance is one more place that ordering could drift. The
@@ -8297,6 +8346,7 @@ function startBaselineTimer(){
   function paintRun(){const b=$('#btBig');if(b){b.textContent=dur?fmtTime(Math.max(0,dur-_bt.elapsed)):fmtTime(_bt.elapsed);b.className='tnum go';}const l=$('#btLbl');if(l)l.textContent=dur?'TIME LEFT':'HOLD — ELAPSED';const h=$('#btHint');if(h)h.textContent=dur?'Go! Count every rep.':'Hold your best form. Tap Stop when you break.';const a=$('#btAction');if(a){a.style.display='block';a.textContent=dur?'■ Stop early':'■ Stop & save';}btRing(false);}
   function tick(){
     if(!_bt)return;
+    _bt.lastTick=Date.now();
     if(_bt.mode==='ready'){
       _bt.ready--;
       /* No spoken digit. It cancelled the announcement one second after it
@@ -8304,10 +8354,10 @@ function startBaselineTimer(){
          at all — it spoke over the name on every single second. The beep
          already marks them. */
       if(_bt.ready>0){beep(660,.09);paintReady();}
-      else{beep(990,.14);haptic(20);if(!motivate('start'))coachSay('Go!');_bt.mode='run';_bt.elapsed=0;_bt.grindSaid=false;paintRun();}
+      else{beep(990,.14);haptic(20);if(!motivate('start'))coachSay('Go!');_bt.mode='run';_bt.elapsed=0;_bt.startedAt=Date.now();_bt.grindSaid=false;paintRun();}
       return;
     }
-    _bt.elapsed++;
+    _bt.elapsed=tickUp(_bt);
     if(dur){
       const left=dur-_bt.elapsed;
       if(left===10){if(!motivate('push'))coachSay('Ten seconds left.');}
@@ -8391,16 +8441,24 @@ function assessRests(){
 function startAssessRest(nextIdx){
   stopAssessRest();
   const t=TESTS[nextIdx];const ex=EX[safeSwap(t.ex)];
-  _ar={left:ASSESS_REST_SEC,idx:nextIdx,started:Date.now()};
+  /* `started` was stored from the first version and never read. v296 exists so
+     the two minutes between maximal efforts are REAL — a rest counted in
+     dropped ticks runs long, which is the harmless direction, but the anchor
+     was sitting right here unused. */
+  _ar={left:ASSESS_REST_SEC,idx:nextIdx,started:Date.now(),tick:arTick,lastTick:Date.now()};
+  _ar.deadline=_ar.started+ASSESS_REST_SEC*1000;
   openSheet(assessRestHTML(t,ex));
   paint();
-  _ar.iv=setInterval(()=>{
+  _ar.iv=setInterval(arTick,1000);
+  function arTick(){
     if(!_ar)return;
-    _ar.left--;
+    _ar.lastTick=Date.now();
+    const byTick=_ar.left-1;
+    _ar.left=_ar.deadline?Math.min(byTick,Math.ceil((_ar.deadline-Date.now())/1000)):byTick;
     if(_ar.left<=3&&_ar.left>0)beep(660,.08);
     if(_ar.left<=0){beep(880,.28);haptic(30);assessRestDone(true);return;}
     paint();
-  },1000);
+  }
   function paint(){
     const n=$('#arNum');if(n)n.textContent=fmtTime(Math.max(0,_ar.left));
   }
@@ -10458,7 +10516,7 @@ function startHoldTest(id){
     <div class="tiny muted" id="htHint" style="margin-top:10px">Get into position…</div>
   </div>
   <button class="btn primary" id="htAction" onclick="stopHoldTest()" style="display:none">■ I am done — save it</button>`);
-  _ht={iv:setInterval(htTick,1000),mode:'ready',ready:3,elapsed:0,id:t.id,exId:exId,fresh:fresh,grindSaid:false};
+  _ht={iv:setInterval(htTick,1000),mode:'ready',ready:3,elapsed:0,id:t.id,exId:exId,fresh:fresh,grindSaid:false,tick:htTick,lastTick:Date.now()};
   htPaintReady();coachSay(ex.name+'. Hold until your form goes.');
   /* Function DECLARATIONS: htPaintReady() runs on the line above, so a const
      arrow here is still in its temporal dead zone and takes the whole timer
@@ -10474,14 +10532,15 @@ function startHoldTest(id){
     const a=$('#htAction');if(a)a.style.display='block';htRing(false);}
   function htTick(){
     if(!_ht)return;
+    _ht.lastTick=Date.now();
     if(_ht.mode==='ready'){
       _ht.ready--;
       // No spoken digit: the beeps mark them and a digit cancels the announcement.
       if(_ht.ready>0){beep(660,.09);htPaintReady();}
-      else{beep(990,.14);haptic(20);if(!motivate('start'))coachSay('Go!');_ht.mode='run';_ht.elapsed=0;_ht.grindSaid=false;htPaintRun();}
+      else{beep(990,.14);haptic(20);if(!motivate('start'))coachSay('Go!');_ht.mode='run';_ht.elapsed=0;_ht.startedAt=Date.now();_ht.grindSaid=false;htPaintRun();}
       return;
     }
-    _ht.elapsed++;
+    _ht.elapsed=tickUp(_ht);
     /* THE HARD PART, NAMED — at two thirds of their own best on THIS hold,
        which is the only number that knows where their hard part is. With no
        prior there is no bar and nothing is said. */
@@ -10837,7 +10896,7 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex){
   autoRoll();primeVoice();beatStart();
   const C=2*Math.PI*100;
   // 5-second loud GET READY countdown before a hold begins (rest timers start straight away)
-  let phase=isHold?'ready':'run', ready=5, _grindSaid=false;
+  let phase=isHold?'ready':'run', ready=5, _grindSaid=false, deadline=(isHold?0:Date.now()+seconds*1000);
   const setPhase=(txt)=>{const t=$('#tphase');if(t)t.textContent=txt;};
   /* Solid through the 3-2-1, a watermark once the hold is running. A rest
      timer never enters 'run' this way and keeps the solid class it shipped
@@ -10851,6 +10910,7 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex){
     if(!quiet&&!motivate('start'))coachSpeak('Get ready.');
   }else if(!quiet){coachSpeak('Rest. '+seconds+' seconds.');}
   function tick(){
+    if(timer)timer.lastTick=Date.now();
     if(phase==='ready'){
       ready--;
       /* NO SPOKEN DIGITS. The beeps already mark every second of a get-ready, and
@@ -10865,10 +10925,13 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex){
      the same rule reaching the four sibling countdowns that never got it. */
     if(ready>0){beep(1000,.15,0.7);const n=$('#tnum');if(n)n.textContent=ready;return;}
       beepGo();haptic(30);coachSay('Go!');
-      phase='run';tRing(!isHold);const n=$('#tnum');if(n){n.textContent=fmtTime(remain);n.className='tnum '+(isHold?'go':'rest');}setPhase(isHold?'HOLD':'REST');
+      phase='run';deadline=Date.now()+remain*1000;tRing(!isHold);const n=$('#tnum');if(n){n.textContent=fmtTime(remain);n.className='tnum '+(isHold?'go':'rest');}setPhase(isHold?'HOLD':'REST');
       return;
     }
-    remain--;
+    /* The wall clock is a FLOOR, exactly as plTickRest() has used it since it
+       was written: never slower than real time, never faster than one second
+       per tick. This surface counted bare ticks. */
+    {const byTick=remain-1;remain=deadline?Math.min(byTick,Math.ceil((deadline-Date.now())/1000)):byTick;}
     const el=total-remain;                         // seconds elapsed so far
     /* Deferred for the same reason plTickHold() defers — an utterance started
        inside the tick can stall the main thread past the next one. */
@@ -10894,7 +10957,10 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex){
   }
   function update(){if(phase==='ready')return;const n=$('#tnum');if(n){n.textContent=fmtTime(remain);}const r=$('#tring');if(r){r.style.strokeDashoffset=C*(1-remain/total);} }
   stopTimer();
-  timer={iv:setInterval(tick,1000),mode};
+  /* The sixth timed surface. It counted `remain--` with no wall clock and had
+     no rescue at all — a hold that froze stayed frozen. The tick goes ON the
+     object so the heartbeat can re-arm what it cannot see. */
+  timer={iv:setInterval(tick,1000),mode,tick,lastTick:Date.now()};
   update();
 }
 /* A hold timer with no picture of the hold. This surface, the rep cadence and
@@ -11160,6 +11226,7 @@ function runFlow(items,title,color){
     coachSpeak('Next up. '+it.n+'. '+how+'.');
   }
   function tick(){
+    if(timer)timer.lastTick=Date.now();
     if(phase==='ready'){
       ready--;
       /* NO SPOKEN DIGITS. The beeps already mark every second of a get-ready, and
@@ -11224,8 +11291,8 @@ function runFlow(items,title,color){
      was to abandon the flow or falsely mark it Done. Resuming re-anchors the
      deadline so the pause is not counted as elapsed time — the same thing
      playerToggle() and hiitToggle() already do. */
-  _flowResume=()=>{if(timer&&timer.mode==='flow')return;if(phase==='run'&&remain>0)deadline=Date.now()+remain*1000;timer={iv:setInterval(tick,1000),mode:'flow'};};
-  timer={iv:setInterval(tick,1000),mode:'flow'};
+  _flowResume=()=>{if(timer&&timer.mode==='flow')return;if(phase==='run'&&remain>0)deadline=Date.now()+remain*1000;timer={iv:setInterval(tick,1000),mode:'flow',tick,lastTick:Date.now()};};
+  timer={iv:setInterval(tick,1000),mode:'flow',tick,lastTick:Date.now()};
 }
 /* The photo/video sits INSIDE the ring (.pl-ringmedia, shared with the guided
    player and HIIT — see plRingMediaHTML()) rather than stacked above it as a
