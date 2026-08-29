@@ -668,7 +668,9 @@ export default async function () {
       ivStep(0);
       clearInterval(INTV.tid); INTV.tid = null;      // starve it
       const before = INTV.remain;
-      INTV.deadline = Date.now() - 4000;             // stand in for 5 real seconds lost
+      // monoNow(), not Date.now(): the deadlines moved to the monotonic clock,
+      // and a synthetic timestamp must come from the clock the code reads.
+      INTV.deadline = monoNow() - 4000;              // stand in for 5 real seconds lost
       ivTick();                                      // exactly ONE callback
       const after = INTV ? INTV.remain : null;
       if (typeof hiitTeardown === 'function') hiitTeardown();
@@ -4350,15 +4352,15 @@ export default async function () {
       openPlayer(); await wait(200);
       PLAYER.i = 0; PLAYER.s = 0; plClear(); plEnterRest(3, 'set');
       plClear();                                 // the OS reclaims the interval
-      PLAYER.deadline = Date.now() - 9000;       // the rest ended nine seconds ago
+      PLAYER.deadline = monoNow() - 9000;       // the rest ended nine seconds ago
       R.frozen = { phase: PLAYER.phase, tid: !!PLAYER.tid, stalled: timerStalled(PLAYER) };
       await wait(5200);                          // no tap, no visibilitychange
       R.rescued = { phase: PLAYER.phase, tid: !!PLAYER.tid };
 
       // a PAUSED player is never resumed — that would restart a session the
       // athlete deliberately stopped
-      plClear(); PLAYER.phase = 'rest'; PLAYER.phaseAt = Date.now() - 99000;
-      PLAYER.running = false; PLAYER.deadline = Date.now() - 9000;
+      plClear(); PLAYER.phase = 'rest'; PLAYER.phaseAt = monoNow() - 99000;
+      PLAYER.running = false; PLAYER.deadline = monoNow() - 9000;
       await wait(4500);
       R.paused = { phase: PLAYER.phase, running: PLAYER.running, tid: !!PLAYER.tid };
       PLAYER.running = true;
@@ -4373,7 +4375,7 @@ export default async function () {
       // ...but a tap while genuinely stuck DOES advance, from anywhere on the
       // screen: the three rest buttons measure 123x52, a small target to hit
       // from a plank
-      plClear(); PLAYER.deadline = Date.now() - 9000; PLAYER.phaseAt = Date.now() - 99000;
+      plClear(); PLAYER.deadline = monoNow() - 9000; PLAYER.phaseAt = monoNow() - 99000;
       R.stuckNow = timerStalled(PLAYER);
       document.querySelector('#plBody .pl-name').click(); await wait(200);
       R.rescueTap = PLAYER.phase;
@@ -4402,7 +4404,7 @@ export default async function () {
       STATE.onboarded = true; save();
       startHiit('tabata'); await wait(400);
       ivStep(0); await wait(200);
-      ivClear(); INTV.deadline = Date.now() - 9000;
+      ivClear(); INTV.deadline = monoNow() - 9000;
       R.frozen = { phase: INTV.phase, i: INTV.i, tid: !!INTV.tid, stalled: timerStalled(INTV) };
       await wait(5200);
       R.rescued = { phase: INTV.phase, i: INTV.i, tid: !!INTV.tid };
@@ -4449,7 +4451,7 @@ export default async function () {
      an instant; treating that as a stall would re-arm the phase being left. */
   {
     const r = await page.evaluate(() => {
-      const now = Date.now();
+      const now = monoNow();   // the same clock timerStalled() reads
       const S = (o) => Object.assign({ running: true, phase: 'rest', tid: 1, phaseAt: now, deadline: 0 }, o);
       return {
         nullState: timerStalled(null),
@@ -4484,7 +4486,7 @@ export default async function () {
       openPlayer(); await wait(200);
       PLAYER.i = 0; PLAYER.s = 0;
       plClear(); plEnterRest(2, 'set');
-      PLAYER.deadline = Date.now() - 9000;      // a rest deadline in the past
+      PLAYER.deadline = monoNow() - 9000;      // a rest deadline in the past
       plClear(); plEnterReady(false);
       R.ready = { deadline: PLAYER.deadline, stalled: timerStalled(PLAYER) };
       // a rep-counted movement: find one in this session
@@ -4492,7 +4494,7 @@ export default async function () {
       R.hasRep = idx >= 0;
       if (idx >= 0) {
         PLAYER.i = idx; PLAYER.s = 0;
-        PLAYER.deadline = Date.now() - 9000;
+        PLAYER.deadline = monoNow() - 9000;
         plClear(); plEnterWork();
         R.work = { deadline: PLAYER.deadline, stalled: timerStalled(PLAYER) };
       }
@@ -4824,7 +4826,7 @@ export default async function () {
       R.open = { hasTick: typeof (timer && timer.tick) === 'function', stamped: !!(timer && timer.lastTick) };
       clearInterval(timer.iv);            // the OS reclaims it
       await wait(6500);                   // long enough for a heartbeat
-      R.after = { recovered: !!(timer && timer.iv), fresh: !!(timer && Date.now() - timer.lastTick < 4000) };
+      R.after = { recovered: !!(timer && timer.iv), fresh: !!(timer && monoNow() - timer.lastTick < 4000) };
       flowStop(false); await wait(300);
       return R;
     });
@@ -4839,7 +4841,7 @@ export default async function () {
      and v375's timerStalled() reused. */
   {
     const r = await page.evaluate(() => {
-      const now = Date.now();
+      const now = monoNow();   // the same clock tickStalled() reads
       const S = (o) => Object.assign({ lastTick: now, tick: () => {}, iv: 1 }, o);
       return {
         nullState: tickStalled(null),
@@ -5117,6 +5119,165 @@ export default async function () {
     t.eq('and falls back when performance is missing', r.missing, true);
     t.eq('and when performance.now() throws', r.throws, true);
     t.eq('and when performance.now() returns NaN', r.nan, true);
+  }
+
+  /* The count-DOWN timers had the same root cause, and I first described it as
+     "annoying rather than corrupting". THE MEASUREMENT CORRECTED THAT. On a
+     two-minute rest with the clock shoved forward: +1 minute left 58 seconds
+     of it, and +1 hour ENDED IT INSTANTLY, dropping straight into the next
+     set. v296 exists so the two minutes between maximal efforts are REAL, so
+     a rest cut short by a background clock correction changes a measurement,
+     not just the mood. Shipping a documented half-fix is worse than one more
+     CI cycle. */
+  {
+    const r = await page.evaluate(async () => {
+      const R = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      STATE.onboarded = true; STATE.progressPtr = 8; save();
+      const RealDate = window.Date; let skew = 0;
+      class Shim extends RealDate {
+        constructor(...a) { if (a.length === 0) super(RealDate.now() + skew); else super(...a); }
+        static now() { return RealDate.now() + skew; }
+        static parse(...a) { return RealDate.parse(...a); }
+        static UTC(...a) { return RealDate.UTC(...a); }
+      }
+      window.Date = Shim;
+      try {
+        const restRun = async (jumpMs) => {
+          skew = 0;
+          openPlayer(); await wait(250);
+          PLAYER.i = 0; PLAYER.s = 0; plClear(); plEnterRest(120, 'set'); await wait(200);
+          const start = PLAYER.remain;
+          await wait(1100);
+          skew = jumpMs;                      // the phone corrects its clock
+          await wait(1600);
+          const out = { lost: start - PLAYER.remain, phase: PLAYER.phase };
+          playerTeardown(); await wait(200); skew = 0;
+          return out;
+        };
+        R.noJump = await restRun(0);
+        R.plusMinute = await restRun(60 * 1000);
+        R.plusHour = await restRun(3600 * 1000);
+        R.minusHour = await restRun(-3600 * 1000);
+      } finally { window.Date = RealDate; }
+      return R;
+    });
+    t.ok('floor: an undisturbed rest counts down normally',
+      r.noJump && r.noJump.lost >= 1 && r.noJump.lost <= 5 && r.noJump.phase === 'rest',
+      JSON.stringify(r.noJump));
+    t.ok('a one-minute clock correction does not eat a minute of the rest',
+      r.plusMinute && r.plusMinute.lost <= 5, 'lost ' + (r.plusMinute || {}).lost + ' seconds');
+    t.ok('and an hour jump does not end the rest outright',
+      r.plusHour && r.plusHour.lost <= 5 && r.plusHour.phase === 'rest',
+      'lost ' + (r.plusHour || {}).lost + ' seconds, phase ' + (r.plusHour || {}).phase);
+    t.ok('floor: a backwards jump still cannot stretch the rest',
+      r.minusHour && r.minusHour.lost >= 1, 'lost ' + (r.minusHour || {}).lost);
+  }
+
+  /* THE FIX TOUCHED THREE SURFACES AND THE CHECK COVERED ONE. Three mutants
+     escaped — HIIT's deadline, the assessment rest's, and the pause
+     arithmetic — because the block above only drives the guided player's rest.
+     "Fixing one instance is not fixing the class", applied to the checks
+     rather than to the code. */
+  {
+    const r = await page.evaluate(async () => {
+      const R = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      STATE.onboarded = true; STATE.progressPtr = 8;
+      STATE.profile.parq = [false, false, false, false, false, false, false];
+      STATE.profile.parqDone = true; STATE.profile.medCleared = true; save();
+      const RealDate = window.Date; let skew = 0;
+      class Shim extends RealDate {
+        constructor(...a) { if (a.length === 0) super(RealDate.now() + skew); else super(...a); }
+        static now() { return RealDate.now() + skew; }
+        static parse(...a) { return RealDate.parse(...a); }
+        static UTC(...a) { return RealDate.UTC(...a); }
+      }
+      window.Date = Shim;
+      try {
+        // HIIT — a round must not be cut short by a background clock correction
+        skew = 0; startHiit('tabata'); await wait(300); ivStep(0); await wait(200);
+        {
+          const start = INTV.remain;
+          await wait(1100); skew = 3600 * 1000; await wait(1600);
+          R.hiit = { lost: start - INTV.remain, i: INTV.i };
+        }
+        hiitTeardown(); await wait(200); skew = 0;
+
+        // the assessment rest — v296 exists so these two minutes are REAL
+        assessState = { idx: 0, results: {}, reassess: false };
+        startAssessRest(1); await wait(300);
+        if (_ar) {
+          const start = _ar.left;
+          await wait(1100); skew = 3600 * 1000; await wait(1600);
+          R.assessRest = { lost: start - _ar.left, left: _ar.left };
+          skew = 0; if (typeof stopAssessRest === 'function') stopAssessRest();
+        } else R.assessRest = { skipped: true };
+        await wait(200);
+
+        // pausing pushes the deadline out by the time actually away. On the
+        // wall clock a jump WHILE PAUSED would stretch the rest by that jump.
+        skew = 0; openPlayer(); await wait(250);
+        PLAYER.i = 0; PLAYER.s = 0; plClear(); plEnterRest(120, 'set'); await wait(200);
+        {
+          /* A LONG ENOUGH PAUSE THAT NOT PUSHING THE DEADLINE IS VISIBLE. At
+             600 ms the "never push it out" mutant cost under a second and a
+             +/-5 s tolerance swallowed it. Four seconds paused means the fix
+             keeps `remain` unchanged, while dropping the push costs four. */
+          const before = PLAYER.remain;
+          playerToggle();                      // pause
+          await wait(1500);
+          skew = 3600 * 1000;                  // the clock corrects while paused
+          await wait(2500);
+          playerToggle();                      // resume
+          /* LONG ENOUGH FOR A TICK TO RUN. `remain` only changes when a tick
+             fires, so reading it 200 ms after resume showed the value from
+             before the pause and the "never push the deadline out" mutant was
+             invisible. */
+          await wait(1300);
+          R.pause = { before, after: PLAYER.remain, gained: PLAYER.remain - before };
+
+          /* MUTANT 7 IS INVISIBLE THROUGH `remain`. The deadline is a FLOOR —
+             Math.min can only make the countdown catch UP, never run slower —
+             so a `held` that is far too large and a `held` that is correct both
+             tick down by one. What a wall-clock `held` really destroys is the
+             CATCH-UP itself: the deadline lands so far out that a starved tick
+             can no longer reconcile against it. So starve one and look. */
+          /* ASSERT ON THE DEADLINE THE PAUSE LEFT, BEFORE TOUCHING IT. The
+             catch-up check below OVERWRITES PLAYER.deadline, which erases the
+             very thing a wall-clock `held` corrupts — so mutant 7 escaped it.
+             A deadline is consistent when the time it has left matches the
+             seconds on screen; a `held` that swallowed an hour of clock jump
+             leaves it an hour out while the display still reads two minutes. */
+          R.deadlineConsistent = Math.abs((PLAYER.deadline - monoNow()) / 1000 - PLAYER.remain);
+
+          plClear(); PLAYER.tid = null;
+          const b2 = PLAYER.remain;
+          PLAYER.deadline = monoNow() - 4000;   // stand in for 5 real seconds lost
+          plTickRest();                          // exactly ONE callback
+          R.catchUp = { before: b2, after: PLAYER.remain, dropped: b2 - PLAYER.remain };
+        }
+        playerTeardown(); await wait(200); skew = 0;
+      } finally { window.Date = RealDate; }
+      return R;
+    });
+    t.ok('guard: the HIIT round really had time on it', r.hiit && r.hiit.i === 0, JSON.stringify(r.hiit));
+    t.ok('a clock correction does not cut a HIIT round short',
+      r.hiit && r.hiit.lost <= 5, 'lost ' + (r.hiit || {}).lost + ' seconds');
+    t.ok('guard: the assessment rest really started', r.assessRest && !r.assessRest.skipped,
+      JSON.stringify(r.assessRest));
+    t.ok('nor the two minutes between two maximal efforts',
+      r.assessRest && r.assessRest.lost <= 5, 'lost ' + (r.assessRest || {}).lost + ' seconds');
+    /* Tight, because both failures are worth catching: a wall-clock `held`
+       would stretch the rest by the whole jump, and never pushing the deadline
+       out would shorten it by the four seconds spent paused. */
+    t.ok('a four-second pause across a clock correction neither stretches nor shortens the rest',
+      r.pause && Math.abs(r.pause.gained) <= 1,
+      'gained ' + (r.pause || {}).gained + ' seconds across the pause');
+    t.ok('and the deadline the pause left still matches the seconds on screen',
+      typeof r.deadlineConsistent === 'number' && r.deadlineConsistent <= 2,
+      'deadline is ' + r.deadlineConsistent + ' seconds away from what the display says');
+    t.ok('and the deadline still works as a catch-up floor after that pause',
+      r.catchUp && r.catchUp.dropped >= 4,
+      'one starved tick dropped ' + (r.catchUp || {}).dropped + ' seconds');
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));

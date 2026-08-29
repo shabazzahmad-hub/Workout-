@@ -7884,6 +7884,44 @@ always the same — the mutant changes the program and the check does not move.
 Eight mutants, all caught, including the over-eager twin that makes `monoNow()`
 always return the wall clock.
 
+### The count-DOWN half, and four rounds of reading the mutant back
+
+I first called the count-down exposure *"annoying rather than corrupting"*.
+**The measurement corrected that.** On a two-minute rest with the clock shoved
+forward: +1 minute left 58 seconds of it, and **+1 hour ended it instantly**,
+dropping straight into the next set. v296 exists so the two minutes between
+maximal efforts are REAL, so that is a corrupted measurement, not a mood. It
+was folded into this version rather than shipped as a documented half-fix.
+
+**Moving the deadlines and leaving the stall detector behind broke seven
+checks.** `performance.now()` is a few thousand and `Date.now()` is ~1.78
+trillion, so every surface read as permanently stalled. **One clock for every
+timer stamp** — deadline, `phaseAt` and `lastTick` all monotonic — is the rule
+that came out of it, and the same rule applies to a synthetic timestamp in a
+check.
+
+Then the mutants, and each escape taught a different lesson:
+
+- **A defect that lives in two places needs a mutant in two places.** Flipping
+  only the deadline WRITE left the read monotonic, so the remaining time was
+  astronomically large, `byTick` always won and the countdown merely ticked —
+  a different bug entirely. Paired write+read mutants are caught at once.
+- **`remain` can never increase.** `Math.min(byTick, …)` means the deadline
+  only ever makes the countdown catch UP. So a `held` that is far too large and
+  a correct one both tick down by one, and mutant 7 was invisible through
+  `remain` no matter how tight the tolerance.
+- **A check that OVERWRITES the state under test erases the defect.** The
+  catch-up check set `PLAYER.deadline` itself, wiping exactly what a wall-clock
+  `held` had corrupted. The fix is to assert on the deadline the pause LEFT:
+  a deadline is consistent when the time it has left matches the seconds on
+  screen, and an hour of swallowed clock jump shows up immediately.
+- **Read the value after the thing that changes it.** The pause check read
+  `remain` 200 ms after resume, before any tick had run, so "never push the
+  deadline out" changed nothing it could see.
+
+Seven count-down mutants, all caught after those four rewrites.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
