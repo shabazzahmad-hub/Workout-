@@ -1,3 +1,10 @@
+/* THE CLOCK BASE. v380 moved every timer stamp — t0, pauseAt, deadline,
+   phaseAt, lastTick — onto performance.now(), because Date.now() moves when
+   the phone corrects itself and a 3-second hold was being recorded as 3,602.
+   So a synthetic timestamp here must come from monoNow() too: feeding a
+   wall-clock value to a monotonic reader compares two time bases twelve orders
+   of magnitude apart, and every check in this file fails on correct code.
+   `pausedMs` is a DURATION in milliseconds and is unaffected. */
 /* The session clock.
 
    Two things are in tension here and both have to hold.
@@ -77,7 +84,7 @@ export default async function run() {
     o.mounted = !!document.querySelector('#plClock');
     o.startsAtZero = plWallSec() === 0;
     o.showsBudget = /~\d+m/.test(document.querySelector('#plClock').textContent);
-    PLAYER.t0 = Date.now() - 185000;   // 3:05 in
+    PLAYER.t0 = monoNow() - 185000;   // 3:05 in
     plClockTick();
     o.at3 = plWallSec();
     o.rendered = document.querySelector('#plClock').textContent;
@@ -103,7 +110,7 @@ export default async function run() {
   const pause = await page.evaluate(() => {
     const o = {};
     openPlayer();
-    PLAYER.t0 = Date.now() - 300000;         // five minutes in
+    PLAYER.t0 = monoNow() - 300000;         // five minutes in
     const before = plWallSec();
     playerToggle();
     o.paused = !PLAYER.running;
@@ -118,8 +125,8 @@ export default async function run() {
        were really paused, which is a different (and wrong) scenario — the
        first version of this check did exactly that and read the resulting
        drop as the clock failing. */
-    PLAYER.t0 = Date.now() - 420000;
-    PLAYER.pauseAt = Date.now() - 120000;
+    PLAYER.t0 = monoNow() - 420000;
+    PLAYER.pauseAt = monoNow() - 120000;
     plClockTick();
     o.wallFrozen = plWallSec() === before;   // the clock did NOT advance
     o.pausedCounted = plPausedSec() >= 120;
@@ -133,7 +140,7 @@ export default async function run() {
     o.noCatchUp = Math.abs(o.wallAfterResume - before) <= 1;
     // a second pause adds to the bank rather than replacing it
     playerToggle();
-    PLAYER.pauseAt = Date.now() - 60000;
+    PLAYER.pauseAt = monoNow() - 60000;
     playerToggle();
     o.banksCumulatively = Math.round(PLAYER.pausedMs / 1000) >= 180;
     playerQuit();
@@ -155,7 +162,7 @@ export default async function run() {
      and it is the only check that proves the promise end to end. */
   const held = await page.evaluate(() => {
     openPlayer();
-    PLAYER.t0 = Date.now() - 300000;
+    PLAYER.t0 = monoNow() - 300000;
     playerToggle();
     return { before: plWallSec(), started: !!PLAYER.pauseAt };
   });
@@ -207,11 +214,11 @@ export default async function run() {
     const o = {};
     openPlayer();
     // under budget: silence
-    PLAYER.t0 = Date.now() - (PLAYER.budget * 60 - 120) * 1000;
+    PLAYER.t0 = monoNow() - (PLAYER.budget * 60 - 120) * 1000;
     plClockTick();
     o.quietUnderBudget = !PLAYER.overNudged;
     // over budget: exactly one nudge, however many ticks go by
-    PLAYER.t0 = Date.now() - (PLAYER.budget * 60 + 60) * 1000;
+    PLAYER.t0 = monoNow() - (PLAYER.budget * 60 + 60) * 1000;
     plClockTick();
     o.nudgedOver = PLAYER.overNudged;
     plClockTick(); plClockTick();
@@ -222,11 +229,11 @@ export default async function run() {
     // a short pause is nobody's business
     openPlayer();
     playerToggle();
-    PLAYER.pauseAt = Date.now() - 60000;
+    PLAYER.pauseAt = monoNow() - 60000;
     plClockTick();
     o.quietShortPause = !PLAYER.lastPauseNudge;
     // a long one gets one prompt, and does not then nag every second
-    PLAYER.pauseAt = Date.now() - 200000;
+    PLAYER.pauseAt = monoNow() - 200000;
     plClockTick();
     o.nudgedLongPause = !!PLAYER.lastPauseNudge;
     const first = PLAYER.lastPauseNudge;
@@ -258,7 +265,7 @@ export default async function run() {
   const done = await page.evaluate(() => {
     const o = {};
     openPlayer();
-    PLAYER.t0 = Date.now() - 2400000;      // 40 minutes on a ~23 minute session
+    PLAYER.t0 = monoNow() - 2400000;      // 40 minutes on a ~23 minute session
     PLAYER.pausedMs = 300000;              // five of them paused
     PLAYER.elapsed = 900;                  // fifteen actually working
     PLAYER.setsDone = 12;
@@ -292,7 +299,7 @@ export default async function run() {
   // ---- an under-budget session is not scolded ------------------------------
   const under = await page.evaluate(() => {
     openPlayer();
-    PLAYER.t0 = Date.now() - 600000;   // ten minutes on a ~23 minute session
+    PLAYER.t0 = monoNow() - 600000;   // ten minutes on a ~23 minute session
     PLAYER.elapsed = 540; PLAYER.setsDone = 12;
     plEnterDone();
     const html = document.querySelector('#plBody').innerHTML;
@@ -311,7 +318,7 @@ export default async function run() {
     const o = {};
     STATE.progressPtr = 0; STATE.logs = {};
     openPlayer();
-    PLAYER.t0 = Date.now() - 1800000; PLAYER.pausedMs = 120000;
+    PLAYER.t0 = monoNow() - 1800000; PLAYER.pausedMs = 120000;
     PLAYER.elapsed = 800; PLAYER.setsDone = 10;
     plEnterDone();
     playerQuit();
@@ -492,12 +499,17 @@ export default async function run() {
   {
     const rs = await page.evaluate(async () => {
       const keep = { si: window.setInterval, ci: window.clearInterval, now: Date.now,
+                     perf: performance.now.bind(performance),
                      speak: window.coachSpeak, beep: window.beep, go: window.beepGo };
       let fn = null, id = 0;
       window.setInterval = (f, ms) => (ms === 1000 || ms === 100)
         ? (fn = f, ++id) : keep.si.call(window, f, ms);
       window.clearInterval = i => { if (i && i <= id) fn = null; else keep.ci.call(window, i); };
-      let virt = 5000000; Date.now = () => virt;
+      /* THE VIRTUAL CLOCK MUST COVER BOTH. v380 moved every timer stamp onto
+         performance.now(), so faking only Date.now() no longer advances a
+         deadline — the block's whole technique stopped driving the code it
+         tests. One `virt` behind both keeps the two bases consistent. */
+      let virt = 5000000; Date.now = () => virt; performance.now = () => virt;
       window.coachSpeak = () => true; window.beep = () => {}; window.beepGo = () => {};
       const tick = n => { for (let i = 0; i < n; i++) { virt += 1000; if (fn) fn(); } };
       const o = {};
@@ -567,7 +579,7 @@ export default async function run() {
       o.resyncSrc = plResync.toString();
       Object.assign(window, { setInterval: keep.si, clearInterval: keep.ci,
                               coachSpeak: keep.speak, beep: keep.beep, beepGo: keep.go });
-      Date.now = keep.now;
+      Date.now = keep.now; performance.now = keep.perf;
       return o;
     });
     t.ok('guard: the player really reached a rest', rs.reachedRest, rs);
