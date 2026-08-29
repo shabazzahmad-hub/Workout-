@@ -7709,6 +7709,116 @@ also rejects a note opening with its own label kills `gain`'s perfectly good
 copy, and a rule that rejects everything satisfies every "the bad note is
 caught" assertion while making the validator useless.
 
+## A rescue is the wrong place to be optimistic (v379)
+
+Found by fuzzing the code shipped one round earlier — the fifth round running
+where the best finding was in the round immediately before, and the second in
+a row where the finding was in my own new code.
+
+Both of v377's helpers failed OPEN, in a subsystem whose rule is to fail
+closed.
+
+### tickUp() could return NaN
+
+```
+tickUp({elapsed:'x'})            -> NaN
+tickUp({startedAt:'y',elapsed:3}) -> NaN
+```
+
+A junk `elapsed` CONCATENATES (`'x'+1` is `'x1'`, and `Math.max('x1',0)` is
+NaN); a junk `startedAt` makes the subtraction NaN. **This number is written
+into the record, not merely shown** — it is the count of a maximal effort, one
+of which anchors every prescription for a year and the other of which sets a
+personal best.
+
+**The two ways of being wrong are not symmetrical.** One second short is a
+rounding error. A NaN is a lost test, and it travels into `holdLog` and the
+baseline record.
+
+### tickResync() left a runaway armed
+
+The forced tick sat inside the function's single `try/catch`, so a tick that
+threw was swallowed, `tickResync()` returned **false** as though nothing had
+happened — and the interval armed one line above kept firing and throwing
+**once a second, for ever**.
+
+Measured: **4 throws in 3.5 seconds, 3 page errors**, with the caller told it
+did nothing.
+
+That is worse than not rescuing at all. A rescue that cannot run must clear
+what it armed and say so.
+
+### Neither is reachable, and both are kept
+
+On today's five surfaces `startedAt` and `elapsed` are only ever set to real
+numbers, and all five ticks guard themselves. So no route feeds either one
+junk — which is exactly why both contracts are **exercised DIRECTLY** rather
+than through a screen, the technique this file already uses for the
+hardness-band and anchor-unit guards.
+
+**The floors are what stop the fix being a deletion.** `tickUp` must still be
+a floor (nine real seconds beat two counted ticks) and must still never wind a
+counter backwards; a healthy tick must still be re-armed and must still keep
+ticking. The over-eager twins fail exactly there: a `tickUp` that always
+returns `elapsed+1` kills the floor v377 exists for, and a `tickResync` that
+tears down every tick makes the rescue useless while satisfying every
+"the runaway is gone" assertion.
+
+### The measurement corrected me on one escape and confirmed the other
+
+Two mutants escaped the first run, and reading them back — by running three
+variants of `tickUp()` over 18 junk shapes and diffing — split them:
+
+- **The final NaN backstop is EQUIVALENT.** Zero differences in 18 cases: with
+  the two upstream guards in place `out` can never be NaN. No check can catch
+  its removal. Kept as intent, the same call as v287's `wantAnchor`.
+- **The `startedAt` guard is NOT equivalent, and my check was weak.** Two
+  differences, and they exposed a hole in the guard itself. **An ARRAY is
+  TRUTHY and coerces to 0**, so `startedAt:[]` made the subtraction
+  `Date.now()-0` and reported **1,787,973,936 seconds** as the length of a
+  hold — a huge FINITE number that no `isFinite()` layer can see. A stored
+  `0` did the same through my own guard, because zero is finite.
+
+The check had tested only a STRING `startedAt`, which the `isFinite(real)`
+layer already caught. **Assert a PLAUSIBLE value, not merely a number**: no
+hold in this app runs past a day, so anything beyond 86,400 is a coerced
+timestamp leaking through. The guard now requires `startedAt > 0`, and three
+re-seeded mutants — the original escape, a zero timestamp, and "anything
+truthy" — are each caught by name.
+
+Ten mutants: nine caught, one equivalent.
+
+### Five axes swept clean in the same round
+
+Recorded as coverage, because a clean measurement is a result:
+
+- **Memory and listeners across 30 open-and-close cycles** of all four timed
+  surfaces, with collection forced before every reading: nodes **365 flat**
+  and listeners **33 flat** from cycle 1 to cycle 30; the heap climbs 0.23 MB
+  over the first ten and 0.07 MB over the next twenty, so it plateaus, and it
+  drops back when idle. A leak cannot have flat node and listener counts.
+- **The tick rate with the heartbeat live** — the risk `tickResync()` created.
+  The player's rest clock counts **exactly 12 seconds in 12**. No double-arming.
+- **A full backup round trip** of everything v375-v378 added: `settings.voiceCmd`
+  restores, the file carries NEITHER API key, both keys survive `hardReset()`
+  AND the import, and no live-session scratch travels.
+- **A real training week** — five sessions committed, the pointer moved five,
+  `adapt` moved +0.03, the lifetime count read five, a rest day recorded, and
+  no screen printed NaN.
+- **Tab-pointer copy**, read off the real screens rather than grepped: 6
+  pointers across 51,724 rendered characters, and all 6 destinations verified
+  to hold the thing they name.
+
+### Two false alarms, and both are traps this file already records
+
+- **"Movement is missing from Today ▸ Workout."** The probe never seeded a
+  baseline, so Today correctly rendered the Baseline Test screen. With one
+  seeded, Movement is there with 27 tappable rows. Same shape as the
+  end-of-program probe that read the welcome screen.
+- **"`todayKcalBudget()` returns undefined."** It returns the stored value
+  unchanged when there is no usable target — its own comment says so, and no
+  screen printed it.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

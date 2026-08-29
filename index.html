@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='378';
+const APP_VERSION='379';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -6989,9 +6989,25 @@ function timerStalled(S){
    faster than one second per tick by a clock jump. */
 function tickUp(S){
   try{
-    const real=Math.floor((Date.now()-(S.startedAt||Date.now()))/1000);
-    return Math.max((S.elapsed||0)+1, real);
-  }catch(e){return (S.elapsed||0)+1;}
+    /* NEVER RETURN NaN. This counts a MAXIMAL EFFORT — one number anchors
+       every prescription for a year, the other sets a personal best — and a
+       NaN here is written into the record, not merely shown. Measured:
+       {elapsed:'x'} and {startedAt:'y'} both produced NaN, because a junk
+       `elapsed` concatenates and a junk `startedAt` makes the subtraction NaN.
+       Not reachable on today's five surfaces, where both fields are only ever
+       set to real numbers — kept because the two ways of being wrong are not
+       symmetrical: one second short is a rounding error, and NaN is a lost
+       test. A check exercises it directly, since no route feeds it junk. */
+    const prev=(typeof S.elapsed==='number'&&isFinite(S.elapsed))?S.elapsed:0;
+    /* `> 0`, not merely finite. An ARRAY coerces to 0 and is TRUTHY, so a
+       `startedAt` of [] made the subtraction Date.now()-0 and reported
+       1,787,973,936 seconds as the length of a hold — a huge FINITE number
+       that no isFinite() layer can see. A zero timestamp is not a start. */
+    const start=(typeof S.startedAt==='number'&&isFinite(S.startedAt)&&S.startedAt>0)?S.startedAt:Date.now();
+    const real=Math.floor((Date.now()-start)/1000);
+    const out=Math.max(prev+1, isFinite(real)?real:0);
+    return isFinite(out)?out:prev+1;
+  }catch(e){const p=(typeof S==='object'&&S&&typeof S.elapsed==='number'&&isFinite(S.elapsed))?S.elapsed:0;return p+1;}
 }
 /* v375 gave the guided player and HIIT a heartbeat. There are SEVEN timed
    surfaces in this app, not two — the warm-up flow, the baseline test, the
@@ -7015,7 +7031,15 @@ function tickResync(S){
     if(S.iv)clearInterval(S.iv);
     S.lastTick=Date.now();
     S.iv=setInterval(S.tick,S.every||1000);
-    S.tick();   // one now, so a phase that already expired resolves at once
+    /* A RESCUE THAT CANNOT RUN MUST NOT LEAVE A RUNAWAY. The forced tick used
+       to sit inside the function's single try/catch, so a tick that threw was
+       swallowed, this returned false as though nothing had happened — and the
+       interval armed one line above kept firing and throwing ONCE A SECOND,
+       for ever. Measured: 4 throws in 3.5 seconds and 3 page errors, with the
+       caller told it did nothing. Unreachable on today's five surfaces, whose
+       ticks all guard themselves; a rescue is the wrong place to be optimistic. */
+    try{S.tick();}                       // one now, so an expired phase resolves at once
+    catch(e){clearInterval(S.iv);S.iv=null;return false;}
     return true;
   }catch(e){return false;}
 }

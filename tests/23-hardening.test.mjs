@@ -4937,6 +4937,85 @@ export default async function () {
     t.eq('and the validator is clean again once restored', r.cleanAfter, 0);
   }
 
+  /* ---------- v377's own two helpers, made fail-safe ---------------------
+     Found by fuzzing the code shipped one round earlier — the fifth round
+     running where the best finding was in the round immediately before.
+
+     Neither is reachable on today's five timed surfaces: `startedAt` and
+     `elapsed` are only ever set to real numbers, and all five ticks guard
+     themselves. Both are kept because a rescue is the wrong place to be
+     optimistic, and because the two ways of being wrong are not symmetrical —
+     one second short is a rounding error, a NaN is a lost maximal effort.
+     No route feeds either one junk, so both contracts are exercised DIRECTLY,
+     the technique this file already uses for the hardness-band and anchor-unit
+     guards. */
+  {
+    const r = await page.evaluate(async () => {
+      const R = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      const now = Date.now();
+      // tickUp must never return NaN — it is written into the record, not
+      // merely shown. Measured before the fix: both of the first two produced
+      // NaN, because a junk elapsed concatenates and a junk startedAt makes
+      // the subtraction NaN.
+      R.up = {
+        junkElapsed: tickUp({ elapsed: 'x' }),
+        junkStart: tickUp({ startedAt: 'y', elapsed: 3 }),
+        nanStart: tickUp({ startedAt: NaN, elapsed: 2 }),
+        empty: tickUp({}),
+        negative: tickUp({ elapsed: -9, startedAt: now - 3000 }),
+        /* AN ARRAY IS TRUTHY AND COERCES TO 0. These two produce a huge
+           FINITE number, which "is it a number?" cannot see — the first
+           version of this check tested only a STRING startedAt, which the
+           isFinite layer already caught, so the mutant that dropped this
+           guard ESCAPED. Measured: 1,787,973,936 seconds reported as the
+           length of a hold. */
+        arrayStart: tickUp({ elapsed: {}, startedAt: [] }),
+        zeroStart: tickUp({ elapsed: 0, startedAt: 0 }),
+        objectStart: tickUp({ elapsed: 1, startedAt: {} }),
+        // and the floor still works on real input
+        real: tickUp({ startedAt: now - 9000, elapsed: 2 }),
+        neverBack: tickUp({ startedAt: now - 1000, elapsed: 40 })
+      };
+      // tickResync must not leave a runaway when the tick it re-arms throws
+      let calls = 0;
+      const S = { lastTick: 1, iv: null, tick() { calls++; throw new Error('tick blew up'); } };
+      R.returned = tickResync(S);
+      R.ivAfterThrow = S.iv;
+      await wait(2600);
+      R.callsAfterThrow = calls;
+      if (S.iv) clearInterval(S.iv);
+      // FLOOR: a tick that does NOT throw is still re-armed and still runs
+      let ok = 0;
+      const G = { lastTick: 1, iv: null, tick() { ok++; } };
+      R.goodReturned = tickResync(G);
+      R.goodIv = !!G.iv;
+      await wait(1200);
+      R.goodCalls = ok;
+      if (G.iv) clearInterval(G.iv);
+      return R;
+    });
+    Object.keys(r.up).forEach(k => {
+      t.ok('tickUp never returns NaN (' + k + ')',
+        typeof r.up[k] === 'number' && isFinite(r.up[k]), k + ' = ' + r.up[k]);
+    });
+    /* A PLAUSIBLE number, not merely a number. No hold in this app runs for
+       more than a few hours, so anything past a day is a coerced timestamp
+       leaking through — which is exactly what the escaped mutant produced. */
+    Object.keys(r.up).forEach(k => {
+      t.ok('tickUp returns a plausible count of seconds (' + k + ')',
+        typeof r.up[k] === 'number' && r.up[k] >= 0 && r.up[k] < 86400,
+        k + ' = ' + r.up[k]);
+    });
+    t.eq('tickUp: nine real seconds still beat two counted ticks', r.up.real, 9);
+    t.eq('tickUp: it is still a FLOOR — it never winds a counter backwards', r.up.neverBack, 41);
+    t.eq('a rescue whose tick throws reports that it failed', r.returned, false);
+    t.eq('and it clears the interval it had just armed', r.ivAfterThrow, null);
+    t.eq('so the throw happens ONCE, not once a second for ever', r.callsAfterThrow, 1);
+    t.eq('floor: a healthy tick is still re-armed', r.goodReturned, true);
+    t.eq('and its interval is left running', r.goodIv, true);
+    t.ok('and it really keeps ticking', r.goodCalls >= 2, String(r.goodCalls));
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
