@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='377';
+const APP_VERSION='378';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2550,8 +2550,8 @@ function goalKeys(){return GOALS.map(g=>g[0]);}
 const GOAL_NOTE={
   lose:'Steady fat loss — a moderate deficit that keeps your strength.',
   shred:'Aggressive lean-out — steeper deficit, more protein, higher-rep conditioning. Best in short blocks.',
-  recomp:'Lose fat and build muscle at the same time, with the scale held steady.',
-  leanrecomp:'Tone up with a real deficit under it — the same sessions, rep for rep, eating ~12% below maintenance.',
+  recomp:'Reshape your body with the scale held steady — fat down and muscle up at the same weight.',
+  leanrecomp:'Fat loss with no drop in training volume — the same sessions and reps Tone up gives you, eating ~12% below maintenance.',
   core:'Midsection first — every session adds an abs/oblique bonus and eats near maintenance.',
   maintain:'Hold your weight and let the training reshape you.',
   gain:'Build muscle on a slight surplus with heavier, lower-rep work.',
@@ -20831,6 +20831,24 @@ function validateData(){
     const gk=GOALS.map(g=>g[0]);
     gk.forEach(g=>{const t=GOAL_NOTE[g];
       if(typeof t!=='string'||!t.trim())errs.push('GOAL_NOTE: no note for goal "'+g+'" — the picker shows it with a blank explanation');});
+    /* A NOTE MUST NOT OPEN BY NAMING A DIFFERENT GOAL. Reported from the phone
+       with a screenshot: the athlete picked Lean recomp and read the note below
+       as leftover Tone-up text. It was not leftover — the note is dynamic and
+       was correct — but it opened with the words "Tone up", which is a button
+       sitting directly above it, so it could not be read as an answer about the
+       goal just chosen.
+
+       Opening with its OWN label is fine and often helpful: `gain` starts
+       "Build muscle on a slight surplus", which is the goal naming itself.
+       Only another option's label collides. Swept across every registry that
+       carries per-member copy — 7 registries, 68 members — and the goals were
+       the only ones that failed, twice. */
+    {const lab={};GOALS.forEach(([k,l])=>{lab[k]=String(l).replace(/[^\x20-\x7E]/g,'').trim();});
+     gk.forEach(g=>{const t=GOAL_NOTE[g];if(typeof t!=='string')return;
+       const n=t.trim().toLowerCase();
+       gk.forEach(o=>{if(o===g||!lab[o])return;
+         if(n.startsWith(lab[o].toLowerCase()))
+           errs.push('GOAL_NOTE.'+g+': opens with "'+lab[o]+'", another goal\'s own button label — it reads as leftover text from that button');});});}
     Object.keys(GOAL_NOTE).forEach(g=>{
       if(gk.indexOf(g)<0)errs.push('GOAL_NOTE: note for "'+g+'", which is not a goal');});
   }catch(e){errs.push('GOAL_NOTE: could not be checked — '+e.message);}

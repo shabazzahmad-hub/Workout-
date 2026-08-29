@@ -7645,6 +7645,70 @@ hold/rep timer and the warm-up flow, comment and all. The patch script's
 half-applied edit, and reading it back showed both sites genuinely needed the
 same edit. The count is deliberately 2, with a comment saying so.
 
+## The note was dynamic, and it still read as leftover (v378)
+
+Reported from the phone with a screenshot: *"I selected lean recomp, but the
+writing below the tabs is still referring to tone up selection from earlier.
+it is not dynamic, but it should be based on what is selected above."*
+
+**It IS dynamic, and the report was still right.** Driven on the real Fuel
+picker: `setNutGoal('recomp')` paints Tone up's note, `setNutGoal('leanrecomp')`
+paints lean recomp's, and both `profile.goal` and `nutrition.goal` follow. The
+text on his screen was genuinely `leanrecomp`'s own note.
+
+The defect is the WORDING. It opened with the words **"Tone up"** — which is a
+button sitting directly above it in the same picker — so it could not be read
+as an answer about the goal just chosen. His reaction is the proof, and no
+amount of correct wiring fixes it.
+
+### Its own name is fine; another option's name is not
+
+That distinction is the whole rule. `gain`'s note opens *"Build muscle on a
+slight surplus"*, which is the goal naming **itself** — helpful, and it must
+stay legal. Only a note that opens with a DIFFERENT option's label collides,
+because the reader has that label in front of them as a button.
+
+**A first pass called this three instances and the measurement said two.**
+`gain` was counted as a third and it is not one. Recorded because the
+correction came from sweeping rather than from reading.
+
+### The class, swept rather than assumed
+
+Every registry in the app that carries per-member copy — **7 registries, 68
+members**:
+
+| registry | members with copy | notes opening with another option's label |
+|---|---|---|
+| **GOAL_NOTE** | 7 | **2** |
+| ACHIEVEMENTS | 30 | 0 |
+| TESTS | 10 | 0 |
+| SPECIAL_FORMATS | 7 | 0 |
+| CARDIO_INFO | 5 | 0 |
+| HOLD_TESTS | 5 | 0 |
+| PREP_PATHS | 2 | 0 |
+
+Four more registries — diet, timeline, activity, gear — carry **no per-member
+copy at all**, so an empty result there proves nothing and is not counted as
+coverage. Saying which registries the sweep could not speak for is the
+difference between a measurement and a reassurance.
+
+### The rule lives in the validator, not in two hand-edits
+
+Two rewritten strings fix today. A `validateData()` rule fixes the class: no
+`GOAL_NOTE` value may open with any OTHER goal's button label, emoji stripped.
+A future note written the same way fails at boot rather than on a phone.
+
+**A clean validator proves nothing about a validator rule** — it stays clean
+whether the rule exists or not. So the check breaks one note in front of it,
+requires the specific complaint *and* that the complaint names the label it
+collided with, then restores. `validateData()` logs, so `console.error` is
+muted across the break or the harness counts it as a page failure.
+
+The floors carry the round, and both over-eager mutants fail one: a rule that
+also rejects a note opening with its own label kills `gain`'s perfectly good
+copy, and a rule that rejects everything satisfies every "the bad note is
+caught" assertion while making the validator useless.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
