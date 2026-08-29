@@ -8920,6 +8920,24 @@ below. Every fix has its over-eager twin seeded beside it, and the credential
 one is the sharpest in the app: a repair that dropped a REAL key destroys the
 only thing a backup cannot restore.
 
+### The class is now closed at all three levels
+
+- **Level 1**, top-level fields — v390, eight fixed.
+- **Level 2**, nested fields — this round, four fixed and nine measured safe.
+- **Level 3**, the entries INSIDE those containers — **288 cases, zero
+  problems**: every field of a day entry (including all five cardio modes'
+  value/level/unit triples), a food row, a session log, a measurement, a
+  score-history row, a hold record and the prep block, each fuzzed with six
+  junk shapes, then booted and rendered across five tabs. Already covered by
+  v353's per-mode day repair, v356's log dates, v346's food row and v374's
+  photos.
+
+**And that sweep's detector was proven both ways before the zero was
+believed** — a renderer was stubbed to throw, the sweep reported the boundary,
+and it cleared when the stub was removed. An id sweep earlier the same day
+reported zero with a detector that could not see a problem at all, which is why
+this is the standing rule rather than a note.
+
 **And nine of the fourteen nested fields were driven and are genuinely safe**,
 which is the other half of the sweep: `beatTempoPref()` clamps its own read,
 `skipLevel` does a membership test at its read site, and the booleans
