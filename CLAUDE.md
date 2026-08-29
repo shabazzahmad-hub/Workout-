@@ -8402,6 +8402,113 @@ recipe view was unreachable from every screen in the app:
 | `mealGapHTML` | 0 | 2 |
 
 
+## Every function is reachable from a root, and now a check says so
+
+v385 found that `_recipePlanHTML()` — the only renderer of a recipe's
+ingredients and method in the whole file — had **no caller**, so the recipe view
+was unreachable from every screen while the morning brief read its address
+aloud. Nothing noticed for many versions.
+
+**A direct-caller count could not have caught it.** `_recipePlanHTML` HAD a
+caller: `mealPlanHTML()`, which itself had none. The head went dark and took
+the cluster with it — `toggleRecipe`, `openGrocery`, `regenPlan` and
+`mealGapHTML` all had 0 reachable call sites. It takes TRANSITIVE reachability
+from the real roots.
+
+**The roots are three, and missing any one of them breaks the answer:**
+
+- **the page's own markup** — `onclick="openSettings()"` in the body is a call
+  site the script never mentions;
+- **the top-level code**, which is where the registries live: `CARDIO_INFO`
+  names its per-mode builders as bare identifiers;
+- **`boot()`**, reached from the load listener.
+
+Measured on the app today: **1,137 of 1,140 top-level functions reachable, 3
+orphans, and all three are kept on purpose** — `mealPlanHTML` is suite 02's
+safety surface for the meal generator, `todaysWorkedDay` is its helper, and
+`logFoodFromList` is suite 06's bad-index guard. The allowlist is checked in
+both directions, so an entry that gains a real caller has to come off it.
+
+### The guards matter more than the result
+
+Every wrong version of this analysis reported **hundreds** of orphans, not a
+handful — a broken traversal looks exactly like a rotten app, and the four
+wrong ones each looked plausible:
+
+- **`async function` was not matched**, so `boot` was not in the roster at all
+  and reachability came back as **1**.
+- **The body ran to the next declaration**, which attributed every top-level
+  registry between two functions to the one above it. A dozen live builders
+  read as unreachable.
+- **A line-anchored `^}` search ran past a one-liner.** `_dv()` is a single
+  line, so its span swallowed `CARDIO_INFO` whole and `bikeBlockHTML` looked
+  dead. Brace matching, skipping strings and template literals, is what fixed
+  it.
+- **The static markup was not read**, so `openSettings` — called only from a
+  button in the page body — read as an orphan.
+
+So the check asserts `boot()` was found, that the roster is over 900 functions,
+that the script it parsed is the app's, and that **over 90% of the roster is
+reachable** before it trusts the orphan list at all.
+
+Three mutants, all caught: a live renderer losing its only caller (the v385
+shape exactly), a handler losing its only `onclick`, and a whole cluster head
+going dark.
+
+
+## Two writers of one field, and a stale safety argument (v388)
+
+Found by sweeping three source-level classes at once. **Three of the four came
+back clean**, and recording that is the point of running them:
+
+| swept | result |
+|---|---|
+| renderers that assign to `STATE` | **0** of 1,140 functions (265 assignments, all in real writers) |
+| renderers that call a mutating helper | **3**, every one documented and deliberate |
+| functions that mutate `STATE` with no caller persisting it | **0** — 12 candidates, all lazy-init accessors or saved by their callers |
+| `STATE.x.y` paths with 3+ distinct writers | **4**, and two were span mis-attributions |
+
+**A guard is what makes a clean sweep trustworthy.** Every one of these
+analyses first reported an implausible number — 0 paths with many writers, 0
+renderers assigning — and the guards (how many assignments were found at all,
+who the top writers are) are what separated "the app is clean" from "the regex
+matched nothing".
+
+### The trap: two writers, one of which skipped the source of truth
+
+`hasBar`/`hasBench` are a legacy mirror of `gear[]`. `toggleGear()` and
+`normalizeState()` both derive them FROM gear. `toggleSetting()` flipped the
+flag and left gear alone — so a control wired to either branch would have
+**appeared to work and been silently reverted on the next boot**, which is the
+`cardioMode` defect exactly.
+
+Nothing reaches those branches today, and that is precisely when it is cheap to
+make them correct rather than delete them or leave the trap: they route to the
+one writer now.
+
+### The stale safety argument was in code I had just written
+
+`_recipePlanHTML()`'s comment named `renderFuel()` as the caller that primes the
+plan before any markup is built — the whole justification for calling a
+generator that `save()`s from an HTML builder. `renderFuel()` stopped priming
+when v245 removed the only markup on Fuel that read the plan, and its own
+comment eleven hundred lines below says so. v385 made `renderRef()` the primer
+and did not update the argument.
+
+### The mutant that proved the check was reading a comment
+
+The first version asserted that the named caller really calls
+`currentMealPlan(` — by searching the function's source. **`renderFuel()`'s own
+comment contains that exact text**, explaining that its priming call was
+REMOVED. So the scan said it primes when it is the function that stopped, and
+the mutant naming `renderFuel()` escaped clean.
+
+A comment that quotes code breaks a scan for that code — already recorded here
+for the duplicate-key guard and for `document.body.innerHTML`. The check strips
+comments first now, with a guard that the stripper has not simply deleted
+everything.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

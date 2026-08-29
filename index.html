@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='387';
+const APP_VERSION='388';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -18411,7 +18411,12 @@ function _recipePlanHTML(anchor){
   const _anch=anchor||'mealplan';
   /* currentMealPlan() generates and save()s a randomly-chosen plan. Called from
      an HTML builder, a render could persist a different plan than the one it
-     drew. renderFuel() primes it before assembling any markup. */
+     drew, so the caller primes it before assembling any markup.
+     THAT CALLER IS renderRef(). This said renderFuel() — which stopped priming
+     when v245 removed the only markup on Fuel that read the plan, and whose own
+     comment says so eleven hundred lines below. Two comments in one file, one
+     describing the removal and the other still naming it as the safety
+     argument for calling this builder at all. */
   /* This re-stated currentMealPlan()'s freshness test and got it WRONG — date
      and non-empty only, with no _planStillValid(). A second copy of a rule is a
      second place for it to drift, and this one had already drifted. */
@@ -19915,9 +19920,15 @@ function forceUpdate(){
   }catch(e){setTimeout(reload,500);}
 }
 function toggleSetting(k){
-  if(k==='hasBar')STATE.profile.hasBar=!(STATE.profile.hasBar!==false);
-  else if(k==='hasBench')STATE.profile.hasBench=!(STATE.profile.hasBench!==false);
-  else STATE.settings[k]=!STATE.settings[k];
+  /* gear[] IS THE SOURCE OF TRUTH, and these two are its legacy mirror. Both
+     branches used to flip the flag WITHOUT touching gear — so a control wired
+     to either would have appeared to work and been silently reverted on the
+     next boot, where normalizeState() rewrites both flags from gear. Nothing
+     reaches them today, which is exactly when it is cheap to make them
+     correct: route to the one writer instead of leaving a trap. */
+  if(k==='hasBar')return toggleGear('bar');
+  if(k==='hasBench')return toggleGear('bench');
+  STATE.settings[k]=!STATE.settings[k];
   if(k==='beat'&&STATE.settings.beat===false)beatStop();
   save();renderGuide();
 }
