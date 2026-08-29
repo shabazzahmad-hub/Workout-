@@ -8635,6 +8635,18 @@ Measured by diffing a settled state either side of the repair: `opsPR` was the
 one key that appeared out of nowhere. `comeback` and `customFav` were already
 guarded with `!== undefined`; this one was not.
 
+**The wider question was then measured rather than assumed: does the note fire
+spuriously today?** No. A returning athlete on the same version diffs to
+**nothing**, and 33 containers are created only when genuinely absent — which
+for a returning athlete they are not. A one-time diff on the first launch after
+an upgrade is exactly what the note is for; what `opsPR` would have added was a
+diff on that launch for *every* athlete, over a field none of them use.
+
+So the invariant is pinned rather than the instance: **`normalizeState()` leaves
+a settled state alone.** A repair that changes it fires the note on every boot,
+for ever, for everybody — which is the worst version of this and the one no
+per-field check would catch.
+
 **And the check for it had to settle the state first.** Its first version ran
 where earlier blocks in the same page had left junk in `STATE`, so the second
 `normalizeState()` legitimately changed something and the check failed on

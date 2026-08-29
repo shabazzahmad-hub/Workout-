@@ -570,6 +570,16 @@ export default async function run() {
          created out of nothing shows every athlete who has never run an ops
          challenge a "we repaired your data" note about nothing — and puts an
          empty object in every backup after it. */
+      /* IDEMPOTENCE. Boot flags _dataRepaired on any diff across
+         normalizeState(), so a repair that changes a settled state fires the
+         note on EVERY boot, for ever, for everybody. A one-time diff on the
+         first launch after an upgrade is what the note is for; a permanent one
+         is not. */
+      normalizeState();
+      {const a = JSON.stringify(STATE); normalizeState();
+       out.idempotent = JSON.stringify(STATE) === a;
+       out.stateSize = a.length;}
+
       normalizeState();            // settle first — earlier blocks left junk in STATE
       ['opsPR', 'comeback', 'customFav'].forEach(k => delete STATE[k]);
       const beforeNorm = JSON.stringify(STATE);
@@ -660,6 +670,10 @@ export default async function run() {
     t.ok('guard: the seeded athlete builds a real session to compare against',
       typeof r.normal === 'string' && r.normal.length > 10, r.normal);
 
+    t.ok('guard: there is a real athlete in STATE to re-normalise',
+      r.stateSize > 500, r.stateSize);
+    t.ok('normalizeState() leaves a settled state alone, so the repair note cannot fire every boot',
+      r.idempotent === true, JSON.stringify({ idempotent: r.idempotent, size: r.stateSize }));
     t.eq('an athlete who has none of these fields gains none of them at boot',
       r.cleanBootDiff, 'none');
     t.ok('a personal-record map that arrived as a list is repaired to a real map',
