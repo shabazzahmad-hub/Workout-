@@ -7574,6 +7574,77 @@ cannot see is one they will not use, and the rest screen is where it acts.
 Twelve mutants, all caught, including both over-eager twins: a word that can
 act in any phase, and a repair that wipes a real choice.
 
+## A tick is not a second, and five surfaces treated it as one (v377)
+
+v375 gave the guided player and HIIT a wall-clock anchor and a heartbeat.
+**There are SEVEN timed surfaces in this app, not two.** Found by sweeping for
+the SHAPE of v375's own defect rather than by using the app — which is the
+fifth round running where the best finding was in the round immediately
+before.
+
+| surface | wall-clock anchor | recovers a dead tick |
+|---|---|---|
+| guided player | yes | yes *(v375)* |
+| HIIT | yes | yes *(v375)* |
+| warm-up / cool-down flow | **yes** | **none** |
+| baseline test | **none** | **none** |
+| hold test | **none** | **none** |
+| assessment rest | **stored and never read** | **none** |
+| hold / rep timer | **none** | **none** |
+
+`plTickHold()` has carried the floor since it was written, with a comment
+naming exactly this hazard — Chrome throttles a hidden tab to about one tick a
+minute, and an OS can reclaim the interval outright. The count-UP timers did
+`elapsed++` and nothing else.
+
+**Measured, ticks stopped for six real seconds:**
+
+| | before | after |
+|---|---|---|
+| hold test | **8 seconds lost**, no recovery | 1 s (rounding), recovers |
+| baseline test | **7 seconds lost**, no recovery | **0 s**, recovers |
+| warm-up flow | frozen for ever | recovers |
+| an ordinary uninterrupted hold | — | **zero drift** |
+
+**These two are the worst place in the app for it, and that is the argument
+for the round.** They measure a MAXIMAL EFFORT: one anchors every prescription
+for a year, the other sets a personal best. A silently short number is worse
+than a frozen screen, because a frozen screen is visible and this is not.
+
+### The floor is a floor, in both directions
+
+`tickUp()` is `Math.max(elapsed+1, realSeconds)` — the same shape the
+count-down floor has always used. It can never run slower than the wall and
+can never be wound *backwards* by a clock jump. The mutant that returns bare
+real time escapes every "it counts real seconds" assertion and is caught by
+the check pinning that it never winds a counter back.
+
+**And the floor must not distort a normal run**, which is the floor under the
+floor: an ordinary uninterrupted hold counts 4 real seconds as 4. A fix that
+merely made the clock run fast would satisfy every "no seconds lost" assertion.
+
+### The rescue lives in one registry, not five call sites
+
+The five surfaces keep their tick in a closure, so each hands its own function
+to the object the heartbeat can see (`S.tick`) rather than the heartbeat
+guessing at names. `timedSurfaces()` is the one list; a sixth surface joins by
+adding a line there rather than by remembering to write a resync.
+
+### The anchor was already stored and never read
+
+`startAssessRest()` has written `started:Date.now()` since v296 and nothing
+ever read it. A rest counted in dropped ticks runs LONG, which is the harmless
+direction — but the two minutes between maximal efforts is the whole point of
+that screen, and the value it needed was sitting in the object.
+
+### Two anchors that were byte-identical, and the assert earned its keep
+
+`function tick(){ if(phase==='ready'){ ready--;` appears **twice** — the
+hold/rep timer and the warm-up flow, comment and all. The patch script's
+`assert count == 1` turned a bad anchor into a clean no-op instead of a
+half-applied edit, and reading it back showed both sites genuinely needed the
+same edit. The count is deliberately 2, with a comment saying so.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

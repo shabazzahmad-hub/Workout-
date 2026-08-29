@@ -4691,6 +4691,177 @@ export default async function () {
     t.ok('floor: and says nothing about it when the setting is off', !/say .continue/i.test(r.off), r.off.slice(0, 160));
   }
 
+  /* ---------- a tick is not a second, and five surfaces treated it as one ----
+     v375 gave the guided player and HIIT a wall-clock anchor and a heartbeat.
+     There are SEVEN timed surfaces in this app. plTickHold() has had the floor
+     since it was written with a comment explaining exactly this — Chrome
+     throttles a hidden tab to about one tick a minute, and an OS can reclaim
+     the interval outright — and the count-UP timers never got one.
+
+     Measured before the fix, ticks stopped for six real seconds: the hold test
+     lost 8 seconds and the baseline test lost 7, and neither recovered. Those
+     two measure a MAXIMAL EFFORT — one anchors every prescription for a year,
+     the other sets a personal best — so under-reporting them is worse than a
+     frozen screen, and it is silent. */
+  {
+    const r = await page.evaluate(async () => {
+      const R = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      STATE.onboarded = true;
+      STATE.profile.parq = [false, false, false, false, false, false, false];
+      STATE.profile.parqDone = true; STATE.profile.medCleared = true; save();
+      R.cleared = !safeMode();
+
+      // the hold test — a max effort held to failure
+      startHoldTest('plank'); await wait(200);
+      R.htStarted = !!_ht;
+      for (let i = 0; i < 4; i++) await wait(1050);
+      const h0 = _ht.elapsed, t0 = Date.now();
+      clearInterval(_ht.iv);              // the OS reclaims the interval
+      await wait(6500);                   // six real seconds with no ticks
+      await wait(2600);                   // then one heartbeat
+      const realH = Math.round((Date.now() - t0) / 1000);
+      R.hold = { counted: _ht.elapsed - h0, real: realH, recovered: !!_ht.iv };
+      cancelHoldTest(); await wait(200);
+
+      // the baseline battery — the number that anchors a year
+      assessState = { idx: 0, results: {}, reassess: false };
+      startBaselineTimer(); await wait(200);
+      R.btStarted = !!_bt;
+      for (let i = 0; i < 4; i++) await wait(1050);
+      const b0 = _bt.elapsed, s0 = Date.now();
+      clearInterval(_bt.iv);
+      await wait(6500); await wait(2600);
+      const realB = Math.round((Date.now() - s0) / 1000);
+      R.baseline = { counted: _bt.elapsed - b0, real: realB, recovered: !!_bt.iv };
+      stopBaselineTimer(); await wait(200);
+
+      // FLOOR: a healthy timer is untouched — the floor must not distort a
+      // normal run, or it is a different bug wearing the fix's clothes
+      startHoldTest('plank'); await wait(200);
+      for (let i = 0; i < 3; i++) await wait(1050);
+      const f0 = _ht.elapsed, ft = Date.now();
+      await wait(4200);
+      R.healthy = { counted: _ht.elapsed - f0, real: Math.round((Date.now() - ft) / 1000) };
+      cancelHoldTest(); await wait(200);
+      return R;
+    });
+    t.eq('guard: the athlete really is cleared for a maximal effort', r.cleared, true);
+    t.eq('guard: the hold test really started', r.htStarted, true);
+    t.ok('a hold test counts REAL seconds, not the ticks it happened to get',
+      r.hold && Math.abs(r.hold.counted - r.hold.real) <= 2, JSON.stringify(r.hold));
+    t.eq('and its tick is brought back by the heartbeat', r.hold && r.hold.recovered, true);
+    t.eq('guard: the baseline timer really started', r.btStarted, true);
+    t.ok('the baseline test counts REAL seconds — it anchors a year of prescriptions',
+      r.baseline && Math.abs(r.baseline.counted - r.baseline.real) <= 2, JSON.stringify(r.baseline));
+    t.eq('and its tick is brought back too', r.baseline && r.baseline.recovered, true);
+    t.ok('floor: an ordinary uninterrupted hold is unchanged — no drift either way',
+      r.healthy && Math.abs(r.healthy.counted - r.healthy.real) <= 1, JSON.stringify(r.healthy));
+  }
+
+  /* THE FLOOR AND THE RESCUE ARE TWO FIXES, AND THE CHECK ABOVE MEASURES THEM
+     TOGETHER. Both "no floor" mutants ESCAPED it: once the heartbeat re-arms
+     the tick, the seconds it then counts bring the total close enough to real
+     time that a tolerance-based assertion passes with the floor deleted. The
+     rescue was doing the work the check credited to the floor.
+
+     So the floor gets its own measurement, with the heartbeat held OFF and
+     exactly ONE tick driven by hand across a six-second gap. With the floor
+     that tick reports the six seconds that really passed; without it, it
+     reports one. Nothing else can tell them apart. */
+  {
+    const r = await page.evaluate(async () => {
+      const R = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      STATE.onboarded = true;
+      STATE.profile.parq = [false, false, false, false, false, false, false];
+      STATE.profile.parqDone = true; STATE.profile.medCleared = true; save();
+      plGuardOff();                       // the rescue must not do the floor's work
+      try {
+        startHoldTest('plank'); await wait(200);
+        for (let i = 0; i < 4; i++) await wait(1050);
+        R.htMode = _ht && _ht.mode;
+        const h0 = _ht.elapsed;
+        clearInterval(_ht.iv); _ht.iv = null;
+        await wait(6000);
+        R.htNoTicks = _ht.elapsed - h0;   // guard: nothing ran during the gap
+        _ht.tick();                       // exactly one tick
+        R.htJump = _ht.elapsed - h0;
+        cancelHoldTest(); await wait(150);
+
+        assessState = { idx: 0, results: {}, reassess: false };
+        startBaselineTimer(); await wait(200);
+        for (let i = 0; i < 4; i++) await wait(1050);
+        R.btMode = _bt && _bt.mode;
+        const b0 = _bt.elapsed;
+        clearInterval(_bt.iv); _bt.iv = null;
+        await wait(6000);
+        R.btNoTicks = _bt.elapsed - b0;
+        _bt.tick();
+        R.btJump = _bt.elapsed - b0;
+        stopBaselineTimer(); await wait(150);
+      } catch (e) { R.err = String(e); }
+      plGuardOn();
+      return R;
+    });
+    t.eq('guard: no error while the heartbeat was held off', r.err, undefined);
+    t.eq('guard: the hold test really was running', r.htMode, 'run');
+    t.eq('guard: and nothing ticked during the six-second gap', r.htNoTicks, 0);
+    t.ok('one tick after a six-second gap reports the six seconds that really passed',
+      r.htJump >= 5, 'jumped ' + r.htJump + ' — a tick-counter would report 1');
+    t.eq('guard: the baseline timer really was running', r.btMode, 'run');
+    t.eq('guard: and nothing ticked during its gap', r.btNoTicks, 0);
+    t.ok('the baseline test does the same — it anchors a year of prescriptions',
+      r.btJump >= 5, 'jumped ' + r.btJump + ' — a tick-counter would report 1');
+  }
+
+  /* The warm-up flow HAD a resume (_flowResume) and nothing ever called it but
+     the Pause button — no visibilitychange, no heartbeat. So a frozen stretch
+     stayed frozen, on the surface the guided day walks through FIRST. */
+  {
+    const r = await page.evaluate(async () => {
+      const R = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      STATE.onboarded = true; save();
+      runWarmup(); await wait(2200);
+      R.open = { hasTick: typeof (timer && timer.tick) === 'function', stamped: !!(timer && timer.lastTick) };
+      clearInterval(timer.iv);            // the OS reclaims it
+      await wait(6500);                   // long enough for a heartbeat
+      R.after = { recovered: !!(timer && timer.iv), fresh: !!(timer && Date.now() - timer.lastTick < 4000) };
+      flowStop(false); await wait(300);
+      return R;
+    });
+    t.eq('guard: the flow hands its own tick to the heartbeat', r.open && r.open.hasTick, true);
+    t.eq('guard: and stamps when it last ran', r.open && r.open.stamped, true);
+    t.eq('a warm-up whose tick died is brought back', r.after && r.after.recovered, true);
+    t.eq('and is really ticking again, not merely re-armed', r.after && r.after.fresh, true);
+  }
+
+  /* tickStalled()/tickResync() are consulted only from the heartbeat, so their
+     own contract is pinned directly — the shape v338's prepDatePassed() needed
+     and v375's timerStalled() reused. */
+  {
+    const r = await page.evaluate(() => {
+      const now = Date.now();
+      const S = (o) => Object.assign({ lastTick: now, tick: () => {}, iv: 1 }, o);
+      return {
+        nullState: tickStalled(null),
+        healthy: tickStalled(S({})),
+        justRan: tickStalled(S({ lastTick: now - 500 })),
+        longGone: tickStalled(S({ lastTick: now - 99000 })),
+        noTickFn: tickStalled({ lastTick: now - 99000, iv: 1 }),
+        noStamp: tickStalled({ tick: () => {}, iv: 1 }),
+        upFloor: (() => { const o = { startedAt: now - 9000, elapsed: 2 }; return tickUp(o); })(),
+        upNeverSlower: (() => { const o = { startedAt: now - 1000, elapsed: 40 }; return tickUp(o); })()
+      };
+    });
+    t.eq('tickStalled: nothing open is not a stall', r.nullState, false);
+    t.eq('tickStalled: a tick that just ran is not a stall', r.healthy, false);
+    t.eq('tickStalled: half a second ago is not a stall', r.justRan, false);
+    t.eq('tickStalled: a tick long gone IS a stall', r.longGone, true);
+    t.eq('tickStalled: a surface with no tick to re-arm is skipped', r.noTickFn, false);
+    t.eq('tickStalled: a surface that never stamped is skipped', r.noStamp, false);
+    t.eq('tickUp: nine real seconds beats two counted ticks', r.upFloor, 9);
+    t.eq('tickUp: it is a FLOOR — it never winds a counter backwards', r.upNeverSlower, 41);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
