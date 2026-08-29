@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='374';
+const APP_VERSION='375';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -6576,7 +6576,7 @@ function plEnterReady(first){
   plClear();plChrome();
   const m=plCur();const ex=EX[m.exId]||{name:'Next movement'};const isTime=m.unit==='time';
   plBodyWork(isTime?'var(--green)':'var(--fire)');
-  PLAYER.phase='ready';PLAYER.ready=first?5:3;
+  PLAYER.phase='ready';PLAYER.phaseAt=Date.now();PLAYER.deadline=0;PLAYER.ready=first?5:3;
   plS('#plNum',PLAYER.ready);plS('#plSub','GET READY');plS('#plCoach','Get into position…');plRingSet(1);
   autoRoll();beep(1000,.15,0.7);
   /* SAY WHAT IS COMING, BEFORE IT STARTS. The get-ready screen showed the name
@@ -6630,7 +6630,7 @@ function plEnterWork(){
   plClear();
   plSaveResume();
   const m=plCur();const ex=EX[m.exId];const isTime=m.unit==='time';
-  PLAYER.phase='work';
+  PLAYER.phase='work';PLAYER.phaseAt=Date.now();PLAYER.deadline=0;   // the timed branch sets its own below; a rep set must not inherit the rest's
   PLAYER.grindSaid=false;   // one acknowledgement per effort; a repeat is a nag
   PLAYER.cues=(ex.cues&&ex.cues.length)?ex.cues.slice():['Brace your core and own every rep.'];
   PLAYER.cueIdx=0;
@@ -6784,7 +6784,7 @@ function plEnterRest(dur,type){
      minutes hidden) and stops entirely if Android freezes the page — so a 90 s
      rest could read 85 s after four real minutes. The session clock was already
      derived from a timestamp; these were not. */
-  plClear();PLAYER.phase='rest';PLAYER.remain=Math.max(1,dur|0);PLAYER.total=PLAYER.remain;
+  plClear();PLAYER.phase='rest';PLAYER.phaseAt=Date.now();PLAYER.remain=Math.max(1,dur|0);PLAYER.total=PLAYER.remain;
   PLAYER.deadline=Date.now()+PLAYER.remain*1000;
   const m=plCur();let lead,rx,nextEx;
   if(type==='set'){const ex=EX[m.exId];nextEx=ex;lead='Next set';rx='Set '+(PLAYER.s+1)+' of '+m.sets+' · '+(m.unit==='time'?fmtTime(m.target):m.target+' reps');}
@@ -6821,7 +6821,7 @@ function plTickRest(){
 }
 function plRestDone(){plClear();if(PLAYER.pendingNext){PLAYER.pendingNext=false;PLAYER.i++;PLAYER.s=0;}plEnterReady(false);}
 function plEnterDone(){
-  plClear();plClockStop();beatStop();PLAYER.phase='done';
+  plClear();plClockStop();beatStop();PLAYER.phase='done';PLAYER.phaseAt=Date.now();
   // freeze the clock at the moment of finishing, so the numbers on this screen
   // do not keep climbing while the athlete reads them
   PLAYER.wall=plWallSec();PLAYER.paused=plPausedSec();
@@ -6933,6 +6933,63 @@ function plResync(){
   }catch(e){}
 }
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')plResync();});
+/* ONE HEARTBEAT FOR EVERY TIMED SURFACE, AND IT DOES NOT NEED THE SCREEN.
+
+   v350 removed one dependency: a rest that expired while the page was hidden
+   resolves on the next visibilitychange. That still needs the athlete to go to
+   the phone, which is exactly what the report is about — "I am already in the
+   exercise position thinking I am starting the next set, only to realize after
+   the rest countdown everything stops and I am forced to leave my exercise
+   position, get to the phone to start the other set."
+
+   MEASURED, with the interval killed and no visibilitychange fired: the player
+   sits in rest FOR EVER — tid null, remain frozen at 3, phase never moves. One
+   rescue path, and it is the one that costs the athlete their position.
+
+   So the heartbeat owns its own interval, which nothing in the phase code
+   clears. A phase change legitimately leaves tid null for an instant, which is
+   why a missing tick only counts once the phase has been settled for
+   PL_STALL_MS — otherwise the guard would fire between plClear() and the next
+   setInterval and re-arm the phase that is being left.
+
+   It is armed ONCE at boot rather than by each opener. Arming per surface is
+   how a third surface gets forgotten, and this file records that shape five
+   times over. The cost when nothing is open is two null tests every 2s. */
+const PL_GUARD_MS=2000, PL_STALL_MS=3000;
+let _plGuard=null;
+function plGuardOn(){plGuardOff();_plGuard=setInterval(plGuardTick,PL_GUARD_MS);}
+function plGuardOff(){if(_plGuard){clearInterval(_plGuard);_plGuard=null;}}
+/* One predicate for both surfaces. PLAYER and INTV are different objects with
+   the same four fields that matter, and two copies of this test is two places
+   for it to drift — the player's twins have drifted four times already. */
+function timerStalled(S){
+  try{
+    if(!S||!S.running||!S.phase||S.phase==='done')return false;
+    const now=Date.now();
+    if(!S.tid&&S.phaseAt&&now-S.phaseAt>PL_STALL_MS)return true;
+    return !!(S.deadline&&now>S.deadline+PL_STALL_MS);
+  }catch(e){return false;}
+}
+function plGuardTick(){
+  try{if(timerStalled(PLAYER))plResync();}catch(e){}
+  try{if(timerStalled(INTV))ivResync();}catch(e){}
+}
+/* TAP ANYWHERE — BUT ONLY WHILE IT IS ACTUALLY STUCK. The rest screen's three
+   buttons measure 123x52, a small target to hit from a plank without standing
+   up. Making the whole screen skip the rest would be worse than the bug: one
+   stray touch would cost the athlete their whole rest. So the screen advances
+   only while timerStalled() is true, which is a state a working session never
+   reaches. It listens on the bubble phase so a real button still acts first. */
+function plTapRescue(){try{if(timerStalled(PLAYER))plResync();}catch(e){}}
+function ivTapRescue(){try{if(timerStalled(INTV))ivResync();}catch(e){}}
+document.addEventListener('click',e=>{
+  try{
+    const t=e.target;if(!t||!t.closest)return;
+    if(t.closest('#player'))plTapRescue();
+    else if(t.closest('#hiit'))ivTapRescue();
+  }catch(_e){}
+});
+plGuardOn();
 function playerSkip(){
   if(!PLAYER)return;plClear();PLAYER.pendingNext=false;
   const pulse=$('#plPulse');if(pulse)pulse.classList.remove('on');
@@ -7648,7 +7705,7 @@ function _runHiit(sess,list,format){
   setTimeout(()=>{try{if(INTV)history.pushState({cf:'hiit'},'');}catch(e){}},0);
   primeVoice();beatStart();
   ivRenderStep(0);
-  INTV.phase='lead';INTV.lead=5;
+  INTV.phase='lead';INTV.phaseAt=Date.now();INTV.deadline=0;INTV.lead=5;
   ivS('#ivNum','5');ivS('#ivSub','GET READY');ivRingSet(1);
   // fmtInfo covers HIIT + skip + special registries. Reading HIIT_FORMATS directly
   // threw for every skip/ruck/grip/boxing/cardio format — before the interval was
@@ -7781,7 +7838,7 @@ function ivRenderStep(idx){
 function ivStep(idx){
   if(typeof idx==='number')INTV.i=idx;
   const step=INTV.seq[INTV.i];const ex=EX[step.exId]||{name:'Work'};const isWork=step.type==='work';
-  ivClear();INTV.phase=isWork?'work':'rest';INTV.remain=step.secs;INTV.total=Math.max(1,step.secs);
+  ivClear();INTV.phase=isWork?'work':'rest';INTV.phaseAt=Date.now();INTV.remain=step.secs;INTV.total=Math.max(1,step.secs);
   /* A GRINDER IS ONE EFFORT, NOT SIX. In HIIT each round is its own effort
      with rest between, so the acknowledgement resets per round. A grinder
      has no rest — it is one continuous piece of work — so resetting per
@@ -7844,7 +7901,7 @@ function ivTick(){
   if(isGrinder(INTV.format))ivS('#ivTotal',grinderLeftLabel());
 }
 function ivDone(){
-  ivClear();beatStop();INTV.phase='done';
+  ivClear();beatStop();INTV.phase='done';INTV.phaseAt=Date.now();
   const isGrind=isGrinder(INTV.format);
   if(isGrind&&!INTV.logged){INTV.logged=true;
     logGrind(INTV.format,true,INTV.seq.length,Math.round(INTV.workElapsed||0));}
@@ -7957,9 +8014,30 @@ function hiitToggle(){
   if(!INTV.running){ivClear();if(pulse)pulse.classList.remove('on');return;}
   // Resuming re-anchors the deadline to what was left, so a pause is not counted as elapsed time.
   if(INTV.remain>0)INTV.deadline=Date.now()+INTV.remain*1000;
+  ivArmTick();
+}
+/* HIIT IS THE TWIN v350 DID NOT REACH. The guided player got a resync on every
+   return to the page; its interval sibling got nothing, so a HIIT round whose
+   tick the OS reclaimed sat frozen with no rescue at all — the same hole, one
+   surface over, and the fourth time the player's twins have drifted apart. */
+function ivArmTick(){
+  if(!INTV||!INTV.running)return;
+  ivClear();
+  const pulse=$('#ivPulse');
   if(INTV.phase==='lead')INTV.tid=setInterval(ivTickLead,1000);
   else{if(INTV.phase==='work'&&pulse)pulse.classList.add('on');INTV.tid=setInterval(ivTick,1000);}
 }
+function ivResync(){
+  try{
+    if(!INTV||!INTV.running||INTV.phase==='done')return;
+    ivArmTick();
+    /* ONLY the deadline-anchored phases are force-ticked. ivTickLead counts
+       TICKS, so forcing it steals a second the athlete has not had — the same
+       line plResync() draws between plTickRest and plTickReady. */
+    if(INTV.phase!=='lead')ivTick();
+  }catch(e){}
+}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')ivResync();});
 function hiitSkip(){if(!INTV)return;ivClear();INTV.i++;if(INTV.i>=INTV.seq.length)ivDone();else ivStep();}
 function hiitTeardown(){if(!INTV)return;wakeOff();ivClear();beatStop();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;
   setTimeout(()=>{try{if(!$('#hiit').classList.contains('open'))$('#hiit').innerHTML='';}catch(e){}},400);

@@ -4328,6 +4328,184 @@ export default async function () {
       ['back', 'g3', 'g4'], ph.goodPair);
   }
 
+  /* ---------- the rest hand-off had ONE rescue, and it needed the phone ----
+     Reported from the phone twice. v350 investigated the first report, could
+     not reproduce the stall, and removed a dependency instead: a rest that
+     expired while the page was hidden now resolves on the next
+     visibilitychange. The second report says why that was not enough — "I am
+     already in the exercise position thinking I am starting the next set, only
+     to realize after the rest countdown everything stops and I am forced to
+     leave my exercise position, get to the phone to start the other set."
+
+     MEASURED with the interval killed and no visibilitychange fired: the
+     player sat in rest for ever, tid null and remain frozen. The rescue
+     existed and it cost the athlete their position, which is the complaint.
+
+     The heartbeat owns its own interval, so nothing in the phase code can
+     clear it, and it covers HIIT as well — the twin v350 never reached. */
+  {
+    const r = await page.evaluate(async () => {
+      const R = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      STATE.onboarded = true; STATE.progressPtr = 8; save();
+      openPlayer(); await wait(200);
+      PLAYER.i = 0; PLAYER.s = 0; plClear(); plEnterRest(3, 'set');
+      plClear();                                 // the OS reclaims the interval
+      PLAYER.deadline = Date.now() - 9000;       // the rest ended nine seconds ago
+      R.frozen = { phase: PLAYER.phase, tid: !!PLAYER.tid, stalled: timerStalled(PLAYER) };
+      await wait(5200);                          // no tap, no visibilitychange
+      R.rescued = { phase: PLAYER.phase, tid: !!PLAYER.tid };
+
+      // a PAUSED player is never resumed — that would restart a session the
+      // athlete deliberately stopped
+      plClear(); PLAYER.phase = 'rest'; PLAYER.phaseAt = Date.now() - 99000;
+      PLAYER.running = false; PLAYER.deadline = Date.now() - 9000;
+      await wait(4500);
+      R.paused = { phase: PLAYER.phase, running: PLAYER.running, tid: !!PLAYER.tid };
+      PLAYER.running = true;
+
+      // an ordinary running rest is untouched, and a tap must NOT skip it —
+      // one stray touch costing the whole rest is worse than the bug
+      plClear(); plEnterRest(60, 'set'); await wait(2500);
+      R.normal = { phase: PLAYER.phase, remain: PLAYER.remain, stalled: timerStalled(PLAYER) };
+      document.querySelector('#plBody .pl-name').click(); await wait(200);
+      R.innocentTap = PLAYER.phase;
+
+      // ...but a tap while genuinely stuck DOES advance, from anywhere on the
+      // screen: the three rest buttons measure 123x52, a small target to hit
+      // from a plank
+      plClear(); PLAYER.deadline = Date.now() - 9000; PLAYER.phaseAt = Date.now() - 99000;
+      R.stuckNow = timerStalled(PLAYER);
+      document.querySelector('#plBody .pl-name').click(); await wait(200);
+      R.rescueTap = PLAYER.phase;
+      playerTeardown(); await wait(300);
+      return R;
+    });
+    t.ok('guard: the frozen rest really was stuck before the heartbeat ran',
+      r.frozen && r.frozen.phase === 'rest' && r.frozen.tid === false && r.frozen.stalled === true,
+      JSON.stringify(r.frozen));
+    t.ok('a rest whose tick died starts the next set on its own — no tap, no visibilitychange',
+      r.rescued && r.rescued.phase !== 'rest' && r.rescued.tid === true, JSON.stringify(r.rescued));
+    t.eq('and a PAUSED player is left paused', r.paused && r.paused.phase + '/' + r.paused.running, 'rest/false');
+    t.ok('floor: an ordinary rest is still counting down and is not stalled',
+      r.normal && r.normal.phase === 'rest' && r.normal.remain > 0 && r.normal.stalled === false,
+      JSON.stringify(r.normal));
+    t.eq('floor: tapping the screen during a working rest does NOT skip it', r.innocentTap, 'rest');
+    t.eq('guard: the screen really is stuck before the rescue tap', r.stuckNow, true);
+    t.ok('tapping anywhere while stuck advances it', r.rescueTap !== 'rest', String(r.rescueTap));
+  }
+
+  /* HIIT is the twin v350 did not reach: the guided player got a resync on
+     every return to the page and its interval sibling got nothing at all. */
+  {
+    const r = await page.evaluate(async () => {
+      const R = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      STATE.onboarded = true; save();
+      startHiit('tabata'); await wait(400);
+      ivStep(0); await wait(200);
+      ivClear(); INTV.deadline = Date.now() - 9000;
+      R.frozen = { phase: INTV.phase, i: INTV.i, tid: !!INTV.tid, stalled: timerStalled(INTV) };
+      await wait(5200);
+      R.rescued = { phase: INTV.phase, i: INTV.i, tid: !!INTV.tid };
+      ivStep(0); await wait(2500);
+      R.normal = { i: INTV.i, stalled: timerStalled(INTV), remain: INTV.remain };
+      hiitTeardown(); await wait(200);
+      return R;
+    });
+    t.ok('guard: the frozen HIIT round really was stuck',
+      r.frozen && r.frozen.tid === false && r.frozen.stalled === true, JSON.stringify(r.frozen));
+    t.ok('a HIIT round whose tick died moves on by itself',
+      r.rescued && r.rescued.i > r.frozen.i && r.rescued.tid === true, JSON.stringify(r.rescued));
+    t.ok('floor: an ordinary HIIT round is untouched and not stalled',
+      r.normal && r.normal.i === 0 && r.normal.stalled === false && r.normal.remain > 0,
+      JSON.stringify(r.normal));
+  }
+
+  /* hiitToggle() now shares ivArmTick() with the resync rather than repeating
+     it. Two copies of "which tick does this phase need" is two places to
+     drift, and the resume path is the one nothing else drives. */
+  {
+    const r = await page.evaluate(async () => {
+      const R = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      STATE.onboarded = true; save();
+      startHiit('tabata'); await wait(300);
+      ivStep(0); await wait(200);
+      hiitToggle(); await wait(200);
+      R.paused = { running: INTV.running, tid: !!INTV.tid };
+      const was = INTV.remain;
+      hiitToggle(); await wait(2200);
+      R.resumed = { running: INTV.running, tid: !!INTV.tid, moved: INTV.remain < was };
+      hiitTeardown(); await wait(200);
+      return R;
+    });
+    t.eq('pausing HIIT stops its tick', r.paused && r.paused.running + '/' + r.paused.tid, 'false/false');
+    t.ok('and resuming arms it again and the clock really moves',
+      r.resumed && r.resumed.running === true && r.resumed.tid === true && r.resumed.moved === true,
+      JSON.stringify(r.resumed));
+  }
+
+  /* timerStalled() is consulted from three places and every one of them is a
+     narrow branch, so its own contract is pinned directly — the shape v338's
+     prepDatePassed() needed. A phase change legitimately leaves tid null for
+     an instant; treating that as a stall would re-arm the phase being left. */
+  {
+    const r = await page.evaluate(() => {
+      const now = Date.now();
+      const S = (o) => Object.assign({ running: true, phase: 'rest', tid: 1, phaseAt: now, deadline: 0 }, o);
+      return {
+        nullState: timerStalled(null),
+        notRunning: timerStalled(S({ running: false, deadline: now - 9000 })),
+        done: timerStalled(S({ phase: 'done', deadline: now - 9000 })),
+        healthy: timerStalled(S({ deadline: now + 30000 })),
+        justSwitched: timerStalled(S({ tid: null, phaseAt: now })),
+        tickDied: timerStalled(S({ tid: null, phaseAt: now - 99000 })),
+        deadlineGone: timerStalled(S({ deadline: now - 9000 })),
+        deadlineJustGone: timerStalled(S({ deadline: now - 500 })),
+        noPhase: timerStalled(S({ phase: null, deadline: now - 9000 }))
+      };
+    });
+    t.eq('timerStalled: nothing open is not a stall', r.nullState, false);
+    t.eq('timerStalled: a paused surface is not a stall', r.notRunning, false);
+    t.eq('timerStalled: a finished surface is not a stall', r.done, false);
+    t.eq('timerStalled: a healthy running phase is not a stall', r.healthy, false);
+    t.eq('timerStalled: a phase change that just happened is not a stall', r.justSwitched, false);
+    t.eq('timerStalled: a tick that vanished IS a stall', r.tickDied, true);
+    t.eq('timerStalled: a deadline long gone IS a stall', r.deadlineGone, true);
+    t.eq('timerStalled: a deadline a moment gone is not yet a stall', r.deadlineJustGone, false);
+    t.eq('timerStalled: a surface with no phase yet is not a stall', r.noPhase, false);
+  }
+
+  /* A rep set and a get-ready must CLEAR the deadline they inherit. Rest sets
+     one; the next phase would otherwise open holding a deadline that has
+     already passed, and the heartbeat would read a healthy set as stuck. */
+  {
+    const r = await page.evaluate(async () => {
+      const R = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      STATE.onboarded = true; STATE.progressPtr = 8; save();
+      openPlayer(); await wait(200);
+      PLAYER.i = 0; PLAYER.s = 0;
+      plClear(); plEnterRest(2, 'set');
+      PLAYER.deadline = Date.now() - 9000;      // a rest deadline in the past
+      plClear(); plEnterReady(false);
+      R.ready = { deadline: PLAYER.deadline, stalled: timerStalled(PLAYER) };
+      // a rep-counted movement: find one in this session
+      const idx = PLAYER.items.findIndex(m => m.unit !== 'time');
+      R.hasRep = idx >= 0;
+      if (idx >= 0) {
+        PLAYER.i = idx; PLAYER.s = 0;
+        PLAYER.deadline = Date.now() - 9000;
+        plClear(); plEnterWork();
+        R.work = { deadline: PLAYER.deadline, stalled: timerStalled(PLAYER) };
+      }
+      playerTeardown(); await wait(200);
+      return R;
+    });
+    t.eq('the get-ready phase clears the rest deadline it inherits', r.ready && r.ready.deadline, 0);
+    t.eq('so a fresh get-ready never reads as stalled', r.ready && r.ready.stalled, false);
+    t.eq('guard: this session really holds a rep-counted movement', r.hasRep, true);
+    t.eq('a rep set clears it too', r.work && r.work.deadline, 0);
+    t.eq('so a fresh rep set never reads as stalled', r.work && r.work.stalled, false);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
