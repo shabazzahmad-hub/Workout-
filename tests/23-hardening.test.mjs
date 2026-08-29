@@ -4862,6 +4862,81 @@ export default async function () {
     t.eq('tickUp: it is a FLOOR — it never winds a counter backwards', r.upNeverSlower, 41);
   }
 
+  /* ---------- a note that opens by naming a different goal ---------------
+     Reported from the phone with a screenshot: the athlete picked Lean recomp
+     and read the note below the picker as leftover Tone-up text.
+
+     IT WAS NOT LEFTOVER. Driven on the real Fuel picker, the note is dynamic
+     and was correct — it is genuinely leanrecomp's own note. The defect is the
+     WORDING: it opened with the words "Tone up", which is a button sitting
+     directly above it, so it could not be read as an answer about the goal
+     just chosen. His reaction is the proof.
+
+     Opening with its OWN label is fine: `gain` starts "Build muscle on a
+     slight surplus", which is the goal naming itself. Only another option's
+     label collides — so the rule is a membership test against the OTHER
+     labels, not a ban on goal names. */
+  {
+    const r = await page.evaluate(async () => {
+      const R = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      STATE.onboarded = true; save();
+      go('fuel'); await wait(300);
+      const noteOf = () => {
+        const v = document.getElementById('v-fuel');
+        return [...v.querySelectorAll('.tiny.muted')].map(n => n.textContent.trim()).filter(x => x.length > 40)[0] || '';
+      };
+      setNutGoal('recomp'); await wait(250); R.recompNote = noteOf();
+      setNutGoal('leanrecomp'); await wait(250); R.leanNote = noteOf();
+      R.dynamic = R.recompNote !== R.leanNote;
+      R.labels = GOALS.reduce((a, [k, l]) => (a[k] = String(l).replace(/[^\x20-\x7E]/g, '').trim(), a), {});
+      R.notes = Object.assign({}, GOAL_NOTE);
+      return R;
+    });
+    // the wiring was never the bug, and a check that assumed it was would be
+    // testing the wrong thing — so it is pinned as a guard, not as the finding
+    t.eq('guard: the note really is dynamic — picking a goal repaints it', r.dynamic, true);
+    t.ok('guard: the lean-recomp note is the one on screen', /12%/.test(r.leanNote || ''), r.leanNote);
+
+    const others = (g) => Object.keys(r.labels).filter(k => k !== g).map(k => r.labels[k]);
+    Object.keys(r.notes).forEach(g => {
+      const n = String(r.notes[g] || '').trim().toLowerCase();
+      const bad = others(g).filter(L => L && n.startsWith(L.toLowerCase()));
+      t.eq('GOAL_NOTE.' + g + ' does not open by naming a different goal', bad.join(','), '');
+    });
+    t.ok('floor: a goal may still open with its OWN name — gain says "Build muscle"',
+      /^build muscle/i.test(String(r.notes.gain || '')), r.notes.gain);
+    t.ok('floor: every note still explains something', Object.keys(r.notes).every(g => String(r.notes[g] || '').length > 30),
+      JSON.stringify(Object.keys(r.notes).map(g => [g, String(r.notes[g] || '').length])));
+  }
+
+  /* A CLEAN VALIDATOR PROVES NOTHING ABOUT A VALIDATOR RULE — it stays clean
+     whether the rule exists or not. So the data is broken in front of it and
+     the specific complaint is required, then restored. validateData() LOGS,
+     and the harness counts a console error as a page failure, so it is muted
+     across the break. */
+  {
+    const r = await page.evaluate(() => {
+      const keep = GOAL_NOTE.core;
+      const realErr = console.error; console.error = () => {};
+      let out = {};
+      try {
+        out.cleanBefore = validateData().filter(e => /GOAL_NOTE/.test(e)).length;
+        GOAL_NOTE.core = 'Tone up but for your midsection.';        // another goal's label, first
+        out.broken = validateData().filter(e => /GOAL_NOTE\.core.*Tone up/.test(e));
+        GOAL_NOTE.core = 'Strong core & abs is what this one builds.'; // its OWN label — legal
+        out.ownLabelOk = validateData().filter(e => /GOAL_NOTE\.core/.test(e)).length;
+        GOAL_NOTE.core = keep;
+        out.cleanAfter = validateData().filter(e => /GOAL_NOTE/.test(e)).length;
+      } finally { GOAL_NOTE.core = keep; console.error = realErr; }
+      return out;
+    });
+    t.eq('guard: the validator is clean on the shipped notes', r.cleanBefore, 0);
+    t.eq('breaking one note in front of the rule produces the specific complaint', r.broken.length, 1);
+    t.ok('and the complaint names the label it collided with', /Tone up/.test((r.broken[0] || '')), r.broken[0]);
+    t.eq('floor: a note opening with its OWN goal label is legal', r.ownLabelOk, 0);
+    t.eq('and the validator is clean again once restored', r.cleanAfter, 0);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
