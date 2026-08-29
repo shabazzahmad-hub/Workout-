@@ -4224,6 +4224,110 @@ export default async function () {
     t.eq('with the minutes it was given', act.ruck.val, 45, act.ruck);
   }
 
+
+  /* v374 — TRUTHINESS WAS DOING A MEMBERSHIP TEST'S JOB IN THE PHOTO REPAIR,
+     and `typeof === 'string'` a date test's — the pair v356 fixed for the five
+     activity logs, never applied here. Measured:
+
+       pose 'helicopter'   survived, and the gallery groups by POSE_KEYS, so
+                           the photo was invisible in every group while still
+                           travelling in every backup
+       date 'not-a-date'   survived, printed "not-a-date · front" on the glass,
+                           and photoPair() picked it as the NOW — a 90-day
+                           transformation shown against an undated shot
+                           instead of against today's real one
+
+     THE BYTES ARE NEVER DROPPED. That is this repair's own stated rule and it
+     is the right one — a photo cannot be re-created — so unlike the activity
+     logs a bad row is repaired rather than filtered out. */
+  {
+    const ph = await page.evaluate(() => {
+      const D = n => localISO(new Date(Date.now() - 864e5 * n));
+      const out = {};
+      /* A real gallery with one junk-dated row in the same pose. */
+      STATE.photos = [{ id: 'a1', date: D(90), pose: 'front' },
+                      { id: 'a2', date: D(0), pose: 'front' },
+                      { id: 'bad', date: 'not-a-date', pose: 'front' }];
+      normalizeState();
+      out.keptIds = STATE.photos.map(p => p.id);
+      out.badDate = STATE.photos.find(p => p.id === 'bad').date;
+      const pr = photoPair();
+      out.pair = pr ? { a: pr.a.id, b: pr.b.id, pose: pr.pose } : null;
+      PROGRESS_TAB = 'body'; go('progress'); render();
+      const txt = document.querySelector('.view.active').innerText;
+      out.printsJunk = /not-a-date/.test(txt);
+      /* SCOPE IT TO THE TILE. A page-wide /no date/ also matches the
+         projection copy, so the mutant that prints a blank caption escaped. */
+      const tile = [...document.querySelectorAll('.view.active img.ph-img')]
+        .map(i => i.parentElement)
+        .find(d => d && (d.querySelector('img.ph-img') || {}).dataset &&
+                   d.querySelector('img.ph-img').dataset.pid === 'bad');
+      out.tileText = tile ? tile.innerText.trim() : null;
+      out.saysNoDate = !!(tile && /no date/i.test(tile.innerText));
+      out.fileName = photoFileName(STATE.photos.find(p => p.id === 'bad'));
+
+      /* A junk POSE: repaired to a legal one so the photo is visible again. */
+      STATE.photos = [{ id: 'h1', date: D(0), pose: 'helicopter' },
+                      { id: 'h2', date: D(10), pose: 'back' }];
+      normalizeState();
+      out.poses = STATE.photos.map(p => p.pose);
+
+      /* THE FLOOR: an ordinary gallery is untouched, and every legal pose
+         survives as itself — a repair that forced 'front' everywhere would
+         satisfy every assertion above and destroy the back and side shots. */
+      STATE.photos = [{ id: 'g1', date: D(60), pose: 'front' },
+                      { id: 'g2', date: D(60), pose: 'side' },
+                      { id: 'g3', date: D(60), pose: 'back' },
+                      { id: 'g4', date: D(0), pose: 'back' }];
+      const before = JSON.stringify(STATE.photos);
+      normalizeState();
+      out.legalUntouched = JSON.stringify(STATE.photos) === before;
+      const pr2 = photoPair();
+      out.goodPair = pr2 ? { a: pr2.a.id, b: pr2.b.id, pose: pr2.pose } : null;
+
+      /* Nothing comparable: two shots, two different poses. */
+      STATE.photos = [{ id: 'x1', date: D(60), pose: 'front' },
+                      { id: 'x2', date: D(0), pose: 'side' }];
+      out.noPair = photoPair();
+      /* And two undated shots of one pose are still not a timeline. */
+      STATE.photos = [{ id: 'u1', date: '', pose: 'front' },
+                      { id: 'u2', date: 'nope', pose: 'front' }];
+      normalizeState();
+      out.undatedPair = photoPair();
+      out.undatedKept = STATE.photos.length;
+      STATE.photos = [];
+      return out;
+    });
+
+    /* THE BYTES SURVIVE — every row is still there. */
+    t.eq('a junk-dated photo is kept, not deleted', ph.keptIds, ['a1', 'a2', 'bad'], ph);
+    t.eq('its unusable date is blanked rather than invented', ph.badDate, '', ph);
+    t.eq('and two undated shots are still kept', ph.undatedKept, 2, ph);
+
+    /* THE COMPARISON IS HONEST. */
+    t.eq('the before-and-now spans the two real dates',
+      [ph.pair && ph.pair.a, ph.pair && ph.pair.b], ['a1', 'a2'], ph.pair);
+    t.eq('undated shots alone make no pair', ph.undatedPair, null, ph);
+    t.eq('and neither do two different poses', ph.noPair, null, ph);
+
+    /* THE GLASS. */
+    t.ok('the gallery no longer prints a junk date', !ph.printsJunk, ph);
+    t.ok('guard: the undated tile really is on screen', ph.tileText !== null, ph);
+    t.ok('its caption says the date is unknown instead', ph.saysNoDate, ph.tileText);
+    t.eq('and the saved file is named undated', ph.fileName, 'coreforge-undated-front.jpg', ph);
+
+    /* MEMBERSHIP, not truthiness: a junk pose becomes a legal one, so the
+       photo is visible in a group again. */
+    t.eq('a junk pose is repaired to a legal one', ph.poses, ['front', 'back'], ph);
+
+    /* THE FLOOR: a clean gallery is byte-identical, and every legal pose
+       survives as itself. */
+    t.ok('an ordinary gallery is untouched by the repair', ph.legalUntouched, ph);
+    t.eq('and the widest-span pose still wins',
+      [ph.goodPair && ph.goodPair.pose, ph.goodPair && ph.goodPair.a, ph.goodPair && ph.goodPair.b],
+      ['back', 'g3', 'g4'], ph.goodPair);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='373';
+const APP_VERSION='374';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -11508,7 +11508,9 @@ function poseOf(p){const v=p&&p.pose;return (typeof v==='string'&&POSE_KEYS.inde
    preferring the pose that spans the most days; POSE_KEYS order breaks ties
    front → side → back. Null means nothing is comparable yet. */
 function photoPair(){
-  const ps=(STATE.photos||[]).slice().sort((a,b)=>a.id<b.id?-1:1);
+  /* An undated shot cannot be either end of a before-and-now. It is still in
+     the gallery; it is just not a point on a timeline. */
+  const ps=(STATE.photos||[]).filter(p=>isDateISO(p&&p.date)).slice().sort((a,b)=>a.id<b.id?-1:1);
   let best=null;
   POSE_KEYS.forEach(pose=>{
     const g=ps.filter(p=>poseOf(p)===pose);
@@ -11543,7 +11545,7 @@ function photosHTML(){
   if(ps.length){
     h+=`<div class="section-label" style="margin:16px 3px 8px">All photos (${ps.length})</div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-        ${ps.map(p=>`<div style="position:relative"><img class="ph-img" data-pid="${_ve(p.id)}" onclick="viewPhoto(${_ve(JSON.stringify(String(p.id)))})" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:10px;background:var(--card2);cursor:pointer"><div class="tiny muted" style="text-align:center;margin-top:2px">${_ve(String(p.date).slice(5))} ${poseOf(p)[0].toUpperCase()}</div></div>`).join('')}
+        ${ps.map(p=>`<div style="position:relative"><img class="ph-img" data-pid="${_ve(p.id)}" onclick="viewPhoto(${_ve(JSON.stringify(String(p.id)))})" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:10px;background:var(--card2);cursor:pointer"><div class="tiny muted" style="text-align:center;margin-top:2px">${p.date?_ve(String(p.date).slice(5)):'no date'} ${poseOf(p)[0].toUpperCase()}</div></div>`).join('')}
       </div>`;
   }else{
     h+=`<div class="note info" style="margin-top:12px;margin-bottom:0">No photos yet — a front, side &amp; back shot today becomes your baseline. The mirror lies; photos don't.</div>`;
@@ -19805,9 +19807,27 @@ function normalizeState(){
        rather than filtered on: the bytes are the one thing in the whole state
        that cannot be re-created, so a missing view is worth guessing at and a
        missing photo never is. */
+    /* TRUTHINESS WAS DOING A MEMBERSHIP TEST'S JOB, and `typeof === 'string'`
+       a date test's — the same pair v356 fixed for the five activity logs,
+       never applied here. Measured:
+
+         pose 'helicopter'   survives, and the gallery groups by POSE_KEYS, so
+                             the photo is invisible in every group while still
+                             travelling in every backup
+         date 'not-a-date'   survives, prints "not-a-date · front" on the
+                             glass, and photoPair() picked it as the NOW —
+                             so a 90-day transformation was shown against an
+                             undated shot instead of today's real one
+
+       THE BYTES ARE NEVER DROPPED, which is this repair's own rule and the
+       right one: a photo cannot be re-created. The pose is repaired to a
+       legal one so the photo becomes visible again, and an unusable date is
+       blanked rather than invented — the row keeps its picture, the gallery
+       says the date is unknown, and photoPair() leaves it out of a comparison
+       it cannot honestly make. Unknown is not equal (v320). */
     if(Array.isArray(STATE.photos))STATE.photos=STATE.photos
-      .filter(ph=>ph&&ph.id&&typeof ph.date==='string')
-      .map(ph=>(typeof ph.pose==='string'&&ph.pose)?ph:{...ph,pose:'front'});
+      .filter(ph=>ph&&ph.id)
+      .map(ph=>({...ph,pose:poseOf(ph),date:isDateISO(ph.date)?ph.date:''}));
     const D=(STATE.nutrition&&STATE.nutrition.days)||{};for(const k in D){if(!D[k]||typeof D[k]!=='object')D[k]={water:0,habits:{}};}
     /* A ROW WITH NO USABLE DATE IS NOT A RECORD OF ANYTHING. `mins` was
        repaired here and `date` was never looked at, while the liftLog repair

@@ -7376,6 +7376,48 @@ names** before any measurement ran. That guard is the one thing that keeps
 this sweep honest; v322 recorded the same lesson after half of a dead-control
 probe's findings turned out to be its own bad key names.
 
+## The photo repair used truthiness where membership belonged (v374)
+
+The same pair v356 fixed for the five activity logs, never applied to the one
+record this app calls irreplaceable. Measured:
+
+| stored | survived the repair | what it did |
+|---|---|---|
+| `pose:'helicopter'` | yes | the gallery groups by `POSE_KEYS`, so the photo was **invisible in every group** while still travelling in every backup |
+| `date:'not-a-date'` | yes | printed **"not-a-date · front"** on the glass, and `photoPair()` picked it as the **NOW** — a 90-day transformation shown against an undated shot instead of against today's real one |
+
+`poseOf()` already existed as the membership test and `isDateISO()` as the date
+test. The repair was asking neither.
+
+**THE BYTES ARE NEVER DROPPED, and that is this repair's own stated rule.** Its
+comment already says so — *"the bytes are the one thing in the whole state that
+cannot be re-created, so a missing view is worth guessing at and a missing
+photo never is"* — which is exactly why the fix here is the OPPOSITE of v356's:
+an activity row with a junk date is deleted, a photo with one is repaired.
+
+- The **pose** is repaired to a legal one, so the photo becomes visible again.
+- The **date** is blanked rather than invented. The row keeps its picture, the
+  gallery caption says *no date*, and `photoPair()` leaves it out of a
+  comparison it cannot honestly make. Unknown is not equal (v320).
+- `photoFileName()` already guarded both halves and names it
+  `coreforge-undated-front.jpg` — that path was correct and stays.
+
+**Two over-eager mutants carry the round.** Deleting the junk row satisfies
+every "the comparison is honest" assertion and destroys the irreplaceable
+thing; forcing every pose to `front` satisfies every "a junk pose is repaired"
+assertion and destroys the back and side shots. Both are caught, and a clean
+gallery is asserted byte-identical.
+
+### And a page-wide match let one mutant through
+
+`/no date/i` over the whole view also matches the projection copy, so the
+mutant that printed a blank caption escaped. **Scope the assertion to where
+the change was made** — the check now finds the tile by its `data-pid` and
+reads that caption. Same lesson as the v267 warning icon that existed in two
+places and was asserted in one.
+
+Seven mutants, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
