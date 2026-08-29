@@ -8915,6 +8915,19 @@ condition** (`!STATE.profile.bodyGoal`). The scan was reading a mention, not a
 repair — the same trap as a comment that quotes code breaking the scan for that
 code. Read what the mention actually is before believing it.
 
+**Twenty-two mutants across the four fixes, all caught** — after one rewrite,
+below. Every fix has its over-eager twin seeded beside it, and the credential
+one is the sharpest in the app: a repair that dropped a REAL key destroys the
+only thing a backup cannot restore.
+
+**And nine of the fourteen nested fields were driven and are genuinely safe**,
+which is the other half of the sweep: `beatTempoPref()` clamps its own read,
+`skipLevel` does a membership test at its read site, and the booleans
+(`vibrate`, `neuralOn`, `autoDeload`, `deload`, `foodAiModelOk`,
+`_everDeficit`) read truthy or falsy with nothing to break. Left alone rather
+than padded with repairs that buy nothing — the call v285 already made and
+wrote down.
+
 ### The escaped mutant set the value to the answer it then asserted
 
 The re-derivation check wrote `goalBodyFat = levelBF(4)` before calling
