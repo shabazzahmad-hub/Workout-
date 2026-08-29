@@ -540,6 +540,213 @@ export default async function run() {
     await browser.close();
   }
 
+  /* ---- v390: the fields DEFAULT_STATE never declares ---------------------
+     The class check above walks a HAND-WRITTEN list of twelve, and the v285
+     fuzz it came from enumerated Object.keys(DEFAULT_STATE()). Eight top-level
+     fields are created ON DEMAND and are in neither, so both sweeps walked
+     straight past them and none had a repair. importData() accepts arbitrary
+     JSON, so "not declared" is not "not reachable".
+
+     Measured before the fix:
+       opsPR as an ARRAY   — `arr['sprintdrag']=42` reads back 42 and
+         JSON.stringify gives `[]`, so the personal record is silently LOST on
+         every save. The v284 keyed-map-as-a-list defect on a field that sweep
+         could not see.
+       customFav junk      — openBuilder() THREW on a string and on a row with
+         no items (the custom builder became a dead button), and a row naming
+         an exercise that no longer exists threw inside startCustom().
+       comeback.left       — armComeback() clamps to COMEBACK_MIN..MAX and
+         nothing checked, so a stored 99999 eased every session by target x0.8
+         and sets-1 for ever: still 99,949 to go after fifty sessions. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await waitForBoot(page);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const out = {};
+
+      // opsPR — a keyed map that arrived as a list
+      STATE.opsPR = []; STATE.opsPR['sprintdrag'] = 42; normalizeState();
+      out.opsArray = { isArray: Array.isArray(STATE.opsPR), ser: JSON.stringify(STATE.opsPR) };
+      // FLOOR: a real record survives, and only the junk beside it goes
+      STATE.opsPR = { sprintdrag: 42, junk: 'x', neg: -3 }; normalizeState();
+      out.opsKept = JSON.stringify(STATE.opsPR);
+
+      /* comeback — a BAND the only writer enforces and the repair never did.
+         Measured through the prescription, not through the flag: an out-of-band
+         value that merely sat in STATE would be cosmetic. */
+      delete STATE.comeback;
+      const fp = () => JSON.stringify((buildSession(STATE.progressPtr).main || []).map(i => i.target + 'x' + i.sets));
+      out.normal = fp();
+      STATE.comeback = { left: 99999, days: 400, trig: 'x' }; normalizeState();
+      out.cbHuge = STATE.comeback === undefined ? 'deleted' : JSON.stringify(STATE.comeback);
+      out.easedAfterRepair = fp();
+      STATE.comeback = 'x'; normalizeState();
+      out.cbStr = STATE.comeback === undefined ? 'deleted' : JSON.stringify(STATE.comeback);
+      // FLOOR: a genuine ease survives, and it really does ease the session
+      STATE.comeback = { left: 5, days: 20, trig: '2026-01-01' }; normalizeState();
+      out.cbReal = JSON.stringify(STATE.comeback);
+      out.reallyEases = fp() !== out.normal;
+      // FLOOR: absent stays absent — the repair must not invent an ease
+      delete STATE.comeback; normalizeState();
+      out.cbAbsent = ('comeback' in STATE) ? 'INVENTED' : 'absent';
+      out.band = { min: COMEBACK_MIN, max: COMEBACK_MAX };
+
+      // customFav — the builder threw, so drive the builder rather than the field
+      const open = v => { try { STATE.customFav = v; normalizeState(); openBuilder();
+        const ok = !!document.querySelector('#sheet'); closeSheet(); return ok ? 'rendered' : 'no sheet'; }
+        catch (e) { return 'THREW ' + String(e && e.message).slice(0, 60); } };
+      out.builder = { string: open('x'), noItems: open([{ name: 'a' }]),
+                      badKey: open([{ name: 'a', items: ['nosuchexercise'] }]),
+                      clean: open([{ name: 'a', items: ['plank'] }]) };
+      STATE.customFav = [{ name: 'a' }, { name: 'b', items: ['plank', 'nosuch'] },
+                         { name: 'c', items: ['nosuch'] }, 'junk'];
+      normalizeState();
+      out.favMixed = JSON.stringify(STATE.customFav);
+      // FLOOR: a real favourites list is untouched
+      STATE.customFav = [{ name: 'Real', items: ['plank', 'pushup'] }]; normalizeState();
+      out.favKept = JSON.stringify(STATE.customFav);
+      STATE.customFav = Array.from({ length: 500 }, (_, i) => ({ name: 'f' + i, items: ['plank'] }));
+      normalizeState(); out.favCap = STATE.customFav.length; out.favMax = FAV_MAX;
+
+      /* The READ site, exercised with the boot repair deliberately NOT run —
+         two guards mean two checks, and this one is what stopped `ex.unit`
+         throwing on a favourite naming an exercise that no longer exists.
+
+         ASSERT THE MESSAGE, NOT THE ABSENCE OF A THROW. startCustom() carries
+         its own filter, so with startFav()'s guard reverted the junk key is
+         stripped one function later and nothing throws either way — the mutant
+         escaped a check that only asked whether it survived. What differs is
+         what the athlete is told: "that favorite has no moves left" names the
+         favourite, while startCustom()'s "add some moves first" points at a
+         builder they are not looking at. */
+      const realToast = window.toast; let said = '';
+      window.toast = m => { said = String(m); };
+      try { STATE.customFav = [{ name: 'a', items: ['nosuchexercise'] }]; said = ''; startFav(0);
+            out.favRaw = said || '(silent)'; }
+      catch (e) { out.favRaw = 'THREW ' + String(e && e.message).slice(0, 60); }
+      window.toast = realToast;
+      // FLOOR: a good favourite still starts in one tap
+      try { STATE.customFav = [{ name: 'a', items: ['plank', 'pushup'] }]; startFav(0);
+            out.favStart = (typeof PLAYER !== 'undefined' && PLAYER) ? PLAYER.items.length : 0; }
+      catch (e) { out.favStart = 'THREW ' + String(e && e.message).slice(0, 60); }
+      try { plQuit(); } catch (e) {}
+
+      // housekeeping strings — junk travels in every backup after it
+      STATE._saved = 42; STATE._savedAt = 'x'; STATE._remindedOn = {}; normalizeState();
+      out.house = { saved: STATE._saved === undefined, savedAt: STATE._savedAt === undefined,
+                    reminded: STATE._remindedOn === undefined };
+      STATE._saved = '2026-08-29'; normalizeState(); out.houseKept = STATE._saved;
+
+      delete STATE.customFav; delete STATE.opsPR; delete STATE.comeback; save();
+      return out;
+    });
+
+    t.ok('guard: the seeded athlete builds a real session to compare against',
+      typeof r.normal === 'string' && r.normal.length > 10, r.normal);
+
+    t.ok('a personal-record map that arrived as a list is repaired to a real map',
+      r.opsArray.isArray === false, JSON.stringify(r.opsArray));
+    t.ok('so the record is no longer thrown away by JSON.stringify',
+      r.opsArray.ser === '{}', JSON.stringify(r.opsArray));
+    t.eq('while a real record survives and only the junk beside it goes',
+      r.opsKept, '{"sprintdrag":42}');
+
+    t.ok('an out-of-band comeback ease is dropped', r.cbHuge === 'deleted', r.cbHuge);
+    t.ok('so the session is prescribed normally again',
+      r.easedAfterRepair === r.normal, JSON.stringify({ eased: r.easedAfterRepair, normal: r.normal }));
+    t.ok('and a non-object ease is dropped too', r.cbStr === 'deleted', r.cbStr);
+    t.eq('while a genuine ease inside the writer’s own band survives',
+      r.cbReal, '{"left":5,"days":20,"trig":"2026-01-01"}');
+    t.ok('and it really does ease the session — the repair is a band, not an off switch',
+      r.reallyEases === true, JSON.stringify(r));
+    t.ok('no ease is invented for an athlete who never had one', r.cbAbsent === 'absent', r.cbAbsent);
+    t.ok('guard: the band the repair enforces is the one the writer clamps to',
+      r.band.min === 2 && r.band.max === 8, JSON.stringify(r.band));
+
+    t.eq('the custom builder opens on every junk shape that used to throw',
+      [r.builder.string, r.builder.noItems, r.builder.badKey, r.builder.clean],
+      ['rendered', 'rendered', 'rendered', 'rendered']);
+    t.eq('a favourite keeps its real moves and loses only the ones that do not exist',
+      r.favMixed, '[{"name":"b","items":["plank"]}]');
+    t.eq('while a clean favourites list is untouched',
+      r.favKept, '[{"name":"Real","items":["plank","pushup"]}]');
+    t.ok('and the list is capped so an import cannot grow every backup after it',
+      r.favCap === r.favMax && r.favMax > 0, JSON.stringify({ cap: r.favCap, max: r.favMax }));
+    t.ok('starting a favourite with no usable move says the FAVOURITE is empty, not the builder',
+      /favorite/i.test(r.favRaw) && !/add some moves/i.test(r.favRaw), r.favRaw);
+    t.eq('while a real favourite still starts every move it names', r.favStart, 2);
+
+    t.ok('junk in the housekeeping fields is dropped rather than carried into a backup',
+      r.house.saved && r.house.savedAt && r.house.reminded, JSON.stringify(r.house));
+    t.eq('and a real save stamp survives', r.houseKept, '2026-08-29');
+
+    errors.filter(e => /render/.test(e)).forEach(e => t.fail('the on-demand repair reached the render boundary', e));
+    await browser.close();
+  }
+
+  /* ---- v390: every top-level field the app writes has a repair -----------
+     Written against the CLASS, because the block above fixes eight instances
+     and the next on-demand field added will be the ninth. The list is DERIVED
+     from the source — every `STATE.x=` assignment plus every DEFAULT_STATE
+     key — rather than hand-written, which is precisely the drift that let
+     these eight through two separate sweeps. */
+  {
+    const { browser, page } = await launch(port);
+    await waitForBoot(page);
+    const r = await page.evaluate(() => {
+      // the biggest inline script is the app; the first one on the page is two
+      // characters long, and reading that reports every field as unrepaired
+      const src0 = Array.from(document.querySelectorAll('script:not([src])'))
+        .map(s => s.textContent).sort((a, b) => b.length - a.length)[0] || '';
+      const src = src0.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+      const out = { isApp: src.indexOf('function prescribe(') >= 0, len: src.length };
+
+      // DEFAULT_STATE's own top-level keys
+      const keys = new Set(Object.keys(DEFAULT_STATE()));
+      // every field the app assigns
+      const assigned = new Set();
+      const re = /\bSTATE\.([A-Za-z_$][\w$]*)\s*=[^=]/g;
+      let m; while ((m = re.exec(src))) assigned.add(m[1]);
+      out.assignedCount = assigned.size;
+
+      // normalizeState's body, to the next top-level function
+      const i = src.indexOf('\nfunction normalizeState(');
+      const j = src.indexOf('\nfunction ', i + 10);
+      const body = (i >= 0 && j > i) ? src.slice(i, j) : '';
+      out.bodyLen = body.length;
+
+      const mentions = k => body.indexOf('STATE.' + k) >= 0 || body.indexOf("'" + k + "'") >= 0;
+      /* One documented exception. `version` is declared and has NO reader
+         anywhere in the app, so a repair for it would be padding — which is
+         the call v285 already made and wrote down. It is listed here rather
+         than quietly excluded, and checked BOTH ways below, so a field that
+         later gains a repair is removed from the list instead of sitting on
+         it for ever. */
+      const ALLOWED = ['version'];
+      const all = [...new Set([...keys, ...assigned])];
+      out.gaps = all.filter(k => !mentions(k) && ALLOWED.indexOf(k) < 0).sort();
+      out.staleAllowlist = ALLOWED.filter(k => mentions(k) || all.indexOf(k) < 0);
+      out.allowed = ALLOWED.slice();
+      out.versionHasNoReader = (src.match(/\bSTATE\.version\b/g) || []).length === 0;
+      // the detector must answer BOTH ways, or an empty gap list proves nothing
+      out.detectorSeesRepaired = mentions('logs');
+      out.detectorSeesMissing = !mentions('nosuchfieldatall');
+      return out;
+    });
+
+    t.ok('guard: the scan read the app’s own script', r.isApp && r.len > 200000, JSON.stringify({ isApp: r.isApp, len: r.len }));
+    t.ok('guard: normalizeState’s body was found', r.bodyLen > 20000, r.bodyLen);
+    t.ok('guard: it found the fields the app writes', r.assignedCount > 30, r.assignedCount);
+    t.ok('guard: the detector reports a repaired field as repaired', r.detectorSeesRepaired === true, r);
+    t.ok('guard: and a field that does not exist as unrepaired', r.detectorSeesMissing === true, r);
+    t.eq('every top-level state field the app writes is repaired at boot', r.gaps, []);
+    t.eq('and nothing sits on the allowlist that no longer needs to', r.staleAllowlist, []);
+    t.ok('guard: the one allowed field really has no reader to repair for',
+      r.versionHasNoReader === true, JSON.stringify(r.allowed));
+    await browser.close();
+  }
+
   /* ---- numeric fields must be repaired by RANGE, not only by type --------
      Found by a 360-point inspection. rateSession() clamps every adapt
      increment to 0.9-1.30, but normalizeState() only ever checked typeof, so

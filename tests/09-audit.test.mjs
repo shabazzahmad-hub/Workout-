@@ -2095,7 +2095,14 @@ export default async function run() {
       o.saysConfirm = /Confirm these figures with your unit/.test(sheet());
       o.stampsAsOf  = sheet().indexOf(FORCE_ASOF) >= 0;
       o.saysNoInternet = /cannot check them for you/.test(sheet());
-      o.unmeasuredCount = (sheet().match(/not measured/g) || []).length;
+      /* SCOPED TO THE FOUR EVENT ROWS. This counted "not measured" across the
+         whole sheet, and v389 added a day-90 board to the same sheet with its
+         own unmeasured rows — so a page-wide count is a statement about
+         whatever else happens to be on screen. The subject here is the four
+         FORCE events. */
+      const forceRows = () => [...document.querySelectorAll('#sheet [data-force]')];
+      o.forceRowCount = forceRows().length;
+      o.unmeasuredCount = forceRows().filter(el => /not measured/.test(el.textContent)).length;
       o.namesEvents = FORCE_EVENTS.every(e => sheet().indexOf(e.name) >= 0);
 
       // one under the standard, one over, one pass/fail task
@@ -2106,7 +2113,7 @@ export default async function run() {
       o.verdicts = FORCE_IDS.map(id => forceVerdict(id));
       o.showsMeets = /meets it/.test(sheet());
       o.showsShort = /short/.test(sheet());
-      o.stillUnmeasured = (sheet().match(/not measured/g) || []).length;
+      o.stillUnmeasured = [...document.querySelectorAll('#sheet [data-force]')].filter(el => /not measured/.test(el.textContent)).length;
 
       // a date paces the build
       const d = new Date(); d.setDate(d.getDate() + 70);
@@ -2220,6 +2227,7 @@ export default async function run() {
     t.ok('and says it cannot check them itself', r.saysNoInternet, r);
     /* Absent is "not measured", which is a different answer from "failed" and
        must never render as one. */
+    t.eq('guard: the four event rows were found to scope to', r.forceRowCount, 4, r);
     t.eq('with nothing logged, all four read as not measured', r.unmeasuredCount, 4, r);
     t.eq('a time under the standard passes', r.verdicts[0], 'pass', r);
     t.eq('a time over it is short', r.verdicts[2], 'fail', r);
@@ -2750,7 +2758,13 @@ export default async function run() {
          copies is how the five diets drifted. */
       t.ok('guard: the source scanned really is the app', dc.srcIsApp, dc);
       t.eq('no surface hardcodes the distance any more', dc.handWritten, 0);
-      t.eq('and all three sites call the derivation', dc.labelCalls, 3);
+        /* A FLOOR, NOT A FIXED COUNT. This demanded exactly three call sites, and
+         v389's day-90 board added two more — both DERIVING the label, which is
+         the behaviour the check exists to require. A hardcoded count fails on
+         a correct change; what has to hold is that every site derives and none
+         hardcodes, which the assertion above states. */
+    t.ok('and every site that names it calls the derivation', dc.labelCalls >= 3,
+      'call sites: ' + dc.labelCalls);
       t.ok('which itself reads the constant', dc.labelReadsConstant, dc.labelSrc);
 
       /* The phase boundaries are single-sourced, and really bite where the
