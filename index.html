@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='380';
+const APP_VERSION='381';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4537,6 +4537,33 @@ const PREP_TAPER_CUT=0.6;         // the taper's share of the plateau
 const PREP_RUCK_STEP_LB=5;        // and the load never climbs in the same week as the distance
 const PREP_RUCK_FLOOR_KM=5;       // an opening ruck week for someone with nothing logged
 const PREP_RUCK_CEIL_SHARE=1/3;   // the load stops climbing here, whatever the plates say
+/* THE 10% RULE CAPS THE RATE AND NOTHING CAPPED THE TOTAL. The plateau only
+   ever applied to `sharpen` and `taper`, so a long BASE phase compounded
+   unopposed. Measured on a real 54-week block from a 19.3 km/week base, with
+   no stale stamp involved: the curve reaches 336.5 km a week at week 31,
+   872.9 at week 41 and 1,871 at week 51 -- a marathon a day, every day,
+   prescribed by the plan whose whole purpose is to stop somebody arriving
+   injured. The ruck reached 114.9 km a week under a 60 lb plate.
+
+   TWO CEILINGS, because each covers what the other cannot. A multiple of the
+   athlete's OWN starting volume protects the one who opened at the floor, for
+   whom a flat 60 km would be a sevenfold jump. An absolute ceiling protects
+   the one who opened high, for whom two and a half times a big base is far
+   past anything these standards ask for -- FORCE has no run in it at all, and
+   the app's own time trial is 2.4 km.
+
+   It is a MAX against `start`, never a cut. An athlete already running more
+   than the ceiling is left where they are rather than prescribed LESS than
+   they already do: a plan that tells you to run less than you did last month
+   is not a cap, it is a different bug. */
+const PREP_PEAK_MULT=2.5;         // a build past 2.5x the start has stopped being a build
+const PREP_PEAK_KM=60;            // and this is already far past what the evaluation asks for
+const PREP_RUCK_PEAK_KM=25;       // loaded distance tops out much lower than unloaded
+function prepPeak(start,ceil){
+  const s=(typeof start==='number'&&isFinite(start)&&start>0)?start:0;
+  const c=(typeof ceil==='number'&&isFinite(ceil)&&ceil>0)?ceil:0;
+  return Math.max(s,Math.min(s*PREP_PEAK_MULT,c));
+}
 function _dayRunKm(t){
   try{
     if(!t||typeof t!=='object')return 0;
@@ -4757,6 +4784,7 @@ function ruckLadderWeek(raw){
   for(let t=2;t<=totalWk;t++)if(((t-1)%4)+1===loadSlot)wantSteps++;
   let catchUp=0;                                  // last working week before the taper
   for(let t=2;t<taperFrom;t++)if(((t-1)%4)+1!==4)catchUp=t;
+  const peak=prepPeak(startKm,PREP_RUCK_PEAK_KM);
   let km=startKm, lb=startLb, climbing='distance', down=false, capped=false, took=0;
   const raise=()=>{if(lb+PREP_RUCK_STEP_LB<=ceil){lb+=PREP_RUCK_STEP_LB;took++;}else capped=true;};
   for(let w=2;w<=wk;w++){
@@ -4772,7 +4800,7 @@ function ruckLadderWeek(raw){
       climbing='load';while(took<wantSteps&&!capped)raise();
     }else{
       climbing='distance';
-      km*=PREP_RAMP;
+      km=Math.min(km*PREP_RAMP,peak);
     }
   }
   /* `down` is owned by the LOOP and nowhere else. It used to be re-derived
@@ -4806,6 +4834,7 @@ function ruckLadderWeek(raw){
   const footBig=!!(fit&&fit.big);
   return {left,phase,wk,down,capped,climbing,footTotal,footFrom,footStep,footBig,footNew,footAdded,
     km:rShown,curve:Math.round(km*10)/10,lb,ceil,
+    atPeak:wk>1&&km>=peak-0.05,peak:Math.round(peak*10)/10,
     startKm:Math.round(startKm*10)/10,startLb,
     estimated:base===null,
     share:(latestWeightKg()>0)?Math.round(lb*0.453592/latestWeightKg()*100):null};
@@ -5180,7 +5209,12 @@ function enduranceWeek(raw){
      earned rather than a cap invented here. */
   const plateauWk=prepClimbWeeks();
   const climbTo=Math.max(0,(PREP_PLATEAU_PHASES.indexOf(phase)>=0?Math.min(wk,plateauWk):wk)-1);
-  let km=start*Math.pow(PREP_RAMP,climbTo);
+  const peak=prepPeak(start,PREP_PEAK_KM);
+  /* ONE EXPRESSION, READ TWICE. `km` and `curve` are two halves of one figure,
+     and clamping only one of them is how a card comes to print a number the
+     plan does not use. */
+  const climbKm=Math.min(start*Math.pow(PREP_RAMP,climbTo),peak);
+  let km=climbKm;
   if(down)km*=PREP_DOWN_CUT;
   if(phase==='taper')km*=PREP_TAPER_CUT;
   km=Math.round(km*10)/10;
@@ -5189,9 +5223,14 @@ function enduranceWeek(raw){
      curve looks like a big jump against last week and is a normal 10% per week
      against the last week that was not cut. Both numbers are returned so the
      screen can say which one it means. */
-  const curve=Math.round(start*Math.pow(PREP_RAMP,climbTo)*10)/10;
+  const curve=Math.round(climbKm*10)/10;
   const climbed=Math.round((curve/Math.max(0.1,start)-1)*100);
   const plateaued=PREP_PLATEAU_PHASES.indexOf(phase)>=0&&wk>plateauWk;
+  /* A QUIET CAP READS AS A BUG, so the two reasons the volume stops climbing
+     are kept apart: `plateaued` is the sharpen phase holding it, `atPeak` is
+     the build having reached its ceiling. Different reasons need different
+     sentences. */
+  const atPeak=climbTo>0&&climbKm>=peak-0.05;
   /* Fitted against the ruck ladder's own ask for the same week. Each plan
      obeyed the 10% rule alone and they combined into a 45% jump. */
   let fit=null;
@@ -5203,7 +5242,7 @@ function enduranceWeek(raw){
   const footBig=!!(fit&&fit.big);
   return {left,phase,wk,down,km,curve,start:Math.round(start*10)/10,
     blank:stats?stats.blank:0, counted:stats?stats.weeks:0,
-          estimated:base===null,climbed,plateaued,plateauWk,
+          estimated:base===null,climbed,plateaued,plateauWk,atPeak,peak:Math.round(peak*10)/10,
           footTotal,footFrom,footStep,footBig,footNew,footAdded,
           note:prepPhaseNote(phase),
           sessions:prepSessions(phase)};
@@ -5238,6 +5277,7 @@ function enduranceHTML(){
     ${w.estimated
       ? `<div class="note warn" style="margin:10px 0 0"><b>Starting low, because nothing is logged yet.</b> The plan opens at ${_ve(distShow(PREP_FLOOR_KM))} a week and climbs from there. Log a few runs and it will build from what you actually do instead.</div>`
       : `<div class="tiny muted" style="margin-top:6px">Built from the <b>${_ve(distShow(w.start))}</b> a week you have been logging${w.blank>0?` — <b>${w.blank} of the last ${w.counted} weeks had no runs at all</b>, counted as the zero they were rather than skipped`:''}, climbing no more than <b>${Math.round((PREP_RAMP-1)*100)}%</b> a week.</div>`}
+    ${w.atPeak?`<div class="note info" style="margin:10px 0 0"><b>The build has reached its ceiling.</b> Volume holds at ${_ve(distShow(w.peak))} a week from here — ${Math.round(PREP_PEAK_MULT*10)/10}× what you opened on, and past what this evaluation asks of you. The work gets sharper from here, not longer.</div>`:''}
     ${w.down?`<div class="tiny muted" style="margin-top:6px">Next week goes back to <b>${_ve(distShow(w.curve===w.km?w.curve:Math.round(w.curve*PREP_RAMP*10)/10))}</b>. That looks like a jump against this week and is not one — it is ${Math.round((PREP_RAMP-1)*100)}% up on the last week you were not cutting.</div>`:''}
     <div class="tiny muted" style="margin-top:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">This week</div>
     ${w.sessions.map(id=>`<button class="btn ghost" style="text-align:left;display:block;padding:12px;width:100%;margin-top:6px" onclick="startRunSession('${id}')">▶ ${_ve(names[id]||id)}</button>`).join('')}
@@ -5255,7 +5295,9 @@ function ruckLadderHTML(){
       ? (w.capped
         ? 'The <b>load</b> would climb this week and it has reached its ceiling, so the distance holds instead.'
         : 'The <b>load</b>, by '+PREP_RUCK_STEP_LB+' lb. The distance HOLDS.')
-      : 'The <b>distance</b>. The load holds.');
+      : (w.atPeak
+        ? 'Nothing is being added. Both the <b>load</b> and the <b>distance</b> have reached their ceilings — from here it is the same work, done better.'
+        : 'The <b>distance</b>. The load holds.'));
   return `<div class="section-label" style="margin-top:14px">Rucking</div><div class="card pad">
     <div class="row" style="justify-content:space-between;align-items:baseline">
       <div><b style="font-size:17px">${_ve(String(w.lb))} lb</b>
@@ -5265,7 +5307,8 @@ function ruckLadderHTML(){
     </div>
     ${footLoadHTML(w)}
     <div class="note ${w.down?'ok':'info'}" style="margin:10px 0 0"><b>What moves this week:</b> ${moving}</div>
-    ${w.capped?`<div class="note warn" style="margin:10px 0 0"><b>The load stops here at ${_ve(String(w.ceil))} lb.</b> That is about a third of your bodyweight, which is the far end of what rucking guidance asks for. From here the distance carries the progression. You can carry more if you choose to — the app will not add it for you.</div>`:''}
+    ${w.capped?`<div class="note warn" style="margin:10px 0 0"><b>The load stops here at ${_ve(String(w.ceil))} lb.</b> That is about a third of your bodyweight, which is the far end of what rucking guidance asks for. ${w.atPeak?'The distance has reached its ceiling too, so nothing further is added.':'From here the distance carries the progression.'} You can carry more if you choose to — the app will not add it for you.</div>`:''}
+    ${(w.atPeak&&!w.capped)?`<div class="note info" style="margin:10px 0 0"><b>The distance has reached its ceiling.</b> It holds at ${_ve(distShow(w.peak))} a week from here. Loaded distance tops out far lower than unloaded, and this is already past the ${_ve(distShow(5))} march the standard asks for.</div>`:''}
     ${w.estimated
       ? `<div class="note warn" style="margin:10px 0 0"><b>Starting light, because nothing is logged yet.</b> It opens at ${_ve(distShow(PREP_RUCK_FLOOR_KM))} under a ${RUCK_PLATES[0]} lb plate. Log a few rucks and it will build from what you actually carry.</div>`
       : `<div class="tiny muted" style="margin-top:8px">Built from the <b>${_ve(distShow(w.startKm))}</b> a week you have been logging.</div>`}
@@ -5496,15 +5539,28 @@ function saveForceDate(){
   const v=($('#fq-date')||{}).value||'';
   if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){toast('Pick a date');return;}
   if(!STATE.prep||typeof STATE.prep!=='object'||Array.isArray(STATE.prep))STATE.prep={};
+  /* A RESCHEDULE KEEPS THE STAMP; A NEW BLOCK GETS A NEW ONE. The stamp was
+     written once and never again, which is right for moving a date that is
+     still ahead — the plan keeps running from when the athlete started. It is
+     wrong the moment the previous evaluation has been and gone: the next one
+     is a NEW block, and `prepWeekNo()` counts from the stamp, so a stamp a
+     year old opened the new block at week 53. Measured, with everything else
+     working: 2,739 km of running a week and a 60 lb plate on day one.
+
+     `now>=date` is the same day-exact test prepCheckpoint() already uses for
+     'final', read BEFORE the new date overwrites it. */
+  const prevDate=(typeof STATE.prep.date==='string')?STATE.prep.date:'';
+  const newBlock=!prevDate||todayISO()>=prevDate;
   STATE.prep.date=v;
-  /* Stamped ONCE. Changing the test date must not restart a block the athlete
-     has already been training — the plan keeps running from when they started. */
-  if(typeof STATE.prep.planFrom!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(STATE.prep.planFrom))
+  if(newBlock||typeof STATE.prep.planFrom!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(STATE.prep.planFrom))
     STATE.prep.planFrom=todayISO();
   save();closeSheet();toast('Test date set 📅');openForcePrep();
 }
 function clearForceDate(){
-  if(STATE.prep&&typeof STATE.prep==='object')delete STATE.prep.date;
+  /* THE STAMP GOES WITH THE DATE. Leaving it behind means the next date set
+     opens its block at whatever week the abandoned one had reached — the same
+     stale-stamp defect by a second door. */
+  if(STATE.prep&&typeof STATE.prep==='object'){delete STATE.prep.date;delete STATE.prep.planFrom;}
   save();closeSheet();openForcePrep();
 }
 function altSessionHTML(){
@@ -19989,7 +20045,6 @@ function normalizeState(){
      job", run the other way round. */
   if(typeof STATE.adapt!=='number'||!isFinite(STATE.adapt))STATE.adapt=1;   // adaptive-overload multiplier
   else STATE.adapt=clamp(STATE.adapt,0.9,1.30);                            // the band rateSession() itself enforces
-  // clamp removed                            // the band rateSession() itself enforces
   if(!STATE.nutrition||typeof STATE.nutrition!=='object'||Array.isArray(STATE.nutrition))STATE.nutrition={goal:'lose',sex:null,age:null,heightCm:null,activity:1.45,kcalTarget:null,days:{}};
   /* weightKg drives the calorie target, the protein target and every bodyweight
      estimate. A string here does not crash — latestWeightKg() reads `n.weightKg>0`,
