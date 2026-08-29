@@ -5280,6 +5280,107 @@ export default async function () {
       'one starved tick dropped ' + (r.catchUp || {}).dropped + ' seconds');
   }
 
+  /* ---------- the session clock and the stopwatches ----------------------
+     THE "ONE CLOCK" RULE WAS NOT APPLIED COMPLETELY, AND THE SUITE DID NOT
+     CATCH IT. v380 made PLAYER.pauseAt monotonic and left plPausedSec() on the
+     wall clock. Measured while paused: paused-time read 1,787,983,534 seconds,
+     plWallSec() subtracted it and clamped to 0, and the clock on screen showed
+     "0s" the instant the athlete paused.
+
+     And swSecs() — the stopwatch behind the activity, skipping and make-up
+     timers AND Benchmark Ops, whose number is written straight into a personal
+     best — inflated by the whole jump: one second read as 3,601. */
+  {
+    const r = await page.evaluate(async () => {
+      const R = {}; const wait = ms => new Promise(res => setTimeout(res, ms));
+      STATE.onboarded = true; STATE.progressPtr = 8; save();
+
+      // the session clock must survive a pause
+      openPlayer(); await wait(2500);
+      R.running = plWallSec();
+      playerToggle(); await wait(1200);
+      R.whilePaused = { wall: plWallSec(), paused: plPausedSec() };
+      R.clockOnScreen = ((document.getElementById('plClock') || {}).textContent || '').trim();
+      /* THE CLOCK MUST BE FROZEN WHILE PAUSED. "Never count the paused time"
+         leaves the session clock RUNNING through an interruption, which is the
+         very thing pausing exists to prevent — and a check that only asserts
+         the clock is non-zero passes on it. */
+      await wait(2600);
+      R.pausedDrift = plWallSec() - R.whilePaused.wall;
+      playerToggle(); await wait(400);
+      R.afterResume = plWallSec();
+      playerTeardown(); await wait(200);
+
+      // and neither clock may be moved by the phone correcting itself
+      const RealDate = window.Date; let skew = 0;
+      class Shim extends RealDate {
+        constructor(...a) { if (a.length === 0) super(RealDate.now() + skew); else super(...a); }
+        static now() { return RealDate.now() + skew; }
+        static parse(...a) { return RealDate.parse(...a); }
+        static UTC(...a) { return RealDate.UTC(...a); }
+      }
+      window.Date = Shim;
+      try {
+        const st = swStart({ secs: 0, running: true });
+        await wait(1200);
+        const b1 = swSecs(st); skew = 3600 * 1000;
+        R.stopwatch = { before: b1, after: swSecs(st) };
+        skew = 0;
+
+        /* AND A PAUSED STOPWATCH. swPause() keeps its own paused-time tally,
+           and nothing above exercised it — so putting that bookkeeping back on
+           the wall clock was invisible. Pause it, jump the clock, resume. */
+        const st2 = swStart({ secs: 0, running: true });
+        await wait(1200);
+        const p1 = swSecs(st2);
+        /* LONG ENOUGH THAT DRIFT CANNOT ROUND AWAY. At 1.2s of pause, a
+           stopwatch that kept ticking read 2 against a paused 1 — inside a
+           +/-1 tolerance. Three seconds makes the two answers unmistakable. */
+        swPause(st2, false);                 // pause
+        await wait(1500);
+        skew = 3600 * 1000;                  // the phone corrects its clock
+        await wait(1800);
+        R.pausedStopwatch = swSecs(st2);
+        swPause(st2, true);                  // resume
+        skew = 0;
+        await wait(400);
+        R.resumedStopwatch = { before: p1, after: swSecs(st2) };
+
+        openPlayer(); await wait(1200);
+        const w1 = plWallSec(); skew = 3600 * 1000;
+        R.sessionJump = { before: w1, after: plWallSec() };
+        skew = 0;
+        playerTeardown(); await wait(200);
+      } finally { window.Date = RealDate; }
+      return R;
+    });
+    t.ok('guard: the session clock really was running before the pause', r.running >= 1, String(r.running));
+    t.ok('the session clock does not reset to zero when the athlete pauses',
+      r.whilePaused && r.whilePaused.wall >= 1,
+      'reads ' + (r.whilePaused || {}).wall + 's with ' + (r.whilePaused || {}).paused + 's counted as paused');
+    t.ok('and the paused figure is a real number of seconds, not a timestamp',
+      r.whilePaused && r.whilePaused.paused >= 0 && r.whilePaused.paused < 600,
+      String((r.whilePaused || {}).paused));
+    t.ok('so the clock on screen still shows the session, not 0s',
+      !/^0s/.test(r.clockOnScreen || ''), r.clockOnScreen);
+    t.ok('floor: and it keeps counting after the resume', r.afterResume >= 2, String(r.afterResume));
+    t.ok('the session clock is FROZEN while paused, not merely non-zero',
+      typeof r.pausedDrift === 'number' && Math.abs(r.pausedDrift) <= 1,
+      'it moved ' + r.pausedDrift + 's during 2.6s of pause');
+    t.ok('a paused stopwatch does not tick, and a clock jump does not move it',
+      typeof r.pausedStopwatch === 'number' && Math.abs(r.pausedStopwatch - (r.resumedStopwatch || {}).before) <= 1,
+      'paused at ' + (r.resumedStopwatch || {}).before + 's, read ' + r.pausedStopwatch + 's');
+    t.ok('and resuming it does not add the time it was paused',
+      r.resumedStopwatch && Math.abs(r.resumedStopwatch.after - r.resumedStopwatch.before) <= 2,
+      JSON.stringify(r.resumedStopwatch));
+    t.ok('a stopwatch is not inflated by the phone correcting its clock',
+      r.stopwatch && Math.abs(r.stopwatch.after - r.stopwatch.before) <= 2,
+      JSON.stringify(r.stopwatch));
+    t.ok('nor is the session clock',
+      r.sessionJump && Math.abs(r.sessionJump.after - r.sessionJump.before) <= 2,
+      JSON.stringify(r.sessionJump));
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

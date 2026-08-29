@@ -5908,13 +5908,18 @@ function plClockStop(){if(_plClock){clearInterval(_plClock);_plClock=null;}}
 // Seconds spent paused, including a pause still in progress.
 function plPausedSec(){
   if(!PLAYER)return 0;
-  const live=PLAYER.pauseAt?(Date.now()-PLAYER.pauseAt):0;
+  /* monoNow(), because pauseAt is stamped with it. Reading the wall clock
+     against a monotonic stamp returned 1,787,983,534 seconds while paused —
+     which plWallSec() then subtracted, so the session clock on screen read
+     "0s" the moment the athlete paused. A regression v380 introduced by
+     applying "one clock" to the deadlines and not to this pair. */
+  const live=PLAYER.pauseAt?(monoNow()-PLAYER.pauseAt):0;
   return Math.floor(((PLAYER.pausedMs||0)+live)/1000);
 }
 // Wall-clock seconds in the session, not counting time paused.
 function plWallSec(){
   if(!PLAYER||!PLAYER.t0)return 0;
-  return Math.max(0,Math.floor((Date.now()-PLAYER.t0)/1000)-plPausedSec());
+  return Math.max(0,Math.floor((monoNow()-PLAYER.t0)/1000)-plPausedSec());
 }
 /* The budget is computed off the item list rather than the session, so a
    weights or bonus session — which has no sess.main — gets one too. Same shape
@@ -6297,7 +6302,7 @@ function openPlayer(opts){
   const _tempo=Math.max(1.5,Math.min(6,(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3));
   PLAYER={sess,items,i:0,s:0,phase:null,running:true,tid:null,remain:0,total:0,repN:0,elapsed:0,setsDone:0,pendingNext:false,free,
     tempo:_tempo,
-    t0:Date.now(),pausedMs:0,pauseAt:null,budget:plBudgetMin(items,_tempo),overNudged:false,lastPauseNudge:0};
+    t0:monoNow(),pausedMs:0,pauseAt:null,budget:plBudgetMin(items,_tempo),overNudged:false,lastPauseNudge:0};
   $('#player').classList.add('open');document.body.style.overflow='hidden';
   try{history.pushState({cf:'player'},'');}catch(e){}
   primeVoice();precacheSession(items);beatStart();
@@ -7598,16 +7603,21 @@ function openActTimer(k){
    STATE.opsPR as a personal best, so a throttled run set a fake record; the
    others under-credited logged minutes. Derive elapsed from the wall clock and
    subtract only the time actually spent paused. */
-function swStart(st){st.at=Date.now();st.pausedMs=0;st.pausedAt=0;st.secs=0;return st;}
+/* A MONOTONIC base. `at` here is a duration reference, not a timestamp —
+   the `at:Date.now()` written into a LOG ROW records when something happened
+   and correctly stays on the wall clock. Measured before this: a one-second
+   stopwatch read 3,601 after the phone corrected its clock by an hour, and
+   Benchmark Ops writes that number straight into a personal best. */
+function swStart(st){st.at=monoNow();st.pausedMs=0;st.pausedAt=0;st.secs=0;return st;}
 function swSecs(st){
   if(!st||!st.at)return st?(st.secs||0):0;
-  const pausedNow=st.pausedAt?(Date.now()-st.pausedAt):0;
-  return Math.max(0,Math.round((Date.now()-st.at-(st.pausedMs||0)-pausedNow)/1000));
+  const pausedNow=st.pausedAt?(monoNow()-st.pausedAt):0;
+  return Math.max(0,Math.round((monoNow()-st.at-(st.pausedMs||0)-pausedNow)/1000));
 }
 function swPause(st,running){
   if(!st)return;
-  if(running){if(st.pausedAt){st.pausedMs=(st.pausedMs||0)+(Date.now()-st.pausedAt);st.pausedAt=0;}}
-  else if(!st.pausedAt)st.pausedAt=Date.now();
+  if(running){if(st.pausedAt){st.pausedMs=(st.pausedMs||0)+(monoNow()-st.pausedAt);st.pausedAt=0;}}
+  else if(!st.pausedAt)st.pausedAt=monoNow();
 }
 function actTimerTick(){if(!ACTT||!ACTT.running)return;ACTT.secs=swSecs(ACTT);const e=$('#act-num');if(e)e.textContent=fmtTime(ACTT.secs);}
 function actTimerToggle(){if(!ACTT)return;ACTT.running=!ACTT.running;swPause(ACTT,ACTT.running);const b=$('#act-toggle');if(b)b.textContent=ACTT.running?'Pause':'Resume';}
