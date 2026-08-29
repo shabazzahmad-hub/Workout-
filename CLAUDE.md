@@ -7997,6 +7997,72 @@ must be a multiple of THEIR start (20 km, not 60). And the note must say
 nothing at all on a block still climbing.
 
 
+## The container was checked and the members were not — in four more places (v382)
+
+v354 filtered `profile.limitations` against `JOINTS` and wrote the reason in a
+comment three lines above `profile.parq`. **Four siblings in the same file
+never got it** — `parq`, `nutrition.allergens`, `profile.targets` and
+`profile.troubleZones` each had the CONTAINER checked and nothing below it.
+Fixing one instance is not fixing the class, and the class was five wide.
+
+**The reason it stayed hidden is where the legal sets lived.** `FAREAS` and
+`TROUBLE` were function-local consts INSIDE `obMount()`, so nothing outside
+that one renderer could ask what a legal focus area or trouble zone is. A
+repair cannot filter against a list it cannot see. Same shape as the five diets
+existing as three literals, one layer down. They are hoisted to `FOCUS_AREAS`
+and `TROUBLE_AREAS`, and `validateData()` pins `TROUBLE_AREAS` against
+`TROUBLE_POOL` **both directions** — a zone in one and not the other is either
+a button that steers nothing or a steer with no button, and both are silent.
+
+### The measured harm is on the array the whole safety gate rests on
+
+A junk key in `parq` — the shape any hand-edited or foreign backup arrives in:
+
+| | |
+|---|---|
+| `parqFlagged()` | **true, for ever** |
+| chips ticked on the health screen | **0** — the row renders from `PARQ`, so there is nothing to untick |
+| session volume | **62 units against 82 — 24% lighter, permanently** |
+| `validateData()` | **clean throughout** |
+
+Safe mode on, with nothing on screen to explain a permanently easier session
+and no way to clear it.
+
+**IT FAILS CLOSED, and that is why the flags go with it.** Dropping an
+unrecognised key means the app no longer knows what the athlete answered, so
+the screen is not answered and a clearance given against answers it cannot
+reconstruct does not apply. `parqDone` and `medCleared` are both cleared and
+the athlete re-answers in two taps. The alternative is silently clearing a
+declared heart condition.
+
+**The allergen filter deliberately does NOT do that**, and the asymmetry is the
+point: an allergen the library does not know matches no food, so it already
+restricts nothing and dropping it cannot make the app less safe. The harm there
+is only that it is invisible, un-untickable and travels in every backup.
+
+**An inherited key is truthy**, so `TROUBLE_POOL[z]` passed a truthiness test
+and `troubleZones:['constructor']` survived into the trouble list.
+`troubleZoneKey()` is a membership test — v328's lesson, one map over.
+
+### The floors are what stop each fix being a delete
+
+- A clean `parq:['heart']` with a clearance survives **untouched**, flags
+  intact, safe mode off — the mutant that always resets sends a clean athlete
+  back to the health screen on every boot.
+- `parq:[]` with `parqDone:true` stays done. The screen says *"if none apply,
+  leave them all off"*, so an empty answer is a real answer.
+- A list of nothing but junk `targets` falls back to `['abs','full']`, never
+  empty — `focusBonus()` reads `targets[0]`, and an empty list is a different
+  defect from a junk one.
+- Real allergens, real zones and a real focus pair are all byte-identical.
+
+**And a clean validator proves nothing about a validator rule.** The lockstep
+rule is exercised by breaking `TROUBLE_AREAS` and `TROUBLE_POOL` in front of
+it, one at a time, requiring the specific complaint, then restoring — with
+`console.error` muted, because `validateData()` logs and the harness counts a
+console error as a page failure.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

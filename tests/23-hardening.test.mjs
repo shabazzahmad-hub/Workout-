@@ -5545,6 +5545,159 @@ export default async function () {
     }
   }
 
+
+  /* ---- v382: the member filter that stopped at the container --------------
+     `limitations` is filtered against JOINTS, with a comment three lines above
+     `parq` explaining exactly why. Four siblings in the same file never got it:
+     parq, allergens, targets and troubleZones each had the CONTAINER checked
+     and nothing below it. Fixing one instance is not fixing the class, and the
+     class was five wide.
+
+     The reason it stayed hidden is that the legal sets for two of them were
+     function-local consts INSIDE the wizard, so nothing outside that renderer
+     could ask what a legal value is. They are hoisted now.
+
+     Measured harm on parq, the array the whole safety gate is built on: a junk
+     key makes parqFlagged() true for ever, the chip row renders from PARQ so
+     the athlete sees nothing to untick, and the session is quietly 24% lighter
+     (62 units of work against 82) with nothing on screen to explain it. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {}, ce = console.error;
+      console.error = () => {};
+      try {
+        const seedPtr = STATE.progressPtr;
+
+        // a junk member FAILS CLOSED: dropped, and the screen counts as unanswered
+        STATE.profile.parq = ['heart', 'helicopter'];
+        STATE.profile.parqDone = true; STATE.profile.medCleared = true;
+        normalizeState();
+        out.junk = { parq: STATE.profile.parq.slice(), done: STATE.profile.parqDone,
+                     cleared: STATE.profile.medCleared, safe: safeMode() };
+
+        // FLOOR: a clean flagged-and-cleared athlete is untouched
+        STATE.profile.parq = ['heart']; STATE.profile.parqDone = true; STATE.profile.medCleared = true;
+        normalizeState();
+        out.clean = { parq: STATE.profile.parq.slice(), done: STATE.profile.parqDone,
+                      cleared: STATE.profile.medCleared, safe: safeMode() };
+
+        // FLOOR: an empty answer IS an answer — the screen says so in as many words
+        STATE.profile.parq = []; STATE.profile.parqDone = true; STATE.profile.medCleared = false;
+        normalizeState();
+        out.empty = { parq: STATE.profile.parq.slice(), done: STATE.profile.parqDone, safe: safeMode() };
+
+        // the harm: a phantom flag nothing on screen could clear
+        STATE.profile.parq = ['helicopter']; STATE.profile.parqDone = true; STATE.profile.medCleared = false;
+        out.before = { flagged: parqFlagged(), safe: safeMode() };
+        normalizeState();
+        out.after = { flagged: parqFlagged(), parq: STATE.profile.parq.slice() };
+
+        // allergens — filtered, and deliberately WITHOUT parq's flag reset
+        STATE.nutrition.allergens = ['peanut', 'helicopter']; normalizeState();
+        out.allergJunk = STATE.nutrition.allergens.slice();
+        STATE.nutrition.allergens = ['peanut', 'dairy']; normalizeState();
+        out.allergClean = STATE.nutrition.allergens.slice();
+        STATE.nutrition.allergens = 'peanut, dairy'; normalizeState();
+        out.allergStr = STATE.nutrition.allergens.slice();
+
+        // targets — and the fallback when EVERY member is junk
+        STATE.profile.targets = ['abs', 'helicopter']; normalizeState();
+        out.tgJunk = STATE.profile.targets.slice();
+        STATE.profile.targets = ['helicopter']; normalizeState();
+        out.tgAllJunk = STATE.profile.targets.slice();
+        STATE.profile.targets = ['legs', 'glutes']; normalizeState();
+        out.tgClean = STATE.profile.targets.slice();
+
+        // troubleZones — including the inherited key an || fallback lets through
+        STATE.profile.troubleZones = ['belly', 'helicopter']; normalizeState();
+        out.tzJunk = STATE.profile.troubleZones.slice();
+        STATE.profile.troubleZones = ['constructor', 'toString']; normalizeState();
+        out.tzProto = STATE.profile.troubleZones.slice();
+        STATE.profile.troubleZones = ['belly', 'posture']; normalizeState();
+        out.tzClean = STATE.profile.troubleZones.slice();
+
+        // the hoisted lists really reach the picker
+        STATE.profile.parq = []; STATE.profile.parqDone = true; STATE.profile.medCleared = false;
+        STATE.onboarded = true; save();
+        go('today'); openProfileEdit();
+        const mounted = !!document.querySelector('#ob-targets');
+        const html = mounted ? document.querySelector('#v-today').innerHTML : '';
+        out.picker = { mounted, focus: (html.match(/data-t="/g) || []).length,
+                       trouble: (html.match(/data-z="/g) || []).length,
+                       areas: FOCUS_AREAS.length, zones: TROUBLE_AREAS.length };
+
+        // the validator rule needs the data broken in front of it
+        out.errsClean = validateData().length;
+        TROUBLE_AREAS.push(['helicopter', 'Helicopter']);
+        out.brokenAreas = validateData().filter(e => /helicopter/i.test(e)).length;
+        TROUBLE_AREAS.pop();
+        const _saved = TROUBLE_POOL.belly; delete TROUBLE_POOL.belly;
+        out.brokenPool = validateData().filter(e => /belly/i.test(e)).length;
+        TROUBLE_POOL.belly = _saved;
+        out.errsRestored = validateData().length;
+
+        STATE.progressPtr = seedPtr;
+        STATE.profile.parq = []; STATE.profile.parqDone = true; STATE.profile.medCleared = false;
+        STATE.profile.targets = ['abs', 'full']; STATE.profile.troubleZones = [];
+        delete STATE.nutrition.allergens; normalizeState(); save();
+      } catch (e) { out.threw = String(e && e.message || e); }
+      console.error = ce;
+      return out;
+    });
+
+    t.ok('guard: the member checks ran without throwing', !r.threw, r.threw || '');
+    if (!r.threw) {
+      t.eq('an unrecognised health flag is dropped', JSON.stringify(r.junk.parq), '["heart"]');
+      /* IT FAILS CLOSED. Dropping a key means the app no longer knows what was
+         answered, so the screen is not answered and a clearance given against
+         answers it cannot reconstruct does not apply. */
+      t.ok('and the screen counts as unanswered, so safe mode holds',
+        r.junk.done === false && r.junk.cleared === false && r.junk.safe === true, JSON.stringify(r.junk));
+
+      // FLOOR — an always-reset repair sends a clean athlete back to the screen every boot
+      t.eq('a clean flagged answer survives untouched', JSON.stringify(r.clean.parq), '["heart"]');
+      t.ok('with its answer and its clearance intact, and safe mode off',
+        r.clean.done === true && r.clean.cleared === true && r.clean.safe === false, JSON.stringify(r.clean));
+      // FLOOR — the screen says "if none apply, leave them all off"
+      t.ok('an empty answer is still a real answer',
+        r.empty.done === true && r.empty.safe === false, JSON.stringify(r.empty));
+
+      t.ok('guard: the junk flag really did read as flagged before the repair',
+        r.before.flagged === true && r.before.safe === true, JSON.stringify(r.before));
+      t.ok('and afterwards there is no phantom flag left',
+        r.after.flagged === false && r.after.parq.length === 0, JSON.stringify(r.after));
+
+      t.eq('an unrecognised allergen is dropped', JSON.stringify(r.allergJunk), '["peanut"]');
+      t.eq('and real allergens are untouched', JSON.stringify(r.allergClean), '["peanut","dairy"]');
+      t.eq('the string form still parses', JSON.stringify(r.allergStr), '["peanut","dairy"]');
+
+      t.eq('an unrecognised focus area is dropped', JSON.stringify(r.tgJunk), '["abs"]');
+      /* Never empty: focusBonus() reads targets[0], and an empty list is a
+         different defect from a junk one. */
+      t.eq('a list of nothing but junk falls back to the default', JSON.stringify(r.tgAllJunk), '["abs","full"]');
+      t.eq('and a real pair is untouched', JSON.stringify(r.tgClean), '["legs","glutes"]');
+
+      t.eq('an unrecognised trouble zone is dropped', JSON.stringify(r.tzJunk), '["belly"]');
+      /* An INHERITED key is truthy, so TROUBLE_POOL[z] passes a truthiness test
+         and a membership test refuses it — the v328 lesson, one map over. */
+      t.eq('and so is an inherited key', JSON.stringify(r.tzProto), '[]');
+      t.eq('real zones are untouched', JSON.stringify(r.tzClean), '["belly","posture"]');
+
+      t.ok('guard: the profile editor really mounted', r.picker.mounted, JSON.stringify(r.picker));
+      t.eq('the picker renders every hoisted focus area', r.picker.focus, r.picker.areas);
+      t.eq('and every hoisted trouble zone', r.picker.trouble, r.picker.zones);
+      t.ok('guard: the hoisted lists are not empty', r.picker.areas === 8 && r.picker.zones === 6,
+        JSON.stringify(r.picker));
+
+      /* A clean validator proves nothing about a validator rule — it stays
+         clean whether the rule exists or not. Break the data in front of it. */
+      t.eq('the validator is clean to start with', r.errsClean, 0);
+      t.ok('a picker zone with no pool entry is reported', r.brokenAreas >= 1, 'hits ' + r.brokenAreas);
+      t.ok('and a pool zone with no picker button is reported', r.brokenPool >= 1, 'hits ' + r.brokenPool);
+      t.eq('and the validator is clean again once restored', r.errsRestored, 0);
+    }
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

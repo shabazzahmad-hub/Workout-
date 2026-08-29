@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='381';
+const APP_VERSION='382';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2620,6 +2620,17 @@ const FOCUS_POOL={
 // The quiz's "trouble zones" are body-shape words; map them onto training pools so
 // the answer actually steers the bonus instead of being stored and ignored.
 const TROUBLE_POOL={belly:'abs',lovehandles:'obliques',chest:'chest',arms:'arms',thighs:'legs',posture:'back'};
+/* THE LEGAL SET LIVED INSIDE THE WIZARD. Both of these were function-local
+   consts in obMount(), so nothing outside that renderer could ask what a legal
+   focus area or trouble zone is — which is why the boot repair checked that
+   these two fields were ARRAYS and never what was in them. The same shape as
+   the five diets existing as three literals, one layer down: the container was
+   the right thing to check and the wrong level to stop at.
+   validateData() pins TROUBLE_AREAS against TROUBLE_POOL both directions. */
+const FOCUS_AREAS=[['abs','Abs & core'],['full','Full body'],['chest','Chest'],['back','Back'],['shoulders','Shoulders'],['arms','Arms'],['legs','Legs'],['glutes','Glutes']];
+const TROUBLE_AREAS=[['belly','Belly'],['lovehandles','Love handles'],['chest','Chest'],['arms','Arms'],['thighs','Thighs'],['posture','Posture / back']];
+function focusAreaKey(k){return FOCUS_AREAS.some(x=>x[0]===k)?k:null;}
+function troubleZoneKey(k){return Object.prototype.hasOwnProperty.call(TROUBLE_POOL,k)&&TROUBLE_AREAS.some(x=>x[0]===k)?k:null;}
 /* Joint-specific corrective/stability work. Until now a flagged joint was
    only ever AVOIDED — safeSwap routes around anything risky, but nothing
    ever added anything back. Avoidance protects a joint from getting WORSE;
@@ -2637,7 +2648,7 @@ function focusBonus(pos,used){
     const p=STATE.profile||{};
     // the core goal forces a midsection bonus first, whatever else is targeted
     const lead=(p.goal==='core')?['abs','obliques']:[];
-    const trouble=(Array.isArray(p.troubleZones)?p.troubleZones:[]).map(z=>TROUBLE_POOL[z]).filter(Boolean);
+    const trouble=(Array.isArray(p.troubleZones)?p.troubleZones:[]).filter(troubleZoneKey).map(z=>TROUBLE_POOL[z]);
     /* Priority order, then ROTATION. The loop below returns on the first key
        that yields a candidate, and the first key virtually always does — so
        exactly one area was ever served. Measured over a full program: the
@@ -3377,8 +3388,7 @@ function onboardHTML(){
   const hu=im?'in':'cm', wu=im?'lb':'kg';
   const step=(n,title,body)=>`<div class="ob-step card pad" data-step="${n}" style="${n===1?'':'display:none'}"><h3 style="margin-top:0">${title}</h3>${body}</div>`;
   const FOCI=[['abs','Abs & core'],['obliques','Obliques & waist'],['glutes','Glutes'],['chest','Chest'],['back','Back & posture'],['shoulders','Shoulders'],['arms','Arms'],['legs','Legs'],['full','Full body']];
-  const FAREAS=[['abs','Abs & core'],['full','Full body'],['chest','Chest'],['back','Back'],['shoulders','Shoulders'],['arms','Arms'],['legs','Legs'],['glutes','Glutes']];
-  const TROUBLE=[['belly','Belly'],['lovehandles','Love handles'],['chest','Chest'],['arms','Arms'],['thighs','Thighs'],['posture','Posture / back']];
+  const FAREAS=FOCUS_AREAS, TROUBLE=TROUBLE_AREAS;
   return `
   <div class="herophoto" style="margin-bottom:14px">
     <img src="hero.jpg" alt="" onerror="this.style.display='none'">
@@ -20420,6 +20430,8 @@ function normalizeState(){
     STATE.profile.days=out.length?out.sort((a,b)=>a-b):[0,1,2,3,4,5,6];
   }
   if(!Array.isArray(STATE.profile.targets))STATE.profile.targets=['abs','full'];
+  else{const _fa=STATE.profile.targets.filter(focusAreaKey);
+       STATE.profile.targets=_fa.length?_fa:['abs','full'];}
   /* profile.goal drives training (reps, focus bonus), nutrition.goal drives food.
      They are meant to be one value; repair either side if a backup or a partial
      write left them out of step, so the athlete can't end up training for one
@@ -20451,7 +20463,21 @@ function normalizeState(){
    /* No `!=null` guard. null and undefined are exactly the shapes an older or
      hand-edited backup arrives in, and skipping them left parqDone true with no
      answers behind it — an unanswered screen reading as a clean one. */
+  /* THE MEMBERS, NOT ONLY THE CONTAINER. `limitations` three lines above is
+     filtered against JOINTS with a comment explaining exactly why, and this —
+     the array the whole safety gate is built on — never got it. A junk key
+     makes parqFlagged() true FOR EVER: the chip row renders from PARQ, so the
+     athlete can neither see it nor untick it, safeMode() stays on, and every
+     session is quietly easier with nothing on screen to say why.
+
+     IT FAILS CLOSED, and that is why the two flags go with it. Dropping an
+     unrecognised key means the app no longer knows what was answered, so the
+     screen is not answered and a clearance given against answers it cannot
+     reconstruct does not apply. Two taps to re-answer; the alternative is
+     silently clearing a declared heart condition. */
   if(!Array.isArray(P.parq)){P.parq=[];P.parqDone=false;P.medCleared=false;}
+  else{const _pq=P.parq.filter(k=>PARQ.some(x=>x[0]===k));
+       if(_pq.length!==P.parq.length){P.parq=_pq;P.parqDone=false;P.medCleared=false;}}
   /* And when parq IS a valid array these two flags were left exactly as the
      backup carried them, so junk survived every boot and travelled onward.
      Both are yes/no answers to a question the athlete was asked; anything that
@@ -20461,7 +20487,14 @@ function normalizeState(){
    if(N){
      if(typeof N.allergens==='string')
        N.allergens=N.allergens.split(/[,;]+/).map(s=>s.trim().toLowerCase()).filter(s=>ALLERGENS.some(a=>a[0]===s));
-     else if(N.allergens!=null&&!Array.isArray(N.allergens))delete N.allergens;
+     /* Filtered, and deliberately WITHOUT parq's flag reset. An allergen the
+        library does not know matches no food, so it already restricts nothing
+        and dropping it cannot make the app less safe — the real allergens are
+        untouched. The harm is only that it is invisible in a picker rendered
+        from ALLERGENS, un-untickable, and travels in every backup. */
+     else if(Array.isArray(N.allergens))
+       N.allergens=N.allergens.filter(a=>ALLERGENS.some(x=>x[0]===a));
+     else if(N.allergens!=null)delete N.allergens;
    }
    if(!STATE.quickLog||typeof STATE.quickLog!=='object'||Array.isArray(STATE.quickLog))STATE.quickLog={};
    if(!STATE.shopTicks||typeof STATE.shopTicks!=='object'||Array.isArray(STATE.shopTicks))STATE.shopTicks={};
@@ -20560,6 +20593,7 @@ function normalizeState(){
   if(STATE.profile.sex!=null&&SEX_OPTS.indexOf(STATE.profile.sex)<0)delete STATE.profile.sex;
   if(STATE.nutrition&&STATE.nutrition.sex!=null&&SEX_OPTS.indexOf(STATE.nutrition.sex)<0)delete STATE.nutrition.sex;
   if(!Array.isArray(STATE.profile.troubleZones))STATE.profile.troubleZones=[];
+  else STATE.profile.troubleZones=STATE.profile.troubleZones.filter(troubleZoneKey);
   /* `unit` has exactly two legal values and reaches innerHTML unescaped at six
      sites on the Progress render path. A membership test is the fix, not six
      escapes: with the value constrained the sinks cannot be reached at all,
@@ -20879,6 +20913,12 @@ function validateData(){
   // left behind for a test that no longer exists.
   TESTS.forEach(t=>{if(!(t.id in TEST_DEFAULTS))errs.push('TEST_DEFAULTS is missing an entry for test "'+t.id+'"');});
   Object.keys(TEST_DEFAULTS).forEach(k=>{if(!testUnit[k])errs.push('TEST_DEFAULTS has a stale entry "'+k+'" — no such test exists');});
+  /* The picker's labels and the pool the bonus reads are two hand-kept lists of
+     the same six zones. A zone in one and not the other is either a button that
+     steers nothing or a steer with no button, and both are silent. */
+  TROUBLE_AREAS.forEach(z=>{if(!Object.prototype.hasOwnProperty.call(TROUBLE_POOL,z[0]))errs.push('TROUBLE_AREAS.'+z[0]+' has no TROUBLE_POOL entry — the button steers nothing');});
+  Object.keys(TROUBLE_POOL).forEach(k=>{if(!TROUBLE_AREAS.some(z=>z[0]===k))errs.push('TROUBLE_POOL.'+k+' has no picker button — unreachable');});
+  {const _fk={};FOCUS_AREAS.forEach(a=>{if(_fk[a[0]])errs.push('FOCUS_AREAS: duplicate key "'+a[0]+'"');_fk[a[0]]=1;});}
   /* estimateMaxes({}) is the LAST gate every stored maxes object passes through
      on the way to prescribe() — currentMaxes() calls nothing else. Its own
      internal defaults literal has drifted behind TESTS before (power/Jump
