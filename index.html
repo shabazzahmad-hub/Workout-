@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='386';
+const APP_VERSION='387';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2753,8 +2753,8 @@ function hasGearFor(exId){const e=EX[exId];if(!e||!e.equip||!e.equip.length)retu
    onboarding picker and the Settings picker — and they had already drifted:
    onboarding offered 13 items, Settings offered 12, and the missing one was
    `bike`. That is not cosmetic. bikeSwap() substitutes the trainer into
-   conditioning slots and hasTrainer() gates the bike work, both off this key,
-   and toggleGear() is the ONLY writer after setup — so an athlete who bought a
+   conditioning slots off this key, and toggleGear() is the ONLY writer after
+   setup — so an athlete who bought a
    trainer later could never tell the app, and one who sold theirs could never
    untell it. Picking "Bike" on the Movement card does not set it either:
    that is nutrition.cardioMode, a different fact.
@@ -16685,7 +16685,6 @@ function syncStepHabit(){
    two rides, 35 minutes, easy enough to hold a conversation. Only shown to an
    athlete who owns the trainer. */
 const RIDE_TARGET={n:2,min:35};
-function hasTrainer(){try{return ((STATE.profile&&STATE.profile.gear)||[]).includes('bike');}catch(e){return false;}}
 /* Counts a session whether it was ridden or jumped. It used to count rides
    only, so an athlete doing the same work with jumping jacks — the portable
    option, and now the default — saw a permanently empty progress bar for
@@ -17861,6 +17860,11 @@ function refFillProtein(){
   if(!(f[1]>0)){toast(f[0]+' has no protein to fill it with');return;}
   refSetAmt(amountForProtein(f,need));
 }
+/* NO CALLER IN THE APP, and kept deliberately — suite 06 drives it as the
+   bad-index guard for the food list (`logFoodFromList(9999)` must be a no-op,
+   not a thrown render). Deleted once on a call-site count that only looked at
+   index.html; the suite is the second call site. */
+function logFoodFromList(i){const f=FOODS[i];if(!f)return;openFoodAmount(i);}
 function logFoodAmount(){
   const f=FOODS[REF_FOOD],el=$('#ref-amt');if(!f||!el)return;
   const n=foodAt(f,el.value);
@@ -17868,7 +17872,6 @@ function logFoodAmount(){
   logFood(f[0]+' '+fmtAmount(f,n.amt),n.kcal,n.p,n.c,n.f,currentMealSlot());
 }
 /* Kept so an existing link or test that logs a whole listed portion still works. */
-function logFoodFromList(i){const f=FOODS[i];if(!f)return;openFoodAmount(i);}
 
 /* ---- the seven worked days ----------------------------------------------
    Days are ITEMS, not prose: [food name, amount in that food's unit]. Every

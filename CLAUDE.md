@@ -3250,7 +3250,7 @@ still gets the session.
 Found on the way to adding `sandbag`. The kit list existed as **two hand-written
 literals** — onboarding offered 13 items, Settings offered 12 — and the missing
 one was `bike`. That is not cosmetic: `bikeSwap()` substitutes the trainer into
-conditioning slots and `hasTrainer()` gates the bike work, both off that key,
+conditioning slots off that key,
 and `toggleGear()` is the only writer after setup. **Buy a trainer after
 onboarding and you could never tell the app; sell one and you could never
 untell it.** Picking "Bike" on the Movement card does not set it either — that
@@ -8355,6 +8355,51 @@ read it back before believing it.
 reads `m.weight` and the seed wrote `m.kg`, so the trend was null and every
 reading downstream was measuring nothing; and the aliasing above. Confirm the
 control's real shape before believing the result.
+
+
+## A comment asserting a gate that had been removed (v387)
+
+`hasTrainer()` had **no caller anywhere in the app**, and a comment beside the
+gear list said, in the present tense:
+
+> `bikeSwap()` substitutes the trainer into conditioning slots and
+> `hasTrainer()` gates the bike work, both off this key
+
+The gate was taken out deliberately, and `rideTargetHTML()`'s own comment says
+why — *"Shown to everyone now. The gate was hasTrainer(), which hid the whole
+conditioning target from any athlete without a bike; the people with the fewest
+options were the ones told nothing."* Two comments in one file, one describing
+the removal and the other still asserting the thing removed.
+
+That is this file's most-repeated shape — **a comment claiming an invariant is
+not the invariant** — and it is exactly what makes the next reader trust a
+function that does nothing. The stale half is corrected in the code, in the
+suite that quoted it, and here.
+
+### And I deleted a function that was not dead
+
+`logFoodFromList()` also has no caller in `index.html`, so it went out in the
+same pass. **Suite 06 drives it** as the bad-index guard — `logFoodFromList(9999)`
+must be a no-op rather than a thrown render — and the full run caught it
+immediately.
+
+**The suite is a call site.** A dead-code sweep that counts references in
+`index.html` alone will delete every defensive helper the checks exist to
+exercise; `mealPlanHTML()` is kept for precisely the same reason and says so.
+It is restored with the reason written beside it, and the deletion of
+`hasTrainer()` stands only because the suites were grepped for it too.
+
+### What v385 un-orphaned
+
+Worth recording as the measurement that prompted the sweep. Before v385 the
+recipe view was unreachable from every screen in the app:
+
+| function | call sites before | after |
+|---|---|---|
+| `toggleRecipe` | 0 | 2 |
+| `openGrocery` | 0 | 3 |
+| `regenPlan` | 0 | 1 |
+| `mealGapHTML` | 0 | 2 |
 
 
 ## Rendering
