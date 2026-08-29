@@ -20674,9 +20674,18 @@ function normalizeState(){
      records: the worst a delete costs is an ease the athlete never asked for.
      A favourite is NOT dropped for one bad move — the names are hand-typed
      and the rest of the list is real work. */
-  if(!STATE.opsPR||typeof STATE.opsPR!=='object'||Array.isArray(STATE.opsPR))STATE.opsPR={};
-  Object.keys(STATE.opsPR).forEach(k=>{const v=STATE.opsPR[k];
-    if(!(typeof v==='number'&&isFinite(v)&&v>0))delete STATE.opsPR[k];});
+  /* ABSENT STAYS ABSENT. Creating this container unconditionally buys nothing
+     — opBest() guards its own read and the writer creates it — and costs two
+     things: an empty object in every backup from then on, and, because boot
+     flags _dataRepaired on ANY diff across normalizeState(), a "we repaired
+     your data" note shown to every athlete who has never run an ops challenge,
+     about nothing. Measured: `opsPR` was the one key that appeared out of
+     nowhere on an otherwise clean athlete. */
+  if(STATE.opsPR!==undefined){
+    if(!STATE.opsPR||typeof STATE.opsPR!=='object'||Array.isArray(STATE.opsPR))STATE.opsPR={};
+    Object.keys(STATE.opsPR).forEach(k=>{const v=STATE.opsPR[k];
+      if(!(typeof v==='number'&&isFinite(v)&&v>0))delete STATE.opsPR[k];});
+  }
   {const c=STATE.comeback;
    const okC=c&&typeof c==='object'&&!Array.isArray(c)
      &&typeof c.left==='number'&&isFinite(c.left)

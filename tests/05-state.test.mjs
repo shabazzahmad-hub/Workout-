@@ -565,6 +565,21 @@ export default async function run() {
     const r = await page.evaluate(() => {
       const out = {};
 
+      /* ABSENT STAYS ABSENT, and this one is not cosmetic: boot flags
+         _dataRepaired on ANY diff across normalizeState(), so a container
+         created out of nothing shows every athlete who has never run an ops
+         challenge a "we repaired your data" note about nothing — and puts an
+         empty object in every backup after it. */
+      normalizeState();            // settle first — earlier blocks left junk in STATE
+      ['opsPR', 'comeback', 'customFav'].forEach(k => delete STATE[k]);
+      const beforeNorm = JSON.stringify(STATE);
+      normalizeState();
+      {const a = JSON.parse(beforeNorm), b2 = JSON.parse(JSON.stringify(STATE));
+       const added = Object.keys(b2).filter(k => !(k in a));
+       const moved = Object.keys(b2).filter(k => k in a && JSON.stringify(a[k]) !== JSON.stringify(b2[k]));
+       out.cleanBootDiff = (added.length || moved.length)
+         ? ('added:' + added.join('|') + ' changed:' + moved.join('|')) : 'none';}
+
       // opsPR — a keyed map that arrived as a list
       STATE.opsPR = []; STATE.opsPR['sprintdrag'] = 42; normalizeState();
       out.opsArray = { isArray: Array.isArray(STATE.opsPR), ser: JSON.stringify(STATE.opsPR) };
@@ -645,6 +660,8 @@ export default async function run() {
     t.ok('guard: the seeded athlete builds a real session to compare against',
       typeof r.normal === 'string' && r.normal.length > 10, r.normal);
 
+    t.eq('an athlete who has none of these fields gains none of them at boot',
+      r.cleanBootDiff, 'none');
     t.ok('a personal-record map that arrived as a list is repaired to a real map',
       r.opsArray.isArray === false, JSON.stringify(r.opsArray));
     t.ok('so the record is no longer thrown away by JSON.stringify',

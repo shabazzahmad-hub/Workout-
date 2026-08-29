@@ -8621,6 +8621,25 @@ directly. Found by auditing v389 an hour after writing it: re-deriving a read
 the app already owns is the same mistake as a probe that bypasses
 `jointRisky()`.
 
+### Absent stays absent, or every athlete is told their data was repaired
+
+Caught by auditing my own repair before it shipped. The first version created
+`opsPR` unconditionally, which buys nothing — `opBest()` guards its own read and
+the writer creates it — and costs two things. It puts an empty object in every
+backup from then on; and boot flags `_dataRepaired` on **any** diff across
+`normalizeState()`, so the first launch after this shipped would have shown a
+*"we repaired your data"* note to **every athlete who has never run an ops
+challenge**, about nothing.
+
+Measured by diffing a settled state either side of the repair: `opsPR` was the
+one key that appeared out of nowhere. `comeback` and `customFav` were already
+guarded with `!== undefined`; this one was not.
+
+**And the check for it had to settle the state first.** Its first version ran
+where earlier blocks in the same page had left junk in `STATE`, so the second
+`normalizeState()` legitimately changed something and the check failed on
+correct code. It reports WHAT appeared and what moved, so a failure says which.
+
 ### The check is derived from the source, because the hand-written list is what failed
 
 The existing class check walks a **hand-written list of twelve maps**. That list
@@ -8720,6 +8739,22 @@ set would pass every assertion above.
   to be a real function first. The first pass reported 40 failures and all of
   them were one invented name, `openEndurancePlan`, drowning everything else —
   the real one is `openEndurance`.
+- **No duplicate live element id anywhere.** Four ids appear twice in the
+  SOURCE (`mealplan`, `plCoach`, `plLiftPanel`, `plToggle`), which is the class
+  this file records as a long-running source of stale elements shadowing live
+  ones. Measured across 33 surfaces — six tabs, all four Today panes, all four
+  Progress panes, both Reference panes, fifteen sheets and the player's ready,
+  work and rest phases: **zero**. Only one of each pair is ever mounted.
+
+  **And the first run of that sweep proved nothing.** It reported zero with a
+  detector that could not see a duplicate at all — the id it injected,
+  `view-today`, does not exist; the real one is `v-today`. A clean sweep with
+  no both-ways guard on its own detector is not a result. Fixed, the detector
+  sees the injected duplicate and the zero stands.
+- **The board at its widest.** Six rows each carrying their longest
+  explanation — a fresh athlete with a flagged wrist, so every row has a note —
+  at 320, 360 and 412px in both themes: **no element past the viewport, no
+  horizontal body scroll**, 36 renders.
 - **The custom builder driven end to end**, through real taps rather than by
   poking `_custom` — which is what v355's probe did, with invented function
   names. Three chips tapped, saved as a favourite through its own button,
