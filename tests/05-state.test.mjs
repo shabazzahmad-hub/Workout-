@@ -716,6 +716,257 @@ export default async function run() {
     await browser.close();
   }
 
+  /* ---- v391: one of a pair guarded, its twin not ------------------------
+     Found by taking v390's class one level down — nested fields the app
+     writes that no repair covers. Two of them, and both are this file's
+     most-quoted lesson:
+
+       profile.bodyCur   its sibling bodyGoal is written by the same picker,
+         and neither was repaired. A junk level made
+         `PHYS_LEVELS[clamp(NaN,1,5)-1]` undefined and `.bf` THREW inside
+         transformationHTML() — a RENDERER — so Progress ▸ Body died on the
+         error boundary, which retries THROUGH normalizeState(), and with no
+         repair there the tab never came back across relaunches. The worst
+         class in this repo.
+       nutrition.allergies  the free-text box beside the allergens LIST, which
+         is repaired. A non-string threw on `.replace()` rendering the profile
+         form and on `.toLowerCase()` in the food filter.
+
+     Two guards mean two checks: levelBF() fails closed at the read site, and
+     the boot repair is the other half. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await waitForBoot(page);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const out = {};
+      const t = f => { try { return f(); } catch (e) { return 'THREW ' + String(e && e.message).slice(0, 50); } };
+
+      /* THE READ SITE, with the boot repair deliberately NOT run — this is
+         what stops the render boundary being reached at all. */
+      out.read = {};
+      ['abc', {}, [], -3, 99, null].forEach(v => { out.read[JSON.stringify(v) || 'undef'] = t(() => String(levelBF(v))); });
+      out.readReal = t(() => String(levelBF(3)));
+      out.levelSet = { legal: physLevel(3), high: physLevel(99), junk: physLevel('abc'), rounds: physLevel(2.4) };
+
+      // the tab that used to die, and stay dead
+      STATE.profile.bodyCur = 'abc'; delete STATE.nutrition.bodyFat;
+      out.tabFirst = t(() => { PROGRESS_TAB = 'body'; go('progress'); render();
+        return /went wrong/.test(document.querySelector('.view.active').innerText) ? 'BOUNDARY' : 'renders'; });
+      out.tabRetry = t(() => { render();
+        return /went wrong/.test(document.querySelector('.view.active').innerText) ? 'BOUNDARY' : 'renders'; });
+
+      // THE BOOT REPAIR
+      STATE.profile.bodyCur = 'abc'; STATE.profile.bodyGoal = 99;
+      STATE.profile.goalBodyFat = 'x'; STATE.nutrition.allergies = 42;
+      normalizeState();
+      out.repaired = { bodyCur: STATE.profile.bodyCur === undefined, bodyGoal: STATE.profile.bodyGoal === undefined,
+                       goalBodyFat: STATE.profile.goalBodyFat === undefined, allergies: STATE.nutrition.allergies === undefined };
+
+      /* FLOORS. A repair that always wipes satisfies every "the junk is gone"
+         assertion and throws away the athlete's own physique answers. */
+      /* goalBodyFat is set to a WRONG figure beside a valid level, because the
+         first version set it to levelBF(4) — the answer it then asserted — so
+         a mutant that never re-derived left it equal and escaped clean. */
+      STATE.profile.bodyCur = 2; STATE.profile.bodyGoal = 4;
+      STATE.profile.goalBodyFat = 99; STATE.nutrition.allergies = 'mushrooms';
+      normalizeState();
+      out.kept = { bodyCur: STATE.profile.bodyCur, bodyGoal: STATE.profile.bodyGoal,
+                   goalBodyFat: STATE.profile.goalBodyFat, allergies: STATE.nutrition.allergies,
+                   derived: levelBF(4) };
+
+      // absent stays absent — the repair must not invent a physique answer
+      ['bodyCur', 'bodyGoal', 'goalBodyFat'].forEach(k => delete STATE.profile[k]);
+      delete STATE.nutrition.allergies;
+      const pre = JSON.stringify(STATE); normalizeState();
+      out.absentDiff = JSON.stringify(STATE) === pre ? 'none' : 'CHANGED';
+      return out;
+    });
+
+    t.ok('guard: a real physique level still resolves to a body-fat figure',
+      r.readReal !== 'null' && !/THREW/.test(r.readReal), r.readReal);
+    t.ok('a junk physique level returns nothing instead of throwing',
+      Object.keys(r.read).every(k => r.read[k] === 'null'), JSON.stringify(r.read));
+    t.ok('and the legal set is a membership test, not a clamp',
+      r.levelSet.legal === 3 && r.levelSet.high === 0 && r.levelSet.junk === 0 && r.levelSet.rounds === 2,
+      JSON.stringify(r.levelSet));
+    t.eq('so the screen that used to die on it renders', r.tabFirst, 'renders');
+    t.eq('and it is still rendering on the retry the boundary would have made', r.tabRetry, 'renders');
+
+    t.ok('the boot repair drops every junk physique field and the free-text allergy',
+      r.repaired.bodyCur && r.repaired.bodyGoal && r.repaired.goalBodyFat && r.repaired.allergies,
+      JSON.stringify(r.repaired));
+    t.ok('while the athlete’s real answers survive untouched',
+      r.kept.bodyCur === 2 && r.kept.bodyGoal === 4 && r.kept.allergies === 'mushrooms',
+      JSON.stringify(r.kept));
+    t.ok('and a stale derived body-fat target is RE-DERIVED from the level it belongs to',
+      r.kept.goalBodyFat === r.kept.derived && typeof r.kept.derived === 'number'
+        && r.kept.goalBodyFat !== 99, JSON.stringify(r.kept));
+    t.eq('no physique answer is invented for an athlete who never gave one', r.absentDiff, 'none');
+
+    errors.filter(e => /render/.test(e)).forEach(e => t.fail('the physique repair reached the render boundary', e));
+    await browser.close();
+  }
+
+  /* ---- v391: the deficit clock printed NaN to the athlete ----------------
+     `shredWeeks()` did `new Date(todayISO()) - new Date(stamp)`, and
+     `new Date('abc')` is Invalid Date — so the result was NaN, and `NaN<12` is
+     FALSE, meaning the guardrail did not skip, it FIRED:
+
+       "You have been in a deficit for NaN weeks."
+
+     A number stamp gave 2956 weeks and an ancient one 6608. A stamp in the
+     FUTURE gave -29, which silently DISABLED the 12-week diet-break guardrail
+     for someone on a long cut — the thing v365 exists to enforce. All of it
+     survived every boot. Two guards, two checks: the read site fails closed,
+     and the repair drops the junk so noteGoalPhase() re-seeds from evidence. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await waitForBoot(page);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const out = {};
+      const iso = d => { const x = new Date(Date.now() - d * 86400000);
+        return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+      STATE.profile.goal = 'shred'; STATE.nutrition.goal = 'shred';
+
+      // THE READ SITE, with the boot repair deliberately not run
+      out.weeks = {}; out.banner = {};
+      const cases = { real: iso(98), junk: 'abc', num: 12345, obj: {}, arr: [],
+                      future: iso(-200), ancient: '1900-01-01', badDate: '2025-13-45' };
+      Object.keys(cases).forEach(k => {
+        STATE.profile._shredStart = cases[k];
+        try { out.weeks[k] = String(shredWeeks());
+              const h = dietBreakBanner();
+              out.banner[k] = h === '' ? 'silent' : (h.match(/deficit for [^<]*/) || ['?'])[0];
+        } catch (e) { out.weeks[k] = 'THREW ' + String(e && e.message).slice(0, 40); }
+      });
+
+      /* THE BOOT REPAIR. It clears the junk, and noteGoalPhase() then re-seeds
+         the clock from evidence — so the property is "no junk survives", not
+         "the field is null". Asserting null failed on correct code. */
+      const sane = v => v === null || v === undefined || (isDateISO(v) && v <= todayISO());
+      STATE.profile._shredStart = 'abc'; normalizeState();
+      out.junkCleared = sane(STATE.profile._shredStart); out.junkBecame = JSON.stringify(STATE.profile._shredStart);
+      STATE.profile._shredStart = iso(-200); normalizeState();
+      out.futureCleared = sane(STATE.profile._shredStart);
+      STATE.profile._shredStart = '1900-01-01'; normalizeState();
+      out.ancientCleared = sane(STATE.profile._shredStart);
+      out.ancientWeeks = shredWeeks();
+      /* FLOOR: the gate must be provably unable to fire on a legitimate input.
+         A three-year cut is long, and real. */
+      STATE.profile._shredStart = iso(3 * 365); normalizeState();
+      out.longCutKept = STATE.profile._shredStart === iso(3 * 365);
+      out.longCutWeeks = shredWeeks();
+      // FLOOR: a genuine stamp survives, and still reports the real figure
+      STATE.profile._shredStart = iso(98); normalizeState();
+      out.realKept = STATE.profile._shredStart === iso(98);
+      out.realWeeks = shredWeeks();
+      delete STATE.profile._shredStart;
+      return out;
+    });
+
+    t.eq('a real 14-week cut still reports 14 weeks', r.weeks.real, '14');
+    t.ok('and the guardrail still fires on it',
+      /deficit for 14 weeks/.test(r.banner.real), r.banner.real);
+    t.ok('no junk stamp reports a week count at all',
+      ['junk', 'num', 'obj', 'arr', 'badDate'].every(k => r.weeks[k] === '0'),
+      JSON.stringify(r.weeks));
+    t.ok('so the athlete is never told they have been cutting for NaN weeks',
+      Object.keys(r.banner).every(k => !/NaN/.test(r.banner[k])), JSON.stringify(r.banner));
+    t.ok('and a stamp in the future is not a start date either',
+      r.weeks.future === '0', r.weeks.future);
+
+    t.ok('the boot repair clears a junk stamp so the clock can re-seed',
+      r.junkCleared === true, JSON.stringify(r));
+    t.ok('and clears one dated in the future', r.futureCleared === true, JSON.stringify(r));
+    /* A cut cannot have started before the account existed. '1900-01-01' is a
+       valid past date and reported 6608 weeks, firing the banner permanently
+       with a figure nobody can act on. */
+    t.ok('and one dated before the athlete’s own account existed',
+      r.ancientCleared === true && r.ancientWeeks < 500,
+      JSON.stringify({ cleared: r.ancientCleared, weeks: r.ancientWeeks }));
+    /* FLOOR: a repair that always nulls satisfies both assertions above and
+       pushes the guardrail permanently out of reach, which is the defect v365
+       measured from the other direction. */
+    t.ok('while a three-year cut is not treated as an error — the gate can only catch one',
+      r.longCutKept === true && r.longCutWeeks > 150, JSON.stringify({ kept: r.longCutKept, weeks: r.longCutWeeks }));
+    t.ok('while a genuine stamp survives the boot and still reports its real figure',
+      r.realKept === true && r.realWeeks === 14, JSON.stringify({ kept: r.realKept, weeks: r.realWeeks }));
+
+    errors.filter(e => /render/.test(e)).forEach(e => t.fail('the deficit-clock repair reached the render boundary', e));
+    await browser.close();
+  }
+
+  /* ---- v391: the setter coerces, the reader was bare truthiness ----------
+     setFoodAiKey() does String(v).trim(), so every key the athlete TYPES is a
+     string. A key from an IMPORTED FILE never meets the setter, and
+     carryDeviceCreds() only overrides it when this device already holds one —
+     so on a phone with no key, a file's `{}`, `[]`, `42` or `true` landed,
+     Settings showed the saved badge, foodAIReady() said yes, and every call
+     failed. One of a pair guarded and its twin not, a fourth time. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await waitForBoot(page);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const out = { read: {}, neural: {} };
+      // THE READ SITES, with the boot repair deliberately not run
+      [42, {}, [], true, '', '   '].forEach(v => {
+        STATE.settings.foodAiKey = v;
+        out.read[JSON.stringify(v)] = foodAIReady();
+      });
+      STATE.settings.foodAiKey = 'AIza-real-looking-key';
+      out.realKeyReady = foodAIReady();
+
+      STATE.settings.neuralOn = true;
+      [[42, 'eastus'], ['k', 42], [{}, {}], ['', 'eastus']].forEach(([k, rg]) => {
+        STATE.settings.azureKey = k; STATE.settings.azureRegion = rg;
+        out.neural[JSON.stringify([k, rg])] = neuralReady();
+      });
+      STATE.settings.azureKey = 'realkey'; STATE.settings.azureRegion = 'eastus';
+      out.realNeuralReady = neuralReady();
+
+      // THE BOOT REPAIR
+      STATE.settings.foodAiKey = {}; STATE.settings.azureKey = 42; STATE.settings.azureRegion = [];
+      normalizeState();
+      out.dropped = { food: STATE.settings.foodAiKey === undefined,
+                      az: STATE.settings.azureKey === undefined,
+                      rg: STATE.settings.azureRegion === undefined };
+      // FLOOR: a real key survives the boot — this is the one field an athlete
+      // cannot get back from a backup, because backups never carry it
+      STATE.settings.foodAiKey = 'AIza-real'; STATE.settings.azureKey = 'realkey';
+      STATE.settings.azureRegion = 'eastus';
+      normalizeState();
+      out.kept = { food: STATE.settings.foodAiKey, az: STATE.settings.azureKey, rg: STATE.settings.azureRegion };
+      // FLOOR: a backup still carries neither key
+      out.backupClean = (() => { const c = JSON.parse(JSON.stringify(STATE));
+        if (c.settings) { delete c.settings.azureKey; delete c.settings.foodAiKey; }
+        return !c.settings.azureKey && !c.settings.foodAiKey; })();
+      delete STATE.settings.foodAiKey; delete STATE.settings.azureKey; STATE.settings.neuralOn = false;
+      return out;
+    });
+
+    t.ok('guard: a real key still reads as ready', r.realKeyReady === true, r.realKeyReady);
+    t.ok('a key that is not a string never reads as ready',
+      Object.keys(r.read).every(k => r.read[k] === false), JSON.stringify(r.read));
+    t.ok('guard: a real neural key and region still read as ready', r.realNeuralReady === true, r.realNeuralReady);
+    t.ok('and the neural path refuses a junk key or a junk region the same way',
+      Object.keys(r.neural).every(k => r.neural[k] === false), JSON.stringify(r.neural));
+    t.ok('the boot repair drops a credential that is not a string',
+      r.dropped.food && r.dropped.az && r.dropped.rg, JSON.stringify(r.dropped));
+    /* FLOOR: these are the ONE thing no backup can restore, because exportData()
+       strips them on purpose — a repair that dropped a real key would be the
+       worst possible over-eager twin. */
+    t.ok('while a real credential survives the boot untouched',
+      r.kept.food === 'AIza-real' && r.kept.az === 'realkey' && r.kept.rg === 'eastus',
+      JSON.stringify(r.kept));
+    t.ok('and a backup still carries neither key', r.backupClean === true, r.backupClean);
+
+    errors.filter(e => /render/.test(e)).forEach(e => t.fail('the credential repair reached the render boundary', e));
+    await browser.close();
+  }
+
   /* ---- v390: every top-level field the app writes has a repair -----------
      Written against the CLASS, because the block above fixes eight instances
      and the next on-demand field added will be the ninth. The list is DERIVED

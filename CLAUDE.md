@@ -8796,6 +8796,146 @@ board's stamp deleted. The board's caveat note now carries `data-d90note` and
 the check reads that element. **Scope the assertion to where the change was
 made** — the third page-wide match in two rounds.
 
+## One of a pair guarded, its twin not — one level down (v391)
+
+v390 fixed the top-level fields no repair covered. Taking the same question one
+level down — **nested fields the app writes that no repair covers** — found 14,
+and two of them are this file's most-quoted lesson landing again.
+
+### The one that bricks a screen
+
+`profile.bodyCur` and `profile.bodyGoal` are written by the same picker and
+**neither had a repair**. `levelBF()` did
+
+```js
+const L=PHYS_LEVELS[clamp(level,1,5)-1];return isFemale()?L.bfF:L.bf;
+```
+
+and `clamp('abc',1,5)` is `NaN`, so `PHYS_LEVELS[NaN-1]` is `undefined` and
+`.bf` **throws** — inside `transformationHTML()`, which is a RENDERER.
+
+Measured: **Progress ▸ Body died on the error boundary, and the boundary
+retries THROUGH `normalizeState()`** — which had nothing for this field, so the
+retry produced the identical error and the tab **never came back across
+relaunches**. That is the `nutrition.days` defect of v284 exactly, on a field
+reachable from any hand-edited or corrupted import.
+
+`nutrition.allergies` is the second: the free-text box sitting beside the
+allergens **list**, which is repaired. A non-string threw on `.replace()`
+rendering the profile form and on `.toLowerCase()` in the food filter. Two
+fields one line apart, one guarded and one not.
+
+### Two guards, two checks, and the read site is the one that matters
+
+`levelBF()` fails closed — a level outside the set returns **null**, not a
+throw — because it is on a render path and the boot repair cannot help a value
+that arrives mid-session. `physLevel()` is the membership test, asked by the
+repair and by `levelBF()` rather than `clamp(x,1,5)` restated at each site: a
+clamp is what turned an illegal value into a *different* illegal value in the
+first place, and the check pins that `physLevel(99)` is **0**, not 5.
+
+**`goalBodyFat` is DERIVED, so it is re-derived rather than guessed.** It is
+written from `bodyGoal` by `levelBF()`, so when the level survives the repair
+recomputes it, and when the level goes it goes too. Keeping a stale derived
+number beside a repaired level is the v304 shape one field over.
+
+### The floors, and the one that catches the over-eager twin
+
+A repair that always wipes satisfies every "the junk is gone" assertion and
+throws away the athlete's own physique answers, which they set by tapping a
+picture of a body. So a real level 2 and level 4 survive untouched, the free
+text survives, the derived figure matches what `levelBF()` computes, and
+**absent stays absent** — the rule v390 had just paid for.
+
+### The deficit clock printed NaN to the athlete
+
+The third field the same sweep turned up, and the harm runs both ways.
+`shredWeeks()` did `new Date(todayISO()) - new Date(stamp)`, and
+`new Date('abc')` is Invalid Date — so the result was `NaN`. **`NaN < 12` is
+FALSE**, so the guardrail did not skip, it FIRED:
+
+> 🍽️ **You have been in a deficit for NaN weeks.**
+
+| stored `_shredStart` | weeks | the banner |
+|---|---|---|
+| a real 14-week cut | 14 | correct |
+| `'abc'` / `{}` / `[]` / `'2025-13-45'` | **NaN** | **"for NaN weeks"** |
+| `12345` | **2956** | "for 2956 weeks" |
+| `'1900-01-01'` | **6608** | "for 6608 weeks" |
+| a date in the FUTURE | **−29** | **silent — the guardrail is disabled** |
+
+All of it survived every boot. The silent case is the one that matters most: it
+is exactly the harm v365 measured from the other direction, arriving through an
+import instead of a goal switch.
+
+**The repair clears the junk and `noteGoalPhase()` then re-seeds from
+evidence**, which is why the check asserts *no junk survives* rather than *the
+field is null* — the first version demanded null and failed on correct code.
+
+**And the bound on an ancient stamp was tried two ways.** Keying it to
+`profile.createdAt` is principled — a cut cannot predate the account — and was
+**reverted after it failed a floor**: `loadState()` fills a missing `createdAt`
+with TODAY, so a restored backup would have had its genuine months-old stamp
+dropped. Dropping a real stamp pushes the guardrail 12 weeks out; keeping a
+silly one only shows a silly number, so the two failures are not symmetrical.
+The gate is now far outside any real cut the way `bmiImplausible()`'s 13/60
+gates are far outside any real body, and **a check pins that a three-year cut
+survives it** — a guard earns its keep only if it provably cannot fire on a
+legitimate input.
+
+### The setter coerces and the reader was bare truthiness
+
+The fourth instance of this version's own theme, found by driving the ten
+remaining nested fields through their real readers rather than reading them.
+Nine were fine — `beatTempoPref()` clamps, `skipLevel` does a membership test,
+the booleans read truthy — and one was not:
+
+```js
+function foodAIReady(){return !!(STATE.settings&&STATE.settings.foodAiKey);}
+```
+
+`setFoodAiKey()` does `String(v).trim()`, so every key the athlete **types** is
+a string. **A key from an imported FILE never meets the setter**, and
+`carryDeviceCreds()` only overrides it when this device already holds one — so
+on a phone with no key, a file's `{}`, `[]`, `42` or `true` lands, Settings
+shows the saved badge, `foodAIReady()` says yes, and every call fails.
+`neuralReady()` had the identical shape for the Azure key AND its region.
+
+**Dropped at boot, never coerced: a mangled key is not a key.** And the floor
+here matters more than most, because these are **the one thing no backup can
+restore** — `exportData()` strips them on purpose — so a repair that dropped a
+real key would be the worst over-eager twin in the app. A real key surviving
+the boot is pinned, and so is the backup still carrying neither.
+
+### And the scan that found it had a false negative of its own
+
+Its "is this field mentioned in `normalizeState()`?" heuristic reported
+`bodyGoal` as repaired. It is not: the name appears only inside a **migration
+condition** (`!STATE.profile.bodyGoal`). The scan was reading a mention, not a
+repair — the same trap as a comment that quotes code breaking the scan for that
+code. Read what the mention actually is before believing it.
+
+**Twenty-two mutants across the four fixes, all caught** — after one rewrite,
+below. Every fix has its over-eager twin seeded beside it, and the credential
+one is the sharpest in the app: a repair that dropped a REAL key destroys the
+only thing a backup cannot restore.
+
+**And nine of the fourteen nested fields were driven and are genuinely safe**,
+which is the other half of the sweep: `beatTempoPref()` clamps its own read,
+`skipLevel` does a membership test at its read site, and the booleans
+(`vibrate`, `neuralOn`, `autoDeload`, `deload`, `foodAiModelOk`,
+`_everDeficit`) read truthy or falsy with nothing to break. Left alone rather
+than padded with repairs that buy nothing — the call v285 already made and
+wrote down.
+
+### The escaped mutant set the value to the answer it then asserted
+
+The re-derivation check wrote `goalBodyFat = levelBF(4)` before calling
+`normalizeState()` and then asserted the field equalled `levelBF(4)`. A mutant
+that never re-derived left it equal and walked straight through. It seeds a
+**wrong** figure beside a valid level now, and requires the repair to correct
+it.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
