@@ -1433,7 +1433,16 @@ export default async function run() {
     // Reference states them as "Weighed out for <p> g protein and <kcal> kcal";
     // the old 'of <n>' phrasing belonged to the removed Fuel card's own header
     o.showsBothTargets = v.includes(T.p + ' g protein') && v.includes(T.kcal + ' kcal');
-    o.noScalingBanner = !/Scale these portions/.test(v) && !/multiply each quantity/i.test(v);
+    /* SCOPED TO THE WORKED DAYS, which is what this check is about. v385 put
+       the recipe plan on this pane too — cookable dishes at FIXED portions,
+       which legitimately carry a scale-the-portions note. The requirement here
+       has always been that the WEIGHED month does not ask for multiplying, and
+       a page-wide search cannot tell the two apart. */
+    const _days = v.slice(v.indexOf('id="mealplan"'));
+    o.noScalingBanner = _days.length > 0
+      && !/Scale these portions/.test(_days) && !/multiply each quantity/i.test(_days);
+    // guard: the slice really landed on the worked days
+    o.scopedRight = /worked days/.test(_days);
     o.loggable = /logRefMeal/.test(v);
     // deterministic within a day, so it does not reshuffle on every render
     o.stable = todaysWorkedDay().idx === todaysWorkedDay().idx;
@@ -1443,6 +1452,7 @@ export default async function run() {
   t.ok('it hits the calorie target', plan.hitsCalories, plan);
   t.ok('and the protein target', plan.hitsProtein, plan);
   t.ok('showing both, so neither is quietly missing', plan.showsBothTargets, plan);
+  t.ok('guard: the scaling check is scoped to the worked days', plan.scopedRight, plan);
   t.ok('with no "multiply everything by 1.3" instruction', plan.noScalingBanner, plan);
   t.ok('and every meal is loggable in one tap', plan.loggable, plan);
   t.ok('the day does not reshuffle on re-render', plan.stable, plan);

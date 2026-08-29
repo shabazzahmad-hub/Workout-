@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='381';
+const APP_VERSION='387';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2620,6 +2620,26 @@ const FOCUS_POOL={
 // The quiz's "trouble zones" are body-shape words; map them onto training pools so
 // the answer actually steers the bonus instead of being stored and ignored.
 const TROUBLE_POOL={belly:'abs',lovehandles:'obliques',chest:'chest',arms:'arms',thighs:'legs',posture:'back'};
+/* THE LEGAL SET LIVED INSIDE THE WIZARD. Both of these were function-local
+   consts in obMount(), so nothing outside that renderer could ask what a legal
+   focus area or trouble zone is — which is why the boot repair checked that
+   these two fields were ARRAYS and never what was in them. The same shape as
+   the five diets existing as three literals, one layer down: the container was
+   the right thing to check and the wrong level to stop at.
+   validateData() pins TROUBLE_AREAS against TROUBLE_POOL both directions. */
+const FOCUS_AREAS=[['abs','Abs & core'],['full','Full body'],['chest','Chest'],['back','Back'],['shoulders','Shoulders'],['arms','Arms'],['legs','Legs'],['glutes','Glutes']];
+const TROUBLE_AREAS=[['belly','Belly'],['lovehandles','Love handles'],['chest','Chest'],['arms','Arms'],['thighs','Thighs'],['posture','Posture / back']];
+function focusAreaKey(k){return FOCUS_AREAS.some(x=>x[0]===k)?k:null;}
+/* THE POOL DECIDES, NOT THE PICKER. This shipped one version earlier requiring
+   membership in BOTH lists, which is identical today — validateData() pins them
+   equal — and is the wrong test for a repair that DELETES stored athlete data.
+   Under a future mismatch the two readings are not symmetrical: a zone in the
+   POOL but missing from the picker is a real steer the athlete answered, and
+   dropping it destroys their answer; a zone in the picker but missing from the
+   pool is merely inert. So the repair asks the map that actually steers the
+   program, and the validator is what catches a picker that has drifted.
+   Own-property, not truthiness: TROUBLE_POOL['constructor'] is truthy. */
+function troubleZoneKey(k){return Object.prototype.hasOwnProperty.call(TROUBLE_POOL,k)?k:null;}
 /* Joint-specific corrective/stability work. Until now a flagged joint was
    only ever AVOIDED — safeSwap routes around anything risky, but nothing
    ever added anything back. Avoidance protects a joint from getting WORSE;
@@ -2637,7 +2657,7 @@ function focusBonus(pos,used){
     const p=STATE.profile||{};
     // the core goal forces a midsection bonus first, whatever else is targeted
     const lead=(p.goal==='core')?['abs','obliques']:[];
-    const trouble=(Array.isArray(p.troubleZones)?p.troubleZones:[]).map(z=>TROUBLE_POOL[z]).filter(Boolean);
+    const trouble=(Array.isArray(p.troubleZones)?p.troubleZones:[]).filter(troubleZoneKey).map(z=>TROUBLE_POOL[z]);
     /* Priority order, then ROTATION. The loop below returns on the first key
        that yields a candidate, and the first key virtually always does — so
        exactly one area was ever served. Measured over a full program: the
@@ -2733,8 +2753,8 @@ function hasGearFor(exId){const e=EX[exId];if(!e||!e.equip||!e.equip.length)retu
    onboarding picker and the Settings picker — and they had already drifted:
    onboarding offered 13 items, Settings offered 12, and the missing one was
    `bike`. That is not cosmetic. bikeSwap() substitutes the trainer into
-   conditioning slots and hasTrainer() gates the bike work, both off this key,
-   and toggleGear() is the ONLY writer after setup — so an athlete who bought a
+   conditioning slots off this key, and toggleGear() is the ONLY writer after
+   setup — so an athlete who bought a
    trainer later could never tell the app, and one who sold theirs could never
    untell it. Picking "Bike" on the Movement card does not set it either:
    that is nutrition.cardioMode, a different fact.
@@ -3377,8 +3397,7 @@ function onboardHTML(){
   const hu=im?'in':'cm', wu=im?'lb':'kg';
   const step=(n,title,body)=>`<div class="ob-step card pad" data-step="${n}" style="${n===1?'':'display:none'}"><h3 style="margin-top:0">${title}</h3>${body}</div>`;
   const FOCI=[['abs','Abs & core'],['obliques','Obliques & waist'],['glutes','Glutes'],['chest','Chest'],['back','Back & posture'],['shoulders','Shoulders'],['arms','Arms'],['legs','Legs'],['full','Full body']];
-  const FAREAS=[['abs','Abs & core'],['full','Full body'],['chest','Chest'],['back','Back'],['shoulders','Shoulders'],['arms','Arms'],['legs','Legs'],['glutes','Glutes']];
-  const TROUBLE=[['belly','Belly'],['lovehandles','Love handles'],['chest','Chest'],['arms','Arms'],['thighs','Thighs'],['posture','Posture / back']];
+  const FAREAS=FOCUS_AREAS, TROUBLE=TROUBLE_AREAS;
   return `
   <div class="herophoto" style="margin-bottom:14px">
     <img src="hero.jpg" alt="" onerror="this.style.display='none'">
@@ -4780,10 +4799,41 @@ function ruckLadderWeek(raw){
      path-by-path measurement caught rather than any assertion about the
      arithmetic. */
   const taperFrom=Math.max(2,totalWk-PREP_TAPER_WEEKS);
-  let wantSteps=0;
-  for(let t=2;t<=totalWk;t++)if(((t-1)%4)+1===loadSlot)wantSteps++;
-  let catchUp=0;                                  // last working week before the taper
-  for(let t=2;t<taperFrom;t++)if(((t-1)%4)+1!==4)catchUp=t;
+  /* PATH-INDEPENDENT, AND ONE STEP A WEEK. A bias in LOAD is the one thing the
+     two paths may never differ in, and wantSteps counted THIS path's slot
+     occurrences over the WHOLE block. The paths are offset by one slot, so how
+     many land inside a block depends on totalWk % 4, and the owed remainder
+     was then taken at the last working week. Traced week by week on an athlete
+     opening at the bottom plate, the operator ended 5 lb HEAVIER than the
+     assaulter at 12 of 23 block lengths between 8 and 30 weeks.
+
+     Nothing caught it because every existing check counts steps at a hardcoded
+     16-week block — one of the lengths where it happens to hold. A guard that
+     cannot fire in the case you tested is not tested, applied to the block
+     LENGTH rather than to a value.
+
+     The block affords as many steps as the TIGHTER path over the WORKING
+     weeks, and each path takes them at its own slot, one a week.
+
+     THAT REMOVES THE CATCH-UP, AND v371'S REASON FOR IT GOES WITH IT. v371
+     kept owed steps rather than dropping them because dropping left one path
+     "5 lb lighter for the whole block, which is a bias in VOLUME" — a
+     statement about the paths differing FROM EACH OTHER. With a shared count
+     neither can be lighter than the other, so the bias it guarded against
+     cannot arise.
+
+     Keeping it now costs something the app never had: the fix that lets the
+     catch-up fire on a path's own slot produces SIX weeks that raise the plate
+     10 lb at once across the same 23 block lengths, where today no week ever
+     raises more than 5. A lighter plate is never an injury and a 10 lb week
+     can be, so the block ends one step below the operator's old figure — 16
+     weeks goes 30 lb to 25 — and nobody is raised. */
+  let wantSteps=Infinity;
+  Object.keys(PREP_PATHS).forEach(pk=>{
+    const sl=PREP_PATHS[pk].loadSlot;let n=0;
+    for(let t=2;t<taperFrom;t++)if(((t-1)%4)+1===sl)n++;
+    if(n<wantSteps)wantSteps=n;});
+  if(!isFinite(wantSteps))wantSteps=0;
   const peak=prepPeak(startKm,PREP_RUCK_PEAK_KM);
   let km=startKm, lb=startLb, climbing='distance', down=false, capped=false, took=0;
   const raise=()=>{if(lb+PREP_RUCK_STEP_LB<=ceil){lb+=PREP_RUCK_STEP_LB;took++;}else capped=true;};
@@ -4792,12 +4842,8 @@ function ruckLadderWeek(raw){
     const inTaper=w>=taperFrom;
     if(slot===4){down=true;climbing='neither';continue;}
     down=false;
-    if(slot===loadSlot&&!inTaper){
+    if(slot===loadSlot&&!inTaper&&took<wantSteps){
       climbing='load';raise();
-    }else if(w===catchUp&&took<wantSteps){
-      /* Every step the block owes that would have fallen in the taper, taken
-         here. Still one week, still never beside a distance climb. */
-      climbing='load';while(took<wantSteps&&!capped)raise();
     }else{
       climbing='distance';
       km=Math.min(km*PREP_RAMP,peak);
@@ -4954,9 +5000,15 @@ function prepMidHTML(){
        day of the window: it said so three weeks out on a twelve-week block,
        and the day before the evaluation. It names the window it is in and how
        long is left to use it, which is both true and actionable. */
-    const wl=prepWeeksLeft();
+    /* THE FIGURE COUNTED TO THE WRONG EVENT. `prepWeeksLeft()` is weeks to the
+       TEST DATE and the sentence says "before the taper starts" — which opens
+       PREP_TAPER_WEEKS earlier, so the number was overstated by exactly that
+       every time. Measured: three weeks out it said "3 weeks before the taper
+       starts" when the true answer was 1. */
+    const _wl=prepWeeksLeft();
+    const wl=(_wl===null)?null:Math.max(0,_wl-PREP_TAPER_WEEKS);
     head=`<div class="note warn" style="margin:10px 0 0"><b>Midpoint assessment due.</b>
-      You are past the halfway point of your block, with ${wl===null?'time':('<b>'+wl+' week'+(wl===1?'':'s')+'</b>')} before the taper starts. ${locked
+      You are past the halfway point of your block, with ${wl===null?'time':(wl===0?'<b>the taper starting this week</b>':('<b>'+wl+' week'+(wl===1?'':'s')+'</b> before the taper starts'))}. ${locked
         ?'Log the times if your unit tests you — that is what turns the second half of the block into a correction rather than a guess. The app\'s own run of the four tasks stays locked until your health check is cleared.'
         :'Re-run the four tasks and log the times — that is what turns the second half of the block into a correction rather than a guess.'}
       ${init?'':'<div style="margin-top:6px">Nothing was logged before the halfway point, so this one becomes your first record rather than a comparison.</div>'}</div>`;
@@ -4978,6 +5030,17 @@ function prepMidHTML(){
       return `<div class="kv"><span>${_ve(ev.name)}</span><span><b>${_ve(shown)}</b></span></div>`;
     /* These are TIMES: lower is better, and a delta with no direction attached
        is the defect a signed nudge check exists to catch. */
+    /* FAILS CLOSED ON AN OUT-OF-ORDER PAIR. Every phone is carrying records
+       written before the guard above, where a later measurement could sit in
+       the earlier slot. Comparing them would report the athlete's improvement
+       as a regression, so an unknown or inverted ordering withholds the delta
+       rather than inventing one — the same call v320 makes about a baseline
+       with no `subs` stamp. Absent dates read as unknown, not as equal. */
+    const _ia=init&&typeof init.at==='string'?init.at:null;
+    const _ib=typeof now.at==='string'?now.at:null;
+    if(!_ia||!_ib||_ia>_ib)
+      return `<div class="kv"><span>${_ve(ev.name)}<div class="tiny muted">not comparable — the earlier record is not dated before this one</div></span>
+        <span style="text-align:right"><b>${_ve(shown)}</b></span></div>`;
     const d=Math.round(a-b);
     const better=d>0;
     const tag=d===0?'<span class="tiny muted">no change</span>'
@@ -5518,7 +5581,23 @@ function setForceResultQuiet(id,n){
   const cp=prepCheckpoint();
   if(cp){
     const C=STATE.prep.checks=(STATE.prep.checks&&typeof STATE.prep.checks==='object'&&!Array.isArray(STATE.prep.checks))?STATE.prep.checks:{};
-    const slot=C[cp]=(C[cp]&&typeof C[cp]==='object'&&!Array.isArray(C[cp]))?C[cp]:{};
+    /* THE WRITE SLOT NEVER GOES BACKWARDS. prepMidISO() is derived from
+       planFrom and the date, so pushing the test date out moves the midpoint
+       and can put TODAY back inside the 'initial' window. The next result then
+       landed in the block's BASELINE slot and overwrote it with a later
+       measurement — and the card, which orders by slot rather than by date,
+       read the newest figure as "was".
+
+       Measured end to end on a real 200 -> 190 -> 180 improvement: the 200
+       baseline was destroyed and the card reported "+10s SLOWER" on twenty
+       seconds of progress. A measurement taken later can never belong to an
+       earlier checkpoint than one already recorded. */
+    let _ci=PREP_CHECKS.indexOf(cp);
+    PREP_CHECKS.forEach((k,i)=>{
+      const q=C[k];
+      if(i>_ci&&q&&q.results&&typeof q.results==='object'&&Object.keys(q.results).length)_ci=i;});
+    const _cp=PREP_CHECKS[_ci]||cp;
+    const slot=C[_cp]=(C[_cp]&&typeof C[_cp]==='object'&&!Array.isArray(C[_cp]))?C[_cp]:{};
     if(!slot.results||typeof slot.results!=='object'||Array.isArray(slot.results))slot.results={};
     slot.results[id]=n;
     slot.at=todayISO();
@@ -6103,6 +6182,7 @@ function repEccShare(exId){
   const ex=EX[exId];
   return (ex&&typeof ex.repSec==='number'&&ex.repSec>0)?0.5:null;
 }
+const REP_TEMPO_MIN=1, REP_TEMPO_MAX=6;   // the band setRepTempo() and the boot repair share
 function repTempoSetting(){
   const v=STATE.settings&&STATE.settings.repTempo;
   return (typeof v==='number')?Math.max(1.5,Math.min(6,v)):3;
@@ -6835,8 +6915,27 @@ function plAfterSet(){
      resumes at the next one. Sets always restart from 0 within an exercise —
      repeating a set is safe, silently skipping one is not. */
   plSaveResume(PLAYER.s<m.sets?PLAYER.i:PLAYER.i+1);
-  if(PLAYER.s<m.sets){if(!motivate('rest'))coachSpeak('Rest.');plEnterRest(m.rest,'set');}
-  else if(PLAYER.i+1<PLAYER.items.length){if(!motivate('rest'))coachSpeak('Nice. Next up.');PLAYER.pendingNext=true;plEnterRest(m.rest,'ex');}
+  /* A DATA ZERO MEANS NO REST. plEnterRest() does Math.max(1,dur|0), so a
+     session built with rest:0 got a one-second REST screen — complete with a
+     REST tag, a +15s button and a Skip — between every movement. The FORCE
+     Combat circuit is the only caller that passes 0, and the absence of the
+     rest IS its whole difference from the annual evaluation: its own card says
+     "no rest between events" and its own comment says so twice. Measured, the
+     rest screen plus the get-ready that follows it put about 4 seconds between
+     each of the four events.
+
+     Every other caller passes `ex.rest||45` or `||60`, and prescribe() clamps
+     the program path to 20-120, so nothing else can reach this branch. */
+  const noRest=!(m.rest>0);
+  if(PLAYER.s<m.sets){
+    if(noRest){plEnterReady(false);return;}
+    if(!motivate('rest'))coachSpeak('Rest.');plEnterRest(m.rest,'set');
+  }else if(PLAYER.i+1<PLAYER.items.length){
+    /* plRestDone() is what normally advances the item; with no rest phase to
+       run, this does it directly. */
+    if(noRest){PLAYER.i++;PLAYER.s=0;plEnterReady(false);return;}
+    if(!motivate('rest'))coachSpeak('Nice. Next up.');PLAYER.pendingNext=true;plEnterRest(m.rest,'ex');
+  }
   else plEnterDone();
 }
 function plEnterRest(dur,type){
@@ -10002,7 +10101,7 @@ function neuralPitchFor(cfgPitch){
 }
 function setCoachPitch(v){STATE.settings.voicePitch=Math.max(0,Math.min(2,parseFloat(v)||0.6));save();}
 function setCoachRate(v){STATE.settings.voiceRate=Math.max(.5,Math.min(1.5,parseFloat(v)||0.98));save();}
-function setRepTempo(v){STATE.settings.repTempo=Math.max(1,Math.min(6,parseFloat(v)||3));save();}
+function setRepTempo(v){STATE.settings.repTempo=clamp(parseFloat(v)||3,REP_TEMPO_MIN,REP_TEMPO_MAX);save();}
 function setBeatVol(v){STATE.settings.beatVol=Math.max(0.05,Math.min(1,parseFloat(v)||0.55));save();haptic(6);if(BEAT&&BEAT.on){BEAT.vol=beatVolPref()*0.9;const g=BEAT.master.gain,t=BEAT.ac.currentTime;g.cancelScheduledValues(t);g.setValueAtTime(Math.max(0.0002,g.value),t);g.exponentialRampToValueAtTime(Math.max(0.0002,BEAT.vol),t+0.2);}}
 let _beatPrevT=null;
 function beatPreview(){beatStart();if(_beatPrevT)clearTimeout(_beatPrevT);_beatPrevT=setTimeout(()=>{if(!$('#scrim').classList.contains('open'))beatStop();},5000);}
@@ -11823,6 +11922,22 @@ function mBump(f,d){const id=f==='w'?'#m-waist':'#m-weight';const inp=$(id);inp.
    goal, and a "380" waist flattened both trend charts for the life of the
    install — permanently, because no measurement row could ever be deleted. */
 function plausibleKg(kg){return kg>=25&&kg<=350;}
+/* AGE AND HEIGHT HAD NO SHAPE REPAIR AT ALL, and v355's mirror then COPIED
+   whatever they held into nutrition — where every calculation reads them.
+   Neither crashes and both are wrong with a plausible-looking number on the
+   glass. Measured on one 86 kg body, values importData() accepts from any
+   hand-edited backup:
+
+     age:true      -> 5*true is 5, so a 59-year-old is priced as 1: +290 kcal/day
+     age:'zzz'     -> 5*'zzz' is NaN, so the target vanishes with no explanation
+     heightCm:true -> 6.25*1 instead of 6.25*178: -540 kcal/day
+
+   The bounds are the ones the app already enforces on a typed value, so a
+   stored number the athlete could never have entered is not kept.
+   Dropped rather than clamped: v345's rule — "silently produces no target" is
+   a field the athlete filled in going missing, so the app asks again. */
+function plausibleAge(a){return typeof a==='number'&&isFinite(a)&&a>=10&&a<=100;}
+function plausibleHeightCm(cm){return typeof cm==='number'&&isFinite(cm)&&cm>=120&&cm<=230;}
 function plausibleWaistCm(cm){return cm>=40&&cm<=250;}
 /* A range in an error message restates the rule and names nothing. An athlete
    who is 5'10" typed 178 — their height in CENTIMETRES — into a box set to
@@ -16570,7 +16685,6 @@ function syncStepHabit(){
    two rides, 35 minutes, easy enough to hold a conversation. Only shown to an
    athlete who owns the trainer. */
 const RIDE_TARGET={n:2,min:35};
-function hasTrainer(){try{return ((STATE.profile&&STATE.profile.gear)||[]).includes('bike');}catch(e){return false;}}
 /* Counts a session whether it was ridden or jumped. It used to count rides
    only, so an athlete doing the same work with jumping jacks — the portable
    option, and now the default — saw a permanently empty progress bar for
@@ -17746,6 +17860,11 @@ function refFillProtein(){
   if(!(f[1]>0)){toast(f[0]+' has no protein to fill it with');return;}
   refSetAmt(amountForProtein(f,need));
 }
+/* NO CALLER IN THE APP, and kept deliberately — suite 06 drives it as the
+   bad-index guard for the food list (`logFoodFromList(9999)` must be a no-op,
+   not a thrown render). Deleted once on a call-site count that only looked at
+   index.html; the suite is the second call site. */
+function logFoodFromList(i){const f=FOODS[i];if(!f)return;openFoodAmount(i);}
 function logFoodAmount(){
   const f=FOODS[REF_FOOD],el=$('#ref-amt');if(!f||!el)return;
   const n=foodAt(f,el.value);
@@ -17753,7 +17872,6 @@ function logFoodAmount(){
   logFood(f[0]+' '+fmtAmount(f,n.amt),n.kcal,n.p,n.c,n.f,currentMealSlot());
 }
 /* Kept so an existing link or test that logs a whole listed portion still works. */
-function logFoodFromList(i){const f=FOODS[i];if(!f)return;openFoodAmount(i);}
 
 /* ---- the seven worked days ----------------------------------------------
    Days are ITEMS, not prose: [food name, amount in that food's unit]. Every
@@ -18285,7 +18403,12 @@ function mealPlanHTML(){
   }
   return _recipePlanHTML();
 }
-function _recipePlanHTML(){
+function _recipePlanHTML(anchor){
+  /* The anchor is a parameter because this now renders on Reference BESIDE the
+     worked days, which own `#mealplan`. Two elements with one id is the
+     duplicate-ID class this codebase already has a standing rule about.
+     Defaulting keeps every existing caller and check identical. */
+  const _anch=anchor||'mealplan';
   /* currentMealPlan() generates and save()s a randomly-chosen plan. Called from
      an HTML builder, a render could persist a different plan than the one it
      drew. renderFuel() primes it before assembling any markup. */
@@ -18299,10 +18422,10 @@ function _recipePlanHTML(){
   /* Returning '' here hid the allergen warning and the gap notice along with the
      plan, so an athlete with many allergens saw nothing at all between Today's
      targets and Hydration — no plan, no explanation, no controls. */
-  if(!recs.length)return `<div id="mealplan"></div>${mealGapHTML(plan.missing&&plan.missing.length?plan.missing:mealSlots())}`;
+  if(!recs.length)return `<div id="${_anch}"></div>${mealGapHTML(plan.missing&&plan.missing.length?plan.missing:mealSlots())}`;
   const tot=recs.reduce((s,r)=>s+r.kcal,0),totP=recs.reduce((s,r)=>s+r.p,0);
   const _mt=mealTimes();
-  let h=`<div class="section-label" id="mealplan">Today's meal plan · <span class="tiny muted">${_ve(dietLabel())} · ${recs.length} meals${wholeOnly()?' · <span style="color:var(--green);font-weight:800">🥦 whole foods</span>':''}</span></div><div class="card pad" style="padding-bottom:8px">`;
+  let h=`<div class="section-label" id="${_anch}">Today's meal plan · <span class="tiny muted">${_ve(dietLabel())} · ${recs.length} meals${wholeOnly()?' · <span style="color:var(--green);font-weight:800">🥦 whole foods</span>':''}</span></div><div class="card pad" style="padding-bottom:8px">`;
   h+=`<div class="row" style="justify-content:space-between;margin-bottom:6px"><div><b>${tot} kcal</b> · ${totP}g protein${kcalT?` <span class="tiny muted">of ${kcalT} target</span>`:''}</div><div class="btnrow" style="flex:0 0 auto;gap:6px"><button class="chip" onclick="openGrocery()">🛒 List</button><button class="chip" onclick="regenPlan()">↻ New plan</button></div></div>`;
   recs.forEach((r,_i)=>{const _t=_mt&&_mt[_i];h+=`<button class="kv" style="width:100%;text-align:left;border:none;border-top:1px solid var(--line);background:none;padding:12px 2px;cursor:pointer" onclick="toggleRecipe('${r.id}')">
     <span style="min-width:0"><span style="font-size:18px">${r.emoji}</span> <b>${_ve(r.name)}</b>${_t?` <span class="chip" style="font-size:11px;padding:2px 7px">${_t.label}</span>`:''}<div class="tiny muted" style="margin-top:2px;text-transform:capitalize">${r.type} · ${r.kcal} kcal · ${r.p}p ${r.c}c ${r.f}f</div></span>
@@ -18425,6 +18548,36 @@ function renderRef(){
   h+=`</div>`;
   h+=`<div class="note info" style="margin-top:10px"><b>Read the last number.</b> Grams of protein per 100 kcal is what matters on a cut — it says how much protein a food buys for its calories. Prawns, cod and tinned tuna score 23–24; salmon scores 12. Both are good food, only one lets you eat more of it.</div>`;
   h+=`<div class="note warn"><b>Seitan is not on this list on purpose.</b> It is the highest-protein vegetarian food there is and it is pure wheat gluten. Every plant-protein list you read will recommend it.</div>`;
+
+  /* THE BRIEF NAMED THREE RECIPES AND POINTED AT A SCREEN THAT HAD NONE.
+     The morning brief — which the coach READS ALOUD — says "Your meal plan
+     today: A, B and C. The full recipes are on the Reference tab, under Food."
+     Measured on that pane: none of the three names appeared anywhere, no
+     INGREDIENTS heading, no METHOD heading, and nothing bound to
+     toggleRecipe() or openGrocery(). `_recipePlanHTML()` is the only renderer
+     of `r.ing` and `r.steps` in the file and it had NO CALLER: v245 removed
+     the plan card from Fuel at the athlete's request, and the recipes went
+     with it.
+
+     v315 already fixed this sentence once — it used to name the Fuel tab — and
+     moved the tab NAME while the destination still did not hold the thing.
+     v315's own rule is to assert BOTH ways, and only one half had been done.
+
+     It goes on REFERENCE and not back on Fuel, which keeps the athlete's own
+     request intact: they did not want a prescribed menu standing in front of
+     their food diary. Reference is the look-it-up tab, and a recipe is
+     something you look up. */
+  /* TWO DATASETS ON ONE PANE, SO EACH SAYS WHICH IT IS. The recipes are
+     cookable dishes at FIXED portions, so the plan card can legitimately tell
+     a bigger athlete to scale them; the month of days below is weighed onto
+     the athlete's targets and says "no multiplying required". Adjacent and
+     unlabelled, those two read as one screen contradicting itself — which is
+     the defect this round exists to fix, not one to introduce. */
+  {const _plan=currentMealPlan();   // primed before any markup, per its own comment
+   if(_plan&&_plan.meals&&_plan.meals.length){
+     h+=`<div class="tiny muted" style="margin:14px 3px 0">Below: today's <b>recipes</b> — dishes to cook, at the portions they are written for. Under them, a month of <b>weighed days</b> sized to your own targets.</div>`;
+     h+=_recipePlanHTML('recipeplan');
+   }}
 
   /* ---- worked days, scaled onto the athlete's targets ---- */
   h+=`<div class="section-label" id="mealplan">${REF_DAYS.length} worked days · <span class="tiny muted">four weeks, then it repeats</span></div>`;
@@ -20032,7 +20185,20 @@ function normalizeState(){
      nothing left to remove it again — reintroducing, on every boot after the
      first, the exact bug the migration exists to fix. */
   if(typeof STATE.settings.voiceRate!=='number')STATE.settings.voiceRate=0.98;
-  if(typeof STATE.settings.repTempo!=='number')STATE.settings.repTempo=3;
+  /* A RANGE TEST'S JOB DONE BY A TYPE TEST — the v286 `adapt` defect verbatim,
+     one field over. setRepTempo() clamps to 1-6 and this only ever checked the
+     type, so a stored 999 survived every boot. The PLAYER clamps at its own
+     read sites, so the pacing is right and nothing crashes; totalTUTSplit()
+     and sessionStats() read it RAW and multiply it by every rep ever logged,
+     which is how a lifetime total reads "10,410 min trained · 75,901 kcal".
+     Clamped to the band the setter itself enforces. */
+  if(typeof STATE.settings.repTempo!=='number'||!isFinite(STATE.settings.repTempo))STATE.settings.repTempo=3;
+  else STATE.settings.repTempo=clamp(STATE.settings.repTempo,REP_TEMPO_MIN,REP_TEMPO_MAX);
+  /* Membership, not truthiness. coachFor() falls back to COACHES[0] for an
+     unknown id, so nothing breaks — but the junk survives every boot, travels
+     in every backup, and leaves the picker with nothing selected. */
+  {const _c=STATE.settings.coach;
+   if(_c!==undefined&&_c!=='auto'&&!COACHES.some(x=>x.id===_c))STATE.settings.coach='auto';}
   /* RANGE, not just type. rateSession() clamps every increment to 0.9-1.30,
      but this repair only ever checked typeof — so a value outside that band,
      from a corrupted or hand-edited import, survived every boot and was read
@@ -20420,6 +20586,8 @@ function normalizeState(){
     STATE.profile.days=out.length?out.sort((a,b)=>a-b):[0,1,2,3,4,5,6];
   }
   if(!Array.isArray(STATE.profile.targets))STATE.profile.targets=['abs','full'];
+  else{const _fa=STATE.profile.targets.filter(focusAreaKey);
+       STATE.profile.targets=_fa.length?_fa:['abs','full'];}
   /* profile.goal drives training (reps, focus bonus), nutrition.goal drives food.
      They are meant to be one value; repair either side if a backup or a partial
      write left them out of step, so the athlete can't end up training for one
@@ -20451,7 +20619,21 @@ function normalizeState(){
    /* No `!=null` guard. null and undefined are exactly the shapes an older or
      hand-edited backup arrives in, and skipping them left parqDone true with no
      answers behind it — an unanswered screen reading as a clean one. */
+  /* THE MEMBERS, NOT ONLY THE CONTAINER. `limitations` three lines above is
+     filtered against JOINTS with a comment explaining exactly why, and this —
+     the array the whole safety gate is built on — never got it. A junk key
+     makes parqFlagged() true FOR EVER: the chip row renders from PARQ, so the
+     athlete can neither see it nor untick it, safeMode() stays on, and every
+     session is quietly easier with nothing on screen to say why.
+
+     IT FAILS CLOSED, and that is why the two flags go with it. Dropping an
+     unrecognised key means the app no longer knows what was answered, so the
+     screen is not answered and a clearance given against answers it cannot
+     reconstruct does not apply. Two taps to re-answer; the alternative is
+     silently clearing a declared heart condition. */
   if(!Array.isArray(P.parq)){P.parq=[];P.parqDone=false;P.medCleared=false;}
+  else{const _pq=P.parq.filter(k=>PARQ.some(x=>x[0]===k));
+       if(_pq.length!==P.parq.length){P.parq=_pq;P.parqDone=false;P.medCleared=false;}}
   /* And when parq IS a valid array these two flags were left exactly as the
      backup carried them, so junk survived every boot and travelled onward.
      Both are yes/no answers to a question the athlete was asked; anything that
@@ -20461,7 +20643,14 @@ function normalizeState(){
    if(N){
      if(typeof N.allergens==='string')
        N.allergens=N.allergens.split(/[,;]+/).map(s=>s.trim().toLowerCase()).filter(s=>ALLERGENS.some(a=>a[0]===s));
-     else if(N.allergens!=null&&!Array.isArray(N.allergens))delete N.allergens;
+     /* Filtered, and deliberately WITHOUT parq's flag reset. An allergen the
+        library does not know matches no food, so it already restricts nothing
+        and dropping it cannot make the app less safe — the real allergens are
+        untouched. The harm is only that it is invisible in a picker rendered
+        from ALLERGENS, un-untickable, and travels in every backup. */
+     else if(Array.isArray(N.allergens))
+       N.allergens=N.allergens.filter(a=>ALLERGENS.some(x=>x[0]===a));
+     else if(N.allergens!=null)delete N.allergens;
    }
    if(!STATE.quickLog||typeof STATE.quickLog!=='object'||Array.isArray(STATE.quickLog))STATE.quickLog={};
    if(!STATE.shopTicks||typeof STATE.shopTicks!=='object'||Array.isArray(STATE.shopTicks))STATE.shopTicks={};
@@ -20560,6 +20749,7 @@ function normalizeState(){
   if(STATE.profile.sex!=null&&SEX_OPTS.indexOf(STATE.profile.sex)<0)delete STATE.profile.sex;
   if(STATE.nutrition&&STATE.nutrition.sex!=null&&SEX_OPTS.indexOf(STATE.nutrition.sex)<0)delete STATE.nutrition.sex;
   if(!Array.isArray(STATE.profile.troubleZones))STATE.profile.troubleZones=[];
+  else STATE.profile.troubleZones=STATE.profile.troubleZones.filter(troubleZoneKey);
   /* `unit` has exactly two legal values and reaches innerHTML unescaped at six
      sites on the Progress render path. A membership test is the fix, not six
      escapes: with the value constrained the sinks cannot be reached at all,
@@ -20604,6 +20794,14 @@ function normalizeState(){
      dropped, which is the direction that matters for an older backup. Absent
      on both stays absent: there is no sensible default age, height or sex, and
      inventing one is worse than knowing it is missing. */
+  /* Repaired on BOTH sides FIRST. The mirror copies whichever side has a
+     value, so junk repaired on one side and not the other is copied across
+     rather than dropped — the fix has to run before the loop, not after it. */
+  {const _P=STATE.profile,_N=(STATE.nutrition&&typeof STATE.nutrition==='object'&&!Array.isArray(STATE.nutrition))?STATE.nutrition:null;
+   [_P,_N].forEach(o=>{if(!o)return;
+     if(o.age!==undefined&&o.age!==null&&!plausibleAge(o.age))delete o.age;
+     if(o.heightCm!==undefined&&o.heightCm!==null&&!plausibleHeightCm(o.heightCm))delete o.heightCm;
+   });}
   {const P=STATE.profile,N=STATE.nutrition;
    if(N&&typeof N==='object'&&!Array.isArray(N)){
      ['age','heightCm','sex','activity'].forEach(f=>{
@@ -20879,6 +21077,12 @@ function validateData(){
   // left behind for a test that no longer exists.
   TESTS.forEach(t=>{if(!(t.id in TEST_DEFAULTS))errs.push('TEST_DEFAULTS is missing an entry for test "'+t.id+'"');});
   Object.keys(TEST_DEFAULTS).forEach(k=>{if(!testUnit[k])errs.push('TEST_DEFAULTS has a stale entry "'+k+'" — no such test exists');});
+  /* The picker's labels and the pool the bonus reads are two hand-kept lists of
+     the same six zones. A zone in one and not the other is either a button that
+     steers nothing or a steer with no button, and both are silent. */
+  TROUBLE_AREAS.forEach(z=>{if(!Object.prototype.hasOwnProperty.call(TROUBLE_POOL,z[0]))errs.push('TROUBLE_AREAS.'+z[0]+' has no TROUBLE_POOL entry — the button steers nothing');});
+  Object.keys(TROUBLE_POOL).forEach(k=>{if(!TROUBLE_AREAS.some(z=>z[0]===k))errs.push('TROUBLE_POOL.'+k+' has no picker button — unreachable');});
+  {const _fk={};FOCUS_AREAS.forEach(a=>{if(_fk[a[0]])errs.push('FOCUS_AREAS: duplicate key "'+a[0]+'"');_fk[a[0]]=1;});}
   /* estimateMaxes({}) is the LAST gate every stored maxes object passes through
      on the way to prescribe() — currentMaxes() calls nothing else. Its own
      internal defaults literal has drifted behind TESTS before (power/Jump

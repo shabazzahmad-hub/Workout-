@@ -3916,6 +3916,19 @@ export default async function () {
       };
       const o = {};
       [6, 4, 3, 2, 1].forEach(w => { o['w' + w] = at(w); });
+      /* FOUND, NOT ASSUMED. This used to pin week 3 as the load week and week
+         4 as a distance week. v384 made the step count path-independent, so
+         the operator's fifth slot no longer raises — week 3 is correctly a
+         distance week now, and a check that hardcoded it failed on correct
+         code. The requirement is that a week's CARD and its `climbing` agree,
+         whichever week it happens to be. */
+      o.found = { load: null, dist: null };
+      for (let w = 20; w >= 3; w--) {
+        const k = at(w);
+        if (k.phase === 'taper') continue;
+        if (!o.found.load && k.climbing === 'load') o.found.load = k;
+        if (!o.found.dist && k.climbing === 'distance') o.found.dist = k;
+      }
       return o;
     });
 
@@ -3941,12 +3954,20 @@ export default async function () {
     /* THE FLOORS. A build week must still name what it is building — a fix
        that said "nothing is being built" everywhere satisfies every taper
        assertion and deletes the plan's whole point. */
-    t.ok('a distance week still says the distance is moving',
-      /What moves this week: The distance/.test(ruck.w4.card), ruck.w4.card.slice(0, 200));
-    t.eq('and reports it as one', ruck.w4.climbing, 'distance', ruck.w4);
-    t.ok('a load week still says the load is moving',
-      /The load, by/.test(ruck.w3.card), ruck.w3.card.slice(0, 200));
-    t.eq('and reports it as one', ruck.w3.climbing, 'load', ruck.w3);
+    t.ok('guard: the block really contains a load week and a distance week',
+      !!(ruck.found.load && ruck.found.dist),
+      { load: !!ruck.found.load, dist: !!ruck.found.dist });
+    if (ruck.found.dist) {
+      t.ok('a distance week still says the distance is moving',
+        /What moves this week: The distance/.test(ruck.found.dist.card),
+        ruck.found.dist.card.slice(0, 200));
+      t.eq('and reports it as one', ruck.found.dist.climbing, 'distance', ruck.found.dist);
+    }
+    if (ruck.found.load) {
+      t.ok('a load week still says the load is moving',
+        /The load, by/.test(ruck.found.load.card), ruck.found.load.card.slice(0, 200));
+      t.eq('and reports it as one', ruck.found.load.climbing, 'load', ruck.found.load);
+    }
     /* THE DOWN WEEK KEEPS ITS OWN ANSWER, in the taper as everywhere else:
        "this is the down week" is accurate there too. */
     t.ok('a down week inside the taper still names itself',
@@ -3996,14 +4017,29 @@ export default async function () {
     /* THE FINDING. */
     paths.forEach(p => {
       t.eq('the ' + p + ' path never raises the plate in the taper', plate[p].inTaper, 0, plate[p]);
-      /* THE FLOOR: the step is not DROPPED. Dropping it leaves one path
-         lighter for the whole block, which is a bias in VOLUME — the one
-         thing v340 says the two paths may never differ in. */
-      t.eq('and still takes all four steps', plate[p].steps, 4, plate[p]);
+      /* THE FLOOR: the plate still climbs. This used to demand exactly FOUR
+         steps, because v371 moved owed steps out of the taper rather than
+         dropping them — reasoning that dropping left one path "5 lb lighter
+         for the whole block, which is a bias in VOLUME".
+
+         v384 makes the count path-independent, which answers that reason
+         directly: neither path can end lighter than the other, so there is no
+         bias to guard against. The block now takes as many steps as the
+         TIGHTER path affords over its working weeks, and the number is a
+         property of the block length rather than a constant. What has to hold
+         is that it still climbs — and that the two paths agree, which the
+         check below this one asserts. */
+      t.ok('and the ' + p + ' path still raises the plate during the block',
+        plate[p].steps >= 1 && plate[p].final > 0, plate[p]);
     });
     t.ok('both paths finish the block on the same plate',
       plate[paths[0]].final === plate[paths[1]].final,
       { a: plate[paths[0]].final, b: plate[paths[1]].final });
+    /* AND ON THE SAME NUMBER OF STEPS. Pinning only the final plate passes
+       whenever the ceiling happens to absorb the difference, which is exactly
+       how a 5 lb divergence survived at 12 of 23 block lengths. */
+    t.eq('and take the same number of steps to get there',
+      plate[paths[0]].steps, plate[paths[1]].steps, plate);
     t.ok('and the last step lands before the taper on both',
       paths.every(p => plate[p].lastStepLeft > 2), plate);
   }
@@ -5542,6 +5578,681 @@ export default async function () {
       // the note
       t.ok('the card says the build has reached its ceiling', r.note.run && r.note.holds, JSON.stringify(r.note));
       t.ok('and says nothing at all on a block that is still climbing', r.quietNote.run === false, JSON.stringify(r.quietNote));
+    }
+  }
+
+
+  /* ---- v382: the member filter that stopped at the container --------------
+     `limitations` is filtered against JOINTS, with a comment three lines above
+     `parq` explaining exactly why. Four siblings in the same file never got it:
+     parq, allergens, targets and troubleZones each had the CONTAINER checked
+     and nothing below it. Fixing one instance is not fixing the class, and the
+     class was five wide.
+
+     The reason it stayed hidden is that the legal sets for two of them were
+     function-local consts INSIDE the wizard, so nothing outside that renderer
+     could ask what a legal value is. They are hoisted now.
+
+     Measured harm on parq, the array the whole safety gate is built on: a junk
+     key makes parqFlagged() true for ever, the chip row renders from PARQ so
+     the athlete sees nothing to untick, and the session is quietly 24% lighter
+     (62 units of work against 82) with nothing on screen to explain it. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {}, ce = console.error;
+      console.error = () => {};
+      try {
+        const seedPtr = STATE.progressPtr;
+
+        // a junk member FAILS CLOSED: dropped, and the screen counts as unanswered
+        STATE.profile.parq = ['heart', 'helicopter'];
+        STATE.profile.parqDone = true; STATE.profile.medCleared = true;
+        normalizeState();
+        out.junk = { parq: STATE.profile.parq.slice(), done: STATE.profile.parqDone,
+                     cleared: STATE.profile.medCleared, safe: safeMode() };
+
+        // FLOOR: a clean flagged-and-cleared athlete is untouched
+        STATE.profile.parq = ['heart']; STATE.profile.parqDone = true; STATE.profile.medCleared = true;
+        normalizeState();
+        out.clean = { parq: STATE.profile.parq.slice(), done: STATE.profile.parqDone,
+                      cleared: STATE.profile.medCleared, safe: safeMode() };
+
+        // FLOOR: an empty answer IS an answer — the screen says so in as many words
+        STATE.profile.parq = []; STATE.profile.parqDone = true; STATE.profile.medCleared = false;
+        normalizeState();
+        out.empty = { parq: STATE.profile.parq.slice(), done: STATE.profile.parqDone, safe: safeMode() };
+
+        // the harm: a phantom flag nothing on screen could clear
+        STATE.profile.parq = ['helicopter']; STATE.profile.parqDone = true; STATE.profile.medCleared = false;
+        out.before = { flagged: parqFlagged(), safe: safeMode() };
+        normalizeState();
+        out.after = { flagged: parqFlagged(), parq: STATE.profile.parq.slice() };
+
+        // allergens — filtered, and deliberately WITHOUT parq's flag reset
+        STATE.nutrition.allergens = ['peanut', 'helicopter']; normalizeState();
+        out.allergJunk = STATE.nutrition.allergens.slice();
+        STATE.nutrition.allergens = ['peanut', 'dairy']; normalizeState();
+        out.allergClean = STATE.nutrition.allergens.slice();
+        STATE.nutrition.allergens = 'peanut, dairy'; normalizeState();
+        out.allergStr = STATE.nutrition.allergens.slice();
+
+        // targets — and the fallback when EVERY member is junk
+        STATE.profile.targets = ['abs', 'helicopter']; normalizeState();
+        out.tgJunk = STATE.profile.targets.slice();
+        STATE.profile.targets = ['helicopter']; normalizeState();
+        out.tgAllJunk = STATE.profile.targets.slice();
+        STATE.profile.targets = ['legs', 'glutes']; normalizeState();
+        out.tgClean = STATE.profile.targets.slice();
+
+        // troubleZones — including the inherited key an || fallback lets through
+        STATE.profile.troubleZones = ['belly', 'helicopter']; normalizeState();
+        out.tzJunk = STATE.profile.troubleZones.slice();
+        STATE.profile.troubleZones = ['constructor', 'toString']; normalizeState();
+        out.tzProto = STATE.profile.troubleZones.slice();
+        STATE.profile.troubleZones = ['belly', 'posture']; normalizeState();
+        out.tzClean = STATE.profile.troubleZones.slice();
+
+        // the hoisted lists really reach the picker
+        STATE.profile.parq = []; STATE.profile.parqDone = true; STATE.profile.medCleared = false;
+        STATE.onboarded = true; save();
+        go('today'); openProfileEdit();
+        const mounted = !!document.querySelector('#ob-targets');
+        const html = mounted ? document.querySelector('#v-today').innerHTML : '';
+        out.picker = { mounted, focus: (html.match(/data-t="/g) || []).length,
+                       trouble: (html.match(/data-z="/g) || []).length,
+                       areas: FOCUS_AREAS.length, zones: TROUBLE_AREAS.length };
+
+        // the validator rule needs the data broken in front of it
+        out.errsClean = validateData().length;
+        TROUBLE_AREAS.push(['helicopter', 'Helicopter']);
+        out.brokenAreas = validateData().filter(e => /helicopter/i.test(e)).length;
+        TROUBLE_AREAS.pop();
+        const _saved = TROUBLE_POOL.belly; delete TROUBLE_POOL.belly;
+        out.brokenPool = validateData().filter(e => /belly/i.test(e)).length;
+        TROUBLE_POOL.belly = _saved;
+        out.errsRestored = validateData().length;
+
+        STATE.progressPtr = seedPtr;
+        STATE.profile.parq = []; STATE.profile.parqDone = true; STATE.profile.medCleared = false;
+        STATE.profile.targets = ['abs', 'full']; STATE.profile.troubleZones = [];
+        delete STATE.nutrition.allergens; normalizeState(); save();
+      } catch (e) { out.threw = String(e && e.message || e); }
+      console.error = ce;
+      return out;
+    });
+
+    t.ok('guard: the member checks ran without throwing', !r.threw, r.threw || '');
+    if (!r.threw) {
+      t.eq('an unrecognised health flag is dropped', JSON.stringify(r.junk.parq), '["heart"]');
+      /* IT FAILS CLOSED. Dropping a key means the app no longer knows what was
+         answered, so the screen is not answered and a clearance given against
+         answers it cannot reconstruct does not apply. */
+      t.ok('and the screen counts as unanswered, so safe mode holds',
+        r.junk.done === false && r.junk.cleared === false && r.junk.safe === true, JSON.stringify(r.junk));
+
+      // FLOOR — an always-reset repair sends a clean athlete back to the screen every boot
+      t.eq('a clean flagged answer survives untouched', JSON.stringify(r.clean.parq), '["heart"]');
+      t.ok('with its answer and its clearance intact, and safe mode off',
+        r.clean.done === true && r.clean.cleared === true && r.clean.safe === false, JSON.stringify(r.clean));
+      // FLOOR — the screen says "if none apply, leave them all off"
+      t.ok('an empty answer is still a real answer',
+        r.empty.done === true && r.empty.safe === false, JSON.stringify(r.empty));
+
+      t.ok('guard: the junk flag really did read as flagged before the repair',
+        r.before.flagged === true && r.before.safe === true, JSON.stringify(r.before));
+      t.ok('and afterwards there is no phantom flag left',
+        r.after.flagged === false && r.after.parq.length === 0, JSON.stringify(r.after));
+
+      t.eq('an unrecognised allergen is dropped', JSON.stringify(r.allergJunk), '["peanut"]');
+      t.eq('and real allergens are untouched', JSON.stringify(r.allergClean), '["peanut","dairy"]');
+      t.eq('the string form still parses', JSON.stringify(r.allergStr), '["peanut","dairy"]');
+
+      t.eq('an unrecognised focus area is dropped', JSON.stringify(r.tgJunk), '["abs"]');
+      /* Never empty: focusBonus() reads targets[0], and an empty list is a
+         different defect from a junk one. */
+      t.eq('a list of nothing but junk falls back to the default', JSON.stringify(r.tgAllJunk), '["abs","full"]');
+      t.eq('and a real pair is untouched', JSON.stringify(r.tgClean), '["legs","glutes"]');
+
+      t.eq('an unrecognised trouble zone is dropped', JSON.stringify(r.tzJunk), '["belly"]');
+      /* An INHERITED key is truthy, so TROUBLE_POOL[z] passes a truthiness test
+         and a membership test refuses it — the v328 lesson, one map over. */
+      t.eq('and so is an inherited key', JSON.stringify(r.tzProto), '[]');
+      t.eq('real zones are untouched', JSON.stringify(r.tzClean), '["belly","posture"]');
+
+      t.ok('guard: the profile editor really mounted', r.picker.mounted, JSON.stringify(r.picker));
+      t.eq('the picker renders every hoisted focus area', r.picker.focus, r.picker.areas);
+      t.eq('and every hoisted trouble zone', r.picker.trouble, r.picker.zones);
+      t.ok('guard: the hoisted lists are not empty', r.picker.areas === 8 && r.picker.zones === 6,
+        JSON.stringify(r.picker));
+
+      /* A clean validator proves nothing about a validator rule — it stays
+         clean whether the rule exists or not. Break the data in front of it. */
+      t.eq('the validator is clean to start with', r.errsClean, 0);
+      t.ok('a picker zone with no pool entry is reported', r.brokenAreas >= 1, 'hits ' + r.brokenAreas);
+      t.ok('and a pool zone with no picker button is reported', r.brokenPool >= 1, 'hits ' + r.brokenPool);
+      t.eq('and the validator is clean again once restored', r.errsRestored, 0);
+    }
+  }
+
+
+  /* ---- v383: a range test's job done by a type test, and two fields with no
+     repair at all ----------------------------------------------------------
+     `if(typeof STATE.settings.repTempo!=='number')` is the v286 `adapt` defect
+     verbatim, one field over: setRepTempo() clamps to 1-6 and the boot repair
+     only ever checked the TYPE, so a stored 999 survived every boot. The
+     player clamps at its own read sites, so the pacing stays right and nothing
+     crashes — totalTUTSplit() reads it RAW. Measured over 40 logged sessions:
+     168 minutes of lifetime work reads as 28,354.
+
+     `age` and `heightCm` had no shape repair AT ALL, and v355's mirror then
+     copies whichever side holds a value into the half every calculation reads.
+     Measured on one 86 kg / 178 cm / 59-year-old body:
+
+       age:true       calorie target 1950 -> 2360   (5*true is 5, so 59 prices as 1)
+       age:'zzz'      target ERASED (null)
+       heightCm:true  target 1950 -> 1500
+
+     The repair has to run BEFORE the mirror, or junk on one side is copied
+     across rather than dropped. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {}, ce = console.error;
+      console.error = () => {};
+      try {
+        const N = STATE.nutrition, P = STATE.profile;
+        N.sex = 'male'; N.age = 59; N.heightCm = 178; N.weightKg = 86; N.activity = 1.45;
+        P.sex = 'male'; P.age = 59; P.heightCm = 178; P.activity = 1.45;
+        normalizeState();
+        const kcal = () => { const q = kcalTargetPreview(); return q ? q.target : null; };
+        out.base = kcal();
+
+        // --- repTempo, measured on real logged sets ---
+        STATE.onboarded = true;
+        const keepLogs = STATE.logs;
+        STATE.logs = {};
+        for (let p = 0; p < 40; p++) {
+          const sess = buildSession(p), ex = {};
+          sess.main.forEach(m => { ex[m.exId] = { actual: m.target, sets: new Array(m.sets).fill(true) }; });
+          const d = new Date(Date.now() - (40 - p) * 86400000);
+          STATE.logs[p] = { done: true, ex, completedAt: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') };
+        }
+        const tut = () => Math.round(totalTUTSplit().work);
+        STATE.settings.repTempo = 3; out.tutNormal = tut();
+        STATE.settings.repTempo = 999; out.tutRaw = tut();
+        STATE.settings.repTempo = 6; out.tutAtSix = tut();   // what the clamp should land on
+        STATE.settings.repTempo = 999;
+        normalizeState(); out.tempoHigh = STATE.settings.repTempo; out.tutFixed = tut();
+        STATE.settings.repTempo = 0.1; normalizeState(); out.tempoLow = STATE.settings.repTempo;
+        STATE.settings.repTempo = 3.5; normalizeState(); out.tempoOk = STATE.settings.repTempo;
+        STATE.settings.repTempo = 'x'; normalizeState(); out.tempoJunk = STATE.settings.repTempo;
+        STATE.settings.repTempo = 3;
+        STATE.logs = keepLogs;
+
+        // --- age and height: the harm, measured through the real predictor ---
+        const withVal = o => { Object.assign(N, o); Object.assign(P, o); return kcal(); };
+        out.harmAge = withVal({ age: true });
+        out.harmAgeStr = withVal({ age: 'zzz' });
+        out.harmHt = withVal({ age: 59, heightCm: true });
+
+        // --- the repair drops both copies ---
+        P.age = true; N.age = true; P.heightCm = 178; N.heightCm = 178;
+        normalizeState();
+        out.repAge = { p: P.age === undefined, n: N.age === undefined };
+        P.age = 59; N.age = 59; P.heightCm = true; N.heightCm = true;
+        normalizeState();
+        out.repHt = { p: P.heightCm === undefined, n: N.heightCm === undefined };
+
+        /* THE ORDER IS LOAD-BEARING. With junk on ONE side only, a repair that
+           ran after the mirror would have copied it across instead. */
+        delete P.age; N.age = true; normalizeState();
+        out.oneSide = { p: P.age === undefined, n: N.age === undefined };
+        P.age = 59; N.age = 999; normalizeState();
+        out.disagree = { p: P.age, n: N.age };
+
+        // FLOOR — real values survive and the target comes back
+        P.age = 59; N.age = 59; P.heightCm = 178; N.heightCm = 178; normalizeState();
+        out.restored = { age: N.age, ht: N.heightCm, kcal: kcal() };
+        // FLOOR — the edges of the legal band are kept, not clipped
+        P.age = 10; N.age = 10; P.heightCm = 120; N.heightCm = 120; normalizeState();
+        out.edgeLo = { age: N.age, ht: N.heightCm };
+        P.age = 100; N.age = 100; P.heightCm = 230; N.heightCm = 230; normalizeState();
+        out.edgeHi = { age: N.age, ht: N.heightCm };
+        P.age = 59; N.age = 59; P.heightCm = 178; N.heightCm = 178; normalizeState();
+
+        // --- coach: membership, not truthiness ---
+        STATE.settings.coach = 'helicopter'; normalizeState(); out.coachJunk = STATE.settings.coach;
+        STATE.settings.coach = 'auto'; normalizeState(); out.coachAuto = STATE.settings.coach;
+        STATE.settings.coach = COACHES[3].id; normalizeState();
+        out.coachReal = STATE.settings.coach === COACHES[3].id;
+        STATE.settings.coach = 'auto';
+
+        /* v382's own troubleZoneKey asked TWO lists. Identical today, and the
+           wrong test for a repair that DELETES: a zone in the POOL but missing
+           from the picker is a real steer, and erasing it destroys the
+           athlete's answer. The pool decides; the validator catches a drifted
+           picker. */
+        STATE.profile.troubleZones = ['belly', 'helicopter', 'constructor'];
+        normalizeState(); out.tz = STATE.profile.troubleZones.slice();
+        out.poolOnly = (function () {
+          const saved = TROUBLE_AREAS.pop();          // a pool zone with no button
+          STATE.profile.troubleZones = [saved[0]];
+          normalizeState();
+          const kept = STATE.profile.troubleZones.slice();
+          const errs = validateData().filter(e => new RegExp(saved[0], 'i').test(e)).length;
+          TROUBLE_AREAS.push(saved);
+          return { kept, errs };
+        })();
+        STATE.profile.troubleZones = [];
+        out.errs = validateData().length;
+        save();
+      } catch (e) { out.threw = String(e && e.message || e); }
+      console.error = ce;
+      return out;
+    });
+
+    t.ok('guard: the scalar checks ran without throwing', !r.threw, r.threw || '');
+    if (!r.threw) {
+      /* Not a hardcoded figure: the seeded athlete carries their own goal and
+         timeline, so the target is theirs. What matters is that there IS one
+         to move. */
+      t.ok('guard: the athlete has a real calorie target to move',
+        typeof r.base === 'number' && r.base > 1000, String(r.base));
+
+      // --- repTempo ---
+      t.ok('guard: a stored 999 really does inflate the lifetime total',
+        r.tutRaw > r.tutNormal * 100, r.tutNormal + ' min -> ' + r.tutRaw + ' min');
+      t.eq('an out-of-band cadence is clamped to the band the setter enforces', r.tempoHigh, 6);
+      /* Priced at the clamped cadence, not at the default — the holds do not
+         scale with rep tempo, so it is not a clean multiple of the tempo-3
+         figure and a check that assumed one failed on correct code. */
+      t.eq('and the lifetime total is priced at the clamped cadence', r.tutFixed, r.tutAtSix);
+      t.ok('which is back in the same order of magnitude as a real one',
+        r.tutFixed < r.tutRaw / 100, r.tutRaw + ' -> ' + r.tutFixed);
+      t.eq('the low end is clamped too', r.tempoLow, 1);
+      t.eq('an in-band cadence is left exactly alone', r.tempoOk, 3.5);
+      t.eq('and a non-number takes the default', r.tempoJunk, 3);
+
+      // --- age and height ---
+      t.ok('guard: a boolean age really did move the calorie target',
+        r.harmAge > r.base + 300, r.base + ' -> ' + r.harmAge);
+      /* On an athlete with every other field present it does not bail — it
+         computes, and a string in the arithmetic gives NaN. Worse than null:
+         null is caught by the `!p` guards downstream and a NaN prints. */
+      t.ok('guard: a string age really did destroy the target',
+        r.harmAgeStr === null || (typeof r.harmAgeStr === 'number' && !isFinite(r.harmAgeStr)),
+        String(r.harmAgeStr));
+      t.ok('guard: a boolean height really did move it the other way',
+        r.harmHt < r.base - 300, r.base + ' -> ' + r.harmHt);
+      t.ok('a junk age is dropped from BOTH copies', r.repAge.p && r.repAge.n, JSON.stringify(r.repAge));
+      t.ok('and so is a junk height', r.repHt.p && r.repHt.n, JSON.stringify(r.repHt));
+      /* The order is what this one proves: repaired after the mirror, the junk
+         would have been copied across rather than dropped. */
+      t.ok('junk on one side only is dropped, not mirrored across',
+        r.oneSide.p && r.oneSide.n, JSON.stringify(r.oneSide));
+      t.ok('and an out-of-range nutrition copy loses to the real profile one',
+        r.disagree.p === 59 && r.disagree.n === 59, JSON.stringify(r.disagree));
+
+      // FLOORS — a repair that dropped everything satisfies every check above
+      t.eq('a real age survives', r.restored.age, 59);
+      t.eq('a real height survives', r.restored.ht, 178);
+      t.eq('and the calorie target comes back unchanged', r.restored.kcal, r.base);
+      t.ok('the bottom of the legal band is kept, not clipped',
+        r.edgeLo.age === 10 && r.edgeLo.ht === 120, JSON.stringify(r.edgeLo));
+      t.ok('and so is the top', r.edgeHi.age === 100 && r.edgeHi.ht === 230, JSON.stringify(r.edgeHi));
+
+      // --- coach ---
+      t.eq('an unknown coach id falls back to auto', r.coachJunk, 'auto');
+      t.eq('auto is left alone', r.coachAuto, 'auto');
+      t.ok('and a real pick survives', r.coachReal, 'a chosen coach was overwritten');
+
+      // --- the v382 self-correction ---
+      t.eq('a junk trouble zone is still dropped', JSON.stringify(r.tz), '["belly"]');
+      t.ok('a POOL zone with no picker button is KEPT, not erased',
+        r.poolOnly.kept.length === 1, JSON.stringify(r.poolOnly.kept));
+      t.ok('and the validator is what reports the drifted picker',
+        r.poolOnly.errs >= 1, 'hits ' + r.poolOnly.errs);
+      t.eq('the validator is clean once restored', r.errs, 0);
+    }
+  }
+
+
+  /* ---- v384: the two prep paths ended on different plates -----------------
+     `wantSteps` counted THIS path's slot occurrences over the WHOLE block, and
+     the paths are offset by one slot, so how many land inside a block depends
+     on totalWk % 4. The remainder was then taken all at once at the last
+     working week. Traced week by week on an athlete opening at the 10 lb
+     plate, the operator ended 5 lb heavier than the assaulter at 12 of 23
+     block lengths between 8 and 30 weeks.
+
+     A bias in LOAD is the one thing v340 says the two paths may never differ
+     in. Nothing caught it because every existing check counts steps at a
+     hardcoded 16-week block — one of the lengths where it happens to hold. A
+     guard that cannot fire in the case you tested is not tested, applied to
+     the block LENGTH rather than to a value.
+
+     The block affords as many steps as the TIGHTER path over the WORKING
+     weeks, and each path takes them at its own slot, one a week. That is
+     path-independent by construction, and it removes the catch-up: the
+     catch-up existed so a path would not end lighter than its sibling, and
+     with a shared count neither can.
+
+     THE TRADE IS REAL AND IS THE CONSERVATIVE DIRECTION. Every block now ends
+     one 5 lb step below the operator's old figure — 16 weeks goes 30 -> 25 —
+     because the steps that used to be dragged out of the taper are no longer
+     taken at all. Nobody is raised. */
+  {
+    const r = await page.evaluate(() => {
+      const iso = d => { const x = new Date(d); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+      const DAY = 86400000, out = {};
+      try {
+        const keepPrep = STATE.prep, keepDays = STATE.nutrition.days, keepKg = STATE.nutrition.weightKg;
+        /* NOTHING logged, so startLb is the opening plate and the ceiling
+           cannot absorb the difference — the case where it can be seen at all.
+           A probe run on an athlete already near the ceiling reported the two
+           paths as identical before AND after, which is the trap this block
+           exists to avoid. */
+        STATE.nutrition.days = {}; STATE.nutrition.weightKg = 86;
+        const walk = (path, blockWeeks) => {
+          let lb = null, prev = null, jumps = 0, loadInTaper = 0, bothMoved = 0, climbed = false;
+          for (let w = 1; w <= blockWeeks; w++) {
+            STATE.prep = { date: iso(Date.now() + (blockWeeks - w + 1) * 7 * DAY),
+                           planFrom: iso(Date.now() - (w - 1) * 7 * DAY), path };
+            const k = ruckLadderWeek(true);
+            if (prev !== null && k.lb - prev > 5) jumps++;
+            if (prev !== null && k.lb > prev) { climbed = true; if (k.phase === 'taper') loadInTaper++; }
+            if (k.climbing === 'load' && prev !== null && k.curve > 0 && k.lb > prev) {
+              // a load week must hold the distance — the plan's oldest rule
+              if (k.climbing !== 'load') bothMoved++;
+            }
+            prev = k.lb; lb = k.lb;
+          }
+          return { lb, jumps, loadInTaper, climbed };
+        };
+        out.rows = []; out.bad = 0; out.jumps = 0; out.taperLoad = 0;
+        for (let n = 8; n <= 30; n++) {
+          const o = walk('operator', n), a = walk('assaulter', n);
+          if (o.lb !== a.lb) out.bad++;
+          out.jumps += o.jumps + a.jumps;
+          out.taperLoad += o.loadInTaper + a.loadInTaper;
+          out.rows.push({ n, op: o.lb, as: a.lb });
+        }
+        // the lengths that used to diverge, pinned by name
+        out.nine = out.rows.find(x => x.n === 9);
+        out.sixteen = out.rows.find(x => x.n === 16);
+        out.twentyTwo = out.rows.find(x => x.n === 22);
+        // FLOORS
+        const eight = walk('operator', 8), long = walk('operator', 54);
+        out.climbs = walk('operator', 16).climbed;
+        out.longLb = long.lb; out.ceil = ruckLoadCeilLb();
+        out.start = (function () {
+          STATE.prep = { date: iso(Date.now() + 8 * 7 * DAY), planFrom: iso(Date.now()), path: 'operator' };
+          return ruckLadderWeek(true).startLb;
+        })();
+        STATE.prep = keepPrep; STATE.nutrition.days = keepDays; STATE.nutrition.weightKg = keepKg;
+      } catch (e) { out.threw = String(e && e.message || e); }
+      return out;
+    });
+
+    t.ok('guard: the ladder sweep ran without throwing', !r.threw, r.threw || '');
+    if (!r.threw) {
+      t.ok('guard: the athlete opens on the bottom plate, where the ceiling cannot hide it',
+        r.start <= 15, 'startLb ' + r.start);
+      t.eq('the two paths end on the same plate at every block length', r.bad, 0);
+      // pinned by name, because these are the lengths that used to differ
+      t.ok('a 9-week block agrees', r.nine && r.nine.op === r.nine.as, JSON.stringify(r.nine));
+      t.ok('a 16-week block agrees', r.sixteen && r.sixteen.op === r.sixteen.as, JSON.stringify(r.sixteen));
+      t.ok('a 22-week block agrees', r.twentyTwo && r.twentyTwo.op === r.twentyTwo.as, JSON.stringify(r.twentyTwo));
+
+      t.eq('and no week raises the plate by more than one step', r.jumps, 0);
+      t.eq('no load step is taken inside the taper', r.taperLoad, 0);
+
+      // FLOORS — parity satisfied by never climbing is not parity
+      t.ok('the plate still climbs across an ordinary block', r.climbs, 'it never moved');
+      t.eq('and a long block still reaches the ceiling', r.longLb, r.ceil);
+    }
+  }
+
+
+  /* ---- v385: three promises the code did not keep -------------------------
+     1. The morning brief — which the coach READS ALOUD — says "Your meal plan
+        today: A, B and C. The full recipes are on the Reference tab, under
+        Food." Measured on that pane: 0 of 3 names, no INGREDIENTS heading, no
+        METHOD heading, nothing bound to toggleRecipe() or openGrocery().
+        `_recipePlanHTML()` is the only renderer of `r.ing` and `r.steps` in
+        the file and it had NO CALLER. v315 fixed this sentence once by moving
+        the tab NAME, and the destination still did not hold the thing —
+        v315's own rule is to assert BOTH ways.
+     2. plEnterRest() does Math.max(1,dur|0), so a session built with rest:0
+        got a one-second REST screen — tag, +15s and a Skip button — between
+        every movement. The FORCE Combat circuit is the only caller that passes
+        0, and the absence of the rest IS its difference from the annual
+        evaluation, which its own card states.
+     3. The midpoint prompt said "N weeks before the taper starts" using
+        prepWeeksLeft(), which counts to the TEST DATE. The taper opens
+        PREP_TAPER_WEEKS earlier, so the figure was overstated by exactly that:
+        five weeks out it said five, when the answer was three. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {}, ce = console.error;
+      console.error = () => {};
+      try {
+        STATE.onboarded = true; save();
+
+        /* --- 1. the promise, asserted BOTH ways ---
+           PRIMED FIRST. currentMealPlan() rebuilds when the stored plan is
+           stale, so reading the names before the first render captured a plan
+           the render then legitimately replaced — 1 of 3 names matched and it
+           looked like the fix had failed. Render, then read the plan that is
+           actually on the glass, then ask the brief about that one. The real
+           requirement is that the two agree. */
+        REF_TAB = 'food'; go('ref'); renderRef();
+        const plan = STATE.nutrition.plan || currentMealPlan();
+        const names = plan.meals.map(recipeById).filter(Boolean).map(x => x.name);
+        out.spoken = (function () {
+          const said = briefSegments().map(x => x.say || '').join(' ');
+          return { pointsAtRef: /Reference tab, under Food/i.test(said),
+                   namesAll: names.length > 0 && names.every(n => said.indexOf(n) >= 0) };
+        })();
+        renderRef();
+        const v = document.querySelector('#v-ref');
+        const html = v ? v.innerHTML : '', txt = v ? v.textContent : '';
+        out.dest = { found: names.filter(n => txt.indexOf(n) >= 0).length, want: names.length,
+                     ingredients: /INGREDIENTS/.test(txt), method: /METHOD/.test(txt),
+                     toggle: html.indexOf('toggleRecipe(') >= 0,
+                     grocery: html.indexOf('openGrocery(') >= 0,
+                     labelled: /today.s <b>recipes<\/b>/i.test(html) && /weighed days/i.test(html),
+                     mealplanIds: (html.match(/id="mealplan"/g) || []).length,
+                     recipeIds: (html.match(/id="recipeplan"/g) || []).length };
+        /* FLOOR: it does NOT go back on Fuel. v245 removed the plan card there
+           at the athlete's request — a prescribed menu standing in front of
+           their own food diary — and that decision stands. */
+        go('fuel'); renderFuel();
+        const fv = document.querySelector('#v-fuel');
+        out.fuelClean = fv ? !/INGREDIENTS/.test(fv.textContent) : null;
+
+        // --- 2. the no-rest circuit ---
+        STATE.profile.parq = []; STATE.profile.parqDone = true; STATE.profile.medCleared = false;
+        STATE.profile.gear = (STATE.profile.gear || []).concat(['sandbag']);
+        normalizeState();
+        startCombatCircuit();
+        if (typeof PLAYER !== 'undefined' && PLAYER) {
+          const seen = []; let guard = 0;
+          out.combat = { items: PLAYER.items.length, restsSet: PLAYER.items.filter(m => m.rest > 0).length };
+          while (PLAYER && PLAYER.phase !== 'done' && guard++ < 40) {
+            seen.push(PLAYER.phase);
+            if (PLAYER.phase === 'ready') plEnterWork();
+            else if (PLAYER.phase === 'work') plAfterSet();
+            else break;
+          }
+          out.combat.phases = seen.join('>');
+          out.combat.restPhases = seen.filter(x => x === 'rest').length;
+          out.combat.works = seen.filter(x => x === 'work').length;
+        }
+        try { playerQuit(); } catch (e) {}
+        /* FLOOR: an ordinary session still rests. A fix that skipped the rest
+           phase for everybody satisfies every assertion above and deletes the
+           rest from every workout in the app. */
+        _custom = ['pushup', 'squat'];
+        startCustom();
+        if (typeof PLAYER !== 'undefined' && PLAYER) {
+          out.custom = { rest: PLAYER.items[0].rest };
+          plEnterWork(); plAfterSet();
+          out.custom.phase = PLAYER.phase;
+        }
+        try { playerQuit(); } catch (e) {}
+
+        // --- 3. the window figure ---
+        const iso = d => { const x = new Date(d); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+        const DAY = 86400000;
+        const at = weeksLeft => {
+          STATE.prep = { date: iso(Date.now() + weeksLeft * 7 * DAY),
+                         planFrom: iso(Date.now() - (20 - weeksLeft) * 7 * DAY),
+                         checks: {}, results: {} };
+          const d = document.createElement('div'); d.innerHTML = prepMidHTML();
+          return { left: prepWeeksLeft(), text: d.textContent.replace(/\s+/g, ' ') };
+        };
+        out.mid = [5, 4, 3].map(at);
+        out.taper = PREP_TAPER_WEEKS;
+      } catch (e) { out.threw = String(e && e.message || e); }
+      console.error = ce;
+      return out;
+    });
+
+    t.ok('guard: the promise checks ran without throwing', !r.threw, r.threw || '');
+    if (!r.threw) {
+      // --- 1. both halves, which is the whole point ---
+      t.ok('the brief still names the recipes and points at Reference under Food',
+        r.spoken.pointsAtRef && r.spoken.namesAll, JSON.stringify(r.spoken));
+      t.eq('and every recipe it names is on that pane', r.dest.found, r.dest.want);
+      t.ok('with the ingredients and the method', r.dest.ingredients && r.dest.method, JSON.stringify(r.dest));
+      t.ok('and the controls that open them', r.dest.toggle && r.dest.grocery, JSON.stringify(r.dest));
+      /* Two elements with one id is a defect this codebase has a standing rule
+         about, and the worked days already own `#mealplan`. */
+      t.eq('the worked-days anchor is still unique', r.dest.mealplanIds, 1);
+      t.eq('and the recipe card has its own', r.dest.recipeIds, 1);
+      t.ok('FLOOR: the plan card does not come back on Fuel', r.fuelClean === true, String(r.fuelClean));
+      /* TWO DATASETS ON ONE PANE, SO EACH SAYS WHICH IT IS. The recipe card can
+         legitimately say "multiply each quantity" — recipes are fixed portions
+         — while the worked days below say they are weighed to the athlete's
+         targets. Adjacent and unlabelled, one screen contradicts itself. */
+      t.ok('and the pane names which dataset is which',
+        r.dest.labelled, JSON.stringify({ labelled: r.dest.labelled }));
+
+      // --- 2. the circuit ---
+      t.ok('guard: the circuit really built its events with no rest',
+        r.combat && r.combat.items >= 2 && r.combat.restsSet === 0, JSON.stringify(r.combat));
+      t.eq('a no-rest circuit enters no rest phase at all', r.combat.restPhases, 0);
+      t.eq('and still runs every event', r.combat.works, r.combat.items);
+      t.ok('FLOOR: an ordinary session still has a rest between sets',
+        r.custom && r.custom.rest > 0 && r.custom.phase === 'rest', JSON.stringify(r.custom));
+
+      // --- 3. the figure ---
+      r.mid.forEach(m => {
+        const want = Math.max(0, m.left - r.taper);
+        t.ok('the window figure at ' + m.left + ' weeks out names ' + want + ', not ' + m.left,
+          new RegExp('\\b' + want + ' week').test(m.text) && !new RegExp('\\b' + m.left + ' week' + (m.left === 1 ? '\\b' : 's')).test(m.text),
+          m.text.slice(0, 150));
+      });
+      t.ok('and it still says what it is counting to',
+        r.mid.every(m => /before the taper starts/.test(m.text)), r.mid[0].text.slice(0, 150));
+    }
+  }
+
+
+  /* ---- v386: a reschedule destroyed the baseline and inverted the verdict --
+     prepMidISO() is derived from planFrom and the date, so pushing the test
+     date out moves the midpoint and can put TODAY back inside the 'initial'
+     window. The next result then landed in the block's BASELINE slot and
+     overwrote it, and the card — which orders by slot, not by date — read the
+     newest figure as "was".
+
+     Driven end to end on a real 200 -> 190 -> 180 improvement:
+
+       before   initial 180 (the 200 destroyed), mid 190   card "+10s slower"
+       after    initial 200 kept,  mid 180                 card "-20s faster"
+
+     Twenty seconds of progress reported as a ten-second regression, with the
+     baseline gone. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {}, ce = console.error;
+      console.error = () => {};
+      try {
+        const iso = d => { const x = new Date(d); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+        const DAY = 86400000, cp = o => JSON.parse(JSON.stringify(o || null));
+        const keep = STATE.prep;
+        const ev = FORCE_EVENTS.find(e => e.max !== null).id;
+        out.ev = ev;
+        const setBlock = (ago, ahead) => {
+          STATE.prep = Object.assign({}, STATE.prep, {
+            planFrom: iso(Date.now() - ago * 7 * DAY), date: iso(Date.now() + ahead * 7 * DAY) });
+        };
+        STATE.prep = {};
+        const step = (ago, ahead, val) => {
+          setBlock(ago, ahead);
+          const before = prepCheckpoint();
+          setForceResultQuiet(ev, val);
+          return { checkpoint: before, checks: cp(STATE.prep.checks) };
+        };
+        out.s1 = step(1, 19, 200);
+        out.s2 = step(11, 9, 190);
+        out.s3 = step(11, 40, 180);
+        const d = document.createElement('div'); d.innerHTML = prepMidHTML();
+        out.card = d.textContent.replace(/\s+/g, ' ');
+
+        /* FLOOR: an ORDINARY block, with no reschedule, still records into the
+           checkpoint it is actually in and still compares in the right
+           direction. A fix that pinned every write to one slot satisfies every
+           assertion above and breaks the feature. */
+        STATE.prep = {};
+        const o1 = step(1, 19, 210);
+        const o2 = step(11, 9, 195);
+        const d2 = document.createElement('div'); d2.innerHTML = prepMidHTML();
+        out.plain = { s1: o1.checkpoint, s2: o2.checkpoint, checks: o2.checks,
+                      card: d2.textContent.replace(/\s+/g, ' ') };
+
+        /* An out-of-order pair — the shape every phone already carrying a
+           corrupted record has — withholds the delta rather than inventing
+           one. */
+        STATE.prep = { planFrom: iso(Date.now() - 11 * 7 * DAY), date: iso(Date.now() + 9 * 7 * DAY),
+          checks: { initial: { results: { [ev]: 180 }, at: iso(Date.now()) },
+                    mid: { results: { [ev]: 190 }, at: iso(Date.now() - 30 * DAY) } } };
+        const d3 = document.createElement('div'); d3.innerHTML = prepMidHTML();
+        out.stale = d3.textContent.replace(/\s+/g, ' ');
+        STATE.prep = keep;
+      } catch (e) { out.threw = String(e && e.message || e); }
+      console.error = ce;
+      return out;
+    });
+
+    t.ok('guard: the checkpoint sequence ran without throwing', !r.threw, r.threw || '');
+    if (!r.threw) {
+      t.eq('guard: the baseline is recorded in the initial window', r.s1.checkpoint, 'initial');
+      t.eq('guard: the second result is recorded at the midpoint', r.s2.checkpoint, 'mid');
+      /* The reschedule really does put today back in the initial window —
+         without that, this block tests nothing. */
+      t.eq('guard: and the reschedule puts today back before the new midpoint',
+        r.s3.checkpoint, 'initial');
+
+      t.eq('the baseline survives a later result', r.s3.checks.initial.results[r.ev], 200);
+      t.eq('which lands in the latest window instead', r.s3.checks.mid.results[r.ev], 180);
+      t.ok('and the card reports the improvement as faster, not slower',
+        /faster/.test(r.card) && !/slower/.test(r.card), r.card.slice(0, 220));
+
+      // FLOOR — an ordinary block is untouched
+      t.ok('FLOOR: an ordinary block still records into its own checkpoints',
+        r.plain.s1 === 'initial' && r.plain.s2 === 'mid'
+          && r.plain.checks.initial.results[r.ev] === 210
+          && r.plain.checks.mid.results[r.ev] === 195,
+        JSON.stringify(r.plain.checks));
+      t.ok('and still compares in the right direction',
+        /faster/.test(r.plain.card) && !/slower/.test(r.plain.card), r.plain.card.slice(0, 220));
+
+      /* Fails closed. Every phone is carrying records written before the guard,
+         where a later measurement can sit in the earlier slot — comparing them
+         would report progress as a regression. */
+      t.ok('an out-of-order pair withholds the delta rather than inverting it',
+        /not comparable/.test(r.stale) && !/slower/.test(r.stale), r.stale.slice(0, 220));
     }
   }
 

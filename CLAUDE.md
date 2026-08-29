@@ -3250,7 +3250,7 @@ still gets the session.
 Found on the way to adding `sandbag`. The kit list existed as **two hand-written
 literals** — onboarding offered 13 items, Settings offered 12 — and the missing
 one was `bike`. That is not cosmetic: `bikeSwap()` substitutes the trainer into
-conditioning slots and `hasTrainer()` gates the bike work, both off that key,
+conditioning slots off that key,
 and `toggleGear()` is the only writer after setup. **Buy a trainer after
 onboarding and you could never tell the app; sell one and you could never
 untell it.** Picking "Bike" on the Movement card does not set it either — that
@@ -7995,6 +7995,411 @@ so an ordinary 16-week block must still build (19.3 to 26.3 km by week 8,
 unchanged) and week 8 must be nowhere near the ceiling. The beginner's ceiling
 must be a multiple of THEIR start (20 km, not 60). And the note must say
 nothing at all on a block still climbing.
+
+
+## The container was checked and the members were not — in four more places (v382)
+
+v354 filtered `profile.limitations` against `JOINTS` and wrote the reason in a
+comment three lines above `profile.parq`. **Four siblings in the same file
+never got it** — `parq`, `nutrition.allergens`, `profile.targets` and
+`profile.troubleZones` each had the CONTAINER checked and nothing below it.
+Fixing one instance is not fixing the class, and the class was five wide.
+
+**The reason it stayed hidden is where the legal sets lived.** `FAREAS` and
+`TROUBLE` were function-local consts INSIDE `obMount()`, so nothing outside
+that one renderer could ask what a legal focus area or trouble zone is. A
+repair cannot filter against a list it cannot see. Same shape as the five diets
+existing as three literals, one layer down. They are hoisted to `FOCUS_AREAS`
+and `TROUBLE_AREAS`, and `validateData()` pins `TROUBLE_AREAS` against
+`TROUBLE_POOL` **both directions** — a zone in one and not the other is either
+a button that steers nothing or a steer with no button, and both are silent.
+
+### The measured harm is on the array the whole safety gate rests on
+
+A junk key in `parq` — the shape any hand-edited or foreign backup arrives in:
+
+| | |
+|---|---|
+| `parqFlagged()` | **true, for ever** |
+| chips ticked on the health screen | **0** — the row renders from `PARQ`, so there is nothing to untick |
+| session volume | **62 units against 82 — 24% lighter, permanently** |
+| `validateData()` | **clean throughout** |
+
+Safe mode on, with nothing on screen to explain a permanently easier session
+and no way to clear it.
+
+**IT FAILS CLOSED, and that is why the flags go with it.** Dropping an
+unrecognised key means the app no longer knows what the athlete answered, so
+the screen is not answered and a clearance given against answers it cannot
+reconstruct does not apply. `parqDone` and `medCleared` are both cleared and
+the athlete re-answers in two taps. The alternative is silently clearing a
+declared heart condition.
+
+**The allergen filter deliberately does NOT do that**, and the asymmetry is the
+point: an allergen the library does not know matches no food, so it already
+restricts nothing and dropping it cannot make the app less safe. The harm there
+is only that it is invisible, un-untickable and travels in every backup.
+
+**An inherited key is truthy**, so `TROUBLE_POOL[z]` passed a truthiness test
+and `troubleZones:['constructor']` survived into the trouble list.
+`troubleZoneKey()` is a membership test — v328's lesson, one map over.
+
+### The floors are what stop each fix being a delete
+
+- A clean `parq:['heart']` with a clearance survives **untouched**, flags
+  intact, safe mode off — the mutant that always resets sends a clean athlete
+  back to the health screen on every boot.
+- `parq:[]` with `parqDone:true` stays done. The screen says *"if none apply,
+  leave them all off"*, so an empty answer is a real answer.
+- A list of nothing but junk `targets` falls back to `['abs','full']`, never
+  empty — `focusBonus()` reads `targets[0]`, and an empty list is a different
+  defect from a junk one.
+- Real allergens, real zones and a real focus pair are all byte-identical.
+
+**And a clean validator proves nothing about a validator rule.** The lockstep
+rule is exercised by breaking `TROUBLE_AREAS` and `TROUBLE_POOL` in front of
+it, one at a time, requiring the specific complaint, then restoring — with
+`console.error` muted, because `validateData()` logs and the harness counts a
+console error as a page failure.
+
+
+## A range test's job, done by a type test — three more fields (v383)
+
+```js
+if(typeof STATE.settings.repTempo!=='number')STATE.settings.repTempo=3;
+```
+
+That is the v286 `adapt` defect verbatim, one field over. `setRepTempo()`
+clamps to 1-6 and the boot repair only ever checked the TYPE, so a stored 999
+survived every boot. The PLAYER clamps at its own read sites, which is why the
+pacing stays right and nothing crashes — and `totalTUTSplit()` reads it **RAW**.
+Measured over 40 logged sessions:
+
+| stored cadence | lifetime work |
+|---|---|
+| 3 (normal) | **168 min** |
+| 999 | **28,354 min** |
+
+**And `age` and `heightCm` had no shape repair at all**, while v355's mirror
+copies whichever side holds a value into the half every calculation reads.
+Measured on one 86 kg / 178 cm / 59-year-old body, with values `importData()`
+accepts from any hand-edited backup:
+
+| stored | calorie target |
+|---|---|
+| `age:59` (real) | 1950 |
+| `age:true` | **2360** — `5*true` is 5, so 59 prices as 1 |
+| `age:'zzz'` | **NaN** on a populated athlete, `null` on a partial one |
+| `heightCm:true` | **1500** |
+
+**The repair has to run BEFORE the mirror.** With junk on one side only, a
+repair that ran after would copy it across rather than drop it — and that is
+the check that proves the ordering, not any assertion about the values.
+
+**Dropped rather than clamped**, which is v345's rule: "silently produces no
+target" is a field the athlete filled in going missing, so the app asks again.
+The bounds are the ones the app already enforces on a typed value (age 10-100,
+height 120-230 cm), so a stored number the athlete could never have entered is
+not kept — and both edges are pinned, because a guard that clips a legitimate
+value is the mirror-image defect.
+
+`settings.coach` was truthiness-only. `coachFor()` falls back to `COACHES[0]`
+for an unknown id so nothing breaks, but the junk survived every boot, travelled
+in every backup, and left the picker with nothing selected.
+
+### The self-correction: the destructive path takes the SAFER list
+
+v382's own `troubleZoneKey()` required membership in **both** `TROUBLE_POOL` and
+`TROUBLE_AREAS`. Identical today — `validateData()` pins them equal — and the
+wrong test for a repair that **deletes** stored athlete data, because the two
+failure directions are not symmetrical:
+
+| future mismatch | asking both lists | asking the pool alone |
+|---|---|---|
+| zone in the POOL, no picker button | **the athlete's real answer is erased** | kept; the validator complains |
+| zone in the picker, not in the pool | erased | erased — it was inert anyway |
+
+The repair asks the map that actually steers the program; the validator is what
+catches a picker that has drifted. Found by auditing my own change an hour after
+shipping it — the sixth round running where the best finding was in the round
+immediately before.
+
+### Three checks failed on correct code, and one of them was informative
+
+- **The base calorie target is not a universal number.** The check hardcoded
+  1950 from a fresh-install probe; the seeded athlete carries their own goal and
+  timeline. Assert that there IS a target to move, not what it is.
+- **The holds do not scale with rep cadence.** The check asserted the repaired
+  lifetime total was exactly twice the tempo-3 figure. It is not: the clamp
+  lands on 6, and only the rep half doubles. Measure the expected figure at the
+  clamped cadence rather than deriving it from the default.
+- **A string age gives NaN, not null** — and that was worth knowing. On a
+  partial athlete `kcalTargetPreview()` bails and returns null; on a fully
+  populated one it computes, and the string lands in the arithmetic. NaN is the
+  worse of the two: `null` is caught by the `!p` guards downstream, and a NaN
+  prints.
+
+
+## The two prep paths ended on different plates (v384)
+
+`wantSteps` counted THIS path's slot occurrences over the WHOLE block, and the
+two paths are offset by one slot — so how many land inside a block depends on
+`totalWk % 4`, and the owed remainder was taken all at once at the last working
+week. Traced week by week on an athlete opening at the bottom plate:
+
+| block | operator | assaulter |
+|---|---|---|
+| 11 weeks | 10 → 15 → 20 → **25** | 10 → 15 → **20** |
+| 23 weeks | … → 35 → **40** | … → **35** |
+
+Swept across 8 to 30 weeks: **the operator ended 5 lb heavier at 12 of 23 block
+lengths.** A bias in LOAD is the one thing v340 says the two paths may never
+differ in.
+
+**Nothing caught it because every existing check counts steps at a hardcoded
+16-week block** — one of the lengths where it happens to hold. That is "a guard
+that cannot fire in the case you tested is not tested", applied to the block
+LENGTH rather than to a value.
+
+### Three attempts, and the two wrong ones are the lesson
+
+**A re-derivation agreed with a wrong claim and was itself wrong.** The finding
+arrived from an audit whose own table contradicted its own explanation, so it
+had to be checked. Checking it by transcribing the ladder into Python got the
+right conclusion from bad arithmetic — the sim used a starting plate the app
+never uses. This file already says to **assert through the app's own predicates,
+never re-derive them**; the same applies to disproving a claim.
+
+**The first sweep probe reported "identical before and after".** It ran on an
+athlete already near the 60 lb ceiling, which absorbs the entire difference.
+Only an athlete opening at the bottom plate can show it at all — the guard
+`startLb <= 15` is now the first assertion in the block.
+
+**The first fix introduced something the app never had.** Letting the catch-up
+fire on a path's own slot achieves parity and produces **six weeks that raise
+the plate 10 lb at once** across the same 23 lengths, where today no week ever
+raises more than 5.
+
+### What shipped, and what it costs
+
+The block affords as many steps as the TIGHTER path over the WORKING weeks, and
+each path takes them at its own slot, one a week. Path-independent by
+construction.
+
+**That removes the catch-up, and v371's reason for it goes with it.** v371 kept
+owed steps rather than dropping them because dropping left one path *"5 lb
+lighter for the whole block, which is a bias in VOLUME"* — a statement about the
+paths differing FROM EACH OTHER. With a shared count neither can be lighter than
+the other, so the bias it guarded against cannot arise.
+
+**The trade is real and is the conservative direction.** Every block now ends one
+step below the operator's old figure — 16 weeks goes 30 lb to 25 — because the
+steps that used to be dragged out of the taper are no longer taken at all.
+Nobody is raised. A lighter plate is never an injury and a 10 lb week can be.
+
+| | before | after |
+|---|---|---|
+| lengths where the paths differ | **12 of 23** | **0 of 23** |
+| weeks raising more than one step | 0 | **0** |
+| 54-week block | 60 lb (ceiling) | 60 lb (ceiling) |
+
+### Three existing checks failed on correct code, and each pinned an assumption
+
+- **Two hardcoded WHICH week is a load week.** With a shared count the
+  operator's fifth slot no longer raises, so week 3 is correctly a distance
+  week now. The requirement is that a week's CARD and its `climbing` agree,
+  whichever week it happens to be — so the block FINDS a load week and a
+  distance week rather than assuming them, with a guard that both exist.
+- **One demanded exactly FOUR steps.** The number is a property of the block
+  length, not a constant. What has to hold is that the plate still climbs, and
+  that the two paths agree.
+
+**And pinning only the final plate is not enough**, which is how this survived:
+the ceiling absorbs the difference on any long block. The agreement assertion
+now covers the STEP COUNT as well as the plate.
+
+
+## Three promises the code did not keep (v385)
+
+### The coach read out an address that was empty
+
+The morning brief says, aloud, every morning:
+
+> *"Your meal plan today: Steak & Eggs Skillet, Chicken Shawarma Wrap and
+> Baked Salmon & Sweet Potato. The full recipes are on the Reference tab,
+> under Food."*
+
+Measured on that pane: **0 of the 3 names, no INGREDIENTS heading, no METHOD
+heading**, and nothing bound to `toggleRecipe()` or `openGrocery()`.
+`_recipePlanHTML()` is the only renderer of `r.ing` and `r.steps` in the whole
+file, and it had **no caller** — v245 removed the plan card from Fuel at the
+athlete's request and the recipes went with it, leaving the sentence behind.
+
+**v315 already fixed this sentence once.** It used to name the Fuel tab; v315
+moved the tab NAME and the destination still did not hold the thing. v315's own
+rule is to assert BOTH ways, and only one half had ever been done. A spoken
+address is the one an athlete cannot double-check by looking.
+
+**It goes on Reference, not back on Fuel.** The athlete's v245 request was
+about a prescribed menu standing in front of their own food diary, and that
+decision stands — a floor check pins that Fuel stays clean.
+
+### Two datasets on one pane, so each says which it is
+
+Putting the recipes there created the very defect this round exists to fix.
+The recipe card can legitimately say *"Multiply each quantity by 1.4"* —
+recipes are cookable dishes at FIXED portions — while the worked days below it
+say *"weighed out for your targets, no multiplying required"*. Adjacent and
+unlabelled, one screen contradicts itself.
+
+A line above them now names which is which. **This was caught by a suite-09
+check going red, not by reading the diff** — and the check was right: its
+subject is the weighed month, and a page-wide search could not tell the two
+datasets apart. It is scoped to the worked days now, with a guard that the
+slice really landed there.
+
+**And the anchor had to become a parameter.** `_recipePlanHTML()` hardcoded
+`id="mealplan"`, which the worked days already own — two elements with one id
+is a standing rule here. Defaulting it keeps every existing caller and check
+byte-identical.
+
+### A data zero meant "one second", not "none"
+
+`plEnterRest()` does `Math.max(1,dur|0)`, so a session built with `rest:0` got
+a one-second REST screen — with a REST tag, a +15s button and a **Skip** — in
+front of every movement. The FORCE Combat circuit is the only caller that
+passes 0, and **the absence of the rest IS its difference from the annual
+evaluation**, which its own card and its own comment both state.
+
+Measured: `ready > work > rest` on the first handover, against
+`ready > work > ready > work > …` and **zero rest phases** after.
+
+Safe to scope narrowly, and that was checked rather than assumed: every other
+`openPlayer()` caller passes `ex.rest||45` or `||60`, and `prescribe()` clamps
+the program path to 20-120, so nothing else can reach the branch. The floor is
+an ordinary custom session, which must still rest between sets.
+
+### The window figure counted to the wrong event
+
+The midpoint prompt says *"N weeks before the taper starts"* and N was
+`prepWeeksLeft()` — weeks to the TEST DATE. The taper opens `PREP_TAPER_WEEKS`
+earlier, so the figure was overstated by exactly that, every time: five weeks
+out it said **five** when the answer was **three**.
+
+### The check that failed on correct code was reading a rebuilt plan
+
+`currentMealPlan()` rebuilds when the stored plan is stale, so reading the
+names BEFORE the first render captured a plan the render then legitimately
+replaced — 1 of 3 matched and it looked like the fix had failed. Render first,
+read the plan that is actually on the glass, then ask the brief about that one.
+**The real requirement is that the two agree**, which is what the check now
+says.
+
+
+## A reschedule destroyed the baseline and inverted the verdict (v386)
+
+`prepMidISO()` is derived from `planFrom` and the date, so pushing the test date
+out moves the midpoint and can put TODAY back inside the `initial` window. The
+next result then landed in the block's BASELINE slot and overwrote it — and the
+card, which orders by checkpoint SLOT rather than by date, read the newest
+figure as *"was"*.
+
+Driven end to end on a real 200 → 190 → 180 improvement:
+
+| | initial | mid | the card says |
+|---|---|---|---|
+| before | **180** — the 200 destroyed | 190 | **"+10s slower"** |
+| after | 200 kept | 180 | **"−20s faster"** |
+
+Twenty seconds of progress reported as a ten-second regression, with the
+baseline gone.
+
+**A measurement taken later can never belong to an earlier checkpoint than one
+already recorded**, so the write slot never goes backwards. And the reader
+**fails closed on an out-of-order pair** — every phone is carrying records
+written before the guard, and comparing them would report progress as a
+regression, so an unknown or inverted ordering withholds the delta rather than
+inventing one. That is v320's call about a baseline with no `subs` stamp.
+
+### Two probes disagreed, and one of them was wrong
+
+The first probe reproduced it. A second, written to measure the fix, reported
+**before and after as identical** — which would have meant shipping a fix for
+nothing. Neither could be trusted while they disagreed.
+
+What settled it was a third probe that **deep-copies the state after every
+step** and prints the checkpoint it wrote into. The defect reproduces cleanly
+that way, and the second probe was the faulty one. Reading a live object at the
+end of a sequence shows the FINAL state at every point you thought you had
+captured — the same aliasing trap, one layer up from the app.
+
+### The floored-cut finding did not reproduce, and a CONTROL is what proved it
+
+An audit reported that `calorieCheck()` reads a floored cut as a bulk: the
+safety floor can raise a small sedentary athlete's target above maintenance
+(measured, TDEE 1052 against a 1200 floor), which makes `expected` positive on
+a fat-loss goal.
+
+The arithmetic is right and the behaviour is not there. Driven on exactly that
+athlete, `calorieCheck()` returns **null** on the unfixed code — no verdict, no
+advice, no button. **A control is what makes that trustworthy**: the same
+harness on an ordinary 86 kg athlete returns `{verdict:'stalled', step:-300}`,
+so the setup reaches the code and the floored athlete genuinely produces
+nothing.
+
+A fix was written and **reverted**. Shipping it would have been a change with
+no defect behind it, and this file's own rule for a mutant applies to a fix:
+read it back before believing it.
+
+**Two probe bugs on the way**, both this file's own traps: `trendKgPerWeek()`
+reads `m.weight` and the seed wrote `m.kg`, so the trend was null and every
+reading downstream was measuring nothing; and the aliasing above. Confirm the
+control's real shape before believing the result.
+
+
+## A comment asserting a gate that had been removed (v387)
+
+`hasTrainer()` had **no caller anywhere in the app**, and a comment beside the
+gear list said, in the present tense:
+
+> `bikeSwap()` substitutes the trainer into conditioning slots and
+> `hasTrainer()` gates the bike work, both off this key
+
+The gate was taken out deliberately, and `rideTargetHTML()`'s own comment says
+why — *"Shown to everyone now. The gate was hasTrainer(), which hid the whole
+conditioning target from any athlete without a bike; the people with the fewest
+options were the ones told nothing."* Two comments in one file, one describing
+the removal and the other still asserting the thing removed.
+
+That is this file's most-repeated shape — **a comment claiming an invariant is
+not the invariant** — and it is exactly what makes the next reader trust a
+function that does nothing. The stale half is corrected in the code, in the
+suite that quoted it, and here.
+
+### And I deleted a function that was not dead
+
+`logFoodFromList()` also has no caller in `index.html`, so it went out in the
+same pass. **Suite 06 drives it** as the bad-index guard — `logFoodFromList(9999)`
+must be a no-op rather than a thrown render — and the full run caught it
+immediately.
+
+**The suite is a call site.** A dead-code sweep that counts references in
+`index.html` alone will delete every defensive helper the checks exist to
+exercise; `mealPlanHTML()` is kept for precisely the same reason and says so.
+It is restored with the reason written beside it, and the deletion of
+`hasTrainer()` stands only because the suites were grepped for it too.
+
+### What v385 un-orphaned
+
+Worth recording as the measurement that prompted the sweep. Before v385 the
+recipe view was unreachable from every screen in the app:
+
+| function | call sites before | after |
+|---|---|---|
+| `toggleRecipe` | 0 | 2 |
+| `openGrocery` | 0 | 3 |
+| `regenPlan` | 0 | 1 |
+| `mealGapHTML` | 0 | 2 |
 
 
 ## Rendering

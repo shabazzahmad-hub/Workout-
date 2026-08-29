@@ -1129,9 +1129,11 @@ export default async function run() {
   {
     /* The two pickers were built in different functions from two hand-written
        literals, and they HAD drifted: onboarding offered 13 items and Settings
-       offered 12. The missing one was `bike`, which bikeSwap() and hasTrainer()
-       both read and toggleGear() is the only writer of — so an athlete who
-       bought a trainer after setup could never tell the app.
+       offered 12. The missing one was `bike`, which bikeSwap() reads and
+       toggleGear() is the only writer of — so an athlete who bought a trainer
+       after setup could never tell the app. (hasTrainer() read it too, until
+       v387: its gate had been removed deliberately and the function sat
+       uncalled, while a comment still asserted it gated the bike work.)
 
        The old check here counted the literal twice and could not see that at
        all: it asked whether ONE entry appeared in both copies, not whether the
