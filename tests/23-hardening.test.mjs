@@ -6454,7 +6454,13 @@ export default async function () {
            satisfied by a board that blanks a number the athlete really set. */
         STATE.prs = { pullup: 8 };
         out.freshWithPR = byK(day90Rows()).pull;
-        STATE.baseline = keepBase; STATE.holdLog = keepHold; STATE.prs = keepPrs;
+        /* And the plank row NAMES whichever source its number came from: the
+           hold tracker when there is a fresh hold, the baseline otherwise.
+           One label for both is the same lie in one word. */
+        STATE.baseline = keepBase; STATE.holdLog = []; STATE.prs = keepPrs;
+        out.plankFromBase = byK(day90Rows()).plank;
+        STATE.holdLog = keepHold;
+        out.plankFromHold = byK(day90Rows()).plank;
 
         openForcePrep();
         const sh = document.querySelector('#sheet');
@@ -6529,6 +6535,11 @@ export default async function () {
         JSON.stringify({ push: r.fresh.push.why, plank: r.fresh.plank.why }));
       /* FLOOR: a measured zero is still data. Sessions this week is a real
          count, so it reports 0 rather than going blank with the rest. */
+      t.ok('the plank row names the baseline when that is where its number came from',
+        r.plankFromBase.got !== null && r.plankFromBase.gotLabel === 'your baseline plank',
+        JSON.stringify(r.plankFromBase));
+      t.ok('and names the hold tracker when a real fresh hold exists',
+        r.plankFromHold.gotLabel === 'your best fresh hold', JSON.stringify(r.plankFromHold));
       t.ok('while a real pull-up record survives with no baseline — it is a measurement',
         r.freshWithPR.got === '8 reps' && r.freshWithPR.scored === true, JSON.stringify(r.freshWithPR));
       t.ok('while a genuine zero is still reported as a zero',
