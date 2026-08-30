@@ -9148,6 +9148,17 @@ not onboard, so the view was 1,098 characters of onboarding step 1. The trap is
 already in this file from the end-of-program probe; the fix is to seed through
 the harness's own `ATHLETE`.
 
+### The two resets, and the half that matters
+
+`restartProgram()` is the path v365 records as *"the one reset that never asked
+the list"*, so a new lifetime field is exactly what it forgets — or wrongly
+clears. Driven: a restart **keeps** the foot log and the hold, and `hardReset()`
+clears both.
+
+**The hold is the consequential half.** A restart that released it would start
+the ladder climbing again over an unresolved blister — the same failure as a
+backup restore that lost it, by a different door. Both are pinned.
+
 ### The prompt fires where the package says to inspect
 
 *"Inspect after every ruck"* — so `footPromptDue()` fires on a day a ruck was

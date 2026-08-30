@@ -6908,6 +6908,43 @@ export default async function () {
        must not find their ladder quietly climbing again. */
     t.ok('with the hold still standing afterwards', trip.after.hold === true, JSON.stringify(trip.after));
 
+    /* THE TWO RESETS. restartProgram() is the path v365 records as "the one
+       reset that never asked the list", so a new lifetime field is exactly what
+       it forgets — or wrongly clears. A restart that dropped the foot log would
+       silently release an active hold and start the ladder climbing again over
+       an unresolved blister. hardReset() is athlete data and must go. */
+    const life = await page.evaluate(() => {
+      const out = {}, ce = console.error, cf = window.confirm;
+      console.error = () => {}; window.confirm = () => true;
+      try {
+        const iso = d => { const x = new Date(Date.now() - d * 86400000);
+          return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+        const keep = JSON.parse(JSON.stringify(STATE));
+        const seed = () => { STATE.footLog = [{ date: iso(1), state: 'clear' },
+                                              { date: iso(0), state: 'blister' }]; save(); };
+        seed();
+        out.before = { hold: footHold(), rows: STATE.footLog.length };
+        restartProgram();
+        out.afterRestart = { kept: JSON.stringify(STATE.footLog), hold: footHold() };
+        seed();
+        hardReset();
+        out.afterHardReset = { gone: STATE.footLog === undefined, hold: footHold() };
+        STATE = keep; normalizeState(); save();
+      } catch (e) { out.threw = String(e && e.message || e); }
+      console.error = ce; window.confirm = cf; return out;
+    });
+    t.ok('guard: the lifecycle case started from a live hold',
+      !life.threw && life.before && life.before.hold === true && life.before.rows === 2,
+      life.threw || JSON.stringify(life.before));
+    t.ok('restarting the program keeps the foot log — it is a lifetime record',
+      (life.afterRestart.kept.match(/date/g) || []).length === 2, JSON.stringify(life.afterRestart));
+    /* The consequential half: a restart that released the hold would start the
+       ladder climbing again over an unresolved blister. */
+    t.ok('and keeps the hold with it', life.afterRestart.hold === true, JSON.stringify(life.afterRestart));
+    t.ok('while a hard reset clears it, like every other thing the athlete owns',
+      life.afterHardReset.gone === true && life.afterHardReset.hold === false,
+      JSON.stringify(life.afterHardReset));
+
     t.eq('the repair keeps a real check and drops every junk row',
       r.repaired, '[{"date":"' + new Date(Date.now() - 86400000).toISOString().slice(0, 10) + '","state":"blister"}]');
     t.ok('a log that is not a list is dropped', r.strDropped === true, r.strDropped);
