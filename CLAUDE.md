@@ -9045,6 +9045,30 @@ still reads the newest.
 already done; rewriting that would be a different bug. The mutant that applies
 the hold to every week is caught.
 
+### Auditing it an hour later found the placement wrong
+
+The first version put the whole thing — prompt, picker and hold note — on the
+ruck LADDER card. That card renders inside `enduranceHTML()`, which is the
+**prep sheet**. The athlete logs a ruck in **Today ▸ Workout ▸ Movement** and
+has no reason to open that sheet afterwards, so the prompt was sitting on a
+screen nobody would be looking at.
+
+**And it was worse than misplaced.** `ruckLadderWeek()` returns `noDate` with
+no test date, so `ruckLadderHTML()` renders **nothing at all** — an athlete who
+rucks without preparing for FORCE would never have seen any of it, and blisters
+are not prep-specific.
+
+Split the way v311 split the Movement block from its Progress review: **every
+control on the ruck block**, where the ruck is logged and where every rucking
+athlete sees it, and **a note with no controls of its own** on the plan,
+explaining why the week is not climbing. One surface owns the picker, so the
+two can never disagree about what was logged.
+
+**The note names Movement, so the pointer is asserted BOTH ways** — the plan
+names the destination and the destination really carries the control, which is
+the v315 rule. And a floor pins that an athlete with no test date gets an empty
+ladder and a working check.
+
 ### The prompt fires where the package says to inspect
 
 *"Inspect after every ruck"* — so `footPromptDue()` fires on a day a ruck was

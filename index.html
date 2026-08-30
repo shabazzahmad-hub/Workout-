@@ -5424,15 +5424,36 @@ function footPickerHTML(){
   return `<div class="daypick" style="flex-wrap:wrap;margin:6px 0 0">${FOOT_STATES.map(x=>
     `<button data-foot="${_ve(x[0])}" onclick="logFootCheck('${_ve(x[0])}')">${_ve(x[1])}</button>`).join('')}</div>`;
 }
+/* THE CONTROLS LIVE WHERE THE ATHLETE ACTS, and the plan carries a read-only
+   note about them. The first version put this whole thing on the ruck LADDER
+   card, which renders inside enduranceHTML() — the prep sheet. The athlete logs
+   a ruck in Today ▸ Workout ▸ Movement and has no reason to open that sheet
+   afterwards, so the prompt was on a screen nobody would be looking at. Worse:
+   ruckLadderWeek() returns noDate with no test date, so an athlete who rucks
+   without preparing for FORCE would never have seen it at all — and blisters
+   are not prep-specific.
+
+   Split the way v311 split the Movement block: every control here, on the ruck
+   block, and a note with no controls of its own on the plan. */
 function footCheckHTML(){
   const f=footLatest();
   if(footPromptDue())return `<div class="note warn" style="margin:10px 0 0" data-footprompt="1">
     <b>You rucked today \u2014 check your feet.</b> Hot spots are solved by stopping, drying the skin and fixing the sock or boot fit. Left alone they are blisters, and a blister is what ends a march.
     ${footPickerHTML()}</div>`;
   if(footHold())return `<div class="note fire" style="margin:10px 0 0" data-foothold="1">
-    <b>${_ve(footStateLabel(f.state))} logged ${_ve(f.date)} \u2014 the ruck ladder is holding.</b> Distance and load both stay where they are until it clears. Treat it, then log a clear check to release the plan.
+    <b>${_ve(footStateLabel(f.state))} logged ${_ve(f.date)}.</b> Your ruck plan is holding its distance and its load until this clears. Treat it, then log a clear check to release the plan.
     ${footPickerHTML()}</div>`;
   return '';
+}
+/* The plan's own view of the same fact: it explains why the week is not
+   climbing and points at where to fix it. NO CONTROLS — one surface owns the
+   picker, so the two can never disagree about what was logged. */
+function footHoldNoteHTML(){
+  const f=footLatest();
+  if(!footHold()||!f)return '';
+  return `<div class="note fire" style="margin:10px 0 0" data-footholdnote="1">
+    <b>${_ve(footStateLabel(f.state))} logged ${_ve(f.date)} \u2014 that is why nothing is climbing.</b>
+    Log a clear foot check in <b>Today \u25b8 Workout \u25b8 Movement</b>, under the ruck, and the plan picks up where it left off.</div>`;
 }
 /* Straight from the package's own "Foot-care kit for training" list. Stamped
    with the same source and date as the day-90 board, for the same reason. */
@@ -5469,7 +5490,7 @@ function ruckLadderHTML(){
         <div class="tiny muted">this week</div></div>
     </div>
     ${footLoadHTML(w)}
-    ${footCheckHTML()}
+    ${footHoldNoteHTML()}
     <div class="note ${w.down?'ok':'info'}" style="margin:10px 0 0"><b>What moves this week:</b> ${moving}</div>
     ${w.capped?`<div class="note warn" style="margin:10px 0 0"><b>The load stops here at ${_ve(String(w.ceil))} lb.</b> That is about a third of your bodyweight, which is the far end of what rucking guidance asks for. ${w.atPeak?'The distance has reached its ceiling too, so nothing further is added.':'From here the distance carries the progression.'} You can carry more if you choose to — the app will not add it for you.</div>`:''}
     ${(w.atPeak&&!w.capped)?`<div class="note info" style="margin:10px 0 0"><b>The distance has reached its ceiling.</b> It holds at ${_ve(distShow(w.peak))} a week from here. Loaded distance tops out far lower than unloaded, and this is already past the ${_ve(distShow(5))} march the standard asks for.</div>`:''}
@@ -17218,6 +17239,9 @@ function ruckBlockHTML(m,short){
         <button class="chip" onclick="addRuckVal(${ruckStep(m.runit)})" aria-label="More">+</button></div>
     </div>`;
   if(work.min)h+=`<div class="note ok" style="margin-top:10px"><b>${work.min} min</b> under ${lb} lb · <b>${work.steps.toLocaleString()} steps</b> · <b>${r1(kmToShow(work.km))} ${distUnit()}</b> · <b>${work.kcal} kcal</b></div>`;
+  /* The foot check sits where the ruck is LOGGED, which is also the one ruck
+     surface an athlete sees whether or not they are running a prep block. */
+  h+=footCheckHTML();
   return h;
 }
 function bikeBlockHTML(m,short,need,lvl,ride,shownVal){

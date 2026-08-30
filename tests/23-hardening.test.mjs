@@ -6656,15 +6656,34 @@ export default async function () {
         out.promptAfterCheck = footPromptDue();
         out.clearLogged = footHold() === false;
 
-        // what the card actually says
+        /* WHERE EACH HALF LIVES. The first version put the whole thing on the
+           ruck LADDER card, which renders inside the prep sheet — a screen the
+           athlete has no reason to open after a ruck, and one that does not
+           render at all without a test date. The controls belong where the ruck
+           is logged; the plan gets a note with no controls of its own, the way
+           v311 split Movement from its Progress review. */
         STATE.footLog = [{ date: iso(0), state: 'hotspot' }];
-        const h = ruckLadderHTML();
-        out.card = { hold: /data-foothold/.test(h),
-                     saysBothHold: /distance and the load both hold/i.test(h),
-                     saysRelease: /log a clear check/i.test(h) };
+        setCardioMode('ruck');
+        const blk = ruckBlockHTML(movement(), 'the ruck');
+        const lad = ruckLadderHTML();
+        out.where = {
+          pickerOnRuckBlock: /data-foothold|data-footprompt/.test(blk) && /logFootCheck\(/.test(blk),
+          noPickerOnPlan: !/logFootCheck\(/.test(lad),
+          noteOnPlan: /data-footholdnote/.test(lad),
+          planSaysHolding: /nothing is climbing/i.test(lad),
+          planPointsAtMovement: /Movement/.test(lad),
+          blockSaysRelease: /log a clear check/i.test(blk) };
+        /* The pointer is asserted BOTH ways: the plan names the destination,
+           and the destination really carries the control. */
+        out.pointerHolds = out.where.planPointsAtMovement && out.where.pickerOnRuckBlock;
+        /* AND IT WORKS WITHOUT A PREP BLOCK — blisters are not prep-specific,
+           and ruckLadderHTML() renders nothing at all with no test date. */
+        const keepDate = STATE.prep.date; delete STATE.prep.date;
+        out.noPrep = { ladderEmpty: ruckLadderHTML() === '',
+                       blockStillChecks: /data-foothold|data-footprompt/.test(ruckBlockHTML(movement(), 'the ruck')) };
+        STATE.prep.date = keepDate;
         STATE.footLog = []; D[iso(0)].ruckVal = 5;
-        const h2 = ruckLadderHTML();
-        out.quiet = { noHoldNote: !/data-foothold/.test(h2) };
+        out.quiet = { noHoldNote: !/data-footholdnote/.test(ruckLadderHTML()) };
         out.kit = { marked: /data-footkit/.test(footKitHTML()),
                     items: (footKitHTML().match(/class="kv"/g) || []).length,
                     stamped: footKitHTML().indexOf(DAY90_ASOF) >= 0 };
@@ -6716,9 +6735,18 @@ export default async function () {
     t.ok('and it stops asking once it has been answered',
       r.promptAfterCheck === false && r.clearLogged === true, JSON.stringify(r));
 
-    t.ok('the card names the hold and says both halves are held',
-      r.card.hold && r.card.saysBothHold, JSON.stringify(r.card));
-    t.ok('and says what releases it', r.card.saysRelease, JSON.stringify(r.card));
+    t.ok('the check sits where the ruck is logged, not on the plan',
+      r.where.pickerOnRuckBlock && r.where.noPickerOnPlan, JSON.stringify(r.where));
+    t.ok('and the plan carries a note explaining why nothing is climbing',
+      r.where.noteOnPlan && r.where.planSaysHolding, JSON.stringify(r.where));
+    /* Asserted BOTH ways, the v315 rule: naming a destination is half a check. */
+    t.ok('the note points at Movement, and Movement really holds the control',
+      r.pointerHolds === true, JSON.stringify(r.where));
+    t.ok('and it says what releases it', r.where.blockSaysRelease, JSON.stringify(r.where));
+    /* FLOOR: an athlete who rucks without a test date renders no ladder at all,
+       and blisters are not prep-specific. */
+    t.ok('the check still works for an athlete with no prep block',
+      r.noPrep.ladderEmpty === true && r.noPrep.blockStillChecks === true, JSON.stringify(r.noPrep));
     /* A note that always fires is a note nobody reads. */
     t.ok('while a clean athlete gets no hold note at all', r.quiet.noHoldNote, JSON.stringify(r.quiet));
     t.ok('the foot-care kit is the package’s own list, stamped like every other figure from it',
