@@ -9069,6 +9069,23 @@ names the destination and the destination really carries the control, which is
 the v315 rule. And a floor pins that an athlete with no test date gets an empty
 ladder and a working check.
 
+### And the check for it was reading the builder, not the screen
+
+Every assertion in the first block read `ruckBlockHTML()`'s **output**, which
+stays true even if the block is never mounted — the escape this file records
+for the v292 Convert button and four times since. Driving it properly is what
+found the placement defect in the first place: a real tap on a real screen
+returned **0 buttons**.
+
+The block now renders Today, finds the button, **clicks it**, and reads the
+screen back: the row is written, the prompt disappears and the hold note takes
+its place; tapping clear releases it on the same day's row.
+
+**And that probe first measured the WELCOME screen** — the in-page seed does
+not onboard, so the view was 1,098 characters of onboarding step 1. The trap is
+already in this file from the end-of-program probe; the fix is to seed through
+the harness's own `ATHLETE`.
+
 ### The prompt fires where the package says to inspect
 
 *"Inspect after every ruck"* — so `footPromptDue()` fires on a day a ruck was

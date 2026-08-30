@@ -6752,6 +6752,51 @@ export default async function () {
     t.ok('the foot-care kit is the package’s own list, stamped like every other figure from it',
       r.kit.marked && r.kit.items === 8 && r.kit.stamped, JSON.stringify(r.kit));
 
+    /* THE ROUTE, NOT THE BUILDER. Every assertion above reads ruckBlockHTML()'s
+       output, which stays true even if the block is never mounted — the escape
+       this file records for the v292 Convert button and four times since. This
+       one renders Today, finds the button the athlete taps, CLICKS it, and
+       reads the screen back. */
+    const tap = await page.evaluate(() => {
+      const out = {}, ce = console.error; console.error = () => {};
+      try {
+        const iso = d => { const x = new Date(Date.now() - d * 86400000);
+          return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+        const keepDays = STATE.nutrition.days, keepFoot = STATE.footLog, keepMode = STATE.nutrition.cardioMode;
+        setCardioMode('ruck');
+        STATE.nutrition.days = {};
+        STATE.nutrition.days[iso(0)] = { opened: true, ruckVal: 8, ruckUnit: 'dist', ruckLvl: 'brisk', ruckLb: 35 };
+        STATE.footLog = []; normalizeState();
+        TODAY_TAB = 'workout'; go('today'); render();
+        out.mounted = document.querySelectorAll('[data-foot]').length;
+        out.promptShown = !!document.querySelector('[data-footprompt]');
+        const hot = document.querySelector('[data-foot="hotspot"]');
+        if (hot) hot.click();
+        out.afterTap = { logged: JSON.stringify(STATE.footLog), hold: footHold(),
+                         note: !!document.querySelector('[data-foothold]'),
+                         promptGone: !document.querySelector('[data-footprompt]') };
+        const clr = document.querySelector('[data-foot="clear"]');
+        if (clr) clr.click();
+        out.afterClear = { logged: JSON.stringify(STATE.footLog), hold: footHold(),
+                           noteGone: !document.querySelector('[data-foothold]') };
+        STATE.nutrition.days = keepDays; STATE.nutrition.cardioMode = keepMode;
+        if (keepFoot === undefined) delete STATE.footLog; else STATE.footLog = keepFoot;
+        save(); render();
+      } catch (e) { out.threw = String(e && e.message || e); }
+      console.error = ce; return out;
+    });
+    t.ok('guard: the picker is really mounted on Today, not just built by a helper',
+      !tap.threw && tap.mounted === 3 && tap.promptShown === true,
+      tap.threw || JSON.stringify(tap));
+    t.ok('tapping the button writes the check and repaints to the hold note',
+      /hotspot/.test(tap.afterTap.logged) && tap.afterTap.hold === true
+        && tap.afterTap.note === true && tap.afterTap.promptGone === true,
+      JSON.stringify(tap.afterTap));
+    t.ok('and tapping clear releases it, on the same day’s row',
+      /clear/.test(tap.afterClear.logged) && !/hotspot/.test(tap.afterClear.logged)
+        && tap.afterClear.hold === false && tap.afterClear.noteGone === true,
+      JSON.stringify(tap.afterClear));
+
     t.eq('the repair keeps a real check and drops every junk row',
       r.repaired, '[{"date":"' + new Date(Date.now() - 86400000).toISOString().slice(0, 10) + '","state":"blister"}]');
     t.ok('a log that is not a list is dropped', r.strDropped === true, r.strDropped);

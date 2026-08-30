@@ -5406,8 +5406,11 @@ function logFootCheck(state){
   if(log.length>FOOT_LOG_MAX)STATE.footLog=log.slice(-FOOT_LOG_MAX);
   save();
   toast(state==='clear'?'Feet logged \u2014 clear \u2705':'Logged. Treat it before the next ruck.');
+  /* The picker lives on the ruck block and nowhere else, so this is the one
+     surface to repaint. The first version also re-opened the prep sheet, back
+     when the controls were there — dead the moment they moved, and a sheet is
+     never open over a Movement the athlete just tapped. */
   try{repaintMovement();}catch(e){}
-  try{if(document.querySelector('#sheet'))openForcePrep();}catch(e){}
 }
 function footCheckedToday(){const d=todayISO();return footLog().some(r=>r&&r.date===d);}
 /* Fires only on a day a ruck was actually logged, because that is when the
