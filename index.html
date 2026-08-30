@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='393';
+const APP_VERSION='394';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -5426,15 +5426,31 @@ function logFootCheck(state){
      never open over a Movement the athlete just tapped. */
   try{repaintMovement();}catch(e){}
 }
-function footCheckedToday(){const d=todayISO();return footLog().some(r=>r&&r.date===d);}
-/* Fires only on a day a ruck was actually logged, because that is when the
-   package says to inspect ("Inspect after every ruck"). A prompt that appears
-   every day is a prompt nobody reads. */
+/* Fires after a ruck, because that is when the package says to inspect
+   ("Inspect after every ruck"). A prompt that appears every day is a prompt
+   nobody reads.
+
+   IT IS ORDERED IN TIME, NOT KEYED TO THE CALENDAR DAY. Driven at 23:52 with
+   the clock advanced ten minutes: the athlete logged a ruck, the prompt fired,
+   midnight passed while it was on screen, and the prompt VANISHED on the next
+   repaint — todayISO() had moved on and yesterday's ruck no longer counted. An
+   evening rucker lost the prompt before they could answer it.
+
+   So the rule is the package's own: the prompt stands from a ruck until it is
+   answered. Yesterday is the bound — it covers an inspection that happens
+   after midnight without nagging for a week about a ruck the athlete has
+   plainly moved on from. */
 function footPromptDue(){
   try{
-    if(footCheckedToday())return false;
-    const t=(STATE.nutrition.days||{})[todayISO()];
-    return !!(t&&_dayRuckKm(t)>0);
+    const D=STATE.nutrition.days||{};
+    const d0=todayISO();
+    const y=new Date(); y.setDate(y.getDate()-1);
+    const d1=y.getFullYear()+'-'+String(y.getMonth()+1).padStart(2,'0')+'-'+String(y.getDate()).padStart(2,'0');
+    let last=null;
+    [d1,d0].forEach(d=>{const t=D[d];if(t&&_dayRuckKm(t)>0)last=d;});
+    if(!last)return false;
+    const f=footLatest();
+    return !(f&&f.date>=last);
   }catch(e){return false;}
 }
 function footPickerHTML(){

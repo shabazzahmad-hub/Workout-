@@ -9215,6 +9215,43 @@ third caller as well.
 occurrences in `card` is a count over the whole screen. Reading what the probe
 actually collected is what made the re-aim exact instead of a guess.
 
+## The prompt was keyed to the calendar day, and a ruck can straddle midnight (v394)
+
+Found by driving the app across a real midnight with a faked clock — a state
+every previous probe had skipped, because they all ran mid-afternoon.
+
+At 23:52 the athlete logs a ruck and the foot prompt fires. Ten minutes later:
+
+| | before midnight | after |
+|---|---|---|
+| `todayISO()` | 2026-09-15 | 2026-09-16 |
+| the prompt | **shown** | **gone** |
+
+`footPromptDue()` asked whether a ruck was logged **today**, so the moment the
+date rolled the prompt vanished on the next repaint — before the athlete could
+answer it. An evening rucker is exactly who this feature is for.
+
+**The rule is now the package's own, ordered in time rather than by day:** the
+prompt stands from a ruck until it is answered. Yesterday is the bound, which
+covers an inspection that happens after midnight without nagging about a ruck
+the athlete has plainly moved on from.
+
+**The floor that makes it a rule rather than a wider net** is that a NEW ruck
+after an older check asks again — the test is *newer than the check*, not *a
+check exists*. Measured: yesterday's unchecked ruck prompts, answering it stops
+it, a ruck two days back does not nag, and today's ruck after yesterday's check
+asks again.
+
+**The post-midnight state needs no clock to pin.** It is exactly "yesterday's
+ruck, no check", so the suite drives that directly; the faked clock is what
+found it, not what proves it.
+
+### And the reachability check caught my own dead code
+
+Rewriting the predicate left `footCheckedToday()` with no caller, and v388's
+own orphan check went red naming it. The suites were grepped first — v387's
+lesson that **the suite is a call site** — and nothing drove it, so it went.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

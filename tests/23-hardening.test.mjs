@@ -6687,6 +6687,35 @@ export default async function () {
         for (let w = 0; w < 4; w++) for (let d = 0; d < 2; d++)
           D[iso(w * 7 + d)] = { opened: true, ruckVal: 5, ruckUnit: 'dist', ruckLvl: 'brisk', ruckLb: 25 };
 
+        /* THE PROMPT IS ORDERED IN TIME, NOT KEYED TO THE CALENDAR DAY.
+           Driven with a faked clock at 23:52 and advanced ten minutes: the
+           athlete logged a ruck, the prompt fired, midnight passed while it was
+           on screen, and it VANISHED on the next repaint — todayISO() had moved
+           on and yesterday's ruck no longer counted. An evening rucker lost the
+           prompt before answering it.
+
+           The post-midnight state is exactly "yesterday's ruck, no check", so
+           it is pinned here without needing a clock. */
+        out.night = {};
+        wipe(); STATE.footLog = [];
+        D[iso(1)] = { opened: true, ruckVal: 8, ruckUnit: 'dist', ruckLvl: 'brisk', ruckLb: 35 };
+        out.night.yesterdayUnchecked = footPromptDue();
+        STATE.footLog = [{ date: iso(0), state: 'clear' }];
+        out.night.answeredAfterMidnight = footPromptDue();
+        /* FLOOR: it must not nag about a ruck the athlete has plainly moved on
+           from, and a NEW ruck after an older check must ask again — the rule
+           is "newer than the check", not "a check exists". */
+        wipe(); STATE.footLog = [];
+        D[iso(2)] = { opened: true, ruckVal: 8, ruckUnit: 'dist', ruckLvl: 'brisk', ruckLb: 35 };
+        out.night.twoDaysAgo = footPromptDue();
+        wipe();
+        D[iso(0)] = { opened: true, ruckVal: 8, ruckUnit: 'dist', ruckLvl: 'brisk', ruckLb: 35 };
+        STATE.footLog = [{ date: iso(1), state: 'clear' }];
+        out.night.newRuckAfterOldCheck = footPromptDue();
+        wipe();
+        for (let w = 0; w < 4; w++) for (let d = 0; d < 2; d++)
+          D[iso(w * 7 + d)] = { opened: true, ruckVal: 5, ruckUnit: 'dist', ruckLvl: 'brisk', ruckLb: 25 };
+
         // the prompt fires on a ruck day, and stops once the check is logged
         delete D[iso(0)];
         out.promptNoRuck = footPromptDue();
@@ -6788,6 +6817,14 @@ export default async function () {
     t.ok('an athlete who has never logged a check is never held',
       r.neverLogged.hold === false && r.neverLogged.climbing !== 'foot', JSON.stringify(r.neverLogged));
 
+    t.ok('an evening ruck still asks after midnight has passed',
+      r.night.yesterdayUnchecked === true, JSON.stringify(r.night));
+    t.ok('and answering it after midnight stops the asking',
+      r.night.answeredAfterMidnight === false, JSON.stringify(r.night));
+    t.ok('while a ruck two days back does not nag',
+      r.night.twoDaysAgo === false, JSON.stringify(r.night));
+    t.ok('and a new ruck after an older check asks again — newer than, not merely present',
+      r.night.newRuckAfterOldCheck === true, JSON.stringify(r.night));
     t.ok('the check is asked whichever unit the ruck was logged in',
       r.units.dist === true && r.units.min === true && r.units.kcal === true,
       JSON.stringify(r.units));
