@@ -9069,6 +9069,43 @@ names the destination and the destination really carries the control, which is
 the v315 rule. And a floor pins that an athlete with no test date gets an empty
 ladder and a working check.
 
+### The escaped mutant, and the axis the check was searching
+
+One mutant escaped: **the hold stops the load and lets the distance climb** —
+the half-working version of the whole feature. The check aimed at exactly that
+existed and did not catch it, for two compounding reasons.
+
+**It was walking the wrong axis.** `prepWeekNo()` counts forward from
+`planFrom`, so moving `prep.date` changes how much time is LEFT and never
+advances the week. The search moved the date, found one week labelled
+`'distance'` by an accident of the taper boundary, and stopped there.
+
+**And that week's slot happened to BE the load slot.** `climbing==='distance'`
+does not imply the slot is not the load slot: a load-slot week falls through to
+the distance branch once the steps are spent. So on the one week it tested, the
+mutant was equivalent.
+
+Walking twenty real weeks by `planFrom` makes it unmistakable — every distance
+week climbs unheld under the mutant:
+
+```
+1 wk distance 11->11 distance     3 wk distance 12.1->12.1 distance
+5 wk distance 13.3->13.3 distance 7 wk distance 14.6->14.6 distance
+```
+
+**One week is not enough, so the check now requires EVERY distance week to be
+held and every load week too** — which is the property the feature claims, and
+the mutant now fails it by name.
+
+### And a mutation driver running in the background overwrote every manual seed
+
+Half an hour was spent on a mutant that appeared to be equivalent, because
+`mut400.py` was still copying its own clean file over `mut-run/index.html`
+between runs while manual seeds were being written there. The seed printed
+"seeded", the grep afterwards showed the clean line, and the suite result
+belonged to whichever mutant the driver had just written. **Stop the driver
+before seeding by hand**, or seed in a different directory.
+
 ### Every unit a ruck can be logged in
 
 `footPromptDue()` reads `_dayRuckKm()`, which converts **minutes and calories**

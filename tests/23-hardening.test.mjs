@@ -6621,18 +6621,36 @@ export default async function () {
         out.loadWeek = { free: out.clean };
         STATE.footLog = [{ date: iso(0), state: 'hotspot' }];
         out.loadWeek.held = wk();
-        out.distWeek = (() => {
-          for (let back = 0; back < 12; back++) {
-            STATE.prep.date = iso(-(70 - back * 7));
-            STATE.footLog = [];
-            const free = wk();
-            if (free.climbing !== 'distance') continue;
-            STATE.footLog = [{ date: iso(0), state: 'hotspot' }];
-            return { free, held: wk() };
-          }
-          return null;
-        })();
-        STATE.prep.date = iso(-70);
+        /* WALK THE BLOCK BY planFrom, NOT BY THE TEST DATE. prepWeekNo() counts
+           forward from planFrom, so moving prep.date changes how much time is
+           LEFT and never advances the week — the first version searched that
+           axis, found one week labelled 'distance' by an accident of the taper
+           boundary, and that week's slot happened to BE the load slot. So the
+           mutant that holds only the load escaped: `climbing==='distance'` does
+           not imply the slot is not the load slot.
+
+           And one week is not enough. The sweep walks twenty and requires that
+           EVERY distance week is held, which is the property the feature
+           claims. */
+        const keepFrom = STATE.prep.planFrom;
+        out.walk = [];
+        for (let back = 0; back < 20; back++) {
+          STATE.prep.planFrom = iso(7 + back * 7);
+          STATE.footLog = [];
+          const free = wk();
+          STATE.footLog = [{ date: iso(0), state: 'hotspot' }];
+          const held = wk();
+          out.walk.push({ free: free.climbing, freeKm: free.km, heldKm: held.km,
+                          freeLb: free.lb, heldLb: held.lb, heldClimb: held.climbing });
+        }
+        STATE.prep.planFrom = keepFrom;
+        const dist = out.walk.filter(x => x.free === 'distance');
+        const load = out.walk.filter(x => x.free === 'load');
+        out.distWeek = dist.length ? { free: { climbing: 'distance', km: dist[0].freeKm },
+                                       held: { climbing: dist[0].heldClimb, km: dist[0].heldKm } } : null;
+        out.sweep = { distWeeks: dist.length, loadWeeks: load.length,
+                      everyDistanceHeld: dist.length > 0 && dist.every(x => x.heldKm < x.freeKm && x.heldClimb === 'foot'),
+                      everyLoadHeld: load.length > 0 && load.every(x => x.heldLb < x.freeLb && x.heldClimb === 'foot') };
 
         // a blister holds as well as a hot spot
         STATE.footLog = [{ date: iso(0), state: 'blister' }]; out.blister = wk();
@@ -6677,6 +6695,23 @@ export default async function () {
         logFootCheck('clear');
         out.promptAfterCheck = footPromptDue();
         out.clearLogged = footHold() === false;
+
+        /* THE TAPER KEEPS ITS OWN HEADLINE AND THE NOTE STILL SHOWS. `climbing`
+           is overwritten to 'taper' after the loop — v371's call, because the
+           taper is the bigger truth about the week — so a note gated on
+           climbing==='foot' would go SILENT in the taper, which is exactly the
+           fortnight an athlete most needs to arrive with intact feet. It is
+           gated on footHold() instead, and this pins that. */
+        const keepDate2 = STATE.prep.date;
+        STATE.prep.date = iso(-7);
+        STATE.footLog = []; normalizeState();
+        const tFree = ruckLadderWeek();
+        STATE.footLog = [{ date: iso(0), state: 'blister' }];
+        const tHeld = ruckLadderWeek();
+        out.taper = { phase: tFree.phase, freeClimb: tFree.climbing, heldClimb: tHeld.climbing,
+                      heldHold: tHeld.footHold, noteShows: /data-footholdnote/.test(ruckLadderHTML()),
+                      kmNotRaised: tHeld.km <= tFree.km };
+        STATE.prep.date = keepDate2;
 
         /* WHERE EACH HALF LIVES. The first version put the whole thing on the
            ruck LADDER card, which renders inside the prep sheet — a screen the
@@ -6729,15 +6764,16 @@ export default async function () {
     t.ok('guard: the block built a ladder that is genuinely climbing', !r.threw
       && r.clean && r.clean.km > 0 && ['load', 'distance'].indexOf(r.clean.climbing) >= 0,
       r.threw || JSON.stringify(r.clean));
-    t.ok('guard: a distance week was found to test the other half on',
-      !!r.distWeek && r.distWeek.free.climbing === 'distance', JSON.stringify(r.distWeek));
+    t.ok('guard: the walk found both kinds of week to test on',
+      r.sweep.distWeeks >= 3 && r.sweep.loadWeeks >= 3, JSON.stringify(r.sweep));
 
     t.ok('a hot spot stops the load step on a load week',
       r.loadWeek.held.lb < r.loadWeek.free.lb && r.loadWeek.held.climbing === 'foot',
       JSON.stringify(r.loadWeek));
-    t.ok('and it stops the distance on a distance week',
-      r.distWeek.held.km < r.distWeek.free.km && r.distWeek.held.climbing === 'foot',
-      JSON.stringify(r.distWeek));
+    t.ok('and it stops the distance on EVERY distance week across the block',
+      r.sweep.everyDistanceHeld === true, JSON.stringify(r.sweep));
+    t.ok('and the load on every load week',
+      r.sweep.everyLoadHeld === true, JSON.stringify(r.sweep));
     t.ok('neither variable moves while it holds — it is not a swap',
       r.loadWeek.held.km === r.loadWeek.free.km && r.distWeek.held.lb === r.distWeek.free.lb,
       JSON.stringify({ load: r.loadWeek, dist: r.distWeek }));
@@ -6762,6 +6798,12 @@ export default async function () {
     t.ok('and it stops asking once it has been answered',
       r.promptAfterCheck === false && r.clearLogged === true, JSON.stringify(r));
 
+    t.ok('guard: the taper case really is in the taper', r.taper.phase === 'taper', JSON.stringify(r.taper));
+    t.ok('the taper keeps its own headline rather than being relabelled',
+      r.taper.freeClimb === 'taper' && r.taper.heldClimb === 'taper', JSON.stringify(r.taper));
+    t.ok('but the hold note still shows there, and nothing is raised',
+      r.taper.heldHold === true && r.taper.noteShows === true && r.taper.kmNotRaised === true,
+      JSON.stringify(r.taper));
     t.ok('the check sits where the ruck is logged, not on the plan',
       r.where.pickerOnRuckBlock && r.where.noPickerOnPlan, JSON.stringify(r.where));
     t.ok('and the plan carries a note explaining why nothing is climbing',
