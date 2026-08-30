@@ -9069,6 +9069,11 @@ names the destination and the destination really carries the control, which is
 the v315 rule. And a floor pins that an athlete with no test date gets an empty
 ladder and a working check.
 
+**Twenty-one mutants, all caught** — after the check rewrite below. Every fix
+has its over-eager twin beside it: silence read as a blister, a clear check
+that never releases, the hold applied to every week, the note shown to
+everyone, and a repair that drops every row.
+
 ### The escaped mutant, and the axis the check was searching
 
 One mutant escaped: **the hold stops the load and lets the distance climb** —
