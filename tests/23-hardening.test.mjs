@@ -6866,6 +6866,48 @@ export default async function () {
         && tap.afterClear.hold === false && tap.afterClear.noteGone === true,
       JSON.stringify(tap.afterClear));
 
+    /* A NEW STATE FIELD GETS A ROUND-TRIP CHECK OF ITS OWN — that is precisely
+       how v336's lost API key was found. A foot-check history describes the
+       athlete, so it belongs in a backup and is deliberately NOT in
+       TRANSIENT_KEYS; and the HOLD has to survive the restore, or an athlete
+       who reinstalls mid-blister silently gets their ladder climbing again. */
+    const trip = await page.evaluate(() => {
+      const out = {}, ce = console.error; console.error = () => {};
+      try {
+        const iso = d => { const x = new Date(Date.now() - d * 86400000);
+          return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+        const keep = JSON.parse(JSON.stringify(STATE));
+        STATE.footLog = [{ date: iso(2), state: 'hotspot' }, { date: iso(1), state: 'clear' },
+                         { date: iso(0), state: 'blister' }];
+        save();
+        out.before = { log: JSON.stringify(STATE.footLog), hold: footHold() };
+        const clone = JSON.parse(JSON.stringify(STATE));
+        if (clone.settings) { delete clone.settings.azureKey; delete clone.settings.foodAiKey; }
+        TRANSIENT_KEYS.forEach(k => { delete clone[k]; });
+        out.inBackup = JSON.stringify(clone.footLog);
+        STATE = DEFAULT_STATE(); normalizeState();
+        out.afterReset = STATE.footLog === undefined ? 'absent' : JSON.stringify(STATE.footLog);
+        STATE = Object.assign(DEFAULT_STATE(), clone);
+        STATE.settings = Object.assign(DEFAULT_STATE().settings, clone.settings || {});
+        STATE.profile = Object.assign(DEFAULT_STATE().profile, clone.profile || {});
+        STATE.nutrition = Object.assign(DEFAULT_STATE().nutrition, clone.nutrition || {});
+        normalizeState();
+        out.after = { log: JSON.stringify(STATE.footLog), hold: footHold() };
+        STATE = keep; normalizeState(); save();
+      } catch (e) { out.threw = String(e && e.message || e); }
+      console.error = ce; return out;
+    });
+    t.ok('guard: the round trip started from three real checks and a live hold',
+      !trip.threw && trip.before && trip.before.hold === true
+        && (trip.before.log.match(/date/g) || []).length === 3,
+      trip.threw || JSON.stringify(trip.before));
+    t.eq('the foot log travels in a backup', trip.inBackup, trip.before.log);
+    t.eq('a fresh install has no checks at all', trip.afterReset, 'absent');
+    t.eq('and a restore brings every row back unchanged', trip.after.log, trip.before.log);
+    /* The hold is the consequential half: an athlete who reinstalls mid-blister
+       must not find their ladder quietly climbing again. */
+    t.ok('with the hold still standing afterwards', trip.after.hold === true, JSON.stringify(trip.after));
+
     t.eq('the repair keeps a real check and drops every junk row',
       r.repaired, '[{"date":"' + new Date(Date.now() - 86400000).toISOString().slice(0, 10) + '","state":"blister"}]');
     t.ok('a log that is not a list is dropped', r.strDropped === true, r.strDropped);
