@@ -8982,6 +8982,79 @@ that never re-derived left it equal and walked straight through. It seeds a
 **wrong** figure beside a valid level now, and requires the repair to correct
 it.
 
+## Feet are part of the standard, and the ladder was not reading them (v392)
+
+From the athlete's own preparation package, section 5 — *"RUCKING, FEET & BOOT
+READINESS"*. Its weekly self-check asks *"Any blister/hotspot not resolving
+before next ruck?"*, and its readiness table grades rucking **green only when
+the distance is achieved with feet intact**; *"distance achieved with
+hotspots/aches"* is amber and *"pain, limp, recurrent blisters"* is red.
+
+**Measured before building any of it.** Across **619k characters** of
+athlete-visible copy the app said:
+
+| word | occurrences |
+|---|---|
+| blister, hot spot, insole, toenail, chafe, break-in | **0** |
+| boot | 8 — every one the software boot path |
+| sock | 1 — a WebSocket comment |
+| lace | 2 — hands laced behind the head |
+
+The app schedules rucks up to 25 km a week and said nothing about the one thing
+that ends a march.
+
+### The point is the ladder, not the checklist
+
+A kit list would have been a wall of text. What makes this a feature is that
+**v326's ruck ladder raises distance or load every week and read nothing about
+the athlete's feet.** An unresolved hot spot now holds it — the same shape
+`painPattern()` already gives the day-90 frequency row, and the same
+conservative direction as the 10% cap.
+
+Measured on a real block, mid-way:
+
+| week | free | held |
+|---|---|---|
+| a LOAD week | 35 lb | **30 lb** — the step is skipped |
+| a DISTANCE week | 13.3 km | **12.1 km** — the ramp is skipped |
+
+**Both kinds of week had to be driven.** The first week the probe found was a
+load week, where the hold skipping the load step proves nothing about the
+distance — a hold that stopped only one of them would pass every assertion
+about the first. The check walks the block until a distance week turns up and
+holds that one too, with a guard that it really found one.
+
+### Positive evidence only, and the floor that says so
+
+**Silence is not a blister.** An athlete who has never opened this must not have
+their plan held for it, so the hold requires the latest check to say hot spot or
+blister — the same call `painPattern()` makes about pain reports, and the
+opposite of this file's usual fail-closed rule for a reason: the cost of
+wrongly holding is a plan that never climbs for everybody.
+
+**No invented staleness window either.** The latest check counts, full stop; an
+athlete who logged a blister and stopped logging is one tap from releasing it,
+and the card says exactly that. The mutant that never releases on a clear check
+is caught, and so is the one that reads silence as a blister.
+
+**The latest is by DATE, not by position.** Rows are appended and a backup can
+carry them in any order, so a check pins that a file listing them backwards
+still reads the newest.
+
+**It holds only the CURRENT week.** The loop walks the history the athlete has
+already done; rewriting that would be a different bug. The mutant that applies
+the hold to every week is caught.
+
+### The prompt fires where the package says to inspect
+
+*"Inspect after every ruck"* — so `footPromptDue()` fires on a day a ruck was
+actually logged and stops once it is answered. A prompt that appears every day
+is a prompt nobody reads, and both mutants (always fire, never stop) are caught.
+
+The foot-care kit is the package's own eight items, stamped with `DAY90_SRC`
+and `DAY90_ASOF` for the same reason every other figure from it is: a published
+list shown with confidence that has gone stale is worse than none.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

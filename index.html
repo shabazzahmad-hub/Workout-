@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='391';
+const APP_VERSION='392';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4837,11 +4837,19 @@ function ruckLadderWeek(raw){
   const peak=prepPeak(startKm,PREP_RUCK_PEAK_KM);
   let km=startKm, lb=startLb, climbing='distance', down=false, capped=false, took=0;
   const raise=()=>{if(lb+PREP_RUCK_STEP_LB<=ceil){lb+=PREP_RUCK_STEP_LB;took++;}else capped=true;};
+  /* AN UNRESOLVED HOT SPOT HOLDS THIS WEEK, and only this week — the history
+     the loop walks is what the athlete has already done, so the hold applies to
+     the CURRENT week's prescription rather than rewriting the ladder behind it.
+     Both variables stay put: the package's rule is that how the feet, shins and
+     back feel the next morning decides whether load goes up, and a blister is
+     that answer in its plainest form. */
+  const hold=(()=>{try{return footHold();}catch(e){return false;}})();
   for(let w=2;w<=wk;w++){
     const slot=((w-1)%4)+1;                       // one slot raises load · slot 4 is the down week
     const inTaper=w>=taperFrom;
     if(slot===4){down=true;climbing='neither';continue;}
     down=false;
+    if(w===wk&&hold){climbing='foot';continue;}
     if(slot===loadSlot&&!inTaper&&took<wantSteps){
       climbing='load';raise();
     }else{
@@ -4878,7 +4886,7 @@ function ruckLadderWeek(raw){
   const footFrom=fit?fit.from:null, footStep=fit?fit.step:null;
   const footNew=fit?fit.newMode:null, footAdded=fit?fit.added:0;
   const footBig=!!(fit&&fit.big);
-  return {left,phase,wk,down,capped,climbing,footTotal,footFrom,footStep,footBig,footNew,footAdded,
+  return {left,phase,wk,down,capped,climbing,footHold:hold,footTotal,footFrom,footStep,footBig,footNew,footAdded,
     km:rShown,curve:Math.round(km*10)/10,lb,ceil,
     atPeak:wk>1&&km>=peak-0.05,peak:Math.round(peak*10)/10,
     startKm:Math.round(startKm*10)/10,startLb,
@@ -5349,10 +5357,102 @@ function enduranceHTML(){
 /* The ruck half. It used to be a sentence of guidance under the running plan —
    "build the distance or the load, never both" — with nothing scheduling it,
    which is the same countdown-not-a-plan gap prep.date had. */
+/* ---- feet and boot readiness ----------------------------------------------
+   The athlete's own preparation package devotes a section to this — "5.
+   RUCKING, FEET & BOOT READINESS" — and its weekly self-check asks *"Any
+   blister/hotspot not resolving before next ruck?"*. Its readiness table grades
+   rucking as green only when the distance is achieved **with feet intact**;
+   "distance achieved with hotspots/aches" is amber and "pain, limp, recurrent
+   blisters" is red. So feet are part of the standard, not a footnote.
+
+   Measured before building any of it: across 619k characters of athlete-visible
+   copy the app said **blister 0, hotspot 0, insole 0, toenail 0, chafe 0,
+   break-in 0** — every "boot" in the source is the software boot path, "sock"
+   is a WebSocket comment and "lace" is hands behind the head. The app schedules
+   rucks up to 25 km a week and said nothing about the one thing that ends a
+   ruck march.
+
+   THE POINT OF IT IS THE LADDER, NOT THE CHECKLIST. v326's ruck ladder raises
+   distance or load every week and read nothing about the athlete's feet. An
+   unresolved hotspot holds it — the same shape painPattern() already gives the
+   day-90 frequency row, and the same conservative direction as the 10% cap. */
+const FOOT_STATES=[['clear','Feet fine'],['hotspot','Hot spot'],['blister','Blister']];
+const FOOT_KEYS=FOOT_STATES.map(x=>x[0]);
+function footStateOk(v){return FOOT_KEYS.indexOf(v)>=0;}
+function footStateLabel(v){const r=FOOT_STATES.filter(x=>x[0]===v)[0];return r?r[1]:'';}
+const FOOT_LOG_MAX=200;
+function footLog(){if(!Array.isArray(STATE.footLog))STATE.footLog=[];return STATE.footLog;}
+/* The most recent check BY DATE, not by position: rows are appended, and a
+   backup can carry them in any order. */
+function footLatest(){
+  try{
+    const rows=footLog().filter(r=>r&&isDateISO(r.date)&&footStateOk(r.state));
+    if(!rows.length)return null;
+    return rows.slice().sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0)[0];
+  }catch(e){return null;}
+}
+/* POSITIVE EVIDENCE ONLY. Silence is not a blister — an athlete who has never
+   opened this must not have their plan held for it, which is the same call
+   painPattern() makes about pain reports. The latest check is what counts, with
+   no invented staleness window: an athlete who logged a blister and stopped
+   logging is one tap from releasing it, and the card says so. */
+function footHold(){const f=footLatest();return !!(f&&f.state!=='clear');}
+function logFootCheck(state){
+  if(!footStateOk(state)){toast('Pick how your feet are');return;}
+  const d=todayISO(), log=footLog();
+  const i=log.findIndex(r=>r&&r.date===d);
+  const row={date:d,state:state};
+  if(i>=0)log[i]=row;else log.push(row);
+  if(log.length>FOOT_LOG_MAX)STATE.footLog=log.slice(-FOOT_LOG_MAX);
+  save();
+  toast(state==='clear'?'Feet logged \u2014 clear \u2705':'Logged. Treat it before the next ruck.');
+  try{repaintMovement();}catch(e){}
+  try{if(document.querySelector('#sheet'))openForcePrep();}catch(e){}
+}
+function footCheckedToday(){const d=todayISO();return footLog().some(r=>r&&r.date===d);}
+/* Fires only on a day a ruck was actually logged, because that is when the
+   package says to inspect ("Inspect after every ruck"). A prompt that appears
+   every day is a prompt nobody reads. */
+function footPromptDue(){
+  try{
+    if(footCheckedToday())return false;
+    const t=(STATE.nutrition.days||{})[todayISO()];
+    return !!(t&&_dayRuckKm(t)>0);
+  }catch(e){return false;}
+}
+function footPickerHTML(){
+  return `<div class="daypick" style="flex-wrap:wrap;margin:6px 0 0">${FOOT_STATES.map(x=>
+    `<button data-foot="${_ve(x[0])}" onclick="logFootCheck('${_ve(x[0])}')">${_ve(x[1])}</button>`).join('')}</div>`;
+}
+function footCheckHTML(){
+  const f=footLatest();
+  if(footPromptDue())return `<div class="note warn" style="margin:10px 0 0" data-footprompt="1">
+    <b>You rucked today \u2014 check your feet.</b> Hot spots are solved by stopping, drying the skin and fixing the sock or boot fit. Left alone they are blisters, and a blister is what ends a march.
+    ${footPickerHTML()}</div>`;
+  if(footHold())return `<div class="note fire" style="margin:10px 0 0" data-foothold="1">
+    <b>${_ve(footStateLabel(f.state))} logged ${_ve(f.date)} \u2014 the ruck ladder is holding.</b> Distance and load both stay where they are until it clears. Treat it, then log a clear check to release the plan.
+    ${footPickerHTML()}</div>`;
+  return '';
+}
+/* Straight from the package's own "Foot-care kit for training" list. Stamped
+   with the same source and date as the day-90 board, for the same reason. */
+const FOOT_KIT=['Moisture-wicking socks','Thin liner socks, if they suit your feet',
+  'Blister tape or leukotape','Small scissors','Foot powder, if it suits you',
+  'Moleskin or hydrocolloid blister dressings','Spare dry socks in a waterproof bag',
+  'Nail clippers and a file'];
+function footKitHTML(){
+  return `<div class="section-label" style="margin-top:14px">Foot-care kit</div>
+    <div class="card pad" data-footkit="1">
+      <div class="tiny muted" style="margin-bottom:8px">Carried on every ruck. From ${_ve(DAY90_SRC)} (${_ve(DAY90_ASOF)}).</div>
+      ${FOOT_KIT.map(x=>`<div class="kv"><span>${_ve(x)}</span></div>`).join('')}
+      <div class="tiny muted" style="margin-top:10px">Treat a hot spot the moment you feel it: stop, dry the area, adjust the sock or boot fit, and cover the skin. Do not walk it out.</div>
+    </div>`;
+}
 function ruckLadderHTML(){
   const w=ruckLadderWeek();
   if(w.noDate)return '';
   const moving=w.down?'Nothing — this is the down week.'
+    :w.climbing==='foot'?'Nothing. Your last foot check was not clear, so the <b>distance and the load both hold</b> until it is.'
     :w.climbing==='taper'?'Nothing is being built. The <b>volume comes down</b> and the load holds — the last weeks are for arriving fresh under it, not for one more hard week.'
     :(w.climbing==='load'
       ? (w.capped
@@ -5369,6 +5469,7 @@ function ruckLadderHTML(){
         <div class="tiny muted">this week</div></div>
     </div>
     ${footLoadHTML(w)}
+    ${footCheckHTML()}
     <div class="note ${w.down?'ok':'info'}" style="margin:10px 0 0"><b>What moves this week:</b> ${moving}</div>
     ${w.capped?`<div class="note warn" style="margin:10px 0 0"><b>The load stops here at ${_ve(String(w.ceil))} lb.</b> That is about a third of your bodyweight, which is the far end of what rucking guidance asks for. ${w.atPeak?'The distance has reached its ceiling too, so nothing further is added.':'From here the distance carries the progression.'} You can carry more if you choose to — the app will not add it for you.</div>`:''}
     ${(w.atPeak&&!w.capped)?`<div class="note info" style="margin:10px 0 0"><b>The distance has reached its ceiling.</b> It holds at ${_ve(distShow(w.peak))} a week from here. Loaded distance tops out far lower than unloaded, and this is already past the ${_ve(distShow(5))} march the standard asks for.</div>`:''}
@@ -5534,6 +5635,7 @@ function openForcePrep(){
     ${wk!==null?`<div class="note fire"><b>${wk>0?wk+' week'+(wk===1?'':'s')+' to go':(wk===0?'This week':'Your test date has passed')}</b>${wk>0?' — that is what the build is paced to.':''}</div>`:''}
     <div class="card pad">${rows}</div>
     ${day90HTML()}
+    ${footKitHTML()}
     ${prepMidHTML()}
     ${prepPathHTML()}
     ${forceKitHTML()}
@@ -20923,6 +21025,18 @@ function normalizeState(){
      mangled key is not a key. */
   ['foodAiKey','azureKey','azureRegion'].forEach(k=>{
     if(STATE.settings[k]!==undefined&&typeof STATE.settings[k]!=='string')delete STATE.settings[k];});
+  /* The foot-check log. Same shape as the five activity logs: a date the app
+     does arithmetic on, a state that reaches innerHTML and decides whether the
+     ruck ladder climbs. Membership on the state, a real date, and the row goes
+     rather than being guessed at — a check whose state cannot be read is not a
+     check. Absent stays absent: footLog() creates it on first write. */
+  if(STATE.footLog!==undefined){
+    if(!Array.isArray(STATE.footLog))delete STATE.footLog;
+    else STATE.footLog=STATE.footLog
+      .filter(r=>r&&typeof r==='object'&&!Array.isArray(r)&&isDateISO(r.date)&&footStateOk(r.state))
+      .map(r=>({date:r.date,state:r.state}))
+      .slice(-FOOT_LOG_MAX);
+  }
   {const P3=STATE.profile;
    /* '1900-01-01' is a perfectly valid past date and reported 6608 weeks,
       firing the banner permanently with a figure nobody can act on. Bounding

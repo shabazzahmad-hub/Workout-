@@ -6581,6 +6581,155 @@ export default async function () {
     }
   }
 
+
+  /* ---- v392: feet and boot readiness, and the ladder that reads them -----
+     From the athlete's own preparation package, section 5 "RUCKING, FEET &
+     BOOT READINESS". Its weekly self-check asks "Any blister/hotspot not
+     resolving before next ruck?" and its readiness table grades rucking green
+     only when the distance is achieved WITH FEET INTACT. So feet are part of
+     the standard, not a footnote.
+
+     Measured before building any of it: across 619k characters of
+     athlete-visible copy the app said blister 0, hotspot 0, insole 0, toenail
+     0, chafe 0, break-in 0 — every "boot" in the source was the software boot
+     path. It schedules rucks up to 25 km a week and said nothing about the one
+     thing that ends a march.
+
+     THE POINT IS THE LADDER, NOT THE CHECKLIST. v326's ruck ladder raises
+     distance or load every week and read nothing about the athlete's feet. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {}, ce = console.error;
+      console.error = () => {};
+      try {
+        const iso = d => { const x = new Date(Date.now() - d * 86400000);
+          return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+        const keep = { prep: STATE.prep, days: STATE.nutrition.days, foot: STATE.footLog };
+        STATE.prep = { date: iso(-70), planFrom: iso(35), path: 'operator', results: {} };
+        STATE.nutrition.days = {};
+        const D = STATE.nutrition.days;
+        for (let w = 0; w < 4; w++) for (let d = 0; d < 2; d++)
+          D[iso(w * 7 + d)] = { opened: true, ruckVal: 5, ruckUnit: 'dist', ruckLvl: 'brisk', ruckLb: 25 };
+        STATE.footLog = []; normalizeState();
+        const wk = () => { const w = ruckLadderWeek();
+          return { km: w.km, lb: w.lb, climbing: w.climbing, hold: w.footHold }; };
+
+        out.clean = wk();
+        /* BOTH KINDS OF WEEK. A load week only proves the load step is skipped;
+           the distance is what the OTHER kind of week moves, and a hold that
+           only stopped one of them would pass every assertion about the first. */
+        out.loadWeek = { free: out.clean };
+        STATE.footLog = [{ date: iso(0), state: 'hotspot' }];
+        out.loadWeek.held = wk();
+        out.distWeek = (() => {
+          for (let back = 0; back < 12; back++) {
+            STATE.prep.date = iso(-(70 - back * 7));
+            STATE.footLog = [];
+            const free = wk();
+            if (free.climbing !== 'distance') continue;
+            STATE.footLog = [{ date: iso(0), state: 'hotspot' }];
+            return { free, held: wk() };
+          }
+          return null;
+        })();
+        STATE.prep.date = iso(-70);
+
+        // a blister holds as well as a hot spot
+        STATE.footLog = [{ date: iso(0), state: 'blister' }]; out.blister = wk();
+        // logging clear RELEASES it
+        STATE.footLog = [{ date: iso(1), state: 'blister' }, { date: iso(0), state: 'clear' }];
+        out.released = wk();
+        // the latest is by DATE, not by position — a backup can carry any order
+        STATE.footLog = [{ date: iso(0), state: 'clear' }, { date: iso(1), state: 'blister' }];
+        out.reordered = wk();
+        /* FLOOR: silence is not a blister. An athlete who has never opened this
+           must not have their plan held for it — positive evidence only, the
+           same call painPattern() makes about pain reports. */
+        STATE.footLog = []; out.neverLogged = wk();
+
+        // the prompt fires on a ruck day, and stops once the check is logged
+        delete D[iso(0)];
+        out.promptNoRuck = footPromptDue();
+        D[iso(0)] = { opened: true, ruckVal: 5, ruckUnit: 'dist', ruckLvl: 'brisk', ruckLb: 25 };
+        out.promptAfterRuck = footPromptDue();
+        logFootCheck('clear');
+        out.promptAfterCheck = footPromptDue();
+        out.clearLogged = footHold() === false;
+
+        // what the card actually says
+        STATE.footLog = [{ date: iso(0), state: 'hotspot' }];
+        const h = ruckLadderHTML();
+        out.card = { hold: /data-foothold/.test(h),
+                     saysBothHold: /distance and the load both hold/i.test(h),
+                     saysRelease: /log a clear check/i.test(h) };
+        STATE.footLog = []; D[iso(0)].ruckVal = 5;
+        const h2 = ruckLadderHTML();
+        out.quiet = { noHoldNote: !/data-foothold/.test(h2) };
+        out.kit = { marked: /data-footkit/.test(footKitHTML()),
+                    items: (footKitHTML().match(/class="kv"/g) || []).length,
+                    stamped: footKitHTML().indexOf(DAY90_ASOF) >= 0 };
+
+        // the boot repair
+        STATE.footLog = [{ date: 'abc', state: 'clear' }, { date: iso(0), state: 'nosuch' },
+                         { date: iso(1), state: 'blister' }, 'junk', { date: iso(2) }];
+        normalizeState();
+        out.repaired = JSON.stringify(STATE.footLog);
+        STATE.footLog = 'x'; normalizeState(); out.strDropped = STATE.footLog === undefined;
+        delete STATE.footLog; normalizeState(); out.absent = ('footLog' in STATE) ? 'INVENTED' : 'absent';
+
+        STATE.prep = keep.prep; STATE.nutrition.days = keep.days;
+        if (keep.foot === undefined) delete STATE.footLog; else STATE.footLog = keep.foot;
+        save();
+      } catch (e) { out.threw = String(e && e.message || e); }
+      console.error = ce;
+      return out;
+    });
+
+    t.ok('guard: the block built a ladder that is genuinely climbing', !r.threw
+      && r.clean && r.clean.km > 0 && ['load', 'distance'].indexOf(r.clean.climbing) >= 0,
+      r.threw || JSON.stringify(r.clean));
+    t.ok('guard: a distance week was found to test the other half on',
+      !!r.distWeek && r.distWeek.free.climbing === 'distance', JSON.stringify(r.distWeek));
+
+    t.ok('a hot spot stops the load step on a load week',
+      r.loadWeek.held.lb < r.loadWeek.free.lb && r.loadWeek.held.climbing === 'foot',
+      JSON.stringify(r.loadWeek));
+    t.ok('and it stops the distance on a distance week',
+      r.distWeek.held.km < r.distWeek.free.km && r.distWeek.held.climbing === 'foot',
+      JSON.stringify(r.distWeek));
+    t.ok('neither variable moves while it holds — it is not a swap',
+      r.loadWeek.held.km === r.loadWeek.free.km && r.distWeek.held.lb === r.distWeek.free.lb,
+      JSON.stringify({ load: r.loadWeek, dist: r.distWeek }));
+    t.ok('a blister holds it the same way', r.blister.climbing === 'foot' && r.blister.hold === true,
+      JSON.stringify(r.blister));
+    t.ok('logging a clear check releases the plan',
+      r.released.hold === false && r.released.climbing !== 'foot', JSON.stringify(r.released));
+    t.ok('and the latest check is the one by DATE, not by position in the file',
+      r.reordered.hold === false, JSON.stringify(r.reordered));
+    /* FLOOR: a hold that fired on silence would stop every athlete's plan
+       climbing for a feature they never opened. */
+    t.ok('an athlete who has never logged a check is never held',
+      r.neverLogged.hold === false && r.neverLogged.climbing !== 'foot', JSON.stringify(r.neverLogged));
+
+    t.ok('the check is asked on a day a ruck was logged, and not otherwise',
+      r.promptNoRuck === false && r.promptAfterRuck === true, JSON.stringify(r));
+    t.ok('and it stops asking once it has been answered',
+      r.promptAfterCheck === false && r.clearLogged === true, JSON.stringify(r));
+
+    t.ok('the card names the hold and says both halves are held',
+      r.card.hold && r.card.saysBothHold, JSON.stringify(r.card));
+    t.ok('and says what releases it', r.card.saysRelease, JSON.stringify(r.card));
+    /* A note that always fires is a note nobody reads. */
+    t.ok('while a clean athlete gets no hold note at all', r.quiet.noHoldNote, JSON.stringify(r.quiet));
+    t.ok('the foot-care kit is the package’s own list, stamped like every other figure from it',
+      r.kit.marked && r.kit.items === 8 && r.kit.stamped, JSON.stringify(r.kit));
+
+    t.eq('the repair keeps a real check and drops every junk row',
+      r.repaired, '[{"date":"' + new Date(Date.now() - 86400000).toISOString().slice(0, 10) + '","state":"blister"}]');
+    t.ok('a log that is not a list is dropped', r.strDropped === true, r.strDropped);
+    t.ok('and no log is invented for an athlete who never checked', r.absent === 'absent', r.absent);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
