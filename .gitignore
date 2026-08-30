@@ -23,6 +23,12 @@ package-lock.json
 # into a release commit. The glob is deliberately loose for that reason.
 /*probe*.mjs
 /*.probe.mjs
+# ...and it happened again, because the next scratch script was named p_foot.mjs
+# rather than probe-foot.mjs. The glob was loose for probe names and covered
+# nothing else, which is the same shape as a rule written for one instance
+# instead of the class. `p_` is the other name people reach for.
+/p_*.mjs
+/p_*.png
 # Screenshots a probe takes while investigating are the same kind of scratch.
 /*probe*.png
 /probe*.jpg

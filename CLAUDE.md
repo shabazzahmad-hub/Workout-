@@ -8920,6 +8920,52 @@ below. Every fix has its over-eager twin seeded beside it, and the credential
 one is the sharpest in the app: a repair that dropped a REAL key destroys the
 only thing a backup cannot restore.
 
+### The promise sweep, re-run across the newest surfaces
+
+v355 swept every promise sentence once; v381-v391 added a lot of copy since.
+Re-run: **39 promise sentences across 27 surfaces** (six tabs, all four Today
+panes, all four Progress panes, both Reference panes, twelve sheets), extracted
+by pattern — *never / always / will / won't / keeps / stays / counts / does
+not / cannot*. **Every testable one is backed.**
+
+The two worth recording, because both are claims a check can make:
+
+- *"Special training ▸ Hold to failure…"* is a tab POINTER, this repo's
+  recurring stale-address class. Asserted BOTH ways: the button really is
+  inside `openSpecial()`.
+- *"Bonus conditioning… it won't affect your plan or streak."* Driven: a
+  Special format run to completion on its own ticks leaves the pointer, the
+  training streak, the nutrition streak, the trained-today flag, the log count
+  and the live resume all identical.
+
+**And the first run of that second measurement proved nothing** — the seeded
+athlete's streak was **0** before and after, so "unchanged" was two zeroes
+agreeing. Seeded with five real training days and five logged food days it
+reads **5 before and 5 after**, with a guard that the figures are non-zero and
+a control that the snapshot sees a change when one is made.
+
+Two probe errors on the way, the usual ratio: `streakDays()` and
+`openHoldTest()` do not exist — the real names are `computeStreak()` and
+`openHoldTests()`.
+
+### The class is now closed at all three levels
+
+- **Level 1**, top-level fields — v390, eight fixed.
+- **Level 2**, nested fields — this round, four fixed and nine measured safe.
+- **Level 3**, the entries INSIDE those containers — **288 cases, zero
+  problems**: every field of a day entry (including all five cardio modes'
+  value/level/unit triples), a food row, a session log, a measurement, a
+  score-history row, a hold record and the prep block, each fuzzed with six
+  junk shapes, then booted and rendered across five tabs. Already covered by
+  v353's per-mode day repair, v356's log dates, v346's food row and v374's
+  photos.
+
+**And that sweep's detector was proven both ways before the zero was
+believed** — a renderer was stubbed to throw, the sweep reported the boundary,
+and it cleared when the stub was removed. An id sweep earlier the same day
+reported zero with a detector that could not see a problem at all, which is why
+this is the standing rule rather than a note.
+
 **And nine of the fourteen nested fields were driven and are genuinely safe**,
 which is the other half of the sweep: `beatTempoPref()` clamps its own read,
 `skipLevel` does a membership test at its read site, and the booleans
@@ -8935,6 +8981,182 @@ The re-derivation check wrote `goalBodyFat = levelBF(4)` before calling
 that never re-derived left it equal and walked straight through. It seeds a
 **wrong** figure beside a valid level now, and requires the repair to correct
 it.
+
+## Feet are part of the standard, and the ladder was not reading them (v392)
+
+From the athlete's own preparation package, section 5 — *"RUCKING, FEET & BOOT
+READINESS"*. Its weekly self-check asks *"Any blister/hotspot not resolving
+before next ruck?"*, and its readiness table grades rucking **green only when
+the distance is achieved with feet intact**; *"distance achieved with
+hotspots/aches"* is amber and *"pain, limp, recurrent blisters"* is red.
+
+**Measured before building any of it.** Across **619k characters** of
+athlete-visible copy the app said:
+
+| word | occurrences |
+|---|---|
+| blister, hot spot, insole, toenail, chafe, break-in | **0** |
+| boot | 8 — every one the software boot path |
+| sock | 1 — a WebSocket comment |
+| lace | 2 — hands laced behind the head |
+
+The app schedules rucks up to 25 km a week and said nothing about the one thing
+that ends a march.
+
+### The point is the ladder, not the checklist
+
+A kit list would have been a wall of text. What makes this a feature is that
+**v326's ruck ladder raises distance or load every week and read nothing about
+the athlete's feet.** An unresolved hot spot now holds it — the same shape
+`painPattern()` already gives the day-90 frequency row, and the same
+conservative direction as the 10% cap.
+
+Measured on a real block, mid-way:
+
+| week | free | held |
+|---|---|---|
+| a LOAD week | 35 lb | **30 lb** — the step is skipped |
+| a DISTANCE week | 13.3 km | **12.1 km** — the ramp is skipped |
+
+**Both kinds of week had to be driven.** The first week the probe found was a
+load week, where the hold skipping the load step proves nothing about the
+distance — a hold that stopped only one of them would pass every assertion
+about the first. The check walks the block until a distance week turns up and
+holds that one too, with a guard that it really found one.
+
+### Positive evidence only, and the floor that says so
+
+**Silence is not a blister.** An athlete who has never opened this must not have
+their plan held for it, so the hold requires the latest check to say hot spot or
+blister — the same call `painPattern()` makes about pain reports, and the
+opposite of this file's usual fail-closed rule for a reason: the cost of
+wrongly holding is a plan that never climbs for everybody.
+
+**No invented staleness window either.** The latest check counts, full stop; an
+athlete who logged a blister and stopped logging is one tap from releasing it,
+and the card says exactly that. The mutant that never releases on a clear check
+is caught, and so is the one that reads silence as a blister.
+
+**The latest is by DATE, not by position.** Rows are appended and a backup can
+carry them in any order, so a check pins that a file listing them backwards
+still reads the newest.
+
+**It holds only the CURRENT week.** The loop walks the history the athlete has
+already done; rewriting that would be a different bug. The mutant that applies
+the hold to every week is caught.
+
+### Auditing it an hour later found the placement wrong
+
+The first version put the whole thing — prompt, picker and hold note — on the
+ruck LADDER card. That card renders inside `enduranceHTML()`, which is the
+**prep sheet**. The athlete logs a ruck in **Today ▸ Workout ▸ Movement** and
+has no reason to open that sheet afterwards, so the prompt was sitting on a
+screen nobody would be looking at.
+
+**And it was worse than misplaced.** `ruckLadderWeek()` returns `noDate` with
+no test date, so `ruckLadderHTML()` renders **nothing at all** — an athlete who
+rucks without preparing for FORCE would never have seen any of it, and blisters
+are not prep-specific.
+
+Split the way v311 split the Movement block from its Progress review: **every
+control on the ruck block**, where the ruck is logged and where every rucking
+athlete sees it, and **a note with no controls of its own** on the plan,
+explaining why the week is not climbing. One surface owns the picker, so the
+two can never disagree about what was logged.
+
+**The note names Movement, so the pointer is asserted BOTH ways** — the plan
+names the destination and the destination really carries the control, which is
+the v315 rule. And a floor pins that an athlete with no test date gets an empty
+ladder and a working check.
+
+**Twenty-one mutants, all caught** — after the check rewrite below. Every fix
+has its over-eager twin beside it: silence read as a blister, a clear check
+that never releases, the hold applied to every week, the note shown to
+everyone, and a repair that drops every row.
+
+### The escaped mutant, and the axis the check was searching
+
+One mutant escaped: **the hold stops the load and lets the distance climb** —
+the half-working version of the whole feature. The check aimed at exactly that
+existed and did not catch it, for two compounding reasons.
+
+**It was walking the wrong axis.** `prepWeekNo()` counts forward from
+`planFrom`, so moving `prep.date` changes how much time is LEFT and never
+advances the week. The search moved the date, found one week labelled
+`'distance'` by an accident of the taper boundary, and stopped there.
+
+**And that week's slot happened to BE the load slot.** `climbing==='distance'`
+does not imply the slot is not the load slot: a load-slot week falls through to
+the distance branch once the steps are spent. So on the one week it tested, the
+mutant was equivalent.
+
+Walking twenty real weeks by `planFrom` makes it unmistakable — every distance
+week climbs unheld under the mutant:
+
+```
+1 wk distance 11->11 distance     3 wk distance 12.1->12.1 distance
+5 wk distance 13.3->13.3 distance 7 wk distance 14.6->14.6 distance
+```
+
+**One week is not enough, so the check now requires EVERY distance week to be
+held and every load week too** — which is the property the feature claims, and
+the mutant now fails it by name.
+
+### And a mutation driver running in the background overwrote every manual seed
+
+Half an hour was spent on a mutant that appeared to be equivalent, because
+`mut400.py` was still copying its own clean file over `mut-run/index.html`
+between runs while manual seeds were being written there. The seed printed
+"seeded", the grep afterwards showed the clean line, and the suite result
+belonged to whichever mutant the driver had just written. **Stop the driver
+before seeding by hand**, or seed in a different directory.
+
+### Every unit a ruck can be logged in
+
+`footPromptDue()` reads `_dayRuckKm()`, which converts **minutes and calories**
+as well as distance — a version that only looked at `ruckUnit==='dist'` would
+leave an athlete who logs in minutes with no prompt at all, and nothing else
+here would have noticed. Measured: 8 km, 75 min and 600 kcal all prompt; a day
+with no ruck and a zero-value ruck row both correctly stay silent.
+
+**And the check for it broke a later one, in a way worth recording.** It cleared
+the day map with `STATE.nutrition.days = {}` while the block's own `D` still
+held the OLD object, so every later write landed somewhere detached and the
+prompt check further down failed on correct code. Clear a captured container
+**in place**.
+
+**One deliberate scope line.** `EX.ruck` (Ruck March) exists in the library and
+can appear inside a session, where no `ruckVal` is written and so no prompt
+fires. That is intended: the prompt is tied to a logged ruck with real distance
+or time, which is where foot risk lives, and a ruck march inside a circuit is
+bounded by the session length.
+
+### And the check for it was reading the builder, not the screen
+
+Every assertion in the first block read `ruckBlockHTML()`'s **output**, which
+stays true even if the block is never mounted — the escape this file records
+for the v292 Convert button and four times since. Driving it properly is what
+found the placement defect in the first place: a real tap on a real screen
+returned **0 buttons**.
+
+The block now renders Today, finds the button, **clicks it**, and reads the
+screen back: the row is written, the prompt disappears and the hold note takes
+its place; tapping clear releases it on the same day's row.
+
+**And that probe first measured the WELCOME screen** — the in-page seed does
+not onboard, so the view was 1,098 characters of onboarding step 1. The trap is
+already in this file from the end-of-program probe; the fix is to seed through
+the harness's own `ATHLETE`.
+
+### The prompt fires where the package says to inspect
+
+*"Inspect after every ruck"* — so `footPromptDue()` fires on a day a ruck was
+actually logged and stops once it is answered. A prompt that appears every day
+is a prompt nobody reads, and both mutants (always fire, never stop) are caught.
+
+The foot-care kit is the package's own eight items, stamped with `DAY90_SRC`
+and `DAY90_ASOF` for the same reason every other figure from it is: a published
+list shown with confidence that has gone stale is worse than none.
 
 ## Rendering
 

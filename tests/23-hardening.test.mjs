@@ -6581,6 +6581,339 @@ export default async function () {
     }
   }
 
+
+  /* ---- v392: feet and boot readiness, and the ladder that reads them -----
+     From the athlete's own preparation package, section 5 "RUCKING, FEET &
+     BOOT READINESS". Its weekly self-check asks "Any blister/hotspot not
+     resolving before next ruck?" and its readiness table grades rucking green
+     only when the distance is achieved WITH FEET INTACT. So feet are part of
+     the standard, not a footnote.
+
+     Measured before building any of it: across 619k characters of
+     athlete-visible copy the app said blister 0, hotspot 0, insole 0, toenail
+     0, chafe 0, break-in 0 — every "boot" in the source was the software boot
+     path. It schedules rucks up to 25 km a week and said nothing about the one
+     thing that ends a march.
+
+     THE POINT IS THE LADDER, NOT THE CHECKLIST. v326's ruck ladder raises
+     distance or load every week and read nothing about the athlete's feet. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {}, ce = console.error;
+      console.error = () => {};
+      try {
+        const iso = d => { const x = new Date(Date.now() - d * 86400000);
+          return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+        const keep = { prep: STATE.prep, days: STATE.nutrition.days, foot: STATE.footLog };
+        STATE.prep = { date: iso(-70), planFrom: iso(35), path: 'operator', results: {} };
+        STATE.nutrition.days = {};
+        const D = STATE.nutrition.days;
+        for (let w = 0; w < 4; w++) for (let d = 0; d < 2; d++)
+          D[iso(w * 7 + d)] = { opened: true, ruckVal: 5, ruckUnit: 'dist', ruckLvl: 'brisk', ruckLb: 25 };
+        STATE.footLog = []; normalizeState();
+        const wk = () => { const w = ruckLadderWeek();
+          return { km: w.km, lb: w.lb, climbing: w.climbing, hold: w.footHold }; };
+
+        out.clean = wk();
+        /* BOTH KINDS OF WEEK. A load week only proves the load step is skipped;
+           the distance is what the OTHER kind of week moves, and a hold that
+           only stopped one of them would pass every assertion about the first. */
+        out.loadWeek = { free: out.clean };
+        STATE.footLog = [{ date: iso(0), state: 'hotspot' }];
+        out.loadWeek.held = wk();
+        /* WALK THE BLOCK BY planFrom, NOT BY THE TEST DATE. prepWeekNo() counts
+           forward from planFrom, so moving prep.date changes how much time is
+           LEFT and never advances the week — the first version searched that
+           axis, found one week labelled 'distance' by an accident of the taper
+           boundary, and that week's slot happened to BE the load slot. So the
+           mutant that holds only the load escaped: `climbing==='distance'` does
+           not imply the slot is not the load slot.
+
+           And one week is not enough. The sweep walks twenty and requires that
+           EVERY distance week is held, which is the property the feature
+           claims. */
+        const keepFrom = STATE.prep.planFrom;
+        out.walk = [];
+        for (let back = 0; back < 20; back++) {
+          STATE.prep.planFrom = iso(7 + back * 7);
+          STATE.footLog = [];
+          const free = wk();
+          STATE.footLog = [{ date: iso(0), state: 'hotspot' }];
+          const held = wk();
+          out.walk.push({ free: free.climbing, freeKm: free.km, heldKm: held.km,
+                          freeLb: free.lb, heldLb: held.lb, heldClimb: held.climbing });
+        }
+        STATE.prep.planFrom = keepFrom;
+        const dist = out.walk.filter(x => x.free === 'distance');
+        const load = out.walk.filter(x => x.free === 'load');
+        out.distWeek = dist.length ? { free: { climbing: 'distance', km: dist[0].freeKm },
+                                       held: { climbing: dist[0].heldClimb, km: dist[0].heldKm } } : null;
+        out.sweep = { distWeeks: dist.length, loadWeeks: load.length,
+                      everyDistanceHeld: dist.length > 0 && dist.every(x => x.heldKm < x.freeKm && x.heldClimb === 'foot'),
+                      everyLoadHeld: load.length > 0 && load.every(x => x.heldLb < x.freeLb && x.heldClimb === 'foot') };
+
+        // a blister holds as well as a hot spot
+        STATE.footLog = [{ date: iso(0), state: 'blister' }]; out.blister = wk();
+        // logging clear RELEASES it
+        STATE.footLog = [{ date: iso(1), state: 'blister' }, { date: iso(0), state: 'clear' }];
+        out.released = wk();
+        // the latest is by DATE, not by position — a backup can carry any order
+        STATE.footLog = [{ date: iso(0), state: 'clear' }, { date: iso(1), state: 'blister' }];
+        out.reordered = wk();
+        /* FLOOR: silence is not a blister. An athlete who has never opened this
+           must not have their plan held for it — positive evidence only, the
+           same call painPattern() makes about pain reports. */
+        STATE.footLog = []; out.neverLogged = wk();
+
+        /* EVERY UNIT A RUCK CAN BE LOGGED IN. The prompt reads _dayRuckKm(),
+           which converts minutes and calories as well as distance — a version
+           that only looked at ruckUnit==='dist' would leave an athlete who logs
+           in minutes with no prompt at all, and nothing else here would notice. */
+        out.units = {};
+        /* Cleared IN PLACE. Reassigning STATE.nutrition.days leaves `D` holding
+           the old object, so every later write lands somewhere detached — which
+           is exactly how the first version of this failed a check further down. */
+        const wipe = () => Object.keys(D).forEach(k => delete D[k]);
+        [['dist', 8], ['min', 75], ['kcal', 600]].forEach(([u, v]) => {
+          wipe(); STATE.footLog = [];
+          D[iso(0)] = { opened: true, ruckVal: v, ruckUnit: u, ruckLvl: 'brisk', ruckLb: 35 };
+          out.units[u] = footPromptDue();
+        });
+        wipe(); D[iso(0)] = { opened: true, steps: 9000 };
+        out.units.noRuckAtAll = footPromptDue();
+        D[iso(0)] = { opened: true, ruckVal: 0, ruckUnit: 'dist', ruckLvl: 'brisk' };
+        out.units.zeroRuck = footPromptDue();
+        wipe();
+        for (let w = 0; w < 4; w++) for (let d = 0; d < 2; d++)
+          D[iso(w * 7 + d)] = { opened: true, ruckVal: 5, ruckUnit: 'dist', ruckLvl: 'brisk', ruckLb: 25 };
+
+        // the prompt fires on a ruck day, and stops once the check is logged
+        delete D[iso(0)];
+        out.promptNoRuck = footPromptDue();
+        D[iso(0)] = { opened: true, ruckVal: 5, ruckUnit: 'dist', ruckLvl: 'brisk', ruckLb: 25 };
+        out.promptAfterRuck = footPromptDue();
+        logFootCheck('clear');
+        out.promptAfterCheck = footPromptDue();
+        out.clearLogged = footHold() === false;
+
+        /* THE TAPER KEEPS ITS OWN HEADLINE AND THE NOTE STILL SHOWS. `climbing`
+           is overwritten to 'taper' after the loop — v371's call, because the
+           taper is the bigger truth about the week — so a note gated on
+           climbing==='foot' would go SILENT in the taper, which is exactly the
+           fortnight an athlete most needs to arrive with intact feet. It is
+           gated on footHold() instead, and this pins that. */
+        const keepDate2 = STATE.prep.date;
+        STATE.prep.date = iso(-7);
+        STATE.footLog = []; normalizeState();
+        const tFree = ruckLadderWeek();
+        STATE.footLog = [{ date: iso(0), state: 'blister' }];
+        const tHeld = ruckLadderWeek();
+        out.taper = { phase: tFree.phase, freeClimb: tFree.climbing, heldClimb: tHeld.climbing,
+                      heldHold: tHeld.footHold, noteShows: /data-footholdnote/.test(ruckLadderHTML()),
+                      kmNotRaised: tHeld.km <= tFree.km };
+        STATE.prep.date = keepDate2;
+
+        /* WHERE EACH HALF LIVES. The first version put the whole thing on the
+           ruck LADDER card, which renders inside the prep sheet — a screen the
+           athlete has no reason to open after a ruck, and one that does not
+           render at all without a test date. The controls belong where the ruck
+           is logged; the plan gets a note with no controls of its own, the way
+           v311 split Movement from its Progress review. */
+        STATE.footLog = [{ date: iso(0), state: 'hotspot' }];
+        setCardioMode('ruck');
+        const blk = ruckBlockHTML(movement(), 'the ruck');
+        const lad = ruckLadderHTML();
+        out.where = {
+          pickerOnRuckBlock: /data-foothold|data-footprompt/.test(blk) && /logFootCheck\(/.test(blk),
+          noPickerOnPlan: !/logFootCheck\(/.test(lad),
+          noteOnPlan: /data-footholdnote/.test(lad),
+          planSaysHolding: /nothing is climbing/i.test(lad),
+          planPointsAtMovement: /Movement/.test(lad),
+          blockSaysRelease: /log a clear check/i.test(blk) };
+        /* The pointer is asserted BOTH ways: the plan names the destination,
+           and the destination really carries the control. */
+        out.pointerHolds = out.where.planPointsAtMovement && out.where.pickerOnRuckBlock;
+        /* AND IT WORKS WITHOUT A PREP BLOCK — blisters are not prep-specific,
+           and ruckLadderHTML() renders nothing at all with no test date. */
+        const keepDate = STATE.prep.date; delete STATE.prep.date;
+        out.noPrep = { ladderEmpty: ruckLadderHTML() === '',
+                       blockStillChecks: /data-foothold|data-footprompt/.test(ruckBlockHTML(movement(), 'the ruck')) };
+        STATE.prep.date = keepDate;
+        STATE.footLog = []; D[iso(0)].ruckVal = 5;
+        out.quiet = { noHoldNote: !/data-footholdnote/.test(ruckLadderHTML()) };
+        out.kit = { marked: /data-footkit/.test(footKitHTML()),
+                    items: (footKitHTML().match(/class="kv"/g) || []).length,
+                    stamped: footKitHTML().indexOf(DAY90_ASOF) >= 0 };
+
+        // the boot repair
+        STATE.footLog = [{ date: 'abc', state: 'clear' }, { date: iso(0), state: 'nosuch' },
+                         { date: iso(1), state: 'blister' }, 'junk', { date: iso(2) }];
+        normalizeState();
+        out.repaired = JSON.stringify(STATE.footLog);
+        STATE.footLog = 'x'; normalizeState(); out.strDropped = STATE.footLog === undefined;
+        delete STATE.footLog; normalizeState(); out.absent = ('footLog' in STATE) ? 'INVENTED' : 'absent';
+
+        STATE.prep = keep.prep; STATE.nutrition.days = keep.days;
+        if (keep.foot === undefined) delete STATE.footLog; else STATE.footLog = keep.foot;
+        save();
+      } catch (e) { out.threw = String(e && e.message || e); }
+      console.error = ce;
+      return out;
+    });
+
+    t.ok('guard: the block built a ladder that is genuinely climbing', !r.threw
+      && r.clean && r.clean.km > 0 && ['load', 'distance'].indexOf(r.clean.climbing) >= 0,
+      r.threw || JSON.stringify(r.clean));
+    t.ok('guard: the walk found both kinds of week to test on',
+      r.sweep.distWeeks >= 3 && r.sweep.loadWeeks >= 3, JSON.stringify(r.sweep));
+
+    t.ok('a hot spot stops the load step on a load week',
+      r.loadWeek.held.lb < r.loadWeek.free.lb && r.loadWeek.held.climbing === 'foot',
+      JSON.stringify(r.loadWeek));
+    t.ok('and it stops the distance on EVERY distance week across the block',
+      r.sweep.everyDistanceHeld === true, JSON.stringify(r.sweep));
+    t.ok('and the load on every load week',
+      r.sweep.everyLoadHeld === true, JSON.stringify(r.sweep));
+    t.ok('neither variable moves while it holds — it is not a swap',
+      r.loadWeek.held.km === r.loadWeek.free.km && r.distWeek.held.lb === r.distWeek.free.lb,
+      JSON.stringify({ load: r.loadWeek, dist: r.distWeek }));
+    t.ok('a blister holds it the same way', r.blister.climbing === 'foot' && r.blister.hold === true,
+      JSON.stringify(r.blister));
+    t.ok('logging a clear check releases the plan',
+      r.released.hold === false && r.released.climbing !== 'foot', JSON.stringify(r.released));
+    t.ok('and the latest check is the one by DATE, not by position in the file',
+      r.reordered.hold === false, JSON.stringify(r.reordered));
+    /* FLOOR: a hold that fired on silence would stop every athlete's plan
+       climbing for a feature they never opened. */
+    t.ok('an athlete who has never logged a check is never held',
+      r.neverLogged.hold === false && r.neverLogged.climbing !== 'foot', JSON.stringify(r.neverLogged));
+
+    t.ok('the check is asked whichever unit the ruck was logged in',
+      r.units.dist === true && r.units.min === true && r.units.kcal === true,
+      JSON.stringify(r.units));
+    t.ok('and not on a day with no ruck, nor on an empty ruck row',
+      r.units.noRuckAtAll === false && r.units.zeroRuck === false, JSON.stringify(r.units));
+    t.ok('the check is asked on a day a ruck was logged, and not otherwise',
+      r.promptNoRuck === false && r.promptAfterRuck === true, JSON.stringify(r));
+    t.ok('and it stops asking once it has been answered',
+      r.promptAfterCheck === false && r.clearLogged === true, JSON.stringify(r));
+
+    t.ok('guard: the taper case really is in the taper', r.taper.phase === 'taper', JSON.stringify(r.taper));
+    t.ok('the taper keeps its own headline rather than being relabelled',
+      r.taper.freeClimb === 'taper' && r.taper.heldClimb === 'taper', JSON.stringify(r.taper));
+    t.ok('but the hold note still shows there, and nothing is raised',
+      r.taper.heldHold === true && r.taper.noteShows === true && r.taper.kmNotRaised === true,
+      JSON.stringify(r.taper));
+    t.ok('the check sits where the ruck is logged, not on the plan',
+      r.where.pickerOnRuckBlock && r.where.noPickerOnPlan, JSON.stringify(r.where));
+    t.ok('and the plan carries a note explaining why nothing is climbing',
+      r.where.noteOnPlan && r.where.planSaysHolding, JSON.stringify(r.where));
+    /* Asserted BOTH ways, the v315 rule: naming a destination is half a check. */
+    t.ok('the note points at Movement, and Movement really holds the control',
+      r.pointerHolds === true, JSON.stringify(r.where));
+    t.ok('and it says what releases it', r.where.blockSaysRelease, JSON.stringify(r.where));
+    /* FLOOR: an athlete who rucks without a test date renders no ladder at all,
+       and blisters are not prep-specific. */
+    t.ok('the check still works for an athlete with no prep block',
+      r.noPrep.ladderEmpty === true && r.noPrep.blockStillChecks === true, JSON.stringify(r.noPrep));
+    /* A note that always fires is a note nobody reads. */
+    t.ok('while a clean athlete gets no hold note at all', r.quiet.noHoldNote, JSON.stringify(r.quiet));
+    t.ok('the foot-care kit is the package’s own list, stamped like every other figure from it',
+      r.kit.marked && r.kit.items === 8 && r.kit.stamped, JSON.stringify(r.kit));
+
+    /* THE ROUTE, NOT THE BUILDER. Every assertion above reads ruckBlockHTML()'s
+       output, which stays true even if the block is never mounted — the escape
+       this file records for the v292 Convert button and four times since. This
+       one renders Today, finds the button the athlete taps, CLICKS it, and
+       reads the screen back. */
+    const tap = await page.evaluate(() => {
+      const out = {}, ce = console.error; console.error = () => {};
+      try {
+        const iso = d => { const x = new Date(Date.now() - d * 86400000);
+          return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+        const keepDays = STATE.nutrition.days, keepFoot = STATE.footLog, keepMode = STATE.nutrition.cardioMode;
+        setCardioMode('ruck');
+        STATE.nutrition.days = {};
+        STATE.nutrition.days[iso(0)] = { opened: true, ruckVal: 8, ruckUnit: 'dist', ruckLvl: 'brisk', ruckLb: 35 };
+        STATE.footLog = []; normalizeState();
+        TODAY_TAB = 'workout'; go('today'); render();
+        out.mounted = document.querySelectorAll('[data-foot]').length;
+        out.promptShown = !!document.querySelector('[data-footprompt]');
+        const hot = document.querySelector('[data-foot="hotspot"]');
+        if (hot) hot.click();
+        out.afterTap = { logged: JSON.stringify(STATE.footLog), hold: footHold(),
+                         note: !!document.querySelector('[data-foothold]'),
+                         promptGone: !document.querySelector('[data-footprompt]') };
+        const clr = document.querySelector('[data-foot="clear"]');
+        if (clr) clr.click();
+        out.afterClear = { logged: JSON.stringify(STATE.footLog), hold: footHold(),
+                           noteGone: !document.querySelector('[data-foothold]') };
+        STATE.nutrition.days = keepDays; STATE.nutrition.cardioMode = keepMode;
+        if (keepFoot === undefined) delete STATE.footLog; else STATE.footLog = keepFoot;
+        save(); render();
+      } catch (e) { out.threw = String(e && e.message || e); }
+      console.error = ce; return out;
+    });
+    t.ok('guard: the picker is really mounted on Today, not just built by a helper',
+      !tap.threw && tap.mounted === 3 && tap.promptShown === true,
+      tap.threw || JSON.stringify(tap));
+    t.ok('tapping the button writes the check and repaints to the hold note',
+      /hotspot/.test(tap.afterTap.logged) && tap.afterTap.hold === true
+        && tap.afterTap.note === true && tap.afterTap.promptGone === true,
+      JSON.stringify(tap.afterTap));
+    t.ok('and tapping clear releases it, on the same day’s row',
+      /clear/.test(tap.afterClear.logged) && !/hotspot/.test(tap.afterClear.logged)
+        && tap.afterClear.hold === false && tap.afterClear.noteGone === true,
+      JSON.stringify(tap.afterClear));
+
+    /* A NEW STATE FIELD GETS A ROUND-TRIP CHECK OF ITS OWN — that is precisely
+       how v336's lost API key was found. A foot-check history describes the
+       athlete, so it belongs in a backup and is deliberately NOT in
+       TRANSIENT_KEYS; and the HOLD has to survive the restore, or an athlete
+       who reinstalls mid-blister silently gets their ladder climbing again. */
+    const trip = await page.evaluate(() => {
+      const out = {}, ce = console.error; console.error = () => {};
+      try {
+        const iso = d => { const x = new Date(Date.now() - d * 86400000);
+          return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+        const keep = JSON.parse(JSON.stringify(STATE));
+        STATE.footLog = [{ date: iso(2), state: 'hotspot' }, { date: iso(1), state: 'clear' },
+                         { date: iso(0), state: 'blister' }];
+        save();
+        out.before = { log: JSON.stringify(STATE.footLog), hold: footHold() };
+        const clone = JSON.parse(JSON.stringify(STATE));
+        if (clone.settings) { delete clone.settings.azureKey; delete clone.settings.foodAiKey; }
+        TRANSIENT_KEYS.forEach(k => { delete clone[k]; });
+        out.inBackup = JSON.stringify(clone.footLog);
+        STATE = DEFAULT_STATE(); normalizeState();
+        out.afterReset = STATE.footLog === undefined ? 'absent' : JSON.stringify(STATE.footLog);
+        STATE = Object.assign(DEFAULT_STATE(), clone);
+        STATE.settings = Object.assign(DEFAULT_STATE().settings, clone.settings || {});
+        STATE.profile = Object.assign(DEFAULT_STATE().profile, clone.profile || {});
+        STATE.nutrition = Object.assign(DEFAULT_STATE().nutrition, clone.nutrition || {});
+        normalizeState();
+        out.after = { log: JSON.stringify(STATE.footLog), hold: footHold() };
+        STATE = keep; normalizeState(); save();
+      } catch (e) { out.threw = String(e && e.message || e); }
+      console.error = ce; return out;
+    });
+    t.ok('guard: the round trip started from three real checks and a live hold',
+      !trip.threw && trip.before && trip.before.hold === true
+        && (trip.before.log.match(/date/g) || []).length === 3,
+      trip.threw || JSON.stringify(trip.before));
+    t.eq('the foot log travels in a backup', trip.inBackup, trip.before.log);
+    t.eq('a fresh install has no checks at all', trip.afterReset, 'absent');
+    t.eq('and a restore brings every row back unchanged', trip.after.log, trip.before.log);
+    /* The hold is the consequential half: an athlete who reinstalls mid-blister
+       must not find their ladder quietly climbing again. */
+    t.ok('with the hold still standing afterwards', trip.after.hold === true, JSON.stringify(trip.after));
+
+    t.eq('the repair keeps a real check and drops every junk row',
+      r.repaired, '[{"date":"' + new Date(Date.now() - 86400000).toISOString().slice(0, 10) + '","state":"blister"}]');
+    t.ok('a log that is not a list is dropped', r.strDropped === true, r.strDropped);
+    t.ok('and no log is invented for an athlete who never checked', r.absent === 'absent', r.absent);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
