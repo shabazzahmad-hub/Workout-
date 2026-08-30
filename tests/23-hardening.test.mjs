@@ -6647,6 +6647,28 @@ export default async function () {
            same call painPattern() makes about pain reports. */
         STATE.footLog = []; out.neverLogged = wk();
 
+        /* EVERY UNIT A RUCK CAN BE LOGGED IN. The prompt reads _dayRuckKm(),
+           which converts minutes and calories as well as distance — a version
+           that only looked at ruckUnit==='dist' would leave an athlete who logs
+           in minutes with no prompt at all, and nothing else here would notice. */
+        out.units = {};
+        /* Cleared IN PLACE. Reassigning STATE.nutrition.days leaves `D` holding
+           the old object, so every later write lands somewhere detached — which
+           is exactly how the first version of this failed a check further down. */
+        const wipe = () => Object.keys(D).forEach(k => delete D[k]);
+        [['dist', 8], ['min', 75], ['kcal', 600]].forEach(([u, v]) => {
+          wipe(); STATE.footLog = [];
+          D[iso(0)] = { opened: true, ruckVal: v, ruckUnit: u, ruckLvl: 'brisk', ruckLb: 35 };
+          out.units[u] = footPromptDue();
+        });
+        wipe(); D[iso(0)] = { opened: true, steps: 9000 };
+        out.units.noRuckAtAll = footPromptDue();
+        D[iso(0)] = { opened: true, ruckVal: 0, ruckUnit: 'dist', ruckLvl: 'brisk' };
+        out.units.zeroRuck = footPromptDue();
+        wipe();
+        for (let w = 0; w < 4; w++) for (let d = 0; d < 2; d++)
+          D[iso(w * 7 + d)] = { opened: true, ruckVal: 5, ruckUnit: 'dist', ruckLvl: 'brisk', ruckLb: 25 };
+
         // the prompt fires on a ruck day, and stops once the check is logged
         delete D[iso(0)];
         out.promptNoRuck = footPromptDue();
@@ -6730,6 +6752,11 @@ export default async function () {
     t.ok('an athlete who has never logged a check is never held',
       r.neverLogged.hold === false && r.neverLogged.climbing !== 'foot', JSON.stringify(r.neverLogged));
 
+    t.ok('the check is asked whichever unit the ruck was logged in',
+      r.units.dist === true && r.units.min === true && r.units.kcal === true,
+      JSON.stringify(r.units));
+    t.ok('and not on a day with no ruck, nor on an empty ruck row',
+      r.units.noRuckAtAll === false && r.units.zeroRuck === false, JSON.stringify(r.units));
     t.ok('the check is asked on a day a ruck was logged, and not otherwise',
       r.promptNoRuck === false && r.promptAfterRuck === true, JSON.stringify(r));
     t.ok('and it stops asking once it has been answered',

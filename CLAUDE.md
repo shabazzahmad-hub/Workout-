@@ -9069,6 +9069,26 @@ names the destination and the destination really carries the control, which is
 the v315 rule. And a floor pins that an athlete with no test date gets an empty
 ladder and a working check.
 
+### Every unit a ruck can be logged in
+
+`footPromptDue()` reads `_dayRuckKm()`, which converts **minutes and calories**
+as well as distance — a version that only looked at `ruckUnit==='dist'` would
+leave an athlete who logs in minutes with no prompt at all, and nothing else
+here would have noticed. Measured: 8 km, 75 min and 600 kcal all prompt; a day
+with no ruck and a zero-value ruck row both correctly stay silent.
+
+**And the check for it broke a later one, in a way worth recording.** It cleared
+the day map with `STATE.nutrition.days = {}` while the block's own `D` still
+held the OLD object, so every later write landed somewhere detached and the
+prompt check further down failed on correct code. Clear a captured container
+**in place**.
+
+**One deliberate scope line.** `EX.ruck` (Ruck March) exists in the library and
+can appear inside a session, where no `ruckVal` is written and so no prompt
+fires. That is intended: the prompt is tied to a logged ruck with real distance
+or time, which is where foot risk lives, and a ruck march inside a circuit is
+bounded by the session length.
+
 ### And the check for it was reading the builder, not the screen
 
 Every assertion in the first block read `ruckBlockHTML()`'s **output**, which
