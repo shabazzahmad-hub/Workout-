@@ -9169,6 +9169,52 @@ The foot-care kit is the package's own eight items, stamped with `DAY90_SRC`
 and `DAY90_ASOF` for the same reason every other figure from it is: a published
 list shown with confidence that has gone stale is worse than none.
 
+## One fact, one place — and a check that pinned the duplication (v393)
+
+Found by rendering every surface with every new feature active at once and
+reading the notes, rather than by asking whether a screen renders. The
+endurance sheet printed **the identical sentence twice**.
+
+`footLoadHTML()` is called from the running plan AND from the ruck ladder, and
+both live in the SAME sheet — `ruckLadderHTML()` renders inside
+`enduranceHTML()`. Both read the same global answer from `footNewMode()`, which
+**v332 made deliberate so they could never disagree**. The consequence nobody
+measured is that they then rendered the same sentence twice, a few lines apart.
+
+Measured, and it hits **every athlete with a prep block**, not only the warned
+one:
+
+| athlete | before | after |
+|---|---|---|
+| history in both modes | *"together: 25.4 km on your feet"* **x2** | x1 |
+| rucker taking up running | the new-mode warning **x2** | x1 |
+| runner taking up rucking | the new-mode warning **x2** | x1 |
+
+**A reader seeing the same number twice with two labels does not feel doubly
+informed, they wonder which one is real** — v314's lesson, one sheet over. The
+caller now says which card it is: the combined total goes on the running card,
+which renders first, and the warning goes on the card of the mode that is
+actually NEW, because that is the plan its advice is about.
+
+### The check asserted "and on the rucking card too"
+
+Two v332 checks pinned the duplication in place — the fourth time this session
+a check has held old behaviour rather than caught it. They were not stale
+copy-paste: they encoded a real intent, *the total is on both cards so whichever
+one you read you see it*. What nobody had measured is that both cards are
+**always co-rendered in one sheet**, so "whichever one you read" was never the
+situation.
+
+Re-aimed rather than deleted, to the requirement underneath: the fact appears
+**exactly once in the sheet**, and the warning sits on the card for the mode
+that is actually new. That is stronger than "on both" — it catches a future
+third caller as well.
+
+**And `card` was already the whole sheet.** The probe builds it as
+`strip(enduranceHTML())`, which contains `ruckLadderHTML()`, so counting
+occurrences in `card` is a count over the whole screen. Reading what the probe
+actually collected is what made the re-aim exact instead of a guess.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

@@ -6951,6 +6951,72 @@ export default async function () {
     t.ok('and no log is invented for an athlete who never checked', r.absent === 'absent', r.absent);
   }
 
+
+  /* ---- v393: one fact, one place ----------------------------------------
+     footLoadHTML() is called from the running plan AND from the ruck ladder,
+     and both live in the SAME sheet — ruckLadderHTML() renders inside
+     enduranceHTML(). Both read the same global answer from footNewMode(),
+     which v332 made deliberate so they could never disagree; the consequence
+     nobody noticed is that they then rendered the IDENTICAL sentence twice on
+     one screen.
+
+     Measured before the fix: with history in both modes the plain "together"
+     line appeared 2 times, and on a new-mode athlete the warning appeared 2
+     times. Every athlete with a prep block saw one of the two doubled. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {}, ce = console.error; console.error = () => {};
+      try {
+        const iso = d => { const x = new Date(Date.now() - d * 86400000);
+          return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+        const keep = JSON.parse(JSON.stringify(STATE));
+        STATE.prep = { date: iso(-70), planFrom: iso(35), path: 'operator', results: {} };
+        STATE.footLog = [{ date: iso(0), state: 'clear' }];
+        const D = STATE.nutrition.days;
+        const wipe = () => Object.keys(D).forEach(k => delete D[k]);
+        const count = () => { openEndurance();
+          const sh = document.querySelector('#sheet'), t = sh ? sh.innerText : '';
+          const r2 = { together: (t.match(/together:/g) || []).length,
+                       brand: (t.match(/is brand new on top of/g) || []).length,
+                       newMode: footNewMode() };
+          closeSheet(); return r2; };
+
+        wipe();
+        for (let w = 0; w < 4; w++) for (let d = 0; d < 2; d++)
+          D[iso(w * 7 + d)] = { opened: true, ruckVal: 6, ruckUnit: 'dist', ruckLvl: 'brisk',
+                                ruckLb: 30, runVal: 5, runUnit: 'dist', runLvl: 'steady' };
+        normalizeState(); out.both = count();
+
+        wipe();
+        for (let w = 0; w < 4; w++) for (let d = 0; d < 2; d++)
+          D[iso(w * 7 + d)] = { opened: true, ruckVal: 6, ruckUnit: 'dist', ruckLvl: 'brisk', ruckLb: 30 };
+        normalizeState(); out.ruckOnly = count();
+
+        wipe();
+        for (let w = 0; w < 4; w++) for (let d = 0; d < 2; d++)
+          D[iso(w * 7 + d)] = { opened: true, runVal: 5, runUnit: 'dist', runLvl: 'steady' };
+        normalizeState(); out.runOnly = count();
+
+        STATE = keep; normalizeState(); save();
+      } catch (e) { out.threw = String(e && e.message || e); }
+      console.error = ce; return out;
+    });
+
+    t.ok('guard: the three cases really are the three states the note has',
+      !r.threw && r.both.newMode === null && r.ruckOnly.newMode === 'run' && r.runOnly.newMode === 'ruck',
+      r.threw || JSON.stringify(r));
+    /* ONE FACT, ONE PLACE — the v314 lesson, one sheet over. */
+    t.ok('the combined foot total is stated once, not once per plan',
+      r.both.together === 1 && r.both.brand === 0, JSON.stringify(r.both));
+    t.ok('and the new-mode warning is stated once when running is the new mode',
+      r.ruckOnly.brand === 1 && r.ruckOnly.together === 0, JSON.stringify(r.ruckOnly));
+    t.ok('and once when rucking is the new mode — the other card stays quiet',
+      r.runOnly.brand === 1 && r.runOnly.together === 0, JSON.stringify(r.runOnly));
+    /* FLOOR: a fix that simply deleted one call site would drop the warning
+       entirely for whichever mode that card owns. Both directions are pinned
+       above, so silencing either one fails. */
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

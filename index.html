@@ -1829,7 +1829,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='392';
+const APP_VERSION='393';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -5320,11 +5320,25 @@ function enduranceWeek(raw){
 }
 /* One renderer, read by both cards, so the combined figure cannot say one
    thing beside the running and another beside the rucking. */
-function footLoadHTML(w){
+/* ONE FACT, ONE PLACE. Both cards live in the SAME sheet — ruckLadderHTML()
+   renders inside enduranceHTML() — and both read the same global answer from
+   footNewMode(), which v332 made deliberate so they could never disagree. The
+   consequence nobody noticed is that they then rendered the IDENTICAL sentence
+   twice on one screen. Measured on an athlete with history in both modes: the
+   plain "together" line appeared 2 times, and on a new-mode athlete the warning
+   appeared 2 times.
+
+   A reader seeing the same number twice with two labels does not feel doubly
+   informed, they wonder which one is real — the v314 lesson, one sheet over. So
+   the caller says which card it is: the combined total goes on the running
+   card, which renders first, and the warning goes on the card of the mode that
+   is actually new, because that is the plan its advice is about. */
+function footLoadHTML(w,card){
   if(!w||w.footTotal===null||w.footTotal===undefined)return '';
   const tot=_ve(distShow(w.footTotal));
   if(!w.footBig)
-    return `<div class="tiny muted" style="margin-top:6px">Rucking and running together: <b>${tot}</b> on your feet this week. That total is what your legs actually absorb — neither number means much on its own.</div>`;
+    return card==='ruck'?'':`<div class="tiny muted" style="margin-top:6px">Rucking and running together: <b>${tot}</b> on your feet this week. That total is what your legs actually absorb — neither number means much on its own.</div>`;
+  if(card&&w.footNew&&w.footNew!==card)return '';
   const what=w.footNew==='run'?'running':'rucking';
   const other=w.footNew==='run'?'rucking':'running';
   return `<div class="note warn" style="margin:8px 0 0"><b>${_ve(distShow(w.footAdded))} of ${what} is brand new on top of your ${other}.</b> This plan sizes ${what} against your own ${what}, and you have none logged — so it opens at its starting distance and lands on top of everything else, taking you to <b>${tot}</b> on your feet this week against the ${_ve(String(w.footFrom))} ${distUnit()} you have been doing. Your legs do not know which plan a kilometre came from. Start the ${what} shorter than it says, or hold the ${other} where it is this week — the same rule as building the ruck distance or the load, never both.</div>`;
@@ -5342,7 +5356,7 @@ function enduranceHTML(){
       <div style="text-align:right"><b style="font-size:19px">${_ve(distShow(w.km))}</b>
         <div class="tiny muted">running this week</div></div>
     </div>
-    ${footLoadHTML(w)}
+    ${footLoadHTML(w,'run')}
     ${w.down?`<div class="note ok" style="margin:10px 0 0"><b>Down week.</b> Volume is cut on purpose — the adaptation happens here, not in the hard weeks.</div>`:''}
     <div class="tiny muted" style="margin-top:10px">${_ve(w.note)}</div>
     ${w.estimated
@@ -5492,7 +5506,7 @@ function ruckLadderHTML(){
       <div style="text-align:right"><b style="font-size:19px">${_ve(distShow(w.km))}</b>
         <div class="tiny muted">this week</div></div>
     </div>
-    ${footLoadHTML(w)}
+    ${footLoadHTML(w,'ruck')}
     ${footHoldNoteHTML()}
     <div class="note ${w.down?'ok':'info'}" style="margin:10px 0 0"><b>What moves this week:</b> ${moving}</div>
     ${w.capped?`<div class="note warn" style="margin:10px 0 0"><b>The load stops here at ${_ve(String(w.ceil))} lb.</b> That is about a third of your bodyweight, which is the far end of what rucking guidance asks for. ${w.atPeak?'The distance has reached its ceiling too, so nothing further is added.':'From here the distance carries the progression.'} You can carry more if you choose to — the app will not add it for you.</div>`:''}

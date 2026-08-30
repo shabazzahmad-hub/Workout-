@@ -2902,10 +2902,21 @@ export default async function run() {
         t.ok('and what it is on top of', c.step !== null && c.step > 0,
           { step: c.step, from: c.from });
         t.ok('and names what it is a step up FROM', c.from !== null && c.from > 0, c);
-        t.ok('and the warning is on the running card',
+        t.ok('and the warning reaches the sheet',
           c.card.indexOf('on your feet this week') >= 0, c.card.slice(0, 200));
-        t.ok('and on the rucking card too', c.ruckBig && c.ruckCard.indexOf('on your feet this week') >= 0,
-          c.ruckCard.slice(0, 200));
+        /* ONCE, NOT ONCE PER PLAN (v393). Both cards live in this one sheet —
+           ruckLadderHTML() renders inside enduranceHTML() — and both read the
+           same global answer from footNewMode(), which v332 made deliberate so
+           they could never disagree. The consequence nobody measured is that
+           they then printed the IDENTICAL sentence twice, a few lines apart.
+           This used to assert presence on the ruck card as well, which is what
+           pinned the duplication. The warning now sits on the card of the mode
+           that is actually NEW, which is the plan its advice is about. */
+        t.eq('and it is stated once in the sheet, not once per plan',
+          (c.card.match(/on your feet this week/g) || []).length, 1, c.card.slice(0, 240));
+        t.ok('on the card for the mode that is actually new',
+          (c.newMode === 'ruck') === (c.ruckCard.indexOf('on your feet this week') >= 0),
+          { newMode: c.newMode, onRuckCard: c.ruckCard.indexOf('on your feet this week') >= 0 });
       });
 
       /* FLOOR: a note that always fires is a note nobody reads. A legal plan
@@ -2914,8 +2925,11 @@ export default async function run() {
       t.ok('a legal plan still shows the combined distance',
         fl.balanced.card.indexOf(String(fl.balanced.sum)) >= 0, fl.balanced.card.slice(0, 200));
       t.ok('and shows it — not merely renders it hidden', !fl.balanced.hiddenNote, fl.balanced);
-      t.ok('and on the rucking card',
-        fl.balanced.ruckCard.indexOf(String(fl.balanced.sum)) >= 0, fl.balanced.ruckCard.slice(0, 200));
+      /* The plain combined line is one fact about the pair, so it is stated
+         once — on the running card, which renders first. */
+      t.eq('and states it once, not once per plan',
+        (fl.balanced.card.match(/on your feet this week/g) || []).length, 1,
+        fl.balanced.card.slice(0, 240));
       t.ok('but is not warned', !fl.balanced.big && fl.balanced.card.indexOf('% up on the') < 0,
         fl.balanced.card.slice(0, 200));
       t.ok('and neither is a plan deep into a block', !fl.late.big, fl.late);
