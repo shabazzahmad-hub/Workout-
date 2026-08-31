@@ -9632,6 +9632,50 @@ exercise page must each carry that event's own figure, and the shuttle's pace
 is pinned in both directions — walked, not run, with a light jog on the free
 leg. Nine mutants across the round, all caught by name.
 
+### Sweeping the class found the same shape four screens away
+
+The drag was a number written by hand beside a constant that held it. Sweeping
+for that shape across the app found the block length written out as a literal
+**6** in four athlete-visible sentences — the Block Complete badge, the
+re-test screen, the score-trend hint, and the final-week note — while every
+check behind them reads `WEEKS_PER_CYCLE` or `SESSIONS_PER_CYCLE`.
+
+**The re-test screen is the clearest case.** It derived `${TESTS.length}` in
+one half of a sentence and hardcoded the block length in the other:
+
+> *"You've completed a full 6-week block. Re-take the ${TESTS.length} tests…"*
+
+The author knew to derive, and the number beside it was missed. That is what
+this class looks like before it drifts.
+
+**And the branch that decides which of those sentences the athlete reads** was
+`if(w===6)`, not `if(w===WEEKS_PER_CYCLE)` — so a longer block would have
+printed "final peak week" in the middle of one.
+
+Nothing is wrong today: every copy says 6 and 6 is correct. The check pins it
+so the next edit cannot make them disagree, and a **guard** asserts the block
+is more than one week, or "no sentence writes it out" passes on a degenerate
+constant.
+
+**And one comment had to be reworded rather than the check weakened** — an
+inline `// nine 6-week blocks` was counted by the scan that forbids the
+literal. Fifth time this file has recorded that.
+
+### Two sweeps that came back clean
+
+- **Every achievement's description against its own condition.** All 30
+  compared; the three apparent mismatches were the scan not seeing through a
+  constant (`SESSIONS_PER_CYCLE`) and a word-boundary miss on `60s`. The waist
+  badges' `5 cm (2 in)` and `12 cm (5 in)` both convert correctly.
+- **Every exercise's prose against its own data.** 197 entries; no `why` or
+  step names a rep count its `repCap` does not back.
+
+**And one measured, recorded and deliberately left.** The gear picker calls
+the sandbag *"20 kg / 45 lb"*; 20 kg is **44 lb** by the app's own converter,
+which it uses correctly elsewhere (35 kg → 77 lb). 45 lb is the size sandbags
+are actually sold in, so deriving it would make the label worse for buying.
+Left as it is, on purpose.
+
 **And this is what the ASOF stamp is for.** `FORCE_ASOF` sits on that card
 with "this app has no internet access and cannot check them for you". The
 athlete checked, against the source, and the app was wrong. The stamp did its

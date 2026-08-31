@@ -643,6 +643,39 @@ export default async function run() {
   t.eq('every cardio mode a watch could report has a matcher',
     kindCover.missing.join(', '), '', kindCover);
 
+  /* ---- a figure the app owns must not be written out beside it -----------
+     This is the shape that made the FORCE card say "80 kg dragged" when the
+     load is 100: a number stated by hand next to the constant that holds it.
+     The re-test screen was the clearest case — it derived TESTS.length in one
+     half of a sentence and hardcoded the block length in the other.
+
+     Scoped to the block length, which four athlete-visible sentences carried
+     as a literal 6, and to the last-week test that decides which of them the
+     athlete reads. */
+  const blockLen = await page.evaluate(() => {
+    const src = [...document.querySelectorAll('script:not([src])')]
+      .map(s => s.textContent).sort((a, b) => b.length - a.length)[0] || '';
+    const noComments = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    return {
+      weeks: WEEKS_PER_CYCLE,
+      isApp: /function normalizeState/.test(noComments),
+      // a literal "<n>-week block" left in code, outside comments
+      hardcoded: (noComments.match(/\d+-week block/g) || []),
+      // the achievement and the re-test screen must both read the constant
+      achDesc: (ACHIEVEMENTS.find(a => a.id === 'block') || {}).desc,
+      lastWeekNote: (typeof _overloadNoteInner === 'function')
+        ? _overloadNoteInner({ week: WEEKS_PER_CYCLE, cycle: 1 }) : ''
+    };
+  });
+  t.ok('guard: the scan read the app, not a stub', blockLen.isApp, blockLen);
+  t.ok('guard: and the block really is more than one week', blockLen.weeks > 1, blockLen);
+  t.eq('no sentence writes the block length out by hand',
+    blockLen.hardcoded.join(', '), '', blockLen);
+  t.eq('the Block Complete badge names the real length',
+    blockLen.achDesc, 'Finish a ' + blockLen.weeks + '-week block', blockLen);
+  t.ok('and the final-week note does too',
+    blockLen.lastWeekNote.indexOf(blockLen.weeks + '-week block') >= 0, blockLen);
+
 
 
   /* ---- Burpees: a tenth baseline test, for cardiovascular stamina (v252) --

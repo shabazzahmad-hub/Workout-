@@ -1970,7 +1970,7 @@ function phaseOf(cycle){return cycle<PHASE1_CYCLES?1:2;}
 function sessionsFor(cycle){return phaseOf(cycle)===1?SESSIONS:PHASE2_SESSIONS;}
 
 function posOf(ptr){
-  const cycle=Math.floor(ptr/SESSIONS_PER_CYCLE); // 0..8 (nine 6-week blocks)
+  const cycle=Math.floor(ptr/SESSIONS_PER_CYCLE); // 0..8 (nine blocks of WEEKS_PER_CYCLE)
   const inCycle=ptr%SESSIONS_PER_CYCLE;
   const week=Math.floor(inCycle/SESSIONS_PER_WEEK)+1; // 1..6
   const dayInWeek=inCycle%SESSIONS_PER_WEEK;          // 0..6 (seven days/week)
@@ -3805,7 +3805,7 @@ function reassessIntroHTML(cycle){
   const prev=cycle===1?STATE.baseline:STATE.reassess[cycle-1];
   return `
   <div class="hero oblique"><div class="htop"><div><div class="hlbl">Cycle ${cycle+1} · re-test</div><h1>Progress Check</h1><div class="hmeta">6 weeks done — let's re-measure</div></div><div class="hicon">📈</div></div></div>
-  <div class="note fire">You've completed a full 6-week block. Re-take the ${TESTS.length} tests so the next block scales from your <b>new, stronger</b> numbers — this is what keeps results coming all year.</div>
+  <div class="note fire">You've completed a full ${WEEKS_PER_CYCLE}-week block. Re-take the ${TESTS.length} tests so the next block scales from your <b>new, stronger</b> numbers — this is what keeps results coming all year.</div>
   <div class="card pad"><h3>Last result</h3>
     <div class="kv"><span>Core Score</span><b>${(prev&&prev.score!=null)?prev.score+'/100':'not tested'}</b></div>
     <div class="kv"><span>Level</span><b>${_ve((prev&&prev.level)||'—')}</b></div>
@@ -5968,7 +5968,7 @@ function _overloadNoteInner(sess){
   if(w===3)return 'Volume rises again and harder variations start to unlock.';
   if(w===4)return 'Deeper into the build — targets climb and the tougher rungs kick in.';
   if(w===5)return 'Peak weeks begin — an extra set on your key exercises. Push hard.';
-  if(w===6)return 'Final peak week — the highest load of the 6-week block. Then you re-test and climb higher.';
+  if(w===WEEKS_PER_CYCLE)return `Final peak week — the highest load of the ${WEEKS_PER_CYCLE}-week block. Then you re-test and climb higher.`;
   return 'Load increased. Keep pushing.';
 }
 function exCardHTML(m,log,idx){
@@ -9222,7 +9222,7 @@ function commitAssessment(a,rec){
     ${testBreakdownHTML(a)}
     <div class="card pad" style="margin-top:6px"><h3 style="font-size:14px">What this means</h3>
       <p class="sm muted">${levelBlurb(a.level)}</p>
-      <p class="sm muted">Your program is now built from these numbers. Targets start sub-maximal for perfect form, then climb every week. You'll re-test after each 6-week block.</p>
+      <p class="sm muted">Your program is now built from these numbers. Targets start sub-maximal for perfect form, then climb every week. You'll re-test after each ${WEEKS_PER_CYCLE}-week block.</p>
     </div>
     <button class="btn primary" onclick="closeSheet();go('today')">${assessState.reassess?'Continue training →':'Start Week 1 →'}</button>
   `);
@@ -12030,7 +12030,7 @@ function renderProgress(){
     const lvl=latest.level||(STATE.baseline&&STATE.baseline.level)||levelOf(0);
     h+=`<div class="section-label">Core Score</div>`;
     h+=`<div class="card pad center">${ringHTML(latest.score,'Core Score')}<div style="margin-top:10px"><span class="chip on">${_ve(lvl)}</span></div>
-      ${STATE.scoreHistory.length>1?scoreTrendHTML():'<div class="tiny muted" style="margin-top:10px">Re-test after each 6-week block to see your climb.</div>'}</div>`;
+      ${STATE.scoreHistory.length>1?scoreTrendHTML():`<div class="tiny muted" style="margin-top:10px">Re-test after each ${WEEKS_PER_CYCLE}-week block to see your climb.</div>`}</div>`;
   }
   /* LIFETIME totals. Sessions, day streak and this-week used to be repeated
      here from the grid at the top of the tab; they are gone from this grid, not
@@ -12593,7 +12593,11 @@ const ACHIEVEMENTS=[
   {id:'phase2',emoji:'🏗️',name:'Into Phase 2',desc:'Reach the full-body split',check:()=>STATE.progressPtr>=SESSIONS_PER_CYCLE*2},
   {id:'plank60',emoji:'🧱',name:'Solid Minute',desc:'A prescribed 60s+ hold',check:()=>bestHoldPR()>=60},
   {id:'plank120',emoji:'🗿',name:'Two-Minute Titan',desc:'A prescribed 120s hold',check:()=>bestHoldPR()>=120},
-  {id:'block',emoji:'✅',name:'Block Complete',desc:'Finish a 6-week block',check:()=>STATE.progressPtr>=SESSIONS_PER_CYCLE},
+  /* The length is derived. The check has always read SESSIONS_PER_CYCLE while
+     the sentence beside it said "6-week" by hand — the same shape as the
+     re-test screen, which derived TESTS.length in one half of a sentence and
+     hardcoded the block length in the other. */
+  {id:'block',emoji:'✅',name:'Block Complete',desc:'Finish a '+WEEKS_PER_CYCLE+'-week block',check:()=>STATE.progressPtr>=SESSIONS_PER_CYCLE},
   {id:'retest',emoji:'📈',name:'Levelled Up',desc:'Complete a re-test',check:()=>Object.keys(STATE.reassess||{}).length>=1},
   {id:'score10',emoji:'🚀',name:'Stronger Core',desc:'Core Score up 10+ from baseline',check:()=>scoreGain()>=10},
   {id:'waist2',emoji:'📏',name:'Inches Down',desc:'Waist down 5 cm (2 in) from start',check:()=>waistDrop()>=5},
