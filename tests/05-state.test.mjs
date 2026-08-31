@@ -1623,6 +1623,50 @@ export default async function run() {
     });
     t.eq('the four lifetime records are never capped', r.capped.join(', '), '', JSON.stringify(r.kept));
     t.eq('and none of them is in the cap registry at all', r.inCaps.join(', '), '');
+    /* MEMBERSHIP, not truthiness: an inherited key is truthy, so a `||`-shaped
+       lookup hands back Object.prototype.constructor and reads `undefined` as
+       a cap. The same trap v328 recorded for CARDIO_INFO, and the guard is
+       what makes the assertion mean anything. */
+    const inh = await page.evaluate(() => {
+      const out = { truthy: !!LOG_CAPS['constructor'], own: Object.prototype.hasOwnProperty.call(LOG_CAPS, 'constructor') };
+      STATE.skipLog = Array.from({ length: 5 }, (_, i) => ({ date: '2026-01-0' + (i + 1), mins: 5 }));
+      const before = STATE.skipLog.length;
+      try { capLog('constructor'); } catch (e) { out.threw = String(e); }
+      out.untouched = STATE.skipLog.length === before;
+      return out;
+    });
+    t.ok('guard: the inherited key really IS truthy on this map',
+      inh.truthy && !inh.own, JSON.stringify(inh));
+    t.ok('so an inherited key is refused rather than read as a cap',
+      !inh.threw && inh.untouched, JSON.stringify(inh));
+
+    /* THE WRITE PATH, NOT ONLY THE BOOT REPAIR. Every assertion above drives
+       normalizeState(), so a mutant that stripped the cap from logAct() walked
+       straight through: the log stays over-cap until the next boot, and save()
+       writes the over-long file to storage the whole time. Both directions are
+       driven, because the two writer families trim opposite ends. */
+    const w = await page.evaluate(() => {
+      const out = {};
+      const q = console.log; console.log = () => {};
+      STATE.ruckLog = []; STATE.skipLog = []; STATE.holdLog = [];
+      for (let i = 0; i < 210; i++) logAct('ruck', 5, { dist: 1 });
+      for (let i = 0; i < 210; i++) logSkip(5, 1);
+      for (let i = 0; i < 210; i++) logHold('plank', 60 + i, true, 'plank');
+      console.log = q;
+      out.ruck = STATE.ruckLog.length;
+      out.skip = STATE.skipLog.length;
+      out.hold = STATE.holdLog.length;
+      /* And the newest survived: an unshift-er keeps the head, a push-er the
+         tail, so the last hold written must still be the longest. */
+      out.newestHold = STATE.holdLog[STATE.holdLog.length - 1];
+      return out;
+    });
+    t.eq('the WRITE path caps an unshift-style log without waiting for a boot', w.ruck, 200,
+      JSON.stringify(w));
+    t.eq('and its sibling', w.skip, 200, JSON.stringify(w));
+    t.eq('and a push-style log too', w.hold, 200, JSON.stringify(w));
+    t.eq('keeping the newest row it wrote', w.newestHold && w.newestHold.secs, 60 + 209,
+      JSON.stringify(w.newestHold));
     errors.forEach(e => t.fail('page error', e));
     await browser.close();
   }
@@ -1684,6 +1728,63 @@ export default async function run() {
     t.ok('guard: the pair really produced a first warning to be silent after',
       !!r.firstOfPair, JSON.stringify({ first: r.firstOfPair }));
     t.eq('FLOOR: and it still warns only once', r.second, '');
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
+  /* ---- the theme guard was truthiness where membership belonged -----------
+     THEMES['constructor'] is truthy, so a junk theme out of an imported backup
+     survived every boot, travelled in every backup after it, and left the theme
+     picker with NOTHING selected — so the athlete could neither see nor change
+     which theme was on. The same harm v354 measured for profile.gear. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const out = {};
+      out.inheritedIsTruthy = !!THEMES['constructor'];
+      out.inheritedIsOwn = Object.prototype.hasOwnProperty.call(THEMES, 'constructor');
+
+      // an inherited key must not survive the boot
+      STATE.settings.theme = 'constructor'; normalizeState();
+      out.afterInherited = STATE.settings.theme;
+
+      // nor an ordinary junk string
+      STATE.settings.theme = 'chartreuse'; normalizeState();
+      out.afterJunk = STATE.settings.theme;
+
+      /* FLOOR — a REAL theme the athlete picked survives untouched, and so does
+         the default. A repair that always resets satisfies every assertion
+         above and silently takes the athlete's choice away on every boot. */
+      const real = Object.keys(THEMES).filter(k => k !== THEME_DEFAULT)[0];
+      out.real = real;
+      STATE.settings.theme = real; normalizeState();
+      out.afterReal = STATE.settings.theme;
+      STATE.settings.theme = THEME_DEFAULT; normalizeState();
+      out.afterDefault = STATE.settings.theme;
+
+      // the read site refuses it too — two guards mean two checks
+      out.readSite = { junk: themeName('constructor'), real: themeName(real) };
+      out.setter = (() => { STATE.settings.theme = real; setTheme('constructor');
+                            return STATE.settings.theme; })();
+
+      // and the picker marks exactly one chip
+      STATE.settings.theme = real;
+      const html = themeChipsHTML();
+      out.chipsOn = (html.match(/themechip on/g) || []).length;
+      return out;
+    });
+
+    t.ok('guard: the inherited key really IS truthy on THEMES',
+      r.inheritedIsTruthy && !r.inheritedIsOwn, JSON.stringify(r));
+    t.eq('an inherited key does not survive the boot', r.afterInherited, 'mint');
+    t.eq('nor does an ordinary junk theme', r.afterJunk, 'mint');
+    t.eq('FLOOR: a real theme the athlete picked survives', r.afterReal, r.real);
+    t.eq('FLOOR: and so does the default', r.afterDefault, 'mint');
+    t.ok('the read site refuses the inherited key and accepts a real one',
+      r.readSite.junk === null && r.readSite.real === r.real, JSON.stringify(r.readSite));
+    t.eq('and the setter refuses it rather than storing it', r.setter, r.real);
+    t.eq('so the picker marks exactly one theme', r.chipsOn, 1);
     errors.forEach(e => t.fail('page error', e));
     await browser.close();
   }

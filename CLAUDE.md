@@ -9793,6 +9793,49 @@ message correctly describes.
 that fires on every write is one nobody reads — and it must still warn only
 ONCE, whichever branch it took.
 
+### The theme guard was truthiness where membership belonged
+
+```js
+if(!THEMES[STATE.settings.theme])STATE.settings.theme=THEME_DEFAULT;
+```
+
+**`THEMES['constructor']` is truthy**, so a junk theme out of an imported
+backup survived every boot and travelled in every backup after it. Nothing
+looks broken on screen — `setProperty` ignores an `undefined` value, so the CSS
+default paints — and that is exactly why it survived. The harm is the one v354
+measured for `profile.gear`: **the picker renders from the registry and marks
+the chip that matches, so an out-of-set value leaves NOTHING selected and the
+athlete can neither see nor change which theme is on.**
+
+`themeName()` is the one membership test, asked by the boot repair, by
+`applyTheme()` and by `setTheme()` — **two guards mean two checks**, so the
+read site is pinned as well as the repair. The floors are what stop the fix
+being a reset: a real theme the athlete picked survives, the default survives,
+and the picker marks exactly one chip.
+
+**The sweep that found it narrowed from 70 sites to one.** Every registry
+indexed by a data-derived key looks like this class, and almost all are indexed
+by a key that came from iterating the registry itself. The question that
+discriminates is *does the key come from STATE* — five sites did, and four of
+those go through `profile.goal`, which already has a proper membership repair
+(`GOALS.some(x=>x[0]===g)`). One did not.
+
+### And the same class in the code I had just written
+
+`capLog()` read `LOG_CAPS[key]` by truthiness, and one call site derives the key
+from data (`ACTS[k].logKey`). Found by re-reading my own change an hour after
+making it — the seventh round running where the audit's best finding was in the
+round immediately before.
+
+### The escaped mutant tested the boot repair and never the write path
+
+Every log-cap assertion drove `normalizeState()`, so a mutant stripping the cap
+out of `logAct()` walked straight through. It is not redundant with the boot
+repair: the log stays over-cap until the next launch, and `save()` writes the
+over-long file to storage the whole time. Both writer families are now driven
+directly — 210 rows through `logAct()`, `logSkip()` and `logHold()` — with the
+newest row pinned, because the two families trim opposite ends.
+
 ### Two more sweeps that came back clean
 
 - **Every `x || <non-zero>` read on a number**, the class behind
