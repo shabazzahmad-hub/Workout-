@@ -7186,6 +7186,62 @@ export default async function () {
   }
 
 
+  /* ---- the brief has to say why the load is down ------------------------
+     A deload week described "2 sets of 30 reps" in full and never said the load
+     was eased — and the brief is the segment the coach reads ALOUD, so there is
+     nothing on screen to check it against. v372 established that a quiet cut
+     reads as a bug and gave the Today BANNER its reason; the brief never got
+     one. deloadReason() is now the single source both ask. */
+  {
+    const r = await page.evaluate(() => {
+      const say = () => briefSegments().map(x => String(x.say || '')).join(' ');
+      const out = {};
+      STATE.progressPtr = 40;                       // week 6 — a calendar deload
+      STATE.prep = {}; normalizeState();
+      out.reason = (typeof deloadReason === 'function') ? deloadReason() : null;
+      out.deloadOn = deloadOn();
+      out.plain = say();
+      out.title = briefSegments()[0].title;
+      /* In a prep taper the segment above already explains the easing in more
+         detail, so this one stays silent — two lines for one fact is the defect
+         this round exists to remove. */
+      STATE.prep = { date: new Date(Date.now() + 10 * 864e5).toISOString().slice(0, 10),
+                     path: 'operator', results: {}, combat: {},
+                     planFrom: new Date(Date.now() - 60 * 864e5).toISOString().slice(0, 10) };
+      normalizeState();
+      out.taperOn = (typeof prepTaperEase === 'function') ? prepTaperEase() : null;
+      out.taper = say();
+      /* FLOOR — an ordinary week says nothing about an ease at all. */
+      STATE.prep = {}; STATE.progressPtr = 8; STATE.settings.deload = false;
+      normalizeState();
+      out.normalOn = deloadOn();
+      out.normal = say();
+      return out;
+    });
+
+    t.ok('guard: week 6 with no prep block really is a calendar deload',
+      r.deloadOn === true && r.reason === 'deload', JSON.stringify({ on: r.deloadOn, why: r.reason }));
+    t.ok('the brief says the load is eased and why',
+      /load is eased/.test(r.plain) && /deload/.test(r.plain), r.plain.slice(0, 240));
+    t.ok('guard: the taper case really is in a taper',
+      r.taperOn === true, JSON.stringify({ taper: r.taperOn }));
+    t.ok('and in a taper it does not say it twice — the prep segment owns that',
+      /this is the taper/.test(r.taper) && !/load is eased/.test(r.taper),
+      r.taper.slice(0, 240));
+    /* FLOOR: a note that always fires is a note nobody reads. */
+    t.ok('guard: the ordinary week really is not a deload', r.normalOn === false,
+      JSON.stringify({ on: r.normalOn }));
+    t.ok('FLOOR: an ordinary week says nothing about an ease',
+      !/load is eased/.test(r.normal), r.normal.slice(0, 200));
+
+    /* The heading read "Morning brief" at every hour while the line under it
+       said "Good evening" — one card, two answers from the same clock. */
+    t.ok('and the brief heading agrees with its own greeting',
+      /^(Morning|Afternoon|Evening) brief$/.test(r.title || '')
+        && (r.plain.indexOf('Good ' + r.title.split(' ')[0].toLowerCase()) >= 0),
+      JSON.stringify({ title: r.title, opens: r.plain.slice(0, 40) }));
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

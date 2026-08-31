@@ -9813,8 +9813,12 @@ function briefSegments(){
   const who=name?(' '+name):'';
   const segs=[];
   // 1 — greeting
-  segs.push({icon:'🎖️',title:'Morning brief',
-    say:`${_briefGreet()}${who}. This is ${ADVISOR.short}, your coach. Here is your brief for today — week ${wkNum}, day ${dayNum} of your one-year build. Let's walk the plan.`});
+  /* The title read "Morning brief" at every hour while the line under it said
+     "Good evening" — one card, two answers, from the same clock. */
+  const _gt=_briefGreet();
+  const _briefTitle=/evening/i.test(_gt)?'Evening brief':(/afternoon/i.test(_gt)?'Afternoon brief':'Morning brief');
+  segs.push({icon:'🎖️',title:_briefTitle,
+    say:`${_gt}${who}. This is ${ADVISOR.short}, your coach. Here is your brief for today — week ${wkNum}, day ${dayNum} of your one-year build. Let's walk the plan.`});
   // 2 — mission / transformation
   const goalW=STATE.profile.goalWeightLb, goalBF=STATE.profile.goalBodyFat, kg=latestWeightKg();
   const bf=(goalBF>0)?`, and body fat under ${goalBF} percent`:'';
@@ -9889,8 +9893,24 @@ function briefSegments(){
     }
   }else{
   // 3 — today's session
+  /* NAME THE EASE, OR THE SESSION READS AS LOST PROGRESS. On a deload the brief
+     described "2 sets of 30 reps" in full and never said the load was eased —
+     and this is the segment the coach reads ALOUD, so there is nothing on screen
+     to check it against. deloadReason() is the same answer the Today banner
+     gives, asked rather than restated. The TAPER case is deliberately silent
+     here: the prep segment above already says it in more detail, and two lines
+     for one fact is the defect this round has been fixing all day. */
+  /* Silent through the whole taper, not only when the taper is the WINNING
+     reason: at week 6 the calendar deload wins, and the prep segment above has
+     already explained the easing in more detail. Two lines for one fact is
+     exactly what this round has been removing. */
+  const _inTaper=(()=>{try{return prepTaperEase();}catch(e){return false;}})();
+  const _dl=(!_inTaper&&typeof deloadReason==='function')?deloadReason():null;
+  const _dlSay=(_dl==='deload')?" Today's load is eased — this is a deload, so sets and targets come down on purpose and you rebuild stronger."
+    :(_dl==='spike')?" Today's load is eased — your logged sets this week are well above your recent average, so we back off and let it settle."
+    :'';
   segs.push({icon:'🔥',title:"Today's session",
-    say:`Today is ${sess.session.name}. ${sess.session.focus}. That's ${sess.main.length+1} exercises, about ${vol.minutes} minutes of work.`});
+    say:`Today is ${sess.session.name}. ${sess.session.focus}. That's ${sess.main.length+1} exercises, about ${vol.minutes} minutes of work.${_dlSay}`});
   // 4 — warm-up
   segs.push({icon:'🌡️',title:'Warm-up · ~4 min',
     say:`We open with a warm-up: ${_briefList(WARMUP_FLOW.slice(0,4).map(w=>w.n))}, and a couple more. Prime the deep core and raise the heart rate — do not skip it.`});
@@ -13295,6 +13315,19 @@ function toggleDeload(){
    uses "Training load +X% vs start" for the unrelated STATE.adapt
    percentage, and reusing the phrase here for a different number would
    read as the same metric contradicting itself. */
+/* WHICH reason, in one place. The brief needs the same answer the banner gives
+   — a session that quietly drops to 2 sets and says nothing reads as lost
+   progress, and the brief is the segment the coach READS ALOUD, which v315's
+   rule says is the one an athlete cannot double-check by looking. Two copies of
+   this ordering is two places for it to drift. */
+function deloadReason(){
+  if(!deloadOn())return null;
+  const manual=STATE.settings&&STATE.settings.deload===true;
+  const calendar=(pos=>pos&&pos.week===WEEKS_PER_CYCLE)(posOf(STATE.progressPtr));
+  if(!manual&&!calendar&&prepTaperEase())return 'taper';
+  if(!manual&&!calendar&&!readinessSlump()&&typeof loadSpike==='function'&&loadSpike())return 'spike';
+  return 'deload';
+}
 function deloadBanner(){
   if(!deloadOn())return '';
   const manual=STATE.settings&&STATE.settings.deload===true;

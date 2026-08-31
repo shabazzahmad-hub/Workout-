@@ -9793,6 +9793,39 @@ message correctly describes.
 that fires on every write is one nobody reads — and it must still warn only
 ONCE, whichever branch it took.
 
+## The brief described a 44% cut and never said it was one (v398)
+
+Same sweep again, on the segment the coach **reads aloud**. On a deload week the
+brief walked the athlete through *"Push-Up, 2 sets of 30 reps, Towel Door Row, 2
+sets of 22…"* — every movement at two sets instead of three — and said nothing
+about why.
+
+v372 established the rule and gave the Today BANNER its reason: *"a quiet 44%
+cut reads as a bug, so the banner names the taper."* The brief never got one, and
+the brief is the worst place for it: v315's rule is that **a spoken line is the
+one an athlete cannot double-check by looking.**
+
+`deloadReason()` is now the single answer both surfaces ask — the banner's own
+ordering (manual, calendar, taper, spike) hoisted out of it rather than restated,
+because two copies of that ordering is two places for it to drift.
+
+**It stays silent through the whole taper**, not only when the taper is the
+winning reason: at week 6 the calendar deload wins, and the prep segment above
+has already explained the easing in more detail. Two lines for one fact is the
+defect this round has been removing all day, and the first version of the fix
+introduced it.
+
+**The floor is the ordinary week**, which says nothing about an ease at all.
+
+### And the heading disagreed with its own greeting
+
+`title:'Morning brief'` was hardcoded while the line under it computed the
+greeting from the clock — so an evening athlete read **"Morning brief"** above
+**"Good evening"**. One card, two answers, from the same clock. The title now
+derives from the same greeting it sits over, and the check pins that they agree
+rather than pinning either one.
+
+
 ## Twenty-eight copies of one sentence (v398)
 
 Same sweep, one pane over. The Reference food pane rendered **44 notes**, and
