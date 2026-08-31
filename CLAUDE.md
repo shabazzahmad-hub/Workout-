@@ -9793,6 +9793,47 @@ message correctly describes.
 that fires on every write is one nobody reads — and it must still warn only
 ONCE, whichever branch it took.
 
+## Twenty-eight copies of one sentence (v398)
+
+Same sweep, one pane over. The Reference food pane rendered **44 notes**, and
+**28 of them were the same sentence** differing only in a number — every worked
+day telling the athlete it runs over their calorie target.
+
+**Measured before deciding, because it looked like an extreme-athlete
+curiosity and is not:**
+
+| athlete | days flagged | worst |
+|---|---|---|
+| omnivore, 2200 kcal | 0 of 28 | — |
+| **omnivore cutting to 1700** | **22 of 28** | +466 |
+| **vegan avoiding SOY, 2200** | **28 of 28** | +717 |
+| vegan, eight allergens | 28 of 28 | +678 |
+
+A vegan who avoids soy is an ordinary athlete, not an edge case. At 28 of 28 the
+per-day note has stopped being information — *a note that always fires is a note
+nobody reads* — and it hides which days are worst.
+
+**The per-day notes stay.** v287's whole argument that an over-restrictive plan
+is *visible* rests on them, so the fix is additive: one summary above them
+naming how many days miss and by how much.
+
+### And my own new note blamed the wrong cause
+
+Its first version said *"that is your diet and allergen settings"* for everybody
+— so the **omnivore** cutting to 1700 was told *"Omnivore rules out the cheaper
+protein"*, which is false. An omnivore rules out nothing; there the cause is a
+target these fixed-portion days cannot get under.
+
+The discriminator is **measured, not guessed from the diet name**: ask how much
+of the food library the settings actually hide. Vegan-plus-soy hides 41 of 95;
+an omnivore hides none. Blaming the wrong cause leaves the athlete nothing to
+act on, which is the defect this whole class is about — and I introduced it and
+caught it in the same hour by rendering the note rather than reading it.
+
+**The floor is the athlete whose days all fit**: no per-day notes and no summary
+at all.
+
+
 ## The note was in the present tense about a week long past (v398)
 
 Found by the sweep the meal-plan bug suggested: **render every surface for an

@@ -2316,6 +2316,58 @@ export default async function run() {
       r.fullGap === false && /against your/.test(r.fullNote), r.fullNote);
   }
 
+  /* ---- 28 identical notes is a note nobody reads -------------------------
+     Every worked day that cannot reach the target carries its own note, which
+     is what makes the overshoot visible at all (v287 rests on that). Measured,
+     an ordinary vegan avoiding SOY gets 28 of 28 flagged and an omnivore
+     cutting to 1700 gets 22 of 28 — so the per-day note had stopped being
+     information. The summary names the shape once, above them. */
+  {
+    const r = await page.evaluate(() => {
+      const read = (diet, alg, kcal) => {
+        STATE.nutrition.diet = diet; STATE.nutrition.allergens = alg.slice();
+        STATE.nutrition.kcalTarget = kcal; STATE.nutrition.proteinTarget = 165;
+        STATE.nutrition.plan = null; normalizeState();
+        REF_TAB = 'food'; go('ref'); renderRef();
+        const txt = (document.querySelector('#v-ref') || {}).innerText || '';
+        const i = txt.search(/of these \d+ days run over/);
+        return { summary: i >= 0 ? txt.slice(Math.max(0, i - 20), i + 420).replace(/\s+/g, ' ') : null,
+                 perDay: (txt.match(/will not stretch/g) || []).length };
+      };
+      return { restricted: read('vegan', ['soy'], 2200),
+               clean: read('omnivore', [], 2200),
+               tightTarget: read('omnivore', [], 1700) };
+    });
+
+    t.eq('guard: an ordinary vegan avoiding soy really does flag every day',
+      r.restricted.perDay, 28, JSON.stringify({ n: r.restricted.perDay }));
+    t.ok('a wall of per-day notes gets one summary above it',
+      !!r.restricted.summary, JSON.stringify(r.restricted));
+    t.ok('naming how many, and the range they miss by',
+      /28 of these 28 days/.test(r.restricted.summary || '')
+        && /\d+–\d+ kcal/.test(r.restricted.summary || ''), r.restricted.summary);
+    /* THE REASON HAS TO BE THE ONE THAT APPLIES. The first version blamed "your
+       diet and allergen settings" for everybody — and an omnivore with none has
+       no such settings, so it named a cause the athlete could not act on. */
+    t.ok('and blaming the settings only where the settings really hide food',
+      /hides \d+ of the \d+ foods/.test(r.restricted.summary || ''), r.restricted.summary);
+    t.ok('while an unrestricted athlete on a tight target is told it is the TARGET',
+      /fixed portions/.test(r.tightTarget.summary || '')
+        && !/allergen settings/.test(r.tightTarget.summary || ''), r.tightTarget.summary);
+    t.eq('guard: and that athlete really does flag most days', r.tightTarget.perDay, 22,
+      JSON.stringify({ n: r.tightTarget.perDay }));
+
+    /* FLOOR — an athlete whose days all fit gets NO summary. A note that always
+       fires is a note nobody reads, which is the whole reason this one exists. */
+    t.eq('FLOOR: a plan that fits carries no per-day notes', r.clean.perDay, 0);
+    t.eq('and no summary either', r.clean.summary, null);
+    /* FLOOR — the per-day notes survive: the summary names the shape, it does
+       not replace the detail v287 relies on being visible. */
+    t.ok('and the per-day notes are still there under the summary',
+      r.restricted.perDay === 28 && r.tightTarget.perDay === 22,
+      JSON.stringify({ a: r.restricted.perDay, b: r.tightTarget.perDay }));
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

@@ -19083,6 +19083,28 @@ function renderRef(){
   h+=`<div class="section-label" id="mealplan">${REF_DAYS.length} worked days · <span class="tiny muted">four weeks, then it repeats</span></div>`;
   const days=scaledDays();
   h+=`<div class="note ${T.live?'info':'warn'}">Weighed out for <b>${T.p} g protein and ${T.kcal} kcal</b>${T.live?', your current target':', the default target'}. The protein anchors are sized to hit the protein; the starches — rice, potato, oats, quinoa — are sized to close whatever calories are left. Change your target in Fuel and these amounts move with it.</div>`;
+  /* SAY IT ONCE WHEN IT IS THE COMBINATION, NOT THE DAY. Every day that cannot
+     reach the target carries its own note, which is what makes the overshoot
+     visible at all — but measured, an ordinary vegan avoiding SOY gets 28 of 28
+     flagged, and an omnivore cutting to 1700 gets 22 of 28. Twenty-eight copies
+     of one sentence is a note nobody reads, and it hides which days are worst.
+     The per-day notes stay; this names the shape above them. */
+  {const _bad=REF_DAYS.map(d=>{try{const sd=scaleDay(d,T.p,T.kcal);return Math.round(sd.kcal-T.kcal);}catch(e){return 0;}})
+     .filter(g=>g>140);
+   if(_bad.length>=REF_DAYS.length/2){
+     const _lo=Math.min.apply(null,_bad),_hi=Math.max.apply(null,_bad);
+     /* NAME THE REASON THAT APPLIES, not a stock one. The first version said
+        "your diet and allergen settings" for everybody — and an OMNIVORE with
+        no allergens has no such settings: there the cause is a target these
+        fixed-portion days cannot get under. Measured by asking how much of the
+        food library the settings actually hide, not by guessing from the diet
+        name. Blaming the wrong cause leaves the athlete nothing to act on. */
+     const _hidden=(()=>{try{return FOODS.filter(f=>!foodOk(f)).length;}catch(e){return 0;}})();
+     const _why=_hidden>=FOODS.length*0.2
+       ? `That is your diet and allergen settings meeting this target, not a fault in any one day — ${_ve(dietLabel())}${algList().length?' plus '+_ve(algList().join(', ')):''} hides ${_hidden} of the ${FOODS.length} foods, and the cheaper protein is most of what goes. Raise the target or relax a setting.`
+       : `These days are written at fixed portions and this target is below what they come to even at the smallest starch. Raise the target, or take the overshoot as read.`;
+     h+=`<div class="note warn"><b>${_bad.length} of these ${REF_DAYS.length} days run over your calorie target</b>, by ${_lo}–${_hi} kcal, even with the starch at its smallest. ${_why} Each day below still says how far it misses.</div>`;
+   }}
   days.forEach((d,i)=>{
     const dp=T.p?Math.round(d.p/T.p*100):0;
     if(i%7===0)h+=`<div class="tiny muted" style="letter-spacing:.08em;text-transform:uppercase;font-weight:800;margin:12px 2px 6px">Week ${Math.floor(i/7)+1}</div>`;
