@@ -1627,6 +1627,67 @@ export default async function run() {
     await browser.close();
   }
 
+  /* ---- the storage warning has to be true of THIS phone -------------------
+     save()'s quota message named IndexedDB — "backing up to device store" —
+     unconditionally. `idb` is null whenever the open failed, which is a real
+     phone state (private browsing blocks it), and on such a phone a
+     localStorage failure means NOTHING is saved anywhere. The athlete was told
+     the opposite, on the persistence layer, which is the most expensive place
+     in the app to be reassured wrongly. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const out = {};
+      const realIdb = idb;
+      const ls = localStorage.setItem.bind(localStorage);
+      const boom = () => { throw new Error('QuotaExceededError'); };
+      const shot = () => (document.getElementById('toast') || {}).textContent || '';
+      const clear = () => { const t = document.getElementById('toast'); if (t) t.textContent = ''; };
+
+      /* A mirror EXISTS: the original message is the true one. */
+      _lsWarned = false; idb = realIdb || { fake: 1 };
+      localStorage.setItem = boom; clear(); save(); localStorage.setItem = ls;
+      out.withMirror = shot();
+
+      /* NO mirror: the message must not claim one. */
+      _lsWarned = false; idb = null;
+      localStorage.setItem = boom; clear(); save(); localStorage.setItem = ls;
+      out.noMirror = shot();
+
+      /* FLOOR — an ordinary save says nothing at all. A warning that always
+         fires is a warning nobody reads, and it would fire on every write. */
+      _lsWarned = false; idb = realIdb; clear(); save();
+      out.healthy = shot();
+
+      /* FLOOR — it still warns only ONCE, whichever branch it took. The first
+         version of this never let a warning fire before looking, so it was
+         asserting on the FIRST one and failed on correct code. The pair is the
+         test: one warning, then silence. */
+      _lsWarned = false; idb = null; localStorage.setItem = boom;
+      clear(); save(); out.firstOfPair = shot();
+      clear(); save(); out.second = shot();
+      localStorage.setItem = ls;
+
+      idb = realIdb; _lsWarned = false;
+      return out;
+    });
+
+    t.ok('with a device store behind it, the message still names it',
+      /device store/i.test(r.withMirror) && /Export a backup/i.test(r.withMirror), JSON.stringify(r));
+    t.ok('with NO device store, it does not claim one',
+      !/backing up to device store/i.test(r.noMirror), JSON.stringify(r));
+    t.ok('and says plainly that nothing is being saved',
+      /nothing is being saved/i.test(r.noMirror) && /Export a backup/i.test(r.noMirror),
+      JSON.stringify(r));
+    t.eq('FLOOR: an ordinary save warns about nothing', r.healthy, '');
+    t.ok('guard: the pair really produced a first warning to be silent after',
+      !!r.firstOfPair, JSON.stringify({ first: r.firstOfPair }));
+    t.eq('FLOOR: and it still warns only once', r.second, '');
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
   srv.close();
   return t.finish();
 }

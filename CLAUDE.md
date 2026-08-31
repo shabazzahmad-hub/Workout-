@@ -9764,6 +9764,53 @@ every assertion about the broken state.
 window this fix exists for is real on the machine the suite is running on. A
 check driven against a state that never happens proves nothing.
 
+**One equivalent mutant, measured rather than assumed.** Removing `swWorker()`'s
+controller fast-path escaped, and reading it back is why: on a controlled page
+`reg.active` **is** the controlling worker, so the mutant posts to exactly the
+same worker one async hop later. It is a cost saving, not a behaviour. Kept as
+intent, with no check able to catch its removal — the same call as v287's
+`wantAnchor`. **Read the mutant back before rewriting the check.**
+
+### The storage warning named a store this phone may not have
+
+`save()`'s quota message has always read *"Storage full — backing up to device
+store. Export a backup."* **"Device store" is IndexedDB, and `idb` is null
+whenever the open failed** — a real phone state, not a hypothetical: private
+browsing blocks it, and `idbOpen()` resolves null on any error.
+
+On such a phone a localStorage failure means **nothing is saved anywhere**, and
+the athlete was told the opposite. That is *a promise in UI text is a
+specification* on the persistence layer, which is the most expensive place in
+the app to be reassured wrongly — the cost is a training session the athlete
+believes is recorded.
+
+It is one condition, and only one case was ever wrong: localStorage fails AND
+`idb` is null. localStorage working with no mirror needs no warning (the data
+IS saved), and localStorage failing with a mirror present is what the original
+message correctly describes.
+
+**Two floors carry it.** An ordinary save must warn about nothing — a warning
+that fires on every write is one nobody reads — and it must still warn only
+ONCE, whichever branch it took.
+
+### Two more sweeps that came back clean
+
+- **Every `x || <non-zero>` read on a number**, the class behind
+  `+results.plank||30` and `actualRatio()`. Five candidates, all safe:
+  `kcalTarget` is repaired to 800-8000 or deleted, so its `||2000` is a real
+  default rather than a swallowed zero; the rest are registry lookups with real
+  defaults, which v364 already recorded as the legitimate shape.
+- **Every writer of `STATE.prs`** — four of them, and all four guard *only if it
+  beats the current*. The `logRefMeal` / `setForceResultQuiet` drift class is not
+  present here.
+
+  **And a writer-count scanner reported five fields with three writers each,
+  every one of them a RENDERER.** v388 had already proved with a working
+  scanner that zero renderers assign to STATE, so the contradiction was the
+  scanner: brace matching that runs past a function swallows the next ones
+  whole. A detector that contradicts a measurement already made with a proven
+  tool is the thing to doubt.
+
 ### Nine writers enforced a bound the boot repair did not
 
 The same round, same method — sweep for the SHAPE rather than use the app.

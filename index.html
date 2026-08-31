@@ -1893,8 +1893,20 @@ function save(){
   // A quota failure used to be swallowed whole: every later save became a no-op
   // while a stale copy stayed in localStorage and kept winning over the fresher
   // IndexedDB mirror. Now we notice, tell the athlete once, and let the mirror win.
+  /* THE MESSAGE HAS TO BE TRUE OF THIS PHONE. "backing up to device store"
+     names IndexedDB — and `idb` is null whenever it could not be opened, which
+     is a real state (private browsing blocks it, and the open can simply
+     error). On such a phone localStorage failing means NOTHING is saved
+     anywhere, and the athlete was told the opposite: a promise in UI text with
+     no code behind it, on the persistence layer, where it costs a session.
+     idbPut() is fire-and-forget through a 120 ms timer, so the mirror is
+     claimed only when there is genuinely one to claim. */
   try{localStorage.setItem(STORE_KEY,json);_lsOk=true;}
-  catch(e){_lsOk=false;if(!_lsWarned){_lsWarned=true;try{toast('Storage full — backing up to device store. Export a backup.');}catch(_){}}}
+  catch(e){_lsOk=false;if(!_lsWarned){_lsWarned=true;try{
+    toast(idb?'Storage full — backing up to device store. Export a backup.'
+            :'Storage is full and this browser has no backup store — nothing is being saved. Export a backup now.',
+          idb?2100:7000);
+  }catch(_){}}}
   clearTimeout(saveT);saveT=setTimeout(()=>idbPut(STORE_KEY,json),120);
 }
 let _lsOk=true,_lsWarned=false;
@@ -20277,6 +20289,12 @@ function packRender(d){
 function swWorker(){
   return new Promise(res=>{try{
     if(!navigator.serviceWorker){res(null);return;}
+    /* The controller fast-path is a cost saving, not a behaviour: on a
+       controlled page `reg.active` IS the controlling worker, so removing this
+       posts to exactly the same worker one async hop later. Measured as an
+       EQUIVALENT mutant — no check can catch its removal — and kept so the
+       ordinary case does not spend a getRegistration() on every call. Same
+       call as v287's `wantAnchor`. */
     const c=navigator.serviceWorker.controller;
     if(c){res(c);return;}
     navigator.serviceWorker.getRegistration('./')
