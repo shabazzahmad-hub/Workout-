@@ -2194,6 +2194,107 @@ export default async function run() {
     await browser.close();
   }
 
+
+  /* ---- two free-text fields with no repair at all -----------------------
+     Found by fuzzing EVERY field at once rather than one at a time — 62 fields
+     x 8 junk shapes, all simultaneously. The app survives total corruption
+     (no throw, no page error, every pane still renders 68-87k characters);
+     these two are what the sweep found on the glass.
+
+     profile.name is the worse one. `(STATE.profile.name||'').trim()` assumes a
+     string and there was no repair, so an imported {} made briefSegments()
+     THROW: Today's brief rendered 119 characters instead of 2,631, and the
+     boundary retries THROUGH normalizeState(), so the segment the coach reads
+     ALOUD never came back. Same shape as nutrition.allergies and `.replace()`.
+
+     settings.voiceName only handled `undefined`, so any other shape survived
+     and the voice check told the athlete "Every coach is using one voice. You
+     have picked [object Object] above, and a picked voice overrides all 38
+     coaches" — FALSE: coachVoiceFor() looks the name up, finds nothing, and
+     every coach keeps its own voice. A warning about a state that is not true,
+     offering a button to undo something that never happened. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const out = { name: {}, voice: {} };
+      const junk = [{}, [], 42, true, null];
+
+      junk.forEach((v, i) => {
+        STATE.profile.name = v; normalizeState();
+        let threw = '';
+        try { go('today'); setTodayTab('brief');
+              const chars = document.querySelector('#v-today').textContent.length;
+              const spoke = briefSegments().map(x => String(x.say || '')).join(' ').length;
+              out.name['j' + i] = { stored: STATE.profile.name, chars, spoke }; }
+        catch (e) { threw = String(e).slice(0, 60); out.name['j' + i] = { threw }; }
+      });
+
+      junk.forEach((v, i) => {
+        STATE.settings.voiceName = v; normalizeState();
+        go('guide');
+        out.voice['j' + i] = { stored: STATE.settings.voiceName,
+          claims: document.querySelector('#v-guide').textContent.indexOf('You have picked') >= 0 };
+      });
+
+      // FLOORS — the real values must be untouched and must still be used
+      STATE.profile.name = '  Shabazz  '; STATE.settings.voiceName = 'Daniel';
+      normalizeState();
+      out.realName = STATE.profile.name;
+      out.readName = athleteName();
+      go('today'); setTodayTab('brief');
+      out.spokenHasName = briefSegments().map(x => String(x.say || '')).join(' ').indexOf('Shabazz') >= 0;
+      go('guide');
+      out.footer = /Athlete: Shabazz/.test(document.querySelector('#v-guide').textContent);
+      out.realVoiceWarns = document.querySelector('#v-guide').textContent.indexOf('Daniel') >= 0;
+      // FLOOR: no name at all warns about nothing
+      STATE.profile.name = ''; STATE.settings.voiceName = ''; normalizeState();
+      go('guide');
+      out.blank = { footer: /Athlete:/.test(document.querySelector('#v-guide').textContent),
+                    claims: document.querySelector('#v-guide').textContent.indexOf('You have picked') >= 0 };
+      // a long name is capped, so an import cannot bloat every backup
+      STATE.profile.name = 'z'.repeat(500); normalizeState();
+      out.capped = STATE.profile.name.length;
+      /* Two guards mean two checks: importData() writes STATE directly, so both
+         READ sites have to be right with no boot behind them. */
+      STATE.profile.name = {}; STATE.settings.voiceName = {};
+      let noBoot = '';
+      try { athleteName(); go('guide'); go('today'); setTodayTab('brief'); briefSegments(); }
+      catch (e) { noBoot = String(e).slice(0, 60); }
+      out.noBoot = noBoot || '(none)';
+      out.noBootGlass = document.querySelector('#v-guide').textContent.indexOf('[object') < 0;
+      STATE.profile.name = ''; normalizeState();
+      return out;
+    });
+
+    [0, 1, 2, 3, 4].forEach(i => {
+      const n = r.name['j' + i];
+      t.ok(`a non-string name never throws (case ${i})`, !n.threw, n.threw || '');
+      t.eq(`and is repaired to empty (case ${i})`, n.stored, '');
+      t.ok(`so the brief still renders (case ${i})`, n.chars > 1000, String(n.chars));
+      t.ok(`and the coach still has something to say (case ${i})`, n.spoke > 500, String(n.spoke));
+      t.eq(`a non-string voice name is repaired too (case ${i})`, r.voice['j' + i].stored, '');
+      t.eq(`so no false "you have picked" warning fires (case ${i})`,
+        r.voice['j' + i].claims, false);
+    });
+
+    // FLOORS
+    t.eq('FLOOR: a real name is stored exactly as typed', r.realName, '  Shabazz  ');
+    t.eq('FLOOR: and read back trimmed', r.readName, 'Shabazz');
+    t.ok('FLOOR: and the coach still greets them by it', r.spokenHasName);
+    t.ok('FLOOR: and Settings still shows it', r.footer);
+    t.ok('FLOOR: a real picked voice still raises the warning', r.realVoiceWarns);
+    t.eq('FLOOR: no name means no Athlete line', r.blank.footer, false);
+    t.eq('FLOOR: and no picked voice means no warning', r.blank.claims, false);
+    t.eq('a very long name is capped', r.capped, 60);
+    // the read sites, with no boot behind them
+    t.eq('the read sites do not throw on junk written straight into STATE',
+      r.noBoot, '(none)');
+    t.ok('nor print it raw', r.noBootGlass);
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
   srv.close();
   return t.finish();
 }

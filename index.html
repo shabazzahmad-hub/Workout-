@@ -1832,7 +1832,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='401';
+const APP_VERSION='402';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2133,6 +2133,17 @@ const LEVEL_NAME=['Beginner','Intermediate','Advanced'];
    repair. Junk falls to Beginner rather than to the middle: the two ways of
    being wrong are not symmetrical — under-prescribing costs one tap to fix,
    over-prescribing hands a true novice an intermediate ladder. */
+/* `athleteName()` assumes a string, and profile.name had no
+   repair at all — so an imported {} made briefSegments() THROW and Today's
+   brief rendered 119 characters instead of 2,631. The boundary retries THROUGH
+   normalizeState(), which had nothing for it, so the segment the coach reads
+   ALOUD never came back. Same shape as nutrition.allergies and `.replace()`. */
+function athleteName(){try{const n=STATE.profile&&STATE.profile.name;
+  /* The typeof test is an EQUIVALENT mutant: the catch below already returns ''
+     for every non-string, measured identical across eight inputs. Kept because
+     control flow through an exception is not the same as a test, and no check
+     can catch its removal. */
+  return (typeof n==='string')?n.trim():'';}catch(e){return '';}}
 function levelName(v){return LEVEL_NAME.indexOf(v)>=0?v:'Beginner';}
 function levelOf(cycle){
   // measured level wins — the baseline/re-test is real data, the quiz answer is a claim
@@ -9838,7 +9849,7 @@ function briefSegments(){
   const wkNum=(sess.cycle*WEEKS_PER_CYCLE)+sess.week;
   const dayNum=((sess.pos&&sess.pos.dayInWeek)||0)+1;
   const vol=sessionVolume(sess);
-  const name=(STATE.profile.name||'').trim();
+  const name=athleteName();
   const who=name?(' '+name):'';
   const segs=[];
   // 1 — greeting
@@ -10191,7 +10202,7 @@ function dayflowDone(){
   openSheet(`<div style="text-align:center">
     ${coachAvatarHTML(80,'border-color:var(--gold);margin:0 auto 8px;display:block;box-shadow:0 6px 18px rgba(0,0,0,.45)')}
     <h2 style="margin:2px 0">Day complete 🎖️</h2>
-    <p class="muted sm" style="margin:6px 0 14px">Brief, warm-up, workout and cool-down — all done. Outstanding work, ${_ve((STATE.profile.name||'').trim()||'soldier')}. Now hydrate and hit your protein.</p>
+    <p class="muted sm" style="margin:6px 0 14px">Brief, warm-up, workout and cool-down — all done. Outstanding work, ${_ve(athleteName()||'soldier')}. Now hydrate and hit your protein.</p>
     <button class="btn t-green" style="margin-bottom:8px" onclick="closeSheet();openMealPlan()">🍽️ Meal ideas</button>
     <button class="btn t-blue" style="margin-bottom:8px" onclick="closeSheet();go('fuel')">💧 Log water &amp; food</button>
     <button class="btn ghost" onclick="closeSheet()">Done</button>
@@ -10212,7 +10223,7 @@ function startRestDay(){
    day" / "Recover" buttons, and after logging via startRestDay(). State-aware:
    shows the log button until today is logged, then confirms it. */
 function openRestSheet(){
-  const name=(STATE.profile.name||'').trim();
+  const name=athleteName();
   const rested=!!(STATE.restDays&&STATE.restDays[todayISO()]);
   openSheet(`<div style="text-align:center;margin-bottom:6px">
       ${coachAvatarHTML(76,'border-color:var(--gold);margin:0 auto 6px;display:block;box-shadow:0 6px 18px rgba(0,0,0,.45)')}
@@ -10266,7 +10277,10 @@ function _ve(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;',
    says which one it is — the same reason runAIDiagnostic() exists. */
 function voiceDiag(){
   let pool=[];try{pool=englishVoicePool()||[];}catch(e){}
-  const forced=(STATE.settings&&STATE.settings.voiceName)||'';
+  /* Two guards mean two checks: importData() writes STATE directly, so this has
+     to be right with no boot behind it. A non-string is not a picked voice. */
+  const _vn=STATE.settings&&STATE.settings.voiceName;
+  const forced=(typeof _vn==='string')?_vn:'';
   const byVoice={};
   try{COACHES.forEach(c=>{const v=COACH_VOICE_MAP[c.id];if(v&&v.name)byVoice[v.name]=(byVoice[v.name]||0)+1;});}catch(e){}
   return {all:(COACH_VOICES||[]).length,en:pool.length,coaches:(COACHES||[]).length,
@@ -20462,7 +20476,7 @@ function renderGuide(){
     <div class="btnrow"><a class="btn ghost sm" style="width:100%" href="./privacy.html" target="_blank" rel="noopener">Privacy policy</a><a class="btn ghost sm" style="width:100%" href="./terms.html" target="_blank" rel="noopener">Terms of use</a></div>
     <a class="btn ghost sm" style="width:100%;margin-top:8px" href="https://github.com/shabazzahmad-hub/Workout-/issues" target="_blank" rel="noopener">💬 Report a problem / get help</a>
   </div>`;
-  h+=`<div class="center tiny muted" style="margin:20px 0">CoreForge v${APP_VERSION} · built for a strong midsection<br>${STATE.profile.name?'Athlete: '+_ve(STATE.profile.name)+' · ':''}saved ${_ve(STATE._saved||todayISO())}</div>`;
+  h+=`<div class="center tiny muted" style="margin:20px 0">CoreForge v${APP_VERSION} · built for a strong midsection<br>${(n=>n?'Athlete: '+_ve(n)+' · ':'')(athleteName())}saved ${_ve(STATE._saved||todayISO())}</div>`;
   v.innerHTML=h;
   refreshCacheVer();
   refreshPackStat();
@@ -20877,7 +20891,19 @@ function normalizeState(){
      rather than != null — a stored null is a junk key that travels in every
      backup. */
   if(STATE.settings.voiceCmd!==undefined&&typeof STATE.settings.voiceCmd!=='boolean')delete STATE.settings.voiceCmd;
-  if(STATE.settings.voiceName===undefined)STATE.settings.voiceName='';
+  /* Only `undefined` was handled, so any other shape survived every boot — and
+     voiceCheckHTML() then told the athlete "Every coach is using one voice. You
+     have picked [object Object] above, and a picked voice overrides all 38
+     coaches", which is FALSE: coachVoiceFor() looks the name up in
+     COACH_VOICES, finds nothing, and every coach keeps its own voice. A warning
+     about a state that is not true, offering a button to undo something that
+     never happened. A device voice name is a string or it is nothing. */
+  if(typeof STATE.settings.voiceName!=='string')STATE.settings.voiceName='';
+  /* A name is free text the athlete types, so the writer always hands a string;
+     importData() does not. Capped at the same 60 as a food name — an import can
+     carry a hundred thousand characters and every backup would carry them too. */
+  if(typeof STATE.profile.name!=='string')STATE.profile.name='';
+  else if(STATE.profile.name.length>60)STATE.profile.name=STATE.profile.name.slice(0,60);
   /* voicePitch must NOT default here. Every reader (localPitchFor(), the
      Settings slider) already treats "absent" as "no manual override, use the
      tone-derived pitch" via a typeof==='number' check — that is the entire

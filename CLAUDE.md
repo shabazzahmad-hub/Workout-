@@ -10758,6 +10758,115 @@ badge id, a cycle number), so a key nobody looks up is inert. That is the v285
 call, and it rests on the measurement rather than on the reading: no `NaN`, no
 `undefined`, no throw on any tab or pane for any of the seven.
 
+## Two sweeps that came back clean, and one detector that did not (v401)
+
+Both are recorded as coverage rather than findings, and the second is worth
+keeping for how it nearly went wrong.
+
+- **Switching units never changes what is stored.** Everything is kept canonical
+  (kg, cm, km) and converted on the way out, so a unit toggle is a DISPLAY
+  change. Driven three times over a rich metric athlete — weight, height, goal
+  weight, both waists, three measurements and a lift log — rendering every tab
+  in between: **byte-identical every cycle.** It is now a check, because a
+  future unit-aware writer that stored the displayed figure would corrupt the
+  athlete's history the first time they toggled, and **in imperial the weight
+  conversion is close enough to its own inverse that a single round trip can
+  hide it** — the v315 escape, one subsystem over. Three mutants, all caught,
+  including the one that stops `weightShow()` converting at all: without that
+  guard, "the store is unchanged" passes on a conversion that never happened.
+
+- **No raw conversion reaches the glass.** `weightShow(86.4)` returns
+  `189.59770013580487`; every caller rounds. Swept across every pane and eight
+  sheets in BOTH units: zero numbers with three or more decimal places.
+
+  **The first run of that sweep proved nothing, and said so.** Its guard planted
+  a long decimal in a view and then called `go('fuel')` to scan it — and `go()`
+  RE-RENDERS, wiping the plant before the scan ran, so `canSee` came back
+  **false**. Navigate first, plant second, scan third. A clean sweep whose
+  detector cannot be shown failing is not a result — the rule this file already
+  states, caught by writing the guard rather than by trusting it.
+
+## Fuzzing every field AT ONCE, not one at a time (v402)
+
+Every previous sweep set one field to junk and rendered. This one set **all 62
+at once**, eight rounds with a different junk shape rotating through each field,
+plus every keyed map and list broken beside them.
+
+**The app survives total corruption**, and that is worth recording: no throw, no
+page error, and every pane still renders 68,000-87,000 characters. Two things
+reached the glass, and one of them was serious.
+
+### profile.name had no repair at all
+
+`(STATE.profile.name||'').trim()` assumes a string. Measured with an imported
+`{}`:
+
+| | |
+|---|---|
+| `briefSegments()` | **throws** — `.trim is not a function` |
+| Today ▸ Brief renders | **119 characters** against 2,631 |
+| the boundary retries | THROUGH `normalizeState()`, which had nothing for it |
+
+So the segment the coach reads **aloud** was dead and stayed dead. Same shape as
+`nutrition.allergies` and `.replace()` in v391, on the one field every athlete
+fills in. `42`, `[]` and `true` were quieter and no better: the brief rendered
+and the spoken half threw.
+
+`athleteName()` is the one reader now, so the four sites cannot disagree, and
+the boot repair types it. **A long name is capped at 60** — the same cap a food
+name carries — because an import can carry a hundred thousand characters and
+every backup would carry them too.
+
+### And a warning that fired about a state that was not true
+
+`settings.voiceName` only handled `undefined`, so any other shape survived and
+the voice check said:
+
+> **Every coach is using one voice.** You have picked **[object Object]** above,
+> and a picked voice overrides all 38 coaches.
+
+None of it true — `coachVoiceFor()` looks the name up in `COACH_VOICES`, finds
+nothing, and every coach keeps its own voice. A warning about a state that does
+not exist, offering a button to undo something that never happened.
+
+**A STRING that is not a voice on this phone is left alone, deliberately.**
+v302 ordered that branch first precisely because it is knowable from the setting
+alone, before the voice list has loaded — which is the state an athlete is in
+when they open Settings to ask why. Requiring the voice to exist would restore
+the defect v302 fixed. A non-string is not a pick; an unavailable string is.
+
+**One equivalent mutant, measured rather than assumed.** `athleteName()`'s
+`typeof` test can be reverted to `(n||'').trim()` and nothing changes: the
+helper's own `catch` already returns `''` for every non-string — identical
+across eight inputs. Kept because control flow through an exception is not the
+same as a test, and recorded as uncatchable. The guard beside it supplies the
+answer, the same stacked shape as `swapStillValid()` one version earlier.
+
+### And I hit two of this file's own harness traps in the same hour
+
+Worth recording because both are already written down and both cost a wrong
+reading anyway:
+
+- **A probe run inside the mutation directory while the driver was mid-run.**
+  It wrote `index.clean.html` over `index.html` between seeds, and a mutant that
+  the suite genuinely catches was reported as an ESCAPE. Re-seeded on its own,
+  it fails by name. *One driver per directory, and nothing else may touch it* —
+  the rule was three rounds old and I broke it while measuring an equivalence.
+- **`pkill -f drive.py` killed the shell that ran it**, because that shell's own
+  command line contains the string. Exit 144, driver still alive, next reading
+  still poisoned. Kill by PID, from `pgrep -a`.
+
+### Two false alarms in the same sweep
+
+- **"It does not converge in one boot."** Two keys differ on the second pass and
+  both are designed one-shots: `_shredStart` is dropped as junk and then
+  re-seeded from evidence (v391), and `dietRepaired` is set on the boot that
+  repaired and cleared on the next. Diff the two states and read what actually
+  moved before calling it a defect.
+- **`ZQJUNK` in the voice warning**, after the fix. That is a legitimate string
+  voice name and the warning is correct about it — my probe had planted a
+  plausible name, not junk.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

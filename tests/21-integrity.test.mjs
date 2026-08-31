@@ -1155,6 +1155,55 @@ export default async function run() {
     t.eq('and it moves with the one number it does read', r.loadAfter, 20);
   }
 
+
+  /* ---- switching units must not change what is STORED --------------------
+     Everything is kept canonical (kg, cm, km) and converted on the way out, so
+     a unit switch is a DISPLAY change. A writer that stored the displayed
+     figure would corrupt the athlete's history the first time they toggled —
+     and in imperial the weight conversion is close enough to its own inverse
+     that a single round trip can hide it, which is why this runs three. */
+  {
+    const r = await page.evaluate(() => {
+      const snap = () => JSON.stringify({
+        kg: STATE.nutrition.weightKg, hCm: STATE.profile.heightCm,
+        gwLb: STATE.profile.goalWeightLb, gWaist: STATE.profile.goalWaist,
+        sWaist: STATE.profile.startWaist,
+        ms: (STATE.measurements || []).map(m => [m.date, m.weight, m.waist]),
+        lift: (STATE.liftLog || []).map(x => x.loadKg)
+      });
+      STATE.profile.unit = 'cm';
+      STATE.nutrition.weightKg = 86.4; STATE.profile.heightCm = 178;
+      STATE.profile.goalWeightLb = 165; STATE.profile.goalWaist = 88;
+      STATE.profile.startWaist = 101.7;
+      STATE.measurements = [{ date: '2026-08-01', weight: 86.4, waist: 96.2 }];
+      STATE.liftLog = [{ date: '2026-08-01', exId: 'pushup', loadKg: 22.5, reps: 8, rir: 2 }];
+      normalizeState();
+      const start = snap();
+      const tabs = ['today', 'progress', 'fuel', 'guide', 'ref', 'program', 'quick'];
+      const cycles = [];
+      for (let i = 0; i < 3; i++) {
+        STATE.profile.unit = 'in'; normalizeState();
+        tabs.forEach(t => { try { go(t); } catch (e) {} });
+        STATE.profile.unit = 'cm'; normalizeState();
+        tabs.forEach(t => { try { go(t); } catch (e) {} });
+        cycles.push(snap() === start);
+      }
+      /* GUARD: the two units really do DISPLAY different figures, or "the store
+         is unchanged" passes on a conversion that never happened. */
+      STATE.profile.unit = 'cm'; const m = weightShow(86.4);
+      STATE.profile.unit = 'in'; const i2 = weightShow(86.4);
+      STATE.profile.unit = 'cm'; normalizeState();
+      return { start, end: snap(), cycles, metricShow: m, imperialShow: i2 };
+    });
+
+    t.ok('guard: the two units really display different figures',
+      Math.abs(r.imperialShow - r.metricShow) > 50,
+      JSON.stringify({ metric: r.metricShow, imperial: r.imperialShow }));
+    r.cycles.forEach((ok, i) =>
+      t.ok(`round trip ${i + 1} leaves every stored figure untouched`, ok));
+    t.eq('and the whole store is byte-identical at the end', r.end, r.start);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
