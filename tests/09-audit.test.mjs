@@ -2104,6 +2104,21 @@ export default async function run() {
       o.forceRowCount = forceRows().length;
       o.unmeasuredCount = forceRows().filter(el => /not measured/.test(el.textContent)).length;
       o.namesEvents = FORCE_EVENTS.every(e => sheet().indexOf(e.name) >= 0);
+      /* THE CARD AND THE EXERCISE PAGE MUST DESCRIBE THE SAME TASK. The card
+         read "80 kg dragged", which counts the four bags on the floor and
+         drops the one on your back; EX.sbagdrag.why has always said "one bag
+         on your back, four more dragged". One task, two descriptions, and the
+         SCREEN carried the short one — a standard understated by a fifth is
+         one an athlete trains under-loaded for.
+
+         The total is derived from FORCE_BAG_KG x FORCE_DRAG_BAGS rather than
+         restated here, so a check cannot agree with a wrong number just
+         because it copied it. */
+      const drag = FORCE_EVENTS.find(e => e.id === 'drag');
+      o.drag = { detail: drag ? drag.detail : null, why: (EX.sbagdrag || {}).why || '',
+                 bag: FORCE_BAG_KG, bags: FORCE_DRAG_BAGS,
+                 total: FORCE_BAG_KG * FORCE_DRAG_BAGS,
+                 onGlass: sheet().indexOf(drag ? drag.detail : 'x') >= 0 };
 
       // one under the standard, one over, one pass/fail task
       setForceResultQuiet('lift', 190);
@@ -2255,6 +2270,21 @@ export default async function run() {
     t.ok('guard: with a joint flagged, safeSwap WOULD move at least two of them',
       r.wouldSwap.filter((k, i) => k !== FORCE_EVENTS_EX[i]).length >= 2,
       { wouldSwap: r.wouldSwap });
+
+  /* GUARD: the constants really are the pair this arithmetic rests on — one
+     bag carried plus four dragged. Without this, every assertion below passes
+     on whatever the constants happen to say. */
+  t.eq('guard: the drag is five bags of 20 kg', [r.drag.bag, r.drag.bags].join('/'), '20/5', r.drag);
+  t.eq('and the total load is derived, not restated', r.drag.total, 100, r.drag);
+  t.ok('the card names the bag you CARRY, not only the ones on the floor',
+    /One 20 kg bag carried/.test(r.drag.detail), r.drag);
+  t.ok('and the four more that are dragged', /4 more dragged/.test(r.drag.detail), r.drag);
+  t.ok('and the total the athlete actually moves',
+    r.drag.detail.indexOf(String(r.drag.total) + ' kg') >= 0, r.drag);
+  /* The two descriptions of one task must agree on the count. This is the
+     drift that produced the defect. */
+  t.ok('and the exercise page describes the same task', /four more dragged/i.test(r.drag.why), r.drag.why);
+  t.ok('and that description reaches the FORCE card', r.drag.onGlass, r.drag);
     t.eq('and it still builds the four real test events, not the substitutes',
       r.flaggedIds, ['sbaglift', 'sbagshuttle', 'rushes', 'sbagdrag'], r);
     /* WARN, do not silently swap: these are the actual test events, and

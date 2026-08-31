@@ -9569,6 +9569,51 @@ rather than as a finding:
   records.
 
 
+## The card was short by a bag (v397)
+
+The athlete sent the CAF's own four-event summary card. Three of the four
+matched the app word for word. The fourth did not.
+
+| event | the source | the app |
+|---|---|---|
+| 20 m rushes | 80 m total, down every 10 m | matched |
+| Sandbag lift | 30 consecutive lifts, 20 kg | matched |
+| Loaded shuttles | ten 20 m, loaded ↔ unloaded | matched |
+| **Sandbag drag** | **pull a 20 kg bag WHILE dragging four more** | **"80 kg dragged"** |
+
+**80 kg counts the four bags on the floor and drops the one on your back.**
+The real load is **100 kg** — five bags of twenty.
+
+**The app already knew.** `EX.sbagdrag.why` has always said *"one bag on your
+back, four more dragged 20 m behind you"*, and its steps say *"Load one bag
+across your back and grip the handles of the others behind you."* So one task
+was described two ways, and the SCREEN carried the short one — the exercise
+page, which an athlete opens once, was right, and the FORCE card they train
+against was wrong.
+
+That is this file's most-repeated shape landing on a published standard:
+**two copies of one fact, and the copy that drifted is the one on the glass.**
+It is worse here than in most places, because a standard understated by a
+fifth is one an athlete trains under-loaded for and discovers on test day.
+
+**The number is now derived, not written.** `FORCE_BAG_KG` x
+`FORCE_DRAG_BAGS` builds the sentence, so the card cannot state a total its
+own arithmetic does not support — and the check reads the same constants
+rather than restating 100, or it would agree with a wrong number simply
+because it had copied it.
+
+**The discriminating check is that the two descriptions AGREE.** Naming the
+carried bag is not enough on its own: a mutant that says *"100 kg dragged
+over"* has the right total and still hides the bag on your back. Four mutants,
+all caught by name — the exact revert, the total-without-the-carry, a bag
+count of four, and the exercise page drifting back to the card's old wording.
+
+**And this is what the ASOF stamp is for.** `FORCE_ASOF` sits on that card
+with "this app has no internet access and cannot check them for you". The
+athlete checked, against the source, and the app was wrong. The stamp did its
+job by inviting the check.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

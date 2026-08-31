@@ -1832,7 +1832,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='396';
+const APP_VERSION='397';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4218,6 +4218,9 @@ function workoutTabHTML(sess,log,doneCount,totalCount,wkNum){
    pass/fail: there is no time to beat, you either move it 20 m unbroken or
    you do not. */
 const FORCE_ASOF='August 2026';
+/* The drag's load, in one place. Written out as a sentence it was short by a
+   bag; derived, the card and any check read the same arithmetic. */
+const FORCE_BAG_KG=20, FORCE_DRAG_BAGS=5;   // one carried plus four dragged
 const FORCE_EVENTS=[
   {id:'lift',    ex:'sbaglift',    name:'Sandbag Lift',  max:210,
    detail:'30 lifts of a 20 kg bag above 1.0 m, alternating sides'},
@@ -4225,8 +4228,15 @@ const FORCE_EVENTS=[
    detail:'10 × 20 m, alternating loaded with the bag and free'},
   {id:'rush',    ex:'rushes',      name:'20 m Rushes',   max:51,
    detail:'2 × 20 m, flat on the ground every 10 m — 80 m total'},
+  /* ONE BAG CARRIED AND FOUR MORE DRAGGED — 100 kg, not 80. This read "80 kg
+     dragged", which counts the four on the floor and drops the one on your
+     back. The exercise's own `why` has always described it correctly ("one bag
+     on your back, four more dragged"), so the app stated the same task two
+     ways and the SCREEN carried the short one. A standard understated by a
+     fifth is one an athlete trains under-loaded for. */
   {id:'drag',    ex:'sbagdrag',    name:'Sandbag Drag',  max:null,
-   detail:'80 kg dragged 20 m without stopping — pass or fail'},
+   detail:'One '+FORCE_BAG_KG+' kg bag carried and '+(FORCE_DRAG_BAGS-1)+' more dragged — '
+     +(FORCE_BAG_KG*FORCE_DRAG_BAGS)+' kg over 20 m, no stopping'},
 ];
 const FORCE_IDS=FORCE_EVENTS.map(e=>e.id);
 /* ---- FORCE Combat: the ARMY standard, and the one that replaced a test ----
@@ -15236,7 +15246,7 @@ const JOINT_RISK={
   lowback:['rucksquat','ruckgm','superman','reverseplank','nordic','kbswing','dbrdl','kbrdl','hipthrust','dbthruster','dbcp','dbmanmaker','dbdevil','kbsnatch','kbthruster','kbwindmill','kbhighpull','mbslam','ropeslam','windshield','dragonflag','dragonflagfull','abrollstand','situp','vertcrunch','situptwist','vsit','slrdl','swimmer','legraise','hanglegraise','kneeraise','hiplift','flutter','scissors','vup','tuckvup','russiantwist','weightedtwist','mbtwist','mbchop','mbsitup','seatedtwist','abroll','longplank','extplank','ruck','dipknee','heeltouch','crunch','bicycle','revcrunch','sitthrust','toetouch','legcircle','kneetoelbow','sbrollout','sbhamcurl',
     /* For the FORCE tasks — every loaded hinge in this library is already here, and the
        sandbag lift is thirty of them against the clock. The drag is a braced
-       anti-flexion effort under 80 kg. The rushes and the shuttle put no load
+       anti-flexion effort under 100 kg. The rushes and the shuttle put no load
        on the spine at all and are absent. */
     'sbaglift','sbagdrag'],
   elbow:['dips','benchdip','diamondpushup','closepushup','chinup','negpullup','dbcurl','typewriter','pseudoplanche'],
