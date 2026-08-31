@@ -9793,6 +9793,58 @@ message correctly describes.
 that fires on every write is one nobody reads — and it must still warn only
 ONCE, whichever branch it took.
 
+## "Try adding load" to an athlete the app is holding back (v398)
+
+Found by reading the PLAYER's own screens as text, in the state where the most
+independent rules meet: a deload week. The ready screen said
+
+> **SET 1 OF 2 · maxed the ladder — try adding load**
+
+Two sets because the deload cut one, and *add load* on the same line.
+
+**`atLadderCeiling()`'s third condition was written to prevent exactly this** —
+v221 records it as *"the REAL prescription (after safe mode, deload, readiness)
+lands AT the ceiling"*. It does not achieve that, because `prescribeCeiling()`
+is itself a **CAP**: an eased target still lands ON it, so the gate passes.
+Measured across all 378 sessions:
+
+| state | movements where the hint was reachable |
+|---|---|
+| no ease | 152 of 2196 |
+| **deload week** | **136** |
+| **safe mode** | **128** |
+
+Safe mode is the one that matters. It exists to hold an athlete with an
+uncleared health screen *well short of failure*, and the app was telling them to
+add external load. Deload and the readiness slump exist to take work away; none
+of the three is a moment to suggest adding any. The same call `evenSets()` makes
+when it rounds DOWN under an ease.
+
+**The floor is the ordinary athlete**, who still gets the hint — deleting it
+outright satisfies every assertion about the eased cases.
+
+### My own fix had the pointer bug it was written to find
+
+The first version called `deloadOn()` with **no argument**, so it read
+`posOf(progressPtr)` rather than the session the player is actually running —
+and `atLadderCeiling()` one line above already passes `PLAYER.sess.pos` for
+precisely that reason. Three existing checks went red, which is how it surfaced.
+
+### And three of those checks were asserting on an incidental state
+
+They opened the player at `SESSIONS_PER_CYCLE * TOTAL_CYCLES - 1`, chosen for
+convenience — and that pointer is **week 6 of its block, a real calendar
+deload**. The blocks are about which ITEM shows the note, not about deloads, so
+each now searches for a non-deload session carrying both a ceiling item and a
+clean one, with a guard that it found one. *Each block builds the state it
+asserts on.*
+
+**Two patch scripts refused a bad anchor rather than half-applying**, and both
+were right: the three-line sequence `progressPtr = … / openPlayer() / filter(…)`
+appears three times in that file. Targeting by line number, later line first, is
+what worked.
+
+
 ## The brief described a 44% cut and never said it was one (v398)
 
 Same sweep again, on the segment the coach **reads aloud**. On a deload week the

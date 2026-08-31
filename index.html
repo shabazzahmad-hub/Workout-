@@ -12801,6 +12801,21 @@ function climbNote(m){
 function loadCeilingNote(m){
   try{
     if(!PLAYER||!atLadderCeiling(m.exId,PLAYER.sess.pos))return '';
+    /* NOT WHILE AN EASING RULE IS IN FORCE. atLadderCeiling()'s third condition
+       asks whether the REAL prescription lands at the ceiling — but
+       prescribeCeiling() is itself a CAP, so an eased target still lands ON it
+       and the gate passes. Measured across all 378 sessions: the hint fired 136
+       times on a deload week and 128 times in SAFE MODE, telling an athlete with
+       an uncleared heart condition to add external load, on the same line as a
+       set count the deload had just reduced. Safe mode exists to hold that
+       athlete well short of failure; deload and the readiness slump exist to
+       take work away. None of them is a moment to suggest adding load — the same
+       call evenSets() makes when it rounds DOWN under an ease. */
+    /* Ask about THIS session's position, not the pointer's. deloadOn() with no
+       argument reads posOf(progressPtr), which is a different week from the one
+       the player is actually running — atLadderCeiling() one line above already
+       passes PLAYER.sess.pos for exactly that reason. */
+    if(safeMode()||deloadOn(PLAYER.sess.pos)||(typeof readinessSlump==='function'&&readinessSlump()))return '';
     const u=loadUnit();
     const lp=loadProgression(m.exId,PLAYER.sess.pos);
     if(lp.lastLoadKg==null)return `<span class="tiny" style="color:var(--gold)">· maxed the ladder — try adding load</span>`;
