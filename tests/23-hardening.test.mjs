@@ -6459,15 +6459,23 @@ export default async function () {
         const keepBase = STATE.baseline, keepHold = STATE.holdLog, keepPrs = STATE.prs;
         STATE.baseline = null; STATE.holdLog = []; STATE.prs = {};
         out.fresh = byK(day90Rows());
-        /* THE CLASS: every row that renders blank must say why. Captured on
-           the fresh athlete, where the blanks actually are. */
-        { const rows = day90Rows();
+        /* THE CLASS: every row that renders blank must say why. The day map
+           has to be CLEARED first — earlier blocks in this file log rucks, so
+           captured as-is the ruck row is not blank at all and the sweep
+           measures nothing. Restored immediately after. */
+        { const keepDays = STATE.nutrition.days;
+          STATE.nutrition.days = {};
+          const rows = day90Rows();
           out.blankRows = rows.filter(x => x.got === null).map(x => ({ k: x.k, why: x.why || null }));
-          const rk = rows.find(x => x.k === 'ruck') || {};
-          out.ruckWhy = rk.why || ''; }
-        /* Both ways: the destination the row names really carries the control. */
-        try { setTodayTab('workout'); go('today');
-          out.movementHasRuck = !!document.querySelector('[data-act="ruck"], #rk-wt, [onclick*="setCardioMode(\'ruck\')"]');
+          out.ruckWhy = (rows.find(x => x.k === 'ruck') || {}).why || '';
+          STATE.nutrition.days = keepDays; }
+        /* Both ways: the destination the row names really carries the control.
+           Asserted on the rendered markup — [data-act] on Today is the player's
+           own control set, and the ruck sheet's inputs exist only while it is
+           open, so neither is the thing to look for. */
+        try { setCardioMode('ruck'); setTodayTab('workout'); go('today');
+          const v = document.querySelector('.view.active');
+          out.movementHasRuck = !!v && v.innerHTML.indexOf("setCardioMode('ruck')") >= 0;
         } catch (e) { out.movementHasRuck = 'threw: ' + e.message; }
         out.freshMx = { push: (currentMaxes() || {}).push, plank: (currentMaxes() || {}).plank };
         /* FLOOR: a real pull-up record is a MEASUREMENT, not a default, so it
