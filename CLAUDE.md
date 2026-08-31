@@ -9451,6 +9451,57 @@ before believing the result**, and put a guard on the thing the block depends on
 before asserting anything about it.
 
 
+## The card counted the work and then said nothing was logged (v396)
+
+Found by driving a state no probe had built: **a day whose only activity is
+the fifth cardio mode.** Every earlier sweep of this card logged jacks or the
+bike.
+
+`todayActivityHTML()` listed the day's work as four hand-written lines —
+jacks, bike, ruck, run — written when there were four modes. v353 added
+skipping to `CARDIO_MODES` and never came back here. Measured, 30 minutes on
+the rope:
+
+| | |
+|---|---|
+| the bar at the top of the card | **7,890 / 8,000 steps** |
+| the itemised row for it | **none** |
+| the empty-state hint | ***"…all show up here once you log them"*** |
+
+So the card **counted the work in its own total, showed no row for it, and
+then told the athlete nothing had been logged.** One card, two contradictory
+answers — the v328 defect, one renderer over. The other four modes were
+correct, which is what kept it invisible.
+
+**`cardioDone()` already existed for exactly this**, and its own comment says
+so: *"the one place the card asks what actually happened today, so no surface
+can answer it with a two-value branch again."* This renderer never asked it.
+The registry now owns the row's sub-line too (`detail`), the same way it
+already owns `block`, `advice` and `dayMin`, so a sixth mode is a line in
+`CARDIO_INFO` rather than a fifth place to remember.
+
+**The empty-state hint was the same hand-written list one sentence over**, so
+it named four modes as well. `cardioNamesSentence()` reads `CARDIO_MODES`.
+
+### The check was the hand-written list too
+
+Nothing caught this because the existing block asserted `has('jacks')`,
+`has('bike')`, `has('ruck')` — by name, three of five. **A check written as a
+hand-written list of the same members cannot notice when the list grows.**
+
+The replacement walks the registry: for every mode, log 30 minutes of it and
+assert the row exists, that the row carries real figures, and that the
+"nothing logged yet" hint does **not** fire. The hint's own sentence is
+checked against the same list. Two guards sit in front: every name the sweep
+needs is a real function, and the sweep really walked more than four modes —
+otherwise the whole block passes on the old set.
+
+**And one check failure that was the check.** The sentence capitalises its
+first word, so an exact-case search for `jumping jacks` failed on correct
+copy. Compare case-insensitively: the requirement is that the mode is named,
+not how it is capitalised.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

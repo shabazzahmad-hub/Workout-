@@ -528,6 +528,70 @@ export default async function run() {
     t.ok('the session line is always there', review.session, review);
     t.ok('steps are reviewed', review.steps, review);
     t.ok('jumping jacks are reviewed', review.jacks, review);
+
+    /* ---- EVERY mode, not the four that existed when this was written ------
+       The rows above were four hand-written `if` lines — jacks, bike, ruck,
+       run — and this check was the same hand-written list, which is why
+       neither noticed when v353 added skipping to CARDIO_MODES. Measured
+       before the fix: 30 minutes on the rope counted 7,890 steps into the bar
+       at the top of the card (stepEquivalent() reads the registry), showed NO
+       row beneath it, and then fired the empty-state hint to say nothing had
+       been logged. One card, two contradictory answers.
+
+       So this walks the registry. A sixth mode is covered the day it is
+       added rather than the day somebody remembers. */
+    const perMode = await page.evaluate(() => {
+      const out = { missing: [], noRow: [], falseHint: [], noDetail: [], modes: [] };
+      ['CARDIO_MODES', 'CARDIO_INFO', 'cardioDone', 'stepEquivalent', 'renderProgress']
+        .forEach(n => { let t; try { t = eval('typeof ' + n); } catch (e) { t = 'err'; }
+          if (t === 'undefined' || t === 'err') out.missing.push(n); });
+      if (out.missing.length) return out;
+      out.modes = CARDIO_MODES.slice();
+      const d = todayISO();
+      CARDIO_MODES.forEach(k => {
+        const c = CARDIO_INFO[k];
+        STATE.nutrition.days = {};
+        const day = { water: 0, habits: {} };
+        day[c.unitKey] = 'min'; day[c.valKey] = 30;
+        STATE.nutrition.days[d] = day;
+        STATE.quickLog = {}; save(); renderProgress();
+        const p = document.querySelector('#v-progress');
+        const row = p.querySelector(`[data-act="${k}"]`);
+        const eq = stepEquivalent();
+        if (!row) out.noRow.push(k + ' (bar counted ' + eq + ' steps)');
+        /* the hint says NOTHING was logged — it must not fire on a day that
+           was. This is the half that made the defect self-contradictory. */
+        if (/show up here once you log them/i.test(p.innerText)) out.falseHint.push(k);
+        /* and the row must carry its own numbers, not just a label */
+        if (row && !/\d/.test(row.innerText)) out.noDetail.push(k);
+      });
+      return out;
+    });
+    t.eq('guard: every name this sweep needs exists', perMode.missing.join(', '), '', perMode);
+    t.ok('guard: the sweep really walked more than the four original modes',
+      perMode.modes.length >= 5, JSON.stringify(perMode.modes));
+    t.eq('every cardio mode that carried the day gets its own row',
+      perMode.noRow.join(' | '), '', perMode);
+    t.eq('and none of them fires the "nothing logged yet" hint',
+      perMode.falseHint.join(' | '), '', perMode);
+    t.eq('and each row carries its own figures', perMode.noDetail.join(' | '), '', perMode);
+
+    /* The hint NAMES the modes, and that sentence was hand-written too — it
+       listed four. It is read from the same list now, so it cannot drift from
+       the rows above it. */
+    const hint = await page.evaluate(() => {
+      STATE.nutrition.days = {}; STATE.quickLog = {}; save(); renderProgress();
+      const txt = document.querySelector('#v-progress').innerText;
+      /* case-insensitive: the sentence capitalises its first word, so an
+         exact match would fail on correct copy for whichever mode is first. */
+      const low = txt.toLowerCase();
+      const missing = CARDIO_MODES.filter(k => low.indexOf(CARDIO_INFO[k].short.toLowerCase()) < 0);
+      return { fires: /show up here once you log them/i.test(txt), missing,
+               doubleAnd: / and .* and /.test(txt.split('show up here')[0].split('\n').pop() || '') };
+    });
+    t.ok('guard: the empty-state hint really is on screen to be read', hint.fires, hint);
+    t.eq('and it names every mode the app actually offers', hint.missing.join(', '), '', hint);
+
     t.ok('the bike is reviewed', review.bike, review);
     t.ok('rucking is reviewed', review.ruck, review);
     t.ok('and quick workouts are counted', review.quick, review);
