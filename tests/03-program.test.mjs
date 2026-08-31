@@ -461,9 +461,12 @@ export default async function run() {
       if (i < 0) return out;
       PLAYER.i = i; PLAYER.s = 0;
       out.before = { sets: PLAYER.items[i].sets, perSet: sidePerSet(PLAYER.items[i].exId) };
-      out.prescribed = prescribe('sideplank', PLAYER.sess.pos).sets;
+      {const _rx = prescribe('sideplank', PLAYER.sess.pos);
+       out.prescribed = _rx.sets; out.prescribedTarget = _rx.target;}
+      out.beforeTarget = PLAYER.items[i].target;
       playerSwap('sideplank');
-      out.after = { sets: PLAYER.items[i].sets, perSet: sidePerSet(PLAYER.items[i].exId) };
+      out.after = { sets: PLAYER.items[i].sets, perSet: sidePerSet(PLAYER.items[i].exId),
+                    target: PLAYER.items[i].target, unit: PLAYER.items[i].unit };
 
       /* FLOOR — a swap between two TWO-SIDED movements still takes what
          prescribe() says and is not forced even. An "always round up" fix
@@ -476,9 +479,13 @@ export default async function run() {
       const j = PLAYER.items.findIndex(x => x.exId === found.exId);
       out.j = j; if (j < 0) return out;
       PLAYER.i = j; PLAYER.s = 0;
-      out.plainRx = prescribe('crunch', PLAYER.sess.pos).sets;
+      {const _rx = prescribe('crunch', PLAYER.sess.pos);
+       out.plainRx = _rx.sets; out.plainRxTarget = _rx.target;}
+      out.plainUnitBefore = PLAYER.items[j].unit;
       playerSwap('crunch');
       out.plainAfter = PLAYER.items[j].sets;
+      out.plainUnitAfter = PLAYER.items[j].unit;
+      out.plainTargetAfter = PLAYER.items[j].target;
 
       /* FLOOR — a swap can never end the item underneath the athlete. On set 4
          of 4, swapping to a movement prescribing fewer must still leave room
@@ -504,8 +511,28 @@ export default async function run() {
       t.eq('a swap to a per-side movement takes the prescribed count',
         r.after.sets, r.prescribed, JSON.stringify(r));
       t.ok('so it is never left odd', r.after.sets % 2 === 0 && r.after.perSet, JSON.stringify(r));
+      /* THE TARGET IS THE OTHER HALF, and nothing had ever pinned it: a mutant
+         that stopped re-prescribing it escaped, leaving the athlete doing the
+         new movement at the OLD movement's number. The guard is what makes the
+         assertion mean something — if the two targets happen to agree, an
+         unchanged value passes on nothing. */
+      t.ok('guard: the two movements really want different targets',
+        r.prescribedTarget !== r.beforeTarget,
+        JSON.stringify({ was: r.beforeTarget, wants: r.prescribedTarget }));
+      t.eq('and the target is re-prescribed for the movement actually being done',
+        r.after.target, r.prescribedTarget, JSON.stringify(r));
+      /* THE UNIT NEEDS A PAIR THAT ACTUALLY DIFFERS. Bear Hold and Side Plank
+         are both timed, so a mutant that stopped updating the unit was
+         equivalent here and escaped — a guard that cannot fire in the case you
+         tested is not tested. The reps swap below is what discriminates. */
+      t.eq('with the movement\u2019s own unit', r.after.unit, 'time');
       t.eq('FLOOR: a swap between two-sided movements is not forced even',
         r.plainAfter, r.plainRx, JSON.stringify(r));
+      t.ok('guard: this swap really does change the unit',
+        r.plainUnitBefore === 'time', JSON.stringify({ before: r.plainUnitBefore }));
+      t.eq('so a timed movement swapped for a rep one carries reps', r.plainUnitAfter, 'reps');
+      t.eq('and that movement\u2019s own target', r.plainTargetAfter, r.plainRxTarget,
+        JSON.stringify({ got: r.plainTargetAfter, want: r.plainRxTarget }));
       t.ok('FLOOR: and a swap never ends the item underneath the athlete',
         r.strandGuard >= 6, JSON.stringify({ onSet: 6, sets: r.strandGuard }));
     }

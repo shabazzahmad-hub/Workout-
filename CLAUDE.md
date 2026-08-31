@@ -9793,6 +9793,59 @@ message correctly describes.
 that fires on every write is one nobody reads — and it must still warn only
 ONCE, whichever branch it took.
 
+## Two notes on one card, each telling the athlete to close the same gap (v398)
+
+Found by driving the most restricted legal athlete — vegan with eight allergens,
+where **2 of 33 recipes** survive the filter and only lunch has a safe option.
+Everything about that state was handled well: the missing slots are recorded,
+named on screen, and the note says *"do not just skip it, the rest of the plan
+does not cover its calories."*
+
+**And then the note below it said the opposite.** The scale multiplier read the
+WHOLE day's target regardless of what was missing:
+
+| | |
+|---|---|
+| the plan | one 460 kcal lunch, breakfast and dinner missing |
+| what the gap note says | build those two yourself |
+| what the scale note said | ***"multiply this lunch by 4.8×"*** — the whole day in one meal |
+
+Do both and the athlete eats roughly double. The comment directly above that
+note already records the same class — *"These two used to stack… one message per
+condition"* — and this is the pair that never got it.
+
+**The multiplier is against what the present meals are MEANT to carry**, derived
+from `slotShare()` rather than restated: 770 of 2200 for a lunch-only plan, so
+**4.8× becomes 1.65×** and the two notes now agree about the same gap.
+
+**The floor is the ordinary athlete.** A complete plan still scales against the
+whole target and says so — a fix that always divided by a share would quietly
+under-feed everybody, and it is caught by that check rather than by any
+assertion about the restricted case. Pinned against the app's own `slotShare()`,
+never a number restated in the check.
+
+Three wording faults on the same card went with it: *"1 MEALS"*, *"Build that
+meal yourself"* for two missing meals, and *"This meal is 460 kcal against the
+770 **they** are meant to carry"*.
+
+### The check failed on a screen that was right
+
+`.section-label` is uppercased in CSS and **`innerText` returns the RENDERED
+text**, so `/\d+ meals?/` matched nothing against `1 MEAL`. The fourth time this
+file has recorded that trap.
+
+### Four sweeps that came back clean
+
+- **34 sheets driven as the most constrained legal athlete** — every joint
+  flagged, no gear, tight space, vegan, eight allergens. No throw, no `NaN`, no
+  `undefined`, no `[object`. The two "empty" hits were the probe: `openSettings`
+  is a TAB and `openPlayer` needs an argument.
+- **Only `playerSwap` mutates a live session item.**
+- **A stored swap is dropped when the athlete flags a joint AFTER making it**,
+  and when the gear it needs is removed — driven both ways.
+- **A full year of real use weighs 562 KB**, well inside a 5 MB quota.
+
+
 ### A mid-session swap dropped the per-side rule (v398)
 
 v351 made the SET COUNT balance a per-side movement — a side plank prescribed
@@ -9826,6 +9879,34 @@ driving a swap from set 6.
 movements takes exactly what `prescribe()` says and is NOT forced even. An
 "always round up" fix satisfies every assertion about the per-side case and
 quietly adds a set everywhere.
+
+### Two escaped mutants, and both were guards that could not fire
+
+- **The target was never pinned at all.** `m.target=rx.target` reverted to
+  `m.target=m.target` walked through every assertion — the athlete would do the
+  new movement at the OLD movement's number. It now has a guard proving the two
+  movements genuinely want different targets, or an unchanged value passes on
+  nothing.
+- **The unit check was written against a pair that shares one.** Bear Hold and
+  Side Plank are BOTH `unit:'time'`, so a mutant that stopped updating the unit
+  was equivalent there. *A guard that cannot fire in the case you tested is not
+  tested* — the discriminating swap is the timed movement to a rep one.
+
+### Three sweeps that came back clean
+
+- **Only `playerSwap` mutates a live session item.** A scan for writes to
+  `exId`/`target`/`sets`/`unit`/`rest` on a session item returns exactly one
+  function, so the class has one member and it is fixed.
+- **A stored swap is dropped when the athlete flags a joint AFTER making it**,
+  and when the gear it needs is removed. Driven both ways: a swap to a
+  wrist-risky movement reverts to the planned one the moment a wrist is
+  declared, and a geared swap reverts when the gear list is emptied.
+  `swapStillValid()` fails closed and wraps both checks.
+- **A full year of real use weighs 562 KB**, well inside a 5 MB localStorage
+  quota: 300 sessions, 365 food days at five rows each, 52 weigh-ins, every
+  activity log at its cap and 2,000 lift rows. `nutrition` is 213 KB of it and
+  is the only field that grows without a bound — a lifetime record, like the
+  measurements, and left that way deliberately.
 
 ### Two probe errors, both traps already in this file
 

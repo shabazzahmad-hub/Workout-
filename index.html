@@ -18808,7 +18808,7 @@ const MEAL_LABEL={breakfast:'breakfast',lunch:'lunch',dinner:'dinner',snack:'sna
 function mealGapHTML(missing){
   if(!missing||!missing.length)return '';
   const av=algList().map(k=>(ALLERGENS.find(a=>a[0]===k)||[,k])[1]).join(', ');
-  return `<div class="note warn"><b>No safe ${_ve(missing.map(m=>MEAL_LABEL[m]||m).join(' or '))} in our library.</b> Nothing in the recipe list works with ${_ve(STATE.nutrition.diet||'your diet')}${av?' plus '+_ve(av):''}. Build that meal yourself around your protein target — do <b>not</b> just skip it, the rest of the plan does not cover its calories.</div>`;
+  return `<div class="note warn"><b>No safe ${_ve(missing.map(m=>MEAL_LABEL[m]||m).join(' or '))} in our library.</b> Nothing in the recipe list works with ${_ve(STATE.nutrition.diet||'your diet')}${av?' plus '+_ve(av):''}. Build ${missing.length===1?'that meal':'those meals'} yourself around your protein target — do <b>not</b> just skip ${missing.length===1?'it':'them'}, the rest of the plan does not cover ${missing.length===1?'its':'their'} calories.</div>`;
 }
 /* ---- Today's plan is one of the seven worked days ------------------------
    The recipe generator picked on CALORIES alone and the library topped out
@@ -18890,7 +18890,7 @@ function _recipePlanHTML(anchor){
   if(!recs.length)return `<div id="${_anch}"></div>${mealGapHTML(plan.missing&&plan.missing.length?plan.missing:mealSlots())}`;
   const tot=recs.reduce((s,r)=>s+r.kcal,0),totP=recs.reduce((s,r)=>s+r.p,0);
   const _mt=mealTimes();
-  let h=`<div class="section-label" id="${_anch}">Today's meal plan · <span class="tiny muted">${_ve(dietLabel())} · ${recs.length} meals${wholeOnly()?' · <span style="color:var(--green);font-weight:800">🥦 whole foods</span>':''}</span></div><div class="card pad" style="padding-bottom:8px">`;
+  let h=`<div class="section-label" id="${_anch}">Today's meal plan · <span class="tiny muted">${_ve(dietLabel())} · ${recs.length} meal${recs.length===1?'':'s'}${wholeOnly()?' · <span style="color:var(--green);font-weight:800">🥦 whole foods</span>':''}</span></div><div class="card pad" style="padding-bottom:8px">`;
   h+=`<div class="row" style="justify-content:space-between;margin-bottom:6px"><div><b>${tot} kcal</b> · ${totP}g protein${kcalT?` <span class="tiny muted">of ${kcalT} target</span>`:''}</div><div class="btnrow" style="flex:0 0 auto;gap:6px"><button class="chip" onclick="openGrocery()">🛒 List</button><button class="chip" onclick="regenPlan()">↻ New plan</button></div></div>`;
   recs.forEach((r,_i)=>{const _t=_mt&&_mt[_i];h+=`<button class="kv" style="width:100%;text-align:left;border:none;border-top:1px solid var(--line);background:none;padding:12px 2px;cursor:pointer" onclick="toggleRecipe('${r.id}')">
     <span style="min-width:0"><span style="font-size:18px">${r.emoji}</span> <b>${_ve(r.name)}</b>${_t?` <span class="chip" style="font-size:11px;padding:2px 7px">${_t.label}</span>`:''}<div class="tiny muted" style="margin-top:2px;text-transform:capitalize">${r.type} · ${r.kcal} kcal · ${r.p}p ${r.c}c ${r.f}f</div></span>
@@ -18909,12 +18909,28 @@ function _recipePlanHTML(anchor){
      and, immediately underneath, "increase portions or add a snack" for the same
      condition. One message per condition. */
   h+=mealGapHTML(plan.missing);
+  /* THE MULTIPLIER IS AGAINST WHAT THESE MEALS ARE MEANT TO CARRY, NOT THE DAY.
+     With slots missing it read the WHOLE day's target, so the two notes on this
+     card prescribed incompatible actions: mealGapHTML says "build breakfast and
+     dinner yourself, the rest of the plan does not cover their calories", and
+     this one said "multiply the one lunch by 4.8x" — which is the whole day in
+     one meal. Do both and the athlete eats roughly double. Same class as the
+     stacked pair the comment above records: one message per condition, and the
+     two must agree about the same gap. */
+  const _miss=Array.isArray(plan.missing)?plan.missing:[];
+  const _share=slotShare(mealSlots());
+  const _covered=_miss.length
+    ? mealSlots().filter(k=>_miss.indexOf(k)<0).reduce((a,k)=>a+(_share[k]||0),0)
+    : 1;
+  const _bar=Math.round(kcalT*(_covered>0?_covered:1));
   if(!kcalT){h+=`<div class="note info" style="margin-top:10px">Tip: tap <b>Calculate my targets</b> below so these meals are sized to your calorie goal.</div>`;}
-  else if(tot>0&&tot<kcalT*0.9){
-    const mult=Math.round(kcalT/tot*20)/20;
-    h+=`<div class="note fire" style="margin-top:10px">📏 <b>Scale these portions to about ${mult}×.</b> As written this plan is <b>${tot} kcal</b> against your <b>${kcalT}</b> target — eating it as-is is a far steeper deficit than you asked for. Multiply each quantity by ${mult}, or add a snack.</div>`;
+  else if(tot>0&&tot<_bar*0.9){
+    const mult=Math.round(_bar/tot*20)/20;
+    h+=`<div class="note fire" style="margin-top:10px">📏 <b>Scale these portions to about ${mult}×.</b> ${_miss.length
+      ? `${plan.meals.length===1?'This meal is':'These meals are'} <b>${tot} kcal</b> against the <b>${_bar}</b> ${plan.meals.length===1?'it is':'they are'} meant to carry — the ${_ve(_miss.map(m=>MEAL_LABEL[m]||m).join(' and '))} you build yourself ${_miss.length===1?'covers':'cover'} the rest of your ${kcalT}.`
+      : `As written this plan is <b>${tot} kcal</b> against your <b>${kcalT}</b> target — eating it as-is is a far steeper deficit than you asked for.`} Multiply each quantity by ${mult}, or add a snack.</div>`;
   }
-  else if(tot>kcalT*1.15){h+=`<div class="note warn" style="margin-top:10px">This comes to <b>${tot} kcal</b> vs your <b>${kcalT}</b> target — trim portions a little.</div>`;}
+  else if(tot>_bar*1.15){h+=`<div class="note warn" style="margin-top:10px">This comes to <b>${tot} kcal</b> vs the <b>${_bar}</b> ${_miss.length?'these meals are meant to carry':'of your target'} — trim portions a little.</div>`;}
   if(algList().length)h+=`<div class="note warn" style="margin-top:10px">⚠️ <b>Check every label yourself.</b> Meals are filtered using our own recipe tags — this is not an allergen-safety tool, and brands and recipes vary. If your allergy is serious, read the ingredients before you eat.</div>`;
   return h;
 }

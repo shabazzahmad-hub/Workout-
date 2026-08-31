@@ -2246,6 +2246,76 @@ export default async function run() {
     await page.evaluate(() => { try { closeSheet(); } catch (e) {} nutToday().food = []; save(); });
   }
 
+  /* ---- the two notes on the meal-plan card must agree about the same gap ---
+     A slot with no safe recipe is recorded in plan.missing, and mealGapHTML()
+     tells the athlete to build that meal themselves BECAUSE the rest of the
+     plan does not cover its calories. The scale note read the WHOLE day's
+     target regardless, so on a vegan with eight allergens — one safe recipe in
+     the whole library — it said "multiply this one lunch by 4.8x", which is the
+     entire day in one meal. Do both and the athlete eats roughly double.
+     The comment above that note already records the same class ("one message
+     per condition"); this is the pair that never got it. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {};
+      const read = () => {
+        STATE.nutrition.plan = null;
+        const plan = currentMealPlan();
+        REF_TAB = 'food'; go('ref'); renderRef();
+        const txt = (document.querySelector('#v-ref') || {}).innerText || '';
+        const i = txt.indexOf('Scale these portions');
+        return { plan, note: i >= 0 ? txt.slice(i, i + 320) : '',
+                 mult: i >= 0 ? parseFloat((txt.slice(i).match(/about ([\d.]+)/) || [])[1]) : null,
+                 /* innerText returns the RENDERED text and .section-label is
+                    uppercased in CSS, so a case-sensitive match reads nothing
+                    on a screen that is perfectly correct. */
+                 gap: /No safe /.test(txt), head: (txt.match(/\d+ meals?\b/i) || [])[0] };
+      };
+      // the most restricted legal athlete: one safe recipe in the library
+      STATE.nutrition.diet = 'vegan';
+      STATE.nutrition.allergens = ['soy','treenut','peanut','gluten','dairy','egg','fish','shellfish'];
+      STATE.nutrition.kcalTarget = 2200; STATE.nutrition.proteinTarget = 165;
+      normalizeState();
+      const a = read();
+      out.missing = (a.plan && a.plan.missing) || [];
+      out.present = (a.plan && a.plan.meals || []).length;
+      out.mult = a.mult; out.note = a.note; out.gapNote = a.gap; out.head = a.head;
+      /* What the present meals are MEANT to carry, derived from the app's own
+         share table rather than restated. */
+      const share = slotShare(mealSlots());
+      out.covered = mealSlots().filter(k => out.missing.indexOf(k) < 0)
+        .reduce((x, k) => x + (share[k] || 0), 0);
+
+      /* FLOOR — a COMPLETE plan is unchanged: the multiplier is still against
+         the whole target, and the card says so. A fix that always divided by a
+         share would quietly under-feed every ordinary athlete. */
+      STATE.nutrition.diet = 'omnivore'; STATE.nutrition.allergens = [];
+      STATE.nutrition.kcalTarget = 4000;      // force the scale note to fire
+      normalizeState();
+      const b = read();
+      out.fullMissing = (b.plan && b.plan.missing || []).length;
+      out.fullNote = b.note; out.fullMult = b.mult; out.fullGap = b.gap;
+      return out;
+    });
+
+    t.ok('guard: the restricted athlete really is missing slots',
+      r.missing.length >= 1 && r.present >= 1, JSON.stringify({ missing: r.missing, present: r.present }));
+    t.ok('guard: and both notes are on the card together',
+      r.gapNote && !!r.note, JSON.stringify({ gap: r.gapNote, scale: r.note.slice(0, 60) }));
+    /* The multiplier is against the share those meals carry, not the day. Pinned
+       against the app's own slotShare(), never a number restated here. */
+    t.ok('the multiplier is against what the present meals carry, not the whole day',
+      r.mult !== null && Math.abs(r.mult - (2200 * r.covered) / 460) < 0.2,
+      JSON.stringify({ mult: r.mult, bar: Math.round(2200 * r.covered), covered: r.covered }));
+    t.ok('and it names the meals the athlete builds as covering the rest',
+      /you build yourself/.test(r.note) && /breakfast/i.test(r.note), r.note);
+    t.eq('a one-meal plan is not headed "1 meals"', String(r.head || '').toLowerCase(), '1 meal');
+
+    t.eq('FLOOR: a complete plan has no missing slot', r.fullMissing, 0);
+    t.ok('FLOOR: and it still scales against the whole target',
+      r.fullGap === false && /against your/.test(r.fullNote), r.fullNote);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
