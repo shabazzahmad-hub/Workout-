@@ -9522,6 +9522,53 @@ seed rather than half-applying it. Anchored on the two lines together.
 Ten mutants, all caught.
 
 
+## The sweeps that were probes, shipped as checks
+
+v355 ran "every registry member is reachable in a picker" as a **probe** and
+did not keep it. Measured afterwards: **no test file mentioned
+`MOBILITY_LEVELS` at all**, so a level added to the list with no button — or a
+button whose value the boot repair refuses — would have been silent in both
+directions.
+
+**Most pickers cannot drift, and saying which is the point of the sweep.**
+`DIET_OPTS`, `ACTIVITY_OPTS`, `TIMELINE_OPTS`, `CARDIO_MODES` and the level
+tables all render with `.map()` over the registry itself. `MOBILITY_LEVELS` is
+the one left written out by hand, because each button carries its own copy —
+so that is the one that needed pinning, and it is pinned **both ways**: no
+member without a button, and no button offering a value `normalizeState()`
+would undo on the next boot.
+
+**And every cardio mode must be recognisable from a watch screenshot.**
+`activityKind()` matches the words a DEVICE writes — *"Jump Rope 34"*,
+*"Carstairs Running"* — so its patterns cannot be derived from the registry.
+What can be asserted is completeness: a sixth mode with no matcher lands every
+one of its activities in the unplaceable bucket. That fails safe (v352 names
+an unplaceable activity rather than filing it under the nearest mode) and is
+still a mode the import can never recognise.
+
+Three mutants, all caught by name: a level with no button, a button with an
+illegal value, and a mode with no matcher.
+
+### Three registry sweeps, and the ratio held
+
+Run in the same round, all clean, and each is worth recording as coverage
+rather than as a finding:
+
+- **Every consumer of the cardio registry reads it.** `ivDone()` looked like a
+  fifth hand-written list and is a false alarm — those strings are session
+  keys and exercise ids that happen to share the mode names, and its own
+  comments explain why it is bike-scoped.
+- **Every registry member is reachable in its picker.** Four verified by
+  driving; the other three "misses" were the probe using the wrong attribute
+  (`[data-diet]` where the picker writes `onclick="setDiet('k')"`), the wrong
+  option shape (`TIMELINE_OPTS` holds objects, not pairs), and a picker that
+  correctly renders only when there is something to ask about.
+- **Every rendered weight figure converts for an imperial athlete.** One
+  apparent miss was a fixed 150-character scan window that did not reach the
+  conversion three lines above — the same window trap this file already
+  records.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

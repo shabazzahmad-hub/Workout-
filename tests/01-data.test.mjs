@@ -592,6 +592,58 @@ export default async function run() {
   t.ok('and validateData() is clean again once it is restored',
     detailRule.cleanAfterRestore, detailRule);
 
+  /* ---- every registry member is reachable in its picker ------------------
+     A registry and a hand-written consumer is this repo's most-repeated
+     drift: the five diets as three literals, onboarding offering 13 gear
+     items while Settings offered 12, and — one round ago — an activity card
+     that listed four of five cardio modes by hand.
+
+     Most pickers now render FROM the registry (`DIET_OPTS.map(...)`,
+     `ACTIVITY_OPTS.map(...)`, `CARDIO_MODES.map(...)`), so they cannot drift
+     at all. MOBILITY_LEVELS is the one left whose buttons are written out by
+     hand, because each carries its own copy — and no test file mentioned it,
+     so a level added to the list with no button, or a button whose value the
+     repair refuses, would have been silent both ways.
+
+     Checked in BOTH directions: no member without a button (unreachable), and
+     no button that is not a member (a tap that normalizeState() would undo on
+     the next boot). */
+  const mobPicker = await page.evaluate(() => {
+    const out = {};
+    try { go('today'); openProfileEdit(); } catch (e) { return { threw: e.message }; }
+    const btns = [...document.querySelectorAll('#ob-mob button')];
+    out.found = btns.map(b => b.dataset.m).filter(Boolean);
+    out.legal = MOBILITY_LEVELS.slice();
+    out.noButton = out.legal.filter(k => out.found.indexOf(k) < 0);
+    out.orphanButton = out.found.filter(k => out.legal.indexOf(k) < 0);
+    try { closeSheet(); } catch (e) {}
+    return out;
+  });
+  t.ok('guard: the mobility picker really rendered', !mobPicker.threw && mobPicker.found &&
+    mobPicker.found.length >= 3, JSON.stringify(mobPicker));
+  t.eq('every mobility level the app accepts has a button', (mobPicker.noButton || []).join(', '), '', mobPicker);
+  t.eq('and no button offers a level the repair would undo', (mobPicker.orphanButton || []).join(', '), '', mobPicker);
+
+  /* ---- and every cardio mode can come back from a watch screenshot -------
+     activityKind() maps what a watch WROTE ("Jump Rope 34", "Carstairs
+     Running") onto a mode, so its patterns cannot be derived from the
+     registry — they are the words a device uses, not the keys this app uses.
+     What can be asserted is COMPLETENESS: a sixth mode added to CARDIO_MODES
+     with no matcher lands every one of its activities in the unplaceable
+     bucket. That fails safe (v352 names an unplaceable activity rather than
+     filing it under the nearest mode) and is still a mode the import can
+     never recognise. */
+  const kindCover = await page.evaluate(() => {
+    const src = String(activityKind);
+    return { modes: CARDIO_MODES.slice(),
+             guardIsFn: typeof activityKind === 'function' && src.length > 100,
+             missing: CARDIO_MODES.filter(k => src.indexOf("return '" + k + "'") < 0) };
+  });
+  t.ok('guard: activityKind was read as a real function body', kindCover.guardIsFn, kindCover);
+  t.eq('every cardio mode a watch could report has a matcher',
+    kindCover.missing.join(', '), '', kindCover);
+
+
 
   /* ---- Burpees: a tenth baseline test, for cardiovascular stamina (v252) --
      Requested after an audit found the battery measured strength and local
