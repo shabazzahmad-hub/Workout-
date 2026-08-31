@@ -9148,6 +9148,17 @@ not onboard, so the view was 1,098 characters of onboarding step 1. The trap is
 already in this file from the end-of-program probe; the fix is to seed through
 the harness's own `ATHLETE`.
 
+### The two resets, and the half that matters
+
+`restartProgram()` is the path v365 records as *"the one reset that never asked
+the list"*, so a new lifetime field is exactly what it forgets — or wrongly
+clears. Driven: a restart **keeps** the foot log and the hold, and `hardReset()`
+clears both.
+
+**The hold is the consequential half.** A restart that released it would start
+the ladder climbing again over an unresolved blister — the same failure as a
+backup restore that lost it, by a different door. Both are pinned.
+
 ### The prompt fires where the package says to inspect
 
 *"Inspect after every ruck"* — so `footPromptDue()` fires on a day a ruck was
@@ -9157,6 +9168,288 @@ is a prompt nobody reads, and both mutants (always fire, never stop) are caught.
 The foot-care kit is the package's own eight items, stamped with `DAY90_SRC`
 and `DAY90_ASOF` for the same reason every other figure from it is: a published
 list shown with confidence that has gone stale is worse than none.
+
+## One fact, one place — and a check that pinned the duplication (v393)
+
+Found by rendering every surface with every new feature active at once and
+reading the notes, rather than by asking whether a screen renders. The
+endurance sheet printed **the identical sentence twice**.
+
+`footLoadHTML()` is called from the running plan AND from the ruck ladder, and
+both live in the SAME sheet — `ruckLadderHTML()` renders inside
+`enduranceHTML()`. Both read the same global answer from `footNewMode()`, which
+**v332 made deliberate so they could never disagree**. The consequence nobody
+measured is that they then rendered the same sentence twice, a few lines apart.
+
+Measured, and it hits **every athlete with a prep block**, not only the warned
+one:
+
+| athlete | before | after |
+|---|---|---|
+| history in both modes | *"together: 25.4 km on your feet"* **x2** | x1 |
+| rucker taking up running | the new-mode warning **x2** | x1 |
+| runner taking up rucking | the new-mode warning **x2** | x1 |
+
+**A reader seeing the same number twice with two labels does not feel doubly
+informed, they wonder which one is real** — v314's lesson, one sheet over. The
+caller now says which card it is: the combined total goes on the running card,
+which renders first, and the warning goes on the card of the mode that is
+actually NEW, because that is the plan its advice is about.
+
+### The check asserted "and on the rucking card too"
+
+Two v332 checks pinned the duplication in place — the fourth time this session
+a check has held old behaviour rather than caught it. They were not stale
+copy-paste: they encoded a real intent, *the total is on both cards so whichever
+one you read you see it*. What nobody had measured is that both cards are
+**always co-rendered in one sheet**, so "whichever one you read" was never the
+situation.
+
+Re-aimed rather than deleted, to the requirement underneath: the fact appears
+**exactly once in the sheet**, and the warning sits on the card for the mode
+that is actually new. That is stronger than "on both" — it catches a future
+third caller as well.
+
+**And `card` was already the whole sheet.** The probe builds it as
+`strip(enduranceHTML())`, which contains `ruckLadderHTML()`, so counting
+occurrences in `card` is a count over the whole screen. Reading what the probe
+actually collected is what made the re-aim exact instead of a guess.
+
+### The count is the container; WHICH CARD is the payload
+
+The fix's own check asserted the fact appears **exactly once in the sheet**.
+A mutant that moved the combined total from the running card to the ruck
+ladder leaves that count at **one** and walked through every assertion — the
+line was on the wrong card and nothing said so. Measured on the mutant: one
+occurrence in the sheet, and one of them inside `ruckLadderHTML()`.
+
+The warning's placement WAS pinned (`on the card for the mode that is actually
+new`) and its mutant is caught. The plain total's was not. **Measure the
+payload, not the container** — the fifth time in this file, and the first where
+the container was a count and the payload was a position.
+
+The floor beside it is a guard that the ruck card really rendered: *"it is not
+on the ruck card"* passes on an empty string.
+
+### Three harness traps in one round, and two were already written down
+
+- **`node tests/run.mjs 23 09` runs suite 23 ALONE.** The runner is
+  `args.find(a => !a.startsWith('--'))` — the FIRST non-flag argument and
+  nothing else. This file has recorded that since v322 and the mutation driver
+  was written with two suites per mutant anyway, so every placement mutant was
+  scored against a suite that never checked placement. **One suite per
+  invocation.**
+- **A `cd` inside a compound command does not persist.** A re-seed then
+  `node tests/run.mjs 09` on the next line ran in the ORIGINAL repo, not the
+  mutation copy, and reported the mutant as still escaping when the check
+  caught it. Read the mutant back **and** check which tree you measured.
+- **A red baseline makes every mutant read as caught.** The first run of this
+  round was scored against a suite carrying the Monday defect, so its results
+  were worthless. The driver now runs the baseline first and prints it, and
+  that guard is what exposed the two placement escapes on the second run.
+
+
+## The prompt was keyed to the calendar day, and a ruck can straddle midnight (v394)
+
+Found by driving the app across a real midnight with a faked clock — a state
+every previous probe had skipped, because they all ran mid-afternoon.
+
+At 23:52 the athlete logs a ruck and the foot prompt fires. Ten minutes later:
+
+| | before midnight | after |
+|---|---|---|
+| `todayISO()` | 2026-09-15 | 2026-09-16 |
+| the prompt | **shown** | **gone** |
+
+`footPromptDue()` asked whether a ruck was logged **today**, so the moment the
+date rolled the prompt vanished on the next repaint — before the athlete could
+answer it. An evening rucker is exactly who this feature is for.
+
+**The rule is now the package's own, ordered in time rather than by day:** the
+prompt stands from a ruck until it is answered. Yesterday is the bound, which
+covers an inspection that happens after midnight without nagging about a ruck
+the athlete has plainly moved on from.
+
+**The floor that makes it a rule rather than a wider net** is that a NEW ruck
+after an older check asks again — the test is *newer than the check*, not *a
+check exists*. Measured: yesterday's unchecked ruck prompts, answering it stops
+it, a ruck two days back does not nag, and today's ruck after yesterday's check
+asks again.
+
+**The post-midnight state needs no clock to pin.** It is exactly "yesterday's
+ruck, no check", so the suite drives that directly; the faked clock is what
+found it, not what proves it.
+
+### And the reachability check caught my own dead code
+
+Rewriting the predicate left `footCheckedToday()` with no caller, and v388's
+own orphan check went red naming it. The suites were grepped first — v387's
+lesson that **the suite is a call site** — and nothing drove it, so it went.
+
+### And the check that passed or failed by the weekday it ran on
+
+CI went red on the v393-v394 pull request, on two v390 checks that had merged
+green a day earlier and had nothing to do with either change.
+
+`sessionsThisWeek()` counts from the **Monday** of the current week.
+The day-90 frequency block seeded forward from that Monday and stopped at
+today:
+
+```js
+if (day > new Date()) break;
+```
+
+On a Monday that builds **one** session, and the row correctly reported
+`"1 this week"`. The check was right about the app and wrong about the
+calendar, on one weekday in seven — three local runs on other days had passed.
+That is v347's lesson again: **the calendar is part of the state a block has
+to build.**
+
+The window has no upper bound, so seeding all five weekdays of the current
+week is a state the function genuinely reports 5 for, whatever day it runs on.
+**The guard is what keeps that true**: a future-date filter added later would
+otherwise turn this back into a Monday-only failure that looks like a defect
+in the row, so the block asserts the count it built before asserting anything
+about the target.
+
+**And it invalidated a mutation run in flight.** The out-of-tree copy carried
+the same failing check, so every mutant would have read as *caught* whether or
+not it changed anything — a false all-clear. Stop and restart a mutation run
+whenever the baseline suite is not green: a mutation result is only meaningful
+against a passing baseline.
+
+Swept for siblings. `ridesThisWeek()` is a **rolling seven days**, so suite
+07's `today − N` seeding is weekday-independent, and suite 09's own
+`sessionsThisWeek()` check already seeds forward from the week start with no
+future guard. One instance, now fixed.
+
+## The repair was left on the shape the writer had replaced (v395)
+
+Found by tracing every reader of a stored date, then asking of each stored
+field whether the **boot repair** still describes what the **writer** writes.
+Two answers were no, in two different ways.
+
+### The flag was deleted on every boot
+
+v316 replaced `_trainAgain` — *"I want the next session today"* — with
+`{date, from}`, stamping the pointer the request was granted from so that any
+pointer move voids it, and taught `trainAgainAsked()` to accept **only the
+object**. Its comment says so in as many words. `normalizeState()` was left on
+the v313 **string**:
+
+```js
+if(STATE._trainAgain!==undefined&&(typeof STATE._trainAgain!=='string'|| … ))
+  delete STATE._trainAgain;
+```
+
+So the object the writer writes was **deleted on every boot**. Measured: the
+request reads live before `normalizeState()` and gone after it, every time.
+
+The cost is the v344 confusion the flag exists to prevent. Finish today's
+session, tap **Train again anyway** through its priced confirm, start the extra
+session — then lock the phone or let the app reload, and Today goes back to
+describing the session already **finished** as today's, with the confirm again
+in front of the one being trained. `todayPtr()` folds `trainAgainAsked()` in, so
+the header, the exercise list and the spoken morning brief all revert together.
+
+**A contract that lives in three places and is changed in two** is the same
+class as a legal set restated by hand. The writer and the reader moved; the
+repair was not brought along.
+
+The legacy string is **dropped rather than migrated**. It carries no pointer, so
+there is nothing to check it against, and `trainAgainAsked()` already reads it as
+no request — at worst one extra tap of a button still on screen, on the screen
+the athlete actually finished.
+
+### One date predicate, restated twelve times, always weaker
+
+`isDateISO()` has been the app's date test since v356, and it **round-trips**
+through `localISO()` — which is what makes `'2025-13-45'` and `'2025-02-29'`
+fail. The prep block, written later, restated the bare pattern instead. Twelve
+copies, and every one of them accepted values the real predicate refuses.
+
+Measured: `prep.date='2025-13-45'` survived every boot, and
+
+```
+prepDateLabel()  ->  "Invalid Date"
+```
+
+reached the glass — because `toLocaleDateString()` on an Invalid Date does not
+throw, it **returns that string**, so the `catch` beside it never fired. Beside
+it the button read *"Change my test date"* on a card saying no date was set,
+because every arithmetic reader correctly bailed on `!isFinite`. The label and
+the junk travelling in every backup were the whole harm — but the app owned the
+right predicate and the repair was asking a weaker one.
+
+The pattern now appears **once**, inside `isDateISO()` itself, and a check
+scans the source (comments stripped) so the thirteenth copy fails here rather
+than on a phone.
+
+**The guard is what makes that block worth running**: it asserts that the bare
+pattern really does accept the string being tested and that `isDateISO()` really
+does refuse it. Without it every assertion below passes on two predicates that
+happen to agree.
+
+**One equivalent change, recorded rather than papered over.** `saveForceDate()`
+now asks `isDateISO()` too, and no check can catch reverting it: its input is
+`<input type="date">`, which refuses to hold an impossible date at all, so the
+two predicates cannot disagree through the only control that reaches it. Kept as
+intent — the same call as v287's `wantAnchor`.
+
+### And the formatter beside it, written out four times
+
+The same scan asked the mirror question — not *which predicate tests a date*
+but *which expression builds one* — and found
+
+```
+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')
+```
+
+four times: inside `localISO()`, inside `todayISO()`, and twice more in repairs
+added later — one of them in v394's own new code, written the same evening as
+the rule it breaks. Nothing was wrong with any copy; they agree today. That is
+what a drift looks like before it drifts.
+
+`localISO()` is a hoisted function **declaration**, so every one of them can
+simply ask it, including the `const` arrow defined thousands of lines above it.
+Both this and the pattern are now pinned by a source scan, so the next copy
+fails here.
+
+### The class, swept — and the detector proven both ways
+
+`_trainAgain` is the first defect here where a repair destroyed a **legitimate**
+value. Every previous sweep asked *does junk survive*; none asked *does a real
+value survive*, which is exactly the gap it fell through. The v390 idempotence
+check could not see it either, because a settled state contains no
+`_trainAgain` — nothing sets it but a tap.
+
+So the sweep is written the other way round: drive the app's **own writers**,
+then boot, and assert nothing the writer wrote was changed. Sixteen structured
+writers driven — `_opens`, `_trainAgain`, `_plResume`, `comeback`, `formatFeel`,
+`pain`, `restDays`, `shopTicks`, `swaps`, `prs`, the three activity logs, the
+meal plan, the gear list, the prep path and its results, the foot log — and
+after the fix **every one survives**.
+
+**The detector was proven in both directions by accident, which is the best
+kind.** A backgrounded restore silently did not run, so the fix was reverted in
+the working tree while the comment above it stayed — and the very next suite run
+came back with three targeted checks red **and the sweep naming `_trainAgain` by
+name**, with the before and after values printed. Two lessons: a compound
+command that ends in a restore must not be left to a timeout, and a sweep that
+cannot be shown failing is not yet a check.
+
+**Four probe errors on the way, which is the usual ratio**, and every one is a
+trap already in this file. `logAct(k,…)` takes an `ACTS` key — `ruck`, `grip`,
+`box` — not an exercise id, and not `skip`. `rateFormat()` takes a real member of
+`PROGRESSION_GROUPS.skip.formats`; a made-up `'skipsteady'` was correctly reset
+by the repair and read as a defect. `armComeback()` only writes after a real
+layoff, so on a freshly-trained athlete writing nothing is right. And
+`FORCE_IDS` is `lift/shuttle/rush/drag` — a made-up event id emptied both
+checkpoint slots, which the repair then removed outright, and a check asserting
+a real stamp survived failed on correct code. **Confirm the control's real shape
+before believing the result**, and put a guard on the thing the block depends on
+before asserting anything about it.
+
 
 ## Rendering
 

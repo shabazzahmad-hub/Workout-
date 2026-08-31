@@ -607,7 +607,10 @@ function upsertMeasure(waistCm,weightKg){
   if(row){if(waistCm)row.waist=waistCm;if(weightKg)row.weight=weightKg;}
   else STATE.measurements.push({date:d,waist:waistCm||null,weight:weightKg||null});
 }
-const todayISO=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+/* ONE formatter. This expression was written out four times: here, in
+   localISO() itself, and twice in repairs added later. localISO() is a
+   hoisted function declaration, so every one of them can just ask it. */
+const todayISO=()=>localISO(new Date());
 const fmtTime=s=>{s=Math.round(s);const m=Math.floor(s/60);const r=s%60;return m>0?`${m}:${String(r).padStart(2,'0')}`:`${r}s`;};
 function toast(msg,ms){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),ms||2100);}
 function haptic(ms=18){try{if(navigator.vibrate&&STATE.settings.vibrate)navigator.vibrate(ms);}catch(e){}}
@@ -1829,7 +1832,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='392';
+const APP_VERSION='395';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4336,7 +4339,7 @@ function forceVerdict(id){
 }
 function forceWeeksLeft(){
   try{const d=prep().date;
-    if(typeof d!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(d))return null;
+    if(!isDateISO(d))return null;
     const ms=new Date(d+'T00:00:00').getTime()-new Date(todayISO()+'T00:00:00').getTime();
     if(!isFinite(ms))return null;
     return Math.ceil(ms/(7*86400000));
@@ -4923,8 +4926,7 @@ function prepDatePassed(){const w=forceWeeksLeft();return w!==null&&w<0;}
 const PREP_CHECKS=['initial','mid','final'];
 function prepMidISO(){
   const p=prep();
-  if(typeof p.date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(p.date))return null;
-  if(typeof p.planFrom!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(p.planFrom))return null;
+  if(!isDateISO(p.date)||!isDateISO(p.planFrom))return null;
   const a=new Date(p.planFrom+'T00:00:00').getTime(), b=new Date(p.date+'T00:00:00').getTime();
   if(!isFinite(a)||!isFinite(b)||b<=a)return null;
   return new Date(a+(b-a)/2).toISOString().slice(0,10);
@@ -5069,16 +5071,20 @@ function prepMidWeeksAway(){
   const ms=new Date(mid+'T00:00:00').getTime()-new Date(todayISO()+'T00:00:00').getTime();
   return ms<=0?null:Math.ceil(ms/(7*86400000));
 }
+/* isDateISO(), not the pattern: toLocaleDateString() on an Invalid Date does
+   not throw, it returns the STRING "Invalid Date", so the catch below never
+   fired and the impossible date reached the glass. Every other reader of
+   prep.date does arithmetic and bails on !isFinite; this one only formats. */
 function prepDateLabel(){
   const d=prep().date;
-  if(typeof d!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(d))return '';
+  if(!isDateISO(d))return '';
   try{return new Date(d+'T00:00:00').toLocaleDateString(undefined,{month:'long',day:'numeric',year:'numeric'});}
   catch(e){return d;}
 }
 function prepWeekNo(){
   try{
     const f=prep().planFrom;
-    if(typeof f!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(f))return 1;
+    if(!isDateISO(f))return 1;
     const ms=new Date(todayISO()+'T00:00:00').getTime()-new Date(f+'T00:00:00').getTime();
     if(!isFinite(ms)||ms<0)return 1;
     return Math.max(1,Math.floor(ms/(7*86400000))+1);
@@ -5320,11 +5326,25 @@ function enduranceWeek(raw){
 }
 /* One renderer, read by both cards, so the combined figure cannot say one
    thing beside the running and another beside the rucking. */
-function footLoadHTML(w){
+/* ONE FACT, ONE PLACE. Both cards live in the SAME sheet — ruckLadderHTML()
+   renders inside enduranceHTML() — and both read the same global answer from
+   footNewMode(), which v332 made deliberate so they could never disagree. The
+   consequence nobody noticed is that they then rendered the IDENTICAL sentence
+   twice on one screen. Measured on an athlete with history in both modes: the
+   plain "together" line appeared 2 times, and on a new-mode athlete the warning
+   appeared 2 times.
+
+   A reader seeing the same number twice with two labels does not feel doubly
+   informed, they wonder which one is real — the v314 lesson, one sheet over. So
+   the caller says which card it is: the combined total goes on the running
+   card, which renders first, and the warning goes on the card of the mode that
+   is actually new, because that is the plan its advice is about. */
+function footLoadHTML(w,card){
   if(!w||w.footTotal===null||w.footTotal===undefined)return '';
   const tot=_ve(distShow(w.footTotal));
   if(!w.footBig)
-    return `<div class="tiny muted" style="margin-top:6px">Rucking and running together: <b>${tot}</b> on your feet this week. That total is what your legs actually absorb — neither number means much on its own.</div>`;
+    return card==='ruck'?'':`<div class="tiny muted" style="margin-top:6px">Rucking and running together: <b>${tot}</b> on your feet this week. That total is what your legs actually absorb — neither number means much on its own.</div>`;
+  if(card&&w.footNew&&w.footNew!==card)return '';
   const what=w.footNew==='run'?'running':'rucking';
   const other=w.footNew==='run'?'rucking':'running';
   return `<div class="note warn" style="margin:8px 0 0"><b>${_ve(distShow(w.footAdded))} of ${what} is brand new on top of your ${other}.</b> This plan sizes ${what} against your own ${what}, and you have none logged — so it opens at its starting distance and lands on top of everything else, taking you to <b>${tot}</b> on your feet this week against the ${_ve(String(w.footFrom))} ${distUnit()} you have been doing. Your legs do not know which plan a kilometre came from. Start the ${what} shorter than it says, or hold the ${other} where it is this week — the same rule as building the ruck distance or the load, never both.</div>`;
@@ -5342,7 +5362,7 @@ function enduranceHTML(){
       <div style="text-align:right"><b style="font-size:19px">${_ve(distShow(w.km))}</b>
         <div class="tiny muted">running this week</div></div>
     </div>
-    ${footLoadHTML(w)}
+    ${footLoadHTML(w,'run')}
     ${w.down?`<div class="note ok" style="margin:10px 0 0"><b>Down week.</b> Volume is cut on purpose — the adaptation happens here, not in the hard weeks.</div>`:''}
     <div class="tiny muted" style="margin-top:10px">${_ve(w.note)}</div>
     ${w.estimated
@@ -5412,15 +5432,31 @@ function logFootCheck(state){
      never open over a Movement the athlete just tapped. */
   try{repaintMovement();}catch(e){}
 }
-function footCheckedToday(){const d=todayISO();return footLog().some(r=>r&&r.date===d);}
-/* Fires only on a day a ruck was actually logged, because that is when the
-   package says to inspect ("Inspect after every ruck"). A prompt that appears
-   every day is a prompt nobody reads. */
+/* Fires after a ruck, because that is when the package says to inspect
+   ("Inspect after every ruck"). A prompt that appears every day is a prompt
+   nobody reads.
+
+   IT IS ORDERED IN TIME, NOT KEYED TO THE CALENDAR DAY. Driven at 23:52 with
+   the clock advanced ten minutes: the athlete logged a ruck, the prompt fired,
+   midnight passed while it was on screen, and the prompt VANISHED on the next
+   repaint — todayISO() had moved on and yesterday's ruck no longer counted. An
+   evening rucker lost the prompt before they could answer it.
+
+   So the rule is the package's own: the prompt stands from a ruck until it is
+   answered. Yesterday is the bound — it covers an inspection that happens
+   after midnight without nagging for a week about a ruck the athlete has
+   plainly moved on from. */
 function footPromptDue(){
   try{
-    if(footCheckedToday())return false;
-    const t=(STATE.nutrition.days||{})[todayISO()];
-    return !!(t&&_dayRuckKm(t)>0);
+    const D=STATE.nutrition.days||{};
+    const d0=todayISO();
+    const y=new Date(); y.setDate(y.getDate()-1);
+    const d1=localISO(y);
+    let last=null;
+    [d1,d0].forEach(d=>{const t=D[d];if(t&&_dayRuckKm(t)>0)last=d;});
+    if(!last)return false;
+    const f=footLatest();
+    return !(f&&f.date>=last);
   }catch(e){return false;}
 }
 function footPickerHTML(){
@@ -5492,7 +5528,7 @@ function ruckLadderHTML(){
       <div style="text-align:right"><b style="font-size:19px">${_ve(distShow(w.km))}</b>
         <div class="tiny muted">this week</div></div>
     </div>
-    ${footLoadHTML(w)}
+    ${footLoadHTML(w,'ruck')}
     ${footHoldNoteHTML()}
     <div class="note ${w.down?'ok':'info'}" style="margin:10px 0 0"><b>What moves this week:</b> ${moving}</div>
     ${w.capped?`<div class="note warn" style="margin:10px 0 0"><b>The load stops here at ${_ve(String(w.ceil))} lb.</b> That is about a third of your bodyweight, which is the far end of what rucking guidance asks for. ${w.atPeak?'The distance has reached its ceiling too, so nothing further is added.':'From here the distance carries the progression.'} You can carry more if you choose to — the app will not add it for you.</div>`:''}
@@ -5874,7 +5910,7 @@ function openForceDate(){
 }
 function saveForceDate(){
   const v=($('#fq-date')||{}).value||'';
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){toast('Pick a date');return;}
+  if(!isDateISO(v)){toast('Pick a date');return;}
   if(!STATE.prep||typeof STATE.prep!=='object'||Array.isArray(STATE.prep))STATE.prep={};
   /* A RESCHEDULE KEEPS THE STAMP; A NEW BLOCK GETS A NEW ONE. The stamp was
      written once and never again, which is right for moving a date that is
@@ -5889,7 +5925,7 @@ function saveForceDate(){
   const prevDate=(typeof STATE.prep.date==='string')?STATE.prep.date:'';
   const newBlock=!prevDate||todayISO()>=prevDate;
   STATE.prep.date=v;
-  if(newBlock||typeof STATE.prep.planFrom!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(STATE.prep.planFrom))
+  if(newBlock||!isDateISO(STATE.prep.planFrom))
     STATE.prep.planFrom=todayISO();
   save();closeSheet();toast('Test date set 📅');openForcePrep();
 }
@@ -12404,7 +12440,7 @@ function photoFileName(meta){
   // pose and date both come from stored data an import could have shaped,
   // so both go through the same membership/format guards the gallery uses.
   const pose=poseOf(meta);
-  const d=(meta&&typeof meta.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(meta.date))?meta.date:'undated';
+  const d=(meta&&isDateISO(meta.date))?meta.date:'undated';
   return `coreforge-${d}-${pose}.jpg`;
 }
 async function savePhotoFiles(){
@@ -20876,7 +20912,14 @@ function normalizeState(){
      the falsy-zero mistake this file has already paid for twice.
 
      `date` is a format test, not truthiness: it reaches innerHTML and
-     forceWeeksLeft() does Date arithmetic on it. */
+     forceWeeksLeft() does Date arithmetic on it. It asks isDateISO(), which
+     ROUND-TRIPS through localISO() — the pattern alone accepts '2025-13-45',
+     which is not a day. Measured: that string survived every boot and
+     prepDateLabel() printed "Invalid Date" on the glass, beside a button
+     reading "Change my test date" on a card saying no date was set. The
+     arithmetic readers all fail closed on it, so the label and the backup
+     were the whole harm — but the app already owned the right predicate and
+     this repair was restating a weaker one. */
   if(!STATE.prep||typeof STATE.prep!=='object'||Array.isArray(STATE.prep))STATE.prep={};
   {const P=STATE.prep;
    if(!P.results||typeof P.results!=='object'||Array.isArray(P.results))P.results={};
@@ -20884,10 +20927,10 @@ function normalizeState(){
      const v=P.results[k];
      if(!FORCE_IDS.includes(k)||typeof v!=='number'||!isFinite(v)||v<0)delete P.results[k];
    });
-   if(P.date!==undefined&&!(typeof P.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(P.date)))delete P.date;
+   if(P.date!==undefined&&!isDateISO(P.date))delete P.date;
    /* The run times are SECONDS. A non-number is dropped, not zeroed — a zero
       would render as a 0:00 time trial, which is not a measurement. */
-   if(P.planFrom!==undefined&&!(typeof P.planFrom==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(P.planFrom)))delete P.planFrom;
+   if(P.planFrom!==undefined&&!isDateISO(P.planFrom))delete P.planFrom;
    /* Both new fields are SECONDS, and both are dropped rather than zeroed for
       the same reason the run times are: a zero renders as a 0:00 result, which
       is not a measurement. importData() accepts arbitrary JSON. */
@@ -20909,7 +20952,7 @@ function normalizeState(){
      else Object.keys(P.checks).forEach(k=>{
        const slot=P.checks[k];
        if(!PREP_CHECKS.includes(k)||!slot||typeof slot!=='object'||Array.isArray(slot)){delete P.checks[k];return;}
-       if(typeof slot.at!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(slot.at))delete slot.at;
+       if(!isDateISO(slot.at))delete slot.at;
        if(!slot.results||typeof slot.results!=='object'||Array.isArray(slot.results))slot.results={};
        Object.keys(slot.results).forEach(id=>{
          const v=slot.results[id];
@@ -21075,7 +21118,7 @@ function normalizeState(){
       cut in the way bmiImplausible() is far outside any real body: it can only
       ever catch an error, and a check pins that a THREE-YEAR cut survives. */
    const floorISO=(()=>{const d=new Date();d.setFullYear(d.getFullYear()-SHRED_MAX_YEARS);
-     return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
+     return localISO(d);})();
    if(P3._shredStart!==undefined&&P3._shredStart!==null
       &&!(isDateISO(P3._shredStart)&&P3._shredStart<=todayISO()
           &&P3._shredStart>=floorISO))P3._shredStart=null;}
@@ -21368,10 +21411,30 @@ function normalizeState(){
      index — resumeInfo() re-validates, but the field is dropped here so a
      non-object can never reach it in the first place. */
   if(STATE._plResume!=null&&(typeof STATE._plResume!=='object'||Array.isArray(STATE._plResume)))delete STATE._plResume;
-  /* "I want the next session today" is a decision about ONE day, so a date
-     string or nothing. Anything else is dropped rather than left to travel. */
-  if(STATE._trainAgain!==undefined&&(typeof STATE._trainAgain!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(STATE._trainAgain)))
-    delete STATE._trainAgain;
+  /* THE SHAPE THE WRITER WRITES, not the one it used to.
+
+     v316 replaced the bare date with {date, from} — stamping the pointer the
+     request was granted from, so any pointer move voids it — and changed
+     trainAgainAsked() to accept ONLY the object, with a comment saying so.
+     This repair was left on the v313 string, so the object it is handed was
+     DELETED on every boot. Measured: the request is live before
+     normalizeState() and gone after it, every time. A reload during the second
+     session therefore put Today back to describing the session the athlete had
+     already FINISHED as today's, with the priced confirm in front of the one
+     they were part way through — the v344 confusion the flag exists to stop.
+
+     A shape changed in the writer and the reader and not in the repair is the
+     same class as a legal set restated by hand: the contract lived in three
+     places and one of them was never brought along.
+
+     The legacy string is DROPPED rather than migrated. It carries no pointer,
+     so there is nothing to check it against, and trainAgainAsked() already
+     reads it as no request — at worst one extra tap of a button that is still
+     on screen, on the screen the athlete actually finished. */
+  {const r=STATE._trainAgain;
+   const okR=r&&typeof r==='object'&&!Array.isArray(r)&&isDateISO(r.date)
+     &&typeof r.from==='number'&&isFinite(r.from)&&r.from>=0&&r.from===Math.round(r.from);
+   if(r!==undefined&&!okR)delete STATE._trainAgain;}
   /* MEMBERSHIP AGAINST THE LIST, never a hardcoded legal value.
 
      This read `!== 'bike'` and was written when jacks and the bike were the

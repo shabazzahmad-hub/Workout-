@@ -6422,12 +6422,23 @@ export default async function () {
            was already prompting them about. */
         const keepPain = STATE.pain, keepLogs = STATE.logs;
         STATE.pain = []; STATE.logs = keepLogs;
+        /* THE WEEK IS PART OF THE STATE THIS BLOCK HAS TO BUILD. The first
+           version seeded forward from the week start and stopped at today, so
+           on a MONDAY it built exactly one session and the row correctly read
+           "1 this week" — a failure on correct code, on one weekday in seven.
+           CI found it; three local runs on other days did not.
+
+           sessionsThisWeek() counts every trained day at or after the week
+           start with no upper bound, so seeding the five weekdays of the
+           CURRENT week is a state it genuinely reports 5 for, whatever day it
+           runs on. The guard below is what keeps that true: if a future-date
+           filter is ever added, this says so by name instead of looking like a
+           defect in the row. */
         const wk = weekStartD(new Date());
-        for (let d = 0; d < 5; d++) {
-          const day = new Date(wk.getTime() + d * DAY);
-          if (day > new Date()) break;
-          STATE.logs[900 + d] = { done: true, completedAt: iso(day), ex: {} };
-        }
+        for (let d = 0; d < 5; d++)
+          STATE.logs[900 + d] = { done: true, completedAt: iso(new Date(wk.getTime() + d * DAY)), ex: {} };
+        out.freqSeeded = sessionsThisWeek();
+        out.freqWeekday = new Date().getDay();
         out.freqClean = byK(day90Rows()).freq;
         for (let k = 0; k < 3; k++) STATE.pain.push({ region: 'shoulders', date: iso(new Date(Date.now() - k * DAY)), ptr: 900 + k });
         out.painN = painCount('shoulders');
@@ -6561,6 +6572,8 @@ export default async function () {
           && r.pushPlain.gotLabel === 'your baseline max', JSON.stringify(r.pushPlain));
       t.ok('guard: the pain pattern the app itself would prompt about was really built',
         r.painN >= 2, JSON.stringify({ n: r.painN, freq: r.freqPain }));
+      t.eq('guard: the block really built five sessions inside the current week',
+        r.freqSeeded, 5, JSON.stringify({ seeded: r.freqSeeded, weekday: r.freqWeekday }));
       t.ok('a week of sessions with no pain pattern meets the frequency target',
         r.freqClean.ok === true && !r.freqClean.why, JSON.stringify(r.freqClean));
       t.ok('but the same week is not "on target" while a pain pattern stands',
@@ -6687,6 +6700,35 @@ export default async function () {
         for (let w = 0; w < 4; w++) for (let d = 0; d < 2; d++)
           D[iso(w * 7 + d)] = { opened: true, ruckVal: 5, ruckUnit: 'dist', ruckLvl: 'brisk', ruckLb: 25 };
 
+        /* THE PROMPT IS ORDERED IN TIME, NOT KEYED TO THE CALENDAR DAY.
+           Driven with a faked clock at 23:52 and advanced ten minutes: the
+           athlete logged a ruck, the prompt fired, midnight passed while it was
+           on screen, and it VANISHED on the next repaint — todayISO() had moved
+           on and yesterday's ruck no longer counted. An evening rucker lost the
+           prompt before answering it.
+
+           The post-midnight state is exactly "yesterday's ruck, no check", so
+           it is pinned here without needing a clock. */
+        out.night = {};
+        wipe(); STATE.footLog = [];
+        D[iso(1)] = { opened: true, ruckVal: 8, ruckUnit: 'dist', ruckLvl: 'brisk', ruckLb: 35 };
+        out.night.yesterdayUnchecked = footPromptDue();
+        STATE.footLog = [{ date: iso(0), state: 'clear' }];
+        out.night.answeredAfterMidnight = footPromptDue();
+        /* FLOOR: it must not nag about a ruck the athlete has plainly moved on
+           from, and a NEW ruck after an older check must ask again — the rule
+           is "newer than the check", not "a check exists". */
+        wipe(); STATE.footLog = [];
+        D[iso(2)] = { opened: true, ruckVal: 8, ruckUnit: 'dist', ruckLvl: 'brisk', ruckLb: 35 };
+        out.night.twoDaysAgo = footPromptDue();
+        wipe();
+        D[iso(0)] = { opened: true, ruckVal: 8, ruckUnit: 'dist', ruckLvl: 'brisk', ruckLb: 35 };
+        STATE.footLog = [{ date: iso(1), state: 'clear' }];
+        out.night.newRuckAfterOldCheck = footPromptDue();
+        wipe();
+        for (let w = 0; w < 4; w++) for (let d = 0; d < 2; d++)
+          D[iso(w * 7 + d)] = { opened: true, ruckVal: 5, ruckUnit: 'dist', ruckLvl: 'brisk', ruckLb: 25 };
+
         // the prompt fires on a ruck day, and stops once the check is logged
         delete D[iso(0)];
         out.promptNoRuck = footPromptDue();
@@ -6788,6 +6830,14 @@ export default async function () {
     t.ok('an athlete who has never logged a check is never held',
       r.neverLogged.hold === false && r.neverLogged.climbing !== 'foot', JSON.stringify(r.neverLogged));
 
+    t.ok('an evening ruck still asks after midnight has passed',
+      r.night.yesterdayUnchecked === true, JSON.stringify(r.night));
+    t.ok('and answering it after midnight stops the asking',
+      r.night.answeredAfterMidnight === false, JSON.stringify(r.night));
+    t.ok('while a ruck two days back does not nag',
+      r.night.twoDaysAgo === false, JSON.stringify(r.night));
+    t.ok('and a new ruck after an older check asks again — newer than, not merely present',
+      r.night.newRuckAfterOldCheck === true, JSON.stringify(r.night));
     t.ok('the check is asked whichever unit the ruck was logged in',
       r.units.dist === true && r.units.min === true && r.units.kcal === true,
       JSON.stringify(r.units));
@@ -6908,10 +6958,113 @@ export default async function () {
        must not find their ladder quietly climbing again. */
     t.ok('with the hold still standing afterwards', trip.after.hold === true, JSON.stringify(trip.after));
 
+    /* THE TWO RESETS. restartProgram() is the path v365 records as "the one
+       reset that never asked the list", so a new lifetime field is exactly what
+       it forgets — or wrongly clears. A restart that dropped the foot log would
+       silently release an active hold and start the ladder climbing again over
+       an unresolved blister. hardReset() is athlete data and must go. */
+    const life = await page.evaluate(() => {
+      const out = {}, ce = console.error, cf = window.confirm;
+      console.error = () => {}; window.confirm = () => true;
+      try {
+        const iso = d => { const x = new Date(Date.now() - d * 86400000);
+          return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+        const keep = JSON.parse(JSON.stringify(STATE));
+        const seed = () => { STATE.footLog = [{ date: iso(1), state: 'clear' },
+                                              { date: iso(0), state: 'blister' }]; save(); };
+        seed();
+        out.before = { hold: footHold(), rows: STATE.footLog.length };
+        restartProgram();
+        out.afterRestart = { kept: JSON.stringify(STATE.footLog), hold: footHold() };
+        seed();
+        hardReset();
+        out.afterHardReset = { gone: STATE.footLog === undefined, hold: footHold() };
+        STATE = keep; normalizeState(); save();
+      } catch (e) { out.threw = String(e && e.message || e); }
+      console.error = ce; window.confirm = cf; return out;
+    });
+    t.ok('guard: the lifecycle case started from a live hold',
+      !life.threw && life.before && life.before.hold === true && life.before.rows === 2,
+      life.threw || JSON.stringify(life.before));
+    t.ok('restarting the program keeps the foot log — it is a lifetime record',
+      (life.afterRestart.kept.match(/date/g) || []).length === 2, JSON.stringify(life.afterRestart));
+    /* The consequential half: a restart that released the hold would start the
+       ladder climbing again over an unresolved blister. */
+    t.ok('and keeps the hold with it', life.afterRestart.hold === true, JSON.stringify(life.afterRestart));
+    t.ok('while a hard reset clears it, like every other thing the athlete owns',
+      life.afterHardReset.gone === true && life.afterHardReset.hold === false,
+      JSON.stringify(life.afterHardReset));
+
     t.eq('the repair keeps a real check and drops every junk row',
       r.repaired, '[{"date":"' + new Date(Date.now() - 86400000).toISOString().slice(0, 10) + '","state":"blister"}]');
     t.ok('a log that is not a list is dropped', r.strDropped === true, r.strDropped);
     t.ok('and no log is invented for an athlete who never checked', r.absent === 'absent', r.absent);
+  }
+
+
+  /* ---- v393: one fact, one place ----------------------------------------
+     footLoadHTML() is called from the running plan AND from the ruck ladder,
+     and both live in the SAME sheet — ruckLadderHTML() renders inside
+     enduranceHTML(). Both read the same global answer from footNewMode(),
+     which v332 made deliberate so they could never disagree; the consequence
+     nobody noticed is that they then rendered the IDENTICAL sentence twice on
+     one screen.
+
+     Measured before the fix: with history in both modes the plain "together"
+     line appeared 2 times, and on a new-mode athlete the warning appeared 2
+     times. Every athlete with a prep block saw one of the two doubled. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {}, ce = console.error; console.error = () => {};
+      try {
+        const iso = d => { const x = new Date(Date.now() - d * 86400000);
+          return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+        const keep = JSON.parse(JSON.stringify(STATE));
+        STATE.prep = { date: iso(-70), planFrom: iso(35), path: 'operator', results: {} };
+        STATE.footLog = [{ date: iso(0), state: 'clear' }];
+        const D = STATE.nutrition.days;
+        const wipe = () => Object.keys(D).forEach(k => delete D[k]);
+        const count = () => { openEndurance();
+          const sh = document.querySelector('#sheet'), t = sh ? sh.innerText : '';
+          const r2 = { together: (t.match(/together:/g) || []).length,
+                       brand: (t.match(/is brand new on top of/g) || []).length,
+                       newMode: footNewMode() };
+          closeSheet(); return r2; };
+
+        wipe();
+        for (let w = 0; w < 4; w++) for (let d = 0; d < 2; d++)
+          D[iso(w * 7 + d)] = { opened: true, ruckVal: 6, ruckUnit: 'dist', ruckLvl: 'brisk',
+                                ruckLb: 30, runVal: 5, runUnit: 'dist', runLvl: 'steady' };
+        normalizeState(); out.both = count();
+
+        wipe();
+        for (let w = 0; w < 4; w++) for (let d = 0; d < 2; d++)
+          D[iso(w * 7 + d)] = { opened: true, ruckVal: 6, ruckUnit: 'dist', ruckLvl: 'brisk', ruckLb: 30 };
+        normalizeState(); out.ruckOnly = count();
+
+        wipe();
+        for (let w = 0; w < 4; w++) for (let d = 0; d < 2; d++)
+          D[iso(w * 7 + d)] = { opened: true, runVal: 5, runUnit: 'dist', runLvl: 'steady' };
+        normalizeState(); out.runOnly = count();
+
+        STATE = keep; normalizeState(); save();
+      } catch (e) { out.threw = String(e && e.message || e); }
+      console.error = ce; return out;
+    });
+
+    t.ok('guard: the three cases really are the three states the note has',
+      !r.threw && r.both.newMode === null && r.ruckOnly.newMode === 'run' && r.runOnly.newMode === 'ruck',
+      r.threw || JSON.stringify(r));
+    /* ONE FACT, ONE PLACE — the v314 lesson, one sheet over. */
+    t.ok('the combined foot total is stated once, not once per plan',
+      r.both.together === 1 && r.both.brand === 0, JSON.stringify(r.both));
+    t.ok('and the new-mode warning is stated once when running is the new mode',
+      r.ruckOnly.brand === 1 && r.ruckOnly.together === 0, JSON.stringify(r.ruckOnly));
+    t.ok('and once when rucking is the new mode — the other card stays quiet',
+      r.runOnly.brand === 1 && r.runOnly.together === 0, JSON.stringify(r.runOnly));
+    /* FLOOR: a fix that simply deleted one call site would drop the warning
+       entirely for whichever mode that card owns. Both directions are pinned
+       above, so silencing either one fails. */
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
