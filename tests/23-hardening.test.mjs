@@ -7118,6 +7118,74 @@ export default async function () {
        above, so silencing either one fails. */
   }
 
+  /* ---- the estimated-base note has to describe the week it is on ----------
+     `estimated` stays true for the WHOLE block while nothing is logged, so at
+     week 18 the endurance card carried "the plan opens at 8 km a week and
+     climbs from there" directly above "the build has reached its ceiling — 20
+     km a week". Two notes on one card describing different weeks, and the one
+     in the present tense was describing the past. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const read = daysIn => {
+        STATE.prep = { date: new Date(Date.now() + 21 * 864e5).toISOString().slice(0, 10),
+                       path: 'operator', results: {}, combat: {},
+                       planFrom: new Date(Date.now() - daysIn * 864e5).toISOString().slice(0, 10) };
+        normalizeState();
+        const w = enduranceWeek(), rk = ruckLadderWeek();
+        closeSheet(); openEndurance();
+        const sh = document.getElementById('sheet');
+        const notes = [...sh.querySelectorAll('.note')].map(n => n.textContent.replace(/\s+/g, ' ').trim());
+        return { estimated: !!w.estimated, km: w.km, start: w.start,
+                 ruckKm: rk.km, ruckStart: rk.startKm, ruckLb: rk.lb,
+                 opens: notes.filter(n => /opens at/.test(n)),
+                 climbed: notes.filter(n => /has climbed to/.test(n)),
+                 ceiling: notes.some(n => /reached its ceiling/.test(n)) };
+      };
+      /* Day 1, not day 7: the RUCK ladder already climbs in week 2, so at day 7
+         it correctly reports "has climbed to 5.5 km" while the run is still at
+         its floor. The opening state is the one where BOTH are untouched. */
+      return { early: read(1), late: read(200) };
+    });
+
+    /* GUARDS: the two states this is about really are what they claim, or every
+       assertion below passes on nothing. */
+    t.ok('guard: the base is estimated in BOTH weeks — that is the whole point',
+      r.early.estimated && r.late.estimated, JSON.stringify({ e: r.early.estimated, l: r.late.estimated }));
+    t.ok('guard: week 1 really is at the floor on BOTH plans, and the late week has climbed',
+      r.early.km === r.early.start && r.early.ruckKm === r.early.ruckStart
+        && r.late.km > r.late.start && r.late.ruckKm > r.late.ruckStart,
+      JSON.stringify({ early: [r.early.start, r.early.km, r.early.ruckStart, r.early.ruckKm],
+                       late: [r.late.start, r.late.km, r.late.ruckStart, r.late.ruckKm] }));
+    t.ok('guard: and the ceiling note really is on the late card to contradict',
+      r.late.ceiling, JSON.stringify(r.late));
+
+    /* FLOOR — at the opening the original wording is correct and must stay. */
+    t.eq('FLOOR: week one still says the plan opens at the floor',
+      r.early.opens.length, 2, JSON.stringify(r.early.opens));
+    t.eq('and does not claim to have climbed anywhere', r.early.climbed.length, 0,
+      JSON.stringify(r.early.climbed));
+
+    // and once it HAS climbed, neither note is in the present tense about the floor
+    t.eq('a climbed plan no longer says it "opens at" the floor', r.late.opens.length, 0,
+      JSON.stringify(r.late.opens));
+    t.eq('both cards say what they have climbed to instead', r.late.climbed.length, 2,
+      JSON.stringify(r.late.climbed));
+    t.ok('and each names the figure its own card is prescribing',
+      r.late.climbed.some(n => n.indexOf(String(r.late.km)) >= 0)
+        && r.late.climbed.some(n => n.indexOf(String(r.late.ruckLb)) >= 0),
+      JSON.stringify({ notes: r.late.climbed, km: r.late.km, lb: r.late.ruckLb }));
+    /* And the actionable half survives either way — it is the only part that
+       tells the athlete what to do about it. */
+    t.ok('the call to log real work survives in both states',
+      r.early.opens.every(n => /Log a few/.test(n)) && r.late.climbed.every(n => /Log a few/.test(n)),
+      JSON.stringify({ early: r.early.opens, late: r.late.climbed }));
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

@@ -5388,7 +5388,15 @@ function enduranceHTML(){
     ${w.down?`<div class="note ok" style="margin:10px 0 0"><b>Down week.</b> Volume is cut on purpose — the adaptation happens here, not in the hard weeks.</div>`:''}
     <div class="tiny muted" style="margin-top:10px">${_ve(w.note)}</div>
     ${w.estimated
-      ? `<div class="note warn" style="margin:10px 0 0"><b>Starting low, because nothing is logged yet.</b> The plan opens at ${_ve(distShow(PREP_FLOOR_KM))} a week and climbs from there. Log a few runs and it will build from what you actually do instead.</div>`
+      ? (w.km>w.start
+        /* PRESENT TENSE, OR IT CONTRADICTS THE CARD IT IS ON. `estimated` stays
+           true for the whole block while nothing is logged, so at week 18 this
+           said "the plan opens at 8 km and climbs from there" directly above
+           "the build has reached its ceiling — 20 km a week". Two notes on one
+           card describing different weeks. The actionable half is what matters
+           and is kept either way. */
+        ? `<div class="note warn" style="margin:10px 0 0"><b>Built on an assumption, because nothing is logged.</b> It opened at ${_ve(distShow(PREP_FLOOR_KM))} a week because there were no runs to read, and has climbed to ${_ve(distShow(w.km))} from there. Log a few runs and it will rebuild from what you actually do.</div>`
+        : `<div class="note warn" style="margin:10px 0 0"><b>Starting low, because nothing is logged yet.</b> The plan opens at ${_ve(distShow(PREP_FLOOR_KM))} a week and climbs from there. Log a few runs and it will build from what you actually do instead.</div>`)
       : `<div class="tiny muted" style="margin-top:6px">Built from the <b>${_ve(distShow(w.start))}</b> a week you have been logging${w.blank>0?` — <b>${w.blank} of the last ${w.counted} weeks had no runs at all</b>, counted as the zero they were rather than skipped`:''}, climbing no more than <b>${Math.round((PREP_RAMP-1)*100)}%</b> a week.</div>`}
     ${w.atPeak?`<div class="note info" style="margin:10px 0 0"><b>The build has reached its ceiling.</b> Volume holds at ${_ve(distShow(w.peak))} a week from here — ${Math.round(PREP_PEAK_MULT*10)/10}× what you opened on, and past what this evaluation asks of you. The work gets sharper from here, not longer.</div>`:''}
     ${w.down?`<div class="tiny muted" style="margin-top:6px">Next week goes back to <b>${_ve(distShow(w.curve===w.km?w.curve:Math.round(w.curve*PREP_RAMP*10)/10))}</b>. That looks like a jump against this week and is not one — it is ${Math.round((PREP_RAMP-1)*100)}% up on the last week you were not cutting.</div>`:''}
@@ -5556,7 +5564,12 @@ function ruckLadderHTML(){
     ${w.capped?`<div class="note warn" style="margin:10px 0 0"><b>The load stops here at ${_ve(String(w.ceil))} lb.</b> That is about a third of your bodyweight, which is the far end of what rucking guidance asks for. ${w.atPeak?'The distance has reached its ceiling too, so nothing further is added.':'From here the distance carries the progression.'} You can carry more if you choose to — the app will not add it for you.</div>`:''}
     ${(w.atPeak&&!w.capped)?`<div class="note info" style="margin:10px 0 0"><b>The distance has reached its ceiling.</b> It holds at ${_ve(distShow(w.peak))} a week from here. Loaded distance tops out far lower than unloaded, and this is already past the ${_ve(distShow(5))} march the standard asks for.</div>`:''}
     ${w.estimated
-      ? `<div class="note warn" style="margin:10px 0 0"><b>Starting light, because nothing is logged yet.</b> It opens at ${_ve(distShow(PREP_RUCK_FLOOR_KM))} under a ${RUCK_PLATES[0]} lb plate. Log a few rucks and it will build from what you actually carry.</div>`
+      ? ((w.km>w.startKm||w.lb>RUCK_PLATES[0])
+        /* Same shape as the running note: `estimated` stays true for the whole
+           block, so "it opens at 5 km under a 10 lb plate" was rendered beside
+           a card already prescribing 9 km under 25 lb. */
+        ? `<div class="note warn" style="margin:10px 0 0"><b>Built on an assumption, because nothing is logged.</b> It opened at ${_ve(distShow(PREP_RUCK_FLOOR_KM))} under a ${RUCK_PLATES[0]} lb plate because there were no rucks to read, and has climbed to ${_ve(distShow(w.km))} under ${_ve(String(w.lb))} lb. Log a few rucks and it will rebuild from what you actually carry.</div>`
+        : `<div class="note warn" style="margin:10px 0 0"><b>Starting light, because nothing is logged yet.</b> It opens at ${_ve(distShow(PREP_RUCK_FLOOR_KM))} under a ${RUCK_PLATES[0]} lb plate. Log a few rucks and it will build from what you actually carry.</div>`)
       : `<div class="tiny muted" style="margin-top:8px">Built from the <b>${_ve(distShow(w.startKm))}</b> a week you have been logging.</div>`}
     <div class="tiny muted" style="margin-top:10px">Distance <b>or</b> load, never both in the same week. A ruck is carried by the same tissue that absorbs every step, so raising two things at once is how a back goes.</div>
   </div>`;
@@ -18919,6 +18932,12 @@ function _recipePlanHTML(anchor){
      two must agree about the same gap. */
   const _miss=Array.isArray(plan.missing)?plan.missing:[];
   const _share=slotShare(mealSlots());
+  /* The explicit 1 for a complete plan is an EQUIVALENT mutant today and is kept
+     as intent: the shares already sum to 1 (measured 0.9999999999999999 for the
+     three-meal table, which rounds to the same bar), so computing it either way
+     gives 2200 of 2200. It matters the day a share table deliberately does NOT
+     sum to 1 — leaving room for a snack, say — when a complete plan would
+     otherwise be scaled against less than the target. */
   const _covered=_miss.length
     ? mealSlots().filter(k=>_miss.indexOf(k)<0).reduce((a,k)=>a+(_share[k]||0),0)
     : 1;

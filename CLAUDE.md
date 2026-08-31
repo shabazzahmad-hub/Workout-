@@ -9793,6 +9793,47 @@ message correctly describes.
 that fires on every write is one nobody reads — and it must still warn only
 ONCE, whichever branch it took.
 
+## The note was in the present tense about a week long past (v398)
+
+Found by the sweep the meal-plan bug suggested: **render every surface for an
+athlete in as many noteworthy states at once as is legal, and read the notes
+side by side.** The endurance sheet carried these two, three lines apart:
+
+> **Starting low, because nothing is logged yet.** The plan **opens at 8 km** a
+> week and climbs from there.
+
+> **The build has reached its ceiling.** Volume holds at **20 km** a week from
+> here.
+
+`estimated` means *the base was assumed because nothing is logged*, and it stays
+true for the WHOLE block. Measured across a block: true at week 2 (8 km, correct)
+and still true at week 29 (20 km), where the note describes a week twenty-seven
+weeks gone — on a card whose "This week" says 20 km.
+
+**The ruck ladder had the identical note**, saying *"it opens at 5 km under a
+10 lb plate"* beside a card prescribing 11.8 km under 30 lb.
+
+The fix keeps the actionable half — *log a few runs and it will rebuild from
+what you actually do* — and puts the rest in the tense that is true: it OPENED
+at the floor and has CLIMBED to here.
+
+**The floor is week one**, where the original wording is correct and must stay.
+
+### The check was a week too late, and the app was right
+
+Its first version used day 7 for "the opening" and failed — because the **ruck
+ladder already climbs in week 2**, so at day 7 it correctly reported *"has
+climbed to 5.5 km"* while the run was still at its floor. The opening state is
+day 1, where both plans are untouched, and the guard now pins that both are at
+their floor before anything is asserted about the wording.
+
+### And the block was placed after the server closed
+
+Suite 23 calls `srv.close()` before its end, so a block appended at the bottom
+got `ERR_CONNECTION_REFUSED` and reported *"the test file itself threw"*. Append
+before the teardown, not after the last brace.
+
+
 ## Two notes on one card, each telling the athlete to close the same gap (v398)
 
 Found by driving the most restricted legal athlete — vegan with eight allergens,
@@ -9827,6 +9868,19 @@ never a number restated in the check.
 Three wording faults on the same card went with it: *"1 MEALS"*, *"Build that
 meal yourself"* for two missing meals, and *"This meal is 460 kcal against the
 770 **they** are meant to carry"*.
+
+### The third equivalent mutant of the round, measured
+
+The explicit `1` for a complete plan cannot be caught: the share tables already
+sum to 1 — measured **0.9999999999999999** for the three-meal table and exactly
+1 for four — so both versions round to the same 2200 of 2200. Kept as intent for
+the day a share table deliberately does not sum to 1 (leaving room for a snack),
+when a complete plan would otherwise be scaled against less than the target.
+
+Three equivalent mutants this round, all measured rather than assumed:
+`swWorker()`'s controller fast-path, `capLog()`'s membership test, and this. Each
+is recorded in the code with the measurement beside it, and none was papered
+over with a check that cannot fail.
 
 ### The check failed on a screen that was right
 
