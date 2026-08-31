@@ -659,11 +659,18 @@ export default async function run() {
     return {
       weeks: WEEKS_PER_CYCLE,
       isApp: /function normalizeState/.test(noComments),
-      /* A literal block length left in code, outside comments. Two phrasings,
-         because the re-test screen states the same fact twice — a paragraph
-         saying "N-week block" and a hero header saying "N weeks done" — and
-         fixing only the first left the second hardcoded two lines above it. */
-      hardcoded: (noComments.match(/\d+-week block|\d+ weeks? done/g) || []),
+      /* A literal block length left in code, outside comments. THREE phrasings
+         now: the re-test screen states the same fact twice — a paragraph saying
+         "N-week block" and a hero header saying "N weeks done" — and fixing only
+         the first left the second hardcoded two lines above it. A third,
+         "Re-test after week N" on the strength chart, slipped past both and was
+         found by reading the RENDERED screens instead of scanning for a pattern
+         already known. Each new phrasing goes in here, not into a second scan. */
+      hardcoded: (noComments.match(/\d+-week block|\d+ weeks? done|after week \d+/g) || []),
+      /* And the coach count, the same class one cast over: "pick one of the 16"
+         was written when there were sixteen, and there are 38. */
+      coachCount: COACHES.length,
+      coachCopy: (noComments.match(/pick one of the \d+/g) || []),
       // the achievement and the re-test screen must both read the constant
       achDesc: (ACHIEVEMENTS.find(a => a.id === 'block') || {}).desc,
       lastWeekNote: (typeof _overloadNoteInner === 'function')
@@ -678,6 +685,13 @@ export default async function run() {
     blockLen.achDesc, 'Finish a ' + blockLen.weeks + '-week block', blockLen);
   t.ok('and the final-week note does too',
     blockLen.lastWeekNote.indexOf(blockLen.weeks + '-week block') >= 0, blockLen);
+  /* The coach roster is named in Settings copy. It said 16 when the cast was
+     16 and the cast is now 38 — a number written by hand beside the list that
+     holds it, which is the class v397 fixed for the block length. */
+  t.ok('guard: the roster really has grown past the number that was written',
+    blockLen.coachCount > 16, JSON.stringify({ coaches: blockLen.coachCount }));
+  t.eq('and no copy writes the coach count out by hand',
+    blockLen.coachCopy.join(', '), '', JSON.stringify(blockLen.coachCopy));
 
   /* ---- and the program's own length, which is not a year for most people --
      v348 measured it: 378 sessions is 54 weeks at SEVEN a week, and the

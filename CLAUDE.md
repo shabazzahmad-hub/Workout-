@@ -9793,6 +9793,34 @@ message correctly describes.
 that fires on every write is one nobody reads — and it must still warn only
 ONCE, whichever branch it took.
 
+## The copy said sixteen coaches and there are thirty-eight (v398)
+
+Found by **reading the rendered screens** for sentences carrying a number, on
+the surfaces earlier sweeps had not read. Settings said:
+
+> **Auto** rotates a random coach each exercise — or pick one of the **16**
+> (Drill Sergeant, Marine, Ultra, Viking, Cheer, A.I. Trainer, and more).
+
+Measured: `COACHES.length` is **38**. The number was written when there were
+sixteen and the cast has more than doubled since — a number written by hand
+beside the list that holds it, which is exactly the class v397 fixed for the
+block length.
+
+### And a third phrasing of the block length that the scan could not see
+
+v397 added a source scan forbidding a hand-written block length, in two
+phrasings — `N-week block` and `N weeks done` — because the re-test screen
+states the fact twice. The strength chart states it a **third** way:
+
+> Your baseline. Re-test after **week 6** to chart your climb.
+
+`after week N` matched neither pattern. **It was found by reading the screen,
+not by scanning for a pattern already known** — which is the argument for doing
+both: a scan catches what you have already thought of, and rendering catches
+what you have not. Each new phrasing goes into the one scan rather than into a
+second one beside it.
+
+
 ## "Try adding load" to an athlete the app is holding back (v398)
 
 Found by reading the PLAYER's own screens as text, in the state where the most

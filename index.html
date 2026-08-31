@@ -15920,7 +15920,7 @@ function strengthTrendHTML(){
     // took the whole Progress tab down through the render boundary
     body=`<div class="tiny muted" style="margin-top:12px">No numbers for this lift yet — they appear after your baseline or a re-test.</div>`;
   }else{
-    body=`<div class="center" style="margin-top:14px"><div style="font-size:30px;font-weight:900">${disp(pts[0].v)}</div><div class="tiny muted" style="margin-top:6px">Your baseline. Re-test after week 6 to chart your climb.</div></div>`;
+    body=`<div class="center" style="margin-top:14px"><div style="font-size:30px;font-weight:900">${disp(pts[0].v)}</div><div class="tiny muted" style="margin-top:6px">Your baseline. Re-test after week ${WEEKS_PER_CYCLE} to chart your climb.</div></div>`;
   }
   return `<div class="section-label">Strength trends</div><div class="card pad">
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">${chips}</div>${body}
@@ -20334,7 +20334,7 @@ function renderGuide(){
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Motivator <span class="tiny muted">· hype during sets</span></span><button class="chip ${STATE.settings.hype!==false?'on':''}" onclick="toggleSetting('hype')">${STATE.settings.hype!==false?'On':'Off'}</button></div>
     <div style="padding:6px 0 2px"><div class="tiny muted" style="margin-bottom:5px">Coach persona</div>
       <select aria-label="Coach persona" onchange="setPersona(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px">${personaOptionsHTML()}</select>
-      <div class="row" style="justify-content:space-between;margin-top:6px"><span class="tiny muted"><b>Auto</b> rotates a random coach each exercise so the voice keeps changing — or pick one of the 16 (Drill Sergeant, Marine, Ultra, Viking, Cheer, A.I. Trainer, and more). They push you <b>during</b> the exercise, not just at the end.</span></div>
+      <div class="row" style="justify-content:space-between;margin-top:6px"><span class="tiny muted"><b>Auto</b> rotates a random coach each exercise so the voice keeps changing — or pick one of the ${COACHES.length} (Drill Sergeant, Marine, Ultra, Viking, Cheer, A.I. Trainer, and more). They push you <b>during</b> the exercise, not just at the end.</span></div>
       <div class="row" style="justify-content:space-between;margin-top:8px"><span class="muted sm">Hear this coach</span><button class="chip" onclick="previewPersona()">▶ Preview</button></div>
     </div>
     <div class="divider" style="margin:10px 0"></div>
