@@ -21840,6 +21840,10 @@ function validateData(){
      const i=CARDIO_INFO[k];
      if(!i){errs.push('CARDIO_INFO: no entry for mode "'+k+'"');return;}
      if(typeof i.block!=='function')errs.push('CARDIO_INFO.'+k+': no block builder — movementHTML would fall back to jumping jacks');
+     /* The row's own sub-line. Without it todayActivityHTML() lists the mode
+        with no figures beside it — the half of the v396 defect that a check
+        asking only "does the row exist" cannot see. */
+     if(typeof i.detail!=='function')errs.push('CARDIO_INFO.'+k+': no detail builder — its row on Progress would carry no figures');
      if(['block','durations','stopwatch'].indexOf(i.timer)<0)errs.push('CARDIO_INFO.'+k+': timer shape "'+i.timer+'" is not one the make-up sheet can render');
      /* Two modes sharing one builder is the copy-paste this exists to catch;
         it renders another mode's inputs under this mode's label. */

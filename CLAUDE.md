@@ -9501,6 +9501,26 @@ first word, so an exact-case search for `jumping jacks` failed on correct
 copy. Compare case-insensitively: the requirement is that the mode is named,
 not how it is capitalised.
 
+### Two escaped mutants, and both are entries already in this file
+
+- **The row's digits are the container; the SUB-LINE is the payload.** The
+  first check asked whether the row had a digit in it — and the row's value is
+  *"30 min"*, which always does. A mutant that emptied a mode's `detail`
+  builder walked straight through: the row rendered with its label and its
+  minutes and no figures at all. It reads `.tiny.muted` now. Sixth time.
+- **A clean validator proves nothing about a validator rule.** Every mode has
+  a `detail` today, so deleting the rule that requires one produces no new
+  problems and escapes in silence. The rule is now exercised by deleting a
+  real mode's builder in front of it, requiring the specific complaint, and
+  restoring — with `console.error` muted, because `validateData()` logs and
+  the harness counts a console error as a page failure.
+
+**And one bad anchor, turned into a clean no-op by the assert.**
+`const done=cardioDone();` appears twice, so `assert count == 1` refused the
+seed rather than half-applying it. Anchored on the two lines together.
+
+Ten mutants, all caught.
+
 
 ## Rendering
 

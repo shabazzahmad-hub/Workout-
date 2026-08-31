@@ -562,8 +562,12 @@ export default async function run() {
         /* the hint says NOTHING was logged — it must not fire on a day that
            was. This is the half that made the defect self-contradictory. */
         if (/show up here once you log them/i.test(p.innerText)) out.falseHint.push(k);
-        /* and the row must carry its own numbers, not just a label */
-        if (row && !/\d/.test(row.innerText)) out.noDetail.push(k);
+        /* MEASURE THE PAYLOAD. This asked whether the ROW had digits — and
+           the row's value is "30 min", which always does, so a mutant that
+           emptied a mode's detail builder walked straight through. The
+           sub-line is the payload: the figures the athlete came for. */
+        const sub = row && row.querySelector('.tiny.muted');
+        if (row && (!sub || !/\d/.test(sub.innerText))) out.noDetail.push(k);
       });
       return out;
     });
