@@ -3804,7 +3804,7 @@ function baselineIntroHTML(){
 function reassessIntroHTML(cycle){
   const prev=cycle===1?STATE.baseline:STATE.reassess[cycle-1];
   return `
-  <div class="hero oblique"><div class="htop"><div><div class="hlbl">Cycle ${cycle+1} · re-test</div><h1>Progress Check</h1><div class="hmeta">6 weeks done — let's re-measure</div></div><div class="hicon">📈</div></div></div>
+  <div class="hero oblique"><div class="htop"><div><div class="hlbl">Cycle ${cycle+1} · re-test</div><h1>Progress Check</h1><div class="hmeta">${WEEKS_PER_CYCLE} weeks done — let's re-measure</div></div><div class="hicon">📈</div></div></div>
   <div class="note fire">You've completed a full ${WEEKS_PER_CYCLE}-week block. Re-take the ${TESTS.length} tests so the next block scales from your <b>new, stronger</b> numbers — this is what keeps results coming all year.</div>
   <div class="card pad"><h3>Last result</h3>
     <div class="kv"><span>Core Score</span><b>${(prev&&prev.score!=null)?prev.score+'/100':'not tested'}</b></div>

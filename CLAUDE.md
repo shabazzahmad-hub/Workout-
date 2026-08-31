@@ -9657,6 +9657,12 @@ so the next edit cannot make them disagree, and a **guard** asserts the block
 is more than one week, or "no sentence writes it out" passes on a degenerate
 constant.
 
+**And the first check was too narrow, which the same screen proved.** It
+scanned for `N-week block` — so it passed while the re-test screen's own HERO
+HEADER, two lines above the paragraph just fixed, still read *"6 weeks done"*.
+One screen, one fact, two sentences, and fixing the first left the second. The
+scan now takes both phrasings.
+
 **And one comment had to be reworded rather than the check weakened** — an
 inline `// nine 6-week blocks` was counted by the scan that forbids the
 literal. Fifth time this file has recorded that.

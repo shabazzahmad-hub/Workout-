@@ -659,8 +659,11 @@ export default async function run() {
     return {
       weeks: WEEKS_PER_CYCLE,
       isApp: /function normalizeState/.test(noComments),
-      // a literal "<n>-week block" left in code, outside comments
-      hardcoded: (noComments.match(/\d+-week block/g) || []),
+      /* A literal block length left in code, outside comments. Two phrasings,
+         because the re-test screen states the same fact twice — a paragraph
+         saying "N-week block" and a hero header saying "N weeks done" — and
+         fixing only the first left the second hardcoded two lines above it. */
+      hardcoded: (noComments.match(/\d+-week block|\d+ weeks? done/g) || []),
       // the achievement and the re-test screen must both read the constant
       achDesc: (ACHIEVEMENTS.find(a => a.id === 'block') || {}).desc,
       lastWeekNote: (typeof _overloadNoteInner === 'function')
