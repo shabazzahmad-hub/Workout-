@@ -679,6 +679,50 @@ export default async function run() {
   t.ok('and the final-week note does too',
     blockLen.lastWeekNote.indexOf(blockLen.weeks + '-week block') >= 0, blockLen);
 
+  /* ---- and the program's own length, which is not a year for most people --
+     v348 measured it: 378 sessions is 54 weeks at SEVEN a week, and the
+     wizard's own floor is five — 75.6 weeks, 17.4 months. It fixed the
+     Program tab's "54-week journey" and built programWeeks() for exactly
+     this. The header chip was missed: it said "Complete · 1 year" to an
+     athlete who had just taken seventeen months over it.
+
+     The total is derived too, in the Full Tour badge AND in its condition. */
+  const progLen = await page.evaluate(() => {
+    const src = [...document.querySelectorAll('script:not([src])')]
+      .map(s => s.textContent).sort((a, b) => b.length - a.length)[0] || '';
+    const noComments = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const total = SESSIONS_PER_CYCLE * TOTAL_CYCLES;
+    const out = { total, isApp: /function normalizeState/.test(noComments),
+      literal: (noComments.match(/\b378\b/g) || []).length,
+      badge: (ACHIEVEMENTS.find(a => a.id === 's378') || {}).desc };
+    /* Drive the real chip at the end of the program, on a five-day athlete —
+       the pace the wizard floors at and the one v348 measured. */
+    const keepPtr = STATE.progressPtr, keepDays = STATE.profile.days;
+    const keepOn = STATE.onboarded, keepBase = STATE.baseline;
+    /* updatePill() returns early for an athlete who has not onboarded or has
+       no baseline, so the chip has to be driven past both to reach the
+       completion branch at all. */
+    STATE.onboarded = true; STATE.baseline = STATE.baseline || { results: {} };
+    STATE.profile.days = [1, 2, 3, 4, 5];
+    STATE.progressPtr = total;
+    try { updatePill(); } catch (e) {}
+    out.pill = (document.querySelector('#pillSub') || {}).textContent || '';
+    out.weeks = programWeeks();
+    STATE.progressPtr = keepPtr; STATE.profile.days = keepDays;
+    STATE.onboarded = keepOn; STATE.baseline = keepBase;
+    try { updatePill(); } catch (e) {}
+    return out;
+  });
+  t.ok('guard: the scan read the app', progLen.isApp, progLen);
+  t.ok('guard: a five-day athlete really takes longer than a year',
+    progLen.weeks > 52, progLen);
+  t.eq('the program length is never written out by hand', progLen.literal, 0, progLen);
+  t.eq('the Full Tour badge names the derived total',
+    progLen.badge, progLen.total + ' sessions — the complete program', progLen);
+  t.ok('and finishing does not claim a year it did not take',
+    progLen.pill.indexOf('year') < 0 && progLen.pill.indexOf(String(progLen.weeks)) >= 0,
+    progLen);
+
 
 
   /* ---- Burpees: a tenth baseline test, for cardiovascular stamina (v252) --

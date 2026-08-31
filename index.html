@@ -1942,7 +1942,7 @@ const SESSIONS_PER_WEEK=7, WEEKS_PER_CYCLE=6, SESSIONS_PER_CYCLE=SESSIONS_PER_WE
    than the week 4 that would be ideal, because the 6-week block IS the re-test
    cadence and splitting it mid-block would desynchronise every anchor. */
 const PHASE1_CYCLES=1;   // block 1 = weeks 1–6: core/abs/HIIT. Full-body from week 7.
-const TOTAL_CYCLES=9;    // 9 six-week blocks = 378 sessions: Phase 1 then full-body split
+const TOTAL_CYCLES=9;    // nine blocks: Phase 1 then the full-body split
 /* 54 weeks is 378 sessions at SEVEN a week, and the wizard's own floor is
    FIVE. So the Program tab's "54-week journey" was true for nobody who took
    the default: measured, an athlete on 5 days a week consumes the same 378
@@ -3316,7 +3316,7 @@ function updatePill(){
   // check re-assessment gate
   const gate=reassessGate();
   if(gate){pm.textContent='Cycle '+(gate+1);ps.textContent='Re-test';return;}
-  if(STATE.progressPtr>=SESSIONS_PER_CYCLE*TOTAL_CYCLES){pm.textContent='Complete';ps.textContent='1 year';return;}
+  if(STATE.progressPtr>=SESSIONS_PER_CYCLE*TOTAL_CYCLES){pm.textContent='Complete';ps.textContent=programWeeks()+' weeks';return;}
   const pos=posOf(STATE.progressPtr);
   pm.textContent='Week '+((pos.cycle*WEEKS_PER_CYCLE)+pos.week);
   ps.textContent='Cycle '+(pos.cycle+1)+' · Wk '+pos.week;
@@ -4011,7 +4011,7 @@ function todayWorkoutHTML(){
   const restedToday=restedTodayFlag();
   const R=sess.session.key;
   const heroImg=heroImageFor(sess);
-  const sessAll=SESSIONS_PER_CYCLE*TOTAL_CYCLES;   // 378 sessions across the full year
+  const sessAll=SESSIONS_PER_CYCLE*TOTAL_CYCLES;   // every session in the program
   const sessGlobal=Math.min(_tp+1,sessAll);
   let h=`
   <div class="herophoto ${R}">
@@ -12588,7 +12588,7 @@ const ACHIEVEMENTS=[
      328 sessions — six sevenths of the journey — earned no milestone at all. */
   {id:'s100',emoji:'💯',name:'Century',desc:'100 workouts completed',check:()=>sessionsDoneCount()>=100},
   {id:'s200',emoji:'🛡️',name:'Double Century',desc:'200 workouts completed',check:()=>sessionsDoneCount()>=200},
-  {id:'s378',emoji:'🎖️',name:'Full Tour',desc:'All 378 sessions — the complete program',check:()=>sessionsDoneCount()>=378},
+  {id:'s378',emoji:'🎖️',name:'Full Tour',desc:(SESSIONS_PER_CYCLE*TOTAL_CYCLES)+' sessions — the complete program',check:()=>sessionsDoneCount()>=SESSIONS_PER_CYCLE*TOTAL_CYCLES},
   {id:'blocks3',emoji:'🔷',name:'Three Blocks Deep',desc:'Finish 3 six-week blocks',check:()=>STATE.progressPtr>=SESSIONS_PER_CYCLE*3},
   {id:'phase2',emoji:'🏗️',name:'Into Phase 2',desc:'Reach the full-body split',check:()=>STATE.progressPtr>=SESSIONS_PER_CYCLE*2},
   {id:'plank60',emoji:'🧱',name:'Solid Minute',desc:'A prescribed 60s+ hold',check:()=>bestHoldPR()>=60},
