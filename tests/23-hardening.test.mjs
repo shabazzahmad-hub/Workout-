@@ -7211,6 +7211,19 @@ export default async function () {
       normalizeState();
       out.taperOn = (typeof prepTaperEase === 'function') ? prepTaperEase() : null;
       out.taper = say();
+      /* deloadReason()'s ORDERING, pinned directly. The brief suppresses in a
+         taper either way, so its rendered text cannot tell the calendar term
+         from its absence — a mutant dropping `calendar` escaped every screen
+         assertion. The nearer cause wins: a calendar week 6 reads 'deload' even
+         while a taper is running, and week 3 reads 'taper'. Same technique as
+         v338's prepDatePassed() — a guard consulted in one narrow branch still
+         has to mean what it is named. */
+      out.reasonWk6 = (typeof deloadReason === 'function') ? deloadReason() : null;
+      out.wk6 = posOf(STATE.progressPtr).week;
+      STATE.progressPtr = 20;
+      out.reasonWk3 = (typeof deloadReason === 'function') ? deloadReason() : null;
+      out.wk3 = posOf(STATE.progressPtr).week;
+      STATE.progressPtr = 40;
       /* FLOOR — an ordinary week says nothing about an ease at all. */
       STATE.prep = {}; STATE.progressPtr = 8; STATE.settings.deload = false;
       normalizeState();
@@ -7225,6 +7238,12 @@ export default async function () {
       /load is eased/.test(r.plain) && /deload/.test(r.plain), r.plain.slice(0, 240));
     t.ok('guard: the taper case really is in a taper',
       r.taperOn === true, JSON.stringify({ taper: r.taperOn }));
+    t.ok('guard: the two pointers really are week 6 and week 3 of their block',
+      r.wk6 === 6 && r.wk3 === 3, JSON.stringify({ wk6: r.wk6, wk3: r.wk3 }));
+    t.eq('a calendar deload week reads as the deload, even inside a taper',
+      r.reasonWk6, 'deload');
+    t.eq('while an ordinary week inside a taper reads as the taper',
+      r.reasonWk3, 'taper');
     t.ok('and in a taper it does not say it twice — the prep segment owns that',
       /this is the taper/.test(r.taper) && !/load is eased/.test(r.taper),
       r.taper.slice(0, 240));
