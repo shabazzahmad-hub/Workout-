@@ -733,6 +733,42 @@ export default async function run() {
   t.eq('no format description contradicts its own work, rest or round count',
     fmtProse.bad.join('\n'), '', JSON.stringify(fmtProse.bad));
 
+  /* ---- kit an exercise DESCRIBES but does not REQUIRE ---------------------
+     `bench` is a real gear key — ruckstepup and dbbench are gated on it — so a
+     movement that is NOT gated is available to every athlete by design. Five of
+     them told that athlete to use "a bench" and named no alternative, while
+     three ungated siblings already said "a bench, chair or step". The app had
+     made the decision and the words did not carry it: same class as a promise
+     in UI text, one register down. The two that genuinely REQUIRE a bench stay
+     bench-only, which is what the second half of this check pins. */
+  const benchProse = await page.evaluate(() => {
+    const out = { ungated: [], gated: [], silentUngated: [] };
+    Object.keys(EX).forEach(k => {
+      const e = EX[k]; if (!e) return;
+      const steps = (e.steps || []).join(' ');
+      if (!/\bbench\b/i.test(steps)) return;
+      const needsBench = (e.equip || []).indexOf('bench') >= 0;
+      const namesAlt = /bench[^.]{0,40}\b(or|chair|step|sofa|stair|box|couch)\b/i.test(steps)
+        || /\b(chair|step|sofa|stair|box|couch)\b[^.]{0,40}bench/i.test(steps);
+      (needsBench ? out.gated : out.ungated).push(k);
+      if (!needsBench && !namesAlt) out.silentUngated.push(k);
+      /* EX is a page constant and is NOT visible in Node, so the floor is
+         computed HERE and carried out — reading it from the assertion threw
+         "EX is not defined" and reported the file itself as broken. */
+      if (needsBench) out.gatedOk = (out.gatedOk !== false)
+        && (e.equip || []).indexOf('bench') >= 0;
+    });
+    return out;
+  });
+  t.ok('guard: the sweep found bench movements on both sides of the gate',
+    benchProse.ungated.length >= 5 && benchProse.gated.length >= 2, JSON.stringify(benchProse));
+  t.eq('a movement that does NOT require a bench names what else will do',
+    benchProse.silentUngated.join(', '), '', JSON.stringify(benchProse.silentUngated));
+  /* FLOOR: the ones that really do need a bench are gated on it, so the athlete
+     is never offered them without one — and their steps may say bench alone. */
+  t.ok('and the ones that really need one are gated on the gear key',
+    benchProse.gatedOk === true, JSON.stringify(benchProse.gated));
+
   /* ---- and the program's own length, which is not a year for most people --
      v348 measured it: 378 sessions is 54 weeks at SEVEN a week, and the
      wizard's own floor is five — 75.6 weeks, 17.4 months. It fixed the

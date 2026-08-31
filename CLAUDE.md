@@ -9797,6 +9797,39 @@ ONCE, whichever branch it took.
 
 ### And the format descriptions, swept clean and pinned
 
+### The kit an exercise DESCRIBES and does not REQUIRE
+
+The same class again, and this one had five instances. `bench` **is** a real
+gear key — `benchdip`, `dbbench` and `ruckstepup` are gated on it — so a
+movement that is NOT gated is deliberately available to every athlete.
+
+Five of them then said *"place your back foot on a bench"* and named nothing
+else, while three ungated siblings already said *"a bench, chair or step"*. The
+app had made the decision and the words did not carry it, and the correct
+wording was sitting next door.
+
+| ungated, names an alternative | ungated, said bench alone | genuinely gated |
+|---|---|---|
+| copenhagen, inclinepushup, boxpistol | **declinepushup, elevatedpike, invertedrowelev, bulgarian, hipthrust** | benchdip, dbbench, ruckstepup |
+
+**The floor is the two that really do need one**, whose steps may say bench and
+nothing else — that is what the second half of the check pins, so a fix that
+simply demanded an alternative everywhere would fail there.
+
+**And the 36 findings the same probe produced were 31 false alarms.** "Benchmark"
+contains "bench"; a timed movement whose prose says *"as many reps as you can"*
+is correct; and a movement that alternates within the set says "switch sides"
+without needing `side:` at all — v351 read all 55 candidates and cut them to 13
+deliberately. Confirming each one against the data is what left five.
+
+### And a page constant is still not visible in Node
+
+The floor assertion read `EX[k].equip` from the assertion rather than the page,
+and the suite reported *"the test file itself threw — EX is not defined"*. Carry
+what you need out in the payload. This file has recorded that for `STATE`,
+`COMBAT_FFO_KG` and `PLAYER`; it applies to every top-level `const`.
+
+
 The same class one registry over: a format's `desc` reads *"5 hangs of 30
 seconds, 60s rest"* and sits beside `w:0.5, r:1, n:5`, and nothing compared
 them. **20 descriptions across five registries all agree** — but the FORCE card
