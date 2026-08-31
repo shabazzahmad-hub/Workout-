@@ -10642,6 +10642,76 @@ so all 39 reported as duplicated. Read the artifact once.
   real asymmetry this round was found by driving the list, not by reading its
   name.
 
+## An inherited key is not an exercise, and every gate said it was (v400)
+
+Found by asking what a junk `STATE.swaps` does — a map whose CONTAINER was
+checked and whose MEMBERS never were. The first probe said "nothing", and it was
+the probe: `swapStillValid()` takes ONE argument and I passed two, so it tested
+`pushup`. Driven properly, the answer was worse than a container bug.
+
+**`EX` is an object literal, so `EX['constructor']` is
+`Object.prototype.constructor` — truthy — and every `EX[id] &&` guard in the app
+passed it.** `hasGearFor()` then read `e.equip` off a Function, found none, and
+answered *"needs no kit"*. Measured end to end on a stored swap of
+`'constructor'`:
+
+| | before | after |
+|---|---|---|
+| `setSwap()` stores it | **yes** | no |
+| survives the boot | **yes** | no |
+| the session's finisher | **`constructor`, target `NaN`** | `squatjack`, target 45 |
+| Today ▸ Workout printed | **`undefined  1 × NaN reps`** | nothing wrong |
+
+Same trap v328 recorded for `CARDIO_INFO`, one map over — and it reached the
+glass here rather than a fallback. `exKnown()` is the one membership test, asked
+by the writer, the boot repair, both gates and all three stored-id filters.
+
+**`swapStillValid()`'s own comment has said "fails CLOSED" since it was
+written**, and it did — for a THROW. For a target that is not an exercise at all
+it answered `true`, for a missing id, `{}`, `42` and `undefined` alike. *A
+comment claiming an invariant is not the invariant*, for the fourth time in this
+file, and this one was load-bearing.
+
+**The favourite was the second live route.** Its repair filters `EX[k]` intending
+"real exercises only", so an inherited key survived and `startFav()` opened a
+guided session whose first movement was `constructor` — no name, no photo, no
+steps.
+
+**One escaped mutant, and it is genuinely equivalent.** Removing
+`swapStillValid()`'s own `exKnown()` line changes nothing, because
+`hasGearFor()` asks the same question and `false && …` is false — measured
+identical across seven inputs. The guard beside it supplies the answer, the same
+stacked shape as `trendKgPerWeek()`'s three gates one version earlier. Kept as
+intent so a future change to `hasGearFor()` cannot make this fail open again,
+and recorded as uncatchable rather than papered over with a check that cannot
+fail.
+
+**And my own check found the second half.** The first fix was `if(!e)return
+false`, which is still truthiness one layer up; the check seeded `'constructor'`
+and went red. A guard written against the shape you are fixing will not catch
+the shape you did not think of — the check did.
+
+### What was measured and deliberately LEFT
+
+`liftLog.exId`, `holdLog.exId`, a `prs` key, a `logs[].ex` key and
+`_plResume.items` all keep an unknown id through a boot, and **none of them
+changes anything**:
+
+- `resumeInfo()` REBUILDS the session from the pointer and never reads the stored
+  items, so a junk one cannot reach the player.
+- the lifetime totals read `log.items`, not the `ex` keys — measured against a
+  real session (39 reps, 510 s of holds, 15 sets, 22 min, 86 kcal): **identical**
+  with the junk key and without.
+
+That is the v285 call — a field whose only sin is travelling in a backup is not
+worth padding — and this time it rests on a measurement rather than a reading.
+**The first version of that comparison was two ZEROES agreeing**, which proves
+nothing; it had to be re-run with a log carrying real volume.
+
+**The fix changes nothing on any live path, and that was proven rather than
+argued:** 486 sessions across 9 athlete configurations — three gear sets x three
+limitation sets — fingerprinted before and after, byte-identical.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

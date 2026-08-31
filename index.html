@@ -1832,7 +1832,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='399';
+const APP_VERSION='400';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2761,7 +2761,20 @@ function correctiveBonus(pos,used){
 /* ---- Equipment gate: never prescribe a move the athlete can't physically do.
    Walks down the ladder to the nearest rung they CAN do, then falls back to an
    explicit alternative, then to any same-region bodyweight move. ---- */
-function hasGearFor(exId){const e=EX[exId];if(!e||!e.equip||!e.equip.length)return true;
+/* MEMBERSHIP, not truthiness. EX is an object literal, so EX['constructor'] is
+   Object.prototype.constructor — truthy — and every `EX[id] &&` guard in the
+   app passes it. The value then has no `equip`, which read as "needs no kit".
+   Reachable: STATE.swaps comes out of an import and its values were never
+   membership-tested. Same trap v328 recorded for CARDIO_INFO. */
+function exKnown(id){return typeof id==='string'&&Object.prototype.hasOwnProperty.call(EX,id);}
+/* "No exercise" was lumped in with "no equipment needed", so an id the library
+   has never heard of answered YES — the gear gate failing OPEN. Every caller
+   today guards with EX[...] first, so this changes nothing observable and was
+   measured that way; it is here because a FOURTH caller that trusts the name
+   would get a wrong answer, which is exactly how safeSwap() came to be
+   forgotten by five sibling paths. */
+function hasGearFor(exId){if(!exKnown(exId))return false;const e=EX[exId];
+  if(!e.equip||!e.equip.length)return true;
   const g=STATE.profile.gear||[];return e.equip.every(x=>g.includes(x));}
 // Where to land when a whole ladder needs kit they don't own.
 /* ONE copy of the kit list. It existed as two hand-written literals — the
@@ -2829,8 +2842,11 @@ function gearSwap(exId,ladder){
 function sessionSwaps(ptr){return (STATE.swaps&&STATE.swaps[ptr])||null;}
 function setSwap(ptr,key,exId){
   /* A swap target that is not a real exercise reaches prescribe() and the
-     session card. EX is the legal set and it is right here. */
-  if(!EX[exId])return;
+     session card. EX is the legal set and it is right here — asked by
+     MEMBERSHIP, because EX['constructor'] is truthy and this guard passed it:
+     measured, the finisher became `constructor` with target NaN and Today
+     printed "undefined  1 x NaN reps". */
+  if(!exKnown(exId))return;
   if(!STATE.swaps)STATE.swaps={};
   if(!STATE.swaps[ptr])STATE.swaps[ptr]={};
   STATE.swaps[ptr][key]=exId;
@@ -2874,7 +2890,20 @@ function undoSwap(key){clearSwap(STATE.progressPtr,key);closeSheet();toast('Orig
 // the gear is present, and it is not on a flagged joint's risk list.
 function swapStillValid(exId){
   /* Fails CLOSED. This wraps the equipment and flagged-joint checks; answering
-     "yes, safe" when the check itself threw is the one answer it must not give. */
+     "yes, safe" when the check itself threw is the one answer it must not give.
+
+     It said that and did not do it for a target that is not an exercise at all:
+     measured, a missing id, {}, 42 and undefined all came back TRUE, because
+     hasGearFor() read "no equipment" out of "no exercise" and safeSwap() hands
+     an unknown id straight back so the identity test held. A comment claiming
+     an invariant is not the invariant.
+
+     This line is now an EQUIVALENT mutant and is kept as intent: hasGearFor()
+     asks exKnown() too, so `hasGearFor(x) && …` is already false for anything
+     this refuses — measured identical across seven inputs with it and without.
+     It stays so that a future change to hasGearFor() cannot make this fail
+     open again, and no check can catch its removal. */
+  if(!exKnown(exId))return false;
   try{return hasGearFor(exId)&&safeSwap(exId)===exId;}catch(e){console.error('[swapStillValid]',e);return false;}
 }
 function buildSession(ptr){
@@ -13173,7 +13202,7 @@ function startCustom(){
   /* The boot repair scrubs customFav, and this is the READ site: _custom is
      filled from a saved favourite, so a key naming an exercise that no longer
      exists reached `ex.unit` and threw. Two guards mean two checks. */
-  _custom=_custom.filter(k=>EX[k]);
+  _custom=_custom.filter(exKnown);
   if(!_custom.length){toast('Add some moves first');return;}
   const items=_custom.map(k=>{const ex=EX[k];const t=ex.unit==='time'?(ex.base||30):(ex.base||12);return {exId:k,unit:ex.unit,target:t,rest:ex.rest||45,sets:3};});
   closeSheet();openPlayer({items,free:true,title:'Custom Workout',focus:'Your session'});
@@ -13216,7 +13245,7 @@ function delFav(i){
 function startFav(i){
   const favs=Array.isArray(STATE.customFav)?STATE.customFav:[];
   const f=favs[i];if(!f||!Array.isArray(f.items))return;
-  _custom=f.items.filter(k=>EX[k]);
+  _custom=f.items.filter(exKnown);
   if(!_custom.length){toast('That favorite has no moves left');return;}
   if(_custom.some(k=>EX[k]&&safeSwap(k)!==k)){openBuilder();return;}
   startCustom();
@@ -21123,6 +21152,17 @@ function normalizeState(){
   if(!STATE.reassess||typeof STATE.reassess!=='object'||Array.isArray(STATE.reassess))STATE.reassess={};
   if(!STATE.weekFeel||typeof STATE.weekFeel!=='object'||Array.isArray(STATE.weekFeel))STATE.weekFeel={};
   if(!STATE.swaps||typeof STATE.swaps!=='object'||Array.isArray(STATE.swaps))STATE.swaps={};
+  /* The container was checked and its MEMBERS were not, so a swap naming an
+     exercise that does not exist — or an inherited key — survived every boot
+     and travelled in every backup. Both guards now ask exKnown(), and this
+     one is what stops the junk being carried forward at all. A bad target is
+     dropped; the rest of the athlete's swaps for that session are kept. */
+  Object.keys(STATE.swaps).forEach(ptr=>{
+    const m=STATE.swaps[ptr];
+    if(!m||typeof m!=='object'||Array.isArray(m)){delete STATE.swaps[ptr];return;}
+    Object.keys(m).forEach(k=>{if(!exKnown(m[k]))delete m[k];});
+    if(!Object.keys(m).length)delete STATE.swaps[ptr];
+  });
   /* `!(ptr>=0)` is a RANGE test standing in for a type test, and it let through
      everything that compares true: the fraction 3.7, the string '12', true,
      null and []. The fraction was the one that hurt — progressPtr indexes
@@ -21222,7 +21262,7 @@ function normalizeState(){
     else{
       STATE.customFav=STATE.customFav.map(f=>{
         if(!f||typeof f!=='object'||Array.isArray(f))return null;
-        const items=(Array.isArray(f.items)?f.items:[]).filter(k=>typeof k==='string'&&EX[k]);
+        const items=(Array.isArray(f.items)?f.items:[]).filter(exKnown);
         if(!items.length)return null;
         return {name:(typeof f.name==='string'&&f.name)?f.name.slice(0,40):'Saved workout',items};
       /* The TAIL, not the head. Favourites are appended, so the newest is the
