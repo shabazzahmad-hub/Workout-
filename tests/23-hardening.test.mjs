@@ -6422,12 +6422,23 @@ export default async function () {
            was already prompting them about. */
         const keepPain = STATE.pain, keepLogs = STATE.logs;
         STATE.pain = []; STATE.logs = keepLogs;
+        /* THE WEEK IS PART OF THE STATE THIS BLOCK HAS TO BUILD. The first
+           version seeded forward from the week start and stopped at today, so
+           on a MONDAY it built exactly one session and the row correctly read
+           "1 this week" — a failure on correct code, on one weekday in seven.
+           CI found it; three local runs on other days did not.
+
+           sessionsThisWeek() counts every trained day at or after the week
+           start with no upper bound, so seeding the five weekdays of the
+           CURRENT week is a state it genuinely reports 5 for, whatever day it
+           runs on. The guard below is what keeps that true: if a future-date
+           filter is ever added, this says so by name instead of looking like a
+           defect in the row. */
         const wk = weekStartD(new Date());
-        for (let d = 0; d < 5; d++) {
-          const day = new Date(wk.getTime() + d * DAY);
-          if (day > new Date()) break;
-          STATE.logs[900 + d] = { done: true, completedAt: iso(day), ex: {} };
-        }
+        for (let d = 0; d < 5; d++)
+          STATE.logs[900 + d] = { done: true, completedAt: iso(new Date(wk.getTime() + d * DAY)), ex: {} };
+        out.freqSeeded = sessionsThisWeek();
+        out.freqWeekday = new Date().getDay();
         out.freqClean = byK(day90Rows()).freq;
         for (let k = 0; k < 3; k++) STATE.pain.push({ region: 'shoulders', date: iso(new Date(Date.now() - k * DAY)), ptr: 900 + k });
         out.painN = painCount('shoulders');
@@ -6561,6 +6572,8 @@ export default async function () {
           && r.pushPlain.gotLabel === 'your baseline max', JSON.stringify(r.pushPlain));
       t.ok('guard: the pain pattern the app itself would prompt about was really built',
         r.painN >= 2, JSON.stringify({ n: r.painN, freq: r.freqPain }));
+      t.eq('guard: the block really built five sessions inside the current week',
+        r.freqSeeded, 5, JSON.stringify({ seeded: r.freqSeeded, weekday: r.freqWeekday }));
       t.ok('a week of sessions with no pain pattern meets the frequency target',
         r.freqClean.ok === true && !r.freqClean.why, JSON.stringify(r.freqClean));
       t.ok('but the same week is not "on target" while a pain pattern stands',
