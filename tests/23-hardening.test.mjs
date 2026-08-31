@@ -6473,9 +6473,18 @@ export default async function () {
            Asserted on the rendered markup — [data-act] on Today is the player's
            own control set, and the ruck sheet's inputs exist only while it is
            open, so neither is the thing to look for. */
-        try { setCardioMode('ruck'); setTodayTab('workout'); go('today');
+        /* This section runs as a BRAND-NEW athlete with no baseline, and Today
+           renders the Baseline Test screen for one — so the Movement block is
+           not on screen at all and the pointer reads false on correct code.
+           The same trap as the end-of-program probe that read the welcome
+           screen. Restore a baseline for the render, then put it back. */
+        try { const noBase = STATE.baseline;
+          STATE.baseline = STATE.baseline || { results: {}, maxes: {} };
+          setCardioMode('ruck'); setTodayTab('workout'); go('today');
           const v = document.querySelector('.view.active');
           out.movementHasRuck = !!v && v.innerHTML.indexOf("setCardioMode('ruck')") >= 0;
+          out.movementGuard = !!v && v.innerHTML.indexOf('Baseline Test') < 0;
+          STATE.baseline = noBase;
         } catch (e) { out.movementHasRuck = 'threw: ' + e.message; }
         out.freshMx = { push: (currentMaxes() || {}).push, plank: (currentMaxes() || {}).plank };
         /* FLOOR: a real pull-up record is a MEASUREMENT, not a default, so it
@@ -6577,6 +6586,8 @@ export default async function () {
          ruck, and that destination really carries the control. */
       t.ok('the blank ruck row names where a ruck is logged',
         /Movement/.test(r.ruckWhy || ''), r.ruckWhy);
+      t.ok('guard: Today rendered the workout, not the baseline gate',
+        r.movementGuard === true, JSON.stringify({ guard: r.movementGuard }));
       t.ok('and Movement really carries the ruck controls', r.movementHasRuck, r.movementHasRuck);
       /* FLOOR: a measured zero is still data. Sessions this week is a real
          count, so it reports 0 rather than going blank with the rest. */
