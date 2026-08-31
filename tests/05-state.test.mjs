@@ -1794,6 +1794,74 @@ export default async function run() {
     await browser.close();
   }
 
+  /* ---- every one-time migration, as a CLASS ------------------------------
+     The rule this file states: a stale default needs a one-time migration keyed
+     to the exact value, behind a flag, leaving any other value alone as a
+     deliberate choice. Four exist and each has its own check somewhere; nothing
+     asked the same three questions of all of them. The v287 mutant that set the
+     flag in only ONE branch escaped four checks, because everyone who already
+     had a value stayed unflagged and was re-seeded the first time they cleared
+     it — which is question three below. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const out = {};
+      const run = (label, setOld, read, setChoice) => {
+        setOld(); normalizeState();
+        const first = read();
+        normalizeState();                       // a second launch must not redo it
+        const second = read();
+        setChoice(); normalizeState();          // and a deliberate choice must stick
+        out[label] = { first, second, choice: read() };
+      };
+      run('theme',
+        () => { delete STATE.profile._mintTheme; STATE.settings.theme = 'ember'; },
+        () => STATE.settings.theme,
+        () => { STATE.settings.theme = 'ember'; });
+      run('coach',
+        () => { delete STATE.settings.autoIntro; STATE.settings.coach = 'drill'; },
+        () => STATE.settings.coach,
+        () => { STATE.settings.coach = 'wrestle'; });
+      /* _protSeed and _toneFix live on nutrition and settings, NOT on profile —
+         a probe that deleted the wrong one reported all three questions wrong
+         and the app was right. Confirm the field's real home first. */
+      run('proteinSeed',
+        () => { delete STATE.nutrition._protSeed; delete STATE.nutrition.proteinTarget; },
+        () => STATE.nutrition.proteinTarget === undefined ? '(absent)' : STATE.nutrition.proteinTarget,
+        () => { delete STATE.nutrition.proteinTarget; });   // a deliberate CLEAR
+      run('tone',
+        () => { delete STATE.settings._toneFix; STATE.settings.voicePitch = 0.6; },
+        () => STATE.settings.voicePitch === undefined ? '(absent)' : STATE.settings.voicePitch,
+        () => { STATE.settings.voicePitch = 1.3; });
+      return out;
+    });
+
+    // 1. each migration actually fires from the state it was written for
+    t.eq('the theme migration moves a legacy ember install to the default', r.theme.first, 'mint');
+    t.eq('the coach migration switches an old fixed persona to Auto', r.coach.first, 'auto');
+    t.eq('the protein seed installs the standing default once', r.proteinSeed.first, 165);
+    t.eq('the tone migration clears the stale voicePitch default', r.tone.first, '(absent)');
+
+    // 2. and does not redo itself on the next launch
+    t.eq('and the theme migration does not run twice', r.theme.second, r.theme.first);
+    t.eq('nor the coach one', r.coach.second, r.coach.first);
+    t.eq('nor the protein seed', r.proteinSeed.second, r.proteinSeed.first);
+    t.eq('nor the tone fix', r.tone.second, r.tone.first);
+
+    /* 3. FLOOR — a deliberate choice made AFTER the migration survives the next
+       boot. This is the question the v287 escape turned on: a seed that re-fires
+       the first time an athlete CLEARS the value is the defect, and it looks
+       identical to a correct one until you clear it and boot again. */
+    t.eq('FLOOR: a theme the athlete picked survives', r.theme.choice, 'ember');
+    t.eq('FLOOR: a coach they picked survives', r.coach.choice, 'wrestle');
+    t.eq('FLOOR: a deliberate CLEAR of the protein target sticks',
+      r.proteinSeed.choice, '(absent)');
+    t.eq('FLOOR: a hand-set voice pitch survives', r.tone.choice, 1.3);
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
   srv.close();
   return t.finish();
 }
