@@ -1637,7 +1637,12 @@ export default async function run() {
     });
     t.ok('guard: the inherited key really IS truthy on this map',
       inh.truthy && !inh.own, JSON.stringify(inh));
-    t.ok('so an inherited key is refused rather than read as a cap',
+    /* This is documentation, not a catch: removing capLog()'s membership test
+       is an EQUIVALENT mutant. STATE['constructor'] is a function so
+       Array.isArray refuses it, and where STATE[key] IS an array the cap reads
+       `undefined`, so splice(0,NaN) removes nothing — measured identical both
+       ways. Recorded rather than rewritten into a check that cannot fail. */
+    t.ok('an inherited key neither throws nor trims (equivalent either way)',
       !inh.threw && inh.untouched, JSON.stringify(inh));
 
     /* THE WRITE PATH, NOT ONLY THE BOOT REPAIR. Every assertion above drives

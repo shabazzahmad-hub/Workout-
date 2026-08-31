@@ -434,6 +434,83 @@ export default async function run() {
     t.ok('and its screen says GET READY as before', /GET READY/.test(say.plainSub || ''), say);
   }
 
+  /* ---- a mid-session swap has to ask prescribe() for the SET COUNT too ----
+     playerSwap() computed rx = prescribe(exId, pos) and used only rx.target, so
+     swapping a two-sided movement for a PER-SIDE one kept the old count:
+     measured, a 3-set Bear Hold swapped for a Side Plank stayed at 3 — two sets
+     on one side and one on the other, the exact imbalance evenSets() exists to
+     prevent, arriving through the swap path. v351 fixed prescribe(); this
+     caller never asked it. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {};
+      // a real session slot holding a two-sided movement with an ODD count
+      let found = null;
+      for (let p = 0; p < 378 && !found; p++) {
+        const ss = buildSession(p);
+        const m = [...ss.main].find(x => x && !sidePerSet(x.exId) && x.sets % 2 === 1);
+        if (m) found = { p, exId: m.exId, sets: m.sets };
+      }
+      out.found = found;
+      if (!found) return out;
+      STATE.progressPtr = found.p;
+
+      openPlayer(buildSession(found.p));
+      const i = PLAYER.items.findIndex(x => x.exId === found.exId);
+      out.idx = i;
+      if (i < 0) return out;
+      PLAYER.i = i; PLAYER.s = 0;
+      out.before = { sets: PLAYER.items[i].sets, perSet: sidePerSet(PLAYER.items[i].exId) };
+      out.prescribed = prescribe('sideplank', PLAYER.sess.pos).sets;
+      playerSwap('sideplank');
+      out.after = { sets: PLAYER.items[i].sets, perSet: sidePerSet(PLAYER.items[i].exId) };
+
+      /* FLOOR — a swap between two TWO-SIDED movements still takes what
+         prescribe() says and is not forced even. An "always round up" fix
+         satisfies every assertion above and quietly adds a set everywhere. */
+      /* playerSwap() PERSISTS the swap, so rebuilding the session no longer
+         holds the original movement — the second block found index -1 and threw
+         on plCur(). Each block builds the state it asserts on. */
+      STATE.swaps = {};
+      openPlayer(buildSession(found.p));
+      const j = PLAYER.items.findIndex(x => x.exId === found.exId);
+      out.j = j; if (j < 0) return out;
+      PLAYER.i = j; PLAYER.s = 0;
+      out.plainRx = prescribe('crunch', PLAYER.sess.pos).sets;
+      playerSwap('crunch');
+      out.plainAfter = PLAYER.items[j].sets;
+
+      /* FLOOR — a swap can never end the item underneath the athlete. On set 4
+         of 4, swapping to a movement prescribing fewer must still leave room
+         for the set they are standing in. */
+      STATE.swaps = {};
+      openPlayer(buildSession(found.p));
+      const k = PLAYER.items.findIndex(x => x.exId === found.exId);
+      out.k = k; if (k < 0) return out;
+      PLAYER.i = k; PLAYER.s = 5;                 // deliberately past the count
+      playerSwap('crunch');
+      out.strandGuard = PLAYER.items[k].sets;
+      playerQuit(); STATE.swaps = {};
+      return out;
+    });
+
+    t.ok('guard: the sweep found a two-sided movement on an odd set count',
+      r.found && r.found.sets % 2 === 1 && r.idx >= 0, JSON.stringify(r.found));
+    if (r.found && r.idx >= 0) {
+      t.ok('guard: and prescribe() really wants an even count for the per-side one',
+        r.prescribed % 2 === 0, JSON.stringify(r));
+      t.ok('guard: both floor blocks found the movement after clearing the swap',
+        r.j >= 0 && r.k >= 0, JSON.stringify({ j: r.j, k: r.k }));
+      t.eq('a swap to a per-side movement takes the prescribed count',
+        r.after.sets, r.prescribed, JSON.stringify(r));
+      t.ok('so it is never left odd', r.after.sets % 2 === 0 && r.after.perSet, JSON.stringify(r));
+      t.eq('FLOOR: a swap between two-sided movements is not forced even',
+        r.plainAfter, r.plainRx, JSON.stringify(r));
+      t.ok('FLOOR: and a swap never ends the item underneath the athlete',
+        r.strandGuard >= 6, JSON.stringify({ onSet: 6, sets: r.strandGuard }));
+    }
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }

@@ -6726,7 +6726,18 @@ function playerSwap(exId){
     const key=(m===PLAYER.sess.finisher)?'__fin':m.slot;
     try{setSwap(STATE.progressPtr,key,exId);}catch(e){persisted=false;}
   }
+  /* THE SET COUNT COMES FROM prescribe() TOO. It was computing rx and using
+     only rx.target, so a swap from a two-sided movement to a PER-SIDE one kept
+     the old count: measured, a 3-set Bear Hold swapped for a Side Plank stayed
+     at 3, which is two sets on one side and one on the other — the exact
+     imbalance v351's evenSets() exists to prevent, arriving through the swap
+     path. v351 fixed prescribe(); this caller never asked it.
+
+     Never below the set the athlete is already on, so a swap can neither
+     strand completed work nor end the item underneath them. */
   m.exId=exId;m.unit=nEx.unit;m.target=rx.target;m.rest=nEx.rest||m.rest;
+  {const _rs=(typeof rx.sets==='number'&&isFinite(rx.sets)&&rx.sets>0)?Math.round(rx.sets):m.sets;
+   m.sets=Math.max(_rs||1,(PLAYER.s||0)+1);}
   // the in-session swap above always applies regardless — only the toast
   // needs to say so when the part that's supposed to survive leaving the
   // player silently didn't, instead of claiming an unqualified success
@@ -7969,7 +7980,16 @@ function capLog(key){
     /* MEMBERSHIP, not truthiness. An inherited key is truthy — LOG_CAPS
        ['constructor'] hands back Object.prototype.constructor — and `key` is
        data-derived at one call site (ACTS[k].logKey). The same trap v328
-       recorded for CARDIO_INFO. */
+       recorded for CARDIO_INFO.
+
+       Measured as an EQUIVALENT mutant, and recorded rather than papered over:
+       removing this changes nothing today. STATE['constructor'] is a function,
+       so Array.isArray refuses it; and in the one case where STATE[key] IS an
+       array (an import carrying {"toString":[...]}), `c.n` is undefined, so
+       `l.length<=undefined` is false and splice(0,NaN) removes nothing — both
+       versions leave the array at 5. Kept as intent and as cover for a future
+       LOG_CAPS entry whose absence would otherwise read as a cap of undefined.
+       Same call as v287's `wantAnchor`. */
     if(!Object.prototype.hasOwnProperty.call(LOG_CAPS,key))return;
     const c=LOG_CAPS[key]; if(!c)return;
     const l=STATE[key]; if(!Array.isArray(l)||l.length<=c.n)return;

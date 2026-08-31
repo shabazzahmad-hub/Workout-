@@ -9793,6 +9793,51 @@ message correctly describes.
 that fires on every write is one nobody reads — and it must still warn only
 ONCE, whichever branch it took.
 
+### A mid-session swap dropped the per-side rule (v398)
+
+v351 made the SET COUNT balance a per-side movement — a side plank prescribed
+at 3 sets is two on one side and one on the other, which is what the athlete
+reported. `evenSets()` is applied last inside `prescribe()`, and every builder
+asks it.
+
+**`playerSwap()` did not.** It already computed `rx = prescribe(exId, pos)` and
+used only `rx.target`, discarding `rx.sets`. Measured on a real session slot:
+
+| | sets |
+|---|---|
+| Bear Hold (two-sided) before the swap | 3 |
+| what `prescribe()` says a Side Plank needs | **4** |
+| what the swap left | **3** |
+
+So the exact imbalance v351 exists to prevent, arriving through the swap path.
+Same shape as `safeSwap()` being forgotten by five sibling paths: **a caller
+that picks a movement has to ask every question the builder asks.**
+
+**The side ANNOUNCEMENT was already correct** and is worth recording, because it
+looks like the same bug and is not: `sideSwitch()` and `sidePerSet()` read
+`EX[exId].side` off the live id, which the swap does update, so LEFT/RIGHT
+follows the new movement on its own.
+
+**Never below the set the athlete is standing on.** A swap can neither strand
+completed work nor end the item underneath them, and that floor is pinned by
+driving a swap from set 6.
+
+**The other floor is the two-sided case**: a swap between two two-sided
+movements takes exactly what `prescribe()` says and is NOT forced even. An
+"always round up" fix satisfies every assertion about the per-side case and
+quietly adds a set everywhere.
+
+### Two probe errors, both traps already in this file
+
+- **`num()` is a `const` defined later**, so using it inside `playerSwap()` threw
+  on every swap. `npm run check` only parses and cannot see it; the first driven
+  run found it in seconds. The v290 `btRing` trap.
+- **`playerSwap()` PERSISTS the swap**, so rebuilding the session for the next
+  floor no longer held the original movement — `findIndex` returned -1 and the
+  block threw on `plCur()`. Each block clears `STATE.swaps` and guards its index
+  before asserting. And the close function is `playerQuit()`, not `plQuit()`.
+
+
 ### The theme guard was truthiness where membership belonged
 
 ```js
@@ -9819,6 +9864,20 @@ by a key that came from iterating the registry itself. The question that
 discriminates is *does the key come from STATE* — five sites did, and four of
 those go through `profile.goal`, which already has a proper membership repair
 (`GOALS.some(x=>x[0]===g)`). One did not.
+
+### One equivalent mutant, measured rather than assumed
+
+`capLog()`'s membership test cannot be caught, and the measurement is what
+settled it. `STATE['constructor']` is a **function**, so `Array.isArray` refuses
+it before the cap is ever read. And in the one case where `STATE[key]` genuinely
+IS an array — an import carrying `{"toString":[...]}` — `LOG_CAPS['toString']`
+is truthy but `c.n` is `undefined`, so `l.length<=undefined` is false and
+`splice(0,NaN)` removes nothing. **Both versions leave the array at 5.**
+
+Kept as intent and as cover for a future `LOG_CAPS` entry, with the check
+relabelled to say what it actually proves rather than rewritten into one that
+cannot fail. The same call as v287's `wantAnchor` — and the second equivalent
+mutant of this round, after `swWorker()`'s controller fast-path.
 
 ### And the same class in the code I had just written
 
