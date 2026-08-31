@@ -10712,6 +10712,52 @@ nothing; it had to be re-run with a log carrying real volume.
 argued:** 486 sessions across 9 athlete configurations — three gear sets x three
 limitation sets — fingerprinted before and after, byte-identical.
 
+## The container was checked and its KEYS were not (v401)
+
+v284 hardened `logs`, `prs` and eight more against arriving as an ARRAY. v285
+swept that class and closed it. Neither asked what the **keys** were.
+
+`logs` is keyed by `progressPtr`, and `allDonePairs()` maps `Object.keys()`
+straight through — so a key an import controls reached `goalSlots()` as a
+pointer. Measured:
+
+| stored key | Progress ▸ Summary |
+|---|---|
+| `'constructor'` | **throws on `.slots` of undefined** |
+| `'abc'` | **throws** |
+| `'3.7'` | **throws** |
+| `'-1'` | **throws** |
+| `'1e9'`, `''` | fine (both coerce to a number the engine tolerates) |
+
+**And the boundary retries THROUGH `normalizeState()`, so with no repair here
+the pane never came back** — the exact harm v284 measured for `nutrition.days`,
+one map along, on the tab an athlete opens to see their progress.
+
+**Its twin is fine, which is how it survived.** `sessionHistory` does
+`Object.keys(STATE.logs).map(Number).filter(...)`; `allDonePairs()` forty lines
+away does not. *One of a pair guarded and its twin not* — the shape this session
+has now hit five times. The repair is the one place both can rely on.
+
+**A pointer map takes an integer inside the program; a date map takes a date the
+app's own predicate accepts.** `logs` and `swaps` are pointer-keyed; `restDays`,
+`_opens` and `nutrition.days` are date-keyed and get `isDateISO()`, which
+already exists rather than a sixth copy of a date pattern.
+
+**The floors are what stop it being a wipe**, and they are the point: 300 real
+sessions, the athlete's own swaps, their rest days, the days they opened the app
+and the day they logged food are all **untouched**, junk beside them drops only
+itself, and **both ends of the legal pointer range survive** — pointer 0 and the
+last one, which is the value the "program complete" branch already tests against.
+
+### Seven stored maps measured and deliberately LEFT
+
+`prs`, `achievements`, `reassess`, `formatFeel`, `weekFeel`, `shopTicks` and
+`exAdapt` all keep a junk key through a boot and **none of them changes
+anything** — every one is read by a key the app supplies (an exercise id, a
+badge id, a cycle number), so a key nobody looks up is inert. That is the v285
+call, and it rests on the measurement rather than on the reading: no `NaN`, no
+`undefined`, no throw on any tab or pane for any of the seven.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

@@ -2109,6 +2109,91 @@ export default async function run() {
     await browser.close();
   }
 
+
+  /* ---- a keyed map's KEYS, not just its container ------------------------
+     v284 hardened these maps against arriving as an ARRAY and never asked what
+     the keys were. `logs` is keyed by progressPtr and allDonePairs() maps
+     Object.keys() straight through, so a key an import controls reached
+     goalSlots() as a pointer and threw on `.slots` of undefined. Measured:
+     Progress > Summary died on the error boundary, and the boundary retries
+     THROUGH normalizeState(), so with no repair here the pane NEVER came back.
+     Its twin at the session-history reader does .map(Number).filter(...) and is
+     fine — one of a pair guarded and its twin not, again. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const d = n => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
+      const out = {};
+      const paneOK = () => {
+        go('progress');
+        try { setProgressTab('summary');
+              return document.querySelector('#v-progress').textContent.length > 100; }
+        catch (e) { return 'THREW ' + String(e).slice(0, 60); }
+      };
+
+      // 1. a pointer key an import controls no longer reaches the engine
+      out.junk = {};
+      ['constructor', 'abc', '3.7', '-1'].forEach(k => {
+        STATE.logs = {}; STATE.logs[k] = { done: true, completedAt: d(1), feel: 'ok', ex: {} };
+        normalizeState();
+        out.junk[k] = { left: Object.keys(STATE.logs).join(','), pane: paneOK() };
+      });
+
+      /* 2. FLOOR — a real athlete's history is untouched. A repair that wipes
+         satisfies every "the junk is gone" assertion and destroys the data it
+         exists to protect. */
+      STATE.logs = {}; for (let i = 0; i < 300; i++)
+        STATE.logs[i] = { done: true, completedAt: d(300 - i), feel: 'ok', ex: {}, items: [] };
+      STATE.swaps = { 5: { plankL: 'pushup' }, 200: { __fin: 'squatjack' } };
+      STATE.restDays = {}; STATE.restDays[d(3)] = 1; STATE.restDays[d(10)] = 1;
+      STATE._opens = {}; STATE._opens[d(1)] = 1;
+      STATE.nutrition.days = {};
+      STATE.nutrition.days[d(1)] = { food: [{ name: 'X', kcal: 100 }], water: 2, habits: {} };
+      normalizeState();
+      out.real = { logs: Object.keys(STATE.logs).length,
+                   swaps: Object.keys(STATE.swaps).join(','),
+                   rest: Object.keys(STATE.restDays).length,
+                   opens: Object.keys(STATE._opens).length,
+                   days: Object.keys(STATE.nutrition.days).length };
+
+      // 3. junk BESIDE the real rows drops only itself
+      STATE.logs['abc'] = { done: true, ex: {} };
+      STATE.swaps['zz'] = { __fin: 'squatjack' };
+      STATE.restDays['not-a-date'] = 1;
+      normalizeState();
+      out.mixed = { logs: Object.keys(STATE.logs).length,
+                    swaps: Object.keys(STATE.swaps).join(','),
+                    rest: Object.keys(STATE.restDays).length };
+
+      // 4. both ends of the legal pointer range survive
+      STATE.logs = {}; STATE.logs[0] = { done: true, ex: {} };
+      STATE.logs[SESSIONS_PER_CYCLE * TOTAL_CYCLES] = { done: true, ex: {} };
+      normalizeState();
+      out.edges = Object.keys(STATE.logs).sort((a, b) => a - b).join(',');
+      out.lastPtr = SESSIONS_PER_CYCLE * TOTAL_CYCLES;
+      return out;
+    });
+
+    ['constructor', 'abc', '3.7', '-1'].forEach(k => {
+      t.eq(`a log key an import controls is dropped (${k})`, r.junk[k].left, '');
+      t.eq(`and Progress renders again with it gone (${k})`, r.junk[k].pane, true);
+    });
+    // FLOORS — the over-eager repair that wipes what it was written to protect
+    t.eq('FLOOR: 300 real sessions survive the repair', r.real.logs, 300);
+    t.eq('FLOOR: and the athlete’s real swaps', r.real.swaps, '5,200');
+    t.eq('FLOOR: and their rest days', r.real.rest, 2);
+    t.eq('FLOOR: and the days they opened the app', r.real.opens, 1);
+    t.eq('FLOOR: and the day they logged food', r.real.days, 1);
+    t.eq('junk beside real rows drops only itself', r.mixed.logs, 300);
+    t.eq('in the swaps too', r.mixed.swaps, '5,200');
+    t.eq('and in the rest days', r.mixed.rest, 2);
+    t.eq('both ends of the legal pointer range survive',
+      r.edges, '0,' + r.lastPtr);
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
   srv.close();
   return t.finish();
 }

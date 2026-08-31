@@ -1832,7 +1832,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='400';
+const APP_VERSION='401';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -21152,6 +21152,31 @@ function normalizeState(){
   if(!STATE.reassess||typeof STATE.reassess!=='object'||Array.isArray(STATE.reassess))STATE.reassess={};
   if(!STATE.weekFeel||typeof STATE.weekFeel!=='object'||Array.isArray(STATE.weekFeel))STATE.weekFeel={};
   if(!STATE.swaps||typeof STATE.swaps!=='object'||Array.isArray(STATE.swaps))STATE.swaps={};
+  /* THE KEYS, not just the container. v284 hardened these maps against arriving
+     as an ARRAY and never asked what the keys were. `logs` is keyed by
+     progressPtr and `allDonePairs()` maps Object.keys() straight through, so a
+     key an import controls — 'constructor', 'abc', '3.7', '-1' — reached
+     goalSlots() as a pointer and threw on `.slots` of undefined. Measured:
+     Progress > Summary died on the error boundary, and the boundary retries
+     THROUGH normalizeState(), so with no repair here the pane NEVER came back.
+     The same defect nutrition.days had in v284, one map along.
+
+     Its twin at the session-history reader does `.map(Number).filter(...)` and
+     is fine — one of a pair guarded and its twin not, again. The repair is the
+     one place both can rely on.
+
+     A POINTER map takes an integer inside the program; a DATE map takes a date
+     the app's own predicate accepts. A bad key is dropped; every real row is
+     kept, which is what stops this being a wipe. */
+  {const _ptrKey=k=>{const n=Number(k);
+     return k!==''&&isFinite(n)&&n>=0&&n===Math.floor(n)&&n<=SESSIONS_PER_CYCLE*TOTAL_CYCLES;};
+   const _scrub=(o,ok)=>{if(!o||typeof o!=='object'||Array.isArray(o))return;
+     Object.keys(o).forEach(k=>{if(!ok(k))delete o[k];});};
+   _scrub(STATE.logs,_ptrKey);
+   _scrub(STATE.swaps,_ptrKey);
+   _scrub(STATE.restDays,isDateISO);
+   _scrub(STATE._opens,isDateISO);
+   _scrub(STATE.nutrition&&STATE.nutrition.days,isDateISO);}
   /* The container was checked and its MEMBERS were not, so a swap naming an
      exercise that does not exist — or an inherited key — survived every boot
      and travelled in every backup. Both guards now ask exKnown(), and this
