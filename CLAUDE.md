@@ -9957,6 +9957,29 @@ genuine zero — and the ruck row was added without one, so the over-eager twin
 (a `why` on every row, logged or not) escaped every assertion. *A note that
 always fires is a note nobody reads*, and the check has to say so.
 
+### Two mutation drivers on one directory, and the wreckage it caused
+
+Three separate readings this round were worthless, and all three had the same
+cause: **two drivers seeding the same `mut-p/` at once.** One was left running
+by a chained background task; the second was started on top of it. Each restored
+its own clean file over the other's seed, so a mutant read as ESCAPED when its
+check would have caught it, and a baseline read as RED on a file identical to
+the green main tree. The tell was an md5 of the "clean" live file matching
+neither the clean copy nor any seed.
+
+Two rules came out of it, and the second cost the most:
+
+- **One driver per directory, and never two at once.** CLAUDE.md already said
+  *stop the driver before seeding by hand*; the half nobody wrote down is that a
+  chained task can still be holding the directory.
+- **`pkill -f mutf.py` kills the shell that ran it**, because that shell's own
+  command line contains the string. It exits 144, the driver survives, and the
+  next thing you measure is still being overwritten. Kill by PID.
+
+**A red baseline is not a slow machine, it is a stop.** Every escape reported
+against one has to be re-measured, and this round produced three that vanished
+on a clean re-run.
+
 ### Three harness notes from the same round
 
 - **The mutation driver was lost between rounds** and only one of three mutants
