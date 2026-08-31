@@ -9795,6 +9795,17 @@ ONCE, whichever branch it took.
 
 ## The copy said sixteen coaches and there are thirty-eight (v398)
 
+### And the format descriptions, swept clean and pinned
+
+The same class one registry over: a format's `desc` reads *"5 hangs of 30
+seconds, 60s rest"* and sits beside `w:0.5, r:1, n:5`, and nothing compared
+them. **20 descriptions across five registries all agree** — but the FORCE card
+agreed too until it did not, so the sweep is shipped rather than reported. Three
+seeded contradictions (rest, round count, work time) are each caught, and a
+guard requires the sweep to have read real descriptions, or an empty result
+would report clean on nothing.
+
+
 Found by **reading the rendered screens** for sentences carrying a number, on
 the surfaces earlier sweeps had not read. Settings said:
 

@@ -693,6 +693,46 @@ export default async function run() {
   t.eq('and no copy writes the coach count out by hand',
     blockLen.coachCopy.join(', '), '', JSON.stringify(blockLen.coachCopy));
 
+  /* ---- every format's PROSE against its own numbers -----------------------
+     The v397 class: a figure written by hand beside the data that holds it. The
+     FORCE card had three of them — a total that dropped the carried bag, a
+     shuttle described as run when the standard walks it, and rushes whose steps
+     covered half the distance the card claimed. A format's `desc` is the same
+     shape: "5 hangs of 30 seconds, 60s rest" sits beside w:0.5, r:1, n:5, and
+     nothing compared them. */
+  const fmtProse = await page.evaluate(() => {
+    const out = { checked: 0, bad: [] };
+    const sec = m => Math.round(m * 60);
+    const maps = { HIIT_FORMATS, ENDURANCE_FORMATS, SKIP_FORMATS, SPECIAL_FORMATS, GRINDER_FORMATS };
+    Object.keys(maps).forEach(mn => {
+      const M = maps[mn];
+      Object.keys(M).forEach(key => {
+        const f = M[key], d = String(f.desc || '');
+        if (!d) return;
+        out.checked++;
+        const say = [];
+        let m = d.match(/(\d+)\s*(?:hangs|rounds|sets|reps of|×|x)\b/i);
+        if (m && f.n && +m[1] !== f.n) say.push('count ' + m[1] + ' vs n=' + f.n);
+        m = d.match(/of (\d+)\s*(?:seconds|s)\b/i);
+        if (m && f.w && +m[1] !== sec(f.w)) say.push('work ' + m[1] + 's vs w=' + sec(f.w) + 's');
+        m = d.match(/(\d+)\s*s(?:ec(?:onds)?)? rest/i);
+        if (m && f.r && +m[1] !== sec(f.r)) say.push('rest ' + m[1] + 's vs r=' + sec(f.r) + 's');
+        m = d.match(/(\d+)\s*min(?:ute)?s? rest/i);
+        if (m && f.r && +m[1] !== Math.round(f.r)) say.push('rest ' + m[1] + 'min vs r=' + f.r + 'min');
+        m = d.match(/(\d+)[- ]minute rounds?/i);
+        if (m && f.w && +m[1] !== Math.round(f.w)) say.push('work ' + m[1] + 'min vs w=' + f.w + 'min');
+        if (say.length) out.bad.push(mn + '.' + key + ': "' + d + '" -> ' + say.join('; '));
+      });
+    });
+    return out;
+  });
+  /* The guard is what makes an empty `bad` list mean anything: a sweep that
+     matched no descriptions at all would report clean on nothing. */
+  t.ok('guard: the sweep read real format descriptions', fmtProse.checked >= 15,
+    JSON.stringify({ checked: fmtProse.checked }));
+  t.eq('no format description contradicts its own work, rest or round count',
+    fmtProse.bad.join('\n'), '', JSON.stringify(fmtProse.bad));
+
   /* ---- and the program's own length, which is not a year for most people --
      v348 measured it: 378 sessions is 54 weeks at SEVEN a week, and the
      wizard's own floor is five — 75.6 weeks, 17.4 months. It fixed the
