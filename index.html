@@ -1832,7 +1832,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='395';
+const APP_VERSION='396';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -16857,6 +16857,7 @@ const CARDIO_INFO={
     note:'Nothing to set up and nothing to carry — a hotel room or a friend&#39;s spare floor is enough.',
     unit:()=>movement().junit,setUnit:setJackUnit,add:addJackVal,
     work:()=>jackWork(),
+    detail:w=>w.reps.toLocaleString()+' reps · '+w.kcal+' kcal',
     block:c=>jackBlockHTML(c.m,c.short,c.jneed,c.jlvl,c.work),
     timer:'block',
     dayMin:d=>{const v=_dv(d&&d.jackVal);if(!v)return 0;
@@ -16872,6 +16873,7 @@ const CARDIO_INFO={
     note:'Lowest-impact option, and the easiest to hold a steady effort on. Needs the trainer.',
     unit:()=>movement().unit, setUnit:setBikeUnit,add:addBikeVal,
     work:()=>bikeRide(),
+    detail:w=>w.dist+' '+distUnit()+' · '+w.kcal+' kcal',
     block:c=>bikeBlockHTML(c.m,c.short,c.need,c.lvl,c.ride,c.shownVal),
     timer:'durations',
     dayMin:d=>{const v=_dv(d&&d.bikeVal);if(!v)return 0;
@@ -16887,6 +16889,7 @@ const CARDIO_INFO={
     note:'Walking under load. Outdoors, no impact to speak of, and the only one here that also loads your legs and spine while it does the cardio.',
     unit:()=>movement().runit,setUnit:setRuckUnit,add:addRuckVal,
     work:()=>ruckWork(),
+    detail:w=>Math.round(kmToShow(w.km)*10)/10+' '+distUnit()+' · '+w.kcal+' kcal',
     block:c=>ruckBlockHTML(c.m,c.short),
     timer:'stopwatch',
     dayMin:d=>{const v=_dv(d&&d.ruckVal);if(!v)return 0;
@@ -16902,6 +16905,7 @@ const CARDIO_INFO={
     note:'The aerobic base every military fitness standard is built on. Treadmill or road — the app only needs the effort and how long you were out.',
     unit:()=>movement().nunit,setUnit:setRunUnit, add:addRunVal,
     work:()=>runWork(),
+    detail:w=>Math.round(kmToShow(w.km)*10)/10+' '+distUnit()+' · '+w.kcal+' kcal',
     block:c=>runBlockHTML(c.m,c.short),
     timer:'stopwatch',
     dayMin:d=>{const v=_dv(d&&d.runVal);if(!v)return 0;
@@ -16917,6 +16921,7 @@ const CARDIO_INFO={
     note:'Hardest calorie burn per minute here, and it packs into a pocket. High impact, so it asks more of the knees and calves than jacks do.',
     unit:()=>movement().sunit,setUnit:setSkipUnit,add:addSkipVal,
     work:()=>skipWork(),
+    detail:w=>w.reps.toLocaleString()+' skips · '+w.kcal+' kcal',
     block:c=>skipBlockHTML(c.m,c.short),
     timer:'block',
     dayMin:d=>{const v=_dv(d&&d.skipVal);if(!v)return 0;
@@ -16937,6 +16942,14 @@ function cardioDone(){
     return {k,min:w.min||0,steps:w.steps||0,label:CARDIO_INFO[k].label,
       short:CARDIO_INFO[k].short,did:CARDIO_INFO[k].did};})
     .filter(x=>x.min>0);
+}
+/* The empty-state hint used to NAME four modes by hand — "Jumping jacks, the
+   bike, a ruck, a run" — so the fifth was missing from the sentence as well as
+   from the rows. Read the list rather than restating it. */
+function cardioNamesSentence(extra){
+  const n=CARDIO_MODES.map(k=>CARDIO_INFO[k].short).concat(extra||[]);
+  const s=n.length<2?(n[0]||''):n.slice(0,-1).join(', ')+' and '+n[n.length-1];
+  return s?s[0].toUpperCase()+s.slice(1):'';
 }
 function creditMakeup(mode,mins,feel){
   let msg='Logged '+mins+' min to today’s movement';
@@ -17083,7 +17096,7 @@ function todayActivityHTML(){
   const tgt=stepTarget(),eq=stepEquivalent();
   const pct=Math.min(100,Math.round(eq/Math.max(1,tgt)*100));
   const hit=eq>=tgt;
-  const m=movement(),j=jackWork(),b=bikeRide(),rk=ruckWork(),rn=runWork();
+  const m=movement();
   const d=todayISO();
   const quick=(STATE.quickLog&&STATE.quickLog[d])||0;
   /* The session counts as done only when the LOG says so — the same source
@@ -17105,7 +17118,7 @@ function todayActivityHTML(){
      names these activities in prose, and a page-wide substring search matches
      the hint as readily as the row. */
   const row=(key,icon,label,value,sub)=>`<div class="row" data-act="${key}" style="justify-content:space-between;align-items:baseline;padding:7px 0;border-top:1px solid var(--line)">
-      <div><b>${icon} ${label}</b>${sub?`<div class="tiny muted">${sub}</div>`:''}</div>
+      <div><b>${icon?icon+' ':''}${label}</b>${sub?`<div class="tiny muted">${sub}</div>`:''}</div>
       <div style="text-align:right;font-variant-numeric:tabular-nums">${value}</div></div>`;
   let rows='';
   rows+=row('session',sessionDone?'✅':(sessionPain?'🩹':'⬜'),'Today\'s session',
@@ -17113,12 +17126,23 @@ function todayActivityHTML(){
       :(sessionPain?'<b style="color:var(--gold)">Stopped</b>':'<span class="tiny muted">Not yet</span>'),
     _ve(sessionName));
   rows+=row('steps','👟','Steps walked',m.steps?m.steps.toLocaleString():'—');
-  if(j.min>0)rows+=row('jacks','🤸','Jumping jacks',j.min+' min',j.reps.toLocaleString()+' reps · '+j.kcal+' kcal');
-  if(b.min>0)rows+=row('bike','🚴','Bike',b.min+' min',b.dist+' '+distUnit()+' · '+b.kcal+' kcal');
-  if(rk.min>0)rows+=row('ruck','🎒','Ruck',rk.min+' min',Math.round(kmToShow(rk.km)*10)/10+' '+distUnit()+' · '+rk.kcal+' kcal');
-  if(rn.min>0)rows+=row('run','🏃','Run',rn.min+' min',Math.round(kmToShow(rn.km)*10)/10+' '+distUnit()+' · '+rn.kcal+' kcal');
+  /* EVERY MODE, THROUGH THE REGISTRY. These were four hand-written rows —
+     jacks, bike, ruck, run — written when there were four modes. v353 added
+     skipping to CARDIO_MODES and never came back here, so 30 minutes on the
+     rope was COUNTED in the bar above (stepEquivalent() reads the registry)
+     and had no row beneath it: measured 7,890 steps on the bar, no row, and
+     the empty-state hint firing to say nothing had been logged. One card, two
+     contradictory answers — the v328 defect, one renderer over.
+
+     cardioDone() already existed for exactly this and its own comment says so:
+     "the one place the card asks what actually happened today, so no surface
+     can answer it with a two-value branch again." This renderer never asked
+     it. */
+  const done=cardioDone();
+  done.forEach(x=>{const c=CARDIO_INFO[x.k];
+    rows+=row(x.k,'',c.label,x.min+' min',c.detail(c.work()));});
   if(quick>0)rows+=row('quick','⚡','Quick workouts',quick+(quick===1?' session':' sessions'));
-  const nothingElse=!j.min&&!b.min&&!rk.min&&!rn.min&&!quick;
+  const nothingElse=!done.length&&!quick;
   return `<div class="section-label">Today's activity</div><div class="card pad">
     <div class="row" style="justify-content:space-between;align-items:baseline">
       <div><b style="font-size:19px;color:${hit?'var(--green)':'var(--gold)'}">${eq.toLocaleString()} / ${tgt.toLocaleString()}</b>
@@ -17127,7 +17151,7 @@ function todayActivityHTML(){
     </div>
     <div class="pbar" style="margin-top:10px;margin-bottom:4px"><i style="width:${pct}%;background:linear-gradient(90deg,#7ee08a,#2fa84f)"></i></div>
     ${rows}
-    ${nothingElse?`<div class="tiny muted" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line)">Jumping jacks, the bike, a ruck, a run and quick workouts all show up here once you log them.</div>`:''}
+    ${nothingElse?`<div class="tiny muted" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line)">${_ve(cardioNamesSentence(['quick workouts']))} all show up here once you log them.</div>`:''}
   </div>`;
 }
 function movementHTML(){
@@ -21816,6 +21840,10 @@ function validateData(){
      const i=CARDIO_INFO[k];
      if(!i){errs.push('CARDIO_INFO: no entry for mode "'+k+'"');return;}
      if(typeof i.block!=='function')errs.push('CARDIO_INFO.'+k+': no block builder — movementHTML would fall back to jumping jacks');
+     /* The row's own sub-line. Without it todayActivityHTML() lists the mode
+        with no figures beside it — the half of the v396 defect that a check
+        asking only "does the row exist" cannot see. */
+     if(typeof i.detail!=='function')errs.push('CARDIO_INFO.'+k+': no detail builder — its row on Progress would carry no figures');
      if(['block','durations','stopwatch'].indexOf(i.timer)<0)errs.push('CARDIO_INFO.'+k+': timer shape "'+i.timer+'" is not one the make-up sheet can render');
      /* Two modes sharing one builder is the copy-paste this exists to catch;
         it renders another mode's inputs under this mode's label. */

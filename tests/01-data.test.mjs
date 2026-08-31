@@ -563,6 +563,36 @@ export default async function run() {
   t.ok('a stale TEST_DEFAULTS entry for a test that does not exist is caught by name', lockstep.staleCaught, lockstep);
   t.ok('and validateData() is clean again once both are restored', lockstep.cleanAfterRestore, lockstep);
 
+  /* Same shape, for the cardio registry's row builder. Every mode has a
+     `detail` today, so removing the rule that requires one produces no new
+     problems and the mutation escapes in silence — that is what happened on
+     the first run. Break it live and require the specific complaint.
+
+     `detail` is what puts the FIGURES on a mode's row on Progress. Without it
+     the row still renders with its label and its minutes, so a check asking
+     only "does the row exist" cannot see the loss either. */
+  const detailRule = await page.evaluate(() => {
+    const realErr = console.error; console.error = () => {};
+    const o = {};
+    const k = CARDIO_MODES[CARDIO_MODES.length - 1];
+    o.mode = k;
+    const real = CARDIO_INFO[k].detail;
+    o.guardReal = typeof real === 'function';
+    delete CARDIO_INFO[k].detail;
+    o.caught = validateData().some(e => new RegExp('CARDIO_INFO\\.' + k + ': no detail builder').test(e));
+    CARDIO_INFO[k].detail = real;
+    o.cleanAfterRestore = validateData().length === 0;
+    console.error = realErr;
+    return o;
+  });
+  t.ok('guard: the mode really had a detail builder to remove',
+    detailRule.guardReal, detailRule);
+  t.ok('a cardio mode with no row-detail builder is caught by name',
+    detailRule.caught, detailRule);
+  t.ok('and validateData() is clean again once it is restored',
+    detailRule.cleanAfterRestore, detailRule);
+
+
   /* ---- Burpees: a tenth baseline test, for cardiovascular stamina (v252) --
      Requested after an audit found the battery measured strength and local
      muscular endurance nine ways over but never touched cardiovascular
