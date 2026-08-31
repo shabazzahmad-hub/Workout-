@@ -9608,6 +9608,30 @@ over"* has the right total and still hides the bag on your back. Four mutants,
 all caught by name — the exact revert, the total-without-the-carry, a bag
 count of four, and the exercise page drifting back to the card's old wording.
 
+### And comparing the other three found two more
+
+Fixing the drag was fixing one instance. Running the same comparison — the
+card against the exercise page — across all four events found the class was
+three wide, and both extra findings came from the same source card:
+
+| event | the source card | the app's exercise page |
+|---|---|---|
+| Loaded shuttles | **walk** with the bag, free leg a light jog | *"...and **run** the 20 m"*, and run the free leg too |
+| 20 m rushes | **80 m** total | steps described one out-and-back — **40 m** |
+
+**The shuttle is the one that matters.** Running a 20 kg bag on the chest is a
+different event and a heavier landing than the standard asks for, so the app
+was rehearsing something harder and less like the test than the real thing.
+
+**The rushes contradicted themselves.** The card said 80 m and the steps
+walked the athlete through 40 — one shuttle, four drops, then nothing. The
+detail and the instructions were both in the app and did not agree.
+
+**So the check is written against the CLASS**: every event's card and its
+exercise page must each carry that event's own figure, and the shuttle's pace
+is pinned in both directions — walked, not run, with a light jog on the free
+leg. Nine mutants across the round, all caught by name.
+
 **And this is what the ASOF stamp is for.** `FORCE_ASOF` sits on that card
 with "this app has no internet access and cannot check them for you". The
 athlete checked, against the source, and the app was wrong. The stamp did its
