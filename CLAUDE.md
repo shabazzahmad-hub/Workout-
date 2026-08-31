@@ -5613,6 +5613,35 @@ The usual ratio for an audit written from outside the code:
   probe that was wrong. **Confirm the control's real shape before believing
   the result** — third time this file has recorded it.
 
+### And the same sweep found v348's own defect, one screen over
+
+v348 measured it and wrote it down: **378 sessions is 54 weeks at SEVEN a
+week, and the wizard's own floor is five** — 75.6 weeks, 17.4 months. It fixed
+the Program tab's *"54-week journey"* and built `programWeeks()` for exactly
+this.
+
+`updatePill()` was missed. On finishing, the header chip read
+
+> **Complete · 1 year**
+
+…to an athlete who had just taken seventeen months over it. Same wrong claim,
+same app, one screen from the fix for it, with the constant that answers it
+sitting there since v348.
+
+The Full Tour badge hardcoded **378** in its text AND in its condition. Both
+now derive from `SESSIONS_PER_CYCLE x TOTAL_CYCLES`, so the badge and the thing
+it unlocks on cannot disagree.
+
+**The guard is what makes the chip check honest**: it asserts a five-day
+athlete really does take more than 52 weeks before asserting the chip does not
+say "year", or the whole block passes on an athlete for whom a year is correct.
+And the chip has to be DRIVEN past two early returns — not onboarded, no
+baseline — or it reads "Setup" and the assertion measures nothing.
+
+**Two more comments reworded rather than the check weakened**, and one carried
+the same wrong claim in prose: *"378 sessions across the full year"*.
+
+
 ### Two sweeps that came back clean, recorded as coverage
 
 - **74 writers driven with a hostile payload**, every tab rendered looking for
