@@ -1290,6 +1290,227 @@ export default async function run() {
     await browser.close();
   }
 
+  /* ---- the shape the writer writes, and the predicate the app owns --------
+     Two repairs had drifted from the rest of the app, in two different ways.
+
+     _trainAgain: v316 replaced the bare date with {date, from} - stamping the
+     pointer the request was granted from - and taught trainAgainAsked() to
+     accept only the object. The BOOT REPAIR was left on the v313 string, so
+     the object it was handed was DELETED on every boot. Measured: the request
+     reads live before normalizeState() and gone after it, every time. A reload
+     during a second session therefore put Today back to describing the session
+     the athlete had already FINISHED as today's.
+
+     prep.date: the repair restated /^\d{4}-\d{2}-\d{2}$/ rather than asking
+     isDateISO(), which ROUND-TRIPS through localISO(). The pattern accepts
+     '2025-13-45', which is not a day - it survived every boot and
+     prepDateLabel() printed "Invalid Date" on the glass, because
+     toLocaleDateString() on an Invalid Date returns that string rather than
+     throwing, so the catch never fired. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await waitForBoot(page);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const out = { junk: [], slot: [] };
+      /* GUARD: the two predicates must genuinely disagree on the string this
+         block tests with, or every assertion below passes on nothing. */
+      out.patternAccepts = /^\d{4}-\d{2}-\d{2}$/.test('2025-13-45');
+      out.isDateISORefuses = isDateISO('2025-13-45') === false;
+      out.isDateISOAccepts = isDateISO('2027-03-01') === true;
+
+      /* THE FLOOR: a real request survives a boot. This is what the shipped
+         defect broke, and an over-eager repair that drops everything satisfies
+         every "the junk is gone" assertion below while breaking it again. */
+      STATE.progressPtr = 12;
+      STATE._trainAgain = { date: todayISO(), from: 12 };
+      out.askedBefore = trainAgainAsked();
+      normalizeState();
+      out.survives = JSON.stringify(STATE._trainAgain);
+      out.askedAfter = trainAgainAsked();
+
+      /* The v313 string is dropped rather than migrated: it carries no pointer,
+         so there is nothing to check it against, and trainAgainAsked() already
+         reads it as no request. */
+      STATE._trainAgain = todayISO(); normalizeState();
+      out.legacyGone = STATE._trainAgain === undefined;
+
+      [[], 'x', 42, true, { date: 'nope', from: 1 }, { date: todayISO() },
+        { date: todayISO(), from: '1' }, { date: todayISO(), from: -1 },
+        { date: todayISO(), from: 1.5 }, { date: '2025-13-45', from: 1 }
+      ].forEach(j => {
+        STATE._trainAgain = j; normalizeState();
+        if (STATE._trainAgain !== undefined) out.junk.push(JSON.stringify(j));
+      });
+      delete STATE._trainAgain;
+
+      // an impossible-but-well-shaped date is dropped, and never reaches the glass
+      STATE.prep = { date: '2025-13-45', planFrom: '2025-13-45' };
+      normalizeState();
+      out.badDateGone = STATE.prep.date === undefined && STATE.prep.planFrom === undefined;
+      out.badLabel = prepDateLabel();
+
+      /* THE FLOOR: a real block is untouched and still renders and schedules.
+         A repair that dropped every date passes badDateGone and deletes the
+         whole prep feature. */
+      STATE.prep = { date: '2027-03-01', planFrom: '2026-09-01' };
+      normalizeState();
+      out.realDate = STATE.prep.date; out.realFrom = STATE.prep.planFrom;
+      out.realLabel = prepDateLabel();
+      out.realWeeks = forceWeeksLeft();
+      out.realMid = prepMidISO();
+      out.realWeekNo = prepWeekNo();
+
+      // the dated checkpoint stamp is the same repair one level down
+      STATE.prep.checks = {
+        mid: { at: '2025-13-45', results: { rush: 60 } },
+        initial: { at: '2026-09-02', results: { rush: 62 } }
+      };
+      normalizeState();
+      const C = (STATE.prep.checks || {});
+      /* GUARD: FORCE_IDS decides which result keys survive, and a slot left
+         with none is removed outright - so a made-up event id would delete
+         both slots and this block would pass on nothing. */
+      out.slotGuard = !!(C.initial && C.initial.results && C.initial.results.rush === 62);
+      if (C.mid && C.mid.at !== undefined) out.slot.push('impossible at survived');
+      if (!C.initial || C.initial.at !== '2026-09-02') out.slot.push('a real at was dropped');
+      if (!C.mid) out.slot.push('the whole slot was dropped, not just its date');
+      return out;
+    });
+
+    t.ok('guard: the bare pattern really does accept a date that is not a day', r.patternAccepts, r);
+    t.ok('guard: isDateISO refuses it', r.isDateISORefuses, r);
+    t.ok('guard: and still accepts a real one', r.isDateISOAccepts, r);
+
+    t.ok('a granted "train again" request is live before the boot', r.askedBefore, r);
+    t.eq('and SURVIVES it, which is what the repair was deleting', r.survives,
+      JSON.stringify({ date: r.survives && JSON.parse(r.survives).date, from: 12 }), r);
+    t.ok('so Today still calls the second session today after a reload', r.askedAfter, r);
+    t.ok('the v313 string shape is dropped, not migrated', r.legacyGone, r);
+    t.eq('and every other shape is dropped', r.junk.join(' | '), '', r);
+
+    t.ok('an impossible date is dropped from the prep block', r.badDateGone, r);
+    t.eq('and nothing reaches the glass in its place', r.badLabel, '', r);
+
+    t.eq('a real test date survives untouched', r.realDate, '2027-03-01', r);
+    t.eq('and so does its plan stamp', r.realFrom, '2026-09-01', r);
+    t.ok('and it still renders as a date', /2027/.test(r.realLabel) && !/Invalid/.test(r.realLabel), r);
+    t.ok('and still schedules a block', r.realWeeks > 0 && !!r.realMid && r.realWeekNo >= 1, r);
+    t.ok('guard: the checkpoint slots really survived to be checked', r.slotGuard, r);
+    t.eq('the checkpoint stamp is repaired the same way', r.slot.join(' | '), '', r);
+
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
+  /* ---- one date predicate, not a weaker one restated ----------------------
+     The pattern was written out TWELVE times beside the isDateISO() the app
+     already owned, and every restatement was the weaker test. That is the
+     five-diets drift, and here the copies were not merely duplicates - they
+     accepted values the real predicate refuses. The declaration is the only
+     place the pattern may appear now, so the thirteenth copy fails here. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await waitForBoot(page);
+    const r = await page.evaluate(() => {
+      // the BIGGEST inline script: the first one on this page is two characters
+      const src = [...document.querySelectorAll('script:not([src])')]
+        .map(s => s.textContent).sort((a, b) => b.length - a.length)[0] || '';
+      const noComments = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      return {
+        len: src.length,
+        isApp: /function normalizeState/.test(src),
+        strippedIsApp: /function normalizeState/.test(noComments),
+        pattern: (noComments.match(/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$/g) || []).length,
+        callers: (noComments.match(/isDateISO\(/g) || []).length,
+        // and the FORMATTER, written out four times beside the localISO() that owns it
+        formatter: (noComments.match(/getFullYear\(\)\+'-'\+String/g) || []).length,
+        localISOCallers: (noComments.match(/localISO\(/g) || []).length
+      };
+    });
+    t.ok('guard: the scan read the app, not a stub', r.isApp && r.len > 100000, r);
+    t.ok('guard: and stripping comments did not delete it', r.strippedIsApp, r);
+    t.eq('the ISO date pattern is written once, in isDateISO itself', r.pattern, 1, r);
+    t.ok('and it has real callers', r.callers > 10, r);
+    t.eq('the ISO date FORMATTER is written once too, in localISO itself', r.formatter, 1, r);
+    t.ok('and it has real callers', r.localISOCallers > 10, r);
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
+  /* ---- does a LEGITIMATE value survive the boot repair? -------------------
+     Every earlier sweep in this file asks whether JUNK survives. None asked
+     whether a value the app's own writer wrote survives - which is exactly the
+     gap _trainAgain fell through, where the repair described a shape the writer
+     had replaced and DELETED the real thing on every boot. The idempotence
+     check could not see it either: a settled state contains no _trainAgain,
+     because nothing sets it but a tap.
+
+     So this one drives the writers and asserts the boot leaves their work
+     alone. A guard runs first, because four of the first probe's five findings
+     were its own bad arguments - logAct() takes an ACTS key (ruck/grip/box),
+     rateFormat() takes a real member of PROGRESSION_GROUPS.skip.formats, and
+     armComeback() correctly writes nothing without a real layoff. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await waitForBoot(page);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const out = { missing: [], lost: [], drove: 0 };
+      const NAMES = ['noteOpen', 'trainAgainToday', 'checkAchievements', 'armComeback',
+        'rateFormat', 'generateMealPlan', 'logAct', 'startRestDay', 'toggleShop', 'setSwap',
+        'toggleGear', 'setPrepPath', 'setForceResultQuiet', 'logFootCheck', 'plSaveResume',
+        'noteHurt', 'normalizeState', 'localISO'];
+      NAMES.forEach(n => { let ty; try { ty = eval('typeof ' + n); } catch (e) { ty = 'err'; }
+        if (ty !== 'function') out.missing.push(n); });
+      if (out.missing.length) return out;
+      window.confirm = () => true;
+
+      const CALLS = [
+        ['_opens', () => noteOpen()],
+        ['_trainAgain', () => { STATE.progressPtr = 12; trainAgainToday(); }],
+        ['achievements', () => checkAchievements()],
+        ['comeback', () => { const d = new Date(); d.setDate(d.getDate() - 20);
+                             STATE.logs = { 0: { done: true, completedAt: localISO(d) } };
+                             delete STATE.comeback; armComeback(); }],
+        ['formatFeel', () => rateFormat('skip', PROGRESSION_GROUPS.skip.formats[0], 'easy')],
+        ['nutrition.plan', () => generateMealPlan()],
+        ['ruckLog', () => logAct('ruck', 40, { dist: 6 })],
+        ['gripLog', () => logAct('grip', 2, { secs: 65 })],
+        ['boxLog', () => logAct('box', 12, {})],
+        ['prs', () => logAct('grip', 2, { secs: 80 })],
+        ['restDays', () => startRestDay()],
+        ['shopTicks', () => toggleShop('chicken')],
+        ['swaps', () => setSwap(STATE.progressPtr, 'pushup', 'kneepushup')],
+        ['profile.gear', () => toggleGear('bike')],
+        ['prep.path', () => setPrepPath('assaulter')],
+        ['prep.results', () => setForceResultQuiet(FORCE_IDS[2], 48)],
+        ['footLog', () => logFootCheck(FOOT_KEYS[0])],
+        ['_plResume', () => { PLAYER = { sess: { session: { name: 'x' } },
+                              items: [{ exId: 'pushup' }], i: 0, set: 1,
+                              ptr: STATE.progressPtr, free: false }; plSaveResume(0); }],
+        ['pain', () => noteHurt('pushup')]
+      ];
+      const get = p => p.split('.').reduce((o, k) => o && o[k], STATE);
+      CALLS.forEach(([path, fn]) => {
+        try { fn(); } catch (e) { out.lost.push(path + ': the writer threw ' + e.message); return; }
+        const before = JSON.stringify(get(path));
+        if (before === undefined) { out.lost.push(path + ': the writer wrote nothing'); return; }
+        try { normalizeState(); } catch (e) { out.lost.push(path + ': normalizeState threw ' + e.message); return; }
+        const after = JSON.stringify(get(path));
+        out.drove++;
+        if (after !== before) out.lost.push(path + ': ' + String(before).slice(0, 70) +
+          '  ->  ' + String(after).slice(0, 70));
+      });
+      return out;
+    });
+    t.eq('guard: every writer this sweep drives really exists', r.missing.join(', '), '', r);
+    t.ok('guard: and the sweep actually drove them', r.drove >= 18, JSON.stringify({ drove: r.drove }));
+    t.eq('nothing a writer wrote is destroyed by the boot repair', r.lost.join('\n'), '', r);
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
   srv.close();
   return t.finish();
 }

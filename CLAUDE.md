@@ -9252,6 +9252,171 @@ Rewriting the predicate left `footCheckedToday()` with no caller, and v388's
 own orphan check went red naming it. The suites were grepped first — v387's
 lesson that **the suite is a call site** — and nothing drove it, so it went.
 
+### And the check that passed or failed by the weekday it ran on
+
+CI went red on the v393-v394 pull request, on two v390 checks that had merged
+green a day earlier and had nothing to do with either change.
+
+`sessionsThisWeek()` counts from the **Monday** of the current week.
+The day-90 frequency block seeded forward from that Monday and stopped at
+today:
+
+```js
+if (day > new Date()) break;
+```
+
+On a Monday that builds **one** session, and the row correctly reported
+`"1 this week"`. The check was right about the app and wrong about the
+calendar, on one weekday in seven — three local runs on other days had passed.
+That is v347's lesson again: **the calendar is part of the state a block has
+to build.**
+
+The window has no upper bound, so seeding all five weekdays of the current
+week is a state the function genuinely reports 5 for, whatever day it runs on.
+**The guard is what keeps that true**: a future-date filter added later would
+otherwise turn this back into a Monday-only failure that looks like a defect
+in the row, so the block asserts the count it built before asserting anything
+about the target.
+
+**And it invalidated a mutation run in flight.** The out-of-tree copy carried
+the same failing check, so every mutant would have read as *caught* whether or
+not it changed anything — a false all-clear. Stop and restart a mutation run
+whenever the baseline suite is not green: a mutation result is only meaningful
+against a passing baseline.
+
+Swept for siblings. `ridesThisWeek()` is a **rolling seven days**, so suite
+07's `today − N` seeding is weekday-independent, and suite 09's own
+`sessionsThisWeek()` check already seeds forward from the week start with no
+future guard. One instance, now fixed.
+
+## The repair was left on the shape the writer had replaced (v395)
+
+Found by tracing every reader of a stored date, then asking of each stored
+field whether the **boot repair** still describes what the **writer** writes.
+Two answers were no, in two different ways.
+
+### The flag was deleted on every boot
+
+v316 replaced `_trainAgain` — *"I want the next session today"* — with
+`{date, from}`, stamping the pointer the request was granted from so that any
+pointer move voids it, and taught `trainAgainAsked()` to accept **only the
+object**. Its comment says so in as many words. `normalizeState()` was left on
+the v313 **string**:
+
+```js
+if(STATE._trainAgain!==undefined&&(typeof STATE._trainAgain!=='string'|| … ))
+  delete STATE._trainAgain;
+```
+
+So the object the writer writes was **deleted on every boot**. Measured: the
+request reads live before `normalizeState()` and gone after it, every time.
+
+The cost is the v344 confusion the flag exists to prevent. Finish today's
+session, tap **Train again anyway** through its priced confirm, start the extra
+session — then lock the phone or let the app reload, and Today goes back to
+describing the session already **finished** as today's, with the confirm again
+in front of the one being trained. `todayPtr()` folds `trainAgainAsked()` in, so
+the header, the exercise list and the spoken morning brief all revert together.
+
+**A contract that lives in three places and is changed in two** is the same
+class as a legal set restated by hand. The writer and the reader moved; the
+repair was not brought along.
+
+The legacy string is **dropped rather than migrated**. It carries no pointer, so
+there is nothing to check it against, and `trainAgainAsked()` already reads it as
+no request — at worst one extra tap of a button still on screen, on the screen
+the athlete actually finished.
+
+### One date predicate, restated twelve times, always weaker
+
+`isDateISO()` has been the app's date test since v356, and it **round-trips**
+through `localISO()` — which is what makes `'2025-13-45'` and `'2025-02-29'`
+fail. The prep block, written later, restated the bare pattern instead. Twelve
+copies, and every one of them accepted values the real predicate refuses.
+
+Measured: `prep.date='2025-13-45'` survived every boot, and
+
+```
+prepDateLabel()  ->  "Invalid Date"
+```
+
+reached the glass — because `toLocaleDateString()` on an Invalid Date does not
+throw, it **returns that string**, so the `catch` beside it never fired. Beside
+it the button read *"Change my test date"* on a card saying no date was set,
+because every arithmetic reader correctly bailed on `!isFinite`. The label and
+the junk travelling in every backup were the whole harm — but the app owned the
+right predicate and the repair was asking a weaker one.
+
+The pattern now appears **once**, inside `isDateISO()` itself, and a check
+scans the source (comments stripped) so the thirteenth copy fails here rather
+than on a phone.
+
+**The guard is what makes that block worth running**: it asserts that the bare
+pattern really does accept the string being tested and that `isDateISO()` really
+does refuse it. Without it every assertion below passes on two predicates that
+happen to agree.
+
+**One equivalent change, recorded rather than papered over.** `saveForceDate()`
+now asks `isDateISO()` too, and no check can catch reverting it: its input is
+`<input type="date">`, which refuses to hold an impossible date at all, so the
+two predicates cannot disagree through the only control that reaches it. Kept as
+intent — the same call as v287's `wantAnchor`.
+
+### And the formatter beside it, written out four times
+
+The same scan asked the mirror question — not *which predicate tests a date*
+but *which expression builds one* — and found
+
+```
+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')
+```
+
+four times: inside `localISO()`, inside `todayISO()`, and twice more in repairs
+added later — one of them in v394's own new code, written the same evening as
+the rule it breaks. Nothing was wrong with any copy; they agree today. That is
+what a drift looks like before it drifts.
+
+`localISO()` is a hoisted function **declaration**, so every one of them can
+simply ask it, including the `const` arrow defined thousands of lines above it.
+Both this and the pattern are now pinned by a source scan, so the next copy
+fails here.
+
+### The class, swept — and the detector proven both ways
+
+`_trainAgain` is the first defect here where a repair destroyed a **legitimate**
+value. Every previous sweep asked *does junk survive*; none asked *does a real
+value survive*, which is exactly the gap it fell through. The v390 idempotence
+check could not see it either, because a settled state contains no
+`_trainAgain` — nothing sets it but a tap.
+
+So the sweep is written the other way round: drive the app's **own writers**,
+then boot, and assert nothing the writer wrote was changed. Sixteen structured
+writers driven — `_opens`, `_trainAgain`, `_plResume`, `comeback`, `formatFeel`,
+`pain`, `restDays`, `shopTicks`, `swaps`, `prs`, the three activity logs, the
+meal plan, the gear list, the prep path and its results, the foot log — and
+after the fix **every one survives**.
+
+**The detector was proven in both directions by accident, which is the best
+kind.** A backgrounded restore silently did not run, so the fix was reverted in
+the working tree while the comment above it stayed — and the very next suite run
+came back with three targeted checks red **and the sweep naming `_trainAgain` by
+name**, with the before and after values printed. Two lessons: a compound
+command that ends in a restore must not be left to a timeout, and a sweep that
+cannot be shown failing is not yet a check.
+
+**Four probe errors on the way, which is the usual ratio**, and every one is a
+trap already in this file. `logAct(k,…)` takes an `ACTS` key — `ruck`, `grip`,
+`box` — not an exercise id, and not `skip`. `rateFormat()` takes a real member of
+`PROGRESSION_GROUPS.skip.formats`; a made-up `'skipsteady'` was correctly reset
+by the repair and read as a defect. `armComeback()` only writes after a real
+layoff, so on a freshly-trained athlete writing nothing is right. And
+`FORCE_IDS` is `lift/shuttle/rush/drag` — a made-up event id emptied both
+checkpoint slots, which the repair then removed outright, and a check asserting
+a real stamp survived failed on correct code. **Confirm the control's real shape
+before believing the result**, and put a guard on the thing the block depends on
+before asserting anything about it.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
