@@ -5647,6 +5647,11 @@ function day90Rows(){
    out.push({k:'ruck', label:'Ruck', target:'10-12 km at 18-20 kg, brisk walk',
      got:bestKm>0?(distShow(Math.round(bestKm*10)/10)+(kg?(' at '+kg+' kg'):'')):null,
      gotLabel:bestKm>0?'your longest single ruck':null,
+     /* EVERY BLANK ROW SAYS WHY IT IS BLANK — the run and pull rows already
+        did, and this was the one that read "not measured" with no explanation
+        beside it. `scored` stays true: a ruck IS comparable once there is one,
+        so the tag must be "not measured" rather than "not comparable". */
+     why:bestKm>0?null:'No ruck logged yet. Log one on Today \u25b8 Workout \u25b8 Movement.',
      /* Both halves, or the tag lies. `near` on the distance alone called a
         9 km walk with an EMPTY bag "close" to 10 km under 20 kg — and the
         load is the half that makes it a ruck. 80% of each. */

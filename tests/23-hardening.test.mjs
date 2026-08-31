@@ -6459,6 +6459,16 @@ export default async function () {
         const keepBase = STATE.baseline, keepHold = STATE.holdLog, keepPrs = STATE.prs;
         STATE.baseline = null; STATE.holdLog = []; STATE.prs = {};
         out.fresh = byK(day90Rows());
+        /* THE CLASS: every row that renders blank must say why. Captured on
+           the fresh athlete, where the blanks actually are. */
+        { const rows = day90Rows();
+          out.blankRows = rows.filter(x => x.got === null).map(x => ({ k: x.k, why: x.why || null }));
+          const rk = rows.find(x => x.k === 'ruck') || {};
+          out.ruckWhy = rk.why || ''; }
+        /* Both ways: the destination the row names really carries the control. */
+        try { setTodayTab('workout'); go('today');
+          out.movementHasRuck = !!document.querySelector('[data-act="ruck"], #rk-wt, [onclick*="setCardioMode(\'ruck\')"]');
+        } catch (e) { out.movementHasRuck = 'threw: ' + e.message; }
         out.freshMx = { push: (currentMaxes() || {}).push, plank: (currentMaxes() || {}).plank };
         /* FLOOR: a real pull-up record is a MEASUREMENT, not a default, so it
            survives having no baseline — otherwise "blank when fresh" would be
@@ -6544,6 +6554,22 @@ export default async function () {
       t.ok('and each blank row says why it is blank',
         /baseline test/i.test(r.fresh.push.why || '') && /baseline test/i.test(r.fresh.plank.why || ''),
         JSON.stringify({ push: r.fresh.push.why, plank: r.fresh.plank.why }));
+
+      /* THE CLASS, not the two rows that happened to have one. Every row that
+         renders blank must explain itself — the ruck row was the one reading
+         "not measured" with nothing beside it, while the run and pull rows
+         both said why. Written as a sweep so a seventh row cannot be added
+         blank and silent. */
+      t.eq('EVERY blank row explains itself, not just the ones that already did',
+        (r.blankRows || []).filter(x => !x.why).map(x => x.k).join(', '), '',
+        JSON.stringify(r.blankRows));
+      t.ok('guard: the sweep really found blank rows to check',
+        (r.blankRows || []).length >= 2, JSON.stringify(r.blankRows));
+      /* And the pointer is asserted BOTH ways: the row names where to log a
+         ruck, and that destination really carries the control. */
+      t.ok('the blank ruck row names where a ruck is logged',
+        /Movement/.test(r.ruckWhy || ''), r.ruckWhy);
+      t.ok('and Movement really carries the ruck controls', r.movementHasRuck, r.movementHasRuck);
       /* FLOOR: a measured zero is still data. Sessions this week is a real
          count, so it reports 0 rather than going blank with the rest. */
       t.ok('the plank row names the baseline when that is where its number came from',
