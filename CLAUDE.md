@@ -9835,6 +9835,33 @@ twice-a-week athlete.
 But `comebackGap()`'s own comment already contemplates two, and `profile.days`
 carries whatever a backup holds.
 
+### The dead-control sweep made its own documented mistake again
+
+Sweeping every athlete-visible threshold for the streak's shape — *flat where it
+should scale* — turned up `RIDE_TARGET` (2 x 35 min, flat) and the conditioning
+level, which fingerprinted as **byte-identical across low, moderate and high**:
+253 cardio slots, 92 distinct movements, 1212 slots, three times over.
+
+That is the `voicePitch` shape exactly, and it was **entirely the probe**.
+`condLevel()` is read in `prescribe()` and scales the TARGET of cardio and
+dynamic movements by 0.85 / 1.0 / 1.15. Fingerprinting the targets instead:
+
+| conditioning | cardio target across 210 sessions |
+|---|---|
+| low | **11,475** |
+| moderate | 13,526 |
+| high | **15,507** |
+
+A 35% spread. **I counted slots when the effect is on targets** — and this file
+already warns, about this exact sweep, that half the first dead-control probe's
+findings were the probe. Read where the field is CONSUMED before choosing what
+to fingerprint.
+
+`RIDE_TARGET` being flat is a separate and deliberate thing: the weekly
+conditioning bar is not tied to the lifting schedule, and the athlete's declared
+level already moves the program through `condLevel()`.
+
+
 ### Four one-time migrations, swept as a class
 
 The rule this file states — *a stale default needs a one-time migration keyed to
