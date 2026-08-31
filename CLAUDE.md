@@ -9793,6 +9793,66 @@ message correctly describes.
 that fires on every write is one nobody reads — and it must still warn only
 ONCE, whichever branch it took.
 
+## The streak counted a schedule nobody has (v398)
+
+```js
+// streak = consecutive distinct training days ending at the most recent, allowing 1 rest day gap
+if(gap<=3)streak++;
+```
+
+**The comment says 1 and the code says 3** — this file's most-repeated shape,
+sitting in the counter on the Progress tab.
+
+And the flat 3 is a question `comebackGap()` already answers by SCALING to the
+athlete's own days. v347 wrote that reasoning down — *"5 days a week gives a
+2-day gap against a 5-day threshold, 3 days a week a 3-day gap against 5, and 2
+days a week a 6-day gap against 7"* — taught the catch-up and drift banners to
+honour the schedule, and left the streak flat.
+
+Measured, an athlete training **twice a week exactly on plan** — five sessions,
+not one missed:
+
+| | tolerance | streak |
+|---|---|---|
+| 5 days a week | 3 | 5 |
+| 3 days a week | 3 | 5 |
+| **2 days a week** | **3** | **1** |
+
+Their own 4-day gap broke it every single time.
+
+**`max(3, the schedule's own longest gap)`**, so nobody's streak gets HARDER
+than it was: every athlete at the wizard's five-day floor is byte-identical, and
+only a schedule whose own gap exceeds three moves at all. A junk or empty
+`profile.days` falls back to the flat 3.
+
+**Three floors carry it**, and each catches a different over-eager fix: a
+five-day athlete still breaks on a four-day gap; a genuine week off still breaks
+a five-day streak; and a genuine fortnight off still breaks a twice-a-week one.
+A tolerance that simply swallowed everything satisfies both assertions about the
+twice-a-week athlete.
+
+**It is import-reachable rather than everyday**: the wizard floors at five days.
+But `comebackGap()`'s own comment already contemplates two, and `profile.days`
+carries whatever a backup holds.
+
+### Four one-time migrations, swept as a class
+
+The rule this file states — *a stale default needs a one-time migration keyed to
+the exact value, behind a flag, leaving any other value alone* — has four
+instances, each with its own check somewhere and nothing asking the same three
+questions of all of them: does it fire, does it stay put on the next launch, and
+does a deliberate choice made AFTER it survive. **All four pass all three.**
+
+Question three is the one the v287 escape turned on: a seed that re-fires the
+first time an athlete CLEARS the value looks identical to a correct one until
+you clear it and boot again.
+
+**And the probe reported three of the four broken.** `_protSeed` and `_toneFix`
+live on `nutrition` and `settings`, NOT on `profile`, and `'ocean'` is not a
+theme key — the keys are mint, ember, ion, ice. Deleting the wrong field
+reported all three questions wrong on an app that was right.
+
+
 ## The copy said sixteen coaches and there are thirty-eight (v398)
 
 ### And the format descriptions, swept clean and pinned

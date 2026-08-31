@@ -15695,13 +15695,42 @@ function computeStreak(){
   // a streak is CURRENT by definition: if the last session is more than the
   // allowed gap behind today, it's over — it used to read "5" months later
   if((new Date(todayISO())-new Date(dates[dates.length-1]))/86400000>3)return 0;
-  // streak = consecutive distinct training days ending at the most recent, allowing 1 rest day gap
+  /* THE TOLERANCE IS THE ATHLETE'S OWN SCHEDULE, never tighter than the flat 3
+     this used to be. The comment here read "allowing 1 rest day gap" beside a
+     `gap<=3` — a comment claiming an invariant that was not the invariant.
+     Worse, the flat 3 is the schedule question comebackGap() already answers by
+     scaling: measured, an athlete training TWICE a week exactly on plan — five
+     sessions, no missed days — read a streak of 1, because a 4-day gap IS their
+     schedule. v347 taught the catch-up and drift banners to honour the schedule
+     and left this one flat.
+     max(3, …) means every athlete at the wizard's five-day floor is unchanged;
+     only a schedule whose own gap exceeds three moves at all. */
+  const tol=streakGapTol();
   let streak=1;
   for(let i=dates.length-1;i>0;i--){
     const gap=(new Date(dates[i])-new Date(dates[i-1]))/86400000;
-    if(gap<=3)streak++;else break;
+    if(gap<=tol)streak++;else break;
   }
   return streak;
+}
+/* The longest gap the athlete's OWN chosen days imply, wrapping the week — plus
+   nothing. A 5-day schedule implies 2 or 3; a 2-day schedule implies 4 or 5.
+   Never below 3, so nobody's streak gets harder than it was. */
+function streakGapTol(){
+  try{
+    const d=STATE.profile&&STATE.profile.days;
+    if(!Array.isArray(d)||d.length<1)return 3;
+    const w=[...new Set(d.filter(x=>typeof x==='number'&&x>=0&&x<=6))].sort((a,b)=>a-b);
+    if(!w.length)return 3;
+    if(w.length===1)return Math.max(3,7);
+    let max=0;
+    for(let i=0;i<w.length;i++){
+      const next=(i+1<w.length)?w[i+1]:w[0]+7;
+      const g=next-w[i];
+      if(g>max)max=g;
+    }
+    return Math.max(3,max);
+  }catch(e){return 3;}
 }
 /* Split, because "minutes trained" and "calories burned" want different things
    from the same walk, and because this counted PRESCRIBED sets while the reps

@@ -1017,6 +1017,58 @@ export default async function run() {
     t.ok('a favorite with nothing flagged still starts in one tap', r.cleanFavStartsPlayer, r);
   }
 
+  /* ---- the streak's gap tolerance is the athlete's own schedule -----------
+     The comment here read "allowing 1 rest day gap" beside a `gap<=3` — a
+     comment claiming an invariant that was not the invariant. And the flat 3
+     is the schedule question comebackGap() already answers by scaling:
+     measured, an athlete training TWICE a week exactly on plan — five sessions,
+     no missed days — read a streak of 1, because a 4-day gap IS their schedule.
+     v347 taught the catch-up and drift banners to honour the schedule and left
+     this one flat. */
+  {
+    const r = await page.evaluate(() => {
+      const day = n => { const d = new Date(); d.setDate(d.getDate() - n);
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+          + '-' + String(d.getDate()).padStart(2, '0'); };
+      const run = (days, offs) => {
+        STATE.profile.days = days; STATE.logs = {}; STATE.quickLog = {};
+        offs.forEach((n, i) => { STATE.logs[i] = { done: true, completedAt: day(n), feel: 'ok', ex: {}, items: [] }; });
+        normalizeState(); return computeStreak();
+      };
+      const tol = days => { STATE.profile.days = days; return streakGapTol(); };
+      return {
+        tolFive: tol([1, 2, 4, 5, 6]), tolMonFri: tol([1, 2, 3, 4, 5]),
+        tolTwice: tol([2, 5]), tolJunk: tol('nonsense'), tolEmpty: tol([]),
+        twiceOnPlan: run([2, 5], [0, 4, 8, 12, 16]),
+        fiveOnPlan: run([1, 2, 4, 5, 6], [0, 2, 4, 6, 8]),
+        fiveWithFourDayGap: run([1, 2, 4, 5, 6], [0, 4, 8]),
+        realBreakFive: run([1, 2, 4, 5, 6], [0, 1, 2, 9, 10]),
+        realBreakTwice: run([2, 5], [0, 4, 8, 20, 24])
+      };
+    });
+
+    /* FLOOR — the wizard's five-day floor is unchanged, tolerance and all. The
+       whole point of max(3, …) is that nobody's streak gets HARDER, so a fix
+       that simply widened the window for everyone fails here. */
+    t.eq('FLOOR: a five-day schedule keeps the old tolerance', r.tolFive, 3);
+    t.eq('and so does Monday-to-Friday', r.tolMonFri, 3);
+    t.eq('FLOOR: a five-day athlete on plan still reads five', r.fiveOnPlan, 5);
+    t.eq('FLOOR: and a four-day gap still breaks their streak', r.fiveWithFourDayGap, 1);
+
+    // the schedule the flat 3 was wrong for
+    t.eq('a twice-a-week schedule tolerates its own four-day gap', r.tolTwice, 4);
+    t.eq('so five sessions exactly on that plan read five, not one', r.twiceOnPlan, 5);
+
+    /* FLOOR — a REAL lay-off still breaks it on every schedule. A tolerance that
+       swallowed everything satisfies both assertions above. */
+    t.eq('a genuine week off still breaks a five-day streak', r.realBreakFive, 3);
+    t.eq('and a genuine fortnight off breaks a twice-a-week one', r.realBreakTwice, 3);
+
+    // junk fails safe to the value it always had
+    t.eq('a junk schedule falls back to the old flat tolerance', r.tolJunk, 3);
+    t.eq('and so does an empty one', r.tolEmpty, 3);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
