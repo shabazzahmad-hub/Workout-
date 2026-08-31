@@ -10471,6 +10471,177 @@ on a clean re-run.
   DOM before the promise resolved and report the fix as doing nothing. Await
   the thing you changed the shape of.
 
+## The engine failed closed and the screen did not (v399)
+
+Found by driving an athlete at every ceiling at once — program complete, `adapt`
+at the top of its band, every max at 999. Nothing threw on any tab, and the
+level came back **Beginner**.
+
+**That reading was the probe.** `LEVEL_NAME` is `['Beginner','Intermediate',
+'Advanced']` and the seed had written `'Elite'`, which is not a level. Ninth time
+this file has recorded it: *confirm the control's real shape before believing the
+result.* But the question it raised was real, and the answer was not.
+
+**A STORED level had no membership repair anywhere.** `profile.experience` has
+had one since v357; the three fields nobody swept — `baseline.level`, every
+`reassess[c].level` and every `scoreHistory[i].level` — had none, so junk from a
+hand-edited import survived every boot and travelled in every backup.
+
+`levelOf()` fails closed for a scalar, which is why nothing was ever mis-built.
+**The two DISPLAY sites read the field raw**, and measured with
+`profile.experience` at Advanced:
+
+| stored | engine prescribes | the Core Score chip printed |
+|---|---|---|
+| `'advanced'` | Beginner | **advanced** |
+| `'Elite'` | Beginner | **Elite** |
+| `42` | Beginner | **42** |
+| `{}` | Beginner | **[object Object]** |
+
+One screen, two answers. Both sites now ask `levelName()`, so the chip agrees
+with the session being built, and the boot repair scrubs the field.
+
+**Present-only, and a stored null becomes absent.** `skipBaseline()` writes a
+record with no level and both display sites already fall back for it, so seeding
+one would satisfy a "did the athlete measure a level?" test for ever — the
+`voicePitch` trap. `undefined` is left alone; `null` and `''` are deleted rather
+than kept, because a junk key travels in every backup.
+
+**Two guards mean two checks, and the second escaped first.** The history row's
+own guard was asserted AFTER a boot, so the repair had already scrubbed the junk
+and a revert printed 'Beginner' either way. The `medCleared()` escape verbatim —
+the chip had its no-boot check and its twin did not.
+
+### And the check was reading the wrong pane
+
+`PROG_TAB` does not exist. The variable is `PROGRESS_TAB`, so every assignment
+created a global nothing reads — and the chip readings only looked right because
+**Summary is the default**. The assessment-history rows are on the **Strength**
+pane and were never rendered at all. Drive `setProgressTab()`, the app's own
+setter, rather than poking a name.
+
+## A list you can add to and never remove from (v399)
+
+`FAV_MAX` is 100 and only the boot repair read it. The writer pushed regardless,
+so the 101st favourite was saved, toasted **Saved ⭐**, and deleted on the next
+launch with nothing said. Measured: **105 taps, 105 rows, 100 after a boot** —
+and `slice(0,FAV_MAX)` kept the OLDEST, so the five that vanished were the five
+just built.
+
+That is v398's activity-log cap with the halves the other way round: there the
+writer capped and the repair did not. **A bound belongs to both, or a list is
+bounded only until the app is closed.**
+
+**And there was no way out.** Each favourite row was a single button that STARTS
+it — no delete, anywhere, ever. The scratch list one card above has carried a ✕
+on every row since it was written; the durable list never got one. So a
+mis-named favourite was permanent, and *"delete one first"* would have been an
+instruction with no control behind it — a locked action with no route, which
+this file already calls a dead end.
+
+**The trim keeps the TAIL now.** Favourites are appended, so the newest is the
+end, and every other push-style log in `LOG_CAPS` keeps the tail. With the
+writer capping too, the trim can only ever fire on an import.
+
+**And the row index is the RAW position.** `openBuilder()` filtered the list
+before numbering the rows while `startFav()` and `delFav()` index
+`STATE.customFav` directly — so one bad row would have renumbered every row after
+it and started, or deleted, the wrong favourite. Unreachable today because the
+repair guarantees the shape, which is exactly why it is a check and not a
+comment.
+
+## The caption was on the glass and attached to nothing (v399)
+
+**Not one of the 77 `<label>` elements in the file carried a `for`.** Ten inputs
+therefore had **no accessible name at all** — the prep date, the three skipping
+fields, the three jacks make-up fields, the food quantity and the reference
+amount — and seventeen more leaned on a `placeholder`, which a screen reader
+drops the moment the athlete types.
+
+Every one already had a visible caption sitting beside it. Attaching them is the
+class fix: it names the ten, upgrades the seventeen to a caption that does not
+vanish, and makes the caption tappable — measured, a label click focuses the box,
+fires no handler and changes no state.
+
+**The existing check could not see any of it, and that is the finding.** It scans
+each tab's DEFAULT pane. Every control the athlete types a figure into lives in a
+**sheet**, and no sheet was ever scanned. The new block opens 46 of the 50, with
+two guards: an unnamed control must really be reported, and the sweep must have
+opened most of the sheets rather than a handful.
+
+**A sweep that only opens the ZERO-argument sheets misses more than half** — 15
+of 50 here. Each one that takes an argument gets a real one, and the names have
+to be read out of the file rather than guessed: `openExerciseInfo`, not
+`openExInfo`; `openFoodAmount`, not `openFoodInfo`; `QUICKIES`, not
+`QUICK_WORKOUTS`.
+
+**And the guard element leaked.** `closeSheet()` is async — it leaves a queued
+history navigation — so the probe input was still mounted when the next sheets
+opened and **every one of them reported it**. Remove the element, not the sheet.
+
+**And the attachment invariant is scanned over the SHIPPED FILE, not the page.**
+A `for` naming an id that has since been renamed falls back to the placeholder
+for the seventeen inputs that have one, so the sheet check would stay green
+while the caption was detached again — the same silent half-fix the labels
+started as. The first version scanned the app's source **plus** the rendered
+DOM, and every label appears in both — a template literal and its own output —
+so all 39 reported as duplicated. Read the artifact once.
+
+### Five sweeps that came back clean
+
+- **Injection through every stored leaf.** 62 fields, each given a real HTML
+  payload, across every tab, all four Progress panes, all four Today panes and
+  both Reference panes: **zero injections**, with the detector proven able to see
+  one. The first run reported one and it was the probe — querying `img[onerror]`
+  matches the app's own 126 exercise thumbnails, which use `onerror` as a
+  missing-image fallback. The v210 false alarm, verbatim, and `window.__pwn`
+  stayed false throughout.
+- **Junk on the glass.** The same 62 fields x 7 junk shapes — a string, a numeric
+  string, a negative, 1e12, `{}`, `[]`, `true` — **434 cases, zero** `NaN`,
+  `Infinity`, `[object Object]`, `undefined` or raw junk rendered, and no throw.
+  The detector is proven on the real render, not against a literal.
+- **Every number the coach SPEAKS is visible on the screen.** Four athlete states
+  (plain, deload, taper, two joints flagged) x eight pointers across the whole
+  programme — **32 combinations, zero**. A number read aloud is the one an athlete
+  cannot double-check by looking, so the detector is proven both ways first.
+- **Every hand-curated list has a remove route.** Photos, measurements, food
+  rows, activities, skips, the prep date and now favourites. The session records
+  (`holdLog`, `grindLog`, `liftLog`, `logs`) deliberately have none — they are
+  written by finishing something, and `undoSession()` is the one way back.
+- **Exactly ONE of every record.** Every previous sweep seeded either nothing or
+  a full history; the state between them is where "one point is not a trend"
+  lives. One measurement, one score, one hold, one lift, one skip, one photo,
+  one personal record, one session — across 14 panes: no `NaN`, no `Infinity`,
+  no `undefined`, and **every trend function withholds** rather than inventing a
+  direction. It is now a class check rather than three separate gates, with the
+  floor beside it: given enough points each one must actually answer, or
+  "withholds" is satisfied by a function that never says anything at all.
+
+  The one hit was the probe. **`loadIndexPct()` looks like a comparison and is
+  not** — it reads `STATE.adapt`, a single stored number whose start value
+  really is 1, so *"Training load +0% vs start"* on a brand-new athlete is
+  literally true. Pinned so nobody "fixes" it. And `waistGoalHTML()` is not in
+  the class either: it is start-against-goal, two stored numbers, so it answers
+  correctly from a single measurement. **A direction needs two readings of the
+  SAME quantity** — that is the membership test for this class.
+
+  **And the weight trend has THREE gates, so the one-point case tested none of
+  them.** A count, a windowed count, and a 21-day SPAN — and one point is
+  answered by the span, so a mutant weakening BOTH counts escaped clean. The
+  first form of that mutant was worse still: `win` is a subset of `ms`, so
+  weakening `ms.length<3` alone cannot change the answer at all — a genuinely
+  equivalent mutant. Each gate now has a case only it can answer: two readings
+  five weeks apart (the count), and three readings inside one week (the span).
+  **A guard is only visible when the value beside it cannot supply the answer**
+  — the third time this file has recorded that, and the first where three
+  guards were stacked.
+- **A function-name pair sweep (`set`/`clear`, `add`/`remove`, `open`/`close`)
+  reported 157 one-sided pairs and every one was noise** — `closeSheet()` is the
+  single closer, setters need no clearer, and rows are removed by
+  `removeFood`/`removeAct`/`removeMeasure`. Recorded as a LOW-YIELD axis: the one
+  real asymmetry this round was found by driving the list, not by reading its
+  name.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

@@ -12,6 +12,7 @@
    Each block builds the state it asserts on. Nothing here relies on what the
    block above left mounted. */
 import { serve, launch, suite, waitForBoot, seedAthlete } from './lib/harness.mjs';
+import { readFileSync } from 'node:fs';
 
 export default async function () {
   const t = suite('hardening — audit fixes');
@@ -986,6 +987,89 @@ export default async function () {
       t.eq(`[${tab}] every form control has an accessible name`, r[tab].unnamed.length, 0, r[tab]));
     t.ok('guard: Settings really has buttons to check', r.buttons.total > 20, r.buttons);
     t.eq('every button has a name a screen reader can read', r.buttons.unnamed, 0, r.buttons);
+  }
+
+  /* ---- and the SHEETS, which is where the numbers are actually typed -----
+     The block above scans each tab's DEFAULT pane. Every control the athlete
+     enters a figure into lives in a sheet, and none of them was ever scanned —
+     so ten inputs across the prep date, the skipping block, the jacks make-up,
+     the food quantity and the reference amount had NO accessible name at all,
+     and seventeen more leaned on a placeholder, which a screen reader drops the
+     moment the athlete types.
+
+     Every one already had a visible <label> sitting beside it. Not one of the
+     77 labels in the file carried a `for`, so the caption was on the glass and
+     not attached to anything — the same shape as the sibling captions in
+     Settings that this check was written for, one surface along. */
+  {
+    const r = await page.evaluate(() => {
+      const named = el => !!(el.getAttribute('aria-label')
+        || (el.id && document.querySelector(`label[for="${el.id}"]`))
+        || el.closest('label')
+        || el.getAttribute('placeholder')
+        || el.getAttribute('title'));
+      const bad = [];
+      const scan = where => {
+        document.querySelectorAll('#sheet input, #sheet select, #sheet textarea').forEach(el => {
+          if (el.type === 'hidden') return;
+          if (!named(el)) bad.push({ sheet: where, id: el.id || '', type: el.type || el.tagName });
+        });
+      };
+      /* GUARD, both ways: an unnamed control must BE reported, or an empty
+         result below says nothing about the app. */
+      openSheet('<input id="zq-unnamed">');
+      scan('probe');
+      const canSee = bad.some(b => b.id === 'zq-unnamed');
+      /* closeSheet() is async — it leaves a queued history navigation — so the
+         probe input was still mounted when the next sheets opened and every one
+         of them reported it. Remove the element itself, not the sheet. */
+      closeSheet();
+      document.querySelectorAll('#zq-unnamed').forEach(e => e.remove());
+      bad.length = 0;
+
+      const ARGS = { openSwapSheet: ['pushup'], openAct: ['ruck'], openActTimer: ['ruck'],
+        openMakeupStopwatch: ['ruck'], openAssessment: [0], openExerciseTimer: ['pushup'],
+        openExerciseInfo: ['pushup'], openFoodAmount: [0], openQuick: [QUICKIES[0].id],
+        openSessionDetail: [0], openMakeupTimer: ['jacks'] };
+      const names = Object.keys(window).filter(k => /^open[A-Z]/.test(k) && typeof window[k] === 'function');
+      let opened = 0;
+      names.forEach(fn => {
+        try {
+          if (window[fn].length > 0 && !ARGS[fn]) return;      // needs a real object
+          window[fn].apply(null, ARGS[fn] || []);
+          if (document.querySelector('#sheet')) { opened++; scan(fn); }
+          closeSheet();
+        } catch (e) {}
+      });
+      return { canSee, names: names.length, opened, bad };
+    });
+
+    t.ok('guard: an unnamed control really would be reported', r.canSee);
+    t.ok('guard: the sweep opened most of the sheets, not a handful',
+      r.opened >= 30, JSON.stringify({ opened: r.opened, of: r.names }));
+    t.eq('every control inside a sheet has an accessible name too',
+      r.bad.length, 0, JSON.stringify(r.bad.slice(0, 8)));
+
+    /* And every attachment points somewhere. A `for` naming an id that has been
+       renamed falls back to the placeholder for the seventeen inputs that have
+       one, so the check above would stay green while the caption was detached
+       again — the same silent half-fix the labels started as. Scanned over the
+       source rather than a render, so a control on a surface this suite never
+       opens is covered too. */
+    /* Read the SHIPPED FILE once. The first version scanned the app's source
+       plus the rendered DOM, and every label appears in both — a template
+       literal and its own output — so all 39 reported as duplicated. */
+    const all = readFileSync('index.html', 'utf8');
+    t.ok('guard: the scan really read the app', all.length > 500000, String(all.length));
+    const fors = [...all.matchAll(/<label for="([^"]+)"/g)].map(m => m[1]);
+    t.ok('guard: the labels really are attached, so the two checks below can fire',
+      fors.length >= 30, String(fors.length));
+    const dangling = [...new Set(fors)].filter(f => all.indexOf(`id="${f}"`) < 0);
+    t.eq('no label points at a control that is not there', dangling.length, 0,
+      dangling.join(','));
+    const seen = {}, dup = [];
+    fors.forEach(f => { if (seen[f]) { if (dup.indexOf(f) < 0) dup.push(f); } seen[f] = 1; });
+    t.eq('and no two labels claim the same control', dup.length, 0, dup.join(','));
   }
 
   // ---- a device credential is not in any backup, so clearing it asks -------

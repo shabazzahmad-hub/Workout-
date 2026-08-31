@@ -1069,6 +1069,92 @@ export default async function run() {
     t.eq('and so does an empty one', r.tolEmpty, 3);
   }
 
+
+  /* ---- ONE point is not a trend, as a class -----------------------------
+     v361 established it for the hold tracker: reporting a direction from a
+     single number is inventing one. Three functions in this app answer "which
+     way is it going", and each was gated on its own. A class check states the
+     rule once and catches the fourth the day it is added.
+
+     Four probe errors on the way, which is the usual ratio: trendKgPerWeek
+     takes a WINDOW in days and needs THREE points, holdTrend reads rows keyed
+     `id` (so the hold is written by the app's own writer rather than by hand),
+     there is no waistProgressHTML — the name is waistGoalHTML — and that
+     function is not in this class at all. */
+  {
+    const r = await page.evaluate(() => {
+      const d = n => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
+      const out = { one: {}, two: {} };
+      const call = (bag, n, f) => {
+        try { const v = f(); bag[n] = (v === null || v === undefined || v === '') ? null : v; }
+        catch (e) { bag[n] = 'THREW ' + String(e).slice(0, 40); }
+      };
+      const probe = bag => {
+        call(bag, 'weight', () => trendKgPerWeek(90));
+        call(bag, 'score', () => scoreTrendHTML());
+        call(bag, 'hold', () => holdTrend('plank'));
+        /* waistGoalHTML() is deliberately NOT in the class and was a fourth
+           probe error: it is start-vs-goal, two stored numbers, so it answers
+           correctly from a single measurement. A direction is what needs two
+           readings of the SAME quantity. */
+      };
+      // exactly ONE of each
+      STATE.measurements = [{ date: d(3), weight: 86, waist: 96 }];
+      STATE.scoreHistory = [{ date: d(30), score: 70, level: 'Beginner' }];
+      STATE.holdLog = []; logHold('plank', 60, true);
+      normalizeState();
+      probe(out.one);
+
+      /* FLOOR — with ENOUGH points each one must actually answer, or
+         "withholds" is satisfied by a function that never says anything. */
+      STATE.measurements = [{ date: d(40), weight: 92, waist: 102 },
+                            { date: d(20), weight: 90, waist: 100 },
+                            { date: d(3),  weight: 86, waist: 96 }];
+      STATE.scoreHistory = [{ date: d(60), score: 70, level: 'Beginner' },
+                            { date: d(3),  score: 80, level: 'Intermediate' }];
+      STATE.holdLog = []; logHold('plank', 40, true); logHold('plank', 60, true);
+      normalizeState();
+      probe(out.two);
+
+      /* trendKgPerWeek() has THREE gates — a count, a windowed count, and a
+         21-day SPAN — and the one-point case is answered by the span, so it
+         could not see the count guard at all: a mutant weakening BOTH counts
+         escaped. Each gate now gets a case only it can answer.
+         A guard is only visible when the value beside it cannot supply the
+         answer — the third time this file has recorded that. */
+      STATE.measurements = [{ date: d(40), weight: 92, waist: 102 },
+                            { date: d(3),  weight: 86, waist: 96 }];
+      normalizeState();
+      out.twoWideApart = trendKgPerWeek(90);          // spans 37 days, only 2 points
+      STATE.measurements = [{ date: d(10), weight: 92, waist: 102 },
+                            { date: d(6),  weight: 90, waist: 100 },
+                            { date: d(3),  weight: 86, waist: 96 }];
+      normalizeState();
+      out.threeTooClose = trendKgPerWeek(90);         // 3 points, spans only 7 days
+
+      /* loadIndexPct() LOOKS like a comparison and is not — it reads STATE.adapt,
+         a single stored number whose start value really is 1, so "+0% vs start"
+         on a brand-new athlete is literally true. Pinned so nobody "fixes" it. */
+      STATE.adapt = 1;   out.loadAtStart = loadIndexPct();
+      STATE.adapt = 1.2; out.loadAfter = loadIndexPct();
+      return out;
+    });
+
+    ['weight', 'score', 'hold'].forEach(k => {
+      t.eq(`one point alone reports no ${k} trend`, r.one[k], null,
+        JSON.stringify(r.one[k]).slice(0, 80));
+      t.ok(`FLOOR: enough points and ${k} does answer`,
+        r.two[k] !== null && !/THREW/.test(String(r.two[k])),
+        JSON.stringify(r.two[k]).slice(0, 80));
+    });
+    t.eq('two readings far apart are still not enough for a weight trend',
+      r.twoWideApart, null, JSON.stringify(r.twoWideApart));
+    t.eq('and three readings inside three weeks are noise, not a trend',
+      r.threeTooClose, null, JSON.stringify(r.threeTooClose));
+    t.eq('the training-load figure is not a two-point comparison at all', r.loadAtStart, 0);
+    t.eq('and it moves with the one number it does read', r.loadAfter, 20);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

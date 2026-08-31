@@ -1862,6 +1862,253 @@ export default async function run() {
     await browser.close();
   }
 
+
+  /* A STORED level had no membership repair anywhere. levelOf() fails closed for
+     a scalar, so nothing crashed and no session was mis-built — but the two
+     DISPLAY sites read the field raw, so the Core Score chip printed `advanced`
+     while the engine prescribed as a Beginner, and `{}` reached the glass as
+     `[object Object]`. Same class as profile.experience, on the three fields
+     nobody swept: the baseline, every re-test and every history row. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const out = {};
+      const chipNow = () => {
+        go('progress'); setProgressTab('summary');
+        const v = document.querySelector('#v-progress');
+        const c = [...v.querySelectorAll('.chip.on')].map(x => x.textContent.trim());
+        return c[0] || '(none)';
+      };
+      const setBase = lvl => {
+        STATE.baseline = { date: '2026-01-01', score: 88, testCount: TESTS.length,
+                           subs: {}, results: {}, maxes: {} };
+        if (lvl !== undefined) STATE.baseline.level = lvl;
+        TESTS.forEach(t => { STATE.baseline.maxes[t.id] = 60; STATE.baseline.results[t.id] = 60; });
+        STATE.scoreHistory = [];
+        STATE.profile.experience = 'Advanced';
+      };
+      const one = lvl => {
+        setBase(lvl); normalizeState();
+        return { stored: ('level' in STATE.baseline) ? STATE.baseline.level : '(deleted)',
+                 engine: levelOf(0), glass: chipNow() };
+      };
+
+      out.legal = LEVEL_NAME.slice();
+      out.junkStr  = one('advanced');
+      out.junkNum  = one(42);
+      out.junkObj  = one({});
+      out.junkArr  = one(['Advanced']);
+      out.nullLvl  = one(null);
+      out.emptyLvl = one('');
+
+      // FLOOR: a real measured level is untouched, by the repair and by the chip
+      out.realAdv = one('Advanced');
+      out.realBeg = (() => { setBase('Beginner'); STATE.profile.experience = 'Beginner';
+                             normalizeState();
+                             return { stored: STATE.baseline.level, glass: chipNow() }; })();
+      // FLOOR: absent stays absent — skipBaseline() writes one, and both display
+      // sites already fall back for it, so seeding a level would be a claim.
+      out.absent = (() => { setBase(undefined); normalizeState();
+                            return ('level' in STATE.baseline) ? 'kept-a-level' : '(absent)'; })();
+
+      // every re-test record and every history row, not only the baseline
+      setBase('Advanced');
+      STATE.reassess = { 1: { date: '2026-02-01', level: 'ELITE', maxes: {} } };
+      STATE.scoreHistory = [{ date: '2026-01-01', score: 70, level: 'beginner' },
+                            { date: '2026-02-01', score: 80, level: 'Advanced' }];
+      normalizeState();
+      out.reassessLvl = STATE.reassess[1].level;
+      out.histJunk = STATE.scoreHistory[0].level;
+      out.histReal = STATE.scoreHistory[1].level;
+      // the assessment-history rows are on the STRENGTH pane, not Summary
+      go('progress'); setProgressTab('strength');
+      out.histGlass = document.querySelector('#v-progress').textContent;
+
+      /* Two guards mean two checks. importData() writes STATE directly, so the
+         read site has to be right with NO boot behind it — the medCleared()
+         escape, where every check booted first and the repair had already
+         scrubbed the junk. */
+      setBase('advanced');            // deliberately NOT normalized
+      out.rawGlass = chipNow();
+      out.rawEngine = levelOf(0);
+      /* The history ROW is the second read site and needs the same treatment.
+         The first version of this block asserted on the rendered rows AFTER a
+         boot, so the repair had already scrubbed them and a revert of the row's
+         own guard printed 'Beginner' either way — it escaped clean. */
+      setBase('Advanced');
+      STATE.scoreHistory = [{ date: '2026-01-01', score: 70, level: 'ELITE-RAW' },
+                            { date: '2026-02-01', score: 80, level: 'Advanced' }];
+      go('progress'); setProgressTab('strength');
+      out.rawHist = document.querySelector('#v-progress').textContent;
+      return out;
+    });
+
+    t.ok('guard: the legal set is the three the app ships',
+      r.legal.join(',') === 'Beginner,Intermediate,Advanced', r.legal.join(','));
+
+    // 1. junk is scrubbed at boot, in every shape an import can carry
+    t.eq('a lower-case level from a backup is repaired', r.junkStr.stored, 'Beginner');
+    t.eq('a number is repaired', r.junkNum.stored, 'Beginner');
+    t.eq('an object is repaired', r.junkObj.stored, 'Beginner');
+    t.eq('an array that coerces to a legal name is still repaired', r.junkArr.stored, 'Beginner');
+    t.eq('and a stored null becomes absent rather than travelling in a backup',
+      r.nullLvl.stored, '(deleted)');
+    t.eq('as does an empty string', r.emptyLvl.stored, '(deleted)');
+
+    // 2. and the glass agrees with the session the engine is building
+    t.eq('the chip no longer prints the junk it was handed', r.junkStr.glass, 'Beginner');
+    t.eq('and it matches what the engine prescribes', r.junkStr.glass, r.junkStr.engine);
+    t.ok('an object never reaches the glass as [object Object]',
+      r.junkObj.glass.indexOf('[object') < 0, r.junkObj.glass);
+
+    // 3. the read site is right with no boot behind it
+    t.eq('junk written straight into STATE is still not printed raw', r.rawGlass, 'Beginner');
+    t.eq('and the chip still agrees with the engine there', r.rawGlass, r.rawEngine);
+    t.ok('nor does a history row print junk written straight into STATE',
+      r.rawHist.indexOf('ELITE-RAW') < 0, r.rawHist.slice(0, 160));
+    t.ok('guard: that row really did render, so the check is not passing on nothing',
+      /Re-test 1/.test(r.rawHist) && /Advanced/.test(r.rawHist), r.rawHist.slice(0, 160));
+
+    // 4. every record, not only the baseline
+    t.eq('a re-test record is repaired too', r.reassessLvl, 'Beginner');
+    t.eq('and every history row', r.histJunk, 'Beginner');
+    t.eq('FLOOR: a real history row is untouched', r.histReal, 'Advanced');
+    t.ok('and no history row prints a raw junk level',
+      r.histGlass.indexOf('beginner') < 0 && r.histGlass.indexOf('ELITE') < 0);
+
+    // 5. FLOORS — the over-eager repair that scrubs a real answer
+    t.eq('FLOOR: a measured Advanced survives the boot', r.realAdv.stored, 'Advanced');
+    t.eq('FLOOR: and is still what the engine uses', r.realAdv.engine, 'Advanced');
+    t.eq('FLOOR: and is what the chip prints', r.realAdv.glass, 'Advanced');
+    t.eq('FLOOR: a measured Beginner survives too', r.realBeg.stored, 'Beginner');
+    t.eq('FLOOR: an ABSENT level stays absent — it is a real state', r.absent, '(absent)');
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
+
+  /* The favourites list could be ADDED to and never removed, and the writer did
+     not know about the cap the boot repair enforces. Measured: 105 taps, 105
+     rows, 100 after a boot — and the trim kept the OLDEST, so the five that
+     vanished were the five just built, each having been toasted "Saved ⭐".
+     Same class as the activity logs, with the halves the other way round. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    await page.evaluate(() => {
+      window.confirm = () => true;
+      window.prompt = () => 'Fav ' + ((STATE.customFav || []).length + 1);
+    });
+    const r = await page.evaluate(() => {
+      const out = {};
+      out.cap = FAV_MAX;
+      STATE.customFav = []; _custom = ['pushup', 'plank'];
+
+      // 1. the writer stops AT the cap, and the toast says why
+      const said = [];
+      const realToast = window.toast;
+      window.toast = (m, ms) => { said.push(String(m)); return realToast(m, ms); };
+      for (let i = 0; i < FAV_MAX + 5; i++) saveCustomFav();
+      window.toast = realToast;
+      out.afterTaps = STATE.customFav.length;
+      out.refusal = said.filter(m => /delete one/i.test(m)).length;
+      out.claimedSaves = said.filter(m => /Saved/.test(m)).length;
+
+      // 2. and a boot changes nothing, because the writer already stopped
+      const newestBefore = STATE.customFav[STATE.customFav.length - 1].name;
+      normalizeState();
+      out.afterBoot = STATE.customFav.length;
+      out.keptNewest = STATE.customFav[STATE.customFav.length - 1].name === newestBefore;
+
+      // 3. an over-cap IMPORT keeps the NEWEST — the end every appended log keeps
+      STATE.customFav = [];
+      for (let i = 1; i <= FAV_MAX + 10; i++) STATE.customFav.push({ name: 'I' + i, items: ['pushup'] });
+      normalizeState();
+      out.imported = { n: STATE.customFav.length,
+                       first: STATE.customFav[0].name,
+                       last: STATE.customFav[STATE.customFav.length - 1].name };
+
+      /* 4. the route out. "Delete one first" with no control behind it is an
+         instruction the athlete cannot follow — so the button is TAPPED, not
+         the handler called. The scratch list one card above has had a ✕ on
+         every row since it was written; the durable list never got one. */
+      STATE.customFav = []; _custom = ['pushup', 'plank'];
+      saveCustomFav(); saveCustomFav(); saveCustomFav();
+      openBuilder();
+      const btns = [...document.querySelectorAll('#sheet button')]
+        .filter(b => /delFav\(/.test(b.getAttribute('onclick') || ''));
+      out.buttons = btns.length;
+      out.named = btns[1] ? (btns[1].getAttribute('aria-label') || '') : '';
+      out.before = STATE.customFav.map(f => f.name).join(',');
+      if (btns[1]) btns[1].click();
+      out.after = STATE.customFav.map(f => f.name).join(',');
+
+      // 5. FLOOR — a refused confirm deletes nothing
+      window.confirm = () => false;
+      delFav(0);
+      out.refused = STATE.customFav.map(f => f.name).join(',');
+      window.confirm = () => true;
+
+      /* 6. the row index is the RAW position. openBuilder() filtered the list
+         before numbering the rows while startFav() and delFav() index
+         STATE.customFav directly, so a single bad row would have renumbered
+         every row after it and started — or deleted — the wrong favourite.
+         Unreachable today because the boot repair guarantees the shape, which
+         is exactly why it needs a check rather than a comment. */
+      STATE.customFav = [{ name: 'BAD', items: 'not-an-array' },
+                         { name: 'A', items: ['pushup'] },
+                         { name: 'B', items: ['plank'] }];
+      openBuilder();
+      const rows = [...document.querySelectorAll('#sheet button')]
+        .filter(b => /delFav\(/.test(b.getAttribute('onclick') || ''));
+      out.idx = { rendered: rows.length,
+                  calls: rows.map(b => b.getAttribute('onclick')).join(' ') };
+      if (rows[0]) rows[0].click();
+      out.idx.left = STATE.customFav.map(f => f.name).join(',');
+
+      // 7. FLOOR — under the cap, saving still works and is not refused
+      STATE.customFav = []; _custom = ['pushup'];
+      const said2 = [];
+      const rt2 = window.toast; window.toast = m => { said2.push(String(m)); return rt2(m); };
+      saveCustomFav();
+      window.toast = rt2;
+      out.underCap = { n: STATE.customFav.length,
+                       refused: said2.filter(m => /delete one/i.test(m)).length };
+      return out;
+    });
+
+    t.ok('guard: the cap is a real bound the repair enforces', r.cap > 1, String(r.cap));
+    // 1. the writer stops, and never claims a save it will lose
+    t.eq('the writer stops AT the cap rather than saving a row the boot deletes',
+      r.afterTaps, r.cap);
+    t.ok('and it says why, naming the way out', r.refusal > 0, String(r.refusal));
+    t.eq('so no tap past the cap ever claimed a save', r.claimedSaves, r.cap);
+    // 2. and the boot has nothing to undo
+    t.eq('a boot then changes nothing', r.afterBoot, r.cap);
+    t.ok('and the favourite just built is still there', r.keptNewest);
+    // 3. an import over the cap keeps the newest
+    t.eq('an over-cap import is trimmed to the cap', r.imported.n, r.cap);
+    t.eq('and it keeps the NEWEST rows, not the oldest', r.imported.last, 'I' + (r.cap + 10));
+    t.ok('so the oldest are the ones dropped', r.imported.first !== 'I1', r.imported.first);
+    // 4. the route out really exists and is the athlete's own tap
+    t.eq('every favourite carries a delete', r.buttons, 3);
+    t.ok('and it is named for a screen reader', /Fav 2/.test(r.named), r.named);
+    t.eq('guard: three favourites were saved', r.before, 'Fav 1,Fav 2,Fav 3');
+    t.eq('tapping one deletes exactly it', r.after, 'Fav 1,Fav 3');
+    // 5-6. FLOORS — the over-eager twins
+    t.eq('FLOOR: a refused confirm deletes nothing', r.refused, 'Fav 1,Fav 3');
+    t.eq('a bad row is not rendered', r.idx.rendered, 2);
+    t.eq('and the rows carry their RAW index, not a renumbered one',
+      r.idx.calls, 'delFav(1) delFav(2)');
+    t.eq('so tapping the first delete removes the favourite it names',
+      r.idx.left, 'BAD,B');
+    t.eq('FLOOR: under the cap a save still lands', r.underCap.n, 1);
+    t.eq('FLOOR: and is not refused', r.underCap.refused, 0);
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
   srv.close();
   return t.finish();
 }

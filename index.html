@@ -1832,7 +1832,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='398';
+const APP_VERSION='399';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3429,11 +3429,11 @@ function onboardHTML(){
     <div class="tiny muted" id="ob-steplbl" style="margin-top:6px">Step 1 of ${OB_STEPS} · v${APP_VERSION} · changes save as you go</div></div>
 
   ${step(1,'About you',`
-    <div class="field"><label>Your name (optional)</label><input id="ob-name" placeholder="Athlete" autocomplete="off" value="${(P.name||'').replace(/"/g,'&quot;')}"></div>
+    <div class="field"><label for="ob-name">Your name (optional)</label><input id="ob-name" placeholder="Athlete" autocomplete="off" value="${(P.name||'').replace(/"/g,'&quot;')}"></div>
     <div class="numrow" style="gap:10px">
       <div class="field" style="flex:1.4;margin:0"><label>Sex (for calorie math)</label>
         <div class="daypick" id="ob-sex"><button data-s="male"${on(P.sex||'male','male')}>Male</button><button data-s="female"${on(P.sex,'female')}>Female</button></div></div>
-      <div class="field" style="flex:1;margin:0"><label>Age</label><input id="ob-age" type="number" inputmode="numeric" placeholder="35" value="${dv(P.age)}"></div>
+      <div class="field" style="flex:1;margin:0"><label for="ob-age">Age</label><input id="ob-age" type="number" inputmode="numeric" placeholder="35" value="${dv(P.age)}"></div>
     </div>
     <div class="field"><label>Measurement units</label>
       <div class="daypick" id="ob-unit"><button data-u="cm"${on(P.unit||'cm','cm')}>Metric (cm/kg)</button><button data-u="in"${on(P.unit,'in')}>Imperial (in/lb)</button></div></div>
@@ -5834,9 +5834,9 @@ function openCombatLog(){
   openSheet(`
     <h3>Log a FORCE Combat result</h3>
     <div class="note info">Enter what you actually did. A number you did not measure is worse than a blank.</div>
-    <div class="field"><label>The circuit — your total time in seconds (max ${fmtTime(COMBAT_CIRCUIT_MAX)})</label>
+    <div class="field"><label for="cb-circuit">The circuit — your total time in seconds (max ${fmtTime(COMBAT_CIRCUIT_MAX)})</label>
       <input id="cb-circuit" type="number" inputmode="numeric" value="${combatResult('circuit')||''}" placeholder="0"></div>
-    <div class="field"><label>The ${COMBAT_MARCH_KM} km march — your time in MINUTES (window ${COMBAT_MARCH_MIN[0]}–${COMBAT_MARCH_MIN[1]})</label>
+    <div class="field"><label for="cb-march">The ${COMBAT_MARCH_KM} km march — your time in MINUTES (window ${COMBAT_MARCH_MIN[0]}–${COMBAT_MARCH_MIN[1]})</label>
       <input id="cb-march" type="number" inputmode="numeric" value="${combatResult('march')?Math.round(combatResult('march')/60):''}" placeholder="0"></div>
     <button class="btn primary" style="width:100%;margin-top:6px" onclick="saveCombat()">Save</button>
   `);
@@ -5942,7 +5942,7 @@ function openForceDate(){
   openSheet(`
     <h3>When is your evaluation?</h3>
     <div class="note info">The date is what paces the build. Without one the app cannot tell a base-building week from a sharpening week.</div>
-    <div class="field"><label>Test date</label>
+    <div class="field"><label for="fq-date">Test date</label>
       <input id="fq-date" type="date" value="${_ve(prep().date||'')}"></div>
     <button class="btn primary" style="width:100%" onclick="saveForceDate()">Save</button>
     ${prep().date?`<button class="btn ghost" style="width:100%;margin-top:8px" onclick="clearForceDate()">Clear it</button>`:''}
@@ -6084,7 +6084,7 @@ function askActual(exId,m){
   const prev=(typeof st.actual==='number')?st.actual:m.target;
   openSheet(`<h3>${_ve(ex.name)} done</h3>
     <p class="sm muted" style="margin-top:-4px">Last set — what did you actually get? This is what sets next week's load.</p>
-    <div class="field"><label>${unit}</label>
+    <div class="field"><label for="ac-n">${unit}</label>
       <input id="ac-n" type="number" inputmode="numeric" min="0" value="${prev}"></div>
     <div class="tiny muted" style="margin:-4px 0 12px">Asked for ${m.target}. If you got fewer, say so — the next block scales off the truth, not the target.</div>
     <div class="btnrow" style="gap:8px">
@@ -8067,9 +8067,9 @@ function openRuck(){
     <button class="btn t-teal" onclick="openActTimer('ruck')">⏱️ Start ruck — stopwatch</button>
     <div class="section-label">Log a ruck</div>
     <div class="btnrow" style="gap:8px;align-items:flex-end">
-      <div class="field" style="flex:1;margin:0"><label>Minutes</label><input id="rk-min" type="number" inputmode="numeric" placeholder="45"></div>
-      <div class="field" style="flex:1;margin:0"><label>Distance (${imp?'mi':'km'})</label><input id="rk-dist" type="number" inputmode="decimal" placeholder="${imp?'3':'5'}"></div>
-      <div class="field" style="flex:1;margin:0"><label>Pack (${imp?'lb':'kg'})</label><input id="rk-wt" type="number" inputmode="decimal" placeholder="${imp?'25':'12'}"></div>
+      <div class="field" style="flex:1;margin:0"><label for="rk-min">Minutes</label><input id="rk-min" type="number" inputmode="numeric" placeholder="45"></div>
+      <div class="field" style="flex:1;margin:0"><label for="rk-dist">Distance (${imp?'mi':'km'})</label><input id="rk-dist" type="number" inputmode="decimal" placeholder="${imp?'3':'5'}"></div>
+      <div class="field" style="flex:1;margin:0"><label for="rk-wt">Pack (${imp?'lb':'kg'})</label><input id="rk-wt" type="number" inputmode="decimal" placeholder="${imp?'25':'12'}"></div>
     </div>
     <button class="btn primary" style="margin-top:10px" onclick="saveRuck()">Save ruck</button>
     ${actHistoryHTML('ruck')}
@@ -8102,8 +8102,8 @@ function openGrip(){
     </div>
     <div class="section-label">Log a hang</div>
     <div class="btnrow" style="gap:8px;align-items:flex-end">
-      <div class="field" style="flex:1;margin:0"><label>Best hang (sec)</label><input id="gp-sec" type="number" inputmode="numeric" placeholder="45"></div>
-      <div class="field" style="flex:1;margin:0"><label>Total minutes</label><input id="gp-min" type="number" inputmode="decimal" placeholder="5"></div>
+      <div class="field" style="flex:1;margin:0"><label for="gp-sec">Best hang (sec)</label><input id="gp-sec" type="number" inputmode="numeric" placeholder="45"></div>
+      <div class="field" style="flex:1;margin:0"><label for="gp-min">Total minutes</label><input id="gp-min" type="number" inputmode="decimal" placeholder="5"></div>
     </div>
     <button class="btn primary" style="margin-top:10px" onclick="saveGrip()">Save hang</button>
     ${actHistoryHTML('grip')}
@@ -8223,9 +8223,9 @@ function openSkipping(){
     </div>
     <div class="section-label">Custom block</div>
     <div class="btnrow" style="gap:8px;align-items:flex-end">
-      <div class="field" style="flex:1;margin:0"><label>Skip (min)</label><input id="sk-w" type="number" inputmode="numeric" value="9" min="1"></div>
-      <div class="field" style="flex:1;margin:0"><label>Rest (min)</label><input id="sk-r" type="number" inputmode="numeric" value="3" min="0"></div>
-      <div class="field" style="flex:1;margin:0"><label>Rounds</label><input id="sk-n" type="number" inputmode="numeric" value="3" min="1"></div>
+      <div class="field" style="flex:1;margin:0"><label for="sk-w">Skip (min)</label><input id="sk-w" type="number" inputmode="numeric" value="9" min="1"></div>
+      <div class="field" style="flex:1;margin:0"><label for="sk-r">Rest (min)</label><input id="sk-r" type="number" inputmode="numeric" value="3" min="0"></div>
+      <div class="field" style="flex:1;margin:0"><label for="sk-n">Rounds</label><input id="sk-n" type="number" inputmode="numeric" value="3" min="1"></div>
     </div>
     <button class="btn primary" style="margin-top:10px" onclick="startSkipCustom()">▶ Start custom block</button>
     <div class="section-label">Or just skip</div>
@@ -8397,14 +8397,14 @@ function openMakeupTimer(mode){
     body+=`<div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${[10,15,20,30,45].map(mn=>
       `<button onclick="startBikeMakeup(${mn})">${mn} min</button>`).join('')}</div>
       <div class="btnrow" style="gap:8px;align-items:flex-end">
-        <div class="field" style="flex:1;margin:0"><label>Custom minutes</label><input id="mut-bike-custom" type="number" inputmode="numeric" placeholder="25" min="1"></div>
+        <div class="field" style="flex:1;margin:0"><label for="mut-bike-custom">Custom minutes</label><input id="mut-bike-custom" type="number" inputmode="numeric" placeholder="25" min="1"></div>
         <button class="btn primary" onclick="startBikeMakeupCustom()">Start</button>
       </div>`;
   }else if(isJacks){
     body+=`<div class="btnrow" style="gap:8px;align-items:flex-end">
-        <div class="field" style="flex:1;margin:0"><label>Work (min)</label><input id="mut-jk-w" type="number" inputmode="numeric" value="10" min="1"></div>
-        <div class="field" style="flex:1;margin:0"><label>Rest (min)</label><input id="mut-jk-r" type="number" inputmode="numeric" value="2" min="0"></div>
-        <div class="field" style="flex:1;margin:0"><label>Rounds</label><input id="mut-jk-n" type="number" inputmode="numeric" value="2" min="1"></div>
+        <div class="field" style="flex:1;margin:0"><label for="mut-jk-w">Work (min)</label><input id="mut-jk-w" type="number" inputmode="numeric" value="10" min="1"></div>
+        <div class="field" style="flex:1;margin:0"><label for="mut-jk-r">Rest (min)</label><input id="mut-jk-r" type="number" inputmode="numeric" value="2" min="0"></div>
+        <div class="field" style="flex:1;margin:0"><label for="mut-jk-n">Rounds</label><input id="mut-jk-n" type="number" inputmode="numeric" value="2" min="1"></div>
       </div>
       <button class="btn primary" style="margin-top:10px;width:100%" onclick="startJackMakeup()">▶ Start block</button>`;
   }else{
@@ -12143,7 +12143,12 @@ function renderProgress(){
   if(STATE.baseline){
     const latest=STATE.scoreHistory[STATE.scoreHistory.length-1]
       ||{score:STATE.baseline.score,level:STATE.baseline.level};
-    const lvl=latest.level||(STATE.baseline&&STATE.baseline.level)||levelOf(0);
+    /* Two guards mean two checks. The boot repair above scrubs a stored level,
+       but importData() writes STATE directly and a check that boots first can
+       never see this one revert — the medCleared() escape, verbatim. levelOf(0)
+       already returns a legal name, so the wrap only ever bites on junk, and
+       it makes the chip AGREE with the session the engine is building. */
+    const lvl=levelName(latest.level||(STATE.baseline&&STATE.baseline.level)||levelOf(0));
     h+=`<div class="section-label">Core Score</div>`;
     h+=`<div class="card pad center">${ringHTML(latest.score,'Core Score')}<div style="margin-top:10px"><span class="chip on">${_ve(lvl)}</span></div>
       ${STATE.scoreHistory.length>1?scoreTrendHTML():`<div class="tiny muted" style="margin-top:10px">Re-test after each ${WEEKS_PER_CYCLE}-week block to see your climb.</div>`}</div>`;
@@ -12223,7 +12228,7 @@ function renderProgress(){
   }else{h+=`<div class="note info">Complete workouts to bank personal bests here.</div>`;}
   // score history
   if(STATE.scoreHistory.length){
-    h+=`<div class="section-label">Assessment history</div><div class="card pad">${STATE.scoreHistory.filter(Boolean).map((s,i)=>`<div class="kv"><span>${i===0?'Baseline':'Re-test '+i}${s.date?' · '+_ve(s.date):''}</span><b>${s.score==null?'—':s.score+'/100'} · ${_ve(s.level||(STATE.baseline&&STATE.baseline.level)||'—')}</b></div>`).join('')}</div>`;
+    h+=`<div class="section-label">Assessment history</div><div class="card pad">${STATE.scoreHistory.filter(Boolean).map((s,i)=>`<div class="kv"><span>${i===0?'Baseline':'Re-test '+i}${s.date?' · '+_ve(s.date):''}</span><b>${s.score==null?'—':s.score+'/100'} · ${(l=>_ve(l?levelName(l):'—'))(s.level||(STATE.baseline&&STATE.baseline.level))}</b></div>`).join('')}</div>`;
   }
   }
   if(P==='awards'){
@@ -13148,14 +13153,19 @@ function customRiskHTML(){
 }
 function openBuilder(){
   const pool=builderPool();const byReg={};pool.forEach(k=>{const r=EX[k].region;(byReg[r]=byReg[r]||[]).push(k);});
-  const favs=(Array.isArray(STATE.customFav)?STATE.customFav:[]).filter(f=>f&&Array.isArray(f.items));
+  /* Index by the RAW position, then drop the bad rows — startFav() and delFav()
+     both index STATE.customFav directly, so filtering FIRST would renumber the
+     rows and start (or delete) the wrong favourite. Unreachable today because
+     the boot repair guarantees the shape, and one line to make impossible. */
+  const favs=(Array.isArray(STATE.customFav)?STATE.customFav:[])
+    .map((f,i)=>({f,i})).filter(x=>x.f&&Array.isArray(x.f.items));
   openSheet(`<h3>🛠️ Custom workout</h3>
     <p class="muted sm" style="margin:2px 0 10px">Tap moves to build your own session. Runs guided; won't affect your program.</p>
     ${_custom.length?`<div class="card pad" style="margin-bottom:10px"><div class="tiny muted" style="margin-bottom:6px">Your session · ${_custom.length} moves</div>${_custom.map(k=>`<div class="kv"><span>${safeSwap(k)!==k?'⚠️ ':''}${EX[k].name}</span><button class="chip" onclick="removeCustom('${k}')">✕</button></div>`).join('')}
       ${customRiskHTML()}
       <button class="btn primary" style="width:100%;margin-top:10px" onclick="startCustom()">▶ Start workout</button>
       <button class="btn ghost" style="width:100%;margin-top:8px" onclick="saveCustomFav()">☆ Save as favorite</button></div>`:''}
-    ${favs.length?`<div class="tiny muted" style="margin:4px 0">Favorites</div>${favs.map((f,i)=>`<button class="kv" style="width:100%;text-align:left;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:11px 13px;margin-bottom:6px" onclick="startFav(${i})"><span>⭐ ${_ve(f.name)}</span><span class="tiny muted">${f.items.length} moves ▶</span></button>`).join('')}<div style="height:6px"></div>`:''}
+    ${favs.length?`<div class="tiny muted" style="margin:4px 0">Favorites</div>${favs.map(({f,i})=>`<div style="display:flex;gap:6px;align-items:stretch;margin-bottom:6px"><button class="kv" style="flex:1;text-align:left;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:11px 13px" onclick="startFav(${i})"><span>⭐ ${_ve(f.name)}</span><span class="tiny muted">${f.items.length} moves ▶</span></button><button class="chip" aria-label="Delete the saved workout ${_ve(f.name)}" onclick="delFav(${i})">✕</button></div>`).join('')}<div style="height:6px"></div>`:''}
     ${Object.keys(byReg).map(r=>`<div class="tiny muted" style="margin:8px 0 4px;text-transform:capitalize">${r}</div><div style="display:flex;flex-wrap:wrap;gap:6px">${byReg[r].map(k=>`<button class="chip ${_custom.includes(k)?'on':''}" onclick="addCustom('${k}')">${safeSwap(k)!==k?'⚠️ ':''}${EX[k].name}</button>`).join('')}</div>`).join('')}
     <div style="height:10px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
 }
@@ -13174,8 +13184,28 @@ function startCustom(){
 const FAV_MAX=100;
 function saveCustomFav(){
   if(!_custom.length)return;
+  /* The writer did not know about the cap the boot repair enforces, so the
+     101st favourite was saved, toasted "Saved ⭐", and DELETED on the next
+     launch with nothing said. Measured: 105 taps, 105 rows, 100 after a boot —
+     and `slice(0,FAV_MAX)` kept the OLDEST, so the five that vanished were the
+     five just built. Same class as the activity logs one round earlier, with
+     the halves the other way round: there the writer capped and the repair did
+     not. A bound belongs to both, or the list is bounded only until the app is
+     closed. */
+  const have=Array.isArray(STATE.customFav)?STATE.customFav.length:0;
+  if(have>=FAV_MAX){toast('You already have '+FAV_MAX+' saved workouts — delete one with ✕ first',4000);return;}
   const name=prompt('Name this workout','My Workout');if(!name)return;
   if(!STATE.customFav)STATE.customFav=[];STATE.customFav.push({name:name.slice(0,40),items:[..._custom]});save();toast('Saved ⭐');openBuilder();
+}
+/* A favourite could be ADDED and never removed. The scratch list one card above
+   has carried a ✕ on every row since it was written; the durable list never got
+   one — so a mis-named or mistaken favourite was permanent, and "delete one
+   first" above would have been an instruction with no control behind it. */
+function delFav(i){
+  const favs=Array.isArray(STATE.customFav)?STATE.customFav:[];
+  const f=favs[i]; if(!f)return;
+  if(typeof confirm==='function'&&!confirm('Delete the saved workout "'+f.name+'"? The moves stay in the library — only this saved list goes.'))return;
+  favs.splice(i,1); save(); toast('Deleted'); openBuilder();
 }
 /* A favorite is saved once and started many times, and profile.limitations can
    change in between — a joint flagged after the save, or a favorite built
@@ -14287,18 +14317,18 @@ function openQuickAdd(pre){
   const slot=pre.meal||currentMealSlot();
   openSheet(`<h3>${editing?'✏️ Edit item':'➕ Log food'}</h3>
     ${editing?'':`<button class="btn sm ghost" style="width:100%;margin-bottom:10px" onclick="openFoodSearch()">🔎 Search foods &amp; barcodes</button>`}
-    <div class="field"><label>Food</label><input id="fa-name" value="${_ve(pre.name||'')}" placeholder="e.g. Chicken &amp; rice"></div>
+    <div class="field"><label for="fa-name">Food</label><input id="fa-name" value="${_ve(pre.name||'')}" placeholder="e.g. Chicken &amp; rice"></div>
     <div class="btnrow" style="gap:8px">
-      <div class="field" style="flex:1;margin:0"><label>Calories</label><input id="fa-kcal" type="number" inputmode="numeric" value="${pf(pre.kcal)}" placeholder="kcal" oninput="updQtyTotal()"></div>
-      <div class="field" style="flex:1;margin:0"><label>Protein (g)</label><input id="fa-p" type="number" inputmode="numeric" value="${pf(pre.p)}" placeholder="g" oninput="updQtyTotal()"></div>
+      <div class="field" style="flex:1;margin:0"><label for="fa-kcal">Calories</label><input id="fa-kcal" type="number" inputmode="numeric" value="${pf(pre.kcal)}" placeholder="kcal" oninput="updQtyTotal()"></div>
+      <div class="field" style="flex:1;margin:0"><label for="fa-p">Protein (g)</label><input id="fa-p" type="number" inputmode="numeric" value="${pf(pre.p)}" placeholder="g" oninput="updQtyTotal()"></div>
     </div>
     <div class="btnrow" style="gap:8px">
-      <div class="field" style="flex:1;margin:0"><label>Carbs (g)</label><input id="fa-c" type="number" inputmode="numeric" value="${pf(pre.c)}" placeholder="g" oninput="updQtyTotal()"></div>
-      <div class="field" style="flex:1;margin:0"><label>Fat (g)</label><input id="fa-f" type="number" inputmode="numeric" value="${pf(pre.f)}" placeholder="g" oninput="updQtyTotal()"></div>
+      <div class="field" style="flex:1;margin:0"><label for="fa-c">Carbs (g)</label><input id="fa-c" type="number" inputmode="numeric" value="${pf(pre.c)}" placeholder="g" oninput="updQtyTotal()"></div>
+      <div class="field" style="flex:1;margin:0"><label for="fa-f">Fat (g)</label><input id="fa-f" type="number" inputmode="numeric" value="${pf(pre.f)}" placeholder="g" oninput="updQtyTotal()"></div>
     </div>
     <div class="btnrow" style="gap:8px;align-items:flex-end">
-      <div class="field" style="flex:0 0 92px;margin:0"><label>Quantity</label><input id="fa-qty" type="number" inputmode="decimal" value="1" min="0" step="0.5" oninput="updQtyTotal()"></div>
-      <div class="field" style="flex:1;margin:0"><label>Meal</label>
+      <div class="field" style="flex:0 0 92px;margin:0"><label for="fa-qty">Quantity</label><input id="fa-qty" type="number" inputmode="decimal" value="1" min="0" step="0.5" oninput="updQtyTotal()"></div>
+      <div class="field" style="flex:1;margin:0"><label for="fa-meal">Meal</label>
         <select id="fa-meal" style="width:100%;padding:12px;border-radius:12px;background:var(--card2);color:var(--ink);border:1.5px solid var(--line);font-size:16px">
           ${MEALS.map(([k,l])=>`<option value="${k}"${k===slot?' selected':''}>${l}</option>`).join('')}
         </select></div>
@@ -14321,9 +14351,9 @@ function openQuickAdd(pre){
       <div class="tiny" style="margin-top:8px;font-weight:800">Does your tracker show a percentage split instead?</div>
       <div class="tiny muted" style="margin-top:2px">Most of them print it under the calorie ring — <b>58% Fat · 3% Carbs · 39% Protein</b>. Type those three numbers and the grams are worked out exactly.</div>
       <div class="btnrow" style="gap:6px;margin-top:8px;align-items:flex-end">
-        <div class="field" style="flex:1;margin:0"><label>% P</label><input id="fa-pctP" type="number" inputmode="numeric" placeholder="%"></div>
-        <div class="field" style="flex:1;margin:0"><label>% C</label><input id="fa-pctC" type="number" inputmode="numeric" placeholder="%"></div>
-        <div class="field" style="flex:1;margin:0"><label>% F</label><input id="fa-pctF" type="number" inputmode="numeric" placeholder="%"></div>
+        <div class="field" style="flex:1;margin:0"><label for="fa-pctP">% P</label><input id="fa-pctP" type="number" inputmode="numeric" placeholder="%"></div>
+        <div class="field" style="flex:1;margin:0"><label for="fa-pctC">% C</label><input id="fa-pctC" type="number" inputmode="numeric" placeholder="%"></div>
+        <div class="field" style="flex:1;margin:0"><label for="fa-pctF">% F</label><input id="fa-pctF" type="number" inputmode="numeric" placeholder="%"></div>
         <button class="btn sm primary" style="flex:0 0 auto;width:auto;padding:12px 14px" onclick="applyPctSplit()">Convert</button>
       </div>
     </div>`:`<div style="margin:8px 0;padding:10px 12px;border-radius:12px;background:rgba(46,204,113,.12);border:1px solid var(--green)">
@@ -17352,7 +17382,7 @@ function movementHTML(){
   let h=`<div class="section-label">Movement · <span style="color:${eq>=tgt?'var(--green)':'var(--gold)'}">${eq.toLocaleString()} / ${tgt.toLocaleString()}</span></div><div class="card pad">
     <div class="pbar" style="margin:2px 0 12px"><i style="width:${pct}%;background:linear-gradient(90deg,#7ee08a,#2fa84f)"></i></div>
     ${foodAIReady()?`<button class="btn ghost" style="width:100%;margin-bottom:10px" onclick="activityScreenshot()">📷 Read my watch screenshot</button>`:''}
-    <div class="field" style="margin-bottom:10px"><label>Steps walked today</label>
+    <div class="field" style="margin-bottom:10px"><label for="mv-steps">Steps walked today</label>
       <input id="mv-steps" type="number" inputmode="numeric" min="0" value="${m.steps||''}" placeholder="0"
         onchange="setSteps(this.value)"></div>`;
   /* The gap is answered ONCE, here, for whichever mode the athlete picked.
@@ -17438,7 +17468,7 @@ function runBlockHTML(m,short){
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${RUN_UNITS.map(([k,l])=>
       `<button class="${m.nunit===k?'on':''}" onclick="setRunUnit('${k}')">${l==='Distance'?distUnit().toUpperCase():l}</button>`).join('')}</div>
     <div class="row" style="justify-content:space-between;align-items:flex-end;gap:10px">
-      <div class="field" style="flex:1;margin:0"><label>${_ve(m.nunit==='min'?'Minutes':(m.nunit==='dist'?'Distance ('+distUnit()+')':'Calories'))}</label>
+      <div class="field" style="flex:1;margin:0"><label for="mv-run">${_ve(m.nunit==='min'?'Minutes':(m.nunit==='dist'?'Distance ('+distUnit()+')':'Calories'))}</label>
         <input id="mv-run" type="number" inputmode="decimal" min="0" step="${m.nunit==='dist'?'0.1':'1'}" value="${shown||''}" placeholder="0" onchange="setRunVal(this.value)"></div>
       <div class="btnrow" style="flex:0 0 auto;gap:8px">
         <button class="chip" onclick="addRunVal(-${runStep(m.nunit)})" aria-label="Less">–</button>
@@ -17482,7 +17512,7 @@ function ruckBlockHTML(m,short){
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${RUCK_UNITS.map(([k,l])=>
       `<button class="${m.runit===k?'on':''}" onclick="setRuckUnit('${k}')">${l==='Distance'?distUnit().toUpperCase():l}</button>`).join('')}</div>
     <div class="row" style="justify-content:space-between;align-items:flex-end;gap:10px">
-      <div class="field" style="flex:1;margin:0"><label>${_ve(m.runit==='min'?'Minutes':(m.runit==='dist'?'Distance ('+distUnit()+')':'Calories'))}</label>
+      <div class="field" style="flex:1;margin:0"><label for="mv-ruck">${_ve(m.runit==='min'?'Minutes':(m.runit==='dist'?'Distance ('+distUnit()+')':'Calories'))}</label>
         <input id="mv-ruck" type="number" inputmode="decimal" min="0" step="${m.runit==='dist'?'0.1':'1'}" value="${shown||''}" placeholder="0" onchange="setRuckVal(this.value)"></div>
       <div class="btnrow" style="flex:0 0 auto;gap:8px">
         <button class="chip" onclick="addRuckVal(-${ruckStep(m.runit)})" aria-label="Less">–</button>
@@ -17505,7 +17535,7 @@ function bikeBlockHTML(m,short,need,lvl,ride,shownVal){
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${BIKE_UNITS.map(([k,l])=>
       `<button class="${m.unit===k?'on':''}" onclick="setBikeUnit('${k}')">${l==='Distance'?distUnit().toUpperCase():l}</button>`).join('')}</div>
     <div class="row" style="justify-content:space-between;align-items:flex-end;gap:10px">
-      <div class="field" style="flex:1;margin:0"><label>${_ve(m.unit==='min'?'Minutes':(m.unit==='dist'?'Distance ('+distUnit()+')':'Calories'))}</label>
+      <div class="field" style="flex:1;margin:0"><label for="mv-bike">${_ve(m.unit==='min'?'Minutes':(m.unit==='dist'?'Distance ('+distUnit()+')':'Calories'))}</label>
         <input id="mv-bike" type="number" inputmode="decimal" min="0" step="${m.unit==='dist'?'0.1':'1'}" value="${shownVal||''}" placeholder="0" onchange="setBikeVal(this.value)"></div>
       <div class="btnrow" style="flex:0 0 auto;gap:8px">
         <button class="btn sm ghost" onclick="addBikeVal(-${bikeStep(m.unit)})" style="width:44px">–${bikeStep(m.unit)}</button>
@@ -17537,7 +17567,7 @@ function skipBlockHTML(m,short){
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${SKIP_UNITS.map(([k,lb])=>
       `<button class="${m.sunit===k?'on':''}" onclick="setSkipUnit('${k}')">${lb}</button>`).join('')}</div>
     <div class="row" style="justify-content:space-between;align-items:flex-end;gap:10px">
-      <div class="field" style="flex:1;margin:0"><label>${_ve(m.sunit==='min'?'Minutes':(m.sunit==='reps'?'Skips':'Calories'))}</label>
+      <div class="field" style="flex:1;margin:0"><label for="mv-skip">${_ve(m.sunit==='min'?'Minutes':(m.sunit==='reps'?'Skips':'Calories'))}</label>
         <input id="mv-skip" type="number" inputmode="decimal" min="0" step="1" value="${m.sval||''}" placeholder="0" onchange="setSkipVal(this.value)"></div>
       <div class="btnrow" style="flex:0 0 auto;gap:8px">
         <button class="btn sm ghost" onclick="addSkipVal(-${step})" style="width:44px">–${step}</button>
@@ -17569,7 +17599,7 @@ function jackBlockHTML(m,short,jneed,jlvl,work){
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${JACK_UNITS.map(([k,l])=>
       `<button class="${m.junit===k?'on':''}" onclick="setJackUnit('${k}')">${l}</button>`).join('')}</div>
     <div class="row" style="justify-content:space-between;align-items:flex-end;gap:10px">
-      <div class="field" style="flex:1;margin:0"><label>${_ve(m.junit==='min'?'Minutes':(m.junit==='reps'?'Reps':'Calories'))}</label>
+      <div class="field" style="flex:1;margin:0"><label for="mv-jack">${_ve(m.junit==='min'?'Minutes':(m.junit==='reps'?'Reps':'Calories'))}</label>
         <input id="mv-jack" type="number" inputmode="decimal" min="0" step="1" value="${m.jval||''}" placeholder="0" onchange="setJackVal(this.value)"></div>
       <div class="btnrow" style="flex:0 0 auto;gap:8px">
         <button class="btn sm ghost" onclick="addJackVal(-${jackStep(m.junit)})" style="width:44px">–${jackStep(m.junit)}</button>
@@ -18362,7 +18392,7 @@ function openFoodAmount(i){
   const chips=(u==='ea')?[1,2,3,4]:(base<=40?[base,base*2,base*3,base*4]:[100,150,200,250,300]);
   openSheet(`<h3>${_ve(f[0])}</h3>
     <div class="tiny muted" style="margin:-6px 0 12px">${foodPer100(f).p} g protein and ${foodPer100(f).kcal} kcal per ${foodPer100(f).per}</div>
-    <div class="field"><label>How much${u==='ea'?'':' ('+u+')'}</label>
+    <div class="field"><label for="ref-amt">How much${u==='ea'?'':' ('+u+')'}</label>
       <input id="ref-amt" type="number" inputmode="decimal" min="0" step="${u==='ea'?'0.5':'5'}" value="${base}" oninput="refAmtCalc()"></div>
     <div class="daypick" style="flex-wrap:wrap;margin:-4px 2px 12px">${chips.map(c=>
       `<button onclick="refSetAmt(${c})">${fmtAmount(f,c)}</button>`).join('')}</div>
@@ -19810,10 +19840,10 @@ function openTDEE(){
     <h3>Your calorie target</h3>
     <div class="field"><label>Sex (for the formula)</label>
       <div class="daypick"><button data-sx="male" class="${n.sex==='male'?'on':''}" onclick="tdeeSex('male',this)">Male</button><button data-sx="female" class="${n.sex==='female'?'on':''}" onclick="tdeeSex('female',this)">Female</button></div></div>
-    <div class="field"><label>Age</label><input id="td-age" type="number" inputmode="numeric" value="${n.age||''}" placeholder="e.g. 35"></div>
-    <div class="field"><label>Height (${imp?'in':'cm'})</label><input id="td-ht" type="number" inputmode="decimal" value="${n.heightCm?(imp?(n.heightCm/2.54).toFixed(0):n.heightCm):''}" placeholder="${imp?'e.g. 70':'e.g. 178'}"></div>
-    <div class="field"><label>Weight (${imp?'lb':'kg'})</label><input id="td-wt" type="number" inputmode="decimal" value="${n.weightKg?(imp?(n.weightKg/0.453592).toFixed(0):n.weightKg):(latestWeightKg()?(imp?(latestWeightKg()/0.453592).toFixed(0):latestWeightKg().toFixed(0)):'')}" placeholder="${imp?'e.g. 185':'e.g. 84'}"></div>
-    <div class="field"><label>Activity level</label>
+    <div class="field"><label for="td-age">Age</label><input id="td-age" type="number" inputmode="numeric" value="${n.age||''}" placeholder="e.g. 35"></div>
+    <div class="field"><label for="td-ht">Height (${imp?'in':'cm'})</label><input id="td-ht" type="number" inputmode="decimal" value="${n.heightCm?(imp?(n.heightCm/2.54).toFixed(0):n.heightCm):''}" placeholder="${imp?'e.g. 70':'e.g. 178'}"></div>
+    <div class="field"><label for="td-wt">Weight (${imp?'lb':'kg'})</label><input id="td-wt" type="number" inputmode="decimal" value="${n.weightKg?(imp?(n.weightKg/0.453592).toFixed(0):n.weightKg):(latestWeightKg()?(imp?(latestWeightKg()/0.453592).toFixed(0):latestWeightKg().toFixed(0)):'')}" placeholder="${imp?'e.g. 185':'e.g. 84'}"></div>
+    <div class="field"><label for="td-act">Activity level</label>
       <select id="td-act" style="width:100%;padding:12px;border-radius:12px;background:var(--card2);color:var(--ink);border:1.5px solid var(--line);font-size:16px">
         ${ACTIVITY_OPTS.map(([v,l])=>`<option value="${v}"${activityLevel(n.activity)===v?' selected':''}>${_ve(l)}</option>`).join('')}
       </select></div>
@@ -21110,6 +21140,26 @@ function normalizeState(){
   {const _p=Math.floor(STATE.progressPtr);   // Math.floor already does ToNumber
    STATE.progressPtr=(isFinite(_p)&&_p>0)?Math.min(_p,SESSIONS_PER_CYCLE*TOTAL_CYCLES):0;}
   if(STATE.baseline!==null&&(typeof STATE.baseline!=='object'||Array.isArray(STATE.baseline)))STATE.baseline=null;
+  /* A STORED level had no membership repair anywhere, so junk from a hand-edited
+     import survived every boot and travelled in every backup. levelOf() itself
+     fails closed for a scalar — measured, 'advanced', 'Elite' and 42 all
+     prescribe as Beginner — but the two DISPLAY sites read the field raw, so
+     the Core Score chip printed `advanced` while the engine was building a
+     Beginner's session, and `{}` reached the glass as `[object Object]`.
+     Same class as `profile.experience` (repaired since v357) on the three
+     fields nobody swept: the baseline, every re-test and every history row.
+
+     Present-only. An ABSENT level is a real state — skipBaseline() writes one
+     and both display sites already fall back for it — so writing 'Beginner'
+     over it would satisfy an "did the athlete measure a level?" test for ever,
+     which is the voicePitch trap. `!== undefined` because absent is the
+     contract, and a stored null is a junk key that travels in a backup. */
+  {const _lvFix=o=>{if(!o||typeof o!=='object'||o.level===undefined)return;
+     if(o.level===null||o.level==='')delete o.level; else o.level=levelName(o.level);};
+   _lvFix(STATE.baseline);
+   if(STATE.reassess&&typeof STATE.reassess==='object'&&!Array.isArray(STATE.reassess))
+     Object.keys(STATE.reassess).forEach(k=>_lvFix(STATE.reassess[k]));
+   if(Array.isArray(STATE.scoreHistory))STATE.scoreHistory.forEach(_lvFix);}
   if(!Array.isArray(STATE.scoreHistory))STATE.scoreHistory=[];
   /* `typeof [] === 'object'`, so a bare typeof test lets an ARRAY through —
      and both of these are keyed maps, never lists. The archived-runs repair
@@ -21175,7 +21225,10 @@ function normalizeState(){
         const items=(Array.isArray(f.items)?f.items:[]).filter(k=>typeof k==='string'&&EX[k]);
         if(!items.length)return null;
         return {name:(typeof f.name==='string'&&f.name)?f.name.slice(0,40):'Saved workout',items};
-      }).filter(Boolean).slice(0,FAV_MAX);
+      /* The TAIL, not the head. Favourites are appended, so the newest is the
+         end — trimming the front is what made the just-saved one disappear.
+         With the writer capping too this can now only fire on an import. */
+      }).filter(Boolean).slice(-FAV_MAX);
     }
   }
   ['_saved','_remindedOn','_weeklyPrepWeek','_weeklyRemindedWeek'].forEach(k=>{
