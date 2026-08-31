@@ -1511,6 +1511,122 @@ export default async function run() {
     await browser.close();
   }
 
+  /* ---- every capped log is capped on the way IN as well ------------------
+     Seven writers each enforced their own bound and the BOOT REPAIR asked none
+     of them, so an import carrying 5,000 rows in each log survived every boot
+     and travelled in every backup after it — measured at 2.4 MB of state
+     against 221 kB for the capped shapes, inside the range that trips save()'s
+     own quota fallback. Same class as the keyed maps of v284/v285: the writer
+     enforced a bound the repair did not. Written as a sweep over LOG_CAPS so a
+     tenth capped log cannot be added with the repair left behind. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const out = { caps: {}, over: {}, newest: {}, floor: null, bytes: {}, threw: null };
+      try {
+        const N = 1000;
+        const keys = Object.keys(LOG_CAPS);
+        out.nCaps = keys.length;
+        /* THE TAG HAS TO BE A FIELD THE REPAIR KEEPS. Two earlier versions of
+           this read `undefined` and reported false failures: an invented field
+           is dropped because holdLog, grindLog and hiitLog rebuild each row
+           from a field list, and `at` is dropped by liftLog's rebuild for the
+           same reason. The DATE is the one field all nine require and keep. */
+        const day = i => { const d = new Date(2024, 0, 1); d.setDate(d.getDate() + i);
+          return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+            + '-' + String(d.getDate()).padStart(2, '0'); };
+        out.newestDay = day(N - 1);
+        const seed = (k, i) => ({
+          /* An unshift-er's index 0 is the NEWEST row, a push-er's last is —
+             so each list is seeded in the order its own writer would build it. */
+          date: LOG_CAPS[k].keep === 'head' ? day(N - 1 - i) : day(i),
+          at: Date.now() + i,
+          mins: 5, secs: 60, id: 'plank', fresh: true, done: true,
+          exId: 'squat', reps: 5, region: 'knee', ptr: 0,
+          format: 'tabata', group: 'hiit'
+        });
+        keys.forEach(k => { STATE[k] = Array.from({ length: N }, (_, i) => seed(k, i)); });
+        out.bytes.before = JSON.stringify(STATE).length;
+        normalizeState();
+        out.bytes.after = JSON.stringify(STATE).length;
+        keys.forEach(k => {
+          const l = STATE[k] || [], c = LOG_CAPS[k];
+          out.caps[k] = c.n;
+          out.over[k] = l.length > c.n ? l.length : 0;
+          /* THE END MATTERS. unshift-ers keep the head and push-ers keep the
+             tail, so trimming the wrong one throws away the newest training and
+             keeps the oldest — which no length assertion can see. */
+          const kept = c.keep === 'head' ? l[0] : l[l.length - 1];
+          out.newest[k] = !!(kept && kept.date === out.newestDay);
+        });
+        /* FLOOR: a real history UNDER the cap is byte-identical. A repair that
+           simply truncated every log satisfies every assertion above. */
+        STATE.skipLog = Array.from({ length: 12 },
+          (_, i) => ({ date: day(i), mins: 20 + i, at: 1000 + i }));
+        const was = JSON.stringify(STATE.skipLog);
+        normalizeState();
+        out.floor = { untouched: JSON.stringify(STATE.skipLog) === was, n: STATE.skipLog.length };
+      } catch (e) { out.threw = String(e && e.message || e); }
+      return out;
+    });
+
+    t.ok('guard: the boot repair ran without throwing', !r.threw, r.threw || '');
+    if (!r.threw) {
+      t.ok('guard: the sweep really walked every capped log', r.nCaps >= 9, JSON.stringify(r.caps));
+      t.eq('no imported log survives the boot above its own cap',
+        Object.keys(r.over).filter(k => r.over[k]).map(k => k + '=' + r.over[k]).join(', '), '',
+        JSON.stringify(r.over));
+      t.eq('and each keeps the NEWEST rows, whichever end its writer appends to',
+        Object.keys(r.newest).filter(k => !r.newest[k]).join(', '), '', JSON.stringify(r.newest));
+      /* The harm is the file, so it is asserted as bytes and not only as
+         lengths — a cap that trimmed one log and left eight passes a
+         per-list check that stops at the first one it looks at. */
+      t.ok('so the state a backup carries is bounded rather than 10x',
+        r.bytes.after < r.bytes.before / 5, JSON.stringify(r.bytes));
+      t.ok('FLOOR: a real history under the cap is left byte-identical',
+        r.floor.untouched && r.floor.n === 12, JSON.stringify(r.floor));
+    }
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
+  /* ---- and the lists that must NEVER be capped ---------------------------
+     Each for its own reason: photos are the one thing in this app that cannot
+     be re-created, measurements are the weight chart, scoreHistory is what a
+     re-test is compared against, and runs holds archived blocks the lifetime
+     counters read. A "cap everything" fix satisfies every assertion above and
+     destroys all four. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const out = { kept: {}, capped: [] };
+      const N = 400;
+      STATE.photos = Array.from({ length: N }, (_, i) => ({ id: 'p' + i, pose: 'front', date: '2026-01-01', data: 'data:image/jpeg;base64,x' }));
+      /* Distinct dates: dedupeMeasurements() collapses same-date rows on
+         purpose (pre-v156 appends), so an all-one-date seed reads as a cap and
+         is the probe, not the app. */
+      const day = i => { const d = new Date(2024, 0, 1); d.setDate(d.getDate() + i);
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+          + '-' + String(d.getDate()).padStart(2, '0'); };
+      STATE.measurements = Array.from({ length: N }, (_, i) => ({ date: day(i), weight: 80 + (i % 5) }));
+      STATE.scoreHistory = Array.from({ length: N }, (_, i) => ({ date: day(i), score: 50, level: 'Intermediate' }));
+      STATE.runs = Array.from({ length: N }, () => ({ logs: {}, prs: {}, endedAt: '2026-01-01' }));
+      normalizeState();
+      ['photos', 'measurements', 'scoreHistory', 'runs'].forEach(k => {
+        out.kept[k] = (STATE[k] || []).length;
+        if (out.kept[k] < N) out.capped.push(k + '=' + out.kept[k]);
+      });
+      out.inCaps = ['photos', 'measurements', 'scoreHistory', 'runs'].filter(k => LOG_CAPS[k]);
+      return out;
+    });
+    t.eq('the four lifetime records are never capped', r.capped.join(', '), '', JSON.stringify(r.kept));
+    t.eq('and none of them is in the cap registry at all', r.inCaps.join(', '), '');
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
   srv.close();
   return t.finish();
 }

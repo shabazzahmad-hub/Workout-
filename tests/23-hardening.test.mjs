@@ -6589,6 +6589,12 @@ export default async function () {
       t.ok('guard: Today rendered the workout, not the baseline gate',
         r.movementGuard === true, JSON.stringify({ guard: r.movementGuard }));
       t.ok('and Movement really carries the ruck controls', r.movementHasRuck, r.movementHasRuck);
+      /* FLOOR: a note that always fires is a note nobody reads. Every other row
+         on this board has this pinned — pushPlain, freqClean, freqAdopted, the
+         genuine zero — and the ruck row was the one added without it, so the
+         over-eager twin (a `why` on every row, logged or not) escaped. */
+      t.ok('while a ruck that WAS logged carries no explanation at all',
+        !r.full.ruck.why, JSON.stringify({ got: r.full.ruck.got, why: r.full.ruck.why }));
       /* FLOOR: a measured zero is still data. Sessions this week is a real
          count, so it reports 0 rather than going blank with the rest. */
       t.ok('the plank row names the baseline when that is where its number came from',

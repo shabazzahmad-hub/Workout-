@@ -9717,6 +9717,168 @@ athlete checked, against the source, and the app was wrong. The stamp did its
 job by inviting the check.
 
 
+## The button promised a download it never requested (v398)
+
+Found by sweeping a class rather than by using the app: **every silent
+`catch(e){}` that wraps a WRITE or a SEND**, not a read. 230 silent catches in
+the file, 54 of them wrapping a write, a post or a platform call — and almost
+all are the right shape, `save()` first and only the repaint guarded, so a
+render failure can never lose data.
+
+Two were not. v357 measured that at the moment `navigator.serviceWorker.ready`
+resolves on a genuine **first install**, `controller` is NULL while
+`reg.active` already exists, and taught the boot ping to ask `reg.active`
+first. **Its two siblings on the Settings screen were left on `controller`
+alone.** Measured with no controller:
+
+| | said / did | the truth |
+|---|---|---|
+| `refreshPackStat()` | **"not installed"** | it IS installed, and activating |
+| `packForce()` | posted **nothing** | |
+| the toast | ***"Downloading the rest in the background"*** | nothing was requested |
+
+**The toast sat OUTSIDE the `if`**, so a tap with no worker to talk to claimed
+a download that never happened — a promise in UI text with no code behind it,
+which is this file's most-repeated rule.
+
+**The window is short and the fix is a latent-class fix, and saying so is the
+honest framing.** Measured on this machine: `ready` resolves at 79 ms with
+`controller` false, and `clients.claim()` lands **1 ms** later — nobody taps a
+Settings button in that window. What is reachable is the state before `ready`
+resolves at all, which on a slow first install is seconds, and whatever
+`selfUpdate()`'s `unregister()` leaves behind.
+
+`swWorker()` is the one helper, so a fourth caller cannot forget. **The worker
+already replies to an uncontrolled page** — `e.source.postMessage` plus a
+broadcast using `includeUncontrolled: true` — which is what makes the fix work
+rather than merely look right, and it was checked in `sw.js` before the fix was
+written.
+
+**Two floors, and both over-eager mutants fail one.** With no service worker at
+all, *"not installed"* is the truth and must still be said, and the button must
+say so rather than claim a download. And an ordinary controlled page must be
+byte-for-byte unchanged — a fix that always posted, or always claimed, passes
+every assertion about the broken state.
+
+**And the guard is what makes the block worth running**: it asserts that the
+window this fix exists for is real on the machine the suite is running on. A
+check driven against a state that never happens proves nothing.
+
+### Nine writers enforced a bound the boot repair did not
+
+The same round, same method — sweep for the SHAPE rather than use the app.
+**Every capped list, and whether the boot repair caps it too.** Seven writers
+restated their own bound (200 in five places, 2000 and 60 in one each) and
+`normalizeState()` asked none of them: each repair made the list an array and
+then let any length through. Measured by putting 5,000 rows in each:
+
+| | before | after |
+|---|---|---|
+| state a backup carries | **2,487,209 bytes** | **220,869** |
+| `skipLog` / `ruckLog` / `gripLog` / `boxLog` | 5,000 each | 200 |
+| `liftLog` | 5,000 | 2,000 |
+| `pain` | 5,000 | 60 |
+
+That is inside the range that trips `save()`'s own quota fallback, and it is
+the harm v285 already measured on the keyed maps: **the writer enforced a bound
+the repair did not**, so a file was bounded only for as long as nothing
+imported one. v360 recorded that nothing exercised the 200-row cap at all.
+
+**THE END MATTERS, and the two families disagree.** Five writers `unshift` and
+keep the head; four `push` and keep the tail. Trimming the wrong one throws
+away the newest training and keeps the oldest — which **no length assertion can
+see**, so the direction lives in `LOG_CAPS` beside the number rather than being
+re-derived at each site, and the check asserts the newest row survives in both
+directions.
+
+**Four lists are deliberately uncapped and each has its own reason**: `photos`
+is the one thing in this app that cannot be re-created, `measurements` is the
+weight chart, `scoreHistory` is what a re-test is compared against, and `runs`
+holds archived blocks the lifetime counters read. A "cap everything" fix
+satisfies every assertion above and destroys all four, so they are pinned at
+400 rows apiece and asserted absent from the registry.
+
+### Two scans that reported the app was broken, and were the scan
+
+- **A source scan for the cap missed `logAct()` entirely**, because that
+  writer trims `STATE[key]` through a dynamic name and the scan was looking for
+  the literal `ruckLog`. It reported three logs as having no writer cap at all.
+  A scan for a NAME cannot see a reference built at runtime — the same trap
+  this file records for `document.body.innerHTML` containing the app's source.
+- **An in-page regex was double-escaped** through a heredoc and reported
+  **every** list as uncapped, including `pain`, which the file caps two lines
+  from the report. A detector that reports everything as broken is broken;
+  measuring the real thing (5,000 rows, boot, read the lengths) settled it in
+  one run.
+
+### And the tag has to be a field the repair keeps
+
+Three probe failures in a row, each looking exactly like a defect:
+
+- An invented `tag` field read back `undefined`, because `holdLog`, `grindLog`
+  and `hiitLog` **rebuild each row from a field list** — the v312 shape.
+- `at` read back `undefined` for `liftLog`, whose repair rebuilds to exactly
+  `{date, exId, loadKg, reps, rir}`.
+- `measurements` read as capped at **1**, because `dedupeMeasurements()`
+  collapses same-date rows on purpose and the seed gave all 400 one date.
+
+The DATE is the one field all nine require and keep. **Confirm what the repair
+keeps before choosing what to tag with** — and a seed of identical rows cannot
+tell a cap from a de-duplication.
+
+### Two sweeps that came back clean, recorded as coverage
+
+- **Every comparator-less `.sort()`** — five, all on ISO date strings, which
+  sort correctly as text. The classic `[10,9,100]` defect is not present.
+- **Every numeric field driven to ZERO**, 14 of them across all seven tabs: no
+  `Infinity`, no `-Infinity`, no throw. `Infinity` is `NaN`'s quieter sibling —
+  it renders rather than reading as broken — and nothing produces one.
+- **The remaining 52 silent `catch(e){}` blocks that wrap a write or a send.**
+  Almost all are the right shape: `save()` first and only the repaint guarded,
+  so a render failure can never lose data. The two that were not are the pack
+  pair above.
+
+  **And the first version of the tab sweep reported 14 throws** — one per
+  field — because `go('prog')` is not a tab. The keys are `today`, `program`,
+  `progress`, `fuel`, `quick`, `guide`, `ref`. *Confirm the control's real
+  shape before believing the result.*
+
+### The empty-state sweep that came back clean
+
+Run in the same round, generalising the v397 ruck row: **every place that
+renders a bare em-dash as a value.** 22 sites. The day-90 board is now
+complete — every blank row carries a `why`. The FORCE Combat circuit and march
+rows looked like the same class and are not: each `—` carries **"not
+measured"** beside it and a *Log a result* button on the same sheet, which is
+exactly the answer `forceVerdict()` already gives for an unlogged event.
+Measured by rendering `openCombat()` with nothing logged, not by reading it.
+
+**Recorded because it looked exactly like the bug just fixed.** The
+distinguishing feature of the ruck row was that it sat on a *target board*
+where every other row printed a number and a verdict, so a bare `—` beside
+"10-12 km at 18-20 kg" read as *measured and short*. A `—` under a plain
+"Your best" label reads correctly as "nothing yet".
+
+### And the over-eager floor the ruck row shipped without
+
+Found while rebuilding the mutation driver for v397. Every other row on that
+board pins the note's ABSENCE — `pushPlain`, `freqClean`, `freqAdopted`, the
+genuine zero — and the ruck row was added without one, so the over-eager twin
+(a `why` on every row, logged or not) escaped every assertion. *A note that
+always fires is a note nobody reads*, and the check has to say so.
+
+### Three harness notes from the same round
+
+- **The mutation driver was lost between rounds** and only one of three mutants
+  had run. Write the driver to a file rather than inline, so a reconnect can
+  read what it was measuring.
+- **`chromium.launchPersistentContext('')`** is what gives a genuine first
+  install; `launch()` + `newPage()` shares nothing but is not a fresh profile.
+- **An async fix breaks a synchronous probe silently.** Making
+  `refreshPackStat()` return a promise made the first re-measurement read the
+  DOM before the promise resolved and report the fix as doing nothing. Await
+  the thing you changed the shape of.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

@@ -1832,7 +1832,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='397';
+const APP_VERSION='398';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -6590,7 +6590,7 @@ function noteHurt(exId){
     if(!Array.isArray(STATE.pain))STATE.pain=[];
     const ex=EX[exId];
     STATE.pain.push({exId,region:(ex&&ex.region)||'',date:todayISO(),ptr:STATE.progressPtr});
-    if(STATE.pain.length>60)STATE.pain=STATE.pain.slice(-60);
+    capLog('pain');
     save();
   }catch(e){}
 }
@@ -6915,7 +6915,7 @@ function saveLiftLog(exIds){
       rir:(rirRaw!==null&&isFinite(rirRaw)&&rirRaw>=0&&rirRaw<=5)?rirRaw:null});
     n++;
   });
-  if(liftLog().length>2000)STATE.liftLog=liftLog().slice(-2000);
+  capLog('liftLog');
   /* A resistance session is training. It credits the day the same way a quick
      workout does — streak, heatmap, weekly count — WITHOUT consuming a program
      session, because it is not one. */
@@ -7877,7 +7877,7 @@ function hiitLog(){if(!Array.isArray(STATE.hiitLog))STATE.hiitLog=[];return STAT
 function logHiitCompletion(group,format,mins){
   mins=Math.max(0,Math.round((mins||0)*10)/10);if(!mins)return;
   hiitLog().unshift({date:todayISO(),format,group,mins,at:Date.now()});
-  if(STATE.hiitLog.length>200)STATE.hiitLog.length=200;
+  capLog('hiitLog');
   save();
 }
 function hiitFormatStats(format){
@@ -7920,7 +7920,7 @@ function grindLog(){if(!Array.isArray(STATE.grindLog))STATE.grindLog=[];return S
 function logGrind(format,done,stations,total){
   const rec={date:todayISO(),format:String(format||''),done:done===true,
              stations:Math.max(0,Math.round(+stations||0)),total:Math.max(0,Math.round(+total||0)),at:Date.now()};
-  const l=grindLog();l.push(rec);if(l.length>200)l.splice(0,l.length-200);save();return rec;
+  const l=grindLog();l.push(rec);capLog('grindLog');save();return rec;
 }
 function grindStreak(){
   /* Consecutive FINISHED grinders, most recent first — it stops at the first
@@ -7928,12 +7928,43 @@ function grindStreak(){
   const l=grindLog().slice().sort((a,b)=>(b.at||0)-(a.at||0));
   let n=0;for(const r of l){if(r&&r.done===true)n++;else break;}return n;
 }
+/* EVERY CAPPED LOG, AND WHICH END HOLDS THE NEWEST ROW. Seven writers each
+   restated their own bound — 200 in five places, 2000 and 60 in one each — and
+   the BOOT REPAIR asked none of them, so an import carrying 5,000 rows in each
+   log survived every boot and travelled in every backup after it. Measured at
+   2.4 MB of state against a few tens of kB for the capped shapes, which is
+   inside the range that trips save()'s own quota fallback. Same class as the
+   keyed maps of v284/v285: the writer enforced a bound the repair did not.
+
+   The END matters and the two families disagree: unshift-ers keep the head,
+   push-ers keep the tail. Trimming the wrong one would throw away the newest
+   training and keep the oldest, so it lives here rather than being re-derived
+   at each site. */
+const LOG_CAPS={
+  skipLog:{n:200,keep:'head'},  ruckLog:{n:200,keep:'head'},
+  gripLog:{n:200,keep:'head'},  boxLog:{n:200,keep:'head'},
+  hiitLog:{n:200,keep:'head'},
+  holdLog:{n:200,keep:'tail'},  grindLog:{n:200,keep:'tail'},
+  liftLog:{n:2000,keep:'tail'}, pain:{n:60,keep:'tail'}
+};
+/* Deliberately UNCAPPED, and each for its own reason: `photos` is the one thing
+   in this app that genuinely cannot be re-created, `measurements` is the weight
+   chart, `scoreHistory` is the assessment history a re-test is compared
+   against, and `runs` holds archived blocks the lifetime counters read. A cap
+   on any of those destroys data rather than bounding a file. */
+function capLog(key){
+  try{
+    const c=LOG_CAPS[key]; if(!c)return;
+    const l=STATE[key]; if(!Array.isArray(l)||l.length<=c.n)return;
+    if(c.keep==='head')l.length=c.n; else l.splice(0,l.length-c.n);
+  }catch(e){}
+}
 function actLog(k){const key=ACTS[k].logKey;if(!Array.isArray(STATE[key]))STATE[key]=[];return STATE[key];}
 function logAct(k,mins,extra){
   mins=Math.max(0,Math.round((mins||0)*10)/10);if(!mins&&!(extra&&extra.secs))return;
   const rec=Object.assign({date:todayISO(),mins,at:Date.now()},extra||{});
   actLog(k).unshift(rec);
-  const key=ACTS[k].logKey;if(STATE[key].length>200)STATE[key].length=200;
+  capLog(ACTS[k].logKey);
   // a max hang also updates the Dead Hang strength standard
   if(k==='grip'&&extra&&extra.secs>0){if(!STATE.prs)STATE.prs={};
     if((STATE.prs.deadhang||0)<extra.secs){STATE.prs.deadhang=Math.round(extra.secs);}}
@@ -8110,7 +8141,7 @@ function skipLog(){if(!Array.isArray(STATE.skipLog))STATE.skipLog=[];return STAT
 function logSkip(mins,rounds){
   mins=Math.max(1,Math.round(mins||0));if(!mins)return;
   skipLog().unshift({date:todayISO(),mins,rounds:rounds||0,at:Date.now()});
-  if(STATE.skipLog.length>200)STATE.skipLog.length=200;
+  capLog('skipLog');
   save();toast('🪢 '+mins+' min of skipping logged');try{checkAchievements();}catch(e){}
 }
 function skipStats(){
@@ -10880,7 +10911,7 @@ function logHold(id,secs,fresh,exId){
   if(!secs)return null;                    // a hold that never started is not a result
   const rec={date:todayISO(),id:t.id,secs,fresh:fresh===true,at:Date.now(),
              exId:(EX[exId]?exId:holdMovement(t))};
-  const l=holdLog();l.push(rec);if(l.length>200)l.splice(0,l.length-200);
+  const l=holdLog();l.push(rec);capLog('holdLog');
   save();return rec;
 }
 /* LIKE FOR LIKE ONLY. The best is the best FRESH hold, because that is the
@@ -20233,24 +20264,45 @@ function packRender(d){
     const i=bar.querySelector('i');if(i)i.style.width=pct+'%';
   }
 }
+/* THE WORKER THIS PAGE CAN ACTUALLY TALK TO. v357 measured that at the moment
+   navigator.serviceWorker.ready resolves on a genuine first install, `controller`
+   is NULL while `reg.active` already exists — and taught the boot ping to ask
+   reg.active first. Its two SIBLINGS on this screen were left on `controller`
+   alone, so with no controller: refreshPackStat() reported "not installed" for
+   an app that was installing, and packForce() posted NOTHING while toasting
+   "Downloading the rest in the background" — a promise in UI text with no code
+   behind it. Fixing one instance is not fixing the class; one helper, so a
+   fourth caller cannot forget. The worker replies to e.source and its broadcast
+   uses includeUncontrolled, so an uncontrolled page still hears the answer. */
+function swWorker(){
+  return new Promise(res=>{try{
+    if(!navigator.serviceWorker){res(null);return;}
+    const c=navigator.serviceWorker.controller;
+    if(c){res(c);return;}
+    navigator.serviceWorker.getRegistration('./')
+      .then(reg=>res((reg&&(reg.active||reg.waiting))||null)).catch(()=>res(null));
+  }catch(e){res(null);}});
+}
 function refreshPackStat(){
-  try{
-    if(!navigator.serviceWorker||!navigator.serviceWorker.controller){
+  swWorker().then(w=>{
+    if(!w){
       const st=document.getElementById('packStat');
       if(st)st.textContent='not installed';
       const bar=document.getElementById('packBar');if(bar)bar.style.display='none';
       return;
     }
     if(_packSeen)packRender(_packSeen);
-    navigator.serviceWorker.controller.postMessage({type:'cf-precache-status'});
-  }catch(e){}
+    w.postMessage({type:'cf-precache-status'});
+  }).catch(()=>{});
 }
 function packForce(){
-  try{
-    if(navigator.serviceWorker&&navigator.serviceWorker.controller)
-      navigator.serviceWorker.controller.postMessage({type:'cf-topup',force:true});
+  /* The toast sits INSIDE the branch that really posted. Outside it, a tap with
+     no worker to talk to claimed a download that was never requested. */
+  swWorker().then(w=>{
+    if(!w){toast('The offline pack has not installed yet — try again in a moment');return;}
+    w.postMessage({type:'cf-topup',force:true});
     toast('Downloading the rest in the background');
-  }catch(e){}
+  }).catch(()=>{});
 }
 try{
   if(navigator.serviceWorker){
@@ -21570,6 +21622,10 @@ function normalizeState(){
   if(!STATE._opens||typeof STATE._opens!=='object'||Array.isArray(STATE._opens))STATE._opens={};
   if(!Array.isArray(STATE.skipLog))STATE.skipLog=[];   // jump-rope record
   ['ruckLog','gripLog','boxLog'].forEach(k=>{if(!Array.isArray(STATE[k]))STATE[k]=[];});
+  /* And the SAME bounds the writers enforce. Every one of these repairs made
+     the list an array and then let any length through, so a file was bounded
+     only for as long as nothing imported one. */
+  Object.keys(LOG_CAPS).forEach(k=>{if(!Array.isArray(STATE[k]))STATE[k]=[];capLog(k);});
   if(STATE.settings.hype===undefined)STATE.settings.hype=true;   // motivator on by default
   if(!STATE.settings.coach)STATE.settings.coach='auto';          // default persona
   // one-time: switch existing installs to the new rotating Auto coach
