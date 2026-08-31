@@ -2930,6 +2930,19 @@ export default async function run() {
       t.eq('and states it once, not once per plan',
         (fl.balanced.card.match(/on your feet this week/g) || []).length, 1,
         fl.balanced.card.slice(0, 240));
+      /* AND ON WHICH CARD. Counting occurrences in the sheet is a statement
+         about the CONTAINER; which card carries the line is the payload, and
+         nothing asserted it. A mutant that swapped the test (card === 'run'
+         instead of 'ruck') moved the total onto the ruck ladder and left the
+         count at one, so it walked through every assertion above. The running
+         card renders first, which is the whole reason it owns this line. */
+      t.ok('on the running card, which renders first — not the ruck ladder',
+        fl.balanced.ruckCard.indexOf('on your feet this week') < 0,
+        fl.balanced.ruckCard.slice(0, 200));
+      /* GUARD: the ruck card must really be rendering something, or "it is not
+         on the ruck card" passes on an empty string. */
+      t.ok('guard: the ruck ladder card really rendered', fl.balanced.ruckCard.length > 60,
+        { len: fl.balanced.ruckCard.length });
       t.ok('but is not warned', !fl.balanced.big && fl.balanced.card.indexOf('% up on the') < 0,
         fl.balanced.card.slice(0, 200));
       t.ok('and neither is a plan deep into a block', !fl.late.big, fl.late);

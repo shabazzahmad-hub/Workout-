@@ -9215,6 +9215,40 @@ third caller as well.
 occurrences in `card` is a count over the whole screen. Reading what the probe
 actually collected is what made the re-aim exact instead of a guess.
 
+### The count is the container; WHICH CARD is the payload
+
+The fix's own check asserted the fact appears **exactly once in the sheet**.
+A mutant that moved the combined total from the running card to the ruck
+ladder leaves that count at **one** and walked through every assertion — the
+line was on the wrong card and nothing said so. Measured on the mutant: one
+occurrence in the sheet, and one of them inside `ruckLadderHTML()`.
+
+The warning's placement WAS pinned (`on the card for the mode that is actually
+new`) and its mutant is caught. The plain total's was not. **Measure the
+payload, not the container** — the fifth time in this file, and the first where
+the container was a count and the payload was a position.
+
+The floor beside it is a guard that the ruck card really rendered: *"it is not
+on the ruck card"* passes on an empty string.
+
+### Three harness traps in one round, and two were already written down
+
+- **`node tests/run.mjs 23 09` runs suite 23 ALONE.** The runner is
+  `args.find(a => !a.startsWith('--'))` — the FIRST non-flag argument and
+  nothing else. This file has recorded that since v322 and the mutation driver
+  was written with two suites per mutant anyway, so every placement mutant was
+  scored against a suite that never checked placement. **One suite per
+  invocation.**
+- **A `cd` inside a compound command does not persist.** A re-seed then
+  `node tests/run.mjs 09` on the next line ran in the ORIGINAL repo, not the
+  mutation copy, and reported the mutant as still escaping when the check
+  caught it. Read the mutant back **and** check which tree you measured.
+- **A red baseline makes every mutant read as caught.** The first run of this
+  round was scored against a suite carrying the Monday defect, so its results
+  were worthless. The driver now runs the baseline first and prints it, and
+  that guard is what exposed the two placement escapes on the second run.
+
+
 ## The prompt was keyed to the calendar day, and a ruck can straddle midnight (v394)
 
 Found by driving the app across a real midnight with a faked clock — a state
