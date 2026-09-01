@@ -1849,7 +1849,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='414';
+const APP_VERSION='415';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -20844,7 +20844,7 @@ function sessionHistoryHTML(){
     const feel=l.feel==='easy'?'😎':(l.feel==='hard'?'🥵':'💪');
     const st=sessionStats(p);
     h+=`<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer;padding:12px 14px" onclick="openSessionDetail(${p})">
-      <span><b>${s.name}</b><div class="tiny muted">Wk ${wk} · ${l.completedAt||l.date||''} · ${st.exDone}/${st.exTotal} moves · ${st.setsDone} sets · ~${st.estMin} min</div></span><span style="font-size:18px">${feel}</span></button>`;
+      <span><b>${s.name}</b><div class="tiny muted">Wk ${wk} · ${_ve(l.completedAt||l.date||'')} · ${st.exDone}/${st.exTotal} moves · ${st.setsDone} sets · ~${st.estMin} min</div></span><span style="font-size:18px">${feel}</span></button>`;
   });
   h+=`</div>${priorNote}`;return h;
 }
@@ -20862,7 +20862,7 @@ function openSessionDetail(p){
   const volTxt=st.totalReps?`${st.totalReps} reps`:'';
   const holdTxt=st.totalHold?fmtTime(st.totalHold)+' hold':'';
   const workTxt=[volTxt,holdTxt].filter(Boolean).join(' · ')||'—';
-  openSheet(`<h3>${sess.session.name}</h3><div class="tiny muted" style="margin-bottom:10px">Week ${wk} · ${l.completedAt||l.date||''} · felt ${feelTxt}</div>
+  openSheet(`<h3>${sess.session.name}</h3><div class="tiny muted" style="margin-bottom:10px">Week ${wk} · ${_ve(l.completedAt||l.date||'')} · felt ${feelTxt}</div>
     <div class="grid3" style="margin-bottom:10px">
       <div class="stat"><div class="n" style="color:var(--green)">${st.exDone}<span style="font-size:12px;color:var(--muted)">/${st.exTotal}</span></div><div class="l">Moves done</div></div>
       <div class="stat"><div class="n" style="color:var(--teal)">${st.setsDone}</div><div class="l">Sets</div></div>
@@ -21838,7 +21838,17 @@ function normalizeState(){
      Today from week 2, and a photo without date/pose killed Progress. Imports
      are not schema-checked, so scrub here — the one gate everything passes. */
   try{
-    const L=STATE.logs;for(const k in L){if(!L[k]||typeof L[k]!=='object')delete L[k];else if(!L[k].ex||typeof L[k].ex!=='object')L[k].ex={};}
+    /* The four date fields on a session log were never repaired, and two of
+       them reach innerHTML through sessionHistoryHTML() and openSessionDetail().
+       Measured: a completedAt of '<img src=x onerror=...>' from an imported
+       backup survived the boot, rendered as a real element and RAN. They are
+       compared with === todayISO() everywhere else, so dropping a value that
+       is not a date reads as "not today" — the honest answer for a date the
+       app cannot place. */
+    const L=STATE.logs;for(const k in L){if(!L[k]||typeof L[k]!=='object')delete L[k];
+      else{if(!L[k].ex||typeof L[k].ex!=='object')L[k].ex={};
+        ['date','completedAt','stoppedForPain','abandonedAt'].forEach(f=>{
+          if(L[k][f]!==undefined&&!isDateISO(L[k][f]))delete L[k][f];});}}
     const W=STATE.weekFeel;for(const k in W){if(!Array.isArray(W[k]))W[k]=[];}
     /* The comment above claims a photo without date OR pose killed Progress,
        and this line only ever checked the date — a restored backup carrying
@@ -21879,8 +21889,22 @@ function normalizeState(){
        nothing to keep. `typeof === 'string'` is not enough on its own:
        'not-a-date' is a string. */
     ['skipLog','ruckLog','gripLog','boxLog'].forEach(kk=>{
+      /* REBUILT FROM A FIELD LIST, not spread. `{...x, mins:...}` fixed the one
+         field it named and carried every other one through untouched — and
+         actHistoryHTML()/skipHistoryHTML() print `dist`, `unit`, `wt`, `secs`
+         and `rounds` straight into innerHTML. Measured from an imported
+         backup: `dist:'<img src=x onerror=...>'` survived the boot, reached
+         the sheet as a real element, and RAN. holdLog and grindLog forty
+         lines below already rebuild from a list for exactly this reason —
+         one of a pair guarded and its twin not.
+         The bands are the writers' own: logAct() clamps mins at 0 and stores
+         dist/wt/secs/rounds only when they are above zero, so a value that is
+         not a positive finite number did not come from the athlete. */
       if(Array.isArray(STATE[kk]))STATE[kk]=STATE[kk].filter(x=>x&&typeof x==='object'&&isDateISO(x.date))
-        .map(x=>({...x,mins:+x.mins||0}));   // string mins concatenated: "0105 MIN ALL TIME"
+        .map(x=>{const o={date:x.date,mins:Math.max(0,+x.mins||0),at:+x.at||0};   // string mins concatenated: "0105 MIN ALL TIME"
+          ['dist','wt','secs','rounds'].forEach(f=>{const v=+x[f];if(isFinite(v)&&v>0)o[f]=v;});
+          if(x.unit==='mi'||x.unit==='km')o.unit=x.unit;   // the tag records what was TYPED; anything else is not a unit
+          return o;});
     });
     /* The grinder log carries an OUTCOME rather than minutes, so it repairs on
        its own terms: `done` is a deliberate boolean and only `true` is a
@@ -22396,7 +22420,7 @@ function normalizeState(){
    // _lastExport/_backupNudgeDismissed feed backupNudgeHTML()'s timing — an
    // unparseable value must read as "never exported" / "never dismissed", the
    // MORE-nudging direction, not silently suppress a reminder that matters.
-   if(STATE._lastExport!==undefined&&(typeof STATE._lastExport!=='string'||isNaN(Date.parse(STATE._lastExport))))delete STATE._lastExport;
+   if(STATE._lastExport!==undefined&&!isDateISO(STATE._lastExport))delete STATE._lastExport;   // isNaN(Date.parse()) accepts '2025-02-29'; the app owns one date predicate
    if(STATE._backupNudgeDismissed!==undefined&&!(typeof STATE._backupNudgeDismissed==='number'&&isFinite(STATE._backupNudgeDismissed)))delete STATE._backupNudgeDismissed;
    /* Movement is stored per day, so a bad value hides in history rather than in
       today and only surfaces when that day is read back. Repair every one. */
@@ -22695,7 +22719,14 @@ function normalizeState(){
     if(_n){
       if(_n.kcalAdj!=null&&(typeof _n.kcalAdj!=='number'||!isFinite(_n.kcalAdj)))_n.kcalAdj=0;
       else if(typeof _n.kcalAdj==='number')_n.kcalAdj=clamp(_n.kcalAdj,-KCAL_ADJ_MAX,KCAL_ADJ_MAX);
-      if(_n.kcalAdjAt!=null&&typeof _n.kcalAdjAt!=='string')delete _n.kcalAdjAt;
+      /* isDateISO(), not typeof. calorieCheckDue() does
+         (Date.now()-Date.parse(v))/86400000>=21, and Date.parse('not-a-date')
+         is NaN — so NaN>=21 is FALSE and the function answers "not due", for
+         ever. Measured: a junk stamp silently switched the diet guardrail off
+         and nothing on screen said so. The same shape as _shredStart, and the
+         app already owns one date predicate. `!== undefined`, not `!= null`:
+         a stored null is a junk key that travels in every backup. */
+      if(_n.kcalAdjAt!==undefined&&!isDateISO(_n.kcalAdjAt))delete _n.kcalAdjAt;
     }
   }catch(e){}
   /* cueVol multiplies every beep in the app; a string here would make
