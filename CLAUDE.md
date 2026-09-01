@@ -11323,6 +11323,59 @@ empties every backup.
 I found", but a list with a count and every member on it.
 
 
+### Three sweeps that came back clean (v406)
+
+Recorded as coverage, because a clean measurement is a result — and each one
+had its detector proven before its zero was believed.
+
+- **A years-old backup restored on today's app.** A file shaped the way this
+  app wrote them many versions ago: no `items` on a log, no `subs` on a
+  baseline, a v313 `_trainAgain` STRING, the two-value cardio mode, no prep
+  block, no hold log. It restores, boots, renders **14 panes** with no `NaN`,
+  no `undefined`, no `Invalid Date` and no throw, builds a real session (six
+  movements with a warm-up and a cool-down), and `validateData()` is clean. The
+  legacy `_trainAgain` string is correctly dropped rather than trusted.
+
+  **One reading was the probe**: `buildSession()` returns
+  `{ptr,pos,cycle,week,session,warmup,main,finisher,cooldown,dropped}` — there
+  is no `items`, so `s.items.length` threw and looked exactly like an app
+  defect. *Confirm the control's real shape before believing the result.*
+
+- **A session finished either side of midnight.** Driven with the wall clock
+  pinned to 23:57 and stepped past midnight: the log stays on the day it was
+  finished, `trainedToday()` flips correctly, the streak holds, and
+  `gapSince()` reports `{missed:0, off:0, days:0}` — no false "you missed a
+  session" for an athlete who trained four minutes ago.
+
+- **Injection through 24 NESTED stored values**, which is the gap v399's sweep
+  had: it drove 62 fields of STATE, and this one drives the values *inside*
+  them — a food row's name, meal, portion, `calc` and `src`; a favourite's
+  name; a measurement date; an achievement date; a photo id, date and pose; a
+  swap target; hold, lift and skip log rows; the prep block; an archived run; a
+  score-history row; the pain log; both feel maps; the voice name; the coach
+  id; the Azure region. Sixteen surfaces plus seven sheets: **no injected
+  element and nothing executed**, with a planted payload proving the detector
+  can see one.
+
+- **All eight Quick workouts, driven end to end** — opened by their real id,
+  every row marked, no `NaN`, no empty screen, no throw — and the pointer, the
+  log count and the streak are all unchanged afterwards, which is the promise
+  *"Bonus only; won't affect your program"* measured rather than read.
+
+- **And Quick asks the safety questions the sibling paths kept forgetting.**
+  With all four joints flagged, **no** movement in any Quick workout is risky
+  (guard: 148 of the library IS flagged, so the test can fire); with nothing
+  flagged, nothing is substituted; and with an empty gear list, no Quick
+  movement needs kit the athlete does not own. This is the fifth place
+  `safeSwap()` has been checked for after being forgotten by five sibling
+  paths, and it is not a sixth.
+
+  **The probe invented `startQuick(i)`, which does not exist** — the entry is
+  `openQuick(id)` and the workouts are keyed by id, not index. Eight
+  identical "THREW" lines that looked like a dead tab. *Confirm the control's
+  real shape before believing the result.*
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
