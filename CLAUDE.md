@@ -13145,6 +13145,100 @@ the right way round for this app. **Read the change back before believing it is
 an improvement**, which is the mutant rule pointed at a fix.
 
 
+## A row rebuilt from a field list, and one that was only copied (v415)
+
+Found by sweeping a class rather than by using the app: **every repair that
+rebuilds a stored row with a SPREAD.** Three of them. `runs` and `photos` are
+safe — one never renders the fields it carries through, the other guards them
+at every read. The third is four logs at once:
+
+```js
+.map(x=>({...x,mins:+x.mins||0}))
+```
+
+It fixes the one field it names and carries **every other one through
+untouched** — and `actHistoryHTML()` and `skipHistoryHTML()` print `dist`,
+`unit`, `wt`, `secs` and `rounds` straight into `innerHTML`. Measured from an
+imported backup, before the fix:
+
+| | |
+|---|---|
+| junk survived the boot | **yes** |
+| rendered as a real element on the ruck, grip and skipping sheets | **yes** |
+| arbitrary script RAN | **yes, three times** |
+
+**`holdLog` and `grindLog` forty lines below already rebuild from a field
+list**, and their comments say why. *One of a pair guarded and its twin not*,
+with four members on the unguarded side.
+
+**The bands are the WRITERS' own, not invented.** `logAct()` clamps `mins` at
+zero and stores `dist`, `wt`, `secs` and `rounds` only when they are above
+zero, so a value that is not a positive finite number did not come from the
+athlete. `unit` is a membership test — it is the tag recording what was
+TYPED, and anything outside `mi`/`km` is not a unit.
+
+### The session log had the same shape, on the surface that names the day
+
+`normalizeState()`'s log repair only ever checked that the row was an object
+and that `ex` was one. **The four date fields were never touched**, and
+`completedAt`/`date` reach `innerHTML` through `sessionHistoryHTML()` and
+`openSessionDetail()`. Same measurement, same result: it survived the boot,
+rendered and ran.
+
+Two guards mean two checks, so both halves are fixed — repaired with
+`isDateISO()` **and** escaped at both render sites. They are compared with
+`=== todayISO()` everywhere else, so dropping a value that is not a date reads
+as "not today", which is the honest answer for a date the app cannot place.
+
+**Neither was in an earlier sweep, and that is the lesson about sweeps.**
+v399 drove 62 fields of `STATE` and v406 drove 24 nested values — an activity
+row was in that list *as a row*, never field by field, and a session log's
+dates were in neither. **A sweep is only as wide as the surface it
+enumerates.** The suite's own seeds proved it: every existing check seeds
+`{date, mins}` and nothing else.
+
+## A junk date that switched a guardrail off (v415)
+
+```js
+if(_n.kcalAdjAt!=null&&typeof _n.kcalAdjAt!=='string')delete _n.kcalAdjAt;
+```
+
+A **type** test on a field a **date** predicate owns. `calorieCheckDue()` does
+`(Date.now()-Date.parse(v))/86400000>=21`, and `Date.parse('not-a-date')` is
+`NaN`:
+
+```
+"abc"          Date.parse -> NaN    due? -> false
+"2025-13-45"   Date.parse -> NaN    due? -> false
+```
+
+`false` is *"do not ask again"*. So a junk stamp out of an imported backup
+**switched the twelve-week diet guardrail off for ever**, with nothing on
+screen to say so. Fail-OPEN, and the same shape as `_shredStart` — a junk date
+silently disabling a guardrail, in the direction that is silent.
+
+**The app has owned one date predicate since v395** and this repair was asking
+a weaker one. `_lastExport` went with it: `isNaN(Date.parse(x))` accepts
+`'2025-02-29'`, which is not a day in 2025, while `isDateISO()` round-trips
+through `localISO()` and refuses it.
+
+**`!== undefined`, not `!= null`** — a stored `null` is a junk key that travels
+in every backup.
+
+**The floors are what stop the fix becoming "always ask":** a stamp five days
+old survives and is still NOT due, and one thirty days old IS. A repair that
+dropped every stamp satisfies every assertion about the junk one and turns the
+guardrail into a nag.
+
+### The check failed first, and it was the check
+
+`ran: 1` on correct code. The one execution was the block's **own detector** —
+an `img`'s `onerror` fires a tick later, so the planted element incremented the
+shared counter after it had been zeroed. It carries its own payload now, with
+a second guard asserting that a planted payload really does RUN — otherwise
+*"nothing ran"* is satisfied by a page where nothing could have run at all.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
