@@ -1832,7 +1832,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='410';
+const APP_VERSION='411';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -1928,7 +1928,21 @@ let saveT=null;
    undetected because the base and our own save shared a millisecond. A counter
    is also immune to the clock jumps v380 moved every timer off. */
 let _syncedRev=0;
+/* A RESET ADOPTED FROM ANOTHER TAB MUST NOT BE WRITTEN OVER BY THIS ONE.
+   Closing a live session is not a passive act: playerTeardown() clears the
+   resume point and hiitTeardown() records the stopped grinder, and BOTH call
+   save() — which put this tab's own, un-erased copy back into localStorage,
+   so the load() a few lines later read our old state instead of the erased
+   one. Measured across two tabs with a grinder live: the session closed, the
+   tab looked as though it had obeyed, and onboarded was still true with the
+   log, the pointer and the name all intact. hardReset()'s "this cannot be
+   undone" was false again, by a route v405 did not reach.
+   The athlete asked for everything to go, so nothing the teardown wants to
+   keep is worth keeping. It is a `finally`, so a throw inside the teardown
+   cannot leave the app unable to save. */
+let _adoptingReset=false;
 function save(){
+  if(_adoptingReset)return;
   STATE._saved=todayISO();
   STATE._base=_syncedRev;
   STATE._rev=_syncedRev+1;
@@ -2019,8 +2033,12 @@ window.addEventListener('storage',async e=>{
     const wasReset=!!(incoming&&incoming.onboarded===false&&STATE&&STATE.onboarded===true);
     if(!wasReset&&typeof _sessionLive==='function'&&_sessionLive())return;
     if(wasReset){
-      try{if(typeof PLAYER!=='undefined'&&PLAYER&&typeof playerQuit==='function')playerQuit();}catch(_){}
-      try{if(typeof INTV!=='undefined'&&INTV&&typeof hiitQuit==='function')hiitQuit();}catch(_){}
+      /* Nothing this teardown writes may reach storage — see _adoptingReset. */
+      _adoptingReset=true;
+      try{
+        try{if(typeof PLAYER!=='undefined'&&PLAYER&&typeof playerQuit==='function')playerQuit();}catch(_){}
+        try{if(typeof INTV!=='undefined'&&INTV&&typeof hiitQuit==='function')hiitQuit();}catch(_){}
+      }finally{_adoptingReset=false;}
     }
     /* A LOST UPDATE, and before this it was silent. v404 made this tab adopt a
        foreign write, which is right when the other tab had already seen our
@@ -3927,7 +3945,7 @@ function skipBaseline(){
     maxes:{plank:Math.round(30*b),side:Math.round(20*b),hollow:Math.round(15*b),lower:Math.round(8*b),
            dyn:Math.round(20*b),push:Math.round(12*b),pull:Math.round(6*b),squat:Math.round(22*b),
            power:Math.round(10*b),stamina:Math.round(12*b)}};
-  save();toast('Starting from your experience level — retest any time from Progress');render();
+  save();toast('Starting from your experience level — retest any time from Progress ▸ Strength');render();
 }
 /* Defer a re-test without stalling the program: carry the previous block's
    measured maxima forward so the athlete is never locked out of training. */
@@ -8208,7 +8226,7 @@ function actHistoryHTML(k){
   return `<div class="section-label" style="margin-top:14px">Recent sessions</div><div class="card" style="padding:0 12px">`+
     l.map((x,i)=>`<div class="kv" style="border-top:1px solid var(--line)">
       <span><b>${x.mins} min</b> <span class="tiny muted">· ${x.dist?x.dist+' '+(x.unit||'km')+' · ':''}${x.wt?x.wt+' load · ':''}${x.secs?'best '+x.secs+'s · ':''}${x.rounds?x.rounds+' rounds · ':''}${x.date}</span></span>
-      <button class="chip" onclick="removeAct('${k}',${i})">✕</button></div>`).join('')+`</div>`;
+      <button class="chip" aria-label="Remove this activity" onclick="removeAct('${k}',${i})">✕</button></div>`).join('')+`</div>`;
 }
 /* THE KIT QUESTION, ON THE THIRD PICKING PATH TO SKIP IT. startForceTrain()
    skipped it in v322 and startHoldTest() in v366. Measured on an athlete with
@@ -8400,7 +8418,7 @@ function skipHistoryHTML(){
   return `<div class="section-label" style="margin-top:14px">Recent sessions</div><div class="card" style="padding:0 12px">`+
     l.map((x,i)=>`<div class="kv" style="border-top:1px solid var(--line)">
       <span><b>${x.mins} min</b> <span class="tiny muted">· ${x.rounds?x.rounds+' rounds · ':''}${x.date}</span></span>
-      <button class="chip" onclick="removeSkip(${i})">✕</button></div>`).join('')+`</div>`;
+      <button class="chip" aria-label="Remove this skipping entry" onclick="removeSkip(${i})">✕</button></div>`).join('')+`</div>`;
 }
 function openSkipping(){
   const s=skipStats();
@@ -9022,18 +9040,29 @@ function ivResync(){
 }
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')ivResync();});
 function hiitSkip(){if(!INTV)return;ivClear();INTV.i++;if(INTV.i>=INTV.seq.length)ivDone();else ivStep();}
-function hiitTeardown(){if(!INTV)return;wakeOff();ivClear();beatStop();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;
+function hiitTeardown(){if(!INTV)return;
+  /* THE RECORD LIVES IN THE TEARDOWN, NOT IN hiitQuit(), because the teardown
+     is what every exit path reaches. It sat in hiitQuit() and the hardware
+     BACK button calls this function directly — so the ✕ wrote the stop and
+     Back wrote nothing. Measured on three finished grinders, stopping a
+     fourth: the ✕ left grindStreak() at 0 and Back left it at 3, still
+     claiming an unbroken run of finishes the athlete had just broken.
+     Same shape as pushFoodRow() and setForceResultQuiet(): fold it into the
+     one place every caller goes through, rather than asking each to remember.
+     ivDone() sets phase='done' and INTV.logged, and hiitLogDone() tears down
+     inline, so neither can be double-logged by this. */
+  if(isGrinder(INTV.format)&&INTV.phase!=='done'&&!INTV.logged){
+    INTV.logged=true;
+    try{logGrind(INTV.format,false,INTV.i,Math.round(INTV.workElapsed||0));}catch(e){}
+  }
+  wakeOff();ivClear();beatStop();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;
   setTimeout(()=>{try{if(!$('#hiit').classList.contains('open'))$('#hiit').innerHTML='';}catch(e){}},400);
   if(TAB==='today')renderToday();}
 function hiitQuit(){
-  /* Stopping a grinder is a real outcome and gets a real record. Without
-     this the only thing written is the finish, so a stopped session simply
-     never happened — and a streak built on "sessions that were logged"
-     would count every one of them, which is the opposite of the truth. */
-  if(INTV&&isGrinder(INTV.format)&&INTV.phase!=='done'&&!INTV.logged){
-    INTV.logged=true;
-    logGrind(INTV.format,false,INTV.i,Math.round(INTV.workElapsed||0));
-  }
+  /* Stopping a grinder is a real outcome and gets a real record — written by
+     hiitTeardown() below, which is the one place every exit path reaches.
+     What is left here is the HISTORY step, which the Back handler must not
+     take: the pop it is answering has already happened. */
   const had=!!INTV;hiitTeardown();if(had&&history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
 function hiitLogDone(){
   if(!INTV)return;   // double-tap guard
@@ -9114,9 +9143,9 @@ function renderAssessStep(){
     ${(t.unit==='time'||t.dur)?`<button class="btn green" style="margin-bottom:12px" onclick="startBaselineTimer()">▶ ${t.dur?`Start ${t.dur}s timer`:'Start timer'}</button>`:''}
     <div class="field"><label>${t.unit==='time'?'Your hold (seconds) — the timer fills this in':(t.dur?`Good reps in the ${t.dur} seconds`:'Good reps completed')}</label>
       <div class="numrow">
-        <button onclick="assessBump(-${t.unit==='time'?5:1})">–</button>
+        <button aria-label="Lower the result" onclick="assessBump(-${t.unit==='time'?5:1})">–</button>
         <input id="assess-val" type="number" inputmode="numeric" value="${assessState.results[t.id]||''}" placeholder="0">
-        <button onclick="assessBump(${t.unit==='time'?5:1})">+</button>
+        <button aria-label="Raise the result" onclick="assessBump(${t.unit==='time'?5:1})">+</button>
       </div>
     </div>
     <button class="btn ghost" style="margin-bottom:10px" onclick="openExerciseInfo('${exId}')">ⓘ How to do this move</button>
@@ -10044,7 +10073,7 @@ function briefSegments(){
   }else{
     /* Fuel has no weight control at all — the calculator asks for a weight but
        does not log one. logMeasure() is on Progress, beside the chart. */
-    mission=`The mission: down to ${goalW} pounds${bf}. Log your weight on the Progress tab so I can track every pound with you. Today, we get to work.`;
+    mission=`The mission: down to ${goalW} pounds${bf}. Log your weight on the Progress tab, under Body, so I can track every pound with you. Today, we get to work.`;
   }
   segs.push({icon:'🎯',title:'Your mission',say:mission});
   /* THE BRIEF NEVER MENTIONED THE EVALUATION — not at twelve weeks, not the
@@ -10142,7 +10171,7 @@ function briefSegments(){
     const dToSat=(6-new Date().getDay()+7)%7;   // 0 = today is Saturday
     segs.push({icon:'📏',title:'Progress check',
       say: dToSat===0
-        ? `Progress check: today is your weekly weigh-in. After training, step on the scale and measure your waist, then log both in the Progress tab. A shrinking waist is the clearest proof the fat is coming off.`
+        ? `Progress check: today is your weekly weigh-in. After training, step on the scale and measure your waist, then log both on the Progress tab, under Body. A shrinking waist is the clearest proof the fat is coming off.`
         : `Progress check: your weekly weigh-in is this Saturday, ${dToSat===1?'tomorrow':'in '+dToSat+' days'}. Have your scale and a tape measure ready — on Saturday you'll log your weight and waist so we can track the trend.`});
   }
   // 11 — close / handoff
@@ -12476,9 +12505,9 @@ function logMeasure(){
   openSheet(`
     <h3>Log today's measurements</h3>
     <div class="field"><label>Waist / navel (${STATE.profile.unit})</label>
-      <div class="numrow"><button onclick="mBump('w',-0.5)">–</button><input id="m-waist" type="number" inputmode="decimal" placeholder="${(()=>{const l=[...STATE.measurements].reverse().find(m=>m.waist>0);return l?r1(waistShow(l.waist)):(isImperial()?'34':'86');})()}"><button onclick="mBump('w',0.5)">+</button></div></div>
+      <div class="numrow"><button aria-label="Lower the waist figure" onclick="mBump('w',-0.5)">–</button><input id="m-waist" type="number" inputmode="decimal" placeholder="${(()=>{const l=[...STATE.measurements].reverse().find(m=>m.waist>0);return l?r1(waistShow(l.waist)):(isImperial()?'34':'86');})()}"><button aria-label="Raise the waist figure" onclick="mBump('w',0.5)">+</button></div></div>
     <div class="field"><label>Body weight (optional)</label>
-      <div class="numrow"><button onclick="mBump('b',-0.5)">–</button><input id="m-weight" type="number" inputmode="decimal" placeholder="optional"><button onclick="mBump('b',0.5)">+</button></div></div>
+      <div class="numrow"><button aria-label="Lower the weight figure" onclick="mBump('b',-0.5)">–</button><input id="m-weight" type="number" inputmode="decimal" placeholder="optional"><button aria-label="Raise the weight figure" onclick="mBump('b',0.5)">+</button></div></div>
     <button class="btn primary" onclick="saveMeasure()">Save</button>
   `);
 }
@@ -12487,7 +12516,7 @@ function setWaistGoal(){
   openSheet(`<h3>Set your waist goal</h3>
     <p class="muted sm" style="margin:2px 0 12px">A target waist to work toward. Progress shows as a bar once you log measurements.</p>
     <div class="field"><label>Goal waist (${p.unit})</label>
-      <div class="numrow"><button onclick="gBump(-0.5)">–</button><input id="g-waist" type="number" inputmode="decimal" value="${cur}" placeholder="${p.unit==='in'?'32':'80'}"><button onclick="gBump(0.5)">+</button></div></div>
+      <div class="numrow"><button aria-label="Lower the goal waist" onclick="gBump(-0.5)">–</button><input id="g-waist" type="number" inputmode="decimal" value="${cur}" placeholder="${p.unit==='in'?'32':'80'}"><button aria-label="Raise the goal waist" onclick="gBump(0.5)">+</button></div></div>
     <button class="btn primary" onclick="saveWaistGoal()">Save goal</button>`);
 }
 function gBump(d){const inp=$('#g-waist');inp.value=Math.max(0,((+inp.value||(+inp.placeholder||0))+d)).toFixed(1);}
@@ -12508,7 +12537,7 @@ function setGoalWeight(){
   openSheet(`<h3>Set your goal weight</h3>
     <p class="muted sm" style="margin:2px 0 12px">The weight you are working toward. Your projection, your pace and your daily calorie target are all built on this number.${nowShow!=null?` You are <b>${nowShow} ${im?'lb':'kg'}</b> now.`:''}</p>
     <div class="field"><label>Goal weight (${im?'lb':'kg'})</label>
-      <div class="numrow"><button onclick="gwBump(-1)">–</button><input id="g-weight" type="number" inputmode="decimal" value="${cur}" placeholder="${im?'165':'75'}"><button onclick="gwBump(1)">+</button></div></div>
+      <div class="numrow"><button aria-label="Lower the goal weight" onclick="gwBump(-1)">–</button><input id="g-weight" type="number" inputmode="decimal" value="${cur}" placeholder="${im?'165':'75'}"><button aria-label="Raise the goal weight" onclick="gwBump(1)">+</button></div></div>
     <button class="btn primary" onclick="saveGoalWeight()">Save goal</button>
     ${p.goalWeightLb>0?`<button class="btn ghost sm" style="margin-top:8px" onclick="clearGoalWeight()">Clear it — just train</button>`:''}`);
 }
@@ -13392,7 +13421,7 @@ function openBuilder(){
     .map((f,i)=>({f,i})).filter(x=>x.f&&Array.isArray(x.f.items));
   openSheet(`<h3>🛠️ Custom workout</h3>
     <p class="muted sm" style="margin:2px 0 10px">Tap moves to build your own session. Runs guided; won't affect your program.</p>
-    ${_custom.length?`<div class="card pad" style="margin-bottom:10px"><div class="tiny muted" style="margin-bottom:6px">Your session · ${_custom.length} moves</div>${_custom.map(k=>`<div class="kv"><span>${safeSwap(k)!==k?'⚠️ ':''}${EX[k].name}</span><button class="chip" onclick="removeCustom('${k}')">✕</button></div>`).join('')}
+    ${_custom.length?`<div class="card pad" style="margin-bottom:10px"><div class="tiny muted" style="margin-bottom:6px">Your session · ${_custom.length} moves</div>${_custom.map(k=>`<div class="kv"><span>${safeSwap(k)!==k?'⚠️ ':''}${EX[k].name}</span><button class="chip" aria-label="Remove this movement" onclick="removeCustom('${k}')">✕</button></div>`).join('')}
       ${customRiskHTML()}
       <button class="btn primary" style="width:100%;margin-top:10px" onclick="startCustom()">▶ Start workout</button>
       <button class="btn ghost" style="width:100%;margin-top:8px" onclick="saveCustomFav()">☆ Save as favorite</button></div>`:''}
@@ -13732,7 +13761,7 @@ function measureListHTML(){
     ms.map(m=>`<div class="kv" style="border-top:1px solid var(--line);padding:10px 2px">
       <span style="min-width:0"><b>${_ve(String(m.date).slice(0,10))}</b>
         <div class="tiny muted" style="margin-top:2px">${m.waist>0?('waist '+r1(waistShow(m.waist))+' '+(isImperial()?'in':'cm')):''}${(m.waist>0&&m.weight>0)?' · ':''}${m.weight>0?('weight '+r1(weightShow(m.weight))+' '+(isImperial()?'lb':'kg')):''}</div></span>
-      <button class="btn sm ghost" style="flex:0 0 auto" onclick="removeMeasure(${_ve(JSON.stringify(String(m.date).slice(0,10)))})">✕</button></div>`).join('')+
+      <button class="btn sm ghost" aria-label="Remove this measurement" style="flex:0 0 auto" onclick="removeMeasure(${_ve(JSON.stringify(String(m.date).slice(0,10)))})">✕</button></div>`).join('')+
     `</div><div class="tiny muted" style="margin-top:6px">Mistyped one? Delete it — a bad row skews the charts and the goal pace for good.</div>`;
 }
 function latestTestDate(){
@@ -14463,7 +14492,13 @@ async function lookupBarcode(code){
   toast('Looking up '+code+'…');
   const gen=_sheetGen;   // the sheet state this lookup belongs to
   try{const f=await offBarcode(code);
-    if(gen!==_sheetGen){toast('Found: '+f.n+' — tap ➕ to log it',5000);return;}   // user moved on; never replace their sheet
+    /* The fourth reader in this class, and the one whose result costs the most
+       to get again: a barcode read means the product is in the athlete's hand.
+       It stood down correctly and then threw the product away while naming an
+       address that held nothing. */
+    if(gen!==_sheetGen){_foodRead={name:f.n+(f.s?' ('+f.s+')':''),kcal:f.k,p:f.p,c:f.c,f:f.f};
+      try{renderFuel();}catch(_){}
+      toast('Found: '+f.n+' — waiting on the Fuel tab',5000);return;}   // user moved on; never replace their sheet
     openQuickAdd({name:f.n+(f.s?' ('+f.s+')':''),kcal:f.k,p:f.p,c:f.c,f:f.f});
     toast('Found: '+f.n,4000);
   }catch(e){
@@ -15107,6 +15142,18 @@ async function _resolveScreenshotMacros(dataUrl,est,opts){
   }catch(e){}
   return est;
 }
+/* A READ THE ATHLETE HAS PAID FOR IS PARKED, NEVER THROWN AWAY.
+   All three image readers stand down when the sheet world has moved on — the
+   guard exists so a slow read cannot write into a sheet he has since opened
+   and typed into. Each then told him where to pick the result up and left it
+   NOWHERE. Measured: the ➕ opened a blank form, and Movement offered no route
+   at all. A named address with nothing at it is this repo's stale-pointer
+   class, and here it also wastes a metered Gemini call (v305). */
+let _foodRead=null;
+function foodReadPending(){return (_foodRead&&typeof _foodRead==='object')?_foodRead:null;}
+function openFoodRead(){const q=foodReadPending();if(!q){toast('Nothing waiting');return;}_foodRead=null;openQuickAdd(q);}
+function discardFoodRead(){if(!foodReadPending()){toast('Nothing waiting');return;}_foodRead=null;toast('Discarded');try{renderFuel();}catch(e){}}
+function discardActivityRead(){if(!_actRead){toast('Nothing waiting');return;}_actRead=null;toast('Discarded');try{repaintMovement();}catch(e){}}
 function foodPhoto(){
   if(!foodAIReady()){toast('Add a free Gemini key in Settings ⚙️ for photo estimates');openQuickAdd();return;}
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.setAttribute('capture','environment');
@@ -15115,7 +15162,7 @@ function foodPhoto(){
     rd.onload=async()=>{toast('Estimating…');const gen=_sheetGen;   // Gemini can take several seconds — never clobber a sheet opened meanwhile
       try{const du=await _downscale(rd.result,768);
         const est=await estimateFoodFromImage(du,{onRetry:(n,of)=>toast('Google\'s AI is busy — retrying ('+n+'/'+(of-1)+')…',2500)});
-        if(gen!==_sheetGen){toast('📷 Estimated '+(est.name||'food')+' · ~'+est.kcal+' kcal — tap ➕ to log it',6000);return;}
+        if(gen!==_sheetGen){_foodRead=est;try{renderFuel();}catch(_){}toast('📷 Estimated '+(est.name||'food')+' · ~'+est.kcal+' kcal — waiting on the Fuel tab',6000);return;}
         openQuickAdd(est);toast('📷 '+(est.name||'Food')+(est.portion?' · '+est.portion:'')+' · ~'+est.kcal+' kcal, '+est.p+'g — tap Save to log',5000);
       }catch(e){toast('Photo estimate failed — '+_aiErrText(e),6000);
         if(gen===_sheetGen)openQuickAdd();}};
@@ -15320,8 +15367,17 @@ function activityScreenshot(){
         }
         const plan=activityPlan(est);
         if(!plan.read&&!plan.steps)throw new Error('no activities found on that screenshot');
-        if(gen!==_sheetGen){toast('Read '+plan.read+' activities — open Movement to review',5000);}
-        _actRead=plan; openActivityReview();
+        /* THE GUARD HAD NO `return`, so it announced the stand-down and then
+           opened the sheet anyway — measured, it replaced a quick-add sheet the
+           athlete had typed into. Both siblings above return; this one did not. */
+        _actRead=plan;
+        if(gen!==_sheetGen){
+          const what=plan.read?(plan.read+' activit'+(plan.read===1?'y':'ies')):'your step count';
+          toast('Read '+what+' — waiting under Today ▸ Workout ▸ Movement',6000);
+          try{repaintMovement();}catch(e){}
+          return;
+        }
+        openActivityReview();
       }catch(err){
         _actRead=null;
         toast('Could not read it — '+_aiErrText(err),7000);
@@ -15462,7 +15518,7 @@ function foodScreenshot(){
         if(_macrosMissing(est))est=Object.assign({},est,{p:undefined,c:undefined,f:undefined,macrosMissing:true});
         /* Only if the second look ALSO came back without it. */
         else est=_fillMacroFromKcal(est);
-        if(gen!==_sheetGen){toast('📋 Imported '+(est.name||'food')+' · ~'+est.kcal+' kcal — tap ➕ to log it',6000);return;}
+        if(gen!==_sheetGen){_shotSeparate=false;_foodRead=Object.assign({},est,{fromShot:true});try{renderFuel();}catch(_){}toast('📋 Imported '+(est.name||'food')+' · ~'+est.kcal+' kcal — waiting on the Fuel tab',6000);return;}
         /* A fresh import starts on the default. Toggling to "separate" and
            then closing the sheet must not leave that choice armed for the
            next screenshot — the silent default is what caused the bug. */
@@ -15502,6 +15558,12 @@ function intakeHTML(){
     <div class="row" style="justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap">
       <div><b style="font-size:19px">${t.kcal}${kcalT?' / '+kcalT:''}</b> <span class="tiny muted">kcal</span></div>
       <div class="btnrow" style="gap:6px;flex:1 1 auto;min-width:0;justify-content:flex-end"><button class="chip" onclick="openFoodSearch()">🔎 Search</button><button class="chip" onclick="scanBarcode()">📸 Scan</button><button class="chip" onclick="foodPhoto()">📷 Snap</button><button class="chip" onclick="foodScreenshot()">📋 Import</button><button class="chip" onclick="openQuickAdd()" aria-label="Quick add food">➕</button></div></div>`;
+  /* Both halves come from a language model: the name reaches innerHTML, and the
+     calories are read as a number rather than printed as whatever arrived.
+     There is no global num() — it is a function-local const in five places. */
+  const _fr=foodReadPending();
+  if(_fr){const _frk=(typeof _fr.kcal==='number'&&isFinite(_fr.kcal)&&_fr.kcal>0)?Math.round(_fr.kcal):0;
+    h+=`<div class="kv" data-foodread="1" style="margin-top:10px"><span><b>📷 ${_ve(String(_fr.name||'Food').slice(0,60))}</b><br><span class="tiny muted">${_frk?'~'+_frk+' kcal ':''}read from your image — nothing logged yet</span></span><span class="btnrow" style="gap:6px"><button class="chip" onclick="openFoodRead()">Log it</button><button class="chip" onclick="discardFoodRead()" aria-label="Discard what was read">✕</button></span></div>`;}
   if(kcalT){const pct=Math.min(100,Math.round(t.kcal/kcalT*100));
     h+=`<div class="pbar${t.kcal>kcalT?'':' green'}" style="margin-top:8px"><i style="width:${pct}%"></i></div>
       <div class="tiny muted" style="margin-top:4px">${t.kcal<=kcalT?(kcalT-t.kcal)+' kcal left today':(t.kcal-kcalT)+' kcal over — that\'s one day, not the week.'}${adj>0?` <span style="color:var(--green);font-weight:700">· +${adj} earned from today's movement</span>`:''}</div>`;}
@@ -15533,7 +15595,7 @@ function intakeHTML(){
         h+=`<div class="kv" style="border-top:1px solid var(--line);gap:6px">
           <button onclick="editFood(${i})" style="flex:1;min-width:0;text-align:left;background:none;border:none;color:var(--ink);cursor:pointer;padding:8px 0">
             ${_ve(f.name)} <span class="tiny muted">· ${f.kcal} kcal · ${macrosUncaptured(f)?'':`${f.p}p${f.c?' · '+f.c+'c':''}${f.f?' · '+f.f+'f':''}`}</span>${macrosUncaptured(f)?`<span class="tiny" style="color:var(--gold);font-weight:700">⚠️ macros not captured — tap to add</span>`:(gp=>gp?`<span class="tiny" style="color:var(--gold);font-weight:700">⚠️ ${gp.which} missing — tap to add ~${gp.grams} g</span>`:'')(foodMacroGap(f))}${_MACRO_KEY[f.calc]?`<span class="tiny muted"> · ${_ve(f.calc)} calculated from the calories, not read</span>`:''}${f.portion?`<span class="tiny muted"> · 📏 ${_ve(f.portion)}</span>`:''}</button>
-          <button class="chip" style="flex:0 0 auto" onclick="removeFood(${i})">✕</button></div>`;
+          <button class="chip" style="flex:0 0 auto" aria-label="Remove this food" onclick="removeFood(${i})">✕</button></div>`;
       });
     });
   }else{
@@ -15929,7 +15991,7 @@ function checkReminder(){
     const wk=weekKey(), dow=new Date().getDay();
     if(dow===6 && STATE._weeklyRemindedWeek!==wk){
       STATE._weeklyRemindedWeek=wk;save();
-      try{fireProgressNotif('📏 Weekly weigh-in day — step on the scale, measure your waist, and log them in the Progress tab.','coreforge-weekly');}catch(e){}
+      try{fireProgressNotif('📏 Weekly weigh-in day — step on the scale, measure your waist, and log them on the Progress tab, under Body.','coreforge-weekly');}catch(e){}
     }else if(dow===5 && STATE._weeklyPrepWeek!==wk){
       STATE._weeklyPrepWeek=wk;save();
       try{fireProgressNotif('📏 Tomorrow is your weekly weigh-in — have your scale and a tape measure ready.','coreforge-weekly-prep');}catch(e){}
@@ -17640,6 +17702,7 @@ function movementHTML(){
   let h=`<div class="section-label">Movement · <span style="color:${eq>=tgt?'var(--green)':'var(--gold)'}">${eq.toLocaleString()} / ${tgt.toLocaleString()}</span></div><div class="card pad">
     <div class="pbar" style="margin:2px 0 12px"><i style="width:${pct}%;background:linear-gradient(90deg,#7ee08a,#2fa84f)"></i></div>
     ${foodAIReady()?`<button class="btn ghost" style="width:100%;margin-bottom:10px" onclick="activityScreenshot()">📷 Read my watch screenshot</button>`:''}
+    ${_actRead?`<div class="kv" data-actread="1" style="margin-bottom:10px"><span><b>📋 Read from your screenshot</b><br><span class="tiny muted">${_actRead.read?_actRead.read+' activit'+(_actRead.read===1?'y':'ies'):'Your step count'} — nothing logged yet</span></span><span class="btnrow" style="gap:6px"><button class="chip" onclick="openActivityReview()">Review</button><button class="chip" onclick="discardActivityRead()" aria-label="Discard what was read">✕</button></span></div>`:''}
     <div class="field" style="margin-bottom:10px"><label for="mv-steps">Steps walked today</label>
       <input id="mv-steps" type="number" inputmode="numeric" min="0" value="${m.steps||''}" placeholder="0"
         onchange="setSteps(this.value)"></div>`;
@@ -19615,7 +19678,7 @@ function renderFuel(){
    if(_tld!==null&&STATE.profile.timelineWeeks>0){
      const _w=STATE.profile.timelineWeeks;
      const _lbl=timelineLabel(_w);
-     h+=`<div class="tiny muted" style="margin:6px 2px 0">⏱ Paced to your <b>${_lbl}</b> timeframe — a <b>${_tld}</b> kcal daily deficit${(typeof timelineIsAggressive==='function'&&timelineIsAggressive())?`, with protein and step targets raised to match`:``}. Change it in Settings ▸ Setup.</div>`;
+     h+=`<div class="tiny muted" style="margin:6px 2px 0">⏱ Paced to your <b>${_lbl}</b> timeframe — a <b>${_tld}</b> kcal daily deficit${(typeof timelineIsAggressive==='function'&&timelineIsAggressive())?`, with protein and step targets raised to match`:``}. Change it in Settings ▸ Profile &amp; goals.</div>`;
    }}
   /* Protein was the one target the athlete could not state. It was computed
      from bodyweight and goal, full stop — so somebody who wanted 165 g had no
@@ -19670,7 +19733,7 @@ function renderFuel(){
   const wc=t.water||0;const wpct=Math.min(100,Math.round(wc/wt*100));
   h+=`<div class="section-label">Hydration</div><div class="card pad">
     <div class="row" style="justify-content:space-between"><div><b>${wc} / ${wt} cups</b><div class="tiny muted">≈ ${(wt*0.24).toFixed(1)} L goal · helps control appetite &amp; reveal definition</div></div>
-      <div class="btnrow" style="flex:0 0 auto;gap:8px"><button class="btn sm ghost" onclick="logWater(-1)" style="width:44px">–</button><button class="btn sm primary" onclick="logWater(1)" style="width:44px">＋</button></div></div>
+      <div class="btnrow" style="flex:0 0 auto;gap:8px"><button class="btn sm ghost" aria-label="One glass fewer" onclick="logWater(-1)" style="width:44px">–</button><button class="btn sm primary" aria-label="One glass more" onclick="logWater(1)" style="width:44px">＋</button></div></div>
     <div class="pbar" style="margin-top:12px"><i style="width:${wpct}%;background:linear-gradient(90deg,#3fd7e8,#12b5c9)"></i></div>
   </div>`;
 
@@ -21103,7 +21166,7 @@ function hasCrossTabSnapshot(){try{return !!localStorage.getItem(CROSSTAB_KEY);}
 function undoCrossTab(){
   let raw=null;try{raw=localStorage.getItem(CROSSTAB_KEY);}catch(e){}
   if(!raw){toast('Nothing to restore');return;}
-  if(typeof confirm==='function'&&!confirm('Put back what this tab had before another tab saved over it? The other tab\'s newer changes will be replaced.'))return;
+  if(typeof confirm==='function'&&!confirm('Put back what this tab had before another tab saved over it? The other tab\'s newer changes — and anything logged since — are replaced, and this cannot be undone.'))return;
   try{
     const p=JSON.parse(raw);
     if(!p||typeof p!=='object')throw new Error('bad snapshot');
@@ -21123,7 +21186,12 @@ function hasPreImportSnapshot(){try{return !!localStorage.getItem(PREIMPORT_KEY)
 function undoImport(){
   let raw=null;try{raw=localStorage.getItem(PREIMPORT_KEY);}catch(e){}
   if(!raw){toast('Nothing to restore');return;}
-  if(!confirm('Undo the last import and restore what was here before it?'))return;
+  /* A ONE-STEP-BACK RESTORE REPLACES EVERYTHING, including work done after the
+     step it names. The confirm named only the import, so an athlete who trained
+     three sessions and then undid the import lost those three with nothing on
+     screen having said so — the same class as "this cannot be undone" being
+     false, one function over. */
+  if(!confirm('Undo the last import and restore what was here before it? Anything you have logged SINCE the import is replaced too, and this cannot be undone.'))return;
   try{
     const p=JSON.parse(raw);
     if(!p||typeof p!=='object')throw new Error('bad snapshot');
@@ -21154,6 +21222,11 @@ function hardReset(){
      not the same thing as the two live credential fields. */
   try{localStorage.removeItem(PREIMPORT_KEY);}catch(e){}
   try{localStorage.removeItem(CROSSTAB_KEY);}catch(e){}
+  /* A parked image read is unlogged food or movement the athlete has not saved
+     yet. It lives in memory rather than STATE, so clearing STATE leaves it on
+     the glass — a freshly-erased app still offering "read from your image" is
+     the same visible residue the photo blobs were. */
+  _foodRead=null;_actRead=null;
   /* API keys are a device credential, not athlete data — the key was typed once,
      into this browser, for this device, and never leaves it either way (the
      export path already strips it, see exportData()). Re-typing a Gemini or

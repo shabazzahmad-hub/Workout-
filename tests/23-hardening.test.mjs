@@ -974,11 +974,58 @@ export default async function () {
       };
       const out = {};
       ['today','program','fuel','progress','ref','guide'].forEach(t => out[t] = scan(t));
-      // buttons must be reachable by name too — icon-only ones need aria-label
-      go('guide');
-      const btns = Array.from(document.querySelectorAll('.view.active button'));
-      out.buttons = { total: btns.length,
-        unnamed: btns.filter(b => !(b.innerText||'').trim() && !b.getAttribute('aria-label') && !b.title).length };
+      /* Buttons must be reachable by name too, and a SYMBOL IS NOT A NAME.
+         The first version accepted any non-empty innerText, so seventeen
+         icon-only controls — five ✕ deletes and twelve – / + steppers — passed
+         with nothing a screen reader can read. It also scanned Settings alone,
+         one tab of six. */
+      const readable = b => {
+        const n = (b.getAttribute('aria-label') || b.title || b.innerText || '').trim();
+        return /[A-Za-z0-9]/.test(n);
+      };
+      /* THE ROW-DELETE BUTTONS ONLY EXIST ONCE THERE IS A ROW, so a sweep of
+         whatever the page happens to hold never reaches them — measured: the
+         mutant that strips removeFood's aria-label ESCAPED this check, because
+         with no food logged there is no ✕ to scan. A guard that cannot fire in
+         the case you tested is not tested, on the check rather than the code.
+         Seeded through STATE in the shape each boot repair keeps, then
+         normalised so the shapes are the app's own rather than my guess. */
+      const D = nutToday();
+      D.food = D.food || [];
+      D.food.push({ name: 'Seeded food', kcal: 300, p: 30, c: 20, f: 10, meal: 'lunch', at: Date.now(), portion: 1 });
+      STATE.measurements = STATE.measurements || [];
+      STATE.measurements.push({ date: todayISO(), weight: 86 });
+      STATE.customFav = STATE.customFav || [];
+      /* items is an array of exercise ID STRINGS — the repair filters it with
+         exKnown(), which takes an id, so a row of objects is dropped whole and
+         the favourite vanishes. Confirm what the repair KEEPS before choosing
+         what to seed with. */
+      STATE.customFav.push({ name: 'Seeded fav', items: ['pushup', 'plank'] });
+      STATE.ruckLog = STATE.ruckLog || [];
+      STATE.ruckLog.push({ date: todayISO(), mins: 30 });
+      STATE.skipLog = STATE.skipLog || [];
+      STATE.skipLog.push({ date: todayISO(), mins: 10 });
+      normalizeState();
+
+      out.buttons = { total: 0, unnamed: [], deletes: [] };
+      /* Progress opens on SUMMARY, and the measurement delete lives on BODY —
+         so a sweep of each tab's default pane never reaches it. The guard
+         below named exactly that: it reported removeFood alone. */
+      const stops = ['today','program','fuel','progress','progress:body','ref','guide'];
+      stops.forEach(stop => {
+        const tb = stop.split(':')[0], pane = stop.split(':')[1];
+        go(tb);
+        if (pane) { try { setProgressTab(pane); } catch (e) {} }
+        Array.from(document.querySelectorAll('.view.active button')).forEach(b => {
+          out.buttons.total++;
+          const oc = b.getAttribute('onclick') || '';
+          /* Record WHICH icon-only deletes the sweep actually reached, so a
+             zero unnamed count cannot pass on a page that holds none of them. */
+          ['removeFood','removeMeasure','delFav','removeAct','removeSkip']
+            .forEach(fn => { if (oc.indexOf(fn) >= 0 && out.buttons.deletes.indexOf(fn) < 0) out.buttons.deletes.push(fn); });
+          if (!readable(b)) out.buttons.unnamed.push(tb + ':' + (b.innerText || '').trim().slice(0, 6));
+        });
+      });
       return out;
     });
     // Guard: Settings is where the controls are — if it scanned nothing, the rest is vacuous.
@@ -986,7 +1033,17 @@ export default async function () {
     ['today','program','fuel','progress','ref','guide'].forEach(tab =>
       t.eq(`[${tab}] every form control has an accessible name`, r[tab].unnamed.length, 0, r[tab]));
     t.ok('guard: Settings really has buttons to check', r.buttons.total > 20, r.buttons);
-    t.eq('every button has a name a screen reader can read', r.buttons.unnamed, 0, r.buttons);
+    t.ok('guard: the button sweep really covered the tabs', r.buttons.total >= 40, r.buttons.total);
+    /* GUARD: the icon-only row deletes on a TAB were really in the scan.
+       Without a row to delete they do not render at all, and "zero unnamed"
+       then passes on a page that never held the controls this check exists
+       for. The other three live in sheets and are guarded in the next block —
+       naming which sweep owns which is what keeps either from passing on the
+       other's coverage. */
+    t.ok('guard: the tab-level row deletes were really scanned',
+      ['removeFood','removeMeasure'].every(f => r.buttons.deletes.indexOf(f) >= 0),
+      r.buttons.deletes);
+    t.eq('every button has a name a screen reader can read', r.buttons.unnamed.length, 0, r.buttons.unnamed);
   }
 
   /* ---- and the SHEETS, which is where the numbers are actually typed -----
@@ -1008,23 +1065,40 @@ export default async function () {
         || el.closest('label')
         || el.getAttribute('placeholder')
         || el.getAttribute('title'));
+      /* A SYMBOL IS NOT A NAME. ✕, – and + are the whole of what a screen
+         reader gets from an icon-only button, and this sweep never looked at
+         buttons at all — which is where most of them live. */
+      const readable = b => /[A-Za-z0-9]/.test(
+        (b.getAttribute('aria-label') || b.title || b.innerText || '').trim());
       const bad = [];
+      const deletes = [];
       const scan = where => {
         document.querySelectorAll('#sheet input, #sheet select, #sheet textarea').forEach(el => {
           if (el.type === 'hidden') return;
           if (!named(el)) bad.push({ sheet: where, id: el.id || '', type: el.type || el.tagName });
         });
+        document.querySelectorAll('#sheet button').forEach(b => {
+          /* Which icon-only row deletes this sweep actually reached. delFav,
+             removeAct and removeSkip render only once their list has a row, so
+             without this a clean result says nothing about them. */
+          const oc = b.getAttribute('onclick') || '';
+          ['delFav','removeAct','removeSkip'].forEach(fn => {
+            if (oc.indexOf(fn) >= 0 && deletes.indexOf(fn) < 0) deletes.push(fn);
+          });
+          if (!readable(b)) bad.push({ sheet: where, id: b.id || '', type: 'button:' + (b.innerText || '').trim().slice(0, 6) });
+        });
       };
       /* GUARD, both ways: an unnamed control must BE reported, or an empty
          result below says nothing about the app. */
-      openSheet('<input id="zq-unnamed">');
+      openSheet('<input id="zq-unnamed"><button id="zq-icon">✕</button>');
       scan('probe');
       const canSee = bad.some(b => b.id === 'zq-unnamed');
+      const canSeeIcon = bad.some(b => b.id === 'zq-icon');
       /* closeSheet() is async — it leaves a queued history navigation — so the
          probe input was still mounted when the next sheets opened and every one
          of them reported it. Remove the element itself, not the sheet. */
       closeSheet();
-      document.querySelectorAll('#zq-unnamed').forEach(e => e.remove());
+      document.querySelectorAll('#zq-unnamed, #zq-icon').forEach(e => e.remove());
       bad.length = 0;
 
       const ARGS = { openSwapSheet: ['pushup'], openAct: ['ruck'], openActTimer: ['ruck'],
@@ -1041,10 +1115,16 @@ export default async function () {
           closeSheet();
         } catch (e) {}
       });
-      return { canSee, names: names.length, opened, bad };
+      return { canSee, canSeeIcon, names: names.length, opened, bad, deletes };
     });
 
     t.ok('guard: an unnamed control really would be reported', r.canSee);
+    t.ok('guard: and an icon-only button with no aria-label would be too', r.canSeeIcon);
+    /* GUARD: the three row deletes that live in SHEETS were really reached.
+       They render only once their list has a row, which the block above seeds,
+       so without this the clean result below says nothing about them. */
+    t.ok('guard: the sheet-level row deletes were really scanned',
+      ['delFav','removeAct','removeSkip'].every(f => r.deletes.indexOf(f) >= 0), r.deletes);
     t.ok('guard: the sweep opened most of the sheets, not a handful',
       r.opened >= 30, JSON.stringify({ opened: r.opened, of: r.names }));
     t.eq('every control inside a sheet has an accessible name too',
@@ -7429,6 +7509,429 @@ export default async function () {
     t.ok('FLOOR: the health lock still locks the max hang', r.locked, r);
     t.eq('formatKitMissing() names the kit, and only when it is missing', r.pk, ['Pull-up bar', null, null]);
     t.eq('and says nothing once the athlete owns it', r.pkWithBar, null);
+  }
+
+  /* ---------- a read the athlete paid for is parked, not thrown away -----
+     All three image readers stand down when the sheet world has moved on, and
+     each then told the athlete where to pick the result up while leaving it
+     nowhere. The activity one did not even stand down: the guard had no
+     `return`, so it announced the stand-down and opened the sheet anyway,
+     replacing a quick-add sheet the athlete had typed into.
+
+     The readers are file-picker callbacks nothing can drive, so the stand-down
+     itself is asserted on the SOURCE — and the ROUTES it names are driven,
+     because a named address with nothing at it is the whole defect. */
+  {
+    const r = await page.evaluate(async () => {
+      const o = {};
+      const src = f => (typeof window[f] === 'function' || typeof eval(f) === 'function') ? eval(f).toString() : '';
+      const stands = (name, opener) => {
+        const b = src(name);
+        const i = b.indexOf('gen!==_sheetGen');
+        if (i < 0) return { found: false };
+        const j = b.indexOf(opener, i);
+        return { found: true, returns: j > i && b.slice(i, j).indexOf('return') >= 0 };
+      };
+      o.photo  = stands('foodPhoto', 'openQuickAdd(');
+      o.shot   = stands('foodScreenshot', 'openQuickAdd(');
+      o.act    = stands('activityScreenshot', 'openActivityReview(');
+      o.bar    = stands('lookupBarcode', 'openQuickAdd(');
+      /* and each parks what it read, or the address it names holds nothing */
+      o.photoParks = /_foodRead\s*=/.test(src('foodPhoto'));
+      o.shotParks  = /_foodRead\s*=/.test(src('foodScreenshot'));
+      o.actParks   = src('activityScreenshot').indexOf('_actRead=plan')
+                   < src('activityScreenshot').indexOf('gen!==_sheetGen');
+      o.barParks   = /_foodRead\s*=/.test(src('lookupBarcode'));
+      /* closeSheet() does not re-render the view behind it, so parking alone
+         leaves the row off the very tab the toast names. */
+      o.repaints = ['foodPhoto','foodScreenshot','lookupBarcode']
+        .every(f=>/renderFuel\(\)/.test(src(f)))
+        && /repaintMovement\(\)/.test(src('activityScreenshot'));
+
+      /* THE MOVEMENT ADDRESS really holds it. */
+      _actRead = { read: 2, steps: 8000, run: { km: 5, min: 30 }, ruck: { km: 0, min: 0 },
+                   bike: { km: 0, min: 0 }, jacks: { min: 0 }, skip: { min: 0 }, unplaced: [] };
+      setTodayTab('workout'); go('today');
+      await new Promise(z => setTimeout(z, 250));
+      o.actRow = !!document.querySelector('#v-today [data-actread="1"]');
+      o.actReviewWired = /openActivityReview\(\)/.test(document.querySelector('#v-today').innerHTML);
+      openActivityReview();
+      await new Promise(z => setTimeout(z, 250));
+      o.actReviewOpens = /2 activities read/.test((document.querySelector('#sheet') || {}).innerText || '');
+      closeSheet(); await new Promise(z => setTimeout(z, 400));
+      discardActivityRead();
+      await new Promise(z => setTimeout(z, 250));
+      o.actDiscards = !_actRead && !document.querySelector('#v-today [data-actread="1"]');
+
+      /* THE FUEL ADDRESS really holds it. */
+      _foodRead = { name: 'Grilled chicken', kcal: 430, p: 46, c: 0, f: 12 };
+      go('fuel'); await new Promise(z => setTimeout(z, 250));
+      const fv = () => document.querySelector('#v-fuel');
+      o.foodRow = !!fv().querySelector('[data-foodread="1"]');
+      o.foodNames = /Grilled chicken/.test(fv().innerText) && /430 kcal/.test(fv().innerText);
+      openFoodRead();
+      await new Promise(z => setTimeout(z, 250));
+      o.prefilled = (document.querySelector('#fa-name') || {}).value;
+      o.prefilledKcal = (document.querySelector('#fa-kcal') || {}).value;
+      o.consumed = _foodRead === null;
+      closeSheet(); await new Promise(z => setTimeout(z, 400));
+      go('fuel'); await new Promise(z => setTimeout(z, 200));
+      o.rowGone = !fv().querySelector('[data-foodread="1"]');
+
+      /* The name comes from a language model, and importData() accepts JSON. */
+      window.__pwn = false;
+      _foodRead = { name: '<img src=x onerror="window.__pwn=true">', kcal: 100 };
+      go('fuel'); await new Promise(z => setTimeout(z, 400));
+      o.injected = !!window.__pwn || !!fv().querySelector('[data-foodread="1"] img');
+      /* The model's name is unbounded; every stored row caps it at 60, and a
+         row is TEXT rather than an input, so it is the one that can overflow. */
+      _foodRead = { name: 'Z'.repeat(400), kcal: 200 };
+      go('fuel'); await new Promise(z => setTimeout(z, 250));
+      const longRow = fv().querySelector('[data-foodread="1"]');
+      o.longNameCapped = !!longRow && (longRow.innerText.match(/Z+/) || [''])[0].length <= 60;
+      o.longNameFits = !!longRow && longRow.getBoundingClientRect().right <= window.innerWidth + 1;
+
+      /* A zero is not a measurement (v260): an unreadable figure says nothing. */
+      _foodRead = { name: 'X', kcal: 'lots' };
+      go('fuel'); await new Promise(z => setTimeout(z, 200));
+      o.junkText = (fv().querySelector('[data-foodread="1"]') || {}).innerText || '';
+      _foodRead = null;
+
+      /* THE DISCRIMINATING CASE for the plain ➕. With nothing parked it opens
+         blank either way, so a floor driven in that state cannot see the
+         over-eager twin at all — the mutant that makes openQuickAdd() consume
+         the park escaped exactly there. A guard that cannot fire in the case
+         you tested is not tested. */
+      _foodRead = { name: 'Grilled chicken', kcal: 430 };
+      go('fuel'); await new Promise(z => setTimeout(z, 200));
+      openQuickAdd(); await new Promise(z => setTimeout(z, 250));
+      o.plusBlankWithPark = (document.querySelector('#fa-name') || {}).value === '';
+      o.parkSurvivesPlus = !!foodReadPending();
+      closeSheet(); await new Promise(z => setTimeout(z, 400));
+      _foodRead = null;
+
+      /* FLOORS: nothing parked means no row anywhere, and the ➕ stays blank. */
+      go('fuel'); await new Promise(z => setTimeout(z, 200));
+      o.noRowWhenEmpty = !fv().querySelector('[data-foodread="1"]');
+      openQuickAdd(); await new Promise(z => setTimeout(z, 250));
+      o.plusBlank = (document.querySelector('#fa-name') || {}).value === '';
+      closeSheet(); await new Promise(z => setTimeout(z, 400));
+      setTodayTab('workout'); go('today'); await new Promise(z => setTimeout(z, 250));
+      o.noActRowWhenEmpty = !document.querySelector('#v-today [data-actread="1"]');
+
+      /* "Erase your workout, food and profile data ... This cannot be undone."
+         A parked read is unlogged food the athlete has not saved, and it lives
+         in memory rather than STATE — so clearing STATE leaves it on the glass
+         of a freshly-erased app. Same visible residue as the photo blobs. */
+      _foodRead = { name: 'Grilled chicken', kcal: 430 };
+      _actRead = { read: 1, steps: 0, run: { km: 1, min: 10 }, ruck: { km: 0, min: 0 },
+                   bike: { km: 0, min: 0 }, jacks: { min: 0 }, skip: { min: 0 }, unplaced: [] };
+      const realConfirm2 = window.confirm; window.confirm = () => true;
+      hardReset();
+      await new Promise(z => setTimeout(z, 500));
+      window.confirm = realConfirm2;
+      o.resetClearsFood = _foodRead === null;
+      o.resetClearsAct = _actRead === null;
+      return o;
+    });
+    t.ok('guard: the stand-down branch is present in all four readers',
+      r.photo.found && r.shot.found && r.act.found && r.bar.found, r);
+    t.ok('the food photo reader stands down instead of opening the sheet', r.photo.returns, r);
+    t.ok('so does the food screenshot reader', r.shot.returns, r);
+    t.ok('and so does the activity reader, which used to open it anyway', r.act.returns, r);
+    t.ok('the food photo reader parks what it read', r.photoParks, r);
+    t.ok('and so does the food screenshot reader', r.shotParks, r);
+    t.ok('and the activity reader parks before it stands down', r.actParks, r);
+    t.ok('the barcode lookup stands down too', r.bar.returns, r);
+    t.ok('and parks the product rather than making the athlete re-scan it', r.barParks, r);
+    t.ok('and every reader repaints the surface it sends the athlete to', r.repaints, r);
+    t.ok('Movement really holds the parked activity read', r.actRow, r);
+    t.ok('with a control that opens it', r.actReviewWired, r);
+    t.ok('and it opens on what was read', r.actReviewOpens, r);
+    t.ok('and can be discarded, so the row is not stuck there', r.actDiscards, r);
+    t.ok('Fuel really holds the parked food read', r.foodRow, r);
+    t.ok('naming the food and the calories', r.foodNames, r);
+    t.eq('and logging it opens the sheet pre-filled', r.prefilled, 'Grilled chicken');
+    t.eq('with the calories that were read', r.prefilledKcal, '430');
+    t.ok('the parked read is consumed once used', r.consumed, r);
+    t.ok('so the row goes with it', r.rowGone, r);
+    t.ok('a model-supplied name cannot inject', !r.injected, r);
+    t.ok('and a very long one is capped the way a stored row caps it', r.longNameCapped, r);
+    t.ok('so the row does not run off the screen', r.longNameFits, r);
+    t.ok('and an unreadable calorie figure is not printed as a measured zero',
+      r.junkText.indexOf('0 kcal') < 0 && r.junkText.indexOf('read from your image') >= 0, r);
+    t.ok('FLOOR: nothing parked means no row on Fuel', r.noRowWhenEmpty, r);
+    t.ok('FLOOR: and none on Movement', r.noActRowWhenEmpty, r);
+    t.ok('FLOOR: the ordinary ➕ still opens a blank form', r.plusBlank, r);
+    t.ok('FLOOR: and it opens blank even with a read WAITING', r.plusBlankWithPark, r);
+    t.ok('leaving the park alone — the row is the route, not the button', r.parkSurvivesPlus, r);
+    t.ok('erasing everything takes the parked food read with it', r.resetClearsFood, r);
+    t.ok('and the parked activity read', r.resetClearsAct, r);
+    /* This block ERASES the athlete, so it puts them back before it ends. */
+    await seedAthlete(page);
+  }
+
+  /* ---------- a pointer at a paned tab must name the pane ---------------
+     v312 gave Progress four panes and v314 gave Reference two. From then on,
+     landing on the tab stopped being the same as landing on the content —
+     v314's own fix for openMealPlan() says exactly that. Four pointers were
+     left behind at tab granularity, and three of them the coach reads ALOUD:
+     "Log your weight on the Progress tab" sends the athlete to Summary, which
+     has no weight control on it at all. A spoken address is the one nobody can
+     double-check by looking. */
+  {
+    const src = readFileSync('index.html', 'utf8');
+    t.ok('guard: the scan really read the app', src.length > 500000, String(src.length));
+    const PANES = {
+      Progress: ['Summary', 'Body', 'Strength', 'Awards'],
+      Reference: ['Food', 'Moves'],
+      Today: ['Brief', 'Briefing', 'Warm-up', 'Workout', 'Cool-down'],
+    };
+    /* Only a phrase that sends the athlete somewhere counts. "Today we hold the
+       line" names no destination and must never be flagged. */
+    /* NO optional "the" here: with it, m.index lands on "the" rather than on
+       the tab name, so the lookback below is cut short and a real pointer reads
+       as no pointer at all. `sends` already accounts for the article. */
+    const points = /\b(Progress|Reference|Today)\b(?=\s*(?:tab\b|▸|,|\.))/g;
+    const sends = /\b(?:on|from|in|under|Open|open|to)\s+(?:the\s+)?(Progress|Reference|Today)\b/;
+    const flag = str => {
+      let m; points.lastIndex = 0;
+      while ((m = points.exec(str))) {
+        const tab = m[1];
+        const before = str.slice(Math.max(0, m.index - 12), m.index + tab.length);
+        if (!sends.test(before)) continue;
+        const win = str.slice(m.index, m.index + 90);
+        if (!PANES[tab].some(pane => win.indexOf(pane) >= 0)) return tab;
+      }
+      return null;
+    };
+    /* The detector has to be shown working in BOTH directions, or an empty
+       result is a statement about the regex rather than about the app. */
+    t.eq('guard: a tab-only pointer is flagged', flag('Log it on the Progress tab.'), 'Progress');
+    t.eq('guard: the same pointer with its pane is not', flag('Log it on the Progress tab, under Body.'), null);
+    t.eq('guard: and an ordinary use of the word is not a pointer',
+      flag('Today we hold the line, and Today\'s training is behind you.'), null);
+
+    const noComments = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(?<![:\w])\/\/[^\n]*/g, '');
+    const strs = [...noComments.matchAll(/'([^'\\\n]{8,400})'|"([^"\\\n]{8,400})"|`([^`\\]{8,500})`/g)]
+      .map(m => (m[1] || m[2] || m[3] || ''))
+      .filter(x => !/function|=>|querySelector|innerHTML|style=|class=|onclick|\$\(/.test(x));
+    t.ok('guard: the scan really found athlete-facing copy to check',
+      strs.length > 200, String(strs.length));
+    const pointing = strs.filter(x => /\b(?:on|from|in|under|Open|open)\s+(?:the\s+)?(Progress|Reference|Today)\b/.test(x));
+    t.ok('guard: and some of it really does point at a paned tab',
+      pointing.length >= 4, String(pointing.length));
+    const offenders = [...new Set(pointing.map(x => (flag(x) ? x.slice(0, 110) : null)).filter(Boolean))];
+    t.eq('every pointer at a paned tab names the pane', offenders.length, 0, offenders);
+
+    /* Settings has no panes but it does have sections, and "Settings ▸ Setup"
+       named one that does not exist — the real route is Profile & goals. Read
+       off the RENDERED tab, never grepped: the source contains the app's own
+       markup for screens that are not this one.
+
+       The test is the segment's FIRST WORD, not its whole phrase, and that is
+       not laziness — the pointer says "Settings ▸ Restore puts them back" while
+       the button reads "↩ Restore what this tab had". Demanding the phrase
+       verbatim fails on correct code; demanding the word the athlete scans for
+       is the real requirement. */
+    const segRe = /Settings\s*▸\s*([A-Za-z][A-Za-z &;]{2,28}?)(?=[.<'"`,]|\n)/g;
+    /* noComments, not src: this round's own comment quotes one of these
+       pointers, and a scan that reads a comment is this file's oldest trap. */
+    const segs = [...new Set([...noComments.matchAll(segRe)]
+      .map(m => m[1].replace(/&amp;/g, '&').trim()))];
+    t.ok('guard: the scan found the Settings pointers to check', segs.length >= 2, segs);
+    const guideText = await page.evaluate(async () => {
+      /* Both undo buttons are conditional — an always-visible Restore would be
+         the note-that-always-fires defect — so the states they need are seeded
+         before Settings is read, or the pointer at them reads as broken. */
+      try { localStorage.setItem('coreforge.v1.crosstab', JSON.stringify(STATE)); } catch (e) {}
+      try { localStorage.setItem('coreforge.v1.preimport', JSON.stringify(STATE)); } catch (e) {}
+      go('guide'); await new Promise(z => setTimeout(z, 400));
+      /* textContent, not innerText: .section-label is UPPERCASED in CSS, so the
+         rendered text says PROFILE & GOALS and a case-sensitive search for the
+         real label fails on a screen that is perfectly correct. */
+      const txt = document.querySelector('#v-guide').textContent;
+      try { localStorage.removeItem('coreforge.v1.crosstab'); } catch (e) {}
+      try { localStorage.removeItem('coreforge.v1.preimport'); } catch (e) {}
+      return txt;
+    });
+    t.ok('guard: the Settings tab really rendered', guideText.length > 400, String(guideText.length));
+    const onSettings = seg => guideText.indexOf(seg.split(/\s+/)[0]) >= 0;
+    /* GUARD, both ways: a section that is not there must be reported, or an
+       empty offender list is a statement about the render rather than the app. */
+    t.ok('guard: a section Settings does not have would be caught', !onSettings('Setup'), guideText.slice(0, 120));
+    const missing = segs.filter(x => !onSettings(x));
+    t.eq('every Settings pointer names something that is on Settings', missing.length, 0, missing);
+  }
+
+  {
+    /* EVERY WAY OUT OF A GRINDER WRITES THE SAME RECORD. The stop record sat
+       in hiitQuit(), and the hardware Back button calls hiitTeardown()
+       directly — so the ✕ recorded the stop and Back recorded nothing, and
+       grindStreak() (which stops at the first row that is not done) simply
+       skipped the abandoned session and kept counting finishes. */
+    /* BOTH EXITS ARE DRIVEN, NEVER CALLED. onPop() cannot be invoked by hand
+       here: hiitQuit() ends with history.back(), which is ASYNC and leaves
+       _backGuard set until its own pop arrives — so a hand-called onPop() a
+       moment later is swallowed by that guard and tears nothing down. The
+       first version of this block did exactly that and reported the fix as
+       broken. page.goBack() is the athlete's real gesture and has no such
+       problem; the ✕ is a real click on the button they tap. */
+    const startGrind = async () => {
+      await page.evaluate(async () => {
+        STATE.onboarded = true;
+        startGrinder(Object.keys(GRINDER_FORMATS)[0]);
+        await new Promise(z => setTimeout(z, 300));
+        if (typeof INTV !== 'undefined' && INTV) { INTV.i = 2; INTV.workElapsed = 120; }
+      });
+      await page.waitForTimeout(250);
+      return page.evaluate(() => ({
+        opened: !!(typeof INTV !== 'undefined' && INTV),
+        steps: (typeof INTV !== 'undefined' && INTV) ? INTV.seq.length : 0,
+      }));
+    };
+    const seedThree = () => page.evaluate(() => {
+      STATE.grindLog = [];
+      const fmt = Object.keys(GRINDER_FORMATS)[0];
+      for (let i = 0; i < 3; i++) logGrind(fmt, true, 6, 360);
+      return grindStreak();
+    });
+    const readLog = () => page.evaluate(() => ({ rows: grindLog().length, streak: grindStreak() }));
+
+    /* THE BACK CASE RUNS FIRST, and its preconditions are asserted rather than
+       assumed. hiitQuit() ends with history.back() and sets _backGuard, which
+       the next popstate clears — so a Back gesture taken while that guard is
+       still up is swallowed and tears nothing down. Driven in isolation both
+       exits work; inside a long suite the ambient history is whatever earlier
+       blocks left, so the guard below turns a mystery into a named failure
+       instead of something that reads like a defect in the app. */
+    const g = {};
+    g.streakBefore = await seedThree();
+    const openedB = await startGrind();
+    /* EACH BLOCK BUILDS THE STATE IT ASSERTS ON, and _backGuard is ambient:
+       hiitQuit()/playerQuit()/playerFeel() set it and the popstate that follows
+       clears it, but an earlier block in this long suite can leave one whose
+       history.back() had nothing to pop. Measured on the athlete's real route —
+       open a grinder, tap the X, three times over — it is false every time, so
+       a stale one here is the harness rather than the app. Recorded and
+       cleared, then asserted, so the case really drives a Back press. */
+    g.pre = await page.evaluate(() => {
+      /* onPop() has THREE early returns in front of the HIIT branch, and all
+         three are ambient: _exiting is set by the second home Back press and
+         nothing ever resets it, _backGuard is set by every quit that pops its
+         own history entry, and a live OP is answered first. Each is recorded
+         before it is cleared, so a future failure names which one it was
+         rather than reporting a teardown that silently never ran. */
+      const was = {
+        exiting: (typeof _exiting !== 'undefined') ? _exiting : 'n/a',
+        guard: (typeof _backGuard !== 'undefined') ? _backGuard : 'n/a',
+        op: (typeof OP !== 'undefined' && OP) ? 'live' : 'none',
+      };
+      try { _exiting = false; } catch (e) {}
+      try { _backGuard = false; } catch (e) {}
+      return { was,
+               exiting: (typeof _exiting !== 'undefined') ? _exiting : 'n/a',
+               guard: (typeof _backGuard !== 'undefined') ? _backGuard : 'n/a',
+               op: (typeof OP !== 'undefined' && OP) ? 'live' : 'none',
+               state: (history.state || {}).cf };
+    });
+    await page.goBack();
+    await page.waitForTimeout(700);
+    g.viaBack = Object.assign({}, openedB, await readLog());
+
+    await seedThree();
+    const openedX = await startGrind();
+    await page.click('#hiit .pl-x');
+    await page.waitForTimeout(600);
+    g.viaX = Object.assign({}, openedX, await readLog());
+
+    Object.assign(g, await page.evaluate(async () => {
+      const o = {};
+      const fmt = Object.keys(GRINDER_FORMATS)[0];
+      STATE.onboarded = true;
+
+      /* FLOOR: a grinder the athlete FINISHED must still record done:true and
+         keep the streak — a teardown that always wrote a stop would satisfy
+         every assertion above and destroy every finish in the app. */
+      STATE.grindLog = [];
+      startGrinder(fmt);
+      await new Promise(z => setTimeout(z, 300));
+      o.finishOpened = !!(typeof INTV !== 'undefined' && INTV);
+      if (INTV) { INTV.i = INTV.seq.length; INTV.workElapsed = 360; ivDone(); }
+      await new Promise(z => setTimeout(z, 300));
+      o.finRows = grindLog().length;
+      o.finDone = (grindLog()[0] || {}).done;
+      o.finStreak = grindStreak();
+      /* and closing a finished one must not add a SECOND row */
+      hiitQuit();
+      await new Promise(z => setTimeout(z, 300));
+      o.finThenCloseRows = grindLog().length;
+      o.finThenCloseStreak = grindStreak();
+
+      /* FLOOR: an ordinary HIIT session is not a grinder and records nothing.
+         startHiit() is the entry — startSpecialFormat() reads a different
+         registry, and calling it with a HIIT key opens nothing at all, so the
+         zero it produces measures an empty session rather than a Tabata. */
+      STATE.baseline = STATE.baseline || { date: todayISO(), level: 'Intermediate', results: {}, maxes: {} };
+      STATE.grindLog = [];
+      startHiit('tabata');
+      await new Promise(z => setTimeout(z, 350));
+      o.tabataOpened = !!(typeof INTV !== 'undefined' && INTV);
+      o.tabataSteps = INTV ? INTV.seq.length : 0;
+      o.tabataIsGrinder = INTV ? isGrinder(INTV.format) : null;
+      if (INTV) { INTV.i = 1; INTV.workElapsed = 60; }
+      /* hiitTeardown() directly, not the Back gesture: what this floor is
+         about is the function that now HOLDS the record, and the route in is
+         already driven above. onPop() by hand is swallowed by _backGuard. */
+      hiitTeardown();
+      await new Promise(z => setTimeout(z, 300));
+      o.tabataRows = grindLog().length;
+
+      /* FLOOR: with nothing open the teardown writes nothing at all. */
+      STATE.grindLog = [];
+      hiitTeardown();
+      o.noSessionRows = grindLog().length;
+      return o;
+    }));
+
+    /* GUARDS FIRST: every reading below is about a row count, and a session
+       that never opened produces exactly the counts a correct app produces. */
+    t.ok('guard: the grinder really opened on the X exit', g.viaX.opened && g.viaX.steps > 0, g.viaX);
+    t.ok('guard: and on the Back exit', g.viaBack.opened && g.viaBack.steps > 0, g.viaBack);
+    t.eq('guard: no back-guard is up when Back is pressed', g.pre.guard, false);
+    t.eq('guard: the app is not already exiting', g.pre.exiting, false);
+    t.eq('guard: no ops challenge answers the Back press first', g.pre.op, 'none', g.pre.was);
+    t.eq('guard: and the history entry Back pops is the grinder', g.pre.state, 'hiit');
+    t.eq('guard: three finished grinders really are a streak of three', g.streakBefore, 3);
+
+    t.eq('stopping with the X writes the stop', g.viaX.rows, 4);
+    t.eq('and it breaks the streak', g.viaX.streak, 0);
+    t.eq('stopping with the Back button writes it too', g.viaBack.rows, 4);
+    t.eq('and it breaks the streak the same way', g.viaBack.streak, 0);
+
+    t.ok('guard: the finished grinder really opened', g.finishOpened, g);
+    t.eq('FLOOR: a finished grinder is recorded as finished', g.finDone, true);
+    t.eq('FLOOR: and it keeps the streak', g.finStreak, 1);
+    t.eq('FLOOR: closing a finished grinder adds no second row', g.finThenCloseRows, 1);
+    t.eq('FLOOR: so the finish still stands', g.finThenCloseStreak, 1);
+
+    t.ok('guard: the Tabata really opened', g.tabataOpened && g.tabataSteps > 0, g);
+    t.eq('guard: and it really is not a grinder', g.tabataIsGrinder, false);
+    t.eq('FLOOR: an ordinary HIIT session records no grinder row', g.tabataRows, 0);
+    t.eq('FLOOR: and a teardown with nothing open records nothing', g.noSessionRows, 0);
+
+    /* The record must live in the ONE function every exit reaches. A source
+       assertion, because a future exit path that skips it cannot be driven
+       from here — it does not exist yet, and that is the whole point. */
+    const appSrc = readFileSync('index.html', 'utf8');
+    t.ok('guard: the scan really read the app', appSrc.length > 500000, String(appSrc.length));
+    const tdBody = appSrc.slice(appSrc.indexOf('function hiitTeardown('));
+    const tdEnd = tdBody.indexOf('function hiitQuit(');
+    t.ok('guard: the teardown body was located', tdEnd > 40, String(tdEnd));
+    t.ok('the stop record lives in hiitTeardown()',
+      tdBody.slice(0, tdEnd).indexOf('logGrind(') >= 0);
+    t.eq('and there is exactly one copy of it in the file',
+      (appSrc.match(/logGrind\(INTV\.format,\s*false,/g) || []).length, 1);
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
