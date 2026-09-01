@@ -11102,13 +11102,12 @@ the destructive paths alone.
 truth.** There are two questions now, and the second one does not promise
 anything.
 
-**The stale snapshot is dropped FIRST rather than overwritten**, and that is
-load-bearing twice over. It is about the same size as the new one, so freeing it
-is usually exactly the room the new one needs — the fix often makes the failure
-go away rather than only reporting it. And a stale snapshot that survives a
-failed write makes the Undo button lie in a worse way than its absence: it says
-*"restore what was here before it"* and would restore an **earlier** import's
-state.
+**The stale snapshot is dropped FIRST rather than overwritten**, and the reason
+first written here was wrong — v410 measured it. It is NOT for room: `setItem`
+on a key that already exists replaces it, so the write reclaims the old value
+itself. What the drop is for is that a stale snapshot surviving a FAILED write
+makes the Undo button lie in a worse way than its absence: it says *"restore
+what was here before it"* and would restore an **earlier** import's state.
 
 **Three floors, and each catches a different over-eager twin.** A healthy device
 must be asked the original question and get a working undo — a fix that always
@@ -11703,15 +11702,42 @@ verbatim, in the round that came after it. Measured on a full store:
 | the snapshot write | **threw, and was swallowed** |
 | the snapshot, and the button | **neither existed** |
 
-The stale snapshot is dropped FIRST, for v406's own reason: it is about the same
-size as the new one, so freeing it is usually exactly the room the new one
-needs, and the fix often makes the failure go away rather than only reporting
-it. A store that still refuses gets a different sentence naming the one thing
-the athlete can act on.
+A store that refuses gets a different sentence naming the one thing the athlete
+can act on. **The floor is the ordinary lost update**, which must still promise
+the restore — an over-eager twin that always claims the store is full satisfies
+every assertion about the full one, and it was caught only once the healthy case
+pinned the WORDING rather than the substring both branches share.
 
-**The floor is the ordinary lost update**, which must still promise the restore
-— an over-eager twin that always claims the store is full satisfies every
-assertion about the full one.
+### The reason written beside the fix was wrong, and a mutant is what proved it
+
+v406 dropped the stale snapshot before writing the new one and said why: *"it is
+about the same size as the new one, so freeing it is usually exactly the room the
+new one needs."* v410 copied that sentence. The mutant that removes the drop
+**escaped**, and measuring instead of re-reasoning is what explained it:
+
+**`setItem` on a key that already exists REPLACES it.** The old value's space is
+reclaimed by the write itself, so removing first frees nothing a browser was not
+about to free anyway. Measured on a nearly-full store: a **39,490**-char snapshot
+landed over a **39,397**-char one with **under 5,000 chars of slack**. On an
+equal-sized pair the two versions are the same program, which is why the first
+check — built from the wrong reason — could only ever pass on both.
+
+**The removal earns its place for something else entirely, and that IS
+catchable.** A write that FAILS must not leave an EARLIER lost update's snapshot
+sitting behind the button: the toast would honestly say the work was not kept
+while Settings still offered a restore, and the restore would put back the state
+from two lost updates ago. The discriminating case is therefore a **small** stale
+snapshot and a **large** new one — measured at 2,442 against 113,857 bytes, both
+guards pinned — where the failed write leaves the small one standing. Seeded that
+way the mutant fails two checks by name.
+
+**And the wrong sentence had two copies.** It was written for `importData()` in
+v406 and copied into the cross-tab path in v410, so correcting one left the
+class alive — the shape this file records more than any other. Both now carry
+the measurement rather than the reasoning.
+
+Three mutants, all caught: the pre-fix toast that always promises (four checks),
+the over-eager twin that never promises, and the dropped removal.
 
 ### Storage bookkeeping is not session scratch
 

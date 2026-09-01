@@ -449,6 +449,7 @@ export default async function run() {
       o.lostLogs = Object.keys(STATE.logs).length;
       o.lostSaysSo = /saved over changes made here/.test(toastText());
       o.lostSnapshot = hasCrossTabSnapshot();
+      o.lostPromised = /Restore puts them back/.test(toastText());
       o.lostButton = /undoCrossTab\(\)/.test(settingsHTML());
 
       /* And the way back really goes back. */
@@ -544,6 +545,52 @@ export default async function run() {
       for (let i = 0; i <= nf; i++) { try { localStorage.removeItem('__f' + i); } catch (e) {} }
       try { localStorage.removeItem('coreforge.v1.crosstab'); } catch (e) {}
 
+      /* A FAILED WRITE MUST NOT LEAVE AN EARLIER SNAPSHOT BEHIND THE BUTTON.
+         The removal is not for room — setItem on a key that already exists
+         replaces it, so the write reclaims the old value itself (measured: a
+         39,490-char snapshot landed over a 39,397-char one with under 5,000
+         chars of slack, which is why an equal-sized pair cannot tell the two
+         versions apart). What it is for is this: a SMALL stale snapshot and a
+         LARGE new one on a full store. Without the removal the small one
+         survives, so the toast honestly says the work was not kept while
+         Settings still offers a restore — of the state from two lost updates
+         ago. */
+      STATE.logs = {};
+      save();
+      const smallBase = JSON.parse(localStorage.getItem('coreforge.v1'));
+      STATE.logs[1] = { done: true, completedAt: todayISO(), ex: {}, items: [] }; save();
+      const foreignOf = async (base, tag) => {
+        const f = JSON.parse(JSON.stringify(base));
+        f.nutrition.days[tag] = { food: [], water: 1, habits: {} };
+        f._base = +base._rev || 0; f._rev = (+base._rev || 0) + 1; f._savedAt = Date.now();
+        const j = JSON.stringify(f);
+        try { localStorage.setItem('coreforge.v1', j); } catch (e) {}
+        await idbPut('coreforge.v1', j);
+        window.dispatchEvent(new StorageEvent('storage', { key: 'coreforge.v1', newValue: j }));
+        await new Promise(z => setTimeout(z, 600));
+      };
+      await foreignOf(smallBase, '2026-10-10');     // a first lost update, on a small state
+      o.staleLen = (localStorage.getItem('coreforge.v1.crosstab') || '').length;
+
+      /* Now the state this tab holds is far bigger than that stale snapshot,
+         and the incoming copy is the same size as ours, so the foreign write
+         frees no room of its own. */
+      for (let i = 0; i < 900; i++) STATE.logs[i] = { done: true, completedAt: '2026-08-01', ex: {}, items: [{ exId: 'pushup', sets: [1, 1, 1], target: 20, unit: 'reps' }] };
+      save();
+      const bigBase = JSON.parse(localStorage.getItem('coreforge.v1'));
+      STATE.logs[777] = { done: true, completedAt: todayISO(), ex: {}, items: [] }; save();
+      o.wantLen = localStorage.getItem('coreforge.v1').length;
+      let nf2 = 0;
+      try { for (; nf2 < 400; nf2++) localStorage.setItem('__g' + nf2, big); } catch (e) {}
+      try { for (; nf2 < 800; nf2++) localStorage.setItem('__g' + nf2, small); } catch (e) {}
+      await foreignOf(bigBase, '2026-11-11');
+      o.secondSaysSo = /out of storage/.test(toastText());
+      o.secondPromised = /Restore puts them back/.test(toastText());
+      o.secondSnapshot = hasCrossTabSnapshot();
+      o.secondButton = /undoCrossTab\(\)/.test(settingsHTML());
+      for (let i = 0; i <= nf2; i++) { try { localStorage.removeItem('__g' + i); } catch (e) {} }
+      try { localStorage.removeItem('coreforge.v1.crosstab'); } catch (e) {}
+
       /* The stamp is live-session scratch and must never reach a backup. */
       o.baseIsTransient = BACKUP_STRIP.indexOf('_base') >= 0 && BACKUP_STRIP.indexOf('_rev') >= 0
         && TRANSIENT_KEYS.indexOf('_base') < 0 && TRANSIENT_KEYS.indexOf('_rev') < 0;
@@ -553,6 +600,10 @@ export default async function run() {
     t.eq('the newest copy still wins, as it did before', r.lostLogs, 0);
     t.ok('but the athlete is told work made here was replaced', r.lostSaysSo, r);
     t.ok('and a snapshot of it is kept', r.lostSnapshot, r);
+    /* The wording is the payload here, not the substring both branches share:
+       an over-eager fix that never sets _snapOk keeps the snapshot AND the
+       button and still tells a healthy phone it is out of storage. */
+    t.ok('and, the snapshot having landed, the restore is promised', r.lostPromised, r);
     t.ok('and Settings offers the way back', r.lostButton, r);
     t.eq('restoring brings the session back', r.backLogs, 1);
     t.eq('and the pointer with it', r.backPtr, 1);
@@ -570,6 +621,12 @@ export default async function run() {
     t.ok('a full store is told the work could not be kept', r.fullSaysSo, r);
     t.ok('and is not promised a restore that does not exist', !r.fullPromised, r);
     t.ok('guard: the store really did refuse the snapshot', !r.fullSnapshot, r);
+    t.ok('guard: a first lost update really did leave a snapshot behind', r.staleLen > 0, r);
+    t.ok('guard: and the state it must now snapshot is far bigger than that one', r.wantLen > r.staleLen * 5, r);
+    t.ok('a second lost update on a full store still says the work was not kept', r.secondSaysSo, r);
+    t.ok('and does not promise a restore', !r.secondPromised, r);
+    t.ok('and the stale snapshot goes rather than sitting behind the button', !r.secondSnapshot, r);
+    t.ok('so Settings offers no restore of a state from two lost updates ago', !r.secondButton, r);
     t.ok('and advances the revision by exactly one', r.advancesRev, r);
     t.ok('neither stamp travels in a backup, and neither is session scratch', r.baseIsTransient, r);
     await browser.close();

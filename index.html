@@ -2047,9 +2047,14 @@ window.addEventListener('storage',async e=>{
        exists. This is v406's import defect verbatim, in the code that fixed it:
        measured on a full store, the write threw into a silent catch, the toast
        still said "Settings ▸ Restore puts them back", and neither the snapshot
-       nor the button was there. The stale one is dropped FIRST because it is
-       about the same size and freeing it is usually exactly the room the new
-       one needs. */
+       nor the button was there.
+       The stale one is dropped FIRST, and NOT for room: setItem on a key that
+       already exists replaces it, so the old value's space is reclaimed by the
+       write itself (measured — a 39,490-char snapshot landed over a 39,397-char
+       one with under 5,000 chars of slack). It is dropped so a write that FAILS
+       cannot leave an EARLIER lost update's snapshot sitting behind the button:
+       the toast would correctly say the work was not kept while Settings still
+       offered a restore, and the restore would put back the wrong state. */
     let _snapOk=false;
     if(_lost){
       try{localStorage.removeItem(CROSSTAB_KEY);}catch(_){}
@@ -21019,9 +21024,14 @@ function importData(e){
        specification, and this one had nothing behind it in the one state where
        it mattered.
 
-       The stale snapshot is dropped FIRST rather than overwritten: it is about
-       to be superseded either way, and it is about the same size as the new one,
-       so freeing it is usually exactly the room the new one needs. */
+       The stale snapshot is dropped FIRST, and NOT for room: setItem on a key
+       that already exists replaces it, so the old value's space is reclaimed by
+       the write itself (measured on the cross-tab twin — a 39,490-char snapshot
+       landed over a 39,397-char one with under 5,000 chars of slack). It is
+       dropped so a write that FAILS cannot leave an EARLIER import's snapshot
+       sitting behind the Undo button: the confirm would correctly say there is
+       no undo while Settings still offered one, and it would put back a state
+       from two imports ago. */
     let _prevSnap=null,_snapOk=false;
     try{_prevSnap=localStorage.getItem(PREIMPORT_KEY);localStorage.removeItem(PREIMPORT_KEY);}catch(e){}
     try{localStorage.setItem(PREIMPORT_KEY,JSON.stringify(STATE));_snapOk=true;}catch(e){}
