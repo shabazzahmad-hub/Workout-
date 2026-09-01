@@ -1832,7 +1832,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='408';
+const APP_VERSION='409';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -22647,6 +22647,27 @@ function validateData(){
   if(errs.length)console.error('[coreforge] data validation: '+errs.length+' problem(s)\n - '+errs.join('\n - '));
   return errs;
 }
+/* True only when normalizeState() CHANGED or REMOVED something that was
+   already there. A key that was absent and is now present is the app growing,
+   not the athlete's data having been wrong — see boot(). */
+function _normTouchedExisting(a,b){
+  if(a===null||b===null||typeof a!=='object'||typeof b!=='object')return JSON.stringify(a)!==JSON.stringify(b);
+  if(Array.isArray(a)||Array.isArray(b))return JSON.stringify(a)!==JSON.stringify(b);
+  for(const k of Object.keys(a)){
+    /* A NULL IS THE ABSENCE OF AN ANSWER, not an answer that was wrong — the
+       same distinction CLAUDE.md draws between `!= null` and `!== undefined`.
+       DEFAULT_STATE() hands load() a nutrition.kcalTarget of null for every
+       athlete who has never set one, and the repair then deletes it as the
+       junk key it is; counting that as a repair fired the note on a perfectly
+       healthy upgrade. Seeding a real value OVER a null is bootstrapping for
+       the same reason. */
+    if(a[k]===null||a[k]===undefined)continue;
+    if(!(k in b))return true;                                   // a real value was removed
+    if(JSON.stringify(a[k])===JSON.stringify(b[k]))continue;
+    if(_normTouchedExisting(a[k],b[k]))return true;
+  }
+  return false;                                                 // additions only
+}
 async function boot(){
   try{validateData();_assertNoDupes();}catch(e){}
   await idbOpen();
@@ -22669,7 +22690,23 @@ async function boot(){
   normalizeState();
   let _verrs=[];try{_verrs=validateData();}catch(e){}
   const _wasFlagged=!!STATE._dataRepaired;
-  const _repaired=_wasOnboarded&&((JSON.stringify(STATE)!==_beforeNorm)||_verrs.length>0);
+  /* AN UPGRADE IS BOOTSTRAPPING TOO, and bootstrapping is not a repair. The
+     gate above already excludes a never-onboarded first boot for exactly this
+     reason — a fresh DEFAULT_STATE() legitimately gains scaffolding on its
+     first pass — and the same is true of every existing athlete on the first
+     launch after a version that added a field.
+
+     Measured on a real v396 -> v408 upgrade with a perfectly valid state: 46
+     keys ADDED (new containers and migration flags), ZERO validator problems,
+     and NOT ONE value changed — and the note still said "Something stored on
+     this device was not in a shape the app expected, so it was reset to a safe
+     default". That names the wrong cause, which leaves the athlete nothing to
+     act on; and because nearly every version adds a field it fired for every
+     athlete on nearly every upgrade, which is how a note becomes noise.
+
+     A value that was PRESENT and is now different, or gone, is a real repair
+     and still says so. */
+  const _repaired=_wasOnboarded&&(_normTouchedExisting(JSON.parse(_beforeNorm),STATE)||_verrs.length>0);
   if(_repaired)STATE._dataRepaired=true;else delete STATE._dataRepaired;
   if(_repaired!==_wasFlagged)save();
   // request durable storage so an installed PWA keeps data

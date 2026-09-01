@@ -11521,6 +11521,100 @@ recorded, and the assert is what turned a bad anchor into a clean no-op rather
 than a half-applied edit.
 
 
+## An upgrade is bootstrapping, and bootstrapping is not a repair (v409)
+
+Found by driving the one thing that matters the night twelve versions ship at
+once: **a v396 phone booting v408.** Everything survived — 41 logs, the swaps,
+the rest days, 29 food days, the personal records, the baseline and its ten
+results, the prep block, the measurements, the Gemini key — 14 panes rendered,
+the validator was clean and a real session built. And the athlete was told:
+
+> **Your data needed a repair after loading.** Something stored on this device
+> was not in a shape the app expected, so it was reset to a safe default rather
+> than left broken.
+
+None of that was true. Measured at leaf level on a valid v396 state:
+
+| | |
+|---|---|
+| keys ADDED | **46** — new containers and migration flags |
+| values changed | **0** |
+| validator problems | **0** |
+
+`boot()` flagged `_dataRepaired` on ANY diff across `normalizeState()`, and
+**nearly every version adds a field** — so the note fired for every athlete on
+almost every upgrade. That is both naming the wrong cause, which leaves the
+athlete nothing to act on, and a note that always fires, which is a note
+nobody reads.
+
+**The code already made this exact distinction and never applied it here.**
+The gate excludes a never-onboarded first boot with the comment *"routine
+bootstrapping, not a repair of anything an athlete's data did wrong"* — and an
+existing athlete on the first launch after a new field is the same case.
+
+`_normTouchedExisting()` counts a value that was **present and is now different
+or gone**. An added key is the app growing.
+
+**A NULL IS THE ABSENCE OF AN ANSWER, and that is what made the first fix fail
+its own measurement.** `DEFAULT_STATE()` hands `load()` a
+`nutrition.kcalTarget` of `null` for every athlete who has never set one, and
+the repair then deletes it as the junk key it is — so the very first version of
+this counted a REMOVAL and stayed noisy on a perfectly healthy upgrade. Seeding
+a real value over a null is bootstrapping for the same reason. It is the
+`!= null` versus `!== undefined` distinction this file already draws, reaching
+a diff classifier.
+
+**Six floors, each a different genuine repair**, seeded one at a time: a value
+outside its band, a diet outside the list, a keyed map arriving as an array, a
+stored courtesy outside its band, a free-text field of the wrong type, and an
+illegal key in a keyed map. All six still say so, and the over-eager twin that
+never reports anything fails all six.
+
+### Four probe errors, and two were deliberate migrations
+
+The first upgrade probe reported **total data loss** — not onboarded, no logs,
+no name. It seeded only localStorage, and `load()` correctly preferred the
+**newer IndexedDB mirror** the harness's own first boot had just written. A
+real phone carries the state in both stores. That is the trap this file records
+about clearing one store, reached from the other direction.
+
+Then three more, and separating them was most of the work:
+
+- **`coach:'sarge'` → `'auto'`** — `sarge` is not a coach id; the 38 real ones
+  are `drill`, `armydrill`, `mastersgt`… The repair was right.
+- **A hold row vanished** — the repair keys on `id` naming a real hold test and
+  the seed used `test`.
+- **`unit:'imperial'` → `'cm'`** — the app's two values are `in` and `cm`.
+- **`theme:'ember'` → `'mint'` and a real coach → `'auto'`** looked like two
+  regressions and are **deliberate one-time migrations** (`_mintTheme`,
+  `autoIntro`), both introduced in v294. Proven once-only by setting each flag
+  and watching `ember`, `drill` and `marine` all survive — and, because both
+  predate v396, neither fires on this athlete's upgrade at all.
+
+**Confirm the control's real shape before believing the result**, four more
+times in one round.
+
+### The escaped mutant was the arm nothing drove
+
+Seven mutants, and the one that got through removed `||_verrs.length>0` —
+**a validator problem on the athlete's own data no longer reaching them.** All
+six floors above fire through `_normTouchedExisting()`, so nothing exercised
+the other arm at all.
+
+It is not equivalent, and the reachable case is a legal one: a **vegan with
+soy, tree-nut, peanut and gluten allergies** leaves every stored value
+untouched — nothing for `normalizeState()` to repair — and still puts the
+reference days out of reach. Measured: **84 problems, zero repairs.** That is
+the restrictive-diet cost v287 recorded, arriving as the one state that drives
+this arm on its own.
+
+**It needs its own browser, because `validateData()` LOGS** and the harness
+counts a console error as a page failure — the trap this file already records
+for every check that breaks data in front of the validator. And it carries two
+guards: nothing was repaired, and the validator really did complain. Without
+the first, the block passes through the arm it is not testing.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
