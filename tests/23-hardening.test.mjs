@@ -6022,17 +6022,36 @@ export default async function () {
       t.ok('guard: the athlete has a real calorie target to move',
         typeof r.base === 'number' && r.base > 1000, String(r.base));
 
-      // --- repTempo ---
-      t.ok('guard: a stored 999 really does inflate the lifetime total',
-        r.tutRaw > r.tutNormal * 100, r.tutNormal + ' min -> ' + r.tutRaw + ' min');
+      /* --- repTempo ---
+         v383 fixed the BOOT REPAIR and left five raw reads standing, so this
+         block's original guard asserted that a stored 999 inflated the
+         lifetime total 168 min -> 28,354 min BEFORE the boot. v412 gave the
+         field one reader and pointed totalTUTSplit() at it, so that guard is
+         now false on correct code — the raw read it measured no longer exists.
+
+         Re-aimed at the stronger property rather than deleted: the reader
+         protects the figure with NO boot behind it, which is the case a
+         cross-tab adopt creates and a boot repair cannot cover. So the
+         unbooted figure must already BE the clamped one, and booting must
+         change nothing. Deleting these would lose the only assertion that the
+         lifetime clock reads through the band at all. */
+      t.eq('a stored 999 no longer reaches the lifetime clock at all — the reader clamps it',
+        r.tutRaw, r.tutAtSix, r.tutNormal + ' min at 3 -> ' + r.tutRaw + ' min at 999');
+      t.ok('guard: and the cadence really does move that figure, so the equality is not two flat numbers',
+        r.tutAtSix > r.tutNormal, r.tutNormal + ' -> ' + r.tutAtSix);
       t.eq('an out-of-band cadence is clamped to the band the setter enforces', r.tempoHigh, 6);
       /* Priced at the clamped cadence, not at the default — the holds do not
          scale with rep tempo, so it is not a clean multiple of the tempo-3
          figure and a check that assumed one failed on correct code. */
       t.eq('and the lifetime total is priced at the clamped cadence', r.tutFixed, r.tutAtSix);
-      t.ok('which is back in the same order of magnitude as a real one',
-        r.tutFixed < r.tutRaw / 100, r.tutRaw + ' -> ' + r.tutFixed);
-      t.eq('the low end is clamped too', r.tempoLow, 1);
+      t.eq('so the boot changes the figure not at all — both guards agree',
+        r.tutFixed, r.tutRaw, r.tutRaw + ' -> ' + r.tutFixed);
+      /* 1.5, not 1: v412 moved the floor to where every reader already was.
+         A stored 1 was accepted by the setter and honoured by nobody — the
+         player paced at 1.5 while the session clock priced it at 1.0. The
+         literal is pinned here and in suite 05 because the number IS the
+         specification. */
+      t.eq('the low end is clamped too, at the floor every reader already used', r.tempoLow, 1.5);
       t.eq('an in-band cadence is left exactly alone', r.tempoOk, 3.5);
       t.eq('and a non-number takes the default', r.tempoJunk, 3);
 
