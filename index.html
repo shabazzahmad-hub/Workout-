@@ -1832,7 +1832,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='403';
+const APP_VERSION='404';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -1942,6 +1942,32 @@ async function load(){
     STATE.profile=Object.assign(DEFAULT_STATE().profile,p.profile||{});
     STATE.nutrition=Object.assign(DEFAULT_STATE().nutrition,p.nutrition||{});}
 }
+/* TWO TABS. Nothing in this app knew another copy of itself existed, and every
+   change writes the WHOLE state — so the second tab to save wins with whatever
+   it happened to be holding since its own page load. Measured across two real
+   tabs: A logs a training session (logs 1, pointer 1) and saves; B, still
+   holding the state it loaded before that, logs a meal and saves; a third load
+   then reads logs 0 and pointer 0. The session is gone and the pointer rewound,
+   with nothing on screen at any point.
+
+   A `storage` event fires only in the OTHER tabs, and only for localStorage, so
+   it is exactly the signal a tab needs that someone else has written. Every
+   mutation here is followed immediately by save(), so there is no unsaved work
+   to protect: adopting the newer copy is the whole fix.
+
+   A live workout is never disturbed — the guard the self-update path uses, for
+   the same reason. That leaves the two-tabs-mid-session case as before, which
+   is the rarer half and not worth a merge engine to reach. */
+window.addEventListener('storage',async e=>{
+  try{
+    if(!e||e.key!==STORE_KEY||!e.newValue)return;
+    if(typeof _sessionLive==='function'&&_sessionLive())return;
+    await load();
+    normalizeState();
+    render();
+    try{toast('Updated from another tab',2200);}catch(_){}
+  }catch(err){}
+});
 
 /* ============================ PROGRESSION ENGINE ============================ */
 const SESSIONS_PER_WEEK=7, WEEKS_PER_CYCLE=6, SESSIONS_PER_CYCLE=SESSIONS_PER_WEEK*WEEKS_PER_CYCLE; // 42

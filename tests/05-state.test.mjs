@@ -3,6 +3,7 @@
    normalizeState(), so anything it fails to repair is unrecoverable on a real
    phone — the app stays broken across relaunches. */
 import { serve, launch, suite, waitForBoot, seedAthlete, ATHLETE } from './lib/harness.mjs';
+import { chromium } from 'playwright';
 
 const HOSTILE = {
   'nulls everywhere': { onboarded: true, profile: { days: null, gear: null, targets: null, limitations: null, parq: null },
@@ -2293,6 +2294,122 @@ export default async function run() {
     t.ok('nor print it raw', r.noBootGlass);
     errors.forEach(e => t.fail('page error', e));
     await browser.close();
+  }
+
+
+  /* ---- two tabs, and the second one to save used to win --------------------
+     Nothing in this app knew another copy of itself existed, and every change
+     writes the WHOLE state. Measured across two real tabs before the fix:
+
+       A logs a training session and saves      -> logs 1, pointer 1
+       B, holding what it loaded BEFORE that,
+         logs a meal and saves                  -> B still had logs 0, pointer 0
+       a third load reads                       -> logs 0, pointer 0
+
+     The session is gone and the pointer rewound, with nothing on screen at any
+     point. A `storage` event fires only in the OTHER tabs, so it is exactly the
+     signal a tab needs; every mutation here is followed immediately by save(),
+     so there is no unsaved work and adopting the newer copy is the whole fix. */
+  {
+    const base = `http://127.0.0.1:${port}/`;
+    const ctx = await chromium.launchPersistentContext('', { viewport: { width: 390, height: 844 } });
+    const boot = async pg => {
+      await pg.goto(base, { waitUntil: 'domcontentloaded' });
+      await pg.waitForFunction(() => document.querySelector('.view.active'), null, { timeout: 20000 });
+      await pg.waitForTimeout(600);
+    };
+    const A = ctx.pages()[0] || await ctx.newPage();
+    await boot(A); await seedAthlete(A); await A.waitForTimeout(400);
+    const B = await ctx.newPage(); await boot(B);
+
+    // A trains. B is holding the state it loaded before that.
+    const aWrote = await A.evaluate(() => {
+      STATE.logs = { 0: { done: true, completedAt: todayISO(), feel: 'ok', ex: {}, items: [] } };
+      STATE.progressPtr = 1; save();
+      return { logs: Object.keys(STATE.logs).length, ptr: STATE.progressPtr };
+    });
+    await B.waitForTimeout(600);
+    // B logs a meal — and must NOT write A's session away
+    const bWrote = await B.evaluate(() => {
+      const d = nutToday(); d.food = d.food || [];
+      d.food.push({ name: 'Chicken', kcal: 200, p: 40, c: 0, f: 5, meal: 'lunch', at: Date.now() });
+      save();
+      return { logsSeenByB: Object.keys(STATE.logs || {}).length, ptrInB: STATE.progressPtr,
+               food: (nutToday().food || []).length };
+    });
+    const C = await ctx.newPage(); await boot(C);
+    const third = await C.evaluate(() => ({
+      logs: Object.keys(STATE.logs || {}).length, ptr: STATE.progressPtr,
+      food: ((STATE.nutrition.days[todayISO()] || {}).food || []).length }));
+    await C.close();
+
+    t.ok('guard: the first tab really did log a session', aWrote.logs === 1 && aWrote.ptr === 1,
+      JSON.stringify(aWrote));
+    t.eq('the second tab sees the session before it writes', bWrote.logsSeenByB, 1);
+    t.eq('and its pointer', bWrote.ptrInB, 1);
+    t.eq('a later load still has the session', third.logs, 1);
+    t.eq('and the pointer is not rewound', third.ptr, 1);
+    t.eq("FLOOR: and the second tab's own work survives too", third.food, 1);
+
+    /* FLOOR — a live workout is NEVER disturbed. Adopting mid-set would swap the
+       state out from under the player, which is the thing the self-update path
+       guards for the same reason. */
+    await B.evaluate(() => {
+      PLAYER = { i: 2, s: 1, phase: 'work', sess: {} };
+      window.__toasts = []; const rt = window.toast;
+      window.toast = m => { window.__toasts.push(String(m)); return rt(m); };
+    });
+    await A.evaluate(() => { STATE.progressPtr = 7; save(); });
+    await B.waitForTimeout(700);
+    const mid = await B.evaluate(() => ({ player: !!PLAYER, phase: PLAYER && PLAYER.phase,
+      i: PLAYER && PLAYER.i, ptr: STATE.progressPtr, toasts: window.__toasts.slice() }));
+    t.ok('FLOOR: a live workout is left alone', mid.player && mid.phase === 'work' && mid.i === 2,
+      JSON.stringify(mid));
+    t.eq('FLOOR: its state is not swapped mid-set', mid.ptr, 1);
+    t.eq('FLOOR: and it is not interrupted by a toast', mid.toasts.length, 0);
+
+    // once the session ends, a foreign write IS adopted
+    await B.evaluate(() => { PLAYER = null; });
+    await A.evaluate(() => { STATE.progressPtr = 9; save(); });
+    await B.waitForTimeout(800);
+    /* Read the SCREEN, not just STATE. Every assertion here was on the stored
+       value, so a listener that adopted and never repainted was invisible —
+       measure the payload, not the container. The athlete's experience is the
+       glass, and a stale screen over fresh state is its own defect. */
+    const done = await B.evaluate(() => ({ ptr: STATE.progressPtr,
+      toasts: window.__toasts.slice(),
+      screen: (document.querySelector('#v-today') || {}).textContent || '' }));
+    t.eq('once the session ends the other tab is adopted', done.ptr, 9);
+    t.ok('and the screen repaints to match, not just the state',
+      /SESSION\s*10\b/.test(done.screen.replace(/\s+/g, ' ')),
+      done.screen.replace(/\s+/g, ' ').slice(0, 120));
+    t.ok('and the athlete is told why the screen changed',
+      done.toasts.some(m => /another tab/i.test(m)), JSON.stringify(done.toasts));
+
+    /* FLOOR — a foreign write of a DIFFERENT key is not our business. The app
+       also writes the pre-import snapshot to localStorage, and reacting to that
+       would reload and toast over a housekeeping write. Without this case a
+       listener that fires on every key changes nothing any assertion sees. */
+    await B.evaluate(() => { window.__toasts = []; });
+    const ptrBeforeOther = await B.evaluate(() => STATE.progressPtr);
+    await A.evaluate(() => { try { localStorage.setItem(PREIMPORT_KEY, '{"x":1}'); } catch (e) {} });
+    await B.waitForTimeout(700);
+    const other = await B.evaluate(() => ({ ptr: STATE.progressPtr, toasts: window.__toasts.slice() }));
+    t.eq('FLOOR: a write to another key changes nothing', other.ptr, ptrBeforeOther);
+    t.eq('FLOOR: and says nothing', other.toasts.length, 0);
+
+    /* FLOOR — ONE tab alone behaves exactly as before: no swap, no toast. */
+    await B.close();
+    await A.evaluate(() => {
+      window.__t = []; const rt = window.toast;
+      window.toast = m => { window.__t.push(String(m)); return rt(m); };
+      STATE.progressPtr = 11; save();
+    });
+    await A.waitForTimeout(700);
+    const solo = await A.evaluate(() => ({ ptr: STATE.progressPtr, toasts: window.__t.slice() }));
+    t.eq('FLOOR: a single tab keeps what it just saved', solo.ptr, 11);
+    t.eq('FLOOR: and is never told about another tab', solo.toasts.length, 0);
+    await ctx.close();
   }
 
   srv.close();

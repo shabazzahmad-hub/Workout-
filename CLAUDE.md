@@ -10955,6 +10955,58 @@ file that does not exist"* failed on an app that was fine. Copy every file in
 the root, not the extensions you happen to think of — and take the red baseline
 as a fact about the harness before believing anything about the code.
 
+## Two tabs, and the second one to save won (v404)
+
+Nothing in this app knew another copy of itself existed. Every change writes the
+**whole** state, so whichever tab saves last wins with whatever it has been
+holding since its own page load. Measured across two real tabs:
+
+| step | result |
+|---|---|
+| A logs a training session and saves | logs 1, pointer 1 |
+| B — still holding what it loaded BEFORE that — logs a meal and saves | B's own copy was logs 0, pointer 0 |
+| a third load reads | **logs 0, pointer 0** |
+
+**The session is gone and the pointer rewound**, with nothing on screen at any
+point. That is the worst class of defect this app has: work the athlete did,
+silently erased by an ordinary second action.
+
+A `storage` event fires only in the OTHER tabs and only for localStorage, so it
+is exactly the signal a tab needs that someone else has written. **Every
+mutation here is followed immediately by `save()`, so there is no unsaved work
+to protect** — adopting the newer copy is the whole fix, and after it both
+tabs' work survives.
+
+**A live workout is never disturbed**, using the same guard the self-update path
+uses and for the same reason: swapping the state out from under the player
+mid-set is worse than the stale copy. That leaves two tabs training at once
+unfixed, which is the rarer half and not worth a merge engine to reach.
+
+**The athlete is told the screen changed.** A silent state swap is its own
+defect — the screen changing with no explanation reads as a bug. One short
+toast, and only on a real foreign write.
+
+**The floors carry it**, and each catches a different over-eager fix: a single
+tab must behave exactly as before (no swap, no toast), a live workout must keep
+its player and its pointer, and **the second tab's own work must survive too** —
+a "fix" that simply reloaded and discarded would satisfy every assertion about
+the first tab while losing the meal.
+
+### Two escapes, and both are lessons already in this file
+
+- **Every assertion read `STATE` and none read the SCREEN**, so a listener that
+  adopted the newer copy and never repainted was invisible. *Measure the
+  payload, not the container* — the athlete's experience is the glass, and a
+  stale screen over fresh state is its own defect. The check now requires the
+  Today header to show the adopted session number.
+- **A foreign write of a DIFFERENT key was never driven.** The app also writes a
+  pre-import snapshot to localStorage, and reacting to that would reload and
+  toast over a housekeeping write — so a listener firing on every key changed
+  nothing any assertion could see. *A guard that cannot fire in the case you
+  tested is not tested.*
+
+Six mutants, all caught after those two rewrites.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
