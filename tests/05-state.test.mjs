@@ -474,6 +474,64 @@ export default async function run() {
     errors.forEach(e => t.fail('page error during the upgrade-note flow', e));
   }
 
+  /* The OTHER arm: validateData() finding a problem in the athlete's own data
+     when normalizeState() had nothing to repair. Nothing above exercises it,
+     and a mutant that dropped it walked straight through — so it is driven
+     here with a LEGAL diet and LEGAL allergens, which leaves every value
+     untouched and still puts the reference days out of reach (measured: 84
+     problems). Its own browser, because validateData() LOGS and the harness
+     counts a console error as a page failure. */
+  {
+    const { browser, page } = await launch(port);
+    await page.addInitScript(() => { console.error = () => {}; });
+    const r = await page.evaluate(async () => {
+      const s = { version: 1, _saved: '2026-08-30', _savedAt: Date.now(), onboarded: true,
+        progressPtr: 4, adapt: 1,
+        profile: { name: 'Legacy', age: 52, heightCm: 178, sex: 'male', unit: 'in',
+          goal: 'lose', experience: 'Intermediate', days: [1, 2, 4, 5, 6], gear: ['bar'],
+          limitations: [], parq: [], parqDone: true, targets: ['abs'], mobility: 'ok',
+          activity: 1.45, _mintTheme: true },
+        nutrition: { goal: 'lose', sex: 'male', age: 52, heightCm: 178, weightKg: 86,
+          activity: 1.45, diet: 'vegan', allergens: ['soy', 'treenut', 'peanut', 'gluten'],
+          allergies: '', meals: 3, days: {}, cardioMode: 'jacks' },
+        logs: {}, swaps: {}, restDays: {}, _opens: {}, prs: {}, achievements: {},
+        measurements: [], scoreHistory: [], photos: [],
+        settings: { sound: true, vibrate: true, voice: true, voiceName: '', voiceTone: 'mid',
+          voiceRate: 0.98, repTempo: 3, hype: true, coach: 'drill', beat: true, beatVol: 0.55,
+          theme: 'ion', neuralOn: false, azureKey: '', azureRegion: 'eastus', autoIntro: true } };
+      const j = JSON.stringify(s);
+      localStorage.setItem('coreforge.v1', j); await idbPut('coreforge.v1', j);
+      return j;
+    });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForBoot(page);
+    const storedJson = await page.evaluate(() => localStorage.getItem('coreforge.v1'));
+    const v = await page.evaluate(j => {
+      // guard: normalizeState() must have nothing to repair here, or this
+      // block passes through the other arm and proves nothing.
+      const p0 = JSON.parse(j);
+      const obj = (base, x) => (x && typeof x === 'object' && !Array.isArray(x)) ? Object.assign(base, x) : base;
+      const sim = Object.assign(DEFAULT_STATE(), p0);
+      sim.profile = obj(DEFAULT_STATE().profile, p0.profile);
+      sim.settings = obj(DEFAULT_STATE().settings, p0.settings);
+      sim.nutrition = obj(DEFAULT_STATE().nutrition, p0.nutrition);
+      const keep = STATE; STATE = JSON.parse(JSON.stringify(sim));
+      const before = JSON.parse(JSON.stringify(STATE));
+      normalizeState();
+      const touched = _normTouchedExisting(before, STATE);
+      let problems = 0; try { problems = (validateData() || []).length; } catch (e) {}
+      STATE = keep;
+      go('guide'); render();
+      return { touched, problems, repaired: !!STATE._dataRepaired,
+               noteShown: /needed a repair/.test(document.querySelector('#v-guide').innerHTML) };
+    }, storedJson);
+    t.ok('guard: nothing needed repairing in this state', !v.touched, v);
+    t.ok('guard: the validator really did find problems', v.problems > 0, v);
+    t.ok('a validator problem on the athlete\'s own data reaches them', v.repaired, v);
+    t.ok('and shows the note', v.noteShown, v);
+    await browser.close();
+  }
+
   /* ---- a boot-time repair or validation problem reaches the athlete, not
      just the console — validateData()'s findings and any shape normalizeState()
      had to fix used to go nowhere a real athlete would ever see them. -------- */

@@ -11594,6 +11594,26 @@ Then three more, and separating them was most of the work:
 **Confirm the control's real shape before believing the result**, four more
 times in one round.
 
+### The escaped mutant was the arm nothing drove
+
+Seven mutants, and the one that got through removed `||_verrs.length>0` —
+**a validator problem on the athlete's own data no longer reaching them.** All
+six floors above fire through `_normTouchedExisting()`, so nothing exercised
+the other arm at all.
+
+It is not equivalent, and the reachable case is a legal one: a **vegan with
+soy, tree-nut, peanut and gluten allergies** leaves every stored value
+untouched — nothing for `normalizeState()` to repair — and still puts the
+reference days out of reach. Measured: **84 problems, zero repairs.** That is
+the restrictive-diet cost v287 recorded, arriving as the one state that drives
+this arm on its own.
+
+**It needs its own browser, because `validateData()` LOGS** and the harness
+counts a console error as a page failure — the trap this file already records
+for every check that breaks data in front of the validator. And it carries two
+guards: nothing was repaired, and the validator really did complain. Without
+the first, the block passes through the arm it is not testing.
+
 
 ## Rendering
 
