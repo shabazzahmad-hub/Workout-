@@ -1832,7 +1832,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='411';
+const APP_VERSION='412';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2142,6 +2142,40 @@ function posOf(ptr){
    exists and (if written before v178) carries only the original five keys. The
    anchored branch of prescribe() then saw undefined and silently fell through to
    the generic base x level formula, tripling volume for the weakest athletes. */
+/* A MAX IS A MEASUREMENT, AND A MEASUREMENT HAS A PLAUSIBLE RANGE.
+   estimateMaxes() has sanitised the TYPE since it shipped — "abc", null and
+   -5 are all dropped as gaps — and never the RANGE, which is the v286 `adapt`
+   defect exactly: a type test doing a range test's job. Measured on a stored
+   maxes.plank against a 120s benchmark:
+
+     stored        survives the boot   every plank-anchored movement
+     75 (real)     75                  45s
+     600           600                 150s
+     99999         99999               150s
+     1000000000    1e9                 150s
+
+   prescribeCeiling() caps the visible damage at 150s, which is exactly why no
+   suite noticed — but 150-second holds on every plank movement of every
+   session, permanently, with nothing on screen to explain it, is a badly wrong
+   prescription. It also flattens the strength chart, which plots maxes.
+
+   The bound is PER TEST because the ten span seconds and reps: 120s for the
+   plank against 20 reps for the rows. 50x the published benchmark is far past
+   any human on this app's protocols — the tightest ceiling it produces is 1000
+   inverted rows in one set — so it provably cannot fire on a legitimate
+   result, which is what a guard has to prove before it earns its place.
+   An id with no benchmark is left unbounded rather than guessed at — and the
+   `!cap ||` half of the filter below is an EQUIVALENT mutant, measured rather
+   than assumed: every EX.anchor is a TESTS id and every test has a bench
+   (0 exceptions across the library), so no reachable read ever looks up a key
+   without one. An imported junk key survives into the derived object either
+   way and nothing reads it. Kept as cover for a future test with no published
+   benchmark; no check can catch its removal. */
+const MAX_BENCH_MULT=50;
+function maxPlausible(id){
+  try{const t=(TESTS||[]).filter(x=>x.id===id)[0];
+    return (t&&t.bench>0)?t.bench*MAX_BENCH_MULT:0;}catch(e){return 0;}
+}
 function estimateMaxes(m){
   /* Sanitise BEFORE merging. Object.assign lets a present-but-invalid value win
      over the default that exists to cover it, so a backup carrying
@@ -2157,7 +2191,8 @@ function estimateMaxes(m){
   const clean={};
   Object.keys(m||{}).forEach(k=>{
     const v=typeof m[k]==='number'?m[k]:parseFloat(m[k]);
-    if(isFinite(v)&&v>=0)clean[k]=v;
+    const cap=maxPlausible(k);
+    if(isFinite(v)&&v>=0&&(!cap||v<=cap))clean[k]=v;
   });
   const s=Math.max(0.5,Math.min(2,(clean.plank!=null?clean.plank:40)/60));
   /* power (Jump Squats, added v247) was missing from this literal entirely —
@@ -2485,8 +2520,23 @@ function toggleTightSpace(){
    does not have to be kept in step with it by hand — atLadderCeiling()
    below needs the exact same number prescribe() is already enforcing, not
    a re-derived approximation of it. */
+/* THE MOST THIS ENGINE CAN EVER ASK FOR IN ONE SET. Read by prescribeCeiling()
+   and by the boot repair for `actual`, so the two cannot drift. */
+const PRESCRIBE_TIME_MAX=150;
+/* A RESULT IS BOUNDED BY WHAT WAS ASKED FOR. askActual()'s box carries min="0"
+   and no maximum, and saveActual() stored whatever was typed — so a slip on the
+   keypad (500 for 50) became a personal record and a figure on Progress.
+   Measured on a 45-rep prescription with 1000000000 entered: prs.squatjack
+   became a billion and Progress printed 16666666 as a percentage of the
+   standard. The load is NOT affected — commitSession()'s ratio bands saturate
+   at 1 — which is exactly why nothing ever noticed.
+   Ten times the prescription is far past any human on this app's protocols and
+   provably cannot clip a real entry: the engine never asks for more than 40
+   reps or 150 seconds in one set, so the widest ceiling this produces is 1500. */
+const ACTUAL_MAX_MULT=10;
+function actualCeiling(target){const t=+target;return (isFinite(t)&&t>0)?t*ACTUAL_MAX_MULT:PRESCRIBE_TIME_MAX*ACTUAL_MAX_MULT;}
 function prescribeCeiling(ex){
-  if(ex.unit==='time')return 150;
+  if(ex.unit==='time')return PRESCRIBE_TIME_MAX;
   return (ex.repCap>0)?ex.repCap:(ex.hardness<=0.6?12:(ex.hardness<=0.85?20:40));
 }
 /* Every ladder this exId is the FINAL rung of. Most movements sit in exactly
@@ -6297,6 +6347,17 @@ function saveActual(exId,forced){
          themselves. Emptiness is the only thing that means "no answer". */
       const el=$('#ac-n');const raw=el?String(el.value).trim():'';
       const v=Math.max(0,Math.round(+raw||0));
+      /* Refused at the keypad, with the prescription named — the athlete is
+         still on the screen and can retype it, and a repair at the next boot
+         would silently throw the entry away instead. Same call as assessNav().
+         The prescription is looked up the same way recordPRFromActual() does;
+         with no session to read it falls back to the engine's widest ceiling. */
+      let _tgt=0;
+      try{const _s=buildSession(STATE.progressPtr);
+        const _m=[..._s.main,_s.finisher].find(x=>x&&x.exId===exId);if(_m)_tgt=_m.target;}catch(e){}
+      if(raw!==''&&isFinite(v)&&v>actualCeiling(_tgt)){
+        toast(_tgt>0?('That is far past the '+_tgt+' asked for. Enter what you actually did.')
+                    :'That is far past any recorded result. Enter what you actually did.',4000);return;}
       if(raw!==''&&isFinite(v)){st.actual=v;delete st.actualSkipped;}
     }
     save();
@@ -6702,10 +6763,23 @@ function repEccShare(exId){
   const ex=EX[exId];
   return (ex&&typeof ex.repSec==='number'&&ex.repSec>0)?0.5:null;
 }
-const REP_TEMPO_MIN=1, REP_TEMPO_MAX=6;   // the band setRepTempo() and the boot repair share
+/* ONE BAND, AND THE FLOOR MOVED TO WHERE THE READERS ALREADY WERE. This
+   shipped as 1-6 while every consumer floored at 1.5, so a stored 1 — which
+   the setter and the boot repair both accepted — was honoured by nobody: the
+   player paced at 1.5 and sessionStats() priced the same session at 1.0, a
+   33% under-estimate of every rep-based session. That is v307's defect (the
+   session clock priced against a cadence the pacing ignored) in a narrower
+   form. The floor is 1.5 now, which clips only an imported value no reader
+   ever honoured; the ceiling stays 6 and the slider offers it. */
+const REP_TEMPO_MIN=1.5, REP_TEMPO_MAX=6;
+const REP_TEMPO_DEFAULT=3;
+/* The one reader. Five sites read settings.repTempo raw or with a
+   hand-copied band — v383 fixed the boot repair and left them standing, and
+   a boot repair cannot cover a cross-tab adopt, which replaces STATE with no
+   boot behind it. */
 function repTempoSetting(){
   const v=STATE.settings&&STATE.settings.repTempo;
-  return (typeof v==='number')?Math.max(1.5,Math.min(6,v)):3;
+  return (typeof v==='number'&&isFinite(v))?clamp(v,REP_TEMPO_MIN,REP_TEMPO_MAX):REP_TEMPO_DEFAULT;
 }
 /* Gentler, back- & neck-friendly alternatives (used by the swap menu). */
 const SWAP_ALT={
@@ -6978,7 +7052,7 @@ function openPlayer(opts){
   // clear any interval still owned by a previous start — reassigning the global
   // would orphan it, and orphans keep mutating the CURRENT session (clock runs 2x).
   plClear();
-  const _tempo=Math.max(1.5,Math.min(6,(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3));
+  const _tempo=repTempoSetting();
   PLAYER={sess,items,i:0,s:0,phase:null,running:true,tid:null,remain:0,total:0,repN:0,elapsed:0,setsDone:0,pendingNext:false,free,
     tempo:_tempo,
     t0:monoNow(),pausedMs:0,pauseAt:null,budget:plBudgetMin(items,_tempo),overNudged:false,lastPauseNudge:0};
@@ -9340,7 +9414,14 @@ function assessRestHTML(t,ex){
 }
 function assessNav(dir){
   const t=TESTS[assessState.idx];const v=parseFloat($('#assess-val').value);
-  if(dir>0){if(!(v>=0)||$('#assess-val').value===''){toast('Enter your result (0 is fine)');return;}assessState.results[t.id]=v;}
+  if(dir>0){if(!(v>=0)||$('#assess-val').value===''){toast('Enter your result (0 is fine)');return;}
+    /* The typed path is the OTHER door in, and the only guard was v>=0. A slip
+       here anchors every prescription for a year, and the athlete is still on
+       the screen to fix it — so it is refused with the benchmark named, rather
+       than repaired silently later. */
+    {const _cap=maxPlausible(t.id);
+     if(_cap&&v>_cap){toast('That is far past any recorded result — the benchmark here is '+t.bench+'. Enter what you actually did.',4500);return;}}
+    assessState.results[t.id]=v;}
   else{const cur=$('#assess-val').value;if(cur!=='')assessState.results[t.id]=parseFloat(cur);}
   const ni=assessState.idx+dir;
   if(ni<0)return;
@@ -9961,7 +10042,7 @@ function _deviceSpeak(text,p){
     // manually tuned pitch/rate in Settings.
     const manualV=!!STATE.settings.voiceName,
           manualR=(typeof STATE.settings.voiceRate==='number');
-    u.rate=manualR?STATE.settings.voiceRate:((p&&p.rate)||0.98);
+    u.rate=manualR?voiceRatePref(0.98):((p&&p.rate)||0.98);
     u.pitch=localPitchFor(p);   // tone preset + this persona's own character
     const v=(p&&!manualV)?coachVoiceFor(p):COACH_V;
     if(v)u.voice=v;
@@ -10223,7 +10304,7 @@ function _briefDeviceSpeak(text,resolve,gen){
     const synth=speechSynthesis;synth.cancel();
     const u=new SpeechSynthesisUtterance(String(text||''));
     u.lang='en-US';u.volume=1;
-    u.rate=(typeof STATE.settings.voiceRate==='number')?STATE.settings.voiceRate:ADVISOR.rate;
+    u.rate=voiceRatePref(ADVISOR.rate);
     u.pitch=localPitchFor(ADVISOR);
     const v=STATE.settings.voiceName?COACH_VOICES.find(x=>x.name===STATE.settings.voiceName):coachVoiceFor(ADVISOR);
     if(v)u.voice=v;
@@ -10702,6 +10783,21 @@ function testNeural(){
    and the script. Genuine depth needs the neural path, which is real synthesis
    and is deliberately untouched here. */
 const LOCAL_PITCH_FLOOR=1.18;
+/* THE CEILING THAT SITS WITH IT. v269: nothing in this app goes outside
+   1.18-1.45 — not a tone base, not a persona offset, not the manual slider — so
+   the pair is one band and it lives in one place. setCoachPitch() clamped to
+   0-2, which is WIDER than both the slider and the read, and the boot repair
+   checked only the type. Nothing was mis-VOICED, because localPitchFor() clamps
+   its own read. What was wrong is what the athlete was told: Settings renders
+   `voicePitch.toFixed(2)` raw, so a stored 99 printed "Fine-tuned to 99.00,
+   which overrides the tone" while the coach spoke at 1.45 — and the slider's
+   own value sat outside its min and max, so the thumb pinned to an end and the
+   first drag jumped. The same split this round removed from the calorie card. */
+const LOCAL_PITCH_CEIL=1.45;
+/* The tempo band beatTempoPref() and setBeatTempo() both use. Nothing renders
+   it raw, so the only cost of the missing repair is a junk key travelling in
+   every backup — the v285 harm, and one line to close. */
+const BEAT_TEMPO_MIN=60, BEAT_TEMPO_MAX=110;
 const VOICE_TONES=[
   ['deep','Deep','As low as a phone voice goes without buzzing',1.18,-2],
   ['mid','Mid','Natural range — most voices sound best here',1.26,0],
@@ -10726,13 +10822,13 @@ function setVoiceTone(k){
 function localPitchFor(p){
   try{
     if(typeof STATE.settings.voicePitch==='number'&&isFinite(STATE.settings.voicePitch))
-      return clamp(STATE.settings.voicePitch,LOCAL_PITCH_FLOOR,1.45);  // explicit fine-tune wins, but not below the floor
+      return clamp(STATE.settings.voicePitch,LOCAL_PITCH_FLOOR,LOCAL_PITCH_CEIL);  // explicit fine-tune wins, but not below the floor
     const base=voiceTone()[3];
     const own=(p&&typeof p.pitch==='number'&&isFinite(p.pitch))?p.pitch:0.6;
     /* The offset is a hint of character, not a second tone dial, and it can no
        longer push anything under the floor — that is what kept dragging the
        deep coaches back into the buzz however high the base went. */
-    return clamp(base+(own-0.6)*0.15,LOCAL_PITCH_FLOOR,1.45);
+    return clamp(base+(own-0.6)*0.15,LOCAL_PITCH_FLOOR,LOCAL_PITCH_CEIL);
   }catch(e){return 0.98;}
 }
 /* The same shift for the neural path, in semitones, so switching engines does
@@ -10746,10 +10842,39 @@ function neuralPitchFor(cfgPitch){
     return v?((v>0?'+':'')+v+'st'):null;   // "0st" is invalid SSML — omit it
   }catch(e){return cfgPitch||null;}
 }
-function setCoachPitch(v){STATE.settings.voicePitch=Math.max(0,Math.min(2,parseFloat(v)||0.6));save();}
-function setCoachRate(v){STATE.settings.voiceRate=Math.max(.5,Math.min(1.5,parseFloat(v)||0.98));save();}
-function setRepTempo(v){STATE.settings.repTempo=clamp(parseFloat(v)||3,REP_TEMPO_MIN,REP_TEMPO_MAX);save();}
-function setBeatVol(v){STATE.settings.beatVol=Math.max(0.05,Math.min(1,parseFloat(v)||0.55));save();haptic(6);if(BEAT&&BEAT.on){BEAT.vol=beatVolPref()*0.9;const g=BEAT.master.gain,t=BEAT.ac.currentTime;g.cancelScheduledValues(t);g.setValueAtTime(Math.max(0.0002,g.value),t);g.exponentialRampToValueAtTime(Math.max(0.0002,BEAT.vol),t+0.2);}}
+/* The stored fine-tune, read through its own band — null when the athlete has
+   not moved the slider, because ABSENT is what makes the tone buttons work
+   (this is the field the voicePitch trap is named after). Settings printed the
+   raw number, so a value that arrived mid-session read "Fine-tuned to 99.00"
+   over a coach speaking at the ceiling. */
+function voicePitchPref(){const v=STATE.settings&&STATE.settings.voicePitch;
+  return (typeof v==='number'&&isFinite(v))?clamp(v,LOCAL_PITCH_FLOOR,LOCAL_PITCH_CEIL):null;}
+function setCoachPitch(v){STATE.settings.voicePitch=clamp(parseFloat(v)||LOCAL_PITCH_FLOOR,LOCAL_PITCH_FLOOR,LOCAL_PITCH_CEIL);save();}
+/* THE BANDS THESE TWO WRITERS ENFORCE, in one place so the boot repair and the
+   read sites can ask them. Both repairs were `typeof !== 'number'` — the v286
+   `adapt` shape a fifth and sixth time — and both values are read RAW into
+   something physical:
+
+     settings.beatVol  -> BEAT.master.gain, so a stored 100 is a gain of 90.
+                          v269 caps a cue at 1.0 for exactly this reason: an
+                          oscillator driven past unity clips, which sounds
+                          broken rather than loud. This one is a whole mix.
+     settings.voiceRate -> SpeechSynthesisUtterance.rate, where an out-of-band
+                          value is unintelligible or refused outright.
+
+   Both sliders also render `value="${stored}"` against their own min/max, so an
+   out-of-band figure leaves the thumb pinned to an end and the first drag
+   jumps — the same "the picker shows nothing selected" harm as a junk theme.
+
+   The READ clamps as well as the repair, because these feed hardware and a
+   value can arrive mid-session from a cross-tab adopt. That is cueVolPref()'s
+   shape, and it is defence in depth rather than a duplicate rule: the band
+   lives here once and both sites ask it. */
+const VOICE_RATE_MIN=0.5, VOICE_RATE_MAX=1.5;
+const BEAT_VOL_MIN=0.05, BEAT_VOL_MAX=1;
+function setCoachRate(v){STATE.settings.voiceRate=clamp(parseFloat(v)||0.98,VOICE_RATE_MIN,VOICE_RATE_MAX);save();}
+function setRepTempo(v){STATE.settings.repTempo=clamp(parseFloat(v)||REP_TEMPO_DEFAULT,REP_TEMPO_MIN,REP_TEMPO_MAX);save();}
+function setBeatVol(v){STATE.settings.beatVol=clamp(parseFloat(v)||0.55,BEAT_VOL_MIN,BEAT_VOL_MAX);save();haptic(6);if(BEAT&&BEAT.on){BEAT.vol=beatVolPref()*0.9;const g=BEAT.master.gain,t=BEAT.ac.currentTime;g.cancelScheduledValues(t);g.setValueAtTime(Math.max(0.0002,g.value),t);g.exponentialRampToValueAtTime(Math.max(0.0002,BEAT.vol),t+0.2);}}
 let _beatPrevT=null;
 function beatPreview(){beatStart();if(_beatPrevT)clearTimeout(_beatPrevT);_beatPrevT=setTimeout(()=>{if(!$('#scrim').classList.contains('open'))beatStop();},5000);}
 
@@ -11516,12 +11641,17 @@ function stopTimer(){cancelAutoClose();if(timer){clearInterval(timer.iv);timer=n
    against a beat, a fan and breathing hard. Cap stays at 1.0 — a single
    oscillator driven past unity into destination clips, which sounds broken
    rather than loud. */
+/* ONE COPY OF THE BAND. It was written out three times — here, in the setter
+   and in the slider's own min/max — which is the drift every other band in
+   this app was hoisted out of. No boot clamp, for voicePitch's reason: the
+   value is read raw nowhere, so there is nothing left to repair. */
+const CUE_VOL_MIN=0.2, CUE_VOL_MAX=2, CUE_VOL_DEFAULT=1.25;
 function cueVolPref(){
   const v=STATE.settings&&STATE.settings.cueVol;
-  return (typeof v==='number'&&isFinite(v))?clamp(v,0.2,2):1.25;
+  return (typeof v==='number'&&isFinite(v))?clamp(v,CUE_VOL_MIN,CUE_VOL_MAX):CUE_VOL_DEFAULT;
 }
 function setCueVol(v){
-  STATE.settings.cueVol=clamp(parseFloat(v)||1.25,0.2,2);
+  STATE.settings.cueVol=clamp(parseFloat(v)||CUE_VOL_DEFAULT,CUE_VOL_MIN,CUE_VOL_MAX);
   save();
 }
 function beep(freq=880,dur=0.12,vol=0.6,type='square'){if(!STATE.settings.sound)return;try{const ac=beep._ac||(beep._ac=new (window.AudioContext||window.webkitAudioContext)());if(ac.state==='suspended')ac.resume();const o=ac.createOscillator(),g=ac.createGain();o.type=type;o.frequency.value=freq;o.connect(g);g.connect(ac.destination);g.gain.setValueAtTime(Math.min(vol*cueVolPref(),1.0),ac.currentTime);g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+dur);o.start();o.stop(ac.currentTime+dur);}catch(e){}}
@@ -11680,7 +11810,11 @@ function countdownCue(remain,total){
    ducks its volume whenever the coach speaks, then swells back. */
 let BEAT=null;
 function audioCtx(){const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return null;const ac=beep._ac||(beep._ac=new AC());if(ac.state==='suspended'){try{ac.resume();}catch(e){}}return ac;}
-function beatVolPref(){return (typeof STATE.settings.beatVol==='number')?STATE.settings.beatVol:0.55;}
+function beatVolPref(){const v=STATE.settings.beatVol;
+  return (typeof v==='number'&&isFinite(v))?clamp(v,BEAT_VOL_MIN,BEAT_VOL_MAX):0.55;}
+/* The band a stored rate is read through — see VOICE_RATE_MIN. */
+function voiceRatePref(fallback){const v=STATE.settings.voiceRate;
+  return (typeof v==='number'&&isFinite(v))?clamp(v,VOICE_RATE_MIN,VOICE_RATE_MAX):fallback;}
 /* Warm 4-chord lo-fi loop (Am – F – C – G): [pad tones], sub-bass root. */
 const LOFI_CHORDS=[
   {pad:[220.00,261.63,329.63], bass:55.00},   // Am
@@ -11888,7 +12022,7 @@ function startGuidedReps(exId){
 function cancelReps(){_repTok++;stopTimer();closeSheet();}
 function runRepCadence(reps,label,restAfter,onDone,ex){
   const total=Math.max(1,reps);let n=0;
-  const tempo=Math.max(1.5,Math.min(6,(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3));
+  const tempo=repTempoSetting();
   const C=2*Math.PI*100;
   openSheet(repHTML(label,total,ex));
   autoRoll();primeVoice();beatStart();
@@ -13651,14 +13785,15 @@ function deloadBanner(){
   return `<div class="note info" style="margin-top:12px">${msg} <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="toggleDeload()">End deload</button></div>`;
 }
 /* ---- #8 Beat tempo / style ---- */
-function beatTempoPref(){const t=STATE.settings&&STATE.settings.beatTempo;return (typeof t==='number'&&t>=60&&t<=110)?t:78;}
+function beatTempoPref(){const t=STATE.settings&&STATE.settings.beatTempo;
+  return (typeof t==='number'&&t>=BEAT_TEMPO_MIN&&t<=BEAT_TEMPO_MAX)?t:78;}
 /* Re-render after storing. Without it the preset chips did change the tempo —
    the beat restarted at the new BPM — but the slider, the "92 BPM" label and
    the chip highlight all kept showing the old value, so tapping one looked
    like it had done nothing at all. */
 function setBeatTempo(bpm){
   if(!STATE.settings)STATE.settings={};
-  STATE.settings.beatTempo=Math.max(60,Math.min(110,parseInt(bpm)||78));
+  STATE.settings.beatTempo=clamp(parseInt(bpm)||78,BEAT_TEMPO_MIN,BEAT_TEMPO_MAX);
   save();haptic(8);
   if(BEAT&&BEAT.on){beatStop();beatStart();}
   if(TAB==='guide')try{renderGuide();}catch(e){}
@@ -14000,6 +14135,20 @@ const COMMON_FOODS=QUICK_PICKS.map(n=>{const f=FOOD_DB.find(x=>x.n===n)||{n:n,k:
 /* Meal slots — logging is grouped like a food diary. Defaults to the slot that
    matches the current time so one-tap logging lands in the right place. */
 const MEALS=[['b','🍳 Breakfast'],['l','🥗 Lunch'],['d','🍽️ Dinner'],['s','🍎 Snacks']];
+/* THE ONE MEMBERSHIP TEST FOR A MEAL SLOT, because the legal set was written
+   out by hand in the boot repair while foodRow() asked only truthiness and the
+   diary grouped on a third fallback.
+
+   The diary renders by walking MEALS and matching, so a row whose slot is in
+   none of them is INVISIBLE — and still counted in the day's total, and with
+   no remove button, because the ✕ only exists inside a group. That is the
+   v354 gear-key harm and the v374 pose harm on the food log: a stored value
+   outside the registry the picker renders from cannot be seen or undone.
+
+   The boot repair catches it today, so this is a latent-class fix rather than
+   a live defect — but a fifth slot added to MEALS would be rewritten to lunch
+   on every boot by a hand-written list, which is v312's cardio mode exactly. */
+function mealKey(v){return MEALS.some(m=>m[0]===v)?v:null;}
 function currentMealSlot(){const h=new Date().getHours();return h<11?'b':(h<16?'l':(h<21?'d':'s'));}
 // Totals carry all four macros; older entries (kcal/protein only) count as 0 c/f.
 /* The portion note is free text a language model wrote, and an imported backup can
@@ -14072,7 +14221,7 @@ function foodTotals(){const d=nutToday();const f=d.food||[];
 function foodRow(name,kcal,p,c,f,meal,portion,calc,src){
   const _nn=v=>Math.max(0,Math.round(v||0));
   return {name:String(name||'Meal').slice(0,60),kcal:_nn(kcal),p:_nn(p),
-    c:_nn(c),f:_nn(f),meal:meal||currentMealSlot(),at:Date.now(),
+    c:_nn(c),f:_nn(f),meal:mealKey(meal)||currentMealSlot(),at:Date.now(),
     ...(cleanPortion(portion)?{portion:cleanPortion(portion)}:{}),
     ...(_MACRO_KEY[calc]?{calc}:{}),
     ...(src==='shot'?{src:'shot'}:{})};
@@ -15340,7 +15489,13 @@ function activityPlan(est){
       out[k].min+=min; out[k].km+=km;
     }
     const st=est&&est.steps;
-    if(typeof st==='number'&&isFinite(st)&&st>0)out.steps=Math.min(200000,Math.round(st));
+    /* THE REVIEW MUST SHOW WHAT SAVE WILL KEEP. This capped the parsed figure
+       at 200000 and setSteps() then stores at most MOVE_VAL_MAX, so a watch
+       reporting 150,000 steps was shown as 150,000 in the review sheet and
+       saved as 100,000 — the sheet promising a number the save does not keep,
+       which is the same split this round removed from the calorie card. One
+       ceiling, read by the parser, the setter and the boot repair. */
+    if(typeof st==='number'&&isFinite(st)&&st>0)out.steps=Math.min(MOVE_VAL_MAX,Math.round(st));
   }catch(e){}
   return out;
 }
@@ -15587,7 +15742,7 @@ function intakeHTML(){
   // diary grouped by meal
   if(items.length){
     MEALS.forEach(([k,label])=>{
-      const rows=items.map((f,i)=>({f,i})).filter(x=>(x.f.meal||'s')===k);
+      const rows=items.map((f,i)=>({f,i})).filter(x=>(mealKey(x.f.meal)||'s')===k);
       if(!rows.length)return;
       const sub=rows.reduce((a,x)=>a+(x.f.kcal||0),0);
       h+=`<div class="kv" style="border-top:1px solid var(--line);padding-top:10px"><span class="tiny" style="font-weight:800;letter-spacing:.4px">${label}</span><span class="tiny muted">${sub} kcal</span></div>`;
@@ -15892,6 +16047,23 @@ function toggleLimitation(j){
   save();toast(p.limitations.includes(j)?'Working around your '+j:'Cleared');render();
 }
 /* ---- #1 True per-exercise progression ---- */
+/* THE BAND rateExercise() ENFORCES, IN ONE PLACE so the boot repair can ask it.
+   The repair only ever checked the TYPE — the v286 `adapt` defect and the v412
+   `maxes` defect, a third time. `target*=exAdaptFor(exId)` runs BEFORE
+   prescribe()'s own clamp, so the visible damage is capped at both ends and
+   nothing ever threw. Measured on a week-1 push-up and plank:
+
+     stored exAdapt   push-ups   plank
+     1 (neutral)      25         80s
+     0.1              3          15s     <- the floor, permanently
+     1000000          30         150s    <- the ceiling, permanently
+
+   The LOW side is the one that hurts: three push-ups where twenty-five were
+   prescribed, on every session, with nothing on screen to explain it. A rating
+   is three taps of a chip — it cannot leave this band — so a number outside it
+   did not come from the athlete and is dropped rather than clamped, which
+   returns the neutral 1. */
+const EXADAPT_MIN=0.85, EXADAPT_MAX=1.25;
 function exAdaptFor(exId){return (STATE.exAdapt&&STATE.exAdapt[exId])||1;}
 function ratingChipsHTML(exId){
   const ex=EX[exId];if(!ex)return '';const cur=exAdaptFor(exId);
@@ -15907,7 +16079,7 @@ function rateExercise(exId,kind,btn){
   if(!STATE.exAdapt)STATE.exAdapt={};
   const cur=STATE.exAdapt[exId]||1;
   const f=kind==='easy'?1.05:(kind==='hard'?0.93:1.0);
-  STATE.exAdapt[exId]=clamp(cur*f,0.85,1.25);save();
+  STATE.exAdapt[exId]=clamp(cur*f,EXADAPT_MIN,EXADAPT_MAX);save();
   const row=document.getElementById('rateRow');if(row)row.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));
   if(btn)btn.classList.add('on');haptic(8);
   toast(kind==='easy'?'Noted — heavier next time 💪':(kind==='hard'?'Noted — easing that one':'Locked in ✓'));
@@ -16089,7 +16261,7 @@ function streakGapTol(){
 function totalTUTSplit(){
   let work=0,rest=0;
   allDonePairs().forEach(([p,l])=>{
-    const items=logItemsFor(p,l);const tempo=(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3;
+    const items=logItemsFor(p,l);const tempo=repTempoSetting();
     items.forEach(m=>{
       const e=l.ex&&l.ex[m.exId];const sd=e&&e.sets?e.sets.filter(Boolean).length:0;
       if(!sd)return;
@@ -17000,11 +17172,11 @@ function movement(){
   const slvl=SKIP_LEVELS.some(b=>b.k===t.skipLvl)?t.skipLvl
     :(((STATE.profile&&STATE.profile.skipLevel)&&SKIP_LEVELS.some(b=>b.k===STATE.profile.skipLevel))?STATE.profile.skipLevel:'steady');
   const sunit=SKIP_UNITS.some(u=>u[0]===t.skipUnit)?t.skipUnit:'min';
-  return {steps:Math.round(num(t.steps,100000)),val:num(t.bikeVal,100000),unit,lvl,
-    jval:num(t.jackVal,100000),junit,jlvl,
-    rval:num(t.ruckVal,100000),runit,rlvl,
-    nval:num(t.runVal,100000),nunit,nlvl,
-    sval:num(t.skipVal,100000),sunit,slvl};
+  return {steps:Math.round(num(t.steps,MOVE_VAL_MAX)),val:num(t.bikeVal,MOVE_VAL_MAX),unit,lvl,
+    jval:num(t.jackVal,MOVE_VAL_MAX),junit,jlvl,
+    rval:num(t.ruckVal,MOVE_VAL_MAX),runit,rlvl,
+    nval:num(t.runVal,MOVE_VAL_MAX),nunit,nlvl,
+    sval:num(t.skipVal,MOVE_VAL_MAX),sunit,slvl};
 }
 /* The jack session in every currency at once, same shape as bikeRide(). */
 function jackMinutes(){
@@ -17192,7 +17364,7 @@ function todayKcalBudget(){
   return k+movementKcalAdj();
 }
 function setSteps(v){
-  const t=nutToday();t.steps=Math.max(0,Math.min(100000,Math.round(+v||0)));
+  const t=nutToday();t.steps=Math.max(0,Math.min(MOVE_VAL_MAX,Math.round(+v||0)));
   syncStepHabit();save();repaintMovement();
 }
 /* Stored in the unit it was entered in — except distance, which is converted to
@@ -17387,6 +17559,18 @@ function rateBikeAndClose(feel){
 /* One reading of a STORED day's number. Not `movement()`, which carries the
    athlete's CURRENT level forward as a default — right for today, wrong for a
    day already in the past, which recorded whatever it recorded. */
+/* THE CEILING EVERY MOVEMENT FIGURE IS READ THROUGH, in one place so the boot
+   repair can ask it. movement() has clamped every read to this since it was
+   written and setSteps() to the same number, so a stored billion was already
+   harmless on the glass and in the calorie budget — which is why nothing ever
+   noticed that normalizeState() checked only `>=0`. The cost is the one v285
+   measured: junk that travels in every backup and comes back on the next
+   import.
+   The repair uses the READ ceiling, not the writers' tighter per-unit caps
+   (300 minutes, 20000 skips, 100 miles). A stored figure between the two is
+   already read correctly by every consumer, and clipping it would discard a
+   real entry made under a unit the repair cannot always know. */
+const MOVE_VAL_MAX=100000;
 function _dv(v){return (typeof v==='number'&&isFinite(v)&&v>0)?v:0;}
 const CARDIO_INFO={
   jacks:{label:'🤸 Jumping jacks',short:'jumping jacks',did:'of jumping jacks',verb:'jumping',
@@ -19919,6 +20103,8 @@ function timelineIsAggressive(){
   const r=timelineRateKgWk();
   return r!==null&&r>=TIMELINE_HARD_KGWK;
 }
+/* The band applyKcalAdj() enforces, in one place so the boot repair can ask it. */
+const KCAL_ADJ_MAX=500;
 function kcalTargetPreview(adjOverride){
   const n=nut();if(!(n.sex&&n.age&&n.heightCm&&n.weightKg))return null;
   const bmr=mifflinBMR(n.sex,n.weightKg,n.heightCm,n.age);const tdee=bmr*(n.activity||1.45);
@@ -19959,7 +20145,7 @@ function kcalTargetPreview(adjOverride){
      out for an individual, and the activity factor is a guess on top of a
      guess. Reality is what the weight trend says, and calorieCheck() turns that
      into this number. */
-  const stored=(typeof n.kcalAdj==='number'&&isFinite(n.kcalAdj))?clamp(n.kcalAdj,-500,500):0;
+  const stored=(typeof n.kcalAdj==='number'&&isFinite(n.kcalAdj))?clamp(n.kcalAdj,-KCAL_ADJ_MAX,KCAL_ADJ_MAX):0;
   const adj=(adjOverride===undefined)?stored:clamp(stored+(+adjOverride||0),-500,500);
   t+=adj;
   /* Safety floor: never prescribe below ~110% of BMR. Record when it bites so the
@@ -20090,7 +20276,7 @@ function applyKcalAdj(step){
   try{
     const n=nut();
     const cur=(typeof n.kcalAdj==='number'&&isFinite(n.kcalAdj))?n.kcalAdj:0;
-    n.kcalAdj=clamp(cur+(+step||0),-500,500);
+    n.kcalAdj=clamp(cur+(+step||0),-KCAL_ADJ_MAX,KCAL_ADJ_MAX);
     n.kcalAdjAt=todayISO();
     recalcKcalFromStored();
     save();render();
@@ -20457,7 +20643,7 @@ function logItemsFor(p,l){
 function sessionStats(p,full){
   const l=STATE.logs[p]||{ex:{}};
   const items=logItemsFor(p,l);
-  const tempo=(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3;
+  const tempo=repTempoSetting();
   let exDone=0,setsDone=0,setsRx=0,totalReps=0,totalHold=0,estSec=0;
   items.forEach(m=>{
     const e=l.ex&&l.ex[m.exId];const sd=e&&e.sets?e.sets.filter(Boolean).length:0;
@@ -20631,14 +20817,14 @@ function renderGuide(){
       ?'Listens only during rest, and only for that one word. It never stops, pauses or ends a session — that stays a deliberate tap.'
       :'This browser has no speech recognition, so the switch cannot do anything on this phone.'}</div>
     <div style="padding:4px 0 2px">
-      <div class="row" style="justify-content:space-between"><span class="tiny muted">Beep &amp; countdown volume</span><span class="tiny muted" id="cvLbl">${Math.round(cueVolPref()*100/1.25)}%</span></div>
-      <input type="range" aria-label="Beep and countdown volume" min="0.2" max="2" step="0.05" value="${cueVolPref()}" oninput="$('#cvLbl').textContent=Math.round(this.value*100/1.25)+'%'" onchange="setCueVol(this.value);beep(920,.17,0.92)" style="width:100%">
+      <div class="row" style="justify-content:space-between"><span class="tiny muted">Beep &amp; countdown volume</span><span class="tiny muted" id="cvLbl">${Math.round(cueVolPref()*100/CUE_VOL_DEFAULT)}%</span></div>
+      <input type="range" aria-label="Beep and countdown volume" min="${CUE_VOL_MIN}" max="${CUE_VOL_MAX}" step="0.05" value="${cueVolPref()}" oninput="$('#cvLbl').textContent=Math.round(this.value*100/CUE_VOL_DEFAULT)+'%'" onchange="setCueVol(this.value);beep(920,.17,0.92)" style="width:100%">
       <div class="tiny muted" style="margin-bottom:4px">Plays a sample as you let go. The beat ducks under the cues that matter, so these stay audible over the music.</div>
     </div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Workout beat <span class="tiny muted">· hip-hop, auto-ducks for the coach</span></span><button class="chip ${STATE.settings.beat!==false?'on':''}" onclick="toggleSetting('beat')">${STATE.settings.beat!==false?'On':'Off'}</button></div>
     ${STATE.settings.beat!==false?`<div style="padding:4px 0 2px">
       <div class="row" style="justify-content:space-between"><span class="tiny muted">Beat volume</span><span class="tiny muted" id="bvLbl">${Math.round(beatVolPref()*100)}%</span></div>
-      <input type="range" aria-label="Beat volume" min="0.1" max="1" step="0.05" value="${beatVolPref()}" oninput="$('#bvLbl').textContent=Math.round(this.value*100)+'%'" onchange="setBeatVol(this.value)" style="width:100%">
+      <input type="range" aria-label="Beat volume" min="${BEAT_VOL_MIN}" max="${BEAT_VOL_MAX}" step="0.05" value="${beatVolPref()}" oninput="$('#bvLbl').textContent=Math.round(this.value*100)+'%'" onchange="setBeatVol(this.value)" style="width:100%">
       <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">Beat tempo</span><span class="tiny muted" id="beatTempoLbl">${beatTempoPref()} BPM</span></div>
       <input type="range" aria-label="Beat tempo in beats per minute" min="60" max="110" step="2" value="${beatTempoPref()}" oninput="$('#beatTempoLbl').textContent=this.value+' BPM'" onchange="setBeatTempo(this.value)" style="width:100%">
       <div class="btnrow" style="gap:6px;margin-top:6px">${[[70,'😌 Chill 70'],[78,'🎧 Classic 78'],[92,'🔥 Hype 92']].map(([bpm,label])=>
@@ -20701,20 +20887,20 @@ function renderGuide(){
       <div class="daypick" id="voiceTone" style="flex-wrap:wrap">${VOICE_TONES.map(([k,label])=>
         `<button class="${voiceToneKey()===k?'on':''}" onclick="setVoiceTone('${k}')">${label}</button>`).join('')}</div>
       <div class="tiny muted" style="margin-top:6px">${_ve(voiceTone()[2])}. Plays a sample when you pick one. Each coach keeps their own character — this moves the whole set up or down.</div>
-      ${typeof STATE.settings.voicePitch==='number'?`<div class="tiny muted" style="margin-top:6px">Fine-tuned to <b>${STATE.settings.voicePitch.toFixed(2)}</b>, which overrides the tone. Pick a tone above to go back to automatic.</div>`:''}
+      ${voicePitchPref()!==null?`<div class="tiny muted" style="margin-top:6px">Fine-tuned to <b>${voicePitchPref().toFixed(2)}</b>, which overrides the tone. Pick a tone above to go back to automatic.</div>`:''}
     </div>
     <details style="padding:4px 0 2px"><summary class="tiny muted" style="cursor:pointer">Fine-tune depth by hand</summary>
-      <div class="row" style="justify-content:space-between;margin-top:6px"><span class="tiny muted">Depth <span style="opacity:.7">(lower = deeper)</span></span><span class="tiny muted" id="pvLbl">${(typeof STATE.settings.voicePitch==='number'?STATE.settings.voicePitch:localPitchFor(null)).toFixed(2)}</span></div>
-      <input type="range" aria-label="Coach voice depth" min="1.18" max="1.45" step="0.01" value="${typeof STATE.settings.voicePitch==='number'?STATE.settings.voicePitch:localPitchFor(null)}" oninput="$('#pvLbl').textContent=(+this.value).toFixed(2)" onchange="setCoachPitch(this.value);sampleVoice()" style="width:100%">
-      <div class="tiny muted" style="margin-top:4px">Below about 0.5 most phone voices start to buzz rather than sound deep.</div>
+      <div class="row" style="justify-content:space-between;margin-top:6px"><span class="tiny muted">Depth <span style="opacity:.7">(lower = deeper)</span></span><span class="tiny muted" id="pvLbl">${(voicePitchPref()!==null?voicePitchPref():localPitchFor(null)).toFixed(2)}</span></div>
+      <input type="range" aria-label="Coach voice depth" min="${LOCAL_PITCH_FLOOR}" max="${LOCAL_PITCH_CEIL}" step="0.01" value="${voicePitchPref()!==null?voicePitchPref():localPitchFor(null)}" oninput="$('#pvLbl').textContent=(+this.value).toFixed(2)" onchange="setCoachPitch(this.value);sampleVoice()" style="width:100%">
+      <div class="tiny muted" style="margin-top:4px">A device voice is pitch-SHIFTED rather than resynthesised, so moving far from 1.0 in either direction adds artifacts — the slider stays inside ${LOCAL_PITCH_FLOOR}-${LOCAL_PITCH_CEIL} for that reason.</div>
     </details>
     <div style="padding:8px 0 2px">
-      <div class="row" style="justify-content:space-between"><span class="tiny muted">Speed</span><span class="tiny muted" id="rvLbl">${(typeof STATE.settings.voiceRate==='number'?STATE.settings.voiceRate:0.98).toFixed(2)}×</span></div>
-      <input type="range" aria-label="Coach speaking speed" min="0.7" max="1.3" step="0.05" value="${typeof STATE.settings.voiceRate==='number'?STATE.settings.voiceRate:0.98}" oninput="$('#rvLbl').textContent=(+this.value).toFixed(2)+'×'" onchange="setCoachRate(this.value);sampleVoice()" style="width:100%">
+      <div class="row" style="justify-content:space-between"><span class="tiny muted">Speed</span><span class="tiny muted" id="rvLbl">${voiceRatePref(0.98).toFixed(2)}×</span></div>
+      <input type="range" aria-label="Coach speaking speed" min="${VOICE_RATE_MIN}" max="${VOICE_RATE_MAX}" step="0.05" value="${voiceRatePref(0.98)}" oninput="$('#rvLbl').textContent=(+this.value).toFixed(2)+'×'" onchange="setCoachRate(this.value);sampleVoice()" style="width:100%">
     </div>
     <div style="padding:8px 0 2px">
-      <div class="row" style="justify-content:space-between"><span class="tiny muted">Rep cadence <span style="opacity:.7">(sec / rep)</span></span><span class="tiny muted" id="rtLbl">${(typeof STATE.settings.repTempo==='number'?STATE.settings.repTempo:3).toFixed(1)}s</span></div>
-      <input type="range" aria-label="Rep cadence in seconds per rep" min="1.5" max="5" step="0.5" value="${typeof STATE.settings.repTempo==='number'?STATE.settings.repTempo:3}" oninput="$('#rtLbl').textContent=(+this.value).toFixed(1)+'s'" onchange="setRepTempo(this.value)" style="width:100%">
+      <div class="row" style="justify-content:space-between"><span class="tiny muted">Rep cadence <span style="opacity:.7">(sec / rep)</span></span><span class="tiny muted" id="rtLbl">${repTempoSetting().toFixed(1)}s</span></div>
+      <input type="range" aria-label="Rep cadence in seconds per rep" min="${REP_TEMPO_MIN}" max="${REP_TEMPO_MAX}" step="0.5" value="${repTempoSetting()}" oninput="$('#rtLbl').textContent=(+this.value).toFixed(1)+'s'" onchange="setRepTempo(this.value)" style="width:100%">
       <div class="tiny muted" style="margin-top:4px">How fast the coach counts your reps during a guided set.</div>
     </div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span class="muted sm">Hear a sample</span><button class="chip" onclick="testVoice()">▶ Test voice</button></div>
@@ -21309,7 +21495,9 @@ function normalizeState(){
      `if(!_s._toneFix)`), so this line alone re-added voicePitch:0.6 with
      nothing left to remove it again — reintroducing, on every boot after the
      first, the exact bug the migration exists to fix. */
-  if(typeof STATE.settings.voiceRate!=='number')STATE.settings.voiceRate=0.98;
+  /* The band, not merely the type — see VOICE_RATE_MIN. */
+  if(typeof STATE.settings.voiceRate!=='number'||!isFinite(STATE.settings.voiceRate))STATE.settings.voiceRate=0.98;
+  else STATE.settings.voiceRate=clamp(STATE.settings.voiceRate,VOICE_RATE_MIN,VOICE_RATE_MAX);
   /* A RANGE TEST'S JOB DONE BY A TYPE TEST — the v286 `adapt` defect verbatim,
      one field over. setRepTempo() clamps to 1-6 and this only ever checked the
      type, so a stored 999 survived every boot. The PLAYER clamps at its own
@@ -21317,7 +21505,7 @@ function normalizeState(){
      and sessionStats() read it RAW and multiply it by every rep ever logged,
      which is how a lifetime total reads "10,410 min trained · 75,901 kcal".
      Clamped to the band the setter itself enforces. */
-  if(typeof STATE.settings.repTempo!=='number'||!isFinite(STATE.settings.repTempo))STATE.settings.repTempo=3;
+  if(typeof STATE.settings.repTempo!=='number'||!isFinite(STATE.settings.repTempo))STATE.settings.repTempo=REP_TEMPO_DEFAULT;
   else STATE.settings.repTempo=clamp(STATE.settings.repTempo,REP_TEMPO_MIN,REP_TEMPO_MAX);
   /* Membership, not truthiness. coachFor() falls back to COACHES[0] for an
      unknown id, so nothing breaks — but the junk survives every boot, travels
@@ -21376,7 +21564,7 @@ function normalizeState(){
          .filter(x=>x&&typeof x==='object'&&!Array.isArray(x))
          .map(x=>({name:String(x.name==null?'Meal':x.name).slice(0,60),
            kcal:num(x.kcal,20000),p:num(x.p,2000),c:num(x.c,2000),f:num(x.f,2000),
-           meal:['b','l','d','s'].includes(x.meal)?x.meal:'l',
+           meal:mealKey(x.meal)||'l',
            at:(typeof x.at==='number'&&isFinite(x.at))?x.at:0,
            ...(cleanPortion(x.portion)?{portion:cleanPortion(x.portion)}:{}),
            /* A REPAIR THAT REBUILDS A ROW FROM A HAND-WRITTEN FIELD LIST DROPS
@@ -21646,6 +21834,20 @@ function normalizeState(){
    if(STATE.reassess&&typeof STATE.reassess==='object'&&!Array.isArray(STATE.reassess))
      Object.keys(STATE.reassess).forEach(k=>_lvFix(STATE.reassess[k]));
    if(Array.isArray(STATE.scoreHistory))STATE.scoreHistory.forEach(_lvFix);}
+  /* Both halves of a record, because the engine reads `maxes` and the finish
+     screen reads `results` — bounding one would leave the app prescribing from
+     the estimate while printing 99999 as the athlete's result, which is the
+     v399 split-brain in a new place. An out-of-band number is not a
+     measurement, so it is dropped and estimateMaxes() fills the gap the same
+     way it already does for a junk type. */
+  {const _maxFix=o=>{if(!o||typeof o!=='object')return;
+     ['results','maxes'].forEach(f=>{
+       const m=o[f];if(!m||typeof m!=='object'||Array.isArray(m))return;
+       Object.keys(m).forEach(k=>{const cap=maxPlausible(k);
+         if(cap&&typeof m[k]==='number'&&m[k]>cap)delete m[k];});});};
+   _maxFix(STATE.baseline);
+   if(STATE.reassess&&typeof STATE.reassess==='object'&&!Array.isArray(STATE.reassess))
+     Object.keys(STATE.reassess).forEach(k=>_maxFix(STATE.reassess[k]));}
   if(!Array.isArray(STATE.scoreHistory))STATE.scoreHistory=[];
   /* `typeof [] === 'object'`, so a bare typeof test lets an ARRAY through —
      and both of these are keyed maps, never lists. The archived-runs repair
@@ -21972,15 +22174,27 @@ function normalizeState(){
      if(!l||!l.ex||typeof l.ex!=='object')return;
      Object.values(l.ex).forEach(st=>{
        if(!st||typeof st!=='object')return;
-       if(st.actual!=null&&!(typeof st.actual==='number'&&isFinite(st.actual)&&st.actual>=0))delete st.actual;
+       /* The band the writer enforces, not merely the type — see actualCeiling.
+          The repair has no session in hand and rebuilding one per log is the
+          v335 walk-inside-a-walk, so it uses the widest ceiling the engine can
+          ever produce rather than this movement's own. */
+       if(st.actual!=null&&!(typeof st.actual==='number'&&isFinite(st.actual)&&st.actual>=0&&st.actual<=actualCeiling(0)))delete st.actual;
      });
    });}catch(e){}
    if(!STATE.exAdapt||typeof STATE.exAdapt!=='object'||Array.isArray(STATE.exAdapt))STATE.exAdapt={};
    else Object.keys(STATE.exAdapt).forEach(k=>{const v=STATE.exAdapt[k];
-     if(!(typeof v==='number'&&isFinite(v)&&v>0))delete STATE.exAdapt[k];});
+     /* The band, not merely the type — see EXADAPT_MIN. */
+     if(!(typeof v==='number'&&isFinite(v)&&v>=EXADAPT_MIN&&v<=EXADAPT_MAX))delete STATE.exAdapt[k];});
    if(!STATE.readiness||typeof STATE.readiness!=='object'||Array.isArray(STATE.readiness))STATE.readiness={};
    else Object.keys(STATE.readiness).forEach(k=>{const r=STATE.readiness[k];
-     if(!r||typeof r!=='object'||!(typeof r.score==='number'&&isFinite(r.score)))delete STATE.readiness[k];});
+     /* A readiness score is a PERCENTAGE — saveReadiness() averages three
+        answers of 25, 60 or 100, so it can only ever be 25-100 — and the repair
+        checked the type only. A stored 99999 survived every boot and Today
+        printed "Readiness 99999%". readinessMult()'s bands saturate, so the
+        prescription is unaffected, which is why nothing noticed. Bounded at
+        0-100 rather than 25-100: the wider band is what every consumer means by
+        this number, and it cannot clip an answer the athlete gave. */
+     if(!r||typeof r!=='object'||!(typeof r.score==='number'&&isFinite(r.score)&&r.score>=0&&r.score<=100))delete STATE.readiness[k];});
    // A junk bikeLevelFeel would either hide bikeLevelSuggestion() forever
    // (a bad streak type never reaches 3) or, worse, feed a non-existent
    // BIKE_LEVELS key into the picker — bikeLevelFeel() already guards its
@@ -22024,7 +22238,7 @@ function normalizeState(){
    if(N&&N.days&&typeof N.days==='object'){
      Object.keys(N.days).forEach(k=>{
        const d=N.days[k];if(!d||typeof d!=='object')return;
-       if(d.steps!=null&&!(typeof d.steps==='number'&&isFinite(d.steps)&&d.steps>=0))delete d.steps;
+       if(d.steps!=null&&!(typeof d.steps==='number'&&isFinite(d.steps)&&d.steps>=0&&d.steps<=MOVE_VAL_MAX))delete d.steps;
        // bikeMin was minutes-only, before a ride could be logged as distance
        // or calories. Carry it across rather than dropping the day's ride.
        if(typeof d.bikeMin==='number'&&isFinite(d.bikeMin)&&d.bikeMin>0&&d.bikeVal==null){
@@ -22288,7 +22502,8 @@ function normalizeState(){
       CARDIO_MODES.forEach(mk=>{
         const c=CARDIO_INFO[mk];if(!c)return;
         const vk=c.valKey,lk=c.lvlKey,uk=c.unitKey;
-        if(day[vk]!=null&&(typeof day[vk]!=='number'||!isFinite(day[vk])||day[vk]<0))delete day[vk];
+        /* The band, not merely the sign — see MOVE_VAL_MAX. */
+        if(day[vk]!=null&&(typeof day[vk]!=='number'||!isFinite(day[vk])||day[vk]<0||day[vk]>MOVE_VAL_MAX))delete day[vk];
         if(day[lk]!=null&&!c.levels().some(b=>b.k===day[lk]))delete day[lk];
         if(day[uk]!=null&&!c.units().some(u=>u[0]===day[uk]))delete day[uk];
       });
@@ -22300,11 +22515,21 @@ function normalizeState(){
      the chance — and it is on the Today render path. */
   if(STATE._undo!=null&&(typeof STATE._undo!=='object'||Array.isArray(STATE._undo)))delete STATE._undo;
   /* kcalAdj feeds straight into the prescribed calorie target, so a string here
-     would poison it. recalcKcalFromStored clamps, but only once it is a number. */
+     would poison it. recalcKcalFromStored clamps, but only once it is a number
+     AND only once it runs — and Fuel prints the STORED figure raw. Measured on
+     a stored 99999: the target the app prescribes is built from +500 and the
+     card read "adjusted +99999 from your own results". The app said one number
+     and did another, which is the v399 split-brain in a new place.
+     Clamped rather than dropped, because unlike a max this is not a
+     measurement: it is a correction the app itself computed, every effective
+     reader already clamps it, and writing the clamped value back is what makes
+     the glass agree with the prescription — the shape cueVolPref() already
+     uses. The band lives in one place so the two cannot drift. */
   try{
     const _n=STATE.nutrition;
     if(_n){
       if(_n.kcalAdj!=null&&(typeof _n.kcalAdj!=='number'||!isFinite(_n.kcalAdj)))_n.kcalAdj=0;
+      else if(typeof _n.kcalAdj==='number')_n.kcalAdj=clamp(_n.kcalAdj,-KCAL_ADJ_MAX,KCAL_ADJ_MAX);
       if(_n.kcalAdjAt!=null&&typeof _n.kcalAdjAt!=='string')delete _n.kcalAdjAt;
     }
   }catch(e){}
@@ -22322,11 +22547,35 @@ function normalizeState(){
     const _s=STATE.settings;
     if(_s){
       if(_s.voiceTone!=null&&!VOICE_TONES.some(t=>t[0]===_s.voiceTone))delete _s.voiceTone;
-      if(_s.voicePitch!=null&&(typeof _s.voicePitch!=='number'||!isFinite(_s.voicePitch)))delete _s.voicePitch;
       if(!_s._toneFix){
         if(_s.voicePitch===0.6)delete _s.voicePitch;
         _s._toneFix=true;
       }
+      /* TYPE ONLY, AND THE MISSING BAND CLAMP IS THE DECISION. Every other
+         member of the v412 sweep is clamped at boot because something read it
+         raw. This one is not read raw anywhere: localPitchFor() and
+         voicePitchPref() both clamp to LOCAL_PITCH_FLOOR..CEIL, and every
+         athlete-facing site — the slider value, its min/max, the "Fine-tuned
+         to" note — goes through voicePitchPref(). That is the cueVol shape
+         v286 recorded as a FALSE alarm: a value sanitised at every read site
+         has nothing left to repair.
+
+         And a clamp here does positive harm, which is measured rather than
+         argued. _toneFix is keyed to the EXACT legacy value 0.6, the shape
+         this file prescribes for a stale default. Clamping turns 0.6 into
+         1.18, so `=== 0.6` never matches again: shipped that way for one
+         round, the stale key survived every boot for ever and the tone
+         buttons it exists to restore stayed dead. Ordering the migration
+         first fixes that boot; it cannot fix a 0.6 that arrives LATER from
+         an import, which a clamp would silently convert into a permanent
+         manual override.
+
+         Absent still stays absent: voicePitch present means "the athlete
+         moved the slider", so a default here would kill the tone buttons —
+         the voicePitch trap named after this very field. */
+      if(_s.voicePitch!=null&&(typeof _s.voicePitch!=='number'||!isFinite(_s.voicePitch)))delete _s.voicePitch;
+      if(_s.beatTempo!=null&&(typeof _s.beatTempo!=='number'||!isFinite(_s.beatTempo)))delete _s.beatTempo;
+      else if(typeof _s.beatTempo==='number')_s.beatTempo=clamp(Math.round(_s.beatTempo),BEAT_TEMPO_MIN,BEAT_TEMPO_MAX);
     }
   }catch(e){}
   if(!Array.isArray(STATE.pain))STATE.pain=[];
@@ -22361,7 +22610,10 @@ function normalizeState(){
   // one-time: switch existing installs to the new rotating Auto coach
   if(!STATE.settings.autoIntro){STATE.settings.coach='auto';STATE.settings.autoIntro=true;}
   if(STATE.settings.beat===undefined)STATE.settings.beat=true;
-  if(typeof STATE.settings.beatVol!=='number')STATE.settings.beatVol=0.55;
+  /* The band, not merely the type — see BEAT_VOL_MIN. This one reaches a gain
+     node, so an out-of-band value is loud rather than merely wrong. */
+  if(typeof STATE.settings.beatVol!=='number'||!isFinite(STATE.settings.beatVol))STATE.settings.beatVol=0.55;
+  else STATE.settings.beatVol=clamp(STATE.settings.beatVol,BEAT_VOL_MIN,BEAT_VOL_MAX);
   // The palette shipped with the redesign is Mint; move existing installs off the
   // old orange default once, while leaving a deliberate accent choice alone.
   if(!STATE.profile._mintTheme){if(!STATE.settings.theme||STATE.settings.theme==='ember')STATE.settings.theme=THEME_DEFAULT;STATE.profile._mintTheme=true;}
@@ -22417,6 +22669,18 @@ function validateData(){
   TROUBLE_AREAS.forEach(z=>{if(!Object.prototype.hasOwnProperty.call(TROUBLE_POOL,z[0]))errs.push('TROUBLE_AREAS.'+z[0]+' has no TROUBLE_POOL entry — the button steers nothing');});
   Object.keys(TROUBLE_POOL).forEach(k=>{if(!TROUBLE_AREAS.some(z=>z[0]===k))errs.push('TROUBLE_POOL.'+k+' has no picker button — unreachable');});
   {const _fk={};FOCUS_AREAS.forEach(a=>{if(_fk[a[0]])errs.push('FOCUS_AREAS: duplicate key "'+a[0]+'"');_fk[a[0]]=1;});}
+  /* COMBAT_ORDER is a PERMUTATION of the four FORCE events, and combatOrder()
+     does .filter(Boolean) — so an id that no longer exists is dropped in
+     silence and the circuit card renders three rows where the evaluation has
+     four. An athlete would train the three and be tested on four, with nothing
+     on screen saying so. Checked both directions, and for duplicates, because
+     a repeated id passes a length test and still loses an event. */
+  {const _co={};
+   COMBAT_ORDER.forEach(id=>{
+     if(!FORCE_IDS.includes(id))errs.push('COMBAT_ORDER names "'+id+'", which is not a FORCE event — the circuit would silently drop it');
+     if(_co[id])errs.push('COMBAT_ORDER: duplicate id "'+id+'"');
+     _co[id]=1;});
+   FORCE_IDS.forEach(id=>{if(!_co[id])errs.push('COMBAT_ORDER is missing FORCE event "'+id+'" — the circuit would run one event short');});}
   /* estimateMaxes({}) is the LAST gate every stored maxes object passes through
      on the way to prescribe() — currentMaxes() calls nothing else. Its own
      internal defaults literal has drifted behind TESTS before (power/Jump

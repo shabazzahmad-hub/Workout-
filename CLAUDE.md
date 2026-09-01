@@ -946,8 +946,11 @@ and every one is a trap this file already names:
   a calorie target. The recipes genuinely changed; only the stamp did not.
 - **A reference day is literally named "halal / no pork"** — a substring search
   for pork matched the label promising its absence.
-- **`cueVol` is clamped by `cueVolPref()`, which also writes the clamped value
-  back** — the stored 99 is never read raw, so there is nothing to fix.
+- **`cueVol` is clamped by `cueVolPref()`, and nothing reads it raw** — every
+  beep, the slider and its label all go through that reader, so there is
+  nothing to fix. *(The original note said the reader "writes the clamped value
+  back". It does not, and never did; re-reading it in v412 is what corrected
+  that. The conclusion was right for the other reason.)*
 - And the harness itself: serialising each check with `fn.toString()` to run it
   in the page **destroys closures**, so 85 checks that captured a loop variable
   reported "j is not defined" and looked like 85 failures.
@@ -12239,6 +12242,477 @@ than a value as the thing measured in the wrong place. Six mutants, all caught
 after that — including the twin M6, the guard never SET, which nothing had
 exercised in that direction.
 
+
+## The type was checked and the RANGE was not, for the third time (v412)
+
+`estimateMaxes()` has sanitised the TYPE of every baseline result since it
+shipped — `"abc"`, `null`, `-5` and `NaN` are all dropped as gaps, with a
+comment explaining each. It never checked the RANGE. That is the v286 `adapt`
+defect and the v383 `repTempo` defect exactly: **a type test doing a range
+test's job**, on the ten numbers that anchor every prescription for a year.
+
+Measured on a stored `maxes.plank` against the published 120-second benchmark:
+
+| stored | survives the boot | every plank-anchored movement |
+|---|---|---|
+| 75 (real) | 75 | 45s |
+| 600 | 600 | 150s |
+| 99999 | **99999** | **150s** |
+| 1000000000 | **1e9** | **150s** |
+
+`prescribeCeiling()` caps the visible blow-up at 150 s, **which is exactly why
+no suite ever noticed** — nothing throws and nothing renders `NaN`. But
+150-second holds on every plank movement of every session, permanently, with
+nothing on screen to explain it, is a badly wrong prescription. It also
+flattens the strength chart, which plots `maxes` directly.
+
+**The bound is PER TEST, because the ten span seconds and reps.** 120 s for the
+plank against 20 reps for the inverted rows: one number for both would either
+clip a real plank or wave a thousand rows through. `maxPlausible(id)` reads the
+test's own `bench`, so the ten ceilings move if the benchmarks ever do — and an
+id with no benchmark is left **unbounded** rather than guessed at.
+
+**50x the benchmark provably cannot fire on a legitimate result**, which is what
+a guard has to prove before it earns its place. The tightest ceiling it produces
+is 1,000 inverted rows in one set. The floors pin that: an exceptional but real
+600-second plank, 150 push-ups and 200 squats all survive untouched, and a
+**measured zero is still data** — the rule `estimateMaxes()` was already fixed
+for once, from the other direction.
+
+**Both halves of the record, because the app reads both.** The engine reads
+`maxes` and the finish screen reads `results`; bounding one would leave the app
+prescribing from the estimate while printing 99999 as the athlete's own result.
+And every reassessment, not only the baseline — *fixing one instance is not
+fixing the class*.
+
+### Two guards mean two checks, and the typed door is the one worth refusing
+
+The number arrives two ways. An **import** is repaired at boot. A **typo in the
+battery** — 1200 for 120 on a keypad — reached `assessNav()`, whose only guard
+was `v>=0`, and was written straight into `assessState.results`.
+
+**The typed path is REFUSED, not repaired.** The boot repair drops the number,
+which loses a result; the athlete is still standing on the screen and can simply
+retype it. So the toast names the benchmark rather than the rule — v289's lesson
+that a range restated is not an explanation — and the refusal costs no
+two-minute rest, because no effort was made.
+
+Each guard is driven with the other's route deliberately absent: the read filter
+is exercised with no boot behind it, which is the mid-session door `commitAssessment()`
+uses and which `normalizeState()` never sees.
+
+**The floors carry the round**, and each over-eager twin fails a different one: a
+bound tight enough to clip a real result, one ceiling shared by seconds and reps,
+an unknown id dropped rather than left alone, and a typed guard that refuses
+every answer.
+
+### One equivalent mutant, measured rather than assumed (v412)
+
+The `!cap ||` half of the read filter — *an id with no benchmark is left
+unbounded* — cannot be caught, and the measurement is what settled it. **Every
+`EX.anchor` in the library is a `TESTS` id and every test carries a bench**, so
+no reachable read ever looks up a key without one; an imported junk key survives
+into the derived object either way and nothing reads it. Kept as cover for a
+future test with no published benchmark, and recorded as uncatchable rather than
+papered over with a check that cannot fail — the same call as v287's
+`wantAnchor`. **Read the mutant back before rewriting the check.**
+
+### The class had two more members, and both were a writer's band (v412)
+
+`maxes` was one instance. Sweeping the class — **every `clamp()` inside a
+writer, against whether `normalizeState()` bounds the same field** — found two
+more, and one of them under-prescribes rather than over-prescribes.
+
+**`exAdapt`** is the per-exercise rating the athlete sets by tapping a chip.
+`rateExercise()` clamps it to 0.85-1.25; the repair checked `typeof number &&
+isFinite && > 0`. Measured on a week-1 push-up and plank:
+
+| stored | push-ups | plank |
+|---|---|---|
+| 1 (neutral) | 25 | 80s |
+| **0.1** | **3** | **15s** |
+| **1000000** | 30 | **150s** |
+
+`target *= exAdaptFor(exId)` runs BEFORE `prescribe()`'s own clamp, so both
+ends are capped and nothing ever threw. **The LOW side is the one that hurts**
+— three push-ups where twenty-five were prescribed, on every session, for good.
+A rating is three taps of a chip, so a number outside the band did not come from
+the athlete: it is **dropped**, which returns the neutral 1.
+
+**`kcalAdj`** is the calorie correction. `applyKcalAdj()` clamps it to ±500;
+the repair checked type and finiteness only, and **Fuel prints the stored figure
+raw**. Measured on a stored 99999: the app prescribed from +500 and the card
+read *"adjusted +99999 from your own results"* — the app saying one number and
+doing another, which is the v399 split-brain in a new place.
+
+**It is CLAMPED rather than dropped, and the asymmetry is the point.** A max is
+a measurement and an out-of-band one is not; an adjustment is a figure the app
+itself computed, every effective reader already clamps it, and writing the
+clamped value back is what makes the glass agree with the prescription — the
+shape `cueVolPref()` already uses. Two different kinds of number, two different
+repairs.
+
+**The guard is the athlete's own taps.** Twenty easy taps must saturate at
+1.25 and forty hard ones at 0.85, asserted before anything about the band — or
+the floors are two numbers restated in the check rather than the band the app
+enforces. And the payload is the PRESCRIPTION, not the stored value: the check
+requires an in-band rating to move the target before asserting that an
+out-of-band one no longer does.
+
+### And two more, where the harm is a RECORD rather than a prescription (v412)
+
+The sweep kept going and found the class was five wide, not three. These two are
+worth recording because **neither moves the prescription at all**, which is
+exactly why nothing ever noticed them.
+
+**`actual`** is the number the athlete types after a set. It has two writers and
+**only one bounds it**: the guided player does `st.actual=Math.min(done,m.target)`,
+and `saveActual()` — the box, carrying `min="0"` and no maximum — stored whatever
+was typed. *One of a pair guarded and its twin not*, for the sixth time in this
+file. Measured on a 45-rep prescription with a billion entered:
+
+| | |
+|---|---|
+| `actualRatio()` | 22,222,222 |
+| the load | **unchanged** — `commitSession()`'s bands saturate at 1 |
+| `prs.squatjack` | **1000000000** |
+| Progress ▸ Strength printed | **16666666** as a percentage of the standard |
+
+**`readiness.score`** is a percentage averaged from three answers of 25, 60 or
+100. The repair checked the type alone, so a stored 99999 survived every boot
+and Today printed **"Readiness 99999%"** — while `readinessMult()`'s bands
+saturate at 80, so again the prescription was untouched.
+
+**A guard whose effect is capped is the hardest to find and still worth
+fixing.** Nothing throws, nothing renders `NaN`, and the load is right — so the
+only evidence is a personal record nobody set and a number on the glass.
+
+**The typed door is REFUSED and the import door is REPAIRED**, the same split as
+the battery: the athlete is standing on the screen and can retype, while a
+repair would silently discard the entry. And the two ceilings are one constant:
+`ACTUAL_MAX_MULT` times the prescription at the keypad, and — because the repair
+has no session in hand and rebuilding one per log is the v335 walk-inside-a-walk
+— the same multiple of `PRESCRIBE_TIME_MAX`, which is the widest the engine can
+ever ask for. **`prescribeCeiling()`'s own 150 was hoisted into that constant**
+rather than restated, so the bound moves with the engine.
+
+### The last members, where the cost is backup weight only
+
+`day.steps` and the five per-mode movement figures (`jackVal`, `bikeVal`,
+`ruckVal`, `runVal`, `skipVal`). Every writer caps them — `setSteps()` at
+100,000, the five setters at 300 minutes / 20,000 skips / 100 miles — and the
+repair checked `>= 0` alone.
+
+**Eleven field groups in the whole sweep**: `maxes` (with `results` and every
+reassessment), `exAdapt`, `kcalAdj`, `actual`, `readiness.score`, `steps`, the
+five movement values, `beatVol`, `voiceRate`, `voicePitch` and `beatTempo` —
+every one a band a writer already enforced against a repair that checked only
+the type.
+
+**They are recorded because they are the honest low end of the class.**
+`movement()` has read all six through the same 100,000 ceiling since it was
+written, so a stored billion was already harmless on the glass AND in the
+calorie budget — measured, `todayKcalBudget()` gives 2,500 either way, because
+the movement credit is itself clamped at +500. The only cost is the one v285
+measured: junk that travels in every backup and comes back on the next import.
+
+**The repair uses the READ ceiling, not the writers' tighter per-unit caps.** A
+figure between the two is already read correctly by every consumer, and the
+repair cannot always know which unit the entry was made in — so clipping there
+would discard a real result to buy nothing.
+
+**And the check walks `CARDIO_MODES` rather than naming the modes**, with a
+guard that it swept five. A check written as a hand-written list of the same
+members is exactly what let the ruck and the run sit outside the weekly bar for
+two versions.
+
+**Hoisting the number found a seventh instance one function away.** The watch
+screenshot parser capped its own reading at 200,000 while `setSteps()` stores at
+most 100,000 — so a watch reporting 150,000 steps was **shown as 150,000 in the
+review sheet and saved as 100,000**, the sheet promising a figure the save does
+not keep. That is the same split as the calorie card, and the review sheet is
+the one surface whose entire job is *"check it, then save"*. One ceiling now,
+read by the parser, the setter and the boot repair. **A duplicated bound is not
+merely untidy: the two copies were already different.**
+
+### And two that reach hardware (v412)
+
+The last two members are the ones with a physical consequence, and both repairs
+were `typeof !== 'number'`:
+
+| field | writer's band | read RAW into |
+|---|---|---|
+| `settings.beatVol` | 0.05-1 | `BEAT.master.gain` — a stored **100 is a gain of 90** |
+| `settings.voiceRate` | 0.5-1.5 | `SpeechSynthesisUtterance.rate` — unintelligible or refused |
+
+v269 already caps a single cue at 1.0 because *"an oscillator driven past unity
+clips, which sounds broken rather than loud"*. This one is a whole mix, and it
+arrives from an import rather than from a slider.
+
+**Both sliders also render `value="${stored}"` against their own min and max**,
+so an out-of-band figure leaves the thumb pinned to an end and the first drag
+jumps — the same "the picker shows nothing selected" harm a junk theme caused.
+
+**The READ clamps as well as the repair, and here that is not a duplicate
+rule.** A cross-tab adopt (v404) can replace `STATE` mid-session with no boot
+behind it, and an audio gain is the last place to discover that. The band lives
+in one constant and both sites ask it — `cueVolPref()`'s shape, for
+`cueVolPref()`'s reason.
+
+### The last two were never mis-VOICED — they were mis-PRINTED (v412)
+
+`settings.voicePitch` and `settings.beatTempo` close the sweep, and they are the
+subtlest members: **both reads already refused an out-of-band value**, so
+nothing ever sounded wrong. What was wrong is what Settings told the athlete.
+
+`setCoachPitch()` clamped to **0-2**, which is wider than both the slider
+(1.18-1.45) and the read. The repair checked the type. So a stored 99 printed
+
+> Fine-tuned to **99.00**, which overrides the tone.
+
+…while the coach spoke at 1.45 — and the slider's own `value` sat outside its
+`min` and `max`, leaving the thumb pinned to an end so the first drag jumps.
+The same split this round removed from the calorie card, on the field the
+`voicePitch` trap is named after.
+
+**The fix is the READER, not a boot clamp** — `voicePitchPref()`, which every
+athlete-facing site now goes through, so nothing prints or renders the stored
+number raw. A boot clamp was tried here and taken back out; the section below
+records what it broke and why the store is left alone.
+
+**Absent still stays absent**: `voicePitch` present means *"the athlete moved
+the slider"*, and a default here would kill the tone buttons — the original trap,
+reintroduced by its own fix.
+
+**The slider now renders the band from the constants** rather than repeating
+1.18 and 1.45 in its markup, and the copy under it (*"Below about 0.5 most phone
+voices start to buzz"*) named a floor the app stopped using at v269 — a stale
+number in athlete-facing text, three lines from the control it describes.
+
+`beatTempo` had no boot repair at all. Nothing renders it raw, so the only cost
+was the junk travelling in every backup — one line to close.
+
+### And the twelfth field must NOT be clamped, which the suite is what proved
+
+Eleven fields in this round get a boot clamp. `settings.voicePitch` was the
+twelfth, it shipped with one for a few minutes, and **three checks in suite 15
+went red naming the exact harm**.
+
+`_toneFix` is keyed to the **exact** legacy value `0.6` — the shape this file
+prescribes for a stale default. The clamp turns 0.6 into 1.18, so `=== 0.6`
+never matches again. Measured with the clamp above the migration:
+
+| | |
+|---|---|
+| `staleCleared` | **false** |
+| stored `voicePitch` after the boot | **1.18** |
+| the tone buttons it exists to restore | **dead, for ever** |
+
+Ordering the migration first fixed that boot. It cannot fix a `0.6` arriving
+**later from an import**, which a clamp would silently convert into a permanent
+manual override — and that is the case `secondRunLeavesIt` drives.
+
+**So the clamp came out, and the reason is a rule this file already recorded as
+a FALSE alarm.** v286 measured `cueVol` and concluded there was nothing to fix,
+because the stored value is never read raw. *(Its stated reason — that
+`cueVolPref()` writes the clamped value back — was wrong; it does not, and
+re-reading it here is what corrected the note. The conclusion held for the
+other reason, which is the one that matters.)* `voicePitch` is that shape once `voicePitchPref()`
+exists: `localPitchFor()` and `voicePitchPref()` both clamp, and every
+athlete-facing site — the slider's `value`, its `min`/`max`, the *"Fine-tuned
+to"* note — goes through one of them. **A value sanitised at every read site has
+nothing left to repair, and a repair there can only do harm.**
+
+The type repair stays: junk still travels in a backup, and absent still means
+*"the athlete has not moved the slider"*.
+
+**The discriminator between the eleven and the twelfth is one question: is it
+read RAW anywhere?** Ten of the eleven were. This one stopped being, in the same
+round, because `voicePitchPref()` was the real fix — the slider used to print
+the stored number raw, which is what left the thumb outside its own min and max.
+
+### The check has to move to where the guard now is
+
+Two of my own suite-05 checks pinned the clamp — *"a stored depth past the band
+is clamped at the boot"* — so removing it turned them red. They were re-aimed
+rather than deleted, because the requirement did not go away, it moved:
+
+- the STORE is left alone (99 stays 99, −3 stays −3), which is what keeps the
+  migration's key intact;
+- **no reader ever hands the raw value out** — both `voicePitchPref()` and
+  `localPitchFor()` are pinned at the ceiling and at the floor;
+- and the GLASS is driven, not inferred: Settings is rendered and the slider
+  element read back, asserting its `value` sits inside its own `min` and `max`.
+
+That last one is the payload. *Measure the payload, not the container* — the
+stored number is the container, and what the athlete sees is the thing that was
+ever wrong.
+
+### Four numbers for one band, and the readers had already split (v412)
+
+The slider sweep that came out of the pitch fix asked one question of every
+control: **does the number the slider renders come from the same place as its
+own `min` and `max`?** Six sliders, three answers of no — and the worst of them
+was the field this session had already touched twice.
+
+`settings.repTempo` was stated **four** different ways:
+
+| site | band |
+|---|---|
+| `REP_TEMPO_MIN/MAX`, the setter, the boot repair | **1 – 6** |
+| `repTempoSetting()` | 1.5 – 6, hand-written |
+| `openPlayer()` and `runRepCadence()` | 1.5 – 6, hand-copied again |
+| `sessionStats()` and `totalTUTSplit()` | **no band at all** |
+| the Settings slider | **1.5 – 5** |
+
+**A stored 1 was accepted by the setter and by the repair and honoured by
+nobody**: the player paced at 1.5 s a rep while `sessionStats()` priced the same
+session at 1.0 — a 33% under-estimate of every rep-based session's clock. That
+is v307's own defect, *the session clock priced against a cadence the pacing
+ignored*, still alive in a narrower form after v307 fixed the wide one.
+
+**v383 fixed this field's BOOT REPAIR and left five raw reads standing.** A boot
+repair is not enough on its own any more, either: v404's cross-tab adopt
+replaces `STATE` with no boot behind it.
+
+One band, one reader, and **the floor moved to where the readers already were**
+rather than the readers moved down to the constant — clipping a value no reader
+ever honoured cannot surprise anybody, and widening the engine's cadence range
+would be a product decision made by accident. The two sliders whose own `min`
+was narrower than the band they store (`beatVol`, `voiceRate`) now render the
+constants, which is the non-destructive direction: nobody loses a stored value
+and the control stops offering less than the app honours.
+
+### A range input clamps its own value, so that check cannot fail
+
+Written for the depth slider and caught by a mutant on the same day. The
+assertion was *"the rendered value is inside its own min and max"* — and the
+browser **guarantees** that: an `<input type="range">` reports `el.value` already
+clamped, whatever the markup asked for. Measured with `voicePitchPref()`
+deliberately unclamped: the markup carried `value="99"` and `el.value` still read
+**1.45**.
+
+What the athlete actually sees wrong is **a thumb that disagrees with the value
+the app is using**, so that is the assertion: `+el.value` must equal what the
+reader hands out. And a junk shape is the one case the browser cannot rescue —
+it falls back to the **midpoint** of the range, not to the app's default, so
+`{}` discriminates where a number cannot.
+
+Same family as *measure the payload, not the container*, with the browser
+supplying the container's guarantee for free.
+
+**And the guarantee cuts both ways, which two escaped mutants proved.** Once
+`min` and `max` come from the constants, a slider rendering the STORED number
+raw is **equivalent** for every finite value — the browser clamps it into the
+same band the reader uses, so both versions paint the same thumb. The one input
+it cannot rescue is a **non-finite number**: `typeof NaN === 'number'`, so the
+old expression passed it into the markup and the browser fell back to the
+**midpoint of the range** (3.75 against the reader's 3), while a junk shape
+takes the same fallback in both versions and discriminates nothing.
+
+So the discriminating case is `NaN`, driven with **no boot behind it** — the
+boot repair drops a junk pitch, so a booted case cannot tell the two apart
+either, and a cross-tab adopt is the door that has no boot. A guard beside each
+asserts the midpoint really is a different number, or the assertion proves
+nothing.
+
+### A repair that restates a four-member set is equivalent until the set grows
+
+The third escape. Reverting `mealKey(x.meal)||'l'` to a hand-written
+`['b','l','d','s']` produces **byte-identical output today**, because `MEALS`
+holds exactly those four — so every rendered assertion passed. The drift it
+reopens is invisible until a fifth slot exists, at which point the repair
+rewrites it to lunch on every boot.
+
+That is v322's `WEIGHTS_PATTERNS` lesson and v368's two cardio consumers: **the
+check needs the consumer to READ the list, not merely for the list to exist**,
+and only a source assertion can say so. It carries the two guards that scan
+always needs — the BIGGEST inline script (the first on this page is two
+characters long) and comments stripped, because a comment quoting the literal
+it forbids is counted by the scan that forbids it.
+
+### A row the diary cannot show is a row the athlete cannot delete (v412)
+
+The same sweep, one control over. `MEALS` is the four-slot registry, and the
+legal set was stated three ways: a hand-written `['b','l','d','s']` in the boot
+repair, **truthiness** in `foodRow()`, and a third fallback in the grouping.
+
+The diary renders by walking `MEALS` and matching, so a row whose slot is in
+none of them is **invisible — and still counted in the day's total, and with no
+remove button, because the ✕ only exists inside a group.** That is the v354
+gear-key harm and the v374 pose harm, on the food log: a stored value outside
+the registry the picker renders from can be neither seen nor undone.
+
+**It is a latent-class fix, and saying so is the honest framing.** The boot
+repair catches it today and every live caller supplies a real slot, so no
+athlete can reach it now. What is real is the drift: a fifth slot added to
+`MEALS` would be rewritten to lunch on every boot by a list that never heard
+about it — v312's cardio mode exactly, one registry over.
+
+`mealKey()` is the one test, and the grouping asks it too, so **a row that
+reaches the diary is always in exactly one group whatever the repair did**.
+That is the half that protects the athlete rather than the backup.
+
+### A permutation with a silent filter (v412)
+
+`COMBAT_ORDER` names the four FORCE events in the order the circuit runs them,
+and `combatOrder()` ends in `.filter(Boolean)`. So an id that no longer matches
+an event is **dropped in silence**: the card would render three rows where the
+standard has four, and the athlete would train the three and be tested on four.
+
+Nothing is wrong today — this is a lockstep the validator simply never had, the
+same gap `TESTS`/`TEST_DEFAULTS` was given a rule for after it drifted three
+times. It is checked **both directions and for duplicates**, because a repeated
+id passes any length test and still loses an event.
+
+**A clean validator proves nothing about a validator rule**, so the check breaks
+the order in front of it three ways — a renamed id, a duplicate, a missing one —
+requires each specific complaint, and restores. `console.error` is muted around
+it, because `validateData()` logs and the harness counts a console error as a
+page failure.
+
+### Pin the VALUE, not the identity — every band in one round
+
+Every assertion in these blocks reads its band out of the app, so a mutant that
+moved a band would move both sides of the comparison and pass. That is v325's
+lesson, and with seven bands in one round it is seven chances to make it. Each
+constant is therefore pinned to its literal — the rating band at 0.85 and 1.25,
+the calorie adjustment at 500, the plank ceiling at 6,000 seconds, the widest
+set result at 1,500, the movement ceiling at 100,000 — because **here the number
+IS the specification**, not an implementation detail.
+
+### An unbounded walk in a CHECK is the v267 hang, one layer up
+
+The over-eager twin — a battery guard that refuses every result — did not fail,
+it **hung suite 04 for eight minutes against its usual 51 seconds**, and the
+cause was in the suite rather than in the app:
+
+```js
+while (TESTS[assessState.idx].id !== 'pull') { … }
+```
+
+Inside `page.evaluate`, so any defect that stops the battery advancing spins it
+forever and the run dies on the harness timeout instead of naming a check. Every
+other battery walk in that file is bounded (`for (let i = 0; i < 12; i++)`); this
+one was not, and it had been there for many versions.
+
+Bounded, with a guard that reports **"the unflagged walk actually reached the
+pull test"** — because a bound with no guard turns a hang into a silent pass.
+That is the same fix shape as the throw below: red is not enough, it has to say
+what.
+
+**And `pkill -f "node tests/run.mjs 04"` killed the shell running the command**,
+exit 144, so the edit in the same line never ran and the file looked unchanged.
+This file already records that trap for a mutation driver; it applies to every
+`pkill -f`. Kill by PID.
+
+### The mutant was caught by a THROW, and a throw does not say what
+
+Removing the typed guard advanced the battery onto a rest screen with no input
+box, so every line below threw and the suite reported *"the test file itself
+threw"*. Still red, so still a catch — but a throw hides which check found it,
+and the same shape **hung** a suite in v267. The guard now sits immediately
+after the refusal is measured and before the first line that assumes it held.
 
 ## Rendering
 

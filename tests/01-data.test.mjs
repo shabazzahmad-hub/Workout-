@@ -592,6 +592,50 @@ export default async function run() {
   t.ok('and validateData() is clean again once it is restored',
     detailRule.cleanAfterRestore, detailRule);
 
+  /* Same shape again, for the FORCE Combat circuit. COMBAT_ORDER is a
+     PERMUTATION of the four evaluation events and combatOrder() ends in
+     .filter(Boolean) — so an id that no longer exists is dropped in silence
+     and the card renders three rows where the standard has four. The athlete
+     would train the three and be tested on four.
+
+     The three complaints are separate on purpose: a renamed id, a duplicate
+     (which passes any length test and still loses an event), and a missing
+     one. */
+  const combatRule = await page.evaluate(() => {
+    const realErr = console.error; console.error = () => {};
+    const o = {};
+    o.guardLen = COMBAT_ORDER.length === FORCE_IDS.length && FORCE_IDS.length === 4;
+    o.guardClean = validateData().length === 0;
+    const real = COMBAT_ORDER.slice();
+
+    COMBAT_ORDER[0] = 'ghost';
+    o.strayCaught = validateData().some(e => /COMBAT_ORDER names "ghost"/.test(e));
+    o.missingCaught = validateData().some(e => new RegExp('COMBAT_ORDER is missing FORCE event "' + real[0] + '"').test(e));
+
+    COMBAT_ORDER.length = 0; real.forEach(x => COMBAT_ORDER.push(x));
+    COMBAT_ORDER[1] = COMBAT_ORDER[0];
+    o.dupCaught = validateData().some(e => new RegExp('COMBAT_ORDER: duplicate id "' + real[0] + '"').test(e));
+    o.dupAlsoMissing = validateData().some(e => new RegExp('COMBAT_ORDER is missing FORCE event "' + real[1] + '"').test(e));
+
+    COMBAT_ORDER.length = 0; real.forEach(x => COMBAT_ORDER.push(x));
+    o.cleanAfterRestore = validateData().length === 0;
+    o.restored = COMBAT_ORDER.join(',') === real.join(',');
+    console.error = realErr;
+    return o;
+  });
+  t.ok('guard: the circuit order really is the four evaluation events',
+    combatRule.guardLen && combatRule.guardClean, combatRule);
+  t.ok('an id in the circuit order that is not a FORCE event is caught by name',
+    combatRule.strayCaught, combatRule);
+  t.ok('and the event it displaced is reported missing',
+    combatRule.missingCaught, combatRule);
+  t.ok('a duplicated id is caught rather than passing on the count',
+    combatRule.dupCaught, combatRule);
+  t.ok('and the event it overwrote is reported missing too',
+    combatRule.dupAlsoMissing, combatRule);
+  t.ok('and validateData() is clean again once the order is restored',
+    combatRule.cleanAfterRestore && combatRule.restored, combatRule);
+
   /* ---- every registry member is reachable in its picker ------------------
      A registry and a hand-written consumer is this repo's most-repeated
      drift: the five diets as three literals, onboarding offering 13 gear

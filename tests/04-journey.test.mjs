@@ -366,16 +366,27 @@ export default async function run() {
       closeSheet(); await new Promise(r => setTimeout(r, 450));
       STATE.profile.limitations = []; assessState = null; openAssessment();
       await new Promise(r => setTimeout(r, 50));
-      while (TESTS[assessState.idx].id !== 'pull') {
+      /* BOUND THE WALK. This was `while (... !== 'pull')`, and any defect that
+         stops the battery advancing spins it forever INSIDE page.evaluate — so
+         the whole suite hung until the harness timeout rather than naming a
+         failed check. Measured: a mutant that refused every typed result ran
+         suite 04 for eight minutes against its usual 51 seconds. The v267
+         hang, in a check rather than in the app. Bound it, and let the
+         assertions below report. */
+      let guard = 0;
+      while (TESTS[assessState.idx].id !== 'pull' && guard++ < 12) {
         const el = document.querySelector('#assess-val');
+        if (!el) break;
         el.value = '10'; el.dispatchEvent(new Event('input', { bubbles: true }));
         assessNav(1);
         if (typeof _ar !== 'undefined' && _ar) skipAssessRest();
         await new Promise(r => setTimeout(r, 30));
       }
+      if (TESTS[assessState.idx].id !== 'pull') return { stuck: true };
       const s = document.querySelector('#sheet');
       return { hasSwapNote: /Swapped to/.test(s.innerText), infoBtn: (s.innerHTML.match(/openExerciseInfo\('([a-z0-9]+)'\)/) || [])[1] };
     });
+    t.ok('guard: the unflagged walk actually reached the pull test', !clean.stuck, clean);
     t.ok('an unflagged athlete sees no swap note', !clean.hasSwapNote, clean);
     t.eq('and the info button still points at the real test exercise', clean.infoBtn, 'invertedrow');
     await page.evaluate(() => { try { closeSheet(); } catch (e) {} });
@@ -933,6 +944,95 @@ export default async function run() {
     t.ok('it points at where Movement actually lives', ref.points, ref);
 
     errors.forEach(e => t.fail('page error in the done-today block', e));
+    await browser.close();
+  }
+
+  /* THE TYPED PATH IS THE OTHER DOOR IN. assessNav()'s only guard was v>=0, so
+     a slip on the keypad — 1200 for 120 — anchored every prescription for a
+     year, and the athlete was still on the screen and could have fixed it.
+     Refused with the benchmark named, rather than repaired silently at the next
+     boot: the boot repair DROPS the number, which loses a result the athlete
+     could simply have retyped. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      openAssessment();
+      await new Promise(z => setTimeout(z, 150));
+      const o = {};
+      const put = v => { const e = document.querySelector('#assess-val');
+        if (!e) return false;
+        e.value = String(v); e.dispatchEvent(new Event('input', { bubbles: true })); return true; };
+      const toastText = () => (document.getElementById('toast') || {}).textContent || '';
+      o.test0 = TESTS[0].id;
+      o.bench = TESTS[0].bench;
+      o.cap = maxPlausible(TESTS[0].id);
+
+      /* Guard: this really is the plank test, and the ceiling really is above
+         any number a person types on purpose. */
+      put(o.cap + 1); assessNav(1);
+      await new Promise(z => setTimeout(z, 150));
+      o.refusedIdx = assessState.idx;
+      o.refusedStored = assessState.results[o.test0];
+      o.refusedToast = toastText();
+      o.refusedRest = !!document.querySelector('#arRing');
+      /* GUARD BEFORE THE FIRST LINE THAT ASSUMES THE REFUSAL HELD. A mutant that
+         drops the guard advances the battery onto a rest screen with no input
+         box, and every line below would throw — the suite then reports "the file
+         itself threw" instead of naming the check that caught it. Return the
+         partial result and let the named assertions report. */
+      if (assessState.idx !== 0 || !document.querySelector('#assess-val')) { o.escaped = true; return o; }
+
+      /* FLOOR — a number one under the ceiling is absurd-looking and is still a
+         result the athlete typed, so it is accepted. A guard that clips a
+         legitimate input is the mirror-image defect. */
+      put(o.cap); assessNav(1);
+      await new Promise(z => setTimeout(z, 150));
+      o.atCapStored = assessState.results[o.test0];
+      if (typeof _ar !== 'undefined' && _ar) skipAssessRest();
+      await new Promise(z => setTimeout(z, 150));
+
+      /* Back to test 0, and an ordinary result must be silent. */
+      assessNav(-1);
+      await new Promise(z => setTimeout(z, 150));
+      o.backIdx = assessState.idx;
+      document.getElementById('toast').textContent = '';
+      put(75); assessNav(1);
+      await new Promise(z => setTimeout(z, 150));
+      o.realStored = assessState.results[o.test0];
+      o.realToast = toastText();
+      if (typeof _ar !== 'undefined' && _ar) skipAssessRest();
+      await new Promise(z => setTimeout(z, 150));
+      assessNav(-1);
+      await new Promise(z => setTimeout(z, 150));
+
+      /* FLOOR — a measured zero is data and must still be accepted. */
+      put(0); assessNav(1);
+      await new Promise(z => setTimeout(z, 150));
+      o.zeroStored = assessState.results[o.test0];
+      assessQuit();
+      return o;
+    });
+
+    t.ok('guard: the refusal left the battery on the test, not on a rest screen',
+      !r.escaped, r);
+    t.eq('guard: the first test is the plank', r.test0, 'plank');
+    t.eq('guard: and its ceiling is 50x its benchmark', r.cap, r.bench * 50);
+    t.eq('a result past the ceiling is refused rather than recorded',
+      r.refusedStored, undefined, r);
+    t.eq('and the battery does not advance', r.refusedIdx, 0, r);
+    t.ok('and it does not cost a two-minute rest', !r.refusedRest, r);
+    t.ok('the refusal names the benchmark, so the athlete knows what is expected',
+      r.refusedToast.indexOf(String(r.bench)) >= 0, r.refusedToast);
+    t.eq('FLOOR: a value on the ceiling is still the athlete\'s own answer',
+      r.atCapStored, r.cap, r);
+    t.eq('guard: stepping back really returned to the first test', r.backIdx, 0, r);
+    t.eq('FLOOR: an ordinary result is recorded', r.realStored, 75, r);
+    t.eq('and says nothing at all — a note that always fires is a note nobody reads',
+      r.realToast, '', r);
+    t.eq('FLOOR: a measured zero is data and is recorded', r.zeroStored, 0, r);
+
+    errors.forEach(e => t.fail('a page error fired during the typed-max checks', e));
     await browser.close();
   }
 

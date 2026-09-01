@@ -3072,6 +3072,758 @@ export default async function run() {
     await browser.close();
   }
 
+  /* A MAX HAS A PLAUSIBLE RANGE, and only its TYPE was ever checked — the v286
+     `adapt` defect one field over. A stored maxes.plank of 99999 survived every
+     boot and pinned every plank-anchored movement at the 150s prescribeCeiling
+     for good, with nothing on screen to explain it. Reachable from an import AND
+     from a typo in the battery, whose only guard was v>=0.
+
+     TWO GUARDS MEAN TWO CHECKS. The boot repair scrubs STATE; the read filter in
+     estimateMaxes() covers a value written mid-session, which never passes
+     through normalizeState() at all. Each is driven with the other's route
+     deliberately absent. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const o = {};
+      const bench = TESTS.filter(x => x.id === 'plank')[0].bench;
+      o.bench = bench;
+      o.cap = maxPlausible('plank');
+      o.capPull = maxPlausible('pull');
+      o.capUnknown = maxPlausible('zzznotatest');
+
+      /* THE BOOT REPAIR. The boundary is asserted exactly, so a bound that is
+         merely "some number" cannot pass: one under is a measurement, one over
+         is not. */
+      const boot = j => {
+        STATE.baseline = { date: todayISO(), score: 60, level: 'Intermediate',
+          results: Object.assign({}, j), maxes: Object.assign({}, j) };
+        normalizeState();
+        return { maxes: Object.assign({}, STATE.baseline.maxes),
+                 results: Object.assign({}, STATE.baseline.results) };
+      };
+      const real = { plank: 75, push: 30, pull: 12, side: 50, squat: 35,
+                     hollow: 40, power: 14, lower: 18, dyn: 55, stamina: 22 };
+      o.real = boot(real);
+      o.atCap = boot({ plank: o.cap });
+      o.underCap = boot({ plank: o.cap - 1 });
+      o.overCap = boot({ plank: o.cap + 1 });
+      o.huge = boot({ plank: 99999, pull: 1e9 });
+      o.zero = boot({ plank: 0 });
+      o.exceptional = boot({ plank: 600, push: 150, squat: 200 });
+
+      /* Both halves of a record, and every reassessment too. */
+      STATE.baseline = { date: todayISO(), score: 60, maxes: { plank: 99999 }, results: { plank: 99999 } };
+      STATE.reassess = { 1: { date: todayISO(), score: 60, maxes: { plank: 99999 }, results: { plank: 99999 } } };
+      normalizeState();
+      o.reassessMax = STATE.reassess[1].maxes.plank;
+      o.reassessRes = STATE.reassess[1].results.plank;
+
+      /* THE READ FILTER, with no boot behind it — the mid-session door in. */
+      o.readJunk = estimateMaxes({ plank: 99999 }).plank;
+      o.readReal = estimateMaxes({ plank: 75 }).plank;
+      o.readZero = estimateMaxes({ plank: 0 }).plank;
+
+      /* And what the athlete actually feels: the prescription. */
+      const workOf = () => {
+        const pos = posOf(0);
+        const rx = prescribe('plank', pos);
+        return rx && rx.target;
+      };
+      STATE.baseline = { date: todayISO(), score: 60, level: 'Intermediate',
+        results: Object.assign({}, real), maxes: Object.assign({}, real) };
+      normalizeState();
+      o.workReal = workOf();
+      STATE.baseline.maxes.plank = 99999; STATE.baseline.results.plank = 99999;
+      normalizeState();
+      o.workAfter = workOf();
+      return o;
+    });
+
+    t.eq('guard: the plank benchmark is what the ceiling is derived from', r.bench, 120);
+    t.eq('the ceiling is 50x the published benchmark', r.cap, r.bench * 50);
+    t.eq('so the plank ceiling is 6000 seconds', r.cap, 6000, r);
+    t.ok('and it is PER TEST, so reps and seconds do not share one number',
+      r.capPull > 0 && r.capPull !== r.cap, r);
+    t.eq('an id with no benchmark is left unbounded rather than guessed at', r.capUnknown, 0);
+
+    t.eq('a value one under the ceiling is a measurement and survives the boot',
+      r.underCap.maxes.plank, r.cap - 1);
+    t.eq('a value exactly ON the ceiling survives too', r.atCap.maxes.plank, r.cap);
+    t.eq('one over it is not a measurement and is dropped',
+      r.overCap.maxes.plank, undefined);
+    t.eq('so a stored 99999 no longer survives the boot', r.huge.maxes.plank, undefined);
+    t.eq('nor a stored billion', r.huge.maxes.pull, undefined);
+
+    t.eq('BOTH halves of the record are bounded — results as well as maxes',
+      r.overCap.results.plank, undefined);
+    t.eq('and every reassessment, not only the baseline', r.reassessMax, undefined);
+    t.eq('both halves of that one too', r.reassessRes, undefined);
+
+    t.eq('FLOOR: a real baseline is untouched', JSON.stringify(r.real.maxes),
+      JSON.stringify({ plank: 75, push: 30, pull: 12, side: 50, squat: 35,
+        hollow: 40, power: 14, lower: 18, dyn: 55, stamina: 22 }));
+    t.eq('FLOOR: an exceptional but real 600s plank survives', r.exceptional.maxes.plank, 600);
+    t.eq('and 150 push-ups', r.exceptional.maxes.push, 150);
+    t.eq('and 200 squats', r.exceptional.maxes.squat, 200);
+    t.eq('FLOOR: a measured ZERO is data and survives', r.zero.maxes.plank, 0);
+
+    t.eq('the READ filter refuses it too, with no boot behind it', r.readJunk, 40);
+    t.eq('FLOOR: and passes a real number straight through', r.readReal, 75);
+    t.eq('FLOOR: and a measured zero', r.readZero, 0);
+
+    t.ok('guard: the prescription really is built from the plank max',
+      r.workReal > 0, r);
+    t.ok('so the junk no longer pins every plank movement at the ceiling',
+      r.workAfter < r.cap && r.workAfter < 150, r);
+
+    errors.forEach(e => t.fail('a page error fired during the max-range checks', e));
+    await browser.close();
+  }
+
+  /* THE SAME DEFECT, TWO FIELDS OVER — the band a writer enforces that the boot
+     repair does not. exAdapt was checked for type and `>0` and never for the
+     0.85-1.25 band rateExercise() itself clamps to, and kcalAdj for type and
+     never for the +/-500 band applyKcalAdj() clamps to.
+
+     A rating is three taps of a chip, so a number outside the band did not come
+     from the athlete: it is DROPPED, which returns the neutral 1. An adjustment
+     is a figure the app itself computed and every effective reader already
+     clamps, so it is CLAMPED, which makes the glass agree with the
+     prescription. Two different repairs because they are two different kinds of
+     number. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const o = { kept: {}, work: {} };
+      const work = () => { const rx = prescribe('pushup', posOf(0)); return rx && rx.target; };
+
+      /* GUARD — the band really is the one the athlete's own taps produce, so
+         the constants are not merely a pair of numbers restated here. */
+      o.exMin = EXADAPT_MIN; o.exMax = EXADAPT_MAX; o.kcalMax = KCAL_ADJ_MAX;
+      o.vrMin = VOICE_RATE_MIN; o.vrMax = VOICE_RATE_MAX;
+      o.bvMin = BEAT_VOL_MIN; o.bvMax = BEAT_VOL_MAX;
+      /* TWO MORE, and both feed something physical: beatVol reaches a gain node
+         and voiceRate reaches SpeechSynthesisUtterance.rate. Both repairs were
+         a type test. Two guards, two checks — the repair AND the read, because
+         a cross-tab adopt can put a value in mid-session with no boot behind
+         it, and an audio gain is the last place to find that out. */
+      o.vrBoot = {}; o.bvBoot = {};
+      [0.98, 1.5, 0.5, 99, -3, 'x'].forEach(v => {
+        STATE.settings.voiceRate = v; normalizeState();
+        o.vrBoot[String(v)] = STATE.settings.voiceRate;
+      });
+      [0.55, 1, 0.05, 100, -2, 'x'].forEach(v => {
+        STATE.settings.beatVol = v; normalizeState();
+        o.bvBoot[String(v)] = STATE.settings.beatVol;
+      });
+      /* AND THE TWO WHOSE READ ALREADY CLAMPED. Nothing was ever mis-voiced,
+         because localPitchFor() and beatTempoPref() refuse an out-of-band
+         value — what was wrong is what Settings PRINTED. */
+      o.pMin = LOCAL_PITCH_FLOOR; o.pMax = LOCAL_PITCH_CEIL;
+      o.tMin = BEAT_TEMPO_MIN; o.tMax = BEAT_TEMPO_MAX;
+      o.vpBoot = {}; o.btBoot = {}; o.vpRead = {}; o.vpSlider = {};
+      [1.18, 1.45, 1.3, 99, -3, 'x'].forEach(v => {
+        STATE.settings.voicePitch = v; normalizeState();
+        o.vpBoot[String(v)] = STATE.settings.voicePitch;
+        o.vpRead[String(v)] = [voicePitchPref(), localPitchFor({ pitch: 0.6 })];
+      });
+      /* AND THE GLASS, not only the reader.
+
+         A RANGE INPUT CLAMPS ITS OWN value, so "the rendered value is inside
+         min and max" is a check that CANNOT FAIL — the browser guarantees it
+         whatever the app wrote. Measured: with voicePitchPref() unclamped the
+         markup carried value="99" and el.value still read 1.45. What the
+         athlete actually sees wrong is a THUMB THAT DISAGREES with the depth
+         the coach uses, so that is what is asserted. */
+      [99, -3].forEach(v => {
+        STATE.settings.voicePitch = v; normalizeState(); go('guide');
+        const el = document.querySelector('#v-guide input[aria-label="Coach voice depth"]');
+        o.vpSlider[String(v)] = el ? [+el.value, +el.min, +el.max, voicePitchPref()] : null;
+      });
+      /* NO BOOT, and a non-finite number — the same pair the cadence slider
+         needs. Every FINITE value is clamped into the band by the browser
+         itself, so a slider rendering the stored number raw is equivalent
+         there; NaN is what the browser resolves to the midpoint instead. And
+         the boot repair drops a junk pitch, so a booted case cannot tell the
+         two apart either. A cross-tab adopt is the door with no boot. */
+      { STATE.settings.voicePitch = NaN; go('guide'); render();
+        const el = document.querySelector('#v-guide input[aria-label="Coach voice depth"]');
+        o.vpSlider.NaN = el ? [+el.value, +el.min, +el.max,
+                               (voicePitchPref() !== null ? voicePitchPref() : localPitchFor(null))] : null; }
+      [78, 60, 110, 999, 10, 'x'].forEach(v => {
+        STATE.settings.beatTempo = v; normalizeState();
+        o.btBoot[String(v)] = STATE.settings.beatTempo;
+      });
+      /* ABSENT STAYS ABSENT. voicePitch present means "the athlete moved the
+         slider", so a default here kills the tone buttons — the trap this very
+         field is named after. */
+      delete STATE.settings.voicePitch; normalizeState();
+      o.vpAbsentAfterBoot = ('voicePitch' in STATE.settings);
+      o.vpPrefAbsent = voicePitchPref();
+      /* The DISPLAY is the half that was wrong: a value arriving mid-session
+         has no boot behind it, and Settings printed it raw. */
+      STATE.settings.voicePitch = 99; STATE.settings.voiceRate = 99;
+      go('guide'); render();
+      const gv = document.querySelector('#v-guide');
+      o.vpPrinted = (gv.innerText.match(/Fine-tuned to ([\d.]+)/) || [])[1] || null;
+      o.vrLabel = (document.getElementById('rvLbl') || {}).textContent;
+      const dep = gv.querySelector('input[aria-label="Coach voice depth"]');
+      o.depMin = dep && dep.min; o.depMax = dep && dep.max; o.depVal = dep && dep.value;
+      /* The tone buttons must still clear the fine-tune, and the slider must
+         still set it. */
+      setVoiceTone('deep'); o.afterTone = ('voicePitch' in STATE.settings);
+      setCoachPitch(1.3); o.afterSlider = STATE.settings.voicePitch;
+      setBeatTempo(92); o.afterTempo = STATE.settings.beatTempo;
+
+      STATE.settings.beatVol = 100; o.bvRead = beatVolPref();
+      STATE.settings.voiceRate = 99; o.vrRead = voiceRatePref(0.98);
+      setBeatVol(0.7); o.bvSet = STATE.settings.beatVol;
+      setCoachRate(1.2); o.vrSet = STATE.settings.voiceRate;
+      STATE.exAdapt = {};
+      for (let i = 0; i < 20; i++) rateExercise('pushup', 'easy');
+      o.tapCeiling = STATE.exAdapt.pushup;
+      for (let i = 0; i < 40; i++) rateExercise('pushup', 'hard');
+      o.tapFloor = STATE.exAdapt.pushup;
+      normalizeState();
+      o.tapSurvives = STATE.exAdapt.pushup;
+
+      [1, 0.85, 1.25, 0.9, 0.84, 1.26, 0.1, 1e6, -3, 'x'].forEach(v => {
+        STATE.exAdapt = { pushup: v }; normalizeState();
+        o.kept[String(v)] = STATE.exAdapt.pushup;
+        o.work[String(v)] = work();
+      });
+      STATE.exAdapt = {};
+      o.neutral = work();
+
+      const nn = STATE.nutrition;
+      nn.weightKg = 86; nn.heightCm = 178; nn.age = 45; nn.sex = 'male';
+      nn.activity = 1.45; nn.goal = 'lose'; nn.kcalTarget = 2000;
+      nn.kcalAdj = 99999; normalizeState();
+      o.adjKept = nn.kcalAdj;
+      go('fuel'); render();
+      o.adjPrinted = (document.querySelector('#v-fuel').innerText
+        .match(/adjusted ([+-]?\d+) from/) || [])[1] || null;
+      nn.kcalAdj = -250; normalizeState(); o.adjReal = nn.kcalAdj;
+      nn.kcalAdj = -99999; normalizeState(); o.adjLow = nn.kcalAdj;
+      nn.kcalAdj = 'x'; normalizeState(); o.adjJunk = nn.kcalAdj;
+      return o;
+    });
+
+    /* PIN THE VALUES. Every assertion below reads a band out of the app, so a
+       mutant that moved one would move both sides — v325's lesson. */
+    t.eq('the rating band is 0.85 at the floor', r.exMin, 0.85, r);
+    t.eq('and 1.25 at the ceiling', r.exMax, 1.25, r);
+    t.eq('and the calorie adjustment band is 500 either way', r.kcalMax, 500, r);
+    t.eq('the voice depth band is 1.18 to 1.45', [r.pMin, r.pMax].join('-'), '1.18-1.45', r);
+    t.eq('and the beat tempo band is 60 to 110', [r.tMin, r.tMax].join('-'), '60-110', r);
+    /* THE STORE IS LEFT ALONE HERE, AND THAT IS THE DECISION. Every other
+       member of this sweep is clamped at boot because something read it raw.
+       This one is not: both readers clamp, and clamping at boot would destroy
+       the exact 0.6 the _toneFix migration keys on — measured, it killed the
+       tone buttons for a whole round. So the requirement is the READ and the
+       GLASS, not the stored number. */
+    t.eq('a stored depth past the band is left in the store', r.vpBoot['99'], 99, r);
+    t.eq('and below it', r.vpBoot['-3'], -3, r);
+    t.eq('but no reader ever hands it out — the ceiling holds',
+      r.vpRead['99'].join('/'), [r.pMax, r.pMax].join('/'), r);
+    t.eq('nor the floor', r.vpRead['-3'].join('/'), [r.pMin, r.pMin].join('/'), r);
+    t.ok('guard: the depth slider really is on the Settings tab',
+      !!r.vpSlider['99'] && !!r.vpSlider['-3'], r);
+    t.eq('and the thumb sits on the depth the coach will actually use',
+      r.vpSlider['99'][0], r.vpSlider['99'][3], r);
+    t.eq('at the floor too', r.vpSlider['-3'][0], r.vpSlider['-3'][3], r);
+    t.eq('and the slider offers the band rather than a third copy of it',
+      [r.vpSlider['99'][1], r.vpSlider['99'][2]].join('-'), [r.pMin, r.pMax].join('-'), r);
+    t.eq('FLOOR: a value inside the band reads back unchanged',
+      r.vpRead['1.3'][0], 1.3, r);
+    t.ok('guard: the depth slider rendered for the non-finite case too',
+      !!r.vpSlider.NaN, r);
+    t.eq('and a non-finite depth shows what the reader hands out, not the midpoint',
+      r.vpSlider.NaN[0], r.vpSlider.NaN[3], r.vpSlider.NaN);
+    t.ok('guard: the midpoint really differs, or that proves nothing',
+      (r.vpSlider.NaN[1] + r.vpSlider.NaN[2]) / 2 !== r.vpSlider.NaN[3], r.vpSlider.NaN);
+    t.eq('FLOOR: both ends of the depth slider survive', r.vpBoot['1.18'], 1.18, r);
+    t.eq('FLOOR: the other end too', r.vpBoot['1.45'], 1.45, r);
+    t.eq('FLOOR: and a value inside it', r.vpBoot['1.3'], 1.3, r);
+    t.eq('junk is dropped, not clamped — absent means the athlete never moved it',
+      r.vpBoot['x'], undefined, r);
+    t.ok('FLOOR: absent stays absent after a boot', !r.vpAbsentAfterBoot, r);
+    t.eq('and the reader says so rather than inventing a default', r.vpPrefAbsent, null, r);
+    t.eq('a stored tempo past the band is clamped', r.btBoot['999'], r.tMax, r);
+    t.eq('and below it', r.btBoot['10'], r.tMin, r);
+    t.eq('FLOOR: both ends of the tempo slider survive', r.btBoot['60'], 60, r);
+    t.eq('FLOOR: the other end too', r.btBoot['110'], 110, r);
+    t.eq('FLOOR: and the default', r.btBoot['78'], 78, r);
+
+    /* THE DISPLAY, which is the half that was actually wrong. */
+    t.eq('Settings prints the depth the coach will actually use', r.vpPrinted, '1.45', r);
+    t.eq('and the speed the coach will actually use', r.vrLabel, '1.50×', r);
+    t.eq('the depth slider carries the real band as its own range',
+      [r.depMin, r.depMax].join('-'), '1.18-1.45', r);
+    t.ok('so its thumb is never left outside its own range',
+      +r.depVal >= +r.depMin && +r.depVal <= +r.depMax, r);
+    t.ok('FLOOR: a tone button still clears the fine-tune', !r.afterTone, r);
+    t.eq('FLOOR: and the slider still sets it', r.afterSlider, 1.3, r);
+    t.eq('FLOOR: and the tempo slider still stores what was picked', r.afterTempo, 92, r);
+
+    t.eq('the coach speaking rate band is 0.5 to 1.5', [r.vrMin, r.vrMax].join('-'), '0.5-1.5', r);
+    t.eq('and the beat volume band is 0.05 to 1', [r.bvMin, r.bvMax].join('-'), '0.05-1', r);
+    t.eq('a stored speaking rate past the band is clamped at the boot',
+      r.vrBoot['99'], r.vrMax, r);
+    t.eq('and below it', r.vrBoot['-3'], r.vrMin, r);
+    t.eq('FLOOR: the default rate is untouched', r.vrBoot['0.98'], 0.98, r);
+    t.eq('FLOOR: and both ends of the slider', r.vrBoot['1.5'], 1.5, r);
+    t.eq('FLOOR: the other end too', r.vrBoot['0.5'], 0.5, r);
+    t.eq('junk falls back to the default as before', r.vrBoot['x'], 0.98, r);
+    t.eq('a stored beat volume of 100 is not a gain of 90', r.bvBoot['100'], r.bvMax, r);
+    t.eq('and a negative is not silence', r.bvBoot['-2'], r.bvMin, r);
+    t.eq('FLOOR: the default volume is untouched', r.bvBoot['0.55'], 0.55, r);
+    t.eq('FLOOR: and both ends of the slider', r.bvBoot['1'], 1, r);
+    t.eq('FLOOR: the other end too', r.bvBoot['0.05'], 0.05, r);
+    /* The READ is the second guard: a cross-tab adopt can write mid-session. */
+    t.eq('the read clamps too, with no boot behind it', r.bvRead, r.bvMax, r);
+    t.eq('and so does the speaking rate read', r.vrRead, r.vrMax, r);
+    t.eq('FLOOR: the writers still store what the athlete picks', r.bvSet, 0.7, r);
+    t.eq('FLOOR: and the rate slider too', r.vrSet, 1.2, r);
+    t.eq('guard: twenty easy taps saturate the rating at its ceiling', r.tapCeiling, 1.25, r);
+    t.eq('guard: and forty hard taps at its floor', r.tapFloor, 0.85, r);
+    t.eq('an honest rating survives the boot', r.tapSurvives, 0.85, r);
+
+    t.eq('FLOOR: a neutral rating survives', r.kept['1'], 1, r);
+    t.eq('FLOOR: one on the floor of the band survives', r.kept['0.85'], 0.85, r);
+    t.eq('FLOOR: one on the ceiling survives', r.kept['1.25'], 1.25, r);
+    t.eq('FLOOR: and one inside it', r.kept['0.9'], 0.9, r);
+    t.eq('a hair under the floor is not a rating and is dropped', r.kept['0.84'], undefined, r);
+    t.eq('nor a hair over the ceiling', r.kept['1.26'], undefined, r);
+    t.eq('nor 0.1', r.kept['0.1'], undefined, r);
+    t.eq('nor a million', r.kept['1000000'], undefined, r);
+
+    /* Measure the payload — the number the athlete is actually prescribed. */
+    t.ok('guard: an in-band rating really does move the prescription',
+      r.work['0.85'] < r.neutral && r.work['1.25'] > r.neutral, r);
+    t.eq('so 0.1 no longer prescribes three push-ups where twenty-five belong',
+      r.work['0.1'], r.neutral, r);
+    t.eq('and a million no longer pins it at the ceiling', r.work['1000000'], r.neutral, r);
+    t.eq('junk is still dropped as it always was', r.kept['x'], undefined, r);
+    t.eq('and a negative', r.kept['-3'], undefined, r);
+
+    t.eq('a stored calorie adjustment past the band is clamped, not dropped',
+      r.adjKept, 500, r);
+    t.eq('and the same downward', r.adjLow, -500, r);
+    t.eq('so the card prints the figure the app actually prescribes from',
+      r.adjPrinted, '+500', r);
+    t.eq('FLOOR: a real adjustment is untouched', r.adjReal, -250, r);
+    t.eq('FLOOR: and junk is still zeroed as before', r.adjJunk, 0, r);
+
+    errors.forEach(e => t.fail('a page error fired during the writer-band checks', e));
+    await browser.close();
+  }
+
+  /* TWO MORE OF THE SAME CLASS. `actual` is the number the athlete types after
+     a set: askActual()'s box carries min="0" and no maximum, so a slip on the
+     keypad became a personal record and a figure on Progress. `readiness.score`
+     is a percentage averaged from three answers of 25, 60 or 100, and the
+     repair checked the type alone.
+
+     Neither moves the prescription — commitSession()'s ratio bands saturate at
+     1 and readinessMult()'s bands saturate at 80 — which is exactly why nothing
+     ever noticed. The harm is a record and a figure on the glass. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const o = { typed: {}, pr: {}, boot: {}, rdy: {} };
+      const P = 3; STATE.progressPtr = P;
+      const sess = buildSession(P); const m = sess.main[0];
+      o.exId = m.exId; o.target = m.target; o.ceiling = actualCeiling(m.target);
+      o.fallback = actualCeiling(0);
+
+      /* THE TYPED DOOR, driven through the real sheet — the box the athlete
+         fills in, not the helper behind it. */
+      const type = async v => {
+        STATE.logs = {}; STATE.logs[P] = { done: false, ex: {} };
+        STATE.logs[P].ex[m.exId] = { done: true, sets: [true, true, true] };
+        STATE.prs = {};
+        askActual(m.exId, m);
+        await new Promise(z => setTimeout(z, 80));
+        const el = document.querySelector('#ac-n'); el.value = String(v);
+        saveActual(m.exId);
+        await new Promise(z => setTimeout(z, 60));
+        o.typed[String(v)] = STATE.logs[P].ex[m.exId].actual;
+        o.pr[String(v)] = STATE.prs[m.exId];
+      };
+      await type(m.target);
+      await type(0);
+      await type(m.target * 10);
+      await type(m.target * 10 + 1);
+      await type(1e9);
+
+      /* THE IMPORT DOOR. The repair has no session in hand, so it uses the
+         widest ceiling the engine can ever produce. */
+      [45, 0, 1500, 1501, 1e9, -5, 'x'].forEach(v => {
+        STATE.logs = {}; STATE.logs[P] = { done: true, ex: {} };
+        STATE.logs[P].ex[m.exId] = { done: true, sets: [true], actual: v };
+        normalizeState();
+        o.boot[String(v)] = STATE.logs[P].ex[m.exId].actual;
+      });
+
+      [80, 25, 100, 0, 101, 99999, -5, 'x'].forEach(v => {
+        STATE.readiness = {}; STATE.readiness[todayISO()] = { score: v, sleep: 100, sore: 100, energy: 100 };
+        normalizeState();
+        o.rdy[String(v)] = (STATE.readiness[todayISO()] || {}).score;
+      });
+      STATE.readiness = {}; _rdy = { sleep: 100, sore: 60, energy: 60 };
+      saveReadiness();
+      o.realSave = (STATE.readiness[todayISO()] || {}).score;
+
+      /* AND EVERY MOVEMENT FIGURE. movement() has read these through the same
+         ceiling since it was written, so a stored billion was already harmless
+         on the glass and in the calorie budget — the cost is only that it
+         travels in every backup. Driven for all five cardio modes from the
+         registry, so a sixth cannot arrive unbounded. */
+      o.mv = {}; o.mvModes = {};
+      [8000, MOVE_VAL_MAX, MOVE_VAL_MAX + 1, 1e9, -5, 'x'].forEach(v => {
+        const d = nutToday(); d.steps = v; normalizeState();
+        o.mv[String(v)] = nutToday().steps;
+      });
+      o.modeCount = CARDIO_MODES.length;
+      CARDIO_MODES.forEach(mk => {
+        const c = CARDIO_INFO[mk]; const row = {};
+        [30, MOVE_VAL_MAX, MOVE_VAL_MAX + 1, 1e9].forEach(v => {
+          const d = nutToday(); d[c.valKey] = v; normalizeState();
+          row[String(v)] = nutToday()[c.valKey];
+        });
+        o.mvModes[mk] = row;
+      });
+      setSteps(9000); o.setStepsReal = nutToday().steps;
+      setSteps(1e9); o.setStepsCapped = nutToday().steps;
+      o.moveMax = MOVE_VAL_MAX;
+
+      /* THE REVIEW SHEET MUST SHOW WHAT SAVE WILL KEEP. The watch parser capped
+         at its own number and setSteps() at another, so a figure between the
+         two was shown and then quietly reduced. Driven through the parser and
+         the real save, not through the setter alone. */
+      const plan = activityPlan({ steps: MOVE_VAL_MAX * 1.5, activities: [] });
+      o.parsedSteps = plan.steps;
+      _actRead = plan; nutToday().steps = 0;
+      saveActivityRead();
+      o.savedSteps = nutToday().steps;
+      const plan2 = activityPlan({ steps: 9000, activities: [] });
+      o.parsedReal = plan2.steps;
+      return o;
+    });
+
+    t.ok('guard: the session really prescribes a target to bound against', r.target > 0, r);
+    t.eq('the ceiling is ten times what was asked for', r.ceiling, r.target * 10, r);
+    t.eq('and the widest the engine can ever produce is 1500', r.fallback, 1500, r);
+
+    t.eq('FLOOR: the prescribed number is recorded', r.typed[String(r.target)], r.target, r);
+    t.eq('FLOOR: a measured zero is data and is recorded', r.typed['0'], 0, r);
+    t.eq('FLOOR: ten times the prescription is still the athlete\'s own answer',
+      r.typed[String(r.target * 10)], r.target * 10, r);
+    t.eq('one past that is a keypad slip and is refused',
+      r.typed[String(r.target * 10 + 1)], undefined, r);
+    t.eq('so is a billion', r.typed['1000000000'], undefined, r);
+    t.eq('and no personal record is stamped from one', r.pr['1000000000'], undefined, r);
+    t.eq('FLOOR: a real result still stamps one', r.pr[String(r.target)], r.target, r);
+
+    t.eq('FLOOR: an ordinary stored result survives the boot', r.boot['45'], 45, r);
+    t.eq('FLOOR: and a measured zero', r.boot['0'], 0, r);
+    t.eq('FLOOR: and the widest the engine can ever ask for, ten times over',
+      r.boot['1500'], 1500, r);
+    t.eq('one past that is dropped', r.boot['1501'], undefined, r);
+    t.eq('and a billion', r.boot['1000000000'], undefined, r);
+    t.eq('a negative is still dropped as before', r.boot['-5'], undefined, r);
+    t.eq('and junk', r.boot['x'], undefined, r);
+
+    t.eq('FLOOR: a real readiness score survives', r.rdy['80'], 80, r);
+    t.eq('FLOOR: and the lowest the three answers can average to', r.rdy['25'], 25, r);
+    t.eq('FLOOR: and the highest', r.rdy['100'], 100, r);
+    t.eq('FLOOR: and a zero', r.rdy['0'], 0, r);
+    t.eq('a percentage over 100 is not a readiness score', r.rdy['101'], undefined, r);
+    t.eq('so 99999 no longer prints "Readiness 99999%"', r.rdy['99999'], undefined, r);
+    t.eq('a negative is dropped', r.rdy['-5'], undefined, r);
+    t.eq('and junk, as before', r.rdy['x'], undefined, r);
+    t.eq('FLOOR: the athlete\'s own three answers still save', r.realSave, 73, r);
+
+    /* PIN THE VALUE, NOT THE IDENTITY. Every assertion below reads the ceiling
+       out of the app, so a mutant that moved it would move both sides and pass
+       — v325's lesson. The number itself is the specification here. */
+    t.eq('the movement ceiling is 100,000', r.moveMax, 100000, r);
+    t.eq('guard: the writer caps a step count at the same ceiling the repair uses',
+      r.setStepsCapped, r.moveMax, r);
+    t.eq('FLOOR: an ordinary step count is stored untouched', r.setStepsReal, 9000, r);
+    t.eq('FLOOR: and survives the boot', r.mv['8000'], 8000, r);
+    t.eq('FLOOR: so does one exactly on the ceiling', r.mv[String(r.moveMax)], r.moveMax, r);
+    t.eq('one past it is dropped', r.mv[String(r.moveMax + 1)], undefined, r);
+    t.eq('and a billion', r.mv['1000000000'], undefined, r);
+    t.eq('a negative is dropped as before', r.mv['-5'], undefined, r);
+    t.eq('and junk', r.mv['x'], undefined, r);
+
+    t.eq('the watch parser reads through the same ceiling the setter stores at',
+      r.parsedSteps, r.moveMax, r);
+    t.eq('so the figure the review sheet shows is the figure Save keeps',
+      r.savedSteps, r.parsedSteps, r);
+    t.eq('FLOOR: an ordinary watch reading is untouched by it', r.parsedReal, 9000, r);
+
+    t.ok('guard: all five cardio modes were swept, not the two that used to be',
+      r.modeCount >= 5, r);
+    Object.keys(r.mvModes || {}).forEach(mk => {
+      const row = r.mvModes[mk];
+      t.eq('FLOOR: an ordinary ' + mk + ' figure survives the boot', row['30'], 30, row);
+      t.eq('FLOOR: and one on the ceiling', row[String(r.moveMax)], r.moveMax, row);
+      t.eq('a ' + mk + ' figure past the ceiling is dropped',
+        row[String(r.moveMax + 1)], undefined, row);
+      t.eq('and a billion', row['1000000000'], undefined, row);
+    });
+
+    errors.forEach(e => t.fail('a page error fired during the result-band checks', e));
+    await browser.close();
+  }
+
+  /* ONE BAND FOR THE REP CADENCE, AND ONE READER FOR IT.
+
+     v383 fixed this field's BOOT REPAIR and left five raw reads standing.
+     Two of them (sessionStats, totalTUTSplit) applied no band at all and two
+     more hand-copied 1.5-6, while the constant said 1-6 and the Settings
+     slider offered 1.5-5 — four numbers for one band.
+
+     The consequence is not cosmetic: a stored 1 was accepted by the setter
+     and the repair, floored to 1.5 by the player, and read as 1.0 by the
+     session clock. That is v307's defect — the clock priced against a cadence
+     the pacing ignored — in a narrower form. And a boot repair cannot cover a
+     cross-tab adopt, which replaces STATE with no boot behind it. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const o = { read: {}, agree: {} };
+      o.min = REP_TEMPO_MIN; o.max = REP_TEMPO_MAX; o.def = REP_TEMPO_DEFAULT;
+
+      /* THE READER, with no boot behind it — the cross-tab door. */
+      [1.5, 3, 6, 1, 0.1, 99, -3, 'x', null, {}].forEach(v => {
+        STATE.settings.repTempo = v;
+        o.read[String(v)] = repTempoSetting();
+      });
+
+      /* THE PAYLOAD IS THE AGREEMENT, not the number. The pacing and the
+         session clock must price the same stored value the same way. */
+      const P = 3; STATE.progressPtr = P;
+      const sess = buildSession(P);
+      const log = { ex: {}, done: true, items: sess.main.concat([sess.finisher]).filter(Boolean) };
+      log.items.forEach(m => { log.ex[m.exId] = { sets: m.sets ? Array(m.sets).fill(true) : [true], done: true }; });
+      STATE.logs = {}; STATE.logs[P] = log;
+      o.repItems = log.items.filter(m => m.unit !== 'time').length;
+      /* totalTUTSplit() returns SECONDS, so a cadence difference shows without
+         being rounded away — sessionStats() reports estMin, which a two-item
+         session can round flat. Both are read: one is the precision, the other
+         is the surface the athlete sees. */
+      [1, 1.5, 3, 6, 99].forEach(v => {
+        STATE.settings.repTempo = v;
+        o.agree[String(v)] = [repTempoSetting(), Math.round(totalTUTSplit().work),
+                              sessionStats(P, true).estMin];
+      });
+
+      /* THE STORE, and the GLASS. A value the athlete cannot pick must still
+         render inside the control's own min and max. */
+      o.boot = {};
+      [1.5, 3, 6, 1, 99, -3, 'x'].forEach(v => {
+        STATE.settings.repTempo = v; normalizeState();
+        o.boot[String(v)] = STATE.settings.repTempo;
+      });
+      /* A RANGE INPUT CLAMPS ITS OWN value, so asserting the rendered number
+         is inside min and max cannot fail. The thumb must sit on the cadence
+         the player will actually pace at — and a junk shape is the case the
+         browser cannot rescue, because it falls back to the midpoint rather
+         than to the app's default. No boot here on purpose: a cross-tab adopt
+         replaces STATE with nothing behind it. */
+      o.slider = {};
+      [1, 99, {}, NaN].forEach(v => {
+        STATE.settings.repTempo = v; go('guide'); render();
+        const el = document.querySelector('#v-guide input[aria-label="Rep cadence in seconds per rep"]');
+        o.slider[String(v)] = el ? [+el.value, +el.min, +el.max, repTempoSetting()] : null;
+      });
+      /* FLOOR: the control still writes, and both ends of it are reachable. */
+      setRepTempo(REP_TEMPO_MIN); o.setMin = STATE.settings.repTempo;
+      setRepTempo(REP_TEMPO_MAX); o.setMax = STATE.settings.repTempo;
+      setRepTempo(4); o.setMid = STATE.settings.repTempo;
+      return o;
+    });
+
+    /* PIN THE VALUE, NOT THE IDENTITY — a band read out of the app moves both
+       sides of every comparison below. Here the number IS the specification. */
+    t.eq('the rep cadence band is 1.5 to 6', [r.min, r.max].join('-'), '1.5-6', r);
+    t.eq('and its default is 3', r.def, 3, r);
+
+    t.ok('guard: the session really holds rep-counted work to price',
+      r.repItems > 0, r);
+    /* Per key, not a joined string: integer-like keys sort before '1.5' in
+       Object.keys(), so a serialised comparison here asserts key ORDER as well
+       as the values — the v294 trap. */
+    t.eq('a stored cadence below the floor paces at the floor', r.agree['1'][0], 1.5, r);
+    t.eq('and one above the ceiling paces at the ceiling', r.agree['99'][0], 6, r);
+    t.eq('FLOOR: an in-band cadence paces at itself', r.agree['3'][0], 3, r);
+    t.eq('so a stored value below the floor cannot price the clock lower than the pacing',
+      r.agree['1'][1], r.agree['1.5'][1], r.agree);
+    t.eq('and the session card agrees with it too',
+      r.agree['1'][2], r.agree['1.5'][2], r.agree);
+    t.ok('guard: and the clock really does move with a cadence that is in band',
+      r.agree['6'][1] > r.agree['1.5'][1], r.agree);
+    t.ok('guard: the lifetime clock is a real figure, not two zeroes agreeing',
+      r.agree['1.5'][1] > 0, r.agree);
+
+    t.eq('the reader floors an out-of-band cadence', r.read['1'], 1.5, r);
+    t.eq('and 0.1', r.read['0.1'], 1.5, r);
+    t.eq('and caps one above it', r.read['99'], 6, r);
+    t.eq('and a negative', r.read['-3'], 1.5, r);
+    t.eq('junk reads as the default, not as NaN', r.read['x'], 3, r);
+    t.eq('so does an object', r.read['[object Object]'], 3, r);
+    t.eq('FLOOR: the floor of the band reads back unchanged', r.read['1.5'], 1.5, r);
+    t.eq('FLOOR: the ceiling too', r.read['6'], 6, r);
+    t.eq('FLOOR: and a value inside it', r.read['3'], 3, r);
+
+    t.eq('the boot repair uses the same band', r.boot['1'], 1.5, r);
+    t.eq('and the same ceiling', r.boot['99'], 6, r);
+    t.eq('FLOOR: an in-band cadence survives the boot', r.boot['3'], 3, r);
+    t.eq('FLOOR: and both ends of it', [r.boot['1.5'], r.boot['6']].join('/'), '1.5/6', r);
+
+    t.ok('guard: the cadence slider really is on the Settings tab',
+      !!r.slider['1'] && !!r.slider['99'] && !!r.slider['[object Object]'], r);
+    t.eq('and the thumb sits on the cadence the player will actually pace at',
+      r.slider['1'][0], r.slider['1'][3], r);
+    t.eq('at the ceiling too', r.slider['99'][0], r.slider['99'][3], r);
+    t.eq('and a junk cadence shows the default rather than the midpoint',
+      r.slider['[object Object]'][0], r.slider['[object Object]'][3], r);
+    /* THE ONE INPUT THE BROWSER CANNOT RESCUE, and the only one that catches a
+       slider rendering the stored number raw. `typeof NaN === 'number'`, so
+       the old expression passed it straight into the markup and the browser
+       fell back to the MIDPOINT of the range; every finite value is clamped by
+       the browser into the same band the reader uses, which makes those
+       mutants equivalent. Measured: 3.75 against the reader's 3. */
+    t.eq('and a non-finite cadence takes the default, not the midpoint of the range',
+      r.slider['NaN'][0], r.slider['NaN'][3], r);
+    t.ok('guard: the midpoint really is a different number, or that proves nothing',
+      (r.slider['NaN'][1] + r.slider['NaN'][2]) / 2 !== r.slider['NaN'][3], r.slider['NaN']);
+    t.eq('its min and max come from the band rather than a third copy',
+      [r.slider['1'][1], r.slider['1'][2]].join('-'), '1.5-6', r);
+
+    t.eq('FLOOR: the control still writes the floor', r.setMin, 1.5, r);
+    t.eq('FLOOR: and the ceiling', r.setMax, 6, r);
+    t.eq('FLOOR: and a value between them', r.setMid, 4, r);
+
+    errors.forEach(e => t.fail('a page error fired during the rep-cadence checks', e));
+    await browser.close();
+  }
+
+  /* ONE MEMBERSHIP TEST FOR A MEAL SLOT.
+
+     The diary renders by walking MEALS and matching, so a row whose slot is in
+     none of them is invisible — counted in the day's total, with no remove
+     button, because the ✕ only exists inside a group. Three places decided
+     what a legal slot was: a hand-written list in the boot repair, truthiness
+     in foodRow(), and a third fallback in the grouping. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const o = { key: {}, written: {}, boot: {} };
+      o.slots = MEALS.map(m => m[0]);
+
+      ['b', 'l', 'd', 's', 'brunch', '', null, 42, 'constructor', 'B'].forEach(v => {
+        o.key[String(v)] = mealKey(v);
+      });
+
+      /* THE WRITER. A caller handing over a slot that is not one cannot put a
+         row somewhere the diary will never look. */
+      const d = nutToday(); d.food = [];
+      ['b', 'brunch', 'constructor'].forEach((v, i) => {
+        pushFoodRow('Row' + i, 100, 10, 5, 2, v);
+      });
+      o.written = d.food.map(x => x.meal);
+
+      /* THE GLASS, with NO boot behind it — the row can arrive mid-session
+         from a cross-tab adopt, and the diary is where it becomes
+         unreachable. */
+      d.food = [{ name: 'GhostMeal', kcal: 400, p: 30, c: 20, f: 10, meal: 'brunch', at: Date.now() },
+                { name: 'RealMeal', kcal: 300, p: 20, c: 30, f: 8, meal: 'l', at: Date.now() }];
+      go('fuel'); render();
+      const fv = document.querySelector('#v-fuel');
+      o.ghostShown = fv.innerText.includes('GhostMeal');
+      o.realShown = fv.innerText.includes('RealMeal');
+      o.removeButtons = fv.querySelectorAll('button[onclick^="removeFood("]').length;
+      o.dayKcal = foodTotals(nutToday()).kcal;
+
+      /* THE STORE. */
+      [['b', 'b'], ['s', 's'], ['brunch', null], ['constructor', null], [42, null]].forEach(pair => {
+        const dd = nutToday();
+        dd.food = [{ name: 'X', kcal: 100, p: 1, c: 1, f: 1, meal: pair[0], at: 1 }];
+        normalizeState();
+        o.boot[String(pair[0])] = nutToday().food[0].meal;
+      });
+      nutToday().food = [];
+
+      /* The BIGGEST inline script, because the first one on this page is two
+         characters long — v331's trap. Comments stripped, because a comment
+         quoting the literal it forbids is counted by the scan that forbids it. */
+      const src = [...document.querySelectorAll('script:not([src])')]
+        .map(x => x.textContent).sort((a, b) => b.length - a.length)[0] || '';
+      const bare = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      o.src = {
+        len: bare.length,
+        hasNormalize: bare.indexOf('function normalizeState') >= 0,
+        usesMealKey: /meal:\s*mealKey\(/.test(bare),
+        handWritten: /\[\s*'b'\s*,\s*'l'\s*,\s*'d'\s*,\s*'s'\s*\]/.test(bare)
+      };
+      return o;
+    });
+
+    t.ok('guard: the meal registry really holds the four slots',
+      r.slots.join(',') === 'b,l,d,s', r);
+    t.eq('a real slot is itself', [r.key['b'], r.key['l'], r.key['d'], r.key['s']].join(''), 'blds', r);
+    t.eq('an invented one is not a slot', r.key['brunch'], null, r);
+    t.eq('nor is an inherited key', r.key['constructor'], null, r);
+    t.eq('nor a number', r.key['42'], null, r);
+    t.eq('and it is case-sensitive, like every other key in this app', r.key['B'], null, r);
+
+    t.eq('the writer files a bad slot under a real one, never a made-up one',
+      r.written.filter(m => r.slots.indexOf(m) < 0).length, 0, r);
+    t.eq('FLOOR: and leaves a real slot exactly where it was asked to',
+      r.written[0], 'b', r);
+
+    t.ok('a row whose slot is not a slot is still on the glass', r.ghostShown, r);
+    t.ok('and it can still be removed', r.removeButtons === 2, r);
+    t.ok('FLOOR: an ordinary row is unaffected', r.realShown, r);
+    t.eq('guard: the ghost row really was counted in the day, which is why hiding it lied',
+      r.dayKcal, 700, r);
+
+    t.eq('the boot repair asks the registry, not a hand-written copy of it',
+      r.boot['brunch'], 'l', r);
+    t.eq('and refuses an inherited key', r.boot['constructor'], 'l', r);
+    t.eq('and a number', r.boot['42'], 'l', r);
+    t.eq('FLOOR: a real slot survives the boot', r.boot['b'], 'b', r);
+    t.eq('FLOOR: and so does the last one', r.boot['s'], 's', r);
+
+    /* THE REPAIR HAS TO ASK THE REGISTRY, and only the SOURCE can say so.
+       A hand-written ['b','l','d','s'] produces byte-identical output today,
+       because MEALS holds exactly those four — so the mutant restoring it
+       escaped every assertion above. The drift it reopens is invisible until
+       a fifth slot is added, at which point the repair rewrites it to lunch on
+       every boot. Same shape as v322's WEIGHTS_PATTERNS and v368's two cardio
+       consumers: the check needs the consumer to READ the list, not merely for
+       the list to exist. */
+    t.ok('and the repair asks mealKey() rather than restating the four slots',
+      r.src.usesMealKey && !r.src.handWritten,
+      JSON.stringify(r.src));
+    t.ok('guard: the source really was read, and it is the app',
+      r.src.len > 500000 && r.src.hasNormalize, JSON.stringify(r.src));
+
+    errors.forEach(e => t.fail('a page error fired during the meal-slot checks', e));
+    await browser.close();
+  }
+
   srv.close();
   return t.finish();
 }
