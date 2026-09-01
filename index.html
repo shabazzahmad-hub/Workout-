@@ -536,11 +536,28 @@
 </div>
 
 <!-- Sheet / modal -->
-<div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
+<div class="scrim" id="scrim"><div class="sheet" id="sheet" role="dialog" tabindex="-1"></div></div>
 <!-- Full-screen guided workout player -->
 <div class="pl" id="player"></div>
 <div class="pl" id="hiit"></div>
-<div class="toast" id="toast"></div>
+<!-- THE ONE CHANNEL THE APP REPORTS THROUGH, AND IT WAS SILENT.
+     Every confirmation, every refusal and every validation hint in this
+     app is a toast: "Saved", "Deleted", "Nothing to save", "Height looks
+     off - expected 47-91 in". Measured, there were ZERO live regions in
+     the whole file - so a screen reader announced none of it. A blind
+     athlete tapped Save and heard nothing, and the unit-mix-up hint that
+     exists precisely to say what went wrong was spoken to nobody. v411
+     gave every CONTROL a name; this is the other half of the same round -
+     the app can be operated and it could not be heard.
+     role="status" is implicitly polite: it waits for a pause rather than
+     interrupting, which is right for a confirmation and right for a
+     refusal the athlete is standing in front of. aria-atomic reads the
+     whole message rather than the part that changed.
+     THE CSS IS LOAD-BEARING. The toast hides with opacity:0, which keeps
+     it in the accessibility tree; display:none or visibility:hidden would
+     make every announcement silent again with nothing on screen to say
+     so, so a check pins the hiding rule. -->
+<div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <script id="state-data" type="application/json">{}</script>
 <script>
@@ -1832,7 +1849,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='412';
+const APP_VERSION='413';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3405,6 +3422,11 @@ function whenPointerFree(key,fn){
    no-ops if it changed — a slow barcode/photo lookup must never replace a sheet
    the athlete has since opened and typed into. */
 let _sheetGen=0;
+/* WHERE THE FOCUS CAME FROM, so closing a sheet gives it back. Without this the
+   athlete's place is destroyed with the sheet's markup and focus falls to
+   <body>, which starts a screen-reader user at the top of the page after every
+   single sheet. */
+let _sheetReturn=null;
 /* Overlays close in the same frame, so the second tap of a phone double-tap
    landed on whatever sat beneath — confirmed starting a NEW workout right after
    finishing one, and opening the morning brief from under a swap sheet. A
@@ -3424,8 +3446,26 @@ function openSheet(html){
   try{cancelAutoClose();}catch(e){}
   const s=$('#sheet');s.innerHTML='<div class="grab"></div>'+html;
   const already=$('#scrim').classList.contains('open');
+  /* A SHEET THAT NOBODY IS TOLD ABOUT. Measured before this: opening a sheet
+     with seven controls in it left focus on the button BEHIND the scrim, with
+     no role, no announcement and no way to reach the sheet by swiping — so
+     every screen a screen-reader athlete enters data on was unreachable.
+     Focus goes to the CONTAINER rather than to the first control: the first
+     control opens a keyboard and skips the sheet's own title, and a dialog
+     read from its container reads that title first.
+     Only a genuine open records where to give focus back. A repaint (openAct,
+     openBuilder, openSkipping all re-enter here) must not overwrite it with
+     something inside the sheet that is about to be destroyed.
+
+     THERE IS DELIBERATELY NO aria-modal. It would hide everything outside this
+     element from a screen reader — including #toast, which is the one channel
+     every confirmation and every validation refusal in this app speaks
+     through, and most of those are spoken FROM a sheet. Losing "Fill in all
+     fields" is worse than letting the page behind stay swipeable. */
+  if(!already){try{_sheetReturn=(document.activeElement&&document.activeElement!==document.body)?document.activeElement:null;}catch(e){_sheetReturn=null;}}
   $('#scrim').classList.add('open');document.body.style.overflow='hidden';
   if(!already){try{history.pushState({cf:'sheet'},'');}catch(e){}}
+  try{s.focus({preventScroll:true});}catch(e){try{s.focus();}catch(e2){}}
 }
 /* Anything a sheet started that outlives its markup must be stopped when the sheet
    goes away by ANY route — including a scrim tap or the Android Back button, which
@@ -3455,6 +3495,12 @@ function closeSheet(){
   // only release the scroll lock when no OTHER full-screen overlay still needs it
   if(!$('#player').classList.contains('open')&&!$('#hiit').classList.contains('open'))document.body.style.overflow='';
   if(wasOpen)tapShield(350);   // a double-tap's second tap must not fall through to the UI beneath
+  /* Give the focus back to the control that opened this, but only if it is
+     still on the page — a sheet that deleted its own row leaves a detached
+     element behind, and focusing one is a silent no-op that strands the
+     athlete on <body> anyway. */
+  if(wasOpen){const _r=_sheetReturn;_sheetReturn=null;
+    if(_r&&_r.isConnected)try{_r.focus({preventScroll:true});}catch(e){}}
   stopTimer();beatStop();sheetTeardown();
   // If the app (a button/scrim) closed the sheet, retire its history entry too,
   // so the counts stay balanced. The guard makes onPop ignore this self-pop.
@@ -13424,6 +13470,40 @@ function _wrapText(x,text,cx,cy,maxW,lh){
   words.forEach(w=>{const t=line?line+' '+w:w;if(x.measureText(t).width>maxW&&line){x.fillText(line,cx,y);line=w;y+=lh;}else line=t;});
   if(line)x.fillText(line,cx,y);return y;
 }
+/* ONE TAIL FOR BOTH CARDS, AND A FAILED SHARE IS NOT A CANCEL.
+   Both cards ended in a copy of this block, and both swallowed every share
+   rejection with `.catch(()=>{})`. Measured by driving it: a share that
+   genuinely fails produced NO toast, NO file and NO sheet — the button was
+   dead, and the card the app had just drawn was thrown away. The athlete on
+   the BETTER browser got less than the one with no Web Share at all, who
+   still gets the file.
+
+   Three outcomes, three answers:
+   - a share that SUCCEEDS says nothing: the OS sheet is the feedback, and a
+     toast on top of it is noise;
+   - a CANCEL says nothing either — it is a choice, not a failure, and a note
+     that fires when the athlete changes their mind is a note nobody wants;
+   - anything else falls back to the download, which is the route that works.
+
+   The download carries its own try/catch because this callback runs AFTER the
+   caller's try/catch has returned — toBlob is asynchronous, so a throw here
+   was an uncaught page error rather than the 'Could not make card' the
+   caller believes it is guarding. */
+function _shareBlob(blob,name,text){
+  if(!blob){toast('Could not make card');return;}
+  const dl=()=>{try{
+    const u=URL.createObjectURL(blob);const l=document.createElement('a');
+    l.href=u;l.download=name;document.body.appendChild(l);l.click();l.remove();
+    setTimeout(()=>URL.revokeObjectURL(u),5000);toast('Card saved 📸');
+  }catch(e){toast('Could not save the card');}};
+  let file=null;try{file=new File([blob],name,{type:'image/png'});}catch(e){}
+  if(file&&navigator.canShare&&navigator.canShare({files:[file]})){
+    navigator.share({files:[file],title:'CoreForge',text:text}).catch(e=>{
+      if(e&&e.name==='AbortError')return;
+      dl();
+    });
+  }else dl();
+}
 function shareMilestone(a){
   try{
     const S=1080,c=document.createElement('canvas');c.width=S;c.height=S;const x=c.getContext('2d');
@@ -13437,11 +13517,7 @@ function shareMilestone(a){
     x.fillStyle='#9ba8bd';x.font='600 34px Archivo,system-ui,sans-serif';_wrapText(x,achDesc(a),S/2,y+70,860,46);
     x.fillStyle='#5de0b7';x.font='900 56px Archivo,system-ui,sans-serif';x.fillText('CoreForge',S/2,980);
     x.fillStyle='#6c7c92';x.font='700 28px Archivo,system-ui,sans-serif';x.fillText('CORE & FULL-BODY',S/2,1026);
-    c.toBlob(blob=>{if(!blob){toast('Could not make card');return;}
-      const file=new File([blob],'coreforge-'+(a.id||'win')+'.png',{type:'image/png'});
-      if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:'CoreForge',text:a.name}).catch(()=>{});}
-      else{const u=URL.createObjectURL(blob);const l=document.createElement('a');l.href=u;l.download=file.name;document.body.appendChild(l);l.click();l.remove();setTimeout(()=>URL.revokeObjectURL(u),5000);toast('Card saved 📸');}
-    },'image/png');
+    c.toBlob(blob=>_shareBlob(blob,'coreforge-'+(a.id||'win')+'.png',a.name),'image/png');
   }catch(e){toast('Could not make card');}
 }
 /* ============================ MORE FEATURES ============================ */
@@ -13459,11 +13535,7 @@ function shareCard(title,subtitle,lines){
     (lines||[]).filter(Boolean).forEach(l=>{y+=68;x.fillText(l,S/2,y);});
     x.fillStyle='#5de0b7';x.font='900 56px Archivo,system-ui,sans-serif';x.fillText('CoreForge',S/2,980);
     x.fillStyle='#6c7c92';x.font='700 28px Archivo,system-ui,sans-serif';x.fillText('CORE & FULL-BODY',S/2,1026);
-    c.toBlob(blob=>{if(!blob){toast('Could not make card');return;}
-      const file=new File([blob],'coreforge-card.png',{type:'image/png'});
-      if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:'CoreForge',text:title}).catch(()=>{});}
-      else{const u=URL.createObjectURL(blob);const l=document.createElement('a');l.href=u;l.download=file.name;document.body.appendChild(l);l.click();l.remove();setTimeout(()=>URL.revokeObjectURL(u),5000);toast('Card saved 📸');}
-    },'image/png');
+    c.toBlob(blob=>_shareBlob(blob,'coreforge-card.png',title),'image/png');
   }catch(e){toast('Could not make card');}
 }
 /* ---- #1 Benchmark "Ops" — for-time benchmark workouts ---- */
@@ -15102,6 +15174,27 @@ const _aiSleep=ms=>new Promise(r=>setTimeout(r,ms));
    the numbers rather than staring at a spinner. */
 const AI_RETRY_BACKOFF_MS=[0,1200,3000];
 async function _visionEstimate(dataUrl,promptText,opts){
+  /* FORTY-THREE SECONDS OF SILENCE FOR AN ANSWER THAT WAS FREE. Measured on a
+     genuinely offline context: three models x the retry ladder, bounded only by
+     AI_TOTAL_BUDGET_MS, ran for 43.2s before the athlete was told anything —
+     while navigator.onLine had been false the whole time.
+
+     The neural-voice path has checked this since it was written, and
+     runAIDiagnostic() opens with a SHORT reachability ping for exactly this
+     reason ("if the network is dead this says so in 6 seconds instead of 25").
+     Its sibling — every food photo, every tracker screenshot, every watch
+     screenshot, and the v301 re-read — checked nothing.
+
+     ONE-SIDED ON PURPOSE, and that is the whole of why it is safe.
+     navigator.onLine is only trustworthy in the NEGATIVE: false means the
+     browser has no network route at all, so a request cannot succeed. TRUE
+     means only that something is attached — a captive portal, a dead uplink,
+     a phone on a router with no internet all report true — so it can never be
+     read as "reachable", and the timeout ladder below stays exactly as it is
+     for the online-but-unreachable case. A check that also trusted `true`
+     would be the mirror-image defect: refusing an import that would have
+     worked. */
+  if(navigator.onLine===false){const _e=new Error('You are offline — this needs a connection');_e.status=0;throw _e;}
   const o0=opts||{};
   const mime=(String(dataUrl).match(/^data:([^;,]+)/)||[,'image/jpeg'])[1];
   const b64=String(dataUrl).replace(/^data:[^,]+,/,'');
