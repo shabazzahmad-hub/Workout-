@@ -11475,6 +11475,52 @@ formats' buttons away, swallowing the health lock, and silently substituting
 through `safeSwap()` instead of naming the kit.
 
 
+## The switch said On and the phone said no (v408)
+
+Found by asking of the reminder what v302 asked of the voice: **what does this
+screen claim, and is it knowable?** Both notification toggles are gated on
+`Notification.permission` at fire time, and neither said so. Measured with
+permission `denied`:
+
+| | |
+|---|---|
+| the chip | **On** |
+| the copy | *"Nudges you on your training days."* |
+| what can fire | **nothing, ever** |
+| what the screen said about that | **nothing** |
+
+**It is not a rare state.** Permission is revoked in phone settings long after
+the athlete turned the switch on, and `importData()` accepts a backup carrying
+`reminderOn:true` from a phone where it WAS granted. The answer is readable
+synchronously, so the app had it and printed the opposite.
+
+**Order the branches by what is knowable, and say which one it is** — v302's
+rule, one subsystem over. Three states, three different sentences, because a
+single "notifications are unavailable" tells the athlete nothing to act on: no
+Notification API at all names the iPhone Add-to-Home-Screen case, `denied`
+names the phone setting to change, and `default` says tapping the test button
+will ask.
+
+**The athlete's own switch is left where they put it.** Turning it off for them
+would be the app overriding a choice because the platform disagreed with it;
+what was missing is the sentence, not the setting.
+
+**The floors are what stop the note being noise.** A phone that has granted
+permission sees nothing at all, and with both switches off there is nothing to
+be blocked — the over-eager twin that always warns fails both.
+
+**And one branch no browser here can reach is exercised directly**: a device
+with no `Notification` API at all, by deleting it for the length of one call —
+the same technique the hardness-band and anchor-unit guards use.
+
+**Seven mutants, all caught** — after one was re-seeded. Its first form failed
+on a bad anchor (`anchor 0`), because the sentence it targeted carries a
+typographic quote that did not survive being retyped through a heredoc.
+**Take a mutation anchor VERBATIM from the file** — the same lesson v353
+recorded, and the assert is what turned a bad anchor into a clean no-op rather
+than a half-applied edit.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

@@ -928,6 +928,66 @@ export default async function run() {
     t.eq('and it never raises conditioning either', plan.recompShort.cond, 'moderate', plan.recompShort);
   }
 
+  /* ---- the switch said On and the phone said no ---------------------------
+     Both notification toggles are gated on Notification.permission at fire
+     time and neither said so. Measured with permission 'denied': the chip read
+     "On", the copy promised "Nudges you on your training days", and nothing
+     could ever fire — with nothing on screen naming the one thing the athlete
+     can act on. Permission is revoked in phone settings long after the switch
+     was turned on, and importData() accepts a backup carrying reminderOn:true
+     from a phone where it WAS granted.
+
+     The FLOOR is the healthy phone: a note that always fires is a note nobody
+     reads, and it is what catches the over-eager twin. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      const show = () => { go('guide'); render(); return (document.querySelector('#v-guide').innerText || '').replace(/\s+/g, ' '); };
+      const set = v => Object.defineProperty(Notification, 'permission', { get: () => v, configurable: true });
+      const realDesc = Object.getOwnPropertyDescriptor(Notification, 'permission');
+
+      STATE.settings.reminderOn = true; STATE.settings.weeklyOn = true; save();
+      set('denied');
+      const d = show();
+      o.deniedWarns = /nothing above can reach you/.test(d);
+      o.deniedNamesTheFix = /BLOCKED for CoreForge/.test(d) && /phone Settings/.test(d);
+      o.deniedChipStillOn = /Workout reminders On/.test(d);   // the athlete's choice is kept
+
+      set('default');
+      o.defaultAsks = /not allowed yet/.test(show());
+
+      /* FLOOR: a phone that has granted permission is byte-identical. */
+      set('granted');
+      o.grantedSilent = !/nothing above can reach you/.test(show());
+
+      /* FLOOR: with both switches off there is nothing to be blocked. */
+      set('denied');
+      STATE.settings.reminderOn = false; STATE.settings.weeklyOn = false; save();
+      o.offSilent = !/nothing above can reach you/.test(show());
+
+      /* The predicate's own contract, including the branch no browser here can
+         reach: a device with no Notification API at all. */
+      STATE.settings.reminderOn = true; save();
+      o.noApi = (() => {
+        const keep = window.Notification; delete window.Notification;
+        const out = notifBlockedNote();
+        window.Notification = keep;
+        return /cannot show notifications/.test(out) && /Add to Home Screen/.test(out);
+      })();
+
+      if (realDesc) Object.defineProperty(Notification, 'permission', realDesc);
+      STATE.settings.reminderOn = false; STATE.settings.weeklyOn = true; save();
+      return o;
+    });
+    t.ok('a blocked phone is told nothing can reach it', r.deniedWarns, r);
+    t.ok('and named the setting to change', r.deniedNamesTheFix, r);
+    t.ok('while the athlete\'s own switch is left where they put it', r.deniedChipStillOn, r);
+    t.ok('permission never asked for says so instead', r.defaultAsks, r);
+    t.ok('FLOOR: a phone that granted it sees no warning at all', r.grantedSilent, r);
+    t.ok('FLOOR: with both switches off there is nothing to warn about', r.offSilent, r);
+    t.ok('a device with no notifications at all names the iPhone case', r.noApi, r);
+  }
+
   const failed = t.finish(errors);
   await browser.close();
   return failed;

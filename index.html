@@ -1832,7 +1832,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='407';
+const APP_VERSION='408';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -15885,6 +15885,33 @@ function checkReminder(){
   STATE._remindedOn=todayISO();save();
   fireReminderNotif();toast('⏰ Time to train — keep your streak!');
 }
+/* THE SWITCH SAYS ON AND THE PHONE SAYS NO. Both notification toggles are
+   gated on Notification.permission at fire time and neither said so. Measured
+   with permission 'denied': the chip read "On", the copy promised "Nudges you
+   on your training days", and nothing could ever fire — with nothing on screen
+   naming the one thing the athlete can act on.
+
+   It is not a rare state. Permission is revoked in phone settings long after
+   the athlete turned the switch on, and importData() accepts a backup carrying
+   reminderOn:true from a phone where it WAS granted. The answer is readable
+   synchronously, so the app had it and printed the opposite — v302's rule:
+   order the branches by what is KNOWABLE, and say which one it is.
+
+   The healthy case must stay silent, or the note is worthless. */
+function notifBlockedNote(){
+  try{
+    const s=STATE.settings||{};
+    if(!(s.reminderOn||s.weeklyOn!==false))return '';   // nothing switched on to be blocked
+    if(!('Notification'in window))
+      return 'This browser cannot show notifications, so nothing above can reach you. On iPhone they work only after you Add to Home Screen (iOS 16.4+).';
+    const p=Notification.permission;
+    if(p==='denied')
+      return 'Notifications are BLOCKED for CoreForge, so nothing above can reach you. Allow them in phone Settings ▸ Apps ▸ CoreForge ▸ Notifications, or in your browser\'s site settings for this page.';
+    if(p!=='granted')
+      return 'Notifications are not allowed yet, so nothing above can reach you. Tap “Send a test notification” and choose Allow.';
+    return '';
+  }catch(e){return '';}
+}
 function computeStreak(){
   /* Quick sessions are real training days — they just don't advance the main
      program. Fold them in so a 15-minute day holds the streak. */
@@ -20474,6 +20501,7 @@ function renderGuide(){
     <div class="tiny muted" style="padding:2px 0 4px">Nudges you on your training days. Reminders appear when you open the app (a home-screen install makes them most reliable).</div>`:''}
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Saturday progress check-in <span class="tiny muted">· push + brief countdown</span></span><button class="chip ${STATE.settings.weeklyOn!==false?'on':''}" onclick="toggleWeekly()">${STATE.settings.weeklyOn!==false?'On':'Off'}</button></div>
     <button class="btn ghost sm" style="width:100%;margin-top:2px" onclick="testReminderNotif()">🔔 Send a test notification</button>
+    ${(n=>n?`<div class="note warn" style="margin:8px 0 4px">${n}</div>`:'')(notifBlockedNote())}
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Voice coach <span class="tiny muted">· deep</span></span><button class="chip ${STATE.settings.voice!==false?'on':''}" onclick="toggleSetting('voice')">${STATE.settings.voice!==false?'On':'Off'}</button></div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Say “continue” to start the next set <span class="tiny muted">· hands-free</span></span><button class="chip ${voiceCmdOn()?'on':''}" onclick="toggleVoiceCmd()" ${voiceCmdSupported()?'':'aria-disabled="true"'}>${voiceCmdOn()?'On':'Off'}</button></div>
     <div class="tiny muted" style="padding:2px 0 6px">${voiceCmdSupported()
