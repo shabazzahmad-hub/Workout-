@@ -1928,7 +1928,21 @@ let saveT=null;
    undetected because the base and our own save shared a millisecond. A counter
    is also immune to the clock jumps v380 moved every timer off. */
 let _syncedRev=0;
+/* A RESET ADOPTED FROM ANOTHER TAB MUST NOT BE WRITTEN OVER BY THIS ONE.
+   Closing a live session is not a passive act: playerTeardown() clears the
+   resume point and hiitTeardown() records the stopped grinder, and BOTH call
+   save() — which put this tab's own, un-erased copy back into localStorage,
+   so the load() a few lines later read our old state instead of the erased
+   one. Measured across two tabs with a grinder live: the session closed, the
+   tab looked as though it had obeyed, and onboarded was still true with the
+   log, the pointer and the name all intact. hardReset()'s "this cannot be
+   undone" was false again, by a route v405 did not reach.
+   The athlete asked for everything to go, so nothing the teardown wants to
+   keep is worth keeping. It is a `finally`, so a throw inside the teardown
+   cannot leave the app unable to save. */
+let _adoptingReset=false;
 function save(){
+  if(_adoptingReset)return;
   STATE._saved=todayISO();
   STATE._base=_syncedRev;
   STATE._rev=_syncedRev+1;
@@ -2019,8 +2033,12 @@ window.addEventListener('storage',async e=>{
     const wasReset=!!(incoming&&incoming.onboarded===false&&STATE&&STATE.onboarded===true);
     if(!wasReset&&typeof _sessionLive==='function'&&_sessionLive())return;
     if(wasReset){
-      try{if(typeof PLAYER!=='undefined'&&PLAYER&&typeof playerQuit==='function')playerQuit();}catch(_){}
-      try{if(typeof INTV!=='undefined'&&INTV&&typeof hiitQuit==='function')hiitQuit();}catch(_){}
+      /* Nothing this teardown writes may reach storage — see _adoptingReset. */
+      _adoptingReset=true;
+      try{
+        try{if(typeof PLAYER!=='undefined'&&PLAYER&&typeof playerQuit==='function')playerQuit();}catch(_){}
+        try{if(typeof INTV!=='undefined'&&INTV&&typeof hiitQuit==='function')hiitQuit();}catch(_){}
+      }finally{_adoptingReset=false;}
     }
     /* A LOST UPDATE, and before this it was silent. v404 made this tab adopt a
        foreign write, which is right when the other tab had already seen our
@@ -9022,18 +9040,29 @@ function ivResync(){
 }
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')ivResync();});
 function hiitSkip(){if(!INTV)return;ivClear();INTV.i++;if(INTV.i>=INTV.seq.length)ivDone();else ivStep();}
-function hiitTeardown(){if(!INTV)return;wakeOff();ivClear();beatStop();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;
+function hiitTeardown(){if(!INTV)return;
+  /* THE RECORD LIVES IN THE TEARDOWN, NOT IN hiitQuit(), because the teardown
+     is what every exit path reaches. It sat in hiitQuit() and the hardware
+     BACK button calls this function directly — so the ✕ wrote the stop and
+     Back wrote nothing. Measured on three finished grinders, stopping a
+     fourth: the ✕ left grindStreak() at 0 and Back left it at 3, still
+     claiming an unbroken run of finishes the athlete had just broken.
+     Same shape as pushFoodRow() and setForceResultQuiet(): fold it into the
+     one place every caller goes through, rather than asking each to remember.
+     ivDone() sets phase='done' and INTV.logged, and hiitLogDone() tears down
+     inline, so neither can be double-logged by this. */
+  if(isGrinder(INTV.format)&&INTV.phase!=='done'&&!INTV.logged){
+    INTV.logged=true;
+    try{logGrind(INTV.format,false,INTV.i,Math.round(INTV.workElapsed||0));}catch(e){}
+  }
+  wakeOff();ivClear();beatStop();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;
   setTimeout(()=>{try{if(!$('#hiit').classList.contains('open'))$('#hiit').innerHTML='';}catch(e){}},400);
   if(TAB==='today')renderToday();}
 function hiitQuit(){
-  /* Stopping a grinder is a real outcome and gets a real record. Without
-     this the only thing written is the finish, so a stopped session simply
-     never happened — and a streak built on "sessions that were logged"
-     would count every one of them, which is the opposite of the truth. */
-  if(INTV&&isGrinder(INTV.format)&&INTV.phase!=='done'&&!INTV.logged){
-    INTV.logged=true;
-    logGrind(INTV.format,false,INTV.i,Math.round(INTV.workElapsed||0));
-  }
+  /* Stopping a grinder is a real outcome and gets a real record — written by
+     hiitTeardown() below, which is the one place every exit path reaches.
+     What is left here is the HISTORY step, which the Back handler must not
+     take: the pop it is answering has already happened. */
   const had=!!INTV;hiitTeardown();if(had&&history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
 function hiitLogDone(){
   if(!INTV)return;   // double-tap guard

@@ -983,11 +983,46 @@ export default async function () {
         const n = (b.getAttribute('aria-label') || b.title || b.innerText || '').trim();
         return /[A-Za-z0-9]/.test(n);
       };
-      out.buttons = { total: 0, unnamed: [] };
-      ['today','program','fuel','progress','ref','guide'].forEach(tb => {
+      /* THE ROW-DELETE BUTTONS ONLY EXIST ONCE THERE IS A ROW, so a sweep of
+         whatever the page happens to hold never reaches them — measured: the
+         mutant that strips removeFood's aria-label ESCAPED this check, because
+         with no food logged there is no ✕ to scan. A guard that cannot fire in
+         the case you tested is not tested, on the check rather than the code.
+         Seeded through STATE in the shape each boot repair keeps, then
+         normalised so the shapes are the app's own rather than my guess. */
+      const D = nutToday();
+      D.food = D.food || [];
+      D.food.push({ name: 'Seeded food', kcal: 300, p: 30, c: 20, f: 10, meal: 'lunch', at: Date.now(), portion: 1 });
+      STATE.measurements = STATE.measurements || [];
+      STATE.measurements.push({ date: todayISO(), weight: 86 });
+      STATE.customFav = STATE.customFav || [];
+      /* items is an array of exercise ID STRINGS — the repair filters it with
+         exKnown(), which takes an id, so a row of objects is dropped whole and
+         the favourite vanishes. Confirm what the repair KEEPS before choosing
+         what to seed with. */
+      STATE.customFav.push({ name: 'Seeded fav', items: ['pushup', 'plank'] });
+      STATE.ruckLog = STATE.ruckLog || [];
+      STATE.ruckLog.push({ date: todayISO(), mins: 30 });
+      STATE.skipLog = STATE.skipLog || [];
+      STATE.skipLog.push({ date: todayISO(), mins: 10 });
+      normalizeState();
+
+      out.buttons = { total: 0, unnamed: [], deletes: [] };
+      /* Progress opens on SUMMARY, and the measurement delete lives on BODY —
+         so a sweep of each tab's default pane never reaches it. The guard
+         below named exactly that: it reported removeFood alone. */
+      const stops = ['today','program','fuel','progress','progress:body','ref','guide'];
+      stops.forEach(stop => {
+        const tb = stop.split(':')[0], pane = stop.split(':')[1];
         go(tb);
+        if (pane) { try { setProgressTab(pane); } catch (e) {} }
         Array.from(document.querySelectorAll('.view.active button')).forEach(b => {
           out.buttons.total++;
+          const oc = b.getAttribute('onclick') || '';
+          /* Record WHICH icon-only deletes the sweep actually reached, so a
+             zero unnamed count cannot pass on a page that holds none of them. */
+          ['removeFood','removeMeasure','delFav','removeAct','removeSkip']
+            .forEach(fn => { if (oc.indexOf(fn) >= 0 && out.buttons.deletes.indexOf(fn) < 0) out.buttons.deletes.push(fn); });
           if (!readable(b)) out.buttons.unnamed.push(tb + ':' + (b.innerText || '').trim().slice(0, 6));
         });
       });
@@ -998,7 +1033,16 @@ export default async function () {
     ['today','program','fuel','progress','ref','guide'].forEach(tab =>
       t.eq(`[${tab}] every form control has an accessible name`, r[tab].unnamed.length, 0, r[tab]));
     t.ok('guard: Settings really has buttons to check', r.buttons.total > 20, r.buttons);
-    t.ok('guard: the button sweep really covered the tabs', r.buttons.total >= 40, r.buttons);
+    t.ok('guard: the button sweep really covered the tabs', r.buttons.total >= 40, r.buttons.total);
+    /* GUARD: the icon-only row deletes on a TAB were really in the scan.
+       Without a row to delete they do not render at all, and "zero unnamed"
+       then passes on a page that never held the controls this check exists
+       for. The other three live in sheets and are guarded in the next block —
+       naming which sweep owns which is what keeps either from passing on the
+       other's coverage. */
+    t.ok('guard: the tab-level row deletes were really scanned',
+      ['removeFood','removeMeasure'].every(f => r.buttons.deletes.indexOf(f) >= 0),
+      r.buttons.deletes);
     t.eq('every button has a name a screen reader can read', r.buttons.unnamed.length, 0, r.buttons.unnamed);
   }
 
@@ -1027,12 +1071,20 @@ export default async function () {
       const readable = b => /[A-Za-z0-9]/.test(
         (b.getAttribute('aria-label') || b.title || b.innerText || '').trim());
       const bad = [];
+      const deletes = [];
       const scan = where => {
         document.querySelectorAll('#sheet input, #sheet select, #sheet textarea').forEach(el => {
           if (el.type === 'hidden') return;
           if (!named(el)) bad.push({ sheet: where, id: el.id || '', type: el.type || el.tagName });
         });
         document.querySelectorAll('#sheet button').forEach(b => {
+          /* Which icon-only row deletes this sweep actually reached. delFav,
+             removeAct and removeSkip render only once their list has a row, so
+             without this a clean result says nothing about them. */
+          const oc = b.getAttribute('onclick') || '';
+          ['delFav','removeAct','removeSkip'].forEach(fn => {
+            if (oc.indexOf(fn) >= 0 && deletes.indexOf(fn) < 0) deletes.push(fn);
+          });
           if (!readable(b)) bad.push({ sheet: where, id: b.id || '', type: 'button:' + (b.innerText || '').trim().slice(0, 6) });
         });
       };
@@ -1063,11 +1115,16 @@ export default async function () {
           closeSheet();
         } catch (e) {}
       });
-      return { canSee, canSeeIcon, names: names.length, opened, bad };
+      return { canSee, canSeeIcon, names: names.length, opened, bad, deletes };
     });
 
     t.ok('guard: an unnamed control really would be reported', r.canSee);
     t.ok('guard: and an icon-only button with no aria-label would be too', r.canSeeIcon);
+    /* GUARD: the three row deletes that live in SHEETS were really reached.
+       They render only once their list has a row, which the block above seeds,
+       so without this the clean result below says nothing about them. */
+    t.ok('guard: the sheet-level row deletes were really scanned',
+      ['delFav','removeAct','removeSkip'].every(f => r.deletes.indexOf(f) >= 0), r.deletes);
     t.ok('guard: the sweep opened most of the sheets, not a handful',
       r.opened >= 30, JSON.stringify({ opened: r.opened, of: r.names }));
     t.eq('every control inside a sheet has an accessible name too',
@@ -7705,6 +7762,176 @@ export default async function () {
     t.ok('guard: a section Settings does not have would be caught', !onSettings('Setup'), guideText.slice(0, 120));
     const missing = segs.filter(x => !onSettings(x));
     t.eq('every Settings pointer names something that is on Settings', missing.length, 0, missing);
+  }
+
+  {
+    /* EVERY WAY OUT OF A GRINDER WRITES THE SAME RECORD. The stop record sat
+       in hiitQuit(), and the hardware Back button calls hiitTeardown()
+       directly — so the ✕ recorded the stop and Back recorded nothing, and
+       grindStreak() (which stops at the first row that is not done) simply
+       skipped the abandoned session and kept counting finishes. */
+    /* BOTH EXITS ARE DRIVEN, NEVER CALLED. onPop() cannot be invoked by hand
+       here: hiitQuit() ends with history.back(), which is ASYNC and leaves
+       _backGuard set until its own pop arrives — so a hand-called onPop() a
+       moment later is swallowed by that guard and tears nothing down. The
+       first version of this block did exactly that and reported the fix as
+       broken. page.goBack() is the athlete's real gesture and has no such
+       problem; the ✕ is a real click on the button they tap. */
+    const startGrind = async () => {
+      await page.evaluate(async () => {
+        STATE.onboarded = true;
+        startGrinder(Object.keys(GRINDER_FORMATS)[0]);
+        await new Promise(z => setTimeout(z, 300));
+        if (typeof INTV !== 'undefined' && INTV) { INTV.i = 2; INTV.workElapsed = 120; }
+      });
+      await page.waitForTimeout(250);
+      return page.evaluate(() => ({
+        opened: !!(typeof INTV !== 'undefined' && INTV),
+        steps: (typeof INTV !== 'undefined' && INTV) ? INTV.seq.length : 0,
+      }));
+    };
+    const seedThree = () => page.evaluate(() => {
+      STATE.grindLog = [];
+      const fmt = Object.keys(GRINDER_FORMATS)[0];
+      for (let i = 0; i < 3; i++) logGrind(fmt, true, 6, 360);
+      return grindStreak();
+    });
+    const readLog = () => page.evaluate(() => ({ rows: grindLog().length, streak: grindStreak() }));
+
+    /* THE BACK CASE RUNS FIRST, and its preconditions are asserted rather than
+       assumed. hiitQuit() ends with history.back() and sets _backGuard, which
+       the next popstate clears — so a Back gesture taken while that guard is
+       still up is swallowed and tears nothing down. Driven in isolation both
+       exits work; inside a long suite the ambient history is whatever earlier
+       blocks left, so the guard below turns a mystery into a named failure
+       instead of something that reads like a defect in the app. */
+    const g = {};
+    g.streakBefore = await seedThree();
+    const openedB = await startGrind();
+    /* EACH BLOCK BUILDS THE STATE IT ASSERTS ON, and _backGuard is ambient:
+       hiitQuit()/playerQuit()/playerFeel() set it and the popstate that follows
+       clears it, but an earlier block in this long suite can leave one whose
+       history.back() had nothing to pop. Measured on the athlete's real route —
+       open a grinder, tap the X, three times over — it is false every time, so
+       a stale one here is the harness rather than the app. Recorded and
+       cleared, then asserted, so the case really drives a Back press. */
+    g.pre = await page.evaluate(() => {
+      /* onPop() has THREE early returns in front of the HIIT branch, and all
+         three are ambient: _exiting is set by the second home Back press and
+         nothing ever resets it, _backGuard is set by every quit that pops its
+         own history entry, and a live OP is answered first. Each is recorded
+         before it is cleared, so a future failure names which one it was
+         rather than reporting a teardown that silently never ran. */
+      const was = {
+        exiting: (typeof _exiting !== 'undefined') ? _exiting : 'n/a',
+        guard: (typeof _backGuard !== 'undefined') ? _backGuard : 'n/a',
+        op: (typeof OP !== 'undefined' && OP) ? 'live' : 'none',
+      };
+      try { _exiting = false; } catch (e) {}
+      try { _backGuard = false; } catch (e) {}
+      return { was,
+               exiting: (typeof _exiting !== 'undefined') ? _exiting : 'n/a',
+               guard: (typeof _backGuard !== 'undefined') ? _backGuard : 'n/a',
+               op: (typeof OP !== 'undefined' && OP) ? 'live' : 'none',
+               state: (history.state || {}).cf };
+    });
+    await page.goBack();
+    await page.waitForTimeout(700);
+    g.viaBack = Object.assign({}, openedB, await readLog());
+
+    await seedThree();
+    const openedX = await startGrind();
+    await page.click('#hiit .pl-x');
+    await page.waitForTimeout(600);
+    g.viaX = Object.assign({}, openedX, await readLog());
+
+    Object.assign(g, await page.evaluate(async () => {
+      const o = {};
+      const fmt = Object.keys(GRINDER_FORMATS)[0];
+      STATE.onboarded = true;
+
+      /* FLOOR: a grinder the athlete FINISHED must still record done:true and
+         keep the streak — a teardown that always wrote a stop would satisfy
+         every assertion above and destroy every finish in the app. */
+      STATE.grindLog = [];
+      startGrinder(fmt);
+      await new Promise(z => setTimeout(z, 300));
+      o.finishOpened = !!(typeof INTV !== 'undefined' && INTV);
+      if (INTV) { INTV.i = INTV.seq.length; INTV.workElapsed = 360; ivDone(); }
+      await new Promise(z => setTimeout(z, 300));
+      o.finRows = grindLog().length;
+      o.finDone = (grindLog()[0] || {}).done;
+      o.finStreak = grindStreak();
+      /* and closing a finished one must not add a SECOND row */
+      hiitQuit();
+      await new Promise(z => setTimeout(z, 300));
+      o.finThenCloseRows = grindLog().length;
+      o.finThenCloseStreak = grindStreak();
+
+      /* FLOOR: an ordinary HIIT session is not a grinder and records nothing.
+         startHiit() is the entry — startSpecialFormat() reads a different
+         registry, and calling it with a HIIT key opens nothing at all, so the
+         zero it produces measures an empty session rather than a Tabata. */
+      STATE.baseline = STATE.baseline || { date: todayISO(), level: 'Intermediate', results: {}, maxes: {} };
+      STATE.grindLog = [];
+      startHiit('tabata');
+      await new Promise(z => setTimeout(z, 350));
+      o.tabataOpened = !!(typeof INTV !== 'undefined' && INTV);
+      o.tabataSteps = INTV ? INTV.seq.length : 0;
+      o.tabataIsGrinder = INTV ? isGrinder(INTV.format) : null;
+      if (INTV) { INTV.i = 1; INTV.workElapsed = 60; }
+      /* hiitTeardown() directly, not the Back gesture: what this floor is
+         about is the function that now HOLDS the record, and the route in is
+         already driven above. onPop() by hand is swallowed by _backGuard. */
+      hiitTeardown();
+      await new Promise(z => setTimeout(z, 300));
+      o.tabataRows = grindLog().length;
+
+      /* FLOOR: with nothing open the teardown writes nothing at all. */
+      STATE.grindLog = [];
+      hiitTeardown();
+      o.noSessionRows = grindLog().length;
+      return o;
+    }));
+
+    /* GUARDS FIRST: every reading below is about a row count, and a session
+       that never opened produces exactly the counts a correct app produces. */
+    t.ok('guard: the grinder really opened on the X exit', g.viaX.opened && g.viaX.steps > 0, g.viaX);
+    t.ok('guard: and on the Back exit', g.viaBack.opened && g.viaBack.steps > 0, g.viaBack);
+    t.eq('guard: no back-guard is up when Back is pressed', g.pre.guard, false);
+    t.eq('guard: the app is not already exiting', g.pre.exiting, false);
+    t.eq('guard: no ops challenge answers the Back press first', g.pre.op, 'none', g.pre.was);
+    t.eq('guard: and the history entry Back pops is the grinder', g.pre.state, 'hiit');
+    t.eq('guard: three finished grinders really are a streak of three', g.streakBefore, 3);
+
+    t.eq('stopping with the X writes the stop', g.viaX.rows, 4);
+    t.eq('and it breaks the streak', g.viaX.streak, 0);
+    t.eq('stopping with the Back button writes it too', g.viaBack.rows, 4);
+    t.eq('and it breaks the streak the same way', g.viaBack.streak, 0);
+
+    t.ok('guard: the finished grinder really opened', g.finishOpened, g);
+    t.eq('FLOOR: a finished grinder is recorded as finished', g.finDone, true);
+    t.eq('FLOOR: and it keeps the streak', g.finStreak, 1);
+    t.eq('FLOOR: closing a finished grinder adds no second row', g.finThenCloseRows, 1);
+    t.eq('FLOOR: so the finish still stands', g.finThenCloseStreak, 1);
+
+    t.ok('guard: the Tabata really opened', g.tabataOpened && g.tabataSteps > 0, g);
+    t.eq('guard: and it really is not a grinder', g.tabataIsGrinder, false);
+    t.eq('FLOOR: an ordinary HIIT session records no grinder row', g.tabataRows, 0);
+    t.eq('FLOOR: and a teardown with nothing open records nothing', g.noSessionRows, 0);
+
+    /* The record must live in the ONE function every exit reaches. A source
+       assertion, because a future exit path that skips it cannot be driven
+       from here — it does not exist yet, and that is the whole point. */
+    const appSrc = readFileSync('index.html', 'utf8');
+    t.ok('guard: the scan really read the app', appSrc.length > 500000, String(appSrc.length));
+    const tdBody = appSrc.slice(appSrc.indexOf('function hiitTeardown('));
+    const tdEnd = tdBody.indexOf('function hiitQuit(');
+    t.ok('guard: the teardown body was located', tdEnd > 40, String(tdEnd));
+    t.ok('the stop record lives in hiitTeardown()',
+      tdBody.slice(0, tdEnd).indexOf('logGrind(') >= 0);
+    t.eq('and there is exactly one copy of it in the file',
+      (appSrc.match(/logGrind\(INTV\.format,\s*false,/g) || []).length, 1);
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));

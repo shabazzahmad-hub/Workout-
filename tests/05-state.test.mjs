@@ -2920,6 +2920,72 @@ export default async function run() {
     t.eq('nor the pointer', held.ptr, 0);
     t.eq('and the reset really held', held.onboarded, false);
 
+    /* THE DISCRIMINATING CASE, and the block above cannot supply it. Closing a
+       live session is not passive: playerTeardown() clears the resume point and
+       hiitTeardown() records the stopped grinder, and both call save() — which
+       put this tab's own un-erased copy back into localStorage, so the load()
+       that follows read our old state instead of the erased one. The player
+       above was opened and never reached WORK, so it had no resume point to
+       clear and therefore saved nothing; a GRINDER always writes its stop.
+       Measured on the unfixed code: the grinder closed, the tab looked as
+       though it had obeyed, and onboarded was still true with the log, the
+       pointer and the name all intact. */
+    const G1 = await ctx.newPage(); await boot(G1);
+    const G2 = await ctx.newPage(); await boot(G2);
+    await G1.evaluate(async () => {
+      STATE.onboarded = true; STATE.profile.name = 'Sam';
+      STATE.progressPtr = 3; STATE.grindLog = [];
+      STATE.logs = { 9: { done: true, completedAt: todayISO(), ex: {} } };
+      save();
+      startGrinder(Object.keys(GRINDER_FORMATS)[0]);
+      await new Promise(z => setTimeout(z, 300));
+      if (typeof INTV !== 'undefined' && INTV) { INTV.i = 2; INTV.workElapsed = 120; }
+    });
+    await G1.waitForTimeout(400);
+    const gBefore = await G1.evaluate(() => ({ live: !!(typeof INTV !== 'undefined' && INTV),
+      logs: Object.keys(STATE.logs || {}).length, name: (STATE.profile || {}).name }));
+    await G2.evaluate(() => { window.confirm = () => true; hardReset(); });
+    await G1.waitForTimeout(1100);
+    const gAfter = await G1.evaluate(() => ({ live: !!(typeof INTV !== 'undefined' && INTV),
+      logs: Object.keys(STATE.logs || {}).length, ptr: STATE.progressPtr,
+      onboarded: !!STATE.onboarded, name: (STATE.profile || {}).name,
+      grindRows: (STATE.grindLog || []).length }));
+    /* FLOOR — the suppression is scoped to the adoption, so THIS tab can still
+       save afterwards. A guard left set silently stops every later write, and
+       the first version of this floor asserted it on a freshly booted THIRD
+       page, whose _adoptingReset is false whatever the adopting tab did — so
+       the mutant that never releases the guard walked straight through. The
+       tab that adopted is the only one that can be stuck, and the write has to
+       carry a marker: asserting the erased shape proves nothing, because a
+       suppressed save leaves exactly the erased shape the other tab wrote. */
+    const gSaves = await G1.evaluate(() => {
+      STATE.profile = STATE.profile || {};
+      STATE.profile.name = 'AfterAdopt';
+      save();
+      try { return (JSON.parse(localStorage.getItem(STORE_KEY) || '{}').profile || {}).name === 'AfterAdopt'; }
+      catch (e) { return false; }
+    });
+    await G1.waitForTimeout(250);
+    /* and a later save from that tab must not put the erased data back */
+    const G3 = await ctx.newPage(); await boot(G3);
+    const gHeld = await G3.evaluate(() => ({ logs: Object.keys(STATE.logs || {}).length,
+      onboarded: !!STATE.onboarded }));
+    await G1.close(); await G2.close(); await G3.close();
+
+    t.ok('guard: the grinder really was live with data to lose',
+      gBefore.live && gBefore.logs === 1 && gBefore.name === 'Sam', JSON.stringify(gBefore));
+    t.eq('a reset closes a live grinder too', gAfter.live, false);
+    t.eq('and the erased state is what the tab is left holding', gAfter.logs, 0);
+    t.eq('including the pointer', gAfter.ptr, 0);
+    /* '' is the DEFAULT_STATE name, which is what a genuine erase leaves —
+       not undefined. The guard above pins that it really was 'Sam' first. */
+    t.ok('and the profile', !gAfter.name, JSON.stringify(gAfter.name));
+    t.eq('and the grinder stop it wrote on the way out is gone with it', gAfter.grindRows, 0);
+    t.eq('the tab is no longer onboarded', gAfter.onboarded, false);
+    t.eq('and a later save cannot resurrect the erased logs', gHeld.logs, 0);
+    t.eq('nor the onboarding', gHeld.onboarded, false);
+    t.ok('FLOOR: and the tab that adopted can still save afterwards', gSaves);
+
     /* FLOOR — the reset detector must not fire when OUR copy was never onboarded
        either. Two tabs open during the setup wizard is a real state, and an
        ordinary answer saved in one would otherwise tell the other its data had

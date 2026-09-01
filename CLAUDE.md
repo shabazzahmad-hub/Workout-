@@ -12015,6 +12015,44 @@ removes nothing saved. Caught by re-reading my own diff against what each
 handler does, which is the only thing that catches it: no check can tell a
 plausible label from a correct one.
 
+### And the check verified ONE of the seventeen, which a mutant is what proved
+
+The mutant that strips `removeFood`'s `aria-label` **escaped**, on a verbatim
+anchor against a green baseline. Chasing it found that the sweep scans
+whatever the page happens to hold — and **a row-delete button does not exist
+until there is a row to delete**:
+
+| delete | where it renders | scanned |
+|---|---|---|
+| `removeFood` | `intakeHTML()`, the Fuel tab | yes |
+| `removeMeasure` | `measureListHTML()` — Progress ▸ **Body** | no: the sweep lands on Summary |
+| `delFav` | inside `openBuilder()`, a **sheet** | no |
+| `removeAct` | inside `openRuck`/grip/box, **sheets** | no |
+| `removeSkip` | inside `openSkipping()`, a **sheet** | no |
+
+So "zero unnamed" was passing on a page that never held four of the five
+controls the round exists for. *A guard that cannot fire in the case you
+tested is not tested* — on the check written to catch exactly this class.
+
+**Two sweeps, two guards, and each owns its half by NAME.** The tab sweep
+seeds the rows, visits Progress ▸ Body, and guards that it reached `removeFood`
+and `removeMeasure`; the sheet sweep guards `delFav`, `removeAct` and
+`removeSkip`. A single shared guard would let either pass on the other's
+coverage, which is the shape that hid this in the first place.
+
+**And the seed has to survive the boot repair.** The first favourite was
+`items:[{exId:'pushup',…}]` and `normalizeState()` dropped the row **whole** —
+`items` is filtered with `exKnown()`, which takes an id STRING. Measured:
+`afterRepair: "[]"`, so the sheet had no delete to scan and the guard reported
+`delFav` missing. *Confirm what the repair KEEPS before choosing what to seed
+with* — the same lesson the activity logs taught, one field over.
+
+Three seedings before it was caught, and the first two were the harness rather
+than the app: a hand-retyped anchor that omitted `style="flex:0 0 auto"` and
+matched nothing, which the assert reported as `count 0` rather than as an
+escape. **Take a mutation anchor VERBATIM from the file** — and read a
+`BAD ANCHOR` line as a measurement that has not happened yet, never as a pass.
+
 ### Three sweeps that came back clean
 
 - **Nothing holds a piece of STATE across an `await`.** v404 made this a NEW
@@ -12061,6 +12099,145 @@ plausible label from a correct one.
   matches `stations:6, secs:60`, and `GRINDER_FORMATS` is already inside suite
   01's description sweep. The FORCE figures were re-checked against v397's own
   source-card comparison and still agree.
+
+
+## The X wrote the record and Back wrote nothing (v411)
+
+Found by reading `onPop()` — the hardware Back handler — against the functions
+it calls. Three live surfaces close there, and two of them close through the
+same function the ✕ uses. HIIT does not:
+
+```js
+if(typeof OP!=='undefined'&&OP){opQuit();return;}
+if(typeof INTV!=='undefined'&&INTV){hiitTeardown();return;}   // <- not hiitQuit()
+if(typeof PLAYER!=='undefined'&&PLAYER){playerTeardown();return;}
+```
+
+`hiitQuit()` held the grinder's stop record, and its own comment says exactly
+why: *"a stopped session simply never happened — and a streak built on
+sessions that were logged would count every one of them, which is the opposite
+of the truth."* `grindStreak()` stops at the first row that is not `done`, so a
+stop that is never written is not a break in the streak, it is invisible.
+
+Measured on three finished grinders, stopping a fourth half way:
+
+| exit | record written | streak |
+|---|---|---|
+| the ✕ | yes, `done:false` | **0** — broken, correct |
+| **the Back button** | **none** | **3** — still claiming an unbroken run |
+
+Every other caller in the file uses `hiitQuit()`. Back was the one exit that
+skipped it — *one of a pair guarded and its twin not*, with the Back button as
+the twin nobody counted.
+
+**The record moved into `hiitTeardown()`, which is what every exit reaches.**
+Folding it into the one writer is the same call as `pushFoodRow()` and
+`setForceResultQuiet()`; leaving it in `hiitQuit()` and adding a second copy to
+the Back branch is how the two come to disagree. What stays in `hiitQuit()` is
+the HISTORY step, which the Back handler must **not** take — the pop it is
+answering has already happened.
+
+**Three floors, and each catches a different over-eager twin**: a FINISHED
+grinder must still record `done:true` and keep the streak, closing a finished
+one must not add a second row, and an ordinary HIIT session must record nothing
+at all. A teardown that always wrote a stop satisfies every assertion above and
+destroys every finish in the app.
+
+### The check called the handler and the handler refused
+
+`onPop({state:{}})` by hand reported the fix as broken, and the reason is this
+file's own trap: `hiitQuit()` ends with `history.back()`, which is **async** and
+leaves `_backGuard` set until its own pop arrives — so a hand-called `onPop()` a
+moment later is swallowed by that guard and tears nothing down. The first probe
+passed only because its page happened to consume the guard in time.
+
+Both exits are now DRIVEN: a real click on `#hiit .pl-x`, and `page.goBack()`,
+which is the athlete's actual gesture. *Calling the helper is not driving the
+route* — the eighth time this file has recorded it, and the first where the
+helper actively refused.
+
+### `onPop()` has THREE ambient early returns, and the guard had to name them
+
+Clearing `_backGuard` was not enough and the check stayed red. **`_exiting` is
+the one that was actually set**, and the suite is what proved it: the run that
+cleared the guard alone still failed, and the run that also cleared `_exiting`
+went green at 1363.
+
+It is set by the second home Back press, immediately before the `history.back()`
+meant to leave the app, and **nothing ever resets it**. So in any context where
+that back does not unload the page, every later Back press is swallowed —
+which is exactly the state an earlier block in this long suite left behind.
+
+**Whether an athlete can reach it is NOT established, and the probe that tried
+is why.** Driven from a fresh page, the second `goBack()` genuinely leaves the
+app (`_exiting is not defined` — the document is gone), so the flag cannot
+latch there. A standalone PWA sitting on its own root entry is the case where
+`history.back()` has nothing to unload, and this sandbox cannot produce one.
+Recorded as an open question with the measurement beside it rather than fixed
+speculatively — the v386 call, where a fix with no reproduced defect behind it
+was written and then reverted.
+
+The lesson that IS settled: **a block that drives a Back press builds all three
+of those flags**, and records what it found before clearing them, so the next
+failure names which one rather than reporting a teardown that silently never
+ran.
+
+## A reset the tab then saved over (v411)
+
+Found by asking what the fix above touches: closing a live session is not a
+passive act. `playerTeardown()` clears the resume point and `hiitTeardown()`
+now records the stopped grinder, and **both call `save()`**.
+
+The cross-tab reset adoption closes the live session and then does
+`await load()`. So this tab wrote its own un-erased copy into localStorage and
+the `load()` a few lines later read **that** back, not the erased state.
+Measured across two tabs with a grinder live:
+
+| the reset arrives | result |
+|---|---|
+| with nothing live | erased — `onboarded:false`, 0 logs, pointer 0, no name |
+| **with a grinder live** | **1 log, pointer 1, name intact, still onboarded** |
+
+The session closed, so the tab looked as though it had obeyed. `hardReset()`'s
+*"this cannot be undone"* was false again, by a route v405 did not reach.
+
+**v405's own check could not see it, and that is the finding.** It opens the
+player and never reaches WORK — so there is no `_plResume` to clear, so
+`plClearResume()` saves nothing, so the defect cannot fire in the one case it
+tested. *A guard that cannot fire in the case you tested is not tested*, on a
+check rather than on a guard. A grinder always writes its stop, which is why it
+is the discriminating case.
+
+`_adoptingReset` makes `save()` a no-op for the length of the teardown. The
+athlete asked for everything to go, so nothing the teardown wants to keep is
+worth keeping — and it is a `finally`, so a throw inside the teardown cannot
+leave the app unable to save at all. **That floor is pinned**: an over-eager
+guard left set would silently stop every later write, which is worse than the
+defect.
+
+It is at `save()` rather than at the two call sites, so a third thing that
+persists during a teardown is covered the day it is written.
+
+### The floor asked the wrong page, and the mutant walked through
+
+`FLOOR: saving still works after the adoption` **escaped**, and the check was
+wrong in two ways at once.
+
+It asked a freshly booted THIRD page whether `save()` worked — and that page's
+`_adoptingReset` is false whatever the adopting tab did, so the guard being
+latched on was invisible to it. **The tab that can be stuck is the one that
+adopted**, and nothing had asked it.
+
+And the floor had to carry a MARKER. Asserting the erased shape proves nothing
+here, because a suppressed save leaves exactly the erased shape the other tab
+already wrote — the two outcomes are identical on every field the check was
+reading. The adopting tab now writes a distinctive name and reads it back out
+of the store.
+
+Same family as *measure the payload, not the container*, with a page rather
+than a value as the thing measured in the wrong place. Six mutants, all caught
+after that — including the twin M6, the guard never SET, which nothing had
+exercised in that direction.
 
 
 ## Rendering
