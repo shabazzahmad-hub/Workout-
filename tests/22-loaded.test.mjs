@@ -179,7 +179,21 @@ export default async function run() {
   // ---- the in-session note: shown only for a real ceiling item -------------
   {
     const r = await page.evaluate(() => {
-      STATE.progressPtr = SESSIONS_PER_CYCLE * TOTAL_CYCLES - 1;
+      /* A NON-DELOAD session, chosen rather than assumed. The last pointer is
+         week 6 of its block — a real calendar deload — so a player opened there
+         runs an eased session, where the app now correctly withholds the
+         add-load hint. This block is about WHICH ITEM shows the note, not about
+         deloads, so it builds a week the note can appear in. */
+      let _ptr = -1;
+      for (let _p = 0; _p < SESSIONS_PER_CYCLE * TOTAL_CYCLES; _p++) {
+        const _ss = buildSession(_p);
+        if (deloadOn(_ss.pos)) continue;
+        if (![..._ss.main].some(m => atLadderCeiling(m.exId, _ss.pos))) continue;
+        if (![..._ss.main].some(m => !atLadderCeiling(m.exId, _ss.pos))) continue;
+        _ptr = _p; break;
+      }
+      if (_ptr < 0) return { noSuitablePtr: true };
+      STATE.progressPtr = _ptr;
       openPlayer();
       const ceiling = PLAYER.items.filter(m => atLadderCeiling(m.exId, PLAYER.sess.pos));
       const clean = PLAYER.items.filter(m => !atLadderCeiling(m.exId, PLAYER.sess.pos));
@@ -197,8 +211,8 @@ export default async function run() {
       playerTeardown();
       return out;
     });
-    t.ok('guard: this session has at least one ceiling item and one clean item',
-      r.hasCeiling && r.hasClean, r);
+    t.ok('guard: a NON-deload session with both a ceiling and a clean item was found',
+      !r.noSuitablePtr && r.hasCeiling && r.hasClean, JSON.stringify(r).slice(0, 200));
     t.ok('the ceiling item shows the maxed-ladder note', /maxed the ladder/.test(r.ceilingNote || ''), r.ceilingNote);
     t.ok('a non-ceiling item in the SAME session shows no such note', !/maxed the ladder/.test(r.cleanNote || ''), r.cleanNote);
   }
@@ -206,7 +220,21 @@ export default async function run() {
     // the note reflects a REAL logged load, not a generic prompt, once one exists
     const r = await page.evaluate(([seed]) => {
       eval(seed)();
-      STATE.progressPtr = SESSIONS_PER_CYCLE * TOTAL_CYCLES - 1;
+      /* A NON-DELOAD session, chosen rather than assumed. The last pointer is
+         week 6 of its block — a real calendar deload — so a player opened there
+         runs an eased session, where the app now correctly withholds the
+         add-load hint. This block is about WHICH ITEM shows the note, not about
+         deloads, so it builds a week the note can appear in. */
+      let _ptr = -1;
+      for (let _p = 0; _p < SESSIONS_PER_CYCLE * TOTAL_CYCLES; _p++) {
+        const _ss = buildSession(_p);
+        if (deloadOn(_ss.pos)) continue;
+        if (![..._ss.main].some(m => atLadderCeiling(m.exId, _ss.pos))) continue;
+        if (![..._ss.main].some(m => !atLadderCeiling(m.exId, _ss.pos))) continue;
+        _ptr = _p; break;
+      }
+      if (_ptr < 0) return { noSuitablePtr: true };
+      STATE.progressPtr = _ptr;
       openPlayer();
       const ceiling = PLAYER.items.find(m => atLadderCeiling(m.exId, PLAYER.sess.pos));
       const out = {};
@@ -223,7 +251,8 @@ export default async function run() {
       STATE.liftLog = [];
       return out;
     }, [ATHLETE]);
-    t.ok('guard: found a ceiling item to log against', !r.noCeilingItem, r);
+    t.ok('guard: found a NON-deload ceiling item to log against',
+      !r.noCeilingItem && !r.noSuitablePtr, JSON.stringify(r).slice(0, 200));
     t.ok('before logging anything, the note is a generic prompt', /try adding load/.test(r.beforeLog || ''), r.beforeLog);
     t.ok('after logging a load, the note names it specifically', /\+9(\.0)?\s*kg last|\+9(\.0)?kg/.test(r.afterLog || '') || /last \+9/.test(r.afterLog || ''), r.afterLog);
   }
@@ -495,6 +524,65 @@ export default async function run() {
     t.eq('the rep count still saves even when the weight is rejected', r.absurd.reps, 8, r.absurd);
     t.ok('a plausible weight still saves normally', r.normal.loadKg > 0 && r.normal.loadKg < 350, r.normal);
     t.eq('both attempts still logged a row (nothing entered is the only skip case)', r.after, r.before + 2, r);
+  }
+
+  /* ---- no "add load" while an easing rule is in force ---------------------
+     atLadderCeiling()'s third condition asks whether the REAL prescription
+     lands at the ceiling — but prescribeCeiling() is itself a CAP, so an eased
+     target still lands ON it and the gate passes. Measured across all 378
+     sessions: the hint was reachable 136 times on a deload week and 128 times
+     in SAFE MODE, telling an athlete with an uncleared heart condition to add
+     external load, on the same line as a set count the deload had just cut. */
+  {
+    const r = await page.evaluate(() => {
+      const findPtr = wantDeload => {
+        for (let p = 0; p < SESSIONS_PER_CYCLE * TOTAL_CYCLES; p++) {
+          const ss = buildSession(p);
+          if (!!deloadOn(ss.pos) !== wantDeload) continue;
+          if ([...ss.main].some(m => atLadderCeiling(m.exId, ss.pos))) return p;
+        }
+        return -1;
+      };
+      const noteAt = ptr => {
+        const ss = buildSession(ptr);
+        const i = [...ss.main].findIndex(m => atLadderCeiling(m.exId, ss.pos));
+        STATE.progressPtr = ptr; openPlayer(ss); PLAYER.i = i; PLAYER.s = 0;
+        plClear(); plEnterReady(false);
+        const t = (document.getElementById('plBody') || {}).innerText || '';
+        playerTeardown();
+        return /maxed the ladder/.test(t);
+      };
+      const out = {};
+      STATE.settings.deload = false; STATE.profile.parq = []; STATE.profile.parqDone = true;
+      STATE.profile.medCleared = true; normalizeState();
+      out.plainPtr = findPtr(false);
+      out.deloadPtr = findPtr(true);
+      if (out.plainPtr < 0 || out.deloadPtr < 0) return out;
+      out.plainNote = noteAt(out.plainPtr);
+      out.deloadOn = !!deloadOn(buildSession(out.deloadPtr).pos);
+      out.deloadNote = noteAt(out.deloadPtr);
+      /* Safe mode on the SAME non-deload session, so only one thing changed. */
+      STATE.profile.parq = ['heart']; STATE.profile.medCleared = false; normalizeState();
+      out.safeOn = safeMode();
+      out.safeNote = noteAt(out.plainPtr);
+      STATE.profile.parq = []; STATE.profile.medCleared = true; normalizeState();
+      return out;
+    });
+
+    t.ok('guard: a ceiling movement was found in both a plain and a deload week',
+      r.plainPtr >= 0 && r.deloadPtr >= 0, JSON.stringify({ plain: r.plainPtr, deload: r.deloadPtr }));
+    t.ok('guard: the deload week really is one, and safe mode really was on',
+      r.deloadOn === true && r.safeOn === true,
+      JSON.stringify({ deload: r.deloadOn, safe: r.safeOn }));
+
+    /* FLOOR — an ordinary athlete at the ceiling still gets the hint. Deleting
+       it outright satisfies both assertions below and removes the feature. */
+    t.ok('FLOOR: an unrestricted athlete at the ceiling is still told to add load',
+      r.plainNote === true, JSON.stringify(r));
+    t.ok('but a deload week is not told to add load', r.deloadNote === false,
+      JSON.stringify({ ptr: r.deloadPtr, note: r.deloadNote }));
+    t.ok('and neither is an athlete safe mode is holding short of failure',
+      r.safeNote === false, JSON.stringify({ ptr: r.plainPtr, note: r.safeNote }));
   }
 
   srv.close();

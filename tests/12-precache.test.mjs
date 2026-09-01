@@ -191,8 +191,25 @@ export default async function run() {
        inside the reload's own scheduling, not just anywhere in the function. */
     const reloadIdx = body.indexOf('location.reload()');
     t.ok('selfUpdate() schedules a reload', reloadIdx >= 0, reloadIdx);
-    const justBefore = body.slice(Math.max(0, reloadIdx - 120), reloadIdx);
-    t.ok('and re-checks _sessionLive() immediately before firing it, not only at entry', justBefore.includes('_sessionLive()'), justBefore);
+
+    /* This used to demand _sessionLive() within 120 characters of the reload,
+       which encoded the OLD structure: the teardown ran BEFORE the last check,
+       so an athlete who tapped Start during the fetch kept their session and
+       lost their offline pack. The real requirement is that the last check
+       gates BOTH — so it asserts the ORDER, not the distance. The behaviour is
+       driven at the end of this suite; this only pins the shape. */
+    const unregIdx = body.indexOf('reg.unregister()');
+    const delIdx = body.indexOf('caches.delete(');
+    t.ok('selfUpdate() tears the old worker and pack down', unregIdx >= 0 && delIdx >= 0,
+      JSON.stringify({ unregIdx, delIdx }));
+    const lastCheck = body.lastIndexOf('_sessionLive()', Math.min(unregIdx, delIdx));
+    t.ok('a _sessionLive() check sits in front of the teardown', lastCheck >= 0, lastCheck);
+    t.ok('and the teardown comes before the reload it commits to',
+      unregIdx < reloadIdx && delIdx < reloadIdx,
+      JSON.stringify({ unregIdx, delIdx, reloadIdx }));
+    t.ok('so nothing is destroyed on a path that will not reload',
+      lastCheck < unregIdx && lastCheck < delIdx,
+      JSON.stringify({ lastCheck, unregIdx, delIdx }));
   }
 
   /* ---- the cache-first static-asset fetch(req) must not leave an unhandled
@@ -565,6 +582,209 @@ export default async function run() {
     t.eq('guard: this was ONE navigation, never reloaded',
       await pg.evaluate(() => performance.getEntriesByType('navigation').length), 1);
 
+    await ctx.close();
+  }
+
+  /* ---- the two siblings v357 left on `controller` ------------------------
+     v357 measured that at the moment navigator.serviceWorker.ready resolves on
+     a genuine FIRST install, `controller` is NULL while `reg.active` already
+     exists, and taught the boot ping to ask reg.active first. refreshPackStat()
+     and packForce() were left on `controller` alone, so with no controller the
+     Settings screen said "not installed" for an app that was installing, and
+     the Download button posted NOTHING while toasting "Downloading the rest in
+     the background". Fixing one instance is not fixing the class. */
+  {
+    const ctx = await chromium.launchPersistentContext('', { viewport: { width: 390, height: 844 } });
+    const pg = ctx.pages()[0] || await ctx.newPage();
+    await pg.goto(base, { waitUntil: 'domcontentloaded' });
+    await pg.waitForFunction(() => document.querySelector('.view.active'), null, { timeout: 20000 });
+
+    /* GUARD: the window this fix exists for is real on THIS machine, or every
+       assertion below is about a state that never happens. */
+    const win = await pg.evaluate(async () => {
+      const t0 = performance.now();
+      const reg = await navigator.serviceWorker.ready;
+      return { ms: Math.round(performance.now() - t0),
+               controller: !!navigator.serviceWorker.controller,
+               active: !!(reg && reg.active) };
+    });
+    t.ok('guard: at the moment ready resolves, reg.active exists', win.active, JSON.stringify(win));
+
+    /* Drive both with the controller hidden — the state a first install is in
+       while it activates, and the state selfUpdate() leaves behind. */
+    const noCtl = await pg.evaluate(async () => {
+      const reg = await navigator.serviceWorker.ready;
+      Object.defineProperty(navigator.serviceWorker, 'controller', { get: () => null, configurable: true });
+      let posted = 0;
+      const w = reg.active, orig = w.postMessage.bind(w);
+      w.postMessage = m => { posted++; return orig(m); };
+      document.body.insertAdjacentHTML('beforeend',
+        '<span id="packStat">seeded</span><span id="packBar"></span>');
+      const tel = document.getElementById('toast');
+      if (tel) tel.textContent = '';
+      refreshPackStat();
+      await new Promise(r => setTimeout(r, 400));
+      const stat = document.getElementById('packStat').textContent;
+      packForce();
+      await new Promise(r => setTimeout(r, 400));
+      const toast = (document.getElementById('toast') || {}).textContent || '';
+      w.postMessage = orig;
+      delete navigator.serviceWorker.controller;
+      return { posted, stat, toast };
+    });
+    t.ok('with no controller, an installing app is not reported as "not installed"',
+      noCtl.stat !== 'not installed', JSON.stringify(noCtl));
+    t.ok('and both reach the ACTIVE worker rather than posting nothing',
+      noCtl.posted >= 2, JSON.stringify(noCtl));
+    t.ok('so the download the toast promises was really requested',
+      /Downloading/.test(noCtl.toast), JSON.stringify(noCtl));
+
+    /* FLOOR — with NO worker at all, "not installed" is the truth and must
+       still be said, and the button must not claim a download it cannot make.
+       A fix that always posted, or always claimed, passes everything above. */
+    const none = await pg.evaluate(async () => {
+      const sw = navigator.serviceWorker;
+      Object.defineProperty(navigator, 'serviceWorker', { get: () => undefined, configurable: true });
+      document.getElementById('packStat').textContent = 'seeded';
+      const tel = document.getElementById('toast'); if (tel) tel.textContent = '';
+      refreshPackStat();
+      packForce();
+      await new Promise(r => setTimeout(r, 400));
+      const out = { stat: document.getElementById('packStat').textContent,
+                    toast: (document.getElementById('toast') || {}).textContent || '' };
+      Object.defineProperty(navigator, 'serviceWorker', { get: () => sw, configurable: true });
+      return out;
+    });
+    t.eq('with no service worker at all it still says "not installed"', none.stat, 'not installed');
+    t.ok('and the button says so rather than claiming a download',
+      !/Downloading/.test(none.toast) && /not installed/i.test(none.toast), JSON.stringify(none));
+
+    /* FLOOR — the ordinary controlled page is unchanged. */
+    const ctl = await pg.evaluate(async () => {
+      let posted = 0;
+      const c = navigator.serviceWorker.controller;
+      if (!c) return { noController: true };
+      const orig = c.postMessage.bind(c);
+      c.postMessage = m => { posted++; return orig(m); };
+      const tel = document.getElementById('toast'); if (tel) tel.textContent = '';
+      refreshPackStat(); packForce();
+      await new Promise(r => setTimeout(r, 400));
+      c.postMessage = orig;
+      return { posted, toast: (document.getElementById('toast') || {}).textContent || '' };
+    });
+    t.ok('guard: the page really is controlled by now', !ctl.noController, JSON.stringify(ctl));
+    t.ok('a controlled page still posts to its own controller',
+      ctl.posted >= 2 && /Downloading/.test(ctl.toast), JSON.stringify(ctl));
+
+    await ctx.close();
+  }
+
+  /* ---- an update must not destroy the pack it cannot replace -------------
+     selfUpdate() unregisters the worker and deletes every CoreForge cache, then
+     re-checks _sessionLive() before reloading. The guard was in the right place
+     for the RELOAD and the wrong place for the teardown: an athlete who tapped
+     Start during the version fetch (up to 6 seconds) got the guard they were
+     owed AND an app with nothing behind it. Measured before the fix:
+
+       caches  ['coreforge-vNNN'] -> []
+       worker  registered -> gone
+       reload  correctly did not fire
+       retry   blocked for the rest of the session by cf_selfupd
+
+     Still on the old version, and offline it would not start at all. The suite
+     already asserted the re-check exists IN THE SOURCE, which stays true with
+     _sessionLive() reverted — so this drives the function instead. */
+  {
+    const ctx = await chromium.launchPersistentContext('', { viewport: { width: 390, height: 844 } });
+    const pg = ctx.pages()[0] || await ctx.newPage();
+    await pg.goto(base, { waitUntil: 'domcontentloaded' });
+    await pg.waitForFunction(() => document.querySelector('.view.active'), null, { timeout: 20000 });
+    await pg.evaluate(() => navigator.serviceWorker.ready);
+    await pg.waitForTimeout(1500);
+
+    const live = await pg.evaluate(async () => {
+      const before = { caches: (await caches.keys()).filter(k => /^coreforge-v/.test(k)),
+                       reg: !!(await navigator.serviceWorker.getRegistration('./')) };
+      /* The athlete taps Start DURING the version fetch — the real timing hole,
+         not a session that was already running when selfUpdate() was called. */
+      window.fetchWithTimeout = async () => {
+        await new Promise(r => setTimeout(r, 300));
+        PLAYER = { i: 0, s: 0, phase: 'work', sess: {} };
+        return { ok: true, status: 200, text: async () => "const APP_VERSION='99999';" };
+      };
+      await selfUpdate();
+      await new Promise(r => setTimeout(r, 900));   // past the commit timer
+      const after = { caches: (await caches.keys()).filter(k => /^coreforge-v/.test(k)),
+                      reg: !!(await navigator.serviceWorker.getRegistration('./')),
+                      sessionLive: _sessionLive(),
+                      retryBlocked: !!sessionStorage.getItem('cf_selfupd') };
+      PLAYER = null;
+      return { before, after };
+    });
+
+    t.ok('guard: there was a pack and a worker to lose',
+      live.before.caches.length > 0 && live.before.reg, JSON.stringify(live.before));
+    t.ok('guard: the session really did start inside the fetch window',
+      live.after.sessionLive, JSON.stringify(live.after));
+    t.ok('a session starting mid-update keeps its offline pack',
+      live.after.caches.length > 0, JSON.stringify(live.after.caches));
+    t.ok('and keeps its service worker', live.after.reg);
+    t.eq('and the update is not silently skipped for the rest of the session',
+      live.after.retryBlocked, false);
+
+    /* And the SECOND window: nobody is training when the fetch returns, and the
+       athlete taps Start inside the 400 ms before the teardown commits. That is
+       the only path that reaches the committed guard, so without this case a
+       mutant inverting it — or leaving the retry flag set — changes nothing any
+       assertion can see. */
+    const late = await pg.evaluate(async () => {
+      try { sessionStorage.removeItem('cf_selfupd'); } catch (e) {}
+      PLAYER = null;
+      const before = (await caches.keys()).filter(k => /^coreforge-v/.test(k));
+      window.fetchWithTimeout = async () =>
+        ({ ok: true, status: 200, text: async () => "const APP_VERSION='99999';" });
+      selfUpdate();                                   // not awaited
+      await new Promise(r => setTimeout(r, 120));     // inside the commit window
+      const flagMidway = !!sessionStorage.getItem('cf_selfupd');
+      PLAYER = { i: 0, s: 0, phase: 'work', sess: {} };
+      await new Promise(r => setTimeout(r, 900));
+      const out = { before,
+        after: (await caches.keys()).filter(k => /^coreforge-v/.test(k)),
+        reg: !!(await navigator.serviceWorker.getRegistration('./')),
+        flagMidway, retryBlocked: !!sessionStorage.getItem('cf_selfupd') };
+      PLAYER = null;
+      return out;
+    });
+    t.ok('guard: the update really had committed before the tap', late.flagMidway,
+      JSON.stringify(late));
+    t.ok('guard: there was still a pack at that moment', late.before.length > 0,
+      JSON.stringify(late.before));
+    t.ok('a tap inside the commit window still keeps the pack',
+      late.after.length > 0, JSON.stringify(late.after));
+    t.ok('and the worker', late.reg);
+    t.eq('and the update is offered again rather than skipped for the session',
+      late.retryBlocked, false);
+
+    /* FLOOR — with nobody training the update must still go through, or the fix
+       is a disable. The reload destroys the execution context, so the
+       navigation IS the assertion. */
+    const pg2 = await ctx.newPage();
+    await pg2.goto(base, { waitUntil: 'domcontentloaded' });
+    await pg2.waitForFunction(() => document.querySelector('.view.active'), null, { timeout: 20000 });
+    await pg2.evaluate(() => navigator.serviceWorker.ready);
+    await pg2.waitForTimeout(1200);
+    let navigated = false;
+    pg2.on('framenavigated', f => { if (f === pg2.mainFrame()) navigated = true; });
+    await pg2.evaluate(() => {
+      PLAYER = null; if (typeof INTV !== 'undefined') INTV = null;
+      try { sessionStorage.removeItem('cf_selfupd'); } catch (e) {}
+      window.fetchWithTimeout = async () =>
+        ({ ok: true, status: 200, text: async () => "const APP_VERSION='99999';" });
+      selfUpdate();
+    }).catch(() => {});
+    await pg2.waitForTimeout(2500);
+    t.ok('FLOOR: with nobody training, the update still reloads', navigated);
+    await pg2.close();
     await ctx.close();
   }
 

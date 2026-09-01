@@ -3,6 +3,7 @@
    normalizeState(), so anything it fails to repair is unrecoverable on a real
    phone — the app stays broken across relaunches. */
 import { serve, launch, suite, waitForBoot, seedAthlete, ATHLETE } from './lib/harness.mjs';
+import { chromium } from 'playwright';
 
 const HOSTILE = {
   'nulls everywhere': { onboarded: true, profile: { days: null, gear: null, targets: null, limitations: null, parq: null },
@@ -281,6 +282,117 @@ export default async function run() {
     t.ok('and leaves the athlete alone', r.secondUndoLeftNameAlone, r);
     await browser.close();
     errors.forEach(e => t.fail('page error during the import-undo flow', e));
+  }
+
+  /* ---- the undo the confirm promises has to actually exist ----------------
+     The snapshot lives in localStorage, and a full store is exactly the state
+     save()'s own quota fallback exists for. It was written AFTER the confirm,
+     into a silent catch — so on a full phone the sentence "your current data
+     will be saved first so you can undo this" was simply false. Measured
+     before the fix: the write threw, the import went ahead, 300 logged
+     sessions were erased and the Undo button never appeared.
+
+     Same class as hardReset()'s "this cannot be undone" (v405): a promise in
+     UI text is a specification. The floors are what stop the fix becoming
+     "always warn" or "refuse the import" — a healthy device must be
+     byte-identical, and a full store is not a reason to refuse a restore. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const o = {};
+      const mkBackup = () => {
+        const b = JSON.parse(JSON.stringify(STATE));
+        b.profile.name = 'Imported Athlete'; b.logs = {}; b.version = 1; b._saved = '2026-01-01';
+        return new File([JSON.stringify(b)], 'b.json', { type: 'application/json' });
+      };
+      const bigLogs = () => { const L = {}; for (let i = 0; i < 300; i++) L[i] = { done: true, completedAt: '2026-08-01', ex: {}, items: [{ exId: 'pushup', sets: [1, 1, 1], target: 20, unit: 'reps' }] }; return L; };
+      const clearFill = n => { for (let i = 0; i <= n; i++) { try { localStorage.removeItem('__f' + i); } catch (e) {} } };
+      // Fill the store until a write far smaller than the snapshot is refused.
+      const fill = () => {
+        const big = 'x'.repeat(100000), small = 'x'.repeat(5000); let n = 0;
+        try { for (; n < 400; n++) localStorage.setItem('__f' + n, big); } catch (e) {}
+        try { for (; n < 800; n++) localStorage.setItem('__f' + n, small); } catch (e) {}
+        return n;
+      };
+      const realConfirm = window.confirm;
+      let asked = [];
+      window.confirm = m => { asked.push(m); return true; };
+
+      /* FLOOR: a healthy device is unchanged — the original wording, a real
+         snapshot, a working Undo. */
+      try { localStorage.removeItem(PREIMPORT_KEY); } catch (e) {}
+      STATE.logs = bigLogs(); save();
+      asked = [];
+      importData({ target: { files: [mkBackup()] } });
+      await new Promise(z => setTimeout(z, 400));
+      o.healthyAsk = asked[0] || '';
+      o.healthySnapshot = hasPreImportSnapshot();
+      o.healthyImported = STATE.profile.name === 'Imported Athlete';
+
+      /* The full store: it must SAY there is no undo, and must not leave a
+         stale snapshot behind pretending there is one. */
+      try { localStorage.removeItem(PREIMPORT_KEY); } catch (e) {}
+      STATE.profile.name = 'Live Athlete'; STATE.logs = bigLogs(); save();
+      let n = fill();
+      asked = [];
+      importData({ target: { files: [mkBackup()] } });
+      await new Promise(z => setTimeout(z, 400));
+      o.fullAsk = asked[0] || '';
+      o.fullSaysNoUndo = /no undo/i.test(o.fullAsk);
+      o.fullPromisesUndo = /undo this if it is a mistake/.test(o.fullAsk);
+      o.fullStillImported = STATE.profile.name === 'Imported Athlete';
+      o.fullOffersNoUndo = !hasPreImportSnapshot();
+      clearFill(n);
+
+      /* A STALE snapshot must not survive a failed one either — the Undo
+         button says "restore what was here before it", and an older import's
+         snapshot is not that. */
+      STATE.profile.name = 'Live Athlete'; STATE.logs = {}; save();
+      try { localStorage.setItem(PREIMPORT_KEY, JSON.stringify({ profile: { name: 'ANCIENT' }, version: 1 })); } catch (e) {}
+      STATE.logs = bigLogs(); save();
+      n = fill();
+      asked = [];
+      importData({ target: { files: [mkBackup()] } });
+      await new Promise(z => setTimeout(z, 400));
+      o.staleGone = !hasPreImportSnapshot();
+      clearFill(n);
+
+      /* FLOOR: a DECLINED import leaves the store exactly as it found it —
+         both with a snapshot already there and with none. */
+      try { localStorage.removeItem(PREIMPORT_KEY); } catch (e) {}
+      window.confirm = () => false;
+      STATE.profile.name = 'Live Athlete'; save();
+      importData({ target: { files: [mkBackup()] } });
+      await new Promise(z => setTimeout(z, 250));
+      o.declinedLeavesNoSnapshot = !hasPreImportSnapshot();
+      o.declinedKeptAthlete = STATE.profile.name === 'Live Athlete';
+
+      try { localStorage.setItem(PREIMPORT_KEY, JSON.stringify({ profile: { name: 'EARLIER' }, version: 1 })); } catch (e) {}
+      importData({ target: { files: [mkBackup()] } });
+      await new Promise(z => setTimeout(z, 250));
+      let kept = null; try { kept = JSON.parse(localStorage.getItem(PREIMPORT_KEY) || 'null'); } catch (e) {}
+      o.declinedKeptEarlierSnapshot = !!(kept && kept.profile && kept.profile.name === 'EARLIER');
+
+      try { localStorage.removeItem(PREIMPORT_KEY); } catch (e) {}
+      window.confirm = realConfirm;
+      return o;
+    });
+    // Guards: the two states this block depends on are really the two states.
+    t.ok('guard: the healthy device really did take a snapshot', r.healthySnapshot, r);
+    t.ok('guard: the full store really did refuse it', r.fullOffersNoUndo, r);
+
+    t.ok('a healthy device is asked the original question', /undo this if it is a mistake/.test(r.healthyAsk), r);
+    t.ok('and the import goes through', r.healthyImported, r);
+    t.ok('a full store is told there will be NO undo', r.fullSaysNoUndo, r);
+    t.ok('and is not promised one anyway', !r.fullPromisesUndo, r);
+    t.ok('and the restore still goes ahead — a full store is not a reason to refuse it', r.fullStillImported, r);
+    t.ok('a stale snapshot is not left behind pretending to be this import\'s', r.staleGone, r);
+    t.ok('declining still leaves no snapshot when there was none', r.declinedLeavesNoSnapshot, r);
+    t.ok('and leaves the athlete untouched', r.declinedKeptAthlete, r);
+    t.ok('and puts an earlier snapshot back exactly as it found it', r.declinedKeptEarlierSnapshot, r);
+    await browser.close();
+    errors.forEach(e => t.fail('page error during the full-store import flow', e));
   }
 
   /* ---- a boot-time repair or validation problem reaches the athlete, not
@@ -1509,6 +1621,969 @@ export default async function run() {
     t.eq('nothing a writer wrote is destroyed by the boot repair', r.lost.join('\n'), '', r);
     errors.forEach(e => t.fail('page error', e));
     await browser.close();
+  }
+
+  /* ---- every capped log is capped on the way IN as well ------------------
+     Seven writers each enforced their own bound and the BOOT REPAIR asked none
+     of them, so an import carrying 5,000 rows in each log survived every boot
+     and travelled in every backup after it — measured at 2.4 MB of state
+     against 221 kB for the capped shapes, inside the range that trips save()'s
+     own quota fallback. Same class as the keyed maps of v284/v285: the writer
+     enforced a bound the repair did not. Written as a sweep over LOG_CAPS so a
+     tenth capped log cannot be added with the repair left behind. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const out = { caps: {}, over: {}, newest: {}, floor: null, bytes: {}, threw: null };
+      try {
+        const N = 1000;
+        const keys = Object.keys(LOG_CAPS);
+        out.nCaps = keys.length;
+        /* THE TAG HAS TO BE A FIELD THE REPAIR KEEPS. Two earlier versions of
+           this read `undefined` and reported false failures: an invented field
+           is dropped because holdLog, grindLog and hiitLog rebuild each row
+           from a field list, and `at` is dropped by liftLog's rebuild for the
+           same reason. The DATE is the one field all nine require and keep. */
+        const day = i => { const d = new Date(2024, 0, 1); d.setDate(d.getDate() + i);
+          return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+            + '-' + String(d.getDate()).padStart(2, '0'); };
+        out.newestDay = day(N - 1);
+        const seed = (k, i) => ({
+          /* An unshift-er's index 0 is the NEWEST row, a push-er's last is —
+             so each list is seeded in the order its own writer would build it. */
+          date: LOG_CAPS[k].keep === 'head' ? day(N - 1 - i) : day(i),
+          at: Date.now() + i,
+          mins: 5, secs: 60, id: 'plank', fresh: true, done: true,
+          exId: 'squat', reps: 5, region: 'knee', ptr: 0,
+          format: 'tabata', group: 'hiit'
+        });
+        keys.forEach(k => { STATE[k] = Array.from({ length: N }, (_, i) => seed(k, i)); });
+        out.bytes.before = JSON.stringify(STATE).length;
+        normalizeState();
+        out.bytes.after = JSON.stringify(STATE).length;
+        keys.forEach(k => {
+          const l = STATE[k] || [], c = LOG_CAPS[k];
+          out.caps[k] = c.n;
+          out.over[k] = l.length > c.n ? l.length : 0;
+          /* THE END MATTERS. unshift-ers keep the head and push-ers keep the
+             tail, so trimming the wrong one throws away the newest training and
+             keeps the oldest — which no length assertion can see. */
+          const kept = c.keep === 'head' ? l[0] : l[l.length - 1];
+          out.newest[k] = !!(kept && kept.date === out.newestDay);
+        });
+        /* FLOOR: a real history UNDER the cap is byte-identical. A repair that
+           simply truncated every log satisfies every assertion above. */
+        STATE.skipLog = Array.from({ length: 12 },
+          (_, i) => ({ date: day(i), mins: 20 + i, at: 1000 + i }));
+        const was = JSON.stringify(STATE.skipLog);
+        normalizeState();
+        out.floor = { untouched: JSON.stringify(STATE.skipLog) === was, n: STATE.skipLog.length };
+      } catch (e) { out.threw = String(e && e.message || e); }
+      return out;
+    });
+
+    t.ok('guard: the boot repair ran without throwing', !r.threw, r.threw || '');
+    if (!r.threw) {
+      t.ok('guard: the sweep really walked every capped log', r.nCaps >= 9, JSON.stringify(r.caps));
+      t.eq('no imported log survives the boot above its own cap',
+        Object.keys(r.over).filter(k => r.over[k]).map(k => k + '=' + r.over[k]).join(', '), '',
+        JSON.stringify(r.over));
+      t.eq('and each keeps the NEWEST rows, whichever end its writer appends to',
+        Object.keys(r.newest).filter(k => !r.newest[k]).join(', '), '', JSON.stringify(r.newest));
+      /* The harm is the file, so it is asserted as bytes and not only as
+         lengths — a cap that trimmed one log and left eight passes a
+         per-list check that stops at the first one it looks at. */
+      t.ok('so the state a backup carries is bounded rather than 10x',
+        r.bytes.after < r.bytes.before / 5, JSON.stringify(r.bytes));
+      t.ok('FLOOR: a real history under the cap is left byte-identical',
+        r.floor.untouched && r.floor.n === 12, JSON.stringify(r.floor));
+    }
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
+  /* ---- and the lists that must NEVER be capped ---------------------------
+     Each for its own reason: photos are the one thing in this app that cannot
+     be re-created, measurements are the weight chart, scoreHistory is what a
+     re-test is compared against, and runs holds archived blocks the lifetime
+     counters read. A "cap everything" fix satisfies every assertion above and
+     destroys all four. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const out = { kept: {}, capped: [] };
+      const N = 400;
+      STATE.photos = Array.from({ length: N }, (_, i) => ({ id: 'p' + i, pose: 'front', date: '2026-01-01', data: 'data:image/jpeg;base64,x' }));
+      /* Distinct dates: dedupeMeasurements() collapses same-date rows on
+         purpose (pre-v156 appends), so an all-one-date seed reads as a cap and
+         is the probe, not the app. */
+      const day = i => { const d = new Date(2024, 0, 1); d.setDate(d.getDate() + i);
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+          + '-' + String(d.getDate()).padStart(2, '0'); };
+      STATE.measurements = Array.from({ length: N }, (_, i) => ({ date: day(i), weight: 80 + (i % 5) }));
+      STATE.scoreHistory = Array.from({ length: N }, (_, i) => ({ date: day(i), score: 50, level: 'Intermediate' }));
+      STATE.runs = Array.from({ length: N }, () => ({ logs: {}, prs: {}, endedAt: '2026-01-01' }));
+      normalizeState();
+      ['photos', 'measurements', 'scoreHistory', 'runs'].forEach(k => {
+        out.kept[k] = (STATE[k] || []).length;
+        if (out.kept[k] < N) out.capped.push(k + '=' + out.kept[k]);
+      });
+      out.inCaps = ['photos', 'measurements', 'scoreHistory', 'runs'].filter(k => LOG_CAPS[k]);
+      return out;
+    });
+    t.eq('the four lifetime records are never capped', r.capped.join(', '), '', JSON.stringify(r.kept));
+    t.eq('and none of them is in the cap registry at all', r.inCaps.join(', '), '');
+    /* MEMBERSHIP, not truthiness: an inherited key is truthy, so a `||`-shaped
+       lookup hands back Object.prototype.constructor and reads `undefined` as
+       a cap. The same trap v328 recorded for CARDIO_INFO, and the guard is
+       what makes the assertion mean anything. */
+    const inh = await page.evaluate(() => {
+      const out = { truthy: !!LOG_CAPS['constructor'], own: Object.prototype.hasOwnProperty.call(LOG_CAPS, 'constructor') };
+      STATE.skipLog = Array.from({ length: 5 }, (_, i) => ({ date: '2026-01-0' + (i + 1), mins: 5 }));
+      const before = STATE.skipLog.length;
+      try { capLog('constructor'); } catch (e) { out.threw = String(e); }
+      out.untouched = STATE.skipLog.length === before;
+      return out;
+    });
+    t.ok('guard: the inherited key really IS truthy on this map',
+      inh.truthy && !inh.own, JSON.stringify(inh));
+    /* This is documentation, not a catch: removing capLog()'s membership test
+       is an EQUIVALENT mutant. STATE['constructor'] is a function so
+       Array.isArray refuses it, and where STATE[key] IS an array the cap reads
+       `undefined`, so splice(0,NaN) removes nothing — measured identical both
+       ways. Recorded rather than rewritten into a check that cannot fail. */
+    t.ok('an inherited key neither throws nor trims (equivalent either way)',
+      !inh.threw && inh.untouched, JSON.stringify(inh));
+
+    /* THE WRITE PATH, NOT ONLY THE BOOT REPAIR. Every assertion above drives
+       normalizeState(), so a mutant that stripped the cap from logAct() walked
+       straight through: the log stays over-cap until the next boot, and save()
+       writes the over-long file to storage the whole time. Both directions are
+       driven, because the two writer families trim opposite ends. */
+    const w = await page.evaluate(() => {
+      const out = {};
+      const q = console.log; console.log = () => {};
+      STATE.ruckLog = []; STATE.skipLog = []; STATE.holdLog = [];
+      for (let i = 0; i < 210; i++) logAct('ruck', 5, { dist: 1 });
+      for (let i = 0; i < 210; i++) logSkip(5, 1);
+      for (let i = 0; i < 210; i++) logHold('plank', 60 + i, true, 'plank');
+      console.log = q;
+      out.ruck = STATE.ruckLog.length;
+      out.skip = STATE.skipLog.length;
+      out.hold = STATE.holdLog.length;
+      /* And the newest survived: an unshift-er keeps the head, a push-er the
+         tail, so the last hold written must still be the longest. */
+      out.newestHold = STATE.holdLog[STATE.holdLog.length - 1];
+      return out;
+    });
+    t.eq('the WRITE path caps an unshift-style log without waiting for a boot', w.ruck, 200,
+      JSON.stringify(w));
+    t.eq('and its sibling', w.skip, 200, JSON.stringify(w));
+    t.eq('and a push-style log too', w.hold, 200, JSON.stringify(w));
+    t.eq('keeping the newest row it wrote', w.newestHold && w.newestHold.secs, 60 + 209,
+      JSON.stringify(w.newestHold));
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
+  /* ---- the storage warning has to be true of THIS phone -------------------
+     save()'s quota message named IndexedDB — "backing up to device store" —
+     unconditionally. `idb` is null whenever the open failed, which is a real
+     phone state (private browsing blocks it), and on such a phone a
+     localStorage failure means NOTHING is saved anywhere. The athlete was told
+     the opposite, on the persistence layer, which is the most expensive place
+     in the app to be reassured wrongly. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const out = {};
+      const realIdb = idb;
+      const ls = localStorage.setItem.bind(localStorage);
+      const boom = () => { throw new Error('QuotaExceededError'); };
+      const shot = () => (document.getElementById('toast') || {}).textContent || '';
+      const clear = () => { const t = document.getElementById('toast'); if (t) t.textContent = ''; };
+
+      /* A mirror EXISTS: the original message is the true one. */
+      _lsWarned = false; idb = realIdb || { fake: 1 };
+      localStorage.setItem = boom; clear(); save(); localStorage.setItem = ls;
+      out.withMirror = shot();
+
+      /* NO mirror: the message must not claim one. */
+      _lsWarned = false; idb = null;
+      localStorage.setItem = boom; clear(); save(); localStorage.setItem = ls;
+      out.noMirror = shot();
+
+      /* FLOOR — an ordinary save says nothing at all. A warning that always
+         fires is a warning nobody reads, and it would fire on every write. */
+      _lsWarned = false; idb = realIdb; clear(); save();
+      out.healthy = shot();
+
+      /* FLOOR — it still warns only ONCE, whichever branch it took. The first
+         version of this never let a warning fire before looking, so it was
+         asserting on the FIRST one and failed on correct code. The pair is the
+         test: one warning, then silence. */
+      _lsWarned = false; idb = null; localStorage.setItem = boom;
+      clear(); save(); out.firstOfPair = shot();
+      clear(); save(); out.second = shot();
+      localStorage.setItem = ls;
+
+      idb = realIdb; _lsWarned = false;
+      return out;
+    });
+
+    t.ok('with a device store behind it, the message still names it',
+      /device store/i.test(r.withMirror) && /Export a backup/i.test(r.withMirror), JSON.stringify(r));
+    t.ok('with NO device store, it does not claim one',
+      !/backing up to device store/i.test(r.noMirror), JSON.stringify(r));
+    t.ok('and says plainly that nothing is being saved',
+      /nothing is being saved/i.test(r.noMirror) && /Export a backup/i.test(r.noMirror),
+      JSON.stringify(r));
+    t.eq('FLOOR: an ordinary save warns about nothing', r.healthy, '');
+    t.ok('guard: the pair really produced a first warning to be silent after',
+      !!r.firstOfPair, JSON.stringify({ first: r.firstOfPair }));
+    t.eq('FLOOR: and it still warns only once', r.second, '');
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
+  /* ---- the theme guard was truthiness where membership belonged -----------
+     THEMES['constructor'] is truthy, so a junk theme out of an imported backup
+     survived every boot, travelled in every backup after it, and left the theme
+     picker with NOTHING selected — so the athlete could neither see nor change
+     which theme was on. The same harm v354 measured for profile.gear. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const out = {};
+      out.inheritedIsTruthy = !!THEMES['constructor'];
+      out.inheritedIsOwn = Object.prototype.hasOwnProperty.call(THEMES, 'constructor');
+
+      // an inherited key must not survive the boot
+      STATE.settings.theme = 'constructor'; normalizeState();
+      out.afterInherited = STATE.settings.theme;
+
+      // nor an ordinary junk string
+      STATE.settings.theme = 'chartreuse'; normalizeState();
+      out.afterJunk = STATE.settings.theme;
+
+      /* FLOOR — a REAL theme the athlete picked survives untouched, and so does
+         the default. A repair that always resets satisfies every assertion
+         above and silently takes the athlete's choice away on every boot. */
+      const real = Object.keys(THEMES).filter(k => k !== THEME_DEFAULT)[0];
+      out.real = real;
+      STATE.settings.theme = real; normalizeState();
+      out.afterReal = STATE.settings.theme;
+      STATE.settings.theme = THEME_DEFAULT; normalizeState();
+      out.afterDefault = STATE.settings.theme;
+
+      // the read site refuses it too — two guards mean two checks
+      out.readSite = { junk: themeName('constructor'), real: themeName(real) };
+      out.setter = (() => { STATE.settings.theme = real; setTheme('constructor');
+                            return STATE.settings.theme; })();
+
+      // and the picker marks exactly one chip
+      STATE.settings.theme = real;
+      const html = themeChipsHTML();
+      out.chipsOn = (html.match(/themechip on/g) || []).length;
+      return out;
+    });
+
+    t.ok('guard: the inherited key really IS truthy on THEMES',
+      r.inheritedIsTruthy && !r.inheritedIsOwn, JSON.stringify(r));
+    t.eq('an inherited key does not survive the boot', r.afterInherited, 'mint');
+    t.eq('nor does an ordinary junk theme', r.afterJunk, 'mint');
+    t.eq('FLOOR: a real theme the athlete picked survives', r.afterReal, r.real);
+    t.eq('FLOOR: and so does the default', r.afterDefault, 'mint');
+    t.ok('the read site refuses the inherited key and accepts a real one',
+      r.readSite.junk === null && r.readSite.real === r.real, JSON.stringify(r.readSite));
+    t.eq('and the setter refuses it rather than storing it', r.setter, r.real);
+    t.eq('so the picker marks exactly one theme', r.chipsOn, 1);
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
+  /* ---- every one-time migration, as a CLASS ------------------------------
+     The rule this file states: a stale default needs a one-time migration keyed
+     to the exact value, behind a flag, leaving any other value alone as a
+     deliberate choice. Four exist and each has its own check somewhere; nothing
+     asked the same three questions of all of them. The v287 mutant that set the
+     flag in only ONE branch escaped four checks, because everyone who already
+     had a value stayed unflagged and was re-seeded the first time they cleared
+     it — which is question three below. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const out = {};
+      const run = (label, setOld, read, setChoice) => {
+        setOld(); normalizeState();
+        const first = read();
+        normalizeState();                       // a second launch must not redo it
+        const second = read();
+        setChoice(); normalizeState();          // and a deliberate choice must stick
+        out[label] = { first, second, choice: read() };
+      };
+      run('theme',
+        () => { delete STATE.profile._mintTheme; STATE.settings.theme = 'ember'; },
+        () => STATE.settings.theme,
+        () => { STATE.settings.theme = 'ember'; });
+      run('coach',
+        () => { delete STATE.settings.autoIntro; STATE.settings.coach = 'drill'; },
+        () => STATE.settings.coach,
+        () => { STATE.settings.coach = 'wrestle'; });
+      /* _protSeed and _toneFix live on nutrition and settings, NOT on profile —
+         a probe that deleted the wrong one reported all three questions wrong
+         and the app was right. Confirm the field's real home first. */
+      run('proteinSeed',
+        () => { delete STATE.nutrition._protSeed; delete STATE.nutrition.proteinTarget; },
+        () => STATE.nutrition.proteinTarget === undefined ? '(absent)' : STATE.nutrition.proteinTarget,
+        () => { delete STATE.nutrition.proteinTarget; });   // a deliberate CLEAR
+      run('tone',
+        () => { delete STATE.settings._toneFix; STATE.settings.voicePitch = 0.6; },
+        () => STATE.settings.voicePitch === undefined ? '(absent)' : STATE.settings.voicePitch,
+        () => { STATE.settings.voicePitch = 1.3; });
+      return out;
+    });
+
+    // 1. each migration actually fires from the state it was written for
+    t.eq('the theme migration moves a legacy ember install to the default', r.theme.first, 'mint');
+    t.eq('the coach migration switches an old fixed persona to Auto', r.coach.first, 'auto');
+    t.eq('the protein seed installs the standing default once', r.proteinSeed.first, 165);
+    t.eq('the tone migration clears the stale voicePitch default', r.tone.first, '(absent)');
+
+    // 2. and does not redo itself on the next launch
+    t.eq('and the theme migration does not run twice', r.theme.second, r.theme.first);
+    t.eq('nor the coach one', r.coach.second, r.coach.first);
+    t.eq('nor the protein seed', r.proteinSeed.second, r.proteinSeed.first);
+    t.eq('nor the tone fix', r.tone.second, r.tone.first);
+
+    /* 3. FLOOR — a deliberate choice made AFTER the migration survives the next
+       boot. This is the question the v287 escape turned on: a seed that re-fires
+       the first time an athlete CLEARS the value is the defect, and it looks
+       identical to a correct one until you clear it and boot again. */
+    t.eq('FLOOR: a theme the athlete picked survives', r.theme.choice, 'ember');
+    t.eq('FLOOR: a coach they picked survives', r.coach.choice, 'wrestle');
+    t.eq('FLOOR: a deliberate CLEAR of the protein target sticks',
+      r.proteinSeed.choice, '(absent)');
+    t.eq('FLOOR: a hand-set voice pitch survives', r.tone.choice, 1.3);
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
+
+  /* A STORED level had no membership repair anywhere. levelOf() fails closed for
+     a scalar, so nothing crashed and no session was mis-built — but the two
+     DISPLAY sites read the field raw, so the Core Score chip printed `advanced`
+     while the engine prescribed as a Beginner, and `{}` reached the glass as
+     `[object Object]`. Same class as profile.experience, on the three fields
+     nobody swept: the baseline, every re-test and every history row. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const out = {};
+      const chipNow = () => {
+        go('progress'); setProgressTab('summary');
+        const v = document.querySelector('#v-progress');
+        const c = [...v.querySelectorAll('.chip.on')].map(x => x.textContent.trim());
+        return c[0] || '(none)';
+      };
+      const setBase = lvl => {
+        STATE.baseline = { date: '2026-01-01', score: 88, testCount: TESTS.length,
+                           subs: {}, results: {}, maxes: {} };
+        if (lvl !== undefined) STATE.baseline.level = lvl;
+        TESTS.forEach(t => { STATE.baseline.maxes[t.id] = 60; STATE.baseline.results[t.id] = 60; });
+        STATE.scoreHistory = [];
+        STATE.profile.experience = 'Advanced';
+      };
+      const one = lvl => {
+        setBase(lvl); normalizeState();
+        return { stored: ('level' in STATE.baseline) ? STATE.baseline.level : '(deleted)',
+                 engine: levelOf(0), glass: chipNow() };
+      };
+
+      out.legal = LEVEL_NAME.slice();
+      out.junkStr  = one('advanced');
+      out.junkNum  = one(42);
+      out.junkObj  = one({});
+      out.junkArr  = one(['Advanced']);
+      out.nullLvl  = one(null);
+      out.emptyLvl = one('');
+
+      // FLOOR: a real measured level is untouched, by the repair and by the chip
+      out.realAdv = one('Advanced');
+      out.realBeg = (() => { setBase('Beginner'); STATE.profile.experience = 'Beginner';
+                             normalizeState();
+                             return { stored: STATE.baseline.level, glass: chipNow() }; })();
+      // FLOOR: absent stays absent — skipBaseline() writes one, and both display
+      // sites already fall back for it, so seeding a level would be a claim.
+      out.absent = (() => { setBase(undefined); normalizeState();
+                            return ('level' in STATE.baseline) ? 'kept-a-level' : '(absent)'; })();
+
+      // every re-test record and every history row, not only the baseline
+      setBase('Advanced');
+      STATE.reassess = { 1: { date: '2026-02-01', level: 'ELITE', maxes: {} } };
+      STATE.scoreHistory = [{ date: '2026-01-01', score: 70, level: 'beginner' },
+                            { date: '2026-02-01', score: 80, level: 'Advanced' }];
+      normalizeState();
+      out.reassessLvl = STATE.reassess[1].level;
+      out.histJunk = STATE.scoreHistory[0].level;
+      out.histReal = STATE.scoreHistory[1].level;
+      // the assessment-history rows are on the STRENGTH pane, not Summary
+      go('progress'); setProgressTab('strength');
+      out.histGlass = document.querySelector('#v-progress').textContent;
+
+      /* Two guards mean two checks. importData() writes STATE directly, so the
+         read site has to be right with NO boot behind it — the medCleared()
+         escape, where every check booted first and the repair had already
+         scrubbed the junk. */
+      setBase('advanced');            // deliberately NOT normalized
+      out.rawGlass = chipNow();
+      out.rawEngine = levelOf(0);
+      /* The history ROW is the second read site and needs the same treatment.
+         The first version of this block asserted on the rendered rows AFTER a
+         boot, so the repair had already scrubbed them and a revert of the row's
+         own guard printed 'Beginner' either way — it escaped clean. */
+      setBase('Advanced');
+      STATE.scoreHistory = [{ date: '2026-01-01', score: 70, level: 'ELITE-RAW' },
+                            { date: '2026-02-01', score: 80, level: 'Advanced' }];
+      go('progress'); setProgressTab('strength');
+      out.rawHist = document.querySelector('#v-progress').textContent;
+      return out;
+    });
+
+    t.ok('guard: the legal set is the three the app ships',
+      r.legal.join(',') === 'Beginner,Intermediate,Advanced', r.legal.join(','));
+
+    // 1. junk is scrubbed at boot, in every shape an import can carry
+    t.eq('a lower-case level from a backup is repaired', r.junkStr.stored, 'Beginner');
+    t.eq('a number is repaired', r.junkNum.stored, 'Beginner');
+    t.eq('an object is repaired', r.junkObj.stored, 'Beginner');
+    t.eq('an array that coerces to a legal name is still repaired', r.junkArr.stored, 'Beginner');
+    t.eq('and a stored null becomes absent rather than travelling in a backup',
+      r.nullLvl.stored, '(deleted)');
+    t.eq('as does an empty string', r.emptyLvl.stored, '(deleted)');
+
+    // 2. and the glass agrees with the session the engine is building
+    t.eq('the chip no longer prints the junk it was handed', r.junkStr.glass, 'Beginner');
+    t.eq('and it matches what the engine prescribes', r.junkStr.glass, r.junkStr.engine);
+    t.ok('an object never reaches the glass as [object Object]',
+      r.junkObj.glass.indexOf('[object') < 0, r.junkObj.glass);
+
+    // 3. the read site is right with no boot behind it
+    t.eq('junk written straight into STATE is still not printed raw', r.rawGlass, 'Beginner');
+    t.eq('and the chip still agrees with the engine there', r.rawGlass, r.rawEngine);
+    t.ok('nor does a history row print junk written straight into STATE',
+      r.rawHist.indexOf('ELITE-RAW') < 0, r.rawHist.slice(0, 160));
+    t.ok('guard: that row really did render, so the check is not passing on nothing',
+      /Re-test 1/.test(r.rawHist) && /Advanced/.test(r.rawHist), r.rawHist.slice(0, 160));
+
+    // 4. every record, not only the baseline
+    t.eq('a re-test record is repaired too', r.reassessLvl, 'Beginner');
+    t.eq('and every history row', r.histJunk, 'Beginner');
+    t.eq('FLOOR: a real history row is untouched', r.histReal, 'Advanced');
+    t.ok('and no history row prints a raw junk level',
+      r.histGlass.indexOf('beginner') < 0 && r.histGlass.indexOf('ELITE') < 0);
+
+    // 5. FLOORS — the over-eager repair that scrubs a real answer
+    t.eq('FLOOR: a measured Advanced survives the boot', r.realAdv.stored, 'Advanced');
+    t.eq('FLOOR: and is still what the engine uses', r.realAdv.engine, 'Advanced');
+    t.eq('FLOOR: and is what the chip prints', r.realAdv.glass, 'Advanced');
+    t.eq('FLOOR: a measured Beginner survives too', r.realBeg.stored, 'Beginner');
+    t.eq('FLOOR: an ABSENT level stays absent — it is a real state', r.absent, '(absent)');
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
+
+  /* The favourites list could be ADDED to and never removed, and the writer did
+     not know about the cap the boot repair enforces. Measured: 105 taps, 105
+     rows, 100 after a boot — and the trim kept the OLDEST, so the five that
+     vanished were the five just built, each having been toasted "Saved ⭐".
+     Same class as the activity logs, with the halves the other way round. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    await page.evaluate(() => {
+      window.confirm = () => true;
+      window.prompt = () => 'Fav ' + ((STATE.customFav || []).length + 1);
+    });
+    const r = await page.evaluate(() => {
+      const out = {};
+      out.cap = FAV_MAX;
+      STATE.customFav = []; _custom = ['pushup', 'plank'];
+
+      // 1. the writer stops AT the cap, and the toast says why
+      const said = [];
+      const realToast = window.toast;
+      window.toast = (m, ms) => { said.push(String(m)); return realToast(m, ms); };
+      for (let i = 0; i < FAV_MAX + 5; i++) saveCustomFav();
+      window.toast = realToast;
+      out.afterTaps = STATE.customFav.length;
+      out.refusal = said.filter(m => /delete one/i.test(m)).length;
+      out.claimedSaves = said.filter(m => /Saved/.test(m)).length;
+
+      // 2. and a boot changes nothing, because the writer already stopped
+      const newestBefore = STATE.customFav[STATE.customFav.length - 1].name;
+      normalizeState();
+      out.afterBoot = STATE.customFav.length;
+      out.keptNewest = STATE.customFav[STATE.customFav.length - 1].name === newestBefore;
+
+      // 3. an over-cap IMPORT keeps the NEWEST — the end every appended log keeps
+      STATE.customFav = [];
+      for (let i = 1; i <= FAV_MAX + 10; i++) STATE.customFav.push({ name: 'I' + i, items: ['pushup'] });
+      normalizeState();
+      out.imported = { n: STATE.customFav.length,
+                       first: STATE.customFav[0].name,
+                       last: STATE.customFav[STATE.customFav.length - 1].name };
+
+      /* 4. the route out. "Delete one first" with no control behind it is an
+         instruction the athlete cannot follow — so the button is TAPPED, not
+         the handler called. The scratch list one card above has had a ✕ on
+         every row since it was written; the durable list never got one. */
+      STATE.customFav = []; _custom = ['pushup', 'plank'];
+      saveCustomFav(); saveCustomFav(); saveCustomFav();
+      openBuilder();
+      const btns = [...document.querySelectorAll('#sheet button')]
+        .filter(b => /delFav\(/.test(b.getAttribute('onclick') || ''));
+      out.buttons = btns.length;
+      out.named = btns[1] ? (btns[1].getAttribute('aria-label') || '') : '';
+      out.before = STATE.customFav.map(f => f.name).join(',');
+      if (btns[1]) btns[1].click();
+      out.after = STATE.customFav.map(f => f.name).join(',');
+
+      // 5. FLOOR — a refused confirm deletes nothing
+      window.confirm = () => false;
+      delFav(0);
+      out.refused = STATE.customFav.map(f => f.name).join(',');
+      window.confirm = () => true;
+
+      /* 6. the row index is the RAW position. openBuilder() filtered the list
+         before numbering the rows while startFav() and delFav() index
+         STATE.customFav directly, so a single bad row would have renumbered
+         every row after it and started — or deleted — the wrong favourite.
+         Unreachable today because the boot repair guarantees the shape, which
+         is exactly why it needs a check rather than a comment. */
+      STATE.customFav = [{ name: 'BAD', items: 'not-an-array' },
+                         { name: 'A', items: ['pushup'] },
+                         { name: 'B', items: ['plank'] }];
+      openBuilder();
+      const rows = [...document.querySelectorAll('#sheet button')]
+        .filter(b => /delFav\(/.test(b.getAttribute('onclick') || ''));
+      out.idx = { rendered: rows.length,
+                  calls: rows.map(b => b.getAttribute('onclick')).join(' ') };
+      if (rows[0]) rows[0].click();
+      out.idx.left = STATE.customFav.map(f => f.name).join(',');
+
+      // 7. FLOOR — under the cap, saving still works and is not refused
+      STATE.customFav = []; _custom = ['pushup'];
+      const said2 = [];
+      const rt2 = window.toast; window.toast = m => { said2.push(String(m)); return rt2(m); };
+      saveCustomFav();
+      window.toast = rt2;
+      out.underCap = { n: STATE.customFav.length,
+                       refused: said2.filter(m => /delete one/i.test(m)).length };
+      return out;
+    });
+
+    t.ok('guard: the cap is a real bound the repair enforces', r.cap > 1, String(r.cap));
+    // 1. the writer stops, and never claims a save it will lose
+    t.eq('the writer stops AT the cap rather than saving a row the boot deletes',
+      r.afterTaps, r.cap);
+    t.ok('and it says why, naming the way out', r.refusal > 0, String(r.refusal));
+    t.eq('so no tap past the cap ever claimed a save', r.claimedSaves, r.cap);
+    // 2. and the boot has nothing to undo
+    t.eq('a boot then changes nothing', r.afterBoot, r.cap);
+    t.ok('and the favourite just built is still there', r.keptNewest);
+    // 3. an import over the cap keeps the newest
+    t.eq('an over-cap import is trimmed to the cap', r.imported.n, r.cap);
+    t.eq('and it keeps the NEWEST rows, not the oldest', r.imported.last, 'I' + (r.cap + 10));
+    t.ok('so the oldest are the ones dropped', r.imported.first !== 'I1', r.imported.first);
+    // 4. the route out really exists and is the athlete's own tap
+    t.eq('every favourite carries a delete', r.buttons, 3);
+    t.ok('and it is named for a screen reader', /Fav 2/.test(r.named), r.named);
+    t.eq('guard: three favourites were saved', r.before, 'Fav 1,Fav 2,Fav 3');
+    t.eq('tapping one deletes exactly it', r.after, 'Fav 1,Fav 3');
+    // 5-6. FLOORS — the over-eager twins
+    t.eq('FLOOR: a refused confirm deletes nothing', r.refused, 'Fav 1,Fav 3');
+    t.eq('a bad row is not rendered', r.idx.rendered, 2);
+    t.eq('and the rows carry their RAW index, not a renumbered one',
+      r.idx.calls, 'delFav(1) delFav(2)');
+    t.eq('so tapping the first delete removes the favourite it names',
+      r.idx.left, 'BAD,B');
+    t.eq('FLOOR: under the cap a save still lands', r.underCap.n, 1);
+    t.eq('FLOOR: and is not refused', r.underCap.refused, 0);
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
+
+  /* ---- a keyed map's KEYS, not just its container ------------------------
+     v284 hardened these maps against arriving as an ARRAY and never asked what
+     the keys were. `logs` is keyed by progressPtr and allDonePairs() maps
+     Object.keys() straight through, so a key an import controls reached
+     goalSlots() as a pointer and threw on `.slots` of undefined. Measured:
+     Progress > Summary died on the error boundary, and the boundary retries
+     THROUGH normalizeState(), so with no repair here the pane NEVER came back.
+     Its twin at the session-history reader does .map(Number).filter(...) and is
+     fine — one of a pair guarded and its twin not, again. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const d = n => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
+      const out = {};
+      const paneOK = () => {
+        go('progress');
+        try { setProgressTab('summary');
+              return document.querySelector('#v-progress').textContent.length > 100; }
+        catch (e) { return 'THREW ' + String(e).slice(0, 60); }
+      };
+
+      // 1. a pointer key an import controls no longer reaches the engine
+      out.junk = {};
+      ['constructor', 'abc', '3.7', '-1'].forEach(k => {
+        STATE.logs = {}; STATE.logs[k] = { done: true, completedAt: d(1), feel: 'ok', ex: {} };
+        normalizeState();
+        out.junk[k] = { left: Object.keys(STATE.logs).join(','), pane: paneOK() };
+      });
+
+      /* 2. FLOOR — a real athlete's history is untouched. A repair that wipes
+         satisfies every "the junk is gone" assertion and destroys the data it
+         exists to protect. */
+      STATE.logs = {}; for (let i = 0; i < 300; i++)
+        STATE.logs[i] = { done: true, completedAt: d(300 - i), feel: 'ok', ex: {}, items: [] };
+      STATE.swaps = { 5: { plankL: 'pushup' }, 200: { __fin: 'squatjack' } };
+      STATE.restDays = {}; STATE.restDays[d(3)] = 1; STATE.restDays[d(10)] = 1;
+      STATE._opens = {}; STATE._opens[d(1)] = 1;
+      STATE.nutrition.days = {};
+      STATE.nutrition.days[d(1)] = { food: [{ name: 'X', kcal: 100 }], water: 2, habits: {} };
+      normalizeState();
+      out.real = { logs: Object.keys(STATE.logs).length,
+                   swaps: Object.keys(STATE.swaps).join(','),
+                   rest: Object.keys(STATE.restDays).length,
+                   opens: Object.keys(STATE._opens).length,
+                   days: Object.keys(STATE.nutrition.days).length };
+
+      // 3. junk BESIDE the real rows drops only itself
+      STATE.logs['abc'] = { done: true, ex: {} };
+      STATE.swaps['zz'] = { __fin: 'squatjack' };
+      STATE.restDays['not-a-date'] = 1;
+      normalizeState();
+      out.mixed = { logs: Object.keys(STATE.logs).length,
+                    swaps: Object.keys(STATE.swaps).join(','),
+                    rest: Object.keys(STATE.restDays).length };
+
+      // 4. both ends of the legal pointer range survive
+      STATE.logs = {}; STATE.logs[0] = { done: true, ex: {} };
+      STATE.logs[SESSIONS_PER_CYCLE * TOTAL_CYCLES] = { done: true, ex: {} };
+      normalizeState();
+      out.edges = Object.keys(STATE.logs).sort((a, b) => a - b).join(',');
+      out.lastPtr = SESSIONS_PER_CYCLE * TOTAL_CYCLES;
+      return out;
+    });
+
+    ['constructor', 'abc', '3.7', '-1'].forEach(k => {
+      t.eq(`a log key an import controls is dropped (${k})`, r.junk[k].left, '');
+      t.eq(`and Progress renders again with it gone (${k})`, r.junk[k].pane, true);
+    });
+    // FLOORS — the over-eager repair that wipes what it was written to protect
+    t.eq('FLOOR: 300 real sessions survive the repair', r.real.logs, 300);
+    t.eq('FLOOR: and the athlete’s real swaps', r.real.swaps, '5,200');
+    t.eq('FLOOR: and their rest days', r.real.rest, 2);
+    t.eq('FLOOR: and the days they opened the app', r.real.opens, 1);
+    t.eq('FLOOR: and the day they logged food', r.real.days, 1);
+    t.eq('junk beside real rows drops only itself', r.mixed.logs, 300);
+    t.eq('in the swaps too', r.mixed.swaps, '5,200');
+    t.eq('and in the rest days', r.mixed.rest, 2);
+    t.eq('both ends of the legal pointer range survive',
+      r.edges, '0,' + r.lastPtr);
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
+
+  /* ---- two free-text fields with no repair at all -----------------------
+     Found by fuzzing EVERY field at once rather than one at a time — 62 fields
+     x 8 junk shapes, all simultaneously. The app survives total corruption
+     (no throw, no page error, every pane still renders 68-87k characters);
+     these two are what the sweep found on the glass.
+
+     profile.name is the worse one. `(STATE.profile.name||'').trim()` assumes a
+     string and there was no repair, so an imported {} made briefSegments()
+     THROW: Today's brief rendered 119 characters instead of 2,631, and the
+     boundary retries THROUGH normalizeState(), so the segment the coach reads
+     ALOUD never came back. Same shape as nutrition.allergies and `.replace()`.
+
+     settings.voiceName only handled `undefined`, so any other shape survived
+     and the voice check told the athlete "Every coach is using one voice. You
+     have picked [object Object] above, and a picked voice overrides all 38
+     coaches" — FALSE: coachVoiceFor() looks the name up, finds nothing, and
+     every coach keeps its own voice. A warning about a state that is not true,
+     offering a button to undo something that never happened. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const out = { name: {}, voice: {} };
+      const junk = [{}, [], 42, true, null];
+
+      junk.forEach((v, i) => {
+        STATE.profile.name = v; normalizeState();
+        let threw = '';
+        try { go('today'); setTodayTab('brief');
+              const chars = document.querySelector('#v-today').textContent.length;
+              const spoke = briefSegments().map(x => String(x.say || '')).join(' ').length;
+              out.name['j' + i] = { stored: STATE.profile.name, chars, spoke }; }
+        catch (e) { threw = String(e).slice(0, 60); out.name['j' + i] = { threw }; }
+      });
+
+      junk.forEach((v, i) => {
+        STATE.settings.voiceName = v; normalizeState();
+        go('guide');
+        out.voice['j' + i] = { stored: STATE.settings.voiceName,
+          claims: document.querySelector('#v-guide').textContent.indexOf('You have picked') >= 0 };
+      });
+
+      // FLOORS — the real values must be untouched and must still be used
+      STATE.profile.name = '  Shabazz  '; STATE.settings.voiceName = 'Daniel';
+      normalizeState();
+      out.realName = STATE.profile.name;
+      out.readName = athleteName();
+      go('today'); setTodayTab('brief');
+      out.spokenHasName = briefSegments().map(x => String(x.say || '')).join(' ').indexOf('Shabazz') >= 0;
+      go('guide');
+      out.footer = /Athlete: Shabazz/.test(document.querySelector('#v-guide').textContent);
+      out.realVoiceWarns = document.querySelector('#v-guide').textContent.indexOf('Daniel') >= 0;
+      // FLOOR: no name at all warns about nothing
+      STATE.profile.name = ''; STATE.settings.voiceName = ''; normalizeState();
+      go('guide');
+      out.blank = { footer: /Athlete:/.test(document.querySelector('#v-guide').textContent),
+                    claims: document.querySelector('#v-guide').textContent.indexOf('You have picked') >= 0 };
+      // a long name is capped, so an import cannot bloat every backup
+      STATE.profile.name = 'z'.repeat(500); normalizeState();
+      out.capped = STATE.profile.name.length;
+      /* Two guards mean two checks: importData() writes STATE directly, so both
+         READ sites have to be right with no boot behind them. */
+      STATE.profile.name = {}; STATE.settings.voiceName = {};
+      let noBoot = '';
+      try { athleteName(); go('guide'); go('today'); setTodayTab('brief'); briefSegments(); }
+      catch (e) { noBoot = String(e).slice(0, 60); }
+      out.noBoot = noBoot || '(none)';
+      out.noBootGlass = document.querySelector('#v-guide').textContent.indexOf('[object') < 0;
+      STATE.profile.name = ''; normalizeState();
+      return out;
+    });
+
+    [0, 1, 2, 3, 4].forEach(i => {
+      const n = r.name['j' + i];
+      t.ok(`a non-string name never throws (case ${i})`, !n.threw, n.threw || '');
+      t.eq(`and is repaired to empty (case ${i})`, n.stored, '');
+      t.ok(`so the brief still renders (case ${i})`, n.chars > 1000, String(n.chars));
+      t.ok(`and the coach still has something to say (case ${i})`, n.spoke > 500, String(n.spoke));
+      t.eq(`a non-string voice name is repaired too (case ${i})`, r.voice['j' + i].stored, '');
+      t.eq(`so no false "you have picked" warning fires (case ${i})`,
+        r.voice['j' + i].claims, false);
+    });
+
+    // FLOORS
+    t.eq('FLOOR: a real name is stored exactly as typed', r.realName, '  Shabazz  ');
+    t.eq('FLOOR: and read back trimmed', r.readName, 'Shabazz');
+    t.ok('FLOOR: and the coach still greets them by it', r.spokenHasName);
+    t.ok('FLOOR: and Settings still shows it', r.footer);
+    t.ok('FLOOR: a real picked voice still raises the warning', r.realVoiceWarns);
+    t.eq('FLOOR: no name means no Athlete line', r.blank.footer, false);
+    t.eq('FLOOR: and no picked voice means no warning', r.blank.claims, false);
+    t.eq('a very long name is capped', r.capped, 60);
+    // the read sites, with no boot behind them
+    t.eq('the read sites do not throw on junk written straight into STATE',
+      r.noBoot, '(none)');
+    t.ok('nor print it raw', r.noBootGlass);
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
+
+  /* ---- two tabs, and the second one to save used to win --------------------
+     Nothing in this app knew another copy of itself existed, and every change
+     writes the WHOLE state. Measured across two real tabs before the fix:
+
+       A logs a training session and saves      -> logs 1, pointer 1
+       B, holding what it loaded BEFORE that,
+         logs a meal and saves                  -> B still had logs 0, pointer 0
+       a third load reads                       -> logs 0, pointer 0
+
+     The session is gone and the pointer rewound, with nothing on screen at any
+     point. A `storage` event fires only in the OTHER tabs, so it is exactly the
+     signal a tab needs; every mutation here is followed immediately by save(),
+     so there is no unsaved work and adopting the newer copy is the whole fix. */
+  {
+    const base = `http://127.0.0.1:${port}/`;
+    const ctx = await chromium.launchPersistentContext('', { viewport: { width: 390, height: 844 } });
+    const boot = async pg => {
+      await pg.goto(base, { waitUntil: 'domcontentloaded' });
+      await pg.waitForFunction(() => document.querySelector('.view.active'), null, { timeout: 20000 });
+      await pg.waitForTimeout(600);
+    };
+    const A = ctx.pages()[0] || await ctx.newPage();
+    await boot(A); await seedAthlete(A); await A.waitForTimeout(400);
+    const B = await ctx.newPage(); await boot(B);
+
+    // A trains. B is holding the state it loaded before that.
+    const aWrote = await A.evaluate(() => {
+      STATE.logs = { 0: { done: true, completedAt: todayISO(), feel: 'ok', ex: {}, items: [] } };
+      STATE.progressPtr = 1; save();
+      return { logs: Object.keys(STATE.logs).length, ptr: STATE.progressPtr };
+    });
+    await B.waitForTimeout(600);
+    // B logs a meal — and must NOT write A's session away
+    const bWrote = await B.evaluate(() => {
+      const d = nutToday(); d.food = d.food || [];
+      d.food.push({ name: 'Chicken', kcal: 200, p: 40, c: 0, f: 5, meal: 'lunch', at: Date.now() });
+      save();
+      return { logsSeenByB: Object.keys(STATE.logs || {}).length, ptrInB: STATE.progressPtr,
+               food: (nutToday().food || []).length };
+    });
+    const C = await ctx.newPage(); await boot(C);
+    const third = await C.evaluate(() => ({
+      logs: Object.keys(STATE.logs || {}).length, ptr: STATE.progressPtr,
+      food: ((STATE.nutrition.days[todayISO()] || {}).food || []).length }));
+    await C.close();
+
+    t.ok('guard: the first tab really did log a session', aWrote.logs === 1 && aWrote.ptr === 1,
+      JSON.stringify(aWrote));
+    t.eq('the second tab sees the session before it writes', bWrote.logsSeenByB, 1);
+    t.eq('and its pointer', bWrote.ptrInB, 1);
+    t.eq('a later load still has the session', third.logs, 1);
+    t.eq('and the pointer is not rewound', third.ptr, 1);
+    t.eq("FLOOR: and the second tab's own work survives too", third.food, 1);
+
+    /* FLOOR — a live workout is NEVER disturbed. Adopting mid-set would swap the
+       state out from under the player, which is the thing the self-update path
+       guards for the same reason. */
+    await B.evaluate(() => {
+      PLAYER = { i: 2, s: 1, phase: 'work', sess: {} };
+      window.__toasts = []; const rt = window.toast;
+      window.toast = m => { window.__toasts.push(String(m)); return rt(m); };
+    });
+    await A.evaluate(() => { STATE.progressPtr = 7; save(); });
+    await B.waitForTimeout(700);
+    const mid = await B.evaluate(() => ({ player: !!PLAYER, phase: PLAYER && PLAYER.phase,
+      i: PLAYER && PLAYER.i, ptr: STATE.progressPtr, toasts: window.__toasts.slice() }));
+    t.ok('FLOOR: a live workout is left alone', mid.player && mid.phase === 'work' && mid.i === 2,
+      JSON.stringify(mid));
+    t.eq('FLOOR: its state is not swapped mid-set', mid.ptr, 1);
+    t.eq('FLOOR: and it is not interrupted by a toast', mid.toasts.length, 0);
+
+    // once the session ends, a foreign write IS adopted
+    await B.evaluate(() => { PLAYER = null; });
+    await A.evaluate(() => { STATE.progressPtr = 9; save(); });
+    await B.waitForTimeout(800);
+    /* Read the SCREEN, not just STATE. Every assertion here was on the stored
+       value, so a listener that adopted and never repainted was invisible —
+       measure the payload, not the container. The athlete's experience is the
+       glass, and a stale screen over fresh state is its own defect. */
+    const done = await B.evaluate(() => ({ ptr: STATE.progressPtr,
+      toasts: window.__toasts.slice(),
+      screen: (document.querySelector('#v-today') || {}).textContent || '' }));
+    t.eq('once the session ends the other tab is adopted', done.ptr, 9);
+    t.ok('and the screen repaints to match, not just the state',
+      /SESSION\s*10\b/.test(done.screen.replace(/\s+/g, ' ')),
+      done.screen.replace(/\s+/g, ' ').slice(0, 120));
+    t.ok('and the athlete is told why the screen changed',
+      done.toasts.some(m => /another tab/i.test(m)), JSON.stringify(done.toasts));
+
+    /* FLOOR — a foreign write of a DIFFERENT key is not our business. The app
+       also writes the pre-import snapshot to localStorage, and reacting to that
+       would reload and toast over a housekeeping write. Without this case a
+       listener that fires on every key changes nothing any assertion sees. */
+    await B.evaluate(() => { window.__toasts = []; });
+    const ptrBeforeOther = await B.evaluate(() => STATE.progressPtr);
+    await A.evaluate(() => { try { localStorage.setItem(PREIMPORT_KEY, '{"x":1}'); } catch (e) {} });
+    await B.waitForTimeout(700);
+    const other = await B.evaluate(() => ({ ptr: STATE.progressPtr, toasts: window.__toasts.slice() }));
+    t.eq('FLOOR: a write to another key changes nothing', other.ptr, ptrBeforeOther);
+    t.eq('FLOOR: and says nothing', other.toasts.length, 0);
+
+    /* A RESET is not an ordinary edit, and the live-session guard must not cover
+       it. hardReset()'s own confirm says "this cannot be undone" — and measured
+       across two tabs it WAS: A, mid-workout, kept its stale copy (correctly,
+       for an ordinary write), quit, saved, and a third load read the erased logs
+       and pointer straight back. */
+    const R = await ctx.newPage();
+    await boot(R);
+    await A.evaluate(() => {
+      STATE.progressPtr = 3;
+      STATE.logs = { 9: { done: true, completedAt: todayISO(), ex: {} } };
+      save(); openPlayer();
+    });
+    await R.waitForTimeout(500);
+    const beforeReset = await A.evaluate(() => ({ player: !!PLAYER,
+      logs: Object.keys(STATE.logs || {}).length }));
+    await R.evaluate(() => { window.confirm = () => true; hardReset(); });
+    await A.waitForTimeout(900);
+    const afterReset = await A.evaluate(() => ({ player: !!PLAYER,
+      logs: Object.keys(STATE.logs || {}).length, ptr: STATE.progressPtr }));
+    // A finishes and saves — the erased data must NOT come back
+    await A.evaluate(() => { try { playerQuit(); } catch (e) {} save(); });
+    await A.waitForTimeout(300);
+    const V = await ctx.newPage(); await boot(V);
+    const held = await V.evaluate(() => ({ logs: Object.keys(STATE.logs || {}).length,
+      ptr: STATE.progressPtr, onboarded: !!STATE.onboarded }));
+    await V.close(); await R.close();
+
+    t.ok('guard: the other tab really was mid-workout with data to lose',
+      beforeReset.player && beforeReset.logs === 1, JSON.stringify(beforeReset));
+    t.eq('a reset in another tab closes the live workout', afterReset.player, false);
+    t.eq('and the live tab adopts the erased state', afterReset.logs, 0);
+    t.eq('and its pointer', afterReset.ptr, 0);
+    t.eq('so a later save cannot resurrect what was erased', held.logs, 0);
+    t.eq('nor the pointer', held.ptr, 0);
+    t.eq('and the reset really held', held.onboarded, false);
+
+    /* FLOOR — the reset detector must not fire when OUR copy was never onboarded
+       either. Two tabs open during the setup wizard is a real state, and an
+       ordinary answer saved in one would otherwise tell the other its data had
+       been reset. Without this case, dropping `STATE.onboarded===true` from the
+       test changes nothing any assertion can see. */
+    const F1 = await ctx.newPage(); await boot(F1);
+    const F2 = await ctx.newPage(); await boot(F2);
+    await F1.evaluate(() => { STATE = DEFAULT_STATE(); save(); });
+    await F2.waitForTimeout(600);
+    const freshState = await Promise.all([F1, F2].map(p =>
+      p.evaluate(() => !!STATE.onboarded)));
+    await F2.evaluate(() => {
+      window.__ft = []; const rt = window.toast;
+      window.toast = m => { window.__ft.push(String(m)); return rt(m); };
+    });
+    await F1.evaluate(() => { STATE.profile.age = 41; save(); });
+    await F2.waitForTimeout(800);
+    const fresh = await F2.evaluate(() => ({ toasts: window.__ft.slice(), age: STATE.profile.age }));
+    await F1.close(); await F2.close();
+
+    t.ok('guard: both tabs really were un-onboarded',
+      freshState[0] === false && freshState[1] === false, JSON.stringify(freshState));
+    t.eq('FLOOR: an ordinary write between two fresh tabs is adopted', fresh.age, 41);
+    t.ok('FLOOR: and is NOT reported as a reset',
+      fresh.toasts.some(m => /another tab/i.test(m)) && !fresh.toasts.some(m => /reset/i.test(m)),
+      JSON.stringify(fresh.toasts));
+
+    /* FLOOR — ONE tab alone behaves exactly as before: no swap, no toast. */
+    await B.close();
+    await A.evaluate(() => {
+      window.__t = []; const rt = window.toast;
+      window.toast = m => { window.__t.push(String(m)); return rt(m); };
+      STATE.progressPtr = 11; save();
+    });
+    await A.waitForTimeout(700);
+    const solo = await A.evaluate(() => ({ ptr: STATE.progressPtr, toasts: window.__t.slice() }));
+    t.eq('FLOOR: a single tab keeps what it just saved', solo.ptr, 11);
+    t.eq('FLOOR: and is never told about another tab', solo.toasts.length, 0);
+    await ctx.close();
   }
 
   srv.close();

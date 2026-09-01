@@ -2104,6 +2104,45 @@ export default async function run() {
       o.forceRowCount = forceRows().length;
       o.unmeasuredCount = forceRows().filter(el => /not measured/.test(el.textContent)).length;
       o.namesEvents = FORCE_EVENTS.every(e => sheet().indexOf(e.name) >= 0);
+      /* THE CARD AND THE EXERCISE PAGE MUST DESCRIBE THE SAME TASK. The card
+         read "80 kg dragged", which counts the four bags on the floor and
+         drops the one on your back; EX.sbagdrag.why has always said "one bag
+         on your back, four more dragged". One task, two descriptions, and the
+         SCREEN carried the short one — a standard understated by a fifth is
+         one an athlete trains under-loaded for.
+
+         The total is derived from FORCE_BAG_KG x FORCE_DRAG_BAGS rather than
+         restated here, so a check cannot agree with a wrong number just
+         because it copied it. */
+      /* THE CLASS, not the one instance. The drag was found by comparing the
+         card against the exercise page; the same comparison across all four
+         found two more from the same source card — the loaded shuttle told
+         the athlete to RUN what the standard walks, and the rushes' steps
+         described one out-and-back (40 m) under a card that says 80 m.
+
+         Each event pins the figure its own description must carry, so a step
+         list that drifts away from the card fails here. */
+      o.agree = [
+        ['lift',    /30/,                       /30 lifts/i],
+        ['shuttle', /ten shuttles|10 shuttles/i, /10\s*[\u00d7x]\s*20 m/i],
+        ['rush',    /80 m/i,                     /80 m/i],
+        ['drag',    /four more dragged/i,        /4 more dragged/i]
+      ].map(([id, exRe, cardRe]) => {
+        const ev = FORCE_EVENTS.find(e => e.id === id) || {};
+        const ex = EX[ev.ex] || {};
+        const page = String(ex.why || '') + ' ' + (ex.steps || []).join(' ');
+        return { id, exOk: exRe.test(page), cardOk: cardRe.test(String(ev.detail || '')) };
+      });
+      /* And the two the source card is explicit about: the loaded shuttle is
+         WALKED, and the free leg is a light jog — not a run. */
+      o.shuttlePace = (() => { const p = (EX.sbagshuttle.steps || []).join(' ');
+        return { walks: /WALK the 20 m/.test(p), notRun: !/and run the 20 m/.test(p),
+                 lightJog: /light jog/i.test(p) }; })();
+      const drag = FORCE_EVENTS.find(e => e.id === 'drag');
+      o.drag = { detail: drag ? drag.detail : null, why: (EX.sbagdrag || {}).why || '',
+                 bag: FORCE_BAG_KG, bags: FORCE_DRAG_BAGS,
+                 total: FORCE_BAG_KG * FORCE_DRAG_BAGS,
+                 onGlass: sheet().indexOf(drag ? drag.detail : 'x') >= 0 };
 
       // one under the standard, one over, one pass/fail task
       setForceResultQuiet('lift', 190);
@@ -2255,6 +2294,32 @@ export default async function run() {
     t.ok('guard: with a joint flagged, safeSwap WOULD move at least two of them',
       r.wouldSwap.filter((k, i) => k !== FORCE_EVENTS_EX[i]).length >= 2,
       { wouldSwap: r.wouldSwap });
+
+  /* GUARD: the constants really are the pair this arithmetic rests on — one
+     bag carried plus four dragged. Without this, every assertion below passes
+     on whatever the constants happen to say. */
+  t.eq('guard: the drag is five bags of 20 kg', [r.drag.bag, r.drag.bags].join('/'), '20/5', r.drag);
+  t.eq('and the total load is derived, not restated', r.drag.total, 100, r.drag);
+  t.ok('the card names the bag you CARRY, not only the ones on the floor',
+    /One 20 kg bag carried/.test(r.drag.detail), r.drag);
+  t.ok('and the four more that are dragged', /4 more dragged/.test(r.drag.detail), r.drag);
+  t.ok('and the total the athlete actually moves',
+    r.drag.detail.indexOf(String(r.drag.total) + ' kg') >= 0, r.drag);
+  /* The two descriptions of one task must agree on the count. This is the
+     drift that produced the defect. */
+  t.ok('and the exercise page describes the same task', /four more dragged/i.test(r.drag.why), r.drag.why);
+  t.ok('and that description reaches the FORCE card', r.drag.onGlass, r.drag);
+  /* THE CLASS: every event's card and exercise page describe the same task. */
+  t.eq('guard: all four events were compared', r.agree.length, 4, r.agree);
+  t.eq('every FORCE exercise page carries its own event figure',
+    r.agree.filter(a => !a.exOk).map(a => a.id).join(', '), '', r.agree);
+  t.eq('and every card does too',
+    r.agree.filter(a => !a.cardOk).map(a => a.id).join(', '), '', r.agree);
+  /* The loaded shuttle is WALKED. The app told the athlete to run it, which is
+     a different event and a heavier landing under 20 kg. */
+  t.ok('the loaded shuttle is walked, not run',
+    r.shuttlePace.walks && r.shuttlePace.notRun, r.shuttlePace);
+  t.ok('and the free leg is a light jog', r.shuttlePace.lightJog, r.shuttlePace);
     t.eq('and it still builds the four real test events, not the substitutes',
       r.flaggedIds, ['sbaglift', 'sbagshuttle', 'rushes', 'sbagdrag'], r);
     /* WARN, do not silently swap: these are the actual test events, and

@@ -1017,6 +1017,193 @@ export default async function run() {
     t.ok('a favorite with nothing flagged still starts in one tap', r.cleanFavStartsPlayer, r);
   }
 
+  /* ---- the streak's gap tolerance is the athlete's own schedule -----------
+     The comment here read "allowing 1 rest day gap" beside a `gap<=3` — a
+     comment claiming an invariant that was not the invariant. And the flat 3
+     is the schedule question comebackGap() already answers by scaling:
+     measured, an athlete training TWICE a week exactly on plan — five sessions,
+     no missed days — read a streak of 1, because a 4-day gap IS their schedule.
+     v347 taught the catch-up and drift banners to honour the schedule and left
+     this one flat. */
+  {
+    const r = await page.evaluate(() => {
+      const day = n => { const d = new Date(); d.setDate(d.getDate() - n);
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+          + '-' + String(d.getDate()).padStart(2, '0'); };
+      const run = (days, offs) => {
+        STATE.profile.days = days; STATE.logs = {}; STATE.quickLog = {};
+        offs.forEach((n, i) => { STATE.logs[i] = { done: true, completedAt: day(n), feel: 'ok', ex: {}, items: [] }; });
+        normalizeState(); return computeStreak();
+      };
+      const tol = days => { STATE.profile.days = days; return streakGapTol(); };
+      return {
+        tolFive: tol([1, 2, 4, 5, 6]), tolMonFri: tol([1, 2, 3, 4, 5]),
+        tolTwice: tol([2, 5]), tolJunk: tol('nonsense'), tolEmpty: tol([]),
+        twiceOnPlan: run([2, 5], [0, 4, 8, 12, 16]),
+        fiveOnPlan: run([1, 2, 4, 5, 6], [0, 2, 4, 6, 8]),
+        fiveWithFourDayGap: run([1, 2, 4, 5, 6], [0, 4, 8]),
+        realBreakFive: run([1, 2, 4, 5, 6], [0, 1, 2, 9, 10]),
+        realBreakTwice: run([2, 5], [0, 4, 8, 20, 24])
+      };
+    });
+
+    /* FLOOR — the wizard's five-day floor is unchanged, tolerance and all. The
+       whole point of max(3, …) is that nobody's streak gets HARDER, so a fix
+       that simply widened the window for everyone fails here. */
+    t.eq('FLOOR: a five-day schedule keeps the old tolerance', r.tolFive, 3);
+    t.eq('and so does Monday-to-Friday', r.tolMonFri, 3);
+    t.eq('FLOOR: a five-day athlete on plan still reads five', r.fiveOnPlan, 5);
+    t.eq('FLOOR: and a four-day gap still breaks their streak', r.fiveWithFourDayGap, 1);
+
+    // the schedule the flat 3 was wrong for
+    t.eq('a twice-a-week schedule tolerates its own four-day gap', r.tolTwice, 4);
+    t.eq('so five sessions exactly on that plan read five, not one', r.twiceOnPlan, 5);
+
+    /* FLOOR — a REAL lay-off still breaks it on every schedule. A tolerance that
+       swallowed everything satisfies both assertions above. */
+    t.eq('a genuine week off still breaks a five-day streak', r.realBreakFive, 3);
+    t.eq('and a genuine fortnight off breaks a twice-a-week one', r.realBreakTwice, 3);
+
+    // junk fails safe to the value it always had
+    t.eq('a junk schedule falls back to the old flat tolerance', r.tolJunk, 3);
+    t.eq('and so does an empty one', r.tolEmpty, 3);
+  }
+
+
+  /* ---- ONE point is not a trend, as a class -----------------------------
+     v361 established it for the hold tracker: reporting a direction from a
+     single number is inventing one. Three functions in this app answer "which
+     way is it going", and each was gated on its own. A class check states the
+     rule once and catches the fourth the day it is added.
+
+     Four probe errors on the way, which is the usual ratio: trendKgPerWeek
+     takes a WINDOW in days and needs THREE points, holdTrend reads rows keyed
+     `id` (so the hold is written by the app's own writer rather than by hand),
+     there is no waistProgressHTML — the name is waistGoalHTML — and that
+     function is not in this class at all. */
+  {
+    const r = await page.evaluate(() => {
+      const d = n => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
+      const out = { one: {}, two: {} };
+      const call = (bag, n, f) => {
+        try { const v = f(); bag[n] = (v === null || v === undefined || v === '') ? null : v; }
+        catch (e) { bag[n] = 'THREW ' + String(e).slice(0, 40); }
+      };
+      const probe = bag => {
+        call(bag, 'weight', () => trendKgPerWeek(90));
+        call(bag, 'score', () => scoreTrendHTML());
+        call(bag, 'hold', () => holdTrend('plank'));
+        /* waistGoalHTML() is deliberately NOT in the class and was a fourth
+           probe error: it is start-vs-goal, two stored numbers, so it answers
+           correctly from a single measurement. A direction is what needs two
+           readings of the SAME quantity. */
+      };
+      // exactly ONE of each
+      STATE.measurements = [{ date: d(3), weight: 86, waist: 96 }];
+      STATE.scoreHistory = [{ date: d(30), score: 70, level: 'Beginner' }];
+      STATE.holdLog = []; logHold('plank', 60, true);
+      normalizeState();
+      probe(out.one);
+
+      /* FLOOR — with ENOUGH points each one must actually answer, or
+         "withholds" is satisfied by a function that never says anything. */
+      STATE.measurements = [{ date: d(40), weight: 92, waist: 102 },
+                            { date: d(20), weight: 90, waist: 100 },
+                            { date: d(3),  weight: 86, waist: 96 }];
+      STATE.scoreHistory = [{ date: d(60), score: 70, level: 'Beginner' },
+                            { date: d(3),  score: 80, level: 'Intermediate' }];
+      STATE.holdLog = []; logHold('plank', 40, true); logHold('plank', 60, true);
+      normalizeState();
+      probe(out.two);
+
+      /* trendKgPerWeek() has THREE gates — a count, a windowed count, and a
+         21-day SPAN — and the one-point case is answered by the span, so it
+         could not see the count guard at all: a mutant weakening BOTH counts
+         escaped. Each gate now gets a case only it can answer.
+         A guard is only visible when the value beside it cannot supply the
+         answer — the third time this file has recorded that. */
+      STATE.measurements = [{ date: d(40), weight: 92, waist: 102 },
+                            { date: d(3),  weight: 86, waist: 96 }];
+      normalizeState();
+      out.twoWideApart = trendKgPerWeek(90);          // spans 37 days, only 2 points
+      STATE.measurements = [{ date: d(10), weight: 92, waist: 102 },
+                            { date: d(6),  weight: 90, waist: 100 },
+                            { date: d(3),  weight: 86, waist: 96 }];
+      normalizeState();
+      out.threeTooClose = trendKgPerWeek(90);         // 3 points, spans only 7 days
+
+      /* loadIndexPct() LOOKS like a comparison and is not — it reads STATE.adapt,
+         a single stored number whose start value really is 1, so "+0% vs start"
+         on a brand-new athlete is literally true. Pinned so nobody "fixes" it. */
+      STATE.adapt = 1;   out.loadAtStart = loadIndexPct();
+      STATE.adapt = 1.2; out.loadAfter = loadIndexPct();
+      return out;
+    });
+
+    ['weight', 'score', 'hold'].forEach(k => {
+      t.eq(`one point alone reports no ${k} trend`, r.one[k], null,
+        JSON.stringify(r.one[k]).slice(0, 80));
+      t.ok(`FLOOR: enough points and ${k} does answer`,
+        r.two[k] !== null && !/THREW/.test(String(r.two[k])),
+        JSON.stringify(r.two[k]).slice(0, 80));
+    });
+    t.eq('two readings far apart are still not enough for a weight trend',
+      r.twoWideApart, null, JSON.stringify(r.twoWideApart));
+    t.eq('and three readings inside three weeks are noise, not a trend',
+      r.threeTooClose, null, JSON.stringify(r.threeTooClose));
+    t.eq('the training-load figure is not a two-point comparison at all', r.loadAtStart, 0);
+    t.eq('and it moves with the one number it does read', r.loadAfter, 20);
+  }
+
+
+  /* ---- switching units must not change what is STORED --------------------
+     Everything is kept canonical (kg, cm, km) and converted on the way out, so
+     a unit switch is a DISPLAY change. A writer that stored the displayed
+     figure would corrupt the athlete's history the first time they toggled —
+     and in imperial the weight conversion is close enough to its own inverse
+     that a single round trip can hide it, which is why this runs three. */
+  {
+    const r = await page.evaluate(() => {
+      const snap = () => JSON.stringify({
+        kg: STATE.nutrition.weightKg, hCm: STATE.profile.heightCm,
+        gwLb: STATE.profile.goalWeightLb, gWaist: STATE.profile.goalWaist,
+        sWaist: STATE.profile.startWaist,
+        ms: (STATE.measurements || []).map(m => [m.date, m.weight, m.waist]),
+        lift: (STATE.liftLog || []).map(x => x.loadKg)
+      });
+      STATE.profile.unit = 'cm';
+      STATE.nutrition.weightKg = 86.4; STATE.profile.heightCm = 178;
+      STATE.profile.goalWeightLb = 165; STATE.profile.goalWaist = 88;
+      STATE.profile.startWaist = 101.7;
+      STATE.measurements = [{ date: '2026-08-01', weight: 86.4, waist: 96.2 }];
+      STATE.liftLog = [{ date: '2026-08-01', exId: 'pushup', loadKg: 22.5, reps: 8, rir: 2 }];
+      normalizeState();
+      const start = snap();
+      const tabs = ['today', 'progress', 'fuel', 'guide', 'ref', 'program', 'quick'];
+      const cycles = [];
+      for (let i = 0; i < 3; i++) {
+        STATE.profile.unit = 'in'; normalizeState();
+        tabs.forEach(t => { try { go(t); } catch (e) {} });
+        STATE.profile.unit = 'cm'; normalizeState();
+        tabs.forEach(t => { try { go(t); } catch (e) {} });
+        cycles.push(snap() === start);
+      }
+      /* GUARD: the two units really do DISPLAY different figures, or "the store
+         is unchanged" passes on a conversion that never happened. */
+      STATE.profile.unit = 'cm'; const m = weightShow(86.4);
+      STATE.profile.unit = 'in'; const i2 = weightShow(86.4);
+      STATE.profile.unit = 'cm'; normalizeState();
+      return { start, end: snap(), cycles, metricShow: m, imperialShow: i2 };
+    });
+
+    t.ok('guard: the two units really display different figures',
+      Math.abs(r.imperialShow - r.metricShow) > 50,
+      JSON.stringify({ metric: r.metricShow, imperial: r.imperialShow }));
+    r.cycles.forEach((ok, i) =>
+      t.ok(`round trip ${i + 1} leaves every stored figure untouched`, ok));
+    t.eq('and the whole store is byte-identical at the end', r.end, r.start);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

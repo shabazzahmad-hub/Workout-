@@ -12,6 +12,7 @@
    Each block builds the state it asserts on. Nothing here relies on what the
    block above left mounted. */
 import { serve, launch, suite, waitForBoot, seedAthlete } from './lib/harness.mjs';
+import { readFileSync } from 'node:fs';
 
 export default async function () {
   const t = suite('hardening — audit fixes');
@@ -986,6 +987,89 @@ export default async function () {
       t.eq(`[${tab}] every form control has an accessible name`, r[tab].unnamed.length, 0, r[tab]));
     t.ok('guard: Settings really has buttons to check', r.buttons.total > 20, r.buttons);
     t.eq('every button has a name a screen reader can read', r.buttons.unnamed, 0, r.buttons);
+  }
+
+  /* ---- and the SHEETS, which is where the numbers are actually typed -----
+     The block above scans each tab's DEFAULT pane. Every control the athlete
+     enters a figure into lives in a sheet, and none of them was ever scanned —
+     so ten inputs across the prep date, the skipping block, the jacks make-up,
+     the food quantity and the reference amount had NO accessible name at all,
+     and seventeen more leaned on a placeholder, which a screen reader drops the
+     moment the athlete types.
+
+     Every one already had a visible <label> sitting beside it. Not one of the
+     77 labels in the file carried a `for`, so the caption was on the glass and
+     not attached to anything — the same shape as the sibling captions in
+     Settings that this check was written for, one surface along. */
+  {
+    const r = await page.evaluate(() => {
+      const named = el => !!(el.getAttribute('aria-label')
+        || (el.id && document.querySelector(`label[for="${el.id}"]`))
+        || el.closest('label')
+        || el.getAttribute('placeholder')
+        || el.getAttribute('title'));
+      const bad = [];
+      const scan = where => {
+        document.querySelectorAll('#sheet input, #sheet select, #sheet textarea').forEach(el => {
+          if (el.type === 'hidden') return;
+          if (!named(el)) bad.push({ sheet: where, id: el.id || '', type: el.type || el.tagName });
+        });
+      };
+      /* GUARD, both ways: an unnamed control must BE reported, or an empty
+         result below says nothing about the app. */
+      openSheet('<input id="zq-unnamed">');
+      scan('probe');
+      const canSee = bad.some(b => b.id === 'zq-unnamed');
+      /* closeSheet() is async — it leaves a queued history navigation — so the
+         probe input was still mounted when the next sheets opened and every one
+         of them reported it. Remove the element itself, not the sheet. */
+      closeSheet();
+      document.querySelectorAll('#zq-unnamed').forEach(e => e.remove());
+      bad.length = 0;
+
+      const ARGS = { openSwapSheet: ['pushup'], openAct: ['ruck'], openActTimer: ['ruck'],
+        openMakeupStopwatch: ['ruck'], openAssessment: [0], openExerciseTimer: ['pushup'],
+        openExerciseInfo: ['pushup'], openFoodAmount: [0], openQuick: [QUICKIES[0].id],
+        openSessionDetail: [0], openMakeupTimer: ['jacks'] };
+      const names = Object.keys(window).filter(k => /^open[A-Z]/.test(k) && typeof window[k] === 'function');
+      let opened = 0;
+      names.forEach(fn => {
+        try {
+          if (window[fn].length > 0 && !ARGS[fn]) return;      // needs a real object
+          window[fn].apply(null, ARGS[fn] || []);
+          if (document.querySelector('#sheet')) { opened++; scan(fn); }
+          closeSheet();
+        } catch (e) {}
+      });
+      return { canSee, names: names.length, opened, bad };
+    });
+
+    t.ok('guard: an unnamed control really would be reported', r.canSee);
+    t.ok('guard: the sweep opened most of the sheets, not a handful',
+      r.opened >= 30, JSON.stringify({ opened: r.opened, of: r.names }));
+    t.eq('every control inside a sheet has an accessible name too',
+      r.bad.length, 0, JSON.stringify(r.bad.slice(0, 8)));
+
+    /* And every attachment points somewhere. A `for` naming an id that has been
+       renamed falls back to the placeholder for the seventeen inputs that have
+       one, so the check above would stay green while the caption was detached
+       again — the same silent half-fix the labels started as. Scanned over the
+       source rather than a render, so a control on a surface this suite never
+       opens is covered too. */
+    /* Read the SHIPPED FILE once. The first version scanned the app's source
+       plus the rendered DOM, and every label appears in both — a template
+       literal and its own output — so all 39 reported as duplicated. */
+    const all = readFileSync('index.html', 'utf8');
+    t.ok('guard: the scan really read the app', all.length > 500000, String(all.length));
+    const fors = [...all.matchAll(/<label for="([^"]+)"/g)].map(m => m[1]);
+    t.ok('guard: the labels really are attached, so the two checks below can fire',
+      fors.length >= 30, String(fors.length));
+    const dangling = [...new Set(fors)].filter(f => all.indexOf(`id="${f}"`) < 0);
+    t.eq('no label points at a control that is not there', dangling.length, 0,
+      dangling.join(','));
+    const seen = {}, dup = [];
+    fors.forEach(f => { if (seen[f]) { if (dup.indexOf(f) < 0) dup.push(f); } seen[f] = 1; });
+    t.eq('and no two labels claim the same control', dup.length, 0, dup.join(','));
   }
 
   // ---- a device credential is not in any backup, so clearing it asks -------
@@ -6459,6 +6543,33 @@ export default async function () {
         const keepBase = STATE.baseline, keepHold = STATE.holdLog, keepPrs = STATE.prs;
         STATE.baseline = null; STATE.holdLog = []; STATE.prs = {};
         out.fresh = byK(day90Rows());
+        /* THE CLASS: every row that renders blank must say why. The day map
+           has to be CLEARED first — earlier blocks in this file log rucks, so
+           captured as-is the ruck row is not blank at all and the sweep
+           measures nothing. Restored immediately after. */
+        { const keepDays = STATE.nutrition.days;
+          STATE.nutrition.days = {};
+          const rows = day90Rows();
+          out.blankRows = rows.filter(x => x.got === null).map(x => ({ k: x.k, why: x.why || null }));
+          out.ruckWhy = (rows.find(x => x.k === 'ruck') || {}).why || '';
+          STATE.nutrition.days = keepDays; }
+        /* Both ways: the destination the row names really carries the control.
+           Asserted on the rendered markup — [data-act] on Today is the player's
+           own control set, and the ruck sheet's inputs exist only while it is
+           open, so neither is the thing to look for. */
+        /* This section runs as a BRAND-NEW athlete with no baseline, and Today
+           renders the Baseline Test screen for one — so the Movement block is
+           not on screen at all and the pointer reads false on correct code.
+           The same trap as the end-of-program probe that read the welcome
+           screen. Restore a baseline for the render, then put it back. */
+        try { const noBase = STATE.baseline;
+          STATE.baseline = STATE.baseline || { results: {}, maxes: {} };
+          setCardioMode('ruck'); setTodayTab('workout'); go('today');
+          const v = document.querySelector('.view.active');
+          out.movementHasRuck = !!v && v.innerHTML.indexOf("setCardioMode('ruck')") >= 0;
+          out.movementGuard = !!v && v.innerHTML.indexOf('Baseline Test') < 0;
+          STATE.baseline = noBase;
+        } catch (e) { out.movementHasRuck = 'threw: ' + e.message; }
         out.freshMx = { push: (currentMaxes() || {}).push, plank: (currentMaxes() || {}).plank };
         /* FLOOR: a real pull-up record is a MEASUREMENT, not a default, so it
            survives having no baseline — otherwise "blank when fresh" would be
@@ -6544,6 +6655,30 @@ export default async function () {
       t.ok('and each blank row says why it is blank',
         /baseline test/i.test(r.fresh.push.why || '') && /baseline test/i.test(r.fresh.plank.why || ''),
         JSON.stringify({ push: r.fresh.push.why, plank: r.fresh.plank.why }));
+
+      /* THE CLASS, not the two rows that happened to have one. Every row that
+         renders blank must explain itself — the ruck row was the one reading
+         "not measured" with nothing beside it, while the run and pull rows
+         both said why. Written as a sweep so a seventh row cannot be added
+         blank and silent. */
+      t.eq('EVERY blank row explains itself, not just the ones that already did',
+        (r.blankRows || []).filter(x => !x.why).map(x => x.k).join(', '), '',
+        JSON.stringify(r.blankRows));
+      t.ok('guard: the sweep really found blank rows to check',
+        (r.blankRows || []).length >= 2, JSON.stringify(r.blankRows));
+      /* And the pointer is asserted BOTH ways: the row names where to log a
+         ruck, and that destination really carries the control. */
+      t.ok('the blank ruck row names where a ruck is logged',
+        /Movement/.test(r.ruckWhy || ''), r.ruckWhy);
+      t.ok('guard: Today rendered the workout, not the baseline gate',
+        r.movementGuard === true, JSON.stringify({ guard: r.movementGuard }));
+      t.ok('and Movement really carries the ruck controls', r.movementHasRuck, r.movementHasRuck);
+      /* FLOOR: a note that always fires is a note nobody reads. Every other row
+         on this board has this pinned — pushPlain, freqClean, freqAdopted, the
+         genuine zero — and the ruck row was the one added without it, so the
+         over-eager twin (a `why` on every row, logged or not) escaped. */
+      t.ok('while a ruck that WAS logged carries no explanation at all',
+        !r.full.ruck.why, JSON.stringify({ got: r.full.ruck.got, why: r.full.ruck.why }));
       /* FLOOR: a measured zero is still data. Sessions this week is a real
          count, so it reports 0 rather than going blank with the rest. */
       t.ok('the plank row names the baseline when that is where its number came from',
@@ -7065,6 +7200,235 @@ export default async function () {
     /* FLOOR: a fix that simply deleted one call site would drop the warning
        entirely for whichever mode that card owns. Both directions are pinned
        above, so silencing either one fails. */
+  }
+
+  /* ---- the estimated-base note has to describe the week it is on ----------
+     `estimated` stays true for the WHOLE block while nothing is logged, so at
+     week 18 the endurance card carried "the plan opens at 8 km a week and
+     climbs from there" directly above "the build has reached its ceiling — 20
+     km a week". Two notes on one card describing different weeks, and the one
+     in the present tense was describing the past. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const read = daysIn => {
+        STATE.prep = { date: new Date(Date.now() + 21 * 864e5).toISOString().slice(0, 10),
+                       path: 'operator', results: {}, combat: {},
+                       planFrom: new Date(Date.now() - daysIn * 864e5).toISOString().slice(0, 10) };
+        normalizeState();
+        const w = enduranceWeek(), rk = ruckLadderWeek();
+        closeSheet(); openEndurance();
+        const sh = document.getElementById('sheet');
+        const notes = [...sh.querySelectorAll('.note')].map(n => n.textContent.replace(/\s+/g, ' ').trim());
+        return { estimated: !!w.estimated, km: w.km, start: w.start,
+                 ruckKm: rk.km, ruckStart: rk.startKm, ruckLb: rk.lb,
+                 opens: notes.filter(n => /opens at/.test(n)),
+                 climbed: notes.filter(n => /has climbed to/.test(n)),
+                 ceiling: notes.some(n => /reached its ceiling/.test(n)) };
+      };
+      /* Day 1, not day 7: the RUCK ladder already climbs in week 2, so at day 7
+         it correctly reports "has climbed to 5.5 km" while the run is still at
+         its floor. The opening state is the one where BOTH are untouched. */
+      return { early: read(1), late: read(200) };
+    });
+
+    /* GUARDS: the two states this is about really are what they claim, or every
+       assertion below passes on nothing. */
+    t.ok('guard: the base is estimated in BOTH weeks — that is the whole point',
+      r.early.estimated && r.late.estimated, JSON.stringify({ e: r.early.estimated, l: r.late.estimated }));
+    t.ok('guard: week 1 really is at the floor on BOTH plans, and the late week has climbed',
+      r.early.km === r.early.start && r.early.ruckKm === r.early.ruckStart
+        && r.late.km > r.late.start && r.late.ruckKm > r.late.ruckStart,
+      JSON.stringify({ early: [r.early.start, r.early.km, r.early.ruckStart, r.early.ruckKm],
+                       late: [r.late.start, r.late.km, r.late.ruckStart, r.late.ruckKm] }));
+    t.ok('guard: and the ceiling note really is on the late card to contradict',
+      r.late.ceiling, JSON.stringify(r.late));
+
+    /* FLOOR — at the opening the original wording is correct and must stay. */
+    t.eq('FLOOR: week one still says the plan opens at the floor',
+      r.early.opens.length, 2, JSON.stringify(r.early.opens));
+    t.eq('and does not claim to have climbed anywhere', r.early.climbed.length, 0,
+      JSON.stringify(r.early.climbed));
+
+    // and once it HAS climbed, neither note is in the present tense about the floor
+    t.eq('a climbed plan no longer says it "opens at" the floor', r.late.opens.length, 0,
+      JSON.stringify(r.late.opens));
+    t.eq('both cards say what they have climbed to instead', r.late.climbed.length, 2,
+      JSON.stringify(r.late.climbed));
+    t.ok('and each names the figure its own card is prescribing',
+      r.late.climbed.some(n => n.indexOf(String(r.late.km)) >= 0)
+        && r.late.climbed.some(n => n.indexOf(String(r.late.ruckLb)) >= 0),
+      JSON.stringify({ notes: r.late.climbed, km: r.late.km, lb: r.late.ruckLb }));
+    /* And the actionable half survives either way — it is the only part that
+       tells the athlete what to do about it. */
+    t.ok('the call to log real work survives in both states',
+      r.early.opens.every(n => /Log a few/.test(n)) && r.late.climbed.every(n => /Log a few/.test(n)),
+      JSON.stringify({ early: r.early.opens, late: r.late.climbed }));
+    errors.forEach(e => t.fail('page error', e));
+    await browser.close();
+  }
+
+
+  /* ---- the brief has to say why the load is down ------------------------
+     A deload week described "2 sets of 30 reps" in full and never said the load
+     was eased — and the brief is the segment the coach reads ALOUD, so there is
+     nothing on screen to check it against. v372 established that a quiet cut
+     reads as a bug and gave the Today BANNER its reason; the brief never got
+     one. deloadReason() is now the single source both ask. */
+  {
+    const r = await page.evaluate(() => {
+      const say = () => briefSegments().map(x => String(x.say || '')).join(' ');
+      const out = {};
+      STATE.progressPtr = 40;                       // week 6 — a calendar deload
+      STATE.prep = {}; normalizeState();
+      out.reason = (typeof deloadReason === 'function') ? deloadReason() : null;
+      out.deloadOn = deloadOn();
+      out.plain = say();
+      out.title = briefSegments()[0].title;
+      /* In a prep taper the segment above already explains the easing in more
+         detail, so this one stays silent — two lines for one fact is the defect
+         this round exists to remove. */
+      STATE.prep = { date: new Date(Date.now() + 10 * 864e5).toISOString().slice(0, 10),
+                     path: 'operator', results: {}, combat: {},
+                     planFrom: new Date(Date.now() - 60 * 864e5).toISOString().slice(0, 10) };
+      normalizeState();
+      out.taperOn = (typeof prepTaperEase === 'function') ? prepTaperEase() : null;
+      out.taper = say();
+      /* deloadReason()'s ORDERING, pinned directly. The brief suppresses in a
+         taper either way, so its rendered text cannot tell the calendar term
+         from its absence — a mutant dropping `calendar` escaped every screen
+         assertion. The nearer cause wins: a calendar week 6 reads 'deload' even
+         while a taper is running, and week 3 reads 'taper'. Same technique as
+         v338's prepDatePassed() — a guard consulted in one narrow branch still
+         has to mean what it is named. */
+      out.reasonWk6 = (typeof deloadReason === 'function') ? deloadReason() : null;
+      out.wk6 = posOf(STATE.progressPtr).week;
+      STATE.progressPtr = 20;
+      out.reasonWk3 = (typeof deloadReason === 'function') ? deloadReason() : null;
+      out.wk3 = posOf(STATE.progressPtr).week;
+      STATE.progressPtr = 40;
+      /* FLOOR — an ordinary week says nothing about an ease at all. */
+      STATE.prep = {}; STATE.progressPtr = 8; STATE.settings.deload = false;
+      normalizeState();
+      out.normalOn = deloadOn();
+      out.normal = say();
+      return out;
+    });
+
+    t.ok('guard: week 6 with no prep block really is a calendar deload',
+      r.deloadOn === true && r.reason === 'deload', JSON.stringify({ on: r.deloadOn, why: r.reason }));
+    t.ok('the brief says the load is eased and why',
+      /load is eased/.test(r.plain) && /deload/.test(r.plain), r.plain.slice(0, 240));
+    t.ok('guard: the taper case really is in a taper',
+      r.taperOn === true, JSON.stringify({ taper: r.taperOn }));
+    t.ok('guard: the two pointers really are week 6 and week 3 of their block',
+      r.wk6 === 6 && r.wk3 === 3, JSON.stringify({ wk6: r.wk6, wk3: r.wk3 }));
+    t.eq('a calendar deload week reads as the deload, even inside a taper',
+      r.reasonWk6, 'deload');
+    t.eq('while an ordinary week inside a taper reads as the taper',
+      r.reasonWk3, 'taper');
+    t.ok('and in a taper it does not say it twice — the prep segment owns that',
+      /this is the taper/.test(r.taper) && !/load is eased/.test(r.taper),
+      r.taper.slice(0, 240));
+    /* FLOOR: a note that always fires is a note nobody reads. */
+    t.ok('guard: the ordinary week really is not a deload', r.normalOn === false,
+      JSON.stringify({ on: r.normalOn }));
+    t.ok('FLOOR: an ordinary week says nothing about an ease',
+      !/load is eased/.test(r.normal), r.normal.slice(0, 200));
+
+    /* The heading read "Morning brief" at every hour while the line under it
+       said "Good evening" — one card, two answers from the same clock. */
+    t.ok('and the brief heading agrees with its own greeting',
+      /^(Morning|Afternoon|Evening) brief$/.test(r.title || '')
+        && (r.plain.indexOf('Good ' + r.title.split(' ')[0].toLowerCase()) >= 0),
+      JSON.stringify({ title: r.title, opens: r.plain.slice(0, 40) }));
+  }
+
+  /* ---- the kit question, on the third picking path to skip it -------------
+     startForceTrain() skipped hasGearFor() in v322 and startHoldTest() in
+     v366. startSpecialFormat() built its one item straight from the format,
+     so an athlete with an empty gear list saw four tappable grip buttons,
+     nothing on screen naming a pull-up bar, and grip30 started a session of
+     dead hangs they physically cannot do.
+
+     It NAMES the kit rather than substituting, and the arithmetic is what
+     settles that: safeSwap('deadhang') for a flagged shoulder is BIRD DOG, a
+     REPS movement, while the format prescribes w*60 SECONDS. The joint half of
+     the question is already answered on that sheet by actRiskNoteHTML(), and a
+     check below pins that it still is.
+
+     The floors are the athlete who owns a bar, the box formats that need no
+     kit at all, and the health lock. */
+  {
+    const r = await page.evaluate(async () => {
+      const o = {};
+      const txt = () => ((document.getElementById('sheet') || {}).textContent || '').replace(/\s+/g, ' ');
+      STATE.profile.parq = []; STATE.profile.parqDone = true; STATE.profile.medCleared = true;
+
+      /* No kit at all. */
+      STATE.profile.limitations = []; STATE.profile.gear = []; save();
+      openGrip(); await new Promise(z => setTimeout(z, 150));
+      o.noBarButtons = [...document.querySelectorAll('#sheet [data-fmt]')].length;
+      o.noBarKitRows = [...document.querySelectorAll('#sheet [data-fmtkit]')].length;
+      o.noBarNamesKit = /needs Pull-up bar/i.test(txt());
+      closeSheet(); await new Promise(z => setTimeout(z, 200));
+      INTV = null; startSpecialFormat('grip30'); await new Promise(z => setTimeout(z, 120));
+      o.noBarStarted = !!INTV; if (INTV) hiitQuit();
+      await new Promise(z => setTimeout(z, 150));
+
+      /* FLOOR: the box formats need nothing and must be untouched. */
+      openBox(); await new Promise(z => setTimeout(z, 150));
+      o.boxButtons = [...document.querySelectorAll('#sheet [data-fmt]')].length;
+      o.boxKitRows = [...document.querySelectorAll('#sheet [data-fmtkit]')].length;
+      closeSheet(); await new Promise(z => setTimeout(z, 200));
+
+      /* FLOOR: an athlete who owns a bar is unchanged. */
+      STATE.profile.gear = ['bar']; save();
+      openGrip(); await new Promise(z => setTimeout(z, 150));
+      o.barButtons = [...document.querySelectorAll('#sheet [data-fmt]')].length;
+      o.barKitRows = [...document.querySelectorAll('#sheet [data-fmtkit]')].length;
+      closeSheet(); await new Promise(z => setTimeout(z, 200));
+      INTV = null; startSpecialFormat('grip30'); await new Promise(z => setTimeout(z, 120));
+      o.barStarted = !!INTV;
+      o.barIds = INTV ? [...new Set((INTV.seq || []).map(x => x && x.exId).filter(Boolean))] : [];
+      if (INTV) hiitQuit();
+      await new Promise(z => setTimeout(z, 150));
+
+      /* The joint note is a different question and must still be answered. */
+      STATE.profile.limitations = ['shoulder']; save();
+      openGrip(); await new Promise(z => setTimeout(z, 150));
+      o.jointWarned = /flagged a joint/i.test(txt());
+      closeSheet(); await new Promise(z => setTimeout(z, 200));
+
+      /* FLOOR: the health lock still locks the max hang. */
+      STATE.profile.limitations = []; STATE.profile.parqDone = false; STATE.profile.medCleared = false; save();
+      openGrip(); await new Promise(z => setTimeout(z, 150));
+      o.locked = /🔒/.test(txt());
+      closeSheet();
+      STATE.profile.parqDone = true; STATE.profile.medCleared = true; save();
+
+      /* The predicate's own contract, exercised directly. */
+      STATE.profile.gear = []; save();
+      o.pk = [formatKitMissing('grip30'), formatKitMissing('box3x3'), formatKitMissing('nope')];
+      STATE.profile.gear = ['bar']; save();
+      o.pkWithBar = formatKitMissing('grip30');
+      return o;
+    });
+    t.eq('with no pull-up bar the grip formats are not offered', r.noBarButtons, 0);
+    t.eq('and each row names the kit instead', r.noBarKitRows, 4);
+    t.ok('in words the athlete can act on', r.noBarNamesKit, r);
+    t.ok('and the starter refuses it too, so a stale sheet cannot get past the row', !r.noBarStarted, r);
+    t.eq('FLOOR: the box formats need nothing and keep all three buttons', r.boxButtons, 3);
+    t.eq('and are never marked as needing kit', r.boxKitRows, 0);
+    t.eq('FLOOR: an athlete who owns a bar still gets all four', r.barButtons, 4);
+    t.eq('with no kit rows at all', r.barKitRows, 0);
+    t.ok('and can still start one', r.barStarted, r);
+    t.eq('on the real movement', r.barIds, ['deadhang']);
+    t.ok('a flagged joint is still warned about — a different question', r.jointWarned, r);
+    t.ok('FLOOR: the health lock still locks the max hang', r.locked, r);
+    t.eq('formatKitMissing() names the kit, and only when it is missing', r.pk, ['Pull-up bar', null, null]);
+    t.eq('and says nothing once the athlete owns it', r.pkWithBar, null);
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));

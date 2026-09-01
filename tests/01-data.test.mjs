@@ -643,6 +643,176 @@ export default async function run() {
   t.eq('every cardio mode a watch could report has a matcher',
     kindCover.missing.join(', '), '', kindCover);
 
+  /* ---- a figure the app owns must not be written out beside it -----------
+     This is the shape that made the FORCE card say "80 kg dragged" when the
+     load is 100: a number stated by hand next to the constant that holds it.
+     The re-test screen was the clearest case — it derived TESTS.length in one
+     half of a sentence and hardcoded the block length in the other.
+
+     Scoped to the block length, which four athlete-visible sentences carried
+     as a literal 6, and to the last-week test that decides which of them the
+     athlete reads. */
+  const blockLen = await page.evaluate(() => {
+    const src = [...document.querySelectorAll('script:not([src])')]
+      .map(s => s.textContent).sort((a, b) => b.length - a.length)[0] || '';
+    const noComments = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    return {
+      weeks: WEEKS_PER_CYCLE,
+      isApp: /function normalizeState/.test(noComments),
+      /* A literal block length left in code, outside comments. THREE phrasings
+         now: the re-test screen states the same fact twice — a paragraph saying
+         "N-week block" and a hero header saying "N weeks done" — and fixing only
+         the first left the second hardcoded two lines above it. A third,
+         "Re-test after week N" on the strength chart, slipped past both and was
+         found by reading the RENDERED screens instead of scanning for a pattern
+         already known. Each new phrasing goes in here, not into a second scan. */
+      hardcoded: (noComments.match(/\d+-week block|\d+ weeks? done|after week \d+/g) || []),
+      /* And the coach count, the same class one cast over: "pick one of the 16"
+         was written when there were sixteen, and there are 38. */
+      coachCount: COACHES.length,
+      coachCopy: (noComments.match(/pick one of the \d+/g) || []),
+      // the achievement and the re-test screen must both read the constant
+      achDesc: (ACHIEVEMENTS.find(a => a.id === 'block') || {}).desc,
+      lastWeekNote: (typeof _overloadNoteInner === 'function')
+        ? _overloadNoteInner({ week: WEEKS_PER_CYCLE, cycle: 1 }) : ''
+    };
+  });
+  t.ok('guard: the scan read the app, not a stub', blockLen.isApp, blockLen);
+  t.ok('guard: and the block really is more than one week', blockLen.weeks > 1, blockLen);
+  t.eq('no sentence writes the block length out by hand',
+    blockLen.hardcoded.join(', '), '', blockLen);
+  t.eq('the Block Complete badge names the real length',
+    blockLen.achDesc, 'Finish a ' + blockLen.weeks + '-week block', blockLen);
+  t.ok('and the final-week note does too',
+    blockLen.lastWeekNote.indexOf(blockLen.weeks + '-week block') >= 0, blockLen);
+  /* The coach roster is named in Settings copy. It said 16 when the cast was
+     16 and the cast is now 38 — a number written by hand beside the list that
+     holds it, which is the class v397 fixed for the block length. */
+  t.ok('guard: the roster really has grown past the number that was written',
+    blockLen.coachCount > 16, JSON.stringify({ coaches: blockLen.coachCount }));
+  t.eq('and no copy writes the coach count out by hand',
+    blockLen.coachCopy.join(', '), '', JSON.stringify(blockLen.coachCopy));
+
+  /* ---- every format's PROSE against its own numbers -----------------------
+     The v397 class: a figure written by hand beside the data that holds it. The
+     FORCE card had three of them — a total that dropped the carried bag, a
+     shuttle described as run when the standard walks it, and rushes whose steps
+     covered half the distance the card claimed. A format's `desc` is the same
+     shape: "5 hangs of 30 seconds, 60s rest" sits beside w:0.5, r:1, n:5, and
+     nothing compared them. */
+  const fmtProse = await page.evaluate(() => {
+    const out = { checked: 0, bad: [] };
+    const sec = m => Math.round(m * 60);
+    const maps = { HIIT_FORMATS, ENDURANCE_FORMATS, SKIP_FORMATS, SPECIAL_FORMATS, GRINDER_FORMATS };
+    Object.keys(maps).forEach(mn => {
+      const M = maps[mn];
+      Object.keys(M).forEach(key => {
+        const f = M[key], d = String(f.desc || '');
+        if (!d) return;
+        out.checked++;
+        const say = [];
+        let m = d.match(/(\d+)\s*(?:hangs|rounds|sets|reps of|×|x)\b/i);
+        if (m && f.n && +m[1] !== f.n) say.push('count ' + m[1] + ' vs n=' + f.n);
+        m = d.match(/of (\d+)\s*(?:seconds|s)\b/i);
+        if (m && f.w && +m[1] !== sec(f.w)) say.push('work ' + m[1] + 's vs w=' + sec(f.w) + 's');
+        m = d.match(/(\d+)\s*s(?:ec(?:onds)?)? rest/i);
+        if (m && f.r && +m[1] !== sec(f.r)) say.push('rest ' + m[1] + 's vs r=' + sec(f.r) + 's');
+        m = d.match(/(\d+)\s*min(?:ute)?s? rest/i);
+        if (m && f.r && +m[1] !== Math.round(f.r)) say.push('rest ' + m[1] + 'min vs r=' + f.r + 'min');
+        m = d.match(/(\d+)[- ]minute rounds?/i);
+        if (m && f.w && +m[1] !== Math.round(f.w)) say.push('work ' + m[1] + 'min vs w=' + f.w + 'min');
+        if (say.length) out.bad.push(mn + '.' + key + ': "' + d + '" -> ' + say.join('; '));
+      });
+    });
+    return out;
+  });
+  /* The guard is what makes an empty `bad` list mean anything: a sweep that
+     matched no descriptions at all would report clean on nothing. */
+  t.ok('guard: the sweep read real format descriptions', fmtProse.checked >= 15,
+    JSON.stringify({ checked: fmtProse.checked }));
+  t.eq('no format description contradicts its own work, rest or round count',
+    fmtProse.bad.join('\n'), '', JSON.stringify(fmtProse.bad));
+
+  /* ---- kit an exercise DESCRIBES but does not REQUIRE ---------------------
+     `bench` is a real gear key — ruckstepup and dbbench are gated on it — so a
+     movement that is NOT gated is available to every athlete by design. Five of
+     them told that athlete to use "a bench" and named no alternative, while
+     three ungated siblings already said "a bench, chair or step". The app had
+     made the decision and the words did not carry it: same class as a promise
+     in UI text, one register down. The two that genuinely REQUIRE a bench stay
+     bench-only, which is what the second half of this check pins. */
+  const benchProse = await page.evaluate(() => {
+    const out = { ungated: [], gated: [], silentUngated: [] };
+    Object.keys(EX).forEach(k => {
+      const e = EX[k]; if (!e) return;
+      const steps = (e.steps || []).join(' ');
+      if (!/\bbench\b/i.test(steps)) return;
+      const needsBench = (e.equip || []).indexOf('bench') >= 0;
+      const namesAlt = /bench[^.]{0,40}\b(or|chair|step|sofa|stair|box|couch)\b/i.test(steps)
+        || /\b(chair|step|sofa|stair|box|couch)\b[^.]{0,40}bench/i.test(steps);
+      (needsBench ? out.gated : out.ungated).push(k);
+      if (!needsBench && !namesAlt) out.silentUngated.push(k);
+      /* EX is a page constant and is NOT visible in Node, so the floor is
+         computed HERE and carried out — reading it from the assertion threw
+         "EX is not defined" and reported the file itself as broken. */
+      if (needsBench) out.gatedOk = (out.gatedOk !== false)
+        && (e.equip || []).indexOf('bench') >= 0;
+    });
+    return out;
+  });
+  t.ok('guard: the sweep found bench movements on both sides of the gate',
+    benchProse.ungated.length >= 5 && benchProse.gated.length >= 2, JSON.stringify(benchProse));
+  t.eq('a movement that does NOT require a bench names what else will do',
+    benchProse.silentUngated.join(', '), '', JSON.stringify(benchProse.silentUngated));
+  /* FLOOR: the ones that really do need a bench are gated on it, so the athlete
+     is never offered them without one — and their steps may say bench alone. */
+  t.ok('and the ones that really need one are gated on the gear key',
+    benchProse.gatedOk === true, JSON.stringify(benchProse.gated));
+
+  /* ---- and the program's own length, which is not a year for most people --
+     v348 measured it: 378 sessions is 54 weeks at SEVEN a week, and the
+     wizard's own floor is five — 75.6 weeks, 17.4 months. It fixed the
+     Program tab's "54-week journey" and built programWeeks() for exactly
+     this. The header chip was missed: it said "Complete · 1 year" to an
+     athlete who had just taken seventeen months over it.
+
+     The total is derived too, in the Full Tour badge AND in its condition. */
+  const progLen = await page.evaluate(() => {
+    const src = [...document.querySelectorAll('script:not([src])')]
+      .map(s => s.textContent).sort((a, b) => b.length - a.length)[0] || '';
+    const noComments = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const total = SESSIONS_PER_CYCLE * TOTAL_CYCLES;
+    const out = { total, isApp: /function normalizeState/.test(noComments),
+      literal: (noComments.match(/\b378\b/g) || []).length,
+      badge: (ACHIEVEMENTS.find(a => a.id === 's378') || {}).desc };
+    /* Drive the real chip at the end of the program, on a five-day athlete —
+       the pace the wizard floors at and the one v348 measured. */
+    const keepPtr = STATE.progressPtr, keepDays = STATE.profile.days;
+    const keepOn = STATE.onboarded, keepBase = STATE.baseline;
+    /* updatePill() returns early for an athlete who has not onboarded or has
+       no baseline, so the chip has to be driven past both to reach the
+       completion branch at all. */
+    STATE.onboarded = true; STATE.baseline = STATE.baseline || { results: {} };
+    STATE.profile.days = [1, 2, 3, 4, 5];
+    STATE.progressPtr = total;
+    try { updatePill(); } catch (e) {}
+    out.pill = (document.querySelector('#pillSub') || {}).textContent || '';
+    out.weeks = programWeeks();
+    STATE.progressPtr = keepPtr; STATE.profile.days = keepDays;
+    STATE.onboarded = keepOn; STATE.baseline = keepBase;
+    try { updatePill(); } catch (e) {}
+    return out;
+  });
+  t.ok('guard: the scan read the app', progLen.isApp, progLen);
+  t.ok('guard: a five-day athlete really takes longer than a year',
+    progLen.weeks > 52, progLen);
+  t.eq('the program length is never written out by hand', progLen.literal, 0, progLen);
+  t.eq('the Full Tour badge names the derived total',
+    progLen.badge, progLen.total + ' sessions — the complete program', progLen);
+  t.ok('and finishing does not claim a year it did not take',
+    progLen.pill.indexOf('year') < 0 && progLen.pill.indexOf(String(progLen.weeks)) >= 0,
+    progLen);
+
 
 
   /* ---- Burpees: a tenth baseline test, for cardiovascular stamina (v252) --

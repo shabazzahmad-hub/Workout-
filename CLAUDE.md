@@ -5613,6 +5613,35 @@ The usual ratio for an audit written from outside the code:
   probe that was wrong. **Confirm the control's real shape before believing
   the result** — third time this file has recorded it.
 
+### And the same sweep found v348's own defect, one screen over
+
+v348 measured it and wrote it down: **378 sessions is 54 weeks at SEVEN a
+week, and the wizard's own floor is five** — 75.6 weeks, 17.4 months. It fixed
+the Program tab's *"54-week journey"* and built `programWeeks()` for exactly
+this.
+
+`updatePill()` was missed. On finishing, the header chip read
+
+> **Complete · 1 year**
+
+…to an athlete who had just taken seventeen months over it. Same wrong claim,
+same app, one screen from the fix for it, with the constant that answers it
+sitting there since v348.
+
+The Full Tour badge hardcoded **378** in its text AND in its condition. Both
+now derive from `SESSIONS_PER_CYCLE x TOTAL_CYCLES`, so the badge and the thing
+it unlocks on cannot disagree.
+
+**The guard is what makes the chip check honest**: it asserts a five-day
+athlete really does take more than 52 weeks before asserting the chip does not
+say "year", or the whole block passes on an athlete for whom a year is correct.
+And the chip has to be DRIVEN past two early returns — not onboarded, no
+baseline — or it reads "Setup" and the assertion measures nothing.
+
+**Two more comments reworded rather than the check weakened**, and one carried
+the same wrong claim in prose: *"378 sessions across the full year"*.
+
+
 ### Two sweeps that came back clean, recorded as coverage
 
 - **74 writers driven with a hostile payload**, every tab rendered looking for
@@ -9567,6 +9596,1929 @@ rather than as a finding:
   apparent miss was a fixed 150-character scan window that did not reach the
   conversion three lines above — the same window trap this file already
   records.
+
+
+## The card was short by a bag (v397)
+
+The athlete sent the CAF's own four-event summary card. Three of the four
+matched the app word for word. The fourth did not.
+
+| event | the source | the app |
+|---|---|---|
+| 20 m rushes | 80 m total, down every 10 m | matched |
+| Sandbag lift | 30 consecutive lifts, 20 kg | matched |
+| Loaded shuttles | ten 20 m, loaded ↔ unloaded | matched |
+| **Sandbag drag** | **pull a 20 kg bag WHILE dragging four more** | **"80 kg dragged"** |
+
+**80 kg counts the four bags on the floor and drops the one on your back.**
+The real load is **100 kg** — five bags of twenty.
+
+**The app already knew.** `EX.sbagdrag.why` has always said *"one bag on your
+back, four more dragged 20 m behind you"*, and its steps say *"Load one bag
+across your back and grip the handles of the others behind you."* So one task
+was described two ways, and the SCREEN carried the short one — the exercise
+page, which an athlete opens once, was right, and the FORCE card they train
+against was wrong.
+
+That is this file's most-repeated shape landing on a published standard:
+**two copies of one fact, and the copy that drifted is the one on the glass.**
+It is worse here than in most places, because a standard understated by a
+fifth is one an athlete trains under-loaded for and discovers on test day.
+
+**The number is now derived, not written.** `FORCE_BAG_KG` x
+`FORCE_DRAG_BAGS` builds the sentence, so the card cannot state a total its
+own arithmetic does not support — and the check reads the same constants
+rather than restating 100, or it would agree with a wrong number simply
+because it had copied it.
+
+**The discriminating check is that the two descriptions AGREE.** Naming the
+carried bag is not enough on its own: a mutant that says *"100 kg dragged
+over"* has the right total and still hides the bag on your back. Four mutants,
+all caught by name — the exact revert, the total-without-the-carry, a bag
+count of four, and the exercise page drifting back to the card's old wording.
+
+### And comparing the other three found two more
+
+Fixing the drag was fixing one instance. Running the same comparison — the
+card against the exercise page — across all four events found the class was
+three wide, and both extra findings came from the same source card:
+
+| event | the source card | the app's exercise page |
+|---|---|---|
+| Loaded shuttles | **walk** with the bag, free leg a light jog | *"...and **run** the 20 m"*, and run the free leg too |
+| 20 m rushes | **80 m** total | steps described one out-and-back — **40 m** |
+
+**The shuttle is the one that matters.** Running a 20 kg bag on the chest is a
+different event and a heavier landing than the standard asks for, so the app
+was rehearsing something harder and less like the test than the real thing.
+
+**The rushes contradicted themselves.** The card said 80 m and the steps
+walked the athlete through 40 — one shuttle, four drops, then nothing. The
+detail and the instructions were both in the app and did not agree.
+
+**So the check is written against the CLASS**: every event's card and its
+exercise page must each carry that event's own figure, and the shuttle's pace
+is pinned in both directions — walked, not run, with a light jog on the free
+leg. Nine mutants across the round, all caught by name.
+
+### Sweeping the class found the same shape four screens away
+
+The drag was a number written by hand beside a constant that held it. Sweeping
+for that shape across the app found the block length written out as a literal
+**6** in four athlete-visible sentences — the Block Complete badge, the
+re-test screen, the score-trend hint, and the final-week note — while every
+check behind them reads `WEEKS_PER_CYCLE` or `SESSIONS_PER_CYCLE`.
+
+**The re-test screen is the clearest case.** It derived `${TESTS.length}` in
+one half of a sentence and hardcoded the block length in the other:
+
+> *"You've completed a full 6-week block. Re-take the ${TESTS.length} tests…"*
+
+The author knew to derive, and the number beside it was missed. That is what
+this class looks like before it drifts.
+
+**And the branch that decides which of those sentences the athlete reads** was
+`if(w===6)`, not `if(w===WEEKS_PER_CYCLE)` — so a longer block would have
+printed "final peak week" in the middle of one.
+
+Nothing is wrong today: every copy says 6 and 6 is correct. The check pins it
+so the next edit cannot make them disagree, and a **guard** asserts the block
+is more than one week, or "no sentence writes it out" passes on a degenerate
+constant.
+
+**And the first check was too narrow, which the same screen proved.** It
+scanned for `N-week block` — so it passed while the re-test screen's own HERO
+HEADER, two lines above the paragraph just fixed, still read *"6 weeks done"*.
+One screen, one fact, two sentences, and fixing the first left the second. The
+scan now takes both phrasings.
+
+**And one comment had to be reworded rather than the check weakened** — an
+inline `// nine 6-week blocks` was counted by the scan that forbids the
+literal. Fifth time this file has recorded that.
+
+### Two sweeps that came back clean
+
+- **Every achievement's description against its own condition.** All 30
+  compared; the three apparent mismatches were the scan not seeing through a
+  constant (`SESSIONS_PER_CYCLE`) and a word-boundary miss on `60s`. The waist
+  badges' `5 cm (2 in)` and `12 cm (5 in)` both convert correctly.
+- **Every exercise's prose against its own data.** 197 entries; no `why` or
+  step names a rep count its `repCap` does not back.
+
+**And one measured, recorded and deliberately left.** The gear picker calls
+the sandbag *"20 kg / 45 lb"*; 20 kg is **44 lb** by the app's own converter,
+which it uses correctly elsewhere (35 kg → 77 lb). 45 lb is the size sandbags
+are actually sold in, so deriving it would make the label worse for buying.
+Left as it is, on purpose.
+
+**And this is what the ASOF stamp is for.** `FORCE_ASOF` sits on that card
+with "this app has no internet access and cannot check them for you". The
+athlete checked, against the source, and the app was wrong. The stamp did its
+job by inviting the check.
+
+
+## The button promised a download it never requested (v398)
+
+Found by sweeping a class rather than by using the app: **every silent
+`catch(e){}` that wraps a WRITE or a SEND**, not a read. 230 silent catches in
+the file, 54 of them wrapping a write, a post or a platform call — and almost
+all are the right shape, `save()` first and only the repaint guarded, so a
+render failure can never lose data.
+
+Two were not. v357 measured that at the moment `navigator.serviceWorker.ready`
+resolves on a genuine **first install**, `controller` is NULL while
+`reg.active` already exists, and taught the boot ping to ask `reg.active`
+first. **Its two siblings on the Settings screen were left on `controller`
+alone.** Measured with no controller:
+
+| | said / did | the truth |
+|---|---|---|
+| `refreshPackStat()` | **"not installed"** | it IS installed, and activating |
+| `packForce()` | posted **nothing** | |
+| the toast | ***"Downloading the rest in the background"*** | nothing was requested |
+
+**The toast sat OUTSIDE the `if`**, so a tap with no worker to talk to claimed
+a download that never happened — a promise in UI text with no code behind it,
+which is this file's most-repeated rule.
+
+**The window is short and the fix is a latent-class fix, and saying so is the
+honest framing.** Measured on this machine: `ready` resolves at 79 ms with
+`controller` false, and `clients.claim()` lands **1 ms** later — nobody taps a
+Settings button in that window. What is reachable is the state before `ready`
+resolves at all, which on a slow first install is seconds, and whatever
+`selfUpdate()`'s `unregister()` leaves behind.
+
+`swWorker()` is the one helper, so a fourth caller cannot forget. **The worker
+already replies to an uncontrolled page** — `e.source.postMessage` plus a
+broadcast using `includeUncontrolled: true` — which is what makes the fix work
+rather than merely look right, and it was checked in `sw.js` before the fix was
+written.
+
+**Two floors, and both over-eager mutants fail one.** With no service worker at
+all, *"not installed"* is the truth and must still be said, and the button must
+say so rather than claim a download. And an ordinary controlled page must be
+byte-for-byte unchanged — a fix that always posted, or always claimed, passes
+every assertion about the broken state.
+
+**And the guard is what makes the block worth running**: it asserts that the
+window this fix exists for is real on the machine the suite is running on. A
+check driven against a state that never happens proves nothing.
+
+**One equivalent mutant, measured rather than assumed.** Removing `swWorker()`'s
+controller fast-path escaped, and reading it back is why: on a controlled page
+`reg.active` **is** the controlling worker, so the mutant posts to exactly the
+same worker one async hop later. It is a cost saving, not a behaviour. Kept as
+intent, with no check able to catch its removal — the same call as v287's
+`wantAnchor`. **Read the mutant back before rewriting the check.**
+
+### The storage warning named a store this phone may not have
+
+`save()`'s quota message has always read *"Storage full — backing up to device
+store. Export a backup."* **"Device store" is IndexedDB, and `idb` is null
+whenever the open failed** — a real phone state, not a hypothetical: private
+browsing blocks it, and `idbOpen()` resolves null on any error.
+
+On such a phone a localStorage failure means **nothing is saved anywhere**, and
+the athlete was told the opposite. That is *a promise in UI text is a
+specification* on the persistence layer, which is the most expensive place in
+the app to be reassured wrongly — the cost is a training session the athlete
+believes is recorded.
+
+It is one condition, and only one case was ever wrong: localStorage fails AND
+`idb` is null. localStorage working with no mirror needs no warning (the data
+IS saved), and localStorage failing with a mirror present is what the original
+message correctly describes.
+
+**Two floors carry it.** An ordinary save must warn about nothing — a warning
+that fires on every write is one nobody reads — and it must still warn only
+ONCE, whichever branch it took.
+
+## The streak counted a schedule nobody has (v398)
+
+```js
+// streak = consecutive distinct training days ending at the most recent, allowing 1 rest day gap
+if(gap<=3)streak++;
+```
+
+**The comment says 1 and the code says 3** — this file's most-repeated shape,
+sitting in the counter on the Progress tab.
+
+And the flat 3 is a question `comebackGap()` already answers by SCALING to the
+athlete's own days. v347 wrote that reasoning down — *"5 days a week gives a
+2-day gap against a 5-day threshold, 3 days a week a 3-day gap against 5, and 2
+days a week a 6-day gap against 7"* — taught the catch-up and drift banners to
+honour the schedule, and left the streak flat.
+
+Measured, an athlete training **twice a week exactly on plan** — five sessions,
+not one missed:
+
+| | tolerance | streak |
+|---|---|---|
+| 5 days a week | 3 | 5 |
+| 3 days a week | 3 | 5 |
+| **2 days a week** | **3** | **1** |
+
+Their own 4-day gap broke it every single time.
+
+**`max(3, the schedule's own longest gap)`**, so nobody's streak gets HARDER
+than it was: every athlete at the wizard's five-day floor is byte-identical, and
+only a schedule whose own gap exceeds three moves at all. A junk or empty
+`profile.days` falls back to the flat 3.
+
+**Three floors carry it**, and each catches a different over-eager fix: a
+five-day athlete still breaks on a four-day gap; a genuine week off still breaks
+a five-day streak; and a genuine fortnight off still breaks a twice-a-week one.
+A tolerance that simply swallowed everything satisfies both assertions about the
+twice-a-week athlete.
+
+**It is import-reachable rather than everyday**: the wizard floors at five days.
+But `comebackGap()`'s own comment already contemplates two, and `profile.days`
+carries whatever a backup holds.
+
+### The dead-control sweep made its own documented mistake again
+
+Sweeping every athlete-visible threshold for the streak's shape — *flat where it
+should scale* — turned up `RIDE_TARGET` (2 x 35 min, flat) and the conditioning
+level, which fingerprinted as **byte-identical across low, moderate and high**:
+253 cardio slots, 92 distinct movements, 1212 slots, three times over.
+
+That is the `voicePitch` shape exactly, and it was **entirely the probe**.
+`condLevel()` is read in `prescribe()` and scales the TARGET of cardio and
+dynamic movements by 0.85 / 1.0 / 1.15. Fingerprinting the targets instead:
+
+| conditioning | cardio target across 210 sessions |
+|---|---|
+| low | **11,475** |
+| moderate | 13,526 |
+| high | **15,507** |
+
+A 35% spread. **I counted slots when the effect is on targets** — and this file
+already warns, about this exact sweep, that half the first dead-control probe's
+findings were the probe. Read where the field is CONSUMED before choosing what
+to fingerprint.
+
+`RIDE_TARGET` being flat is a separate and deliberate thing: the weekly
+conditioning bar is not tied to the lifting schedule, and the athlete's declared
+level already moves the program through `condLevel()`.
+
+
+### Four one-time migrations, swept as a class
+
+The rule this file states — *a stale default needs a one-time migration keyed to
+the exact value, behind a flag, leaving any other value alone* — has four
+instances, each with its own check somewhere and nothing asking the same three
+questions of all of them: does it fire, does it stay put on the next launch, and
+does a deliberate choice made AFTER it survive. **All four pass all three.**
+
+Question three is the one the v287 escape turned on: a seed that re-fires the
+first time an athlete CLEARS the value looks identical to a correct one until
+you clear it and boot again.
+
+**And the probe reported three of the four broken.** `_protSeed` and `_toneFix`
+live on `nutrition` and `settings`, NOT on `profile`, and `'ocean'` is not a
+theme key — the keys are mint, ember, ion, ice. Deleting the wrong field
+reported all three questions wrong on an app that was right.
+
+
+## The copy said sixteen coaches and there are thirty-eight (v398)
+
+### And the format descriptions, swept clean and pinned
+
+### The kit an exercise DESCRIBES and does not REQUIRE
+
+The same class again, and this one had five instances. `bench` **is** a real
+gear key — `benchdip`, `dbbench` and `ruckstepup` are gated on it — so a
+movement that is NOT gated is deliberately available to every athlete.
+
+Five of them then said *"place your back foot on a bench"* and named nothing
+else, while three ungated siblings already said *"a bench, chair or step"*. The
+app had made the decision and the words did not carry it, and the correct
+wording was sitting next door.
+
+| ungated, names an alternative | ungated, said bench alone | genuinely gated |
+|---|---|---|
+| copenhagen, inclinepushup, boxpistol | **declinepushup, elevatedpike, invertedrowelev, bulgarian, hipthrust** | benchdip, dbbench, ruckstepup |
+
+**The floor is the two that really do need one**, whose steps may say bench and
+nothing else — that is what the second half of the check pins, so a fix that
+simply demanded an alternative everywhere would fail there.
+
+**And the 36 findings the same probe produced were 31 false alarms.** "Benchmark"
+contains "bench"; a timed movement whose prose says *"as many reps as you can"*
+is correct; and a movement that alternates within the set says "switch sides"
+without needing `side:` at all — v351 read all 55 candidates and cut them to 13
+deliberately. Confirming each one against the data is what left five.
+
+### And a page constant is still not visible in Node
+
+The floor assertion read `EX[k].equip` from the assertion rather than the page,
+and the suite reported *"the test file itself threw — EX is not defined"*. Carry
+what you need out in the payload. This file has recorded that for `STATE`,
+`COMBAT_FFO_KG` and `PLAYER`; it applies to every top-level `const`.
+
+
+The same class one registry over: a format's `desc` reads *"5 hangs of 30
+seconds, 60s rest"* and sits beside `w:0.5, r:1, n:5`, and nothing compared
+them. **20 descriptions across five registries all agree** — but the FORCE card
+agreed too until it did not, so the sweep is shipped rather than reported. Three
+seeded contradictions (rest, round count, work time) are each caught, and a
+guard requires the sweep to have read real descriptions, or an empty result
+would report clean on nothing.
+
+
+Found by **reading the rendered screens** for sentences carrying a number, on
+the surfaces earlier sweeps had not read. Settings said:
+
+> **Auto** rotates a random coach each exercise — or pick one of the **16**
+> (Drill Sergeant, Marine, Ultra, Viking, Cheer, A.I. Trainer, and more).
+
+Measured: `COACHES.length` is **38**. The number was written when there were
+sixteen and the cast has more than doubled since — a number written by hand
+beside the list that holds it, which is exactly the class v397 fixed for the
+block length.
+
+### And a third phrasing of the block length that the scan could not see
+
+v397 added a source scan forbidding a hand-written block length, in two
+phrasings — `N-week block` and `N weeks done` — because the re-test screen
+states the fact twice. The strength chart states it a **third** way:
+
+> Your baseline. Re-test after **week 6** to chart your climb.
+
+`after week N` matched neither pattern. **It was found by reading the screen,
+not by scanning for a pattern already known** — which is the argument for doing
+both: a scan catches what you have already thought of, and rendering catches
+what you have not. Each new phrasing goes into the one scan rather than into a
+second one beside it.
+
+
+## "Try adding load" to an athlete the app is holding back (v398)
+
+Found by reading the PLAYER's own screens as text, in the state where the most
+independent rules meet: a deload week. The ready screen said
+
+> **SET 1 OF 2 · maxed the ladder — try adding load**
+
+Two sets because the deload cut one, and *add load* on the same line.
+
+**`atLadderCeiling()`'s third condition was written to prevent exactly this** —
+v221 records it as *"the REAL prescription (after safe mode, deload, readiness)
+lands AT the ceiling"*. It does not achieve that, because `prescribeCeiling()`
+is itself a **CAP**: an eased target still lands ON it, so the gate passes.
+Measured across all 378 sessions:
+
+| state | movements where the hint was reachable |
+|---|---|
+| no ease | 152 of 2196 |
+| **deload week** | **136** |
+| **safe mode** | **128** |
+
+Safe mode is the one that matters. It exists to hold an athlete with an
+uncleared health screen *well short of failure*, and the app was telling them to
+add external load. Deload and the readiness slump exist to take work away; none
+of the three is a moment to suggest adding any. The same call `evenSets()` makes
+when it rounds DOWN under an ease.
+
+**The floor is the ordinary athlete**, who still gets the hint — deleting it
+outright satisfies every assertion about the eased cases.
+
+### My own fix had the pointer bug it was written to find
+
+The first version called `deloadOn()` with **no argument**, so it read
+`posOf(progressPtr)` rather than the session the player is actually running —
+and `atLadderCeiling()` one line above already passes `PLAYER.sess.pos` for
+precisely that reason. Three existing checks went red, which is how it surfaced.
+
+### And three of those checks were asserting on an incidental state
+
+They opened the player at `SESSIONS_PER_CYCLE * TOTAL_CYCLES - 1`, chosen for
+convenience — and that pointer is **week 6 of its block, a real calendar
+deload**. The blocks are about which ITEM shows the note, not about deloads, so
+each now searches for a non-deload session carrying both a ceiling item and a
+clean one, with a guard that it found one. *Each block builds the state it
+asserts on.*
+
+**Two patch scripts refused a bad anchor rather than half-applying**, and both
+were right: the three-line sequence `progressPtr = … / openPlayer() / filter(…)`
+appears three times in that file. Targeting by line number, later line first, is
+what worked.
+
+
+## The brief described a 44% cut and never said it was one (v398)
+
+Same sweep again, on the segment the coach **reads aloud**. On a deload week the
+brief walked the athlete through *"Push-Up, 2 sets of 30 reps, Towel Door Row, 2
+sets of 22…"* — every movement at two sets instead of three — and said nothing
+about why.
+
+v372 established the rule and gave the Today BANNER its reason: *"a quiet 44%
+cut reads as a bug, so the banner names the taper."* The brief never got one, and
+the brief is the worst place for it: v315's rule is that **a spoken line is the
+one an athlete cannot double-check by looking.**
+
+`deloadReason()` is now the single answer both surfaces ask — the banner's own
+ordering (manual, calendar, taper, spike) hoisted out of it rather than restated,
+because two copies of that ordering is two places for it to drift.
+
+**It stays silent through the whole taper**, not only when the taper is the
+winning reason: at week 6 the calendar deload wins, and the prep segment above
+has already explained the easing in more detail. Two lines for one fact is the
+defect this round has been removing all day, and the first version of the fix
+introduced it.
+
+**The floor is the ordinary week**, which says nothing about an ease at all.
+
+### And the heading disagreed with its own greeting
+
+`title:'Morning brief'` was hardcoded while the line under it computed the
+greeting from the clock — so an evening athlete read **"Morning brief"** above
+**"Good evening"**. One card, two answers, from the same clock. The title now
+derives from the same greeting it sits over, and the check pins that they agree
+rather than pinning either one.
+
+
+## Twenty-eight copies of one sentence (v398)
+
+Same sweep, one pane over. The Reference food pane rendered **44 notes**, and
+**28 of them were the same sentence** differing only in a number — every worked
+day telling the athlete it runs over their calorie target.
+
+**Measured before deciding, because it looked like an extreme-athlete
+curiosity and is not:**
+
+| athlete | days flagged | worst |
+|---|---|---|
+| omnivore, 2200 kcal | 0 of 28 | — |
+| **omnivore cutting to 1700** | **22 of 28** | +466 |
+| **vegan avoiding SOY, 2200** | **28 of 28** | +717 |
+| vegan, eight allergens | 28 of 28 | +678 |
+
+A vegan who avoids soy is an ordinary athlete, not an edge case. At 28 of 28 the
+per-day note has stopped being information — *a note that always fires is a note
+nobody reads* — and it hides which days are worst.
+
+**The per-day notes stay.** v287's whole argument that an over-restrictive plan
+is *visible* rests on them, so the fix is additive: one summary above them
+naming how many days miss and by how much.
+
+### And my own new note blamed the wrong cause
+
+Its first version said *"that is your diet and allergen settings"* for everybody
+— so the **omnivore** cutting to 1700 was told *"Omnivore rules out the cheaper
+protein"*, which is false. An omnivore rules out nothing; there the cause is a
+target these fixed-portion days cannot get under.
+
+The discriminator is **measured, not guessed from the diet name**: ask how much
+of the food library the settings actually hide. Vegan-plus-soy hides 41 of 95;
+an omnivore hides none. Blaming the wrong cause leaves the athlete nothing to
+act on, which is the defect this whole class is about — and I introduced it and
+caught it in the same hour by rendering the note rather than reading it.
+
+**The floor is the athlete whose days all fit**: no per-day notes and no summary
+at all.
+
+
+## The note was in the present tense about a week long past (v398)
+
+Found by the sweep the meal-plan bug suggested: **render every surface for an
+athlete in as many noteworthy states at once as is legal, and read the notes
+side by side.** The endurance sheet carried these two, three lines apart:
+
+> **Starting low, because nothing is logged yet.** The plan **opens at 8 km** a
+> week and climbs from there.
+
+> **The build has reached its ceiling.** Volume holds at **20 km** a week from
+> here.
+
+`estimated` means *the base was assumed because nothing is logged*, and it stays
+true for the WHOLE block. Measured across a block: true at week 2 (8 km, correct)
+and still true at week 29 (20 km), where the note describes a week twenty-seven
+weeks gone — on a card whose "This week" says 20 km.
+
+**The ruck ladder had the identical note**, saying *"it opens at 5 km under a
+10 lb plate"* beside a card prescribing 11.8 km under 30 lb.
+
+The fix keeps the actionable half — *log a few runs and it will rebuild from
+what you actually do* — and puts the rest in the tense that is true: it OPENED
+at the floor and has CLIMBED to here.
+
+**The floor is week one**, where the original wording is correct and must stay.
+
+### The check was a week too late, and the app was right
+
+Its first version used day 7 for "the opening" and failed — because the **ruck
+ladder already climbs in week 2**, so at day 7 it correctly reported *"has
+climbed to 5.5 km"* while the run was still at its floor. The opening state is
+day 1, where both plans are untouched, and the guard now pins that both are at
+their floor before anything is asserted about the wording.
+
+### And the block was placed after the server closed
+
+Suite 23 calls `srv.close()` before its end, so a block appended at the bottom
+got `ERR_CONNECTION_REFUSED` and reported *"the test file itself threw"*. Append
+before the teardown, not after the last brace.
+
+
+## Two notes on one card, each telling the athlete to close the same gap (v398)
+
+Found by driving the most restricted legal athlete — vegan with eight allergens,
+where **2 of 33 recipes** survive the filter and only lunch has a safe option.
+Everything about that state was handled well: the missing slots are recorded,
+named on screen, and the note says *"do not just skip it, the rest of the plan
+does not cover its calories."*
+
+**And then the note below it said the opposite.** The scale multiplier read the
+WHOLE day's target regardless of what was missing:
+
+| | |
+|---|---|
+| the plan | one 460 kcal lunch, breakfast and dinner missing |
+| what the gap note says | build those two yourself |
+| what the scale note said | ***"multiply this lunch by 4.8×"*** — the whole day in one meal |
+
+Do both and the athlete eats roughly double. The comment directly above that
+note already records the same class — *"These two used to stack… one message per
+condition"* — and this is the pair that never got it.
+
+**The multiplier is against what the present meals are MEANT to carry**, derived
+from `slotShare()` rather than restated: 770 of 2200 for a lunch-only plan, so
+**4.8× becomes 1.65×** and the two notes now agree about the same gap.
+
+**The floor is the ordinary athlete.** A complete plan still scales against the
+whole target and says so — a fix that always divided by a share would quietly
+under-feed everybody, and it is caught by that check rather than by any
+assertion about the restricted case. Pinned against the app's own `slotShare()`,
+never a number restated in the check.
+
+Three wording faults on the same card went with it: *"1 MEALS"*, *"Build that
+meal yourself"* for two missing meals, and *"This meal is 460 kcal against the
+770 **they** are meant to carry"*.
+
+### The third equivalent mutant of the round, measured
+
+The explicit `1` for a complete plan cannot be caught: the share tables already
+sum to 1 — measured **0.9999999999999999** for the three-meal table and exactly
+1 for four — so both versions round to the same 2200 of 2200. Kept as intent for
+the day a share table deliberately does not sum to 1 (leaving room for a snack),
+when a complete plan would otherwise be scaled against less than the target.
+
+Three equivalent mutants this round, all measured rather than assumed:
+`swWorker()`'s controller fast-path, `capLog()`'s membership test, and this. Each
+is recorded in the code with the measurement beside it, and none was papered
+over with a check that cannot fail.
+
+### The check failed on a screen that was right
+
+`.section-label` is uppercased in CSS and **`innerText` returns the RENDERED
+text**, so `/\d+ meals?/` matched nothing against `1 MEAL`. The fourth time this
+file has recorded that trap.
+
+### Four sweeps that came back clean
+
+- **34 sheets driven as the most constrained legal athlete** — every joint
+  flagged, no gear, tight space, vegan, eight allergens. No throw, no `NaN`, no
+  `undefined`, no `[object`. The two "empty" hits were the probe: `openSettings`
+  is a TAB and `openPlayer` needs an argument.
+- **Only `playerSwap` mutates a live session item.**
+- **A stored swap is dropped when the athlete flags a joint AFTER making it**,
+  and when the gear it needs is removed — driven both ways.
+- **A full year of real use weighs 562 KB**, well inside a 5 MB quota.
+
+
+### A mid-session swap dropped the per-side rule (v398)
+
+v351 made the SET COUNT balance a per-side movement — a side plank prescribed
+at 3 sets is two on one side and one on the other, which is what the athlete
+reported. `evenSets()` is applied last inside `prescribe()`, and every builder
+asks it.
+
+**`playerSwap()` did not.** It already computed `rx = prescribe(exId, pos)` and
+used only `rx.target`, discarding `rx.sets`. Measured on a real session slot:
+
+| | sets |
+|---|---|
+| Bear Hold (two-sided) before the swap | 3 |
+| what `prescribe()` says a Side Plank needs | **4** |
+| what the swap left | **3** |
+
+So the exact imbalance v351 exists to prevent, arriving through the swap path.
+Same shape as `safeSwap()` being forgotten by five sibling paths: **a caller
+that picks a movement has to ask every question the builder asks.**
+
+**The side ANNOUNCEMENT was already correct** and is worth recording, because it
+looks like the same bug and is not: `sideSwitch()` and `sidePerSet()` read
+`EX[exId].side` off the live id, which the swap does update, so LEFT/RIGHT
+follows the new movement on its own.
+
+**Never below the set the athlete is standing on.** A swap can neither strand
+completed work nor end the item underneath them, and that floor is pinned by
+driving a swap from set 6.
+
+**The other floor is the two-sided case**: a swap between two two-sided
+movements takes exactly what `prescribe()` says and is NOT forced even. An
+"always round up" fix satisfies every assertion about the per-side case and
+quietly adds a set everywhere.
+
+### Two escaped mutants, and both were guards that could not fire
+
+- **The target was never pinned at all.** `m.target=rx.target` reverted to
+  `m.target=m.target` walked through every assertion — the athlete would do the
+  new movement at the OLD movement's number. It now has a guard proving the two
+  movements genuinely want different targets, or an unchanged value passes on
+  nothing.
+- **The unit check was written against a pair that shares one.** Bear Hold and
+  Side Plank are BOTH `unit:'time'`, so a mutant that stopped updating the unit
+  was equivalent there. *A guard that cannot fire in the case you tested is not
+  tested* — the discriminating swap is the timed movement to a rep one.
+
+### Three sweeps that came back clean
+
+- **Only `playerSwap` mutates a live session item.** A scan for writes to
+  `exId`/`target`/`sets`/`unit`/`rest` on a session item returns exactly one
+  function, so the class has one member and it is fixed.
+- **A stored swap is dropped when the athlete flags a joint AFTER making it**,
+  and when the gear it needs is removed. Driven both ways: a swap to a
+  wrist-risky movement reverts to the planned one the moment a wrist is
+  declared, and a geared swap reverts when the gear list is emptied.
+  `swapStillValid()` fails closed and wraps both checks.
+- **A full year of real use weighs 562 KB**, well inside a 5 MB localStorage
+  quota: 300 sessions, 365 food days at five rows each, 52 weigh-ins, every
+  activity log at its cap and 2,000 lift rows. `nutrition` is 213 KB of it and
+  is the only field that grows without a bound — a lifetime record, like the
+  measurements, and left that way deliberately.
+
+### Two probe errors, both traps already in this file
+
+- **`num()` is a `const` defined later**, so using it inside `playerSwap()` threw
+  on every swap. `npm run check` only parses and cannot see it; the first driven
+  run found it in seconds. The v290 `btRing` trap.
+- **`playerSwap()` PERSISTS the swap**, so rebuilding the session for the next
+  floor no longer held the original movement — `findIndex` returned -1 and the
+  block threw on `plCur()`. Each block clears `STATE.swaps` and guards its index
+  before asserting. And the close function is `playerQuit()`, not `plQuit()`.
+
+
+### The theme guard was truthiness where membership belonged
+
+```js
+if(!THEMES[STATE.settings.theme])STATE.settings.theme=THEME_DEFAULT;
+```
+
+**`THEMES['constructor']` is truthy**, so a junk theme out of an imported
+backup survived every boot and travelled in every backup after it. Nothing
+looks broken on screen — `setProperty` ignores an `undefined` value, so the CSS
+default paints — and that is exactly why it survived. The harm is the one v354
+measured for `profile.gear`: **the picker renders from the registry and marks
+the chip that matches, so an out-of-set value leaves NOTHING selected and the
+athlete can neither see nor change which theme is on.**
+
+`themeName()` is the one membership test, asked by the boot repair, by
+`applyTheme()` and by `setTheme()` — **two guards mean two checks**, so the
+read site is pinned as well as the repair. The floors are what stop the fix
+being a reset: a real theme the athlete picked survives, the default survives,
+and the picker marks exactly one chip.
+
+**The sweep that found it narrowed from 70 sites to one.** Every registry
+indexed by a data-derived key looks like this class, and almost all are indexed
+by a key that came from iterating the registry itself. The question that
+discriminates is *does the key come from STATE* — five sites did, and four of
+those go through `profile.goal`, which already has a proper membership repair
+(`GOALS.some(x=>x[0]===g)`). One did not.
+
+### One equivalent mutant, measured rather than assumed
+
+`capLog()`'s membership test cannot be caught, and the measurement is what
+settled it. `STATE['constructor']` is a **function**, so `Array.isArray` refuses
+it before the cap is ever read. And in the one case where `STATE[key]` genuinely
+IS an array — an import carrying `{"toString":[...]}` — `LOG_CAPS['toString']`
+is truthy but `c.n` is `undefined`, so `l.length<=undefined` is false and
+`splice(0,NaN)` removes nothing. **Both versions leave the array at 5.**
+
+Kept as intent and as cover for a future `LOG_CAPS` entry, with the check
+relabelled to say what it actually proves rather than rewritten into one that
+cannot fail. The same call as v287's `wantAnchor` — and the second equivalent
+mutant of this round, after `swWorker()`'s controller fast-path.
+
+### And the same class in the code I had just written
+
+`capLog()` read `LOG_CAPS[key]` by truthiness, and one call site derives the key
+from data (`ACTS[k].logKey`). Found by re-reading my own change an hour after
+making it — the seventh round running where the audit's best finding was in the
+round immediately before.
+
+### The escaped mutant tested the boot repair and never the write path
+
+Every log-cap assertion drove `normalizeState()`, so a mutant stripping the cap
+out of `logAct()` walked straight through. It is not redundant with the boot
+repair: the log stays over-cap until the next launch, and `save()` writes the
+over-long file to storage the whole time. Both writer families are now driven
+directly — 210 rows through `logAct()`, `logSkip()` and `logHold()` — with the
+newest row pinned, because the two families trim opposite ends.
+
+### Two more sweeps that came back clean
+
+- **Every `x || <non-zero>` read on a number**, the class behind
+  `+results.plank||30` and `actualRatio()`. Five candidates, all safe:
+  `kcalTarget` is repaired to 800-8000 or deleted, so its `||2000` is a real
+  default rather than a swallowed zero; the rest are registry lookups with real
+  defaults, which v364 already recorded as the legitimate shape.
+- **Every writer of `STATE.prs`** — four of them, and all four guard *only if it
+  beats the current*. The `logRefMeal` / `setForceResultQuiet` drift class is not
+  present here.
+
+  **And a writer-count scanner reported five fields with three writers each,
+  every one of them a RENDERER.** v388 had already proved with a working
+  scanner that zero renderers assign to STATE, so the contradiction was the
+  scanner: brace matching that runs past a function swallows the next ones
+  whole. A detector that contradicts a measurement already made with a proven
+  tool is the thing to doubt.
+
+### Nine writers enforced a bound the boot repair did not
+
+The same round, same method — sweep for the SHAPE rather than use the app.
+**Every capped list, and whether the boot repair caps it too.** Seven writers
+restated their own bound (200 in five places, 2000 and 60 in one each) and
+`normalizeState()` asked none of them: each repair made the list an array and
+then let any length through. Measured by putting 5,000 rows in each:
+
+| | before | after |
+|---|---|---|
+| state a backup carries | **2,487,209 bytes** | **220,869** |
+| `skipLog` / `ruckLog` / `gripLog` / `boxLog` | 5,000 each | 200 |
+| `liftLog` | 5,000 | 2,000 |
+| `pain` | 5,000 | 60 |
+
+That is inside the range that trips `save()`'s own quota fallback, and it is
+the harm v285 already measured on the keyed maps: **the writer enforced a bound
+the repair did not**, so a file was bounded only for as long as nothing
+imported one. v360 recorded that nothing exercised the 200-row cap at all.
+
+**THE END MATTERS, and the two families disagree.** Five writers `unshift` and
+keep the head; four `push` and keep the tail. Trimming the wrong one throws
+away the newest training and keeps the oldest — which **no length assertion can
+see**, so the direction lives in `LOG_CAPS` beside the number rather than being
+re-derived at each site, and the check asserts the newest row survives in both
+directions.
+
+**Four lists are deliberately uncapped and each has its own reason**: `photos`
+is the one thing in this app that cannot be re-created, `measurements` is the
+weight chart, `scoreHistory` is what a re-test is compared against, and `runs`
+holds archived blocks the lifetime counters read. A "cap everything" fix
+satisfies every assertion above and destroys all four, so they are pinned at
+400 rows apiece and asserted absent from the registry.
+
+### Two scans that reported the app was broken, and were the scan
+
+- **A source scan for the cap missed `logAct()` entirely**, because that
+  writer trims `STATE[key]` through a dynamic name and the scan was looking for
+  the literal `ruckLog`. It reported three logs as having no writer cap at all.
+  A scan for a NAME cannot see a reference built at runtime — the same trap
+  this file records for `document.body.innerHTML` containing the app's source.
+- **An in-page regex was double-escaped** through a heredoc and reported
+  **every** list as uncapped, including `pain`, which the file caps two lines
+  from the report. A detector that reports everything as broken is broken;
+  measuring the real thing (5,000 rows, boot, read the lengths) settled it in
+  one run.
+
+### And the tag has to be a field the repair keeps
+
+Three probe failures in a row, each looking exactly like a defect:
+
+- An invented `tag` field read back `undefined`, because `holdLog`, `grindLog`
+  and `hiitLog` **rebuild each row from a field list** — the v312 shape.
+- `at` read back `undefined` for `liftLog`, whose repair rebuilds to exactly
+  `{date, exId, loadKg, reps, rir}`.
+- `measurements` read as capped at **1**, because `dedupeMeasurements()`
+  collapses same-date rows on purpose and the seed gave all 400 one date.
+
+The DATE is the one field all nine require and keep. **Confirm what the repair
+keeps before choosing what to tag with** — and a seed of identical rows cannot
+tell a cap from a de-duplication.
+
+### Two sweeps that came back clean, recorded as coverage
+
+- **Every comparator-less `.sort()`** — five, all on ISO date strings, which
+  sort correctly as text. The classic `[10,9,100]` defect is not present.
+- **Every numeric field driven to ZERO**, 14 of them across all seven tabs: no
+  `Infinity`, no `-Infinity`, no throw. `Infinity` is `NaN`'s quieter sibling —
+  it renders rather than reading as broken — and nothing produces one.
+- **The remaining 52 silent `catch(e){}` blocks that wrap a write or a send.**
+  Almost all are the right shape: `save()` first and only the repaint guarded,
+  so a render failure can never lose data. The two that were not are the pack
+  pair above.
+
+  **And the first version of the tab sweep reported 14 throws** — one per
+  field — because `go('prog')` is not a tab. The keys are `today`, `program`,
+  `progress`, `fuel`, `quick`, `guide`, `ref`. *Confirm the control's real
+  shape before believing the result.*
+
+### The empty-state sweep that came back clean
+
+Run in the same round, generalising the v397 ruck row: **every place that
+renders a bare em-dash as a value.** 22 sites. The day-90 board is now
+complete — every blank row carries a `why`. The FORCE Combat circuit and march
+rows looked like the same class and are not: each `—` carries **"not
+measured"** beside it and a *Log a result* button on the same sheet, which is
+exactly the answer `forceVerdict()` already gives for an unlogged event.
+Measured by rendering `openCombat()` with nothing logged, not by reading it.
+
+**Recorded because it looked exactly like the bug just fixed.** The
+distinguishing feature of the ruck row was that it sat on a *target board*
+where every other row printed a number and a verdict, so a bare `—` beside
+"10-12 km at 18-20 kg" read as *measured and short*. A `—` under a plain
+"Your best" label reads correctly as "nothing yet".
+
+### And the over-eager floor the ruck row shipped without
+
+Found while rebuilding the mutation driver for v397. Every other row on that
+board pins the note's ABSENCE — `pushPlain`, `freqClean`, `freqAdopted`, the
+genuine zero — and the ruck row was added without one, so the over-eager twin
+(a `why` on every row, logged or not) escaped every assertion. *A note that
+always fires is a note nobody reads*, and the check has to say so.
+
+### Two mutation drivers on one directory, and the wreckage it caused
+
+Three separate readings this round were worthless, and all three had the same
+cause: **two drivers seeding the same `mut-p/` at once.** One was left running
+by a chained background task; the second was started on top of it. Each restored
+its own clean file over the other's seed, so a mutant read as ESCAPED when its
+check would have caught it, and a baseline read as RED on a file identical to
+the green main tree. The tell was an md5 of the "clean" live file matching
+neither the clean copy nor any seed.
+
+Two rules came out of it, and the second cost the most:
+
+- **One driver per directory, and never two at once.** CLAUDE.md already said
+  *stop the driver before seeding by hand*; the half nobody wrote down is that a
+  chained task can still be holding the directory.
+- **`pkill -f mutf.py` kills the shell that ran it**, because that shell's own
+  command line contains the string. It exits 144, the driver survives, and the
+  next thing you measure is still being overwritten. Kill by PID.
+
+**A red baseline is not a slow machine, it is a stop.** Every escape reported
+against one has to be re-measured, and this round produced three that vanished
+on a clean re-run.
+
+### Three harness notes from the same round
+
+- **The mutation driver was lost between rounds** and only one of three mutants
+  had run. Write the driver to a file rather than inline, so a reconnect can
+  read what it was measuring.
+- **`chromium.launchPersistentContext('')`** is what gives a genuine first
+  install; `launch()` + `newPage()` shares nothing but is not a fresh profile.
+- **An async fix breaks a synchronous probe silently.** Making
+  `refreshPackStat()` return a promise made the first re-measurement read the
+  DOM before the promise resolved and report the fix as doing nothing. Await
+  the thing you changed the shape of.
+
+## The engine failed closed and the screen did not (v399)
+
+Found by driving an athlete at every ceiling at once — program complete, `adapt`
+at the top of its band, every max at 999. Nothing threw on any tab, and the
+level came back **Beginner**.
+
+**That reading was the probe.** `LEVEL_NAME` is `['Beginner','Intermediate',
+'Advanced']` and the seed had written `'Elite'`, which is not a level. Ninth time
+this file has recorded it: *confirm the control's real shape before believing the
+result.* But the question it raised was real, and the answer was not.
+
+**A STORED level had no membership repair anywhere.** `profile.experience` has
+had one since v357; the three fields nobody swept — `baseline.level`, every
+`reassess[c].level` and every `scoreHistory[i].level` — had none, so junk from a
+hand-edited import survived every boot and travelled in every backup.
+
+`levelOf()` fails closed for a scalar, which is why nothing was ever mis-built.
+**The two DISPLAY sites read the field raw**, and measured with
+`profile.experience` at Advanced:
+
+| stored | engine prescribes | the Core Score chip printed |
+|---|---|---|
+| `'advanced'` | Beginner | **advanced** |
+| `'Elite'` | Beginner | **Elite** |
+| `42` | Beginner | **42** |
+| `{}` | Beginner | **[object Object]** |
+
+One screen, two answers. Both sites now ask `levelName()`, so the chip agrees
+with the session being built, and the boot repair scrubs the field.
+
+**Present-only, and a stored null becomes absent.** `skipBaseline()` writes a
+record with no level and both display sites already fall back for it, so seeding
+one would satisfy a "did the athlete measure a level?" test for ever — the
+`voicePitch` trap. `undefined` is left alone; `null` and `''` are deleted rather
+than kept, because a junk key travels in every backup.
+
+**Two guards mean two checks, and the second escaped first.** The history row's
+own guard was asserted AFTER a boot, so the repair had already scrubbed the junk
+and a revert printed 'Beginner' either way. The `medCleared()` escape verbatim —
+the chip had its no-boot check and its twin did not.
+
+### And the check was reading the wrong pane
+
+`PROG_TAB` does not exist. The variable is `PROGRESS_TAB`, so every assignment
+created a global nothing reads — and the chip readings only looked right because
+**Summary is the default**. The assessment-history rows are on the **Strength**
+pane and were never rendered at all. Drive `setProgressTab()`, the app's own
+setter, rather than poking a name.
+
+## A list you can add to and never remove from (v399)
+
+`FAV_MAX` is 100 and only the boot repair read it. The writer pushed regardless,
+so the 101st favourite was saved, toasted **Saved ⭐**, and deleted on the next
+launch with nothing said. Measured: **105 taps, 105 rows, 100 after a boot** —
+and `slice(0,FAV_MAX)` kept the OLDEST, so the five that vanished were the five
+just built.
+
+That is v398's activity-log cap with the halves the other way round: there the
+writer capped and the repair did not. **A bound belongs to both, or a list is
+bounded only until the app is closed.**
+
+**And there was no way out.** Each favourite row was a single button that STARTS
+it — no delete, anywhere, ever. The scratch list one card above has carried a ✕
+on every row since it was written; the durable list never got one. So a
+mis-named favourite was permanent, and *"delete one first"* would have been an
+instruction with no control behind it — a locked action with no route, which
+this file already calls a dead end.
+
+**The trim keeps the TAIL now.** Favourites are appended, so the newest is the
+end, and every other push-style log in `LOG_CAPS` keeps the tail. With the
+writer capping too, the trim can only ever fire on an import.
+
+**And the row index is the RAW position.** `openBuilder()` filtered the list
+before numbering the rows while `startFav()` and `delFav()` index
+`STATE.customFav` directly — so one bad row would have renumbered every row after
+it and started, or deleted, the wrong favourite. Unreachable today because the
+repair guarantees the shape, which is exactly why it is a check and not a
+comment.
+
+## The caption was on the glass and attached to nothing (v399)
+
+**Not one of the 77 `<label>` elements in the file carried a `for`.** Ten inputs
+therefore had **no accessible name at all** — the prep date, the three skipping
+fields, the three jacks make-up fields, the food quantity and the reference
+amount — and seventeen more leaned on a `placeholder`, which a screen reader
+drops the moment the athlete types.
+
+Every one already had a visible caption sitting beside it. Attaching them is the
+class fix: it names the ten, upgrades the seventeen to a caption that does not
+vanish, and makes the caption tappable — measured, a label click focuses the box,
+fires no handler and changes no state.
+
+**The existing check could not see any of it, and that is the finding.** It scans
+each tab's DEFAULT pane. Every control the athlete types a figure into lives in a
+**sheet**, and no sheet was ever scanned. The new block opens 46 of the 50, with
+two guards: an unnamed control must really be reported, and the sweep must have
+opened most of the sheets rather than a handful.
+
+**A sweep that only opens the ZERO-argument sheets misses more than half** — 15
+of 50 here. Each one that takes an argument gets a real one, and the names have
+to be read out of the file rather than guessed: `openExerciseInfo`, not
+`openExInfo`; `openFoodAmount`, not `openFoodInfo`; `QUICKIES`, not
+`QUICK_WORKOUTS`.
+
+**And the guard element leaked.** `closeSheet()` is async — it leaves a queued
+history navigation — so the probe input was still mounted when the next sheets
+opened and **every one of them reported it**. Remove the element, not the sheet.
+
+**And the attachment invariant is scanned over the SHIPPED FILE, not the page.**
+A `for` naming an id that has since been renamed falls back to the placeholder
+for the seventeen inputs that have one, so the sheet check would stay green
+while the caption was detached again — the same silent half-fix the labels
+started as. The first version scanned the app's source **plus** the rendered
+DOM, and every label appears in both — a template literal and its own output —
+so all 39 reported as duplicated. Read the artifact once.
+
+### Five sweeps that came back clean
+
+- **Injection through every stored leaf.** 62 fields, each given a real HTML
+  payload, across every tab, all four Progress panes, all four Today panes and
+  both Reference panes: **zero injections**, with the detector proven able to see
+  one. The first run reported one and it was the probe — querying `img[onerror]`
+  matches the app's own 126 exercise thumbnails, which use `onerror` as a
+  missing-image fallback. The v210 false alarm, verbatim, and `window.__pwn`
+  stayed false throughout.
+- **Junk on the glass.** The same 62 fields x 7 junk shapes — a string, a numeric
+  string, a negative, 1e12, `{}`, `[]`, `true` — **434 cases, zero** `NaN`,
+  `Infinity`, `[object Object]`, `undefined` or raw junk rendered, and no throw.
+  The detector is proven on the real render, not against a literal.
+- **Every number the coach SPEAKS is visible on the screen.** Four athlete states
+  (plain, deload, taper, two joints flagged) x eight pointers across the whole
+  programme — **32 combinations, zero**. A number read aloud is the one an athlete
+  cannot double-check by looking, so the detector is proven both ways first.
+- **Every hand-curated list has a remove route.** Photos, measurements, food
+  rows, activities, skips, the prep date and now favourites. The session records
+  (`holdLog`, `grindLog`, `liftLog`, `logs`) deliberately have none — they are
+  written by finishing something, and `undoSession()` is the one way back.
+- **Exactly ONE of every record.** Every previous sweep seeded either nothing or
+  a full history; the state between them is where "one point is not a trend"
+  lives. One measurement, one score, one hold, one lift, one skip, one photo,
+  one personal record, one session — across 14 panes: no `NaN`, no `Infinity`,
+  no `undefined`, and **every trend function withholds** rather than inventing a
+  direction. It is now a class check rather than three separate gates, with the
+  floor beside it: given enough points each one must actually answer, or
+  "withholds" is satisfied by a function that never says anything at all.
+
+  The one hit was the probe. **`loadIndexPct()` looks like a comparison and is
+  not** — it reads `STATE.adapt`, a single stored number whose start value
+  really is 1, so *"Training load +0% vs start"* on a brand-new athlete is
+  literally true. Pinned so nobody "fixes" it. And `waistGoalHTML()` is not in
+  the class either: it is start-against-goal, two stored numbers, so it answers
+  correctly from a single measurement. **A direction needs two readings of the
+  SAME quantity** — that is the membership test for this class.
+
+  **And the weight trend has THREE gates, so the one-point case tested none of
+  them.** A count, a windowed count, and a 21-day SPAN — and one point is
+  answered by the span, so a mutant weakening BOTH counts escaped clean. The
+  first form of that mutant was worse still: `win` is a subset of `ms`, so
+  weakening `ms.length<3` alone cannot change the answer at all — a genuinely
+  equivalent mutant. Each gate now has a case only it can answer: two readings
+  five weeks apart (the count), and three readings inside one week (the span).
+  **A guard is only visible when the value beside it cannot supply the answer**
+  — the third time this file has recorded that, and the first where three
+  guards were stacked.
+- **A function-name pair sweep (`set`/`clear`, `add`/`remove`, `open`/`close`)
+  reported 157 one-sided pairs and every one was noise** — `closeSheet()` is the
+  single closer, setters need no clearer, and rows are removed by
+  `removeFood`/`removeAct`/`removeMeasure`. Recorded as a LOW-YIELD axis: the one
+  real asymmetry this round was found by driving the list, not by reading its
+  name.
+
+## An inherited key is not an exercise, and every gate said it was (v400)
+
+Found by asking what a junk `STATE.swaps` does — a map whose CONTAINER was
+checked and whose MEMBERS never were. The first probe said "nothing", and it was
+the probe: `swapStillValid()` takes ONE argument and I passed two, so it tested
+`pushup`. Driven properly, the answer was worse than a container bug.
+
+**`EX` is an object literal, so `EX['constructor']` is
+`Object.prototype.constructor` — truthy — and every `EX[id] &&` guard in the app
+passed it.** `hasGearFor()` then read `e.equip` off a Function, found none, and
+answered *"needs no kit"*. Measured end to end on a stored swap of
+`'constructor'`:
+
+| | before | after |
+|---|---|---|
+| `setSwap()` stores it | **yes** | no |
+| survives the boot | **yes** | no |
+| the session's finisher | **`constructor`, target `NaN`** | `squatjack`, target 45 |
+| Today ▸ Workout printed | **`undefined  1 × NaN reps`** | nothing wrong |
+
+Same trap v328 recorded for `CARDIO_INFO`, one map over — and it reached the
+glass here rather than a fallback. `exKnown()` is the one membership test, asked
+by the writer, the boot repair, both gates and all three stored-id filters.
+
+**`swapStillValid()`'s own comment has said "fails CLOSED" since it was
+written**, and it did — for a THROW. For a target that is not an exercise at all
+it answered `true`, for a missing id, `{}`, `42` and `undefined` alike. *A
+comment claiming an invariant is not the invariant*, for the fourth time in this
+file, and this one was load-bearing.
+
+**The favourite was the second live route.** Its repair filters `EX[k]` intending
+"real exercises only", so an inherited key survived and `startFav()` opened a
+guided session whose first movement was `constructor` — no name, no photo, no
+steps.
+
+**One escaped mutant, and it is genuinely equivalent.** Removing
+`swapStillValid()`'s own `exKnown()` line changes nothing, because
+`hasGearFor()` asks the same question and `false && …` is false — measured
+identical across seven inputs. The guard beside it supplies the answer, the same
+stacked shape as `trendKgPerWeek()`'s three gates one version earlier. Kept as
+intent so a future change to `hasGearFor()` cannot make this fail open again,
+and recorded as uncatchable rather than papered over with a check that cannot
+fail.
+
+**And my own check found the second half.** The first fix was `if(!e)return
+false`, which is still truthiness one layer up; the check seeded `'constructor'`
+and went red. A guard written against the shape you are fixing will not catch
+the shape you did not think of — the check did.
+
+### What was measured and deliberately LEFT
+
+`liftLog.exId`, `holdLog.exId`, a `prs` key, a `logs[].ex` key and
+`_plResume.items` all keep an unknown id through a boot, and **none of them
+changes anything**:
+
+- `resumeInfo()` REBUILDS the session from the pointer and never reads the stored
+  items, so a junk one cannot reach the player.
+- the lifetime totals read `log.items`, not the `ex` keys — measured against a
+  real session (39 reps, 510 s of holds, 15 sets, 22 min, 86 kcal): **identical**
+  with the junk key and without.
+
+That is the v285 call — a field whose only sin is travelling in a backup is not
+worth padding — and this time it rests on a measurement rather than a reading.
+**The first version of that comparison was two ZEROES agreeing**, which proves
+nothing; it had to be re-run with a log carrying real volume.
+
+**The fix changes nothing on any live path, and that was proven rather than
+argued:** 486 sessions across 9 athlete configurations — three gear sets x three
+limitation sets — fingerprinted before and after, byte-identical.
+
+## The container was checked and its KEYS were not (v401)
+
+v284 hardened `logs`, `prs` and eight more against arriving as an ARRAY. v285
+swept that class and closed it. Neither asked what the **keys** were.
+
+`logs` is keyed by `progressPtr`, and `allDonePairs()` maps `Object.keys()`
+straight through — so a key an import controls reached `goalSlots()` as a
+pointer. Measured:
+
+| stored key | Progress ▸ Summary |
+|---|---|
+| `'constructor'` | **throws on `.slots` of undefined** |
+| `'abc'` | **throws** |
+| `'3.7'` | **throws** |
+| `'-1'` | **throws** |
+| `'1e9'`, `''` | fine (both coerce to a number the engine tolerates) |
+
+**And the boundary retries THROUGH `normalizeState()`, so with no repair here
+the pane never came back** — the exact harm v284 measured for `nutrition.days`,
+one map along, on the tab an athlete opens to see their progress.
+
+**Its twin is fine, which is how it survived.** `sessionHistory` does
+`Object.keys(STATE.logs).map(Number).filter(...)`; `allDonePairs()` forty lines
+away does not. *One of a pair guarded and its twin not* — the shape this session
+has now hit five times. The repair is the one place both can rely on.
+
+**A pointer map takes an integer inside the program; a date map takes a date the
+app's own predicate accepts.** `logs` and `swaps` are pointer-keyed; `restDays`,
+`_opens` and `nutrition.days` are date-keyed and get `isDateISO()`, which
+already exists rather than a sixth copy of a date pattern.
+
+**The floors are what stop it being a wipe**, and they are the point: 300 real
+sessions, the athlete's own swaps, their rest days, the days they opened the app
+and the day they logged food are all **untouched**, junk beside them drops only
+itself, and **both ends of the legal pointer range survive** — pointer 0 and the
+last one, which is the value the "program complete" branch already tests against.
+
+### Seven stored maps measured and deliberately LEFT
+
+`prs`, `achievements`, `reassess`, `formatFeel`, `weekFeel`, `shopTicks` and
+`exAdapt` all keep a junk key through a boot and **none of them changes
+anything** — every one is read by a key the app supplies (an exercise id, a
+badge id, a cycle number), so a key nobody looks up is inert. That is the v285
+call, and it rests on the measurement rather than on the reading: no `NaN`, no
+`undefined`, no throw on any tab or pane for any of the seven.
+
+## Two sweeps that came back clean, and one detector that did not (v401)
+
+Both are recorded as coverage rather than findings, and the second is worth
+keeping for how it nearly went wrong.
+
+- **Switching units never changes what is stored.** Everything is kept canonical
+  (kg, cm, km) and converted on the way out, so a unit toggle is a DISPLAY
+  change. Driven three times over a rich metric athlete — weight, height, goal
+  weight, both waists, three measurements and a lift log — rendering every tab
+  in between: **byte-identical every cycle.** It is now a check, because a
+  future unit-aware writer that stored the displayed figure would corrupt the
+  athlete's history the first time they toggled, and **in imperial the weight
+  conversion is close enough to its own inverse that a single round trip can
+  hide it** — the v315 escape, one subsystem over. Three mutants, all caught,
+  including the one that stops `weightShow()` converting at all: without that
+  guard, "the store is unchanged" passes on a conversion that never happened.
+
+- **No raw conversion reaches the glass.** `weightShow(86.4)` returns
+  `189.59770013580487`; every caller rounds. Swept across every pane and eight
+  sheets in BOTH units: zero numbers with three or more decimal places.
+
+  **The first run of that sweep proved nothing, and said so.** Its guard planted
+  a long decimal in a view and then called `go('fuel')` to scan it — and `go()`
+  RE-RENDERS, wiping the plant before the scan ran, so `canSee` came back
+  **false**. Navigate first, plant second, scan third. A clean sweep whose
+  detector cannot be shown failing is not a result — the rule this file already
+  states, caught by writing the guard rather than by trusting it.
+
+## Fuzzing every field AT ONCE, not one at a time (v402)
+
+Every previous sweep set one field to junk and rendered. This one set **all 62
+at once**, eight rounds with a different junk shape rotating through each field,
+plus every keyed map and list broken beside them.
+
+**The app survives total corruption**, and that is worth recording: no throw, no
+page error, and every pane still renders 68,000-87,000 characters. Two things
+reached the glass, and one of them was serious.
+
+### profile.name had no repair at all
+
+`(STATE.profile.name||'').trim()` assumes a string. Measured with an imported
+`{}`:
+
+| | |
+|---|---|
+| `briefSegments()` | **throws** — `.trim is not a function` |
+| Today ▸ Brief renders | **119 characters** against 2,631 |
+| the boundary retries | THROUGH `normalizeState()`, which had nothing for it |
+
+So the segment the coach reads **aloud** was dead and stayed dead. Same shape as
+`nutrition.allergies` and `.replace()` in v391, on the one field every athlete
+fills in. `42`, `[]` and `true` were quieter and no better: the brief rendered
+and the spoken half threw.
+
+`athleteName()` is the one reader now, so the four sites cannot disagree, and
+the boot repair types it. **A long name is capped at 60** — the same cap a food
+name carries — because an import can carry a hundred thousand characters and
+every backup would carry them too.
+
+### And a warning that fired about a state that was not true
+
+`settings.voiceName` only handled `undefined`, so any other shape survived and
+the voice check said:
+
+> **Every coach is using one voice.** You have picked **[object Object]** above,
+> and a picked voice overrides all 38 coaches.
+
+None of it true — `coachVoiceFor()` looks the name up in `COACH_VOICES`, finds
+nothing, and every coach keeps its own voice. A warning about a state that does
+not exist, offering a button to undo something that never happened.
+
+**A STRING that is not a voice on this phone is left alone, deliberately.**
+v302 ordered that branch first precisely because it is knowable from the setting
+alone, before the voice list has loaded — which is the state an athlete is in
+when they open Settings to ask why. Requiring the voice to exist would restore
+the defect v302 fixed. A non-string is not a pick; an unavailable string is.
+
+**One equivalent mutant, measured rather than assumed.** `athleteName()`'s
+`typeof` test can be reverted to `(n||'').trim()` and nothing changes: the
+helper's own `catch` already returns `''` for every non-string — identical
+across eight inputs. Kept because control flow through an exception is not the
+same as a test, and recorded as uncatchable. The guard beside it supplies the
+answer, the same stacked shape as `swapStillValid()` one version earlier.
+
+### And I hit two of this file's own harness traps in the same hour
+
+Worth recording because both are already written down and both cost a wrong
+reading anyway:
+
+- **A probe run inside the mutation directory while the driver was mid-run.**
+  It wrote `index.clean.html` over `index.html` between seeds, and a mutant that
+  the suite genuinely catches was reported as an ESCAPE. Re-seeded on its own,
+  it fails by name. *One driver per directory, and nothing else may touch it* —
+  the rule was three rounds old and I broke it while measuring an equivalence.
+- **`pkill -f drive.py` killed the shell that ran it**, because that shell's own
+  command line contains the string. Exit 144, driver still alive, next reading
+  still poisoned. Kill by PID, from `pgrep -a`.
+
+### Two false alarms in the same sweep
+
+- **"It does not converge in one boot."** Two keys differ on the second pass and
+  both are designed one-shots: `_shredStart` is dropped as junk and then
+  re-seeded from evidence (v391), and `dietRepaired` is set on the boot that
+  repaired and cleared on the next. Diff the two states and read what actually
+  moved before calling it a defect.
+- **`ZQJUNK` in the voice warning**, after the fix. That is a legitimate string
+  voice name and the warning is correct about it — my probe had planted a
+  plausible name, not junk.
+
+## An update must not destroy the pack it cannot replace (v403)
+
+`selfUpdate()` unregisters the worker and deletes every CoreForge cache, then
+re-checks `_sessionLive()` before reloading. The guard was in the right place
+for the RELOAD and the wrong place for the teardown.
+
+An athlete who taps Start **during the version fetch** — up to six seconds —
+gets the guard they are owed and an app with nothing behind it. Measured by
+driving it:
+
+| | before | after |
+|---|---|---|
+| CoreForge caches | `['coreforge-v402']` → **`[]`** | kept |
+| service worker | registered → **gone** | kept |
+| reload | correctly did not fire | correctly did not fire |
+| retries this session | **no** — `cf_selfupd` was already set | yes |
+
+So they finish their set on the old version with no offline pack, and **going
+offline afterwards the app does not start at all** — the app's oldest promise,
+broken by its own updater.
+
+**Nothing is torn down until the reload is committed.** The teardown exists so
+the next load fetches fresh; if we cannot reload, we must not tear down. The
+flag moves with it, because a stand-down that leaves `cf_selfupd` set skips the
+update for the rest of the session.
+
+**A session beginning inside the few milliseconds the teardown takes still
+reloads**, and that is the right call rather than an oversight: once the pack is
+gone, leaving the athlete without one is worse than the interruption the guard
+exists to prevent.
+
+### The existing check pinned the old structure
+
+`t.ok('and re-checks _sessionLive() immediately before firing it', …)` searched
+the 120 characters before `location.reload()`. That encoded the buggy shape —
+teardown first, check second — so moving the check in FRONT of the teardown
+failed it. Fifth time this session a check has held old behaviour rather than
+caught a defect.
+
+Re-aimed at the real requirement, which is an ORDER rather than a distance: the
+last check sits before the unregister and the cache delete, and both sit before
+the reload. **And the behaviour is now driven** — the source scan alone stays
+true with `_sessionLive()` reverted to always-false, which is the escape this
+file records for calling the helper instead of the route.
+
+**The floor is the athlete who is NOT training**: the update must still tear
+down and reload, or the fix is a disable. The reload destroys the execution
+context, so the navigation IS the assertion — a probe that tried to read state
+afterwards reported *"Execution context was destroyed"*, which was the floor
+passing rather than the probe failing.
+
+### Four escapes, and not one of them was a weak check in the usual sense
+
+Five mutants were built and **four escaped on the first run**. Reading them back
+split the cause two ways, and neither was "the check is weak about what it
+tests".
+
+**Two were bad mutants.** The fix has two parts — a re-check after the fetch,
+and the teardown moved inside the committed block — and **either one alone
+closes the hole**, so reverting one while keeping the other is equivalent. The
+tell was in the measurement rather than the reasoning: on the "revert", the
+retry flag came back **false**, which can only happen if the function returned
+before `sessionStorage.setItem` — at the check the mutant had left in place.
+The genuine pre-v403 code is both edits at once, and seeded that way it fails by
+name. Same lesson as v363: *a fix with two edits needs a mutant with two.*
+
+**Two were a case the check never built.** The guard inside the committed block
+is reachable only when the athlete taps Start in the **400 ms** between the last
+check and the teardown — not during the fetch, which the first case covers. With
+no such case, inverting that guard and leaving the retry flag set both changed
+nothing any assertion could see. Adding it caught both.
+
+**And it caught the one I had written off as equivalent.** Moving the teardown
+back, with the post-fetch check intact, really does destroy the pack for a tap
+inside that window — so the mutant I had labelled EQUIVALENT in the driver was
+a real defect my check could not yet see. *A guard is only visible when the
+value beside it cannot supply the answer* — and here the missing CASE, not a
+neighbouring guard, was supplying it. Five of five caught once the case existed.
+
+### And a mutation copy built from a glob is not the app
+
+The first run reported **baseline RED** and stopped, which is the rule working.
+The cause was the copy: `cp *.jpg *.mp4` misses every `.png`, `.svg`, `.ico` and
+`.webmanifest` the precache tiers name, so suite 12's *"no tier references a
+file that does not exist"* failed on an app that was fine. Copy every file in
+the root, not the extensions you happen to think of — and take the red baseline
+as a fact about the harness before believing anything about the code.
+
+## Two tabs, and the second one to save won (v404)
+
+Nothing in this app knew another copy of itself existed. Every change writes the
+**whole** state, so whichever tab saves last wins with whatever it has been
+holding since its own page load. Measured across two real tabs:
+
+| step | result |
+|---|---|
+| A logs a training session and saves | logs 1, pointer 1 |
+| B — still holding what it loaded BEFORE that — logs a meal and saves | B's own copy was logs 0, pointer 0 |
+| a third load reads | **logs 0, pointer 0** |
+
+**The session is gone and the pointer rewound**, with nothing on screen at any
+point. That is the worst class of defect this app has: work the athlete did,
+silently erased by an ordinary second action.
+
+A `storage` event fires only in the OTHER tabs and only for localStorage, so it
+is exactly the signal a tab needs that someone else has written. **Every
+mutation here is followed immediately by `save()`, so there is no unsaved work
+to protect** — adopting the newer copy is the whole fix, and after it both
+tabs' work survives.
+
+**A live workout is never disturbed**, using the same guard the self-update path
+uses and for the same reason: swapping the state out from under the player
+mid-set is worse than the stale copy. That leaves two tabs training at once
+unfixed, which is the rarer half and not worth a merge engine to reach.
+
+**The athlete is told the screen changed.** A silent state swap is its own
+defect — the screen changing with no explanation reads as a bug. One short
+toast, and only on a real foreign write.
+
+**The floors carry it**, and each catches a different over-eager fix: a single
+tab must behave exactly as before (no swap, no toast), a live workout must keep
+its player and its pointer, and **the second tab's own work must survive too** —
+a "fix" that simply reloaded and discarded would satisfy every assertion about
+the first tab while losing the meal.
+
+### Two escapes, and both are lessons already in this file
+
+- **Every assertion read `STATE` and none read the SCREEN**, so a listener that
+  adopted the newer copy and never repainted was invisible. *Measure the
+  payload, not the container* — the athlete's experience is the glass, and a
+  stale screen over fresh state is its own defect. The check now requires the
+  Today header to show the adopted session number.
+- **A foreign write of a DIFFERENT key was never driven.** The app also writes a
+  pre-import snapshot to localStorage, and reacting to that would reload and
+  toast over a housekeeping write — so a listener firing on every key changed
+  nothing any assertion could see. *A guard that cannot fire in the case you
+  tested is not tested.*
+
+Six mutants, all caught after those two rewrites.
+
+## A reset is not an ordinary edit (v405)
+
+v404's cross-tab listener deliberately does NOT adopt while a workout is live —
+swapping the state out mid-set is worse than a stale copy. That is right for an
+ordinary write and wrong for one action.
+
+`hardReset()`'s own confirm says **"this cannot be undone."** Measured across two
+tabs, it was:
+
+| step | result |
+|---|---|
+| A is mid-workout with a logged session | player live, logs 1 |
+| B taps Reset all data and confirms | logs 0, pointer 0, not onboarded |
+| A keeps its stale copy — correctly, for an ordinary write | logs 1, pointer 3 |
+| A quits and saves; a third load reads | **logs 1, pointer 3, onboarded** |
+
+**The erased data came back.** The athlete asked for everything to go, so the
+workout whose data would be written into it is meaningless — the live-session
+guard must not cover a reset. The player is closed, the erased state adopted,
+and the athlete told which of the two things happened.
+
+**No new stored field is needed**, which matters because anything added to
+`DEFAULT_STATE` travels in every backup: an incoming copy that is **not
+onboarded while ours is** can only be a reset.
+
+**Both halves of that test carry weight, and the second needed its own case.**
+Dropping `STATE.onboarded===true` escaped every check, because it only differs
+when OUR copy was never onboarded either — two tabs open during the setup
+wizard, which is a real state. Measured: an ordinary answer saved in one would
+tell the other **"All data was reset in another tab"**, which is false. *A guard
+that cannot fire in the case you tested is not tested.* Five mutants, all caught
+once that floor existed.
+
+### And the case that made it worth checking at all
+
+The whole class — a destructive action taken while a session is live — was
+swept first, and three of the four routes are **unreachable by tapping**. That
+was measured rather than read off the z-index: with the player open, all five
+probe points hit-test **inside** `.pl`, and **zero of the six bottom tabs are
+tappable**. So `hardReset()`, `restartProgram()` and `undoSession()` cannot be
+reached mid-workout from the same tab at all. The second tab is the one route
+that exists, and it is the one that needed the fix.
+
+### A double-tap sweep that came back clean, and six false alarms in it
+
+Every sheet with a save-shaped button, tapped once and then twice, comparing the
+resulting state: **no sheet turns one gesture into two records**, and the session
+commit is idempotent (single tap and double tap both leave pointer 4 and one done
+log).
+
+**Eight sheets first reported as differing and six were a CLOCK in my snapshot.**
+`save()` writes `STATE._savedAt = Date.now()` and rows carry an `at`, so two runs
+differ purely by the millisecond they saved in. Strip the volatile fields before
+comparing. Of the two that survived, one was `openBuilder`'s **add-a-move**
+button — legitimately additive, and the fact that it IS reported is what proves
+the detector works — and the other showed an empty diff on re-measurement.
+
+**Calling a helper twice is not a double-tap.** The first version of that sweep
+called `logFood()`, `logHold()` and `saveCustomFav()` directly and reported three
+"double-fires"; every one is a legitimate repeat action an athlete can really
+take. The question is whether ONE gesture produces two records, which needs real
+clicks on real buttons.
+
+## The undo it promised did not exist on a full phone (v406)
+
+Found by sweeping a class rather than by using the app: **every `confirm()`
+string in the file, read against what the function actually does.** Thirteen of
+them. Twelve keep their word. One did not, in the one state where it mattered.
+
+```js
+if(!confirm('… Your current data will be saved first so you can undo this if it is a mistake.'))return;
+try{localStorage.setItem(PREIMPORT_KEY,JSON.stringify(STATE));}catch(e){}
+```
+
+**The snapshot is written AFTER the question, into a silent catch.** The
+snapshot lives in localStorage, and a full store is exactly the state `save()`'s
+own quota fallback exists for. Measured on a genuinely full store, with 300
+logged sessions on file:
+
+| | |
+|---|---|
+| the question asked | *"…saved first so you can undo this if it is a mistake"* |
+| the snapshot write | **threw, and was swallowed** |
+| the import | went ahead — **300 sessions erased** |
+| the Undo button | **never appeared** (`hasPreImportSnapshot()` is what gates it) |
+
+So the athlete was told they could undo it, everything went, and there was no
+undo. Same class as v405's *"this cannot be undone"* being false across two
+tabs, and the fifth entry under **a promise in UI text is a specification** on
+the destructive paths alone.
+
+**The snapshot is taken BEFORE the question, so the question can tell the
+truth.** There are two questions now, and the second one does not promise
+anything.
+
+**The stale snapshot is dropped FIRST rather than overwritten**, and that is
+load-bearing twice over. It is about the same size as the new one, so freeing it
+is usually exactly the room the new one needs — the fix often makes the failure
+go away rather than only reporting it. And a stale snapshot that survives a
+failed write makes the Undo button lie in a worse way than its absence: it says
+*"restore what was here before it"* and would restore an **earlier** import's
+state.
+
+**Three floors, and each catches a different over-eager twin.** A healthy device
+must be asked the original question and get a working undo — a fix that always
+warns fails there. **A full store is not a reason to refuse a restore**: the
+backup may be the thing the athlete needs, and restoring may be what frees the
+room, so the import still goes ahead when they accept. And a **declined** import
+must leave the store exactly as it found it, both with an earlier snapshot
+present and with none — otherwise the Undo button turns up offering to reverse an
+import that never happened.
+
+**And the probe had to fill the store properly.** A first attempt filled with
+100 KB blobs until it threw and then reported the store *"still writable"* — a
+one-byte write fits in the slack, and the snapshot of a 60-session athlete fitted
+too. Only filling with big blocks and then topping up with small ones leaves less
+slack than the snapshot needs. **A full store is not one that refused your last
+write; it is one that will refuse the write you are about to make.**
+
+
+### The write that could not report a failure (v406)
+
+The same sweep, one promise over. `idbPut()` **returned nothing and never
+waited for its transaction**:
+
+```js
+function idbPut(k,v){try{if(!idb)return;const tx=idb.transaction('kv','readwrite');tx.objectStore('kv').put(v,k);}catch(e){}}
+```
+
+So every caller's success report was a guess. `idb` is null whenever the store
+could not be opened — private browsing blocks IndexedDB, and `idbOpen()`
+resolves null on any error — and that is a real phone, not a hypothetical.
+Measured on one:
+
+| action | the app said | what happened |
+|---|---|---|
+| take a progress photo | **"Photo saved"** | no bytes; a row with a blank tile, for ever |
+| restore a backup with 2 photos | **"Backup restored · 2 photos"** | **0 written** |
+
+**And the failure branch was unreachable.** `Promise.all(ids.map(id=>idbPut(…)))`
+is a `Promise.all` over a list of **undefineds**, which always resolves — so
+`.catch(()=>toast('Backup restored, photos failed'))` could never fire. A
+handler that cannot run is the same defect as no handler, with the appearance
+of care.
+
+**This is the worst field in the app to be wrong about.** `savePhotoFiles()`
+exists because progress photos are the one thing here that genuinely cannot be
+re-created — a missed weigh-in can be typed in from memory, week 1 of your body
+cannot be re-photographed in week 30. An athlete told "Photo saved" does not
+take it again.
+
+**The row is written only once the bytes are down.** A row with no blob is not
+a half-saved photo, it is a permanent blank tile that then rides along in every
+backup — the harm v285 measured, on the field that matters most.
+
+**A restore drops the rows whose bytes did not land, and that destroys
+nothing**: the pictures are still in the backup FILE, which this device has not
+touched, so the honest move is to say so and let the athlete restore somewhere
+that works.
+
+**Three failures, three sentences.** An unreadable file, a device with no
+picture store, and a device out of space are different problems with different
+fixes, and a single "could not save" would tell the athlete nothing to act on —
+the v289 rule that a range is not an explanation. The storage sentence is
+toasted LAST, because it is the one that decides whether the photo is taken
+again.
+
+**The floor is the working device, byte-identical**: "Photo saved", one row,
+bytes present, and `Backup restored · 2 photos` with both blobs down. Every
+over-eager twin — refuse every photo, never write a row, always report a
+storage failure — fails there.
+
+**Eight mutants, seven caught and one equivalent — measured, not assumed.**
+Restoring the picker's single-toast form escaped, and seeding it and reading
+the screen back is what explained why: `toast()` overwrites `textContent` with
+no queue, so the wrong sentence is replaced in the same tick and never reaches
+the glass. Kept as intent so the code does not state a reason it has just
+disproved. **Read the mutant back before rewriting the check.**
+
+
+### A stored blob is user content, and it reached an src attribute (v406)
+
+Found one function further along the same path, and it is the most serious
+defect in this run. `importData()` writes `p._photoData` straight into
+IndexedDB, and that is **arbitrary JSON out of a file**. `viewPhoto()` and
+`renderCompare()` then built their `<img src>` by string concatenation:
+
+```js
+<img src="${data||''}" style="…">
+```
+
+A stored value of `x" onerror="…` breaks out of the attribute. Measured from a
+restored backup: **`window.__pwn` went true** — arbitrary script, in the origin
+that holds `azureKey` and `foodAiKey`.
+
+**v399's injection sweep could not see it.** That sweep drove 62 fields of
+STATE; `_photoData` is deleted from STATE on the way in and lives in IndexedDB,
+so it was never in the set. **A sweep is only as wide as the surface it
+enumerates**, and "every stored leaf" meant every leaf of one store.
+
+**The app already knew the shape was illegal.** `savePhotoFiles()` has carried
+the right test since v282 — and its own comment says, in as many words, that
+*"the gallery renders it as a broken tile"*. So the check existed in **one
+consumer out of four**, and the comment describing the harm to the other three
+was written beside it and never acted on. That is v284's sentence exactly.
+
+Both halves are fixed, because two guards mean two checks:
+
+- **Nothing interpolates a blob into markup any more.** The `src` is assigned
+  as a PROPERTY after the sheet is built, which closes the attribute-breakout
+  structurally rather than by escaping.
+- **`photoData()` is the one membership test**, asked by all four consumers, so
+  a fifth cannot forget it.
+
+**A missing picture now says so.** The viewer used to render an empty frame
+with a Delete button under it and no explanation; the comparison rendered two
+blank boxes. Both name the state and point at the backup file, and **the Delete
+button stays** — a row whose picture is gone is exactly the row somebody wants
+to remove.
+
+**The floor is a real photograph on all three surfaces.** A `photoData()` that
+refuses everything satisfies every assertion about the payload and deletes the
+gallery, the viewer and the comparison at once.
+
+**And an existing check failed on correct code, which was the record and not
+the rule.** The renderCompare race check seeded plain marker strings, with a
+comment saying *"a plain marker string is enough — renderCompare() just drops
+it into an `<img src>`"*. That sentence WAS the defect. Its subject is which
+render wins the race, so the markers now ride inside real data URIs and the
+assertion reads the assigned `src` property. **Complete the record; do not
+weaken the rule.**
+
+**One escaped mutant, and "it cannot inject" was not the same as "it is
+harmless".** Dropping the GALLERY's guard walked through every check, because
+`hydratePhotos()` assigns `src` as a property, so no script can run and the
+tile looks blank either way. What it does do is make the browser **FETCH
+whatever the string points at** — a backup carrying
+`https://example.invalid/beacon.png` turns every gallery paint into a beacon to
+a stranger's server, from the athlete's own device. The guard belongs there for
+that reason and now has a check that says so. **Ask what a value DOES, not only
+whether it can execute.**
+
+**Thirty mutants across v406, twenty-nine caught and one equivalent.**
+
+
+### "Erase everything" meant what STATE remembered, not what the device held (v406)
+
+The third finding in the same round, and the one with the worst consequence.
+`hardReset()` erased photographs like this:
+
+```js
+const ids=(STATE.photos||[]).map(p=>p.id);
+ids.forEach(id=>idbDel('ph_'+id));
+```
+
+**A blob whose ROW has already been replaced is invisible to that.** An import
+replaces `STATE.photos` wholesale, so every picture the athlete had before it
+becomes an orphan — bytes in IndexedDB with nothing pointing at them. Measured:
+
+| step | `ph_*` keys on the device |
+|---|---|
+| two of the athlete's own photographs | `mine1`, `mine2` |
+| restore a backup carrying one other | `mine1`, `mine2`, `theirs1` |
+| **"Erase your workout, food and profile data… This cannot be undone"** | **`mine1`, `mine2`** |
+
+Two pictures of somebody's body, surviving a full erase, unreachable from every
+screen, for ever. That is the most expensive promise in this app to leave
+unkept, and it is the same sentence v405 had just made true across two tabs.
+
+**Erase by what the STORE holds.** `prunePhotoBlobs(keepIds)` walks the real
+keys and deletes everything not named, so nothing can hide behind a row that is
+no longer in STATE.
+
+**The keep-list is the interesting part, because an undo needs the pictures the
+import replaced.** `undoImport()` restores the previous rows, so the outgoing
+blobs must survive the import — but an EARLIER import's orphans cannot be
+reached by that one step back, and they go. So the import keeps
+`outgoing ∪ incoming`, the undo keeps what it restored, and the erase keeps
+nothing. Measured across two imports and an undo, that is exactly the set that
+is still reachable at each point.
+
+**The floors are what stop it becoming "delete the photos".** An import must
+keep the outgoing pictures — an over-eager keep-list satisfies every assertion
+about the erase and silently breaks the undo the confirm promises one function
+away.
+
+### And the fifth reader was the one that writes the file (v406)
+
+Fixing the gallery, the viewer, the comparison and the file-saver was fixing
+four instances. **A stored photo blob has FIVE readers**, and `exportData()`
+was still asking truthiness:
+
+```js
+const d=await idbGet('ph_'+ph.id);
+if(d)clone._photoData[ph.id]=d;
+```
+
+Measured with one real photograph and one junk blob: the junk was **embedded in
+the backup file** and the toast said **"2 photos included"**. The count is
+derived from what was embedded, so it had everything it needed to say
+*"1 photo included · 1 photo file missing"* — that sentence already exists a
+line below and was reachable only through a shape test nobody was doing.
+
+It is the reader that matters most for a different reason from the others: the
+other four paint a screen, this one writes the file the athlete keeps and hands
+to their next phone.
+
+**The floor is two real photographs**, both embedded and neither reported
+missing — a guard that refused everything satisfies the case above and quietly
+empties every backup.
+
+**`grep -n "idbGet('ph_"` returns five lines, and all five now ask
+`photoData()`.** That is what closing a class looks like: not "I fixed the ones
+I found", but a list with a count and every member on it.
+
+
+### Three sweeps that came back clean (v406)
+
+Recorded as coverage, because a clean measurement is a result — and each one
+had its detector proven before its zero was believed.
+
+- **A years-old backup restored on today's app.** A file shaped the way this
+  app wrote them many versions ago: no `items` on a log, no `subs` on a
+  baseline, a v313 `_trainAgain` STRING, the two-value cardio mode, no prep
+  block, no hold log. It restores, boots, renders **14 panes** with no `NaN`,
+  no `undefined`, no `Invalid Date` and no throw, builds a real session (six
+  movements with a warm-up and a cool-down), and `validateData()` is clean. The
+  legacy `_trainAgain` string is correctly dropped rather than trusted.
+
+  **One reading was the probe**: `buildSession()` returns
+  `{ptr,pos,cycle,week,session,warmup,main,finisher,cooldown,dropped}` — there
+  is no `items`, so `s.items.length` threw and looked exactly like an app
+  defect. *Confirm the control's real shape before believing the result.*
+
+- **A session finished either side of midnight.** Driven with the wall clock
+  pinned to 23:57 and stepped past midnight: the log stays on the day it was
+  finished, `trainedToday()` flips correctly, the streak holds, and
+  `gapSince()` reports `{missed:0, off:0, days:0}` — no false "you missed a
+  session" for an athlete who trained four minutes ago.
+
+- **Injection through 24 NESTED stored values**, which is the gap v399's sweep
+  had: it drove 62 fields of STATE, and this one drives the values *inside*
+  them — a food row's name, meal, portion, `calc` and `src`; a favourite's
+  name; a measurement date; an achievement date; a photo id, date and pose; a
+  swap target; hold, lift and skip log rows; the prep block; an archived run; a
+  score-history row; the pain log; both feel maps; the voice name; the coach
+  id; the Azure region. Sixteen surfaces plus seven sheets: **no injected
+  element and nothing executed**, with a planted payload proving the detector
+  can see one.
+
+- **All eight Quick workouts, driven end to end** — opened by their real id,
+  every row marked, no `NaN`, no empty screen, no throw — and the pointer, the
+  log count and the streak are all unchanged afterwards, which is the promise
+  *"Bonus only; won't affect your program"* measured rather than read.
+
+- **And Quick asks the safety questions the sibling paths kept forgetting.**
+  With all four joints flagged, **no** movement in any Quick workout is risky
+  (guard: 148 of the library IS flagged, so the test can fire); with nothing
+  flagged, nothing is substituted; and with an empty gear list, no Quick
+  movement needs kit the athlete does not own. This is the fifth place
+  `safeSwap()` has been checked for after being forgotten by five sibling
+  paths, and it is not a sixth.
+
+  **The probe invented `startQuick(i)`, which does not exist** — the entry is
+  `openQuick(id)` and the workouts are keyed by id, not index. Eight
+  identical "THREW" lines that looked like a dead tab. *Confirm the control's
+  real shape before believing the result.*
+
+
+## The third picking path to skip the kit question (v407)
+
+Found by driving a surface no probe had run: every Special training format,
+end to end, as an athlete with four flagged joints and no equipment.
+
+`startSpecialFormat()` builds its one item straight from the format literal:
+
+```js
+const list=[{exId:f.exId,unit:'time',target:Math.round(f.w*60),…}];
+```
+
+It asks `maxEffortBlocked()` (v366) and nothing else. Measured on an athlete
+with an empty gear list: the grip sheet rendered **four tappable buttons**,
+nothing on screen named a pull-up bar, and tapping one started a session of
+**dead hangs they physically cannot do**.
+
+That is `startForceTrain()`'s v322 defect and `startHoldTest()`'s v366 defect,
+on a third picking path — and v366 had touched this very function to add the
+health gate without asking the other question. **A new path has to ask every
+question the old ones ask**, and so does an old path somebody has just edited.
+
+**It NAMES the kit rather than substituting, and here the arithmetic settles
+it rather than the principle.** `safeSwap('deadhang')` for a flagged shoulder
+is **Bird Dog** — a `unit:'reps'` movement — while the format prescribes
+`w*60` **seconds**. A silent swap would prescribe *"Bird Dog for 30 seconds"*
+under a Grip work heading. `gearNeededFor()` and the non-tappable
+*"needs Pull-up bar"* row already existed for the hold tests; this reuses both
+rather than inventing a second shape.
+
+**Two guards mean two checks**: the row does not offer it AND the starter
+refuses it, so a sheet left open from before the gear list changed cannot get
+past the row.
+
+**The joint half was already answered and is left alone.** `openGrip()` has
+carried `actRiskNoteHTML('deadhang', …)` since it was written, and a check
+pins that it still fires — a fix that swallowed it would satisfy every
+assertion about the bar.
+
+**Three floors, and each catches a different over-eager twin**: the athlete who
+owns a bar keeps all four buttons and can start them; the **box** formats need
+no kit at all and keep all three; and the health lock still locks the max hang.
+
+### The guard caught a sweep that proved nothing
+
+The first version of this probe read `INTV.steps`, which does not exist — the
+field is `seq`. It reported **zero risky movements across all seven formats
+for an athlete with four flagged joints**, which is exactly the answer a
+correct app would give, and it was measuring an empty list. A guard printing
+how many movements the sweep had actually seen turned seven convincing zeros
+into seven `steps: 0` lines in one run.
+
+**A sweep that reports clean must say how much it looked at.** This is the
+same trap as the v322 dead-control probe and the v390 duplicate-id detector,
+and the guard is the only thing that separates them.
+
+### And two more probe errors in the same round
+
+`startQuick(i)` does not exist — the Quick entry point is `openQuick(id)` and
+the workouts are keyed by id, not index, so eight identical "THREW" lines
+looked like a dead tab. And `safeSwap('deadhang', ['shoulder'])` returned
+`deadhang`: the second argument is ignored and the limitations are read off
+`STATE`, so the swap map looked dead until the profile was actually set.
+**Confirm the control's real shape before believing the result** — twice more,
+in one afternoon.
+
+### And then the whole class, swept
+
+`startSpecialFormat()` was the last member still missing a question, so the
+rest of the picking paths were driven as one athlete — **four joints flagged,
+no equipment at all, a tight room** — and every movement each path hands out
+was checked for a flagged joint, for kit the athlete does not own, and for an
+id that is not an exercise:
+
+| path | movements seen | problems |
+|---|---|---|
+| Bonus HIIT × 3 formats | 7 each | 0 |
+| Grinder × 3 formats | 3 each | 0 |
+| Special HIIT × 3 formats | 3 each | 0 |
+| `builderPool()` | 122 | 0 |
+| `correctiveBonus()` | 1 | 0 |
+
+**The counts are the point.** 148 of the 197-movement library is flagged for
+that athlete, so the test can fire; and a path reporting zero movements would
+otherwise pass for the wrong reason, which is exactly what the first run of
+this probe did.
+
+**`builderPool()` is asserted on GEAR only, and that is deliberate.** It
+carries risky movements on purpose — v267 established that the custom builder
+**warns rather than swaps**, because the athlete is choosing every movement by
+name and `customRiskHTML()` marks the flagged rows. A sweep that called those a
+leak would be re-deriving a rule the app has already decided, which is the
+`jointRisky()` false alarm v285 records.
+
+**Seven mutants, all caught** — including the four over-eager twins that each
+fail a different floor: treating every format as needing kit, taking the box
+formats' buttons away, swallowing the health lock, and silently substituting
+through `safeSwap()` instead of naming the kit.
+
+
+## The switch said On and the phone said no (v408)
+
+Found by asking of the reminder what v302 asked of the voice: **what does this
+screen claim, and is it knowable?** Both notification toggles are gated on
+`Notification.permission` at fire time, and neither said so. Measured with
+permission `denied`:
+
+| | |
+|---|---|
+| the chip | **On** |
+| the copy | *"Nudges you on your training days."* |
+| what can fire | **nothing, ever** |
+| what the screen said about that | **nothing** |
+
+**It is not a rare state.** Permission is revoked in phone settings long after
+the athlete turned the switch on, and `importData()` accepts a backup carrying
+`reminderOn:true` from a phone where it WAS granted. The answer is readable
+synchronously, so the app had it and printed the opposite.
+
+**Order the branches by what is knowable, and say which one it is** — v302's
+rule, one subsystem over. Three states, three different sentences, because a
+single "notifications are unavailable" tells the athlete nothing to act on: no
+Notification API at all names the iPhone Add-to-Home-Screen case, `denied`
+names the phone setting to change, and `default` says tapping the test button
+will ask.
+
+**The athlete's own switch is left where they put it.** Turning it off for them
+would be the app overriding a choice because the platform disagreed with it;
+what was missing is the sentence, not the setting.
+
+**The floors are what stop the note being noise.** A phone that has granted
+permission sees nothing at all, and with both switches off there is nothing to
+be blocked — the over-eager twin that always warns fails both.
+
+**And one branch no browser here can reach is exercised directly**: a device
+with no `Notification` API at all, by deleting it for the length of one call —
+the same technique the hardness-band and anchor-unit guards use.
+
+**Seven mutants, all caught** — after one was re-seeded. Its first form failed
+on a bad anchor (`anchor 0`), because the sentence it targeted carries a
+typographic quote that did not survive being retyped through a heredoc.
+**Take a mutation anchor VERBATIM from the file** — the same lesson v353
+recorded, and the assert is what turned a bad anchor into a clean no-op rather
+than a half-applied edit.
 
 
 ## Rendering

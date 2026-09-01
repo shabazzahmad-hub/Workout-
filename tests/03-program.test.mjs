@@ -434,6 +434,110 @@ export default async function run() {
     t.ok('and its screen says GET READY as before', /GET READY/.test(say.plainSub || ''), say);
   }
 
+  /* ---- a mid-session swap has to ask prescribe() for the SET COUNT too ----
+     playerSwap() computed rx = prescribe(exId, pos) and used only rx.target, so
+     swapping a two-sided movement for a PER-SIDE one kept the old count:
+     measured, a 3-set Bear Hold swapped for a Side Plank stayed at 3 — two sets
+     on one side and one on the other, the exact imbalance evenSets() exists to
+     prevent, arriving through the swap path. v351 fixed prescribe(); this
+     caller never asked it. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {};
+      // a real session slot holding a two-sided movement with an ODD count
+      let found = null;
+      for (let p = 0; p < 378 && !found; p++) {
+        const ss = buildSession(p);
+        const m = [...ss.main].find(x => x && !sidePerSet(x.exId) && x.sets % 2 === 1);
+        if (m) found = { p, exId: m.exId, sets: m.sets };
+      }
+      out.found = found;
+      if (!found) return out;
+      STATE.progressPtr = found.p;
+
+      openPlayer(buildSession(found.p));
+      const i = PLAYER.items.findIndex(x => x.exId === found.exId);
+      out.idx = i;
+      if (i < 0) return out;
+      PLAYER.i = i; PLAYER.s = 0;
+      out.before = { sets: PLAYER.items[i].sets, perSet: sidePerSet(PLAYER.items[i].exId) };
+      {const _rx = prescribe('sideplank', PLAYER.sess.pos);
+       out.prescribed = _rx.sets; out.prescribedTarget = _rx.target;}
+      out.beforeTarget = PLAYER.items[i].target;
+      playerSwap('sideplank');
+      out.after = { sets: PLAYER.items[i].sets, perSet: sidePerSet(PLAYER.items[i].exId),
+                    target: PLAYER.items[i].target, unit: PLAYER.items[i].unit };
+
+      /* FLOOR — a swap between two TWO-SIDED movements still takes what
+         prescribe() says and is not forced even. An "always round up" fix
+         satisfies every assertion above and quietly adds a set everywhere. */
+      /* playerSwap() PERSISTS the swap, so rebuilding the session no longer
+         holds the original movement — the second block found index -1 and threw
+         on plCur(). Each block builds the state it asserts on. */
+      STATE.swaps = {};
+      openPlayer(buildSession(found.p));
+      const j = PLAYER.items.findIndex(x => x.exId === found.exId);
+      out.j = j; if (j < 0) return out;
+      PLAYER.i = j; PLAYER.s = 0;
+      {const _rx = prescribe('crunch', PLAYER.sess.pos);
+       out.plainRx = _rx.sets; out.plainRxTarget = _rx.target;}
+      out.plainUnitBefore = PLAYER.items[j].unit;
+      playerSwap('crunch');
+      out.plainAfter = PLAYER.items[j].sets;
+      out.plainUnitAfter = PLAYER.items[j].unit;
+      out.plainTargetAfter = PLAYER.items[j].target;
+
+      /* FLOOR — a swap can never end the item underneath the athlete. On set 4
+         of 4, swapping to a movement prescribing fewer must still leave room
+         for the set they are standing in. */
+      STATE.swaps = {};
+      openPlayer(buildSession(found.p));
+      const k = PLAYER.items.findIndex(x => x.exId === found.exId);
+      out.k = k; if (k < 0) return out;
+      PLAYER.i = k; PLAYER.s = 5;                 // deliberately past the count
+      playerSwap('crunch');
+      out.strandGuard = PLAYER.items[k].sets;
+      playerQuit(); STATE.swaps = {};
+      return out;
+    });
+
+    t.ok('guard: the sweep found a two-sided movement on an odd set count',
+      r.found && r.found.sets % 2 === 1 && r.idx >= 0, JSON.stringify(r.found));
+    if (r.found && r.idx >= 0) {
+      t.ok('guard: and prescribe() really wants an even count for the per-side one',
+        r.prescribed % 2 === 0, JSON.stringify(r));
+      t.ok('guard: both floor blocks found the movement after clearing the swap',
+        r.j >= 0 && r.k >= 0, JSON.stringify({ j: r.j, k: r.k }));
+      t.eq('a swap to a per-side movement takes the prescribed count',
+        r.after.sets, r.prescribed, JSON.stringify(r));
+      t.ok('so it is never left odd', r.after.sets % 2 === 0 && r.after.perSet, JSON.stringify(r));
+      /* THE TARGET IS THE OTHER HALF, and nothing had ever pinned it: a mutant
+         that stopped re-prescribing it escaped, leaving the athlete doing the
+         new movement at the OLD movement's number. The guard is what makes the
+         assertion mean something — if the two targets happen to agree, an
+         unchanged value passes on nothing. */
+      t.ok('guard: the two movements really want different targets',
+        r.prescribedTarget !== r.beforeTarget,
+        JSON.stringify({ was: r.beforeTarget, wants: r.prescribedTarget }));
+      t.eq('and the target is re-prescribed for the movement actually being done',
+        r.after.target, r.prescribedTarget, JSON.stringify(r));
+      /* THE UNIT NEEDS A PAIR THAT ACTUALLY DIFFERS. Bear Hold and Side Plank
+         are both timed, so a mutant that stopped updating the unit was
+         equivalent here and escaped — a guard that cannot fire in the case you
+         tested is not tested. The reps swap below is what discriminates. */
+      t.eq('with the movement\u2019s own unit', r.after.unit, 'time');
+      t.eq('FLOOR: a swap between two-sided movements is not forced even',
+        r.plainAfter, r.plainRx, JSON.stringify(r));
+      t.ok('guard: this swap really does change the unit',
+        r.plainUnitBefore === 'time', JSON.stringify({ before: r.plainUnitBefore }));
+      t.eq('so a timed movement swapped for a rep one carries reps', r.plainUnitAfter, 'reps');
+      t.eq('and that movement\u2019s own target', r.plainTargetAfter, r.plainRxTarget,
+        JSON.stringify({ got: r.plainTargetAfter, want: r.plainRxTarget }));
+      t.ok('FLOOR: and a swap never ends the item underneath the athlete',
+        r.strandGuard >= 6, JSON.stringify({ onSet: 6, sets: r.strandGuard }));
+    }
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }

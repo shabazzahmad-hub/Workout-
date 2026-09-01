@@ -327,6 +327,116 @@ export default async function run() {
     t.eq('a bar-free athlete is never offered a parallette movement', r.offered.length, 0, r);
   }
 
+  /* ---- the two gates fail CLOSED on a movement that does not exist -------
+     swapStillValid()'s own comment has said "fails CLOSED" since it was
+     written, and it did — for a THROW. For a target that is not an exercise at
+     all it answered YES: measured, a missing id, {}, 42 and undefined all came
+     back true, because hasGearFor() read "no equipment needed" out of "no
+     exercise" and safeSwap() hands an unknown id straight back, so the identity
+     test held. A comment claiming an invariant is not the invariant.
+
+     Every caller today guards with EX[...] first, so nothing changes on any
+     live path — measured byte-identical across 486 sessions x 9 athlete
+     configurations. The contracts are therefore pinned DIRECTLY, the way
+     prepDatePassed() is: a guard consulted in one narrow branch still has to
+     mean what it is named. */
+  {
+    const r = await page.evaluate(() => {
+      const sv = v => { try { return swapStillValid(v); } catch (e) { return 'THREW'; } };
+      const hg = v => { try { return hasGearFor(v); } catch (e) { return 'THREW'; } };
+      const junk = ['not-an-exercise', '', 'constructor'];
+      return {
+        // FLOOR — a real bodyweight movement is still valid and still needs no kit
+        realValid: sv('pushup'), realGear: hg('pushup'),
+        // FLOOR — a movement whose kit the athlete lacks is still refused for that
+        gearedGear: hg('kbrow'),
+        junkValid: junk.map(sv), junkGear: junk.map(hg),
+        objValid: sv({}), numValid: sv(42), undefValid: sv(undefined),
+        objGear: hg({}), numGear: hg(42), undefGear: hg(undefined),
+        // guard: the seeded athlete really does own nothing, or the floors are vacuous
+        gear: (STATE.profile.gear || []).slice()
+      };
+    });
+
+    t.ok('guard: the athlete owns no kettlebell, so the geared floor can fire',
+      r.gear.indexOf('kettlebell') < 0, JSON.stringify(r.gear));
+    t.eq('FLOOR: a real bodyweight movement is still a valid swap', r.realValid, true);
+    t.eq('FLOOR: and still needs no equipment', r.realGear, true);
+    t.eq('FLOOR: a movement whose kit they lack is still refused', r.gearedGear, false);
+    r.junkValid.forEach((v, i) => t.eq(
+      `a movement that does not exist is not a valid swap (${JSON.stringify(['not-an-exercise','','constructor'][i])})`,
+      v, false));
+    r.junkGear.forEach((v, i) => t.eq(
+      `nor does it read as needing no equipment (${JSON.stringify(['not-an-exercise','','constructor'][i])})`,
+      v, false));
+    t.eq('an object is not a valid swap', r.objValid, false);
+    t.eq('nor a number', r.numValid, false);
+    t.eq('nor undefined', r.undefValid, false);
+    t.eq('and none of them reads as needing no equipment',
+      [r.objGear, r.numGear, r.undefGear].join(','), 'false,false,false');
+  }
+
+  /* ---- an inherited key is not an exercise, at every gate ----------------
+     EX is an object literal, so EX['constructor'] is Object.prototype.
+     constructor — TRUTHY — and every `EX[id] &&` guard in the app passed it.
+     Reachable: STATE.swaps and customFav both come out of an import and both
+     were only ever truthiness-tested. Measured end to end BEFORE the fix: a
+     stored swap of 'constructor' survived the boot, became the session's
+     finisher with target NaN, and Today printed "undefined  1 x NaN reps".
+     Same trap v328 recorded for CARDIO_INFO, one map over. */
+  {
+    const r = await page.evaluate(() => {
+      const K = 'constructor';
+      const o = {};
+      o.truthy = !!EX[K];                       // guard: the trap is real
+      o.known = exKnown(K);
+      o.knownReal = exKnown('pushup');
+      o.knownNonString = exKnown(42);
+
+      // the WRITER
+      STATE.swaps = {};
+      setSwap(0, '__fin', K);
+      o.writerStored = JSON.stringify(STATE.swaps);
+      setSwap(0, '__fin', 'squatjack');         // FLOOR: a real target still stores
+      o.writerReal = JSON.stringify(STATE.swaps);
+
+      // the BOOT REPAIR — drops the bad target, keeps the athlete's real ones
+      STATE.swaps = { 0: { __fin: K, focus: 'pushup' }, 1: { __fin: 'not-an-exercise' } };
+      normalizeState();
+      o.repaired = JSON.stringify(STATE.swaps);
+
+      // end to end: the session card no longer carries a movement that is not one
+      STATE.swaps = {}; STATE.swaps[STATE.progressPtr] = { __fin: K };
+      normalizeState();
+      const sess = buildSession(STATE.progressPtr);
+      o.finisher = sess.finisher ? String(sess.finisher.exId) + ':' + String(sess.finisher.target) : '(none)';
+      go('today'); setTodayTab('workout');
+      const txt = document.querySelector('#v-today').textContent;
+      o.cardNaN = /NaN/.test(txt) || /undefined/.test(txt);
+
+      // customFav: the repair intends "real exercises only", and starting one builds a session
+      STATE.customFav = [{ name: 'Bad', items: [K, 'not-an-exercise', 'pushup'] }];
+      normalizeState();
+      o.favAfterBoot = JSON.stringify(STATE.customFav);
+      return o;
+    });
+
+    t.ok('guard: EX[\'constructor\'] really is truthy, so the trap is real', r.truthy);
+    t.eq('the membership test refuses an inherited key', r.known, false);
+    t.eq('FLOOR: and still accepts a real movement', r.knownReal, true);
+    t.eq('and refuses a non-string', r.knownNonString, false);
+    t.eq('the swap writer refuses to store an inherited key', r.writerStored, '{}');
+    t.eq('FLOOR: and still stores a real one', r.writerReal, '{"0":{"__fin":"squatjack"}}');
+    t.eq('the boot repair drops a bad target and keeps the real one',
+      r.repaired, '{"0":{"focus":"pushup"}}');
+    t.ok('so the session finisher is a real movement again',
+      r.finisher !== '(none)' && r.finisher.indexOf('constructor') < 0
+        && r.finisher.indexOf('NaN') < 0, r.finisher);
+    t.eq('and the session card prints no NaN', r.cardNaN, false);
+    t.eq('a saved favourite keeps only movements that exist',
+      r.favAfterBoot, '[{"name":"Bad","items":["pushup"]}]');
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }
