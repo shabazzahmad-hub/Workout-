@@ -1849,7 +1849,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='413';
+const APP_VERSION='414';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -1975,17 +1975,90 @@ function save(){
      error). On such a phone localStorage failing means NOTHING is saved
      anywhere, and the athlete was told the opposite: a promise in UI text with
      no code behind it, on the persistence layer, where it costs a session.
-     idbPut() is fire-and-forget through a 120 ms timer, so the mirror is
-     claimed only when there is genuinely one to claim. */
+     Checking `idb` was only half of it — see the comment on the write below,
+     which is what decides the wording now. */
   try{localStorage.setItem(STORE_KEY,json);_lsOk=true;}
-  catch(e){_lsOk=false;if(!_lsWarned){_lsWarned=true;try{
-    toast(idb?'Storage full — backing up to device store. Export a backup.'
-            :'Storage is full and this browser has no backup store — nothing is being saved. Export a backup now.',
-          idb?2100:7000);
-  }catch(_){}}}
-  clearTimeout(saveT);saveT=setTimeout(()=>idbPut(STORE_KEY,json),120);
+  catch(e){_lsOk=false;}
+  /* THE MIRROR IS CLAIMED ONLY ONCE IT HAS TAKEN THE WRITE.
+     The branch above chose its wording from `idb` — whether the store OPENED —
+     and idbPut() has reported whether the write LANDED since it was made to
+     await its own transaction. save() was the one caller that threw that answer
+     away, while the photo writer and the backup restore both use it. Measured on
+     a page whose store is open, with localStorage failing and the transaction
+     failing too:
+
+       said:      "Storage full — backing up to device store. Export a backup."
+       idbPut():  false
+
+     …the identical sentence the working case gets, on a save that landed
+     NOWHERE. And it is not the rare case: localStorage and IndexedDB share the
+     origin's quota, so a genuinely full phone fails both — the branch that lies
+     is the common one.
+
+     So nothing is claimed until the write answers. Three causes, three
+     sentences, one toast: the mirror took it, the mirror refused it, or this
+     browser has no mirror at all. The delay is one debounce plus a write, which
+     is imperceptible on a toast and is the difference between a true sentence
+     and a false one. It still warns once per session — _lsWarned moved into the
+     callback with it — and says nothing at all when localStorage is fine,
+     because a mirror that fails behind a good localStorage has lost nothing. */
+  clearTimeout(saveT);saveT=setTimeout(()=>{idbPut(STORE_KEY,json).then(ok=>{
+    if(_lsOk||_lsWarned)return;
+    _lsWarned=true;
+    try{toast(ok?'Storage full — backing up to device store. Export a backup.'
+               :idb?'Storage is full and the backup store refused it too — nothing is being saved. Export a backup now.'
+                   :'Storage is full and this browser has no backup store — nothing is being saved. Export a backup now.',
+             ok?2100:7000);}catch(_){}
+  });},120);
 }
 let _lsOk=true,_lsWarned=false;
+/* ONE PARSER FOR EVERY STORED STATE.
+   importData() has stripped __proto__ with a reviver for many versions, and its
+   own comment names the danger exactly: Object.assign(target,{__proto__:x})
+   REASSIGNS THE TARGET'S PROTOTYPE, because Object.prototype.__proto__ is an
+   accessor. JSON.parse creates __proto__ as an OWN data property, so it survives
+   the parse and fires on the next assign.
+
+   Three siblings that feed the SAME Object.assign never got it — load()'s own
+   parser, the cross-tab storage listener, and both one-step-back restores.
+   loadState() does four assigns from the parsed object (STATE, settings, profile,
+   nutrition), so all four objects were exposed. Measured, with the poison in the
+   stored state:
+
+     Object.getPrototypeOf(STATE)              !== Object.prototype   -> true
+     Object.getPrototypeOf(STATE.settings)     !== Object.prototype   -> true
+     Object.getPrototypeOf(STATE.profile)      !== Object.prototype   -> true
+     Object.getPrototypeOf(STATE.nutrition)    !== Object.prototype   -> true
+
+   It is not a curiosity. An "absent" read is a load-bearing contract all over
+   this app — absent means the athlete has not chosen — and a prototype answers
+   every absent read. Driven on a profile carrying parq:["heart"]:
+
+     parqDone()  true    medCleared()  true    safeMode()  FALSE
+
+   …so the health screen's own promise, that an uncleared athlete is held well
+   short of failure, fails OPEN. normalizeState()'s coercion makes it worse
+   rather than better: it READS the inherited value and writes it back as an own
+   key, so the clearance survives every boot.
+
+   NO ATHLETE-REACHABLE DOOR EXISTS TODAY, and saying so is the honest framing:
+   importData() is the one route arbitrary JSON arrives by and it was already
+   guarded, and the poison does not round-trip — Object.assign sets a PROTOTYPE
+   rather than an own key, so JSON.stringify(STATE) never emits it again
+   (measured: false). This is a latent-class fix. The class is what matters: the
+   codebase already knew the shape was illegal and checked for it in one place
+   and not the other three.
+
+   Object.prototype itself is never touched — Object.assign is not a recursive
+   merge — so the blast radius is the object being assigned into and nothing
+   wider. Measured: ({}).pwn stays undefined.
+
+   NOT in this class, measured rather than assumed: the model-response parse in
+   _visionEstimate() reads o.kcal/o.protein/… field by field, coerces each, and
+   returns a fresh object literal, so nothing of the model's shape propagates;
+   and every JSON.parse(JSON.stringify(x)) deep clone is of an object this app
+   built itself. */
+function _jsonSafe(t){return JSON.parse(t,(k,v)=>k==='__proto__'?undefined:v);}
 async function load(){
   let json=null;
   try{json=localStorage.getItem(STORE_KEY);}catch(e){}
@@ -1993,7 +2066,7 @@ async function load(){
   // Take whichever copy is genuinely newer. Preferring localStorage unconditionally
   // meant that after a quota failure the stale copy won forever and the fresher
   // mirror was never even read.
-  const parse=t=>{if(!t)return null;try{const o=JSON.parse(t);return (o&&typeof o==='object')?o:null;}catch(e){return null;}};
+  const parse=t=>{if(!t)return null;try{const o=_jsonSafe(t);return (o&&typeof o==='object')?o:null;}catch(e){return null;}};
   let a=parse(json), bmir=parse(mirror);
   // A corrupt localStorage entry used to win simply by being non-empty: it never
   // reached the mirror branch, parsing threw, and the athlete was dropped back to
@@ -2046,7 +2119,7 @@ window.addEventListener('storage',async e=>{
        go, so the workout its data would be written into is meaningless. No new
        stored field is needed: an incoming state that is not onboarded while ours
        is can only be a reset. */
-    let incoming=null; try{incoming=JSON.parse(e.newValue);}catch(_){}
+    let incoming=null; try{incoming=_jsonSafe(e.newValue);}catch(_){}
     const wasReset=!!(incoming&&incoming.onboarded===false&&STATE&&STATE.onboarded===true);
     if(!wasReset&&typeof _sessionLive==='function'&&_sessionLive())return;
     if(wasReset){
@@ -21342,12 +21415,11 @@ function carryDeviceCreds(old){
 function importData(e){
   const f=e.target.files[0];if(!f)return;const r=new FileReader();
   r.onload=()=>{try{
-    /* A reviver that drops __proto__ at every level (not just the few objects
-       the merges below touch by hand) — Object.assign(target,{__proto__:x})
-       reassigns the TARGET's own prototype chain, since Object.prototype has
-       a __proto__ ACCESSOR. Returning undefined from a JSON.parse reviver
-       deletes that key from the result before it ever reaches Object.assign. */
-    const p=JSON.parse(r.result,(k,v)=>k==='__proto__'?undefined:v);
+    /* _jsonSafe drops __proto__ at every level, so the merges below cannot have
+       the TARGET's prototype reassigned out from under them. The rule used to be
+       written out here and nowhere else, which left load(), the cross-tab
+       listener and both restores exposed — see _jsonSafe for what that measured. */
+    const p=_jsonSafe(r.result);
     if(!p||typeof p!=='object'||!p.version){toast('Not a CoreForge backup');return;}
     /* hardReset() — equally destructive to current progress — asks TWICE and
        tells the athlete to back up first. Restoring a backup replaces STATE
@@ -21447,7 +21519,7 @@ function undoCrossTab(){
   if(!raw){toast('Nothing to restore');return;}
   if(typeof confirm==='function'&&!confirm('Put back what this tab had before another tab saved over it? The other tab\'s newer changes — and anything logged since — are replaced, and this cannot be undone.'))return;
   try{
-    const p=JSON.parse(raw);
+    const p=_jsonSafe(raw);
     if(!p||typeof p!=='object')throw new Error('bad snapshot');
     STATE=p;
     normalizeState();save();
@@ -21472,7 +21544,7 @@ function undoImport(){
      false, one function over. */
   if(!confirm('Undo the last import and restore what was here before it? Anything you have logged SINCE the import is replaced too, and this cannot be undone.'))return;
   try{
-    const p=JSON.parse(raw);
+    const p=_jsonSafe(raw);
     if(!p||typeof p!=='object')throw new Error('bad snapshot');
     STATE=p;
     normalizeState();save();

@@ -12890,6 +12890,197 @@ rather than which check found what. That is the trap this file already records
 twice: **red is not enough, it has to say what.** A guard now asserts the probe
 returned a reading at all, before anything is asserted about its contents.
 
+## The rule was written at one site and named the danger for all four (v414)
+
+`importData()` has parsed a backup through a reviver that drops `__proto__` for
+many versions, and its own comment says exactly why: **`Object.assign(target,
+{__proto__:x})` REASSIGNS THE TARGET'S PROTOTYPE**, because
+`Object.prototype.__proto__` is an accessor, and `JSON.parse` creates
+`__proto__` as an **own data property** so it survives the parse and fires on
+the next assign.
+
+**Three siblings that feed the SAME `Object.assign` never got it** — `load()`'s
+own parser, the cross-tab `storage` listener, and both one-step-back restores.
+`loadState()` does four assigns from the parsed object, so all four were
+exposed:
+
+| | measured with the poison in the stored state |
+|---|---|
+| `Object.getPrototypeOf(STATE)` | **not `Object.prototype`** |
+| `…(STATE.settings)` | **not `Object.prototype`** |
+| `…(STATE.profile)` | **not `Object.prototype`** |
+| `…(STATE.nutrition)` | **not `Object.prototype`** |
+
+**It is not a curiosity, because "absent" is a load-bearing contract all over
+this app** — absent means *the athlete has not chosen* — and a prototype answers
+every absent read. Driven on a profile carrying `parq:["heart"]`:
+
+```
+parqDone()  true      medCleared()  true      safeMode()  FALSE
+```
+
+So the health screen's own promise — that an uncleared athlete is held well
+short of failure — **fails open**, on the one gate this file opens with.
+`normalizeState()`'s coercion makes it *worse*: it READS the inherited value and
+writes it back as an own key, so the clearance then survives every boot.
+
+**NO ATHLETE-REACHABLE DOOR EXISTS TODAY, and saying so is the honest framing.**
+`importData()` is the one route arbitrary JSON arrives by and it was already
+guarded, and the poison does not round-trip — `Object.assign` sets a PROTOTYPE
+rather than an own key, so `JSON.stringify(STATE)` never emits it again
+(measured: false). This is a latent-class fix, and the class is the point: **the
+codebase already knew the shape was illegal and checked for it in one place and
+not the other three** — v284's sentence, on the safety gate rather than on a
+keyed map.
+
+`Object.prototype` itself is never touched, and that was measured too:
+`Object.assign` is not a recursive merge, so the blast radius is the object
+being assigned into and nothing wider.
+
+### What is NOT in the class, measured rather than assumed
+
+`_visionEstimate()` parses the model's own reply with a bare `JSON.parse`. It
+reads `o.kcal`, `o.protein`, `o.carbs`, `o.fat` **field by field**, coerces each
+with `Math.round(+x||0)`, and returns a **fresh object literal** — so nothing of
+the model's shape propagates, and `o` is never an `Object.assign` SOURCE. Every
+other `JSON.parse` in the file is `JSON.parse(JSON.stringify(x))` on an object
+this app built itself. **Read the producer before believing the consumer is
+exposed** — the third time this file has recorded that.
+
+### The probe reported SAFE, and the probe was measuring nothing
+
+The first run wrote the poison to `coreforge_state_v1` — a key name I invented.
+The real one is `STORE_KEY`, `coreforge.v1`. So `load()` read the athlete's real
+(clean) state and every reading came back clean, on an app that was wide open.
+
+Two guards are what make the shipped check trustworthy, and neither is optional:
+a JSON `__proto__` key really is an OWN property, and `Object.assign` really
+does reassign the target's prototype. **Without them the whole block is
+satisfied by an app that does nothing** — there would be no defect to fix.
+*Confirm the control's real shape before believing the result*, for the tenth
+time in this file.
+
+### The floor is the athlete's own data
+
+A reviver that dropped too much satisfies every assertion above and empties the
+state. So a clean stored state is pinned field by field — a name, an age, a
+theme, a goal, and still onboarded — and the loader, both restores and the
+importer must each still work.
+
+**And the rule has to be ASKED FOR, not merely declared.** A check counting the
+declaration passes while a consumer keeps its own bare `JSON.parse`, which is
+exactly the drift that produced this round. The source assertion pins that the
+reviver is written **exactly once** and that all four readers name the helper —
+the `WEIGHTS_PATTERNS` lesson, one subsystem over.
+
+
+## The write reported a failure and the one caller that mattered ignored it (v414)
+
+v406 made `idbPut()` **await its own transaction and return whether the write
+landed**, because before that every caller's success report was a guess. Two of
+the three callers use the answer — the photo writer and the backup restore.
+**`save()` does not, and it is the one that persists the whole training
+history.**
+
+Its message was chosen from `idb` — whether the store OPENED — never from
+whether the write LANDED. Measured on a page whose store is open, with
+localStorage failing and the transaction failing too:
+
+| | |
+|---|---|
+| what it said | *"Storage full — backing up to device store. Export a backup."* |
+| what `idbPut()` returned | **false** |
+| what was saved | **nothing, anywhere** |
+
+That is the identical sentence the working case gets, on a save that landed
+nowhere — a promise in UI text with no code behind it, on the persistence
+layer, where the cost is a training session the athlete believes is recorded.
+
+**AND IT IS THE COMMON CASE, NOT THE RARE ONE.** localStorage and IndexedDB
+share the origin's storage quota, so a genuinely full phone fails both. The
+branch that lies is the one a full device actually takes.
+
+**Nothing is claimed until the write answers.** Three causes, three sentences,
+one toast: the mirror took it, the mirror refused it, or this browser has no
+mirror at all. The delay is one debounce plus a write — imperceptible on a
+toast, and the difference between a true sentence and a false one. It still
+warns once a session, because `_lsWarned` moved into the callback with it.
+
+**Two floors, and the second is the one that stops the fix becoming noise.** A
+mirror that fails behind a WORKING localStorage says nothing at all — the data
+is saved, so a warning there is a note about a state that is fine. And an
+ordinary save warns about nothing. Every over-eager twin fails one of them.
+
+### The guard is what makes the block worth running
+
+With `idb` null every case takes the no-store branch and the whole block passes
+on an app that does nothing. The check asserts the store really is open before
+it asserts anything about what the app said.
+
+### Two sweeps that came back clean, recorded as coverage
+
+- **Every localStorage key the app writes** — three (`STORE_KEY`,
+  `PREIMPORT_KEY`, `CROSSTAB_KEY`) — against what `hardReset()` erases. Both
+  snapshots are removed, so *"this cannot be undone"* holds on that path.
+- **Every other door into `innerHTML`.** Zero `insertAdjacentHTML`, zero
+  `outerHTML`, zero `document.write`, zero `eval`, zero `new Function`, zero
+  string-bodied timers, and **two** `setAttribute` calls, both with literal
+  values — the count is what makes the zero a measurement rather than a
+  statement about the regex. All 12 `.src =` assignments were read: three are
+  app constants, one is a `FileReader` result the athlete just picked, and
+  **every one of the five that reads a stored photo blob goes through
+  `photoData()`**, which is v406's guard.
+
+
+## Green on the branch, red on main, and both were my checks (v414)
+
+v413's `test` job passed on the pull request and the suite passed three times
+locally. The **same commit went red on `main`** — four checks, all of them mine
+from the round before, and none of them an app defect. `deploy` is `needs:
+test`, so it showed as **skipped**: the version shipped nowhere and nothing
+said so. That is the case the shipping checklist already warns about, and it is
+why the jobs are checked rather than the run.
+
+**Neither failure is a flake, and "re-run it" would have been the wrong
+answer.** Both are races my checks lost on a slower runner, and both are
+lessons already in this file wearing new clothes.
+
+### A fixed sleep cannot wait for a canvas encode
+
+Every card in the share block is drawn by `canvas.toBlob`, which is
+**asynchronous and costs whatever the machine costs**. The block waited a flat
+500 ms per case. On the CI runner:
+
+| check | expected | got |
+|---|---|---|
+| the milestone card falls back too | 1 download | **2** — the previous case's landed inside this one |
+| a browser with no Web Share still gets the file | 1 download | **0** — it had not landed yet |
+| and is still told | a toast | **empty** |
+
+**Wait for the ENCODE, never for a duration.** `toBlob` is wrapped so each call
+registers a promise, and `run()` drains them before it reads anything back. The
+short tail that remains only has to cover the share promise's own microtask
+chain, which is not machine-dependent in the same way.
+
+### A late toast wins a remove-then-sleep
+
+v413 already learned that **a computed style read during a transition describes
+the animation**, and added a 450 ms wait. That is necessary and not sufficient:
+anything in the app that toasts on a timer re-adds `.show` inside the wait, and
+the check then reports the animation of a toast that is legitimately showing —
+measured on CI as `opacity: 1` on correct code.
+
+It now removes `.show` on every poll and waits for the settle, so the assertion
+is about the hiding RULE rather than about what else happened to be on screen.
+The `display` and `visibility` assertions read the same snapshot, so a mutant
+that hides the toast either of those ways is still caught — which was **proved
+by re-running those mutants against the rewritten check**, not assumed.
+
+**A check that is loosened to stop racing must be re-mutated.** Loosening is
+exactly how a check stops being able to fail, so the six v413 seeds whose checks
+this round touched were re-seeded against the new file alongside the new ones.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
