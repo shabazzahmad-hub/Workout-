@@ -2169,45 +2169,65 @@ export default async function run() {
      phone state (private browsing blocks it), and on such a phone a
      localStorage failure means NOTHING is saved anywhere. The athlete was told
      the opposite, on the persistence layer, which is the most expensive place
-     in the app to be reassured wrongly. */
+     in the app to be reassured wrongly.
+
+     v414 MOVED WHERE THE WORDING COMES FROM, so this block moved with it. The
+     message used to be chosen from whether the store had OPENED and fired in
+     the same tick; it is now chosen from whether the write LANDED, which
+     idbPut() has reported since v406 and save() was the one caller throwing
+     away. So every reading here has to wait for the deferred write — a
+     synchronous read now sees an empty toast on correct code. The requirement
+     is unchanged: the sentence must be true of this phone. */
   {
     const { browser, page, errors } = await launch(port);
     await seedAthlete(page);
-    const r = await page.evaluate(() => {
+    const r = await page.evaluate(async () => {
       const out = {};
       const realIdb = idb;
       const ls = localStorage.setItem.bind(localStorage);
       const boom = () => { throw new Error('QuotaExceededError'); };
       const shot = () => (document.getElementById('toast') || {}).textContent || '';
       const clear = () => { const t = document.getElementById('toast'); if (t) t.textContent = ''; };
+      /* Wait for the deferred write to answer. save() debounces the mirror by
+         120 ms and only then chooses its wording. */
+      const settle = () => new Promise(r2 => setTimeout(r2, 500));
 
-      /* A mirror EXISTS: the original message is the true one. */
-      _lsWarned = false; idb = realIdb || { fake: 1 };
-      localStorage.setItem = boom; clear(); save(); localStorage.setItem = ls;
+      /* GUARD: the store this page really has is open, so the "with a mirror"
+         case below is genuinely a write that can land. */
+      out.guardRealIdb = !!realIdb;
+
+      /* A mirror that TAKES the write: the original message is the true one. */
+      _lsWarned = false; _lsOk = true; idb = realIdb;
+      localStorage.setItem = boom; clear(); save();
+      await settle(); localStorage.setItem = ls;
       out.withMirror = shot();
 
       /* NO mirror: the message must not claim one. */
-      _lsWarned = false; idb = null;
-      localStorage.setItem = boom; clear(); save(); localStorage.setItem = ls;
+      _lsWarned = false; _lsOk = true; idb = null;
+      localStorage.setItem = boom; clear(); save();
+      await settle(); localStorage.setItem = ls;
       out.noMirror = shot();
 
       /* FLOOR — an ordinary save says nothing at all. A warning that always
          fires is a warning nobody reads, and it would fire on every write. */
-      _lsWarned = false; idb = realIdb; clear(); save();
+      _lsWarned = false; _lsOk = true; idb = realIdb; clear(); save();
+      await settle();
       out.healthy = shot();
 
       /* FLOOR — it still warns only ONCE, whichever branch it took. The first
          version of this never let a warning fire before looking, so it was
          asserting on the FIRST one and failed on correct code. The pair is the
          test: one warning, then silence. */
-      _lsWarned = false; idb = null; localStorage.setItem = boom;
-      clear(); save(); out.firstOfPair = shot();
-      clear(); save(); out.second = shot();
+      _lsWarned = false; _lsOk = true; idb = null; localStorage.setItem = boom;
+      clear(); save(); await settle(); out.firstOfPair = shot();
+      clear(); save(); await settle(); out.second = shot();
       localStorage.setItem = ls;
 
-      idb = realIdb; _lsWarned = false;
+      idb = realIdb; _lsWarned = false; _lsOk = true;
       return out;
     });
+
+    t.ok('guard: this page really has an open device store', r.guardRealIdb, JSON.stringify(r));
 
     t.ok('with a device store behind it, the message still names it',
       /device store/i.test(r.withMirror) && /Export a backup/i.test(r.withMirror), JSON.stringify(r));

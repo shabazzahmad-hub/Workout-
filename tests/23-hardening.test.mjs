@@ -7976,11 +7976,28 @@ export default async function () {
         if (this.hasAttribute('download')) { downloads++; lastName = this.download || ''; }
         else realClick.call(this);
       };
+      /* WAIT FOR THE ENCODE, NEVER FOR A DURATION. canvas.toBlob is
+         asynchronous and its cost is the machine's, so a fixed sleep is a race:
+         on a slower CI runner one case's download landed inside the NEXT case
+         (measured: downloads 2 where 1 was expected) and the last case's never
+         landed at all (0 where 1 was expected). Every card in this block is
+         drawn by toBlob, so awaiting the encode makes the settle deterministic
+         and the short tail below only has to cover the share promise's own
+         microtask chain. */
+      let pending = [];
+      const realToBlob = HTMLCanvasElement.prototype.toBlob;
+      HTMLCanvasElement.prototype.toBlob = function (cb, ...rest) {
+        let done; pending.push(new Promise(r => { done = r; }));
+        return realToBlob.call(this, b => { try { cb(b); } finally { done(); } }, ...rest);
+      };
       const run = async fn => {
         const t = el(); if (t) t.textContent = '';
-        downloads = 0; lastName = '';
+        downloads = 0; lastName = ''; pending = [];
         try { fn(); } catch (e) { return { toast: 'THREW: ' + e, downloads: 0, name: '' }; }
-        await new Promise(r => setTimeout(r, 500));
+        for (let i = 0; i < 20 && pending.length; i++) {
+          const p = pending; pending = []; await Promise.all(p);
+        }
+        await new Promise(r => setTimeout(r, 200));
         return { toast: rec(), downloads, name: lastName };
       };
       const reject = name => () => Promise.reject(Object.assign(new Error('x'), { name }));
@@ -8004,6 +8021,8 @@ export default async function () {
       out.helperExists = typeof _shareBlob === 'function';
       const noBlob = await run(() => _shareBlob(null, 'x.png', 'T'));
       out.noBlob = noBlob;
+      HTMLCanvasElement.prototype.toBlob = realToBlob;
+      HTMLAnchorElement.prototype.click = realClick;
       return out;
     });
 
@@ -8063,9 +8082,21 @@ export default async function () {
          computed style read on the same tick reports the value being animated
          FROM — measured, opacity 1 — which is a statement about the animation
          rather than about the hiding rule. */
-      t.classList.remove('show');
-      await wait(450);
-      const cs = getComputedStyle(t);
+      /* AND A LATE TOAST MUST NOT WIN THE READ. A single remove-then-sleep
+         failed on a loaded CI runner reporting opacity 1 — anything in the app
+         that toasts on a timer re-adds .show inside the wait, and the check then
+         reports the animation of a toast that is legitimately showing. Removing
+         it on every poll and waiting for the settle is what makes this a
+         statement about the hiding RULE rather than about what else was on
+         screen. The display and visibility assertions read the same snapshot,
+         so a mutant that hides the toast either of those ways is still caught. */
+      let cs = null;
+      for (let i = 0; i < 40; i++) {
+        t.classList.remove('show');
+        await wait(60);
+        cs = getComputedStyle(t);
+        if (cs.opacity === '0') break;
+      }
       out.hidden = { display: cs.display, visibility: cs.visibility, opacity: cs.opacity };
 
       /* The same message twice: assigning textContent replaces the text node,
@@ -8265,6 +8296,194 @@ export default async function () {
     t.ok('guard: the scan read the real app', off.src.len > 400000, String(off.src.len));
     t.ok('every navigator.onLine read is one-sided — false is trustworthy, true is not',
       off.src.reads > 0 && off.src.reads === off.src.strictFalse + off.src.notFalse, off.src);
+  }
+
+  /* 22. ONE PARSER FOR EVERY STORED STATE (v414).
+     importData() has stripped __proto__ with a reviver for many versions, and its
+     own comment named the danger. Three siblings that feed the SAME Object.assign
+     never got it. Every assertion here is on the PAYLOAD — the prototype of the
+     object the app is actually using, and the verdict of the safety gate — never
+     on whether the helper was called. */
+  {
+    const probe = await page.evaluate(async () => {
+      const out = {};
+      /* GUARDS FIRST. Without these the whole block passes on nothing: if a
+         JSON __proto__ key were not an OWN property, or if Object.assign did not
+         reassign the target's prototype, there would be no defect to fix and
+         every assertion below would be satisfied by an app that did nothing. */
+      const poison = JSON.parse('{"__proto__":{"pwn":"YES"}}');
+      out.guardOwnKey = Object.prototype.hasOwnProperty.call(poison, '__proto__');
+      out.guardAssignBites =
+        Object.getPrototypeOf(Object.assign({}, poison)) !== Object.prototype;
+
+      const K = STORE_KEY;
+      const POISONED = '{"version":1,"onboarded":true,"_savedAt":9999999999999,'
+        + '"profile":{"parq":["heart"],"__proto__":{"parqDone":true,"medCleared":true}},'
+        + '"settings":{"__proto__":{"pwnS":"YES"}},'
+        + '"nutrition":{"__proto__":{"pwnN":"YES"}}}';
+
+      // (a) the loader — four Object.assigns from the parsed object
+      localStorage.setItem(K, POISONED);
+      try { await idbPut(K, POISONED); } catch (e) {}
+      await load(); normalizeState();
+      out.load = {
+        heartStillDeclared: JSON.stringify(STATE.profile.parq),
+        stateProto: Object.getPrototypeOf(STATE) === Object.prototype,
+        settingsProto: Object.getPrototypeOf(STATE.settings) === Object.prototype,
+        profileProto: Object.getPrototypeOf(STATE.profile) === Object.prototype,
+        nutProto: Object.getPrototypeOf(STATE.nutrition) === Object.prototype,
+        medCleared: medCleared(),
+        safeMode: safeMode()
+      };
+
+      window.confirm = () => true;
+
+      // (b) the pre-import restore
+      localStorage.setItem(PREIMPORT_KEY, POISONED);
+      undoImport();
+      out.undoImport = {
+        proto: Object.getPrototypeOf(STATE) === Object.prototype,
+        safeMode: safeMode()
+      };
+
+      // (c) the cross-tab restore
+      localStorage.setItem(CROSSTAB_KEY, POISONED);
+      undoCrossTab();
+      out.undoCrossTab = {
+        proto: Object.getPrototypeOf(STATE) === Object.prototype,
+        safeMode: safeMode()
+      };
+
+      /* FLOOR: an ordinary state is untouched. A reviver that dropped too much
+         satisfies every assertion above and empties the athlete's own data. */
+      const clean = { version: 1, onboarded: true, _savedAt: 9999999999999,
+        profile: { name: 'Sam', age: 41 }, settings: { theme: 'ember' },
+        nutrition: { goal: 'lose' } };
+      localStorage.setItem(K, JSON.stringify(clean));
+      try { await idbPut(K, JSON.stringify(clean)); } catch (e) {}
+      await load();
+      out.floor = { name: STATE.profile.name, age: STATE.profile.age,
+        theme: STATE.settings.theme, goal: STATE.nutrition.goal,
+        onboarded: STATE.onboarded };
+
+      /* THE RULE LIVES IN ONE PLACE, and each stored-state reader ASKS for it.
+         A check that only counted the declaration passes while a consumer keeps
+         its own bare JSON.parse — which is the drift that produced this round. */
+      const sc = [...document.querySelectorAll('script:not([src])')]
+        .map(x => x.textContent).sort((a, b) => b.length - a.length)[0] || '';
+      const bare = sc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      out.src = {
+        len: bare.length,
+        ruleWrittenTimes: (bare.match(/k\s*===\s*'__proto__'/g) || []).length,
+        loader: bare.indexOf('_jsonSafe(t)') >= 0,
+        listener: bare.indexOf('_jsonSafe(e.newValue)') >= 0,
+        restores: (bare.match(/_jsonSafe\(raw\)/g) || []).length,
+        importer: bare.indexOf('_jsonSafe(r.result)') >= 0
+      };
+      return out;
+    });
+
+    t.ok('guard: a JSON __proto__ key really is an own property', probe.guardOwnKey, probe);
+    t.ok('guard: and Object.assign really does reassign the target prototype',
+      probe.guardAssignBites, probe);
+
+    t.ok('a poisoned stored state no longer reaches STATE’s prototype',
+      probe.load.stateProto, probe.load);
+    t.ok('nor settings’, which every device credential lives on',
+      probe.load.settingsProto, probe.load);
+    t.ok('nor profile’s, which the health screen reads',
+      probe.load.profileProto, probe.load);
+    t.ok('nor nutrition’s', probe.load.nutProto, probe.load);
+    t.eq('guard: the athlete really did declare a heart condition',
+      probe.load.heartStillDeclared, '["heart"]', probe.load);
+    t.ok('so a declared heart condition is not silently cleared',
+      probe.load.medCleared === false, probe.load);
+    t.ok('and safe mode stays ON, which is what the health screen promises',
+      probe.load.safeMode === true, probe.load);
+
+    t.ok('the pre-import restore is guarded too', probe.undoImport.proto, probe.undoImport);
+    t.ok('and it keeps safe mode on', probe.undoImport.safeMode === true, probe.undoImport);
+    t.ok('and so is the cross-tab restore', probe.undoCrossTab.proto, probe.undoCrossTab);
+    t.ok('and it keeps safe mode on too', probe.undoCrossTab.safeMode === true, probe.undoCrossTab);
+
+    t.eq('FLOOR: an ordinary name survives the parse', probe.floor.name, 'Sam', probe.floor);
+    t.eq('FLOOR: and an ordinary age', probe.floor.age, 41, probe.floor);
+    t.eq('FLOOR: and a stored theme', probe.floor.theme, 'ember', probe.floor);
+    t.eq('FLOOR: and a stored goal', probe.floor.goal, 'lose', probe.floor);
+    t.ok('FLOOR: and the athlete is still onboarded', probe.floor.onboarded === true, probe.floor);
+
+    t.ok('guard: the scan read the real app', probe.src.len > 400000, String(probe.src.len));
+    t.eq('the reviver rule is written exactly once', probe.src.ruleWrittenTimes, 1, probe.src);
+    t.ok('the loader asks for it', probe.src.loader, probe.src);
+    t.ok('the cross-tab listener asks for it', probe.src.listener, probe.src);
+    t.eq('and both one-step-back restores ask for it', probe.src.restores, 2, probe.src);
+    t.ok('and so does the importer, so there is one copy of the rule',
+      probe.src.importer, probe.src);
+  }
+
+  /* 23. THE MIRROR IS CLAIMED ONLY ONCE IT HAS TAKEN THE WRITE (v414).
+     idbPut() reports whether the write landed. The photo writer and the backup
+     restore both read that answer; save() — the caller that persists the whole
+     training history — threw it away and chose its wording from whether the
+     store had merely OPENED. Every assertion here is on the SENTENCE the
+     athlete is shown, because the sentence is the whole of the defect. */
+  {
+    const st = await page.evaluate(async () => {
+      const r = {}, seen = [];
+      const realToast = window.toast;
+      window.toast = m => seen.push(String(m));
+      const realSet = localStorage.setItem.bind(localStorage);
+      const realTx = idb && idb.transaction.bind(idb);
+      /* GUARD: the store really is open on this page. With idb null every case
+         below takes the no-store branch and the block proves nothing. */
+      r.guardIdbOpen = !!idb;
+      const run = async () => {
+        _lsWarned = false; _lsOk = true; seen.length = 0;
+        save(); await new Promise(z => setTimeout(z, 500));
+        return seen.slice();
+      };
+      const breakLs = () => { localStorage.setItem = () => { throw new Error('Quota'); }; };
+      const breakIdb = () => { idb.transaction = () => { throw new Error('Quota'); }; };
+
+      breakLs(); breakIdb();  r.bothFail = await run();
+      idb.transaction = realTx; r.mirrorTakesIt = await run();
+      localStorage.setItem = realSet; r.floorOrdinary = await run();
+      breakIdb(); r.floorMirrorOnly = await run();
+      idb.transaction = realTx;
+
+      breakLs(); breakIdb();
+      _lsWarned = false; _lsOk = true; seen.length = 0;
+      save(); await new Promise(z => setTimeout(z, 500));
+      save(); await new Promise(z => setTimeout(z, 500));
+      r.warnCount = seen.length;
+
+      localStorage.setItem = realSet; idb.transaction = realTx;
+      window.toast = realToast;
+      return r;
+    });
+
+    t.ok('guard: the backup store really is open on this page', st.guardIdbOpen, st);
+
+    t.eq('guard: a save that lands nowhere says exactly one thing',
+      st.bothFail.length, 1, st.bothFail);
+    t.ok('a save that lands NOWHERE says so, rather than claiming the backup store',
+      /nothing is being saved/i.test(st.bothFail[0] || ''), st.bothFail);
+    t.ok('and it names the real cause — the store refused it, not that there is none',
+      /refused/i.test(st.bothFail[0] || ''), st.bothFail);
+
+    t.eq('guard: a save the mirror DID take also says exactly one thing',
+      st.mirrorTakesIt.length, 1, st.mirrorTakesIt);
+    t.ok('FLOOR: and it still claims the backup store, because the write landed',
+      /backing up to device store/i.test(st.mirrorTakesIt[0] || ''), st.mirrorTakesIt);
+    t.ok('FLOOR: and does NOT say nothing is being saved',
+      !/nothing is being saved/i.test(st.mirrorTakesIt[0] || ''), st.mirrorTakesIt);
+
+    t.eq('FLOOR: an ordinary save warns about nothing at all',
+      st.floorOrdinary.length, 0, st.floorOrdinary);
+    t.eq('FLOOR: and a mirror that fails behind a good localStorage is silent — nothing was lost',
+      st.floorMirrorOnly.length, 0, st.floorMirrorOnly);
+
+    t.eq('it warns once a session, not on every save', st.warnCount, 1, st);
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
