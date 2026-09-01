@@ -8437,9 +8437,45 @@ export default async function () {
       /* GUARD: the store really is open on this page. With idb null every case
          below takes the no-store branch and the block proves nothing. */
       r.guardIdbOpen = !!idb;
+
+      /* WAIT FOR THE WRITE, NEVER FOR A DURATION — and drain what an earlier
+         block left in flight.
+
+         save() debounces its idbPut() by 120ms and picks the wording inside
+         the promise callback, reading _lsOk and _lsWarned at RESOLVE time. So
+         a save() from an EARLIER block whose debounce has already fired, and
+         whose write is still in flight, resolves inside the window this block
+         is measuring: it sees the broken localStorage we just installed, has
+         ok:true because its own write went to a healthy store, prints the
+         HEALTHY sentence into `seen`, and sets _lsWarned so our own callback
+         returns early. Measured by sweeping the offset in 1ms steps, that is a
+         2ms window per run at 120-121ms — which is what failed twice and then
+         passed on a re-run, and a racing check gets fixed rather than re-run.
+
+         So idbPut is wrapped to count completions, every case waits for ITS
+         OWN write, and one settle runs first, with the store healthy, so a
+         stale callback cannot toast at all. */
+      let started = 0, lastPut = Promise.resolve();
+      const realPut = idbPut;
+      idbPut = (k, v) => { started++; lastPut = realPut(k, v); return lastPut; };
+      /* Waiting for ANY write is not enough — the stale one increments the
+         counter too, so a counter-only wait returns on somebody else's write
+         and leaves our own in flight. save() shares ONE debounce timer and
+         clears it, so any stale put has already STARTED before our save() call:
+         the first put to start AFTER it is unambiguously ours. Chaining that
+         through every case means nothing is ever in flight when the next case
+         swaps the stubs. */
+      const settle = async () => {
+        const b = started; save();
+        for (let i = 0; i < 400 && started === b; i++) await new Promise(z => setTimeout(z, 10));
+        try { await lastPut; } catch (e) {}
+        await new Promise(z => setTimeout(z, 40));   // let save()'s own .then run after ours
+      };
+      await settle();   // and drain what an earlier block left, with the store healthy
+
       const run = async () => {
         _lsWarned = false; _lsOk = true; seen.length = 0;
-        save(); await new Promise(z => setTimeout(z, 500));
+        await settle();
         return seen.slice();
       };
       const breakLs = () => { localStorage.setItem = () => { throw new Error('Quota'); }; };
@@ -8453,11 +8489,12 @@ export default async function () {
 
       breakLs(); breakIdb();
       _lsWarned = false; _lsOk = true; seen.length = 0;
-      save(); await new Promise(z => setTimeout(z, 500));
-      save(); await new Promise(z => setTimeout(z, 500));
+      await settle();
+      await settle();
       r.warnCount = seen.length;
 
       localStorage.setItem = realSet; idb.transaction = realTx;
+      idbPut = realPut;
       window.toast = realToast;
       return r;
     });
@@ -8591,6 +8628,43 @@ export default async function () {
     t.ok('FLOOR: and the hang still prints', inj.showsSecs, inj);
     t.ok('FLOOR: and the rounds still print', inj.showsRounds, inj);
     t.ok('FLOOR: and the workout history still prints the date', inj.showsDate, inj);
+
+    /* TWO GUARDS MEAN TWO CHECKS, and the block above could not see the second
+       one. It calls normalizeState() before rendering, so the boot repair has
+       already scrubbed the junk and the ESCAPING is invisible — a mutant that
+       drops _ve() from either render walked straight through it. The escape is
+       the shape this file records again and again: a guard is only visible when
+       the value beside it cannot supply the answer.
+
+       The no-boot door is real rather than hypothetical. A cross-tab adopt
+       replaces STATE wholesale with no boot behind it, and both renderers read
+       live STATE. So this block seeds the junk and renders with NO repair run. */
+    const raw = await page.evaluate(async () => {
+      const o = {};
+      const host = document.createElement('div'); document.body.appendChild(host);
+      const PAY = '<img src=x onerror="window.__v415raw=(window.__v415raw||0)+1">';
+      window.__v415raw = 0;
+      STATE.logs = { 3: { done: true, ex: {}, completedAt: PAY, date: PAY, items: [] } };
+      // deliberately NO normalizeState() — this is the render guard on its own
+      host.innerHTML = sessionHistoryHTML();
+      o.histInj = !!host.querySelector('img[onerror]');
+      try { openSessionDetail(3); } catch (e) { o.sheetErr = String(e).slice(0, 80); }
+      const sheet = document.querySelector('#sheet');
+      o.sheetInj = !!(sheet && sheet.querySelector('img[onerror]'));
+      o.sheetOpened = !!(sheet && sheet.textContent && sheet.textContent.length > 30);
+      try { closeSheet(); } catch (e) {}
+      await new Promise(r => setTimeout(r, 150));
+      o.ran = window.__v415raw;
+      o.stillJunk = /onerror/.test(String((STATE.logs[3] || {}).completedAt));
+      host.remove();
+      return o;
+    });
+
+    t.ok('guard: the junk really is still on the row — no repair has run', raw.stillJunk, raw);
+    t.ok('guard: and the session detail sheet really opened', raw.sheetOpened, raw);
+    t.ok('with NO boot behind it, the workout history escapes the date', !raw.histInj, raw);
+    t.ok('and so does the session detail sheet', !raw.sheetInj, raw);
+    t.eq('so nothing runs from an unrepaired log row', raw.ran, 0, raw);
   }
 
   /* 25. A JUNK DATE THAT SWITCHES A GUARDRAIL OFF (v415).

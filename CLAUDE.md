@@ -13238,6 +13238,36 @@ shared counter after it had been zeroed. It carries its own payload now, with
 a second guard asserting that a planted payload really does RUN — otherwise
 *"nothing ran"* is satisfied by a page where nothing could have run at all.
 
+### And a 2ms race, found by sweeping the offset rather than re-running (v415)
+
+v414's storage block failed twice and passed on the third run. **A racing check
+gets fixed, not re-run** — and the way to tell a race from a flake is to make it
+deterministic. Sweeping the offset in 1ms steps put it at exactly **120-121ms**,
+a 2ms window per run:
+
+`save()` debounces its `idbPut()` by 120ms and picks the toast wording **inside
+the promise callback**, reading `_lsOk` and `_lsWarned` at RESOLVE time. So a
+`save()` from an EARLIER block, whose debounce has fired and whose write is
+still in flight, resolves inside the window this block is measuring — it sees
+the broken `localStorage` just installed, has `ok:true` because its own write
+went to a healthy store, prints the **healthy** sentence, and sets `_lsWarned`
+so the block's own callback returns early. The check then read the one sentence
+it exists to rule out.
+
+**Wait for the WRITE, never for a duration** — a fixed 500ms is a bet on the
+machine. And **waiting for ANY write is not enough**: a counter increments on
+the stale one too, so a counter-only wait returns on somebody else's write and
+leaves ours in flight, which is the same bug one case along. `save()` shares one
+debounce timer and clears it, so any stale put has already STARTED before our
+`save()` call — **the first put to start AFTER it is unambiguously ours.**
+Chaining that through every case means nothing is ever in flight when the next
+case swaps the stubs, and one settle up front drains what an earlier block left,
+with the store healthy so it cannot toast at all.
+
+**The fix is proved with the old wait as a CONTROL**, on the same sweep: 2 bad
+offsets before, **0** after, across 110-145ms. A race that cannot be shown
+failing has not been diagnosed.
+
 
 ## Rendering
 
