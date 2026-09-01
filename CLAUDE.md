@@ -11687,6 +11687,32 @@ advance the revision by exactly one, asserted directly, which catches both that
 mutant and its over-eager twin (a base that always equals the current revision,
 so nothing is ever reported lost).
 
+### And the round's own fix had the defect it was written after
+
+Found by auditing v410 an hour after writing it — the eighth round running
+where the best finding was in the round immediately before, and the second where
+it was in my own new code.
+
+The toast promises *"Settings ▸ Restore puts them back"*, and the snapshot it
+promises was written into a **silent catch**. That is v406's import defect
+verbatim, in the round that came after it. Measured on a full store:
+
+| | |
+|---|---|
+| the toast | *"Settings ▸ Restore puts them back"* |
+| the snapshot write | **threw, and was swallowed** |
+| the snapshot, and the button | **neither existed** |
+
+The stale snapshot is dropped FIRST, for v406's own reason: it is about the same
+size as the new one, so freeing it is usually exactly the room the new one
+needs, and the fix often makes the failure go away rather than only reporting
+it. A store that still refuses gets a different sentence naming the one thing
+the athlete can act on.
+
+**The floor is the ordinary lost update**, which must still promise the restore
+— an over-eager twin that always claims the store is full satisfies every
+assertion about the full one.
+
 ### Storage bookkeeping is not session scratch
 
 The full suite caught the categorisation within one run. `restartProgram()`

@@ -516,6 +516,34 @@ export default async function run() {
       o.stampsBase = (+w2._base || -1) === (+w1._rev || -2);
       o.advancesRev = (+w2._rev || 0) === (+w1._rev || 0) + 1;
 
+      /* THE TOAST PROMISES THE RESTORE, so it may only promise one that
+         exists. v406's import defect, in the code that fixed it: measured on a
+         full store the write threw into a silent catch and the promise stood. */
+      try { localStorage.removeItem('coreforge.v1.crosstab'); } catch (e) {}
+      STATE.logs = {};
+      for (let i = 0; i < 300; i++) STATE.logs[i] = { done: true, completedAt: '2026-08-01', ex: {}, items: [{ exId: 'pushup', sets: [1, 1, 1], target: 20, unit: 'reps' }] };
+      save();
+      const bulk = JSON.parse(localStorage.getItem('coreforge.v1'));
+      STATE.logs[999] = { done: true, completedAt: todayISO(), ex: {}, items: [] }; save();
+      const big = 'x'.repeat(100000), small = 'x'.repeat(5000); let nf = 0;
+      try { for (; nf < 400; nf++) localStorage.setItem('__f' + nf, big); } catch (e) {}
+      try { for (; nf < 800; nf++) localStorage.setItem('__f' + nf, small); } catch (e) {}
+      await (async () => {
+        const f = JSON.parse(JSON.stringify(bulk));
+        f.nutrition.days['2026-09-09'] = { food: [], water: 1, habits: {} };
+        f._base = +bulk._rev || 0; f._rev = (+bulk._rev || 0) + 1; f._savedAt = Date.now();
+        const j = JSON.stringify(f);
+        try { localStorage.setItem('coreforge.v1', j); } catch (e) {}
+        await idbPut('coreforge.v1', j);
+        window.dispatchEvent(new StorageEvent('storage', { key: 'coreforge.v1', newValue: j }));
+        await new Promise(z => setTimeout(z, 600));
+      })();
+      o.fullSaysSo = /out of storage/.test(toastText()) && /could not be kept/.test(toastText());
+      o.fullPromised = /Restore puts them back/.test(toastText());
+      o.fullSnapshot = hasCrossTabSnapshot();
+      for (let i = 0; i <= nf; i++) { try { localStorage.removeItem('__f' + i); } catch (e) {} }
+      try { localStorage.removeItem('coreforge.v1.crosstab'); } catch (e) {}
+
       /* The stamp is live-session scratch and must never reach a backup. */
       o.baseIsTransient = BACKUP_STRIP.indexOf('_base') >= 0 && BACKUP_STRIP.indexOf('_rev') >= 0
         && TRANSIENT_KEYS.indexOf('_base') < 0 && TRANSIENT_KEYS.indexOf('_rev') < 0;
@@ -539,6 +567,9 @@ export default async function run() {
     t.ok('a copy older than ours is caught even with no stamp on it', r.olderSnapshot, r);
     t.ok('guard: the two tabs really did branch to the SAME revision', r.sameRev, r);
     t.ok('a save stamps the revision it was built on', r.stampsBase, r);
+    t.ok('a full store is told the work could not be kept', r.fullSaysSo, r);
+    t.ok('and is not promised a restore that does not exist', !r.fullPromised, r);
+    t.ok('guard: the store really did refuse the snapshot', !r.fullSnapshot, r);
     t.ok('and advances the revision by exactly one', r.advancesRev, r);
     t.ok('neither stamp travels in a backup, and neither is session scratch', r.baseIsTransient, r);
     await browser.close();

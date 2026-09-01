@@ -2043,12 +2043,24 @@ window.addEventListener('storage',async e=>{
        so nothing can be said about what it had seen — treated as no loss, which
        keeps the upgrade quiet. */
     const _lost=!wasReset&&_ourRev>0&&_inRev>0&&(_inRev<_ourRev||(_inBase!==null&&_inBase<_ourRev));
-    if(_lost){try{localStorage.setItem(CROSSTAB_KEY,JSON.stringify(STATE));}catch(_){}}
+    /* THE TOAST BELOW PROMISES THE RESTORE, so it may only promise one that
+       exists. This is v406's import defect verbatim, in the code that fixed it:
+       measured on a full store, the write threw into a silent catch, the toast
+       still said "Settings ▸ Restore puts them back", and neither the snapshot
+       nor the button was there. The stale one is dropped FIRST because it is
+       about the same size and freeing it is usually exactly the room the new
+       one needs. */
+    let _snapOk=false;
+    if(_lost){
+      try{localStorage.removeItem(CROSSTAB_KEY);}catch(_){}
+      try{localStorage.setItem(CROSSTAB_KEY,JSON.stringify(STATE));_snapOk=true;}catch(_){}
+    }
     await load();
     normalizeState();
     render();
     try{toast(wasReset?'All data was reset in another tab'
-             :_lost?'Another tab saved over changes made here — Settings ▸ Restore puts them back'
+             :(_lost&&_snapOk)?'Another tab saved over changes made here — Settings ▸ Restore puts them back'
+             :_lost?'Another tab saved over changes made here. This device is out of storage, so they could not be kept — free some space and export a backup.'
              :'Updated from another tab',
               wasReset?3200:_lost?6000:2200);}catch(_){}
   }catch(err){}
