@@ -3224,10 +3224,24 @@ export default async function run() {
          value — what was wrong is what Settings PRINTED. */
       o.pMin = LOCAL_PITCH_FLOOR; o.pMax = LOCAL_PITCH_CEIL;
       o.tMin = BEAT_TEMPO_MIN; o.tMax = BEAT_TEMPO_MAX;
-      o.vpBoot = {}; o.btBoot = {};
+      o.vpBoot = {}; o.btBoot = {}; o.vpRead = {}; o.vpSlider = {};
       [1.18, 1.45, 1.3, 99, -3, 'x'].forEach(v => {
         STATE.settings.voicePitch = v; normalizeState();
         o.vpBoot[String(v)] = STATE.settings.voicePitch;
+        o.vpRead[String(v)] = [voicePitchPref(), localPitchFor({ pitch: 0.6 })];
+      });
+      /* AND THE GLASS, not only the reader.
+
+         A RANGE INPUT CLAMPS ITS OWN value, so "the rendered value is inside
+         min and max" is a check that CANNOT FAIL — the browser guarantees it
+         whatever the app wrote. Measured: with voicePitchPref() unclamped the
+         markup carried value="99" and el.value still read 1.45. What the
+         athlete actually sees wrong is a THUMB THAT DISAGREES with the depth
+         the coach uses, so that is what is asserted. */
+      [99, -3].forEach(v => {
+        STATE.settings.voicePitch = v; normalizeState(); go('guide');
+        const el = document.querySelector('#v-guide input[aria-label="Coach voice depth"]');
+        o.vpSlider[String(v)] = el ? [+el.value, +el.min, +el.max, voicePitchPref()] : null;
       });
       [78, 60, 110, 999, 10, 'x'].forEach(v => {
         STATE.settings.beatTempo = v; normalizeState();
@@ -3295,8 +3309,26 @@ export default async function run() {
     t.eq('and the calorie adjustment band is 500 either way', r.kcalMax, 500, r);
     t.eq('the voice depth band is 1.18 to 1.45', [r.pMin, r.pMax].join('-'), '1.18-1.45', r);
     t.eq('and the beat tempo band is 60 to 110', [r.tMin, r.tMax].join('-'), '60-110', r);
-    t.eq('a stored depth past the band is clamped at the boot', r.vpBoot['99'], r.pMax, r);
-    t.eq('and below it', r.vpBoot['-3'], r.pMin, r);
+    /* THE STORE IS LEFT ALONE HERE, AND THAT IS THE DECISION. Every other
+       member of this sweep is clamped at boot because something read it raw.
+       This one is not: both readers clamp, and clamping at boot would destroy
+       the exact 0.6 the _toneFix migration keys on — measured, it killed the
+       tone buttons for a whole round. So the requirement is the READ and the
+       GLASS, not the stored number. */
+    t.eq('a stored depth past the band is left in the store', r.vpBoot['99'], 99, r);
+    t.eq('and below it', r.vpBoot['-3'], -3, r);
+    t.eq('but no reader ever hands it out — the ceiling holds',
+      r.vpRead['99'].join('/'), [r.pMax, r.pMax].join('/'), r);
+    t.eq('nor the floor', r.vpRead['-3'].join('/'), [r.pMin, r.pMin].join('/'), r);
+    t.ok('guard: the depth slider really is on the Settings tab',
+      !!r.vpSlider['99'] && !!r.vpSlider['-3'], r);
+    t.eq('and the thumb sits on the depth the coach will actually use',
+      r.vpSlider['99'][0], r.vpSlider['99'][3], r);
+    t.eq('at the floor too', r.vpSlider['-3'][0], r.vpSlider['-3'][3], r);
+    t.eq('and the slider offers the band rather than a third copy of it',
+      [r.vpSlider['99'][1], r.vpSlider['99'][2]].join('-'), [r.pMin, r.pMax].join('-'), r);
+    t.eq('FLOOR: a value inside the band reads back unchanged',
+      r.vpRead['1.3'][0], 1.3, r);
     t.eq('FLOOR: both ends of the depth slider survive', r.vpBoot['1.18'], 1.18, r);
     t.eq('FLOOR: the other end too', r.vpBoot['1.45'], 1.45, r);
     t.eq('FLOOR: and a value inside it', r.vpBoot['1.3'], 1.3, r);
@@ -3533,6 +3565,209 @@ export default async function run() {
     });
 
     errors.forEach(e => t.fail('a page error fired during the result-band checks', e));
+    await browser.close();
+  }
+
+  /* ONE BAND FOR THE REP CADENCE, AND ONE READER FOR IT.
+
+     v383 fixed this field's BOOT REPAIR and left five raw reads standing.
+     Two of them (sessionStats, totalTUTSplit) applied no band at all and two
+     more hand-copied 1.5-6, while the constant said 1-6 and the Settings
+     slider offered 1.5-5 — four numbers for one band.
+
+     The consequence is not cosmetic: a stored 1 was accepted by the setter
+     and the repair, floored to 1.5 by the player, and read as 1.0 by the
+     session clock. That is v307's defect — the clock priced against a cadence
+     the pacing ignored — in a narrower form. And a boot repair cannot cover a
+     cross-tab adopt, which replaces STATE with no boot behind it. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const o = { read: {}, agree: {} };
+      o.min = REP_TEMPO_MIN; o.max = REP_TEMPO_MAX; o.def = REP_TEMPO_DEFAULT;
+
+      /* THE READER, with no boot behind it — the cross-tab door. */
+      [1.5, 3, 6, 1, 0.1, 99, -3, 'x', null, {}].forEach(v => {
+        STATE.settings.repTempo = v;
+        o.read[String(v)] = repTempoSetting();
+      });
+
+      /* THE PAYLOAD IS THE AGREEMENT, not the number. The pacing and the
+         session clock must price the same stored value the same way. */
+      const P = 3; STATE.progressPtr = P;
+      const sess = buildSession(P);
+      const log = { ex: {}, done: true, items: sess.main.concat([sess.finisher]).filter(Boolean) };
+      log.items.forEach(m => { log.ex[m.exId] = { sets: m.sets ? Array(m.sets).fill(true) : [true], done: true }; });
+      STATE.logs = {}; STATE.logs[P] = log;
+      o.repItems = log.items.filter(m => m.unit !== 'time').length;
+      /* totalTUTSplit() returns SECONDS, so a cadence difference shows without
+         being rounded away — sessionStats() reports estMin, which a two-item
+         session can round flat. Both are read: one is the precision, the other
+         is the surface the athlete sees. */
+      [1, 1.5, 3, 6, 99].forEach(v => {
+        STATE.settings.repTempo = v;
+        o.agree[String(v)] = [repTempoSetting(), Math.round(totalTUTSplit().work),
+                              sessionStats(P, true).estMin];
+      });
+
+      /* THE STORE, and the GLASS. A value the athlete cannot pick must still
+         render inside the control's own min and max. */
+      o.boot = {};
+      [1.5, 3, 6, 1, 99, -3, 'x'].forEach(v => {
+        STATE.settings.repTempo = v; normalizeState();
+        o.boot[String(v)] = STATE.settings.repTempo;
+      });
+      /* A RANGE INPUT CLAMPS ITS OWN value, so asserting the rendered number
+         is inside min and max cannot fail. The thumb must sit on the cadence
+         the player will actually pace at — and a junk shape is the case the
+         browser cannot rescue, because it falls back to the midpoint rather
+         than to the app's default. No boot here on purpose: a cross-tab adopt
+         replaces STATE with nothing behind it. */
+      o.slider = {};
+      [1, 99, {}].forEach(v => {
+        STATE.settings.repTempo = v; go('guide'); render();
+        const el = document.querySelector('#v-guide input[aria-label="Rep cadence in seconds per rep"]');
+        o.slider[String(v)] = el ? [+el.value, +el.min, +el.max, repTempoSetting()] : null;
+      });
+      /* FLOOR: the control still writes, and both ends of it are reachable. */
+      setRepTempo(REP_TEMPO_MIN); o.setMin = STATE.settings.repTempo;
+      setRepTempo(REP_TEMPO_MAX); o.setMax = STATE.settings.repTempo;
+      setRepTempo(4); o.setMid = STATE.settings.repTempo;
+      return o;
+    });
+
+    /* PIN THE VALUE, NOT THE IDENTITY — a band read out of the app moves both
+       sides of every comparison below. Here the number IS the specification. */
+    t.eq('the rep cadence band is 1.5 to 6', [r.min, r.max].join('-'), '1.5-6', r);
+    t.eq('and its default is 3', r.def, 3, r);
+
+    t.ok('guard: the session really holds rep-counted work to price',
+      r.repItems > 0, r);
+    /* Per key, not a joined string: integer-like keys sort before '1.5' in
+       Object.keys(), so a serialised comparison here asserts key ORDER as well
+       as the values — the v294 trap. */
+    t.eq('a stored cadence below the floor paces at the floor', r.agree['1'][0], 1.5, r);
+    t.eq('and one above the ceiling paces at the ceiling', r.agree['99'][0], 6, r);
+    t.eq('FLOOR: an in-band cadence paces at itself', r.agree['3'][0], 3, r);
+    t.eq('so a stored value below the floor cannot price the clock lower than the pacing',
+      r.agree['1'][1], r.agree['1.5'][1], r.agree);
+    t.eq('and the session card agrees with it too',
+      r.agree['1'][2], r.agree['1.5'][2], r.agree);
+    t.ok('guard: and the clock really does move with a cadence that is in band',
+      r.agree['6'][1] > r.agree['1.5'][1], r.agree);
+    t.ok('guard: the lifetime clock is a real figure, not two zeroes agreeing',
+      r.agree['1.5'][1] > 0, r.agree);
+
+    t.eq('the reader floors an out-of-band cadence', r.read['1'], 1.5, r);
+    t.eq('and 0.1', r.read['0.1'], 1.5, r);
+    t.eq('and caps one above it', r.read['99'], 6, r);
+    t.eq('and a negative', r.read['-3'], 1.5, r);
+    t.eq('junk reads as the default, not as NaN', r.read['x'], 3, r);
+    t.eq('so does an object', r.read['[object Object]'], 3, r);
+    t.eq('FLOOR: the floor of the band reads back unchanged', r.read['1.5'], 1.5, r);
+    t.eq('FLOOR: the ceiling too', r.read['6'], 6, r);
+    t.eq('FLOOR: and a value inside it', r.read['3'], 3, r);
+
+    t.eq('the boot repair uses the same band', r.boot['1'], 1.5, r);
+    t.eq('and the same ceiling', r.boot['99'], 6, r);
+    t.eq('FLOOR: an in-band cadence survives the boot', r.boot['3'], 3, r);
+    t.eq('FLOOR: and both ends of it', [r.boot['1.5'], r.boot['6']].join('/'), '1.5/6', r);
+
+    t.ok('guard: the cadence slider really is on the Settings tab',
+      !!r.slider['1'] && !!r.slider['99'] && !!r.slider['[object Object]'], r);
+    t.eq('and the thumb sits on the cadence the player will actually pace at',
+      r.slider['1'][0], r.slider['1'][3], r);
+    t.eq('at the ceiling too', r.slider['99'][0], r.slider['99'][3], r);
+    t.eq('and a junk cadence shows the default rather than the midpoint',
+      r.slider['[object Object]'][0], r.slider['[object Object]'][3], r);
+    t.eq('its min and max come from the band rather than a third copy',
+      [r.slider['1'][1], r.slider['1'][2]].join('-'), '1.5-6', r);
+
+    t.eq('FLOOR: the control still writes the floor', r.setMin, 1.5, r);
+    t.eq('FLOOR: and the ceiling', r.setMax, 6, r);
+    t.eq('FLOOR: and a value between them', r.setMid, 4, r);
+
+    errors.forEach(e => t.fail('a page error fired during the rep-cadence checks', e));
+    await browser.close();
+  }
+
+  /* ONE MEMBERSHIP TEST FOR A MEAL SLOT.
+
+     The diary renders by walking MEALS and matching, so a row whose slot is in
+     none of them is invisible — counted in the day's total, with no remove
+     button, because the ✕ only exists inside a group. Three places decided
+     what a legal slot was: a hand-written list in the boot repair, truthiness
+     in foodRow(), and a third fallback in the grouping. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const o = { key: {}, written: {}, boot: {} };
+      o.slots = MEALS.map(m => m[0]);
+
+      ['b', 'l', 'd', 's', 'brunch', '', null, 42, 'constructor', 'B'].forEach(v => {
+        o.key[String(v)] = mealKey(v);
+      });
+
+      /* THE WRITER. A caller handing over a slot that is not one cannot put a
+         row somewhere the diary will never look. */
+      const d = nutToday(); d.food = [];
+      ['b', 'brunch', 'constructor'].forEach((v, i) => {
+        pushFoodRow('Row' + i, 100, 10, 5, 2, v);
+      });
+      o.written = d.food.map(x => x.meal);
+
+      /* THE GLASS, with NO boot behind it — the row can arrive mid-session
+         from a cross-tab adopt, and the diary is where it becomes
+         unreachable. */
+      d.food = [{ name: 'GhostMeal', kcal: 400, p: 30, c: 20, f: 10, meal: 'brunch', at: Date.now() },
+                { name: 'RealMeal', kcal: 300, p: 20, c: 30, f: 8, meal: 'l', at: Date.now() }];
+      go('fuel'); render();
+      const fv = document.querySelector('#v-fuel');
+      o.ghostShown = fv.innerText.includes('GhostMeal');
+      o.realShown = fv.innerText.includes('RealMeal');
+      o.removeButtons = fv.querySelectorAll('button[onclick^="removeFood("]').length;
+      o.dayKcal = foodTotals(nutToday()).kcal;
+
+      /* THE STORE. */
+      [['b', 'b'], ['s', 's'], ['brunch', null], ['constructor', null], [42, null]].forEach(pair => {
+        const dd = nutToday();
+        dd.food = [{ name: 'X', kcal: 100, p: 1, c: 1, f: 1, meal: pair[0], at: 1 }];
+        normalizeState();
+        o.boot[String(pair[0])] = nutToday().food[0].meal;
+      });
+      nutToday().food = [];
+      return o;
+    });
+
+    t.ok('guard: the meal registry really holds the four slots',
+      r.slots.join(',') === 'b,l,d,s', r);
+    t.eq('a real slot is itself', [r.key['b'], r.key['l'], r.key['d'], r.key['s']].join(''), 'blds', r);
+    t.eq('an invented one is not a slot', r.key['brunch'], null, r);
+    t.eq('nor is an inherited key', r.key['constructor'], null, r);
+    t.eq('nor a number', r.key['42'], null, r);
+    t.eq('and it is case-sensitive, like every other key in this app', r.key['B'], null, r);
+
+    t.eq('the writer files a bad slot under a real one, never a made-up one',
+      r.written.filter(m => r.slots.indexOf(m) < 0).length, 0, r);
+    t.eq('FLOOR: and leaves a real slot exactly where it was asked to',
+      r.written[0], 'b', r);
+
+    t.ok('a row whose slot is not a slot is still on the glass', r.ghostShown, r);
+    t.ok('and it can still be removed', r.removeButtons === 2, r);
+    t.ok('FLOOR: an ordinary row is unaffected', r.realShown, r);
+    t.eq('guard: the ghost row really was counted in the day, which is why hiding it lied',
+      r.dayKcal, 700, r);
+
+    t.eq('the boot repair asks the registry, not a hand-written copy of it',
+      r.boot['brunch'], 'l', r);
+    t.eq('and refuses an inherited key', r.boot['constructor'], 'l', r);
+    t.eq('and a number', r.boot['42'], 'l', r);
+    t.eq('FLOOR: a real slot survives the boot', r.boot['b'], 'b', r);
+    t.eq('FLOOR: and so does the last one', r.boot['s'], 's', r);
+
+    errors.forEach(e => t.fail('a page error fired during the meal-slot checks', e));
     await browser.close();
   }
 

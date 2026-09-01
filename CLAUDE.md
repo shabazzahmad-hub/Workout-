@@ -946,8 +946,11 @@ and every one is a trap this file already names:
   a calorie target. The recipes genuinely changed; only the stamp did not.
 - **A reference day is literally named "halal / no pork"** — a substring search
   for pork matched the label promising its absence.
-- **`cueVol` is clamped by `cueVolPref()`, which also writes the clamped value
-  back** — the stored 99 is never read raw, so there is nothing to fix.
+- **`cueVol` is clamped by `cueVolPref()`, and nothing reads it raw** — every
+  beep, the slider and its label all go through that reader, so there is
+  nothing to fix. *(The original note said the reader "writes the clamped value
+  back". It does not, and never did; re-reading it in v412 is what corrected
+  that. The conclusion was right for the other reason.)*
 - And the harness itself: serialising each check with `fn.toString()` to run it
   in the page **destroys closures**, so 85 checks that captured a loop variable
   reported "j is not defined" and looked like 85 failures.
@@ -12472,8 +12475,12 @@ nothing ever sounded wrong. What was wrong is what Settings told the athlete.
 The same split this round removed from the calorie card, on the field the
 `voicePitch` trap is named after.
 
-**Absent still stays absent**, which is why this one is DROPPED for junk and
-clamped only for a real number: `voicePitch` present means *"the athlete moved
+**The fix is the READER, not a boot clamp** — `voicePitchPref()`, which every
+athlete-facing site now goes through, so nothing prints or renders the stored
+number raw. A boot clamp was tried here and taken back out; the section below
+records what it broke and why the store is left alone.
+
+**Absent still stays absent**: `voicePitch` present means *"the athlete moved
 the slider"*, and a default here would kill the tone buttons — the original trap,
 reintroduced by its own fix.
 
@@ -12484,6 +12491,155 @@ number in athlete-facing text, three lines from the control it describes.
 
 `beatTempo` had no boot repair at all. Nothing renders it raw, so the only cost
 was the junk travelling in every backup — one line to close.
+
+### And the twelfth field must NOT be clamped, which the suite is what proved
+
+Eleven fields in this round get a boot clamp. `settings.voicePitch` was the
+twelfth, it shipped with one for a few minutes, and **three checks in suite 15
+went red naming the exact harm**.
+
+`_toneFix` is keyed to the **exact** legacy value `0.6` — the shape this file
+prescribes for a stale default. The clamp turns 0.6 into 1.18, so `=== 0.6`
+never matches again. Measured with the clamp above the migration:
+
+| | |
+|---|---|
+| `staleCleared` | **false** |
+| stored `voicePitch` after the boot | **1.18** |
+| the tone buttons it exists to restore | **dead, for ever** |
+
+Ordering the migration first fixed that boot. It cannot fix a `0.6` arriving
+**later from an import**, which a clamp would silently convert into a permanent
+manual override — and that is the case `secondRunLeavesIt` drives.
+
+**So the clamp came out, and the reason is a rule this file already recorded as
+a FALSE alarm.** v286 measured `cueVol` and concluded there was nothing to fix,
+because the stored value is never read raw. *(Its stated reason — that
+`cueVolPref()` writes the clamped value back — was wrong; it does not, and
+re-reading it here is what corrected the note. The conclusion held for the
+other reason, which is the one that matters.)* `voicePitch` is that shape once `voicePitchPref()`
+exists: `localPitchFor()` and `voicePitchPref()` both clamp, and every
+athlete-facing site — the slider's `value`, its `min`/`max`, the *"Fine-tuned
+to"* note — goes through one of them. **A value sanitised at every read site has
+nothing left to repair, and a repair there can only do harm.**
+
+The type repair stays: junk still travels in a backup, and absent still means
+*"the athlete has not moved the slider"*.
+
+**The discriminator between the eleven and the twelfth is one question: is it
+read RAW anywhere?** Ten of the eleven were. This one stopped being, in the same
+round, because `voicePitchPref()` was the real fix — the slider used to print
+the stored number raw, which is what left the thumb outside its own min and max.
+
+### The check has to move to where the guard now is
+
+Two of my own suite-05 checks pinned the clamp — *"a stored depth past the band
+is clamped at the boot"* — so removing it turned them red. They were re-aimed
+rather than deleted, because the requirement did not go away, it moved:
+
+- the STORE is left alone (99 stays 99, −3 stays −3), which is what keeps the
+  migration's key intact;
+- **no reader ever hands the raw value out** — both `voicePitchPref()` and
+  `localPitchFor()` are pinned at the ceiling and at the floor;
+- and the GLASS is driven, not inferred: Settings is rendered and the slider
+  element read back, asserting its `value` sits inside its own `min` and `max`.
+
+That last one is the payload. *Measure the payload, not the container* — the
+stored number is the container, and what the athlete sees is the thing that was
+ever wrong.
+
+### Four numbers for one band, and the readers had already split (v412)
+
+The slider sweep that came out of the pitch fix asked one question of every
+control: **does the number the slider renders come from the same place as its
+own `min` and `max`?** Six sliders, three answers of no — and the worst of them
+was the field this session had already touched twice.
+
+`settings.repTempo` was stated **four** different ways:
+
+| site | band |
+|---|---|
+| `REP_TEMPO_MIN/MAX`, the setter, the boot repair | **1 – 6** |
+| `repTempoSetting()` | 1.5 – 6, hand-written |
+| `openPlayer()` and `runRepCadence()` | 1.5 – 6, hand-copied again |
+| `sessionStats()` and `totalTUTSplit()` | **no band at all** |
+| the Settings slider | **1.5 – 5** |
+
+**A stored 1 was accepted by the setter and by the repair and honoured by
+nobody**: the player paced at 1.5 s a rep while `sessionStats()` priced the same
+session at 1.0 — a 33% under-estimate of every rep-based session's clock. That
+is v307's own defect, *the session clock priced against a cadence the pacing
+ignored*, still alive in a narrower form after v307 fixed the wide one.
+
+**v383 fixed this field's BOOT REPAIR and left five raw reads standing.** A boot
+repair is not enough on its own any more, either: v404's cross-tab adopt
+replaces `STATE` with no boot behind it.
+
+One band, one reader, and **the floor moved to where the readers already were**
+rather than the readers moved down to the constant — clipping a value no reader
+ever honoured cannot surprise anybody, and widening the engine's cadence range
+would be a product decision made by accident. The two sliders whose own `min`
+was narrower than the band they store (`beatVol`, `voiceRate`) now render the
+constants, which is the non-destructive direction: nobody loses a stored value
+and the control stops offering less than the app honours.
+
+### A range input clamps its own value, so that check cannot fail
+
+Written for the depth slider and caught by a mutant on the same day. The
+assertion was *"the rendered value is inside its own min and max"* — and the
+browser **guarantees** that: an `<input type="range">` reports `el.value` already
+clamped, whatever the markup asked for. Measured with `voicePitchPref()`
+deliberately unclamped: the markup carried `value="99"` and `el.value` still read
+**1.45**.
+
+What the athlete actually sees wrong is **a thumb that disagrees with the value
+the app is using**, so that is the assertion: `+el.value` must equal what the
+reader hands out. And a junk shape is the one case the browser cannot rescue —
+it falls back to the **midpoint** of the range, not to the app's default, so
+`{}` discriminates where a number cannot.
+
+Same family as *measure the payload, not the container*, with the browser
+supplying the container's guarantee for free.
+
+### A row the diary cannot show is a row the athlete cannot delete (v412)
+
+The same sweep, one control over. `MEALS` is the four-slot registry, and the
+legal set was stated three ways: a hand-written `['b','l','d','s']` in the boot
+repair, **truthiness** in `foodRow()`, and a third fallback in the grouping.
+
+The diary renders by walking `MEALS` and matching, so a row whose slot is in
+none of them is **invisible — and still counted in the day's total, and with no
+remove button, because the ✕ only exists inside a group.** That is the v354
+gear-key harm and the v374 pose harm, on the food log: a stored value outside
+the registry the picker renders from can be neither seen nor undone.
+
+**It is a latent-class fix, and saying so is the honest framing.** The boot
+repair catches it today and every live caller supplies a real slot, so no
+athlete can reach it now. What is real is the drift: a fifth slot added to
+`MEALS` would be rewritten to lunch on every boot by a list that never heard
+about it — v312's cardio mode exactly, one registry over.
+
+`mealKey()` is the one test, and the grouping asks it too, so **a row that
+reaches the diary is always in exactly one group whatever the repair did**.
+That is the half that protects the athlete rather than the backup.
+
+### A permutation with a silent filter (v412)
+
+`COMBAT_ORDER` names the four FORCE events in the order the circuit runs them,
+and `combatOrder()` ends in `.filter(Boolean)`. So an id that no longer matches
+an event is **dropped in silence**: the card would render three rows where the
+standard has four, and the athlete would train the three and be tested on four.
+
+Nothing is wrong today — this is a lockstep the validator simply never had, the
+same gap `TESTS`/`TEST_DEFAULTS` was given a rule for after it drifted three
+times. It is checked **both directions and for duplicates**, because a repeated
+id passes any length test and still loses an event.
+
+**A clean validator proves nothing about a validator rule**, so the check breaks
+the order in front of it three ways — a renamed id, a duplicate, a missing one —
+requires each specific complaint, and restores. `console.error` is muted around
+it, because `validateData()` logs and the harness counts a console error as a
+page failure.
 
 ### Pin the VALUE, not the identity — every band in one round
 

@@ -6763,10 +6763,23 @@ function repEccShare(exId){
   const ex=EX[exId];
   return (ex&&typeof ex.repSec==='number'&&ex.repSec>0)?0.5:null;
 }
-const REP_TEMPO_MIN=1, REP_TEMPO_MAX=6;   // the band setRepTempo() and the boot repair share
+/* ONE BAND, AND THE FLOOR MOVED TO WHERE THE READERS ALREADY WERE. This
+   shipped as 1-6 while every consumer floored at 1.5, so a stored 1 — which
+   the setter and the boot repair both accepted — was honoured by nobody: the
+   player paced at 1.5 and sessionStats() priced the same session at 1.0, a
+   33% under-estimate of every rep-based session. That is v307's defect (the
+   session clock priced against a cadence the pacing ignored) in a narrower
+   form. The floor is 1.5 now, which clips only an imported value no reader
+   ever honoured; the ceiling stays 6 and the slider offers it. */
+const REP_TEMPO_MIN=1.5, REP_TEMPO_MAX=6;
+const REP_TEMPO_DEFAULT=3;
+/* The one reader. Five sites read settings.repTempo raw or with a
+   hand-copied band — v383 fixed the boot repair and left them standing, and
+   a boot repair cannot cover a cross-tab adopt, which replaces STATE with no
+   boot behind it. */
 function repTempoSetting(){
   const v=STATE.settings&&STATE.settings.repTempo;
-  return (typeof v==='number')?Math.max(1.5,Math.min(6,v)):3;
+  return (typeof v==='number'&&isFinite(v))?clamp(v,REP_TEMPO_MIN,REP_TEMPO_MAX):REP_TEMPO_DEFAULT;
 }
 /* Gentler, back- & neck-friendly alternatives (used by the swap menu). */
 const SWAP_ALT={
@@ -7039,7 +7052,7 @@ function openPlayer(opts){
   // clear any interval still owned by a previous start — reassigning the global
   // would orphan it, and orphans keep mutating the CURRENT session (clock runs 2x).
   plClear();
-  const _tempo=Math.max(1.5,Math.min(6,(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3));
+  const _tempo=repTempoSetting();
   PLAYER={sess,items,i:0,s:0,phase:null,running:true,tid:null,remain:0,total:0,repN:0,elapsed:0,setsDone:0,pendingNext:false,free,
     tempo:_tempo,
     t0:monoNow(),pausedMs:0,pauseAt:null,budget:plBudgetMin(items,_tempo),overNudged:false,lastPauseNudge:0};
@@ -10860,7 +10873,7 @@ function setCoachPitch(v){STATE.settings.voicePitch=clamp(parseFloat(v)||LOCAL_P
 const VOICE_RATE_MIN=0.5, VOICE_RATE_MAX=1.5;
 const BEAT_VOL_MIN=0.05, BEAT_VOL_MAX=1;
 function setCoachRate(v){STATE.settings.voiceRate=clamp(parseFloat(v)||0.98,VOICE_RATE_MIN,VOICE_RATE_MAX);save();}
-function setRepTempo(v){STATE.settings.repTempo=clamp(parseFloat(v)||3,REP_TEMPO_MIN,REP_TEMPO_MAX);save();}
+function setRepTempo(v){STATE.settings.repTempo=clamp(parseFloat(v)||REP_TEMPO_DEFAULT,REP_TEMPO_MIN,REP_TEMPO_MAX);save();}
 function setBeatVol(v){STATE.settings.beatVol=clamp(parseFloat(v)||0.55,BEAT_VOL_MIN,BEAT_VOL_MAX);save();haptic(6);if(BEAT&&BEAT.on){BEAT.vol=beatVolPref()*0.9;const g=BEAT.master.gain,t=BEAT.ac.currentTime;g.cancelScheduledValues(t);g.setValueAtTime(Math.max(0.0002,g.value),t);g.exponentialRampToValueAtTime(Math.max(0.0002,BEAT.vol),t+0.2);}}
 let _beatPrevT=null;
 function beatPreview(){beatStart();if(_beatPrevT)clearTimeout(_beatPrevT);_beatPrevT=setTimeout(()=>{if(!$('#scrim').classList.contains('open'))beatStop();},5000);}
@@ -11628,12 +11641,17 @@ function stopTimer(){cancelAutoClose();if(timer){clearInterval(timer.iv);timer=n
    against a beat, a fan and breathing hard. Cap stays at 1.0 — a single
    oscillator driven past unity into destination clips, which sounds broken
    rather than loud. */
+/* ONE COPY OF THE BAND. It was written out three times — here, in the setter
+   and in the slider's own min/max — which is the drift every other band in
+   this app was hoisted out of. No boot clamp, for voicePitch's reason: the
+   value is read raw nowhere, so there is nothing left to repair. */
+const CUE_VOL_MIN=0.2, CUE_VOL_MAX=2, CUE_VOL_DEFAULT=1.25;
 function cueVolPref(){
   const v=STATE.settings&&STATE.settings.cueVol;
-  return (typeof v==='number'&&isFinite(v))?clamp(v,0.2,2):1.25;
+  return (typeof v==='number'&&isFinite(v))?clamp(v,CUE_VOL_MIN,CUE_VOL_MAX):CUE_VOL_DEFAULT;
 }
 function setCueVol(v){
-  STATE.settings.cueVol=clamp(parseFloat(v)||1.25,0.2,2);
+  STATE.settings.cueVol=clamp(parseFloat(v)||CUE_VOL_DEFAULT,CUE_VOL_MIN,CUE_VOL_MAX);
   save();
 }
 function beep(freq=880,dur=0.12,vol=0.6,type='square'){if(!STATE.settings.sound)return;try{const ac=beep._ac||(beep._ac=new (window.AudioContext||window.webkitAudioContext)());if(ac.state==='suspended')ac.resume();const o=ac.createOscillator(),g=ac.createGain();o.type=type;o.frequency.value=freq;o.connect(g);g.connect(ac.destination);g.gain.setValueAtTime(Math.min(vol*cueVolPref(),1.0),ac.currentTime);g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+dur);o.start();o.stop(ac.currentTime+dur);}catch(e){}}
@@ -12004,7 +12022,7 @@ function startGuidedReps(exId){
 function cancelReps(){_repTok++;stopTimer();closeSheet();}
 function runRepCadence(reps,label,restAfter,onDone,ex){
   const total=Math.max(1,reps);let n=0;
-  const tempo=Math.max(1.5,Math.min(6,(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3));
+  const tempo=repTempoSetting();
   const C=2*Math.PI*100;
   openSheet(repHTML(label,total,ex));
   autoRoll();primeVoice();beatStart();
@@ -14117,6 +14135,20 @@ const COMMON_FOODS=QUICK_PICKS.map(n=>{const f=FOOD_DB.find(x=>x.n===n)||{n:n,k:
 /* Meal slots — logging is grouped like a food diary. Defaults to the slot that
    matches the current time so one-tap logging lands in the right place. */
 const MEALS=[['b','🍳 Breakfast'],['l','🥗 Lunch'],['d','🍽️ Dinner'],['s','🍎 Snacks']];
+/* THE ONE MEMBERSHIP TEST FOR A MEAL SLOT, because the legal set was written
+   out by hand in the boot repair while foodRow() asked only truthiness and the
+   diary grouped on a third fallback.
+
+   The diary renders by walking MEALS and matching, so a row whose slot is in
+   none of them is INVISIBLE — and still counted in the day's total, and with
+   no remove button, because the ✕ only exists inside a group. That is the
+   v354 gear-key harm and the v374 pose harm on the food log: a stored value
+   outside the registry the picker renders from cannot be seen or undone.
+
+   The boot repair catches it today, so this is a latent-class fix rather than
+   a live defect — but a fifth slot added to MEALS would be rewritten to lunch
+   on every boot by a hand-written list, which is v312's cardio mode exactly. */
+function mealKey(v){return MEALS.some(m=>m[0]===v)?v:null;}
 function currentMealSlot(){const h=new Date().getHours();return h<11?'b':(h<16?'l':(h<21?'d':'s'));}
 // Totals carry all four macros; older entries (kcal/protein only) count as 0 c/f.
 /* The portion note is free text a language model wrote, and an imported backup can
@@ -14189,7 +14221,7 @@ function foodTotals(){const d=nutToday();const f=d.food||[];
 function foodRow(name,kcal,p,c,f,meal,portion,calc,src){
   const _nn=v=>Math.max(0,Math.round(v||0));
   return {name:String(name||'Meal').slice(0,60),kcal:_nn(kcal),p:_nn(p),
-    c:_nn(c),f:_nn(f),meal:meal||currentMealSlot(),at:Date.now(),
+    c:_nn(c),f:_nn(f),meal:mealKey(meal)||currentMealSlot(),at:Date.now(),
     ...(cleanPortion(portion)?{portion:cleanPortion(portion)}:{}),
     ...(_MACRO_KEY[calc]?{calc}:{}),
     ...(src==='shot'?{src:'shot'}:{})};
@@ -15710,7 +15742,7 @@ function intakeHTML(){
   // diary grouped by meal
   if(items.length){
     MEALS.forEach(([k,label])=>{
-      const rows=items.map((f,i)=>({f,i})).filter(x=>(x.f.meal||'s')===k);
+      const rows=items.map((f,i)=>({f,i})).filter(x=>(mealKey(x.f.meal)||'s')===k);
       if(!rows.length)return;
       const sub=rows.reduce((a,x)=>a+(x.f.kcal||0),0);
       h+=`<div class="kv" style="border-top:1px solid var(--line);padding-top:10px"><span class="tiny" style="font-weight:800;letter-spacing:.4px">${label}</span><span class="tiny muted">${sub} kcal</span></div>`;
@@ -16229,7 +16261,7 @@ function streakGapTol(){
 function totalTUTSplit(){
   let work=0,rest=0;
   allDonePairs().forEach(([p,l])=>{
-    const items=logItemsFor(p,l);const tempo=(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3;
+    const items=logItemsFor(p,l);const tempo=repTempoSetting();
     items.forEach(m=>{
       const e=l.ex&&l.ex[m.exId];const sd=e&&e.sets?e.sets.filter(Boolean).length:0;
       if(!sd)return;
@@ -20611,7 +20643,7 @@ function logItemsFor(p,l){
 function sessionStats(p,full){
   const l=STATE.logs[p]||{ex:{}};
   const items=logItemsFor(p,l);
-  const tempo=(typeof STATE.settings.repTempo==='number')?STATE.settings.repTempo:3;
+  const tempo=repTempoSetting();
   let exDone=0,setsDone=0,setsRx=0,totalReps=0,totalHold=0,estSec=0;
   items.forEach(m=>{
     const e=l.ex&&l.ex[m.exId];const sd=e&&e.sets?e.sets.filter(Boolean).length:0;
@@ -20785,14 +20817,14 @@ function renderGuide(){
       ?'Listens only during rest, and only for that one word. It never stops, pauses or ends a session — that stays a deliberate tap.'
       :'This browser has no speech recognition, so the switch cannot do anything on this phone.'}</div>
     <div style="padding:4px 0 2px">
-      <div class="row" style="justify-content:space-between"><span class="tiny muted">Beep &amp; countdown volume</span><span class="tiny muted" id="cvLbl">${Math.round(cueVolPref()*100/1.25)}%</span></div>
-      <input type="range" aria-label="Beep and countdown volume" min="0.2" max="2" step="0.05" value="${cueVolPref()}" oninput="$('#cvLbl').textContent=Math.round(this.value*100/1.25)+'%'" onchange="setCueVol(this.value);beep(920,.17,0.92)" style="width:100%">
+      <div class="row" style="justify-content:space-between"><span class="tiny muted">Beep &amp; countdown volume</span><span class="tiny muted" id="cvLbl">${Math.round(cueVolPref()*100/CUE_VOL_DEFAULT)}%</span></div>
+      <input type="range" aria-label="Beep and countdown volume" min="${CUE_VOL_MIN}" max="${CUE_VOL_MAX}" step="0.05" value="${cueVolPref()}" oninput="$('#cvLbl').textContent=Math.round(this.value*100/CUE_VOL_DEFAULT)+'%'" onchange="setCueVol(this.value);beep(920,.17,0.92)" style="width:100%">
       <div class="tiny muted" style="margin-bottom:4px">Plays a sample as you let go. The beat ducks under the cues that matter, so these stay audible over the music.</div>
     </div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Workout beat <span class="tiny muted">· hip-hop, auto-ducks for the coach</span></span><button class="chip ${STATE.settings.beat!==false?'on':''}" onclick="toggleSetting('beat')">${STATE.settings.beat!==false?'On':'Off'}</button></div>
     ${STATE.settings.beat!==false?`<div style="padding:4px 0 2px">
       <div class="row" style="justify-content:space-between"><span class="tiny muted">Beat volume</span><span class="tiny muted" id="bvLbl">${Math.round(beatVolPref()*100)}%</span></div>
-      <input type="range" aria-label="Beat volume" min="0.1" max="1" step="0.05" value="${beatVolPref()}" oninput="$('#bvLbl').textContent=Math.round(this.value*100)+'%'" onchange="setBeatVol(this.value)" style="width:100%">
+      <input type="range" aria-label="Beat volume" min="${BEAT_VOL_MIN}" max="${BEAT_VOL_MAX}" step="0.05" value="${beatVolPref()}" oninput="$('#bvLbl').textContent=Math.round(this.value*100)+'%'" onchange="setBeatVol(this.value)" style="width:100%">
       <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">Beat tempo</span><span class="tiny muted" id="beatTempoLbl">${beatTempoPref()} BPM</span></div>
       <input type="range" aria-label="Beat tempo in beats per minute" min="60" max="110" step="2" value="${beatTempoPref()}" oninput="$('#beatTempoLbl').textContent=this.value+' BPM'" onchange="setBeatTempo(this.value)" style="width:100%">
       <div class="btnrow" style="gap:6px;margin-top:6px">${[[70,'😌 Chill 70'],[78,'🎧 Classic 78'],[92,'🔥 Hype 92']].map(([bpm,label])=>
@@ -20864,11 +20896,11 @@ function renderGuide(){
     </details>
     <div style="padding:8px 0 2px">
       <div class="row" style="justify-content:space-between"><span class="tiny muted">Speed</span><span class="tiny muted" id="rvLbl">${voiceRatePref(0.98).toFixed(2)}×</span></div>
-      <input type="range" aria-label="Coach speaking speed" min="0.7" max="1.3" step="0.05" value="${voiceRatePref(0.98)}" oninput="$('#rvLbl').textContent=(+this.value).toFixed(2)+'×'" onchange="setCoachRate(this.value);sampleVoice()" style="width:100%">
+      <input type="range" aria-label="Coach speaking speed" min="${VOICE_RATE_MIN}" max="${VOICE_RATE_MAX}" step="0.05" value="${voiceRatePref(0.98)}" oninput="$('#rvLbl').textContent=(+this.value).toFixed(2)+'×'" onchange="setCoachRate(this.value);sampleVoice()" style="width:100%">
     </div>
     <div style="padding:8px 0 2px">
-      <div class="row" style="justify-content:space-between"><span class="tiny muted">Rep cadence <span style="opacity:.7">(sec / rep)</span></span><span class="tiny muted" id="rtLbl">${(typeof STATE.settings.repTempo==='number'?STATE.settings.repTempo:3).toFixed(1)}s</span></div>
-      <input type="range" aria-label="Rep cadence in seconds per rep" min="1.5" max="5" step="0.5" value="${typeof STATE.settings.repTempo==='number'?STATE.settings.repTempo:3}" oninput="$('#rtLbl').textContent=(+this.value).toFixed(1)+'s'" onchange="setRepTempo(this.value)" style="width:100%">
+      <div class="row" style="justify-content:space-between"><span class="tiny muted">Rep cadence <span style="opacity:.7">(sec / rep)</span></span><span class="tiny muted" id="rtLbl">${repTempoSetting().toFixed(1)}s</span></div>
+      <input type="range" aria-label="Rep cadence in seconds per rep" min="${REP_TEMPO_MIN}" max="${REP_TEMPO_MAX}" step="0.5" value="${repTempoSetting()}" oninput="$('#rtLbl').textContent=(+this.value).toFixed(1)+'s'" onchange="setRepTempo(this.value)" style="width:100%">
       <div class="tiny muted" style="margin-top:4px">How fast the coach counts your reps during a guided set.</div>
     </div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span class="muted sm">Hear a sample</span><button class="chip" onclick="testVoice()">▶ Test voice</button></div>
@@ -21473,7 +21505,7 @@ function normalizeState(){
      and sessionStats() read it RAW and multiply it by every rep ever logged,
      which is how a lifetime total reads "10,410 min trained · 75,901 kcal".
      Clamped to the band the setter itself enforces. */
-  if(typeof STATE.settings.repTempo!=='number'||!isFinite(STATE.settings.repTempo))STATE.settings.repTempo=3;
+  if(typeof STATE.settings.repTempo!=='number'||!isFinite(STATE.settings.repTempo))STATE.settings.repTempo=REP_TEMPO_DEFAULT;
   else STATE.settings.repTempo=clamp(STATE.settings.repTempo,REP_TEMPO_MIN,REP_TEMPO_MAX);
   /* Membership, not truthiness. coachFor() falls back to COACHES[0] for an
      unknown id, so nothing breaks — but the junk survives every boot, travels
@@ -21532,7 +21564,7 @@ function normalizeState(){
          .filter(x=>x&&typeof x==='object'&&!Array.isArray(x))
          .map(x=>({name:String(x.name==null?'Meal':x.name).slice(0,60),
            kcal:num(x.kcal,20000),p:num(x.p,2000),c:num(x.c,2000),f:num(x.f,2000),
-           meal:['b','l','d','s'].includes(x.meal)?x.meal:'l',
+           meal:mealKey(x.meal)||'l',
            at:(typeof x.at==='number'&&isFinite(x.at))?x.at:0,
            ...(cleanPortion(x.portion)?{portion:cleanPortion(x.portion)}:{}),
            /* A REPAIR THAT REBUILDS A ROW FROM A HAND-WRITTEN FIELD LIST DROPS
@@ -22515,18 +22547,35 @@ function normalizeState(){
     const _s=STATE.settings;
     if(_s){
       if(_s.voiceTone!=null&&!VOICE_TONES.some(t=>t[0]===_s.voiceTone))delete _s.voiceTone;
-      /* The band, not merely the type — see LOCAL_PITCH_CEIL. Absent stays
-         absent: voicePitch present means "the athlete moved the slider", so a
-         default here would kill the tone buttons — the voicePitch trap named
-         after this very field. */
-      if(_s.voicePitch!=null&&(typeof _s.voicePitch!=='number'||!isFinite(_s.voicePitch)))delete _s.voicePitch;
-      else if(typeof _s.voicePitch==='number')_s.voicePitch=clamp(_s.voicePitch,LOCAL_PITCH_FLOOR,LOCAL_PITCH_CEIL);
-      if(_s.beatTempo!=null&&(typeof _s.beatTempo!=='number'||!isFinite(_s.beatTempo)))delete _s.beatTempo;
-      else if(typeof _s.beatTempo==='number')_s.beatTempo=clamp(Math.round(_s.beatTempo),BEAT_TEMPO_MIN,BEAT_TEMPO_MAX);
       if(!_s._toneFix){
         if(_s.voicePitch===0.6)delete _s.voicePitch;
         _s._toneFix=true;
       }
+      /* TYPE ONLY, AND THE MISSING BAND CLAMP IS THE DECISION. Every other
+         member of the v412 sweep is clamped at boot because something read it
+         raw. This one is not read raw anywhere: localPitchFor() and
+         voicePitchPref() both clamp to LOCAL_PITCH_FLOOR..CEIL, and every
+         athlete-facing site — the slider value, its min/max, the "Fine-tuned
+         to" note — goes through voicePitchPref(). That is the cueVol shape
+         v286 recorded as a FALSE alarm: a value sanitised at every read site
+         has nothing left to repair.
+
+         And a clamp here does positive harm, which is measured rather than
+         argued. _toneFix is keyed to the EXACT legacy value 0.6, the shape
+         this file prescribes for a stale default. Clamping turns 0.6 into
+         1.18, so `=== 0.6` never matches again: shipped that way for one
+         round, the stale key survived every boot for ever and the tone
+         buttons it exists to restore stayed dead. Ordering the migration
+         first fixes that boot; it cannot fix a 0.6 that arrives LATER from
+         an import, which a clamp would silently convert into a permanent
+         manual override.
+
+         Absent still stays absent: voicePitch present means "the athlete
+         moved the slider", so a default here would kill the tone buttons —
+         the voicePitch trap named after this very field. */
+      if(_s.voicePitch!=null&&(typeof _s.voicePitch!=='number'||!isFinite(_s.voicePitch)))delete _s.voicePitch;
+      if(_s.beatTempo!=null&&(typeof _s.beatTempo!=='number'||!isFinite(_s.beatTempo)))delete _s.beatTempo;
+      else if(typeof _s.beatTempo==='number')_s.beatTempo=clamp(Math.round(_s.beatTempo),BEAT_TEMPO_MIN,BEAT_TEMPO_MAX);
     }
   }catch(e){}
   if(!Array.isArray(STATE.pain))STATE.pain=[];
@@ -22620,6 +22669,18 @@ function validateData(){
   TROUBLE_AREAS.forEach(z=>{if(!Object.prototype.hasOwnProperty.call(TROUBLE_POOL,z[0]))errs.push('TROUBLE_AREAS.'+z[0]+' has no TROUBLE_POOL entry — the button steers nothing');});
   Object.keys(TROUBLE_POOL).forEach(k=>{if(!TROUBLE_AREAS.some(z=>z[0]===k))errs.push('TROUBLE_POOL.'+k+' has no picker button — unreachable');});
   {const _fk={};FOCUS_AREAS.forEach(a=>{if(_fk[a[0]])errs.push('FOCUS_AREAS: duplicate key "'+a[0]+'"');_fk[a[0]]=1;});}
+  /* COMBAT_ORDER is a PERMUTATION of the four FORCE events, and combatOrder()
+     does .filter(Boolean) — so an id that no longer exists is dropped in
+     silence and the circuit card renders three rows where the evaluation has
+     four. An athlete would train the three and be tested on four, with nothing
+     on screen saying so. Checked both directions, and for duplicates, because
+     a repeated id passes a length test and still loses an event. */
+  {const _co={};
+   COMBAT_ORDER.forEach(id=>{
+     if(!FORCE_IDS.includes(id))errs.push('COMBAT_ORDER names "'+id+'", which is not a FORCE event — the circuit would silently drop it');
+     if(_co[id])errs.push('COMBAT_ORDER: duplicate id "'+id+'"');
+     _co[id]=1;});
+   FORCE_IDS.forEach(id=>{if(!_co[id])errs.push('COMBAT_ORDER is missing FORCE event "'+id+'" — the circuit would run one event short');});}
   /* estimateMaxes({}) is the LAST gate every stored maxes object passes through
      on the way to prescribe() — currentMaxes() calls nothing else. Its own
      internal defaults literal has drifted behind TESTS before (power/Jump
