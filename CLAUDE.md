@@ -11668,6 +11668,25 @@ closed rather than growing the list of exceptions. Both stamps are live-session
 scratch and go in `TRANSIENT_KEYS`: a revision counter describes this device's
 write history and means nothing on another phone.
 
+### Two escaped mutants, and both were arms nothing drove
+
+**The simulation left the other tab's revision unchanged**, so every case was
+also an OLDER copy — caught by the first arm — and the `_base` arm, which is the
+realistic one, was never exercised. A real second tab increments its own
+revision when it saves, so two tabs branching from revision N both write N+1:
+the incoming copy is not older than ours and **only `_base` can tell them
+apart**. With that corrected, the mutant that ignores `_base` fails six checks.
+*A guard is only visible when the value beside it cannot supply the answer* —
+the fourth time this file has recorded it.
+
+**And the writer's own contract had to be pinned separately.** Every check
+builds the other tab's stamp BY HAND, so whether OUR `save()` stamps one is
+invisible to them — and the harm of dropping it lands on the other tab, which
+this page does not have. A save must carry the revision it was built on and
+advance the revision by exactly one, asserted directly, which catches both that
+mutant and its over-eager twin (a base that always equals the current revision,
+so nothing is ever reported lost).
+
 ### And the first probe measured its own seed
 
 The first run dispatched a `StorageEvent` **without the other tab having

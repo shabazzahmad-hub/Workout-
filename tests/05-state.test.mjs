@@ -423,7 +423,13 @@ export default async function run() {
       const foreignFrom = async (theirCopy, mutate) => {
         const f = JSON.parse(JSON.stringify(theirCopy));
         mutate(f);
+        /* A REAL second tab increments its own revision when it saves, so
+           both tabs branching from revision N write N+1 — the incoming copy is
+           not OLDER than ours and only _base can tell them apart. Leaving the
+           revision unchanged made the older-copy arm catch everything and left
+           the _base arm undriven; two mutants walked through. */
         f._base = +theirCopy._rev || 0;
+        f._rev = (+theirCopy._rev || 0) + 1;
         f._savedAt = Date.now();
         const j = JSON.stringify(f);
         localStorage.setItem('coreforge.v1', j); await idbPut('coreforge.v1', j);
@@ -491,6 +497,25 @@ export default async function run() {
       o.olderSnapshot = hasCrossTabSnapshot();
       try { localStorage.removeItem('coreforge.v1.crosstab'); } catch (e) {}
 
+      /* The guard that makes the case above about _base and not about age:
+         both tabs branch from one revision and write the same next one. */
+      STATE.logs = {}; save();
+      const branch = JSON.parse(localStorage.getItem('coreforge.v1'));
+      STATE.logs[0] = { done: true, completedAt: todayISO(), ex: {}, items: [] }; save();
+      o.sameRev = ((+branch._rev || 0) + 1) === (+STATE._rev || 0);
+
+      /* THE WRITER'S OWN CONTRACT, pinned directly. Every check above builds
+         the other tab's stamp by hand, so whether OUR save() stamps one is
+         invisible to them — and the harm of dropping it lands on the other
+         tab, which this page does not have. A save must carry the revision it
+         was built on, and advance the revision by exactly one. */
+      STATE.logs = {}; save();
+      const w1 = JSON.parse(localStorage.getItem('coreforge.v1'));
+      STATE.logs[0] = { done: true, completedAt: todayISO(), ex: {}, items: [] }; save();
+      const w2 = JSON.parse(localStorage.getItem('coreforge.v1'));
+      o.stampsBase = (+w2._base || -1) === (+w1._rev || -2);
+      o.advancesRev = (+w2._rev || 0) === (+w1._rev || 0) + 1;
+
       /* The stamp is live-session scratch and must never reach a backup. */
       o.baseIsTransient = TRANSIENT_KEYS.indexOf('_base') >= 0 && TRANSIENT_KEYS.indexOf('_rev') >= 0;
       return o;
@@ -511,6 +536,9 @@ export default async function run() {
     t.ok('and still adopts the other tab\'s work', r.okAdopted, r);
     t.ok('and offers no restore button', r.okNoButton, r);
     t.ok('a copy older than ours is caught even with no stamp on it', r.olderSnapshot, r);
+    t.ok('guard: the two tabs really did branch to the SAME revision', r.sameRev, r);
+    t.ok('a save stamps the revision it was built on', r.stampsBase, r);
+    t.ok('and advances the revision by exactly one', r.advancesRev, r);
     t.ok('neither stamp ever travels in a backup', r.baseIsTransient, r);
     await browser.close();
     errors.forEach(e => t.fail('page error during the cross-tab lost-update flow', e));
