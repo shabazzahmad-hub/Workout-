@@ -12714,6 +12714,182 @@ threw"*. Still red, so still a catch — but a throw hides which check found it,
 and the same shape **hung** a suite in v267. The guard now sits immediately
 after the refusal is measured and before the first line that assumes it held.
 
+## The button was dead and the card was thrown away (v413)
+
+Found by sweeping the sibling of v406's `confirm()` class: **every promise
+whose failure the athlete would notice, swallowed.** Eight fully silent
+`.catch(()=>{})` in the file. Five are correct — a neural cache warm-up whose
+failure is a device voice speaking instead, a video autoplay, and two on
+`swWorker()`, which is a `new Promise(res=>…)` with no reject path and
+therefore **cannot** reject. Two were not, and they are the same two lines
+twice.
+
+`shareCard()` and `shareMilestone()` each ended with a copy of the same tail,
+and each swallowed every share rejection. Measured by driving it:
+
+| what happens | toast | file written |
+|---|---|---|
+| the athlete CANCELS | none | none — correct |
+| the share SUCCEEDS | none | none — correct |
+| **the share FAILS** | **none** | **none** |
+| no Web Share API at all | Card saved 📸 | 1 |
+
+So a failed share produced no sheet, no message and no file: the button was
+dead and the card the app had just drawn was discarded. **The athlete on the
+better browser got less than the one whose browser has no Web Share at all**,
+who still gets the picture.
+
+**A cancel is not a failure**, so it stays silent — a note that fires when the
+athlete changes their mind is a note nobody wants — and a success stays silent
+because the operating system's own share sheet is the feedback. Everything
+else falls back to the download, which is the route that works.
+
+**One tail, because the twins had already drifted into two copies of it.**
+`_shareBlob()` is the one helper, so a third card cannot be written with a
+third copy of the swallow.
+
+**And the caller's try/catch was not guarding what it looks like it guards.**
+`toBlob` is asynchronous, so its callback runs after `shareCard()` has already
+returned — a throw inside it was an uncaught page error rather than the
+`'Could not make card'` the outer catch appears to promise. The download now
+carries its own. Nothing on a real device makes `createObjectURL` throw, so
+that guard is **exercised directly** in the check rather than recorded as
+equivalent — the same technique the hardness-band and anchor-unit guards use.
+
+**Three floors, and each catches a different over-eager twin**: a cancel must
+stay silent, a success must stay silent, and a card that could not be drawn
+must still say so rather than claim a save.
+
+## The app could be operated and it could not be heard (v413)
+
+v411 gave every control an accessible name. That is the INPUT half. Nothing had
+ever checked the OUTPUT half — what the app says back — and measured, there
+were **zero live regions in the whole file**.
+
+Every confirmation, every refusal and every validation hint in this app is a
+toast: *"Saved ✓"*, *"Deleted"*, *"Nothing to save"*, *"Height looks off —
+expected 47–91 in"*. A `<div>` with no `aria-live` is **never announced**. So a
+blind athlete tapped Save and heard nothing, and the v289 unit-mix-up hint —
+which exists precisely to name what went wrong instead of restating the range —
+was spoken to nobody.
+
+**The CSS is what makes the fix work, and that is not obvious.** The toast hides
+with `opacity:0`, which keeps it in the accessibility tree. `display:none` or
+`visibility:hidden` would leave `aria-live` doing nothing at all, with nothing on
+screen to say so — so a check pins the hiding rule rather than only the
+attributes.
+
+**And a repeated message still announces, which was measured rather than
+assumed.** Assigning `textContent` replaces the text node, so setting the same
+string twice IS a DOM mutation and the region fires again. Had that been false,
+every second *"Deleted"* would have been silent and the fix would have needed a
+clear-and-reset dance on every toast in the app.
+
+### And fifty sheets opened behind the athlete's focus
+
+The same measurement, one element over. `#sheet` had no role, no label, and
+**never took focus**: opening a sheet with seven controls in it left focus on the
+button BEHIND the scrim, so a screen-reader athlete was never told the panel
+existed and could not reach it by swiping. That is most of the data entry in this
+app.
+
+`role="dialog"`, focus into the panel on open, focus back to the opener on close.
+
+**Focus goes to the CONTAINER, not to the first control.** Focusing an input
+opens a keyboard and skips the panel's own title; a dialog read from its
+container reads that title first. The mutant that focuses the first control is
+caught by exactly that check.
+
+**Only a genuine open records where to give the focus back.** `openAct()`,
+`openBuilder()` and `openSkipping()` all re-enter `openSheet()` to REPAINT an
+already-open sheet, and rewriting the return slot there would point it at a
+control that is destroyed a line later. The over-eager mutant that drops the
+guard is caught by a check that repaints and then closes.
+
+**THERE IS DELIBERATELY NO `aria-modal`, and that is the interesting decision.**
+It would hide everything outside the dialog from a screen reader — including
+`#toast`, which is the channel every confirmation and every refusal speaks
+through, and most of those are spoken FROM a sheet. Losing *"Fill in all
+fields"* is worse than letting the page behind stay swipeable. The mutant that
+adds it is caught by a floor that says so.
+
+**Three floors keep it from becoming a different bug**: a sheet that focuses its
+own box (the food search) must still win — this focus call is synchronous inside
+`openSheet()` and theirs is on a timer after it, so the order is load-bearing;
+an opener that has since been removed must neither throw nor strand the athlete
+on `<body>`; and the guard is proven both ways, because an empty live-region
+count is otherwise a statement about the selector rather than about the app.
+
+### A computed style read during a transition describes the ANIMATION
+
+The floor that pins the hiding rule failed on correct code. `.toast` carries
+`transition:.28s`, so `getComputedStyle()` on the same tick as
+`classList.remove('show')` reports the value being animated **from** — measured,
+`opacity: 1` on an element that was hiding correctly. Wait for the transition,
+then read. Same family as the v290 trap where a stale screen was measured
+instead of the live one: the browser will answer a question you did not mean to
+ask, and it will answer it confidently.
+
+## Forty-three seconds of silence for an answer that was free (v413)
+
+Found by driving a state no probe had built: **a genuinely offline browser**,
+through `context.setOffline(true)`. Every earlier sweep ran online.
+
+`_visionEstimate()` is the one vision path — every food photo, every tracker
+screenshot, every watch screenshot and v301's re-read go through it. Offline it
+ran the full three-model retry ladder, bounded only by `AI_TOTAL_BUDGET_MS`:
+
+| | before | after |
+|---|---|---|
+| time until the athlete is told anything | **43,250 ms** | **1 ms** |
+| what it said | *"network — check your connection"* | *"You are offline — this needs a connection"* |
+| `navigator.onLine` throughout | **false** | false |
+
+The answer was available in zero milliseconds and the app spent three quarters
+of a minute reaching a vaguer version of it.
+
+**One of a pair guarded and its twin not**, for the seventh time. The neural
+voice path has read `navigator.onLine` since it was written, and
+`runAIDiagnostic()` opens with a short reachability ping whose own comment says
+*"if the network is dead this says so in 6 seconds instead of 25"*. Its sibling
+checked nothing.
+
+**THE CHECK IS ONE-SIDED, AND THAT IS THE WHOLE SAFETY ARGUMENT.**
+`navigator.onLine` is trustworthy only in the NEGATIVE: `false` means the
+browser has no route at all, so a request cannot succeed. `true` means only
+that something is attached — a captive portal, a dead uplink, a phone on a
+router with no internet all report `true` — so it can never be read as
+*reachable*, and the timeout ladder stays exactly as it is for the
+online-but-unreachable case. A check that also trusted `true` would be the
+mirror-image defect: refusing an import that would have worked. **A source
+assertion pins that every read in the file is one-sided**, so the eighth site
+cannot be written the wrong way round.
+
+**And the Open Food Facts sibling is NOT in the class, which was measured
+rather than assumed.** Offline it fails in **3 ms** with `Failed to fetch` and
+`searchOnline()` already prints a sentence naming the built-in foods that still
+work. One request, no retry ladder — so the 43 seconds are the LADDER, not the
+network, and the class has exactly one member.
+
+**COUNT THE CALLS, NOT THE CLOCK.** The check stubs `fetchWithTimeout()` — the
+one helper every model attempt goes through — and asserts **zero** requests
+offline against **two or more** online. A time-based assertion is flaky on a
+slow runner and measures the container; the payload is whether the ladder
+starts at all.
+
+**The floor is the online athlete, and it is what makes the fix safe to ship**:
+measured through the sandbox's own blocked proxy, `_visionEstimate()` still runs
+the full 42-second ladder and still returns the network message. No
+short-circuit.
+
+### And my own check threw instead of naming a failure
+
+The block built `out` inside `page.evaluate` and returned `off` — the variable
+from OUTSIDE the page — so the suite reported *"the test file itself threw"*
+rather than which check found what. That is the trap this file already records
+twice: **red is not enough, it has to say what.** A guard now asserts the probe
+returned a reading at all, before anything is asserted about its contents.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

@@ -7953,6 +7953,320 @@ export default async function () {
       (appSrc.match(/logGrind\(INTV\.format,\s*false,/g) || []).length, 1);
   }
 
+  /* A FAILED SHARE IS NOT A CANCEL, AND BOTH CARDS HAD THE SAME SWALLOW.
+     shareCard() and shareMilestone() each ended with
+     `navigator.share(...).catch(()=>{})`, so a share that genuinely failed
+     produced no toast, no file and no sheet: the button was dead and the card
+     the app had just drawn was discarded. The athlete whose browser HAS Web
+     Share got less than the one whose browser does not, who still gets the
+     file.
+
+     Four outcomes and every one is pinned, because three of them must stay
+     SILENT — a fix that toasted on cancel or on success satisfies every
+     assertion about the failure and turns a working feature into a nag. The
+     floors are the cancel and the success; the payload is the file. */
+  {
+    const shareOut = await page.evaluate(async () => {
+      const out = {};
+      const el = () => document.querySelector('#toast');
+      const rec = () => { const t = el(); return t ? (t.textContent || '').trim() : '(no toast)'; };
+      let downloads = 0, lastName = '';
+      const realClick = HTMLAnchorElement.prototype.click;
+      HTMLAnchorElement.prototype.click = function () {
+        if (this.hasAttribute('download')) { downloads++; lastName = this.download || ''; }
+        else realClick.call(this);
+      };
+      const run = async fn => {
+        const t = el(); if (t) t.textContent = '';
+        downloads = 0; lastName = '';
+        try { fn(); } catch (e) { return { toast: 'THREW: ' + e, downloads: 0, name: '' }; }
+        await new Promise(r => setTimeout(r, 500));
+        return { toast: rec(), downloads, name: lastName };
+      };
+      const reject = name => () => Promise.reject(Object.assign(new Error('x'), { name }));
+
+      navigator.canShare = () => true;
+
+      navigator.share = reject('AbortError');
+      out.cancelled = await run(() => shareCard('T', 's', ['a']));
+      out.cancelledMile = await run(() => shareMilestone({ id: 'first', name: 'Badge', emoji: '🏆' }));
+
+      navigator.share = reject('NotAllowedError');
+      out.failed = await run(() => shareCard('T', 's', ['a']));
+      out.failedMile = await run(() => shareMilestone({ id: 'first', name: 'Badge', emoji: '🏆' }));
+
+      navigator.share = () => Promise.resolve();
+      out.shared = await run(() => shareCard('T', 's', ['a']));
+
+      navigator.canShare = undefined;
+      out.noShareApi = await run(() => shareCard('T', 's', ['a']));
+
+      out.helperExists = typeof _shareBlob === 'function';
+      const noBlob = await run(() => _shareBlob(null, 'x.png', 'T'));
+      out.noBlob = noBlob;
+      return out;
+    });
+
+    t.ok('guard: the shared tail really is one helper', shareOut.helperExists, shareOut);
+
+    t.eq('a share the athlete CANCELS says nothing', shareOut.cancelled.toast, '');
+    t.eq('and writes no file — a cancel is a choice, not a failure', shareOut.cancelled.downloads, 0);
+    t.eq('the milestone card cancels the same way', shareOut.cancelledMile.toast, '');
+    t.eq('and writes no file either', shareOut.cancelledMile.downloads, 0);
+
+    t.eq('a share that SUCCEEDS says nothing — the OS sheet is the feedback', shareOut.shared.toast, '');
+    t.eq('and writes no file, because the share took it', shareOut.shared.downloads, 0);
+
+    t.eq('a share that FAILS falls back to the download', shareOut.failed.downloads, 1, shareOut.failed);
+    t.ok('and says so rather than leaving a dead button', /Card saved/.test(shareOut.failed.toast), shareOut.failed);
+    t.eq('the milestone card falls back too', shareOut.failedMile.downloads, 1, shareOut.failedMile);
+    t.ok('and names the badge it drew', /coreforge-first\.png/.test(shareOut.failedMile.name), shareOut.failedMile);
+
+    t.eq('FLOOR: a browser with no Web Share still gets the file', shareOut.noShareApi.downloads, 1);
+    t.ok('FLOOR: and is still told', /Card saved/.test(shareOut.noShareApi.toast), shareOut.noShareApi);
+
+    t.eq('FLOOR: a card that could not be drawn writes nothing', shareOut.noBlob.downloads, 0);
+    t.ok('FLOOR: and says that, not "saved"', /Could not make card/.test(shareOut.noBlob.toast), shareOut.noBlob);
+  }
+
+  /* ---------- 20. the app can be HEARD, not only operated ----------------
+     Section 19 gave every control a name. This is the other half: what the app
+     SAYS BACK. Measured before the fix, there were ZERO live regions in the
+     whole file, and #sheet had no role and never took focus — so a screen
+     reader announced no confirmation, no refusal and no validation hint, and
+     every one of the fifty sheets opened behind the athlete's focus with seven
+     controls they could not reach.
+
+     Three floors carry it, and each catches a different over-eager fix:
+     the toast must stay HIDDEN by opacity (display:none or visibility:hidden
+     puts it out of the accessibility tree and every announcement goes silent
+     again with nothing on screen to say so); there must be NO aria-modal on
+     the sheet (it would hide #toast, which is the channel every refusal spoken
+     FROM a sheet uses); and a sheet that focuses its own input must still win. */
+  {
+    const a11y = await page.evaluate(async () => {
+      const out = {};
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const t = document.getElementById('toast');
+      const sh = document.getElementById('sheet');
+
+      out.toast = {
+        role: t.getAttribute('role'),
+        live: t.getAttribute('aria-live'),
+        atomic: t.getAttribute('aria-atomic'),
+      };
+      out.liveRegions = document.querySelectorAll('[aria-live],[role="status"],[role="alert"]').length;
+
+      /* Hidden how? A live region inside display:none or visibility:hidden is
+         announced by nothing. Read it while the toast is NOT showing.
+         AND WAIT FOR THE TRANSITION. `.toast` carries `transition:.28s`, so a
+         computed style read on the same tick reports the value being animated
+         FROM — measured, opacity 1 — which is a statement about the animation
+         rather than about the hiding rule. */
+      t.classList.remove('show');
+      await wait(450);
+      const cs = getComputedStyle(t);
+      out.hidden = { display: cs.display, visibility: cs.visibility, opacity: cs.opacity };
+
+      /* The same message twice: assigning textContent replaces the text node,
+         so it is a real mutation and the region fires again. Measured rather
+         than assumed — if it were not true, every repeated "Deleted" would be
+         announced once and the fix would need a clear-and-reset dance. */
+      toast('Deleted');
+      const node1 = t.firstChild;
+      toast('Deleted');
+      out.repeatMakesNewNode = t.firstChild !== node1;
+      out.repeatText = (t.textContent || '').trim();
+
+      out.sheet = { role: sh.getAttribute('role'), modal: sh.getAttribute('aria-modal'),
+                    tabindex: sh.getAttribute('tabindex') };
+
+      /* Driven: a real control takes focus, a sheet opens, focus must be in it. */
+      const btn = document.createElement('button');
+      btn.id = 'zzOpener'; btn.textContent = 'open';
+      document.body.appendChild(btn); btn.focus();
+      out.focusBefore = document.activeElement.id;
+      openSheet('<h3>A panel</h3><button id="zzInside">do it</button>');
+      await wait(120);
+      const af = document.activeElement;
+      out.focusInSheet = af === sh || sh.contains(af);
+      out.focusAfterOpen = af.id || af.tagName;
+      out.reachable = sh.querySelectorAll('button').length;
+      closeSheet();
+      await wait(350);
+      out.focusRestored = document.activeElement.id;
+
+      /* A REPAINT MUST NOT MOVE THE RETURN TARGET. openAct, openBuilder and
+         openSkipping all re-enter openSheet() on an already-open sheet; if the
+         return slot were rewritten there it would point at a control inside
+         the sheet, which is destroyed a line later. */
+      btn.focus();
+      openSheet('<button id="zzA">a</button>');
+      await wait(80);
+      openSheet('<button id="zzB">b</button>');   // a repaint, not a new sheet
+      await wait(80);
+      closeSheet();
+      await wait(350);
+      out.focusAfterRepaint = document.activeElement.id;
+
+      /* And the download guard, exercised DIRECTLY: nothing on a real device
+         makes createObjectURL throw, so the only way to prove the card path
+         reports a failure rather than becoming an uncaught page error — the
+         toBlob callback runs after its caller's try/catch has returned — is to
+         break it here. */
+      const realCOU = URL.createObjectURL;
+      URL.createObjectURL = () => { throw new Error('no room'); };
+      const tEl = document.getElementById('toast'); tEl.textContent = '';
+      navigator.canShare = undefined;
+      try { shareCard('T', 's', ['a']); } catch (e) { out.dlThrewSync = String(e); }
+      await wait(500);
+      out.dlBrokenToast = (tEl.textContent || '').trim();
+      URL.createObjectURL = realCOU;
+
+      /* And a detached opener must not throw or strand the athlete. */
+      btn.focus();
+      openSheet('<button id="zzInside2">x</button>');
+      await wait(120);
+      btn.remove();
+      let threw = '';
+      try { closeSheet(); } catch (e) { threw = String(e); }
+      await wait(350);
+      out.detachedThrew = threw;
+
+      /* GUARD, both ways: strip the attributes and the detector must report it. */
+      t.removeAttribute('aria-live'); t.removeAttribute('role');
+      out.canSeeMissing = document.querySelectorAll('[aria-live],[role="status"],[role="alert"]').length === 0;
+      t.setAttribute('role', 'status'); t.setAttribute('aria-live', 'polite');
+
+      /* FLOOR: a sheet that focuses its own control still wins, because this
+         focus call runs synchronously inside openSheet() and theirs is on a
+         timer after it. */
+      try { openFoodSearch(); } catch (e) { out.fsErr = String(e); }
+      await wait(300);
+      out.foodSearchFocus = document.activeElement.id;
+      closeSheet();
+      await wait(300);
+      return out;
+    });
+
+    t.ok('guard: an app with no live region really would be reported', a11y.canSeeMissing, a11y);
+
+    t.eq('the toast is a status region', a11y.toast.role, 'status');
+    t.eq('and it is polite — a confirmation waits for a pause, it does not interrupt', a11y.toast.live, 'polite');
+    t.eq('and it reads the whole message, not the part that changed', a11y.toast.atomic, 'true');
+    t.ok('so the app has a channel a screen reader announces', a11y.liveRegions >= 1, a11y);
+
+    t.eq('FLOOR: the toast hides with opacity, so it stays in the accessibility tree',
+      a11y.hidden.opacity, '0', a11y.hidden);
+    t.ok('FLOOR: and is never display:none or visibility:hidden, which would silence every announcement',
+      a11y.hidden.display !== 'none' && a11y.hidden.visibility !== 'hidden', a11y.hidden);
+
+    t.ok('the same message twice is a real mutation, so a repeat is announced again',
+      a11y.repeatMakesNewNode, a11y);
+    t.eq('and the message is still on the glass', a11y.repeatText, 'Deleted');
+
+    t.eq('a sheet is a dialog', a11y.sheet.role, 'dialog');
+    t.eq('and can take focus itself', a11y.sheet.tabindex, '-1');
+    t.eq('FLOOR: and is NOT aria-modal, which would hide the toast it speaks through',
+      a11y.sheet.modal, null, a11y.sheet);
+
+    t.eq('guard: a real control had the focus first', a11y.focusBefore, 'zzOpener');
+    t.ok('guard: and the sheet really had something to reach', a11y.reachable >= 1, a11y);
+    t.ok('opening a sheet moves the focus into it', a11y.focusInSheet, a11y);
+    /* The CONTAINER, not the first control: focusing an input opens a keyboard
+       and skips the panel's own title, and a dialog read from its container
+       reads that title first. */
+    t.eq('and onto the panel itself, so its title is read before any control',
+      a11y.focusAfterOpen, 'sheet', a11y);
+    t.eq('closing it gives the focus back to what opened it', a11y.focusRestored, 'zzOpener');
+    t.eq('and an opener that has since been removed neither throws nor strands', a11y.detachedThrew, '');
+    t.eq('a REPAINT of an open sheet still returns focus to what opened it',
+      a11y.focusAfterRepaint, 'zzOpener', a11y);
+
+    t.eq('guard: a card whose download throws does not throw synchronously', a11y.dlThrewSync, undefined, a11y);
+    t.ok('a card that could not be written says so rather than dying silently',
+      /Could not save the card/.test(a11y.dlBrokenToast), a11y);
+
+    t.eq('FLOOR: a sheet that focuses its own box still wins', a11y.foodSearchFocus, 'fs-q', a11y);
+  }
+
+  /* ---------- 21. an answer the browser already had, 43 seconds late ------
+     Measured on a genuinely offline context: _visionEstimate() ran the full
+     three-model retry ladder for 43.2 SECONDS before the athlete was told
+     anything, while navigator.onLine had been false throughout. Its sibling
+     the neural-voice path checks it, and runAIDiagnostic() opens with a short
+     reachability ping for exactly this reason.
+
+     COUNT THE CALLS, NOT THE CLOCK. A time-based assertion is flaky on a slow
+     runner and measures the container; what the fix actually does is stop the
+     request ladder from starting at all. The floor is the mirror: an ONLINE
+     athlete must still reach the network, because navigator.onLine is only
+     trustworthy in the negative — a captive portal reports true, and a check
+     that trusted it would refuse an import that would have worked. */
+  {
+    const off = await page.evaluate(async () => {
+      const out = {};
+      const PX = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/9oACAEBAAA/AKrAf//Z';
+      STATE.settings.foodAiKey = 'AIzaTESTKEYTESTKEYTESTKEYTESTKEY0000';
+
+      /* Stub the ONE helper every model attempt goes through, so the ladder
+         costs nothing and the count is exact. */
+      const realFetch = fetchWithTimeout;
+      let calls = 0;
+      fetchWithTimeout = async () => { calls++; const e = new Error('stub'); e.status = 0; throw e; };
+      const realOnLine = Object.getOwnPropertyDescriptor(Navigator.prototype, 'onLine');
+      const setOnLine = v => Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => v });
+
+      const run = async () => {
+        calls = 0;
+        const t0 = Date.now();
+        let err = null;
+        try { await _visionEstimate(PX, 'test', {}); } catch (e) { err = String(e && (e.message || e)); }
+        return { calls, ms: Date.now() - t0, err };
+      };
+
+      setOnLine(false);
+      out.offline = await run();
+      setOnLine(true);
+      out.online = await run();
+
+      try { delete navigator.onLine; } catch (e) {}
+      if (realOnLine) try { Object.defineProperty(Navigator.prototype, 'onLine', realOnLine); } catch (e) {}
+      fetchWithTimeout = realFetch;
+      out.restored = navigator.onLine;
+
+      /* And the guard the fix is one-sided for: the app must never READ
+         navigator.onLine as proof that the network works. */
+      out.src = (() => {
+        const sc = [...document.querySelectorAll('script:not([src])')]
+          .map(x => x.textContent).sort((a, b) => b.length - a.length)[0] || '';
+        const bare = sc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+        return {
+          len: bare.length,
+          reads: (bare.match(/navigator\.onLine/g) || []).length,
+          strictFalse: (bare.match(/navigator\.onLine\s*===\s*false/g) || []).length,
+          notFalse: (bare.match(/navigator\.onLine\s*!==\s*false/g) || []).length,
+        };
+      })();
+      return out;
+    });
+
+    t.ok('guard: the offline probe returned a reading at all', off && off.offline, JSON.stringify(off));
+    t.ok('guard: the online run really reached the network', off.online.calls > 0, off.online);
+    t.eq('an offline import spends no request at all', off.offline.calls, 0, off.offline);
+    t.ok('and says so rather than timing out', /offline/i.test(off.offline.err || ''), off.offline);
+    t.ok('and it answers at once', off.offline.ms < 2000, off.offline);
+
+    t.ok('FLOOR: an online athlete still runs the real ladder',
+      off.online.calls >= 2, off.online);
+    t.ok('FLOOR: and still gets the network message, not the offline one',
+      !/offline/i.test(off.online.err || ''), off.online);
+
+    t.ok('guard: the scan read the real app', off.src.len > 400000, String(off.src.len));
+    t.ok('every navigator.onLine read is one-sided — false is trustworthy, true is not',
+      off.src.reads > 0 && off.src.reads === off.src.strictFalse + off.src.notFalse, off.src);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
