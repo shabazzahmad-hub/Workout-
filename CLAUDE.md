@@ -11376,6 +11376,100 @@ had its detector proven before its zero was believed.
   real shape before believing the result.*
 
 
+## The third picking path to skip the kit question (v407)
+
+Found by driving a surface no probe had run: every Special training format,
+end to end, as an athlete with four flagged joints and no equipment.
+
+`startSpecialFormat()` builds its one item straight from the format literal:
+
+```js
+const list=[{exId:f.exId,unit:'time',target:Math.round(f.w*60),…}];
+```
+
+It asks `maxEffortBlocked()` (v366) and nothing else. Measured on an athlete
+with an empty gear list: the grip sheet rendered **four tappable buttons**,
+nothing on screen named a pull-up bar, and tapping one started a session of
+**dead hangs they physically cannot do**.
+
+That is `startForceTrain()`'s v322 defect and `startHoldTest()`'s v366 defect,
+on a third picking path — and v366 had touched this very function to add the
+health gate without asking the other question. **A new path has to ask every
+question the old ones ask**, and so does an old path somebody has just edited.
+
+**It NAMES the kit rather than substituting, and here the arithmetic settles
+it rather than the principle.** `safeSwap('deadhang')` for a flagged shoulder
+is **Bird Dog** — a `unit:'reps'` movement — while the format prescribes
+`w*60` **seconds**. A silent swap would prescribe *"Bird Dog for 30 seconds"*
+under a Grip work heading. `gearNeededFor()` and the non-tappable
+*"needs Pull-up bar"* row already existed for the hold tests; this reuses both
+rather than inventing a second shape.
+
+**Two guards mean two checks**: the row does not offer it AND the starter
+refuses it, so a sheet left open from before the gear list changed cannot get
+past the row.
+
+**The joint half was already answered and is left alone.** `openGrip()` has
+carried `actRiskNoteHTML('deadhang', …)` since it was written, and a check
+pins that it still fires — a fix that swallowed it would satisfy every
+assertion about the bar.
+
+**Three floors, and each catches a different over-eager twin**: the athlete who
+owns a bar keeps all four buttons and can start them; the **box** formats need
+no kit at all and keep all three; and the health lock still locks the max hang.
+
+### The guard caught a sweep that proved nothing
+
+The first version of this probe read `INTV.steps`, which does not exist — the
+field is `seq`. It reported **zero risky movements across all seven formats
+for an athlete with four flagged joints**, which is exactly the answer a
+correct app would give, and it was measuring an empty list. A guard printing
+how many movements the sweep had actually seen turned seven convincing zeros
+into seven `steps: 0` lines in one run.
+
+**A sweep that reports clean must say how much it looked at.** This is the
+same trap as the v322 dead-control probe and the v390 duplicate-id detector,
+and the guard is the only thing that separates them.
+
+### And two more probe errors in the same round
+
+`startQuick(i)` does not exist — the Quick entry point is `openQuick(id)` and
+the workouts are keyed by id, not index, so eight identical "THREW" lines
+looked like a dead tab. And `safeSwap('deadhang', ['shoulder'])` returned
+`deadhang`: the second argument is ignored and the limitations are read off
+`STATE`, so the swap map looked dead until the profile was actually set.
+**Confirm the control's real shape before believing the result** — twice more,
+in one afternoon.
+
+### And then the whole class, swept
+
+`startSpecialFormat()` was the last member still missing a question, so the
+rest of the picking paths were driven as one athlete — **four joints flagged,
+no equipment at all, a tight room** — and every movement each path hands out
+was checked for a flagged joint, for kit the athlete does not own, and for an
+id that is not an exercise:
+
+| path | movements seen | problems |
+|---|---|---|
+| Bonus HIIT × 3 formats | 7 each | 0 |
+| Grinder × 3 formats | 3 each | 0 |
+| Special HIIT × 3 formats | 3 each | 0 |
+| `builderPool()` | 122 | 0 |
+| `correctiveBonus()` | 1 | 0 |
+
+**The counts are the point.** 148 of the 197-movement library is flagged for
+that athlete, so the test can fire; and a path reporting zero movements would
+otherwise pass for the wrong reason, which is exactly what the first run of
+this probe did.
+
+**`builderPool()` is asserted on GEAR only, and that is deliberate.** It
+carries risky movements on purpose — v267 established that the custom builder
+**warns rather than swaps**, because the athlete is choosing every movement by
+name and `customRiskHTML()` marks the flagged rows. A sweep that called those a
+leak would be re-deriving a rule the app has already decided, which is the
+`jointRisky()` false alarm v285 records.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

@@ -1832,7 +1832,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='406';
+const APP_VERSION='407';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -8150,9 +8150,29 @@ function actHistoryHTML(k){
       <span><b>${x.mins} min</b> <span class="tiny muted">· ${x.dist?x.dist+' '+(x.unit||'km')+' · ':''}${x.wt?x.wt+' load · ':''}${x.secs?'best '+x.secs+'s · ':''}${x.rounds?x.rounds+' rounds · ':''}${x.date}</span></span>
       <button class="chip" onclick="removeAct('${k}',${i})">✕</button></div>`).join('')+`</div>`;
 }
+/* THE KIT QUESTION, ON THE THIRD PICKING PATH TO SKIP IT. startForceTrain()
+   skipped it in v322 and startHoldTest() in v366. Measured on an athlete with
+   an empty gear list: the grip sheet rendered four tappable buttons, nothing on
+   screen named a pull-up bar, and grip30 started a session of dead hangs they
+   physically cannot do.
+
+   IT NAMES THE KIT RATHER THAN SUBSTITUTING, for the reason the hold tests
+   already give — and here the arithmetic proves it. safeSwap('deadhang') for a
+   flagged shoulder is BIRD DOG, a REPS movement, while the format prescribes
+   w*60 SECONDS: a silent swap would prescribe "Bird Dog for 30 seconds" under a
+   Grip work heading. The joint half of the question is already answered on that
+   sheet by actRiskNoteHTML(). */
+function formatKitMissing(k){
+  const f=SPECIAL_FORMATS[k];if(!f)return null;
+  return !hasGearFor(f.exId)?gearNeededFor(f.exId):null;
+}
 function startSpecialFormat(format){
   const f=SPECIAL_FORMATS[format];if(!f)return;
   if(f.max&&maxEffortBlocked())return;   // an all-out hang is a test to failure
+  /* Two guards mean two checks: the row below does not offer it, and the
+     starter refuses it, so a stale sheet cannot get past the row. */
+  const need=formatKitMissing(format);
+  if(need){toast('That needs '+need+' — tick it in Settings if you have one',4200);return;}
   closeSheet();
   const list=[{exId:f.exId,unit:'time',target:Math.round(f.w*60),rest:Math.round(f.r*60),sets:1}];
   const sess={session:{name:ACTS[f.act].name,key:f.act,focus:'Special conditioning'},ptr:-1,pos:{}};
@@ -8206,6 +8226,8 @@ function openGrip(){
     <div style="display:flex;flex-direction:column;gap:10px">
       ${Object.keys(SPECIAL_FORMATS).filter(k=>SPECIAL_FORMATS[k].act==='grip').map(k=>{
         const lock=maxEffortFormat(k)&&safeMode();
+        const need=formatKitMissing(k);
+        if(need)return `<div class="kv" data-fmtkit="${k}"><span>${_ve(SPECIAL_FORMATS[k].name)}</span><b class="tiny muted">needs ${_ve(need)}</b></div>`;
         return `<button class="btn ghost" data-fmt="${k}" style="text-align:left;display:block;padding:14px" onclick="startSpecialFormat('${k}')"><b style="font-size:15px">${lock?'🔒 ':''}${SPECIAL_FORMATS[k].name}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${lock?'A max test stays locked until the health check is cleared — the timed hangs above are yours to do.':SPECIAL_FORMATS[k].desc}</div></button>`;}).join('')}
     </div>
     <div class="section-label">Log a hang</div>
@@ -8233,7 +8255,10 @@ function openBox(){
     </div>
     <div class="section-label" style="margin-top:0">Rounds</div>
     <div style="display:flex;flex-direction:column;gap:10px">
-      ${Object.keys(SPECIAL_FORMATS).filter(k=>SPECIAL_FORMATS[k].act==='box').map(k=>`<button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="startSpecialFormat('${k}')"><b style="font-size:15px">${SPECIAL_FORMATS[k].name}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${SPECIAL_FORMATS[k].desc}</div></button>`).join('')}
+      ${Object.keys(SPECIAL_FORMATS).filter(k=>SPECIAL_FORMATS[k].act==='box').map(k=>{
+        const need=formatKitMissing(k);
+        if(need)return `<div class="kv" data-fmtkit="${k}"><span>${_ve(SPECIAL_FORMATS[k].name)}</span><b class="tiny muted">needs ${_ve(need)}</b></div>`;
+        return `<button class="btn ghost" data-fmt="${k}" style="text-align:left;display:block;padding:14px" onclick="startSpecialFormat('${k}')"><b style="font-size:15px">${SPECIAL_FORMATS[k].name}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${SPECIAL_FORMATS[k].desc}</div></button>`;}).join('')}
     </div>
     <button class="btn t-teal" style="margin-top:12px" onclick="openActTimer('box')">⏱️ Free rounds — stopwatch</button>
     <div style="height:8px"></div>

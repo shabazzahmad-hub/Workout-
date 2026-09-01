@@ -7345,6 +7345,92 @@ export default async function () {
       JSON.stringify({ title: r.title, opens: r.plain.slice(0, 40) }));
   }
 
+  /* ---- the kit question, on the third picking path to skip it -------------
+     startForceTrain() skipped hasGearFor() in v322 and startHoldTest() in
+     v366. startSpecialFormat() built its one item straight from the format,
+     so an athlete with an empty gear list saw four tappable grip buttons,
+     nothing on screen naming a pull-up bar, and grip30 started a session of
+     dead hangs they physically cannot do.
+
+     It NAMES the kit rather than substituting, and the arithmetic is what
+     settles that: safeSwap('deadhang') for a flagged shoulder is BIRD DOG, a
+     REPS movement, while the format prescribes w*60 SECONDS. The joint half of
+     the question is already answered on that sheet by actRiskNoteHTML(), and a
+     check below pins that it still is.
+
+     The floors are the athlete who owns a bar, the box formats that need no
+     kit at all, and the health lock. */
+  {
+    const r = await page.evaluate(async () => {
+      const o = {};
+      const txt = () => ((document.getElementById('sheet') || {}).textContent || '').replace(/\s+/g, ' ');
+      STATE.profile.parq = []; STATE.profile.parqDone = true; STATE.profile.medCleared = true;
+
+      /* No kit at all. */
+      STATE.profile.limitations = []; STATE.profile.gear = []; save();
+      openGrip(); await new Promise(z => setTimeout(z, 150));
+      o.noBarButtons = [...document.querySelectorAll('#sheet [data-fmt]')].length;
+      o.noBarKitRows = [...document.querySelectorAll('#sheet [data-fmtkit]')].length;
+      o.noBarNamesKit = /needs Pull-up bar/i.test(txt());
+      closeSheet(); await new Promise(z => setTimeout(z, 200));
+      INTV = null; startSpecialFormat('grip30'); await new Promise(z => setTimeout(z, 120));
+      o.noBarStarted = !!INTV; if (INTV) hiitQuit();
+      await new Promise(z => setTimeout(z, 150));
+
+      /* FLOOR: the box formats need nothing and must be untouched. */
+      openBox(); await new Promise(z => setTimeout(z, 150));
+      o.boxButtons = [...document.querySelectorAll('#sheet [data-fmt]')].length;
+      o.boxKitRows = [...document.querySelectorAll('#sheet [data-fmtkit]')].length;
+      closeSheet(); await new Promise(z => setTimeout(z, 200));
+
+      /* FLOOR: an athlete who owns a bar is unchanged. */
+      STATE.profile.gear = ['bar']; save();
+      openGrip(); await new Promise(z => setTimeout(z, 150));
+      o.barButtons = [...document.querySelectorAll('#sheet [data-fmt]')].length;
+      o.barKitRows = [...document.querySelectorAll('#sheet [data-fmtkit]')].length;
+      closeSheet(); await new Promise(z => setTimeout(z, 200));
+      INTV = null; startSpecialFormat('grip30'); await new Promise(z => setTimeout(z, 120));
+      o.barStarted = !!INTV;
+      o.barIds = INTV ? [...new Set((INTV.seq || []).map(x => x && x.exId).filter(Boolean))] : [];
+      if (INTV) hiitQuit();
+      await new Promise(z => setTimeout(z, 150));
+
+      /* The joint note is a different question and must still be answered. */
+      STATE.profile.limitations = ['shoulder']; save();
+      openGrip(); await new Promise(z => setTimeout(z, 150));
+      o.jointWarned = /flagged a joint/i.test(txt());
+      closeSheet(); await new Promise(z => setTimeout(z, 200));
+
+      /* FLOOR: the health lock still locks the max hang. */
+      STATE.profile.limitations = []; STATE.profile.parqDone = false; STATE.profile.medCleared = false; save();
+      openGrip(); await new Promise(z => setTimeout(z, 150));
+      o.locked = /🔒/.test(txt());
+      closeSheet();
+      STATE.profile.parqDone = true; STATE.profile.medCleared = true; save();
+
+      /* The predicate's own contract, exercised directly. */
+      STATE.profile.gear = []; save();
+      o.pk = [formatKitMissing('grip30'), formatKitMissing('box3x3'), formatKitMissing('nope')];
+      STATE.profile.gear = ['bar']; save();
+      o.pkWithBar = formatKitMissing('grip30');
+      return o;
+    });
+    t.eq('with no pull-up bar the grip formats are not offered', r.noBarButtons, 0);
+    t.eq('and each row names the kit instead', r.noBarKitRows, 4);
+    t.ok('in words the athlete can act on', r.noBarNamesKit, r);
+    t.ok('and the starter refuses it too, so a stale sheet cannot get past the row', !r.noBarStarted, r);
+    t.eq('FLOOR: the box formats need nothing and keep all three buttons', r.boxButtons, 3);
+    t.eq('and are never marked as needing kit', r.boxKitRows, 0);
+    t.eq('FLOOR: an athlete who owns a bar still gets all four', r.barButtons, 4);
+    t.eq('with no kit rows at all', r.barKitRows, 0);
+    t.ok('and can still start one', r.barStarted, r);
+    t.eq('on the real movement', r.barIds, ['deadhang']);
+    t.ok('a flagged joint is still warned about — a different question', r.jointWarned, r);
+    t.ok('FLOOR: the health lock still locks the max hang', r.locked, r);
+    t.eq('formatKitMissing() names the kit, and only when it is missing', r.pk, ['Pull-up bar', null, null]);
+    t.eq('and says nothing once the athlete owns it', r.pkWithBar, null);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
