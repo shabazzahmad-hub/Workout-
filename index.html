@@ -1832,7 +1832,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='402';
+const APP_VERSION='403';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -20585,6 +20585,18 @@ async function selfUpdate(){
     if(!m)return;
     const live=+m[1], mine=+APP_VERSION;
     if(!(live>mine))return;
+    /* NOTHING is torn down until the reload is committed. The re-check used to
+       sit only in front of the reload, so an athlete who tapped Start during
+       the version fetch (up to 6s) got the guard they were owed AND an app with
+       no service worker and no offline pack: measured, caches went
+       ['coreforge-v402'] -> [] and the registration false, still on the old
+       version, with cf_selfupd set so it would not retry this session. Go
+       offline after that session and the app does not start.
+
+       The teardown exists so the next load fetches fresh. If we cannot reload,
+       we must not tear down — and the flag must not be set either, or the
+       update is silently skipped for the rest of the session. */
+    if(_sessionLive())return;
     sessionStorage.setItem('cf_selfupd','1');
     try{toast('Updating to v'+live+'…');}catch(e){}
     /* Both of these used to be origin-wide. getRegistrations() returns every
@@ -20592,13 +20604,17 @@ async function selfUpdate(){
        "update CoreForge" unregistered the Command app under /command/ and
        deleted its offline pack as collateral. Take our own registration by
        scope, and only cache names that match ours. */
-    try{const reg=await navigator.serviceWorker.getRegistration('./');if(reg)await reg.unregister();}catch(e){}
-    try{const keys=await caches.keys();await Promise.all(keys.filter(k=>/^coreforge-v\d+$/.test(k)).map(k=>caches.delete(k)));}catch(e){}
-    /* _sessionLive() was only checked at entry, several awaits and up to ~6.4s
-       ago (the fetch alone can take up to 6s). An athlete who started a set in
-       that window would still get yanked out by this reload — re-check right
-       before it actually fires, not just before the work that leads up to it. */
-    setTimeout(()=>{if(_sessionLive())return;location.reload();},400);
+    /* The teardown and the reload are now one committed step, in that order and
+       with the last check in front of BOTH. A session that begins inside the
+       few milliseconds they take still reloads, which is right: once the pack
+       is gone, leaving the athlete without one is worse than the interruption
+       the guard exists to prevent. */
+    setTimeout(async()=>{
+      if(_sessionLive()){try{sessionStorage.removeItem('cf_selfupd');}catch(e){}return;}
+      try{const reg=await navigator.serviceWorker.getRegistration('./');if(reg)await reg.unregister();}catch(e){}
+      try{const keys=await caches.keys();await Promise.all(keys.filter(k=>/^coreforge-v\d+$/.test(k)).map(k=>caches.delete(k)));}catch(e){}
+      location.reload();
+    },400);
   }catch(e){}   // offline or blocked — stay on what we have
 }
 function refreshCacheVer(){

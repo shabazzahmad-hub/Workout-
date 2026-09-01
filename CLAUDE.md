@@ -10867,6 +10867,94 @@ reading anyway:
   voice name and the warning is correct about it — my probe had planted a
   plausible name, not junk.
 
+## An update must not destroy the pack it cannot replace (v403)
+
+`selfUpdate()` unregisters the worker and deletes every CoreForge cache, then
+re-checks `_sessionLive()` before reloading. The guard was in the right place
+for the RELOAD and the wrong place for the teardown.
+
+An athlete who taps Start **during the version fetch** — up to six seconds —
+gets the guard they are owed and an app with nothing behind it. Measured by
+driving it:
+
+| | before | after |
+|---|---|---|
+| CoreForge caches | `['coreforge-v402']` → **`[]`** | kept |
+| service worker | registered → **gone** | kept |
+| reload | correctly did not fire | correctly did not fire |
+| retries this session | **no** — `cf_selfupd` was already set | yes |
+
+So they finish their set on the old version with no offline pack, and **going
+offline afterwards the app does not start at all** — the app's oldest promise,
+broken by its own updater.
+
+**Nothing is torn down until the reload is committed.** The teardown exists so
+the next load fetches fresh; if we cannot reload, we must not tear down. The
+flag moves with it, because a stand-down that leaves `cf_selfupd` set skips the
+update for the rest of the session.
+
+**A session beginning inside the few milliseconds the teardown takes still
+reloads**, and that is the right call rather than an oversight: once the pack is
+gone, leaving the athlete without one is worse than the interruption the guard
+exists to prevent.
+
+### The existing check pinned the old structure
+
+`t.ok('and re-checks _sessionLive() immediately before firing it', …)` searched
+the 120 characters before `location.reload()`. That encoded the buggy shape —
+teardown first, check second — so moving the check in FRONT of the teardown
+failed it. Fifth time this session a check has held old behaviour rather than
+caught a defect.
+
+Re-aimed at the real requirement, which is an ORDER rather than a distance: the
+last check sits before the unregister and the cache delete, and both sit before
+the reload. **And the behaviour is now driven** — the source scan alone stays
+true with `_sessionLive()` reverted to always-false, which is the escape this
+file records for calling the helper instead of the route.
+
+**The floor is the athlete who is NOT training**: the update must still tear
+down and reload, or the fix is a disable. The reload destroys the execution
+context, so the navigation IS the assertion — a probe that tried to read state
+afterwards reported *"Execution context was destroyed"*, which was the floor
+passing rather than the probe failing.
+
+### Four escapes, and not one of them was a weak check in the usual sense
+
+Five mutants were built and **four escaped on the first run**. Reading them back
+split the cause two ways, and neither was "the check is weak about what it
+tests".
+
+**Two were bad mutants.** The fix has two parts — a re-check after the fetch,
+and the teardown moved inside the committed block — and **either one alone
+closes the hole**, so reverting one while keeping the other is equivalent. The
+tell was in the measurement rather than the reasoning: on the "revert", the
+retry flag came back **false**, which can only happen if the function returned
+before `sessionStorage.setItem` — at the check the mutant had left in place.
+The genuine pre-v403 code is both edits at once, and seeded that way it fails by
+name. Same lesson as v363: *a fix with two edits needs a mutant with two.*
+
+**Two were a case the check never built.** The guard inside the committed block
+is reachable only when the athlete taps Start in the **400 ms** between the last
+check and the teardown — not during the fetch, which the first case covers. With
+no such case, inverting that guard and leaving the retry flag set both changed
+nothing any assertion could see. Adding it caught both.
+
+**And it caught the one I had written off as equivalent.** Moving the teardown
+back, with the post-fetch check intact, really does destroy the pack for a tap
+inside that window — so the mutant I had labelled EQUIVALENT in the driver was
+a real defect my check could not yet see. *A guard is only visible when the
+value beside it cannot supply the answer* — and here the missing CASE, not a
+neighbouring guard, was supplying it. Five of five caught once the case existed.
+
+### And a mutation copy built from a glob is not the app
+
+The first run reported **baseline RED** and stopped, which is the rule working.
+The cause was the copy: `cp *.jpg *.mp4` misses every `.png`, `.svg`, `.ico` and
+`.webmanifest` the precache tiers name, so suite 12's *"no tier references a
+file that does not exist"* failed on an app that was fine. Copy every file in
+the root, not the extensions you happen to think of — and take the red baseline
+as a fact about the harness before believing anything about the code.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
