@@ -13022,6 +13022,25 @@ it asserts anything about what the app said.
 - **Every localStorage key the app writes** — three (`STORE_KEY`,
   `PREIMPORT_KEY`, `CROSSTAB_KEY`) — against what `hardReset()` erases. Both
   snapshots are removed, so *"this cannot be undone"* holds on that path.
+- **Every promise the app starts, driven rather than read.** A per-line grep
+  for a `.then()` with no `.catch()` reported 22 of 25 sites and was useless —
+  almost every chain carries its handler on a later line. Measured instead by
+  listening for `unhandledrejection` while driving all six tabs, all four
+  Progress panes and fourteen sheets: **zero**, with a planted canary proving
+  the detector can see one.
+- **Week bucketing in eight timezones**, including the ones that break date
+  arithmetic: a 30-minute DST shift (Lord Howe), 45-minute offsets (Kathmandu,
+  Chatham), a half-hour standard offset (St John's, Kolkata), and UTC+14
+  (Kiritimati). Three whole calendar years each — **157 buckets, none longer
+  than 7 days, every `localISO()` and every week key a valid `YYYY-MM-DD`, zero
+  page errors.** That is v356's fix holding where it is hardest.
+
+  **And the first run of that sweep reported ONE bucket holding all 1,096
+  days.** `weekKey()` takes **no arguments** — it always answers for today —
+  and the function that takes a date is `_weekKeyOf()`. The guard is what turns
+  that from a finding into a corrected probe: 1,096 days must make about 157
+  buckets, so one bucket fails before anything else is believed. *Confirm the
+  control's real shape before believing the result*, for the eleventh time.
 - **Every other door into `innerHTML`.** Zero `insertAdjacentHTML`, zero
   `outerHTML`, zero `document.write`, zero `eval`, zero `new Function`, zero
   string-bodied timers, and **two** `setAttribute` calls, both with literal
