@@ -13100,6 +13100,51 @@ exactly how a check stops being able to fail, so the six v413 seeds whose checks
 this round touched were re-seeded against the new file alongside the new ones.
 
 
+## Two accessibility sweeps, and the one I nearly broke by fixing (v414)
+
+v411 gave every control an accessible NAME and v413 gave the app a channel a
+screen reader announces. Two axes neither of them could see were swept next,
+and both came back clean — with the detector proven able to see a planted
+failure before the zero was believed.
+
+- **Every clickable element that is not a control.** A `<div onclick>` has no
+  name, no keyboard route and no role, so a check that scans buttons and inputs
+  cannot see it at all. Swept across six tabs, four Progress panes and twelve
+  sheets: **zero**. Everything the athlete taps in this app is a real
+  `<button>`, `<a>` or `<input>`.
+- **Whether a keyboard user can see where they are.** There is a global
+  `:focus-visible` ring (3px, offset 3px), a skip link, and a
+  `prefers-reduced-motion` block. Measured on a real Tab: a button takes a
+  **3px solid** outline.
+
+### The false alarm, and the measurement that stopped the fix
+
+`.field input:focus{outline:none;border-color:var(--fire)}` is more specific
+than `:focus-visible`, so a focused text input gets **no ring at all** — only a
+border moving from an 11%-alpha white to a solid accent colour, on a 1.5px
+border. Every other control in the app gets 3px. The obvious fix is one line:
+add `.field input:focus-visible` back at equal specificity.
+
+**It would have been a regression for almost every athlete, and one probe said
+so:**
+
+| what was focused | matches `:focus-visible`? |
+|---|---|
+| a text input, clicked with the POINTER | **yes** |
+| a button, clicked with the pointer | no |
+
+That is the browser's own rule, not a quirk: typing is expected on a text
+field, so its focus is always treated as visible-worthy. So the "fix" would
+paint a 3px ring on every input an athlete TAPS on a phone — which is exactly
+what `outline:none` exists to prevent, and this is a phone app.
+
+So the design is deliberate and it stays. The residual is real and is recorded
+rather than hidden: 1.5px is under WCAG 2.2's 2px perimeter, and the trade —
+a weaker keyboard indicator on the fields, against a ring on every touch — is
+the right way round for this app. **Read the change back before believing it is
+an improvement**, which is the mutant rule pointed at a fix.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
