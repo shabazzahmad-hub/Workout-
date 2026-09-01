@@ -2961,6 +2961,51 @@ export default async function run() {
     await ctx.close();
   }
 
+  /* ---------- a one-step-back restore replaces work done SINCE -----------
+     Both snapshots restore the whole of STATE, so anything logged after the
+     step they name goes with it. Neither confirm said so: "Undo the last
+     import and restore what was here before it?" names only the import, and an
+     athlete who trained three sessions afterwards lost those three with
+     nothing on screen having said so. Same class as "this cannot be undone"
+     being false. The check reads the SENTENCE the athlete is asked, because
+     that sentence is the whole of the fix. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const o = {}, asked = [];
+      const realConfirm = window.confirm;
+      window.confirm = q => { asked.push(String(q)); return false; };   // decline: nothing is destroyed
+      const before = JSON.stringify(STATE);
+      try { localStorage.setItem('coreforge.v1.preimport', JSON.stringify(STATE)); } catch (e) {}
+      try { localStorage.setItem('coreforge.v1.crosstab', JSON.stringify(STATE)); } catch (e) {}
+      undoImport();
+      undoCrossTab();
+      window.confirm = realConfirm;
+      o.asked = asked.length;
+      o.importAsk = asked[0] || '';
+      o.crossAsk = asked[1] || '';
+      o.declinedChangedNothing = JSON.stringify(STATE) === before;
+      try { localStorage.removeItem('coreforge.v1.preimport'); } catch (e) {}
+      try { localStorage.removeItem('coreforge.v1.crosstab'); } catch (e) {}
+      return o;
+    });
+    t.eq('guard: both restores really did ask before doing anything', r.asked, 2);
+    t.ok('guard: and declining really left the state alone', r.declinedChangedNothing, r);
+    t.ok('the import undo names the import it reverses',
+      /import/i.test(r.importAsk), r.importAsk);
+    t.ok('and says work logged SINCE it goes too', /since/i.test(r.importAsk), r.importAsk);
+    t.ok('and that the restore cannot itself be undone',
+      /cannot be undone/i.test(r.importAsk), r.importAsk);
+    t.ok('the cross-tab restore names the other tab it reverses',
+      /another tab/i.test(r.crossAsk), r.crossAsk);
+    t.ok('and says work logged since goes too', /since/i.test(r.crossAsk), r.crossAsk);
+    t.ok('and that it cannot be undone either',
+      /cannot be undone/i.test(r.crossAsk), r.crossAsk);
+    errors.forEach(e => t.fail('a page error fired during the restore-confirm checks', e));
+    await browser.close();
+  }
+
   srv.close();
   return t.finish();
 }

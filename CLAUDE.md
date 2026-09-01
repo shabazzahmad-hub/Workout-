@@ -11777,6 +11777,292 @@ copy artificially newer by a whole second — the defect reproduces with a real
 clock, but it had to be re-measured before it could be believed.
 
 
+## The guard announced the stand-down and then did it anyway (v411)
+
+Found by sweeping a class rather than by using the app: **every deferred
+callback that paints into a sheet, and whether it checks the sheet is still the
+one it started in.** `_sheetGen` is that check. Three image readers capture it,
+and its own comment says why — *"so a slow read never writes into a sheet he has
+since opened and typed into."*
+
+**One of the three had no `return`.**
+
+```js
+if(gen!==_sheetGen){toast('Read 2 activities — open Movement to review',5000);}
+_actRead=plan; openActivityReview();
+```
+
+So it announced that it was standing down and opened the sheet in the same
+breath. Measured by driving it: the athlete typed `MY OWN TYPING` into a
+quick-add sheet, the activity read finished, and **the review sheet replaced it
+— the typing gone.** Both siblings twelve lines away return; this one did not.
+*One of a pair guarded and its twin not*, with three members instead of two.
+
+### And all three named an address that held nothing
+
+Fixing the `return` exposed the bigger half. Each reader tells the athlete where
+to pick the result up, and **not one of them left it anywhere:**
+
+| reader | said | measured |
+|---|---|---|
+| food photo | *"tap ➕ to log it"* | `est` is a local and is **discarded**; the ➕ opens a **blank** form |
+| food screenshot | *"tap ➕ to log it"* | the same |
+| activity | *"open Movement to review"* | `_actRead` **is** parked — and `openActivityReview()` has **no route from Movement at all** |
+
+A named address with nothing at it is this repo's stale-pointer class, and here
+it also throws away a metered Gemini call the athlete has already paid for —
+which v305 established is the number that matters on that key.
+
+**So the read is parked and both addresses are made real.** Movement carries a
+row while an activity read is waiting; Fuel carries one while a food read is.
+Each has a **✕**, because a row that can only be cleared by saving is a row that
+gets stuck — the same reason `openActivityReview()`'s Cancel leaves the read
+parked rather than destroying it.
+
+**The plain ➕ deliberately does NOT consume the park.** It is reached from
+"Enter it manually" and from the failure path, and a button that silently
+pre-fills itself with something read an hour ago is a surprise, not a
+convenience. The row is the route, and it is visible.
+
+**And that floor was driven in the one state where its mutant cannot fire.**
+The over-eager twin — `openQuickAdd()` consuming the park — **escaped**, because
+the floor tapped the ➕ with `_foodRead` already nulled, and with nothing parked
+the button opens blank either way. It is driven with a read WAITING now, and
+asserts two things: the form is blank AND the park survives the tap. *A guard
+that cannot fire in the case you tested is not tested* — the same shape as
+v289's BMI edges, v310's safety cap and v380's clamp, and the ninth time this
+file has recorded it.
+
+**A zero is not a measurement**, so a reading whose calorie figure is not a
+usable number prints the name and no figure rather than *"~0 kcal"* — v260's
+rule, in copy I had just written and caught by driving it rather than reading
+it.
+
+**And the name is capped at 60, the way every stored row caps it.** The model's
+output is unbounded, and a parked row is TEXT rather than an input, so it is the
+one surface where a 400-character name runs off the screen. Two mutants sit on
+that one expression — the cap removed, and the escaping removed — because both
+guards live in it and one check cannot speak for the other.
+
+### There is no global `num()`
+
+The first version of the Fuel row called `num(_fr.kcal,0)`. That is a
+**function-local `const` in five separate places** and does not exist at that
+site — the trap this file already records from v398's `playerSwap()`, hit again
+in the same shape. `npm run check` only parses and cannot see it.
+
+### The stand-down is asserted on the SOURCE, and the routes are driven
+
+All three readers are file-picker callbacks nothing can drive, so the class
+check reads each function's own text: between `gen!==_sheetGen` and the call
+that opens a sheet there must be a `return`, and each must park before it. The
+ROUTES are driven, because a named address with nothing at it is the whole
+defect — the row is rendered, its control clicked, the sheet read back
+pre-filled, and the park confirmed consumed.
+
+Twenty mutants, and the floors carry the round: nothing parked must leave no row
+on either surface, the ➕ must stay blank **and leave a waiting read alone**, and
+an ordinary read that arrives while its own sheet is still open must still open
+the review directly.
+
+### The class had a fourth member, found by sweeping the COPY instead of the code
+
+The first sweep was for the code shape (`_sheetGen`) and found three. Sweeping
+the other way — **every athlete-facing string that names a place or a control**
+— found `lookupBarcode()`, which stands down correctly and then throws the
+product away while saying *"tap ➕ to log it"*. It is the one whose result costs
+the most to get again: a barcode read means the product is **in the athlete's
+hand**. Two sweeps of one class from opposite ends, and neither alone was
+complete.
+
+### And parking it was not enough, because closeSheet() does not repaint
+
+`closeSheet()` bumps `_sheetGen` and does **not** re-render the view behind it.
+So a read that stands down because the athlete closed a sheet parks the result
+and leaves the row off the very tab the toast names — the defect this round
+exists to remove, reintroduced by its own fix. Every reader now repaints the
+surface it sends them to, and the check asserts that per reader rather than
+once.
+
+### A parked read must not survive "erase everything"
+
+It is unlogged food or movement, and it lives in memory rather than STATE — so
+clearing STATE leaves it on the glass of a freshly-erased app. Same visible
+residue as the progress-photo blobs, which `hardReset()` already prunes for
+exactly this reason.
+
+## A pointer at a paned tab must name the pane (v411)
+
+v312 gave Progress four panes and v314 gave Reference two, and v314's own fix
+for `openMealPlan()` states the consequence: **landing on the tab stopped being
+the same as landing on the content.** Four pointers were left at tab
+granularity, and the sweep that found them scanned the SOURCE strings rather
+than the rendered screens — which is why v354's rendered-copy sweep, six
+pointers all correct, had missed them: three of these are only ever **spoken**.
+
+| the copy said | where the control actually is |
+|---|---|
+| *"retest any time from Progress"* | Progress ▸ **Strength** |
+| *"Log your weight on the Progress tab"* | Progress ▸ **Body** |
+| *"then log both in the Progress tab"* | Progress ▸ **Body** |
+| *"log them in the Progress tab"* | Progress ▸ **Body** |
+
+An athlete sent to Progress lands on **Summary** — `PROGRESS_TAB` opens there,
+and it is where anyone who has not deliberately switched will be — which has no
+weight control on it at all. **A spoken address is the one nobody can double-check by looking**,
+so the three spoken ones name the pane in WORDS — *"under Body"* — and only the
+visual toast uses the app's own `▸` style.
+
+**The check is written against the class**, not the four: it scans every
+athlete-facing string for a phrase that sends the athlete to a paned tab and
+requires a pane name within it.
+
+**Its own guard failed first, on an off-by-a-word.** The matcher was
+`/\b(?:the\s+)?(Progress|…)\b/`, so `m.index` landed on **"the"** rather than
+on the tab name — and the twelve-character lookback that decides whether the
+phrase SENDS the athlete anywhere was therefore cut off mid-word, so a real
+pointer read as no pointer at all. The article belongs in the lookback test, not
+in the anchor: an anchor whose index is not where you think it is silently
+shifts every offset computed from it. Its detector is proven in **both** directions
+first — a tab-only pointer must be flagged, the same pointer with its pane must
+not, and an ordinary use of the word (*"Today we hold the line"*) must not —
+because an empty offender list is otherwise a statement about the regex rather
+than about the app. Two more guards pin that the scan read the real file and
+found real pointers to check.
+
+### Settings has no panes, and it still had a pointer at a section that was gone
+
+The same sweep, one tab over. *"Change it in Settings ▸ Setup."* — Settings'
+sections are **Profile & goals · See results in 6 weeks · Settings · Your data ·
+About**, and there is no *Setup* anywhere on it. The real route is *"✎ Edit my
+profile & goals"*.
+
+The check for it reads the **rendered** Settings tab rather than grepping the
+source, for the reason this file already records twice: the source contains the
+app's own markup for screens that are not this one, so a grep can confirm a
+label that never paints on the tab in question.
+
+**And it failed on correct code, twice over, in the two ways this file warns
+about.** `innerText` returns the RENDERED text and `.section-label` is
+**uppercased in CSS**, so a search for `Profile & goals` found `PROFILE & GOALS`
+and reported the real section missing — read `textContent`, the fifth time that
+trap is recorded here. And **both undo buttons are conditional**: an
+always-visible Restore would be the note-that-always-fires defect, so the states
+they need are seeded before Settings is read. A pointer at a control that only
+appears when there is something to do is not a stale pointer.
+
+Case-insensitive matching would have papered over the first and is the wrong
+fix: Settings' own copy says *"your answers from the setup quiz"*, so a
+case-blind test finds *"Setup"* and the check could no longer catch the very
+defect it was written for.
+
+### And one that was the probe
+
+*"open the Fuel tab and tap Calculate my targets"* reported as naming a button
+that is not there. It IS there — the button reads **"Update my targets"** once a
+target exists, and that brief line only ever fires when `todayKcalBudget()` is
+falsy, which is exactly when the button says *Calculate*. The probe had tested
+it with a target set. **Read the condition the copy fires under before believing
+it names the wrong thing.**
+
+## A one-step-back restore replaces work done SINCE (v411)
+
+Both snapshots — the pre-import one and v410's cross-tab one — restore the
+**whole** of STATE. So anything logged after the step they name goes with it,
+and neither confirm said so:
+
+> Undo the last import and restore what was here before it?
+
+An athlete who imports a backup, trains three sessions and then taps Undo loses
+those three, having been asked about the import alone. That is the same class as
+*"this cannot be undone"* being false and *"history stays saved"* being false —
+**a destructive confirm that under-states what it destroys**. Both now name the
+work logged since, and both say the restore cannot itself be undone.
+
+The check reads the SENTENCE the athlete is asked, because that sentence is the
+whole of the fix, and it declines both — with a guard that declining really did
+leave the state alone, so the block cannot pass by destroying nothing for the
+wrong reason.
+
+## A symbol is not a name (v411)
+
+The accessible-name check has covered buttons since it was written, and its
+rule was `!(b.innerText||'').trim()` — **any non-empty text counted**. So
+seventeen icon-only controls passed with nothing a screen reader can read:
+
+| control | all a screen reader gets |
+|---|---|
+| five delete buttons (activity, skip, favourite, measurement, food row) | `✕` |
+| ten steppers (assessment value, waist, weight, goal waist, goal weight) | `–` / `+` |
+| the water counter | `–` / `＋` |
+
+**The check was weak in three ways at once**, and each is a lesson already in
+this file: it accepted the CONTAINER (there is text) rather than the payload (a
+name), it scanned **Settings alone**, one tab of six, and the sibling sweep that
+opens 46 sheets — where most of these live — looked at `input, select, textarea`
+and **never at buttons at all**. Two halves of one requirement, and only one
+half was ever checked.
+
+Both sweeps now require a name containing a letter or a digit, the tab sweep
+walks all six tabs, and the sheet sweep scans buttons as well as fields. Its
+guard is proven in both directions with an icon-only probe button, so an empty
+result is a statement about the app rather than about the selector.
+
+**A wrong name is worse than no name, and this fix wrote one.** The ✕ beside
+each move in the custom builder was labelled *"Remove this saved workout"* —
+`removeCustom()` filters `_custom`, the scratch list of moves being built, and
+removes nothing saved. Caught by re-reading my own diff against what each
+handler does, which is the only thing that catches it: no check can tell a
+plausible label from a correct one.
+
+### Three sweeps that came back clean
+
+- **Nothing holds a piece of STATE across an `await`.** v404 made this a NEW
+  hazard: the cross-tab listener calls `load()`, which REPLACES `STATE`, so any
+  code holding `const d = nutToday()` from before an await would write to a
+  detached object and lose the write silently. **203 captured references
+  considered, zero written after an await** — `_storePhoto()` is the one that
+  matters and it reads `STATE.photos` fresh at the moment of the push, so a
+  photo taken across an adopt joins the state that won. The detector is proven
+  in both directions against a planted case first, because a zero from a regex
+  that matches nothing is a statement about the regex.
+
+  **And the first version of that scan was worthless**, in the shape v388
+  already records: its brace matching ran past the end of each function, so
+  every one of thirteen hits was attributed to one of two names. A detector
+  that attributes everything to two functions is broken — do not read its
+  findings, fix it or ask the question a cheaper way.
+- **Every guard that toasts without returning.** Six single-line hits, all
+  legitimate *do-it-and-report* branches (`toggleNeural()` has an `else`,
+  `dayflowCancel()` reports a cancel it performed). The stand-down shape the
+  round began with is now the only one that existed.
+- **Every direct read of the day map.** Forty-three callers go through
+  `nutToday()` and **none** reaches `STATE.nutrition.days[...]` itself, so the
+  midnight-boundary class has one door.
+- **Every percentage division.** Fifteen `a/b*100` sites; every denominator is
+  provably non-zero. `eq/Math.max(1,tgt)*100` sixty lines above a bare
+  `eq/tgt*100` looks exactly like this file's one-of-a-pair-guarded shape and is
+  not: `stepTarget()` returns a registry value or 8000 and its catch returns
+  8000, so it can never be 0, and `waterTargetCups()` clamps to 6-16. **Read the
+  producer before believing the consumer is exposed** — the second time today,
+  after `adoptPainLimit()`.
+- **Every attribute that interpolates a value** — `alt`, `title`,
+  `placeholder`. Sixteen sites, every one an app constant (an exercise name, a
+  coach name, a `localISO()` date, a unit string). Nothing import- or
+  model-derived reaches an attribute unescaped.
+- **Every `onclick` that interpolates a raw string.** Twenty-five sites, all
+  registry keys or exercise ids. `adoptPainLimit('${h.joint}')` looked like the
+  exception and is not: `painPattern()` iterates `Object.keys(PAIN_JOINT)` — the
+  registry's OWN keys — so nothing stored ever reaches it. Read the producer
+  before believing the consumer is exposed.
+- **Every count written into athlete-facing copy**, digits and spelled-out
+  words alike — the v397 class. No string states a count that its own constant
+  contradicts; the grinder's *"Six movements, 60 seconds each … Six minutes"*
+  matches `stations:6, secs:60`, and `GRINDER_FORMATS` is already inside suite
+  01's description sweep. The FORCE figures were re-checked against v397's own
+  source-card comparison and still agree.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
