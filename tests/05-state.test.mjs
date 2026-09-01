@@ -2398,6 +2398,69 @@ export default async function run() {
     t.eq('FLOOR: a write to another key changes nothing', other.ptr, ptrBeforeOther);
     t.eq('FLOOR: and says nothing', other.toasts.length, 0);
 
+    /* A RESET is not an ordinary edit, and the live-session guard must not cover
+       it. hardReset()'s own confirm says "this cannot be undone" — and measured
+       across two tabs it WAS: A, mid-workout, kept its stale copy (correctly,
+       for an ordinary write), quit, saved, and a third load read the erased logs
+       and pointer straight back. */
+    const R = await ctx.newPage();
+    await boot(R);
+    await A.evaluate(() => {
+      STATE.progressPtr = 3;
+      STATE.logs = { 9: { done: true, completedAt: todayISO(), ex: {} } };
+      save(); openPlayer();
+    });
+    await R.waitForTimeout(500);
+    const beforeReset = await A.evaluate(() => ({ player: !!PLAYER,
+      logs: Object.keys(STATE.logs || {}).length }));
+    await R.evaluate(() => { window.confirm = () => true; hardReset(); });
+    await A.waitForTimeout(900);
+    const afterReset = await A.evaluate(() => ({ player: !!PLAYER,
+      logs: Object.keys(STATE.logs || {}).length, ptr: STATE.progressPtr }));
+    // A finishes and saves — the erased data must NOT come back
+    await A.evaluate(() => { try { playerQuit(); } catch (e) {} save(); });
+    await A.waitForTimeout(300);
+    const V = await ctx.newPage(); await boot(V);
+    const held = await V.evaluate(() => ({ logs: Object.keys(STATE.logs || {}).length,
+      ptr: STATE.progressPtr, onboarded: !!STATE.onboarded }));
+    await V.close(); await R.close();
+
+    t.ok('guard: the other tab really was mid-workout with data to lose',
+      beforeReset.player && beforeReset.logs === 1, JSON.stringify(beforeReset));
+    t.eq('a reset in another tab closes the live workout', afterReset.player, false);
+    t.eq('and the live tab adopts the erased state', afterReset.logs, 0);
+    t.eq('and its pointer', afterReset.ptr, 0);
+    t.eq('so a later save cannot resurrect what was erased', held.logs, 0);
+    t.eq('nor the pointer', held.ptr, 0);
+    t.eq('and the reset really held', held.onboarded, false);
+
+    /* FLOOR — the reset detector must not fire when OUR copy was never onboarded
+       either. Two tabs open during the setup wizard is a real state, and an
+       ordinary answer saved in one would otherwise tell the other its data had
+       been reset. Without this case, dropping `STATE.onboarded===true` from the
+       test changes nothing any assertion can see. */
+    const F1 = await ctx.newPage(); await boot(F1);
+    const F2 = await ctx.newPage(); await boot(F2);
+    await F1.evaluate(() => { STATE = DEFAULT_STATE(); save(); });
+    await F2.waitForTimeout(600);
+    const freshState = await Promise.all([F1, F2].map(p =>
+      p.evaluate(() => !!STATE.onboarded)));
+    await F2.evaluate(() => {
+      window.__ft = []; const rt = window.toast;
+      window.toast = m => { window.__ft.push(String(m)); return rt(m); };
+    });
+    await F1.evaluate(() => { STATE.profile.age = 41; save(); });
+    await F2.waitForTimeout(800);
+    const fresh = await F2.evaluate(() => ({ toasts: window.__ft.slice(), age: STATE.profile.age }));
+    await F1.close(); await F2.close();
+
+    t.ok('guard: both tabs really were un-onboarded',
+      freshState[0] === false && freshState[1] === false, JSON.stringify(freshState));
+    t.eq('FLOOR: an ordinary write between two fresh tabs is adopted', fresh.age, 41);
+    t.ok('FLOOR: and is NOT reported as a reset',
+      fresh.toasts.some(m => /another tab/i.test(m)) && !fresh.toasts.some(m => /reset/i.test(m)),
+      JSON.stringify(fresh.toasts));
+
     /* FLOOR — ONE tab alone behaves exactly as before: no swap, no toast. */
     await B.close();
     await A.evaluate(() => {

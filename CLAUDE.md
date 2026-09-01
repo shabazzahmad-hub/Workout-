@@ -11007,6 +11007,69 @@ the first tab while losing the meal.
 
 Six mutants, all caught after those two rewrites.
 
+## A reset is not an ordinary edit (v405)
+
+v404's cross-tab listener deliberately does NOT adopt while a workout is live —
+swapping the state out mid-set is worse than a stale copy. That is right for an
+ordinary write and wrong for one action.
+
+`hardReset()`'s own confirm says **"this cannot be undone."** Measured across two
+tabs, it was:
+
+| step | result |
+|---|---|
+| A is mid-workout with a logged session | player live, logs 1 |
+| B taps Reset all data and confirms | logs 0, pointer 0, not onboarded |
+| A keeps its stale copy — correctly, for an ordinary write | logs 1, pointer 3 |
+| A quits and saves; a third load reads | **logs 1, pointer 3, onboarded** |
+
+**The erased data came back.** The athlete asked for everything to go, so the
+workout whose data would be written into it is meaningless — the live-session
+guard must not cover a reset. The player is closed, the erased state adopted,
+and the athlete told which of the two things happened.
+
+**No new stored field is needed**, which matters because anything added to
+`DEFAULT_STATE` travels in every backup: an incoming copy that is **not
+onboarded while ours is** can only be a reset.
+
+**Both halves of that test carry weight, and the second needed its own case.**
+Dropping `STATE.onboarded===true` escaped every check, because it only differs
+when OUR copy was never onboarded either — two tabs open during the setup
+wizard, which is a real state. Measured: an ordinary answer saved in one would
+tell the other **"All data was reset in another tab"**, which is false. *A guard
+that cannot fire in the case you tested is not tested.* Five mutants, all caught
+once that floor existed.
+
+### And the case that made it worth checking at all
+
+The whole class — a destructive action taken while a session is live — was
+swept first, and three of the four routes are **unreachable by tapping**. That
+was measured rather than read off the z-index: with the player open, all five
+probe points hit-test **inside** `.pl`, and **zero of the six bottom tabs are
+tappable**. So `hardReset()`, `restartProgram()` and `undoSession()` cannot be
+reached mid-workout from the same tab at all. The second tab is the one route
+that exists, and it is the one that needed the fix.
+
+### A double-tap sweep that came back clean, and six false alarms in it
+
+Every sheet with a save-shaped button, tapped once and then twice, comparing the
+resulting state: **no sheet turns one gesture into two records**, and the session
+commit is idempotent (single tap and double tap both leave pointer 4 and one done
+log).
+
+**Eight sheets first reported as differing and six were a CLOCK in my snapshot.**
+`save()` writes `STATE._savedAt = Date.now()` and rows carry an `at`, so two runs
+differ purely by the millisecond they saved in. Strip the volatile fields before
+comparing. Of the two that survived, one was `openBuilder`'s **add-a-move**
+button — legitimately additive, and the fact that it IS reported is what proves
+the detector works — and the other showed an empty diff on re-measurement.
+
+**Calling a helper twice is not a double-tap.** The first version of that sweep
+called `logFood()`, `logHold()` and `saveCustomFav()` directly and reported three
+"double-fires"; every one is a legitimate repeat action an athlete can really
+take. The question is whether ONE gesture produces two records, which needs real
+clicks on real buttons.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

@@ -1832,7 +1832,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='404';
+const APP_VERSION='405';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -1961,11 +1961,26 @@ async function load(){
 window.addEventListener('storage',async e=>{
   try{
     if(!e||e.key!==STORE_KEY||!e.newValue)return;
-    if(typeof _sessionLive==='function'&&_sessionLive())return;
+    /* A RESET is not an ordinary edit, and the live-session guard must not cover
+       it. hardReset()'s own confirm says "this cannot be undone" — and measured
+       across two tabs it WAS undone: A, mid-workout, kept its stale copy
+       (correctly, for an ordinary write), quit, saved, and a third load read the
+       erased logs and pointer straight back. The athlete asked for everything to
+       go, so the workout its data would be written into is meaningless. No new
+       stored field is needed: an incoming state that is not onboarded while ours
+       is can only be a reset. */
+    let incoming=null; try{incoming=JSON.parse(e.newValue);}catch(_){}
+    const wasReset=!!(incoming&&incoming.onboarded===false&&STATE&&STATE.onboarded===true);
+    if(!wasReset&&typeof _sessionLive==='function'&&_sessionLive())return;
+    if(wasReset){
+      try{if(typeof PLAYER!=='undefined'&&PLAYER&&typeof playerQuit==='function')playerQuit();}catch(_){}
+      try{if(typeof INTV!=='undefined'&&INTV&&typeof hiitQuit==='function')hiitQuit();}catch(_){}
+    }
     await load();
     normalizeState();
     render();
-    try{toast('Updated from another tab',2200);}catch(_){}
+    try{toast(wasReset?'All data was reset in another tab':'Updated from another tab',
+              wasReset?3200:2200);}catch(_){}
   }catch(err){}
 });
 
