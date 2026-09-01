@@ -20913,7 +20913,15 @@ function setDiet(k){if(!DIET_KEYS.includes(k))return;   // the picker is the onl
    restoring an old backup onto a fresh device should not carry forward a flag
    about a repair that happened somewhere else. _backupNudgeDismissed is the
    same shape: a snooze on THIS device's nagging, not a fact about the athlete. */
-const TRANSIENT_KEYS=['_undo','_plResume','_dataRepaired','_backupNudgeDismissed','_trainAgain','_base','_rev'];
+const TRANSIENT_KEYS=['_undo','_plResume','_dataRepaired','_backupNudgeDismissed','_trainAgain'];
+/* STORAGE BOOKKEEPING, NOT SESSION SCRATCH, and the distinction is load-bearing.
+   These two describe this device's own write history, so they must never travel
+   in a backup — but restartProgram() clears TRANSIENT_KEYS meaning "the athlete
+   is not mid-anything", and save() re-stamps these on the very next write. Suite
+   04 caught them on that list within one run: a key the next save writes back is
+   not one a restart can drop. */
+const META_KEYS=['_base','_rev'];
+const BACKUP_STRIP=TRANSIENT_KEYS.concat(META_KEYS);
 async function exportData(){
   // Record it on THIS device before cloning, so backupNudgeHTML() stops
   // asking and the exported file itself carries an accurate "as of" stamp.
@@ -20921,7 +20929,7 @@ async function exportData(){
   // Never write the on-device API keys into a shareable backup file.
   const clone=JSON.parse(JSON.stringify(STATE));
   if(clone.settings){delete clone.settings.azureKey;delete clone.settings.foodAiKey;}
-  TRANSIENT_KEYS.forEach(k=>{delete clone[k];});
+  BACKUP_STRIP.forEach(k=>{delete clone[k];});
   clone._photoData={};
   try{
     for(const ph of (clone.photos||[])){
@@ -21037,7 +21045,7 @@ function importData(e){
     /* Dropped on the way IN as well as on the way out: every backup written by
        v195-v198 already contains them, and those files will be restored long
        after this build. */
-    TRANSIENT_KEYS.forEach(k=>{delete STATE[k];});
+    BACKUP_STRIP.forEach(k=>{delete STATE[k];});
     carryDeviceCreds(_dev);
     normalizeState();save();
     if(ph){

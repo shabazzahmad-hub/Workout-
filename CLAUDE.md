@@ -11687,6 +11687,34 @@ advance the revision by exactly one, asserted directly, which catches both that
 mutant and its over-eager twin (a base that always equals the current revision,
 so nothing is ever reported lost).
 
+### Storage bookkeeping is not session scratch
+
+The full suite caught the categorisation within one run. `restartProgram()`
+clears `TRANSIENT_KEYS` meaning *the athlete is not mid-anything*, and `save()`
+re-stamps `_base` and `_rev` on the very next write — so suite 04's
+*"restarting drops every transient key"* failed, correctly. **A key the next
+save writes back is not one a restart can drop.**
+
+They still must never travel in a backup, so they are their own list and the two
+backup paths strip both. Two categories, two lists, each meaning one thing.
+
+### And index.html crossed the install budget
+
+Suite 12: **2050 KB against 2048.** The install tier is `CORE + SHELL_MIN` and
+`index.html` is 1636 KB of it, growing every version, so this gate fires
+periodically by design — v352 hit it too. Moving a file between tiers costs no
+download, so the 512 maskable icon went to `FIRST_RUN`: the OS launcher wants it
+**after** install, not for the first paint, and installing requires a network
+anyway.
+
+**And the edit that moved it silently did nothing.** The tier entries are packed
+several per line, so a line-anchored removal matched no text — `str.replace()`
+is a no-op when the pattern is absent — while the insertion went ahead, leaving
+the icon in TWO tiers. The `assert count == 1` was on the string BEFORE the
+edit and could not see that. **Assert the RESULT, not only the anchor**: a
+second assert on the occurrence count afterwards is what turns this into a clean
+failure instead of a half-applied edit.
+
 ### And the first probe measured its own seed
 
 The first run dispatched a `StorageEvent` **without the other tab having

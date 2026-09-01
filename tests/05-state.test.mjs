@@ -517,7 +517,8 @@ export default async function run() {
       o.advancesRev = (+w2._rev || 0) === (+w1._rev || 0) + 1;
 
       /* The stamp is live-session scratch and must never reach a backup. */
-      o.baseIsTransient = TRANSIENT_KEYS.indexOf('_base') >= 0 && TRANSIENT_KEYS.indexOf('_rev') >= 0;
+      o.baseIsTransient = BACKUP_STRIP.indexOf('_base') >= 0 && BACKUP_STRIP.indexOf('_rev') >= 0
+        && TRANSIENT_KEYS.indexOf('_base') < 0 && TRANSIENT_KEYS.indexOf('_rev') < 0;
       return o;
     });
     t.eq('guard: the session really was saved before the other tab wrote', r.guardSaved, 1);
@@ -539,7 +540,7 @@ export default async function run() {
     t.ok('guard: the two tabs really did branch to the SAME revision', r.sameRev, r);
     t.ok('a save stamps the revision it was built on', r.stampsBase, r);
     t.ok('and advances the revision by exactly one', r.advancesRev, r);
-    t.ok('neither stamp ever travels in a backup', r.baseIsTransient, r);
+    t.ok('neither stamp travels in a backup, and neither is session scratch', r.baseIsTransient, r);
     await browser.close();
     errors.forEach(e => t.fail('page error during the cross-tab lost-update flow', e));
   }
