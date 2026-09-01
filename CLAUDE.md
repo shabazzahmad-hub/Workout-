@@ -11615,6 +11615,69 @@ guards: nothing was repaired, and the validator really did complain. Without
 the first, the block passes through the arm it is not testing.
 
 
+## Another tab saved over work this one had already written (v410)
+
+Found by asking what v404 and v405 made newly possible: **`STATE` can now be
+replaced by a background event**, so anything saved between two foreign writes
+is at risk. Driven across two tabs, with the second saving from the copy it was
+already holding:
+
+| saved in this tab | after the other tab saves |
+|---|---|
+| a logged session and its pointer | **0 logs, pointer 0** |
+| a measurement | **0** |
+| a progress photo | **0** — the one thing this app calls irreplaceable |
+
+The toast said *"Updated from another tab"* and nothing else. That is the
+classic lost update, and v404 is what made it silent: **before v404 the OTHER
+tab lost, and after it this one does.** Neither is right, and a whole-state
+store cannot merge the two copies.
+
+**The newest still wins, because that is the least surprising default.** What
+changed is that the loss is named and one tap from being undone — the same
+one-step-back shape `importData()` has used since v229, in the same place in
+Settings, with its own key so the two undos cannot tread on each other.
+
+**The writer stamps what it had SEEN.** `_base` is the revision the saving tab
+was building on; a `_base` predating our own last save says the copy arriving
+was written without our work. A copy simply older than ours is the same loss by
+a shorter route, and is caught too.
+
+**A COUNTER, NOT A TIMESTAMP, and the check is what forced that.** The first
+version stamped `Date.now()`, and one of its own cases failed: two saves land in
+the same millisecond routinely, so a real lost update went undetected because
+the base and our last save shared a tick. A revision counter is exact, and it is
+also immune to the clock jumps v380 moved every timer off.
+
+**A copy carrying no revision at all is treated as no loss.** Every phone is
+carrying one right now, and the alternative is a scary sentence and a Restore
+button in front of every athlete on the first launch after this ships — the
+v409 lesson, one subsystem over.
+
+**The floor is the ordinary adopt, byte-identical**: the same toast, no
+snapshot, no button, and the other tab's work still lands. An over-eager
+detector satisfies every assertion about the lost update and puts that sentence
+in front of everybody.
+
+### The class check caught my own new field, immediately
+
+Adding `_base` turned suite 05's v390 sweep red — *every top-level field the app
+writes is repaired at boot* — naming the field in the failure detail. It has a
+reader, so it got a repair rather than an allowlist entry, which keeps the class
+closed rather than growing the list of exceptions. Both stamps are live-session
+scratch and go in `TRANSIENT_KEYS`: a revision counter describes this device's
+write history and means nothing on another phone.
+
+### And the first probe measured its own seed
+
+The first run dispatched a `StorageEvent` **without the other tab having
+actually written**, so `load()` re-read the old value and reported that the
+foreign edit had not landed. A storage event is a notification that a write
+happened; the write is what `load()` reads. And the second run made the foreign
+copy artificially newer by a whole second — the defect reproduces with a real
+clock, but it had to be re-measured before it could be believed.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

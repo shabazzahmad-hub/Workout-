@@ -395,6 +395,127 @@ export default async function run() {
     errors.forEach(e => t.fail('page error during the full-store import flow', e));
   }
 
+  /* ---- another tab saving over work this one had already written ----------
+     v404 made this tab ADOPT a foreign write, which is right when the other
+     tab had already seen our work and wrong when it had not. Measured across
+     two tabs: a logged session and its pointer, a measurement and a progress
+     photo were each SAVED here and then discarded by the adopt, with the toast
+     saying only "Updated from another tab" — the classic lost update, made
+     silent.
+
+     A whole-state store cannot merge the two copies, so the newest still wins
+     (the least surprising default). What changed is that the loss is named and
+     one tap from being undone. The writer stamps _base — the newest state IT
+     had seen — and a _base predating our own last save is what says the copy
+     arriving was built without our work.
+
+     The FLOOR is the ordinary adopt, byte-identical: an over-eager detector
+     that fired on every foreign write would put a scary sentence and a Restore
+     button in front of every athlete with two tabs open. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const o = {};
+      const toastText = () => (document.getElementById('toast') || {}).textContent || '';
+      /* A real second tab: it writes the whole state it was holding, stamped
+         with the _savedAt it had loaded. */
+      const foreignFrom = async (theirCopy, mutate) => {
+        const f = JSON.parse(JSON.stringify(theirCopy));
+        mutate(f);
+        f._base = +theirCopy._rev || 0;
+        f._savedAt = Date.now();
+        const j = JSON.stringify(f);
+        localStorage.setItem('coreforge.v1', j); await idbPut('coreforge.v1', j);
+        window.dispatchEvent(new StorageEvent('storage', { key: 'coreforge.v1', newValue: j }));
+        await new Promise(z => setTimeout(z, 500));
+      };
+      const settingsHTML = () => { go('guide'); render(); return document.querySelector('#v-guide').innerHTML; };
+
+      /* THE LOST UPDATE: we save, and only then does the other tab save from
+         the copy it was already holding. */
+      STATE.logs = {}; STATE.progressPtr = 0; save();
+      const stale = JSON.parse(localStorage.getItem('coreforge.v1'));
+      STATE.logs[0] = { done: true, completedAt: todayISO(), ex: {}, items: [], sets: 8 };
+      STATE.progressPtr = 1; save();
+      o.guardSaved = Object.keys(JSON.parse(localStorage.getItem('coreforge.v1')).logs).length;
+      await foreignFrom(stale, f => { f.nutrition.days['2026-02-02'] = { food: [], water: 2, habits: {} }; });
+      o.lostLogs = Object.keys(STATE.logs).length;
+      o.lostSaysSo = /saved over changes made here/.test(toastText());
+      o.lostSnapshot = hasCrossTabSnapshot();
+      o.lostButton = /undoCrossTab\(\)/.test(settingsHTML());
+
+      /* And the way back really goes back. */
+      const realConfirm = window.confirm; window.confirm = () => true;
+      undoCrossTab();
+      await new Promise(z => setTimeout(z, 300));
+      o.backLogs = Object.keys(STATE.logs).length;
+      o.backPtr = STATE.progressPtr;
+      o.backCleared = !hasCrossTabSnapshot();
+      o.backButtonGone = !/undoCrossTab\(\)/.test(settingsHTML());
+
+      /* Declining leaves the adopted state alone. */
+      STATE.logs = {}; save();
+      const stale2 = JSON.parse(localStorage.getItem('coreforge.v1'));
+      STATE.logs[0] = { done: true, completedAt: todayISO(), ex: {}, items: [], sets: 8 }; save();
+      await foreignFrom(stale2, f => { f.nutrition.days['2026-06-06'] = { food: [], water: 1, habits: {} }; });
+      window.confirm = () => false;
+      undoCrossTab();
+      await new Promise(z => setTimeout(z, 200));
+      o.declinedLogs = Object.keys(STATE.logs).length;
+      o.declinedKeptSnapshot = hasCrossTabSnapshot();
+      try { localStorage.removeItem('coreforge.v1.crosstab'); } catch (e) {}
+      window.confirm = realConfirm;
+
+      /* FLOOR: the ordinary adopt, where the other tab HAD seen our save. */
+      STATE.logs = {}; save();
+      const seen = JSON.parse(localStorage.getItem('coreforge.v1'));
+      await foreignFrom(seen, f => { f.nutrition.days['2026-05-05'] = { food: [], water: 1, habits: {} }; });
+      o.okToast = toastText();
+      o.okSnapshot = hasCrossTabSnapshot();
+      o.okAdopted = !!(STATE.nutrition.days || {})['2026-05-05'];
+      o.okNoButton = !/undoCrossTab\(\)/.test(settingsHTML());
+
+      /* A copy simply OLDER than ours is the same loss by a shorter route. */
+      STATE.logs = {}; save();
+      const older = JSON.parse(localStorage.getItem('coreforge.v1'));
+      STATE.logs[0] = { done: true, completedAt: todayISO(), ex: {}, items: [] }; save();
+      await (async () => {
+        const f = JSON.parse(JSON.stringify(older));
+        f._rev = Math.max(0, (+older._rev || 1) - 1); delete f._base;
+        const j = JSON.stringify(f);
+        localStorage.setItem('coreforge.v1', j); await idbPut('coreforge.v1', j);
+        window.dispatchEvent(new StorageEvent('storage', { key: 'coreforge.v1', newValue: j }));
+        await new Promise(z => setTimeout(z, 500));
+      })();
+      o.olderSnapshot = hasCrossTabSnapshot();
+      try { localStorage.removeItem('coreforge.v1.crosstab'); } catch (e) {}
+
+      /* The stamp is live-session scratch and must never reach a backup. */
+      o.baseIsTransient = TRANSIENT_KEYS.indexOf('_base') >= 0 && TRANSIENT_KEYS.indexOf('_rev') >= 0;
+      return o;
+    });
+    t.eq('guard: the session really was saved before the other tab wrote', r.guardSaved, 1);
+    t.eq('the newest copy still wins, as it did before', r.lostLogs, 0);
+    t.ok('but the athlete is told work made here was replaced', r.lostSaysSo, r);
+    t.ok('and a snapshot of it is kept', r.lostSnapshot, r);
+    t.ok('and Settings offers the way back', r.lostButton, r);
+    t.eq('restoring brings the session back', r.backLogs, 1);
+    t.eq('and the pointer with it', r.backPtr, 1);
+    t.ok('and the one-shot snapshot is consumed', r.backCleared, r);
+    t.ok('so the button goes with it', r.backButtonGone, r);
+    t.eq('declining leaves the adopted state in place', r.declinedLogs, 0);
+    t.ok('and keeps the snapshot to try again', r.declinedKeptSnapshot, r);
+    t.eq('FLOOR: an ordinary adopt says exactly what it said before', r.okToast, 'Updated from another tab');
+    t.ok('and takes no snapshot', !r.okSnapshot, r);
+    t.ok('and still adopts the other tab\'s work', r.okAdopted, r);
+    t.ok('and offers no restore button', r.okNoButton, r);
+    t.ok('a copy older than ours is caught even with no stamp on it', r.olderSnapshot, r);
+    t.ok('neither stamp ever travels in a backup', r.baseIsTransient, r);
+    await browser.close();
+    errors.forEach(e => t.fail('page error during the cross-tab lost-update flow', e));
+  }
+
   /* ---- an UPGRADE is bootstrapping, and bootstrapping is not a repair ------
      boot() flagged _dataRepaired on ANY diff across normalizeState(), so the
      first launch after a version that added a field told every athlete

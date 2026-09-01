@@ -1832,7 +1832,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='409';
+const APP_VERSION='410';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -1841,6 +1841,10 @@ const STORE_KEY='coreforge.v1';
 // friend's export) has a way back that does not depend on the athlete having
 // made a fresh backup of their own first.
 const PREIMPORT_KEY=STORE_KEY+'.preimport';
+/* The same one-step-back shape as PREIMPORT_KEY, for the other way a whole
+   state gets replaced: another tab saving over work this one had already
+   written. See the storage listener. */
+const CROSSTAB_KEY=STORE_KEY+'.crosstab';
 const DEFAULT_STATE=()=>({
   version:1,
   onboarded:false,
@@ -1913,8 +1917,22 @@ async function prunePhotoBlobs(keepIds){
     if(s.slice(0,3)==='ph_'&&!keep.has(s.slice(3)))idbDel(s);});
 }
 let saveT=null;
+/* The revision this tab last SYNCED with — loaded, adopted, or wrote itself.
+   Every save stamps the state's own _rev and the _base it was built on, so
+   another tab reading it can tell whether the writer had already seen that
+   tab's last save. It is the one piece of information a whole-state store needs
+   to notice a lost update, and it costs two numbers.
+
+   A COUNTER, not a timestamp. Date.now() has millisecond resolution and two
+   saves land in one tick routinely — measured, a real lost update went
+   undetected because the base and our own save shared a millisecond. A counter
+   is also immune to the clock jumps v380 moved every timer off. */
+let _syncedRev=0;
 function save(){
   STATE._saved=todayISO();
+  STATE._base=_syncedRev;
+  STATE._rev=_syncedRev+1;
+  _syncedRev=STATE._rev;
   STATE._savedAt=Date.now();
   const json=JSON.stringify(STATE);
   // A quota failure used to be swallowed whole: every later save became a no-op
@@ -1963,6 +1981,7 @@ async function load(){
     }
   } else if(bmir){chosen=bmir;fromMirror=true;}
   else if(a){chosen=a;}
+  if(chosen)_syncedRev=+chosen._rev||0;   // the revision this tab is now building on
   if(fromMirror){try{localStorage.setItem(STORE_KEY,JSON.stringify(chosen));}catch(e){}toast('Progress restored from backup');}
   if(chosen){const p=chosen;STATE=Object.assign(DEFAULT_STATE(),p);
     STATE.settings=Object.assign(DEFAULT_STATE().settings,p.settings||{});
@@ -2003,11 +2022,35 @@ window.addEventListener('storage',async e=>{
       try{if(typeof PLAYER!=='undefined'&&PLAYER&&typeof playerQuit==='function')playerQuit();}catch(_){}
       try{if(typeof INTV!=='undefined'&&INTV&&typeof hiitQuit==='function')hiitQuit();}catch(_){}
     }
+    /* A LOST UPDATE, and before this it was silent. v404 made this tab adopt a
+       foreign write, which is right when the other tab had already seen our
+       work and wrong when it had not: measured across two tabs, a logged
+       session and its pointer, a measurement and a progress photo were each
+       SAVED here and then discarded by the adopt, with the toast saying only
+       "Updated from another tab".
+
+       The writer stamps _base — the newest state IT had seen. If that predates
+       our own last save, the copy arriving was built without our work, so
+       adopting it drops everything we wrote in between. A copy simply OLDER
+       than ours is the same thing by a shorter route. A whole-state store
+       cannot merge the two, so the newest still wins (which is the least
+       surprising default) — but the loss is now named and one tap from being
+       undone, the same one-step-back shape importData() already uses. */
+    const _ourRev=+(STATE&&STATE._rev)||0;
+    const _inRev=+(incoming&&incoming._rev)||0;
+    const _inBase=(incoming&&typeof incoming._base==='number')?incoming._base:null;
+    /* A copy carrying no _rev at all was written by a version before this one,
+       so nothing can be said about what it had seen — treated as no loss, which
+       keeps the upgrade quiet. */
+    const _lost=!wasReset&&_ourRev>0&&_inRev>0&&(_inRev<_ourRev||(_inBase!==null&&_inBase<_ourRev));
+    if(_lost){try{localStorage.setItem(CROSSTAB_KEY,JSON.stringify(STATE));}catch(_){}}
     await load();
     normalizeState();
     render();
-    try{toast(wasReset?'All data was reset in another tab':'Updated from another tab',
-              wasReset?3200:2200);}catch(_){}
+    try{toast(wasReset?'All data was reset in another tab'
+             :_lost?'Another tab saved over changes made here — Settings ▸ Restore puts them back'
+             :'Updated from another tab',
+              wasReset?3200:_lost?6000:2200);}catch(_){}
   }catch(err){}
 });
 
@@ -20622,6 +20665,7 @@ function renderGuide(){
     <div class="btnrow"><button class="btn ghost sm" style="width:100%" onclick="exportData()">⬇ Export backup</button><button class="btn ghost sm" style="width:100%" onclick="$('#importFile').click()">⬆ Import backup</button></div>
     <input type="file" id="importFile" aria-label="Choose a backup file to restore" accept="application/json" style="display:none" onchange="importData(event)">
     ${hasPreImportSnapshot()?'<button class="btn ghost sm" style="width:100%;margin-top:8px" onclick="undoImport()">↩ Undo last import</button>':''}
+    ${hasCrossTabSnapshot()?'<button class="btn ghost sm" style="width:100%;margin-top:8px" onclick="undoCrossTab()">↩ Restore what this tab had</button>':''}
     ${(STATE.photos||[]).length?`<button class="btn ghost sm" style="width:100%;margin-top:8px" onclick="savePhotoFiles()">🖼️ Save my ${(STATE.photos||[]).length} progress photo${(STATE.photos||[]).length===1?'':'s'} as pictures</button>
     <p class="tiny muted" style="margin:6px 0 0">Downloads them as image files you keep — separate from the backup, so a reset cannot take them with it.</p>`:''}
     <div class="divider"></div>
@@ -20869,7 +20913,7 @@ function setDiet(k){if(!DIET_KEYS.includes(k))return;   // the picker is the onl
    restoring an old backup onto a fresh device should not carry forward a flag
    about a repair that happened somewhere else. _backupNudgeDismissed is the
    same shape: a snooze on THIS device's nagging, not a fact about the athlete. */
-const TRANSIENT_KEYS=['_undo','_plResume','_dataRepaired','_backupNudgeDismissed','_trainAgain'];
+const TRANSIENT_KEYS=['_undo','_plResume','_dataRepaired','_backupNudgeDismissed','_trainAgain','_base','_rev'];
 async function exportData(){
   // Record it on THIS device before cloning, so backupNudgeHTML() stops
   // asking and the exported file itself carries an accurate "as of" stamp.
@@ -21021,6 +21065,25 @@ function importData(e){
   }catch(err){toast('Could not read file');}};
   r.readAsText(f);
 }
+function hasCrossTabSnapshot(){try{return !!localStorage.getItem(CROSSTAB_KEY);}catch(e){return false;}}
+/* One step back, cleared after use — the same posture as undoImport(), and for
+   the same reason: an undo of an undo is not a case worth building for. It puts
+   this tab's own copy back and makes it the newest, so the other tab picks it
+   up in turn. */
+function undoCrossTab(){
+  let raw=null;try{raw=localStorage.getItem(CROSSTAB_KEY);}catch(e){}
+  if(!raw){toast('Nothing to restore');return;}
+  if(typeof confirm==='function'&&!confirm('Put back what this tab had before another tab saved over it? The other tab\'s newer changes will be replaced.'))return;
+  try{
+    const p=JSON.parse(raw);
+    if(!p||typeof p!=='object')throw new Error('bad snapshot');
+    STATE=p;
+    normalizeState();save();
+    try{localStorage.removeItem(CROSSTAB_KEY);}catch(e){}
+    toast('Restored');
+    render();
+  }catch(e){toast('Could not restore');}
+}
 function hasPreImportSnapshot(){try{return !!localStorage.getItem(PREIMPORT_KEY);}catch(e){return false;}}
 /* One step back, not a history — the same posture as the rest of this file's
    narrow safety nets (loadProgression()'s flat 1kg step, bikeLevelSuggestion()'s
@@ -21060,6 +21123,7 @@ function hardReset(){
      of the API-key carry-forward next to it, because a stale full-STATE copy is
      not the same thing as the two live credential fields. */
   try{localStorage.removeItem(PREIMPORT_KEY);}catch(e){}
+  try{localStorage.removeItem(CROSSTAB_KEY);}catch(e){}
   /* API keys are a device credential, not athlete data — the key was typed once,
      into this browser, for this device, and never leaves it either way (the
      export path already strips it, see exportData()). Re-typing a Gemini or
@@ -21843,6 +21907,10 @@ function normalizeState(){
    // _dataRepaired is written only by boot() as a plain boolean; a corrupt or
    // hand-edited value is dropped rather than trusted, same as any other field.
    if(STATE._dataRepaired!==undefined&&typeof STATE._dataRepaired!=='boolean')delete STATE._dataRepaired;
+   // _base is written by save() as a plain number; a hand-edited store is the
+   // only way anything else gets in, and the read site guards too.
+   if(STATE._base!==undefined&&typeof STATE._base!=='number')delete STATE._base;
+   if(STATE._rev!==undefined&&typeof STATE._rev!=='number')delete STATE._rev;
    // _lastExport/_backupNudgeDismissed feed backupNudgeHTML()'s timing — an
    // unparseable value must read as "never exported" / "never dismissed", the
    // MORE-nudging direction, not silently suppress a reminder that matters.

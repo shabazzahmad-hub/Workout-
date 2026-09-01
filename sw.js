@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v409';
+const CACHE = 'coreforge-v410';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
