@@ -11469,6 +11469,11 @@ name and `customRiskHTML()` marks the flagged rows. A sweep that called those a
 leak would be re-deriving a rule the app has already decided, which is the
 `jointRisky()` false alarm v285 records.
 
+**Seven mutants, all caught** — including the four over-eager twins that each
+fail a different floor: treating every format as needing kit, taking the box
+formats' buttons away, swallowing the health lock, and silently substituting
+through `safeSwap()` instead of naming the kit.
+
 
 ## Rendering
 
