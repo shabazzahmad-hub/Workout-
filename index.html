@@ -1832,7 +1832,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='405';
+const APP_VERSION='406';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -1882,9 +1882,36 @@ let STATE=DEFAULT_STATE();
 /* ---- persistence: localStorage + IndexedDB mirror ---- */
 let idb=null;
 function idbOpen(){return new Promise(res=>{try{const r=indexedDB.open('coreforge',1);r.onupgradeneeded=e=>{e.target.result.createObjectStore('kv');};r.onsuccess=e=>{idb=e.target.result;res(idb);};r.onerror=()=>res(null);}catch(e){res(null);}});}
-function idbPut(k,v){try{if(!idb)return;const tx=idb.transaction('kv','readwrite');tx.objectStore('kv').put(v,k);}catch(e){}}
+/* Returns a promise for whether the write REALLY landed. It used to return
+   nothing and never wait for the transaction, so every caller's success report
+   was a guess. Measured on a device with no store at all — private browsing
+   blocks IndexedDB, and idbOpen() resolves null on any error — "Photo saved"
+   and "Backup restored, 2 photos" were both printed over ZERO bytes written,
+   and importData()'s own photos-failed branch was unreachable, because
+   Promise.all over a list of undefineds always resolves. Progress photos are
+   the one thing in this app that cannot be re-created. */
+function idbPut(k,v){return new Promise(res=>{try{
+  if(!idb)return res(false);
+  const tx=idb.transaction('kv','readwrite');
+  tx.objectStore('kv').put(v,k);
+  tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);tx.onabort=()=>res(false);
+}catch(e){res(false);}});}
 function idbGet(k){return new Promise(res=>{try{if(!idb)return res(null);const tx=idb.transaction('kv','readonly');const rq=tx.objectStore('kv').get(k);rq.onsuccess=()=>res(rq.result||null);rq.onerror=()=>res(null);}catch(e){res(null);}});}
 function idbDel(k){try{if(!idb)return;idb.transaction('kv','readwrite').objectStore('kv').delete(k);}catch(e){}}
+function idbKeys(){return new Promise(res=>{try{if(!idb)return res([]);const rq=idb.transaction('kv','readonly').objectStore('kv').getAllKeys();rq.onsuccess=()=>res(rq.result||[]);rq.onerror=()=>res([]);}catch(e){res([]);}});}
+/* ERASE BY WHAT THE STORE HOLDS, NOT BY WHAT STATE REMEMBERS. hardReset()
+   deleted `(STATE.photos||[]).map(p=>p.id)` — so any blob whose row had
+   already been replaced was invisible to it. Measured: import a backup and the
+   previous athlete's two photographs stay in IndexedDB with no row pointing at
+   them, then survive "Erase your workout, food and profile data… This cannot
+   be undone" and stay on the device for ever, unreachable by any screen.
+   These are pictures of somebody's body, so that is the most expensive promise
+   in the app to leave unkept. */
+async function prunePhotoBlobs(keepIds){
+  const keep=new Set((keepIds||[]).map(String));
+  (await idbKeys()).forEach(k=>{const s=String(k);
+    if(s.slice(0,3)==='ph_'&&!keep.has(s.slice(3)))idbDel(s);});
+}
 let saveT=null;
 function save(){
   STATE._saved=todayISO();
@@ -12604,9 +12631,16 @@ function _storePhoto(file,pose,n){
         c.getContext('2d').drawImage(img,0,0,w,hh);
         let data;try{data=c.toDataURL('image/jpeg',0.82);}catch(err){data=r.result;}
         const id=todayISO()+'-'+pose+'-'+((STATE.photos||[]).length)+'-'+n+'-'+Math.floor(performance.now());
-        idbPut('ph_'+id,data);
-        STATE.photos.push({id,date:todayISO(),pose});
-        resolve(true);
+        /* The ROW goes in only once the bytes are really down. A row whose
+           blob never landed is a permanent blank tile in the gallery and it
+           travels in every backup after it. 'store' and false are different
+           failures and get different sentences: one is this device, the other
+           is the picture. */
+        idbPut('ph_'+id,data).then(stored=>{
+          if(!stored)return resolve('store');
+          STATE.photos.push({id,date:todayISO(),pose});
+          resolve(true);
+        });
       };
       img.src=r.result;
     };
@@ -12620,22 +12654,33 @@ async function onPhotoPicked(e){
   const files=[...((e.target&&e.target.files)||[])];
   if(!files.length)return;
   const pose=_pendingPose||'front';
-  let ok=0,failed=0;
+  let ok=0,unreadable=0,unstored=0;
   for(let i=0;i<files.length;i++){
     const done=await _storePhoto(files[i],pose,i);
-    if(done)ok++;else failed++;
+    if(done===true)ok++;else if(done==='store')unstored++;else unreadable++;
   }
   try{e.target.value='';}catch(err){}
   if(ok){save();renderProgress();checkAchievements();}
-  toast(ok?(ok===1?'Photo saved':ok+' photos saved'):'Could not read that image');
-  if(ok&&failed)toast(failed+' could not be read');
+  if(ok)toast(ok===1?'Photo saved':ok+' photos saved');
+  /* The !unstored arm is intent, not behaviour, and that was MEASURED rather
+     than assumed: toast() overwrites textContent with no queue, so the storage
+     sentence below replaces this one in the same tick and the athlete never
+     sees it. No check can catch its removal — kept so the code does not state
+     a reason it has just disproved. */
+  else if(!unstored)toast('Could not read that image');
+  if(ok&&unreadable)toast(unreadable+' could not be read');
+  /* Last, because it is the one that matters: a photo the athlete believes is
+     saved is a photo they will not take again. */
+  if(unstored)toast(idb
+    ?'This device is out of space — '+unstored+' photo'+(unstored===1?'':'s')+' could not be saved. Free some space and try again.'
+    :'This browser has no picture store, so '+unstored+' photo'+(unstored===1?'':'s')+' could not be saved. Private browsing usually blocks it.',7000);
 }
 
 async function hydratePhotos(){
   const imgs=$$('#v-progress .ph-img');
   for(const el of imgs){
     const id=el.getAttribute('data-pid');if(!id||el._loaded)continue;
-    const data=await idbGet('ph_'+id);if(data){el.src=data;el._loaded=true;}
+    const data=photoData(await idbGet('ph_'+id));if(data){el.src=data;el._loaded=true;}
   }
 }
 /* ---- Getting the photos OUT as real pictures -----------------------------
@@ -12651,6 +12696,20 @@ async function hydratePhotos(){
    here, and a browser download of a data: URI is the one path that works
    the same on a phone as on a desktop. The gap between saves is what stops
    mobile Safari/Chrome collapsing a burst of downloads into one. */
+/* THE ONE TEST FOR A STORED PHOTO BLOB. savePhotoFiles() has had it since
+   v282 — and its own comment says, in as many words, that the gallery renders
+   a bad blob as a broken tile. So the shape was already known to be illegal
+   and was checked in ONE consumer out of four.
+
+   It is not only a shape problem. viewPhoto() and renderCompare() built their
+   <img src> by string concatenation, and _photoData is arbitrary JSON out of a
+   backup file that importData() writes straight into IndexedDB — so a stored
+   value of `x" onerror="…` broke out of the attribute and RAN. Measured from a
+   restored backup: window.__pwn went true, in the origin that holds both API
+   keys. Both halves are fixed: nothing interpolates a blob into markup any
+   more (the src is assigned as a PROPERTY), and this membership test decides
+   whether there is a picture to show at all. */
+function photoData(v){return (typeof v==='string'&&v.slice(0,11)==='data:image/')?v:null;}
 function photoFileName(meta){
   // pose and date both come from stored data an import could have shaped,
   // so both go through the same membership/format guards the gallery uses.
@@ -12668,7 +12727,7 @@ async function savePhotoFiles(){
     // A row in STATE.photos whose blob is gone is a real, silent case — the
     // gallery renders it as a broken tile. Count it and say so rather than
     // reporting a file that never got written.
-    if(!data||typeof data!=='string'||!data.startsWith('data:image/')){missing++;continue;}
+    if(!photoData(data)){missing++;continue;}
     try{
       const a=document.createElement('a');
       a.href=data;a.download=photoFileName(meta);
@@ -12681,14 +12740,17 @@ async function savePhotoFiles(){
              :'Could not read any photo files');
 }
 async function viewPhoto(id){
-  const data=await idbGet('ph_'+id);const meta=(STATE.photos||[]).find(p=>p.id===id);
+  const data=photoData(await idbGet('ph_'+id));const meta=(STATE.photos||[]).find(p=>p.id===id);
   openSheet(`
     <h3 style="text-transform:capitalize">${meta?_ve(poseOf(meta)+' · '+meta.date):'Photo'}</h3>
-    <img src="${data||''}" style="width:100%;border-radius:14px;margin:6px 0 14px">
+    ${data?'<img id="pvImg" style="width:100%;border-radius:14px;margin:6px 0 14px">'
+          :`<div class="note warn" style="margin:6px 0 14px">The picture for this entry is not on this device. The row is still here, so it can be deleted — and if you have a backup file, the picture is still in it.</div>`}
     <button class="btn ghost" style="color:var(--pink)" onclick="deletePhoto(${_ve(JSON.stringify(String(id)))})">Delete this photo</button>
     <div style="height:8px"></div>
     <button class="btn ghost" onclick="closeSheet()">Close</button>
   `);
+  // Assigned, never interpolated — see photoData().
+  if(data){const el=$('#pvImg');if(el)el.src=data;}
 }
 function deletePhoto(id){
   if(!confirm('Delete this photo?'))return;
@@ -20309,7 +20371,14 @@ async function renderCompare(){
   const gen=++_cmpGen;
   const [da,db]=await Promise.all([idbGet('ph_'+a.value),idbGet('ph_'+b.value)]);
   if(gen!==_cmpGen)return;   // a newer selection already resolved and won
-  const box=$('#cmpImgs');if(box)box.innerHTML=`<div><img src="${da||''}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px"><div class="tiny muted center" style="margin-top:3px">then</div></div><div><img src="${db||''}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px"><div class="tiny muted center" style="margin-top:3px">now</div></div>`;
+  const box=$('#cmpImgs');if(!box)return;
+  const A=photoData(da),B=photoData(db);
+  const cell=(id,ok,cap)=>`<div>${ok?`<img id="${id}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px">`
+    :`<div class="tiny muted center" style="width:100%;aspect-ratio:3/4;display:flex;align-items:center;justify-content:center;border-radius:12px;background:var(--card2);padding:8px">not on this device</div>`}<div class="tiny muted center" style="margin-top:3px">${cap}</div></div>`;
+  box.innerHTML=cell('cmpImgA',!!A,'then')+cell('cmpImgB',!!B,'now');
+  // Assigned, never interpolated — see photoData().
+  if(A){const e1=$('#cmpImgA');if(e1)e1.src=A;}
+  if(B){const e2=$('#cmpImgB');if(e2)e2.src=B;}
 }
 /* Saturday weekly progress check-in */
 function isSaturday(){return new Date().getDay()===6;}
@@ -20759,7 +20828,12 @@ async function exportData(){
   clone._photoData={};
   try{
     for(const ph of (clone.photos||[])){
-      const d=await idbGet('ph_'+ph.id);
+      /* The FIFTH reader of a stored blob, and the last to ask photoData().
+         Truthiness embedded a non-picture in the file and counted it as one:
+         measured, a junk blob beside a real photo reported "2 photos
+         included". A row with no picture behind it is a missing photo file,
+         which the count below already knows how to say. */
+      const d=photoData(await idbGet('ph_'+ph.id));
       if(d)clone._photoData[ph.id]=d;
     }
   }catch(e){}
@@ -20818,8 +20892,30 @@ function importData(e){
        back. Ask, and snapshot what is about to be overwritten either way, so
        a mistaken import has a way back even without a fresh export of its own. */
     const when=p._saved?('from '+p._saved):'of an unknown date';
-    if(!confirm('Replace your current progress with this backup ('+when+')? Your current data will be saved first so you can undo this if it is a mistake.'))return;
-    try{localStorage.setItem(PREIMPORT_KEY,JSON.stringify(STATE));}catch(e){}
+    /* TAKE THE SNAPSHOT BEFORE ASKING, so the question can tell the truth about
+       whether an undo will exist. The snapshot lives in localStorage, and a full
+       store is exactly the state save()'s own quota fallback exists for.
+       Measured on a genuinely full store: the write threw into a silent catch,
+       the import went ahead, 300 logged sessions were erased, and the Undo
+       button this very sentence had just promised never appeared. Same class as
+       hardReset()'s "this cannot be undone" — a promise in UI text is a
+       specification, and this one had nothing behind it in the one state where
+       it mattered.
+
+       The stale snapshot is dropped FIRST rather than overwritten: it is about
+       to be superseded either way, and it is about the same size as the new one,
+       so freeing it is usually exactly the room the new one needs. */
+    let _prevSnap=null,_snapOk=false;
+    try{_prevSnap=localStorage.getItem(PREIMPORT_KEY);localStorage.removeItem(PREIMPORT_KEY);}catch(e){}
+    try{localStorage.setItem(PREIMPORT_KEY,JSON.stringify(STATE));_snapOk=true;}catch(e){}
+    if(!confirm(_snapOk
+      ?'Replace your current progress with this backup ('+when+')? Your current data will be saved first so you can undo this if it is a mistake.'
+      :'Replace your current progress with this backup ('+when+')? This device is OUT OF STORAGE, so a copy of your current data could not be saved and there will be NO undo. Export a backup first if you want a way back.')){
+      /* A declined import must leave the store exactly as it found it, or the
+         Undo button turns up offering to reverse an import that never happened. */
+      try{if(_prevSnap===null)localStorage.removeItem(PREIMPORT_KEY);else localStorage.setItem(PREIMPORT_KEY,_prevSnap);}catch(e){}
+      return;
+    }
     const d=DEFAULT_STATE();
     const _dev=STATE;   // read the credentials off the OUTGOING state, before it is replaced
     // Deep-merge the nested objects exactly like load() does. A shallow assign
@@ -20835,6 +20931,11 @@ function importData(e){
        them out of STATE — they are ~200 KB each and localStorage is not where
        they live. A backup written before this field simply has none. */
     const ph=p._photoData&&typeof p._photoData==='object'?p._photoData:null;
+    /* The OUTGOING photos have to survive: undoImport() restores their rows.
+       Anything neither side claims is an orphan from an EARLIER import that no
+       screen and no undo can ever reach again. */
+    const _keepPh=(((_dev&&_dev.photos)||[]).map(x=>x&&x.id).filter(Boolean))
+      .concat(ph?Object.keys(ph):[]);
     delete STATE._photoData;
     /* Dropped on the way IN as well as on the way out: every backup written by
        v195-v198 already contains them, and those files will be restored long
@@ -20844,11 +20945,25 @@ function importData(e){
     normalizeState();save();
     if(ph){
       const ids=Object.keys(ph);
-      Promise.all(ids.map(id=>idbPut('ph_'+id,ph[id]))).then(()=>{
-        toast('Backup restored · '+ids.length+' photo'+(ids.length===1?'':'s'));
+      Promise.all(ids.map(id=>idbPut('ph_'+id,ph[id]))).then(res=>{
+        const put=res.filter(Boolean).length;
+        if(put===ids.length){toast('Backup restored · '+put+' photo'+(put===1?'':'s'));}
+        else{
+          /* The rows whose bytes did not land go with them. Nothing
+             irreplaceable is lost by dropping them — the pictures are still in
+             the backup FILE, which this device has not touched — whereas a row
+             with no blob is a blank tile for ever and rides along in every
+             backup written from here afterwards. */
+          const lost=new Set(ids.filter((id,i)=>!res[i]));
+          STATE.photos=(STATE.photos||[]).filter(x=>!(x&&lost.has(x.id)));save();
+          toast(put
+            ?'Backup restored · '+put+' of '+ids.length+' photos — this device refused the rest, so they are still only in the file'
+            :'Backup restored, but no photos could be saved on this device — they are still in the backup file',7000);
+        }
+        prunePhotoBlobs(_keepPh);
         try{hydratePhotos();}catch(e){}
-      }).catch(()=>toast('Backup restored, photos failed'));
-    } else toast('Backup restored');
+      }).catch(()=>toast('Backup restored, photos failed'));   // a backstop for a throw above, not the failure path
+    } else {prunePhotoBlobs(_keepPh);toast('Backup restored');}
     render();
   }catch(err){toast('Could not read file');}};
   r.readAsText(f);
@@ -20869,6 +20984,10 @@ function undoImport(){
     STATE=p;
     normalizeState();save();
     try{localStorage.removeItem(PREIMPORT_KEY);}catch(e){}
+    /* The imported pictures are unreachable the moment the rows are gone, and
+       there is no way forward to them — the snapshot is one step back, not a
+       history. */
+    prunePhotoBlobs((STATE.photos||[]).map(x=>x&&x.id).filter(Boolean));
     toast('Restored');
     render();
   }catch(e){toast('Could not restore');}
@@ -20878,8 +20997,7 @@ function hardReset(){
   if(!confirm('Are you absolutely sure? Consider exporting a backup first.'))return;
   // Progress photos are stored as separate IndexedDB blobs, not inside STATE —
   // clearing STATE alone left every image on the device after an "erase ALL".
-  const ids=(STATE.photos||[]).map(p=>p.id);
-  ids.forEach(id=>idbDel('ph_'+id));
+  prunePhotoBlobs([]);   // every ph_* blob, including ones no row points at
   /* The pre-import snapshot is a COMPLETE copy of STATE, and unlike a backup
      file it is not stripped — it carries azureKey and foodAiKey in plain text.
      Leaving it behind made "This cannot be undone" false in the worst possible

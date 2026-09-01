@@ -284,6 +284,117 @@ export default async function run() {
     errors.forEach(e => t.fail('page error during the import-undo flow', e));
   }
 
+  /* ---- the undo the confirm promises has to actually exist ----------------
+     The snapshot lives in localStorage, and a full store is exactly the state
+     save()'s own quota fallback exists for. It was written AFTER the confirm,
+     into a silent catch — so on a full phone the sentence "your current data
+     will be saved first so you can undo this" was simply false. Measured
+     before the fix: the write threw, the import went ahead, 300 logged
+     sessions were erased and the Undo button never appeared.
+
+     Same class as hardReset()'s "this cannot be undone" (v405): a promise in
+     UI text is a specification. The floors are what stop the fix becoming
+     "always warn" or "refuse the import" — a healthy device must be
+     byte-identical, and a full store is not a reason to refuse a restore. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const o = {};
+      const mkBackup = () => {
+        const b = JSON.parse(JSON.stringify(STATE));
+        b.profile.name = 'Imported Athlete'; b.logs = {}; b.version = 1; b._saved = '2026-01-01';
+        return new File([JSON.stringify(b)], 'b.json', { type: 'application/json' });
+      };
+      const bigLogs = () => { const L = {}; for (let i = 0; i < 300; i++) L[i] = { done: true, completedAt: '2026-08-01', ex: {}, items: [{ exId: 'pushup', sets: [1, 1, 1], target: 20, unit: 'reps' }] }; return L; };
+      const clearFill = n => { for (let i = 0; i <= n; i++) { try { localStorage.removeItem('__f' + i); } catch (e) {} } };
+      // Fill the store until a write far smaller than the snapshot is refused.
+      const fill = () => {
+        const big = 'x'.repeat(100000), small = 'x'.repeat(5000); let n = 0;
+        try { for (; n < 400; n++) localStorage.setItem('__f' + n, big); } catch (e) {}
+        try { for (; n < 800; n++) localStorage.setItem('__f' + n, small); } catch (e) {}
+        return n;
+      };
+      const realConfirm = window.confirm;
+      let asked = [];
+      window.confirm = m => { asked.push(m); return true; };
+
+      /* FLOOR: a healthy device is unchanged — the original wording, a real
+         snapshot, a working Undo. */
+      try { localStorage.removeItem(PREIMPORT_KEY); } catch (e) {}
+      STATE.logs = bigLogs(); save();
+      asked = [];
+      importData({ target: { files: [mkBackup()] } });
+      await new Promise(z => setTimeout(z, 400));
+      o.healthyAsk = asked[0] || '';
+      o.healthySnapshot = hasPreImportSnapshot();
+      o.healthyImported = STATE.profile.name === 'Imported Athlete';
+
+      /* The full store: it must SAY there is no undo, and must not leave a
+         stale snapshot behind pretending there is one. */
+      try { localStorage.removeItem(PREIMPORT_KEY); } catch (e) {}
+      STATE.profile.name = 'Live Athlete'; STATE.logs = bigLogs(); save();
+      let n = fill();
+      asked = [];
+      importData({ target: { files: [mkBackup()] } });
+      await new Promise(z => setTimeout(z, 400));
+      o.fullAsk = asked[0] || '';
+      o.fullSaysNoUndo = /no undo/i.test(o.fullAsk);
+      o.fullPromisesUndo = /undo this if it is a mistake/.test(o.fullAsk);
+      o.fullStillImported = STATE.profile.name === 'Imported Athlete';
+      o.fullOffersNoUndo = !hasPreImportSnapshot();
+      clearFill(n);
+
+      /* A STALE snapshot must not survive a failed one either — the Undo
+         button says "restore what was here before it", and an older import's
+         snapshot is not that. */
+      STATE.profile.name = 'Live Athlete'; STATE.logs = {}; save();
+      try { localStorage.setItem(PREIMPORT_KEY, JSON.stringify({ profile: { name: 'ANCIENT' }, version: 1 })); } catch (e) {}
+      STATE.logs = bigLogs(); save();
+      n = fill();
+      asked = [];
+      importData({ target: { files: [mkBackup()] } });
+      await new Promise(z => setTimeout(z, 400));
+      o.staleGone = !hasPreImportSnapshot();
+      clearFill(n);
+
+      /* FLOOR: a DECLINED import leaves the store exactly as it found it —
+         both with a snapshot already there and with none. */
+      try { localStorage.removeItem(PREIMPORT_KEY); } catch (e) {}
+      window.confirm = () => false;
+      STATE.profile.name = 'Live Athlete'; save();
+      importData({ target: { files: [mkBackup()] } });
+      await new Promise(z => setTimeout(z, 250));
+      o.declinedLeavesNoSnapshot = !hasPreImportSnapshot();
+      o.declinedKeptAthlete = STATE.profile.name === 'Live Athlete';
+
+      try { localStorage.setItem(PREIMPORT_KEY, JSON.stringify({ profile: { name: 'EARLIER' }, version: 1 })); } catch (e) {}
+      importData({ target: { files: [mkBackup()] } });
+      await new Promise(z => setTimeout(z, 250));
+      let kept = null; try { kept = JSON.parse(localStorage.getItem(PREIMPORT_KEY) || 'null'); } catch (e) {}
+      o.declinedKeptEarlierSnapshot = !!(kept && kept.profile && kept.profile.name === 'EARLIER');
+
+      try { localStorage.removeItem(PREIMPORT_KEY); } catch (e) {}
+      window.confirm = realConfirm;
+      return o;
+    });
+    // Guards: the two states this block depends on are really the two states.
+    t.ok('guard: the healthy device really did take a snapshot', r.healthySnapshot, r);
+    t.ok('guard: the full store really did refuse it', r.fullOffersNoUndo, r);
+
+    t.ok('a healthy device is asked the original question', /undo this if it is a mistake/.test(r.healthyAsk), r);
+    t.ok('and the import goes through', r.healthyImported, r);
+    t.ok('a full store is told there will be NO undo', r.fullSaysNoUndo, r);
+    t.ok('and is not promised one anyway', !r.fullPromisesUndo, r);
+    t.ok('and the restore still goes ahead — a full store is not a reason to refuse it', r.fullStillImported, r);
+    t.ok('a stale snapshot is not left behind pretending to be this import\'s', r.staleGone, r);
+    t.ok('declining still leaves no snapshot when there was none', r.declinedLeavesNoSnapshot, r);
+    t.ok('and leaves the athlete untouched', r.declinedKeptAthlete, r);
+    t.ok('and puts an earlier snapshot back exactly as it found it', r.declinedKeptEarlierSnapshot, r);
+    await browser.close();
+    errors.forEach(e => t.fail('page error during the full-store import flow', e));
+  }
+
   /* ---- a boot-time repair or validation problem reaches the athlete, not
      just the console — validateData()'s findings and any shape normalizeState()
      had to fix used to go nowhere a real athlete would ever see them. -------- */

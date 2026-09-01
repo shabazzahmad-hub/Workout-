@@ -139,12 +139,16 @@ export default async function run() {
       ['2026-01-03', 'front'], ['2026-01-04', 'front']])(page);
     const r = await page.evaluate(async () => {
       const ids = STATE.photos.slice().sort((a, b) => a.id < b.id ? -1 : 1).map(p => p.id);
-      // four distinct ids, each with distinguishable "bytes" (a plain marker
-      // string is enough — renderCompare() just drops it into an <img src>).
-      // idbPut() is fire-and-forget, so give the writes a moment to land.
-      idbPut('ph_' + ids[0], 'MARK-OLD-A'); idbPut('ph_' + ids[1], 'MARK-OLD-B');
-      idbPut('ph_' + ids[2], 'MARK-NEW-A'); idbPut('ph_' + ids[3], 'MARK-NEW-B');
-      await new Promise(z => setTimeout(z, 100));
+      /* Four distinct ids with distinguishable bytes. A plain marker string
+         USED to be enough, because renderCompare() dropped whatever it found
+         straight into an <img src> — which is the injection this suite now
+         also covers. The blob has to be a real picture to reach the screen at
+         all, so the marker rides inside one. The record was incomplete, not
+         the rule: this block is about which RENDER wins the race. */
+      const mark = m => 'data:image/png;base64,' + m;
+      await Promise.all([
+        idbPut('ph_' + ids[0], mark('MARKOLDA')), idbPut('ph_' + ids[1], mark('MARKOLDB')),
+        idbPut('ph_' + ids[2], mark('MARKNEWA')), idbPut('ph_' + ids[3], mark('MARKNEWB'))]);
 
       openCompare();
       const a = document.querySelector('#cmpA'), b = document.querySelector('#cmpB');
@@ -161,12 +165,15 @@ export default async function run() {
       await Promise.all([first, second]);
       idbGet = realIdbGet;
 
-      const html = document.querySelector('#cmpImgs').innerHTML;
+      // The src is ASSIGNED, never interpolated, so read the property.
+      const html = [...document.querySelector('#cmpImgs').querySelectorAll('img')]
+        .map(i => i.getAttribute('src') || i.src || '').join(' ');
       closeSheet();
       for (const id of ids) idbDel('ph_' + id);
       return { html };
     });
-    t.ok('the newer selection is what actually renders', r.html.includes('MARK-NEW-A') && r.html.includes('MARK-NEW-B'), r);
+    t.ok('the newer selection is what actually renders', r.html.includes('MARKNEWA') && r.html.includes('MARKNEWB'), r);
+    t.ok('and the stale one is gone', !r.html.includes('MARKOLDA') && !r.html.includes('MARKOLDB'), r);
     t.ok('the stale (slower-resolving) selection never overwrites it', !r.html.includes('MARK-OLD-A') && !r.html.includes('MARK-OLD-B'), r);
   }
 
@@ -386,6 +393,314 @@ export default async function run() {
     t.ok('and offers it ABOVE "Reset all data", where it can still be acted on', r.withPhotos.nearReset, r);
     t.ok('the label counts the real photos rather than guessing', r.withPhotos.counted, r);
     t.ok('and it stays hidden when there are none to save', !r.offeredWithNoPhotos, r);
+  }
+
+  /* ---- a photo is only saved if the bytes actually landed -----------------
+     idbPut() used to return NOTHING and never wait for its transaction, so
+     every caller's success report was a guess. Measured on a device with no
+     picture store — private browsing blocks IndexedDB, and idbOpen() resolves
+     null on any error — "Photo saved" and "Backup restored, 2 photos" were
+     both printed over zero bytes written, and importData()'s own photos-failed
+     branch was UNREACHABLE, because Promise.all over a list of undefineds
+     always resolves.
+
+     Progress photos are the one thing in this app that cannot be re-created,
+     so a row with no blob is worse than nothing: it is a permanent blank tile
+     that then travels in every backup. The floors are the healthy device,
+     which must be byte-identical, and the unreadable FILE, which is a
+     different failure and keeps its own different sentence. */
+  {
+    const r = await page.evaluate(async () => {
+      const o = {};
+      const mkFile = () => new Promise(res => {
+        const c = document.createElement('canvas'); c.width = 32; c.height = 32;
+        c.getContext('2d').fillRect(0, 0, 32, 32);
+        c.toBlob(b => res(new File([b], 's.jpg', { type: 'image/jpeg' })), 'image/jpeg', 0.8);
+      });
+      const toastText = () => (document.getElementById('toast') || {}).textContent || '';
+      const realIdb = idb;
+      o.guardStoreOpen = !!realIdb;   // the healthy floor must really be healthy
+
+      /* FLOOR: a working device is unchanged. */
+      STATE.photos = []; save(); _pendingPose = 'front';
+      await onPhotoPicked({ target: { files: [await mkFile()], value: '' } });
+      o.okToast = toastText();
+      o.okRows = STATE.photos.length;
+      o.okBlob = !!(await idbGet('ph_' + (STATE.photos[0] || {}).id));
+
+      /* FLOOR: an unreadable file is a different failure and says so. */
+      await onPhotoPicked({ target: { files: [new File(['not an image'], 'x.jpg', { type: 'image/jpeg' })], value: '' } });
+      o.badToast = toastText();
+      o.badRows = STATE.photos.length;
+
+      /* No picture store: no claim of success, and no row. */
+      STATE.photos = []; save(); idb = null;
+      await onPhotoPicked({ target: { files: [await mkFile()], value: '' } });
+      o.noStoreToast = toastText();
+      o.noStoreRows = STATE.photos.length;
+      idb = realIdb;
+
+      /* A restore counts what really landed, and drops the rows that did not
+         — the pictures are still in the file, so nothing is destroyed. */
+      const mkBackup = () => {
+        const b = JSON.parse(JSON.stringify(STATE));
+        b.version = 1; b._saved = '2026-01-01';
+        b.photos = [{ id: 'z1', date: '2026-01-01', pose: 'front' }, { id: 'z2', date: '2026-01-02', pose: 'side' }];
+        b._photoData = { z1: 'data:image/jpeg;base64,AAAA', z2: 'data:image/jpeg;base64,BBBB' };
+        return new File([JSON.stringify(b)], 'b.json', { type: 'application/json' });
+      };
+      const realConfirm = window.confirm; window.confirm = () => true;
+
+      STATE.photos = []; save(); idb = null;
+      importData({ target: { files: [mkBackup()] } });
+      await new Promise(z => setTimeout(z, 700));
+      o.impNoStoreToast = toastText();
+      o.impNoStoreRows = (STATE.photos || []).length;
+      idb = realIdb;
+
+      /* FLOOR: the healthy restore is unchanged. */
+      STATE.photos = []; save();
+      importData({ target: { files: [mkBackup()] } });
+      await new Promise(z => setTimeout(z, 800));
+      o.impOkToast = toastText();
+      o.impOkRows = (STATE.photos || []).length;
+      o.impOkBlob = !!(await idbGet('ph_z1'));
+
+      window.confirm = realConfirm;
+      return o;
+    });
+    t.ok('guard: the picture store really is open for the healthy cases', r.guardStoreOpen, r);
+    t.eq('a photo that really was stored says so', r.okToast, 'Photo saved');
+    t.eq('and writes exactly one row', r.okRows, 1);
+    t.ok('with its bytes genuinely in the store', r.okBlob, r);
+    t.eq('an unreadable file keeps its own different sentence', r.badToast, 'Could not read that image');
+    t.eq('and adds no row', r.badRows, 1);
+    t.ok('a device with no picture store is NOT told the photo was saved', !/saved$/.test(r.noStoreToast) && /could not be saved/.test(r.noStoreToast), r);
+    t.ok('and names the reason it can act on', /picture store/.test(r.noStoreToast), r);
+    t.eq('and no row is written for bytes that never landed', r.noStoreRows, 0);
+    t.ok('a restore that stored nothing does not claim it restored photos', !/Backup restored · \d+ photo/.test(r.impNoStoreToast), r);
+    t.ok('and says the pictures are still in the file', /still in the backup file/.test(r.impNoStoreToast), r);
+    t.eq('and leaves no blank rows behind', r.impNoStoreRows, 0);
+    t.eq('a healthy restore is unchanged', r.impOkToast, 'Backup restored · 2 photos');
+    t.eq('and keeps both rows', r.impOkRows, 2);
+    t.ok('and their bytes are really in the store', r.impOkBlob, r);
+  }
+
+  /* ---- a stored blob is user content, and it reached an src attribute ------
+     importData() writes p._photoData straight into IndexedDB, and it is
+     arbitrary JSON out of a file. viewPhoto() and renderCompare() then built
+     their <img src> by string concatenation, so a stored value of
+     `x" onerror="…` broke out of the attribute and RAN — measured from a
+     restored backup, in the origin that holds both API keys.
+
+     savePhotoFiles() has had the right test since v282, and its own comment
+     even says the gallery renders a bad blob as a broken tile: the shape was
+     known to be illegal and was checked in ONE consumer out of four.
+
+     The floor is a REAL photo, which must still appear on all three surfaces —
+     a guard that refuses everything satisfies every assertion above and
+     deletes the feature. */
+  {
+    const r = await page.evaluate(async () => {
+      const o = {};
+      window.__pwn = false;
+      const mkData = () => { const c = document.createElement('canvas'); c.width = 24; c.height = 24; c.getContext('2d').fillRect(0, 0, 24, 24); return c.toDataURL('image/jpeg', 0.8); };
+
+      /* The payload, through the real store and the real viewer. */
+      await idbPut('ph_evil', 'x" onerror="window.__pwn=true" data-x="');
+      STATE.photos = [{ id: 'evil', date: '2026-01-01', pose: 'front' }]; save();
+      await viewPhoto('evil');
+      await new Promise(z => setTimeout(z, 350));
+      const bad = document.querySelector('#sheet img');
+      o.viewerNoOnerror = !(bad && bad.hasAttribute('onerror'));
+      o.viewerNotPwned = window.__pwn !== true;
+      o.viewerSaysWhy = /not on this device/.test((document.getElementById('sheet') || {}).textContent || '');
+      o.viewerStillOffersDelete = /deletePhoto\(/.test((document.getElementById('sheet') || {}).innerHTML || '');
+      closeSheet(); await new Promise(z => setTimeout(z, 250));
+
+      /* And through the comparison, which is the second unguarded consumer. */
+      await idbPut('ph_evil2', 'y" onerror="window.__pwn=true" data-y="');
+      STATE.photos = [{ id: 'evil', date: '2026-01-01', pose: 'front' }, { id: 'evil2', date: '2026-03-01', pose: 'front' }]; save();
+      openCompare();
+      await new Promise(z => setTimeout(z, 500));
+      const cimgs = [...document.querySelectorAll('#sheet img')];
+      o.compareNoOnerror = !cimgs.some(i => i.hasAttribute('onerror'));
+      o.comparePwned = window.__pwn === true;
+      o.compareSaysWhy = /not on this device/.test((document.getElementById('sheet') || {}).textContent || '');
+      closeSheet(); await new Promise(z => setTimeout(z, 250));
+
+      /* FLOOR: real pictures still appear, on all three surfaces. */
+      const d1 = mkData(), d2 = mkData();
+      await idbPut('ph_r1', d1); await idbPut('ph_r2', d2);
+      STATE.photos = [{ id: 'r1', date: '2026-01-01', pose: 'front' }, { id: 'r2', date: '2026-03-01', pose: 'front' }]; save();
+      setProgressTab('body'); go('progress'); renderProgress();
+      await new Promise(z => setTimeout(z, 450));
+      const tiles = [...document.querySelectorAll('#v-progress .ph-img')];
+      o.tiles = tiles.length;
+      o.tilesFilled = tiles.filter(x => (x.src || '').indexOf('data:image/') === 0).length;
+
+      await viewPhoto('r1');
+      await new Promise(z => setTimeout(z, 250));
+      const good = document.querySelector('#sheet #pvImg');
+      o.viewerShowsRealPhoto = !!(good && (good.src || '').indexOf('data:image/') === 0);
+      closeSheet(); await new Promise(z => setTimeout(z, 250));
+
+      openCompare();
+      await new Promise(z => setTimeout(z, 500));
+      const ca = document.querySelector('#cmpImgA'), cb = document.querySelector('#cmpImgB');
+      o.compareShowsRealPhotos = !!(ca && cb && (ca.src || '').indexOf('data:image/') === 0 && (cb.src || '').indexOf('data:image/') === 0);
+      closeSheet();
+
+      /* A blob that is an absolute URL rather than a picture. */
+      await idbPut('ph_beacon', 'https://example.invalid/beacon.png?leak=1');
+      STATE.photos = [{ id: 'beacon', date: '2026-05-01', pose: 'front' }]; save();
+      setProgressTab('body'); go('progress'); renderProgress();
+      await new Promise(z => setTimeout(z, 450));
+      const jt = document.querySelector('#v-progress .ph-img[data-pid="beacon"]');
+      o.junkTileFound = !!jt;
+      o.tileNotBeaconed = !!jt && !(jt.getAttribute('src') || '').includes('example.invalid');
+
+      /* The predicate's own contract, exercised directly: it is consulted from
+         four narrow branches and still has to mean what it is named. */
+      o.pd = [photoData(d1) === d1, photoData('x" onerror="a') === null, photoData('') === null,
+              photoData(null) === null, photoData(42) === null, photoData({}) === null,
+              photoData('javascript:alert(1)') === null];
+      return o;
+    });
+    t.ok('the viewer never puts a stored blob into an attribute', r.viewerNoOnerror, r);
+    t.ok('so a payload out of a backup cannot run', r.viewerNotPwned, r);
+    t.ok('and the athlete is told why the frame is empty', r.viewerSaysWhy, r);
+    t.ok('while the row can still be deleted', r.viewerStillOffersDelete, r);
+    t.ok('the comparison never puts one into an attribute either', r.compareNoOnerror, r);
+    t.ok('and is not pwned by it', !r.comparePwned, r);
+    t.ok('and says which side is missing', r.compareSaysWhy, r);
+    t.eq('FLOOR: every real gallery tile still fills', r.tilesFilled, r.tiles);
+    t.ok('guard: there were tiles to fill', r.tiles > 0, r);
+    t.ok('FLOOR: the viewer still shows a real photo', r.viewerShowsRealPhoto, r);
+    t.ok('FLOOR: the comparison still shows both real photos', r.compareShowsRealPhotos, r);
+    t.eq('photoData() accepts a real picture and refuses everything else', r.pd, [true, true, true, true, true, true, true]);
+    /* The gallery assigns src as a PROPERTY, so a junk blob cannot inject —
+       but it still makes the app FETCH whatever the string points at. A
+       backup carrying an absolute URL turns every gallery paint into a beacon
+       to a stranger's server. Nothing asserted this, and the mutant that
+       dropped the gallery's guard walked straight through. */
+    t.ok('the gallery never points a tile at a junk blob', r.tileNotBeaconed, r);
+    t.ok('guard: the junk tile really was rendered', r.junkTileFound, r);
+  }
+
+  /* ---- "erase everything" has to mean the STORE, not what STATE remembers --
+     hardReset() deleted `(STATE.photos||[]).map(p=>p.id)`, so a blob whose row
+     had already been replaced was invisible to it. Measured: import a backup
+     and the previous athlete's two photographs stay in IndexedDB with no row
+     pointing at them, then survive "Erase your workout, food and profile
+     data… This cannot be undone" and stay on the device for ever, unreachable
+     from every screen. They are pictures of somebody's body.
+
+     The floors are what stop the fix becoming "delete the photos": an import
+     must KEEP the outgoing pictures, because undoImport() restores their rows,
+     and a real photo must survive an ordinary boot. */
+  {
+    const r = await page.evaluate(async () => {
+      const keys = () => new Promise(res => { try { const rq = idb.transaction('kv', 'readonly').objectStore('kv').getAllKeys(); rq.onsuccess = () => res((rq.result || []).filter(k => String(k).startsWith('ph_')).sort()); rq.onerror = () => res([]); } catch (e) { res([]); } });
+      const D = 'data:image/jpeg;base64,AAAA';
+      const o = {};
+      const realConfirm = window.confirm; window.confirm = () => true;
+      const mk = ids => { const b = JSON.parse(JSON.stringify(STATE)); b.version = 1; b._saved = '2026-01-01'; b.photos = ids.map(i => ({ id: i, date: '2025-01-01', pose: 'front' })); b._photoData = {}; ids.forEach(i => b._photoData[i] = D); return new File([JSON.stringify(b)], 'b.json'); };
+
+      await prunePhotoBlobs([]);
+      await idbPut('ph_mine1', D); await idbPut('ph_mine2', D);
+      STATE.photos = [{ id: 'mine1', date: '2026-01-01', pose: 'front' }, { id: 'mine2', date: '2026-02-01', pose: 'side' }]; save();
+      o.guardSeeded = (await keys()).length === 2;
+
+      importData({ target: { files: [mk(['t1'])] } });
+      await new Promise(z => setTimeout(z, 800));
+      o.afterImport = await keys();
+
+      undoImport();
+      await new Promise(z => setTimeout(z, 600));
+      o.afterUndo = await keys();
+      o.afterUndoRows = (STATE.photos || []).map(p => p.id).sort();
+
+      /* A second import: the first import's orphans are unreachable by any
+         undo now, so they go — while the one the CURRENT undo needs stays. */
+      importData({ target: { files: [mk(['u1'])] } });
+      await new Promise(z => setTimeout(z, 800));
+      importData({ target: { files: [mk(['u2'])] } });
+      await new Promise(z => setTimeout(z, 900));
+      o.afterTwoImports = await keys();
+
+      /* And the erase means the store — every store, not only the photos.
+         The app writes exactly two localStorage keys and two kinds of
+         IndexedDB key, so this is the whole surface rather than a sample. */
+      STATE.settings.foodAiKey = 'GEMINI-KEY'; STATE.settings.azureKey = 'AZ-KEY';
+      save();
+      try { localStorage.setItem(PREIMPORT_KEY, JSON.stringify(STATE)); } catch (e) {}
+      hardReset();
+      await new Promise(z => setTimeout(z, 700));
+      o.afterReset = await keys();
+      o.allIdbAfter = await new Promise(res => { try { const rq = idb.transaction('kv', 'readonly').objectStore('kv').getAllKeys(); rq.onsuccess = () => res((rq.result || []).map(String).sort()); rq.onerror = () => res([]); } catch (e) { res([]); } });
+      o.allLsAfter = Object.keys(localStorage).sort();
+      o.credsKept = STATE.settings.foodAiKey === 'GEMINI-KEY' && STATE.settings.azureKey === 'AZ-KEY';
+      o.reallyReset = STATE.onboarded === false;
+      window.confirm = realConfirm;
+      return o;
+    });
+    t.ok('guard: two photographs really were on the device', r.guardSeeded, r);
+    t.eq('an import keeps the outgoing pictures, because undo restores their rows', r.afterImport, ['ph_mine1', 'ph_mine2', 'ph_t1']);
+    t.eq('undoing an import takes the imported picture with it', r.afterUndo, ['ph_mine1', 'ph_mine2']);
+    t.eq('and gives the athlete their own rows back', r.afterUndoRows, ['mine1', 'mine2']);
+    t.eq('a second import clears the orphans no undo can reach any more', r.afterTwoImports, ['ph_u1', 'ph_u2']);
+    t.eq('"erase everything" leaves no photograph on the device at all', r.afterReset, []);
+    t.eq('and nothing but the fresh state is left in the device store', r.allIdbAfter, ['coreforge.v1']);
+    t.eq('or in localStorage — the pre-import snapshot goes with it', r.allLsAfter, ['coreforge.v1']);
+    t.ok('guard: it really was a reset', r.reallyReset, r);
+    t.ok('FLOOR: the two device credentials still survive it', r.credsKept, r);
+  }
+
+  /* ---- the file the athlete keeps must not count a non-picture as a photo --
+     exportData() is the FIFTH reader of a stored blob and the last one that
+     was still using truthiness. Measured: a junk blob beside a real photo was
+     embedded in the backup and reported as "2 photos included". A row with no
+     picture behind it is a missing photo FILE, and the toast already knows how
+     to say that. */
+  {
+    const r = await page.evaluate(async () => {
+      const o = {};
+      const D = 'data:image/jpeg;base64,AAAA';
+      await prunePhotoBlobs([]);
+      await idbPut('ph_good', D);
+      await idbPut('ph_junk', 'x" onerror="window.__pwn=true" data-x="');
+      STATE.photos = [{ id: 'good', date: '2026-01-01', pose: 'front' }, { id: 'junk', date: '2026-02-01', pose: 'side' }];
+      save();
+      let captured = null;
+      const realCOU = URL.createObjectURL, realClick = HTMLAnchorElement.prototype.click;
+      URL.createObjectURL = b => { captured = b; return 'blob:fake'; };
+      HTMLAnchorElement.prototype.click = function () {};
+      await exportData();
+      const text = captured ? await captured.text() : '';
+      o.toastJunk = (document.getElementById('toast') || {}).textContent || '';
+      const parsed = text ? JSON.parse(text) : {};
+      o.embedded = Object.keys(parsed._photoData || {}).sort();
+      o.fileHasNoKeys = !/azureKey|foodAiKey/.test(text);
+
+      /* FLOOR: two real photographs are both embedded and neither is called
+         missing — a guard that refused everything would satisfy the case above
+         and empty every backup. */
+      await idbPut('ph_junk', D);
+      captured = null;
+      await exportData();
+      const text2 = captured ? await captured.text() : '';
+      o.toastBoth = (document.getElementById('toast') || {}).textContent || '';
+      o.embeddedBoth = Object.keys((text2 ? JSON.parse(text2) : {})._photoData || {}).sort();
+      URL.createObjectURL = realCOU; HTMLAnchorElement.prototype.click = realClick;
+      return o;
+    });
+    t.eq('only the real picture is written into the backup', r.embedded, ['good']);
+    t.ok('and the count says one photo, not two', /1 photo included/.test(r.toastJunk), r);
+    t.ok('and names the one that has no file', /1 photo file missing/.test(r.toastJunk), r);
+    t.ok('and the file still carries neither API key', r.fileHasNoKeys, r);
+    t.eq('FLOOR: two real photographs are both embedded', r.embeddedBoth, ['good', 'junk']);
+    t.ok('FLOOR: and neither is reported missing', /2 photos included/.test(r.toastBoth) && !/missing/.test(r.toastBoth), r);
   }
 
   srv.close();

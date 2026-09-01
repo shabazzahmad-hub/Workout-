@@ -11070,6 +11070,259 @@ called `logFood()`, `logHold()` and `saveCustomFav()` directly and reported thre
 take. The question is whether ONE gesture produces two records, which needs real
 clicks on real buttons.
 
+## The undo it promised did not exist on a full phone (v406)
+
+Found by sweeping a class rather than by using the app: **every `confirm()`
+string in the file, read against what the function actually does.** Thirteen of
+them. Twelve keep their word. One did not, in the one state where it mattered.
+
+```js
+if(!confirm('… Your current data will be saved first so you can undo this if it is a mistake.'))return;
+try{localStorage.setItem(PREIMPORT_KEY,JSON.stringify(STATE));}catch(e){}
+```
+
+**The snapshot is written AFTER the question, into a silent catch.** The
+snapshot lives in localStorage, and a full store is exactly the state `save()`'s
+own quota fallback exists for. Measured on a genuinely full store, with 300
+logged sessions on file:
+
+| | |
+|---|---|
+| the question asked | *"…saved first so you can undo this if it is a mistake"* |
+| the snapshot write | **threw, and was swallowed** |
+| the import | went ahead — **300 sessions erased** |
+| the Undo button | **never appeared** (`hasPreImportSnapshot()` is what gates it) |
+
+So the athlete was told they could undo it, everything went, and there was no
+undo. Same class as v405's *"this cannot be undone"* being false across two
+tabs, and the fifth entry under **a promise in UI text is a specification** on
+the destructive paths alone.
+
+**The snapshot is taken BEFORE the question, so the question can tell the
+truth.** There are two questions now, and the second one does not promise
+anything.
+
+**The stale snapshot is dropped FIRST rather than overwritten**, and that is
+load-bearing twice over. It is about the same size as the new one, so freeing it
+is usually exactly the room the new one needs — the fix often makes the failure
+go away rather than only reporting it. And a stale snapshot that survives a
+failed write makes the Undo button lie in a worse way than its absence: it says
+*"restore what was here before it"* and would restore an **earlier** import's
+state.
+
+**Three floors, and each catches a different over-eager twin.** A healthy device
+must be asked the original question and get a working undo — a fix that always
+warns fails there. **A full store is not a reason to refuse a restore**: the
+backup may be the thing the athlete needs, and restoring may be what frees the
+room, so the import still goes ahead when they accept. And a **declined** import
+must leave the store exactly as it found it, both with an earlier snapshot
+present and with none — otherwise the Undo button turns up offering to reverse an
+import that never happened.
+
+**And the probe had to fill the store properly.** A first attempt filled with
+100 KB blobs until it threw and then reported the store *"still writable"* — a
+one-byte write fits in the slack, and the snapshot of a 60-session athlete fitted
+too. Only filling with big blocks and then topping up with small ones leaves less
+slack than the snapshot needs. **A full store is not one that refused your last
+write; it is one that will refuse the write you are about to make.**
+
+
+### The write that could not report a failure (v406)
+
+The same sweep, one promise over. `idbPut()` **returned nothing and never
+waited for its transaction**:
+
+```js
+function idbPut(k,v){try{if(!idb)return;const tx=idb.transaction('kv','readwrite');tx.objectStore('kv').put(v,k);}catch(e){}}
+```
+
+So every caller's success report was a guess. `idb` is null whenever the store
+could not be opened — private browsing blocks IndexedDB, and `idbOpen()`
+resolves null on any error — and that is a real phone, not a hypothetical.
+Measured on one:
+
+| action | the app said | what happened |
+|---|---|---|
+| take a progress photo | **"Photo saved"** | no bytes; a row with a blank tile, for ever |
+| restore a backup with 2 photos | **"Backup restored · 2 photos"** | **0 written** |
+
+**And the failure branch was unreachable.** `Promise.all(ids.map(id=>idbPut(…)))`
+is a `Promise.all` over a list of **undefineds**, which always resolves — so
+`.catch(()=>toast('Backup restored, photos failed'))` could never fire. A
+handler that cannot run is the same defect as no handler, with the appearance
+of care.
+
+**This is the worst field in the app to be wrong about.** `savePhotoFiles()`
+exists because progress photos are the one thing here that genuinely cannot be
+re-created — a missed weigh-in can be typed in from memory, week 1 of your body
+cannot be re-photographed in week 30. An athlete told "Photo saved" does not
+take it again.
+
+**The row is written only once the bytes are down.** A row with no blob is not
+a half-saved photo, it is a permanent blank tile that then rides along in every
+backup — the harm v285 measured, on the field that matters most.
+
+**A restore drops the rows whose bytes did not land, and that destroys
+nothing**: the pictures are still in the backup FILE, which this device has not
+touched, so the honest move is to say so and let the athlete restore somewhere
+that works.
+
+**Three failures, three sentences.** An unreadable file, a device with no
+picture store, and a device out of space are different problems with different
+fixes, and a single "could not save" would tell the athlete nothing to act on —
+the v289 rule that a range is not an explanation. The storage sentence is
+toasted LAST, because it is the one that decides whether the photo is taken
+again.
+
+**The floor is the working device, byte-identical**: "Photo saved", one row,
+bytes present, and `Backup restored · 2 photos` with both blobs down. Every
+over-eager twin — refuse every photo, never write a row, always report a
+storage failure — fails there.
+
+**Eight mutants, seven caught and one equivalent — measured, not assumed.**
+Restoring the picker's single-toast form escaped, and seeding it and reading
+the screen back is what explained why: `toast()` overwrites `textContent` with
+no queue, so the wrong sentence is replaced in the same tick and never reaches
+the glass. Kept as intent so the code does not state a reason it has just
+disproved. **Read the mutant back before rewriting the check.**
+
+
+### A stored blob is user content, and it reached an src attribute (v406)
+
+Found one function further along the same path, and it is the most serious
+defect in this run. `importData()` writes `p._photoData` straight into
+IndexedDB, and that is **arbitrary JSON out of a file**. `viewPhoto()` and
+`renderCompare()` then built their `<img src>` by string concatenation:
+
+```js
+<img src="${data||''}" style="…">
+```
+
+A stored value of `x" onerror="…` breaks out of the attribute. Measured from a
+restored backup: **`window.__pwn` went true** — arbitrary script, in the origin
+that holds `azureKey` and `foodAiKey`.
+
+**v399's injection sweep could not see it.** That sweep drove 62 fields of
+STATE; `_photoData` is deleted from STATE on the way in and lives in IndexedDB,
+so it was never in the set. **A sweep is only as wide as the surface it
+enumerates**, and "every stored leaf" meant every leaf of one store.
+
+**The app already knew the shape was illegal.** `savePhotoFiles()` has carried
+the right test since v282 — and its own comment says, in as many words, that
+*"the gallery renders it as a broken tile"*. So the check existed in **one
+consumer out of four**, and the comment describing the harm to the other three
+was written beside it and never acted on. That is v284's sentence exactly.
+
+Both halves are fixed, because two guards mean two checks:
+
+- **Nothing interpolates a blob into markup any more.** The `src` is assigned
+  as a PROPERTY after the sheet is built, which closes the attribute-breakout
+  structurally rather than by escaping.
+- **`photoData()` is the one membership test**, asked by all four consumers, so
+  a fifth cannot forget it.
+
+**A missing picture now says so.** The viewer used to render an empty frame
+with a Delete button under it and no explanation; the comparison rendered two
+blank boxes. Both name the state and point at the backup file, and **the Delete
+button stays** — a row whose picture is gone is exactly the row somebody wants
+to remove.
+
+**The floor is a real photograph on all three surfaces.** A `photoData()` that
+refuses everything satisfies every assertion about the payload and deletes the
+gallery, the viewer and the comparison at once.
+
+**And an existing check failed on correct code, which was the record and not
+the rule.** The renderCompare race check seeded plain marker strings, with a
+comment saying *"a plain marker string is enough — renderCompare() just drops
+it into an `<img src>`"*. That sentence WAS the defect. Its subject is which
+render wins the race, so the markers now ride inside real data URIs and the
+assertion reads the assigned `src` property. **Complete the record; do not
+weaken the rule.**
+
+**One escaped mutant, and "it cannot inject" was not the same as "it is
+harmless".** Dropping the GALLERY's guard walked through every check, because
+`hydratePhotos()` assigns `src` as a property, so no script can run and the
+tile looks blank either way. What it does do is make the browser **FETCH
+whatever the string points at** — a backup carrying
+`https://example.invalid/beacon.png` turns every gallery paint into a beacon to
+a stranger's server, from the athlete's own device. The guard belongs there for
+that reason and now has a check that says so. **Ask what a value DOES, not only
+whether it can execute.**
+
+**Thirty mutants across v406, twenty-nine caught and one equivalent.**
+
+
+### "Erase everything" meant what STATE remembered, not what the device held (v406)
+
+The third finding in the same round, and the one with the worst consequence.
+`hardReset()` erased photographs like this:
+
+```js
+const ids=(STATE.photos||[]).map(p=>p.id);
+ids.forEach(id=>idbDel('ph_'+id));
+```
+
+**A blob whose ROW has already been replaced is invisible to that.** An import
+replaces `STATE.photos` wholesale, so every picture the athlete had before it
+becomes an orphan — bytes in IndexedDB with nothing pointing at them. Measured:
+
+| step | `ph_*` keys on the device |
+|---|---|
+| two of the athlete's own photographs | `mine1`, `mine2` |
+| restore a backup carrying one other | `mine1`, `mine2`, `theirs1` |
+| **"Erase your workout, food and profile data… This cannot be undone"** | **`mine1`, `mine2`** |
+
+Two pictures of somebody's body, surviving a full erase, unreachable from every
+screen, for ever. That is the most expensive promise in this app to leave
+unkept, and it is the same sentence v405 had just made true across two tabs.
+
+**Erase by what the STORE holds.** `prunePhotoBlobs(keepIds)` walks the real
+keys and deletes everything not named, so nothing can hide behind a row that is
+no longer in STATE.
+
+**The keep-list is the interesting part, because an undo needs the pictures the
+import replaced.** `undoImport()` restores the previous rows, so the outgoing
+blobs must survive the import — but an EARLIER import's orphans cannot be
+reached by that one step back, and they go. So the import keeps
+`outgoing ∪ incoming`, the undo keeps what it restored, and the erase keeps
+nothing. Measured across two imports and an undo, that is exactly the set that
+is still reachable at each point.
+
+**The floors are what stop it becoming "delete the photos".** An import must
+keep the outgoing pictures — an over-eager keep-list satisfies every assertion
+about the erase and silently breaks the undo the confirm promises one function
+away.
+
+### And the fifth reader was the one that writes the file (v406)
+
+Fixing the gallery, the viewer, the comparison and the file-saver was fixing
+four instances. **A stored photo blob has FIVE readers**, and `exportData()`
+was still asking truthiness:
+
+```js
+const d=await idbGet('ph_'+ph.id);
+if(d)clone._photoData[ph.id]=d;
+```
+
+Measured with one real photograph and one junk blob: the junk was **embedded in
+the backup file** and the toast said **"2 photos included"**. The count is
+derived from what was embedded, so it had everything it needed to say
+*"1 photo included · 1 photo file missing"* — that sentence already exists a
+line below and was reachable only through a shape test nobody was doing.
+
+It is the reader that matters most for a different reason from the others: the
+other four paint a screen, this one writes the file the athlete keeps and hands
+to their next phone.
+
+**The floor is two real photographs**, both embedded and neither reported
+missing — a guard that refused everything satisfies the case above and quietly
+empties every backup.
+
+**`grep -n "idbGet('ph_"` returns five lines, and all five now ask
+`photoData()`.** That is what closing a class looks like: not "I fixed the ones
+I found", but a list with a count and every member on it.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
