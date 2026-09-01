@@ -3243,6 +3243,16 @@ export default async function run() {
         const el = document.querySelector('#v-guide input[aria-label="Coach voice depth"]');
         o.vpSlider[String(v)] = el ? [+el.value, +el.min, +el.max, voicePitchPref()] : null;
       });
+      /* NO BOOT, and a non-finite number — the same pair the cadence slider
+         needs. Every FINITE value is clamped into the band by the browser
+         itself, so a slider rendering the stored number raw is equivalent
+         there; NaN is what the browser resolves to the midpoint instead. And
+         the boot repair drops a junk pitch, so a booted case cannot tell the
+         two apart either. A cross-tab adopt is the door with no boot. */
+      { STATE.settings.voicePitch = NaN; go('guide'); render();
+        const el = document.querySelector('#v-guide input[aria-label="Coach voice depth"]');
+        o.vpSlider.NaN = el ? [+el.value, +el.min, +el.max,
+                               (voicePitchPref() !== null ? voicePitchPref() : localPitchFor(null))] : null; }
       [78, 60, 110, 999, 10, 'x'].forEach(v => {
         STATE.settings.beatTempo = v; normalizeState();
         o.btBoot[String(v)] = STATE.settings.beatTempo;
@@ -3329,6 +3339,12 @@ export default async function run() {
       [r.vpSlider['99'][1], r.vpSlider['99'][2]].join('-'), [r.pMin, r.pMax].join('-'), r);
     t.eq('FLOOR: a value inside the band reads back unchanged',
       r.vpRead['1.3'][0], 1.3, r);
+    t.ok('guard: the depth slider rendered for the non-finite case too',
+      !!r.vpSlider.NaN, r);
+    t.eq('and a non-finite depth shows what the reader hands out, not the midpoint',
+      r.vpSlider.NaN[0], r.vpSlider.NaN[3], r.vpSlider.NaN);
+    t.ok('guard: the midpoint really differs, or that proves nothing',
+      (r.vpSlider.NaN[1] + r.vpSlider.NaN[2]) / 2 !== r.vpSlider.NaN[3], r.vpSlider.NaN);
     t.eq('FLOOR: both ends of the depth slider survive', r.vpBoot['1.18'], 1.18, r);
     t.eq('FLOOR: the other end too', r.vpBoot['1.45'], 1.45, r);
     t.eq('FLOOR: and a value inside it', r.vpBoot['1.3'], 1.3, r);
@@ -3625,7 +3641,7 @@ export default async function run() {
          than to the app's default. No boot here on purpose: a cross-tab adopt
          replaces STATE with nothing behind it. */
       o.slider = {};
-      [1, 99, {}].forEach(v => {
+      [1, 99, {}, NaN].forEach(v => {
         STATE.settings.repTempo = v; go('guide'); render();
         const el = document.querySelector('#v-guide input[aria-label="Rep cadence in seconds per rep"]');
         o.slider[String(v)] = el ? [+el.value, +el.min, +el.max, repTempoSetting()] : null;
@@ -3681,6 +3697,16 @@ export default async function run() {
     t.eq('at the ceiling too', r.slider['99'][0], r.slider['99'][3], r);
     t.eq('and a junk cadence shows the default rather than the midpoint',
       r.slider['[object Object]'][0], r.slider['[object Object]'][3], r);
+    /* THE ONE INPUT THE BROWSER CANNOT RESCUE, and the only one that catches a
+       slider rendering the stored number raw. `typeof NaN === 'number'`, so
+       the old expression passed it straight into the markup and the browser
+       fell back to the MIDPOINT of the range; every finite value is clamped by
+       the browser into the same band the reader uses, which makes those
+       mutants equivalent. Measured: 3.75 against the reader's 3. */
+    t.eq('and a non-finite cadence takes the default, not the midpoint of the range',
+      r.slider['NaN'][0], r.slider['NaN'][3], r);
+    t.ok('guard: the midpoint really is a different number, or that proves nothing',
+      (r.slider['NaN'][1] + r.slider['NaN'][2]) / 2 !== r.slider['NaN'][3], r.slider['NaN']);
     t.eq('its min and max come from the band rather than a third copy',
       [r.slider['1'][1], r.slider['1'][2]].join('-'), '1.5-6', r);
 
@@ -3738,6 +3764,19 @@ export default async function run() {
         o.boot[String(pair[0])] = nutToday().food[0].meal;
       });
       nutToday().food = [];
+
+      /* The BIGGEST inline script, because the first one on this page is two
+         characters long — v331's trap. Comments stripped, because a comment
+         quoting the literal it forbids is counted by the scan that forbids it. */
+      const src = [...document.querySelectorAll('script:not([src])')]
+        .map(x => x.textContent).sort((a, b) => b.length - a.length)[0] || '';
+      const bare = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      o.src = {
+        len: bare.length,
+        hasNormalize: bare.indexOf('function normalizeState') >= 0,
+        usesMealKey: /meal:\s*mealKey\(/.test(bare),
+        handWritten: /\[\s*'b'\s*,\s*'l'\s*,\s*'d'\s*,\s*'s'\s*\]/.test(bare)
+      };
       return o;
     });
 
@@ -3766,6 +3805,20 @@ export default async function run() {
     t.eq('and a number', r.boot['42'], 'l', r);
     t.eq('FLOOR: a real slot survives the boot', r.boot['b'], 'b', r);
     t.eq('FLOOR: and so does the last one', r.boot['s'], 's', r);
+
+    /* THE REPAIR HAS TO ASK THE REGISTRY, and only the SOURCE can say so.
+       A hand-written ['b','l','d','s'] produces byte-identical output today,
+       because MEALS holds exactly those four — so the mutant restoring it
+       escaped every assertion above. The drift it reopens is invisible until
+       a fifth slot is added, at which point the repair rewrites it to lunch on
+       every boot. Same shape as v322's WEIGHTS_PATTERNS and v368's two cardio
+       consumers: the check needs the consumer to READ the list, not merely for
+       the list to exist. */
+    t.ok('and the repair asks mealKey() rather than restating the four slots',
+      r.src.usesMealKey && !r.src.handWritten,
+      JSON.stringify(r.src));
+    t.ok('guard: the source really was read, and it is the app',
+      r.src.len > 500000 && r.src.hasNormalize, JSON.stringify(r.src));
 
     errors.forEach(e => t.fail('a page error fired during the meal-slot checks', e));
     await browser.close();

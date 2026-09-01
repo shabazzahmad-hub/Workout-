@@ -12601,6 +12601,36 @@ it falls back to the **midpoint** of the range, not to the app's default, so
 Same family as *measure the payload, not the container*, with the browser
 supplying the container's guarantee for free.
 
+**And the guarantee cuts both ways, which two escaped mutants proved.** Once
+`min` and `max` come from the constants, a slider rendering the STORED number
+raw is **equivalent** for every finite value — the browser clamps it into the
+same band the reader uses, so both versions paint the same thumb. The one input
+it cannot rescue is a **non-finite number**: `typeof NaN === 'number'`, so the
+old expression passed it into the markup and the browser fell back to the
+**midpoint of the range** (3.75 against the reader's 3), while a junk shape
+takes the same fallback in both versions and discriminates nothing.
+
+So the discriminating case is `NaN`, driven with **no boot behind it** — the
+boot repair drops a junk pitch, so a booted case cannot tell the two apart
+either, and a cross-tab adopt is the door that has no boot. A guard beside each
+asserts the midpoint really is a different number, or the assertion proves
+nothing.
+
+### A repair that restates a four-member set is equivalent until the set grows
+
+The third escape. Reverting `mealKey(x.meal)||'l'` to a hand-written
+`['b','l','d','s']` produces **byte-identical output today**, because `MEALS`
+holds exactly those four — so every rendered assertion passed. The drift it
+reopens is invisible until a fifth slot exists, at which point the repair
+rewrites it to lunch on every boot.
+
+That is v322's `WEIGHTS_PATTERNS` lesson and v368's two cardio consumers: **the
+check needs the consumer to READ the list, not merely for the list to exist**,
+and only a source assertion can say so. It carries the two guards that scan
+always needs — the BIGGEST inline script (the first on this page is two
+characters long) and comments stripped, because a comment quoting the literal
+it forbids is counted by the scan that forbids it.
+
 ### A row the diary cannot show is a row the athlete cannot delete (v412)
 
 The same sweep, one control over. `MEALS` is the four-slot registry, and the
