@@ -395,6 +395,85 @@ export default async function run() {
     errors.forEach(e => t.fail('page error during the full-store import flow', e));
   }
 
+  /* ---- an UPGRADE is bootstrapping, and bootstrapping is not a repair ------
+     boot() flagged _dataRepaired on ANY diff across normalizeState(), so the
+     first launch after a version that added a field told every athlete
+     "Something stored on this device was not in a shape the app expected, so
+     it was reset to a safe default". Measured on a real v396 -> v408 upgrade
+     with a perfectly valid state: 46 keys ADDED, zero validator problems, and
+     not one value changed. That names the wrong cause, and because nearly
+     every version adds a field it fired for everyone on nearly every upgrade
+     — which is how a note becomes noise.
+
+     The floors are what stop the fix being a mute button: every genuine repair
+     must still speak, and they are seeded one at a time below. */
+  {
+    const { browser, page, errors } = await launch(port);
+    const mkLegacy = mutName => {
+      const s = { version: 1, _saved: '2026-08-30', _savedAt: Date.now(), onboarded: true,
+        progressPtr: 12, adapt: 1.05,
+        profile: { name: 'Legacy', age: 52, heightCm: 178, sex: 'male', unit: 'in',
+          goal: 'lose', experience: 'Intermediate', days: [1, 2, 4, 5, 6], gear: ['bar'],
+          limitations: [], parq: [], parqDone: true, targets: ['abs'], mobility: 'ok',
+          activity: 1.45, _mintTheme: true },
+        nutrition: { goal: 'lose', sex: 'male', age: 52, heightCm: 178, weightKg: 86,
+          activity: 1.45, diet: 'omnivore', allergies: '', meals: 3, days: {}, cardioMode: 'jacks' },
+        logs: {}, swaps: {}, restDays: {}, _opens: {}, prs: {}, achievements: {},
+        measurements: [], scoreHistory: [], photos: [],
+        settings: { sound: true, vibrate: true, voice: true, voiceName: '', voiceTone: 'mid',
+          voiceRate: 0.98, repTempo: 3, hype: true, coach: 'drill', beat: true, beatVol: 0.55,
+          theme: 'ion', neuralOn: false, azureKey: '', azureRegion: 'eastus', autoIntro: true } };
+      for (let i = 0; i < 12; i++) s.logs[i] = { done: true, completedAt: '2026-08-0' + (1 + i % 9), ex: {}, sets: 8, items: [] };
+      if (mutName === 'adapt') s.adapt = 99;
+      if (mutName === 'diet') s.nutrition.diet = 'kosher';
+      if (mutName === 'logsArray') s.logs = [1, 2, 3];
+      if (mutName === 'comeback') s.comeback = { left: 99999 };
+      if (mutName === 'name') s.profile.name = {};
+      if (mutName === 'logKey') s.logs['constructor'] = { done: true };
+      return JSON.stringify(s);
+    };
+    /* A real phone carries the state in BOTH stores, and load() takes whichever
+       is NEWER — seeding only localStorage leaves the fresh boot's mirror to
+       win, which is the trap CLAUDE.md records about clearing one store. */
+    const bootWith = async json => {
+      await page.evaluate(async j => { localStorage.setItem('coreforge.v1', j); await idbPut('coreforge.v1', j); }, json);
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await waitForBoot(page);
+      return page.evaluate(() => {
+        go('guide'); render();
+        return { repaired: !!STATE._dataRepaired,
+                 noteShown: /needed a repair/.test(document.querySelector('#v-guide').innerHTML) };
+      });
+    };
+    const clean = await bootWith(mkLegacy(null));
+    t.ok('a healthy upgrade does not claim the athlete\'s data needed repairing', !clean.repaired, clean);
+    t.ok('and shows no note', !clean.noteShown, clean);
+
+    for (const [name, label] of [['adapt', 'a value outside its band'], ['diet', 'a diet outside the list'],
+      ['logsArray', 'a keyed map arriving as an array'], ['comeback', 'a stored courtesy outside its band'],
+      ['name', 'a free-text field of the wrong type'], ['logKey', 'an illegal key in a keyed map']]) {
+      const r = await bootWith(mkLegacy(name));
+      t.ok('FLOOR: ' + label + ' still says so', r.repaired && r.noteShown, { name, r });
+    }
+
+    /* The predicate's own contract, exercised directly — it is consulted from
+       one narrow branch and still has to mean what it is named. */
+    const pred = await page.evaluate(() => [
+      _normTouchedExisting({ a: 1 }, { a: 1, b: 2 }) === false,          // pure addition
+      _normTouchedExisting({ a: 1 }, { a: 2 }) === true,                 // a real value changed
+      _normTouchedExisting({ a: 1 }, {}) === true,                       // a real value removed
+      _normTouchedExisting({ a: null }, {}) === false,                   // a null is not an answer
+      _normTouchedExisting({ a: null }, { a: 5 }) === false,             // seeding over a null is bootstrapping
+      _normTouchedExisting({ n: { x: 1 } }, { n: { x: 1, y: 2 } }) === false,   // nested addition
+      _normTouchedExisting({ n: { x: 1 } }, { n: { x: 9 } }) === true,          // nested change
+      _normTouchedExisting({ l: [1, 2] }, { l: [1] }) === true,          // a dropped row
+    ]);
+    t.eq('_normTouchedExisting() counts changes and removals, never additions', pred,
+      [true, true, true, true, true, true, true, true]);
+    await browser.close();
+    errors.forEach(e => t.fail('page error during the upgrade-note flow', e));
+  }
+
   /* ---- a boot-time repair or validation problem reaches the athlete, not
      just the console — validateData()'s findings and any shape normalizeState()
      had to fix used to go nowhere a real athlete would ever see them. -------- */
