@@ -11102,13 +11102,12 @@ the destructive paths alone.
 truth.** There are two questions now, and the second one does not promise
 anything.
 
-**The stale snapshot is dropped FIRST rather than overwritten**, and that is
-load-bearing twice over. It is about the same size as the new one, so freeing it
-is usually exactly the room the new one needs — the fix often makes the failure
-go away rather than only reporting it. And a stale snapshot that survives a
-failed write makes the Undo button lie in a worse way than its absence: it says
-*"restore what was here before it"* and would restore an **earlier** import's
-state.
+**The stale snapshot is dropped FIRST rather than overwritten**, and the reason
+first written here was wrong — v410 measured it. It is NOT for room: `setItem`
+on a key that already exists replaces it, so the write reclaims the old value
+itself. What the drop is for is that a stale snapshot surviving a FAILED write
+makes the Undo button lie in a worse way than its absence: it says *"restore
+what was here before it"* and would restore an **earlier** import's state.
 
 **Three floors, and each catches a different over-eager twin.** A healthy device
 must be asked the original question and get a working undo — a fix that always
@@ -11613,6 +11612,169 @@ counts a console error as a page failure — the trap this file already records
 for every check that breaks data in front of the validator. And it carries two
 guards: nothing was repaired, and the validator really did complain. Without
 the first, the block passes through the arm it is not testing.
+
+
+## Another tab saved over work this one had already written (v410)
+
+Found by asking what v404 and v405 made newly possible: **`STATE` can now be
+replaced by a background event**, so anything saved between two foreign writes
+is at risk. Driven across two tabs, with the second saving from the copy it was
+already holding:
+
+| saved in this tab | after the other tab saves |
+|---|---|
+| a logged session and its pointer | **0 logs, pointer 0** |
+| a measurement | **0** |
+| a progress photo | **0** — the one thing this app calls irreplaceable |
+
+The toast said *"Updated from another tab"* and nothing else. That is the
+classic lost update, and v404 is what made it silent: **before v404 the OTHER
+tab lost, and after it this one does.** Neither is right, and a whole-state
+store cannot merge the two copies.
+
+**The newest still wins, because that is the least surprising default.** What
+changed is that the loss is named and one tap from being undone — the same
+one-step-back shape `importData()` has used since v229, in the same place in
+Settings, with its own key so the two undos cannot tread on each other.
+
+**The writer stamps what it had SEEN.** `_base` is the revision the saving tab
+was building on; a `_base` predating our own last save says the copy arriving
+was written without our work. A copy simply older than ours is the same loss by
+a shorter route, and is caught too.
+
+**A COUNTER, NOT A TIMESTAMP, and the check is what forced that.** The first
+version stamped `Date.now()`, and one of its own cases failed: two saves land in
+the same millisecond routinely, so a real lost update went undetected because
+the base and our last save shared a tick. A revision counter is exact, and it is
+also immune to the clock jumps v380 moved every timer off.
+
+**A copy carrying no revision at all is treated as no loss.** Every phone is
+carrying one right now, and the alternative is a scary sentence and a Restore
+button in front of every athlete on the first launch after this ships — the
+v409 lesson, one subsystem over.
+
+**The floor is the ordinary adopt, byte-identical**: the same toast, no
+snapshot, no button, and the other tab's work still lands. An over-eager
+detector satisfies every assertion about the lost update and puts that sentence
+in front of everybody.
+
+### The class check caught my own new field, immediately
+
+Adding `_base` turned suite 05's v390 sweep red — *every top-level field the app
+writes is repaired at boot* — naming the field in the failure detail. It has a
+reader, so it got a repair rather than an allowlist entry, which keeps the class
+closed rather than growing the list of exceptions. Both stamps are live-session
+scratch and go in `TRANSIENT_KEYS`: a revision counter describes this device's
+write history and means nothing on another phone.
+
+### Two escaped mutants, and both were arms nothing drove
+
+**The simulation left the other tab's revision unchanged**, so every case was
+also an OLDER copy — caught by the first arm — and the `_base` arm, which is the
+realistic one, was never exercised. A real second tab increments its own
+revision when it saves, so two tabs branching from revision N both write N+1:
+the incoming copy is not older than ours and **only `_base` can tell them
+apart**. With that corrected, the mutant that ignores `_base` fails six checks.
+*A guard is only visible when the value beside it cannot supply the answer* —
+the fourth time this file has recorded it.
+
+**And the writer's own contract had to be pinned separately.** Every check
+builds the other tab's stamp BY HAND, so whether OUR `save()` stamps one is
+invisible to them — and the harm of dropping it lands on the other tab, which
+this page does not have. A save must carry the revision it was built on and
+advance the revision by exactly one, asserted directly, which catches both that
+mutant and its over-eager twin (a base that always equals the current revision,
+so nothing is ever reported lost).
+
+### And the round's own fix had the defect it was written after
+
+Found by auditing v410 an hour after writing it — the eighth round running
+where the best finding was in the round immediately before, and the second where
+it was in my own new code.
+
+The toast promises *"Settings ▸ Restore puts them back"*, and the snapshot it
+promises was written into a **silent catch**. That is v406's import defect
+verbatim, in the round that came after it. Measured on a full store:
+
+| | |
+|---|---|
+| the toast | *"Settings ▸ Restore puts them back"* |
+| the snapshot write | **threw, and was swallowed** |
+| the snapshot, and the button | **neither existed** |
+
+A store that refuses gets a different sentence naming the one thing the athlete
+can act on. **The floor is the ordinary lost update**, which must still promise
+the restore — an over-eager twin that always claims the store is full satisfies
+every assertion about the full one, and it was caught only once the healthy case
+pinned the WORDING rather than the substring both branches share.
+
+### The reason written beside the fix was wrong, and a mutant is what proved it
+
+v406 dropped the stale snapshot before writing the new one and said why: *"it is
+about the same size as the new one, so freeing it is usually exactly the room the
+new one needs."* v410 copied that sentence. The mutant that removes the drop
+**escaped**, and measuring instead of re-reasoning is what explained it:
+
+**`setItem` on a key that already exists REPLACES it.** The old value's space is
+reclaimed by the write itself, so removing first frees nothing a browser was not
+about to free anyway. Measured on a nearly-full store: a **39,490**-char snapshot
+landed over a **39,397**-char one with **under 5,000 chars of slack**. On an
+equal-sized pair the two versions are the same program, which is why the first
+check — built from the wrong reason — could only ever pass on both.
+
+**The removal earns its place for something else entirely, and that IS
+catchable.** A write that FAILS must not leave an EARLIER lost update's snapshot
+sitting behind the button: the toast would honestly say the work was not kept
+while Settings still offered a restore, and the restore would put back the state
+from two lost updates ago. The discriminating case is therefore a **small** stale
+snapshot and a **large** new one — measured at 2,442 against 113,857 bytes, both
+guards pinned — where the failed write leaves the small one standing. Seeded that
+way the mutant fails two checks by name.
+
+**And the wrong sentence had two copies.** It was written for `importData()` in
+v406 and copied into the cross-tab path in v410, so correcting one left the
+class alive — the shape this file records more than any other. Both now carry
+the measurement rather than the reasoning.
+
+Three mutants, all caught: the pre-fix toast that always promises (four checks),
+the over-eager twin that never promises, and the dropped removal.
+
+### Storage bookkeeping is not session scratch
+
+The full suite caught the categorisation within one run. `restartProgram()`
+clears `TRANSIENT_KEYS` meaning *the athlete is not mid-anything*, and `save()`
+re-stamps `_base` and `_rev` on the very next write — so suite 04's
+*"restarting drops every transient key"* failed, correctly. **A key the next
+save writes back is not one a restart can drop.**
+
+They still must never travel in a backup, so they are their own list and the two
+backup paths strip both. Two categories, two lists, each meaning one thing.
+
+### And index.html crossed the install budget
+
+Suite 12: **2050 KB against 2048.** The install tier is `CORE + SHELL_MIN` and
+`index.html` is 1636 KB of it, growing every version, so this gate fires
+periodically by design — v352 hit it too. Moving a file between tiers costs no
+download, so the 512 maskable icon went to `FIRST_RUN`: the OS launcher wants it
+**after** install, not for the first paint, and installing requires a network
+anyway.
+
+**And the edit that moved it silently did nothing.** The tier entries are packed
+several per line, so a line-anchored removal matched no text — `str.replace()`
+is a no-op when the pattern is absent — while the insertion went ahead, leaving
+the icon in TWO tiers. The `assert count == 1` was on the string BEFORE the
+edit and could not see that. **Assert the RESULT, not only the anchor**: a
+second assert on the occurrence count afterwards is what turns this into a clean
+failure instead of a half-applied edit.
+
+### And the first probe measured its own seed
+
+The first run dispatched a `StorageEvent` **without the other tab having
+actually written**, so `load()` re-read the old value and reported that the
+foreign edit had not landed. A storage event is a notification that a write
+happened; the write is what `load()` reads. And the second run made the foreign
+copy artificially newer by a whole second — the defect reproduces with a real
+clock, but it had to be re-measured before it could be believed.
 
 
 ## Rendering
