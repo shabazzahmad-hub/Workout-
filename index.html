@@ -1849,7 +1849,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='416';
+const APP_VERSION='417';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2266,6 +2266,30 @@ function maxPlausible(id){
   try{const t=(TESTS||[]).filter(x=>x.id===id)[0];
     return (t&&t.bench>0)?t.bench*MAX_BENCH_MULT:0;}catch(e){return 0;}
 }
+/* ONE PREDICATE FOR A MAX, because three readers of this field disagreed and
+   the chart drew what the engine refused. estimateMaxes() coerced and capped;
+   _maxFix() tested `typeof m[k]==='number' && m[k]>cap`, so a numeric string
+   walked past it (typeof fails), and so did a negative and a NaN; and
+   strengthTrendHTML() read the value RAW.
+
+   Measured on a stored plank max, cap 6000: '99999' survived every boot, the
+   chart plotted 99999 as a real figure and the engine prescribed from the 40s
+   default beside it. A boolean is worse on a TIME metric than on a rep one and
+   both were measured: `true` rendered as the literal `true reps` on Push-Ups
+   and as a perfectly plausible `1s` on the Plank — a one-second hold the
+   athlete never did, drawn as a real point on their own progress chart.
+
+   parseFloat is kept as the coercion because that is what estimateMaxes() has
+   always done — changing it would be a behaviour change with no defect behind
+   it, and the whole point here is that the readers AGREE. v>=0, not v>0: a
+   genuine 0 is a real result. An id with no benchmark is left unbounded, and
+   that `!cap ||` half is an EQUIVALENT guard (every EX.anchor is a TESTS id and
+   every test has a bench), kept as cover and recorded as uncatchable. */
+function maxVal(k,v){
+  const n=typeof v==='number'?v:parseFloat(v);
+  const cap=maxPlausible(k);
+  return (isFinite(n)&&n>=0&&(!cap||n<=cap))?n:null;
+}
 function estimateMaxes(m){
   /* Sanitise BEFORE merging. Object.assign lets a present-but-invalid value win
      over the default that exists to cover it, so a backup carrying
@@ -2279,11 +2303,7 @@ function estimateMaxes(m){
      one function downstream. The `||` on the next line had the identical trap:
      a legitimate plank:0 was silently replaced by the 40s default. */
   const clean={};
-  Object.keys(m||{}).forEach(k=>{
-    const v=typeof m[k]==='number'?m[k]:parseFloat(m[k]);
-    const cap=maxPlausible(k);
-    if(isFinite(v)&&v>=0&&(!cap||v<=cap))clean[k]=v;
-  });
+  Object.keys(m||{}).forEach(k=>{const v=maxVal(k,m[k]);if(v!==null)clean[k]=v;});
   const s=Math.max(0.5,Math.min(2,(clean.plank!=null?clean.plank:40)/60));
   /* power (Jump Squats, added v247) was missing from this literal entirely —
      found auditing the new test's wiring, not reported. Every OTHER field here
@@ -12715,7 +12735,13 @@ function renderProgress(){
   h+=`<div class="section-label">Personal bests · best prescribed &amp; completed</div>`;
   const prKeys=Object.keys(STATE.prs);
   if(prKeys.length){
-    h+=`<div class="card pad">${prKeys.map(k=>{const ex=EX[k];if(!ex)return'';return `<div class="kv"><span>${ex.name}</span><b>${ex.unit==='time'?fmtTime(STATE.prs[k]):STATE.prs[k]+' reps'}</b></div>`;}).join('')}</div>`;
+    /* THROUGH bestFor(), the app's own accessor, rather than re-deriving the
+       rule here. A key whose value is not a usable best draws no row at all —
+       showing `0 reps` for a real movement would be a different lie. */
+    const prRows=prKeys.filter(k=>EX[k]&&bestFor(k)>0);
+    h+=prRows.length
+      ? `<div class="card pad">${prRows.map(k=>{const ex=EX[k],b=bestFor(k);return `<div class="kv"><span>${ex.name}</span><b>${ex.unit==='time'?fmtTime(b):b+' reps'}</b></div>`;}).join('')}</div>`
+      : `<div class="note info">Complete workouts to bank personal bests here.</div>`;
   }else{h+=`<div class="note info">Complete workouts to bank personal bests here.</div>`;}
   // score history
   if(STATE.scoreHistory.length){
@@ -16031,7 +16057,7 @@ const LEVELS=['Beginner','Novice','Intermediate','Advanced','Elite'];
 function strengthLevel(val,t){let i=0;for(;i<t.length;i++){if(val<t[i])break;}return i;}
 function openStandards(){
   const rows=Object.keys(STANDARDS).map(k=>{
-    const st=STANDARDS[k];const pr=(STATE.prs&&STATE.prs[k])||0;const lvl=pr?strengthLevel(pr,st.t):-1;
+    const st=STANDARDS[k];const pr=bestFor(k);const lvl=pr?strengthLevel(pr,st.t):-1;
     const val=pr?(st.unit==='time'?fmtTime(pr):pr+' reps'):'—';
     const badge=lvl>=0?LEVELS[lvl]:'Not tested';
     const color=lvl>=4?'var(--gold)':(lvl>=3?'var(--green)':(lvl>=2?'var(--fire-l)':(lvl>=1?'var(--teal)':'var(--muted)')));
@@ -16627,7 +16653,14 @@ function lineChart(vals,dates,color,unit){
   const area=`${X(0).toFixed(1)},${(H-padB).toFixed(1)} ${line} ${X(n-1).toFixed(1)},${(H-padB).toFixed(1)}`;
   const dots=vals.map((v,i)=>`<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="3.4" fill="${color}"/>`).join('');
   const u=unit||'';
-  const xlab=(i,a)=>`<text x="${X(i).toFixed(1)}" y="${H-6}" fill="var(--dim)" font-size="9" text-anchor="${a}">${(dates[i]||'').slice(5)}</text>`;
+  /* `(dates[i]||'').slice(5)` assumed a string and escaped nothing. A
+     non-string threw and took the whole pane down through the render boundary;
+     a string reached an SVG <text> raw. isDateISO() is structural rather than
+     an escape: what survives it can only be YYYY-MM-DD, so the MM-DD label has
+     nothing left to escape. This covers all three callers — the measurement
+     charts pass a date dedupeMeasurements() coerced with String() but never
+     validated, so `[object Ob` was reaching the axis. */
+  const xlab=(i,a)=>`<text x="${X(i).toFixed(1)}" y="${H-6}" fill="var(--dim)" font-size="9" text-anchor="${a}">${isDateISO(dates[i])?dates[i].slice(5):''}</text>`;
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="none" style="display:block;margin-top:10px;height:132px">
     <polygon points="${area}" fill="${color}" opacity="0.10"/>
     <polyline points="${line}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -16672,7 +16705,11 @@ function strengthTrendHTML(){
   const m=STRENGTH_METRICS.find(x=>x.k===strengthSel)||STRENGTH_METRICS[0];
   const disp=v=>m.unit==='time'?fmtTime(v):v+' reps';
   const chips=STRENGTH_METRICS.map(x=>`<button class="chip ${x.k===strengthSel?'on':''}" onclick="setStrengthMetric('${x.k}')">${x.label}</button>`).join(' ');
-  const pts=series.map(s=>({date:s.date,v:(s.maxes&&s.maxes[m.k])||0,rec:s})).filter(p=>p.v>0);
+  /* THROUGH THE PREDICATE, NOT AROUND IT. This read was raw, so '99999' > 0
+     coerced to true and a figure estimateMaxes() refuses was drawn on the
+     athlete's own progress chart while the engine prescribed from the default
+     beside it. A boolean rendered as `true reps`. */
+  const pts=series.map(s=>({date:s.date,v:maxVal(m.k,s.maxes&&s.maxes[m.k]),rec:s})).filter(p=>p.v!==null&&p.v>0);
   /* A DELTA ACROSS A CHANGE OF MOVEMENT IS NOT PROGRESS. safeSwap() tests a
      substitute while a joint is flagged, so the same metric can be a Dead Bug
      in one record and Burpees in the next — measured at 40 then 18 on an
@@ -22087,6 +22124,17 @@ function normalizeState(){
      if(o.score!==undefined&&o.score!==null){const _sv=scoreVal(o);if(_sv===null)delete o.score;else o.score=_sv;}
      if(o.testCount!==undefined){const _tc=_numOf(o.testCount);
        if(_tc==null||_tc<1||_tc>100)delete o.testCount; else o.testCount=_tc;}
+     /* THE DATE, on the same three records and by the same walk. It had no
+        repair anywhere, and assessSeries() feeds it straight to lineChart(),
+        which puts it in an SVG <text>. Measured: a non-string threw on
+        `.slice` inside the render, the boundary retried through
+        normalizeState(), nothing repaired it, and Progress died permanently
+        ("Something went wrong drawing this screen"); a string was interpolated
+        unescaped and arbitrary script RAN.
+        Every writer stamps todayISO(), so isDateISO() is the predicate. The
+        RECORD survives a bad date — its maxes and its level were really
+        taken — and an absent date is a real state that every reader handles. */
+     if(o.date!==undefined&&!isDateISO(o.date))delete o.date;
      if(o.level===undefined)return;
      if(o.level===null||o.level==='')delete o.level; else o.level=levelName(o.level);};
    _lvFix(STATE.baseline);
@@ -22102,8 +22150,8 @@ function normalizeState(){
   {const _maxFix=o=>{if(!o||typeof o!=='object')return;
      ['results','maxes'].forEach(f=>{
        const m=o[f];if(!m||typeof m!=='object'||Array.isArray(m))return;
-       Object.keys(m).forEach(k=>{const cap=maxPlausible(k);
-         if(cap&&typeof m[k]==='number'&&m[k]>cap)delete m[k];});});};
+       Object.keys(m).forEach(k=>{const v=maxVal(k,m[k]);
+         if(v===null)delete m[k]; else m[k]=v;});});};
    _maxFix(STATE.baseline);
    if(STATE.reassess&&typeof STATE.reassess==='object'&&!Array.isArray(STATE.reassess))
      Object.keys(STATE.reassess).forEach(k=>_maxFix(STATE.reassess[k]));}
@@ -22122,6 +22170,17 @@ function normalizeState(){
      the container's real shape, not just that it is an object. */
   if(!STATE.logs||typeof STATE.logs!=='object'||Array.isArray(STATE.logs))STATE.logs={};
   if(!STATE.prs||typeof STATE.prs!=='object'||Array.isArray(STATE.prs))STATE.prs={};
+  /* THE VALUES, which had nothing at all. bestFor() has always guarded its own
+     read (typeof number && >0); the two RENDER sites did not, and both reach
+     innerHTML — measured, both injected and arbitrary script RAN from a
+     restored backup. v401 swept these same ten keyed maps and asked about
+     their KEYS; it never asked about their VALUES.
+     A numeric string is COERCED rather than refused, so the repair and
+     bestFor() agree afterwards; anything else is not a personal best and the
+     key goes. A PR is re-earned by training, which is what makes dropping the
+     safe direction here. */
+  Object.keys(STATE.prs).forEach(k=>{const n=_numOf(STATE.prs[k]);
+    if(n==null||n<=0)delete STATE.prs[k]; else STATE.prs[k]=n;});
   /* Eight top-level fields are created ON DEMAND rather than declared in
      DEFAULT_STATE, so every fuzz sweep that enumerated DEFAULT_STATE's keys
      walked straight past them and none had a repair. importData() accepts
