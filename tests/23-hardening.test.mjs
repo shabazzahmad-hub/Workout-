@@ -8145,13 +8145,35 @@ export default async function () {
          reports a failure rather than becoming an uncaught page error — the
          toBlob callback runs after its caller's try/catch has returned — is to
          break it here. */
+      /* WAIT FOR THE ENCODE, NEVER FOR A DURATION — the v414 lesson, on the
+         one card case that was left on a fixed sleep. The toast is set INSIDE
+         the toBlob callback, and toBlob's cost is the machine's: on a slower
+         CI runner 500 ms was not enough and the check read an EMPTY toast on
+         correct code (measured on main, dlBrokenToast:""). Awaiting the encode
+         makes it deterministic; the short tail only covers the microtask chain
+         after the callback. */
       const realCOU = URL.createObjectURL;
       URL.createObjectURL = () => { throw new Error('no room'); };
       const tEl = document.getElementById('toast'); tEl.textContent = '';
       navigator.canShare = undefined;
+      let dlPending = [], dlEncodes = 0;
+      const realTB2 = HTMLCanvasElement.prototype.toBlob;
+      HTMLCanvasElement.prototype.toBlob = function (cb, ...rest) {
+        let done; dlPending.push(new Promise(r => { done = r; }));
+        return realTB2.call(this, b => { dlEncodes++; try { cb(b); } finally { done(); } }, ...rest);
+      };
       try { shareCard('T', 's', ['a']); } catch (e) { out.dlThrewSync = String(e); }
-      await wait(500);
+      for (let i = 0; i < 20 && dlPending.length; i++) {
+        const q = dlPending; dlPending = []; await Promise.all(q);
+        await wait(0);
+      }
+      await wait(60);
+      HTMLCanvasElement.prototype.toBlob = realTB2;
       out.dlBrokenToast = (tEl.textContent || '').trim();
+      /* GUARD: the encode really did run, or "the toast is empty" would be a
+         statement about a card that was never drawn rather than about the
+         guard this case exists for. */
+      out.dlEncodes = dlEncodes;
       URL.createObjectURL = realCOU;
 
       /* And a detached opener must not throw or strand the athlete. */
@@ -8215,6 +8237,8 @@ export default async function () {
       a11y.focusAfterRepaint, 'zzOpener', a11y);
 
     t.eq('guard: a card whose download throws does not throw synchronously', a11y.dlThrewSync, undefined, a11y);
+    t.ok('guard: the card really was drawn, so an empty toast would be the app',
+      a11y.dlEncodes >= 1, a11y);
     t.ok('a card that could not be written says so rather than dying silently',
       /Could not save the card/.test(a11y.dlBrokenToast), a11y);
 

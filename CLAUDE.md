@@ -13945,6 +13945,39 @@ Two rules, and the second is new:
   container. Run them in sequence, and after a kill **rebuild the mutation copy
   from the working tree** before believing any result from it.
 
+## The third fixed sleep waiting for an encode (v420)
+
+`main` went red on the v419 docs merge, one check, and the `deploy` job is
+`needs: test` — so it showed as **skipped** and the version shipped nowhere.
+The failing check was mine:
+
+```
+✗ a card that could not be written says so rather than dying silently
+  {"dlBrokenToast":"", …}
+```
+
+**Not an app defect and not a flake.** The toast is set INSIDE the `toBlob`
+callback, and `canvas.toBlob` is asynchronous — its cost is the machine's. The
+case waited `await wait(500)`. On the CI runner that was not enough, so the
+check read an empty toast on correct code.
+
+**v414 already fixed exactly this race in the sibling share block eight blocks
+above, in the same file, and left this one case behind.** Third instance of the
+same shape, and the rule has not changed: **wait for the ENCODE, never for a
+duration.** The `toBlob` drain pattern is copied from the block that already
+had it rather than a second one written beside it.
+
+**A racing check gets fixed, not re-run**, and it was proved deterministically
+rather than by a green retry: with the encode slowed to 800 ms, the old fixed
+sleep reads `""` and the drain reads `"Could not save the card"`, with
+`encodes: 1`.
+
+**And the guard I wrote first could not fail.** `out.dlEncoded = true;` is
+always true. It is a real counter now, asserted — otherwise *"the toast is
+empty"* is a statement about a card that was never drawn rather than about the
+guard the case exists for. A self-comparing guard is the same defect as a
+detector that reports zero without being shown finding one.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
