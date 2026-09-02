@@ -13555,6 +13555,37 @@ named.** And it nearly shipped a false claim into a code comment — the fix was
 to go and measure both metrics on the pre-v417 file rather than reason about
 them.
 
+### A comment claiming a behaviour is not a check, and a substring is not a number
+
+Two things came out of v417's mutation run, and neither was the fix being
+wrong.
+
+**The escape was a BAD MUTANT, and reading it back is what said so.** Reverting
+the personal-bests row to a raw `STATE.prs[k]` read changed nothing, because
+`prRows` is already filtered on `bestFor(k)>0` — inside that map the raw value
+is *guaranteed* to equal what `bestFor()` returns. The guard beside it supplies
+the answer. **The genuine pre-v417 code had TWO parts — no filter AND a raw
+read — and a fix with two edits needs a mutant with two.** Seeded that way it is
+caught by name.
+
+**And seeding the other half found a real gap in my own work.** The fix's
+comment says a key with no usable best draws no row, because showing `0 reps`
+for a real movement *"would be a different lie"* — and **nothing enforced it**.
+The mutant that removes the filter and keeps the reader escaped every check,
+since `bestFor()` still returns 0 and a zero cannot inject. A claim in a comment
+with no check behind it is the same shape as a promise in UI text with no code
+behind it.
+
+**The discriminating case is a real best BESIDE a junk one.** An all-junk seed
+passes just as well if the whole block were deleted.
+
+**And the new check then failed on correct code, because `/0 reps/` matches the
+`0` inside `40 reps`.** That is this file's oldest trap — `pistol` inside
+`boxpistol` — reaching a test's own detector, and the second false positive from
+a loose pattern in one round after `/true/` matched the word *truest*. Anchored
+on `\b`, with a guard asserting the detector matches a real `0 reps` and not a
+real `40 reps`.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

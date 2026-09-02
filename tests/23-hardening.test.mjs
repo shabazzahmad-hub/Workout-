@@ -9261,6 +9261,25 @@ export default async function () {
       o.prSheetInj = !!(sh && sh.querySelector('img[onerror]'));
       o.prSheetOpened = !!(sh && (sh.textContent || '').length > 40);
       try { closeSheet(); } catch (e) {}
+      /* A KEY WITH NO USABLE BEST DRAWS NO ROW AT ALL. The fix's own comment
+         says showing `0 reps` for a real movement "would be a different lie",
+         and nothing enforced it — the mutant that removes the row filter and
+         keeps the reader escaped every other check here, because bestFor()
+         still returns 0 and 0 cannot inject. A claim in a comment with no
+         check behind it is the shape this file keeps getting caught by.
+         The DISCRIMINATING case is a real best BESIDE a junk one: an all-junk
+         seed passes just as well if the whole block were deleted. */
+      STATE.prs = { pushup: 40, squat: PAY };
+      setProgressTab('strength'); go('progress');
+      await new Promise(r => setTimeout(r, 200));
+      const mv = (document.querySelector('#v-progress') || {}).innerText || '';
+      o.prMixReal = /40 reps/.test(mv);
+      /* \b, because `/0 reps/` matches the 0 inside `40 reps` — the same
+         substring trap this repo records for pistol inside boxpistol, and it
+         failed this check on perfectly correct code. */
+      o.prMixNoZero = !/\b0 reps/.test(mv);
+      o.prMixGuard = /\b0 reps/.test('Squat 0 reps') && !/\b0 reps/.test('Push-Up 40 reps');
+
       /* FLOOR: a real personal best still prints on BOTH surfaces. */
       STATE.prs = { pushup: 40 };
       setProgressTab('strength'); go('progress');
@@ -9334,6 +9353,9 @@ export default async function () {
     t.ok('guard: the Standards sheet really opened', vr.prSheetOpened, vr);
     t.ok('with NO boot behind it, the personal-bests row does not inject', !vr.prProgInj, vr);
     t.ok('and neither does the Strength Standards sheet', !vr.prSheetInj, vr);
+    t.ok('guard: a real best beside a junk one still prints', vr.prMixReal, vr);
+    t.ok('guard: the zero-row detector matches a real `0 reps` and not the 0 inside `40 reps`', vr.prMixGuard, vr);
+    t.ok('and the junk one draws NO row rather than `0 reps` for a real movement', vr.prMixNoZero, vr);
     t.ok('FLOOR: a real personal best still prints on Progress', vr.prProgText, vr);
     t.ok('FLOOR: and in the Standards sheet', vr.prSheetText, vr);
 
