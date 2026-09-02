@@ -8820,10 +8820,15 @@ export default async function () {
 
       // ---- THE RENDER HALF, with NO boot behind it. A cross-tab adopt replaces
       //      STATE, and a guard that only exists at the boot is one guard.
+      /* THE ASSESSMENT-HISTORY ROW PRINTS THE SCORE AND NOT THE TEST COUNT,
+         and the first version of this seed put the payload only in testCount.
+         So that row's score was ALWAYS a real 70/80, the mutant that reverts
+         it to a raw `s.score` was equivalent on every case here, and it walked
+         straight through. The payload has to go where the reader looks. */
       const seed = () => {
         STATE.scoreHistory = [
-          { date: '2026-01-01', score: 70, level: 'Beginner', testCount: PAY },
-          { date: '2026-02-01', score: 80, level: 'Beginner', testCount: PAY }
+          { date: '2026-01-01', score: PAY, level: 'Beginner', testCount: PAY },
+          { date: '2026-02-01', score: PAY, level: 'Beginner', testCount: PAY }
         ];
         STATE.baseline = { date: '2026-01-01', score: PAY, level: 'Beginner', testCount: 10, maxes: {} };
         STATE.reassess = { 1: { date: '2026-02-01', score: PAY, level: 'Beginner', testCount: 10, maxes: {} } };
@@ -8844,6 +8849,9 @@ export default async function () {
       try { setProgressTab('strength'); go('progress'); } catch (e) { o.progErr = String(e).slice(0, 60); }
       const pv = document.querySelector('#v-progress');
       o.progInj = !!(pv && pv.querySelector('img[onerror]'));
+      /* Scoped to the row that changed, so "the pane is clean" cannot be
+         satisfied by some other part of it. */
+      o.progHistRow = !!(pv && /Baseline|Re-test/.test(pv.textContent || ''));
 
       await new Promise(r => setTimeout(r, 250));
       o.ran = window.__v416;
@@ -8900,6 +8908,8 @@ export default async function () {
     t.ok('and so does the program-complete screen', !sc.finInj, sc);
     t.ok('and so does the results screen that names the test count', !sc.sdInj, sc);
     t.ok('and so does the score trend', !sc.trInj, sc);
+    t.ok('guard: the assessment-history rows really did render, or the check below proves nothing',
+      sc.progHistRow, sc);
     t.ok('and so does the assessment history on Progress > Strength', !sc.progInj, sc);
     t.eq('nothing ran', sc.ran, 0, sc);
 
