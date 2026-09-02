@@ -13821,6 +13821,130 @@ So the repair correctly deleted the invented key and the FLOOR read as a
 failure — a fix reported broken by a probe that was wrong. The id is now read
 out of `ACHIEVEMENTS` rather than typed.
 
+## A list of objects whose FIELDS were never checked (v420)
+
+v418 scrubbed the log ROW and stopped at the container. v419 fixed the KEYS of
+two maps. The question neither asked is what is inside a stored list of
+OBJECTS — and `logs[].items` is one: `logItemsFor()` hands the STORED list
+straight to `sessionStats()`, `totalVolume()`, `totalTUTSplit()` and
+`openSessionDetail()`.
+
+**The reachable case is not hypothetical, and this file already records it.**
+`psupport` shipped and was dropped one version later, so an old log naming it
+is on real phones today. Measured:
+
+| stored item | what happened |
+|---|---|
+| `exId:'psupport'` | `openSessionDetail()` **THREW** on `EX[m.exId].name` — tapping a row of your own workout history did **nothing at all** |
+| `exId:'constructor'` | truthy on an object literal, so the sheet rendered a movement called **"Object"** |
+| `target:'20<img …onerror=…>'` | reached `innerHTML` and **arbitrary script RAN** |
+| the same string | printed **`~NaN MINUTES`** and **`3 x abc reps`** |
+| `target:1e9` | **150,000,002 minutes** on the glass |
+
+**The bounds provably cannot clip a real row, and that was measured rather than
+argued.** Across all **2196** items the engine can build over the whole
+programme, target never exceeds 95, sets 4, rest 80, and the library has
+exactly two units. The ceilings are the engine's own
+(`PRESCRIBE_TIME_MAX * ACTUAL_MAX_MULT`), and the UNITS are **asked of `EX`**
+rather than restated, so a third unit is legal here the day it is legal there.
+
+**Two guards mean two checks.** The scrub keeps a BACKUP clean; `logItemsFor()`
+is the one that stands in front of every consumer, because a cross-tab adopt
+replaces `STATE` with no boot behind it. It uses `every` first, so an ordinary
+log allocates nothing — and a list with nothing usable left falls through to
+the rebuild, which is exactly what a log written before v335 already does.
+
+**Filter the rows, do not discard the list.** One bad row must not take a good
+one with it, and a wholly-bad list already has a well-tested fallback. Both are
+pinned as floors, and the over-eager twins fail exactly there.
+
+### The record was incomplete, not the rule — for the third time
+
+Three v418 fixtures went red, and the failure was the FIXTURE. They were
+hand-written as `{exId, unit, target, sets}` with **no `rest`**, while
+`commitSession()` has always written `rest:m.rest||45` — so every row this app
+has ever stored carries all five fields as numbers, and a real finished session
+driven through `commitSession()` passes the predicate outright.
+
+Same call as v321's prior needing `subs:{}` and v367's hold prior needing a
+movement: **complete the record; do not weaken the rule.** The tell each time
+is that the app's own writer produces the field and only a test fixture omits
+it — so check what the WRITER writes before loosening a guard that a fixture
+tripped.
+
+**And the patch script's `assert count == 1` refused a bad anchor** on the
+first attempt (the fixtures end `}] };` in my anchor and `}];` in the file),
+turning a half-applied edit into a clean no-op. Fifth time that rule has paid.
+
+## The list that no field sweep could see (v420)
+
+`nutrition.foods` — the athlete's saved and recent foods — had **no repair at
+all**, and the reason it survived every previous sweep is worth more than the
+bug: **it is not in `DEFAULT_STATE`, and it is NESTED.** v390's own detector
+reads `STATE.x=` assignments plus `DEFAULT_STATE` keys, so it enumerates
+top-level fields; v391 swept nested fields that ARE declared. This one is
+neither. **A sweep is only as wide as the surface it enumerates**, and the way
+it was finally found was to ask, of every stored list, *how many times does
+`normalizeState()` mention it* — the answer here was **zero**.
+
+Measured on the real app:
+
+| | |
+|---|---|
+| a **null** row | `foodsList()` and `foodsSectionHTML()` **THREW** on `.fav` — and `openQuickAdd()` builds `foodsSectionHTML()`, so the **Log Food sheet was DEAD**, with no boot repair able to bring it back |
+| `kcal` | only `name` was escaped, so it reached `innerHTML` and **arbitrary script RAN** |
+| a junk row | round-tripped straight back out through `logRemembered()`, re-poisoning a list the boot had just cleaned |
+
+**One builder, asked by the repair AND the writer.** `rememberedRow()` holds
+the shape — `foodRow()`'s, minus the meal, because a remembered food belongs to
+no day — and `rememberFood()` now goes through it. A writer that takes what it
+is given is how a cleaned list is dirty again one tap later.
+
+**The bound is the WRITER's own.** `trimRemembered()` keeps every favourite and
+caps plain recents at `FOOD_RECENTS_MAX`, which is exactly what
+`rememberFood()` enforced and the repair did not — v412's lesson, one list
+over, and the constant is read by both rather than restated.
+
+**A row with no NAME goes; every other field is coerced.** The name is the
+thing the athlete recognises, and a wrong macro is one tap from corrected.
+
+**Absent stays absent.** `foods` is not in `DEFAULT_STATE`, so creating it would
+put an empty array in every backup and fire the *"we repaired your data"* note
+at every athlete who has never saved a food — v390's rule, and the check pins
+it.
+
+## Two sweeps that came back clean, and a detector the guard caught (v420)
+
+- **No renderer changes stored data in place.** v388 proved zero renderers
+  ASSIGN to `STATE`; a `.sort()`, `.reverse()` or `.push()` mutates with no
+  assignment at all, so that sweep could not see it. Every one of the 24 sort
+  sites copies first (`.slice()`, `.filter()`, `.map()` or a spread), and all
+  **10** in-place mutations of a live stored array are in a genuine writer or
+  in `normalizeState()`.
+- **The URL is guarded.** Both `location.hash` reads test against an explicit
+  tab list before calling `go()`, which would throw on an unknown view.
+
+**The first version of the mutation sweep reported ZERO and was broken.** The
+receiver pattern was `[A-Za-z_.\[\]'0-9]` — and inside a bracket expression a
+backslash is not an escape, so `\]` **ends the group early** and the whole
+pattern matched nothing. The guard is what caught it: `STATE.measurements.push(`
+is on line 625 and obviously had to be found. **A detector that reports zero
+must be shown finding one first** — fifth time in two sessions.
+
+## Never run a mutation driver and a full suite at once (v420)
+
+The container was **OOM-killed (exit 137)** with `npm test` and `muty.py` both
+running. Nothing was lost, but both measurements were void and the driver's
+`mut-y/index.html` was left holding whatever mutant was in flight.
+
+Two rules, and the second is new:
+
+- **One driver per directory** — already recorded, still true.
+- **One heavy Playwright run at a time, full stop.** A suite is 24 browser
+  launches and a mutation driver is one per mutant; together they exceed the
+  container. Run them in sequence, and after a kill **rebuild the mutation copy
+  from the working tree** before believing any result from it.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
