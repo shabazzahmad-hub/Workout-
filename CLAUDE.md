@@ -14084,6 +14084,25 @@ For `Y7` that means a **mixed** list with no boot: correct code filters and the
 stored row is used (`exTotal === 1`), the mutant falls through to the rebuild
 (`exTotal > 1`). Neither a clean list nor a wholly-bad one can tell them apart.
 
+### And the fifth escape was my own refactor, one door along
+
+The parked-read fix replaced `_foodRead=null;_actRead=null;` inside
+`hardReset()` with a call to the new helper — and the mutant that deletes that
+call **escaped every check**. The block drives the CROSS-TAB path: it erases
+from a second tab and reads the first one back, and that tab is cleared by the
+adopt rather than by `hardReset()`. So the neighbour supplied the answer again,
+one subsystem after the sentence above was written.
+
+A reset taken in THIS tab never goes near the storage listener, so the same-tab
+door has its own case now: park both reads, `hardReset()` in that page, assert
+both are gone — with a guard that they were really parked first, because
+*"both are gone"* is satisfied by a case that never parked anything. Seeded
+that way the mutant fails by name.
+
+**Two doors, two checks.** It is the same rule as a boot repair beside a reader
+guard; here the two doors are a reset taken locally and a reset adopted from
+another tab.
+
 ## Three sweeps that came back clean (v421)
 
 - **Every `new RegExp` built from a value.** Four sites: two use app constants,

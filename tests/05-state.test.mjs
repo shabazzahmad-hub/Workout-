@@ -3005,6 +3005,30 @@ export default async function run() {
     t.ok('so no row for either is left on the glass of a freshly-erased app',
       !afterErase.foodRow && !afterErase.actRow, JSON.stringify(afterErase));
 
+    /* AND THE SAME-TAB PATH, which the block above cannot speak for. A reset
+       taken in THIS tab never goes near the storage listener, so hardReset()'s
+       own clear is the only thing standing there — and K1 above was cleared by
+       the ADOPT, so a mutant that removes hardReset()'s clear escaped every
+       assertion in it. Two doors, two checks: the neighbour was supplying the
+       answer. */
+    const K3 = await ctx.newPage(); await boot(K3); await seedAthlete(K3);
+    const sameTab = await K3.evaluate(() => {
+      _foodRead = { name: 'Parked Meal', kcal: 500, p: 30, c: 40, f: 12 };
+      _actRead  = { read: 2, steps: 0 };
+      const before = { food: !!foodReadPending(), act: !!_actRead };
+      window.confirm = () => true;
+      hardReset();
+      return { before, food: !!foodReadPending(), act: !!_actRead,
+               onboarded: !!STATE.onboarded };
+    });
+    await K3.close();
+    t.ok('guard: the same-tab case really did park both reads first',
+      sameTab.before.food && sameTab.before.act, JSON.stringify(sameTab));
+    t.eq('guard: and the erase really ran in that tab', sameTab.onboarded, false, sameTab);
+    t.ok('erasing everything in THIS tab clears its own parked food read',
+      !sameTab.food, JSON.stringify(sameTab));
+    t.ok('and its own parked activity read', !sameTab.act, JSON.stringify(sameTab));
+
     /* THE DISCRIMINATING CASE, and the block above cannot supply it. Closing a
        live session is not passive: playerTeardown() clears the resume point and
        hiitTeardown() records the stopped grinder, and both call save() — which
