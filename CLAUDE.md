@@ -13755,6 +13755,40 @@ badge still locked. The guard is what makes that meaningful: the raw predicate,
 with no repair run, DOES unlock on a junk key — so the empty result is about the
 repair rather than about a test that could never fail.
 
+### A promise sweep that found nothing to fix, and a block that was reverted
+
+45 athlete-visible claims were extracted from the REAL rendered screens — six
+tabs, all four Progress panes, all four Today panes, both Reference panes and
+twelve sheets — by pattern (*never / always / will / won't / keeps / stays /
+counts / does not / cannot*). Source is the wrong place to read them from: it
+contains markup for screens that are not mounted.
+
+Most are advice. Five were numbers written in prose beside a constant that holds
+the same fact — v397's class, the one that produced a **wrong published military
+standard** when a card said 80 kg and the exercise page said 100.
+
+Measured, every one of the five is **DERIVED, not hand-written**:
+
+```
+Block ${viewCycle+1} of ${TOTAL_CYCLES}
+${Math.ceil(tgt*kcalPerStep())} kcal is what ${tgt.toLocaleString()} steps costs you
+or pick one of the ${COACHES.length}
+${gap.need} lb is heavier than this app will train you to
+```
+
+**So a block of checks comparing the rendered sentence against the constant was
+written, run — and reverted.** Two of the five failed on correct code (the
+athlete's state differs, so the sentence renders different numbers), and the
+three that passed were passing on values that cannot disagree with themselves.
+
+**A check on a DERIVED value is a check that cannot fail**, and this file's own
+rule is that such a check must not carry a label saying it can. The class is
+closed on these surfaces because v397 and v398 closed it by making the numbers
+derived — which is a stronger fix than any check.
+
+The one shape still worth having is the one v397 already shipped: a **source
+scan that forbids the literal**, rather than a rendered comparison.
+
 ### Four detector mistakes in one session, all the same shape
 
 Every one of them reported a finding on CORRECT code, and every one was a
