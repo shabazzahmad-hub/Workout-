@@ -13268,6 +13268,25 @@ with the store healthy so it cannot toast at all.
 offsets before, **0** after, across 110-145ms. A race that cannot be shown
 failing has not been diagnosed.
 
+### The seed both predicates refuse cannot tell them apart (v415)
+
+Eleven mutants, ten caught, and the one that escaped was the check rather than
+the code. `_lastExport` moved from `isNaN(Date.parse(x))` onto `isDateISO()` —
+and the check seeded **`'not-a-date'`, which BOTH predicates refuse**, so
+reverting it was an *equivalent* mutant on the one input the block tested.
+
+What tells them apart is a string `Date.parse` **accepts** and `isDateISO()`
+refuses: `'2025-02-29'` is not a day in 2025, and `Date.parse` rolls it forward
+to March 1 rather than rejecting it.
+
+**The `kcalAdjAt` half twelve lines up already had that case** — `fakeDayGone`,
+*"a date-shaped non-day is gone too — the pattern is not the predicate"* — and
+its twin did not. *One of a pair guarded and its twin not*, in my own checks
+this time, and the eighth entry under that shape.
+
+A guard now asserts `Date.parse` really does accept the string, or the case
+below it proves nothing on a future engine.
+
 
 ## Rendering
 
