@@ -13586,6 +13586,104 @@ a loose pattern in one round after `/true/` matched the word *truest*. Anchored
 on `\b`, with a guard asserting the detector matches a real `0 reps` and not a
 real `40 reps`.
 
+## The archived run was the twin nobody scrubbed (v418)
+
+`normalizeState()` repairs LIVE log rows — the container, the `ex` map, and
+(v415) the four date fields with `isDateISO()`. The archived-runs repair is
+
+```js
+.map(r=>({...r,sessions:Math.max(0,Math.floor(+r.sessions)||0)}))
+```
+
+a **SPREAD**. It checks that `r.logs` is a keyed map and never looks inside it,
+while `allDoneLogs()` deliberately folds those rows in beside the live ones —
+its own comment says *"lifetime readers must span archived runs as well as the
+live one."*
+
+Measured, on an athlete who last trained 200 days ago:
+
+| | streak |
+|---|---|
+| a clean archived run | **0** — correct, it ended |
+| the same run plus ONE junk-dated row | **1** |
+
+A junk string sorts **after** every ISO date, so it becomes `dates[last]`, and
+the guard that ends a stale streak is
+`(now - new Date(dates[last]))/86400000 > 3` — `NaN`, and **`NaN > 3` is
+FALSE**. So the app claimed a training streak for somebody who had not trained
+in months. v415's `calorieCheckDue()` shape, failing OPEN.
+
+**Bounded at 1**, because the counting loop's own gap is `NaN` too and breaks
+immediately. Small — and the class is not: this was the fifth repair in one
+session that stopped at the container. `scrubLogRows()` is now the one place
+the row rule lives, asked by the live logs and by every archived run, so a
+fifth date field cannot be taught to one and forgotten for the other.
+
+### The same defect had a SECOND DOOR, in the round that says so
+
+Closing the archived one would have been **fixing one instance and not the
+class** — in the very round whose own notes say that. `quickLog` is keyed by
+DATE, has only a container repair, and `computeStreak()` folds
+`...Object.keys(STATE.quickLog||{})` into the very list the archived rows feed.
+
+Measured on the same athlete, idle 200 days:
+
+| | streak |
+|---|---|
+| clean stale run | **0** |
+| plus `quickLog: {'not-a-date': 1}` | **1** |
+| FLOOR: four real quick sessions | **4**, all keys kept |
+
+Same predicate v401 gave `restDays`, `_opens` and `nutrition.days`. The KEY is
+the date, so an unreadable one is not a training day; the VALUE is a count of
+quick sessions, so it is a positive integer or the day did not happen.
+
+**And the first reading of it claimed an injection that was not there.**
+`img[onerror]` matches the app's own **126 exercise thumbnails**, which use
+`onerror` as a missing-image fallback — the v210 false alarm this file already
+records. With a unique marker and a detector proven **both ways**: no
+injection anywhere, nothing ran, and all six hits were legitimate.
+
+That is the **third** loose detector in one session — `/true/` matched the word
+*truest*, `/0 reps/` matched the `0` inside `40 reps`, and `img[onerror]`
+matched the thumbnails. All three reported a finding on correct code, and the
+one rule that catches all three is: **a detector that can match ordinary app
+content is not measuring what you named.**
+
+### And one escape that was the HARNESS, not the app or the check
+
+The mutant removing the `ex` map creation read as an ESCAPE, and it is caught
+by **suite 05, four checks**. `node tests/run.mjs 23` runs ONE suite, and that
+mutant reverts code v344 shipped — so the suite that owns it was never run.
+
+**A mutant on pre-existing code has to be scored against the whole suite**, not
+against the file the round happens to be editing. Measured by running the full
+`npm test` against the seed: 4 failures in `05-state.test.mjs`.
+
+### And the fix exposed a latent defect, which is how it should be found
+
+The first version of the scrub made a lifetime counter **throw** on a shape
+that had been silent. `totalVolume()` reads `l.ex&&l.ex[m.exId]`, so while `ex`
+was **absent** the `&&` short-circuited and a `null` entry in `items` was never
+dereferenced. Creating the `ex` map made it reachable.
+
+**It was proved rather than reasoned**: the same probe run against the pre-v418
+file reports `throws: []`, and against the fix reports one. So the fix caused
+it, and the honest answer is to fix the thing it exposed rather than to stop
+creating the map — the scrub cleans `items`, and the reader guards too, because
+a cross-tab adopt replaces `STATE` with no boot behind it.
+
+### Two controls that would have proved nothing
+
+- **`totalVolume()` counts `e.sets` as an ARRAY of MARKED sets**, so a faked
+  `sets:3` reads as zero work. A junk-key sweep first came back with every case
+  matching a control of `{reps:0,hold:0,sets:0}` — two zeros agreeing. With a
+  real control (30 reps, 3 sets) the sweep is meaningful, and its answer is that
+  **junk KEYS on an archived run are inert**: every one gives the same total.
+- The one apparent exception, a `__proto__` key reading zero, was the probe:
+  `rows['__proto__']=obj` **reassigns a prototype** rather than creating a key,
+  so `Object.keys` is empty. Not an app defect.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
