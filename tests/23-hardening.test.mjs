@@ -8695,6 +8695,18 @@ export default async function () {
       nut().kcalAdjAt = ago(30); normalizeState(); o.due30 = calorieCheckDue();
 
       STATE._lastExport = 'not-a-date'; normalizeState(); o.expJunkGone = STATE._lastExport === undefined;
+
+      /* THE DISCRIMINATING CASE, and the reason the first version of this check
+         could not fail. 'not-a-date' is refused by BOTH predicates, so seeding
+         only that made the weaker test isNaN(Date.parse(x)) an EQUIVALENT
+         mutant. What tells them apart is a string Date.parse ACCEPTS and
+         isDateISO() refuses — '2025-02-29' is not a day in 2025, and
+         Date.parse rolls it forward to March 1 rather than rejecting it.
+         The kcalAdjAt half twelve lines up already had this case and its twin
+         did not: one of a pair guarded and its twin not, in my own checks. */
+      o.expFakeParses = !isNaN(Date.parse('2025-02-29'));
+      STATE._lastExport = '2025-02-29'; normalizeState(); o.expFakeGone = STATE._lastExport === undefined;
+
       STATE._lastExport = ago(9);       normalizeState(); o.expKept = STATE._lastExport === ago(9);
       return o;
     });
@@ -8712,6 +8724,10 @@ export default async function () {
     t.ok('FLOOR: a real stamp thirty days old IS due', gr.due30 === true, gr);
 
     t.ok('a junk _lastExport is gone', gr.expJunkGone, gr);
+    t.ok('guard: Date.parse really does ACCEPT the date-shaped non-day, or the case below proves nothing',
+      gr.expFakeParses, gr);
+    t.ok('and a date-shaped non-day is gone from _lastExport too — the pattern is not the predicate',
+      gr.expFakeGone, gr);
     t.ok('FLOOR: and a real one survives', gr.expKept, gr);
   }
 
