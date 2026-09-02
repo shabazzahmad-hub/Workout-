@@ -9021,7 +9021,11 @@ export default async function () {
       o.actText = String(actHistoryHTML('ruck')).includes(T);
       o.skipText = String(skipHistoryHTML()).includes(T);
 
+      /* A block that BREAKS what a later one relies on re-seeds before it
+         ends. This one is last today; that is not a contract. */
       STATE.ruckLog = []; STATE.skipLog = []; STATE.photos = [];
+      STATE.nutrition.goal = 'lose'; delete STATE.nutrition.kcalTarget;
+      normalizeState(); go('today');
       host.remove();
       return o;
     });
