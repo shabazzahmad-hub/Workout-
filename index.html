@@ -13002,6 +13002,12 @@ function photosHTML(){
   const pair=photoPair();
   if(pair){
     const a=pair.a,b=pair.b;
+    /* _ve(pair.pose) is an EQUIVALENT guard, measured rather than assumed:
+       photoPair() sets `pose` from the POSE_KEYS.forEach loop variable, never
+       from the stored row, and every other pose site reads through poseOf(),
+       which is a membership test. So no reachable route can put junk here and
+       no check can catch the escape. Kept as cover for a future photoPair()
+       that reads the pose off the row it picked. */
     h+=`<div class="section-label" style="margin:16px 3px 8px">Before → Now · ${_ve(pair.pose)}</div>
       <div class="grid2" style="gap:8px">
         <div><img class="ph-img" data-pid="${_ve(a.id)}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;background:var(--card2)"><div class="tiny muted center" style="margin-top:4px">${_ve(a.date)} · ${poseOf(a)}</div></div>

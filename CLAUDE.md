@@ -13394,6 +13394,49 @@ in the same 45 characters, so a shorter anchor matched both and the patch
 script's `assert count == 1` turned it into a clean no-op. Reaching back to what
 distinguishes them is the fix.
 
+### The payload has to go where the reader looks
+
+The mutant that reverted the assessment-history row to a raw score **escaped**,
+and the check aimed at it was the weak part rather than the mutant being bad.
+
+That row prints the SCORE and not the test count. The no-boot seed put the
+payload only in `testCount`, so the row's score was always a real 70/80 —
+`s.score` and `scoreVal(s)` agreed on every case in the block, and the mutant
+was equivalent on everything the check could see.
+
+Same shape as v411's ➕ floor and v415's `_lastExport` seed: **a guard is only
+visible when the value beside it cannot supply the answer** — and here the
+missing case was the payload sitting in a field the reader never reads.
+
+### isFinite alone is not a number test, and no string can prove it
+
+`isFinite([])` is **true** and `+[]` is **0**. `isFinite(true)` is true and
+`+true` is 1. `isFinite('')` is true and `+''` is 0. So a bare `isFinite` test
+would have read an ARRAY out of a backup as a **measured zero** — a Core Score
+of 0/100 for an athlete who never took a test, which is the falsy-zero lie
+`computeAssessment()` was already fixed for.
+
+The mutant that dropped `_numOf()`'s `typeof` half escaped every check, and the
+reason is the same one every time: **every case in the block seeded a STRING
+payload, which both predicates refuse.** A string cannot discriminate a number
+test from `isFinite`. Only a value `isFinite` ACCEPTS can — an array, a boolean
+or a blank string — and each is now pinned, with a guard that the trap is real
+before anything is asserted about it.
+
+### And the pose escape was an EQUIVALENT guard, measured rather than assumed
+
+The mutant that removed `_ve(pair.pose)` also escaped, and reading it back
+found no defect to fix. `photoPair()` sets `pose` from the
+**`POSE_KEYS.forEach` loop variable**, never from the stored row, and every
+other pose site reads through `poseOf()`, which is a membership test. So no
+reachable route can put junk there and no check can catch the removal.
+
+It is kept as cover for a future `photoPair()` that reads the pose off the row
+it picked, and **the check was relabelled to what it actually proves** — that
+the gallery survives a junk pose on every row — rather than left claiming
+something it cannot. A check that cannot fail must not carry a label saying it
+can. Same call as v287's `wantAnchor` and v400's `swapStillValid` line.
+
 ### A fixed window is not a search
 
 Two floors failed on screens that were perfectly correct. They sliced 200

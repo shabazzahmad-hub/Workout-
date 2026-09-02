@@ -8808,6 +8808,31 @@ export default async function () {
       normalizeState();
       o.numStrCoerced = (STATE.baseline || {}).score === 70 && (STATE.baseline || {}).testCount === 10;
 
+      /* isFinite ALONE IS NOT A NUMBER TEST, and nothing here could see that.
+         Every case above seeds a STRING payload, which both _numOf() and a
+         bare isFinite() refuse — so the mutant that drops the typeof half was
+         EQUIVALENT on all of them and walked straight through.
+
+         What discriminates is a value isFinite() ACCEPTS and a number test
+         does not. isFinite([]) is true and +[] is 0, so an array out of a
+         backup would read as a MEASURED ZERO — a Core Score of 0/100 for an
+         athlete who never took a test, which is exactly the falsy-zero lie
+         computeAssessment() was fixed for. isFinite(true) is true and +true
+         is 1; isFinite('') is true and +'' is 0. */
+      o.finiteAcceptsArray = isFinite([]) && (+[]) === 0;   // guard: the trap is real
+      o.finiteAcceptsBool  = isFinite(true) && (+true) === 1;
+      o.finiteAcceptsBlank = isFinite('') && (+'') === 0;
+      const shapeDrops = v => {
+        STATE.baseline = { date: '2026-01-01', score: v, level: 'Beginner', testCount: v, maxes: { plank: 60 } };
+        normalizeState();
+        const b = STATE.baseline || {};
+        return b.score === undefined && b.testCount === undefined && (b.maxes || {}).plank === 60;
+      };
+      o.arrayDropped = shapeDrops([]);
+      o.boolDropped  = shapeDrops(true);
+      o.blankDropped = shapeDrops('');
+      o.objDropped   = shapeDrops({});
+
       // ---- A REAL THREE-ROW HISTORY IS BYTE-IDENTICAL.
       const real = [
         { date: '2026-01-01', score: 41, level: 'Beginner', testCount: 10 },
@@ -8901,6 +8926,16 @@ export default async function () {
     t.ok('FLOOR: and so does a perfect 100', sc.hundredKept, sc);
     t.ok('FLOOR: score:null is a real answer — skipBaseline writes it', sc.nullKept, sc);
     t.ok('FLOOR: a numeric string is coerced, because the scoreHistory filter has always kept one', sc.numStrCoerced, sc);
+
+    /* isFinite ALONE IS NOT A NUMBER TEST. The guards come first, or every
+       assertion below is satisfied by a page where the trap does not exist. */
+    t.ok('guard: isFinite([]) really is true and +[] really is 0', sc.finiteAcceptsArray, sc);
+    t.ok('guard: isFinite(true) really is true and +true really is 1', sc.finiteAcceptsBool, sc);
+    t.ok('guard: isFinite(\'\') really is true and +\'\' really is 0', sc.finiteAcceptsBlank, sc);
+    t.ok('an ARRAY is dropped, not read as a measured zero', sc.arrayDropped, sc);
+    t.ok('a BOOLEAN is dropped, not read as a score of 1', sc.boolDropped, sc);
+    t.ok('a BLANK string is dropped, not read as a measured zero', sc.blankDropped, sc);
+    t.ok('an OBJECT is dropped', sc.objDropped, sc);
     t.ok('FLOOR: a real three-row history is byte-identical after the boot', sc.realHistUntouched, sc);
 
     t.ok('with NO boot behind it, the re-test intro escapes the baseline score', !sc.reInjBase, sc);
@@ -9006,8 +9041,13 @@ export default async function () {
         { id: 'a1', date: '2026-01-01', pose: 'front' },
         { id: 'a2', date: '2026-03-01', pose: 'front' }
       ];
-      /* photoPair() picks the pose off the rows, so the payload goes on the
-         ROW rather than on the pair — the render is photosHTML(). */
+      /* THE POSE ESCAPE IS AN EQUIVALENT GUARD, and the mutant that removed
+         it is what proved that. photoPair() sets `pose` from the
+         POSE_KEYS.forEach loop variable, never from the stored row, and every
+         other pose site reads through poseOf(), which is a membership test —
+         so no reachable route can put junk on `pair.pose` and no check can
+         catch the escape. What this case DOES prove is that the gallery
+         itself — captions, ids, tiles — survives a junk pose on every row. */
       STATE.photos = [
         { id: 'a1', date: '2026-01-01', pose: PAY },
         { id: 'a2', date: '2026-03-01', pose: PAY }
@@ -9044,7 +9084,7 @@ export default async function () {
     t.ok('guard: and a planted payload really does RUN', es.detectorRan, es);
     t.ok('the activity history escapes the row date', !es.actInj, es);
     t.ok('and so does the skipping history', !es.skipInj, es);
-    t.ok('and the photo comparison escapes the pose, not only the two ids beside it', !es.pairInj, es);
+    t.ok('and the photo gallery renders a junk pose without injecting', !es.pairInj, es);
     t.ok('and the Fuel target card escapes the goal', !es.goalInj, es);
     t.eq('nothing ran', es.ran, 0, es);
     t.ok('FLOOR: a real activity date still prints', es.actText, es);
