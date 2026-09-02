@@ -13709,6 +13709,86 @@ about lookups.
 `n>0`; an over-eager version would drop the first re-test and nothing else in
 the block would notice.
 
+### Swept clean, recorded as coverage: the round audited an hour after shipping
+
+Every round tonight, the best finding was in the round immediately before — so
+v419 was driven end to end as a RICH, entirely LEGITIMATE athlete: a full badge
+cabinet, three re-tests and a three-row score history.
+
+| | |
+|---|---|
+| all three cycle keys | kept |
+| all 15 real badge ids | kept, matching the expected count |
+| the score history | kept |
+| **a settled state re-normalised** | **byte-identical** |
+| the re-test badge | unlocked |
+| the strength series | 4 points, no `NaN`, no `undefined` |
+| the Badges tile | **15**, agreeing with the grid |
+| page errors | **0** |
+
+**Idempotence is the reading that matters most**, and it is the v390 rule: a
+repair that changes an already-settled state fires *"we repaired your data"* on
+every launch for every athlete, about nothing. A key repair is exactly the kind
+that can, because it walks a map the app itself wrote.
+
+### Two more sweeps, clean, and the second answers a question the round raised
+
+**Real programme boundaries.** Not junk from a backup — legitimate states the
+app itself arrives at: exactly one session done, the very last session of the
+programme, one past the end, straight after a restart with the run archived, and
+mid-session with a live log. Six tabs plus all four Progress panes each:
+**50 renders, zero problems** — no `NaN`, no `undefined`, no `Invalid Date`, no
+`[object`, no throw, 0 page errors, with the detector proven on a planted
+string first.
+
+**And the no-boot door for a KEY repair does not exist.** v417 needed render
+guards because a cross-tab adopt replaces `STATE` with no page boot. A key
+repair has no render guard — the counters read keys raw — so the question is
+whether that door is open. It is not: the listener reads
+`await load(); normalizeState(); render();`.
+
+**That was DRIVEN rather than read**, because source reading was wrong twice
+this session. A junk-keyed state was written to `localStorage` and a real
+`storage` event dispatched (a bare event makes `load()` re-read the OLD value —
+the v410 probe trap), and all three junk key sets came back **empty** with the
+badge still locked. The guard is what makes that meaningful: the raw predicate,
+with no repair run, DOES unlock on a junk key — so the empty result is about the
+repair rather than about a test that could never fail.
+
+### A promise sweep that found nothing to fix, and a block that was reverted
+
+45 athlete-visible claims were extracted from the REAL rendered screens — six
+tabs, all four Progress panes, all four Today panes, both Reference panes and
+twelve sheets — by pattern (*never / always / will / won't / keeps / stays /
+counts / does not / cannot*). Source is the wrong place to read them from: it
+contains markup for screens that are not mounted.
+
+Most are advice. Five were numbers written in prose beside a constant that holds
+the same fact — v397's class, the one that produced a **wrong published military
+standard** when a card said 80 kg and the exercise page said 100.
+
+Measured, every one of the five is **DERIVED, not hand-written**:
+
+```
+Block ${viewCycle+1} of ${TOTAL_CYCLES}
+${Math.ceil(tgt*kcalPerStep())} kcal is what ${tgt.toLocaleString()} steps costs you
+or pick one of the ${COACHES.length}
+${gap.need} lb is heavier than this app will train you to
+```
+
+**So a block of checks comparing the rendered sentence against the constant was
+written, run — and reverted.** Two of the five failed on correct code (the
+athlete's state differs, so the sentence renders different numbers), and the
+three that passed were passing on values that cannot disagree with themselves.
+
+**A check on a DERIVED value is a check that cannot fail**, and this file's own
+rule is that such a check must not carry a label saying it can. The class is
+closed on these surfaces because v397 and v398 closed it by making the numbers
+derived — which is a stronger fix than any check.
+
+The one shape still worth having is the one v397 already shipped: a **source
+scan that forbids the literal**, rather than a rendered comparison.
+
 ### Four detector mistakes in one session, all the same shape
 
 Every one of them reported a finding on CORRECT code, and every one was a
