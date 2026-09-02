@@ -13978,6 +13978,147 @@ empty"* is a statement about a card that was never drawn rather than about the
 guard the case exists for. A self-comparing guard is the same defect as a
 detector that reports zero without being shown finding one.
 
+## The guard covered the first line, and every entry is multi-line (v421)
+
+`01-data` has checked for duplicate keys since the `boxpistol:{repCap:12,repCap:10}`
+round. It checked three things, and each was narrower than it looked:
+
+| what it checked | the gap |
+|---|---|
+| five maps named **by hand** | a hand-written list of the members it guards is the drift this file records everywhere else — the sixth map gets no guard on the day it is added |
+| `EX` top-level keys | fine |
+| `EX` fields **`[^\n]*`** — on the entry's own line | **measured: ALL 197 `EX` entries are multi-line**, so a field repeated on line 2 or below was invisible |
+
+Measured on the real file, planting the duplicate a hand edit actually
+produces — a second `hardness` on a later line of an entry:
+
+| | found |
+|---|---|
+| the existing line-scan | **0** |
+| a brace-matched scan | **1**, `EX.hardness`, line 1142 |
+
+**`hardness` is the field this file already says is load-bearing** — an
+uncalibrated one shipped once and prescribed 4x40 dips. JS keeps the LAST
+duplicate, so a shadowed `hardness` silently reprices every set of that
+movement with nothing on screen.
+
+The replacement walks **every ALLCAPS data literal — 147 of them** — tracking
+strings, comments and container type. It is strictly stronger, and that was
+measured rather than assumed: it catches a shadowed `SAFE_SWAP` key, an `EX`
+top-level duplicate, and the multi-line field the old one could not see. It
+also **skips comments**, so the recorded false positives — a comment reading
+`btsquat:'squat'`, another reading `FORCE:` — cannot fire again. Those cost
+real time twice.
+
+### My own detector had the bug I was hunting
+
+The first version required a name of **three or more** characters
+(`[A-Z][A-Z0-9_]{2,}`). **`EX` is two.** So the single most important literal
+in the app was silently skipped and the scan reported a confident **zero**.
+
+Nothing about that output looked wrong. It was caught only by planting a known
+duplicate and finding it was NOT reported — **a detector that reports zero must
+be shown finding one first**, which this file records five times and which was
+the only thing standing between a false all-clear and the finding.
+
+The shipped check now carries that proof inside itself, against a **synthetic**
+source rather than the real file, so it stays true whatever the real data
+becomes: a clean literal reports nothing, a field repeated on a LATER line is
+seen, and a repeated top-level key is seen. The synthetic map is named `XY` —
+two characters, deliberately.
+
+## A parked read is per-tab memory, and the resetting tab cannot reach it (v421)
+
+v411 made `hardReset()` clear `_foodRead` and `_actRead`: a parked image read is
+unlogged food or movement the athlete has not saved, it lives in memory rather
+than in `STATE`, and **both surfaces render a row for it on sight** — so
+clearing `STATE` alone leaves it on the glass of a freshly-erased app.
+
+v405 added a second way to be erased — adopting another tab's reset — and it
+never learned that. Fixing one instance is not fixing the class.
+
+**What makes this the ONLY gap is worth stating, because it is what stops the
+fix from being five fixes.** `hardReset()` erases five things beyond `STATE`:
+
+| | shared between tabs? | the adopting tab |
+|---|---|---|
+| photo blobs (IndexedDB) | **yes**, same origin | already erased by the resetting tab |
+| the pre-import snapshot | **yes**, localStorage | already erased |
+| the cross-tab snapshot | **yes** | already erased |
+| **the parked reads** | **no — per-tab memory** | **survive** |
+
+The resetting tab clears the shared three for everyone. Per-tab memory is the
+one thing it can only ever clear for itself. So the rule lives in
+`clearParkedReads()` and both erase paths ask it.
+
+**The floor is what stops it becoming a different bug: an ORDINARY foreign
+write must NOT clear a parked read.** That is unsaved work the athlete has not
+been asked about, not residue — so the clear sits inside the `wasReset` branch,
+and the check drives a plain foreign write first and asserts the read survives.
+It runs first because the reset un-onboards the tab.
+
+**And the check reads the GLASS.** Both rows carry a marker (`data-foodread`,
+`data-actread`), so it asserts no row is left rather than only that a variable
+is null — a stale row over a cleared variable is its own defect.
+
+## Four escapes, and three of them were the boot answering for the guard (v421)
+
+The v420 mutation run finished what an OOM and a worker restart had
+interrupted. Four escaped, all weak checks, and the shape is worth naming
+because it is one cause wearing three faces:
+
+| mutant | why the check could not fail |
+|---|---|
+| `Y7` the filter fallback in `logItemsFor()` | the mixed-list case ran **with** boot, so the stored list was already clean, `every()` was true and the filter branch was never reached |
+| `Z3` the writer's coercion | the round-trip case runs `normalizeState()` **before** the writer, so the writer was handed values the boot had already cleaned |
+| `Y9` the `rest` bound | **no case ever seeded a bad `rest`** — the other field that prints `~NaN MINUTES` |
+| `Z6` a row with no name | `null`, `42` and `'x'` are all refused by the **TYPE** test before the name test is consulted |
+
+**A guard is only visible when the value beside it cannot supply the answer** —
+and in a two-guard subsystem the BOOT is the neighbour that keeps supplying it.
+Every no-boot door in this app exists because a cross-tab adopt has no boot
+behind it, so the discriminating case is always the same one: drive the reader,
+or the writer, with `normalizeState()` deliberately absent.
+
+For `Y7` that means a **mixed** list with no boot: correct code filters and the
+stored row is used (`exTotal === 1`), the mutant falls through to the rebuild
+(`exTotal > 1`). Neither a clean list nor a wholly-bad one can tell them apart.
+
+## Three sweeps that came back clean (v421)
+
+- **Every `new RegExp` built from a value.** Four sites: two use app constants,
+  and the other two escape their input with a proper character-class escape
+  before interpolating it. No stored string reaches an unescaped pattern, and
+  none of the four patterns has the nested quantifier that would make a long
+  input expensive.
+- **`innerHTML +=`** — zero. It reparses the container and drops every listener
+  on it, which is why the count matters rather than the intent.
+- **Every `catch` that fails OPEN.** 450 catch blocks; 125 return a falsy or
+  neutral value, 322 return nothing. **Three return `true` and all three are
+  correct**, which is the finding rather than a miss:
+
+  | site | returns | why that IS the closed direction |
+  |---|---|---|
+  | `prepWeekNo()` | `1` | week 1 is the LOWEST volume; a high week prescribes a big ramp |
+  | `maxEffortBlocked()` | `true` | `true` **means blocked** — its own comment says it fails closed |
+  | `calorieCheckDue()` | `true` | `true` means *ask again*; not asking silently disables the diet-break guardrail, which is the v415 defect |
+
+  **The polarity of the boolean is what matters, not the literal.** A scan that
+  reads `return true` as "fails open" reports three false alarms on correct
+  code — the usual ratio for a rule re-derived outside the code it describes.
+
+## Two harness rules the same evening produced (v421)
+
+- **`pgrep -f` matches its own command line.** This file already records that
+  for `pkill -f`; it applies identically here, and it is worse in this
+  direction — it reported a mutation driver **alive** when the process was
+  gone, so a dead run looked like a running one. Check by PID.
+- **Do not `nohup`/`setsid` a long background job.** The detached shell exits
+  at once, the harness treats the task as finished, and the process is
+  reclaimed at the end of the turn — twice, at the baseline and after one
+  mutant. Let the harness own it (a foreground command in a background task),
+  and it survives across turns and reports when it exits.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

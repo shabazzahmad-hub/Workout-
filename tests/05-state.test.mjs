@@ -2940,6 +2940,71 @@ export default async function run() {
     t.eq('nor the pointer', held.ptr, 0);
     t.eq('and the reset really held', held.onboarded, false);
 
+    /* A PARKED IMAGE READ IS PER-TAB MEMORY, so the resetting tab can only ever
+       clear its own. hardReset() clears it because a freshly-erased app still
+       offering "read from your image" is the same visible residue the photo
+       blobs were — and the cross-tab reset adoption did not, which is that fix
+       one door along.
+
+       The other four things hardReset() erases all live in storage the two tabs
+       SHARE — the photo blobs, the pre-import snapshot, the cross-tab snapshot —
+       so the resetting tab clears those for everyone. This is the only one it
+       cannot, which is why it is the only gap.
+
+       Read the GLASS, not the variable: both surfaces render a row on sight. */
+    /* SEED FIRST. The reset block above erased this origin, so a page booted
+       here is NOT onboarded — and `wasReset` is deliberately
+       `incoming.onboarded===false && ours===true`, so it would correctly not
+       fire (v405's own second guard: telling a tab mid-setup that all data was
+       reset is false). An un-onboarded page also renders the welcome screen,
+       so the Movement block never mounts and there is no activity row to find.
+       Both failures were one missing setup step. */
+    const K1 = await ctx.newPage(); await boot(K1); await seedAthlete(K1);
+    const K2 = await ctx.newPage(); await boot(K2); await seedAthlete(K2);
+    await K1.waitForTimeout(400);
+    const park = () => K1.evaluate(() => {
+      _foodRead = { name: 'Parked Meal', kcal: 500, p: 30, c: 40, f: 12 };
+      _actRead  = { read: 2, steps: 0 };
+      try { renderFuel(); } catch (e) {}
+      try { repaintMovement(); } catch (e) {}
+      return { food: !!document.querySelector('[data-foodread]'),
+               act:  !!document.querySelector('[data-actread]') };
+    });
+    const parked = await park();
+    t.ok('guard: a parked read really does render a row on both surfaces',
+      parked.food && parked.act, JSON.stringify(parked));
+
+    /* FLOOR FIRST, because the reset un-onboards this tab. An ORDINARY foreign
+       write is not an erase: throwing away an unsaved read there would lose
+       work the athlete has not been asked about. */
+    await K2.evaluate(() => { STATE.progressPtr = 2; save(); });
+    await K1.waitForTimeout(800);
+    const afterPlain = await K1.evaluate(() => ({
+      food: !!foodReadPending(), act: !!_actRead, ptr: STATE.progressPtr }));
+    t.eq('FLOOR: an ordinary foreign write really was adopted', afterPlain.ptr, 2, afterPlain);
+    t.ok('FLOOR: and it leaves a parked read alone — it is unsaved work, not residue',
+      afterPlain.food && afterPlain.act, JSON.stringify(afterPlain));
+
+    await park();
+    await K2.evaluate(() => { window.confirm = () => true; hardReset(); });
+    await K1.waitForTimeout(900);
+    const afterErase = await K1.evaluate(() => {
+      try { renderFuel(); } catch (e) {}
+      try { repaintMovement(); } catch (e) {}
+      return { food: !!foodReadPending(), act: !!_actRead,
+               foodRow: !!document.querySelector('[data-foodread]'),
+               actRow: !!document.querySelector('[data-actread]'),
+               onboarded: !!STATE.onboarded };
+    });
+    await K1.close(); await K2.close();
+
+    t.eq('guard: the erase really was adopted here', afterErase.onboarded, false, afterErase);
+    t.ok('a reset in another tab clears this tab parked food read',
+      !afterErase.food, JSON.stringify(afterErase));
+    t.ok('and its parked activity read', !afterErase.act, JSON.stringify(afterErase));
+    t.ok('so no row for either is left on the glass of a freshly-erased app',
+      !afterErase.foodRow && !afterErase.actRow, JSON.stringify(afterErase));
+
     /* THE DISCRIMINATING CASE, and the block above cannot supply it. Closing a
        live session is not passive: playerTeardown() clears the resume point and
        hiitTeardown() records the stopped grinder, and both call save() — which

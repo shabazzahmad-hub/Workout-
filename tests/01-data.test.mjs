@@ -61,25 +61,92 @@ export default async function run() {
   t.ok('every exercise has complete coaching copy', r.thinCopy.length === 0, r.thinCopy);
   t.ok('every test names a real exercise', r.testExMissing.length === 0, r.testExMissing);
 
+  const src = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   /* Duplicate keys in a hand-maintained object literal are silent — JS keeps the
      last one. That is how boxpistol shipped with two repCaps and how a shadowed
-     SAFE_SWAP entry routed a flagged low back into lumbar flexion. */
-  const src = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-  for (const name of ['SAFE_SWAP', 'LOWBACK_SWAP', 'GEAR_FALLBACK', 'JOINT_RISK', 'REGION_KIN']) {
-    const m = src.match(new RegExp('const ' + name + '\\s*=\\s*\\{[\\s\\S]*?\\n\\};'));
-    if (!m) { t.fail(`${name} literal found in source`); continue; }
-    const keys = (m[0].match(/(?:^|[\s,{])([a-zA-Z0-9_]+)\s*:/gm) || []).map(s => s.replace(/[\s,{:]/g, ''));
-    const dupes = keys.filter((k, i) => keys.indexOf(k) !== i);
-    t.ok(`${name} has no duplicate keys`, dupes.length === 0, [...new Set(dupes)]);
-  }
-  const exBlock = src.slice(src.indexOf('const EX = {'));
-  const exKeys = (exBlock.slice(0, exBlock.indexOf('\n};')).match(/^ {2}([a-z0-9]+):\{/gm) || [])
-    .map(s => s.trim().replace(':{', ''));
-  const exDupes = exKeys.filter((k, i) => exKeys.indexOf(k) !== i);
-  t.ok('EX has no duplicate keys', exDupes.length === 0, [...new Set(exDupes)]);
-  const dupField = (exBlock.match(/^ {2}[a-z0-9]+:\{[^\n]*?\b(\w+):[^\n]*?\b\1:/gm) || [])
-    .map(s => s.slice(0, 40));
-  t.ok('no exercise repeats a field on its own line', dupField.length === 0, dupField);
+     SAFE_SWAP entry routed a flagged low back into lumbar flexion.
+
+     This replaces two weaker scans and is strictly stronger than both, which was
+     measured rather than assumed:
+
+     - The old list named FIVE maps by hand. A hand-written list of the members
+       it guards is the drift this repo records everywhere else: the sixth map
+       gets no guard on the day it is added. This walks every ALLCAPS data
+       literal in the file — 147 of them.
+     - The old EX field scan was `[^\n]*`, so it could only see a repeat on an
+       entry's FIRST line. Measured: ALL 197 EX entries are multi-line, so a
+       field repeated on line 2 or below was invisible. A shadowed `hardness` is
+       exactly the silent kind — this file records an uncalibrated one
+       prescribing 4x40 dips.
+     - It skips strings and comments, so prose that merely looks like code is
+       not counted. The old text scan flagged a comment reading `btsquat:'squat'`
+       and another reading `FORCE:`, twice costing real time. */
+  const dupKeys = (js) => {
+    const scan = (t, start) => {
+      let i = start; const stack = []; const out = []; const n = t.length;
+      while (i < n) {
+        const c = t[i];
+        if (c === '/' && t[i + 1] === '/') { const j = t.indexOf('\n', i); i = j < 0 ? n : j; continue; }
+        if (c === '/' && t[i + 1] === '*') { const j = t.indexOf('*/', i + 2); i = j < 0 ? n : j + 2; continue; }
+        if (c === "'" || c === '"' || c === '`') {
+          const q = c; i++;
+          while (i < n) { if (t[i] === '\\') { i += 2; continue; } if (t[i] === q) { i++; break; } i++; }
+          continue;
+        }
+        if (c === '{') { stack.push({ obj: true, seen: new Set() }); i++; continue; }
+        if (c === '[') { stack.push({ obj: false }); i++; continue; }
+        if (c === '}' || c === ']') { stack.pop(); if (!stack.length) return out; i++; continue; }
+        const top = stack[stack.length - 1];
+        if (top && top.obj) {
+          const m = /^(['"]?)([A-Za-z_$][A-Za-z0-9_$]*)\1\s*:/.exec(t.slice(i, i + 64));
+          /* Only a key: the previous non-space character must open the object or
+             end the field before it. That is what keeps a ternary's `a ? b : c`
+             and a `case x:` out of the key set. */
+          if (m) {
+            let j = i - 1; while (j >= 0 && ' \t\r\n'.includes(t[j])) j--;
+            if (j >= 0 && (t[j] === '{' || t[j] === ',')) {
+              if (top.seen.has(m[2])) out.push({ key: m[2], at: i });
+              top.seen.add(m[2]); i += m[0].length; continue;
+            }
+          }
+        }
+        i++;
+      }
+      return out;
+    };
+    const found = []; let literals = 0;
+    const re = /\bconst\s+([A-Z][A-Z0-9_]+)\s*=\s*[{[]/g;
+    let m;
+    while ((m = re.exec(js))) {
+      literals++;
+      for (const d of scan(js, m.index + m[0].length - 1)) {
+        found.push(`${m[1]}.${d.key} @ line ${js.slice(0, d.at).split('\n').length}`);
+      }
+    }
+    return { literals, found };
+  };
+
+  /* The BIGGEST inline script — the first one on this page is two characters
+     long, and reading it reports every literal as absent. */
+  const appJs = (src.match(/<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/g) || [])
+    .sort((a, b) => b.length - a.length)[0] || '';
+  t.ok('guard: the duplicate-key scan read the app script', /function prescribe/.test(appJs));
+
+  /* A detector that reports zero must be shown finding one first, and the
+     synthetic source keeps that proof independent of what the real file
+     happens to contain today. The name is two characters because `EX` is —
+     an earlier version of this scan demanded three and silently skipped the
+     single most important literal in the app. */
+  const SYN_CLEAN = 'const XY = {\n  a:{x:1,\n    y:2},\n};';
+  const SYN_DEEP  = 'const XY = {\n  a:{x:1,\n    y:2,\n    x:3},\n};';
+  const SYN_TOP   = 'const XY = {\n  a:{x:1},\n  a:{x:2},\n};';
+  t.eq('guard: a clean literal reports nothing', dupKeys(SYN_CLEAN).found.length, 0);
+  t.eq('guard: a field repeated on a LATER line is seen', dupKeys(SYN_DEEP).found.length, 1);
+  t.eq('guard: and a repeated top-level key is seen', dupKeys(SYN_TOP).found.length, 1);
+
+  const dk = dupKeys(appJs);
+  t.ok('guard: the scan walked every data literal', dk.literals > 100, dk.literals);
+  t.ok('no data literal has a duplicate key', dk.found.length === 0, dk.found);
 
   /* The service worker shell is the offline cache. A referenced-but-uncached
      image is a blank card on a phone with no signal. */

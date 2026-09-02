@@ -1849,7 +1849,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='420';
+const APP_VERSION='421';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2129,6 +2129,7 @@ window.addEventListener('storage',async e=>{
         try{if(typeof PLAYER!=='undefined'&&PLAYER&&typeof playerQuit==='function')playerQuit();}catch(_){}
         try{if(typeof INTV!=='undefined'&&INTV&&typeof hiitQuit==='function')hiitQuit();}catch(_){}
       }finally{_adoptingReset=false;}
+      clearParkedReads();
     }
     /* A LOST UPDATE, and before this it was silent. v404 made this tab adopt a
        foreign write, which is right when the other tab had already seen our
@@ -15820,6 +15821,20 @@ function activityPlan(est){
    second), the same _sheetGen guard so a slow read never writes into a sheet
    he has since opened and typed into. */
 let _actRead=null;
+/* A PARKED IMAGE READ IS ERASED BY EVERY ERASE PATH, NOT ONLY BY THE BUTTON.
+   It is unlogged food or movement the athlete has not saved, it lives in memory
+   rather than in STATE, and both surfaces render a row for it on sight — so
+   clearing STATE alone leaves it on the glass of a freshly-erased app. That is
+   the same visible residue the photo blobs were.
+
+   hardReset() learned this. The cross-tab reset adoption did not, and it is the
+   one erase path where it can still happen: the photo blobs, the pre-import
+   snapshot and the cross-tab snapshot all live in storage the two tabs SHARE,
+   so the resetting tab clears them for everyone — this is per-tab memory, and
+   the resetting tab can only ever clear its own. Fixing the button and leaving
+   the adopt is fixing one instance and not the class, so the rule lives here
+   and both paths ask it. */
+function clearParkedReads(){try{_foodRead=null;_actRead=null;}catch(e){}}
 function activityScreenshot(){
   if(!foodAIReady()){toast('Add a free Gemini key in Settings ⚙️ to read a screenshot');return;}
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';
@@ -21779,7 +21794,7 @@ function hardReset(){
      yet. It lives in memory rather than STATE, so clearing STATE leaves it on
      the glass — a freshly-erased app still offering "read from your image" is
      the same visible residue the photo blobs were. */
-  _foodRead=null;_actRead=null;
+  clearParkedReads();
   /* API keys are a device credential, not athlete data — the key was typed once,
      into this browser, for this device, and never leaves it either way (the
      export path already strips it, see exportData()). Re-typing a Gemini or
