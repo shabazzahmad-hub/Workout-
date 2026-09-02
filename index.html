@@ -1849,7 +1849,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='415';
+const APP_VERSION='416';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3144,6 +3144,19 @@ function setSwap(ptr,key,exId){
      measured, the finisher became `constructor` with target NaN and Today
      printed "undefined  1 x NaN reps". */
   if(!exKnown(exId))return;
+  /* THE ONE TWO-LEVEL COMPUTED WRITE IN THE APP, and therefore the one line
+     where a bad key reaches Object.prototype rather than one object's own.
+     STATE.swaps['__proto__'] READS BACK Object.prototype — truthy, so the
+     `if(!…)` below is satisfied and never creates a fresh map — and the next
+     line then writes onto the prototype every object in the page inherits from.
+
+     NOT athlete-reachable today, and saying so is the honest framing: `ptr` is
+     always STATE.progressPtr, which normalizeState() repairs to an integer, and
+     `key` is '__fin' or a slot the builder made. This is v414's framing exactly
+     — the codebase already guards the exercise id on this very line (v400) and
+     never guarded the pointer, and a latent hole in the only expression that
+     can reach the global prototype is worth one comparison. */
+  if(!(typeof ptr==='number'&&isFinite(ptr)&&ptr>=0))return;
   if(!STATE.swaps)STATE.swaps={};
   if(!STATE.swaps[ptr])STATE.swaps[ptr]={};
   STATE.swaps[ptr][key]=exId;
@@ -4174,7 +4187,7 @@ function reassessIntroHTML(cycle){
   <div class="hero oblique"><div class="htop"><div><div class="hlbl">Cycle ${cycle+1} · re-test</div><h1>Progress Check</h1><div class="hmeta">${WEEKS_PER_CYCLE} weeks done — let's re-measure</div></div><div class="hicon">📈</div></div></div>
   <div class="note fire">You've completed a full ${WEEKS_PER_CYCLE}-week block. Re-take the ${TESTS.length} tests so the next block scales from your <b>new, stronger</b> numbers — this is what keeps results coming all year.</div>
   <div class="card pad"><h3>Last result</h3>
-    <div class="kv"><span>Core Score</span><b>${(prev&&prev.score!=null)?prev.score+'/100':'not tested'}</b></div>
+    <div class="kv"><span>Core Score</span><b>${((v)=>v==null?'not tested':v+'/100')(scoreVal(prev))}</b></div>
     <div class="kv"><span>Level</span><b>${_ve((prev&&prev.level)||'—')}</b></div>
   </div>
   <div class="note info"><b>Warm up first</b>, exactly as you did on day one — 60 seconds of marching, a few glute bridges and bird dogs, and <b>2 minutes of rest between tests</b>. Same warm-up, same order, same rest as last time: that is what makes the comparison mean anything. Breathe throughout. Test on a day you feel fresh: a tired re-test tells the program you got weaker.</div>
@@ -4192,7 +4205,7 @@ function finishedHTML(){
   return `
   <div class="hero anterior"><div class="htop"><div><div class="hlbl">Program complete</div><h1>Forged 🏆</h1><div class="hmeta">You finished all ${TOTAL_CYCLES} blocks</div></div><div class="hicon">🏆</div></div></div>
   <div class="grid2">
-    <div class="stat"><div class="n">${(first&&first.score!=null&&last&&last.score!=null)?first.score+'→'+last.score:'—'}</div><div class="l">Core Score</div></div>
+    <div class="stat"><div class="n">${((x,y)=>(x==null||y==null)?'—':x+'→'+y)(scoreVal(first),scoreVal(last))}</div><div class="l">Core Score</div></div>
     <div class="stat"><div class="n">${sessionsDoneCount()}</div><div class="l">Sessions done</div></div>
   </div>
   <div class="note fire" style="margin-top:14px">Outstanding work. Your core is measurably stronger. To keep progressing, run the block again — it will re-baseline and scale from here.</div>
@@ -8418,7 +8431,7 @@ function actHistoryHTML(k){
   const l=actLog(k).slice(0,8);if(!l.length)return '';
   return `<div class="section-label" style="margin-top:14px">Recent sessions</div><div class="card" style="padding:0 12px">`+
     l.map((x,i)=>`<div class="kv" style="border-top:1px solid var(--line)">
-      <span><b>${x.mins} min</b> <span class="tiny muted">· ${x.dist?x.dist+' '+(x.unit||'km')+' · ':''}${x.wt?x.wt+' load · ':''}${x.secs?'best '+x.secs+'s · ':''}${x.rounds?x.rounds+' rounds · ':''}${x.date}</span></span>
+      <span><b>${x.mins} min</b> <span class="tiny muted">· ${x.dist?x.dist+' '+(x.unit||'km')+' · ':''}${x.wt?x.wt+' load · ':''}${x.secs?'best '+x.secs+'s · ':''}${x.rounds?x.rounds+' rounds · ':''}${_ve(x.date)}</span></span>
       <button class="chip" aria-label="Remove this activity" onclick="removeAct('${k}',${i})">✕</button></div>`).join('')+`</div>`;
 }
 /* THE KIT QUESTION, ON THE THIRD PICKING PATH TO SKIP IT. startForceTrain()
@@ -8610,7 +8623,7 @@ function skipHistoryHTML(){
   const l=skipLog().slice(0,8);if(!l.length)return '';
   return `<div class="section-label" style="margin-top:14px">Recent sessions</div><div class="card" style="padding:0 12px">`+
     l.map((x,i)=>`<div class="kv" style="border-top:1px solid var(--line)">
-      <span><b>${x.mins} min</b> <span class="tiny muted">· ${x.rounds?x.rounds+' rounds · ':''}${x.date}</span></span>
+      <span><b>${x.mins} min</b> <span class="tiny muted">· ${x.rounds?x.rounds+' rounds · ':''}${_ve(x.date)}</span></span>
       <button class="chip" aria-label="Remove this skipping entry" onclick="removeSkip(${i})">✕</button></div>`).join('')+`</div>`;
 }
 function openSkipping(){
@@ -9829,9 +9842,9 @@ function scoreDeltaHTML(a){
      change; this screen did not, so the re-test results — the highest-stakes
      moment in the program — greeted a stronger athlete with a red drop. */
   const pr=hist[hist.length-2];
-  if((pr.testCount||5)!==TESTS.length)
-    return `<div class="note info" style="text-align:center">Scoring changed since your last test (${pr.testCount||5} tests, now ${TESTS.length}) — this score starts a fresh comparison.</div>`;
-  const prev=pr.score;const d=a.score-prev;
+  if(testCountOf(pr)!==TESTS.length)
+    return `<div class="note info" style="text-align:center">Scoring changed since your last test (${testCountOf(pr)} tests, now ${TESTS.length}) — this score starts a fresh comparison.</div>`;
+  const prev=scoreVal(pr);if(prev==null)return '';const d=a.score-prev;
   if(d===0)return '';
   return `<div class="note ${d>0?'fire':'warn'}" style="text-align:center">${d>0?'▲ +'+d:'▼ '+d} points vs last test${d>0?' — your core is getting stronger 💪':''}</div>`;
 }
@@ -12706,7 +12719,7 @@ function renderProgress(){
   }else{h+=`<div class="note info">Complete workouts to bank personal bests here.</div>`;}
   // score history
   if(STATE.scoreHistory.length){
-    h+=`<div class="section-label">Assessment history</div><div class="card pad">${STATE.scoreHistory.filter(Boolean).map((s,i)=>`<div class="kv"><span>${i===0?'Baseline':'Re-test '+i}${s.date?' · '+_ve(s.date):''}</span><b>${s.score==null?'—':s.score+'/100'} · ${(l=>_ve(l?levelName(l):'—'))(s.level||(STATE.baseline&&STATE.baseline.level))}</b></div>`).join('')}</div>`;
+    h+=`<div class="section-label">Assessment history</div><div class="card pad">${STATE.scoreHistory.filter(Boolean).map((s,i)=>`<div class="kv"><span>${i===0?'Baseline':'Re-test '+i}${s.date?' · '+_ve(s.date):''}</span><b>${(v=>v==null?'—':v+'/100')(scoreVal(s))} · ${(l=>_ve(l?levelName(l):'—'))(s.level||(STATE.baseline&&STATE.baseline.level))}</b></div>`).join('')}</div>`;
   }
   }
   if(P==='awards'){
@@ -12716,6 +12729,43 @@ function renderProgress(){
   v.innerHTML=h;
   hydratePhotos();   // async-fill progress photos from IndexedDB
 }
+/* ONE READER FOR THE CORE SCORE AND THE TEST COUNT, asked by the repair and by
+   every render site.
+
+   THE ASYMMETRY IS THE FINDING. `scoreHistory` has been filtered on
+   `e.score!=null&&isFinite(e.score)` for many versions — so the codebase already
+   knew an unreadable score was illegal — and the SAME field on the other two
+   records that carry it, STATE.baseline and every STATE.reassess[c], was never
+   checked at all. `testCount` was never checked on any of the three. v412
+   bounded `maxes` and `results` on these very records and left both numbers
+   sitting beside them.
+
+   MEASURED after a real boot repair, from a backup importData() accepts:
+
+     STATE.baseline.score / STATE.reassess[c].score  survive junk
+     reassessIntroHTML()  injected      finishedHTML()  injected
+     a junk testCount on a row whose score is VALID survives the filter,
+     so scoreDeltaHTML() injected too
+     arbitrary script RAN 4 times, in the origin that holds both device keys
+
+   And it is wrong quietly with no attack at all: the program-complete screen
+   printed `abc→abc` where the athlete's Core Score belongs.
+
+   `isFinite` ALONE IS NOT A NUMBER TEST: isFinite([]) and isFinite('') and
+   isFinite(true) are all true, and +[] is 0 — so an array out of a backup would
+   have been reported as a MEASURED ZERO, which is v260's defect wearing a
+   coercion. _numOf() takes a number or a non-blank numeric string and nothing
+   else.
+
+   ABSENT IS A REAL STATE, so null is preserved rather than replaced:
+   skipBaseline() writes score:null on purpose and ringHTML() renders a dash for
+   it. A numeric STRING is coerced rather than refused, because the scoreHistory
+   filter has always kept one (isFinite('70') is true) and two readers of one
+   field must not disagree. 5 is the legacy default for an absent testCount —
+   the number the `||5` these replace has meant since v178. */
+function _numOf(v){if(v==null)return null;if(typeof v!=='number'&&typeof v!=='string')return null;if(typeof v==='string'&&v.trim()==='')return null;const n=Math.round(+v);return isFinite(n)?n:null;}
+function scoreVal(o){try{const n=_numOf(o&&o.score);return (n!=null&&n>=0&&n<=100)?n:null;}catch(e){return null;}}
+function testCountOf(o){try{const n=_numOf(o&&o.testCount);return (n!=null&&n>=1&&n<=100)?n:5;}catch(e){return 5;}}
 function ringHTML(score,label){
   /* A skipped baseline stores score:null on purpose — it was never measured.
      Printing that straight into the ring rendered a large "null" on Progress,
@@ -12733,11 +12783,11 @@ function scoreTrendHTML(){
      entry scored on the old denominator is NOT on the same scale, so comparing
      across the change told a genuinely improving athlete they went backwards.
      Only compare entries that were scored the same way. */
-  const s=(STATE.scoreHistory||[]).filter(e=>e&&e.score!=null);
-  const cur=s.filter(e=>(e.testCount||5)===TESTS.length);
+  const s=(STATE.scoreHistory||[]).filter(e=>e&&scoreVal(e)!=null);
+  const cur=s.filter(e=>testCountOf(e)===TESTS.length);
   if(cur.length<2)
     return s.length>1?`<div class="tiny muted" style="margin-top:10px">Scoring changed in this version (${TESTS.length} tests, was 5) — your next re-test starts a comparable run.</div>`:'';
-  const first=cur[0].score,last=cur[cur.length-1].score;const d=last-first;
+  const first=scoreVal(cur[0]),last=scoreVal(cur[cur.length-1]);const d=last-first;
   return `<div class="tiny" style="margin-top:10px;color:${d>=0?'var(--green)':'var(--pink)'}">${d>=0?'▲ +'+d:'▼ '+d} points since your last comparable test</div>`;
 }
 function measureChartHTML(){
@@ -12952,7 +13002,7 @@ function photosHTML(){
   const pair=photoPair();
   if(pair){
     const a=pair.a,b=pair.b;
-    h+=`<div class="section-label" style="margin:16px 3px 8px">Before → Now · ${pair.pose}</div>
+    h+=`<div class="section-label" style="margin:16px 3px 8px">Before → Now · ${_ve(pair.pose)}</div>
       <div class="grid2" style="gap:8px">
         <div><img class="ph-img" data-pid="${_ve(a.id)}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;background:var(--card2)"><div class="tiny muted center" style="margin-top:4px">${_ve(a.date)} · ${poseOf(a)}</div></div>
         <div><img class="ph-img" data-pid="${_ve(b.id)}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;background:var(--card2)"><div class="tiny muted center" style="margin-top:4px">${_ve(b.date)} · ${poseOf(b)}</div></div>
@@ -13145,7 +13195,7 @@ function currentWaistShow(){
   const ms=(STATE.measurements||[]).filter(m=>m.waist>0)
     .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
   return ms.length?r1(waistShow(ms[ms.length-1].waist)):null;}
-function scoreGain(){const s=STATE.scoreHistory||[];if(s.length<1)return 0;return s[s.length-1].score-s[0].score;}
+function scoreGain(){const s=STATE.scoreHistory||[];if(s.length<1)return 0;const a=scoreVal(s[s.length-1]),b=scoreVal(s[0]);return (a==null||b==null)?0:a-b;}
 /* Lifetime readers must span archived runs as well as the live one, or
    archiving on restart would recreate the very data loss it was written to
    avoid. Current run first so the newest work is cheapest to reach. */
@@ -20107,7 +20157,7 @@ function renderFuel(){
   h+=`<div class="section-label">Calorie &amp; protein calculator</div><div class="card pad">
     <p class="sm muted" style="margin-top:0">Get your personal daily calorie target (Mifflin-St Jeor, moderate deficit) plus a protein goal.</p>
     <button class="btn primary" onclick="openTDEE()">${n.kcalTarget?'Update my targets':'Calculate my targets'}</button>
-    ${n.kcalTarget?`<div class="tiny muted" style="margin-top:8px;text-align:center">Current target: <b>${n.kcalTarget} kcal</b> · ${prot||'—'}g protein · goal: ${n.goal}${n.kcalFloored?' · raised to a safe minimum':''}${n.kcalAdj?` · adjusted ${n.kcalAdj>0?'+':''}${n.kcalAdj} from your own results`:''}</div>`:''}
+    ${n.kcalTarget?`<div class="tiny muted" style="margin-top:8px;text-align:center">Current target: <b>${n.kcalTarget} kcal</b> · ${prot||'—'}g protein · goal: ${_ve(n.goal)}${n.kcalFloored?' · raised to a safe minimum':''}${n.kcalAdj?` · adjusted ${n.kcalAdj>0?'+':''}${n.kcalAdj} from your own results`:''}</div>`:''}
     ${calorieCheckHTML()}
   </div>`;
   // abs-in-the-kitchen guidance
@@ -22017,7 +22067,21 @@ function normalizeState(){
      over it would satisfy an "did the athlete measure a level?" test for ever,
      which is the voicePitch trap. `!== undefined` because absent is the
      contract, and a stored null is a junk key that travels in a backup. */
-  {const _lvFix=o=>{if(!o||typeof o!=='object'||o.level===undefined)return;
+  {const _lvFix=o=>{if(!o||typeof o!=='object')return;
+     /* score and testCount, on the same three records and by the same walk.
+        PRESENT-ONLY: an absent score is a real answer — skipBaseline() writes
+        null on purpose — so a junk one is DROPPED rather than replaced with a
+        number nobody measured, and THE ROW SURVIVES: its level and its maxes
+        were really taken, and the whole prescription is built from them.
+        OUT OF BAND IS DROPPED, NOT CLAMPED, which is v412's rule for a
+        measurement: computeAssessment() is Math.round of an average whose every
+        term is clamp(v/bench*100,0,100), so 0-100 is the whole of what the app
+        can produce and 150 did not come from an effort. Clamping it would print
+        "100/100" as a result the athlete never earned. */
+     if(o.score!==undefined&&o.score!==null){const _sv=scoreVal(o);if(_sv===null)delete o.score;else o.score=_sv;}
+     if(o.testCount!==undefined){const _tc=_numOf(o.testCount);
+       if(_tc==null||_tc<1||_tc>100)delete o.testCount; else o.testCount=_tc;}
+     if(o.level===undefined)return;
      if(o.level===null||o.level==='')delete o.level; else o.level=levelName(o.level);};
    _lvFix(STATE.baseline);
    if(STATE.reassess&&typeof STATE.reassess==='object'&&!Array.isArray(STATE.reassess))

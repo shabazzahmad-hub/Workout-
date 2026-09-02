@@ -8731,6 +8731,312 @@ export default async function () {
     t.ok('FLOOR: and a real one survives', gr.expKept, gr);
   }
 
+  /* v416 — THE CORE SCORE AND THE TEST COUNT HAD NO REPAIR ON TWO OF THE THREE
+     RECORDS THAT CARRY THEM.
+
+     scoreHistory has been filtered on `e.score!=null&&isFinite(e.score)` for many
+     versions, so the codebase already knew an unreadable score was illegal. The
+     SAME field on STATE.baseline and every STATE.reassess[c] was never checked,
+     and `testCount` was never checked anywhere — so a row whose score is VALID
+     carried a junk testCount straight past that filter.
+
+     Measured AFTER a real boot repair, from a backup importData() accepts:
+     reassessIntroHTML(), finishedHTML() and scoreDeltaHTML() all injected, and
+     arbitrary script ran four times. The program-complete screen printed
+     `abc→abc` where the athlete's Core Score belongs.
+
+     Two guards mean two checks, so the boot repair and the render readers are
+     driven separately — the render half with NO normalizeState() behind it. */
+  {
+    const sc = await page.evaluate(async () => {
+      const o = {};
+      const host = document.createElement('div'); document.body.appendChild(host);
+      const PAY = '<img src=x onerror="window.__v416=(window.__v416||0)+1">';
+
+      // The detector really can see one, and it carries its OWN payload: an
+      // img's onerror fires a tick later, so a shared counter would be
+      // incremented after it was zeroed and "nothing ran" would fail on
+      // correct code.
+      host.innerHTML = '<img src=x onerror="window.__v416det=1">';
+      o.detector = !!host.querySelector('img[onerror]');
+      host.innerHTML = '';
+      await new Promise(r => setTimeout(r, 120));
+      o.detectorRan = !!window.__v416det;
+      window.__v416 = 0;
+
+      // ---- THE BOOT REPAIR, on all three records at once.
+      STATE.scoreHistory = [
+        { date: '2026-01-01', score: 70, level: 'Beginner', testCount: PAY },
+        { date: '2026-02-01', score: 80, level: 'Beginner', testCount: PAY }
+      ];
+      STATE.baseline = { date: '2026-01-01', score: PAY, level: 'Beginner', testCount: 10, maxes: { plank: 60 } };
+      STATE.reassess = { 1: { date: '2026-02-01', score: PAY, level: 'Beginner', testCount: 10, maxes: { plank: 70 } } };
+      normalizeState();
+      o.bootHistRows = STATE.scoreHistory.length;
+      o.bootHistTCGone = (STATE.scoreHistory[0] || {}).testCount === undefined;
+      o.bootBaseGone = (STATE.baseline || {}).score === undefined;
+      o.bootReGone = ((STATE.reassess || {})[1] || {}).score === undefined;
+      // THE ROW SURVIVES: its level and its maxes were really taken.
+      o.bootBaseKeptMaxes = ((STATE.baseline || {}).maxes || {}).plank === 60;
+      o.bootBaseKeptLevel = (STATE.baseline || {}).level === 'Beginner';
+
+      // ---- OUT OF BAND IS DROPPED, NOT CLAMPED. computeAssessment() is a
+      //      rounded average of terms each clamped 0..100, so 150 did not come
+      //      from an effort and "100/100" would be a result nobody earned.
+      STATE.baseline = { date: '2026-01-01', score: 150, level: 'Beginner', testCount: 10, maxes: {} };
+      normalizeState();
+      o.overBandGone = (STATE.baseline || {}).score === undefined;
+      STATE.baseline = { date: '2026-01-01', score: -5, level: 'Beginner', testCount: 10, maxes: {} };
+      normalizeState();
+      o.underBandGone = (STATE.baseline || {}).score === undefined;
+
+      // ---- FLOORS. Every real value survives, and both ends of the band do.
+      STATE.baseline = { date: '2026-01-01', score: 0, level: 'Beginner', testCount: 10, maxes: {} };
+      normalizeState();
+      o.zeroKept = (STATE.baseline || {}).score === 0;      // a measured zero is data
+      STATE.baseline = { date: '2026-01-01', score: 100, level: 'Advanced', testCount: 10, maxes: {} };
+      normalizeState();
+      o.hundredKept = (STATE.baseline || {}).score === 100;
+      // ABSENT IS A REAL STATE — skipBaseline() writes score:null on purpose.
+      STATE.baseline = { date: '2026-01-01', score: null, level: 'Beginner', estimated: true, testCount: 10, maxes: {} };
+      normalizeState();
+      o.nullKept = (STATE.baseline || {}).score === null;
+      // A numeric string is COERCED, not refused: the scoreHistory filter has
+      // always kept one (isFinite('70')), and two readers of one field must not
+      // disagree about it.
+      STATE.baseline = { date: '2026-01-01', score: '70', level: 'Beginner', testCount: '10', maxes: {} };
+      normalizeState();
+      o.numStrCoerced = (STATE.baseline || {}).score === 70 && (STATE.baseline || {}).testCount === 10;
+
+      // ---- A REAL THREE-ROW HISTORY IS BYTE-IDENTICAL.
+      const real = [
+        { date: '2026-01-01', score: 41, level: 'Beginner', testCount: 10 },
+        { date: '2026-02-15', score: 55, level: 'Intermediate', testCount: 10 },
+        { date: '2026-04-01', score: 71, level: 'Advanced', testCount: 10 }
+      ];
+      STATE.scoreHistory = JSON.parse(JSON.stringify(real));
+      normalizeState();
+      o.realHistUntouched = JSON.stringify(STATE.scoreHistory) === JSON.stringify(real);
+
+      // ---- THE RENDER HALF, with NO boot behind it. A cross-tab adopt replaces
+      //      STATE, and a guard that only exists at the boot is one guard.
+      const seed = () => {
+        STATE.scoreHistory = [
+          { date: '2026-01-01', score: 70, level: 'Beginner', testCount: PAY },
+          { date: '2026-02-01', score: 80, level: 'Beginner', testCount: PAY }
+        ];
+        STATE.baseline = { date: '2026-01-01', score: PAY, level: 'Beginner', testCount: 10, maxes: {} };
+        STATE.reassess = { 1: { date: '2026-02-01', score: PAY, level: 'Beginner', testCount: 10, maxes: {} } };
+      };
+      const inj = fn => {
+        seed(); host.innerHTML = '';
+        try { host.innerHTML = fn(); } catch (e) { o.renderErr = (o.renderErr || '') + String(e).slice(0, 50); }
+        return !!host.querySelector('img[onerror]');
+      };
+      o.reInjBase = inj(() => reassessIntroHTML(1));   // cycle 1 reads STATE.baseline
+      o.reInj     = inj(() => reassessIntroHTML(2));   // cycle 2 reads STATE.reassess[1]
+      o.finInj = inj(() => finishedHTML());
+      o.sdInj = inj(() => scoreDeltaHTML({ score: 90, level: 'Beginner' }));
+      o.trInj = inj(() => scoreTrendHTML());
+
+      // The Progress ▸ Strength pane, driven rather than called.
+      seed();
+      try { setProgressTab('strength'); go('progress'); } catch (e) { o.progErr = String(e).slice(0, 60); }
+      const pv = document.querySelector('#v-progress');
+      o.progInj = !!(pv && pv.querySelector('img[onerror]'));
+
+      await new Promise(r => setTimeout(r, 250));
+      o.ran = window.__v416;
+
+      // ---- FLOOR: the real numbers still PRINT after the fix.
+      STATE.scoreHistory = JSON.parse(JSON.stringify(real));
+      STATE.baseline = { date: '2026-01-01', score: 41, level: 'Beginner', testCount: 10, maxes: {} };
+      STATE.reassess = { 1: { date: '2026-02-01', score: 71, level: 'Advanced', testCount: 10, maxes: {} } };
+      /* A FIXED WINDOW IS NOT A SEARCH. The first version of these floors
+         sliced 200 characters and the score sits ~330 in, so they failed on
+         screens that were perfectly correct. Test the WHOLE string and keep a
+         short excerpt only for the failure detail. */
+      const strip = h => String(h).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      const re1 = strip(reassessIntroHTML(1));   // reads STATE.baseline, 41
+      const re2 = strip(reassessIntroHTML(2));   // reads STATE.reassess[1], 71
+      const fin = strip(finishedHTML());
+      const tr  = strip(scoreTrendHTML());
+      o.reHas1 = /Core Score 41\/100/.test(re1);
+      o.reHas2 = /Core Score 71\/100/.test(re2);
+      o.finHas = /41→71/.test(fin);
+      o.trHas  = /\+30 points/.test(tr);
+      o.reText1 = re1.slice(0, 120); o.reText2 = re2.slice(0, 120);
+      o.finText = fin.slice(0, 120); o.trendText = tr.slice(0, 120);
+      o.gain = scoreGain();
+      setProgressTab('strength'); go('progress');
+      o.progText = ((document.querySelector('#v-progress') || {}).textContent || '');
+      o.progHasScores = /41\/100/.test(o.progText) && /71\/100/.test(o.progText);
+
+      host.remove();
+      setProgressTab('summary');
+      return o;
+    });
+
+    t.ok('guard: the detector really can see an injected element', sc.detector, sc);
+    t.ok('guard: and a planted payload really does RUN, or "nothing ran" proves nothing', sc.detectorRan, sc);
+
+    t.ok('a junk testCount is gone from a scoreHistory row whose score is VALID', sc.bootHistTCGone, sc);
+    t.eq('and the row itself survives — it is a real measurement', sc.bootHistRows, 2, sc);
+    t.ok('a junk score is gone from the baseline', sc.bootBaseGone, sc);
+    t.ok('and from every reassessment', sc.bootReGone, sc);
+    t.ok('FLOOR: the baseline row survives, with its maxes', sc.bootBaseKeptMaxes, sc);
+    t.ok('FLOOR: and with its level', sc.bootBaseKeptLevel, sc);
+
+    t.ok('a score above the band the app can produce is DROPPED, not clamped', sc.overBandGone, sc);
+    t.ok('and one below it', sc.underBandGone, sc);
+    t.ok('FLOOR: a measured zero is data and survives', sc.zeroKept, sc);
+    t.ok('FLOOR: and so does a perfect 100', sc.hundredKept, sc);
+    t.ok('FLOOR: score:null is a real answer — skipBaseline writes it', sc.nullKept, sc);
+    t.ok('FLOOR: a numeric string is coerced, because the scoreHistory filter has always kept one', sc.numStrCoerced, sc);
+    t.ok('FLOOR: a real three-row history is byte-identical after the boot', sc.realHistUntouched, sc);
+
+    t.ok('with NO boot behind it, the re-test intro escapes the baseline score', !sc.reInjBase, sc);
+    t.ok('and the reassessment score — cycle 1 and cycle 2 read DIFFERENT records', !sc.reInj, sc);
+    t.ok('and so does the program-complete screen', !sc.finInj, sc);
+    t.ok('and so does the results screen that names the test count', !sc.sdInj, sc);
+    t.ok('and so does the score trend', !sc.trInj, sc);
+    t.ok('and so does the assessment history on Progress > Strength', !sc.progInj, sc);
+    t.eq('nothing ran', sc.ran, 0, sc);
+
+    t.ok('FLOOR: a real baseline still prints its score on the re-test intro', sc.reHas1, sc);
+    t.ok('FLOOR: and a real reassessment prints its own — the two cycles read DIFFERENT records', sc.reHas2, sc);
+    t.ok('FLOOR: and the program-complete screen still prints both', sc.finHas, sc);
+    t.ok('FLOOR: and the trend still reports a real gain', sc.trHas, sc);
+    t.eq('FLOOR: and scoreGain still answers', sc.gain, 30, sc);
+    t.ok('FLOOR: and the assessment history still prints every real score', sc.progHasScores, sc);
+  }
+
+  /* v416 — THE ONLY TWO-LEVEL COMPUTED WRITE IN THE APP.
+
+     v414 closed the four Object.assign doors into Object.prototype. A
+     single-level obj[k]=v changes only that object, so a one-level write is
+     never in the class; a TWO-level X[a][b]=v with a='__proto__' is, because
+     X['__proto__'] READS BACK Object.prototype — truthy, so an `if(!X[a])`
+     guard is satisfied and never creates a fresh map — and the next line writes
+     onto the prototype every object in the page inherits from.
+
+     setSwap() is the only one. NOT athlete-reachable today and saying so is the
+     honest framing: `ptr` is always STATE.progressPtr, which normalizeState()
+     repairs to an integer. The codebase already guards the exercise id on this
+     very line (v400) and never guarded the pointer.
+
+     The guards come first: without them the whole block is satisfied by a page
+     where the shape was never dangerous. */
+  {
+    const pp = await page.evaluate(() => {
+      const o = {};
+      // The shape really is dangerous, or nothing below means anything.
+      const probe = {};
+      o.protoReadsBack = probe['__proto__'] === Object.prototype;
+      o.guardSatisfied = !!probe['__proto__'];    // so `if(!X[k])X[k]={}` never fires
+
+      const before = Object.getPrototypeOf(STATE);
+      STATE.swaps = {};
+      try { setSwap('__proto__', 'x', 'pushup'); } catch (e) { o.err = String(e).slice(0, 60); }
+      o.protoIntact = Object.getPrototypeOf(STATE) === before;
+      o.noProtoKey = ({}).x === undefined;
+      o.noSwapWritten = Object.keys(STATE.swaps).length === 0;
+
+      // FLOOR: a real swap still lands, or the guard is a delete.
+      STATE.swaps = {};
+      setSwap(3, '__fin', 'pushup');
+      o.realSwap = ((STATE.swaps[3] || {}).__fin) === 'pushup';
+      STATE.swaps = {};
+      return o;
+    });
+
+    t.ok("guard: obj['__proto__'] really does read back Object.prototype", pp.protoReadsBack, pp);
+    t.ok('guard: and it is truthy, so an if(!map[k]) guard never creates a fresh map', pp.guardSatisfied, pp);
+    t.ok("a '__proto__' pointer cannot reach Object.prototype through setSwap", pp.protoIntact, pp);
+    t.ok('and no property is left on every object in the page', pp.noProtoKey, pp);
+    t.ok('and nothing is written', pp.noSwapWritten, pp);
+    t.ok('FLOOR: a real swap still lands', pp.realSwap, pp);
+  }
+
+  /* v416 — THE RENDER HALF OF FOUR REPAIRS THAT ONLY EVER HAD THE BOOT HALF.
+
+     Every value here is membership- or format-repaired at the boot — v356 for
+     an activity row's date, v374 for a photo's pose, the goal's own membership
+     test — and printed RAW at the render. Two guards mean two checks and each
+     of these had one. The photo comparison is the sharpest: it escapes the two
+     photo ids on the SAME LINE as the pose it does not.
+
+     Latent rather than reachable today, because every path into STATE calls
+     normalizeState(). The rule is that anything that can come out of a backup
+     is escaped at the render whatever the repair does. */
+  {
+    const es = await page.evaluate(async () => {
+      const o = {};
+      const host = document.createElement('div'); document.body.appendChild(host);
+      const PAY = '<img src=x onerror="window.__v416e=(window.__v416e||0)+1">';
+      host.innerHTML = '<img src=x onerror="window.__v416ed=1">';
+      o.detector = !!host.querySelector('img[onerror]');
+      host.innerHTML = ''; await new Promise(r => setTimeout(r, 120));
+      o.detectorRan = !!window.__v416ed;
+      window.__v416e = 0;
+
+      const T = todayISO();
+      const inj = fn => {
+        host.innerHTML = '';
+        try { host.innerHTML = fn(); } catch (e) { o.err = (o.err || '') + String(e).slice(0, 40); }
+        return !!host.querySelector('img[onerror]');
+      };
+
+      STATE.ruckLog = [{ date: PAY, mins: 30, dist: 5, wt: 20, unit: 'km' }];
+      o.actInj = inj(() => actHistoryHTML('ruck'));
+      STATE.skipLog = [{ date: PAY, mins: 10, rounds: 3 }];
+      o.skipInj = inj(() => skipHistoryHTML());
+
+      STATE.photos = [
+        { id: 'a1', date: '2026-01-01', pose: 'front' },
+        { id: 'a2', date: '2026-03-01', pose: 'front' }
+      ];
+      /* photoPair() picks the pose off the rows, so the payload goes on the
+         ROW rather than on the pair — the render is photosHTML(). */
+      STATE.photos = [
+        { id: 'a1', date: '2026-01-01', pose: PAY },
+        { id: 'a2', date: '2026-03-01', pose: PAY }
+      ];
+      o.pairInj = inj(() => photosHTML());
+
+      /* The Fuel card is inside renderFuel(), which writes its own view, so it
+         is driven rather than called. */
+      STATE.nutrition.goal = PAY;
+      STATE.nutrition.kcalTarget = 2200;
+      try { go('fuel'); } catch (e) { o.fuelErr = String(e).slice(0, 50); }
+      const fv = document.querySelector('#v-fuel');
+      o.goalInj = !!(fv && fv.querySelector('img[onerror]'));
+
+      await new Promise(r => setTimeout(r, 250));
+      o.ran = window.__v416e;
+
+      // FLOOR: the real values still print.
+      STATE.ruckLog = [{ date: T, mins: 30, dist: 5, wt: 20, unit: 'km' }];
+      STATE.skipLog = [{ date: T, mins: 10, rounds: 3 }];
+      o.actText = String(actHistoryHTML('ruck')).includes(T);
+      o.skipText = String(skipHistoryHTML()).includes(T);
+
+      STATE.ruckLog = []; STATE.skipLog = []; STATE.photos = [];
+      host.remove();
+      return o;
+    });
+
+    t.ok('guard: the detector really can see an injected element', es.detector, es);
+    t.ok('guard: and a planted payload really does RUN', es.detectorRan, es);
+    t.ok('the activity history escapes the row date', !es.actInj, es);
+    t.ok('and so does the skipping history', !es.skipInj, es);
+    t.ok('and the photo comparison escapes the pose, not only the two ids beside it', !es.pairInj, es);
+    t.ok('and the Fuel target card escapes the goal', !es.goalInj, es);
+    t.eq('nothing ran', es.ran, 0, es);
+    t.ok('FLOOR: a real activity date still prints', es.actText, es);
+    t.ok('FLOOR: and a real skipping date still prints', es.skipText, es);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
