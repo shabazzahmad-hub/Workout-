@@ -13709,6 +13709,28 @@ about lookups.
 `n>0`; an over-eager version would drop the first re-test and nothing else in
 the block would notice.
 
+### Swept clean, recorded as coverage: the round audited an hour after shipping
+
+Every round tonight, the best finding was in the round immediately before — so
+v419 was driven end to end as a RICH, entirely LEGITIMATE athlete: a full badge
+cabinet, three re-tests and a three-row score history.
+
+| | |
+|---|---|
+| all three cycle keys | kept |
+| all 15 real badge ids | kept, matching the expected count |
+| the score history | kept |
+| **a settled state re-normalised** | **byte-identical** |
+| the re-test badge | unlocked |
+| the strength series | 4 points, no `NaN`, no `undefined` |
+| the Badges tile | **15**, agreeing with the grid |
+| page errors | **0** |
+
+**Idempotence is the reading that matters most**, and it is the v390 rule: a
+repair that changes an already-settled state fires *"we repaired your data"* on
+every launch for every athlete, about nothing. A key repair is exactly the kind
+that can, because it walks a map the app itself wrote.
+
 ### Four detector mistakes in one session, all the same shape
 
 Every one of them reported a finding on CORRECT code, and every one was a
