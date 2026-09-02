@@ -1849,7 +1849,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='417';
+const APP_VERSION='418';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -16533,6 +16533,32 @@ function localISO(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(
    '2025-06-02T10:00' and '2025-02-29' — dropping it changes nothing, so no
    check can catch its removal. It is kept as a cheap early-out that avoids
    constructing a Date for obvious junk, and as intent. */
+/* ONE PLACE THE ROW RULE LIVES, so a fifth date field cannot be taught to the
+   live logs and forgotten for the archived ones. Every field here reaches
+   innerHTML or a date comparison, and both are wrong for a value that is not a
+   day: they are compared with === todayISO() everywhere else, so dropping one
+   reads as "not today" — the honest answer for a date the app cannot place. */
+function scrubLogRows(map){
+  if(!map||typeof map!=='object'||Array.isArray(map))return;
+  for(const k in map){
+    if(!map[k]||typeof map[k]!=='object'){delete map[k];continue;}
+    if(!map[k].ex||typeof map[k].ex!=='object')map[k].ex={};
+    ['date','completedAt','stoppedForPain','abandonedAt'].forEach(f=>{
+      if(map[k][f]!==undefined&&!isDateISO(map[k][f]))delete map[k][f];});
+    /* AND THE ITEM LIST, which this very scrub is what exposed. Creating the
+       `ex` map above UNMASKED a latent defect: totalVolume() reads
+       `l.ex&&l.ex[m.exId]`, so while `ex` was absent the && short-circuited
+       and a null entry in `items` was never dereferenced. With `ex` present it
+       is, and the lifetime counter throws on `m.exId` — measured, the fix's own
+       first version turned a silent bad row into a thrown one.
+       A session's item list is an array of objects or it is not an item list. */
+    if(map[k].items!==undefined){
+      map[k].items=Array.isArray(map[k].items)
+        ? map[k].items.filter(m=>m&&typeof m==='object')
+        : [];
+    }
+  }
+}
 function isDateISO(v){if(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(v))return false;
   const d=new Date(v+'T00:00:00');return !isNaN(d)&&localISO(d)===v;}
 function weekStartD(d){const x=new Date(d);const day=(x.getDay()+6)%7;x.setHours(0,0,0,0);x.setDate(x.getDate()-day);return x;}
@@ -16551,6 +16577,10 @@ function sessionsThisWeek(){const s=weekStartD(new Date());let n=0;
    beat its target now counts the extra. */
 function totalVolume(){let reps=0,hold=0,sets=0;allDonePairs().forEach(([p,l])=>{
   logItemsFor(p,l).forEach(m=>{
+    /* A cross-tab adopt replaces STATE with no boot behind it, so the scrub
+       above is one guard and this is the other. It was never reachable while
+       `ex` could be absent, because the && below short-circuited first. */
+    if(!m||typeof m!=='object')return;
     const e=l.ex&&l.ex[m.exId];const sd=e&&e.sets?e.sets.filter(Boolean).length:0;
     if(!sd)return;
     sets+=sd;
@@ -21938,10 +21968,23 @@ function normalizeState(){
        compared with === todayISO() everywhere else, so dropping a value that
        is not a date reads as "not today" — the honest answer for a date the
        app cannot place. */
-    const L=STATE.logs;for(const k in L){if(!L[k]||typeof L[k]!=='object')delete L[k];
-      else{if(!L[k].ex||typeof L[k].ex!=='object')L[k].ex={};
-        ['date','completedAt','stoppedForPain','abandonedAt'].forEach(f=>{
-          if(L[k][f]!==undefined&&!isDateISO(L[k][f]))delete L[k][f];});}}
+    scrubLogRows(STATE.logs);
+    /* AND EVERY ARCHIVED RUN, which is the twin this scrub never reached. The
+       runs repair above is a SPREAD, so it checks that r.logs is a keyed map
+       and never looks inside it — while allDoneLogs() deliberately folds those
+       rows in beside the live ones, because "lifetime readers must span
+       archived runs as well as the live one".
+       MEASURED: an athlete who last trained 200 days ago correctly reads a
+       streak of 0, and one junk-dated row inside an archived run makes it read
+       1. computeStreak() sorts its dates, a junk string sorts AFTER every ISO
+       one, and the guard that ENDS a stale streak is
+       `(now - new Date(dates[last]))/86400000 > 3` — NaN, and NaN > 3 is
+       FALSE. So the app claims a training streak for somebody who has not
+       trained in months. v415's calorieCheckDue() shape, failing OPEN.
+       Bounded at 1, because the counting loop's own gap is NaN too and breaks
+       immediately — small, and the class is not: this is the fifth repair this
+       session that stopped at the container. */
+    (Array.isArray(STATE.runs)?STATE.runs:[]).forEach(r=>{if(r&&r.logs)scrubLogRows(r.logs);});
     const W=STATE.weekFeel;for(const k in W){if(!Array.isArray(W[k]))W[k]=[];}
     /* The comment above claims a photo without date OR pose killed Progress,
        and this line only ever checked the date — a restored backup carrying

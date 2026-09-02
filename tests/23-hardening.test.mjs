@@ -9362,6 +9362,153 @@ export default async function () {
     t.eq('nothing ran from any of the three', vr.ran, 0, vr);
   }
 
+
+  /* v418 — THE ARCHIVED RUN IS THE TWIN NOBODY SCRUBBED.
+
+     normalizeState() repairs LIVE log rows: the container, the `ex` map, and
+     (v415) the four date fields with isDateISO(). The archived-runs repair is
+     `.map(r=>({...r,sessions:…}))` — a SPREAD. It checks that r.logs is a keyed
+     map and never looks inside it, while allDoneLogs() deliberately folds those
+     rows in beside the live ones because "lifetime readers must span archived
+     runs as well as the live one".
+
+     MEASURED: an athlete who last trained 200 days ago correctly reads a streak
+     of 0, and ONE junk-dated row inside an archived run makes it read 1. A junk
+     string sorts AFTER every ISO date, so it becomes dates[last], and the guard
+     that ENDS a stale streak is (now - new Date(that))/86400000 > 3 — NaN, and
+     NaN > 3 is FALSE. The app claimed a training streak for somebody who had
+     not trained in months. v415's calorieCheckDue() shape, failing OPEN.
+
+     Bounded at 1, because the counting loop's own gap is NaN too and breaks
+     immediately. Small — and the class is not: this is the fifth repair in this
+     session that stopped at the container.
+
+     AND THE FIX EXPOSED A LATENT DEFECT OF ITS OWN, which is why the item guard
+     is here. Creating the `ex` map unmasked it: totalVolume() reads
+     `l.ex&&l.ex[m.exId]`, so while `ex` was ABSENT the && short-circuited and a
+     null entry in `items` was never dereferenced. With `ex` present it is, and
+     the lifetime counter throws. Proved by running the same probe on the
+     pre-v418 file, which does not throw. */
+  {
+    const av = await page.evaluate(async () => {
+      const o = {};
+      const ago = n => { const d = new Date(); d.setDate(d.getDate() - n); return localISO(d); };
+      const base = () => { STATE.logs = {}; STATE.quickLog = {}; };
+
+      /* GUARDS. The arithmetic this whole block rests on has to be real, or
+         every assertion below passes on a page where the trap does not exist. */
+      o.sortsLast = ['2026-01-01', 'not-a-date'].sort()[1] === 'not-a-date';
+      o.nanCompare = ((new Date(todayISO()) - new Date('not-a-date')) / 86400000 > 3) === false;
+
+      const seedOld = extra => {
+        base();
+        const rows = {};
+        for (let i = 0; i < 5; i++) rows[i] = { done: true, completedAt: ago(200 + i), ex: {}, items: [] };
+        if (extra) rows[99] = extra;
+        STATE.runs = [{ sessions: 5, logs: rows }];
+        normalizeState();
+      };
+
+      /* GUARD: the clean case really is a stale run, so a 0 below means the
+         streak ENDED rather than never started. */
+      seedOld(null);
+      o.streakCleanOld = computeStreak();
+      o.cleanRowsKept = Object.keys(STATE.runs[0].logs).length === 5;
+
+      seedOld({ done: true, completedAt: 'not-a-date', ex: {}, items: [] });
+      o.streakWithJunk = computeStreak();
+      o.junkDateGone = STATE.runs[0].logs[99].completedAt === undefined;
+      /* THE ROW SURVIVES — its sets and items were really done; only the
+         unreadable date goes. */
+      o.junkRowKept = !!STATE.runs[0].logs[99];
+
+      /* FLOOR: a CURRENT archived streak is untouched. A scrub that dropped
+         every archived row satisfies every assertion above and destroys the
+         lifetime history the archive exists to keep. */
+      base();
+      const cur = {};
+      for (let i = 0; i < 4; i++) cur[i] = { done: true, completedAt: ago(3 - i), ex: {}, items: [] };
+      STATE.runs = [{ sessions: 4, logs: cur }];
+      normalizeState();
+      o.streakCurrent = computeStreak();
+      o.currentRowsKept = Object.keys(STATE.runs[0].logs).length === 4;
+      o.currentDatesKept = STATE.runs[0].logs[0].completedAt === ago(3);
+
+      /* THE LIFETIME TOTALS STILL COUNT ARCHIVED WORK, which is the whole
+         reason allDoneLogs() folds them in. totalVolume() counts e.sets as an
+         ARRAY of MARKED sets — a faked `sets:3` reads as zero work, which is
+         how a control comes back {0,0,0} and makes every comparison two zeros
+         agreeing. */
+      base();
+      STATE.runs = [{ sessions: 1, logs: { 0: { done: true, completedAt: ago(1),
+        ex: { pushup: { sets: [true, true, true] } },
+        items: [{ exId: 'pushup', unit: 'reps', target: 10, sets: 3 }] } } }];
+      normalizeState();
+      const vol = totalVolume();
+      o.archivedVolReps = vol.reps;
+      o.archivedVolSets = vol.sets;
+
+      /* THE ITEM GUARD, at the boot and at the reader. A null entry in `items`
+         was unreachable while `ex` could be absent; the scrub made it
+         reachable, so it needs both. */
+      base();
+      STATE.runs = [{ sessions: 1, logs: { 0: { done: true, completedAt: ago(1),
+        ex: {}, items: [null, 'x', 42, { exId: 'pushup', unit: 'reps', target: 10 }] } } }];
+      normalizeState();
+      o.itemsCleaned = Array.isArray(STATE.runs[0].logs[0].items)
+        && STATE.runs[0].logs[0].items.length === 1;
+      try { totalVolume(); o.itemsThrew = false; } catch (e) { o.itemsThrew = true; o.itemsErr = String(e).slice(0, 60); }
+
+      /* And the READER on its own, with NO boot behind it — a cross-tab adopt
+         replaces STATE and a guard that exists only at the boot is one guard. */
+      base();
+      STATE.runs = [{ sessions: 1, logs: { 0: { done: true, completedAt: ago(1), ex: {}, items: [null] } } }];
+      // deliberately NO normalizeState()
+      try { totalVolume(); o.readerThrew = false; } catch (e) { o.readerThrew = true; o.readerErr = String(e).slice(0, 60); }
+
+      /* A row that is not an object at all is dropped, exactly as a live one is. */
+      base();
+      STATE.runs = [{ sessions: 2, logs: { 0: null, 1: 'x', 2: { done: true, completedAt: ago(1), ex: {}, items: [] } } }];
+      normalizeState();
+      o.badRowsDropped = Object.keys(STATE.runs[0].logs).length === 1;
+
+      /* ONE PLACE THE RULE LIVES: the live logs go through the same scrub, so a
+         fifth date field cannot be taught to one and forgotten for the other. */
+      base();
+      STATE.logs = { 0: { done: true, completedAt: 'not-a-date', date: 'not-a-date', ex: {}, items: [] } };
+      STATE.runs = [];
+      normalizeState();
+      o.liveStillScrubbed = (STATE.logs[0] || {}).completedAt === undefined
+        && (STATE.logs[0] || {}).date === undefined;
+
+      /* Re-seed: a block that BREAKS what a later one relies on puts it back. */
+      base(); STATE.runs = [];
+      normalizeState(); go('today');
+      return o;
+    });
+
+    t.ok('guard: a junk date really does sort AFTER every ISO one', av.sortsLast, av);
+    t.ok('guard: and NaN > 3 really is false, which is why the streak did not end', av.nanCompare, av);
+    t.ok('guard: the clean stale run really reads 0, so a 0 below means it ENDED', av.streakCleanOld === 0, av);
+    t.ok('guard: and its five archived rows really survived the boot', av.cleanRowsKept, av);
+
+    t.eq('a junk date inside an ARCHIVED run no longer props up a dead streak', av.streakWithJunk, 0, av);
+    t.ok('the unreadable date is gone from the archived row', av.junkDateGone, av);
+    t.ok('FLOOR: and the ROW survives — its sets and items were really done', av.junkRowKept, av);
+
+    t.ok('FLOOR: a CURRENT archived streak still counts', av.streakCurrent >= 4, av);
+    t.ok('FLOOR: and every archived row survives', av.currentRowsKept, av);
+    t.ok('FLOOR: with its real date untouched', av.currentDatesKept, av);
+    t.eq('FLOOR: archived work still reaches the lifetime totals — reps', av.archivedVolReps, 30, av);
+    t.eq('FLOOR: and sets', av.archivedVolSets, 3, av);
+
+    t.ok('a junk entry in an archived items list is dropped at the boot', av.itemsCleaned, av);
+    t.ok('so the lifetime counter does not throw', !av.itemsThrew, av);
+    t.ok('and with NO boot behind it, the reader does not throw either', !av.readerThrew, av);
+    t.ok('an archived row that is not an object is dropped, as a live one is', av.badRowsDropped, av);
+    t.ok('and the LIVE logs still go through the same scrub', av.liveStillScrubbed, av);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

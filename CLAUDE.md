@@ -13586,6 +13586,63 @@ a loose pattern in one round after `/true/` matched the word *truest*. Anchored
 on `\b`, with a guard asserting the detector matches a real `0 reps` and not a
 real `40 reps`.
 
+## The archived run was the twin nobody scrubbed (v418)
+
+`normalizeState()` repairs LIVE log rows — the container, the `ex` map, and
+(v415) the four date fields with `isDateISO()`. The archived-runs repair is
+
+```js
+.map(r=>({...r,sessions:Math.max(0,Math.floor(+r.sessions)||0)}))
+```
+
+a **SPREAD**. It checks that `r.logs` is a keyed map and never looks inside it,
+while `allDoneLogs()` deliberately folds those rows in beside the live ones —
+its own comment says *"lifetime readers must span archived runs as well as the
+live one."*
+
+Measured, on an athlete who last trained 200 days ago:
+
+| | streak |
+|---|---|
+| a clean archived run | **0** — correct, it ended |
+| the same run plus ONE junk-dated row | **1** |
+
+A junk string sorts **after** every ISO date, so it becomes `dates[last]`, and
+the guard that ends a stale streak is
+`(now - new Date(dates[last]))/86400000 > 3` — `NaN`, and **`NaN > 3` is
+FALSE**. So the app claimed a training streak for somebody who had not trained
+in months. v415's `calorieCheckDue()` shape, failing OPEN.
+
+**Bounded at 1**, because the counting loop's own gap is `NaN` too and breaks
+immediately. Small — and the class is not: this was the fifth repair in one
+session that stopped at the container. `scrubLogRows()` is now the one place
+the row rule lives, asked by the live logs and by every archived run, so a
+fifth date field cannot be taught to one and forgotten for the other.
+
+### And the fix exposed a latent defect, which is how it should be found
+
+The first version of the scrub made a lifetime counter **throw** on a shape
+that had been silent. `totalVolume()` reads `l.ex&&l.ex[m.exId]`, so while `ex`
+was **absent** the `&&` short-circuited and a `null` entry in `items` was never
+dereferenced. Creating the `ex` map made it reachable.
+
+**It was proved rather than reasoned**: the same probe run against the pre-v418
+file reports `throws: []`, and against the fix reports one. So the fix caused
+it, and the honest answer is to fix the thing it exposed rather than to stop
+creating the map — the scrub cleans `items`, and the reader guards too, because
+a cross-tab adopt replaces `STATE` with no boot behind it.
+
+### Two controls that would have proved nothing
+
+- **`totalVolume()` counts `e.sets` as an ARRAY of MARKED sets**, so a faked
+  `sets:3` reads as zero work. A junk-key sweep first came back with every case
+  matching a control of `{reps:0,hold:0,sets:0}` — two zeros agreeing. With a
+  real control (30 reps, 3 sets) the sweep is meaningful, and its answer is that
+  **junk KEYS on an archived run are inert**: every one gives the same total.
+- The one apparent exception, a `__proto__` key reading zero, was the probe:
+  `rows['__proto__']=obj` **reassigns a prototype** rather than creating a key,
+  so `Object.keys` is empty. Not an app defect.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
