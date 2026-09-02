@@ -8437,9 +8437,45 @@ export default async function () {
       /* GUARD: the store really is open on this page. With idb null every case
          below takes the no-store branch and the block proves nothing. */
       r.guardIdbOpen = !!idb;
+
+      /* WAIT FOR THE WRITE, NEVER FOR A DURATION — and drain what an earlier
+         block left in flight.
+
+         save() debounces its idbPut() by 120ms and picks the wording inside
+         the promise callback, reading _lsOk and _lsWarned at RESOLVE time. So
+         a save() from an EARLIER block whose debounce has already fired, and
+         whose write is still in flight, resolves inside the window this block
+         is measuring: it sees the broken localStorage we just installed, has
+         ok:true because its own write went to a healthy store, prints the
+         HEALTHY sentence into `seen`, and sets _lsWarned so our own callback
+         returns early. Measured by sweeping the offset in 1ms steps, that is a
+         2ms window per run at 120-121ms — which is what failed twice and then
+         passed on a re-run, and a racing check gets fixed rather than re-run.
+
+         So idbPut is wrapped to count completions, every case waits for ITS
+         OWN write, and one settle runs first, with the store healthy, so a
+         stale callback cannot toast at all. */
+      let started = 0, lastPut = Promise.resolve();
+      const realPut = idbPut;
+      idbPut = (k, v) => { started++; lastPut = realPut(k, v); return lastPut; };
+      /* Waiting for ANY write is not enough — the stale one increments the
+         counter too, so a counter-only wait returns on somebody else's write
+         and leaves our own in flight. save() shares ONE debounce timer and
+         clears it, so any stale put has already STARTED before our save() call:
+         the first put to start AFTER it is unambiguously ours. Chaining that
+         through every case means nothing is ever in flight when the next case
+         swaps the stubs. */
+      const settle = async () => {
+        const b = started; save();
+        for (let i = 0; i < 400 && started === b; i++) await new Promise(z => setTimeout(z, 10));
+        try { await lastPut; } catch (e) {}
+        await new Promise(z => setTimeout(z, 40));   // let save()'s own .then run after ours
+      };
+      await settle();   // and drain what an earlier block left, with the store healthy
+
       const run = async () => {
         _lsWarned = false; _lsOk = true; seen.length = 0;
-        save(); await new Promise(z => setTimeout(z, 500));
+        await settle();
         return seen.slice();
       };
       const breakLs = () => { localStorage.setItem = () => { throw new Error('Quota'); }; };
@@ -8453,11 +8489,12 @@ export default async function () {
 
       breakLs(); breakIdb();
       _lsWarned = false; _lsOk = true; seen.length = 0;
-      save(); await new Promise(z => setTimeout(z, 500));
-      save(); await new Promise(z => setTimeout(z, 500));
+      await settle();
+      await settle();
       r.warnCount = seen.length;
 
       localStorage.setItem = realSet; idb.transaction = realTx;
+      idbPut = realPut;
       window.toast = realToast;
       return r;
     });
@@ -8484,6 +8521,214 @@ export default async function () {
       st.floorMirrorOnly.length, 0, st.floorMirrorOnly);
 
     t.eq('it warns once a session, not on every save', st.warnCount, 1, st);
+  }
+
+  /* 24. A ROW IS REBUILT FROM A FIELD LIST, NOT SPREAD (v415).
+
+     `.map(x=>({...x, mins:+x.mins||0}))` fixed the one field it named and
+     carried every other one through untouched. actHistoryHTML() and
+     skipHistoryHTML() print `dist`, `unit`, `wt`, `secs` and `rounds`
+     straight into innerHTML, and the session log's `completedAt`/`date` go
+     the same way through sessionHistoryHTML() and openSessionDetail().
+
+     Measured from an imported backup, before the fix: the junk survived the
+     boot, rendered as a real <img> element on all three surfaces, and RAN.
+     holdLog and grindLog already rebuild from a field list — one of a pair
+     guarded and its twin not.
+
+     The detector is proven first: without a planted case that really does
+     inject, "no injection" is a statement about the selector. */
+  {
+    const inj = await page.evaluate(async () => {
+      const o = {}; const T = todayISO();
+      const host = document.createElement('div'); document.body.appendChild(host);
+      const PAY = '<img src=x onerror="window.__v415=(window.__v415||0)+1">';
+      const mount = h => { host.innerHTML = h; };
+
+      // The detector really can see one. It carries its OWN payload: an
+      // img's onerror fires a tick later, so the shared counter would be
+      // incremented by the planted element after it was zeroed and the
+      // "nothing ran" assertion would fail on correct code.
+      mount('<img src=x onerror="window.__v415det=1">');
+      o.detector = !!host.querySelector('img[onerror]');
+      mount('');
+      await new Promise(r => setTimeout(r, 100));
+      o.detectorRan = !!window.__v415det;
+
+      window.__v415 = 0;
+      STATE.ruckLog = [{ date: T, mins: 30, dist: PAY, wt: PAY, unit: PAY }];
+      STATE.gripLog = [{ date: T, mins: 1, secs: PAY }];
+      STATE.skipLog = [{ date: T, mins: 10, rounds: PAY }];
+      STATE.logs = { 3: { done: true, ex: {}, completedAt: PAY, date: PAY, items: [] } };
+      normalizeState();
+
+      o.ruckClean = !/onerror/.test(JSON.stringify(STATE.ruckLog[0] || {}));
+      o.gripClean = !/onerror/.test(JSON.stringify(STATE.gripLog[0] || {}));
+      o.skipClean = !/onerror/.test(JSON.stringify(STATE.skipLog[0] || {}));
+      o.logClean  = !/onerror/.test(JSON.stringify(STATE.logs[3] || {}));
+
+      mount(actHistoryHTML('ruck')); o.actInj  = !!host.querySelector('img[onerror]');
+      mount(actHistoryHTML('grip')); o.gripInj = !!host.querySelector('img[onerror]');
+      mount(skipHistoryHTML());      o.skipInj = !!host.querySelector('img[onerror]');
+      mount(sessionHistoryHTML());   o.histInj = !!host.querySelector('img[onerror]');
+
+      await new Promise(r => setTimeout(r, 150));
+      o.ran = window.__v415;
+
+      // ---- FLOORS: everything the athlete really logged survives and prints
+      const ago = n => { const d = new Date(); d.setDate(d.getDate() - n); return localISO(d); };
+      STATE.ruckLog = [{ date: T, mins: 45, dist: 5.5, wt: 20, unit: 'km', at: 1700000000000 }];
+      STATE.gripLog = [{ date: T, mins: 1, secs: 62 }];
+      STATE.boxLog  = [{ date: T, mins: 12, rounds: 8 }];
+      STATE.skipLog = [{ date: T, mins: 10, rounds: 6 }];
+      STATE.logs = { 3: { done: true, ex: {}, completedAt: ago(2), date: ago(2), items: [] } };
+      normalizeState();
+      const rk = STATE.ruckLog[0] || {}, gp = STATE.gripLog[0] || {},
+            bx = STATE.boxLog[0] || {}, sk = STATE.skipLog[0] || {};
+      o.keptDist = rk.dist; o.keptWt = rk.wt; o.keptUnit = rk.unit;
+      o.keptAt = rk.at; o.keptMins = rk.mins;
+      o.keptSecs = gp.secs; o.keptRoundsBox = bx.rounds; o.keptRoundsSkip = sk.rounds;
+      o.keptLogDate = (STATE.logs[3] || {}).completedAt;
+      o.showsDist  = /5\.5 km/.test(actHistoryHTML('ruck'));
+      o.showsWt    = /20 load/.test(actHistoryHTML('ruck'));
+      o.showsSecs  = /best 62s/.test(actHistoryHTML('grip'));
+      o.showsRounds= /6 rounds/.test(skipHistoryHTML());
+      o.showsDate  = sessionHistoryHTML().indexOf(ago(2)) > -1;
+      host.remove();
+      return o;
+    });
+
+    t.ok('guard: the injection detector really can see a planted element', inj.detector, inj);
+    t.ok('guard: and a planted payload really does RUN, so "nothing ran" means something',
+      inj.detectorRan, inj);
+
+    t.ok('a junk dist/wt/unit is gone from a ruck row after the boot', inj.ruckClean, inj);
+    t.ok('a junk secs is gone from a grip row', inj.gripClean, inj);
+    t.ok('a junk rounds is gone from a skipping row', inj.skipClean, inj);
+    t.ok('a junk completedAt is gone from a session log', inj.logClean, inj);
+
+    t.ok('and nothing is injected into the ruck history', !inj.actInj, inj);
+    t.ok('nor the grip history', !inj.gripInj, inj);
+    t.ok('nor the skipping history', !inj.skipInj, inj);
+    t.ok('nor the workout history', !inj.histInj, inj);
+    t.eq('and nothing ran', inj.ran, 0, inj);
+
+    t.eq('FLOOR: a real ruck keeps its distance', inj.keptDist, 5.5, inj);
+    t.eq('FLOOR: and its load', inj.keptWt, 20, inj);
+    t.eq('FLOOR: and the unit tag that records what was typed', inj.keptUnit, 'km', inj);
+    t.eq('FLOOR: and the timestamp', inj.keptAt, 1700000000000, inj);
+    t.eq('FLOOR: and the minutes', inj.keptMins, 45, inj);
+    t.eq('FLOOR: a real hang keeps its seconds', inj.keptSecs, 62, inj);
+    t.eq('FLOOR: a real box session keeps its rounds', inj.keptRoundsBox, 8, inj);
+    t.eq('FLOOR: a real skipping session keeps its rounds', inj.keptRoundsSkip, 6, inj);
+    t.ok('FLOOR: a real session log keeps its date', /^\d{4}-\d{2}-\d{2}$/.test(inj.keptLogDate || ''), inj);
+
+    t.ok('FLOOR: and the distance still prints', inj.showsDist, inj);
+    t.ok('FLOOR: and the load still prints', inj.showsWt, inj);
+    t.ok('FLOOR: and the hang still prints', inj.showsSecs, inj);
+    t.ok('FLOOR: and the rounds still print', inj.showsRounds, inj);
+    t.ok('FLOOR: and the workout history still prints the date', inj.showsDate, inj);
+
+    /* TWO GUARDS MEAN TWO CHECKS, and the block above could not see the second
+       one. It calls normalizeState() before rendering, so the boot repair has
+       already scrubbed the junk and the ESCAPING is invisible — a mutant that
+       drops _ve() from either render walked straight through it. The escape is
+       the shape this file records again and again: a guard is only visible when
+       the value beside it cannot supply the answer.
+
+       The no-boot door is real rather than hypothetical. A cross-tab adopt
+       replaces STATE wholesale with no boot behind it, and both renderers read
+       live STATE. So this block seeds the junk and renders with NO repair run. */
+    const raw = await page.evaluate(async () => {
+      const o = {};
+      const host = document.createElement('div'); document.body.appendChild(host);
+      const PAY = '<img src=x onerror="window.__v415raw=(window.__v415raw||0)+1">';
+      window.__v415raw = 0;
+      STATE.logs = { 3: { done: true, ex: {}, completedAt: PAY, date: PAY, items: [] } };
+      // deliberately NO normalizeState() — this is the render guard on its own
+      host.innerHTML = sessionHistoryHTML();
+      o.histInj = !!host.querySelector('img[onerror]');
+      try { openSessionDetail(3); } catch (e) { o.sheetErr = String(e).slice(0, 80); }
+      const sheet = document.querySelector('#sheet');
+      o.sheetInj = !!(sheet && sheet.querySelector('img[onerror]'));
+      o.sheetOpened = !!(sheet && sheet.textContent && sheet.textContent.length > 30);
+      try { closeSheet(); } catch (e) {}
+      await new Promise(r => setTimeout(r, 150));
+      o.ran = window.__v415raw;
+      o.stillJunk = /onerror/.test(String((STATE.logs[3] || {}).completedAt));
+      host.remove();
+      return o;
+    });
+
+    t.ok('guard: the junk really is still on the row — no repair has run', raw.stillJunk, raw);
+    t.ok('guard: and the session detail sheet really opened', raw.sheetOpened, raw);
+    t.ok('with NO boot behind it, the workout history escapes the date', !raw.histInj, raw);
+    t.ok('and so does the session detail sheet', !raw.sheetInj, raw);
+    t.eq('so nothing runs from an unrepaired log row', raw.ran, 0, raw);
+  }
+
+  /* 25. A JUNK DATE THAT SWITCHES A GUARDRAIL OFF (v415).
+
+     calorieCheckDue() does (Date.now()-Date.parse(v))/86400000>=21, and
+     Date.parse('not-a-date') is NaN. NaN>=21 is FALSE, so the function
+     answered "not due" for ever and the twelve-week diet guardrail was
+     silently switched off. Fail-OPEN, and nothing on screen said so.
+
+     The repair asks isDateISO() — the app's one date predicate — and the
+     floors are what stop it becoming "always ask": a stamp five days old is
+     still NOT due, and one thirty days old IS. */
+  {
+    const gr = await page.evaluate(() => {
+      const o = {};
+      const ago = n => { const d = new Date(); d.setDate(d.getDate() - n); return localISO(d); };
+      o.parseIsNaN = isNaN(Date.parse('not-a-date'));          // guard: the sum really is NaN
+      o.nanCompare = ((Date.now() - Date.parse('not-a-date')) / 86400000 >= 21) === false;
+
+      nut().kcalAdjAt = 'not-a-date'; normalizeState();
+      o.junkGone = nut().kcalAdjAt === undefined;
+      o.dueWithJunk = calorieCheckDue();
+
+      nut().kcalAdjAt = '2025-02-29'; normalizeState();        // a pattern-shaped non-day
+      o.fakeDayGone = nut().kcalAdjAt === undefined;
+
+      nut().kcalAdjAt = ago(5);  normalizeState(); o.stampAfter5 = nut().kcalAdjAt; o.due5 = calorieCheckDue();
+      nut().kcalAdjAt = ago(30); normalizeState(); o.due30 = calorieCheckDue();
+
+      STATE._lastExport = 'not-a-date'; normalizeState(); o.expJunkGone = STATE._lastExport === undefined;
+
+      /* THE DISCRIMINATING CASE, and the reason the first version of this check
+         could not fail. 'not-a-date' is refused by BOTH predicates, so seeding
+         only that made the weaker test isNaN(Date.parse(x)) an EQUIVALENT
+         mutant. What tells them apart is a string Date.parse ACCEPTS and
+         isDateISO() refuses — '2025-02-29' is not a day in 2025, and
+         Date.parse rolls it forward to March 1 rather than rejecting it.
+         The kcalAdjAt half twelve lines up already had this case and its twin
+         did not: one of a pair guarded and its twin not, in my own checks. */
+      o.expFakeParses = !isNaN(Date.parse('2025-02-29'));
+      STATE._lastExport = '2025-02-29'; normalizeState(); o.expFakeGone = STATE._lastExport === undefined;
+
+      STATE._lastExport = ago(9);       normalizeState(); o.expKept = STATE._lastExport === ago(9);
+      return o;
+    });
+
+    t.ok('guard: Date.parse of a junk stamp really is NaN', gr.parseIsNaN, gr);
+    t.ok('guard: and NaN >= 21 really is false, which is why it read as not due', gr.nanCompare, gr);
+
+    t.ok('a junk kcalAdjAt is gone after the boot', gr.junkGone, gr);
+    t.ok('and the guardrail asks again rather than never', gr.dueWithJunk, gr);
+    t.ok('a date-shaped non-day is gone too — the pattern is not the predicate', gr.fakeDayGone, gr);
+
+    t.ok('FLOOR: a real stamp five days old survives the boot',
+      /^\d{4}-\d{2}-\d{2}$/.test(gr.stampAfter5 || ''), gr);
+    t.ok('FLOOR: and is NOT due — the window is three weeks', gr.due5 === false, gr);
+    t.ok('FLOOR: a real stamp thirty days old IS due', gr.due30 === true, gr);
+
+    t.ok('a junk _lastExport is gone', gr.expJunkGone, gr);
+    t.ok('guard: Date.parse really does ACCEPT the date-shaped non-day, or the case below proves nothing',
+      gr.expFakeParses, gr);
+    t.ok('and a date-shaped non-day is gone from _lastExport too — the pattern is not the predicate',
+      gr.expFakeGone, gr);
+    t.ok('FLOOR: and a real one survives', gr.expKept, gr);
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
