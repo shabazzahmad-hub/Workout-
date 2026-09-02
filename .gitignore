@@ -32,3 +32,20 @@ package-lock.json
 # Screenshots a probe takes while investigating are the same kind of scratch.
 /*probe*.png
 /probe*.jpg
+
+# Mutation-testing working copies.
+#
+# Mutation testing needs a SECOND, complete copy of the app: the driver seeds a
+# defect into it, runs the suite against it, and restores from a clean snapshot
+# before the next seed. It has to be a full copy because the precache tiers are
+# asset-existence-checked at test time, so a partial one fails on the harness
+# rather than on the mutant — and it is ~22 MB of duplicated photographs, which
+# is exactly what must never enter a commit.
+#
+# Written against the CLASS rather than the one directory that prompted it
+# (mut-y/), because that is the mistake this file has already recorded twice
+# for probe scripts: a rule written for one instance leaves the next name
+# uncovered. Anything starting `mut` is a mutation copy.
+/mut*/
+/mut*.py
+/mut*.log

@@ -8145,13 +8145,35 @@ export default async function () {
          reports a failure rather than becoming an uncaught page error — the
          toBlob callback runs after its caller's try/catch has returned — is to
          break it here. */
+      /* WAIT FOR THE ENCODE, NEVER FOR A DURATION — the v414 lesson, on the
+         one card case that was left on a fixed sleep. The toast is set INSIDE
+         the toBlob callback, and toBlob's cost is the machine's: on a slower
+         CI runner 500 ms was not enough and the check read an EMPTY toast on
+         correct code (measured on main, dlBrokenToast:""). Awaiting the encode
+         makes it deterministic; the short tail only covers the microtask chain
+         after the callback. */
       const realCOU = URL.createObjectURL;
       URL.createObjectURL = () => { throw new Error('no room'); };
       const tEl = document.getElementById('toast'); tEl.textContent = '';
       navigator.canShare = undefined;
+      let dlPending = [], dlEncodes = 0;
+      const realTB2 = HTMLCanvasElement.prototype.toBlob;
+      HTMLCanvasElement.prototype.toBlob = function (cb, ...rest) {
+        let done; dlPending.push(new Promise(r => { done = r; }));
+        return realTB2.call(this, b => { dlEncodes++; try { cb(b); } finally { done(); } }, ...rest);
+      };
       try { shareCard('T', 's', ['a']); } catch (e) { out.dlThrewSync = String(e); }
-      await wait(500);
+      for (let i = 0; i < 20 && dlPending.length; i++) {
+        const q = dlPending; dlPending = []; await Promise.all(q);
+        await wait(0);
+      }
+      await wait(60);
+      HTMLCanvasElement.prototype.toBlob = realTB2;
       out.dlBrokenToast = (tEl.textContent || '').trim();
+      /* GUARD: the encode really did run, or "the toast is empty" would be a
+         statement about a card that was never drawn rather than about the
+         guard this case exists for. */
+      out.dlEncodes = dlEncodes;
       URL.createObjectURL = realCOU;
 
       /* And a detached opener must not throw or strand the athlete. */
@@ -8215,6 +8237,8 @@ export default async function () {
       a11y.focusAfterRepaint, 'zzOpener', a11y);
 
     t.eq('guard: a card whose download throws does not throw synchronously', a11y.dlThrewSync, undefined, a11y);
+    t.ok('guard: the card really was drawn, so an empty toast would be the app',
+      a11y.dlEncodes >= 1, a11y);
     t.ok('a card that could not be written says so rather than dying silently',
       /Could not save the card/.test(a11y.dlBrokenToast), a11y);
 
@@ -9448,7 +9472,7 @@ export default async function () {
       base();
       STATE.runs = [{ sessions: 1, logs: { 0: { done: true, completedAt: ago(1),
         ex: { pushup: { sets: [true, true, true] } },
-        items: [{ exId: 'pushup', unit: 'reps', target: 10, sets: 3 }] } } }];
+        items: [{ exId: 'pushup', unit: 'reps', target: 10, sets: 3, rest: 45 }] } } }];
       normalizeState();
       const vol = totalVolume();
       o.archivedVolReps = vol.reps;
@@ -9459,7 +9483,7 @@ export default async function () {
          reachable, so it needs both. */
       base();
       STATE.runs = [{ sessions: 1, logs: { 0: { done: true, completedAt: ago(1),
-        ex: {}, items: [null, 'x', 42, { exId: 'pushup', unit: 'reps', target: 10 }] } } }];
+        ex: {}, items: [null, 'x', 42, { exId: 'pushup', unit: 'reps', target: 10, sets: 3, rest: 45 }] } } }];
       normalizeState();
       {const _r = (((STATE.runs || [])[0] || {}).logs || {})[0];
        o.itemsRowKept = !!_r;
@@ -9672,6 +9696,217 @@ export default async function () {
       kc.tileWithJunk, '1', kc);
     t.ok('FLOOR: a real badge and its date survive', kc.achRealKept, kc);
     t.ok('FLOOR: and EVERY real badge id survives, so the repair is not a wipe', kc.allRealKept, kc);
+  }
+
+  /* ---------- 20. a stored session item list, field by field -------------
+     v418 scrubbed the log ROW and stopped at the container, so `items[]`
+     carried whatever a backup held — and `logItemsFor()` hands the STORED list
+     straight to sessionStats(), totalVolume(), totalTUTSplit() and
+     openSessionDetail().
+
+     Measured on the real app before the fix: `psupport` — an exercise that
+     really shipped and was really dropped one version later, so it is on real
+     phones — made openSessionDetail() throw on `EX[m.exId].name`, and tapping
+     a row of your own workout history did nothing at all. `constructor` is
+     truthy on an object literal, so an inherited key rendered a movement
+     called "Object". A string target reached innerHTML and arbitrary script
+     RAN, and the same string printed "~NaN MINUTES" and "3 x abc reps".
+
+     Two guards mean two checks, so the reader is driven with NO boot behind
+     it — that is the cross-tab-adopt door, which has no normalizeState(). */
+  {
+    const si = await page.evaluate(() => {
+      const o = {}; const P = 3;
+      const keepLogs = JSON.stringify(STATE.logs || {});
+      const keepPtr = STATE.progressPtr;
+      const good = x => Object.assign({ exId:'pushup', unit:'reps', sets:3, rest:45, target:20 }, x || {});
+      const mk = items => { STATE.logs = {}; STATE.logs[P] = { done:true, date:todayISO(),
+        completedAt:todayISO(), feel:'ok', ex:{ pushup:{done:true,sets:[1,1,1]} }, items };
+        STATE.progressPtr = P + 1; };
+
+      /* GUARDS. Without these the whole block passes on a page where nothing
+         was ever dangerous. */
+      o.gDropped = !EX['psupport'];                 // the id really is gone
+      o.gInherited = !!EX['constructor'];           // and this one really is truthy
+      o.gEngineWider = (() => { let mt=0,ms=0,mr=0;
+        for (let p=0;p<40;p++) { const s=buildSession(p);
+          [...s.main, s.finisher].filter(Boolean).forEach(m => {
+            mt=Math.max(mt,m.target); ms=Math.max(ms,m.sets); mr=Math.max(mr,m.rest); }); }
+        return mt < ITEM_TARGET_MAX && ms < ITEM_SETS_MAX && mr < ITEM_REST_MAX; })();
+
+      const run = (items, boot) => {
+        mk(items); if (boot !== false) normalizeState();
+        let threw = null, sheet = '';
+        try { openSessionDetail(P); } catch (e) { threw = e.message; }
+        try { sheet = (document.getElementById('sheet').innerText || '').replace(/\s+/g,' '); } catch (e) {}
+        try { closeSheet(); } catch (e) {}
+        const st = sessionStats(P);
+        return { threw, kept:(STATE.logs[P].items||[]).length, exTotal:st.exTotal,
+                 nan:/NaN|Infinity|undefined/.test(sheet), object:/\bObject\b/.test(sheet),
+                 pushup:/Push-Up/.test(sheet) };
+      };
+
+      o.dropped  = run([good({ exId:'psupport' })]);
+      o.inherit  = run([good({ exId:'constructor' })]);
+      o.strTgt   = run([good({ target:'abc' })]);
+      o.hugeTgt  = run([good({ target:1e9 })]);
+      o.strSets  = run([good({ sets:'3' })]);
+      o.badUnit  = run([good({ unit:'furlongs' })]);
+      o.real     = run([good()]);                              // FLOOR
+      o.mixed    = run([good(), good({ exId:'psupport' })]);   // FLOOR
+      o.noBoot   = run([good({ exId:'psupport' })], false);    // the cross-tab door
+
+      /* Injection, driven rather than inferred: build the sheet, then read the
+         document for the ELEMENT. A substring scan cannot tell an escaped
+         string from an unescaped one. */
+      window.__pwnItem = 0;
+      mk([good({ target:'20<img src=zz-item onerror="window.__pwnItem=1">' })]);
+      normalizeState();
+      try { openSessionDetail(P); } catch (e) {}
+      o.injEl = !!document.querySelector('#sheet img[src="zz-item"]');
+      try { closeSheet(); } catch (e) {}
+
+      STATE.logs = JSON.parse(keepLogs); STATE.progressPtr = keepPtr;
+      return o;
+    });
+    await page.waitForTimeout(350);
+    si.pwn = await page.evaluate(() => window.__pwnItem);
+
+    t.ok('guard: psupport really is gone from the library', si.gDropped, si);
+    t.ok('guard: and an inherited key really is truthy on EX', si.gInherited, si);
+    t.ok('guard: the bounds sit outside everything the engine builds', si.gEngineWider, si);
+
+    t.eq('a dropped exercise no longer kills the session-detail sheet', si.dropped.threw, null, si);
+    t.ok('and the junk row is gone from STATE', si.dropped.kept === 0, si);
+    t.ok('an inherited key never renders a movement called "Object"', !si.inherit.object, si);
+    t.ok('a string target never prints NaN on the sheet', !si.strTgt.nan, si);
+    t.ok('a string set count is refused too', si.strSets.kept === 0, si);
+    t.ok('an absurd target is refused', si.hugeTgt.kept === 0, si);
+    t.ok('a unit the library does not have is refused', si.badUnit.kept === 0, si);
+
+    t.ok('no element from a stored item list reaches the document', !si.injEl, si);
+    t.eq('and nothing it carried ever runs', si.pwn, 0, si);
+
+    t.ok('FLOOR: a real prescription survives the boot untouched', si.real.kept === 1, si);
+    t.eq('FLOOR: and the sheet still names the movement', si.real.pushup, true, si);
+    t.eq('FLOOR: it is the stored list that is read, not a rebuild', si.real.exTotal, 1, si);
+    t.ok('FLOOR: one bad row does not take a good one with it', si.mixed.kept === 1, si);
+
+    t.eq('the READER guards too, so a cross-tab adopt cannot throw', si.noBoot.threw, null, si);
+    t.ok('and with no boot the stored row is still there — the reader does not mutate',
+      si.noBoot.kept === 1, si);
+    t.ok('yet nothing unusable reaches a consumer: the list falls back to the rebuild',
+      si.noBoot.exTotal > 1, si);
+  }
+
+  /* ---------- 21. the saved and recent foods, which had no repair at all ---
+     `nutrition.foods` is not in DEFAULT_STATE, so every sweep that enumerated
+     the declared fields walked straight past it. Measured on the real app:
+
+       - a NULL row made foodsList() AND foodsSectionHTML() throw on `.fav`,
+         and openQuickAdd() builds foodsSectionHTML() — so the Log Food sheet
+         was DEAD, and with no boot repair it could never come back;
+       - only `name` was escaped, so `kcal` reached innerHTML and arbitrary
+         script RAN from a restored backup;
+       - a junk row round-tripped back out through logRemembered(), so a
+         cleaned list was re-poisoned one tap after the boot.
+
+     The floors are what stop the fix being a wipe: a real list survives
+     byte-identical, absent stays ABSENT (creating it fires the "we repaired
+     your data" note at every athlete who never saved a food), and the repair
+     enforces the WRITER's own bound rather than a different one. */
+  {
+    await page.evaluate(() => {
+      window.__pwnFood = 0;
+      nut().foods = [
+        { name:'Chicken', kcal:'<img src=zz-food onerror="window.__pwnFood=1">', p:30, c:0, f:5, fav:false, at:2 },
+        { name:'Real Food', kcal:200, p:20, c:10, f:5, fav:true, at:3 }
+      ];
+      normalizeState(); openQuickAdd();
+    });
+    await page.waitForTimeout(350);
+    const rf = await page.evaluate(() => {
+      const o = {};
+      o.pwn = window.__pwnFood;
+      o.injEl = !!document.querySelector('#sheet img[src="zz-food"]');
+      try { closeSheet(); } catch (e) {}
+
+      /* GUARD: the picker really does print the numbers this block is about,
+         or "no injection" passes on a sheet that renders nothing. */
+      nut().foods = [{ name:'Guard Food', kcal:321, p:22, c:11, f:9, fav:false, at:9 }];
+      normalizeState();
+      o.gPrints = /321/.test(foodsSectionHTML()) && /22p/.test(foodsSectionHTML());
+
+      // the dead Log Food sheet
+      nut().foods = [null, 42, 'x', { name:'Ok', kcal:100, p:10, c:0, f:0, fav:false, at:1 }];
+      normalizeState();
+      o.listErr = 'ok'; o.htmlErr = 'ok';
+      try { o.listed = foodsList().length; } catch (e) { o.listErr = String(e.message); }
+      try { foodsSectionHTML(); } catch (e) { o.htmlErr = String(e.message); }
+      o.junkKept = (nut().foods || []).length;
+
+      // the READER on its own — a cross-tab adopt has no boot behind it
+      nut().foods = [null, { name:'Ok', kcal:100, p:10, c:0, f:0, fav:false, at:1 }];
+      o.noBoot = 'ok';
+      try { foodsSectionHTML(); } catch (e) { o.noBoot = String(e.message); }
+
+      // a junk row must not come back out through the one-tap re-log
+      nut().foods = [{ name:'Bad', kcal:'abc', p:{}, c:[], f:null, fav:false, at:1 }];
+      normalizeState();
+      const before = (nutToday().food || []).length;
+      try { logRemembered(0); } catch (e) { o.logThrew = String(e.message); }
+      const row = (nutToday().food || [])[before] || {};
+      o.roundTrip = typeof row.kcal === 'number' && typeof row.p === 'number';
+      o.writerClean = (nut().foods || []).every(x => typeof x.kcal === 'number' && typeof x.p === 'number');
+      nutToday().food = (nutToday().food || []).slice(0, before);
+
+      // FLOOR: a real list survives the boot byte-identical
+      const real = [{ name:'Eggs', kcal:210, p:18, c:1, f:15, fav:true, at:5 },
+                    { name:'Rice', kcal:200, p:4, c:44, f:1, fav:false, at:4 }];
+      nut().foods = JSON.parse(JSON.stringify(real));
+      normalizeState();
+      o.floorSame = JSON.stringify(nut().foods) === JSON.stringify(real);
+
+      // FLOOR: the writer still works, favourites still first
+      rememberFood('Oats', 150, 5, 27, 3);
+      o.afterWrite = (nut().foods || []).map(x => x.name).join(',');
+
+      // FLOOR: absent stays absent
+      delete nut().foods; normalizeState();
+      o.absentAbsent = nut().foods === undefined;
+
+      // FLOOR: the repair enforces the WRITER's bound, not a different one
+      nut().foods = [];
+      for (let i = 0; i < 40; i++) nut().foods.push({ name:'r'+i, kcal:10, p:1, c:1, f:1, fav:false, at:i });
+      for (let i = 0; i < 5; i++)  nut().foods.push({ name:'fav'+i, kcal:10, p:1, c:1, f:1, fav:true, at:i });
+      normalizeState();
+      o.capFavs = nut().foods.filter(x => x.fav).length;
+      o.capRecents = nut().foods.filter(x => !x.fav).length;
+      o.capConst = FOOD_RECENTS_MAX;
+
+      delete nut().foods; normalizeState();
+      return o;
+    });
+
+    t.ok('guard: the food picker really prints the numbers, not only the name', rf.gPrints, rf);
+
+    t.ok('no element from a saved food reaches the document', !rf.injEl, rf);
+    t.eq('and nothing a saved food carried ever runs', rf.pwn, 0, rf);
+
+    t.eq('a null row no longer kills foodsList()', rf.listErr, 'ok', rf);
+    t.eq('nor the Log Food sheet it builds', rf.htmlErr, 'ok', rf);
+    t.eq('and only the real food is left', rf.junkKept, 1, rf);
+    t.eq('the READER guards too, so a cross-tab adopt cannot kill the sheet', rf.noBoot, 'ok', rf);
+
+    t.ok('a junk saved food cannot come back out through the one-tap re-log', rf.roundTrip, rf);
+    t.ok('and the writer leaves the list clean rather than re-poisoning it', rf.writerClean, rf);
+
+    t.ok('FLOOR: a real saved-food list survives the boot byte-identical', rf.floorSame, rf);
+    t.eq('FLOOR: the writer still adds, favourites still first', rf.afterWrite, 'Eggs,Oats,Rice', rf);
+    t.ok('FLOOR: absent stays absent, so no athlete is told their data was repaired', rf.absentAbsent, rf);
+    t.eq('FLOOR: every favourite is kept, whatever the recents cap', rf.capFavs, 5, rf);
+    t.eq('FLOOR: and recents are capped at the WRITER own bound', rf.capRecents, rf.capConst, rf);
+    t.eq('guard: and that bound is the app constant, not a number restated here', rf.capConst, 20, rf);
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
