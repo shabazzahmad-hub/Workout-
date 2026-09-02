@@ -13288,6 +13288,168 @@ A guard now asserts `Date.parse` really does accept the string, or the case
 below it proves nothing on a future engine.
 
 
+## One of three records guarded, and the guard was on the wrong field (v416)
+
+`scoreHistory` has been filtered on `e.score!=null&&isFinite(e.score)` for many
+versions — so the codebase already knew an unreadable Core Score was illegal.
+**The same field on the other two records that carry it was never checked**, and
+`testCount` was never checked on any of the three. `_lvFix` (v399) walks all
+three — `STATE.baseline`, every `STATE.reassess[c]` and every
+`STATE.scoreHistory[i]` — and repaired only `level`. v412 bounded `maxes` and
+`results` on those very records and left both numbers sitting beside them.
+
+**Measured after a real boot repair, from a backup `importData()` accepts:**
+
+| | |
+|---|---|
+| `STATE.baseline.score` / `STATE.reassess[c].score` | **survive junk** |
+| `reassessIntroHTML()` | **injected** |
+| `finishedHTML()` | **injected** |
+| a junk `testCount` on a row whose score is VALID | **survives the filter** |
+| `scoreDeltaHTML()` | **injected** |
+| arbitrary script | **RAN, four times** |
+
+And it is wrong quietly with no attack at all: the program-complete screen
+printed **`abc→abc`** where the athlete's Core Score belongs.
+
+**Two guards mean two checks**, so the boot repair and the render readers are
+driven separately — the render half with **no `normalizeState()` behind it**,
+because a cross-tab adopt replaces `STATE` and a guard that exists only at the
+boot is one guard.
+
+### `isFinite` alone is not a number test
+
+`isFinite([])`, `isFinite('')` and `isFinite(true)` are **all true**, and `+[]`
+is `0`. So the obvious reader would have reported an array out of a backup as a
+**measured zero** — v260's defect wearing a coercion, on the number that sets
+`level` and therefore scales every unanchored exercise. `_numOf()` takes a
+number or a non-blank numeric string and nothing else.
+
+**A numeric string is COERCED rather than refused**, because the `scoreHistory`
+filter has always kept one and two readers of one field must not disagree.
+
+**OUT OF BAND IS DROPPED, NOT CLAMPED**, which is v412's rule for a measurement:
+`computeAssessment()` is `Math.round` of an average whose every term is
+`clamp(v/bench*100,0,100)`, so **0–100 is the whole of what the app can
+produce** and 150 did not come from an effort. Clamping it would print
+`100/100` as a result the athlete never earned.
+
+**The ROW survives a bad score.** Its level and its `maxes` were really taken,
+and the whole prescription is built from them — so the field goes and the record
+stays. The over-eager twin that drops the record fails on the maxes.
+
+### The measurement corrected the source reading twice, and both ways
+
+The finding was drafted from source alone and **two of its claims were wrong**:
+
+- *"`scoreHistory[i].score` is unrepaired."* It is not — the filter 9,700 lines
+  from `_lvFix` drops the whole row. Reading one repair does not tell you what
+  another one already does.
+- *"The trend prints `▼ NaN points`."* It does not: a numeric string coerces
+  (`'80'-'70'` is 10) and a non-numeric one is dropped by that filter, so there
+  is no reachable NaN. The real quiet harm was `abc→abc` on a different screen.
+
+**And it found a fifth site the source read had missed.** `scoreDeltaHTML()`
+does `const prev=pr.score;const d=a.score-prev;` — `a` is the fresh assessment
+and always a real number, `pr` is a STORED row. A withheld comparison is the
+honest answer for a prior the app cannot read, which is the call v320 already
+makes about a baseline with no `subs` stamp.
+
+### The only two-level computed write in the app
+
+v414 closed the four `Object.assign` doors into `Object.prototype`. A
+single-level `obj[k]=v` changes only that object, so it is never in the class; a
+**two-level `X[a][b]=v` with `a='__proto__'`** is, because `X['__proto__']` reads
+back `Object.prototype` — truthy, so an `if(!X[a])` guard is satisfied and never
+creates a fresh map — and the next line writes onto the prototype every object
+in the page inherits from.
+
+`setSwap()` is the only one. **NOT athlete-reachable today, and saying so is the
+honest framing**: `ptr` is always `STATE.progressPtr`, which `normalizeState()`
+repairs to an integer, and both call sites pass exactly that. The codebase
+already guards the exercise id on this very line (v400) and never guarded the
+pointer.
+
+**The guards come first**, or the whole block is satisfied by a page where the
+shape was never dangerous: `probe['__proto__'] === Object.prototype`, and it is
+truthy.
+
+### The render half of four repairs that only ever had the boot half
+
+Sweeping every bare dotted interpolation that reaches `innerHTML` — 201
+distinct — found four values that are membership- or format-repaired at the
+boot and printed RAW at the render: an activity row's `date` and a skipping
+row's (v356), a photo's `pose` (v374), and `nutrition.goal`.
+
+**The photo comparison is the sharpest**: it escapes the two photo ids on the
+SAME LINE as the pose it does not.
+
+Latent rather than reachable, because every path into `STATE` calls
+`normalizeState()` — and that is exactly the argument for the rule rather than
+against it: **anything that can come out of a backup is escaped at the render,
+whatever the repair does.** One guard is one guard.
+
+**Two anchors were refused rather than half-applied.** The two history rows end
+in the same 45 characters, so a shorter anchor matched both and the patch
+script's `assert count == 1` turned it into a clean no-op. Reaching back to what
+distinguishes them is the fix.
+
+### The payload has to go where the reader looks
+
+The mutant that reverted the assessment-history row to a raw score **escaped**,
+and the check aimed at it was the weak part rather than the mutant being bad.
+
+That row prints the SCORE and not the test count. The no-boot seed put the
+payload only in `testCount`, so the row's score was always a real 70/80 —
+`s.score` and `scoreVal(s)` agreed on every case in the block, and the mutant
+was equivalent on everything the check could see.
+
+Same shape as v411's ➕ floor and v415's `_lastExport` seed: **a guard is only
+visible when the value beside it cannot supply the answer** — and here the
+missing case was the payload sitting in a field the reader never reads.
+
+### isFinite alone is not a number test, and no string can prove it
+
+`isFinite([])` is **true** and `+[]` is **0**. `isFinite(true)` is true and
+`+true` is 1. `isFinite('')` is true and `+''` is 0. So a bare `isFinite` test
+would have read an ARRAY out of a backup as a **measured zero** — a Core Score
+of 0/100 for an athlete who never took a test, which is the falsy-zero lie
+`computeAssessment()` was already fixed for.
+
+The mutant that dropped `_numOf()`'s `typeof` half escaped every check, and the
+reason is the same one every time: **every case in the block seeded a STRING
+payload, which both predicates refuse.** A string cannot discriminate a number
+test from `isFinite`. Only a value `isFinite` ACCEPTS can — an array, a boolean
+or a blank string — and each is now pinned, with a guard that the trap is real
+before anything is asserted about it.
+
+### And the pose escape was an EQUIVALENT guard, measured rather than assumed
+
+The mutant that removed `_ve(pair.pose)` also escaped, and reading it back
+found no defect to fix. `photoPair()` sets `pose` from the
+**`POSE_KEYS.forEach` loop variable**, never from the stored row, and every
+other pose site reads through `poseOf()`, which is a membership test. So no
+reachable route can put junk there and no check can catch the removal.
+
+It is kept as cover for a future `photoPair()` that reads the pose off the row
+it picked, and **the check was relabelled to what it actually proves** — that
+the gallery survives a junk pose on every row — rather than left claiming
+something it cannot. A check that cannot fail must not carry a label saying it
+can. Same call as v287's `wantAnchor` and v400's `swapStillValid` line.
+
+### A fixed window is not a search
+
+Two floors failed on screens that were perfectly correct. They sliced 200
+characters of the re-test intro and the Core Score sits about 330 in, so
+`/41\/100/` found nothing. The app printed `Core Score 41/100`, `Core Score
+71/100` and `41→71` exactly as it should.
+
+Test the WHOLE string and keep a short excerpt only for the failure detail. This
+file already records the trap for a 150-character window that did not reach a
+conversion and a 2,600-character one that did not reach line 63; a floor is one
+more place it lands.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
