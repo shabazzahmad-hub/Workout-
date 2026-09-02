@@ -22522,6 +22522,22 @@ function normalizeState(){
      else if(!(isFinite(g)&&g>0&&g<70))delete P2.goalBodyFat;}}
    }
    if(!STATE.quickLog||typeof STATE.quickLog!=='object'||Array.isArray(STATE.quickLog))STATE.quickLog={};
+   /* THE SECOND DOOR TO THE SAME DEFECT, and closing only the first would have
+      been fixing one instance and not the class — in the same round that says
+      so. quickLog is keyed by DATE, and computeStreak() folds
+      `...Object.keys(STATE.quickLog||{})` into the very list the archived rows
+      feed. So a junk KEY does exactly what a junk archived completedAt did:
+      it sorts after every ISO date, the end-of-streak guard computes NaN, and
+      NaN > 3 is FALSE.
+      MEASURED on an athlete idle 200 days: a clean stale run reads 0, and the
+      same athlete with quickLog {'not-a-date':1} reads 1.
+      The KEY is the date, so an unreadable one is not a training day; the value
+      is a count of quick sessions, so it is a positive integer or the day did
+      not happen. Same predicate v401 gave restDays, _opens and nutrition.days. */
+   {const Q=STATE.quickLog;for(const d in Q){
+     if(!isDateISO(d)){delete Q[d];continue;}
+     const n=Math.round(+Q[d]);
+     if(!isFinite(n)||n<=0)delete Q[d];else Q[d]=n;}}
    if(!STATE.shopTicks||typeof STATE.shopTicks!=='object'||Array.isArray(STATE.shopTicks))STATE.shopTicks={};
    /* Both of these drive prescription and neither had repair, against the rule
       that every STATE field gets it. A string in exAdapt produced a NaN target

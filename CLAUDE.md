@@ -13619,6 +13619,47 @@ session that stopped at the container. `scrubLogRows()` is now the one place
 the row rule lives, asked by the live logs and by every archived run, so a
 fifth date field cannot be taught to one and forgotten for the other.
 
+### The same defect had a SECOND DOOR, in the round that says so
+
+Closing the archived one would have been **fixing one instance and not the
+class** — in the very round whose own notes say that. `quickLog` is keyed by
+DATE, has only a container repair, and `computeStreak()` folds
+`...Object.keys(STATE.quickLog||{})` into the very list the archived rows feed.
+
+Measured on the same athlete, idle 200 days:
+
+| | streak |
+|---|---|
+| clean stale run | **0** |
+| plus `quickLog: {'not-a-date': 1}` | **1** |
+| FLOOR: four real quick sessions | **4**, all keys kept |
+
+Same predicate v401 gave `restDays`, `_opens` and `nutrition.days`. The KEY is
+the date, so an unreadable one is not a training day; the VALUE is a count of
+quick sessions, so it is a positive integer or the day did not happen.
+
+**And the first reading of it claimed an injection that was not there.**
+`img[onerror]` matches the app's own **126 exercise thumbnails**, which use
+`onerror` as a missing-image fallback — the v210 false alarm this file already
+records. With a unique marker and a detector proven **both ways**: no
+injection anywhere, nothing ran, and all six hits were legitimate.
+
+That is the **third** loose detector in one session — `/true/` matched the word
+*truest*, `/0 reps/` matched the `0` inside `40 reps`, and `img[onerror]`
+matched the thumbnails. All three reported a finding on correct code, and the
+one rule that catches all three is: **a detector that can match ordinary app
+content is not measuring what you named.**
+
+### And one escape that was the HARNESS, not the app or the check
+
+The mutant removing the `ex` map creation read as an ESCAPE, and it is caught
+by **suite 05, four checks**. `node tests/run.mjs 23` runs ONE suite, and that
+mutant reverts code v344 shipped — so the suite that owns it was never run.
+
+**A mutant on pre-existing code has to be scored against the whole suite**, not
+against the file the round happens to be editing. Measured by running the full
+`npm test` against the seed: 4 failures in `05-state.test.mjs`.
+
 ### And the fix exposed a latent defect, which is how it should be found
 
 The first version of the scrub made a lifetime counter **throw** on a shape

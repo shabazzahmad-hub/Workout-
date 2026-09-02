@@ -9417,10 +9417,14 @@ export default async function () {
 
       seedOld({ done: true, completedAt: 'not-a-date', ex: {}, items: [] });
       o.streakWithJunk = computeStreak();
-      o.junkDateGone = STATE.runs[0].logs[99].completedAt === undefined;
-      /* THE ROW SURVIVES — its sets and items were really done; only the
-         unreadable date goes. */
-      o.junkRowKept = !!STATE.runs[0].logs[99];
+      /* GUARD BEFORE THE FIRST DEREFERENCE. The over-eager mutant that drops
+         every archived row was caught by a THROW rather than by name — red is
+         not enough, it has to say WHAT — because the lines below dereference a
+         row it had removed. */
+      o.junkRowKept = !!(((STATE.runs || [])[0] || {}).logs || {})[99];
+      o.junkDateGone = o.junkRowKept
+        ? STATE.runs[0].logs[99].completedAt === undefined
+        : 'ROW GONE';
 
       /* FLOOR: a CURRENT archived streak is untouched. A scrub that dropped
          every archived row satisfies every assertion above and destroys the
@@ -9431,8 +9435,10 @@ export default async function () {
       STATE.runs = [{ sessions: 4, logs: cur }];
       normalizeState();
       o.streakCurrent = computeStreak();
-      o.currentRowsKept = Object.keys(STATE.runs[0].logs).length === 4;
-      o.currentDatesKept = STATE.runs[0].logs[0].completedAt === ago(3);
+      o.currentRowsKept = Object.keys((((STATE.runs || [])[0] || {}).logs) || {}).length === 4;
+      o.currentDatesKept = o.currentRowsKept
+        ? STATE.runs[0].logs[0].completedAt === ago(3)
+        : 'ROWS GONE';
 
       /* THE LIFETIME TOTALS STILL COUNT ARCHIVED WORK, which is the whole
          reason allDoneLogs() folds them in. totalVolume() counts e.sets as an
@@ -9455,8 +9461,9 @@ export default async function () {
       STATE.runs = [{ sessions: 1, logs: { 0: { done: true, completedAt: ago(1),
         ex: {}, items: [null, 'x', 42, { exId: 'pushup', unit: 'reps', target: 10 }] } } }];
       normalizeState();
-      o.itemsCleaned = Array.isArray(STATE.runs[0].logs[0].items)
-        && STATE.runs[0].logs[0].items.length === 1;
+      {const _r = (((STATE.runs || [])[0] || {}).logs || {})[0];
+       o.itemsRowKept = !!_r;
+       o.itemsCleaned = !!_r && Array.isArray(_r.items) && _r.items.length === 1;}
       try { totalVolume(); o.itemsThrew = false; } catch (e) { o.itemsThrew = true; o.itemsErr = String(e).slice(0, 60); }
 
       /* And the READER on its own, with NO boot behind it — a cross-tab adopt
@@ -9481,6 +9488,36 @@ export default async function () {
       o.liveStillScrubbed = (STATE.logs[0] || {}).completedAt === undefined
         && (STATE.logs[0] || {}).date === undefined;
 
+      /* THE SECOND DOOR. quickLog is keyed by DATE and computeStreak() folds
+         `...Object.keys(STATE.quickLog||{})` into the very list the archived
+         rows feed — so closing only the archived door would have been fixing
+         one instance and not the class, in the round that says so.
+         MEASURED before the fix: the same stale athlete read 1. */
+      base();
+      for (let i = 0; i < 5; i++) STATE.logs[i] = { done: true, completedAt: ago(200 + i), ex: {}, items: [] };
+      STATE.runs = [];
+      STATE.quickLog = { 'not-a-date': 1 };
+      normalizeState();
+      o.quickJunkKeyGone = Object.keys(STATE.quickLog).length === 0;
+      o.streakViaQuick = computeStreak();
+
+      /* A value that is not a count of sessions is not a training day either. */
+      base();
+      STATE.quickLog = { [ago(1)]: 0, [ago(2)]: -3, [ago(3)]: 'x', [ago(4)]: {}, [ago(5)]: 2 };
+      normalizeState();
+      o.quickBadValsGone = Object.keys(STATE.quickLog).length === 1
+        && STATE.quickLog[ago(5)] === 2;
+
+      /* FLOOR: real quick sessions are untouched AND still hold a streak. A
+         repair that dropped every key satisfies every assertion above and
+         deletes the athlete's own training days. */
+      base();
+      for (let i = 0; i < 4; i++) STATE.quickLog[ago(3 - i)] = 1;
+      STATE.runs = [];
+      normalizeState();
+      o.quickRealKept = Object.keys(STATE.quickLog).length === 4;
+      o.quickRealStreak = computeStreak();
+
       /* Re-seed: a block that BREAKS what a later one relies on puts it back. */
       base(); STATE.runs = [];
       normalizeState(); go('today');
@@ -9495,6 +9532,7 @@ export default async function () {
     t.eq('a junk date inside an ARCHIVED run no longer props up a dead streak', av.streakWithJunk, 0, av);
     t.ok('the unreadable date is gone from the archived row', av.junkDateGone, av);
     t.ok('FLOOR: and the ROW survives — its sets and items were really done', av.junkRowKept, av);
+    t.ok('guard: the items case kept its row, so the assertion below is about the LIST', av.itemsRowKept, av);
 
     t.ok('FLOOR: a CURRENT archived streak still counts', av.streakCurrent >= 4, av);
     t.ok('FLOOR: and every archived row survives', av.currentRowsKept, av);
@@ -9507,6 +9545,13 @@ export default async function () {
     t.ok('and with NO boot behind it, the reader does not throw either', !av.readerThrew, av);
     t.ok('an archived row that is not an object is dropped, as a live one is', av.badRowsDropped, av);
     t.ok('and the LIVE logs still go through the same scrub', av.liveStillScrubbed, av);
+
+    /* THE SECOND DOOR — the same phantom streak through quickLog. */
+    t.ok('a junk quickLog KEY is gone after the boot', av.quickJunkKeyGone, av);
+    t.eq('so it cannot prop up a dead streak either', av.streakViaQuick, 0, av);
+    t.ok('a quickLog value that is not a session count is dropped', av.quickBadValsGone, av);
+    t.ok('FLOOR: four real quick sessions are all kept', av.quickRealKept, av);
+    t.eq('FLOOR: and still hold a streak', av.quickRealStreak, 4, av);
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
