@@ -9554,6 +9554,126 @@ export default async function () {
     t.eq('FLOOR: and still hold a streak', av.quickRealStreak, 4, av);
   }
 
+
+  /* v419 — A COUNT OVER UNVALIDATED KEYS, twice.
+
+     v418 fixed a junk DATE propping up a dead streak. The same shape one level
+     up is a COUNT: two surfaces count the keys of a map whose keys nothing
+     validates, so one junk key out of an imported backup is a training event
+     that never happened.
+
+     1. `reassess` is keyed by CYCLE NUMBER and had only a container check,
+        while the "Levelled Up · Complete a re-test" badge is
+        `Object.keys(STATE.reassess||{}).length>=1`. MEASURED: locked with no
+        re-tests, and UNLOCKED with {'not-a-cycle': …}. commitAssessment()
+        writes STATE.reassess[assessState.reassess], a cycle index, so a
+        non-integer key was never written by the app.
+
+     2. `achievements` is keyed by BADGE ID, and the Badges tile on
+        Progress > Summary is `Object.keys(STATE.achievements||{}).length` while
+        the Awards grid renders from ACHIEVEMENTS and lights only the ids it
+        finds. MEASURED: the tile read `2 BADGES` with ONE real badge lit — one
+        screen, two answers.
+
+     The two readers of `reassess` that do `.map(Number)` were safe only by
+     accident: STATE.reassess[NaN] is undefined and both guard `r&&r.maxes`.
+     A count has no such guard, which is why the class is about counts. */
+  {
+    const kc = await page.evaluate(async () => {
+      const o = {};
+      const rec = d => ({ date: d, level: 'Intermediate', score: 60, testCount: 10,
+        subs: {}, maxes: { plank: 70 }, results: {} });
+
+      /* GUARDS. The badge has to exist and mean what the block claims, or every
+         assertion below is about a badge that is not there. */
+      const badge = ACHIEVEMENTS.filter(a => a.id === 'retest')[0];
+      o.badgeExists = !!badge;
+      o.badgeDesc = badge ? (typeof badge.desc === 'function' ? badge.desc() : badge.desc) : '';
+      /* And a REAL id, read from the app rather than invented — the first
+         version of this seeded 'firstsession', which is not a badge, so the
+         repair correctly deleted it and the FLOOR read as a failure. */
+      o.realBadgeId = ACHIEVEMENTS[0].id;
+
+      // ---- 1. reassess
+      STATE.reassess = {}; normalizeState();
+      o.lockedClean = !badge.check();
+      STATE.reassess = { 'not-a-cycle': rec('2026-02-01') }; normalizeState();
+      o.junkCycleGone = Object.keys(STATE.reassess).length === 0;
+      o.badgeWithJunk = badge.check();
+      /* FLOOR: a real re-test still unlocks it, and its record is untouched. */
+      STATE.reassess = { 1: rec('2026-02-01') }; normalizeState();
+      o.realCycleKept = Object.keys(STATE.reassess).length === 1
+        && (STATE.reassess[1] || {}).date === '2026-02-01'
+        && ((STATE.reassess[1] || {}).maxes || {}).plank === 70;
+      o.badgeWithReal = badge.check();
+      /* Cycle 0 is a legal key and must survive — an over-eager `n>0` would
+         drop it and nothing else here would notice. */
+      STATE.reassess = { 0: rec('2026-02-01') }; normalizeState();
+      o.cycleZeroKept = Object.keys(STATE.reassess).length === 1;
+      /* A fractional or padded key is not a cycle index. */
+      STATE.reassess = { '3.7': rec('2026-02-01'), '01': rec('2026-02-01'), '-1': rec('2026-02-01') };
+      normalizeState();
+      o.oddCyclesGone = Object.keys(STATE.reassess).length === 0;
+
+      // ---- 2. achievements
+      STATE.reassess = {};
+      STATE.achievements = {}; normalizeState();
+      /* EACH BLOCK BUILDS THE STATE IT ASSERTS ON. homeSummaryHTML() opens with
+         `if(!STATE.baseline)return ''`, and an earlier block in this file
+         deliberately leaves the baseline null — so the first version of this
+         read NO TILE and the guard is what said so. */
+      STATE.baseline = rec('2026-01-01');
+      const readTile = async () => {
+        setProgressTab('summary'); go('progress');
+        await new Promise(r => setTimeout(r, 250));
+        const t = ((document.querySelector('#v-progress') || {}).innerText || '');
+        /* innerText returns the RENDERED text and `.l` is uppercased in CSS, so
+           a search for 'Badges' finds nothing on a screen that says BADGES. */
+        const i = t.toUpperCase().indexOf('BADGES');
+        if (i < 0) return 'NO TILE';
+        const m = t.slice(Math.max(0, i - 12), i).match(/(\d+)\s*$/);
+        return m ? m[1] : 'NO NUMBER';
+      };
+      STATE.achievements = { [o.realBadgeId]: '2026-01-01' }; normalizeState();
+      o.achRealKept = Object.keys(STATE.achievements).length === 1;
+      o.tileClean = await readTile();
+      STATE.achievements = { [o.realBadgeId]: '2026-01-01', 'not-a-badge': '2026-01-02' };
+      normalizeState();
+      o.achJunkGone = Object.keys(STATE.achievements).length === 1
+        && STATE.achievements[o.realBadgeId] === '2026-01-01';
+      o.tileWithJunk = await readTile();
+
+      /* FLOOR: every real badge id survives, so the repair cannot be a wipe. */
+      STATE.achievements = {};
+      ACHIEVEMENTS.forEach(a => { STATE.achievements[a.id] = '2026-01-01'; });
+      normalizeState();
+      o.allRealKept = Object.keys(STATE.achievements).length === ACHIEVEMENTS.length;
+
+      /* Re-seed: a block that BREAKS what a later one relies on puts it back. */
+      STATE.achievements = {}; STATE.reassess = {}; STATE.baseline = null;
+      normalizeState(); go('today');
+      return o;
+    });
+
+    t.ok('guard: the Levelled Up badge exists', kc.badgeExists, kc);
+    t.eq('guard: and it is the one that means "complete a re-test"', kc.badgeDesc, 'Complete a re-test', kc);
+    t.ok('guard: with no re-tests at all it is LOCKED', kc.lockedClean, kc);
+
+    t.ok('a junk reassess KEY is gone after the boot', kc.junkCycleGone, kc);
+    t.ok('so it cannot unlock a re-test badge that was never earned', !kc.badgeWithJunk, kc);
+    t.ok('a fractional, padded or negative cycle key is gone too', kc.oddCyclesGone, kc);
+    t.ok('FLOOR: a real re-test survives untouched, with its date and its maxes', kc.realCycleKept, kc);
+    t.ok('FLOOR: and still unlocks the badge', kc.badgeWithReal, kc);
+    t.ok('FLOOR: cycle 0 is a legal key and survives', kc.cycleZeroKept, kc);
+
+    t.ok('guard: the Badges tile really renders a number', kc.tileClean === '1', kc);
+    t.ok('a junk achievement KEY is gone after the boot', kc.achJunkGone, kc);
+    t.eq('so the Badges tile no longer counts a badge the grid does not light',
+      kc.tileWithJunk, '1', kc);
+    t.ok('FLOOR: a real badge and its date survive', kc.achRealKept, kc);
+    t.ok('FLOOR: and EVERY real badge id survives, so the repair is not a wipe', kc.allRealKept, kc);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
