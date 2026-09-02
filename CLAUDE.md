@@ -13450,6 +13450,111 @@ conversion and a 2,600-character one that did not reach line 63; a floor is one
 more place it lands.
 
 
+## Three fields on one pane, each with two readers that disagreed (v417)
+
+All three sit on Progress ▸ Strength, and each had a guarded reader somewhere
+in the app and an unguarded one on that pane. **v416's own lesson — two readers
+of one field must not disagree — one pane over.**
+
+### The date on the three assessment records had no repair at all
+
+`_lvFix` repairs `level`, `score` and `testCount`. `_maxFix` repairs `maxes` and
+`results`. **`date` was repaired by neither**, and `assessSeries()` passes it
+straight into `lineChart()`, which put it in an SVG `<text>` with no coercion
+and no escape:
+
+```js
+const xlab=(i,a)=>`<text …>${(dates[i]||'').slice(5)}</text>`;
+```
+
+Measured, from a backup `importData()` accepts:
+
+| stored `baseline.date` | what happened |
+|---|---|
+| `{bad:1}` | **`TypeError: (dates[i] \|\| "").slice is not a function`** inside `renderProgress()` — the pane died on the boundary, which retries **through** `normalizeState()`, which had no repair, so it **never came back** |
+| a payload string | interpolated raw and **arbitrary script RAN** |
+
+**The measurement charts are not in the class, and saying so matters.**
+`dedupeMeasurements()` does `String(m.date).slice(0,10)`, so a payload there is
+truncated to ten characters — but `[object Ob` was still reaching the axis. The
+fix is in `lineChart()` itself, so all three callers are covered by one edit.
+
+**`isDateISO()` is structural rather than an escape.** What survives it can only
+be `YYYY-MM-DD`, so the `MM-DD` label has nothing left to escape. Every writer
+stamps `todayISO()`, so it is the right predicate — checked before it was used,
+not assumed.
+
+**The RECORD survives a bad date.** Its maxes and its level were really taken,
+and the whole prescription is built from them.
+
+### The chart drew what the engine refused
+
+Three readers of `maxes[k]`, and all three disagreed:
+
+| reader | test |
+|---|---|
+| `estimateMaxes()` | `parseFloat`, then `isFinite && >=0 && <=cap` |
+| `_maxFix()` boot repair | `typeof m[k]==='number' && m[k]>cap` |
+| `strengthTrendHTML()` | **raw** — `(s.maxes&&s.maxes[m.k])\|\|0`, then `.filter(p=>p.v>0)` |
+
+So a numeric string walked past the repair (typeof fails), and so did a
+negative and a `NaN`. Measured on a stored plank max, cap 6000:
+
+| stored | boot | chart | engine |
+|---|---|---|---|
+| `99999` (number) | dropped | — | 40 |
+| **`'99999'`** | **survives** | **plots 99999** | **40** |
+| `-500` | survives | filtered | 40 |
+| `true` | survives | **plots** | 40 |
+
+**A boolean is worse on a TIME metric than on a rep one, and both were
+measured**: `true` renders as the literal `true reps` on Push-Ups and as a
+perfectly plausible **`1s`** on the Plank — a one-second hold the athlete never
+did, drawn as a real point on their own progress chart.
+
+`maxVal(k,v)` is the one predicate now, asked by all three. **`parseFloat` is
+kept as the coercion** because that is what `estimateMaxes()` has always done —
+changing it would be a behaviour change with no defect behind it, and the whole
+point is that the readers AGREE.
+
+### The personal-record VALUES had only a container repair
+
+`normalizeState()` checked `prs` is an object and stopped. `bestFor()` has
+always guarded its own read (`typeof v==='number'&&v>0`). **Two render sites did
+not**, and both reach `innerHTML` — the Progress personal-bests row and the
+Strength Standards sheet. Measured: **both injected and arbitrary script RAN.**
+
+Both now read through `bestFor()`, the app's own accessor, rather than
+re-deriving the rule — and a key whose value is not a usable best draws **no row
+at all**, because `0 reps` for a real movement would be a different lie.
+
+**A numeric string is COERCED and everything else is dropped, and the
+discriminator is what the app's EXISTING guarded reader does.**
+`estimateMaxes()` coerces one, so `_maxFix` coerces; `bestFor()` refuses one, so
+the repair coerces it into a number the reader will accept. In each case the
+repair is made to agree with the reader that was already there.
+
+**The class is one map wide, and that was swept rather than assumed.** Ten keyed
+maps carry a container-only repair. Only two interpolate a VALUE into markup at
+all: `achievements` does and already escapes it (v237); `prs` did not. The other
+eight are never drawn, and `opsPR` goes through `fmtTime()`, which coerces.
+**v401 swept these same ten maps and asked about their KEYS** — *"a key nobody
+looks up is inert"* — and deliberately left them. It never asked about their
+VALUES. A sweep is only as wide as the question it asks.
+
+### A loose regex is not a detector, and it reported a false positive on a fix
+
+The probe asked `/true reps|true/` of the chart's markup and came back **true on
+a fixed app**. The match was the word **"truest"** in the chart's own footer
+copy — *"the truest measure of your real strength"*. Anchored on
+`/\btrue\s*(reps|s)\b/` it reads false, correctly.
+
+That is the same family as `document.body.innerHTML` containing the app's own
+source: **a detector that can match ordinary copy is not measuring the thing you
+named.** And it nearly shipped a false claim into a code comment — the fix was
+to go and measure both metrics on the pre-v417 file rather than reason about
+them.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

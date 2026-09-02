@@ -9091,6 +9091,255 @@ export default async function () {
     t.ok('FLOOR: and a real skipping date still prints', es.skipText, es);
   }
 
+
+  /* v417 — THREE FIELDS ON ONE PANE, EACH WITH TWO READERS THAT DISAGREED.
+
+     All three sit on Progress > Strength, and each had a guarded reader
+     somewhere in the app and an unguarded one on that pane. This is v416's own
+     lesson — two readers of one field must not disagree — one pane over.
+
+     1. THE DATE ON THE THREE ASSESSMENT RECORDS HAD NO REPAIR AT ALL. _lvFix
+        repaired level, score and testCount; _maxFix repaired maxes and results;
+        `date` was repaired by neither. assessSeries() passes it straight into
+        lineChart(), which put it in an SVG <text> with no coercion and no
+        escape. MEASURED, from a backup importData() accepts: a non-string threw
+        `(dates[i] || "").slice is not a function` inside renderProgress(), the
+        boundary retried through normalizeState(), nothing repaired it, and the
+        pane died permanently — "Something went wrong drawing this screen". A
+        string was interpolated raw and ARBITRARY SCRIPT RAN.
+
+     2. THE CHART READ maxes[k] RAW while estimateMaxes() coerces and caps and
+        _maxFix() only ever tested `typeof === 'number' && > cap`. MEASURED: a
+        stored '99999' (cap 6000) survived every boot, the chart plotted it, and
+        the engine prescribed from the 40s default beside it. A negative and a
+        boolean survived too — `true` renders as the literal `true reps` on a
+        rep metric and as a plausible `1s` on the Plank.
+
+     3. prs VALUES had only a container repair. bestFor() has always guarded its
+        own read; the two RENDER sites did not, and both reach innerHTML.
+        MEASURED: both injected and arbitrary script RAN. v401 swept these same
+        ten keyed maps and asked about their KEYS, never about their VALUES.
+
+     Two guards mean two checks throughout, so the boot repair and the render
+     readers are driven separately — the render half with NO normalizeState()
+     behind it, because a cross-tab adopt replaces STATE. */
+  {
+    const vr = await page.evaluate(async () => {
+      const o = {};
+      const host = document.createElement('div'); document.body.appendChild(host);
+      const PAY = '<img src=x onerror="window.__v417=(window.__v417||0)+1">';
+      host.innerHTML = '<img src=x onerror="window.__v417det=1">';
+      o.detector = !!host.querySelector('img[onerror]');
+      host.innerHTML = ''; await new Promise(r => setTimeout(r, 120));
+      o.detectorRan = !!window.__v417det;
+      window.__v417 = 0;
+
+      const rec = (date, maxes, extra) => Object.assign(
+        { date, level: 'Intermediate', score: 60, testCount: 10, subs: {}, maxes, results: {} }, extra || {});
+
+      /* ---- GUARDS. The cap is what the block assumes, a NUMBER above it was
+         already dropped by v412, and Progress > Strength really is the pane. */
+      o.cap = maxPlausible('plank');
+      STATE.baseline = rec('2026-01-01', { plank: 99999 });
+      STATE.reassess = {}; normalizeState();
+      o.guardNumberDropped = (STATE.baseline.maxes || {}).plank === undefined;
+
+      /* ---- 1a. THE DATE, at the boot, on all three records at once. */
+      const junkDates = [{ bad: 1 }, PAY, 42, true, [], '2025-02-29', 'not-a-date', ''];
+      o.dateDropped = junkDates.every(d => {
+        STATE.baseline = rec(d, { plank: 60 });
+        STATE.reassess = { 1: rec(d, { plank: 70 }) };
+        STATE.scoreHistory = [{ date: d, score: 70, level: 'Beginner', testCount: 10 }];
+        normalizeState();
+        return (STATE.baseline || {}).date === undefined
+          && ((STATE.reassess || {})[1] || {}).date === undefined
+          && ((STATE.scoreHistory[0] || {}).date === undefined || !STATE.scoreHistory.length);
+      });
+      /* THE RECORD SURVIVES A BAD DATE: its maxes and its level were really
+         taken, and the whole prescription is built from them. */
+      STATE.baseline = rec({ bad: 1 }, { plank: 60 });
+      STATE.reassess = {}; normalizeState();
+      o.dateRowKeptMaxes = ((STATE.baseline || {}).maxes || {}).plank === 60;
+      o.dateRowKeptLevel = (STATE.baseline || {}).level === 'Intermediate';
+      /* FLOOR: a real date survives untouched on all three. */
+      STATE.baseline = rec('2026-01-01', { plank: 60 });
+      STATE.reassess = { 1: rec('2026-02-01', { plank: 70 }) };
+      STATE.scoreHistory = [{ date: '2026-01-01', score: 70, level: 'Beginner', testCount: 10 }];
+      normalizeState();
+      o.realDateKept = STATE.baseline.date === '2026-01-01'
+        && STATE.reassess[1].date === '2026-02-01'
+        && STATE.scoreHistory[0].date === '2026-01-01';
+
+      /* ---- 1b. THE RENDER GUARD, with NO boot behind it. */
+      const seedDates = d => {
+        STATE.baseline = rec(d, { plank: 60 });
+        STATE.reassess = { 1: rec('2026-02-01', { plank: 70 }) };
+      };
+      strengthSel = 'plank';
+      seedDates({ bad: 1 });
+      try { host.innerHTML = strengthTrendHTML(); o.objDateThrew = false; }
+      catch (e) { o.objDateThrew = true; o.objDateErr = String(e).slice(0, 70); }
+      o.objDateStillCharts = /Strength trends/.test(host.innerHTML);
+      seedDates(PAY);
+      host.innerHTML = '';
+      try { host.innerHTML = strengthTrendHTML(); } catch (e) { o.payErr = String(e).slice(0, 50); }
+      o.dateInj = !!host.querySelector('img[onerror]');
+      /* FLOOR: a real date still prints its MM-DD label on the axis. */
+      seedDates('2026-01-01');
+      host.innerHTML = strengthTrendHTML();
+      o.dateLabel = /01-01/.test(host.innerHTML) && /02-01/.test(host.innerHTML);
+
+      /* lineChart() has THREE callers and the fix is in the helper, so the two
+         measurement charts are covered by the same edit. Driven directly. */
+      host.innerHTML = '';
+      try { host.innerHTML = lineChart([1, 2], [{ bad: 1 }, PAY], 'var(--fire)', 'kg'); }
+      catch (e) { o.lcThrew = true; o.lcErr = String(e).slice(0, 60); }
+      o.lcInj = !!host.querySelector('img[onerror]');
+      host.innerHTML = lineChart([1, 2], ['2026-01-01', '2026-02-01'], 'var(--fire)', 'kg');
+      o.lcLabel = /01-01/.test(host.innerHTML) && /02-01/.test(host.innerHTML);
+
+      /* ---- 2. maxes, at the boot AND on the chart. */
+      const maxDropped = v => {
+        STATE.baseline = rec('2026-01-01', { plank: v });
+        STATE.reassess = {}; normalizeState();
+        return ((STATE.baseline || {}).maxes || {}).plank === undefined;
+      };
+      o.maxStrDropped = maxDropped('99999');   // a numeric STRING above the cap
+      o.maxNegDropped = maxDropped(-500);
+      o.maxBoolDropped = maxDropped(true);
+      o.maxNaNDropped = maxDropped(NaN);
+      o.maxObjDropped = maxDropped({});
+      /* FLOORS. A real value is byte-identical, a measured ZERO is data, and a
+         numeric string IN band is COERCED — because estimateMaxes() has always
+         coerced one and the two readers must not disagree. */
+      STATE.baseline = rec('2026-01-01', { plank: 75 }); STATE.reassess = {}; normalizeState();
+      o.maxRealKept = STATE.baseline.maxes.plank === 75;
+      STATE.baseline = rec('2026-01-01', { plank: 0 }); normalizeState();
+      o.maxZeroKept = STATE.baseline.maxes.plank === 0;
+      STATE.baseline = rec('2026-01-01', { plank: '75' }); normalizeState();
+      o.maxStrCoerced = STATE.baseline.maxes.plank === 75;
+      /* An id with no benchmark is left UNBOUNDED rather than guessed at.
+         Unreachable through a screen (every EX.anchor is a TESTS id with a
+         bench), so it is exercised on the predicate directly. */
+      o.noBenchCap = maxPlausible('zzznotatest') === 0;
+      o.noBenchUnbounded = maxVal('zzznotatest', 1e9) === 1e9;
+
+      /* THE CHART MUST NOT DRAW WHAT THE ENGINE REFUSES, with NO boot. */
+      STATE.baseline = rec('2026-01-01', { plank: '99999' });
+      STATE.reassess = { 1: rec('2026-02-01', { plank: 75 }) };
+      strengthSel = 'plank';
+      host.innerHTML = strengthTrendHTML();
+      o.chartRefuses = !/99999/.test(host.innerHTML);
+      o.engineRefuses = currentMaxes().plank !== 99999;
+      /* FLOOR: two real points still plot AND the verdict still prints. */
+      STATE.baseline = rec('2026-01-01', { plank: 60 });
+      STATE.reassess = { 1: rec('2026-02-01', { plank: 75 }) };
+      host.innerHTML = strengthTrendHTML();
+      o.chartTwoPoints = (host.innerHTML.match(/<circle/g) || []).length === 2;
+      o.chartVerdict = /▲/.test(host.innerText || host.textContent || '');
+
+      /* ---- 3. prs VALUES. */
+      const prJunk = { pushup: PAY, squat: {}, plank: -5, pistol: true, dips: 0 };
+      STATE.prs = JSON.parse(JSON.stringify({ pushup: PAY, plank: -5, dips: 0 }));
+      STATE.prs.squat = {}; STATE.prs.pistol = true;
+      normalizeState();
+      o.prJunkGone = Object.keys(STATE.prs).length === 0;
+      /* FLOOR: a real record survives and a numeric string is coerced. */
+      STATE.prs = { pushup: 40, deadhang: '90' }; normalizeState();
+      o.prRealKept = STATE.prs.pushup === 40 && STATE.prs.deadhang === 90;
+      o.prBestFor = bestFor('pushup') === 40;
+
+      /* THE RENDER SITES, with NO boot behind them. */
+      STATE.prs = { pushup: PAY, deadhang: PAY };
+      setProgressTab('strength'); go('progress');
+      await new Promise(r => setTimeout(r, 200));
+      const pv = document.querySelector('#v-progress');
+      o.prProgInj = !!(pv && pv.querySelector('img[onerror]'));
+      openStandards();
+      await new Promise(r => setTimeout(r, 200));
+      const sh = document.querySelector('#sheet');
+      o.prSheetInj = !!(sh && sh.querySelector('img[onerror]'));
+      o.prSheetOpened = !!(sh && (sh.textContent || '').length > 40);
+      try { closeSheet(); } catch (e) {}
+      /* FLOOR: a real personal best still prints on BOTH surfaces. */
+      STATE.prs = { pushup: 40 };
+      setProgressTab('strength'); go('progress');
+      await new Promise(r => setTimeout(r, 200));
+      o.prProgText = /40 reps/.test((document.querySelector('#v-progress') || {}).innerText || '');
+      openStandards();
+      await new Promise(r => setTimeout(r, 200));
+      o.prSheetText = /40 reps/.test((document.querySelector('#sheet') || {}).textContent || '');
+      try { closeSheet(); } catch (e) {}
+
+      await new Promise(r => setTimeout(r, 250));
+      o.ran = window.__v417;
+
+      /* THE LIVE PANE. A junk date used to kill it through the boundary; it
+         must render the trend instead. */
+      STATE.baseline = rec({ bad: 1 }, { plank: 60 });
+      STATE.reassess = { 1: rec('2026-02-01', { plank: 70 }) };
+      setProgressTab('strength'); go('progress');
+      await new Promise(r => setTimeout(r, 300));
+      const lp = document.querySelector('#v-progress');
+      const lt = (lp ? lp.innerText : '') || '';
+      o.paneAlive = !/went wrong|something broke/i.test(lt) && /Strength trends/i.test(lt);
+      o.paneLen = lt.length;
+
+      /* A block that BREAKS what a later one relies on re-seeds before it ends. */
+      STATE.baseline = null; STATE.reassess = {}; STATE.scoreHistory = []; STATE.prs = {};
+      normalizeState(); go('today');
+      host.remove();
+      return o;
+    });
+
+    t.ok('guard: the detector really can see an injected element', vr.detector, vr);
+    t.ok('guard: and a planted payload really does RUN', vr.detectorRan, vr);
+    t.eq('guard: the plank cap is 50x its 120s benchmark', vr.cap, 6000, vr);
+    t.ok('guard: a NUMBER above the cap was already dropped before this round', vr.guardNumberDropped, vr);
+
+    // ---- 1. THE DATE
+    t.ok('every junk date is dropped from all three assessment records', vr.dateDropped, vr);
+    t.ok('FLOOR: and the record keeps its maxes', vr.dateRowKeptMaxes, vr);
+    t.ok('FLOOR: and its level', vr.dateRowKeptLevel, vr);
+    t.ok('FLOOR: a real date survives on all three', vr.realDateKept, vr);
+    t.ok('with NO boot behind it, a non-string date no longer throws', !vr.objDateThrew, vr);
+    t.ok('and the trend still renders', vr.objDateStillCharts, vr);
+    t.ok('and a payload date does not reach the SVG', !vr.dateInj, vr);
+    t.ok('FLOOR: a real date still prints its MM-DD axis label', vr.dateLabel, vr);
+    t.ok('lineChart() itself does not throw on a non-string date', !vr.lcThrew, vr);
+    t.ok('and does not inject from one — the two measurement charts share this helper', !vr.lcInj, vr);
+    t.ok('FLOOR: and it still labels a real pair of dates', vr.lcLabel, vr);
+    t.ok('the live Progress > Strength pane survives a junk date', vr.paneAlive, vr);
+
+    // ---- 2. maxes
+    t.ok('a numeric STRING above the cap is dropped — typeof was doing a range test\'s job', vr.maxStrDropped, vr);
+    t.ok('a negative max is dropped', vr.maxNegDropped, vr);
+    t.ok('a boolean max is dropped', vr.maxBoolDropped, vr);
+    t.ok('a NaN max is dropped', vr.maxNaNDropped, vr);
+    t.ok('an object max is dropped', vr.maxObjDropped, vr);
+    t.ok('FLOOR: a real max is byte-identical', vr.maxRealKept, vr);
+    t.ok('FLOOR: a measured ZERO survives — zero is data', vr.maxZeroKept, vr);
+    t.ok('FLOOR: an in-band numeric string is COERCED, so the two readers agree', vr.maxStrCoerced, vr);
+    t.ok('guard: an id with no benchmark really has no cap', vr.noBenchCap, vr);
+    t.ok('FLOOR: and is left UNBOUNDED rather than guessed at', vr.noBenchUnbounded, vr);
+    t.ok('the chart no longer draws a figure the engine refuses', vr.chartRefuses, vr);
+    t.ok('guard: and the engine really does refuse it', vr.engineRefuses, vr);
+    t.ok('FLOOR: two real points still plot', vr.chartTwoPoints, vr);
+    t.ok('FLOOR: and the verdict still prints', vr.chartVerdict, vr);
+
+    // ---- 3. prs
+    t.ok('every junk personal-best VALUE is dropped', vr.prJunkGone, vr);
+    t.ok('FLOOR: a real personal best survives and a numeric string is coerced', vr.prRealKept, vr);
+    t.ok('FLOOR: and bestFor() reads it back', vr.prBestFor, vr);
+    t.ok('guard: the Standards sheet really opened', vr.prSheetOpened, vr);
+    t.ok('with NO boot behind it, the personal-bests row does not inject', !vr.prProgInj, vr);
+    t.ok('and neither does the Strength Standards sheet', !vr.prSheetInj, vr);
+    t.ok('FLOOR: a real personal best still prints on Progress', vr.prProgText, vr);
+    t.ok('FLOOR: and in the Standards sheet', vr.prSheetText, vr);
+
+    t.eq('nothing ran from any of the three', vr.ran, 0, vr);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
