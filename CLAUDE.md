@@ -13731,6 +13731,30 @@ repair that changes an already-settled state fires *"we repaired your data"* on
 every launch for every athlete, about nothing. A key repair is exactly the kind
 that can, because it walks a map the app itself wrote.
 
+### Two more sweeps, clean, and the second answers a question the round raised
+
+**Real programme boundaries.** Not junk from a backup — legitimate states the
+app itself arrives at: exactly one session done, the very last session of the
+programme, one past the end, straight after a restart with the run archived, and
+mid-session with a live log. Six tabs plus all four Progress panes each:
+**50 renders, zero problems** — no `NaN`, no `undefined`, no `Invalid Date`, no
+`[object`, no throw, 0 page errors, with the detector proven on a planted
+string first.
+
+**And the no-boot door for a KEY repair does not exist.** v417 needed render
+guards because a cross-tab adopt replaces `STATE` with no page boot. A key
+repair has no render guard — the counters read keys raw — so the question is
+whether that door is open. It is not: the listener reads
+`await load(); normalizeState(); render();`.
+
+**That was DRIVEN rather than read**, because source reading was wrong twice
+this session. A junk-keyed state was written to `localStorage` and a real
+`storage` event dispatched (a bare event makes `load()` re-read the OLD value —
+the v410 probe trap), and all three junk key sets came back **empty** with the
+badge still locked. The guard is what makes that meaningful: the raw predicate,
+with no repair run, DOES unlock on a junk key — so the empty result is about the
+repair rather than about a test that could never fail.
+
 ### Four detector mistakes in one session, all the same shape
 
 Every one of them reported a finding on CORRECT code, and every one was a
