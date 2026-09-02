@@ -1849,7 +1849,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='418';
+const APP_VERSION='419';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -22084,6 +22084,18 @@ function normalizeState(){
      and come back on the next import. Fixed as a class rather than one at a
      time, which is how the gap survived v284. */
   if(!STATE.reassess||typeof STATE.reassess!=='object'||Array.isArray(STATE.reassess))STATE.reassess={};
+  /* THE KEY IS A CYCLE NUMBER, and it had only a container check — while the
+     "Levelled Up · Complete a re-test" badge is
+     `Object.keys(STATE.reassess||{}).length>=1`. So ONE junk key out of an
+     imported backup unlocked a badge for a re-test that never happened:
+     measured, locked with no re-tests and UNLOCKED with {'not-a-cycle': …}.
+     Same class as the phantom streak — A COUNT OVER UNVALIDATED KEYS — and the
+     two readers that do `.map(Number)` were already safe only by accident,
+     because STATE.reassess[NaN] is undefined and both guard `r&&r.maxes`.
+     commitAssessment() writes STATE.reassess[assessState.reassess], a cycle
+     index, so a non-integer key was never written by the app. */
+  {const R=STATE.reassess;for(const k in R){const n=Number(k);
+    if(!(isFinite(n)&&n>=0&&Math.floor(n)===n&&String(n)===String(k)))delete R[k];}}
   if(!STATE.weekFeel||typeof STATE.weekFeel!=='object'||Array.isArray(STATE.weekFeel))STATE.weekFeel={};
   if(!STATE.swaps||typeof STATE.swaps!=='object'||Array.isArray(STATE.swaps))STATE.swaps={};
   /* THE KEYS, not just the container. v284 hardened these maps against arriving
@@ -22966,6 +22978,13 @@ function normalizeState(){
   STATE.pain=STATE.pain.filter(x=>x&&typeof x==='object'&&typeof x.exId==='string');
   if(!Array.isArray(STATE.photos))STATE.photos=[];
   if(!STATE.achievements||typeof STATE.achievements!=='object'||Array.isArray(STATE.achievements))STATE.achievements={};
+  /* THE SAME CLASS, one map over. The Badges tile on Progress > Summary is
+     `Object.keys(STATE.achievements||{}).length`, while the Awards grid renders
+     from ACHIEVEMENTS and lights only the ids it finds — so a junk key made one
+     screen give two answers: measured, the tile read 2 BADGES with one real
+     badge lit. The id is the app's own, so membership is the test. */
+  {const A=STATE.achievements,ids={};ACHIEVEMENTS.forEach(a=>{ids[a.id]=1;});
+   for(const k in A)if(!ids[k])delete A[k];}
   if(STATE.settings.reminderOn===undefined)STATE.settings.reminderOn=false;
   /* MEMBERSHIP, not truthiness — the `diet` bug shape verbatim. This value is
      interpolated straight into an HTML attribute in Settings, so anything that

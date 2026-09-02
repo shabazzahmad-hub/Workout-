@@ -13684,6 +13684,63 @@ a cross-tab adopt replaces `STATE` with no boot behind it.
   `rows['__proto__']=obj` **reassigns a prototype** rather than creating a key,
   so `Object.keys` is empty. Not an app defect.
 
+## A count over unvalidated keys (v419)
+
+v418 fixed a junk DATE propping up a dead streak. The same shape one level up
+is a **COUNT**: two surfaces count the keys of a map whose keys nothing
+validates, so one junk key out of an imported backup becomes a training event
+that never happened.
+
+| map | keyed by | the counter | measured |
+|---|---|---|---|
+| `reassess` | cycle number | `Object.keys(…).length>=1` — the **Levelled Up · Complete a re-test** badge | locked with no re-tests, **UNLOCKED** with `{'not-a-cycle': …}` |
+| `achievements` | badge id | the **Badges** tile on Progress ▸ Summary | tile read **`2 BADGES`** with **one** real badge lit |
+
+The achievements one is the sharper of the two: the Awards grid renders from
+`ACHIEVEMENTS` and lights only the ids it finds, so the tile and the grid gave
+**two answers on one screen**.
+
+**The two `reassess` readers that do `.map(Number)` were safe only by
+accident** — `STATE.reassess[NaN]` is undefined and both guard `r&&r.maxes`. A
+count has no such guard, which is why the class is about counts rather than
+about lookups.
+
+**Cycle 0 is a legal key**, so the repair tests integer-ness rather than
+`n>0`; an over-eager version would drop the first re-test and nothing else in
+the block would notice.
+
+### Four detector mistakes in one session, all the same shape
+
+Every one of them reported a finding on CORRECT code, and every one was a
+pattern loose enough to match ordinary app content:
+
+| detector | actually matched |
+|---|---|
+| `/true/` | the word **truest** in the chart's own footer |
+| `/0 reps/` | the `0` inside **40 reps** |
+| `img[onerror]` | the app's own **126 exercise thumbnails** |
+| `indexOf('Badges')` | nothing — `.l` is **uppercased in CSS** and `innerText` returns the RENDERED text |
+
+**A detector that can match ordinary app content is not measuring what you
+named**, and one that reads `innerText` is reading what CSS painted. Plant a
+marker and prove it BOTH ways before believing either a hit or a zero.
+
+### And the guard caught my own block skipping its setup
+
+`homeSummaryHTML()` opens `if(!STATE.baseline)return ''`, and an earlier block
+in the file deliberately leaves the baseline null — so the tile read `NO TILE`
+and **the guard is what said so** rather than the assertion silently passing on
+an empty string. *Each block builds the state it asserts on*, and a guard on the
+thing the block depends on is what makes that rule enforceable rather than
+aspirational.
+
+### And confirm the control's real shape, for the sixth time
+
+The first floor seeded `firstsession` as a badge id. The real one is `first`.
+So the repair correctly deleted the invented key and the FLOOR read as a
+failure — a fix reported broken by a probe that was wrong. The id is now read
+out of `ACHIEVEMENTS` rather than typed.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
