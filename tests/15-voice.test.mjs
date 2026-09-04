@@ -614,7 +614,12 @@ export default async function run() {
     STATE.settings.azureRegion = keep.region;
     window.loadSpeechSDK = keep.load; window._sdkSynthesize = keep.synth;
     window._neuralPlay = keep.play;
-    try { Object.defineProperty(navigator, 'onLine', { value: keep.online, configurable: true }); } catch (e) {}
+    /* PUT THE PROPERTY BACK, NOT A VALUE. defineProperty creates an OWN
+       property that shadows Navigator.prototype's live getter; writing another
+       fixed value leaves the shadow in place, so the page stops tracking the
+       real connection for the rest of the suite and offline emulation goes
+       unseen. Deleting the own property re-exposes the getter. */
+    try { delete navigator.onLine; } catch (e) {}
     try { closeSheet(); } catch (e) {}
     return { html, text, seen, calls: seen.length };
   }, opts);
@@ -870,6 +875,194 @@ export default async function run() {
     t.ok('a healthy phone gets no warning at all', r.healthyQuiet, r);
     t.ok('just a count of what is in use', r.healthyCounts, r);
     t.eq('and the coaches really are spread across them', r.distinct, 6);
+  }
+
+  /* ---- SAY "CONTINUE": THE THREE WAYS IT WENT SILENTLY DEAD ------------
+     Reported from the phone as "the audio continue function is not working",
+     and driven with a fake recogniser that behaves the way Chrome does. All
+     three faults below were measured on the real routes, and every one of them
+     was silent: the switch still read On and the rest screen still promised
+     the word.
+
+     This sandbox has no SpeechRecognition at all, so the fake IS the subject —
+     hence the guard that the app really saw nothing before it was installed. */
+  {
+    const r = await page.evaluate(async () => {
+      const o = {}; const wait = ms => new Promise(z => setTimeout(z, ms));
+      /* This browser has a real webkitSpeechRecognition, so "it has none" is
+         the wrong guard. What has to be true is that the app is building OURS —
+         voiceCmdSupported() and voiceCmdStart() both read SpeechRecognition
+         first, so assigning that name wins. */
+      o.guardRealApiExists = typeof window.webkitSpeechRecognition === 'function';
+
+      window.__vr = { made:0, starts:0, errors:0 };
+      window.__throwOnRestart = false;
+      class FakeRec {
+        constructor(){ window.__vr.made++; this._on=false; window.__recs=(window.__recs||[]); window.__recs.push(this); }
+        start(){ window.__vr.starts++;
+          if(this._on||window.__throwOnRestart){ const e=new Error('busy'); e.name='InvalidStateError'; throw e; }
+          this._on=true; }
+        stop(){ this._end(); } abort(){ this._end(); }
+        /* Chrome ends FIRST and fires onend on an instance that is already idle. */
+        _end(){ if(!this._on) return; this._on=false; if(this.onend) this.onend(); }
+        failWith(c){ window.__vr.errors++; if(this.onerror) this.onerror({error:c}); this._end(); }
+        say(t){ if(!this._on) return false; if(this.onresult) this.onresult({resultIndex:0,results:[[{transcript:t}]]}); return true; }
+      }
+      window.SpeechRecognition = FakeRec;
+      const listening = () => window.__recs.filter(x => x._on).length;
+      const last = () => window.__recs[window.__recs.length - 1];
+
+      STATE.settings.voiceCmd = true; save();
+      o.guardSupportedNow = voiceCmdSupported();
+      openPlayer(); PLAYER.phase = 'rest';
+      voiceCmdSync();
+      o.armed = listening() === 1;
+      o.guardAppBuiltOurs = window.__vr.made === 1 && (last() instanceof FakeRec);
+      o.healthyHint = /Say/.test(voiceCmdHintHTML());
+      o.healthyNoNote = voiceCmdNote() === '';
+
+      /* 1. A RESTART THAT THROWS. Chrome throws InvalidStateError if asked to
+         start again too soon. Swallowing it kept the dead object in _vrec, and
+         voiceCmdSync() re-arms only while that is null — so the microphone was
+         off for the rest of the session and no heartbeat could bring it back. */
+      window.__throwOnRestart = true;
+      last()._end(); await wait(10);
+      o.deadAfterThrow = listening() === 0;
+      window.__throwOnRestart = false;
+      const madeBefore = window.__vr.made;
+      voiceCmdSync(); await wait(10);
+      o.freshAfterThrow = window.__vr.made === madeBefore + 1 && listening() === 1;
+      PLAYER.phase = 'rest';
+      let b = PLAYER.phase; last().say('continue'); await wait(30);
+      o.wordActsAfterThrow = PLAYER.phase !== b;
+
+      /* 2. THE CLOUD SERVICE CANNOT BE REACHED. Chrome's recogniser is a remote
+         service and this is an offline-first app. Measured before the fix: 12
+         failures, 13 restarts, no toast, the switch still On. */
+      PLAYER.phase = 'rest';
+      const startsBefore = window.__vr.starts;
+      $('#toast').textContent = '';
+      let failures = 0;
+      for (let i = 0; i < 12 && voiceCmdDownReason() !== 'net'; i++) {
+        if (last()._on) { last().failWith('network'); failures++; }
+        await wait(4); voiceCmdSync();
+      }
+      o.netStrikes = VOICE_NET_STRIKES;
+      o.netFailuresTolerated = failures;
+      /* The last failure stands down instead of restarting, so the restarts are
+         one fewer than the strikes. Measured before the fix: 13. */
+      o.netAttempts = window.__vr.starts - startsBefore;
+      o.netStoodDown = voiceCmdDownReason() === 'net' && listening() === 0;
+      o.netToast = /speech service/.test($('#toast').textContent || '');
+      o.netHintSaysWhy = /speech service/.test(voiceCmdHintHTML());
+      /* The switch is the athlete's choice and the service may be back next
+         session, so a network failure must NOT turn it off. */
+      o.netKeptSetting = voiceCmdOn() === true;
+
+      /* And ending the session is a fresh attempt — no 'online' listener needed. */
+      playerQuit(); voiceCmdSync();
+      o.netClearsWhenSessionEnds = voiceCmdDownReason() === '';
+
+      /* 3. speechSynthesis.speaking STUCK TRUE, which is a real Android shape
+         after cancel() — and _deviceSpeak() calls cancel() on every utterance.
+         Unbounded, the echo guard discards the word for ever. */
+      openPlayer(); PLAYER.phase = 'rest'; voiceCmdSync();
+      Object.defineProperty(window.speechSynthesis, 'speaking', { configurable:true, get:()=>true });
+      _vrSpeakSince = 0; _vrSpokeAt = 0;
+      o.echoBlocksRealLine = voiceCmdEcho();
+      PLAYER.phase = 'rest'; b = PLAYER.phase; voiceCmdHeard('continue'); await wait(20);
+      o.floorCoachLineIgnored = PLAYER.phase === b;
+      _vrSpeakSince = Date.now() - (VOICE_ECHO_MAX_MS + 1000);
+      PLAYER.phase = 'rest'; b = PLAYER.phase; voiceCmdHeard('continue'); await wait(30);
+      o.stuckStopsBlocking = PLAYER.phase !== b;
+      Object.defineProperty(window.speechSynthesis, 'speaking', { configurable:true, get:()=>false });
+
+      /* FLOOR: the hint says nothing at all when the athlete has it off. */
+      STATE.settings.voiceCmd = false; save();
+      o.floorOffIsSilent = voiceCmdHintHTML() === '';
+
+      // put the page back the way the next block expects it
+      STATE.settings.voiceCmd = false; _vrDown = ''; _vrNetFails = 0;
+      _vrSpeakSince = 0; _vrSpokeAt = 0;
+      voiceCmdStop(); playerQuit(); delete window.SpeechRecognition; save();
+      return o;
+    });
+    t.ok('guard: this browser has a speech API of its own', r.guardRealApiExists, r);
+    t.ok('guard: and the app is building the one the check controls', r.guardAppBuiltOurs, r);
+    t.ok('guard: the microphone arms during a rest', r.armed, r);
+
+    t.ok('a restart that throws leaves nothing listening', r.deadAfterThrow, r);
+    t.ok('so the next heartbeat builds a FRESH recogniser', r.freshAfterThrow, r);
+    t.ok('and the word acts again', r.wordActsAfterThrow, r);
+
+    t.eq('a run of network failures stands down after three', r.netFailuresTolerated, r.netStrikes, r);
+    t.eq('and three is the bound the app states', r.netStrikes, 3);
+    t.eq('so it restarts twice rather than for ever', r.netAttempts, 2, r);
+    t.ok('the retrying stops rather than looping in silence', r.netStoodDown, r);
+    t.ok('the athlete is told the speech service could not be reached', r.netToast, r);
+    t.ok('and the rest screen names the reason instead of promising the word', r.netHintSaysWhy, r);
+    t.ok('FLOOR: a network failure does not turn the athlete’s switch off', r.netKeptSetting, r);
+    t.ok('ending the session clears the stand-down, so the next one retries', r.netClearsWhenSessionEnds, r);
+
+    t.ok('FLOOR: the word is still ignored while the coach is genuinely speaking', r.floorCoachLineIgnored, r);
+    t.ok('and the echo guard really did fire on that line', r.echoBlocksRealLine, r);
+    t.ok('a speaking flag stuck past any real line stops blocking the word', r.stuckStopsBlocking, r);
+
+    t.ok('FLOOR: a healthy phone gets the plain hint', r.healthyHint, r);
+    t.ok('FLOOR: and no explanation it does not need', r.healthyNoNote, r);
+    t.ok('FLOOR: the hint is silent when the athlete has it switched off', r.floorOffIsSilent, r);
+  }
+
+  /* ---- AND THE OFFLINE BRANCH, DRIVEN WITH THE BROWSER REALLY OFFLINE ----
+     One-sided on purpose: navigator.onLine === false means there is no route
+     at all, so a cloud recogniser cannot answer. It is never read the other
+     way — a captive portal reports true — which is what the strike count
+     above is for. */
+  {
+    const ctx = page.context();
+    /* Each block builds the state it asserts on: make sure nothing earlier has
+       left an own onLine shadowing the browser's getter. */
+    await page.evaluate(() => { try { delete navigator.onLine; } catch (e) {} });
+    const install = () => page.evaluate(() => {
+      window.__vr2 = { starts: 0 };
+      class F { constructor(){ this._on=false; } start(){ window.__vr2.starts++; this._on=true; }
+        stop(){ this._on=false; if(this.onend) this.onend(); } abort(){ this.stop(); } }
+      window.SpeechRecognition = F;
+      STATE.settings.voiceCmd = true; save();
+      openPlayer(); PLAYER.phase = 'rest'; voiceCmdSync();
+      return { reason: voiceCmdDownReason(), starts: window.__vr2.starts };
+    });
+    const on = await install();
+    await ctx.setOffline(true);
+    await page.waitForFunction(() => navigator.onLine === false, null, { timeout: 5000 });
+    const off = await page.evaluate(async () => {
+      const before = window.__vr2.starts;
+      voiceCmdSync(); await new Promise(z => setTimeout(z, 20));
+      return { onLine: navigator.onLine, reason: voiceCmdDownReason(),
+               newStarts: window.__vr2.starts - before,
+               hint: voiceCmdHintHTML(), note: voiceCmdNote(), stillOn: voiceCmdOn() };
+    });
+    await ctx.setOffline(false);
+    await page.waitForFunction(() => navigator.onLine === true, null, { timeout: 5000 });
+    const back = await page.evaluate(async () => {
+      const before = window.__vr2.starts;
+      voiceCmdSync(); await new Promise(z => setTimeout(z, 20));
+      const out = { reason: voiceCmdDownReason(), newStarts: window.__vr2.starts - before,
+                    hint: voiceCmdHintHTML() };
+      STATE.settings.voiceCmd = false; _vrDown = ''; _vrNetFails = 0;
+      voiceCmdStop(); playerQuit(); delete window.SpeechRecognition; save();
+      return out;
+    });
+    t.eq('guard: online, there is nothing to explain', on.reason, '');
+    t.eq('guard: and the microphone armed', on.starts, 1);
+    t.eq('a phone with no route at all reports the offline reason', off.reason, 'offline');
+    t.eq('and the microphone is not opened for a service that cannot answer', off.newStarts, 0);
+    t.ok('the rest screen says it needs a connection', /needs a connection/.test(off.hint), off);
+    t.ok('and Settings says the same thing', /needs a connection/.test(off.note), off);
+    t.ok('FLOOR: the athlete’s switch is left where they put it', off.stillOn, off);
+    t.eq('back in signal it clears itself', back.reason, '');
+    t.eq('and the microphone re-arms', back.newStarts, 1);
+    t.ok('with the plain hint again', /Say/.test(back.hint), back);
   }
 
   srv.close();

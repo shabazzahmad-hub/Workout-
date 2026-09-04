@@ -1849,7 +1849,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='421';
+const APP_VERSION='422';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -7766,7 +7766,7 @@ function plEnterRest(dur,type){
       <button class="btn ghost" id="plToggle" onclick="playerToggle()">Pause</button>
       <button class="btn primary" onclick="playerSkipRest()">Skip ▶</button>
     </div>
-    ${voiceCmdOn()&&voiceCmdSupported()?'<div class="tiny muted" style="margin-top:6px">\u{1F399}\uFE0F Say “continue” to start the next set</div>':''}`;
+    ${voiceCmdHintHTML()}`;
   plS('#plNum',fmtTime(PLAYER.remain));plS('#plSub','REST');plRingSet(1);
   if(PLAYER.running)PLAYER.tid=setInterval(plTickRest,1000);else plS('#plToggle','Resume');
 }
@@ -8084,7 +8084,16 @@ document.addEventListener('click',e=>{
    the next set. */
 const VOICE_CMD_WORD='continue';
 const VOICE_ECHO_TAIL_MS=900;
-let _vrec=null,_vrWant=false,_vrSpokeAt=0;
+/* No line this app speaks runs anywhere near this long. Past it, a
+   speechSynthesis.speaking that is still true is a STUCK FLAG rather than a
+   voice — a real Android shape after cancel(), which _deviceSpeak() calls on
+   every utterance. Unbounded, the echo guard then throws the word away for
+   ever and the feature is dead with nothing on screen. */
+const VOICE_ECHO_MAX_MS=8000;
+/* Chrome's recogniser is a CLOUD service, and this is an offline-first app.
+   One blip is not a diagnosis; a run of them is. */
+const VOICE_NET_STRIKES=3;
+let _vrec=null,_vrWant=false,_vrSpokeAt=0,_vrSpeakSince=0,_vrNetFails=0,_vrDown='';
 function voiceCmdSupported(){try{return !!(window.SpeechRecognition||window.webkitSpeechRecognition);}catch(e){return false;}}
 /* Absent means the athlete has not chosen. A default here would make the
    "has the athlete turned this on?" test true for everybody forever, which is
@@ -8114,8 +8123,46 @@ function voiceCmdAdvance(){
   return false;
 }
 function voiceCmdEcho(){
-  try{if(window.speechSynthesis&&speechSynthesis.speaking){_vrSpokeAt=Date.now();return true;}}catch(e){}
+  let sp=false;
+  try{sp=!!(window.speechSynthesis&&speechSynthesis.speaking);}catch(e){sp=false;}
+  if(sp){
+    const now=Date.now();
+    if(!_vrSpeakSince)_vrSpeakSince=now;
+    _vrSpokeAt=now;
+    /* Measured stuck: the word never gets through again, on any rest, for the
+       life of the page. Past the ceiling the flag stops being evidence. */
+    return now-_vrSpeakSince<VOICE_ECHO_MAX_MS;
+  }
+  _vrSpeakSince=0;
   return Date.now()-_vrSpokeAt<VOICE_ECHO_TAIL_MS;
+}
+/* WHY THE MICROPHONE IS NOT LISTENING, in the order the answer is KNOWABLE —
+   v302's rule, one subsystem over. Returns '' when there is nothing to say. */
+function voiceCmdDownReason(){
+  try{
+    if(!voiceCmdSupported())return 'unsupported';
+    /* ONE-SIDED, and that is the whole of it: navigator.onLine === false means
+       the browser has no route at all, so a cloud recogniser cannot possibly
+       answer. true means only that something is attached — a captive portal
+       still reports true — so it is never read as "reachable", and the strike
+       count below is what covers online-but-unreachable. */
+    if(navigator.onLine===false)return 'offline';
+    return _vrDown||'';
+  }catch(e){return '';}
+}
+function voiceCmdNote(){
+  const d=voiceCmdDownReason();
+  if(d==='unsupported')return 'This browser has no speech recognition, so the switch cannot do anything on this phone.';
+  if(d==='offline')return 'Speech recognition runs on Google\u2019s servers, so it needs a connection. This phone is offline, so the word cannot be heard right now \u2014 every other part of the session works.';
+  if(d==='net')return 'The speech service could not be reached, so the word is not being listened for. It tries again next session.';
+  return '';
+}
+/* One reader, so the rest screen and Settings cannot promise different things. */
+function voiceCmdHintHTML(){
+  if(!voiceCmdOn())return '';
+  const n=voiceCmdNote();
+  return '<div class="tiny muted" style="margin-top:6px">\u{1F399}\uFE0F '+
+    (n?_ve(n):'Say \u201Ccontinue\u201D to start the next set')+'</div>';
 }
 function voiceCmdHeard(text){
   try{
@@ -8136,7 +8183,7 @@ function voiceCmdStart(){
     const C=window.SpeechRecognition||window.webkitSpeechRecognition;
     const r=new C();
     r.continuous=true;r.interimResults=true;r.lang='en-US';
-    r.onresult=(e)=>{try{for(let i=e.resultIndex;i<e.results.length;i++)voiceCmdHeard(e.results[i][0].transcript);}catch(_e){}};
+    r.onresult=(e)=>{try{_vrNetFails=0;for(let i=e.resultIndex;i<e.results.length;i++)voiceCmdHeard(e.results[i][0].transcript);}catch(_e){}};
     r.onerror=(e)=>{
       const err=e&&e.error;
       /* A refused microphone must turn the setting OFF rather than retry for
@@ -8147,10 +8194,31 @@ function voiceCmdStart(){
         try{STATE.settings.voiceCmd=false;save();}catch(_e){}
         toast('Voice command needs the microphone — turned off');
         try{if(TAB==='guide')renderGuide();}catch(_e){}
+        return;
+      }
+      /* THE SAME LOOP, ONE ERROR CODE OVER, AND IT WAS SILENT. Measured on an
+         offline page: 12 network failures, 13 restarts, no toast, the setting
+         still reading On and the rest screen still promising the word. The
+         setting is NOT turned off — it is the athlete's choice and the service
+         may be back next session — but the retrying stops and the app says so. */
+      if(err==='network'){
+        if(++_vrNetFails<VOICE_NET_STRIKES)return;
+        _vrWant=false;_vrec=null;
+        if(_vrDown!=='net'){_vrDown='net';toast('Voice command could not reach the speech service',4000);}
+        try{if(TAB==='guide')renderGuide();}catch(_e){}
       }
     };
     // Chrome ends recognition after a silence; keep it up while a session is open
-    r.onend=()=>{if(_vrWant&&_vrec){try{_vrec.start();}catch(e){}}else{_vrec=null;}};
+    r.onend=()=>{
+      if(!_vrWant||!_vrec){_vrec=null;return;}
+      /* A RESTART THAT THROWS MUST NOT LEAVE A CORPSE. voiceCmdSync() re-arms
+         only while _vrec is null, so swallowing the throw and keeping the dead
+         object switched the microphone off for the rest of the session with
+         nothing on screen — measured: zero recognisers listening and no further
+         start attempts, whatever the heartbeat did. Drop it and let the next
+         beat build a fresh one. */
+      try{_vrec.start();}catch(e){_vrec=null;}
+    };
     _vrec=r;_vrWant=true;
     r.start();
   }catch(e){_vrec=null;_vrWant=false;}
@@ -8165,14 +8233,22 @@ function voiceCmdStop(){
 function voiceCmdSync(){
   let open=false;
   try{open=!!((PLAYER&&PLAYER.phase&&PLAYER.phase!=='done')||(INTV&&INTV.phase&&INTV.phase!=='done'));}catch(e){open=false;}
-  const want=open&&voiceCmdOn()&&voiceCmdSupported();
+  /* Nothing open is the end of an attempt, so the strikes and the stand-down
+     clear here rather than needing an 'online' listener: the next session tries
+     again from scratch, which is what an athlete who has walked back into
+     signal expects. */
+  if(!open){_vrNetFails=0;_vrDown='';}
+  const want=open&&voiceCmdOn()&&!voiceCmdDownReason();
   if(want&&!_vrec)voiceCmdStart();
   else if(!want&&_vrec)voiceCmdStop();
 }
 function toggleVoiceCmd(){
   if(!voiceCmdOn()&&!voiceCmdSupported()){toast('This browser has no speech recognition');return;}
   STATE.settings.voiceCmd=!voiceCmdOn();save();
-  if(!voiceCmdOn())voiceCmdStop();
+  /* Turning it back on is an explicit retry: clear a stand-down from earlier
+     in this session rather than leaving the switch On over a dead microphone. */
+  if(voiceCmdOn()){_vrNetFails=0;_vrDown='';}
+  else voiceCmdStop();
   renderGuide();
   toast(voiceCmdOn()?'Say “continue” during rest to start the next set':'Voice command off');
 }
@@ -21196,9 +21272,7 @@ function renderGuide(){
     ${(n=>n?`<div class="note warn" style="margin:8px 0 4px">${n}</div>`:'')(notifBlockedNote())}
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Voice coach <span class="tiny muted">· deep</span></span><button class="chip ${STATE.settings.voice!==false?'on':''}" onclick="toggleSetting('voice')">${STATE.settings.voice!==false?'On':'Off'}</button></div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Say “continue” to start the next set <span class="tiny muted">· hands-free</span></span><button class="chip ${voiceCmdOn()?'on':''}" onclick="toggleVoiceCmd()" ${voiceCmdSupported()?'':'aria-disabled="true"'}>${voiceCmdOn()?'On':'Off'}</button></div>
-    <div class="tiny muted" style="padding:2px 0 6px">${voiceCmdSupported()
-      ?'Listens only during rest, and only for that one word. It never stops, pauses or ends a session — that stays a deliberate tap.'
-      :'This browser has no speech recognition, so the switch cannot do anything on this phone.'}</div>
+    <div class="tiny muted" style="padding:2px 0 6px">${_ve(voiceCmdNote()||'Listens only during rest, and only for that one word. It never stops, pauses or ends a session — that stays a deliberate tap.')}</div>
     <div style="padding:4px 0 2px">
       <div class="row" style="justify-content:space-between"><span class="tiny muted">Beep &amp; countdown volume</span><span class="tiny muted" id="cvLbl">${Math.round(cueVolPref()*100/CUE_VOL_DEFAULT)}%</span></div>
       <input type="range" aria-label="Beep and countdown volume" min="${CUE_VOL_MIN}" max="${CUE_VOL_MAX}" step="0.05" value="${cueVolPref()}" oninput="$('#cvLbl').textContent=Math.round(this.value*100/CUE_VOL_DEFAULT)+'%'" onchange="setCueVol(this.value);beep(920,.17,0.92)" style="width:100%">

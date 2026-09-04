@@ -14138,6 +14138,99 @@ another tab.
   mutant. Let the harness own it (a foreground command in a background task),
   and it survives across turns and reports when it exits.
 
+## Three ways the word went silently dead (v422)
+
+Reported from the phone: *"the audio continue function is not working."* Driven
+with a fake recogniser shaped like Chrome's, and **three separate faults fell
+out, none of which had ever been measured** — because this sandbox's headless
+browser has a speech API but no speech service, so every earlier check drove
+`voiceCmdHeard()` directly and never the recogniser around it.
+
+**All three are silent in the same way**: the switch still reads On and the rest
+screen still promises the word.
+
+### A restart that throws leaves a corpse
+
+```js
+r.onend=()=>{if(_vrWant&&_vrec){try{_vrec.start();}catch(e){}}else{_vrec=null;}};
+```
+
+Chrome ends recognition on silence and throws `InvalidStateError` if asked to
+start again too soon. The throw was swallowed and **`_vrec` kept the dead
+object** — and `voiceCmdSync()` re-arms only while `_vrec` is null, so the
+heartbeat believed it was still listening. Measured: **zero recognisers
+listening, and no further start attempts, whatever the heartbeat did.** The
+microphone was off for the rest of the session.
+
+### The cloud service, on an offline-first app
+
+`SpeechRecognition` is a **remote** service — the audio goes to Google's
+servers — and this app's oldest promise is that it works with no connection.
+`onerror` handled `not-allowed` and `service-not-allowed` and let every other
+code fall through to the restart loop. Measured on a page that could not reach
+it: **12 failures, 13 restarts, no toast, the setting still On.**
+
+**It stands down after three, and it does NOT turn the setting off.** A refused
+microphone is the athlete's own answer and stays off; an unreachable service may
+be back next session, so the switch is left where they put it and the retrying
+is what stops. Ending the session clears the strikes, so the next one tries
+again — which is why no `online` listener is needed.
+
+**`navigator.onLine` is read ONE-SIDED, and that is the whole of it.** `false`
+means the browser has no route at all, so a cloud recogniser cannot answer;
+`true` means only that something is attached — a captive portal reports `true` —
+so it is never read as *reachable*, and the strike count is what covers
+online-but-unreachable. A check that trusted `true` would refuse a word that
+would have worked. Same rule as v413's vision-path fix, one subsystem over.
+
+### An echo guard with no ceiling
+
+`voiceCmdEcho()` discards anything heard while `speechSynthesis.speaking`, so
+the coach cannot talk the app into the next set. It had no bound — and
+**`speaking` stuck true is a real Android shape after `cancel()`, which
+`_deviceSpeak()` calls on every single utterance.** Measured with it stuck: the
+word never gets through again, on any rest, for the life of the page.
+
+`VOICE_ECHO_MAX_MS` is 8 s. No line this app speaks runs near it, so past that
+the flag is not evidence of a voice any more. **The floor is what keeps it a
+guard rather than a deletion**: a genuine coach line must still swallow the
+word, and it is pinned beside the ceiling.
+
+### And the athlete has to be able to see which one it is
+
+All three used to leave the rest screen promising *"Say continue to start the
+next set"* over a microphone that could not hear. `voiceCmdDownReason()` orders
+the answers by what is **knowable** — unsupported, then offline, then a
+stand-down — and `voiceCmdHintHTML()` is the one reader, so the rest screen and
+Settings cannot promise different things. v302's rule, and v398's: *a control
+that says On over something that cannot work is the same defect as a promise in
+UI text with no code behind it.*
+
+### The check could not use `page.context().setOffline()`, and the suite was why
+
+The offline block timed out waiting for `navigator.onLine` to go false, on a
+browser where it demonstrably works. **An earlier block in the same suite had
+shadowed the property** with `Object.defineProperty(navigator,'onLine',{value:…})`
+— an OWN property over `Navigator.prototype`'s live getter — and "restored" it
+by writing **another fixed value**. The shadow therefore stayed for the rest of
+the suite and the page stopped tracking the real connection.
+
+**Restoring a value is not restoring the property.** `delete navigator.onLine`
+re-exposes the getter. The pre-existing block is fixed, and the new one deletes
+defensively rather than trusting someone else's cleanup — *each block builds the
+state it asserts on*.
+
+### Two guard premises that were wrong, and the checks said so
+
+- **"This browser has no speech recognition."** It has `webkitSpeechRecognition`.
+  The guard that matters is not *the browser has none* but *the app is building
+  the one the check controls* — asserted with an `instanceof` on the instance the
+  app actually made.
+- **"Three strikes means three restarts."** It is two: the last failure stands
+  down instead of restarting. The bound that means something is how many
+  failures it TOLERATES, so the check loops until the stand-down and counts
+  those, with the restart count pinned beside it.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
