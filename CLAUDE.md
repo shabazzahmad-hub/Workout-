@@ -14855,6 +14855,153 @@ three are idempotent by construction:
 The wake-lock listener re-acquires a lock it already holds, which is a no-op.
 
 
+## A guard that measured a LENGTH where it had to name a THING (v428)
+
+Three findings, and the first is in the one file this app has that another
+app on the same origin can be harmed by.
+
+### The scope guard tested the wrong property
+
+`sw.js` carries a long comment saying why the worker must identify OUR shell
+and OUR directory explicitly: CacheStorage is scoped to the ORIGIN, and
+serving a sibling app's page out of our cache is a defect this repo has
+already measured once. The test it used was
+
+```
+url.pathname.lastIndexOf('/') === SCOPE.length - 1
+```
+
+which asks **WHERE the last slash sits** — a statement about how many
+characters another app's folder name has, not about whose folder it is.
+Measured against the real scope `/Workout-/`:
+
+| path | old rule | truth |
+|---|---|---|
+| `/Workout-/ex-pushup.jpg` | ours | ours |
+| `/Workout-/img/a.jpg` | not ours | not ours |
+| **`/Fitness2/a.jpg`** | **OURS** | not ours |
+| **`/commandx/a.jpg`** | **OURS** | not ours |
+
+Any sibling app published from this same GitHub Pages origin whose directory
+name happens to be the same LENGTH was served from our cache and written into
+it — exactly what the comment above the guard says it prevents, arriving
+through the guard itself.
+
+`inScopeDir(pathname, scope)` names both halves: the path must START in our
+directory, and it must carry no further slash, because a deeper path is
+another app's. **The handler asks the predicate rather than restating it**,
+and a source assertion pins that, because a rule restated at a call site is a
+rule that drifts.
+
+**Not reachable from the harness**, which serves at the origin root where the
+scope is a single slash and both rules agree — so the predicate is exercised
+DIRECTLY, the technique the hardness-band and anchor-unit guards use: read the
+function out of the shipped file, run a table through it, and **keep the OLD
+rule beside it as a guard that the trap is real.** Without that guard, "the
+new rule is right" is satisfied by a rule that was never wrong. The floors are
+our own flat asset, a deeper path, and the root scope unchanged in both
+directions.
+
+### The deep-linkable tab list was written by hand, twice
+
+Three lines apart, identical, in the `hashchange` handler and in the boot
+path, with nothing tying either copy to the nav bar. Seven views exist and six
+have a button — `quick` correctly has no button and no deep link, **but only
+by the coincidence of two hand-written lists agreeing.** A seventh tab gains a
+button and no deep link, or a deep link to a view with no way back, and
+neither says anything on screen. The five diets as three literals, one
+registry over.
+
+`hashTab()` asks the nav bar. It is a membership test rather than a truthiness
+one, because the value reaches `go()`, which throws on a view that does not
+exist, and an inherited key is truthy.
+
+### Every theme paints every property it is asked for
+
+`applyTheme()` reads five fields off the picked theme and writes each straight
+into a custom property. **Four of the five have no fallback**, and a missing
+one is silent in the worst way: **`setProperty` with an undefined value writes
+the literal text `undefined`** — measured in a real browser, not reasoned — so
+the property is set to an invalid value and every rule reading it computes to
+unset. The picker reads a sixth field for its button label, which would render
+as the word *undefined* on the chip.
+
+One field is deliberately allowed to be absent, and the distinction is v364's:
+**a per-member map whose fallback is a real DEFAULT may be partial; one whose
+fallback is silence must be complete.** The dark accent falls back to the main
+accent; the other five fall back to nothing.
+
+All four themes are complete today, so it is a lockstep rule rather than a
+live defect — the kind `TESTS`/`TEST_DEFAULTS` got after drifting three times.
+**A clean validator proves nothing about a validator rule**, so the check
+breaks a theme in front of it, requires the specific complaint, and restores,
+with `console.error` muted. Its floor is the optional field: a rule that
+demanded it would reject correct data.
+
+### `$` returns ONE element and `$$` returns the array
+
+The first version of `hashTab()` read `$('.nav button').some(...)`. `$` is
+`querySelector`, so that throws — **inside the helper's own `try/catch`, which
+returns `''`**. Nothing would have thrown on a phone; every home-screen
+shortcut would simply have stopped opening its tab, with nothing on screen to
+say so.
+
+It came from a note I had written myself claiming `$` returned an array. That
+is the oldest rule in this file — **confirm the control's real shape before
+believing the result** — reaching my own summary rather than a probe. The
+check now carries a guard that the helper answers for a real tab AT ALL,
+because a predicate that catches into `''` fails closed and closed is silent.
+
+**And the route is driven, not the helper called.** A home-screen shortcut
+into an app that is already open is a same-document hash change — `boot()`
+never runs — which is the entire reason that listener exists.
+
+### The third writer into the day's food, and it was two writers
+
+v346 made `pushFoodRow()` the single writer *"so a third writer cannot forget
+the habit sync"*. There were already **two more**, and neither appended — both
+REPLACED a row in place with a hand-written literal of their own: the edit
+sheet, and a dashboard screenshot landing on an earlier import. A sweep for
+appends could not see either.
+
+**The edit one forgot the sync, and it is an everyday route.** Measured through
+`editFood()` then `saveFood()` against a 165 g protein target:
+
+| | day's protein | habit ticked |
+|---|---|---|
+| log a 200 g meal | 200 g | yes |
+| **correct it down to 40 g** | **40 g** | **still yes** |
+
+A renderer must not mutate, so nothing later put it right. v346 already
+measured what a wrong tick costs: a day added to the nutrition streak, and
+Perfect Day unlocked.
+
+**And it reported a success it had not achieved.** The toast sat OUTSIDE its
+own write guard, so a row that had gone between opening the sheet and tapping
+Save printed **`Updated ✓`** over **zero rows written** — measured. It needs no
+import to reach: `nutToday()` is keyed by today's date, so a sheet opened at
+23:59 and saved at 00:01 looks for the row in TOMORROW's empty day, and a
+cross-tab adopt replaces `STATE` with no sheet involved at all. That is v343's
+three-savers defect, one sheet along.
+
+`replaceFoodRow()` is the one writer for both replace paths, it goes through
+`foodRow()` so the shape lives in one place, and it **returns whether it
+wrote**. `at` is kept by default — correcting a number does not change when the
+food was eaten — and stamped only where the caller means a new event.
+
+**The floors are what stop the fix being an un-tick.** Correcting the row back
+UP must tick it again, an ordinary edit must still say `Updated ✓`, and the
+time it was eaten must survive. And **the class is closed rather than the
+instance**: a source scan pins that exactly one place writes the day's food by
+index and exactly one appends, with a guard that the scan can see a write at
+all.
+
+### And a check that compared ORDER where the requirement is a SET
+
+`accepted` is built by filtering the VIEWS and `buttons` by reading the nav
+bar, and the two are laid out in different orders. Neither order is a
+requirement, and the check failed on correct code until it compared the sets.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

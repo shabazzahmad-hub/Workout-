@@ -1,5 +1,5 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v427';
+const CACHE = 'coreforge-v428';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
@@ -265,6 +265,25 @@ self.addEventListener('message', e => {
   }
 });
 
+/* OUR assets are flat files in OUR scope directory, and the test for that has to
+   name the directory rather than measure how long it is. The old rule compared
+   the POSITION of the final slash in the path against the length of the scope,
+   which asks WHERE the last slash sits — a statement about how many characters
+   another app's folder name has, not about whose folder it is. Measured against
+   scope '/Workout-/': '/Fitness2/a.jpg' and '/commandx/a.jpg' both read as OURS,
+   because those directory names are the same length. So a sibling app published
+   from this same GitHub Pages origin was served from our cache and written into
+   it — exactly what the comment above says this guard prevents, arriving through
+   the guard itself.
+
+   Two halves, and both are needed: the path must START in our directory, and it
+   must have no further slash after it, because a deeper path is another app's.
+   The test is a predicate with a name so the handler asks it rather than
+   restating it — a rule restated at a call site is a rule that drifts. */
+function inScopeDir(pathname, scope) {
+  return pathname.startsWith(scope) && pathname.indexOf('/', scope.length) === -1;
+}
+
 /* Network-first for the app page (so updates arrive), cache fallback for offline.
    Cache-first for static assets (icons/manifest/images). */
 self.addEventListener('fetch', e => {
@@ -287,8 +306,7 @@ self.addEventListener('fetch', e => {
      the browser fetch it exactly as if this worker did not exist. */
   const SCOPE = new URL(self.registration.scope).pathname;
   const isOurShell = url.pathname === SCOPE || url.pathname === SCOPE + 'index.html';
-  // Our assets are flat files in the scope directory — a deeper path is another app's.
-  const inOurDir = url.pathname.lastIndexOf('/') === SCOPE.length - 1;
+  const inOurDir = inScopeDir(url.pathname, SCOPE);
   const isNav = req.mode === 'navigate' || url.pathname.endsWith('/index.html') || url.pathname.endsWith('/');
   if (isNav && !isOurShell) return;
   if (!isNav && !inOurDir) return;

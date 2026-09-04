@@ -10208,6 +10208,285 @@ export default async function () {
     t.ok('FLOOR: and an ordinary tap repaints nothing', rr.healthyPaint, rr);
   }
 
+  /* ---- THE SCOPE GUARD TESTED THE WRONG PROPERTY (v428) -----------------
+     CacheStorage is scoped to the ORIGIN, so the worker's own comment says it
+     must identify OUR directory explicitly and let every other app on the
+     origin fetch as if this worker did not exist. The test it used compared the
+     POSITION of the last slash against the length of the scope — a statement
+     about how many characters another app's folder name has, not about whose
+     folder it is. Any sibling app whose directory name is the same length read
+     as ours: served from our cache and written into it.
+
+     The harness serves at the ROOT, where the scope is a single slash and both
+     rules agree, so no page can reach the defect. The predicate is therefore
+     exercised DIRECTLY, the technique the hardness-band and anchor-unit guards
+     use — read the function out of the shipped file and run a table through it,
+     with the OLD rule beside it as proof the trap is real. */
+  {
+    const swSrc = readFileSync('sw.js', 'utf8');
+    const m = swSrc.match(/function inScopeDir\s*\([^)]*\)\s*\{[\s\S]*?\n\}/);
+    const fn = m ? new Function('return ' + m[0] + '; ')() : null;
+    const old = (path, scope) => path.lastIndexOf('/') === scope.length - 1;
+
+    const SC = '/Workout-/';
+    const cases = [
+      // path, scope, ours?
+      ['/Workout-/ex-pushup.jpg', SC, true],   // FLOOR: our own flat asset
+      ['/Workout-/sw.js', SC, true],           // FLOOR: our own worker
+      ['/Workout-/img/a.jpg', SC, false],      // FLOOR: a deeper path is not ours
+      ['/Fitness2/a.jpg', SC, false],          // same-length sibling directory
+      ['/commandx/a.jpg', SC, false],          // another one
+      ['/a.jpg', SC, false],                   // the origin root
+      ['/x.jpg', '/', true],                   // FLOOR: root scope, flat file
+      ['/sub/x.jpg', '/', false],              // FLOOR: root scope, deeper path
+    ];
+    const got = fn ? cases.map(c => !!fn(c[0], c[1])) : [];
+    const want = cases.map(c => c[2]);
+    const oldGot = cases.map(c => !!old(c[0], c[1]));
+
+    t.ok('sw.js names its scope test as a predicate', !!fn, m ? m[0].slice(0, 120) : swSrc.slice(0, 80));
+    /* GUARD: the trap is real. Without this, "the new rule is right" is
+       satisfied by a rule that was never wrong. */
+    t.ok('guard: the old rule really did read a same-length sibling as ours',
+         oldGot[3] === true && oldGot[4] === true, { oldGot });
+    t.eq('and the predicate answers by DIRECTORY, not by slash position', got, want,
+         { got, want, cases: cases.map(c => c[0] + ' @ ' + c[1]) });
+    /* FLOOR: root scope is unchanged in both directions — the harness and any
+       app published at the origin root must behave exactly as before. */
+    t.eq('FLOOR: at the root scope the two rules still agree',
+         [got[6], got[7]], [oldGot[6], oldGot[7]], { got, oldGot });
+    /* And the handler must ASK it rather than restate it. A check counting the
+       declaration passes while the call site keeps its own copy — the drift the
+       predicate exists to stop. Comments are stripped first: prose that quotes
+       the rule is counted by a scan for the rule. */
+    const noCmt = swSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    t.ok('and the fetch handler asks the predicate',
+         /inOurDir\s*=\s*inScopeDir\s*\(/.test(noCmt), noCmt.match(/const inOurDir[^\n]*/));
+    t.eq('and the slash-position rule is gone from the code',
+         (noCmt.match(/lastIndexOf\('\/'\)/g) || []).length, 0);
+  }
+
+  /* ---- WHICH TABS A #hash MAY OPEN WAS WRITTEN BY HAND, TWICE (v428) -----
+     Three lines apart, identical, with nothing tying either copy to the nav
+     bar. Seven views exist and six have a button; 'quick' correctly has no
+     button and no deep link, but only by the coincidence of two hand-written
+     lists agreeing. */
+  {
+    const ht = await page.evaluate(() => {
+      const o = {};
+      o.buttons = $$('.nav button').map(b => b.dataset.tab);
+      o.views = [...document.querySelectorAll('.view')].map(v => v.id.replace(/^v-/, ''));
+      /* The SET, not the order — the views are laid out in a different order
+         from the nav bar, and neither order is a requirement. */
+      o.accepted = o.views.filter(v => !!hashTab(v)).sort();
+      o.buttonsSorted = o.buttons.slice().sort();
+      o.junk = ['helicopter', '', 'constructor', 'toString'].map(h => hashTab(h));
+      return o;
+    });
+    /* GUARD: the nav really was read, and there really is a view with no
+       button — otherwise "it matches the buttons" passes on any list at all. */
+    t.ok('guard: the nav bar has buttons to read', ht.buttons.length >= 6, ht);
+    t.ok('guard: and a view exists that has no button',
+         ht.views.length > ht.buttons.length, ht);
+    /* GUARD: it answers for a real tab AT ALL. hashTab() catches into '', so a
+       broken helper does not throw — it silently refuses every deep link, and
+       the app looks merely unhelpful rather than broken. That is exactly what
+       happened on the first attempt here: it read the single-element helper
+       instead of the array one, .some() threw, and every home-screen shortcut
+       would have stopped opening its tab with nothing on screen to say so. */
+    t.ok('guard: the helper answers for a real tab at all', ht.accepted.length > 0, ht);
+    t.eq('a #hash may open exactly the tabs the nav bar offers', ht.accepted, ht.buttonsSorted, ht);
+    /* MEMBERSHIP, not truthiness: an inherited key is truthy, and the value
+       reaches go(), which throws on a view that does not exist. */
+    t.eq('and nothing else, inherited keys included', ht.junk, ['', '', '', ''], ht);
+    const src = readFileSync('index.html', 'utf8');
+    const noCmt = src.replace(/\/\*[\s\S]*?\*\//g, '');
+    t.eq('and the tab list is not written out by hand any more',
+         (noCmt.match(/\['today','program','fuel','progress','ref','guide'\]/g) || []).length, 0);
+
+    /* AND THE ROUTE IS DRIVEN, not the helper called. A home-screen shortcut
+       into an app that is already open is a same-document hash change — boot()
+       never runs — which is the whole reason that listener exists. */
+    const nav = await page.evaluate(async () => {
+      const o = {};
+      /* BUILD THE STATE THIS BLOCK ASSERTS ON. The listener is gated on
+         STATE.onboarded, and an earlier block in this long file leaves the
+         athlete un-onboarded — so a bare drive reports the tab never moving
+         and looks exactly like a dead route. It also starts from a KNOWN
+         hash: assigning the value already in the bar fires nothing. */
+      STATE.onboarded = true;
+      let fired = 0;
+      const count = () => fired++;
+      window.addEventListener('hashchange', count);
+      const settle = () => new Promise(r => setTimeout(r, 120));
+      location.hash = '#today';
+      await settle();
+      go('today');
+      o.start = TAB;
+
+      location.hash = '#fuel';
+      await settle();
+      o.firedForReal = fired;
+      o.opened = TAB;
+
+      location.hash = '#quick';                 // a view with no button
+      await settle();
+      o.refused = TAB;
+
+      window.removeEventListener('hashchange', count);
+      try { location.hash = '#today'; } catch (e) {}
+      await settle();
+      go('today');
+      return o;
+    });
+    /* GUARD: the event really fired, or "the tab did not move" is a statement
+       about a listener that was never reached. */
+    t.eq('guard: the block starts on Today', nav.start, 'today', nav);
+    t.ok('guard: and the hash change really fired', nav.firedForReal > 0, nav);
+    t.eq('a #hash for a real tab opens it in an app that is already running', nav.opened, 'fuel', nav);
+    t.eq('FLOOR: and a view with no button is left where it was', nav.refused, 'fuel', nav);
+  }
+
+  /* ---- EVERY THEME PAINTS EVERY PROPERTY IT IS ASKED FOR (v428) ----------
+     applyTheme() reads five fields with NO fallback and writes each straight
+     into a custom property. setProperty with an undefined value writes the
+     literal text "undefined" — measured in a real browser, not reasoned — so
+     the property is set to an invalid value and every rule reading it computes
+     to unset. One field falls back to a real default and is allowed absent,
+     the distinction v364 drew for GOAL_NOTE. */
+  {
+    const th = await page.evaluate(() => {
+      const o = {};
+      /* GUARD: setProperty really does write the word, or the harm this rule
+         describes does not exist and the rule is padding. */
+      const r = document.documentElement.style;
+      const keep = r.getPropertyValue('--cf-probe');
+      r.setProperty('--cf-probe', undefined);
+      o.undefinedIsWritten = r.getPropertyValue('--cf-probe').trim();
+      r.removeProperty('--cf-probe');
+      if (keep) r.setProperty('--cf-probe', keep);
+
+      const need = ['acc', 'acc2', 'accInk', 'soft', 'name'];
+      o.missing = {};
+      Object.keys(THEMES).forEach(k => {
+        const bad = need.filter(f => typeof THEMES[k][f] !== 'string' || !THEMES[k][f].trim());
+        if (bad.length) o.missing[k] = bad;
+      });
+      o.defaultIsATheme = !!THEMES[THEME_DEFAULT];
+
+      /* And the validator has to COMPLAIN — "the validator is clean" stays
+         clean whether the rule exists or not. console.error is muted: the
+         harness counts one as a page failure. */
+      const oe = console.error; const seen = [];
+      console.error = (...a) => seen.push(a.join(' '));
+      const k0 = Object.keys(THEMES)[0];
+      const keepAcc = THEMES[k0].acc, keepDef = THEME_DEFAULT;
+      try {
+        delete THEMES[k0].acc;
+        seen.length = 0; validateData();
+        o.complainsMissing = seen.join(' ').indexOf('THEMES.' + k0 + ': no "acc"') >= 0;
+        THEMES[k0].acc = keepAcc;
+        /* FLOOR: the optional field must NOT be demanded — it has a real
+           fallback, so a rule that required it would reject correct data. */
+        const keep3 = THEMES[k0].acc3; delete THEMES[k0].acc3;
+        seen.length = 0; validateData();
+        o.optionalNotDemanded = seen.length === 0;
+        THEMES[k0].acc3 = keep3;
+        seen.length = 0; validateData();
+        o.cleanAfter = seen.length;
+      } catch (e) {
+        o.err = String(e.message);
+        THEMES[k0].acc = keepAcc;
+      }
+      console.error = oe;
+      o.defaultStillReal = THEME_DEFAULT === keepDef;
+      return o;
+    });
+    t.eq('guard: setProperty(x, undefined) really writes the word', th.undefinedIsWritten, 'undefined', th);
+    t.eq('every theme carries every field applyTheme() reads raw', th.missing, {}, th);
+    t.ok('and the default is a real theme', th.defaultIsATheme, th);
+    t.ok('the validator complains about a theme missing one', th.complainsMissing, th);
+    t.ok('FLOOR: and says nothing about the field that has a real fallback',
+         th.optionalNotDemanded, th);
+    t.eq('and is clean once it is restored', th.cleanAfter, 0, th);
+  }
+
+  /* ---- THE THIRD WRITER INTO THE DAY'S FOOD (v428) -----------------------
+     v346 made pushFoodRow() the single writer so a third one could not forget
+     the habit sync. There were already TWO more, both REPLACING a row in place
+     with a hand-written literal: the edit sheet and a dashboard screenshot
+     landing on an earlier import. The edit one forgot the sync and reported a
+     success it had not achieved. */
+  {
+    const fe = await page.evaluate(() => {
+      const o = {}; const T = () => document.querySelector('#toast').textContent;
+      go('fuel');
+      STATE.nutrition.proteinTarget = 165;
+      const d = nutToday(); d.food = []; d.habits = {};
+      logFood('Big steak', 900, 200, 0, 30, 'd', '', '', '');
+      o.before = { p: foodTotals().p, tick: !!nutToday().habits.protein };
+      o.atWas = nutToday().food[0].at;
+
+      /* DOWN through the athlete's own route — editFood() then saveFood(),
+         not the helper. Calling the helper is not driving the route. */
+      editFood(0);
+      document.querySelector('#fa-p').value = '40';
+      document.querySelector('#fa-kcal').value = '300';
+      saveFood();
+      o.down = { p: foodTotals().p, tick: !!nutToday().habits.protein,
+                 toast: T(), rows: nutToday().food.length };
+      o.atKept = nutToday().food[0].at === o.atWas;
+
+      /* FLOOR: and BACK UP. A fix that only ever un-ticked would satisfy
+         every assertion above. */
+      editFood(0);
+      document.querySelector('#fa-p').value = '200';
+      document.querySelector('#fa-kcal').value = '900';
+      saveFood();
+      o.up = { p: foodTotals().p, tick: !!nutToday().habits.protein };
+
+      /* The row is gone between opening the sheet and tapping Save — midnight
+         rolls nutToday() onto an empty day, or another tab replaced STATE. */
+      const dd = nutToday(); dd.food = []; dd.habits = {};
+      logFood('Snack', 200, 10, 20, 5, 'l', '', '', '');
+      editFood(0);
+      nutToday().food = [];
+      saveFood();
+      o.gone = { rows: nutToday().food.length, toast: T() };
+      try { closeSheet(); } catch (e) {}
+      return o;
+    });
+
+    /* GUARD: the log really did tick it, or every reading below is two falses
+       agreeing. */
+    t.ok('guard: 200 g against a 165 g target ticks the protein habit', fe.before.tick, fe);
+    t.eq('guard: and the day really was at 200 g', fe.before.p, 200, fe);
+
+    t.eq('correcting a row down moves the day with it', fe.down.p, 40, fe);
+    t.ok('and the protein habit un-ticks with it', !fe.down.tick, fe);
+    t.eq('FLOOR: correcting it back up ticks it again', [fe.up.p, fe.up.tick], [200, true], fe);
+    t.ok('and the time it was eaten survives a correction', fe.atKept, fe);
+    t.eq('FLOOR: an ordinary edit still reports the update', fe.down.toast, 'Updated ✓', fe);
+
+    t.eq('a row that has gone is not silently claimed as updated', fe.gone.rows, 0, fe);
+    t.ok('and the athlete is told nothing changed',
+         /no longer there/.test(fe.gone.toast) && !/Updated/.test(fe.gone.toast), fe);
+
+    /* AND THE CLASS IS CLOSED, not the instance. A check aimed at the edit
+       sheet proves nothing about the next writer somebody adds; the day's food
+       array may be written only through the two helpers that sync the habit. */
+    const src = readFileSync('index.html', 'utf8');
+    const noCmt = src.replace(/\/\*[\s\S]*?\*\//g, '');
+    const idxWrites = (noCmt.match(/\bfood\[[A-Za-z0-9_]+\]\s*=[^=]/g) || []).length;
+    const pushes = (noCmt.match(/\bfood\.push\(/g) || []).length;
+    t.eq('exactly one place writes a row into the day by index', idxWrites, 1, { idxWrites });
+    t.eq('and exactly one place appends to it', pushes, 1, { pushes });
+    /* GUARD: the scan can see a write at all — an empty count is otherwise a
+       statement about the pattern. */
+    t.ok('guard: the scan really matches a write',
+         /\bfood\[[A-Za-z0-9_]+\]\s*=[^=]/.test('d.food[i]=row;'), {});
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
