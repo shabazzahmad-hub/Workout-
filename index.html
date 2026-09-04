@@ -1849,7 +1849,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='423';
+const APP_VERSION='424';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -7856,6 +7856,10 @@ function playerToggle(){
   }
   plClockTick();
   const t=$('#plToggle');if(t)t.textContent=PLAYER.running?'Pause':'Resume';
+  /* The word is inert while paused, so the microphone shuts and the promise
+     goes with it — on the tap, not up to a heartbeat later. */
+  try{voiceCmdSync();}catch(e){}
+  voiceCmdRepaint();
   if(!PLAYER.running){plClear();const p0=$('#plPulse');if(p0)p0.classList.remove('on');return;}
   plArmTick();
 }
@@ -8100,10 +8104,19 @@ function voiceCmdSupported(){try{return !!(window.SpeechRecognition||window.webk
    the voicePitch trap — and a microphone is the last thing to open by
    default. */
 function voiceCmdOn(){try{return STATE.settings.voiceCmd===true;}catch(e){return false;}}
-/* Where the word means something. Anywhere else it is ignored outright. */
+/* Where the word means something. Anywhere else it is ignored outright.
+   A PAUSED REST IS NOT ONE OF THEM, and it is the state pause exists for: the
+   athlete has stepped away. Measured before this guard, the microphone stayed
+   OPEN on a paused rest indefinitely — a cloud recogniser streaming from a
+   phone on a bench, which is the same privacy claim v423 had just made true
+   one state over. And the word half-worked there: it advanced the phase to
+   `ready` and left the player PAUSED, so the next set did not start and the
+   rest was spent — the rest screen's own promise, broken by the word it names.
+   timerStalled() already refuses a paused surface, so only this branch needed
+   it, and the HIIT branch below is covered by that. */
 function voiceCmdActionable(){
   try{
-    if(PLAYER&&PLAYER.phase&&PLAYER.phase!=='done')return PLAYER.phase==='rest'||timerStalled(PLAYER);
+    if(PLAYER&&PLAYER.phase&&PLAYER.phase!=='done')return (PLAYER.phase==='rest'&&!!PLAYER.running)||timerStalled(PLAYER);
     if(INTV&&INTV.phase&&INTV.phase!=='done')return timerStalled(INTV);
   }catch(e){}
   return false;
@@ -8115,7 +8128,7 @@ function voiceCmdAdvance(){
   try{
     if(PLAYER&&PLAYER.phase&&PLAYER.phase!=='done'){
       if(timerStalled(PLAYER)){plResync();return true;}
-      if(PLAYER.phase==='rest'){plRestDone();return true;}
+      if(PLAYER.phase==='rest'&&PLAYER.running){plRestDone();return true;}
       return false;
     }
     if(INTV&&INTV.phase&&INTV.phase!=='done'&&timerStalled(INTV)){ivResync();return true;}
@@ -8168,6 +8181,13 @@ function voiceCmdNote(){
 /* One reader, so the rest screen and Settings cannot promise different things. */
 function voiceCmdHintInner(){
   if(!voiceCmdOn())return '';
+  /* THE PROMISE AND THE MICROPHONE READ THE SAME PREDICATE, so the rest screen
+     cannot name a word that is being ignored. A PAUSED REST is the case that
+     made this necessary: the screen still read "Say continue to start the next
+     set" over a phase where the word is now inert, which is v423's own defect
+     one state over. Nothing is put in its place — the athlete tapped Pause and
+     the button beside this line already says Resume. */
+  if(!voiceCmdActionable())return '';
   const n=voiceCmdNote();
   return '\u{1F399}\uFE0F '+(n?_ve(n):'Say \u201Ccontinue\u201D to start the next set');
 }

@@ -1363,6 +1363,107 @@ export default async function run() {
          /stuck/.test(copy), copy);
   }
 
+  /* A PAUSED REST IS NOT A REST THE WORD CAN ACT ON (v424).
+     v423 shut the microphone outside the phases where the word means
+     something. A PAUSED rest still counted as one of them — so a cloud
+     recogniser streamed from a phone the athlete had put down, and the word
+     half-worked: it advanced the phase and left the player paused, so the next
+     set never started and the rest was spent. The rest screen kept promising
+     it throughout.
+     Every read below is taken on the TAP with no heartbeat in between —
+     otherwise the 2-second guard tick supplies the answer and a fix that only
+     works by heartbeat passes on a screen that is wrong for two seconds. */
+  {
+    const pz = await page.evaluate(() => {
+      window.__mic3 = { live: 0, starts: 0, stops: 0, ours: false };
+      class FakeRec3 {
+        constructor() { this._on = false; window.__mic3.ours = true; }
+        start() { if (this._on) throw new Error('InvalidStateError');
+                  this._on = true; window.__mic3.live++; window.__mic3.starts++; }
+        stop() { if (!this._on) return; this._on = false; window.__mic3.live--; window.__mic3.stops++; }
+      }
+      const real = window.SpeechRecognition;
+      window.SpeechRecognition = FakeRec3;
+      STATE.settings.voiceCmd = true; _vrDown = ''; _vrNetFails = 0; save();
+      const hint = () => ((document.getElementById('plVoiceHint') || {}).textContent || '');
+      const r = {};
+
+      go('today'); openPlayer(0);
+      plClear(); plEnterRest(60, 'ex'); plGuardTick();
+      r.restPhase = PLAYER.phase;
+      r.builtOurs = window.__mic3.ours;
+      r.hintExists = !!document.getElementById('plVoiceHint');
+
+      /* FLOOR: a rest that is actually running */
+      r.micRunningRest = window.__mic3.live;
+      r.hintRunningRest = hint();
+      const p0 = PLAYER.phase;
+      voiceCmdHeard('continue');
+      r.wordActsOnRunningRest = PLAYER.phase !== p0;
+
+      /* back to a running rest, then pause it */
+      plClear(); plEnterRest(60, 'ex'); plGuardTick();
+      r.micBeforePause = window.__mic3.live;
+      playerToggle();
+      r.micOnPauseTap = window.__mic3.live;
+      r.hintOnPauseTap = hint();
+      r.pausedPhase = PLAYER.phase;
+      r.pausedRunning = PLAYER.running;
+      r.actionableWhilePaused = voiceCmdActionable();
+
+      /* the word must do nothing at all here */
+      const p1 = PLAYER.phase;
+      voiceCmdHeard('continue');
+      r.wordActedWhilePaused = PLAYER.phase !== p1;
+      r.phaseAfterWord = PLAYER.phase;
+
+      /* and the heartbeat must not re-open it either */
+      plGuardTick(); plGuardTick();
+      r.micPausedAfterBeats = window.__mic3.live;
+
+      /* FLOOR: resuming brings both back, on the tap */
+      playerToggle();
+      r.micOnResumeTap = window.__mic3.live;
+      r.hintOnResumeTap = hint();
+      const p2 = PLAYER.phase;
+      voiceCmdHeard('continue');
+      r.wordActsAfterResume = PLAYER.phase !== p2;
+
+      voiceCmdStop(); playerQuit();
+      STATE.settings.voiceCmd = false; _vrDown = ''; _vrNetFails = 0; save();
+      if (real) window.SpeechRecognition = real; else delete window.SpeechRecognition;
+      return r;
+    });
+
+    /* GUARDS: without these every count below is zero for the wrong reason. */
+    t.eq('guard: the rest phase was built', pz.restPhase, 'rest');
+    t.ok('guard: the app opened the recogniser this block controls', pz.builtOurs, pz);
+    t.ok('guard: the rest screen rendered the voice hint container', pz.hintExists, pz);
+    t.ok('guard: the pause really did pause the player', pz.pausedRunning === false, pz);
+    t.eq('guard: pausing did not leave the rest phase', pz.pausedPhase, 'rest');
+
+    t.eq('FLOOR: a running rest opens the microphone', pz.micRunningRest, 1);
+    t.ok('FLOOR: and promises the word on the glass',
+         /Say/.test(pz.hintRunningRest), pz);
+    t.ok('FLOOR: where the word really does start the next set',
+         pz.wordActsOnRunningRest, pz);
+
+    t.eq('guard: the second rest opened it again', pz.micBeforePause, 1);
+    t.eq('pausing shuts the microphone on the tap, not a heartbeat later',
+         pz.micOnPauseTap, 0);
+    t.eq('and the promise goes with it rather than naming an ignored word',
+         pz.hintOnPauseTap, '');
+    t.ok('because a paused rest is not a phase the word can act in',
+         pz.actionableWhilePaused === false, pz);
+    t.ok('so the word does nothing at all there', !pz.wordActedWhilePaused, pz);
+    t.eq('and leaves the rest where it was', pz.phaseAfterWord, 'rest');
+    t.eq('the guard tick does not re-open it either', pz.micPausedAfterBeats, 0);
+
+    t.eq('FLOOR: resuming re-opens it on the tap', pz.micOnResumeTap, 1);
+    t.ok('FLOOR: and puts the promise back', /Say/.test(pz.hintOnResumeTap), pz);
+    t.ok('FLOOR: and the word acts again', pz.wordActsAfterResume, pz);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
