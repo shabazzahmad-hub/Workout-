@@ -14220,6 +14220,22 @@ re-exposes the getter. The pre-existing block is fixed, and the new one deletes
 defensively rather than trusting someone else's cleanup — *each block builds the
 state it asserts on*.
 
+### Two escapes, and both were the neighbour supplying the answer
+
+Eleven mutants, nine caught first time, and the two that got through are the
+same lesson twice:
+
+- **Every case called `voiceCmdSync()` straight after**, and the 2-second
+  heartbeat rebuilds a recogniser whatever `onend` did — so an `onend` that
+  NEVER restarts was invisible. The requirement `onend` exists for is that a
+  CLEAN silence keeps listening **without waiting for a beat**: Chrome ends
+  recognition on every silence, and a two-second hole sits in the middle of the
+  one phase the word is for. Driven with no heartbeat, the mutant fails by name.
+- **The Settings assertion read `voiceCmdNote()` rather than the Settings tab.**
+  A render site that dropped the reason and kept printing the everyday sentence
+  escaped clean. *Calling the helper is not driving the route* — the eighth time
+  this file has recorded it, and this time in my own check.
+
 ### Two guard premises that were wrong, and the checks said so
 
 - **"This browser has no speech recognition."** It has `webkitSpeechRecognition`.

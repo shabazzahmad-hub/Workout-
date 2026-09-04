@@ -918,6 +918,15 @@ export default async function run() {
       voiceCmdSync();
       o.armed = listening() === 1;
       o.guardAppBuiltOurs = window.__vr.made === 1 && (last() instanceof FakeRec);
+
+      /* A CLEAN silence — no throw, no heartbeat — must leave the SAME
+         recogniser listening. Chrome ends recognition on every silence, so
+         anything that waits for the next beat is a two-second hole in the
+         middle of the one phase the word is for. */
+      const madeBeforeSilence = window.__vr.made;
+      last()._end();
+      o.cleanSilenceKeepsListening = listening() === 1;
+      o.cleanSilenceReusesIt = window.__vr.made === madeBeforeSilence;
       o.healthyHint = /Say/.test(voiceCmdHintHTML());
       o.healthyNoNote = voiceCmdNote() === '';
 
@@ -955,6 +964,12 @@ export default async function run() {
       o.netStoodDown = voiceCmdDownReason() === 'net' && listening() === 0;
       o.netToast = /speech service/.test($('#toast').textContent || '');
       o.netHintSaysWhy = /speech service/.test(voiceCmdHintHTML());
+      /* AND OFF THE GLASS, not out of the helper. A Settings tab that dropped
+         the reason and kept printing the everyday sentence escaped every
+         assertion that read voiceCmdNote() directly. */
+      go('guide');
+      o.netSettingsOnGlass = /speech service/.test((document.querySelector('.view.active') || {}).innerText || '');
+      go('today');
       /* The switch is the athlete's choice and the service may be back next
          session, so a network failure must NOT turn it off. */
       o.netKeptSetting = voiceCmdOn() === true;
@@ -990,6 +1005,8 @@ export default async function run() {
     t.ok('guard: this browser has a speech API of its own', r.guardRealApiExists, r);
     t.ok('guard: and the app is building the one the check controls', r.guardAppBuiltOurs, r);
     t.ok('guard: the microphone arms during a rest', r.armed, r);
+    t.ok('an ordinary silence keeps listening without waiting for a heartbeat', r.cleanSilenceKeepsListening, r);
+    t.ok('and reuses the recogniser rather than churning a new one', r.cleanSilenceReusesIt, r);
 
     t.ok('a restart that throws leaves nothing listening', r.deadAfterThrow, r);
     t.ok('so the next heartbeat builds a FRESH recogniser', r.freshAfterThrow, r);
@@ -1001,6 +1018,7 @@ export default async function run() {
     t.ok('the retrying stops rather than looping in silence', r.netStoodDown, r);
     t.ok('the athlete is told the speech service could not be reached', r.netToast, r);
     t.ok('and the rest screen names the reason instead of promising the word', r.netHintSaysWhy, r);
+    t.ok('and the Settings tab really prints it, not just the helper', r.netSettingsOnGlass, r);
     t.ok('FLOOR: a network failure does not turn the athlete’s switch off', r.netKeptSetting, r);
     t.ok('ending the session clears the stand-down, so the next one retries', r.netClearsWhenSessionEnds, r);
 
