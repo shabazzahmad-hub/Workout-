@@ -14247,6 +14247,120 @@ same lesson twice:
   failures it TOLERATES, so the check loops until the stand-down and counts
   those, with the restart count pinned beside it.
 
+## The copy said one thing and the microphone did another (v423)
+
+Found by auditing v422 an hour after it shipped — the ninth round running where
+the best finding was in the round immediately before. Three findings, and the
+third is a false claim about PRIVACY, which is the worst kind of promise in UI
+text with no code behind it.
+
+### The microphone was open for the whole session
+
+Settings said, and had said since v376:
+
+> **Listens only during rest**, and only for that one word.
+
+`voiceCmdSync()` armed on *"a session is open"*, not on *"the word can act"*.
+Measured with a fake recogniser counting the open microphone:
+
+| phase | word acts? | microphone |
+|---|---|---|
+| ready — the 3-2-1 into position | no | **open** |
+| work | no | **open** |
+| rest | yes | open |
+
+So audio streamed to a **cloud** service — Chrome's recogniser is remote, which
+v422 had just established — through every working set of every session, on an
+offline-first app, while the screen said it did not.
+
+**The fix is in the CODE, because the claim is the thing worth keeping.** The
+microphone now opens where `voiceCmdActionable()` says the word can act and
+nowhere else: measured, shut in ready and work, open in rest, shut again the
+moment the next set starts, and **exactly two opens and two closes for two
+rests** — nothing left listening.
+
+**The cost is one beat of arming latency (2s) at the START of a rest, and the
+word is said at the END of one.** It is still armed by the heartbeat rather
+than by each opener, so a fourth surface cannot be forgotten — the reason v376
+put it there. A `start()` that throws because Chrome has not released the
+previous recogniser costs one beat and self-heals, which is v422's own
+corpse fix doing its job.
+
+**The copy now names the one exception rather than glossing it** — a stuck
+timer opens it too, because the word is what rescues that.
+
+### A note about a listener that is not listening
+
+`voiceCmdNote()` reported *offline* and *service unreachable* **whether or not
+the switch was on**. This is an offline-first app, so being offline is the
+normal state in a basement gym — and the note REPLACES the description, so an
+athlete who had never turned the feature on could never read what it does.
+
+**`unsupported` still fires either way**, and the asymmetry is the point: it is
+a property of the DEVICE and explains why the switch cannot do anything at all.
+The other two describe a listener, and there is no listener while the switch is
+off. The everyday description gained the connection fact, so the choice is
+still informed.
+
+### The stand-down repainted a screen nobody could be on
+
+Both stand-down branches ended `try{if(TAB==='guide')renderGuide();}catch(e){}`.
+**A stand-down only ever happens while a session is open, and a session open
+means TAB is `'today'` — measured** — so the repaint aimed at Settings and the
+rest screen, which is what carries the promise, was never touched.
+
+| the athlete sees | before |
+|---|---|
+| the service gives up mid-rest | *"Say “continue” to start the next set"* |
+| **the app turns the switch off itself** (microphone refused) | *the same* |
+
+`voiceCmdRepaint()` rewrites the hint **in place** — rebuilding `#plBody` would
+arm a second rest interval and reset the ring, and a check pins that the rest
+clock's `tid` is unchanged. The container is now always rendered, empty or not,
+so there is something to write into.
+
+### Two escapes, and both were the oldest mistake in this file
+
+Both mutants that DELETE a `voiceCmdRepaint()` call site walked straight
+through, because every assertion called the helper by hand. **Calling the
+helper is not driving the route** — the ninth time this file has recorded it.
+Driven properly, through the recogniser's own `onerror`: three network failures
+for the stand-down, one `not-allowed` for the refusal.
+
+**And a check that pinned a NUMBER had to be re-aimed.** v422 asserted
+`netAttempts === 2`, which was a consequence of the microphone being held open
+all session; with it closing between phases a heartbeat landing between rests
+costs one extra arm and the count is 3. The requirement was never the number —
+it is that the retrying **stops**, so it is now bounded by the strike count.
+Measured before the v422 fix: 13 and still climbing.
+
+**And the empty-recogniser case threw instead of naming a check.** `__recs` is
+created by the fake's own constructor, so a mutant that never opens the
+microphone leaves it `undefined` and `listening()` throws before any guard is
+read. Initialised up front and guarded before the first dereference, the same
+mutant now fails **36 checks by name**, guards first. Red is not enough; it has
+to say what.
+
+Nine mutants, all caught.
+
+### And one check pinned the old STRUCTURE
+
+`floorOffIsSilent` was `voiceCmdHintHTML() === ''`. Making the container always
+render is what the repaint needs, so that assertion failed on correct code. The
+requirement is that the hint puts **no words on the glass**, which is
+structure-independent and strictly stronger — it stays true whatever the
+markup becomes.
+
+### Two claims measured and left alone
+
+- **The beat's list of surfaces undersells rather than overpromises.** *"The
+  beat plays during timers, guided reps, warm-up & cool-down"* — it also plays
+  in the guided player, HIIT, the baseline battery and the ops challenge.
+  Incomplete, never false.
+- **The reminder really does honour the schedule.**
+  `if(!isTrainingDay()||trainedToday())return;` — *"Nudges you on your training
+  days"* is backed.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

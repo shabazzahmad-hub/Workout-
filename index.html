@@ -1849,7 +1849,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='422';
+const APP_VERSION='423';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -8152,17 +8152,45 @@ function voiceCmdDownReason(){
 }
 function voiceCmdNote(){
   const d=voiceCmdDownReason();
+  /* UNSUPPORTED IS A PROPERTY OF THE DEVICE and explains why the switch cannot
+     do anything at all, so it is said whether the switch is on or off. The
+     other two describe a LISTENER THAT IS NOT LISTENING, which means nothing
+     while nothing is meant to be listening — and this is an offline-first
+     app, so an athlete in a basement gym who has never turned it on would
+     otherwise read an error about a feature they are not using INSTEAD of the
+     sentence that says what it does. */
   if(d==='unsupported')return 'This browser has no speech recognition, so the switch cannot do anything on this phone.';
+  if(!voiceCmdOn())return '';
   if(d==='offline')return 'Speech recognition runs on Google\u2019s servers, so it needs a connection. This phone is offline, so the word cannot be heard right now \u2014 every other part of the session works.';
   if(d==='net')return 'The speech service could not be reached, so the word is not being listened for. It tries again next session.';
   return '';
 }
 /* One reader, so the rest screen and Settings cannot promise different things. */
-function voiceCmdHintHTML(){
+function voiceCmdHintInner(){
   if(!voiceCmdOn())return '';
   const n=voiceCmdNote();
-  return '<div class="tiny muted" style="margin-top:6px">\u{1F399}\uFE0F '+
-    (n?_ve(n):'Say \u201Ccontinue\u201D to start the next set')+'</div>';
+  return '\u{1F399}\uFE0F '+(n?_ve(n):'Say \u201Ccontinue\u201D to start the next set');
+}
+/* The container is ALWAYS rendered, empty or not, so a stand-down mid-rest has
+   something to write into. An empty div with no margin has no height. */
+function voiceCmdHintHTML(){
+  const inner=voiceCmdHintInner();
+  return '<div class="tiny muted" id="plVoiceHint" style="'+(inner?'margin-top:6px':'')+'">'+inner+'</div>';
+}
+/* REPAINT THE SURFACE THE ATHLETE IS LOOKING AT. A stand-down only ever happens
+   while a session is open, and a session open means TAB is 'today' — measured
+   — so `if(TAB==='guide')renderGuide()` aimed at a screen nobody could be on,
+   and the rest screen kept promising the word over a microphone that had just
+   given up. Worse on the refusal path: the app turns the switch off itself and
+   the promise stayed on the glass.
+   The hint is rewritten IN PLACE rather than by rebuilding #plBody — that
+   would arm a second rest interval and reset the ring. */
+function voiceCmdRepaint(){
+  try{
+    const el=document.getElementById('plVoiceHint');
+    if(el){const inner=voiceCmdHintInner();el.innerHTML=inner;el.style.marginTop=inner?'6px':'';}
+  }catch(e){}
+  try{if(TAB==='guide')renderGuide();}catch(e){}
 }
 function voiceCmdHeard(text){
   try{
@@ -8193,7 +8221,7 @@ function voiceCmdStart(){
         _vrWant=false;_vrec=null;
         try{STATE.settings.voiceCmd=false;save();}catch(_e){}
         toast('Voice command needs the microphone — turned off');
-        try{if(TAB==='guide')renderGuide();}catch(_e){}
+        voiceCmdRepaint();
         return;
       }
       /* THE SAME LOOP, ONE ERROR CODE OVER, AND IT WAS SILENT. Measured on an
@@ -8205,7 +8233,7 @@ function voiceCmdStart(){
         if(++_vrNetFails<VOICE_NET_STRIKES)return;
         _vrWant=false;_vrec=null;
         if(_vrDown!=='net'){_vrDown='net';toast('Voice command could not reach the speech service',4000);}
-        try{if(TAB==='guide')renderGuide();}catch(_e){}
+        voiceCmdRepaint();
       }
     };
     // Chrome ends recognition after a silence; keep it up while a session is open
@@ -8231,14 +8259,25 @@ function voiceCmdStop(){
 /* Armed by the heartbeat rather than by each opener, for the reason the
    heartbeat itself is: a third surface would not be forgotten. */
 function voiceCmdSync(){
-  let open=false;
-  try{open=!!((PLAYER&&PLAYER.phase&&PLAYER.phase!=='done')||(INTV&&INTV.phase&&INTV.phase!=='done'));}catch(e){open=false;}
+  let open=false,act=false;
+  try{
+    open=!!((PLAYER&&PLAYER.phase&&PLAYER.phase!=='done')||(INTV&&INTV.phase&&INTV.phase!=='done'));
+    act=voiceCmdActionable();
+  }catch(e){open=false;act=false;}
   /* Nothing open is the end of an attempt, so the strikes and the stand-down
      clear here rather than needing an 'online' listener: the next session tries
      again from scratch, which is what an athlete who has walked back into
      signal expects. */
   if(!open){_vrNetFails=0;_vrDown='';}
-  const want=open&&voiceCmdOn()&&!voiceCmdDownReason();
+  /* THE MICROPHONE OPENS WHERE THE WORD CAN ACT, NOT FOR THE WHOLE SESSION.
+     Arming on "a session is open" left it streaming audio to a cloud service
+     through every working set — measured open in ready, work AND rest — while
+     Settings said "Listens only during rest". A false privacy claim is the
+     worst kind of promise in UI text with no code behind it.
+     The cost is arming latency of at most one beat (2s) at the start of a
+     rest, and the word is said at the END of one. Armed here rather than by
+     each opener, still, so a fourth surface cannot be forgotten. */
+  const want=act&&voiceCmdOn()&&!voiceCmdDownReason();
   if(want&&!_vrec)voiceCmdStart();
   else if(!want&&_vrec)voiceCmdStop();
 }
@@ -21272,7 +21311,7 @@ function renderGuide(){
     ${(n=>n?`<div class="note warn" style="margin:8px 0 4px">${n}</div>`:'')(notifBlockedNote())}
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Voice coach <span class="tiny muted">· deep</span></span><button class="chip ${STATE.settings.voice!==false?'on':''}" onclick="toggleSetting('voice')">${STATE.settings.voice!==false?'On':'Off'}</button></div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Say “continue” to start the next set <span class="tiny muted">· hands-free</span></span><button class="chip ${voiceCmdOn()?'on':''}" onclick="toggleVoiceCmd()" ${voiceCmdSupported()?'':'aria-disabled="true"'}>${voiceCmdOn()?'On':'Off'}</button></div>
-    <div class="tiny muted" style="padding:2px 0 6px">${_ve(voiceCmdNote()||'Listens only during rest, and only for that one word. It never stops, pauses or ends a session — that stays a deliberate tap.')}</div>
+    <div class="tiny muted" style="padding:2px 0 6px">${_ve(voiceCmdNote()||'The microphone opens during rest — and while a timer is stuck — never during a set, and it only ever acts on that one word. The recognition runs on Google’s servers, so it needs a connection. It never stops, pauses or ends a session — that stays a deliberate tap.')}</div>
     <div style="padding:4px 0 2px">
       <div class="row" style="justify-content:space-between"><span class="tiny muted">Beep &amp; countdown volume</span><span class="tiny muted" id="cvLbl">${Math.round(cueVolPref()*100/CUE_VOL_DEFAULT)}%</span></div>
       <input type="range" aria-label="Beep and countdown volume" min="${CUE_VOL_MIN}" max="${CUE_VOL_MAX}" step="0.05" value="${cueVolPref()}" oninput="$('#cvLbl').textContent=Math.round(this.value*100/CUE_VOL_DEFAULT)+'%'" onchange="setCueVol(this.value);beep(920,.17,0.92)" style="width:100%">
