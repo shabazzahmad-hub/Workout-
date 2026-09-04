@@ -14361,6 +14361,74 @@ markup becomes.
   `if(!isTrainingDay()||trainedToday())return;` — *"Nudges you on your training
   days"* is backed.
 
+## A paused rest is not a rest the word can act in (v424)
+
+Found by auditing v423 an hour after it shipped — the tenth round running
+where the best finding was in the round immediately before, and the third in a
+row where it was in my own new code.
+
+v423 made the microphone open only where the word can act, and measured that
+as *"rest, and a stuck timer."* **A PAUSED rest still counted as a rest.** That
+is the state pause exists for — the athlete has stepped away — and it is the
+one where an open microphone is least defensible.
+
+Measured with a fake recogniser counting the open microphone:
+
+| | before | after |
+|---|---|---|
+| microphone on a paused rest | **open, indefinitely** | **shut, on the tap** |
+| `voiceCmdActionable()` while paused | **true** | false |
+| the word while paused | **acted** — phase went to `ready` | inert |
+| the player after the word | **still PAUSED** | still paused, still resting |
+| the rest screen | ***"Say “continue” to start the next set"*** | silent |
+
+**The word HALF-worked, which is worse than either end.** It advanced the phase
+and left `running` false, so the next set did not start **and** the rest was
+spent — the rest screen's own promise, broken by the word it names.
+
+**`timerStalled()` already refuses a paused surface**, so only the rest branch
+needed the guard and the HIIT branch was covered. That was read before the fix
+was written, not assumed.
+
+### The promise and the microphone now read the SAME predicate
+
+The hint was the v423 defect one state over: a sentence on the glass naming a
+word the app was ignoring. `voiceCmdHintInner()` asks `voiceCmdActionable()` —
+the same question the microphone asks — so the two cannot say different things
+whatever a future phase does.
+
+**Nothing is put in its place.** The athlete tapped Pause, and the button
+beside that line already reads *Resume*; a withheld promise needs a sentence
+only when the reader would wonder why.
+
+### On the TAP, not up to a heartbeat later
+
+`voiceCmdSync()` is armed by the 2-second guard tick, so a fix that relied on
+it alone leaves the microphone open and the promise standing for two seconds
+after the athlete has walked away. `playerToggle()` calls the sync and the
+repaint itself, and **every assertion in the block is taken on the tap with no
+beat in between** — otherwise the heartbeat supplies the answer and a
+heartbeat-only fix passes on a screen that is wrong.
+
+### The floors, and what each over-eager twin fails
+
+A running rest must still open the microphone, still promise the word, and the
+word must still start the next set; resuming must bring all three back on the
+tap. Three over-eager mutants each fail exactly there — no rest ever
+actionable (47 checks), a hint that never says anything (10), and a word that
+never acts on a rest (4).
+
+### One equivalent mutant, measured rather than assumed
+
+Reverting **only** `voiceCmdAdvance()`'s running test escapes every check, and
+seeding it is what proved it: `voiceCmdAdvance()` is reached only through
+`voiceCmdHeard()`, which asks `voiceCmdActionable()` first — so no route can
+reach that branch while paused. **A fix with two edits needs a mutant with
+two**, and the genuine pre-v424 code is both reverts together (8 checks). The
+running test is kept as intent, the same call as v287's `wantAnchor`.
+
+Eight mutants, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
