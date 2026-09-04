@@ -4791,7 +4791,14 @@ export default async function () {
   /* The microphone is opened by the heartbeat, not by each opener — the same
      reason the heartbeat itself is armed once at boot. And it must CLOSE: a
      recogniser left running after the session is a battery and privacy cost
-     with nothing on screen to explain it. */
+     with nothing on screen to explain it.
+
+     v423 NARROWED WHEN, and the check is part of that change. This used to
+     assert "the heartbeat opens it while a session is running" and drove it by
+     opening the player, which lands in the READY phase — where the word does
+     nothing. Settings promised "listens only during rest" and the code armed
+     for the whole session, so the requirement now is stronger in both
+     directions: shut in a phase the word cannot act in, open in one it can. */
   {
     const r = await page.evaluate(async () => {
       const R = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -4807,22 +4814,31 @@ export default async function () {
       window.SpeechRecognition = function () { this.start = () => { started++; }; this.stop = () => { stopped++; if (this.onend) this.onend(); }; };
       R.cleanStart = (_vrec === null);
       STATE.onboarded = true; STATE.progressPtr = 8; STATE.settings.voiceCmd = true; save();
-      openPlayer(); await wait(2600);
+
+      // the 3-2-1 into position: the word does nothing here, so neither does the microphone
+      openPlayer(); R.readyPhase = PLAYER && PLAYER.phase; await wait(2600);
+      R.startedInReady = started;
+
+      // a rest is where the word acts, and the HEARTBEAT is what opens it
+      PLAYER.phase = 'rest'; await wait(2600);
       R.started = started;
+
       playerTeardown(); await wait(2600);
       R.stopped = stopped;
 
-      // with the setting OFF nothing is ever opened
+      // with the setting OFF nothing is ever opened, rest or not
       started = 0; stopped = 0;
       STATE.settings.voiceCmd = false; save();
-      openPlayer(); await wait(2600);
+      openPlayer(); PLAYER.phase = 'rest'; await wait(2600);
       R.startedWhenOff = started;
       playerTeardown(); await wait(300);
       window.SpeechRecognition = Real;
       return R;
     });
     t.eq('guard: no recogniser was left open by the block before', r.cleanStart, true);
-    t.ok('the heartbeat opens the microphone while a session is running', r.started >= 1, String(r.started));
+    t.eq('guard: opening the player lands in the ready phase', r.readyPhase, 'ready');
+    t.eq('the microphone stays shut in a phase the word cannot act in', r.startedInReady, 0);
+    t.ok('the heartbeat opens it once the rest starts', r.started >= 1, String(r.started));
     t.ok('and closes it when the session ends', r.stopped >= 1, String(r.stopped));
     t.eq('floor: with the setting off it is never opened', r.startedWhenOff, 0);
   }

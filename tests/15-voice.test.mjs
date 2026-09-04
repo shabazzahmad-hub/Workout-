@@ -896,6 +896,7 @@ export default async function run() {
       o.guardRealApiExists = typeof window.webkitSpeechRecognition === 'function';
 
       window.__vr = { made:0, starts:0, errors:0 };
+      window.__recs = [];        // exists even if nothing is ever constructed
       window.__throwOnRestart = false;
       class FakeRec {
         constructor(){ window.__vr.made++; this._on=false; window.__recs=(window.__recs||[]); window.__recs.push(this); }
@@ -918,6 +919,15 @@ export default async function run() {
       voiceCmdSync();
       o.armed = listening() === 1;
       o.guardAppBuiltOurs = window.__vr.made === 1 && (last() instanceof FakeRec);
+      /* GUARD BEFORE THE FIRST LINE THAT DEREFERENCES. A mutant that never
+         opens the microphone leaves __recs empty, and every last() below then
+         throws — which is still red, but a throw hides WHICH check found it
+         and the same shape has hung a suite before. Report and stop. */
+      if (!(window.__recs && window.__recs.length)) {
+        STATE.settings.voiceCmd = false; _vrDown = ''; _vrNetFails = 0;
+        voiceCmdStop(); playerQuit(); delete window.SpeechRecognition; save();
+        return o;
+      }
 
       /* A CLEAN silence — no throw, no heartbeat — must leave the SAME
          recogniser listening. Chrome ends recognition on every silence, so
@@ -958,8 +968,12 @@ export default async function run() {
       }
       o.netStrikes = VOICE_NET_STRIKES;
       o.netFailuresTolerated = failures;
-      /* The last failure stands down instead of restarting, so the restarts are
-         one fewer than the strikes. Measured before the fix: 13. */
+      /* BOUNDED, not an exact number. The old assertion pinned 2, which was a
+         consequence of v422 holding the microphone open for the WHOLE session:
+         with v423 closing it when a rest ends, a heartbeat landing between
+         phases costs one extra arm and the count is 3. The requirement was
+         never the number — it is that the retrying STOPS. Measured before the
+         v422 fix: 13 and still climbing. */
       o.netAttempts = window.__vr.starts - startsBefore;
       o.netStoodDown = voiceCmdDownReason() === 'net' && listening() === 0;
       o.netToast = /speech service/.test($('#toast').textContent || '');
@@ -992,9 +1006,13 @@ export default async function run() {
       o.stuckStopsBlocking = PLAYER.phase !== b;
       Object.defineProperty(window.speechSynthesis, 'speaking', { configurable:true, get:()=>false });
 
-      /* FLOOR: the hint says nothing at all when the athlete has it off. */
+      /* FLOOR: the hint says nothing at all when the athlete has it off.
+         Asserted on the WORDS, not on the markup: v423 made the container
+         render always so a stand-down mid-rest has something to write into,
+         and `=== ''` was pinning that old structure rather than the
+         requirement. An empty container puts nothing on the glass. */
       STATE.settings.voiceCmd = false; save();
-      o.floorOffIsSilent = voiceCmdHintHTML() === '';
+      o.floorOffIsSilent = !/\S/.test(voiceCmdHintHTML().replace(/<[^>]*>/g, ''));
 
       // put the page back the way the next block expects it
       STATE.settings.voiceCmd = false; _vrDown = ''; _vrNetFails = 0;
@@ -1014,7 +1032,8 @@ export default async function run() {
 
     t.eq('a run of network failures stands down after three', r.netFailuresTolerated, r.netStrikes, r);
     t.eq('and three is the bound the app states', r.netStrikes, 3);
-    t.eq('so it restarts twice rather than for ever', r.netAttempts, 2, r);
+    t.ok('so the restarts are bounded by the strike count rather than endless',
+         r.netAttempts <= r.netStrikes, r);
     t.ok('the retrying stops rather than looping in silence', r.netStoodDown, r);
     t.ok('the athlete is told the speech service could not be reached', r.netToast, r);
     t.ok('and the rest screen names the reason instead of promising the word', r.netHintSaysWhy, r);
@@ -1081,6 +1100,267 @@ export default async function run() {
     t.eq('back in signal it clears itself', back.reason, '');
     t.eq('and the microphone re-arms', back.newStarts, 1);
     t.ok('with the plain hint again', /Say/.test(back.hint), back);
+  }
+
+  /* v423 — TWO WAYS THE APP EXPLAINED THE WRONG THING.
+     A note about a listener that is not listening means nothing while the
+     switch is off, and this is an offline-first app: an athlete in a basement
+     gym who has never turned the feature on read an error INSTEAD of the
+     sentence that says what it does. And a stand-down repainted TAB==='guide'
+     — a screen nobody can be on during a session (TAB is 'today', measured) —
+     so the rest screen kept promising the word over a dead microphone. */
+  {
+    const ctx = page.context();
+    await page.evaluate(() => { try { delete navigator.onLine; } catch (e) {} });
+    await seedAthlete(page);
+
+    /* GUARD: online there is nothing to explain, so a non-empty note below is
+       about being offline and not about some other state. */
+    const guard = await page.evaluate(() => {
+      _vrDown = ''; _vrNetFails = 0; STATE.settings.voiceCmd = true;
+      return { reason: voiceCmdDownReason(), note: voiceCmdNote() };
+    });
+
+    await ctx.setOffline(true);
+    await page.waitForFunction(() => navigator.onLine === false, null, { timeout: 5000 });
+    const off = await page.evaluate(() => {
+      _vrDown = ''; _vrNetFails = 0;
+      STATE.settings.voiceCmd = true;      const onNote = voiceCmdNote();
+      STATE.settings.voiceCmd = undefined; const offNote = voiceCmdNote();
+      save(); go('guide');
+      const txt = (document.querySelector('.view.active') || {}).innerText || '';
+      const i = txt.indexOf('hands-free');
+      return { onNote, offNote, reason: voiceCmdDownReason(), settings: txt.slice(i, i + 300) };
+    });
+    await ctx.setOffline(false);
+    await page.evaluate(() => { try { delete navigator.onLine; } catch (e) {} });
+    await page.waitForFunction(() => navigator.onLine === true, null, { timeout: 5000 });
+
+    t.eq('guard: online there is nothing to explain', guard.reason, '');
+    t.eq('guard: and no note at all', guard.note, '');
+    t.eq('guard: offline really is the reason', off.reason, 'offline');
+    t.ok('with the switch ON, offline is explained', /needs a connection/.test(off.onNote), off);
+    t.eq('FLOOR: with the switch OFF there is nothing to explain', off.offNote, '');
+    t.ok('and Settings describes the feature instead of an error',
+         /only ever acts on that one word/.test(off.settings), off.settings);
+    t.ok('the description says it needs a connection, so the choice is informed',
+         /needs a connection/.test(off.settings), off.settings);
+
+    /* A DEVICE that has no recogniser at all is said either way — it explains
+       why the switch cannot do anything, which is true with it off. */
+    const unsup = await page.evaluate(() => {
+      const S = window.SpeechRecognition, W = window.webkitSpeechRecognition;
+      delete window.SpeechRecognition; delete window.webkitSpeechRecognition;
+      STATE.settings.voiceCmd = undefined;
+      const note = voiceCmdNote();
+      if (S) window.SpeechRecognition = S; if (W) window.webkitSpeechRecognition = W;
+      return { note, supported: voiceCmdSupported() };
+    });
+    t.ok('guard: the recogniser really was hidden', unsup.note !== undefined, unsup);
+    t.ok('an unsupported device is told so even with the switch off',
+         /no speech recognition/.test(unsup.note), unsup);
+
+    /* The stand-down, on the surface the athlete is actually looking at —
+       DRIVEN THROUGH THE RECOGNISER'S OWN onerror, because calling
+       voiceCmdRepaint() by hand leaves the two call sites untested and both
+       mutants that delete them walked straight through. */
+    const stand = await page.evaluate(async () => {
+      const wait = ms => new Promise(z => setTimeout(z, ms));
+      window.__recs2 = [];
+      class Rec {
+        constructor(){ this._on = false; window.__recs2.push(this); }
+        start(){ this._on = true; }
+        stop(){ this._end(); }
+        _end(){ if (!this._on) return; this._on = false; if (this.onend) this.onend(); }
+        failWith(c){ if (this.onerror) this.onerror({ error: c }); this._end(); }
+      }
+      const real = window.SpeechRecognition;
+      window.SpeechRecognition = Rec;
+      _vrDown = ''; _vrNetFails = 0; STATE.settings.voiceCmd = true; save();
+      go('today'); openPlayer(0); plEnterRest(60, 'ex');
+      voiceCmdSync(); await wait(10);
+      const body = () => (document.querySelector('#plBody') || {}).innerText || '';
+      const last = () => window.__recs2[window.__recs2.length - 1];
+      const r = { tab: TAB, armed: !!(last() && last()._on),
+                  before: /Say .continue./.test(body()), tid: PLAYER.tid };
+      for (let i = 0; i < 12 && voiceCmdDownReason() !== 'net'; i++) {
+        if (last() && last()._on) last().failWith('network');
+        await wait(4); voiceCmdSync();
+      }
+      r.stoodDown = voiceCmdDownReason() === 'net';
+      r.promises = /Say .continue./.test(body());
+      r.saysWhy = /speech service/.test(body());
+      r.tidAfter = PLAYER.tid;
+      voiceCmdStop(); playerQuit();
+      STATE.settings.voiceCmd = false; _vrDown = ''; _vrNetFails = 0; save();
+      if (real) window.SpeechRecognition = real; else delete window.SpeechRecognition;
+      return r;
+    });
+    t.eq('guard: a session runs on the Today tab, not on Settings', stand.tab, 'today');
+    t.ok('guard: the microphone really armed for this rest', stand.armed, stand);
+    t.ok('guard: the rest screen was promising the word', stand.before, stand);
+    t.ok('guard: the service really stood down', stand.stoodDown, stand);
+    t.ok('after the stand-down it no longer promises it', !stand.promises, stand);
+    t.ok('and says why, on the screen that made the promise', stand.saysWhy, stand);
+    t.eq('and the rest clock is untouched — no second interval', stand.tidAfter, stand.tid);
+
+    /* The refusal path is worse: the app turns the switch off ITSELF. Driven
+       through onerror for the same reason. */
+    const ref = await page.evaluate(async () => {
+      const wait = ms => new Promise(z => setTimeout(z, ms));
+      window.__recs3 = [];
+      class Rec {
+        constructor(){ this._on = false; window.__recs3.push(this); }
+        start(){ this._on = true; }
+        stop(){ this._end(); }
+        _end(){ if (!this._on) return; this._on = false; if (this.onend) this.onend(); }
+        failWith(c){ if (this.onerror) this.onerror({ error: c }); this._end(); }
+      }
+      const real = window.SpeechRecognition;
+      window.SpeechRecognition = Rec;
+      _vrDown = ''; _vrNetFails = 0; STATE.settings.voiceCmd = true; save();
+      go('today'); openPlayer(0); plEnterRest(60, 'ex');
+      voiceCmdSync(); await wait(10);
+      const body = () => (document.querySelector('#plBody') || {}).innerText || '';
+      const last = () => window.__recs3[window.__recs3.length - 1];
+      const r = { armed: !!(last() && last()._on), before: /Say .continue./.test(body()) };
+      if (last()) last().failWith('not-allowed');
+      await wait(10);
+      r.switchOff = voiceCmdOn() === false;
+      r.promises = /Say .continue./.test(body());
+      voiceCmdStop(); playerQuit();
+      STATE.settings.voiceCmd = false; _vrDown = ''; _vrNetFails = 0; save();
+      if (real) window.SpeechRecognition = real; else delete window.SpeechRecognition;
+      return r;
+    });
+    t.ok('guard: the microphone really armed for this rest', ref.armed, ref);
+    t.ok('guard: it was promising the word first', ref.before, ref);
+    t.ok('guard: the refusal really turned the switch off', ref.switchOff, ref);
+    t.ok('a switch the app turned off stops promising the word', !ref.promises, ref);
+
+    /* FLOOR: an ordinary healthy rest is unchanged. */
+    const ok = await page.evaluate(() => {
+      _vrDown = ''; _vrNetFails = 0;
+      STATE.settings.voiceCmd = true; save();
+      go('today'); openPlayer(0); plEnterRest(60, 'ex');
+      const body = () => (document.querySelector('#plBody') || {}).innerText || '';
+      const r = { promises: /Say .continue./.test(body()), quiet: !/speech service|offline/i.test(body()) };
+      playerQuit(); STATE.settings.voiceCmd = false; save();
+      return r;
+    });
+    t.ok('FLOOR: a healthy rest still promises the word', ok.promises, ok);
+    t.ok('FLOOR: and says nothing about a failure', ok.quiet, ok);
+  }
+
+  /* v423 — THE COPY SAID ONE THING AND THE MICROPHONE DID ANOTHER.
+     Settings promised "Listens only during rest". voiceCmdSync() armed on
+     "a session is open", so audio streamed to a cloud recogniser through
+     every working set — measured open in ready, work AND rest. A false
+     PRIVACY claim is the worst kind of promise in UI text with no code
+     behind it, so the code moved to match: the microphone opens where the
+     word can act and nowhere else. */
+  {
+    await seedAthlete(page);
+    const mic = await page.evaluate(() => {
+      window.__mic = { starts: 0, stops: 0, live: 0 };
+      class FakeRec {
+        constructor() { this._on = false; }
+        start() { if (this._on) throw new Error('InvalidStateError');
+                  this._on = true; window.__mic.starts++; window.__mic.live++; }
+        stop() { if (!this._on) return; this._on = false; window.__mic.stops++; window.__mic.live--; }
+      }
+      const real = window.SpeechRecognition;
+      window.SpeechRecognition = FakeRec;
+      STATE.settings.voiceCmd = true; _vrDown = ''; _vrNetFails = 0; save();
+      const beat = () => plGuardTick();
+      const r = {};
+      go('today'); openPlayer(0);
+
+      plEnterReady(false); beat();
+      r.readyPhase = PLAYER.phase; r.ready = window.__mic.live;
+
+      plClear(); plEnterWork(); beat();
+      r.workPhase = PLAYER.phase; r.work = window.__mic.live;
+      r.actsInWork = voiceCmdActionable();
+
+      plClear(); plEnterRest(60, 'ex'); beat();
+      r.restPhase = PLAYER.phase; r.rest = window.__mic.live;
+      r.actsInRest = voiceCmdActionable();
+      r.builtOurs = !!(_vrec instanceof FakeRec);
+
+      plClear(); plEnterWork(); beat();
+      r.afterRest = window.__mic.live;
+      plClear(); plEnterRest(60, 'ex'); beat();
+      r.secondRest = window.__mic.live;
+
+      playerQuit(); beat();
+      r.afterQuit = window.__mic.live;
+
+      r.totals = { starts: window.__mic.starts, stops: window.__mic.stops };
+      voiceCmdStop(); STATE.settings.voiceCmd = false; _vrDown = ''; _vrNetFails = 0; save();
+      if (real) window.SpeechRecognition = real; else delete window.SpeechRecognition;
+      return r;
+    });
+
+    /* GUARDS: the phases really are the ones named, and the app built the
+       recogniser this block controls — otherwise every count below is zero
+       for a reason that has nothing to do with the fix. */
+    t.eq('guard: the ready phase was built', mic.readyPhase, 'ready');
+    t.eq('guard: the work phase was built', mic.workPhase, 'work');
+    t.eq('guard: the rest phase was built', mic.restPhase, 'rest');
+    t.ok('guard: the app opened the recogniser this block controls', mic.builtOurs, mic);
+
+    t.eq('the microphone is shut during the 3-2-1 into position', mic.ready, 0);
+    t.eq('and shut through the working set', mic.work, 0);
+    t.ok('where the word does nothing anyway', !mic.actsInWork, mic);
+    t.eq('it opens for the rest', mic.rest, 1);
+    t.ok('which is where the word acts', mic.actsInRest, mic);
+    t.eq('and shuts again the moment the next set starts', mic.afterRest, 0);
+    t.eq('FLOOR: it opens again on the next rest', mic.secondRest, 1);
+    t.eq('and is shut once the session ends', mic.afterQuit, 0);
+    t.eq('two rests opened it exactly twice', mic.totals.starts, 2);
+    t.eq('and closed it exactly twice — nothing left listening', mic.totals.stops, 2);
+
+    /* A STUCK TIMER is the one exception, and the copy names it. */
+    const stuck = await page.evaluate(() => {
+      window.__mic2 = { live: 0 };
+      class FakeRec2 {
+        constructor() { this._on = false; }
+        start() { this._on = true; window.__mic2.live++; }
+        stop() { if (this._on) { this._on = false; window.__mic2.live--; } }
+      }
+      const real = window.SpeechRecognition;
+      window.SpeechRecognition = FakeRec2;
+      STATE.settings.voiceCmd = true; _vrDown = ''; _vrNetFails = 0; save();
+      go('today'); openPlayer(0); plClear(); plEnterWork();
+      const r = {};
+      voiceCmdSync(); r.beforeStall = window.__mic2.live;
+      /* make the work phase read as stuck: no tick, deadline long gone */
+      PLAYER.tid = null; PLAYER.phaseAt = monoNow() - 60000; PLAYER.lastTick = monoNow() - 60000;
+      r.stalled = timerStalled(PLAYER);
+      voiceCmdSync(); r.afterStall = window.__mic2.live;
+      voiceCmdStop(); playerQuit();
+      STATE.settings.voiceCmd = false; _vrDown = ''; _vrNetFails = 0; save();
+      if (real) window.SpeechRecognition = real; else delete window.SpeechRecognition;
+      return r;
+    });
+    t.eq('guard: a healthy working set leaves it shut', stuck.beforeStall, 0);
+    t.ok('guard: the timer really does read as stuck', stuck.stalled, stuck);
+    t.eq('a stuck timer opens it, because the word rescues that', stuck.afterStall, 1);
+
+    /* The copy has to describe what the code now does. */
+    const copy = await page.evaluate(() => {
+      go('guide');
+      const txt = (document.querySelector('.view.active') || {}).innerText || '';
+      const i = txt.indexOf('hands-free');
+      const seg = txt.slice(i, i + 340);
+      go('today');
+      return seg;
+    });
+    t.ok('Settings says the microphone is shut during a set',
+         /never during a set/.test(copy), copy);
+    t.ok('and names the stuck-timer exception rather than glossing it',
+         /stuck/.test(copy), copy);
   }
 
   srv.close();
