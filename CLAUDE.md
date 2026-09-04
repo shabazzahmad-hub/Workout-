@@ -14429,6 +14429,161 @@ running test is kept as intent, the same call as v287's `wantAnchor`.
 
 Eight mutants, all caught.
 
+## The guard that rescues every other tick is itself a tick (v425)
+
+v377 gave five timed surfaces a rescue and put all of it behind **one
+interval**, armed once at load and never re-armed. v375 wrote the reason it is
+armed once — *"arming per surface is how a third surface gets forgotten"* — and
+that reasoning is right. What nobody asked is what happens when the OS reclaims
+the heartbeat itself, which is the premise this whole subsystem rests on.
+
+Measured with `_plGuard` cleared:
+
+| | |
+|---|---|
+| the heartbeat came back | **no** — not by itself, not on `visibilitychange`, not on a tap |
+| the guided player | still had `plResync()` on `visibilitychange` |
+| HIIT | still had `ivResync()` |
+| the four surfaces in `timedSurfaces()` | **no rescue at all** — none has a `visibilitychange` listener of its own |
+
+So the baseline timer, the hold test, the assessment rest and the hold/rep
+timer depend entirely on a lone interval nothing watches.
+
+**A LIVE INTERVAL ID IS NOT EVIDENCE OF A LIVE INTERVAL.** A reclaimed timer
+leaves the id behind, so `_plGuard !== null` stays true on a heartbeat that has
+not beaten for an hour. The only honest test is whether it BEAT — the same
+`lastTick` shape `tickStalled()` already uses for the other five. Every check
+in the block therefore clears the interval and **leaves the id in place**, or a
+fix testing `!== null` would pass on a phone where nothing ticks.
+
+**A second timer watching the first is an infinite regress, so the answer is
+EVENTS.** The page coming back and a tap anywhere are both signals the app
+already receives, and neither is a timer, so neither can be reclaimed with the
+thing it is watching. The bound is honest and worth stating: a page never
+touched and never hidden gets no event — and a timer is not reclaimed on a
+visible foreground page either, so the case where the rescue is needed is the
+case where the event arrives.
+
+### The session clock was the other unwatched tick
+
+`_plClock` is deliberately separate from the phase timers — its own comment
+says *"tying it to the phase timers would have stopped it during the gaps
+between them, which is precisely the time this exists to catch"* — so
+`plClear()` never touches it and `plResync()` does not re-arm it. That left it
+the one tick in the player with **no rescue at all**. Measured dead:
+
+| | |
+|---|---|
+| the session clock | frozen |
+| the PAUSED bar | frozen at *"PAUSED 0s"* while the athlete had been away 3:20 |
+| the over-budget nudge | never fires |
+| *"Paused 3:00 — still there?"* | never fires — the line that fetches an athlete back |
+
+The heartbeat owns it now, and `plClockEnsure()` repaints immediately rather
+than waiting a second, so a frozen figure moves the moment it is rescued.
+
+**Three floors carry the round**, and each catches a different over-eager twin:
+a healthy clock and a healthy heartbeat are not churned, and a FINISHED session
+does not get its clock back — `plEnterDone()` stops it on purpose.
+
+## The record read the last painted number, not the clock (v425)
+
+All four stopwatches in this app PAINT from `swSecs()` — a timestamp, so the
+display catches up on every tick however badly the tick is throttled — and then
+RECORDED the cached figure the last paint happened to leave behind. These are
+the surfaces where a reclaimed tick is likeliest: a stopwatch is started and the
+phone goes in a pocket.
+
+Measured with the tick reclaimed one second in:
+
+| | the clock knew | what was recorded |
+|---|---|---|
+| a 41-minute ruck | 2460 s | **nothing** — *"Under a minute — nothing logged"*, and no row at all |
+| a 27-minute skipping session | 1620 s | nothing |
+| an 18-minute make-up block | 1080 s | nothing |
+| **a 12-minute ops challenge** | **720 s** | **a ONE-SECOND personal best, saved for ever** |
+
+**The ops one is the worst of the four because shorter is BETTER there**: the
+fake best is unbeatable, so that benchmark can never record a real time again.
+The other three under-log, which is the safe direction and still loses the
+athlete's work.
+
+`swFinal(st)` is the one helper — it reads the clock, clears the interval and
+returns the seconds — so a fifth stopwatch cannot be written with a fifth copy
+of the mistake. `swSecs()` already subtracts a pause in progress, so reading it
+at the stop is honest about a paused stopwatch as well; that half was never
+wrong, and v343's own false alarm about it is why it was checked rather than
+assumed.
+
+### Six fixtures set a field no writer in this app sets
+
+Seven pre-existing checks went red, and the failure was the FIXTURE. They set
+`MUT.secs = 615` by hand — and `swStart()` sets `at`, with the tick deriving
+`secs` from it, so a stopwatch carrying a `secs` its `at` does not support is a
+shape the app never produces. Once the stop reads the clock, a hand-set `secs`
+is correctly ignored.
+
+**Complete the record; do not weaken the rule** — the third time this file has
+recorded that, after v321's prior needing `subs:{}` and v420's fixtures missing
+`rest`. The tell is the same every time: the app's own writer produces the
+field and only a test fixture omits it, so check what the WRITER writes before
+loosening a guard a fixture tripped.
+
+### And two probe errors, both the same trap
+
+`openMakeupTimer('jacks')` opens the work/rest BLOCK, not a stopwatch — the
+stopwatch is `openMakeupStopwatch(mode)`, and only the continuous modes get the
+menu's stopwatch button. And the activity timer is `openActTimer(k)`, not an
+invented `actTimerStart()`. Both reported a null object and looked exactly like
+a dead surface. *Confirm the control's real shape before believing the result.*
+
+## The clock caught up and the total did not (v425)
+
+Found by asking the same question of the fourth timed surface: **which counters
+sit BESIDE a wall-clock floor and were left as a bare `++`?** `ivTick()` is the
+one, and the two lines are adjacent:
+
+```js
+const byTick=INTV.remain-1;
+INTV.remain=INTV.deadline?Math.min(byTick,Math.ceil((INTV.deadline-monoNow())/1000)):byTick;
+INTV.workElapsed++;      // <- the tick, not the seconds
+```
+
+`remain` is floored against the clock and its own comment says why — *"Chrome
+throttles a hidden tab's timers to roughly one callback a minute, so a bare
+`remain--` counts callbacks rather than seconds."* The counter next to it was
+never given the same treatment. Measured, one throttled tick over an expired
+60-second station:
+
+| | before | after |
+|---|---|---|
+| an ordinary unthrottled grinder | 360 s | **360 s — unchanged** |
+| one throttled tick across a 60 s station | **1 s** | **60 s** |
+
+**That number is a RECORD, not a display.** `logGrind()` stores it and the
+finish screen offers *"Log N min to my record"*, so a session run with the
+phone in a pocket credited a minute of work as a second — the same
+under-logging the stopwatches did, on the surface most likely to be
+unattended.
+
+**Count the seconds the tick CONSUMED.** The tick knows how far `remain` moved,
+so the increment is that distance, clamped at one so a clock that did not move
+still counts the second it was called for, and clamped at the station's own
+remaining time so a long stall cannot credit more work than the station had
+left in it.
+
+**The floor is the ordinary grinder, byte-identical.** A fix that simply
+multiplied the counter would satisfy every assertion about the throttled case
+and silently inflate every session anybody actually runs.
+
+### The probe opened in a phase the counter does not run in
+
+`startGrinder()` opens in a `lead` phase — the 3-2-1 into position — so the
+first probe pumped ticks and read `workElapsed: 0`, which looks exactly like a
+counter that does not work. `ivTickLead()` has to be driven past the lead
+before `ivTick()` is reached at all. *Confirm the control's real shape before
+believing the result.*
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
@@ -14702,6 +14857,13 @@ Probe scripts must live in the repo root to resolve `playwright`. Delete them
 afterwards and leave `git status` clean.
 
 ## Sandbox and tooling
+
+**A mutation driver writes to a LOG FILE, and is never piped through `tail`.**
+`| tail -20` prints nothing at all until the process exits, so a run that is
+killed part-way leaves an EMPTY output file — thirty minutes and eight mutants,
+with no record of a single result. It also makes progress unreadable while the
+run is alive, so there is no way to tell a slow run from a dead one. The driver
+appends each line to a file as it goes; read that file to watch it.
 
 **`github.io` is not reachable from here** — the agent proxy returns
 `CONNECT tunnel failed, 403`, so a `curl` poll against the live site never

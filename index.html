@@ -6803,8 +6803,15 @@ function plClear(){if(PLAYER&&PLAYER.tid){clearInterval(PLAYER.tid);PLAYER.tid=n
    stopped it during the gaps between them, which is precisely the time this
    exists to catch. */
 let _plClock=null;
+/* A LIVE INTERVAL ID IS NOT EVIDENCE OF A LIVE INTERVAL. An OS that reclaims a
+   timer leaves the id behind, so `_plClock!==null` stays true on a clock that
+   has not ticked for an hour. The only honest test is whether it BEAT — the
+   same shape tickStalled() already uses for the four surfaces in
+   timedSurfaces(). */
+let _plClockBeat=0;
 function plClockStart(){
   plClockStop();
+  _plClockBeat=monoNow();
   _plClock=setInterval(plClockTick,1000);
 }
 function plClockStop(){if(_plClock){clearInterval(_plClock);_plClock=null;}}
@@ -6848,6 +6855,7 @@ function plBudgetMin(items,tempo){
 }
 function plClockTick(){
   if(!PLAYER)return;
+  _plClockBeat=monoNow();
   const el=$('#plClock');
   if(el){
     const w=plWallSec(),budget=(PLAYER.budget||0)*60;
@@ -7901,7 +7909,7 @@ function plResync(){
     else if(PLAYER.phase==='work'&&plCur().unit==='time')plTickHold();
   }catch(e){}
 }
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')plResync();});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='visible')return;plGuardEnsure();plClockEnsure();plResync();});
 /* ONE HEARTBEAT FOR EVERY TIMED SURFACE, AND IT DOES NOT NEED THE SCREEN.
 
    v350 removed one dependency: a rest that expired while the page was hidden
@@ -7925,9 +7933,48 @@ document.addEventListener('visibilitychange',()=>{if(document.visibilityState===
    how a third surface gets forgotten, and this file records that shape five
    times over. The cost when nothing is open is two null tests every 2s. */
 const PL_GUARD_MS=2000, PL_STALL_MS=3000;
-let _plGuard=null;
-function plGuardOn(){plGuardOff();_plGuard=setInterval(plGuardTick,PL_GUARD_MS);}
+/* Three guard periods. A healthy heartbeat beats every 2s and the session
+   clock every 1s, so six seconds of silence is a dead tick rather than a slow
+   one — and a throttled-but-alive interval being re-armed costs nothing. */
+const PL_BEAT_STALL_MS=PL_GUARD_MS*3;
+let _plGuard=null,_plGuardBeat=0;
+function plGuardOn(){plGuardOff();_plGuardBeat=monoNow();_plGuard=setInterval(plGuardTick,PL_GUARD_MS);}
 function plGuardOff(){if(_plGuard){clearInterval(_plGuard);_plGuard=null;}}
+/* THE GUARD THAT RESCUES EVERY OTHER TICK IS ITSELF A TICK, and this whole
+   subsystem exists on the premise that an OS can reclaim one outright.
+   Measured with _plGuard cleared: NOTHING in the app brought it back — not the
+   heartbeat (it is the heartbeat), not visibilitychange, not a tap. Every
+   rescue died with it, and the four surfaces in timedSurfaces() — the baseline
+   timer, the hold test, the assessment rest and the hold/rep timer — have no
+   visibilitychange listener of their own, so for them it is the ONLY rescue.
+
+   A second timer watching the first is an infinite regress. EVENTS are the
+   answer, and both of these already fire in this file: the page coming back,
+   and a tap anywhere. Neither is a timer, so neither can be reclaimed with the
+   thing it is watching.
+
+   The bound is honest and worth stating: a page that is never touched and
+   never hidden gets no event — but a timer is not reclaimed on a visible,
+   foreground page either, so the case where the rescue is needed is the case
+   where the event arrives. */
+function plGuardEnsure(){
+  try{if(monoNow()-_plGuardBeat>PL_BEAT_STALL_MS)plGuardOn();}catch(e){}
+}
+/* Re-arm the SESSION clock the same way. It is not one of the phase timers, so
+   plClear() deliberately never touches it and plResync() does not re-arm it —
+   which left it the one tick in the player with no rescue at all. Measured
+   dead: the session clock and the PAUSED bar both froze for the rest of the
+   session, and with them BOTH nudges — the over-budget one, and "Paused 3:00 —
+   still there?", which is the line that fetches an athlete back to a session
+   they walked away from. */
+function plClockEnsure(){
+  try{
+    if(!PLAYER||PLAYER.phase==='done')return;   // plEnterDone() stops it on purpose
+    if(_plClock&&monoNow()-_plClockBeat<=PL_BEAT_STALL_MS)return;
+    plClockStart();
+    plClockTick();                              // paint now, so a frozen figure moves at once
+  }catch(e){}
+}
 /* One predicate for both surfaces. PLAYER and INTV are different objects with
    the same four fields that matter, and two copies of this test is two places
    for it to drift — the player's twins have drifted four times already. */
@@ -8043,6 +8090,8 @@ function tickResync(S){
   }catch(e){return false;}
 }
 function plGuardTick(){
+  _plGuardBeat=monoNow();
+  try{plClockEnsure();}catch(e){}
   try{if(timerStalled(PLAYER))plResync();}catch(e){}
   try{if(timerStalled(INTV))ivResync();}catch(e){}
   try{timedSurfaces().forEach(tickResync);}catch(e){}
@@ -8058,6 +8107,7 @@ function plTapRescue(){try{if(timerStalled(PLAYER))plResync();}catch(e){}}
 function ivTapRescue(){try{if(timerStalled(INTV))ivResync();}catch(e){}}
 document.addEventListener('click',e=>{
   try{
+    plGuardEnsure();                 // any tap at all, not only one inside a session
     const t=e.target;if(!t||!t.closest)return;
     if(t.closest('#player'))plTapRescue();
     else if(t.closest('#hiit'))ivTapRescue();
@@ -8778,6 +8828,35 @@ function swSecs(st){
   const pausedNow=st.pausedAt?(monoNow()-st.pausedAt):0;
   return Math.max(0,Math.round((monoNow()-st.at-(st.pausedMs||0)-pausedNow)/1000));
 }
+/* THE RECORD READS THE CLOCK, NOT THE LAST PAINTED NUMBER.
+
+   All four stopwatches in this app PAINT from swSecs() — a timestamp, so the
+   display catches up on every tick however badly the tick is throttled — and
+   then RECORDED the cached figure the last paint happened to leave behind.
+   A tick nothing watches is exactly what this version is about, and these are
+   the surfaces where it is likeliest: a stopwatch is started and the phone
+   goes in a pocket.
+
+   Measured with the tick reclaimed one second in:
+
+     a 41-minute ruck   clock 2460s, cache 1s  ->  "Under a minute — nothing
+                                                    logged", and no row at all
+     a 12-minute ops    clock  720s, cache 1s  ->  a ONE-SECOND personal best,
+                        challenge                  saved for ever
+
+   The ops one is the worst of the four because shorter is BETTER there: the
+   fake best is unbeatable, so that benchmark can never record a real time
+   again. The other three under-log, which is the safe direction and still
+   loses the athlete's work.
+
+   swSecs() already subtracts a pause in progress, so reading it at the stop is
+   honest about a paused stopwatch as well — that half was never wrong. */
+function swFinal(st){
+  if(!st)return 0;
+  const s=swSecs(st);
+  if(st.tid){clearInterval(st.tid);st.tid=null;}
+  return s;
+}
 function swPause(st,running){
   if(!st)return;
   if(running){if(st.pausedAt){st.pausedMs=(st.pausedMs||0)+(monoNow()-st.pausedAt);st.pausedAt=0;}}
@@ -8787,7 +8866,7 @@ function actTimerTick(){if(!ACTT||!ACTT.running)return;ACTT.secs=swSecs(ACTT);co
 function actTimerToggle(){if(!ACTT)return;ACTT.running=!ACTT.running;swPause(ACTT,ACTT.running);const b=$('#act-toggle');if(b)b.textContent=ACTT.running?'Pause':'Resume';}
 function actTimerCancel(){if(ACTT&&ACTT.tid)clearInterval(ACTT.tid);ACTT=null;closeSheet();}
 function actTimerStop(){
-  if(!ACTT)return;const k=ACTT.k,secs=ACTT.secs;if(ACTT.tid)clearInterval(ACTT.tid);ACTT=null;
+  if(!ACTT)return;const k=ACTT.k,secs=swFinal(ACTT);ACTT=null;
   const mins=Math.round(secs/60);
   if(mins<1){toast('Under a minute — nothing logged');closeSheet();return;}
   if(k==='ruck'){logAct('ruck',mins,{unit:STATE.profile.unit==='in'?'mi':'km'});}
@@ -8883,7 +8962,7 @@ function skipTimerTick(){if(!SKIPT||!SKIPT.running)return;SKIPT.secs=swSecs(SKIP
 function skipTimerToggle(){if(!SKIPT)return;SKIPT.running=!SKIPT.running;swPause(SKIPT,SKIPT.running);const b=$('#skt-toggle');if(b)b.textContent=SKIPT.running?'Pause':'Resume';}
 function skipTimerCancel(){if(SKIPT&&SKIPT.tid)clearInterval(SKIPT.tid);SKIPT=null;closeSheet();}
 function skipTimerStop(){
-  if(!SKIPT)return;const secs=SKIPT.secs;if(SKIPT.tid)clearInterval(SKIPT.tid);SKIPT=null;
+  if(!SKIPT)return;const secs=swFinal(SKIPT);SKIPT=null;
   const mins=Math.round(secs/60);
   if(mins<1){toast('Under a minute — nothing logged');closeSheet();return;}
   logSkip(mins,0);openSkipping();
@@ -9067,7 +9146,7 @@ function makeupStopwatchTick(){if(!MUT||!MUT.running)return;MUT.secs=swSecs(MUT)
 function makeupStopwatchToggle(){if(!MUT)return;MUT.running=!MUT.running;swPause(MUT,MUT.running);const b=$('#mut-toggle');if(b)b.textContent=MUT.running?'Pause':'Resume';}
 function makeupStopwatchCancel(){if(MUT&&MUT.tid)clearInterval(MUT.tid);MUT=null;closeSheet();}
 function makeupStopwatchStop(){
-  if(!MUT)return;const mode=MUT.mode,secs=MUT.secs;if(MUT.tid)clearInterval(MUT.tid);MUT=null;
+  if(!MUT)return;const mode=MUT.mode,secs=swFinal(MUT);MUT=null;
   const mins=Math.round(secs/60);
   closeSheet();
   if(mins<1){toast('Under a minute — nothing logged');return;}
@@ -9276,7 +9355,22 @@ function ivTick(){
      says is left keeps +15s, pause and skip all driveable. */
   const byTick=INTV.remain-1;
   INTV.remain=INTV.deadline?Math.min(byTick,Math.ceil((INTV.deadline-monoNow())/1000)):byTick;
-  if(INTV.phase==='work')INTV.workElapsed++;
+  /* COUNT THE SECONDS THE TICK CONSUMED, NOT THE TICK. `remain` two lines up
+     is floored against the wall clock for exactly the reason its own comment
+     gives — Chrome throttles a hidden tab to about one callback a minute — and
+     this counter was left as a bare `++` beside it. So the clock caught up and
+     the WORK TOTAL did not: measured, six real seconds of a throttled round
+     added one. That figure is what `logGrind()` stores and what the finish
+     screen offers as "Log N min to my record", so a session run with the phone
+     in a pocket logged a fraction of the work done — the same defect the four
+     stopwatches had, on the surface v375 calls the one most likely to be left
+     unattended.
+     Clamped to the seconds the phase actually had left: a tick that arrives
+     after the phase has expired consumed that phase's remainder and no more. */
+  if(INTV.phase==='work'){
+    const prevLeft=byTick+1;
+    INTV.workElapsed+=Math.max(1,Math.min(prevLeft,prevLeft-INTV.remain));
+  }
   if(INTV.phase==='work')countdownCue(INTV.remain,INTV.total);
   /* Work only. A rest interval has no hard part to name, and saying so
      there would cost the phases the difference the ear uses to tell them
@@ -13910,8 +14004,9 @@ function opStart(){
   const b=$('#opBtns');if(b)b.innerHTML=`<button class="btn green" style="width:100%" onclick="opFinish()">✓ Finished</button>`;
 }
 function opFinish(){
-  if(!OP)return;clearInterval(OP.tid);OP.running=false;beatStop();
-  const op=OP.op,t=OP.elapsed,prev=opBest(op.id),pb=(!prev||t<prev);
+  if(!OP)return;OP.running=false;beatStop();
+  const op=OP.op,t=swFinal(OP),prev=opBest(op.id),pb=(!prev||t<prev);
+  OP.elapsed=t;
   if(pb){if(!STATE.opsPR)STATE.opsPR={};STATE.opsPR[op.id]=t;save();}
   coachSpeak(pb?'New personal best! Outstanding.':'Time. Strong effort.');haptic(30);
   _share={t:op.name,s:pb?'New personal best 🏆':'Complete',l:['Time '+fmtTime(t),op.desc]};

@@ -767,6 +767,99 @@ export default async function run() {
       { found: spoken });
   }
 
+  /* THE WORK TOTAL COUNTED TICKS WHILE THE CLOCK COUNTED SECONDS (v425).
+
+     `INTV.remain` is floored against the wall clock two lines up, for the
+     reason its own comment gives — Chrome throttles a hidden tab to about one
+     callback a minute. `INTV.workElapsed` was a bare `++` beside it, and that
+     figure is what logGrind() stores and what the finish screen offers as
+     "Log N min to my record". So the countdown caught up and the work total
+     did not.
+
+     Every case drives the REAL grinder rather than a hand-built INTV, because
+     the defect lives in how the tick and the deadline interact. */
+  {
+    const we = await page.evaluate(() => {
+      const R = {};
+      const runGrinder = (expire) => {
+        STATE.grindLog = []; save();
+        go('today');
+        startGrinder('grind6');                 // six 60-second stations
+        if (!INTV) return { phase: 'NO INTV' };
+        const started = INTV.phase;
+        let g = 0;
+        while (INTV && INTV.phase === 'lead' && g++ < 20) ivTickLead();
+        const atWork = INTV ? INTV.phase : 'NO INTV';
+        ivClear();                              // drive the ticks by hand
+        let ticks = 0;
+        if (expire) {
+          INTV.deadline = monoNow() - expire;   // the station expired while hidden
+          ivTick(); ticks = 1;
+        } else {
+          while (INTV && INTV.phase === 'work' && ticks++ < 400) ivTick();
+        }
+        const work = INTV ? INTV.workElapsed : null;
+        const restBefore = INTV ? INTV.workElapsed : 0;
+        let restAdds = null;
+        if (INTV && INTV.phase === 'rest') { ivTick(); restAdds = INTV.workElapsed - restBefore; }
+        try { hiitQuit(); } catch (e) {}
+        const row = (STATE.grindLog || [])[0] || {};
+        return { started, atWork, ticks, work, restAdds, logged: row.total };
+      };
+
+      R.healthy = runGrinder(0);
+      R.throttled = runGrinder(1000);           // one tick, the station one second past its end
+      R.wayPast = runGrinder(300000);           // five minutes past — cannot credit more than the station
+
+      /* A GRINDER HAS NO REST AT ALL (v360), so it cannot say whether a rest
+         tick credits work. Tabata can: 20s work, 10s rest. */
+      go('today');
+      startHiit('tabata');
+      let g2 = 0;
+      while (INTV && INTV.phase === 'lead' && g2++ < 20) ivTickLead();
+      ivClear();
+      let g3 = 0;
+      while (INTV && INTV.phase === 'work' && g3++ < 60) ivTick();
+      const restPhase = INTV ? INTV.phase : 'NO INTV';
+      const beforeRest = INTV ? INTV.workElapsed : null;
+      if (INTV) { INTV.deadline = monoNow() - 1000; ivTick(); }
+      R.rest = { phase: restPhase, before: beforeRest,
+                 adds: INTV ? INTV.workElapsed - beforeRest : null };
+      try { hiitQuit(); } catch (e) {}
+      return R;
+    });
+
+    /* GUARDS: without these the counts below are zero for the wrong reason. */
+    t.eq('guard: the grinder opens on its lead-in', we.healthy.started, 'lead', we);
+    t.eq('guard: and reaches the work phase', we.healthy.atWork, 'work', we);
+    t.ok('guard: the unthrottled run really ticked a whole session',
+         we.healthy.ticks > 300, we);
+    t.eq('guard: the throttled run got exactly one tick', we.throttled.ticks, 1, we);
+
+    t.eq('FLOOR: an ordinary grinder still counts every worked second',
+         we.healthy.work, 360, we);
+    t.eq('FLOOR: and stores that figure on the record', we.healthy.logged, 360, we);
+
+    t.eq('one throttled tick credits the seconds the station really had',
+         we.throttled.work, 60, we);
+    t.ok('rather than the single tick it counted before',
+         we.throttled.work !== 1, we);
+    t.eq('and the record carries the real figure too', we.throttled.logged, 60, we);
+
+    t.eq('a tick arriving long after the station ended credits the station and no more',
+         we.wayPast.work, 60, we);
+
+    /* The rest floor is what stops the fix becoming "credit every tick". It
+       needs a surface that HAS a rest, so it runs Tabata rather than the
+       grinder — and it needs the tick to be a throttled one, or a mutant that
+       drops the phase test still adds only 1 and looks almost right. */
+    t.eq('guard: Tabata really reaches a rest phase', we.rest.phase, 'rest', we);
+    t.ok('guard: and had worked seconds on the clock before it',
+         we.rest.before > 0, we);
+    t.eq('FLOOR: a throttled REST tick credits no work at all',
+         we.rest.adds, 0, we);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
