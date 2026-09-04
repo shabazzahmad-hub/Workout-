@@ -15055,6 +15055,27 @@ rather than twice.
 passed: suite 23 green at 1729 checks. A red run is not a reason to distrust
 what else it measured.
 
+### The check asserted the DATA, and the rule was what could be deleted
+
+One mutant of twelve escaped: the one that disables the `THEME_DEFAULT` rule
+outright. The check beside it read
+
+```js
+o.defaultIsATheme = !!THEMES[THEME_DEFAULT];
+```
+
+which is a statement about the **data** — true whether or not the validator
+carries a rule about it. *A clean validator proves nothing about a validator
+rule*, and the block broke a THEME's fields in front of the validator while
+never breaking the default's.
+
+**`THEME_DEFAULT` is a top-level `const` and cannot be reassigned**, so the
+break is on the other side of the same lookup: remove the theme it NAMES from
+`THEMES`, require the specific complaint, put it back. Seeded that way the
+mutant fails by name; the data assertion is kept as the floor it always was.
+
+Twelve mutants, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

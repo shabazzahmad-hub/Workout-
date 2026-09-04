@@ -10392,6 +10392,16 @@ export default async function () {
         seen.length = 0; validateData();
         o.optionalNotDemanded = seen.length === 0;
         THEMES[k0].acc3 = keep3;
+        /* And the DEFAULT-theme rule needs its own data broken in front of it.
+           Asserting THEMES[THEME_DEFAULT] is truthy is a statement about the
+           DATA — it stays true whether or not the rule exists, which is how a
+           mutant that disabled the rule escaped. THEME_DEFAULT is a top-level
+           const and cannot be reassigned, so the theme it NAMES is what gets
+           removed; that is the same lookup the rule performs. */
+        const keepDefTheme = THEMES[keepDef]; delete THEMES[keepDef];
+        seen.length = 0; validateData();
+        o.complainsDefault = seen.join(' ').indexOf('THEME_DEFAULT') >= 0;
+        THEMES[keepDef] = keepDefTheme;
         seen.length = 0; validateData();
         o.cleanAfter = seen.length;
       } catch (e) {
@@ -10406,6 +10416,7 @@ export default async function () {
     t.eq('every theme carries every field applyTheme() reads raw', th.missing, {}, th);
     t.ok('and the default is a real theme', th.defaultIsATheme, th);
     t.ok('the validator complains about a theme missing one', th.complainsMissing, th);
+    t.ok('and complains when the default names no theme at all', th.complainsDefault, th);
     t.ok('FLOOR: and says nothing about the field that has a real fallback',
          th.optionalNotDemanded, th);
     t.eq('and is clean once it is restored', th.cleanAfter, 0, th);
