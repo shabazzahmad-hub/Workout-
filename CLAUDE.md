@@ -14740,6 +14740,121 @@ Twenty mutants across the round, all caught — two of them only after the check
 stopped supplying what it was meant to measure.
 
 
+## A rescue that arms and waits leaves the frozen figure frozen (v427)
+
+Found by auditing v426 an hour after it shipped — the twelfth round running
+where the best finding was in the round immediately before, and the fifth in a
+row where it was in my own new code.
+
+v425 gave the reclaimed heartbeat two ways back: the page returning, and a tap
+anywhere. Both re-arm it. **Neither makes it DO anything until the next beat.**
+`plGuardOn()` armed the interval and returned, so the athlete looks back at the
+phone and the number is still wrong for up to `PL_GUARD_MS`.
+
+| | |
+|---|---|
+| a 41-minute stopwatch, tick and heartbeat both reclaimed | frozen at `0:00` |
+| the athlete returns to the page | **still `0:00`** |
+| the next beat, up to 2 s later | `41:00` |
+| after the fix, on the return itself | **`41:00`** |
+
+**Both siblings in this family already run one pass immediately and say why.**
+`plResync()` ticks the phase it re-armed — *"on a rest that already expired,
+this tick is what starts the next set"* — and `plClockEnsure()` repaints *"so a
+frozen figure moves at once"*. `plGuardOn()` was the only one that did not, and
+it is the one every other timed surface depends on: the four in
+`timedSurfaces()` have no `visibilitychange` listener of their own.
+
+**Two seconds is worth a version because of WHERE the frozen number is.** The
+baseline test and the hold test measure a maximal effort, and the number on the
+glass is what the athlete is reading when they look back.
+
+**It is not a per-tap cost, which is the objection to check before shipping it.**
+`plGuardEnsure()` only calls `plGuardOn()` when the beat is genuinely stale, so
+the immediate pass runs on a dead heartbeat and at boot — where every branch of
+`plGuardTick()` is a no-op. Measured: an ordinary tap on a healthy heartbeat
+re-arms nothing and repaints nothing.
+
+**And the boot path was DRIVEN rather than reasoned.** `plGuardOn()` is called
+at top level, and `plGuardTick()` reaches `voiceCmdSync()` and five other
+helpers — exactly the shape of the `btRing` and `FOCUS_KEYS` temporal-dead-zone
+traps this file records twice. Zero page errors on a real load.
+
+**The assertion is SYNCHRONOUS.** Any `await` hands it to the interval, which is
+the thing the fix exists to stop depending on — so the display is read on the
+same tick the event is dispatched.
+
+### And the second rescue took a second off the rest
+
+The full suite went red on one check, and it was right. `visibilitychange` calls
+`plGuardEnsure()` and then `plResync()` — so a return that ALSO finds the
+heartbeat dead now runs the guard's own pass first and the handler's second, and
+**each forced tick costs a second whether or not any time has passed**:
+`plTickRest()` and `plTickHold()` both take `Math.min(one tick, what the clock
+says is left)`, so an extra tick can only ever go down. Measured, on a rest that
+had lost five real seconds: **6 counted**.
+
+**The two callers are not symmetrical, which is why nobody had asked.** The
+heartbeat's call is gated on `timerStalled()`; the handler's deliberately is
+not, because it also covers a THROTTLED tick — alive rather than stalled. So
+gating either caller would break the other's reason for existing.
+
+The gate belongs on the forced tick itself. `plBehindClock()` asks whether the
+display is genuinely behind the clock: an expired rest is, a throttled one is,
+and **a rest a rescue has just reconciled is not** — so the pass is idempotent
+however many rescues land in the same instant. No deadline answers TRUE, so that
+branch is unchanged rather than quietly altered.
+
+**The count of rescues is the thing to pin, not either caller**, and it is a
+guard rather than an assertion: with one rescue the new case is the old one and
+proves nothing about the second. Four mutants, all caught, including the
+over-eager twin that never forces a tick at all — which satisfies every "the
+rest is not cut short" assertion and leaves an expired rest sitting there for
+ever, the exact defect v350 exists for.
+
+### And the twin had it too, and there it reaches a RECORD
+
+Caught by asking, of the fix itself, which other rescue is called from both a
+gated caller and an ungated one. `ivResync()` is: `plGuardTick()` calls it when
+`timerStalled(INTV)`, and HIIT's **own** `visibilitychange` listener — a
+separate one, 1,600 lines from the player's — calls it unconditionally. Two
+rescues, one return, one forced `ivTick()` each.
+
+**It is worse on the twin than on the player**, which is why fixing only what
+the red check named would have been the wrong half. v425 made `ivTick()` count
+the seconds it CONSUMED into `INTV.workElapsed` — and `logGrind()` stores that
+figure, and the finish screen offers *"Log N min to my record"*. Measured across
+two rescues in one instant: **0 → 5 → 5 after the fix, 0 → 5 → 6 before it.**
+A second of work credited that nobody did.
+
+**One predicate for both**, the call `timerStalled()` already made six lines
+away and for the same stated reason: PLAYER and INTV are different objects with
+the same two fields that matter, and two copies of the test is two places for it
+to drift. *The player's twins have drifted five times.*
+
+**The floor is a counter that credits nothing at all.** "The second rescue
+credits no further work" is two equal numbers, and both are zero on a counter
+that never moves — so the first rescue's credit is pinned as a guard, with the
+measured figures in the comment beside it. Four mutants, all caught.
+
+### And the class, swept — it is two members wide
+
+The question is narrow and worth stating so nobody re-derives it: **which
+rescue is reached from a GATED caller and an UNGATED one, and is not idempotent
+on its own?** Five helpers run on a return to the page. Two were the answer and
+three are idempotent by construction:
+
+| helper | why a second call in the same instant is free |
+|---|---|
+| `plResync()` | **it was not** — fixed here |
+| `ivResync()` | **it was not** — fixed here |
+| `plClockEnsure()` | returns early on a clock whose beat is fresh |
+| `tickResync()` | returns early unless `tickStalled()`, and it stamps `lastTick` before it arms |
+| `voiceCmdSync()` | `if(want&&!_vrec)start(); else if(!want&&_vrec)stop();` |
+
+The wake-lock listener re-acquires a lock it already holds, which is a no-op.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
