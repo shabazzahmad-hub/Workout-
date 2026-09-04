@@ -270,8 +270,11 @@ self.addEventListener('message', e => {
    the POSITION of the final slash in the path against the length of the scope,
    which asks WHERE the last slash sits — a statement about how many characters
    another app's folder name has, not about whose folder it is. Measured against
-   scope '/Workout-/': '/Fitness2/a.jpg' and '/commandx/a.jpg' both read as OURS,
-   because those directory names are the same length. So a sibling app published
+   the real scope, a flat asset under /Fitness2/ and one under /commandx/ both
+   read as OURS, because those directory names are the same length as ours — and
+   the file names are NOT written out here, because the precache tiers are parsed
+   by pulling every quoted asset name out of this file, comments and all, so an
+   example path in prose is counted as a declared asset. So a sibling app published
    from this same GitHub Pages origin was served from our cache and written into
    it — exactly what the comment above says this guard prevents, arriving through
    the guard itself.
