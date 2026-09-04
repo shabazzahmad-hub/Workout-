@@ -1849,7 +1849,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='425';
+const APP_VERSION='426';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3613,12 +3613,28 @@ function openSheet(html){
    never reach the sheet's own Cancel buttons. Leaving these running meant the
    activity/skip stopwatches kept ticking invisibly (so re-opening one counted two
    seconds per second and logged roughly double the minutes), and the barcode
-   scanner held the camera open indefinitely. */
+   scanner held the camera open indefinitely.
+
+   THE STOPWATCH IS DROPPED, NOT MERELY STOPPED, and the make-up one was never
+   here at all. Two reasons, and the second is what the same version created:
+
+     - The make-up stopwatch was the one sheet timer this function did not know
+       about, so a Back out of it left a 1s interval running for the life of the
+       page, painting into a #mut-num that no longer exists.
+     - Stopping ACTT/SKIPT and keeping the OBJECT was enough while nothing
+       watched them. They are timed surfaces now, so the heartbeat would have
+       read a torn-down stopwatch as a stalled one and re-armed its tick
+       FOREVER — a rescue for a sheet the athlete has closed.
+
+   Every other timed surface is already nulled when its sheet goes (stopTimer()
+   drops timer, _bt and _ht). These three now match, which is also the honest
+   shape: the sheet is gone, so the stopwatch is over. */
 function sheetTeardown(){
   try{cancelAutoClose();}catch(e){}
   try{if(typeof _repTok!=='undefined')_repTok++;}catch(e){}   // cancel a queued guided-reps rest chain
-  try{if(typeof ACTT!=='undefined'&&ACTT&&ACTT.tid){clearInterval(ACTT.tid);ACTT.tid=null;ACTT.running=false;}}catch(e){}
-  try{if(typeof SKIPT!=='undefined'&&SKIPT&&SKIPT.tid){clearInterval(SKIPT.tid);SKIPT.tid=null;SKIPT.running=false;}}catch(e){}
+  try{if(typeof ACTT!=='undefined'&&ACTT){if(ACTT.iv)clearInterval(ACTT.iv);ACTT=null;}}catch(e){}
+  try{if(typeof SKIPT!=='undefined'&&SKIPT){if(SKIPT.iv)clearInterval(SKIPT.iv);SKIPT=null;}}catch(e){}
+  try{if(typeof MUT!=='undefined'&&MUT){if(MUT.iv)clearInterval(MUT.iv);MUT=null;}}catch(e){}
   try{if(typeof stopScan==='function')stopScan();}catch(e){}
 }
 function closeSheet(){
@@ -8066,10 +8082,22 @@ function timedSurfaces(){
   const out=[];
   const add=(f)=>{try{const S=f();if(S)out.push(S);}catch(e){}};
   add(()=>_bt); add(()=>_ht); add(()=>_ar); add(()=>timer);
+  add(()=>ACTT); add(()=>SKIPT); add(()=>MUT); add(()=>OP);
   return out;
 }
+/* LATE IS RELATIVE TO THE SURFACE'S OWN PERIOD. Every surface here ticked once
+   a second until the guided rep cadence joined, and that one paces at the
+   athlete's chosen tempo — up to 6s a rep. A flat 3s threshold reads a
+   perfectly healthy 6s pacer as stalled and re-arms it on EVERY beat, which
+   also resets the interval phase, so the reps would be called at odd times.
+   Two of its own periods, floored at PL_STALL_MS, leaves every 1s surface
+   exactly where it was. */
 function tickStalled(S){
-  try{return !!(S&&S.lastTick&&typeof S.tick==='function'&&monoNow()-S.lastTick>PL_STALL_MS);}catch(e){return false;}
+  try{
+    if(!(S&&S.lastTick&&typeof S.tick==='function'))return false;
+    const late=Math.max(PL_STALL_MS,(S.every||1000)*2);
+    return monoNow()-S.lastTick>late;
+  }catch(e){return false;}
 }
 function tickResync(S){
   try{
@@ -8084,6 +8112,14 @@ function tickResync(S){
        for ever. Measured: 4 throws in 3.5 seconds and 3 page errors, with the
        caller told it did nothing. Unreachable on today's five surfaces, whose
        ticks all guard themselves; a rescue is the wrong place to be optimistic. */
+    /* A CLOCK CATCHES UP; A PACER MUST NOT. Every surface above is anchored to
+       a deadline or a timestamp, so firing one tick now resolves an expired
+       phase at once. The guided rep cadence is neither — step() counts `n++`
+       per call, so a catch-up tick would credit a rep the athlete never did.
+       It arms and waits, which is the honest answer: no reps happened while
+       the tick was dead. The runaway guard below therefore covers the
+       catch-up path only, which is the only path that can throw here. */
+    if(S.catchUp===false)return true;
     try{S.tick();}                       // one now, so an expired phase resolves at once
     catch(e){clearInterval(S.iv);S.iv=null;return false;}
     return true;
@@ -8797,8 +8833,8 @@ function logActManual(k){
 /* Shared count-up stopwatch for the non-interval activities. */
 let ACTT=null;
 function openActTimer(k){
-  if(ACTT&&ACTT.tid)clearInterval(ACTT.tid);
-  ACTT=swStart({k,secs:0,tid:null,running:true});
+  if(ACTT&&ACTT.iv)clearInterval(ACTT.iv);
+  ACTT=swStart({k,secs:0,iv:null,running:true,tick:actTimerTick});
   const a=ACTS[k];
   openSheet(`<h3>⏱️ ${a.emoji} ${a.name}</h3>
     <p class="muted sm" style="margin:2px 0 14px">Counting up. Tap <b>Stop &amp; log</b> when you're done.</p>
@@ -8806,7 +8842,7 @@ function openActTimer(k){
     <button class="btn primary" onclick="actTimerStop()">■ Stop &amp; log</button>
     <div style="height:8px"></div><button class="btn ghost" id="act-toggle" onclick="actTimerToggle()">Pause</button>
     <div style="height:8px"></div><button class="btn ghost" onclick="actTimerCancel()">Cancel</button>`);
-  ACTT.tid=setInterval(actTimerTick,1000);
+  ACTT.iv=setInterval(actTimerTick,1000);
   try{coachSpeak(a.name+'. Timer running.');}catch(e){}
 }
 /* ---- Count-up stopwatches ------------------------------------------------
@@ -8822,7 +8858,19 @@ function openActTimer(k){
    and correctly stays on the wall clock. Measured before this: a one-second
    stopwatch read 3,601 after the phone corrected its clock by an hour, and
    Benchmark Ops writes that number straight into a personal best. */
-function swStart(st){st.at=monoNow();st.pausedMs=0;st.pausedAt=0;st.secs=0;return st;}
+/* A STOPWATCH IS A TIMED SURFACE LIKE ANY OTHER. v425 made the RECORD read the
+   clock, so a reclaimed tick could no longer cost the athlete their session —
+   and left the DISPLAY frozen at whatever the last paint wrote. Measured: the
+   tick cleared one second in, 41 real minutes passed, and the sheet still read
+   "1s" while swSecs() knew 2460; plGuardTick(), visibilitychange, a tap and
+   2.6s of heartbeats all left it there. The record was right and the screen
+   lied, and two of the three things an athlete does with a stopwatch that has
+   plainly stopped — Cancel, or start it again — throw the session away.
+
+   So they join timedSurfaces() and the heartbeat re-arms them, which needs one
+   field name for the interval across every surface it watches: `iv`. (_bt.tid
+   is a TEST id, not a timer — the rename is scoped to these four.) */
+function swStart(st){st.at=monoNow();st.pausedMs=0;st.pausedAt=0;st.secs=0;st.lastTick=monoNow();return st;}
 function swSecs(st){
   if(!st||!st.at)return st?(st.secs||0):0;
   const pausedNow=st.pausedAt?(monoNow()-st.pausedAt):0;
@@ -8854,7 +8902,7 @@ function swSecs(st){
 function swFinal(st){
   if(!st)return 0;
   const s=swSecs(st);
-  if(st.tid){clearInterval(st.tid);st.tid=null;}
+  if(st.iv){clearInterval(st.iv);st.iv=null;}
   return s;
 }
 function swPause(st,running){
@@ -8862,9 +8910,9 @@ function swPause(st,running){
   if(running){if(st.pausedAt){st.pausedMs=(st.pausedMs||0)+(monoNow()-st.pausedAt);st.pausedAt=0;}}
   else if(!st.pausedAt)st.pausedAt=monoNow();
 }
-function actTimerTick(){if(!ACTT||!ACTT.running)return;ACTT.secs=swSecs(ACTT);const e=$('#act-num');if(e)e.textContent=fmtTime(ACTT.secs);}
+function actTimerTick(){if(!ACTT)return;ACTT.lastTick=monoNow();if(!ACTT.running)return;ACTT.secs=swSecs(ACTT);const e=$('#act-num');if(e)e.textContent=fmtTime(ACTT.secs);}
 function actTimerToggle(){if(!ACTT)return;ACTT.running=!ACTT.running;swPause(ACTT,ACTT.running);const b=$('#act-toggle');if(b)b.textContent=ACTT.running?'Pause':'Resume';}
-function actTimerCancel(){if(ACTT&&ACTT.tid)clearInterval(ACTT.tid);ACTT=null;closeSheet();}
+function actTimerCancel(){if(ACTT&&ACTT.iv)clearInterval(ACTT.iv);ACTT=null;closeSheet();}
 function actTimerStop(){
   if(!ACTT)return;const k=ACTT.k,secs=swFinal(ACTT);ACTT=null;
   const mins=Math.round(secs/60);
@@ -8945,8 +8993,8 @@ function startSkipCustom(){
 /* Free stopwatch — for when you just pick up the rope. Counts up; Stop logs it. */
 let SKIPT=null;
 function openSkipTimer(){
-  if(SKIPT&&SKIPT.tid)clearInterval(SKIPT.tid);
-  SKIPT=swStart({secs:0,tid:null,running:true});
+  if(SKIPT&&SKIPT.iv)clearInterval(SKIPT.iv);
+  SKIPT=swStart({secs:0,iv:null,running:true,tick:skipTimerTick});
   openSheet(`<h3>⏱️ Skipping stopwatch</h3>
     <p class="muted sm" style="margin:2px 0 14px">Counting up. Tap <b>Stop &amp; log</b> when you're done and the minutes go straight into your record.</p>
     <div style="text-align:center;margin:10px 0 18px"><div id="skt-num" style="font-size:56px;font-weight:900;letter-spacing:1px">0:00</div></div>
@@ -8955,12 +9003,12 @@ function openSkipTimer(){
     <button class="btn ghost" id="skt-toggle" onclick="skipTimerToggle()">Pause</button>
     <div style="height:8px"></div>
     <button class="btn ghost" onclick="skipTimerCancel()">Cancel</button>`);
-  SKIPT.tid=setInterval(skipTimerTick,1000);
+  SKIPT.iv=setInterval(skipTimerTick,1000);
   try{coachSpeak('Rope up. Timer running.');}catch(e){}
 }
-function skipTimerTick(){if(!SKIPT||!SKIPT.running)return;SKIPT.secs=swSecs(SKIPT);const e=$('#skt-num');if(e)e.textContent=fmtTime(SKIPT.secs);}
+function skipTimerTick(){if(!SKIPT)return;SKIPT.lastTick=monoNow();if(!SKIPT.running)return;SKIPT.secs=swSecs(SKIPT);const e=$('#skt-num');if(e)e.textContent=fmtTime(SKIPT.secs);}
 function skipTimerToggle(){if(!SKIPT)return;SKIPT.running=!SKIPT.running;swPause(SKIPT,SKIPT.running);const b=$('#skt-toggle');if(b)b.textContent=SKIPT.running?'Pause':'Resume';}
-function skipTimerCancel(){if(SKIPT&&SKIPT.tid)clearInterval(SKIPT.tid);SKIPT=null;closeSheet();}
+function skipTimerCancel(){if(SKIPT&&SKIPT.iv)clearInterval(SKIPT.iv);SKIPT=null;closeSheet();}
 function skipTimerStop(){
   if(!SKIPT)return;const secs=swFinal(SKIPT);SKIPT=null;
   const mins=Math.round(secs/60);
@@ -9128,8 +9176,8 @@ function startJackMakeup(){
    the finish credits today's movement fields instead of a separate log. */
 let MUT=null;
 function openMakeupStopwatch(mode){
-  if(MUT&&MUT.tid)clearInterval(MUT.tid);
-  MUT=swStart({mode,secs:0,tid:null,running:true});
+  if(MUT&&MUT.iv)clearInterval(MUT.iv);
+  MUT=swStart({mode,secs:0,iv:null,running:true,tick:makeupStopwatchTick});
   const label=cardioInfo(mode).label;
   openSheet(`<h3>⏱️ ${label} stopwatch</h3>
     <p class="muted sm" style="margin:2px 0 14px">Counting up. Tap <b>Stop &amp; log</b> when you're done and the minutes go straight into today's movement.</p>
@@ -9139,12 +9187,12 @@ function openMakeupStopwatch(mode){
     <button class="btn ghost" id="mut-toggle" onclick="makeupStopwatchToggle()">Pause</button>
     <div style="height:8px"></div>
     <button class="btn ghost" onclick="makeupStopwatchCancel()">Cancel</button>`);
-  MUT.tid=setInterval(makeupStopwatchTick,1000);
+  MUT.iv=setInterval(makeupStopwatchTick,1000);
   try{coachSpeak(label+'. Timer running.');}catch(e){}
 }
-function makeupStopwatchTick(){if(!MUT||!MUT.running)return;MUT.secs=swSecs(MUT);const e=$('#mut-num');if(e)e.textContent=fmtTime(MUT.secs);}
+function makeupStopwatchTick(){if(!MUT)return;MUT.lastTick=monoNow();if(!MUT.running)return;MUT.secs=swSecs(MUT);const e=$('#mut-num');if(e)e.textContent=fmtTime(MUT.secs);}
 function makeupStopwatchToggle(){if(!MUT)return;MUT.running=!MUT.running;swPause(MUT,MUT.running);const b=$('#mut-toggle');if(b)b.textContent=MUT.running?'Pause':'Resume';}
-function makeupStopwatchCancel(){if(MUT&&MUT.tid)clearInterval(MUT.tid);MUT=null;closeSheet();}
+function makeupStopwatchCancel(){if(MUT&&MUT.iv)clearInterval(MUT.iv);MUT=null;closeSheet();}
 function makeupStopwatchStop(){
   if(!MUT)return;const mode=MUT.mode,secs=swFinal(MUT);MUT=null;
   const mins=Math.round(secs/60);
@@ -12456,6 +12504,7 @@ function runRepCadence(reps,label,restAfter,onDone,ex){
   let ready=5;const rn=$('#rcNum');if(rn){rn.textContent='5';rn.className='tnum rest';}setP('GET READY');
   beep(1000,.15,0.7);coachSpeak('Guided set. '+total+' reps. Get ready.');
   function readyTick(){
+    if(timer)timer.lastTick=monoNow();
     ready--;
     /* NO SPOKEN DIGITS. The beeps already mark every second of a get-ready, and
      _deviceSpeak() calls synth.cancel() on every line — so a digit spoken two
@@ -12470,9 +12519,10 @@ function runRepCadence(reps,label,restAfter,onDone,ex){
     if(ready>0){beep(1000,.15,0.7);const e=$('#rcNum');if(e)e.textContent=ready;return;}
     beepGo();haptic(30);coachSay('Go!');clearInterval(timer.iv);
     const e=$('#rcNum');if(e){e.textContent='0';e.className='tnum go';}setP('OF '+total+' REPS');
-    timer={iv:setInterval(step,tempo*1000),mode:'reps'};
+    timer={iv:setInterval(step,tempo*1000),mode:'reps',tick:step,lastTick:monoNow(),every:tempo*1000,catchUp:false};
   }
   function step(){
+    if(timer)timer.lastTick=monoNow();
     n++;
     beep(760,.06);haptic(14);
     /* The count is never dropped here either — plTickRep()'s twin, and it had
@@ -12494,7 +12544,7 @@ function runRepCadence(reps,label,restAfter,onDone,ex){
     }
   }
   stopTimer();
-  timer={iv:setInterval(readyTick,1000),mode:'reps'};
+  timer={iv:setInterval(readyTick,1000),mode:'reps',tick:readyTick,lastTick:monoNow(),catchUp:false};
 }
 function repHTML(label,total,ex){
   const C=2*Math.PI*100;
@@ -13983,7 +14033,7 @@ function openOps(){
 let OP=null;
 function startOp(id){
   const op=OPS.find(o=>o.id===id);if(!op)return;closeSheet();
-  OP={op,elapsed:0,tid:null,running:false};
+  OP={op,elapsed:0,iv:null,running:false};
   $('#hiit').classList.add('open');document.body.style.overflow='hidden';
   try{history.pushState({cf:'op'},'');}catch(e){}
   primeVoice();opRender();
@@ -14003,11 +14053,14 @@ function opRender(){
       <div style="width:100%;max-width:440px" id="opBtns"><button class="btn primary" style="width:100%" onclick="opStart()">▶ Start clock</button></div>
     </div>`;
 }
+/* Hoisted out of the setInterval literal so the heartbeat can re-arm it: a
+   surface can only be rescued by name. */
+function opTick(){if(!OP)return;OP.lastTick=monoNow();OP.elapsed=swSecs(OP);const e=$('#opClock');if(e)e.textContent=fmtTime(OP.elapsed);}
 function opStart(){
   if(!OP||OP.running)return;OP.running=true;OP.elapsed=0;swStart(OP);
   wakeOn();   // benchmark ops are timed too — opQuit already released a lock it never took
   beatStart();beepGo();haptic(30);coachSpeak(OP.op.name+'. Go!');
-  OP.tid=setInterval(()=>{if(!OP)return;OP.elapsed=swSecs(OP);const e=$('#opClock');if(e)e.textContent=fmtTime(OP.elapsed);},1000);
+  OP.tick=opTick; OP.iv=setInterval(opTick,1000);
   const b=$('#opBtns');if(b)b.innerHTML=`<button class="btn green" style="width:100%" onclick="opFinish()">✓ Finished</button>`;
 }
 function opFinish(){
@@ -14022,7 +14075,7 @@ function opFinish(){
     <button class="btn primary" style="width:100%;margin-bottom:8px" onclick="shareLast()">📤 Share</button>
     <button class="btn ghost" style="width:100%" onclick="opQuit()">Done ✓</button>`;
 }
-function opQuit(){wakeOff();if(OP){clearInterval(OP.tid);}OP=null;beatStop();$('#hiit').classList.remove('open');document.body.style.overflow='';
+function opQuit(){wakeOff();if(OP){clearInterval(OP.iv);}OP=null;beatStop();$('#hiit').classList.remove('open');document.body.style.overflow='';
   // guard the self-pop like playerQuit/hiitQuit do, so onPop ignores it
   if(history.state&&history.state.cf==='op'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
 /* ---- #2 Custom workout builder ---- */

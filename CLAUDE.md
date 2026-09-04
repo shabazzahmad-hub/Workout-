@@ -14594,6 +14594,152 @@ counter that does not work. `ivTickLead()` has to be driven past the lead
 before `ivTick()` is reached at all. *Confirm the control's real shape before
 believing the result.*
 
+## The record read the clock and the screen still lied (v426)
+
+Found by auditing v425 an hour after it shipped — the eleventh round running
+where the best finding was in the round immediately before, and the fourth in
+a row where it was in my own new code.
+
+v425 fixed what a stopwatch **records**. It left what a stopwatch **shows**.
+All four paint from `swSecs()`, a timestamp, so a paint always catches up —
+and a tick that never fires again never paints. `timedSurfaces()` named
+`_bt`, `_ht`, `_ar` and `timer` and **not one of the four stopwatches**, so
+nothing rescued them:
+
+| | |
+|---|---|
+| the tick cleared one second in, 41 real minutes passed | the sheet read **`1s`** |
+| what `swSecs()` knew | **2460 s** |
+| `plGuardTick()`, `visibilitychange`, a tap, 2.6 s of heartbeats | **still `1s`** |
+| after the fix, one beat | **`41:00`** |
+
+**A frozen clock is not cosmetic here, and that is the whole argument.** Two
+of the three things an athlete does with a stopwatch that has plainly stopped
+— tap Cancel, or start it again — throw the session away. v425 made the
+record right and left the screen telling them to destroy it.
+
+**One field name across every surface the heartbeat watches: `iv`.** The
+registry can only rescue by name, so the four stopwatches were renamed from
+`tid` off it. `_bt.tid` is a **TEST id, not a timer** (`tid:t.id`) — a blind
+sweep of every `.tid` in the file would have renamed it, so the rename was
+scoped to the four by hand and the count of `tid:t.id` read back afterwards.
+Suite 04 drives the whole baseline battery, so a broken `_bt` is red there.
+
+**And a surface is rescued by NAME.** The ops clock kept its tick in an
+inline `setInterval` arrow, so there was nothing for `tickResync()` to
+re-arm; it is hoisted to `opTick` and handed over as `OP.tick`.
+
+### The stamp goes before the running guard, not after
+
+Each tick stamps `lastTick` **before** it checks whether the stopwatch is
+running. With the stamp after, a PAUSED stopwatch never refreshes it, so the
+heartbeat reads it as stalled and **rebuilds its interval on every beat** —
+churn nobody can see, for the whole time the athlete is paused.
+
+That is the discriminating case, and it needs building: pause it, age
+`lastTick` by ten seconds, fire ONE real tick, then beat. A paused surface
+whose tick is alive must keep its interval.
+
+### Every case leaves the interval id in place
+
+**A LIVE INTERVAL ID IS NOT EVIDENCE OF A LIVE INTERVAL.** A reclaimed timer
+leaves the id behind, so every case clears the interval and does **not** null
+the field — a fix that tested `S.iv !== null` would pass on a phone where
+nothing ticks. Guards assert that trap is real before anything else is
+believed.
+
+### The floors, and the one that was the check
+
+Three: a healthy stopwatch is not churned, a paused one whose tick is alive
+is not churned, and **a rescue does not credit the pause**.
+
+The last one failed first, reading `0:00`, and it was the CHECK. A paused
+tick returns early and paints nothing — correctly — so a case that never
+painted before pausing has nothing for the rescue to hold. The real
+requirement is that a paused display does not ADVANCE, which needs the
+paused figure on the glass first. **Build the state you assert on**, even
+when the state is one number on a screen.
+
+### And the class is walked, not listed
+
+Four hand-written cases cannot notice a fifth stopwatch. The block loops a
+table of `{open, get, shut, selector}` and asserts every member catches up,
+with a guard that it really walked four.
+
+### The fix made a torn-down stopwatch worth rescuing
+
+Found by reading the diff back rather than by a check. `sheetTeardown()`
+stopped `ACTT` and `SKIPT` and **kept the objects** — `running=false`,
+`iv=null` — and did not know about the make-up stopwatch **at all**.
+
+Both were survivable while nothing watched them. They are timed surfaces now,
+so a stopwatch the athlete closed with Back or a scrim tap reads as a
+**stalled** one, and the heartbeat re-arms its tick for the life of the page:
+a rescue for a sheet that is gone. And the make-up one was already leaking a
+1-second interval painting into a `#mut-num` that no longer exists.
+
+**Every other timed surface is already nulled when its sheet goes** —
+`stopTimer()` drops `timer`, `_bt` and `_ht`. These three now match, which is
+also the honest shape: the sheet is gone, so the stopwatch is over. The check
+drives the real dismissal (`closeSheet()`), and its floor is that the STOP
+path still logs: an over-eager teardown that fired before the stop read the
+clock would lose the session, which is the defect this whole version is
+about, one route along.
+
+### The escaped mutant was the check supplying the stamp
+
+`swStart()` stamping `lastTick` was dropped and **every case walked past it**,
+because each one hands the surface a stale `lastTick` by hand. Without the
+stamp a stopwatch has no `lastTick` until its first tick runs — so a tick
+reclaimed inside that first second is invisible to `tickStalled()` for ever,
+which is exactly the surface the heartbeat exists for.
+
+The case that tells them apart touches `lastTick` **not at all**: take the
+interval away before it can fire, then let **real time** pass beyond
+`PL_STALL_MS`. Nothing cheaper can distinguish a stamp the app wrote from one
+the check wrote. *A guard is only visible when the value beside it cannot
+supply the answer* — and here the neighbour was my own setup line.
+
+### A clock catches up; a pacer must not
+
+The interval sweep that closed the stopwatch class found **two more timers
+nothing watched**: the guided rep cadence's get-ready and its rep step. Both
+carried no `tick` and no `lastTick`, so `tickStalled()` answered false and the
+heartbeat could never see them.
+
+**A reclaimed tick there is worse than a frozen stopwatch.** The SET never
+finishes — no rest is offered, `onDone` never fires, the sheet never closes,
+and the athlete is left looking at a number that has stopped moving.
+
+It cannot be rescued the way the others are. Every surface up to now is
+anchored to a deadline or a timestamp, so `tickResync()` fires one tick
+immediately and an expired phase resolves at once. **`step()` counts `n++` per
+call**, so a catch-up tick would credit a rep the athlete never did. A pacer
+declares `catchUp:false`, arms, and waits — which is the honest answer: no
+reps happened while the tick was dead.
+
+**And LATE IS RELATIVE TO THE SURFACE'S OWN PERIOD.** Every other surface
+ticks once a second; this one paces at the athlete's chosen tempo, up to six
+seconds a rep. A flat `PL_STALL_MS` reads a perfectly healthy six-second pacer
+as stalled and re-arms it on **every beat**, which also resets the interval
+phase, so the reps are called at odd times. Two of its own periods, floored at
+`PL_STALL_MS`, leaves every one-second surface exactly where it was — and the
+floor is pinned, because dropping it makes the whole app churn a second early.
+
+**And the same escape happened twice in one round, which is the lesson worth
+keeping.** A mutant that stopped the ticks stamping `lastTick` walked past
+every case, because every case hands the surface a stale stamp by hand. A live
+pacer would then be re-armed on every beat once it was two periods old — the
+exact churn the threshold exists to prevent. The discriminating case is a
+**real tick over an old stamp**: set `lastTick` a minute back, call the
+surface's own tick, then beat. It is the `swStart()` escape one function
+along, and both times **my own setup line was the neighbour supplying the
+answer.**
+
+Twenty mutants across the round, all caught — two of them only after the check
+stopped supplying what it was meant to measure.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
