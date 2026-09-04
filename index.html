@@ -1849,7 +1849,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='426';
+const APP_VERSION='427';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -7912,6 +7912,35 @@ function plArmTick(){
   else if(PLAYER.phase==='work'){const m=plCur();if(m.unit==='time'){if(pulse)pulse.classList.add('on');PLAYER.tid=setInterval(plTickHold,1000);}else PLAYER.tid=setInterval(plTickRep,100);}
   else if(PLAYER.phase==='rest')PLAYER.tid=setInterval(plTickRest,1000);
 }
+/* A RESCUE TICK THAT HAS NOTHING TO CATCH UP ON STILL COSTS A SECOND.
+   plTickRest() and plTickHold() both take Math.min(one tick, what the clock
+   says is left), so a tick ALWAYS removes at least a second whether or not any
+   real time has passed. That was harmless while exactly ONE rescue ran per
+   return to the page. It stopped being harmless the moment the heartbeat's own
+   re-arm ran a pass of its own: visibilitychange calls plGuardEnsure() and then
+   plResync(), so a return that also found the heartbeat dead forced the same
+   rest TWICE — measured, 6 seconds counted off a rest that had lost 5.
+
+   The two paths are not symmetrical, which is why nobody had asked. The
+   heartbeat's call is gated on timerStalled(); the handler's is deliberately
+   not, because it also exists for a THROTTLED tick, which is alive rather than
+   stalled. So the gate belongs on the forced tick itself: reconcile only when
+   the display is genuinely behind the clock. An expired rest is behind, a
+   throttled one is behind, and a rest a rescue has just reconciled is not — so
+   the pass is idempotent however many rescues land in the same instant.
+
+   No deadline means there is nothing to compare against, and that answers TRUE
+   so the pre-v428 behaviour is unchanged there rather than quietly altered. */
+/* ONE PREDICATE FOR BOTH SURFACES, the same call timerStalled() makes six
+   lines below and for the same reason: PLAYER and INTV are different objects
+   with the same two fields that matter here, and two copies of this test is two
+   places for it to drift. The player's twins have drifted five times. */
+function behindClock(S){
+  try{
+    if(!S||!S.deadline)return true;
+    return S.remain>Math.ceil((S.deadline-monoNow())/1000);
+  }catch(e){return true;}
+}
 function plResync(){
   try{
     if(!PLAYER||!PLAYER.running||PLAYER.phase==='done')return;
@@ -7921,6 +7950,7 @@ function plResync(){
        ONLY the deadline-anchored phases: plTickReady counts TICKS and plTickRep
        accumulates elapsed milliseconds, so forcing either one steals time the
        athlete has not had. */
+    if(!behindClock(PLAYER))return;
     if(PLAYER.phase==='rest')plTickRest();
     else if(PLAYER.phase==='work'&&plCur().unit==='time')plTickHold();
   }catch(e){}
@@ -7954,7 +7984,23 @@ const PL_GUARD_MS=2000, PL_STALL_MS=3000;
    one — and a throttled-but-alive interval being re-armed costs nothing. */
 const PL_BEAT_STALL_MS=PL_GUARD_MS*3;
 let _plGuard=null,_plGuardBeat=0;
-function plGuardOn(){plGuardOff();_plGuardBeat=monoNow();_plGuard=setInterval(plGuardTick,PL_GUARD_MS);}
+/* A RESCUE THAT ARMS AND WAITS LEAVES THE FROZEN FIGURE FROZEN. Both of the
+   other rescues in this family already run one pass immediately and say why:
+   plResync() ticks the phase it re-armed, and plClockEnsure() repaints "so a
+   frozen figure moves at once". This one armed the interval and returned, so a
+   heartbeat the OS had reclaimed came back on the athlete's return to the page
+   and then did nothing for up to PL_GUARD_MS. Measured: a 41-minute stopwatch
+   read 0:00 on return and 41:00 only on the following beat — and the same gap
+   sits on the baseline test and the hold test, where the frozen number IS the
+   maximal effort the athlete is reading.
+
+   It is not a per-tap cost: plGuardEnsure() only calls this when the beat is
+   genuinely stale, so the immediate pass runs on a dead heartbeat and at boot,
+   where every branch of plGuardTick() is a no-op. */
+function plGuardOn(){
+  plGuardOff();_plGuardBeat=monoNow();_plGuard=setInterval(plGuardTick,PL_GUARD_MS);
+  try{plGuardTick();}catch(e){}
+}
 function plGuardOff(){if(_plGuard){clearInterval(_plGuard);_plGuard=null;}}
 /* THE GUARD THAT RESCUES EVERY OTHER TICK IS ITSELF A TICK, and this whole
    subsystem exists on the premise that an OS can reclaim one outright.
@@ -9580,7 +9626,13 @@ function ivResync(){
     /* ONLY the deadline-anchored phases are force-ticked. ivTickLead counts
        TICKS, so forcing it steals a second the athlete has not had — the same
        line plResync() draws between plTickRest and plTickReady. */
-    if(INTV.phase!=='lead')ivTick();
+    /* AND NOT WHEN THERE IS NOTHING TO CATCH UP ON. Same defect as plResync()
+       above, on the twin, and worse here: ivTick() counts the seconds it
+       consumed into INTV.workElapsed, which logGrind() STORES — so a second
+       forced tick credits a second of work that never happened. Two rescues
+       land on one return to the page (plGuardTick() calls ivResync() when INTV
+       is stalled, and HIIT's own visibilitychange listener calls it again). */
+    if(INTV.phase!=='lead'&&behindClock(INTV))ivTick();
   }catch(e){}
 }
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')ivResync();});

@@ -541,6 +541,32 @@ export default async function run() {
       o.restCountedRealTimeOnly = left - PLAYER.remain;   // 5, not the whole rest
       try { plQuit(true); } catch (e) { try { plClear(); } catch (e2) {} }
 
+      /* 2b. TWO RESCUES IN ONE INSTANT COST ONE SECOND, NOT TWO.
+             visibilitychange calls plGuardEnsure() and then plResync(), so a
+             return that ALSO finds the heartbeat dead runs the guard's own
+             pass first and the handler's second. Each forced tick takes
+             min(one tick, what the clock says is left), so an extra one always
+             removes a second whether or not any real time has passed.
+
+             The two callers are not symmetrical: the guard's is gated on
+             timerStalled(), the handler's deliberately is not, because it also
+             covers a THROTTLED tick, which is alive rather than stalled. So
+             the count of rescues is the thing to pin, not either caller. */
+      toRest();
+      const left2 = PLAYER.remain;
+      plClear(); fn = null;
+      _plGuardBeat = performance.now() - 60000;   // the heartbeat is dead too
+      const keepResync = plResync;
+      let calls = 0;
+      plResync = function () { calls++; return keepResync.apply(this, arguments); };
+      virt += 5000;
+      document.dispatchEvent(new Event('visibilitychange'));
+      plResync = keepResync;
+      o.rescuesInOneReturn = calls;                        // 2 — guard's, then handler's
+      o.twoRescuesStillResting = PLAYER.phase === 'rest';
+      o.twoRescuesCostOneSecond = left2 - PLAYER.remain;   // 5, not 10
+      try { plQuit(true); } catch (e) { try { plClear(); } catch (e2) {} }
+
       /* 3. FLOOR: a PAUSED player stays paused. Re-arming a paused session
             would restart a workout the athlete deliberately stopped. */
       toRest();
@@ -589,6 +615,11 @@ export default async function run() {
     t.ok('so the second set starts with no tap', rs.secondSetStarted, rs);
     t.ok('floor: a rest with time left is NOT cut short', rs.stillResting, rs);
     t.eq('and it only counts the real seconds that passed', rs.restCountedRealTimeOnly, 5, rs);
+    /* GUARD: the double path really was taken. With one rescue this case is
+       the same as the one above and proves nothing about the second. */
+    t.eq('guard: a return with a dead heartbeat really runs TWO rescues', rs.rescuesInOneReturn, 2, rs);
+    t.ok('and the rest is still running after both', rs.twoRescuesStillResting, rs);
+    t.eq('two rescues in one instant still cost only the real seconds', rs.twoRescuesCostOneSecond, 5, rs);
     t.ok('guard: the pause case really paused', rs.paused, rs);
     t.ok('floor: a paused player stays paused on return', rs.stayedPaused, rs);
     t.ok('and its clock does not move', rs.pausedClockDidNotMove, rs);

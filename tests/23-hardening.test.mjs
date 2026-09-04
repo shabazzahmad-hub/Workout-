@@ -4676,6 +4676,73 @@ export default async function () {
     t.eq('timerStalled: a surface with no phase yet is not a stall', r.noPhase, false);
   }
 
+  /* behindClock() is consulted from two narrow branches — plResync() and
+     ivResync() — so its own contract is pinned directly, the same shape
+     timerStalled() needed above.
+
+     A forced rescue tick takes min(one tick, what the clock says is left), so
+     it ALWAYS removes at least a second whether or not any time has passed.
+     That was harmless while exactly one rescue ran per return to the page, and
+     stopped being harmless when the heartbeat's own re-arm began running a pass
+     of its own. */
+  {
+    const r = await page.evaluate(() => {
+      const now = monoNow();
+      const S = o => Object.assign({ remain: 40, deadline: now + 40000 }, o);
+      return {
+        nothing: behindClock(null),
+        noDeadline: behindClock(S({ deadline: 0 })),
+        level: behindClock(S()),
+        throttled: behindClock(S({ remain: 45 })),
+        expired: behindClock(S({ remain: 12, deadline: now - 9000 })),
+        ahead: behindClock(S({ remain: 30 }))
+      };
+    });
+    t.eq('behindClock: nothing open answers true rather than swallowing a rescue', r.nothing, true);
+    t.eq('behindClock: no deadline is the pre-v427 answer, unchanged', r.noDeadline, true);
+    t.eq('behindClock: a display level with the clock is NOT behind', r.level, false);
+    t.eq('behindClock: a throttled display IS behind', r.throttled, true);
+    t.eq('behindClock: an expired phase IS behind', r.expired, true);
+    t.eq('behindClock: a display ahead of the clock is not behind', r.ahead, false);
+  }
+
+  /* THE PLAYER'S TWIN GETS THE SAME GATE. plGuardTick() calls ivResync() when
+     INTV is stalled and HIIT's own visibilitychange listener calls it again, so
+     two rescues land on one return to the page. It is worse here than on the
+     player: ivTick() counts the seconds it consumed into INTV.workElapsed,
+     which logGrind() STORES and the finish screen offers to log — so a second
+     forced tick credits work that never happened. */
+  {
+    const r = await page.evaluate(async () => {
+      const R = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      STATE.onboarded = true; save();
+      startHiit('tabata'); await wait(400);
+      ivStep(0); await wait(200);
+      R.phase = INTV.phase;   // workElapsed is only credited in a work phase
+      // Five real seconds of the round have gone by with no tick to count them.
+      ivClear(); INTV.deadline = monoNow() + 40000; INTV.remain = 45;
+      R.start = { remain: INTV.remain, work: INTV.workElapsed };
+      ivResync(); ivClear();
+      R.one = { remain: INTV.remain, work: INTV.workElapsed };
+      ivResync(); ivClear();
+      R.two = { remain: INTV.remain, work: INTV.workElapsed };
+      hiitTeardown(); await wait(200);
+      return R;
+    });
+    t.ok('guard: the round really was in its WORK phase', r.start && r.phase === 'work', JSON.stringify(r));
+    t.ok('guard: the first rescue really reconciled the round',
+      r.one && r.one.remain === 40 && r.one.remain < r.start.remain, JSON.stringify(r));
+    /* GUARD: measured 0 -> 5 -> 5. Without this the pair below is two equal
+       numbers that could both be zero, which passes on a counter that never
+       credits anything at all. */
+    t.ok('guard: and the first rescue really credited the seconds it consumed',
+      r.one && r.one.work > r.start.work, JSON.stringify(r));
+    t.eq('a second rescue in the same instant takes no further second',
+      r.two && r.two.remain, r.one && r.one.remain, JSON.stringify(r));
+    t.eq('and credits no further work into the record',
+      r.two && r.two.work, r.one && r.one.work, JSON.stringify(r));
+  }
+
   /* A rep set and a get-ready must CLEAR the deadline they inherit. Rest sets
      one; the next phase would otherwise open holding a deadline that has
      already passed, and the heartbeat would read a healthy set as stuck. */
@@ -10082,6 +10149,63 @@ export default async function () {
          hb.healthyGuardUntouched, hb);
     t.ok('FLOOR: a finished session keeps its clock off', hb.doneSessionStaysOff, hb);
     t.eq('FLOOR: and quitting leaves nothing armed', hb.afterQuit, null, hb);
+  }
+
+  /* A RESCUE THAT ARMS AND WAITS LEAVES THE FROZEN FIGURE FROZEN (v427).
+
+     v425 re-armed a reclaimed heartbeat on the page coming back and on a tap.
+     plGuardOn() armed the interval and returned, so the first rescue landed up
+     to PL_GUARD_MS later — the athlete looks back at the phone and the number
+     is still wrong for two seconds. Both siblings already run one pass at once
+     and say why: plResync() ticks the phase it re-armed, and plClockEnsure()
+     repaints "so a frozen figure moves at once".
+
+     Read SYNCHRONOUSLY. Any await hands the assertion to the interval, which
+     is exactly what this exists to stop depending on. */
+  {
+    const rr = await page.evaluate(() => {
+      const R = {};
+      go('today');
+      openActTimer('ruck');
+      const num = () => { const e = document.querySelector('#act-num'); return e ? e.textContent : 'NO ELEMENT'; };
+
+      /* the OS reclaims the surface tick AND the heartbeat, ids left in place */
+      clearInterval(ACTT.iv);
+      clearInterval(_plGuard);
+      ACTT.at = monoNow() - 41 * 60000;
+      ACTT.lastTick = monoNow() - 60000;
+      _plGuardBeat = monoNow() - 60000;
+
+      R.staleIdsLookAlive = ACTT.iv != null && _plGuard != null;
+      R.beatReadsStale = monoNow() - _plGuardBeat > PL_BEAT_STALL_MS;
+      R.frozen = num();
+
+      document.dispatchEvent(new Event('visibilitychange'));
+      R.onReturn = num();                       // no await: what the athlete sees
+
+      /* FLOOR: an ordinary tap on a healthy heartbeat costs no rescue pass */
+      ACTT.at = monoNow() - 9 * 60000;
+      actTimerTick();
+      const painted = num();
+      const liveId = _plGuard;
+      document.body.click();
+      R.healthyKeptBeat = _plGuard === liveId;
+      R.healthyPaint = num() === painted;
+
+      try { actTimerCancel(); } catch (e) {}
+      try { closeSheet(); } catch (e) {}
+      return R;
+    });
+
+    t.ok('guard: both reclaimed timers still leave live-looking ids', rr.staleIdsLookAlive, rr);
+    t.ok('guard: and the heartbeat really does read as stale', rr.beatReadsStale, rr);
+    t.eq('guard: the stopwatch really was frozen first', rr.frozen, '0:00', rr);
+
+    t.eq('coming back to the page catches the figure up at once, not on the next beat',
+         rr.onReturn, '41:00', rr);
+
+    t.ok('FLOOR: a healthy heartbeat is still not re-armed by a tap', rr.healthyKeptBeat, rr);
+    t.ok('FLOOR: and an ordinary tap repaints nothing', rr.healthyPaint, rr);
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
