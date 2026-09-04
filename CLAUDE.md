@@ -15095,6 +15095,43 @@ against suite 20, it fails by name.
 
 Twenty mutants across v428, all caught.
 
+## An inherited key is not an array index (v429)
+
+Found by auditing v428 an hour after it merged — the thirteenth round running
+where the best finding was in the round immediately before, and the sixth in a
+row where it was in my own new code.
+
+`replaceFoodRow()` guarded `!d.food[i]`. **`d.food['__proto__']` reads back
+`Array.prototype`, which is TRUTHY**, so the guard passed and the next line
+reassigned the array's own prototype. Measured:
+
+| | |
+|---|---|
+| `Object.getPrototypeOf(d.food) === Array.prototype` | **false** |
+| `typeof d.food.push` | **undefined** |
+| `syncProteinHabit()` | **threw** on `f.reduce is not a function` |
+| the day's food list | broken until the next boot |
+
+**Not reachable by tapping, and saying so is the honest framing**: `editFood()`
+passes a numeric literal and `prevShotIdx()` returns a number. That is the same
+call v416 made about the only two-level computed write, and the v400 shape where
+an inherited key satisfied every `EX[id] &&` guard in the app — *the codebase
+already guards the id on that very line and never guarded the index.*
+
+**The class was swept before the instance was fixed.** 85 single-level computed
+writes in the file; **three** land on an array-shaped receiver, and the other two
+are `STATE.logs[p]` (the integer-repaired pointer) and `STATE.logs[u.ptr]` (read
+off `_undo`, which is in `TRANSIENT_KEYS` and stripped on import). One member.
+
+**The guards come first**, or every assertion below passes on a shape that was
+never dangerous: the check pins that an inherited read really is truthy and
+really is `Array.prototype` before it asserts anything about the refusal.
+
+**The floors are what stop the fix being a deletion**, and each over-eager twin
+fails one: a real index must still replace and write the corrected figure, and
+an index past the end, a negative and a fraction must each still be refused
+without adding a row.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

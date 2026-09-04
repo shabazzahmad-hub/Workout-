@@ -1849,7 +1849,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='428';
+const APP_VERSION='429';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -14905,7 +14905,15 @@ function pushFoodRow(name,kcal,p,c,f,meal,portion,calc,src){
    screenshot stack on top of it. */
 function replaceFoodRow(i,name,kcal,p,c,f,meal,portion,calc,opts){
   const d=nutToday();
-  if(!Array.isArray(d.food)||!d.food[i])return false;
+  /* i is an ARRAY INDEX, and `!d.food[i]` is TRUTHY for an INHERITED key —
+     d.food['__proto__'] reads back Array.prototype, so the guard passed and
+     the next line REASSIGNED the array's own prototype. Measured: push and
+     reduce both gone, and syncProteinHabit() threw on f.reduce, leaving the
+     day's food list broken until the next boot. Not reachable by tapping —
+     both callers pass a number — which is exactly the v416 call about the
+     only two-level computed write, one level down, and the v400 shape where
+     an inherited key satisfied every `X[id] &&` guard in the app. */
+  if(!Array.isArray(d.food)||!Number.isInteger(i)||i<0||i>=d.food.length||!d.food[i])return false;
   const was=d.food[i],o=opts||{};
   const row=foodRow(name,kcal,p,c,f,meal,portion,calc,((o.src||was.src)==='shot')?'shot':'');
   if(!o.stamp&&was.at)row.at=was.at;

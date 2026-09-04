@@ -10531,6 +10531,63 @@ export default async function () {
          /\bfood\[[A-Za-z0-9_]+\]\s*=[^=]/.test('d.food[i]=row;'), {});
   }
 
+  /* ---- AN INHERITED KEY IS NOT AN ARRAY INDEX (v429) --------------------
+     Found by auditing v428 an hour after it merged. replaceFoodRow() guarded
+     `!d.food[i]` — and d.food['__proto__'] reads back Array.prototype, which
+     is TRUTHY, so the guard passed and the next line reassigned the array's
+     own prototype. Measured before the fix: push and reduce both gone and
+     syncProteinHabit() threw on f.reduce, leaving the day's food list broken
+     until the next boot.
+
+     Not reachable by tapping — editFood() passes a numeric literal and
+     prevShotIdx() returns a number — which is the same call v416 made about
+     the only two-level computed write, and the v400 shape where an inherited
+     key satisfied every `EX[id] &&` guard in the app. */
+  {
+    const ix = await page.evaluate(() => {
+      const o = {};
+      go('fuel');
+      const d = nutToday(); d.food = []; d.habits = {};
+      logFood('Real meal', 500, 40, 20, 15, 'l');
+
+      /* GUARDS: the trap is real, or every assertion below passes on a shape
+         that was never dangerous. */
+      o.inheritedIsTruthy = !!d.food['__proto__'];
+      o.inheritedIsArrayProto = d.food['__proto__'] === Array.prototype;
+
+      o.junkResult = replaceFoodRow('__proto__', 'X', 100, 1, 1, 1, 'l', '', '', null);
+      const a = nutToday().food;
+      o.stillAnArray = Array.isArray(a);
+      o.protoIntact = Object.getPrototypeOf(a) === Array.prototype;
+      o.stillHasPush = typeof a.push === 'function';
+      o.rowsAfterJunk = a.length;
+      o.realRowKcal = a[0] && a[0].kcal;
+
+      /* FLOOR: a real index still replaces, or the fix is a deletion. */
+      o.realResult = replaceFoodRow(0, 'Corrected', 300, 20, 10, 8, 'l', '', '', null);
+      o.afterReal = { rows: nutToday().food.length, kcal: nutToday().food[0].kcal };
+      /* FLOOR: an index past the end is still refused, and a negative one. */
+      o.oob = replaceFoodRow(9999, 'Y', 100, 1, 1, 1, 'l', '', '', null);
+      o.neg = replaceFoodRow(-1, 'Y', 100, 1, 1, 1, 'l', '', '', null);
+      o.frac = replaceFoodRow(0.5, 'Y', 100, 1, 1, 1, 'l', '', '', null);
+      o.rowsAtEnd = nutToday().food.length;
+      return o;
+    });
+    t.ok('guard: an inherited key really reads back truthy on the food array',
+         ix.inheritedIsTruthy && ix.inheritedIsArrayProto, ix);
+    t.eq('a key that is not an array index is refused', ix.junkResult, false, ix);
+    t.ok('and the day\'s food list keeps its own prototype', ix.protoIntact, ix);
+    t.ok('so it is still an array that can be appended to',
+         ix.stillAnArray && ix.stillHasPush, ix);
+    t.eq('and the real row is untouched', ix.realRowKcal, 500, ix);
+    t.eq('FLOOR: a real index still replaces', ix.realResult, true, ix);
+    t.eq('FLOOR: and writes the corrected figure', ix.afterReal.kcal, 300, ix);
+    t.eq('FLOOR: an index past the end is still refused', ix.oob, false, ix);
+    t.eq('FLOOR: and a negative one', ix.neg, false, ix);
+    t.eq('FLOOR: and a fraction', ix.frac, false, ix);
+    t.eq('FLOOR: none of them added a row', ix.rowsAtEnd, 1, ix);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
