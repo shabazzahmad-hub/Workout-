@@ -2481,7 +2481,7 @@ export default async function run() {
     const sw = await page.evaluate(async () => {
       const wait = ms => new Promise(res => setTimeout(res, ms));
       const R = {};
-      const drift = (st, mins) => { if (!st) return false; clearInterval(st.tid); st.at = monoNow() - mins * 60000; return true; };
+      const drift = (st, mins) => { if (!st) return false; clearInterval(st.iv); st.at = monoNow() - mins * 60000; return true; };
 
       /* 1. a 41-minute ruck timed with the phone away */
       STATE.ruckLog = []; save();
@@ -2543,7 +2543,7 @@ export default async function run() {
       SKIPT.at = monoNow() - 20 * 60000;
       skipTimerToggle();                      // pause it
       SKIPT.pausedAt = monoNow() - 15 * 60000;   // fifteen of those minutes were a pause
-      clearInterval(SKIPT.tid);
+      clearInterval(SKIPT.iv);
       skipTimerStop();
       R.pausedLogged = (STATE.skipLog[0] || {}).mins;
       try { closeSheet(); } catch (e) {}
@@ -2552,7 +2552,7 @@ export default async function run() {
       STATE.skipLog = []; save();
       openSkipTimer();
       SKIPT.at = monoNow() - 20000;
-      clearInterval(SKIPT.tid);
+      clearInterval(SKIPT.iv);
       skipTimerStop();
       R.shortRows = STATE.skipLog.length;
       try { closeSheet(); } catch (e) {}
@@ -2581,6 +2581,209 @@ export default async function run() {
     t.eq('guard: and its cache agreed all along', sw.healthyCache, 540, sw);
     t.eq('FLOOR: a pause is still not work', sw.pausedLogged, 5, sw);
     t.eq('FLOOR: under a minute still logs nothing', sw.shortRows, 0, sw);
+  }
+
+
+  /* A STOPWATCH IS A TIMED SURFACE LIKE ANY OTHER (v426).
+
+     v425 made the RECORD read the clock, so a reclaimed tick could no longer
+     cost the athlete their session — and left the DISPLAY frozen at whatever
+     the last paint wrote. Measured: the tick cleared one second in, 41 real
+     minutes passed, and the sheet still read "1s" while swSecs() knew 2460.
+     plGuardTick(), visibilitychange, a tap and 2.6s of heartbeats all left it
+     there, because timedSurfaces() named only _bt, _ht, _ar and timer.
+
+     A frozen clock is not cosmetic: two of the three things an athlete does
+     with a stopwatch that has plainly stopped — Cancel, or start it again —
+     throw the session away.
+
+     A LIVE INTERVAL ID IS NOT EVIDENCE OF A LIVE INTERVAL, so every case here
+     clears the interval and LEAVES THE ID IN PLACE. A fix that tested
+     `S.iv !== null` would pass on a phone where nothing ticks. */
+  {
+    const sr = await page.evaluate(() => {
+      const R = { cases: [], guards: {} };
+
+      /* The four are walked as a CLASS. A check written as four hand-written
+         cases cannot notice when a fifth stopwatch is added. */
+      const SURF = [
+        { key: 'act',  mins: 41, sel: '#act-num',  want: '41:00',
+          open: () => openActTimer('ruck'), get: () => ACTT,  shut: () => actTimerCancel() },
+        { key: 'skip', mins: 27, sel: '#skt-num',  want: '27:00',
+          open: () => openSkipTimer(),      get: () => SKIPT, shut: () => skipTimerCancel() },
+        { key: 'mut',  mins: 18, sel: '#mut-num',  want: '18:00',
+          open: () => openMakeupStopwatch('ruck'), get: () => MUT, shut: () => makeupStopwatchCancel() },
+        { key: 'op',   mins: 12, sel: '#opClock',  want: '12:00',
+          open: () => { startOp('op_forge'); opStart(); }, get: () => OP, shut: () => opQuit() },
+      ];
+      const txt = (sel) => { const e = document.querySelector(sel); return e ? e.textContent : 'NO ELEMENT'; };
+
+      for (const S of SURF) {
+        const c = { key: S.key };
+        S.open();
+        const st = S.get();
+        c.opened = !!st;
+        if (!st) { R.cases.push(c); continue; }
+
+        c.tickIsFn = typeof st.tick === 'function';   // a surface is rescued by name
+        const deadId = st.iv;
+        c.hadId = deadId != null;
+        clearInterval(deadId);                        // the id STAYS on the object
+        st.at = monoNow() - S.mins * 60000;
+        st.lastTick = monoNow() - 10000;
+        c.idStillThere = st.iv === deadId && st.iv != null;
+        c.frozen = txt(S.sel);                        // what the athlete is looking at
+
+        plGuardTick();                                // one beat
+
+        const after = S.get();
+        c.rescued = txt(S.sel);
+        c.newTick = !!(after && after.iv && after.iv !== deadId);
+        S.shut();
+        c.cleared = !S.get();
+        R.cases.push(c);
+      }
+      try { closeSheet(); } catch (e) {}
+
+      /* FLOOR: a HEALTHY stopwatch is not churned. Re-arming a live tick on
+         every beat would reset the interval phase a second at a time. */
+      openSkipTimer();
+      const liveId = SKIPT.iv;
+      SKIPT.at = monoNow() - 6 * 60000;
+      skipTimerTick();
+      R.guards.healthyPaint = document.querySelector('#skt-num').textContent;
+      plGuardTick();
+      R.guards.healthyKeptTick = SKIPT.iv === liveId;
+      skipTimerCancel();
+
+      /* FLOOR: a PAUSED stopwatch whose tick is ALIVE is not churned either.
+         Each tick stamps lastTick BEFORE its running guard for exactly this —
+         with the stamp after the guard, a paused surface looks stalled and the
+         heartbeat rebuilds its interval every beat. */
+      openSkipTimer();
+      const pausedId = SKIPT.iv;
+      skipTimerToggle();                       // pause
+      SKIPT.lastTick = monoNow() - 10000;      // as if no tick had run for ten seconds
+      skipTimerTick();                         // one real tick, while paused
+      plGuardTick();
+      R.guards.pausedKeptTick = SKIPT.iv === pausedId;
+      R.guards.pausedIsPaused = SKIPT.running === false;
+      skipTimerCancel();
+
+      /* FLOOR: a rescue must not credit paused time. */
+      openSkipTimer();
+      SKIPT.at = monoNow() - 20 * 60000;
+      SKIPT.pausedAt = monoNow() - 15 * 60000; // fifteen of those twenty were a pause
+      skipTimerTick();                         // paints the 5:00 the athlete paused on
+      R.guards.pausedBefore = document.querySelector('#skt-num').textContent;
+      SKIPT.running = false;                   // now genuinely paused
+      clearInterval(SKIPT.iv);
+      SKIPT.lastTick = monoNow() - 10000;
+      plGuardTick();
+      R.guards.pausedPaint = document.querySelector('#skt-num').textContent;
+      skipTimerCancel();
+      try { closeSheet(); } catch (e) {}
+      return R;
+    });
+
+    const byKey = {}; sr.cases.forEach(c => { byKey[c.key] = c; });
+
+    /* GUARDS: the stale-id trap has to be real, or every assertion below is
+       satisfied by a page where nothing was ever frozen. */
+    t.eq('guard: all four stopwatches opened', sr.cases.filter(c => c.opened).length, 4, sr.cases);
+    t.ok('guard: each hands the heartbeat its own tick by name',
+         sr.cases.every(c => c.tickIsFn), sr.cases);
+    t.ok('guard: each kept a LIVE-LOOKING interval id after the tick was taken away',
+         sr.cases.every(c => c.hadId && c.idStillThere), sr.cases);
+    t.ok('guard: and every display really was frozen at zero first',
+         sr.cases.every(c => c.frozen === '0:00'), sr.cases);
+
+    t.eq('the ruck stopwatch catches up on one beat', byKey.act.rescued, '41:00', byKey.act);
+    t.eq('so does the skipping stopwatch', byKey.skip.rescued, '27:00', byKey.skip);
+    t.eq('so does the make-up stopwatch', byKey.mut.rescued, '18:00', byKey.mut);
+    t.eq('so does the ops challenge clock', byKey.op.rescued, '12:00', byKey.op);
+    t.ok('and each is left with a tick that is genuinely running',
+         sr.cases.every(c => c.newTick), sr.cases);
+    t.ok('guard: every surface was shut down again', sr.cases.every(c => c.cleared), sr.cases);
+
+    t.eq('guard: a healthy stopwatch was painting all along', sr.guards.healthyPaint, '6:00', sr.guards);
+    t.ok('FLOOR: a healthy stopwatch is not churned by the beat', sr.guards.healthyKeptTick, sr.guards);
+    t.ok('guard: the paused case really is paused', sr.guards.pausedIsPaused, sr.guards);
+    t.ok('FLOOR: nor is a paused one whose tick is still alive', sr.guards.pausedKeptTick, sr.guards);
+    t.eq('guard: the paused display was showing five minutes', sr.guards.pausedBefore, '5:00', sr.guards);
+    t.eq('FLOOR: and a rescue does not credit the pause', sr.guards.pausedPaint, '5:00', sr.guards);
+  }
+
+  /* A TICK RECLAIMED BEFORE IT EVER FIRED (v426).
+
+     Every case above hands the surface a stale lastTick by hand, so it cannot
+     say whether swStart() leaves one at all — a mutant that dropped the stamp
+     escaped all of them. Without it a stopwatch has no lastTick until its
+     first tick runs, and a tick reclaimed inside that first second is never
+     rescued: the surface the heartbeat exists for is invisible to it.
+
+     So this one never touches lastTick. It takes the interval away before it
+     can fire and lets REAL time pass, which is the only thing that can tell a
+     stamp from a check that supplied one. */
+  {
+    const c0 = await page.evaluate(() => {
+      openSkipTimer();
+      const st = SKIPT;
+      const o = {
+        hasStamp: typeof st.lastTick === 'number',
+        stampFresh: typeof st.lastTick === 'number' && monoNow() - st.lastTick < 1500,
+        stall: PL_STALL_MS,
+      };
+      clearInterval(st.iv);               // reclaimed; the id stays on the object
+      st.at = monoNow() - 33 * 60000;
+      o.frozen = document.querySelector('#skt-num').textContent;
+      return o;
+    });
+    await new Promise(r => setTimeout(r, c0.stall + 900));   // no tick has ever run
+    const c1 = await page.evaluate(() => {
+      plGuardTick();
+      const o = { painted: document.querySelector('#skt-num').textContent };
+      try { skipTimerCancel(); } catch (e) {}
+      try { closeSheet(); } catch (e) {}
+      return o;
+    });
+
+    t.ok('a fresh stopwatch is stamped as having just ticked', c0.hasStamp && c0.stampFresh, c0);
+    t.eq('guard: and its display really was frozen at zero', c0.frozen, '0:00', c0);
+    t.ok('a tick reclaimed before it ever fired is still rescued',
+         /^33:/.test(c1.painted), { c0, c1 });
+  }
+
+  /* THE SHEET IS GONE, SO THE STOPWATCH IS OVER (v426).
+
+     sheetTeardown() stopped ACTT and SKIPT and kept the OBJECTS, and did not
+     know about the make-up stopwatch at all. Both were survivable while
+     nothing watched them. They are timed surfaces now, so a torn-down
+     stopwatch reads as a stalled one and the heartbeat re-arms its tick for
+     the life of the page — a rescue for a sheet the athlete closed. */
+  {
+    const td = await page.evaluate(() => {
+      const R = {};
+      const shut = () => { try { closeSheet(); } catch (e) {} };
+
+      openActTimer('ruck');  R.actOpened  = !!ACTT;  shut(); R.actGone  = ACTT === null;
+      openSkipTimer();       R.skipOpened = !!SKIPT; shut(); R.skipGone = SKIPT === null;
+      openMakeupStopwatch('ruck'); R.mutOpened = !!MUT; shut(); R.mutGone = MUT === null;
+
+      /* and the heartbeat has nothing left to resurrect */
+      R.surfacesAfter = timedSurfaces().length;
+      plGuardTick();
+      R.stillGone = ACTT === null && SKIPT === null && MUT === null;
+      return R;
+    });
+
+    t.ok('guard: all three sheet stopwatches really opened',
+         td.actOpened && td.skipOpened && td.mutOpened, td);
+    t.ok('a scrim tap or Back drops the activity stopwatch', td.actGone, td);
+    t.ok('and the skipping stopwatch', td.skipGone, td);
+    t.ok('and the make-up stopwatch, which this teardown never knew about', td.mutGone, td);
+    t.eq('guard: no timed surface is left standing at all', td.surfacesAfter, 0, td);
+    t.ok('so the heartbeat has nothing to re-arm', td.stillGone, td);
   }
 
   await browser.close(); srv.close();

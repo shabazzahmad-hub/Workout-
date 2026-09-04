@@ -860,6 +860,119 @@ export default async function run() {
          we.rest.adds, 0, we);
   }
 
+  /* A CLOCK CATCHES UP; A PACER MUST NOT (v426).
+
+     The interval sweep that closed the stopwatch class found two more timers
+     nothing watched: the guided rep cadence's get-ready and its rep step. Both
+     carried no `tick` and no `lastTick`, so tickStalled() answered false for
+     them and the heartbeat could never see them. A reclaimed tick there is
+     worse than a frozen stopwatch — the SET never finishes, so no rest is
+     offered, onDone never fires and the sheet never closes.
+
+     It cannot be rescued the way the others are. step() counts `n++` per call,
+     so tickResync()'s catch-up tick would credit a rep the athlete never did.
+     A pacer arms and waits; that is the honest answer.
+
+     And LATE IS RELATIVE TO THE SURFACE'S OWN PERIOD. Every other surface
+     ticks once a second; this one paces at the athlete's tempo, up to 6s. A
+     flat 3s threshold reads a healthy 6s pacer as stalled and re-arms it on
+     every beat, which resets the interval phase and calls the reps at odd
+     times. */
+  {
+    const rc = await page.evaluate(() => {
+      const R = {};
+      const realSI = window.setInterval, realCI = window.clearInterval;
+      let id = 9000; const armed = [];
+      window.setInterval = (fn, ms) => { armed.push(ms); return ++id; };
+      window.clearInterval = () => {};
+      try {
+        runRepCadence(6, 'Probe', 0, null, EX.pushup);
+
+        R.readyWatched = timedSurfaces().indexOf(timer) >= 0;
+        R.readyIsPacer = timer.catchUp === false;
+
+        /* FLOOR: a pacer that is genuinely TICKING is not churned. Every case
+           below hands the surface a lastTick by hand, so none of them can say
+           whether the tick refreshes it — a mutant that stopped stamping
+           escaped all of them, and a live pacer would then be re-armed on
+           every beat once it was two periods old. Only a REAL tick over an
+           old stamp tells them apart. */
+        {
+          timer.lastTick = monoNow() - 60000;
+          const id0 = timer.iv;
+          timer.tick();                                  // one real get-ready tick
+          R.readyStamped = monoNow() - timer.lastTick < 1500;
+          plGuardTick();
+          R.readyTickingKept = timer.iv === id0;
+        }
+
+        for (let i = 0; i < 4; i++) timer.tick();      // walk the rest of the get-ready out
+        R.reachedStep = timer.mode === 'reps' && timer.every > 0;
+        R.stepWatched = timedSurfaces().indexOf(timer) >= 0;
+        R.stepIsPacer = timer.catchUp === false;
+
+        /* the pacer's tick is taken away, the id left in place */
+        const num = () => { const e = document.querySelector('#rcNum'); return e ? e.textContent : 'NO ELEMENT'; };
+        R.repBefore = num();
+        const deadId = timer.iv;
+        timer.lastTick = monoNow() - (timer.every * 2 + 2000);
+        plGuardTick();
+        R.repAfter = num();
+        R.rearmed = timer.iv !== deadId;
+
+        /* FLOOR: a healthy SLOW pacer is not churned. Four seconds is late by
+           a flat rule and perfectly on time for a six-second rep. */
+        timer.every = 6000;
+        const liveId = timer.iv;
+        timer.lastTick = monoNow() - 4000;
+        plGuardTick();
+        R.slowKept = timer.iv === liveId;
+
+        /* the same floor on the rep step, over a stamp two periods old */
+        {
+          timer.lastTick = monoNow() - 60000;
+          const id1 = timer.iv;
+          timer.tick();                                  // one real rep call
+          R.stepStamped = monoNow() - timer.lastTick < 1500;
+          plGuardTick();
+          R.stepTickingKept = timer.iv === id1;
+        }
+
+        /* the threshold's own contract, pinned directly */
+        const t0 = { tick: () => {} };
+        R.oneSecStalled    = tickStalled({ ...t0, lastTick: monoNow() - 4000 });
+        R.oneSecFresh      = tickStalled({ ...t0, lastTick: monoNow() - 2500 });
+        R.slowNotStalled   = tickStalled({ ...t0, lastTick: monoNow() - 4000, every: 6000 });
+        R.slowStalledLater = tickStalled({ ...t0, lastTick: monoNow() - 13000, every: 6000 });
+      } catch (e) { R.threw = String(e); }
+      window.setInterval = realSI; window.clearInterval = realCI;
+      try { stopTimer(); closeSheet(); } catch (e) {}
+      return R;
+    });
+
+    t.ok('guard: the rep cadence ran without throwing', !rc.threw, rc);
+    t.ok('guard: and the get-ready was walked all the way to the reps', rc.reachedStep, rc);
+    t.ok('the rep-cadence get-ready is a surface the heartbeat can see', rc.readyWatched, rc);
+    t.ok('and so is the rep step', rc.stepWatched, rc);
+    t.ok('both declare themselves pacers rather than clocks',
+         rc.readyIsPacer && rc.stepIsPacer, rc);
+
+    t.ok('a dead pacer is re-armed', rc.rearmed, rc);
+    t.eq('and the rescue does not credit a rep the athlete never did',
+         rc.repAfter, rc.repBefore, rc);
+
+    t.ok('FLOOR: a healthy slow pacer is not churned by the beat', rc.slowKept, rc);
+    t.ok('a real get-ready tick refreshes the stamp', rc.readyStamped, rc);
+    t.ok('FLOOR: so a ticking get-ready is left alone', rc.readyTickingKept, rc);
+    t.ok('a real rep call refreshes it too', rc.stepStamped, rc);
+    t.ok('FLOOR: so a ticking rep step is left alone', rc.stepTickingKept, rc);
+    t.ok('guard: a one-second surface still reads stalled at four seconds', rc.oneSecStalled, rc);
+    t.ok('FLOOR: and is left alone at two and a half — PL_STALL_MS is still the floor',
+         !rc.oneSecFresh, rc);
+    t.ok('a six-second pacer does not, at the same four seconds', !rc.slowNotStalled, rc);
+    t.ok('but it does once it is late by two of its own periods', rc.slowStalledLater, rc);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
