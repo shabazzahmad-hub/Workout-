@@ -534,6 +534,12 @@ export default async function run() {
     await pg.goto(base, { waitUntil: 'domcontentloaded' });
     await pg.waitForFunction(() => document.querySelector('.view.active'), null, { timeout: 20000 });
 
+    /* This pulls every quoted asset name out of sw.js, COMMENTS INCLUDED — so an
+       example path written in prose in that file is counted as a declared asset
+       and this check then fails on correct code. It has cost a CI cycle once
+       (v428, two example paths in a new comment). The rule is the one this repo
+       already applies to the duplicate-key guard: write prose in sw.js that does
+       not look like a declaration, never weaken the scan. */
     const declared = (() => {
       const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
       const names = new Set();

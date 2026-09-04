@@ -1849,7 +1849,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='427';
+const APP_VERSION='428';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3463,6 +3463,20 @@ function computeAssessment(results,subs){
 
 /* ============================ NAVIGATION ============================ */
 let TAB='today';
+/* WHICH TABS A #hash MAY OPEN IS THE NAV BAR'S OWN LIST, ASKED RATHER THAN
+   RESTATED. It was written out by hand in two places three lines apart — the
+   hashchange handler and the boot path — with nothing tying either copy to the
+   buttons. Seven views exist and six have a button: 'quick' correctly has no
+   button and no deep link, but only by the coincidence of two hand-written
+   lists agreeing. A seventh tab would gain a button and no deep link, or a
+   deep link to a view with no way back, and neither says anything on screen.
+   Same shape as the five diets living as three literals. */
+function hashTab(h){
+  try{
+    if(!h)return '';
+    return $$('.nav button').some(b=>b.dataset.tab===h) ? h : '';
+  }catch(e){return '';}
+}
 function go(tab){
   // Navigating away from the editor's host view ends the edit rather than
   // letting the wizard follow you and rebuild itself from stored state,
@@ -14865,6 +14879,40 @@ function pushFoodRow(name,kcal,p,c,f,meal,portion,calc,src){
   d.food.push(foodRow(name,kcal,p,c,f,meal,portion,calc,src));
   syncProteinHabit();
 }
+/* AND THE SAME FOR REPLACING ONE. pushFoodRow() was made the single writer so
+   a third one could not forget the habit sync — and there were already TWO
+   more, both replacing a row in place with a hand-written literal of their own:
+   the edit sheet, and a dashboard screenshot landing on an earlier import.
+
+   The edit one forgot the sync, and it is an everyday route. Measured through
+   editFood() then saveFood() against a 165 g protein target: a 200 g row
+   corrected down to 40 g left the day at 40 g with the protein habit STILL
+   TICKED — and a renderer must not mutate, so nothing later put it right.
+   A wrong tick extends the nutrition streak by a day and can unlock Perfect Day.
+
+   IT ALSO REPORTS WHETHER IT WROTE. The edit branch toasted "Updated ✓"
+   OUTSIDE its own guard, so a row that had gone between opening the sheet and
+   tapping Save reported a change that never happened — measured, 0 rows written
+   and "Updated ✓" on the glass. It is reachable without an import: nutToday()
+   is keyed by today's date, so a sheet opened at 23:59 and saved at 00:01 looks
+   for the row in TOMORROW's empty day, and a cross-tab adopt replaces STATE
+   with no sheet involved at all.
+
+   `at` is kept by default — correcting a number does not change when it was
+   eaten — and stamped only where the caller means a new event. `src` survives
+   an edit for the reason the edit branch already recorded: a corrected row is
+   still the day's running total, and losing the marker would let the next
+   screenshot stack on top of it. */
+function replaceFoodRow(i,name,kcal,p,c,f,meal,portion,calc,opts){
+  const d=nutToday();
+  if(!Array.isArray(d.food)||!d.food[i])return false;
+  const was=d.food[i],o=opts||{};
+  const row=foodRow(name,kcal,p,c,f,meal,portion,calc,((o.src||was.src)==='shot')?'shot':'');
+  if(!o.stamp&&was.at)row.at=was.at;
+  d.food[i]=row;
+  syncProteinHabit();
+  return true;
+}
 function logFood(name,kcal,p,c,f,meal,portion,calc,src){const d=nutToday();if(!Array.isArray(d.food))d.food=[];
   /* Food is never negative. `Math.round(kcal||0)` accepted a negative straight
      through, and a single -500 row silently CANCELS a real meal out of the
@@ -15073,22 +15121,35 @@ function saveFood(){
        does not stop it being the day's running total, and losing the marker
        would let the NEXT screenshot stack on top of it instead of replacing
        it — the exact bug this exists to prevent, one tap further along. */
-    const d=nutToday();if(d.food&&d.food[ei]){const wasSrc=d.food[ei].src;d.food[ei]={name:label.slice(0,60),kcal,p:pr,c:cb,f:ft,meal,at:d.food[ei].at||Date.now(),...(portion?{portion}:{}),...(calc?{calc}:{}),...(wasSrc==='shot'?{src:'shot'}:{})};save();}
-    saveFood._editIdx=null;saveFood._portion='';toast('Updated ✓');closeSheet();renderFuel();return;
+    const wrote=replaceFoodRow(ei,label,kcal,pr,cb,ft,meal,portion,calc,null);
+    saveFood._editIdx=null;saveFood._portion='';
+    if(wrote)save();
+    /* Say what happened. A flat "Updated ✓" over a row that was no longer
+       there is the v343 defect — three savers on one screen claiming a write
+       they had declined — one sheet along. */
+    toast(wrote?'Updated ✓':'That entry is no longer there — nothing was changed',wrote?undefined:4000);
+    closeSheet();renderFuel();return;
   }
   /* A dashboard screenshot is the day so far. If one was already imported
      today, this one contains it — replace rather than stack. */
   if(saveFood._fromShot&&!_shotSeparate){
     const pi=prevShotIdx();
     if(pi>=0){
-      const d=nutToday();const was=d.food[pi]&&d.food[pi].kcal;
-      d.food[pi]={name:label.slice(0,60),kcal,p:pr,c:cb,f:ft,meal,at:Date.now(),
-        ...(portion?{portion}:{}),...(calc?{calc}:{}),src:'shot'};
-      saveFood._portion='';saveFood._fromShot=false;_shotSeparate=false;
-      syncProteinHabit();save();
-      toast('Replaced your earlier import ('+was+' kcal) — your tracker\'s dashboard is the running total for the day.',7000);
-      closeSheet();renderFuel();try{checkAchievements();}catch(e){}
-      return;
+      const was=nutToday().food[pi]&&nutToday().food[pi].kcal;
+      /* A new import is a new event, so this one stamps a fresh time. */
+      /* AND THE TOAST WAITS FOR THE WRITE. prevShotIdx() names a row that
+         exists a line earlier, so the decline is unreachable today — but
+         claiming a replacement that did not happen is the very defect the
+         edit branch above was just fixed for, and the honest fallback costs
+         one branch: fall through and APPEND, which is what an import with no
+         earlier one to replace does anyway. */
+      if(replaceFoodRow(pi,label,kcal,pr,cb,ft,meal,portion,calc,{src:'shot',stamp:true})){
+        saveFood._portion='';saveFood._fromShot=false;_shotSeparate=false;
+        save();
+        toast('Replaced your earlier import ('+was+' kcal) — your tracker\'s dashboard is the running total for the day.',7000);
+        closeSheet();renderFuel();try{checkAchievements();}catch(e){}
+        return;
+      }
     }
   }
   /* Only a row that IS the day's running total carries the marker. A
@@ -23619,6 +23680,36 @@ function validateData(){
     Object.keys(GOAL_NOTE).forEach(g=>{
       if(gk.indexOf(g)<0)errs.push('GOAL_NOTE: note for "'+g+'", which is not a goal');});
   }catch(e){errs.push('GOAL_NOTE: could not be checked — '+e.message);}
+  /* ---- every theme paints every property it is asked for -------------------
+     applyTheme() reads five fields off the picked theme and writes each one
+     straight into a custom property. Four of the five have NO fallback, and a
+     missing one is silent in the worst way: setProperty with an undefined value
+     writes the literal text "undefined", so the custom property is set to an
+     invalid value and every rule that reads it computes to unset — measured in
+     a real browser, not reasoned. The picker reads a sixth field for its button
+     label, which would render as the word undefined on the chip.
+
+     One field is deliberately allowed to be absent, and the distinction is the
+     one v364 drew for GOAL_NOTE: a per-member map whose fallback is a REAL
+     default may be partial, one whose fallback is silence must be complete. The
+     dark accent falls back to the main accent, so it is optional; the other five
+     fall back to nothing at all.
+
+     Every theme is complete today, so this is a lockstep rule rather than a
+     live defect — the same kind TESTS/TEST_DEFAULTS got after it had drifted
+     three times. Checked BOTH directions: the default must be a real theme, or
+     applyTheme() clears the overrides for a name nothing can select. */
+  try{
+    const need=['acc','acc2','accInk','soft','name'];
+    Object.keys(THEMES).forEach(k=>{
+      const t=THEMES[k];
+      if(!t||typeof t!=='object'){errs.push('THEMES.'+k+': not a theme object');return;}
+      need.forEach(f=>{
+        if(typeof t[f]!=='string'||!t[f].trim())
+          errs.push('THEMES.'+k+': no "'+f+'" — applyTheme() would write the text undefined into the page');});
+    });
+    if(!THEMES[THEME_DEFAULT])errs.push('THEME_DEFAULT "'+THEME_DEFAULT+'" is not a theme');
+  }catch(e){errs.push('THEMES: could not be checked — '+e.message);}
   /* ---- the recipe bank -----------------------------------------------------
      FOODS had eleven per-row assertions; RECIPES — the allergen tags, which are
      the only thing between a declared allergy and the plate — had none. That is
@@ -23993,13 +24084,13 @@ async function boot(){
      home-screen shortcuts did nothing whenever the app was already open. */
   window.addEventListener('hashchange',()=>{try{
     const h=(location.hash||'').replace('#','');
-    if(h&&STATE.onboarded&&['today','program','fuel','progress','ref','guide'].includes(h)&&h!==TAB)go(h);
+    if(h&&STATE.onboarded&&hashTab(h)&&h!==TAB)go(h);
   }catch(e){}});
   initBackButton();   // make the phone's Back button navigate instead of closing the app
   // Home-screen shortcuts (and any #tab link) open straight on that tab rather
   // than always landing on Today.
   try{const h=(location.hash||'').replace('#','');
-    if(h&&STATE.onboarded&&['today','program','fuel','progress','ref','guide'].includes(h))TAB=h;
+    if(h&&STATE.onboarded&&hashTab(h))TAB=h;
   }catch(e){}
   render();
   if(TAB!=='today')go(TAB);
