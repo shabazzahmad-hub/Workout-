@@ -605,7 +605,14 @@ const r1=v=>Math.round(v*10)/10;                                 // one decimal,
    so 86.44 kg is a real stored value — rounding it here would rewrite a
    legitimate figure on the first boot after this shipped and fire "we repaired
    your data" at that athlete about nothing. v390's rule: a repair that changes
-   a settled state is worse than the shape it was written for. */
+   a settled state is worse than the shape it was written for.
+
+   THE isFinite TEST IS EQUIVALENT TODAY, and that was measured rather than
+   assumed: `n>0` already refuses NaN, and both bands this is called with are
+   bounded ABOVE, so ok(Infinity) is false. Swept over 62 inputs x both bands
+   — zero differences — so no check can catch its removal, the same call as
+   v287's wantAnchor. It is kept as cover for a future band with no ceiling,
+   where Infinity would otherwise walk straight through. */
 function measureVal(v,ok){const n=(typeof v==='number')?v:((typeof v==='string'&&v.trim()!=='')?+v:NaN);
   return (isFinite(n)&&n>0&&ok(n))?n:null;}
 function dedupeMeasurements(){

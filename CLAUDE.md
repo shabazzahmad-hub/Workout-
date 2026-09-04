@@ -15241,6 +15241,16 @@ repaired your data"* at that athlete about nothing. That is v390's rule landing
 on the round that was written to honour it. The rounding came out, and the
 byte-identical floor now carries two decimals so it cannot come back.
 
+### One equivalent mutant, measured rather than assumed
+
+Nine of ten mutants caught. The one that escaped is `measureVal`'s `isFinite`
+test, and reading it back is what settled it rather than rewriting the check:
+**`n>0` already refuses NaN, and both bands are bounded ABOVE**, so
+`ok(Infinity)` is false. Swept over 62 inputs x both bands — **zero
+differences**. No check can catch its removal, so it is recorded as
+uncatchable and kept as cover for a future band with no ceiling, the same call
+as v287's `wantAnchor`.
+
 **Six floors, and each catches a different over-eager twin**: a real history is
 byte-identical, the repair is idempotent, the clock-skew clamp still fires, a
 timestamped date (`2026-08-05T08:00:00Z`) still collapses onto its own day and
