@@ -15076,6 +15076,25 @@ mutant fails by name; the data assertion is kept as the floor it always was.
 
 Twelve mutants, all caught.
 
+### And the twentieth was caught by the suite the driver was not running
+
+The food batch seeded eight more, and the one that read as an ESCAPE is the
+over-eager twin of the shot-decline fix: `if(false && replaceFoodRow(…))`, so
+the branch never claims and **a real earlier import is APPENDED rather than
+replaced** — the v306 double-count defect, live.
+
+It is caught, by **suite 20, eleven checks** — *"and leaves ONE row, not two"*,
+*"carrying the second total only"*, *"macros replaced too, not summed"*. The
+driver runs suite 23 alone, and that branch's ACCEPT path is v306 behaviour
+with v306's floors sitting in another file.
+
+**A mutant on pre-existing behaviour must be scored against the whole suite**,
+not against the file the round happens to be editing — v418's lesson, hit
+again one round later. It was measured rather than assumed: re-seeded and run
+against suite 20, it fails by name.
+
+Twenty mutants across v428, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
