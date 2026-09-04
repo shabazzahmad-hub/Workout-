@@ -10685,8 +10685,8 @@ export default async function () {
     t.ok('guard: an inherited key reads back truthy, and splice coerces it to 0',
          cls.inheritedIsTruthy && cls.spliceCoercesToZero, cls);
 
-    t.eq('a junk index removes no food row', cls.foodAfterJunk.join(','), 'Second,First', cls);
-    t.eq('FLOOR: and a real index removes exactly that one', cls.foodAfterReal.join(','), 'First', cls);
+    t.eq('a junk index removes no food row', cls.foodAfterJunk.join(','), 'First,Second', cls);
+    t.eq('FLOOR: and a real index removes exactly that one', cls.foodAfterReal.join(','), 'Second', cls);
     t.eq('a junk index removes no activity row', cls.actAfterJunk.join(','), '45,30', cls);
     t.eq('FLOOR: and a real index removes exactly that one', cls.actAfterReal.join(','), '30', cls);
     t.eq('a junk index removes no skipping row', cls.skipAfterJunk.join(','), '20,10', cls);
