@@ -15023,6 +15023,38 @@ claims a replacement.
 bar, and the two are laid out in different orders. Neither order is a
 requirement, and the check failed on correct code until it compared the sets.
 
+### And my own comment declared two assets that do not exist
+
+CI went red on suite 12, one check, and it was the comment I had written an
+hour earlier rather than the code:
+
+```
+a first install fills the whole offline pack on its own
+{"reached":251,"declared":253,"install":11,"secondsWaited":60}
+```
+
+**The precache tiers are counted by pulling every quoted asset name out of
+`sw.js` — comments included.** The new scope-guard comment illustrated the
+defect with two example image paths, so `declared` went **251 to 253** while
+the app correctly cached 251. Measured with the suite's own parser: the two
+extra entries are exactly the two example paths, and after the reword the
+declared set is byte-identical to v427's.
+
+That is the trap this file already records for the duplicate-key guard, for a
+scan of a function's own source, and for `document.body.innerHTML` holding the
+app's own source: **a comment that quotes code breaks the scan for that code.**
+Sixth time, and the second time on THIS parser — v352 recorded one apostrophe
+inside a tier array swallowing a whole tier.
+
+**Reword the prose, never weaken the check.** The parser is untouched, the
+`sw.js` comment now says why the file names are not written out, and the parser
+itself carries a note — so the next editor of either file pays for it once
+rather than twice.
+
+**And the same run was the first validation of the two food blocks**, which
+passed: suite 23 green at 1729 checks. A red run is not a reason to distrust
+what else it measured.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
