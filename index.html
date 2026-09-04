@@ -15137,12 +15137,19 @@ function saveFood(){
     if(pi>=0){
       const was=nutToday().food[pi]&&nutToday().food[pi].kcal;
       /* A new import is a new event, so this one stamps a fresh time. */
-      replaceFoodRow(pi,label,kcal,pr,cb,ft,meal,portion,calc,{src:'shot',stamp:true});
-      saveFood._portion='';saveFood._fromShot=false;_shotSeparate=false;
-      save();
-      toast('Replaced your earlier import ('+was+' kcal) — your tracker\'s dashboard is the running total for the day.',7000);
-      closeSheet();renderFuel();try{checkAchievements();}catch(e){}
-      return;
+      /* AND THE TOAST WAITS FOR THE WRITE. prevShotIdx() names a row that
+         exists a line earlier, so the decline is unreachable today — but
+         claiming a replacement that did not happen is the very defect the
+         edit branch above was just fixed for, and the honest fallback costs
+         one branch: fall through and APPEND, which is what an import with no
+         earlier one to replace does anyway. */
+      if(replaceFoodRow(pi,label,kcal,pr,cb,ft,meal,portion,calc,{src:'shot',stamp:true})){
+        saveFood._portion='';saveFood._fromShot=false;_shotSeparate=false;
+        save();
+        toast('Replaced your earlier import ('+was+' kcal) — your tracker\'s dashboard is the running total for the day.',7000);
+        closeSheet();renderFuel();try{checkAchievements();}catch(e){}
+        return;
+      }
     }
   }
   /* Only a row that IS the day's running total carries the marker. A

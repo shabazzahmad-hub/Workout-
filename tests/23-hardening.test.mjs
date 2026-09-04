@@ -10472,6 +10472,39 @@ export default async function () {
     t.ok('and the athlete is told nothing changed',
          /no longer there/.test(fe.gone.toast) && !/Updated/.test(fe.gone.toast), fe);
 
+    /* AND THE SCREENSHOT-REPLACE BRANCH WAITS FOR ITS WRITE TOO. prevShotIdx()
+       names a row that exists a line earlier, so the decline is unreachable by
+       tapping — it is DRIVEN by stubbing that helper, the technique the
+       hardness-band and anchor-unit guards use. Claiming a replacement that
+       did not happen is the same defect as the edit branch's toast; falling
+       through APPENDS, which is what an import with nothing to replace does. */
+    const shot = await page.evaluate(() => {
+      const o = {}; const T = () => document.querySelector('#toast').textContent;
+      const d = nutToday(); d.food = []; d.habits = {};
+      logFood('Mon, Sep 4', 1005, 102, 71, 50, 'l', '', '', 'shot');
+      o.before = nutToday().food.length;
+
+      const keep = prevShotIdx;
+      prevShotIdx = () => 9999;                    // a row that is not there
+      openQuickAdd({ name: 'Mon, Sep 4', kcal: 1235, p: 120, c: 90, f: 55 });
+      saveFood._fromShot = true;
+      saveFood();
+      prevShotIdx = keep;
+
+      o.rows = nutToday().food.length;
+      o.lastKcal = nutToday().food[nutToday().food.length - 1].kcal;
+      o.lastSrc = nutToday().food[nutToday().food.length - 1].src;
+      o.toast = T();
+      try { closeSheet(); } catch (e) {}
+      return o;
+    });
+    t.eq('guard: the day started with one imported row', shot.before, 1, shot);
+    t.eq('a replace that could not write appends instead of vanishing', shot.rows, 2, shot);
+    t.eq('and the new row is the one that landed', shot.lastKcal, 1235, shot);
+    t.eq('and it still carries the running-total marker', shot.lastSrc, 'shot', shot);
+    t.ok('and nothing claims a replacement that did not happen',
+         !/Replaced your earlier import/.test(shot.toast), shot);
+
     /* AND THE CLASS IS CLOSED, not the instance. A check aimed at the edit
        sheet proves nothing about the next writer somebody adds; the day's food
        array may be written only through the two helpers that sync the habit. */

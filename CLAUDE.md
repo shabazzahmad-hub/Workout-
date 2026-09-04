@@ -14996,6 +14996,27 @@ instance**: a source scan pins that exactly one place writes the day's food by
 index and exactly one appends, with a guard that the scan can see a write at
 all.
 
+### And the same branch one function along, found by auditing my own fix
+
+The screenshot-replace path had the identical shape — `replaceFoodRow()` and
+then a toast, with nothing between them:
+
+> **Replaced your earlier import (1,005 kcal)** — your tracker's dashboard is
+> the running total for the day.
+
+`prevShotIdx()` names a row that exists one line earlier, so the decline is
+**unreachable by tapping** and this is a latent-class fix. It is worth making
+anyway: claiming a replacement that did not happen is the defect this round
+exists to remove, and the honest fallback costs one branch — **fall through
+and APPEND**, which is exactly what an import with nothing to replace already
+does.
+
+**It is DRIVEN rather than recorded as equivalent**, by stubbing
+`prevShotIdx()` to name a row that is not there — the technique the
+hardness-band and anchor-unit guards use. The floors are that the row still
+lands, still carries the running-total marker, and that nothing on the glass
+claims a replacement.
+
 ### And a check that compared ORDER where the requirement is a SET
 
 `accepted` is built by filtering the VIEWS and `buttons` by reading the nav
