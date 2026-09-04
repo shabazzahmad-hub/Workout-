@@ -10481,15 +10481,21 @@ export default async function () {
     t.ok('guard: 200 g against a 165 g target ticks the protein habit', fe.before.tick, fe);
     t.eq('guard: and the day really was at 200 g', fe.before.p, 200, fe);
 
-    t.eq('correcting a row down moves the day with it', fe.down.p, 40, fe);
-    t.ok('and the protein habit un-ticks with it', !fe.down.tick, fe);
-    t.eq('FLOOR: correcting it back up ticks it again', [fe.up.p, fe.up.tick], [200, true], fe);
+    /* Read through a fallback: the guard above returns the PARTIAL result when
+       the sheet never opened, and an assertion that dereferences it throws —
+       which reports "the test file itself threw" instead of naming the guard
+       that already knows the answer. Guard, return the partial, and let the
+       named assertions report. */
+    const _d = fe.down || {}, _u = fe.up || {}, _g = fe.gone || {};
+    t.eq('correcting a row down moves the day with it', _d.p, 40, fe);
+    t.ok('and the protein habit un-ticks with it', !_d.tick, fe);
+    t.eq('FLOOR: correcting it back up ticks it again', [_u.p, _u.tick], [200, true], fe);
     t.ok('and the time it was eaten survives a correction', fe.atKept, fe);
-    t.eq('FLOOR: an ordinary edit still reports the update', fe.down.toast, 'Updated ✓', fe);
+    t.eq('FLOOR: an ordinary edit still reports the update', _d.toast, 'Updated ✓', fe);
 
-    t.eq('a row that has gone is not silently claimed as updated', fe.gone.rows, 0, fe);
+    t.eq('a row that has gone is not silently claimed as updated', _g.rows, 0, fe);
     t.ok('and the athlete is told nothing changed',
-         /no longer there/.test(fe.gone.toast) && !/Updated/.test(fe.gone.toast), fe);
+         /no longer there/.test(_g.toast || '') && !/Updated/.test(_g.toast || ''), fe);
 
     /* AND THE SCREENSHOT-REPLACE BRANCH WAITS FOR ITS WRITE TOO. prevShotIdx()
        names a row that exists a line earlier, so the decline is unreachable by
