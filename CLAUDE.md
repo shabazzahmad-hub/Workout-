@@ -14858,6 +14858,16 @@ afterwards and leave `git status` clean.
 
 ## Sandbox and tooling
 
+**`pgrep NAME` matches the executable NAME, not the command line — only
+`pgrep -f` reads the arguments.** A driver runs as `python3 /tmp/.../mut425.py`,
+so its process name is `python3`: `pgrep -c "mut425.py"` returns **0 on a
+driver that is very much alive**. That reading is what made a live run look
+dead, and a second driver was started on the same directory on the strength of
+it — the one thing this file already forbids. The `-f` form has its own trap
+recorded below (it matches its own command line, so it over-reports); the two
+mistakes are opposite and both mislead. **Check by PID, from `pgrep -a -f`, and
+read the whole line before believing either answer.**
+
 **A mutation driver writes to a LOG FILE, and is never piped through `tail`.**
 `| tail -20` prints nothing at all until the process exits, so a run that is
 killed part-way leaves an EMPTY output file — thirty minutes and eight mutants,
