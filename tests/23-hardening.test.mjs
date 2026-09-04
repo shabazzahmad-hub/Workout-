@@ -9755,6 +9755,16 @@ export default async function () {
       o.real     = run([good()]);                              // FLOOR
       o.mixed    = run([good(), good({ exId:'psupport' })]);   // FLOOR
       o.noBoot   = run([good({ exId:'psupport' })], false);    // the cross-tab door
+      /* A guard is only visible when the value beside it cannot supply the
+         answer, and here the BOOT was supplying it. The mixed case above runs
+         normalizeState() first, so the stored list is already clean, `every()`
+         is true and the filter branch is never reached at all. Only a mixed
+         list with NO boot can tell "keep the good row" from "fall back to the
+         rebuild" — and the rebuild is what a mutant that drops the filter does. */
+      o.noBootMixed = run([good(), good({ exId:'psupport' })], false);
+      /* And nothing seeded a bad `rest`, which is the other field that prints
+         ~NaN MINUTES on the sheet. */
+      o.badRest  = run([good({ rest:'abc' })]);
 
       /* Injection, driven rather than inferred: build the sheet, then read the
          document for the ELEMENT. A substring scan cannot tell an escaped
@@ -9791,6 +9801,11 @@ export default async function () {
     t.eq('FLOOR: and the sheet still names the movement', si.real.pushup, true, si);
     t.eq('FLOOR: it is the stored list that is read, not a rebuild', si.real.exTotal, 1, si);
     t.ok('FLOOR: one bad row does not take a good one with it', si.mixed.kept === 1, si);
+    t.ok('a junk rest is refused too — it is the other ~NaN MINUTES source',
+      si.badRest.kept === 0, si);
+    t.ok('and with NO boot a mixed list keeps the good row rather than falling to the rebuild',
+      si.noBootMixed.exTotal === 1, si);
+    t.ok('the reader still does not mutate what it filtered', si.noBootMixed.kept === 2, si);
 
     t.eq('the READER guards too, so a cross-tab adopt cannot throw', si.noBoot.threw, null, si);
     t.ok('and with no boot the stored row is still there — the reader does not mutate',
@@ -9840,10 +9855,36 @@ export default async function () {
       // the dead Log Food sheet
       nut().foods = [null, 42, 'x', { name:'Ok', kcal:100, p:10, c:0, f:0, fav:false, at:1 }];
       normalizeState();
+      /* null, 42 and 'x' are all refused by the TYPE test before the name test
+         is ever consulted, so a guard is only visible when the value beside it
+         cannot supply the answer: a row that IS an object and simply has no
+         name is the one case that reaches it. The name is what the athlete
+         recognises the food by — a nameless row is a blank line they cannot
+         identify, and every other field is coerced rather than dropped. */
       o.listErr = 'ok'; o.htmlErr = 'ok';
       try { o.listed = foodsList().length; } catch (e) { o.listErr = String(e.message); }
       try { foodsSectionHTML(); } catch (e) { o.htmlErr = String(e.message); }
       o.junkKept = (nut().foods || []).length;
+      nut().foods = [{ kcal:100, p:10, c:0, f:0, fav:false, at:1 },
+                     { name:'  ', kcal:100, p:10, c:0, f:0, fav:false, at:2 },
+                     { name:'Ok', kcal:100, p:10, c:0, f:0, fav:false, at:3 }];
+      normalizeState();
+      o.namelessKept = (nut().foods || []).length;
+
+      /* `fav` is not a flag, it is a STAR THE ATHLETE TAPPED, and it decides
+         whether a row is kept for ever or capped as a recent. A truthy
+         non-boolean out of a backup — 1, 'yes', {} — read as a favourite is
+         unbounded growth in a list the writer bounds on purpose, and it travels
+         in every backup after it. Only a real `true` is a tap; everything else
+         is a recent, which is the bounded direction. Nothing seeded one of
+         these, so a truthiness read escaped every assertion. */
+      nut().foods = [{ name:'A', kcal:1, p:0, c:0, f:0, fav:1,     at:1 },
+                     { name:'B', kcal:1, p:0, c:0, f:0, fav:'yes', at:2 },
+                     { name:'C', kcal:1, p:0, c:0, f:0, fav:{},    at:3 },
+                     { name:'D', kcal:1, p:0, c:0, f:0, fav:true,  at:4 }];
+      normalizeState();
+      o.favTruthy = (nut().foods || []).filter(x => x.fav).length;
+      o.favTypes  = (nut().foods || []).every(x => typeof x.fav === 'boolean');
 
       // the READER on its own — a cross-tab adopt has no boot behind it
       nut().foods = [null, { name:'Ok', kcal:100, p:10, c:0, f:0, fav:false, at:1 }];
@@ -9859,6 +9900,18 @@ export default async function () {
       o.roundTrip = typeof row.kcal === 'number' && typeof row.p === 'number';
       o.writerClean = (nut().foods || []).every(x => typeof x.kcal === 'number' && typeof x.p === 'number');
       nutToday().food = (nutToday().food || []).slice(0, before);
+
+      /* The same route with NO boot behind it. A cross-tab adopt leaves the
+         list dirty, and the athlete's next tap goes through the writer's
+         UPDATE branch — the one that reuses the row it found. Running this
+         after normalizeState() cannot see that guard at all, because the boot
+         has already coerced the values the writer would be handed. */
+      nut().foods = [{ name:'Bad2', kcal:'abc', p:{}, c:[], f:null, fav:false, at:1 }];
+      const before2 = (nutToday().food || []).length;
+      try { logRemembered(0); } catch (e) { o.logThrew2 = String(e.message); }
+      o.writerCleanNoBoot = (nut().foods || [])
+        .every(x => typeof x.kcal === 'number' && typeof x.p === 'number');
+      nutToday().food = (nutToday().food || []).slice(0, before2);
 
       // FLOOR: a real list survives the boot byte-identical
       const real = [{ name:'Eggs', kcal:210, p:18, c:1, f:15, fav:true, at:5 },
@@ -9896,7 +9949,15 @@ export default async function () {
     t.eq('a null row no longer kills foodsList()', rf.listErr, 'ok', rf);
     t.eq('nor the Log Food sheet it builds', rf.htmlErr, 'ok', rf);
     t.eq('and only the real food is left', rf.junkKept, 1, rf);
+    t.eq('a row that is an object but carries no name is dropped too',
+      rf.namelessKept, 1, rf);
+    t.eq('only a real tap is a favourite — a truthy non-boolean is a recent',
+      rf.favTruthy, 1, rf);
+    t.ok('and fav is always a boolean afterwards, so a backup cannot carry junk',
+      rf.favTypes, rf);
     t.eq('the READER guards too, so a cross-tab adopt cannot kill the sheet', rf.noBoot, 'ok', rf);
+    t.ok('the WRITER coerces too, so a dirty list cannot survive the next tap',
+      rf.writerCleanNoBoot, rf);
 
     t.ok('a junk saved food cannot come back out through the one-tap re-log', rf.roundTrip, rf);
     t.ok('and the writer leaves the list clean rather than re-poisoning it', rf.writerClean, rf);
