@@ -595,18 +595,51 @@ const r1=v=>Math.round(v*10)/10;                                 // one decimal,
    genuinely saved and the tile still showed the stale duplicate. Collapse
    duplicates: keep the first row (the one every writer targets), filling only
    fields it lacks from later copies. Idempotent; runs every boot. */
+/* One figure of a measurement row. A numeric string coerces — the athlete
+   really did enter that number, and some export routes stringify — and
+   anything outside the band its own writer enforces is dropped rather than
+   clamped, because a measurement outside the band was never taken.
+
+   IT DOES NOT ROUND, and that was measured rather than assumed. A METRIC
+   athlete's weight is stored raw (obReadForm rounds only the imperial branch),
+   so 86.44 kg is a real stored value — rounding it here would rewrite a
+   legitimate figure on the first boot after this shipped and fire "we repaired
+   your data" at that athlete about nothing. v390's rule: a repair that changes
+   a settled state is worse than the shape it was written for. */
+function measureVal(v,ok){const n=(typeof v==='number')?v:((typeof v==='string'&&v.trim()!=='')?+v:NaN);
+  return (isFinite(n)&&n>0&&ok(n))?n:null;}
 function dedupeMeasurements(){
   const ms=STATE&&STATE.measurements;if(!Array.isArray(ms))return;
   const today=todayISO();
   const byDate=new Map();const out=[];
   for(const m of ms){
-    if(!m||!m.date)continue;
+    if(!m||typeof m!=='object'||!m.date)continue;
     // normalise the key: a timestamped date ("2026-08-05T08:00Z") must not count
-    // as a different day to "2026-08-05", and a clock-skew row dated in the
-    // FUTURE would win every "latest" read forever — clamp it to today.
+    // as a different day to "2026-08-05".
     let k=String(m.date).slice(0,10);
+    /* A DATE THAT IS NOT A DATE IS NOT A MEASUREMENT, and the clamp below is
+       what made that dangerous rather than merely untidy. It exists for a
+       CLOCK-SKEW row — a real date stamped ahead of today, which would win
+       every "latest" read forever. String({}) is "[object Object]", and
+       "[object Ob" sorts ABOVE any "20xx-" date, so the clamp fired and
+       rewrote junk into TODAY: measured, a row with no usable date at all
+       became today's weigh-in and latestWeightKg() returned its 200 kg. That
+       figure drives the calorie target, the projection, the goal pace and the
+       chart. Drop it instead; the clamp keeps the case it was written for. */
+    if(!isDateISO(k))continue;
     if(k>today)k=today;
     m.date=k;
+    /* The writer enforces plausibleKg (25-350) and plausibleWaistCm (40-250)
+       and refuses a row with neither figure; this repair enforced NEITHER, so
+       a numeric STRING survived every boot and latestWeightKg() handed a
+       string to every calorie reader. Measured: inert on the glass — every
+       pane is byte-identical — so the cost is the v285 one, junk travelling in
+       every backup. Make the repair agree with the writer that was already
+       there: coerce a number, null anything outside the band the athlete
+       could have entered, and drop a row that then carries nothing. */
+    m.waist=measureVal(m.waist,plausibleWaistCm);
+    m.weight=measureVal(m.weight,plausibleKg);
+    if(!(m.waist>0)&&!(m.weight>0))continue;
     const ex=byDate.get(k);
     if(!ex){byDate.set(k,m);out.push(m);}
     else{if(!(ex.waist>0)&&m.waist>0)ex.waist=m.waist;      // 0 counts as missing, like null
@@ -1849,7 +1882,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='429';
+const APP_VERSION='430';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,

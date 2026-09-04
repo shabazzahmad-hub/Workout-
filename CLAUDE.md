@@ -15192,6 +15192,89 @@ junk call is wrapped and the throw recorded as a value, so the named checks do
 the reporting; a floor asserts that none of the real calls after it threw
 either.
 
+## A date that is not a date became today's weigh-in (v430)
+
+`dedupeMeasurements()` clamps a date ahead of today back to today, and its own
+comment says why: a **clock-skew** row is a real measurement stamped wrong, and
+left alone it would win every "latest" read for ever. The clamp is right for
+that. It fired on junk as well:
+
+`String({})` is `"[object Object]"`, and `"[object Ob"` sorts **above** any
+`"20xx-"` date — so a row with no usable date at all was rewritten into
+**today**. Measured:
+
+| stored | after the boot | `latestWeightKg()` |
+|---|---|---|
+| a real 86 kg on 2026-08-01, plus `{date:{bad:1}, weight:200}` | the junk row **became today's weigh-in** | **200** |
+| the same, after the fix | the junk row is dropped | 86 |
+
+That figure is not cosmetic: it drives the calorie target, the projection, the
+goal pace and the weight chart. **A date that is not a date is not a
+measurement**, so the row goes; the clamp keeps the case it was written for,
+and a check pins a genuine tomorrow-dated row still landing on today.
+
+### The writer enforced two bands and the repair enforced none
+
+`saveMeasure()` has always refused a weight outside `plausibleKg` (25–350) and
+a waist outside `plausibleWaistCm` (40–250), and refuses a row carrying
+neither. `normalizeState()` had **only `Array.isArray`** — no member check at
+all, which is the v354 shape one list over.
+
+So a numeric **string** survived every boot and `latestWeightKg()` handed a
+string to every calorie reader. **Measured inert on the glass** — every tab and
+every Progress pane byte-identical against the same athlete with a number — so
+the cost is the v285 one: junk travelling in every backup. `measureVal()` makes
+the repair agree with the writer that was already there.
+
+**And a payload never reached the glass, which was checked rather than
+assumed.** `measureListHTML()` escapes the date and gates both figures on
+`> 0`, and `'<b>x</b>' > 0` is false — so the render was already correct. The
+comment above it says *"STATE.measurements has no schema validation"*: the
+codebase knew, and guarded the one consumer instead of the data.
+
+### The fix rounded, and rounding was a change with no defect behind it
+
+The first version returned `Math.round(n*10)/10`. `obReadForm()` rounds only
+the **imperial** branch, so a metric athlete's `86.44 kg` is a real stored
+value — and rewriting it on the first boot after this shipped would fire *"we
+repaired your data"* at that athlete about nothing. That is v390's rule landing
+on the round that was written to honour it. The rounding came out, and the
+byte-identical floor now carries two decimals so it cannot come back.
+
+**Six floors, and each catches a different over-eager twin**: a real history is
+byte-identical, the repair is idempotent, the clock-skew clamp still fires, a
+timestamped date (`2026-08-05T08:00:00Z`) still collapses onto its own day and
+merges the field it lacks, **both edges of both bands survive** — a guard earns
+its keep only if it provably cannot fire on a legitimate input — and a real
+save still lands.
+
+### Two sweeps that came back clean
+
+- **Every fire-and-forget `setTimeout`.** 58 calls; 11 carry a named handle and
+  all 11 have a matching `clearTimeout`. Both deferred writers that paint into
+  a sheet already check `_sheetGen`. `duckFor()` has a `done` latch, so its
+  safety timeout is idempotent; `beatDuck()` is a **counter**, and `beatStop()`
+  nulls `BEAT` while `beatStart()` rebuilds it with `duck:0` — so a duck taken
+  across a beat toggle cannot leave the music stuck quiet.
+- **Every stored LIST OF OBJECTS, against whether its rows are repaired.**
+  Fourteen of them, and `measurements` was the last one carrying a container
+  check and nothing below it — `customFav`, `footLog`, `grindLog`, `hiitLog`,
+  `holdLog`, `liftLog`, `pain`, `photos`, `runs`, `scoreHistory` and the four
+  activity logs all already filter or rebuild their rows, and `_plResume` and
+  `_undo` are in `TRANSIENT_KEYS` so no import can reach them. **A crude scan
+  reported four of those as unrepaired and every one was the scan**: the
+  activity logs are repaired by a `forEach` over a list of names rather than
+  inline, and `logs` goes through `scrubLogRows()`. Read the repair the field
+  actually has before believing a regex that could not see it.
+- **Every `Date.parse` / `new Date` on a stored value.** `painCount()` guards
+  `isFinite` and fails closed (a junk date lowers the count, so no false
+  prompt); `prep.date` and `prep.planFrom` go through `isDateISO()`;
+  `projectionHTML()`'s `rate` opens at `Math.max(0.2, …)` and is only
+  reassigned behind `capped > 0`, so `weeks` can never be `Infinity` and the
+  month label can never read *Invalid Date*. The measurement rows were the one
+  member.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
