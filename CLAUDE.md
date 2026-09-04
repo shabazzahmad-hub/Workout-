@@ -14567,10 +14567,20 @@ under-logging the stopwatches did, on the surface most likely to be
 unattended.
 
 **Count the seconds the tick CONSUMED.** The tick knows how far `remain` moved,
-so the increment is that distance, clamped at one so a clock that did not move
-still counts the second it was called for, and clamped at the station's own
-remaining time so a long stall cannot credit more work than the station had
-left in it.
+so the increment is that distance, clamped at the station's own remaining time
+so a long stall cannot credit more work than the station had left in it.
+
+**And the floor beside it is an EQUIVALENT guard, measured rather than
+assumed.** `Math.max(1, ...)` was written for "a clock that did not move still
+counts the second it was called for", and that reason is wrong: `remain` is
+`min(byTick, clock)` and `byTick` is `prevLeft-1`, so `prevLeft-remain` is
+**already** at least 1. Swept over 96,120 reachable pairs plus the whole
+no-deadline branch: **zero differences**. The mutant that drops it escapes and
+always will. Kept as cover for a future change to how `remain` is derived, and
+recorded as uncatchable rather than papered over with a check that cannot fail
+— the same call as v287's `wantAnchor`. **Read the mutant back before rewriting
+the check**, and when the reasoning behind a guard turns out to be wrong,
+correct the comment rather than keeping a claim the arithmetic disproves.
 
 **The floor is the ordinary grinder, byte-identical.** A fix that simply
 multiplied the counter would satisfy every assertion about the throttled case

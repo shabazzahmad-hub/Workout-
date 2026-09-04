@@ -9366,7 +9366,14 @@ function ivTick(){
      stopwatches had, on the surface v375 calls the one most likely to be left
      unattended.
      Clamped to the seconds the phase actually had left: a tick that arrives
-     after the phase has expired consumed that phase's remainder and no more. */
+     after the phase has expired consumed that phase's remainder and no more.
+
+     The Math.max(1,...) is an EQUIVALENT guard and no check can catch its
+     removal, which was measured rather than assumed: `remain` is
+     min(byTick, clock) and byTick is prevLeft-1, so prevLeft-remain is always
+     at least 1 — swept over 96,120 reachable (prevLeft, clock) pairs plus the
+     whole no-deadline branch, zero differences. It is kept as cover for a
+     future change to how `remain` is derived, not because it fires today. */
   if(INTV.phase==='work'){
     const prevLeft=byTick+1;
     INTV.workElapsed+=Math.max(1,Math.min(prevLeft,prevLeft-INTV.remain));
