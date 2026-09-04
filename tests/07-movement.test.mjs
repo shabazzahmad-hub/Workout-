@@ -1178,19 +1178,25 @@ export default async function run() {
       setJackUnit('min'); setJackVal(0);
       setBikeUnit('min'); setBikeVal(0);
 
+      /* MOVE THE START TIMESTAMP, NOT THE CACHED FIGURE. swStart() sets `at`
+         and the tick derives `secs` from it, so a stopwatch carrying a `secs`
+         its `at` does not support is a shape no writer in this app produces.
+         Since v425 the STOP reads the clock rather than the last painted
+         number, so a hand-set `secs` is correctly ignored — the record was
+         incomplete, not the rule. */
       openMakeupStopwatch('jacks');
       const jackStarted = !!MUT && MUT.mode === 'jacks';
-      MUT.secs = 615;           // 10.25 min -> rounds to 10
+      MUT.at = monoNow() - 615000;           // 10.25 min -> rounds to 10
       makeupStopwatchStop();
       const jackAfterFirst = movement().jval;
 
       openMakeupStopwatch('jacks');
-      MUT.secs = 300;           // +5 min, additive on top of the 10 above
+      MUT.at = monoNow() - 300000;           // +5 min, additive on top of the 10 above
       makeupStopwatchStop();
       const jackAfterSecond = movement().jval;
 
       openMakeupStopwatch('jacks');
-      MUT.secs = 20;            // Math.round(20/60)=0 -> genuinely under a minute.
+      MUT.at = monoNow() - 20000;            // Math.round(20/60)=0 -> genuinely under a minute.
                                  // 30s would round UP to 1 (same as skipTimerStop()'s
                                  // identical Math.round(secs/60) — consistent with that
                                  // precedent, not a bug), so it would not test this guard.
@@ -1200,12 +1206,12 @@ export default async function run() {
 
       openMakeupStopwatch('bike');
       const bikeStarted = !!MUT && MUT.mode === 'bike';
-      MUT.secs = 1200;          // 20 min
+      MUT.at = monoNow() - 1200000;          // 20 min
       makeupStopwatchStop();
       const bikeAfterFirst = movement().val;
 
       openMakeupStopwatch('bike');
-      MUT.secs = 600;           // +10 min, additive on top of the 20 above —
+      MUT.at = monoNow() - 600000;           // +10 min, additive on top of the 20 above —
                                  // a single run can't tell additive from
                                  // overwrite when it starts from a 0 baseline,
                                  // so this has to be a SECOND stacked run.
@@ -1237,7 +1243,7 @@ export default async function run() {
       addJackVal(275);                       // ~5 min worth of reps at 'steady'
       const baselineMin = jackMinutes();
       openMakeupStopwatch('jacks');
-      MUT.secs = 300;                        // +5 min on the stopwatch
+      MUT.at = monoNow() - 300000;                        // +5 min on the stopwatch
       makeupStopwatchStop();
       const finalMin = movement().jval, finalUnit = movement().junit;
       const kk = JSON.parse(keep);
@@ -2458,6 +2464,123 @@ export default async function run() {
     t.ok('and every mode carries its own one-line pitch', sk.everyModeHasANote, sk);
     t.ok('which is what the screen actually shows', sk.noteOnScreen, sk);
     t.ok('the block warns about the impact cost a rope really has', sk.warnsAboutImpact, sk);
+  }
+
+  /* THE RECORD READS THE CLOCK, NOT THE LAST PAINTED NUMBER (v425).
+
+     All four stopwatches PAINT from swSecs() — a timestamp, so the display
+     catches up however badly the tick is throttled — and then RECORDED the
+     cached figure the last paint left behind. These are the surfaces where a
+     reclaimed tick is likeliest: a stopwatch is started and the phone goes in
+     a pocket.
+
+     Every case clears the interval and moves the START timestamp back, which
+     is what a reclaimed tick really looks like — the id is left in place, so a
+     fix testing `tid !== null` would pass on a phone where nothing ticks. */
+  {
+    const sw = await page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const R = {};
+      const drift = (st, mins) => { if (!st) return false; clearInterval(st.tid); st.at = monoNow() - mins * 60000; return true; };
+
+      /* 1. a 41-minute ruck timed with the phone away */
+      STATE.ruckLog = []; save();
+      openActTimer('ruck');
+      R.haveACTT = !!ACTT;
+      await wait(1100);
+      R.actDrifted = drift(ACTT, 41);
+      R.ruckClock = swSecs(ACTT); R.ruckCache = ACTT.secs;
+      actTimerStop();
+      R.ruckLogged = (STATE.ruckLog[0] || {}).mins;
+      try { closeSheet(); } catch (e) {}
+
+      /* 2. skipping */
+      STATE.skipLog = []; save();
+      openSkipTimer();
+      R.haveSKIPT = !!SKIPT;
+      await wait(1100);
+      R.skipDrifted = drift(SKIPT, 27);
+      skipTimerStop();
+      R.skipLogged = (STATE.skipLog[0] || {}).mins;
+      try { closeSheet(); } catch (e) {}
+
+      /* 3. the make-up stopwatch, which pays the step target */
+      setJackUnit('min'); setJackVal(0);
+      openMakeupStopwatch('jacks');
+      R.haveMUT = !!MUT;
+      await wait(1100);
+      R.mutDrifted = drift(MUT, 18);
+      makeupStopwatchStop();
+      R.makeupMins = movement().jval;
+      try { closeSheet(); } catch (e) {}
+
+      /* 4. the ops challenge, where SHORTER is better — a frozen tick is a
+            personal best nobody can ever beat */
+      STATE.opsPR = {}; save();
+      const opId = OPS[0].id;
+      startOp(opId); opStart();
+      R.haveOP = !!OP;
+      await wait(1100);
+      R.opDrifted = drift(OP, 12);
+      R.opClock = swSecs(OP); R.opCache = OP.elapsed;
+      opFinish();
+      R.opRecorded = STATE.opsPR[opId];
+      opQuit();
+
+      /* FLOOR: a HEALTHY stopwatch records what it always did */
+      STATE.skipLog = []; save();
+      openSkipTimer();
+      SKIPT.at = monoNow() - 9 * 60000;      // nine real minutes, tick alive
+      skipTimerTick();
+      R.healthyCache = SKIPT.secs;
+      skipTimerStop();
+      R.healthyLogged = (STATE.skipLog[0] || {}).mins;
+      try { closeSheet(); } catch (e) {}
+
+      /* FLOOR: a PAUSE is still not work */
+      STATE.skipLog = []; save();
+      openSkipTimer();
+      SKIPT.at = monoNow() - 20 * 60000;
+      skipTimerToggle();                      // pause it
+      SKIPT.pausedAt = monoNow() - 15 * 60000;   // fifteen of those minutes were a pause
+      clearInterval(SKIPT.tid);
+      skipTimerStop();
+      R.pausedLogged = (STATE.skipLog[0] || {}).mins;
+      try { closeSheet(); } catch (e) {}
+
+      /* FLOOR: under a minute still logs nothing */
+      STATE.skipLog = []; save();
+      openSkipTimer();
+      SKIPT.at = monoNow() - 20000;
+      clearInterval(SKIPT.tid);
+      skipTimerStop();
+      R.shortRows = STATE.skipLog.length;
+      try { closeSheet(); } catch (e) {}
+      return R;
+    });
+
+    /* GUARDS: the cache really is stale, or every case below passes on a
+       stopwatch that was never wrong. */
+    t.ok('guard: all four stopwatches really opened',
+         sw.haveACTT && sw.haveSKIPT && sw.haveMUT && sw.haveOP, sw);
+    t.ok('guard: and all four had their tick taken away',
+         sw.actDrifted && sw.skipDrifted && sw.mutDrifted && sw.opDrifted, sw);
+    t.eq('guard: the clock knows 41 minutes of rucking', sw.ruckClock, 2460, sw);
+    t.eq('guard: and the last paint left one second behind', sw.ruckCache, 1, sw);
+    t.eq('guard: the ops clock knows twelve minutes', sw.opClock, 720, sw);
+    t.eq('guard: and its cache one second', sw.opCache, 1, sw);
+
+    t.eq('the ruck is logged at what the clock knows, not what was painted', sw.ruckLogged, 41, sw);
+    t.eq('so is the skipping', sw.skipLogged, 27, sw);
+    t.eq('so is the make-up work that pays the step target', sw.makeupMins, 18, sw);
+    t.eq('and the ops challenge records the real time', sw.opRecorded, 720, sw);
+    t.ok('rather than a one-second best nothing could ever beat',
+         sw.opRecorded !== sw.opCache, sw);
+
+    t.eq('FLOOR: a healthy stopwatch is unchanged', sw.healthyLogged, 9, sw);
+    t.eq('guard: and its cache agreed all along', sw.healthyCache, 540, sw);
+    t.eq('FLOOR: a pause is still not work', sw.pausedLogged, 5, sw);
+    t.eq('FLOOR: under a minute still logs nothing', sw.shortRows, 0, sw);
   }
 
   await browser.close(); srv.close();

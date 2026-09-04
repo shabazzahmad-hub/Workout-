@@ -9986,6 +9986,104 @@ export default async function () {
     t.eq('guard: and that bound is the app constant, not a number restated here', rf.capConst, 20, rf);
   }
 
+  /* THE GUARD THAT RESCUES EVERY OTHER TICK IS ITSELF A TICK (v425).
+
+     v377 gave five surfaces a rescue and put all of it behind ONE interval,
+     armed once at load and never re-armed. Measured with that interval
+     cleared: nothing brought it back — not the heartbeat, not
+     visibilitychange, not a tap — so every rescue in the app died with it, and
+     the four surfaces in timedSurfaces() have no visibilitychange listener of
+     their own.
+
+     The session clock was the other unwatched tick: plClear() deliberately
+     never touches it and plResync() does not re-arm it, so a reclaimed one
+     froze the clock, the PAUSED bar and BOTH nudges for the rest of the
+     session.
+
+     A LIVE INTERVAL ID IS NOT EVIDENCE OF A LIVE INTERVAL, which is why every
+     case below clears the timer and LEAVES the id in place — a fix that tested
+     `!== null` would pass on a phone where nothing ticks. */
+  {
+    const hb = await page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const R = {};
+      go('today'); openPlayer(0);
+      plClear(); plEnterRest(120, 'ex');
+      await wait(1100);
+      const pausedEl = () => (document.getElementById('plPaused') || {}).textContent || '';
+
+      /* the OS reclaims the SESSION clock */
+      clearInterval(_plClock);              // the id is deliberately left behind
+      PLAYER.t0 = monoNow() - 180000;
+      playerToggle();                       // pause it
+      PLAYER.pauseAt = monoNow() - 200000;  // three minutes twenty ago
+      _plClockBeat = monoNow() - 60000;     // and it has not beaten for a minute
+      R.staleIdLooksAlive = _plClock !== null;
+      R.pausedFrozen = pausedEl();
+      plGuardTick();
+      R.pausedRescued = pausedEl();
+
+      /* FLOOR: a healthy clock is not churned by every beat */
+      const idA = _plClock;
+      plGuardTick(); plGuardTick();
+      R.healthyClockUntouched = _plClock === idA;
+
+      /* the OS reclaims the HEARTBEAT itself */
+      clearInterval(_plGuard); _plGuardBeat = monoNow() - 60000;
+      const gidA = _plGuard;
+      R.guardStaleIdLooksAlive = _plGuard !== null;
+      document.dispatchEvent(new Event('visibilitychange'));
+      await wait(50);
+      R.guardBackOnVisible = _plGuard !== gidA;
+
+      /* and again, by the other event the app already receives */
+      clearInterval(_plGuard); _plGuardBeat = monoNow() - 60000;
+      const gidB = _plGuard;
+      document.body.click();
+      await wait(50);
+      R.guardBackOnTap = _plGuard !== gidB;
+
+      /* FLOOR: a healthy heartbeat is not re-armed by every tap in the app */
+      const gidC = _plGuard;
+      document.body.click(); document.body.click();
+      R.healthyGuardUntouched = _plGuard === gidC;
+
+      /* FLOOR: a finished session does not get its clock back — plEnterDone()
+         stops it on purpose */
+      PLAYER.phase = 'done'; plClockStop(); _plClockBeat = monoNow() - 60000;
+      plGuardTick();
+      R.doneSessionStaysOff = _plClock === null;
+
+      playerQuit();
+      R.afterQuit = _plClock;
+      R.beatStall = PL_BEAT_STALL_MS;
+      R.guardMs = PL_GUARD_MS;
+      return R;
+    });
+
+    /* GUARDS: without these the whole block passes on a page where a cleared
+       interval was already detectable. */
+    t.ok('guard: a reclaimed session clock still leaves a live-looking id',
+         hb.staleIdLooksAlive, hb);
+    t.ok('guard: so does a reclaimed heartbeat', hb.guardStaleIdLooksAlive, hb);
+    t.eq('guard: the staleness bar is three guard periods, from the constant',
+         hb.beatStall, hb.guardMs * 3, hb);
+
+    t.eq('the PAUSED bar froze where the dead clock left it', hb.pausedFrozen, 'PAUSED 0s', hb);
+    t.eq('and the heartbeat re-arms the clock and repaints the real figure',
+         hb.pausedRescued, 'PAUSED 3:20', hb);
+    t.ok('FLOOR: a healthy clock is left alone', hb.healthyClockUntouched, hb);
+
+    t.ok('a reclaimed heartbeat is re-armed when the page comes back',
+         hb.guardBackOnVisible, hb);
+    t.ok('and by a tap anywhere, which needs no timer either',
+         hb.guardBackOnTap, hb);
+    t.ok('FLOOR: a healthy heartbeat is not re-armed by every tap',
+         hb.healthyGuardUntouched, hb);
+    t.ok('FLOOR: a finished session keeps its clock off', hb.doneSessionStaysOff, hb);
+    t.eq('FLOOR: and quitting leaves nothing armed', hb.afterQuit, null, hb);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
