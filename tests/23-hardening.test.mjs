@@ -10441,6 +10441,13 @@ export default async function () {
       /* DOWN through the athlete's own route — editFood() then saveFood(),
          not the helper. Calling the helper is not driving the route. */
       editFood(0);
+      /* GUARD, before the first dereference. If the sheet did not open, every
+         line below throws and the suite reports "the test file itself threw"
+         rather than naming a check — measured on the over-eager rowAt() twin,
+         which returns null for every index so editFood() returns early. Red is
+         not enough; it has to say what. */
+      o.sheetOpened = !!document.querySelector('#fa-p');
+      if (!o.sheetOpened) return o;
       document.querySelector('#fa-p').value = '40';
       document.querySelector('#fa-kcal').value = '300';
       saveFood();
@@ -10470,6 +10477,7 @@ export default async function () {
 
     /* GUARD: the log really did tick it, or every reading below is two falses
        agreeing. */
+    t.ok('guard: the edit sheet opened at all', fe.sheetOpened, fe);
     t.ok('guard: 200 g against a 165 g target ticks the protein habit', fe.before.tick, fe);
     t.eq('guard: and the day really was at 200 g', fe.before.p, 200, fe);
 
@@ -10721,6 +10729,33 @@ export default async function () {
       return body.indexOf('rowAt(') < 0;
     });
     t.eq('every index-taking row helper asks the one predicate', notAsking.join(','), '', { notAsking });
+
+    /* The RANGE half of the predicate cannot be reached through any screen:
+       for a genuine array `l[-1]` and `l[9999]` are both undefined, so the
+       truthiness of l[i] already answers. The one input that tells them apart
+       is a NEGATIVE own property on the array object — a string key, which is
+       exactly the shape this round is about — so it is exercised DIRECTLY,
+       the technique the hardness-band and anchor-unit guards use.
+
+       The `i < l.length` half is EQUIVALENT and is recorded as such rather
+       than papered over: defining an index property on an array updates its
+       length, so no input can make an in-range read differ from an
+       out-of-range one. It is kept as intent. */
+    const rng = await page.evaluate(() => {
+      const o = {};
+      const a = ['first', 'second'];
+      a[-1] = 'not a row';
+      o.negIsTruthy = !!a[-1];          // GUARD: the trap is real
+      o.negRefused = rowAt(a, -1);
+      o.realKept = rowAt(a, 0);
+      o.pastEnd = rowAt(a, 9999);
+      return o;
+    });
+    t.ok('guard: a negative own property on an array really reads back truthy',
+         rng.negIsTruthy, rng);
+    t.eq('and the predicate refuses a negative index anyway', rng.negRefused, null, rng);
+    t.eq('FLOOR: a real index is still returned', rng.realKept, 'first', rng);
+    t.eq('FLOOR: and one past the end is still refused', rng.pastEnd, null, rng);
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
