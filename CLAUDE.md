@@ -15095,6 +15095,103 @@ against suite 20, it fails by name.
 
 Twenty mutants across v428, all caught.
 
+## An inherited key is not an array index (v429)
+
+Found by auditing v428 an hour after it merged — the thirteenth round running
+where the best finding was in the round immediately before, and the sixth in a
+row where it was in my own new code.
+
+`replaceFoodRow()` guarded `!d.food[i]`. **`d.food['__proto__']` reads back
+`Array.prototype`, which is TRUTHY**, so the guard passed and the next line
+reassigned the array's own prototype. Measured:
+
+| | |
+|---|---|
+| `Object.getPrototypeOf(d.food) === Array.prototype` | **false** |
+| `typeof d.food.push` | **undefined** |
+| `syncProteinHabit()` | **threw** on `f.reduce is not a function` |
+| the day's food list | broken until the next boot |
+
+**Not reachable by tapping, and saying so is the honest framing**: `editFood()`
+passes a numeric literal and `prevShotIdx()` returns a number. That is the same
+call v416 made about the only two-level computed write, and the v400 shape where
+an inherited key satisfied every `EX[id] &&` guard in the app — *the codebase
+already guards the id on that very line and never guarded the index.*
+
+**The class was swept before the instance was fixed.** 85 single-level computed
+writes in the file; **three** land on an array-shaped receiver, and the other two
+are `STATE.logs[p]` (the integer-repaired pointer) and `STATE.logs[u.ptr]` (read
+off `_undo`, which is in `TRANSIENT_KEYS` and stripped on import). One member.
+
+**The guards come first**, or every assertion below passes on a shape that was
+never dangerous: the check pins that an inherited read really is truthy and
+really is `Array.prototype` before it asserts anything about the refusal.
+
+**The floors are what stop the fix being a deletion**, and each over-eager twin
+fails one: a real index must still replace and write the corrected figure, and
+an index past the end, a negative and a fraction must each still be refused
+without adding a row.
+
+### The sweep asked about WRITES, and the removers do not write (v429, cont'd)
+
+Found by auditing the fix an hour after writing it. The class sweep above was
+for **assignments** — `list[i] = x` — and it correctly found one member. Every
+index-taking helper that **removes** a row was invisible to it, because a
+remover does not assign: it splices. Widening the question from *writes* to
+*every helper that takes an index* found **eight**, all guarded the same wrong
+way:
+
+| helper | the old guard | what an inherited key did |
+|---|---|---|
+| `removeFood(idx)` | `d.food&&d.food[idx]` | **deleted the athlete's FIRST row** |
+| `removeAct(k,i)` | `l[i]` | deleted the newest activity row |
+| `removeSkip(i)` | `l[i]` | deleted the newest skipping row |
+| `delFav(i)` | `favs[i]` | deleted the first saved workout |
+| `quickPick(i)` | `COMMON_FOODS[i]` | logged a row named `undefined` |
+| `editFood(idx)` | `d.food&&d.food[idx]` | opened the sheet on `Array.prototype` |
+| `openFoodAmount(i)` | `FOODS[i]` | opened the amount sheet on `Array.prototype` |
+| `logFoodFromList(i)` | `FOODS[i]` | handed the junk index straight on |
+
+**`splice()` COERCES a non-numeric key to 0**, so the failure is not a broken
+prototype — it is a silent delete of the wrong row, which is worse in the one
+way that matters: the athlete's data goes and nothing on screen says so.
+Measured directly, and pinned as a guard: `['a','b'].splice('__proto__',1)`
+leaves `['b']`.
+
+Latent in exactly the same way as the writer — every caller renders a numeric
+index — so this is the v416 and v429 call again rather than a live defect.
+
+**One predicate, not six guards.** `rowAt(list, i)` is a membership test for a
+LIST, sitting beside `exKnown()`, which is the same test for a MAP; the writer
+v429 had just fixed asks it too rather than restating four conditions inline. A
+seventh row helper written with the old guard fails here rather than on a phone.
+
+**And the rule has to be ASKED FOR, not merely declared.** A check counting the
+declaration passes while a consumer keeps its own guard — the drift v322 and
+v368 both recorded — so a source scan pins that all seven helpers name the
+predicate, with a guard that the scan really read the app.
+
+**And the sweep had to be run twice, from opposite ends** — once for the code
+shape and once for the QUESTION. The first pass asked *which guard is a
+truthiness read of `list[i]`* and found the six removers; the two `FOODS`
+helpers only appeared when the question became *which helper takes an index at
+all*. Two sweeps of one class from opposite ends, and neither alone was
+complete — the same lesson v411 recorded when a code-shape sweep found three
+parked-read helpers and a COPY sweep found the fourth.
+
+### A mutant CAUGHT by a throw is red without saying what
+
+`N1` — the pre-v429 guard restored — was caught, and the whole run reported
+`the test file itself threw`. The throw is the defect doing its job: the
+reassigned prototype takes `reduce` with it, and `syncProteinHabit()` is the
+next line, so the exception left `page.evaluate` before any named assertion ran.
+
+Still red, so still a catch — and this file has recorded twice that **red is not
+enough, it has to say what**, and once that the same shape *hung* a suite. The
+junk call is wrapped and the throw recorded as a value, so the named checks do
+the reporting; a floor asserts that none of the real calls after it threw
+either.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

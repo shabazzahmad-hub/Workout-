@@ -10441,6 +10441,13 @@ export default async function () {
       /* DOWN through the athlete's own route — editFood() then saveFood(),
          not the helper. Calling the helper is not driving the route. */
       editFood(0);
+      /* GUARD, before the first dereference. If the sheet did not open, every
+         line below throws and the suite reports "the test file itself threw"
+         rather than naming a check — measured on the over-eager rowAt() twin,
+         which returns null for every index so editFood() returns early. Red is
+         not enough; it has to say what. */
+      o.sheetOpened = !!document.querySelector('#fa-p');
+      if (!o.sheetOpened) return o;
       document.querySelector('#fa-p').value = '40';
       document.querySelector('#fa-kcal').value = '300';
       saveFood();
@@ -10470,18 +10477,25 @@ export default async function () {
 
     /* GUARD: the log really did tick it, or every reading below is two falses
        agreeing. */
+    t.ok('guard: the edit sheet opened at all', fe.sheetOpened, fe);
     t.ok('guard: 200 g against a 165 g target ticks the protein habit', fe.before.tick, fe);
     t.eq('guard: and the day really was at 200 g', fe.before.p, 200, fe);
 
-    t.eq('correcting a row down moves the day with it', fe.down.p, 40, fe);
-    t.ok('and the protein habit un-ticks with it', !fe.down.tick, fe);
-    t.eq('FLOOR: correcting it back up ticks it again', [fe.up.p, fe.up.tick], [200, true], fe);
+    /* Read through a fallback: the guard above returns the PARTIAL result when
+       the sheet never opened, and an assertion that dereferences it throws —
+       which reports "the test file itself threw" instead of naming the guard
+       that already knows the answer. Guard, return the partial, and let the
+       named assertions report. */
+    const _d = fe.down || {}, _u = fe.up || {}, _g = fe.gone || {};
+    t.eq('correcting a row down moves the day with it', _d.p, 40, fe);
+    t.ok('and the protein habit un-ticks with it', !_d.tick, fe);
+    t.eq('FLOOR: correcting it back up ticks it again', [_u.p, _u.tick], [200, true], fe);
     t.ok('and the time it was eaten survives a correction', fe.atKept, fe);
-    t.eq('FLOOR: an ordinary edit still reports the update', fe.down.toast, 'Updated ✓', fe);
+    t.eq('FLOOR: an ordinary edit still reports the update', _d.toast, 'Updated ✓', fe);
 
-    t.eq('a row that has gone is not silently claimed as updated', fe.gone.rows, 0, fe);
+    t.eq('a row that has gone is not silently claimed as updated', _g.rows, 0, fe);
     t.ok('and the athlete is told nothing changed',
-         /no longer there/.test(fe.gone.toast) && !/Updated/.test(fe.gone.toast), fe);
+         /no longer there/.test(_g.toast || '') && !/Updated/.test(_g.toast || ''), fe);
 
     /* AND THE SCREENSHOT-REPLACE BRANCH WAITS FOR ITS WRITE TOO. prevShotIdx()
        names a row that exists a line earlier, so the decline is unreachable by
@@ -10529,6 +10543,225 @@ export default async function () {
        statement about the pattern. */
     t.ok('guard: the scan really matches a write',
          /\bfood\[[A-Za-z0-9_]+\]\s*=[^=]/.test('d.food[i]=row;'), {});
+  }
+
+  /* ---- AN INHERITED KEY IS NOT AN ARRAY INDEX (v429) --------------------
+     Found by auditing v428 an hour after it merged. replaceFoodRow() guarded
+     `!d.food[i]` — and d.food['__proto__'] reads back Array.prototype, which
+     is TRUTHY, so the guard passed and the next line reassigned the array's
+     own prototype. Measured before the fix: push and reduce both gone and
+     syncProteinHabit() threw on f.reduce, leaving the day's food list broken
+     until the next boot.
+
+     Not reachable by tapping — editFood() passes a numeric literal and
+     prevShotIdx() returns a number — which is the same call v416 made about
+     the only two-level computed write, and the v400 shape where an inherited
+     key satisfied every `EX[id] &&` guard in the app. */
+  {
+    const ix = await page.evaluate(() => {
+      const o = {};
+      go('fuel');
+      const d = nutToday(); d.food = []; d.habits = {};
+      logFood('Real meal', 500, 40, 20, 15, 'l');
+
+      /* GUARDS: the trap is real, or every assertion below passes on a shape
+         that was never dangerous. */
+      o.inheritedIsTruthy = !!d.food['__proto__'];
+      o.inheritedIsArrayProto = d.food['__proto__'] === Array.prototype;
+
+      /* The pre-fix code THROWS here — reassigning the prototype takes
+         reduce with it, and syncProteinHabit() is the next line. A throw out
+         of page.evaluate is reported as "the test file itself threw", which
+         is red without saying WHAT, so it is caught and recorded instead and
+         the named assertions below do the reporting. */
+      o.junkThrew = false;
+      try { o.junkResult = replaceFoodRow('__proto__', 'X', 100, 1, 1, 1, 'l', '', '', null); }
+      catch (e) { o.junkThrew = true; o.junkResult = 'threw'; }
+      const a = nutToday().food;
+      o.stillAnArray = Array.isArray(a);
+      o.protoIntact = Object.getPrototypeOf(a) === Array.prototype;
+      o.stillHasPush = typeof a.push === 'function';
+      o.rowsAfterJunk = a.length;
+      o.realRowKcal = a[0] && a[0].kcal;
+
+      /* FLOOR: a real index still replaces, or the fix is a deletion. */
+      try {
+        o.realResult = replaceFoodRow(0, 'Corrected', 300, 20, 10, 8, 'l', '', '', null);
+        o.afterReal = { rows: nutToday().food.length, kcal: nutToday().food[0].kcal };
+        /* FLOOR: an index past the end is still refused, and a negative one. */
+        o.oob = replaceFoodRow(9999, 'Y', 100, 1, 1, 1, 'l', '', '', null);
+        o.neg = replaceFoodRow(-1, 'Y', 100, 1, 1, 1, 'l', '', '', null);
+        o.frac = replaceFoodRow(0.5, 'Y', 100, 1, 1, 1, 'l', '', '', null);
+        o.rowsAtEnd = nutToday().food.length;
+      } catch (e) { o.floorThrew = String(e && e.message); o.afterReal = o.afterReal || {}; }
+      return o;
+    });
+    t.ok('guard: an inherited key really reads back truthy on the food array',
+         ix.inheritedIsTruthy && ix.inheritedIsArrayProto, ix);
+    t.eq('a key that is not an array index is refused', ix.junkResult, false, ix);
+    t.eq('and nothing threw on the way', ix.junkThrew, false, ix);
+    t.eq('FLOOR: nor on any of the real calls after it', ix.floorThrew, undefined, ix);
+    t.ok('and the day\'s food list keeps its own prototype', ix.protoIntact, ix);
+    t.ok('so it is still an array that can be appended to',
+         ix.stillAnArray && ix.stillHasPush, ix);
+    t.eq('and the real row is untouched', ix.realRowKcal, 500, ix);
+    t.eq('FLOOR: a real index still replaces', ix.realResult, true, ix);
+    t.eq('FLOOR: and writes the corrected figure', ix.afterReal.kcal, 300, ix);
+    t.eq('FLOOR: an index past the end is still refused', ix.oob, false, ix);
+    t.eq('FLOOR: and a negative one', ix.neg, false, ix);
+    t.eq('FLOOR: and a fraction', ix.frac, false, ix);
+    t.eq('FLOOR: none of them added a row', ix.rowsAtEnd, 1, ix);
+  }
+
+  /* ---- FIXING ONE INSTANCE IS NOT FIXING THE CLASS (v430) ---------------
+     v429 fixed the one index-taking WRITER. Six more row helpers took an
+     index and guarded it the same wrong way — a truthiness read of list[i],
+     which an INHERITED key satisfies. They fail differently and worse:
+     splice() coerces a non-numeric key to 0, so removeFood('__proto__')
+     deletes the athlete's FIRST row, silently.
+
+     Not reachable by tapping — every caller renders a numeric index — so
+     this is the same latent-class call v416 and v429 made. rowAt() is the
+     one predicate; the class is closed rather than the instance. */
+  {
+    const cls = await page.evaluate(() => {
+      const o = {};
+      window.confirm = () => true;
+      go('fuel');
+
+      /* GUARD: the trap is real in BOTH of its shapes, or every assertion
+         below passes on a receiver that was never dangerous. */
+      const probe = ['a', 'b'];
+      o.inheritedIsTruthy = !!probe['__proto__'];
+      probe.splice('__proto__', 1);
+      o.spliceCoercesToZero = (probe.length === 1 && probe[0] === 'b');
+
+      /* removeFood — the day's own food list. */
+      const d = nutToday(); d.food = []; d.habits = {};
+      logFood('First', 500, 40, 20, 15, 'l');
+      logFood('Second', 300, 10, 30, 5, 'l');
+      removeFood('__proto__');
+      o.foodAfterJunk = nutToday().food.map(x => x.name);
+      removeFood(0);
+      o.foodAfterReal = nutToday().food.map(x => x.name);
+
+      /* removeAct — the ruck record. */
+      STATE.ruckLog = [];
+      logAct('ruck', 30); logAct('ruck', 45);
+      removeAct('ruck', '__proto__');
+      o.actAfterJunk = STATE.ruckLog.map(x => x.mins);
+      removeAct('ruck', 0);
+      o.actAfterReal = STATE.ruckLog.map(x => x.mins);
+
+      /* removeSkip — the skipping record. */
+      STATE.skipLog = [];
+      logSkip(10, 1); logSkip(20, 2);
+      removeSkip('__proto__');
+      o.skipAfterJunk = STATE.skipLog.map(x => x.mins);
+      removeSkip(0);
+      o.skipAfterReal = STATE.skipLog.map(x => x.mins);
+
+      /* delFav — a saved custom workout. */
+      STATE.customFav = [{ name: 'Keep me', items: [{ exId: 'pushup' }] },
+                         { name: 'Second', items: [{ exId: 'squat' }] }];
+      delFav('__proto__');
+      o.favAfterJunk = (STATE.customFav || []).map(x => x.name);
+      delFav(0);
+      o.favAfterReal = (STATE.customFav || []).map(x => x.name);
+
+      /* quickPick — an index into the built-in food list. */
+      nutToday().food = [];
+      quickPick('__proto__');
+      o.rowsAfterJunkPick = nutToday().food.length;
+      quickPick(0);
+      o.rowsAfterRealPick = nutToday().food.length;
+      o.realPickName = (nutToday().food[0] || {}).name;
+
+      /* editFood — a READ that used to open the sheet on Array.prototype. */
+      closeSheet();
+      editFood('__proto__');
+      o.sheetOpenedOnJunk = !!($('#fa-name'));
+      editFood(0);
+      o.sheetOpenedOnReal = !!($('#fa-name'));
+      closeSheet();
+
+      /* openFoodAmount — an index into the reference food list. */
+      go('ref');
+      openFoodAmount('__proto__');
+      o.amountOpenedOnJunk = !!($('#ref-amt'));
+      closeSheet();
+      openFoodAmount(0);
+      o.amountOpenedOnReal = !!($('#ref-amt'));
+      closeSheet();
+      return o;
+    });
+
+    t.ok('guard: an inherited key reads back truthy, and splice coerces it to 0',
+         cls.inheritedIsTruthy && cls.spliceCoercesToZero, cls);
+
+    t.eq('a junk index removes no food row', cls.foodAfterJunk.join(','), 'First,Second', cls);
+    t.eq('FLOOR: and a real index removes exactly that one', cls.foodAfterReal.join(','), 'Second', cls);
+    t.eq('a junk index removes no activity row', cls.actAfterJunk.join(','), '45,30', cls);
+    t.eq('FLOOR: and a real index removes exactly that one', cls.actAfterReal.join(','), '30', cls);
+    t.eq('a junk index removes no skipping row', cls.skipAfterJunk.join(','), '20,10', cls);
+    t.eq('FLOOR: and a real index removes exactly that one', cls.skipAfterReal.join(','), '10', cls);
+    t.eq('a junk index deletes no saved workout', cls.favAfterJunk.join(','), 'Keep me,Second', cls);
+    t.eq('FLOOR: and a real index deletes exactly that one', cls.favAfterReal.join(','), 'Second', cls);
+    t.eq('a junk index logs no quick-pick food', cls.rowsAfterJunkPick, 0, cls);
+    t.eq('FLOOR: and a real index still logs one', cls.rowsAfterRealPick, 1, cls);
+    t.ok('FLOOR: with a real name on it', !!cls.realPickName && cls.realPickName !== 'undefined', cls);
+    t.eq('a junk index opens no edit sheet', cls.sheetOpenedOnJunk, false, cls);
+    t.eq('FLOOR: and a real index still opens it', cls.sheetOpenedOnReal, true, cls);
+    t.eq('a junk index opens no food-amount sheet', cls.amountOpenedOnJunk, false, cls);
+    t.eq('FLOOR: and a real index still opens it', cls.amountOpenedOnReal, true, cls);
+
+    /* The rule has to be ASKED FOR, not merely declared: a check that counts
+       the declaration passes while a consumer keeps its own guard, which is
+       exactly the drift this predicate exists to stop (v322, v368). */
+    const src = await page.evaluate(() => {
+      let best = '';
+      document.querySelectorAll('script:not([src])').forEach(s => {
+        if (s.textContent.length > best.length) best = s.textContent;
+      });
+      return best.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    });
+    t.ok('guard: the source scan really read the app', src.indexOf('function rowAt(') >= 0, { len: src.length });
+    const askers = ['removeAct', 'removeSkip', 'delFav', 'removeFood', 'editFood',
+                    'quickPick', 'replaceFoodRow', 'openFoodAmount', 'logFoodFromList'];
+    const notAsking = askers.filter(fn => {
+      const i = src.indexOf('function ' + fn + '(');
+      if (i < 0) return true;
+      const body = src.slice(i, i + 600);
+      return body.indexOf('rowAt(') < 0;
+    });
+    t.eq('every index-taking row helper asks the one predicate', notAsking.join(','), '', { notAsking });
+
+    /* The RANGE half of the predicate cannot be reached through any screen:
+       for a genuine array `l[-1]` and `l[9999]` are both undefined, so the
+       truthiness of l[i] already answers. The one input that tells them apart
+       is a NEGATIVE own property on the array object — a string key, which is
+       exactly the shape this round is about — so it is exercised DIRECTLY,
+       the technique the hardness-band and anchor-unit guards use.
+
+       The `i < l.length` half is EQUIVALENT and is recorded as such rather
+       than papered over: defining an index property on an array updates its
+       length, so no input can make an in-range read differ from an
+       out-of-range one. It is kept as intent. */
+    const rng = await page.evaluate(() => {
+      const o = {};
+      const a = ['first', 'second'];
+      a[-1] = 'not a row';
+      o.negIsTruthy = !!a[-1];          // GUARD: the trap is real
+      o.negRefused = rowAt(a, -1);
+      o.realKept = rowAt(a, 0);
+      o.pastEnd = rowAt(a, 9999);
+      return o;
+    });
+    t.ok('guard: a negative own property on an array really reads back truthy',
+         rng.negIsTruthy, rng);
+    t.eq('and the predicate refuses a negative index anyway', rng.negRefused, null, rng);
+    t.eq('FLOOR: a real index is still returned', rng.realKept, 'first', rng);
+    t.eq('FLOOR: and one past the end is still refused', rng.pastEnd, null, rng);
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
