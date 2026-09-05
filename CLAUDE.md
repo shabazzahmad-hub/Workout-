@@ -15881,6 +15881,101 @@ rather than after the wait, which is where it was and which is far too late.
 a history step; and one flush window is outlived at the end, so a badge queued
 by the last close cannot re-open a sheet after the poll has finished.
 
+## A 0 ms timer is a bet against the history queue (v438)
+
+Found by sweeping every `history.pushState` in the file and asking which of
+them can be reached straight after a `closeSheet()`. **`history.back()` is
+ASYNC**, so a chooser sheet leaves a traversal in flight, and an entry pushed
+in the same tick is exactly where that traversal lands — so it is eaten.
+
+Two of the four openers already deferred with `setTimeout(...,0)` and each
+carried a comment saying why. **The other two pushed synchronously**, and
+measured on a real chooser → `closeSheet()` → open:
+
+| opener | right after the push | once the traversal lands |
+|---|---|---|
+| `openPlayer()` | `player` | **`home`** — eaten |
+| `startOp()` | `op` | **`home`** — eaten |
+| `_runHiit()` (the control) | — | `hiit` — survives |
+
+**The athlete-facing cost, with a real Back press**: the overlay shut either
+way, but the stack sat at **`root`** instead of `home` — one press nearer
+*"Press Back again to exit"*. That is the *"skipped a whole tab level"* the two
+existing comments describe.
+
+### And the old answer was a bet, which the fix is what exposed
+
+Deferring the two missing pushes with `setTimeout(...,0)` fixed the player and
+**did nothing at all for `startOp`** — 5 runs out of 5. Not a race: tracing
+`pushState` and `popstate` together showed the order plainly.
+
+```
+PUSH {"cf":"op"}       <- the 0 ms timer
+POP  {"cf":"home"}     <- the traversal, after it
+```
+
+**A history traversal is dispatched on its own task queue**, so a 0 ms timer
+can win. Same code shape, opposite outcome; the only difference is how much
+synchronous work each opener does after scheduling — which is not a thing to
+rest a fix on.
+
+`pushOverlayState()` waits on `_backGuard`, which **IS** "a self-pop is in
+flight", instead of guessing. It bails after 400 ms and pushes anyway: an
+overlay with no entry at all is worse than one pushed a fraction late. All
+four openers ask it, so a fifth cannot be written with a fifth copy of the
+bet — and the `alive` callback is `_runHiit()`'s own `if(INTV)` guard,
+generalised, so a quit inside the wait leaves no stray entry behind.
+
+**Fixing the two that were obviously wrong would have shipped a fix that did
+nothing for one of them.** The measurement is what said so.
+
+### And the fix's own first attempt walked the page off its own history
+
+Deferring the push broke a rule nobody had written down: **every quit decided
+whether to retire an entry by reading `history.state.cf`**, which is STALE
+while a traversal is in flight. Three open/quit cycles inside ONE task then
+took **three `history.back()` calls against ONE entry**:
+
+```
+NAV -> about:blank
+```
+
+…and every later call reported *"openPlayer is not defined"*. Two suites
+reported it as *"the test file itself threw"*, and it was the fix, not them.
+
+**The entry belongs to the OVERLAY INSTANCE, not to whatever `history.state`
+happens to say.** The push stamps the instance (`PLAYER.hist`, `INTV.hist`,
+`OP.hist`) and all eight quit sites ask that — so a quit before the push has
+landed retires nothing, and the pending push then finds `alive()` false.
+Balanced whichever way the timing falls.
+
+**The old test was a proxy that happened to hold while every push was
+synchronous.** It is the same shape as a range test doing a type test's job:
+it read the right answer for the wrong reason, and the reason stopped being
+true the moment anything about the timing moved.
+
+**It is reachable only from code that opens and closes in one task**, which no
+tap can do — so it is the SUITE that found it, and the suite is what pins it:
+three cycles in one task must not unload the page, with the floor beside it
+that a quit whose entry really exists still retires it.
+
+### The block runs on a page of its own, because the stack IS its state
+
+Its first two runs failed on correct code. By that point in the suite the
+history stack is **49 entries deep**, full of stale `player` and `hiit` states
+left by blocks that never retired theirs — so `history.state.cf` read `player`
+before this block had opened anything, and even the CONTROL failed. *Each
+block builds the state it asserts on*, and here that state is the history
+stack: a fresh context and a fresh tab is the only way to get a one-entry one.
+A fresh context has its own storage, so it is re-seeded.
+
+**`page.context().newPage()` throws** on a page the harness made with
+`browser.newPage()` — that page owns a context of its own. `browser.newContext()`.
+
+**And every case restores the stack.** The quick-workout case pushes a `tab`
+entry, and `go()` does not pop — so leaving it there made the NEXT case's Back
+press land on it and read `tab`. It is retired with a real Back.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
