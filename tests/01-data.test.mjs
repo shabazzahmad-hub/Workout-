@@ -1771,6 +1771,102 @@ export default async function run() {
     }
   }
 
+  /* ---- every hand-written pool names a real movement (v441) --------------
+     The five swap maps have been checked for many versions and the POOLS never
+     were, though they are the same kind of hand-kept list of exercise ids.
+
+     Every consumer filters its pool before using it — `HIIT_POOL.filter(k=>EX[k])`,
+     the same in focusBonus(), correctiveBonus() and sharpenFinisher(). That is
+     right at RUN time and is exactly why a typo is invisible: the pool simply
+     gets smaller. Measured, validateData() saw a typo'd HIIT_POOL member ZERO
+     times before this rule existed.
+
+     All 19 pools are clean today, so a clean validator proves nothing at all
+     about the rule — it stays clean whether or not the rule exists. Each kind
+     of pool is broken in front of it, the specific complaint required, then
+     restored. console.error is muted because validateData() logs and the
+     harness counts a console error as a page failure. */
+  const poolRule = await page.evaluate(() => {
+    const realErr = console.error; console.error = () => {};
+    const o = {};
+    const hits = re => validateData().filter(e => re.test(e)).length;
+
+    /* GUARD: the app really is clean before anything is broken, or every
+       "caught" below could be reporting a problem that was already there. */
+    o.cleanBefore = validateData().length;
+
+    /* GUARD: a truthiness filter would let an inherited key through, which is
+       why the rule asks exKnown() rather than EX[k]. */
+    o.inheritedTruthy = !!EX['constructor'];
+    o.exKnownRefuses = exKnown('constructor') === false;
+
+    const flat = HIIT_POOL.slice();
+    HIIT_POOL.push('notARealMove');
+    o.flatCaught = hits(/HIIT_POOL: unknown exercise "notARealMove"/);
+    HIIT_POOL.length = 0; flat.forEach(k => HIIT_POOL.push(k));
+
+    const fa = FOCUS_POOL.abs.slice();
+    FOCUS_POOL.abs.push('notARealMove');
+    o.focusCaught = hits(/FOCUS_POOL\.abs: unknown exercise "notARealMove"/);
+    FOCUS_POOL.abs.length = 0; fa.forEach(k => FOCUS_POOL.abs.push(k));
+
+    const cs = CORRECTIVE_POOL.shoulder.slice();
+    CORRECTIVE_POOL.shoulder.push('notARealMove');
+    o.correctiveCaught = hits(/CORRECTIVE_POOL\.shoulder: unknown exercise "notARealMove"/);
+    CORRECTIVE_POOL.shoulder.length = 0; cs.forEach(k => CORRECTIVE_POOL.shoulder.push(k));
+
+    const q0 = QUICKIES[0]; const realEx = q0.items[0].exId;
+    q0.items[0].exId = 'notARealMove';
+    o.quickCaught = hits(new RegExp('QUICKIES\\.' + q0.id + ': unknown exercise "notARealMove"'));
+    q0.items[0].exId = realEx;
+
+    const fk = Object.keys(SPECIAL_FORMATS).find(k => SPECIAL_FORMATS[k].exId);
+    o.specialKey = fk;
+    const realSp = SPECIAL_FORMATS[fk].exId;
+    SPECIAL_FORMATS[fk].exId = 'notARealMove';
+    o.specialCaught = hits(new RegExp('SPECIAL_FORMATS\\.' + fk + ': unknown exercise "notARealMove"'));
+    SPECIAL_FORMATS[fk].exId = realSp;
+
+    /* SWAP_ALT rides on the swap-map rule that already existed and never
+       covered it. Same break, same specific complaint. */
+    const ak = Object.keys(SWAP_ALT)[0];
+    const realAlt = SWAP_ALT[ak];
+    SWAP_ALT[ak] = 'notARealMove';
+    o.swapAltCaught = hits(new RegExp('SWAP_ALT\\.' + ak + ' -> unknown exercise "notARealMove"'));
+    SWAP_ALT[ak] = 'constructor';
+    o.swapAltInherited = hits(new RegExp('SWAP_ALT\\.' + ak + ' -> unknown exercise "constructor"'));
+    SWAP_ALT[ak] = realAlt;
+
+    /* An INHERITED key is the case a truthiness filter cannot see at all. */
+    HIIT_POOL.push('constructor');
+    o.inheritedCaught = hits(/HIIT_POOL: unknown exercise "constructor"/);
+    HIIT_POOL.length = 0; flat.forEach(k => HIIT_POOL.push(k));
+
+    o.cleanAfter = validateData().length;
+    console.error = realErr;
+    return o;
+  });
+
+  t.eq('guard: the app is clean before any pool is broken', poolRule.cleanBefore, 0);
+  t.ok('guard: an inherited key is truthy on EX, and exKnown() refuses it',
+    poolRule.inheritedTruthy && poolRule.exKnownRefuses, JSON.stringify(poolRule));
+  t.eq('a typo in a flat pool is caught by name', poolRule.flatCaught, 1, poolRule);
+  t.eq('and in a focus pool', poolRule.focusCaught, 1, poolRule);
+  t.eq('and in a corrective pool', poolRule.correctiveCaught, 1, poolRule);
+  t.eq('and in a quick workout', poolRule.quickCaught, 1, poolRule);
+  t.eq('and in a special format', poolRule.specialCaught, 1, poolRule);
+  t.eq('and in SWAP_ALT, which the swap-map rule never covered', poolRule.swapAltCaught, 1, poolRule);
+  /* The swap-map rule itself read EX[target] by truthiness. Two rules of the
+     same kind must not disagree about what an exercise is, so it asks
+     exKnown() now — and only an INHERITED key can tell the two apart. */
+  t.eq('and the swap maps refuse an inherited key too', poolRule.swapAltInherited, 1, poolRule);
+  t.eq('an INHERITED key is caught too — a truthiness filter cannot see it',
+    poolRule.inheritedCaught, 1, poolRule);
+  /* FLOOR: a rule that complained about everything satisfies every assertion
+     above and makes the validator useless. */
+  t.eq('and the validator is clean again once every pool is restored',
+    poolRule.cleanAfter, 0, poolRule);
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }
