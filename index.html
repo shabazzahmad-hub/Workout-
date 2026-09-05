@@ -1911,7 +1911,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='436';
+const APP_VERSION='437';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -7259,8 +7259,7 @@ function hurtStop(){
     log.stoppedForPain=todayISO();log.done=false;
     if(p<SESSIONS_PER_CYCLE*TOTAL_CYCLES)STATE.progressPtr=p+1;
     save();
-    plClearResume();wakeOff();plClear();plClockStop();
-    $('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;tapShield(400);
+    plClearResume();playerClose();
     if(history.state&&history.state.cf==='player'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
     try{render();}catch(e){}
     toast('Stopped — moving you on. Rest that joint.');
@@ -8610,11 +8609,39 @@ function playerSkip(){
 function playerSetDone(){if(PLAYER&&(PLAYER.phase==='work'||PLAYER.phase==='ready')){plClear();plAfterSet();}}
 function playerAddRest(){if(PLAYER&&PLAYER.phase==='rest'){PLAYER.remain+=15;PLAYER.total+=15;if(PLAYER.deadline)PLAYER.deadline+=15000;plS('#plNum',fmtTime(PLAYER.remain));toast('+15s rest');}}
 function playerSkipRest(){if(PLAYER&&PLAYER.phase==='rest')plRestDone();}
-/* tapShield here for the reason playerFeel() one function below has it: a
-   double-tap's second tap must not fall through to the UI beneath. The FINISH
-   button guarded that and the ✕ did not — measured, no shield on this exit. */
-function playerTeardown(){if(!PLAYER)return;plClearResume();wakeOff();plClear();plClockStop();beatStop();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;tapShield(400);
+/* ONE CLOSER FOR THE #player OVERLAY, and the player has THREE exits, not two.
+   The six statements below were written out by hand at each of them and had
+   drifted two ways. Measured, driving each exit for real:
+
+     exit                     reached by        the beat      markup left
+     playerTeardown()         the X, Back       stopped       0 bytes
+     playerFeel()             the feel buttons  (see below)   2,579 bytes
+     hurtStop()'s no-work     the pain button   STILL ON      2,566 bytes
+
+   THE PAIN STOP IS THE SHARP ONE. It is a mid-session bail, so the session
+   never reaches plEnterDone() — which is what stops the beat on the normal
+   path — and nothing else did: the music kept playing after the athlete
+   stopped for a joint. The two mounted copies are the stale-id class this
+   file has a standing rule about (#plToggle and #plCoach are already among
+   the four ids that appear twice in the source).
+
+   beatStop() moves INTO the closer, because the beat belongs to the player
+   session and every exit from it must stop it. On the natural finish that is
+   a no-op — plEnterDone() got there first. Every caller closes FIRST and
+   hands off to the guided day AFTER, so the beat runFlow() starts for the
+   cool-down is untouched; checked rather than assumed.
+
+   What each caller keeps is what is genuinely its own: the resume clear and
+   the day cancel here, the history step and commitSession() in playerFeel(),
+   the pointer write and the toast in hurtStop(). Same split hiitClose() has.
+
+   tapShield is in here for the reason v436 put it on the other overlays: a
+   double-tap's second tap must not fall through to the UI beneath. */
+function playerClose(){
+  wakeOff();plClear();plClockStop();beatStop();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;tapShield(400);
   setTimeout(()=>{try{if(!$('#player').classList.contains('open'))$('#player').innerHTML='';}catch(e){}},400);
+}
+function playerTeardown(){if(!PLAYER)return;plClearResume();playerClose();
   /* Any teardown of the player = the user bailed (natural finish goes through
      playerFeel, which advances instead) → end the guided day, and SAY SO: the
      cool-down Sarge promised is not coming, which is the one thing quitting
@@ -8627,8 +8654,9 @@ function playerQuit(){const had=!!PLAYER;playerTeardown();if(had&&history.state&
 function playerFeel(feel){
   if(!PLAYER)return;   // double-tap must not commit twice
   plClearResume();
-  wakeOff();   // finishing normally is the COMMON exit — it must release the lock too
-  plClear();plClockStop();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;tapShield(400);
+  /* Finishing normally is the COMMON exit, so it must do everything the X
+     does — release the wake lock, and clear the markup it leaves behind. */
+  playerClose();
   if(history.state&&history.state.cf==='player'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
   commitSession(feel);
   if(dayflowActive())dayflowAdvance('workout');   // guided day: hand off to the cool-down
