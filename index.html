@@ -1911,7 +1911,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='445';
+const APP_VERSION='446';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -7692,18 +7692,39 @@ function openLiftLog(items){
    and calling it would pop a history entry the player itself owns. */
 function closeLiftLog(){const p=$('#plLiftPanel');if(p){p.style.display='none';p.innerHTML='';}else closeSheet();}
 function saveLiftLog(exIds){
-  const d=todayISO();let n=0;
+  const d=todayISO();const rows=[];let bad=null;
   (exIds||[]).forEach((exId,i)=>{
     const L=$('#lf-l-'+i),R=$('#lf-r-'+i),E=$('#lf-e-'+i);
     const load=parseFloat(L&&L.value),reps=parseInt(R&&R.value,10);
     const rirRaw=E&&E.value!==''?parseInt(E.value,10):null;
     if(!(isFinite(load)&&load>0)&&!(isFinite(reps)&&reps>0))return;   // nothing entered
-    liftLog().push({date:d,exId,
-      loadKg:(isFinite(load)&&load>0&&plausibleLoadKg(loadToKg(load)))?r1(loadToKg(load)):null,
+    /* THE TYPED DOOR REFUSES; THE BOOT DOOR REPAIRS. An out-of-band load used
+       to be written as null and the save still toasted "Logged 1 movement" —
+       so a typo of one extra digit on a 90 lb lift threw the defining number
+       away and said the movement was recorded. Worse, a row whose ONLY entry
+       was that load was pushed empty, counted, and credited the day in
+       quickLog: streak, heatmap and weekly count, for a lift that recorded
+       nothing.
+       Refused rather than repaired, for v412's reason: the athlete is standing
+       on the screen with their figures still in the boxes, so retyping costs a
+       tap and a silent repair costs the measurement.
+       NOTHING IS WRITTEN UNTIL THE WHOLE FORM HAS BEEN READ. A `return` inside
+       forEach skips one row and leaves the rest to push, so refusing mid-loop
+       would half-save the movements above the bad one — the shape v420's own
+       fixtures taught, one saver along. */
+    if(isFinite(load)&&load>0&&!plausibleLoadKg(loadToKg(load))){
+      /* FLOORED, not rounded: loadShow(400) is 881.85 lb, and 882 lb converts
+         back to 400.07 kg — so a rounded bound quotes a figure the guard
+         itself refuses. A number the athlete is told to stay under has to
+         be one they can actually enter. */
+      bad=Math.floor(loadShow(LIFT_LOAD_MAX_KG))+' '+loadUnit();return;}
+    rows.push({date:d,exId,
+      loadKg:(isFinite(load)&&load>0)?r1(loadToKg(load)):null,
       reps:(isFinite(reps)&&reps>0)?reps:null,
       rir:(rirRaw!==null&&isFinite(rirRaw)&&rirRaw>=0&&rirRaw<=5)?rirRaw:null});
-    n++;
   });
+  if(bad){toast('That load looks wrong — enter between 1 and '+bad,4500);return;}
+  const n=rows.length;rows.forEach(r=>liftLog().push(r));
   capLog('liftLog');
   /* A resistance session is training. It credits the day the same way a quick
      workout does — streak, heatmap, weekly count — WITHOUT consuming a program
@@ -9045,9 +9066,24 @@ function capLog(key){
   }catch(e){}
 }
 function actLog(k){const key=ACTS[k].logKey;if(!Array.isArray(STATE[key]))STATE[key]=[];return STATE[key];}
+/* THE FIELD RULE, ASKED BY THE WRITER AND BY THE BOOT REPAIR (v446).
+   The repair's own comment claimed logAct() "stores dist/wt/secs/rounds only
+   when they are above zero". It did not — it Object.assign'd whatever it was
+   handed, and saveRuck() passes `d||undefined` where d can be NEGATIVE (r1(-5)
+   is -5, which is truthy). Typing -5 into the distance box printed "-3.1 mi" on
+   the row and took 3.1 off the Total tile until the next launch, when the
+   repair quietly put it right. A comment claiming an invariant is not the
+   invariant; both doors ask this now, so the claim is true. */
+const ACT_NUM_FIELDS=['dist','wt','secs','rounds'];
+function actRow(date,mins,at,extra){
+  const o={date,mins,at};
+  ACT_NUM_FIELDS.forEach(f=>{const v=+((extra||{})[f]);if(isFinite(v)&&v>0)o[f]=v;});
+  const u=(extra||{}).unit;if(u==='mi'||u==='km')o.unit=u;
+  return o;
+}
 function logAct(k,mins,extra){
-  mins=Math.max(0,Math.round((mins||0)*10)/10);if(!mins&&!(extra&&extra.secs))return;
-  const rec=Object.assign({date:todayISO(),mins,at:Date.now()},extra||{});
+  mins=Math.max(0,Math.round((mins||0)*10)/10);if(!mins&&!(extra&&extra.secs>0))return;
+  const rec=actRow(todayISO(),mins,Date.now(),extra);
   actLog(k).unshift(rec);
   capLog(ACTS[k].logKey);
   // a max hang also updates the Dead Hang strength standard
@@ -9074,7 +9110,7 @@ function actHistoryHTML(k){
   const l=actLog(k).slice(0,8);if(!l.length)return '';
   return `<div class="section-label" style="margin-top:14px">Recent sessions</div><div class="card" style="padding:0 12px">`+
     l.map((x,i)=>`<div class="kv" style="border-top:1px solid var(--line)">
-      <span><b>${x.mins} min</b> <span class="tiny muted">· ${x.dist?x.dist+' '+(x.unit||'km')+' · ':''}${x.wt?x.wt+' load · ':''}${x.secs?'best '+x.secs+'s · ':''}${x.rounds?x.rounds+' rounds · ':''}${_ve(x.date)}</span></span>
+      <span><b>${x.mins} min</b> <span class="tiny muted">· ${x.dist>0?distShow(x.dist)+' · ':''}${x.wt?rowLoadShow(x.wt,x.unit)+' load · ':''}${x.secs?'best '+x.secs+'s · ':''}${x.rounds?x.rounds+' rounds · ':''}${_ve(x.date)}</span></span>
       <button class="chip" aria-label="Remove this activity" onclick="removeAct('${k}',${i})">✕</button></div>`).join('')+`</div>`;
 }
 /* THE KIT QUESTION, ON THE THIRD PICKING PATH TO SKIP IT. startForceTrain()
@@ -9303,7 +9339,8 @@ function actTimerStop(){
 function skipLog(){if(!Array.isArray(STATE.skipLog))STATE.skipLog=[];return STATE.skipLog;}
 function logSkip(mins,rounds){
   mins=Math.max(1,Math.round(mins||0));if(!mins)return;
-  skipLog().unshift({date:todayISO(),mins,rounds:rounds||0,at:Date.now()});
+  // the same field rule the repair applies, so the writer's claim holds here too
+  skipLog().unshift(actRow(todayISO(),mins,Date.now(),{rounds}));
   capLog('skipLog');
   save();toast('🪢 '+mins+' min of skipping logged');try{checkAchievements();}catch(e){}
 }
@@ -13696,7 +13733,8 @@ function bmiImplausible(kg,cm){
    A logged dumbbell/kettlebell load is a different quantity that legitimately
    goes well below it (a 2.5kg dumbbell is a real logged set), so this only
    clamps the ceiling a mistyped extra digit would blow through. */
-function plausibleLoadKg(kg){return kg>0&&kg<=400;}
+const LIFT_LOAD_MAX_KG=400;   /* 882 lb — far outside any load this app is entered for, so it can only ever catch an error */
+function plausibleLoadKg(kg){return kg>0&&kg<=LIFT_LOAD_MAX_KG;}
 function saveMeasure(){
   const wIn=parseFloat($('#m-waist').value);const bIn=parseFloat($('#m-weight').value);
   if(!(wIn>0)&&!(bIn>0)){toast('Enter at least one value');return;}
@@ -16975,7 +17013,7 @@ function openStandards(){
     <div class="section-label" style="margin-top:14px">🔢 1-rep-max estimate</div>
     <div class="card pad">
       <div class="tiny muted" style="margin-bottom:8px">For your weighted lifts — enter the weight you used and the reps you hit.</div>
-      <div class="btnrow" style="gap:8px"><input id="orm-w" type="number" inputmode="decimal" placeholder="weight (lb)" style="flex:1;min-width:0;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px"><input id="orm-r" type="number" inputmode="numeric" placeholder="reps" style="width:84px;flex:0 0 auto;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px"></div>
+      <div class="btnrow" style="gap:8px"><input id="orm-w" type="number" inputmode="decimal" placeholder="weight (${loadUnit()})" style="flex:1;min-width:0;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px"><input id="orm-r" type="number" inputmode="numeric" placeholder="reps" style="width:84px;flex:0 0 auto;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px"></div>
       <button class="btn primary" style="margin-top:10px" onclick="calcOneRM()">Estimate 1RM</button>
       <div id="ormOut" class="tiny" style="margin-top:8px;font-weight:800;color:var(--fire-l)"></div>
     </div>
@@ -16985,7 +17023,13 @@ function calcOneRM(){
   const w=parseFloat($('#orm-w').value),r=parseInt($('#orm-r').value);
   if(!(w>0)||!(r>0)){$('#ormOut').textContent='Enter weight and reps.';return;}
   const orm=Math.round(w*(1+r/30));const w80=Math.round(orm*0.8),w70=Math.round(orm*0.7);
-  $('#ormOut').innerHTML=`Estimated 1RM ≈ <b>${orm} lb</b>. Train ~70–80%: <b>${w70}–${w80} lb</b>.`;
+  /* THE ARITHMETIC IS A RATIO, so the answer comes out in whatever unit the
+     athlete typed — and the label said `lb` to everybody. A metric athlete
+     entering 100 kg read "133 lb", which is really 133 kg: the right number
+     wearing the wrong unit, the same shape as the ruck row above. Nothing is
+     converted, because there is nothing to convert; only the label was wrong. */
+  const u=loadUnit();
+  $('#ormOut').innerHTML=`Estimated 1RM ≈ <b>${orm} ${u}</b>. Train ~70–80%: <b>${w70}–${w80} ${u}</b>.`;
 }
 /* ---- #6 Injury-aware auto-substitution ---- */
 const JOINTS=[['knee','Knee'],['shoulder','Shoulder'],['wrist','Wrist'],['lowback','Lower back'],['elbow','Elbow']];
@@ -18211,6 +18255,18 @@ function distUnit(){return isImperial()?'mi':'km';}
    hand-written pair. */
 function distShow(km){return (Math.round(kmToShow(km)*10)/10)+' '+distUnit();}
 function kmToShow(km){return isImperial()?km*0.621371:km;}
+/* THE RUCK LOAD IS STORED RAW, AND THE DISTANCE BESIDE IT IS NOT. saveRuck()
+   converts the distance to canonical kilometres on the way in — its own comment
+   says why — and stores the pack weight exactly as typed, so the row's `unit`
+   tag (set from profile.unit for the WHOLE row at save time) is the only thing
+   that says which system the number is in.
+   Converted and labelled in ONE expression, for the reason v337 records: written
+   as two, they drift. They already had. */
+function rowLoadShow(w,rowUnit){
+  if(!(w>0))return '';
+  const kg=rowUnit==='mi'?w*0.453592:w;
+  return isImperial()?Math.round(kg/0.453592)+' '+loadUnit():(Math.round(kg*10)/10)+' '+loadUnit();
+}
 function showToKm(v){return isImperial()?v/0.621371:v;}
 /* What it takes to cover a step debt, in all three currencies. Each is rounded
    UP in the unit it is quoted in, because a figure the athlete is told will
@@ -22976,7 +23032,11 @@ function normalizeState(){
   if(!Array.isArray(STATE.liftLog))STATE.liftLog=[];
   STATE.liftLog=STATE.liftLog.filter(r=>r&&typeof r==='object'&&isDateISO(r.date)&&r.exId&&EX[r.exId])
     .map(r=>({date:r.date,exId:r.exId,
-      loadKg:(typeof r.loadKg==='number'&&isFinite(r.loadKg)&&r.loadKg>0)?r.loadKg:null,
+      /* The writer enforced a band the repair did not, so an imported backup
+         carrying 5000 kg survived every boot and drove the loaded-progression
+         hint: "aim for 11024 lb". Dropped rather than clamped — this is a
+         measurement, and a clamped one is a number the athlete never lifted. */
+      loadKg:(typeof r.loadKg==='number'&&isFinite(r.loadKg)&&plausibleLoadKg(r.loadKg))?r.loadKg:null,
       reps:(typeof r.reps==='number'&&isFinite(r.reps)&&r.reps>0)?Math.round(r.reps):null,
       rir:(typeof r.rir==='number'&&isFinite(r.rir)&&r.rir>=0&&r.rir<=5)?Math.round(r.rir):null}));
   STATE.runs=STATE.runs.filter(r=>r&&typeof r==='object'&&r.logs&&typeof r.logs==='object'&&!Array.isArray(r.logs))
@@ -23064,10 +23124,9 @@ function normalizeState(){
          dist/wt/secs/rounds only when they are above zero, so a value that is
          not a positive finite number did not come from the athlete. */
       if(Array.isArray(STATE[kk]))STATE[kk]=STATE[kk].filter(x=>x&&typeof x==='object'&&isDateISO(x.date))
-        .map(x=>{const o={date:x.date,mins:Math.max(0,+x.mins||0),at:+x.at||0};   // string mins concatenated: "0105 MIN ALL TIME"
-          ['dist','wt','secs','rounds'].forEach(f=>{const v=+x[f];if(isFinite(v)&&v>0)o[f]=v;});
-          if(x.unit==='mi'||x.unit==='km')o.unit=x.unit;   // the tag records what was TYPED; anything else is not a unit
-          return o;});
+        // string mins concatenated: "0105 MIN ALL TIME". The field rule is
+        // actRow()'s, so the writer and this cannot describe different shapes.
+        .map(x=>actRow(x.date,Math.max(0,+x.mins||0),+x.at||0,x));
     });
     /* The grinder log carries an OUTCOME rather than minutes, so it repairs on
        its own terms: `done` is a deliberate boolean and only `true` is a

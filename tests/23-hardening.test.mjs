@@ -8811,7 +8811,10 @@ export default async function () {
       o.keptSecs = gp.secs; o.keptRoundsBox = bx.rounds; o.keptRoundsSkip = sk.rounds;
       o.keptLogDate = (STATE.logs[3] || {}).completedAt;
       o.showsDist  = /5\.5 km/.test(actHistoryHTML('ruck'));
-      o.showsWt    = /20 load/.test(actHistoryHTML('ruck'));
+      /* v446 gave the load its unit: the subject here is that the athlete's
+         real figure SURVIVES the repair and prints, and pinning the unit
+         beside it is strictly stronger than pinning the bare number. */
+      o.showsWt    = /20 kg load/.test(actHistoryHTML('ruck'));
       o.showsSecs  = /best 62s/.test(actHistoryHTML('grip'));
       o.showsRounds= /6 rounds/.test(skipHistoryHTML());
       o.showsDate  = sessionHistoryHTML().indexOf(ago(2)) > -1;
@@ -11909,6 +11912,309 @@ export default async function () {
       try { await p2.close(); } catch (e) {}
       try { await ctx2.close(); } catch (e) {}
     }
+  }
+
+  /* THE ROW PRINTED A CANONICAL KILOMETRE FIGURE WEARING A MILE LABEL, AND THE
+     TILE ABOVE IT PRINTED THE RIGHT ONE (v446).
+
+     saveRuck() stores the distance canonically in km — its own comment says why
+     — and stores the pack load exactly as typed. The history row interpolated
+     `x.dist + ' ' + (x.unit||'km')`, so an imperial athlete who rucked 3 miles
+     read "4.8 mi" on the row and "Total mi = 3" on the tile: one sheet, one
+     ruck, two answers, 60% apart. The load printed as a bare "25 load" with no
+     unit at all, so nothing on the glass could tell 25 lb from 25 kg.
+
+     v337 swept this class and could not see it: that sweep enumerated
+     ${distUnit()} sites, and this one reads a stored PER-ROW tag. A sweep is
+     only as wide as the surface it enumerates.
+
+     BOTH unit systems are driven. In imperial the load conversion is close
+     enough to its own inverse to hide a bug in a single round trip (v315), and
+     a metric athlete is the only case that can tell them apart. */
+  {
+    const ru = await page.evaluate(() => {
+      const o = {};
+      const read = () => {
+        const sh = document.getElementById('sheet');
+        const row = [...sh.querySelectorAll('.kv')][0];
+        const tiles = {};
+        [...sh.querySelectorAll('.stat')].forEach(st => {
+          tiles[(st.querySelector('.l') || {}).textContent] =
+            (st.querySelector('.n') || {}).textContent;
+        });
+        return { row: row ? row.textContent.replace(/\s+/g, ' ').trim() : null, tiles };
+      };
+      STATE.ruckLog = [];
+      STATE.profile.unit = 'in';
+      openRuck();
+      document.querySelector('#rk-min').value = '45';
+      document.querySelector('#rk-dist').value = '3';
+      document.querySelector('#rk-wt').value = '25';
+      saveRuck();
+      o.stored = JSON.parse(JSON.stringify(STATE.ruckLog[0]));
+      o.imp = read();
+      STATE.profile.unit = 'cm';
+      openRuck();
+      o.met = read();
+      /* a row with neither figure must print neither */
+      STATE.ruckLog = [{ date: todayISO(), mins: 20, at: Date.now() }];
+      STATE.profile.unit = 'in';
+      openRuck();
+      o.bare = read();
+      /* a legacy row with no unit tag reads as metric, which is what the
+         distance half has always defaulted to */
+      STATE.ruckLog = [{ date: todayISO(), mins: 30, dist: 5, wt: 10, at: Date.now() }];
+      STATE.profile.unit = 'cm';
+      openRuck();
+      o.legacy = read();
+      closeSheet();
+      o.zero = rowLoadShow(0, 'km');
+      o.negative = rowLoadShow(-5, 'km');
+      o.absent = rowLoadShow(undefined, 'km');
+      return o;
+    });
+
+    t.eq('guard: the distance really is stored canonically in kilometres',
+      ru.stored.dist, 4.8, ru.stored);
+    t.eq('guard: and the load really is stored exactly as it was typed',
+      ru.stored.wt, 25, ru.stored);
+
+    t.ok('the row shows the distance in the athlete\'s own unit',
+      /\b3 mi\b/.test(ru.imp.row), ru.imp);
+    t.ok('and never the raw kilometre figure wearing a mile label',
+      !/4\.8 mi/.test(ru.imp.row), ru.imp);
+    t.eq('so the row and the total tile agree about one ruck',
+      ru.imp.tiles['Total mi'], '3', ru.imp);
+    t.ok('the load carries a unit',
+      /\b25 lb load\b/.test(ru.imp.row), ru.imp);
+    t.ok('and is never a bare number',
+      !/\b25 load\b/.test(ru.imp.row), ru.imp);
+
+    t.ok('FLOOR: a metric athlete reads the same ruck in kilometres',
+      /\b4\.8 km\b/.test(ru.met.row), ru.met);
+    t.eq('and the tile agrees there too',
+      ru.met.tiles['Total km'], '4.8', ru.met);
+    t.ok('FLOOR: and the load converts for them rather than keeping the typed number',
+      /\b11\.3 kg load\b/.test(ru.met.row), ru.met);
+
+    t.ok('FLOOR: a ruck logged with no distance and no load prints neither',
+      /20 min/.test(ru.bare.row) && !/ load/.test(ru.bare.row) && !/\b\d[\d.]* (mi|km)\b/.test(ru.bare.row),
+      ru.bare);
+    t.ok('FLOOR: a legacy row with no unit tag reads as metric, both halves',
+      /\b5 km\b/.test(ru.legacy.row) && /\b10 kg load\b/.test(ru.legacy.row), ru.legacy);
+
+    /* THE HELPER'S OWN CONTRACT, ASSERTED DIRECTLY. Its `w > 0` guard is
+       consulted from one call site that already tests `x.wt`, so no rendered
+       case can reach it and the mutant that deletes it escapes every screen
+       assertion — the shape v338's prepDatePassed() and v380's monoNow()
+       needed. A guard consulted in one narrow branch still has to mean what it
+       is named, and a second caller would find it. */
+    t.eq('rowLoadShow says nothing at all for a load that is not one',
+      [ru.zero, ru.negative, ru.absent], ['', '', ''], ru);
+  }
+
+  /* THE 1-REP-MAX CALCULATOR WAS HARDCODED TO POUNDS FOR EVERYBODY (v446).
+
+     Found by the same sweep as the ruck row: every interpolation followed by a
+     hardcoded unit. calcOneRM() is a RATIO — w * (1 + r/30) — so the answer
+     already comes out in whatever unit the athlete typed, and only the label
+     was wrong. A metric athlete entering 100 kg read "Estimated 1RM ~ 133 lb",
+     which is really 133 kg: 32% understated in the unit on the glass, and it is
+     the figure they load the bar to.
+
+     THE FLOOR IS THAT THE NUMBER DOES NOT MOVE. Nothing is converted, because
+     there is nothing to convert — a "fix" that converted would report the same
+     lift as 133 lb to one athlete and 60 kg to the other, which is a different
+     defect wearing this one's clothes. */
+  {
+    const orm = await page.evaluate(() => {
+      const o = {};
+      const run = u => {
+        STATE.profile.unit = u;
+        openStandards();
+        const ph = (document.querySelector('#orm-w') || {}).placeholder;
+        document.querySelector('#orm-w').value = '100';
+        document.querySelector('#orm-r').value = '10';
+        calcOneRM();
+        const out = (document.querySelector('#ormOut') || {}).textContent || '';
+        closeSheet();
+        /* anchored on the figure, not on the first digit: /(\d+)/ matches the
+           "1" in "1RM" — a loose pattern reading ordinary copy */
+        return { ph, out, num: (out.match(/\u2248\s*(\d+)/) || [])[1] };
+      };
+      o.imp = run('in');
+      o.met = run('cm');
+      return o;
+    });
+
+    t.ok('guard: the calculator really answers, so a wording check means something',
+      orm.imp.num === '133' && orm.met.num === '133', orm);
+
+    t.ok('the input asks for the athlete\'s own unit', /\(lb\)/.test(orm.imp.ph), orm.imp);
+    t.ok('and the answer is given in it', /133 lb/.test(orm.imp.out), orm.imp);
+
+    t.ok('FLOOR: a metric athlete is asked for kilograms', /\(kg\)/.test(orm.met.ph), orm.met);
+    t.ok('and told the answer in kilograms', /133 kg/.test(orm.met.out), orm.met);
+    t.ok('and is never told pounds', !/\blb\b/.test(orm.met.out), orm.met);
+
+    t.eq('FLOOR: the number itself does not move — a ratio has nothing to convert',
+      orm.imp.num, orm.met.num, orm);
+    t.ok('and the training band moves with the label, not on its own',
+      /93.106 lb/.test(orm.imp.out.replace(/[^\x20-\x7e]/g, '.')) &&
+      /93.106 kg/.test(orm.met.out.replace(/[^\x20-\x7e]/g, '.')), orm);
+  }
+
+  /* "LOGGED 1 MOVEMENT" FOR A LIFT WHOSE DEFINING NUMBER WAS THROWN AWAY (v446).
+
+     saveLiftLog() wrote loadKg:null for a load outside plausibleLoadKg() and
+     toasted the save anyway, so a typo of one extra digit on a 90 lb lift
+     recorded nothing and said it had. A row whose ONLY entry was that load was
+     pushed empty, counted, and credited the day in quickLog — streak, heatmap
+     and weekly count — for a lift that recorded nothing.
+
+     And the writer enforced a band the repair did not: an imported backup
+     carrying 5000 kg survived every boot and drove the progression hint.
+
+     Two guards, two doors. The typed door REFUSES (v412: the athlete is
+     standing on the screen and can retype); the boot door DROPS, because a
+     clamped measurement is a number nobody lifted. */
+  {
+    const lf = await page.evaluate(() => {
+      const o = {};
+      const items = [{ exId: 'dbbench', unit: 'reps', target: 8 },
+                     { exId: 'dbrow', unit: 'reps', target: 10 }];
+      const type = (i, load, reps) => {
+        const L = document.querySelector('#lf-l-' + i), R = document.querySelector('#lf-r-' + i);
+        if (L) L.value = load === null ? '' : String(load);
+        if (R) R.value = reps === null ? '' : String(reps);
+      };
+      const run = (unit, rows) => {
+        STATE.profile.unit = unit;
+        STATE.liftLog = []; STATE.quickLog = {};
+        openLiftLog(items);
+        rows.forEach((r, i) => type(i, r[0], r[1]));
+        saveLiftLog(items.map(m => m.exId));
+        const el = document.getElementById('toast');
+        return {
+          rows: JSON.parse(JSON.stringify(STATE.liftLog)),
+          credited: Object.keys(STATE.quickLog).length,
+          toast: el ? el.textContent : '',
+          sheetOpen: !!document.querySelector('#lf-l-0'),
+        };
+      };
+      o.band = LIFT_LOAD_MAX_KG;
+      /* both helpers read profile.unit, so the unit is set before they are asked
+         rather than inherited from whatever block ran last */
+      STATE.profile.unit = 'in';
+      o.overLb = 900; o.edgeLb = Math.floor(loadShow(LIFT_LOAD_MAX_KG));
+      o.edgeKg = Math.round(loadToKg(o.edgeLb) * 100) / 100;
+      /* the bad row is the SECOND, so a half-save leaves the first behind */
+      o.refuse = run('in', [[200, 8], [900, null]]);
+      o.ok = run('in', [[200, 8], [150, 10]]);
+      o.edge = run('in', [[o.edgeLb, 5], [null, null]]);
+      o.met = run('cm', [[900, null], [null, null]]);
+      o.metEdge = run('cm', [[400, 5], [null, null]]);
+      /* the boot door, with no writer behind it */
+      STATE.liftLog = [
+        { date: todayISO(), exId: 'dbbench', loadKg: 5000, reps: 5, rir: null },
+        { date: todayISO(), exId: 'dbrow', loadKg: 400, reps: 5, rir: null },
+        { date: todayISO(), exId: 'dbbench', loadKg: 60, reps: 8, rir: 2 }];
+      normalizeState();
+      o.repaired = JSON.parse(JSON.stringify(STATE.liftLog));
+      return o;
+    });
+
+    t.eq('guard: the band is 400 kg, and the quoted bound is 881 lb',
+      [lf.band, lf.edgeLb], [400, 881], lf);
+    t.ok('guard: and the quoted bound really converts back INSIDE the band — a\n         rounded 882 lb would be 400.07 kg, which the guard itself refuses',
+      lf.edgeKg <= lf.band, lf);
+    t.ok('guard: the refused load really is outside it', lf.overLb > lf.edgeLb, lf);
+
+    t.eq('an out-of-band load writes nothing at all', lf.refuse.rows.length, 0, lf.refuse);
+    t.eq('and never half-saves the good row above it', lf.refuse.rows.length, 0, lf.refuse);
+    t.eq('and credits no training day', lf.refuse.credited, 0, lf.refuse);
+    t.ok('the toast names the band in the athlete\'s own unit',
+      /between 1 and 881 lb/.test(lf.refuse.toast), lf.refuse);
+    t.ok('and never claims the movement was logged',
+      !/Logged/.test(lf.refuse.toast), lf.refuse);
+    t.ok('the form stays on screen so the figures can be retyped',
+      lf.refuse.sheetOpen, lf.refuse);
+
+    t.ok('FLOOR: an ordinary save still writes both rows', lf.ok.rows.length === 2, lf.ok);
+    t.eq('and still credits the day', lf.ok.credited, 1, lf.ok);
+    t.ok('and still says so', /Logged 2 movements/.test(lf.ok.toast), lf.ok);
+    t.ok('FLOOR: a load exactly ON the ceiling is a legitimate lift and is kept',
+      lf.edge.rows.length === 1 && lf.edge.rows[0].loadKg > 0, lf.edge);
+
+    t.ok('FLOOR: a metric athlete is refused too', lf.met.rows.length === 0, lf.met);
+    t.ok('and is told the band in kilograms',
+      /between 1 and 400 kg/.test(lf.met.toast), lf.met);
+    t.ok('FLOOR: and 400 kg exactly is still a lift they can log',
+      lf.metEdge.rows.length === 1 && lf.metEdge.rows[0].loadKg === 400, lf.metEdge);
+
+    t.eq('the boot drops a stored load outside the band', lf.repaired[0].loadKg, null, lf.repaired);
+    t.eq('and keeps the reps beside it, because the row is still a lift',
+      lf.repaired[0].reps, 5, lf.repaired);
+    t.eq('FLOOR: a stored load ON the ceiling survives untouched',
+      lf.repaired[1].loadKg, 400, lf.repaired);
+    t.eq('FLOOR: and an ordinary one is byte-identical',
+      [lf.repaired[2].loadKg, lf.repaired[2].reps, lf.repaired[2].rir], [60, 8, 2], lf.repaired);
+    t.eq('FLOOR: no row is dropped — a bad figure is not a bad lift',
+      lf.repaired.length, 3, lf.repaired);
+  }
+
+  /* THE WRITER'S COMMENT DESCRIBED A FILTER ONLY THE REPAIR HAD (v446).
+
+     The activity-row repair says logAct() "stores dist/wt/secs/rounds only when
+     they are above zero". It did not: it Object.assign'd whatever it was
+     handed, and saveRuck() passes `d||undefined` where d can be NEGATIVE
+     (r1(-5) is -5, which is truthy). One rule now, asked by both doors.
+
+     Driven with NO BOOT BEHIND IT, because the repair is the neighbour that
+     would otherwise supply the answer — it cleans the row on the next launch,
+     which is exactly why nobody saw this. */
+  {
+    const neg = await page.evaluate(() => {
+      const o = {};
+      const ruck = (dist, wt) => {
+        STATE.ruckLog = [];
+        STATE.profile.unit = 'cm';
+        openRuck();
+        document.querySelector('#rk-min').value = '45';
+        document.querySelector('#rk-dist').value = String(dist);
+        document.querySelector('#rk-wt').value = String(wt);
+        saveRuck();
+        const sh = document.getElementById('sheet');
+        const row = [...sh.querySelectorAll('.kv')][0];
+        const tiles = {};
+        [...sh.querySelectorAll('.stat')].forEach(st => {
+          tiles[(st.querySelector('.l') || {}).textContent] =
+            (st.querySelector('.n') || {}).textContent;
+        });
+        return { stored: JSON.parse(JSON.stringify(STATE.ruckLog[0] || {})),
+                 row: row ? row.textContent.replace(/\s+/g, ' ').trim() : null, tiles };
+      };
+      o.bad = ruck(-5, -10);
+      o.good = ruck(5, 10);
+      closeSheet();
+      return o;
+    });
+
+    t.ok('guard: the writer really ran and wrote the minutes',
+      neg.bad.stored.mins === 45 && neg.good.stored.mins === 45, neg);
+
+    t.eq('a negative distance is not stored at all', neg.bad.stored.dist, undefined, neg.bad);
+    t.eq('nor a negative load', neg.bad.stored.wt, undefined, neg.bad);
+    /* anchored on a FIGURE with a unit: every row carries an ISO date, so /-\d/
+       matches "-09" on correct output */
+    t.ok('so nothing on the row shows a negative figure',
+      !/-\d[\d.]* ?(km|mi|kg|lb|load)/.test(neg.bad.row), neg.bad);
+    t.eq('and the total is not dragged below zero', neg.bad.tiles['Total km'], '0', neg.bad);
+
+    t.eq('FLOOR: a real distance is stored', neg.good.stored.dist, 5, neg.good);
+    t.eq('FLOOR: and a real load with it', neg.good.stored.wt, 10, neg.good);
+    t.ok('FLOOR: and both print', /5 km/.test(neg.good.row) && /10 kg load/.test(neg.good.row),
+      neg.good);
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));

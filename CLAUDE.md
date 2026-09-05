@@ -16544,6 +16544,118 @@ sum.
   Measured and left rather than changed: `stoppedForPain` beside it has a real
   reader (`todayPtr()`), and a change with no defect behind it is the v386 call.
 
+## The number converted and the label came from a stored tag (v446)
+
+`saveRuck()` stores the distance canonically in kilometres — its own comment
+says why, and names the defect it was written for: *"summing raw display values
+mixed 5 km + 3 mi into Total 8 mi"*. The history row one function away then did
+
+```js
+${x.dist + ' ' + (x.unit||'km')}
+```
+
+**`unit` records what was TYPED, and the row used it to label the STORED value.**
+Measured on an imperial athlete who rucked 3 miles under 25 lb:
+
+| | before | after |
+|---|---|---|
+| the history row | **`4.8 mi · 25 load`** | `3 mi · 25 lb load` |
+| the Total tile, same sheet | `Total mi = 3` | `Total mi = 3` |
+| the same rows switched to metric | **`4.8 mi · 25 load`** | `4.8 km · 11.3 kg load` |
+
+One sheet, one ruck, **two answers 60% apart** — and the load printed as a bare
+number, so nothing on the glass could tell 25 lb from 25 kg.
+
+**v337 swept this class and could not see it.** That sweep enumerated
+`${distUnit()}` sites; this one reads a stored PER-ROW tag. **A sweep is only as
+wide as the surface it enumerates** — the same reason v399's injection sweep
+missed a photo blob and v443's name sweep missed every `<img>`.
+
+**The fix is `distShow()`, the app's own helper**, which converts and labels in
+ONE expression — v337's actual rule, which the row broke by writing the two
+halves separately. The load is not canonical, so it is converted from the row's
+own tag: `rowLoadShow(w, rowUnit)`.
+
+**Both unit systems are driven, and the metric one is not optional.** In
+imperial the load conversion is close enough to its own inverse to hide a bug in
+a single round trip (v315), so only a metric athlete can tell the two apart.
+
+### The 1-rep-max calculator was hardcoded to pounds for everybody
+
+Found by the same sweep — every interpolation followed by a hardcoded unit.
+`calcOneRM()` is a RATIO (`w * (1 + r/30)`), so the answer already comes out in
+whatever unit the athlete typed, and **only the label was wrong**: a metric
+athlete entering 100 kg read *"Estimated 1RM ≈ 133 lb"*, which is really 133 kg.
+The right number wearing the wrong unit, on the figure they load the bar to.
+
+**THE FLOOR IS THAT THE NUMBER DOES NOT MOVE.** Nothing is converted, because
+there is nothing to convert — a "fix" that converted would report the same lift
+as 133 lb to one athlete and 60 kg to the other, which is a different defect
+wearing this one's clothes.
+
+**The rest of the class came back clean, and the two exceptions are
+deliberate.** Every field label naming a unit derives it (`imp?'lb':'kg'`); the
+one hardcoded label is the FORCE Combat march, and a published standard keeps
+the unit it was published in. And every ruck-PLATE surface says `lb` because
+`RUCK_PLATES` are physical objects sold in pounds — `ruckLoadLb()` is the
+canonical store and `ruckLoadKg()` exists for the MET arithmetic alone.
+
+## "Logged 1 movement" for a lift whose defining number was thrown away (v446)
+
+`saveLiftLog()` wrote `loadKg:null` for a load outside `plausibleLoadKg()` and
+**toasted the save anyway**. So a typo of one extra digit on a 90 lb lift threw
+the defining number away and said the movement was recorded — and the
+loaded-progression hint (v221), which reads `lastLoadKg`, then had no anchor.
+
+Worse, a row whose ONLY entry was that load was pushed **empty**, counted, and
+credited the day in `quickLog` — streak, heatmap and weekly count — for a lift
+that recorded nothing.
+
+**The typed door REFUSES and the boot door DROPS**, which is v412's split: the
+athlete is standing on the screen with their figures still in the boxes, so
+retyping costs a tap, while a silent repair costs the measurement.
+
+**And the writer enforced a band the repair did not.** `normalizeState()`
+required only `loadKg > 0`, so an imported backup carrying 5000 kg survived
+every boot and drove the hint: *"aim for 11024 lb"*. Dropped rather than
+clamped — a clamped measurement is a number nobody lifted.
+
+**NOTHING IS WRITTEN UNTIL THE WHOLE FORM HAS BEEN READ.** A `return` inside
+`forEach` skips one row and leaves the rest to push, so the first version of
+this fix half-saved the movements above the bad one — and its own comment
+claimed it could not. *A comment claiming an invariant is not the invariant*,
+caught in my own new code by re-reading the diff.
+
+**A bound the athlete is told must be one they can actually enter.**
+`loadShow(400)` is 881.85 lb and 882 lb converts back to 400.07 kg, so a
+ROUNDED bound quotes a figure the guard itself refuses. It is floored. Same
+reasoning as `bikeNeed()` rounding UP: a number promised to close a gap has to
+close it.
+
+**The band provably cannot fire on a legitimate input**, and both edges are
+pinned in both units — 400 kg exactly is still a lift you can log, and so is
+881 lb.
+
+## The writer's comment described a filter only the repair had (v446)
+
+The activity-row repair says, in as many words, that *"logAct() clamps mins at 0
+and stores dist/wt/secs/rounds only when they are above zero"*. It did not: it
+`Object.assign`'d whatever it was handed, and `saveRuck()` passes
+`d||undefined` where `d` can be **negative** — `r1(-5)` is `-5`, which is
+truthy.
+
+Measured: typing `-5` into the ruck distance box printed **`-3.1 mi`** on the
+row and took 3.1 off the Total tile, until the next launch, when the repair
+quietly put it right. **It self-heals, which is exactly why nobody saw it** —
+and the check therefore drives the writer with NO BOOT BEHIND IT, because the
+repair is the neighbour that would otherwise supply the answer.
+
+`actRow()` is the one field rule now, asked by `logAct()`, by `logSkip()` and by
+the boot repair, so the claim in that comment is true. And the row's two halves
+are symmetric at last: the load has always guarded `w > 0` and the distance
+guarded only truthiness, so a junk distance arriving through a cross-tab adopt
+— which has no boot behind it — reached `innerHTML`.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
