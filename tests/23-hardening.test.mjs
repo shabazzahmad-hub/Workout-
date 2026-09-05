@@ -1130,6 +1130,120 @@ export default async function () {
     t.eq('every control inside a sheet has an accessible name too',
       r.bad.length, 0, JSON.stringify(r.bad.slice(0, 8)));
 
+  /* ---- and every IMAGE, which neither sweep above enumerates -------------
+     v411 named every control and v413 gave the app a live region to announce
+     through. Both sweeps scan `input, select, textarea` and `button`. NEITHER
+     LOOKS AT <img>, and a sweep is only as wide as the surface it enumerates —
+     so five images carried no `alt` attribute at all and were announced by
+     their URL, and two more repeated the visible text right beside them and
+     were announced twice.
+
+     An EMPTY alt is the correct value for a captioned photograph: the caption
+     already names it. So the rule is that the attribute is PRESENT, not that
+     it is non-empty. */
+  {
+    const r = await page.evaluate(async () => {
+      const PX = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+      const out = { seen: 0, bad: [], dupe: [], kinds: [] };
+      const note = el => {
+        const k = el.id || el.className || (el.getAttribute('src') || '').slice(0, 14);
+        if (k && out.kinds.indexOf(k) < 0) out.kinds.push(k);
+      };
+      const scan = where => {
+        document.querySelectorAll('.view.active img, #sheet img, #player img, #hiit img').forEach(el => {
+          out.seen++; note(el);
+          if (!el.hasAttribute('alt')) { out.bad.push(where + ':' + (el.id || el.className || 'img')); return; }
+          /* AND THE OTHER HALF OF THE RULE. An alt that repeats the text right
+             beside it is announced twice — the exercise photo sat under an
+             <h3> naming the same movement, and the physique image sat inside a
+             button carrying the same word. A check that only asks whether the
+             attribute is PRESENT cannot see either: the mutant restoring
+             `alt="${ex.name}"` escaped it. */
+          const a = (el.getAttribute('alt') || '').trim();
+          if (!a) return;
+          const b = el.closest('button');
+          if (b && (b.innerText || '').trim() === a) out.dupe.push(where + ':button:' + a);
+          const root = el.closest('#sheet') || el.closest('.view.active');
+          const h = root ? root.querySelector('h1,h2,h3') : null;
+          if (h && (h.innerText || '').trim() === a) out.dupe.push(where + ':heading:' + a);
+        });
+      };
+      /* GUARD, BOTH WAYS. An image with no alt must BE reported and one with an
+         empty alt must NOT, or a clean result says nothing about the app. */
+      openSheet('<h3>Zq Heading</h3><img id="zq-noalt" src="' + PX + '">'
+        + '<img id="zq-ok" alt="" src="' + PX + '">'
+        + '<img id="zq-dupe" alt="Zq Heading" src="' + PX + '">'
+        + '<button><img id="zq-btn" alt="Zq Label" src="' + PX + '">Zq Label</button>');
+      scan('probe');
+      out.canSee = out.bad.some(b => b.indexOf('zq-noalt') >= 0);
+      out.emptyIsFine = !out.bad.some(b => b.indexOf('zq-ok') >= 0);
+      out.canSeeHeadingDupe = out.dupe.some(d => d.indexOf('heading:Zq Heading') >= 0);
+      out.canSeeButtonDupe = out.dupe.some(d => d.indexOf('button:Zq Label') >= 0);
+      closeSheet();
+      document.querySelectorAll('#zq-noalt, #zq-ok, #zq-dupe, #zq-btn').forEach(e => e.remove());
+      out.bad.length = 0; out.dupe.length = 0; out.seen = 0; out.kinds.length = 0;
+
+      /* The photo surfaces need rows AND bytes, or three of the five images
+         this block exists for never render at all. */
+      const ids = ['zqp1', 'zqp2'];
+      STATE.photos = [{ id: ids[0], date: todayISO(), pose: 'front' },
+                      { id: ids[1], date: todayISO(), pose: 'front' }];
+      await Promise.all(ids.map(i => idbPut('ph_' + i, PX)));
+      save();
+
+      ['today', 'program', 'fuel', 'progress', 'ref', 'guide'].forEach(t => { go(t); scan(t); });
+      ['summary', 'body', 'strength', 'awards'].forEach(p => {
+        go('progress'); setProgressTab(p); render(); scan('progress:' + p); });
+      ['food', 'moves'].forEach(p => { go('ref'); setRefTab(p); render(); scan('ref:' + p); });
+      /* Today's four panes — the brief carries the coach avatar. */
+      ['brief', 'warmup', 'workout', 'cooldown'].forEach(p => {
+        go('today'); setTodayTab(p); render(); scan('today:' + p); });
+
+      openExerciseInfo('pushup'); scan('exerciseInfo'); closeSheet();
+      openCompare(); await new Promise(r2 => setTimeout(r2, 120)); scan('compare'); closeSheet();
+      await viewPhoto(ids[0]); scan('viewPhoto'); closeSheet();
+      openBrief(); scan('brief'); closeSheet();
+      return out;
+    });
+
+    t.ok('guard: an image with no alt really would be reported', r.canSee, JSON.stringify(r));
+    t.ok('guard: and an empty alt is accepted, because a caption already names it',
+      r.emptyIsFine, JSON.stringify(r));
+    t.ok('guard: the sweep really reached images to check', r.seen >= 20, JSON.stringify(r.seen));
+    /* GUARD: the five that carried no alt at all render only on their own
+       surfaces — the gallery tiles, the comparison pair, the single-photo
+       viewer and the exercise sheet. Without this, "zero unnamed" passes on a
+       page that never held one of them. */
+    t.ok('guard: the photo and exercise images were really in the scan',
+      r.kinds.some(k => /ph-img/.test(k)) && r.kinds.some(k => /exphoto/.test(k))
+      && r.kinds.some(k => /cmpImg|pvImg/.test(k)),
+      JSON.stringify(r.kinds));
+    t.eq('every image carries an alt attribute a screen reader can act on',
+      r.bad.length, 0, JSON.stringify(r.bad.slice(0, 10)));
+    t.ok('guard: an alt repeating its own heading really would be reported',
+      r.canSeeHeadingDupe, JSON.stringify(r));
+    t.ok('guard: and one repeating its own button label would be too',
+      r.canSeeButtonDupe, JSON.stringify(r));
+    /* GUARD: the two surfaces this half exists for were really scanned — the
+       exercise sheet's photo under its own <h3>, and the physique picker's
+       image inside a button carrying the same word. */
+    t.ok('guard: the exercise photo and the physique images were in the scan',
+      r.kinds.some(k => /exphoto/.test(k)) && r.kinds.some(k => /^phys-/.test(k)),
+      JSON.stringify(r.kinds));
+    t.eq('and no image repeats the text already beside it',
+      r.dupe.length, 0, JSON.stringify(r.dupe.slice(0, 10)));
+  }
+
+  /* The coach avatar was written out by hand twice beside the helper that
+     exists for it, and the two copies had already drifted — `object-position:
+     center 18%` against the helper's 16%, and no `flex:0 0 auto`. A second copy
+     of a rule is a second place for it to drift, and this one had. */
+  {
+    const src = readFileSync('index.html', 'utf8');
+    t.eq('the coach avatar is written in exactly one place',
+      (src.match(/coach-sarge\.jpg/g) || []).length, 1);
+  }
+
     /* And every attachment points somewhere. A `for` naming an id that has been
        renamed falls back to the placeholder for the seventeen inputs that have
        one, so the check above would stay green while the caption was detached
