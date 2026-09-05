@@ -1911,7 +1911,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='434';
+const APP_VERSION='435';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3740,8 +3740,44 @@ function sheetTeardown(){
   try{if(typeof MUT!=='undefined'&&MUT){if(MUT.iv)clearInterval(MUT.iv);MUT=null;}}catch(e){}
   try{if(typeof stopScan==='function')stopScan();}catch(e){}
 }
+/* ONE DISMISSAL, TWO DOORS. onPop() used to re-implement this branch by hand
+   and had drifted from it over many versions — the same shape v411 found when
+   the hardware Back skipped hiitQuit(). Measured, closing by button against
+   closing by Back:
+
+     _sheetGen bumped        1 -> 2      |  5 -> 5, UNCHANGED
+     the sheet's markup      cleared     |  still mounted
+     a queued badge          popped      |  still queued
+     focus                   to the opener |  stranded on <body>
+
+   The first is the one that bites. THREE image readers stand down on
+   `gen!==_sheetGen` so a slow read never paints into a sheet the athlete has
+   since left — and Back never moved it, so a read that finished after a Back
+   did not stand down and RE-OPENED the sheet the athlete had just dismissed.
+   The second is the stale-id class this file has a standing rule about.
+
+   What stays in closeSheet() is the HISTORY step, which a pop must NOT take:
+   the entry it retires is already gone. Exactly the split hiitQuit() and
+   hiitTeardown() have, for exactly that reason.
+
+   THAT STEP IS ALSO SELF-GUARDING, measured rather than assumed: it fires only
+   while `history.state.cf==='sheet'`, and by the time onPop runs the pop has
+   already moved off that entry — so `onPop` calling closeSheet() outright lands
+   on the identical history position (checked two Backs deep, both ways). That
+   mutant is EQUIVALENT and no check can catch it; the split is kept for the
+   four behaviours above, which each have one, and because a future openSheet
+   that pushes a second entry would make it bite. */
 function closeSheet(){
   const wasOpen=$('#scrim').classList.contains('open');
+  sheetDismiss(wasOpen);
+  // If the app (a button/scrim) closed the sheet, retire its history entry too,
+  // so the counts stay balanced. The guard makes onPop ignore this self-pop.
+  if(wasOpen&&history.state&&history.state.cf==='sheet'){
+    _backGuard=true;try{history.back();}catch(e){_backGuard=false;}
+  }
+}
+function sheetDismiss(wasOpen){
+  if(wasOpen===undefined)wasOpen=$('#scrim').classList.contains('open');
   // Any non-hand-off dismissal during a guided day ends the guided day, so DAYFLOW
   // can't be stranded active and later drive an unrelated warm-up/workout.
   /* Brief teardown below is unconditional: it auto-starts on a 180ms timer, so
@@ -3762,11 +3798,6 @@ function closeSheet(){
   if(wasOpen){const _r=_sheetReturn;_sheetReturn=null;
     if(_r&&_r.isConnected)try{_r.focus({preventScroll:true});}catch(e){}}
   stopTimer();beatStop();sheetTeardown();
-  // If the app (a button/scrim) closed the sheet, retire its history entry too,
-  // so the counts stay balanced. The guard makes onPop ignore this self-pop.
-  if(wasOpen&&history.state&&history.state.cf==='sheet'){
-    _backGuard=true;try{history.back();}catch(e){_backGuard=false;}
-  }
   if(wasOpen)setTimeout(()=>{try{flushCelebrations();}catch(e){}},350);   // queued badge pop-ups show once the sheet is gone
   // Clear the sheet's markup once it has visually closed. A closed sheet kept its
   // full DOM forever, which is precisely how a shared id ends up shadow-read.
@@ -3800,13 +3831,9 @@ function onPop(e){
   if(typeof OP!=='undefined'&&OP){opQuit();return;}
   if(typeof INTV!=='undefined'&&INTV){hiitTeardown();return;}
   if(typeof PLAYER!=='undefined'&&PLAYER){playerTeardown();return;}
-  if($('#scrim').classList.contains('open')){
-    if(typeof dayflowActive==='function'&&dayflowActive())dayflowCancel(true);
-    if(typeof BRIEF!=='undefined'&&BRIEF){try{briefStop();}catch(e){}BRIEF=null;}
-    $('#scrim').classList.remove('open');
-    if(!$('#player').classList.contains('open')&&!$('#hiit').classList.contains('open'))document.body.style.overflow='';
-    tapShield(350);stopTimer();beatStop();sheetTeardown();return;
-  }
+  /* The same dismissal the ✕ takes, minus the history step — the entry this
+     pop is answering is already gone. See closeSheet(). */
+  if($('#scrim').classList.contains('open')){sheetDismiss(true);return;}
   const st=e.state||{};
   if(st.cf==='tab'){go(st.tab||'today');return;}
   if(st.cf==='home'){go('today');return;}

@@ -11178,6 +11178,116 @@ export default async function () {
          fp.moved.nutrition || [], ['nutrition.diet'], fp.moved);
   }
 
+  /* ---------- the Back button is the same dismissal, minus the history ----
+
+     onPop() re-implemented closeSheet()'s scrim branch by hand and had drifted
+     from it. Measured, closing a sheet by button against closing it by Back:
+
+       _sheetGen bumped        1 -> 2        |  5 -> 5, UNCHANGED
+       the sheet's markup      cleared       |  still mounted
+       a queued badge          popped        |  still queued
+       focus                   to the opener |  stranded on <body>
+
+     The first is the one that bites: the three image readers stand down on
+     `gen!==_sheetGen` — the block above asserts that guard exists — and Back
+     never moved it, so a slow read finishing after a Back did not stand down
+     and RE-OPENED the sheet the athlete had just dismissed.
+
+     Driven with a real page.goBack(), not by calling onPop(): onPop has three
+     ambient early returns and a hand call is swallowed by whichever one an
+     earlier block left set. */
+  {
+    const before = await page.evaluate(async () => {
+      STATE.onboarded = true; normalizeState(); save();
+      /* EACH BLOCK BUILDS THE STATE IT ASSERTS ON, and this one needs three
+         things an earlier block does not leave: the app on Today (views never
+         clear innerHTML, so an opener appended to a hidden view cannot take
+         focus at all), NO sheet already open (openSheet only records where to
+         give focus back on a genuine open, not on a repaint), and the two
+         ambient early returns in onPop cleared. */
+      go('today');
+      try { closeSheet(); } catch (e) {}
+      await new Promise(z => setTimeout(z, 700));
+      const wasClear = !document.querySelector('#scrim').classList.contains('open');
+      const b = document.createElement('button');
+      b.id = 'cfBackOpener'; b.textContent = 'open';
+      document.querySelector('.view.active').appendChild(b); b.focus();
+      const focusedFirst = document.activeElement && document.activeElement.id;
+      _celebQ = [];
+      openSheet('<div id="cfBackMarker">sheet content</div>');
+      _backGuard = false; _exiting = false;
+      window.__cfGen = _sheetGen;
+      return { gen: _sheetGen, marker: !!document.querySelector('#cfBackMarker'),
+               scrim: document.querySelector('#scrim').classList.contains('open'),
+               tab: TAB, wasClear, focusedFirst,
+               ret: _sheetReturn && _sheetReturn.id,
+               guardsClear: !_backGuard && !_exiting };
+    });
+    t.ok('guard: the sheet really opened, with its markup mounted',
+      before.marker && before.scrim, JSON.stringify(before));
+    t.ok('guard: and no ambient early return is armed in onPop',
+      before.guardsClear, JSON.stringify(before));
+    t.ok('guard: no sheet was already open, so this is a genuine open',
+      before.wasClear, JSON.stringify(before));
+    t.eq('guard: the opener really held focus before the sheet opened',
+      before.focusedFirst, 'cfBackOpener', before);
+    t.eq('guard: and openSheet recorded it as the control to return to',
+      before.ret, 'cfBackOpener', before);
+
+    await page.goBack();
+    await page.waitForTimeout(900);
+    const after = await page.evaluate(() => ({
+      gen: _sheetGen, standsDown: window.__cfGen !== _sheetGen,
+      scrim: document.querySelector('#scrim').classList.contains('open'),
+      marker: !!document.querySelector('#cfBackMarker'),
+      focus: document.activeElement ? (document.activeElement.id || document.activeElement.tagName) : 'none',
+      tab: TAB, view: !!document.querySelector('.view.active'),
+    }));
+
+    t.ok('Back closes the sheet', !after.scrim, JSON.stringify(after));
+    t.ok('and moves _sheetGen, so a slow image read stands down',
+      after.standsDown, JSON.stringify(after));
+    t.ok('and clears the sheet markup, so no stale id shadows a live one',
+      !after.marker, JSON.stringify(after));
+    t.eq('and gives the focus back to the control that opened it',
+      after.focus, 'cfBackOpener', after);
+    /* FLOOR: Back dismisses the sheet AND NOTHING ELSE — no navigation, no tab
+       change. It deliberately does NOT claim to catch onPop calling closeSheet()
+       outright: that step is self-guarding (it fires only while
+       history.state.cf==='sheet', and the pop has already moved off that entry),
+       so that mutant is equivalent — measured two Backs deep, identical history
+       position both ways. A check that cannot fail must not carry a label
+       saying it can. */
+    t.eq('FLOOR: Back dismisses the sheet and does not navigate',
+      after.tab, before.tab, after);
+    t.ok('FLOOR: and the app is still on screen', after.view, JSON.stringify(after));
+
+    /* A queued badge pops once the sheet is gone, by EITHER door. */
+    const badge = await page.evaluate(async () => {
+      const b = document.createElement('button');
+      b.id = 'cfBackOpener2'; document.querySelector('.view.active').appendChild(b); b.focus();
+      _celebQ = [];
+      openSheet('<div>a sheet</div>');
+      celebrateAchievements([ACHIEVEMENTS[0]]);
+      _backGuard = false; _exiting = false;
+      return { queued: _celebQ.length };
+    });
+    t.eq('guard: a badge really is queued behind the open sheet', badge.queued, 1, badge);
+    await page.goBack();
+    await page.waitForTimeout(900);
+    const badgeAfter = await page.evaluate(() => ({
+      queued: _celebQ.length,
+      popped: /Achievement unlocked/.test(document.querySelector('#sheet').textContent || ''),
+    }));
+    t.ok('a badge queued behind the sheet pops after Back too, not only after the ✕',
+      badgeAfter.popped && badgeAfter.queued === 0, JSON.stringify(badgeAfter));
+    await page.evaluate(async () => {
+      try { closeSheet(); } catch (e) {}
+      await new Promise(z => setTimeout(z, 600));
+      ['cfBackOpener', 'cfBackOpener2'].forEach(id => { const e = document.getElementById(id); if (e) e.remove(); });
+    });
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
