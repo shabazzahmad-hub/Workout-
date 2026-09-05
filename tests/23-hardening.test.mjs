@@ -12673,6 +12673,130 @@ export default async function () {
     await page.evaluate(v => { STATE.baseline = v ? JSON.parse(v) : null; }, saved);
   }
 
+
+  /* THE CARD PRESCRIBED TWO SETS AND PLAY DELIVERED ONE, THEN TICKED IT DONE.
+
+     quickPlay() ran a single hold and handed quickMark() straight to onDone, so
+     "Forearm Plank · 2 × 0:30" was checked off after one 30-second hold and the
+     Finish button went green on half the work — the completion gate's own rule
+     ("a skipped set is not a completed one") on the surface that states the
+     prescription one line above the button.
+
+     The minutes beside it were hand-written and had never been near the content
+     they label. Declared against what the card actually prescribes:
+
+       core5 5/7   burn7 7/11   oblique6 6/10   hiit8 8/10
+       lower6 6/12  full10 10/16  quiet6 6/11   morning5 5/9
+
+     Every one understated, by 1.25x to 2x. Same class as v449's warm-up: a
+     duration written by hand beside the list that decides it.
+
+     And the check button said "Unmark" and could not unmark — quickMark() only
+     ever wrote true, so a mis-tap was permanent and the accessible name promised
+     a control that did not exist. Play now goes through quickSetDone(), because
+     a finished set must never untick the movement it just completed. */
+  {
+    await seedAthlete(page);
+    await waitForBoot(page);
+
+    const g = await page.evaluate(() => ({
+      multiSet: QUICKIES.filter(q => q.items.some(it => it.sets > 1)).length,
+      total: QUICKIES.length,
+      declaredGone: QUICKIES.every(q => q.mins === undefined),
+      mins: QUICKIES.map(q => [q.id, quickMins(q)]),
+      sets: QUICKIES.map(q => q.items.reduce((a, x) => a + x.sets, 0)),
+    }));
+    t.eq('guard: every quick workout really does prescribe more than one set',
+      g.multiSet, g.total, g);
+    t.ok('the hand-written minutes are gone from the registry', g.declaredGone, g);
+
+    /* PIN THE VALUE, NOT THE IDENTITY. Comparing against quickMins() itself
+       moves both sides of the assertion the moment a mutant changes it. */
+    const mins = Object.fromEntries(g.mins);
+    t.eq('the shortest workout is priced at the 7 minutes it takes', mins.core5, 7, g);
+    t.eq('and the longest at 16, not the 10 it used to claim', mins.full10, 16, g);
+    t.ok('none of them is ever reported as zero minutes',
+      g.mins.every(([, m]) => m >= 1), g);
+    t.ok('and the figure tracks the content: more sets, more minutes',
+      mins.full10 > mins.core5 && mins.lower6 > mins.core5, g);
+
+    const label = await page.evaluate(() => {
+      QUICK_ID = 'full10'; quickState = { done: {} }; go('quick');
+      const v = document.querySelector('#v-quick');
+      return {
+        hero: (v.querySelector('.hlbl') || {}).textContent,
+        chip: (openQuickList(), (document.querySelector('#sheet [onclick*="openQuick(\'full10\')"] .chip') || {}).textContent),
+      };
+    });
+    await page.evaluate(() => closeSheet());
+    t.eq('the hero prints the derived figure', label.hero, 'Quick workout · ~16 min', label);
+    t.eq('and so does the picker chip', label.chip, '16 min', label);
+
+    /* Driven, not called: a single set shortened to one second so the whole
+       chain — set, rest, set, tick — runs inside the suite. */
+    const run = await page.evaluate(async () => {
+      const o = {};
+      QUICK_ID = 'core5'; quickState = { done: {} }; go('quick');
+      const q = QUICKIES.find(x => x.id === 'core5');
+      const keep = q.items.map(it => ({ t: it.target, r: it.rest, s: it.sets }));
+      q.items[0].target = 1; q.items[0].rest = 1;
+      o.sets0 = q.items[0].sets;
+      quickPlay(0);
+      o.label1 = (document.querySelector('#sheet .tt') || {}).textContent;
+      await new Promise(r => setTimeout(r, 7500));
+      o.doneAfterSet1 = !!(quickState.done && quickState.done[0]);
+      await new Promise(r => setTimeout(r, 3000));
+      o.label2 = (document.querySelector('#sheet .tt') || {}).textContent;
+      await new Promise(r => setTimeout(r, 7000));
+      o.doneAfterSet2 = !!(quickState.done && quickState.done[0]);
+
+      /* FLOOR: a one-set movement still ticks after its one set, its label
+         carries no set counter, and Play must not UNtick a movement that was
+         already checked off. */
+      q.items[1].target = 1; q.items[1].rest = 1; q.items[1].sets = 1;
+      quickState.done[1] = true;
+      quickPlay(1);
+      o.labelSingle = (document.querySelector('#sheet .tt') || {}).textContent;
+      await new Promise(r => setTimeout(r, 7500));
+      o.singleStillDone = !!quickState.done[1];
+
+      q.items.forEach((it, i) => { it.target = keep[i].t; it.rest = keep[i].r; it.sets = keep[i].s; });
+      closeSheet();
+
+      quickState.done = {};
+      quickMark(2); const a = !!quickState.done[2];
+      quickMark(2); const b = !!quickState.done[2];
+      o.toggle = [a, b];
+      o.aria = (() => { quickState.done = { 0: true }; renderQuick();
+        const c = document.querySelectorAll('#v-quick .ex-check');
+        return [c[0].getAttribute('aria-label'), c[1].getAttribute('aria-label')]; })();
+      o.names = q.items.slice(0, 2).map(it => (EX[quickExId(it.exId)] || EX[it.exId]).name);
+      return o;
+    });
+    t.eq('guard: the movement being driven really carries two sets', run.sets0, 2, run);
+    t.eq('the set counter names which set it is', run.label1, 'Forearm Plank · set 1 of 2', run);
+    t.ok('one set of two does NOT tick the movement off', !run.doneAfterSet1, run);
+    t.eq('the chain hands on to the second set on its own',
+      run.label2, 'Forearm Plank · set 2 of 2', run);
+    t.ok('and the last set is what ticks it', run.doneAfterSet2, run);
+    t.ok('FLOOR: a one-set movement carries no set counter',
+      !/set \d+ of/.test(run.labelSingle || ''), run);
+    t.ok('FLOOR: Play never unticks a movement it just finished', run.singleStillDone, run);
+    t.eq('the check button toggles both ways', run.toggle, [true, false], run);
+    t.eq('and its accessible name says which way it will go',
+      run.aria, ['Unmark ' + run.names[0] + ' as done', 'Mark ' + run.names[1] + ' as done'], run);
+    t.ok('guard: the two names really differ, so the pair is not one assertion twice',
+      run.names[0] !== run.names[1], run);
+
+    const src451 = await page.evaluate(() => {
+      const sc = [...document.querySelectorAll('script:not([src])')]
+        .map(x => x.textContent).sort((a, b) => b.length - a.length)[0] || '';
+      return { big: sc.length > 100000, rawMins: /\$\{q\.mins\}/.test(sc) };
+    });
+    t.ok('guard: the source scan read the app', src451.big, src451);
+    t.ok('no label site restates the minutes by hand', !src451.rawMins, src451);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
