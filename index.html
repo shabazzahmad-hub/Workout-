@@ -1976,7 +1976,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='455';
+const APP_VERSION='456';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -22934,7 +22934,12 @@ function importData(e){
        after this build. */
     BACKUP_STRIP.forEach(k=>{delete STATE[k];});
     carryDeviceCreds(_dev);
-    normalizeState();save();
+    /* THE ONE DOOR JUNK ACTUALLY ARRIVES BY, and it was the one that never
+       reported. Same rule as the boot, asked rather than restated. */
+    const _impBefore=JSON.stringify(STATE),_impOn=!!STATE.onboarded;
+    normalizeState();
+    flagRepairs(_impBefore,_impOn);
+    save();
     if(ph){
       const ids=Object.keys(ph);
       Promise.all(ids.map(id=>idbPut('ph_'+id,ph[id]))).then(res=>{
@@ -22973,7 +22978,10 @@ function undoCrossTab(){
     const p=_jsonSafe(raw);
     if(!p||typeof p!=='object')throw new Error('bad snapshot');
     STATE=p;
-    normalizeState();save();
+    const _xtBefore=JSON.stringify(STATE),_xtOn=!!STATE.onboarded;
+    normalizeState();
+    flagRepairs(_xtBefore,_xtOn);
+    save();
     try{localStorage.removeItem(CROSSTAB_KEY);}catch(e){}
     toast('Restored');
     render();
@@ -22998,7 +23006,10 @@ function undoImport(){
     const p=_jsonSafe(raw);
     if(!p||typeof p!=='object')throw new Error('bad snapshot');
     STATE=p;
-    normalizeState();save();
+    const _uiBefore=JSON.stringify(STATE),_uiOn=!!STATE.onboarded;
+    normalizeState();
+    flagRepairs(_uiBefore,_uiOn);
+    save();
     try{localStorage.removeItem(PREIMPORT_KEY);}catch(e){}
     /* The imported pictures are unreachable the moment the rows are gone, and
        there is no way forward to them — the snapshot is one step back, not a
@@ -24905,6 +24916,29 @@ function validateData(){
 /* True only when normalizeState() CHANGED or REMOVED something that was
    already there. A key that was absent and is now present is the app growing,
    not the athlete's data having been wrong — see boot(). */
+/* ONE PLACE THE REPAIR REPORT LIVES. boot() computed this inline and was the
+   ONLY door that reported — so a foreign backup, which is the one door junk
+   actually arrives by, repaired silently. Measured on a file carrying adapt:99,
+   an unrecognised diet and `logs` as an ARRAY: the multiplier clamped to 1.3,
+   the diet fell back to vegan and EVERY SESSION IN THE FILE was reset to an
+   empty map — with nothing on screen but the toast "Backup restored".
+
+   The next boot cannot catch it either: the state has already been normalised,
+   so the diff is empty by then.
+
+   `wasOnboarded` is read from the state as it ARRIVED, for the same reason
+   boot() reads it before normalising: a never-onboarded state legitimately
+   gains scaffolding and flagging that would fire the note for every new
+   install. Returns whether the flag MOVED, so a caller can save when it did. */
+function flagRepairs(beforeJson,wasOnboarded){
+  let verrs=[];try{verrs=validateData();}catch(e){}
+  const was=!!STATE._dataRepaired;
+  let touched=false;
+  try{touched=_normTouchedExisting(JSON.parse(beforeJson),STATE,true);}catch(e){touched=false;}
+  const rep=!!wasOnboarded&&(touched||verrs.length>0);
+  if(rep)STATE._dataRepaired=true;else delete STATE._dataRepaired;
+  return {repaired:rep,changed:rep!==was};
+}
 function _normTouchedExisting(a,b,top){
   if(a===null||b===null||typeof a!=='object'||typeof b!=='object')return JSON.stringify(a)!==JSON.stringify(b);
   /* AN ADDITION INSIDE AN ARRAY ROW IS THE APP GROWING, exactly as it is at the
@@ -24961,8 +24995,6 @@ async function boot(){
   const _wasOnboarded=!!STATE.onboarded;
   const _beforeNorm=JSON.stringify(STATE);
   normalizeState();
-  let _verrs=[];try{_verrs=validateData();}catch(e){}
-  const _wasFlagged=!!STATE._dataRepaired;
   /* AN UPGRADE IS BOOTSTRAPPING TOO, and bootstrapping is not a repair. The
      gate above already excludes a never-onboarded first boot for exactly this
      reason — a fresh DEFAULT_STATE() legitimately gains scaffolding on its
@@ -24979,9 +25011,7 @@ async function boot(){
 
      A value that was PRESENT and is now different, or gone, is a real repair
      and still says so. */
-  const _repaired=_wasOnboarded&&(_normTouchedExisting(JSON.parse(_beforeNorm),STATE,true)||_verrs.length>0);
-  if(_repaired)STATE._dataRepaired=true;else delete STATE._dataRepaired;
-  if(_repaired!==_wasFlagged)save();
+  if(flagRepairs(_beforeNorm,_wasOnboarded).changed)save();
   // request durable storage so an installed PWA keeps data
   try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();}catch(e){}
   /* Android focuses an already-running PWA and navigates it, which is a

@@ -17201,6 +17201,81 @@ replacement asks the real flows, with a guard that the raw ones genuinely carry
 a contraindicated move for those flags — otherwise an empty result is a
 statement about the filter rather than about the data.
 
+## The one door junk arrives by never reported it (v456)
+
+`dataHealthNoteHTML()` exists to say *"something was reset to a safe default"*.
+Its flag was computed in `boot()` **and nowhere else** — so a foreign backup,
+the one door arbitrary JSON comes in through, repaired **silently**.
+
+Measured on a file carrying `adapt:99`, an unrecognised diet and `logs` as an
+ARRAY:
+
+| the backup carried | after the restore | what the athlete was told |
+|---|---|---|
+| `adapt: 99` | clamped to **1.3** | nothing |
+| `diet: 'kosher'` | fell back to **vegan** | *(its own prompt — v287)* |
+| `logs: []` | **every session reset to an empty map** | nothing |
+| the toast | | **"Backup restored"** |
+
+**The next boot cannot catch it either.** The state has already been
+normalised, so the diff is empty by then — the note can only ever be fired at
+the moment of the repair.
+
+`flagRepairs()` is the rule hoisted out of `boot()`, and all three restore
+doors ask it: `importData()`, `undoImport()` and `undoCrossTab()`. A second
+copy at the import site is a second place for it to drift from the boot's.
+
+**It reads `onboarded` from the state as it ARRIVED**, for the same reason
+`boot()` reads it before normalising: a never-onboarded state legitimately
+gains scaffolding, and flagging that would fire the note for every new install.
+
+**The floor is a healthy restore, which must say nothing at all.** A door that
+always reported would put that warning in front of every restore ever made —
+the v409 defect facing the other way. Three cases: a junk file reports, a clean
+one is silent, and a never-onboarded one is silent.
+
+### And the v444 assertion had been passing on nothing
+
+`t.ok('a healthy upgrade does not tell the athlete their data needed
+repairing', !r.repaired)` — the flag it read was **only ever set in `boot()`**,
+and that block drives `importData()`. It read `false` whatever the file
+contained.
+
+Making the flag real is what exposed it: v444's own fixture legitimately EARNS
+a repair, because it carries the two values v396 could not write. The
+assertion is now that a restore which repaired a stored value **says so**, with
+the two repaired values pinned; the healthy-restore claim moved to the v456
+block, where it is made against the faithful stored fixture.
+
+### Four sweeps that came back clean
+
+- **The default merge.** `loadState()` does `Object.assign(DEFAULT_STATE().x,
+  stored.x)` per sub-object, and this repo's rule is that a present-but-invalid
+  value beats the fallback that exists to cover it. 50 cases driven through the
+  real door: **10 nulls survive and every one is harmless** — `version` has no
+  reader at all (v285), `onboarded` and `neuralOn` are falsy either way, the
+  five toggles are internally consistent (`sound` and `vibrate` read truthy at
+  the chip AND the consumer, `voice`/`hype`/`beat` read `!==false` at both), and
+  `createdAt` fails closed at both of its readers. **The first run reported zero
+  survivors and was measuring nothing**: the seed wrote localStorage only, so
+  the boot's newer IndexedDB mirror won every case. The detector is proven with
+  a planted field that has no repair.
+- **The day after the upgrade.** A v396 state, then the first real session:
+  pointer 8 → 9, the log written and marked done, `adapt` 1.06 → 1.066, the
+  streak starts at 1, the next session builds, validator clean, nothing renders
+  `NaN`, no page errors.
+- **How short a flow can get.** All 32 flag combinations x both mobility
+  answers: the warm-up never falls below **6** moves and the cool-down below
+  **3**, and an empty or null flow prices at 0 rather than throwing.
+- **Every minute figure on every surface, for one session.** The preview chip,
+  its three section labels, the Today workout pane, the brief's three segments,
+  `sessionVolume()`, `plBudgetMin()` and `typicalSessionMin()` all agree:
+  22 + 5 + 4 = 31.
+- **Every attribute that interpolates a value** — `aria-label`, `title`, `alt`,
+  `placeholder`, `value`, `data-*`. 80 distinct sites; the only stored STRING
+  among them is `settings.reminderTime`, which carries a strict `HH:MM` repair
+  and whose every door runs it.
+
 ## The door the athlete's phone actually takes (v455)
 
 v444 pinned a v396 backup being **imported**. A real upgrade takes a

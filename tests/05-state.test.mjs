@@ -4473,9 +4473,16 @@ export default async function run() {
       /* v316: the legacy STRING carries no pointer, so there is nothing to
          check it against and it must read as no request. */
       o.legacyTrainAgainDropped = STATE._trainAgain === undefined;
-      /* A HEALTHY UPGRADE MUST NOT CLAIM A REPAIR. v409: boot() used to flag
-         any diff, and nearly every version adds a field. */
+      /* v456 gave importData() the boot's own repair report, and this fixture
+         legitimately EARNS one: it carries two values the real v396 build could
+         not produce — activity 1.55, which v396's own normalizeState() snaps to
+         the option set, and hasBar/hasBench false beside a gear list holding
+         both. Before v456 this read false whatever the file contained, because
+         the flag was computed in boot() and nowhere else, so the assertion
+         under it passed on nothing. "A healthy restore claims no repair" is
+         pinned in the v456 block, against the faithful stored fixture. */
       o.repaired = !!STATE._dataRepaired;
+      o.repairedFields = [STATE.nutrition.activity, STATE.profile.hasBar];
       o.validator = (() => { const e = console.error; let n = 0; console.error = () => n++;
         try { validateData(); } catch (_) {} console.error = e; return n; })();
 
@@ -4514,8 +4521,10 @@ export default async function run() {
     t.eq('and the activity logs', [r.kept.skip, r.kept.hold], [1, 1], JSON.stringify(r.kept));
     t.ok('the legacy train-again string fails closed rather than being trusted',
       r.legacyTrainAgainDropped, JSON.stringify(r));
-    t.ok('a healthy upgrade does not tell the athlete their data needed repairing',
-      !r.repaired, JSON.stringify(r));
+    t.ok('a restore that had to repair a stored value says so',
+      r.repaired, JSON.stringify(r));
+    t.eq('and the two values it repaired are the ones v396 could not have written',
+      r.repairedFields, [1.45, true], JSON.stringify(r.repairedFields));
     t.eq('the validator is clean on the restored state', r.validator, 0, JSON.stringify(r));
     t.eq('and nothing renders NaN, undefined or an invalid date', r.bad, [], JSON.stringify(r.bad));
     t.ok('and a real session still builds from where they left off',
@@ -4649,6 +4658,80 @@ export default async function run() {
     t.ok('and a real session still builds from where they left off',
       up.session.moves >= 3 && up.session.warm > 0 && up.session.named, JSON.stringify(up.session));
     t.eq('and the upgrade fires no page error', perr2, []);
+  }
+
+  /* ---- the one door junk actually arrives by never reported it (v456) -----
+     dataHealthNoteHTML() exists to say "something was reset to a safe default".
+     Its flag was computed in boot() and NOWHERE ELSE — so a foreign backup, the
+     one door arbitrary JSON comes in through, repaired silently.
+
+     Measured on a file carrying adapt:99, an unrecognised diet and `logs` as an
+     ARRAY: the multiplier clamped to 1.3, the diet fell back to vegan and EVERY
+     SESSION IN THE FILE was reset to an empty map — with nothing on screen but
+     the toast "Backup restored". The next boot cannot catch it either: the
+     state has already been normalised, so the diff is empty by then.
+
+     The rule is hoisted into flagRepairs() and the three restore doors ask it,
+     rather than a second copy drifting from the boot's. */
+  {
+    const good = JSON.parse(readFileSync('tests/fixtures/v396-stored.json', 'utf8'));
+    const { browser: ibr, page: ipg, errors: ierr } = await launch(port);
+    await waitForBoot(ipg);
+    const drive = async payload => await ipg.evaluate(async json => {
+      const err = console.error; console.error = () => {};   // validateData() logs
+      try {
+        window.confirm = () => true;
+        const want = JSON.parse(json).profile.name;
+        const file = new File([json], 'b.json', { type: 'application/json' });
+        importData({ target: { files: [file] } });
+        for (let i = 0; i < 200 && STATE.profile.name !== want; i++)
+          await new Promise(z => setTimeout(z, 25));
+        go('guide'); render();
+        return { landed: STATE.profile.name === want, flag: !!STATE._dataRepaired,
+          adapt: STATE.adapt, logsIsArray: Array.isArray(STATE.logs),
+          logs: Object.keys(STATE.logs || {}).length,
+          note: /needed a repair/i.test(document.querySelector('#v-guide').innerText) };
+      } finally { console.error = err; }
+    }, payload);
+
+    const junk = JSON.parse(JSON.stringify(good));
+    junk.profile.name = 'Junk Backup';
+    junk.adapt = 99;            // v286: rateSession() clamps every increment to 0.9-1.30
+    junk.logs = [];             // v284: a keyed map arriving as a list
+    const bad = await drive(JSON.stringify(junk));
+
+    /* GUARDS: a repair really happened, or "the note fires" is a statement
+       about a file that needed nothing. */
+    t.ok('guard: the junk backup really landed', bad.landed, JSON.stringify(bad));
+    t.eq('guard: and the out-of-band multiplier really was clamped', bad.adapt, 1.3, JSON.stringify(bad));
+    t.ok('guard: and the array logs really were reset', !bad.logsIsArray && bad.logs === 0, JSON.stringify(bad));
+
+    t.ok('a restore that repaired the athlete\'s data says so', bad.flag, JSON.stringify(bad));
+    t.ok('and the note reaches the glass, not just the flag', bad.note, JSON.stringify(bad));
+
+    /* FLOOR: a HEALTHY backup must say nothing at all. A door that always
+       reported would put that warning in front of every restore ever made,
+       which is the v409 defect facing the other way. */
+    const clean = JSON.parse(JSON.stringify(good));
+    clean.profile.name = 'Clean Backup';
+    const ok = await drive(JSON.stringify(clean));
+    t.ok('guard: the clean backup landed too', ok.landed, JSON.stringify(ok));
+    t.ok('a healthy restore claims no repair', !ok.flag, JSON.stringify(ok));
+    t.ok('and puts no warning on the glass', !ok.note, JSON.stringify(ok));
+    t.eq('and it is a real restore, not an empty one', ok.logs, 8, JSON.stringify(ok));
+
+    /* FLOOR: a never-onboarded incoming state legitimately gains scaffolding —
+       the same gate boot() has, and the reason it reads onboarded BEFORE the
+       repair rather than after. */
+    const fresh = JSON.parse(JSON.stringify(good));
+    fresh.profile.name = 'Fresh Backup';
+    fresh.onboarded = false;
+    fresh.adapt = 99;
+    const fr = await drive(JSON.stringify(fresh));
+    t.ok('guard: the never-onboarded backup landed', fr.landed, JSON.stringify(fr));
+    t.ok('a never-onboarded restore is bootstrapping, not a repair', !fr.flag, JSON.stringify(fr));
+    t.eq('and no page error fires on any of the three', ierr.filter(e => !/render:recovered/.test(e)), []);
+    await ibr.close();
   }
 
   srv.close();
