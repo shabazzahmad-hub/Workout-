@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { reportLive } from './lib/harness.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -38,6 +39,10 @@ for (const f of files) {
     failed++; broken.push(f);
     console.log(`\n✗ ${f} — the test file itself threw`);
     console.log('    ' + String(e.stack || e).split('\n').slice(0, 6).join('\n    '));
+    /* Print the checks the file had already failed on its way to the throw.
+       Without this a throw discards them, and the check that named the defect
+       is the one you never see. */
+    try { failed += reportLive(); } catch (e2) {}
   }
   console.log(`  (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
   if (bail && failed) break;

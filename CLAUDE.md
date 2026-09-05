@@ -16022,6 +16022,30 @@ share `#hiit` and never run at once — and the comment's count is corrected
 rather than left. *A comment claiming an invariant is not the invariant*, for
 the sixth time in this file.
 
+### One escaped mutant, and this machine cannot tell it apart
+
+Thirteen mutants, twelve caught. The one that got through is **`_runHiit()`
+reverting to the 0 ms bet** — and v438's own measurement is what explains it.
+That opener was the CONTROL precisely because the bet WORKS for it: traced with
+`pushState` and `popstate` together, it pops first and pushes second, 5 runs out
+of 5, so its entry survives either way.
+
+So on this machine the mutant is unobservable, and a check that caught it would
+be resting on a race — which is the thing this round exists to remove. It is
+recorded as uncatchable rather than papered over, the same call as v287's
+`wantAnchor`. **What makes the fix worth having is not that the old code was
+observably wrong here**: it is that the outcome depended on how much synchronous
+work an opener happened to do after scheduling, which is not a thing to rest a
+fix on, and the sibling opener it demonstrably broke is the proof.
+
+### Four mutants were caught by a THROW rather than by name
+
+F2, F3, F9 and F13 all reported *"the test file itself threw"*. Each is a real
+catch — the defect walks the page off its own history or blanks an overlay the
+next line reads — and **red is not enough, it has to say what**, which this file
+records three times. The block needs a guard immediately before the first line
+that dereferences, so the named assertions do the reporting.
+
 ### And a mutation anchor can go stale inside its own round
 
 Five of the v438 mutants reported `BAD ANCHOR (0)`. The anchors were written

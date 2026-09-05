@@ -11548,6 +11548,15 @@ export default async function () {
     await waitForBoot(p2);
     await seedAthlete(p2);   // a fresh context has its own storage
 
+    /* RED IS NOT ENOUGH, IT HAS TO SAY WHAT. Four of this round's mutants were
+       caught by a THROW rather than by a named check: a quit that pops an entry
+       it does not own walks the page off the start of its own history into
+       about:blank, and every p2.evaluate() after that reports "Execution context
+       was destroyed" — so the suite printed "the test file itself threw" and
+       said nothing about which property broke. The catch names the one thing
+       that can do it, and the finally still tears the context down. */
+    try {
+
     const openFrom = async (start) => await p2.evaluate(async (startSrc) => {
       const wait = ms => new Promise(z => setTimeout(z, ms));
       try { if (typeof PLAYER !== 'undefined' && PLAYER) playerQuit(); } catch (e) {}
@@ -11779,8 +11788,13 @@ export default async function () {
     t.eq('FLOOR: a quit whose entry really exists retires it',
       retire.after, retire.before, retire);
 
-    await p2.close();
-    await ctx2.close();
+    } catch (e) {
+      t.fail('the history block ran to the end without the page unloading',
+        'a quit almost certainly popped an entry it did not own: ' + String(e).slice(0, 300));
+    } finally {
+      try { await p2.close(); } catch (e) {}
+      try { await ctx2.close(); } catch (e) {}
+    }
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
