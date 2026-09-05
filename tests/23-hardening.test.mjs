@@ -11961,6 +11961,11 @@ export default async function () {
       STATE.profile.unit = 'in';
       openRuck();
       o.bare = read();
+      /* NO normalizeState() — the cross-tab door */
+      STATE.ruckLog = [{ date: todayISO(), mins: 'lots', dist: 'x', wt: 'y', at: Date.now() }];
+      STATE.profile.unit = 'cm';
+      openRuck();
+      o.junk = read();
       /* a legacy row with no unit tag reads as metric, which is what the
          distance half has always defaulted to */
       STATE.ruckLog = [{ date: todayISO(), mins: 30, dist: 5, wt: 10, at: Date.now() }];
@@ -12002,6 +12007,18 @@ export default async function () {
       ru.bare);
     t.ok('FLOOR: a legacy row with no unit tag reads as metric, both halves',
       /\b5 km\b/.test(ru.legacy.row) && /\b10 kg load\b/.test(ru.legacy.row), ru.legacy);
+
+    /* A JUNK ROW WITH NO BOOT BEHIND IT — the door v404's storage listener
+       opens. The boot repair cleans these rows, which is exactly why nothing
+       had ever driven the render with a dirty one: the mutant that reverts the
+       row's `x.dist > 0` guard to bare truthiness escaped every case above,
+       because every one of them went through the writer. A string is truthy,
+       so the row printed "NaN mi" and the Total tile summed to NaN. */
+    t.ok('a junk distance with no boot prints no distance at all',
+      !/NaN/.test(ru.junk.row) && !/(mi|km)\b/.test(ru.junk.row), ru.junk);
+    t.ok('and the totals it feeds are numbers, not NaN',
+      !/NaN/.test(String(ru.junk.tiles['Total km'])) &&
+      !/NaN/.test(String(ru.junk.tiles['Min this week'])), ru.junk);
 
     /* THE HELPER'S OWN CONTRACT, ASSERTED DIRECTLY. Its `w > 0` guard is
        consulted from one call site that already tests `x.wt`, so no rendered
@@ -12152,15 +12169,21 @@ export default async function () {
     t.ok('FLOOR: and 400 kg exactly is still a lift they can log',
       lf.metEdge.rows.length === 1 && lf.metEdge.rows[0].loadKg === 400, lf.metEdge);
 
-    t.eq('the boot drops a stored load outside the band', lf.repaired[0].loadKg, null, lf.repaired);
-    t.eq('and keeps the reps beside it, because the row is still a lift',
-      lf.repaired[0].reps, 5, lf.repaired);
-    t.eq('FLOOR: a stored load ON the ceiling survives untouched',
-      lf.repaired[1].loadKg, 400, lf.repaired);
-    t.eq('FLOOR: and an ordinary one is byte-identical',
-      [lf.repaired[2].loadKg, lf.repaired[2].reps, lf.repaired[2].rir], [60, 8, 2], lf.repaired);
+    /* GUARD FIRST, AND NEVER DEREFERENCE A ROW THE MUTANT MAY HAVE REMOVED.
+       The over-eager repair that drops the whole row left lf.repaired[0]
+       undefined, so every assertion below THREW and the run reported "the test
+       file itself threw" rather than naming a check. Still red, so still a
+       catch — but red is not enough, it has to say what. */
     t.eq('FLOOR: no row is dropped — a bad figure is not a bad lift',
       lf.repaired.length, 3, lf.repaired);
+    const rp = i => lf.repaired[i] || {};
+    t.eq('the boot drops a stored load outside the band', rp(0).loadKg, null, lf.repaired);
+    t.eq('and keeps the reps beside it, because the row is still a lift',
+      rp(0).reps, 5, lf.repaired);
+    t.eq('FLOOR: a stored load ON the ceiling survives untouched',
+      rp(1).loadKg, 400, lf.repaired);
+    t.eq('FLOOR: and an ordinary one is byte-identical',
+      [rp(2).loadKg, rp(2).reps, rp(2).rir], [60, 8, 2], lf.repaired);
   }
 
   /* THE WRITER'S COMMENT DESCRIBED A FILTER ONLY THE REPAIR HAD (v446).
@@ -12215,6 +12238,113 @@ export default async function () {
     t.eq('FLOOR: and a real load with it', neg.good.stored.wt, 10, neg.good);
     t.ok('FLOOR: and both print', /5 km/.test(neg.good.row) && /10 kg load/.test(neg.good.row),
       neg.good);
+  }
+
+  /* A BOUND THE ATHLETE IS TOLD MUST BE ONE THEY CAN ACTUALLY ENTER (v446).
+
+     Every "looks off — expected ..." message hand-wrote its imperial pair, and
+     FOUR of them named a figure the guard itself refuses:
+
+       55 lb  -> 24.95 kg   against a 25 kg floor
+       66 lb  -> 29.94 kg   against the wizard's own 30 kg floor
+       47 in  -> 119.38 cm  against a 120 cm floor
+       91 in  -> 231.14 cm  against a 230 cm ceiling
+
+     An athlete at the edge types the number they were just told and is refused
+     again by the same sentence — a dead end wearing the clothes of an
+     explanation. Rounded INWARD now, and derived from the band rather than
+     restated beside it, which is how the two came to disagree.
+
+     AND THE TWO TYPED DOORS DISAGREED. The wizard and the calorie sheet are
+     twins this file has already recorded drifting once: age was 13-100 in one
+     and 14-100 in the other, so an athlete who set the app up at 13 was refused
+     by the sheet; weight was 30-250 kg against plausibleKg()'s 25-350.
+
+     ASSERTED AS A CLASS: every bound the app quotes is fed back through the
+     app's own predicate. A future band written the same way fails here. */
+  {
+    const bd = await page.evaluate(() => {
+      const o = {};
+      const ends = str => (str.match(/(\d+)–(\d+)/) || []).slice(1).map(Number);
+      o.imp = { weight: weightBandI(true), height: heightBandI(true), waist: waistBandI(true) };
+      o.met = { weight: weightBandI(false), height: heightBandI(false), waist: waistBandI(false) };
+      /* every quoted end, fed back through the app's OWN predicate */
+      const check = (label, str, imp, per, pred) => {
+        const [lo, hi] = ends(str);
+        return { label, lo, hi, loOk: pred(lo * (imp ? per : 1)), hiOk: pred(hi * (imp ? per : 1)) };
+      };
+      o.fed = [
+        check('weight lb', o.imp.weight, true, 0.453592, plausibleKg),
+        check('weight kg', o.met.weight, false, 0.453592, plausibleKg),
+        check('height in', o.imp.height, true, 2.54, plausibleHeightCm),
+        check('height cm', o.met.height, false, 2.54, plausibleHeightCm),
+        check('waist in', o.imp.waist, true, 2.54, plausibleWaistCm),
+        check('waist cm', o.met.waist, false, 2.54, plausibleWaistCm),
+      ];
+      /* the trap is real: the figures these messages USED to quote are refused */
+      o.trap = {
+        lb55: plausibleKg(55 * 0.453592), lb56: plausibleKg(56 * 0.453592),
+        in47: plausibleHeightCm(47 * 2.54), in48: plausibleHeightCm(48 * 2.54),
+        in91: plausibleHeightCm(91 * 2.54), in90: plausibleHeightCm(90 * 2.54),
+      };
+      /* one band per field: both typed doors ask the same predicate */
+      o.age = { min: AGE_MIN, max: AGE_MAX, at13: ageEntryOk(13), at12: ageEntryOk(12),
+                repairAt10: plausibleAge(10) };
+      return o;
+    });
+
+    t.ok('guard: the figures these messages used to quote really are refused',
+      bd.trap.lb55 === false && bd.trap.in47 === false && bd.trap.in91 === false, bd.trap);
+    t.ok('guard: and the ones beside them really are accepted',
+      bd.trap.lb56 === true && bd.trap.in48 === true && bd.trap.in90 === true, bd.trap);
+
+    bd.fed.forEach(f => {
+      t.ok('every end of the ' + f.label + ' band the app quotes is enterable',
+        f.loOk === true && f.hiOk === true, f);
+    });
+
+    t.eq('FLOOR: the metric bands are the canonical ones, unchanged',
+      [bd.met.weight, bd.met.height, bd.met.waist],
+      ['25–350 kg', '120–230 cm', '40–250 cm'], bd.met);
+    t.eq('and the imperial ones are rounded INWARD, not to the nearest',
+      [bd.imp.weight, bd.imp.height, bd.imp.waist],
+      ['56–771 lb', '48–90 in', '16–98 in'], bd.imp);
+
+    t.eq('one age band, so the wizard and the calorie sheet cannot refuse each other',
+      [bd.age.min, bd.age.max, bd.age.at13, bd.age.at12], [13, 100, true, false], bd.age);
+    t.ok('FLOOR: and the REPAIR stays wider — it must not drop a value a typed door took',
+      bd.age.repairAt10 === true, bd.age);
+  }
+
+  /* And the rule is ASKED FOR rather than declared: a check counting the helper
+     passes while a message keeps its own hand-written pair, which is the drift
+     that produced this round. */
+  {
+    const src = await page.evaluate(() => {
+      const scripts = [...document.querySelectorAll('script:not([src])')];
+      /* the FIRST inline script on this page is two characters long */
+      const app = scripts.map(s => s.textContent).sort((a, b) => b.length - a.length)[0] || '';
+      return { len: app.length, body: app.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '') };
+    });
+    t.ok('guard: the scan really read the app', src.len > 400000, { len: src.len });
+    /* any quote character, because the wizard's messages are template literals */
+    const hand = (src.body.match(/['"`]\s*\d+–\d+ (lb|kg|in|cm)/g) || []);
+    t.eq('no message hand-writes a band beside the predicate that holds it',
+      hand, [], hand);
+
+    /* A DUPLICATE TOP-LEVEL FUNCTION NAME IS SILENT, AND THE LAST ONE WINS.
+       This round declared a second plausibleAge() beside the repair's own,
+       which quietly gave both typed doors the repair's wider band — and
+       `npm run check` cannot see it, because the file parses perfectly. Same
+       family as the duplicate-key guard on the data literals, on the 1,140
+       top-level functions instead. */
+    const names = (src.body.match(/^function\s+[A-Za-z_$][\w$]*/gm) || [])
+      .map(m => m.replace(/^function\s+/, ''));
+    const seen = {}, dupes = [];
+    names.forEach(n => { if (seen[n] && dupes.indexOf(n) < 0) dupes.push(n); seen[n] = 1; });
+    t.ok('guard: the scan found the app\'s top-level functions', names.length > 900,
+      { found: names.length });
+    t.eq('no top-level function name is declared twice', dupes, [], dupes);
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));

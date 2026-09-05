@@ -587,6 +587,49 @@ function waistToCm(v){return isImperial()?v*2.54:v;}            // typed → sto
 function waistShow(cm){return cm==null?null:(isImperial()?cm/2.54:cm);}  // stored → shown
 function weightToKg(v){return isImperial()?v*0.453592:v;}
 function weightShow(kg){return kg==null?null:(isImperial()?kg/0.453592:kg);}
+/* A BOUND THE ATHLETE IS TOLD MUST BE ONE THEY CAN ACTUALLY ENTER.
+   Every "looks off — expected ..." message hand-wrote its imperial pair, and
+   FOUR of them named a figure the guard itself REFUSES: 55 lb is 24.95 kg
+   against a 25 kg floor, the wizard's own 66 lb is 29.94 kg against its 30 kg
+   floor, and 47 in / 91 in are 119.4 cm / 231.1 cm against a 120-230 band.
+   An athlete at the edge types the number they were just told
+   and is refused again by the same sentence — a dead end wearing the clothes
+   of an explanation.
+   Rounded INWARD — up at the floor, down at the ceiling — so both ends are
+   enterable, and derived from the band rather than restated beside it, which
+   is how the two came to disagree. Same call as bikeNeed() rounding UP: a
+   figure quoted as a limit has to hold. */
+function bandLabel(lo,hi,per,imp,unit){
+  const f=imp?per:1;
+  return Math.ceil(lo/f-1e-9)+'\u2013'+Math.floor(hi/f+1e-9)+' '+unit;
+}
+/* THE UNIT IS PASSED, NEVER READ. The wizard's own picker does not write
+   profile.unit until the form commits, so isImperial() answers for the unit the
+   athlete had BEFORE they touched it — and the message would quote the wrong
+   band on the one screen where the unit is being chosen. */
+function weightBandI(imp){return bandLabel(25,350,0.453592,imp,imp?'lb':'kg');}
+function waistBandI(imp){return bandLabel(40,250,2.54,imp,imp?'in':'cm');}
+function heightBandI(imp){return bandLabel(120,230,2.54,imp,imp?'in':'cm');}
+/* ONE BAND PER FIELD, ASKED BY EVERY TYPED DOOR. The wizard and the calorie
+   sheet are twins this file has already recorded drifting once, and they had
+   drifted again in two more places: AGE was 13-100 in the wizard and 14-100 in
+   the sheet, so an athlete who set the app up at 13 was refused by the sheet;
+   WEIGHT was 30-250 kg against plausibleKg()'s 25-350. Widened to the canonical
+   band rather than narrowed, because the non-destructive direction is the one
+   that cannot refuse a figure the app already stores.
+   normalizeState() stays WIDER still (age 10-100) on purpose: a repair must not
+   drop a value a typed door once accepted. */
+const AGE_MIN=13,AGE_MAX=100;
+/* NOT plausibleAge() — that name is taken, by the REPAIR's own wider band
+   (10-100), and a duplicate top-level function declaration is silent: the last
+   one wins, so naming this the same thing quietly gave both typed doors the
+   repair's band. Caught by a check, not by npm run check, which only parses.
+   The two bands are both wanted: a repair must not drop a value a typed door
+   once accepted. */
+function ageEntryOk(a){return typeof a==='number'&&isFinite(a)&&a>=AGE_MIN&&a<=AGE_MAX;}
+function weightBand(){return weightBandI(isImperial());}
+function waistBand(){return waistBandI(isImperial());}
+function heightBand(){return heightBandI(isImperial());}
 const r1=v=>Math.round(v*10)/10;                                 // one decimal, for display
 /* One row per date, ever. Builds before v156 APPENDED a measurements row on
    every profile save, so a device that re-saved the quiz a few times carries
@@ -4223,16 +4266,16 @@ function wireOnboard(){
       const num=id=>{const e=$('#'+id);return e?parseFloat(e.value):NaN;};
       const im=(($('#ob-unit button.on')||{dataset:{}}).dataset.u)==='in';
       const age=num('ob-age');
-      if(!isFinite(age)||age<13||age>100)
-        return {id:'ob-age',msg:'Add your age (13–100) — every calorie and training target is built from it.'};
+      if(!ageEntryOk(age))
+        return {id:'ob-age',msg:`Add your age (${AGE_MIN}\u2013${AGE_MAX}) — every calorie and training target is built from it.`};
       const htRaw=num('ob-height');
       let ht=htRaw; if(im&&isFinite(ht))ht*=2.54;
-      if(!isFinite(ht)||ht<120||ht>230)
-        return {id:'ob-height',msg:(im?'Add your height in inches (47–91).':'Add your height in cm (120–230).')+unitMixupHint(htRaw,im)};
+      if(!plausibleHeightCm(ht))
+        return {id:'ob-height',msg:`Add your height in ${im?'inches':'cm'} (${heightBandI(im).replace(/ (in|cm)$/,'')}).`+unitMixupHint(htRaw,im)};
       const wtRaw=num('ob-weight');
       let wt=wtRaw; if(im&&isFinite(wt))wt*=0.453592;
-      if(!isFinite(wt)||wt<30||wt>250)
-        return {id:'ob-weight',msg:im?'Add your weight in pounds (66–550).':'Add your weight in kg (30–250).'};
+      if(!plausibleKg(wt))
+        return {id:'ob-weight',msg:`Add your weight in ${im?'pounds':'kg'} (${weightBandI(im).replace(/ (lb|kg)$/,'')}).`};
       /* Checked against the height, because alone the number is legal. */
       if(bmiImplausible(wt,ht))
         return {id:'ob-weight',msg:im
@@ -9091,19 +9134,25 @@ function logAct(k,mins,extra){
     if((STATE.prs.deadhang||0)<extra.secs){STATE.prs.deadhang=Math.round(extra.secs);}}
   save();toast(ACTS[k].emoji+' Logged to your '+ACTS[k].name+' record');try{checkAchievements();}catch(e){}
 }
+/* THE SUMS COERCE, BECAUSE A CROSS-TAB ADOPT HAS NO BOOT BEHIND IT. Every
+   figure here was added raw — `a+(x.mins||0)` CONCATENATES a stored string, and
+   the repair's own comment already records the shape it produced: "0105 MIN ALL
+   TIME". The boot repair cleans the rows, and v404's storage listener replaces
+   STATE without one, so the reader needs its own guard. Two guards, two doors. */
+const _actNum=v=>{const n=+v;return isFinite(n)&&n>0?n:0;};
 function actStats(k){
   const l=actLog(k);const wk=[];const now=new Date();
   for(let i=0;i<7;i++){const d=new Date();d.setDate(now.getDate()-i);wk.push(localISO(d));}
   const week=l.filter(x=>wk.includes(x.date));
-  return {n:l.length,total:Math.round(l.reduce((a,x)=>a+(x.mins||0),0)),
-    week:Math.round(week.reduce((a,x)=>a+(x.mins||0),0)),
+  return {n:l.length,total:Math.round(l.reduce((a,x)=>a+_actNum(x.mins),0)),
+    week:Math.round(week.reduce((a,x)=>a+_actNum(x.mins),0)),
     /* dist is canonical km for every row saveRuck() has ever written — it
        converts on the way in and tags `unit` only to record what was TYPED.
        The legacy repair keyed off `_km`, which is written nowhere in this file,
        so it fired on every imperial row and converted an already-canonical
        value a second time: a 3-mile ruck displayed as 4.8 mi. */
-    dist:Math.round(l.reduce((a,x)=>a+(x.dist||0),0)*10)/10,
-    best:l.reduce((m,x)=>Math.max(m,x.secs||0),0),last:l[0]||null};
+    dist:Math.round(l.reduce((a,x)=>a+_actNum(x.dist),0)*10)/10,
+    best:l.reduce((m,x)=>Math.max(m,_actNum(x.secs)),0),last:l[0]||null};
 }
 function removeAct(k,i){const l=actLog(k);if(rowAt(l,i)){l.splice(i,1);save();openAct(k);}}
 function actHistoryHTML(k){
@@ -9348,8 +9397,8 @@ function skipStats(){
   const l=skipLog();const now=new Date();const wk=[];
   for(let i=0;i<7;i++){const d=new Date();d.setDate(now.getDate()-i);wk.push(localISO(d));}
   const week=l.filter(x=>wk.includes(x.date));
-  return {sessions:l.length,total:l.reduce((a,x)=>a+(x.mins||0),0),
-    week:week.reduce((a,x)=>a+(x.mins||0),0),last:l[0]||null};
+  return {sessions:l.length,total:l.reduce((a,x)=>a+_actNum(x.mins),0),
+    week:week.reduce((a,x)=>a+_actNum(x.mins),0),last:l[0]||null};
 }
 function removeSkip(i){const l=skipLog();if(rowAt(l,i)){l.splice(i,1);save();openSkipping();}}
 function skipHistoryHTML(){
@@ -13740,8 +13789,8 @@ function saveMeasure(){
   if(!(wIn>0)&&!(bIn>0)){toast('Enter at least one value');return;}
   // normalise to the canonical store (cm / kg) before anything touches STATE
   const w=wIn>0?r1(waistToCm(wIn)):0, b=bIn>0?r1(weightToKg(bIn)):0;
-  if(w>0&&!plausibleWaistCm(w)){toast('Waist looks off — expected '+(isImperial()?'16–98 in':'40–250 cm'));return;}
-  if(b>0&&!plausibleKg(b)){toast('Weight looks off — expected '+(isImperial()?'55–770 lb':'25–350 kg'));return;}
+  if(w>0&&!plausibleWaistCm(w)){toast('Waist looks off — expected '+waistBand());return;}
+  if(b>0&&!plausibleKg(b)){toast('Weight looks off — expected '+weightBand());return;}
   upsertMeasure(w>0?w:null,b>0?b:null);
   if(w>0&&!STATE.profile.startWaist)STATE.profile.startWaist=w;
   // keep the working body weight (used for protein/water/BMI/TDEE) in sync with the newest logged weight
@@ -21682,15 +21731,15 @@ function saveTDEE(){
   if(!(sex&&age>0&&ht>0&&wt>0)){toast('Fill in all fields');return;}
   const htRaw=ht,wtRaw=wt;
   if(imp){ht=ht*2.54;wt=wt*0.453592;}
-  if(!plausibleKg(wt)){toast('Weight looks off — expected '+(imp?'55–770 lb':'25–350 kg'));return;}
+  if(!plausibleKg(wt)){toast('Weight looks off — expected '+weightBand());return;}
   /* Was `!plausibleWaistCm(ht) && !(ht>=120&&ht<=230)`, which is true only
      outside 40-250 cm — the second branch could never reject anything. The
      realistic mis-entry is a height typed in inches while the unit is cm: 70
      was accepted, giving a TDEE of 1591 instead of 2570 and a target floored to
      1500, whose only feedback is "raised to a safe minimum" — which reads as
      reassurance rather than as "your height is wrong". */
-  if(!(ht>=120&&ht<=230)){toast('Height looks off — expected '+(imp?'47–91 in':'120–230 cm')+unitMixupHint(htRaw,imp));return;}
-  if(!(age>=14&&age<=100)){toast('Age looks off — expected 14–100');return;}
+  if(!plausibleHeightCm(ht)){toast('Height looks off — expected '+heightBand()+unitMixupHint(htRaw,imp));return;}
+  if(!ageEntryOk(age)){toast('Age looks off — expected '+AGE_MIN+'\u2013'+AGE_MAX);return;}
   /* The twin of the height check, and the one that does NOT error on its own:
      a weight typed in the wrong unit lands inside the legal range and every
      calorie number below is built from it silently. Only the pair is wrong. */

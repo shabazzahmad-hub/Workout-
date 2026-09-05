@@ -251,8 +251,13 @@ const { browser, page, errors } = await launch(port);
   s.ok('the reported case names centimetres', /centimet/i.test(hint.cmInInches.msg), hint);
   s.ok('and gives the number to type instead', /\b70\b/.test(hint.cmInInches.msg), hint);
   /* A wrong number that is NOT a unit mix-up must not be told it is one. */
+  /* The bound was 47 in, which is 119.38 cm — BELOW the 120 cm floor the guard
+     itself enforces, so the message named a height it would refuse again. v446
+     rounds every quoted band INWARD; the subject here is unchanged, and the
+     figure is pinned rather than derived so the two checks cannot agree with
+     each other while both being wrong. */
   s.ok('a plainly wrong height gets the range and no false explanation',
-    /47/.test(hint.justWrong.msg) && !/centimet|inches that is/i.test(hint.justWrong.msg), hint);
+    /48–90/.test(hint.justWrong.msg) && !/centimet|inches that is/i.test(hint.justWrong.msg), hint);
   s.ok('the mirror image names inches', /inches/i.test(hint.inchesInCm.msg), hint);
   s.ok('and converts it', /\b178\b/.test(hint.inchesInCm.msg), hint);
   /* Only the PAIR is wrong here — 86 lb is a legal number on its own. */

@@ -16656,6 +16656,94 @@ are symmetric at last: the load has always guarded `w > 0` and the distance
 guarded only truthiness, so a junk distance arriving through a cross-tab adopt
 — which has no boot behind it — reached `innerHTML`.
 
+## A bound the athlete is told must be one they can actually enter (v446)
+
+Found by asking of the lift-log fix — *where else does the app quote a limit?* —
+rather than by using the app. Five "looks off — expected …" messages, every one
+hand-writing its imperial pair, and **four of them named a figure the guard
+itself refuses**:
+
+| the message said | converts to | the band |
+|---|---|---|
+| `55–770 lb` | **24.95 kg** | 25–350 kg |
+| `66–550 lb` (the wizard) | **29.94 kg** | its own 30 kg floor |
+| `47–91 in` | **119.38 cm** and **231.14 cm** | 120–230 cm |
+| `16–98 in` | 40.6 / 248.9 cm | correct by luck |
+
+An athlete at the edge types the number they were just told and is refused again
+by the same sentence — **a dead end wearing the clothes of an explanation**,
+which is worse than v289's bare range because it looks like an answer.
+
+`bandLabel()` rounds **INWARD** — up at the floor, down at the ceiling — and is
+derived from the band rather than restated beside it. Same call as `bikeNeed()`
+rounding UP: a figure quoted as a limit has to hold. Measured after: every end
+of every quoted band converts back inside its own predicate.
+
+**THE UNIT IS PASSED, NEVER READ.** The wizard's own picker does not write
+`profile.unit` until the form commits, so `isImperial()` answers for the unit the
+athlete had BEFORE they touched it — and the message would quote the wrong band
+on the one screen where the unit is being chosen. Caught by reading the diff
+back, not by a check.
+
+### And the two typed doors disagreed about two of the three fields
+
+The wizard and the calorie sheet are twins this file has already recorded
+drifting once. They had drifted again:
+
+| field | the wizard | the calorie sheet | `normalizeState()` |
+|---|---|---|---|
+| age | **13–100** | **14–100** | 10–100 |
+| weight | **30–250 kg** | 25–350 kg (`plausibleKg`) | — |
+| height | 120–230 cm | 120–230 cm | — |
+
+So an athlete who set the app up at **13** was refused by the calorie sheet with
+no way to proceed. One predicate each now — `plausibleAge()`, `plausibleKg()`,
+`plausibleHeightCm()` — and **widened rather than narrowed**, because the
+non-destructive direction is the one that cannot refuse a figure the app already
+stores. `normalizeState()` stays wider still on purpose: a repair must not drop
+a value a typed door once accepted.
+
+**The check is written against the CLASS**: every end of every quoted band is fed
+back through the app's own predicate, so a future band written the same way fails
+here. Its guards pin that the trap was real — the figures those messages used to
+quote really are refused, and the ones beside them really are accepted — because
+otherwise the whole block passes on bands that were never wrong. And the rule is
+**asked for** rather than declared: a source scan forbids a hand-written pair
+beside the predicate that holds it, which is the drift that produced this round.
+
+## A duplicate top-level function name is silent, and the last one wins (v446)
+
+This round declared a second `plausibleAge()` beside the repair's own — and the
+repair's band is deliberately WIDER (10-100 against the typed doors' 13-100),
+because a repair must not drop a value a typed door once accepted. Function
+declarations hoist, so the later one won and **both typed doors quietly got the
+repair's band**. `npm run check` cannot see it: the file parses perfectly.
+
+Caught by a check, on a value the check happened to pin (`plausibleAge(12)` came
+back `true`). Nothing would have caught it otherwise, and the app has **1,140
+top-level functions**.
+
+So the class is now scanned, in the same family as the duplicate-KEY guard on
+the data literals: no top-level function name may be declared twice. Measured
+today: zero. The guard beside it asserts the scan found more than 900 names, or
+an empty duplicate list is a statement about the regex.
+
+## The sums were as exposed as the row (v446)
+
+`actStats()` and `skipStats()` added every figure raw — `a + (x.mins || 0)`
+**concatenates** a stored string, and the repair's own comment already records
+the shape that produced: *"0105 MIN ALL TIME"*. The boot repair cleans the rows,
+which is exactly why nothing had ever driven the render with a dirty one.
+
+**v404's storage listener replaces `STATE` with no boot behind it**, so the
+reader needs its own guard. Two guards, two doors — and this is the door the
+escaped mutant found: reverting the row's `x.dist > 0` test to bare truthiness
+walked past every case, because every one of them went through the writer. A
+string is truthy, so the row printed `NaN mi` and the Total tile summed to `NaN`.
+
+**Read the mutant back**: it was not equivalent and it was not a bad mutant. It
+was a case my checks had not built.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
