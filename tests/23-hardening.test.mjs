@@ -12759,15 +12759,29 @@ export default async function () {
       await new Promise(r => setTimeout(r, 7000));
       o.doneAfterSet2 = !!(quickState.done && quickState.done[0]);
 
+      /* THE REP CADENCE IS THE OTHER RUNNER, and it has its own chain. A check
+         that only drives the timed one leaves half the fix unexercised. */
+      quickState.done = {};
+      q.items[2].target = 1; q.items[2].rest = 1;
+      o.repUnit = (EX[quickExId(q.items[2].exId)] || {}).unit;
+      o.repSets = q.items[2].sets;
+      quickPlay(2);
+      await new Promise(r => setTimeout(r, 9000));
+      o.repDoneAfterSet1 = !!quickState.done[2];
+      await new Promise(r => setTimeout(r, 11000));
+      o.repLabel2 = (document.querySelector('#sheet .tt') || {}).textContent;
+      await new Promise(r => setTimeout(r, 9000));
+      o.repDoneAfterSet2 = !!quickState.done[2];
+
       /* FLOOR: a one-set movement still ticks after its one set, its label
          carries no set counter, and Play must not UNtick a movement that was
          already checked off. */
-      q.items[1].target = 1; q.items[1].rest = 1; q.items[1].sets = 1;
-      quickState.done[1] = true;
-      quickPlay(1);
+      q.items[3].target = 1; q.items[3].rest = 1; q.items[3].sets = 1;
+      quickState.done[3] = true;
+      quickPlay(3);
       o.labelSingle = (document.querySelector('#sheet .tt') || {}).textContent;
-      await new Promise(r => setTimeout(r, 7500));
-      o.singleStillDone = !!quickState.done[1];
+      await new Promise(r => setTimeout(r, 9000));
+      o.singleStillDone = !!quickState.done[3];
 
       q.items.forEach((it, i) => { it.target = keep[i].t; it.rest = keep[i].r; it.sets = keep[i].s; });
       closeSheet();
@@ -12779,7 +12793,7 @@ export default async function () {
       o.aria = (() => { quickState.done = { 0: true }; renderQuick();
         const c = document.querySelectorAll('#v-quick .ex-check');
         return [c[0].getAttribute('aria-label'), c[1].getAttribute('aria-label')]; })();
-      o.names = q.items.slice(0, 2).map(it => (EX[quickExId(it.exId)] || EX[it.exId]).name);
+      o.names = q.items.slice(0, 4).map(it => (EX[quickExId(it.exId)] || EX[it.exId]).name);
       return o;
     });
     t.eq('guard: the movement being driven really carries two sets', run.sets0, 2, run);
@@ -12788,6 +12802,13 @@ export default async function () {
     t.eq('the chain hands on to the second set on its own',
       run.label2, 'Forearm Plank · set 2 of 2', run);
     t.ok('and the last set is what ticks it', run.doneAfterSet2, run);
+    t.eq('guard: the second movement really is rep-counted', run.repUnit, 'reps', run);
+    t.eq('guard: and really carries two sets', run.repSets, 2, run);
+    t.ok('the rep cadence chains its sets too, and one of two does not tick it',
+      !run.repDoneAfterSet1, run);
+    t.eq('its second set is named as such', run.repLabel2, run.names[2] + ' · set 2 of 2', run);
+    t.ok('and the last one ticks it', run.repDoneAfterSet2, run);
+
     t.ok('FLOOR: a one-set movement carries no set counter',
       !/set \d+ of/.test(run.labelSingle || ''), run);
     t.ok('FLOOR: Play never unticks a movement it just finished', run.singleStillDone, run);
