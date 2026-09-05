@@ -1911,7 +1911,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='442';
+const APP_VERSION='443';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2741,6 +2741,10 @@ function actualCeiling(target){const t=+target;return (isFinite(t)&&t>0)?t*ACTUA
    library are time and reps. The units are ASKED of EX rather than restated here, so a third unit
    is legal here the day it is legal there. */
 const ITEM_SETS_MAX=99, ITEM_REST_MAX=600;
+/* A session left open longer than a week is not a session. The ceiling exists
+   to refuse a figure an import carried, never to clip a real one — a check
+   pins that a three-hour session survives it untouched. */
+const SESSION_SEC_MAX=7*86400;
 const ITEM_TARGET_MAX=PRESCRIBE_TIME_MAX*ACTUAL_MAX_MULT;
 let _sessUnits=null;
 function sessionUnits(){
@@ -4768,7 +4772,7 @@ function briefTabHTML(){
   const d=(()=>{try{return new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'});}catch(e){return '';}})();
   return `
   <div class="card pad" style="text-align:center;margin-bottom:10px">
-    <img src="coach-sarge.jpg" alt="${ADVISOR.name}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{textContent:'🎖️',style:'font-size:40px;line-height:1'}))" style="width:78px;height:78px;border-radius:50%;object-fit:cover;object-position:center 18%;border:2px solid var(--fire);box-shadow:0 6px 18px rgba(0,0,0,.45)">
+    ${coachAvatarHTML(78,'box-shadow:0 6px 18px rgba(0,0,0,.45)')}
     <h2 style="margin:8px 0 2px">Today's Briefing</h2>
     <div class="tiny muted">${ADVISOR.name} · your coach${d?' · '+d:''}</div>
     <button class="btn primary" style="margin-top:10px" onclick="openBrief()">▶ Play briefing</button>
@@ -6980,8 +6984,13 @@ function commitSession(feel){
   STATE._undo=snapshotForUndo(p,pos.cycle+'-'+pos.week);
   log.done=true;log.feel=feel;log.completedAt=todayISO();
   if(_lastSessionClock){
-    log.durSec=_lastSessionClock.wall;log.pausedSec=_lastSessionClock.paused;
-    log.workSec=_lastSessionClock.work;log.budgetMin=_lastSessionClock.budget;
+    if(_lastSessionClock.ptr===p){
+      log.durSec=_lastSessionClock.wall;log.pausedSec=_lastSessionClock.paused;
+      log.workSec=_lastSessionClock.work;log.budgetMin=_lastSessionClock.budget;
+    }
+    /* Dropped either way. A clock that does not belong to this session cannot
+       belong to a later one either, and leaving it armed is what let a stale
+       figure travel forward. */
     _lastSessionClock=null;
   }
   /* Snapshot what was actually prescribed TODAY. History readers used to rebuild
@@ -8101,8 +8110,6 @@ function plEnterDone(){
       <b style="color:${overCol}">${over>0?fmtTime(over)+' over':(over<0?fmtTime(-over)+' under':'bang on')}</b> the ~${PLAYER.budget} min this one should take</div>`;
   _share={t:PLAYER.free?sess.session.name:'Session Complete',s:label,
     l:[fmtTime(PLAYER.wall||1)+' on the clock',PLAYER.setsDone+' sets · '+PLAYER.items.length+' moves']};
-  // hand the figures to commitSession(), which is what actually writes the log
-  _lastSessionClock={wall:PLAYER.wall,paused:PLAYER.paused,work:PLAYER.elapsed||0,budget:PLAYER.budget};
   if(PLAYER.free){
     // Bonus/weights session — no program commit, just a close button.
     $('#plBody').innerHTML=`
@@ -8114,6 +8121,14 @@ function plEnterDone(){
     if(!motivate('done'))coachSpeak('Session complete. Strong work.');
     return;
   }
+  /* BELOW the free branch, not above it. The stamp used to sit one line before
+     that return, and its own comment said the figures were being handed to
+     commitSession() — which a bonus session never reaches. So the clock sat
+     there until the NEXT program session committed, and "Mark session
+     complete" on the Today card stamped the bonus session's figures onto it.
+     Measured: a 9-minute bonus session, then a program session marked complete
+     off the card, recorded durSec 540 and budgetMin 23. */
+  _lastSessionClock={ptr:STATE.progressPtr,wall:PLAYER.wall,paused:PLAYER.paused,work:PLAYER.elapsed||0,budget:PLAYER.budget};
   /* A program session never offered to log added load at all — "Log what you
      lifted" only existed on the free/weights branch above. Scoped to the
      specific items that are actually ladder-maxed, not the whole session: a
@@ -11227,7 +11242,7 @@ function briefUpdateControls(){
 function briefSheetHTML(segs){
   const d=(()=>{try{return new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'});}catch(e){return '';}})();
   return `<div style="text-align:center;margin-bottom:6px">
-      <img src="coach-sarge.jpg" alt="${ADVISOR.name}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{textContent:'🎖️',style:'font-size:40px;line-height:1'}))" style="width:94px;height:94px;border-radius:50%;object-fit:cover;object-position:center 18%;border:2px solid var(--fire);box-shadow:0 6px 18px rgba(0,0,0,.45)">
+      ${coachAvatarHTML(94,'box-shadow:0 6px 18px rgba(0,0,0,.45)')}
       <h2 style="margin:8px 0 2px">Morning Brief</h2>
       <div class="tiny muted">${ADVISOR.name} · your coach${d?' · '+d:''}</div>
     </div>
@@ -13235,7 +13250,7 @@ function openExerciseInfo(exId){
   openSheet(`
     <h3>${ex.name}</h3>
     <div class="row" style="gap:8px;margin:2px 0 12px"><span class="tag ${ex.region}">${ex.region}</span><span class="chip">${ex.unit==='time'?'Timed hold':'Reps'}</span></div>
-    ${ex.img?`<img class="exphoto" src="${ex.img}" alt="${ex.name}">`:emblemHTML(ex)}
+    ${ex.img?`<img class="exphoto" src="${ex.img}" alt="">`:emblemHTML(ex)}
     <div class="note fire">${ex.why}</div>
     <div class="section-label" style="margin-top:6px">How to do it</div>
     <ol class="steplist">${ex.steps.map(s=>`<li>${s}</li>`).join('')}</ol>
@@ -13757,8 +13772,8 @@ function photosHTML(){
        that reads the pose off the row it picked. */
     h+=`<div class="section-label" style="margin:16px 3px 8px">Before → Now · ${_ve(pair.pose)}</div>
       <div class="grid2" style="gap:8px">
-        <div><img class="ph-img" data-pid="${_ve(a.id)}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;background:var(--card2)"><div class="tiny muted center" style="margin-top:4px">${_ve(a.date)} · ${poseOf(a)}</div></div>
-        <div><img class="ph-img" data-pid="${_ve(b.id)}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;background:var(--card2)"><div class="tiny muted center" style="margin-top:4px">${_ve(b.date)} · ${poseOf(b)}</div></div>
+        <div><img class="ph-img" alt="" data-pid="${_ve(a.id)}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;background:var(--card2)"><div class="tiny muted center" style="margin-top:4px">${_ve(a.date)} · ${poseOf(a)}</div></div>
+        <div><img class="ph-img" alt="" data-pid="${_ve(b.id)}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;background:var(--card2)"><div class="tiny muted center" style="margin-top:4px">${_ve(b.date)} · ${poseOf(b)}</div></div>
       </div>`;
   }else if(ps.length>=2){
     h+=`<div class="note info" style="margin:16px 0 0">Two shots of the <b>same</b> pose is what makes a comparison — take a second ${poseOf(ps[0])} and the Before → Now panel appears.</div>`;
@@ -13766,7 +13781,7 @@ function photosHTML(){
   if(ps.length){
     h+=`<div class="section-label" style="margin:16px 3px 8px">All photos (${ps.length})</div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-        ${ps.map(p=>`<div style="position:relative"><img class="ph-img" data-pid="${_ve(p.id)}" onclick="viewPhoto(${_ve(JSON.stringify(String(p.id)))})" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:10px;background:var(--card2);cursor:pointer"><div class="tiny muted" style="text-align:center;margin-top:2px">${p.date?_ve(String(p.date).slice(5)):'no date'} ${poseOf(p)[0].toUpperCase()}</div></div>`).join('')}
+        ${ps.map(p=>`<div style="position:relative"><img class="ph-img" alt="" data-pid="${_ve(p.id)}" onclick="viewPhoto(${_ve(JSON.stringify(String(p.id)))})" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:10px;background:var(--card2);cursor:pointer"><div class="tiny muted" style="text-align:center;margin-top:2px">${p.date?_ve(String(p.date).slice(5)):'no date'} ${poseOf(p)[0].toUpperCase()}</div></div>`).join('')}
       </div>`;
   }else{
     h+=`<div class="note info" style="margin-top:12px;margin-bottom:0">No photos yet — a front, side &amp; back shot today becomes your baseline. The mirror lies; photos don't.</div>`;
@@ -13913,7 +13928,7 @@ async function viewPhoto(id){
   const data=photoData(await idbGet('ph_'+id));const meta=(STATE.photos||[]).find(p=>p.id===id);
   openSheet(`
     <h3 style="text-transform:capitalize">${meta?_ve(poseOf(meta)+' · '+meta.date):'Photo'}</h3>
-    ${data?'<img id="pvImg" style="width:100%;border-radius:14px;margin:6px 0 14px">'
+    ${data?'<img id="pvImg" alt="" style="width:100%;border-radius:14px;margin:6px 0 14px">'
           :`<div class="note warn" style="margin:6px 0 14px">The picture for this entry is not on this device. The row is still here, so it can be deleted — and if you have a backup file, the picture is still in it.</div>`}
     <button class="btn ghost" style="color:var(--pink)" onclick="deletePhoto(${_ve(JSON.stringify(String(id)))})">Delete this photo</button>
     <div style="height:8px"></div>
@@ -17470,6 +17485,13 @@ function scrubLogRows(map){
       if(st.actual!=null&&!(typeof st.actual==='number'&&isFinite(st.actual)&&st.actual>=0&&st.actual<=actualCeiling(0)))delete st.actual;
     });
     if(map[k].done!==undefined&&typeof map[k].done!=='boolean')delete map[k].done;
+    /* The four clock figures. They reach the glass now, so they need the band
+       the writer already implied. Out of band is DROPPED, never clamped: this
+       is a measurement, and a clamped one is a number the athlete never took. */
+    ['durSec','pausedSec','workSec'].forEach(f=>{const v=map[k][f];
+      if(v!==undefined&&!(typeof v==='number'&&isFinite(v)&&v>=0&&v<=SESSION_SEC_MAX))delete map[k][f];});
+    {const b=map[k].budgetMin;
+     if(b!==undefined&&!(typeof b==='number'&&isFinite(b)&&b>0&&b<=SESSION_SEC_MAX/60))delete map[k].budgetMin;}
   }
 }
 function isDateISO(v){if(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(v))return false;
@@ -17716,7 +17738,7 @@ function physRow(which){
   const sel=which==='cur'?(STATE.profile.bodyCur||0):(STATE.profile.bodyGoal||0);
   return PHYS_LEVELS.map(L=>{const on=sel===L.id;
     return `<button onclick="setBodyLevel('${which}',${L.id})" style="flex:1;min-width:0;background:${on?'var(--card2)':'none'};border:1.5px solid ${on?'var(--fire)':'var(--line)'};border-radius:12px;padding:6px 1px;cursor:pointer">
-    <img src="phys-${L.id}.jpg" alt="${L.name}" loading="lazy" onerror="this.style.display='none'" style="width:100%;height:82px;object-fit:contain;display:block;filter:${on?'none':'grayscale(0.35) opacity(0.72)'}">
+    <img src="phys-${L.id}.jpg" alt="" loading="lazy" onerror="this.style.display='none'" style="width:100%;height:82px;object-fit:contain;display:block;filter:${on?'none':'grayscale(0.35) opacity(0.72)'}">
     <div class="tiny ${on?'':'muted'}" style="margin-top:2px;font-weight:${on?800:600}">${L.name}</div></button>`;}).join('');
 }
 function recomputeTargetWeight(){
@@ -21854,6 +21876,44 @@ function logItemsFor(p,l){
   if(_itemsMemo)_itemsMemo.set(k,out);
   return out;
 }
+/* THE SESSION WAS MEASURED AND THE SCREEN SHOWED AN ESTIMATE.
+   commitSession() has written durSec/pausedSec/workSec/budgetMin onto every
+   session log since the clock shipped, and suite 08 pins that they are STORED
+   and survive a save. NOTHING EVER READ THEM — a grep across index.html, sw.js
+   and all 24 suites returned the writer and that suite and nothing else. Both
+   surfaces that print a session's minutes showed `~estMin`, which sessionStats()
+   builds from targets x tempo plus PRESCRIBED rest, so it knows nothing about
+   transitions, pauses, or how long the athlete actually took. Measured on a
+   real 39-minute session: the sheet printed `~27 MINUTES`, 44% under, with
+   durSec 2340 sitting on the same row.
+
+   A check that the measurement is KEPT is the container. What the athlete sees
+   is the payload.
+
+   Two guards, two doors: the boot repair keeps a backup clean, and this reader
+   stands in front of the glass — a cross-tab adopt replaces STATE with no boot
+   behind it. A PART CANNOT EXCEED THE WHOLE, so a paused or working total
+   larger than the wall clock is refused rather than printed. */
+function sessionClockOf(l){
+  try{
+    if(!l||typeof l.durSec!=='number'||!isFinite(l.durSec)
+       ||l.durSec<=0||l.durSec>SESSION_SEC_MAX)return null;
+    const wall=Math.round(l.durSec);
+    const part=v=>(typeof v==='number'&&isFinite(v)&&v>=0&&v<=wall)?Math.round(v):0;
+    const b=l.budgetMin;
+    return {wall,paused:part(l.pausedSec),work:part(l.workSec),
+      budget:(typeof b==='number'&&isFinite(b)&&b>0&&b<=SESSION_SEC_MAX/60)?Math.round(b):0};
+  }catch(e){return null;}
+}
+/* The measured minutes when the log carries a clock, the estimate otherwise —
+   and it SAYS WHICH. Every log written before the clock shipped, and every
+   session marked complete off the Today card rather than run in the player,
+   has no clock, so the estimate is the honest answer there. */
+function sessionMinutes(l,st){
+  const c=sessionClockOf(l);
+  if(c)return {min:Math.max(1,Math.round(c.wall/60)),measured:true,clock:c};
+  return {min:st.estMin,measured:false,clock:null};
+}
 function sessionStats(p,full){
   const l=STATE.logs[p]||{ex:{}};
   const items=logItemsFor(p,l);
@@ -21892,7 +21952,7 @@ function sessionHistoryHTML(){
     const feel=l.feel==='easy'?'😎':(l.feel==='hard'?'🥵':'💪');
     const st=sessionStats(p);
     h+=`<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer;padding:12px 14px" onclick="openSessionDetail(${p})">
-      <span><b>${s.name}</b><div class="tiny muted">Wk ${wk} · ${_ve(l.completedAt||l.date||'')} · ${st.exDone}/${st.exTotal} moves · ${st.setsDone} sets · ~${st.estMin} min</div></span><span style="font-size:18px">${feel}</span></button>`;
+      <span><b>${s.name}</b><div class="tiny muted">Wk ${wk} · ${_ve(l.completedAt||l.date||'')} · ${st.exDone}/${st.exTotal} moves · ${st.setsDone} sets · ${(()=>{const mm=sessionMinutes(l,st);return (mm.measured?'':'~')+mm.min;})()} min</div></span><span style="font-size:18px">${feel}</span></button>`;
   });
   h+=`</div>${priorNote}`;return h;
 }
@@ -21910,12 +21970,14 @@ function openSessionDetail(p){
   const volTxt=st.totalReps?`${st.totalReps} reps`:'';
   const holdTxt=st.totalHold?fmtTime(st.totalHold)+' hold':'';
   const workTxt=[volTxt,holdTxt].filter(Boolean).join(' · ')||'—';
+  const mins=sessionMinutes(l,st);
   openSheet(`<h3>${sess.session.name}</h3><div class="tiny muted" style="margin-bottom:10px">Week ${wk} · ${_ve(l.completedAt||l.date||'')} · felt ${feelTxt}</div>
     <div class="grid3" style="margin-bottom:10px">
       <div class="stat"><div class="n" style="color:var(--green)">${st.exDone}<span style="font-size:12px;color:var(--muted)">/${st.exTotal}</span></div><div class="l">Moves done</div></div>
       <div class="stat"><div class="n" style="color:var(--teal)">${st.setsDone}</div><div class="l">Sets</div></div>
-      <div class="stat"><div class="n" style="color:var(--fire-l)">~${st.estMin}</div><div class="l">Minutes</div></div>
+      <div class="stat"><div class="n" style="color:var(--fire-l)">${mins.measured?'':'~'}${mins.min}</div><div class="l">${mins.measured?'Minutes':'Est. minutes'}</div></div>
     </div>
+    ${mins.measured?`<div class="tiny muted center" style="margin:-2px 0 6px">Measured: <b>${fmtTime(mins.clock.wall)}</b> on the clock${mins.clock.work?` · ${fmtTime(mins.clock.work)} working`:''}${mins.clock.paused?` · ${fmtTime(mins.clock.paused)} paused`:''}${mins.clock.budget?` · against the ~${mins.clock.budget} min this one should take`:''}</div>`:''}
     <div class="tiny muted center" style="margin:-2px 0 10px">Work volume: <b>${workTxt}</b></div>
     <div class="section-label" style="margin-top:0">Exercises</div>
     <div class="card pad">${rows}</div>
@@ -21948,7 +22010,7 @@ async function renderCompare(){
   if(gen!==_cmpGen)return;   // a newer selection already resolved and won
   const box=$('#cmpImgs');if(!box)return;
   const A=photoData(da),B=photoData(db);
-  const cell=(id,ok,cap)=>`<div>${ok?`<img id="${id}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px">`
+  const cell=(id,ok,cap)=>`<div>${ok?`<img id="${id}" alt="" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px">`
     :`<div class="tiny muted center" style="width:100%;aspect-ratio:3/4;display:flex;align-items:center;justify-content:center;border-radius:12px;background:var(--card2);padding:8px">not on this device</div>`}<div class="tiny muted center" style="margin-top:3px">${cap}</div></div>`;
   box.innerHTML=cell('cmpImgA',!!A,'then')+cell('cmpImgB',!!B,'now');
   // Assigned, never interpolated — see photoData().
@@ -22026,7 +22088,7 @@ function renderGuide(){
     <button class="btn ghost sm" style="width:100%;margin-top:2px" onclick="testReminderNotif()">🔔 Send a test notification</button>
     ${(n=>n?`<div class="note warn" style="margin:8px 0 4px">${n}</div>`:'')(notifBlockedNote())}
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Voice coach <span class="tiny muted">· deep</span></span><button class="chip ${STATE.settings.voice!==false?'on':''}" onclick="toggleSetting('voice')">${STATE.settings.voice!==false?'On':'Off'}</button></div>
-    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Say “continue” to start the next set <span class="tiny muted">· hands-free</span></span><button class="chip ${voiceCmdOn()?'on':''}" onclick="toggleVoiceCmd()" ${voiceCmdSupported()?'':'aria-disabled="true"'}>${voiceCmdOn()?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Say “continue” to start the next set <span class="tiny muted">· hands-free</span></span><button class="chip ${voiceCmdOn()?'on':''}" onclick="toggleVoiceCmd()" ${(voiceCmdSupported()||voiceCmdOn())?'':'aria-disabled="true"'}>${voiceCmdOn()?'On':'Off'}</button></div>
     <div class="tiny muted" style="padding:2px 0 6px">${_ve(voiceCmdNote()||'The microphone opens during rest — and while a timer is stuck — never during a set, and it only ever acts on that one word. The recognition runs on Google’s servers, so it needs a connection. It never stops, pauses or ends a session — that stays a deliberate tap.')}</div>
     <div style="padding:4px 0 2px">
       <div class="row" style="justify-content:space-between"><span class="tiny muted">Beep &amp; countdown volume</span><span class="tiny muted" id="cvLbl">${Math.round(cueVolPref()*100/CUE_VOL_DEFAULT)}%</span></div>

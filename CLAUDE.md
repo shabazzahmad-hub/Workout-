@@ -16270,6 +16270,110 @@ explicit test is not the same as control flow through an exception, and recorded
 as uncatchable rather than papered over with a check that cannot fail.
 
 
+## The session was measured, and the screen showed an estimate (v443)
+
+`commitSession()` has written four real figures onto every session log since
+the clock shipped — `durSec`, `pausedSec`, `workSec`, `budgetMin` — and suite
+08 pins that they are STORED and survive a save and a normalize. **Nothing
+ever read them.** A grep across `index.html`, `sw.js` and all 24 suites
+returns the writer and that suite and nothing else.
+
+Both surfaces that print a session's minutes — the history row on Progress ▸
+Strength and the detail sheet — printed `~estMin`, which `sessionStats()`
+builds from targets × tempo plus **prescribed** rest, so it knows nothing
+about transitions, pauses, or how long the athlete actually took. Measured on
+one real session:
+
+| | |
+|---|---|
+| what it took | **39 min** (`durSec` 2340), 3 min paused, 25 min working |
+| what the sheet printed | **`~27 MINUTES`** |
+| the gap | **44% under**, with the measurement on the same row |
+
+**A check that the measurement is KEPT is the container. What the athlete sees
+is the payload.** Suite 08 proved the storage and nobody asked whether it was
+ever shown again.
+
+**It says which it is.** `sessionMinutes()` returns the measured figure when
+the log carries a clock and the estimate otherwise, and the label moves with
+it — `Minutes` against `Est. minutes`, and the row keeps its `~` only for an
+estimate. Every log written before the clock shipped, and every session marked
+complete off the Today card rather than run in the player, genuinely has no
+clock, so the estimate is the honest answer there and that is a pinned floor.
+
+### Showing it exposed a clock that belonged to a different session
+
+`plEnterDone()` set the stamp one line ABOVE `if(PLAYER.free){…return;}`, and
+its own comment said the figures were being handed to `commitSession()` —
+which a bonus session never reaches. *A comment claiming an invariant is not
+the invariant*, for the seventh time in this file. So the clock sat there
+until the next program session committed. Measured:
+
+| | |
+|---|---|
+| a 9-minute bonus session finishes | `_lastSessionClock = {wall: 540, budget: 7}` |
+| then **Mark session complete** on the Today card | `durSec: 540, budgetMin: 7` |
+
+**Moving the stamp below the free branch is half the fix.** A program session
+run in the player and quit WITHOUT tapping a feel chip leaves the stamp behind
+in exactly the same way, so a commit days later — or of a different session
+entirely — picks it up. The clock now carries the pointer it was taken on, and
+`commitSession()` uses it only when the pointer matches. Same shape as v316's
+`_trainAgain` stamp: any pointer move voids it with no writer involved. It is
+dropped either way, because a clock that does not belong to this session cannot
+belong to a later one.
+
+### Two guards, two doors
+
+The four figures reach the glass now, so they get the band the writer already
+implied — and **out of band is DROPPED, never clamped**: this is a measurement,
+and a clamped one is a number the athlete never took. `sessionClockOf()` stands
+in front of the render because a cross-tab adopt replaces `STATE` with no boot
+behind it, and it refuses a **part larger than the whole** — a paused or working
+total above the wall clock is not a measurement, whatever a backup carries.
+
+The ceiling is a week, and it exists to refuse an imported figure rather than
+to clip a real one: a check pins that a three-hour session survives untouched.
+
+### `totalTUT()` is deliberately NOT in the class
+
+It sums work plus **prescribed** rest across every session — time under
+tension, which its own name says. That is a training quantity; a session's
+duration is a calendar one. Swapping it for the wall clock would answer a
+different question, so it stays as it is.
+
+## The accessible-name sweep enumerated controls, not images (v443)
+
+v411 gave every control a name a screen reader can read, and v413 gave the app
+a live region to announce through. Both sweeps enumerate
+`input, select, textarea` and `button`. **Neither looks at `<img>`**, and a
+sweep is only as wide as the surface it enumerates.
+
+| | count |
+|---|---|
+| `<img>` with **no `alt` attribute at all** — announced as a URL | 5 |
+| `alt` that repeats the visible text right beside it — announced twice | 2 |
+
+All five of the first group are progress photographs with a caption naming
+them (`2026-08-01 · front`), so `alt=""` is the right value: a real alt would
+say the same words a second time. The two in the second group each sit under
+their own `<h3>` or beside their own label — and **one of them already had a
+correct twin**, `alt=""` on the identical `.exphoto` in the baseline sheet.
+
+The coach avatar keeps its real `alt`, and that is a decision rather than an
+oversight: in the player header it stands alone with no text beside it, so
+blanking it there would leave a picture with no name at all.
+
+### And two hand-written copies of the avatar that had already drifted
+
+`coachAvatarHTML()` exists and four sites use it. Two more wrote the whole
+`<img>` out by hand, and they had drifted — `object-position: center 18%`
+against the helper's `16%`, and no `flex:0 0 auto`. **A second copy of a rule
+is a second place for it to drift, and this one had.** Both route through the
+helper now, so a source scan can pin that the file names `coach-sarge.jpg`
+exactly once.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

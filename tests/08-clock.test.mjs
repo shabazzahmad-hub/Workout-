@@ -343,6 +343,151 @@ export default async function run() {
   t.ok('and it is the wall clock, not the working time', logged.durIsWallClock, logged.log);
   t.ok('the paused total is kept too', logged.pausedStored, logged.log);
   t.ok('it survives a save and a normalize', logged.survivesSave, logged);
+
+  /* ---- and it REACHES THE ATHLETE ---------------------------------------
+     The block above pins that the four figures are STORED and survive a save.
+     Nothing ever read them. Both surfaces that print a session's minutes — the
+     history row on Progress > Strength and the detail sheet — showed
+     `~estMin`, which sessionStats() builds from targets x tempo plus
+     PRESCRIBED rest, so it knows nothing about transitions, pauses or how long
+     the athlete took. Measured on a real 39-minute session: `~27 MINUTES`,
+     44% under, with durSec 2340 sitting on the same row.
+
+     A check that the measurement is KEPT is the container. What the athlete
+     sees is the payload. */
+  const shown = await page.evaluate(() => {
+    const o = {};
+    const finish = (ptr, mins, paused) => {
+      STATE.progressPtr = ptr; _lastSessionClock = null;
+      openPlayer();
+      PLAYER.t0 = monoNow() - mins * 60000; PLAYER.pausedMs = paused * 60000;
+      PLAYER.elapsed = 1500; PLAYER.setsDone = 11;
+      plEnterDone(); playerQuit();
+      const s = buildSession(ptr);
+      [...s.main, s.finisher].filter(Boolean)
+        .forEach(m => { for (let i = 0; i < m.sets; i++) toggleSet(m.exId, i); });
+      commitSession('right');
+      return ptr;
+    };
+    const sheetOf = p => { openSessionDetail(p); const sh = document.querySelector('#sheet');
+      const t = sh ? sh.innerText.replace(/\s+/g, ' ') : ''; closeSheet(); return t; };
+    const rowOf = () => { go('progress'); setProgressTab('strength'); render();
+      const v = document.querySelector('#v-progress');
+      return v ? ((v.innerText.match(/moves · \d+ sets · ~?\d+ min/) || [null])[0]) : null; };
+
+    STATE.logs = {}; STATE.runs = [];
+    const p = finish(5, 42, 3);
+    const l = STATE.logs[p];
+    o.stored = { durSec: l.durSec, pausedSec: l.pausedSec, workSec: l.workSec, budgetMin: l.budgetMin };
+    o.realMin = Math.round(l.durSec / 60);
+    o.estMin = sessionStats(p, true).estMin;
+    o.estMinRow = sessionStats(p).estMin;   // the row calls it without `full`, so it omits the warm-up and cool-down allowance
+    o.sheet = sheetOf(p);
+    o.row = rowOf();
+
+    /* FLOOR: a log with NO clock — every session written before the clock
+       shipped, and every session marked complete off the Today card rather
+       than run in the player — must still show the estimate, and must SAY it
+       is one. */
+    delete l.durSec; delete l.pausedSec; delete l.workSec; delete l.budgetMin;
+    o.noClockSheet = sheetOf(p);
+    o.noClockRow = rowOf();
+
+    /* THE LEAK. A bonus session set the clock and returned without ever
+       committing, so it sat there until the NEXT program session committed.
+       Measured before the fix: a 9-minute bonus session, then "Mark session
+       complete" on the Today card, recorded durSec 540 and budgetMin 7. */
+    STATE.progressPtr = 6; STATE.logs = {}; _lastSessionClock = null;
+    const s6 = buildSession(6); const it6 = [...s6.main, s6.finisher].filter(Boolean);
+    openPlayer({ items: [{ exId: it6[0].exId, sets: 2, target: 20, unit: 'reps', rest: 45 }],
+      free: true, title: 'Bonus' });
+    PLAYER.t0 = monoNow() - 9 * 60000; PLAYER.pausedMs = 0;
+    PLAYER.elapsed = 400; PLAYER.setsDone = 2;
+    o.wasFree = PLAYER.free;
+    plEnterDone();
+    o.clockAfterBonus = _lastSessionClock;
+    playerQuit();
+    it6.forEach(m => { for (let i = 0; i < m.sets; i++) toggleSet(m.exId, i); });
+    commitSession('right');
+    o.leakStamped = STATE.logs[6] ? STATE.logs[6].durSec : 'no log';
+
+    /* AND A CLOCK TAKEN ON ANOTHER SESSION. A player session quit without a
+       feel chip leaves the stamp behind exactly as a bonus session used to;
+       the pointer is what stops it being applied to a different session. */
+    STATE.progressPtr = 7; STATE.logs = {}; _lastSessionClock = null;
+    openPlayer();
+    PLAYER.t0 = monoNow() - 30 * 60000; PLAYER.pausedMs = 0;
+    PLAYER.elapsed = 900; PLAYER.setsDone = 8;
+    plEnterDone(); playerQuit();          // finished, never committed
+    o.stampPtr = _lastSessionClock ? _lastSessionClock.ptr : null;
+    STATE.progressPtr = 9;                 // a DIFFERENT session is committed
+    const s9 = buildSession(9);
+    [...s9.main, s9.finisher].filter(Boolean)
+      .forEach(m => { for (let i = 0; i < m.sets; i++) toggleSet(m.exId, i); });
+    commitSession('right');
+    o.wrongPtrStamped = STATE.logs[9] ? STATE.logs[9].durSec : 'no log';
+    o.clockConsumed = _lastSessionClock;
+
+    /* THE BOOT REPAIR, and the band that must not fire on a real session. */
+    const boot = v => { STATE.logs = { 0: { date: todayISO(), completedAt: todayISO(),
+      done: true, ex: {}, durSec: v } }; STATE.runs = []; normalizeState();
+      return STATE.logs[0].durSec; };
+    o.junkDur = ['abc', -1, 1e12, {}, null].map(boot);
+    o.realThreeHour = boot(3 * 3600);
+    /* A PART CANNOT EXCEED THE WHOLE, read with NO boot behind it — a
+       cross-tab adopt replaces STATE and never boots. */
+    o.partOverWhole = sessionClockOf({ durSec: 1800, pausedSec: 1e9, workSec: 1e9 });
+    STATE.logs = {}; STATE.progressPtr = 0; save();
+    return o;
+  });
+
+  // Guards: the two numbers have to genuinely differ, or the check is vacuous.
+  t.ok('guard: a committed player session really stores a clock',
+    shown.stored.durSec > 0 && shown.stored.budgetMin > 0, JSON.stringify(shown.stored));
+  t.ok('guard: the measured minutes and the estimate genuinely differ',
+    Math.abs(shown.realMin - shown.estMin) >= 5,
+    JSON.stringify({ real: shown.realMin, est: shown.estMin }));
+
+  t.ok('the detail sheet prints the minutes that were MEASURED, not the estimate',
+    new RegExp('\\b' + shown.realMin + '\\s+MINUTES\\b', 'i').test(shown.sheet),
+    shown.sheet.slice(0, 260));
+  t.ok('and says what was measured — the clock, the working time and the pause',
+    /Measured:/.test(shown.sheet) && /working/.test(shown.sheet) && /paused/.test(shown.sheet),
+    shown.sheet.slice(0, 400));
+  t.ok('the history row drops the tilde once there is a real figure',
+    !!shown.row && shown.row.indexOf('~') < 0 && shown.row.indexOf(shown.realMin + ' min') >= 0,
+    JSON.stringify({ row: shown.row, real: shown.realMin }));
+
+  t.ok('FLOOR: a log with no clock still shows the estimate, and says it is one',
+    new RegExp('~' + shown.estMin + '\\s+EST\\. MINUTES', 'i').test(shown.noClockSheet),
+    shown.noClockSheet.slice(0, 260));
+  t.ok('FLOOR: and the row says it is an estimate',
+    !!shown.noClockRow && shown.noClockRow.indexOf('~' + shown.estMinRow + ' min') >= 0,
+    JSON.stringify({ row: shown.noClockRow, est: shown.estMinRow }));
+  t.ok('FLOOR: and it does not claim a measurement it does not have',
+    !/Measured:/.test(shown.noClockSheet), shown.noClockSheet.slice(0, 260));
+
+  t.ok('guard: the bonus session really ran as a bonus session', shown.wasFree === true, shown);
+  t.eq('a bonus session leaves no clock behind for the next commit',
+    shown.clockAfterBonus, null, shown);
+  t.eq('so the program session it never ran is not stamped with its 9 minutes',
+    shown.leakStamped, undefined, JSON.stringify(shown.leakStamped));
+
+  t.ok('guard: a finished player session stamps the pointer it was taken on',
+    shown.stampPtr === 7, JSON.stringify({ ptr: shown.stampPtr }));
+  t.eq('and a clock taken on another session is not applied to this one',
+    shown.wrongPtrStamped, undefined, JSON.stringify(shown.wrongPtrStamped));
+  t.eq('and it is dropped either way, so it cannot travel further',
+    shown.clockConsumed, null, JSON.stringify(shown.clockConsumed));
+
+  t.eq('junk in the stored duration is dropped at the boot',
+    shown.junkDur, [undefined, undefined, undefined, undefined, undefined],
+    JSON.stringify(shown.junkDur));
+  t.eq('FLOOR: a real three-hour session survives the band untouched',
+    shown.realThreeHour, 3 * 3600, JSON.stringify(shown.realThreeHour));
+  t.eq('a part larger than the whole is refused at the read, with no boot behind it',
+    shown.partOverWhole && [shown.partOverWhole.paused, shown.partOverWhole.work], [0, 0],
+    JSON.stringify(shown.partOverWhole));
   t.ok('and is not re-applied to the next session', logged.consumed, logged);
 
   // ---- no leaked intervals -------------------------------------------------
