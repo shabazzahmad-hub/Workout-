@@ -15853,6 +15853,34 @@ still clear, the cool-down must still get its beat, and a player **re-opened
 inside the 400 ms deferred-clear window** must not be blanked — which is a real
 sequence, and the guard the v436 mutant escaped through.
 
+### And the fourth fixed sleep, waiting for a sheet that re-opens itself
+
+CI went red on the v437 pull request, three checks, and **none of them was
+v437's** — they were the v435 focus block, which had merged green a day
+earlier. Same shape as v414 and v420: a check that races, exposed by a timing
+shift rather than by a code defect.
+
+`sheetDismiss()` schedules `flushCelebrations()` **350 ms** later, and a queued
+badge calls `openSheet()`. The block did `closeSheet(); await 700ms` and then
+assumed the scrim was clear — so a badge left queued by an earlier block popped
+inside the wait, `openSheet()` treated the block's own call as a **REPAINT**,
+and `_sheetReturn` was never recorded. Reproduced exactly, and the figures match
+the CI failure byte for byte:
+
+| | `closeSheet()` + 700 ms | drain, then poll |
+|---|---|---|
+| `wasClear` | **false** | true |
+| `_sheetReturn` | **null** | the opener |
+
+**Two rules, and the block broke both.** *Wait for the CONDITION, never for a
+duration* — it now polls until the scrim is genuinely closed. And *each block
+builds the state it asserts on* — the queue is drained **before** the close
+rather than after the wait, which is where it was and which is far too late.
+
+`closeSheet()` is called only while a sheet is actually open, because it takes
+a history step; and one flush window is outlived at the end, so a badge queued
+by the last close cannot re-open a sheet after the poll has finished.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

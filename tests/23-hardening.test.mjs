@@ -11206,14 +11206,31 @@ export default async function () {
          give focus back on a genuine open, not on a repaint), and the two
          ambient early returns in onPop cleared. */
       go('today');
-      try { closeSheet(); } catch (e) {}
-      await new Promise(z => setTimeout(z, 700));
+      /* A FIXED SLEEP CANNOT WAIT FOR A SHEET THAT RE-OPENS ITSELF. This was
+         `closeSheet(); await 700ms`, and it went red on CI while passing
+         locally. sheetDismiss() schedules flushCelebrations() 350 ms later,
+         and a queued badge calls openSheet() — so the scrim was OPEN again
+         when the 700 ms elapsed, openSheet treated the next call as a
+         REPAINT, and _sheetReturn was never recorded. Measured on the CI
+         failure: wasClear false, ret null.
+         Drain the queue FIRST, then poll for the condition rather than
+         betting on a duration — closeSheet() only when a sheet is actually
+         open, since it takes a history step. */
+      _celebQ = [];
+      for (let i = 0; i < 40; i++) {
+        if (!document.querySelector('#scrim').classList.contains('open')) break;
+        _celebQ = [];
+        try { closeSheet(); } catch (e) {}
+        await new Promise(z => setTimeout(z, 80));
+      }
+      _celebQ = [];
+      await new Promise(z => setTimeout(z, 450));   // outlive one flush window
+      _celebQ = [];
       const wasClear = !document.querySelector('#scrim').classList.contains('open');
       const b = document.createElement('button');
       b.id = 'cfBackOpener'; b.textContent = 'open';
       document.querySelector('.view.active').appendChild(b); b.focus();
       const focusedFirst = document.activeElement && document.activeElement.id;
-      _celebQ = [];
       openSheet('<div id="cfBackMarker">sheet content</div>');
       _backGuard = false; _exiting = false;
       window.__cfGen = _sheetGen;
