@@ -1966,7 +1966,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='449';
+const APP_VERSION='450';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4515,10 +4515,34 @@ function typicalSessionMin(){
     return work+wc;
   }catch(e){return null;}
 }
+/* THE SCREEN ARGUED WITH ITSELF. The hero said "~15 minutes" and four lines
+   below it, in bold, "Rest 2 minutes between tests" — and nine of those rests
+   is EIGHTEEN minutes on its own, so the hero could not be right whatever the
+   efforts took. The number was written before v296 enforced the rests and
+   nobody came back to it. It is not cosmetic: an athlete who budgeted fifteen
+   minutes is exactly the one who rushes the rest, which is the thing the rest
+   exists to prevent — and these ten numbers anchor every prescription for a
+   year.
+
+   The REST is exact. The efforts cannot be, because every test is to failure,
+   so they are priced from the app's own numbers rather than a second set
+   invented here: currentMaxes() is what this athlete is assumed to manage
+   (TEST_DEFAULTS on day one, their own figures once they have tested), a timed
+   test in seconds and a rep test at the athlete's own rep cadence — the same
+   cadence plBudgetMin() prices a session with. */
+function baselineRestSec(){try{return Math.max(0,TESTS.length-1)*ASSESS_REST_SEC;}catch(e){return 0;}}
+function baselineEffortSec(){try{
+  const mx=currentMaxes()||{}, per=repTempoSetting();
+  return TESTS.reduce((a,t)=>{
+    const v=+mx[t.id]||+TEST_DEFAULTS[t.id]||0;
+    return a+(t.unit==='time'?v:v*per);
+  },0);
+}catch(e){return 0;}}
+function baselineMin(){const s=baselineRestSec()+baselineEffortSec();return s?Math.max(1,Math.round(s/60)):0;}
 function baselineIntroHTML(){
   const typ=typicalSessionMin();
   return `
-  <div class="hero anterior"><div class="htop"><div><div class="hlbl">Day 1</div><h1>Baseline Test</h1><div class="hmeta">~15 minutes · sets your whole program</div></div><div class="hicon">📋</div></div></div>
+  <div class="hero anterior"><div class="htop"><div><div class="hlbl">Day 1</div><h1>Baseline Test</h1><div class="hmeta">~${baselineMin()} minutes · sets your whole program</div></div><div class="hicon">📋</div></div></div>
   <div class="note fire">Everything is built from this. You'll do <b>${TESTS.length} quick tests</b> to failure. The app scores your core, sets your level, and personalises every target — so you start exactly where you should and progress from <b>your</b> numbers.${typ?` Most training days after this run about <b>~${typ} minutes</b> — today is longer because it's a measurement, not a workout.`:''}</div>
   <div class="card pad"><h3>The ${TESTS.length} tests</h3>
     ${TESTS.map((t,i)=>`<div class="kv"><span><b>${i+1}. ${t.name}</b></span><span class="tag ${EX[t.ex].region}">${t.unit==='time'?'hold':'reps'}</span></div>`).join('')}

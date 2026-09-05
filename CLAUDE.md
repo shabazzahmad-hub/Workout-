@@ -16973,6 +16973,55 @@ assertion below**: limited mobility really lengthens the warm-up, a flagged low
 back really shortens the cool-down to three moves, and the transitions really
 are part of the time (297s of mat time against 260s of holding).
 
+## The screen argued with itself (v450)
+
+Found by asking of v449 the obvious next question: **where else is a duration
+written by hand?** One site, and it is the first screen a new athlete sees.
+
+The Day-1 hero said **"~15 minutes"**. Four lines below it, in bold, the same
+screen said **"Rest 2 minutes between tests"** — and there are ten tests, so
+nine of those rests is **eighteen minutes on its own.** The hero could not be
+right whatever the efforts took, and both sentences were on the glass at once.
+
+| | |
+|---|---|
+| enforced rest (v296) | **1,080s — 18 min**, exact |
+| effort, athlete with nothing tested | 275s |
+| **what an untested athlete needs** | **23 min** |
+| effort at the app's own published benchmarks | 830s |
+| **what a strong athlete needs** | **32 min** |
+| what the screen said | **15 min** |
+
+**The number predates the rests.** v296 added `startAssessRest()` because the
+battery's own guidance already promised two minutes between efforts and nothing
+enforced it; nobody came back to the figure four lines up.
+
+**It is not cosmetic, and the harm points the wrong way.** An athlete who
+budgeted fifteen minutes is exactly the one who rushes the rest — which is the
+thing the rest exists to prevent, on the ten numbers that anchor every
+prescription for a year.
+
+**The rest is EXACT and the efforts cannot be**, because every test is to
+failure. So they are priced from the app's own numbers rather than a second set
+invented here: `currentMaxes()` is what this athlete is assumed to manage —
+`TEST_DEFAULTS` on day one, their own figures once they have tested — a timed
+test in seconds and a rep test at the athlete's own rep cadence, which is the
+cadence `plBudgetMin()` already prices a session with.
+
+**The guard is the whole finding**, and without it every assertion below is
+satisfied by a battery with no rests in it: nine enforced rests really are
+eighteen minutes, which is on its own longer than the old claim. Beside it, the
+invariant that outlives any particular figure: **the number can never be
+shorter than the rest the same screen prescribes.**
+
+**Both halves are pinned.** Deleting the bold rest line would resolve the
+contradiction in the direction that costs the athlete the measurement, and it
+satisfies every assertion about the hero.
+
+**And it must track the athlete**, or it is a constant with extra steps: 23
+untested against 32 at the benchmarks, pinned as two values rather than as the
+app's own expression.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

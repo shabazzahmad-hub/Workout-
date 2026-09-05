@@ -259,9 +259,10 @@ export default async function run() {
   }
 
   /* ---- Day 1 says what a NORMAL day looks like, not just the test (v277) --
-     "~15 minutes" on the hero only ever described the baseline TEST — a
-     competitor field report flagged that as the exact gap that makes a
-     54-week program feel like a bigger ask than it is on first glance.
+     The hero's figure only ever described the baseline TEST — a competitor
+     field report flagged that as the exact gap that makes a 54-week program
+     feel like a bigger ask than it is on first glance. (That figure was a
+     hardcoded "~15 minutes" until v450 derived it; the rests alone are 18.)
      typicalSessionMin() reuses plBudgetMin() (the guided player's own real
      estimate) and sessionStats()'s own 35s/33s-per-move warm-up/cool-down
      pricing — not a second, inventable copy of either number — built from

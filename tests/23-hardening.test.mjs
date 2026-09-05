@@ -12605,6 +12605,74 @@ export default async function () {
     t.ok('and no longer carries its own arithmetic', !src.pickerOwnMath, src);
   }
 
+  /* ---------- v450: the screen argued with itself ---------------------------
+     The Day-1 hero said "~15 minutes" and four lines below it, in bold, "Rest 2
+     minutes between tests". Nine of those rests is EIGHTEEN minutes on its own,
+     so the hero could not be right whatever the efforts took — the figure was
+     written before v296 enforced the rests and nobody came back to it.
+
+     Measured: 18 minutes of rest, plus 275 seconds of effort for an athlete
+     with nothing tested yet (TEST_DEFAULTS) = 23 minutes, and 32 for one at the
+     app's own published benchmarks.
+
+     Both halves are pinned. Deleting the bold rest line would "resolve" the
+     contradiction in the direction that costs the athlete the measurement. */
+  {
+    const saved = await page.evaluate(() => JSON.stringify(STATE.baseline || null));
+    const r = await page.evaluate(() => {
+      const o = {};
+      STATE.baseline = null;
+      o.tests   = TESTS.length;
+      o.restSec = baselineRestSec();
+      o.restMin = Math.round(baselineRestSec() / 60);
+      o.effortFresh = baselineEffortSec();
+      o.minFresh = baselineMin();
+      /* Drive the render, not the helper: a hero that stopped asking for the
+         figure is invisible to a check that calls baselineMin() itself. */
+      go('today');
+      const view = document.querySelector('#v-today');
+      o.heroText = (view.innerText.match(/~\d+ minutes · sets your whole program/) || [''])[0];
+      o.saysRest2 = /Rest 2 minutes between tests/i.test(view.innerText);
+      o.typ = typicalSessionMin();
+      /* The same battery for an athlete at the app's own benchmarks. The figure
+         has to track the athlete, or it is a constant with extra steps. */
+      STATE.baseline = { date: '2026-01-01', level: 'Advanced', maxes: {} };
+      TESTS.forEach(x => { STATE.baseline.maxes[x.id] = x.bench; });
+      o.effortStrong = baselineEffortSec();
+      o.minStrong = baselineMin();
+      STATE.baseline = null;
+      return o;
+    });
+
+    /* THE GUARD IS THE WHOLE FINDING: the rest the screen prescribes is on its
+       own longer than the fifteen minutes the screen used to claim. Without
+       this every assertion below is satisfied by a battery with no rests in
+       it. */
+    t.eq('guard: nine enforced rests really are eighteen minutes', r.restSec, 1080, r);
+    t.ok('guard: which alone is longer than the old claim of fifteen', r.restMin > 15, r);
+    t.eq('guard: and it is derived from the battery, not restated', r.restSec,
+      (r.tests - 1) * 120, r);
+
+    t.ok('the hero no longer claims fifteen minutes', !/~15 minutes/.test(r.heroText), r);
+    t.eq('an untested athlete is told the 23 minutes it takes them',
+      r.heroText, '~23 minutes · sets your whole program', r);
+    t.eq('and the helper agrees with the glass', r.minFresh, 23, r);
+    t.ok('the figure can never be shorter than the rest it prescribes',
+      r.minFresh >= r.restMin, r);
+    t.eq('the effort is priced at the rep cadence, not one second a rep',
+      r.effortFresh, 275, r);
+
+    t.eq('an athlete at the published benchmarks is told 32', r.minStrong, 32, r);
+    t.ok('so the figure tracks the athlete rather than being a constant',
+      r.minStrong > r.minFresh, r);
+
+    t.ok('FLOOR: the screen still asks for two minutes between tests', r.saysRest2, r);
+    t.ok('FLOOR: the training-day figure beside it is untouched',
+      typeof r.typ === 'number' && r.typ > 0 && r.typ < 90, r);
+
+    await page.evaluate(v => { STATE.baseline = v ? JSON.parse(v) : null; }, saved);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
