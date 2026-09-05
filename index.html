@@ -1911,7 +1911,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='430';
+const APP_VERSION='431';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -13023,7 +13023,7 @@ function renderProgram(){
      makes the number checkable — without it a reader has no way to tell a
      right number from a wrong one. */
   const _pw=programWeeks(),_wt=weeklyTarget();
-  let h=`<h2 class="vtitle">Your Program</h2><div class="vsub">${SESSIONS_PER_CYCLE*TOTAL_CYCLES} sessions in ${TOTAL_CYCLES} blocks of ${WEEKS_PER_CYCLE} weeks — about <b>${_pw} weeks</b> at your ${_wt} sessions a week. Weeks 1–6 are core &amp; abs, then a full-body split. The load climbs every week.</div>`;
+  let h=`<h2 class="vtitle">Your Program</h2><div class="vsub">${SESSIONS_PER_CYCLE*TOTAL_CYCLES} sessions in ${TOTAL_CYCLES} blocks of ${WEEKS_PER_CYCLE} weeks — about <b>${_pw} weeks</b> at your ${_wt} session${_wt===1?'':'s'} a week. Weeks 1–6 are core &amp; abs, then a full-body split. The load climbs every week.</div>`;
   h+=programVsGoalHTML();
   /* The alternate-session tiles used to sit here. They are choices about TODAY —
      "not the planned session, something else instead" — and Program is the
@@ -22976,15 +22976,28 @@ function normalizeState(){
   }
   /* days drives the weekly target and the training-day reminder. A null or a
      string here is the same class of latent defect that limitations was: it does
-     not throw today, but every reader has to guess. */
-  if(!Array.isArray(STATE.profile.days)||!STATE.profile.days.length
-     ||!STATE.profile.days.every(d=>Number.isInteger(d)&&d>=0&&d<=6)){
+     not throw today, but every reader has to guess.
+
+     THE STRING BRANCH SPLIT ON CHARACTERS AND THEN READ THE RUN AS A NUMBER, so
+     a compact string carried a run of digits through as ONE value: '42' became
+     the weekday [42] and '12456' became [12456]. The array branch beside it
+     filtered the range and this one did not — one of a pair guarded and its
+     twin not, so the guard above rejected on the NEXT boot what the repair had
+     just written. It does self-heal there, and a whole session runs on it
+     first: isTrainingDay() is false on every day of the week, so the reminder
+     never fires and every day reads as a rest day, and the Program tab claimed
+     "about 378 weeks at your 1 sessions a week" against the real 76. It travels
+     in a backup for that session too. One predicate now, asked by the guard and
+     by both branches, so neither can drift from the other again. */
+  {const _wd=d=>Number.isInteger(d)&&d>=0&&d<=6;
+   if(!Array.isArray(STATE.profile.days)||!STATE.profile.days.length
+      ||!STATE.profile.days.every(_wd)){
     const from=STATE.profile.days;
     let out=[];
-    if(typeof from==='string')out=[...new Set(String(from).split(/[^0-6]+/).filter(x=>x!=='').map(Number))];
-    else if(Array.isArray(from))out=[...new Set(from.map(Number).filter(d=>Number.isInteger(d)&&d>=0&&d<=6))];
+    if(typeof from==='string')out=[...new Set(String(from).split(/[^0-6]+/).filter(x=>x!=='').map(Number))].filter(_wd);
+    else if(Array.isArray(from))out=[...new Set(from.map(Number).filter(_wd))];
     STATE.profile.days=out.length?out.sort((a,b)=>a-b):[0,1,2,3,4,5,6];
-  }
+   }}
   if(!Array.isArray(STATE.profile.targets))STATE.profile.targets=['abs','full'];
   else{const _fa=STATE.profile.targets.filter(focusAreaKey);
        STATE.profile.targets=_fa.length?_fa:['abs','full'];}
