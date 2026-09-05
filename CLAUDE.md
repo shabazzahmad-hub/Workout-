@@ -15674,6 +15674,76 @@ looking at and false about the app. **A comment claiming an invariant is not
 the invariant** — the fifth entry under that rule, and the second in two rounds
 where the stale claim is what made the class look closed.
 
+## The Back button was a drifted copy of closing the sheet (v435)
+
+`onPop()` re-implemented `closeSheet()`'s scrim branch by hand, and over many
+versions the copy fell behind the original. Measured, closing a sheet by its
+button against closing it with the hardware Back:
+
+| | the ✕ / a button | **Back** |
+|---|---|---|
+| `_sheetGen` bumped | 1 → 2 | **5 → 5, unchanged** |
+| the sheet's markup | cleared | **still mounted** |
+| a queued badge | popped | **still queued** |
+| focus | back to the opener | **stranded on `<body>`** |
+
+**The first is the one that bites.** Three image readers stand down on
+`gen!==_sheetGen` so a slow read never paints into a sheet the athlete has
+since left — v411 built that whole mechanism — and **Back never moved the
+counter**, so a read finishing after a Back did not stand down and **re-opened
+the sheet the athlete had just dismissed.** The second is the stale-id class
+this file has a standing rule about: a closed sheet keeping its full DOM is
+precisely how a shared id ends up shadow-read, and `closeSheet()`'s own comment
+says so.
+
+**The split is v411's, for v411's reason.** `sheetDismiss()` is everything both
+doors do; `closeSheet()` is that plus the history step, **which a pop must not
+take** — the entry it is answering is already gone. Exactly the shape
+`hiitQuit()` and `hiitTeardown()` have.
+
+### The over-eager twin is EQUIVALENT, and reading it back is what said so
+
+`onPop` calling `closeSheet()` outright escaped every check, and measuring
+instead of rewriting the check explains why: **the history step is
+self-guarding.** It fires only while `history.state.cf==='sheet'`, and by the
+time `onPop` runs the pop has already moved off that entry — so both versions
+land on the identical history position, checked two Backs deep. No check can
+catch it. The split is kept for the four behaviours above, which each have one,
+and because a future `openSheet()` that pushed a second entry would make it
+bite. **A check that cannot fail must not carry a label saying it can**, so the
+floor beside it was relabelled to what it actually proves: Back dismisses the
+sheet and does not navigate.
+
+### Three setup faults in one check, and every one is a rule already here
+
+The focus assertion failed three times on correct code before it was right:
+
+- **An earlier block leaves the app on the Program tab**, and views never clear
+  `innerHTML` — so an opener appended to `#v-today` sat in a hidden view, where
+  `focus()` is a silent no-op.
+- **The guard read `document.activeElement` after `openSheet()`**, which had
+  already moved focus into the sheet. The thing to assert is `_sheetReturn` —
+  what the app recorded — not where the focus happens to be.
+- **`openSheet()` records the return control only on a GENUINE open**, not on a
+  repaint, and an earlier block had left a sheet open. So nothing was recorded
+  and the restore correctly did nothing.
+
+*Each block builds the state it asserts on* — three separate pieces of state,
+and missing any one of them reports a defect in code that is right.
+
+### Two sweeps that came back clean, recorded as coverage
+
+- **Every CSS custom property the app references resolves**, measured in the
+  browser rather than parsed: 28 references in the real stylesheet, in both
+  colour schemes and all four themes. The one that does not resolve (`--red`)
+  carries an explicit `#ff6b6b` fallback at all eight of its call sites, so the
+  fallback IS the definition. **A source parse of the stylesheet reported 33
+  variables "defined only outside `:root`" and every one was the parser** — it
+  read the preceding COMMENT as the selector. Measure the computed value, not
+  the text.
+- **Every literal asset path in the markup exists on disk** — 231 of them,
+  covering `src=` attributes and every `img`/`vid` field in `EX`.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
