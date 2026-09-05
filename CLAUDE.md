@@ -17022,6 +17022,93 @@ satisfies every assertion about the hero.
 untested against 32 at the benchmarks, pinned as two values rather than as the
 app's own expression.
 
+## The card prescribed two sets and Play delivered one (v451)
+
+`quickPlay()` ran a single hold and handed `quickMark()` straight to `onDone`,
+so a row reading **"Forearm Plank · 2 × 0:30"** was checked off after ONE
+30-second hold and the Finish button went green on half the work. Measured on
+Full-Body Quickie: **8 items against 15 prescribed sets**, and one tap each
+ticked the session complete after six.
+
+That is the completion gate's own rule — **a skipped set is not a completed
+one** — on the surface that states the prescription one line above the button.
+
+Play runs every set the card promises now: set 1, the movement's own rest, set
+2, and only the **last** set ticks it. The label says WHICH set it is rather
+than how many there are, which is the thing an athlete mid-workout cannot
+otherwise answer.
+
+**Both runners gained a continuation for the rest they already open
+themselves** — `runTimer`'s 8th argument, `runRepCadence`'s 6th — rather than a
+second rest being opened beside theirs. **A chained rest returns as soon as it
+hands on**: the next set has already opened its own sheet, so writing "Done"
+into it and queueing a close would blank the set the athlete is about to do. No
+other caller passes a rest an `onDone`, so that branch is only ever the chain.
+
+### And the minutes beside it were hand-written
+
+Declared against what the card actually prescribes:
+
+| | declared | real | | declared | real |
+|---|---|---|---|---|---|
+| core5 | 5 | **7** | lower6 | 6 | **12** |
+| burn7 | 7 | **11** | full10 | 10 | **16** |
+| oblique6 | 6 | **10** | quiet6 | 6 | **11** |
+| hiit8 | 8 | **10** | morning5 | 5 | **9** |
+
+Every one understated, 1.25x to 2x. `quickMins()` derives it from the three
+things Play spends — the work, the athlete's own rep cadence, and the rest
+between sets — and **the hand-written field is gone from the registry**, so a
+ninth workout cannot be added with a guessed number. Same class as v449's
+warm-up: a duration written by hand beside the list that decides it.
+
+**It counts only what Play SPENDS.** The athlete also repositions and taps
+between movements and the app runs no clock through that, so counting it would
+pad a figure nobody can check — v449 counts the flow's repositioning windows
+for the opposite reason, that `runFlow()` genuinely spends them.
+
+### The check button said "Unmark" and could not unmark
+
+`quickMark()` only ever wrote `true`, so a mis-tap was permanent and the
+accessible name promised a control that did not exist. It toggles now, and Play
+goes through `quickSetDone()` instead — **a finished set must never untick the
+movement it just completed**, which is the floor that catches the over-eager
+fix.
+
+### Two of my own checks failed first, and both are rules already here
+
+- **The picker chip was read with a page-wide `/(\d+) min/`** and matched the
+  FIRST row rather than the workout under test. *Scope the assertion to where
+  the change was made.*
+- **The second aria label was typed from memory** ("Bicycle Crunches"). It reads
+  the name out of `EX` now, with a guard that the two names differ so the pair
+  is not one assertion twice.
+
+### The guard found the rep chain aiming at the wrong movement
+
+Both runners gained the continuation and only the timed one was driven, so the
+mutant dropping `runRepCadence`'s half would have walked. The first attempt at
+a rep-cadence chain aimed at core5 item 1 on the assumption that **Bicycle
+Crunch** is rep-counted; the library has it as `unit:'time'`, so the block would
+have driven the timed runner twice and reported the rep one as covered. **The
+guard failed by name and printed the unit.** *Confirm the control's real shape
+before believing the result.*
+
+### And the v448 picker check re-derived the answer
+
+The v448 mutation run turned up one escape and it was the check. *"The picker
+counts the shortened flow, not the raw one"* called `safeFlow(m.flow).length`
+**itself**, which stays true whether or not the PICKER asks — so the mutant that
+reverted the picker to the raw array walked straight through. **Assert through
+the app's own output, never re-derive it.**
+
+The v449 floor beside it could not see it either: it renders the picker for an
+**unflagged** athlete, where the raw array and the filtered one are the same
+list. **Only a flagged athlete can tell them apart.** It renders `openMobility()`
+with a flagged low back and reads the three rows off the sheet — 5 / 3 / 4 moves
+against the raw 10 / 6 / 6, pinned beside them as a guard so "shortened" cannot
+pass on the raw ones.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
