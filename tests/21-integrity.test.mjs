@@ -1204,6 +1204,134 @@ export default async function run() {
     t.eq('and the whole store is byte-identical at the end', r.end, r.start);
   }
 
+  /* ---- standalone cardio is not an in-session movement (v440) -------------
+     Five automatic picking paths each carried the same hand-written exclusion,
+     `k!=='bike' && k!=='sprint'` — the set as it stood when there were two.
+     Rucking (v294) and skipping (v353) arrived later as CARDIO MODES with
+     their own card, their own timer and their own logging, and neither is in
+     any pool or any ladder on purpose. Neither declares equip, so nothing else
+     keeps them out either.
+
+     Measured on an athlete with four flagged joints and no gear: only 6 of 29
+     cardio/time movements clear every flag, and `skip` was offered in the
+     mid-session swap menu for 20 of the 29 — a rope the app cannot know they
+     own, mid-set, while the bike and the sprint sitting beside it were
+     correctly hidden. The custom builder listed both, 137 moves to 135.
+
+     Jumping jacks are the discriminator: also a cardio mode, and a real
+     circuit movement in HIIT_POOL and in a ladder. What these four share is
+     that the SESSION is arranged elsewhere. */
+  {
+    const r = await page.evaluate(() => {
+      const SC = ['bike', 'sprint', 'ruck', 'skip'];
+      const out = { pred: {} };
+      SC.concat(['jumpingjack', 'pushup', 'squatthrust']).forEach(k => {
+        out.pred[k] = standaloneCardio(k);
+      });
+      /* GUARD: none of the four declares equip, so hasGearFor() is not what
+         keeps them out — without this every assertion below could be passing
+         on a gate that has nothing to do with the fix. */
+      out.ungated = SC.filter(k => !EX[k] || !EX[k].equip);
+
+      STATE.profile.limitations = []; STATE.profile.gear = [];
+      normalizeState();
+      let pool = builderPool();
+      out.cleanPool = pool.length;
+      out.cleanStandalone = SC.filter(k => pool.includes(k));
+      out.cleanHasJacks = pool.includes('jumpingjack');
+
+      STATE.profile.limitations = ['shoulder', 'wrist', 'knee', 'lowback'];
+      normalizeState();
+      const cardio = Object.keys(EX).filter(k => EX[k].region === 'cardio' && EX[k].unit === 'time');
+      out.cardioSeen = cardio.length;
+      /* GUARD: the flags really do bite, or "no standalone move is offered"
+         passes on a menu that had nothing to offer in the first place. */
+      out.cardioRisky = cardio.filter(k => jointRisky(k, STATE.profile.limitations)).length;
+      const hits = [];
+      cardio.forEach(k => {
+        try {
+          swapOptions({ exId: k, unit: 'time', target: 40, sets: 3 })
+            .forEach(o => { if (SC.includes(o.exId)) hits.push(k + '→' + o.exId); });
+        } catch (e) {}
+      });
+      out.swapHits = hits;
+      /* FLOOR: the menu must still offer real alternatives. A fix that emptied
+         it satisfies every assertion above. */
+      out.swapStillWorks = swapOptions({ exId: 'jumpingjack', unit: 'time', target: 40, sets: 3 }).length;
+      pool = builderPool();
+      out.flaggedStandalone = SC.filter(k => pool.includes(k));
+
+      /* FLOOR: an EXPLICIT athlete choice may still put standalone cardio in a
+         session. bikeSwap() does exactly that for an athlete who owns a bike
+         and picked the bike mode, and it does not go through any of the five
+         paths — an over-eager fix that filtered at prescribe time kills it. */
+      STATE.profile.limitations = []; STATE.profile.gear = ['bike'];
+      STATE.nutrition.cardioMode = 'bike'; normalizeState();
+      let bikes = 0;
+      for (let ptr = 0; ptr < 60; ptr++) {
+        const s = buildSession(ptr);
+        [].concat(s.main || [], s.finisher || []).forEach(m => { if (m && m.exId === 'bike') bikes++; });
+      }
+      out.bikeStillReachesSessions = bikes;
+      STATE.profile.gear = []; delete STATE.nutrition.cardioMode; normalizeState();
+      return out;
+    });
+
+    t.eq('guard: none of the four is gear-gated, so nothing else keeps them out',
+      r.ungated.length, 4, r.ungated);
+    t.ok('guard: four flagged joints really do bite on the cardio region',
+      r.cardioSeen >= 20 && r.cardioRisky >= 10, JSON.stringify(r));
+
+    ['bike', 'sprint', 'ruck', 'skip'].forEach(k =>
+      t.ok(`${k} is standalone cardio, not an in-session movement`, r.pred[k] === true, r.pred));
+    /* The discriminator. Jumping jacks are a cardio MODE too, so a fix written
+       as "exclude every cardio mode" passes every assertion above and deletes
+       a real circuit movement. */
+    t.ok('but jumping jacks are not — a cardio mode can still be a circuit move',
+      r.pred.jumpingjack === false && r.pred.squatthrust === false && r.pred.pushup === false, r.pred);
+
+    t.eq('the custom builder lists none of the four', r.cleanStandalone, []);
+    t.ok('FLOOR: and still lists a real pool, jumping jacks included',
+      r.cleanPool > 100 && r.cleanHasJacks, JSON.stringify({ n: r.cleanPool, jacks: r.cleanHasJacks }));
+    t.eq('nor does it for a flagged athlete, where two of them clear every flag',
+      r.flaggedStandalone, []);
+
+    t.eq('the mid-session swap menu never offers one, on any cardio movement',
+      r.swapHits, []);
+    t.ok('FLOOR: and still offers real alternatives',
+      r.swapStillWorks >= 3, JSON.stringify({ n: r.swapStillWorks }));
+
+    t.ok('FLOOR: an explicit bike choice still puts the bike in sessions',
+      r.bikeStillReachesSessions > 0, JSON.stringify({ n: r.bikeStillReachesSessions }));
+  }
+
+  /* Three of the five paths are LATENT rather than reachable — gearSwap(), the
+     exhausted-ladder fallback in resolve() and safeSwap()'s dead-end fallback
+     all use Object.keys(EX).find(), and 13 free cardio/time movements sit
+     ahead of ruck in key order, so measured they never reach one. They are
+     fixed as a class, so the rule has to be ASKED FOR rather than merely
+     declared: a check counting the declaration passes while a consumer keeps
+     its own hand-written pair, which is the drift that produced this round. */
+  {
+    const r = await page.evaluate(() => {
+      const scripts = [...document.querySelectorAll('script:not([src])')];
+      /* The FIRST inline script on this page is two characters long. */
+      const src = scripts.map(s => s.textContent).sort((a, b) => b.length - a.length)[0];
+      const noComments = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+      return {
+        len: noComments.length,
+        hasEX: noComments.indexOf('const EX = {') >= 0,
+        asks: (noComments.match(/standaloneCardio\(/g) || []).length,
+        handWritten: (noComments.match(/'bike'\s*&&\s*k\s*!==\s*'sprint'|k===\s*'bike'\s*\|\|\s*k===\s*'sprint'/g) || []).length,
+      };
+    });
+    t.ok('guard: the scan read the app, not the two-character stub',
+      r.len > 500000 && r.hasEX, JSON.stringify({ len: r.len, hasEX: r.hasEX }));
+    t.ok('all five picking paths ask the predicate, plus its own declaration',
+      r.asks >= 6, JSON.stringify(r));
+    t.eq('and none of them restates the pair by hand', r.handWritten, 0, r);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
