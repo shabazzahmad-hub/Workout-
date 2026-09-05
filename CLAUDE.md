@@ -16744,6 +16744,37 @@ string is truthy, so the row printed `NaN mi` and the Total tile summed to `NaN`
 **Read the mutant back**: it was not equivalent and it was not a bad mutant. It
 was a case my checks had not built.
 
+## Twenty-six mutants, and the three that escaped (v446)
+
+All three were weak checks rather than bad mutants, and each is a rule this file
+already states:
+
+- **`rowLoadShow()`'s `w > 0` guard.** Consulted from one call site that already
+  tests `x.wt`, so no rendered case can reach it. Rather than record it
+  equivalent, the helper's own contract is asserted DIRECTLY — the shape v338's
+  `prepDatePassed()` and v380's `monoNow()` needed. A guard consulted in one
+  narrow branch still has to mean what it is named.
+- **The row's `x.dist > 0` test.** Every case went through the WRITER, which is
+  the door `actRow()` now guards — so the mutant was invisible. The reachable
+  door is v404's storage listener, which has no boot behind it: a stored string
+  is truthy, so the row printed `NaN mi`. **Read the mutant back**: it was not
+  equivalent, it was a case my checks had not built.
+- **The calorie sheet's own age band.** Every assertion called `ageEntryOk()`
+  and nothing drove `saveTDEE()`. *Calling the helper is not driving the route*
+  — the tenth time this file has recorded it, and the second time this session
+  in my own checks.
+
+**And two mutants were caught by a THROW rather than by name.** The over-eager
+repair that drops a whole lift row left `lf.repaired[0]` undefined, so every
+assertion below it threw and the run reported *"the test file itself threw"*.
+Still red, so still a catch — but red is not enough, it has to say what. The
+length guard now runs FIRST and nothing dereferences a row a mutant may have
+removed.
+
+**And one anchor appeared twice.** `if(!(w>0))return '';` is in two helpers, so
+the driver's `assert count == 1` turned a bad seed into a clean no-op rather
+than a half-applied run — the fifth time that rule has paid.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

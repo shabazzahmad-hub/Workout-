@@ -12314,6 +12314,25 @@ export default async function () {
       [bd.age.min, bd.age.max, bd.age.at13, bd.age.at12], [13, 100, true, false], bd.age);
     t.ok('FLOOR: and the REPAIR stays wider — it must not drop a value a typed door took',
       bd.age.repairAt10 === true, bd.age);
+
+    /* DRIVEN, because calling the predicate is not driving the route: the
+       mutant that gave the calorie sheet its own 14-100 band back walked past
+       every assertion above, which only ever asked ageEntryOk(). */
+    const sheet = await page.evaluate(() => {
+      STATE.profile.unit = 'cm';
+      nut().sex = 'male';
+      openTDEE();
+      document.querySelector('#td-age').value = '13';
+      document.querySelector('#td-ht').value = '170';
+      document.querySelector('#td-wt').value = '60';
+      saveTDEE();
+      const el = document.getElementById('toast');
+      const out = { toast: el ? el.textContent : '', age: nut().age };
+      closeSheet();
+      return out;
+    });
+    t.eq('the calorie sheet accepts the youngest age the wizard does', sheet.age, 13, sheet);
+    t.ok('and never says the age looks off', !/Age looks off/.test(sheet.toast), sheet);
   }
 
   /* And the rule is ASKED FOR rather than declared: a check counting the helper
@@ -12345,6 +12364,13 @@ export default async function () {
     t.ok('guard: the scan found the app\'s top-level functions', names.length > 900,
       { found: names.length });
     t.eq('no top-level function name is declared twice', dupes, [], dupes);
+
+    /* and no typed door restates the age band beside the predicate that holds
+       it — the wizard cannot be driven from here, so the rule is scanned */
+    /* narrowed to the values a typed age band uses — a looser pattern matches
+       ordinary copy, and did: `age<21` is a real and legitimate comparison */
+    const handAge = (src.body.match(/age\s*[<>]=?\s*(1[0-9]|100)\b/g) || []);
+    t.eq('no typed door hand-writes the age band', handAge, [], handAge);
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
