@@ -16237,6 +16237,38 @@ prescribed set and still marks it done. A repair that always wiped `sets`, or
 always dropped the entry, satisfies every "the junk is gone" assertion and
 destroys the training history it exists to protect.
 
+### The check read the glass and never the lifetime figures
+
+Sixteen mutants, fourteen caught first time. The one weak check is the shape
+this file records most: **nothing read a lifetime total with no boot behind
+it.** Every no-boot case drove the Today header, the set dots and the detail
+sheet; the walks that build the athlete's lifetime volume were only ever read
+AFTER `normalizeState()` had already cleaned the list.
+
+The case that discriminates is an over-long but **legal** array, because the
+reader's other job is to cap at what the movement was actually asked for.
+Measured on the mutant that reverts `totalVolume()` to the raw read:
+
+| | stored | counted |
+|---|---|---|
+| marked sets on one movement | 40 | **40** against a real **3** |
+| lifetime hold | — | **2,400 s** against a real **180 s** |
+
+Its floors are what keep it from passing on nothing: the honest figures must be
+real work rather than two zeroes agreeing, and the over-long list must genuinely
+be longer than the prescription.
+
+### And one equivalent mutant, measured rather than assumed
+
+Weakening `Array.isArray(st.sets)` to bare truthiness **escapes and always
+will**. `setsDoneFor()` carries its own `try/catch`, and every non-array a
+backup can hold — a string, a number, an object — has no `.filter`, so it throws
+and the catch returns the same 0 the guard returns. Swept across ten shapes:
+**zero differences.** The neighbour supplies the answer, which is the shape this
+file already records for `swapStillValid()` and `capLog()`. Kept because an
+explicit test is not the same as control flow through an exception, and recorded
+as uncatchable rather than papered over with a check that cannot fail.
+
 
 ## Rendering
 

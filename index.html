@@ -2777,6 +2777,13 @@ function sessionItemOk(m){
    the READER has in hand and the repair does not - rebuilding a session per
    log is the walk-inside-a-walk that once cost Progress 123ms. A junk m.sets
    caps nothing rather than zeroing a count that is real. */
+/* ONE EQUIVALENT MUTANT, MEASURED RATHER THAN ASSUMED. Weakening the
+   Array.isArray test to bare truthiness changes nothing any check can see:
+   every non-array a backup can carry — a string, a number, an object — has no
+   .filter, so it throws, and the catch below returns the same 0 the guard
+   returns. The neighbour supplies the answer. Kept because an explicit test is
+   not the same as control flow through an exception, and recorded as
+   uncatchable rather than papered over with a check that cannot fail. */
 function setsDoneFor(st,m){
   try{
     if(!st||!Array.isArray(st.sets))return 0;

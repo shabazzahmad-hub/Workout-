@@ -4263,6 +4263,22 @@ export default async function run() {
       o.noBoot.barWidth = bar ? bar.style.width : null;
       o.noBoot.pct = bar ? parseFloat(bar.style.width) : null;
 
+      /* THE LIFETIME WALKS READ THE SAME LIST, and nothing asserted them with
+         no boot behind it — the mutant that reverted totalVolume() to the raw
+         read walked straight through every check above. The case that
+         discriminates is an over-long but LEGAL list: the reader caps at what
+         the movement was actually asked for, so a raw read credits sets the
+         athlete never did, in a figure every backup then carries. */
+      STATE.runs = [];
+      const pres = items.find(m => m.exId === ex).sets;
+      STATE.logs = { 0: row({ sets: Array(40).fill(true), done: true }) };
+      o.noBoot.lifeLong = totalVolume();
+      o.noBoot.lifeLongTUT = Math.round(totalTUT());
+      STATE.logs = { 0: row({ sets: Array(pres).fill(true), done: true }) };
+      o.noBoot.lifeHonest = totalVolume();
+      o.noBoot.lifeHonestTUT = Math.round(totalTUT());
+      o.noBoot.lifePrescribed = pres;
+
       /* 4. FLOORS — a real session, driven through the app's own writers. */
       STATE.progressPtr = 5; STATE.logs = {}; STATE.runs = [];
       const s5 = buildSession(5);
@@ -4315,6 +4331,16 @@ export default async function run() {
       r.noBoot.boundary === false && r.noBoot.len > 5000, JSON.stringify(r.noBoot));
     t.ok('and an over-long list can never push the bar past 100%',
       r.noBoot.pct !== null && r.noBoot.pct <= 100, JSON.stringify(r.noBoot));
+    t.ok('guard: the over-long list really is longer than the movement was asked for',
+      r.noBoot.lifePrescribed > 0 && r.noBoot.lifePrescribed < 40,
+      JSON.stringify({ prescribed: r.noBoot.lifePrescribed }));
+    t.ok('guard: the honest lifetime figures are real work, not two zeroes agreeing',
+      r.noBoot.lifeHonest.sets > 0 && (r.noBoot.lifeHonest.reps + r.noBoot.lifeHonest.hold) > 0,
+      JSON.stringify(r.noBoot.lifeHonest));
+    t.eq('the lifetime volume counts the sets asked for, not the stored list',
+      r.noBoot.lifeLong, r.noBoot.lifeHonest, JSON.stringify(r.noBoot));
+    t.eq('and the lifetime time under tension likewise',
+      r.noBoot.lifeLongTUT, r.noBoot.lifeHonestTUT, JSON.stringify(r.noBoot));
     t.ok('the count is capped at what the movement was asked for',
       /^3\/\d+ sets/.test(r.noBoot.setsLine || ''), JSON.stringify(r.noBoot));
     t.ok('guard: the exercise card really rendered, with dots on it',
