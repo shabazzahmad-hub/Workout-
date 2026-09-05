@@ -12448,17 +12448,26 @@ export default async function () {
       /Child's Pose/.test(w.briefCoolLowback) && !/abs and low back/.test(w.briefCoolLowback),
       w.briefCoolLowback);
 
-    // the mobility picker counts what it will deliver
+    /* THE FIRST VERSION OF THIS RE-DERIVED THE ANSWER AND PROVED NOTHING. It
+       called safeFlow(m.flow).length itself, which stays true whether or not
+       the PICKER asks — so the mutant that reverted the picker to the raw array
+       escaped clean. Read the counts off the rendered sheet, with the raw
+       figures pinned beside them so "shortened" cannot pass on the raw ones. */
     const mob = await page.evaluate(() => {
       const P = STATE.profile, keep = P.limitations;
       P.limitations = ['lowback'];
-      const counts = MOBILITY_FLOWS.map(m => safeFlow(m.flow).length);
+      openMobility();
+      const rows = [...document.querySelectorAll('#sheet [onclick^="startMobility"] .tiny')]
+        .map(e => e.textContent);
+      closeSheet();
       P.limitations = keep;
-      return counts;
+      return rows;
     });
-    t.ok('guard: a flagged low back really shortens every mobility flow',
-      mob.length === 3 && mob.every((n, i) => n < w.mobRaw[i]), { mob, raw: w.mobRaw });
-    t.eq('and the picker counts the shortened flow, not the raw one', mob, [5, 3, 4], mob);
+    t.eq('guard: the picker really rendered its three flows', mob.length, 3, mob);
+    t.eq('guard: and the raw arrays it must NOT be counting are longer',
+      w.mobRaw, [10, 6, 6], w.mobRaw);
+    t.eq('the picker counts the shortened flow, not the raw one',
+      mob, ['5 moves · ~3 min', '3 moves · ~2 min', '4 moves · ~2 min'], mob);
   }
 
   /* ---------- v448: one fact, two surfaces, opposite hardcoded units -------
