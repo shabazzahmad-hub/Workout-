@@ -16467,6 +16467,83 @@ Proven able to fail by seeding an over-eager `prs` repair — it reports
 `and the personal bests` with `prs: 0`.
 
 
+## "Min trained" was answering a different question (v445)
+
+v443 taught the two per-session surfaces to print the duration a session
+MEASURED, and recorded beside it that `totalTUT()` is deliberately not in that
+class — it sums time under tension, which is a training quantity rather than a
+calendar one. **The lifetime tile labelled "Min trained" reads `totalTUT()`**,
+and that label is a calendar question. Measured across eight clocked sessions:
+
+| | |
+|---|---|
+| what the athlete really trained | **314 minutes** |
+| what the tile read | **152** |
+| what it was summing | work 74 + prescribed rest 78 |
+| the gap | **52% under**, with every one of those eight carrying a real clock |
+
+Prescribed rest knows nothing about the transitions, the walk to the mat, or a
+pause — which is exactly what v443 measured on one session (39 real minutes
+printed as `~27 MINUTES`) and never carried up to the lifetime figure.
+
+**The figure can only get closer, never further away**, and that is the shape of
+the fix rather than a hope: each session contributes the duration it measured
+when it carries a clock, and its own time under tension otherwise. Every log
+written before the clock shipped, and every session marked complete off the
+Today card rather than run in the player, genuinely has no clock — so the
+estimate is the honest answer there and it is exactly what the tile always
+showed. **A run with no clock is byte-identical to v444**, which is the floor
+the over-eager twin fails: a fix that only ever reads the clock reports a legacy
+athlete's whole training history as zero.
+
+**`estCalories()` stays on time under tension ON PURPOSE.** Calories count the
+work, not the standing around, so these are two questions and two readers — and
+a floor pins that the calorie figure is the same with a clock and without one.
+The mutant that points it at the wall clock is caught by exactly that.
+
+**The per-session walk is hoisted into `sessionTUT()`** rather than copied, so
+"how long did that session take" and "how much work was in it" cannot drift
+apart — the shape this file records for every other pair of readers of one fact.
+
+**The guard is what makes the block worth running**: it asserts that the two
+figures genuinely disagree on the data being used, or every assertion below
+passes on two numbers that happen to be equal. And the half-and-half case is
+driven, because that is every real athlete for a long time after the clock ships
+and it is the case a fix reading only one of the two gets wrong.
+
+**And the tile is read off the GLASS.** Asserting the helper is the container;
+what the athlete looks at is the payload — the mutant that reverts the render
+site alone is caught by that check and by no other.
+
+Five mutants, all caught.
+
+### And the archived half had no check at all
+
+`allDonePairs()` spans archived runs on purpose — `restartProgram()` moves the
+whole run into `STATE.runs` and every lifetime counter must still read it — and
+nothing pinned that for the minutes. Measured on five archived clocked sessions
+beside three live ones: **320 minutes, all eight counted as measured, and the
+same figure after a boot**, with the archived clocks left alone by the repair.
+
+**The guard is that the archived run is the BIGGER half**, or a reader that
+walked `STATE.logs` alone lands close enough that the assertion proves nothing.
+Two more mutants, both caught: a live-only walk (120 against 320) and an
+archived scrub that drops every clock field.
+
+**And the fix costs nothing.** Progress ▸ Summary renders in **4 ms** with 300
+logs, clocked or not — for a fully clocked athlete `totalMinutes()` does less
+work than the walk it replaced, because a clock short-circuits the per-session
+sum.
+
+### Two sweeps that came back clean
+
+- **Every stored field written and never read.** 139 assigned `STATE` paths,
+  all read somewhere; and of 43 fields assigned onto a stored record, the only
+  never-read one is `abandonedAt` — written when a session is left open with
+  zero sets, repaired at boot, and read by two suites but by no app code.
+  Measured and left rather than changed: `stoppedForPain` beside it has a real
+  reader (`todayPtr()`), and a change with no defect behind it is the v386 call.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
