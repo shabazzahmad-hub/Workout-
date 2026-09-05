@@ -1966,7 +1966,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='447';
+const APP_VERSION='448';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4842,14 +4842,14 @@ function briefTabHTML(){
 function warmupTabHTML(){
   return `<div class="card pad">
      <div class="tiny muted" style="margin-bottom:10px">Prime the deep core and raise your heart rate. Tap play for a hands-free guided round.${STATE.profile.mobility==='low'?' <b style="color:var(--fire-l)">You flagged limited mobility — move slowly and take the full range.</b>':''}</div>
-     ${WARMUP_FLOW.map(w=>`<div class="kv"><span><b>${w.n}</b></span><span class="muted">${w.secs}s</span></div>`).join('')}
+     ${warmupFlow().map(w=>`<div class="kv"><span><b>${w.n}</b></span><span class="muted">${w.secs}s</span></div>`).join('')}
      <button class="btn primary" style="margin-top:10px" onclick="runWarmup()">▶ Guided warm-up</button>
   </div>`;
 }
 function cooldownTabHTML(){
   return `<div class="card pad">
      <div class="tiny muted" style="margin-bottom:10px">Stretch out the abs and low back to recover. Tap play for a hands-free guided round.${STATE.profile.mobility==='low'?' <b style="color:var(--teal)">Hold each stretch a little longer — building mobility is one of your goals.</b>':''}</div>
-     ${COOLDOWN_FLOW.map(c=>`<div class="kv"><span><b>${c.n}</b></span><span class="muted">${c.secs}s</span></div>`).join('')}
+     ${cooldownFlow().map(c=>`<div class="kv"><span><b>${c.n}</b></span><span class="muted">${c.secs}s</span></div>`).join('')}
      <button class="btn green" style="margin-top:10px" onclick="runCooldown()">▶ Guided cool-down</button>
   </div>`;
 }
@@ -11199,8 +11199,13 @@ function briefSegments(){
   segs.push({icon:'🔥',title:"Today's session",
     say:`Today is ${sess.session.name}. ${sess.session.focus}. That's ${sess.main.length+1} exercises, about ${vol.minutes} minutes of work.${_dlSay}`});
   // 4 — warm-up
+  /* "A couple more" was a hand-written count beside the list that holds it:
+     four named of eight is FOUR more, not two, and the joint-aware addition can
+     make it five. It is derived now, and says nothing at all when the flow is
+     four items or fewer — which a heavily flagged athlete's really can be. */
+  const _wf=warmupFlow(), _wfRest=Math.max(0,_wf.length-4);
   segs.push({icon:'🌡️',title:'Warm-up · ~4 min',
-    say:`We open with a warm-up: ${_briefList(WARMUP_FLOW.slice(0,4).map(w=>w.n))}, and a couple more. Prime the deep core and raise the heart rate — do not skip it.`});
+    say:`We open with a warm-up: ${_briefList(_wf.slice(0,4).map(w=>w.n))}${_wfRest?`, and ${_wfRest} more`:''}. Prime the deep core and raise the heart rate — do not skip it.`});
   // 5 — main work
   const mains=sess.main.map(m=>`${(EX[m.exId]||{}).name}, ${m.sets} sets of ${_briefTarget(m)}`);
   segs.push({icon:'💪',title:'Main work',
@@ -11209,8 +11214,13 @@ function briefSegments(){
   segs.push({icon:'⚡',title:'Finisher',
     say:`Finish with ${(EX[sess.finisher.exId]||{}).name} — one all-out round of ${_briefTarget(sess.finisher)}. Leave nothing in the tank.`});
   // 7 — cool-down
+  /* "Stretches for the abs and low back" was the sharpest of the three: a
+     low-back flag strips Cobra Stretch — the abs one — and three more, so the
+     coach named a target the cool-down no longer had. It names the real
+     stretches now. */
+  const _cf=cooldownFlow(), _cfRest=Math.max(0,_cf.length-3);
   segs.push({icon:'🧘',title:'Cool-down · ~4 min',
-    say:`Then cool down with stretches for the abs and low back. A few minutes of recovery so you come back stronger tomorrow.`});
+    say:`Then cool down: ${_briefList(_cf.slice(0,3).map(c=>c.n))}${_cfRest?`, and ${_cfRest} more`:''}. A few minutes of recovery so you come back stronger tomorrow.`});
   }
   // 8 — fuel
   const kcal=todayKcalBudget(), prot=proteinTargetG();
@@ -11228,9 +11238,9 @@ function briefSegments(){
     if(names.length)segs.push({icon:'🥗',title:'Your meals',say:`Your meal plan today: ${_briefList(names)}. The full recipes are on the Reference tab, under Food.`});
   }catch(e){}
   // 10 — hydration
-  const cups=waterTargetCups(), oz=Math.round(cups*8);
+  const cups=waterTargetCups();
   segs.push({icon:'💧',title:'Hydration',
-    say:`Hydration: ${cups} cups of water — about ${oz} ounces. Start your first glass now and keep sipping all day.`});
+    say:`Hydration: ${cups} cups of water — about ${waterVolShow(cups,true)}. Start your first glass now and keep sipping all day.`});
   // 10.5 — weekly progress-check countdown (builds toward Saturday's weigh-in)
   if(STATE.settings.weeklyOn!==false){
     const dToSat=(6-new Date().getDay()+7)%7;   // 0 = today is Saturday
@@ -13098,8 +13108,27 @@ function mobilityFlow(items){
   if((STATE.profile&&STATE.profile.mobility)!=='low')return items;
   return (items||[]).map(it=>Object.assign({},it,{secs:Math.round(it.secs*1.25)}));
 }
-function runWarmup(){runFlow(mobilityFlow(jointAwareWarmup(WARMUP_FLOW)),'Warm-up','var(--fire)');}
-function runCooldown(){runFlow(mobilityFlow(COOLDOWN_FLOW),'Cool-down','var(--teal)');}
+/* ONE BUILDER FOR THE WARM-UP THE ATHLETE ACTUALLY GETS. runWarmup() ran
+   jointAwareWarmup(), mobilityFlow() and — inside runFlow() — safeFlow(). The
+   two Today panes and the spoken brief listed the RAW arrays, so all three
+   described a warm-up nobody does:
+
+     - a SHOULDER flag: the pane listed "Arm Circles 30s" and the coach said it
+       out loud, and safeFlow() strips it for exactly that flag. The Shoulder
+       Activation jointAwareWarmup() puts in its place appeared nowhere.
+     - a LOW-BACK flag: Standing Torso Twists in the warm-up, and Cobra Stretch,
+       both Supine Twists and Knees to Chest in the cool-down — four of seven —
+       all listed and none of them run.
+     - LIMITED MOBILITY: mobilityFlow() gives 25% longer holds, so every second
+       printed was wrong (40s shown, 50s held) on a pane whose own note says the
+       athlete flagged it.
+
+   safeFlow() is applied here as well as inside runFlow(); it is a filter, so a
+   second pass over its own output changes nothing. */
+function warmupFlow(){try{return safeFlow(mobilityFlow(jointAwareWarmup(WARMUP_FLOW)));}catch(e){return WARMUP_FLOW;}}
+function cooldownFlow(){try{return safeFlow(mobilityFlow(COOLDOWN_FLOW));}catch(e){return COOLDOWN_FLOW;}}
+function runWarmup(){runFlow(warmupFlow(),'Warm-up','var(--fire)');}
+function runCooldown(){runFlow(cooldownFlow(),'Cool-down','var(--teal)');}
 /* WARMUP_FLOW and COOLDOWN_FLOW are fixed arrays that never went through
    safeSwap, so the app kept flexion and rotation off a flagged low back for the
    whole session and then prescribed Cobra Stretch and a Supine Spinal Twist as
@@ -14719,7 +14748,7 @@ function openMobility(){
   openSheet(`<h3>🧘 Mobility &amp; stretch</h3>
     <p class="muted sm" style="margin:2px 0 12px">Guided mobility flows to loosen up and recover — run any day.</p>
     <div style="display:flex;flex-direction:column;gap:10px">
-      ${MOBILITY_FLOWS.map((m,i)=>`<button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="startMobility(${i})"><b style="font-size:15px">🧘 ${m.name}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${m.flow.length} moves · ~${Math.round(m.flow.reduce((a,x)=>a+x.secs,0)/60)+1} min</div></button>`).join('')}
+      ${MOBILITY_FLOWS.map((m,i)=>{const f=safeFlow(m.flow);return `<button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="startMobility(${i})"><b style="font-size:15px">🧘 ${m.name}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${f.length} moves · ~${Math.round(f.reduce((a,x)=>a+x.secs,0)/60)+1} min</div></button>`;}).join('')}
     </div>
     <div style="height:8px"></div><button class="btn ghost" onclick="openSpecial()">← Back</button>`);
 }
@@ -19602,6 +19631,26 @@ function clearProteinTarget(){
   try{renderFuel();}catch(e){}
 }
 function waterTargetCups(){const kg=latestWeightKg();if(!kg)return 8;return clamp(Math.round(kg*35/240),6,16);} // ~35 ml/kg, 240 ml/cup
+/* ONE READER FOR THE WATER TARGET'S SECONDARY FIGURE. The Fuel card printed
+   LITRES to everybody and the spoken brief printed OUNCES to everybody — one
+   fact, two surfaces, each hardcoded to the OPPOSITE unit system, and neither
+   followed the athlete. Measured on a 12-cup target: a metric athlete HEARD
+   "about 96 ounces" every morning and READ "2.9 L" on the tab; an imperial
+   athlete got the mirror of it.
+
+   Cups themselves stay. The counter is a glass and the athlete taps one per
+   glass, so that is the store rather than a unit; it is the volume BESIDE it
+   that has to be theirs. One function with one unit test, because two readers
+   of one fact is exactly how these two came to disagree.
+
+   `spoken` spells the unit out, because the brief is read ALOUD and "2.9 L"
+   is not a thing a voice can say. */
+const WATER_ML_CUP=240, WATER_OZ_CUP=8;
+function waterVolShow(cups,spoken){
+  const im=isImperial();
+  const n=im?String(Math.round(cups*WATER_OZ_CUP))
+            :(Math.round(cups*WATER_ML_CUP/100)/10).toFixed(1);
+  return n+' '+(im?(spoken?'ounces':'oz'):(spoken?'litres':'L'));}
 function habitsRequired(){return HABITS.filter(h=>!h.optional).length;}
 /* One forgiveness day per week, matching the training streak's tolerance —
    otherwise one restaurant meal or one bad night's sleep zeroes it. */
@@ -21299,7 +21348,7 @@ function renderFuel(){
   // water tracker
   const wc=t.water||0;const wpct=Math.min(100,Math.round(wc/wt*100));
   h+=`<div class="section-label">Hydration</div><div class="card pad">
-    <div class="row" style="justify-content:space-between"><div><b>${wc} / ${wt} cups</b><div class="tiny muted">≈ ${(wt*0.24).toFixed(1)} L goal · helps control appetite &amp; reveal definition</div></div>
+    <div class="row" style="justify-content:space-between"><div><b>${wc} / ${wt} cups</b><div class="tiny muted">≈ ${waterVolShow(wt)} goal · helps control appetite &amp; reveal definition</div></div>
       <div class="btnrow" style="flex:0 0 auto;gap:8px"><button class="btn sm ghost" aria-label="One glass fewer" onclick="logWater(-1)" style="width:44px">–</button><button class="btn sm primary" aria-label="One glass more" onclick="logWater(1)" style="width:44px">＋</button></div></div>
     <div class="pbar" style="margin-top:12px"><i style="width:${wpct}%;background:linear-gradient(90deg,#3fd7e8,#12b5c9)"></i></div>
   </div>`;

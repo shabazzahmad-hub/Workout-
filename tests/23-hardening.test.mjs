@@ -12373,6 +12373,126 @@ export default async function () {
     t.eq('no typed door hand-writes the age band', handAge, [], handAge);
   }
 
+  /* ---------- v448: the warm-up you are SHOWN is the warm-up you GET -------
+     runWarmup() applies jointAwareWarmup(), mobilityFlow() and — inside
+     runFlow() — safeFlow(). The two Today panes, the spoken brief and the
+     mobility picker all listed the RAW arrays, so four surfaces described a
+     session nobody does. Measured before the fix:
+
+       shoulder flag  pane listed "Arm Circles" and the coach said it aloud;
+                      safeFlow() strips it for exactly that flag, and the
+                      Shoulder Activation put in its place appeared nowhere
+       low back       cool-down pane listed 7 and the athlete got 3
+       low mobility   pane printed 40s / 30s while the hold ran 50s / 38s
+       low back       mobility picker said 10 / 6 / 6 moves, delivered 5 / 3 / 4
+
+     Every expectation below is a VALUE rather than the app's own expression,
+     so a mutant cannot move both sides of the comparison. */
+  {
+    const names = h => (h.match(/<b>([^<]+)<\/b>/g) || []).map(x => x.replace(/<\/?b>/g, ''));
+    const w = await page.evaluate(() => {
+      const P = STATE.profile;
+      const keep = { lim: P.limitations, mob: P.mobility };
+      const o = {};
+      P.limitations = []; P.mobility = 'ok';
+      o.paneClean = warmupTabHTML();
+      o.briefClean = briefSegments().find(s => s.title.indexOf('Warm-up') === 0).say;
+
+      P.limitations = ['shoulder'];
+      /* guard: the filter really removes this move for this flag, or every
+         assertion below is satisfied by a filter that does nothing */
+      o.stripsArmCircles = !safeFlow(WARMUP_FLOW).some(x => x.n === 'Arm Circles');
+      o.paneShoulder = warmupTabHTML();
+      o.briefShoulder = briefSegments().find(s => s.title.indexOf('Warm-up') === 0).say;
+
+      P.limitations = ['lowback'];
+      o.cdPaneLowback = cooldownTabHTML();
+      o.briefCoolLowback = briefSegments().find(s => s.title.indexOf('Cool-down') === 0).say;
+      o.mobRaw = MOBILITY_FLOWS.map(m => m.flow.length);
+
+      P.limitations = []; P.mobility = 'low';
+      o.paneSecsLow = (warmupTabHTML().match(/(\d+)s</g) || []).map(x => x.replace('<', ''));
+
+      P.limitations = keep.lim; P.mobility = keep.mob;
+      return o;
+    });
+
+    t.ok('guard: safeFlow really strips Arm Circles for a flagged shoulder',
+      w.stripsArmCircles, w);
+
+    // FLOOR — an unflagged athlete's pane is the whole eight-move warm-up
+    t.eq('an unflagged athlete is shown the full warm-up', names(w.paneClean).length, 8,
+      names(w.paneClean));
+    t.ok('and it still opens with March in Place and Arm Circles',
+      names(w.paneClean)[0] === 'March in Place' && names(w.paneClean)[1] === 'Arm Circles',
+      names(w.paneClean));
+
+    t.eq('a flagged shoulder is NOT shown Arm Circles',
+      names(w.paneShoulder).indexOf('Arm Circles'), -1, names(w.paneShoulder));
+    t.ok('and IS shown the Shoulder Activation put in its place',
+      names(w.paneShoulder).indexOf('Shoulder Activation') >= 0, names(w.paneShoulder));
+
+    t.eq('a flagged low back is shown the three cool-down stretches it gets',
+      names(w.cdPaneLowback), ["Child's Pose", 'Cat–Cow', 'Deep Breathing'],
+      names(w.cdPaneLowback));
+
+    t.eq('limited mobility is shown the LONGER holds it actually gets',
+      w.paneSecsLow, ['50s', '38s', '38s', '38s', '38s', '50s', '38s', '38s'], w.paneSecsLow);
+
+    // the spoken brief names the same flow
+    t.ok('the coach does not name a move the app has removed',
+      !/Arm Circles/.test(w.briefShoulder), w.briefShoulder);
+    t.ok('and the remainder is counted, not guessed at as "a couple"',
+      /and 4 more/.test(w.briefClean) && !/a couple more/.test(w.briefClean), w.briefClean);
+    t.ok('the cool-down names the real stretches rather than a target it lost',
+      /Child's Pose/.test(w.briefCoolLowback) && !/abs and low back/.test(w.briefCoolLowback),
+      w.briefCoolLowback);
+
+    // the mobility picker counts what it will deliver
+    const mob = await page.evaluate(() => {
+      const P = STATE.profile, keep = P.limitations;
+      P.limitations = ['lowback'];
+      const counts = MOBILITY_FLOWS.map(m => safeFlow(m.flow).length);
+      P.limitations = keep;
+      return counts;
+    });
+    t.ok('guard: a flagged low back really shortens every mobility flow',
+      mob.length === 3 && mob.every((n, i) => n < w.mobRaw[i]), { mob, raw: w.mobRaw });
+    t.eq('and the picker counts the shortened flow, not the raw one', mob, [5, 3, 4], mob);
+  }
+
+  /* ---------- v448: one fact, two surfaces, opposite hardcoded units -------
+     The Fuel card printed LITRES to everybody and the spoken brief printed
+     OUNCES to everybody. Measured on a 13-cup target: a metric athlete HEARD
+     "about 104 ounces" and READ "3.1 L"; an imperial athlete got the mirror.
+     Cups stay — the counter is a glass — it is the volume beside it that has
+     to be the athlete's own. */
+  {
+    const r = await page.evaluate(() => {
+      const P = STATE.profile, keep = { u: P.unit, kg: nut().weightKg };
+      const o = {};
+      nut().weightKg = 86;
+      o.cups = waterTargetCups();
+      P.unit = 'cm';
+      o.sayM = briefSegments().find(s => s.title === 'Hydration').say;
+      renderFuel(); o.fuelM = ($('#v-fuel').innerText.match(/≈[^\n·]*/) || [''])[0].trim();
+      P.unit = 'in';
+      o.sayI = briefSegments().find(s => s.title === 'Hydration').say;
+      renderFuel(); o.fuelI = ($('#v-fuel').innerText.match(/≈[^\n·]*/) || [''])[0].trim();
+      P.unit = keep.u; nut().weightKg = keep.kg;
+      try { renderFuel(); } catch (e) {}
+      return o;
+    });
+    t.eq('guard: the target used for both readings is the same 13 cups', r.cups, 13, r);
+    t.ok('a metric athlete HEARS litres', /about 3\.1 litres/.test(r.sayM), r);
+    t.eq('and READS the same litres on Fuel', r.fuelM, '≈ 3.1 L goal', r);
+    t.ok('an imperial athlete HEARS ounces', /about 104 ounces/.test(r.sayI), r);
+    t.eq('and READS the same ounces on Fuel', r.fuelI, '≈ 104 oz goal', r);
+    t.ok('neither surface speaks the other one\'s unit',
+      !/ounce/.test(r.sayM) && !/litre/.test(r.sayI), r);
+    t.ok('and cups are still the counter on both', /13 cups/.test(r.sayM) && /13 cups/.test(r.sayI), r);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

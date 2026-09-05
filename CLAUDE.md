@@ -16843,6 +16843,88 @@ the FIRST figure only — *"from 86 kilograms down to 75"* — exactly as the
 imperial wording always did, so it failed on correct copy. **Read the sentence
 the app really produces before writing the pattern for it.**
 
+## The warm-up you are SHOWN is not the warm-up you GET (v448)
+
+`runWarmup()` applies `jointAwareWarmup()`, `mobilityFlow()` and — inside
+`runFlow()` — `safeFlow()`. **Four surfaces listed the RAW arrays instead**, so
+every one of them described a session nobody does. Measured:
+
+| athlete | the screen said | what actually ran |
+|---|---|---|
+| **shoulder** flagged | lists **Arm Circles** | stripped; **Shoulder Activation** added in its place |
+| **low back** flagged | cool-down lists **7** stretches | **3** |
+| **limited mobility** | holds of **40s / 30s** | **50s / 38s** |
+| **low back** flagged | picker: **10 / 6 / 6** moves | **5 / 3 / 4** |
+
+**The shoulder case is the sharpest, because the coach reads the list ALOUD.**
+The athlete flagged a shoulder, the app removed Arm Circles for exactly that
+flag, and the brief still named it out loud — v315's rule, that a spoken
+address is the one nobody can double-check by looking, on the movement itself
+rather than on a tab name.
+
+**The low-mobility case is a pane contradicting its own note.** That screen
+says, in bold, *"You flagged limited mobility"* — and printed the
+un-lengthened seconds beside it.
+
+`warmupFlow()` and `cooldownFlow()` are the one builder, asked by the two Today
+panes, the spoken brief and `runWarmup()`/`runCooldown()` themselves.
+**`safeFlow()` is applied there as well as inside `runFlow()`**, which is safe
+because it is a filter: a second pass over its own output changes nothing.
+
+**"A couple more" was a hand-written count beside the list that holds it** —
+four named of eight is FOUR more, and the joint-aware addition can make it
+five. It is derived now, and says nothing at all when the flow is four items or
+fewer, which a heavily flagged athlete's really can be.
+
+**And the cool-down named a target it no longer had.** *"Stretches for the abs
+and low back"* — a low-back flag strips Cobra Stretch, which is the abs one,
+plus three more. It names the real stretches instead, which is also the more
+useful sentence.
+
+**The floors are what stop each fix being a deletion**, and every over-eager
+twin fails one: an unflagged athlete is shown the whole eight-move warm-up
+opening with March in Place and Arm Circles, and every flagged case has the
+unflagged one pinned beside it. **A guard asserts `safeFlow()` really strips
+Arm Circles for a shoulder** — without it every assertion below is satisfied by
+a filter that does nothing.
+
+**Pin the VALUE, not the identity.** Every expectation is an explicit array or
+number rather than the app's own expression, because comparing the pane against
+`safeFlow(mobilityFlow(jointAwareWarmup(WARMUP_FLOW)))` moves both sides of the
+comparison the moment a mutant changes the builder.
+
+## One fact, two surfaces, opposite hardcoded units (v448)
+
+The Fuel card printed **litres** to everybody and the spoken brief printed
+**ounces** to everybody — each hardcoded to the OPPOSITE unit system, and
+neither followed the athlete. Measured on a 13-cup target:
+
+| | heard | read |
+|---|---|---|
+| metric athlete | ***"about 104 ounces"*** | `≈ 3.1 L` |
+| imperial athlete | "about 104 ounces" | ***`≈ 3.1 L`*** |
+
+**Cups themselves stay.** The counter is a glass and the athlete taps one per
+glass, so that is the store rather than a unit; it is the volume BESIDE it that
+has to be theirs. `waterVolShow(cups, spoken)` is one function with ONE unit
+test, because two readers of one fact is exactly how these two came to
+disagree — and `spoken` spells the unit out, since the brief is read aloud and
+*"3.1 L"* is not a thing a voice can say.
+
+**The two surfaces are read side by side in one check**, because the
+requirement is that they AGREE: asserting either alone passes on half the code.
+That is v447's lesson one screen over, and it is the third round running where
+a figure was right on the glass and wrong in the ear.
+
+### And a v447 check pinned the unit rather than the requirement
+
+Suite 09's brief-direction block writes POUNDS figures (`goalWeightLb = 160`)
+and asserts `/up to 160/` — against the seeded METRIC athlete, who now hears
+73 kilograms. It failed on correct code. Its subject is the DIRECTION, so it
+pins the unit its own figures are in and gained an assertion that the two
+directions are never both spoken. **When a rule changes, the check is part of
+the change** — and the full suite is what caught it, one run before the push.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
