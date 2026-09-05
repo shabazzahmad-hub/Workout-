@@ -1911,7 +1911,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='439';
+const APP_VERSION='440';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3264,6 +3264,27 @@ const GEAR_FALLBACK={
      there is. Rushes need no kit at all and have no entry. */
   sbaglift:'squat',sbagshuttle:'sprint',sbagdrag:'bearcrawl',
 };
+/* STANDALONE CARDIO IS NOT AN IN-SESSION MOVEMENT, and the list of which ones
+   those are was written out by hand at FIVE separate picking paths.
+
+   Each of the five is an automatic substitution or a pool: gearSwap(), the
+   exhausted-ladder fallback in resolve(), safeSwap()'s dead-end fallback, the
+   mid-session swap menu, and the custom builder. Every one of them said
+   `k!=='bike' && k!=='sprint'` — the set as it stood when there were two.
+
+   Rucking arrived in v294 and skipping in v353, both as CARDIO MODES with
+   their own card, their own logging and their own make-up timer, and neither
+   is reachable from any pool or ladder on purpose. Nobody came back to the
+   five copies, so the engine could substitute a thirty-minute loaded march or
+   a rope block into a session slot, and the custom builder listed both while
+   hiding the bike and the sprint beside them.
+
+   Jumping jacks are the discriminator and the reason this is not "exclude
+   every cardio mode": they are a real thirty-second circuit movement, in
+   HIIT_POOL and in a ladder, as well as being the default make-up mode. What
+   these four have in common is that the SESSION is arranged elsewhere. */
+const STANDALONE_CARDIO=['bike','sprint','ruck','skip'];
+function standaloneCardio(k){return STANDALONE_CARDIO.indexOf(k)>=0;}
 function gearSwap(exId,ladder){
   if(hasGearFor(exId))return exId;
   const lad=LADDERS[ladder]||[];const i=lad.indexOf(exId);
@@ -3273,7 +3294,7 @@ function gearSwap(exId,ladder){
   }
   const alt=GEAR_FALLBACK[exId];if(alt&&EX[alt]&&hasGearFor(alt))return alt;
   const e=EX[exId];
-  const cand=Object.keys(EX).find(k=>k!=='bike'&&k!=='sprint'&&EX[k].region===e.region&&EX[k].unit===e.unit&&hasGearFor(k));
+  const cand=Object.keys(EX).find(k=>!standaloneCardio(k)&&EX[k].region===e.region&&EX[k].unit===e.unit&&hasGearFor(k));
   return cand||exId;
 }
 /* ---- Persistent exercise swaps -------------------------------------------
@@ -3436,7 +3457,7 @@ function buildSession(ptr){
     const base=resolve(ladder,idx);
     const e=EX[base];
     if(e){
-      const ok=k=>k!==base&&!used.has(k)&&EX[k]&&k!=='bike'&&k!=='sprint'&&hasGearFor(k)&&safeSwap(k)===k&&performable(k);
+      const ok=k=>k!==base&&!used.has(k)&&EX[k]&&!standaloneCardio(k)&&hasGearFor(k)&&safeSwap(k)===k&&performable(k);
       /* Same region and same unit reads most like the move it replaces, then the
          same region, then a RELATED region — a press may fall back to another
          press, never to a glute bridge.
@@ -7200,7 +7221,7 @@ function swapOptions(m){
   const risky=k=>jointRisky(k,lims);
   const cands=Object.keys(EX).filter(k=>{
     const e=EX[k];
-    if(seen.has(k)||k==='bike'||k==='sprint')return false;
+    if(seen.has(k)||standaloneCardio(k))return false;
     if(e.region!==ex.region||e.unit!==ex.unit)return false;
     if(e.equip&&!e.equip.every(g=>gear.includes(g)))return false;
     if(e.optional&&e.equip&&e.equip.includes('bar')&&!hasGearFor(k))return false;   // gear[] is the source of truth; hasBar is a derived legacy mirror
@@ -14448,7 +14469,7 @@ function opQuit(){const _hadHist=!!(OP&&OP.hist);opClose();
   if(_hadHist){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
 /* ---- #2 Custom workout builder ---- */
 let _custom=[];
-function builderPool(){const gear=STATE.profile.gear||[];return Object.keys(EX).filter(k=>{const ex=EX[k];if(k==='bike'||k==='sprint')return false;if(ex.equip)return ex.equip.every(g=>gear.includes(g));return true;});}
+function builderPool(){const gear=STATE.profile.gear||[];return Object.keys(EX).filter(k=>{const ex=EX[k];if(standaloneCardio(k))return false;if(ex.equip)return ex.equip.every(g=>gear.includes(g));return true;});}
 function addCustom(k){if(!_custom.includes(k))_custom.push(k);openBuilder();}
 function removeCustom(k){_custom=_custom.filter(x=>x!==k);openBuilder();}
 /* builderPool() filters by gear the same way the main program does, but never
@@ -17102,7 +17123,7 @@ function safeSwap(exId){
      the prescription (hold vs reps) still makes sense. */
   const e=EX[exId];
   if(e){
-    const ok=k=>EX[k]&&!risky(k)&&k!=='bike'&&k!=='sprint'&&(!EX[k].equip||!EX[k].equip.length);
+    const ok=k=>EX[k]&&!risky(k)&&!standaloneCardio(k)&&(!EX[k].equip||!EX[k].equip.length);
     const alt=Object.keys(EX).find(k=>ok(k)&&EX[k].region===e.region&&EX[k].unit===e.unit)
            || Object.keys(EX).find(k=>ok(k)&&EX[k].region===e.region)
            || Object.keys(EX).find(k=>ok(k)&&EX[k].unit===e.unit);

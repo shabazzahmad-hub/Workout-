@@ -16060,6 +16060,82 @@ adding is that **verbatim is a property of the file at the moment you run, not
 at the moment you wrote the driver**: re-extract every anchor after any edit to
 the code under test, including an edit made in the same round.
 
+## Standalone cardio is not an in-session movement (v440)
+
+Five automatic picking paths each carried the same hand-written exclusion:
+
+```js
+k!=='bike' && k!=='sprint'
+```
+
+`gearSwap()`, the exhausted-ladder fallback in `resolve()`, `safeSwap()`'s
+dead-end fallback, the mid-session swap menu, and `builderPool()`. That is the
+set as it stood when there were two. **Rucking arrived in v294 and skipping in
+v353**, both as CARDIO MODES with their own card, their own timer and their own
+logging, and neither is in any pool or any ladder on purpose. Neither declares
+`equip`, so `hasGearFor()` does not keep them out either, and nobody came back
+to the five copies.
+
+**Two of the five are reachable by tapping, and the sharper one is the swap
+menu.** Measured on an athlete with four flagged joints and no gear — only
+**6 of 29** cardio/time movements clear every flag:
+
+| | measured |
+|---|---|
+| cardio movements whose swap menu offered `skip` | **20 of 29** |
+| what `skip` needs | a rope the app has no gear key for |
+| `bike` and `sprint` on the same menus | correctly hidden |
+| the custom builder | **137 moves listing `ruck` and `skip`**, hiding the other two |
+
+So the one standalone-cardio movement the list did not know about was offered
+mid-set, while the two it did know about were hidden a line away. And a rope
+block inside a guided session logs as session work, so the athlete's own
+skipping record and the weekly cardio bar both miss it.
+
+**Jumping jacks are the discriminator, and the reason this is not "exclude
+every cardio mode".** They are a real thirty-second circuit movement — in
+`HIIT_POOL` and in a ladder — as well as being the default make-up mode. What
+these four share is that the SESSION is arranged elsewhere.
+
+**An EXPLICIT athlete choice may still put standalone cardio in a session, and
+that floor is what stops the fix being a deletion.** `bikeSwap()` substitutes
+the bike into conditioning slots for an athlete who owns one and picked the
+bike mode, and it does not go through any of the five paths — measured, 30
+sessions in 60, unchanged. The rule is about an automatic pool, not about the
+movement.
+
+### The three latent paths are what the source assertion is for
+
+`gearSwap()`, `resolve()` and `safeSwap()` all use `Object.keys(EX).find()`,
+and **13 free cardio/time movements sit ahead of `ruck` in key order** — so
+measured, none of the three ever reaches one, and `gearSwapFirst` is
+`jumpingjack` either way. They are fixed as a class, which means the rule has
+to be ASKED FOR rather than merely declared: a check counting the declaration
+passes while a consumer keeps its own hand-written pair, which is the drift
+that produced this round.
+
+The mutation run is what proves that assertion earns its keep. **M3, M4 and M5
+are caught by the source assertion and by nothing else** — no rendered check
+can see them at all — while M1 and M2 fail both. Nine mutants, all caught,
+including the three over-eager twins: everything read as standalone (13
+failures, most of them the pre-existing builder-warning block), jumping jacks
+added to the list, and an empty registry.
+
+### The class was swept, and it is exactly five sites
+
+`Object.keys(EX)` is read at seven picking-shaped places. `weightsPool()`
+requires `equip`, and none of the four declares any, so it is safe — by
+accident, but safe. The Reference library is a browse list and SHOULD show
+every exercise, the bike included. That leaves the five.
+
+### Two probe errors, both rules already in this file
+
+The harness exports `serve` and `launch`; a probe written against an invented
+`startServer` failed to import at all. And the guard on the source scan tested
+for `const EX=` when the file says `const EX = {` — so the scan reported the
+whole app as unread and the block failed on correct code. **Confirm the
+control's real shape before believing the result**, twice in one round.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
