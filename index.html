@@ -1911,7 +1911,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='435';
+const APP_VERSION='436';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -8610,7 +8610,10 @@ function playerSkip(){
 function playerSetDone(){if(PLAYER&&(PLAYER.phase==='work'||PLAYER.phase==='ready')){plClear();plAfterSet();}}
 function playerAddRest(){if(PLAYER&&PLAYER.phase==='rest'){PLAYER.remain+=15;PLAYER.total+=15;if(PLAYER.deadline)PLAYER.deadline+=15000;plS('#plNum',fmtTime(PLAYER.remain));toast('+15s rest');}}
 function playerSkipRest(){if(PLAYER&&PLAYER.phase==='rest')plRestDone();}
-function playerTeardown(){if(!PLAYER)return;plClearResume();wakeOff();plClear();plClockStop();beatStop();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;
+/* tapShield here for the reason playerFeel() one function below has it: a
+   double-tap's second tap must not fall through to the UI beneath. The FINISH
+   button guarded that and the ✕ did not — measured, no shield on this exit. */
+function playerTeardown(){if(!PLAYER)return;plClearResume();wakeOff();plClear();plClockStop();beatStop();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;tapShield(400);
   setTimeout(()=>{try{if(!$('#player').classList.contains('open'))$('#player').innerHTML='';}catch(e){}},400);
   /* Any teardown of the player = the user bailed (natural finish goes through
      playerFeel, which advances instead) → end the guided day, and SAY SO: the
@@ -9822,8 +9825,7 @@ function hiitTeardown(){if(!INTV)return;
     INTV.logged=true;
     try{logGrind(INTV.format,false,INTV.i,Math.round(INTV.workElapsed||0));}catch(e){}
   }
-  wakeOff();ivClear();beatStop();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;
-  setTimeout(()=>{try{if(!$('#hiit').classList.contains('open'))$('#hiit').innerHTML='';}catch(e){}},400);
+  beatStop();hiitClose();
   if(TAB==='today')renderToday();}
 function hiitQuit(){
   /* Stopping a grinder is a real outcome and gets a real record — written by
@@ -9831,16 +9833,35 @@ function hiitQuit(){
      What is left here is the HISTORY step, which the Back handler must not
      take: the pop it is answering has already happened. */
   const had=!!INTV;hiitTeardown();if(had&&history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
+/* ONE CLOSER FOR THE #hiit OVERLAY. The six statements below were written out
+   by hand at four exits and had drifted two ways, both measured:
+
+     tapShield   the three LOG buttons had it; hiitTeardown() — which is what
+                 the finish screen's Close button reaches through hiitQuit() —
+                 did not. Its own sibling one function away guards a double
+                 tap from falling through to the UI beneath, and the ✕ did not.
+     the markup  hiitTeardown() clears #hiit 400 ms after it closes; the three
+                 log paths left 1,064 bytes of it mounted, which is the stale-id
+                 class closeSheet()'s own comment names.
+
+   What each caller keeps is what is genuinely its own: the grinder stop record
+   and the beat stop in hiitTeardown(), and the HISTORY step in the three
+   buttons — a pop must not take that, which is the split hiitQuit() already
+   has. */
+function hiitClose(){
+  wakeOff();ivClear();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;tapShield(400);
+  setTimeout(()=>{try{if(!$('#hiit').classList.contains('open'))$('#hiit').innerHTML='';}catch(e){}},400);
+}
 function hiitLogDone(){
   if(!INTV)return;   // double-tap guard
-  wakeOff();ivClear();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;tapShield(400);
+  hiitClose();
   if(history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
   finishSession();
 }
 // Ruck / grip / boxing finish into their own records too.
 function hiitLogAct(k,mins,rounds,workSecs){
   if(!INTV)return;   // double-tap guard
-  wakeOff();ivClear();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;tapShield(400);
+  hiitClose();
   if(history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
   logAct(k,mins,k==='grip'?{secs:workSecs||0,rounds:rounds||0}:{rounds:rounds||0});
   render();
@@ -9848,7 +9869,7 @@ function hiitLogAct(k,mins,rounds,workSecs){
 // Skipping finishes into its own record, not the program's session counter.
 function hiitLogSkip(mins,rounds){
   if(!INTV)return;   // double-tap guard
-  wakeOff();ivClear();$('#hiit').classList.remove('open');document.body.style.overflow='';INTV=null;tapShield(400);
+  hiitClose();
   if(history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
   logSkip(mins,rounds);render();
 }
@@ -14310,7 +14331,10 @@ function opFinish(){
     <button class="btn primary" style="width:100%;margin-bottom:8px" onclick="shareLast()">📤 Share</button>
     <button class="btn ghost" style="width:100%" onclick="opQuit()">Done ✓</button>`;
 }
-function opQuit(){wakeOff();if(OP){clearInterval(OP.iv);}OP=null;beatStop();$('#hiit').classList.remove('open');document.body.style.overflow='';
+/* The benchmark shares the #hiit overlay and had neither guard the others do:
+   no tapShield on its ✕, and its markup left mounted. */
+function opQuit(){wakeOff();if(OP){clearInterval(OP.iv);}OP=null;beatStop();$('#hiit').classList.remove('open');document.body.style.overflow='';tapShield(400);
+  setTimeout(()=>{try{if(!$('#hiit').classList.contains('open'))$('#hiit').innerHTML='';}catch(e){}},400);
   // guard the self-pop like playerQuit/hiitQuit do, so onPop ignores it
   if(history.state&&history.state.cf==='op'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
 /* ---- #2 Custom workout builder ---- */

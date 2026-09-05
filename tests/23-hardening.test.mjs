@@ -11288,6 +11288,110 @@ export default async function () {
     });
   }
 
+  /* ---------- every overlay dismissal is the same dismissal --------------
+
+     Six full-screen exits, and three of them — all reached by a BUTTON the
+     athlete taps — were missing a guard their own sibling one function away
+     already had. Measured, with a guard proving no shield was up first:
+
+       player finish (playerFeel)   tapShield  yes
+       player ✕ (playerTeardown)    tapShield  NO
+       HIIT log buttons             tapShield  yes
+       HIIT Close (hiitTeardown)    tapShield  NO
+       benchmark ✕ (opQuit)         tapShield  NO
+
+     tapShield is what stops a double-tap's second tap falling through to the
+     UI beneath — closeSheet()'s own comment says so, and it is on the sheet,
+     on the player's finish button and on all three HIIT log buttons.
+
+     And the markup: hiitTeardown() cleared #hiit 400 ms after closing while
+     the three log paths left 1,064 bytes mounted, and opQuit() — which shares
+     the same overlay — cleared nothing. That is the stale-id class this repo
+     has a standing rule about.
+
+     hiitClose() is the one closer for #hiit now. What each caller keeps is
+     what is genuinely its own: the grinder stop record and the beat stop in
+     hiitTeardown(), and the HISTORY step in the three buttons. */
+  {
+    const ov = await page.evaluate(async () => {
+      const R = {};
+      STATE.onboarded = true; STATE.profile.parqDone = true; STATE.profile.parq = [];
+      normalizeState(); save(); go('today');
+      const shield = () => { const e = document.elementFromPoint(200, 300);
+                             return !!(e && e.style && e.style.zIndex === '9999'); };
+      /* Long enough for any earlier shield to expire — one left up by a
+         previous case makes every assertion below pass on nothing. */
+      const settle = () => new Promise(z => setTimeout(z, 900));
+
+      await settle();
+      openPlayer({ items: [{ exId: 'plank', unit: 'time', target: 30, rest: 30, sets: 1 }],
+                   free: true, title: 'probe' });
+      await settle(); R.g1 = shield(); playerTeardown(); R.playerX = shield();
+      await settle(); R.playerMarkup = document.querySelector('#player').innerHTML.length;
+
+      startHiit('tabata'); await settle(); R.g2 = shield();
+      hiitTeardown(); R.hiitClose = shield();
+      await settle(); R.hiitMarkupAfterClose = document.querySelector('#hiit').innerHTML.length;
+
+      startHiit('tabata'); await settle(); R.g3 = shield();
+      hiitLogSkip(10, 5); R.hiitLog = shield();
+      await settle(); R.hiitMarkupAfterLog = document.querySelector('#hiit').innerHTML.length;
+
+      startOp('op_forge'); opStart(); await settle(); R.g4 = shield();
+      opQuit(); R.opX = shield();
+      await settle(); R.opMarkup = document.querySelector('#hiit').innerHTML.length;
+
+      /* FLOOR: the exits that already had one still do. */
+      openPlayer({ items: [{ exId: 'plank', unit: 'time', target: 30, rest: 30, sets: 1 }],
+                   free: true, title: 'probe' });
+      await settle(); R.g5 = shield(); playerFeel('right'); R.playerFinish = shield();
+      await settle();
+      return R;
+    });
+
+    t.ok('guard: no tap shield was left up before any of these exits',
+      !ov.g1 && !ov.g2 && !ov.g3 && !ov.g4 && !ov.g5, JSON.stringify(ov));
+
+    t.ok('closing the player with the ✕ shields the tap beneath it', ov.playerX, JSON.stringify(ov));
+    t.ok('so does closing HIIT', ov.hiitClose, JSON.stringify(ov));
+    t.ok('and closing the benchmark', ov.opX, JSON.stringify(ov));
+    t.ok('FLOOR: and the exits that already shielded still do',
+      ov.hiitLog && ov.playerFinish, JSON.stringify(ov));
+
+    t.eq('the player clears its markup when it closes', ov.playerMarkup, 0, ov);
+    t.eq('HIIT clears its markup on the Close button', ov.hiitMarkupAfterClose, 0, ov);
+    t.eq('and on a log button', ov.hiitMarkupAfterLog, 0, ov);
+    t.eq('and the benchmark, which shares the same overlay', ov.opMarkup, 0, ov);
+
+    /* FLOOR: the clear is deferred, so it must not blank an overlay that has
+       been RE-OPENED inside its own 400 ms window — which is a real sequence
+       (close a circuit, start another straight away). An over-eager clear that
+       drops the `is it closed?` guard satisfies every assertion above. */
+    const reopen = await page.evaluate(async () => {
+      /* hiitLogSkip() returns at once with no INTV, so a case that has not
+         opened a session first never STARTS the deferred clear — and the
+         mutant walks straight through. Open one, and pin that it opened. */
+      startHiit('tabata');
+      await new Promise(z => setTimeout(z, 300));
+      const hadSession = !!INTV;
+      hiitLogSkip(5, 2);                       // starts the deferred clear
+      const closed = !document.querySelector('#hiit').classList.contains('open');
+      startHiit('tabata');                     // re-opens inside its window
+      const opened = document.querySelector('#hiit').innerHTML.length;
+      await new Promise(z => setTimeout(z, 700));
+      const after = document.querySelector('#hiit').innerHTML.length;
+      const open = document.querySelector('#hiit').classList.contains('open');
+      try { hiitTeardown(); } catch (e) {}
+      await new Promise(z => setTimeout(z, 700));
+      return { hadSession, closed, opened, after, open };
+    });
+    t.ok('guard: a session really was open, so the log path ran its deferred clear',
+      reopen.hadSession && reopen.closed, JSON.stringify(reopen));
+    t.ok('guard: the re-opened overlay really rendered', reopen.opened > 100, JSON.stringify(reopen));
+    t.ok('FLOOR: a deferred clear does not blank an overlay re-opened inside its window',
+      reopen.after > 100 && reopen.open, JSON.stringify(reopen));
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
