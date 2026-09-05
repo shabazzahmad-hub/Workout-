@@ -16186,6 +16186,90 @@ with 17 failures across the file.
 
 Eight mutants, all caught.
 
+## The container was checked and its members were not — on the work itself (v442)
+
+`scrubLogRows()` repairs a log ROW and its `items` list. It never looked
+inside `ex`, which is the map holding **each movement's marked sets** — the
+record of the work the athlete actually did. Measured, from a backup
+`importData()` accepts:
+
+| stored | measured |
+|---|---|
+| `sets:'abc'` | `todayWorkoutHTML()` **threw** — a RENDERER — so Today died on the error boundary, which retries **through** `normalizeState()`; with no repair there **the tab never came back**. The same string on an ARCHIVED run took Progress down the same way |
+| 40 entries | the header read **"40/13 sets · 308%"** with a progress bar rendered **308% wide** |
+| 500 entries | the lifetime tiles read **30,000 seconds** of holding against a real 180, and **500 sets** against 3 |
+| `sets:3`, `sets:{a:1}`, `done:'yes'` | all survived every boot and travelled in every backup |
+
+That is the v284 `nutrition.days` shape and the v391 `bodyCur` shape, on the
+one map in this app that records what was done rather than what was planned.
+
+**TWO GUARDS MEAN TWO CHECKS, and here they cover different doors.** The
+repair keeps a backup clean; `setsDoneFor(st,m)` stands in front of every
+reader, because a cross-tab adopt replaces `STATE` with **no boot behind
+it**. The cap is the movement's own prescription, which the READER has in
+hand and the repair does not — rebuilding a session per log is the
+walk-inside-a-walk that once cost Progress 123 ms.
+
+**The entries are otherwise left alone, and that is a decision.** Coercing
+each marked set to a boolean buys nothing (`filter(Boolean)` already handles
+any value) and would rewrite a sparse array on the first boot after this
+shipped — a diff on a settled state, which fires *"we repaired your data"* at
+an athlete about nothing. **`done` is DROPPED rather than coerced**: a truthy
+string would otherwise be read as a finished movement, and a skipped session
+is not a completed one.
+
+### And the actual repair walked the live logs only
+
+v412 bounded `actual` beside `STATE.logs`. `totalVolume()` reads it through
+`allDonePairs()`, which **spans archived runs** — and `scrubLogRows()` is the
+one walk that already covers both. Measured on an archived run carrying
+`actual:1e9`: the lifetime hold read **1,000,000,120 seconds against a real
+180**, and it survived every boot. Moving the band into the scrub is what
+closes it; leaving it where it was is *one of a pair guarded and its twin
+not*, for the tenth time in this file.
+
+### The floors, and what each over-eager twin fails
+
+A real session driven through the app's own writers is left
+**byte-identical**, the repair is a **fixed point**, an honest partial session
+still reports its own figures, and finishing a movement still marks every
+prescribed set and still marks it done. A repair that always wiped `sets`, or
+always dropped the entry, satisfies every "the junk is gone" assertion and
+destroys the training history it exists to protect.
+
+### The check read the glass and never the lifetime figures
+
+Sixteen mutants, fourteen caught first time. The one weak check is the shape
+this file records most: **nothing read a lifetime total with no boot behind
+it.** Every no-boot case drove the Today header, the set dots and the detail
+sheet; the walks that build the athlete's lifetime volume were only ever read
+AFTER `normalizeState()` had already cleaned the list.
+
+The case that discriminates is an over-long but **legal** array, because the
+reader's other job is to cap at what the movement was actually asked for.
+Measured on the mutant that reverts `totalVolume()` to the raw read:
+
+| | stored | counted |
+|---|---|---|
+| marked sets on one movement | 40 | **40** against a real **3** |
+| lifetime hold | — | **2,400 s** against a real **180 s** |
+
+Its floors are what keep it from passing on nothing: the honest figures must be
+real work rather than two zeroes agreeing, and the over-long list must genuinely
+be longer than the prescription.
+
+### And one equivalent mutant, measured rather than assumed
+
+Weakening `Array.isArray(st.sets)` to bare truthiness **escapes and always
+will**. `setsDoneFor()` carries its own `try/catch`, and every non-array a
+backup can hold — a string, a number, an object — has no `.filter`, so it throws
+and the catch returns the same 0 the guard returns. Swept across ten shapes:
+**zero differences.** The neighbour supplies the answer, which is the shape this
+file already records for `swapStillValid()` and `capLog()`. Kept because an
+explicit test is not the same as control flow through an exception, and recorded
+as uncatchable rather than papered over with a check that cannot fail.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

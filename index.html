@@ -1911,7 +1911,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='441';
+const APP_VERSION='442';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2757,6 +2757,40 @@ function sessionItemOk(m){
     const num=(v,lo,hi)=>typeof v==='number'&&isFinite(v)&&v>=lo&&v<=hi;
     return num(m.sets,1,ITEM_SETS_MAX)&&num(m.target,0,ITEM_TARGET_MAX)&&num(m.rest,0,ITEM_REST_MAX);
   }catch(e){return false;}
+}
+/* MARKED SETS FOR ONE MOVEMENT, and never more than that movement was asked
+   for. `st.sets` is an array of marked sets and nothing repaired it, so an
+   imported backup could put anything in there. Measured:
+
+     sets:'abc'    todayWorkoutHTML() THREW — a renderer — so Today died on the
+                   error boundary, which retries THROUGH normalizeState(), and
+                   with no repair there the tab never came back. The same string
+                   on an ARCHIVED run took Progress down the same way.
+     40 entries    the header read "40/13 sets - 308%", with a progress bar
+                   rendered 308% wide.
+     500 entries   the lifetime tiles read 30,000 seconds of holding against a
+                   real 180, and 500 sets against 3.
+
+   scrubLogRows() is the other guard and is what keeps a backup clean; this one
+   stands in front of every reader, because a cross-tab adopt replaces STATE
+   with no boot behind it. The cap is the movement's own prescription, which
+   the READER has in hand and the repair does not - rebuilding a session per
+   log is the walk-inside-a-walk that once cost Progress 123ms. A junk m.sets
+   caps nothing rather than zeroing a count that is real. */
+/* ONE EQUIVALENT MUTANT, MEASURED RATHER THAN ASSUMED. Weakening the
+   Array.isArray test to bare truthiness changes nothing any check can see:
+   every non-array a backup can carry — a string, a number, an object — has no
+   .filter, so it throws, and the catch below returns the same 0 the guard
+   returns. The neighbour supplies the answer. Kept because an explicit test is
+   not the same as control flow through an exception, and recorded as
+   uncatchable rather than papered over with a check that cannot fail. */
+function setsDoneFor(st,m){
+  try{
+    if(!st||!Array.isArray(st.sets))return 0;
+    const n=st.sets.filter(Boolean).length;
+    const cap=(m&&typeof m.sets==='number'&&isFinite(m.sets)&&m.sets>0)?m.sets:n;
+    return Math.min(n,cap);
+  }catch(e){return 0;}
 }
 function prescribeCeiling(ex){
   if(ex.unit==='time')return PRESCRIBE_TIME_MAX;
@@ -4541,7 +4575,7 @@ function heroImageFor(sess){
 /* The record of what was actually done, in place of an offer to do it. */
 function sessionDoneCardHTML(sess,log,doneSets){
   const items=[...sess.main,sess.finisher].filter(Boolean);
-  const movesDone=items.filter(m=>log.ex[m.exId]&&log.ex[m.exId].done).length;
+  const movesDone=items.filter(m=>log.ex[m.exId]&&log.ex[m.exId].done===true).length;
   const partial=!!log.partial||movesDone<items.length;
   const mins=(typeof log.wallSec==='number'&&log.wallSec>0)?Math.round(log.wallSec/60):null;
   if(todayStoppedForPain()){
@@ -4641,13 +4675,13 @@ function todayWorkoutHTML(){
   const log=STATE.logs[_tp]||{ex:{}};
   const vol=sessionVolume(sess);
   const wkNum=(sess.cycle*WEEKS_PER_CYCLE)+sess.week;
-  const doneCount=sess.main.concat(sess.finisher).filter(m=>log.ex[m.exId]&&log.ex[m.exId].done).length;
+  const doneCount=sess.main.concat(sess.finisher).filter(m=>log.ex[m.exId]&&log.ex[m.exId].done===true).length;
   const totalCount=sess.main.length+1;
   const pct=Math.round(doneCount/totalCount*100);
   // day's-workout progress, by sets (smooth) — the bar updates live as sets are ticked
   const _items=[...sess.main,sess.finisher];
   const totalSets=_items.reduce((a,m)=>a+(m.sets||0),0);
-  const doneSets=_items.reduce((a,m)=>{const st=log.ex[m.exId];return a+(st&&st.sets?st.sets.filter(Boolean).length:0);},0);
+  const doneSets=_items.reduce((a,m)=>a+setsDoneFor(log.ex[m.exId],m),0);
   const setsPct=totalSets?Math.round(doneSets/totalSets*100):0;
   const restedToday=restedTodayFlag();
   const R=sess.session.key;
@@ -4815,7 +4849,7 @@ function workoutTabHTML(sess,log,doneCount,totalCount,wkNum){
     /* Counted here rather than passed in: workoutTabHTML() receives sess and
        log, and the caller's own doneSets is not in scope. */
     const _sets=[...sess.main,sess.finisher].filter(Boolean)
-      .reduce((a,m)=>{const st=log.ex[m.exId];return a+((st&&Array.isArray(st.sets))?st.sets.filter(Boolean).length:0);},0);
+      .reduce((a,m)=>a+setsDoneFor(log.ex[m.exId],m),0);
     h+=sessionDoneCardHTML(sess,log,_sets);
     h+=nextSessionHTML();
   }else{
@@ -6632,9 +6666,9 @@ function _overloadNoteInner(sess){
 }
 function exCardHTML(m,log,idx){
   const ex=EX[m.exId];const st=log.ex[m.exId]||{sets:[],done:false};
-  const setsDone=(st.sets||[]).filter(Boolean).length;
+  const setsDone=setsDoneFor(st,m);
   const targetStr=m.unit==='time'?fmtTime(m.target):m.target+' reps';
-  const setsArr=Array.from({length:m.sets},(_,i)=>st.sets&&st.sets[i]);
+  const setsArr=Array.from({length:m.sets},(_,i)=>Array.isArray(st.sets)&&!!st.sets[i]);
   return `
   <div class="ex ${st.done?'done':''}" data-ex="${m.exId}">
     <div class="ex-top">
@@ -6688,8 +6722,8 @@ function toggleEx(exId){
 function toggleSet(exId,i){
   const sess=buildSession(STATE.progressPtr);const m=[...sess.main,sess.finisher].find(x=>x.exId===exId);
   const log=ensureLog();const st=log.ex[exId]||{sets:[],done:false};
-  st.sets=st.sets||[];st.sets[i]=!st.sets[i];
-  const filled=st.sets.filter(Boolean).length;
+  st.sets=Array.isArray(st.sets)?st.sets:[];st.sets[i]=!st.sets[i];
+  const filled=setsDoneFor(st,m);
   const wasDone=st.done;
   st.done=filled>=m.sets;
   log.ex[exId]=st;save();haptic(10);
@@ -6791,7 +6825,7 @@ function sessionWork(ptr){
     [...sess.main,sess.finisher].filter(Boolean).forEach(m=>{
       out.movesAsked++;out.setsAsked+=(+m.sets||0);
       const st=log&&log.ex&&log.ex[m.exId];
-      const sd=(st&&Array.isArray(st.sets))?st.sets.filter(Boolean).length:0;
+      const sd=setsDoneFor(st,m);
       out.setsDone+=sd;if(sd>0)out.movesDone++;
     });
   }catch(e){}
@@ -12839,9 +12873,9 @@ function timerHTML(label,secs,isHold,total,ex){
 }
 function markSetFromTimer(exId){
   const sess=buildSession(STATE.progressPtr);const m=[...sess.main,sess.finisher].find(x=>x.exId===exId);
-  const log=ensureLog();const st=log.ex[exId]||{sets:[],done:false};st.sets=st.sets||[];
-  const i=st.sets.filter(Boolean).length;if(i<m.sets)st.sets[i]=true;
-  st.done=st.sets.filter(Boolean).length>=m.sets;if(st.done)recordPR(exId,m);
+  const log=ensureLog();const st=log.ex[exId]||{sets:[],done:false};st.sets=Array.isArray(st.sets)?st.sets:[];
+  const i=setsDoneFor(st,m);if(i<m.sets)st.sets[i]=true;
+  st.done=setsDoneFor(st,m)>=m.sets;if(st.done)recordPR(exId,m);
   log.ex[exId]=st;save();if(TAB==='today')renderToday();
 }
 
@@ -17353,7 +17387,7 @@ function totalTUTSplit(){
   allDonePairs().forEach(([p,l])=>{
     const items=logItemsFor(p,l);const tempo=repTempoSetting();
     items.forEach(m=>{
-      const e=l.ex&&l.ex[m.exId];const sd=e&&e.sets?e.sets.filter(Boolean).length:0;
+      const e=l.ex&&l.ex[m.exId];const sd=setsDoneFor(e,m);
       if(!sd)return;
       work+=sd*(m.unit==='time'?m.target:m.target*tempo);
       rest+=sd*(m.rest||45);
@@ -17399,6 +17433,43 @@ function scrubLogRows(map){
         ? map[k].items.filter(sessionItemOk)
         : [];
     }
+    /* AND THE ENTRIES INSIDE `ex`, which is where the session's actual work is
+       recorded. The container was repaired and its members never were - the
+       shape this codebase has now paid for on gear keys, poses, meal slots and
+       activity rows. A string `sets` threw inside a RENDERER and the boundary
+       retries through here, so with no repair the tab never came back; a 500
+       entry array read back as 30,000 seconds of lifetime holding.
+
+       `done` is DROPPED rather than coerced when it is not a boolean, because
+       a truthy string would otherwise be read as a finished movement - a
+       skipped session is not a completed one.
+
+       The entries are left alone otherwise. Coercing each to a boolean buys
+       nothing (filter(Boolean) already handles any value) and would rewrite a
+       sparse array on the first boot after this shipped, which is a diff on a
+       settled state and therefore a "we repaired your data" note about
+       nothing.
+
+       `actual` is repaired HERE rather than beside STATE.logs, and that is the
+       second half of the finding: the old site walked the live logs only, so
+       an ARCHIVED run kept a junk figure and totalVolume() - which spans runs
+       - reported 1,000,000,120 seconds of lifetime holding against a real 180. */
+    const _exm=map[k].ex;
+    Object.keys(_exm).forEach(id=>{
+      const st=_exm[id];
+      if(!st||typeof st!=='object'||Array.isArray(st)){delete _exm[id];return;}
+      if(st.sets!==undefined){
+        if(!Array.isArray(st.sets))delete st.sets;
+        else if(st.sets.length>ITEM_SETS_MAX)st.sets=st.sets.slice(0,ITEM_SETS_MAX);
+      }
+      if(st.done!==undefined&&typeof st.done!=='boolean')delete st.done;
+      /* The band the writer enforces, not merely the type - see actualCeiling.
+         The repair has no session in hand and rebuilding one per log is the
+         walk-inside-a-walk, so it uses the widest ceiling the engine can ever
+         produce rather than this movement's own. */
+      if(st.actual!=null&&!(typeof st.actual==='number'&&isFinite(st.actual)&&st.actual>=0&&st.actual<=actualCeiling(0)))delete st.actual;
+    });
+    if(map[k].done!==undefined&&typeof map[k].done!=='boolean')delete map[k].done;
   }
 }
 function isDateISO(v){if(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(v))return false;
@@ -17423,7 +17494,7 @@ function totalVolume(){let reps=0,hold=0,sets=0;allDonePairs().forEach(([p,l])=>
        above is one guard and this is the other. It was never reachable while
        `ex` could be absent, because the && below short-circuited first. */
     if(!m||typeof m!=='object')return;
-    const e=l.ex&&l.ex[m.exId];const sd=e&&e.sets?e.sets.filter(Boolean).length:0;
+    const e=l.ex&&l.ex[m.exId];const sd=setsDoneFor(e,m);
     if(!sd)return;
     sets+=sd;
     const tgt=+m.target||0;
@@ -21789,7 +21860,7 @@ function sessionStats(p,full){
   const tempo=repTempoSetting();
   let exDone=0,setsDone=0,setsRx=0,totalReps=0,totalHold=0,estSec=0;
   items.forEach(m=>{
-    const e=l.ex&&l.ex[m.exId];const sd=e&&e.sets?e.sets.filter(Boolean).length:0;
+    const e=l.ex&&l.ex[m.exId];const sd=setsDoneFor(e,m);
     setsDone+=sd;setsRx+=m.sets;if(e&&e.done)exDone++;
     if(m.unit==='time'){totalHold+=sd*m.target;estSec+=sd*m.target;}
     else{totalReps+=sd*m.target;estSec+=sd*m.target*tempo;}
@@ -21830,7 +21901,7 @@ function openSessionDetail(p){
   const feelTxt=l.feel==='easy'?'😎 Easy':(l.feel==='hard'?'🥵 Brutal':'💪 Challenging');
   const prs=STATE.prs||{};
   const rows=st.items.map(m=>{
-    const e=l.ex&&l.ex[m.exId];const done=e&&e.done;const sd=e&&e.sets?e.sets.filter(Boolean).length:0;
+    const e=l.ex&&l.ex[m.exId];const done=e&&e.done===true;const sd=setsDoneFor(e,m);
     const rx=m.unit==='time'?fmtTime(m.target):m.target+' reps';
     const isPR=prs[m.exId]&&prs[m.exId]===m.target;
     const setTxt=`<span class="tiny ${done?'':'muted'}">${sd}/${m.sets} sets</span>`;
@@ -23428,18 +23499,11 @@ function normalizeState(){
       visible cause. importData() accepts arbitrary JSON, so this is reachable. */
    if(P.tightSpace!=null&&typeof P.tightSpace!=='boolean')P.tightSpace=!!P.tightSpace;
    /* `actual` drives PRs, the Strength Standards and the load adjustment, so a
-      string or a negative from an imported backup would poison all three. */
-   try{Object.values(STATE.logs||{}).forEach(l=>{
-     if(!l||!l.ex||typeof l.ex!=='object')return;
-     Object.values(l.ex).forEach(st=>{
-       if(!st||typeof st!=='object')return;
-       /* The band the writer enforces, not merely the type — see actualCeiling.
-          The repair has no session in hand and rebuilding one per log is the
-          v335 walk-inside-a-walk, so it uses the widest ceiling the engine can
-          ever produce rather than this movement's own. */
-       if(st.actual!=null&&!(typeof st.actual==='number'&&isFinite(st.actual)&&st.actual>=0&&st.actual<=actualCeiling(0)))delete st.actual;
-     });
-   });}catch(e){}
+      string or a negative from an imported backup would poison all three. It
+      is repaired inside scrubLogRows() with the rest of the entry, because
+      that is the one walk that covers ARCHIVED runs as well as the live logs
+      — this block walked STATE.logs alone and an archived junk figure survived
+      every boot. */
    if(!STATE.exAdapt||typeof STATE.exAdapt!=='object'||Array.isArray(STATE.exAdapt))STATE.exAdapt={};
    else Object.keys(STATE.exAdapt).forEach(k=>{const v=STATE.exAdapt[k];
      /* The band, not merely the type — see EXADAPT_MIN. */

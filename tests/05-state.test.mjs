@@ -4137,6 +4137,246 @@ export default async function run() {
     await browser.close();
   }
 
+  /* THE CONTAINER WAS CHECKED AND ITS MEMBERS WERE NOT — on the record of the
+     work itself. scrubLogRows() repaired the log ROW and its `items` list and
+     never looked inside `ex`, which is where each movement's marked sets live.
+
+     Measured, from a backup importData() accepts:
+
+       sets:'abc'    todayWorkoutHTML() threw — a RENDERER — so Today died on
+                     the error boundary, which retries THROUGH normalizeState();
+                     with no repair there the tab never came back. The same
+                     string on an ARCHIVED run took Progress down the same way.
+       40 entries    the header read "40/13 sets · 308%" with a 308%-wide bar.
+       500 entries   lifetime tiles read 30,000s of holding against a real 180.
+       archived      a junk `actual` survived every boot, because the v412
+         actual      repair walked STATE.logs alone while totalVolume() spans
+                     runs: 1,000,000,120 seconds against a real 180.
+
+     TWO GUARDS MEAN TWO CHECKS. scrubLogRows() keeps a backup clean; the
+     reader stands in front of the glass, because a cross-tab adopt replaces
+     STATE with no boot behind it. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const o = { boot: {}, noBoot: {}, floors: {} };
+      const s = buildSession(0);
+      const ex = s.main[0].exId;
+      const items = [...s.main, s.finisher].filter(Boolean)
+        .map(m => ({ exId: m.exId, sets: m.sets, target: m.target, unit: m.unit, rest: m.rest || 45 }));
+      o.movement = ex;
+      o.prescribed = s.main[0].sets;
+      o.sessionSets = items.reduce((a, m) => a + m.sets, 0);
+
+      const row = st => ({ date: todayISO(), completedAt: todayISO(), done: true, items, ex: { [ex]: st } });
+      const boot = st => {
+        STATE.logs = { 0: row(st) }; STATE.runs = [];
+        normalizeState();
+        return JSON.parse(JSON.stringify(STATE.logs[0].ex[ex] || null));
+      };
+
+      /* 1. THE REPAIR. Every shape an import can carry. */
+      o.boot.stringSets = boot({ sets: 'abc' });
+      o.boot.numberSets = boot({ sets: 3 });
+      o.boot.objectSets = boot({ sets: { a: 1 } });
+      o.boot.junkDone   = boot({ sets: [true], done: 'yes' });
+      o.boot.longSets   = (boot({ sets: Array(500).fill(true) }).sets || []).length;
+      o.boot.entryJunk  = (() => {
+        STATE.logs = { 0: { date: todayISO(), done: true, items, ex: { [ex]: 'abc' } } }; STATE.runs = [];
+        normalizeState();
+        return Object.keys(STATE.logs[0].ex).length;
+      })();
+      o.boot.rowDone = (() => {
+        STATE.logs = { 0: { date: todayISO(), done: 'yes', items, ex: {} } }; STATE.runs = [];
+        normalizeState();
+        return STATE.logs[0].done;
+      })();
+
+      /* 2. THE ARCHIVED HALF — the walk the old actual repair never took. */
+      STATE.logs = {}; STATE.runs = [{ startedAt: todayISO(), endedAt: todayISO(), sessions: 1,
+        logs: { 0: row({ sets: Array(s.main[0].sets).fill(true), done: true, actual: 1e9 }) } }];
+      normalizeState();
+      o.archivedActual = STATE.runs[0].logs[0].ex[ex].actual;
+      o.archivedVolume = totalVolume();
+
+      /* 3. THE GLASS, with NO boot behind it. */
+      STATE.logs = { 0: { date: todayISO(), ex: { [ex]: { sets: 'abc' } }, done: false } };
+      go('today'); setTodayTab('workout');
+      let threw = null;
+      try { render(); } catch (e) { threw = String(e).slice(0, 120); }
+      o.noBoot.threw = threw;
+      let v = document.querySelector('.view.active');
+      o.noBoot.len = v ? v.innerHTML.length : -1;
+      o.noBoot.boundary = v ? /went wrong|Something went/i.test(v.innerText) : null;
+
+      /* The set dots read st.sets[i] directly, so a string rendered its own
+         CHARACTERS as ticked sets while the count above them read 0 - one row
+         giving two answers. */
+      STATE.logs = { 0: { date: todayISO(), ex: { [ex]: { sets: 'abc' } }, done: false } };
+      render();
+      const dots = () => {
+        const c = document.querySelector('#v-today .ex[data-ex="' + ex + '"]');
+        return c ? { found: true, all: c.querySelectorAll('.setdot').length,
+                     on: c.querySelectorAll('.setdot.done').length }
+                 : { found: false, all: -1, on: -1 };
+      };
+      o.noBoot.junkDots = dots();
+      /* PROVE THE DETECTOR BOTH WAYS. A selector that matches nothing reports
+         zero on any app at all — which is exactly how the first version of
+         this check passed on nothing (the class is `done`, not `on`). */
+      STATE.logs = { 0: { date: todayISO(), ex: { [ex]: { sets: [true, true] } }, done: false } };
+      render();
+      o.noBoot.realDots = dots();
+
+      /* A tap on a row of the athlete's own history. openSessionDetail() read
+         the stored list raw, so the sheet THREW and the tap did nothing. */
+      STATE.logs = { 0: { date: todayISO(), completedAt: todayISO(), done: true, items,
+        ex: { [ex]: { sets: 'abc', done: true } }, feel: 'ok' } };
+      let detailThrew = null;
+      try { openSessionDetail(0); } catch (e) { detailThrew = String(e).slice(0, 120); }
+      o.noBoot.detailThrew = detailThrew;
+      const sh = document.querySelector('#sheet');
+      o.noBoot.detailLen = sh ? sh.innerHTML.length : -1;
+      o.noBoot.detailSets = sh ? ((sh.innerText.match(/(\d+)\/(\d+) sets/) || [null])[0]) : null;
+      closeSheet();
+
+      /* The movement-done COUNT on two headers read `done` by truthiness, so a
+         junk string arriving with no boot behind it counted a movement the
+         athlete never finished. Proven both ways: a REAL done must still count. */
+      STATE.logs = { 0: { date: todayISO(), ex: { [ex]: { sets: [true], done: 'yes' } }, done: false } };
+      go('today'); setTodayTab('workout'); render();
+      const exLine = () => {
+        const c = document.querySelector('#v-today');
+        return c ? ((c.innerText.match(/(\d+)\/(\d+) exercises/) || [null])[0]) : null;
+      };
+      o.noBoot.junkDoneLine = exLine();
+      STATE.logs = { 0: { date: todayISO(), ex: { [ex]: { sets: [true, true, true], done: true } }, done: false } };
+      render();
+      o.noBoot.realDoneLine = exLine();
+
+      STATE.logs = { 0: { date: todayISO(), ex: { [ex]: { sets: Array(40).fill(true), done: true } }, done: false } };
+      go('today'); setTodayTab('workout'); render();
+      const tv = document.querySelector('#v-today');
+      o.noBoot.setsLine = tv ? (tv.innerText.match(/\d+\/\d+ sets · \d+%/) || [null])[0] : null;
+      const bar = tv ? tv.querySelector('.pbar i') : null;
+      o.noBoot.barWidth = bar ? bar.style.width : null;
+      o.noBoot.pct = bar ? parseFloat(bar.style.width) : null;
+
+      /* THE LIFETIME WALKS READ THE SAME LIST, and nothing asserted them with
+         no boot behind it — the mutant that reverted totalVolume() to the raw
+         read walked straight through every check above. The case that
+         discriminates is an over-long but LEGAL list: the reader caps at what
+         the movement was actually asked for, so a raw read credits sets the
+         athlete never did, in a figure every backup then carries. */
+      STATE.runs = [];
+      const pres = items.find(m => m.exId === ex).sets;
+      STATE.logs = { 0: row({ sets: Array(40).fill(true), done: true }) };
+      o.noBoot.lifeLong = totalVolume();
+      o.noBoot.lifeLongTUT = Math.round(totalTUT());
+      STATE.logs = { 0: row({ sets: Array(pres).fill(true), done: true }) };
+      o.noBoot.lifeHonest = totalVolume();
+      o.noBoot.lifeHonestTUT = Math.round(totalTUT());
+      o.noBoot.lifePrescribed = pres;
+
+      /* 4. FLOORS — a real session, driven through the app's own writers. */
+      STATE.progressPtr = 5; STATE.logs = {}; STATE.runs = [];
+      const s5 = buildSession(5);
+      const it5 = [...s5.main, s5.finisher].filter(Boolean);
+      toggleSet(it5[0].exId, 0); toggleSet(it5[0].exId, 1); toggleSet(it5[1].exId, 0);
+      const before = JSON.stringify(STATE.logs);
+      normalizeState();
+      o.floors.settledUntouched = JSON.stringify(STATE.logs) === before;
+      normalizeState();
+      o.floors.idempotent = JSON.stringify(STATE.logs) === before;
+      o.floors.realSets = STATE.logs[5].ex[it5[0].exId].sets.length;
+      go('today'); setTodayTab('workout'); render();
+      const t5 = document.querySelector('#v-today');
+      o.floors.setsLine = t5 ? (t5.innerText.match(/\d+\/\d+ sets · \d+%/) || [null])[0] : null;
+      for (let i = 0; i < 12; i++) markSetFromTimer(it5[0].exId);
+      o.floors.marked = STATE.logs[5].ex[it5[0].exId].sets.filter(Boolean).length;
+      o.floors.done = STATE.logs[5].ex[it5[0].exId].done;
+      o.floors.prescribed = it5[0].sets;
+      STATE.progressPtr = 0;
+      return o;
+    });
+
+    /* Guards first: the shapes this block asserts about have to be reachable
+       at all, and the session it measures has to be the one it thinks. */
+    t.ok('guard: the session prescribes real sets to measure against',
+      r.prescribed >= 2 && r.sessionSets > r.prescribed, JSON.stringify({ p: r.prescribed, s: r.sessionSets }));
+
+    // 1. the repair
+    t.eq('a string where the marked sets belong is dropped at the boot', r.boot.stringSets, {}, r.boot);
+    t.eq('and a number', r.boot.numberSets, {}, r.boot);
+    t.eq('and an object', r.boot.objectSets, {}, r.boot);
+    t.eq('a junk done on a movement is dropped, so it is not read as finished',
+      r.boot.junkDone, { sets: [true] }, r.boot);
+    t.ok('an absurdly long marked-set list is cut to the item bound',
+      r.boot.longSets === 99, JSON.stringify(r.boot));
+    t.eq('an entry that is not an object at all is removed', r.boot.entryJunk, 0, r.boot);
+    t.eq('and a junk done on the ROW itself, which the lifetime counters read as truthy',
+      r.boot.rowDone, undefined, r.boot);
+
+    // 2. archived runs
+    t.eq('an ARCHIVED run gets the same repair — its junk actual is gone',
+      r.archivedActual, undefined, r);
+    t.ok('so the lifetime hold is the real figure, not a billion seconds',
+      r.archivedVolume.hold > 0 && r.archivedVolume.hold < 100000,
+      JSON.stringify(r.archivedVolume));
+
+    // 3. the glass, no boot
+    t.eq('with NO boot behind it, a string set list does not throw', r.noBoot.threw, null, r.noBoot);
+    t.ok('and Today renders rather than dying on the boundary',
+      r.noBoot.boundary === false && r.noBoot.len > 5000, JSON.stringify(r.noBoot));
+    t.ok('and an over-long list can never push the bar past 100%',
+      r.noBoot.pct !== null && r.noBoot.pct <= 100, JSON.stringify(r.noBoot));
+    t.ok('guard: the over-long list really is longer than the movement was asked for',
+      r.noBoot.lifePrescribed > 0 && r.noBoot.lifePrescribed < 40,
+      JSON.stringify({ prescribed: r.noBoot.lifePrescribed }));
+    t.ok('guard: the honest lifetime figures are real work, not two zeroes agreeing',
+      r.noBoot.lifeHonest.sets > 0 && (r.noBoot.lifeHonest.reps + r.noBoot.lifeHonest.hold) > 0,
+      JSON.stringify(r.noBoot.lifeHonest));
+    t.eq('the lifetime volume counts the sets asked for, not the stored list',
+      r.noBoot.lifeLong, r.noBoot.lifeHonest, JSON.stringify(r.noBoot));
+    t.eq('and the lifetime time under tension likewise',
+      r.noBoot.lifeLongTUT, r.noBoot.lifeHonestTUT, JSON.stringify(r.noBoot));
+    t.ok('the count is capped at what the movement was asked for',
+      /^3\/\d+ sets/.test(r.noBoot.setsLine || ''), JSON.stringify(r.noBoot));
+    t.ok('guard: the exercise card really rendered, with dots on it',
+      r.noBoot.junkDots.found === true && r.noBoot.junkDots.all >= 2, JSON.stringify(r.noBoot.junkDots));
+    t.eq('guard: and the detector can SEE a genuinely ticked set',
+      r.noBoot.realDots.on, 2, r.noBoot.realDots);
+    t.eq('so a string does not tick the dots with its own characters',
+      r.noBoot.junkDots.on, 0, r.noBoot.junkDots);
+    /* Not `realDoneLine === '1/' + something-derived-from-realDoneLine`, which
+       is a guard that compares a value against itself. */
+    t.ok('guard: a genuinely finished movement IS counted on the header',
+      /^1\/\d+ exercises$/.test(r.noBoot.realDoneLine || ''), JSON.stringify(r.noBoot));
+    t.ok('guard: and the header really rendered a count to read',
+      /^\d+\/\d+ exercises$/.test(r.noBoot.junkDoneLine || ''), JSON.stringify(r.noBoot));
+    t.ok('so a junk done is not counted as a finished movement',
+      /^0\//.test(r.noBoot.junkDoneLine || ''), JSON.stringify(r.noBoot));
+    t.eq('a tap on a row of your own history does not throw', r.noBoot.detailThrew, null, r.noBoot);
+    t.ok('and the sheet opens with the honest set count on it',
+      r.noBoot.detailLen > 500 && /^0\/\d+ sets/.test(r.noBoot.detailSets || ''),
+      JSON.stringify(r.noBoot));
+
+    // 4. floors
+    t.ok('FLOOR: a real session written by the app is left byte-identical',
+      r.floors.settledUntouched, JSON.stringify(r.floors));
+    t.ok('FLOOR: and the repair is a fixed point', r.floors.idempotent, JSON.stringify(r.floors));
+    t.eq('FLOOR: the real marked sets survive', r.floors.realSets, 2, r.floors);
+    t.ok('FLOOR: an honest partial session still reports its own figures',
+      /^3\/\d+ sets · \d+%/.test(r.floors.setsLine || ''), JSON.stringify(r.floors));
+    t.eq('FLOOR: finishing a movement still marks every prescribed set',
+      r.floors.marked, r.floors.prescribed, r.floors);
+    t.ok('FLOOR: and still marks the movement done', r.floors.done === true, JSON.stringify(r.floors));
+
+    errors.forEach(e => t.fail('a page error fired during the log-entry checks', e));
+    await browser.close();
+  }
+
   srv.close();
   return t.finish();
 }
