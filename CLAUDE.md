@@ -15192,6 +15192,180 @@ junk call is wrapped and the throw recorded as a value, so the named checks do
 the reporting; a floor asserts that none of the real calls after it threw
 either.
 
+## A date that is not a date became today's weigh-in (v430)
+
+`dedupeMeasurements()` clamps a date ahead of today back to today, and its own
+comment says why: a **clock-skew** row is a real measurement stamped wrong, and
+left alone it would win every "latest" read for ever. The clamp is right for
+that. It fired on junk as well:
+
+`String({})` is `"[object Object]"`, and `"[object Ob"` sorts **above** any
+`"20xx-"` date — so a row with no usable date at all was rewritten into
+**today**. Measured:
+
+| stored | after the boot | `latestWeightKg()` |
+|---|---|---|
+| a real 86 kg on 2026-08-01, plus `{date:{bad:1}, weight:200}` | the junk row **became today's weigh-in** | **200** |
+| the same, after the fix | the junk row is dropped | 86 |
+
+That figure is not cosmetic: it drives the calorie target, the projection, the
+goal pace and the weight chart. **A date that is not a date is not a
+measurement**, so the row goes; the clamp keeps the case it was written for,
+and a check pins a genuine tomorrow-dated row still landing on today.
+
+### The writer enforced two bands and the repair enforced none
+
+`saveMeasure()` has always refused a weight outside `plausibleKg` (25–350) and
+a waist outside `plausibleWaistCm` (40–250), and refuses a row carrying
+neither. `normalizeState()` had **only `Array.isArray`** — no member check at
+all, which is the v354 shape one list over.
+
+So a numeric **string** survived every boot and `latestWeightKg()` handed a
+string to every calorie reader. **Measured inert on the glass** — every tab and
+every Progress pane byte-identical against the same athlete with a number — so
+the cost is the v285 one: junk travelling in every backup. `measureVal()` makes
+the repair agree with the writer that was already there.
+
+**And a payload never reached the glass, which was checked rather than
+assumed.** `measureListHTML()` escapes the date and gates both figures on
+`> 0`, and `'<b>x</b>' > 0` is false — so the render was already correct. The
+comment above it says *"STATE.measurements has no schema validation"*: the
+codebase knew, and guarded the one consumer instead of the data.
+
+### The fix rounded, and rounding was a change with no defect behind it
+
+The first version returned `Math.round(n*10)/10`. `obReadForm()` rounds only
+the **imperial** branch, so a metric athlete's `86.44 kg` is a real stored
+value — and rewriting it on the first boot after this shipped would fire *"we
+repaired your data"* at that athlete about nothing. That is v390's rule landing
+on the round that was written to honour it. The rounding came out, and the
+byte-identical floor now carries two decimals so it cannot come back.
+
+### And the band judged inches against a centimetre band (v430, cont'd)
+
+Found by auditing v430 an hour after it shipped — the fourteenth round running
+where the best finding was in the round immediately before, and the sixth in a
+row where it was in my own new code.
+
+`dedupeMeasurements()` sits at line 22513. The `_unitFix`/`_unitFixW`
+migrations — which convert an early build's imperial rows to cm/kg — sit at
+line 23360, **847 lines later in the same `normalizeState()` pass.** So the
+band ran FIRST, and `plausibleWaistCm` is **40-250 cm** while an adult waist in
+INCHES is **24-60**. Measured on a real boot, against a v429 control:
+
+| | v429 | v430 as first shipped |
+|---|---|---|
+| a 34 in waist row | **86 cm** | **null** |
+| a 33 in waist row | **84 cm** | **null** |
+| `profile.startWaist` | set | **null** |
+| `waistDrop()` | **2 cm** | **0** |
+
+The whole waist history, destroyed by the repair written to protect it, one
+boot after it shipped — and the migration then found nothing left to convert.
+
+**THE BAND MEANS "CANONICAL cm/kg", AND A ROW IS ONLY CANONICAL ONCE THE UNIT
+MIGRATIONS HAVE RUN.** So the band waits on both flags and the type coercion
+does not — a numeric string is a numeric string in any unit. Both flags are
+already true in every current athlete's stored state, so the gate costs
+nothing and protects exactly the case that matters: an old backup being
+imported.
+
+**For one athlete the wait is forever, and that is deliberate.** `_unitFixW`
+waits for an anchor (`nutrition.weightKg`), so an imperial athlete who has
+never logged a weight nor opened the calculator never gets one — and their
+rows may still be lb, where a kg band would be wrong anyway. The two ways of
+being wrong are not symmetrical: an out-of-band figure was measured **inert on
+the glass** and costs backup weight, while dropping a real history cannot be
+undone.
+
+**The weight half needed its own case, or one mutant is equivalent.**
+`_unitFix` is set on the first boot for everyone and `_unitFixW` waits, so
+`{_unitFix:true, _unitFixW:false}` is a real reachable state. **400 lb is 181
+kg, a real person, and `plausibleKg` tops out at 350** — gating on `_unitFix`
+alone drops it. The inch case deletes both flags, so it cannot tell the two
+gates apart. *A guard is only visible when the value beside it cannot supply
+the answer* — this time the neighbour was the other half of my own gate.
+
+**And the comment claimed something the arithmetic disproves.** Its first
+version said the band *"starts enforcing one boot later"*. For the
+forever-waiting athlete that is never, and *a comment claiming an invariant is
+not the invariant* — corrected rather than left, with the reason beside it.
+
+**The escaped mutant proved the gate is an AND that only an IMPORT can
+justify.** Asking `_unitFixW` alone escaped every check, and reading it back is
+why: the app's own pass sets `_unitFix` first, so `_unitFixW` implies
+`_unitFix` in **every state the app produces** and either flag alone answers
+the same. They differ only on `{_unitFix absent, _unitFixW true}`, which
+`importData()` accepts from a hand-edited backup — and there the migration
+still runs in that pass, so the band must still wait. A weak check, not a bad
+mutant, and the discriminating case is now pinned.
+
+### The same field family, with no repair at all (v430, cont'd)
+
+The class sweep that followed asked which OTHER repair enforces a band on a
+field a later migration is about to change. **The ordering conflict has exactly
+one member** — `settings.coach` and its `autoIntro` migration both land on
+`'auto'`, `settings.theme` has no migration at all, `settings.voicePitch` is
+deliberately not clamped (v412), and `nutrition.proteinTarget` is deleted
+*before* `_protSeed` fills it, which is the correct order.
+
+It turned up a gap beside it instead. **`profile.startWaist` and
+`profile.goalWaist` are the same figure as `measurements[].waist` and had no
+repair at all**, while `saveWaistGoal()` has always enforced
+`plausibleWaistCm`. Inert on the glass — every reader gates on `>0` and
+`'<b>x</b>'>0` is false — so the cost is the v285 one: junk in every backup.
+
+**It sits BELOW `_unitFix`, and that placement is the whole point.** Those two
+lines are converted from inches by the migration itself, so a repair placed
+beside the measurements one would null a 34 in `startWaist` before the
+migration could reach it — the defect this version exists to fix, on the field
+that same migration touches. The mutant that moves it above is caught by a
+check that drives an early-build imperial profile.
+
+### One equivalent mutant, measured rather than assumed
+
+Nine of ten mutants caught. The one that escaped is `measureVal`'s `isFinite`
+test, and reading it back is what settled it rather than rewriting the check:
+**`n>0` already refuses NaN, and both bands are bounded ABOVE**, so
+`ok(Infinity)` is false. Swept over 62 inputs x both bands — **zero
+differences**. No check can catch its removal, so it is recorded as
+uncatchable and kept as cover for a future band with no ceiling, the same call
+as v287's `wantAnchor`.
+
+**Six floors, and each catches a different over-eager twin**: a real history is
+byte-identical, the repair is idempotent, the clock-skew clamp still fires, a
+timestamped date (`2026-08-05T08:00:00Z`) still collapses onto its own day and
+merges the field it lacks, **both edges of both bands survive** — a guard earns
+its keep only if it provably cannot fire on a legitimate input — and a real
+save still lands.
+
+### Two sweeps that came back clean
+
+- **Every fire-and-forget `setTimeout`.** 58 calls; 11 carry a named handle and
+  all 11 have a matching `clearTimeout`. Both deferred writers that paint into
+  a sheet already check `_sheetGen`. `duckFor()` has a `done` latch, so its
+  safety timeout is idempotent; `beatDuck()` is a **counter**, and `beatStop()`
+  nulls `BEAT` while `beatStart()` rebuilds it with `duck:0` — so a duck taken
+  across a beat toggle cannot leave the music stuck quiet.
+- **Every stored LIST OF OBJECTS, against whether its rows are repaired.**
+  Fourteen of them, and `measurements` was the last one carrying a container
+  check and nothing below it — `customFav`, `footLog`, `grindLog`, `hiitLog`,
+  `holdLog`, `liftLog`, `pain`, `photos`, `runs`, `scoreHistory` and the four
+  activity logs all already filter or rebuild their rows, and `_plResume` and
+  `_undo` are in `TRANSIENT_KEYS` so no import can reach them. **A crude scan
+  reported four of those as unrepaired and every one was the scan**: the
+  activity logs are repaired by a `forEach` over a list of names rather than
+  inline, and `logs` goes through `scrubLogRows()`. Read the repair the field
+  actually has before believing a regex that could not see it.
+- **Every `Date.parse` / `new Date` on a stored value.** `painCount()` guards
+  `isFinite` and fails closed (a junk date lowers the count, so no false
+  prompt); `prep.date` and `prep.planFrom` go through `isDateISO()`;
+  `projectionHTML()`'s `rate` opens at `Math.max(0.2, …)` and is only
+  reassigned behind `capped > 0`, so `weeks` can never be `Infinity` and the
+  month label can never read *Invalid Date*. The measurement rows were the one
+  member.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

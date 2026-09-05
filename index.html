@@ -595,18 +595,80 @@ const r1=v=>Math.round(v*10)/10;                                 // one decimal,
    genuinely saved and the tile still showed the stale duplicate. Collapse
    duplicates: keep the first row (the one every writer targets), filling only
    fields it lacks from later copies. Idempotent; runs every boot. */
+/* One figure of a measurement row. A numeric string coerces — the athlete
+   really did enter that number, and some export routes stringify — and
+   anything outside the band its own writer enforces is dropped rather than
+   clamped, because a measurement outside the band was never taken.
+
+   IT DOES NOT ROUND, and that was measured rather than assumed. A METRIC
+   athlete's weight is stored raw (obReadForm rounds only the imperial branch),
+   so 86.44 kg is a real stored value — rounding it here would rewrite a
+   legitimate figure on the first boot after this shipped and fire "we repaired
+   your data" at that athlete about nothing. v390's rule: a repair that changes
+   a settled state is worse than the shape it was written for.
+
+   THE isFinite TEST IS EQUIVALENT TODAY, and that was measured rather than
+   assumed: `n>0` already refuses NaN, and both bands this is called with are
+   bounded ABOVE, so ok(Infinity) is false. Swept over 62 inputs x both bands
+   — zero differences — so no check can catch its removal, the same call as
+   v287's wantAnchor. It is kept as cover for a future band with no ceiling,
+   where Infinity would otherwise walk straight through. */
+function measureVal(v,ok){const n=(typeof v==='number')?v:((typeof v==='string'&&v.trim()!=='')?+v:NaN);
+  return (isFinite(n)&&n>0&&ok(n))?n:null;}
 function dedupeMeasurements(){
   const ms=STATE&&STATE.measurements;if(!Array.isArray(ms))return;
   const today=todayISO();
+  /* THE BAND MEANS "CANONICAL cm/kg", AND A ROW IS ONLY CANONICAL ONCE THE UNIT
+     MIGRATIONS HAVE RUN. This repair sits 847 lines ABOVE _unitFix/_unitFixW, so
+     the first version of it judged an EARLY-BUILD IMPERIAL row — a waist stored
+     in inches — against a centimetre band. Measured on a real boot: a 34 in and
+     a 33 in waist were both nulled, startWaist went with them and waistDrop()
+     fell from 2 cm to 0. The whole waist history, destroyed by the repair, one
+     boot after it shipped. Both flags are already true in every current
+     athlete's stored state, so gating on them costs nothing and protects
+     exactly the case that matters: an old backup being imported. Until they
+     are set the type coercion still runs — that is unit-agnostic — and the
+     band starts enforcing on the boot after the migration converts.
+
+     For ONE athlete that is never: _unitFixW WAITS for an anchor
+     (nutrition.weightKg) and an imperial athlete who has neither logged a
+     weight nor opened the calculator has none, so their rows may still be lb
+     and a kg band would be wrong there anyway. That is deliberate, and the
+     two ways of being wrong are not symmetrical: an out-of-band figure is
+     measured inert on the glass and costs backup weight, while dropping a
+     real history cannot be undone. */
+  const _p=(STATE&&STATE.profile)||{};
+  const canon=!!(_p._unitFix&&_p._unitFixW);
+  const anyFig=()=>true;
   const byDate=new Map();const out=[];
   for(const m of ms){
-    if(!m||!m.date)continue;
+    if(!m||typeof m!=='object'||!m.date)continue;
     // normalise the key: a timestamped date ("2026-08-05T08:00Z") must not count
-    // as a different day to "2026-08-05", and a clock-skew row dated in the
-    // FUTURE would win every "latest" read forever — clamp it to today.
+    // as a different day to "2026-08-05".
     let k=String(m.date).slice(0,10);
+    /* A DATE THAT IS NOT A DATE IS NOT A MEASUREMENT, and the clamp below is
+       what made that dangerous rather than merely untidy. It exists for a
+       CLOCK-SKEW row — a real date stamped ahead of today, which would win
+       every "latest" read forever. String({}) is "[object Object]", and
+       "[object Ob" sorts ABOVE any "20xx-" date, so the clamp fired and
+       rewrote junk into TODAY: measured, a row with no usable date at all
+       became today's weigh-in and latestWeightKg() returned its 200 kg. That
+       figure drives the calorie target, the projection, the goal pace and the
+       chart. Drop it instead; the clamp keeps the case it was written for. */
+    if(!isDateISO(k))continue;
     if(k>today)k=today;
     m.date=k;
+    /* The writer enforces plausibleKg (25-350) and plausibleWaistCm (40-250)
+       and refuses a row with neither figure; this repair enforced NEITHER, so
+       a numeric STRING survived every boot and latestWeightKg() handed a
+       string to every calorie reader. Measured: inert on the glass — every
+       pane is byte-identical — so the cost is the v285 one, junk travelling in
+       every backup. Make the repair agree with the writer that was already
+       there: coerce a number, null anything outside the band the athlete
+       could have entered, and drop a row that then carries nothing. */
+    m.waist=measureVal(m.waist,canon?plausibleWaistCm:anyFig);
+    m.weight=measureVal(m.weight,canon?plausibleKg:anyFig);
+    if(!(m.waist>0)&&!(m.weight>0))continue;
     const ex=byDate.get(k);
     if(!ex){byDate.set(k,m);out.push(m);}
     else{if(!(ex.waist>0)&&m.waist>0)ex.waist=m.waist;      // 0 counts as missing, like null
@@ -1849,7 +1911,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='429';
+const APP_VERSION='430';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -23331,6 +23393,24 @@ function normalizeState(){
     }
     STATE.profile._unitFix=true;
   }
+  /* startWaist and goalWaist are the SAME FIGURE as measurements[].waist, and
+     they had no repair at all while saveWaistGoal() has always enforced
+     plausibleWaistCm. Inert on the glass — every reader gates on `>0` and
+     '<b>x</b>'>0 is false — so the cost is the v285 one: junk travelling in
+     every backup and coming back on the next import.
+
+     IT SITS HERE RATHER THAN BESIDE THE MEASUREMENTS REPAIR, for the reason
+     that block records: the band means canonical cm, and the two lines above
+     convert these very fields from inches. Placed above, it would null a 34 in
+     startWaist before the migration could reach it — the defect this version
+     was written to fix, on the field the same migration touches.
+
+     ABSENT STAYS ABSENT (v390): a settled state carries them as null, which
+     measureVal() returns unchanged, so this cannot fire the "we repaired your
+     data" note at anybody. */
+  {const _P=STATE.profile;
+   if(_P.startWaist!==undefined)_P.startWaist=measureVal(_P.startWaist,plausibleWaistCm);
+   if(_P.goalWaist!==undefined)_P.goalWaist=measureVal(_P.goalWaist,plausibleWaistCm);}
   /* Weight has no safe range test (86 kg and 86 lb are both real people), so it
      can only be repaired against an anchor — nutrition.weightKg, which every
      writer stored correctly. First-era backups have NO anchor, and the old

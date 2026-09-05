@@ -10764,6 +10764,273 @@ export default async function () {
     t.eq('FLOOR: and one past the end is still refused', rng.pastEnd, null, rng);
   }
 
+  /* ---------------------------------------------------------------------
+     v430: a date that is not a date became TODAY'S weigh-in.
+
+     dedupeMeasurements() clamps a FUTURE date to today — written for a
+     clock-skew row, which is a real measurement stamped wrong. String({}) is
+     "[object Object]", and "[object Ob" sorts ABOVE any "20xx-" date, so the
+     clamp fired on junk and rewrote it into today. Measured before the fix:
+     a row with no usable date at all became today's weigh-in and
+     latestWeightKg() returned its 200 kg — the figure that drives the calorie
+     target, the projection, the goal pace and the chart.
+
+     And the row's own figures had no repair at all, while the WRITER has
+     always enforced plausibleKg (25-350) and plausibleWaistCm (40-250). A
+     numeric string survived every boot and latestWeightKg() handed a string
+     to every calorie reader. Measured: inert on the glass (every pane
+     byte-identical), so the cost is the v285 one — junk in every backup.
+
+     The floors are what stop this being a delete: a real history is
+     byte-identical, the repair is idempotent (v390 — a repair that changes a
+     settled state fires "we repaired your data" at every athlete for ever),
+     the clock-skew clamp still works, a timestamped date still collapses, and
+     BOTH band edges survive, because a guard earns its keep only if it
+     provably cannot fire on a legitimate input. */
+  {
+    const ms = await page.evaluate(() => {
+      const o = {};
+      const T = todayISO();
+      const tom = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return localISO(d); })();
+
+      // GUARD: the trap is real — a stringified object really does sort above a date
+      o.junkSortsAbove = ('[object Ob' > T);
+
+      // a date that is not a date is dropped, not clamped into today
+      STATE.measurements = [{ date: '2026-08-01', waist: 96, weight: 86 },
+                            { date: { bad: 1 }, waist: null, weight: 200 }];
+      normalizeState();
+      o.junkRows = STATE.measurements.length;
+      o.junkDates = STATE.measurements.map(m => m.date).join(',');
+      o.junkLatest = latestWeightKg();
+
+      // a payload date is dropped the same way
+      STATE.measurements = [{ date: '<img src=x onerror="window.__pwn=1">', waist: 96, weight: 86 }];
+      normalizeState();
+      o.payloadRows = STATE.measurements.length;
+
+      // a numeric string is coerced to the number the athlete entered
+      STATE.measurements = [{ date: '2026-08-01', waist: 96, weight: 86 },
+                            { date: '2026-08-15', waist: null, weight: '84' }];
+      normalizeState();
+      o.strWeight = STATE.measurements[1] && STATE.measurements[1].weight;
+      o.strType = typeof latestWeightKg();
+
+      // a figure outside the band the writer enforces is dropped, and a row
+      // left carrying nothing goes with it
+      STATE.measurements = [{ date: '2026-08-01', waist: 96, weight: 86 },
+                            { date: '2026-08-10', waist: '<b>x</b>', weight: null },
+                            { date: '2026-08-12', waist: 9999, weight: 0.5 }];
+      normalizeState();
+      o.bandRows = STATE.measurements.length;
+      o.bandDates = STATE.measurements.map(m => m.date).join(',');
+
+      // FLOOR: a real history is byte-identical, TWO decimals included — a
+      // metric athlete's weight is stored raw, so rounding here would rewrite
+      // a legitimate figure and fire the repair note at them about nothing
+      const real = [{ date: '2026-06-01', waist: 99, weight: 90 },
+                    { date: '2026-07-01', waist: 97.25, weight: 88 },
+                    { date: '2026-08-01', waist: 96, weight: 86.44 }];
+      STATE.measurements = JSON.parse(JSON.stringify(real));
+      normalizeState();
+      o.realSame = JSON.stringify(STATE.measurements) === JSON.stringify(real);
+      // FLOOR: and it stays that way — a settled state is not repaired
+      normalizeState(); normalizeState();
+      o.idempotent = JSON.stringify(STATE.measurements) === JSON.stringify(real);
+
+      // FLOOR: a clock-skew row is still clamped to today, not dropped
+      STATE.measurements = [{ date: tom, waist: null, weight: 85 }];
+      normalizeState();
+      o.skewDate = (STATE.measurements[0] || {}).date;
+      o.today = T;
+
+      // FLOOR: a timestamped date still collapses onto its own day
+      STATE.measurements = [{ date: '2026-08-05T08:00:00Z', waist: null, weight: 85 },
+                            { date: '2026-08-05', waist: 94, weight: null }];
+      normalizeState();
+      o.stampRows = STATE.measurements.length;
+      o.stampRow = JSON.stringify(STATE.measurements[0] || {});
+
+      // FLOOR: both edges of both bands are legitimate input and must survive
+      STATE.measurements = [{ date: '2026-06-01', waist: 40, weight: 25 },
+                            { date: '2026-06-02', waist: 250, weight: 350 }];
+      normalizeState();
+      o.edgeRows = STATE.measurements.length;
+      o.edges = STATE.measurements.map(m => m.waist + '/' + m.weight).join(',');
+
+      // FLOOR: a real save still lands
+      STATE.measurements = [];
+      upsertMeasure(96, 86);
+      o.savedRow = JSON.stringify(STATE.measurements[0] || {});
+      return o;
+    });
+
+    t.ok('guard: a stringified object really does sort above a real date', ms.junkSortsAbove, ms);
+    t.eq('a measurement row whose date is not a date is dropped', ms.junkRows, 1, ms);
+    t.eq('and it is not rewritten into today', ms.junkDates, '2026-08-01', ms);
+    t.eq('so it cannot become the athlete’s latest weight', ms.junkLatest, 86, ms);
+    t.eq('a payload date is dropped the same way', ms.payloadRows, 0, ms);
+    t.eq('a numeric string weight is coerced to a number', ms.strWeight, 84, ms);
+    t.eq('so latestWeightKg() never hands a string to a calorie reader', ms.strType, 'number', ms);
+    t.eq('a figure outside the band the writer enforces is dropped', ms.bandRows, 1, ms);
+    t.eq('and only the real row survives', ms.bandDates, '2026-08-01', ms);
+    t.ok('FLOOR: a real measurement history is byte-identical', ms.realSame, ms);
+    t.ok('FLOOR: and a settled state is left alone on every later boot', ms.idempotent, ms);
+    t.eq('FLOOR: a clock-skew row is still clamped to today', ms.skewDate, ms.today, ms);
+    t.eq('FLOOR: a timestamped date still collapses onto its own day', ms.stampRows, 1, ms);
+    t.eq('FLOOR: and merges the fields it lacks', ms.stampRow,
+         JSON.stringify({ date: '2026-08-05', waist: 94, weight: 85 }), ms);
+    t.eq('FLOOR: both band edges are legitimate input and survive', ms.edgeRows, 2, ms);
+    t.eq('FLOOR: with their figures intact', ms.edges, '40/25,250/350', ms);
+    t.eq('FLOOR: and a real save still lands', ms.savedRow,
+         JSON.stringify({ date: ms.today, waist: 96, weight: 86 }), ms);
+  }
+
+  /* ---------------------------------------------------------------------
+     v430, auditing the round an hour after it shipped: THE BAND MEANS
+     "CANONICAL cm/kg", AND A ROW IS ONLY CANONICAL ONCE THE UNIT MIGRATIONS
+     HAVE RUN.
+
+     dedupeMeasurements() sits 847 lines ABOVE _unitFix/_unitFixW inside the
+     same normalizeState() pass, so the band above judged an EARLY-BUILD
+     IMPERIAL row — a waist stored in INCHES — against a CENTIMETRE band. An
+     adult waist is 24-60 in and plausibleWaistCm is 40-250, so 24-39 in was
+     refused. Measured on a real boot against a v429 control: 34 in and 33 in
+     were both nulled, startWaist went with them, and waistDrop() fell from
+     2 cm to 0 — the whole waist history destroyed by the repair that was
+     written to protect it.
+
+     The type coercion is unit-agnostic and still runs; only the BAND waits.
+     Both flags are already true in every current athlete's stored state, so
+     the gate costs nothing and protects exactly the case that matters: an old
+     backup being imported. */
+  {
+    const im = await page.evaluate(() => {
+      const o = {};
+      const P = STATE.profile;
+      const keep = { unit: P.unit, fix: P._unitFix, fixW: P._unitFixW,
+                     sw: P.startWaist, ms: JSON.parse(JSON.stringify(STATE.measurements || [])) };
+
+      // GUARD: the trap is real — an inch waist really is outside the cm band
+      o.inchOutOfBand = !plausibleWaistCm(34);
+      o.cmInBand = plausibleWaistCm(86);
+
+      // an early-build imperial athlete: the migration has never run
+      P.unit = 'in'; delete P._unitFix; delete P._unitFixW; P.startWaist = null;
+      STATE.nutrition.weightKg = 86;          // the anchor _unitFixW waits for
+      STATE.measurements = [{ date: '2026-07-01', waist: 34, weight: 86 }];
+      // GUARD: the migration really has not run yet, so it is what converts
+      o.fixWasUnset = (P._unitFix === undefined);
+      normalizeState();
+      o.imRows = STATE.measurements.length;
+      o.imWaist = (STATE.measurements[0] || {}).waist;
+      o.imRan = (P._unitFix === true);
+
+      // FLOOR: the type coercion does NOT wait — it is unit-agnostic
+      P.unit = 'in'; delete P._unitFix; delete P._unitFixW;
+      STATE.measurements = [{ date: '2026-07-01', waist: 34, weight: '86' },
+                            { date: '2026-07-02', waist: { bad: 1 }, weight: 86 }];
+      normalizeState();
+      o.coerceType = typeof (STATE.measurements[0] || {}).weight;
+      o.junkWaist = (STATE.measurements[1] || {}).waist;
+
+      /* THE WEIGHT HALF IS THE SAME DEFECT AND IT NEEDS ITS OWN CASE.
+         _unitFix is set on the first boot for everyone; _unitFixW WAITS for an
+         anchor. So {_unitFix:true, _unitFixW:false} is a real reachable state —
+         an imperial athlete who has never logged a weight — and their rows may
+         still be lb. 400 lb is 181 kg, a real person, and plausibleKg tops out
+         at 350: gating on _unitFix alone would drop it. Without this case that
+         mutant is equivalent, because the case above deletes both flags. */
+      P.unit = 'in'; P._unitFix = true; delete P._unitFixW;
+      STATE.nutrition.weightKg = 0;           // no anchor, so _unitFixW keeps waiting
+      STATE.measurements = [{ date: '2026-07-01', waist: null, weight: 400 }];
+      o.lbWaits = (P._unitFixW === undefined);
+      normalizeState();
+      o.lbRows = STATE.measurements.length;
+      o.lbWeight = (STATE.measurements[0] || {}).weight;
+      o.lbStillWaiting = (STATE.profile._unitFixW === undefined);
+      STATE.nutrition.weightKg = 86;
+
+      // FLOOR: once the migration HAS run the band fires again, as it must
+      P.unit = 'cm'; P._unitFix = true; P._unitFixW = true;
+      STATE.measurements = [{ date: '2026-08-01', waist: 96, weight: 86 },
+                            { date: '2026-08-02', waist: 9999, weight: '84' }];
+      normalizeState();
+      o.canonWaist = (STATE.measurements[1] || {}).waist;
+      o.canonWeight = (STATE.measurements[1] || {}).weight;
+
+      /* THE GATE IS AN AND, AND ONLY AN IMPORT CAN TELL THE TWO HALVES APART.
+         The app's own pass sets _unitFix first, so _unitFixW implies _unitFix
+         in every state it produces and either flag alone answers the same —
+         the mutant that asks _unitFixW only escaped on exactly that. But
+         importData() accepts arbitrary JSON, so {_unitFix absent, _unitFixW
+         true} arrives from a hand-edited backup: the migration WILL run in
+         this pass and convert the inches, so the band must still wait. */
+      P.unit = 'in'; delete P._unitFix; P._unitFixW = true;
+      P.startWaist = null;
+      STATE.measurements = [{ date: '2026-07-01', waist: 34, weight: 86 }];
+      o.halfFlagWaits = (P._unitFix === undefined && P._unitFixW === true);
+      normalizeState();
+      o.halfFlagWaist = (STATE.measurements[0] || {}).waist;
+
+      /* startWaist and goalWaist are the same figure and had no repair at all.
+         The ORDERING case is what matters: they are converted from inches by
+         the very migration above, so a repair placed beside the measurements
+         one would null a 34 in startWaist before the migration reached it. */
+      P.unit = 'in'; delete P._unitFix; delete P._unitFixW;
+      STATE.nutrition.weightKg = 86;
+      P.startWaist = 34; P.goalWaist = 30;      // inches, from an early build
+      STATE.measurements = [];
+      normalizeState();
+      o.swInch = P.startWaist;
+      o.gwInch = P.goalWaist;
+
+      // junk is dropped once canonical, and a real goal survives
+      P.unit = 'cm'; P._unitFix = true; P._unitFixW = true;
+      P.startWaist = '<b>x</b>'; P.goalWaist = 84;
+      normalizeState();
+      o.swJunk = P.startWaist;
+      o.gwReal = P.goalWaist;
+
+      // ABSENT STAYS ABSENT, and a stored null is left as it was found
+      P.startWaist = null; delete P.goalWaist;
+      normalizeState();
+      o.swNull = P.startWaist;
+      o.gwAbsent = ('goalWaist' in P);
+
+      // put back what this block broke — the blocks after it read the profile
+      P.unit = keep.unit; P.startWaist = keep.sw;
+      if (keep.fix === undefined) delete P._unitFix; else P._unitFix = keep.fix;
+      if (keep.fixW === undefined) delete P._unitFixW; else P._unitFixW = keep.fixW;
+      STATE.measurements = keep.ms;
+      return o;
+    });
+
+    t.ok('guard: an inch waist really is outside the centimetre band', im.inchOutOfBand, im);
+    t.ok('guard: and the converted figure is inside it', im.cmInBand, im);
+    t.ok('guard: the unit migration really had not run yet', im.fixWasUnset, im);
+    t.eq('an early-build imperial waist row is not dropped by the band', im.imRows, 1, im);
+    t.eq('it survives long enough for the migration to convert it', im.imWaist, 86, im);
+    t.ok('and the migration did run in the same pass', im.imRan, im);
+    t.eq('FLOOR: the type coercion does not wait for the migration', im.coerceType, 'number', im);
+    t.eq('FLOOR: and a junk figure is still nulled while un-canonical', im.junkWaist, null, im);
+    t.ok('guard: the weight migration really is still waiting for an anchor', im.lbWaits, im);
+    t.eq('a pound weight above the kilogram band is not dropped while it waits', im.lbRows, 1, im);
+    t.eq('and its figure is untouched', im.lbWeight, 400, im);
+    t.ok('guard: and the weight migration really had not run', im.lbStillWaiting, im);
+    t.eq('FLOOR: once canonical the band fires again', im.canonWaist, null, im);
+    t.eq('FLOOR: and still coerces a numeric string', im.canonWeight, 84, im);
+    t.ok('guard: only one half of the gate is set, which only an import can do',
+         im.halfFlagWaits, im);
+    t.eq('and the band still waits, because the migration has not run', im.halfFlagWaist, 86, im);
+    t.eq('an early-build imperial startWaist is converted, not nulled', im.swInch, 86, im);
+    t.eq('and so is the goal beside it', im.gwInch, 76, im);
+    t.eq('a junk startWaist is dropped once the figures are canonical', im.swJunk, null, im);
+    t.eq('FLOOR: and a real goal waist survives untouched', im.gwReal, 84, im);
+    t.eq('FLOOR: a stored null is left exactly as it was found', im.swNull, null, im);
+    t.ok('FLOOR: and an absent goal waist is not created', !im.gwAbsent, im);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
