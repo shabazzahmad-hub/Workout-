@@ -1976,7 +1976,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='454';
+const APP_VERSION='455';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -24905,10 +24905,28 @@ function validateData(){
 /* True only when normalizeState() CHANGED or REMOVED something that was
    already there. A key that was absent and is now present is the app growing,
    not the athlete's data having been wrong — see boot(). */
-function _normTouchedExisting(a,b){
+function _normTouchedExisting(a,b,top){
   if(a===null||b===null||typeof a!=='object'||typeof b!=='object')return JSON.stringify(a)!==JSON.stringify(b);
-  if(Array.isArray(a)||Array.isArray(b))return JSON.stringify(a)!==JSON.stringify(b);
+  /* AN ADDITION INSIDE AN ARRAY ROW IS THE APP GROWING, exactly as it is at the
+     top level — and a whole-array string compare could not tell the two apart.
+     Measured on a real v396 -> v454 boot: skipLog [{date,mins}] gains the `at`
+     field every row repair since v446 writes, holdLog gains its movement, and
+     an athlete with any activity history at all was told their data "was not in
+     a shape the app expected". v409 fixed this one level up and stopped there.
+     A length change is still a repair: a row that was DROPPED is a real one. */
+  if(Array.isArray(a)||Array.isArray(b)){
+    if(!Array.isArray(a)||!Array.isArray(b))return true;
+    if(a.length!==b.length)return true;
+    for(let i=0;i<a.length;i++)if(_normTouchedExisting(a[i],b[i]))return true;
+    return false;
+  }
   for(const k of Object.keys(a)){
+    /* LIVE-SESSION SCRATCH IS NOT THE ATHLETE'S DATA. TRANSIENT_KEYS is already
+       stripped on export AND on import for that reason, so dropping one — a
+       v313-era _trainAgain string on every phone that has not launched since,
+       for instance — is housekeeping rather than a repair of anything they
+       did. Top level only, which is the only level they live at. */
+    if(top&&typeof TRANSIENT_KEYS!=='undefined'&&TRANSIENT_KEYS.indexOf(k)>=0)continue;
     /* A NULL IS THE ABSENCE OF AN ANSWER, not an answer that was wrong — the
        same distinction CLAUDE.md draws between `!= null` and `!== undefined`.
        DEFAULT_STATE() hands load() a nutrition.kcalTarget of null for every
@@ -24961,7 +24979,7 @@ async function boot(){
 
      A value that was PRESENT and is now different, or gone, is a real repair
      and still says so. */
-  const _repaired=_wasOnboarded&&(_normTouchedExisting(JSON.parse(_beforeNorm),STATE)||_verrs.length>0);
+  const _repaired=_wasOnboarded&&(_normTouchedExisting(JSON.parse(_beforeNorm),STATE,true)||_verrs.length>0);
   if(_repaired)STATE._dataRepaired=true;else delete STATE._dataRepaired;
   if(_repaired!==_wasFlagged)save();
   // request durable storage so an installed PWA keeps data

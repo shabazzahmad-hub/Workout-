@@ -17201,6 +17201,80 @@ replacement asks the real flows, with a guard that the raw ones genuinely carry
 a contraindicated move for those flags — otherwise an empty result is a
 statement about the filter rather than about the data.
 
+## The door the athlete's phone actually takes (v455)
+
+v444 pinned a v396 backup being **imported**. A real upgrade takes a
+**different door**: the state is already in localStorage AND in the IndexedDB
+mirror, and `loadState()` reads it on the next boot — a separate code path,
+with its own `Object.assign` over `DEFAULT_STATE()` per sub-object. v409 drove
+that once as a probe and kept nothing, so nothing had ever pinned it. It is the
+single most likely way a real athlete loses their history, and this athlete is
+58 versions behind.
+
+**The history survives** — 8 logs, the pointer, the personal bests, the badge,
+both weigh-ins, the hand-set protein target, the goal, the theme, the flagged
+joint, the adaptive multiplier, the baseline score and the prep block. The
+validator is clean, nothing renders `NaN`, a real session builds, and there are
+no page errors.
+
+**What did not survive was the silence.** Every upgrading athlete was told:
+
+> **Your data needed a repair after loading.** Something stored on this device
+> was not in a shape the app expected, so it was reset to a safe default.
+
+### An addition inside an array ROW is the app growing
+
+`_normTouchedExisting()` compares whole arrays as strings, so a row that only
+**gained a field** counts as a repair:
+
+| stored | after the boot | counted as |
+|---|---|---|
+| `skipLog:[{date,mins}]` | `[{date,mins,at:0}]` | **a repair** |
+| `holdLog:[{date,id,secs,fresh}]` | the same plus its movement | **a repair** |
+
+v420, v425 and v442 each added a field to a stored row, so this fires for
+**any** athlete with any activity history at all. v409 wrote the rule — *an
+added key is the app growing* — fixed it at the top level and stopped there.
+The array branch recurses element-wise now, and **a length change is still a
+repair**: a row that was DROPPED is a real one.
+
+### Live-session scratch is not the athlete's data
+
+`TRANSIENT_KEYS` is stripped from a backup **and** on import, precisely because
+it describes a half-finished tap rather than the athlete. Dropping one — a
+v313-era `_trainAgain` string on a phone that has not launched since — was
+counted as a repair of something their data did wrong. It is skipped at the top
+level, which is the only level those keys live at.
+
+### The fixture was not a fixture of what it claimed
+
+The check failed first, and the failure was **half the fixture and half the
+code**. v444's `v396-backup.json` carries two values the real v396 build could
+not produce: `activity: 1.55`, which v396's own `normalizeState()` snaps to the
+option set, and `hasBar/hasBench: false` beside a gear list holding both, which
+v396 derives on every boot. Seeding those would have the check report a genuine
+repair as a false alarm.
+
+**So the fixture was re-recorded rather than hand-corrected**, by serving that
+commit's own `index.html` and reading back what v396 left in localStorage.
+`v396-stored.json` is what a v396 phone actually stores — which is not the same
+artifact as a backup, and the difference is the point: **a backup has the
+transient keys and the API keys stripped; a phone has them.**
+
+**And the seed writes BOTH stores.** Writing only one does not reset the app:
+`load()` takes whichever copy is genuinely newer, so a fresh boot's mirror wins
+and the whole block then measures a **default** app — with every "nothing
+renders NaN" assertion passing on an empty screen. The first probe did exactly
+that and reported an empty state as the upgrade result. The mirror's key is
+`STORE_KEY`, not a name of your own; the first attempt wrote `'state'` and read
+back nothing.
+
+**The first assertion is that the load LANDED.** Every health check below it is
+satisfied by an app that loaded nothing at all.
+
+**And the check is proven able to fail**: seeding the pre-fix array branch back
+turns it red by name.
+
 ## The picker looked chosen and announced nothing (v454)
 
 v411 gave every control an accessible NAME and v413 gave the app a live region

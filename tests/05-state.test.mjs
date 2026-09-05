@@ -4523,6 +4523,134 @@ export default async function run() {
     t.eq('and the restore fires no page error', perr, []);
   }
 
+  /* ---- and the door the athlete's phone actually takes (v454) -------------
+     The block above drives importData(). A real upgrade takes a DIFFERENT
+     door: the v396 state is already in localStorage AND in the IndexedDB
+     mirror, and loadState() reads it on the next boot — a separate code path,
+     with its own Object.assign over DEFAULT_STATE() per sub-object.
+
+     v409 drove this once as a probe and kept nothing, so nothing has ever
+     pinned it. It is the single most likely way a real athlete loses their
+     history, and this athlete is 58 versions behind. */
+  {
+    /* A BACKUP IS NOT WHAT A PHONE STORES, and the difference decides the
+       fixture. tests/fixtures/v396-stored.json is what the REAL v396 build
+       left in localStorage after loading the backup above — recorded by
+       serving that commit's own index.html — so every value in it is one v396
+       itself would leave. The backup fixture carries two that v396 could not:
+       activity 1.55, which v396's own normalizeState() snaps to the option
+       set, and hasBar/hasBench false beside a gear list holding both, which
+       v396 derives on every boot. Seeding those here would have the check
+       report a genuine repair as a false alarm. */
+    const legacy = readFileSync('tests/fixtures/v396-stored.json', 'utf8');
+    const ctx = await chromium.launch();
+    const pg = await ctx.newPage({ viewport: { width: 390, height: 844 } });
+    const perr2 = [];
+    pg.on('pageerror', e => perr2.push(String(e).slice(0, 160)));
+    await pg.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'networkidle' });
+    await waitForBoot(pg);
+
+    /* Seed BOTH stores. Clearing or writing only one does not reset the app —
+       load() takes whichever copy is genuinely NEWER, so a fresh boot's mirror
+       wins and the whole block then measures a DEFAULT app with every "nothing
+       renders NaN" assertion passing on an empty screen. The key is STORE_KEY
+       in the mirror too, not a name of your own. */
+    const seeded = await pg.evaluate(async json => {
+      const p = JSON.parse(json);
+      delete p._photoData;                       // blobs live in their own keys
+      /* A phone's stored state carries live-session scratch — TRANSIENT_KEYS
+         is stripped from a BACKUP and never from the device. This is the v313
+         shape v316 replaced, added here rather than to the fixture because it
+         predates v396: dropping it must fail closed AND must not be reported
+         as a repair of the athlete's data. */
+      p._trainAgain = '2026-08-20';
+      const text = JSON.stringify(p);
+      localStorage.setItem('coreforge.v1', text);
+      await new Promise(res => {
+        const rq = indexedDB.open('coreforge', 1);
+        rq.onsuccess = () => { const db = rq.result;
+          const tx = db.transaction('kv', 'readwrite');
+          tx.objectStore('kv').put(text, 'coreforge.v1');
+          tx.oncomplete = () => res(); tx.onerror = () => res(); };
+        rq.onerror = () => res();
+      });
+      const back = await new Promise(res => {
+        const rq = indexedDB.open('coreforge', 1);
+        rq.onsuccess = () => { const db = rq.result;
+          const g = db.transaction('kv', 'readonly').objectStore('kv').get('coreforge.v1');
+          g.onsuccess = () => res(g.result || null); g.onerror = () => res(null); };
+        rq.onerror = () => res(null);
+      });
+      const rd = t => { try { return JSON.parse(t).profile.name; } catch (e) { return null; } };
+      return { name: p.profile.name, legacyShape: typeof p._trainAgain === 'string',
+        activity: p.nutrition.activity, hasBar: p.profile.hasBar,
+        inLocal: rd(localStorage.getItem('coreforge.v1')), inMirror: rd(back) };
+    }, legacy);
+
+    /* GUARDS FIRST: the fixture is the legacy shape, and BOTH stores really
+       hold it. Without the second, the reload below reads a default app. */
+    t.ok('guard: the seed carries the v313 train-again string', seeded.legacyShape, JSON.stringify(seeded));
+    t.ok('guard: and the fixture is what v396 itself normalises to',
+      seeded.activity === 1.45 && seeded.hasBar === true, JSON.stringify(seeded));
+    t.eq('guard: localStorage really holds the v396 state', seeded.inLocal, seeded.name, JSON.stringify(seeded));
+    t.eq('guard: and so does the IndexedDB mirror', seeded.inMirror, seeded.name, JSON.stringify(seeded));
+
+    await pg.reload({ waitUntil: 'networkidle' });
+    await waitForBoot(pg);
+
+    const up = await pg.evaluate(() => {
+      const o = { name: STATE.profile.name, logs: Object.keys(STATE.logs || {}).length,
+        ptr: STATE.progressPtr, prs: Object.keys(STATE.prs || {}).length,
+        badges: Object.keys(STATE.achievements || {}).length,
+        measures: (STATE.measurements || []).length,
+        protein: STATE.nutrition.proteinTarget, goal: STATE.profile.goal,
+        theme: STATE.settings.theme, lims: (STATE.profile.limitations || []).join(','),
+        adapt: STATE.adapt, baselineScore: STATE.baseline && STATE.baseline.score,
+        prepDate: STATE.prep && STATE.prep.date,
+        trainAgain: STATE._trainAgain === undefined,
+        repaired: !!STATE._dataRepaired };
+      o.validator = (() => { const e = console.error; let n = 0; console.error = () => n++;
+        try { validateData(); } catch (_) {} console.error = e; return n; })();
+      const bad = [];
+      const look = w => { const v = document.querySelector('.view.active');
+        const txt = v ? v.innerText : '';
+        ['NaN', 'undefined', 'Invalid Date', '[object'].forEach(x => {
+          if (txt.indexOf(x) >= 0) bad.push(w + ':' + x); }); };
+      ['today', 'program', 'fuel', 'progress', 'ref', 'guide'].forEach(x => { go(x); look(x); });
+      ['summary', 'body', 'strength', 'awards'].forEach(x => {
+        go('progress'); setProgressTab(x); render(); look('progress:' + x); });
+      o.bad = bad;
+      const sess = buildSession(STATE.progressPtr);
+      o.session = { moves: sess.main.length, warm: warmupFlow().length, named: !!sess.session.name };
+      return o;
+    });
+    await ctx.close();
+
+    /* AND THE FIRST ASSERTION IS THAT THE LOAD LANDED — every health check
+       below is satisfied by a default app that loaded nothing at all. */
+    t.eq('guard: the boot really loaded the v396 state', up.name, seeded.name, JSON.stringify(up));
+    t.eq('a v396 phone keeps every session it recorded', up.logs, 8, JSON.stringify(up));
+    t.eq('and the pointer it was at', up.ptr, 8, JSON.stringify(up));
+    t.eq('and the personal bests', up.prs, 2, JSON.stringify(up));
+    t.eq('and the badge', up.badges, 1, JSON.stringify(up));
+    t.eq('and both weigh-ins', up.measures, 2, JSON.stringify(up));
+    t.eq('and the hand-set protein target', up.protein, 165, JSON.stringify(up));
+    t.eq('and the goal', up.goal, 'leanrecomp', JSON.stringify(up));
+    t.eq('and the picked theme', up.theme, 'ember', JSON.stringify(up));
+    t.eq('and the flagged joint', up.lims, 'shoulder', JSON.stringify(up));
+    t.eq('and the adaptive load multiplier', up.adapt, 1.06, JSON.stringify(up));
+    t.eq('and the baseline score every target is scaled off', up.baselineScore, 71, JSON.stringify(up));
+    t.eq('and the prep block', up.prepDate, '2026-12-01', JSON.stringify(up));
+    t.ok('the legacy train-again string fails closed on this door too', up.trainAgain, JSON.stringify(up));
+    t.ok('and 58 versions of new fields do not claim the data needed repairing',
+      !up.repaired, JSON.stringify(up));
+    t.eq('the validator is clean on the loaded state', up.validator, 0, JSON.stringify(up));
+    t.eq('and nothing renders NaN, undefined or an invalid date', up.bad, [], JSON.stringify(up.bad));
+    t.ok('and a real session still builds from where they left off',
+      up.session.moves >= 3 && up.session.warm > 0 && up.session.named, JSON.stringify(up.session));
+    t.eq('and the upgrade fires no page error', perr2, []);
+  }
+
   srv.close();
   return t.finish();
 }

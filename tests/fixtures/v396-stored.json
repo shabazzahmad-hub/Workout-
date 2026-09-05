@@ -1,0 +1,1043 @@
+{
+ "version": 1,
+ "onboarded": true,
+ "profile": {
+  "name": "Legacy Athlete",
+  "days": [
+   1,
+   2,
+   4,
+   5,
+   6
+  ],
+  "unit": "in",
+  "startWaist": 104,
+  "goalWaist": 94,
+  "createdAt": "2026-09-05",
+  "sex": "male",
+  "age": 59,
+  "heightCm": 178,
+  "experience": "Intermediate",
+  "activity": 1.45,
+  "goal": "leanrecomp",
+  "targets": [
+   "abs",
+   "full"
+  ],
+  "gear": [
+   "bar",
+   "bench",
+   "dip",
+   "ruck",
+   "kettlebell"
+  ],
+  "limitations": [
+   "shoulder"
+  ],
+  "focusPrimary": "abs",
+  "troubleZones": [
+   "belly"
+  ],
+  "conditioning": "high",
+  "mobility": "ok",
+  "timelineWeeks": 24,
+  "parq": [],
+  "parqDone": true,
+  "medCleared": false,
+  "_gearMil": true,
+  "_gearDb": true,
+  "_startWaistFix": true,
+  "_benchKit": true,
+  "_shredStart": "2026-09-05",
+  "_everDeficit": 1,
+  "_days7": true,
+  "_goalXform": true,
+  "hasBar": true,
+  "hasBench": true,
+  "_unitFix": true,
+  "_unitFixW": true,
+  "_mintTheme": true,
+  "goalWeightLb": 165,
+  "bodyCur": 3,
+  "bodyGoal": 2
+ },
+ "baseline": {
+  "date": "2026-07-01",
+  "score": 71,
+  "level": "Intermediate",
+  "testCount": 10,
+  "maxes": {
+   "plank": 120,
+   "side": 70,
+   "hollow": 55,
+   "lower": 24,
+   "push": 32,
+   "pull": 14,
+   "squat": 48,
+   "dyn": 40,
+   "power": 26,
+   "stamina": 18
+  }
+ },
+ "reassess": {},
+ "progressPtr": 8,
+ "logs": {
+  "0": {
+   "date": "2026-08-01",
+   "completedAt": "2026-08-01",
+   "done": true,
+   "feel": "right",
+   "ex": {
+    "plank": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "hollow": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "revcrunch": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "situp": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "superman": {
+     "sets": [
+      true,
+      true
+     ],
+     "done": true
+    },
+    "sealjack": {
+     "sets": [
+      true
+     ],
+     "done": true
+    }
+   },
+   "items": [
+    {
+     "exId": "plank",
+     "sets": 3,
+     "target": 65,
+     "unit": "time",
+     "rest": 45
+    },
+    {
+     "exId": "hollow",
+     "sets": 3,
+     "target": 30,
+     "unit": "time",
+     "rest": 50
+    },
+    {
+     "exId": "revcrunch",
+     "sets": 3,
+     "target": 13,
+     "unit": "reps",
+     "rest": 41
+    },
+    {
+     "exId": "situp",
+     "sets": 3,
+     "target": 16,
+     "unit": "reps",
+     "rest": 36
+    },
+    {
+     "exId": "superman",
+     "sets": 2,
+     "target": 20,
+     "unit": "time",
+     "rest": 32
+    },
+    {
+     "exId": "sealjack",
+     "sets": 1,
+     "target": 40,
+     "unit": "time",
+     "rest": 27
+    }
+   ]
+  },
+  "1": {
+   "date": "2026-08-01",
+   "completedAt": "2026-08-01",
+   "done": true,
+   "feel": "right",
+   "ex": {
+    "squat": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "pushup": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "towelrow": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "revcrunch": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "sprawl": {
+     "sets": [
+      true,
+      true
+     ],
+     "done": true
+    },
+    "superman": {
+     "sets": [
+      true,
+      true
+     ],
+     "done": true
+    },
+    "inchworm": {
+     "sets": [
+      true
+     ],
+     "done": true
+    }
+   },
+   "items": [
+    {
+     "exId": "squat",
+     "sets": 3,
+     "target": 27,
+     "unit": "reps",
+     "rest": 41
+    },
+    {
+     "exId": "pushup",
+     "sets": 3,
+     "target": 18,
+     "unit": "reps",
+     "rest": 45
+    },
+    {
+     "exId": "towelrow",
+     "sets": 3,
+     "target": 10,
+     "unit": "reps",
+     "rest": 41
+    },
+    {
+     "exId": "revcrunch",
+     "sets": 3,
+     "target": 13,
+     "unit": "reps",
+     "rest": 41
+    },
+    {
+     "exId": "sprawl",
+     "sets": 2,
+     "target": 15,
+     "unit": "reps",
+     "rest": 36
+    },
+    {
+     "exId": "superman",
+     "sets": 2,
+     "target": 20,
+     "unit": "time",
+     "rest": 32
+    },
+    {
+     "exId": "inchworm",
+     "sets": 1,
+     "target": 13,
+     "unit": "reps",
+     "rest": 36
+    }
+   ]
+  },
+  "2": {
+   "date": "2026-08-01",
+   "completedAt": "2026-08-01",
+   "done": true,
+   "feel": "right",
+   "ex": {
+    "sideplank": {
+     "sets": [
+      true,
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "seatedtwist": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "situp": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "plank": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "superman": {
+     "sets": [
+      true,
+      true
+     ],
+     "done": true
+    },
+    "sealjack": {
+     "sets": [
+      true
+     ],
+     "done": true
+    }
+   },
+   "items": [
+    {
+     "exId": "sideplank",
+     "sets": 4,
+     "target": 40,
+     "unit": "time",
+     "rest": 41
+    },
+    {
+     "exId": "seatedtwist",
+     "sets": 3,
+     "target": 20,
+     "unit": "reps",
+     "rest": 32
+    },
+    {
+     "exId": "situp",
+     "sets": 3,
+     "target": 16,
+     "unit": "reps",
+     "rest": 36
+    },
+    {
+     "exId": "plank",
+     "sets": 3,
+     "target": 65,
+     "unit": "time",
+     "rest": 45
+    },
+    {
+     "exId": "superman",
+     "sets": 2,
+     "target": 20,
+     "unit": "time",
+     "rest": 32
+    },
+    {
+     "exId": "sealjack",
+     "sets": 1,
+     "target": 40,
+     "unit": "time",
+     "rest": 27
+    }
+   ]
+  },
+  "3": {
+   "date": "2026-08-01",
+   "completedAt": "2026-08-01",
+   "done": true,
+   "feel": "right",
+   "ex": {
+    "sealjack": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "inchworm": {
+     "sets": [
+      true
+     ],
+     "done": true
+    },
+    "sideplank": {
+     "sets": [
+      true,
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "revcrunch": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "squatthrust": {
+     "sets": [
+      true,
+      true
+     ],
+     "done": true
+    },
+    "superman": {
+     "sets": [
+      true,
+      true
+     ],
+     "done": true
+    },
+    "mountainclimber": {
+     "sets": [
+      true
+     ],
+     "done": true
+    }
+   },
+   "items": [
+    {
+     "exId": "sealjack",
+     "sets": 3,
+     "target": 40,
+     "unit": "time",
+     "rest": 27
+    },
+    {
+     "exId": "inchworm",
+     "sets": 1,
+     "target": 13,
+     "unit": "reps",
+     "rest": 36
+    },
+    {
+     "exId": "sideplank",
+     "sets": 4,
+     "target": 40,
+     "unit": "time",
+     "rest": 41
+    },
+    {
+     "exId": "revcrunch",
+     "sets": 3,
+     "target": 13,
+     "unit": "reps",
+     "rest": 41
+    },
+    {
+     "exId": "squatthrust",
+     "sets": 2,
+     "target": 40,
+     "unit": "time",
+     "rest": 27
+    },
+    {
+     "exId": "superman",
+     "sets": 2,
+     "target": 20,
+     "unit": "time",
+     "rest": 32
+    },
+    {
+     "exId": "mountainclimber",
+     "sets": 1,
+     "target": 40,
+     "unit": "time",
+     "rest": 32
+    }
+   ]
+  },
+  "4": {
+   "date": "2026-08-01",
+   "completedAt": "2026-08-01",
+   "done": true,
+   "feel": "right",
+   "ex": {
+    "revcrunch": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "hollow": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "squat": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "plank": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "superman": {
+     "sets": [
+      true,
+      true
+     ],
+     "done": true
+    },
+    "inchworm": {
+     "sets": [
+      true
+     ],
+     "done": true
+    }
+   },
+   "items": [
+    {
+     "exId": "revcrunch",
+     "sets": 3,
+     "target": 13,
+     "unit": "reps",
+     "rest": 41
+    },
+    {
+     "exId": "hollow",
+     "sets": 3,
+     "target": 30,
+     "unit": "time",
+     "rest": 50
+    },
+    {
+     "exId": "squat",
+     "sets": 3,
+     "target": 27,
+     "unit": "reps",
+     "rest": 41
+    },
+    {
+     "exId": "plank",
+     "sets": 3,
+     "target": 65,
+     "unit": "time",
+     "rest": 45
+    },
+    {
+     "exId": "superman",
+     "sets": 2,
+     "target": 20,
+     "unit": "time",
+     "rest": 32
+    },
+    {
+     "exId": "inchworm",
+     "sets": 1,
+     "target": 13,
+     "unit": "reps",
+     "rest": 36
+    }
+   ]
+  },
+  "5": {
+   "date": "2026-08-01",
+   "completedAt": "2026-08-01",
+   "done": true,
+   "feel": "right",
+   "ex": {
+    "pushup": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "towelrow": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "slrdl": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "sideplank": {
+     "sets": [
+      true,
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "mountainclimber": {
+     "sets": [
+      true
+     ],
+     "done": true
+    },
+    "superman": {
+     "sets": [
+      true,
+      true
+     ],
+     "done": true
+    },
+    "sealjack": {
+     "sets": [
+      true
+     ],
+     "done": true
+    }
+   },
+   "items": [
+    {
+     "exId": "pushup",
+     "sets": 3,
+     "target": 18,
+     "unit": "reps",
+     "rest": 45
+    },
+    {
+     "exId": "towelrow",
+     "sets": 3,
+     "target": 10,
+     "unit": "reps",
+     "rest": 41
+    },
+    {
+     "exId": "slrdl",
+     "sets": 3,
+     "target": 20,
+     "unit": "reps",
+     "rest": 54
+    },
+    {
+     "exId": "sideplank",
+     "sets": 4,
+     "target": 40,
+     "unit": "time",
+     "rest": 41
+    },
+    {
+     "exId": "mountainclimber",
+     "sets": 1,
+     "target": 40,
+     "unit": "time",
+     "rest": 32
+    },
+    {
+     "exId": "superman",
+     "sets": 2,
+     "target": 20,
+     "unit": "time",
+     "rest": 32
+    },
+    {
+     "exId": "sealjack",
+     "sets": 1,
+     "target": 40,
+     "unit": "time",
+     "rest": 27
+    }
+   ]
+  },
+  "6": {
+   "date": "2026-08-01",
+   "completedAt": "2026-08-01",
+   "done": true,
+   "feel": "right",
+   "ex": {
+    "plank": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "sideplank": {
+     "sets": [
+      true,
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "hollow": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "seatedtwist": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "superman": {
+     "sets": [
+      true,
+      true
+     ],
+     "done": true
+    },
+    "mountainclimber": {
+     "sets": [
+      true
+     ],
+     "done": true
+    }
+   },
+   "items": [
+    {
+     "exId": "plank",
+     "sets": 3,
+     "target": 65,
+     "unit": "time",
+     "rest": 45
+    },
+    {
+     "exId": "sideplank",
+     "sets": 4,
+     "target": 40,
+     "unit": "time",
+     "rest": 41
+    },
+    {
+     "exId": "hollow",
+     "sets": 3,
+     "target": 30,
+     "unit": "time",
+     "rest": 50
+    },
+    {
+     "exId": "seatedtwist",
+     "sets": 3,
+     "target": 20,
+     "unit": "reps",
+     "rest": 32
+    },
+    {
+     "exId": "superman",
+     "sets": 2,
+     "target": 20,
+     "unit": "time",
+     "rest": 32
+    },
+    {
+     "exId": "mountainclimber",
+     "sets": 1,
+     "target": 40,
+     "unit": "time",
+     "rest": 32
+    }
+   ]
+  },
+  "7": {
+   "date": "2026-08-01",
+   "completedAt": "2026-08-01",
+   "done": true,
+   "feel": "right",
+   "ex": {
+    "plank": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "hollow": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "revcrunch": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "situp": {
+     "sets": [
+      true,
+      true,
+      true
+     ],
+     "done": true
+    },
+    "superman": {
+     "sets": [
+      true,
+      true
+     ],
+     "done": true
+    },
+    "sealjack": {
+     "sets": [
+      true
+     ],
+     "done": true
+    }
+   },
+   "items": [
+    {
+     "exId": "plank",
+     "sets": 3,
+     "target": 75,
+     "unit": "time",
+     "rest": 45
+    },
+    {
+     "exId": "hollow",
+     "sets": 3,
+     "target": 35,
+     "unit": "time",
+     "rest": 50
+    },
+    {
+     "exId": "revcrunch",
+     "sets": 3,
+     "target": 15,
+     "unit": "reps",
+     "rest": 41
+    },
+    {
+     "exId": "situp",
+     "sets": 3,
+     "target": 19,
+     "unit": "reps",
+     "rest": 36
+    },
+    {
+     "exId": "superman",
+     "sets": 2,
+     "target": 25,
+     "unit": "time",
+     "rest": 32
+    },
+    {
+     "exId": "sealjack",
+     "sets": 1,
+     "target": 40,
+     "unit": "time",
+     "rest": 27
+    }
+   ]
+  }
+ },
+ "runs": [],
+ "liftLog": [],
+ "weekFeel": {},
+ "measurements": [
+  {
+   "date": "2026-07-01",
+   "weight": 88,
+   "waist": 104
+  },
+  {
+   "date": "2026-08-01",
+   "weight": 87,
+   "waist": 101
+  }
+ ],
+ "scoreHistory": [
+  {
+   "date": "2026-07-01",
+   "score": 71,
+   "level": "Intermediate",
+   "testCount": 10
+  }
+ ],
+ "prs": {
+  "pushup": 32,
+  "plank": 120
+ },
+ "adapt": 1.06,
+ "nutrition": {
+  "goal": "leanrecomp",
+  "sex": "male",
+  "age": 59,
+  "heightCm": 178,
+  "activity": 1.45,
+  "days": {
+   "2026-09-05": {
+    "water": 0,
+    "habits": {}
+   }
+  },
+  "diet": "omnivore",
+  "allergies": "",
+  "meals": 3,
+  "plan": null,
+  "proteinTarget": 165,
+  "_protSeed": true,
+  "allergens": [],
+  "weightKg": 86
+ },
+ "photos": [],
+ "achievements": {
+  "first": "2026-07-02"
+ },
+ "restDays": {},
+ "settings": {
+  "sound": true,
+  "vibrate": true,
+  "voice": true,
+  "voiceName": "",
+  "voiceTone": "mid",
+  "voiceRate": 0.98,
+  "repTempo": 3,
+  "hype": true,
+  "coach": "auto",
+  "beat": true,
+  "beatVol": 0.55,
+  "theme": "ember",
+  "neuralOn": false,
+  "azureRegion": "eastus",
+  "_toneFix": true,
+  "reminderOn": false,
+  "reminderTime": "18:00",
+  "weeklyOn": true,
+  "autoIntro": true,
+  "voiceCmd": true
+ },
+ "holdLog": [
+  {
+   "date": "2026-08-20",
+   "id": "plank",
+   "secs": 130,
+   "fresh": true,
+   "at": 0
+  }
+ ],
+ "grindLog": [],
+ "swaps": {},
+ "prep": {
+  "date": "2026-12-01",
+  "path": "operator",
+  "results": {
+   "lift": 44,
+   "rush": 52
+  }
+ },
+ "quickLog": {},
+ "shopTicks": {},
+ "exAdapt": {},
+ "readiness": {},
+ "bikeLevelFeel": {
+  "level": "steady",
+  "streak": 0
+ },
+ "formatFeel": {
+  "skip": {
+   "level": "skip93x2",
+   "streak": 0
+  },
+  "grip": {
+   "level": "grip30",
+   "streak": 0
+  },
+  "box": {
+   "level": "box3x3",
+   "streak": 0
+  }
+ },
+ "hiitLog": [],
+ "pain": [],
+ "_opens": {
+  "2026-09-05": 1
+ },
+ "skipLog": [
+  {
+   "date": "2026-08-20",
+   "mins": 12
+  }
+ ],
+ "ruckLog": [],
+ "gripLog": [],
+ "boxLog": [],
+ "_saved": "2026-09-05",
+ "_savedAt": 1788649280261,
+ "comeback": {
+  "left": 8,
+  "days": 35,
+  "trig": "2026-08-01"
+ }
+}
