@@ -11641,6 +11641,51 @@ export default async function () {
       afterBack.cf, 'home', afterBack);
     await shut();
 
+    /* THE SAME PAYLOAD ON THE BENCHMARK, which is where stamping OP.hist made
+       an old accident stop protecting a missing split. onPop() takes the
+       NO-history dismissal for the player and for HIIT, and had to call
+       opQuit() for the benchmark because no opClose() existed — so Back closed
+       the overlay AND popped the tab level under it.
+
+       "It lands on home" is the CONTAINER and passes on the bug: a double pop
+       reaches the root, where onPop's own last branch pushes {cf:'home'} back
+       and prints "Press Back again to exit". The payload is that the root
+       branch never ran. */
+    const opBack = await openFrom("startOp('op_engine');");
+    t.eq('guard: the benchmark is open with its own entry before the Back press',
+      opBack.settled, 'op', opBack);
+    await p2.evaluate(() => { _homeBackAt = 0; try { $('#toast').textContent = ''; } catch (e) {} });
+    await p2.goBack();
+    await p2.waitForTimeout(900);
+    const opAfter = await p2.evaluate(() => ({
+      hiitOpen: document.querySelector('#hiit').classList.contains('open'),
+      cf: history.state && history.state.cf,
+      rootBranch: _homeBackAt > 0,
+      toast: (document.querySelector('#toast') || {}).textContent || '',
+    }));
+    t.ok('one Back closes the benchmark ops clock', !opAfter.hiitOpen, JSON.stringify(opAfter));
+    t.eq('and the benchmark lands above the root too', opAfter.cf, 'home', opAfter);
+    t.ok('and costs ONE level, not two — the exit branch never ran',
+      !opAfter.rootBranch && !/Press Back again/.test(opAfter.toast), JSON.stringify(opAfter));
+    await shut();
+
+    /* FLOOR: the ✕ and the Done button still RETIRE the entry. opQuit() keeps
+       the history step; only the pop handler must not take it. A split that
+       dropped it everywhere satisfies every assertion above and leaves a dead
+       entry behind, so the next Back does nothing the athlete can see. */
+    const opX = await openFrom("startOp('op_engine');");
+    t.eq('guard: the benchmark has its own entry before the ✕', opX.settled, 'op', opX);
+    const opXAfter = await p2.evaluate(async () => {
+      opQuit();
+      await new Promise(z => setTimeout(z, 900));
+      return { cf: history.state && history.state.cf,
+               open: document.querySelector('#hiit').classList.contains('open') };
+    });
+    t.ok('guard: the ✕ really closed the benchmark', !opXAfter.open, JSON.stringify(opXAfter));
+    t.eq('FLOOR: the ✕ retires the entry, so no dead level is left behind',
+      opXAfter.cf, 'home', opXAfter);
+    await shut();
+
     /* FLOOR: an opener reached with NO sheet in front of it must still get an
        entry. A "fix" that simply dropped the push would leave the overlay with
        no Back route at all. */

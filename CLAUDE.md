@@ -15976,6 +15976,66 @@ A fresh context has its own storage, so it is re-seeded.
 entry, and `go()` does not pop — so leaving it there made the NEXT case's Back
 press land on it and read `tab`. It is retired with a real Back.
 
+## The pop handler took the exit that retires an entry (v439)
+
+Found by auditing v438 before merging it. That round stamped the overlay
+instance (`PLAYER.hist`, `INTV.hist`, `OP.hist`) so a push and its pop stay
+paired. `onPop()` takes the **no-history** dismissal for two of the three
+overlays — `playerTeardown()` and `hiitTeardown()` — and called **`opQuit()`**
+for the third, because no no-history version of it existed.
+
+**It was harmless only by accident.** Every quit used to decide by reading
+`history.state.cf`, which during a pop already reports the entry BENEATH — so
+the extra `history.back()` was skipped for the wrong reason. Making the test
+honest is what exposed the missing split. Measured on a real Back press with a
+benchmark open:
+
+| | before | after |
+|---|---|---|
+| the overlay | closed | closed |
+| the tab level under it | **popped too** | kept |
+| the athlete | **one press from "Press Back again to exit"** | where they were |
+
+That is the exact defect v438 was written to fix, arriving through v438's own
+fix.
+
+### "It lands on home" is the container and passes on the bug
+
+A double pop reaches the ROOT, and `onPop()`'s own last branch pushes
+`{cf:'home'}` straight back and prints *"Press Back again to exit"* — so
+`history.state.cf` reads `'home'` either way and the obvious assertion cannot
+fail. **The payload is that the root branch never ran**, which the check reads
+off `_homeBackAt` and the toast. *Measure the payload, not the container* — and
+here the container is a value the buggy path restores for you.
+
+**The floor is that the ✕ and the Done button still RETIRE the entry.** A split
+that dropped the history step everywhere satisfies every assertion above and
+leaves a dead level behind, so the next Back does nothing the athlete can see.
+
+### And it was a fifth hand-written copy of the `#hiit` closer
+
+v436's comment says *"ONE CLOSER FOR THE #hiit OVERLAY"* and counts **four**
+exits. The benchmark shares that overlay and had a fifth copy of the same six
+statements written out by hand. `opClose()` asks `hiitClose()` now — `ivClear()`
+and `INTV=null` in there are no-ops during a benchmark, because the two surfaces
+share `#hiit` and never run at once — and the comment's count is corrected
+rather than left. *A comment claiming an invariant is not the invariant*, for
+the sixth time in this file.
+
+### And a mutation anchor can go stale inside its own round
+
+Five of the v438 mutants reported `BAD ANCHOR (0)`. The anchors were written
+early in the round, from
+`pushOverlayState({cf:'player'},()=>!!PLAYER);` — and the round's OWN later fix
+added the `mark` argument to every one of those lines. So the driver measured
+nothing on five of ten mutants.
+
+This file already says to take an anchor VERBATIM from the file and to read a
+`BAD ANCHOR` line as a measurement that has not happened yet. The wrinkle worth
+adding is that **verbatim is a property of the file at the moment you run, not
+at the moment you wrote the driver**: re-extract every anchor after any edit to
+the code under test, including an edit made in the same round.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

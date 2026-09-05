@@ -1911,7 +1911,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='438';
+const APP_VERSION='439';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3828,7 +3828,7 @@ let _backGuard=false,_exiting=false,_homeBackAt=0;
 function onPop(e){
   if(_exiting)return;
   if(_backGuard){_backGuard=false;return;}
-  if(typeof OP!=='undefined'&&OP){opQuit();return;}
+  if(typeof OP!=='undefined'&&OP){opClose();return;}
   if(typeof INTV!=='undefined'&&INTV){hiitTeardown();return;}
   if(typeof PLAYER!=='undefined'&&PLAYER){playerTeardown();return;}
   /* The same dismissal the ✕ takes, minus the history step — the entry this
@@ -9923,8 +9923,10 @@ function hiitQuit(){
      What is left here is the HISTORY step, which the Back handler must not
      take: the pop it is answering has already happened. */
   const had=!!(INTV&&INTV.hist);hiitTeardown();if(had){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
-/* ONE CLOSER FOR THE #hiit OVERLAY. The six statements below were written out
-   by hand at four exits and had drifted two ways, both measured:
+/* ONE CLOSER FOR THE #hiit OVERLAY, and the count is FIVE exits, not four:
+   the benchmark shares this overlay and opClose() asks this too. The six
+   statements below were written out by hand at each and had drifted two ways,
+   both measured:
 
      tapShield   the three LOG buttons had it; hiitTeardown() — which is what
                  the finish screen's Close button reaches through hiitQuit() —
@@ -14426,11 +14428,23 @@ function opFinish(){
     <button class="btn primary" style="width:100%;margin-bottom:8px" onclick="shareLast()">📤 Share</button>
     <button class="btn ghost" style="width:100%" onclick="opQuit()">Done ✓</button>`;
 }
-/* The benchmark shares the #hiit overlay and had neither guard the others do:
-   no tapShield on its ✕, and its markup left mounted. */
-function opQuit(){const _hadHist=!!(OP&&OP.hist);wakeOff();if(OP){clearInterval(OP.iv);}OP=null;beatStop();$('#hiit').classList.remove('open');document.body.style.overflow='';tapShield(400);
-  setTimeout(()=>{try{if(!$('#hiit').classList.contains('open'))$('#hiit').innerHTML='';}catch(e){}},400);
-  // guard the self-pop like playerQuit/hiitQuit do, so onPop ignores it
+/* THE BENCHMARK NEEDED THE SPLIT ITS TWO SIBLINGS ALREADY HAD. opClose() is
+   the dismissal; opQuit() is that plus the HISTORY step, which a pop must NOT
+   take — the entry it is answering has already gone. onPop() calls
+   playerTeardown() and hiitTeardown() for exactly that reason, and called
+   opQuit(), because no no-history version existed to call.
+
+   It was harmless only while every quit decided by reading history.state.cf,
+   which during a pop already reports the entry BENEATH — so the extra back was
+   skipped by accident. Stamping OP.hist made that test honest, and the missing
+   split then DOUBLE-POPPED: Back closed the overlay and the tab level under it,
+   which is the very defect the stamp was written to fix.
+
+   The overlay statements go through hiitClose(), so this stops being a fifth
+   hand-written copy of them. ivClear() and INTV=null in there are no-ops during
+   a benchmark: the two surfaces share #hiit and never run at once. */
+function opClose(){if(OP){clearInterval(OP.iv);}OP=null;beatStop();hiitClose();}
+function opQuit(){const _hadHist=!!(OP&&OP.hist);opClose();
   if(_hadHist){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
 /* ---- #2 Custom workout builder ---- */
 let _custom=[];
