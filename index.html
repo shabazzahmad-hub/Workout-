@@ -587,6 +587,18 @@ function waistToCm(v){return isImperial()?v*2.54:v;}            // typed → sto
 function waistShow(cm){return cm==null?null:(isImperial()?cm/2.54:cm);}  // stored → shown
 function weightToKg(v){return isImperial()?v*0.453592:v;}
 function weightShow(kg){return kg==null?null:(isImperial()?kg/0.453592:kg);}
+/* THE GOAL IS STORED IN POUNDS BY NAME, and three sites turned it back into a
+   shown figure by hand. The fourth — the morning brief, which the coach reads
+   ALOUD — did not convert at all. Measured on a metric athlete at 86 kg with a
+   75 kg goal:
+       Progress ▸ Body   "Goal weight 75 kg · 11 kg to go"
+       the coach         "from 190 pounds down to 165. You are 25 pounds out."
+   One fact, two surfaces, two answers — and v315's rule is that a spoken
+   figure is the one an athlete cannot double-check by looking.
+   Rounded the way the goal-weight sheet rounds it, so the coach speaks the
+   number the athlete actually typed into that sheet. */
+function goalWeightShow(){const g=STATE.profile&&STATE.profile.goalWeightLb;
+  return g>0?(isImperial()?g:Math.round(g*0.453592)):null;}
 /* A BOUND THE ATHLETE IS TOLD MUST BE ONE THEY CAN ACTUALLY ENTER.
    Every "looks off — expected ..." message hand-wrote its imperial pair, and
    FOUR of them named a figure the guard itself REFUSES: 55 lb is 24.95 kg
@@ -1954,7 +1966,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='446';
+const APP_VERSION='447';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4117,7 +4129,7 @@ function onboardHTML(){
       .sort((x,y)=>String(x.date).localeCompare(String(y.date)));
     return ms.length?ms[ms.length-1].waist:(P.startWaist||0);})();
   const wsD=dv(_curW>0?(im?r1(_curW/2.54):_curW):0);
-  const gwtD=dv(P.goalWeightLb>0?(im?P.goalWeightLb:Math.round(P.goalWeightLb*0.453592)):0);
+  const gwtD=dv(goalWeightShow()||0);
   const gwsD=dv(P.goalWaist>0?(im?Math.round(P.goalWaist/2.54):P.goalWaist):0);
   const hu=im?'in':'cm', wu=im?'lb':'kg';
   const step=(n,title,body)=>`<div class="ob-step card pad" data-step="${n}" style="${n===1?'':'display:none'}"><h3 style="margin-top:0">${title}</h3>${body}</div>`;
@@ -11095,12 +11107,17 @@ function briefSegments(){
   let mission;
   /* Never speak an invented target. These used to fall back to 175 lb / 12% —
      numbers the athlete never chose — and the coach read them out every morning. */
+  /* The unit is the athlete's own, spelled out because it is SPOKEN, and the
+     current weight goes through weightShow() rather than a fourth spelling of
+     the kg-to-lb factor. */
+  const wUnit=isImperial()?'pound':'kilogram', goalShow=goalWeightShow(),
+        gaining=STATE.profile.goal==='gain';
   if(!(goalW>0)){
     /* True from v315 and not before: setGoalWeight() now sits on Progress ▸
        Body, beside the weight chart. Until then this sentence sent the athlete
        to a tab with no such control on it. */
     mission = `You have not set a goal weight yet. Open Progress, tap Body, and set one — or just train and let the tape measure tell the story. Either way, today we work.`;
-  }else if(kg){const lb=Math.round(kg*2.20462), toGo=lb-goalW, gaining=STATE.profile.goal==='gain';
+  }else if(kg){const now=Math.round(weightShow(kg)), toGo=now-goalShow;
     /* toGo>0 means CURRENT is above the target. For a lose/maintain goal that
        means ground left to cover; for a 'gain' goal it means the target is
        already cleared — the two directions read the SAME sign oppositely, and
@@ -11108,20 +11125,20 @@ function briefSegments(){
        short of their gain target was told "outstanding, hold the line" every
        morning instead of being pointed at the gap still open. */
     if(Math.abs(toGo)<=1){
-      mission = `You are right on your ${goalW}-pound target — now we lock in the muscle. Discipline today.`;
+      mission = `You are right on your ${goalShow}-${wUnit} target — now we lock in the muscle. Discipline today.`;
     }else if(gaining){
       mission = toGo<0
-        ? `The mission: from ${lb} pounds up to ${goalW}${bf}. You are ${-toGo} pounds out. Every rep and every meal today closes that gap.`
-        : `You are over ${goalW} pounds — outstanding. Today we hold the line.`;
+        ? `The mission: from ${now} ${wUnit}s up to ${goalShow}${bf}. You are ${-toGo} ${wUnit}s out. Every rep and every meal today closes that gap.`
+        : `You are over ${goalShow} ${wUnit}s — outstanding. Today we hold the line.`;
     }else{
       mission = toGo>0
-        ? `The mission: from ${lb} pounds down to ${goalW}${bf}. You are ${toGo} pounds out. Every rep and every meal today closes that gap.`
-        : `You are under ${goalW} pounds — outstanding. Today we hold the line.`;
+        ? `The mission: from ${now} ${wUnit}s down to ${goalShow}${bf}. You are ${toGo} ${wUnit}s out. Every rep and every meal today closes that gap.`
+        : `You are under ${goalShow} ${wUnit}s — outstanding. Today we hold the line.`;
     }
   }else{
     /* Fuel has no weight control at all — the calculator asks for a weight but
        does not log one. logMeasure() is on Progress, beside the chart. */
-    mission=`The mission: down to ${goalW} pounds${bf}. Log your weight on the Progress tab, under Body, so I can track every pound with you. Today, we get to work.`;
+    mission=`The mission: ${gaining?'up':'down'} to ${goalShow} ${wUnit}s${bf}. Log your weight on the Progress tab, under Body, so I can track every ${wUnit} with you. Today, we get to work.`;
   }
   segs.push({icon:'🎯',title:'Your mission',say:mission});
   /* THE BRIEF NEVER MENTIONED THE EVALUATION — not at twelve weeks, not the
@@ -13682,7 +13699,7 @@ function gBump(d){const inp=$('#g-waist');inp.value=Math.max(0,((+inp.value||(+i
    a specification. */
 function setGoalWeight(){
   const p=STATE.profile, im=p.unit==='in';
-  const cur=p.goalWeightLb>0?(im?p.goalWeightLb:Math.round(p.goalWeightLb*0.453592)):'';
+  const cur=goalWeightShow()||'';
   const now=latestWeightKg();
   const nowShow=now>0?(im?Math.round(now/0.453592):Math.round(now*10)/10):null;
   openSheet(`<h3>Set your goal weight</h3>
@@ -17897,7 +17914,7 @@ function projTargetKg(){const g=STATE.profile.goalWeightLb;return g>0?g*0.453592
 function goalWeightLineHTML(){
   const g=STATE.profile.goalWeightLb, im=STATE.profile.unit==='in';
   if(!(g>0))return `<div class="tiny muted" data-goalwt="none" style="margin:2px 2px 6px">No goal weight set — tap <b>🎯 Goal</b>, or just train and let the tape measure tell the story.</div>`;
-  const show=im?g:Math.round(g*0.453592), u=im?'lb':'kg';
+  const show=goalWeightShow(), u=im?'lb':'kg';
   const now=latestWeightKg();
   let gap='';
   if(now>0){

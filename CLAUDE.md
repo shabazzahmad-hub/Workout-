@@ -16781,6 +16781,68 @@ name. Twenty-eight mutants across the round, all caught.
 the driver's `assert count == 1` turned a bad seed into a clean no-op rather
 than a half-applied run — the fifth time that rule has paid.
 
+## The chart said 75 kg and the coach said 165 pounds (v447)
+
+`profile.goalWeightLb` is stored in POUNDS by name. Three sites turn it back
+into a shown figure and each hand-wrote the conversion; all three are correct.
+**The fourth — the morning brief, which the coach reads ALOUD — did not convert
+at all.** Measured on a metric athlete at 86 kg with a 75 kg goal:
+
+| surface | says |
+|---|---|
+| Progress ▸ Body | `🎯 Goal weight 75 kg · 11 kg to go` |
+| **the coach, every morning** | ***"from 190 pounds down to 165. You are 25 pounds out."*** |
+
+One fact, two surfaces, two answers — and **v315's rule is that a spoken
+figure is the one an athlete cannot double-check by looking.** It is the v446
+one-rep-max defect one screen over: the right number wearing a unit the
+athlete does not use.
+
+**The unit word is spelled out because it is SPOKEN** — *kilograms*, not `kg` —
+and the on-target sentence takes the singular because it is an adjective
+(*"your 75-kilogram target"*).
+
+**The goal is rounded the way the goal-weight sheet rounds it**, so the coach
+speaks the number the athlete actually typed into that sheet: 165 lb is
+74.84 kg, and the sheet shows and stores it as **75**. Rounding to one decimal
+would have the coach say a figure the control never showed. The mutant that
+does is caught.
+
+**The current weight goes through `weightShow()`**, which removes a fourth
+spelling of the kilogram-to-pound factor — this file already carried
+`*2.20462` here against `/0.453592` everywhere else, two constants for one
+conversion that happen to agree today.
+
+`goalWeightShow()` is now the one reader, asked by the wizard, the goal-weight
+sheet, the chart line and the brief, so a fifth site cannot be hand-written.
+
+### The same block hardcoded the DIRECTION as well as the unit
+
+The no-logged-weight branch read *"The mission: down to 205 pounds"* for
+everybody, so a **bulking** athlete with nothing logged was told to come down
+to their gain target. The branch beside it has read the two directions apart
+since v239; this one never learned. It says *"up to"* now, and the mutant that
+puts the hardcoded word back is caught.
+
+**The floor is the imperial athlete, byte-identical.** A fix that simply
+relabelled everything satisfies every metric assertion; two over-eager mutants
+— a `goalWeightShow()` that always converts, and a unit word that is always
+*kilogram* — fail exactly there.
+
+**The two surfaces are read SIDE BY SIDE in one check**, because the
+requirement is that they AGREE. Asserting either alone passes on half the
+code, which is how the disagreement lasted: the chart line had a check and the
+spoken line had one, and neither compared them.
+
+Eight mutants, all caught. Suite 10: 224 → 235.
+
+### And the assertion was written for the wrong sentence
+
+The first version required `/75 kilograms/`. The sentence carries the unit on
+the FIRST figure only — *"from 86 kilograms down to 75"* — exactly as the
+imperial wording always did, so it failed on correct copy. **Read the sentence
+the app really produces before writing the pattern for it.**
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

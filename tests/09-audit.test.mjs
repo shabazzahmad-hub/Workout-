@@ -1136,6 +1136,12 @@ export default async function run() {
       const realWeightKg = nut().weightKg;
       const o = {};
       nut().weightKg = 68;   // ~150 lb, fixed regardless of whatever the seed carries
+      /* The subject here is the DIRECTION, and the figures written below are
+         POUNDS. v447 made the brief speak the athlete's own unit, so on the
+         seeded metric athlete "160" is spoken as 73 kilograms and this block
+         failed on correct code. Pin the unit the figures are in; suite 10
+         covers the metric side and the agreement between the two surfaces. */
+      STATE.profile.unit = 'in';
       STATE.profile.goal = 'gain'; STATE.profile.goalWeightLb = 160;
       const missionGain = briefSegments().find(s => s.title === 'Your mission').say;
       STATE.profile.goal = 'lose'; STATE.profile.goalWeightLb = 140;
@@ -1146,12 +1152,15 @@ export default async function run() {
         gainSaysUp: /up to 160/.test(missionGain),
         gainNotBackwards: !/outstanding/i.test(missionGain),
         loseSaysDown: /down to 140/.test(missionLose),
+        gainNotDown: !/down to/.test(missionGain),
+        loseNotUp: !/\bup to/.test(missionLose),
         missionGain, missionLose,
       };
     });
     t.ok('a gain-goal athlete below target is told to go UP toward it', r.gainSaysUp, r);
     t.ok('not congratulated for being short of a weight-GAIN goal', r.gainNotBackwards, r);
     t.ok('a lose-goal athlete above target is still told to go down (unchanged)', r.loseSaysDown, r);
+    t.ok('and the two directions are never both spoken', r.gainNotDown && r.loseNotUp, r);
   }
 
   // ---- the weight-trend chart colors "good" relative to the actual goal direction
