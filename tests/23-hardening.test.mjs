@@ -11031,6 +11031,153 @@ export default async function () {
     t.ok('FLOOR: and an absent goal waist is not created', !im.gwAbsent, im);
   }
 
+  /* v431 — the string branch of the profile.days repair split on CHARACTERS and
+     then read the run as a NUMBER, so a compact string carried a run of digits
+     through as ONE value: '42' became the weekday [42]. The array branch beside
+     it filtered the range and this one did not, so the guard above the repair
+     rejected on the NEXT boot exactly what the repair had just written.
+
+     It self-heals there, and a whole session runs on it first — measured:
+     isTrainingDay() false on every day of the week, so the reminder never
+     fires and every day reads as a rest day, and the Program tab claimed
+     "about 378 weeks at your 1 sessions a week" against the real 76.
+
+     The class check is the one that FOUND it: normalizeState() must be a fixed
+     point, because a repair that writes a shape its own guard rejects fires the
+     "we repaired your data" note again on the next launch. nutrition.diet is
+     the one legitimate exception (v287's dietRepaired is set on the boot that
+     repaired and cleared on the next), and it is allowlisted BY NAME and
+     checked both ways — an empty exception list would pass on a fuzz that
+     reached no repair at all. */
+  {
+    const dy = await page.evaluate(() => {
+      const R = {};
+      /* an earlier block in this file clears the baseline, and without one the
+         Program tab renders the assessment gate — where every assertion about
+         its copy passes on a screen that never mentions a week at all. */
+      STATE.onboarded = true;
+      STATE.baseline = { date: todayISO(), score: 97, level: 'Advanced', testCount: 8,
+        maxes: { plank: 150, side: 95, hollow: 70, lower: 30, push: 48, pull: 22, squat: 62, dyn: 55 } };
+      const days = () => JSON.parse(JSON.stringify(STATE.profile.days));
+      const norm = v => { STATE.profile.days = v; normalizeState(); return days(); };
+
+      /* GUARD: the string branch really is consulted, or every case below is a
+         statement about the array branch instead. */
+      R.guardStringParses = JSON.stringify(norm('1,2,4,5,6'));
+
+      R.compact   = norm('42');
+      R.compactLong = norm('12456');
+      R.dateShaped  = norm('2026-09-05');
+      R.commaFloor  = norm('1,2,4,5,6');
+      R.arrayFloor  = norm([1, 2, 4, 5, 6]);
+      R.arrayMixed  = norm([1, 2, 42]);
+      R.wordsFloor  = norm('Mon,Tue');
+
+      /* the guard above the repair must accept what the repair wrote, on every
+         one of those — that is the property, not any single value */
+      const legal = a => Array.isArray(a) && a.length > 0 &&
+        a.every(d => Number.isInteger(d) && d >= 0 && d <= 6);
+      R.allLegal = [R.compact, R.compactLong, R.dateShaped, R.commaFloor,
+                    R.arrayFloor, R.arrayMixed, R.wordsFloor].every(legal);
+
+      /* the readers, on the FIRST boot after the junk arrives */
+      STATE.profile.days = '42'; normalizeState();
+      R.firstBootDays = days();
+      R.firstBootTraining = isTrainingDay();
+      R.firstBootWeekly = weeklyTarget();
+      go('program');
+      R.firstBootProg = document.querySelector('.view.active').innerText.slice(0, 200);
+      R.guardProgramBuilt = /sessions in \d+ blocks/.test(R.firstBootProg);
+
+      /* FLOOR: a real schedule still reads as itself */
+      STATE.profile.days = [1, 2, 4, 5, 6]; normalizeState();
+      R.realWeekly = weeklyTarget();
+      go('program');
+      R.realProg = document.querySelector('.view.active').innerText.slice(0, 200);
+
+      /* the one-session-a-week copy an import can reach */
+      STATE.profile.days = [3]; normalizeState();
+      go('program');
+      R.oneProg = document.querySelector('.view.active').innerText.slice(0, 200);
+
+      STATE.profile.days = [1, 2, 4, 5, 6]; save();
+      return R;
+    });
+
+    t.eq('guard: the string branch really parses a separated list',
+         dy.guardStringParses, '[1,2,4,5,6]', dy);
+    t.eq('a compact digit run is not stored as an out-of-range weekday',
+         dy.compact, [0, 1, 2, 3, 4, 5, 6], dy);
+    t.eq('nor is a longer one', dy.compactLong, [0, 1, 2, 3, 4, 5, 6], dy);
+    t.eq('a date-shaped string keeps only the real weekdays in it',
+         dy.dateShaped, [0, 5], dy);
+    t.ok('the repair never writes a shape its own guard would reject',
+         dy.allLegal, dy);
+    t.eq('FLOOR: a separated list is stored exactly as written',
+         dy.commaFloor, [1, 2, 4, 5, 6], dy);
+    t.eq('FLOOR: a real array is untouched', dy.arrayFloor, [1, 2, 4, 5, 6], dy);
+    t.eq('FLOOR: and the array branch still drops an out-of-range member',
+         dy.arrayMixed, [1, 2], dy);
+    t.eq('FLOOR: a string with no weekday in it falls back to the whole week',
+         dy.wordsFloor, [0, 1, 2, 3, 4, 5, 6], dy);
+
+    t.eq('the first boot after the junk leaves a legal schedule',
+         dy.firstBootDays, [0, 1, 2, 3, 4, 5, 6], dy);
+    t.ok('so today is a training day rather than every day being a rest day',
+         dy.firstBootTraining === true, dy);
+    t.eq('and the weekly target is a real number of days',
+         dy.firstBootWeekly, 7, dy);
+    t.ok('and the Program tab does not claim 378 weeks at one session a week',
+         !/378 weeks/.test(dy.firstBootProg), dy.firstBootProg);
+    t.ok('FLOOR: a five-day athlete still reads 76 weeks at five sessions',
+         /76 weeks/.test(dy.realProg) && /5 sessions a week/.test(dy.realProg),
+         dy.realProg);
+    t.ok('a genuine one-day schedule says "1 session a week", not "1 sessions"',
+         /\b1 session a week/.test(dy.oneProg) && !/\b1 sessions a week/.test(dy.oneProg),
+         dy.oneProg);
+
+    /* the class: normalizeState() is a fixed point */
+    const fp = await page.evaluate(() => {
+      const JUNK = ['zzz', '42', -7, 1e12, {}, [], true, null, 'constructor', 0];
+      const D = DEFAULT_STATE();
+      const paths = Object.keys(D).concat(
+        ['profile', 'nutrition', 'settings'].flatMap(p =>
+          Object.keys(D[p] || {}).map(k => p + '.' + k)));
+      const set = (o, p, v) => { const ks = p.split('.'); const last = ks.pop();
+        ks.reduce((a, k) => a[k], o)[last] = v; };
+      const clean = JSON.parse(JSON.stringify(STATE));
+      const moved = {};
+      let cases = 0, repairs = 0;
+      for (const p of paths) for (const j of JUNK) {
+        cases++;
+        STATE = JSON.parse(JSON.stringify(clean));
+        try { set(STATE, p, JSON.parse(JSON.stringify(j))); } catch (e) { continue; }
+        normalizeState(); const a = JSON.stringify(STATE);
+        if (a !== JSON.stringify(clean)) repairs++;
+        normalizeState(); const b = JSON.stringify(STATE);
+        if (a === b) continue;
+        const A = JSON.parse(a), B = JSON.parse(b);
+        for (const k of new Set(Object.keys(A).concat(Object.keys(B))))
+          if (JSON.stringify(A[k]) !== JSON.stringify(B[k]))
+            (moved[k] = moved[k] || new Set()).add(p);
+      }
+      STATE = JSON.parse(JSON.stringify(clean)); save();
+      const out = {}; for (const k in moved) out[k] = [...moved[k]].sort();
+      return { cases, paths: paths.length, repairs, moved: out };
+    });
+
+    t.ok('guard: the fixed-point fuzz swept every case and reached real repairs',
+         fp.cases > 500 && fp.repairs > 250, fp);
+    t.ok('guard: and it swept every top-level and nested field',
+         fp.paths > 60, fp);
+    t.ok('guard: the Program tab really built a program rather than the baseline gate',
+         dy.guardProgramBuilt, dy.firstBootProg);
+    t.eq('only nutrition moves on a second pass, and only for the diet flag',
+         Object.keys(fp.moved).sort(), ['nutrition'], fp.moved);
+    t.eq('and that is dietRepaired alone — v287 sets it on the repairing boot and clears it on the next',
+         fp.moved.nutrition || [], ['nutrition.diet'], fp.moved);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

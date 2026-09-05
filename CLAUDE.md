@@ -15366,6 +15366,102 @@ save still lands.
   member.
 
 
+## A repair that wrote a shape its own guard rejects (v431)
+
+Found by a class sweep nobody had run: **is `normalizeState()` a FIXED POINT?**
+A repair that leaves a value its own guard still refuses is a repair that runs
+again on the next launch — and `boot()` fires *"we repaired your data"* on any
+diff, so it says so every time. 650 cases, every top-level and nested field x
+ten junk shapes, normalise twice, compare. One field moved.
+
+`profile.days`'s repair has two branches. The array branch filters the range;
+**the string branch split on CHARACTERS and then read the run as a NUMBER**, so
+a compact string carried a run of digits straight through as one value:
+
+| stored | pass 1 | pass 2 |
+|---|---|---|
+| `'1,2,4,5,6'` | `[1,2,4,5,6]` | same |
+| **`'42'`** | **`[42]`** | `[0,1,2,3,4,5,6]` |
+| **`'12456'`** | **`[12456]`** | `[0,1,2,3,4,5,6]` |
+| **`'2026-09-05'`** | **`[0,5,2026]`** | `[0,1,2,3,4,5,6]` |
+
+*One of a pair guarded and its twin not*, for the ninth time in this file — and
+the tell here is sharper than usual, because **the guard four lines above the
+repair rejects exactly what the repair just wrote.**
+
+**It self-heals on the next boot, and a whole session runs on it first.**
+Measured with `days:[42]`:
+
+| | correct | after the junk |
+|---|---|---|
+| `isTrainingDay()` | true | **false on every day of the week** |
+| the reminder | fires on training days | **never fires** |
+| every day | trains or rests to plan | **reads as a rest day** |
+| the Program tab | *"about 76 weeks at your 5 sessions a week"* | ***"about 378 weeks at your 1 sessions a week"*** |
+
+And it travels in a backup for that whole session, which is the v285 cost.
+
+**One predicate now, asked by the guard AND by both branches**, so neither can
+drift from the other again. The fallback for a string with no weekday in it is
+unchanged — the whole week, which is the honest answer for data nobody can
+recover.
+
+**The class check is the one that found it, and it needs an allowlist checked
+both ways.** `nutrition.diet` is legitimately not a fixed point: v287 sets
+`dietRepaired` on the boot that repaired and clears it on the next, so pass 2
+differs by design. It is named in the check with that reason, and the guard
+beside it asserts the fuzz reached hundreds of real repairs — an empty
+exception list is otherwise a statement about a fuzz that reached nothing.
+
+**The row level was swept too, and came back clean**: 15 stored lists x every
+field of a realistic row x ten junk shapes — 500 cases, 489 real repairs seen,
+**zero** that were not a fixed point.
+
+### And the sentence it exposed
+
+*"at your 1 sessions a week"* is reachable without any junk at all — the wizard
+floors at five days, and `importData()` accepts a backup carrying `days:[3]`.
+Swept every hand-pluralised count in athlete-facing copy — 22 sites across
+sessions, days, weeks, reps, sets, minutes, meals, rounds and tests — and this
+was **the only one that can reach 1**. Every other one is a constant
+(`TESTS.length`, `WEEKS_PER_CYCLE`, `REF_DAYS.length`) or a window that cannot
+be one (`painPattern()`'s own rule is *"twice is a pattern"*, so its note never
+fires at one).
+
+### The imperial sweep, clean, and one coincidence that looked like a defect
+
+Run first, because v430 had just touched unit handling and the app has gained
+many surfaces since v337 swept this: render **26 surfaces twice** — six tabs,
+four Progress panes, four Today panes, both Reference panes and twelve sheets —
+with identical stored data and only `profile.unit` differing, then look for the
+same NUMBER wearing `mi` in one render and `km` in the other. That is the v337
+defect exactly: the label converted and the number did not.
+
+**Zero, against 52 real conversions seen** — the guard that makes the zero mean
+something.
+
+Two suspects, both the detector. The waist badge deliberately names both units
+(`5 cm (2 in)`), and a `13.4` matched across two different rows — `13.4 km` on
+the bike table's Easy row in metric against `13.4 mi/h` on its Hard row in
+imperial. **A detector that compares across rows is not measuring what you
+named** — the fifth entry under that shape, after `/true/` matching *truest*,
+`/0 reps/` matching *40 reps*, `img[onerror]` matching the thumbnails, and
+`indexOf('Badges')` against CSS-uppercased text.
+
+### Three checks that failed on correct code, and two were passing on nothing
+
+- **An earlier block in suite 23 clears the baseline**, so the Program tab
+  renders the assessment gate — a screen that never mentions a week at all. Both
+  copy assertions failed there, and the *"does not claim 378 weeks"* check above
+  them was **passing on that same empty screen**. The block re-seeds the
+  baseline and guards that a program really was built. *Each block builds the
+  state it asserts on.*
+- **The repair-count guard was too strong.** `repairs === cases` assumes every
+  junk value leaves a visible diff, and some normalise back to exactly the clean
+  state — which is the repair working, not the fuzz missing. Measured at 313 of
+  650; the guard asks for a large number rather than all of them.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
