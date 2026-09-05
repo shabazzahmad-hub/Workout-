@@ -17201,6 +17201,89 @@ replacement asks the real flows, with a guard that the raw ones genuinely carry
 a contraindicated move for those flags — otherwise an empty result is a
 statement about the filter rather than about the data.
 
+## The picker looked chosen and announced nothing (v454)
+
+v411 gave every control an accessible NAME and v413 gave the app a live region
+to announce through. Neither asked what a control announces about its own
+**STATE**.
+
+The bottom nav has carried `aria-current` since it was written, and `go()`
+maintains it. Measured across every tab, every sub-pane and six sheets:
+**32 rendered groups where exactly one sibling button is visually marked, and
+NOT ONE carried an accessible state.**
+
+| group | what a screen reader heard |
+|---|---|
+| Today ▸ Brief / Warm-up / Workout / Cool-down | four button names, no pane |
+| Progress ▸ Summary / Body / Strength / Awards | four names, no pane |
+| Reference ▸ Food / Moves | two names, no pane |
+| the seven goals on Fuel | seven names, and never which one the whole plan is built from |
+| the diet, the cardio mode, the intensity, the unit | the same |
+| the theme, the coach tone, the beat tempo, the strength metric, the prep path, the sex picker | the same |
+
+*One of a pair guarded and its twin not*, 32 members wide — and the three
+**sub-tab strips are the sharpest**, because they are the same control type as
+the nav, one level down, added by v312 and v314 and never given the state the
+nav already had.
+
+**Two encodings, and the check has to know the difference.** `aria-pressed`
+must be on **every** button of its group: an option with no attribute at all is
+exactly as silent about its state as the whole group used to be. `aria-current`
+is the opposite — **absence IS "not current"**, which is how the nav has
+encoded it since it was written, so exactly one marked button is right and
+`aria-current="false"` on the rest would be noise. The first version of the
+floor demanded the attribute on every button of every group and **failed on
+correct code**, on the three tab strips: a check can be rigorous and still
+encode the wrong requirement.
+
+**`pressed()` and `currentTab()` are the one place the rule lives**, so a 46th
+picker cannot be written stateless.
+
+**Three floors, and each catches a different over-eager twin**: exactly one
+option of every group reads as chosen (a fix that marked them all, or none,
+satisfies every "it has state" assertion and tells the athlete nothing), no
+group mixes the two encodings, and the bottom nav still marks the page it is on.
+
+**And the detector is proven both ways on a SYNTHETIC group** rather than on
+the real screens, so it stays true whatever the app becomes: a marked group
+with no state must be reported, one with state must not. Without that, "zero
+stateless" is a statement about the selector.
+
+### And the one collapsible in the app
+
+`toggleRecipe()` opens and closes a recipe on Reference. The chevron turns and
+nothing said so — the same defect on the one control here that expands. The
+button carries `aria-expanded` and `aria-controls`, and the toggle keeps the
+first in step rather than a second reader inferring it from the style.
+
+**The floor is that it comes back.** A value welded to `true` satisfies every
+"opening it announces that it opened" assertion and never announces the close.
+
+### The probe measured Settings thirty times
+
+Its first run reported the theme, tempo and tone pickers on every pane and every
+sheet. **Views never clear `innerHTML`**, and the tab loop ended on Settings —
+so `.view.active` was Settings for the whole rest of the run and the sub-pane
+loops never changed it. Twenty-nine of the forty-four findings were one screen
+counted over and over. *Confirm which screen you are actually reading.*
+
+### And no top-level constant is declared and never read (v453)
+
+Swept in the same round, and clean: **265 constants, zero unread.** v331 found
+three dead at once and the middle one was the expensive kind — it looked like a
+setting, **disagreed with the behaviour it named**, and changed nothing at all
+when edited.
+
+**Two scanners reported a finding on correct code before one worked**, and both
+are traps already in this file. The first replaced every string body with a
+space, so ten constants read only inside a template literal — which is how most
+of this app's constants are consumed — came back "unread". The second stripped
+comments without tracking strings, so a `//` inside one ate the rest of its
+line. The shipped check strips comments the way suite 01's function scan
+already does (respecting quotes, keeping string bodies) and **carries its
+guard on a synthetic source**: it must report a constant nothing reads and must
+NOT report one read only inside a template literal.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

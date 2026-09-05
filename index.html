@@ -1976,7 +1976,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='453';
+const APP_VERSION='454';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4831,7 +4831,7 @@ function setRefTab(k){
 }
 function refTabsHTML(){
   const cur=refTab();
-  return `<div class="todaytabs">${REF_TABS.map(([k,l])=>`<button class="ttab ${cur===k?'on':''}" onclick="setRefTab('${k}')">${l}</button>`).join('')}</div>`;
+  return `<div class="todaytabs">${REF_TABS.map(([k,l])=>`<button class="ttab ${cur===k?'on':''}"${currentTab(cur===k)} onclick="setRefTab('${k}')">${l}</button>`).join('')}</div>`;
 }
 let PROGRESS_TAB='summary';
 const PROGRESS_TABS=[['summary','📊 Summary'],['body','📷 Body'],['strength','💪 Strength'],['awards','🏅 Awards']];
@@ -4848,11 +4848,11 @@ function setProgressTab(k){
 }
 function progressTabsHTML(){
   const cur=progressTab();
-  return `<div class="todaytabs">${PROGRESS_TABS.map(([k,l])=>`<button class="ttab ${cur===k?'on':''}" onclick="setProgressTab('${k}')">${l}</button>`).join('')}</div>`;
+  return `<div class="todaytabs">${PROGRESS_TABS.map(([k,l])=>`<button class="ttab ${cur===k?'on':''}"${currentTab(cur===k)} onclick="setProgressTab('${k}')">${l}</button>`).join('')}</div>`;
 }
 function todayTabsHTML(){
   const tabs=[['brief','📋 Brief'],['warmup','🌡️ Warm-up'],['workout','💪 Workout'],['cooldown','🧘 Cool-down']];
-  return `<div class="todaytabs">${tabs.map(([k,l])=>`<button class="ttab ${TODAY_TAB===k?'on':''}" onclick="setTodayTab('${k}')">${l}</button>`).join('')}</div>`;
+  return `<div class="todaytabs">${tabs.map(([k,l])=>`<button class="ttab ${TODAY_TAB===k?'on':''}"${currentTab(TODAY_TAB===k)} onclick="setTodayTab('${k}')">${l}</button>`).join('')}</div>`;
 }
 // Static read-only rundown of briefSegments() — no ids, so it can sit on the
 // page at the same time the audio brief sheet (openBrief) uses its own ids.
@@ -6033,7 +6033,7 @@ function prepPathHTML(){
   return `<div class="section-label" style="margin-top:14px">Your training path</div>
     <div class="card pad">
       <div class="daypick" style="flex-wrap:wrap;margin:0 0 8px">${PREP_PATH_KEYS.map(k=>
-        `<button class="${cur===k?'on':''}" onclick="setPrepPath('${k}')">${_ve(PREP_PATHS[k].label)}</button>`).join('')}</div>
+        `<button class="${cur===k?'on':''}"${pressed(cur===k)} onclick="setPrepPath('${k}')">${_ve(PREP_PATHS[k].label)}</button>`).join('')}</div>
       <div class="tiny muted">${_ve(PREP_PATHS[cur].blurb)}</div>
       <div class="tiny muted" style="margin-top:8px">Both paths ramp under the same 10% a week cap and stop at the same load ceiling. The path changes what you do inside that week, not how much.</div>
     </div>`;
@@ -6625,7 +6625,7 @@ function openForceLog(){
     <div class="note info">Enter what you actually did. A number you did not measure is worse than a blank — the gap is the whole point of this screen.</div>
     ${FORCE_EVENTS.map(ev=>ev.max===null?`
       <div class="field"><label>${_ve(ev.name)} — did you move it the full 20 m without stopping?</label>
-        <div class="daypick"><button onclick="setForceResult('${ev.id}',1)" class="${forceResult(ev.id)>0?'on':''}">Yes</button><button onclick="setForceResult('${ev.id}',0)" class="${forceResult(ev.id)===0?'on':''}">Not yet</button></div></div>`
+        <div class="daypick"><button onclick="setForceResult('${ev.id}',1)" class="${forceResult(ev.id)>0?'on':''}"${pressed(forceResult(ev.id)>0)}>Yes</button><button onclick="setForceResult('${ev.id}',0)" class="${forceResult(ev.id)===0?'on':''}"${pressed(forceResult(ev.id)===0)}>Not yet</button></div></div>`
       :`<div class="field"><label>${_ve(ev.name)} — your time in seconds (max ${fmtTime(ev.max)})</label>
         <input id="fq-${ev.id}" type="number" inputmode="numeric" value="${forceResult(ev.id)!==null&&ev.max!==null?forceResult(ev.id):''}" placeholder="0"></div>`).join('')}
     <button class="btn primary" style="width:100%;margin-top:6px" onclick="saveForceTimes()">Save</button>
@@ -11565,6 +11565,15 @@ function openRestSheet(){
    because it's used at dozens of other sites and a future single-quoted
    HTML attribute is a real, cheap-to-guard-against case; it just isn't what
    makes removeMeasure's call site safe. */
+/* A PICKER WITH A VISUAL SELECTED STATE AND NO ACCESSIBLE ONE announces the
+   same words for the chosen option and for the rest, so a screen-reader athlete
+   cannot tell which goal, diet, theme, coach tone or pane is live. The bottom
+   nav has carried aria-current since it was written and go() maintains it;
+   nothing else in the app did — 45 groups, the three sub-tab strips among them.
+   These two are the one place the rule lives, so a 46th picker cannot be
+   written stateless. */
+function pressed(on){return ' aria-pressed="'+(on?'true':'false')+'"';}
+function currentTab(on){return on?' aria-current="true"':'';}
 function _ve(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 /* ---- Voice check ---------------------------------------------------------
    Reported from the phone: "I'm only hearing a female voice, not any of the
@@ -11953,7 +11962,7 @@ function applyTheme(k){
 function setTheme(k){if(!themeName(k))return;STATE.settings.theme=k;save();applyTheme(k);haptic(8);if(TAB==='guide')renderGuide();}
 function themeChipsHTML(){
   const cur=STATE.settings.theme||THEME_DEFAULT;
-  return `<div class="themerow">${Object.keys(THEMES).map(k=>`<button class="themechip ${k===cur?'on':''}" style="${k===cur?'background:'+THEMES[k].acc+';color:'+THEMES[k].accInk:''}" onclick="setTheme('${k}')">${THEMES[k].name}</button>`).join('')}</div>`;
+  return `<div class="themerow">${Object.keys(THEMES).map(k=>`<button class="themechip ${k===cur?'on':''}"${pressed(k===cur)} style="${k===cur?'background:'+THEMES[k].acc+';color:'+THEMES[k].accInk:''}" onclick="setTheme('${k}')">${THEMES[k].name}</button>`).join('')}</div>`;
 }
 
 /* ============================ MOTIVATOR / DRILL SERGEANT ============================
@@ -14758,7 +14767,7 @@ function openBuilder(){
       <button class="btn primary" style="width:100%;margin-top:10px" onclick="startCustom()">▶ Start workout</button>
       <button class="btn ghost" style="width:100%;margin-top:8px" onclick="saveCustomFav()">☆ Save as favorite</button></div>`:''}
     ${favs.length?`<div class="tiny muted" style="margin:4px 0">Favorites</div>${favs.map(({f,i})=>`<div style="display:flex;gap:6px;align-items:stretch;margin-bottom:6px"><button class="kv" style="flex:1;text-align:left;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:11px 13px" onclick="startFav(${i})"><span>⭐ ${_ve(f.name)}</span><span class="tiny muted">${f.items.length} moves ▶</span></button><button class="chip" aria-label="Delete the saved workout ${_ve(f.name)}" onclick="delFav(${i})">✕</button></div>`).join('')}<div style="height:6px"></div>`:''}
-    ${Object.keys(byReg).map(r=>`<div class="tiny muted" style="margin:8px 0 4px;text-transform:capitalize">${r}</div><div style="display:flex;flex-wrap:wrap;gap:6px">${byReg[r].map(k=>`<button class="chip ${_custom.includes(k)?'on':''}" onclick="addCustom('${k}')">${safeSwap(k)!==k?'⚠️ ':''}${EX[k].name}</button>`).join('')}</div>`).join('')}
+    ${Object.keys(byReg).map(r=>`<div class="tiny muted" style="margin:8px 0 4px;text-transform:capitalize">${r}</div><div style="display:flex;flex-wrap:wrap;gap:6px">${byReg[r].map(k=>`<button class="chip ${_custom.includes(k)?'on':''}"${pressed(_custom.includes(k))} onclick="addCustom('${k}')">${safeSwap(k)!==k?'⚠️ ':''}${EX[k].name}</button>`).join('')}</div>`).join('')}
     <div style="height:10px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
 }
 function startCustom(){
@@ -15036,7 +15045,7 @@ function readinessSlump(){
 let _rdy={};
 function openReadiness(){
   const cur=readinessToday();if(cur&&!_rdy._init){_rdy={sleep:cur.sleep,sore:cur.sore,energy:cur.energy,_init:1};}
-  const opt=(k,val,label,emoji)=>`<button class="chip ${_rdy[k]===val?'on':''}" onclick="_rdy['${k}']=${val};openReadiness()">${emoji} ${label}</button>`;
+  const opt=(k,val,label,emoji)=>`<button class="chip ${_rdy[k]===val?'on':''}"${pressed(_rdy[k]===val)} onclick="_rdy['${k}']=${val};openReadiness()">${emoji} ${label}</button>`;
   openSheet(`<h3>🌡️ Daily readiness</h3>
     <p class="muted sm" style="margin:2px 0 12px">A 10-second check so today's load fits how you feel — fresh means push, beat-up means we ease it.</p>
     <div class="tiny muted" style="margin:6px 0 4px">Sleep</div><div class="btnrow" style="gap:6px">${opt('sleep',100,'Great','😴')}${opt('sleep',60,'OK','🙂')}${opt('sleep',25,'Poor','🥱')}</div>
@@ -17920,7 +17929,7 @@ function strengthTrendHTML(){
   const series=assessSeries();if(!series.length)return '';
   const m=STRENGTH_METRICS.find(x=>x.k===strengthSel)||STRENGTH_METRICS[0];
   const disp=v=>m.unit==='time'?fmtTime(v):v+' reps';
-  const chips=STRENGTH_METRICS.map(x=>`<button class="chip ${x.k===strengthSel?'on':''}" onclick="setStrengthMetric('${x.k}')">${x.label}</button>`).join(' ');
+  const chips=STRENGTH_METRICS.map(x=>`<button class="chip ${x.k===strengthSel?'on':''}"${pressed(x.k===strengthSel)} onclick="setStrengthMetric('${x.k}')">${x.label}</button>`).join(' ');
   /* THROUGH THE PREDICATE, NOT AROUND IT. This read was raw, so '99999' > 0
      coerced to true and a figure estimateMaxes() refuses was drawn on the
      athlete's own progress chart while the engine prescribed from the default
@@ -19416,7 +19425,7 @@ function movementHTML(){
        ternary — and a fifth mode is precisely when that drifts: the buttons
        would have gained skipping while the note silently described running. */
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${CARDIO_MODES.map(k=>
-      `<button class="${mode===k?'on':''}" onclick="setCardioMode('${k}')">${CARDIO_INFO[k].label}</button>`).join('')}</div>
+      `<button class="${mode===k?'on':''}"${pressed(mode===k)} onclick="setCardioMode('${k}')">${CARDIO_INFO[k].label}</button>`).join('')}</div>
     <div class="tiny muted" style="margin-bottom:12px">${cardioInfo(mode).note||''}</div>`;
   /* Anything logged under a mode that is NOT the one on screen, so switching
      modes never hides work already done. This was two hardcoded pairs —
@@ -19443,7 +19452,7 @@ function runBlockHTML(m,short){
   const shown=m.nunit==='dist'?r1(kmToShow(m.nval)):m.nval;
   let h=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">How hard you ran it</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${RUN_PACES.map(x=>
-      `<button class="${m.nlvl===x.k?'on':''}" onclick="setRunPace('${x.k}')">${x.label}</button>`).join('')}</div>
+      `<button class="${m.nlvl===x.k?'on':''}"${pressed(m.nlvl===x.k)} onclick="setRunPace('${x.k}')">${x.label}</button>`).join('')}</div>
     <div class="tiny muted" style="margin-bottom:12px">${_ve(p.rpe)} · ${_ve(p.cue)}</div>
     ${/* Pace per KM, because that is the number a runner thinks in and the one
           a treadmill is set by. The talk test decides the band, not the speed —
@@ -19458,7 +19467,7 @@ function runBlockHTML(m,short){
     <div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log the run as</div>
     <div class="tiny muted" style="margin:-2px 0 8px"><b>Log the distance if you know it.</b> Running costs about the same per ${isImperial()?'mile':'kilometre'} however fast you go — measured across these four paces, the same ${isImperial()?'3 miles':'5 km'} comes out within 9% — so picking the wrong pace barely moves the number. Minutes are the one input the pace really does change.</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${RUN_UNITS.map(([k,l])=>
-      `<button class="${m.nunit===k?'on':''}" onclick="setRunUnit('${k}')">${l==='Distance'?distUnit().toUpperCase():l}</button>`).join('')}</div>
+      `<button class="${m.nunit===k?'on':''}"${pressed(m.nunit===k)} onclick="setRunUnit('${k}')">${l==='Distance'?distUnit().toUpperCase():l}</button>`).join('')}</div>
     <div class="row" style="justify-content:space-between;align-items:flex-end;gap:10px">
       <div class="field" style="flex:1;margin:0"><label for="mv-run">${_ve(m.nunit==='min'?'Minutes':(m.nunit==='dist'?'Distance ('+distUnit()+')':'Calories'))}</label>
         <input id="mv-run" type="number" inputmode="decimal" min="0" step="${m.nunit==='dist'?'0.1':'1'}" value="${shown||''}" placeholder="0" onchange="setRunVal(this.value)"></div>
@@ -19474,7 +19483,7 @@ function ruckBlockHTML(m,short){
   const shown=m.runit==='dist'?r1(kmToShow(m.rval)):m.rval;
   let h=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">What is in the ruck</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${RUCK_PLATES.map(w=>
-      `<button class="${lb===w?'on':''}" onclick="setRuckLoad(${w})">${w} lb</button>`).join('')}</div>`;
+      `<button class="${lb===w?'on':''}"${pressed(lb===w)} onclick="setRuckLoad(${w})">${w} lb</button>`).join('')}</div>`;
   /* The share of bodyweight is the number that decides whether a load is
      sensible, and it is the one nobody works out for themselves. Stated
      always, warned on past 20% — the usual guidance is to start near 10% and
@@ -19490,7 +19499,7 @@ function ruckBlockHTML(m,short){
   }
   h+=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">How you walked it</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${RUCK_PACES.map(x=>
-      `<button class="${m.rlvl===x.k?'on':''}" onclick="setRuckPace('${x.k}')">${x.label}</button>`).join('')}</div>
+      `<button class="${m.rlvl===x.k?'on':''}"${pressed(m.rlvl===x.k)} onclick="setRuckPace('${x.k}')">${x.label}</button>`).join('')}</div>
     <div class="tiny muted" style="margin-bottom:12px">${_ve(p.rpe)} · ${_ve(p.cue)}</div>
     <div class="tiny muted" style="margin-bottom:12px">Worth <b>${ruckStepsPerMin(m.rlvl)} steps</b> and <b>${Math.round(ruckKcalPerMin(m.rlvl))} kcal</b> a minute, at about <b>${r1(kmToShow(ruckKmPerMin(m.rlvl)*60))} ${distUnit()}/h</b>.
       ${/* Speed per HOUR, not distance per minute. The bike gets away with
@@ -19502,7 +19511,7 @@ function ruckBlockHTML(m,short){
     <div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log the ruck as</div>
     <div class="tiny muted" style="margin:-2px 0 8px">The plate and the pace both change what a minute is worth. <b>Calories are the input that cannot be thrown off by picking the wrong pace</b> — the same algebra as the bike: the MET cancels out of a calorie figure.</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${RUCK_UNITS.map(([k,l])=>
-      `<button class="${m.runit===k?'on':''}" onclick="setRuckUnit('${k}')">${l==='Distance'?distUnit().toUpperCase():l}</button>`).join('')}</div>
+      `<button class="${m.runit===k?'on':''}"${pressed(m.runit===k)} onclick="setRuckUnit('${k}')">${l==='Distance'?distUnit().toUpperCase():l}</button>`).join('')}</div>
     <div class="row" style="justify-content:space-between;align-items:flex-end;gap:10px">
       <div class="field" style="flex:1;margin:0"><label for="mv-ruck">${_ve(m.runit==='min'?'Minutes':(m.runit==='dist'?'Distance ('+distUnit()+')':'Calories'))}</label>
         <input id="mv-ruck" type="number" inputmode="decimal" min="0" step="${m.runit==='dist'?'0.1':'1'}" value="${shown||''}" placeholder="0" onchange="setRuckVal(this.value)"></div>
@@ -19519,13 +19528,13 @@ function ruckBlockHTML(m,short){
 function bikeBlockHTML(m,short,need,lvl,ride,shownVal){
   let h=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">How hard you rode</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${BIKE_LEVELS.map(b=>
-      `<button class="${m.lvl===b.k?'on':''}" onclick="setBikeLvl('${b.k}')">${b.label}</button>`).join('')}</div>
+      `<button class="${m.lvl===b.k?'on':''}"${pressed(m.lvl===b.k)} onclick="setBikeLvl('${b.k}')">${b.label}</button>`).join('')}</div>
     <div class="tiny muted" style="margin-bottom:12px">${_ve(lvl.rpe)} · ${_ve(lvl.cue)} · <b>${bikeStepsPerMin(m.lvl)} steps</b>, <b>${r1(kmToShow(bikeKmPerMin(m.lvl)))} ${distUnit()}</b> and <b>${Math.round(bikeKcalPerMin(m.lvl))} kcal</b> a minute</div>
     <button class="btn t-teal" style="width:100%;margin-bottom:12px" onclick="openMakeupTimer('bike')">⏱️ Time it — guided timer, logs itself</button>
     <div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log the ride as</div>
     <div class="tiny muted" style="margin:-2px 0 8px">Effort only changes what minutes are worth — distance and calories are already the work done. <b>Read calories off the bike and knock ~15% off it</b>: a turbo counts the calories you would have burned sitting still, this field does not.</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${BIKE_UNITS.map(([k,l])=>
-      `<button class="${m.unit===k?'on':''}" onclick="setBikeUnit('${k}')">${l==='Distance'?distUnit().toUpperCase():l}</button>`).join('')}</div>
+      `<button class="${m.unit===k?'on':''}"${pressed(m.unit===k)} onclick="setBikeUnit('${k}')">${l==='Distance'?distUnit().toUpperCase():l}</button>`).join('')}</div>
     <div class="row" style="justify-content:space-between;align-items:flex-end;gap:10px">
       <div class="field" style="flex:1;margin:0"><label for="mv-bike">${_ve(m.unit==='min'?'Minutes':(m.unit==='dist'?'Distance ('+distUnit()+')':'Calories'))}</label>
         <input id="mv-bike" type="number" inputmode="decimal" min="0" step="${m.unit==='dist'?'0.1':'1'}" value="${shownVal||''}" placeholder="0" onchange="setBikeVal(this.value)"></div>
@@ -19552,12 +19561,12 @@ function skipBlockHTML(m,short){
   const step=m.sunit==='min'?5:(m.sunit==='reps'?50:50);
   let h=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">How hard you went</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${SKIP_LEVELS.map(b=>
-      `<button class="${m.slvl===b.k?'on':''}" onclick="setSkipLvl('${b.k}')">${b.label}</button>`).join('')}</div>
+      `<button class="${m.slvl===b.k?'on':''}"${pressed(m.slvl===b.k)} onclick="setSkipLvl('${b.k}')">${b.label}</button>`).join('')}</div>
     <div class="tiny muted" style="margin-bottom:12px">${_ve(l.rpe)} · ${_ve(l.cue)} · <b>${skipStepsPerMin(m.slvl)} steps</b>, <b>${skipRepsPerMin(m.slvl)} skips</b> and <b>${Math.round(skipKcalPerMin(m.slvl))} kcal</b> a minute</div>
     <button class="btn t-teal" style="width:100%;margin-bottom:12px" onclick="openMakeupTimer('skip')">⏱️ Time it — guided timer, logs itself</button>
     <div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log it as</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${SKIP_UNITS.map(([k,lb])=>
-      `<button class="${m.sunit===k?'on':''}" onclick="setSkipUnit('${k}')">${lb}</button>`).join('')}</div>
+      `<button class="${m.sunit===k?'on':''}"${pressed(m.sunit===k)} onclick="setSkipUnit('${k}')">${lb}</button>`).join('')}</div>
     <div class="row" style="justify-content:space-between;align-items:flex-end;gap:10px">
       <div class="field" style="flex:1;margin:0"><label for="mv-skip">${_ve(m.sunit==='min'?'Minutes':(m.sunit==='reps'?'Skips':'Calories'))}</label>
         <input id="mv-skip" type="number" inputmode="decimal" min="0" step="1" value="${m.sval||''}" placeholder="0" onchange="setSkipVal(this.value)"></div>
@@ -19584,12 +19593,12 @@ function skipBlockHTML(m,short){
 function jackBlockHTML(m,short,jneed,jlvl,work){
   let h=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">How hard you went</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${JACK_LEVELS.map(b=>
-      `<button class="${m.jlvl===b.k?'on':''}" onclick="setJackLvl('${b.k}')">${b.label}</button>`).join('')}</div>
+      `<button class="${m.jlvl===b.k?'on':''}"${pressed(m.jlvl===b.k)} onclick="setJackLvl('${b.k}')">${b.label}</button>`).join('')}</div>
     <div class="tiny muted" style="margin-bottom:12px">${_ve(jlvl.rpe)} · ${_ve(jlvl.cue)} · <b>${jackStepsPerMin(m.jlvl)} steps</b>, <b>${jackRepsPerMin(m.jlvl)} reps</b> and <b>${Math.round(jackKcalPerMin(m.jlvl))} kcal</b> a minute</div>
     <button class="btn t-teal" style="width:100%;margin-bottom:12px" onclick="openMakeupTimer('jacks')">⏱️ Time it — guided timer, logs itself</button>
     <div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log it as</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${JACK_UNITS.map(([k,l])=>
-      `<button class="${m.junit===k?'on':''}" onclick="setJackUnit('${k}')">${l}</button>`).join('')}</div>
+      `<button class="${m.junit===k?'on':''}"${pressed(m.junit===k)} onclick="setJackUnit('${k}')">${l}</button>`).join('')}</div>
     <div class="row" style="justify-content:space-between;align-items:flex-end;gap:10px">
       <div class="field" style="flex:1;margin:0"><label for="mv-jack">${_ve(m.junit==='min'?'Minutes':(m.junit==='reps'?'Reps':'Calories'))}</label>
         <input id="mv-jack" type="number" inputmode="decimal" min="0" step="1" value="${m.jval||''}" placeholder="0" onchange="setJackVal(this.value)"></div>
@@ -20118,10 +20127,10 @@ function eatWindowHTML(){
     </div>`;
   if(w.on){
     h+=`<div class="daypick" style="flex-wrap:wrap;margin-top:12px">${WINDOWS.map(([hrs,name,desc])=>
-      `<button class="${w.hours===hrs?'on':''}" onclick="setEatWindow({hours:${hrs}})" title="${desc}">${name}</button>`).join('')}</div>`;
+      `<button class="${w.hours===hrs?'on':''}"${pressed(w.hours===hrs)} onclick="setEatWindow({hours:${hrs}})" title="${desc}">${name}</button>`).join('')}</div>`;
     h+=`<div class="field" style="margin-top:12px"><label>First meal at</label>
       <div class="daypick" style="flex-wrap:wrap">${[8,9,10,11,12,13,14].map(s=>
-        `<button class="${w.start===s?'on':''}" onclick="setEatWindow({start:${s}})">${fmtHour(s)}</button>`).join('')}</div></div>`;
+        `<button class="${w.start===s?'on':''}"${pressed(w.start===s)} onclick="setEatWindow({start:${s}})">${fmtHour(s)}</button>`).join('')}</div></div>`;
     if(st.on){
       h+= st.inWindow
         ? `<div class="note info" style="margin-top:10px">🍽️ <b>Window open</b> — ${Math.floor(st.minsLeft/60)}h ${st.minsLeft%60}m left. Closes at ${fmtHour(st.closeHour)}.</div>`
@@ -20935,7 +20944,11 @@ function currentMealPlan(){const p=STATE.nutrition.plan;
   if(p&&p.date===todayISO()&&p.meals&&p.meals.length&&_planStillValid(p))return p;
   return generateMealPlan();}
 function regenPlan(){generateMealPlan();haptic(8);renderFuel();}
-function toggleRecipe(id){const e=$('#rc-'+id);if(e)e.style.display=e.style.display==='none'?'block':'none';}
+/* The chevron turns and nothing said so. A collapsible whose open state is
+   visible and never announced is the same defect as a picker that looks chosen
+   and announces nothing — so the button carries aria-expanded and this keeps it
+   in step, rather than a second reader inferring it from the style. */
+function toggleRecipe(id){const e=$('#rc-'+id);if(!e)return;const open=e.style.display==='none';e.style.display=open?'block':'none';const b=$('#rcb-'+id);if(b)b.setAttribute('aria-expanded',open?'true':'false');}
 const MEAL_LABEL={breakfast:'breakfast',lunch:'lunch',dinner:'dinner',snack:'snack'};
 function mealGapHTML(missing){
   if(!missing||!missing.length)return '';
@@ -21024,7 +21037,7 @@ function _recipePlanHTML(anchor){
   const _mt=mealTimes();
   let h=`<div class="section-label" id="${_anch}">Today's meal plan · <span class="tiny muted">${_ve(dietLabel())} · ${recs.length} meal${recs.length===1?'':'s'}${wholeOnly()?' · <span style="color:var(--green);font-weight:800">🥦 whole foods</span>':''}</span></div><div class="card pad" style="padding-bottom:8px">`;
   h+=`<div class="row" style="justify-content:space-between;margin-bottom:6px"><div><b>${tot} kcal</b> · ${totP}g protein${kcalT?` <span class="tiny muted">of ${kcalT} target</span>`:''}</div><div class="btnrow" style="flex:0 0 auto;gap:6px"><button class="chip" onclick="openGrocery()">🛒 List</button><button class="chip" onclick="regenPlan()">↻ New plan</button></div></div>`;
-  recs.forEach((r,_i)=>{const _t=_mt&&_mt[_i];h+=`<button class="kv" style="width:100%;text-align:left;border:none;border-top:1px solid var(--line);background:none;padding:12px 2px;cursor:pointer" onclick="toggleRecipe('${r.id}')">
+  recs.forEach((r,_i)=>{const _t=_mt&&_mt[_i];h+=`<button class="kv" style="width:100%;text-align:left;border:none;border-top:1px solid var(--line);background:none;padding:12px 2px;cursor:pointer" id="rcb-${r.id}" aria-expanded="false" aria-controls="rc-${r.id}" onclick="toggleRecipe('${r.id}')">
     <span style="min-width:0"><span style="font-size:18px">${r.emoji}</span> <b>${_ve(r.name)}</b>${_t?` <span class="chip" style="font-size:11px;padding:2px 7px">${_t.label}</span>`:''}<div class="tiny muted" style="margin-top:2px;text-transform:capitalize">${r.type} · ${r.kcal} kcal · ${r.p}p ${r.c}c ${r.f}f</div></span>
     <span class="tiny muted" style="flex:0 0 auto">▾</span></button>
     <div id="rc-${r.id}" style="display:none;padding:2px 2px 12px">
@@ -21146,7 +21159,7 @@ function renderRef(){
   }
   h+=`<div class="section-label">Food list · <span class="tiny muted">tap a food to pick an amount</span></div>`;
   h+=`<div class="daypick" id="ref-cats" style="flex-wrap:wrap;margin:0 2px 10px">${FOOD_CATS.map(([k,l])=>
-    `<button class="${REF_CAT===k?'on':''}" onclick="setRefCat('${k}')">${l}</button>`).join('')}</div>`;
+    `<button class="${REF_CAT===k?'on':''}"${pressed(REF_CAT===k)} onclick="setRefCat('${k}')">${l}</button>`).join('')}</div>`;
   /* Filtered, not annotated. This tab used to show the whole list and say
      nothing, and silence on a food list reads as "checked and safe". */
   const rows=FOODS.map((f,i)=>[f,i]).filter(([f])=>foodOk(f)&&(REF_CAT==='all'||f[4]===REF_CAT));
@@ -21339,7 +21352,7 @@ function renderFuel(){
   }
   // goal toggle
   h+=`<div class="section-label">My goal</div><div class="daypick goalpick" style="margin:0 2px 14px">
-    ${GOALS.map(([g,l])=>`<button class="${n.goal===g?'on':''}" onclick="setNutGoal('${g}')">${l}</button>`).join('')}</div>
+    ${GOALS.map(([g,l])=>`<button class="${n.goal===g?'on':''}"${pressed(n.goal===g)} onclick="setNutGoal('${g}')">${l}</button>`).join('')}</div>
     <div class="tiny muted" style="margin:-8px 2px 14px">${GOAL_NOTE[n.goal]||''}</div>`;
   h+=dietBlockHTML();
   // daily targets
@@ -21853,7 +21866,7 @@ function openTDEE(){
   openSheet(`
     <h3>Your calorie target</h3>
     <div class="field"><label>Sex (for the formula)</label>
-      <div class="daypick"><button data-sx="male" class="${n.sex==='male'?'on':''}" onclick="tdeeSex('male',this)">Male</button><button data-sx="female" class="${n.sex==='female'?'on':''}" onclick="tdeeSex('female',this)">Female</button></div></div>
+      <div class="daypick"><button data-sx="male" class="${n.sex==='male'?'on':''}"${pressed(n.sex==='male')} onclick="tdeeSex('male',this)">Male</button><button data-sx="female" class="${n.sex==='female'?'on':''}"${pressed(n.sex==='female')} onclick="tdeeSex('female',this)">Female</button></div></div>
     <div class="field"><label for="td-age">Age</label><input id="td-age" type="number" inputmode="numeric" value="${n.age||''}" placeholder="e.g. 35"></div>
     <div class="field"><label for="td-ht">Height (${imp?'in':'cm'})</label><input id="td-ht" type="number" inputmode="decimal" value="${n.heightCm?(imp?(n.heightCm/2.54).toFixed(0):n.heightCm):''}" placeholder="${imp?'e.g. 70':'e.g. 178'}"></div>
     <div class="field"><label for="td-wt">Weight (${imp?'lb':'kg'})</label><input id="td-wt" type="number" inputmode="decimal" value="${n.weightKg?(imp?(n.weightKg/0.453592).toFixed(0):n.weightKg):(latestWeightKg()?(imp?(latestWeightKg()/0.453592).toFixed(0):latestWeightKg().toFixed(0)):'')}" placeholder="${imp?'e.g. 185':'e.g. 84'}"></div>
@@ -22409,35 +22422,35 @@ function renderGuide(){
   h+=`<div class="section-label" id="settingsAnchor" style="scroll-margin-top:70px">Settings</div><div class="card pad">
     <div style="padding:2px 0 8px"><div class="tiny muted" style="margin-bottom:8px">Accent theme</div>${themeChipsHTML()}</div>
     <div class="divider" style="margin:8px 0"></div>
-    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Sound cues</span><button class="chip ${STATE.settings.sound?'on':''}" onclick="toggleSetting('sound')">${STATE.settings.sound?'On':'Off'}</button></div>
-    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Vibration</span><button class="chip ${STATE.settings.vibrate?'on':''}" onclick="toggleSetting('vibrate')">${STATE.settings.vibrate?'On':'Off'}</button></div>
-    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Workout reminders</span><button class="chip ${STATE.settings.reminderOn?'on':''}" onclick="toggleReminders()">${STATE.settings.reminderOn?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Sound cues</span><button class="chip ${STATE.settings.sound?'on':''}"${pressed(STATE.settings.sound)} onclick="toggleSetting('sound')">${STATE.settings.sound?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Vibration</span><button class="chip ${STATE.settings.vibrate?'on':''}"${pressed(STATE.settings.vibrate)} onclick="toggleSetting('vibrate')">${STATE.settings.vibrate?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Workout reminders</span><button class="chip ${STATE.settings.reminderOn?'on':''}"${pressed(STATE.settings.reminderOn)} onclick="toggleReminders()">${STATE.settings.reminderOn?'On':'Off'}</button></div>
     ${STATE.settings.reminderOn?`<div class="row" style="justify-content:space-between;padding:6px 0"><span class="sm muted">Remind me at</span><input type="time" value="${STATE.settings.reminderTime||'18:00'}" onchange="setReminderTime(this.value)" style="background:var(--card2);color:var(--ink);border:1.5px solid var(--line);border-radius:10px;padding:8px 10px;font-size:15px"></div>
     <div class="tiny muted" style="padding:2px 0 4px">Nudges you on your training days. Reminders appear when you open the app (a home-screen install makes them most reliable).</div>`:''}
-    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Saturday progress check-in <span class="tiny muted">· push + brief countdown</span></span><button class="chip ${STATE.settings.weeklyOn!==false?'on':''}" onclick="toggleWeekly()">${STATE.settings.weeklyOn!==false?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Saturday progress check-in <span class="tiny muted">· push + brief countdown</span></span><button class="chip ${STATE.settings.weeklyOn!==false?'on':''}"${pressed(STATE.settings.weeklyOn!==false)} onclick="toggleWeekly()">${STATE.settings.weeklyOn!==false?'On':'Off'}</button></div>
     <button class="btn ghost sm" style="width:100%;margin-top:2px" onclick="testReminderNotif()">🔔 Send a test notification</button>
     ${(n=>n?`<div class="note warn" style="margin:8px 0 4px">${n}</div>`:'')(notifBlockedNote())}
-    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Voice coach <span class="tiny muted">· deep</span></span><button class="chip ${STATE.settings.voice!==false?'on':''}" onclick="toggleSetting('voice')">${STATE.settings.voice!==false?'On':'Off'}</button></div>
-    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Say “continue” to start the next set <span class="tiny muted">· hands-free</span></span><button class="chip ${voiceCmdOn()?'on':''}" onclick="toggleVoiceCmd()" ${(voiceCmdSupported()||voiceCmdOn())?'':'aria-disabled="true"'}>${voiceCmdOn()?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Voice coach <span class="tiny muted">· deep</span></span><button class="chip ${STATE.settings.voice!==false?'on':''}"${pressed(STATE.settings.voice!==false)} onclick="toggleSetting('voice')">${STATE.settings.voice!==false?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Say “continue” to start the next set <span class="tiny muted">· hands-free</span></span><button class="chip ${voiceCmdOn()?'on':''}"${pressed(voiceCmdOn())} onclick="toggleVoiceCmd()" ${(voiceCmdSupported()||voiceCmdOn())?'':'aria-disabled="true"'}>${voiceCmdOn()?'On':'Off'}</button></div>
     <div class="tiny muted" style="padding:2px 0 6px">${_ve(voiceCmdNote()||'The microphone opens during rest — and while a timer is stuck — never during a set, and it only ever acts on that one word. The recognition runs on Google’s servers, so it needs a connection. It never stops, pauses or ends a session — that stays a deliberate tap.')}</div>
     <div style="padding:4px 0 2px">
       <div class="row" style="justify-content:space-between"><span class="tiny muted">Beep &amp; countdown volume</span><span class="tiny muted" id="cvLbl">${Math.round(cueVolPref()*100/CUE_VOL_DEFAULT)}%</span></div>
       <input type="range" aria-label="Beep and countdown volume" min="${CUE_VOL_MIN}" max="${CUE_VOL_MAX}" step="0.05" value="${cueVolPref()}" oninput="$('#cvLbl').textContent=Math.round(this.value*100/CUE_VOL_DEFAULT)+'%'" onchange="setCueVol(this.value);beep(920,.17,0.92)" style="width:100%">
       <div class="tiny muted" style="margin-bottom:4px">Plays a sample as you let go. The beat ducks under the cues that matter, so these stay audible over the music.</div>
     </div>
-    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Workout beat <span class="tiny muted">· hip-hop, auto-ducks for the coach</span></span><button class="chip ${STATE.settings.beat!==false?'on':''}" onclick="toggleSetting('beat')">${STATE.settings.beat!==false?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Workout beat <span class="tiny muted">· hip-hop, auto-ducks for the coach</span></span><button class="chip ${STATE.settings.beat!==false?'on':''}"${pressed(STATE.settings.beat!==false)} onclick="toggleSetting('beat')">${STATE.settings.beat!==false?'On':'Off'}</button></div>
     ${STATE.settings.beat!==false?`<div style="padding:4px 0 2px">
       <div class="row" style="justify-content:space-between"><span class="tiny muted">Beat volume</span><span class="tiny muted" id="bvLbl">${Math.round(beatVolPref()*100)}%</span></div>
       <input type="range" aria-label="Beat volume" min="${BEAT_VOL_MIN}" max="${BEAT_VOL_MAX}" step="0.05" value="${beatVolPref()}" oninput="$('#bvLbl').textContent=Math.round(this.value*100)+'%'" onchange="setBeatVol(this.value)" style="width:100%">
       <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">Beat tempo</span><span class="tiny muted" id="beatTempoLbl">${beatTempoPref()} BPM</span></div>
       <input type="range" aria-label="Beat tempo in beats per minute" min="60" max="110" step="2" value="${beatTempoPref()}" oninput="$('#beatTempoLbl').textContent=this.value+' BPM'" onchange="setBeatTempo(this.value)" style="width:100%">
       <div class="btnrow" style="gap:6px;margin-top:6px">${[[70,'😌 Chill 70'],[78,'🎧 Classic 78'],[92,'🔥 Hype 92']].map(([bpm,label])=>
-        `<button class="chip ${beatTempoPref()===bpm?'on':''}" onclick="setBeatTempo(${bpm})">${label}</button>`).join('')}</div>
+        `<button class="chip ${beatTempoPref()===bpm?'on':''}"${pressed(beatTempoPref()===bpm)} onclick="setBeatTempo(${bpm})">${label}</button>`).join('')}</div>
       <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">The beat plays during timers, guided reps, warm-up &amp; cool-down.</span><button class="chip" onclick="beatPreview()">▶ Preview</button></div>
     </div>`:''}
-    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Deload week <span class="tiny muted">· lighter sets &amp; targets to recover</span></span><button class="chip ${deloadOn()?'on':''}" onclick="toggleDeload()">${deloadOn()?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Deload week <span class="tiny muted">· lighter sets &amp; targets to recover</span></span><button class="chip ${deloadOn()?'on':''}"${pressed(deloadOn())} onclick="toggleDeload()">${deloadOn()?'On':'Off'}</button></div>
     <div style="padding:6px 0 2px"><div class="tiny muted" style="margin-bottom:6px">Work around an injury <span style="opacity:.7">· auto-swaps risky moves</span></div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px">${JOINTS.map(([k,l])=>`<button class="chip ${((STATE.profile.limitations||[]).includes(k))?'on':''}" onclick="toggleLimitation('${k}')">${l}</button>`).join('')}</div></div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${JOINTS.map(([k,l])=>`<button class="chip ${((STATE.profile.limitations||[]).includes(k))?'on':''}"${pressed(((STATE.profile.limitations||[]).includes(k)))} onclick="toggleLimitation('${k}')">${l}</button>`).join('')}</div></div>
     <div style="padding:6px 0 2px"><div class="row" style="justify-content:space-between;margin-bottom:6px"><span class="tiny muted">AI food photo <span style="opacity:.7">· 📷 Snap → calories, via Google Gemini (free)</span></span>${STATE.settings.foodAiKey?`<button class="chip" onclick="clearFoodAiKey()">Clear key</button>`:''}</div>
       <input type="password" aria-label="Google Gemini API key" value="" onchange="if(this.value.trim())setFoodAiKey(this.value)" placeholder="${STATE.settings.foodAiKey?'🔒 Saved · type to replace':'Google Gemini API key'}" style="width:100%;padding:10px;border-radius:10px;background:var(--card2);color:var(--ink);border:1px solid var(--line)">
       <div class="tiny muted" style="margin-top:5px">Get a <b>free</b> key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="display:inline-block;padding:8px 0">aistudio.google.com/apikey</a> — no billing. Stays only on this phone. Estimates are approximate — always confirm.</div>
@@ -22451,7 +22464,7 @@ function renderGuide(){
       <div class="row" style="justify-content:space-between;padding:4px 0"><span class="muted sm">Which voices is this phone using?</span><button class="chip" onclick="runVoiceCheck()">🔎 Voice check</button></div>
     </div>
     <div class="divider" style="margin:10px 0"></div>
-    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Premium AI voices <span class="tiny muted">· online · Azure neural</span></span><button class="chip ${STATE.settings.neuralOn?'on':''}" onclick="toggleNeural()">${STATE.settings.neuralOn?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Premium AI voices <span class="tiny muted">· online · Azure neural</span></span><button class="chip ${STATE.settings.neuralOn?'on':''}"${pressed(STATE.settings.neuralOn)} onclick="toggleNeural()">${STATE.settings.neuralOn?'On':'Off'}</button></div>
     ${STATE.settings.neuralOn?`<div style="padding:2px 0 2px">
       <div class="tiny muted" style="margin-bottom:6px">Genuinely neural voices — each coach gets a hand-picked Azure voice, with shouting/intense delivery on the hardcore coaches. Your key stays only on this phone; offline it automatically falls back to the device voices.</div>
       <label class="tiny muted" style="display:block;margin-bottom:3px">Azure Speech key</label>
@@ -22489,7 +22502,7 @@ function renderGuide(){
     <div style="padding:8px 0 2px">
       <div class="tiny muted" style="margin-bottom:6px">Voice tone</div>
       <div class="daypick" id="voiceTone" style="flex-wrap:wrap">${VOICE_TONES.map(([k,label])=>
-        `<button class="${voiceToneKey()===k?'on':''}" onclick="setVoiceTone('${k}')">${label}</button>`).join('')}</div>
+        `<button class="${voiceToneKey()===k?'on':''}"${pressed(voiceToneKey()===k)} onclick="setVoiceTone('${k}')">${label}</button>`).join('')}</div>
       <div class="tiny muted" style="margin-top:6px">${_ve(voiceTone()[2])}. Plays a sample when you pick one. Each coach keeps their own character — this moves the whole set up or down.</div>
       ${voicePitchPref()!==null?`<div class="tiny muted" style="margin-top:6px">Fine-tuned to <b>${voicePitchPref().toFixed(2)}</b>, which overrides the tone. Pick a tone above to go back to automatic.</div>`:''}
     </div>
@@ -22509,7 +22522,7 @@ function renderGuide(){
     </div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span class="muted sm">Hear a sample</span><button class="chip" onclick="testVoice()">▶ Test voice</button></div>
     <div class="divider" style="margin:10px 0"></div>
-    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Motivator <span class="tiny muted">· hype during sets</span></span><button class="chip ${STATE.settings.hype!==false?'on':''}" onclick="toggleSetting('hype')">${STATE.settings.hype!==false?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Motivator <span class="tiny muted">· hype during sets</span></span><button class="chip ${STATE.settings.hype!==false?'on':''}"${pressed(STATE.settings.hype!==false)} onclick="toggleSetting('hype')">${STATE.settings.hype!==false?'On':'Off'}</button></div>
     <div style="padding:6px 0 2px"><div class="tiny muted" style="margin-bottom:5px">Coach persona</div>
       <select aria-label="Coach persona" onchange="setPersona(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px">${personaOptionsHTML()}</select>
       <div class="row" style="justify-content:space-between;margin-top:6px"><span class="tiny muted"><b>Auto</b> rotates a random coach each exercise so the voice keeps changing — or pick one of the ${COACHES.length} (Drill Sergeant, Marine, Ultra, Viking, Cheer, A.I. Trainer, and more). They push you <b>during</b> the exercise, not just at the end.</span></div>
@@ -22518,9 +22531,9 @@ function renderGuide(){
     <div class="divider" style="margin:10px 0"></div>
     <div style="padding:2px 0"><div class="tiny muted" style="margin-bottom:6px">Equipment you have <span style="opacity:.7">· unlocks the Weights session</span></div>
       <div class="daypick" id="set-gear" style="flex-wrap:wrap">
-        ${''}${GEAR_OPTS.map(([k,l])=>`<button class="${(STATE.profile.gear||[]).includes(k)?'on':''}" onclick="toggleGear('${k}')">${l}</button>`).join('')}
+        ${''}${GEAR_OPTS.map(([k,l])=>`<button class="${(STATE.profile.gear||[]).includes(k)?'on':''}"${pressed((STATE.profile.gear||[]).includes(k))} onclick="toggleGear('${k}')">${l}</button>`).join('')}
         <div style="margin-top:12px"></div>
-        <button class="${STATE.profile.tightSpace?'on':''}" onclick="toggleTightSpace()">🏠 Tight space</button>
+        <button class="${STATE.profile.tightSpace?'on':''}"${pressed(STATE.profile.tightSpace)} onclick="toggleTightSpace()">🏠 Tight space</button>
         <div class="tiny muted" style="margin-top:8px">Handstand work needs a clear wall and about <b>6 ft / 2 m</b> of floor in front of it to walk up safely; the travelling moves need a room you can cross. Tight space swaps both out — you get the hardest floor presses instead, which load the shoulder the same way without needing a clear wall. Straight trade to know about: nothing on the floor fully replaces a handstand push-up, so the very top of the shoulder ladder is a step easier. Everything else is like for like.</div>
       </div></div>
     ${/* Diet and whole-foods moved to Fuel — they are about food. A pointer,
@@ -22755,9 +22768,9 @@ function dietBlockHTML(){
   return `<div class="section-label">How I eat</div><div class="card pad" style="margin-bottom:14px">
     <div class="tiny muted" style="margin-bottom:6px">Diet preference <span style="opacity:.7">· shapes your meal plans and every recipe you are offered</span></div>
     <div class="daypick" id="set-diet" style="flex-wrap:wrap">
-      ${DIET_OPTS.map(([k,l])=>`<button class="${(STATE.nutrition.diet||'omnivore')===k?'on':''}" onclick="setDiet('${k}')">${l}</button>`).join('')}
+      ${DIET_OPTS.map(([k,l])=>`<button class="${(STATE.nutrition.diet||'omnivore')===k?'on':''}"${pressed((STATE.nutrition.diet||'omnivore')===k)} onclick="setDiet('${k}')">${l}</button>`).join('')}
     </div>
-    <div class="row" style="justify-content:space-between;align-items:center;padding:12px 0 2px"><span>Whole foods only <span class="tiny muted">· 🥦 skip processed food and powders in meal plans</span></span><button class="chip ${wholeOnly()?'on':''}" onclick="toggleWholeFood()">${wholeOnly()?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;align-items:center;padding:12px 0 2px"><span>Whole foods only <span class="tiny muted">· 🥦 skip processed food and powders in meal plans</span></span><button class="chip ${wholeOnly()?'on':''}"${pressed(wholeOnly())} onclick="toggleWholeFood()">${wholeOnly()?'On':'Off'}</button></div>
   </div>`;
 }
 function repaintDiet(){

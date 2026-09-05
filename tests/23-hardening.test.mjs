@@ -13013,6 +13013,172 @@ export default async function () {
       f.txt.indexOf('March in Place') >= 0 && f.txt.indexOf('Deep Breathing') >= 0, f.txt.slice(0, 200));
   }
 
+  /* ---- v454 — the picker looked chosen and announced nothing -------------
+     v411 gave every control an accessible NAME and v413 gave the app a live
+     region to announce through. Neither asked what a control announces about
+     its own STATE.
+
+     The bottom nav has carried aria-current since it was written and go()
+     maintains it. Measured, nothing else in the app did: 32 rendered groups
+     where exactly one sibling button is visually marked and NOT ONE carried an
+     accessible state — the three sub-tab strips among them, plus the goal, the
+     diet, the cardio mode, the intensity, the unit, the theme, the coach tone,
+     the beat tempo, the strength metric, the prep path and the sex picker.
+
+     So a screen-reader athlete heard four buttons named Summary, Body,
+     Strength and Awards and could not tell which pane they were on, and heard
+     seven goal names with nothing to say which one their whole nutrition plan
+     was built from. One of a pair guarded and its twin not, 32 members wide. */
+  {
+    await seedAthlete(page);
+    const scanState = async lbl => await page.evaluate(l => {
+      const g = [];
+      [document.querySelector('.view.active'), document.querySelector('#sheet')]
+        .filter(Boolean).forEach(root => root.querySelectorAll('*').forEach(par => {
+          const kids = [...par.children].filter(c => c.tagName === 'BUTTON');
+          if (kids.length < 2) return;
+          const on = kids.filter(k => (k.className || '').split(/\s+/).indexOf('on') >= 0);
+          if (on.length !== 1) return;   // a single-select group, visually marked
+          const stated = kids.filter(k => k.hasAttribute('aria-pressed') ||
+            k.hasAttribute('aria-current') || k.hasAttribute('aria-selected'));
+          g.push({
+            where: l, n: kids.length, stated: stated.length,
+            press: kids.filter(k => k.hasAttribute('aria-pressed')).length,
+            curr: kids.filter(k => k.getAttribute('aria-current') === 'true').length,
+            trues: kids.filter(k => k.getAttribute('aria-pressed') === 'true' ||
+              k.getAttribute('aria-current') === 'true').length,
+            sample: kids.map(k => (k.innerText || '').trim().slice(0, 12)).slice(0, 3)
+          });
+        }));
+      return g;
+    }, lbl);
+
+    const groups = [];
+    for (const tab of ['today', 'program', 'progress', 'fuel', 'ref', 'guide']) {
+      await page.evaluate(x => go(x), tab);
+      groups.push(...await scanState(tab));
+    }
+    await page.evaluate(() => go('today'));
+    for (const pane of ['brief', 'warmup', 'workout', 'cooldown']) {
+      await page.evaluate(x => setTodayTab(x), pane);
+      groups.push(...await scanState('today/' + pane));
+    }
+    await page.evaluate(() => go('progress'));
+    for (const pane of ['summary', 'body', 'strength', 'awards']) {
+      await page.evaluate(x => setProgressTab(x), pane);
+      groups.push(...await scanState('progress/' + pane));
+    }
+    await page.evaluate(() => go('today'));
+    for (const sh of ['openMobility', 'openReadiness', 'openRuck', 'openSkipping', 'openForcePrep', 'openTDEE']) {
+      try { await page.evaluate(f => window[f](), sh); } catch (e) {}
+      groups.push(...await scanState('sheet/' + sh));
+      await page.evaluate(() => { try { closeSheet(); } catch (e) {} });
+      await page.waitForTimeout(150);
+    }
+
+    /* GUARD, BOTH WAYS, on a SYNTHETIC group rather than the real screens, so
+       it stays true whatever the app becomes: a marked group with no state must
+       BE reported, and one with state must NOT be — otherwise "zero stateless"
+       is a statement about the selector. */
+    const det = await page.evaluate(() => {
+      const mk = withState => {
+        const d = document.createElement('div');
+        d.innerHTML = '<button class="on">A</button><button>B</button>';
+        if (withState) { d.children[0].setAttribute('aria-pressed', 'true'); d.children[1].setAttribute('aria-pressed', 'false'); }
+        document.querySelector('.view.active').appendChild(d);
+        const kids = [...d.children];
+        const marked = kids.filter(k => (k.className || '').split(/\s+/).indexOf('on') >= 0).length === 1;
+        const stated = kids.filter(k => k.hasAttribute('aria-pressed')).length;
+        d.remove();
+        return { marked, stated, n: kids.length };
+      };
+      return { bare: mk(false), good: mk(true) };
+    });
+    t.ok('guard: a marked group with no accessible state is reported',
+      det.bare.marked && det.bare.stated === 0, JSON.stringify(det.bare));
+    t.ok('guard: and one that carries state is not',
+      det.good.marked && det.good.stated === det.good.n, JSON.stringify(det.good));
+    t.ok('guard: the sweep really walked the pickers', groups.length >= 20, String(groups.length));
+
+    const stateless = groups.filter(g => g.stated === 0);
+    t.eq('every visually-marked picker announces which option is chosen',
+      stateless.length, 0, JSON.stringify(stateless.slice(0, 8)));
+
+    /* FLOOR: a HALF-STATED aria-pressed group is exactly as silent about the
+       options it skipped as the whole group used to be, so every button in one
+       must carry it. An aria-current group is the opposite and the check has to
+       say so: absence IS "not current" there, which is how the bottom nav has
+       encoded it since it was written, so exactly one marked button is right
+       and writing aria-current="false" on the rest would be noise. */
+    const partial = groups.filter(g => g.press > 0 && g.press < g.n);
+    t.eq('every option of an aria-pressed group carries it, not only the chosen one',
+      partial.length, 0, JSON.stringify(partial.slice(0, 6)));
+    const mixed = groups.filter(g => g.press > 0 && g.curr > 0);
+    t.eq('and no group mixes the two encodings', mixed.length, 0, JSON.stringify(mixed.slice(0, 6)));
+
+    /* FLOOR: EXACTLY ONE reads true. A fix that marked every option chosen
+       satisfies both assertions above and tells the athlete nothing; one that
+       marked none satisfies them too. */
+    const wrongCount = groups.filter(g => g.trues !== 1);
+    t.eq('and exactly one of them reads as the chosen one',
+      wrongCount.length, 0, JSON.stringify(wrongCount.slice(0, 6)));
+
+    /* The three sub-tab strips are the sharpest case — the same control type as
+       the bottom nav, one level down, added by v312 and v314 and never given
+       the state the nav already had. They use aria-current, matching it. */
+    const strips = await page.evaluate(() => {
+      const o = {};
+      const read = sel => {
+        const b = [...document.querySelectorAll(sel)];
+        return { n: b.length, cur: b.filter(x => x.getAttribute('aria-current') === 'true').length };
+      };
+      go('today'); setTodayTab('workout'); o.today = read('#v-today .ttab');
+      go('progress'); setProgressTab('body'); o.progress = read('#v-progress .ttab');
+      go('ref'); o.ref = read('#v-ref .ttab');
+      o.nav = [...document.querySelectorAll('.nav button')].filter(x => x.hasAttribute('aria-current')).length;
+      go('today');
+      return o;
+    });
+    t.ok('guard: the bottom nav still marks the page it is on', strips.nav === 1, JSON.stringify(strips));
+    t.ok('the Today sub-tabs mark the pane, one of them', strips.today.n >= 4 && strips.today.cur === 1, JSON.stringify(strips.today));
+    t.ok('so do the Progress sub-tabs', strips.progress.n >= 4 && strips.progress.cur === 1, JSON.stringify(strips.progress));
+    t.ok('and the Reference sub-tabs', strips.ref.n >= 2 && strips.ref.cur === 1, JSON.stringify(strips.ref));
+  }
+
+  /* ---- and the one collapsible in the app (v454) ------------------------
+     The recipe rows on Reference open and close. The chevron turns and nothing
+     said so — the same defect as a picker that looks chosen and announces
+     nothing, on the one control in this app that expands. */
+  {
+    await page.evaluate(() => { REF_TAB = 'food'; go('ref'); });
+    await page.waitForTimeout(150);
+    const before = await page.evaluate(() => {
+      const b = [...document.querySelectorAll('#v-ref [id^="rcb-"]')];
+      return {
+        n: b.length,
+        expanded: b.map(x => x.getAttribute('aria-expanded')),
+        controls: b.map(x => !!document.getElementById(x.getAttribute('aria-controls') || '')),
+        firstId: b.length ? b[0].id : null
+      };
+    });
+    t.ok('guard: the meal plan really rendered its recipe rows', before.n >= 2, JSON.stringify(before));
+    t.ok('every recipe row starts closed and says so',
+      before.expanded.every(v => v === 'false'), JSON.stringify(before.expanded));
+    t.ok('and each names the panel it opens', before.controls.every(Boolean), JSON.stringify(before.controls));
+
+    const after = await page.evaluate(id => {
+      const b = document.getElementById(id); b.click();
+      const panel = document.getElementById(b.getAttribute('aria-controls'));
+      const open = { exp: b.getAttribute('aria-expanded'), shown: panel.style.display !== 'none' };
+      b.click();
+      return { open, shut: { exp: b.getAttribute('aria-expanded'), shown: panel.style.display !== 'none' } };
+    }, before.firstId);
+    t.ok('opening one announces that it opened', after.open.exp === 'true' && after.open.shown, JSON.stringify(after.open));
+    /* FLOOR: a value welded to "true" satisfies the assertion above and never
+       comes back — the state has to follow the panel in both directions. */
+    t.ok('and closing it announces that it closed', after.shut.exp === 'false' && !after.shut.shown, JSON.stringify(after.shut));
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
