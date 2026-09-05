@@ -17109,6 +17109,43 @@ with a flagged low back and reads the three rows off the sheet — 5 / 3 / 4 mov
 against the raw 10 / 6 / 6, pinned beside them as a guard so "shortened" cannot
 pass on the raw ones.
 
+## The verdict was removed and the evidence was left (v452)
+
+`toggleEx()` ticks a whole movement and fills every one of its sets. Unticking
+changed nothing but the flag, so the sets the tick had just written stayed
+marked. Measured on a real session — tick all five movements, then untick all
+five:
+
+| | |
+|---|---|
+| the header | **`0/5 exercises · 13/13 sets · 100%`** |
+| `sessionWork()` | setsDone **13 of 13** |
+| `commitSession()` | **`done:true, partial:false`** |
+
+A hundred per cent beside zero movements **on one line**, and a full session
+recorded for an athlete who had just cleared every one of them. That is the
+completion gate crediting work that was explicitly taken back — *a skipped
+session is not a completed one* — reached by the one control whose whole purpose
+is to say the work did not happen.
+
+**The check is a whole-movement control, so it round-trips**: what the tick
+wrote, the untick takes back. There is nothing finer to restore, because the
+tick had already overwritten any individual marks —
+`st.sets=Array.from({length:m.sets},()=>true)` is not a merge.
+
+After the fix the gate does its job: `commitSession()` refuses, the pointer does
+not move, and the header reads `0/13 · 0%`.
+
+**The floors are what stop it being a clear-everything.** Ticking still fills
+every set and still records the personal best; sets the athlete marked one at a
+time through `toggleSet()` are nobody's to clear, and two of three is still not
+a finished movement; and a render does not touch them either.
+
+**The personal best is deliberately left standing.** A PR only ever goes up and
+there is no history to restore it from, so unwriting one would need a stored
+field that travels in every backup to buy back a mis-tap. Recorded rather than
+fixed.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
