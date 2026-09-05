@@ -2948,8 +2948,10 @@ export default async function run() {
 
        The other four things hardReset() erases all live in storage the two tabs
        SHARE — the photo blobs, the pre-import snapshot, the cross-tab snapshot —
-       so the resetting tab clears those for everyone. This is the only one it
-       cannot, which is why it is the only gap.
+       so the resetting tab clears those for everyone. Per-tab memory is the one
+       kind it cannot reach. This block covers the two READS; the block below
+       covers the rest of that class, which this one first claimed did not
+       exist.
 
        Read the GLASS, not the variable: both surfaces render a row on sight. */
     /* SEED FIRST. The reset block above erased this origin, so a page booted
@@ -3028,6 +3030,117 @@ export default async function run() {
     t.ok('erasing everything in THIS tab clears its own parked food read',
       !sameTab.food, JSON.stringify(sameTab));
     t.ok('and its own parked activity read', !sameTab.act, JSON.stringify(sameTab));
+
+    /* THE CLASS, NOT THE TWO MEMBERS ABOVE. The block above fixed the two
+       parked image reads and said in as many words that they were the only
+       per-tab memory an erase could not reach. Three more survive, measured on
+       a freshly erased, un-onboarded app:
+
+         _custom      the builder still read "Your session · 3 moves"
+         _celebQ      "Achievement unlocked! First Rep — Complete your first
+                      workout" over an app with ZERO logged workouts, for a
+                      badge no longer in the cabinet
+         QUICK_ID     the Quick tab still showed the previous run, ticks and all
+
+       The badge queue is the sharpest, and it is reachable through v432's own
+       code: that version added closeSheet() to the cross-tab reset teardown,
+       and closeSheet() schedules flushCelebrations() 350 ms later — so on this
+       route the pop-up was already ON THE GLASS of the erased app, unprompted.
+
+       Every guard below proves the residue is genuinely visible before anything
+       asserts it is gone. "No pop-up" is otherwise satisfied by a queue that
+       never had anything in it. */
+    const S1 = await ctx.newPage(); await boot(S1); await seedAthlete(S1);
+    const S2 = await ctx.newPage(); await boot(S2); await seedAthlete(S2);
+    await S1.waitForTimeout(400);
+
+    /* THE SHEET STAYS OPEN, because that is the only state celebrateAchievements()
+       queues in — and it is the state the erase actually meets. */
+    const seedScratch = () => S1.evaluate(() => {
+      _custom = []; addCustom('pushup'); addCustom('squat'); addCustom('plank');
+      _celebQ = [];
+      celebrateAchievements([ACHIEVEMENTS[0]]);
+      QUICK_ID = QUICKIES[0].id; quickState = { done: { 0: true, 1: true } };
+      let quickText = '';
+      try { renderQuick(); quickText = document.querySelector('#v-quick').textContent || ''; } catch (e) {}
+      return { custom: _custom.length, celeb: _celebQ.length,
+               quickId: QUICK_ID, quickDone: Object.keys(quickState.done || {}).length,
+               quickShowsProgress: /2\/\d+\s*done/.test(quickText.replace(/\s+/g, ' ')) ||
+                                   /2\/\d+done/.test(quickText.replace(/\s+/g, '')) };
+    });
+
+    const scratch = await seedScratch();
+    t.eq('guard: the builder really is holding three moves', scratch.custom, 3, scratch);
+    t.eq('guard: a badge really is queued behind the open sheet', scratch.celeb, 1, scratch);
+    t.ok('guard: and the Quick tab really renders the marked rows',
+      scratch.quickShowsProgress, JSON.stringify(scratch));
+
+    /* FLOOR FIRST, before the erase un-onboards this tab. A half-built custom
+       session is the athlete's own work, so an ORDINARY foreign write must
+       leave every one of these where they are. */
+    await S2.evaluate(() => { STATE.progressPtr = 3; save(); });
+    await S1.waitForTimeout(800);
+    const scratchPlain = await S1.evaluate(() => ({
+      ptr: STATE.progressPtr, custom: _custom.length, celeb: _celebQ.length,
+      quickId: QUICK_ID, quickDone: Object.keys(quickState.done || {}).length }));
+    t.eq('FLOOR: an ordinary foreign write really was adopted', scratchPlain.ptr, 3, scratchPlain);
+    t.eq('FLOOR: and it leaves the half-built custom session alone', scratchPlain.custom, 3, scratchPlain);
+    t.eq('FLOOR: and the queued badge', scratchPlain.celeb, 1, scratchPlain);
+    t.ok('FLOOR: and the Quick workout in progress',
+      scratchPlain.quickId && scratchPlain.quickDone === 2, JSON.stringify(scratchPlain));
+
+    await S2.evaluate(() => { window.confirm = () => true; hardReset(); });
+    await S1.waitForTimeout(1200);
+    const scratchErased = await S1.evaluate(() => {
+      const R = { onboarded: !!STATE.onboarded, custom: _custom.length,
+                  celeb: _celebQ.length, quickId: QUICK_ID,
+                  quickDone: Object.keys(quickState.done || {}).length };
+      /* READ THE GLASS, not only the variables: a pop-up already painted is the
+         defect, and the builder renders _custom on sight. */
+      R.popped = /Achievement unlocked/.test(document.querySelector('#sheet').textContent || '');
+      try { openBuilder(); } catch (e) {}
+      R.builderShowsSession = /Your session/.test(document.querySelector('#sheet').textContent || '');
+      try { closeSheet(); } catch (e) {}
+      try { renderQuick(); } catch (e) {}
+      R.quickText = (document.querySelector('#v-quick').textContent || '').slice(0, 80);
+      return R;
+    });
+    await S1.close(); await S2.close();
+
+    t.eq('guard: the erase really was adopted here', scratchErased.onboarded, false, scratchErased);
+    t.eq('a reset in another tab clears the half-built custom session', scratchErased.custom, 0, scratchErased);
+    t.ok('so the builder does not offer moves from the run that was erased',
+      !scratchErased.builderShowsSession, JSON.stringify(scratchErased));
+    t.eq('and the queued badge pop-up', scratchErased.celeb, 0, scratchErased);
+    t.ok('so nothing congratulates the athlete for a workout that was just erased',
+      !scratchErased.popped, JSON.stringify(scratchErased));
+    t.ok('and the Quick workout in progress goes with them',
+      !scratchErased.quickId && scratchErased.quickDone === 0, JSON.stringify(scratchErased));
+
+    /* AND THE SAME-TAB DOOR, which the block above cannot speak for: a reset
+       taken HERE never goes near the storage listener, so hardReset()'s own
+       call is the only thing standing there. Two doors, two checks. */
+    const S3 = await ctx.newPage(); await boot(S3); await seedAthlete(S3);
+    const scratchSame = await S3.evaluate(() => {
+      _custom = []; addCustom('pushup'); addCustom('squat');
+      _celebQ = []; celebrateAchievements([ACHIEVEMENTS[0]]);
+      QUICK_ID = QUICKIES[0].id; quickState = { done: { 0: true } };
+      const before = { custom: _custom.length, celeb: _celebQ.length, quickId: QUICK_ID };
+      window.confirm = () => true;
+      hardReset();
+      return { before, custom: _custom.length, celeb: _celebQ.length,
+               quickId: QUICK_ID, quickDone: Object.keys(quickState.done || {}).length,
+               onboarded: !!STATE.onboarded };
+    });
+    await S3.close();
+    t.ok('guard: the same-tab case really did seed all three first',
+      scratchSame.before.custom === 2 && scratchSame.before.celeb === 1 && !!scratchSame.before.quickId,
+      JSON.stringify(scratchSame));
+    t.eq('guard: and the erase really ran in that tab', scratchSame.onboarded, false, scratchSame);
+    t.eq('erasing everything in THIS tab clears its own custom session', scratchSame.custom, 0, scratchSame);
+    t.eq('and its own queued badge', scratchSame.celeb, 0, scratchSame);
+    t.ok('and its own Quick workout in progress',
+      !scratchSame.quickId && scratchSame.quickDone === 0, JSON.stringify(scratchSame));
 
     /* THE DISCRIMINATING CASE, and the block above cannot supply it. Closing a
        live session is not passive: playerTeardown() clears the resume point and

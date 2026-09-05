@@ -15554,6 +15554,70 @@ another tab logged a meal. That mutant is caught by exactly that check.
 `save()`, so adopting the newer state and appending the new record to it is
 correct. Only the erase is different.
 
+## Per-tab memory is the one thing an erase cannot reach (v433)
+
+Found by auditing v432 an hour after it shipped — the sixteenth round running
+where the best finding was in the round immediately before, and the eighth in a
+row where it was in my own new code.
+
+v411 taught `hardReset()` and the cross-tab reset to clear the two parked image
+reads, and wrote down why: `hardReset()` erases five things beyond `STATE`, and
+the photo blobs and both localStorage snapshots are **shared by origin**, so the
+tab that taps Reset clears those for everybody. Script-scope memory is per-tab —
+only the tab holding it can drop it.
+
+**Its own comment then claimed the parked reads were "the ONLY gap". Three more
+survive**, measured on a freshly erased, un-onboarded app:
+
+| survives | what the athlete sees |
+|---|---|
+| `_custom` | the builder still reads ***"Your session · 3 moves"*** |
+| `_celebQ` | ***"Achievement unlocked! First Rep — Complete your first workout"*** over an app with **zero** logged workouts, for a badge no longer in the cabinet |
+| `QUICK_ID` / `quickState` | the Quick tab still shows the previous run, **2/6 done** |
+
+**The badge queue is the sharpest, and it is reachable through v432's own
+code.** That round added `closeSheet()` to the cross-tab reset teardown, and
+`closeSheet()` schedules `flushCelebrations()` 350 ms later — so on the
+cross-tab route the pop-up was **already on the glass** of the erased app,
+unprompted. Measured `celebPopped: true`, `logs: 0`, `onboarded: false`.
+
+`clearTabScratch()` is the one helper now, called from both erase paths, so a
+sixth piece of scratch is covered on the day it is written rather than on the
+day somebody remembers. **Fixing one instance is not fixing the class** — and
+this time the round that fixed the instance had written the wrong claim down
+beside it, which is what made it look closed.
+
+### What is NOT in the class, measured rather than assumed
+
+Every other script-scope `let` that could hold athlete work is reset by its own
+opener, so there is nothing to clear: `assessState` is rebuilt on line 1 of the
+battery, `_rdy` is emptied by both entry points, `_shotSeparate` by every save
+path, and `_pendingPose` is set at the moment the file picker opens and
+consumed on the file change. Padding those with a clear buys nothing — the v285
+call.
+
+**And `selfUpdate()` was checked and is a false alarm.** `_sessionLive()` names
+three surfaces and a hold test is not one of them, so a self-update reloading
+mid-hold would destroy a maximal effort. It cannot happen: `selfUpdate()` runs
+**once, 1,200 ms after boot**, and no hold test or baseline battery can be
+running by then. **Read the trigger before believing the guard is too narrow.**
+
+### The floors, and each over-eager twin fails one
+
+The clear only ever runs on an **erase**. An ordinary foreign write must leave
+all of it alone — a parked read is unsaved work the athlete has not been asked
+about, and a half-built custom session is theirs — so the floor drives a plain
+cross-tab write first and pins all three surviving.
+
+**Two doors, two checks**, which is the trap v421 recorded in this exact
+subsystem: a reset taken in THIS tab never goes near the storage listener, so
+`hardReset()`'s own call is the only thing standing there, and a check that only
+drives the cross-tab route lets that mutant walk. Both are driven.
+
+**And every guard proves the residue is visible before anything asserts it is
+gone.** "No pop-up on the glass" is otherwise satisfied by a queue that never
+had anything in it.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

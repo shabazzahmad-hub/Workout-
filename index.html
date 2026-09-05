@@ -1911,7 +1911,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='432';
+const APP_VERSION='433';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2207,7 +2207,7 @@ window.addEventListener('storage',async e=>{
         try{if(typeof stopAssessRest==='function')stopAssessRest();}catch(_){}
         try{if(typeof closeSheet==='function')closeSheet();}catch(_){}
       }finally{_adoptingReset=false;}
-      clearParkedReads();
+      clearTabScratch();
     }
     /* A LOST UPDATE, and before this it was silent. v404 made this tab adopt a
        foreign write, which is right when the other tab had already seen our
@@ -16349,7 +16349,35 @@ let _actRead=null;
    the resetting tab can only ever clear its own. Fixing the button and leaving
    the adopt is fixing one instance and not the class, so the rule lives here
    and both paths ask it. */
-function clearParkedReads(){try{_foodRead=null;_actRead=null;}catch(e){}}
+/* PER-TAB MEMORY IS THE ONE THING AN ERASE CANNOT REACH FROM ANOTHER TAB, and
+   v411 fixed two members of the class rather than the class. hardReset() clears
+   five things beyond STATE — the photo blobs, the pre-import snapshot and the
+   cross-tab snapshot are all shared by origin, so the tab that taps Reset
+   clears them for everybody. Script-scope memory is per-tab: it describes the
+   run that was just erased, and only the tab holding it can drop it.
+
+   Measured on a freshly erased, un-onboarded app, all four surviving:
+     - _foodRead / _actRead  a parked image read — unlogged food or movement
+     - _custom               the builder still read "Your session · 3 moves"
+     - _celebQ               "Achievement unlocked! First Rep — Complete your
+                             first workout" popped over an app with ZERO logged
+                             workouts, for a badge no longer in the cabinet
+     - QUICK_ID/quickState   the Quick tab still showed "2/6 done"
+
+   The badge queue is the sharpest of the four and it is reachable through this
+   version's own code: v432 added closeSheet() to the cross-tab reset teardown,
+   and closeSheet() schedules flushCelebrations() 350 ms later — so on the
+   cross-tab route the pop-up was already on the glass, unprompted, measured.
+
+   This only ever runs on an ERASE. An ordinary foreign write must leave every
+   one of these alone: a parked read is unsaved work the athlete has not been
+   asked about, and a half-built custom session is theirs. */
+function clearTabScratch(){
+  try{_foodRead=null;_actRead=null;}catch(e){}
+  try{_custom=[];}catch(e){}
+  try{_celebQ=[];}catch(e){}
+  try{QUICK_ID=null;quickState={done:{}};}catch(e){}
+}
 function activityScreenshot(){
   if(!foodAIReady()){toast('Add a free Gemini key in Settings ⚙️ to read a screenshot');return;}
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';
@@ -22303,11 +22331,11 @@ function hardReset(){
      not the same thing as the two live credential fields. */
   try{localStorage.removeItem(PREIMPORT_KEY);}catch(e){}
   try{localStorage.removeItem(CROSSTAB_KEY);}catch(e){}
-  /* A parked image read is unlogged food or movement the athlete has not saved
-     yet. It lives in memory rather than STATE, so clearing STATE leaves it on
-     the glass — a freshly-erased app still offering "read from your image" is
-     the same visible residue the photo blobs were. */
-  clearParkedReads();
+  /* Script-scope memory is per-tab and describes the run being erased, so
+     clearing STATE alone leaves it on the glass — a parked image read, a
+     half-built custom session, a queued badge pop-up, a Quick workout still
+     showing its ticks. See clearTabScratch(). */
+  clearTabScratch();
   /* API keys are a device credential, not athlete data — the key was typed once,
      into this browser, for this device, and never leaves it either way (the
      export path already strips it, see exportData()). Re-typing a Gemini or
