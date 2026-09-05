@@ -15744,6 +15744,71 @@ and missing any one of them reports a defect in code that is right.
 - **Every literal asset path in the markup exists on disk** — 231 of them,
   covering `src=` attributes and every `img`/`vid` field in `EX`.
 
+## Every overlay dismissal is the same dismissal (v436)
+
+v435 shared one teardown between the sheet's two doors. Asking the same
+question of the three FULL-SCREEN overlays found the class was six exits wide,
+and three of them — **all reached by a button the athlete taps** — were missing
+a guard their own sibling one function away already had.
+
+Measured, with a guard proving no shield was up first:
+
+| exit | reached by | `tapShield` | clears its markup |
+|---|---|---|---|
+| player finish (`playerFeel`) | button | yes | **no** |
+| **player ✕ (`playerTeardown`)** | ✕, Back | **no** | yes |
+| HIIT log buttons ×3 | button | yes | **no** |
+| **HIIT Close (`hiitTeardown`)** | button, Back | **no** | yes |
+| **benchmark ✕ (`opQuit`)** | ✕, Back | **no** | **no** |
+
+`tapShield` is what stops **a double-tap's second tap falling through to the UI
+beneath** — `closeSheet()`'s own comment says exactly that, and it is on the
+sheet, on the player's finish button and on all three HIIT log buttons. The
+three ✕/Close buttons, which are the ones an athlete taps to leave a session,
+had none.
+
+**And the markup.** `hiitTeardown()` cleared `#hiit` 400 ms after closing while
+the three log paths left **1,064 bytes** mounted, and `opQuit()` — which shares
+that same overlay — cleared nothing. That is the stale-id class this file has a
+standing rule about, and `closeSheet()`'s comment names it too.
+
+`hiitClose()` is the one closer for `#hiit` now. **What each caller keeps is
+what is genuinely its own**: the grinder stop record and the beat stop in
+`hiitTeardown()`, and the HISTORY step in the three buttons — which a pop must
+not take, the split `hiitQuit()` already had.
+
+### The floor is the deferred clear's own guard
+
+The clear runs 400 ms after the close, so it must not blank an overlay that has
+been **re-opened inside that window** — close a circuit, start another straight
+away. An over-eager clear that drops the *is it closed?* test satisfies every
+assertion above, so a floor drives exactly that sequence.
+
+### Two probe errors, both the same rule
+
+- **`startSpecialFormat('tabata')` opens nothing.** `tabata` is a `HIIT_FORMATS`
+  key and that function takes a `SPECIAL_FORMATS` one (`grip30`, `box3x3`…);
+  the entry point is `startHiit()`. The probe reported a 0-byte overlay and
+  every assertion below it passed on nothing.
+- **The benchmark first read as already shielded**, and it was `startOp()`'s
+  own `closeSheet()` 350 ms earlier still being up. Every case now settles for
+  900 ms and a guard pins that no shield was up before the exit under test.
+
+### And the upgrade an actual athlete is about to take, measured
+
+The athlete on this app is running **v396**. A rich v396 state — 40 logged
+sessions, personal records, measurements, a lean-recomp goal, a hand-set
+protein target, a flagged shoulder, a picked coach and theme — was built on the
+real v396 file and then loaded into the current build: **nothing lost, no
+spurious "we repaired your data" note, `validateData()` clean, all six tabs and
+all four Progress panes rendering with no `NaN`, `undefined` or `Invalid Date`,
+a real session building, and zero page errors.**
+
+One field did move and it was the seed: `gear:['bar','kb','ruck']` came back as
+`bar,ruck`, because the real key is `kettlebell` and v354's membership repair
+correctly dropped an illegal one. **Confirm the control's real shape before
+believing the result** — the eleventh time.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
