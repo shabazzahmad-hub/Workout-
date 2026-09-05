@@ -16771,6 +16771,12 @@ Still red, so still a catch — but red is not enough, it has to say what. The
 length guard now runs FIRST and nothing dereferences a row a mutant may have
 removed.
 
+**And the wizard's own door was never driven.** Suite 10 drove the HEIGHT
+message and nothing else, so the weight and age ones rested on a check that
+asked the predicate — the same gap the calorie sheet's escape came through. Both
+are driven now, and both mutants that give the wizard its own band back fail by
+name. Twenty-eight mutants across the round, all caught.
+
 **And one anchor appeared twice.** `if(!(w>0))return '';` is in two helpers, so
 the driver's `assert count == 1` turned a bad seed into a clean no-op rather
 than a half-applied run — the fifth time that rule has paid.
