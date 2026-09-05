@@ -16925,6 +16925,54 @@ pins the unit its own figures are in and gained an assertion that the two
 directions are never both spoken. **When a rule changes, the check is part of
 the change** — and the full suite is what caught it, one run before the push.
 
+## A duration written by hand beside the list that decides it (v449)
+
+v448 made four surfaces list the warm-up the athlete really gets. The SAME
+segment then printed a hand-written `~4 min` beside it, and so did two more
+screens. The flow's length depends entirely on the athlete, and measured it is
+never 4 minutes for three of the four states the app itself creates:
+
+| athlete | warm-up | cool-down | every screen said |
+|---|---|---|---|
+| no flags | **5 min** (297s) | 4 min (266s) | ~4 min |
+| limited mobility | **6 min** (365s) | **5 min** (326s) | ~4 min |
+| flagged low back | 5 min | **2 min** (121s) | ~4 min |
+
+**The low-back athlete is the sharpest, and it is the direction nobody
+expects.** `safeFlow()` strips four of the seven stretches, so the app promises
+four minutes of recovery and delivers two — on the athlete it shortened the
+flow FOR.
+
+**The app already knew.** The mobility picker computed a figure; it just did so
+with its own `round(secs/60)+1`, which is a fourth statement of one fact. Same
+class as v397's block length: a number written by hand beside the constant that
+holds it.
+
+**THE REPOSITIONING WINDOWS COUNT.** They are time on the mat and `runFlow()`
+spends them (v349: 4 seconds for no position change, 7 for a real one), so a
+`flowMins()` that summed only the holds says **4** where the athlete spends
+**5**. They lived as a closure-local pair inside `runFlow()`; the rule is
+hoisted rather than copied, and `transSecs()` asks it.
+
+**Never zero for a flow that has moves in it.** `~0 min` reads as broken, and a
+one-move flow really is about a minute once you have got into position.
+
+**The floor is that the picker's three figures do not move** — 6 / 4 / 4 before
+and after. It was already deriving, so a refactor that changed what it prints
+is a change with no defect behind it, which is the v386 call.
+
+**And the rule has to be ASKED FOR, not merely declared.** The picker's numbers
+are identical either way, so no rendered check can see a consumer that kept its
+own arithmetic — only the source can, and only the source can see the
+reposition constants restated back inside `runFlow()`. That is v322's
+`WEIGHTS_PATTERNS` lesson, and it is the assertion that catches two of the
+mutants and nothing else does.
+
+**Three guards, because three athletes handed identical flows satisfy every
+assertion below**: limited mobility really lengthens the warm-up, a flagged low
+back really shortens the cool-down to three moves, and the transitions really
+are part of the time (297s of mat time against 260s of holding).
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

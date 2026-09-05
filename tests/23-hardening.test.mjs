@@ -12493,6 +12493,118 @@ export default async function () {
     t.ok('and cups are still the counter on both', /13 cups/.test(r.sayM) && /13 cups/.test(r.sayI), r);
   }
 
+  /* ---------- v449: a duration written by hand beside the list that decides it
+     Three surfaces printed "~4 min" for a flow whose length depends entirely on
+     the athlete. Measured: an unflagged warm-up is 5 minutes, limited mobility
+     makes it 6 because the holds run 25% longer, and a flagged low back gets a
+     2-minute cool-down because four of the seven stretches are stripped. The
+     mobility picker was the only site that computed anything and it did so with
+     its own round(secs/60)+1 — a fourth statement of one fact.
+
+     The repositioning windows count: they are time on the mat, and runFlow()
+     spends them. They lived as a closure-local pair inside runFlow(), so the
+     rule is hoisted rather than copied.
+
+     Pin the VALUES, not the app's own expression — a mutant that changes
+     flowMins() must not be able to move both sides of the comparison. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      const state = (mob, lims) => { STATE.profile.mobility = mob; STATE.profile.limitations = lims; };
+      const read = () => {
+        const wf = warmupFlow(), cf = cooldownFlow(), segs = briefSegments() || [];
+        const title = re => (segs.filter(s => re.test(s.title))[0] || {}).title || '';
+        return { wMin: flowMins(wf), cMin: flowMins(cf), wMoves: wf.length, cMoves: cf.length,
+                 briefW: title(/Warm-up/), briefC: title(/Cool-down/) };
+      };
+      state('ok', []);       o.clean   = read();
+      state('low', []);      o.lowmob  = read();
+      state('ok', ['lowback']); o.lowback = read();
+      /* The rest-day sheet's own button, driven rather than read off the helper.
+         It must move with the flow like everything else. */
+      const restBtn = () => { openRestSheet();
+        const m = (document.querySelector('#sheet').innerText.match(/Guided cool-down[^\n]*?\(~(\d+) min\)/) || [])[1];
+        closeSheet(); return m ? +m : null; };
+      o.restLowback = restBtn();
+      state('ok', []);
+      o.restClean = restBtn();
+      /* The picker's three figures must NOT move. It was already deriving; a
+         refactor that changed what it prints is a change with no defect behind
+         it, which is the v386 call. */
+      openMobility();
+      o.picker = (document.querySelector('#sheet').innerText.match(/\d+ moves · ~\d+ min/g) || []);
+      closeSheet();
+      /* "~0 min" reads as broken, and a one-move flow really is about a minute
+         once you have got into position. TWENTY seconds, not forty: at 40 the
+         rounding already gives 1, so Math.max(1, ...) could not fire and the
+         guard would be tested by a case that cannot reach it. No real flow is
+         this short — safeFlow() only removes and every move is 30s or more —
+         so the contract is exercised DIRECTLY, the way the hardness-band and
+         anchor-unit guards are. */
+      o.zero  = flowMins([]);
+      o.one   = flowMins([{ n: 'x', secs: 20, pos: 'stand' }]);
+      o.oneRaw = Math.round(flowSecs([{ n: 'x', secs: 20, pos: 'stand' }]) / 60);
+      /* Transitions are counted: 8 warm-up moves are 260 seconds of holding and
+         297 seconds on the mat. A flowMins() that ignored them says 4, not 5. */
+      o.cleanSecs = flowSecs(warmupFlow());
+      o.holdsOnly = warmupFlow().reduce((a, x) => a + x.secs, 0);
+      return o;
+    });
+
+    /* Guards. Without these the whole block is satisfied by three athletes who
+       are handed identical flows. */
+    t.ok('guard: limited mobility really lengthens the warm-up',
+      r.lowmob.wMin > r.clean.wMin, r);
+    t.ok('guard: a flagged low back really shortens the cool-down',
+      r.lowback.cMoves < r.clean.cMoves && r.lowback.cMoves === 3, r);
+    t.ok('guard: the repositioning windows are a real part of the time',
+      r.cleanSecs > r.holdsOnly && r.holdsOnly === 260, r);
+
+    t.eq('an unflagged athlete is told the 5 minutes their warm-up takes', r.clean.wMin, 5, r);
+    t.eq('and the 4 minutes their cool-down takes', r.clean.cMin, 4, r);
+    t.eq('the brief prints the figure it derived, not a hardcoded one',
+      r.clean.briefW, 'Warm-up · ~5 min', r);
+    t.eq('and the same for the cool-down', r.clean.briefC, 'Cool-down · ~4 min', r);
+
+    t.eq('limited mobility is told the LONGER warm-up it actually gets', r.lowmob.wMin, 6, r);
+    t.eq('and the longer cool-down', r.lowmob.cMin, 5, r);
+    t.eq('and the brief says so too', r.lowmob.briefW, 'Warm-up · ~6 min', r);
+
+    t.eq('a flagged low back is told the SHORTER cool-down it actually gets', r.lowback.cMin, 2, r);
+    t.eq('and the brief says so too', r.lowback.briefC, 'Cool-down · ~2 min', r);
+
+    t.eq("the rest day sheet's button derives it too", r.restClean, 4, r);
+    t.eq('and moves with the flow rather than restating four', r.restLowback, 2, r);
+
+    t.eq('FLOOR: the mobility picker prints exactly what it printed before',
+      r.picker, ['10 moves · ~6 min', '6 moves · ~4 min', '6 moves · ~4 min'], r);
+    t.eq('FLOOR: a flow with nothing in it claims no minutes', r.zero, 0, r);
+    t.eq('guard: without the floor that short flow really would round to zero', r.oneRaw, 0, r);
+    t.eq('FLOOR: a one-move flow is never reported as zero minutes', r.one, 1, r);
+
+    /* The rule has to be ASKED FOR, not merely declared. The picker's three
+       figures are identical either way, so only the source can see a consumer
+       that kept its own arithmetic — and only the source can see the
+       reposition constants restated back inside runFlow(). */
+    const src = await page.evaluate(() => {
+      const scripts = [...document.querySelectorAll('script:not([src])')];
+      const big = scripts.map(s => s.textContent).sort((a, b) => b.length - a.length)[0] || '';
+      const bare = big.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      return {
+        len: bare.length,
+        transDecl: (bare.match(/TRANS_SAME\s*=\s*4\s*,\s*TRANS_MOVE\s*=\s*7/g) || []).length,
+        pickerAsks: /moves · ~\$\{flowMins\(/.test(bare),
+        pickerOwnMath: /Math\.round\(f\.reduce\(/.test(bare),
+        minsDecl: (bare.match(/function flowMins\(/g) || []).length,
+      };
+    });
+    t.ok('guard: the scan read the app, not a two-character stub', src.len > 400000, src);
+    t.eq('the reposition windows are stated exactly once', src.transDecl, 1, src);
+    t.eq('and so is the duration rule', src.minsDecl, 1, src);
+    t.ok('the mobility picker ASKS the helper', src.pickerAsks, src);
+    t.ok('and no longer carries its own arithmetic', !src.pickerOwnMath, src);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

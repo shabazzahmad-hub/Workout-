@@ -1966,7 +1966,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='448';
+const APP_VERSION='449';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -11204,7 +11204,7 @@ function briefSegments(){
      make it five. It is derived now, and says nothing at all when the flow is
      four items or fewer — which a heavily flagged athlete's really can be. */
   const _wf=warmupFlow(), _wfRest=Math.max(0,_wf.length-4);
-  segs.push({icon:'🌡️',title:'Warm-up · ~4 min',
+  segs.push({icon:'🌡️',title:`Warm-up · ~${flowMins(_wf)} min`,
     say:`We open with a warm-up: ${_briefList(_wf.slice(0,4).map(w=>w.n))}${_wfRest?`, and ${_wfRest} more`:''}. Prime the deep core and raise the heart rate — do not skip it.`});
   // 5 — main work
   const mains=sess.main.map(m=>`${(EX[m.exId]||{}).name}, ${m.sets} sets of ${_briefTarget(m)}`);
@@ -11219,7 +11219,7 @@ function briefSegments(){
      coach named a target the cool-down no longer had. It names the real
      stretches now. */
   const _cf=cooldownFlow(), _cfRest=Math.max(0,_cf.length-3);
-  segs.push({icon:'🧘',title:'Cool-down · ~4 min',
+  segs.push({icon:'🧘',title:`Cool-down · ~${flowMins(_cf)} min`,
     say:`Then cool down: ${_briefList(_cf.slice(0,3).map(c=>c.n))}${_cfRest?`, and ${_cfRest} more`:''}. A few minutes of recovery so you come back stronger tomorrow.`});
   }
   // 8 — fuel
@@ -11496,7 +11496,7 @@ function openRestSheet(){
       <li>Gentle mobility below — no hard training</li>
     </ul></div>
     <div style="height:10px"></div>
-    <button class="btn t-teal" style="margin-bottom:8px" onclick="closeSheet();runCooldown()">▶ Guided cool-down &amp; stretch (~4 min)</button>
+    <button class="btn t-teal" style="margin-bottom:8px" onclick="closeSheet();runCooldown()">▶ Guided cool-down &amp; stretch (~${flowMins(cooldownFlow())} min)</button>
     <button class="btn t-green" style="margin-bottom:8px" onclick="closeSheet();openMealPlan()">🍽️ Meal ideas</button>
     <button class="btn t-blue" style="margin-bottom:8px" onclick="closeSheet();go('fuel')">💧 Log water &amp; food</button>
     <button class="btn ${rested?'green':'primary'}" style="margin-bottom:8px" ${rested?'disabled':'onclick="startRestDay()"'}>${rested?'✓ Rest day logged':'Log today as a rest day'}</button>
@@ -13125,6 +13125,26 @@ function mobilityFlow(items){
 
    safeFlow() is applied here as well as inside runFlow(); it is a filter, so a
    second pass over its own output changes nothing. */
+/* THE REPOSITIONING WINDOWS ARE PART OF THE TIME ON THE MAT, so they are counted
+   here the way runFlow() spends them — and they live here rather than inside
+   runFlow() because a second copy of a rule is a second place for it to drift.
+   Three surfaces printed a hand-written "~4 min" beside the list that decides
+   it: measured, an unflagged athlete's warm-up is 5 minutes, limited mobility
+   makes it 6 (the holds run 25% longer) and a flagged low back gets a 2-minute
+   cool-down, because four of the seven stretches are stripped. The mobility
+   picker was the only site that computed anything, with its own
+   round(secs/60)+1 — a fourth statement of the same fact. */
+const TRANS_SAME=4, TRANS_MOVE=7;
+function transSecsFor(a,b){const p=a&&a.pos,q=b&&b.pos;return (p&&q&&p===q)?TRANS_SAME:TRANS_MOVE;}
+function flowSecs(flow){try{
+  if(!Array.isArray(flow)||!flow.length)return 0;
+  let t=0;
+  for(let i=0;i<flow.length;i++){t+=(+(flow[i]&&flow[i].secs)||0);if(i)t+=transSecsFor(flow[i-1],flow[i]);}
+  return t;
+}catch(e){return 0;}}
+/* Never zero for a flow that has moves in it — "~0 min" reads as broken, and a
+   one-move flow really is about a minute once you have got into position. */
+function flowMins(flow){const t=flowSecs(flow);return t?Math.max(1,Math.round(t/60)):0;}
 function warmupFlow(){try{return safeFlow(mobilityFlow(jointAwareWarmup(WARMUP_FLOW)));}catch(e){return WARMUP_FLOW;}}
 function cooldownFlow(){try{return safeFlow(mobilityFlow(COOLDOWN_FLOW));}catch(e){return COOLDOWN_FLOW;}}
 function runWarmup(){runFlow(warmupFlow(),'Warm-up','var(--fire)');}
@@ -13205,7 +13225,6 @@ function runFlow(items,title,color){
      three more. An UNKNOWN position on either side reads as a change and gets
      the longer window: over-waiting costs four seconds, under-waiting means
      starting the next move on the floor while still standing. */
-  const TRANS_SAME=4, TRANS_MOVE=7;
   const C=2*Math.PI*100;
   openSheet(flowHTML(title,items.length,color||'var(--fire)'));
   /* The flow is as hands-free as the player and HIIT — it talks you through
@@ -13243,10 +13262,7 @@ function runFlow(items,title,color){
      up to standing" tells him what to do without looking at the phone. */
   const POS_MOVE={stand:'Come up to standing',back:'Lie on your back',
                   front:'Lie face-down',fours:'Onto your hands and knees'};
-  function transSecs(from,to){
-    const a=from&&from.pos,b=to&&to.pos;
-    return (a&&b&&a===b)?TRANS_SAME:TRANS_MOVE;
-  }
+  function transSecs(from,to){return transSecsFor(from,to);}
   // The "get into position" bridge before the NEXT move.
   function enterTransition(){
     const it=items[idx],prev=items[idx-1];
@@ -14748,7 +14764,7 @@ function openMobility(){
   openSheet(`<h3>🧘 Mobility &amp; stretch</h3>
     <p class="muted sm" style="margin:2px 0 12px">Guided mobility flows to loosen up and recover — run any day.</p>
     <div style="display:flex;flex-direction:column;gap:10px">
-      ${MOBILITY_FLOWS.map((m,i)=>{const f=safeFlow(m.flow);return `<button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="startMobility(${i})"><b style="font-size:15px">🧘 ${m.name}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${f.length} moves · ~${Math.round(f.reduce((a,x)=>a+x.secs,0)/60)+1} min</div></button>`;}).join('')}
+      ${MOBILITY_FLOWS.map((m,i)=>{const f=safeFlow(m.flow);return `<button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="startMobility(${i})"><b style="font-size:15px">🧘 ${m.name}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${f.length} moves · ~${flowMins(f)} min</div></button>`;}).join('')}
     </div>
     <div style="height:8px"></div><button class="btn ghost" onclick="openSpecial()">← Back</button>`);
 }
