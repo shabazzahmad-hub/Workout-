@@ -973,6 +973,87 @@ export default async function run() {
     t.ok('but it does once it is late by two of its own periods', rc.slowStalledLater, rc);
   }
 
+  /* ---------- A FINISHED TICK IS NOT A STALLED ONE ----------------------
+     v426 registered the benchmark-ops clock with the heartbeat so a reclaimed
+     tick could be rescued by name. tickStalled() asks only whether a surface
+     carries a tick function and an old lastTick — it cannot tell a reclaimed
+     tick from a finished one. Three of swFinal()'s four callers null their
+     surface on the very next line, which hid that; opFinish() keeps OP alive
+     for the Share / Done panel.
+
+     Measured before the fix, on a 12-minute benchmark: the record said 12:00,
+     the heartbeat re-armed opTick three seconds later, and the clock above the
+     panel climbed to 12:01, 12:02 and onward for ever. One screen, two times
+     for one effort, and a one-second interval running on a finished session.
+
+     Each case builds its own ops session. The guards come first: without them
+     "no rescue" is satisfied by a surface the heartbeat never watched at all. */
+  {
+    const op = await page.evaluate(async () => {
+      const R = {};
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+
+      /* GUARD + FLOOR: while the benchmark is RUNNING the rescue must work.
+         A fix that simply stopped watching OP satisfies every assertion below
+         and deletes the thing v426 exists for. */
+      startOp('op_forge'); opStart();
+      R.runWatched   = timedSurfaces().indexOf(OP) >= 0;
+      R.runHasTick   = typeof OP.tick === 'function';
+      /* A LIVE INTERVAL ID IS NOT EVIDENCE OF A LIVE INTERVAL: clearInterval
+         leaves the id behind, so `!!OP.iv` is truthy on a tick that will never
+         fire again — and a floor written that way passes on a heartbeat that
+         re-armed nothing. Compare the id instead. */
+      const ivBefore = OP.iv;
+      clearInterval(OP.iv);            /* the OS reclaims the tick */
+      OP.lastTick = monoNow() - 10000;
+      R.runStalled  = tickStalled(OP);
+      plGuardTick();
+      R.runRearmed  = !!OP.iv && OP.iv !== ivBefore;
+      opQuit();
+
+      /* The defect: finish, then leave the panel up. */
+      startOp('op_forge'); opStart();
+      OP.at = monoNow() - 720000;      /* twelve real minutes */
+      opFinish();
+      R.recorded   = (STATE.opsPR || {}).op_forge;
+      R.clockFace  = (document.querySelector('#opClock') || {}).textContent;
+      R.panel      = (document.querySelector('#opBtns') || {}).textContent || '';
+      R.ivCleared  = !OP.iv;
+      OP.lastTick  = monoNow() - 10000;
+      R.doneStalled = tickStalled(OP);
+      plGuardTick();
+      R.doneRearmed = !!OP.iv;
+      await wait(1300);
+      R.clockLater  = (document.querySelector('#opClock') || {}).textContent;
+      opQuit();
+
+      /* FLOOR: swFinal still reports the CLOCK, not the last painted number —
+         v425's requirement, which an over-eager teardown would destroy. */
+      startOp('op_forge'); opStart();
+      OP.at = monoNow() - 300000; OP.secs = 1;
+      R.finalReadsClock = swFinal(OP);
+      opQuit();
+      return R;
+    });
+
+    t.ok('guard: a RUNNING benchmark clock is watched by the heartbeat', op.runWatched, op);
+    t.ok('guard: and carries a tick it can be rescued by', op.runHasTick, op);
+    t.ok('guard: a reclaimed tick on it reads as stalled', op.runStalled, op);
+    t.ok('FLOOR: so the beat still rescues a running benchmark', op.runRearmed, op);
+
+    t.eq('the finished time is recorded from the clock', op.recorded, 720, op);
+    t.ok('guard: the interval really was cleared at the finish', op.ivCleared, op);
+    t.ok('a FINISHED benchmark no longer reads as a stalled tick', !op.doneStalled, op);
+    t.ok('so the beat arms nothing on the finish screen', !op.doneRearmed, op);
+    t.eq('and the clock does not climb past the recorded time',
+         op.clockLater, '12:00', op);
+    t.eq('the clock face shows the time that was recorded', op.clockFace, '12:00', op);
+    t.ok('and the panel says the same', /12:00/.test(op.panel), op);
+
+    t.eq('FLOOR: swFinal still reads the clock, never the cached number',
+         op.finalReadsClock, 300, op);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
