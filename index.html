@@ -587,6 +587,18 @@ function waistToCm(v){return isImperial()?v*2.54:v;}            // typed → sto
 function waistShow(cm){return cm==null?null:(isImperial()?cm/2.54:cm);}  // stored → shown
 function weightToKg(v){return isImperial()?v*0.453592:v;}
 function weightShow(kg){return kg==null?null:(isImperial()?kg/0.453592:kg);}
+/* THE GOAL IS STORED IN POUNDS BY NAME, and three sites turned it back into a
+   shown figure by hand. The fourth — the morning brief, which the coach reads
+   ALOUD — did not convert at all. Measured on a metric athlete at 86 kg with a
+   75 kg goal:
+       Progress ▸ Body   "Goal weight 75 kg · 11 kg to go"
+       the coach         "from 190 pounds down to 165. You are 25 pounds out."
+   One fact, two surfaces, two answers — and v315's rule is that a spoken
+   figure is the one an athlete cannot double-check by looking.
+   Rounded the way the goal-weight sheet rounds it, so the coach speaks the
+   number the athlete actually typed into that sheet. */
+function goalWeightShow(){const g=STATE.profile&&STATE.profile.goalWeightLb;
+  return g>0?(isImperial()?g:Math.round(g*0.453592)):null;}
 /* A BOUND THE ATHLETE IS TOLD MUST BE ONE THEY CAN ACTUALLY ENTER.
    Every "looks off — expected ..." message hand-wrote its imperial pair, and
    FOUR of them named a figure the guard itself REFUSES: 55 lb is 24.95 kg
@@ -1858,12 +1870,22 @@ const PHASE2_SESSIONS = [
   {key:'core', name:'Core & Conditioning', icon:'🌀', focus:'Full core circuit + HIIT finish',
    slots:['plankL','sideL','hollowL','lowerL'], finisher:'hiitFinL'},
 ];
-const WARMUP = ['march','glutebridge','birddog'];      // ~4 min activation
-const COOLDOWN = [
-  {n:"Child's Pose", d:"Sit back onto your heels, arms reaching forward, and breathe into your lower back for 30s."},
-  {n:"Cobra Stretch", d:"Lie face-down and gently press your chest up, lengthening the abs you just trained. 30s."},
-  {n:"Supine Spinal Twist", d:"On your back, drop both knees to one side, arms out wide. 30s each side."},
-];
+/* THE WARM-UP YOU ARE SHOWN IS NOT THE WARM-UP YOU GET — the legacy lists are
+   gone. WARMUP was ['march','glutebridge','birddog'] and EX.march is
+   "Single-Leg Dead Bug", not the flow's "March in Place", so the Program
+   calendar's preview sheet listed three movements the athlete never performs,
+   captioned "8/side", while runWarmup() ran an eight-move flow of 30-40s holds.
+   COOLDOWN was three prose stretches against the flow's seven, and the preview
+   had no cool-down section at all.
+
+   It also priced them: two estimators used length*35 and length*33, which is
+   204s for a warm-up and cool-down the athlete really spends 563s on — so the
+   Day-1 hero read 25 minutes where 31 is the answer.
+
+   v448 made warmupFlow()/cooldownFlow() the ONE builder and fixed the four
+   surfaces it could see. These three read buildSession()'s own warmup/cooldown
+   fields instead, so they were invisible to that sweep. The fields are removed
+   rather than repointed: one warm-up definition, one cool-down definition. */
 /* Guided flows: name + seconds + coaching cue. Run through the loud countdown timer. */
 const WARMUP_FLOW = [
   {n:'March in Place',      secs:40, pos:'stand', cue:'Drive the knees up and pump the arms. Wake the body up.', img:'wu-march.jpg', vid:'wu-march.mp4'},
@@ -1954,7 +1976,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='446';
+const APP_VERSION='454';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3603,7 +3625,7 @@ function buildSession(ptr){
   // one light stability movement for a flagged joint, on top of everything above
   const corrective=correctiveBonus(pos,used);
   if(corrective)main.push(corrective);
-  return {ptr,pos,cycle,week,session:pos.session,warmup:WARMUP,main,finisher,cooldown:COOLDOWN,dropped};
+  return {ptr,pos,cycle,week,session:pos.session,main,finisher,dropped};
 }
 function sessionVolume(sess){
   let tut=0;const list=[...sess.main,sess.finisher];
@@ -4117,7 +4139,7 @@ function onboardHTML(){
       .sort((x,y)=>String(x.date).localeCompare(String(y.date)));
     return ms.length?ms[ms.length-1].waist:(P.startWaist||0);})();
   const wsD=dv(_curW>0?(im?r1(_curW/2.54):_curW):0);
-  const gwtD=dv(P.goalWeightLb>0?(im?P.goalWeightLb:Math.round(P.goalWeightLb*0.453592)):0);
+  const gwtD=dv(goalWeightShow()||0);
   const gwsD=dv(P.goalWaist>0?(im?Math.round(P.goalWaist/2.54):P.goalWaist):0);
   const hu=im?'in':'cm', wu=im?'lb':'kg';
   const step=(n,title,body)=>`<div class="ob-step card pad" data-step="${n}" style="${n===1?'':'display:none'}"><h3 style="margin-top:0">${title}</h3>${body}</div>`;
@@ -4499,14 +4521,38 @@ function typicalSessionMin(){
     const sess=buildSession(0);
     const items=[...sess.main,sess.finisher].filter(Boolean);
     const work=plBudgetMin(items,repTempoSetting());
-    const wc=Math.round((sess.warmup.length*35+sess.cooldown.length*33)/60);
+    const wc=Math.round((flowSecs(warmupFlow())+flowSecs(cooldownFlow()))/60);
     return work+wc;
   }catch(e){return null;}
 }
+/* THE SCREEN ARGUED WITH ITSELF. The hero said "~15 minutes" and four lines
+   below it, in bold, "Rest 2 minutes between tests" — and nine of those rests
+   is EIGHTEEN minutes on its own, so the hero could not be right whatever the
+   efforts took. The number was written before v296 enforced the rests and
+   nobody came back to it. It is not cosmetic: an athlete who budgeted fifteen
+   minutes is exactly the one who rushes the rest, which is the thing the rest
+   exists to prevent — and these ten numbers anchor every prescription for a
+   year.
+
+   The REST is exact. The efforts cannot be, because every test is to failure,
+   so they are priced from the app's own numbers rather than a second set
+   invented here: currentMaxes() is what this athlete is assumed to manage
+   (TEST_DEFAULTS on day one, their own figures once they have tested), a timed
+   test in seconds and a rep test at the athlete's own rep cadence — the same
+   cadence plBudgetMin() prices a session with. */
+function baselineRestSec(){try{return Math.max(0,TESTS.length-1)*ASSESS_REST_SEC;}catch(e){return 0;}}
+function baselineEffortSec(){try{
+  const mx=currentMaxes()||{}, per=repTempoSetting();
+  return TESTS.reduce((a,t)=>{
+    const v=+mx[t.id]||+TEST_DEFAULTS[t.id]||0;
+    return a+(t.unit==='time'?v:v*per);
+  },0);
+}catch(e){return 0;}}
+function baselineMin(){const s=baselineRestSec()+baselineEffortSec();return s?Math.max(1,Math.round(s/60)):0;}
 function baselineIntroHTML(){
   const typ=typicalSessionMin();
   return `
-  <div class="hero anterior"><div class="htop"><div><div class="hlbl">Day 1</div><h1>Baseline Test</h1><div class="hmeta">~15 minutes · sets your whole program</div></div><div class="hicon">📋</div></div></div>
+  <div class="hero anterior"><div class="htop"><div><div class="hlbl">Day 1</div><h1>Baseline Test</h1><div class="hmeta">~${baselineMin()} minutes · sets your whole program</div></div><div class="hicon">📋</div></div></div>
   <div class="note fire">Everything is built from this. You'll do <b>${TESTS.length} quick tests</b> to failure. The app scores your core, sets your level, and personalises every target — so you start exactly where you should and progress from <b>your</b> numbers.${typ?` Most training days after this run about <b>~${typ} minutes</b> — today is longer because it's a measurement, not a workout.`:''}</div>
   <div class="card pad"><h3>The ${TESTS.length} tests</h3>
     ${TESTS.map((t,i)=>`<div class="kv"><span><b>${i+1}. ${t.name}</b></span><span class="tag ${EX[t.ex].region}">${t.unit==='time'?'hold':'reps'}</span></div>`).join('')}
@@ -4785,7 +4831,7 @@ function setRefTab(k){
 }
 function refTabsHTML(){
   const cur=refTab();
-  return `<div class="todaytabs">${REF_TABS.map(([k,l])=>`<button class="ttab ${cur===k?'on':''}" onclick="setRefTab('${k}')">${l}</button>`).join('')}</div>`;
+  return `<div class="todaytabs">${REF_TABS.map(([k,l])=>`<button class="ttab ${cur===k?'on':''}"${currentTab(cur===k)} onclick="setRefTab('${k}')">${l}</button>`).join('')}</div>`;
 }
 let PROGRESS_TAB='summary';
 const PROGRESS_TABS=[['summary','📊 Summary'],['body','📷 Body'],['strength','💪 Strength'],['awards','🏅 Awards']];
@@ -4802,11 +4848,11 @@ function setProgressTab(k){
 }
 function progressTabsHTML(){
   const cur=progressTab();
-  return `<div class="todaytabs">${PROGRESS_TABS.map(([k,l])=>`<button class="ttab ${cur===k?'on':''}" onclick="setProgressTab('${k}')">${l}</button>`).join('')}</div>`;
+  return `<div class="todaytabs">${PROGRESS_TABS.map(([k,l])=>`<button class="ttab ${cur===k?'on':''}"${currentTab(cur===k)} onclick="setProgressTab('${k}')">${l}</button>`).join('')}</div>`;
 }
 function todayTabsHTML(){
   const tabs=[['brief','📋 Brief'],['warmup','🌡️ Warm-up'],['workout','💪 Workout'],['cooldown','🧘 Cool-down']];
-  return `<div class="todaytabs">${tabs.map(([k,l])=>`<button class="ttab ${TODAY_TAB===k?'on':''}" onclick="setTodayTab('${k}')">${l}</button>`).join('')}</div>`;
+  return `<div class="todaytabs">${tabs.map(([k,l])=>`<button class="ttab ${TODAY_TAB===k?'on':''}"${currentTab(TODAY_TAB===k)} onclick="setTodayTab('${k}')">${l}</button>`).join('')}</div>`;
 }
 // Static read-only rundown of briefSegments() — no ids, so it can sit on the
 // page at the same time the audio brief sheet (openBrief) uses its own ids.
@@ -4830,14 +4876,14 @@ function briefTabHTML(){
 function warmupTabHTML(){
   return `<div class="card pad">
      <div class="tiny muted" style="margin-bottom:10px">Prime the deep core and raise your heart rate. Tap play for a hands-free guided round.${STATE.profile.mobility==='low'?' <b style="color:var(--fire-l)">You flagged limited mobility — move slowly and take the full range.</b>':''}</div>
-     ${WARMUP_FLOW.map(w=>`<div class="kv"><span><b>${w.n}</b></span><span class="muted">${w.secs}s</span></div>`).join('')}
+     ${warmupFlow().map(w=>`<div class="kv"><span><b>${w.n}</b></span><span class="muted">${w.secs}s</span></div>`).join('')}
      <button class="btn primary" style="margin-top:10px" onclick="runWarmup()">▶ Guided warm-up</button>
   </div>`;
 }
 function cooldownTabHTML(){
   return `<div class="card pad">
      <div class="tiny muted" style="margin-bottom:10px">Stretch out the abs and low back to recover. Tap play for a hands-free guided round.${STATE.profile.mobility==='low'?' <b style="color:var(--teal)">Hold each stretch a little longer — building mobility is one of your goals.</b>':''}</div>
-     ${COOLDOWN_FLOW.map(c=>`<div class="kv"><span><b>${c.n}</b></span><span class="muted">${c.secs}s</span></div>`).join('')}
+     ${cooldownFlow().map(c=>`<div class="kv"><span><b>${c.n}</b></span><span class="muted">${c.secs}s</span></div>`).join('')}
      <button class="btn green" style="margin-top:10px" onclick="runCooldown()">▶ Guided cool-down</button>
   </div>`;
 }
@@ -5987,7 +6033,7 @@ function prepPathHTML(){
   return `<div class="section-label" style="margin-top:14px">Your training path</div>
     <div class="card pad">
       <div class="daypick" style="flex-wrap:wrap;margin:0 0 8px">${PREP_PATH_KEYS.map(k=>
-        `<button class="${cur===k?'on':''}" onclick="setPrepPath('${k}')">${_ve(PREP_PATHS[k].label)}</button>`).join('')}</div>
+        `<button class="${cur===k?'on':''}"${pressed(cur===k)} onclick="setPrepPath('${k}')">${_ve(PREP_PATHS[k].label)}</button>`).join('')}</div>
       <div class="tiny muted">${_ve(PREP_PATHS[cur].blurb)}</div>
       <div class="tiny muted" style="margin-top:8px">Both paths ramp under the same 10% a week cap and stop at the same load ceiling. The path changes what you do inside that week, not how much.</div>
     </div>`;
@@ -6579,7 +6625,7 @@ function openForceLog(){
     <div class="note info">Enter what you actually did. A number you did not measure is worse than a blank — the gap is the whole point of this screen.</div>
     ${FORCE_EVENTS.map(ev=>ev.max===null?`
       <div class="field"><label>${_ve(ev.name)} — did you move it the full 20 m without stopping?</label>
-        <div class="daypick"><button onclick="setForceResult('${ev.id}',1)" class="${forceResult(ev.id)>0?'on':''}">Yes</button><button onclick="setForceResult('${ev.id}',0)" class="${forceResult(ev.id)===0?'on':''}">Not yet</button></div></div>`
+        <div class="daypick"><button onclick="setForceResult('${ev.id}',1)" class="${forceResult(ev.id)>0?'on':''}"${pressed(forceResult(ev.id)>0)}>Yes</button><button onclick="setForceResult('${ev.id}',0)" class="${forceResult(ev.id)===0?'on':''}"${pressed(forceResult(ev.id)===0)}>Not yet</button></div></div>`
       :`<div class="field"><label>${_ve(ev.name)} — your time in seconds (max ${fmtTime(ev.max)})</label>
         <input id="fq-${ev.id}" type="number" inputmode="numeric" value="${forceResult(ev.id)!==null&&ev.max!==null?forceResult(ev.id):''}" placeholder="0"></div>`).join('')}
     <button class="btn primary" style="width:100%;margin-top:6px" onclick="saveForceTimes()">Save</button>
@@ -6763,7 +6809,22 @@ function toggleEx(exId){
   const sess=buildSession(STATE.progressPtr);const m=[...sess.main,sess.finisher].find(x=>x.exId===exId);
   const log=ensureLog();const st=log.ex[exId]||{sets:[],done:false};
   st.done=!st.done;
+  /* THE VERDICT WAS REMOVED AND THE EVIDENCE WAS LEFT. Ticking fills every set;
+     unticking used to change nothing but the flag, so the sets it had just
+     written stayed marked. Measured on a real session — tick all five
+     movements, then untick all five:
+
+       header        0/5 exercises · 13/13 sets · 100%
+       sessionWork() setsDone 13 of 13
+       commitSession done:true, partial:false
+
+     A hundred per cent beside zero movements on one line, and a full session
+     recorded for an athlete who had just cleared every one of them. The check
+     is a whole-movement control, so it round-trips: what the tick wrote, the
+     untick takes back. There is nothing finer to restore — the tick had already
+     overwritten any individual marks. */
   if(st.done){st.sets=Array.from({length:m.sets},()=>true);recordPR(exId,m);}
+  else st.sets=[];
   log.ex[exId]=st;save();haptic(14);renderToday();
 }
 function toggleSet(exId,i){
@@ -11095,12 +11156,17 @@ function briefSegments(){
   let mission;
   /* Never speak an invented target. These used to fall back to 175 lb / 12% —
      numbers the athlete never chose — and the coach read them out every morning. */
+  /* The unit is the athlete's own, spelled out because it is SPOKEN, and the
+     current weight goes through weightShow() rather than a fourth spelling of
+     the kg-to-lb factor. */
+  const wUnit=isImperial()?'pound':'kilogram', goalShow=goalWeightShow(),
+        gaining=STATE.profile.goal==='gain';
   if(!(goalW>0)){
     /* True from v315 and not before: setGoalWeight() now sits on Progress ▸
        Body, beside the weight chart. Until then this sentence sent the athlete
        to a tab with no such control on it. */
     mission = `You have not set a goal weight yet. Open Progress, tap Body, and set one — or just train and let the tape measure tell the story. Either way, today we work.`;
-  }else if(kg){const lb=Math.round(kg*2.20462), toGo=lb-goalW, gaining=STATE.profile.goal==='gain';
+  }else if(kg){const now=Math.round(weightShow(kg)), toGo=now-goalShow;
     /* toGo>0 means CURRENT is above the target. For a lose/maintain goal that
        means ground left to cover; for a 'gain' goal it means the target is
        already cleared — the two directions read the SAME sign oppositely, and
@@ -11108,20 +11174,20 @@ function briefSegments(){
        short of their gain target was told "outstanding, hold the line" every
        morning instead of being pointed at the gap still open. */
     if(Math.abs(toGo)<=1){
-      mission = `You are right on your ${goalW}-pound target — now we lock in the muscle. Discipline today.`;
+      mission = `You are right on your ${goalShow}-${wUnit} target — now we lock in the muscle. Discipline today.`;
     }else if(gaining){
       mission = toGo<0
-        ? `The mission: from ${lb} pounds up to ${goalW}${bf}. You are ${-toGo} pounds out. Every rep and every meal today closes that gap.`
-        : `You are over ${goalW} pounds — outstanding. Today we hold the line.`;
+        ? `The mission: from ${now} ${wUnit}s up to ${goalShow}${bf}. You are ${-toGo} ${wUnit}s out. Every rep and every meal today closes that gap.`
+        : `You are over ${goalShow} ${wUnit}s — outstanding. Today we hold the line.`;
     }else{
       mission = toGo>0
-        ? `The mission: from ${lb} pounds down to ${goalW}${bf}. You are ${toGo} pounds out. Every rep and every meal today closes that gap.`
-        : `You are under ${goalW} pounds — outstanding. Today we hold the line.`;
+        ? `The mission: from ${now} ${wUnit}s down to ${goalShow}${bf}. You are ${toGo} ${wUnit}s out. Every rep and every meal today closes that gap.`
+        : `You are under ${goalShow} ${wUnit}s — outstanding. Today we hold the line.`;
     }
   }else{
     /* Fuel has no weight control at all — the calculator asks for a weight but
        does not log one. logMeasure() is on Progress, beside the chart. */
-    mission=`The mission: down to ${goalW} pounds${bf}. Log your weight on the Progress tab, under Body, so I can track every pound with you. Today, we get to work.`;
+    mission=`The mission: ${gaining?'up':'down'} to ${goalShow} ${wUnit}s${bf}. Log your weight on the Progress tab, under Body, so I can track every ${wUnit} with you. Today, we get to work.`;
   }
   segs.push({icon:'🎯',title:'Your mission',say:mission});
   /* THE BRIEF NEVER MENTIONED THE EVALUATION — not at twelve weeks, not the
@@ -11182,8 +11248,13 @@ function briefSegments(){
   segs.push({icon:'🔥',title:"Today's session",
     say:`Today is ${sess.session.name}. ${sess.session.focus}. That's ${sess.main.length+1} exercises, about ${vol.minutes} minutes of work.${_dlSay}`});
   // 4 — warm-up
-  segs.push({icon:'🌡️',title:'Warm-up · ~4 min',
-    say:`We open with a warm-up: ${_briefList(WARMUP_FLOW.slice(0,4).map(w=>w.n))}, and a couple more. Prime the deep core and raise the heart rate — do not skip it.`});
+  /* "A couple more" was a hand-written count beside the list that holds it:
+     four named of eight is FOUR more, not two, and the joint-aware addition can
+     make it five. It is derived now, and says nothing at all when the flow is
+     four items or fewer — which a heavily flagged athlete's really can be. */
+  const _wf=warmupFlow(), _wfRest=Math.max(0,_wf.length-4);
+  segs.push({icon:'🌡️',title:`Warm-up · ~${flowMins(_wf)} min`,
+    say:`We open with a warm-up: ${_briefList(_wf.slice(0,4).map(w=>w.n))}${_wfRest?`, and ${_wfRest} more`:''}. Prime the deep core and raise the heart rate — do not skip it.`});
   // 5 — main work
   const mains=sess.main.map(m=>`${(EX[m.exId]||{}).name}, ${m.sets} sets of ${_briefTarget(m)}`);
   segs.push({icon:'💪',title:'Main work',
@@ -11192,8 +11263,13 @@ function briefSegments(){
   segs.push({icon:'⚡',title:'Finisher',
     say:`Finish with ${(EX[sess.finisher.exId]||{}).name} — one all-out round of ${_briefTarget(sess.finisher)}. Leave nothing in the tank.`});
   // 7 — cool-down
-  segs.push({icon:'🧘',title:'Cool-down · ~4 min',
-    say:`Then cool down with stretches for the abs and low back. A few minutes of recovery so you come back stronger tomorrow.`});
+  /* "Stretches for the abs and low back" was the sharpest of the three: a
+     low-back flag strips Cobra Stretch — the abs one — and three more, so the
+     coach named a target the cool-down no longer had. It names the real
+     stretches now. */
+  const _cf=cooldownFlow(), _cfRest=Math.max(0,_cf.length-3);
+  segs.push({icon:'🧘',title:`Cool-down · ~${flowMins(_cf)} min`,
+    say:`Then cool down: ${_briefList(_cf.slice(0,3).map(c=>c.n))}${_cfRest?`, and ${_cfRest} more`:''}. A few minutes of recovery so you come back stronger tomorrow.`});
   }
   // 8 — fuel
   const kcal=todayKcalBudget(), prot=proteinTargetG();
@@ -11211,9 +11287,9 @@ function briefSegments(){
     if(names.length)segs.push({icon:'🥗',title:'Your meals',say:`Your meal plan today: ${_briefList(names)}. The full recipes are on the Reference tab, under Food.`});
   }catch(e){}
   // 10 — hydration
-  const cups=waterTargetCups(), oz=Math.round(cups*8);
+  const cups=waterTargetCups();
   segs.push({icon:'💧',title:'Hydration',
-    say:`Hydration: ${cups} cups of water — about ${oz} ounces. Start your first glass now and keep sipping all day.`});
+    say:`Hydration: ${cups} cups of water — about ${waterVolShow(cups,true)}. Start your first glass now and keep sipping all day.`});
   // 10.5 — weekly progress-check countdown (builds toward Saturday's weigh-in)
   if(STATE.settings.weeklyOn!==false){
     const dToSat=(6-new Date().getDay()+7)%7;   // 0 = today is Saturday
@@ -11469,7 +11545,7 @@ function openRestSheet(){
       <li>Gentle mobility below — no hard training</li>
     </ul></div>
     <div style="height:10px"></div>
-    <button class="btn t-teal" style="margin-bottom:8px" onclick="closeSheet();runCooldown()">▶ Guided cool-down &amp; stretch (~4 min)</button>
+    <button class="btn t-teal" style="margin-bottom:8px" onclick="closeSheet();runCooldown()">▶ Guided cool-down &amp; stretch (~${flowMins(cooldownFlow())} min)</button>
     <button class="btn t-green" style="margin-bottom:8px" onclick="closeSheet();openMealPlan()">🍽️ Meal ideas</button>
     <button class="btn t-blue" style="margin-bottom:8px" onclick="closeSheet();go('fuel')">💧 Log water &amp; food</button>
     <button class="btn ${rested?'green':'primary'}" style="margin-bottom:8px" ${rested?'disabled':'onclick="startRestDay()"'}>${rested?'✓ Rest day logged':'Log today as a rest day'}</button>
@@ -11489,6 +11565,15 @@ function openRestSheet(){
    because it's used at dozens of other sites and a future single-quoted
    HTML attribute is a real, cheap-to-guard-against case; it just isn't what
    makes removeMeasure's call site safe. */
+/* A PICKER WITH A VISUAL SELECTED STATE AND NO ACCESSIBLE ONE announces the
+   same words for the chosen option and for the rest, so a screen-reader athlete
+   cannot tell which goal, diet, theme, coach tone or pane is live. The bottom
+   nav has carried aria-current since it was written and go() maintains it;
+   nothing else in the app did — 45 groups, the three sub-tab strips among them.
+   These two are the one place the rule lives, so a 46th picker cannot be
+   written stateless. */
+function pressed(on){return ' aria-pressed="'+(on?'true':'false')+'"';}
+function currentTab(on){return on?' aria-current="true"':'';}
 function _ve(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 /* ---- Voice check ---------------------------------------------------------
    Reported from the phone: "I'm only hearing a female voice, not any of the
@@ -11877,7 +11962,7 @@ function applyTheme(k){
 function setTheme(k){if(!themeName(k))return;STATE.settings.theme=k;save();applyTheme(k);haptic(8);if(TAB==='guide')renderGuide();}
 function themeChipsHTML(){
   const cur=STATE.settings.theme||THEME_DEFAULT;
-  return `<div class="themerow">${Object.keys(THEMES).map(k=>`<button class="themechip ${k===cur?'on':''}" style="${k===cur?'background:'+THEMES[k].acc+';color:'+THEMES[k].accInk:''}" onclick="setTheme('${k}')">${THEMES[k].name}</button>`).join('')}</div>`;
+  return `<div class="themerow">${Object.keys(THEMES).map(k=>`<button class="themechip ${k===cur?'on':''}"${pressed(k===cur)} style="${k===cur?'background:'+THEMES[k].acc+';color:'+THEMES[k].accInk:''}" onclick="setTheme('${k}')">${THEMES[k].name}</button>`).join('')}</div>`;
 }
 
 /* ============================ MOTIVATOR / DRILL SERGEANT ============================
@@ -12872,7 +12957,7 @@ function openExerciseTimer(exId){
   if(m.unit==='time'){runTimer('hold',m.target,ex.name,m.rest,()=>markSetFromTimer(exId),false,ex);}
   else{runTimer('rest',m.rest,ex.name+' — rest',0,null,false,ex);}
 }
-function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex){
+function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex,onAfterRest){
   let remain=seconds;const total=seconds;
   const isHold=mode==='hold';
   openSheet(timerHTML(label,remain,isHold,total,ex));
@@ -12930,8 +13015,13 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex){
     if(isHold)countdownCue(remain,total); else if(remain<=3&&remain>0){beepDuck(300);beep(920,.17,0.92);}
     if(remain<=0){
       beepGo();haptic(30);clearInterval(timer.iv);
-      if(isHold&&restAfter>0){toast('Hold done! Resting '+restAfter+'s');if(!motivate('done'))coachSpeak('Time. Now rest.');(g=>setTimeout(()=>{if(g===_sheetGen&&$('#scrim').classList.contains('open'))runTimer('rest',restAfter,label+' — rest',0,null,true);},700))(_sheetGen);if(onDone)onDone();return;}
+      if(isHold&&restAfter>0){toast('Hold done! Resting '+restAfter+'s');if(!motivate('done'))coachSpeak('Time. Now rest.');(g=>setTimeout(()=>{if(g===_sheetGen&&$('#scrim').classList.contains('open'))runTimer('rest',restAfter,label+' — rest',0,onAfterRest||null,true);},700))(_sheetGen);if(onDone)onDone();return;}
       if(onDone)onDone();
+      /* A CHAINED REST HANDS STRAIGHT TO THE NEXT SET, which has already opened
+         its own sheet — so writing "Done" into it and queueing a close would
+         blank the set the athlete is about to do. No other caller passes a rest
+         an onDone, so this branch is only ever the chain. */
+      if(!isHold&&onDone)return;
       if(!motivate('done'))coachSpeak(isHold?'Time. Strong hold.':'Rest over. Back to work.');
       $('#tnum')&&($('#tnum').textContent='Done');
       autoClose(700,()=>closeSheet());return;
@@ -12990,7 +13080,7 @@ function startGuidedReps(exId){
   runRepCadence(m.target,ex.name,m.rest,()=>markSetFromTimer(exId),ex);
 }
 function cancelReps(){_repTok++;stopTimer();closeSheet();}
-function runRepCadence(reps,label,restAfter,onDone,ex){
+function runRepCadence(reps,label,restAfter,onDone,ex,onAfterRest){
   const total=Math.max(1,reps);let n=0;
   const tempo=repTempoSetting();
   const C=2*Math.PI*100;
@@ -13032,12 +13122,12 @@ function runRepCadence(reps,label,restAfter,onDone,ex){
     paint();
     if(n>=total){
       stopTimer();
-      const tok=++_repTok,rest=restAfter,done=onDone,lbl=label,gen=_sheetGen;
+      const tok=++_repTok,rest=restAfter,done=onDone,lbl=label,gen=_sheetGen,nxt=onAfterRest;
       setTimeout(()=>{
         if(tok!==_repTok||gen!==_sheetGen)return;   // cancelled, superseded, or the sheet world changed
         if(!motivate('done'))coachSpeak('Set complete. Strong work.');
         if(done)done();
-        if(rest>0)runTimer('rest',rest,lbl+' — rest',0,null);
+        if(rest>0)runTimer('rest',rest,lbl+' — rest',0,nxt||null);
         else{const nn=$('#rcNum');if(nn)nn.textContent='✓';autoClose(700,closeSheet);}
       },Math.max(400,tempo*450));
     }
@@ -13081,8 +13171,47 @@ function mobilityFlow(items){
   if((STATE.profile&&STATE.profile.mobility)!=='low')return items;
   return (items||[]).map(it=>Object.assign({},it,{secs:Math.round(it.secs*1.25)}));
 }
-function runWarmup(){runFlow(mobilityFlow(jointAwareWarmup(WARMUP_FLOW)),'Warm-up','var(--fire)');}
-function runCooldown(){runFlow(mobilityFlow(COOLDOWN_FLOW),'Cool-down','var(--teal)');}
+/* ONE BUILDER FOR THE WARM-UP THE ATHLETE ACTUALLY GETS. runWarmup() ran
+   jointAwareWarmup(), mobilityFlow() and — inside runFlow() — safeFlow(). The
+   two Today panes and the spoken brief listed the RAW arrays, so all three
+   described a warm-up nobody does:
+
+     - a SHOULDER flag: the pane listed "Arm Circles 30s" and the coach said it
+       out loud, and safeFlow() strips it for exactly that flag. The Shoulder
+       Activation jointAwareWarmup() puts in its place appeared nowhere.
+     - a LOW-BACK flag: Standing Torso Twists in the warm-up, and Cobra Stretch,
+       both Supine Twists and Knees to Chest in the cool-down — four of seven —
+       all listed and none of them run.
+     - LIMITED MOBILITY: mobilityFlow() gives 25% longer holds, so every second
+       printed was wrong (40s shown, 50s held) on a pane whose own note says the
+       athlete flagged it.
+
+   safeFlow() is applied here as well as inside runFlow(); it is a filter, so a
+   second pass over its own output changes nothing. */
+/* THE REPOSITIONING WINDOWS ARE PART OF THE TIME ON THE MAT, so they are counted
+   here the way runFlow() spends them — and they live here rather than inside
+   runFlow() because a second copy of a rule is a second place for it to drift.
+   Three surfaces printed a hand-written "~4 min" beside the list that decides
+   it: measured, an unflagged athlete's warm-up is 5 minutes, limited mobility
+   makes it 6 (the holds run 25% longer) and a flagged low back gets a 2-minute
+   cool-down, because four of the seven stretches are stripped. The mobility
+   picker was the only site that computed anything, with its own
+   round(secs/60)+1 — a fourth statement of the same fact. */
+const TRANS_SAME=4, TRANS_MOVE=7;
+function transSecsFor(a,b){const p=a&&a.pos,q=b&&b.pos;return (p&&q&&p===q)?TRANS_SAME:TRANS_MOVE;}
+function flowSecs(flow){try{
+  if(!Array.isArray(flow)||!flow.length)return 0;
+  let t=0;
+  for(let i=0;i<flow.length;i++){t+=(+(flow[i]&&flow[i].secs)||0);if(i)t+=transSecsFor(flow[i-1],flow[i]);}
+  return t;
+}catch(e){return 0;}}
+/* Never zero for a flow that has moves in it — "~0 min" reads as broken, and a
+   one-move flow really is about a minute once you have got into position. */
+function flowMins(flow){const t=flowSecs(flow);return t?Math.max(1,Math.round(t/60)):0;}
+function warmupFlow(){try{return safeFlow(mobilityFlow(jointAwareWarmup(WARMUP_FLOW)));}catch(e){return WARMUP_FLOW;}}
+function cooldownFlow(){try{return safeFlow(mobilityFlow(COOLDOWN_FLOW));}catch(e){return COOLDOWN_FLOW;}}
+function runWarmup(){runFlow(warmupFlow(),'Warm-up','var(--fire)');}
+function runCooldown(){runFlow(cooldownFlow(),'Cool-down','var(--teal)');}
 /* WARMUP_FLOW and COOLDOWN_FLOW are fixed arrays that never went through
    safeSwap, so the app kept flexion and rotation off a flagged low back for the
    whole session and then prescribed Cobra Stretch and a Supine Spinal Twist as
@@ -13159,7 +13288,6 @@ function runFlow(items,title,color){
      three more. An UNKNOWN position on either side reads as a change and gets
      the longer window: over-waiting costs four seconds, under-waiting means
      starting the next move on the floor while still standing. */
-  const TRANS_SAME=4, TRANS_MOVE=7;
   const C=2*Math.PI*100;
   openSheet(flowHTML(title,items.length,color||'var(--fire)'));
   /* The flow is as hands-free as the player and HIIT — it talks you through
@@ -13197,10 +13325,7 @@ function runFlow(items,title,color){
      up to standing" tells him what to do without looking at the phone. */
   const POS_MOVE={stand:'Come up to standing',back:'Lie on your back',
                   front:'Lie face-down',fours:'Onto your hands and knees'};
-  function transSecs(from,to){
-    const a=from&&from.pos,b=to&&to.pos;
-    return (a&&b&&a===b)?TRANS_SAME:TRANS_MOVE;
-  }
+  function transSecs(from,to){return transSecsFor(from,to);}
   // The "get into position" bridge before the NEXT move.
   function enterTransition(){
     const it=items[idx],prev=items[idx-1];
@@ -13432,16 +13557,21 @@ function renderProgram(){
 function previewSession(ptr){
   if(ptr>SESSIONS_PER_CYCLE*TOTAL_CYCLES-1)return;
   const sess=buildSession(ptr);const vol=sessionVolume(sess);const wkNum=sess.cycle*WEEKS_PER_CYCLE+sess.week;
+  /* The same builders the Today panes and runWarmup() use, so the sheet cannot
+     describe a session other than the one the athlete is about to do. */
+  const _pw=warmupFlow(),_pc=cooldownFlow();
   openSheet(`
     <h3>${sess.session.name}</h3>
     <div class="tiny muted" style="margin-bottom:2px">Week ${wkNum} · ${sess.session.focus}</div>
-    <div class="row" style="gap:8px;margin:10px 0 14px"><span class="chip">${sess.main.length+1} exercises</span><span class="chip">~${vol.minutes} min</span></div>
-    <div class="section-label">Warm-up</div>
-    <div class="card pad">${sess.warmup.map(id=>`<div class="kv"><span>${EX[id].name}</span><span class="muted">${EX[id].unit==='time'?'30s':'8/side'}</span></div>`).join('')}</div>
-    <div class="section-label">Main work</div>
+    <div class="row" style="gap:8px;margin:10px 0 14px"><span class="chip">${sess.main.length+1} exercises</span><span class="chip">~${vol.minutes+flowMins(_pw)+flowMins(_pc)} min total</span></div>
+    <div class="section-label">Warm-up · ~${flowMins(_pw)} min</div>
+    <div class="card pad">${_pw.map(f=>`<div class="kv"><span>${_ve(f.n)}</span><span class="muted">${fmtTime(f.secs)}</span></div>`).join('')}</div>
+    <div class="section-label">Main work · ~${vol.minutes} min</div>
     <div class="card pad">${sess.main.map(m=>`<div class="kv"><span><b>${EX[m.exId].name}</b> <span class="tag ${EX[m.exId].region}" style="margin-left:4px">${EX[m.exId].region}</span> ${climbNote(m)}</span><b>${m.sets}×${m.unit==='time'?fmtTime(m.target):m.target}</b></div>`).join('')}</div>
     <div class="section-label">Finisher</div>
     <div class="card pad"><div class="kv"><span><b>${EX[sess.finisher.exId].name}</b></span><b>${sess.finisher.sets}×${sess.finisher.unit==='time'?fmtTime(sess.finisher.target):sess.finisher.target}</b></div></div>
+    <div class="section-label">Cool-down · ~${flowMins(_pc)} min</div>
+    <div class="card pad">${_pc.map(f=>`<div class="kv"><span>${_ve(f.n)}</span><span class="muted">${fmtTime(f.secs)}</span></div>`).join('')}</div>
     ${ptr===STATE.progressPtr?`<button class="btn primary" onclick="closeSheet();go('today')">Go to this workout →</button>`:`<button class="btn ghost" onclick="closeSheet()">Close</button>`}
   `);
 }
@@ -13682,7 +13812,7 @@ function gBump(d){const inp=$('#g-waist');inp.value=Math.max(0,((+inp.value||(+i
    a specification. */
 function setGoalWeight(){
   const p=STATE.profile, im=p.unit==='in';
-  const cur=p.goalWeightLb>0?(im?p.goalWeightLb:Math.round(p.goalWeightLb*0.453592)):'';
+  const cur=goalWeightShow()||'';
   const now=latestWeightKg();
   const nowShow=now>0?(im?Math.round(now/0.453592):Math.round(now*10)/10):null;
   openSheet(`<h3>Set your goal weight</h3>
@@ -14637,7 +14767,7 @@ function openBuilder(){
       <button class="btn primary" style="width:100%;margin-top:10px" onclick="startCustom()">▶ Start workout</button>
       <button class="btn ghost" style="width:100%;margin-top:8px" onclick="saveCustomFav()">☆ Save as favorite</button></div>`:''}
     ${favs.length?`<div class="tiny muted" style="margin:4px 0">Favorites</div>${favs.map(({f,i})=>`<div style="display:flex;gap:6px;align-items:stretch;margin-bottom:6px"><button class="kv" style="flex:1;text-align:left;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:11px 13px" onclick="startFav(${i})"><span>⭐ ${_ve(f.name)}</span><span class="tiny muted">${f.items.length} moves ▶</span></button><button class="chip" aria-label="Delete the saved workout ${_ve(f.name)}" onclick="delFav(${i})">✕</button></div>`).join('')}<div style="height:6px"></div>`:''}
-    ${Object.keys(byReg).map(r=>`<div class="tiny muted" style="margin:8px 0 4px;text-transform:capitalize">${r}</div><div style="display:flex;flex-wrap:wrap;gap:6px">${byReg[r].map(k=>`<button class="chip ${_custom.includes(k)?'on':''}" onclick="addCustom('${k}')">${safeSwap(k)!==k?'⚠️ ':''}${EX[k].name}</button>`).join('')}</div>`).join('')}
+    ${Object.keys(byReg).map(r=>`<div class="tiny muted" style="margin:8px 0 4px;text-transform:capitalize">${r}</div><div style="display:flex;flex-wrap:wrap;gap:6px">${byReg[r].map(k=>`<button class="chip ${_custom.includes(k)?'on':''}"${pressed(_custom.includes(k))} onclick="addCustom('${k}')">${safeSwap(k)!==k?'⚠️ ':''}${EX[k].name}</button>`).join('')}</div>`).join('')}
     <div style="height:10px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
 }
 function startCustom(){
@@ -14702,7 +14832,7 @@ function openMobility(){
   openSheet(`<h3>🧘 Mobility &amp; stretch</h3>
     <p class="muted sm" style="margin:2px 0 12px">Guided mobility flows to loosen up and recover — run any day.</p>
     <div style="display:flex;flex-direction:column;gap:10px">
-      ${MOBILITY_FLOWS.map((m,i)=>`<button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="startMobility(${i})"><b style="font-size:15px">🧘 ${m.name}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${m.flow.length} moves · ~${Math.round(m.flow.reduce((a,x)=>a+x.secs,0)/60)+1} min</div></button>`).join('')}
+      ${MOBILITY_FLOWS.map((m,i)=>{const f=safeFlow(m.flow);return `<button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="startMobility(${i})"><b style="font-size:15px">🧘 ${m.name}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${f.length} moves · ~${flowMins(f)} min</div></button>`;}).join('')}
     </div>
     <div style="height:8px"></div><button class="btn ghost" onclick="openSpecial()">← Back</button>`);
 }
@@ -14915,7 +15045,7 @@ function readinessSlump(){
 let _rdy={};
 function openReadiness(){
   const cur=readinessToday();if(cur&&!_rdy._init){_rdy={sleep:cur.sleep,sore:cur.sore,energy:cur.energy,_init:1};}
-  const opt=(k,val,label,emoji)=>`<button class="chip ${_rdy[k]===val?'on':''}" onclick="_rdy['${k}']=${val};openReadiness()">${emoji} ${label}</button>`;
+  const opt=(k,val,label,emoji)=>`<button class="chip ${_rdy[k]===val?'on':''}"${pressed(_rdy[k]===val)} onclick="_rdy['${k}']=${val};openReadiness()">${emoji} ${label}</button>`;
   openSheet(`<h3>🌡️ Daily readiness</h3>
     <p class="muted sm" style="margin:2px 0 12px">A 10-second check so today's load fits how you feel — fresh means push, beat-up means we ease it.</p>
     <div class="tiny muted" style="margin:6px 0 4px">Sleep</div><div class="btnrow" style="gap:6px">${opt('sleep',100,'Great','😴')}${opt('sleep',60,'OK','🙂')}${opt('sleep',25,'Poor','🥱')}</div>
@@ -17799,7 +17929,7 @@ function strengthTrendHTML(){
   const series=assessSeries();if(!series.length)return '';
   const m=STRENGTH_METRICS.find(x=>x.k===strengthSel)||STRENGTH_METRICS[0];
   const disp=v=>m.unit==='time'?fmtTime(v):v+' reps';
-  const chips=STRENGTH_METRICS.map(x=>`<button class="chip ${x.k===strengthSel?'on':''}" onclick="setStrengthMetric('${x.k}')">${x.label}</button>`).join(' ');
+  const chips=STRENGTH_METRICS.map(x=>`<button class="chip ${x.k===strengthSel?'on':''}"${pressed(x.k===strengthSel)} onclick="setStrengthMetric('${x.k}')">${x.label}</button>`).join(' ');
   /* THROUGH THE PREDICATE, NOT AROUND IT. This read was raw, so '99999' > 0
      coerced to true and a figure estimateMaxes() refuses was drawn on the
      athlete's own progress chart while the engine prescribed from the default
@@ -17897,7 +18027,7 @@ function projTargetKg(){const g=STATE.profile.goalWeightLb;return g>0?g*0.453592
 function goalWeightLineHTML(){
   const g=STATE.profile.goalWeightLb, im=STATE.profile.unit==='in';
   if(!(g>0))return `<div class="tiny muted" data-goalwt="none" style="margin:2px 2px 6px">No goal weight set — tap <b>🎯 Goal</b>, or just train and let the tape measure tell the story.</div>`;
-  const show=im?g:Math.round(g*0.453592), u=im?'lb':'kg';
+  const show=goalWeightShow(), u=im?'lb':'kg';
   const now=latestWeightKg();
   let gap='';
   if(now>0){
@@ -19295,7 +19425,7 @@ function movementHTML(){
        ternary — and a fifth mode is precisely when that drifts: the buttons
        would have gained skipping while the note silently described running. */
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${CARDIO_MODES.map(k=>
-      `<button class="${mode===k?'on':''}" onclick="setCardioMode('${k}')">${CARDIO_INFO[k].label}</button>`).join('')}</div>
+      `<button class="${mode===k?'on':''}"${pressed(mode===k)} onclick="setCardioMode('${k}')">${CARDIO_INFO[k].label}</button>`).join('')}</div>
     <div class="tiny muted" style="margin-bottom:12px">${cardioInfo(mode).note||''}</div>`;
   /* Anything logged under a mode that is NOT the one on screen, so switching
      modes never hides work already done. This was two hardcoded pairs —
@@ -19322,7 +19452,7 @@ function runBlockHTML(m,short){
   const shown=m.nunit==='dist'?r1(kmToShow(m.nval)):m.nval;
   let h=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">How hard you ran it</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${RUN_PACES.map(x=>
-      `<button class="${m.nlvl===x.k?'on':''}" onclick="setRunPace('${x.k}')">${x.label}</button>`).join('')}</div>
+      `<button class="${m.nlvl===x.k?'on':''}"${pressed(m.nlvl===x.k)} onclick="setRunPace('${x.k}')">${x.label}</button>`).join('')}</div>
     <div class="tiny muted" style="margin-bottom:12px">${_ve(p.rpe)} · ${_ve(p.cue)}</div>
     ${/* Pace per KM, because that is the number a runner thinks in and the one
           a treadmill is set by. The talk test decides the band, not the speed —
@@ -19337,7 +19467,7 @@ function runBlockHTML(m,short){
     <div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log the run as</div>
     <div class="tiny muted" style="margin:-2px 0 8px"><b>Log the distance if you know it.</b> Running costs about the same per ${isImperial()?'mile':'kilometre'} however fast you go — measured across these four paces, the same ${isImperial()?'3 miles':'5 km'} comes out within 9% — so picking the wrong pace barely moves the number. Minutes are the one input the pace really does change.</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${RUN_UNITS.map(([k,l])=>
-      `<button class="${m.nunit===k?'on':''}" onclick="setRunUnit('${k}')">${l==='Distance'?distUnit().toUpperCase():l}</button>`).join('')}</div>
+      `<button class="${m.nunit===k?'on':''}"${pressed(m.nunit===k)} onclick="setRunUnit('${k}')">${l==='Distance'?distUnit().toUpperCase():l}</button>`).join('')}</div>
     <div class="row" style="justify-content:space-between;align-items:flex-end;gap:10px">
       <div class="field" style="flex:1;margin:0"><label for="mv-run">${_ve(m.nunit==='min'?'Minutes':(m.nunit==='dist'?'Distance ('+distUnit()+')':'Calories'))}</label>
         <input id="mv-run" type="number" inputmode="decimal" min="0" step="${m.nunit==='dist'?'0.1':'1'}" value="${shown||''}" placeholder="0" onchange="setRunVal(this.value)"></div>
@@ -19353,7 +19483,7 @@ function ruckBlockHTML(m,short){
   const shown=m.runit==='dist'?r1(kmToShow(m.rval)):m.rval;
   let h=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">What is in the ruck</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${RUCK_PLATES.map(w=>
-      `<button class="${lb===w?'on':''}" onclick="setRuckLoad(${w})">${w} lb</button>`).join('')}</div>`;
+      `<button class="${lb===w?'on':''}"${pressed(lb===w)} onclick="setRuckLoad(${w})">${w} lb</button>`).join('')}</div>`;
   /* The share of bodyweight is the number that decides whether a load is
      sensible, and it is the one nobody works out for themselves. Stated
      always, warned on past 20% — the usual guidance is to start near 10% and
@@ -19369,7 +19499,7 @@ function ruckBlockHTML(m,short){
   }
   h+=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">How you walked it</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${RUCK_PACES.map(x=>
-      `<button class="${m.rlvl===x.k?'on':''}" onclick="setRuckPace('${x.k}')">${x.label}</button>`).join('')}</div>
+      `<button class="${m.rlvl===x.k?'on':''}"${pressed(m.rlvl===x.k)} onclick="setRuckPace('${x.k}')">${x.label}</button>`).join('')}</div>
     <div class="tiny muted" style="margin-bottom:12px">${_ve(p.rpe)} · ${_ve(p.cue)}</div>
     <div class="tiny muted" style="margin-bottom:12px">Worth <b>${ruckStepsPerMin(m.rlvl)} steps</b> and <b>${Math.round(ruckKcalPerMin(m.rlvl))} kcal</b> a minute, at about <b>${r1(kmToShow(ruckKmPerMin(m.rlvl)*60))} ${distUnit()}/h</b>.
       ${/* Speed per HOUR, not distance per minute. The bike gets away with
@@ -19381,7 +19511,7 @@ function ruckBlockHTML(m,short){
     <div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log the ruck as</div>
     <div class="tiny muted" style="margin:-2px 0 8px">The plate and the pace both change what a minute is worth. <b>Calories are the input that cannot be thrown off by picking the wrong pace</b> — the same algebra as the bike: the MET cancels out of a calorie figure.</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${RUCK_UNITS.map(([k,l])=>
-      `<button class="${m.runit===k?'on':''}" onclick="setRuckUnit('${k}')">${l==='Distance'?distUnit().toUpperCase():l}</button>`).join('')}</div>
+      `<button class="${m.runit===k?'on':''}"${pressed(m.runit===k)} onclick="setRuckUnit('${k}')">${l==='Distance'?distUnit().toUpperCase():l}</button>`).join('')}</div>
     <div class="row" style="justify-content:space-between;align-items:flex-end;gap:10px">
       <div class="field" style="flex:1;margin:0"><label for="mv-ruck">${_ve(m.runit==='min'?'Minutes':(m.runit==='dist'?'Distance ('+distUnit()+')':'Calories'))}</label>
         <input id="mv-ruck" type="number" inputmode="decimal" min="0" step="${m.runit==='dist'?'0.1':'1'}" value="${shown||''}" placeholder="0" onchange="setRuckVal(this.value)"></div>
@@ -19398,13 +19528,13 @@ function ruckBlockHTML(m,short){
 function bikeBlockHTML(m,short,need,lvl,ride,shownVal){
   let h=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">How hard you rode</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${BIKE_LEVELS.map(b=>
-      `<button class="${m.lvl===b.k?'on':''}" onclick="setBikeLvl('${b.k}')">${b.label}</button>`).join('')}</div>
+      `<button class="${m.lvl===b.k?'on':''}"${pressed(m.lvl===b.k)} onclick="setBikeLvl('${b.k}')">${b.label}</button>`).join('')}</div>
     <div class="tiny muted" style="margin-bottom:12px">${_ve(lvl.rpe)} · ${_ve(lvl.cue)} · <b>${bikeStepsPerMin(m.lvl)} steps</b>, <b>${r1(kmToShow(bikeKmPerMin(m.lvl)))} ${distUnit()}</b> and <b>${Math.round(bikeKcalPerMin(m.lvl))} kcal</b> a minute</div>
     <button class="btn t-teal" style="width:100%;margin-bottom:12px" onclick="openMakeupTimer('bike')">⏱️ Time it — guided timer, logs itself</button>
     <div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log the ride as</div>
     <div class="tiny muted" style="margin:-2px 0 8px">Effort only changes what minutes are worth — distance and calories are already the work done. <b>Read calories off the bike and knock ~15% off it</b>: a turbo counts the calories you would have burned sitting still, this field does not.</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${BIKE_UNITS.map(([k,l])=>
-      `<button class="${m.unit===k?'on':''}" onclick="setBikeUnit('${k}')">${l==='Distance'?distUnit().toUpperCase():l}</button>`).join('')}</div>
+      `<button class="${m.unit===k?'on':''}"${pressed(m.unit===k)} onclick="setBikeUnit('${k}')">${l==='Distance'?distUnit().toUpperCase():l}</button>`).join('')}</div>
     <div class="row" style="justify-content:space-between;align-items:flex-end;gap:10px">
       <div class="field" style="flex:1;margin:0"><label for="mv-bike">${_ve(m.unit==='min'?'Minutes':(m.unit==='dist'?'Distance ('+distUnit()+')':'Calories'))}</label>
         <input id="mv-bike" type="number" inputmode="decimal" min="0" step="${m.unit==='dist'?'0.1':'1'}" value="${shownVal||''}" placeholder="0" onchange="setBikeVal(this.value)"></div>
@@ -19431,12 +19561,12 @@ function skipBlockHTML(m,short){
   const step=m.sunit==='min'?5:(m.sunit==='reps'?50:50);
   let h=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">How hard you went</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${SKIP_LEVELS.map(b=>
-      `<button class="${m.slvl===b.k?'on':''}" onclick="setSkipLvl('${b.k}')">${b.label}</button>`).join('')}</div>
+      `<button class="${m.slvl===b.k?'on':''}"${pressed(m.slvl===b.k)} onclick="setSkipLvl('${b.k}')">${b.label}</button>`).join('')}</div>
     <div class="tiny muted" style="margin-bottom:12px">${_ve(l.rpe)} · ${_ve(l.cue)} · <b>${skipStepsPerMin(m.slvl)} steps</b>, <b>${skipRepsPerMin(m.slvl)} skips</b> and <b>${Math.round(skipKcalPerMin(m.slvl))} kcal</b> a minute</div>
     <button class="btn t-teal" style="width:100%;margin-bottom:12px" onclick="openMakeupTimer('skip')">⏱️ Time it — guided timer, logs itself</button>
     <div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log it as</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${SKIP_UNITS.map(([k,lb])=>
-      `<button class="${m.sunit===k?'on':''}" onclick="setSkipUnit('${k}')">${lb}</button>`).join('')}</div>
+      `<button class="${m.sunit===k?'on':''}"${pressed(m.sunit===k)} onclick="setSkipUnit('${k}')">${lb}</button>`).join('')}</div>
     <div class="row" style="justify-content:space-between;align-items:flex-end;gap:10px">
       <div class="field" style="flex:1;margin:0"><label for="mv-skip">${_ve(m.sunit==='min'?'Minutes':(m.sunit==='reps'?'Skips':'Calories'))}</label>
         <input id="mv-skip" type="number" inputmode="decimal" min="0" step="1" value="${m.sval||''}" placeholder="0" onchange="setSkipVal(this.value)"></div>
@@ -19463,12 +19593,12 @@ function skipBlockHTML(m,short){
 function jackBlockHTML(m,short,jneed,jlvl,work){
   let h=`<div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">How hard you went</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 4px">${JACK_LEVELS.map(b=>
-      `<button class="${m.jlvl===b.k?'on':''}" onclick="setJackLvl('${b.k}')">${b.label}</button>`).join('')}</div>
+      `<button class="${m.jlvl===b.k?'on':''}"${pressed(m.jlvl===b.k)} onclick="setJackLvl('${b.k}')">${b.label}</button>`).join('')}</div>
     <div class="tiny muted" style="margin-bottom:12px">${_ve(jlvl.rpe)} · ${_ve(jlvl.cue)} · <b>${jackStepsPerMin(m.jlvl)} steps</b>, <b>${jackRepsPerMin(m.jlvl)} reps</b> and <b>${Math.round(jackKcalPerMin(m.jlvl))} kcal</b> a minute</div>
     <button class="btn t-teal" style="width:100%;margin-bottom:12px" onclick="openMakeupTimer('jacks')">⏱️ Time it — guided timer, logs itself</button>
     <div class="tiny muted" style="margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">Log it as</div>
     <div class="daypick" style="flex-wrap:wrap;margin:0 0 10px">${JACK_UNITS.map(([k,l])=>
-      `<button class="${m.junit===k?'on':''}" onclick="setJackUnit('${k}')">${l}</button>`).join('')}</div>
+      `<button class="${m.junit===k?'on':''}"${pressed(m.junit===k)} onclick="setJackUnit('${k}')">${l}</button>`).join('')}</div>
     <div class="row" style="justify-content:space-between;align-items:flex-end;gap:10px">
       <div class="field" style="flex:1;margin:0"><label for="mv-jack">${_ve(m.junit==='min'?'Minutes':(m.junit==='reps'?'Reps':'Calories'))}</label>
         <input id="mv-jack" type="number" inputmode="decimal" min="0" step="1" value="${m.jval||''}" placeholder="0" onchange="setJackVal(this.value)"></div>
@@ -19585,6 +19715,26 @@ function clearProteinTarget(){
   try{renderFuel();}catch(e){}
 }
 function waterTargetCups(){const kg=latestWeightKg();if(!kg)return 8;return clamp(Math.round(kg*35/240),6,16);} // ~35 ml/kg, 240 ml/cup
+/* ONE READER FOR THE WATER TARGET'S SECONDARY FIGURE. The Fuel card printed
+   LITRES to everybody and the spoken brief printed OUNCES to everybody — one
+   fact, two surfaces, each hardcoded to the OPPOSITE unit system, and neither
+   followed the athlete. Measured on a 12-cup target: a metric athlete HEARD
+   "about 96 ounces" every morning and READ "2.9 L" on the tab; an imperial
+   athlete got the mirror of it.
+
+   Cups themselves stay. The counter is a glass and the athlete taps one per
+   glass, so that is the store rather than a unit; it is the volume BESIDE it
+   that has to be theirs. One function with one unit test, because two readers
+   of one fact is exactly how these two came to disagree.
+
+   `spoken` spells the unit out, because the brief is read ALOUD and "2.9 L"
+   is not a thing a voice can say. */
+const WATER_ML_CUP=240, WATER_OZ_CUP=8;
+function waterVolShow(cups,spoken){
+  const im=isImperial();
+  const n=im?String(Math.round(cups*WATER_OZ_CUP))
+            :(Math.round(cups*WATER_ML_CUP/100)/10).toFixed(1);
+  return n+' '+(im?(spoken?'ounces':'oz'):(spoken?'litres':'L'));}
 function habitsRequired(){return HABITS.filter(h=>!h.optional).length;}
 /* One forgiveness day per week, matching the training streak's tolerance —
    otherwise one restaurant meal or one bad night's sleep zeroes it. */
@@ -19977,10 +20127,10 @@ function eatWindowHTML(){
     </div>`;
   if(w.on){
     h+=`<div class="daypick" style="flex-wrap:wrap;margin-top:12px">${WINDOWS.map(([hrs,name,desc])=>
-      `<button class="${w.hours===hrs?'on':''}" onclick="setEatWindow({hours:${hrs}})" title="${desc}">${name}</button>`).join('')}</div>`;
+      `<button class="${w.hours===hrs?'on':''}"${pressed(w.hours===hrs)} onclick="setEatWindow({hours:${hrs}})" title="${desc}">${name}</button>`).join('')}</div>`;
     h+=`<div class="field" style="margin-top:12px"><label>First meal at</label>
       <div class="daypick" style="flex-wrap:wrap">${[8,9,10,11,12,13,14].map(s=>
-        `<button class="${w.start===s?'on':''}" onclick="setEatWindow({start:${s}})">${fmtHour(s)}</button>`).join('')}</div></div>`;
+        `<button class="${w.start===s?'on':''}"${pressed(w.start===s)} onclick="setEatWindow({start:${s}})">${fmtHour(s)}</button>`).join('')}</div></div>`;
     if(st.on){
       h+= st.inWindow
         ? `<div class="note info" style="margin-top:10px">🍽️ <b>Window open</b> — ${Math.floor(st.minsLeft/60)}h ${st.minsLeft%60}m left. Closes at ${fmtHour(st.closeHour)}.</div>`
@@ -20794,7 +20944,11 @@ function currentMealPlan(){const p=STATE.nutrition.plan;
   if(p&&p.date===todayISO()&&p.meals&&p.meals.length&&_planStillValid(p))return p;
   return generateMealPlan();}
 function regenPlan(){generateMealPlan();haptic(8);renderFuel();}
-function toggleRecipe(id){const e=$('#rc-'+id);if(e)e.style.display=e.style.display==='none'?'block':'none';}
+/* The chevron turns and nothing said so. A collapsible whose open state is
+   visible and never announced is the same defect as a picker that looks chosen
+   and announces nothing — so the button carries aria-expanded and this keeps it
+   in step, rather than a second reader inferring it from the style. */
+function toggleRecipe(id){const e=$('#rc-'+id);if(!e)return;const open=e.style.display==='none';e.style.display=open?'block':'none';const b=$('#rcb-'+id);if(b)b.setAttribute('aria-expanded',open?'true':'false');}
 const MEAL_LABEL={breakfast:'breakfast',lunch:'lunch',dinner:'dinner',snack:'snack'};
 function mealGapHTML(missing){
   if(!missing||!missing.length)return '';
@@ -20883,7 +21037,7 @@ function _recipePlanHTML(anchor){
   const _mt=mealTimes();
   let h=`<div class="section-label" id="${_anch}">Today's meal plan · <span class="tiny muted">${_ve(dietLabel())} · ${recs.length} meal${recs.length===1?'':'s'}${wholeOnly()?' · <span style="color:var(--green);font-weight:800">🥦 whole foods</span>':''}</span></div><div class="card pad" style="padding-bottom:8px">`;
   h+=`<div class="row" style="justify-content:space-between;margin-bottom:6px"><div><b>${tot} kcal</b> · ${totP}g protein${kcalT?` <span class="tiny muted">of ${kcalT} target</span>`:''}</div><div class="btnrow" style="flex:0 0 auto;gap:6px"><button class="chip" onclick="openGrocery()">🛒 List</button><button class="chip" onclick="regenPlan()">↻ New plan</button></div></div>`;
-  recs.forEach((r,_i)=>{const _t=_mt&&_mt[_i];h+=`<button class="kv" style="width:100%;text-align:left;border:none;border-top:1px solid var(--line);background:none;padding:12px 2px;cursor:pointer" onclick="toggleRecipe('${r.id}')">
+  recs.forEach((r,_i)=>{const _t=_mt&&_mt[_i];h+=`<button class="kv" style="width:100%;text-align:left;border:none;border-top:1px solid var(--line);background:none;padding:12px 2px;cursor:pointer" id="rcb-${r.id}" aria-expanded="false" aria-controls="rc-${r.id}" onclick="toggleRecipe('${r.id}')">
     <span style="min-width:0"><span style="font-size:18px">${r.emoji}</span> <b>${_ve(r.name)}</b>${_t?` <span class="chip" style="font-size:11px;padding:2px 7px">${_t.label}</span>`:''}<div class="tiny muted" style="margin-top:2px;text-transform:capitalize">${r.type} · ${r.kcal} kcal · ${r.p}p ${r.c}c ${r.f}f</div></span>
     <span class="tiny muted" style="flex:0 0 auto">▾</span></button>
     <div id="rc-${r.id}" style="display:none;padding:2px 2px 12px">
@@ -21005,7 +21159,7 @@ function renderRef(){
   }
   h+=`<div class="section-label">Food list · <span class="tiny muted">tap a food to pick an amount</span></div>`;
   h+=`<div class="daypick" id="ref-cats" style="flex-wrap:wrap;margin:0 2px 10px">${FOOD_CATS.map(([k,l])=>
-    `<button class="${REF_CAT===k?'on':''}" onclick="setRefCat('${k}')">${l}</button>`).join('')}</div>`;
+    `<button class="${REF_CAT===k?'on':''}"${pressed(REF_CAT===k)} onclick="setRefCat('${k}')">${l}</button>`).join('')}</div>`;
   /* Filtered, not annotated. This tab used to show the whole list and say
      nothing, and silence on a food list reads as "checked and safe". */
   const rows=FOODS.map((f,i)=>[f,i]).filter(([f])=>foodOk(f)&&(REF_CAT==='all'||f[4]===REF_CAT));
@@ -21198,7 +21352,7 @@ function renderFuel(){
   }
   // goal toggle
   h+=`<div class="section-label">My goal</div><div class="daypick goalpick" style="margin:0 2px 14px">
-    ${GOALS.map(([g,l])=>`<button class="${n.goal===g?'on':''}" onclick="setNutGoal('${g}')">${l}</button>`).join('')}</div>
+    ${GOALS.map(([g,l])=>`<button class="${n.goal===g?'on':''}"${pressed(n.goal===g)} onclick="setNutGoal('${g}')">${l}</button>`).join('')}</div>
     <div class="tiny muted" style="margin:-8px 2px 14px">${GOAL_NOTE[n.goal]||''}</div>`;
   h+=dietBlockHTML();
   // daily targets
@@ -21282,7 +21436,7 @@ function renderFuel(){
   // water tracker
   const wc=t.water||0;const wpct=Math.min(100,Math.round(wc/wt*100));
   h+=`<div class="section-label">Hydration</div><div class="card pad">
-    <div class="row" style="justify-content:space-between"><div><b>${wc} / ${wt} cups</b><div class="tiny muted">≈ ${(wt*0.24).toFixed(1)} L goal · helps control appetite &amp; reveal definition</div></div>
+    <div class="row" style="justify-content:space-between"><div><b>${wc} / ${wt} cups</b><div class="tiny muted">≈ ${waterVolShow(wt)} goal · helps control appetite &amp; reveal definition</div></div>
       <div class="btnrow" style="flex:0 0 auto;gap:8px"><button class="btn sm ghost" aria-label="One glass fewer" onclick="logWater(-1)" style="width:44px">–</button><button class="btn sm primary" aria-label="One glass more" onclick="logWater(1)" style="width:44px">＋</button></div></div>
     <div class="pbar" style="margin-top:12px"><i style="width:${wpct}%;background:linear-gradient(90deg,#3fd7e8,#12b5c9)"></i></div>
   </div>`;
@@ -21712,7 +21866,7 @@ function openTDEE(){
   openSheet(`
     <h3>Your calorie target</h3>
     <div class="field"><label>Sex (for the formula)</label>
-      <div class="daypick"><button data-sx="male" class="${n.sex==='male'?'on':''}" onclick="tdeeSex('male',this)">Male</button><button data-sx="female" class="${n.sex==='female'?'on':''}" onclick="tdeeSex('female',this)">Female</button></div></div>
+      <div class="daypick"><button data-sx="male" class="${n.sex==='male'?'on':''}"${pressed(n.sex==='male')} onclick="tdeeSex('male',this)">Male</button><button data-sx="female" class="${n.sex==='female'?'on':''}"${pressed(n.sex==='female')} onclick="tdeeSex('female',this)">Female</button></div></div>
     <div class="field"><label for="td-age">Age</label><input id="td-age" type="number" inputmode="numeric" value="${n.age||''}" placeholder="e.g. 35"></div>
     <div class="field"><label for="td-ht">Height (${imp?'in':'cm'})</label><input id="td-ht" type="number" inputmode="decimal" value="${n.heightCm?(imp?(n.heightCm/2.54).toFixed(0):n.heightCm):''}" placeholder="${imp?'e.g. 70':'e.g. 178'}"></div>
     <div class="field"><label for="td-wt">Weight (${imp?'lb':'kg'})</label><input id="td-wt" type="number" inputmode="decimal" value="${n.weightKg?(imp?(n.weightKg/0.453592).toFixed(0):n.weightKg):(latestWeightKg()?(imp?(latestWeightKg()/0.453592).toFixed(0):latestWeightKg().toFixed(0)):'')}" placeholder="${imp?'e.g. 185':'e.g. 84'}"></div>
@@ -21770,29 +21924,63 @@ function saveTDEE(){
    needed. Items reference the exercise library; unit & rest come from EX.
    Running a quick workout does NOT touch your main program progress. */
 const QUICKIES=[
-  {id:'core5', name:'Core Express', mins:5, icon:'🔥', focus:'Fast all-round ab hit',
+  {id:'core5', name:'Core Express', icon:'🔥', focus:'Fast all-round ab hit',
    items:[{exId:'plank',sets:2,target:30},{exId:'bicycle',sets:2,target:30},{exId:'revcrunch',sets:2,target:15},{exId:'sideplank',sets:2,target:20}]},
-  {id:'burn7', name:'Ab Burner', mins:7, icon:'💥', focus:'Deep burn, whole midsection',
+  {id:'burn7', name:'Ab Burner', icon:'💥', focus:'Deep burn, whole midsection',
    items:[{exId:'hollow',sets:2,target:25},{exId:'legraise',sets:2,target:12},{exId:'bicycle',sets:2,target:35},{exId:'russiantwist',sets:2,target:20},{exId:'crunch',sets:2,target:18}]},
-  {id:'oblique6', name:'Obliques & Love Handles', mins:6, icon:'🌀', focus:'Waist & side abs',
+  {id:'oblique6', name:'Obliques & Love Handles', icon:'🌀', focus:'Waist & side abs',
    items:[{exId:'sideplank',sets:2,target:25},{exId:'sidedip',sets:2,target:12},{exId:'russiantwist',sets:3,target:20},{exId:'bicycle',sets:2,target:30}]},
-  {id:'hiit8', name:'Fat-Burn HIIT', mins:8, icon:'⚡', focus:'Cardio blast for fat loss',
+  {id:'hiit8', name:'Fat-Burn HIIT', icon:'⚡', focus:'Cardio blast for fat loss',
    items:[{exId:'jumpingjack',sets:3,target:40},{exId:'highknees',sets:3,target:30},{exId:'mountainclimber',sets:3,target:30},{exId:'burpee',sets:3,target:25}]},
-  {id:'lower6', name:'Lower-Ab Focus', mins:6, icon:'⬇️', focus:'Lower belly & deep core',
+  {id:'lower6', name:'Lower-Ab Focus', icon:'⬇️', focus:'Lower belly & deep core',
    items:[{exId:'revcrunch',sets:3,target:14},{exId:'legraise',sets:3,target:12},{exId:'flutter',sets:3,target:30},{exId:'deadbug',sets:2,target:16}]},
-  {id:'full10', name:'Full-Body Quickie', mins:10, icon:'💪', focus:'Whole-body calorie burn + core',
+  {id:'full10', name:'Full-Body Quickie', icon:'💪', focus:'Whole-body calorie burn + core',
    items:[{exId:'squat',sets:3,target:16},{exId:'pushup',sets:3,target:12},{exId:'reverselunge',sets:3,target:12},{exId:'plank',sets:2,target:40},{exId:'mountainclimber',sets:2,target:30},{exId:'jumpingjack',sets:2,target:40}]},
-  {id:'quiet6', name:'Quiet / Travel (low impact)', mins:6, icon:'🤫', focus:'No jumping, apartment-safe',
+  {id:'quiet6', name:'Quiet / Travel (low impact)', icon:'🤫', focus:'No jumping, apartment-safe',
    items:[{exId:'deadbug',sets:2,target:16},{exId:'birddog',sets:2,target:16},{exId:'plank',sets:2,target:30},{exId:'kneeside',sets:2,target:20},{exId:'glutebridge',sets:2,target:15},{exId:'superman',sets:2,target:20}]},
-  {id:'morning5', name:'Morning Wake-Up', mins:5, icon:'☀️', focus:'Gentle activation to start the day',
+  {id:'morning5', name:'Morning Wake-Up', icon:'☀️', focus:'Gentle activation to start the day',
    items:[{exId:'march',sets:2,target:30},{exId:'glutebridge',sets:2,target:15},{exId:'birddog',sets:2,target:14},{exId:'plank',sets:1,target:30},{exId:'superman',sets:2,target:20}]},
 ];
 let QUICK_ID=null, quickState={done:{}};
+/* THE CARD PRESCRIBED TWO SETS AND PLAY DELIVERED ONE, THEN TICKED IT COMPLETE.
+   quickPlay() ran a single hold and handed quickMark() straight to onDone, so
+   "Forearm Plank · 2 × 0:30" was checked off after one 30-second hold and the
+   Finish button went green on half the work. That is the completion gate's own
+   rule — a skipped set is not a completed one — on the surface that says it in
+   as many words on the row above the button.
+
+   The number beside it was hand-written and had never been near the content it
+   labels. Measured across the eight workouts, declared against what the card
+   actually prescribes: 5/12, 7/14, 6/13, 8/12, 6/15, 10/20, 6/15, 5/12 — every
+   one about half. It is derived now, from the same three things Play spends:
+   the work, the athlete's own rep cadence, and the rest between sets. Same
+   class as v449's warm-up: a duration written by hand beside the list that
+   decides it. */
+function quickSets(it){const n=+((it||{}).sets);return (isFinite(n)&&n>0)?Math.min(10,Math.round(n)):1;}
+function quickItemSecs(it,per){
+  const ex=EX[quickExId(it.exId)]||EX[it.exId];if(!ex)return 0;
+  const sets=quickSets(it),target=quickTarget(it,ex),rest=it.rest||ex.rest||25;
+  const work=(ex.unit==='time')?target:target*(repSecondsFor(quickExId(it.exId),per)||per);
+  /* The last set is not followed by a rest — the movement is finished, and
+     counting one would price a gap the athlete never spends. */
+  return sets*work+(sets-1)*rest;
+}
+function quickMins(q){try{
+  const per=repTempoSetting(),items=(q&&q.items)||[];
+  if(!items.length)return 0;
+  /* Only what Play actually SPENDS — the work and the rests between sets. The
+     athlete also repositions and taps between movements, and the app does not
+     run a clock through that, so counting it would be padding a figure nobody
+     can check. v449 counts the flow's repositioning windows for the opposite
+     reason: runFlow() genuinely spends them. */
+  let s=0;items.forEach(it=>{s+=quickItemSecs(it,per);});
+  return Math.max(1,Math.round(s/60));
+}catch(e){return 0;}}
 function openQuickList(){
   openSheet(`<h3>⚡ Quick Workouts</h3><p class="muted sm" style="margin:2px 0 12px">Short on time? Pick a follow-along session — these don't affect your main program.</p>
     ${QUICKIES.map(q=>`<button class="kv" style="width:100%;text-align:left;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:8px;cursor:pointer" onclick="closeSheet();openQuick('${q.id}')">
       <span><span style="font-size:18px">${q.icon}</span> <b>${q.name}</b><div class="tiny muted" style="margin-top:2px">${q.focus}</div></span>
-      <span class="chip">${q.mins} min</span></button>`).join('')}`);
+      <span class="chip">${quickMins(q)} min</span></button>`).join('')}`);
 }
 function openQuick(id){QUICK_ID=id;quickState={done:{}};
   // closeSheet() has just queued a history.back(); pushing in the same tick puts our
@@ -21804,7 +21992,7 @@ function renderQuick(){
   if(!q){v.innerHTML=`<div class="note info">No quick workout selected.</div>`;return;}
   const doneN=Object.values(quickState.done||{}).filter(Boolean).length;
   let h=`<button class="btn ghost sm" style="width:auto;margin-bottom:10px" onclick="history.back()">← Back</button>
-    <div class="hero metcon"><div class="htop"><div><div class="hlbl">Quick workout · ~${q.mins} min</div><h1>${q.name}</h1><div class="hmeta">${q.focus}</div></div><div class="hicon">${q.icon}</div></div>
+    <div class="hero metcon"><div class="htop"><div><div class="hlbl">Quick workout · ~${quickMins(q)} min</div><h1>${q.name}</h1><div class="hmeta">${q.focus}</div></div><div class="hicon">${q.icon}</div></div>
       <div class="hstats"><div class="hstat"><b>${q.items.length}</b>moves</div><div class="hstat"><b>${doneN}/${q.items.length}</b>done</div></div></div>
     <div class="note info">Tap <b>▶ Play</b> on each move for a guided timer with coaching, then check it off. No equipment needed.</div>
     <div class="exlist">`;
@@ -21849,15 +22037,28 @@ function quickTarget(it,ex){
   if(!src||!ex||src.unit===ex.unit)return it.target;
   return ex.base||(ex.unit==='time'?30:10);
 }
-function quickPlay(idx){
-  const q=QUICKIES.find(x=>x.id===QUICK_ID);const it=q.items[idx];const ex=EX[quickExId(it.exId)]||EX[it.exId];
+function quickPlay(idx,setNo){
+  const q=QUICKIES.find(x=>x.id===QUICK_ID);if(!q)return;const it=q.items[idx];if(!it)return;
+  const ex=EX[quickExId(it.exId)]||EX[it.exId];if(!ex)return;
   const rest=it.rest||ex.rest||25;autoRoll();
-  const label=ex.name+(it.sets>1?` · ${it.sets} sets`:'');
+  const sets=quickSets(it),n=Math.min(sets,Math.max(1,+setNo||1)),last=n>=sets;
+  /* Which set it is, not how many there are. "2 sets" told the athlete nothing
+     about where they were in them, and the chain makes that answerable. */
+  const label=ex.name+(sets>1?` · set ${n} of ${sets}`:'');
   const target=quickTarget(it,ex);   // same number the card shows
-  if(ex.unit==='time') runTimer('hold',target,label,rest,()=>quickMark(idx));
-  else runRepCadence(target,label,rest,()=>quickMark(idx));
+  /* Only the LAST set ticks the movement off. Everything before it hands to a
+     rest and then to the next set, so the check means what the row promised. */
+  const done=last?(()=>quickSetDone(idx)):null;
+  const next=last?null:(()=>quickPlay(idx,n+1));
+  if(ex.unit==='time') runTimer('hold',target,label,last?0:rest,done,false,null,next);
+  else runRepCadence(target,label,last?0:rest,done,null,next);
 }
-function quickMark(idx){if(!quickState.done)quickState.done={};quickState.done[idx]=true;haptic(10);if(TAB==='quick')renderQuick();}
+function quickSetDone(idx){if(!quickState.done)quickState.done={};quickState.done[idx]=true;haptic(10);if(TAB==='quick')renderQuick();}
+/* THE BUTTON SAID "Unmark" AND COULD NOT UNMARK. quickMark() only ever wrote
+   true, so a mis-tap was permanent and the accessible name promised a control
+   that did not exist. Play does not go through here — a finished set must never
+   untick the movement it just completed. */
+function quickMark(idx){if(!quickState.done)quickState.done={};quickState.done[idx]=!quickState.done[idx];haptic(10);if(TAB==='quick')renderQuick();}
 function quickFinish(){
   const q=QUICKIES.find(x=>x.id===QUICK_ID);
   /* Quick sessions used to write a counter nothing read: no log, no streak, no
@@ -22075,7 +22276,7 @@ function sessionStats(p,full){
      row just to discard the result; skip it unless asked for. */
   if(!full)return {items,exDone,exTotal:items.length,setsDone,setsRx,totalReps,totalHold,estMin:Math.max(1,Math.round(estSec/60))};
   const sess=buildSession(p);
-  estSec+=(sess.warmup.length*35)+(sess.cooldown.length*33); // warm-up + cool-down
+  estSec+=flowSecs(warmupFlow())+flowSecs(cooldownFlow()); // the flows the athlete really runs
   return {sess,items,exDone,exTotal:items.length,setsDone,setsRx,totalReps,totalHold,estMin:Math.max(1,Math.round(estSec/60))};
 }
 function sessionHistoryHTML(){
@@ -22221,35 +22422,35 @@ function renderGuide(){
   h+=`<div class="section-label" id="settingsAnchor" style="scroll-margin-top:70px">Settings</div><div class="card pad">
     <div style="padding:2px 0 8px"><div class="tiny muted" style="margin-bottom:8px">Accent theme</div>${themeChipsHTML()}</div>
     <div class="divider" style="margin:8px 0"></div>
-    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Sound cues</span><button class="chip ${STATE.settings.sound?'on':''}" onclick="toggleSetting('sound')">${STATE.settings.sound?'On':'Off'}</button></div>
-    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Vibration</span><button class="chip ${STATE.settings.vibrate?'on':''}" onclick="toggleSetting('vibrate')">${STATE.settings.vibrate?'On':'Off'}</button></div>
-    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Workout reminders</span><button class="chip ${STATE.settings.reminderOn?'on':''}" onclick="toggleReminders()">${STATE.settings.reminderOn?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Sound cues</span><button class="chip ${STATE.settings.sound?'on':''}"${pressed(STATE.settings.sound)} onclick="toggleSetting('sound')">${STATE.settings.sound?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Vibration</span><button class="chip ${STATE.settings.vibrate?'on':''}"${pressed(STATE.settings.vibrate)} onclick="toggleSetting('vibrate')">${STATE.settings.vibrate?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Workout reminders</span><button class="chip ${STATE.settings.reminderOn?'on':''}"${pressed(STATE.settings.reminderOn)} onclick="toggleReminders()">${STATE.settings.reminderOn?'On':'Off'}</button></div>
     ${STATE.settings.reminderOn?`<div class="row" style="justify-content:space-between;padding:6px 0"><span class="sm muted">Remind me at</span><input type="time" value="${STATE.settings.reminderTime||'18:00'}" onchange="setReminderTime(this.value)" style="background:var(--card2);color:var(--ink);border:1.5px solid var(--line);border-radius:10px;padding:8px 10px;font-size:15px"></div>
     <div class="tiny muted" style="padding:2px 0 4px">Nudges you on your training days. Reminders appear when you open the app (a home-screen install makes them most reliable).</div>`:''}
-    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Saturday progress check-in <span class="tiny muted">· push + brief countdown</span></span><button class="chip ${STATE.settings.weeklyOn!==false?'on':''}" onclick="toggleWeekly()">${STATE.settings.weeklyOn!==false?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Saturday progress check-in <span class="tiny muted">· push + brief countdown</span></span><button class="chip ${STATE.settings.weeklyOn!==false?'on':''}"${pressed(STATE.settings.weeklyOn!==false)} onclick="toggleWeekly()">${STATE.settings.weeklyOn!==false?'On':'Off'}</button></div>
     <button class="btn ghost sm" style="width:100%;margin-top:2px" onclick="testReminderNotif()">🔔 Send a test notification</button>
     ${(n=>n?`<div class="note warn" style="margin:8px 0 4px">${n}</div>`:'')(notifBlockedNote())}
-    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Voice coach <span class="tiny muted">· deep</span></span><button class="chip ${STATE.settings.voice!==false?'on':''}" onclick="toggleSetting('voice')">${STATE.settings.voice!==false?'On':'Off'}</button></div>
-    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Say “continue” to start the next set <span class="tiny muted">· hands-free</span></span><button class="chip ${voiceCmdOn()?'on':''}" onclick="toggleVoiceCmd()" ${(voiceCmdSupported()||voiceCmdOn())?'':'aria-disabled="true"'}>${voiceCmdOn()?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Voice coach <span class="tiny muted">· deep</span></span><button class="chip ${STATE.settings.voice!==false?'on':''}"${pressed(STATE.settings.voice!==false)} onclick="toggleSetting('voice')">${STATE.settings.voice!==false?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Say “continue” to start the next set <span class="tiny muted">· hands-free</span></span><button class="chip ${voiceCmdOn()?'on':''}"${pressed(voiceCmdOn())} onclick="toggleVoiceCmd()" ${(voiceCmdSupported()||voiceCmdOn())?'':'aria-disabled="true"'}>${voiceCmdOn()?'On':'Off'}</button></div>
     <div class="tiny muted" style="padding:2px 0 6px">${_ve(voiceCmdNote()||'The microphone opens during rest — and while a timer is stuck — never during a set, and it only ever acts on that one word. The recognition runs on Google’s servers, so it needs a connection. It never stops, pauses or ends a session — that stays a deliberate tap.')}</div>
     <div style="padding:4px 0 2px">
       <div class="row" style="justify-content:space-between"><span class="tiny muted">Beep &amp; countdown volume</span><span class="tiny muted" id="cvLbl">${Math.round(cueVolPref()*100/CUE_VOL_DEFAULT)}%</span></div>
       <input type="range" aria-label="Beep and countdown volume" min="${CUE_VOL_MIN}" max="${CUE_VOL_MAX}" step="0.05" value="${cueVolPref()}" oninput="$('#cvLbl').textContent=Math.round(this.value*100/CUE_VOL_DEFAULT)+'%'" onchange="setCueVol(this.value);beep(920,.17,0.92)" style="width:100%">
       <div class="tiny muted" style="margin-bottom:4px">Plays a sample as you let go. The beat ducks under the cues that matter, so these stay audible over the music.</div>
     </div>
-    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Workout beat <span class="tiny muted">· hip-hop, auto-ducks for the coach</span></span><button class="chip ${STATE.settings.beat!==false?'on':''}" onclick="toggleSetting('beat')">${STATE.settings.beat!==false?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Workout beat <span class="tiny muted">· hip-hop, auto-ducks for the coach</span></span><button class="chip ${STATE.settings.beat!==false?'on':''}"${pressed(STATE.settings.beat!==false)} onclick="toggleSetting('beat')">${STATE.settings.beat!==false?'On':'Off'}</button></div>
     ${STATE.settings.beat!==false?`<div style="padding:4px 0 2px">
       <div class="row" style="justify-content:space-between"><span class="tiny muted">Beat volume</span><span class="tiny muted" id="bvLbl">${Math.round(beatVolPref()*100)}%</span></div>
       <input type="range" aria-label="Beat volume" min="${BEAT_VOL_MIN}" max="${BEAT_VOL_MAX}" step="0.05" value="${beatVolPref()}" oninput="$('#bvLbl').textContent=Math.round(this.value*100)+'%'" onchange="setBeatVol(this.value)" style="width:100%">
       <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">Beat tempo</span><span class="tiny muted" id="beatTempoLbl">${beatTempoPref()} BPM</span></div>
       <input type="range" aria-label="Beat tempo in beats per minute" min="60" max="110" step="2" value="${beatTempoPref()}" oninput="$('#beatTempoLbl').textContent=this.value+' BPM'" onchange="setBeatTempo(this.value)" style="width:100%">
       <div class="btnrow" style="gap:6px;margin-top:6px">${[[70,'😌 Chill 70'],[78,'🎧 Classic 78'],[92,'🔥 Hype 92']].map(([bpm,label])=>
-        `<button class="chip ${beatTempoPref()===bpm?'on':''}" onclick="setBeatTempo(${bpm})">${label}</button>`).join('')}</div>
+        `<button class="chip ${beatTempoPref()===bpm?'on':''}"${pressed(beatTempoPref()===bpm)} onclick="setBeatTempo(${bpm})">${label}</button>`).join('')}</div>
       <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">The beat plays during timers, guided reps, warm-up &amp; cool-down.</span><button class="chip" onclick="beatPreview()">▶ Preview</button></div>
     </div>`:''}
-    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Deload week <span class="tiny muted">· lighter sets &amp; targets to recover</span></span><button class="chip ${deloadOn()?'on':''}" onclick="toggleDeload()">${deloadOn()?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Deload week <span class="tiny muted">· lighter sets &amp; targets to recover</span></span><button class="chip ${deloadOn()?'on':''}"${pressed(deloadOn())} onclick="toggleDeload()">${deloadOn()?'On':'Off'}</button></div>
     <div style="padding:6px 0 2px"><div class="tiny muted" style="margin-bottom:6px">Work around an injury <span style="opacity:.7">· auto-swaps risky moves</span></div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px">${JOINTS.map(([k,l])=>`<button class="chip ${((STATE.profile.limitations||[]).includes(k))?'on':''}" onclick="toggleLimitation('${k}')">${l}</button>`).join('')}</div></div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${JOINTS.map(([k,l])=>`<button class="chip ${((STATE.profile.limitations||[]).includes(k))?'on':''}"${pressed(((STATE.profile.limitations||[]).includes(k)))} onclick="toggleLimitation('${k}')">${l}</button>`).join('')}</div></div>
     <div style="padding:6px 0 2px"><div class="row" style="justify-content:space-between;margin-bottom:6px"><span class="tiny muted">AI food photo <span style="opacity:.7">· 📷 Snap → calories, via Google Gemini (free)</span></span>${STATE.settings.foodAiKey?`<button class="chip" onclick="clearFoodAiKey()">Clear key</button>`:''}</div>
       <input type="password" aria-label="Google Gemini API key" value="" onchange="if(this.value.trim())setFoodAiKey(this.value)" placeholder="${STATE.settings.foodAiKey?'🔒 Saved · type to replace':'Google Gemini API key'}" style="width:100%;padding:10px;border-radius:10px;background:var(--card2);color:var(--ink);border:1px solid var(--line)">
       <div class="tiny muted" style="margin-top:5px">Get a <b>free</b> key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="display:inline-block;padding:8px 0">aistudio.google.com/apikey</a> — no billing. Stays only on this phone. Estimates are approximate — always confirm.</div>
@@ -22263,7 +22464,7 @@ function renderGuide(){
       <div class="row" style="justify-content:space-between;padding:4px 0"><span class="muted sm">Which voices is this phone using?</span><button class="chip" onclick="runVoiceCheck()">🔎 Voice check</button></div>
     </div>
     <div class="divider" style="margin:10px 0"></div>
-    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Premium AI voices <span class="tiny muted">· online · Azure neural</span></span><button class="chip ${STATE.settings.neuralOn?'on':''}" onclick="toggleNeural()">${STATE.settings.neuralOn?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Premium AI voices <span class="tiny muted">· online · Azure neural</span></span><button class="chip ${STATE.settings.neuralOn?'on':''}"${pressed(STATE.settings.neuralOn)} onclick="toggleNeural()">${STATE.settings.neuralOn?'On':'Off'}</button></div>
     ${STATE.settings.neuralOn?`<div style="padding:2px 0 2px">
       <div class="tiny muted" style="margin-bottom:6px">Genuinely neural voices — each coach gets a hand-picked Azure voice, with shouting/intense delivery on the hardcore coaches. Your key stays only on this phone; offline it automatically falls back to the device voices.</div>
       <label class="tiny muted" style="display:block;margin-bottom:3px">Azure Speech key</label>
@@ -22301,7 +22502,7 @@ function renderGuide(){
     <div style="padding:8px 0 2px">
       <div class="tiny muted" style="margin-bottom:6px">Voice tone</div>
       <div class="daypick" id="voiceTone" style="flex-wrap:wrap">${VOICE_TONES.map(([k,label])=>
-        `<button class="${voiceToneKey()===k?'on':''}" onclick="setVoiceTone('${k}')">${label}</button>`).join('')}</div>
+        `<button class="${voiceToneKey()===k?'on':''}"${pressed(voiceToneKey()===k)} onclick="setVoiceTone('${k}')">${label}</button>`).join('')}</div>
       <div class="tiny muted" style="margin-top:6px">${_ve(voiceTone()[2])}. Plays a sample when you pick one. Each coach keeps their own character — this moves the whole set up or down.</div>
       ${voicePitchPref()!==null?`<div class="tiny muted" style="margin-top:6px">Fine-tuned to <b>${voicePitchPref().toFixed(2)}</b>, which overrides the tone. Pick a tone above to go back to automatic.</div>`:''}
     </div>
@@ -22321,7 +22522,7 @@ function renderGuide(){
     </div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span class="muted sm">Hear a sample</span><button class="chip" onclick="testVoice()">▶ Test voice</button></div>
     <div class="divider" style="margin:10px 0"></div>
-    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Motivator <span class="tiny muted">· hype during sets</span></span><button class="chip ${STATE.settings.hype!==false?'on':''}" onclick="toggleSetting('hype')">${STATE.settings.hype!==false?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;padding:6px 0"><span>Motivator <span class="tiny muted">· hype during sets</span></span><button class="chip ${STATE.settings.hype!==false?'on':''}"${pressed(STATE.settings.hype!==false)} onclick="toggleSetting('hype')">${STATE.settings.hype!==false?'On':'Off'}</button></div>
     <div style="padding:6px 0 2px"><div class="tiny muted" style="margin-bottom:5px">Coach persona</div>
       <select aria-label="Coach persona" onchange="setPersona(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px">${personaOptionsHTML()}</select>
       <div class="row" style="justify-content:space-between;margin-top:6px"><span class="tiny muted"><b>Auto</b> rotates a random coach each exercise so the voice keeps changing — or pick one of the ${COACHES.length} (Drill Sergeant, Marine, Ultra, Viking, Cheer, A.I. Trainer, and more). They push you <b>during</b> the exercise, not just at the end.</span></div>
@@ -22330,9 +22531,9 @@ function renderGuide(){
     <div class="divider" style="margin:10px 0"></div>
     <div style="padding:2px 0"><div class="tiny muted" style="margin-bottom:6px">Equipment you have <span style="opacity:.7">· unlocks the Weights session</span></div>
       <div class="daypick" id="set-gear" style="flex-wrap:wrap">
-        ${''}${GEAR_OPTS.map(([k,l])=>`<button class="${(STATE.profile.gear||[]).includes(k)?'on':''}" onclick="toggleGear('${k}')">${l}</button>`).join('')}
+        ${''}${GEAR_OPTS.map(([k,l])=>`<button class="${(STATE.profile.gear||[]).includes(k)?'on':''}"${pressed((STATE.profile.gear||[]).includes(k))} onclick="toggleGear('${k}')">${l}</button>`).join('')}
         <div style="margin-top:12px"></div>
-        <button class="${STATE.profile.tightSpace?'on':''}" onclick="toggleTightSpace()">🏠 Tight space</button>
+        <button class="${STATE.profile.tightSpace?'on':''}"${pressed(STATE.profile.tightSpace)} onclick="toggleTightSpace()">🏠 Tight space</button>
         <div class="tiny muted" style="margin-top:8px">Handstand work needs a clear wall and about <b>6 ft / 2 m</b> of floor in front of it to walk up safely; the travelling moves need a room you can cross. Tight space swaps both out — you get the hardest floor presses instead, which load the shoulder the same way without needing a clear wall. Straight trade to know about: nothing on the floor fully replaces a handstand push-up, so the very top of the shoulder ladder is a step easier. Everything else is like for like.</div>
       </div></div>
     ${/* Diet and whole-foods moved to Fuel — they are about food. A pointer,
@@ -22567,9 +22768,9 @@ function dietBlockHTML(){
   return `<div class="section-label">How I eat</div><div class="card pad" style="margin-bottom:14px">
     <div class="tiny muted" style="margin-bottom:6px">Diet preference <span style="opacity:.7">· shapes your meal plans and every recipe you are offered</span></div>
     <div class="daypick" id="set-diet" style="flex-wrap:wrap">
-      ${DIET_OPTS.map(([k,l])=>`<button class="${(STATE.nutrition.diet||'omnivore')===k?'on':''}" onclick="setDiet('${k}')">${l}</button>`).join('')}
+      ${DIET_OPTS.map(([k,l])=>`<button class="${(STATE.nutrition.diet||'omnivore')===k?'on':''}"${pressed((STATE.nutrition.diet||'omnivore')===k)} onclick="setDiet('${k}')">${l}</button>`).join('')}
     </div>
-    <div class="row" style="justify-content:space-between;align-items:center;padding:12px 0 2px"><span>Whole foods only <span class="tiny muted">· 🥦 skip processed food and powders in meal plans</span></span><button class="chip ${wholeOnly()?'on':''}" onclick="toggleWholeFood()">${wholeOnly()?'On':'Off'}</button></div>
+    <div class="row" style="justify-content:space-between;align-items:center;padding:12px 0 2px"><span>Whole foods only <span class="tiny muted">· 🥦 skip processed food and powders in meal plans</span></span><button class="chip ${wholeOnly()?'on':''}"${pressed(wholeOnly())} onclick="toggleWholeFood()">${wholeOnly()?'On':'Off'}</button></div>
   </div>`;
 }
 function repaintDiet(){

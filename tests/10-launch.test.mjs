@@ -895,6 +895,69 @@ const { browser, page, errors } = await launch(port);
   s.ok('and with no goal weight it names the pane the control is on',
     /Progress/i.test(m.noGoal) && /Body/i.test(m.noGoal), m);
 
+  /* v447 — THE COACH SPOKE THE GOAL IN POUNDS TO EVERYBODY. profile.goalWeightLb
+     is stored in pounds by name, and the brief read it out raw, so a metric
+     athlete heard a unit they do not use — spoken, where v315's rule says they
+     cannot double-check it by looking. Measured at 86 kg with a 75 kg goal:
+       Progress ▸ Body   "Goal weight 75 kg · 11 kg to go"
+       the coach         "from 190 pounds down to 165. You are 25 pounds out."
+     The two surfaces are read side by side here, because the requirement is
+     that they AGREE — either alone passes on half the code. */
+  const gw = await page.evaluate(() => {
+    const keepU = STATE.profile.unit, keepG = STATE.profile.goalWeightLb,
+          keepGoal = STATE.profile.goal, keepM = STATE.measurements,
+          keepW = STATE.nutrition.weightKg;
+    const say = () => (briefSegments().find(x => x.title === 'Your mission') || {}).say || '';
+    const line = () => goalWeightLineHTML().replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    const set = (unit, goalLb, kg, goal) => {
+      STATE.profile.unit = unit; STATE.nutrition.unit = unit;
+      STATE.profile.goal = goal || 'lose'; STATE.nutrition.goal = goal || 'lose';
+      STATE.profile.goalWeightLb = goalLb;
+      STATE.measurements = kg ? [{ date: todayISO(), weight: kg }] : [];
+      STATE.nutrition.weightKg = kg || null;
+    };
+    const o = {};
+    set('cm', 165, 86);   o.mSay = say(); o.mLine = line();
+    set('in', 165, 86);   o.iSay = say(); o.iLine = line();
+    set('cm', 165, 74.9); o.mOn  = say();
+    set('cm', 205, null, 'gain'); o.mGainNoWeight = say();
+    set('in', 205, null, 'gain'); o.iGainNoWeight = say();
+    set('cm', 205, 86, 'gain');   o.mGain = say();
+    STATE.profile.unit = keepU; STATE.nutrition.unit = keepU;
+    STATE.profile.goalWeightLb = keepG; STATE.profile.goal = keepGoal;
+    STATE.nutrition.goal = keepGoal;
+    STATE.measurements = keepM; STATE.nutrition.weightKg = keepW; save();
+    return o;
+  });
+  /* GUARD: the two surfaces really are describing the same stored goal, or
+     every assertion below is about two numbers that happen to agree. */
+  s.ok('guard: the metric chart line names the goal in kilograms',
+    /75 kg/.test(gw.mLine) && /11 kg to go/.test(gw.mLine), gw);
+  s.ok('the coach speaks kilograms to a metric athlete',
+    /from 86 kilograms/.test(gw.mSay) && /down to 75\b/.test(gw.mSay)
+      && /11 kilograms out/.test(gw.mSay), gw);
+  s.eq('and never pounds', /pound/i.test(gw.mSay), false, gw);
+  s.eq('and never the pound FIGURE either', /165|190|25 /.test(gw.mSay), false, gw);
+  /* FLOOR: the imperial athlete is byte-identical to before the fix — a change
+     that simply relabelled everything would satisfy every metric assertion. */
+  s.ok('an imperial athlete still hears pounds',
+    /165 pounds|from 190 pounds/.test(gw.iSay) && /25 pounds out/.test(gw.iSay), gw);
+  s.ok('and the chart beside it still says lb',
+    /165 lb/.test(gw.iLine) && /25 lb to go/.test(gw.iLine), gw);
+  /* The on-target sentence is an ADJECTIVE, so it takes the singular. */
+  s.ok('the on-target line reads 75-kilogram, not 75-pound',
+    /75-kilogram target/.test(gw.mOn), gw);
+  /* v447 — the no-weight branch hardcoded the DIRECTION as well as the unit,
+     so a bulking athlete with nothing logged was told to come "down to" their
+     gain target. */
+  s.ok('a bulking athlete with no logged weight is sent UP to the target',
+    /up to 93 kilograms/.test(gw.mGainNoWeight), gw);
+  s.eq('never down', /down to/.test(gw.mGainNoWeight), false, gw);
+  s.ok('and the imperial twin of it is unchanged',
+    /up to 205 pounds/.test(gw.iGainNoWeight), gw);
+  s.ok('a bulking metric athlete with a weight hears the gap in kilograms',
+    /up to 93/.test(gw.mGain) && /7 kilograms out/.test(gw.mGain), gw);
+
   // --- 3. the earned-calorie note, which moved tabs in v311 ---
   const e = await page.evaluate(() => {
     setSteps(stepTarget() + 4000); save();
