@@ -245,14 +245,34 @@ const { browser, page, errors } = await launch(port);
        lean and heavy real bodies, and both must pass untouched. */
     put('ob-height', 70); put('ob-weight', 132); out.leanBodyOk = tap();   // BMI 18.9
     put('ob-height', 70); put('ob-weight', 300); out.heavyBodyOk = tap();  // BMI 43.0
+    /* v446: the wizard's WEIGHT and AGE messages, driven. The band values are
+       pinned in suite 23, but only the height message was ever driven here —
+       and a mutant that gave a typed door its own band back escapes a check
+       that asks the predicate rather than the route. Both quoted bounds must
+       also be enterable: 55 lb was 24.95 kg against a 25 kg floor, and the
+       wizard's own 66 lb was 29.94 kg against its old 30 kg floor. */
+    put('ob-height', 70); put('ob-weight', 40); out.tooLight = tap();
+    put('ob-weight', 190); put('ob-age', 12); out.tooYoung = tap();
+    put('ob-age', 13); out.thirteenOk = tap();
     window.toast = realToast;
     return out;
   });
   s.ok('the reported case names centimetres', /centimet/i.test(hint.cmInInches.msg), hint);
   s.ok('and gives the number to type instead', /\b70\b/.test(hint.cmInInches.msg), hint);
   /* A wrong number that is NOT a unit mix-up must not be told it is one. */
+  /* The bound was 47 in, which is 119.38 cm — BELOW the 120 cm floor the guard
+     itself enforces, so the message named a height it would refuse again. v446
+     rounds every quoted band INWARD; the subject here is unchanged, and the
+     figure is pinned rather than derived so the two checks cannot agree with
+     each other while both being wrong. */
   s.ok('a plainly wrong height gets the range and no false explanation',
-    /47/.test(hint.justWrong.msg) && !/centimet|inches that is/i.test(hint.justWrong.msg), hint);
+    /48–90/.test(hint.justWrong.msg) && !/centimet|inches that is/i.test(hint.justWrong.msg), hint);
+  s.ok('a weight below the band names the band, and the bound it names is enterable',
+    /56–771/.test(hint.tooLight.msg) && !hint.tooLight.advanced, hint.tooLight);
+  s.ok('an age below the band names the band', /13–100/.test(hint.tooYoung.msg) && !hint.tooYoung.advanced,
+    hint.tooYoung);
+  s.ok('FLOOR: and 13 itself is accepted — the wizard and the calorie sheet agree',
+    hint.thirteenOk.advanced === true && hint.thirteenOk.msg === '', hint.thirteenOk);
   s.ok('the mirror image names inches', /inches/i.test(hint.inchesInCm.msg), hint);
   s.ok('and converts it', /\b178\b/.test(hint.inchesInCm.msg), hint);
   /* Only the PAIR is wrong here — 86 lb is a legal number on its own. */

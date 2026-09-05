@@ -16544,6 +16544,243 @@ sum.
   Measured and left rather than changed: `stoppedForPain` beside it has a real
   reader (`todayPtr()`), and a change with no defect behind it is the v386 call.
 
+## The number converted and the label came from a stored tag (v446)
+
+`saveRuck()` stores the distance canonically in kilometres — its own comment
+says why, and names the defect it was written for: *"summing raw display values
+mixed 5 km + 3 mi into Total 8 mi"*. The history row one function away then did
+
+```js
+${x.dist + ' ' + (x.unit||'km')}
+```
+
+**`unit` records what was TYPED, and the row used it to label the STORED value.**
+Measured on an imperial athlete who rucked 3 miles under 25 lb:
+
+| | before | after |
+|---|---|---|
+| the history row | **`4.8 mi · 25 load`** | `3 mi · 25 lb load` |
+| the Total tile, same sheet | `Total mi = 3` | `Total mi = 3` |
+| the same rows switched to metric | **`4.8 mi · 25 load`** | `4.8 km · 11.3 kg load` |
+
+One sheet, one ruck, **two answers 60% apart** — and the load printed as a bare
+number, so nothing on the glass could tell 25 lb from 25 kg.
+
+**v337 swept this class and could not see it.** That sweep enumerated
+`${distUnit()}` sites; this one reads a stored PER-ROW tag. **A sweep is only as
+wide as the surface it enumerates** — the same reason v399's injection sweep
+missed a photo blob and v443's name sweep missed every `<img>`.
+
+**The fix is `distShow()`, the app's own helper**, which converts and labels in
+ONE expression — v337's actual rule, which the row broke by writing the two
+halves separately. The load is not canonical, so it is converted from the row's
+own tag: `rowLoadShow(w, rowUnit)`.
+
+**Both unit systems are driven, and the metric one is not optional.** In
+imperial the load conversion is close enough to its own inverse to hide a bug in
+a single round trip (v315), so only a metric athlete can tell the two apart.
+
+### The 1-rep-max calculator was hardcoded to pounds for everybody
+
+Found by the same sweep — every interpolation followed by a hardcoded unit.
+`calcOneRM()` is a RATIO (`w * (1 + r/30)`), so the answer already comes out in
+whatever unit the athlete typed, and **only the label was wrong**: a metric
+athlete entering 100 kg read *"Estimated 1RM ≈ 133 lb"*, which is really 133 kg.
+The right number wearing the wrong unit, on the figure they load the bar to.
+
+**THE FLOOR IS THAT THE NUMBER DOES NOT MOVE.** Nothing is converted, because
+there is nothing to convert — a "fix" that converted would report the same lift
+as 133 lb to one athlete and 60 kg to the other, which is a different defect
+wearing this one's clothes.
+
+**The rest of the class came back clean, and the two exceptions are
+deliberate.** Every field label naming a unit derives it (`imp?'lb':'kg'`); the
+one hardcoded label is the FORCE Combat march, and a published standard keeps
+the unit it was published in. And every ruck-PLATE surface says `lb` because
+`RUCK_PLATES` are physical objects sold in pounds — `ruckLoadLb()` is the
+canonical store and `ruckLoadKg()` exists for the MET arithmetic alone.
+
+## "Logged 1 movement" for a lift whose defining number was thrown away (v446)
+
+`saveLiftLog()` wrote `loadKg:null` for a load outside `plausibleLoadKg()` and
+**toasted the save anyway**. So a typo of one extra digit on a 90 lb lift threw
+the defining number away and said the movement was recorded — and the
+loaded-progression hint (v221), which reads `lastLoadKg`, then had no anchor.
+
+Worse, a row whose ONLY entry was that load was pushed **empty**, counted, and
+credited the day in `quickLog` — streak, heatmap and weekly count — for a lift
+that recorded nothing.
+
+**The typed door REFUSES and the boot door DROPS**, which is v412's split: the
+athlete is standing on the screen with their figures still in the boxes, so
+retyping costs a tap, while a silent repair costs the measurement.
+
+**And the writer enforced a band the repair did not.** `normalizeState()`
+required only `loadKg > 0`, so an imported backup carrying 5000 kg survived
+every boot and drove the hint: *"aim for 11024 lb"*. Dropped rather than
+clamped — a clamped measurement is a number nobody lifted.
+
+**NOTHING IS WRITTEN UNTIL THE WHOLE FORM HAS BEEN READ.** A `return` inside
+`forEach` skips one row and leaves the rest to push, so the first version of
+this fix half-saved the movements above the bad one — and its own comment
+claimed it could not. *A comment claiming an invariant is not the invariant*,
+caught in my own new code by re-reading the diff.
+
+**A bound the athlete is told must be one they can actually enter.**
+`loadShow(400)` is 881.85 lb and 882 lb converts back to 400.07 kg, so a
+ROUNDED bound quotes a figure the guard itself refuses. It is floored. Same
+reasoning as `bikeNeed()` rounding UP: a number promised to close a gap has to
+close it.
+
+**The band provably cannot fire on a legitimate input**, and both edges are
+pinned in both units — 400 kg exactly is still a lift you can log, and so is
+881 lb.
+
+## The writer's comment described a filter only the repair had (v446)
+
+The activity-row repair says, in as many words, that *"logAct() clamps mins at 0
+and stores dist/wt/secs/rounds only when they are above zero"*. It did not: it
+`Object.assign`'d whatever it was handed, and `saveRuck()` passes
+`d||undefined` where `d` can be **negative** — `r1(-5)` is `-5`, which is
+truthy.
+
+Measured: typing `-5` into the ruck distance box printed **`-3.1 mi`** on the
+row and took 3.1 off the Total tile, until the next launch, when the repair
+quietly put it right. **It self-heals, which is exactly why nobody saw it** —
+and the check therefore drives the writer with NO BOOT BEHIND IT, because the
+repair is the neighbour that would otherwise supply the answer.
+
+`actRow()` is the one field rule now, asked by `logAct()`, by `logSkip()` and by
+the boot repair, so the claim in that comment is true. And the row's two halves
+are symmetric at last: the load has always guarded `w > 0` and the distance
+guarded only truthiness, so a junk distance arriving through a cross-tab adopt
+— which has no boot behind it — reached `innerHTML`.
+
+## A bound the athlete is told must be one they can actually enter (v446)
+
+Found by asking of the lift-log fix — *where else does the app quote a limit?* —
+rather than by using the app. Five "looks off — expected …" messages, every one
+hand-writing its imperial pair, and **four of them named a figure the guard
+itself refuses**:
+
+| the message said | converts to | the band |
+|---|---|---|
+| `55–770 lb` | **24.95 kg** | 25–350 kg |
+| `66–550 lb` (the wizard) | **29.94 kg** | its own 30 kg floor |
+| `47–91 in` | **119.38 cm** and **231.14 cm** | 120–230 cm |
+| `16–98 in` | 40.6 / 248.9 cm | correct by luck |
+
+An athlete at the edge types the number they were just told and is refused again
+by the same sentence — **a dead end wearing the clothes of an explanation**,
+which is worse than v289's bare range because it looks like an answer.
+
+`bandLabel()` rounds **INWARD** — up at the floor, down at the ceiling — and is
+derived from the band rather than restated beside it. Same call as `bikeNeed()`
+rounding UP: a figure quoted as a limit has to hold. Measured after: every end
+of every quoted band converts back inside its own predicate.
+
+**THE UNIT IS PASSED, NEVER READ.** The wizard's own picker does not write
+`profile.unit` until the form commits, so `isImperial()` answers for the unit the
+athlete had BEFORE they touched it — and the message would quote the wrong band
+on the one screen where the unit is being chosen. Caught by reading the diff
+back, not by a check.
+
+### And the two typed doors disagreed about two of the three fields
+
+The wizard and the calorie sheet are twins this file has already recorded
+drifting once. They had drifted again:
+
+| field | the wizard | the calorie sheet | `normalizeState()` |
+|---|---|---|---|
+| age | **13–100** | **14–100** | 10–100 |
+| weight | **30–250 kg** | 25–350 kg (`plausibleKg`) | — |
+| height | 120–230 cm | 120–230 cm | — |
+
+So an athlete who set the app up at **13** was refused by the calorie sheet with
+no way to proceed. One predicate each now — `plausibleAge()`, `plausibleKg()`,
+`plausibleHeightCm()` — and **widened rather than narrowed**, because the
+non-destructive direction is the one that cannot refuse a figure the app already
+stores. `normalizeState()` stays wider still on purpose: a repair must not drop
+a value a typed door once accepted.
+
+**The check is written against the CLASS**: every end of every quoted band is fed
+back through the app's own predicate, so a future band written the same way fails
+here. Its guards pin that the trap was real — the figures those messages used to
+quote really are refused, and the ones beside them really are accepted — because
+otherwise the whole block passes on bands that were never wrong. And the rule is
+**asked for** rather than declared: a source scan forbids a hand-written pair
+beside the predicate that holds it, which is the drift that produced this round.
+
+## A duplicate top-level function name is silent, and the last one wins (v446)
+
+This round declared a second `plausibleAge()` beside the repair's own — and the
+repair's band is deliberately WIDER (10-100 against the typed doors' 13-100),
+because a repair must not drop a value a typed door once accepted. Function
+declarations hoist, so the later one won and **both typed doors quietly got the
+repair's band**. `npm run check` cannot see it: the file parses perfectly.
+
+Caught by a check, on a value the check happened to pin (`plausibleAge(12)` came
+back `true`). Nothing would have caught it otherwise, and the app has **1,140
+top-level functions**.
+
+So the class is now scanned, in the same family as the duplicate-KEY guard on
+the data literals: no top-level function name may be declared twice. Measured
+today: zero. The guard beside it asserts the scan found more than 900 names, or
+an empty duplicate list is a statement about the regex.
+
+## The sums were as exposed as the row (v446)
+
+`actStats()` and `skipStats()` added every figure raw — `a + (x.mins || 0)`
+**concatenates** a stored string, and the repair's own comment already records
+the shape that produced: *"0105 MIN ALL TIME"*. The boot repair cleans the rows,
+which is exactly why nothing had ever driven the render with a dirty one.
+
+**v404's storage listener replaces `STATE` with no boot behind it**, so the
+reader needs its own guard. Two guards, two doors — and this is the door the
+escaped mutant found: reverting the row's `x.dist > 0` test to bare truthiness
+walked past every case, because every one of them went through the writer. A
+string is truthy, so the row printed `NaN mi` and the Total tile summed to `NaN`.
+
+**Read the mutant back**: it was not equivalent and it was not a bad mutant. It
+was a case my checks had not built.
+
+## Twenty-six mutants, and the three that escaped (v446)
+
+All three were weak checks rather than bad mutants, and each is a rule this file
+already states:
+
+- **`rowLoadShow()`'s `w > 0` guard.** Consulted from one call site that already
+  tests `x.wt`, so no rendered case can reach it. Rather than record it
+  equivalent, the helper's own contract is asserted DIRECTLY — the shape v338's
+  `prepDatePassed()` and v380's `monoNow()` needed. A guard consulted in one
+  narrow branch still has to mean what it is named.
+- **The row's `x.dist > 0` test.** Every case went through the WRITER, which is
+  the door `actRow()` now guards — so the mutant was invisible. The reachable
+  door is v404's storage listener, which has no boot behind it: a stored string
+  is truthy, so the row printed `NaN mi`. **Read the mutant back**: it was not
+  equivalent, it was a case my checks had not built.
+- **The calorie sheet's own age band.** Every assertion called `ageEntryOk()`
+  and nothing drove `saveTDEE()`. *Calling the helper is not driving the route*
+  — the tenth time this file has recorded it, and the second time this session
+  in my own checks.
+
+**And two mutants were caught by a THROW rather than by name.** The over-eager
+repair that drops a whole lift row left `lf.repaired[0]` undefined, so every
+assertion below it threw and the run reported *"the test file itself threw"*.
+Still red, so still a catch — but red is not enough, it has to say what. The
+length guard now runs FIRST and nothing dereferences a row a mutant may have
+removed.
+
+**And the wizard's own door was never driven.** Suite 10 drove the HEIGHT
+message and nothing else, so the weight and age ones rested on a check that
+asked the predicate — the same gap the calorie sheet's escape came through. Both
+are driven now, and both mutants that give the wizard its own band back fail by
+name. Twenty-eight mutants across the round, all caught.
+
+**And one anchor appeared twice.** `if(!(w>0))return '';` is in two helpers, so
+the driver's `assert count == 1` turned a bad seed into a clean no-op rather
+than a half-applied run — the fifth time that rule has paid.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

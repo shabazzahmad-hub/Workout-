@@ -498,7 +498,14 @@ export default async function run() {
     t.ok('the lift-log sheet itself shows the same recommendation per row', /aim for 11/.test(r.sheetHtml) && r.sheetHtml.includes('📈'), r.sheetHtml);
   }
 
-  // ---- saveLiftLog() rejects an implausible weight instead of storing it verbatim
+  /* ---- saveLiftLog() REFUSES an implausible weight rather than dropping it
+     This block used to pin the opposite: the row was stored with loadKg:null,
+     the reps kept, and the save toasted "Logged 1 movement" — so a typo of one
+     extra digit threw the lift's defining number away and said it was
+     recorded. v446 made the typed door refuse, for v412's reason: the athlete
+     is standing on the screen with their figures still in the boxes.
+     The requirement underneath is unchanged and is what is asserted here — an
+     implausible weight is never stored verbatim. */
   {
     const r = await page.evaluate(() => {
       const exId = 'dbgoblet';
@@ -508,8 +515,12 @@ export default async function run() {
       document.querySelector('#lf-l-0').value = '999999';
       document.querySelector('#lf-r-0').value = '8';
       saveLiftLog([exId]);
+      const el = document.getElementById('toast');
+      const refusedToast = el ? el.textContent : '';
+      const stillOpen = !!document.querySelector('#lf-l-0');
+      const repsKept = stillOpen ? document.querySelector('#lf-r-0').value : null;
+      const afterAbsurd = liftLog().length;
       closeSheet();
-      const absurd = liftLog()[liftLog().length - 1];
 
       openLiftLog([{ exId, unit: 'reps', target: 10 }]);
       document.querySelector('#lf-l-0').value = '60';
@@ -518,12 +529,19 @@ export default async function run() {
       closeSheet();
       const normal = liftLog()[liftLog().length - 1];
 
-      return { before, after: liftLog().length, absurd, normal };
+      return { before, afterAbsurd, after: liftLog().length,
+               refusedToast, stillOpen, repsKept, normal };
     });
-    t.eq('an implausible logged weight is rejected, not stored verbatim', r.absurd.loadKg, null, r.absurd);
-    t.eq('the rep count still saves even when the weight is rejected', r.absurd.reps, 8, r.absurd);
-    t.ok('a plausible weight still saves normally', r.normal.loadKg > 0 && r.normal.loadKg < 350, r.normal);
-    t.eq('both attempts still logged a row (nothing entered is the only skip case)', r.after, r.before + 2, r);
+    t.eq('an implausible logged weight is never stored verbatim — or at all',
+      r.afterAbsurd, r.before, r);
+    t.ok('and the save never claims the movement was logged',
+      !/Logged/.test(r.refusedToast), r);
+    t.ok('the form stays on screen with the reps still in it, so one figure is retyped',
+      r.stillOpen && r.repsKept === '8', r);
+    t.ok('FLOOR: a plausible weight still saves normally',
+      r.normal.loadKg > 0 && r.normal.loadKg < 350, r.normal);
+    t.eq('FLOOR: and it is the only row the two attempts added',
+      r.after, r.before + 1, r);
   }
 
   /* ---- no "add load" while an easing rule is in force ---------------------
