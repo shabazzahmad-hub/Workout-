@@ -15881,6 +15881,185 @@ rather than after the wait, which is where it was and which is far too late.
 a history step; and one flush window is outlived at the end, so a badge queued
 by the last close cannot re-open a sheet after the poll has finished.
 
+## A 0 ms timer is a bet against the history queue (v438)
+
+Found by sweeping every `history.pushState` in the file and asking which of
+them can be reached straight after a `closeSheet()`. **`history.back()` is
+ASYNC**, so a chooser sheet leaves a traversal in flight, and an entry pushed
+in the same tick is exactly where that traversal lands — so it is eaten.
+
+Two of the four openers already deferred with `setTimeout(...,0)` and each
+carried a comment saying why. **The other two pushed synchronously**, and
+measured on a real chooser → `closeSheet()` → open:
+
+| opener | right after the push | once the traversal lands |
+|---|---|---|
+| `openPlayer()` | `player` | **`home`** — eaten |
+| `startOp()` | `op` | **`home`** — eaten |
+| `_runHiit()` (the control) | — | `hiit` — survives |
+
+**The athlete-facing cost, with a real Back press**: the overlay shut either
+way, but the stack sat at **`root`** instead of `home` — one press nearer
+*"Press Back again to exit"*. That is the *"skipped a whole tab level"* the two
+existing comments describe.
+
+### And the old answer was a bet, which the fix is what exposed
+
+Deferring the two missing pushes with `setTimeout(...,0)` fixed the player and
+**did nothing at all for `startOp`** — 5 runs out of 5. Not a race: tracing
+`pushState` and `popstate` together showed the order plainly.
+
+```
+PUSH {"cf":"op"}       <- the 0 ms timer
+POP  {"cf":"home"}     <- the traversal, after it
+```
+
+**A history traversal is dispatched on its own task queue**, so a 0 ms timer
+can win. Same code shape, opposite outcome; the only difference is how much
+synchronous work each opener does after scheduling — which is not a thing to
+rest a fix on.
+
+`pushOverlayState()` waits on `_backGuard`, which **IS** "a self-pop is in
+flight", instead of guessing. It bails after 400 ms and pushes anyway: an
+overlay with no entry at all is worse than one pushed a fraction late. All
+four openers ask it, so a fifth cannot be written with a fifth copy of the
+bet — and the `alive` callback is `_runHiit()`'s own `if(INTV)` guard,
+generalised, so a quit inside the wait leaves no stray entry behind.
+
+**Fixing the two that were obviously wrong would have shipped a fix that did
+nothing for one of them.** The measurement is what said so.
+
+### And the fix's own first attempt walked the page off its own history
+
+Deferring the push broke a rule nobody had written down: **every quit decided
+whether to retire an entry by reading `history.state.cf`**, which is STALE
+while a traversal is in flight. Three open/quit cycles inside ONE task then
+took **three `history.back()` calls against ONE entry**:
+
+```
+NAV -> about:blank
+```
+
+…and every later call reported *"openPlayer is not defined"*. Two suites
+reported it as *"the test file itself threw"*, and it was the fix, not them.
+
+**The entry belongs to the OVERLAY INSTANCE, not to whatever `history.state`
+happens to say.** The push stamps the instance (`PLAYER.hist`, `INTV.hist`,
+`OP.hist`) and all eight quit sites ask that — so a quit before the push has
+landed retires nothing, and the pending push then finds `alive()` false.
+Balanced whichever way the timing falls.
+
+**The old test was a proxy that happened to hold while every push was
+synchronous.** It is the same shape as a range test doing a type test's job:
+it read the right answer for the wrong reason, and the reason stopped being
+true the moment anything about the timing moved.
+
+**It is reachable only from code that opens and closes in one task**, which no
+tap can do — so it is the SUITE that found it, and the suite is what pins it:
+three cycles in one task must not unload the page, with the floor beside it
+that a quit whose entry really exists still retires it.
+
+### The block runs on a page of its own, because the stack IS its state
+
+Its first two runs failed on correct code. By that point in the suite the
+history stack is **49 entries deep**, full of stale `player` and `hiit` states
+left by blocks that never retired theirs — so `history.state.cf` read `player`
+before this block had opened anything, and even the CONTROL failed. *Each
+block builds the state it asserts on*, and here that state is the history
+stack: a fresh context and a fresh tab is the only way to get a one-entry one.
+A fresh context has its own storage, so it is re-seeded.
+
+**`page.context().newPage()` throws** on a page the harness made with
+`browser.newPage()` — that page owns a context of its own. `browser.newContext()`.
+
+**And every case restores the stack.** The quick-workout case pushes a `tab`
+entry, and `go()` does not pop — so leaving it there made the NEXT case's Back
+press land on it and read `tab`. It is retired with a real Back.
+
+## The pop handler took the exit that retires an entry (v439)
+
+Found by auditing v438 before merging it. That round stamped the overlay
+instance (`PLAYER.hist`, `INTV.hist`, `OP.hist`) so a push and its pop stay
+paired. `onPop()` takes the **no-history** dismissal for two of the three
+overlays — `playerTeardown()` and `hiitTeardown()` — and called **`opQuit()`**
+for the third, because no no-history version of it existed.
+
+**It was harmless only by accident.** Every quit used to decide by reading
+`history.state.cf`, which during a pop already reports the entry BENEATH — so
+the extra `history.back()` was skipped for the wrong reason. Making the test
+honest is what exposed the missing split. Measured on a real Back press with a
+benchmark open:
+
+| | before | after |
+|---|---|---|
+| the overlay | closed | closed |
+| the tab level under it | **popped too** | kept |
+| the athlete | **one press from "Press Back again to exit"** | where they were |
+
+That is the exact defect v438 was written to fix, arriving through v438's own
+fix.
+
+### "It lands on home" is the container and passes on the bug
+
+A double pop reaches the ROOT, and `onPop()`'s own last branch pushes
+`{cf:'home'}` straight back and prints *"Press Back again to exit"* — so
+`history.state.cf` reads `'home'` either way and the obvious assertion cannot
+fail. **The payload is that the root branch never ran**, which the check reads
+off `_homeBackAt` and the toast. *Measure the payload, not the container* — and
+here the container is a value the buggy path restores for you.
+
+**The floor is that the ✕ and the Done button still RETIRE the entry.** A split
+that dropped the history step everywhere satisfies every assertion above and
+leaves a dead level behind, so the next Back does nothing the athlete can see.
+
+### And it was a fifth hand-written copy of the `#hiit` closer
+
+v436's comment says *"ONE CLOSER FOR THE #hiit OVERLAY"* and counts **four**
+exits. The benchmark shares that overlay and had a fifth copy of the same six
+statements written out by hand. `opClose()` asks `hiitClose()` now — `ivClear()`
+and `INTV=null` in there are no-ops during a benchmark, because the two surfaces
+share `#hiit` and never run at once — and the comment's count is corrected
+rather than left. *A comment claiming an invariant is not the invariant*, for
+the sixth time in this file.
+
+### One escaped mutant, and this machine cannot tell it apart
+
+Thirteen mutants, twelve caught. The one that got through is **`_runHiit()`
+reverting to the 0 ms bet** — and v438's own measurement is what explains it.
+That opener was the CONTROL precisely because the bet WORKS for it: traced with
+`pushState` and `popstate` together, it pops first and pushes second, 5 runs out
+of 5, so its entry survives either way.
+
+So on this machine the mutant is unobservable, and a check that caught it would
+be resting on a race — which is the thing this round exists to remove. It is
+recorded as uncatchable rather than papered over, the same call as v287's
+`wantAnchor`. **What makes the fix worth having is not that the old code was
+observably wrong here**: it is that the outcome depended on how much synchronous
+work an opener happened to do after scheduling, which is not a thing to rest a
+fix on, and the sibling opener it demonstrably broke is the proof.
+
+### Four mutants were caught by a THROW rather than by name
+
+F2, F3, F9 and F13 all reported *"the test file itself threw"*. Each is a real
+catch — the defect walks the page off its own history or blanks an overlay the
+next line reads — and **red is not enough, it has to say what**, which this file
+records three times. The block needs a guard immediately before the first line
+that dereferences, so the named assertions do the reporting.
+
+### And a mutation anchor can go stale inside its own round
+
+Five of the v438 mutants reported `BAD ANCHOR (0)`. The anchors were written
+early in the round, from
+`pushOverlayState({cf:'player'},()=>!!PLAYER);` — and the round's OWN later fix
+added the `mark` argument to every one of those lines. So the driver measured
+nothing on five of ten mutants.
+
+This file already says to take an anchor VERBATIM from the file and to read a
+`BAD ANCHOR` line as a measurement that has not happened yet. The wrinkle worth
+adding is that **verbatim is a property of the file at the moment you run, not
+at the moment you wrote the driver**: re-extract every anchor after any edit to
+the code under test, including an edit made in the same round.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

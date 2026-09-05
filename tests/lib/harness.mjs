@@ -137,6 +137,22 @@ export function seedAthlete(page, extra) {
 }
 
 /* ---- assertions ---------------------------------------------------------- */
+/* A SUITE THAT THROWS PART-WAY USED TO DISCARD EVERY CHECK IT HAD ALREADY RUN.
+   t.finish() is what prints, and a throw skips it — so the runner said only
+   "the test file itself threw" and the checks that had ALREADY failed, which
+   are usually the ones naming the defect, were never printed. Measured on a
+   real mutant: one blanked overlay made a LATER block throw, and the block that
+   owned the defect had caught it and said nothing.
+
+   Every live suite registers here and de-registers when it finishes normally,
+   so run.mjs can flush whatever was accumulated on the way to the throw.
+   "Red is not enough, it has to say what." */
+const _liveSuites = [];
+export function reportLive() {
+  let n = 0;
+  for (const a of _liveSuites.splice(0)) n += a.reportSoFar();
+  return n;
+}
 export function suite(name) {
   const failures = [];
   let checks = 0;
@@ -152,7 +168,22 @@ export function suite(name) {
         detail !== undefined ? detail : { actual, expected });
     },
     fail(label, detail) { checks++; failures.push({ label, detail }); },
+    /* Printed only when the file threw before reaching finish(). */
+    reportSoFar() {
+      if (!failures.length) {
+        console.log(`    (${checks} checks had run and all had passed)`);
+        return 0;
+      }
+      console.log(`    ${failures.length} check${failures.length === 1 ? '' : 's'} had ALREADY failed before the throw:`);
+      failures.forEach(f => {
+        const d = typeof f.detail === 'string' ? f.detail
+          : (f.detail === undefined ? '(no detail)' : String(JSON.stringify(f.detail)));
+        console.log(`    ✗ ${f.label}\n      ${d.slice(0, 500)}`);
+      });
+      return failures.length;
+    },
     finish(extraErrors = []) {
+      const i = _liveSuites.indexOf(api); if (i >= 0) _liveSuites.splice(i, 1);
       extraErrors.forEach(e => failures.push({ label: 'page produced an error', detail: e }));
       const passed = checks - failures.length;
       if (failures.length) {
@@ -173,5 +204,6 @@ export function suite(name) {
       return failures.length;
     },
   };
+  _liveSuites.push(api);
   return api;
 }

@@ -1911,7 +1911,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='437';
+const APP_VERSION='439';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3828,7 +3828,7 @@ let _backGuard=false,_exiting=false,_homeBackAt=0;
 function onPop(e){
   if(_exiting)return;
   if(_backGuard){_backGuard=false;return;}
-  if(typeof OP!=='undefined'&&OP){opQuit();return;}
+  if(typeof OP!=='undefined'&&OP){opClose();return;}
   if(typeof INTV!=='undefined'&&INTV){hiitTeardown();return;}
   if(typeof PLAYER!=='undefined'&&PLAYER){playerTeardown();return;}
   /* The same dismissal the ✕ takes, minus the history step — the entry this
@@ -3844,6 +3844,45 @@ function onPop(e){
   try{history.pushState({cf:'home',tab:'today'},'');}catch(e3){}
   if(TAB!=='today')go('today');
   toast('Press Back again to exit');
+}
+/* PUSH AN OVERLAY'S HISTORY ENTRY ONCE THE SHEET'S TRAVERSAL HAS LANDED.
+   history.back() is ASYNC, so a chooser's closeSheet() leaves a traversal in
+   flight, and an entry pushed in the same tick is exactly where that traversal
+   lands — so it is eaten and the overlay opens with no entry of its own. The
+   one Back press that should close it then pops the tab level underneath as
+   well, and the athlete is a press nearer "Press Back again to exit".
+
+   setTimeout(...,0) was the old answer and it is a BET, not a guarantee: a
+   history traversal is dispatched on its own task queue, so a 0ms timer can
+   win the race. Measured, with pushState and popstate both traced:
+
+     openPlayer / _runHiit   POP first, then PUSH   entry survives (5/5)
+     startOp                 PUSH first, then POP   entry EATEN   (5/5)
+
+   Same code shape, opposite outcome — the only difference is how much
+   synchronous work each opener does after scheduling. _backGuard is exactly
+   "a self-pop is in flight", so waiting on it is the real answer rather than
+   a longer bet. It bails after 400ms and pushes anyway: an overlay with no
+   entry is worse than one pushed a fraction late.
+
+   `alive` is the caller's own "is my overlay still open" test, so a quit
+   inside the wait leaves no stray entry behind for something already gone.
+
+   AND `mark` IS WHAT KEEPS THE PUSHES AND THE POPS PAIRED. Every quit used to
+   decide whether to retire an entry by reading history.state.cf — a proxy that
+   is STALE while a traversal is in flight, so three open/quit cycles in one
+   task took THREE history.back() calls against ONE entry and walked the page
+   off the start of its own history into about:blank. Measured, and it is what
+   two suites reported as "execution context was destroyed".
+
+   The entry belongs to the OVERLAY INSTANCE, not to whatever history.state
+   happens to say, so the push stamps the instance and every quit asks that.
+   A quit before the push has landed retires nothing and the pending push then
+   finds alive() false: balanced either way, whatever the timing. */
+function pushOverlayState(st,alive,mark,tries){
+  tries=tries||0;
+  if(_backGuard&&tries<40){setTimeout(()=>pushOverlayState(st,alive,mark,tries+1),10);return;}
+  try{if(alive&&!alive())return;history.pushState(st,'');if(mark)mark();}catch(e){}
 }
 function initBackButton(){
   try{history.replaceState({cf:'root'},'');history.pushState({cf:'home',tab:'today'},'');}catch(e){}
@@ -7259,8 +7298,9 @@ function hurtStop(){
     log.stoppedForPain=todayISO();log.done=false;
     if(p<SESSIONS_PER_CYCLE*TOTAL_CYCLES)STATE.progressPtr=p+1;
     save();
+    const _hadHist=!!(PLAYER&&PLAYER.hist);
     plClearResume();playerClose();
-    if(history.state&&history.state.cf==='player'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
+    if(_hadHist){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
     try{render();}catch(e){}
     toast('Stopped — moving you on. Rest that joint.');
     if(dayflowActive())dayflowAdvance('workout');
@@ -7425,7 +7465,28 @@ function openPlayer(opts){
     tempo:_tempo,
     t0:monoNow(),pausedMs:0,pauseAt:null,budget:plBudgetMin(items,_tempo),overNudged:false,lastPauseNudge:0};
   $('#player').classList.add('open');document.body.style.overflow='hidden';
-  try{history.pushState({cf:'player'},'');}catch(e){}
+  /* THE PUSH IS DEFERRED FOR THE REASON openQuick() AND _runHiit() ALREADY
+     DEFER THEIRS, and this opener is the third member of that class. Four
+     overlay openers push a history entry; two waited a tick and two did not,
+     and both of the ones that waited carry a comment saying why.
+
+     Every chooser that reaches here does closeSheet() first, and closeSheet()
+     leaves a history.back() IN FLIGHT — history.back() is async. Pushing in
+     the same tick puts our entry exactly where that traversal lands, so the
+     traversal eats it. Measured, driving a chooser sheet -> closeSheet() ->
+     openPlayer():
+
+       right after the push       history.state.cf === 'player'
+       once the back lands        history.state.cf === 'home'   <- eaten
+
+     The overlay is then open with NO entry of its own, so the ONE Back press
+     that should close it pops the tab level underneath instead: the player
+     shuts (onPop reaches PLAYER before the scrim) and the athlete is one
+     press nearer "Press Back again to exit" than they should be.
+
+     The if(PLAYER) guard is _runHiit()'s, for its reason: a quit inside this
+     tick must not leave a stray entry behind for a player that is gone. */
+  pushOverlayState({cf:'player'},()=>!!PLAYER,()=>{if(PLAYER)PLAYER.hist=1;});
   primeVoice();precacheSession(items);beatStart();
   plClockStart();
   plEnterReady(true);
@@ -8650,14 +8711,15 @@ function playerTeardown(){if(!PLAYER)return;plClearResume();playerClose();
      paths stay silent. */
   if(typeof dayflowActive==='function'&&dayflowActive())dayflowCancel();
   if(TAB==='today')renderToday();}
-function playerQuit(){const had=!!PLAYER;playerTeardown();if(had&&history.state&&history.state.cf==='player'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
+function playerQuit(){const had=!!(PLAYER&&PLAYER.hist);playerTeardown();if(had){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
 function playerFeel(feel){
   if(!PLAYER)return;   // double-tap must not commit twice
   plClearResume();
   /* Finishing normally is the COMMON exit, so it must do everything the X
      does — release the wake lock, and clear the markup it leaves behind. */
+  const _hadHist=!!(PLAYER&&PLAYER.hist);
   playerClose();
-  if(history.state&&history.state.cf==='player'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
+  if(_hadHist){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
   commitSession(feel);
   if(dayflowActive())dayflowAdvance('workout');   // guided day: hand off to the cool-down
 }
@@ -9472,8 +9534,8 @@ function _runHiit(sess,list,format){
   $('#hiit').classList.add('open');document.body.style.overflow='hidden';
   // closeSheet() (the chooser that launched us) has a history.back() in flight;
   // pushing synchronously put our entry where that traversal lands and ate it —
-  // one Back then skipped a whole tab level. Same fix as openQuick.
-  setTimeout(()=>{try{if(INTV)history.pushState({cf:'hiit'},'');}catch(e){}},0);
+  // one Back then skipped a whole tab level.
+  pushOverlayState({cf:'hiit'},()=>!!INTV,()=>{if(INTV)INTV.hist=1;});
   primeVoice();beatStart();
   ivRenderStep(0);
   INTV.phase='lead';INTV.phaseAt=monoNow();INTV.deadline=0;INTV.lead=5;
@@ -9860,9 +9922,11 @@ function hiitQuit(){
      hiitTeardown() below, which is the one place every exit path reaches.
      What is left here is the HISTORY step, which the Back handler must not
      take: the pop it is answering has already happened. */
-  const had=!!INTV;hiitTeardown();if(had&&history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
-/* ONE CLOSER FOR THE #hiit OVERLAY. The six statements below were written out
-   by hand at four exits and had drifted two ways, both measured:
+  const had=!!(INTV&&INTV.hist);hiitTeardown();if(had){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
+/* ONE CLOSER FOR THE #hiit OVERLAY, and the count is FIVE exits, not four:
+   the benchmark shares this overlay and opClose() asks this too. The six
+   statements below were written out by hand at each and had drifted two ways,
+   both measured:
 
      tapShield   the three LOG buttons had it; hiitTeardown() — which is what
                  the finish screen's Close button reaches through hiitQuit() —
@@ -9882,23 +9946,26 @@ function hiitClose(){
 }
 function hiitLogDone(){
   if(!INTV)return;   // double-tap guard
+  const _hadHist=!!INTV.hist;
   hiitClose();
-  if(history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
+  if(_hadHist){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
   finishSession();
 }
 // Ruck / grip / boxing finish into their own records too.
 function hiitLogAct(k,mins,rounds,workSecs){
   if(!INTV)return;   // double-tap guard
+  const _hadHist=!!INTV.hist;
   hiitClose();
-  if(history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
+  if(_hadHist){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
   logAct(k,mins,k==='grip'?{secs:workSecs||0,rounds:rounds||0}:{rounds:rounds||0});
   render();
 }
 // Skipping finishes into its own record, not the program's session counter.
 function hiitLogSkip(mins,rounds){
   if(!INTV)return;   // double-tap guard
+  const _hadHist=!!INTV.hist;
   hiitClose();
-  if(history.state&&history.state.cf==='hiit'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
+  if(_hadHist){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
   logSkip(mins,rounds);render();
 }
 
@@ -14313,7 +14380,9 @@ function startOp(id){
   const op=OPS.find(o=>o.id===id);if(!op)return;closeSheet();
   OP={op,elapsed:0,iv:null,running:false};
   $('#hiit').classList.add('open');document.body.style.overflow='hidden';
-  try{history.pushState({cf:'op'},'');}catch(e){}
+  // closeSheet() two lines above has a history.back() still in flight. This is
+  // the opener that proved a 0ms timer is not enough — see pushOverlayState().
+  pushOverlayState({cf:'op'},()=>!!OP,()=>{if(OP)OP.hist=1;});
   primeVoice();opRender();
 }
 function opRender(){
@@ -14359,12 +14428,24 @@ function opFinish(){
     <button class="btn primary" style="width:100%;margin-bottom:8px" onclick="shareLast()">📤 Share</button>
     <button class="btn ghost" style="width:100%" onclick="opQuit()">Done ✓</button>`;
 }
-/* The benchmark shares the #hiit overlay and had neither guard the others do:
-   no tapShield on its ✕, and its markup left mounted. */
-function opQuit(){wakeOff();if(OP){clearInterval(OP.iv);}OP=null;beatStop();$('#hiit').classList.remove('open');document.body.style.overflow='';tapShield(400);
-  setTimeout(()=>{try{if(!$('#hiit').classList.contains('open'))$('#hiit').innerHTML='';}catch(e){}},400);
-  // guard the self-pop like playerQuit/hiitQuit do, so onPop ignores it
-  if(history.state&&history.state.cf==='op'){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
+/* THE BENCHMARK NEEDED THE SPLIT ITS TWO SIBLINGS ALREADY HAD. opClose() is
+   the dismissal; opQuit() is that plus the HISTORY step, which a pop must NOT
+   take — the entry it is answering has already gone. onPop() calls
+   playerTeardown() and hiitTeardown() for exactly that reason, and called
+   opQuit(), because no no-history version existed to call.
+
+   It was harmless only while every quit decided by reading history.state.cf,
+   which during a pop already reports the entry BENEATH — so the extra back was
+   skipped by accident. Stamping OP.hist made that test honest, and the missing
+   split then DOUBLE-POPPED: Back closed the overlay and the tab level under it,
+   which is the very defect the stamp was written to fix.
+
+   The overlay statements go through hiitClose(), so this stops being a fifth
+   hand-written copy of them. ivClear() and INTV=null in there are no-ops during
+   a benchmark: the two surfaces share #hiit and never run at once. */
+function opClose(){if(OP){clearInterval(OP.iv);}OP=null;beatStop();hiitClose();}
+function opQuit(){const _hadHist=!!(OP&&OP.hist);opClose();
+  if(_hadHist){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
 /* ---- #2 Custom workout builder ---- */
 let _custom=[];
 function builderPool(){const gear=STATE.profile.gear||[];return Object.keys(EX).filter(k=>{const ex=EX[k];if(k==='bike'||k==='sprint')return false;if(ex.equip)return ex.equip.every(g=>gear.includes(g));return true;});}
@@ -21460,7 +21541,8 @@ function openQuickList(){
 function openQuick(id){QUICK_ID=id;quickState={done:{}};
   // closeSheet() has just queued a history.back(); pushing in the same tick puts our
   // entry where that traversal lands and eats it, so Back then skipped a screen.
-  setTimeout(()=>{try{history.pushState({cf:'tab',tab:'quick'},'');}catch(e){}go('quick');},0);}
+  pushOverlayState({cf:'tab',tab:'quick'},()=>QUICK_ID===id,null);
+  setTimeout(()=>{go('quick');},0);}
 function renderQuick(){
   const v=$('#v-quick');const q=QUICKIES.find(x=>x.id===QUICK_ID);
   if(!q){v.innerHTML=`<div class="note info">No quick workout selected.</div>`;return;}

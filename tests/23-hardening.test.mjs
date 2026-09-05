@@ -11506,6 +11506,297 @@ export default async function () {
       ex.reAfter > 100 && ex.reStillOpen, JSON.stringify(ex));
   }
 
+  /* v438 — AN OVERLAY OPENED FROM A SHEET LOST ITS OWN HISTORY ENTRY.
+     history.back() is ASYNC, so closeSheet() leaves a traversal IN FLIGHT, and
+     an entry pushed in the same tick is exactly where that traversal lands.
+     openPlayer() and startOp() pushed synchronously and lost their entry:
+
+                                right after the push   once the back lands
+       openPlayer()             'player'               'home'   <- eaten
+       startOp()                'op'                   'home'   <- eaten
+
+     AND THE OLD ANSWER WAS A BET. openQuick() and _runHiit() deferred with
+     setTimeout(...,0) and carried a comment saying it worked. It does for
+     them and it did NOT for startOp: a history traversal is dispatched on its
+     own task queue, so a 0ms timer can win. Traced with pushState and popstate
+     both instrumented, five runs each:
+
+       openPlayer / _runHiit    POP first, then PUSH    survives  5/5
+       startOp                  PUSH first, then POP    eaten     5/5
+
+     pushOverlayState() waits on _backGuard — which IS "a self-pop is in
+     flight" — instead of guessing, and all four openers now use it.
+
+     The athlete-facing cost, measured with a real Back press: the overlay
+     shut either way, but the stack sat at 'root' instead of 'home' — one
+     press nearer "Press Back again to exit". That is the "skipped a whole
+     tab level" the two existing comments describe.
+
+     THIS BLOCK RUNS ON A PAGE OF ITS OWN, and that is not tidiness. The state
+     it asserts on IS THE HISTORY STACK, and by this point in the suite that
+     stack is 49 entries deep with stale 'player' and 'hiit' states left by
+     blocks that never retired them — so `history.state.cf` read 'player'
+     before this block had opened anything, and even the CONTROL (an opener
+     that has always deferred) failed. A fresh tab in the same context is the
+     only way to get a one-entry stack; the athlete's data is in storage for
+     the origin, so it is already seeded. */
+  {
+    const ctx2 = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const p2 = await ctx2.newPage();
+    p2.on('pageerror', e => errors.push('uncaught(v438): ' + String(e).slice(0, 300)));
+    await p2.goto(page.url(), { waitUntil: 'networkidle' });
+    await waitForBoot(p2);
+    await seedAthlete(p2);   // a fresh context has its own storage
+
+    /* RED IS NOT ENOUGH, IT HAS TO SAY WHAT. Four of this round's mutants were
+       caught by a THROW rather than by a named check: a quit that pops an entry
+       it does not own walks the page off the start of its own history into
+       about:blank, and every p2.evaluate() after that reports "Execution context
+       was destroyed" — so the suite printed "the test file itself threw" and
+       said nothing about which property broke. The catch names the one thing
+       that can do it, and the finally still tears the context down. */
+    try {
+
+    const openFrom = async (start) => await p2.evaluate(async (startSrc) => {
+      const wait = ms => new Promise(z => setTimeout(z, ms));
+      try { if (typeof PLAYER !== 'undefined' && PLAYER) playerQuit(); } catch (e) {}
+      try { if (typeof OP !== 'undefined' && OP) opQuit(); } catch (e) {}
+      try { if (typeof INTV !== 'undefined' && INTV) hiitQuit(); } catch (e) {}
+      await wait(900);
+      try { closeSheet(); } catch (e) {}
+      await wait(700);
+      _celebQ = []; _backGuard = false; _exiting = false;
+      const clear = !document.querySelector('#scrim').classList.contains('open') &&
+                    !document.querySelector('#player').classList.contains('open') &&
+                    !document.querySelector('#hiit').classList.contains('open');
+      const pre = history.state && history.state.cf;
+      openSheet('<div id="cfChooser">chooser</div>');
+      await wait(250);
+      const sheetUp = history.state && history.state.cf;
+      closeSheet();                       // its history.back() is now in flight
+      // eslint-disable-next-line no-new-func
+      (new Function(startSrc))();
+      const sync = history.state && history.state.cf;
+      await wait(600);                    // let the traversal land
+      return { clear, pre, sheetUp, sync, settled: history.state && history.state.cf,
+               len: history.length,
+               playerOpen: document.querySelector('#player').classList.contains('open'),
+               hiitOpen: document.querySelector('#hiit').classList.contains('open') };
+    }, start);
+
+    const shut = async () => await p2.evaluate(async () => {
+      const wait = ms => new Promise(z => setTimeout(z, ms));
+      try { if (typeof PLAYER !== 'undefined' && PLAYER) playerQuit(); } catch (e) {}
+      try { if (typeof OP !== 'undefined' && OP) opQuit(); } catch (e) {}
+      try { if (typeof INTV !== 'undefined' && INTV) hiitQuit(); } catch (e) {}
+      await wait(900);
+      try { closeSheet(); } catch (e) {}
+      await wait(700);
+      _backGuard = false; _exiting = false;
+    });
+
+    const PLAY = "openPlayer({items:[{exId:'pushup',unit:'reps',target:10,rest:45,sets:2}],free:true,title:'probe'});";
+    const play = await openFrom(PLAY);
+    await shut();
+    const op = await openFrom("startOp('op_engine');");
+    await shut();
+    /* THE CONTROL. _runHiit() kept its entry even under the old 0ms timer, so
+       it is what proves the queued traversal in this setup is real: without
+       it, "the entry survives" could pass on a page where nothing was ever in
+       flight to eat it. */
+    const hiit = await openFrom("_runHiit({name:'probe'},['jumpingjack','highknees'],'tabata');");
+    await shut();
+    /* The fourth opener. Quick is a TAB rather than an overlay, so it is read
+       by its own tag — a sweep that only covered the two overlays would leave
+       the class one member short, which is how startOp came to be missed. */
+    const quick = await openFrom("openQuick(QUICKIES[0].id);");
+    /* Quick's entry is retired with a real Back, not by calling go(): go() does
+       not pop, so leaving it on the stack made the NEXT case's Back land on it
+       and read 'tab'. The stack is this block's state and every case restores
+       it. */
+    await p2.goBack();
+    await p2.waitForTimeout(600);
+    await shut();
+
+    t.ok('guard: nothing was already open, so each chooser is a genuine open',
+      play.clear && op.clear && hiit.clear, JSON.stringify({ play, op, hiit }));
+    t.eq('guard: the chooser sheet really pushed an entry of its own',
+      play.sheetUp, 'sheet', play);
+    t.ok('guard: each overlay really opened',
+      play.playerOpen && op.hiitOpen && hiit.hiitOpen, JSON.stringify({ play, op, hiit }));
+    t.eq('CONTROL: the opener that already defers keeps its entry',
+      hiit.settled, 'hiit', hiit);
+
+    t.eq('the player keeps its own history entry when opened from a sheet',
+      play.settled, 'player', play);
+    t.eq('and so does the benchmark ops clock',
+      op.settled, 'op', op);
+    t.eq('and so does the quick-workout tab',
+      quick.settled && quick.settled, 'tab', quick);
+
+    /* THE PAYLOAD, not the container: one real Back press must close the
+       overlay and cost exactly ONE level, not two. */
+    const back = await openFrom(PLAY);
+    t.eq('guard: the player is open with its own entry before the Back press',
+      back.settled, 'player', back);
+    await p2.goBack();
+    await p2.waitForTimeout(900);
+    const afterBack = await p2.evaluate(() => ({
+      playerOpen: document.querySelector('#player').classList.contains('open'),
+      cf: history.state && history.state.cf, len: history.length,
+    }));
+    t.ok('one Back closes the player', !afterBack.playerOpen, JSON.stringify(afterBack));
+    t.eq('and costs one history level, not two — it lands above the root',
+      afterBack.cf, 'home', afterBack);
+    await shut();
+
+    /* THE SAME PAYLOAD ON THE BENCHMARK, which is where stamping OP.hist made
+       an old accident stop protecting a missing split. onPop() takes the
+       NO-history dismissal for the player and for HIIT, and had to call
+       opQuit() for the benchmark because no opClose() existed — so Back closed
+       the overlay AND popped the tab level under it.
+
+       "It lands on home" is the CONTAINER and passes on the bug: a double pop
+       reaches the root, where onPop's own last branch pushes {cf:'home'} back
+       and prints "Press Back again to exit". The payload is that the root
+       branch never ran. */
+    const opBack = await openFrom("startOp('op_engine');");
+    t.eq('guard: the benchmark is open with its own entry before the Back press',
+      opBack.settled, 'op', opBack);
+    await p2.evaluate(() => { _homeBackAt = 0; try { $('#toast').textContent = ''; } catch (e) {} });
+    await p2.goBack();
+    await p2.waitForTimeout(900);
+    const opAfter = await p2.evaluate(() => ({
+      hiitOpen: document.querySelector('#hiit').classList.contains('open'),
+      cf: history.state && history.state.cf,
+      rootBranch: _homeBackAt > 0,
+      toast: (document.querySelector('#toast') || {}).textContent || '',
+    }));
+    t.ok('one Back closes the benchmark ops clock', !opAfter.hiitOpen, JSON.stringify(opAfter));
+    t.eq('and the benchmark lands above the root too', opAfter.cf, 'home', opAfter);
+    t.ok('and costs ONE level, not two — the exit branch never ran',
+      !opAfter.rootBranch && !/Press Back again/.test(opAfter.toast), JSON.stringify(opAfter));
+    await shut();
+
+    /* FLOOR: the ✕ and the Done button still RETIRE the entry. opQuit() keeps
+       the history step; only the pop handler must not take it. A split that
+       dropped it everywhere satisfies every assertion above and leaves a dead
+       entry behind, so the next Back does nothing the athlete can see. */
+    const opX = await openFrom("startOp('op_engine');");
+    t.eq('guard: the benchmark has its own entry before the ✕', opX.settled, 'op', opX);
+    const opXAfter = await p2.evaluate(async () => {
+      opQuit();
+      await new Promise(z => setTimeout(z, 900));
+      return { cf: history.state && history.state.cf,
+               open: document.querySelector('#hiit').classList.contains('open') };
+    });
+    t.ok('guard: the ✕ really closed the benchmark', !opXAfter.open, JSON.stringify(opXAfter));
+    t.eq('FLOOR: the ✕ retires the entry, so no dead level is left behind',
+      opXAfter.cf, 'home', opXAfter);
+    await shut();
+
+    /* FLOOR: an opener reached with NO sheet in front of it must still get an
+       entry. A "fix" that simply dropped the push would leave the overlay with
+       no Back route at all. */
+    const noSheet = await p2.evaluate(async () => {
+      const wait = ms => new Promise(z => setTimeout(z, ms));
+      try { closeSheet(); } catch (e) {}
+      await wait(700);
+      _backGuard = false; _exiting = false;
+      const before = history.state && history.state.cf;
+      openPlayer({ items: [{ exId: 'pushup', unit: 'reps', target: 10, rest: 45, sets: 2 }], free: true, title: 'probe' });
+      await wait(400);
+      return { before, after: history.state && history.state.cf,
+               open: document.querySelector('#player').classList.contains('open') };
+    });
+    t.ok('guard: no sheet was open, so nothing was in flight', noSheet.before !== 'sheet', JSON.stringify(noSheet));
+    t.ok('FLOOR: opened with no sheet in front of it, the player still gets an entry',
+      noSheet.open && noSheet.after === 'player', JSON.stringify(noSheet));
+    await shut();
+
+    /* FLOOR: the if(PLAYER) / if(OP) guard. A quit inside the deferral tick
+       must leave NO stray entry behind for an overlay that is already gone —
+       an entry with nothing to close eats a Back press on its own. */
+    const stray = await p2.evaluate(async () => {
+      const wait = ms => new Promise(z => setTimeout(z, ms));
+      try { closeSheet(); } catch (e) {}
+      await wait(700);
+      _backGuard = false; _exiting = false;
+      const before = history.state && history.state.cf;
+      openPlayer({ items: [{ exId: 'pushup', unit: 'reps', target: 10, rest: 45, sets: 2 }], free: true, title: 'probe' });
+      playerQuit();                       // same tick, before the deferred push
+      await wait(400);
+      return { before, after: history.state && history.state.cf,
+               open: document.querySelector('#player').classList.contains('open') };
+    });
+    t.ok('guard: the player really closed inside the deferral tick', !stray.open, JSON.stringify(stray));
+    t.eq('FLOOR: a quit inside that tick leaves no stray entry behind',
+      stray.after, stray.before, stray);
+
+    /* THE PUSHES AND THE POPS MUST PAIR, WHATEVER THE TIMING — and this is
+       the half that bites hardest. Every quit used to decide whether to
+       retire an entry by reading history.state.cf, which is STALE while a
+       traversal is in flight. So three open/quit cycles inside ONE task took
+       three history.back() calls against ONE entry and walked the page off
+       the start of its own history:
+
+         NAV -> about:blank      and every later evaluate threw
+                                 "openPlayer is not defined"
+
+       Two suites reported exactly that as "the test file itself threw". The
+       entry belongs to the OVERLAY INSTANCE now, so a quit before its push
+       has landed retires nothing and the pending push then finds alive()
+       false. Balanced either way. */
+    await shut();
+    const paired = await p2.evaluate(async () => {
+      const wait = ms => new Promise(z => setTimeout(z, ms));
+      try { closeSheet(); } catch (e) {}
+      await wait(700);
+      _backGuard = false; _exiting = false;
+      const before = { cf: history.state && history.state.cf, href: location.href };
+      const FREE = { items: [{ exId: 'pushup', unit: 'reps', target: 10, rest: 45, sets: 2 }], free: true };
+      for (let i = 0; i < 3; i++) { openPlayer(FREE); playerQuit(); }   // one task, three cycles
+      await wait(900);
+      return { before, cf: history.state && history.state.cf, href: location.href,
+               alive: typeof openPlayer === 'function',
+               playerOpen: document.querySelector('#player').classList.contains('open') };
+    });
+    t.ok('three open/quit cycles in ONE task do not unload the page',
+      paired.alive && paired.href === paired.before.href, JSON.stringify(paired));
+    t.eq('and the history stack is where it started, not below it',
+      paired.cf, paired.before.cf, paired);
+    t.ok('guard: and the player really is closed at the end of them',
+      !paired.playerOpen, JSON.stringify(paired));
+
+    /* FLOOR: a quit whose push DID land must still retire its entry, or the
+       stack grows an orphan on every session and eats a Back press each time. */
+    const retire = await p2.evaluate(async () => {
+      const wait = ms => new Promise(z => setTimeout(z, ms));
+      try { closeSheet(); } catch (e) {}
+      await wait(700);
+      _backGuard = false; _exiting = false;
+      const before = history.state && history.state.cf;
+      openPlayer({ items: [{ exId: 'pushup', unit: 'reps', target: 10, rest: 45, sets: 2 }], free: true });
+      await wait(300);
+      const opened = { cf: history.state && history.state.cf, hist: !!(PLAYER && PLAYER.hist) };
+      playerQuit();
+      await wait(600);
+      return { before, opened, after: history.state && history.state.cf };
+    });
+    t.ok('guard: the push landed and stamped the player instance',
+      retire.opened.cf === 'player' && retire.opened.hist, JSON.stringify(retire));
+    t.eq('FLOOR: a quit whose entry really exists retires it',
+      retire.after, retire.before, retire);
+
+    } catch (e) {
+      t.fail('the history block ran to the end without the page unloading',
+        'a quit almost certainly popped an entry it did not own: ' + String(e).slice(0, 300));
+    } finally {
+      try { await p2.close(); } catch (e) {}
+      try { await ctx2.close(); } catch (e) {}
+    }
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
