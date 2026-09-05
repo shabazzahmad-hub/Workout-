@@ -12827,6 +12827,89 @@ export default async function () {
     t.ok('no label site restates the minutes by hand', !src451.rawMins, src451);
   }
 
+
+  /* ---------- v452: the verdict was removed and the evidence was left -------
+     toggleEx() ticks a whole movement and fills every one of its sets. Unticking
+     changed nothing but the flag, so the sets the tick had just written stayed
+     marked. Measured on a real session — tick all five movements, then untick
+     all five:
+
+       header         0/5 exercises · 13/13 sets · 100%
+       sessionWork()  setsDone 13 of 13
+       commitSession  done:true, partial:false
+
+     A hundred per cent beside zero movements on one line, and a FULL SESSION
+     recorded for an athlete who had just cleared every one of them — the
+     completion gate crediting work that was explicitly taken back. */
+  {
+    await seedAthlete(page);
+    await waitForBoot(page);
+
+    const r = await page.evaluate(() => {
+      const o = {};
+      TODAY_TAB = 'workout'; go('today');
+      const ptr = STATE.progressPtr, sess = buildSession(ptr);
+      const moves = [...sess.main, sess.finisher].filter(Boolean);
+      const m = moves[0];
+      o.sets = m.sets;
+      o.moves = moves.length;
+      const hdr = () => { renderToday();
+        const t = (document.querySelector('#v-today').textContent || '').replace(/\s+/g, ' ');
+        return (t.match(/\d+\/\d+ exercises · \d+\/\d+ sets · \d+%/) || [])[0]; };
+      const st = () => Object.assign({}, ensureLog().ex[m.exId] || {});
+
+      o.hdr0 = hdr();
+      toggleEx(m.exId);
+      o.tick = { done: !!st().done, sets: (st().sets || []).filter(Boolean).length,
+                 counted: setsDoneFor(st(), m), pr: bestFor(m.exId) };
+      toggleEx(m.exId);
+      o.untick = { done: !!st().done, sets: (st().sets || []).filter(Boolean).length,
+                   counted: setsDoneFor(st(), m) };
+
+      /* FLOOR: a set the athlete marked one at a time is nobody's to clear. */
+      toggleSet(m.exId, 0); toggleSet(m.exId, 1);
+      o.partial = { marked: setsDoneFor(st(), m), done: !!st().done };
+      o.partialSurvivesRender = (renderToday(), setsDoneFor(st(), m));
+      toggleSet(m.exId, 0); toggleSet(m.exId, 1);
+
+      moves.forEach(x => toggleEx(x.exId));
+      o.allOn = { work: sessionWork(ptr), hdr: hdr() };
+      moves.forEach(x => toggleEx(x.exId));
+      o.allOff = { work: sessionWork(ptr), hdr: hdr() };
+
+      commitSession('ok');
+      o.commit = { moved: STATE.progressPtr !== ptr, done: !!(STATE.logs[ptr] || {}).done };
+      STATE.progressPtr = ptr; STATE.logs = {}; save();
+      return o;
+    });
+
+    t.ok('guard: the movement being driven carries more than one set', r.sets > 1, r);
+    t.ok('guard: and the session has several movements to clear', r.moves > 1, r);
+    t.eq('guard: nothing is marked before the block starts',
+      r.hdr0, '0/' + r.moves + ' exercises · 0/' + r.allOn.work.setsAsked + ' sets · 0%', r);
+
+    t.ok('ticking a movement still fills every set it asks for',
+      r.tick.done && r.tick.sets === r.sets && r.tick.counted === r.sets, r);
+    t.ok('FLOOR: and still records the personal best', r.tick.pr > 0, r);
+
+    t.ok('unticking takes back what the tick wrote',
+      !r.untick.done && r.untick.sets === 0 && r.untick.counted === 0, r);
+
+    t.eq('FLOOR: sets marked one at a time are left alone', r.partial.marked, 2, r);
+    t.ok('FLOOR: and two of three is not a finished movement', !r.partial.done, r);
+    t.eq('FLOOR: a render does not clear them either', r.partialSurvivesRender, 2, r);
+
+    t.eq('a session ticked right through reads 100%',
+      r.allOn.hdr, r.moves + '/' + r.moves + ' exercises · ' +
+      r.allOn.work.setsAsked + '/' + r.allOn.work.setsAsked + ' sets · 100%', r);
+    t.eq('and cleared right through reads zero, not a hundred',
+      r.allOff.hdr, '0/' + r.moves + ' exercises · 0/' + r.allOn.work.setsAsked + ' sets · 0%', r);
+    t.eq('the work behind it is zero too', r.allOff.work.setsDone, 0, r);
+
+    t.ok('and the completion gate refuses a session with nothing left marked',
+      !r.commit.moved && !r.commit.done, r);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

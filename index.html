@@ -1966,7 +1966,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='451';
+const APP_VERSION='452';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -6799,7 +6799,22 @@ function toggleEx(exId){
   const sess=buildSession(STATE.progressPtr);const m=[...sess.main,sess.finisher].find(x=>x.exId===exId);
   const log=ensureLog();const st=log.ex[exId]||{sets:[],done:false};
   st.done=!st.done;
+  /* THE VERDICT WAS REMOVED AND THE EVIDENCE WAS LEFT. Ticking fills every set;
+     unticking used to change nothing but the flag, so the sets it had just
+     written stayed marked. Measured on a real session — tick all five
+     movements, then untick all five:
+
+       header        0/5 exercises · 13/13 sets · 100%
+       sessionWork() setsDone 13 of 13
+       commitSession done:true, partial:false
+
+     A hundred per cent beside zero movements on one line, and a full session
+     recorded for an athlete who had just cleared every one of them. The check
+     is a whole-movement control, so it round-trips: what the tick wrote, the
+     untick takes back. There is nothing finer to restore — the tick had already
+     overwritten any individual marks. */
   if(st.done){st.sets=Array.from({length:m.sets},()=>true);recordPR(exId,m);}
+  else st.sets=[];
   log.ex[exId]=st;save();haptic(14);renderToday();
 }
 function toggleSet(exId,i){
