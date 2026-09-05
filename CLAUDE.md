@@ -15241,6 +15241,87 @@ repaired your data"* at that athlete about nothing. That is v390's rule landing
 on the round that was written to honour it. The rounding came out, and the
 byte-identical floor now carries two decimals so it cannot come back.
 
+### And the band judged inches against a centimetre band (v430, cont'd)
+
+Found by auditing v430 an hour after it shipped — the fourteenth round running
+where the best finding was in the round immediately before, and the sixth in a
+row where it was in my own new code.
+
+`dedupeMeasurements()` sits at line 22513. The `_unitFix`/`_unitFixW`
+migrations — which convert an early build's imperial rows to cm/kg — sit at
+line 23360, **847 lines later in the same `normalizeState()` pass.** So the
+band ran FIRST, and `plausibleWaistCm` is **40-250 cm** while an adult waist in
+INCHES is **24-60**. Measured on a real boot, against a v429 control:
+
+| | v429 | v430 as first shipped |
+|---|---|---|
+| a 34 in waist row | **86 cm** | **null** |
+| a 33 in waist row | **84 cm** | **null** |
+| `profile.startWaist` | set | **null** |
+| `waistDrop()` | **2 cm** | **0** |
+
+The whole waist history, destroyed by the repair written to protect it, one
+boot after it shipped — and the migration then found nothing left to convert.
+
+**THE BAND MEANS "CANONICAL cm/kg", AND A ROW IS ONLY CANONICAL ONCE THE UNIT
+MIGRATIONS HAVE RUN.** So the band waits on both flags and the type coercion
+does not — a numeric string is a numeric string in any unit. Both flags are
+already true in every current athlete's stored state, so the gate costs
+nothing and protects exactly the case that matters: an old backup being
+imported.
+
+**For one athlete the wait is forever, and that is deliberate.** `_unitFixW`
+waits for an anchor (`nutrition.weightKg`), so an imperial athlete who has
+never logged a weight nor opened the calculator never gets one — and their
+rows may still be lb, where a kg band would be wrong anyway. The two ways of
+being wrong are not symmetrical: an out-of-band figure was measured **inert on
+the glass** and costs backup weight, while dropping a real history cannot be
+undone.
+
+**The weight half needed its own case, or one mutant is equivalent.**
+`_unitFix` is set on the first boot for everyone and `_unitFixW` waits, so
+`{_unitFix:true, _unitFixW:false}` is a real reachable state. **400 lb is 181
+kg, a real person, and `plausibleKg` tops out at 350** — gating on `_unitFix`
+alone drops it. The inch case deletes both flags, so it cannot tell the two
+gates apart. *A guard is only visible when the value beside it cannot supply
+the answer* — this time the neighbour was the other half of my own gate.
+
+**And the comment claimed something the arithmetic disproves.** Its first
+version said the band *"starts enforcing one boot later"*. For the
+forever-waiting athlete that is never, and *a comment claiming an invariant is
+not the invariant* — corrected rather than left, with the reason beside it.
+
+**The escaped mutant proved the gate is an AND that only an IMPORT can
+justify.** Asking `_unitFixW` alone escaped every check, and reading it back is
+why: the app's own pass sets `_unitFix` first, so `_unitFixW` implies
+`_unitFix` in **every state the app produces** and either flag alone answers
+the same. They differ only on `{_unitFix absent, _unitFixW true}`, which
+`importData()` accepts from a hand-edited backup — and there the migration
+still runs in that pass, so the band must still wait. A weak check, not a bad
+mutant, and the discriminating case is now pinned.
+
+### The same field family, with no repair at all (v430, cont'd)
+
+The class sweep that followed asked which OTHER repair enforces a band on a
+field a later migration is about to change. **The ordering conflict has exactly
+one member** — `settings.coach` and its `autoIntro` migration both land on
+`'auto'`, `settings.theme` has no migration at all, `settings.voicePitch` is
+deliberately not clamped (v412), and `nutrition.proteinTarget` is deleted
+*before* `_protSeed` fills it, which is the correct order.
+
+It turned up a gap beside it instead. **`profile.startWaist` and
+`profile.goalWaist` are the same figure as `measurements[].waist` and had no
+repair at all**, while `saveWaistGoal()` has always enforced
+`plausibleWaistCm`. Inert on the glass — every reader gates on `>0` and
+`'<b>x</b>'>0` is false — so the cost is the v285 one: junk in every backup.
+
+**It sits BELOW `_unitFix`, and that placement is the whole point.** Those two
+lines are converted from inches by the migration itself, so a repair placed
+beside the measurements one would null a 34 in `startWaist` before the
+migration could reach it — the defect this version exists to fix, on the field
+that same migration touches. The mutant that moves it above is caught by a
+check that drives an early-build imperial profile.
+
 ### One equivalent mutant, measured rather than assumed
 
 Nine of ten mutants caught. The one that escaped is `measureVal`'s `isFinite`

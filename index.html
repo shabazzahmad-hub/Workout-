@@ -618,6 +618,28 @@ function measureVal(v,ok){const n=(typeof v==='number')?v:((typeof v==='string'&
 function dedupeMeasurements(){
   const ms=STATE&&STATE.measurements;if(!Array.isArray(ms))return;
   const today=todayISO();
+  /* THE BAND MEANS "CANONICAL cm/kg", AND A ROW IS ONLY CANONICAL ONCE THE UNIT
+     MIGRATIONS HAVE RUN. This repair sits 847 lines ABOVE _unitFix/_unitFixW, so
+     the first version of it judged an EARLY-BUILD IMPERIAL row — a waist stored
+     in inches — against a centimetre band. Measured on a real boot: a 34 in and
+     a 33 in waist were both nulled, startWaist went with them and waistDrop()
+     fell from 2 cm to 0. The whole waist history, destroyed by the repair, one
+     boot after it shipped. Both flags are already true in every current
+     athlete's stored state, so gating on them costs nothing and protects
+     exactly the case that matters: an old backup being imported. Until they
+     are set the type coercion still runs — that is unit-agnostic — and the
+     band starts enforcing on the boot after the migration converts.
+
+     For ONE athlete that is never: _unitFixW WAITS for an anchor
+     (nutrition.weightKg) and an imperial athlete who has neither logged a
+     weight nor opened the calculator has none, so their rows may still be lb
+     and a kg band would be wrong there anyway. That is deliberate, and the
+     two ways of being wrong are not symmetrical: an out-of-band figure is
+     measured inert on the glass and costs backup weight, while dropping a
+     real history cannot be undone. */
+  const _p=(STATE&&STATE.profile)||{};
+  const canon=!!(_p._unitFix&&_p._unitFixW);
+  const anyFig=()=>true;
   const byDate=new Map();const out=[];
   for(const m of ms){
     if(!m||typeof m!=='object'||!m.date)continue;
@@ -644,8 +666,8 @@ function dedupeMeasurements(){
        every backup. Make the repair agree with the writer that was already
        there: coerce a number, null anything outside the band the athlete
        could have entered, and drop a row that then carries nothing. */
-    m.waist=measureVal(m.waist,plausibleWaistCm);
-    m.weight=measureVal(m.weight,plausibleKg);
+    m.waist=measureVal(m.waist,canon?plausibleWaistCm:anyFig);
+    m.weight=measureVal(m.weight,canon?plausibleKg:anyFig);
     if(!(m.waist>0)&&!(m.weight>0))continue;
     const ex=byDate.get(k);
     if(!ex){byDate.set(k,m);out.push(m);}
@@ -23371,6 +23393,24 @@ function normalizeState(){
     }
     STATE.profile._unitFix=true;
   }
+  /* startWaist and goalWaist are the SAME FIGURE as measurements[].waist, and
+     they had no repair at all while saveWaistGoal() has always enforced
+     plausibleWaistCm. Inert on the glass — every reader gates on `>0` and
+     '<b>x</b>'>0 is false — so the cost is the v285 one: junk travelling in
+     every backup and coming back on the next import.
+
+     IT SITS HERE RATHER THAN BESIDE THE MEASUREMENTS REPAIR, for the reason
+     that block records: the band means canonical cm, and the two lines above
+     convert these very fields from inches. Placed above, it would null a 34 in
+     startWaist before the migration could reach it — the defect this version
+     was written to fix, on the field the same migration touches.
+
+     ABSENT STAYS ABSENT (v390): a settled state carries them as null, which
+     measureVal() returns unchanged, so this cannot fire the "we repaired your
+     data" note at anybody. */
+  {const _P=STATE.profile;
+   if(_P.startWaist!==undefined)_P.startWaist=measureVal(_P.startWaist,plausibleWaistCm);
+   if(_P.goalWaist!==undefined)_P.goalWaist=measureVal(_P.goalWaist,plausibleWaistCm);}
   /* Weight has no safe range test (86 kg and 86 lb are both real people), so it
      can only be repaired against an anchor — nutrition.weightKg, which every
      writer stored correctly. First-era backups have NO anchor, and the old

@@ -10886,6 +10886,151 @@ export default async function () {
          JSON.stringify({ date: ms.today, waist: 96, weight: 86 }), ms);
   }
 
+  /* ---------------------------------------------------------------------
+     v430, auditing the round an hour after it shipped: THE BAND MEANS
+     "CANONICAL cm/kg", AND A ROW IS ONLY CANONICAL ONCE THE UNIT MIGRATIONS
+     HAVE RUN.
+
+     dedupeMeasurements() sits 847 lines ABOVE _unitFix/_unitFixW inside the
+     same normalizeState() pass, so the band above judged an EARLY-BUILD
+     IMPERIAL row — a waist stored in INCHES — against a CENTIMETRE band. An
+     adult waist is 24-60 in and plausibleWaistCm is 40-250, so 24-39 in was
+     refused. Measured on a real boot against a v429 control: 34 in and 33 in
+     were both nulled, startWaist went with them, and waistDrop() fell from
+     2 cm to 0 — the whole waist history destroyed by the repair that was
+     written to protect it.
+
+     The type coercion is unit-agnostic and still runs; only the BAND waits.
+     Both flags are already true in every current athlete's stored state, so
+     the gate costs nothing and protects exactly the case that matters: an old
+     backup being imported. */
+  {
+    const im = await page.evaluate(() => {
+      const o = {};
+      const P = STATE.profile;
+      const keep = { unit: P.unit, fix: P._unitFix, fixW: P._unitFixW,
+                     sw: P.startWaist, ms: JSON.parse(JSON.stringify(STATE.measurements || [])) };
+
+      // GUARD: the trap is real — an inch waist really is outside the cm band
+      o.inchOutOfBand = !plausibleWaistCm(34);
+      o.cmInBand = plausibleWaistCm(86);
+
+      // an early-build imperial athlete: the migration has never run
+      P.unit = 'in'; delete P._unitFix; delete P._unitFixW; P.startWaist = null;
+      STATE.nutrition.weightKg = 86;          // the anchor _unitFixW waits for
+      STATE.measurements = [{ date: '2026-07-01', waist: 34, weight: 86 }];
+      // GUARD: the migration really has not run yet, so it is what converts
+      o.fixWasUnset = (P._unitFix === undefined);
+      normalizeState();
+      o.imRows = STATE.measurements.length;
+      o.imWaist = (STATE.measurements[0] || {}).waist;
+      o.imRan = (P._unitFix === true);
+
+      // FLOOR: the type coercion does NOT wait — it is unit-agnostic
+      P.unit = 'in'; delete P._unitFix; delete P._unitFixW;
+      STATE.measurements = [{ date: '2026-07-01', waist: 34, weight: '86' },
+                            { date: '2026-07-02', waist: { bad: 1 }, weight: 86 }];
+      normalizeState();
+      o.coerceType = typeof (STATE.measurements[0] || {}).weight;
+      o.junkWaist = (STATE.measurements[1] || {}).waist;
+
+      /* THE WEIGHT HALF IS THE SAME DEFECT AND IT NEEDS ITS OWN CASE.
+         _unitFix is set on the first boot for everyone; _unitFixW WAITS for an
+         anchor. So {_unitFix:true, _unitFixW:false} is a real reachable state —
+         an imperial athlete who has never logged a weight — and their rows may
+         still be lb. 400 lb is 181 kg, a real person, and plausibleKg tops out
+         at 350: gating on _unitFix alone would drop it. Without this case that
+         mutant is equivalent, because the case above deletes both flags. */
+      P.unit = 'in'; P._unitFix = true; delete P._unitFixW;
+      STATE.nutrition.weightKg = 0;           // no anchor, so _unitFixW keeps waiting
+      STATE.measurements = [{ date: '2026-07-01', waist: null, weight: 400 }];
+      o.lbWaits = (P._unitFixW === undefined);
+      normalizeState();
+      o.lbRows = STATE.measurements.length;
+      o.lbWeight = (STATE.measurements[0] || {}).weight;
+      o.lbStillWaiting = (STATE.profile._unitFixW === undefined);
+      STATE.nutrition.weightKg = 86;
+
+      // FLOOR: once the migration HAS run the band fires again, as it must
+      P.unit = 'cm'; P._unitFix = true; P._unitFixW = true;
+      STATE.measurements = [{ date: '2026-08-01', waist: 96, weight: 86 },
+                            { date: '2026-08-02', waist: 9999, weight: '84' }];
+      normalizeState();
+      o.canonWaist = (STATE.measurements[1] || {}).waist;
+      o.canonWeight = (STATE.measurements[1] || {}).weight;
+
+      /* THE GATE IS AN AND, AND ONLY AN IMPORT CAN TELL THE TWO HALVES APART.
+         The app's own pass sets _unitFix first, so _unitFixW implies _unitFix
+         in every state it produces and either flag alone answers the same —
+         the mutant that asks _unitFixW only escaped on exactly that. But
+         importData() accepts arbitrary JSON, so {_unitFix absent, _unitFixW
+         true} arrives from a hand-edited backup: the migration WILL run in
+         this pass and convert the inches, so the band must still wait. */
+      P.unit = 'in'; delete P._unitFix; P._unitFixW = true;
+      P.startWaist = null;
+      STATE.measurements = [{ date: '2026-07-01', waist: 34, weight: 86 }];
+      o.halfFlagWaits = (P._unitFix === undefined && P._unitFixW === true);
+      normalizeState();
+      o.halfFlagWaist = (STATE.measurements[0] || {}).waist;
+
+      /* startWaist and goalWaist are the same figure and had no repair at all.
+         The ORDERING case is what matters: they are converted from inches by
+         the very migration above, so a repair placed beside the measurements
+         one would null a 34 in startWaist before the migration reached it. */
+      P.unit = 'in'; delete P._unitFix; delete P._unitFixW;
+      STATE.nutrition.weightKg = 86;
+      P.startWaist = 34; P.goalWaist = 30;      // inches, from an early build
+      STATE.measurements = [];
+      normalizeState();
+      o.swInch = P.startWaist;
+      o.gwInch = P.goalWaist;
+
+      // junk is dropped once canonical, and a real goal survives
+      P.unit = 'cm'; P._unitFix = true; P._unitFixW = true;
+      P.startWaist = '<b>x</b>'; P.goalWaist = 84;
+      normalizeState();
+      o.swJunk = P.startWaist;
+      o.gwReal = P.goalWaist;
+
+      // ABSENT STAYS ABSENT, and a stored null is left as it was found
+      P.startWaist = null; delete P.goalWaist;
+      normalizeState();
+      o.swNull = P.startWaist;
+      o.gwAbsent = ('goalWaist' in P);
+
+      // put back what this block broke — the blocks after it read the profile
+      P.unit = keep.unit; P.startWaist = keep.sw;
+      if (keep.fix === undefined) delete P._unitFix; else P._unitFix = keep.fix;
+      if (keep.fixW === undefined) delete P._unitFixW; else P._unitFixW = keep.fixW;
+      STATE.measurements = keep.ms;
+      return o;
+    });
+
+    t.ok('guard: an inch waist really is outside the centimetre band', im.inchOutOfBand, im);
+    t.ok('guard: and the converted figure is inside it', im.cmInBand, im);
+    t.ok('guard: the unit migration really had not run yet', im.fixWasUnset, im);
+    t.eq('an early-build imperial waist row is not dropped by the band', im.imRows, 1, im);
+    t.eq('it survives long enough for the migration to convert it', im.imWaist, 86, im);
+    t.ok('and the migration did run in the same pass', im.imRan, im);
+    t.eq('FLOOR: the type coercion does not wait for the migration', im.coerceType, 'number', im);
+    t.eq('FLOOR: and a junk figure is still nulled while un-canonical', im.junkWaist, null, im);
+    t.ok('guard: the weight migration really is still waiting for an anchor', im.lbWaits, im);
+    t.eq('a pound weight above the kilogram band is not dropped while it waits', im.lbRows, 1, im);
+    t.eq('and its figure is untouched', im.lbWeight, 400, im);
+    t.ok('guard: and the weight migration really had not run', im.lbStillWaiting, im);
+    t.eq('FLOOR: once canonical the band fires again', im.canonWaist, null, im);
+    t.eq('FLOOR: and still coerces a numeric string', im.canonWeight, 84, im);
+    t.ok('guard: only one half of the gate is set, which only an import can do',
+         im.halfFlagWaits, im);
+    t.eq('and the band still waits, because the migration has not run', im.halfFlagWaist, 86, im);
+    t.eq('an early-build imperial startWaist is converted, not nulled', im.swInch, 86, im);
+    t.eq('and so is the goal beside it', im.gwInch, 76, im);
+    t.eq('a junk startWaist is dropped once the figures are canonical', im.swJunk, null, im);
+    t.eq('FLOOR: and a real goal waist survives untouched', im.gwReal, 84, im);
+    t.eq('FLOOR: a stored null is left exactly as it was found', im.swNull, null, im);
+    t.ok('FLOOR: and an absent goal waist is not created', !im.gwAbsent, im);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
