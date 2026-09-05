@@ -11206,14 +11206,31 @@ export default async function () {
          give focus back on a genuine open, not on a repaint), and the two
          ambient early returns in onPop cleared. */
       go('today');
-      try { closeSheet(); } catch (e) {}
-      await new Promise(z => setTimeout(z, 700));
+      /* A FIXED SLEEP CANNOT WAIT FOR A SHEET THAT RE-OPENS ITSELF. This was
+         `closeSheet(); await 700ms`, and it went red on CI while passing
+         locally. sheetDismiss() schedules flushCelebrations() 350 ms later,
+         and a queued badge calls openSheet() — so the scrim was OPEN again
+         when the 700 ms elapsed, openSheet treated the next call as a
+         REPAINT, and _sheetReturn was never recorded. Measured on the CI
+         failure: wasClear false, ret null.
+         Drain the queue FIRST, then poll for the condition rather than
+         betting on a duration — closeSheet() only when a sheet is actually
+         open, since it takes a history step. */
+      _celebQ = [];
+      for (let i = 0; i < 40; i++) {
+        if (!document.querySelector('#scrim').classList.contains('open')) break;
+        _celebQ = [];
+        try { closeSheet(); } catch (e) {}
+        await new Promise(z => setTimeout(z, 80));
+      }
+      _celebQ = [];
+      await new Promise(z => setTimeout(z, 450));   // outlive one flush window
+      _celebQ = [];
       const wasClear = !document.querySelector('#scrim').classList.contains('open');
       const b = document.createElement('button');
       b.id = 'cfBackOpener'; b.textContent = 'open';
       document.querySelector('.view.active').appendChild(b); b.focus();
       const focusedFirst = document.activeElement && document.activeElement.id;
-      _celebQ = [];
       openSheet('<div id="cfBackMarker">sheet content</div>');
       _backGuard = false; _exiting = false;
       window.__cfGen = _sheetGen;
@@ -11390,6 +11407,103 @@ export default async function () {
     t.ok('guard: the re-opened overlay really rendered', reopen.opened > 100, JSON.stringify(reopen));
     t.ok('FLOOR: a deferred clear does not blank an overlay re-opened inside its window',
       reopen.after > 100 && reopen.open, JSON.stringify(reopen));
+  }
+
+  /* v437 — THE PLAYER HAS THREE EXITS, AND ONE CLOSER WRITTEN OUT THREE TIMES.
+     v436 shared one closer between HIIT's four exits. The same question of the
+     #player overlay found three, drifted two ways. Measured by driving each:
+
+       exit                    reached by        the beat    markup left
+       playerTeardown()        the ✕, Back       stopped     0 bytes
+       playerFeel()            the feel buttons  (stopped)   2,579 bytes
+       hurtStop()'s no-work    the pain button   STILL ON    2,566 bytes
+
+     The pain stop is the sharp one: it bails mid-session, so plEnterDone() —
+     which is what stops the beat on the normal path — is never reached, and
+     the music kept playing after the athlete stopped for a joint. */
+  {
+    await seedAthlete(page);
+    const ex = await page.evaluate(async () => {
+      const R = {};
+      const settle = () => new Promise(z => setTimeout(z, 700));
+      const sess = () => ({ items: [{ exId: 'plank', unit: 'time', target: 30, rest: 30, sets: 1 }],
+                            free: true, title: 'probe' });
+      STATE.settings.beat = true;
+      const beatOn = () => !!(typeof BEAT !== 'undefined' && BEAT && BEAT.on);
+
+      /* the pain stop, with nothing logged — the branch that bails outright */
+      openPlayer(sess());
+      await new Promise(z => setTimeout(z, 250));
+      R.gBeatStarts = beatOn();                      // guard: the player really starts one
+      R.gOpened = !!PLAYER;
+      hurtStop();
+      await settle();
+      R.painBeat = beatOn();
+      R.painMarkup = document.querySelector('#player').innerHTML.length;
+
+      /* the natural finish */
+      openPlayer(sess());
+      await new Promise(z => setTimeout(z, 250));
+      R.gOpened2 = !!PLAYER;
+      playerFeel('ok');
+      await settle();
+      R.finishMarkup = document.querySelector('#player').innerHTML.length;
+
+      /* FLOOR: the ✕, which was already right, is unchanged */
+      openPlayer(sess());
+      await new Promise(z => setTimeout(z, 250));
+      playerTeardown();
+      await settle();
+      R.xMarkup = document.querySelector('#player').innerHTML.length;
+
+      /* FLOOR: the cool-down that follows a finish gets its own beat back —
+         every caller closes FIRST and hands off to the guided day AFTER, so
+         the beat runFlow() starts is not the one the closer stopped. */
+      try { beatStop(); } catch (e) {}
+      openPlayer(sess());
+      await new Promise(z => setTimeout(z, 250));
+      playerFeel('ok');
+      await new Promise(z => setTimeout(z, 200));
+      R.beatAfterFinish = beatOn();
+      runFlow('Cool-down', COOLDOWN_FLOW.slice(0, 2), null, 'var(--fire)');
+      await new Promise(z => setTimeout(z, 300));
+      R.beatInCooldown = beatOn();
+      try { flowStop(); } catch (e) {}
+      await settle();
+
+      /* FLOOR: the clear is deferred, so a player RE-OPENED inside its own
+         400 ms window must not be blanked. An over-eager clear that drops the
+         `is it closed?` guard satisfies every assertion above. */
+      openPlayer(sess());
+      await new Promise(z => setTimeout(z, 250));
+      playerTeardown();
+      R.reClosed = !document.querySelector('#player').classList.contains('open');
+      openPlayer(sess());
+      R.reOpened = document.querySelector('#player').innerHTML.length;
+      await settle();
+      R.reAfter = document.querySelector('#player').innerHTML.length;
+      R.reStillOpen = document.querySelector('#player').classList.contains('open');
+      try { playerTeardown(); } catch (e) {}
+      await settle();
+      return R;
+    });
+
+    t.ok('guard: the player really opened, and really starts a beat',
+      ex.gOpened && ex.gOpened2 && ex.gBeatStarts, JSON.stringify(ex));
+
+    t.eq('a pain stop with nothing logged leaves no beat playing', ex.painBeat, false, ex);
+    t.eq('and clears the player markup, so no stale id shadows a live one', ex.painMarkup, 0, ex);
+    t.eq('the natural finish clears its markup too', ex.finishMarkup, 0, ex);
+    t.eq('FLOOR: the ✕, which was already right, still clears it', ex.xMarkup, 0, ex);
+
+    t.eq('FLOOR: the finish stops the beat it was playing', ex.beatAfterFinish, false, ex);
+    t.eq('FLOOR: and the cool-down that follows gets its own beat back',
+      ex.beatInCooldown, true, ex);
+
+    t.ok('guard: the player really closed and really re-opened',
+      ex.reClosed && ex.reOpened > 100, JSON.stringify(ex));
+    t.ok('FLOOR: a deferred clear does not blank a player re-opened inside its window',
+      ex.reAfter > 100 && ex.reStillOpen, JSON.stringify(ex));
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));

@@ -15809,6 +15809,78 @@ One field did move and it was the seed: `gear:['bar','kb','ruck']` came back as
 correctly dropped an illegal one. **Confirm the control's real shape before
 believing the result** — the eleventh time.
 
+## The player has three exits, and one closer written out three times (v437)
+
+Found by auditing v436 an hour after it shipped — the seventeenth round running
+where the best finding was in the round immediately before, and the ninth in a
+row where it was in my own new code.
+
+v436 gave the `#hiit` overlay one closer for its four exits. Asking the same
+question of `#player` found **three** exits, and the six statements were
+written out by hand at each. They had drifted two ways. Measured by driving
+each exit for real:
+
+| exit | reached by | the beat after | markup left |
+|---|---|---|---|
+| `playerTeardown()` | the ✕, Back | stopped | 0 bytes |
+| `playerFeel()` | the feel buttons — **the normal finish** | (stopped earlier) | **2,579 bytes** |
+| `hurtStop()`'s no-work branch | **the pain-stop button** | **STILL PLAYING** | **2,566 bytes** |
+
+**THE PAIN STOP IS THE SHARP ONE.** It bails mid-session, so the session never
+reaches `plEnterDone()` — which is what stops the beat on the normal path — and
+nothing else did. So the music kept playing after the athlete stopped for a
+joint, on the one exit this app takes the most care to make painless to press.
+
+The two mounted copies are the stale-id class this file has a standing rule
+about: `plToggle` and `plCoach` are already among the four ids that appear
+twice in the source, and only one of each pair is ever meant to be mounted.
+
+**`beatStop()` moves INTO the closer**, because the beat belongs to the player
+session and every exit from it must stop one. On the natural finish that is a
+no-op — `plEnterDone()` got there first — so nothing changes there.
+
+**Every caller closes FIRST and hands off to the guided day AFTER**, which is
+what makes that safe: `runFlow()` starts its own beat for the cool-down, and
+that is not the beat the closer stopped. Checked by driving it rather than
+reasoned — measured `false` after the finish and `true` inside the cool-down.
+
+**What each caller keeps is what is genuinely its own**: the resume clear and
+the day cancel in `playerTeardown()`, the history step and `commitSession()` in
+`playerFeel()`, the pointer write and the toast in `hurtStop()`.
+
+**The floors carry the round**, and each over-eager twin fails one: the ✕ must
+still clear, the cool-down must still get its beat, and a player **re-opened
+inside the 400 ms deferred-clear window** must not be blanked — which is a real
+sequence, and the guard the v436 mutant escaped through.
+
+### And the fourth fixed sleep, waiting for a sheet that re-opens itself
+
+CI went red on the v437 pull request, three checks, and **none of them was
+v437's** — they were the v435 focus block, which had merged green a day
+earlier. Same shape as v414 and v420: a check that races, exposed by a timing
+shift rather than by a code defect.
+
+`sheetDismiss()` schedules `flushCelebrations()` **350 ms** later, and a queued
+badge calls `openSheet()`. The block did `closeSheet(); await 700ms` and then
+assumed the scrim was clear — so a badge left queued by an earlier block popped
+inside the wait, `openSheet()` treated the block's own call as a **REPAINT**,
+and `_sheetReturn` was never recorded. Reproduced exactly, and the figures match
+the CI failure byte for byte:
+
+| | `closeSheet()` + 700 ms | drain, then poll |
+|---|---|---|
+| `wasClear` | **false** | true |
+| `_sheetReturn` | **null** | the opener |
+
+**Two rules, and the block broke both.** *Wait for the CONDITION, never for a
+duration* — it now polls until the scrim is genuinely closed. And *each block
+builds the state it asserts on* — the queue is drained **before** the close
+rather than after the wait, which is where it was and which is far too late.
+
+`closeSheet()` is called only while a sheet is actually open, because it takes
+a history step; and one flush window is outlived at the end, so a badge queued
+by the last close cannot re-open a sheet after the poll has finished.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
