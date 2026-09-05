@@ -15462,6 +15462,98 @@ named** — the fifth entry under that shape, after `/true/` matching *truest*,
   650; the guard asks for a large number rather than all of them.
 
 
+## A finished tick is not a stalled one (v432)
+
+Found by auditing v426 an hour after it shipped — the fifteenth round running
+where the best finding was in the round immediately before, and the seventh in
+a row where it was in my own new code.
+
+v426 registered the benchmark-ops clock with the heartbeat so a reclaimed tick
+could be rescued **by name**. `tickStalled()` asks only two things: does the
+surface carry a `tick` function, and is its `lastTick` old. **It cannot tell a
+reclaimed tick from a FINISHED one.**
+
+`swFinal()` reads the clock, clears the interval and returns the seconds.
+**Three of its four callers null their surface on the very next line**, which
+is what hid this; `opFinish()` keeps `OP` alive for the Share / Done panel.
+Measured on a 12-minute benchmark:
+
+| | before | after |
+|---|---|---|
+| recorded time | 720 s | 720 s |
+| `tickStalled(OP)` three seconds later | **true** | false |
+| what one heartbeat did | **re-armed `opTick`** | nothing |
+| the clock above the panel | **12:00 → 12:01 → 12:02 …** | 12:00 |
+| the panel below it | 🏆 New PB · 12:00 | 🏆 New PB · 12:00 |
+
+One screen giving two different times for one effort, and a one-second
+interval running on a finished session until Done is tapped.
+
+**The hook is dropped inside `swFinal()`, not inside `opFinish()`.** A stopwatch
+that has been read for the record is finished, and that is true of every
+caller — three of them null the object anyway, so it is a no-op there and the
+fix for the fourth. A fifth stopwatch cannot be written with the same gap.
+
+**And the clock face never showed the recorded number.** The record reads the
+clock and the face reads the last tick, so the big number could sit up to a
+second behind the time written into the panel below it. This is the only
+stopwatch whose screen stays up after the stop — the other three close their
+sheet — so it is the only one that can show two times at all.
+
+### The guards come first, or "no rescue" passes on a surface nobody watches
+
+Every assertion about the finish screen is satisfied by a heartbeat that never
+watched `OP` in the first place, which would delete the thing v426 exists for.
+So the block pins the RUNNING case first: the benchmark is watched, it carries
+a tick, a reclaimed tick on it reads as stalled, and the beat re-arms it. The
+mutant that stops `opStart()` handing over its tick is caught by exactly those.
+
+**And `swFinal` must still read the CLOCK rather than the cached number** —
+v425's own requirement, which an over-eager teardown destroys. Pinned as a
+floor with a stopwatch whose cache says 1 and whose clock says 300.
+
+## The reset closed two of the three surfaces it names (v432)
+
+Found by asking what else the ops clock touches. `_sessionLive()` names
+**three** surfaces — the guided player, HIIT and the benchmark ops clock — and
+the cross-tab reset teardown closed **two**.
+
+Measured across two tabs, with a benchmark running in one and *Reset all data*
+tapped in the other:
+
+| | before | after |
+|---|---|---|
+| the benchmark | running | **still running** |
+| the ops overlay | up | **still up, over a freshly un-onboarded app** |
+| tapping ✓ Finished | — | **wrote a personal best into the erased state** |
+| and saved it to storage | — | **yes** |
+
+*"This cannot be undone"* false again, by the route v405 did not reach — and
+the third time that sentence has needed a fix (v405 across two tabs, v406 on
+the import snapshot, this).
+
+**The sheet-based half is the same class one layer down, and it is worse in
+one way.** A hold test does not make `_sessionLive()` true, so it never
+deferred the adopt at all: running through the erase it still appended a row
+to `holdLog` and saved it. Measured, before the fix: **1 row; after: 0.**
+
+**One call covers the rest of the class.** `closeSheet()` runs `stopTimer()`
+(the hold/rep timer, the baseline timer and the hold test) and
+`sheetTeardown()` (the activity, skipping and make-up stopwatches), so the
+teardown does not need a line per surface and a sixth stopwatch is covered on
+the day it is written. The athlete asked for everything to go, so **a surface
+whose only remaining act is to write a record must not get to write one.**
+
+**The floor is the ordinary foreign write**, which must leave a running
+benchmark alone: `_sessionLive()` defers the adopt entirely, and a teardown
+that fired on every storage event would end the athlete's session because
+another tab logged a meal. That mutant is caught by exactly that check.
+
+**And an ordinary adopt underneath a running hold test is NOT the same defect**
+— it is v404 working as designed: every mutation is followed immediately by
+`save()`, so adopting the newer state and appending the new record to it is
+correct. Only the erase is different.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

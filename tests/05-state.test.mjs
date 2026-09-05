@@ -3095,6 +3095,97 @@ export default async function run() {
     t.eq('nor the onboarding', gHeld.onboarded, false);
     t.ok('FLOOR: and the tab that adopted can still save afterwards', gSaves);
 
+    /* _sessionLive() NAMES THREE SURFACES AND THIS TEARDOWN CLOSED TWO. The
+       benchmark ops clock is the third, and it was left running: measured, the
+       erase left the ops overlay up over a freshly un-onboarded app, and
+       tapping "✓ Finished" wrote a personal best into the erased state and
+       saved it — "this cannot be undone" false again, by the route v405 did
+       not reach.
+
+       A hold test is the same class one layer down. It does not make
+       _sessionLive() true, so it never deferred the adopt at all — and running
+       through the erase it still appended a row to holdLog and saved it. The
+       athlete asked for everything to go, so a surface whose only remaining act
+       is to write a record must not get to write one. */
+    const P1 = await ctx.newPage(); await boot(P1); await seedAthlete(P1);
+    const P2 = await ctx.newPage(); await boot(P2);
+    const opBefore = await P1.evaluate(() => {
+      STATE.onboarded = true; STATE.opsPR = {}; save();
+      startOp(Object.keys(OPS.reduce((a, o) => (a[o.id] = 1, a), {}))[0]);
+      opStart();
+      OP.at = monoNow() - 600000;          /* ten real minutes on the clock */
+      return { live: !!OP, sessionLive: _sessionLive(),
+               overlay: document.getElementById('hiit').classList.contains('open') };
+    });
+    await P2.evaluate(() => { window.confirm = () => true; hardReset(); });
+    await P1.waitForTimeout(1100);
+    const opAfter = await P1.evaluate(() => {
+      const r = { live: !!OP,
+                  overlay: document.getElementById('hiit').classList.contains('open'),
+                  onboarded: !!STATE.onboarded };
+      try { if (OP) opFinish(); } catch (e) {}
+      r.pr = Object.keys(STATE.opsPR || {}).length;
+      try { const st = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
+            r.storedPr = Object.keys(st.opsPR || {}).length; } catch (e) { r.storedPr = -1; }
+      return r;
+    });
+    await P1.close(); await P2.close();
+
+    t.ok('guard: the benchmark really was running with a time on the clock',
+      opBefore.live && opBefore.overlay, JSON.stringify(opBefore));
+    t.ok('guard: and the app counts it as a live session',
+      opBefore.sessionLive, JSON.stringify(opBefore));
+    t.eq('guard: the erase really was adopted here', opAfter.onboarded, false, opAfter);
+    t.eq('a reset in another tab closes a live benchmark too', opAfter.live, false, opAfter);
+    t.eq('and takes its overlay off the glass', opAfter.overlay, false, opAfter);
+    t.eq('so no personal best is written into the erased state', opAfter.pr, 0, opAfter);
+    t.eq('nor saved to storage', opAfter.storedPr, 0, opAfter);
+
+    /* The sheet-based half. closeSheet() covers it in one call — stopTimer()
+       drops the hold/rep timer, the baseline timer and the hold test, and
+       sheetTeardown() drops the activity, skipping and make-up stopwatches. */
+    const H1 = await ctx.newPage(); await boot(H1); await seedAthlete(H1);
+    const H2 = await ctx.newPage(); await boot(H2);
+    const htBefore = await H1.evaluate(() => {
+      STATE.onboarded = true; STATE.holdLog = []; save();
+      openHoldTests(); startHoldTest('plank');
+      return { live: !!_ht, sessionLive: _sessionLive() };
+    });
+    await H2.evaluate(() => { window.confirm = () => true; hardReset(); });
+    await H1.waitForTimeout(1100);
+    const htAfter = await H1.evaluate(() => {
+      const r = { live: !!_ht, onboarded: !!STATE.onboarded };
+      try { if (_ht) { _ht.mode = 'run'; _ht.elapsed = 180; stopHoldTest(); } } catch (e) {}
+      r.rows = (STATE.holdLog || []).length;
+      try { const st = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
+            r.storedRows = (st.holdLog || []).length; } catch (e) { r.storedRows = -1; }
+      return r;
+    });
+    await H1.close(); await H2.close();
+
+    t.ok('guard: the hold test really was running', htBefore.live, JSON.stringify(htBefore));
+    t.ok('guard: and it is NOT what _sessionLive() calls a session, so nothing deferred the adopt',
+      !htBefore.sessionLive, JSON.stringify(htBefore));
+    t.eq('guard: the erase really was adopted here', htAfter.onboarded, false, htAfter);
+    t.eq('a reset closes a running hold test', htAfter.live, false, htAfter);
+    t.eq('so it cannot write a row into the erased state', htAfter.rows, 0, htAfter);
+    t.eq('nor save one', htAfter.storedRows, 0, htAfter);
+
+    /* FLOOR: an ORDINARY foreign write must leave a running benchmark alone.
+       A teardown that fired on every storage event would satisfy every
+       assertion above and end the athlete's session because another tab
+       logged a meal. */
+    const N1 = await ctx.newPage(); await boot(N1); await seedAthlete(N1);
+    const N2 = await ctx.newPage(); await boot(N2); await seedAthlete(N2);
+    await N1.evaluate(() => { STATE.onboarded = true; save(); startOp(OPS[0].id); opStart(); });
+    await N2.evaluate(() => { STATE.onboarded = true; STATE.profile.name = 'Other'; save(); });
+    await N1.waitForTimeout(900);
+    const ordinary = await N1.evaluate(() => ({ live: !!OP,
+      overlay: document.getElementById('hiit').classList.contains('open') }));
+    await N1.close(); await N2.close();
+    t.ok('FLOOR: an ordinary write from another tab does not close a live benchmark',
+      ordinary.live && ordinary.overlay, JSON.stringify(ordinary));
+
     /* FLOOR — the reset detector must not fire when OUR copy was never onboarded
        either. Two tabs open during the setup wizard is a real state, and an
        ordinary answer saved in one would otherwise tell the other its data had

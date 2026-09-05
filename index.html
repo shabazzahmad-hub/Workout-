@@ -1911,7 +1911,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='431';
+const APP_VERSION='432';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2190,6 +2190,22 @@ window.addEventListener('storage',async e=>{
       try{
         try{if(typeof PLAYER!=='undefined'&&PLAYER&&typeof playerQuit==='function')playerQuit();}catch(_){}
         try{if(typeof INTV!=='undefined'&&INTV&&typeof hiitQuit==='function')hiitQuit();}catch(_){}
+        /* _sessionLive() names THREE surfaces and this teardown closed two.
+           Measured: with a benchmark running, the erase left the ops overlay up
+           over a freshly un-onboarded app, and tapping "✓ Finished" wrote a
+           personal best into the erased state and saved it — "this cannot be
+           undone" false again, by the route v405 did not reach.
+
+           closeSheet() covers the rest of the same class in one call: it runs
+           stopTimer() (the hold/rep timer, the baseline timer and the hold test)
+           and sheetTeardown() (the activity, skipping and make-up stopwatches).
+           Without it a hold test running through the erase still appended a row
+           to holdLog and saved it. The athlete asked for everything to go, so a
+           surface whose only remaining act is to write a record must not get to
+           write one. */
+        try{if(typeof OP!=='undefined'&&OP&&typeof opQuit==='function')opQuit();}catch(_){}
+        try{if(typeof stopAssessRest==='function')stopAssessRest();}catch(_){}
+        try{if(typeof closeSheet==='function')closeSheet();}catch(_){}
       }finally{_adoptingReset=false;}
       clearParkedReads();
     }
@@ -9036,6 +9052,18 @@ function swFinal(st){
   if(!st)return 0;
   const s=swSecs(st);
   if(st.iv){clearInterval(st.iv);st.iv=null;}
+  /* A FINISHED TICK IS NOT A STALLED ONE, AND THE HEARTBEAT CANNOT TELL THE
+     TWO APART BY ITSELF. tickStalled() asks only whether a surface has a tick
+     function and an old lastTick, so a surface that is read for the record and
+     then LEFT ALIVE reads as stalled three seconds later and gets its interval
+     re-armed. Three of the four callers null their surface on the next line,
+     which hid it; opFinish() keeps OP up for the Share / Done panel. Measured
+     on a 12-minute benchmark: the record said 12:00, the heartbeat re-armed
+     opTick, and the clock above the panel climbed to 12:01, 12:02 and on for
+     ever — one screen giving two different times for the same effort. Dropping
+     the rescue hook HERE rather than in opFinish() is what stops a fifth
+     stopwatch being written with the same gap. */
+  st.tick=null;
   return s;
 }
 function swPause(st,running){
@@ -14206,6 +14234,12 @@ function opFinish(){
   if(!OP)return;OP.running=false;beatStop();
   const op=OP.op,t=swFinal(OP),prev=opBest(op.id),pb=(!prev||t<prev);
   OP.elapsed=t;
+  /* The record reads the clock and the clock face reads the last tick, so the
+     big number could sit up to a second behind the time just written into the
+     panel below it. This is the only stopwatch whose screen stays up after the
+     stop — the other three close their sheet — so it is the only one that can
+     show two times for one effort. */
+  {const c=$('#opClock');if(c)c.textContent=fmtTime(t);}
   if(pb){if(!STATE.opsPR)STATE.opsPR={};STATE.opsPR[op.id]=t;save();}
   coachSpeak(pb?'New personal best! Outstanding.':'Time. Strong effort.');haptic(30);
   _share={t:op.name,s:pb?'New personal best 🏆':'Complete',l:['Time '+fmtTime(t),op.desc]};
