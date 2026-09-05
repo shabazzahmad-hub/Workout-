@@ -16364,6 +16364,24 @@ The coach avatar keeps its real `alt`, and that is a decision rather than an
 oversight: in the player header it stands alone with no text beside it, so
 blanking it there would leave a picture with no name at all.
 
+**The rule has two halves, and the first check only had one.** *Is the
+attribute present* is a mechanical test; *does it repeat the text already
+beside it* is the other, and the mutant restoring `alt="${ex.name}"` walked
+straight through a sweep that only asked the first. An image's non-empty alt
+must not equal the text of its own button, nor of the heading above it in the
+same sheet — which is exactly the two shapes that were wrong. Re-seeded, the
+mutant fails by name with the detail `exerciseInfo:heading:Push-Up`.
+
+**Four guards, because an empty result is otherwise a statement about the
+selector.** A planted image with no alt must be reported, one with `alt=""`
+must not, one whose alt is its own heading must be, and one whose alt is its
+own button label must be. Two more pin that the photo tiles, the comparison
+pair, the single-photo viewer, the exercise sheet and the physique picker were
+all really in the scan — the five that carried no alt render only on their own
+surfaces, so without that a clean sweep says nothing about them.
+
+Fourteen mutants across v443, all caught.
+
 ### And two hand-written copies of the avatar that had already drifted
 
 `coachAvatarHTML()` exists and four sites use it. Two more wrote the whole

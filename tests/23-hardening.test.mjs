@@ -1144,7 +1144,7 @@ export default async function () {
   {
     const r = await page.evaluate(async () => {
       const PX = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
-      const out = { seen: 0, bad: [], kinds: [] };
+      const out = { seen: 0, bad: [], dupe: [], kinds: [] };
       const note = el => {
         const k = el.id || el.className || (el.getAttribute('src') || '').slice(0, 14);
         if (k && out.kinds.indexOf(k) < 0) out.kinds.push(k);
@@ -1152,18 +1152,36 @@ export default async function () {
       const scan = where => {
         document.querySelectorAll('.view.active img, #sheet img, #player img, #hiit img').forEach(el => {
           out.seen++; note(el);
-          if (!el.hasAttribute('alt')) out.bad.push(where + ':' + (el.id || el.className || 'img'));
+          if (!el.hasAttribute('alt')) { out.bad.push(where + ':' + (el.id || el.className || 'img')); return; }
+          /* AND THE OTHER HALF OF THE RULE. An alt that repeats the text right
+             beside it is announced twice — the exercise photo sat under an
+             <h3> naming the same movement, and the physique image sat inside a
+             button carrying the same word. A check that only asks whether the
+             attribute is PRESENT cannot see either: the mutant restoring
+             `alt="${ex.name}"` escaped it. */
+          const a = (el.getAttribute('alt') || '').trim();
+          if (!a) return;
+          const b = el.closest('button');
+          if (b && (b.innerText || '').trim() === a) out.dupe.push(where + ':button:' + a);
+          const root = el.closest('#sheet') || el.closest('.view.active');
+          const h = root ? root.querySelector('h1,h2,h3') : null;
+          if (h && (h.innerText || '').trim() === a) out.dupe.push(where + ':heading:' + a);
         });
       };
       /* GUARD, BOTH WAYS. An image with no alt must BE reported and one with an
          empty alt must NOT, or a clean result says nothing about the app. */
-      openSheet('<img id="zq-noalt" src="' + PX + '"><img id="zq-ok" alt="" src="' + PX + '">');
+      openSheet('<h3>Zq Heading</h3><img id="zq-noalt" src="' + PX + '">'
+        + '<img id="zq-ok" alt="" src="' + PX + '">'
+        + '<img id="zq-dupe" alt="Zq Heading" src="' + PX + '">'
+        + '<button><img id="zq-btn" alt="Zq Label" src="' + PX + '">Zq Label</button>');
       scan('probe');
       out.canSee = out.bad.some(b => b.indexOf('zq-noalt') >= 0);
       out.emptyIsFine = !out.bad.some(b => b.indexOf('zq-ok') >= 0);
+      out.canSeeHeadingDupe = out.dupe.some(d => d.indexOf('heading:Zq Heading') >= 0);
+      out.canSeeButtonDupe = out.dupe.some(d => d.indexOf('button:Zq Label') >= 0);
       closeSheet();
-      document.querySelectorAll('#zq-noalt, #zq-ok').forEach(e => e.remove());
-      out.bad.length = 0; out.seen = 0; out.kinds.length = 0;
+      document.querySelectorAll('#zq-noalt, #zq-ok, #zq-dupe, #zq-btn').forEach(e => e.remove());
+      out.bad.length = 0; out.dupe.length = 0; out.seen = 0; out.kinds.length = 0;
 
       /* The photo surfaces need rows AND bytes, or three of the five images
          this block exists for never render at all. */
@@ -1202,6 +1220,18 @@ export default async function () {
       JSON.stringify(r.kinds));
     t.eq('every image carries an alt attribute a screen reader can act on',
       r.bad.length, 0, JSON.stringify(r.bad.slice(0, 10)));
+    t.ok('guard: an alt repeating its own heading really would be reported',
+      r.canSeeHeadingDupe, JSON.stringify(r));
+    t.ok('guard: and one repeating its own button label would be too',
+      r.canSeeButtonDupe, JSON.stringify(r));
+    /* GUARD: the two surfaces this half exists for were really scanned — the
+       exercise sheet's photo under its own <h3>, and the physique picker's
+       image inside a button carrying the same word. */
+    t.ok('guard: the exercise photo and the physique images were in the scan',
+      r.kinds.some(k => /exphoto/.test(k)) && r.kinds.some(k => /^phys-/.test(k)),
+      JSON.stringify(r.kinds));
+    t.eq('and no image repeats the text already beside it',
+      r.dupe.length, 0, JSON.stringify(r.dupe.slice(0, 10)));
   }
 
   /* The coach avatar was written out by hand twice beside the helper that
