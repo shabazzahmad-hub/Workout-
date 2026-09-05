@@ -12910,6 +12910,109 @@ export default async function () {
       !r.commit.moved && !r.commit.done, r);
   }
 
+  /* ---- v453 — the preview showed a warm-up nobody does -------------------
+     buildSession() carried WARMUP = ['march','glutebridge','birddog'] and a
+     three-stretch COOLDOWN, both predating the guided flows. EX.march is
+     "Single-Leg Dead Bug", not the flow's "March in Place" — so the Program
+     calendar's preview sheet listed three movements the athlete never performs,
+     captioned "8/side", and had no cool-down section at all. Two estimators
+     priced those lists at 3*35 + 3*33 = 204s against the 563s the flows really
+     take, so the Day-1 hero read 25 minutes where 31 is the answer. */
+  {
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const o = {};
+      const sess = buildSession(0);
+      o.legacyGone = (typeof sess.warmup === 'undefined' && typeof sess.cooldown === 'undefined');
+      const wf = warmupFlow(), cf = cooldownFlow();
+      o.wN = wf.length; o.cN = cf.length;
+      o.flowSec = flowSecs(wf) + flowSecs(cf);
+      o.legacySec = 3 * 35 + 3 * 33;   // what the removed expression priced
+      o.wMin = flowMins(wf); o.cMin = flowMins(cf);
+      o.vol = sessionVolume(sess).minutes;
+      const items = [...sess.main, sess.finisher].filter(Boolean);
+      o.work = plBudgetMin(items, repTempoSetting());
+      o.typical = typicalSessionMin();
+      /* sessionStats(p, true) adds the warm-up and cool-down allowance that
+         sessionStats(p) omits, so the difference IS that allowance. */
+      o.statFull = sessionStats(0, true).estMin;
+      o.statRow = sessionStats(0).estMin;
+      previewSession(0);
+      const sh = document.querySelector('#sheet');
+      o.txt = (sh ? sh.textContent : '').replace(/\s+/g, ' ');
+      closeSheet();
+      return o;
+    });
+
+    // guards — the two lists must genuinely differ, or every assertion below
+    // is satisfied by a preview that was already showing the right thing
+    t.ok('guard: the real flows are the eight-move warm-up and seven-move cool-down',
+      r.wN === 8 && r.cN === 7, JSON.stringify({ w: r.wN, c: r.cN }));
+    t.ok('guard: and they cost far more than the removed expression priced',
+      r.flowSec === 563 && r.legacySec === 204, JSON.stringify({ real: r.flowSec, old: r.legacySec }));
+
+    t.ok('buildSession no longer hands out a legacy warm-up or cool-down', r.legacyGone, r.legacyGone);
+
+    t.ok('the preview lists the flow the athlete really runs',
+      r.txt.indexOf('March in Place') >= 0 && r.txt.indexOf('Standing Knee Hugs') >= 0, r.txt.slice(0, 240));
+    t.ok('and not the three exercises nobody performs in it',
+      r.txt.indexOf('Single-Leg Dead Bug') < 0, r.txt.slice(0, 240));
+    t.ok('the preview has a cool-down section at all',
+      /Cool-down · ~\d+ min/.test(r.txt) && r.txt.indexOf('Deep Breathing') >= 0, r.txt.slice(-260));
+    t.ok('each section carries its own minutes',
+      r.txt.indexOf('Warm-up · ~' + r.wMin + ' min') >= 0 &&
+      r.txt.indexOf('Main work · ~' + r.vol + ' min') >= 0 &&
+      r.txt.indexOf('Cool-down · ~' + r.cMin + ' min') >= 0, r.txt.slice(0, 200));
+    t.ok('and the chip is the whole sheet, not the main work alone',
+      r.txt.indexOf('~' + (r.vol + r.wMin + r.cMin) + ' min total') >= 0 && r.wMin + r.cMin > 0,
+      JSON.stringify({ vol: r.vol, w: r.wMin, c: r.cMin }));
+
+    /* THE PAYLOAD IS THE FLOW MINUTES REACHING THE HERO, not the hero's own
+       figure — which moves with the athlete. The removed expression contributed
+       3; the flows contribute 9. */
+    t.eq("the Day-1 hero counts the flows the athlete really runs",
+      r.typical - r.work, Math.round(r.flowSec / 60), JSON.stringify({ typical: r.typical, work: r.work }));
+    t.ok('which is nine minutes, not the three the legacy lists priced',
+      r.typical - r.work === 9 && Math.round(r.legacySec / 60) === 3, JSON.stringify({ gap: r.typical - r.work }));
+
+    /* The session-clock estimator is the second consumer, and suite 08 reads
+       its figure back out of the app — so a mutant moving that arithmetic moves
+       both sides of every assertion there. Pin the ALLOWANCE, and pin it as a
+       value: the difference between the full estimate and the row's is exactly
+       the flows, and the removed expression made it three minutes. */
+    t.ok('the session estimate adds the flows the athlete really runs',
+      Math.abs((r.statFull - r.statRow) - Math.round(r.flowSec / 60)) <= 1,
+      JSON.stringify({ full: r.statFull, row: r.statRow, flows: Math.round(r.flowSec / 60) }));
+    t.ok('which is about nine minutes there too, never the legacy three',
+      r.statFull - r.statRow >= 8, JSON.stringify({ gap: r.statFull - r.statRow }));
+
+    /* ONLY A FLAGGED ATHLETE CAN TELL THE BUILDER FROM THE RAW ARRAY. An
+       unflagged one gets WARMUP_FLOW back unchanged, so a preview reverted to
+       the raw literal would satisfy every assertion above. */
+    const f = await page.evaluate(() => {
+      const keep = (STATE.profile.limitations || []).slice();
+      STATE.profile.limitations = ['lowback'];
+      const o = { w: warmupFlow().map(x => x.n), c: cooldownFlow().map(x => x.n) };
+      o.rawHasTwist = WARMUP_FLOW.some(x => x.n === 'Standing Torso Twists');
+      o.rawCool = COOLDOWN_FLOW.length;
+      previewSession(0);
+      const sh = document.querySelector('#sheet');
+      o.txt = (sh ? sh.textContent : '').replace(/\s+/g, ' ');
+      closeSheet();
+      STATE.profile.limitations = keep;
+      return o;
+    });
+    t.ok('guard: the raw warm-up really does carry a move a flagged low back loses',
+      f.rawHasTwist && f.rawCool === 7, JSON.stringify({ twist: f.rawHasTwist, cool: f.rawCool }));
+    t.ok('a flagged low back is previewed the SHORTENED warm-up',
+      f.w.indexOf('Standing Torso Twists') < 0 && f.txt.indexOf('Standing Torso Twists') < 0,
+      JSON.stringify(f.w));
+    t.ok('and the shortened cool-down',
+      f.c.length < f.rawCool && f.txt.indexOf('Cobra Stretch') < 0, JSON.stringify(f.c));
+    t.ok('while the moves it keeps are still listed',
+      f.txt.indexOf('March in Place') >= 0 && f.txt.indexOf('Deep Breathing') >= 0, f.txt.slice(0, 200));
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

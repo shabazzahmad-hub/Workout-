@@ -4491,7 +4491,7 @@ export default async function run() {
         go('today'); setTodayTab(x); render(); look('today:' + x); });
       o.bad = bad;
       const sess = buildSession(STATE.progressPtr);
-      o.session = { moves: sess.main.length, warm: sess.warmup.length, named: !!sess.session.name };
+      o.session = { moves: sess.main.length, warm: warmupFlow().length, named: !!sess.session.name };
       return o;
     }, legacy);
     await ctx.close();

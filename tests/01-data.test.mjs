@@ -1768,6 +1768,32 @@ export default async function run() {
       // and the allowlist does not rot: each entry must still be genuinely uncalled
       KEPT.forEach(k => t.ok('the kept-on-purpose entry ' + k + ' is still uncalled',
         !reach.has(k), k + ' now has a caller — take it off the list'));
+
+      /* ---- and no top-level constant is declared and never read (v453) ----
+         The same question one declaration kind over. v331 found THREE dead
+         constants at once and the middle one was the expensive kind: it looked
+         like a setting, DISAGREED with the behaviour it named, and changed
+         nothing at all when edited — the voicePitch trap in its purest form.
+
+         v453 removed WARMUP and COOLDOWN, which were read and wrong rather than
+         unread; this is what stops the next pair being merely forgotten. */
+      const constNames = [...clean.matchAll(/\bconst\s+([A-Z][A-Z0-9_]+)\s*=/g)].map(m => m[1]);
+      const unreadIn = (text, list) => list.filter(nm =>
+        (text.match(new RegExp('\\b' + nm + '\\b', 'g')) || []).length <= 1).sort();
+
+      /* GUARD, on a SYNTHETIC source rather than the real one, so it stays true
+         whatever the app becomes: the detector must report a constant nothing
+         reads and must NOT report one that is only ever read inside a template
+         literal — which is how most of this app's constants are consumed. */
+      const probe = "const AA_LIVE = 1;\nconst AA_DEAD = 2;\nconst h = `x ${AA_LIVE} y`;\n";
+      const probeNames = [...probe.matchAll(/\bconst\s+([A-Z][A-Z0-9_]+)\s*=/g)].map(m => m[1]);
+      const probeUnread = unreadIn(probe, probeNames);
+      t.ok('guard: the scan reports a constant nothing reads', probeUnread.indexOf('AA_DEAD') >= 0, probeUnread);
+      t.ok('guard: and not one read only inside a template literal', probeUnread.indexOf('AA_LIVE') < 0, probeUnread);
+      t.ok('guard: it found the real roster of constants', constNames.length > 200, String(constNames.length));
+
+      const deadConsts = unreadIn(clean, constNames);
+      t.eq('no top-level constant is declared and never read', deadConsts.length, 0, deadConsts.slice(0, 20));
     }
   }
 

@@ -1870,12 +1870,22 @@ const PHASE2_SESSIONS = [
   {key:'core', name:'Core & Conditioning', icon:'🌀', focus:'Full core circuit + HIIT finish',
    slots:['plankL','sideL','hollowL','lowerL'], finisher:'hiitFinL'},
 ];
-const WARMUP = ['march','glutebridge','birddog'];      // ~4 min activation
-const COOLDOWN = [
-  {n:"Child's Pose", d:"Sit back onto your heels, arms reaching forward, and breathe into your lower back for 30s."},
-  {n:"Cobra Stretch", d:"Lie face-down and gently press your chest up, lengthening the abs you just trained. 30s."},
-  {n:"Supine Spinal Twist", d:"On your back, drop both knees to one side, arms out wide. 30s each side."},
-];
+/* THE WARM-UP YOU ARE SHOWN IS NOT THE WARM-UP YOU GET — the legacy lists are
+   gone. WARMUP was ['march','glutebridge','birddog'] and EX.march is
+   "Single-Leg Dead Bug", not the flow's "March in Place", so the Program
+   calendar's preview sheet listed three movements the athlete never performs,
+   captioned "8/side", while runWarmup() ran an eight-move flow of 30-40s holds.
+   COOLDOWN was three prose stretches against the flow's seven, and the preview
+   had no cool-down section at all.
+
+   It also priced them: two estimators used length*35 and length*33, which is
+   204s for a warm-up and cool-down the athlete really spends 563s on — so the
+   Day-1 hero read 25 minutes where 31 is the answer.
+
+   v448 made warmupFlow()/cooldownFlow() the ONE builder and fixed the four
+   surfaces it could see. These three read buildSession()'s own warmup/cooldown
+   fields instead, so they were invisible to that sweep. The fields are removed
+   rather than repointed: one warm-up definition, one cool-down definition. */
 /* Guided flows: name + seconds + coaching cue. Run through the loud countdown timer. */
 const WARMUP_FLOW = [
   {n:'March in Place',      secs:40, pos:'stand', cue:'Drive the knees up and pump the arms. Wake the body up.', img:'wu-march.jpg', vid:'wu-march.mp4'},
@@ -1966,7 +1976,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='452';
+const APP_VERSION='453';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3615,7 +3625,7 @@ function buildSession(ptr){
   // one light stability movement for a flagged joint, on top of everything above
   const corrective=correctiveBonus(pos,used);
   if(corrective)main.push(corrective);
-  return {ptr,pos,cycle,week,session:pos.session,warmup:WARMUP,main,finisher,cooldown:COOLDOWN,dropped};
+  return {ptr,pos,cycle,week,session:pos.session,main,finisher,dropped};
 }
 function sessionVolume(sess){
   let tut=0;const list=[...sess.main,sess.finisher];
@@ -4511,7 +4521,7 @@ function typicalSessionMin(){
     const sess=buildSession(0);
     const items=[...sess.main,sess.finisher].filter(Boolean);
     const work=plBudgetMin(items,repTempoSetting());
-    const wc=Math.round((sess.warmup.length*35+sess.cooldown.length*33)/60);
+    const wc=Math.round((flowSecs(warmupFlow())+flowSecs(cooldownFlow()))/60);
     return work+wc;
   }catch(e){return null;}
 }
@@ -13538,16 +13548,21 @@ function renderProgram(){
 function previewSession(ptr){
   if(ptr>SESSIONS_PER_CYCLE*TOTAL_CYCLES-1)return;
   const sess=buildSession(ptr);const vol=sessionVolume(sess);const wkNum=sess.cycle*WEEKS_PER_CYCLE+sess.week;
+  /* The same builders the Today panes and runWarmup() use, so the sheet cannot
+     describe a session other than the one the athlete is about to do. */
+  const _pw=warmupFlow(),_pc=cooldownFlow();
   openSheet(`
     <h3>${sess.session.name}</h3>
     <div class="tiny muted" style="margin-bottom:2px">Week ${wkNum} · ${sess.session.focus}</div>
-    <div class="row" style="gap:8px;margin:10px 0 14px"><span class="chip">${sess.main.length+1} exercises</span><span class="chip">~${vol.minutes} min</span></div>
-    <div class="section-label">Warm-up</div>
-    <div class="card pad">${sess.warmup.map(id=>`<div class="kv"><span>${EX[id].name}</span><span class="muted">${EX[id].unit==='time'?'30s':'8/side'}</span></div>`).join('')}</div>
-    <div class="section-label">Main work</div>
+    <div class="row" style="gap:8px;margin:10px 0 14px"><span class="chip">${sess.main.length+1} exercises</span><span class="chip">~${vol.minutes+flowMins(_pw)+flowMins(_pc)} min total</span></div>
+    <div class="section-label">Warm-up · ~${flowMins(_pw)} min</div>
+    <div class="card pad">${_pw.map(f=>`<div class="kv"><span>${_ve(f.n)}</span><span class="muted">${fmtTime(f.secs)}</span></div>`).join('')}</div>
+    <div class="section-label">Main work · ~${vol.minutes} min</div>
     <div class="card pad">${sess.main.map(m=>`<div class="kv"><span><b>${EX[m.exId].name}</b> <span class="tag ${EX[m.exId].region}" style="margin-left:4px">${EX[m.exId].region}</span> ${climbNote(m)}</span><b>${m.sets}×${m.unit==='time'?fmtTime(m.target):m.target}</b></div>`).join('')}</div>
     <div class="section-label">Finisher</div>
     <div class="card pad"><div class="kv"><span><b>${EX[sess.finisher.exId].name}</b></span><b>${sess.finisher.sets}×${sess.finisher.unit==='time'?fmtTime(sess.finisher.target):sess.finisher.target}</b></div></div>
+    <div class="section-label">Cool-down · ~${flowMins(_pc)} min</div>
+    <div class="card pad">${_pc.map(f=>`<div class="kv"><span>${_ve(f.n)}</span><span class="muted">${fmtTime(f.secs)}</span></div>`).join('')}</div>
     ${ptr===STATE.progressPtr?`<button class="btn primary" onclick="closeSheet();go('today')">Go to this workout →</button>`:`<button class="btn ghost" onclick="closeSheet()">Close</button>`}
   `);
 }
@@ -22248,7 +22263,7 @@ function sessionStats(p,full){
      row just to discard the result; skip it unless asked for. */
   if(!full)return {items,exDone,exTotal:items.length,setsDone,setsRx,totalReps,totalHold,estMin:Math.max(1,Math.round(estSec/60))};
   const sess=buildSession(p);
-  estSec+=(sess.warmup.length*35)+(sess.cooldown.length*33); // warm-up + cool-down
+  estSec+=flowSecs(warmupFlow())+flowSecs(cooldownFlow()); // the flows the athlete really runs
   return {sess,items,exDone,exTotal:items.length,setsDone,setsRx,totalReps,totalHold,estMin:Math.max(1,Math.round(estSec/60))};
 }
 function sessionHistoryHTML(){

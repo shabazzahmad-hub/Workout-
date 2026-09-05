@@ -17146,6 +17146,61 @@ there is no history to restore it from, so unwriting one would need a stored
 field that travels in every backup to buy back a mis-tap. Recorded rather than
 fixed.
 
+## The preview showed a warm-up nobody does (v453)
+
+v448 made `warmupFlow()` and `cooldownFlow()` the ONE builder and fixed the four
+surfaces it could see. **Three more read `buildSession()`'s own `warmup` and
+`cooldown` fields**, which are the LEGACY lists — so that sweep could not see
+them at all.
+
+`WARMUP` was `['march','glutebridge','birddog']`, and **`EX.march` is
+"Single-Leg Dead Bug", not the flow's "March in Place"**. Measured on the
+Program calendar's preview sheet:
+
+| | the sheet showed | the athlete does |
+|---|---|---|
+| warm-up | **3 moves, "8/side" each** — none of them in the flow | 8 moves, 30-40s holds |
+| cool-down | **no section at all** | 7 stretches |
+| warm-up + cool-down | 204s priced (`3x35 + 3x33`) | **563s** |
+| Day-1 hero `typicalSessionMin()` | **25 min** | **31 min** |
+
+**v450's own comment claimed that figure was honest** — *"reused rather than
+guessed... the same numbers, not a second copy of them that could drift"*. The
+numbers it reused were the wrong ones. *A comment claiming an invariant is not
+the invariant*, for the eighth time in this file.
+
+**The fields are REMOVED rather than repointed**, so a fourth consumer cannot
+read the wrong list: one warm-up definition, one cool-down definition. The
+preview now lists what `runFlow()` will run, with each section carrying its own
+minutes and the chip covering the whole sheet.
+
+**Only a FLAGGED athlete can tell the builder from the raw array.** An unflagged
+one gets `WARMUP_FLOW` back unchanged, so a preview reverted to the raw literal
+satisfies every assertion about the ordinary case. The check drives a flagged
+low back and requires the shortened flows, with the raw ones pinned beside it as
+a guard.
+
+**And the payload is the flow minutes reaching the hero, not the hero's own
+figure** — which moves with the athlete. The check asserts
+`typicalSessionMin() - plBudgetMin(items)` is 9, with the legacy 3 pinned beside
+it.
+
+### A check that tested three ids and three OBJECTS
+
+Suite 21 asserted *"warm-up and cool-down carry nothing contraindicated"* as
+`unsafe([...WARMUP, ...COOLDOWN])`, and **`COOLDOWN` held `{n,d}` objects** —
+`safeSwap(obj)` hands the object straight back, so `obj !== obj` is false and
+that half could never fire. The `WARMUP` half tested three ids the athlete never
+performs. Its own comment recorded the conclusion — *"nothing in them is
+swappable"* — which was true only because the check was looking at the wrong
+lists.
+
+**Flow items carry no `exId` at all**, so `safeSwap()` cannot speak for them:
+`safeFlow()` is the predicate and it matches on NAME through `FLOW_RISK`. The
+replacement asks the real flows, with a guard that the raw ones genuinely carry
+a contraindicated move for those flags — otherwise an empty result is a
+statement about the filter rather than about the data.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
