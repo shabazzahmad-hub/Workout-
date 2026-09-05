@@ -775,6 +775,92 @@ export default async function run() {
     t.ok('and neither is the rep cadence', !/plTickRep\(\)/.test(rs.resyncSrc), rs);
   }
 
+  /* ---------------------------------------------------------------------
+     "MIN TRAINED" IS A CALENDAR QUANTITY, AND IT WAS SHOWING TIME UNDER
+     TENSION. totalTUT() sums work plus PRESCRIBED rest, so it knows nothing
+     about transitions, the walk to the mat, or a pause. Measured across eight
+     clocked sessions worth 314 real minutes, the lifetime tile read 152 - 52%
+     under, with every one of those sessions carrying a real clock.
+
+     The floor is what keeps the fix honest: a log with NO clock must still
+     contribute exactly what it always did, so the figure can only get closer.
+     And estCalories() must not move at all - calories count the work, not the
+     standing around, so those are two questions and two readers. */
+  {
+    const lm = await page.evaluate(() => {
+      const o = {}, real = JSON.stringify(STATE.logs), ptr = STATE.progressPtr;
+      const mins = [42, 38, 45, 33, 40, 36, 44, 36];   // 314 minutes of training
+      const build = clocked => {
+        STATE.logs = {};
+        for (let i = 0; i < 8; i++) {
+          const s = buildSession(i);
+          const items = s.main.map(m => ({ exId: m.exId, unit: m.unit,
+            target: m.target, sets: m.sets, rest: m.rest || 45 }));
+          const ex = {};
+          items.forEach(m => { ex[m.exId] = { sets: new Array(m.sets).fill(true), done: true }; });
+          const row = { done: true, at: Date.now(), completedAt: todayISO(), items, ex };
+          if (clocked) {
+            row.durSec = mins[i] * 60; row.pausedSec = 0;
+            row.workSec = Math.round(mins[i] * 60 * 0.6); row.budgetMin = 25;
+          }
+          STATE.logs[i] = row;
+        }
+        STATE.runs = []; STATE.progressPtr = 8;
+      };
+      o.realMin = mins.reduce((a, b) => a + b, 0);
+
+      build(true);
+      o.clocked = totalMinutes();
+      o.clockedTUT = totalTUT();
+      o.clockedKcal = estCalories();
+
+      build(false);
+      o.legacy = totalMinutes();
+      o.legacyTUT = totalTUT();
+      o.legacyKcal = estCalories();
+
+      /* Half clocked, half not - which is every real athlete for a long time
+         after the clock ships, and the case a fix that only ever reads one of
+         the two would get wrong. */
+      build(true);
+      for (let i = 0; i < 4; i++) {
+        delete STATE.logs[i].durSec; delete STATE.logs[i].workSec; delete STATE.logs[i].pausedSec;
+      }
+      o.mixed = totalMinutes();
+      o.mixedExpected = Math.round(mins.slice(4).reduce((a, b) => a + b, 0)
+        + [0, 1, 2, 3].reduce((a, i) => { const tt = sessionTUT(i, STATE.logs[i]); return a + (tt.work + tt.rest) / 60; }, 0));
+
+      /* THE GLASS. Asserting the helper is the container; the tile is what the
+         athlete reads. */
+      build(true);
+      setProgressTab('summary'); go('progress');
+      const v = document.querySelector('#v-progress');
+      const cell = [...v.querySelectorAll('.stat')]
+        .find(x => /Min trained/i.test((x.querySelector('.l') || {}).textContent || ''));
+      o.tile = cell ? (cell.querySelector('.n') || {}).textContent : null;
+
+      STATE.logs = JSON.parse(real); STATE.progressPtr = ptr;
+      return o;
+    });
+    /* GUARD: the two figures must genuinely disagree on this data, or every
+       assertion below passes on two numbers that happen to be equal. */
+    t.ok('guard: time under tension really differs from the measured duration',
+      lm.clockedTUT > 0 && Math.abs(lm.clockedTUT - lm.realMin) > 60, lm);
+    t.eq('the lifetime minutes are what the sessions MEASURED', lm.clocked.min, lm.realMin, lm);
+    t.eq('and every one of them counted as measured', lm.clocked.measured, 8, lm);
+    t.eq('FLOOR: a run with no clock still contributes its own estimate',
+      lm.legacy.min, lm.legacyTUT, lm);
+    t.eq('and none of those counts as measured', lm.legacy.measured, 0, lm);
+    t.eq('a mix of both adds each session by what it knows', lm.mixed.min, lm.mixedExpected, lm);
+    t.eq('guard: the mix really was a mix', lm.mixed.measured + '/' + lm.mixed.estimated, '4/4', lm);
+    t.ok('and it lands between the two extremes',
+      lm.mixed.min > lm.legacy.min && lm.mixed.min < lm.clocked.min, lm);
+    t.eq('FLOOR: calories stay on time under tension, clock or no clock',
+      lm.clockedKcal, lm.legacyKcal, lm);
+    t.eq('FLOOR: and totalTUT() itself is unmoved by a clock', lm.clockedTUT, lm.legacyTUT, lm);
+    t.eq('the tile on the glass prints the measured figure', lm.tile, String(lm.realMin), lm);
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }

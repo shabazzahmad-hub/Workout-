@@ -1911,7 +1911,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='444';
+const APP_VERSION='445';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -13405,12 +13405,12 @@ function renderProgress(){
      from the app. The prose line that used to follow ("Lifetime volume: N sets
      · N reps · N holds") is gone too — it restated numbers a grid renders more
      legibly, and reps appeared in both. */
-  const tut=totalTUT();
+  const tmin=totalMinutes();
   const vol=totalVolume();
   h+=`<div class="section-label">Lifetime</div>
   <div class="grid3">
     <div class="stat"><div class="n" style="color:var(--fire-l)">${sessionsDoneCount()}</div><div class="l">Sessions</div></div>
-    <div class="stat"><div class="n">${tut}</div><div class="l">Min trained</div></div>
+    <div class="stat"><div class="n">${tmin.min}</div><div class="l">Min trained</div></div>
     <div class="stat"><div class="n" style="color:var(--fire-l)">${estCalories()}</div><div class="l">Kcal 🔥</div></div>
   </div>
   <div class="grid3" style="margin-top:10px">
@@ -17409,19 +17409,44 @@ function streakGapTol(){
    from the same walk, and because this counted PRESCRIBED sets while the reps
    tile beside it counted COMPLETED ones — so a week of one-set-of-four sessions
    raised the minutes by the full prescription. */
+function sessionTUT(p,l){
+  let work=0,rest=0;const items=logItemsFor(p,l);const tempo=repTempoSetting();
+  items.forEach(m=>{
+    const e=l.ex&&l.ex[m.exId];const sd=setsDoneFor(e,m);
+    if(!sd)return;
+    work+=sd*(m.unit==='time'?m.target:m.target*tempo);
+    rest+=sd*(m.rest||45);
+  });
+  return {work,rest};
+}
 function totalTUTSplit(){
   let work=0,rest=0;
-  allDonePairs().forEach(([p,l])=>{
-    const items=logItemsFor(p,l);const tempo=repTempoSetting();
-    items.forEach(m=>{
-      const e=l.ex&&l.ex[m.exId];const sd=setsDoneFor(e,m);
-      if(!sd)return;
-      work+=sd*(m.unit==='time'?m.target:m.target*tempo);
-      rest+=sd*(m.rest||45);
-    });});
+  allDonePairs().forEach(([p,l])=>{const t=sessionTUT(p,l);work+=t.work;rest+=t.rest;});
   return {work:work/60,rest:rest/60};
 }
 function totalTUT(){const t=totalTUTSplit();return Math.round(t.work+t.rest);}
+/* "Min trained" is a CALENDAR quantity - how long the athlete was actually
+   training - and totalTUT() answers a different one: work plus PRESCRIBED rest,
+   which knows nothing about transitions, the walk to the mat, or a pause.
+   Measured across eight clocked sessions worth 314 real minutes, that tile read
+   152. So each session contributes the duration it MEASURED when it carries a
+   clock, and its own time under tension otherwise - every log written before
+   the clock shipped, and every session marked complete off the Today card
+   rather than run in the player, genuinely has no clock, so the estimate is the
+   honest answer there and it is exactly what the tile always showed. The figure
+   can therefore only get closer, never further away.
+
+   estCalories() stays on time under tension ON PURPOSE: calories count the
+   work, not the standing around, so these are two questions and two readers. */
+function totalMinutes(){
+  let sec=0,measured=0,estimated=0;
+  allDonePairs().forEach(([p,l])=>{
+    const c=sessionClockOf(l);
+    if(c){sec+=c.wall;measured++;return;}
+    const t=sessionTUT(p,l);sec+=t.work+t.rest;estimated++;
+  });
+  return {min:Math.round(sec/60),measured,estimated};
+}
 /* ---- richer progress metrics ---- */
 function localISO(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 /* ONE test for "is this a date the app can actually place", read by every log
