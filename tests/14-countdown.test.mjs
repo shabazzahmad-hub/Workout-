@@ -1054,6 +1054,93 @@ export default async function run() {
          op.finalReadsClock, 300, op);
   }
 
+  /* ---- the screen must not go dark during a hands-free timed effort -----
+
+     The flow's own comment says it "was the only one of the three that let the
+     screen sleep" — the three being the player, HIIT and the flow. Measured
+     against the pre-fix file, FOUR more hands-free timed surfaces took no wake
+     lock at all: the hold test, the baseline battery, its two-minute rest and
+     the standalone hold / rep timer. The two maximal-effort ones are the
+     sharpest — the athlete is holding a position and cannot touch the phone,
+     which is exactly the state a screen timeout is measured against.
+
+     _wakeWanted is the app's own intent, and it is what the visibilitychange
+     handler re-acquires from, so it is the thing to assert: the browser may
+     refuse the request in a headless page and the intent is still correct.
+
+     THE RELEASE IS CONDITIONAL, which is the half a naive fix gets wrong: the
+     battery hands test -> rest -> test without closing its sheet, and
+     runTimer() calls stopTimer() before arming its own tick. */
+  {
+    const wk = await page.evaluate(async () => {
+      const R = {};
+      R.hasApi = 'wakeLock' in navigator;
+      STATE.onboarded = true;
+      STATE.profile.parqDone = true; STATE.profile.parq = [];
+      STATE.profile.gear = ['bar'];
+      normalizeState(); save();
+      const w = () => _wakeWanted;
+      R.idle = w();
+
+      /* GUARD: the surface that has always taken one still does, or every
+         assertion below is about a flag nothing sets. */
+      try { openPlayer({ items: [{ exId: 'plank', unit: 'time', target: 30, rest: 30, sets: 1 }],
+                         free: true, title: 'probe' }); } catch (e) { R.playerThrew = String(e); }
+      R.playerWake = w();
+      try { playerTeardown(); } catch (e) {}
+      R.afterPlayer = w();
+
+      try { openHoldTests(); startHoldTest('plank'); } catch (e) { R.holdThrew = String(e); }
+      R.holdLive = !!_ht; R.holdWake = w();
+      stopHoldTimer(); R.afterHold = w();
+
+      try { openAssessment(); startBaselineTimer(); } catch (e) { R.btThrew = String(e); }
+      R.btLive = !!_bt; R.btWake = w();
+      stopBaselineTimer(); R.afterBt = w();
+
+      try { startAssessRest(1); } catch (e) { R.arThrew = String(e); }
+      R.arLive = !!_ar; R.arWake = w();
+      stopAssessRest(); R.afterAr = w();
+
+      try { runTimer('hold', 30, 'probe hold', 0, null); } catch (e) { R.tmThrew = String(e); }
+      R.timerLive = !!timer; R.timerWake = w();
+
+      /* FLOOR: a stop must NOT let go while another timed surface is live. */
+      PLAYER = { phase: 'work' };
+      stopTimer();
+      R.heldForPlayer = w();
+      PLAYER = null;
+      stopTimer();
+      R.afterAll = w();
+      try { closeSheet(); } catch (e) {}
+      return R;
+    });
+
+    t.ok('guard: this browser has the wake lock API at all', wk.hasApi, JSON.stringify(wk));
+    t.eq('guard: nothing is holding the screen awake to start with', wk.idle, false, wk);
+    t.ok('guard: the guided player really does take one', wk.playerWake, JSON.stringify(wk));
+    t.eq('guard: and lets go when it ends', wk.afterPlayer, false, wk);
+
+    t.ok('guard: the hold test really started', wk.holdLive, JSON.stringify(wk));
+    t.ok('a hold to failure keeps the screen awake', wk.holdWake, JSON.stringify(wk));
+    t.eq('and lets go when it stops', wk.afterHold, false, wk);
+
+    t.ok('guard: the baseline timer really started', wk.btLive, JSON.stringify(wk));
+    t.ok('a baseline test keeps the screen awake', wk.btWake, JSON.stringify(wk));
+    t.eq('and lets go when it stops', wk.afterBt, false, wk);
+
+    t.ok('guard: the two-minute rest really started', wk.arLive, JSON.stringify(wk));
+    t.ok('the rest between maximal efforts keeps it awake too', wk.arWake, JSON.stringify(wk));
+    t.eq('and lets go when it stops', wk.afterAr, false, wk);
+
+    t.ok('guard: the hold / rep timer really started', wk.timerLive, JSON.stringify(wk));
+    t.ok('a standalone hold or guided set keeps the screen awake', wk.timerWake, JSON.stringify(wk));
+
+    t.ok('FLOOR: a stop does not let go while another timed surface is live',
+      wk.heldForPlayer, JSON.stringify(wk));
+    t.eq('and it does let go once nothing timed is left', wk.afterAll, false, wk);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
