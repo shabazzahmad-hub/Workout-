@@ -1911,7 +1911,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='443';
+const APP_VERSION='444';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -16628,6 +16628,17 @@ let _actRead=null;
                              first workout" popped over an app with ZERO logged
                              workouts, for a badge no longer in the cabinet
      - QUICK_ID/quickState   the Quick tab still showed "2/6 done"
+     - _lastSessionClock     v443 made this one bite. It holds the wall clock
+                             of the last session finished in the player, and
+                             until v443 nothing READ the figures it stamps —
+                             so a stale one was invisible. Now it prints.
+                             Measured: finish a session, quit without tapping a
+                             feel chip, erase everything, set the app up again
+                             and do session 0. The pointer matches (a reset
+                             puts it back to 0), so the fresh app's very first
+                             session recorded durSec 2640 and the detail sheet
+                             printed "44 MINUTES" for a session whose own
+                             estimate is 22.
 
    The badge queue is the sharpest of the four and it is reachable through this
    version's own code: v432 added closeSheet() to the cross-tab reset teardown,
@@ -16642,6 +16653,7 @@ function clearTabScratch(){
   try{_custom=[];}catch(e){}
   try{_celebQ=[];}catch(e){}
   try{QUICK_ID=null;quickState={done:{}};}catch(e){}
+  try{_lastSessionClock=null;}catch(e){}
 }
 function activityScreenshot(){
   if(!foodAIReady()){toast('Add a free Gemini key in Settings ⚙️ to read a screenshot');return;}
