@@ -16392,6 +16392,81 @@ helper now, so a source scan can pin that the file names `coach-sarge.jpg`
 exactly once.
 
 
+## The clock the erase could not reach (v444)
+
+v433 established the rule: `hardReset()` erases five things beyond `STATE`, and
+the photo blobs and both localStorage snapshots are **shared by origin**, so the
+tab that taps Reset clears those for everybody. **Script-scope memory is
+per-tab — only the tab holding it can drop it**, which is why
+`clearTabScratch()` exists.
+
+v443 added a sixth member and did not notice, because v443 is what MADE it a
+member: `_lastSessionClock` holds the wall clock of the last session finished in
+the player, and until v443 nothing READ the figures it stamps. A stale one was
+invisible. Now it prints.
+
+Measured end to end:
+
+| step | result |
+|---|---|
+| a session finished in the player, quit without tapping a feel chip | clock `{ptr: 0, wall: 2640}` — 44 min |
+| **Reset all data** | not onboarded, 0 logs, no name |
+| the clock | **survived** |
+| set the app up again and do session 0 | the log records **`durSec: 2640`** |
+| the detail sheet | ***"44 MINUTES · Measured: 44:00 on the clock"*** on a session whose own estimate is 22 |
+
+**The pointer stamp cannot help here, and that is the point.** v443's stamp
+voids a clock whose pointer has moved — but a reset puts `progressPtr` back to
+**0**, which is exactly the pointer the stale clock carries. The two guards were
+designed against a pointer that MOVES, and an erase is the one event that moves
+it backwards onto the stale value.
+
+**The class was swept before the instance was fixed, and it has one member.**
+Six pieces of scratch survive an erase; five have no consequence, measured
+rather than assumed: `DAYFLOW` is cancelled by the first sheet dismissal with no
+page error, `_shotSeparate` is reset at the start of every `foodScreenshot()`,
+`_rdy` is emptied by both of its entry points, and `_share` and `_recapSpeak`
+are readable only from sheets the erase closes.
+
+**Two doors, two checks** — a reset taken in THIS tab never goes near the
+storage listener, so `hardReset()`'s own call is the only thing standing there.
+And the floor is the one that stops the fix becoming a different bug: an
+ORDINARY foreign write must leave the clock alone, because a session waiting for
+its feel chip is the athlete's own unsaved work.
+
+**And the check measures the payload.** Asserting the variable is null is the
+container; what the athlete sees is the sheet. The check re-seeds the athlete
+after the erase, commits session 0 and reads the sheet back — which is what
+prints the defect in the failure detail rather than a boolean.
+
+## The upgrade path had been driven once and never checked (v444)
+
+v406 restored a years-old backup as a **probe** and kept nothing. **The single
+most likely way a real athlete loses their training history is a regression in
+the upgrade path**, and no check covered it — while the athlete on this app is
+running v396 against a build in the four-forties.
+
+`tests/fixtures/v396-backup.json` is a **RECORDING, not a guess**: it was
+exported by the real v396 build, served from that commit's own `index.html`, so
+every shape in it is one v396 genuinely wrote. That includes the v313
+`_trainAgain` STRING, which v316 replaced with an object and which must now fail
+closed rather than be trusted.
+
+Measured on the real thing: 8 sessions, the pointer, both weigh-ins, the
+personal bests, the badge, the hand-set protein target, the goal, the theme, the
+flagged joint, the adaptive multiplier, the baseline score and the prep block
+all survive; the validator is clean; nothing renders `NaN`, `undefined` or an
+invalid date across fourteen panes; a real session still builds; and **no
+spurious "we repaired your data" note** — v409's rule holding on a genuine
+upgrade rather than on a synthetic one.
+
+**Its guards come first**, because a modern backup would satisfy every
+assertion below and prove nothing: the fixture must carry the legacy
+`_trainAgain` string and its eight logs, and the import must really have landed.
+Proven able to fail by seeding an over-eager `prs` repair — it reports
+`and the personal bests` with `prs: 0`.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

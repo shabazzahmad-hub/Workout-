@@ -4,6 +4,7 @@
    phone — the app stays broken across relaunches. */
 import { serve, launch, suite, waitForBoot, seedAthlete, ATHLETE } from './lib/harness.mjs';
 import { chromium } from 'playwright';
+import { readFileSync } from 'node:fs';
 
 const HOSTILE = {
   'nulls everywhere': { onboarded: true, profile: { days: null, gear: null, targets: null, limitations: null, parq: null },
@@ -3061,9 +3062,13 @@ export default async function run() {
       _celebQ = [];
       celebrateAchievements([ACHIEVEMENTS[0]]);
       QUICK_ID = QUICKIES[0].id; quickState = { done: { 0: true, 1: true } };
+      /* v443 made this one bite. It holds the wall clock of the last session
+         finished in the player, and until v443 nothing READ the figures it
+         stamps, so a stale one was invisible. Now it prints. */
+      _lastSessionClock = { ptr: STATE.progressPtr, wall: 2640, paused: 0, work: 1500, budget: 27 };
       let quickText = '';
       try { renderQuick(); quickText = document.querySelector('#v-quick').textContent || ''; } catch (e) {}
-      return { custom: _custom.length, celeb: _celebQ.length,
+      return { custom: _custom.length, celeb: _celebQ.length, clock: !!_lastSessionClock,
                quickId: QUICK_ID, quickDone: Object.keys(quickState.done || {}).length,
                quickShowsProgress: /2\/\d+\s*done/.test(quickText.replace(/\s+/g, ' ')) ||
                                    /2\/\d+done/.test(quickText.replace(/\s+/g, '')) };
@@ -3074,6 +3079,7 @@ export default async function run() {
     t.eq('guard: a badge really is queued behind the open sheet', scratch.celeb, 1, scratch);
     t.ok('guard: and the Quick tab really renders the marked rows',
       scratch.quickShowsProgress, JSON.stringify(scratch));
+    t.eq('guard: and the last session clock really is armed', scratch.clock, true, scratch);
 
     /* FLOOR FIRST, before the erase un-onboards this tab. A half-built custom
        session is the athlete's own work, so an ORDINARY foreign write must
@@ -3082,18 +3088,21 @@ export default async function run() {
     await S1.waitForTimeout(800);
     const scratchPlain = await S1.evaluate(() => ({
       ptr: STATE.progressPtr, custom: _custom.length, celeb: _celebQ.length,
+      clock: !!_lastSessionClock,
       quickId: QUICK_ID, quickDone: Object.keys(quickState.done || {}).length }));
     t.eq('FLOOR: an ordinary foreign write really was adopted', scratchPlain.ptr, 3, scratchPlain);
     t.eq('FLOOR: and it leaves the half-built custom session alone', scratchPlain.custom, 3, scratchPlain);
     t.eq('FLOOR: and the queued badge', scratchPlain.celeb, 1, scratchPlain);
     t.ok('FLOOR: and the Quick workout in progress',
       scratchPlain.quickId && scratchPlain.quickDone === 2, JSON.stringify(scratchPlain));
+    t.eq('FLOOR: and a clock waiting for the feel chip is not a reset',
+      scratchPlain.clock, true, scratchPlain);
 
     await S2.evaluate(() => { window.confirm = () => true; hardReset(); });
     await S1.waitForTimeout(1200);
     const scratchErased = await S1.evaluate(() => {
       const R = { onboarded: !!STATE.onboarded, custom: _custom.length,
-                  celeb: _celebQ.length, quickId: QUICK_ID,
+                  celeb: _celebQ.length, quickId: QUICK_ID, clock: !!_lastSessionClock,
                   quickDone: Object.keys(quickState.done || {}).length };
       /* READ THE GLASS, not only the variables: a pop-up already painted is the
          defect, and the builder renders _custom on sight. */
@@ -3116,6 +3125,7 @@ export default async function run() {
       !scratchErased.popped, JSON.stringify(scratchErased));
     t.ok('and the Quick workout in progress goes with them',
       !scratchErased.quickId && scratchErased.quickDone === 0, JSON.stringify(scratchErased));
+    t.eq('and the clock of the session that was erased', scratchErased.clock, false, scratchErased);
 
     /* AND THE SAME-TAB DOOR, which the block above cannot speak for: a reset
        taken HERE never goes near the storage listener, so hardReset()'s own
@@ -3125,14 +3135,47 @@ export default async function run() {
       _custom = []; addCustom('pushup'); addCustom('squat');
       _celebQ = []; celebrateAchievements([ACHIEVEMENTS[0]]);
       QUICK_ID = QUICKIES[0].id; quickState = { done: { 0: true } };
-      const before = { custom: _custom.length, celeb: _celebQ.length, quickId: QUICK_ID };
+      STATE.progressPtr = 0;
+      _lastSessionClock = { ptr: 0, wall: 2640, paused: 0, work: 1500, budget: 27 };
+      const before = { custom: _custom.length, celeb: _celebQ.length, quickId: QUICK_ID,
+                       clock: !!_lastSessionClock };
       window.confirm = () => true;
       hardReset();
-      return { before, custom: _custom.length, celeb: _celebQ.length,
-               quickId: QUICK_ID, quickDone: Object.keys(quickState.done || {}).length,
-               onboarded: !!STATE.onboarded };
+      const R = { before, custom: _custom.length, celeb: _celebQ.length,
+                  quickId: QUICK_ID, quickDone: Object.keys(quickState.done || {}).length,
+                  onboarded: !!STATE.onboarded, clock: !!_lastSessionClock };
+      return R;
+    });
+    /* MEASURE THE PAYLOAD. The assertions above read a variable; what the
+       athlete sees is the sheet. The stale clock's pointer is 0 and a reset
+       puts progressPtr back to 0, so it MATCHES the fresh app's very first
+       session — measured before the fix: durSec 2640 and "44 MINUTES" on a
+       session whose own estimate is 22. */
+    await seedAthlete(S3);
+    const freshGlass = await S3.evaluate(() => {
+      STATE.progressPtr = 0; STATE.logs = {};
+      const s0 = buildSession(0);
+      [...s0.main, s0.finisher].filter(Boolean)
+        .forEach(m => { for (let i = 0; i < m.sets; i++) toggleSet(m.exId, i); });
+      commitSession('right');
+      const l = STATE.logs[0];
+      const est = sessionStats(0, true).estMin;
+      openSessionDetail(0);
+      const sh = document.querySelector('#sheet');
+      const txt = sh ? sh.innerText.replace(/\s+/g, ' ') : '';
+      closeSheet();
+      return { durSec: l && l.durSec, est, txt: txt.slice(0, 200),
+               claimsMeasured: /Measured:/.test(txt) };
     });
     await S3.close();
+    t.eq('the fresh app\'s first session carries no duration from the erased run',
+      freshGlass.durSec, undefined, JSON.stringify(freshGlass));
+    t.ok('guard: and it really did have an estimate to fall back to',
+      freshGlass.est > 0, JSON.stringify(freshGlass));
+    t.ok('so the sheet shows the estimate rather than 44 measured minutes',
+      !freshGlass.claimsMeasured
+      && new RegExp('~' + freshGlass.est + '\\s+EST\\. MINUTES', 'i').test(freshGlass.txt),
+      JSON.stringify(freshGlass));
     t.ok('guard: the same-tab case really did seed all three first',
       scratchSame.before.custom === 2 && scratchSame.before.celeb === 1 && !!scratchSame.before.quickId,
       JSON.stringify(scratchSame));
@@ -3141,6 +3184,8 @@ export default async function run() {
     t.eq('and its own queued badge', scratchSame.celeb, 0, scratchSame);
     t.ok('and its own Quick workout in progress',
       !scratchSame.quickId && scratchSame.quickDone === 0, JSON.stringify(scratchSame));
+    t.eq('guard: the same-tab case really armed a clock first', scratchSame.before.clock, true, scratchSame);
+    t.eq('and its own last-session clock', scratchSame.clock, false, scratchSame);
 
     /* THE DISCRIMINATING CASE, and the block above cannot supply it. Closing a
        live session is not passive: playerTeardown() clears the resume point and
@@ -4375,6 +4420,107 @@ export default async function run() {
 
     errors.forEach(e => t.fail('a page error fired during the log-entry checks', e));
     await browser.close();
+  }
+
+  /* ---- a backup written by the build the athlete is actually running -------
+     v406 drove a legacy restore ONCE, as a probe, and kept nothing. The single
+     most likely way a real athlete loses their training history is a
+     regression in the upgrade path, and no check covered it.
+
+     tests/fixtures/v396-backup.json is a RECORDING, not a guess: it was
+     exported by the real v396 build, served from that commit's own index.html,
+     so every shape in it is one v396 genuinely wrote — including the v313
+     `_trainAgain` STRING that v316 replaced with an object and that must now
+     fail closed. */
+  {
+    const legacy = readFileSync('tests/fixtures/v396-backup.json', 'utf8');
+    const ctx = await chromium.launch();
+    const pg = await ctx.newPage({ viewport: { width: 390, height: 844 } });
+    const perr = [];
+    pg.on('pageerror', e => perr.push(String(e).slice(0, 160)));
+    pg.on('console', m => { if (m.type() === 'error') { const x = m.text();
+      if (!/ERR_INTERNET|Failed to load|ServiceWorker|MIME/.test(x)) perr.push('console: ' + x.slice(0, 160)); } });
+    await pg.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'networkidle' });
+    await waitForBoot(pg);
+
+    const r = await pg.evaluate(async (json) => {
+      const o = {};
+      const parsed = JSON.parse(json);
+      /* GUARDS FIRST: the fixture has to BE the legacy shape, or every
+         assertion below passes on a modern backup that proves nothing. */
+      o.fixtureIsLegacy = typeof parsed._trainAgain === 'string';
+      o.fixtureLogs = Object.keys(parsed.logs || {}).length;
+      o.fixtureName = parsed.profile.name;
+
+      window.confirm = () => true;
+      const file = new File([json], 'coreforge-backup.json', { type: 'application/json' });
+      importData({ target: { files: [file] } });
+      /* Wait for the CONDITION, never a duration: the read is asynchronous and
+         a fixed sleep is a bet on the machine. */
+      for (let i = 0; i < 200 && STATE.profile.name !== parsed.profile.name; i++)
+        await new Promise(z => setTimeout(z, 25));
+
+      o.kept = { logs: Object.keys(STATE.logs).length, ptr: STATE.progressPtr,
+        name: STATE.profile.name, prs: Object.keys(STATE.prs || {}).length,
+        badges: Object.keys(STATE.achievements || {}).length,
+        measures: (STATE.measurements || []).length,
+        protein: STATE.nutrition.proteinTarget, diet: STATE.nutrition.diet,
+        goal: STATE.profile.goal, theme: STATE.settings.theme,
+        prepDate: STATE.prep && STATE.prep.date, prepPath: STATE.prep && STATE.prep.path,
+        skip: (STATE.skipLog || []).length, hold: (STATE.holdLog || []).length,
+        limitations: (STATE.profile.limitations || []).join(','), adapt: STATE.adapt,
+        baselineScore: STATE.baseline && STATE.baseline.score };
+      /* v316: the legacy STRING carries no pointer, so there is nothing to
+         check it against and it must read as no request. */
+      o.legacyTrainAgainDropped = STATE._trainAgain === undefined;
+      /* A HEALTHY UPGRADE MUST NOT CLAIM A REPAIR. v409: boot() used to flag
+         any diff, and nearly every version adds a field. */
+      o.repaired = !!STATE._dataRepaired;
+      o.validator = (() => { const e = console.error; let n = 0; console.error = () => n++;
+        try { validateData(); } catch (_) {} console.error = e; return n; })();
+
+      const bad = [];
+      const look = where => { const v = document.querySelector('.view.active');
+        const txt = v ? v.innerText : '';
+        ['NaN', 'undefined', 'Invalid Date', '[object'].forEach(w => {
+          if (txt.indexOf(w) >= 0) bad.push(where + ':' + w); }); };
+      ['today', 'program', 'fuel', 'progress', 'ref', 'guide'].forEach(x => { go(x); look(x); });
+      ['summary', 'body', 'strength', 'awards'].forEach(x => {
+        go('progress'); setProgressTab(x); render(); look('progress:' + x); });
+      ['brief', 'warmup', 'workout', 'cooldown'].forEach(x => {
+        go('today'); setTodayTab(x); render(); look('today:' + x); });
+      o.bad = bad;
+      const sess = buildSession(STATE.progressPtr);
+      o.session = { moves: sess.main.length, warm: sess.warmup.length, named: !!sess.session.name };
+      return o;
+    }, legacy);
+    await ctx.close();
+
+    t.ok('guard: the fixture really is the legacy shape v396 wrote',
+      r.fixtureIsLegacy && r.fixtureLogs === 8, JSON.stringify({ legacy: r.fixtureIsLegacy, logs: r.fixtureLogs }));
+    t.eq('guard: and the import really landed', r.kept.name, r.fixtureName, JSON.stringify(r.kept));
+    t.eq('a v396 backup keeps every session it recorded', r.kept.logs, 8, JSON.stringify(r.kept));
+    t.eq('and the pointer it was at', r.kept.ptr, 8, JSON.stringify(r.kept));
+    t.eq('and the personal bests', r.kept.prs, 2, JSON.stringify(r.kept));
+    t.eq('and the badge', r.kept.badges, 1, JSON.stringify(r.kept));
+    t.eq('and both weigh-ins', r.kept.measures, 2, JSON.stringify(r.kept));
+    t.eq('and the hand-set protein target', r.kept.protein, 165, JSON.stringify(r.kept));
+    t.eq('and the goal', r.kept.goal, 'leanrecomp', JSON.stringify(r.kept));
+    t.eq('and the picked theme', r.kept.theme, 'ember', JSON.stringify(r.kept));
+    t.eq('and the flagged joint', r.kept.limitations, 'shoulder', JSON.stringify(r.kept));
+    t.eq('and the adaptive load multiplier', r.kept.adapt, 1.06, JSON.stringify(r.kept));
+    t.eq('and the baseline score every target is scaled off', r.kept.baselineScore, 71, JSON.stringify(r.kept));
+    t.eq('and the prep block', [r.kept.prepDate, r.kept.prepPath], ['2026-12-01', 'operator'], JSON.stringify(r.kept));
+    t.eq('and the activity logs', [r.kept.skip, r.kept.hold], [1, 1], JSON.stringify(r.kept));
+    t.ok('the legacy train-again string fails closed rather than being trusted',
+      r.legacyTrainAgainDropped, JSON.stringify(r));
+    t.ok('a healthy upgrade does not tell the athlete their data needed repairing',
+      !r.repaired, JSON.stringify(r));
+    t.eq('the validator is clean on the restored state', r.validator, 0, JSON.stringify(r));
+    t.eq('and nothing renders NaN, undefined or an invalid date', r.bad, [], JSON.stringify(r.bad));
+    t.ok('and a real session still builds from where they left off',
+      r.session.moves >= 3 && r.session.warm > 0 && r.session.named, JSON.stringify(r.session));
+    t.eq('and the restore fires no page error', perr, []);
   }
 
   srv.close();
