@@ -859,6 +859,50 @@ export default async function run() {
       lm.clockedKcal, lm.legacyKcal, lm);
     t.eq('FLOOR: and totalTUT() itself is unmoved by a clock', lm.clockedTUT, lm.legacyTUT, lm);
     t.eq('the tile on the glass prints the measured figure', lm.tile, String(lm.realMin), lm);
+
+    /* AND AN ARCHIVED RUN CARRIES ITS OWN CLOCKS. allDonePairs() spans archived
+       runs on purpose - restartProgram() moves the whole run into STATE.runs and
+       every lifetime counter must still read it - so a reader that walked
+       STATE.logs alone would silently drop every session before the last
+       restart. Nothing pinned that, and the boot repair walks both lists too. */
+    const arch = await page.evaluate(() => {
+      const o = {}, real = JSON.stringify(STATE.logs), runs = JSON.stringify(STATE.runs || []), ptr = STATE.progressPtr;
+      const mk = n => {
+        const logs = {};
+        for (let i = 0; i < n; i++) {
+          const s = buildSession(i);
+          const items = s.main.map(m => ({ exId: m.exId, unit: m.unit,
+            target: m.target, sets: m.sets, rest: m.rest || 45 }));
+          const ex = {};
+          items.forEach(m => { ex[m.exId] = { sets: new Array(m.sets).fill(true), done: true }; });
+          logs[i] = { done: true, at: Date.now(), completedAt: todayISO(), items, ex,
+            durSec: 40 * 60, pausedSec: 0, workSec: 1400, budgetMin: 25 };
+        }
+        return logs;
+      };
+      STATE.runs = [{ sessions: 5, logs: mk(5), endedAt: todayISO() }];
+      STATE.logs = mk(3);
+      STATE.progressPtr = 3;
+      o.live = 3; o.archived = 5;
+      o.before = totalMinutes();
+      normalizeState();
+      o.after = totalMinutes();
+      o.archivedStillClocked = !!(STATE.runs[0] && STATE.runs[0].logs
+        && STATE.runs[0].logs[0] && STATE.runs[0].logs[0].durSec === 2400);
+      STATE.logs = JSON.parse(real); STATE.runs = JSON.parse(runs); STATE.progressPtr = ptr;
+      return o;
+    });
+    /* GUARD: the archived run must be the bigger half, or a live-only reader
+       lands close enough that the assertion below proves nothing. */
+    t.ok('guard: most of the history is in the archived run',
+      arch.archived > arch.live, arch);
+    t.eq('the lifetime minutes span archived runs as well as the live one',
+      arch.before.min, (arch.live + arch.archived) * 40, arch);
+    t.eq('and every one of them counts as measured',
+      arch.before.measured, arch.live + arch.archived, arch);
+    t.ok('FLOOR: the boot repair leaves an archived clock alone',
+      arch.archivedStillClocked, arch);
+    t.eq('so the figure is the same after a boot', arch.after.min, arch.before.min, arch);
   }
 
   await browser.close(); srv.close();

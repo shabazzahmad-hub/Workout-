@@ -16517,6 +16517,33 @@ site alone is caught by that check and by no other.
 
 Five mutants, all caught.
 
+### And the archived half had no check at all
+
+`allDonePairs()` spans archived runs on purpose — `restartProgram()` moves the
+whole run into `STATE.runs` and every lifetime counter must still read it — and
+nothing pinned that for the minutes. Measured on five archived clocked sessions
+beside three live ones: **320 minutes, all eight counted as measured, and the
+same figure after a boot**, with the archived clocks left alone by the repair.
+
+**The guard is that the archived run is the BIGGER half**, or a reader that
+walked `STATE.logs` alone lands close enough that the assertion proves nothing.
+Two more mutants, both caught: a live-only walk (120 against 320) and an
+archived scrub that drops every clock field.
+
+**And the fix costs nothing.** Progress ▸ Summary renders in **4 ms** with 300
+logs, clocked or not — for a fully clocked athlete `totalMinutes()` does less
+work than the walk it replaced, because a clock short-circuits the per-session
+sum.
+
+### Two sweeps that came back clean
+
+- **Every stored field written and never read.** 139 assigned `STATE` paths,
+  all read somewhere; and of 43 fields assigned onto a stored record, the only
+  never-read one is `abandonedAt` — written when a session is left open with
+  zero sets, repaired at boot, and read by two suites but by no app code.
+  Measured and left rather than changed: `stoppedForPain` beside it has a real
+  reader (`todayPtr()`), and a change with no defect behind it is the v386 call.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
