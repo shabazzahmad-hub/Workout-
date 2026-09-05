@@ -15618,6 +15618,62 @@ drives the cross-tab route lets that mutant walk. Both are driven.
 gone.** "No pop-up on the glass" is otherwise satisfied by a queue that never
 had anything in it.
 
+## The screen went dark on the two efforts that anchor a year (v434)
+
+Found by sweeping a class rather than by using the app: **which hands-free
+timed surface takes a wake lock, and which does not.** The flow's own comment
+answers the question and answers it wrongly — it says it *"was the only one of
+the three that let the screen sleep"*, the three being the player, HIIT and the
+flow. **The class is eight surfaces, and four of them took no lock at all.**
+
+Measured against the pre-fix file, `_wakeWanted` false on every one:
+
+| surface | hands-free timed effort | wake lock |
+|---|---|---|
+| guided player | yes | yes |
+| HIIT / grinder | yes | yes |
+| warm-up / cool-down flow | yes | yes |
+| benchmark ops clock | yes | yes |
+| **hold test to failure** | **yes** | **none** |
+| **baseline battery timer** | **yes** | **none** |
+| **its two-minute rest** | **yes** | **none** |
+| **hold / rep cadence timer** | **yes** | **none** |
+
+**The two maximal-effort ones are the sharpest.** The athlete is holding a
+position with their hands on the floor and cannot touch the phone — which is
+exactly the state a screen timeout is measured against — and a dark screen
+takes the count with it. One of those numbers sets a personal best and the
+other anchors every prescription for a year.
+
+### The release is conditional, and that is the half a naive fix gets wrong
+
+These surfaces hand over to each other. **The battery runs test → rest → test
+without ever closing its sheet**, and `runTimer()` calls `stopTimer()` before
+arming its own tick — so an unconditional `wakeOff()` in a stopper drops the
+lock in the middle of a run. `wakeRelease()` lets go only when nothing timed is
+left, asking the same seven-surface question `timedSurfaces()` already answers
+for the heartbeat.
+
+**The floors are what pin that**, and each over-eager twin fails one: a stop
+must not let go while another surface is live, and it must let go once nothing
+is.
+
+**`_wakeWanted` is the thing to assert, not `_wakeLock`.** It is the app's own
+intent, and it is what the `visibilitychange` handler re-acquires from — a
+headless browser can refuse the request while the intent is still correct.
+Measuring the lock object instead would report a defect on correct code.
+
+**And the guard is the surface that always had one.** Without pinning that the
+guided player still takes a lock, every assertion below is about a flag nothing
+sets.
+
+### And a comment that answered the question wrongly
+
+*"The only one of the three"* was true of the three surfaces its author was
+looking at and false about the app. **A comment claiming an invariant is not
+the invariant** — the fifth entry under that rule, and the second in two rounds
+where the stale claim is what made the class look closed.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

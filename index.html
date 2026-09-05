@@ -1911,7 +1911,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='433';
+const APP_VERSION='434';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -7350,6 +7350,34 @@ function wakeOff(){
   try{if(_wakeLock)_wakeLock.release();}catch(e){}
   _wakeLock=null;
 }
+/* THE CLASS IS EIGHT SURFACES, NOT THREE. The flow's own comment above says it
+   "was the only one of the three that let the screen sleep" — the three being
+   the player, HIIT and the flow. Measured: the benchmark ops clock takes one
+   too, and FOUR more hands-free timed surfaces never took one at all.
+
+     the hold test          held to failure, hands on the floor
+     the baseline battery   ten maximal efforts whose numbers anchor a year
+     its two-minute rest    the gap v296 exists to make real
+     the hold / rep timer   a standalone hold or a guided set
+
+   The two maximal-effort ones are the sharpest: the athlete is holding a
+   position and cannot touch the phone, which is exactly the state a screen
+   timeout is measured against — and a dark screen takes the count with it.
+
+   RELEASING IS CONDITIONAL, because these surfaces hand over to each other.
+   The battery runs test -> rest -> test without ever closing its sheet, and
+   runTimer() calls stopTimer() before arming its own tick, so an unconditional
+   release would drop the lock in the middle of a run. wakeRelease() lets go
+   only when nothing timed is left. */
+function wakeStillNeeded(){
+  try{
+    return !!((typeof PLAYER!=='undefined'&&PLAYER)||(typeof INTV!=='undefined'&&INTV)||
+              (typeof OP!=='undefined'&&OP)||(typeof _bt!=='undefined'&&_bt)||
+              (typeof _ht!=='undefined'&&_ht)||(typeof _ar!=='undefined'&&_ar)||
+              (typeof timer!=='undefined'&&timer));
+  }catch(e){return false;}
+}
+function wakeRelease(){if(!wakeStillNeeded())wakeOff();}
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='visible'&&_wakeWanted)wakeOn();
 });
@@ -9876,7 +9904,7 @@ function assessBump(d){const inp=$('#assess-val');inp.value=Math.max(0,(+inp.val
    DOWN and stops itself once time is up, then you enter the reps you got — the
    Jump Squats power test (dur:20) is the only one that currently uses this. */
 let _bt=null;
-function stopBaselineTimer(){if(_bt){clearInterval(_bt.iv);_bt=null;}}
+function stopBaselineTimer(){if(_bt){clearInterval(_bt.iv);_bt=null;}wakeRelease();}
 function coachSay(txt){try{if(typeof coachSpeak==='function')coachSpeak(txt);}catch(e){}}
 function startBaselineTimer(){
   const t=TESTS[assessState.idx];const dur=t.dur||0; // dur>0 => count down; else count up
@@ -9884,6 +9912,7 @@ function startBaselineTimer(){
   beatStart();   // background beat during the baseline test too (matches the workouts)
   openSheet(baselineTimerHTML(t));
   _bt={iv:setInterval(tick,1000),mode:'ready',ready:3,elapsed:0,dur:dur,tid:t.id,tick:tick,lastTick:monoNow()};
+  wakeOn();   // a maximal effort measured on a screen that must not go dark
   /* Name the test, the same way every other surface now names what is coming.
      NOT deferred: v291 keys the battery's coach off `_bt` being non-null, and
      a deferred utterance is one more place that ordering could drift. The
@@ -9985,7 +10014,7 @@ function baselineTimerHTML(t){
    when two minutes had passed without holding a second device. */
 const ASSESS_REST_SEC=120;
 let _ar=null;
-function stopAssessRest(){if(_ar){clearInterval(_ar.iv);_ar=null;}}
+function stopAssessRest(){if(_ar){clearInterval(_ar.iv);_ar=null;}wakeRelease();}
 /* Recorded per gap, so a re-test comparison can say whether the two runs were
    taken under the same conditions — the same reason TEST_PROTOCOL is stamped.
    A number, not a boolean: "rested 30s" and "skipped entirely" are different. */
@@ -10002,6 +10031,7 @@ function startAssessRest(nextIdx){
      dropped ticks runs long, which is the harmless direction, but the anchor
      was sitting right here unused. */
   _ar={left:ASSESS_REST_SEC,idx:nextIdx,started:Date.now(),tick:arTick,lastTick:monoNow()};
+  wakeOn();   // the battery hands test -> rest -> test without closing its sheet
   /* A MONOTONIC base, while `started` stays wall-clock for the record's own
      timestamp. v296 exists so the two minutes between maximal efforts are
      REAL; a clock correction that cuts them short changes the measurement. */
@@ -12131,7 +12161,7 @@ function openHoldTests(){
     <div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
 }
 let _ht=null;
-function stopHoldTimer(){if(_ht){clearInterval(_ht.iv);_ht=null;}}
+function stopHoldTimer(){if(_ht){clearInterval(_ht.iv);_ht=null;}wakeRelease();}
 function startHoldTest(id){
   const t=holdTest(id);if(!t)return;
   /* Held until your form goes IS a test to failure, so it asks the same
@@ -12160,6 +12190,7 @@ function startHoldTest(id){
   </div>
   <button class="btn primary" id="htAction" onclick="stopHoldTest()" style="display:none">■ I am done — save it</button>`);
   _ht={iv:setInterval(htTick,1000),mode:'ready',ready:3,elapsed:0,id:t.id,exId:exId,fresh:fresh,grindSaid:false,tick:htTick,lastTick:monoNow()};
+  wakeOn();   // held to failure, hands on the floor
   htPaintReady();coachSay(ex.name+'. Hold until your form goes.');
   /* Function DECLARATIONS: htPaintReady() runs on the line above, so a const
      arrow here is still in its temporal dead zone and takes the whole timer
@@ -12271,7 +12302,8 @@ function cancelAutoClose(){if(_autoCloseT){clearTimeout(_autoCloseT);_autoCloseT
 function stopTimer(){cancelAutoClose();if(timer){clearInterval(timer.iv);timer=null;}if(typeof _bt!=='undefined'&&_bt){clearInterval(_bt.iv);_bt=null;}
   /* An interval must never outlive the sheet it paints. _ht ticks against
      #htBig, so a dismissed sheet left it writing to a node that is gone. */
-  if(typeof _ht!=='undefined'&&_ht){clearInterval(_ht.iv);_ht=null;}}
+  if(typeof _ht!=='undefined'&&_ht){clearInterval(_ht.iv);_ht=null;}
+  wakeRelease();}
 /* How loud the cues are, as a multiplier over every beep in the app. A single
    number rather than forty edited call sites, so the relative balance between
    a soft tick and the GO tone survives someone turning the whole thing up.
@@ -12613,6 +12645,7 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex){
      no rescue at all — a hold that froze stayed frozen. The tick goes ON the
      object so the heartbeat can re-arm what it cannot see. */
   timer={iv:setInterval(tick,1000),mode,tick,lastTick:monoNow()};
+  wakeOn();   // hands-free and timed, same as the player
   update();
 }
 /* A hold timer with no picture of the hold. This surface, the rep cadence and
@@ -12712,6 +12745,7 @@ function runRepCadence(reps,label,restAfter,onDone,ex){
   }
   stopTimer();
   timer={iv:setInterval(readyTick,1000),mode:'reps',tick:readyTick,lastTick:monoNow(),catchUp:false};
+  wakeOn();
 }
 function repHTML(label,total,ex){
   const C=2*Math.PI*100;
@@ -12830,8 +12864,9 @@ function runFlow(items,title,color){
   const C=2*Math.PI*100;
   openSheet(flowHTML(title,items.length,color||'var(--fire)'));
   /* The flow is as hands-free as the player and HIIT — it talks you through
-     each stretch — and it was the only one of the three that let the screen
-     sleep. wakeOff() is called from flowStop(), the single exit. */
+     each stretch — and it was the last of those three to let the screen sleep.
+     Four more surfaces were still missing one when that was written; see
+     wakeRelease(). wakeOff() is called from flowStop(), the single exit. */
   wakeOn();
   primeVoice();beatStart();
   const set=(sel,txt)=>{const e=$(sel);if(e)e.textContent=txt;};
