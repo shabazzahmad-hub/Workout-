@@ -18786,6 +18786,68 @@ Eleven mutants, all caught by name.
   file already records the trap for `pkill -f` and for `pgrep -f`. Kill by PID,
   and skip your own.
 
+## The store screenshots went stale in silence (v475)
+
+Found by asking what OTHER non-rendered surface makes a claim about the app —
+the axis v474 opened. The three store screenshots were last regenerated at
+**v294** and the app is at **v474**: 180 versions, across changes that moved
+whole blocks between tabs.
+
+Measured against the live app, all three showed screens that no longer exist:
+
+| screenshot | showed | the app now has |
+|---|---|---|
+| **Fuel** | 6 goals, 2 target tiles, **no diet picker** | **7** goals (v363), **4** tiles (v288), a diet picker (v324) |
+| **Progress** | **no sub-tab strip at all** | four panes — Summary / Body / Strength / Awards (v312) |
+| **Today** | the alternate-session tiles high up | v314 moved them **below** the session |
+
+That is the most visible surface the app has, and **no rendered-copy sweep can
+see a PNG.** Same lesson as v474 one file over: a sweep is only as wide as the
+surface it enumerates.
+
+**Two labels no longer described their own picture**, which is v473's rule on a
+store listing. *"Nutrition targets and food logging"* over a frame with no food
+log in it, and *"Core score and transformation tracking"* over a frame with
+neither. Both now name what is in the frame. The Today label was **measured**
+and left alone.
+
+### The stamp, because a pixel comparison is the wrong tool
+
+Fonts, timing and the coach photo all move, so a pixel diff would go red on
+correct code. Each screenshot carries a **stamp of the STRUCTURE it shows** —
+the goal list, whether a diet picker is there, the sub-tab names, the stat
+labels — and the check re-derives it from the running app. That is the
+`_planStamp` shape: a stamp of every input the generator read, rather than a
+writer remembering.
+
+**Red here means "regenerate the screenshots and re-stamp", not "the app is
+broken",** and the failure detail says so.
+
+**It runs in suite 09, not beside the file checks in suite 01.** A screenshot
+shows a seeded athlete and suite 01 drives the raw page on purpose — put there
+first, six checks failed on correct code because the live reading was of an
+un-onboarded app. The file facts (the PNG exists, its own IHDR matches the size
+the manifest declares, the label describes the frame) stay in suite 01, which
+needs no page at all.
+
+### Two escapes, and the second is the one worth keeping
+
+- **The stamp comparison loop emptied** walked through everything. The guard
+  asserted the live reading found the real screens and never that a comparison
+  RAN — so a loop over nothing satisfied every assertion.
+- **And the counter's expectation was DERIVED from the stamp file**, so deleting
+  fields from the stamp shrank both sides together and passed on less. **Pin the
+  VALUE, not the identity** — nine fields across three screenshots, written as a
+  literal. The mutant that deletes two stamp fields is caught by that and by
+  nothing else.
+
+**One mutant is uncatchable by construction and is recorded rather than papered
+over:** rewriting the guard into `t.eq(..., compared, compared)` is a tautology,
+and no check can check its own checks. That class — a self-comparing guard — is
+caught by READING, which is how v344's was found.
+
+Eight mutants, seven caught by name.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
