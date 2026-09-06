@@ -17940,6 +17940,52 @@ check referenced `CARDIO_MODES` in a Node-side assertion and the suite reported
 *"the test file itself threw"* rather than naming a check. Carry it out in the
 payload — fourteenth time.
 
+## The good-news note had no rule at all (v465)
+
+`.note` has three modifiers in the stylesheet — `info`, `fire`, `warn` — each a
+10% tint and a 1px edge. **`class="note ok"` is written in 22 places** — a
+cleared health screen, a met target, a goal reached, a plan that fits — and
+`.ok` was never defined.
+
+Measured on the painted box, both themes:
+
+| | background | border |
+|---|---|---|
+| a bare `.note` | transparent | 0px |
+| **`.note.ok`** | **transparent** | **0px** |
+| `.note.warn` | gold at 10% | 1px |
+
+So every positive note in the app was **byte-identical to an unstyled box**,
+sitting beside warnings and prompts that all had a coloured card. `--green` was
+already in the palette **in both themes** and used by no note at all, so the
+rule follows the theme exactly as the other three do.
+
+**The check measures the PAINTED box, not the stylesheet text.** A rule added
+somewhere else, or a modifier that stops resolving, shows up either way — the
+same reasoning as the v236 no-scrim check screenshotting pixels rather than
+asserting a CSS rule. It collects the modifiers the app really writes, including
+the quoted literals inside a computed one (`class="note ${w.down?'ok':'info'}"`),
+and requires every one to paint differently from a bare note **in dark and in
+light**. Removing the rule fails both, naming `ok`.
+
+### How it was found: a class used in markup with no CSS rule
+
+The sweep is cheap and worth repeating. Of **156 static class names** in the
+markup, four have no CSS rule; three are legitimate marker classes used only as
+selectors (`ob-step`, `ph-img`) or dead but harmless (`bs-body`), and the fourth
+was this. **A class that styles nothing is silent** — nothing throws, the
+element renders, and it simply looks like the plain version.
+
+### And the 2 MB install budget fired again
+
+`index.html` is **1,743 KB of the 2,048 KB install tier** and grows every
+version, so this gate trips periodically by design — v352 and v410 both hit it.
+The two home-screen icons (`icon-192-maskable`, `icon-180-apple`, 62 KB) moved
+to `FIRST_RUN` behind the 512 one v410 moved for the same reason: the OS wants
+them **after** install, not for the first paint, and installing needs a network
+anyway. **Moving a file between tiers costs no download** — the same pack is
+fetched either way. Install tier now 1,983 KB, 64 KB of headroom.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

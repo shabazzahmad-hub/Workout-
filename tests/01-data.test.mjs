@@ -2175,6 +2175,51 @@ export default async function run() {
       JSON.stringify(found.slice(0, 8)));
   }
 
+
+  /* ---- every note modifier is actually styled --------------------------
+     `.note` has info, fire and warn. `class="note ok"` is written in 22 places
+     — a cleared health screen, a met target, a goal reached — and `.ok` had NO
+     RULE, so every one of them painted BYTE-IDENTICAL to a bare `.note`:
+     transparent, no border, plain ink, while the other three carry a 10% tint
+     and a 1px edge. `--green` was already in the palette in both themes and
+     unused by any note.
+
+     Measured on the PAINTED box, not on the stylesheet text: a rule added
+     somewhere else, or a modifier that stops resolving, shows up here either
+     way. */
+  {
+    const notes = await page.evaluate(() => {
+      const src = [...document.querySelectorAll('script:not([src])')]
+        .map(s => s.textContent).sort((a, b) => b.length - a.length)[0] || '';
+      /* Static modifiers, plus the quoted literals inside a computed one
+         (class="note ${w.down?'ok':'info'}"). */
+      const mods = new Set();
+      for (const m of src.matchAll(/class="note ([a-z]+)"/g)) mods.add(m[1]);
+      for (const m of src.matchAll(/class="note \$\{([^}]*)\}"/g))
+        for (const q of m[1].matchAll(/'([a-z]+)'/g)) mods.add(q[1]);
+      const paint = cls => { const d = document.createElement('div'); d.className = cls;
+        document.body.appendChild(d); const cs = getComputedStyle(d);
+        const o = cs.backgroundColor + '|' + cs.borderTopWidth + '|' + cs.color;
+        d.remove(); return o; };
+      const out = { mods: [...mods], themes: {} };
+      const keep = document.documentElement.getAttribute('data-theme');
+      ['dark', 'light'].forEach(t => {
+        document.documentElement.setAttribute('data-theme', t);
+        const plain = paint('note');
+        out.themes[t] = { plain, unstyled: out.mods.filter(m => paint('note ' + m) === plain) };
+      });
+      if (keep) document.documentElement.setAttribute('data-theme', keep);
+      else document.documentElement.removeAttribute('data-theme');
+      return out;
+    });
+    t.ok('guard: the scan found the note modifiers the app really uses',
+      notes.mods.length >= 3 && notes.mods.indexOf('ok') >= 0, JSON.stringify(notes.mods));
+    t.eq('every note modifier paints differently from a bare note — dark',
+      notes.themes.dark.unstyled.join(', '), '', JSON.stringify(notes.themes.dark));
+    t.eq('and in light theme too',
+      notes.themes.light.unstyled.join(', '), '', JSON.stringify(notes.themes.light));
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }

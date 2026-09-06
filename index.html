@@ -324,6 +324,14 @@
   .note.info{background:color-mix(in srgb,var(--blue) 10%,transparent);border:1px solid color-mix(in srgb,var(--blue) 30%,transparent);color:color-mix(in srgb,var(--blue) 62%,var(--ink))}
   .note.fire{background:color-mix(in srgb,var(--fire) 10%,transparent);border:1px solid color-mix(in srgb,var(--fire) 32%,transparent);color:color-mix(in srgb,var(--fire) 66%,var(--ink))}
   .note.warn{background:color-mix(in srgb,var(--gold) 10%,transparent);border:1px solid color-mix(in srgb,var(--gold) 32%,transparent);color:color-mix(in srgb,var(--gold) 64%,var(--ink))}
+  /* THE GOOD-NEWS NOTE HAD NO RULE. `class="note ok"` is written in 22 places
+     — a cleared health screen, a met target, a goal reached, a plan that fits —
+     and `.ok` was never defined, so every one of them painted BYTE-IDENTICAL to
+     a bare `.note`: transparent, no border, plain ink, while info, fire and warn
+     each carry a 10% tint and a 1px edge. Measured on the real stylesheet, and
+     `--green` was already in the palette in BOTH themes, unused by any note. It
+     follows the theme the same way the other three do. */
+  .note.ok{background:color-mix(in srgb,var(--green) 10%,transparent);border:1px solid color-mix(in srgb,var(--green) 32%,transparent);color:color-mix(in srgb,var(--green) 64%,var(--ink))}
   .note b{color:var(--ink)}
   /* Inputs */
   .field{margin-bottom:14px}
@@ -1977,7 +1985,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='464';
+const APP_VERSION='465';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,

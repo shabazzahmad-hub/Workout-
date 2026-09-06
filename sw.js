@@ -10,7 +10,7 @@
    tiers are parsed by pulling every quoted asset name out of this file, comments
    included, so an illustrative path in a comment breaks CI by declaring
    an asset that does not exist. */
-const CACHE = 'coreforge-v464';
+const CACHE = 'coreforge-v465';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
@@ -49,7 +49,6 @@ const CORE = ['./', './index.html'];
 const SHELL_MIN = [
   './manifest.webmanifest','./archivo.woff2','./icon-192-v2.png',
   './hero.jpg','./coach-sarge.jpg',
-  './icon-192-maskable.png','./icon-180-apple.png',
   './privacy.html','./terms.html'
 ];
 
@@ -80,6 +79,7 @@ const SHELL_MIN = [
    them opens a quote and swallows the whole tier. */
 const FIRST_RUN = [
   './icon-512-maskable.png',   // the OS launcher wants it after install, not for the first paint
+  './icon-192-maskable.png','./icon-180-apple.png',   // same reasoning: home-screen icons, not first-paint
   './icon-512-v2.png',
   './cd-breathing.jpg','./cd-catcow.jpg','./cd-childs.jpg','./cd-cobra.jpg',
   './cd-knees.jpg','./cd-twistleft.jpg','./cd-twistright.jpg','./ex-bicycle.jpg',
