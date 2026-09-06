@@ -18472,6 +18472,86 @@ caller-scan's brace matching over-ran and attributed `askActual` to `_ve`. And
 `fmtTime` past an hour prints `61:01` rather than `1:01:01` — unusual, not
 wrong. **Confirm the control's real shape before believing the result.**
 
+## The field that caused four rounds had no control (v472)
+
+Asked, after four versions of week-unit fixes, why it was taking so many. The
+honest answer is the finding: **`profile.days` is the single most consequential
+field in the profile and it had no setter outside the seven-step profile
+quiz.** Measured — Settings renders **60 controls and not one of them mentions
+training days**, while gear has 14 one-tap toggles and limitations 5.
+
+That is v315's finding on `goalWeightLb` one field over: a number a dozen
+readers depend on, reachable only by re-answering a quiz. And it is the reason
+v467-v470 each found a wrong week figure — the app reconciles a **7-slot
+program week** against the athlete's **own schedule** on every screen that says
+"week", and the athlete could not see or change the number doing it.
+
+`profile.days` decides:
+
+| reader | what it decides |
+|---|---|
+| `programWeeks()`, `blockWeeks()` | how long the plan takes in CALENDAR terms |
+| the Progress "This week" tile | what a full week is |
+| `isTrainingDay()` | which days the reminder fires on |
+| `comebackGap()` | how long a gap the streak tolerates |
+| `gapSince()`, `driftingDays()` | which days may not be counted against the athlete |
+
+### The consequence is shown where the choice is made
+
+Every figure in the note is derived, and the app already knew all of them — it
+just made the athlete go to another tab to find out:
+
+> **5 days a week.** About **76 weeks** to finish all 378 sessions at this
+> pace. Your 2 rest days do not count against your streak.
+
+At seven it reads 54 weeks and says nothing about rest days, because there are
+none — a clause that fires at zero is the note-that-always-fires defect. And
+the singular takes its own verb: *"Your 1 rest day **does** not count"* was the
+first wording, and it is wrong English.
+
+**FOUR COLUMNS, NOT SEVEN.** Measured at 320px: seven leaves each button
+**33px** wide against a ~40px thumb target; four leaves **69px**. The wizard's
+own picker is three across for the same reason.
+
+**The floor is the wizard's own, and it SAYS SO.** Below `MIN_TRAINING_DAYS`
+the program is not paced for it, so the last day cannot be turned off — and the
+refusal toasts rather than silently doing nothing, which is the difference
+between a disabled control and a broken one. The mutant that makes it silent is
+caught by its own check.
+
+**ONE CONSTANT, because there are now two writers.** The wizard wrote `5` by
+hand in three places and spelled *"five"* in a fourth, and until this round it
+was the only control that could set the field — so nothing could drift from it.
+Settings setting the same field is exactly when a hand-written constant becomes
+two that disagree. `MIN_TRAINING_DAYS` and `WEEKDAYS` are asked by both, pinned
+by a source assertion because a rendered check cannot see a restated literal.
+
+### The class check from the round before caught this one
+
+v470 shipped an allowlist of the screens that may vary with the schedule, both
+ways. Adding this control turned it **red**, naming `guide` — because Settings
+now varies, which is the entire point of the feature.
+
+That is the allowlist working: a screen that starts varying has to be
+**declared**, not silently allowed. The expected list gained `guide` with the
+reason written beside it. **This is the first time a check written in one round
+forced the next round to state its intent.**
+
+### And the guard traded a throw for a throw
+
+The mutant that never mounts the control left `sec()` null and every line below
+it threw — red without naming a check. Guarding the dereference fixed that
+half, and then the **Node-side** assertions threw instead, on the fields the
+early return had skipped: same silence, one layer further out. The early return
+fills every field the checks read. Ten mutants, all caught by name, zero
+throws.
+
+**The setter's own contract is pinned directly**, because `toggleTrainingDay()`
+refuses first — so a weakened floor inside `setTrainingDays()` is invisible to
+a click. v338's shape: a guard consulted in one narrow branch still has to mean
+what it is named. The mutant that weakens it is caught by that check and by the
+source assertion, and by nothing else.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
