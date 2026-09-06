@@ -19038,6 +19038,40 @@ rule the library does not have would be exactly the mistake this file records
 about bypassing the app's own predicate, so the note names the movement and
 points at the control instead. Recorded rather than fixed.
 
+### The photo, and a fifth datapoint for the no-press rule
+
+Correct on the **first attempt**, and it fits the pattern exactly: no press in
+the movement, and the one close neighbour it has is a **sprint** — which the
+library already carries a photo of, driving knee, forward lean, both feet off
+the ground, clenched face. That neighbour is the whole risk, so the prompt spent
+its middle on the seven mechanics that differ — upright torso, knee well below
+the hip, short stride, one foot on the ground, low loose arms, dropped
+shoulders, a calm face — and then named the substitution to avoid in as many
+words. **Naming the neighbour you fear is what separates a common movement from
+its more common cousin.**
+
+**The watermark is now four for four**, despite the prompt forbidding it in the
+same sentence as the empty background. Asking has still never once worked. It
+was **LOCATED rather than guessed at**, which is v317's rule: a 64x64 box at
+872,872 in the 1024px source, found by testing each row against a clean sample
+of that same row rather than against a global threshold.
+
+**The first detector reported a box a third of the frame wide.** It compared
+RGB sum-of-differences against a left-hand sample with a threshold of ~9 per
+channel, and the studio floor's own gradient clears that on its own — so it
+"found" 731,731→1023,1023 and would have painted out the model's feet. The
+tell was the size: a sparkle is small, and a box that big is the detector
+rather than the mark. Mapping the corner's brightness in 32px cells showed the
+real anomaly plainly — one cell at 191 against neighbours at 182 and 178 — and
+the fix was luminance against the same row with a margin the gradient cannot
+reach. **A detector that reports an implausible answer is the thing to doubt**,
+and it is measured after the fill too: 0 bright pixels left.
+
+One deviation recorded rather than regenerated: the trousers are woodland camo
+where the sprint and ruck photos are multicam. It is the same model, the same
+backdrop, the same tee and the same boots, and a second generation to match one
+pattern is not worth a generation slot.
+
 ### Two lockstep rules, each broken in front of the validator
 
 `CONC_CARDIO` answers "what does this athlete's cardio mode look like as a
