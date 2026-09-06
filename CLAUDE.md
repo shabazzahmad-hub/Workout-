@@ -18735,10 +18735,22 @@ grepping for the code behind a promise, applied to the fix rather than to the
 defect.
 
 **THE GUARD IS THE FINDING, and it is measured rather than asserted.** The
-check builds week 5 and week 6 of a real block and requires `deloadOn()` true
-at the last week, false at the one before, and the whole week's work materially
-lower. Without it the ban is a statement about a regex. The mutant that deletes
-the scheduled deload from the engine fails exactly there.
+check builds week 5 and week 6 and requires `deloadOn()` true at the last week,
+false at the one before, and the whole week's work materially lower. Without it
+the ban is a statement about a regex. The mutant that deletes the scheduled
+deload from the engine fails exactly there.
+
+**AND THE SENTENCE SAYS "EVERY BLOCK", SO THE GUARD WALKS EVERY BLOCK.**
+Measured across all nine: the drop runs **33-41%**, every one. A guard that
+proved it for block 1 alone would leave the copy claiming more than the check
+backs — which is the class this round is about, one layer in. The mutant that
+makes the deload fire only in block 1 satisfies a block-1 guard and is caught
+by this one.
+
+**An athlete who turns automatic deloads off gets no lighter week in any
+block**, measured. That is their own deliberate choice made after installing,
+and the blurb describes the program as shipped — so it is left alone and
+recorded rather than hedged.
 
 Two arms, each about a cadence the app itself contradicts — work that RISES on
 a fixed cadence, and training EVERY DAY (the wizard floors at five). Each is
@@ -18760,7 +18772,7 @@ still builds a full live session with a Start button. The label is true, so it
 is left alone. A screenshot label is not required to name the session count
 either: a shortcut name has no room for one.
 
-Eight mutants, all caught by name.
+Eleven mutants, all caught by name.
 
 ### And two harness rules paid again in one round
 

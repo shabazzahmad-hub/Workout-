@@ -2036,19 +2036,35 @@ export default async function run() {
        so the banned sentence really was false. Measured over the WHOLE week,
        because total volume is not comparable across session types. */
     const dl = await page.evaluate(() => {
-      const wk = w => { let u = 0;
+      const wk = (c, w) => { let u = 0;
         for (let d = 0; d < SESSIONS_PER_WEEK; d++) {
-          const s = buildSession(((w - 1) * SESSIONS_PER_WEEK) + d);
+          const s = buildSession((c * SESSIONS_PER_CYCLE) + ((w - 1) * SESSIONS_PER_WEEK) + d);
           [...s.main, s.finisher].forEach(m => { if (m) u += (m.sets || 0) * (m.target || 0); });
         }
         return u; };
-      return { five: wk(5), six: wk(6), isDeload: deloadOn(posOf(5 * SESSIONS_PER_WEEK)) === true,
-               fiveIsNot: deloadOn(posOf(4 * SESSIONS_PER_WEEK)) === false };
+      const rows = [];
+      for (let c = 0; c < TOTAL_CYCLES; c++) {
+        const last = (c * SESSIONS_PER_CYCLE) + ((WEEKS_PER_CYCLE - 1) * SESSIONS_PER_WEEK);
+        rows.push({ block: c + 1,
+          isDeload: deloadOn(posOf(last)) === true,
+          beforeIsNot: deloadOn(posOf(last - SESSIONS_PER_WEEK)) === false,
+          five: wk(c, WEEKS_PER_CYCLE - 1), six: wk(c, WEEKS_PER_CYCLE) });
+      }
+      return { rows, blocks: TOTAL_CYCLES };
     });
-    t.ok('guard: the last week of a block really is a scheduled deload', dl.isDeload, JSON.stringify(dl));
-    t.ok('guard: the week before it is not', dl.fiveIsNot, JSON.stringify(dl));
-    t.ok('guard: the whole week really eases, so "harder every week" was false',
-      dl.six > 0 && dl.five > 0 && dl.six < dl.five * 0.85, JSON.stringify(dl));
+    /* THE SENTENCE SAYS "EVERY BLOCK", SO THE GUARD WALKS EVERY BLOCK. Measured:
+       the drop runs 33-41% across all nine. A guard that proved it for block 1
+       alone would leave the copy claiming more than the check backs, which is
+       the class this round is about. */
+    t.eq('guard: the sweep walked every block', dl.rows.length, dl.blocks, String(dl.rows.length));
+    const noDeload = dl.rows.filter(r => !r.isDeload).map(r => r.block);
+    t.eq('guard: the last week of EVERY block really is a scheduled deload', noDeload.length, 0, JSON.stringify(noDeload));
+    const beforeBad = dl.rows.filter(r => !r.beforeIsNot).map(r => r.block);
+    t.eq('guard: the week before it is not, in every block', beforeBad.length, 0, JSON.stringify(beforeBad));
+    const noEase = dl.rows.filter(r => !(r.six > 0 && r.five > 0 && r.six < r.five * 0.85))
+      .map(r => ({ b: r.block, five: r.five, six: r.six }));
+    t.eq('guard: the whole week really eases in every block, so "harder every week" was false',
+      noEase.length, 0, JSON.stringify(noEase));
 
     /* FLOORS: each arm proven to catch its own shape, and proven quiet on the
        truthful sentence that replaced it and on a plain description. */
