@@ -17565,6 +17565,56 @@ looks like nothing at all. `ps -eo pid,args` shows them; kill by PID.
 And a mutation copy needs `node_modules` — `find . -maxdepth 1 -type f` copies
 every file in the root, which is v428's lesson, and copies no directory at all.
 
+## A number spelled out is the same defect as a digit (v458)
+
+v397 shipped a source scan forbidding the block length written by hand in
+athlete-facing copy, in three phrasings — `N-week block`, `N weeks done`,
+`after week N`. **Every one of them matches DIGITS.** v457 had just recorded
+why that is not enough: *"your one-year build"* survived a sweep aimed at
+numbers because it is a WORD.
+
+Four sites, all stating `WEEKS_PER_CYCLE` by hand:
+
+| where | said |
+|---|---|
+| the **`blocks3` badge** | *"Finish 3 **six-week** blocks"* |
+| the re-test drop sheet | *"more than training normally moves in **six weeks**"* |
+| the same sheet, one line down | *"target for the next **six weeks** … means **six weeks** of work that is too easy"* |
+| the Program tab subtitle | *"**Weeks 1–6** are core & abs"* |
+
+**The badge is the sharpest, because v397 fixed its NEIGHBOUR.** `block`
+("Finish a 6-week block") derives; `blocks3` sits **two lines above it** and
+still spelled the same constant out. *Fixing one instance is not fixing the
+class*, and here the two instances were adjacent.
+
+**The Program subtitle is v397's own shape verbatim** — it derives
+`${WEEKS_PER_CYCLE}` in one half of the sentence and writes the phase-1
+boundary out by hand in the other, which is exactly what v397 recorded about
+the re-test screen deriving `TESTS.length` beside a hardcoded 6.
+
+**The re-test cadence really is the constant**, checked rather than assumed:
+two other sentences already say *"You'll re-test after each
+`${WEEKS_PER_CYCLE}`-week block"*.
+
+### The subject markers are what keep the scan honest
+
+*"neither is a **six-week** six-pack"* is a rhetorical timeframe, not this
+program's block length — if `WEEKS_PER_CYCLE` became 8 that sentence stays
+true. So the scan cannot simply forbid a count beside the word *week*: every
+arm carries the subject it is about (`… week block`, `next … weeks`,
+`moves in … weeks`, `means … weeks`, `Weeks 1–N`), and a rhetorical week count
+matches none of them.
+
+**Both probes are synthetic and both are asserted**, because an empty offender
+list is otherwise a statement about the regex: every phrasing found by hand
+must be caught (8 of 8), and the six-pack line plus *"the tape moves in 3–4
+weeks"* must not be. Each of the three fixes was seeded back and fails by name.
+
+**And two comments quoted the literal the scan forbids** — `// weeks 1–6` and
+`// block 1 = weeks 1–6 … Full-body from week 7`. Reword the prose, never
+weaken the check; seventh time this file has recorded that trap, and the first
+where the comment was explaining the constant it quoted.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

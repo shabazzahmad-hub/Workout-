@@ -767,6 +767,17 @@ export default async function run() {
     const src = [...document.querySelectorAll('script:not([src])')]
       .map(s => s.textContent).sort((a, b) => b.length - a.length)[0] || '';
     const noComments = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    /* A NUMBER SPELLED OUT IS THE SAME DEFECT AS A DIGIT, and v457 is what
+       proved it: "your one-year build" survived a sweep aimed at digits because
+       it is a WORD. So every arm takes both forms. The subject markers are what
+       keep this honest — "six-week six-pack" states a rhetorical timeframe, not
+       this program's block length, and must not be caught. */
+    const W = '(?:\\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)';
+    const BLOCKLEN = new RegExp([
+      W + '[- ]week blocks?', W + ' weeks? done', 'after week ' + W,
+      'next ' + W + ' weeks', 'moves in ' + W + ' weeks', 'means ' + W + ' weeks',
+      'Weeks 1[\\u2013-]\\d+'
+    ].join('|'), 'g');
     return {
       weeks: WEEKS_PER_CYCLE,
       isApp: /function normalizeState/.test(noComments),
@@ -777,23 +788,42 @@ export default async function run() {
          "Re-test after week N" on the strength chart, slipped past both and was
          found by reading the RENDERED screens instead of scanning for a pattern
          already known. Each new phrasing goes in here, not into a second scan. */
-      hardcoded: (noComments.match(/\d+-week block|\d+ weeks? done|after week \d+/g) || []),
+      hardcoded: noComments.match(BLOCKLEN) || [],
+      /* Both ways, on a SYNTHETIC source — an empty offender list is otherwise a
+         statement about the regex. Every phrasing that has been found by hand is
+         planted here, and a sentence that merely mentions weeks is not. */
+      probeCatches: ('a 6-week block. eight-week blocks. 6 weeks done. after week 7. '
+        + 'the next six weeks. moves in six weeks. means six weeks of work. Weeks 1-6 are core.')
+        .match(BLOCKLEN) || [],
+      probeQuiet: ('spot-reduction is not real and neither is a six-week six-pack. '
+        + 'expect the tape to move in 3-4 weeks. once every three or four weeks is plenty.')
+        .match(BLOCKLEN) || [],
       /* And the coach count, the same class one cast over: "pick one of the 16"
          was written when there were sixteen, and there are 38. */
       coachCount: COACHES.length,
       coachCopy: (noComments.match(/pick one of the \d+/g) || []),
       // the achievement and the re-test screen must both read the constant
       achDesc: (ACHIEVEMENTS.find(a => a.id === 'block') || {}).desc,
+      achDesc3: (ACHIEVEMENTS.find(a => a.id === 'blocks3') || {}).desc,
       lastWeekNote: (typeof _overloadNoteInner === 'function')
         ? _overloadNoteInner({ week: WEEKS_PER_CYCLE, cycle: 1 }) : ''
     };
   });
   t.ok('guard: the scan read the app, not a stub', blockLen.isApp, blockLen);
+  t.eq('guard: the scan catches every phrasing that has been found by hand',
+    blockLen.probeCatches.length, 8, JSON.stringify(blockLen.probeCatches));
+  t.eq('guard: and stays quiet on a week count that is not the block length',
+    blockLen.probeQuiet.join(', '), '', JSON.stringify(blockLen.probeQuiet));
   t.ok('guard: and the block really is more than one week', blockLen.weeks > 1, blockLen);
   t.eq('no sentence writes the block length out by hand',
     blockLen.hardcoded.join(', '), '', blockLen);
   t.eq('the Block Complete badge names the real length',
     blockLen.achDesc, 'Finish a ' + blockLen.weeks + '-week block', blockLen);
+  /* Its SIBLING two lines above still spelled the length out — "Finish 3
+     six-week blocks" — so v397 fixed the badge it was looking at and left the
+     one beside it. Fixing one instance is not fixing the class. */
+  t.eq('and so does the badge two lines above it',
+    blockLen.achDesc3, 'Finish 3 ' + blockLen.weeks + '-week blocks', blockLen);
   t.ok('and the final-week note does too',
     blockLen.lastWeekNote.indexOf(blockLen.weeks + '-week block') >= 0, blockLen);
   /* The coach roster is named in Settings copy. It said 16 when the cast was

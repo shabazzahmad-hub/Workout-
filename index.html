@@ -1834,7 +1834,7 @@ const LADDERS = {
   legPowerL:  ['jumpsquat','splitjump','broadjump'],
   hiitFinL:   ['jumpingjack','tuckjump','burpee','count8','burpeetuck','atomicpushup'],
 };
-// Phase 1 (weeks 1–6, PHASE1_CYCLES=1) — core/abs/HIIT program, 7 days a week.
+// Phase 1 (the first PHASE1_CYCLES block) — core/abs/HIIT program, 7 days a week.
 const SESSIONS = [
   {key:'anterior', name:'Core Crusher', icon:'🔥', focus:'Abs, deep core & anti-extension',
    slots:['plankL','hollowL','lowerL','dynL'], finisher:'cardioFinL'},
@@ -1977,7 +1977,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='457';
+const APP_VERSION='458';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2334,7 +2334,7 @@ const SESSIONS_PER_WEEK=7, WEEKS_PER_CYCLE=6, SESSIONS_PER_CYCLE=SESSIONS_PER_WE
    mass during the cut. Phase 2 now opens at week 7. It is one block rather
    than the week 4 that would be ideal, because the 6-week block IS the re-test
    cadence and splitting it mid-block would desynchronise every anchor. */
-const PHASE1_CYCLES=1;   // block 1 = weeks 1–6: core/abs/HIIT. Full-body from week 7.
+const PHASE1_CYCLES=1;   // block 1 is core/abs/HIIT; the full-body split opens with block 2.
 const TOTAL_CYCLES=9;    // nine blocks: Phase 1 then the full-body split
 /* 54 weeks is 378 sessions at SEVEN a week, and the wizard's own floor is
    FIVE. So the Program tab's "54-week journey" was true for nobody who took
@@ -10587,9 +10587,9 @@ function finishAssessment(){
     assessState._pending={a,rec};
     openSheet(`
       <h3>That is a big drop — worth a look</h3>
-      <div class="note warn"><b>Your score went from ${drop.prevScore} to ${drop.score}</b> — down ${drop.pct}%. That is more than training normally moves in six weeks, so it is usually the day rather than the body: short sleep, under-fuelled, a cold coming on, or testing late at night.
+      <div class="note warn"><b>Your score went from ${drop.prevScore} to ${drop.score}</b> — down ${drop.pct}%. That is more than training normally moves in ${WEEKS_PER_CYCLE} weeks, so it is usually the day rather than the body: short sleep, under-fuelled, a cold coming on, or testing late at night.
       ${drop.worse.length?`<div class="tiny muted" style="margin-top:8px">Biggest changes: ${drop.worse.slice(0,3).map(w=>_ve(w.name)+' '+w.was+'→'+w.now+(w.unit==='time'?'s':'')).join(' · ')}</div>`:''}</div>
-      <div class="note info" style="margin-top:0"><b>Why it matters:</b> these numbers set every target for the next six weeks. Locking in an off day means six weeks of work that is too easy.</div>
+      <div class="note info" style="margin-top:0"><b>Why it matters:</b> these numbers set every target for the next ${WEEKS_PER_CYCLE} weeks. Locking in an off day means ${WEEKS_PER_CYCLE} weeks of work that is too easy.</div>
       <button class="btn primary" onclick="discardRetest()">It was an off day — keep my old numbers</button>
       <button class="btn ghost" style="margin-top:8px" onclick="confirmRetest()">No, this is where I am now</button>
       <div class="tiny muted" style="margin-top:10px">Coming back from a layoff, illness or injury? Then the lower numbers are real — take the second option and the programme will rebuild from here.</div>
@@ -13518,7 +13518,7 @@ function renderProgram(){
      makes the number checkable — without it a reader has no way to tell a
      right number from a wrong one. */
   const _pw=programWeeks(),_wt=weeklyTarget();
-  let h=`<h2 class="vtitle">Your Program</h2><div class="vsub">${SESSIONS_PER_CYCLE*TOTAL_CYCLES} sessions in ${TOTAL_CYCLES} blocks of ${WEEKS_PER_CYCLE} weeks — about <b>${_pw} weeks</b> at your ${_wt} session${_wt===1?'':'s'} a week. Weeks 1–6 are core &amp; abs, then a full-body split. The load climbs every week.</div>`;
+  let h=`<h2 class="vtitle">Your Program</h2><div class="vsub">${SESSIONS_PER_CYCLE*TOTAL_CYCLES} sessions in ${TOTAL_CYCLES} blocks of ${WEEKS_PER_CYCLE} weeks — about <b>${_pw} weeks</b> at your ${_wt} session${_wt===1?'':'s'} a week. Weeks 1–${PHASE1_CYCLES*WEEKS_PER_CYCLE} are core &amp; abs, then a full-body split. The load climbs every week.</div>`;
   h+=programVsGoalHTML();
   /* The alternate-session tiles used to sit here. They are choices about TODAY —
      "not the planned session, something else instead" — and Program is the
@@ -14266,7 +14266,7 @@ const ACHIEVEMENTS=[
   {id:'s100',emoji:'💯',name:'Century',desc:'100 workouts completed',check:()=>sessionsDoneCount()>=100},
   {id:'s200',emoji:'🛡️',name:'Double Century',desc:'200 workouts completed',check:()=>sessionsDoneCount()>=200},
   {id:'s378',emoji:'🎖️',name:'Full Tour',desc:(SESSIONS_PER_CYCLE*TOTAL_CYCLES)+' sessions — the complete program',check:()=>sessionsDoneCount()>=SESSIONS_PER_CYCLE*TOTAL_CYCLES},
-  {id:'blocks3',emoji:'🔷',name:'Three Blocks Deep',desc:'Finish 3 six-week blocks',check:()=>STATE.progressPtr>=SESSIONS_PER_CYCLE*3},
+  {id:'blocks3',emoji:'🔷',name:'Three Blocks Deep',desc:'Finish 3 '+WEEKS_PER_CYCLE+'-week blocks',check:()=>STATE.progressPtr>=SESSIONS_PER_CYCLE*3},
   {id:'phase2',emoji:'🏗️',name:'Into Phase 2',desc:'Reach the full-body split',check:()=>STATE.progressPtr>=SESSIONS_PER_CYCLE*2},
   {id:'plank60',emoji:'🧱',name:'Solid Minute',desc:'A prescribed 60s+ hold',check:()=>bestHoldPR()>=60},
   {id:'plank120',emoji:'🗿',name:'Two-Minute Titan',desc:'A prescribed 120s hold',check:()=>bestHoldPR()>=120},
