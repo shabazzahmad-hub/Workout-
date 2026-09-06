@@ -13200,6 +13200,270 @@ export default async function () {
     t.ok('and closing it announces that it closed', after.shut.exp === 'false' && !after.shut.shown, JSON.stringify(after.shut));
   }
 
+  /* ==================== CONCURRENT TRAINING (v477) ======================
+     Asked for directly. Measured before anything was written, and the gap is
+     real: the programme's own conditioning half is a FINISHER — 51 seconds on
+     average across 54 sampled sessions and never more than 65 — and all twenty
+     special formats train exactly one quality. Nothing paired a strength block
+     with a real aerobic block.
+
+     THE INTERFERENCE EFFECT IS THE PRESCRIPTION. Whichever half runs first is
+     the half that adapts, so the ORDER is what these checks are about: they
+     assert which block comes first, that both are present, and that the gap
+     between them is a real rest rather than a data field nobody runs. */
+  {
+    const conc = await page.evaluate(() => {
+      const o = {};
+      const g0 = STATE.profile.gear.slice(), l0 = STATE.profile.limitations.slice(), m0 = cardioMode();
+      const ids = pl => pl ? pl.items.map(m => m.exId) : null;
+
+      /* GUARD: the gap this exists for is a measurement, not an assumption.
+         A programme whose finisher already ran for twenty minutes would make
+         every assertion below an answer to a question nobody had. */
+      let maxFin = 0, n = 0;
+      for (let p = 0; p < SESSIONS_PER_CYCLE * TOTAL_CYCLES; p += 7) {
+        const s = buildSession(p); if (!s || !s.finisher) continue;
+        n++; if (s.finisher.unit === 'time') maxFin = Math.max(maxFin, s.finisher.target * (s.finisher.sets || 1));
+      }
+      o.sampled = n; o.longestFinisherSec = maxFin;
+
+      /* GUARD: steadyrun earns its place because `sprint` is a DIFFERENT
+         movement — max-effort intervals, by its own steps. Using it for a
+         twenty-minute aerobic block would name one effort and run another. */
+      o.sprintSaysSprint = /sprint/i.test((EX.sprint.steps || []).join(' '));
+      o.runSaysConversation = /conversation/i.test((EX.steadyrun.steps || []).join(' '));
+      o.runRegion = EX.steadyrun.region;
+      o.runStandalone = STANDALONE_CARDIO.indexOf('steadyrun') >= 0;
+      o.runKnee = JOINT_RISK.knee.indexOf('steadyrun') >= 0;
+      o.runLowback = JOINT_RISK.lowback.indexOf('steadyrun') >= 0;
+      o.ruckLowback = JOINT_RISK.lowback.indexOf('ruck') >= 0;
+
+      /* No automatic picking path may ever hand out a standalone cardio
+         movement — that is what STANDALONE_CARDIO is for, and a long steady
+         run landing inside a circuit is the reason it matters here. */
+      let leaked = 0;
+      for (let p = 0; p < SESSIONS_PER_CYCLE * TOTAL_CYCLES; p += 11) {
+        const s = buildSession(p); if (!s) continue;
+        [...s.main, s.finisher].forEach(m => { if (m && m.exId === 'steadyrun') leaked++; });
+      }
+      o.leakedIntoProgramme = leaked;
+
+      // ---- the endurance half is the athlete's OWN cardio mode ----
+      STATE.profile.limitations = [];
+      o.perMode = {};
+      ['jacks', 'bike', 'ruck', 'run', 'skip'].forEach(m => {
+        STATE.nutrition.cardioMode = m;
+        const e = concEndurance();
+        o.perMode[m] = e ? { exId: e.exId, swapped: e.swapped } : null;
+      });
+
+      /* A flagged joint moves it and SAYS SO. The athlete picked that mode; if
+         a joint takes it away they are owed the movement they got instead. */
+      STATE.nutrition.cardioMode = 'run'; STATE.profile.limitations = ['knee'];
+      const ke = concEndurance();
+      o.knee = { exId: ke && ke.exId, swapped: ke && ke.swapped, note: concEnduranceNote(ke) };
+      STATE.profile.limitations = [];
+      const ce = concEndurance();
+      o.clean = { exId: ce && ce.exId, swapped: ce && ce.swapped, note: concEnduranceNote(ce) };
+
+      /* THE SWEEP: every mode against every realistic flag set. The claim the
+         session makes is that its second half is aerobic and safe, and one
+         athlete cannot speak for that. */
+      const flagSets = [[], ['knee'], ['lowback'], ['shoulder'], ['wrist'], ['knee', 'lowback'], ['knee', 'lowback', 'shoulder', 'wrist']];
+      let cases = 0, bad = [];
+      ['jacks', 'bike', 'ruck', 'run', 'skip'].forEach(m => flagSets.forEach(f => {
+        STATE.nutrition.cardioMode = m; STATE.profile.limitations = f; cases++;
+        const e = concEndurance();
+        if (!e) { bad.push('null:' + m + '/' + f.join('+')); return; }
+        if (!EX[e.exId] || EX[e.exId].region !== 'cardio') bad.push('notcardio:' + m + '/' + f.join('+') + '->' + e.exId);
+        if (jointRisky(e.exId, f)) bad.push('risky:' + m + '/' + f.join('+') + '->' + e.exId);
+      }));
+      o.sweep = { cases, bad };
+      STATE.profile.limitations = l0; STATE.nutrition.cardioMode = m0;
+
+      // ---- the strength half ----
+      o.withKit = concStrengthBlock().map(m => m.exId);
+      STATE.profile.gear = [];
+      o.noKit = concStrengthBlock().map(m => m.exId);
+      /* CARDIO IS DROPPED FROM THE STRENGTH BLOCK. The programme's main block
+         carries a cardio-region movement 14 times in 30 sampled sessions, and
+         keeping it there would put the aerobic work inside the block this
+         session exists to keep it out of. */
+      let carrier = -1;
+      for (let p = 0; p < 200 && carrier < 0; p++) {
+        const s = buildSession(p);
+        if (s && s.main.some(m => EX[m.exId] && EX[m.exId].region === 'cardio')) carrier = p;
+      }
+      o.carrierPtr = carrier;
+      if (carrier >= 0) {
+        const ptr0 = STATE.progressPtr; STATE.progressPtr = carrier;
+        const raw = buildSession(carrier).main.map(m => m.exId);
+        const kept = concStrengthBlock().map(m => m.exId);
+        o.carrier = {
+          rawCardio: raw.filter(k => EX[k].region === 'cardio'),
+          keptCardio: kept.filter(k => EX[k] && EX[k].region === 'cardio'),
+          keptOther: kept.length
+        };
+        STATE.progressPtr = ptr0;
+      }
+      STATE.profile.gear = g0;
+
+      // ---- THE ORDER, which is the whole prescription ----
+      const isCardio = k => !!(EX[k] && EX[k].region === 'cardio');
+      const s1 = buildConcurrent('concStr'), e1 = buildConcurrent('concEnd'), a1 = buildConcurrent('concAlt');
+      o.strFirst = { ids: ids(s1), firstIsCardio: isCardio(s1.items[0].exId), lastIsCardio: isCardio(s1.items[s1.items.length - 1].exId), cardioCount: ids(s1).filter(isCardio).length, strengthCount: ids(s1).filter(k => !isCardio(k)).length };
+      o.endFirst = { ids: ids(e1), firstIsCardio: isCardio(e1.items[0].exId), lastIsCardio: isCardio(e1.items[e1.items.length - 1].exId), cardioCount: ids(e1).filter(isCardio).length, strengthCount: ids(e1).filter(k => !isCardio(k)).length };
+      const altPat = ids(a1).map(isCardio);
+      o.alt = { pattern: altPat, alternates: altPat.every((v, i) => v === (i % 2 === 1)), rests: a1.items.map(m => m.rest) };
+
+      // the endurance bout's own length, and the transition, pinned as VALUES
+      o.enduranceSec = s1.items[s1.items.length - 1].target;
+      o.altBoutSec = a1.items[1].target;
+      o.transRestOnLastStrength = s1.items[s1.items.length - 2].rest;
+      o.transRestOnEnduranceFirst = e1.items[0].rest;
+
+      // ---- the advice, and that it stays a recommendation ----
+      const pd = JSON.parse(JSON.stringify(STATE.prep || {}));
+      STATE.prep = Object.assign({}, pd, { date: null });
+      o.adviceNoDate = concAdvice().pick;
+      const d = new Date(Date.now() + 70 * 86400000);
+      STATE.prep = Object.assign({}, pd, { date: localISO(d), planFrom: todayISO(), path: 'operator' });
+      o.adviceOperator = concAdvice().pick;
+      STATE.prep.path = 'assaulter';
+      o.adviceAssaulter = concAdvice().pick;
+      STATE.prep = pd;
+      o.allThreeBuild = Object.keys(CONCURRENT_FORMATS).every(k => !!buildConcurrent(k));
+
+      // ---- the validator's own lockstep rules must FIRE ----
+      const mute = console.error; console.error = () => { };
+      o.validatorClean = validateData().length;
+      const fire = (mut, pat) => { const undo = mut(); const hit = validateData().filter(x => pat.test(x)); undo(); return { hit: hit.length, after: validateData().length }; };
+      o.vMode = fire(() => { CARDIO_MODES.push('helicopter'); return () => CARDIO_MODES.pop(); }, /no movement for cardio mode "helicopter"/);
+      o.vEx = fire(() => { const x = CONC_CARDIO[0].exId; CONC_CARDIO[0].exId = 'nope'; return () => CONC_CARDIO[0].exId = x; }, /CONC_CARDIO\.bike: unknown exercise "nope"/);
+      o.vRegion = fire(() => { const x = CONC_CARDIO[0].exId; CONC_CARDIO[0].exId = 'pushup'; return () => CONC_CARDIO[0].exId = x; }, /is not in the cardio region/);
+      o.vOrder = fire(() => { const x = CONCURRENT_FORMATS.concStr.order; CONCURRENT_FORMATS.concStr.order = 'sideways'; return () => CONCURRENT_FORMATS.concStr.order = x; }, /order "sideways" is not one/);
+      console.error = mute;
+      return o;
+    });
+
+    t.ok('guard: the programme’s own conditioning half really is a finisher, not endurance',
+      conc.sampled >= 40 && conc.longestFinisherSec > 0 && conc.longestFinisherSec <= 90, JSON.stringify({ sampled: conc.sampled, longestFinisherSec: conc.longestFinisherSec }));
+    t.ok('guard: sprint is a max-effort movement and the steady run is not',
+      conc.sprintSaysSprint && conc.runSaysConversation, JSON.stringify({ sprintSaysSprint: conc.sprintSaysSprint, runSaysConversation: conc.runSaysConversation }));
+
+    t.eq('the steady run is a cardio movement', conc.runRegion, 'cardio');
+    t.ok('and standalone, so no automatic pool can pick it', conc.runStandalone, String(conc.runStandalone));
+    t.eq('nothing in the programme ever prescribes it', conc.leakedIntoProgramme, 0);
+    /* THE ESCALATION IS DURATION, AND THE FLOOR IS THE FLAG IT DOES NOT TAKE.
+       A blanket family flag would satisfy the knee assertion on its own; the
+       ruck's lowback flag is the LOAD, and there is no load in a run. */
+    t.ok('a steady run is flagged for the knee — thousands of footfalls, not dozens', conc.runKnee, String(conc.runKnee));
+    t.ok('and NOT for the low back, which is the ruck’s load rather than the running', !conc.runLowback && conc.ruckLowback, JSON.stringify({ runLowback: conc.runLowback, ruckLowback: conc.ruckLowback }));
+
+    t.ok('the endurance half is the athlete’s own cardio mode, every mode',
+      conc.perMode.jacks.exId === 'jumpingjack' && conc.perMode.bike.exId === 'bike' && conc.perMode.ruck.exId === 'ruck'
+      && conc.perMode.run.exId === 'steadyrun' && conc.perMode.skip.exId === 'skip'
+      && ['jacks', 'bike', 'ruck', 'run', 'skip'].every(m => conc.perMode[m].swapped === false), JSON.stringify(conc.perMode));
+    t.ok('a flagged knee moves it off the run', conc.knee.exId !== 'steadyrun' && conc.knee.swapped === true, JSON.stringify(conc.knee));
+    t.ok('and NAMES the movement it moved to, and the one it left', /Bike Trainer/.test(conc.knee.note) && /Steady Run/.test(conc.knee.note), conc.knee.note);
+    /* FLOOR: a note that always fires is a note nobody reads, and a swap that
+       always happens is the feature deleting the athlete's own choice. */
+    t.ok('an unflagged athlete is not swapped and is told nothing about one',
+      conc.clean.swapped === false && !/flagged/.test(conc.clean.note), JSON.stringify(conc.clean));
+    t.ok('every mode against every flag set stays aerobic and safe',
+      conc.sweep.cases === 35 && conc.sweep.bad.length === 0, JSON.stringify(conc.sweep));
+
+    t.ok('with kit, the strength half is the weights circuit', conc.withKit.length >= 3, JSON.stringify(conc.withKit));
+    t.ok('with no kit it falls back to the athlete’s own prescribed strength work', conc.noKit.length >= 3, JSON.stringify(conc.noKit));
+    t.ok('guard: a session whose main block really carries cardio was found', conc.carrierPtr >= 0, String(conc.carrierPtr));
+    t.ok('and cardio is dropped from the strength half, keeping the rest',
+      conc.carrier && conc.carrier.rawCardio.length > 0 && conc.carrier.keptCardio.length === 0 && conc.carrier.keptOther > 0, JSON.stringify(conc.carrier));
+
+    /* THE ORDER IS THE PRESCRIPTION, and both halves have to be there. A build
+       that dropped one satisfies every "strength is first" assertion. */
+    t.ok('strength first puts the lift first and the aerobic block last',
+      !conc.strFirst.firstIsCardio && conc.strFirst.lastIsCardio, JSON.stringify(conc.strFirst.ids));
+    t.ok('endurance first is the exact reverse',
+      conc.endFirst.firstIsCardio && !conc.endFirst.lastIsCardio, JSON.stringify(conc.endFirst.ids));
+    t.ok('and both carry BOTH halves, one aerobic block and real strength work',
+      conc.strFirst.cardioCount === 1 && conc.strFirst.strengthCount >= 3
+      && conc.endFirst.cardioCount === 1 && conc.endFirst.strengthCount >= 3,
+      JSON.stringify({ str: conc.strFirst, end: conc.endFirst }));
+    t.ok('the Alternator alternates one strength movement with one cardio bout',
+      conc.alt.alternates && conc.alt.pattern.length >= 4, JSON.stringify(conc.alt.pattern));
+    t.ok('and schedules nothing off — no rest anywhere in it',
+      conc.alt.rests.every(r => r === 0), JSON.stringify(conc.alt.rests));
+
+    /* PIN THE VALUE, NOT THE IDENTITY. Reading these back out of the app moves
+       both sides of the comparison the moment a mutant changes a constant. */
+    t.eq('the aerobic block is twenty minutes', conc.enduranceSec, 1200);
+    t.eq('the Alternator’s bout is three', conc.altBoutSec, 180);
+    t.eq('and the transition between the blocks is four', conc.transRestOnLastStrength, 240);
+    t.eq('carried on whichever block finishes first', conc.transRestOnEnduranceFirst, 240);
+
+    t.eq('with no test date the recommendation is strength first', conc.adviceNoDate, 'concStr');
+    t.eq('an Operator block keeps it there — load carriage is what is tested', conc.adviceOperator, 'concStr');
+    t.eq('an Assaulter block moves it to endurance first', conc.adviceAssaulter, 'concEnd');
+    /* FLOOR: it is a RECOMMENDATION. All three must still build, or the advice
+       has quietly become a rule. */
+    t.ok('and all three formats still build whatever the advice says', conc.allThreeBuild, String(conc.allThreeBuild));
+
+    t.eq('guard: the validator is clean before anything is broken in front of it', conc.validatorClean, 0);
+    t.ok('a cardio mode with no movement is caught', conc.vMode.hit === 1 && conc.vMode.after === 0, JSON.stringify(conc.vMode));
+    t.ok('an unknown movement is caught', conc.vEx.hit === 1 && conc.vEx.after === 0, JSON.stringify(conc.vEx));
+    t.ok('a movement that is not aerobic is caught', conc.vRegion.hit === 1 && conc.vRegion.after === 0, JSON.stringify(conc.vRegion));
+    t.ok('and an order this builder does not know is caught', conc.vOrder.hit === 1 && conc.vOrder.after === 0, JSON.stringify(conc.vOrder));
+
+    /* THE TRANSITION IS DRIVEN, NOT READ OFF THE ARRAY. A rest field nobody
+       runs is a data value, and what has to hold is that the player really
+       stops for four minutes between the two blocks and then lands on the
+       aerobic one. */
+    const run = await page.evaluate(() => {
+      const plan = buildConcurrent('concStr');
+      openPlayer({ items: plan.items, free: true, title: 'probe', focus: 'probe' });
+      const last = PLAYER.items.length - 2;
+      PLAYER.i = last; PLAYER.s = PLAYER.items[last].sets - 1; PLAYER.phase = 'work';
+      plAfterSet();
+      const a = { phase: PLAYER.phase, remain: PLAYER.remain };
+      plRestDone();
+      const b = { phase: PLAYER.phase, exId: PLAYER.items[PLAYER.i].exId, region: EX[PLAYER.items[PLAYER.i].exId].region, target: PLAYER.items[PLAYER.i].target, resume: !!STATE._plResume };
+      playerQuit();
+      return { a, b };
+    });
+    t.ok('the player really rests for the transition between the blocks',
+      run.a.phase === 'rest' && run.a.remain === 240, JSON.stringify(run.a));
+    t.ok('and then opens the aerobic block',
+      run.b.phase === 'ready' && run.b.region === 'cardio' && run.b.target === 1200, JSON.stringify(run.b));
+    /* A bonus session must never write the program's resume point. */
+    t.ok('a concurrent session leaves the program resume point alone', !run.b.resume, JSON.stringify(run.b));
+
+    // the route the athlete actually taps
+    await page.evaluate(() => { closeSheet(); openSpecial(); });
+    await page.waitForTimeout(120);
+    const row = await page.$('#sheet button[onclick="openConcurrent()"]');
+    t.ok('Special training offers it', !!row, 'row');
+    if (row) {
+      await row.click(); await page.waitForTimeout(120);
+      const sheet = await page.evaluate(() => {
+        const el = document.querySelector('#sheet');
+        return {
+          txt: el.textContent.replace(/\s+/g, ' '),
+          buttons: [...el.querySelectorAll('button[onclick^="startConcurrent"]')].length,
+          marked: [...el.querySelectorAll('button[onclick^="startConcurrent"]')].filter(b => b.getAttribute('aria-current') === 'true').length
+        };
+      });
+      t.eq('the chooser offers all three orders', sheet.buttons, 3);
+      t.eq('and marks exactly one as the suggestion', sheet.marked, 1);
+      t.ok('and names the endurance half on the glass', /Endurance half/.test(sheet.txt), sheet.txt.slice(0, 200));
+      await page.click(`#sheet button[onclick="startConcurrent('concStr')"]`);
+      await page.waitForTimeout(300);
+      const pl = await page.evaluate(() => PLAYER ? { open: !!document.querySelector('#player.open'), name: PLAYER.sess.session.name, free: PLAYER.free, items: PLAYER.items.length } : null);
+      t.ok('and tapping one starts a bonus concurrent session', !!pl && pl.open && pl.free && /Concurrent/.test(pl.name) && pl.items >= 4, JSON.stringify(pl));
+      await page.evaluate(() => { if (typeof PLAYER !== 'undefined' && PLAYER) playerQuit(); });
+      await page.waitForTimeout(150);
+    }
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
