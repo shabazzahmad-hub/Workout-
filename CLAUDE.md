@@ -18040,6 +18040,149 @@ runs suites 23 and 09, and the missing-asset check lives in 01 and 12. **A
 mutation result is scoped to the suites the driver actually runs** — a red
 baseline in one suite says nothing about a driver that never opens it.
 
+## A block is six PROGRAM weeks, and nobody takes six weeks over it (v467)
+
+v348 measured it and wrote the rule down: **378 sessions is 54 weeks only at
+SEVEN a week, the wizard's own floor is FIVE, and a program length restated as
+a CALENDAR duration is the defect.** It fixed the whole-programme figure, and
+v354 fixed the header chip and the Full Tour badge.
+
+**Every per-BLOCK restatement was left behind** — including the one in the same
+sentence as the figure v348 had just fixed:
+
+> 378 sessions in **9 blocks of 6 weeks** — about **76 weeks** at your 5
+> sessions a week.
+
+**9 x 6 is 54, not 76.** One line, two units both called "weeks", and numbers
+that do not multiply. That is v450's *screen argued with itself*, on the tab
+that describes the programme.
+
+Measured on the reporting athlete's own five-day schedule:
+
+| | at 7 a week | at 5 a week |
+|---|---|---|
+| the whole programme | 54 weeks | **76** |
+| **one block** | 6 weeks | **8.4** |
+| what the re-test screen said | *"6 weeks done"* | ***"6 weeks done"*** |
+
+**The two athletes got byte-identical copy**, which is what kept it invisible.
+The five-day athlete is told he finished a six-week block after eight and a
+half weeks — v354's *"Complete · 1 year"* exactly, one screen down.
+
+### The discriminator is elapsed time against structure
+
+That is v348's own rule, and applying it is what stops this becoming "derive
+everything":
+
+| the sentence | reads as | fixed |
+|---|---|---|
+| *"9 blocks of 6 weeks — about 76 weeks"* | both, contradicting | yes |
+| *"6 weeks done — let's re-measure"* | elapsed | yes |
+| *"You've completed a full 6-week block"* | elapsed | yes |
+| *"more than training normally moves in 6 weeks"* | elapsed | yes |
+| *"sets every target for the next 6 weeks"* | elapsed | yes |
+| the **badge** *"Finish a 6-week block"* | the block's NAME | **left** |
+| the final-week note, *"the highest load of the 6-week block"* | the block's NAME | **left** |
+| *"re-test after each 6-week block"* | cadence, by name | **left** |
+
+Both structural sites are pinned as **floors**, so a fix that derived
+everything fails there.
+
+### The subtitle now multiplies, and every unit is named once
+
+> 9 blocks of 42 **sessions** — 378 in all, about 76 **weeks** at your 5
+> sessions a week. **The first block** is core & abs, then a full-body split.
+
+Sessions are what a block actually contains, so the reader can check the
+arithmetic. And the phase clause used to say *"Weeks 1–6 are core & abs"* —
+PROGRAM weeks, in a sentence whose other week figure is calendar weeks. It
+names the block instead, which needs no unit at all.
+
+**The re-test note says what was completed rather than how long it took**:
+*"a full block — 42 sessions"*. That figure is true at any pace.
+
+### blockWeeks() is DERIVED from programWeeks(), and that is the whole design
+
+Two copies of that arithmetic is two places for it to drift, which is the
+defect this round is about. `Math.round(programWeeks()/TOTAL_CYCLES)` gives 6 /
+7 / 8 at seven, six and five sessions a week.
+
+**A per-block figure computed independently is EQUIVALENT and was measured
+rather than assumed.** `Math.round(SESSIONS_PER_CYCLE/weeklyTarget())` agrees
+with the derived form at every pace from one to seven sessions a week — so no
+check can catch that substitution, and the reason to derive is drift rather
+than a difference anyone can see today.
+
+**And a per-block figure must never be printed beside the whole-programme one.**
+Rounding means 9 x 8 is 72 against a stated 76; both are prefixed *about*, and
+after this round no screen shows both. The subtitle carries the programme
+figure and no per-block week count at all.
+
+### Pin the VALUE, not the identity — caught in my own check
+
+The first version asserted `blockWeeks()` equals
+`round(programWeeks()/TOTAL_CYCLES)`, which is the implementation compared to
+itself: a mutant moving both sides together passes. Three schedules give three
+different answers, so **6, 7 and 8 are pinned as literals** and the derivation
+is a second, honestly-labelled assertion.
+
+### The elapsed sites are pinned on the SOURCE
+
+A rendered check cannot see a consumer that reverts to `WEEKS_PER_CYCLE` on a
+**seven-day athlete, where the two agree** — and the drop sheet is built inside
+`commitAssessment()`, which no check can open without driving a real re-test.
+So all four read `blockWeeks()` by source assertion, with the mirror assertion
+that no elapsed claim states the constant by hand. None of those strings
+appears in a comment; a comment that quoted one would be counted, and the fix
+for that is to reword the prose, never to weaken the check.
+
+### Two probe errors, both rules already in this file
+
+- **`reassessIntroHTML()` takes the cycle** and my first probe passed none, so
+  it rendered *"Cycle NaN · re-test"* and looked like a live defect. Driven
+  through `reassessGate()` it is correct. *Confirm the control's real shape
+  before believing the result* — fourteenth time.
+- **`weekLabel()` does not exist.** The final-week note is built by
+  `_overloadNoteInner(sess)`, which needs a real session in the last week of a
+  block. The check builds one and **guards that it really is week 6**, or the
+  floor is read off the wrong week and proves nothing.
+
+### And a computed-class sweep that came back clean
+
+Run first, because v465 swept **static** class names and a computed one
+(`class="note ${w.down?'ok':'info'}"`) is invisible to that. Every class token
+in the file, literal and computed: **169 used, and the only four with no CSS
+rule are the three marker classes v465 already recorded plus one dead-but-
+harmless name.**
+
+**The first version reported three more and all three were the detector.**
+`'male'`, `'female'` and `'omnivore'` are values being **compared**
+(`n.sex==='male'?'on':''`), not class names — so the scan takes only the result
+side of a ternary now, and carries both guards: it must see a real computed
+class name and must NOT see a compared operand. *A detector that can match
+ordinary app content is not measuring what you named* — the eighth entry.
+
+### And the harness trap I had just re-read
+
+The mutation driver was piped through `tail -40`, which buffers until the
+process exits — so a run in progress reported **no output at all** and looked
+dead. This file already says a driver writes to a log file and is never piped
+through `tail`. Reading the rule is not the same as following it.
+
+### The escaped mutant was a page-wide search, again
+
+The over-eager twin that made the **badge** derive its own length walked
+straight through the floor written for it. The check was
+`ACHIEVEMENTS.some(...)` — so with the `block` badge mutated to *"Finish a
+8-week block"*, its untouched sibling `blocks3` still carried *"6-week block"*
+and satisfied the search.
+
+**Scope the assertion to where the change was made.** Both badges are named and
+both are read now, with a guard that both descriptions were really found — and
+seeded against either badge the mutant fails by name.
+
+Nine mutants, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

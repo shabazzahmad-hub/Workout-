@@ -676,6 +676,128 @@ const { browser, page, errors } = await launch(port);
   await pb.close();
 }
 
+/* ---- v467: a BLOCK is six PROGRAM weeks, and it takes longer than that ----
+   v348 measured that 378 sessions is 54 weeks only at SEVEN a week, fixed the
+   whole-programme figure and wrote the rule down: a program length restated as
+   a CALENDAR duration is the defect. Every per-BLOCK restatement was left
+   behind — including the one in the same sentence, where "9 blocks of 6 weeks
+   — about 76 weeks" does not multiply: 9 x 6 is 54.
+
+   Measured on the reporting athlete's own five-day schedule: a block is 8.4
+   calendar weeks, and the re-test screen told him "6 weeks done".
+
+   The structural sites are deliberately untouched, and they are the floor: a
+   badge named "Finish a 6-week block" and the final-week label are about what
+   the block IS, not how long it took. */
+{
+  const { browser: pb, page: pg } = await launch(port);
+  await seedAthlete(pg);
+  const r = await pg.evaluate(() => {
+    const o = {}, strip = h => String(h).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    const at = days => { STATE.profile.days = days.slice(); STATE.progressPtr = SESSIONS_PER_CYCLE;
+      save(); go('program'); renderProgram(); };
+
+    at([0, 1, 2, 3, 4, 5, 6]);
+    o.sevenTarget = weeklyTarget(); o.sevenBlock = blockWeeks();
+    o.sevenHero = strip(reassessIntroHTML(reassessGate()));
+    const sevenSub = document.querySelector('#v-program .vsub').innerText;
+
+    at([1, 2, 4, 5, 6]);
+    o.fiveTarget = weeklyTarget(); o.fiveBlock = blockWeeks();
+    o.fiveHero = strip(reassessIntroHTML(reassessGate()));
+    const fiveSub = document.querySelector('#v-program .vsub').innerText;
+
+    // the subtitle has to MULTIPLY: blocks x sessions-per-block = the total
+    const m = fiveSub.match(/(\d+) blocks of (\d+) sessions — ([\d,]+) in all/);
+    o.subParsed = m ? [ +m[1], +m[2], +m[3].replace(/,/g, '') ] : null;
+    o.subMultiplies = !!m && (+m[1] * +m[2] === +m[3].replace(/,/g, ''));
+    // and it must no longer state a per-block week count beside a calendar one
+    o.noBlocksOfWeeks = !/blocks of \d+ weeks/.test(fiveSub) && !/blocks of \d+ weeks/.test(sevenSub);
+    // the phase sentence named PROGRAM weeks in a sentence about calendar weeks
+    o.namesTheBlockNotAWeek = /The first block is core/.test(fiveSub);
+
+    // derived from programWeeks(), so the two figures cannot drift apart
+    o.derived = [[0,1,2,3,4,5,6], [0,1,2,3,4,5], [1,2,4,5,6]].map(d => {
+      STATE.profile.days = d.slice();
+      return [blockWeeks(), Math.round(programWeeks() / TOTAL_CYCLES)];
+    });
+
+    // FLOOR: the structural sites keep the constant
+    STATE.profile.days = [1, 2, 4, 5, 6];
+    /* SCOPE THE ASSERTION TO WHERE THE CHANGE WOULD BE MADE. A .some() over
+       every badge is a page-wide search: the over-eager mutant that derived
+       the `block` badge walked straight through, because `blocks3` still
+       carried the phrase. Both are named, and both are read. */
+    const badgeDesc = id => { const a = ACHIEVEMENTS.find(x => x.id === id);
+      return a ? String(typeof a.desc === 'function' ? a.desc() : a.desc) : ''; };
+    o.badgeOne = badgeDesc('block');
+    o.badgeThree = badgeDesc('blocks3');
+    o.badgeNamesTheBlock = o.badgeOne.includes(WEEKS_PER_CYCLE + '-week block')
+      && o.badgeThree.includes(WEEKS_PER_CYCLE + '-week block');
+    /* The final-week note is built by _overloadNoteInner(sess), so it needs a
+       real session in the last week of a block — the last pointer of cycle 1.
+       Guarded, because a note read off the wrong week proves nothing. */
+    const lastOfBlock = buildSession(SESSIONS_PER_CYCLE - 1);
+    o.lastWeek = lastOfBlock.week;
+    try { o.weekLabelNamesTheBlock = /-week block/.test(String(_overloadNoteInner(lastOfBlock))); }
+    catch (e) { o.weekLabelNamesTheBlock = 'threw: ' + e.message; }
+    return o;
+  });
+
+  s.eq('guard: a seven-day athlete and a five-day one are different programmes',
+    [r.sevenTarget, r.fiveTarget], [7, 5], r);
+  s.eq('guard: the subtitle states three numbers to check', r.subParsed && r.subParsed.length, 3, r);
+  s.ok('the Program subtitle multiplies — blocks x sessions is the total', r.subMultiplies, r);
+  s.ok('and it no longer states a block in weeks beside a calendar figure', r.noBlocksOfWeeks, r);
+  s.ok('the phase sentence names the block rather than a week number', r.namesTheBlockNotAWeek, r);
+
+  s.eq('a block is six weeks at seven sessions a week', r.sevenBlock, 6, r);
+  s.eq('and about eight at the wizard floor of five', r.fiveBlock, 8, r);
+  /* PIN THE VALUES, not the identity: comparing blockWeeks() against
+     round(programWeeks()/TOTAL_CYCLES) is the app compared to itself, so a
+     mutant that moved both sides together would pass. Seven, six and five
+     sessions a week are three different answers. */
+  s.eq('a block tracks the pace: 6, 7 and 8 weeks at 7, 6 and 5 a week',
+    r.derived.map(x => x[0]), [6, 7, 8], r);
+  s.eq('and it agrees with the programme figure it is derived from',
+    r.derived.map(x => x[0]), r.derived.map(x => x[1]), r);
+
+  s.ok('the re-test screen tells a five-day athlete about 8 weeks',
+    /About 8 weeks done/.test(r.fiveHero), r.fiveHero);
+  s.ok('floor: a seven-day athlete still reads 6', /About 6 weeks done/.test(r.sevenHero), r.sevenHero);
+  s.ok('and it says what was actually completed — the sessions',
+    r.fiveHero.includes('a full block — ' + 42 + ' sessions'), r.fiveHero);
+  s.ok('so no athlete is told they finished a six-week block in eight weeks',
+    !/6-week block/.test(r.fiveHero), r.fiveHero);
+
+  s.ok('guard: both block badges were really read', !!r.badgeOne && !!r.badgeThree, r);
+  s.ok('floor: BOTH block badges still NAME the block by its curriculum length',
+    r.badgeNamesTheBlock, [r.badgeOne, r.badgeThree]);
+  s.eq('guard: that note was read off the last week of a block', r.lastWeek, 6, r);
+  s.ok('floor: so does the final-week label', r.weekLabelNamesTheBlock === true, r);
+  await pb.close();
+}
+
+/* ---- v467: the elapsed claims ask the athlete, not the constant ----------
+   A rendered check cannot see a consumer that reverts to WEEKS_PER_CYCLE on a
+   seven-day athlete, where the two agree — and the drop sheet is built inside
+   commitAssessment(), which no check can open without a real re-test. So the
+   four elapsed sites are pinned on the SOURCE. None of these strings appears in
+   a comment; a comment that quoted one would be counted, and the fix for that
+   is to reword the prose, never to weaken the check. */
+{
+  const src = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const n = t => src.split(t).length - 1;
+  s.eq('guard: the source really is the app', n('function blockWeeks()'), 1, src.length);
+  s.eq('the re-test hero asks the athlete', n('About ${blockWeeks()} weeks done'), 1);
+  s.eq('so does "more than training normally moves in"', n('moves in ${blockWeeks()} weeks'), 1);
+  s.eq('and both halves of the off-day warning',
+    n('next ${blockWeeks()} weeks') + n('${blockWeeks()} weeks of work'), 2);
+  s.eq('and no elapsed claim states the constant by hand',
+    n('${WEEKS_PER_CYCLE} weeks done') + n('moves in ${WEEKS_PER_CYCLE} weeks')
+    + n('next ${WEEKS_PER_CYCLE} weeks') + n('${WEEKS_PER_CYCLE} weeks of work'), 0);
+}
+
 /* ---- "Meal ideas" must land on meals, not an empty tab -------------------
    Regression from v245: removing Fuel's plan card orphaned openMealPlan(),
    which still scrolled to a #mealplan anchor that no longer existed. Its own
