@@ -2089,6 +2089,60 @@ export default async function run() {
     });
   }
 
+  /* ---- the store screenshots go stale in silence (v475) ------------------
+     They were last regenerated at v294 and the app is at v474 — 180 versions,
+     across changes that moved whole blocks between tabs. Measured against the
+     live app, all three showed screens that no longer exist: Fuel had six goals
+     where there are now seven and no diet picker at all (v324 put one there),
+     Progress had NO sub-tab strip (v312 added four panes), and Today carried
+     the alternate-session tiles high up where v314 moved them below the
+     session. That is the most visible surface the app has, and no rendered-copy
+     sweep can see a PNG.
+
+     A pixel comparison is the wrong tool — fonts, timing and the coach photo
+     all move. So the screenshots carry a STAMP of the structure they show, and
+     the check re-derives it from the live app: the _planStamp shape, a stamp of
+     every input the generator read rather than a writer remembering. Red here
+     means "regenerate the screenshots and re-stamp", not "the app is broken".
+
+     Each manifest label must also describe its own picture — the v473 rule,
+     applied to a store listing. The FILE facts are checked here; the live
+     comparison against the running app is in suite 09, which seeds an athlete. */
+  {
+    const fp = JSON.parse(fs.readFileSync(path.join(ROOT, 'tests/fixtures/screenshot-fingerprint.json'), 'utf8'));
+    const mf2 = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.webmanifest'), 'utf8'));
+    const files = (mf2.screenshots || []).map(x => x.src);
+    t.eq('guard: the manifest still declares three screenshots', files.length, 3, JSON.stringify(files));
+    t.eq('guard: every declared screenshot carries a structure stamp',
+      files.filter(f => !fp[f]), [], JSON.stringify(Object.keys(fp)));
+
+    /* Every declared screenshot exists, is a PNG, and is the size the manifest
+       says it is — read from the file's own IHDR rather than trusted. */
+    (mf2.screenshots || []).forEach(sh => {
+      const buf = fs.readFileSync(path.join(ROOT, sh.src));
+      const isPng = buf.length > 24 && buf[0] === 0x89 && buf.toString('latin1', 1, 4) === 'PNG';
+      t.ok('the ' + sh.src + ' file is a real PNG', isPng, String(buf.length));
+      if (!isPng) return;
+      t.eq('and it is the size the manifest declares',
+        buf.readUInt32BE(16) + 'x' + buf.readUInt32BE(20), sh.sizes, sh.src);
+    });
+
+    /* And the label describes the picture rather than a screen it no longer
+       shows — v473's rule, on a store listing. Two of the three named things
+       that had moved off the captured pane. The LIVE comparison against the
+       app lives in suite 09, which seeds an athlete: this file drives the raw
+       page on purpose, and an un-onboarded app is not what a screenshot shows. */
+    const lab = f => (mf2.screenshots.find(x => x.src === f) || {}).label || '';
+    t.ok('the Fuel label names what is in the Fuel frame',
+      /goal/i.test(lab('screenshot-fuel.png')) && /(eat|target)/i.test(lab('screenshot-fuel.png')),
+      lab('screenshot-fuel.png'));
+    t.ok('the Progress label names what is in the Progress frame',
+      /(week|streak|activity)/i.test(lab('screenshot-progress.png')),
+      lab('screenshot-progress.png'));
+    t.ok('the Today label names what is in the Today frame',
+      /session/i.test(lab('screenshot-today.png')), lab('screenshot-today.png'));
+  }
+
   /* ---- every hand-written pool names a real movement (v441) --------------
      The five swap maps have been checked for many versions and the POOLS never
      were, though they are the same kind of hand-kept list of exercise ids.

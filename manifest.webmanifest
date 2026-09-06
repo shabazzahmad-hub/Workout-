@@ -48,14 +48,14 @@
       "sizes": "390x844",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "Nutrition targets and food logging"
+      "label": "Your goal, how you eat, and today's targets"
     },
     {
       "src": "screenshot-progress.png",
       "sizes": "390x844",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "Core score and transformation tracking"
+      "label": "Your week, your streak and today's activity"
     }
   ],
   "id": "./",

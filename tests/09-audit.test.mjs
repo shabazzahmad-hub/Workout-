@@ -15,6 +15,9 @@
    unit system or training schedule rather than the default. */
 import { serve, launch, suite, seedAthlete, waitForBoot } from './lib/harness.mjs';
 import { chromium } from 'playwright';
+import fs from 'fs';
+import path from 'path';
+import { ROOT } from './lib/harness.mjs';
 
 export default async function run() {
   const t = suite('audit fixes');
@@ -5301,6 +5304,86 @@ export default async function run() {
        states a timeframe by hand. "Last 7 days" is a real rolling window and
        is named as the one exception. */
     t.eq('no section label on Settings states a timeframe by hand', r.timed.length, 0, r.timed.join(' | '));
+    await ctx.close();
+  }
+
+  /* ---- the store screenshots go stale in silence (v475) ------------------
+     They were last regenerated at v294 and the app is at v474 — 180 versions,
+     across changes that moved whole blocks between tabs. Measured against the
+     live app, all three showed screens that no longer exist: Fuel had six goals
+     where there are now seven and no diet picker at all (v324 put one there),
+     Progress had NO sub-tab strip (v312 added four panes), and Today carried
+     the alternate-session tiles high up where v314 moved them below the
+     session. That is the most visible surface the app has, and no rendered-copy
+     sweep can see a PNG.
+
+     A pixel comparison is the wrong tool — fonts, timing and the coach photo
+     all move. So each screenshot carries a STAMP of the structure it shows and
+     this re-derives it from the running app: the _planStamp shape, a stamp of
+     every input the generator read rather than a writer remembering. Red here
+     means "regenerate the screenshots and re-stamp", not "the app is broken".
+
+     It runs HERE rather than beside the file checks in suite 01 because a
+     screenshot shows a seeded athlete, and suite 01 drives the raw page on
+     purpose. */
+  {
+    const fp = JSON.parse(fs.readFileSync(path.join(ROOT, 'tests/fixtures/screenshot-fingerprint.json'), 'utf8'));
+    const ctx = await tzb.newContext({ viewport: { width: 390, height: 844 } });
+    const pg = await ctx.newPage();
+    await pg.goto(`http://127.0.0.1:${port}/`);
+    await waitForBoot(pg);
+    await seedAthlete(pg);
+    const live = await pg.evaluate(() => {
+      const txt = el => (el ? el.textContent.trim() : '');
+      const all = (sel, f) => [...document.querySelectorAll(sel)].map(f);
+      const r = {};
+      go('today'); TODAY_TAB = 'workout'; render();
+      r['screenshot-today.png'] = {
+        tabs: all('#v-today [onclick*="setTodayTab"]', b => b.textContent.trim()),
+        hasGuidedDay: !!document.querySelector('#v-today [onclick*="startMyDay"]'),
+        hasPlayer: !!document.querySelector('#v-today [onclick*="openPlayer"]'),
+      };
+      go('fuel'); render();
+      r['screenshot-fuel.png'] = {
+        goals: all('#v-fuel [onclick*="setNutGoal"]', b => b.textContent.trim()),
+        hasDietPicker: !!document.querySelector('#v-fuel [onclick*="setDiet"]'),
+        labels: all('#v-fuel .section-label', txt).slice(0, 3),
+        targetTiles: all('#v-fuel .stat .l', txt).slice(0, 4),
+      };
+      go('progress'); setProgressTab('summary');
+      r['screenshot-progress.png'] = {
+        controls: all('#v-progress [onclick*="setProgressTab"]', b => b.textContent.trim().split('\n')[0]),
+        tiles: all('#v-progress .stat .l', txt).slice(0, 6),
+      };
+      return r;
+    });
+    /* GUARD: the derivation really read the app. An empty reading matches an
+       empty stamp, so "the screenshots are current" would pass on nothing. */
+    t.ok('guard: the live reading found the real screens',
+      live['screenshot-fuel.png'].goals.length >= 5 &&
+      live['screenshot-progress.png'].controls.length >= 4 &&
+      live['screenshot-today.png'].tabs.length === 4,
+      JSON.stringify({ g: live['screenshot-fuel.png'].goals.length,
+                       c: live['screenshot-progress.png'].controls.length,
+                       t: live['screenshot-today.png'].tabs.length }));
+    t.eq('guard: every stamped screenshot was read back', Object.keys(fp).length, 3, JSON.stringify(Object.keys(fp)));
+    let compared = 0;
+    Object.keys(fp).forEach(f => {
+      const want = fp[f], got = live[f] || {};
+      Object.keys(want).forEach(k => {
+        compared++;
+        t.eq('the ' + f + ' stamp still matches the app: ' + k,
+          JSON.stringify(got[k]), JSON.stringify(want[k]),
+          'regenerate the screenshots and re-stamp');
+      });
+    });
+    /* GUARD: a comparison really ran for every stamped field. Without it a loop
+       that compares NOTHING satisfies every assertion above — the mutant that
+       empties it escaped exactly that way.
+       PIN THE VALUE, NOT THE IDENTITY: deriving the expected count from the
+       stamp file moves both sides together, so a stamp with fields deleted
+       would pass on less. Nine fields across three screenshots. */
+    t.eq('guard: every stamped field was compared against the app', compared, 9, String(compared));
     await ctx.close();
   }
 

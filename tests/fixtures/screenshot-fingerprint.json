@@ -1,0 +1,53 @@
+{
+  "screenshot-today.png": {
+    "tabs": [
+      "📋 Brief",
+      "🌡️ Warm-up",
+      "💪 Workout",
+      "🧘 Cool-down"
+    ],
+    "hasGuidedDay": true,
+    "hasPlayer": true
+  },
+  "screenshot-fuel.png": {
+    "goals": [
+      "🔥 Lose fat",
+      "🔪 Shred",
+      "⚖️ Tone up",
+      "🪞 Lean recomp",
+      "🎯 Strong core & abs",
+      "💪 Maintain",
+      "📈 Build muscle"
+    ],
+    "hasDietPicker": true,
+    "labels": [
+      "My goal",
+      "How I eat",
+      "Today's targets"
+    ],
+    "targetTiles": [
+      "Calories",
+      "Protein · yours",
+      "Carbs · calculated",
+      "Fat · calculated"
+    ]
+  },
+  "screenshot-progress.png": {
+    "tiles": [
+      "Week",
+      "This week",
+      "Day streak",
+      "Waist cm",
+      "Badges",
+      "Photos"
+    ],
+    "controls": [
+      "📊 Summary",
+      "📷 Body",
+      "💪 Strength",
+      "🏅 Awards",
+      "0Badges",
+      "📷Photos"
+    ]
+  }
+}
