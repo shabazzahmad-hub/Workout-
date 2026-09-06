@@ -1852,7 +1852,9 @@ const LADDERS = {
   legPowerL:  ['jumpsquat','splitjump','broadjump'],
   hiitFinL:   ['jumpingjack','tuckjump','burpee','count8','burpeetuck','atomicpushup'],
 };
-// Phase 1 (the first PHASE1_CYCLES block) — core/abs/HIIT program, 7 days a week.
+// Phase 1 (the first PHASE1_CYCLES blocks) — core/abs/HIIT. SESSIONS_PER_WEEK
+// slots to a program week; how many CALENDAR days that spans is the athlete's
+// own schedule, so this list is a rotation of sessions and not a week of days.
 const SESSIONS = [
   {key:'anterior', name:'Core Crusher', icon:'🔥', focus:'Abs, deep core & anti-extension',
    slots:['plankL','hollowL','lowerL','dynL'], finisher:'cardioFinL'},
@@ -1869,7 +1871,11 @@ const SESSIONS = [
   {key:'stability', name:'Core Stability', icon:'🧘', focus:'Control, holds & rotation — active-recovery core',
    slots:['plankL','sideL','hollowL','rotL'], finisher:'finisherL'},
 ];
-// Phase 2 (week 13 onward) — full-body split, 7 days a week; core trained every session.
+// Phase 2 (from block PHASE1_CYCLES+1 onward) — full-body split; core trained
+// every session. The old comment said "week 13 onward", which was true when
+// PHASE1_CYCLES was 2 and has been off by a whole block since: at 1 it opens on
+// program week 7. A boundary written by hand beside the constant that decides
+// it is the class v460 swept out of sw.js, one file over.
 const PHASE2_SESSIONS = [
   {key:'push', name:'Push Day', icon:'💥', focus:'Chest, shoulders & triceps + core',
    slots:['chestL','shoulderL','tricepL','lowerL'], finisher:'cardioFinL'},
@@ -1995,7 +2001,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='468';
+const APP_VERSION='469';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -11172,7 +11178,7 @@ function briefSegments(){
   const sess=buildSession(_tp);
   const _bDone=todayDone(), _bPain=todayStoppedForPain(), _bOver=_bDone||_bPain;
   const wkNum=(sess.cycle*WEEKS_PER_CYCLE)+sess.week;
-  const dayNum=((sess.pos&&sess.pos.dayInWeek)||0)+1;
+  const sessNum=((sess.pos&&sess.pos.dayInWeek)||0)+1;
   const vol=sessionVolume(sess);
   const name=athleteName();
   const who=name?(' '+name):'';
@@ -11199,9 +11205,19 @@ function briefSegments(){
      the two scales met. A position in the plan takes the STRUCTURAL total, so
      both halves are program weeks and the brief agrees with the tile the
      athlete can look at. The calendar duration is not lost — it is on the
-     Program tab, where it stands alone and can say what pace it assumes. */
+     Program tab, where it stands alone and can say what pace it assumes.
+
+     AND THE SLOT WAS NAMED "DAY", which is the same confusion one word over.
+     A program week holds SESSIONS_PER_WEEK slots, and the app calls them
+     sessions everywhere it counts them — "378 sessions" on the Program tab,
+     "N/378 sessions" on its own progress bar, the calendar grid. Only this
+     sentence called a slot a day, and a day is a calendar unit: at the
+     wizard's five-day floor a program week spans about 9.8 calendar days, so
+     "day 7" is spoken ten days after "day 1" of the same week, and a week
+     that has seven days in it is a week this athlete does not train. It is
+     the app's own unit now, so nothing here names a calendar at all. */
   segs.push({icon:'🎖️',title:_briefTitle,
-    say:`${_gt}${who}. This is ${ADVISOR.short}, your coach. Here is your brief for today — week ${wkNum} of ${WEEKS_PER_CYCLE*TOTAL_CYCLES}, day ${dayNum}. Let's walk the plan.`});
+    say:`${_gt}${who}. This is ${ADVISOR.short}, your coach. Here is your brief for today — week ${wkNum} of ${WEEKS_PER_CYCLE*TOTAL_CYCLES}, session ${sessNum} of ${SESSIONS_PER_WEEK}. Let's walk the plan.`});
   // 2 — mission / transformation
   const goalW=STATE.profile.goalWeightLb, goalBF=STATE.profile.goalBodyFat, kg=latestWeightKg();
   const bf=(goalBF>0)?`, and body fat under ${goalBF} percent`:'';

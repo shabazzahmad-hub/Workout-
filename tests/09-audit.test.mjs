@@ -4705,6 +4705,13 @@ export default async function run() {
       STATE.profile.days = [1, 2, 4, 5, 6];
       o.fiveTarget = weeklyTarget(); o.fiveWeeks = programWeeks();
       o.five = seg(); o.fiveTile = tile(); o.fiveSub = sub();
+      o.perWeekSlots = SESSIONS_PER_WEEK;
+      /* How many CALENDAR days one PROGRAM week spans, at each schedule — the
+         whole reason "day" was the wrong word. */
+      STATE.profile.days = [1, 2, 4, 5, 6];
+      o.fiveSpan = +((SESSIONS_PER_WEEK / weeklyTarget()) * 7).toFixed(1);
+      STATE.profile.days = [0, 1, 2, 3, 4, 5, 6];
+      o.sevenSpan = +((SESSIONS_PER_WEEK / weeklyTarget()) * 7).toFixed(1);
       STATE.profile.days = days; STATE.progressPtr = keepPtr; go(keepTab);
       return o;
     });
@@ -4737,9 +4744,24 @@ export default async function run() {
       spokeOf(r.five), r.fiveTile.of, r.five.slice(0, 140));
     t.ok('so the brief never speaks the five-day athlete a 76-week total',
       !/\b76\b/.test(r.five), r.five.slice(0, 140));
-    /* The brief still says where in the week the athlete is — an over-eager fix
-       that dropped the day leaves a position with half its coordinates. */
-    t.ok('and it still names the day within that week', /\bday\s+\d+/i.test(r.five), r.five.slice(0, 140));
+    /* AND THE SLOT WAS NAMED "DAY" (v469) — the same confusion one word over.
+       A program week holds SESSIONS_PER_WEEK slots and the app calls them
+       SESSIONS everywhere it counts them ("378 sessions" on the Program tab and
+       on its own progress bar). Only this sentence called a slot a day, and a
+       day is a calendar unit: measured, at the wizard's five-day floor a program
+       week spans 9.8 calendar days, so "day 7" was spoken about ten days after
+       "day 1" of the same week — and a week with seven days in it is a week that
+       athlete does not train.
+
+       The floor is that it still says WHICH slot: an over-eager fix that dropped
+       the second coordinate leaves a position with half of itself. */
+    t.eq('guard: a five-day athlete\'s PROGRAM week really is longer than a calendar one',
+      r.fiveSpan > 7 && r.sevenSpan === 7, true, JSON.stringify([r.fiveSpan, r.sevenSpan]));
+    t.ok('the brief names the slot as a SESSION, with the structural total',
+      new RegExp('session\\s+\\d+\\s+of\\s+' + r.perWeekSlots, 'i').test(r.five), r.five.slice(0, 140));
+    t.ok('and never calls a plan slot a day — that is a calendar word',
+      !/\bday\s+\d+/i.test(r.five), r.five.slice(0, 140));
+    t.ok('and it still says which slot within the week', /\bsession\s+\d+/i.test(r.five), r.five.slice(0, 140));
 
     /* THE FLOOR v457 exists for: the CALENDAR duration still derives from the
        schedule, and is never a hand-written year. It lives on the Program tab,

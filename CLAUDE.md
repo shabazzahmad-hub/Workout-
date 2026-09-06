@@ -18244,6 +18244,61 @@ Six mutants, all caught, including the three over-eager twins: the day number
 dropped, the total dropped, and the fix applied to the Program tab instead
 (which satisfies every assertion about the brief and loses the honest duration).
 
+## A plan slot is not a calendar day (v469)
+
+Found by auditing v468 an hour after it shipped — the fourteenth round running
+where the best finding was in the round immediately before, and the seventh in
+a row where it was in my own new code. v468 fixed the WEEK half of that
+sentence and left the other coordinate alone:
+
+> Here is your brief for today — week 3 of 54, **day 7**.
+
+A program week holds `SESSIONS_PER_WEEK` slots, and **the app calls them
+SESSIONS everywhere it counts them** — *"378 sessions"* on the Program tab, its
+own progress bar reading `N/378 sessions`, the calendar grid. Exactly one
+sentence in the app called a slot a **day**, and a day is a calendar unit.
+
+Measured:
+
+| trains | one PROGRAM week spans | the coach said |
+|---|---|---|
+| 7 a week | 7 calendar days | `day 7` — correct |
+| **5 a week** (the wizard's floor) | **9.8 calendar days** | ***`day 7`*** |
+
+So *"day 7"* is spoken about **ten days** after *"day 1"* of the same week —
+and a week with seven days in it is a week that athlete does not train. Same
+signature as v467 and v468: the seven-day athlete's copy is right and everyone
+else gets the same words with a unit that is not theirs.
+
+**The class was swept and it has one athlete-facing member.** Every other
+`Day N` in the app is a real calendar day (the baseline hero's *"Day 1"*) or a
+reference-menu day. `dayInWeek` is a field name, not copy.
+
+**The floor is that it still says WHICH slot.** An over-eager fix that dropped
+the second coordinate leaves a position with half of itself, and the mutant
+that does it is caught by exactly that check.
+
+**The guard is the whole finding**: a five-day athlete's program week really is
+longer than a calendar one (9.8 against 7). Without it, *"never calls a slot a
+day"* is satisfied on a schedule where the two words agree.
+
+### And two comments defining the model described it as a calendar
+
+`SESSIONS` and `PHASE2_SESSIONS` are the two rotations the whole program is
+built from, and both were introduced as *"7 days a week"* — the same confusion,
+in the code that defines it.
+
+`PHASE2_SESSIONS` carried a second one: *"Phase 2 (**week 13** onward)"*. That
+was true when `PHASE1_CYCLES` was **2** and has been off by a whole block ever
+since — at 1 the split opens on program **week 7**. A boundary written by hand
+beside the constant that decides it is the class v460 swept out of `sw.js`, one
+file over, and v467's own subtitle had the same shape (*"Weeks 1–6 are core &
+abs"*). Both comments now describe the structure rather than restating a number
+that moves.
+
+Five mutants, all caught, including the two over-eager twins: the slot
+coordinate dropped, and the week coordinate dropped.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
