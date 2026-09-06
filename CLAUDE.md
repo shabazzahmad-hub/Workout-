@@ -17891,6 +17891,55 @@ The second seed's script threw before writing the file, so the run measured
 would match it* — and a mutation result is only meaningful once the seed is
 confirmed in the file. Re-seeded properly it fails by name.
 
+## Two readers of one fact, and the comment said they could not disagree (v464)
+
+`bikeMinutes()` carries this, and has since it was written:
+
+> Whatever was entered, in minutes — **the one place the three currencies meet.
+> Everything downstream reads this, so they can never disagree with each other.**
+
+`CARDIO_INFO`'s `dayMin()` is a **second reader**, with its own copy of the
+daily ceiling. For the bike, the ruck and the run the two copies happened to
+agree at 600. **For jacks and skipping they did not** — the live reader capped
+at 300 minutes and the day reader at 600. Measured on an imported day of 500
+jack-minutes:
+
+| | minutes | calories |
+|---|---|---|
+| the Movement card | **300** | **2,520** |
+| the Progress row and the weekly conditioning bar | **500** | **4,200** |
+
+A 67% disagreement between two screens about one day. **A comment claiming an
+invariant is not the invariant** — ninth entry, and this one named the exact
+property it did not have.
+
+Only an import can reach it, because the setter caps jacks at 300; that is the
+same threat model as every other repair in this file. One `dayCapMin` per mode
+now, asked by both readers, which is what makes that sentence true.
+
+**Pin the VALUE, not the identity.** The agreement check alone cannot catch a
+changed ceiling: both readers ask the same number, so moving it moves both
+sides together and they still agree. Jacks at 300, skipping at 300 and the bike
+at 600 are pinned as literals, and the mutant that puts jacks back to 600 fails
+on exactly that one.
+
+**The floor is an ordinary day.** A fix that clamped every mode to 300 satisfies
+every assertion about jacks and skipping and rewrites real bike, ruck and run
+training — that is the second mutant, and it fails on the bike's own pin.
+
+### And the lockstep escaped until something broke it
+
+Removing the validator's `dayCapMin` rule was invisible: the caps block breaks
+`caps` and nothing broke the ceiling. *A clean validator proves nothing about a
+validator rule* — it is now broken two ways in front of the validator (absent,
+and **zero**, which would credit nothing at all), each required to complain by
+name, then restored.
+
+**And a page constant is still not visible in Node.** The first version of the
+check referenced `CARDIO_MODES` in a Node-side assertion and the suite reported
+*"the test file itself threw"* rather than naming a check. Carry it out in the
+payload — fourteenth time.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

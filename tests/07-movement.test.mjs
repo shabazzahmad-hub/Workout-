@@ -2850,6 +2850,14 @@ export default async function run() {
       CARDIO_INFO.run.caps = { min: 600, dist: 0, kcal: 8000 };  // a zero cap eats the entry
       o.zero = hits(/CARDIO_INFO\.run: no entry cap for its own "dist" unit/);
       CARDIO_INFO.run.caps = keep;
+      /* And the DAILY ceiling, which is a separate declaration: removing its
+         rule escaped until a case broke it in front of the validator. */
+      const keepDay = CARDIO_INFO.run.dayCapMin;
+      delete CARDIO_INFO.run.dayCapMin;
+      o.noDayCap = hits(/CARDIO_INFO\.run: no daily minute ceiling/);
+      CARDIO_INFO.run.dayCapMin = 0;
+      o.zeroDayCap = hits(/CARDIO_INFO\.run: no daily minute ceiling/);
+      CARDIO_INFO.run.dayCapMin = keepDay;
       o.after = validateData().length;
       console.error = realErr;
       return o;
@@ -2857,7 +2865,68 @@ export default async function run() {
     t.eq('guard: the validator is clean before the caps are broken', rule.before, 0, rule);
     t.eq('a mode missing a cap for its own unit is caught by name', rule.missing, 1, rule);
     t.eq('and a zero cap, which would eat the athlete\'s entry', rule.zero, 1, rule);
+    t.eq('a mode with no daily minute ceiling is caught by name', rule.noDayCap, 1, rule);
+    t.eq('and a zero one, which would credit nothing at all', rule.zeroDayCap, 1, rule);
     t.eq('FLOOR: and the validator is clean again once it is restored', rule.after, 0, rule);
+
+    /* TWO READERS OF ONE FACT MUST AGREE. bikeMinutes()'s own comment says it is
+       "the one place the three currencies meet — everything downstream reads
+       this, so they can never disagree"; CARDIO_INFO's dayMin() is a SECOND
+       reader and carried its own copy of the ceiling. Bike, ruck and run agreed
+       at 600 by luck; jacks and skipping did not — 300 live against 600 on the
+       day, so an imported 500-minute day read 300 min / 2,520 kcal on Movement
+       and 500 min / 4,200 kcal in the Progress row and the weekly bar. */
+    const twin = await page.evaluate(() => {
+      const o = { live: {}, day: {}, modes: CARDIO_MODES.slice() };
+      const d = nutToday();
+      const keepMode = STATE.nutrition.cardioMode;
+      d.jackUnit = 'min'; d.jackLvl = 'steady'; d.jackVal = 500;
+      d.skipUnit = 'min'; d.skipLvl = 'steady'; d.skipVal = 500;
+      d.bikeUnit = 'min'; d.bikeLvl = 'steady'; d.bikeVal = 900;
+      d.ruckUnit = 'min'; d.ruckLvl = 'steady'; d.ruckVal = 900;
+      d.runUnit = 'min'; d.runLvl = 'steady'; d.runVal = 900;
+      const live = { jacks: () => jackWork(), skip: () => skipWork(),
+        bike: () => bikeRide(), ruck: () => ruckWork(), run: () => runWork() };
+      o.liveKcal = {}; o.dayKcal = {};
+      CARDIO_MODES.forEach(m => {
+        STATE.nutrition.cardioMode = m;
+        const w = live[m] ? live[m]() : null;
+        o.live[m] = w ? w.min : null;
+        o.day[m] = CARDIO_INFO[m].dayMin(d);
+        /* The CALORIES are what the Progress row and the weekly bar print, and
+           they derive from these minutes — so they were 2,520 against 4,200 on
+           the same day before the ceilings were unified. */
+        o.liveKcal[m] = w ? w.kcal : null;
+        o.dayKcal[m] = Math.round(CARDIO_INFO[m].dayKcal(d));
+      });
+      STATE.nutrition.cardioMode = 'jacks';
+      d.jackVal = 30;
+      o.normalLive = jackWork().min; o.normalDay = CARDIO_INFO.jacks.dayMin(d);
+      d.jackVal = 0; d.skipVal = 0; d.bikeVal = 0; d.ruckVal = 0; d.runVal = 0;
+      STATE.nutrition.cardioMode = keepMode;
+      return o;
+    });
+    /* A PAGE CONSTANT IS NOT VISIBLE IN NODE — carry it out in the payload.
+       The first version referenced CARDIO_MODES here and the suite reported
+       "the test file itself threw" rather than naming a check. */
+    t.ok('guard: every mode was driven past its own ceiling',
+      twin.modes.length >= 5 && twin.modes.every(m => twin.live[m] > 0),
+      JSON.stringify(twin.live));
+    const split = twin.modes.filter(m => twin.live[m] !== twin.day[m]);
+    t.eq('the live card and the day reader agree on every mode', split.join(', '), '',
+      JSON.stringify(twin));
+    /* PIN THE VALUE. Reading the expected ceiling out of CARDIO_INFO would move
+       both sides together, and the jacks figure is the one that moved. */
+    const kcalSplit = twin.modes.filter(m => twin.liveKcal[m] !== twin.dayKcal[m]);
+    t.eq('and so do the calories the Progress row prints', kcalSplit.join(', '), '',
+      JSON.stringify({ live: twin.liveKcal, day: twin.dayKcal }));
+    t.eq('and jacks caps at the 300 its own setter allows', twin.day.jacks, 300, JSON.stringify(twin));
+    t.eq('and skipping too', twin.day.skip, 300, JSON.stringify(twin));
+    t.eq('while the bike keeps its 600', twin.day.bike, 600, JSON.stringify(twin));
+    /* FLOOR: an ordinary day is untouched — a fix that clamped everything to 300
+       would satisfy every assertion above and rewrite real training. */
+    t.eq('FLOOR: an ordinary 30-minute day is unchanged on both readers',
+      twin.normalLive + '/' + twin.normalDay, '30/30', JSON.stringify(twin));
   }
 
   await browser.close(); srv.close();
