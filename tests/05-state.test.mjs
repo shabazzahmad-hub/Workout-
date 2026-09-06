@@ -706,9 +706,17 @@ export default async function run() {
       _normTouchedExisting({ n: { x: 1 } }, { n: { x: 1, y: 2 } }) === false,   // nested addition
       _normTouchedExisting({ n: { x: 1 } }, { n: { x: 9 } }) === true,          // nested change
       _normTouchedExisting({ l: [1, 2] }, { l: [1] }) === true,          // a dropped row
+      /* AND A GROWN ARRAY, which is the only case the length test decides on
+         its own. A SHORTENED one is caught by the element loop anyway —
+         _normTouchedExisting(2, undefined) is a removed value — so a mutant
+         deleting `a.length!==b.length` escaped every assertion here until this
+         line existed. normalizeState() never adds a row, so neither answer is
+         reachable from the app; the contract is pinned so the line means what
+         it says rather than being unfalsifiable. */
+      _normTouchedExisting({ l: [1] }, { l: [1, 2] }) === true,          // a row appeared
     ]);
     t.eq('_normTouchedExisting() counts changes and removals, never additions', pred,
-      [true, true, true, true, true, true, true, true]);
+      [true, true, true, true, true, true, true, true, true]);
     await browser.close();
     errors.forEach(e => t.fail('page error during the upgrade-note flow', e));
   }

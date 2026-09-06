@@ -2218,6 +2218,38 @@ export default async function run() {
       notes.themes.dark.unstyled.join(', '), '', JSON.stringify(notes.themes.dark));
     t.eq('and in light theme too',
       notes.themes.light.unstyled.join(', '), '', JSON.stringify(notes.themes.light));
+
+    /* AND THE LIGHT THEME DECLARES ITS OWN color-scheme. It was set once,
+       unconditionally dark, with no override — so the browser painted every
+       NATIVE control from its dark palette on a light page. Measured on a
+       light-background date field: the calendar button is a pale outline
+       against the solid icon it becomes under color-scheme:light, and the same
+       declaration drives the number spinners and the scrollbars.
+
+       The app styles its own field bodies, so the TEXT was never at risk (a
+       bare input measures 1.44:1, a real one 14.57:1) — it is the
+       browser-painted parts that were wrong. */
+    const scheme = await page.evaluate(() => {
+      const read = t => {
+        if (t) document.documentElement.setAttribute('data-theme', t);
+        else document.documentElement.removeAttribute('data-theme');
+        return { scheme: getComputedStyle(document.documentElement).colorScheme,
+          ink: getComputedStyle(document.body).color };
+      };
+      const keep = document.documentElement.getAttribute('data-theme');
+      const o = { light: read('light'), dark: read('dark') };
+      if (keep) document.documentElement.setAttribute('data-theme', keep);
+      else document.documentElement.removeAttribute('data-theme');
+      return o;
+    });
+    /* GUARD: the two themes really are different palettes, or the assertions
+       below pass on one theme measured twice. */
+    t.ok('guard: the light and dark palettes really differ',
+      scheme.light.ink !== scheme.dark.ink, JSON.stringify(scheme));
+    t.eq('the light theme paints native controls from the light palette',
+      scheme.light.scheme, 'light', JSON.stringify(scheme));
+    t.eq('and the dark theme keeps the dark one', scheme.dark.scheme, 'dark',
+      JSON.stringify(scheme));
   }
 
   await browser.close(); srv.close();

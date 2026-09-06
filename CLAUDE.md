@@ -17986,6 +17986,60 @@ them **after** install, not for the first paint, and installing needs a network
 anyway. **Moving a file between tiers costs no download** — the same pack is
 fetched either way. Install tier now 1,983 KB, 64 KB of headroom.
 
+## The light theme never told the browser it was light (v466)
+
+`color-scheme` was declared **once**, unconditionally:
+
+```
+:root{accent-color:var(--fire);color-scheme:dark}
+```
+
+There is no light override, and the app has a light theme
+(`:root[data-theme="light"]`). So on the light theme the browser painted every
+**native** control from its dark palette. Measured on a light-background date
+field, screenshot either way: the calendar button is a **pale outline, all but
+invisible**, against the solid icon it becomes under `color-scheme:light`. The
+same declaration drives the number spinners and the scrollbars, and this app has
+thirty numeric inputs.
+
+**The TEXT was never at risk, and measuring that is what kept the fix honest.**
+A bare `<input type=number>` in light theme measures **1.44:1** — dark ink on
+the browser's dark box — which looks like a serious finding and is a probe
+artefact: the app styles its own field bodies, and a REAL input measures
+**14.57:1**. Only the browser-painted parts were wrong. *Measure a real control
+on a real screen before believing a synthetic one.*
+
+The check pins the computed `color-scheme` per theme, with a guard that the two
+palettes genuinely differ — otherwise both assertions pass on one theme measured
+twice. Both mutants fail by name: the override removed, and `light` applied
+everywhere.
+
+### And the v455 escape it sat beside
+
+The v455 mutation run left one escape: **"a length change is not a repair"**.
+Reading it back is what explained it — for a **shortened** array the element
+loop catches it anyway (`_normTouchedExisting(2, undefined)` is a removed
+value), so the line only decides the **grown** case, and `normalizeState()`
+never adds a row.
+
+So the mutant is equivalent *on reachable data*, and the honest close is not a
+check on the app but a pin on the **predicate's own contract** — the shape v338
+and v380 both needed. `{l:[1]}` → `{l:[1,2]}` now sits beside the eight cases
+already there, and the mutant fails by name.
+
+### And two mutation copies were incomplete
+
+`mut454` stopped on a **RED baseline** — *"every shell asset exists on disk:
+archivo.woff2"* — because four of the mutation directories were built with a
+glob that copies `.jpg` and `.mp4` and misses `.woff2`, `.png`, `.svg` and
+`.webmanifest`. That is v428's lesson: **copy every file in the root, not the
+extensions you happen to think of.**
+
+The stop is the rule working, and it also explains why `mut453` was valid: it
+runs suites 23 and 09, and the missing-asset check lives in 01 and 12. **A
+mutation result is scoped to the suites the driver actually runs** — a red
+baseline in one suite says nothing about a driver that never opens it.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

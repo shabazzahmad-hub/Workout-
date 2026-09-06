@@ -72,6 +72,16 @@
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   /* native sliders and checkboxes rendered UA-blue on navy without these */
   :root{accent-color:var(--fire);color-scheme:dark}
+  /* AND THE LIGHT THEME HAS TO SAY SO. `color-scheme` was declared once,
+     unconditionally dark, with no override — so on the light theme the browser
+     still painted every NATIVE control from its dark palette. Measured on a
+     light-background date field: the calendar button is a pale outline, all but
+     invisible, against the solid icon it becomes under `color-scheme:light`.
+     The same declaration drives the number spinners and the scrollbars.
+     The app styles its own field bodies, so the TEXT was never at risk — a bare
+     input measured 1.44:1 and a real one 14.57:1. It is the browser-painted
+     parts that were wrong. */
+  :root[data-theme="light"]{color-scheme:light}
   html,body{margin:0;padding:0}
   body{font-family:var(--font);color:var(--ink);background:linear-gradient(180deg,var(--bg2),var(--bg) 42%);background-attachment:fixed;font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased;overscroll-behavior-y:none}
   button,input,select,textarea{font:inherit;color:inherit}
@@ -1985,7 +1995,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='465';
+const APP_VERSION='466';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
