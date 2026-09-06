@@ -15,6 +15,37 @@ export default async function run() {
   const { srv, port } = await serve();
   const base = `http://127.0.0.1:${port}/`;
 
+  /* ---- no hand-written asset count in sw.js prose -------------------------
+     Four comments in that file stated one — "all 191 assets", "about 11 MB",
+     "the nine baseline tests", "the thirteen .mp4 files" — and every one had
+     gone stale as the library grew: measured at 250 assets in the tiers, TEN
+     tests since v252 and 17 videos. A count beside the list that holds it is
+     the class v397 fixed in athlete-facing copy; in a comment it costs the next
+     reader rather than the athlete, which is cheaper and still wrong. The file
+     describes the shape now, and this keeps it that way. */
+  {
+    const swProse = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+    /* THE NOUNS THAT DRIFT, and only those. An earlier version of this also
+       forbade "N MB" and flagged the 2 MB INSTALL BUDGET, which is a fixed
+       constant and not a count of anything — a detector that matches ordinary
+       prose is not measuring what you named. And it required the noun to sit
+       immediately after the number, so it could not see "the NINE BASELINE
+       tests", which is the very defect it was written for: up to two
+       intervening words are allowed. */
+    const COUNT = /\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|twenty|thirty|forty|fifty)(?:\s+[a-z.]+){0,2}\s+(?:assets|files|tests|photos|videos|images|exercises)\b/gi;
+    /* Comments only — a real numeric literal in code is not prose. */
+    const comments = [...swProse.matchAll(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g)].map(m => m[0]).join('\n');
+    t.ok('guard: the comment scan read real prose from sw.js', comments.length > 3000,
+      JSON.stringify({ chars: comments.length }));
+    const probe = 'the nine baseline tests and all 191 assets';
+    t.eq('guard: and the detector sees both shapes of the count it was written for',
+      (probe.match(COUNT) || []).length, 2, JSON.stringify(probe.match(COUNT)));
+    t.eq('guard: and stays quiet on a fixed budget, which is not a count',
+      ('the 2 MB install budget').match(COUNT), null, 'the 2 MB install budget');
+    t.eq('no sw.js comment states an asset, file or test count by hand',
+      (comments.match(COUNT) || []).join(', '), '', String((comments.match(COUNT) || []).join(', ')));
+  }
+
   /* ---- the tiers partition the shell: nothing lost, nothing duplicated ---- */
   {
     const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');

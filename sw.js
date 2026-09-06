@@ -1,18 +1,30 @@
 /* CoreForge — offline service worker */
-const CACHE = 'coreforge-v446';
+/* NO HAND-WRITTEN ASSET COUNT IN THIS FILE. Four comments here stated one — the
+   pack size, the number of baseline tests, the number of video files, the length
+   of the status loop — and every one had gone stale as the library grew. A count
+   beside the list that holds it is the class v397 fixed in athlete-facing copy;
+   in a comment it costs the next reader instead of the athlete, which is cheaper
+   and still wrong. Describe the shape, not the number.
+
+   And an example FILE PATH must never appear in prose here either: the precache
+   tiers are parsed by pulling every quoted asset name out of this file, comments
+   included, so an illustrative path in a comment breaks CI by declaring
+   an asset that does not exist. */
+const CACHE = 'coreforge-v466';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
 const MINE = /^coreforge-v\d+$/;
 
 /* ---- Why the precache is in tiers ----------------------------------------
-   The install used to await all 191 assets — about 11 MB — inside
+   The install used to await the WHOLE pack — hundreds of files, several
+   megabytes — inside
    event.waitUntil. Nothing rendered any slower, because the page does not wait
    on the worker, but three real things went wrong:
 
      - the worker sat in `installing` for the whole download, so skipWaiting()
        and therefore offline capability arrived minutes late on a phone;
-     - those 11 MB competed with the page's OWN image fetches during the one
+     - that download competed with the page's OWN image fetches during the one
        session where the athlete is actually looking at pictures;
      - closing the tab part-way through aborted the install, and the next visit
        started again from nothing.
@@ -24,9 +36,9 @@ const MINE = /^coreforge-v\d+$/;
    fetch handler anyway.
 
    Order is deliberate. FIRST_RUN is derived from what a brand-new athlete
-   actually sees — the nine baseline tests, every warm-up and cool-down (they
+   actually sees — every baseline test, every warm-up and cool-down (they
    run in EVERY session), and the first two weeks of a beginner's programme. The
-   long tail is stills first and video last, because the thirteen .mp4 files
+   long tail is stills first and video last, because the video files
    are the heaviest and the least necessary things here. */
 
 /* Atomic. If these fail there is no app, so the install SHOULD reject. */
@@ -37,7 +49,6 @@ const CORE = ['./', './index.html'];
 const SHELL_MIN = [
   './manifest.webmanifest','./archivo.woff2','./icon-192-v2.png',
   './hero.jpg','./coach-sarge.jpg',
-  './icon-192-maskable.png','./icon-180-apple.png',
   './privacy.html','./terms.html'
 ];
 
@@ -68,6 +79,7 @@ const SHELL_MIN = [
    them opens a quote and swallows the whole tier. */
 const FIRST_RUN = [
   './icon-512-maskable.png',   // the OS launcher wants it after install, not for the first paint
+  './icon-192-maskable.png','./icon-180-apple.png',   // same reasoning: home-screen icons, not first-paint
   './icon-512-v2.png',
   './cd-breathing.jpg','./cd-catcow.jpg','./cd-childs.jpg','./cd-cobra.jpg',
   './cd-knees.jpg','./cd-twistleft.jpg','./cd-twistright.jpg','./ex-bicycle.jpg',
@@ -250,8 +262,9 @@ self.addEventListener('message', e => {
      finish eventually rather than restarting forever. */
   if (d.type === 'cf-topup') e.waitUntil(topUp(!!d.force));
   if (d.type === 'cf-precache-status') {
-    // Same reasoning as cf-topup, two lines up: this loop awaits ~180 sequential
-    // cache lookups, and a worker with nothing pinning it can be reclaimed
+    // Same reasoning as cf-topup, two lines up: this loop awaits one sequential
+    // cache lookup per file in the pack, and a worker with nothing pinning it
+    // can be reclaimed
     // mid-loop — the requesting page would then wait forever for a reply.
     e.waitUntil((async () => {
       const c = await caches.open(CACHE);

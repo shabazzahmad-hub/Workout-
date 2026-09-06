@@ -1136,6 +1136,12 @@ export default async function run() {
       const realWeightKg = nut().weightKg;
       const o = {};
       nut().weightKg = 68;   // ~150 lb, fixed regardless of whatever the seed carries
+      /* The subject here is the DIRECTION, and the figures written below are
+         POUNDS. v447 made the brief speak the athlete's own unit, so on the
+         seeded metric athlete "160" is spoken as 73 kilograms and this block
+         failed on correct code. Pin the unit the figures are in; suite 10
+         covers the metric side and the agreement between the two surfaces. */
+      STATE.profile.unit = 'in';
       STATE.profile.goal = 'gain'; STATE.profile.goalWeightLb = 160;
       const missionGain = briefSegments().find(s => s.title === 'Your mission').say;
       STATE.profile.goal = 'lose'; STATE.profile.goalWeightLb = 140;
@@ -1146,12 +1152,15 @@ export default async function run() {
         gainSaysUp: /up to 160/.test(missionGain),
         gainNotBackwards: !/outstanding/i.test(missionGain),
         loseSaysDown: /down to 140/.test(missionLose),
+        gainNotDown: !/down to/.test(missionGain),
+        loseNotUp: !/\bup to/.test(missionLose),
         missionGain, missionLose,
       };
     });
     t.ok('a gain-goal athlete below target is told to go UP toward it', r.gainSaysUp, r);
     t.ok('not congratulated for being short of a weight-GAIN goal', r.gainNotBackwards, r);
     t.ok('a lose-goal athlete above target is still told to go down (unchanged)', r.loseSaysDown, r);
+    t.ok('and the two directions are never both spoken', r.gainNotDown && r.loseNotUp, r);
   }
 
   // ---- the weight-trend chart colors "good" relative to the actual goal direction
@@ -4649,6 +4658,205 @@ export default async function run() {
     t.ok('guard: the measurement sheet opened', r.sheetOpened, r);
     t.ok('guard: a heavier weight really raised the water goal', r.wAfter.tgt > r.wHit.tgt, r);
     t.ok('and the water habit follows it down', !r.wAfter.tick, r.wAfter);
+  }
+
+  /* ---- the coach spoke a duration nobody derived (v457) ------------------
+     v348 measured it and wrote the rule down: the program is a QUEUE of 378
+     sessions, and how long it takes is set by how often you train. 54 weeks is
+     true at SEVEN a week; the wizard's own floor is FIVE, which is 76 weeks —
+     17 months, not 12. v348 fixed the Program tab and v354 fixed the header
+     chip and the Full Tour badge. THE MORNING BRIEF still said "your one-year
+     build", and that is the one surface the coach READS ALOUD — v315's rule:
+     a spoken figure is the one an athlete cannot double-check by looking.
+
+     v399's sweep ("every number the coach speaks is visible on the screen")
+     could not see it: "one-year" is a WORD, not a digit.
+
+     The payload is the figure that reaches the athlete, so the check drives
+     briefSegments() at two real schedules and pins both values — not the app's
+     own expression, which a mutant would move on both sides. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      const days = STATE.profile.days;
+      const seg = () => (briefSegments().find(s => /brief$/i.test(s.title)) || {}).say || '';
+      STATE.profile.days = [0, 1, 2, 3, 4, 5, 6];
+      o.sevenTarget = weeklyTarget(); o.sevenWeeks = programWeeks(); o.seven = seg();
+      STATE.profile.days = [1, 2, 4, 5, 6];
+      o.fiveTarget = weeklyTarget(); o.fiveWeeks = programWeeks(); o.five = seg();
+      STATE.profile.days = days;
+      return o;
+    });
+    /* GUARDS: the two schedules really are different programs, or every
+       assertion below passes on one number printed twice. */
+    t.eq('guard: seven days a week really is 54 weeks', r.sevenWeeks, 54, JSON.stringify(r));
+    t.eq('guard: and five days a week really is 76', r.fiveWeeks, 76, JSON.stringify(r));
+    t.ok('guard: the greeting segment was found at all', r.seven.length > 40, r.seven.slice(0, 80));
+
+    t.ok('the spoken brief names the 54-week program of a seven-day athlete',
+      /\b54-week build\b/.test(r.seven), r.seven.slice(0, 140));
+    t.ok('and the 76-week program of a five-day athlete — it tracks the schedule',
+      /\b76-week build\b/.test(r.five), r.five.slice(0, 140));
+    /* THE FLOOR the fix exists for: never a hand-written year. */
+    t.ok('and never claims a year to the athlete who takes seventeen months',
+      !/one-year|year-long|year build/i.test(r.five), r.five.slice(0, 140));
+
+    /* A COUNT THAT CAN BE ONE NEEDS ITS OWN PLURAL. prescribe() gives a
+       'dynamic' region movement a SINGLE timed round, and 74 of the
+       programme's movements land there — so the coach READ ALOUD "Inchworm
+       Walkout, 1 sets of 40 seconds" on 10 of every 54 sessions. Spoken is the
+       worst place for it: v315's rule is that an athlete cannot double-check a
+       spoken line by looking.
+
+       The RATIO form is deliberately excluded — "0/3 sets" is correct English
+       and a fix that touched it would be a different bug. */
+    const pl = await page.evaluate(() => {
+      const BAD = /(?<![\/\d])\b1 (sets|exercises|moves|minutes|calories|grams|cups|reps|seconds|weeks|days|blocks|sessions|tests|meals|rounds|movements)\b/;
+      const out = { spoke: [], oneSet: 0, finNot1: 0, sessions: 0, multi: '' };
+      const keepPtr = STATE.progressPtr;
+      for (let p = 0; p < SESSIONS_PER_CYCLE * TOTAL_CYCLES; p++) {
+        const s = buildSession(p);
+        if (!s || !s.main) continue;
+        s.main.forEach(m => { if (m.sets === 1) out.oneSet++; });
+        if (!s.finisher || s.finisher.sets !== 1) out.finNot1++;
+      }
+      for (let p = 0; p < SESSIONS_PER_CYCLE * TOTAL_CYCLES; p += 7) {
+        STATE.progressPtr = p;
+        out.sessions++;
+        let segs = [];
+        try { segs = briefSegments(); } catch (e) { out.threw = String(e); }
+        segs.forEach(sg => {
+          const say = sg.say || '';
+          if (BAD.test(say)) out.spoke.push({ p, say: say.slice(0, 120) });
+          if (!out.multi && / 3 sets of /.test(say)) out.multi = say.slice(0, 120);
+          if (/all-out round/.test(say)) out.fin = say.slice(0, 120);
+        });
+      }
+      STATE.progressPtr = keepPtr;
+      return out;
+    });
+    /* GUARDS. Without the first, "the brief never says 1 sets" is satisfied by
+       a programme that never prescribes one; without the second, the block is
+       reading no briefs at all. */
+    t.ok('guard: the programme really does prescribe single-set movements',
+      pl.oneSet > 20, JSON.stringify({ oneSet: pl.oneSet }));
+    t.ok('guard: and the sweep read a real spread of briefs',
+      pl.sessions > 40 && !pl.threw, JSON.stringify({ sessions: pl.sessions, threw: pl.threw }));
+    t.eq('the spoken brief never says "1 sets"', pl.spoke.length, 0,
+      JSON.stringify(pl.spoke.slice(0, 3)));
+    /* THE FLOOR: a fix that simply dropped the s would say "3 set". */
+    t.ok('and a three-set movement still keeps its plural',
+      / 3 sets of /.test(pl.multi), pl.multi);
+    /* The brief calls the finisher "one all-out round" — a claim with code
+       behind it (finisher.sets=1) that nothing had ever pinned. */
+    t.eq('guard: every finisher in the programme really is one round', pl.finNot1, 0,
+      JSON.stringify({ finNot1: pl.finNot1 }));
+    t.ok('so the brief may call it one all-out round', /one all-out round/.test(pl.fin || ''),
+      String(pl.fin || '').slice(0, 120));
+
+    /* TWO SITES, TWO CHECKS. The helper is one place, but a mutant reverting
+       only the history row is invisible to every assertion above — and that row
+       is where a partial session lands, which is exactly when the count is 1. */
+    const hist = await page.evaluate(() => {
+      const keep = JSON.stringify(STATE.logs);
+      const s0 = buildSession(0), ex = s0.main[0].exId;
+      STATE.logs = { 0: { done: true, completedAt: todayISO(), feel: 'ok',
+        ex: { [ex]: { sets: [true], done: false } } } };
+      const one = sessionHistoryHTML();
+      STATE.logs[0].ex[ex].sets = [true, true, true];
+      const three = sessionHistoryHTML();
+      STATE.logs = JSON.parse(keep);
+      return { one: one.replace(/<[^>]*>/g, ' '), three: three.replace(/<[^>]*>/g, ' ') };
+    });
+    t.ok('guard: the seeded rows really report one set and three',
+      /\b1 set\b/.test(hist.one) && /\b3 sets\b/.test(hist.three),
+      JSON.stringify(hist).slice(0, 200));
+    t.ok('the history row says "1 set", not "1 sets"',
+      !/\b1 sets\b/.test(hist.one), hist.one.slice(0, 160));
+
+    /* THE CLASS, NOT THE TWO INSTANCES. Rendered surfaces came back clean, and
+       an empty result is only worth having with ONE of every record seeded —
+       the state between empty and full is where a count is 1 — and with the
+       detector proven both ways. A ratio ("0/1 sets") must stay quiet. */
+    const rend = await page.evaluate(() => {
+      /* "Week 1 sets your baseline volumes" is ORDINARY COPY — that "sets" is a
+         VERB — and the first version of this detector reported it as a defect.
+         A detector that can match ordinary app content is not measuring what you
+         named, so a count used as an ORDINAL label is excluded by name. */
+      const BAD = /(?<![\/\d.])(?<!\b(?:Week|Day|Block|Phase|Cycle|Level|Session|Round|Test|Step|Set) )\b1 (sets|exercises|moves|minutes|calories|grams|cups|reps|seconds|weeks|days|blocks|sessions|tests|meals|rounds|movements|photos|badges|entries|stretches|hours|points|glasses)\b/g;
+      const out = { hits: [], surfaces: 0 };
+      out.sees = !!'you did 1 sets today'.match(BAD);
+      out.quiet = !'0/1 sets done'.match(BAD) && !'1 set today'.match(BAD)
+        && !'Week 1 sets your baseline volumes'.match(BAD);
+      const keep = JSON.stringify({ l: STATE.logs, m: STATE.measurements, p: STATE.progressPtr });
+      const s0 = buildSession(0), ex = s0.main[0].exId;
+      STATE.progressPtr = 1;
+      STATE.logs = { 0: { done: true, completedAt: todayISO(), feel: 'ok', ex: { [ex]: { sets: [true], done: false } } } };
+      STATE.measurements = [{ date: todayISO(), weight: 86, waist: 96 }];
+      STATE.scoreHistory = [{ date: todayISO(), score: 70, level: 'Intermediate' }];
+      STATE.holdLog = [{ date: todayISO(), id: 'plank', secs: 61, fresh: true, ex: 'plank' }];
+      STATE.skipLog = [{ date: todayISO(), mins: 1, at: 0 }];
+      STATE.photos = [{ id: 'p1', date: todayISO(), pose: 'front' }];
+      try { normalizeState(); } catch (e) { }
+      const look = (label, txt) => {
+        out.surfaces++;
+        for (const m of (txt || '').matchAll(BAD))
+          out.hits.push({ label, hit: m[0], ctx: txt.slice(Math.max(0, m.index - 60), m.index + 30).replace(/\s+/g, ' ') });
+      };
+      const strip = () => (document.querySelector('.view.active') || {}).innerText || '';
+      ['today', 'program', 'progress', 'fuel', 'quick', 'guide', 'ref']
+        .forEach(tb => { try { go(tb); look('tab:' + tb, strip()); } catch (e) { } });
+      ['brief', 'warmup', 'workout', 'cooldown']
+        .forEach(pn => { try { go('today'); setTodayTab(pn); look('today:' + pn, strip()); } catch (e) { } });
+      ['summary', 'body', 'strength', 'awards']
+        .forEach(pn => { try { go('progress'); setProgressTab(pn); look('progress:' + pn, strip()); } catch (e) { } });
+      try { look('history', sessionHistoryHTML().replace(/<[^>]*>/g, ' ')); } catch (e) { }
+      const k = JSON.parse(keep);
+      STATE.logs = k.l; STATE.measurements = k.m; STATE.progressPtr = k.p;
+      try { go('today'); } catch (e) { }
+      return out;
+    });
+    t.ok('guard: the plural detector sees a mismatch and ignores a ratio',
+      rend.sees && rend.quiet, JSON.stringify({ sees: rend.sees, quiet: rend.quiet }));
+    t.ok('guard: and it read a real spread of surfaces', rend.surfaces >= 15,
+      JSON.stringify({ surfaces: rend.surfaces }));
+    t.eq('no rendered surface says "1 <plural>" either', rend.hits.length, 0,
+      JSON.stringify(rend.hits.slice(0, 3)));
+
+    /* THE THIRD MEMBER, and the sweep above could not see it: the grocery sheet
+       was not in its list, and the seeded athlete is not on a restricted diet.
+       A vegan avoiding soy, tree nuts, peanuts and gluten is an ORDINARY athlete
+       (v287 measured that combination), and only lunch survives the filter — so
+       the sheet read "from today's 1 meals". A sweep is only as wide as the
+       surface it enumerates. */
+    const groc = await page.evaluate(() => {
+      /* The field is nutrition.PLAN. An earlier version of this block nulled
+         `mealPlan`, which does not exist — so the cached restricted plan was
+         never rebuilt and the omnivore floor read one meal too. */
+      const keep = { d: STATE.nutrition.diet, a: STATE.nutrition.allergens, p: STATE.nutrition.plan };
+      const read = () => { openGrocery(); const t = (document.querySelector('#sheet') || {}).innerText || ''; closeSheet(); return t; };
+      STATE.nutrition.diet = 'vegan';
+      STATE.nutrition.allergens = ['soy', 'treenut', 'peanut', 'gluten'];
+      STATE.nutrition.plan = null;
+      const count = () => currentMealPlan().meals.map(recipeById).filter(Boolean).length;
+      const n1 = count();
+      const one = read();
+      STATE.nutrition.diet = 'omnivore'; STATE.nutrition.allergens = [];
+      STATE.nutrition.plan = null;
+      const n2 = count();
+      const many = read();
+      STATE.nutrition.diet = keep.d; STATE.nutrition.allergens = keep.a;
+      STATE.nutrition.plan = keep.p;
+      return { n1, n2, one: one.slice(0, 90), many: many.slice(0, 90) };
+    });
+    t.eq('guard: the restricted diet really leaves one meal on the plan', groc.n1, 1,
+      JSON.stringify(groc));
+    t.ok('guard: and an ordinary diet leaves several', groc.n2 > 1, JSON.stringify(groc));
+    t.ok('the grocery sheet says "1 meal", not "1 meals"',
+      /1 meal\b/.test(groc.one) && !/1 meals\b/.test(groc.one), groc.one);
+    /* THE FLOOR: a fix that dropped the s would say "3 meal". */
+    t.ok('and several meals keep the plural', new RegExp(groc.n2 + ' meals\\b').test(groc.many),
+      groc.many);
   }
 
   await browser.close();

@@ -12373,6 +12373,828 @@ export default async function () {
     t.eq('no typed door hand-writes the age band', handAge, [], handAge);
   }
 
+  /* ---------- v448: the warm-up you are SHOWN is the warm-up you GET -------
+     runWarmup() applies jointAwareWarmup(), mobilityFlow() and — inside
+     runFlow() — safeFlow(). The two Today panes, the spoken brief and the
+     mobility picker all listed the RAW arrays, so four surfaces described a
+     session nobody does. Measured before the fix:
+
+       shoulder flag  pane listed "Arm Circles" and the coach said it aloud;
+                      safeFlow() strips it for exactly that flag, and the
+                      Shoulder Activation put in its place appeared nowhere
+       low back       cool-down pane listed 7 and the athlete got 3
+       low mobility   pane printed 40s / 30s while the hold ran 50s / 38s
+       low back       mobility picker said 10 / 6 / 6 moves, delivered 5 / 3 / 4
+
+     Every expectation below is a VALUE rather than the app's own expression,
+     so a mutant cannot move both sides of the comparison. */
+  {
+    const names = h => (h.match(/<b>([^<]+)<\/b>/g) || []).map(x => x.replace(/<\/?b>/g, ''));
+    const w = await page.evaluate(() => {
+      const P = STATE.profile;
+      const keep = { lim: P.limitations, mob: P.mobility };
+      const o = {};
+      P.limitations = []; P.mobility = 'ok';
+      o.paneClean = warmupTabHTML();
+      o.briefClean = briefSegments().find(s => s.title.indexOf('Warm-up') === 0).say;
+
+      P.limitations = ['shoulder'];
+      /* guard: the filter really removes this move for this flag, or every
+         assertion below is satisfied by a filter that does nothing */
+      o.stripsArmCircles = !safeFlow(WARMUP_FLOW).some(x => x.n === 'Arm Circles');
+      o.paneShoulder = warmupTabHTML();
+      o.briefShoulder = briefSegments().find(s => s.title.indexOf('Warm-up') === 0).say;
+
+      P.limitations = ['lowback'];
+      o.cdPaneLowback = cooldownTabHTML();
+      o.briefCoolLowback = briefSegments().find(s => s.title.indexOf('Cool-down') === 0).say;
+      o.mobRaw = MOBILITY_FLOWS.map(m => m.flow.length);
+
+      P.limitations = []; P.mobility = 'low';
+      o.paneSecsLow = (warmupTabHTML().match(/(\d+)s</g) || []).map(x => x.replace('<', ''));
+
+      P.limitations = keep.lim; P.mobility = keep.mob;
+      return o;
+    });
+
+    t.ok('guard: safeFlow really strips Arm Circles for a flagged shoulder',
+      w.stripsArmCircles, w);
+
+    // FLOOR — an unflagged athlete's pane is the whole eight-move warm-up
+    t.eq('an unflagged athlete is shown the full warm-up', names(w.paneClean).length, 8,
+      names(w.paneClean));
+    t.ok('and it still opens with March in Place and Arm Circles',
+      names(w.paneClean)[0] === 'March in Place' && names(w.paneClean)[1] === 'Arm Circles',
+      names(w.paneClean));
+
+    t.eq('a flagged shoulder is NOT shown Arm Circles',
+      names(w.paneShoulder).indexOf('Arm Circles'), -1, names(w.paneShoulder));
+    t.ok('and IS shown the Shoulder Activation put in its place',
+      names(w.paneShoulder).indexOf('Shoulder Activation') >= 0, names(w.paneShoulder));
+
+    t.eq('a flagged low back is shown the three cool-down stretches it gets',
+      names(w.cdPaneLowback), ["Child's Pose", 'Cat–Cow', 'Deep Breathing'],
+      names(w.cdPaneLowback));
+
+    t.eq('limited mobility is shown the LONGER holds it actually gets',
+      w.paneSecsLow, ['50s', '38s', '38s', '38s', '38s', '50s', '38s', '38s'], w.paneSecsLow);
+
+    // the spoken brief names the same flow
+    t.ok('the coach does not name a move the app has removed',
+      !/Arm Circles/.test(w.briefShoulder), w.briefShoulder);
+    t.ok('and the remainder is counted, not guessed at as "a couple"',
+      /and 4 more/.test(w.briefClean) && !/a couple more/.test(w.briefClean), w.briefClean);
+    t.ok('the cool-down names the real stretches rather than a target it lost',
+      /Child's Pose/.test(w.briefCoolLowback) && !/abs and low back/.test(w.briefCoolLowback),
+      w.briefCoolLowback);
+
+    /* THE FIRST VERSION OF THIS RE-DERIVED THE ANSWER AND PROVED NOTHING. It
+       called safeFlow(m.flow).length itself, which stays true whether or not
+       the PICKER asks — so the mutant that reverted the picker to the raw array
+       escaped clean. Read the counts off the rendered sheet, with the raw
+       figures pinned beside them so "shortened" cannot pass on the raw ones. */
+    const mob = await page.evaluate(() => {
+      const P = STATE.profile, keep = P.limitations;
+      P.limitations = ['lowback'];
+      openMobility();
+      const rows = [...document.querySelectorAll('#sheet [onclick^="startMobility"] .tiny')]
+        .map(e => e.textContent);
+      closeSheet();
+      P.limitations = keep;
+      return rows;
+    });
+    t.eq('guard: the picker really rendered its three flows', mob.length, 3, mob);
+    t.eq('guard: and the raw arrays it must NOT be counting are longer',
+      w.mobRaw, [10, 6, 6], w.mobRaw);
+    t.eq('the picker counts the shortened flow, not the raw one',
+      mob, ['5 moves · ~3 min', '3 moves · ~2 min', '4 moves · ~2 min'], mob);
+  }
+
+  /* ---------- v448: one fact, two surfaces, opposite hardcoded units -------
+     The Fuel card printed LITRES to everybody and the spoken brief printed
+     OUNCES to everybody. Measured on a 13-cup target: a metric athlete HEARD
+     "about 104 ounces" and READ "3.1 L"; an imperial athlete got the mirror.
+     Cups stay — the counter is a glass — it is the volume beside it that has
+     to be the athlete's own. */
+  {
+    const r = await page.evaluate(() => {
+      const P = STATE.profile, keep = { u: P.unit, kg: nut().weightKg };
+      const o = {};
+      nut().weightKg = 86;
+      o.cups = waterTargetCups();
+      P.unit = 'cm';
+      o.sayM = briefSegments().find(s => s.title === 'Hydration').say;
+      renderFuel(); o.fuelM = ($('#v-fuel').innerText.match(/≈[^\n·]*/) || [''])[0].trim();
+      P.unit = 'in';
+      o.sayI = briefSegments().find(s => s.title === 'Hydration').say;
+      renderFuel(); o.fuelI = ($('#v-fuel').innerText.match(/≈[^\n·]*/) || [''])[0].trim();
+      P.unit = keep.u; nut().weightKg = keep.kg;
+      try { renderFuel(); } catch (e) {}
+      return o;
+    });
+    t.eq('guard: the target used for both readings is the same 13 cups', r.cups, 13, r);
+    t.ok('a metric athlete HEARS litres', /about 3\.1 litres/.test(r.sayM), r);
+    t.eq('and READS the same litres on Fuel', r.fuelM, '≈ 3.1 L goal', r);
+    t.ok('an imperial athlete HEARS ounces', /about 104 ounces/.test(r.sayI), r);
+    t.eq('and READS the same ounces on Fuel', r.fuelI, '≈ 104 oz goal', r);
+    t.ok('neither surface speaks the other one\'s unit',
+      !/ounce/.test(r.sayM) && !/litre/.test(r.sayI), r);
+    t.ok('and cups are still the counter on both', /13 cups/.test(r.sayM) && /13 cups/.test(r.sayI), r);
+  }
+
+  /* ---------- v449: a duration written by hand beside the list that decides it
+     Three surfaces printed "~4 min" for a flow whose length depends entirely on
+     the athlete. Measured: an unflagged warm-up is 5 minutes, limited mobility
+     makes it 6 because the holds run 25% longer, and a flagged low back gets a
+     2-minute cool-down because four of the seven stretches are stripped. The
+     mobility picker was the only site that computed anything and it did so with
+     its own round(secs/60)+1 — a fourth statement of one fact.
+
+     The repositioning windows count: they are time on the mat, and runFlow()
+     spends them. They lived as a closure-local pair inside runFlow(), so the
+     rule is hoisted rather than copied.
+
+     Pin the VALUES, not the app's own expression — a mutant that changes
+     flowMins() must not be able to move both sides of the comparison. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      const state = (mob, lims) => { STATE.profile.mobility = mob; STATE.profile.limitations = lims; };
+      const read = () => {
+        const wf = warmupFlow(), cf = cooldownFlow(), segs = briefSegments() || [];
+        const title = re => (segs.filter(s => re.test(s.title))[0] || {}).title || '';
+        return { wMin: flowMins(wf), cMin: flowMins(cf), wMoves: wf.length, cMoves: cf.length,
+                 briefW: title(/Warm-up/), briefC: title(/Cool-down/) };
+      };
+      state('ok', []);       o.clean   = read();
+      state('low', []);      o.lowmob  = read();
+      state('ok', ['lowback']); o.lowback = read();
+      /* The rest-day sheet's own button, driven rather than read off the helper.
+         It must move with the flow like everything else. */
+      const restBtn = () => { openRestSheet();
+        const m = (document.querySelector('#sheet').innerText.match(/Guided cool-down[^\n]*?\(~(\d+) min\)/) || [])[1];
+        closeSheet(); return m ? +m : null; };
+      o.restLowback = restBtn();
+      state('ok', []);
+      o.restClean = restBtn();
+      /* The picker's three figures must NOT move. It was already deriving; a
+         refactor that changed what it prints is a change with no defect behind
+         it, which is the v386 call. */
+      openMobility();
+      o.picker = (document.querySelector('#sheet').innerText.match(/\d+ moves · ~\d+ min/g) || []);
+      closeSheet();
+      /* "~0 min" reads as broken, and a one-move flow really is about a minute
+         once you have got into position. TWENTY seconds, not forty: at 40 the
+         rounding already gives 1, so Math.max(1, ...) could not fire and the
+         guard would be tested by a case that cannot reach it. No real flow is
+         this short — safeFlow() only removes and every move is 30s or more —
+         so the contract is exercised DIRECTLY, the way the hardness-band and
+         anchor-unit guards are. */
+      o.zero  = flowMins([]);
+      o.one   = flowMins([{ n: 'x', secs: 20, pos: 'stand' }]);
+      o.oneRaw = Math.round(flowSecs([{ n: 'x', secs: 20, pos: 'stand' }]) / 60);
+      /* Transitions are counted: 8 warm-up moves are 260 seconds of holding and
+         297 seconds on the mat. A flowMins() that ignored them says 4, not 5. */
+      o.cleanSecs = flowSecs(warmupFlow());
+      o.holdsOnly = warmupFlow().reduce((a, x) => a + x.secs, 0);
+      return o;
+    });
+
+    /* Guards. Without these the whole block is satisfied by three athletes who
+       are handed identical flows. */
+    t.ok('guard: limited mobility really lengthens the warm-up',
+      r.lowmob.wMin > r.clean.wMin, r);
+    t.ok('guard: a flagged low back really shortens the cool-down',
+      r.lowback.cMoves < r.clean.cMoves && r.lowback.cMoves === 3, r);
+    t.ok('guard: the repositioning windows are a real part of the time',
+      r.cleanSecs > r.holdsOnly && r.holdsOnly === 260, r);
+
+    t.eq('an unflagged athlete is told the 5 minutes their warm-up takes', r.clean.wMin, 5, r);
+    t.eq('and the 4 minutes their cool-down takes', r.clean.cMin, 4, r);
+    t.eq('the brief prints the figure it derived, not a hardcoded one',
+      r.clean.briefW, 'Warm-up · ~5 min', r);
+    t.eq('and the same for the cool-down', r.clean.briefC, 'Cool-down · ~4 min', r);
+
+    t.eq('limited mobility is told the LONGER warm-up it actually gets', r.lowmob.wMin, 6, r);
+    t.eq('and the longer cool-down', r.lowmob.cMin, 5, r);
+    t.eq('and the brief says so too', r.lowmob.briefW, 'Warm-up · ~6 min', r);
+
+    t.eq('a flagged low back is told the SHORTER cool-down it actually gets', r.lowback.cMin, 2, r);
+    t.eq('and the brief says so too', r.lowback.briefC, 'Cool-down · ~2 min', r);
+
+    t.eq("the rest day sheet's button derives it too", r.restClean, 4, r);
+    t.eq('and moves with the flow rather than restating four', r.restLowback, 2, r);
+
+    t.eq('FLOOR: the mobility picker prints exactly what it printed before',
+      r.picker, ['10 moves · ~6 min', '6 moves · ~4 min', '6 moves · ~4 min'], r);
+    t.eq('FLOOR: a flow with nothing in it claims no minutes', r.zero, 0, r);
+    t.eq('guard: without the floor that short flow really would round to zero', r.oneRaw, 0, r);
+    t.eq('FLOOR: a one-move flow is never reported as zero minutes', r.one, 1, r);
+
+    /* The rule has to be ASKED FOR, not merely declared. The picker's three
+       figures are identical either way, so only the source can see a consumer
+       that kept its own arithmetic — and only the source can see the
+       reposition constants restated back inside runFlow(). */
+    const src = await page.evaluate(() => {
+      const scripts = [...document.querySelectorAll('script:not([src])')];
+      const big = scripts.map(s => s.textContent).sort((a, b) => b.length - a.length)[0] || '';
+      const bare = big.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      return {
+        len: bare.length,
+        transDecl: (bare.match(/TRANS_SAME\s*=\s*4\s*,\s*TRANS_MOVE\s*=\s*7/g) || []).length,
+        pickerAsks: /moves · ~\$\{flowMins\(/.test(bare),
+        pickerOwnMath: /Math\.round\(f\.reduce\(/.test(bare),
+        minsDecl: (bare.match(/function flowMins\(/g) || []).length,
+      };
+    });
+    t.ok('guard: the scan read the app, not a two-character stub', src.len > 400000, src);
+    t.eq('the reposition windows are stated exactly once', src.transDecl, 1, src);
+    t.eq('and so is the duration rule', src.minsDecl, 1, src);
+    t.ok('the mobility picker ASKS the helper', src.pickerAsks, src);
+    t.ok('and no longer carries its own arithmetic', !src.pickerOwnMath, src);
+  }
+
+  /* ---------- v450: the screen argued with itself ---------------------------
+     The Day-1 hero said "~15 minutes" and four lines below it, in bold, "Rest 2
+     minutes between tests". Nine of those rests is EIGHTEEN minutes on its own,
+     so the hero could not be right whatever the efforts took — the figure was
+     written before v296 enforced the rests and nobody came back to it.
+
+     Measured: 18 minutes of rest, plus 275 seconds of effort for an athlete
+     with nothing tested yet (TEST_DEFAULTS) = 23 minutes, and 32 for one at the
+     app's own published benchmarks.
+
+     Both halves are pinned. Deleting the bold rest line would "resolve" the
+     contradiction in the direction that costs the athlete the measurement. */
+  {
+    const saved = await page.evaluate(() => JSON.stringify(STATE.baseline || null));
+    const r = await page.evaluate(() => {
+      const o = {};
+      STATE.baseline = null;
+      o.tests   = TESTS.length;
+      o.restSec = baselineRestSec();
+      o.restMin = Math.round(baselineRestSec() / 60);
+      o.effortFresh = baselineEffortSec();
+      o.minFresh = baselineMin();
+      /* Drive the render, not the helper: a hero that stopped asking for the
+         figure is invisible to a check that calls baselineMin() itself. */
+      go('today');
+      const view = document.querySelector('#v-today');
+      o.heroText = (view.innerText.match(/~\d+ minutes · sets your whole program/) || [''])[0];
+      o.saysRest2 = /Rest 2 minutes between tests/i.test(view.innerText);
+      o.typ = typicalSessionMin();
+      /* The same battery for an athlete at the app's own benchmarks. The figure
+         has to track the athlete, or it is a constant with extra steps. */
+      STATE.baseline = { date: '2026-01-01', level: 'Advanced', maxes: {} };
+      TESTS.forEach(x => { STATE.baseline.maxes[x.id] = x.bench; });
+      o.effortStrong = baselineEffortSec();
+      o.minStrong = baselineMin();
+      STATE.baseline = null;
+      return o;
+    });
+
+    /* THE GUARD IS THE WHOLE FINDING: the rest the screen prescribes is on its
+       own longer than the fifteen minutes the screen used to claim. Without
+       this every assertion below is satisfied by a battery with no rests in
+       it. */
+    t.eq('guard: nine enforced rests really are eighteen minutes', r.restSec, 1080, r);
+    t.ok('guard: which alone is longer than the old claim of fifteen', r.restMin > 15, r);
+    t.eq('guard: and it is derived from the battery, not restated', r.restSec,
+      (r.tests - 1) * 120, r);
+
+    t.ok('the hero no longer claims fifteen minutes', !/~15 minutes/.test(r.heroText), r);
+    t.eq('an untested athlete is told the 23 minutes it takes them',
+      r.heroText, '~23 minutes · sets your whole program', r);
+    t.eq('and the helper agrees with the glass', r.minFresh, 23, r);
+    t.ok('the figure can never be shorter than the rest it prescribes',
+      r.minFresh >= r.restMin, r);
+    t.eq('the effort is priced at the rep cadence, not one second a rep',
+      r.effortFresh, 275, r);
+
+    t.eq('an athlete at the published benchmarks is told 32', r.minStrong, 32, r);
+    t.ok('so the figure tracks the athlete rather than being a constant',
+      r.minStrong > r.minFresh, r);
+
+    t.ok('FLOOR: the screen still asks for two minutes between tests', r.saysRest2, r);
+    t.ok('FLOOR: the training-day figure beside it is untouched',
+      typeof r.typ === 'number' && r.typ > 0 && r.typ < 90, r);
+
+    await page.evaluate(v => { STATE.baseline = v ? JSON.parse(v) : null; }, saved);
+  }
+
+
+  /* THE CARD PRESCRIBED TWO SETS AND PLAY DELIVERED ONE, THEN TICKED IT DONE.
+
+     quickPlay() ran a single hold and handed quickMark() straight to onDone, so
+     "Forearm Plank · 2 × 0:30" was checked off after one 30-second hold and the
+     Finish button went green on half the work — the completion gate's own rule
+     ("a skipped set is not a completed one") on the surface that states the
+     prescription one line above the button.
+
+     The minutes beside it were hand-written and had never been near the content
+     they label. Declared against what the card actually prescribes:
+
+       core5 5/7   burn7 7/11   oblique6 6/10   hiit8 8/10
+       lower6 6/12  full10 10/16  quiet6 6/11   morning5 5/9
+
+     Every one understated, by 1.25x to 2x. Same class as v449's warm-up: a
+     duration written by hand beside the list that decides it.
+
+     And the check button said "Unmark" and could not unmark — quickMark() only
+     ever wrote true, so a mis-tap was permanent and the accessible name promised
+     a control that did not exist. Play now goes through quickSetDone(), because
+     a finished set must never untick the movement it just completed. */
+  {
+    await seedAthlete(page);
+    await waitForBoot(page);
+
+    const g = await page.evaluate(() => ({
+      multiSet: QUICKIES.filter(q => q.items.some(it => it.sets > 1)).length,
+      total: QUICKIES.length,
+      declaredGone: QUICKIES.every(q => q.mins === undefined),
+      mins: QUICKIES.map(q => [q.id, quickMins(q)]),
+      sets: QUICKIES.map(q => q.items.reduce((a, x) => a + x.sets, 0)),
+    }));
+    t.eq('guard: every quick workout really does prescribe more than one set',
+      g.multiSet, g.total, g);
+    t.ok('the hand-written minutes are gone from the registry', g.declaredGone, g);
+
+    /* PIN THE VALUE, NOT THE IDENTITY. Comparing against quickMins() itself
+       moves both sides of the assertion the moment a mutant changes it. */
+    const mins = Object.fromEntries(g.mins);
+    t.eq('the shortest workout is priced at the 7 minutes it takes', mins.core5, 7, g);
+    t.eq('and the longest at 16, not the 10 it used to claim', mins.full10, 16, g);
+    t.ok('none of them is ever reported as zero minutes',
+      g.mins.every(([, m]) => m >= 1), g);
+    t.ok('and the figure tracks the content: more sets, more minutes',
+      mins.full10 > mins.core5 && mins.lower6 > mins.core5, g);
+
+    /* ONE WORKOUT CANNOT SPEAK FOR EIGHT. The first version of this read the
+       chip for full10 alone, and a mutant that hardcoded `${q.mins||16}` back
+       into the picker printed "16 min" on every chip in the app and PASSED —
+       because 16 is full10's own answer. The discriminating case is a second
+       workout whose derived figure is different, so the chip is read for EVERY
+       quick workout and each is pinned against its own value. */
+    const label = await page.evaluate(() => {
+      QUICK_ID = 'full10'; quickState = { done: {} }; go('quick');
+      const v = document.querySelector('#v-quick');
+      const hero = (v.querySelector('.hlbl') || {}).textContent;
+      openQuickList();
+      const chips = {};
+      QUICKIES.forEach(q => {
+        const el = document.querySelector('#sheet [onclick*="openQuick(\'' + q.id + '\')"] .chip');
+        chips[q.id] = el ? el.textContent : null;
+      });
+      return { hero, chips };
+    });
+    await page.evaluate(() => closeSheet());
+    t.eq('the hero prints the derived figure', label.hero, 'Quick workout · ~16 min', label);
+    /* GUARD: the eight workouts really do have different answers, or "every
+       chip matches its own workout" is one number asserted eight times. */
+    t.ok('guard: the derived figures genuinely differ across the eight',
+      new Set(g.mins.map(([, m]) => m)).size >= 4, JSON.stringify(g.mins));
+    const chipMismatch = g.mins.filter(([id, m]) => label.chips[id] !== m + ' min');
+    t.eq('and every picker chip prints its OWN derived figure, not one number for all',
+      chipMismatch.length, 0, JSON.stringify({ mins: g.mins, chips: label.chips }));
+
+    /* Driven, not called: a single set shortened to one second so the whole
+       chain — set, rest, set, tick — runs inside the suite. */
+    const run = await page.evaluate(async () => {
+      const o = {};
+      QUICK_ID = 'core5'; quickState = { done: {} }; go('quick');
+      const q = QUICKIES.find(x => x.id === 'core5');
+      const keep = q.items.map(it => ({ t: it.target, r: it.rest, s: it.sets }));
+      q.items[0].target = 1; q.items[0].rest = 1;
+      o.sets0 = q.items[0].sets;
+      quickPlay(0);
+      o.label1 = (document.querySelector('#sheet .tt') || {}).textContent;
+      await new Promise(r => setTimeout(r, 7500));
+      o.doneAfterSet1 = !!(quickState.done && quickState.done[0]);
+      await new Promise(r => setTimeout(r, 3000));
+      o.label2 = (document.querySelector('#sheet .tt') || {}).textContent;
+      await new Promise(r => setTimeout(r, 7000));
+      o.doneAfterSet2 = !!(quickState.done && quickState.done[0]);
+
+      /* THE REP CADENCE IS THE OTHER RUNNER, and it has its own chain. A check
+         that only drives the timed one leaves half the fix unexercised. */
+      quickState.done = {};
+      q.items[2].target = 1; q.items[2].rest = 1;
+      o.repUnit = (EX[quickExId(q.items[2].exId)] || {}).unit;
+      o.repSets = q.items[2].sets;
+      quickPlay(2);
+      await new Promise(r => setTimeout(r, 9000));
+      o.repDoneAfterSet1 = !!quickState.done[2];
+      await new Promise(r => setTimeout(r, 11000));
+      o.repLabel2 = (document.querySelector('#sheet .tt') || {}).textContent;
+      await new Promise(r => setTimeout(r, 9000));
+      o.repDoneAfterSet2 = !!quickState.done[2];
+
+      /* FLOOR: a one-set movement still ticks after its one set, its label
+         carries no set counter, and Play must not UNtick a movement that was
+         already checked off. */
+      q.items[3].target = 1; q.items[3].rest = 1; q.items[3].sets = 1;
+      quickState.done[3] = true;
+      quickPlay(3);
+      o.labelSingle = (document.querySelector('#sheet .tt') || {}).textContent;
+      await new Promise(r => setTimeout(r, 9000));
+      o.singleStillDone = !!quickState.done[3];
+
+      q.items.forEach((it, i) => { it.target = keep[i].t; it.rest = keep[i].r; it.sets = keep[i].s; });
+      closeSheet();
+
+      quickState.done = {};
+      quickMark(2); const a = !!quickState.done[2];
+      quickMark(2); const b = !!quickState.done[2];
+      o.toggle = [a, b];
+      o.aria = (() => { quickState.done = { 0: true }; renderQuick();
+        const c = document.querySelectorAll('#v-quick .ex-check');
+        return [c[0].getAttribute('aria-label'), c[1].getAttribute('aria-label')]; })();
+      o.names = q.items.slice(0, 4).map(it => (EX[quickExId(it.exId)] || EX[it.exId]).name);
+      return o;
+    });
+    t.eq('guard: the movement being driven really carries two sets', run.sets0, 2, run);
+    t.eq('the set counter names which set it is', run.label1, 'Forearm Plank · set 1 of 2', run);
+    t.ok('one set of two does NOT tick the movement off', !run.doneAfterSet1, run);
+    t.eq('the chain hands on to the second set on its own',
+      run.label2, 'Forearm Plank · set 2 of 2', run);
+    t.ok('and the last set is what ticks it', run.doneAfterSet2, run);
+    t.eq('guard: the second movement really is rep-counted', run.repUnit, 'reps', run);
+    t.eq('guard: and really carries two sets', run.repSets, 2, run);
+    t.ok('the rep cadence chains its sets too, and one of two does not tick it',
+      !run.repDoneAfterSet1, run);
+    t.eq('its second set is named as such', run.repLabel2, run.names[2] + ' · set 2 of 2', run);
+    t.ok('and the last one ticks it', run.repDoneAfterSet2, run);
+
+    t.ok('FLOOR: a one-set movement carries no set counter',
+      !/set \d+ of/.test(run.labelSingle || ''), run);
+    t.ok('FLOOR: Play never unticks a movement it just finished', run.singleStillDone, run);
+    t.eq('the check button toggles both ways', run.toggle, [true, false], run);
+    t.eq('and its accessible name says which way it will go',
+      run.aria, ['Unmark ' + run.names[0] + ' as done', 'Mark ' + run.names[1] + ' as done'], run);
+    t.ok('guard: the two names really differ, so the pair is not one assertion twice',
+      run.names[0] !== run.names[1], run);
+
+    const src451 = await page.evaluate(() => {
+      const sc = [...document.querySelectorAll('script:not([src])')]
+        .map(x => x.textContent).sort((a, b) => b.length - a.length)[0] || '';
+      return { big: sc.length > 100000, rawMins: /\$\{q\.mins\}/.test(sc) };
+    });
+    t.ok('guard: the source scan read the app', src451.big, src451);
+    t.ok('no label site restates the minutes by hand', !src451.rawMins, src451);
+  }
+
+
+  /* ---------- v452: the verdict was removed and the evidence was left -------
+     toggleEx() ticks a whole movement and fills every one of its sets. Unticking
+     changed nothing but the flag, so the sets the tick had just written stayed
+     marked. Measured on a real session — tick all five movements, then untick
+     all five:
+
+       header         0/5 exercises · 13/13 sets · 100%
+       sessionWork()  setsDone 13 of 13
+       commitSession  done:true, partial:false
+
+     A hundred per cent beside zero movements on one line, and a FULL SESSION
+     recorded for an athlete who had just cleared every one of them — the
+     completion gate crediting work that was explicitly taken back. */
+  {
+    await seedAthlete(page);
+    await waitForBoot(page);
+
+    const r = await page.evaluate(() => {
+      const o = {};
+      TODAY_TAB = 'workout'; go('today');
+      const ptr = STATE.progressPtr, sess = buildSession(ptr);
+      const moves = [...sess.main, sess.finisher].filter(Boolean);
+      const m = moves[0];
+      o.sets = m.sets;
+      o.moves = moves.length;
+      const hdr = () => { renderToday();
+        const t = (document.querySelector('#v-today').textContent || '').replace(/\s+/g, ' ');
+        return (t.match(/\d+\/\d+ exercises · \d+\/\d+ sets · \d+%/) || [])[0]; };
+      const st = () => Object.assign({}, ensureLog().ex[m.exId] || {});
+
+      o.hdr0 = hdr();
+      toggleEx(m.exId);
+      o.tick = { done: !!st().done, sets: (st().sets || []).filter(Boolean).length,
+                 counted: setsDoneFor(st(), m), pr: bestFor(m.exId) };
+      toggleEx(m.exId);
+      o.untick = { done: !!st().done, sets: (st().sets || []).filter(Boolean).length,
+                   counted: setsDoneFor(st(), m) };
+
+      /* FLOOR: a set the athlete marked one at a time is nobody's to clear. */
+      toggleSet(m.exId, 0); toggleSet(m.exId, 1);
+      o.partial = { marked: setsDoneFor(st(), m), done: !!st().done };
+      o.partialSurvivesRender = (renderToday(), setsDoneFor(st(), m));
+      toggleSet(m.exId, 0); toggleSet(m.exId, 1);
+
+      moves.forEach(x => toggleEx(x.exId));
+      o.allOn = { work: sessionWork(ptr), hdr: hdr() };
+      moves.forEach(x => toggleEx(x.exId));
+      o.allOff = { work: sessionWork(ptr), hdr: hdr() };
+
+      commitSession('ok');
+      o.commit = { moved: STATE.progressPtr !== ptr, done: !!(STATE.logs[ptr] || {}).done };
+      STATE.progressPtr = ptr; STATE.logs = {}; save();
+      return o;
+    });
+
+    t.ok('guard: the movement being driven carries more than one set', r.sets > 1, r);
+    t.ok('guard: and the session has several movements to clear', r.moves > 1, r);
+    t.eq('guard: nothing is marked before the block starts',
+      r.hdr0, '0/' + r.moves + ' exercises · 0/' + r.allOn.work.setsAsked + ' sets · 0%', r);
+
+    t.ok('ticking a movement still fills every set it asks for',
+      r.tick.done && r.tick.sets === r.sets && r.tick.counted === r.sets, r);
+    t.ok('FLOOR: and still records the personal best', r.tick.pr > 0, r);
+
+    t.ok('unticking takes back what the tick wrote',
+      !r.untick.done && r.untick.sets === 0 && r.untick.counted === 0, r);
+
+    t.eq('FLOOR: sets marked one at a time are left alone', r.partial.marked, 2, r);
+    t.ok('FLOOR: and two of three is not a finished movement', !r.partial.done, r);
+    t.eq('FLOOR: a render does not clear them either', r.partialSurvivesRender, 2, r);
+
+    t.eq('a session ticked right through reads 100%',
+      r.allOn.hdr, r.moves + '/' + r.moves + ' exercises · ' +
+      r.allOn.work.setsAsked + '/' + r.allOn.work.setsAsked + ' sets · 100%', r);
+    t.eq('and cleared right through reads zero, not a hundred',
+      r.allOff.hdr, '0/' + r.moves + ' exercises · 0/' + r.allOn.work.setsAsked + ' sets · 0%', r);
+    t.eq('the work behind it is zero too', r.allOff.work.setsDone, 0, r);
+
+    t.ok('and the completion gate refuses a session with nothing left marked',
+      !r.commit.moved && !r.commit.done, r);
+  }
+
+  /* ---- v453 — the preview showed a warm-up nobody does -------------------
+     buildSession() carried WARMUP = ['march','glutebridge','birddog'] and a
+     three-stretch COOLDOWN, both predating the guided flows. EX.march is
+     "Single-Leg Dead Bug", not the flow's "March in Place" — so the Program
+     calendar's preview sheet listed three movements the athlete never performs,
+     captioned "8/side", and had no cool-down section at all. Two estimators
+     priced those lists at 3*35 + 3*33 = 204s against the 563s the flows really
+     take, so the Day-1 hero read 25 minutes where 31 is the answer. */
+  {
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const o = {};
+      const sess = buildSession(0);
+      o.legacyGone = (typeof sess.warmup === 'undefined' && typeof sess.cooldown === 'undefined');
+      const wf = warmupFlow(), cf = cooldownFlow();
+      o.wN = wf.length; o.cN = cf.length;
+      o.flowSec = flowSecs(wf) + flowSecs(cf);
+      o.legacySec = 3 * 35 + 3 * 33;   // what the removed expression priced
+      o.wMin = flowMins(wf); o.cMin = flowMins(cf);
+      o.vol = sessionVolume(sess).minutes;
+      const items = [...sess.main, sess.finisher].filter(Boolean);
+      o.work = plBudgetMin(items, repTempoSetting());
+      o.typical = typicalSessionMin();
+      /* sessionStats(p, true) adds the warm-up and cool-down allowance that
+         sessionStats(p) omits, so the difference IS that allowance. */
+      o.statFull = sessionStats(0, true).estMin;
+      o.statRow = sessionStats(0).estMin;
+      previewSession(0);
+      const sh = document.querySelector('#sheet');
+      o.txt = (sh ? sh.textContent : '').replace(/\s+/g, ' ');
+      closeSheet();
+      return o;
+    });
+
+    // guards — the two lists must genuinely differ, or every assertion below
+    // is satisfied by a preview that was already showing the right thing
+    t.ok('guard: the real flows are the eight-move warm-up and seven-move cool-down',
+      r.wN === 8 && r.cN === 7, JSON.stringify({ w: r.wN, c: r.cN }));
+    t.ok('guard: and they cost far more than the removed expression priced',
+      r.flowSec === 563 && r.legacySec === 204, JSON.stringify({ real: r.flowSec, old: r.legacySec }));
+
+    t.ok('buildSession no longer hands out a legacy warm-up or cool-down', r.legacyGone, r.legacyGone);
+
+    t.ok('the preview lists the flow the athlete really runs',
+      r.txt.indexOf('March in Place') >= 0 && r.txt.indexOf('Standing Knee Hugs') >= 0, r.txt.slice(0, 240));
+    t.ok('and not the three exercises nobody performs in it',
+      r.txt.indexOf('Single-Leg Dead Bug') < 0, r.txt.slice(0, 240));
+    t.ok('the preview has a cool-down section at all',
+      /Cool-down · ~\d+ min/.test(r.txt) && r.txt.indexOf('Deep Breathing') >= 0, r.txt.slice(-260));
+    t.ok('each section carries its own minutes',
+      r.txt.indexOf('Warm-up · ~' + r.wMin + ' min') >= 0 &&
+      r.txt.indexOf('Main work · ~' + r.vol + ' min') >= 0 &&
+      r.txt.indexOf('Cool-down · ~' + r.cMin + ' min') >= 0, r.txt.slice(0, 200));
+    t.ok('and the chip is the whole sheet, not the main work alone',
+      r.txt.indexOf('~' + (r.vol + r.wMin + r.cMin) + ' min total') >= 0 && r.wMin + r.cMin > 0,
+      JSON.stringify({ vol: r.vol, w: r.wMin, c: r.cMin }));
+
+    /* THE PAYLOAD IS THE FLOW MINUTES REACHING THE HERO, not the hero's own
+       figure — which moves with the athlete. The removed expression contributed
+       3; the flows contribute 9. */
+    t.eq("the Day-1 hero counts the flows the athlete really runs",
+      r.typical - r.work, Math.round(r.flowSec / 60), JSON.stringify({ typical: r.typical, work: r.work }));
+    t.ok('which is nine minutes, not the three the legacy lists priced',
+      r.typical - r.work === 9 && Math.round(r.legacySec / 60) === 3, JSON.stringify({ gap: r.typical - r.work }));
+
+    /* The session-clock estimator is the second consumer, and suite 08 reads
+       its figure back out of the app — so a mutant moving that arithmetic moves
+       both sides of every assertion there. Pin the ALLOWANCE, and pin it as a
+       value: the difference between the full estimate and the row's is exactly
+       the flows, and the removed expression made it three minutes. */
+    t.ok('the session estimate adds the flows the athlete really runs',
+      Math.abs((r.statFull - r.statRow) - Math.round(r.flowSec / 60)) <= 1,
+      JSON.stringify({ full: r.statFull, row: r.statRow, flows: Math.round(r.flowSec / 60) }));
+    t.ok('which is about nine minutes there too, never the legacy three',
+      r.statFull - r.statRow >= 8, JSON.stringify({ gap: r.statFull - r.statRow }));
+
+    /* ONLY A FLAGGED ATHLETE CAN TELL THE BUILDER FROM THE RAW ARRAY. An
+       unflagged one gets WARMUP_FLOW back unchanged, so a preview reverted to
+       the raw literal would satisfy every assertion above. */
+    const f = await page.evaluate(() => {
+      const keep = (STATE.profile.limitations || []).slice();
+      STATE.profile.limitations = ['lowback'];
+      const o = { w: warmupFlow().map(x => x.n), c: cooldownFlow().map(x => x.n) };
+      o.rawHasTwist = WARMUP_FLOW.some(x => x.n === 'Standing Torso Twists');
+      o.rawCool = COOLDOWN_FLOW.length;
+      previewSession(0);
+      const sh = document.querySelector('#sheet');
+      o.txt = (sh ? sh.textContent : '').replace(/\s+/g, ' ');
+      closeSheet();
+      STATE.profile.limitations = keep;
+      return o;
+    });
+    t.ok('guard: the raw warm-up really does carry a move a flagged low back loses',
+      f.rawHasTwist && f.rawCool === 7, JSON.stringify({ twist: f.rawHasTwist, cool: f.rawCool }));
+    t.ok('a flagged low back is previewed the SHORTENED warm-up',
+      f.w.indexOf('Standing Torso Twists') < 0 && f.txt.indexOf('Standing Torso Twists') < 0,
+      JSON.stringify(f.w));
+    t.ok('and the shortened cool-down',
+      f.c.length < f.rawCool && f.txt.indexOf('Cobra Stretch') < 0, JSON.stringify(f.c));
+    t.ok('while the moves it keeps are still listed',
+      f.txt.indexOf('March in Place') >= 0 && f.txt.indexOf('Deep Breathing') >= 0, f.txt.slice(0, 200));
+  }
+
+  /* ---- v454 — the picker looked chosen and announced nothing -------------
+     v411 gave every control an accessible NAME and v413 gave the app a live
+     region to announce through. Neither asked what a control announces about
+     its own STATE.
+
+     The bottom nav has carried aria-current since it was written and go()
+     maintains it. Measured, nothing else in the app did: 32 rendered groups
+     where exactly one sibling button is visually marked and NOT ONE carried an
+     accessible state — the three sub-tab strips among them, plus the goal, the
+     diet, the cardio mode, the intensity, the unit, the theme, the coach tone,
+     the beat tempo, the strength metric, the prep path and the sex picker.
+
+     So a screen-reader athlete heard four buttons named Summary, Body,
+     Strength and Awards and could not tell which pane they were on, and heard
+     seven goal names with nothing to say which one their whole nutrition plan
+     was built from. One of a pair guarded and its twin not, 32 members wide. */
+  {
+    await seedAthlete(page);
+    const scanState = async lbl => await page.evaluate(l => {
+      const g = [];
+      [document.querySelector('.view.active'), document.querySelector('#sheet')]
+        .filter(Boolean).forEach(root => root.querySelectorAll('*').forEach(par => {
+          const kids = [...par.children].filter(c => c.tagName === 'BUTTON');
+          if (kids.length < 2) return;
+          const on = kids.filter(k => (k.className || '').split(/\s+/).indexOf('on') >= 0);
+          if (on.length !== 1) return;   // a single-select group, visually marked
+          const stated = kids.filter(k => k.hasAttribute('aria-pressed') ||
+            k.hasAttribute('aria-current') || k.hasAttribute('aria-selected'));
+          g.push({
+            where: l, n: kids.length, stated: stated.length,
+            press: kids.filter(k => k.hasAttribute('aria-pressed')).length,
+            curr: kids.filter(k => k.getAttribute('aria-current') === 'true').length,
+            trues: kids.filter(k => k.getAttribute('aria-pressed') === 'true' ||
+              k.getAttribute('aria-current') === 'true').length,
+            sample: kids.map(k => (k.innerText || '').trim().slice(0, 12)).slice(0, 3)
+          });
+        }));
+      return g;
+    }, lbl);
+
+    const groups = [];
+    for (const tab of ['today', 'program', 'progress', 'fuel', 'ref', 'guide']) {
+      await page.evaluate(x => go(x), tab);
+      groups.push(...await scanState(tab));
+    }
+    await page.evaluate(() => go('today'));
+    for (const pane of ['brief', 'warmup', 'workout', 'cooldown']) {
+      await page.evaluate(x => setTodayTab(x), pane);
+      groups.push(...await scanState('today/' + pane));
+    }
+    await page.evaluate(() => go('progress'));
+    for (const pane of ['summary', 'body', 'strength', 'awards']) {
+      await page.evaluate(x => setProgressTab(x), pane);
+      groups.push(...await scanState('progress/' + pane));
+    }
+    await page.evaluate(() => go('today'));
+    for (const sh of ['openMobility', 'openReadiness', 'openRuck', 'openSkipping', 'openForcePrep', 'openTDEE']) {
+      try { await page.evaluate(f => window[f](), sh); } catch (e) {}
+      groups.push(...await scanState('sheet/' + sh));
+      await page.evaluate(() => { try { closeSheet(); } catch (e) {} });
+      await page.waitForTimeout(150);
+    }
+
+    /* GUARD, BOTH WAYS, on a SYNTHETIC group rather than the real screens, so
+       it stays true whatever the app becomes: a marked group with no state must
+       BE reported, and one with state must NOT be — otherwise "zero stateless"
+       is a statement about the selector. */
+    const det = await page.evaluate(() => {
+      const mk = withState => {
+        const d = document.createElement('div');
+        d.innerHTML = '<button class="on">A</button><button>B</button>';
+        if (withState) { d.children[0].setAttribute('aria-pressed', 'true'); d.children[1].setAttribute('aria-pressed', 'false'); }
+        document.querySelector('.view.active').appendChild(d);
+        const kids = [...d.children];
+        const marked = kids.filter(k => (k.className || '').split(/\s+/).indexOf('on') >= 0).length === 1;
+        const stated = kids.filter(k => k.hasAttribute('aria-pressed')).length;
+        d.remove();
+        return { marked, stated, n: kids.length };
+      };
+      return { bare: mk(false), good: mk(true) };
+    });
+    t.ok('guard: a marked group with no accessible state is reported',
+      det.bare.marked && det.bare.stated === 0, JSON.stringify(det.bare));
+    t.ok('guard: and one that carries state is not',
+      det.good.marked && det.good.stated === det.good.n, JSON.stringify(det.good));
+    t.ok('guard: the sweep really walked the pickers', groups.length >= 20, String(groups.length));
+
+    const stateless = groups.filter(g => g.stated === 0);
+    t.eq('every visually-marked picker announces which option is chosen',
+      stateless.length, 0, JSON.stringify(stateless.slice(0, 8)));
+
+    /* FLOOR: a HALF-STATED aria-pressed group is exactly as silent about the
+       options it skipped as the whole group used to be, so every button in one
+       must carry it. An aria-current group is the opposite and the check has to
+       say so: absence IS "not current" there, which is how the bottom nav has
+       encoded it since it was written, so exactly one marked button is right
+       and writing aria-current="false" on the rest would be noise. */
+    const partial = groups.filter(g => g.press > 0 && g.press < g.n);
+    t.eq('every option of an aria-pressed group carries it, not only the chosen one',
+      partial.length, 0, JSON.stringify(partial.slice(0, 6)));
+    const mixed = groups.filter(g => g.press > 0 && g.curr > 0);
+    t.eq('and no group mixes the two encodings', mixed.length, 0, JSON.stringify(mixed.slice(0, 6)));
+
+    /* FLOOR: EXACTLY ONE reads true. A fix that marked every option chosen
+       satisfies both assertions above and tells the athlete nothing; one that
+       marked none satisfies them too. */
+    const wrongCount = groups.filter(g => g.trues !== 1);
+    t.eq('and exactly one of them reads as the chosen one',
+      wrongCount.length, 0, JSON.stringify(wrongCount.slice(0, 6)));
+
+    /* The three sub-tab strips are the sharpest case — the same control type as
+       the bottom nav, one level down, added by v312 and v314 and never given
+       the state the nav already had. They use aria-current, matching it. */
+    const strips = await page.evaluate(() => {
+      const o = {};
+      const read = sel => {
+        const b = [...document.querySelectorAll(sel)];
+        return { n: b.length, cur: b.filter(x => x.getAttribute('aria-current') === 'true').length };
+      };
+      go('today'); setTodayTab('workout'); o.today = read('#v-today .ttab');
+      go('progress'); setProgressTab('body'); o.progress = read('#v-progress .ttab');
+      go('ref'); o.ref = read('#v-ref .ttab');
+      o.nav = [...document.querySelectorAll('.nav button')].filter(x => x.hasAttribute('aria-current')).length;
+      go('today');
+      return o;
+    });
+    t.ok('guard: the bottom nav still marks the page it is on', strips.nav === 1, JSON.stringify(strips));
+    t.ok('the Today sub-tabs mark the pane, one of them', strips.today.n >= 4 && strips.today.cur === 1, JSON.stringify(strips.today));
+    t.ok('so do the Progress sub-tabs', strips.progress.n >= 4 && strips.progress.cur === 1, JSON.stringify(strips.progress));
+    t.ok('and the Reference sub-tabs', strips.ref.n >= 2 && strips.ref.cur === 1, JSON.stringify(strips.ref));
+  }
+
+  /* ---- and the one collapsible in the app (v454) ------------------------
+     The recipe rows on Reference open and close. The chevron turns and nothing
+     said so — the same defect as a picker that looks chosen and announces
+     nothing, on the one control in this app that expands. */
+  {
+    await page.evaluate(() => { REF_TAB = 'food'; go('ref'); });
+    await page.waitForTimeout(150);
+    const before = await page.evaluate(() => {
+      const b = [...document.querySelectorAll('#v-ref [id^="rcb-"]')];
+      return {
+        n: b.length,
+        expanded: b.map(x => x.getAttribute('aria-expanded')),
+        controls: b.map(x => !!document.getElementById(x.getAttribute('aria-controls') || '')),
+        firstId: b.length ? b[0].id : null
+      };
+    });
+    t.ok('guard: the meal plan really rendered its recipe rows', before.n >= 2, JSON.stringify(before));
+    t.ok('every recipe row starts closed and says so',
+      before.expanded.every(v => v === 'false'), JSON.stringify(before.expanded));
+    t.ok('and each names the panel it opens', before.controls.every(Boolean), JSON.stringify(before.controls));
+
+    const after = await page.evaluate(id => {
+      const b = document.getElementById(id); b.click();
+      const panel = document.getElementById(b.getAttribute('aria-controls'));
+      const open = { exp: b.getAttribute('aria-expanded'), shown: panel.style.display !== 'none' };
+      b.click();
+      return { open, shut: { exp: b.getAttribute('aria-expanded'), shown: panel.style.display !== 'none' } };
+    }, before.firstId);
+    t.ok('opening one announces that it opened', after.open.exp === 'true' && after.open.shown, JSON.stringify(after.open));
+    /* FLOOR: a value welded to "true" satisfies the assertion above and never
+       comes back — the state has to follow the panel in both directions. */
+    t.ok('and closing it announces that it closed', after.shut.exp === 'false' && !after.shut.shown, JSON.stringify(after.shut));
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

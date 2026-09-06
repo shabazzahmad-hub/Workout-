@@ -875,14 +875,25 @@ export default async function run() {
       const many = build(), manyBad = unsafe(many);
       STATE.profile.limitations = []; STATE.profile.tightSpace = true;
       const tight = build(), tightBad = unsafe(tight);
-      // the flows, checked in the same breath
-      STATE.profile.limitations = ['shoulder', 'knee', 'back', 'wrist', 'neck', 'hip'];
-      const flows = unsafe([...WARMUP, ...COOLDOWN]);
+      /* THE FLOWS, THROUGH THE APP'S OWN FILTER. This used to read
+         unsafe([...WARMUP, ...COOLDOWN]) — the legacy lists, removed in v453.
+         COOLDOWN held {n,d} OBJECTS, so safeSwap(obj) returned the object it
+         was handed and that half of the assertion could never fire; WARMUP
+         held three exercise ids the athlete never performs. Flow items carry
+         no exId at all, so safeSwap cannot speak for them: safeFlow() is the
+         predicate, and it matches on NAME through FLOW_RISK. */
+      STATE.profile.limitations = ['shoulder', 'knee', 'wrist', 'lowback', 'elbow'];
+      const lims = STATE.profile.limitations;
+      const risky = l => l.filter(f => (FLOW_RISK[f && f.n] || []).some(j => lims.indexOf(j) >= 0)).map(f => f.n);
+      const flows = risky([...warmupFlow(), ...cooldownFlow()]);
+      // guard: the raw flows DO carry contraindicated moves for these flags,
+      // so an empty `flows` is a statement about safeFlow rather than the data
+      const flowsRaw = risky([...WARMUP_FLOW, ...COOLDOWN_FLOW]);
       const k = JSON.parse(keep);
       STATE.profile.limitations = k.l; STATE.profile.tightSpace = k.t;
       return { cleanN: clean.length, kneeBad, manyBad,
         manyN: many.length, tightBad,
-        dupes: many.length !== new Set(many).size, flows,
+        dupes: many.length !== new Set(many).size, flows, flowsRaw,
         // guard: prove the flag actually bites, or the checks above are vacuous
         swapLive: (STATE.profile.limitations = ['knee'], safeSwap('tuckjump') !== 'tuckjump') };
     }, ATHLETE);
@@ -893,6 +904,8 @@ export default async function run() {
     t.ok('and a session is still built rather than emptied', r.manyN >= 3, r);
     t.eq('a tight room yields no travelling movement', r.tightBad, []);
     t.ok('two pool entries collapsing on one alternative do not repeat it', !r.dupes, r);
+    t.ok('guard: the raw flows really do carry contraindicated moves for those flags',
+      r.flowsRaw.length > 0, JSON.stringify(r.flowsRaw));
     t.eq('warm-up and cool-down carry nothing contraindicated', r.flows, []);
   }
 

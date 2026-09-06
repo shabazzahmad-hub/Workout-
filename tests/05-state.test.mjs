@@ -706,9 +706,17 @@ export default async function run() {
       _normTouchedExisting({ n: { x: 1 } }, { n: { x: 1, y: 2 } }) === false,   // nested addition
       _normTouchedExisting({ n: { x: 1 } }, { n: { x: 9 } }) === true,          // nested change
       _normTouchedExisting({ l: [1, 2] }, { l: [1] }) === true,          // a dropped row
+      /* AND A GROWN ARRAY, which is the only case the length test decides on
+         its own. A SHORTENED one is caught by the element loop anyway —
+         _normTouchedExisting(2, undefined) is a removed value — so a mutant
+         deleting `a.length!==b.length` escaped every assertion here until this
+         line existed. normalizeState() never adds a row, so neither answer is
+         reachable from the app; the contract is pinned so the line means what
+         it says rather than being unfalsifiable. */
+      _normTouchedExisting({ l: [1] }, { l: [1, 2] }) === true,          // a row appeared
     ]);
     t.eq('_normTouchedExisting() counts changes and removals, never additions', pred,
-      [true, true, true, true, true, true, true, true]);
+      [true, true, true, true, true, true, true, true, true]);
     await browser.close();
     errors.forEach(e => t.fail('page error during the upgrade-note flow', e));
   }
@@ -4473,9 +4481,16 @@ export default async function run() {
       /* v316: the legacy STRING carries no pointer, so there is nothing to
          check it against and it must read as no request. */
       o.legacyTrainAgainDropped = STATE._trainAgain === undefined;
-      /* A HEALTHY UPGRADE MUST NOT CLAIM A REPAIR. v409: boot() used to flag
-         any diff, and nearly every version adds a field. */
+      /* v456 gave importData() the boot's own repair report, and this fixture
+         legitimately EARNS one: it carries two values the real v396 build could
+         not produce — activity 1.55, which v396's own normalizeState() snaps to
+         the option set, and hasBar/hasBench false beside a gear list holding
+         both. Before v456 this read false whatever the file contained, because
+         the flag was computed in boot() and nowhere else, so the assertion
+         under it passed on nothing. "A healthy restore claims no repair" is
+         pinned in the v456 block, against the faithful stored fixture. */
       o.repaired = !!STATE._dataRepaired;
+      o.repairedFields = [STATE.nutrition.activity, STATE.profile.hasBar];
       o.validator = (() => { const e = console.error; let n = 0; console.error = () => n++;
         try { validateData(); } catch (_) {} console.error = e; return n; })();
 
@@ -4491,7 +4506,7 @@ export default async function run() {
         go('today'); setTodayTab(x); render(); look('today:' + x); });
       o.bad = bad;
       const sess = buildSession(STATE.progressPtr);
-      o.session = { moves: sess.main.length, warm: sess.warmup.length, named: !!sess.session.name };
+      o.session = { moves: sess.main.length, warm: warmupFlow().length, named: !!sess.session.name };
       return o;
     }, legacy);
     await ctx.close();
@@ -4514,13 +4529,217 @@ export default async function run() {
     t.eq('and the activity logs', [r.kept.skip, r.kept.hold], [1, 1], JSON.stringify(r.kept));
     t.ok('the legacy train-again string fails closed rather than being trusted',
       r.legacyTrainAgainDropped, JSON.stringify(r));
-    t.ok('a healthy upgrade does not tell the athlete their data needed repairing',
-      !r.repaired, JSON.stringify(r));
+    t.ok('a restore that had to repair a stored value says so',
+      r.repaired, JSON.stringify(r));
+    t.eq('and the two values it repaired are the ones v396 could not have written',
+      r.repairedFields, [1.45, true], JSON.stringify(r.repairedFields));
     t.eq('the validator is clean on the restored state', r.validator, 0, JSON.stringify(r));
     t.eq('and nothing renders NaN, undefined or an invalid date', r.bad, [], JSON.stringify(r.bad));
     t.ok('and a real session still builds from where they left off',
       r.session.moves >= 3 && r.session.warm > 0 && r.session.named, JSON.stringify(r.session));
     t.eq('and the restore fires no page error', perr, []);
+  }
+
+  /* ---- and the door the athlete's phone actually takes (v454) -------------
+     The block above drives importData(). A real upgrade takes a DIFFERENT
+     door: the v396 state is already in localStorage AND in the IndexedDB
+     mirror, and loadState() reads it on the next boot — a separate code path,
+     with its own Object.assign over DEFAULT_STATE() per sub-object.
+
+     v409 drove this once as a probe and kept nothing, so nothing has ever
+     pinned it. It is the single most likely way a real athlete loses their
+     history, and this athlete is 58 versions behind. */
+  {
+    /* A BACKUP IS NOT WHAT A PHONE STORES, and the difference decides the
+       fixture. tests/fixtures/v396-stored.json is what the REAL v396 build
+       left in localStorage after loading the backup above — recorded by
+       serving that commit's own index.html — so every value in it is one v396
+       itself would leave. The backup fixture carries two that v396 could not:
+       activity 1.55, which v396's own normalizeState() snaps to the option
+       set, and hasBar/hasBench false beside a gear list holding both, which
+       v396 derives on every boot. Seeding those here would have the check
+       report a genuine repair as a false alarm. */
+    const legacy = readFileSync('tests/fixtures/v396-stored.json', 'utf8');
+    const ctx = await chromium.launch();
+    const pg = await ctx.newPage({ viewport: { width: 390, height: 844 } });
+    const perr2 = [];
+    pg.on('pageerror', e => perr2.push(String(e).slice(0, 160)));
+    await pg.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'networkidle' });
+    await waitForBoot(pg);
+
+    /* Seed BOTH stores. Clearing or writing only one does not reset the app —
+       load() takes whichever copy is genuinely NEWER, so a fresh boot's mirror
+       wins and the whole block then measures a DEFAULT app with every "nothing
+       renders NaN" assertion passing on an empty screen. The key is STORE_KEY
+       in the mirror too, not a name of your own. */
+    const seeded = await pg.evaluate(async json => {
+      const p = JSON.parse(json);
+      delete p._photoData;                       // blobs live in their own keys
+      /* A phone's stored state carries live-session scratch — TRANSIENT_KEYS
+         is stripped from a BACKUP and never from the device. This is the v313
+         shape v316 replaced, added here rather than to the fixture because it
+         predates v396: dropping it must fail closed AND must not be reported
+         as a repair of the athlete's data. */
+      p._trainAgain = '2026-08-20';
+      const text = JSON.stringify(p);
+      localStorage.setItem('coreforge.v1', text);
+      await new Promise(res => {
+        const rq = indexedDB.open('coreforge', 1);
+        rq.onsuccess = () => { const db = rq.result;
+          const tx = db.transaction('kv', 'readwrite');
+          tx.objectStore('kv').put(text, 'coreforge.v1');
+          tx.oncomplete = () => res(); tx.onerror = () => res(); };
+        rq.onerror = () => res();
+      });
+      const back = await new Promise(res => {
+        const rq = indexedDB.open('coreforge', 1);
+        rq.onsuccess = () => { const db = rq.result;
+          const g = db.transaction('kv', 'readonly').objectStore('kv').get('coreforge.v1');
+          g.onsuccess = () => res(g.result || null); g.onerror = () => res(null); };
+        rq.onerror = () => res(null);
+      });
+      const rd = t => { try { return JSON.parse(t).profile.name; } catch (e) { return null; } };
+      return { name: p.profile.name, legacyShape: typeof p._trainAgain === 'string',
+        activity: p.nutrition.activity, hasBar: p.profile.hasBar,
+        inLocal: rd(localStorage.getItem('coreforge.v1')), inMirror: rd(back) };
+    }, legacy);
+
+    /* GUARDS FIRST: the fixture is the legacy shape, and BOTH stores really
+       hold it. Without the second, the reload below reads a default app. */
+    t.ok('guard: the seed carries the v313 train-again string', seeded.legacyShape, JSON.stringify(seeded));
+    t.ok('guard: and the fixture is what v396 itself normalises to',
+      seeded.activity === 1.45 && seeded.hasBar === true, JSON.stringify(seeded));
+    t.eq('guard: localStorage really holds the v396 state', seeded.inLocal, seeded.name, JSON.stringify(seeded));
+    t.eq('guard: and so does the IndexedDB mirror', seeded.inMirror, seeded.name, JSON.stringify(seeded));
+
+    await pg.reload({ waitUntil: 'networkidle' });
+    await waitForBoot(pg);
+
+    const up = await pg.evaluate(() => {
+      const o = { name: STATE.profile.name, logs: Object.keys(STATE.logs || {}).length,
+        ptr: STATE.progressPtr, prs: Object.keys(STATE.prs || {}).length,
+        badges: Object.keys(STATE.achievements || {}).length,
+        measures: (STATE.measurements || []).length,
+        protein: STATE.nutrition.proteinTarget, goal: STATE.profile.goal,
+        theme: STATE.settings.theme, lims: (STATE.profile.limitations || []).join(','),
+        adapt: STATE.adapt, baselineScore: STATE.baseline && STATE.baseline.score,
+        prepDate: STATE.prep && STATE.prep.date,
+        trainAgain: STATE._trainAgain === undefined,
+        repaired: !!STATE._dataRepaired };
+      o.validator = (() => { const e = console.error; let n = 0; console.error = () => n++;
+        try { validateData(); } catch (_) {} console.error = e; return n; })();
+      const bad = [];
+      const look = w => { const v = document.querySelector('.view.active');
+        const txt = v ? v.innerText : '';
+        ['NaN', 'undefined', 'Invalid Date', '[object'].forEach(x => {
+          if (txt.indexOf(x) >= 0) bad.push(w + ':' + x); }); };
+      ['today', 'program', 'fuel', 'progress', 'ref', 'guide'].forEach(x => { go(x); look(x); });
+      ['summary', 'body', 'strength', 'awards'].forEach(x => {
+        go('progress'); setProgressTab(x); render(); look('progress:' + x); });
+      o.bad = bad;
+      const sess = buildSession(STATE.progressPtr);
+      o.session = { moves: sess.main.length, warm: warmupFlow().length, named: !!sess.session.name };
+      return o;
+    });
+    await ctx.close();
+
+    /* AND THE FIRST ASSERTION IS THAT THE LOAD LANDED — every health check
+       below is satisfied by a default app that loaded nothing at all. */
+    t.eq('guard: the boot really loaded the v396 state', up.name, seeded.name, JSON.stringify(up));
+    t.eq('a v396 phone keeps every session it recorded', up.logs, 8, JSON.stringify(up));
+    t.eq('and the pointer it was at', up.ptr, 8, JSON.stringify(up));
+    t.eq('and the personal bests', up.prs, 2, JSON.stringify(up));
+    t.eq('and the badge', up.badges, 1, JSON.stringify(up));
+    t.eq('and both weigh-ins', up.measures, 2, JSON.stringify(up));
+    t.eq('and the hand-set protein target', up.protein, 165, JSON.stringify(up));
+    t.eq('and the goal', up.goal, 'leanrecomp', JSON.stringify(up));
+    t.eq('and the picked theme', up.theme, 'ember', JSON.stringify(up));
+    t.eq('and the flagged joint', up.lims, 'shoulder', JSON.stringify(up));
+    t.eq('and the adaptive load multiplier', up.adapt, 1.06, JSON.stringify(up));
+    t.eq('and the baseline score every target is scaled off', up.baselineScore, 71, JSON.stringify(up));
+    t.eq('and the prep block', up.prepDate, '2026-12-01', JSON.stringify(up));
+    t.ok('the legacy train-again string fails closed on this door too', up.trainAgain, JSON.stringify(up));
+    t.ok('and 58 versions of new fields do not claim the data needed repairing',
+      !up.repaired, JSON.stringify(up));
+    t.eq('the validator is clean on the loaded state', up.validator, 0, JSON.stringify(up));
+    t.eq('and nothing renders NaN, undefined or an invalid date', up.bad, [], JSON.stringify(up.bad));
+    t.ok('and a real session still builds from where they left off',
+      up.session.moves >= 3 && up.session.warm > 0 && up.session.named, JSON.stringify(up.session));
+    t.eq('and the upgrade fires no page error', perr2, []);
+  }
+
+  /* ---- the one door junk actually arrives by never reported it (v456) -----
+     dataHealthNoteHTML() exists to say "something was reset to a safe default".
+     Its flag was computed in boot() and NOWHERE ELSE — so a foreign backup, the
+     one door arbitrary JSON comes in through, repaired silently.
+
+     Measured on a file carrying adapt:99, an unrecognised diet and `logs` as an
+     ARRAY: the multiplier clamped to 1.3, the diet fell back to vegan and EVERY
+     SESSION IN THE FILE was reset to an empty map — with nothing on screen but
+     the toast "Backup restored". The next boot cannot catch it either: the
+     state has already been normalised, so the diff is empty by then.
+
+     The rule is hoisted into flagRepairs() and the three restore doors ask it,
+     rather than a second copy drifting from the boot's. */
+  {
+    const good = JSON.parse(readFileSync('tests/fixtures/v396-stored.json', 'utf8'));
+    const { browser: ibr, page: ipg, errors: ierr } = await launch(port);
+    await waitForBoot(ipg);
+    const drive = async payload => await ipg.evaluate(async json => {
+      const err = console.error; console.error = () => {};   // validateData() logs
+      try {
+        window.confirm = () => true;
+        const want = JSON.parse(json).profile.name;
+        const file = new File([json], 'b.json', { type: 'application/json' });
+        importData({ target: { files: [file] } });
+        for (let i = 0; i < 200 && STATE.profile.name !== want; i++)
+          await new Promise(z => setTimeout(z, 25));
+        go('guide'); render();
+        return { landed: STATE.profile.name === want, flag: !!STATE._dataRepaired,
+          adapt: STATE.adapt, logsIsArray: Array.isArray(STATE.logs),
+          logs: Object.keys(STATE.logs || {}).length,
+          note: /needed a repair/i.test(document.querySelector('#v-guide').innerText) };
+      } finally { console.error = err; }
+    }, payload);
+
+    const junk = JSON.parse(JSON.stringify(good));
+    junk.profile.name = 'Junk Backup';
+    junk.adapt = 99;            // v286: rateSession() clamps every increment to 0.9-1.30
+    junk.logs = [];             // v284: a keyed map arriving as a list
+    const bad = await drive(JSON.stringify(junk));
+
+    /* GUARDS: a repair really happened, or "the note fires" is a statement
+       about a file that needed nothing. */
+    t.ok('guard: the junk backup really landed', bad.landed, JSON.stringify(bad));
+    t.eq('guard: and the out-of-band multiplier really was clamped', bad.adapt, 1.3, JSON.stringify(bad));
+    t.ok('guard: and the array logs really were reset', !bad.logsIsArray && bad.logs === 0, JSON.stringify(bad));
+
+    t.ok('a restore that repaired the athlete\'s data says so', bad.flag, JSON.stringify(bad));
+    t.ok('and the note reaches the glass, not just the flag', bad.note, JSON.stringify(bad));
+
+    /* FLOOR: a HEALTHY backup must say nothing at all. A door that always
+       reported would put that warning in front of every restore ever made,
+       which is the v409 defect facing the other way. */
+    const clean = JSON.parse(JSON.stringify(good));
+    clean.profile.name = 'Clean Backup';
+    const ok = await drive(JSON.stringify(clean));
+    t.ok('guard: the clean backup landed too', ok.landed, JSON.stringify(ok));
+    t.ok('a healthy restore claims no repair', !ok.flag, JSON.stringify(ok));
+    t.ok('and puts no warning on the glass', !ok.note, JSON.stringify(ok));
+    t.eq('and it is a real restore, not an empty one', ok.logs, 8, JSON.stringify(ok));
+
+    /* FLOOR: a never-onboarded incoming state legitimately gains scaffolding —
+       the same gate boot() has, and the reason it reads onboarded BEFORE the
+       repair rather than after. */
+    const fresh = JSON.parse(JSON.stringify(good));
+    fresh.profile.name = 'Fresh Backup';
+    fresh.onboarded = false;
+    fresh.adapt = 99;
+    const fr = await drive(JSON.stringify(fresh));
+    t.ok('guard: the never-onboarded backup landed', fr.landed, JSON.stringify(fr));
+    t.ok('a never-onboarded restore is bootstrapping, not a repair', !fr.flag, JSON.stringify(fr));
+    t.eq('and no page error fires on any of the three', ierr.filter(e => !/render:recovered/.test(e)), []);
+    await ibr.close();
   }
 
   srv.close();

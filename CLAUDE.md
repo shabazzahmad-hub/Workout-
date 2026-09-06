@@ -16781,6 +16781,1265 @@ name. Twenty-eight mutants across the round, all caught.
 the driver's `assert count == 1` turned a bad seed into a clean no-op rather
 than a half-applied run — the fifth time that rule has paid.
 
+## The chart said 75 kg and the coach said 165 pounds (v447)
+
+`profile.goalWeightLb` is stored in POUNDS by name. Three sites turn it back
+into a shown figure and each hand-wrote the conversion; all three are correct.
+**The fourth — the morning brief, which the coach reads ALOUD — did not convert
+at all.** Measured on a metric athlete at 86 kg with a 75 kg goal:
+
+| surface | says |
+|---|---|
+| Progress ▸ Body | `🎯 Goal weight 75 kg · 11 kg to go` |
+| **the coach, every morning** | ***"from 190 pounds down to 165. You are 25 pounds out."*** |
+
+One fact, two surfaces, two answers — and **v315's rule is that a spoken
+figure is the one an athlete cannot double-check by looking.** It is the v446
+one-rep-max defect one screen over: the right number wearing a unit the
+athlete does not use.
+
+**The unit word is spelled out because it is SPOKEN** — *kilograms*, not `kg` —
+and the on-target sentence takes the singular because it is an adjective
+(*"your 75-kilogram target"*).
+
+**The goal is rounded the way the goal-weight sheet rounds it**, so the coach
+speaks the number the athlete actually typed into that sheet: 165 lb is
+74.84 kg, and the sheet shows and stores it as **75**. Rounding to one decimal
+would have the coach say a figure the control never showed. The mutant that
+does is caught.
+
+**The current weight goes through `weightShow()`**, which removes a fourth
+spelling of the kilogram-to-pound factor — this file already carried
+`*2.20462` here against `/0.453592` everywhere else, two constants for one
+conversion that happen to agree today.
+
+`goalWeightShow()` is now the one reader, asked by the wizard, the goal-weight
+sheet, the chart line and the brief, so a fifth site cannot be hand-written.
+
+### The same block hardcoded the DIRECTION as well as the unit
+
+The no-logged-weight branch read *"The mission: down to 205 pounds"* for
+everybody, so a **bulking** athlete with nothing logged was told to come down
+to their gain target. The branch beside it has read the two directions apart
+since v239; this one never learned. It says *"up to"* now, and the mutant that
+puts the hardcoded word back is caught.
+
+**The floor is the imperial athlete, byte-identical.** A fix that simply
+relabelled everything satisfies every metric assertion; two over-eager mutants
+— a `goalWeightShow()` that always converts, and a unit word that is always
+*kilogram* — fail exactly there.
+
+**The two surfaces are read SIDE BY SIDE in one check**, because the
+requirement is that they AGREE. Asserting either alone passes on half the
+code, which is how the disagreement lasted: the chart line had a check and the
+spoken line had one, and neither compared them.
+
+Eight mutants, all caught. Suite 10: 224 → 235.
+
+### And the assertion was written for the wrong sentence
+
+The first version required `/75 kilograms/`. The sentence carries the unit on
+the FIRST figure only — *"from 86 kilograms down to 75"* — exactly as the
+imperial wording always did, so it failed on correct copy. **Read the sentence
+the app really produces before writing the pattern for it.**
+
+## The warm-up you are SHOWN is not the warm-up you GET (v448)
+
+`runWarmup()` applies `jointAwareWarmup()`, `mobilityFlow()` and — inside
+`runFlow()` — `safeFlow()`. **Four surfaces listed the RAW arrays instead**, so
+every one of them described a session nobody does. Measured:
+
+| athlete | the screen said | what actually ran |
+|---|---|---|
+| **shoulder** flagged | lists **Arm Circles** | stripped; **Shoulder Activation** added in its place |
+| **low back** flagged | cool-down lists **7** stretches | **3** |
+| **limited mobility** | holds of **40s / 30s** | **50s / 38s** |
+| **low back** flagged | picker: **10 / 6 / 6** moves | **5 / 3 / 4** |
+
+**The shoulder case is the sharpest, because the coach reads the list ALOUD.**
+The athlete flagged a shoulder, the app removed Arm Circles for exactly that
+flag, and the brief still named it out loud — v315's rule, that a spoken
+address is the one nobody can double-check by looking, on the movement itself
+rather than on a tab name.
+
+**The low-mobility case is a pane contradicting its own note.** That screen
+says, in bold, *"You flagged limited mobility"* — and printed the
+un-lengthened seconds beside it.
+
+`warmupFlow()` and `cooldownFlow()` are the one builder, asked by the two Today
+panes, the spoken brief and `runWarmup()`/`runCooldown()` themselves.
+**`safeFlow()` is applied there as well as inside `runFlow()`**, which is safe
+because it is a filter: a second pass over its own output changes nothing.
+
+**"A couple more" was a hand-written count beside the list that holds it** —
+four named of eight is FOUR more, and the joint-aware addition can make it
+five. It is derived now, and says nothing at all when the flow is four items or
+fewer, which a heavily flagged athlete's really can be.
+
+**And the cool-down named a target it no longer had.** *"Stretches for the abs
+and low back"* — a low-back flag strips Cobra Stretch, which is the abs one,
+plus three more. It names the real stretches instead, which is also the more
+useful sentence.
+
+**The floors are what stop each fix being a deletion**, and every over-eager
+twin fails one: an unflagged athlete is shown the whole eight-move warm-up
+opening with March in Place and Arm Circles, and every flagged case has the
+unflagged one pinned beside it. **A guard asserts `safeFlow()` really strips
+Arm Circles for a shoulder** — without it every assertion below is satisfied by
+a filter that does nothing.
+
+**Pin the VALUE, not the identity.** Every expectation is an explicit array or
+number rather than the app's own expression, because comparing the pane against
+`safeFlow(mobilityFlow(jointAwareWarmup(WARMUP_FLOW)))` moves both sides of the
+comparison the moment a mutant changes the builder.
+
+## One fact, two surfaces, opposite hardcoded units (v448)
+
+The Fuel card printed **litres** to everybody and the spoken brief printed
+**ounces** to everybody — each hardcoded to the OPPOSITE unit system, and
+neither followed the athlete. Measured on a 13-cup target:
+
+| | heard | read |
+|---|---|---|
+| metric athlete | ***"about 104 ounces"*** | `≈ 3.1 L` |
+| imperial athlete | "about 104 ounces" | ***`≈ 3.1 L`*** |
+
+**Cups themselves stay.** The counter is a glass and the athlete taps one per
+glass, so that is the store rather than a unit; it is the volume BESIDE it that
+has to be theirs. `waterVolShow(cups, spoken)` is one function with ONE unit
+test, because two readers of one fact is exactly how these two came to
+disagree — and `spoken` spells the unit out, since the brief is read aloud and
+*"3.1 L"* is not a thing a voice can say.
+
+**The two surfaces are read side by side in one check**, because the
+requirement is that they AGREE: asserting either alone passes on half the code.
+That is v447's lesson one screen over, and it is the third round running where
+a figure was right on the glass and wrong in the ear.
+
+### And a v447 check pinned the unit rather than the requirement
+
+Suite 09's brief-direction block writes POUNDS figures (`goalWeightLb = 160`)
+and asserts `/up to 160/` — against the seeded METRIC athlete, who now hears
+73 kilograms. It failed on correct code. Its subject is the DIRECTION, so it
+pins the unit its own figures are in and gained an assertion that the two
+directions are never both spoken. **When a rule changes, the check is part of
+the change** — and the full suite is what caught it, one run before the push.
+
+## A duration written by hand beside the list that decides it (v449)
+
+v448 made four surfaces list the warm-up the athlete really gets. The SAME
+segment then printed a hand-written `~4 min` beside it, and so did two more
+screens. The flow's length depends entirely on the athlete, and measured it is
+never 4 minutes for three of the four states the app itself creates:
+
+| athlete | warm-up | cool-down | every screen said |
+|---|---|---|---|
+| no flags | **5 min** (297s) | 4 min (266s) | ~4 min |
+| limited mobility | **6 min** (365s) | **5 min** (326s) | ~4 min |
+| flagged low back | 5 min | **2 min** (121s) | ~4 min |
+
+**The low-back athlete is the sharpest, and it is the direction nobody
+expects.** `safeFlow()` strips four of the seven stretches, so the app promises
+four minutes of recovery and delivers two — on the athlete it shortened the
+flow FOR.
+
+**The app already knew.** The mobility picker computed a figure; it just did so
+with its own `round(secs/60)+1`, which is a fourth statement of one fact. Same
+class as v397's block length: a number written by hand beside the constant that
+holds it.
+
+**THE REPOSITIONING WINDOWS COUNT.** They are time on the mat and `runFlow()`
+spends them (v349: 4 seconds for no position change, 7 for a real one), so a
+`flowMins()` that summed only the holds says **4** where the athlete spends
+**5**. They lived as a closure-local pair inside `runFlow()`; the rule is
+hoisted rather than copied, and `transSecs()` asks it.
+
+**Never zero for a flow that has moves in it.** `~0 min` reads as broken, and a
+one-move flow really is about a minute once you have got into position.
+
+**The floor is that the picker's three figures do not move** — 6 / 4 / 4 before
+and after. It was already deriving, so a refactor that changed what it prints
+is a change with no defect behind it, which is the v386 call.
+
+**And the rule has to be ASKED FOR, not merely declared.** The picker's numbers
+are identical either way, so no rendered check can see a consumer that kept its
+own arithmetic — only the source can, and only the source can see the
+reposition constants restated back inside `runFlow()`. That is v322's
+`WEIGHTS_PATTERNS` lesson, and it is the assertion that catches two of the
+mutants and nothing else does.
+
+**Three guards, because three athletes handed identical flows satisfy every
+assertion below**: limited mobility really lengthens the warm-up, a flagged low
+back really shortens the cool-down to three moves, and the transitions really
+are part of the time (297s of mat time against 260s of holding).
+
+## The screen argued with itself (v450)
+
+Found by asking of v449 the obvious next question: **where else is a duration
+written by hand?** One site, and it is the first screen a new athlete sees.
+
+The Day-1 hero said **"~15 minutes"**. Four lines below it, in bold, the same
+screen said **"Rest 2 minutes between tests"** — and there are ten tests, so
+nine of those rests is **eighteen minutes on its own.** The hero could not be
+right whatever the efforts took, and both sentences were on the glass at once.
+
+| | |
+|---|---|
+| enforced rest (v296) | **1,080s — 18 min**, exact |
+| effort, athlete with nothing tested | 275s |
+| **what an untested athlete needs** | **23 min** |
+| effort at the app's own published benchmarks | 830s |
+| **what a strong athlete needs** | **32 min** |
+| what the screen said | **15 min** |
+
+**The number predates the rests.** v296 added `startAssessRest()` because the
+battery's own guidance already promised two minutes between efforts and nothing
+enforced it; nobody came back to the figure four lines up.
+
+**It is not cosmetic, and the harm points the wrong way.** An athlete who
+budgeted fifteen minutes is exactly the one who rushes the rest — which is the
+thing the rest exists to prevent, on the ten numbers that anchor every
+prescription for a year.
+
+**The rest is EXACT and the efforts cannot be**, because every test is to
+failure. So they are priced from the app's own numbers rather than a second set
+invented here: `currentMaxes()` is what this athlete is assumed to manage —
+`TEST_DEFAULTS` on day one, their own figures once they have tested — a timed
+test in seconds and a rep test at the athlete's own rep cadence, which is the
+cadence `plBudgetMin()` already prices a session with.
+
+**The guard is the whole finding**, and without it every assertion below is
+satisfied by a battery with no rests in it: nine enforced rests really are
+eighteen minutes, which is on its own longer than the old claim. Beside it, the
+invariant that outlives any particular figure: **the number can never be
+shorter than the rest the same screen prescribes.**
+
+**Both halves are pinned.** Deleting the bold rest line would resolve the
+contradiction in the direction that costs the athlete the measurement, and it
+satisfies every assertion about the hero.
+
+**And it must track the athlete**, or it is a constant with extra steps: 23
+untested against 32 at the benchmarks, pinned as two values rather than as the
+app's own expression.
+
+## The card prescribed two sets and Play delivered one (v451)
+
+`quickPlay()` ran a single hold and handed `quickMark()` straight to `onDone`,
+so a row reading **"Forearm Plank · 2 × 0:30"** was checked off after ONE
+30-second hold and the Finish button went green on half the work. Measured on
+Full-Body Quickie: **8 items against 15 prescribed sets**, and one tap each
+ticked the session complete after six.
+
+That is the completion gate's own rule — **a skipped set is not a completed
+one** — on the surface that states the prescription one line above the button.
+
+Play runs every set the card promises now: set 1, the movement's own rest, set
+2, and only the **last** set ticks it. The label says WHICH set it is rather
+than how many there are, which is the thing an athlete mid-workout cannot
+otherwise answer.
+
+**Both runners gained a continuation for the rest they already open
+themselves** — `runTimer`'s 8th argument, `runRepCadence`'s 6th — rather than a
+second rest being opened beside theirs. **A chained rest returns as soon as it
+hands on**: the next set has already opened its own sheet, so writing "Done"
+into it and queueing a close would blank the set the athlete is about to do. No
+other caller passes a rest an `onDone`, so that branch is only ever the chain.
+
+### And the minutes beside it were hand-written
+
+Declared against what the card actually prescribes:
+
+| | declared | real | | declared | real |
+|---|---|---|---|---|---|
+| core5 | 5 | **7** | lower6 | 6 | **12** |
+| burn7 | 7 | **11** | full10 | 10 | **16** |
+| oblique6 | 6 | **10** | quiet6 | 6 | **11** |
+| hiit8 | 8 | **10** | morning5 | 5 | **9** |
+
+Every one understated, 1.25x to 2x. `quickMins()` derives it from the three
+things Play spends — the work, the athlete's own rep cadence, and the rest
+between sets — and **the hand-written field is gone from the registry**, so a
+ninth workout cannot be added with a guessed number. Same class as v449's
+warm-up: a duration written by hand beside the list that decides it.
+
+**It counts only what Play SPENDS.** The athlete also repositions and taps
+between movements and the app runs no clock through that, so counting it would
+pad a figure nobody can check — v449 counts the flow's repositioning windows
+for the opposite reason, that `runFlow()` genuinely spends them.
+
+### The check button said "Unmark" and could not unmark
+
+`quickMark()` only ever wrote `true`, so a mis-tap was permanent and the
+accessible name promised a control that did not exist. It toggles now, and Play
+goes through `quickSetDone()` instead — **a finished set must never untick the
+movement it just completed**, which is the floor that catches the over-eager
+fix.
+
+### Two of my own checks failed first, and both are rules already here
+
+- **The picker chip was read with a page-wide `/(\d+) min/`** and matched the
+  FIRST row rather than the workout under test. *Scope the assertion to where
+  the change was made.*
+- **The second aria label was typed from memory** ("Bicycle Crunches"). It reads
+  the name out of `EX` now, with a guard that the two names differ so the pair
+  is not one assertion twice.
+
+### The guard found the rep chain aiming at the wrong movement
+
+Both runners gained the continuation and only the timed one was driven, so the
+mutant dropping `runRepCadence`'s half would have walked. The first attempt at
+a rep-cadence chain aimed at core5 item 1 on the assumption that **Bicycle
+Crunch** is rep-counted; the library has it as `unit:'time'`, so the block would
+have driven the timed runner twice and reported the rep one as covered. **The
+guard failed by name and printed the unit.** *Confirm the control's real shape
+before believing the result.*
+
+### And the v448 picker check re-derived the answer
+
+The v448 mutation run turned up one escape and it was the check. *"The picker
+counts the shortened flow, not the raw one"* called `safeFlow(m.flow).length`
+**itself**, which stays true whether or not the PICKER asks — so the mutant that
+reverted the picker to the raw array walked straight through. **Assert through
+the app's own output, never re-derive it.**
+
+The v449 floor beside it could not see it either: it renders the picker for an
+**unflagged** athlete, where the raw array and the filtered one are the same
+list. **Only a flagged athlete can tell them apart.** It renders `openMobility()`
+with a flagged low back and reads the three rows off the sheet — 5 / 3 / 4 moves
+against the raw 10 / 6 / 6, pinned beside them as a guard so "shortened" cannot
+pass on the raw ones.
+
+## The verdict was removed and the evidence was left (v452)
+
+`toggleEx()` ticks a whole movement and fills every one of its sets. Unticking
+changed nothing but the flag, so the sets the tick had just written stayed
+marked. Measured on a real session — tick all five movements, then untick all
+five:
+
+| | |
+|---|---|
+| the header | **`0/5 exercises · 13/13 sets · 100%`** |
+| `sessionWork()` | setsDone **13 of 13** |
+| `commitSession()` | **`done:true, partial:false`** |
+
+A hundred per cent beside zero movements **on one line**, and a full session
+recorded for an athlete who had just cleared every one of them. That is the
+completion gate crediting work that was explicitly taken back — *a skipped
+session is not a completed one* — reached by the one control whose whole purpose
+is to say the work did not happen.
+
+**The check is a whole-movement control, so it round-trips**: what the tick
+wrote, the untick takes back. There is nothing finer to restore, because the
+tick had already overwritten any individual marks —
+`st.sets=Array.from({length:m.sets},()=>true)` is not a merge.
+
+After the fix the gate does its job: `commitSession()` refuses, the pointer does
+not move, and the header reads `0/13 · 0%`.
+
+**The floors are what stop it being a clear-everything.** Ticking still fills
+every set and still records the personal best; sets the athlete marked one at a
+time through `toggleSet()` are nobody's to clear, and two of three is still not
+a finished movement; and a render does not touch them either.
+
+**The personal best is deliberately left standing.** A PR only ever goes up and
+there is no history to restore it from, so unwriting one would need a stored
+field that travels in every backup to buy back a mis-tap. Recorded rather than
+fixed.
+
+## The preview showed a warm-up nobody does (v453)
+
+v448 made `warmupFlow()` and `cooldownFlow()` the ONE builder and fixed the four
+surfaces it could see. **Three more read `buildSession()`'s own `warmup` and
+`cooldown` fields**, which are the LEGACY lists — so that sweep could not see
+them at all.
+
+`WARMUP` was `['march','glutebridge','birddog']`, and **`EX.march` is
+"Single-Leg Dead Bug", not the flow's "March in Place"**. Measured on the
+Program calendar's preview sheet:
+
+| | the sheet showed | the athlete does |
+|---|---|---|
+| warm-up | **3 moves, "8/side" each** — none of them in the flow | 8 moves, 30-40s holds |
+| cool-down | **no section at all** | 7 stretches |
+| warm-up + cool-down | 204s priced (`3x35 + 3x33`) | **563s** |
+| Day-1 hero `typicalSessionMin()` | **25 min** | **31 min** |
+
+**v450's own comment claimed that figure was honest** — *"reused rather than
+guessed... the same numbers, not a second copy of them that could drift"*. The
+numbers it reused were the wrong ones. *A comment claiming an invariant is not
+the invariant*, for the eighth time in this file.
+
+**The fields are REMOVED rather than repointed**, so a fourth consumer cannot
+read the wrong list: one warm-up definition, one cool-down definition. The
+preview now lists what `runFlow()` will run, with each section carrying its own
+minutes and the chip covering the whole sheet.
+
+**Only a FLAGGED athlete can tell the builder from the raw array.** An unflagged
+one gets `WARMUP_FLOW` back unchanged, so a preview reverted to the raw literal
+satisfies every assertion about the ordinary case. The check drives a flagged
+low back and requires the shortened flows, with the raw ones pinned beside it as
+a guard.
+
+**And the payload is the flow minutes reaching the hero, not the hero's own
+figure** — which moves with the athlete. The check asserts
+`typicalSessionMin() - plBudgetMin(items)` is 9, with the legacy 3 pinned beside
+it.
+
+### A check that tested three ids and three OBJECTS
+
+Suite 21 asserted *"warm-up and cool-down carry nothing contraindicated"* as
+`unsafe([...WARMUP, ...COOLDOWN])`, and **`COOLDOWN` held `{n,d}` objects** —
+`safeSwap(obj)` hands the object straight back, so `obj !== obj` is false and
+that half could never fire. The `WARMUP` half tested three ids the athlete never
+performs. Its own comment recorded the conclusion — *"nothing in them is
+swappable"* — which was true only because the check was looking at the wrong
+lists.
+
+**Flow items carry no `exId` at all**, so `safeSwap()` cannot speak for them:
+`safeFlow()` is the predicate and it matches on NAME through `FLOW_RISK`. The
+replacement asks the real flows, with a guard that the raw ones genuinely carry
+a contraindicated move for those flags — otherwise an empty result is a
+statement about the filter rather than about the data.
+
+## The one door junk arrives by never reported it (v456)
+
+`dataHealthNoteHTML()` exists to say *"something was reset to a safe default"*.
+Its flag was computed in `boot()` **and nowhere else** — so a foreign backup,
+the one door arbitrary JSON comes in through, repaired **silently**.
+
+Measured on a file carrying `adapt:99`, an unrecognised diet and `logs` as an
+ARRAY:
+
+| the backup carried | after the restore | what the athlete was told |
+|---|---|---|
+| `adapt: 99` | clamped to **1.3** | nothing |
+| `diet: 'kosher'` | fell back to **vegan** | *(its own prompt — v287)* |
+| `logs: []` | **every session reset to an empty map** | nothing |
+| the toast | | **"Backup restored"** |
+
+**The next boot cannot catch it either.** The state has already been
+normalised, so the diff is empty by then — the note can only ever be fired at
+the moment of the repair.
+
+`flagRepairs()` is the rule hoisted out of `boot()`, and all three restore
+doors ask it: `importData()`, `undoImport()` and `undoCrossTab()`. A second
+copy at the import site is a second place for it to drift from the boot's.
+
+**It reads `onboarded` from the state as it ARRIVED**, for the same reason
+`boot()` reads it before normalising: a never-onboarded state legitimately
+gains scaffolding, and flagging that would fire the note for every new install.
+
+**The floor is a healthy restore, which must say nothing at all.** A door that
+always reported would put that warning in front of every restore ever made —
+the v409 defect facing the other way. Three cases: a junk file reports, a clean
+one is silent, and a never-onboarded one is silent.
+
+### And the v444 assertion had been passing on nothing
+
+`t.ok('a healthy upgrade does not tell the athlete their data needed
+repairing', !r.repaired)` — the flag it read was **only ever set in `boot()`**,
+and that block drives `importData()`. It read `false` whatever the file
+contained.
+
+Making the flag real is what exposed it: v444's own fixture legitimately EARNS
+a repair, because it carries the two values v396 could not write. The
+assertion is now that a restore which repaired a stored value **says so**, with
+the two repaired values pinned; the healthy-restore claim moved to the v456
+block, where it is made against the faithful stored fixture.
+
+### Four sweeps that came back clean
+
+- **The default merge.** `loadState()` does `Object.assign(DEFAULT_STATE().x,
+  stored.x)` per sub-object, and this repo's rule is that a present-but-invalid
+  value beats the fallback that exists to cover it. 50 cases driven through the
+  real door: **10 nulls survive and every one is harmless** — `version` has no
+  reader at all (v285), `onboarded` and `neuralOn` are falsy either way, the
+  five toggles are internally consistent (`sound` and `vibrate` read truthy at
+  the chip AND the consumer, `voice`/`hype`/`beat` read `!==false` at both), and
+  `createdAt` fails closed at both of its readers. **The first run reported zero
+  survivors and was measuring nothing**: the seed wrote localStorage only, so
+  the boot's newer IndexedDB mirror won every case. The detector is proven with
+  a planted field that has no repair.
+- **The day after the upgrade.** A v396 state, then the first real session:
+  pointer 8 → 9, the log written and marked done, `adapt` 1.06 → 1.066, the
+  streak starts at 1, the next session builds, validator clean, nothing renders
+  `NaN`, no page errors.
+- **How short a flow can get.** All 32 flag combinations x both mobility
+  answers: the warm-up never falls below **6** moves and the cool-down below
+  **3**, and an empty or null flow prices at 0 rather than throwing.
+- **Every minute figure on every surface, for one session.** The preview chip,
+  its three section labels, the Today workout pane, the brief's three segments,
+  `sessionVolume()`, `plBudgetMin()` and `typicalSessionMin()` all agree:
+  22 + 5 + 4 = 31.
+- **Every attribute that interpolates a value** — `aria-label`, `title`, `alt`,
+  `placeholder`, `value`, `data-*`. 80 distinct sites; the only stored STRING
+  among them is `settings.reminderTime`, which carries a strict `HH:MM` repair
+  and whose every door runs it.
+
+## The door the athlete's phone actually takes (v455)
+
+v444 pinned a v396 backup being **imported**. A real upgrade takes a
+**different door**: the state is already in localStorage AND in the IndexedDB
+mirror, and `loadState()` reads it on the next boot — a separate code path,
+with its own `Object.assign` over `DEFAULT_STATE()` per sub-object. v409 drove
+that once as a probe and kept nothing, so nothing had ever pinned it. It is the
+single most likely way a real athlete loses their history, and this athlete is
+58 versions behind.
+
+**The history survives** — 8 logs, the pointer, the personal bests, the badge,
+both weigh-ins, the hand-set protein target, the goal, the theme, the flagged
+joint, the adaptive multiplier, the baseline score and the prep block. The
+validator is clean, nothing renders `NaN`, a real session builds, and there are
+no page errors.
+
+**What did not survive was the silence.** Every upgrading athlete was told:
+
+> **Your data needed a repair after loading.** Something stored on this device
+> was not in a shape the app expected, so it was reset to a safe default.
+
+### An addition inside an array ROW is the app growing
+
+`_normTouchedExisting()` compares whole arrays as strings, so a row that only
+**gained a field** counts as a repair:
+
+| stored | after the boot | counted as |
+|---|---|---|
+| `skipLog:[{date,mins}]` | `[{date,mins,at:0}]` | **a repair** |
+| `holdLog:[{date,id,secs,fresh}]` | the same plus its movement | **a repair** |
+
+v420, v425 and v442 each added a field to a stored row, so this fires for
+**any** athlete with any activity history at all. v409 wrote the rule — *an
+added key is the app growing* — fixed it at the top level and stopped there.
+The array branch recurses element-wise now, and **a length change is still a
+repair**: a row that was DROPPED is a real one.
+
+### Live-session scratch is not the athlete's data
+
+`TRANSIENT_KEYS` is stripped from a backup **and** on import, precisely because
+it describes a half-finished tap rather than the athlete. Dropping one — a
+v313-era `_trainAgain` string on a phone that has not launched since — was
+counted as a repair of something their data did wrong. It is skipped at the top
+level, which is the only level those keys live at.
+
+### The fixture was not a fixture of what it claimed
+
+The check failed first, and the failure was **half the fixture and half the
+code**. v444's `v396-backup.json` carries two values the real v396 build could
+not produce: `activity: 1.55`, which v396's own `normalizeState()` snaps to the
+option set, and `hasBar/hasBench: false` beside a gear list holding both, which
+v396 derives on every boot. Seeding those would have the check report a genuine
+repair as a false alarm.
+
+**So the fixture was re-recorded rather than hand-corrected**, by serving that
+commit's own `index.html` and reading back what v396 left in localStorage.
+`v396-stored.json` is what a v396 phone actually stores — which is not the same
+artifact as a backup, and the difference is the point: **a backup has the
+transient keys and the API keys stripped; a phone has them.**
+
+**And the seed writes BOTH stores.** Writing only one does not reset the app:
+`load()` takes whichever copy is genuinely newer, so a fresh boot's mirror wins
+and the whole block then measures a **default** app — with every "nothing
+renders NaN" assertion passing on an empty screen. The first probe did exactly
+that and reported an empty state as the upgrade result. The mirror's key is
+`STORE_KEY`, not a name of your own; the first attempt wrote `'state'` and read
+back nothing.
+
+**The first assertion is that the load LANDED.** Every health check below it is
+satisfied by an app that loaded nothing at all.
+
+**And the check is proven able to fail**: seeding the pre-fix array branch back
+turns it red by name.
+
+## The picker looked chosen and announced nothing (v454)
+
+v411 gave every control an accessible NAME and v413 gave the app a live region
+to announce through. Neither asked what a control announces about its own
+**STATE**.
+
+The bottom nav has carried `aria-current` since it was written, and `go()`
+maintains it. Measured across every tab, every sub-pane and six sheets:
+**32 rendered groups where exactly one sibling button is visually marked, and
+NOT ONE carried an accessible state.**
+
+| group | what a screen reader heard |
+|---|---|
+| Today ▸ Brief / Warm-up / Workout / Cool-down | four button names, no pane |
+| Progress ▸ Summary / Body / Strength / Awards | four names, no pane |
+| Reference ▸ Food / Moves | two names, no pane |
+| the seven goals on Fuel | seven names, and never which one the whole plan is built from |
+| the diet, the cardio mode, the intensity, the unit | the same |
+| the theme, the coach tone, the beat tempo, the strength metric, the prep path, the sex picker | the same |
+
+*One of a pair guarded and its twin not*, 32 members wide — and the three
+**sub-tab strips are the sharpest**, because they are the same control type as
+the nav, one level down, added by v312 and v314 and never given the state the
+nav already had.
+
+**Two encodings, and the check has to know the difference.** `aria-pressed`
+must be on **every** button of its group: an option with no attribute at all is
+exactly as silent about its state as the whole group used to be. `aria-current`
+is the opposite — **absence IS "not current"**, which is how the nav has
+encoded it since it was written, so exactly one marked button is right and
+`aria-current="false"` on the rest would be noise. The first version of the
+floor demanded the attribute on every button of every group and **failed on
+correct code**, on the three tab strips: a check can be rigorous and still
+encode the wrong requirement.
+
+**`pressed()` and `currentTab()` are the one place the rule lives**, so a 46th
+picker cannot be written stateless.
+
+**Three floors, and each catches a different over-eager twin**: exactly one
+option of every group reads as chosen (a fix that marked them all, or none,
+satisfies every "it has state" assertion and tells the athlete nothing), no
+group mixes the two encodings, and the bottom nav still marks the page it is on.
+
+**And the detector is proven both ways on a SYNTHETIC group** rather than on
+the real screens, so it stays true whatever the app becomes: a marked group
+with no state must be reported, one with state must not. Without that, "zero
+stateless" is a statement about the selector.
+
+### And the one collapsible in the app
+
+`toggleRecipe()` opens and closes a recipe on Reference. The chevron turns and
+nothing said so — the same defect on the one control here that expands. The
+button carries `aria-expanded` and `aria-controls`, and the toggle keeps the
+first in step rather than a second reader inferring it from the style.
+
+**The floor is that it comes back.** A value welded to `true` satisfies every
+"opening it announces that it opened" assertion and never announces the close.
+
+### The probe measured Settings thirty times
+
+Its first run reported the theme, tempo and tone pickers on every pane and every
+sheet. **Views never clear `innerHTML`**, and the tab loop ended on Settings —
+so `.view.active` was Settings for the whole rest of the run and the sub-pane
+loops never changed it. Twenty-nine of the forty-four findings were one screen
+counted over and over. *Confirm which screen you are actually reading.*
+
+### And no top-level constant is declared and never read (v453)
+
+Swept in the same round, and clean: **265 constants, zero unread.** v331 found
+three dead at once and the middle one was the expensive kind — it looked like a
+setting, **disagreed with the behaviour it named**, and changed nothing at all
+when edited.
+
+**Two scanners reported a finding on correct code before one worked**, and both
+are traps already in this file. The first replaced every string body with a
+space, so ten constants read only inside a template literal — which is how most
+of this app's constants are consumed — came back "unread". The second stripped
+comments without tracking strings, so a `//` inside one ate the rest of its
+line. The shipped check strips comments the way suite 01's function scan
+already does (respecting quotes, keeping string bodies) and **carries its
+guard on a synthetic source**: it must report a constant nothing reads and must
+NOT report one read only inside a template literal.
+
+## The coach spoke a duration nobody derived (v457)
+
+v348 measured it and wrote the rule down: **the program is a QUEUE of 378
+sessions, and how long it takes is set by how often you train.** 54 weeks is
+true at SEVEN a week; the wizard's own floor is FIVE, which is **76 weeks — 17
+months, not 12.** v348 fixed the Program tab's *"54-week journey"*, and v354
+fixed the header chip and the Full Tour badge.
+
+The morning brief still said **"your one-year build"**, and that is the surface
+the coach **READS ALOUD** — v315's rule, that a spoken figure is the one an
+athlete cannot double-check by looking. `programWeeks()` has existed since v348
+and this sentence never asked it.
+
+**v399's sweep could not see it.** *"Every number the coach SPEAKS is visible on
+the screen"* looks for digits; **"one-year" is a word.** That is why a sweep of
+one shape leaves the same defect alive in another — the same reason v453's
+legacy `WARMUP` survived v448's sweep of the four surfaces it could see.
+
+Two more year claims went with it, so the class is closed rather than the
+instance: the store blurb in `<meta name="description">` promised *"a full year
+of full-body strength"*, and the file header called the app a *"1-year
+(54-week)"* PWA. Neither can be derived, so both stopped claiming a duration.
+
+**Both floors are pinned as VALUES, not as the app's own expression** — 54 for a
+seven-day athlete and 76 for a five-day one — because a mutant that changed
+`programWeeks()` would otherwise move both sides of the comparison. And a guard
+asserts the two schedules really are different programs first, or the whole
+block passes on one number printed twice.
+
+## Three one-time flags that were set and gated nothing (v457)
+
+`if(!STATE.profile._x)STATE.profile._x=true;` is the shape a one-time migration
+takes: the flag exists so the body beside it runs once. **When the body is later
+removed, the flag is routinely left behind** — and what remains looks like it
+guards something, guards nothing, and changes nothing when edited. That is the
+`voicePitch` trap in a stored field.
+
+Three were live: `_gearMil`, `_gearDb` and `_benchKit`. **Two had lost even
+their comment**, and the two comments that survived described migrations whose
+bodies are gone — so the region read as three guarded seeds and was three bare
+writes. The kit seeds they once protected were removed when the seeds moved
+behind `seeding`.
+
+The cost is the one v285 measured: **three keys written into every athlete's
+profile, travelling in every backup, for ever.** Removing the WRITE is
+non-destructive in both directions — a stored copy keeps its keys and nothing
+deletes them, so no athlete sees a *"we repaired your data"* note; and a fresh
+install never gains them.
+
+**A live flag has a THIRD site: the branch that reads it.** `_days7` sits four
+lines below and has one (`if(seeding&&!STATE.profile._days7&&…)`), which is what
+makes the two-site test a rule rather than a guess. The scan is guarded on a
+synthetic source both ways — a flag whose only two sites are its own set-once
+statement must be reported, and one read elsewhere must not — plus a guard that
+the app really does carry set-once flags of this shape at all.
+
+## Every inline handler names a function that exists (v457)
+
+The mirror of the reachability check v388 shipped. **Reachability asks whether a
+declared function is ever CALLED; it cannot see the opposite** — an `onclick=` in
+markup naming a function that is not there. That is a button the athlete taps
+and nothing happens, with nothing on screen to say so, and `npm run check`
+cannot see it either because the file parses.
+
+**v316 measured this once as a probe (275 names, none dead) and kept nothing.**
+v385 is what that costs: `_recipePlanHTML()` went dark and stayed dark for many
+versions, and the probe that would have caught it had been thrown away. A clean
+measurement is a result — and a clean measurement nobody shipped is not.
+
+Measured today: **322 distinct handler call names across the stripped script and
+the static markup, and all 322 resolve.**
+
+Two things the scan has to get right, and both cost a wrong reading first:
+
+- **Handlers live inside template literals**, so it reads the script as well as
+  the markup outside it. A name preceded by a dot is a method (`Math.round(`),
+  not a handler.
+- **A COMMENT that quotes a handler is not a call site**, and the real file
+  carries one — the v406 note quoting an `onerror=` payload was the ONLY hit
+  before comments were stripped. Sixth time this file has recorded that trap, so
+  the stripper is hoisted into `stripComments()` and the guard exercises the
+  same function the check does rather than a second copy of it.
+
+Nine names first read as unresolved and every one was the scan: they are
+declared `async function`, which `^function` does not match. **Confirm the
+control's real shape before believing the result.**
+
+### Four sweeps that came back clean, recorded as coverage
+
+- **No hand-written copy of any registry's member list.** 24 registries read out
+  of the running app and compared against all 305 quoted-string array literals in
+  the source. The five hits were all legitimate: `COMBAT_ORDER` is a permutation
+  of `FORCE_IDS` (v412 already ships that lockstep), four are food diet tags, and
+  one is `CARDIO_MODES`'s own declaration matching `CARDIO_INFO`'s keys (v368's
+  lockstep). This is the `WEIGHTS_PATTERNS` class, and it is closed.
+- **Every element id read as a literal is rendered somewhere** — 150 reads, 206
+  literal ids, 7 dynamic prefixes. The two apparent misses (`cmpImgA`, `cmpImgB`)
+  are built by a helper that takes the id as an ARGUMENT, which a source scan
+  cannot see; not shipped as a check for that reason.
+- **`finisher.sets=1` overrides `evenSets()`, and no per-side movement ever
+  lands there.** Measured across all 378 sessions: zero odd-set per-side
+  movements in the finisher, the focus bonus or the corrective bonus. v451's own
+  sweep already covers the finisher (`[...s.main, s.finisher]`), so the class was
+  closed before this asked.
+- **Every `settings.*`, `profile.*` and `nutrition.*` field has a real reader.**
+  The low read counts are all deliberate single-reader getters — `cueVolPref()`,
+  `beatTempoPref()`, `voiceToneKey()` — which is the shape this file prescribes,
+  not the `voicePitch` shape. `settings.sound` and `settings.vibrate` show zero
+  writes because `toggleSetting()` writes them through a computed key.
+
+**And one false alarm.** The brief's Saturday weigh-in countdown looked like a
+control one surface ignores — it is gated on `settings.weeklyOn!==false`, exactly
+as the card and the push are. **Read the condition before believing it.**
+
+### Two drivers armed on one directory, by a session that resumed
+
+`chain456.sh` was written to run five mutation drivers in sequence because the
+per-round waiter shells looked dead. **Five of them were alive** — one per round,
+each still blocked on `grep -qE "^done$" mutNNN.log` from before the context was
+compacted. So the moment the running driver finished, the old waiter and the new
+chain would both have started `mut452.py` **on the same directory**, which is the
+one thing this file already forbids: each restores its own clean file over the
+other's seed, and every result after that is void.
+
+The rule was one driver per directory. **The corollary is that a resumed session
+must ENUMERATE and kill every stale waiter before arming a new chain** — a
+sleeping `bash -c` waiting on a log file is not visible in the mutation logs and
+looks like nothing at all. `ps -eo pid,args` shows them; kill by PID.
+
+And a mutation copy needs `node_modules` — `find . -maxdepth 1 -type f` copies
+every file in the root, which is v428's lesson, and copies no directory at all.
+
+## A number spelled out is the same defect as a digit (v458)
+
+v397 shipped a source scan forbidding the block length written by hand in
+athlete-facing copy, in three phrasings — `N-week block`, `N weeks done`,
+`after week N`. **Every one of them matches DIGITS.** v457 had just recorded
+why that is not enough: *"your one-year build"* survived a sweep aimed at
+numbers because it is a WORD.
+
+Four sites, all stating `WEEKS_PER_CYCLE` by hand:
+
+| where | said |
+|---|---|
+| the **`blocks3` badge** | *"Finish 3 **six-week** blocks"* |
+| the re-test drop sheet | *"more than training normally moves in **six weeks**"* |
+| the same sheet, one line down | *"target for the next **six weeks** … means **six weeks** of work that is too easy"* |
+| the Program tab subtitle | *"**Weeks 1–6** are core & abs"* |
+
+**The badge is the sharpest, because v397 fixed its NEIGHBOUR.** `block`
+("Finish a 6-week block") derives; `blocks3` sits **two lines above it** and
+still spelled the same constant out. *Fixing one instance is not fixing the
+class*, and here the two instances were adjacent.
+
+**The Program subtitle is v397's own shape verbatim** — it derives
+`${WEEKS_PER_CYCLE}` in one half of the sentence and writes the phase-1
+boundary out by hand in the other, which is exactly what v397 recorded about
+the re-test screen deriving `TESTS.length` beside a hardcoded 6.
+
+**The re-test cadence really is the constant**, checked rather than assumed:
+two other sentences already say *"You'll re-test after each
+`${WEEKS_PER_CYCLE}`-week block"*.
+
+### The subject markers are what keep the scan honest
+
+*"neither is a **six-week** six-pack"* is a rhetorical timeframe, not this
+program's block length — if `WEEKS_PER_CYCLE` became 8 that sentence stays
+true. So the scan cannot simply forbid a count beside the word *week*: every
+arm carries the subject it is about (`… week block`, `next … weeks`,
+`moves in … weeks`, `means … weeks`, `Weeks 1–N`), and a rhetorical week count
+matches none of them.
+
+**Both probes are synthetic and both are asserted**, because an empty offender
+list is otherwise a statement about the regex: every phrasing found by hand
+must be caught (8 of 8), and the six-pack line plus *"the tape moves in 3–4
+weeks"* must not be. Each of the three fixes was seeded back and fails by name.
+
+**And two comments quoted the literal the scan forbids** — `// weeks 1–6` and
+`// block 1 = weeks 1–6 … Full-body from week 7`. Reword the prose, never
+weaken the check; seventh time this file has recorded that trap, and the first
+where the comment was explaining the constant it quoted.
+
+## A count that can be one needs its own plural (v459)
+
+`prescribe()` gives a movement in the `dynamic` region a **single** timed round
+(`if(ex.region==='dynamic') sets=1;`), and the main slots include `dynL`. So
+**74 of the programme's 378 sessions carry a one-set movement** — and the
+morning brief, the segment the coach **reads aloud**, said:
+
+> Then the main work. Incline Push-Up, 3 sets of 5 reps, Pike Push-Up, 3 sets of
+> 3 reps, **Inchworm Walkout, 1 sets of 40 seconds.**
+
+Measured across a spread of the whole programme: **10 of every 54 sessions.**
+Spoken is the worst place for it — v315's rule is that an athlete cannot
+double-check a spoken line by looking.
+
+**The RATIO form is deliberately untouched.** `0/3 sets` and
+`${doneSets}/${totalSets} sets` are correct English, and a fix that reached
+them would be a different bug. The check's pattern excludes a count preceded by
+a slash or another digit for exactly that reason.
+
+**Two sites, two checks.** `plural()` is one helper, but the session-history row
+(`${st.setsDone} sets`, where a partial session lands and the count really can be
+1) is invisible to every assertion about the brief — so it is driven separately,
+with a seeded log of one marked set and one of three.
+
+**The guards are what make the sweep mean anything**: the programme really does
+prescribe single-set movements (74 of them), and the sweep really read a spread
+of briefs. Without the first, *"the brief never says 1 sets"* is satisfied by a
+programme that never prescribes one.
+
+**Both over-eager twins fail a floor**: a `plural()` that never adds the `s`
+makes a three-set movement say *"3 set"*, and one that always adds it is the
+original defect.
+
+### And a spoken claim with code behind it that nothing had pinned
+
+The same segment says the finisher is *"one all-out round"*. `finisher.sets=1`
+is forced in `buildSession()`, so the sentence is true — and **no suite asserted
+it**. This file's rule is to grep for the code that enforces a promise; the
+other half is to pin it. Every finisher across all 378 sessions is now asserted
+to be one round, beside the sentence that says so, and the mutant that makes it
+two fails by name.
+
+### The plural sweep is a class, not a word
+
+The scan forbids `1 <plural>` for every count the app speaks — sets, exercises,
+moves, minutes, calories, grams, cups, reps, seconds, weeks, days, blocks,
+sessions, tests, meals, rounds, movements. Of those, only `sets` can currently
+be one: the session is always several exercises, the water target is 6-16 cups,
+and a session is never one minute. Writing the whole list in is what catches the
+next count that becomes reachable.
+
+**The RENDERED surfaces were swept too and came back clean** — 20 tabs, panes
+and the history row, with **ONE of every record seeded**, because the state
+between empty and full is the only one where a count is 1. An empty athlete
+would have proved nothing.
+
+**And the first version of that detector reported a defect in correct copy.**
+The Program tab says *"Week 1 **sets** your baseline volumes"* — that `sets` is
+a **VERB**. Sixth entry under the rule that *a detector which can match ordinary
+app content is not measuring what you named*, after `/true/` matching *truest*,
+`/0 reps/` matching *40 reps*, `img[onerror]` matching the thumbnails,
+`indexOf('Badges')` against CSS-uppercased text, and a context read with
+`indexOf` rather than the match position. A count used as an ORDINAL label is
+excluded by name, and the guard now pins that sentence as one the detector must
+stay quiet on.
+
+## The third member, on a surface no sweep had opened (v460)
+
+v459 fixed the two plural sites it could see — the spoken brief and the
+session-history row — and swept every tab and pane with one of every record
+seeded. It came back clean and it was **not complete**.
+
+`openGrocery()` is not a tab, and the seeded athlete is not on a restricted
+diet. A **vegan avoiding soy, tree nuts, peanuts and gluten** is an ordinary
+athlete — v287 measured that exact combination — and only lunch survives the
+recipe filter, so the sheet read:
+
+> 🛒 Grocery list · Vegan · **from today's 1 meals** · tap to check off
+
+*A sweep is only as wide as the surface it enumerates*, and this one needed two
+things the last sweep had neither of: the sheet in its list, and the state that
+makes the count 1.
+
+**The floor is an omnivore's plan**, which must still say *"3 meals"* — a fix
+that dropped the `s` unconditionally passes every assertion about the restricted
+case and is caught there.
+
+### And the benchmarks were an ARRAY, so the description sweep never saw them
+
+v397's sweep compares a format's prose against its own numbers across **five
+maps**. `OPS` is an **array**, so `Object.keys(maps)` could not reach it — and
+every one of its four entries states a round count in prose (*"5 rounds for
+time"*) beside the `rounds` the player runs. They agree today; the sweep now
+includes them, with a guard that it really read four, and a seeded
+`desc:'6 rounds'` beside `rounds:5` fails by name.
+
+### And the check itself nulled a field that does not exist
+
+The floor read *"1 meal"* for an omnivore too, and the reason was the check:
+the stored plan is `nutrition.plan`, not `mealPlan`, so nulling the invented
+name left the cached restricted plan in place and `currentMealPlan()` returned
+it unchanged. **Confirm the control's real shape before believing the result** —
+twelfth time in this file, and the first where the wrong name made a FLOOR look
+like a defect rather than the other way round.
+
+## Four counts in the worker's own prose, all stale (v460)
+
+`sw.js` is 379 lines and every one of them is load-bearing. Four of its comments
+stated a number, and every one had drifted as the library grew:
+
+| the comment said | measured |
+|---|---|
+| *"await all **191 assets** — about 11 MB"* | **250** in the tiers |
+| *"the **nine** baseline tests"* | **ten** since v252 — and the same file says *"Burpees arrived as the tenth test"* **fourteen lines below** |
+| *"the **thirteen** .mp4 files"* | **17** |
+| *"~**180** sequential cache lookups"* | one per file in the pack |
+
+Nothing here reaches an athlete, and that is the whole difference: in
+athlete-facing copy this class produced a **wrong published military standard**
+(v397); in a comment it costs the next reader instead. It cost one here — the
+counts had to be measured before the file could be trusted.
+
+**The fix is to stop stating them, not to update them.** A number beside a list
+that grows will be stale again next round; the comments describe the shape now.
+
+### The detector was wrong in both directions before it was right
+
+- It forbade `N MB` and flagged the **2 MB install budget** — a fixed constant,
+  not a count of anything. *A detector that matches ordinary prose is not
+  measuring what you named*, seventh entry.
+- It required the noun immediately after the number, so it **could not see
+  "the nine BASELINE tests"** — the very defect it was written for. Up to two
+  intervening words are allowed now, and the guard pins both shapes.
+- And my own new comment explaining the rule said *"declaring **two assets**
+  that do not exist"*, which the rule forbids. **Reword the prose, never weaken
+  the check** — eighth time, and the second where the offending comment was the
+  one describing the rule.
+
+**And an example FILE PATH must never appear in that file's prose**, for a
+separate reason already recorded: the precache tiers are parsed by pulling every
+quoted asset name out of `sw.js`, comments included, so an illustrative path
+declares an asset that does not exist and CI goes red.
+
+### The same class in index.html, and why it gets no check
+
+The comment above the exercise-library renderer said **"138 movements"**. There
+are **197** — a present-tense claim, 43% low. Its neighbour said the food list
+buried *"138 movements"* below it. Both now describe the shape, and the SCREEN
+itself was already deriving `${libKeys.length}`, so nothing an athlete reads was
+ever wrong.
+
+**No scan was added for `index.html`, deliberately.** Most numbers in its
+comments are RECORDED MEASUREMENTS — *"measured at 306 sessions"*, *"40
+entries"*, *"0 of 400 circuits"* — and those are the point of the comment, not
+a claim about the present. A regex cannot tell a measurement from a claim, and
+an unhonest check is worse than none: this file's own rule is to read the
+mutant, or the check, back before believing it. The `sw.js` scan is narrow
+enough to be honest because that file's four counts were all present-tense
+claims about its own structure.
+
+## Six more registries carried an exercise id, and none was in the sweep (v461)
+
+v441 gave the validator a rule that every hand-kept list of exercise ids names a
+real movement, and swept **19 pools plus QUICKIES and SPECIAL_FORMATS**. Asking
+the same question of every registry that carries an id found **six more, 29 ids
+in all**, none of them checked:
+
+| registry | field |
+|---|---|
+| `SKIP_FORMATS` | `exId` |
+| `HIIT_FORMATS` | `exId` |
+| `ENDURANCE_FORMATS` | `exId` |
+| `FORCE_EVENTS` | **`ex`** |
+| `TESTS` | **`ex`** |
+| `HOLD_TESTS` | `exId` |
+
+**`HOLD_TESTS` is the sharpest.** `holdMovement()` resolves that id, so a typo
+leaves the entire hold-to-failure test measuring nothing — and every consumer
+filters by truthiness, which is exactly why it would be silent.
+
+Measured, all 29 are real today. This is a lockstep rule rather than a live
+defect — the shape `TESTS`/`TEST_DEFAULTS` was given after drifting three times.
+
+### The first version of the rule could never have fired
+
+`FORCE_EVENTS` names its movement **`ex`**, not `exId`, and the rule I wrote
+read `exId` — always `undefined`, so the arm was dead. It was caught because
+**each arm is broken in front of the validator and required to complain by
+name**, which is this file's standing answer to *a clean validator proves
+nothing about a validator rule*. A rule that cannot fire is no rule.
+
+The probe that found the six registries had the same fault one step earlier: it
+grepped a fixed 4,000-character window after each declaration, which spills into
+the NEXT literal — so it reported `exId` on registries that use `ex` and vice
+versa. **Confirm the control's real shape before believing the result**,
+thirteenth time.
+
+## A local computed and never read (v462)
+
+`const gate=reassessGate();` sat in `commitSession()` and **nothing read it**.
+`reassessGate()` is pure, so nothing was lost — what was lost is the reader's
+time: the commit READS as though it gates on the re-test, and it does not. Six
+more of the same shape, all harmless and all misleading:
+
+| function | dead local |
+|---|---|
+| `exCardHTML()` | a set count the card renders from `setsArr` instead |
+| `loadProgression()` | an `EX` lookup |
+| `readinessSlump()` | a `nut()` call — the function reads `STATE.readiness` |
+| `renderFuel()` | a habit count, beside a comment about a DIFFERENT count |
+| `saveTDEE()` | today's date |
+| `quickFinish()` | a `QUICKIES` lookup |
+
+**The shape is worth a check for a reason none of these seven had**: a value
+computed FOR THE SCREEN and never rendered is the same pattern, and that one is
+a real defect.
+
+### The scan was wrong twice before it was right, both ways
+
+- **Blanking string bodies reported 370 dead locals.** Most of this app's values
+  are consumed inside a **template literal**, so a scan that strips strings
+  deletes the use and keeps the declaration. v453 recorded exactly this for
+  top-level constants; it lands the same way one scope down.
+- **A SPREAD is a use.** `...lead` puts a dot before the name, so a plain
+  property-access lookbehind reads it as `obj.lead` — and the scan reported
+  `focusBonus()`'s two LIVE variables, the trouble-zone list among them, as
+  dead. That is the function this file already records as having had genuinely
+  dead input, so a false positive there is the most expensive kind.
+
+Both faults are pinned as guards on synthetic sources: the scan must see a local
+nothing reads, and must NOT see one used through a spread or inside a template
+literal. Restoring `const gate` fails by name with the function and the line.
+
+## The entry cap was a per-mode fact living in five ternaries (v463)
+
+`CARDIO_INFO` holds the label, the units, the levels, the day readers, the card
+builder and the timer shape for each mode — v327, v328 and v353 moved those
+there one at a time, each after a hand-written two-value branch had gone stale
+when the set grew. **The entry cap was left behind**, as five ternaries:
+
+| mode | minutes | distance | reps | calories |
+|---|---|---|---|---|
+| jacks | 300 | — | 9,000 | 3,000 |
+| skip | 300 | — | 20,000 | 3,000 |
+| bike | 600 | 300 km | — | 8,000 |
+| ruck | 600 | 100 km | — | 8,000 |
+| run | 600 | 100 km | — | 8,000 |
+
+Nothing is wrong today. What a sixth mode would have got is **no cap at all**,
+and `Math.min(undefined, v)` is `NaN` — the athlete's entry would vanish, which
+is the direction that costs data rather than credit.
+
+**The move is proved byte-identical**, mode by mode and unit by unit, by feeding
+999,999 through each of the five setters: all fifteen caps are exactly what the
+ternaries gave. The expected figures are pinned as **values**, never read back
+out of `CARDIO_INFO` — reading them from the registry would move both sides of
+the comparison together.
+
+**And the rule has to be ASKED FOR.** A check counting the declaration passes
+while a setter keeps its own ternary, which is the drift the registry exists to
+stop and the escape v322 and v368 both recorded — so a source assertion requires
+every one of the five to name `cardioCap(`. That is the check the first mutant
+fails, and no rendered assertion can see it.
+
+The validator gains the lockstep: every mode declares a positive cap for every
+unit **it itself offers**. Broken in front of it two ways — a missing cap and a
+**zero** one, which would eat the entry rather than bound it — each required to
+complain by name, then restored.
+
+### And a mutant that never seeded read as a pass
+
+The second seed's script threw before writing the file, so the run measured
+**clean code and reported green**. *Read the run, not the pattern you hoped
+would match it* — and a mutation result is only meaningful once the seed is
+confirmed in the file. Re-seeded properly it fails by name.
+
+## Two readers of one fact, and the comment said they could not disagree (v464)
+
+`bikeMinutes()` carries this, and has since it was written:
+
+> Whatever was entered, in minutes — **the one place the three currencies meet.
+> Everything downstream reads this, so they can never disagree with each other.**
+
+`CARDIO_INFO`'s `dayMin()` is a **second reader**, with its own copy of the
+daily ceiling. For the bike, the ruck and the run the two copies happened to
+agree at 600. **For jacks and skipping they did not** — the live reader capped
+at 300 minutes and the day reader at 600. Measured on an imported day of 500
+jack-minutes:
+
+| | minutes | calories |
+|---|---|---|
+| the Movement card | **300** | **2,520** |
+| the Progress row and the weekly conditioning bar | **500** | **4,200** |
+
+A 67% disagreement between two screens about one day. **A comment claiming an
+invariant is not the invariant** — ninth entry, and this one named the exact
+property it did not have.
+
+Only an import can reach it, because the setter caps jacks at 300; that is the
+same threat model as every other repair in this file. One `dayCapMin` per mode
+now, asked by both readers, which is what makes that sentence true.
+
+**Pin the VALUE, not the identity.** The agreement check alone cannot catch a
+changed ceiling: both readers ask the same number, so moving it moves both
+sides together and they still agree. Jacks at 300, skipping at 300 and the bike
+at 600 are pinned as literals, and the mutant that puts jacks back to 600 fails
+on exactly that one.
+
+**The floor is an ordinary day.** A fix that clamped every mode to 300 satisfies
+every assertion about jacks and skipping and rewrites real bike, ruck and run
+training — that is the second mutant, and it fails on the bike's own pin.
+
+### And the lockstep escaped until something broke it
+
+Removing the validator's `dayCapMin` rule was invisible: the caps block breaks
+`caps` and nothing broke the ceiling. *A clean validator proves nothing about a
+validator rule* — it is now broken two ways in front of the validator (absent,
+and **zero**, which would credit nothing at all), each required to complain by
+name, then restored.
+
+**And a page constant is still not visible in Node.** The first version of the
+check referenced `CARDIO_MODES` in a Node-side assertion and the suite reported
+*"the test file itself threw"* rather than naming a check. Carry it out in the
+payload — fourteenth time.
+
+## The good-news note had no rule at all (v465)
+
+`.note` has three modifiers in the stylesheet — `info`, `fire`, `warn` — each a
+10% tint and a 1px edge. **`class="note ok"` is written in 22 places** — a
+cleared health screen, a met target, a goal reached, a plan that fits — and
+`.ok` was never defined.
+
+Measured on the painted box, both themes:
+
+| | background | border |
+|---|---|---|
+| a bare `.note` | transparent | 0px |
+| **`.note.ok`** | **transparent** | **0px** |
+| `.note.warn` | gold at 10% | 1px |
+
+So every positive note in the app was **byte-identical to an unstyled box**,
+sitting beside warnings and prompts that all had a coloured card. `--green` was
+already in the palette **in both themes** and used by no note at all, so the
+rule follows the theme exactly as the other three do.
+
+**The check measures the PAINTED box, not the stylesheet text.** A rule added
+somewhere else, or a modifier that stops resolving, shows up either way — the
+same reasoning as the v236 no-scrim check screenshotting pixels rather than
+asserting a CSS rule. It collects the modifiers the app really writes, including
+the quoted literals inside a computed one (`class="note ${w.down?'ok':'info'}"`),
+and requires every one to paint differently from a bare note **in dark and in
+light**. Removing the rule fails both, naming `ok`.
+
+### How it was found: a class used in markup with no CSS rule
+
+The sweep is cheap and worth repeating. Of **156 static class names** in the
+markup, four have no CSS rule; three are legitimate marker classes used only as
+selectors (`ob-step`, `ph-img`) or dead but harmless (`bs-body`), and the fourth
+was this. **A class that styles nothing is silent** — nothing throws, the
+element renders, and it simply looks like the plain version.
+
+### And the 2 MB install budget fired again
+
+`index.html` is **1,743 KB of the 2,048 KB install tier** and grows every
+version, so this gate trips periodically by design — v352 and v410 both hit it.
+The two home-screen icons (`icon-192-maskable`, `icon-180-apple`, 62 KB) moved
+to `FIRST_RUN` behind the 512 one v410 moved for the same reason: the OS wants
+them **after** install, not for the first paint, and installing needs a network
+anyway. **Moving a file between tiers costs no download** — the same pack is
+fetched either way. Install tier now 1,983 KB, 64 KB of headroom.
+
+## The light theme never told the browser it was light (v466)
+
+`color-scheme` was declared **once**, unconditionally:
+
+```
+:root{accent-color:var(--fire);color-scheme:dark}
+```
+
+There is no light override, and the app has a light theme
+(`:root[data-theme="light"]`). So on the light theme the browser painted every
+**native** control from its dark palette. Measured on a light-background date
+field, screenshot either way: the calendar button is a **pale outline, all but
+invisible**, against the solid icon it becomes under `color-scheme:light`. The
+same declaration drives the number spinners and the scrollbars, and this app has
+thirty numeric inputs.
+
+**The TEXT was never at risk, and measuring that is what kept the fix honest.**
+A bare `<input type=number>` in light theme measures **1.44:1** — dark ink on
+the browser's dark box — which looks like a serious finding and is a probe
+artefact: the app styles its own field bodies, and a REAL input measures
+**14.57:1**. Only the browser-painted parts were wrong. *Measure a real control
+on a real screen before believing a synthetic one.*
+
+The check pins the computed `color-scheme` per theme, with a guard that the two
+palettes genuinely differ — otherwise both assertions pass on one theme measured
+twice. Both mutants fail by name: the override removed, and `light` applied
+everywhere.
+
+### And the v455 escape it sat beside
+
+The v455 mutation run left one escape: **"a length change is not a repair"**.
+Reading it back is what explained it — for a **shortened** array the element
+loop catches it anyway (`_normTouchedExisting(2, undefined)` is a removed
+value), so the line only decides the **grown** case, and `normalizeState()`
+never adds a row.
+
+So the mutant is equivalent *on reachable data*, and the honest close is not a
+check on the app but a pin on the **predicate's own contract** — the shape v338
+and v380 both needed. `{l:[1]}` → `{l:[1,2]}` now sits beside the eight cases
+already there, and the mutant fails by name.
+
+### And two mutation copies were incomplete
+
+`mut454` stopped on a **RED baseline** — *"every shell asset exists on disk:
+archivo.woff2"* — because four of the mutation directories were built with a
+glob that copies `.jpg` and `.mp4` and misses `.woff2`, `.png`, `.svg` and
+`.webmanifest`. That is v428's lesson: **copy every file in the root, not the
+extensions you happen to think of.**
+
+The stop is the rule working, and it also explains why `mut453` was valid: it
+runs suites 23 and 09, and the missing-asset check lives in 01 and 12. **A
+mutation result is scoped to the suites the driver actually runs** — a red
+baseline in one suite says nothing about a driver that never opens it.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

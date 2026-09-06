@@ -767,6 +767,17 @@ export default async function run() {
     const src = [...document.querySelectorAll('script:not([src])')]
       .map(s => s.textContent).sort((a, b) => b.length - a.length)[0] || '';
     const noComments = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    /* A NUMBER SPELLED OUT IS THE SAME DEFECT AS A DIGIT, and v457 is what
+       proved it: "your one-year build" survived a sweep aimed at digits because
+       it is a WORD. So every arm takes both forms. The subject markers are what
+       keep this honest — "six-week six-pack" states a rhetorical timeframe, not
+       this program's block length, and must not be caught. */
+    const W = '(?:\\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)';
+    const BLOCKLEN = new RegExp([
+      W + '[- ]week blocks?', W + ' weeks? done', 'after week ' + W,
+      'next ' + W + ' weeks', 'moves in ' + W + ' weeks', 'means ' + W + ' weeks',
+      'Weeks 1[\\u2013-]\\d+'
+    ].join('|'), 'g');
     return {
       weeks: WEEKS_PER_CYCLE,
       isApp: /function normalizeState/.test(noComments),
@@ -777,23 +788,42 @@ export default async function run() {
          "Re-test after week N" on the strength chart, slipped past both and was
          found by reading the RENDERED screens instead of scanning for a pattern
          already known. Each new phrasing goes in here, not into a second scan. */
-      hardcoded: (noComments.match(/\d+-week block|\d+ weeks? done|after week \d+/g) || []),
+      hardcoded: noComments.match(BLOCKLEN) || [],
+      /* Both ways, on a SYNTHETIC source — an empty offender list is otherwise a
+         statement about the regex. Every phrasing that has been found by hand is
+         planted here, and a sentence that merely mentions weeks is not. */
+      probeCatches: ('a 6-week block. eight-week blocks. 6 weeks done. after week 7. '
+        + 'the next six weeks. moves in six weeks. means six weeks of work. Weeks 1-6 are core.')
+        .match(BLOCKLEN) || [],
+      probeQuiet: ('spot-reduction is not real and neither is a six-week six-pack. '
+        + 'expect the tape to move in 3-4 weeks. once every three or four weeks is plenty.')
+        .match(BLOCKLEN) || [],
       /* And the coach count, the same class one cast over: "pick one of the 16"
          was written when there were sixteen, and there are 38. */
       coachCount: COACHES.length,
       coachCopy: (noComments.match(/pick one of the \d+/g) || []),
       // the achievement and the re-test screen must both read the constant
       achDesc: (ACHIEVEMENTS.find(a => a.id === 'block') || {}).desc,
+      achDesc3: (ACHIEVEMENTS.find(a => a.id === 'blocks3') || {}).desc,
       lastWeekNote: (typeof _overloadNoteInner === 'function')
         ? _overloadNoteInner({ week: WEEKS_PER_CYCLE, cycle: 1 }) : ''
     };
   });
   t.ok('guard: the scan read the app, not a stub', blockLen.isApp, blockLen);
+  t.eq('guard: the scan catches every phrasing that has been found by hand',
+    blockLen.probeCatches.length, 8, JSON.stringify(blockLen.probeCatches));
+  t.eq('guard: and stays quiet on a week count that is not the block length',
+    blockLen.probeQuiet.join(', '), '', JSON.stringify(blockLen.probeQuiet));
   t.ok('guard: and the block really is more than one week', blockLen.weeks > 1, blockLen);
   t.eq('no sentence writes the block length out by hand',
     blockLen.hardcoded.join(', '), '', blockLen);
   t.eq('the Block Complete badge names the real length',
     blockLen.achDesc, 'Finish a ' + blockLen.weeks + '-week block', blockLen);
+  /* Its SIBLING two lines above still spelled the length out — "Finish 3
+     six-week blocks" — so v397 fixed the badge it was looking at and left the
+     one beside it. Fixing one instance is not fixing the class. */
+  t.eq('and so does the badge two lines above it',
+    blockLen.achDesc3, 'Finish 3 ' + blockLen.weeks + '-week blocks', blockLen);
   t.ok('and the final-week note does too',
     blockLen.lastWeekNote.indexOf(blockLen.weeks + '-week block') >= 0, blockLen);
   /* The coach roster is named in Settings copy. It said 16 when the cast was
@@ -835,10 +865,25 @@ export default async function run() {
         if (say.length) out.bad.push(mn + '.' + key + ': "' + d + '" -> ' + say.join('; '));
       });
     });
+    /* THE OPS BENCHMARKS ARE THE SAME SHAPE AND WERE NOT IN THE SWEEP — an
+       array rather than a map, so a scan written over five maps could not see
+       them. Each one states its round count in prose beside the `rounds` the
+       player actually runs. */
+    (typeof OPS !== 'undefined' ? OPS : []).forEach(o => {
+      const d = String(o.desc || '');
+      if (!d) return;
+      out.checked++;
+      const m = d.match(/(\d+)\s*rounds?\b/i);
+      if (m && o.rounds && +m[1] !== o.rounds)
+        out.bad.push('OPS.' + o.id + ': "' + d + '" -> count ' + m[1] + ' vs rounds=' + o.rounds);
+    });
+    out.opsSeen = (typeof OPS !== 'undefined' ? OPS : []).length;
     return out;
   });
   /* The guard is what makes an empty `bad` list mean anything: a sweep that
      matched no descriptions at all would report clean on nothing. */
+  t.ok('guard: the ops benchmarks were in the sweep', fmtProse.opsSeen >= 4,
+    JSON.stringify({ ops: fmtProse.opsSeen }));
   t.ok('guard: the sweep read real format descriptions', fmtProse.checked >= 15,
     JSON.stringify({ checked: fmtProse.checked }));
   t.eq('no format description contradicts its own work, rest or round count',
@@ -1688,21 +1733,23 @@ export default async function run() {
 
     if (best) {
       // strip comments, respecting strings and template literals
-      const code = best[1];
-      let out = '', i = 0, st = null;
-      while (i < code.length) {
-        const c = code[i], nx = code[i + 1];
-        if (!st) {
-          if (c === '/' && nx === '*') { const j = code.indexOf('*/', i + 2); i = j < 0 ? code.length : j + 2; out += ' '; continue; }
-          if (c === '/' && nx === '/') { const j = code.indexOf('\n', i); i = j < 0 ? code.length : j; continue; }
-          if (c === '"' || c === "'" || c === '`') { st = c; out += c; i++; continue; }
-          out += c; i++; continue;
+      const stripComments = code => {
+        let out = '', i = 0, st = null;
+        while (i < code.length) {
+          const c = code[i], nx = code[i + 1];
+          if (!st) {
+            if (c === '/' && nx === '*') { const j = code.indexOf('*/', i + 2); i = j < 0 ? code.length : j + 2; out += ' '; continue; }
+            if (c === '/' && nx === '/') { const j = code.indexOf('\n', i); i = j < 0 ? code.length : j; continue; }
+            if (c === '"' || c === "'" || c === '`') { st = c; out += c; i++; continue; }
+            out += c; i++; continue;
+          }
+          if (c === '\\') { out += code.slice(i, i + 2); i += 2; continue; }
+          if (c === st) st = null;
+          out += c; i++;
         }
-        if (c === '\\') { out += code.slice(i, i + 2); i += 2; continue; }
-        if (c === st) st = null;
-        out += c; i++;
-      }
-      const clean = out;
+        return out;
+      };
+      const clean = stripComments(best[1]);
 
       const decl = [...clean.matchAll(/^(?:async\s+)?function\s+([A-Za-z0-9_$]+)\s*\(/gm)]
         .map(m => [m[1], m.index]);
@@ -1768,7 +1815,164 @@ export default async function run() {
       // and the allowlist does not rot: each entry must still be genuinely uncalled
       KEPT.forEach(k => t.ok('the kept-on-purpose entry ' + k + ' is still uncalled',
         !reach.has(k), k + ' now has a caller — take it off the list'));
+
+      /* ---- and no top-level constant is declared and never read (v453) ----
+         The same question one declaration kind over. v331 found THREE dead
+         constants at once and the middle one was the expensive kind: it looked
+         like a setting, DISAGREED with the behaviour it named, and changed
+         nothing at all when edited — the voicePitch trap in its purest form.
+
+         v453 removed WARMUP and COOLDOWN, which were read and wrong rather than
+         unread; this is what stops the next pair being merely forgotten. */
+      const constNames = [...clean.matchAll(/\bconst\s+([A-Z][A-Z0-9_]+)\s*=/g)].map(m => m[1]);
+      const unreadIn = (text, list) => list.filter(nm =>
+        (text.match(new RegExp('\\b' + nm + '\\b', 'g')) || []).length <= 1).sort();
+
+      /* GUARD, on a SYNTHETIC source rather than the real one, so it stays true
+         whatever the app becomes: the detector must report a constant nothing
+         reads and must NOT report one that is only ever read inside a template
+         literal — which is how most of this app's constants are consumed. */
+      const probe = "const AA_LIVE = 1;\nconst AA_DEAD = 2;\nconst h = `x ${AA_LIVE} y`;\n";
+      const probeNames = [...probe.matchAll(/\bconst\s+([A-Z][A-Z0-9_]+)\s*=/g)].map(m => m[1]);
+      const probeUnread = unreadIn(probe, probeNames);
+      t.ok('guard: the scan reports a constant nothing reads', probeUnread.indexOf('AA_DEAD') >= 0, probeUnread);
+      t.ok('guard: and not one read only inside a template literal', probeUnread.indexOf('AA_LIVE') < 0, probeUnread);
+      t.ok('guard: it found the real roster of constants', constNames.length > 200, String(constNames.length));
+
+      const deadConsts = unreadIn(clean, constNames);
+      t.eq('no top-level constant is declared and never read', deadConsts.length, 0, deadConsts.slice(0, 20));
+
+      /* ---- and every inline handler names a function that exists (v457) ---
+         The mirror of the block above. Reachability asks whether a declared
+         function is ever CALLED; it cannot see the opposite — a `onclick=`
+         in markup naming a function that is not there. That is a button the
+         athlete taps and nothing happens, with nothing on screen to say so,
+         and `npm run check` cannot see it either because the file parses.
+
+         v316 measured this once as a probe (275 names, none dead) and kept
+         nothing. v385 is what that costs: a whole cluster went dark and stayed
+         dark for many versions because the probe that would have caught it was
+         thrown away.
+
+         Handlers live inside template literals, so the scan reads the stripped
+         script AND the static markup outside it. A name preceded by a dot is a
+         method (`Math.round(`) and is not a handler. */
+      const declared = new Set(names);
+      for (const m of clean.matchAll(/^\s*(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?(?:function\b|\([^)]*\)\s*=>|[A-Za-z0-9_$]+\s*=>)/gm))
+        declared.add(m[1]);
+      const HKW = new Set(['if', 'for', 'while', 'return', 'function', 'catch', 'switch', 'typeof',
+        'new', 'do', 'else', 'delete', 'await', 'in', 'of', 'var', 'let', 'const', 'try', 'throw', 'void']);
+      const HGLOBAL = new Set(['Math', 'JSON', 'Object', 'Array', 'String', 'Number', 'Boolean', 'Date',
+        'Promise', 'Image', 'Set', 'Map', 'RegExp', 'Error', 'parseInt', 'parseFloat', 'isNaN', 'isFinite',
+        'alert', 'confirm', 'prompt', 'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval',
+        'encodeURIComponent', 'decodeURIComponent', 'requestAnimationFrame', 'fetch', 'URL', 'Blob',
+        'FileReader', 'Audio', 'AbortController']);
+      const handlerCalls = text => {
+        const o = new Map();
+        for (const m of text.matchAll(/\bon[a-z]+\s*=\s*(["'])([\s\S]*?)\1/g))
+          for (const c of m[2].matchAll(/(?<![.\w$])([A-Za-z_$][\w$]*)\s*\(/g))
+            if (!o.has(c[1])) o.set(c[1], m[2].replace(/\s+/g, ' ').slice(0, 80));
+        return o;
+      };
+      const outsideMarkup = idx.slice(0, best.index) + idx.slice(best.index + best[0].length);
+      const unresolvedIn = (text, decl) => [...handlerCalls(text)]
+        .filter(([n]) => !decl.has(n) && !HKW.has(n) && !HGLOBAL.has(n));
+
+      /* GUARDS, on a SYNTHETIC source both ways, so an empty result is a
+         statement about the app rather than about the regex. The third case is
+         this file's most-recorded trap: a COMMENT that quotes a handler is not
+         a call site, and the real file carries one (the v406 note quoting an
+         `onerror=` payload) — measured, it is the ONLY hit if comments are not
+         stripped first. */
+      const hProbeDecl = new Set(['realFn']);
+      const hProbe = '<button onclick="realFn(1)">a</button><b onclick="ghostFn()">b</b>';
+      const hProbeHits = unresolvedIn(hProbe, hProbeDecl).map(x => x[0]);
+      t.ok('guard: the scan reports a handler naming a function that is not there',
+        hProbeHits.indexOf('ghostFn') >= 0, hProbeHits);
+      t.ok('guard: and not one that is', hProbeHits.indexOf('realFn') < 0, hProbeHits);
+      t.eq('guard: a comment quoting a handler is not a call site — the real file carries one',
+        unresolvedIn(stripComments('/* onclick="ghostFn()" broke out and RAN */'), hProbeDecl).length, 0);
+
+      const liveCalls = new Map([...handlerCalls(clean), ...handlerCalls(outsideMarkup)]);
+      t.ok('guard: it found the real roster of handlers', liveCalls.size > 200, String(liveCalls.size));
+      t.ok('guard: and the real roster of declarations', declared.size > 900, String(declared.size));
+
+      const ghosts = [...new Map([...unresolvedIn(clean, declared), ...unresolvedIn(outsideMarkup, declared)])];
+      t.eq('every inline handler names a function that exists', ghosts.length, 0,
+        JSON.stringify(ghosts.slice(0, 8)));
+
+      /* ---- and no stored flag is set while gating nothing (v457) ----------
+         The same question a third declaration kind over, on a field that lives
+         in the athlete's own saved state rather than in the source.
+
+         `if(!STATE.profile._x)STATE.profile._x=true;` is the shape a one-time
+         migration takes: the flag exists so the body beside it runs once. When
+         the body is later removed the flag is routinely left behind, and what
+         remains looks like it guards something and guards nothing — the
+         voicePitch trap in a stored field. Three were live when this was
+         written (_gearMil, _gearDb, _benchKit), two of them having lost even
+         their comment, and each wrote a key into every athlete's profile and
+         into every backup for ever.
+
+         A live flag has a third site: the branch that reads it. */
+      const selfSet = /if\s*\(\s*!\s*(STATE(?:\.[A-Za-z0-9_$]+)*\.(_[A-Za-z0-9_$]+))\s*\)\s*\1\s*=\s*[^;]+;/g;
+      const deadFlagsIn = text => {
+        const o = [];
+        for (const m of text.matchAll(selfSet)) {
+          const uses = (text.match(new RegExp('\\.' + m[2] + '\\b', 'g')) || []).length;
+          if (uses <= 2) o.push(m[2]);
+        }
+        return o;
+      };
+
+      /* GUARDS, on a SYNTHETIC source both ways: a flag whose only two sites
+         are its own set-once statement must be reported, and one that is
+         genuinely read somewhere else must not. */
+      const fProbe = 'if(!STATE.profile._deadF)STATE.profile._deadF=true;\n'
+        + 'if(!STATE.profile._liveF){doThing();STATE.profile._liveF=true;}\n'
+        + 'if(seeding&&!STATE.profile._liveF)seed();\n';
+      const fProbeHits = deadFlagsIn(fProbe);
+      t.ok('guard: the scan reports a flag that gates nothing', fProbeHits.indexOf('_deadF') >= 0, fProbeHits);
+      t.ok('guard: and not one that is read elsewhere', fProbeHits.indexOf('_liveF') < 0, fProbeHits);
+      t.ok('guard: the app really does carry set-once flags of this shape',
+        [...clean.matchAll(selfSet)].length > 0, 'no set-once flag found at all');
+
+      const deadFlags = deadFlagsIn(clean);
+      t.eq('no stored one-time flag is set while gating nothing', deadFlags.length, 0, deadFlags);
     }
+  }
+
+  /* ---- the two static blurbs cannot derive, so they are pinned (v457) -----
+     v348 measured it: 378 sessions is 54 weeks at SEVEN a week and the wizard's
+     floor is FIVE, which is 76 — so a fixed duration is true for nobody who
+     took the default. Every surface inside the app derives it from
+     programWeeks(). The `<meta name="description">` and the manifest cannot:
+     they are static text read by the install prompt and the store listing.
+
+     So the claim they make is the one thing that can be checked — the SESSION
+     count, which is a constant of the program rather than of the athlete — and
+     a duration in time is forbidden outright. */
+  {
+    const mf = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.webmanifest'), 'utf8'));
+    const idxSrc = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const metaM = /<meta\s+name="description"\s+content="([^"]*)"/.exec(idxSrc);
+    t.ok('guard: the page carries a description meta tag', !!metaM, String(!!metaM));
+    const blurbs = [['manifest', mf.description || ''], ['meta', metaM ? metaM[1] : '']];
+
+    const total = await page.evaluate(() => SESSIONS_PER_CYCLE * TOTAL_CYCLES);
+    t.eq('guard: the program really is 378 sessions', total, 378, String(total));
+
+    blurbs.forEach(([where, txt]) => {
+      t.ok('the ' + where + ' blurb claims no fixed duration in time',
+        !/\b(?:full[- ]year|one[- ]year|1[- ]year|year[- ]long|\d+\s*months?)\b/i.test(txt),
+        txt.slice(0, 120));
+      const n = /\b(\d{2,4})[- ]session\b/.exec(txt);
+      if (n) t.eq('and the ' + where + ' session count matches the program', +n[1], total, txt.slice(0, 120));
+    });
+    /* FLOOR: the detector really would catch the wording this replaced. */
+    t.ok('guard: the scan reports a year claim when there is one',
+      /\b(?:full[- ]year|one[- ]year|1[- ]year|year[- ]long|\d+\s*months?)\b/i
+        .test('a full year of full-body strength'), 'detector is blind');
   }
 
   /* ---- every hand-written pool names a real movement (v441) --------------
@@ -1837,6 +2041,30 @@ export default async function run() {
     o.swapAltInherited = hits(new RegExp('SWAP_ALT\\.' + ak + ' -> unknown exercise "constructor"'));
     SWAP_ALT[ak] = realAlt;
 
+    /* SIX MORE REGISTRIES CARRY AN EXERCISE ID and none was in the sweep v441
+       shipped — the four format maps, the FORCE events and BOTH test lists, 29
+       ids in all. HOLD_TESTS is the sharpest: holdMovement() resolves that id,
+       so a typo leaves the whole hold test measuring nothing. */
+    const skk = Object.keys(SKIP_FORMATS).find(k => SKIP_FORMATS[k].exId);
+    const realSk = SKIP_FORMATS[skk].exId; SKIP_FORMATS[skk].exId = 'notARealMove';
+    o.skipCaught = hits(new RegExp('SKIP_FORMATS\\.' + skk + ': unknown exercise "notARealMove"'));
+    SKIP_FORMATS[skk].exId = realSk;
+
+    const fe = FORCE_EVENTS.find(e => e.ex);
+    const realFe = fe.ex; fe.ex = 'notARealMove';
+    o.forceCaught = hits(new RegExp('FORCE_EVENTS\\.' + fe.id + ': unknown exercise "notARealMove"'));
+    fe.ex = realFe;
+
+    const realTe = TESTS[0].ex; TESTS[0].ex = 'notARealMove';
+    o.testCaught = hits(new RegExp('TESTS\\.' + TESTS[0].id + ': unknown exercise "notARealMove"'));
+    TESTS[0].ex = realTe;
+
+    const realHo = HOLD_TESTS[0].exId; HOLD_TESTS[0].exId = 'notARealMove';
+    o.holdCaught = hits(new RegExp('HOLD_TESTS\\.' + HOLD_TESTS[0].id + ': unknown exercise "notARealMove"'));
+    HOLD_TESTS[0].exId = 'constructor';
+    o.holdInherited = hits(new RegExp('HOLD_TESTS\\.' + HOLD_TESTS[0].id + ': unknown exercise "constructor"'));
+    HOLD_TESTS[0].exId = realHo;
+
     /* An INHERITED key is the case a truthiness filter cannot see at all. */
     HIIT_POOL.push('constructor');
     o.inheritedCaught = hits(/HIIT_POOL: unknown exercise "constructor"/);
@@ -1856,6 +2084,12 @@ export default async function run() {
   t.eq('and in a quick workout', poolRule.quickCaught, 1, poolRule);
   t.eq('and in a special format', poolRule.specialCaught, 1, poolRule);
   t.eq('and in SWAP_ALT, which the swap-map rule never covered', poolRule.swapAltCaught, 1, poolRule);
+  t.eq('and in a skipping format', poolRule.skipCaught, 1, poolRule);
+  t.eq('and in a FORCE event', poolRule.forceCaught, 1, poolRule);
+  t.eq('and in a baseline test', poolRule.testCaught, 1, poolRule);
+  t.eq('and in a hold test — holdMovement() resolves that id',
+    poolRule.holdCaught, 1, poolRule);
+  t.eq('and a hold test refuses an inherited key too', poolRule.holdInherited, 1, poolRule);
   /* The swap-map rule itself read EX[target] by truthiness. Two rules of the
      same kind must not disagree about what an exercise is, so it asks
      exKnown() now — and only an INHERITED key can tell the two apart. */
@@ -1866,6 +2100,157 @@ export default async function run() {
      above and makes the validator useless. */
   t.eq('and the validator is clean again once every pool is restored',
     poolRule.cleanAfter, 0, poolRule);
+
+
+  /* ---- a local computed and never read ------------------------------------
+     `const gate=reassessGate();` sat in commitSession() and nothing read it, so
+     the commit READ as though it gated on the re-test and did not. Six more
+     like it: a set count in the exercise card, an EX lookup in
+     loadProgression(), a nut() call in readinessSlump() that reads
+     STATE.readiness instead, a habit count in renderFuel(), a date in
+     saveTDEE() and a QUICKIES lookup in quickFinish(). None was athlete-visible;
+     all seven misled a reader, and the shape also catches the real defect —
+     a value computed for the screen and never rendered.
+
+     Run in NODE against the file: no page needed, and the page-side scan cannot
+     see a declaration's scope anyway. */
+  {
+    const src = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    let big = '', bigAt = 0;
+    for (const m of src.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g))
+      if (m[1].length > big.length) { big = m[1]; bigAt = m.index; }
+    /* Comments go, STRINGS STAY. Most of this app's values are consumed inside a
+       template literal, and blanking string bodies reported 370 dead locals —
+       every one of them a variable the markup uses. */
+    const noComm = code => {
+      let out = '', i = 0, st = null;
+      while (i < code.length) {
+        const c = code[i], nx = code[i + 1];
+        if (!st) {
+          if (c === '/' && nx === '*') { const j = code.indexOf('*/', i + 2); out += ' '.repeat((j < 0 ? code.length : j + 2) - i); i = j < 0 ? code.length : j + 2; continue; }
+          if (c === '/' && nx === '/') { const j = code.indexOf('\n', i); out += ' '.repeat((j < 0 ? code.length : j) - i); i = j < 0 ? code.length : j; continue; }
+          if (c === '"' || c === "'" || c === '`') st = c;
+          out += c; i++; continue;
+        }
+        if (c === '\\') { out += code.slice(i, i + 2); i += 2; continue; }
+        if (c === st) st = null;
+        out += c; i++;
+      }
+      return out;
+    };
+    /* A SPREAD IS A USE. `...lead` puts a dot before the name, so a plain
+       property-access lookbehind reads it as `obj.lead` and misses it — which
+       reported focusBonus()'s two live variables as dead. */
+    const scan = body => {
+      const b = body.replace(/\.\.\./g, '   ');
+      const out = [];
+      for (const dm of b.matchAll(/\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=/g)) {
+        const v = dm[1];
+        const uses = (b.match(new RegExp('(?<![.\\w$])' + v.replace(/\$/g, '\\$') + '(?![\\w$])', 'g')) || []).length;
+        if (uses === 1) out.push(v);
+      }
+      return out;
+    };
+    const clean = noComm(big);
+    const found = [];
+    let fnCount = 0;
+    for (const fm of clean.matchAll(/^(?:async\s+)?function\s+([A-Za-z0-9_$]+)\s*\(/gm)) {
+      const open = clean.indexOf('{', fm.index + fm[0].length - 1);
+      if (open < 0) continue;
+      let d = 0, j = open;
+      for (; j < clean.length; j++) { if (clean[j] === '{') d++; else if (clean[j] === '}' && --d === 0) break; }
+      fnCount++;
+      scan(clean.slice(open, j + 1)).forEach(v =>
+        found.push(fm[1] + '(): ' + v + ' @' + (src.slice(0, bigAt + open).split('\n').length)));
+    }
+    t.ok('guard: the dead-local scan walked the whole roster', fnCount > 900,
+      JSON.stringify({ functions: fnCount }));
+    const probeDead = scan('{ const gate = reassessGate(); go("today"); }');
+    const probeSpread = scan('{ const lead = [1]; const p = [...lead, 2]; use(p); }');
+    const probeTpl = scan('{ const n = 3; return `there are ${n} of them`; }');
+    t.eq('guard: it sees a local nothing reads', probeDead.join(), 'gate');
+    t.eq('guard: and a SPREAD counts as a use', probeSpread.join(), '');
+    t.eq('guard: and so does a template literal', probeTpl.join(), '');
+    t.eq('no local is computed and never read', found.join('; '), '',
+      JSON.stringify(found.slice(0, 8)));
+  }
+
+
+  /* ---- every note modifier is actually styled --------------------------
+     `.note` has info, fire and warn. `class="note ok"` is written in 22 places
+     — a cleared health screen, a met target, a goal reached — and `.ok` had NO
+     RULE, so every one of them painted BYTE-IDENTICAL to a bare `.note`:
+     transparent, no border, plain ink, while the other three carry a 10% tint
+     and a 1px edge. `--green` was already in the palette in both themes and
+     unused by any note.
+
+     Measured on the PAINTED box, not on the stylesheet text: a rule added
+     somewhere else, or a modifier that stops resolving, shows up here either
+     way. */
+  {
+    const notes = await page.evaluate(() => {
+      const src = [...document.querySelectorAll('script:not([src])')]
+        .map(s => s.textContent).sort((a, b) => b.length - a.length)[0] || '';
+      /* Static modifiers, plus the quoted literals inside a computed one
+         (class="note ${w.down?'ok':'info'}"). */
+      const mods = new Set();
+      for (const m of src.matchAll(/class="note ([a-z]+)"/g)) mods.add(m[1]);
+      for (const m of src.matchAll(/class="note \$\{([^}]*)\}"/g))
+        for (const q of m[1].matchAll(/'([a-z]+)'/g)) mods.add(q[1]);
+      const paint = cls => { const d = document.createElement('div'); d.className = cls;
+        document.body.appendChild(d); const cs = getComputedStyle(d);
+        const o = cs.backgroundColor + '|' + cs.borderTopWidth + '|' + cs.color;
+        d.remove(); return o; };
+      const out = { mods: [...mods], themes: {} };
+      const keep = document.documentElement.getAttribute('data-theme');
+      ['dark', 'light'].forEach(t => {
+        document.documentElement.setAttribute('data-theme', t);
+        const plain = paint('note');
+        out.themes[t] = { plain, unstyled: out.mods.filter(m => paint('note ' + m) === plain) };
+      });
+      if (keep) document.documentElement.setAttribute('data-theme', keep);
+      else document.documentElement.removeAttribute('data-theme');
+      return out;
+    });
+    t.ok('guard: the scan found the note modifiers the app really uses',
+      notes.mods.length >= 3 && notes.mods.indexOf('ok') >= 0, JSON.stringify(notes.mods));
+    t.eq('every note modifier paints differently from a bare note — dark',
+      notes.themes.dark.unstyled.join(', '), '', JSON.stringify(notes.themes.dark));
+    t.eq('and in light theme too',
+      notes.themes.light.unstyled.join(', '), '', JSON.stringify(notes.themes.light));
+
+    /* AND THE LIGHT THEME DECLARES ITS OWN color-scheme. It was set once,
+       unconditionally dark, with no override — so the browser painted every
+       NATIVE control from its dark palette on a light page. Measured on a
+       light-background date field: the calendar button is a pale outline
+       against the solid icon it becomes under color-scheme:light, and the same
+       declaration drives the number spinners and the scrollbars.
+
+       The app styles its own field bodies, so the TEXT was never at risk (a
+       bare input measures 1.44:1, a real one 14.57:1) — it is the
+       browser-painted parts that were wrong. */
+    const scheme = await page.evaluate(() => {
+      const read = t => {
+        if (t) document.documentElement.setAttribute('data-theme', t);
+        else document.documentElement.removeAttribute('data-theme');
+        return { scheme: getComputedStyle(document.documentElement).colorScheme,
+          ink: getComputedStyle(document.body).color };
+      };
+      const keep = document.documentElement.getAttribute('data-theme');
+      const o = { light: read('light'), dark: read('dark') };
+      if (keep) document.documentElement.setAttribute('data-theme', keep);
+      else document.documentElement.removeAttribute('data-theme');
+      return o;
+    });
+    /* GUARD: the two themes really are different palettes, or the assertions
+       below pass on one theme measured twice. */
+    t.ok('guard: the light and dark palettes really differ',
+      scheme.light.ink !== scheme.dark.ink, JSON.stringify(scheme));
+    t.eq('the light theme paints native controls from the light palette',
+      scheme.light.scheme, 'light', JSON.stringify(scheme));
+    t.eq('and the dark theme keeps the dark one', scheme.dark.scheme, 'dark',
+      JSON.stringify(scheme));
+  }
 
   await browser.close(); srv.close();
   return t.finish(errors);
