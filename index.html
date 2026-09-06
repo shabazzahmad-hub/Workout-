@@ -1977,7 +1977,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='462';
+const APP_VERSION='463';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -18714,10 +18714,25 @@ function skipWork(){
     kcal:Math.round(min*skipKcalPerMin(m.slvl)),
     steps:Math.round(min*skipStepsPerMin(m.slvl))};
 }
+/* THE ENTRY CAP IS A PER-MODE FACT, AND IT LIVED IN FIVE HAND-WRITTEN TERNARIES.
+   CARDIO_INFO already holds the label, the units, the levels, the day readers
+   and the card builder for each mode precisely so a sixth is a line in the
+   registry rather than a hunt — v327/v328/v353 moved those there one at a time.
+   The five caps were left behind, so the sixth mode would have arrived with no
+   cap at all or with a table somebody had to remember to write.
+
+   The unit is repaired by normalizeState() and the picker offers only the three
+   each mode declares, so an out-of-set unit is not reachable; it falls back to
+   the calorie cap, which is what every one of the five ternaries already did in
+   its final branch. Byte-identical for every real unit. */
+function cardioCap(mode,unit){
+  try{const c=(cardioInfo(mode)||{}).caps||{};
+    return c[unit]!==undefined?c[unit]:c.kcal;}catch(e){return undefined;}
+}
 function setSkipVal(v){
   const t=nutToday();const m=movement();
   const n=Math.max(0,+v||0);
-  const cap=m.sunit==='min'?300:(m.sunit==='reps'?20000:3000);
+  const cap=cardioCap('skip',m.sunit);
   t.skipVal=Math.min(cap,Math.round(n*100)/100);
   syncStepHabit();save();repaintMovement();
 }
@@ -18743,7 +18758,7 @@ function setSkipLvl(k){
 function setJackVal(v){
   const t=nutToday();const m=movement();
   const n=Math.max(0,+v||0);
-  const cap=m.junit==='min'?300:(m.junit==='reps'?9000:3000);
+  const cap=cardioCap('jacks',m.junit);
   t.jackVal=Math.min(cap,Math.round(n*100)/100);
   syncStepHabit();save();repaintMovement();
 }
@@ -18880,7 +18895,7 @@ function setBikeVal(v){
   const t=nutToday();const m=movement();
   let n=Math.max(0,+v||0);
   if(m.unit==='dist')n=showToKm(n);
-  const cap=m.unit==='min'?600:(m.unit==='dist'?300:8000);
+  const cap=cardioCap('bike',m.unit);
   t.bikeVal=Math.min(cap,Math.round(n*100)/100);
   syncStepHabit();save();repaintMovement();
 }
@@ -18925,7 +18940,7 @@ function setRuckVal(v){
   const t=nutToday();const m=movement();
   let n=Math.max(0,+v||0);
   if(m.runit==='dist')n=showToKm(n);
-  const cap=m.runit==='min'?600:(m.runit==='dist'?100:8000);
+  const cap=cardioCap('ruck',m.runit);
   t.ruckVal=Math.min(cap,Math.round(n*100)/100);
   syncStepHabit();save();repaintMovement();
 }
@@ -18952,7 +18967,7 @@ function setRunVal(v){
   const t=nutToday();const m=movement();
   let n=Math.max(0,+v||0);
   if(m.nunit==='dist')n=showToKm(n);
-  const cap=m.nunit==='min'?600:(m.nunit==='dist'?100:8000);
+  const cap=cardioCap('run',m.nunit);
   t.runVal=Math.min(cap,Math.round(n*100)/100);
   syncStepHabit();save();repaintMovement();
 }
@@ -19082,6 +19097,7 @@ function _dv(v){return (typeof v==='number'&&isFinite(v)&&v>0)?v:0;}
 const CARDIO_INFO={
   jacks:{label:'🤸 Jumping jacks',short:'jumping jacks',did:'of jumping jacks',verb:'jumping',
     valKey:'jackVal',lvlKey:'jackLvl',unitKey:'jackUnit',levels:()=>JACK_LEVELS,units:()=>JACK_UNITS,
+    caps:{min:300,reps:9000,kcal:3000},
     note:'Nothing to set up and nothing to carry — a hotel room or a friend&#39;s spare floor is enough.',
     unit:()=>movement().junit,setUnit:setJackUnit,add:addJackVal,
     work:()=>jackWork(),
@@ -19098,6 +19114,7 @@ const CARDIO_INFO={
       return `${_ve(jackLevel(m.jlvl).label)} jumping jacks, that is <b>${n.min} min</b>, <b>${n.reps.toLocaleString()} reps</b>, or <b>${n.kcal} kcal</b>. No kit, no wall, anywhere you can stand.`;}},
   bike: {label:'🚴 Bike',        short:'the bike',did:'on the bike',verb:'riding',
     valKey:'bikeVal',lvlKey:'bikeLvl',unitKey:'bikeUnit',levels:()=>BIKE_LEVELS,units:()=>BIKE_UNITS,
+    caps:{min:600,dist:300,kcal:8000},
     note:'Lowest-impact option, and the easiest to hold a steady effort on. Needs the trainer.',
     unit:()=>movement().unit, setUnit:setBikeUnit,add:addBikeVal,
     work:()=>bikeRide(),
@@ -19114,6 +19131,7 @@ const CARDIO_INFO={
       return `${_ve(bikeLevel(m.lvl).label)} on the trainer, that is <b>${n.min} min</b>, <b>${n.dist} ${distUnit()}</b>, or <b>${n.kcal} kcal</b> — whichever your bike shows you.`;}},
   ruck: {label:'🎒 Ruck',        short:'the ruck',did:'under the ruck',verb:'rucking',
     valKey:'ruckVal',lvlKey:'ruckLvl',unitKey:'ruckUnit',levels:()=>RUCK_PACES,units:()=>RUCK_UNITS,
+    caps:{min:600,dist:100,kcal:8000},
     note:'Walking under load. Outdoors, no impact to speak of, and the only one here that also loads your legs and spine while it does the cardio.',
     unit:()=>movement().runit,setUnit:setRuckUnit,add:addRuckVal,
     work:()=>ruckWork(),
@@ -19130,6 +19148,7 @@ const CARDIO_INFO={
       return `${_ve(ruckPace(m.rlvl).label)} under <b>${ruckLoadLb()} lb</b>, that is <b>${n.min} min</b>, <b>${n.dist} ${distUnit()}</b>, or <b>${n.kcal} kcal</b>. Outdoors, and it loads your legs while it pays the target.`;}},
   run:  {label:'🏃 Run',         short:'the run',did:'of running',verb:'running',
     valKey:'runVal',lvlKey:'runLvl',unitKey:'runUnit',levels:()=>RUN_PACES,units:()=>RUN_UNITS,
+    caps:{min:600,dist:100,kcal:8000},
     note:'The aerobic base every military fitness standard is built on. Treadmill or road — the app only needs the effort and how long you were out.',
     unit:()=>movement().nunit,setUnit:setRunUnit, add:addRunVal,
     work:()=>runWork(),
@@ -19146,6 +19165,7 @@ const CARDIO_INFO={
       return `${_ve(runPace(m.nlvl).label)} running, that is <b>${n.min} min</b>, <b>${n.dist} ${distUnit()}</b>, or <b>${n.kcal} kcal</b>. Treadmill or road — the effort is what counts, not the ground.`;}},
   skip: {label:'🪢 Skipping',    short:'the rope',did:'of skipping',verb:'skipping',
     valKey:'skipVal',lvlKey:'skipLvl',unitKey:'skipUnit',levels:()=>SKIP_LEVELS,units:()=>SKIP_UNITS,
+    caps:{min:300,reps:20000,kcal:3000},
     note:'Hardest calorie burn per minute here, and it packs into a pocket. High impact, so it asks more of the knees and calves than jacks do.',
     unit:()=>movement().sunit,setUnit:setSkipUnit,add:addSkipVal,
     work:()=>skipWork(),
@@ -24771,6 +24791,14 @@ function validateData(){
         asking only "does the row exist" cannot see. */
      if(typeof i.detail!=='function')errs.push('CARDIO_INFO.'+k+': no detail builder — its row on Progress would carry no figures');
      if(['block','durations','stopwatch'].indexOf(i.timer)<0)errs.push('CARDIO_INFO.'+k+': timer shape "'+i.timer+'" is not one the make-up sheet can render');
+     /* A CAP FOR EVERY UNIT THE MODE OFFERS. Five setters each carried their
+        own hand-written ternary; a sixth mode would have arrived with none, and
+        Math.min(undefined, v) is NaN — the athlete's entry would vanish. */
+     try{const caps=i.caps||{};
+       (typeof i.units==='function'?i.units():[]).forEach(u=>{const uk=u&&u[0];
+         if(uk&&!(typeof caps[uk]==='number'&&isFinite(caps[uk])&&caps[uk]>0))
+           errs.push('CARDIO_INFO.'+k+': no entry cap for its own "'+uk+'" unit');});
+     }catch(e){errs.push('CARDIO_INFO.'+k+': caps could not be checked — '+e.message);}
      /* Two modes sharing one builder is the copy-paste this exists to catch;
         it renders another mode's inputs under this mode's label. */
      if(typeof i.block==='function'){

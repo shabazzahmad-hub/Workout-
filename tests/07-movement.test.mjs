@@ -2786,6 +2786,80 @@ export default async function run() {
     t.ok('so the heartbeat has nothing to re-arm', td.stillGone, td);
   }
 
+  /* ---- the entry cap is a per-mode fact, and it lived in five ternaries ----
+     CARDIO_INFO holds the label, the units, the levels, the day readers and the
+     card builder for each mode precisely so a sixth is a line in the registry —
+     v327/v328/v353 moved those there one at a time and left the five caps
+     behind. Nothing was wrong: this pins that the move changed nothing, and
+     that the setters ASK rather than restate. */
+  {
+    const caps = await page.evaluate(() => {
+      const out = { eff: {}, src: {}, capsDeclared: {} };
+      const set = { jacks: ['setJackVal', 'jackVal', 'jackUnit'], bike: ['setBikeVal', 'bikeVal', 'bikeUnit'],
+        ruck: ['setRuckVal', 'ruckVal', 'ruckUnit'], run: ['setRunVal', 'runVal', 'runUnit'],
+        skip: ['setSkipVal', 'skipVal', 'skipUnit'] };
+      const keepUnit = STATE.profile.unit; STATE.profile.unit = 'cm';
+      Object.keys(set).forEach(mode => {
+        const [fn, vk, uk] = set[mode];
+        out.src[mode] = String(window[fn]);
+        out.capsDeclared[mode] = !!(CARDIO_INFO[mode] && CARDIO_INFO[mode].caps);
+        CARDIO_INFO[mode].units().forEach(([u]) => {
+          nutToday()[uk] = u;
+          window[fn](999999);
+          out.eff[mode + '.' + u] = nutToday()[vk];
+        });
+      });
+      STATE.profile.unit = keepUnit;
+      return out;
+    });
+    /* PIN THE VALUE, NOT THE IDENTITY. Reading the expected figure out of
+       CARDIO_INFO would move both sides of the comparison together. */
+    const want = {
+      'jacks.min': 300, 'jacks.reps': 9000, 'jacks.kcal': 3000,
+      'bike.min': 600, 'bike.dist': 300, 'bike.kcal': 8000,
+      'ruck.min': 600, 'ruck.dist': 100, 'ruck.kcal': 8000,
+      'run.min': 600, 'run.dist': 100, 'run.kcal': 8000,
+      'skip.min': 300, 'skip.reps': 20000, 'skip.kcal': 3000,
+    };
+    t.eq('guard: every mode and unit was driven', Object.keys(caps.eff).length, 15,
+      JSON.stringify(Object.keys(caps.eff)));
+    const wrong = Object.keys(want).filter(k => caps.eff[k] !== want[k])
+      .map(k => k + ': ' + caps.eff[k] + ' want ' + want[k]);
+    t.eq('every entry cap is exactly what the five hand-written tables gave',
+      wrong.join(', '), '', JSON.stringify(caps.eff));
+    /* THE RULE HAS TO BE ASKED FOR. A check counting the declaration passes
+       while a setter keeps its own ternary — the drift the registry exists to
+       stop, and the escape v322 and v368 both recorded. */
+    const restated = Object.keys(caps.src).filter(m => !/cardioCap\(/.test(caps.src[m]));
+    t.eq('and every setter asks the registry rather than restating it',
+      restated.join(', '), '', JSON.stringify(restated));
+    t.ok('guard: all five modes declare caps',
+      Object.keys(caps.capsDeclared).every(m => caps.capsDeclared[m]),
+      JSON.stringify(caps.capsDeclared));
+
+    /* A clean validator proves nothing about a validator rule: break one in
+       front of it, require the specific complaint, restore. validateData()
+       LOGS, so console.error is muted or the harness counts a page failure. */
+    const rule = await page.evaluate(() => {
+      const realErr = console.error; console.error = () => {};
+      const hits = re => validateData().filter(x => re.test(x)).length;
+      const o = { before: validateData().length };
+      const keep = CARDIO_INFO.run.caps;
+      CARDIO_INFO.run.caps = { min: 600, kcal: 8000 };          // no dist cap
+      o.missing = hits(/CARDIO_INFO\.run: no entry cap for its own "dist" unit/);
+      CARDIO_INFO.run.caps = { min: 600, dist: 0, kcal: 8000 };  // a zero cap eats the entry
+      o.zero = hits(/CARDIO_INFO\.run: no entry cap for its own "dist" unit/);
+      CARDIO_INFO.run.caps = keep;
+      o.after = validateData().length;
+      console.error = realErr;
+      return o;
+    });
+    t.eq('guard: the validator is clean before the caps are broken', rule.before, 0, rule);
+    t.eq('a mode missing a cap for its own unit is caught by name', rule.missing, 1, rule);
+    t.eq('and a zero cap, which would eat the athlete\'s entry', rule.zero, 1, rule);
+    t.eq('FLOOR: and the validator is clean again once it is restored', rule.after, 0, rule);
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }

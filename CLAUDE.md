@@ -17848,6 +17848,49 @@ Both faults are pinned as guards on synthetic sources: the scan must see a local
 nothing reads, and must NOT see one used through a spread or inside a template
 literal. Restoring `const gate` fails by name with the function and the line.
 
+## The entry cap was a per-mode fact living in five ternaries (v463)
+
+`CARDIO_INFO` holds the label, the units, the levels, the day readers, the card
+builder and the timer shape for each mode — v327, v328 and v353 moved those
+there one at a time, each after a hand-written two-value branch had gone stale
+when the set grew. **The entry cap was left behind**, as five ternaries:
+
+| mode | minutes | distance | reps | calories |
+|---|---|---|---|---|
+| jacks | 300 | — | 9,000 | 3,000 |
+| skip | 300 | — | 20,000 | 3,000 |
+| bike | 600 | 300 km | — | 8,000 |
+| ruck | 600 | 100 km | — | 8,000 |
+| run | 600 | 100 km | — | 8,000 |
+
+Nothing is wrong today. What a sixth mode would have got is **no cap at all**,
+and `Math.min(undefined, v)` is `NaN` — the athlete's entry would vanish, which
+is the direction that costs data rather than credit.
+
+**The move is proved byte-identical**, mode by mode and unit by unit, by feeding
+999,999 through each of the five setters: all fifteen caps are exactly what the
+ternaries gave. The expected figures are pinned as **values**, never read back
+out of `CARDIO_INFO` — reading them from the registry would move both sides of
+the comparison together.
+
+**And the rule has to be ASKED FOR.** A check counting the declaration passes
+while a setter keeps its own ternary, which is the drift the registry exists to
+stop and the escape v322 and v368 both recorded — so a source assertion requires
+every one of the five to name `cardioCap(`. That is the check the first mutant
+fails, and no rendered assertion can see it.
+
+The validator gains the lockstep: every mode declares a positive cap for every
+unit **it itself offers**. Broken in front of it two ways — a missing cap and a
+**zero** one, which would eat the entry rather than bound it — each required to
+complain by name, then restored.
+
+### And a mutant that never seeded read as a pass
+
+The second seed's script threw before writing the file, so the run measured
+**clean code and reported green**. *Read the run, not the pattern you hoped
+would match it* — and a mutation result is only meaningful once the seed is
+confirmed in the file. Re-seeded properly it fails by name.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
