@@ -1584,6 +1584,25 @@ const EX = {
     why:'Max-effort sprint intervals build explosive speed and power and are one of the best fat-burning conditioning stimuli there is.',
     steps:['Find a clear stretch of road, track or treadmill.','On "work", sprint at near-max effort with a tall, driving stride.','On "rest", walk or jog easy to recover fully.','Repeat, keeping every sprint crisp and powerful.'],
     cues:['Drive the knees and arms','Stay tall and relaxed','Full recovery between sprints'],mistakes:['Half-effort sprints','Skipping the recovery']},
+  /* NO STEADY RUN EXISTED. `sprint` is explicitly max-effort intervals — its
+     own steps say "sprint at near-max effort" and its cues say "full recovery
+     between sprints" — so using it for a twenty-minute aerobic block would
+     have the ring name one movement while the athlete does another, and the
+     coach read out the wrong instruction over it. That is a change of ruler,
+     and the aerobic base run is what RUN_PACES has priced and the endurance
+     plan has scheduled since v323 with no entry here to point at.
+
+     KNEE, AND THE ESCALATION IS DURATION RATHER THAN INTENSITY. `sprint` and
+     `skip` carry no knee flag and this does, which reads backwards until the
+     variable is named: a sprint interval is twenty seconds of work against
+     forty of rest, and a steady run is twenty unbroken minutes — thousands of
+     footfalls against dozens. Total impact is what a flagged knee pays for.
+     Lowback is deliberately ABSENT: the ruck's own lowback flag is the LOAD,
+     and there is no load here. */
+  steadyrun:{name:'Steady Run',region:'cardio',unit:'time',img:'ex-steadyrun.jpg',anchor:null,hardness:1,base:600,rest:0,
+    why:'The aerobic base — the engine everything else runs on. A conversational-pace run builds the stroke volume, the capillary bed and the fat-burning machinery that a sprint interval does not touch, and it is the one run you can do a lot of without paying for it.',
+    steps:['Set off at a pace you could hold a conversation at. If you cannot say a full sentence, you are going too fast.','Keep the EFFORT even and let the pace drift with the ground, rather than fighting to hold a number.','Land under your hips with a quick, light cadence instead of reaching out in front.','Hold it unbroken for the time. Walk if you have to, then pick the run back up.'],
+    cues:['Conversational — you can still talk','Quick, light cadence','Even effort, not even pace'],mistakes:['Running it hard enough to become a tempo run','Reaching the front foot out ahead of the hip']},
   ruck:{name:'Ruck March',region:'cardio',unit:'time',img:'ex-ruck.jpg',anchor:null,hardness:1,base:60,rest:0,
     why:'A loaded march is the backbone of military conditioning — a huge aerobic and postural stimulus with almost no joint pounding. It builds the engine and the back that carry everything else, and you can do it anywhere.',
     steps:['Load a pack with 10–20% of your bodyweight, sitting high and tight against your back.','Cinch the straps so it does not bounce; chest strap fastened.','Walk at a brisk, purposeful pace — quick short steps, tall posture, eyes up.','Keep it steady and unbroken for the distance or time; no jogging under load.'],
@@ -2008,7 +2027,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='476';
+const APP_VERSION='477';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3430,7 +3449,7 @@ const GEAR_FALLBACK={
    every cardio mode": they are a real thirty-second circuit movement, in
    HIIT_POOL and in a ladder, as well as being the default make-up mode. What
    these four have in common is that the SESSION is arranged elsewhere. */
-const STANDALONE_CARDIO=['bike','sprint','ruck','skip'];
+const STANDALONE_CARDIO=['bike','sprint','ruck','skip','steadyrun'];
 function standaloneCardio(k){return STANDALONE_CARDIO.indexOf(k)>=0;}
 function gearSwap(exId,ladder){
   if(hasGearFor(exId))return exId;
@@ -9065,6 +9084,199 @@ const GRINDER_FORMATS={
   grind20:{name:'The Twenty',desc:'Twenty minutes with nothing scheduled off. Pace it from the first minute — this is the one that is decided in the last five.',secs:60,stations:20},
 };
 function isGrinder(fmt){return Object.prototype.hasOwnProperty.call(GRINDER_FORMATS,fmt);}
+
+/* ==================== CONCURRENT TRAINING (v477) ==========================
+   Asked for directly: "we should add some concurrent training to build
+   endurance, strength and stamina as a special workout."
+
+   MEASURED FIRST, AND THE GAP IS REAL. The programme already ends every
+   session with a conditioning finisher, and across 54 sampled sessions that
+   finisher averages 51 SECONDS and never exceeds 65. That is a finisher, not
+   endurance training. And all twenty special formats train exactly ONE
+   quality — HIIT, VO2max intervals, skipping, grip, boxing, the grinder — so
+   nothing in the app paired a strength block with a real aerobic block.
+
+   THE INTERFERENCE EFFECT IS THE WHOLE RULE, and nothing here knew it.
+   Endurance work done close to strength work blunts the strength adaptation;
+   the reverse is far weaker. Two consequences decide the design:
+
+   ORDER IS THE PRESCRIPTION, NOT A SETTING. Whichever quality goes FIRST gets
+   the better adaptation, because the second is done on a tired system. So
+   these are three different prescriptions rather than one session with a
+   toggle, and each names what it protects and what it costs.
+
+   STEADY, NOT INTERVALS, FOR THE ENDURANCE HALF. Hard intervals overlap far
+   more with strength work in both fatigue and signalling, so the aerobic half
+   here is one continuous effort. The VO2max formats are not worse — they are a
+   different job, and they stay where they are, run on their own.
+
+   THE TRANSITION IS LOAD-BEARING RATHER THAN PADDING. A heavy set straight
+   into a run is a different session, and that different session is offered as
+   the Alternator. A real concurrent session puts a few minutes between the
+   blocks so the strength work is finished before the aerobic work starts.
+
+   IT IS A BONUS SESSION (free:true), exactly like the weights circuit and
+   Special HIIT: no program commit, no streak, and — measured against every
+   other bonus session in the app — no movement credit either. Crediting here
+   would make this the one bonus session that does, which is a surprise rather
+   than a feature; the athlete logs their cardio on the Movement card as they
+   already do. */
+const CONC_TRANS_MIN=4;      // between the two blocks, on purpose
+const CONC_ENDURE_MIN=20;    // one continuous steady effort
+const CONC_ALT_BOUT_MIN=3;   // the Alternator's cardio bout
+const CONC_ALT_MAX=6;        // caps the Alternator at ~24 min of work
+const CONCURRENT_FORMATS={
+  concStr:{name:'Strength first',order:'strength',protects:'strength',
+    desc:'Lift first, four minutes to settle, then a steady 20-minute aerobic block. The order that protects your strength — whichever half goes first is the one that adapts, and the second is done tired.'},
+  concEnd:{name:'Endurance first',order:'endurance',protects:'endurance',
+    desc:'A steady 20-minute aerobic block first, four minutes to settle, then the lift. Pick this when the run or the ruck is what is being tested: the engine gets the fresh legs and the strength half pays for it.'},
+  concAlt:{name:'The Alternator',order:'alternate',protects:'neither',
+    desc:'One strength movement, then three minutes of cardio, over and over with nothing scheduled off. The hardest of the three and the worst for building either quality alone — this trains doing both AT ONCE, which is what a loaded circuit test actually asks of you.'},
+};
+function isConcurrent(fmt){return Object.prototype.hasOwnProperty.call(CONCURRENT_FORMATS,fmt);}
+/* LOW IMPACT FIRST, AND THE ORDER IS THE WHOLE OF THE FALLBACK. A flagged knee
+   is the case this exists for, and the honest ranking is how much force goes
+   through the joint per minute: the trainer is zero impact, a march is
+   walking, then the rope, the jacks, and a steady run last.
+
+   safeSwap() is deliberately NOT used to pick the substitute. Its dead-end
+   branch takes any equipment-free move of the same REGION, which clears the
+   joint and says nothing about whether the result is still aerobic — for a
+   twenty-minute bout it would hand back a crab walk. The endurance half has to
+   stay a cardio mode, so it walks the modes and asks jointRisky() directly,
+   which is the app's own predicate for the only question being asked here. */
+const CONC_CARDIO=[
+  {mode:'bike', exId:'bike'},
+  {mode:'ruck', exId:'ruck'},
+  {mode:'skip', exId:'skip'},
+  {mode:'jacks',exId:'jumpingjack'},
+  {mode:'run',  exId:'steadyrun'},
+];
+function concCardioExFor(mode){
+  const row=CONC_CARDIO.find(r=>r.mode===mode);
+  return row?row.exId:null;
+}
+/* Returns {exId, swapped, wanted} — or null when nothing aerobic is safe, which
+   fails CLOSED: no safe endurance half means no concurrent session, never a
+   session with the endurance half quietly dropped out of it. */
+function concEndurance(){
+  try{
+    const lims=(STATE.profile&&Array.isArray(STATE.profile.limitations))?STATE.profile.limitations:[];
+    /* spaceSwap is the identity for all five today, and it is asked anyway
+       because every other picking path asks it. The region re-check is what
+       keeps that safe: if the map ever gains an entry that leaves the cardio
+       region, this drops to the next mode rather than running a twenty-minute
+       plank under an endurance heading. */
+    const ok=k=>{
+      if(!k||!EX[k]||!hasGearFor(k)||jointRisky(k,lims))return null;
+      const sp=spaceSwap(k);
+      return (sp&&EX[sp]&&EX[sp].region==='cardio'&&hasGearFor(sp)&&!jointRisky(sp,lims))?sp:null;
+    };
+    const wanted=concCardioExFor(cardioMode());
+    const first=ok(wanted);
+    if(first)return {exId:first,swapped:false,wanted};
+    for(const r of CONC_CARDIO){const alt=ok(r.exId);if(alt)return {exId:alt,swapped:true,wanted};}
+    return null;
+  }catch(e){return null;}
+}
+/* THE STRENGTH HALF ASKS NOTHING NEW. buildWeightsSession() already checks the
+   gear, runs safeSwap and spaceSwap, and eases by the goal, the deload and the
+   readiness score — so an athlete with kit gets their own circuit. With no kit
+   it falls back to the athlete's OWN prescribed strength work, which is
+   anchored to their measured maxes and eased by exactly the same rules.
+
+   CARDIO-REGION MOVEMENTS ARE DROPPED FROM IT. Measured across 30 sampled
+   sessions, the programme's main block carries one 14 times — and a "strength
+   block" with cardio inside it is the one thing this session exists to keep
+   apart from the aerobic block that follows. */
+function concStrengthBlock(){
+  try{
+    const w=buildWeightsSession();
+    if(w&&w.length>=3)return w.map(m=>Object.assign({},m));
+    const sess=buildSession(todayPtr());
+    if(!sess||!Array.isArray(sess.main))return [];
+    return sess.main.filter(m=>m&&m.exId&&EX[m.exId]&&EX[m.exId].region!=='cardio')
+                    .map(m=>Object.assign({},m));
+  }catch(e){return [];}
+}
+/* THE TRANSITION IS THE PRECEDING ITEM'S OWN REST, not a new mechanism.
+   plAfterSet() already rests for m.rest between items, so the gap between the
+   two blocks is a property of the block that just finished. */
+function buildConcurrent(format){
+  const f=CONCURRENT_FORMATS[format];
+  if(!f)return null;
+  const str=concStrengthBlock();
+  const end=concEndurance();
+  if(!str.length||!end)return null;
+  const bout=secs=>({exId:end.exId,unit:'time',target:secs,sets:1,rest:0});
+  if(f.order==='alternate'){
+    const items=[];
+    const n=Math.min(CONC_ALT_MAX,str.length);
+    for(let i=0;i<n;i++){
+      items.push(Object.assign({},str[i],{sets:1,rest:0}));
+      items.push(bout(CONC_ALT_BOUT_MIN*60));
+    }
+    return {items,endurance:end,format,strengthCount:n};
+  }
+  if(f.order==='endurance')
+    return {items:[Object.assign(bout(CONC_ENDURE_MIN*60),{rest:CONC_TRANS_MIN*60}),...str],
+            endurance:end,format,strengthCount:str.length};
+  const s2=str.map((m,i)=>i===str.length-1?Object.assign({},m,{rest:CONC_TRANS_MIN*60}):m);
+  return {items:[...s2,bout(CONC_ENDURE_MIN*60)],endurance:end,format,strengthCount:str.length};
+}
+/* THE RECOMMENDATION IS DERIVED, AND IT STAYS A RECOMMENDATION. Whichever half
+   runs first is the one that adapts, so the app's job is to name which half
+   this athlete is currently training FOR — never to choose for them. The prep
+   path is the only control that says so directly: `assaulter` is running
+   speed, `operator` is load carriage. With no test date the answer is strength
+   first, because strength is the slower of the two to build back and the
+   endurance half loses less by going second. */
+function concAdvice(){
+  try{
+    if(prepWeeksLeft()!==null&&prepPath()==='assaulter')
+      return {pick:'concEnd',why:'Your prep path is <b>Assaulter</b> — running speed is what gets tested, so the engine takes the fresh legs.'};
+    if(prepWeeksLeft()!==null)
+      return {pick:'concStr',why:'Your prep path is <b>Operator</b> — load carriage is what gets tested, so the strength half goes first.'};
+    return {pick:'concStr',why:'No test date set, so strength goes first: it is the slower of the two to build back, and the endurance half loses less by being done second.'};
+  }catch(e){return {pick:'concStr',why:''};}
+}
+/* A SWAPPED ENDURANCE HALF IS NAMED, NEVER SILENT. The athlete picked their
+   cardio mode; if a flagged joint takes it away they are owed the reason and
+   the movement they got instead, the same call the baseline battery makes
+   about a substituted test. */
+function concEnduranceNote(end){
+  if(!end)return '';
+  const nm=_ve(EX[end.exId]?EX[end.exId].name:end.exId);
+  if(!end.swapped)return `Endurance half: <b>${nm}</b>, your own cardio mode.`;
+  const was=end.wanted&&EX[end.wanted]?_ve(EX[end.wanted].name):'your cardio mode';
+  return `Endurance half: <b>${nm}</b>. ${was} is on one of your flagged joints, so this drops to the lowest-impact option you can do instead — change it in Today ▸ Workout ▸ Movement if you would rather pick another.`;
+}
+function openConcurrent(){
+  const end=concEndurance();
+  const str=concStrengthBlock();
+  const adv=concAdvice();
+  const blocked=(!end||!str.length);
+  openSheet(`<h3>🔗 Concurrent training</h3>
+    <p class="muted sm" style="margin:2px 0 10px">Strength and endurance in <b>one</b> session. The order is the prescription: whichever half you do first is the half that adapts, because the second is done tired.</p>
+    ${blocked?`<div class="note warn"><b>Cannot build one right now.</b> ${!str.length?'There is no strength block available — add some equipment in Settings, or take a baseline test so the programme can prescribe one.':'Every cardio mode is on one of your flagged joints, so there is no safe endurance half.'}</div>
+    <div style="height:8px"></div><button class="btn ghost" onclick="openSpecial()">← Back</button>`
+    :`<div class="note info"><b>Suggested: ${_ve(CONCURRENT_FORMATS[adv.pick].name)}.</b> ${adv.why}</div>
+    <p class="tiny muted" style="margin:0 0 12px">${concEnduranceNote(end)}</p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${Object.keys(CONCURRENT_FORMATS).map(k=>`<button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="startConcurrent('${k}')"${k===adv.pick?' aria-current="true"':''}><b style="font-size:15px">${_ve(CONCURRENT_FORMATS[k].name)}${k===adv.pick?' ★':''}</b><div class="tiny muted" style="margin-top:3px;font-weight:600">${CONCURRENT_FORMATS[k].desc}</div></button>`).join('')}
+    </div>
+    <div style="height:8px"></div><button class="btn ghost" onclick="openSpecial()">← Back</button>`}`);
+}
+function startConcurrent(format){
+  closeSheet();
+  const plan=buildConcurrent(format);
+  if(!plan){toast('Nothing safe to build a concurrent session from right now');return;}
+  const f=CONCURRENT_FORMATS[format];
+  const endName=EX[plan.endurance.exId]?EX[plan.endurance.exId].name:'cardio';
+  openPlayer({items:plan.items,free:true,
+    title:'Concurrent · '+f.name,
+    focus:plan.strengthCount+' strength moves + '+endName});
+}
 /* ONE CLOCK FOR THE WHOLE THING. The ring counts the station; what decides
    whether somebody keeps going is how much is LEFT, and with no rest to
    count the stations down by, that number is otherwise nowhere on screen. */
@@ -9650,6 +9862,7 @@ function openSpecial(){
   openSheet(`<h3>🎖️ Special training</h3>
     <p class="muted sm" style="margin:2px 0 12px">Bonus conditioning — run any day, on top of your program. It won't affect your plan or streak. Pick a mode:</p>
     <div style="display:flex;flex-direction:column;gap:10px">
+      <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="openConcurrent()"><b style="font-size:15px">🔗 Concurrent training</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Strength and endurance in one session &mdash; the order is the prescription</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="specialChooser('hiit')"><b style="font-size:15px">⚡ Bonus HIIT intervals</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Bodyweight — jumping jacks, burpees, mountain climbers…</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="openSkipping()"><b style="font-size:15px">🪢 Skipping</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Jump-rope blocks (9/3), a free stopwatch &amp; your minute log</div></button>
       <button class="btn ghost" style="text-align:left;display:block;padding:14px" onclick="openRuck()"><b style="font-size:15px">🎒 Ruck March</b><div class="tiny muted" style="margin-top:3px;font-weight:600">Loaded pack marches — stopwatch, distance &amp; load log</div></button>
@@ -17341,7 +17554,7 @@ const JOINT_RISK={
   /* ruckstepup: loaded SINGLE-LEG knee work, directly comparable to bulgarian
      and splitsquat which are both here. Plain `squat` and both goblet squats
      stay unflagged — the escalation is the one leg, not the ruck. */
-  knee:['ruckstepup','pistol','boxpistol','jumpsquat','tuckjump','broadjump','splitjump','bulgarian','burpee','burpeetuck','walkinglunge','sissysquat','cossack','sprawl','latshuffle','nordic','asiansquat','wallsit','skater','squatjack','splitsquat','jumpingjack','sealjack','highknees','buttkick','kneekick','skaterground','btsquat','btbalance',
+  knee:['steadyrun','ruckstepup','pistol','boxpistol','jumpsquat','tuckjump','broadjump','splitjump','bulgarian','burpee','burpeetuck','walkinglunge','sissysquat','cossack','sprawl','latshuffle','nordic','asiansquat','wallsit','skater','squatjack','splitsquat','jumpingjack','sealjack','highknees','buttkick','kneekick','skaterground','btsquat','btbalance',
     /* For the FORCE tasks — the shuttle is repeated hard acceleration and a 180-degree turn
        carrying 20 kg, which is where latshuffle, skater and squatjack already
        sit; the rushes are get-up-off-the-floor-fast, which is where sprawl
@@ -17399,6 +17612,12 @@ const SAFE_SWAP={
   // parallettes — a flagged SHOULDER still has to leave the support hold, and
   // the landing spot stays in the same region rather than a generic filler.
   tucklsit:'hollow',plegraise:'legraise',ppushup:'kneepushup',
+  /* A flagged knee off a steady run lands on the TRAINER, because the swap
+     has to keep the aerobic quality as well as clear the joint — zero impact,
+     same stimulus. The generic dead-end in safeSwap() takes any equipment-free
+     move of the same region, which for a twenty-minute bout would hand back a
+     crab walk. */
+  steadyrun:'bike',
   // legs / plyometrics
   pistol:'squat',boxpistol:'squat',jumpsquat:'squat',tuckjump:'squat',broadjump:'squat',
   splitjump:'reverselunge',bulgarian:'splitsquat',walkinglunge:'reverselunge',
@@ -24835,6 +25054,25 @@ function validateData(){
       if(k!==undefined&&!exKnown(k))errs.push('TESTS.'+(t&&t.id)+': unknown exercise "'+k+'"');});
     (HOLD_TESTS||[]).forEach(t=>{const k=t&&t.exId;
       if(k!==undefined&&!exKnown(k))errs.push('HOLD_TESTS.'+(t&&t.id)+': unknown exercise "'+k+'"');});
+    /* ---- the concurrent session's own two lockstep rules ------------------
+       CONC_CARDIO answers "what does this athlete's cardio mode look like as a
+       movement", so a sixth mode added to CARDIO_MODES with no row here would
+       leave that athlete's own mode silently skipped and the endurance half
+       falling back to somebody else's. Checked BOTH directions: a row naming a
+       mode that does not exist is dead, and the drift this app has already had
+       twice on this exact registry.
+
+       AND EVERY ONE OF THEM MUST STAY IN THE CARDIO REGION. concEndurance()
+       re-checks that at run time for the same reason, because "the endurance
+       half is aerobic" is the whole claim the session makes. */
+    (CONC_CARDIO||[]).forEach(r=>{
+      if(!exKnown(r&&r.exId))errs.push('CONC_CARDIO.'+(r&&r.mode)+': unknown exercise "'+(r&&r.exId)+'"');
+      else if(EX[r.exId].region!=='cardio')errs.push('CONC_CARDIO.'+r.mode+': "'+r.exId+'" is not in the cardio region');
+      if(CARDIO_MODES.indexOf(r&&r.mode)<0)errs.push('CONC_CARDIO: "'+(r&&r.mode)+'" is not a cardio mode');});
+    CARDIO_MODES.forEach(m=>{if(!CONC_CARDIO.some(r=>r.mode===m))errs.push('CONC_CARDIO: no movement for cardio mode "'+m+'"');});
+    Object.keys(CONCURRENT_FORMATS||{}).forEach(f=>{const d=CONCURRENT_FORMATS[f];
+      if(!d||!d.name||!d.desc)errs.push('CONCURRENT_FORMATS.'+f+': missing a name or a description');
+      if(!d||['strength','endurance','alternate'].indexOf(d.order)<0)errs.push('CONCURRENT_FORMATS.'+f+': order "'+(d&&d.order)+'" is not one this builder knows');});
   }catch(e){errs.push('the exercise-pool check threw: '+e.message);}
   Object.keys(JOINT_RISK).forEach(j=>JOINT_RISK[j].forEach(k=>{if(!EX[k])errs.push('JOINT_RISK.'+j+': unknown exercise "'+k+'"');}));
   /* ---- every goal explains itself ----------------------------------------

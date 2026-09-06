@@ -18931,6 +18931,133 @@ running.
 **And `p8.mjs`, a leftover probe script, was tracked in the repo** against this
 file's own rule to delete them and leave `git status` clean.
 
+## Two qualities, one session, and the order is the prescription (v477)
+
+Asked for directly: *"we should add some concurrent training to build
+endurance, strength and stamina as a special workout."*
+
+**Measured first, and the gap is real.** The programme already ends every
+session with a conditioning finisher — and across 54 sampled sessions that
+finisher averages **51 seconds** and never exceeds **65**. That is a finisher,
+not endurance training. All **twenty** special formats train exactly one
+quality (HIIT, VO2max intervals, skipping, grip, boxing, the grinder), and not
+one pairs a strength block with a real aerobic block. Nothing in the app knew
+that training ORDER matters at all.
+
+**THE INTERFERENCE EFFECT IS THE WHOLE DESIGN.** Endurance work done close to
+strength work blunts the strength adaptation; the reverse is far weaker. Two
+consequences:
+
+- **Order is the prescription, not a setting.** Whichever half goes first is
+  the one that adapts, because the second is done on a tired system. So these
+  are three prescriptions — Strength first, Endurance first, the Alternator —
+  and each names what it protects and what it costs.
+- **Steady, not intervals.** Hard intervals overlap far more with strength work
+  in both fatigue and signalling, so the aerobic half is one continuous effort.
+  The VO2max formats are not worse, they are a different job, and they stay
+  where they are.
+
+**The transition is load-bearing rather than padding**, and it needed no new
+mechanism: `plAfterSet()` already rests for `m.rest` between items, so the gap
+between the two blocks is the **preceding block's own rest**. A heavy set
+straight into a run is a different session, and that different session is the
+Alternator.
+
+**Neither half asks anything new.** The strength half is
+`buildWeightsSession()` — which already checks gear, runs `safeSwap` and
+`spaceSwap`, and eases by the goal, the deload and the readiness score — and
+falls back to the athlete's own prescribed strength work when they own no kit.
+The endurance half is `cardioMode()`, the control they already set.
+
+**Cardio-region movements are dropped from the strength half.** Measured, the
+programme's main block carries one **14 times in 30 sampled sessions**, and a
+"strength block" with cardio inside it is the one thing this session exists to
+keep apart from the aerobic block that follows.
+
+### There was no steady run in the library
+
+`sprint` is explicitly max-effort intervals — its own steps say *"sprint at
+near-max effort"* and its cues say *"full recovery between sprints"* — so a
+twenty-minute aerobic block on it would name one effort and run another, with
+the coach reading out the wrong instruction over it. That is the change-of-ruler
+defect, and `RUN_PACES` has priced the aerobic base run since v323 with no entry
+here to point at.
+
+**The knee flag is an escalation whose variable is DURATION, not intensity.**
+`sprint` and `skip` carry no knee flag and `steadyrun` does, which reads
+backwards until the variable is named: a sprint interval is twenty seconds of
+work against forty of rest, and a steady run is twenty unbroken minutes —
+thousands of footfalls against dozens. **Lowback is deliberately absent**: the
+ruck's lowback flag is the LOAD, and there is no load in a run. The check pins
+that absence beside the flag, because a blanket family flag satisfies every
+"the run is flagged" assertion on its own.
+
+It is in `STANDALONE_CARDIO`, so no automatic picking path can ever put a
+twenty-minute run inside a circuit — measured at 0 appearances across the
+programme.
+
+### safeSwap() is deliberately NOT used to pick the substitute
+
+Its dead-end branch takes any equipment-free move of the same REGION, which
+clears the joint and says nothing about whether the result is still aerobic —
+for a twenty-minute bout it would hand back a crab walk. So the endurance half
+walks the cardio MODES and asks `jointRisky()` directly, which is the app's own
+predicate for the only question being asked. The order is **lowest impact
+first** — the trainer, a march, the rope, the jacks, a steady run last — and
+that ordering is the whole of the fallback.
+
+**A swapped endurance half is NAMED, never silent**, the same call the baseline
+battery makes about a substituted test. The floor beside it is that an
+unflagged athlete is not swapped and is told nothing about one: a note that
+always fires is a note nobody reads.
+
+**And the sweep is the check, not one athlete.** Five modes × seven realistic
+flag sets — 35 cases — every result still in the cardio region and none risky.
+The claim the session makes is that its second half is aerobic and safe, and
+one athlete cannot speak for that.
+
+### The recommendation is derived, and it stays a recommendation
+
+The prep path is the only control that says which quality is being trained
+for: `assaulter` is running speed, `operator` is load carriage. With no test
+date the answer is strength first, because strength is the slower of the two to
+build back. **The floor is that all three formats still build whatever the
+advice says** — otherwise the advice has quietly become a rule.
+
+### What was measured and deliberately left
+
+**No movement credit.** Every other bonus session in the app — Special HIIT,
+the grinder, quick workouts — leaves the Movement card alone, and v362 recorded
+that as deliberate. Crediting here would make this the one bonus session that
+does, which is a surprise rather than a feature.
+
+**The bike is offered to an athlete with no trainer.** `EX.bike` declares no
+`equip`, so `hasGearFor('bike')` is true for everybody — which is pre-existing
+and reaches `bikeSwap()` and the conditioning slots as well. Re-deriving a gear
+rule the library does not have would be exactly the mistake this file records
+about bypassing the app's own predicate, so the note names the movement and
+points at the control instead. Recorded rather than fixed.
+
+### Two lockstep rules, each broken in front of the validator
+
+`CONC_CARDIO` answers "what does this athlete's cardio mode look like as a
+movement", so a **sixth cardio mode with no row here** would leave that
+athlete's own mode silently skipped — the drift this registry has already had
+twice. Checked both directions, plus that every one of them stays in the cardio
+region, plus that every format declares an `order` the builder knows.
+
+**A clean validator proves nothing about a validator rule**, so each arm is
+broken in front of it, required to complain by name, and restored — with
+`console.error` muted, because `validateData()` logs and the harness counts a
+console error as a page failure.
+
+### And the transition is DRIVEN, not read off the array
+
+A `rest` field nobody runs is a data value. The check sets the player on the
+last set of the last strength item, calls `plAfterSet()`, and requires a real
+240-second rest phase followed by the aerobic block — and that a bonus session
+leaves the programme's own resume point alone.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

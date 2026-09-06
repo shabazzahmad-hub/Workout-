@@ -10,7 +10,7 @@
    tiers are parsed by pulling every quoted asset name out of this file, comments
    included, so an illustrative path in a comment breaks CI by declaring
    an asset that does not exist. */
-const CACHE = 'coreforge-v476';
+const CACHE = 'coreforge-v477';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
@@ -135,7 +135,7 @@ const EXTRA = [
   './ex-sidedip.jpg','./ex-sideplankreach.jpg','./ex-singlebridge.jpg','./ex-singlecalf.jpg',
   './ex-sissysquat.jpg','./ex-sitthrust.jpg','./ex-situptwist.jpg','./ex-skater.jpg',
   './ex-skaterground.jpg','./ex-skip.jpg','./ex-slrdl.jpg','./ex-spidermanpushup.jpg',
-  './ex-splitjump.jpg','./ex-splitsquat.jpg','./ex-sprawl.jpg','./ex-sprint.jpg',
+  './ex-splitjump.jpg','./ex-splitsquat.jpg','./ex-sprawl.jpg','./ex-sprint.jpg','./ex-steadyrun.jpg',
   './ex-squatjack.jpg','./ex-standingoblique.jpg','./ex-superman.jpg','./ex-superpushup.jpg',
   './ex-tablerow.jpg','./ex-tempopushup.jpg','./ex-tuckjump.jpg',
   './ex-tuckvup.jpg','./ex-typewriter.jpg','./ex-vertcrunch.jpg','./ex-vsit.jpg',
