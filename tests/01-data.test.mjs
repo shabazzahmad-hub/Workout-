@@ -2192,13 +2192,29 @@ export default async function run() {
 
     /* name, the marker that proves the app HAS it, what the policy must say,
        what the first-run note must say. */
+    /* SCOPE THE ASSERTION TO WHERE THE CHANGE WAS MADE. A page-wide /screenshot/
+       and /watch/ over the whole policy is satisfied by the SUMMARY paragraph
+       below the list, which names both — so gutting the image bullet escaped
+       clean. Each capability is asserted inside the bullet that carries it. */
+    const bulletOf = re => {
+      const m = pol.match(new RegExp('<li><b>' + re + '[\\s\\S]*?<\\/li>'));
+      return m ? m[0] : '';
+    };
+    const imageBullet = bulletOf('Image lookup');
+    const voiceBullet = bulletOf('Voice commands');
+    const offBullet   = bulletOf('Packaged-food');
+    const azureBullet = bulletOf('Premium coach voice');
+    t.ok('guard: all four exception bullets were found by name',
+      [imageBullet, voiceBullet, offBullet, azureBullet].every(b => b.length > 80),
+      [imageBullet, voiceBullet, offBullet, azureBullet].map(b => b.length).join(','));
+
     const CAPS = [
-      ['Open Food Facts', /world\.openfoodfacts\.org/,           /open\s*food\s*facts/i, /open\s*food\s*facts/i],
-      ['Gemini',          /generativelanguage\.googleapis\.com/,  /gemini/i,              /gemini/i],
-      ['tracker shot',    /estimateFoodFromScreenshot/,           /screenshot/i,          /screenshot/i],
-      ['watch shot',      /ACTIVITY_PROMPT/,                      /watch/i,               /watch/i],
-      ['Azure voice',     /SPEECH_SDK_URL/,                       /azure/i,               /azure/i],
-      ['microphone',      /webkitSpeechRecognition/,              /microphone/i,          /microphone/i],
+      ['Open Food Facts', /world\.openfoodfacts\.org/,           offBullet,   /open\s*food\s*facts/i, /open\s*food\s*facts/i],
+      ['Gemini',          /generativelanguage\.googleapis\.com/,  imageBullet, /gemini/i,              /gemini/i],
+      ['tracker shot',    /estimateFoodFromScreenshot/,           imageBullet, /screenshot of another/i, /screenshot/i],
+      ['watch shot',      /ACTIVITY_PROMPT/,                      imageBullet, /watch/i,               /watch/i],
+      ['Azure voice',     /SPEECH_SDK_URL/,                       azureBullet, /azure/i,               /azure/i],
+      ['microphone',      /webkitSpeechRecognition/,              voiceBullet, /microphone/i,          /microphone/i],
     ];
     /* GUARD: a marker that no longer matches would let its whole row pass in
        silence, which is the drift this rule exists to stop. */
@@ -2212,10 +2228,20 @@ export default async function run() {
     t.ok('guard: and stays quiet on one that names it',
       /microphone/i.test('this one names the microphone'), 'synthetic');
 
-    CAPS.forEach(([name, , inPol, inNote]) => {
-      t.ok('privacy.html names how data leaves via ' + name, inPol.test(pol), name);
+    CAPS.forEach(([name, , scope, inPol, inNote]) => {
+      t.ok('privacy.html names how data leaves via ' + name, inPol.test(scope), name);
       t.ok('and the first-run note names ' + name, inNote.test(note), name);
     });
+
+    /* A LAZY MUTANT HIDES RATHER THAN DELETES, and a text search cannot tell —
+       display:none and hidden both leave every word in the DOM. Recorded twice
+       already (v314, v332); the answer both times was to catch BOTH shapes, so
+       the note and the policy list are refused outright if either is hidden. */
+    t.ok('the first-run note is not hidden from the athlete who reads it',
+      !/display\s*:\s*none|visibility\s*:\s*hidden|\shidden[=\s>]/i.test(note),
+      note.slice(0, 120));
+    t.ok('and no exception bullet is hidden in the policy',
+      !/<li[^>]*(?:hidden|display\s*:\s*none)/i.test(pol), 'privacy.html');
 
     /* ONE COUNT, AND IT IS CHECKED AGAINST ITS OWN LIST. A number written by
        hand beside the list that holds it drifts — it drifted three ways inside
