@@ -1688,21 +1688,23 @@ export default async function run() {
 
     if (best) {
       // strip comments, respecting strings and template literals
-      const code = best[1];
-      let out = '', i = 0, st = null;
-      while (i < code.length) {
-        const c = code[i], nx = code[i + 1];
-        if (!st) {
-          if (c === '/' && nx === '*') { const j = code.indexOf('*/', i + 2); i = j < 0 ? code.length : j + 2; out += ' '; continue; }
-          if (c === '/' && nx === '/') { const j = code.indexOf('\n', i); i = j < 0 ? code.length : j; continue; }
-          if (c === '"' || c === "'" || c === '`') { st = c; out += c; i++; continue; }
-          out += c; i++; continue;
+      const stripComments = code => {
+        let out = '', i = 0, st = null;
+        while (i < code.length) {
+          const c = code[i], nx = code[i + 1];
+          if (!st) {
+            if (c === '/' && nx === '*') { const j = code.indexOf('*/', i + 2); i = j < 0 ? code.length : j + 2; out += ' '; continue; }
+            if (c === '/' && nx === '/') { const j = code.indexOf('\n', i); i = j < 0 ? code.length : j; continue; }
+            if (c === '"' || c === "'" || c === '`') { st = c; out += c; i++; continue; }
+            out += c; i++; continue;
+          }
+          if (c === '\\') { out += code.slice(i, i + 2); i += 2; continue; }
+          if (c === st) st = null;
+          out += c; i++;
         }
-        if (c === '\\') { out += code.slice(i, i + 2); i += 2; continue; }
-        if (c === st) st = null;
-        out += c; i++;
-      }
-      const clean = out;
+        return out;
+      };
+      const clean = stripComments(best[1]);
 
       const decl = [...clean.matchAll(/^(?:async\s+)?function\s+([A-Za-z0-9_$]+)\s*\(/gm)]
         .map(m => [m[1], m.index]);
@@ -1794,7 +1796,138 @@ export default async function run() {
 
       const deadConsts = unreadIn(clean, constNames);
       t.eq('no top-level constant is declared and never read', deadConsts.length, 0, deadConsts.slice(0, 20));
+
+      /* ---- and every inline handler names a function that exists (v457) ---
+         The mirror of the block above. Reachability asks whether a declared
+         function is ever CALLED; it cannot see the opposite — a `onclick=`
+         in markup naming a function that is not there. That is a button the
+         athlete taps and nothing happens, with nothing on screen to say so,
+         and `npm run check` cannot see it either because the file parses.
+
+         v316 measured this once as a probe (275 names, none dead) and kept
+         nothing. v385 is what that costs: a whole cluster went dark and stayed
+         dark for many versions because the probe that would have caught it was
+         thrown away.
+
+         Handlers live inside template literals, so the scan reads the stripped
+         script AND the static markup outside it. A name preceded by a dot is a
+         method (`Math.round(`) and is not a handler. */
+      const declared = new Set(names);
+      for (const m of clean.matchAll(/^\s*(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?(?:function\b|\([^)]*\)\s*=>|[A-Za-z0-9_$]+\s*=>)/gm))
+        declared.add(m[1]);
+      const HKW = new Set(['if', 'for', 'while', 'return', 'function', 'catch', 'switch', 'typeof',
+        'new', 'do', 'else', 'delete', 'await', 'in', 'of', 'var', 'let', 'const', 'try', 'throw', 'void']);
+      const HGLOBAL = new Set(['Math', 'JSON', 'Object', 'Array', 'String', 'Number', 'Boolean', 'Date',
+        'Promise', 'Image', 'Set', 'Map', 'RegExp', 'Error', 'parseInt', 'parseFloat', 'isNaN', 'isFinite',
+        'alert', 'confirm', 'prompt', 'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval',
+        'encodeURIComponent', 'decodeURIComponent', 'requestAnimationFrame', 'fetch', 'URL', 'Blob',
+        'FileReader', 'Audio', 'AbortController']);
+      const handlerCalls = text => {
+        const o = new Map();
+        for (const m of text.matchAll(/\bon[a-z]+\s*=\s*(["'])([\s\S]*?)\1/g))
+          for (const c of m[2].matchAll(/(?<![.\w$])([A-Za-z_$][\w$]*)\s*\(/g))
+            if (!o.has(c[1])) o.set(c[1], m[2].replace(/\s+/g, ' ').slice(0, 80));
+        return o;
+      };
+      const outsideMarkup = idx.slice(0, best.index) + idx.slice(best.index + best[0].length);
+      const unresolvedIn = (text, decl) => [...handlerCalls(text)]
+        .filter(([n]) => !decl.has(n) && !HKW.has(n) && !HGLOBAL.has(n));
+
+      /* GUARDS, on a SYNTHETIC source both ways, so an empty result is a
+         statement about the app rather than about the regex. The third case is
+         this file's most-recorded trap: a COMMENT that quotes a handler is not
+         a call site, and the real file carries one (the v406 note quoting an
+         `onerror=` payload) — measured, it is the ONLY hit if comments are not
+         stripped first. */
+      const hProbeDecl = new Set(['realFn']);
+      const hProbe = '<button onclick="realFn(1)">a</button><b onclick="ghostFn()">b</b>';
+      const hProbeHits = unresolvedIn(hProbe, hProbeDecl).map(x => x[0]);
+      t.ok('guard: the scan reports a handler naming a function that is not there',
+        hProbeHits.indexOf('ghostFn') >= 0, hProbeHits);
+      t.ok('guard: and not one that is', hProbeHits.indexOf('realFn') < 0, hProbeHits);
+      t.eq('guard: a comment quoting a handler is not a call site — the real file carries one',
+        unresolvedIn(stripComments('/* onclick="ghostFn()" broke out and RAN */'), hProbeDecl).length, 0);
+
+      const liveCalls = new Map([...handlerCalls(clean), ...handlerCalls(outsideMarkup)]);
+      t.ok('guard: it found the real roster of handlers', liveCalls.size > 200, String(liveCalls.size));
+      t.ok('guard: and the real roster of declarations', declared.size > 900, String(declared.size));
+
+      const ghosts = [...new Map([...unresolvedIn(clean, declared), ...unresolvedIn(outsideMarkup, declared)])];
+      t.eq('every inline handler names a function that exists', ghosts.length, 0,
+        JSON.stringify(ghosts.slice(0, 8)));
+
+      /* ---- and no stored flag is set while gating nothing (v457) ----------
+         The same question a third declaration kind over, on a field that lives
+         in the athlete's own saved state rather than in the source.
+
+         `if(!STATE.profile._x)STATE.profile._x=true;` is the shape a one-time
+         migration takes: the flag exists so the body beside it runs once. When
+         the body is later removed the flag is routinely left behind, and what
+         remains looks like it guards something and guards nothing — the
+         voicePitch trap in a stored field. Three were live when this was
+         written (_gearMil, _gearDb, _benchKit), two of them having lost even
+         their comment, and each wrote a key into every athlete's profile and
+         into every backup for ever.
+
+         A live flag has a third site: the branch that reads it. */
+      const selfSet = /if\s*\(\s*!\s*(STATE(?:\.[A-Za-z0-9_$]+)*\.(_[A-Za-z0-9_$]+))\s*\)\s*\1\s*=\s*[^;]+;/g;
+      const deadFlagsIn = text => {
+        const o = [];
+        for (const m of text.matchAll(selfSet)) {
+          const uses = (text.match(new RegExp('\\.' + m[2] + '\\b', 'g')) || []).length;
+          if (uses <= 2) o.push(m[2]);
+        }
+        return o;
+      };
+
+      /* GUARDS, on a SYNTHETIC source both ways: a flag whose only two sites
+         are its own set-once statement must be reported, and one that is
+         genuinely read somewhere else must not. */
+      const fProbe = 'if(!STATE.profile._deadF)STATE.profile._deadF=true;\n'
+        + 'if(!STATE.profile._liveF){doThing();STATE.profile._liveF=true;}\n'
+        + 'if(seeding&&!STATE.profile._liveF)seed();\n';
+      const fProbeHits = deadFlagsIn(fProbe);
+      t.ok('guard: the scan reports a flag that gates nothing', fProbeHits.indexOf('_deadF') >= 0, fProbeHits);
+      t.ok('guard: and not one that is read elsewhere', fProbeHits.indexOf('_liveF') < 0, fProbeHits);
+      t.ok('guard: the app really does carry set-once flags of this shape',
+        [...clean.matchAll(selfSet)].length > 0, 'no set-once flag found at all');
+
+      const deadFlags = deadFlagsIn(clean);
+      t.eq('no stored one-time flag is set while gating nothing', deadFlags.length, 0, deadFlags);
     }
+  }
+
+  /* ---- the two static blurbs cannot derive, so they are pinned (v457) -----
+     v348 measured it: 378 sessions is 54 weeks at SEVEN a week and the wizard's
+     floor is FIVE, which is 76 — so a fixed duration is true for nobody who
+     took the default. Every surface inside the app derives it from
+     programWeeks(). The `<meta name="description">` and the manifest cannot:
+     they are static text read by the install prompt and the store listing.
+
+     So the claim they make is the one thing that can be checked — the SESSION
+     count, which is a constant of the program rather than of the athlete — and
+     a duration in time is forbidden outright. */
+  {
+    const mf = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.webmanifest'), 'utf8'));
+    const idxSrc = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const metaM = /<meta\s+name="description"\s+content="([^"]*)"/.exec(idxSrc);
+    t.ok('guard: the page carries a description meta tag', !!metaM, String(!!metaM));
+    const blurbs = [['manifest', mf.description || ''], ['meta', metaM ? metaM[1] : '']];
+
+    const total = await page.evaluate(() => SESSIONS_PER_CYCLE * TOTAL_CYCLES);
+    t.eq('guard: the program really is 378 sessions', total, 378, String(total));
+
+    blurbs.forEach(([where, txt]) => {
+      t.ok('the ' + where + ' blurb claims no fixed duration in time',
+        !/\b(?:full[- ]year|one[- ]year|1[- ]year|year[- ]long|\d+\s*months?)\b/i.test(txt),
+        txt.slice(0, 120));
+      const n = /\b(\d{2,4})[- ]session\b/.exec(txt);
+      if (n) t.eq('and the ' + where + ' session count matches the program', +n[1], total, txt.slice(0, 120));
+    });
+    /* FLOOR: the detector really would catch the wording this replaced. */
+    t.ok('guard: the scan reports a year claim when there is one',
+      /\b(?:full[- ]year|one[- ]year|1[- ]year|year[- ]long|\d+\s*months?)\b/i
+        .test('a full year of full-body strength'), 'detector is blind');
   }
 
   /* ---- every hand-written pool names a real movement (v441) --------------

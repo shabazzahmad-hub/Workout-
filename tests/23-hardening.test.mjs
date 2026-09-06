@@ -12729,17 +12729,33 @@ export default async function () {
     t.ok('and the figure tracks the content: more sets, more minutes',
       mins.full10 > mins.core5 && mins.lower6 > mins.core5, g);
 
+    /* ONE WORKOUT CANNOT SPEAK FOR EIGHT. The first version of this read the
+       chip for full10 alone, and a mutant that hardcoded `${q.mins||16}` back
+       into the picker printed "16 min" on every chip in the app and PASSED —
+       because 16 is full10's own answer. The discriminating case is a second
+       workout whose derived figure is different, so the chip is read for EVERY
+       quick workout and each is pinned against its own value. */
     const label = await page.evaluate(() => {
       QUICK_ID = 'full10'; quickState = { done: {} }; go('quick');
       const v = document.querySelector('#v-quick');
-      return {
-        hero: (v.querySelector('.hlbl') || {}).textContent,
-        chip: (openQuickList(), (document.querySelector('#sheet [onclick*="openQuick(\'full10\')"] .chip') || {}).textContent),
-      };
+      const hero = (v.querySelector('.hlbl') || {}).textContent;
+      openQuickList();
+      const chips = {};
+      QUICKIES.forEach(q => {
+        const el = document.querySelector('#sheet [onclick*="openQuick(\'' + q.id + '\')"] .chip');
+        chips[q.id] = el ? el.textContent : null;
+      });
+      return { hero, chips };
     });
     await page.evaluate(() => closeSheet());
     t.eq('the hero prints the derived figure', label.hero, 'Quick workout · ~16 min', label);
-    t.eq('and so does the picker chip', label.chip, '16 min', label);
+    /* GUARD: the eight workouts really do have different answers, or "every
+       chip matches its own workout" is one number asserted eight times. */
+    t.ok('guard: the derived figures genuinely differ across the eight',
+      new Set(g.mins.map(([, m]) => m)).size >= 4, JSON.stringify(g.mins));
+    const chipMismatch = g.mins.filter(([id, m]) => label.chips[id] !== m + ' min');
+    t.eq('and every picker chip prints its OWN derived figure, not one number for all',
+      chipMismatch.length, 0, JSON.stringify({ mins: g.mins, chips: label.chips }));
 
     /* Driven, not called: a single set shortened to one second so the whole
        chain — set, rest, set, tick — runs inside the suite. */

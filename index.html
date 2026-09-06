@@ -20,7 +20,7 @@
 <link rel="icon" href="icon-192-v2.png">
 <link rel="apple-touch-icon" href="icon-180-apple.png">
 <link rel="manifest" href="manifest.webmanifest">
-<meta name="description" content="CoreForge — a home training program that starts with 6 weeks of core, abs and HIIT for a flat stomach and no love handles, then expands into a full year of full-body strength (chest, back, shoulders, arms, legs) plus HIIT. Baseline assessment, week-to-week progression, self-saving. Offline-ready, installs to your home screen.">
+<meta name="description" content="CoreForge — a home training program that starts with 6 weeks of core, abs and HIIT for a flat stomach and no love handles, then expands into full-body strength (chest, back, shoulders, arms, legs) plus HIIT. Baseline assessment, week-to-week progression, self-saving. Offline-ready, installs to your home screen.">
 <title>CoreForge — 1-Year Full-Body Program</title>
 <style>
   /* Self-hosted Archivo (variable, latin subset) — bundled so the app renders in
@@ -563,12 +563,13 @@
 <script>
 "use strict";
 /* =========================================================================
-   CoreForge — 1-year (54-week) full-body training PWA
+   CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
+     76 at the wizard's five-day floor — programWeeks() is the only answer)
    - Baseline assessment (day 1) -> Core Score + level + personal maxes
    - Auto-generated program, progressive overload week-to-week
    - Auto-regulating: adapts next week from how hard sessions felt
    - 9 six-week blocks: abs/core/HIIT (weeks 1-6) then full-body strength
-   - Re-assessment each 6-week block -> keeps scaling across the full year
+   - Re-assessment each 6-week block -> keeps scaling for the whole program
    - Self-saving: localStorage + IndexedDB mirror + persistent storage
    ========================================================================= */
 
@@ -1976,7 +1977,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='456';
+const APP_VERSION='457';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -11148,8 +11149,15 @@ function briefSegments(){
      "Good evening" — one card, two answers, from the same clock. */
   const _gt=_briefGreet();
   const _briefTitle=/evening/i.test(_gt)?'Evening brief':(/afternoon/i.test(_gt)?'Afternoon brief':'Morning brief');
+  /* "your one-year build" was a hand-written duration beside the constant that
+     answers it — v348's own defect, on the one surface v348 and v354 did not
+     reach. 378 sessions is 54 weeks at SEVEN a week and the wizard's floor is
+     FIVE, so a five-day athlete is on 76 weeks: 17 months, not 12. And it is
+     SPOKEN, which v315's rule makes the worst place for it — an athlete cannot
+     double-check a figure they only ever hear. programWeeks() already derives
+     it from weeklyTarget(); the header chip has read it since v348. */
   segs.push({icon:'🎖️',title:_briefTitle,
-    say:`${_gt}${who}. This is ${ADVISOR.short}, your coach. Here is your brief for today — week ${wkNum}, day ${dayNum} of your one-year build. Let's walk the plan.`});
+    say:`${_gt}${who}. This is ${ADVISOR.short}, your coach. Here is your brief for today — week ${wkNum}, day ${dayNum} of your ${programWeeks()}-week build. Let's walk the plan.`});
   // 2 — mission / transformation
   const goalW=STATE.profile.goalWeightLb, goalBF=STATE.profile.goalBodyFat, kg=latestWeightKg();
   const bf=(goalBF>0)?`, and body fat under ${goalBF} percent`:'';
@@ -24093,15 +24101,15 @@ function normalizeState(){
      replaced the athlete's own equipment, training days and goal weight. */
   const seeding=!STATE.onboarded;
 
-  if(!STATE.profile._gearMil)STATE.profile._gearMil=true;
-
-  if(!STATE.profile._gearDb)STATE.profile._gearDb=true;
-  /* The kit seed never listed 'bench', and hasBench used to be undefined — which
-     read as "not false", so bench moves were allowed anyway. Once gear[] and
-     hasBench were brought into sync, that accident stopped and the Copenhagen
-     plank quietly dropped out of the program. The option is labelled
-     "Bench / chair", which everyone has, so add it once. Untick it in Settings
-     if you genuinely have neither. */
+  /* THREE ONE-TIME FLAGS WERE SET AND GATED NOTHING (v457). _gearMil, _gearDb
+     and _benchKit each read `if(!X)X=true;` and appeared nowhere else in the
+     file: the kit seeds they once guarded were removed when the seeds moved
+     behind `seeding`, and the flags were left behind. Two of them had lost even
+     their comment. That is the voicePitch shape in a stored field — something
+     that looks like it guards a migration, guards nothing, and changes nothing
+     when edited — and it wrote three keys into every athlete's profile and into
+     every backup, for ever. Removing the WRITE is non-destructive: a stored
+     copy keeps its keys, and a fresh install never gains them. */
   /* Repair a baseline that an earlier build contaminated with the GOAL value.
      Deliberately narrow, and one-shot: it only fires when startWaist equals the
      goal AND the measurement history proves the athlete is actually above it —
@@ -24117,9 +24125,6 @@ function normalizeState(){
     }
     STATE.profile._startWaistFix=true;
   }
-  /* Equipment is no longer pre-ticked. Seeding it meant tapping through the quiz
-     told the app you owned a battle rope, and day one prescribed one. */
-  if(!STATE.profile._benchKit)STATE.profile._benchKit=true;
   try{migrateAllergens();}catch(e){}   // derive allergen tags from any old free-text answer
   try{noteGoalPhase();}catch(e){}       // start/stop the deficit-duration clock
   if(seeding&&!STATE.profile._days7&&!Array.isArray(STATE.profile.days)){STATE.profile.days=[0,1,2,3,4,5,6];}

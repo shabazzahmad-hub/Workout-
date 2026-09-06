@@ -4660,6 +4660,48 @@ export default async function run() {
     t.ok('and the water habit follows it down', !r.wAfter.tick, r.wAfter);
   }
 
+  /* ---- the coach spoke a duration nobody derived (v457) ------------------
+     v348 measured it and wrote the rule down: the program is a QUEUE of 378
+     sessions, and how long it takes is set by how often you train. 54 weeks is
+     true at SEVEN a week; the wizard's own floor is FIVE, which is 76 weeks —
+     17 months, not 12. v348 fixed the Program tab and v354 fixed the header
+     chip and the Full Tour badge. THE MORNING BRIEF still said "your one-year
+     build", and that is the one surface the coach READS ALOUD — v315's rule:
+     a spoken figure is the one an athlete cannot double-check by looking.
+
+     v399's sweep ("every number the coach speaks is visible on the screen")
+     could not see it: "one-year" is a WORD, not a digit.
+
+     The payload is the figure that reaches the athlete, so the check drives
+     briefSegments() at two real schedules and pins both values — not the app's
+     own expression, which a mutant would move on both sides. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      const days = STATE.profile.days;
+      const seg = () => (briefSegments().find(s => /brief$/i.test(s.title)) || {}).say || '';
+      STATE.profile.days = [0, 1, 2, 3, 4, 5, 6];
+      o.sevenTarget = weeklyTarget(); o.sevenWeeks = programWeeks(); o.seven = seg();
+      STATE.profile.days = [1, 2, 4, 5, 6];
+      o.fiveTarget = weeklyTarget(); o.fiveWeeks = programWeeks(); o.five = seg();
+      STATE.profile.days = days;
+      return o;
+    });
+    /* GUARDS: the two schedules really are different programs, or every
+       assertion below passes on one number printed twice. */
+    t.eq('guard: seven days a week really is 54 weeks', r.sevenWeeks, 54, JSON.stringify(r));
+    t.eq('guard: and five days a week really is 76', r.fiveWeeks, 76, JSON.stringify(r));
+    t.ok('guard: the greeting segment was found at all', r.seven.length > 40, r.seven.slice(0, 80));
+
+    t.ok('the spoken brief names the 54-week program of a seven-day athlete',
+      /\b54-week build\b/.test(r.seven), r.seven.slice(0, 140));
+    t.ok('and the 76-week program of a five-day athlete — it tracks the schedule',
+      /\b76-week build\b/.test(r.five), r.five.slice(0, 140));
+    /* THE FLOOR the fix exists for: never a hand-written year. */
+    t.ok('and never claims a year to the athlete who takes seventeen months',
+      !/one-year|year-long|year build/i.test(r.five), r.five.slice(0, 140));
+  }
+
   await browser.close();
 
   // ---- the readiness deload, in the timezone it was broken in --------------

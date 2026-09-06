@@ -17433,6 +17433,120 @@ already does (respecting quotes, keeping string bodies) and **carries its
 guard on a synthetic source**: it must report a constant nothing reads and must
 NOT report one read only inside a template literal.
 
+## The coach spoke a duration nobody derived (v457)
+
+v348 measured it and wrote the rule down: **the program is a QUEUE of 378
+sessions, and how long it takes is set by how often you train.** 54 weeks is
+true at SEVEN a week; the wizard's own floor is FIVE, which is **76 weeks — 17
+months, not 12.** v348 fixed the Program tab's *"54-week journey"*, and v354
+fixed the header chip and the Full Tour badge.
+
+The morning brief still said **"your one-year build"**, and that is the surface
+the coach **READS ALOUD** — v315's rule, that a spoken figure is the one an
+athlete cannot double-check by looking. `programWeeks()` has existed since v348
+and this sentence never asked it.
+
+**v399's sweep could not see it.** *"Every number the coach SPEAKS is visible on
+the screen"* looks for digits; **"one-year" is a word.** That is why a sweep of
+one shape leaves the same defect alive in another — the same reason v453's
+legacy `WARMUP` survived v448's sweep of the four surfaces it could see.
+
+Two more year claims went with it, so the class is closed rather than the
+instance: the store blurb in `<meta name="description">` promised *"a full year
+of full-body strength"*, and the file header called the app a *"1-year
+(54-week)"* PWA. Neither can be derived, so both stopped claiming a duration.
+
+**Both floors are pinned as VALUES, not as the app's own expression** — 54 for a
+seven-day athlete and 76 for a five-day one — because a mutant that changed
+`programWeeks()` would otherwise move both sides of the comparison. And a guard
+asserts the two schedules really are different programs first, or the whole
+block passes on one number printed twice.
+
+## Three one-time flags that were set and gated nothing (v457)
+
+`if(!STATE.profile._x)STATE.profile._x=true;` is the shape a one-time migration
+takes: the flag exists so the body beside it runs once. **When the body is later
+removed, the flag is routinely left behind** — and what remains looks like it
+guards something, guards nothing, and changes nothing when edited. That is the
+`voicePitch` trap in a stored field.
+
+Three were live: `_gearMil`, `_gearDb` and `_benchKit`. **Two had lost even
+their comment**, and the two comments that survived described migrations whose
+bodies are gone — so the region read as three guarded seeds and was three bare
+writes. The kit seeds they once protected were removed when the seeds moved
+behind `seeding`.
+
+The cost is the one v285 measured: **three keys written into every athlete's
+profile, travelling in every backup, for ever.** Removing the WRITE is
+non-destructive in both directions — a stored copy keeps its keys and nothing
+deletes them, so no athlete sees a *"we repaired your data"* note; and a fresh
+install never gains them.
+
+**A live flag has a THIRD site: the branch that reads it.** `_days7` sits four
+lines below and has one (`if(seeding&&!STATE.profile._days7&&…)`), which is what
+makes the two-site test a rule rather than a guess. The scan is guarded on a
+synthetic source both ways — a flag whose only two sites are its own set-once
+statement must be reported, and one read elsewhere must not — plus a guard that
+the app really does carry set-once flags of this shape at all.
+
+## Every inline handler names a function that exists (v457)
+
+The mirror of the reachability check v388 shipped. **Reachability asks whether a
+declared function is ever CALLED; it cannot see the opposite** — an `onclick=` in
+markup naming a function that is not there. That is a button the athlete taps
+and nothing happens, with nothing on screen to say so, and `npm run check`
+cannot see it either because the file parses.
+
+**v316 measured this once as a probe (275 names, none dead) and kept nothing.**
+v385 is what that costs: `_recipePlanHTML()` went dark and stayed dark for many
+versions, and the probe that would have caught it had been thrown away. A clean
+measurement is a result — and a clean measurement nobody shipped is not.
+
+Measured today: **322 distinct handler call names across the stripped script and
+the static markup, and all 322 resolve.**
+
+Two things the scan has to get right, and both cost a wrong reading first:
+
+- **Handlers live inside template literals**, so it reads the script as well as
+  the markup outside it. A name preceded by a dot is a method (`Math.round(`),
+  not a handler.
+- **A COMMENT that quotes a handler is not a call site**, and the real file
+  carries one — the v406 note quoting an `onerror=` payload was the ONLY hit
+  before comments were stripped. Sixth time this file has recorded that trap, so
+  the stripper is hoisted into `stripComments()` and the guard exercises the
+  same function the check does rather than a second copy of it.
+
+Nine names first read as unresolved and every one was the scan: they are
+declared `async function`, which `^function` does not match. **Confirm the
+control's real shape before believing the result.**
+
+### Four sweeps that came back clean, recorded as coverage
+
+- **No hand-written copy of any registry's member list.** 24 registries read out
+  of the running app and compared against all 305 quoted-string array literals in
+  the source. The five hits were all legitimate: `COMBAT_ORDER` is a permutation
+  of `FORCE_IDS` (v412 already ships that lockstep), four are food diet tags, and
+  one is `CARDIO_MODES`'s own declaration matching `CARDIO_INFO`'s keys (v368's
+  lockstep). This is the `WEIGHTS_PATTERNS` class, and it is closed.
+- **Every element id read as a literal is rendered somewhere** — 150 reads, 206
+  literal ids, 7 dynamic prefixes. The two apparent misses (`cmpImgA`, `cmpImgB`)
+  are built by a helper that takes the id as an ARGUMENT, which a source scan
+  cannot see; not shipped as a check for that reason.
+- **`finisher.sets=1` overrides `evenSets()`, and no per-side movement ever
+  lands there.** Measured across all 378 sessions: zero odd-set per-side
+  movements in the finisher, the focus bonus or the corrective bonus. v451's own
+  sweep already covers the finisher (`[...s.main, s.finisher]`), so the class was
+  closed before this asked.
+- **Every `settings.*`, `profile.*` and `nutrition.*` field has a real reader.**
+  The low read counts are all deliberate single-reader getters — `cueVolPref()`,
+  `beatTempoPref()`, `voiceToneKey()` — which is the shape this file prescribes,
+  not the `voicePitch` shape. `settings.sound` and `settings.vibrate` show zero
+  writes because `toggleSetting()` writes them through a computed key.
+
+**And one false alarm.** The brief's Saturday weigh-in countdown looked like a
+control one surface ignores — it is gated on `settings.weeklyOn!==false`, exactly
+as the card and the push are. **Read the condition before believing it.**
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
