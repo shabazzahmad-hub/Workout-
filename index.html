@@ -2008,7 +2008,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='475';
+const APP_VERSION='476';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -20256,19 +20256,26 @@ const DIET_OPTS=[['omnivore','Omnivore'],['halal','Halal'],['pescatarian','Pesca
 const DIET_KEYS=DIET_OPTS.map(d=>d[0]);
 function dietLabel(){const m=Object.fromEntries(DIET_OPTS);return m[STATE.nutrition.diet]||m.omnivore;}
 /* The onboarding promise used to be "Nothing is uploaded", full stop — and it
-   was not true. Two optional features send data to a named third party: the
-   food-photo lookup posts the photograph to Google Gemini, and the premium
-   neural voice posts the coach's line to Azure Speech. Both are off unless the
-   athlete pastes in their own API key, and both are described where they are
-   switched on — but somebody reading the first-run screen has already been
-   given an absolute assurance by then, and that is where consent is formed.
+   was not true. Four optional features send something to a named third party,
+   and somebody reading the first-run screen has already been given an absolute
+   assurance by then, which is where consent is formed.
 
-   Scope the claim instead of dropping it: everything that IS local stays
-   named as local, and the exception is stated plainly rather than buried. One
-   helper so the wording cannot drift between the two places it appears. */
+   Scope the claim instead of dropping it: everything that IS local stays named
+   as local, and every exception is stated plainly rather than buried. One
+   helper so the wording cannot drift between the two places it appears.
+
+   THE COUNT WENT STALE THE MOMENT A FIFTH WAY OUT SHIPPED, AND IT DID. This
+   note said "skip all three and nothing ever leaves the phone" while voice
+   commands — which need no key at all, so no key screen names them — streamed
+   microphone audio to the browser's own speech service. That is the strongest
+   wording of the promise in the app, on the screen where consent is formed,
+   and it survived because a rendered-copy sweep judges the sentence it can
+   see rather than the capability list it cannot. The check therefore derives
+   the list from the SOURCE and requires this note, privacy.html and terms.html
+   to name every member. */
 function privacyNoteHTML(){
   return `<div class="note info" style="margin-top:12px">Your training data lives <b>only on this phone</b> — sessions, measurements, photos and backups are saved on the device and work offline. Nothing is uploaded, and there is no account.
-    <div class="tiny muted" style="margin-top:6px">Two optional extras stay off until you add your own API key: the <b>food-photo lookup</b> sends that photo — or a screenshot you import from another tracker — to Google Gemini, and the <b>premium coach voice</b> sends the line being spoken to Microsoft Azure. A third, key-free lookup — <b>searching packaged foods or scanning a barcode</b> — sends only the search term or barcode (never anything about you) to the free Open Food Facts database. Skip all three and nothing ever leaves the phone.</div>
+    <div class="tiny muted" style="margin-top:6px">Four optional extras can send something out, and every one is off until you switch it on. Two need your own API key: <b>image lookup</b> sends a food photo — or a screenshot from another tracker or your watch — to Google Gemini, and the <b>premium coach voice</b> sends the line being spoken to Microsoft Azure. Two need no key: <b>searching packaged foods or scanning a barcode</b> sends only the search term or barcode (never anything about you) to the free Open Food Facts database, and <b>voice commands</b> open the microphone during rest so your browser’s speech service can listen for the one word that starts your next set. Leave all four off and nothing ever leaves the phone.</div>
     <div class="tiny muted" style="margin-top:6px"><a href="./privacy.html" target="_blank" rel="noopener" style="color:inherit">Read the full privacy policy →</a></div></div>`;
 }
 /* Shown when normalizeState() could not recognise the stored diet and fell

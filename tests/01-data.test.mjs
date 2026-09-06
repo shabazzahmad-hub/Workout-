@@ -1963,7 +1963,16 @@ export default async function run() {
     const idxSrc = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
     const metaM = /<meta\s+name="description"\s+content="([^"]*)"/.exec(idxSrc);
     t.ok('guard: the page carries a description meta tag', !!metaM, String(!!metaM));
-    const blurbs = [['manifest', mf.description || ''], ['meta', metaM ? metaM[1] : '']];
+    /* THREE registry-facing blurbs, not two. package.json's description is what
+       npm and GitHub show and no sweep had ever read it — it still said "a
+       54-week calisthenics and core program" after v473 fixed that exact claim
+       in the other two. A sweep is only as wide as the surface it enumerates. */
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+    const blurbs = [['manifest', mf.description || ''], ['meta', metaM ? metaM[1] : ''],
+                    ['package.json', pkg.description || '']];
+    t.ok('guard: all three registry blurbs were read',
+      blurbs.length === 3 && blurbs.every(([, v]) => v.length > 20),
+      JSON.stringify(blurbs.map(b => b[0])));
 
     /* AND THE CHECK READ ONE FIELD OF A FILE WITH TEN (v474). The blurb rule
        has always read mf.description alone, while the manifest carries nine
@@ -2141,6 +2150,123 @@ export default async function run() {
       lab('screenshot-progress.png'));
     t.ok('the Today label names what is in the Today frame',
       /session/i.test(lab('screenshot-today.png')), lab('screenshot-today.png'));
+  }
+
+  /* ---- every way OUT of the device is named where consent is formed (v476)
+     The privacy policy is the document whose entire job is to list what leaves
+     the phone. It named THREE ways and there are SIX: it was written at v294
+     and voice commands shipped at v376, the watch-screenshot reader at v352,
+     the tracker-screenshot reader at v253. The strongest wording of all was on
+     the FIRST-RUN screen — "skip all three and nothing ever leaves the phone" —
+     while the microphone, which needs no API key and so appears on no key
+     screen, streamed audio to the browser's own speech service.
+
+     v423 fixed the microphone sentence in SETTINGS and its own comment calls a
+     false privacy claim "the worst kind of promise in UI text with no code
+     behind it". The document carrying the strongest version of that promise was
+     never touched: fixing one instance is not fixing the class, and the class is
+     four documents wide.
+
+     A RENDERED-COPY SWEEP CANNOT FIND THIS. v355 and v391 both read every
+     promise sentence off the real screens and both came back clean, because a
+     sweep judges the sentence it can see rather than the capability list it
+     cannot. And an outbound-HOST scan cannot find it either: SpeechRecognition
+     is a platform API with no URL anywhere in the file.
+
+     So the list is DERIVED FROM THE SOURCE — each capability proved present by
+     its own marker — and every document that makes the promise must name every
+     member. A seventh capability needs a row here; the guard makes a renamed
+     marker fail loudly rather than pass in silence. */
+  {
+    const app = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const pol = fs.readFileSync(path.join(ROOT, 'privacy.html'), 'utf8');
+    const ter = fs.readFileSync(path.join(ROOT, 'terms.html'), 'utf8');
+    /* The first-run note is a pure helper with no interpolation, but it is what
+       the athlete actually reads, so it is taken from the APP rather than from
+       the source: calling the helper is not the same as reading a string. */
+    const note = await page.evaluate(() => {
+      try { return privacyNoteHTML(); } catch (e) { return 'THREW: ' + e.message; }
+    });
+    t.ok('guard: the first-run privacy note really rendered', note.length > 200 &&
+      !/^THREW/.test(note), note.slice(0, 90));
+
+    /* name, the marker that proves the app HAS it, what the policy must say,
+       what the first-run note must say. */
+    /* SCOPE THE ASSERTION TO WHERE THE CHANGE WAS MADE. A page-wide /screenshot/
+       and /watch/ over the whole policy is satisfied by the SUMMARY paragraph
+       below the list, which names both — so gutting the image bullet escaped
+       clean. Each capability is asserted inside the bullet that carries it. */
+    const bulletOf = re => {
+      const m = pol.match(new RegExp('<li><b>' + re + '[\\s\\S]*?<\\/li>'));
+      return m ? m[0] : '';
+    };
+    const imageBullet = bulletOf('Image lookup');
+    const voiceBullet = bulletOf('Voice commands');
+    const offBullet   = bulletOf('Packaged-food');
+    const azureBullet = bulletOf('Premium coach voice');
+    t.ok('guard: all four exception bullets were found by name',
+      [imageBullet, voiceBullet, offBullet, azureBullet].every(b => b.length > 80),
+      [imageBullet, voiceBullet, offBullet, azureBullet].map(b => b.length).join(','));
+
+    const CAPS = [
+      ['Open Food Facts', /world\.openfoodfacts\.org/,           offBullet,   /open\s*food\s*facts/i, /open\s*food\s*facts/i],
+      ['Gemini',          /generativelanguage\.googleapis\.com/,  imageBullet, /gemini/i,              /gemini/i],
+      ['tracker shot',    /estimateFoodFromScreenshot/,           imageBullet, /screenshot of another/i, /screenshot/i],
+      ['watch shot',      /ACTIVITY_PROMPT/,                      imageBullet, /watch/i,               /watch/i],
+      ['Azure voice',     /SPEECH_SDK_URL/,                       azureBullet, /azure/i,               /azure/i],
+      ['microphone',      /webkitSpeechRecognition/,              voiceBullet, /microphone/i,          /microphone/i],
+    ];
+    /* GUARD: a marker that no longer matches would let its whole row pass in
+       silence, which is the drift this rule exists to stop. */
+    t.eq('guard: every capability marker is still present in the app',
+      CAPS.filter(c => !c[1].test(app)).map(c => c[0]), [], String(CAPS.length));
+
+    /* GUARD: proven able to fail in BOTH directions, on a synthetic document,
+       so it stays true whatever the real files become. */
+    t.ok('guard: the rule reports a document that omits a capability',
+      !/microphone/i.test('a policy that names gemini and azure only'), 'synthetic');
+    t.ok('guard: and stays quiet on one that names it',
+      /microphone/i.test('this one names the microphone'), 'synthetic');
+
+    CAPS.forEach(([name, , scope, inPol, inNote]) => {
+      t.ok('privacy.html names how data leaves via ' + name, inPol.test(scope), name);
+      t.ok('and the first-run note names ' + name, inNote.test(note), name);
+    });
+
+    /* A LAZY MUTANT HIDES RATHER THAN DELETES, and a text search cannot tell —
+       display:none and hidden both leave every word in the DOM. Recorded twice
+       already (v314, v332); the answer both times was to catch BOTH shapes, so
+       the note and the policy list are refused outright if either is hidden. */
+    t.ok('the first-run note is not hidden from the athlete who reads it',
+      !/display\s*:\s*none|visibility\s*:\s*hidden|\shidden[=\s>]/i.test(note),
+      note.slice(0, 120));
+    t.ok('and no exception bullet is hidden in the policy',
+      !/<li[^>]*(?:hidden|display\s*:\s*none)/i.test(pol), 'privacy.html');
+
+    /* ONE COUNT, AND IT IS CHECKED AGAINST ITS OWN LIST. A number written by
+       hand beside the list that holds it drifts — it drifted three ways inside
+       this very fix before the two spare copies were removed. The heading keeps
+       the count; nothing else states one. */
+    const WORD = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8 };
+    const head = (pol.match(/<h2>The (\w+) exceptions/) || [])[1] || '';
+    const listM = pol.match(/<h2>The \w+ exceptions[\s\S]*?<ul>([\s\S]*?)<\/ul>/);
+    const items = listM ? (listM[1].match(/<li><b>/g) || []).length : -1;
+    t.ok('guard: the exceptions list really was found', items > 0, String(items));
+    t.eq('the stated number of exceptions equals the bullets under it',
+      WORD[head] || head, items, head + ' vs ' + items);
+    t.eq('and no other sentence in the policy states a count of them',
+      (pol.match(/(?:one of |through the )(one|two|three|four|five|six) (?:optional|explicit)/g) || []),
+      [], 'a second copy is a second place to drift');
+
+    /* The age floor both legal pages claim must be the one the app enforces.
+       They said 16 and the setup screen accepts 13 — and it is TWO documents,
+       so fixing either alone leaves the class alive. */
+    const AGE_MIN = +(app.match(/const AGE_MIN=(\d+)/) || [])[1];
+    t.ok('guard: AGE_MIN was read out of the app', AGE_MIN >= 10 && AGE_MIN <= 21, String(AGE_MIN));
+    t.eq('privacy.html states the age floor the app enforces',
+      +((pol.match(/aged (\d+) and older/) || [])[1]), AGE_MIN, String(AGE_MIN));
+    t.eq('and terms.html states the same one',
+      +((ter.match(/aged (\d+) and older/) || [])[1]), AGE_MIN, String(AGE_MIN));
   }
 
   /* ---- every hand-written pool names a real movement (v441) --------------

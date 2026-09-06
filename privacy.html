@@ -25,10 +25,10 @@
 <div class="wrap">
   <a class="back" href="./index.html">← Back to CoreForge</a>
   <h1>Privacy Policy</h1>
-  <p class="updated">Last updated: August 2026</p>
+  <p class="updated">Last updated: September 2026</p>
 
   <div class="card">
-    <p><b>The short version:</b> CoreForge has no account, no server, and no ad or analytics tracking of any kind. Everything you enter — your profile, your workouts, your food log, your progress photos — is stored only on your own device. Nothing is uploaded anywhere unless you explicitly turn on one of three optional, clearly-labelled features described below.</p>
+    <p><b>The short version:</b> CoreForge has no account, no server, and no ad or analytics tracking of any kind. Everything you enter — your profile, your workouts, your food log, your progress photos — is stored only on your own device. Nothing leaves it unless you turn on one of the optional features described below. Each is off until you turn it on, and each sends only the one thing it names.</p>
   </div>
 
   <h2>What is collected, and where it lives</h2>
@@ -41,13 +41,14 @@
   </ul>
   <p>None of this is sent to us — there is no "us" to send it to. CoreForge has no backend server and no account system.</p>
 
-  <h2>The three exceptions — all opt-in, all named at the point you turn them on</h2>
+  <h2>The four exceptions — all opt-in, all named at the point you turn them on</h2>
   <ul>
     <li><b>Premium coach voice.</b> If you paste your own Microsoft Azure Speech key into Settings, the line the coach is about to speak is sent to Azure to synthesize. Off by default; nothing is sent until you add a key.</li>
-    <li><b>Food-photo lookup.</b> If you paste your own Google Gemini API key into Settings, a photo you take of food is sent to Gemini to identify it. Off by default; nothing is sent until you add a key.</li>
+    <li><b>Image lookup.</b> If you paste your own Google Gemini API key into Settings, an image you pick is sent to Gemini to read. Three kinds of image go this way: a photo you take of food, a screenshot of another nutrition tracker or a nutrition label, and a screenshot of your watch or activity app. Off by default; nothing is sent until you add a key, and no image is ever sent unless you choose it for one of those three jobs.</li>
     <li><b>Packaged-food &amp; barcode search.</b> Searching for a packaged food or scanning a barcode sends only the search term or barcode number to the free, public <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a> database — no key required, and nothing about you is sent, only the term you typed or the code you scanned. Built-in foods work fully offline without this.</li>
+    <li><b>Voice commands.</b> Off by default. When you turn it on, the microphone opens only during a rest period — and while a timer has stalled — and never during a working set. The audio goes to your browser's own speech recognition service, which on Chrome and on Android means Google's servers, so this feature needs a connection. It listens for the single word "continue", and that word can only start the next set. It can never stop, pause or end a session. Turning the switch off closes the microphone.</li>
   </ul>
-  <p class="muted">In every case, only the specific piece of data described above (a line of coach speech, a food photo, or a search term/barcode) is sent — never your profile, your training history, or anything else on the device.</p>
+  <p class="muted">CoreForge adds nothing of its own to any of these requests. Your profile, your training history, your logs and your progress photos are never attached. The one thing to know about images: a screenshot of your own watch or tracker is your own training data, so it does leave the device — but only because you picked that image for that job.</p>
 
   <h2>No ads, no analytics, no tracking</h2>
   <p>CoreForge does not run any advertising, analytics, or tracking code. There are no cookies used for tracking, no third-party trackers, and no data broker relationships. The app cannot see how you use it, because nothing reports back.</p>
@@ -61,7 +62,7 @@
   </ul>
 
   <h2>Children's privacy</h2>
-  <p>CoreForge is a general-fitness app intended for users aged 16 and older, and is not directed at children. It collects no data from anyone, of any age, beyond what is described above, and that data never leaves the device except through the three explicit, opt-in actions listed.</p>
+  <p>CoreForge is a general-fitness app intended for users aged 13 and older. The setup screen will not accept an age below 13. It collects no data from anyone, of any age, beyond what is described above, and that data never leaves the device except through the explicit, opt-in actions listed above.</p>
 
   <h2>Changes to this policy</h2>
   <p>If this policy changes, the "last updated" date above will change with it. Because CoreForge has no way to contact you (there is no account and no email on file), please check back here if you want to know about updates.</p>
