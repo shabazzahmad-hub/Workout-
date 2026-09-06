@@ -4773,6 +4773,55 @@ export default async function run() {
       JSON.stringify(hist).slice(0, 200));
     t.ok('the history row says "1 set", not "1 sets"',
       !/\b1 sets\b/.test(hist.one), hist.one.slice(0, 160));
+
+    /* THE CLASS, NOT THE TWO INSTANCES. Rendered surfaces came back clean, and
+       an empty result is only worth having with ONE of every record seeded —
+       the state between empty and full is where a count is 1 — and with the
+       detector proven both ways. A ratio ("0/1 sets") must stay quiet. */
+    const rend = await page.evaluate(() => {
+      /* "Week 1 sets your baseline volumes" is ORDINARY COPY — that "sets" is a
+         VERB — and the first version of this detector reported it as a defect.
+         A detector that can match ordinary app content is not measuring what you
+         named, so a count used as an ORDINAL label is excluded by name. */
+      const BAD = /(?<![\/\d.])(?<!\b(?:Week|Day|Block|Phase|Cycle|Level|Session|Round|Test|Step|Set) )\b1 (sets|exercises|moves|minutes|calories|grams|cups|reps|seconds|weeks|days|blocks|sessions|tests|meals|rounds|movements|photos|badges|entries|stretches|hours|points|glasses)\b/g;
+      const out = { hits: [], surfaces: 0 };
+      out.sees = !!'you did 1 sets today'.match(BAD);
+      out.quiet = !'0/1 sets done'.match(BAD) && !'1 set today'.match(BAD)
+        && !'Week 1 sets your baseline volumes'.match(BAD);
+      const keep = JSON.stringify({ l: STATE.logs, m: STATE.measurements, p: STATE.progressPtr });
+      const s0 = buildSession(0), ex = s0.main[0].exId;
+      STATE.progressPtr = 1;
+      STATE.logs = { 0: { done: true, completedAt: todayISO(), feel: 'ok', ex: { [ex]: { sets: [true], done: false } } } };
+      STATE.measurements = [{ date: todayISO(), weight: 86, waist: 96 }];
+      STATE.scoreHistory = [{ date: todayISO(), score: 70, level: 'Intermediate' }];
+      STATE.holdLog = [{ date: todayISO(), id: 'plank', secs: 61, fresh: true, ex: 'plank' }];
+      STATE.skipLog = [{ date: todayISO(), mins: 1, at: 0 }];
+      STATE.photos = [{ id: 'p1', date: todayISO(), pose: 'front' }];
+      try { normalizeState(); } catch (e) { }
+      const look = (label, txt) => {
+        out.surfaces++;
+        for (const m of (txt || '').matchAll(BAD))
+          out.hits.push({ label, hit: m[0], ctx: txt.slice(Math.max(0, m.index - 60), m.index + 30).replace(/\s+/g, ' ') });
+      };
+      const strip = () => (document.querySelector('.view.active') || {}).innerText || '';
+      ['today', 'program', 'progress', 'fuel', 'quick', 'guide', 'ref']
+        .forEach(tb => { try { go(tb); look('tab:' + tb, strip()); } catch (e) { } });
+      ['brief', 'warmup', 'workout', 'cooldown']
+        .forEach(pn => { try { go('today'); setTodayTab(pn); look('today:' + pn, strip()); } catch (e) { } });
+      ['summary', 'body', 'strength', 'awards']
+        .forEach(pn => { try { go('progress'); setProgressTab(pn); look('progress:' + pn, strip()); } catch (e) { } });
+      try { look('history', sessionHistoryHTML().replace(/<[^>]*>/g, ' ')); } catch (e) { }
+      const k = JSON.parse(keep);
+      STATE.logs = k.l; STATE.measurements = k.m; STATE.progressPtr = k.p;
+      try { go('today'); } catch (e) { }
+      return out;
+    });
+    t.ok('guard: the plural detector sees a mismatch and ignores a ratio',
+      rend.sees && rend.quiet, JSON.stringify({ sees: rend.sees, quiet: rend.quiet }));
+    t.ok('guard: and it read a real spread of surfaces', rend.surfaces >= 15,
+      JSON.stringify({ surfaces: rend.surfaces }));
+    t.eq('no rendered surface says "1 <plural>" either', rend.hits.length, 0,
+      JSON.stringify(rend.hits.slice(0, 3)));
   }
 
   await browser.close();

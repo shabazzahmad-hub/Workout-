@@ -17666,6 +17666,21 @@ be one: the session is always several exercises, the water target is 6-16 cups,
 and a session is never one minute. Writing the whole list in is what catches the
 next count that becomes reachable.
 
+**The RENDERED surfaces were swept too and came back clean** — 20 tabs, panes
+and the history row, with **ONE of every record seeded**, because the state
+between empty and full is the only one where a count is 1. An empty athlete
+would have proved nothing.
+
+**And the first version of that detector reported a defect in correct copy.**
+The Program tab says *"Week 1 **sets** your baseline volumes"* — that `sets` is
+a **VERB**. Sixth entry under the rule that *a detector which can match ordinary
+app content is not measuring what you named*, after `/true/` matching *truest*,
+`/0 reps/` matching *40 reps*, `img[onerror]` matching the thumbnails,
+`indexOf('Badges')` against CSS-uppercased text, and a context read with
+`indexOf` rather than the match position. A count used as an ORDINAL label is
+excluded by name, and the guard now pins that sentence as one the detector must
+stay quiet on.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
