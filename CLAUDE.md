@@ -18552,6 +18552,152 @@ a click. v338's shape: a guard consulted in one narrow branch still has to mean
 what it is named. The mutant that weakens it is caught by that check and by the
 source assertion, and by nothing else.
 
+## A heading that promised what its own card denies (v473)
+
+Found by the traceability review below rather than by a targeted sweep.
+Settings carried, as a section label:
+
+> **See results in 6 weeks**
+
+and four lines under it, in bold, **inside the same card**:
+
+> Honest note: spot-reduction isn't real, and **neither is a six-week
+> six-pack.**
+
+The card then gives two real figures and **neither is six weeks**:
+
+| the card's own figure | |
+|---|---|
+| the tape moves | **3-4 weeks** |
+| visible abs from 25% body fat | **6-9 months** |
+
+So the heading was wrong in **both directions at once**, depending on which
+result you read it as: it OVERSTATED the wait for the number the app tells you
+to watch, and UNDERSTATED the wait for the thing *"see results"* most naturally
+means. That is v450's *screen argued with itself*, and there too the heading
+was the half that had to move.
+
+**The number was ambiguous in the way v467 records, as well.** 6 is
+`WEEKS_PER_CYCLE` — a PROGRAM week — and a five-day athlete takes **eight**
+calendar weeks over one block. Measured: it was the **only** section label in
+the app stating a timeframe by hand; every other one derives it
+(`Week ${wkNum}`) or names a real rolling window (*"Last 7 days"*).
+
+**The label now names the topic and promises nothing**, because no single
+number is right and the card already gives the two that are. A heading that
+picked one of them would be picking a favourite.
+
+**Both halves are pinned.** Deleting the honest note resolves the
+contradiction in the direction that costs the athlete the truth, and it
+satisfies every assertion about the heading — so the note, the 3-4 week figure
+and the 6-9 month figure are each floors. And the CLASS is checked rather than
+the instance: no section label on the tab may state a timeframe by hand.
+
+### The store blurb kept the same claim through v457's own fix
+
+`<meta name="description">` said *"starts with **6 weeks** of core, abs and
+HIIT"*. v457 rewrote that very tag to remove its *"a full year"* claim and left
+this one standing, because **the detector was aimed at years and months and
+`weeks` was missing from the pattern.** A sweep of one unit leaves the same
+claim alive in another — the lesson v457 itself recorded one clause away, about
+a word rather than a digit.
+
+The blurb now names the **session count**, which is a constant of the program
+rather than of the athlete, and the rule forbids a duration in **any** unit
+with a floor for each: years, months and weeks each proven caught, and an
+ordinary sentence with no duration in it proven quiet.
+
+**And the file header called them "9 six-week blocks"** — the unit ambiguity
+v469 rewrote two other model-defining comments for, in the third one nobody had
+read.
+
+## The traceability review: every input, traced to what it changes (v473)
+
+*"When one section is set up and is saved, what does that information actually
+do to the actual program?"* Answered by MEASUREMENT rather than by reading, for
+26 controls, with the guards first — half of every previous dead-control
+finding was the probe.
+
+**Every athlete-settable control is alive.** Nothing is stored and ignored.
+
+| what it changes | controls |
+|---|---|
+| the built program | goal, experience, targets, focus, trouble zones, limitations, gear, tight space, timeline, feel chip, per-move chip, readiness, both deload switches, prep test date |
+| the warm-up / cool-down | mobility, limitations |
+| the food targets | goal, activity, diet, meals, bodyweight, protein target, timeline |
+| minutes, cards, plans, the spoken brief | schedule, cadence, cardio mode, prep path, and every one above |
+
+**The three the athlete named, measured end to end:**
+
+- **The seven goals are seven different programs**, not seven labels. Across
+  all 378 sessions: `lose` 37,942 reps and 118,385 hold-seconds at 36.8% cardio
+  slots on 1,950 kcal and 145 g; `shred` 39,572 / 123,855 at 36.8% on 1,850 and
+  170 g; `gain` 42,039 / 86,650 at 24.7% on 2,680 and 145 g. `recomp` and
+  `leanrecomp` share a training split by design (v363) and differ by 28,471
+  seconds of prescribed rest and 290 kcal.
+- **The feel chip moves the next sessions and is capped on purpose.** All
+  "easy" takes `adapt` 1.00 → 1.30 in twelve sessions and holds; all "hard"
+  takes it to 0.90 in five. On one reference session that is **366 units of
+  work against 285** — a 28% spread. The cap is not a dead input: `weekAdjust()`
+  reads the same ratings every week, at ±8% halved, and never saturates.
+- **A block, a re-test and the block after it.** Baseline (score 55,
+  Intermediate) → 42 sessions rated "good" → `adapt` 1.252 → the re-test gate
+  fires → 35% better test scores give score 76, Advanced, and `rebaseAdapt()`
+  returns `adapt` to 1. Push-ups went 3x11 at the baseline, 3x13 by the end of
+  the block, **3x15 in the block after the re-test** — the gain carried forward
+  by the new max rather than double-counted by the multiplier.
+
+### Twelve false alarms, and every one is a trap this file already names
+
+The ratio is the point, and it is the argument for the guards:
+
+- **Four wrong field shapes.** `STATE.deload` is `settings.deload`;
+  `STATE.readiness` is a MAP keyed by date, not a flat object; `e.intervals` is
+  `e.sessions` containing `'intervals'`; and `focusPrimary:'posture'` is a
+  TROUBLE zone, not a focus area — `FOCUS_POOL` has no such key.
+- **Two wrong readers.** The fuel fingerprint asked `kcalTargetPreview()` and
+  `proteinTargetCalc()` — the predictor and the calculation — where the
+  effective readers are `todayKcalBudget()` and `proteinTargetG()`. v322
+  recorded this exact pair.
+- **An unpinned `Math.random`.** `currentMealPlan()` picks recipes randomly, so
+  every fingerprint differed and five controls read as changing the food when
+  they changed nothing.
+- **A base state that leaked between rows.** `base()` did not reset
+  `settings.deload`, so the row above left it TRUE and the `autoDeload` row
+  compared two identical deloaded programs. Driven alone, that switch moves a
+  week-6 session from **331 units to 545**. *Each block builds the state it
+  asserts on*, applied to a probe.
+- **A plan walked with the wrong clock.** `prepWeekNo()` counts forward from
+  `planFrom`, so moving the test DATE never advances the plan — every week read
+  as week 1, where both prep paths are identical. Moving `planFrom` back
+  instead shows them plainly: at week 6 the operator runs
+  `base, base, tempo, long` and the assaulter `base, tempo, intervals, long`,
+  and the ruck ladder's load slot is offset by exactly one week.
+- **A stale view read as a missing repaint.** `render()` paints only the ACTIVE
+  tab and views stay mounted, so every non-active view is legitimately stale
+  until `go()` repaints it.
+- **Ten writers that "change STATE without saving".** All ten delegate:
+  `setGoalWeight()` and `setWaistGoal()` OPEN a sheet whose Save button is the
+  writer, `saveRuck()` goes through `logAct()`, `setForceResultQuiet()` through
+  its caller, and the three `start*` ones write no stored state at all.
+
+### Three sweeps that came back clean, recorded as coverage
+
+- **No stat tile disagrees with another.** Every `.stat` label and figure
+  across six tabs, eight sub-panes and 51 sheets: **22 distinct labels, zero
+  cases of one label carrying two different numbers.** That is the class that
+  produced v447, v464 and v467, swept across surfaces rather than within one.
+- **Every outcome promise carrying a timeframe**, read off the rendered
+  screens rather than the source: 60 surfaces, three hits. One was the
+  finding above, one is v467's recorded structural exception (*"re-test after
+  each 6-week block"*, the block's NAME), and one is a subjective claim about
+  feeling that the card does not contradict.
+- **Every screen at five days a week against seven**, including all four Today
+  panes, all four Progress panes and both Reference panes: every calendar
+  duration moves with the schedule (76/8 weeks against 54/6) and every
+  structural figure holds (378 sessions, 42 a block, the Progress week tile).
+  The one sentence that did not move was the finding.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

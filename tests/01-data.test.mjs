@@ -1968,17 +1968,32 @@ export default async function run() {
     const total = await page.evaluate(() => SESSIONS_PER_CYCLE * TOTAL_CYCLES);
     t.eq('guard: the program really is 378 sessions', total, 378, String(total));
 
+    /* WEEKS WERE MISSING FROM THE PATTERN, so the meta tag kept a duration
+       claim through v457's own fix: it said "starts with 6 weeks of core,
+       abs and HIIT" while the detector looked only for years and months.
+       A block is 6 PROGRAM weeks and a five-day athlete takes EIGHT calendar
+       weeks over it, so the tag was true for nobody who took the default.
+       Same shape as the one v457 recorded one clause away: a sweep aimed at
+       one unit leaves the same claim alive in another. */
+    const DUR = /\b(?:full[- ]year|one[- ]year|1[- ]year|year[- ]long|\d+\s*(?:months?|weeks?|years?))\b/i;
     blurbs.forEach(([where, txt]) => {
       t.ok('the ' + where + ' blurb claims no fixed duration in time',
-        !/\b(?:full[- ]year|one[- ]year|1[- ]year|year[- ]long|\d+\s*months?)\b/i.test(txt),
-        txt.slice(0, 120));
+        !DUR.test(txt), txt.slice(0, 140));
       const n = /\b(\d{2,4})[- ]session\b/.exec(txt);
-      if (n) t.eq('and the ' + where + ' session count matches the program', +n[1], total, txt.slice(0, 120));
+      if (n) t.eq('and the ' + where + ' session count matches the program', +n[1], total, txt.slice(0, 140));
+      t.ok('and the ' + where + ' blurb names the session count', /\b\d{2,4}[- ]session\b/.test(txt), txt.slice(0, 140));
     });
-    /* FLOOR: the detector really would catch the wording this replaced. */
+    /* FLOORS: the detector really catches each unit, and does NOT fire on an
+       ordinary sentence with no duration in it. An empty offender list is
+       otherwise a statement about the regex rather than about the blurbs. */
     t.ok('guard: the scan reports a year claim when there is one',
-      /\b(?:full[- ]year|one[- ]year|1[- ]year|year[- ]long|\d+\s*months?)\b/i
-        .test('a full year of full-body strength'), 'detector is blind');
+      DUR.test('a full year of full-body strength'), 'blind to years');
+    t.ok('guard: the scan reports a WEEK claim when there is one',
+      DUR.test('starts with 6 weeks of core, abs and HIIT'), 'blind to weeks');
+    t.ok('guard: the scan reports a month claim when there is one',
+      DUR.test('gets you there in 9 months'), 'blind to months');
+    t.ok('guard: the scan stays quiet on a blurb with no duration in it',
+      !DUR.test('a 378-session home training program with a baseline assessment'), 'over-eager');
   }
 
   /* ---- every hand-written pool names a real movement (v441) --------------
