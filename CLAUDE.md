@@ -17615,6 +17615,57 @@ weeks"* must not be. Each of the three fixes was seeded back and fails by name.
 weaken the check; seventh time this file has recorded that trap, and the first
 where the comment was explaining the constant it quoted.
 
+## A count that can be one needs its own plural (v459)
+
+`prescribe()` gives a movement in the `dynamic` region a **single** timed round
+(`if(ex.region==='dynamic') sets=1;`), and the main slots include `dynL`. So
+**74 of the programme's 378 sessions carry a one-set movement** — and the
+morning brief, the segment the coach **reads aloud**, said:
+
+> Then the main work. Incline Push-Up, 3 sets of 5 reps, Pike Push-Up, 3 sets of
+> 3 reps, **Inchworm Walkout, 1 sets of 40 seconds.**
+
+Measured across a spread of the whole programme: **10 of every 54 sessions.**
+Spoken is the worst place for it — v315's rule is that an athlete cannot
+double-check a spoken line by looking.
+
+**The RATIO form is deliberately untouched.** `0/3 sets` and
+`${doneSets}/${totalSets} sets` are correct English, and a fix that reached
+them would be a different bug. The check's pattern excludes a count preceded by
+a slash or another digit for exactly that reason.
+
+**Two sites, two checks.** `plural()` is one helper, but the session-history row
+(`${st.setsDone} sets`, where a partial session lands and the count really can be
+1) is invisible to every assertion about the brief — so it is driven separately,
+with a seeded log of one marked set and one of three.
+
+**The guards are what make the sweep mean anything**: the programme really does
+prescribe single-set movements (74 of them), and the sweep really read a spread
+of briefs. Without the first, *"the brief never says 1 sets"* is satisfied by a
+programme that never prescribes one.
+
+**Both over-eager twins fail a floor**: a `plural()` that never adds the `s`
+makes a three-set movement say *"3 set"*, and one that always adds it is the
+original defect.
+
+### And a spoken claim with code behind it that nothing had pinned
+
+The same segment says the finisher is *"one all-out round"*. `finisher.sets=1`
+is forced in `buildSession()`, so the sentence is true — and **no suite asserted
+it**. This file's rule is to grep for the code that enforces a promise; the
+other half is to pin it. Every finisher across all 378 sessions is now asserted
+to be one round, beside the sentence that says so, and the mutant that makes it
+two fails by name.
+
+### The plural sweep is a class, not a word
+
+The scan forbids `1 <plural>` for every count the app speaks — sets, exercises,
+moves, minutes, calories, grams, cups, reps, seconds, weeks, days, blocks,
+sessions, tests, meals, rounds, movements. Of those, only `sets` can currently
+be one: the session is always several exercises, the water target is 6-16 cups,
+and a session is never one minute. Writing the whole list in is what catches the
+next count that becomes reachable.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

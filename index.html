@@ -1977,7 +1977,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='458';
+const APP_VERSION='459';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -11116,6 +11116,12 @@ function coachHeroHTML(caption){
   return `<div style="text-align:center;margin-bottom:8px">${coachAvatarHTML(76,'border-color:var(--gold);margin:0 auto;display:block;box-shadow:0 6px 18px rgba(0,0,0,.45)')}<div class="tiny muted" style="margin-top:6px">${caption||ADVISOR.name}</div></div>`;}
 
 function _briefGreet(){let h=9;try{h=new Date().getHours();}catch(e){}return h<12?'Good morning':(h<17?'Good afternoon':'Good evening');}
+/* A COUNT THAT CAN BE ONE NEEDS ITS OWN PLURAL, and the brief is where it costs
+   most: 74 of the programme's movements are prescribed a SINGLE set — prescribe()
+   gives region 'dynamic' one timed round — so the coach READ ALOUD "Inchworm
+   Walkout, 1 sets of 40 seconds" on 10 of every 54 sessions. A RATIO ("0/3 sets")
+   is a different shape and correctly keeps the plural. */
+function plural(n,word){return n+' '+word+(Math.abs(n)===1?'':'s');}
 function _briefList(a){a=(a||[]).filter(Boolean);if(a.length<=1)return a[0]||'';if(a.length===2)return a[0]+' and '+a[1];return a.slice(0,-1).join(', ')+', and '+a[a.length-1];}
 function _briefTarget(m){return m.unit==='time'?(m.target>=60?fmtTime(m.target):m.target+' seconds'):m.target+' reps';}
 
@@ -11264,7 +11270,7 @@ function briefSegments(){
   segs.push({icon:'🌡️',title:`Warm-up · ~${flowMins(_wf)} min`,
     say:`We open with a warm-up: ${_briefList(_wf.slice(0,4).map(w=>w.n))}${_wfRest?`, and ${_wfRest} more`:''}. Prime the deep core and raise the heart rate — do not skip it.`});
   // 5 — main work
-  const mains=sess.main.map(m=>`${(EX[m.exId]||{}).name}, ${m.sets} sets of ${_briefTarget(m)}`);
+  const mains=sess.main.map(m=>`${(EX[m.exId]||{}).name}, ${plural(m.sets,'set')} of ${_briefTarget(m)}`);
   segs.push({icon:'💪',title:'Main work',
     say:`Then the main work. ${_briefList(mains)}. Brace every rep, control the tempo, and own the burn.`});
   // 6 — finisher
@@ -22303,7 +22309,7 @@ function sessionHistoryHTML(){
     const feel=l.feel==='easy'?'😎':(l.feel==='hard'?'🥵':'💪');
     const st=sessionStats(p);
     h+=`<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer;padding:12px 14px" onclick="openSessionDetail(${p})">
-      <span><b>${s.name}</b><div class="tiny muted">Wk ${wk} · ${_ve(l.completedAt||l.date||'')} · ${st.exDone}/${st.exTotal} moves · ${st.setsDone} sets · ${(()=>{const mm=sessionMinutes(l,st);return (mm.measured?'':'~')+mm.min;})()} min</div></span><span style="font-size:18px">${feel}</span></button>`;
+      <span><b>${s.name}</b><div class="tiny muted">Wk ${wk} · ${_ve(l.completedAt||l.date||'')} · ${st.exDone}/${st.exTotal} moves · ${plural(st.setsDone,'set')} · ${(()=>{const mm=sessionMinutes(l,st);return (mm.measured?'':'~')+mm.min;})()} min</div></span><span style="font-size:18px">${feel}</span></button>`;
   });
   h+=`</div>${priorNote}`;return h;
 }

@@ -4700,6 +4700,79 @@ export default async function run() {
     /* THE FLOOR the fix exists for: never a hand-written year. */
     t.ok('and never claims a year to the athlete who takes seventeen months',
       !/one-year|year-long|year build/i.test(r.five), r.five.slice(0, 140));
+
+    /* A COUNT THAT CAN BE ONE NEEDS ITS OWN PLURAL. prescribe() gives a
+       'dynamic' region movement a SINGLE timed round, and 74 of the
+       programme's movements land there — so the coach READ ALOUD "Inchworm
+       Walkout, 1 sets of 40 seconds" on 10 of every 54 sessions. Spoken is the
+       worst place for it: v315's rule is that an athlete cannot double-check a
+       spoken line by looking.
+
+       The RATIO form is deliberately excluded — "0/3 sets" is correct English
+       and a fix that touched it would be a different bug. */
+    const pl = await page.evaluate(() => {
+      const BAD = /(?<![\/\d])\b1 (sets|exercises|moves|minutes|calories|grams|cups|reps|seconds|weeks|days|blocks|sessions|tests|meals|rounds|movements)\b/;
+      const out = { spoke: [], oneSet: 0, finNot1: 0, sessions: 0, multi: '' };
+      const keepPtr = STATE.progressPtr;
+      for (let p = 0; p < SESSIONS_PER_CYCLE * TOTAL_CYCLES; p++) {
+        const s = buildSession(p);
+        if (!s || !s.main) continue;
+        s.main.forEach(m => { if (m.sets === 1) out.oneSet++; });
+        if (!s.finisher || s.finisher.sets !== 1) out.finNot1++;
+      }
+      for (let p = 0; p < SESSIONS_PER_CYCLE * TOTAL_CYCLES; p += 7) {
+        STATE.progressPtr = p;
+        out.sessions++;
+        let segs = [];
+        try { segs = briefSegments(); } catch (e) { out.threw = String(e); }
+        segs.forEach(sg => {
+          const say = sg.say || '';
+          if (BAD.test(say)) out.spoke.push({ p, say: say.slice(0, 120) });
+          if (!out.multi && / 3 sets of /.test(say)) out.multi = say.slice(0, 120);
+          if (/all-out round/.test(say)) out.fin = say.slice(0, 120);
+        });
+      }
+      STATE.progressPtr = keepPtr;
+      return out;
+    });
+    /* GUARDS. Without the first, "the brief never says 1 sets" is satisfied by
+       a programme that never prescribes one; without the second, the block is
+       reading no briefs at all. */
+    t.ok('guard: the programme really does prescribe single-set movements',
+      pl.oneSet > 20, JSON.stringify({ oneSet: pl.oneSet }));
+    t.ok('guard: and the sweep read a real spread of briefs',
+      pl.sessions > 40 && !pl.threw, JSON.stringify({ sessions: pl.sessions, threw: pl.threw }));
+    t.eq('the spoken brief never says "1 sets"', pl.spoke.length, 0,
+      JSON.stringify(pl.spoke.slice(0, 3)));
+    /* THE FLOOR: a fix that simply dropped the s would say "3 set". */
+    t.ok('and a three-set movement still keeps its plural',
+      / 3 sets of /.test(pl.multi), pl.multi);
+    /* The brief calls the finisher "one all-out round" — a claim with code
+       behind it (finisher.sets=1) that nothing had ever pinned. */
+    t.eq('guard: every finisher in the programme really is one round', pl.finNot1, 0,
+      JSON.stringify({ finNot1: pl.finNot1 }));
+    t.ok('so the brief may call it one all-out round', /one all-out round/.test(pl.fin || ''),
+      String(pl.fin || '').slice(0, 120));
+
+    /* TWO SITES, TWO CHECKS. The helper is one place, but a mutant reverting
+       only the history row is invisible to every assertion above — and that row
+       is where a partial session lands, which is exactly when the count is 1. */
+    const hist = await page.evaluate(() => {
+      const keep = JSON.stringify(STATE.logs);
+      const s0 = buildSession(0), ex = s0.main[0].exId;
+      STATE.logs = { 0: { done: true, completedAt: todayISO(), feel: 'ok',
+        ex: { [ex]: { sets: [true], done: false } } } };
+      const one = sessionHistoryHTML();
+      STATE.logs[0].ex[ex].sets = [true, true, true];
+      const three = sessionHistoryHTML();
+      STATE.logs = JSON.parse(keep);
+      return { one: one.replace(/<[^>]*>/g, ' '), three: three.replace(/<[^>]*>/g, ' ') };
+    });
+    t.ok('guard: the seeded rows really report one set and three',
+      /\b1 set\b/.test(hist.one) && /\b3 sets\b/.test(hist.three),
+      JSON.stringify(hist).slice(0, 200));
+    t.ok('the history row says "1 set", not "1 sets"',
+      !/\b1 sets\b/.test(hist.one), hist.one.slice(0, 160));
   }
 
   await browser.close();
