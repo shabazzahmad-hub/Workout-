@@ -2041,6 +2041,30 @@ export default async function run() {
     o.swapAltInherited = hits(new RegExp('SWAP_ALT\\.' + ak + ' -> unknown exercise "constructor"'));
     SWAP_ALT[ak] = realAlt;
 
+    /* SIX MORE REGISTRIES CARRY AN EXERCISE ID and none was in the sweep v441
+       shipped — the four format maps, the FORCE events and BOTH test lists, 29
+       ids in all. HOLD_TESTS is the sharpest: holdMovement() resolves that id,
+       so a typo leaves the whole hold test measuring nothing. */
+    const skk = Object.keys(SKIP_FORMATS).find(k => SKIP_FORMATS[k].exId);
+    const realSk = SKIP_FORMATS[skk].exId; SKIP_FORMATS[skk].exId = 'notARealMove';
+    o.skipCaught = hits(new RegExp('SKIP_FORMATS\\.' + skk + ': unknown exercise "notARealMove"'));
+    SKIP_FORMATS[skk].exId = realSk;
+
+    const fe = FORCE_EVENTS.find(e => e.ex);
+    const realFe = fe.ex; fe.ex = 'notARealMove';
+    o.forceCaught = hits(new RegExp('FORCE_EVENTS\\.' + fe.id + ': unknown exercise "notARealMove"'));
+    fe.ex = realFe;
+
+    const realTe = TESTS[0].ex; TESTS[0].ex = 'notARealMove';
+    o.testCaught = hits(new RegExp('TESTS\\.' + TESTS[0].id + ': unknown exercise "notARealMove"'));
+    TESTS[0].ex = realTe;
+
+    const realHo = HOLD_TESTS[0].exId; HOLD_TESTS[0].exId = 'notARealMove';
+    o.holdCaught = hits(new RegExp('HOLD_TESTS\\.' + HOLD_TESTS[0].id + ': unknown exercise "notARealMove"'));
+    HOLD_TESTS[0].exId = 'constructor';
+    o.holdInherited = hits(new RegExp('HOLD_TESTS\\.' + HOLD_TESTS[0].id + ': unknown exercise "constructor"'));
+    HOLD_TESTS[0].exId = realHo;
+
     /* An INHERITED key is the case a truthiness filter cannot see at all. */
     HIIT_POOL.push('constructor');
     o.inheritedCaught = hits(/HIIT_POOL: unknown exercise "constructor"/);
@@ -2060,6 +2084,12 @@ export default async function run() {
   t.eq('and in a quick workout', poolRule.quickCaught, 1, poolRule);
   t.eq('and in a special format', poolRule.specialCaught, 1, poolRule);
   t.eq('and in SWAP_ALT, which the swap-map rule never covered', poolRule.swapAltCaught, 1, poolRule);
+  t.eq('and in a skipping format', poolRule.skipCaught, 1, poolRule);
+  t.eq('and in a FORCE event', poolRule.forceCaught, 1, poolRule);
+  t.eq('and in a baseline test', poolRule.testCaught, 1, poolRule);
+  t.eq('and in a hold test — holdMovement() resolves that id',
+    poolRule.holdCaught, 1, poolRule);
+  t.eq('and a hold test refuses an inherited key too', poolRule.holdInherited, 1, poolRule);
   /* The swap-map rule itself read EX[target] by truthiness. Two rules of the
      same kind must not disagree about what an exercise is, so it asks
      exKnown() now — and only an INHERITED key can tell the two apart. */

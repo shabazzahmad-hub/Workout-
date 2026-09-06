@@ -1977,7 +1977,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='460';
+const APP_VERSION='461';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -24555,6 +24555,26 @@ function validateData(){
       if(!exKnown(m&&m.exId))errs.push('QUICKIES.'+(q&&q.id)+': unknown exercise "'+(m&&m.exId)+'"');});});
     Object.keys(SPECIAL_FORMATS).forEach(f=>{const k=SPECIAL_FORMATS[f].exId;
       if(k!==undefined&&!exKnown(k))errs.push('SPECIAL_FORMATS.'+f+': unknown exercise "'+k+'"');});
+    /* SIX MORE REGISTRIES CARRY AN EXERCISE ID AND NONE WAS IN THE SWEEP. v441
+       named three pools plus QUICKIES and SPECIAL_FORMATS; the four format maps,
+       the FORCE events and BOTH test lists were left out, which is 29 more ids
+       that a typo would silently drop. HOLD_TESTS is the sharpest: holdMovement()
+       resolves that id and the whole hold test measures nothing without it.
+       Measured, all 29 are real today — a lockstep rule, not a live defect. */
+    [['SKIP_FORMATS',SKIP_FORMATS],['HIIT_FORMATS',HIIT_FORMATS],
+     ['ENDURANCE_FORMATS',ENDURANCE_FORMATS]].forEach(([n,M])=>{
+      Object.keys(M||{}).forEach(f=>{const k=M[f]&&M[f].exId;
+        if(k!==undefined&&!exKnown(k))errs.push(n+'.'+f+': unknown exercise "'+k+'"');});});
+    /* FORCE_EVENTS names its movement `ex`, not `exId` — the first version of
+       this rule read exId and could therefore never fire. A rule that cannot
+       fire is no rule, which is why each arm is broken in front of the
+       validator rather than trusted. */
+    (FORCE_EVENTS||[]).forEach(e=>{const k=e&&e.ex;
+      if(k!==undefined&&!exKnown(k))errs.push('FORCE_EVENTS.'+(e&&e.id)+': unknown exercise "'+k+'"');});
+    (TESTS||[]).forEach(t=>{const k=t&&t.ex;
+      if(k!==undefined&&!exKnown(k))errs.push('TESTS.'+(t&&t.id)+': unknown exercise "'+k+'"');});
+    (HOLD_TESTS||[]).forEach(t=>{const k=t&&t.exId;
+      if(k!==undefined&&!exKnown(k))errs.push('HOLD_TESTS.'+(t&&t.id)+': unknown exercise "'+k+'"');});
   }catch(e){errs.push('the exercise-pool check threw: '+e.message);}
   Object.keys(JOINT_RISK).forEach(j=>JOINT_RISK[j].forEach(k=>{if(!EX[k])errs.push('JOINT_RISK.'+j+': unknown exercise "'+k+'"');}));
   /* ---- every goal explains itself ----------------------------------------

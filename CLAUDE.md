@@ -17775,6 +17775,43 @@ mutant, or the check, back before believing it. The `sw.js` scan is narrow
 enough to be honest because that file's four counts were all present-tense
 claims about its own structure.
 
+## Six more registries carried an exercise id, and none was in the sweep (v461)
+
+v441 gave the validator a rule that every hand-kept list of exercise ids names a
+real movement, and swept **19 pools plus QUICKIES and SPECIAL_FORMATS**. Asking
+the same question of every registry that carries an id found **six more, 29 ids
+in all**, none of them checked:
+
+| registry | field |
+|---|---|
+| `SKIP_FORMATS` | `exId` |
+| `HIIT_FORMATS` | `exId` |
+| `ENDURANCE_FORMATS` | `exId` |
+| `FORCE_EVENTS` | **`ex`** |
+| `TESTS` | **`ex`** |
+| `HOLD_TESTS` | `exId` |
+
+**`HOLD_TESTS` is the sharpest.** `holdMovement()` resolves that id, so a typo
+leaves the entire hold-to-failure test measuring nothing — and every consumer
+filters by truthiness, which is exactly why it would be silent.
+
+Measured, all 29 are real today. This is a lockstep rule rather than a live
+defect — the shape `TESTS`/`TEST_DEFAULTS` was given after drifting three times.
+
+### The first version of the rule could never have fired
+
+`FORCE_EVENTS` names its movement **`ex`**, not `exId`, and the rule I wrote
+read `exId` — always `undefined`, so the arm was dead. It was caught because
+**each arm is broken in front of the validator and required to complain by
+name**, which is this file's standing answer to *a clean validator proves
+nothing about a validator rule*. A rule that cannot fire is no rule.
+
+The probe that found the six registries had the same fault one step earlier: it
+grepped a fixed 4,000-character window after each declaration, which spills into
+the NEXT literal — so it reported `exId` on registries that use `ex` and vice
+versa. **Confirm the control's real shape before believing the result**,
+thirteenth time.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
