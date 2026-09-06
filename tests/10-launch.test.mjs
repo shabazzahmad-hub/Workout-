@@ -889,16 +889,153 @@ const { browser, page, errors } = await launch(port);
     /After 8 weeks you re-test/.test(re.five), re.five.slice(-90));
 }
 
+/* ---- training days are settable from Settings (v472) --------------------
+   profile.days decides how long the program takes in CALENDAR terms, how many
+   sessions a week counts as a full week, which days the reminder fires on, how
+   long a gap the streak tolerates and which days may not be counted against
+   the athlete. It had NO control outside the seven-step profile quiz — v315's
+   finding on goalWeightLb one field over: a number a dozen readers depend on,
+   reachable only by re-answering a quiz. Measured before the fix: Settings
+   rendered 60 controls and not one of them mentioned training days.
+
+   DRIVEN BY CLICK, not by calling the setter — the difference the v292 Convert
+   button was made of, and the tenth time this file has recorded it. */
+{
+  const days = await page.evaluate(() => {
+    const o = {}, keep = STATE.profile.days;
+    const sec = () => { go('guide'); return document.querySelector('#set-days'); };
+    const note = () => (document.querySelector('[data-daysnote]') || {}).textContent || '';
+    const btns = () => [...sec().querySelectorAll('button')];
+    const toasted = () => (document.querySelector('#toast') || {}).textContent || '';
+
+    setTrainingDays([1, 2, 4, 5, 6]);
+    /* GUARD BEFORE THE FIRST DEREFERENCE: the mutant that never mounts the
+       control leaves sec() null, and every line below threw — the run went red
+       without naming a check, which this repo's own rule says is not enough. */
+    if (!sec()) {
+      /* Fill every field the assertions read, or the guard trades a throw
+         inside the page for a throw in the checks — same silence, one layer
+         further out. */
+      const blank = { days: 0, note: '', preset: false, stored: 0, said: '',
+        weeks: 0, block: 0, subtitle: '', tile: '', brief: '' };
+      Object.assign(o, { rendered: 0, missing: true, marked: 0, aria: 0, named: false,
+        direct: { returned: null, days: 0, was: 0 },
+        five: blank, afterTap: blank, floor: blank,
+        depFive: blank, depSeven: blank, sevenPreset: false, sevenNote: '' });
+      STATE.profile.days = keep; save(); return o;
+    }
+    const b = btns();
+    o.rendered = b.length;
+    /* The setter's own contract, asserted directly: it is consulted from a
+       narrow branch (toggleTrainingDay refuses first), so a weakened floor
+       there is invisible to a click — v338's shape. */
+    const beforeDirect = weeklyTarget();
+    o.direct = { returned: setTrainingDays([1, 2, 4]), days: weeklyTarget(), was: beforeDirect };
+    setTrainingDays([1, 2, 4, 5, 6]);
+    o.marked = b.filter(x => x.classList.contains('on')).length;
+    o.aria = b.filter(x => x.getAttribute('aria-pressed') === 'true').length;
+    o.named = b.every(x => (x.getAttribute('aria-label') || '').length > 2);
+    o.five = { days: weeklyTarget(), note: note(), preset: !!document.querySelector('#v-guide button[onclick="trainEveryDay()"]') };
+
+    /* A REAL TAP on a day that is currently off. */
+    sec().querySelector('button[aria-label="Wednesday"]').click();
+    o.afterTap = { days: weeklyTarget(), stored: (JSON.parse(localStorage.getItem(STORE_KEY)).profile.days || []).length,
+      note: note() };
+
+    /* THE FLOOR, and it must SAY SO — a control that silently does nothing is
+       indistinguishable from a broken one. */
+    setTrainingDays([1, 2, 4, 5, 6]);
+    document.querySelector('#toast').textContent = '';
+    const off = ['Monday', 'Tuesday', 'Thursday', 'Friday', 'Saturday'];
+    sec().querySelector('button[aria-label="' + off[0] + '"]').click();
+    o.floor = { days: weeklyTarget(), said: toasted() };
+
+    /* The preset, and the figures every dependent reader gives. */
+    const dep = () => { go('program');
+      const prog = document.querySelector('#v-program').innerText.replace(/\s+/g, ' ');
+      go('progress'); setProgressTab('summary');
+      const sum = document.querySelector('#v-progress').innerText.replace(/\s+/g, ' ');
+      return { weeks: programWeeks(), block: blockWeeks(),
+        subtitle: (prog.match(/about \d+ weeks at your \d+ sessions? a week/i) || [''])[0],
+        tile: (sum.match(/\d+\/\d+ This week/i) || [''])[0],
+        brief: (briefSegments()[0].say.split('brief for today — ')[1] || '').split('. Let')[0] }; };
+    setTrainingDays([1, 2, 4, 5, 6]); o.depFive = dep();
+    go('guide'); document.querySelector('#v-guide button[onclick="trainEveryDay()"]').click();
+    o.depSeven = dep();
+    o.sevenPreset = !!document.querySelector('#v-guide button[onclick="trainEveryDay()"]');
+    o.sevenNote = (go('guide'), note());
+
+    STATE.profile.days = keep; save(); render();
+    return o;
+  });
+
+  /* GUARDS: an empty group makes every assertion below pass on nothing. */
+  s.eq('guard: Settings renders one button per weekday', days.rendered, 7, JSON.stringify(days));
+  s.ok('the setter itself refuses a schedule below the minimum',
+    days.direct && days.direct.returned === false && days.direct.days === days.direct.was,
+    JSON.stringify(days.direct));
+  s.eq('guard: and the two schedules really differ', days.depFive.weeks + '/' + days.depSeven.weeks, '76/54', JSON.stringify([days.depFive, days.depSeven]));
+
+  s.eq('the picker marks exactly the athlete\'s training days', days.marked, 5, JSON.stringify(days.five));
+  s.eq('and says so to a screen reader', days.aria, 5, JSON.stringify(days));
+  s.ok('every day carries its full name', days.named, JSON.stringify(days));
+
+  /* A TAP, not a call. */
+  s.eq('tapping a day on changes the schedule', days.afterTap.days, 6, JSON.stringify(days.afterTap));
+  s.eq('and it is written to storage, not only to the screen', days.afterTap.stored, 6, JSON.stringify(days.afterTap));
+  s.ok('and the consequence line follows it', /63 weeks/.test(days.afterTap.note), days.afterTap.note);
+
+  /* The line is DERIVED — a hardcoded figure passes on one schedule only. */
+  s.ok('the line names what five days a week costs', /76 weeks/.test(days.five.note), days.five.note);
+  s.ok('and what seven does', /54 weeks/.test(days.sevenNote), days.sevenNote);
+  s.ok('and it names the rest days at five', /2 rest days do not count/.test(days.five.note), days.five.note);
+  s.ok('and says nothing about rest days at seven', !/rest day/.test(days.sevenNote), days.sevenNote);
+
+  /* THE FLOOR, and its own floor: the refusal must be visible. */
+  s.eq('the last training day cannot be turned off', days.floor.days, 5, JSON.stringify(days.floor));
+  s.ok('and the refusal says why', /minimum/i.test(days.floor.said), days.floor.said);
+
+  s.ok('the one-tap preset is offered below seven days', days.five.preset, JSON.stringify(days.five));
+  s.ok('and is gone once the athlete trains every day', !days.sevenPreset, JSON.stringify(days));
+
+  /* THE POINT OF THE CONTROL: every reader moves with it. */
+  s.ok('the Program subtitle follows the schedule',
+    /76 weeks at your 5/.test(days.depFive.subtitle) && /54 weeks at your 7/.test(days.depSeven.subtitle),
+    JSON.stringify([days.depFive.subtitle, days.depSeven.subtitle]));
+  s.ok('so does the "this week" tile',
+    /\/5 /i.test(days.depFive.tile) && /\/7 /i.test(days.depSeven.tile),
+    JSON.stringify([days.depFive.tile, days.depSeven.tile]));
+  s.eq('and a block is eight calendar weeks at five, six at seven',
+    days.depFive.block + '/' + days.depSeven.block, '8/6', JSON.stringify([days.depFive, days.depSeven]));
+  /* FLOOR (v468, v469): the spoken brief is a POSITION IN THE PLAN and must
+     NOT move with the schedule. */
+  s.eq('while the spoken brief is unchanged — it is structural',
+    days.depFive.brief, days.depSeven.brief, JSON.stringify([days.depFive.brief, days.depSeven.brief]));
+
+  /* The wizard and Settings set the same field, so the floor must be ONE
+     constant: a hand-written 5 in either is two that can disagree. */
+  {
+    const src = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const n = x => src.split(x).length - 1;
+    s.eq('guard: the source really is the app', n('function setTrainingDays('), 1, src.length);
+    s.eq('the wizard asks the shared minimum rather than restating it',
+      n("length>=MIN_TRAINING_DAYS") + n("chosen<MIN_TRAINING_DAYS") + n("length>=5?chosen") , 3);
+    s.eq('and the setter asks it too', n('want.length<MIN_TRAINING_DAYS'), 1);
+  }
+}
+
 /* ---- what may vary with the SCHEDULE, and what may not ------------------
    The class check for v467-v470. Four rounds ran on one confusion: a PROGRAM
    week is a piece of the plan and a CALENDAR week is real time, and only the
    second depends on how often the athlete trains. Each round fixed one
    sentence; this pins the property underneath all four.
 
-   Measured across every tab and pane: exactly TWO screens in the app change
+   Measured across every tab and pane: exactly THREE screens in the app change
    when the schedule does — the Program tab's calendar duration (54 weeks at
-   seven a week, 76 at five) and the Progress "This week" denominator, which
-   appears twice in the list because that tab's default pane is Summary. The
+   seven a week, 76 at five), the Progress "This week" denominator, which
+   appears twice in the list because that tab's default pane is Summary, and
+   from v472 the Settings training-day picker, which names the same duration
+   beside the control that sets it. The
    spoken brief is identical by design after v468 and v469, which is the whole
    point of those rounds.
 
@@ -951,10 +1088,17 @@ const { browser, page, errors } = await launch(port);
   s.ok('guard: and almost nothing is merely unstable between two identical sweeps',
     sched.unstable.length <= 2, JSON.stringify(sched.unstable));
 
-  /* Three entries, TWO screens: the Progress tab's default pane IS Summary, so
-     the "This week" tile is counted once as the tab and once as the pane. */
-  s.eq('exactly two screens change with the schedule, and both should',
-    sched.differs.join(', '), 'prog:summary, program, progress', JSON.stringify(sched));
+  /* Four entries, THREE screens: the Progress tab's default pane IS Summary, so
+     the "This week" tile is counted once as the tab and once as the pane.
+
+     `guide` (Settings) joined the list in v472 and that is a DECLARED change,
+     which is the whole reason this is an allowlist rather than a count: the
+     training-day picker shows what the choice costs — "about 76 weeks to
+     finish all 378 sessions" — on the screen where the choice is made, so a
+     calendar figure varying there is the feature. This check going red is what
+     forced that to be stated rather than assumed. */
+  s.eq('exactly three screens change with the schedule, and all three should',
+    sched.differs.join(', '), 'guide, prog:summary, program, progress', JSON.stringify(sched));
   /* Named so a failure says WHICH half broke. The brief is the one v468 and
      v469 took OFF this list, and it must stay off it. */
   s.ok('the spoken brief is identical on both schedules',

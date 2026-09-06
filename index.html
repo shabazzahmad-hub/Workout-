@@ -372,6 +372,11 @@
   /* was flex:1 with a 38px floor, so 8 equipment chips got 37px for a 68px label
      and clipped mid-word. Same 3-up grid the goal picker already uses. */
   .daypick{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;border-radius:14px}
+  /* Settings shows the seven days as a week strip. FOUR columns, not seven:
+     measured at 320px, seven leaves each button 33px wide against a ~40px
+     thumb target, and four leaves 69px. The wizard's own picker is three
+     across for the same reason. */
+  .daypick.week{grid-template-columns:repeat(4,1fr);gap:6px}
   .daypick button{width:100%;min-width:0;padding:11px 6px;line-height:1.25;border-radius:11px;background:var(--card2);border:1.5px solid var(--line);font-size:12px;font-weight:800;color:var(--muted)}
   .daypick button.on{background:var(--fire);border-color:var(--fire);color:var(--accInk)}
   .daypick.bad{outline:1.5px solid var(--red,#ff6b6b);outline-offset:4px}
@@ -2001,7 +2006,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='470';
+const APP_VERSION='472';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4245,7 +4250,7 @@ function onboardHTML(){
 
   ${step(5,'Schedule &amp; equipment',`
     <div class="field"><label>Training days per week</label>
-      <div class="daypick" id="ob-days">${['M','T','W','T','F','S','S'].map((d,i)=>`<button data-d="${(i+1)%7}">${d}</button>`).join('')}</div>
+      <div class="daypick" id="ob-days">${WEEKDAYS.map(([d,short,full])=>`<button data-d="${d}" aria-label="${full}">${short}</button>`).join('')}</div>
       <div class="tiny muted" style="margin-top:7px">Five days is the floor — tap a day to make it a rest day, but keep at least five.</div></div>
     <div class="field"><label>Equipment you have <span class="tiny muted">· unlocks a Weights session</span></label>
       <div class="daypick" id="ob-gear" style="flex-wrap:wrap">${GEAR_OPTS.map(([k,l])=>`<button data-e="${k}"${mon(P.gear,k)}>${l}</button>`).join('')}</div></div>
@@ -4278,7 +4283,7 @@ function onboardHTML(){
 }
 function wireOnboard(){
   const days=new Set(STATE.profile.days);
-  $$('#ob-days button').forEach(b=>{if(days.has(+b.dataset.d))b.classList.add('on');b.onclick=()=>{b.classList.toggle('on');haptic(8);const p=$('#ob-days');if(p&&$$('#ob-days button.on').length>=5)p.classList.remove('bad');};});
+  $$('#ob-days button').forEach(b=>{if(days.has(+b.dataset.d))b.classList.add('on');b.onclick=()=>{b.classList.toggle('on');haptic(8);const p=$('#ob-days');if(p&&$$('#ob-days button.on').length>=MIN_TRAINING_DAYS)p.classList.remove('bad');};});
   const single=(sel)=>$$(sel+' button').forEach(b=>b.onclick=()=>{$$(sel+' button').forEach(x=>x.classList.remove('on'));b.classList.add('on');haptic(6);});
   const multi=(sel)=>$$(sel+' button').forEach(b=>b.onclick=()=>{b.classList.toggle('on');haptic(6);});
   single('#ob-sex');single('#ob-goal');single('#ob-exp');single('#ob-act');single('#ob-unit');single('#ob-diet');single('#ob-meals');
@@ -4348,8 +4353,8 @@ function wireOnboard(){
        here the same way step 1's required fields already are. */
     if(n===5){
       const chosen=$$('#ob-days button.on').length;
-      if(chosen<5)
-        return {id:'ob-days',msg:'Pick at least 5 training days — the whole program is paced around five.'};
+      if(chosen<MIN_TRAINING_DAYS)
+        return {id:'ob-days',msg:'Pick at least '+MIN_TRAINING_DAYS+' training days — the whole program is paced around it.'};
     }
     return null;
   };
@@ -4425,7 +4430,7 @@ function obReadForm(){
   /* obBlocked()'s step-5 gate is the primary defense; this is the write path
      itself, so it holds the same floor independently rather than trusting a
      caller reached it through the wizard's own Next button. */
-  const chosen=$$('#ob-days button.on').map(b=>+b.dataset.d); P.days=chosen.length>=5?chosen:[0,1,2,3,4,5,6];
+  const chosen=$$('#ob-days button.on').map(b=>+b.dataset.d); P.days=chosen.length>=MIN_TRAINING_DAYS?chosen:[0,1,2,3,4,5,6];
   P.goal=($('#ob-goal button.on')||{dataset:{g:'lose'}}).dataset.g;
   P.focusPrimary=($('#ob-focus button.on')||{dataset:{f:'abs'}}).dataset.f;
   P.targets=$$('#ob-targets button.on').map(b=>b.dataset.t); if(!P.targets.length)P.targets=['abs','full'];
@@ -4665,10 +4670,30 @@ function restartProgram(){
      an athlete is least able to re-create — was dropped on the floor by a
      confirm that says "Your history stays saved". `sessions` still counts only
      completed ones, because that is what every lifetime counter means by it. */
+  /* THE MEASUREMENTS GO INTO THE ARCHIVE TOO, and until v471 they were simply
+     deleted. v208 fixed "your history stays saved" for the LOGS and left the
+     baseline and the re-tests behind — the same one-instance fix this file
+     keeps recording. Measured on an athlete with a January baseline and two
+     re-tests: assessSeries() went from 3 points to 0 and the whole STRENGTH
+     TRENDS section vanished, taking four months of measured plank, push-up,
+     pull and squat numbers with it. The confirm warns that the BASELINE goes,
+     which is true and is the point of a fresh block; it says nothing about the
+     history of every max the athlete has ever recorded, and "your history
+     stays saved" is the sentence directly beside it.
+
+     ONLY THE CHART READS THE ARCHIVE. currentMaxes(), levelOf() and every
+     prescription path still see a fresh athlete with no baseline, which is
+     what makes the re-test real — see the floors in suite 09. */
   const _done=Object.values(STATE.logs||{}).filter(l=>l&&l.done).length;
-  if(Object.keys(STATE.logs||{}).length>0){
+  const _hadReassess=STATE.reassess&&typeof STATE.reassess==='object'&&Object.keys(STATE.reassess).length>0;
+  /* Archive on a baseline alone, not only on logged sessions: an athlete who
+     measured themselves and restarted before training would otherwise lose the
+     one thing they had recorded — the same reasoning the comment above gives
+     for archiving part-finished runs. */
+  if(Object.keys(STATE.logs||{}).length>0||STATE.baseline||_hadReassess){
     if(!Array.isArray(STATE.runs))STATE.runs=[];
-    STATE.runs.push({endedAt:todayISO(),sessions:_done,logs:STATE.logs});
+    STATE.runs.push({endedAt:todayISO(),sessions:_done,logs:STATE.logs,
+      baseline:STATE.baseline||null,reassess:STATE.reassess||{}});
   }
   STATE.logs={};
   STATE.baseline=null;STATE.reassess={};STATE.progressPtr=0;STATE.weekFeel={};STATE.swaps={};
@@ -14469,6 +14494,17 @@ function loadCeilingNote(m){
    own `||[]`, which reads a junk-shaped profile as NO training days at all and
    silently kills the evening reminder; absent means "not chosen", so it falls
    back to every day rather than to none. */
+/* THE FLOOR AND THE LABELS, IN ONE PLACE. The wizard wrote "5" out by hand in
+   three places and spelled "five" in a fourth, and until v472 it was the ONLY
+   control that could set profile.days at all — so nothing else could drift
+   from it. Settings now sets the same field, which is exactly when a
+   hand-written constant becomes two that disagree. */
+const MIN_TRAINING_DAYS=5;
+/* data-d is the JS weekday number: Sunday 0 … Saturday 6. The wizard renders
+   Monday-first, so it maps (i+1)%7 — kept here so both pickers cannot label
+   the same button differently. */
+const WEEKDAYS=[[1,'M','Monday'],[2,'T','Tuesday'],[3,'W','Wednesday'],[4,'T','Thursday'],
+                [5,'F','Friday'],[6,'S','Saturday'],[0,'S','Sunday']];
 function scheduledDays(){
   try{const d=STATE.profile&&STATE.profile.days;
     return (Array.isArray(d)&&d.length)?d:[0,1,2,3,4,5,6];}catch(e){return [0,1,2,3,4,5,6];}
@@ -17571,6 +17607,65 @@ function weeklyTarget(){
     return (Array.isArray(d)&&d.length)?d.length:SESSIONS_PER_WEEK;}catch(e){return SESSIONS_PER_WEEK;}
 }
 function isTrainingDay(){return scheduledDays().indexOf(new Date().getDay())>=0;}
+/* ---- Training days, settable without walking the profile quiz -------------
+   profile.days decides how long the program takes in CALENDAR terms
+   (programWeeks, blockWeeks), how many sessions a week counts as a full week,
+   which days the reminder fires on, how long a gap the streak tolerates
+   (comebackGap) and which days gapSince() may not count against the athlete.
+   It is the single most consequential field in the profile — and it had NO
+   control outside the seven-step wizard, which is v315's finding on
+   goalWeightLb one field over: a number a dozen readers depend on, reachable
+   only by re-answering a quiz.
+
+   THE FLOOR IS THE WIZARD'S OWN. Below MIN_TRAINING_DAYS the program is not
+   paced for it, so the last day cannot be turned off — and the refusal SAYS SO
+   rather than silently doing nothing, which is the difference between a
+   disabled control and a broken one. */
+function setTrainingDays(list){
+  try{
+    const want=[...new Set((Array.isArray(list)?list:[]).map(Number)
+      .filter(d=>Number.isInteger(d)&&d>=0&&d<=6))].sort((a,b)=>a-b);
+    if(want.length<MIN_TRAINING_DAYS){toast('Pick at least '+MIN_TRAINING_DAYS+' training days');return false;}
+    STATE.profile.days=want;
+    save();
+    /* Re-render rather than repaint one row: the same change moves the Program
+       tab's length, the Progress "This week" tile and the conditioning bar, and
+       leaving those on the old figure is the two-surfaces-disagree defect this
+       app has spent four versions removing. */
+    render();
+    return true;
+  }catch(e){return false;}
+}
+function toggleTrainingDay(d){
+  const cur=scheduledDays().slice(), i=cur.indexOf(d);
+  if(i<0){cur.push(d);}
+  else{
+    if(cur.length<=MIN_TRAINING_DAYS){
+      toast(MIN_TRAINING_DAYS+' days is the minimum — the program is paced around it');
+      haptic(20);return;
+    }
+    cur.splice(i,1);
+  }
+  if(setTrainingDays(cur))haptic(8);
+}
+function trainEveryDay(){if(setTrainingDays([0,1,2,3,4,5,6]))toast('Training 7 days a week 🔥');}
+/* WHAT THE CHOICE ACTUALLY COSTS, on the screen where the choice is made.
+   Every figure is derived: the app already knows the answer and used to make
+   the athlete go and find it on another tab. */
+function trainingDaysHTML(){
+  const on=scheduledDays(), n=weeklyTarget(), rest=7-n,
+        total=SESSIONS_PER_CYCLE*TOTAL_CYCLES, wks=programWeeks();
+  return `<div style="padding:6px 0 2px">
+    <div class="row" style="justify-content:space-between;margin-bottom:6px">
+      <span class="tiny muted">Training days <span style="opacity:.7">· how often you plan to train</span></span>
+      <span class="tiny" style="font-weight:800;color:var(--fire-l)">${plural(n,'day')} a week</span></div>
+    <div class="daypick week" id="set-days" role="group" aria-label="Training days">${
+      WEEKDAYS.map(([d,short,full])=>`<button class="chip ${on.indexOf(d)>=0?'on':''}"${pressed(on.indexOf(d)>=0)} aria-label="${full}" onclick="toggleTrainingDay(${d})">${short}</button>`).join('')}</div>
+    <div class="tiny muted" style="margin-top:8px" data-daysnote>About <b>${plural(wks,'week')}</b> to finish all ${total} sessions at this pace.${
+      rest>0?` Your ${plural(rest,'rest day')} ${rest===1?'does':'do'} not count against your streak.`:''}</div>
+    ${n<7?`<button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="trainEveryDay()">Train every day (7)</button>`:''}
+  </div>`;
+}
 function toggleReminders(){
   if(STATE.settings.reminderOn){STATE.settings.reminderOn=false;save();renderGuide();return;}
   if('Notification'in window&&Notification.permission!=='granted'){
@@ -17999,6 +18094,25 @@ let strengthSel='plank';
 function setStrengthMetric(k){strengthSel=k;renderProgress();}
 function assessSeries(){
   const list=[];
+  /* ARCHIVED RUNS FIRST. restartProgram() moves the finished run into
+     STATE.runs, and until v471 the baseline and the re-tests inside it were
+     deleted rather than archived — so a restart erased the athlete's whole
+     strength history while the confirm beside it said "your history stays
+     saved". allDoneLogs() has spanned both for the lifetime counters since
+     v208; this is the same walk for the same reason.
+
+     NO SORT, deliberately: runs are appended in order and a baseline always
+     precedes its own block's re-tests, so the list is chronological by
+     construction — and a record whose junk date the boot repair dropped has no
+     key to sort on, which a date sort would silently put first. */
+  const _push=r=>{if(r&&r.maxes&&!r.deferred)list.push({date:r.date,maxes:r.maxes,subs:r.subs});};
+  (Array.isArray(STATE.runs)?STATE.runs:[]).forEach(run=>{
+    if(!run||typeof run!=='object')return;
+    _push(run.baseline);
+    const ra=run.reassess;
+    if(ra&&typeof ra==='object'&&!Array.isArray(ra))
+      Object.keys(ra).map(Number).sort((a,b)=>a-b).forEach(k=>_push(ra[k]));
+  });
   /* `subs` travels WITH the maxes. It was left behind here on the first
      attempt, so every metric read as "measured on a different movement" and
      the trend withheld a verdict on all of them — a marker that lives only in
@@ -22569,6 +22683,7 @@ function renderGuide(){
         `<button class="chip ${beatTempoPref()===bpm?'on':''}"${pressed(beatTempoPref()===bpm)} onclick="setBeatTempo(${bpm})">${label}</button>`).join('')}</div>
       <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">The beat plays during timers, guided reps, warm-up &amp; cool-down.</span><button class="chip" onclick="beatPreview()">▶ Preview</button></div>
     </div>`:''}
+    ${trainingDaysHTML()}
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Deload week <span class="tiny muted">· lighter sets &amp; targets to recover</span></span><button class="chip ${deloadOn()?'on':''}"${pressed(deloadOn())} onclick="toggleDeload()">${deloadOn()?'On':'Off'}</button></div>
     <div style="padding:6px 0 2px"><div class="tiny muted" style="margin-bottom:6px">Work around an injury <span style="opacity:.7">· auto-swaps risky moves</span></div>
       <div style="display:flex;flex-wrap:wrap;gap:6px">${JOINTS.map(([k,l])=>`<button class="chip ${((STATE.profile.limitations||[]).includes(k))?'on':''}"${pressed(((STATE.profile.limitations||[]).includes(k)))} onclick="toggleLimitation('${k}')">${l}</button>`).join('')}</div></div>
@@ -23633,6 +23748,17 @@ function normalizeState(){
      over it would satisfy an "did the athlete measure a level?" test for ever,
      which is the voicePitch trap. `!== undefined` because absent is the
      contract, and a stored null is a junk key that travels in a backup. */
+  /* Every assessment record inside an archived run, flat — asked by both
+     repairs so neither can be taught about the archive and the other forgotten.
+     Guarded end to end because STATE.runs is whatever an import handed us. */
+  const _runRecords=()=>{const out=[];
+    (Array.isArray(STATE.runs)?STATE.runs:[]).forEach(r=>{
+      if(!r||typeof r!=='object')return;
+      if(r.baseline&&typeof r.baseline==='object')out.push(r.baseline);
+      const ra=r.reassess;
+      if(ra&&typeof ra==='object'&&!Array.isArray(ra))
+        Object.keys(ra).forEach(k=>{if(ra[k]&&typeof ra[k]==='object')out.push(ra[k]);});});
+    return out;};
   {const _lvFix=o=>{if(!o||typeof o!=='object')return;
      /* score and testCount, on the same three records and by the same walk.
         PRESENT-ONLY: an absent score is a real answer — skipBaseline() writes
@@ -23663,7 +23789,14 @@ function normalizeState(){
    _lvFix(STATE.baseline);
    if(STATE.reassess&&typeof STATE.reassess==='object'&&!Array.isArray(STATE.reassess))
      Object.keys(STATE.reassess).forEach(k=>_lvFix(STATE.reassess[k]));
-   if(Array.isArray(STATE.scoreHistory))STATE.scoreHistory.forEach(_lvFix);}
+   if(Array.isArray(STATE.scoreHistory))STATE.scoreHistory.forEach(_lvFix);
+   /* THE ARCHIVED COPIES GET THE SAME WALK. v471 put the baseline and the
+      re-tests into STATE.runs, and the runs repair is a SPREAD — v418's
+      finding, that an archived run is the twin nobody scrubs. Their dates and
+      scores reach lineChart() through assessSeries() exactly as the live ones
+      do, so they take the identical repair rather than a second one beside
+      it. */
+   _runRecords().forEach(_lvFix);}
   /* Both halves of a record, because the engine reads `maxes` and the finish
      screen reads `results` — bounding one would leave the app prescribing from
      the estimate while printing 99999 as the athlete's result, which is the
@@ -23677,7 +23810,8 @@ function normalizeState(){
          if(v===null)delete m[k]; else m[k]=v;});});};
    _maxFix(STATE.baseline);
    if(STATE.reassess&&typeof STATE.reassess==='object'&&!Array.isArray(STATE.reassess))
-     Object.keys(STATE.reassess).forEach(k=>_maxFix(STATE.reassess[k]));}
+     Object.keys(STATE.reassess).forEach(k=>_maxFix(STATE.reassess[k]));
+   _runRecords().forEach(_maxFix);}
   if(!Array.isArray(STATE.scoreHistory))STATE.scoreHistory=[];
   /* `typeof [] === 'object'`, so a bare typeof test lets an ARRAY through —
      and both of these are keyed maps, never lists. The archived-runs repair
