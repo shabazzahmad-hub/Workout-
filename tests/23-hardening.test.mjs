@@ -13462,6 +13462,39 @@ export default async function () {
       await page.evaluate(() => { if (typeof PLAYER !== 'undefined' && PLAYER) playerQuit(); });
       await page.waitForTimeout(150);
     }
+
+    /* IT FAILS CLOSED, AND THAT BRANCH IS UNREACHABLE ON TODAY'S DATA — the
+       bike, the rope and a sprint carry no joint flag at all, so there is
+       always a safe aerobic option. So it is exercised DIRECTLY rather than
+       recorded as equivalent, the same technique the hardness-band and
+       anchor-unit guards use: no safe endurance half must mean NO SESSION,
+       never a session with the aerobic half quietly dropped out of it. */
+    const closed = await page.evaluate(() => {
+      const real = window.jointRisky, realT = window.toast;
+      let toasted = '';
+      const o = {};
+      try {
+        window.jointRisky = () => true;                 // nothing is safe
+        o.guardEveryModeRefused = concEndurance() === null;
+        o.builtNothing = ['concStr', 'concEnd', 'concAlt'].every(k => buildConcurrent(k) === null);
+        window.toast = m => { toasted = m; };
+        startConcurrent('concStr');
+        o.toast = toasted;
+        o.noPlayer = (typeof PLAYER === 'undefined' || !PLAYER);
+        openConcurrent();
+        o.sheet = document.querySelector('#sheet').textContent.replace(/\s+/g, ' ');
+        o.offersNothing = document.querySelectorAll('#sheet button[onclick^="startConcurrent"]').length;
+      } finally { window.jointRisky = real; window.toast = realT; }
+      closeSheet();
+      return o;
+    });
+    t.ok('guard: with nothing safe, the endurance half really is refused', closed.guardEveryModeRefused, String(closed.guardEveryModeRefused));
+    t.ok('and no format builds at all — the aerobic half is never dropped', closed.builtNothing, String(closed.builtNothing));
+    t.ok('starting one opens no player and says why', closed.noPlayer && /Nothing safe/.test(closed.toast || ''), JSON.stringify({ noPlayer: closed.noPlayer, toast: closed.toast }));
+    t.eq('and the chooser offers nothing to start', closed.offersNothing, 0);
+    t.ok('naming the reason rather than showing an empty screen',
+      /Cannot build one right now/.test(closed.sheet) && /flagged joints/.test(closed.sheet), closed.sheet.slice(0, 220));
+    await page.waitForTimeout(150);
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
