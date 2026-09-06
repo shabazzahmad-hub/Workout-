@@ -676,6 +676,313 @@ const { browser, page, errors } = await launch(port);
   await pb.close();
 }
 
+/* ---- v467: a BLOCK is six PROGRAM weeks, and it takes longer than that ----
+   v348 measured that 378 sessions is 54 weeks only at SEVEN a week, fixed the
+   whole-programme figure and wrote the rule down: a program length restated as
+   a CALENDAR duration is the defect. Every per-BLOCK restatement was left
+   behind — including the one in the same sentence, where "9 blocks of 6 weeks
+   — about 76 weeks" does not multiply: 9 x 6 is 54.
+
+   Measured on the reporting athlete's own five-day schedule: a block is 8.4
+   calendar weeks, and the re-test screen told him "6 weeks done".
+
+   The structural sites are deliberately untouched, and they are the floor: a
+   badge named "Finish a 6-week block" and the final-week label are about what
+   the block IS, not how long it took. */
+{
+  const { browser: pb, page: pg } = await launch(port);
+  await seedAthlete(pg);
+  const r = await pg.evaluate(() => {
+    const o = {}, strip = h => String(h).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    const at = days => { STATE.profile.days = days.slice(); STATE.progressPtr = SESSIONS_PER_CYCLE;
+      save(); go('program'); renderProgram(); };
+
+    at([0, 1, 2, 3, 4, 5, 6]);
+    o.sevenTarget = weeklyTarget(); o.sevenBlock = blockWeeks();
+    o.sevenHero = strip(reassessIntroHTML(reassessGate()));
+    const sevenSub = document.querySelector('#v-program .vsub').innerText;
+
+    at([1, 2, 4, 5, 6]);
+    o.fiveTarget = weeklyTarget(); o.fiveBlock = blockWeeks();
+    o.fiveHero = strip(reassessIntroHTML(reassessGate()));
+    const fiveSub = document.querySelector('#v-program .vsub').innerText;
+
+    // the subtitle has to MULTIPLY: blocks x sessions-per-block = the total
+    const m = fiveSub.match(/(\d+) blocks of (\d+) sessions — ([\d,]+) in all/);
+    o.subParsed = m ? [ +m[1], +m[2], +m[3].replace(/,/g, '') ] : null;
+    o.subMultiplies = !!m && (+m[1] * +m[2] === +m[3].replace(/,/g, ''));
+    // and it must no longer state a per-block week count beside a calendar one
+    o.noBlocksOfWeeks = !/blocks of \d+ weeks/.test(fiveSub) && !/blocks of \d+ weeks/.test(sevenSub);
+    // the phase sentence named PROGRAM weeks in a sentence about calendar weeks
+    o.namesTheBlockNotAWeek = /The first block is core/.test(fiveSub);
+
+    // derived from programWeeks(), so the two figures cannot drift apart
+    o.derived = [[0,1,2,3,4,5,6], [0,1,2,3,4,5], [1,2,4,5,6]].map(d => {
+      STATE.profile.days = d.slice();
+      return [blockWeeks(), Math.round(programWeeks() / TOTAL_CYCLES)];
+    });
+
+    // FLOOR: the structural sites keep the constant
+    STATE.profile.days = [1, 2, 4, 5, 6];
+    /* SCOPE THE ASSERTION TO WHERE THE CHANGE WOULD BE MADE. A .some() over
+       every badge is a page-wide search: the over-eager mutant that derived
+       the `block` badge walked straight through, because `blocks3` still
+       carried the phrase. Both are named, and both are read. */
+    const badgeDesc = id => { const a = ACHIEVEMENTS.find(x => x.id === id);
+      return a ? String(typeof a.desc === 'function' ? a.desc() : a.desc) : ''; };
+    o.badgeOne = badgeDesc('block');
+    o.badgeThree = badgeDesc('blocks3');
+    o.badgeNamesTheBlock = o.badgeOne.includes(WEEKS_PER_CYCLE + '-week block')
+      && o.badgeThree.includes(WEEKS_PER_CYCLE + '-week block');
+    /* The final-week note is built by _overloadNoteInner(sess), so it needs a
+       real session in the last week of a block — the last pointer of cycle 1.
+       Guarded, because a note read off the wrong week proves nothing. */
+    const lastOfBlock = buildSession(SESSIONS_PER_CYCLE - 1);
+    o.lastWeek = lastOfBlock.week;
+    try { o.weekLabelNamesTheBlock = /-week block/.test(String(_overloadNoteInner(lastOfBlock))); }
+    catch (e) { o.weekLabelNamesTheBlock = 'threw: ' + e.message; }
+    return o;
+  });
+
+  s.eq('guard: a seven-day athlete and a five-day one are different programmes',
+    [r.sevenTarget, r.fiveTarget], [7, 5], r);
+  s.eq('guard: the subtitle states three numbers to check', r.subParsed && r.subParsed.length, 3, r);
+  s.ok('the Program subtitle multiplies — blocks x sessions is the total', r.subMultiplies, r);
+  s.ok('and it no longer states a block in weeks beside a calendar figure', r.noBlocksOfWeeks, r);
+  s.ok('the phase sentence names the block rather than a week number', r.namesTheBlockNotAWeek, r);
+
+  s.eq('a block is six weeks at seven sessions a week', r.sevenBlock, 6, r);
+  s.eq('and about eight at the wizard floor of five', r.fiveBlock, 8, r);
+  /* PIN THE VALUES, not the identity: comparing blockWeeks() against
+     round(programWeeks()/TOTAL_CYCLES) is the app compared to itself, so a
+     mutant that moved both sides together would pass. Seven, six and five
+     sessions a week are three different answers. */
+  s.eq('a block tracks the pace: 6, 7 and 8 weeks at 7, 6 and 5 a week',
+    r.derived.map(x => x[0]), [6, 7, 8], r);
+  s.eq('and it agrees with the programme figure it is derived from',
+    r.derived.map(x => x[0]), r.derived.map(x => x[1]), r);
+
+  s.ok('the re-test screen tells a five-day athlete about 8 weeks',
+    /About 8 weeks done/.test(r.fiveHero), r.fiveHero);
+  s.ok('floor: a seven-day athlete still reads 6', /About 6 weeks done/.test(r.sevenHero), r.sevenHero);
+  s.ok('and it says what was actually completed — the sessions',
+    r.fiveHero.includes('a full block — ' + 42 + ' sessions'), r.fiveHero);
+  s.ok('so no athlete is told they finished a six-week block in eight weeks',
+    !/6-week block/.test(r.fiveHero), r.fiveHero);
+
+  s.ok('guard: both block badges were really read', !!r.badgeOne && !!r.badgeThree, r);
+  s.ok('floor: BOTH block badges still NAME the block by its curriculum length',
+    r.badgeNamesTheBlock, [r.badgeOne, r.badgeThree]);
+  s.eq('guard: that note was read off the last week of a block', r.lastWeek, 6, r);
+  s.ok('floor: so does the final-week label', r.weekLabelNamesTheBlock === true, r);
+  await pb.close();
+}
+
+/* ---- the Program grid: a plan slot, and "you are here" (v470) -----------
+   v469 fixed the SPOKEN slot word and claimed the class had one athlete-facing
+   member. It had two. A sweep for "Day ${...}" and "day <digit>" cannot see an
+   ALL-CAPS label with an expression in it, so 42 calendar cells went on saying
+   DAY 1..DAY 7 — and at the wizard's five-day floor one program week spans 9.8
+   calendar days, so "DAY 7" is a day that athlete's week does not have.
+
+   "SESSION 1" is the app's own word and does not fit: measured at 320px the
+   label box is 53px and the text is 59px, so it wraps. "1 OF 7" is 33px and
+   states the total the old label never carried.
+
+   AND "YOU ARE HERE" WAS A COLOUR. A done cell has always carried ✓; the
+   current cell had a border and a glow and nothing else — the one fact the
+   athlete opens this tab for was the only one with no text behind it. */
+{
+  const cal = await page.evaluate(() => {
+    const o = {}, days = STATE.profile.days, ptr = STATE.progressPtr, logs = STATE.logs;
+    STATE.profile.days = [1, 2, 3, 4, 5];
+    STATE.progressPtr = 9;
+    STATE.logs = {}; for (let p = 0; p < 9; p++) STATE.logs[p] = { done: true, date: todayISO() };
+    normalizeState(); go('program');
+    const cells = [...document.querySelectorAll('#v-program .calday')];
+    const wd = e => ((e.querySelector('.wd') || {}).textContent || '').trim();
+    const ico = e => ((e.querySelector('.ico') || {}).textContent || '').trim();
+    const cur = cells.find(e => e.classList.contains('cur'));
+    const done = cells.find(e => e.classList.contains('done'));
+    const soon = cells.find(e => !e.classList.contains('cur') && !e.classList.contains('done'));
+    o.cells = cells.length;
+    o.slots = SESSIONS_PER_WEEK;
+    /* How many CALENDAR days one PROGRAM week spans — the whole reason "DAY"
+       was the wrong word. */
+    o.spanFive = +((SESSIONS_PER_WEEK / weeklyTarget()) * 7).toFixed(1);
+    o.labels = cells.slice(0, SESSIONS_PER_WEEK).map(wd);
+    o.saysDay = cells.filter(e => /\bdays?\b/i.test(wd(e))).length;
+    /* The label must not wrap: the cell is 53px wide at the narrowest phone. */
+    o.wrapped = cells.filter(e => e.querySelector('.wd').getBoundingClientRect().height > 16).length;
+    o.curLabel = wd(cur); o.curIco = ico(cur);
+    /* The session's OWN icon, from the data — a mutant that replaced the icon
+       with the ▶ marker satisfied "not empty and not a tick" and walked
+       through. The current cell must keep the icon its session actually has. */
+    o.curSessIco = (posOf(STATE.progressPtr).session || {}).icon || '';
+    o.doneIco = ico(done); o.soonLabel = wd(soon); o.soonIco = ico(soon);
+    o.ariaCur = cells.filter(e => e.getAttribute('aria-current')).length;
+    o.ariaIsCur = cur.getAttribute('aria-current') === 'true';
+    o.marked = cells.filter(e => /▶/.test(wd(e))).length;
+    STATE.profile.days = days; STATE.progressPtr = ptr; STATE.logs = logs; normalizeState();
+    return o;
+  });
+  /* GUARDS: without these, "no cell says day" passes on a grid that rendered
+     nothing, and on a schedule where the two words happen to agree. */
+  s.eq('guard: the whole block really rendered', cal.cells, 42, JSON.stringify(cal).slice(0, 200));
+  s.ok('guard: a five-day athlete\'s program week really is longer than a calendar one',
+    cal.spanFive > 7, JSON.stringify({ span: cal.spanFive }));
+
+  s.eq('no calendar cell calls a plan slot a day', cal.saysDay, 0, cal.labels.join(' '));
+  s.eq('every cell names its position out of the week\'s slots',
+    cal.labels.join(' '),
+    Array.from({ length: cal.slots }, (_, i) => (i + 1) + ' OF ' + cal.slots).join(' ')
+      .replace('1 OF ' + cal.slots, '1 OF ' + cal.slots), cal.labels.join(' '));
+  s.eq('and the label fits the narrowest phone without wrapping', cal.wrapped, 0, JSON.stringify(cal.labels));
+
+  /* "You are here" in TEXT, not only in a border. */
+  s.ok('the current cell is marked on the glass', /▶/.test(cal.curLabel), cal.curLabel);
+  s.eq('and exactly one cell is', cal.marked, 1, JSON.stringify(cal));
+  s.ok('and it says so to a screen reader', cal.ariaIsCur, cal.ariaIsCur);
+  s.eq('and no other cell claims to be current', cal.ariaCur, 1, JSON.stringify(cal));
+  /* FLOORS: an over-eager marker on every cell, or one that ate the states the
+     grid already had, satisfies every assertion above. */
+  s.eq('a finished session still shows its tick', cal.doneIco, '✓', JSON.stringify(cal));
+  /* THE SLOT TOTAL MUST BE READ, NOT RESTATED. SESSIONS_PER_WEEK is 7, so a
+     hand-written "1 OF 7" renders byte-identically and no rendered check can
+     see it — only the source can. Same escape v322 and v368 both recorded. */
+  {
+    const src = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const n = t => src.split(t).length - 1;
+    s.eq('guard: the source really is the app', n('function previewSession('), 1, src.length);
+    s.eq('the cell label reads the slot count rather than restating it',
+      n('${d+1} OF ${SESSIONS_PER_WEEK}'), 1);
+  }
+  s.ok('a session not yet reached carries no marker',
+    !/▶/.test(cal.soonLabel) && cal.soonIco !== '✓', JSON.stringify(cal));
+  s.eq('and the current cell keeps its own session icon',
+    cal.curIco, cal.curSessIco, JSON.stringify(cal));
+  s.ok('guard: that icon is a real one, not the tick or the marker',
+    cal.curSessIco.length > 0 && cal.curSessIco !== '✓' && cal.curSessIco !== '▶',
+    JSON.stringify({ ico: cal.curSessIco }));
+}
+
+/* ---- "After N weeks you re-test" is ELAPSED (v470) -----------------------
+   Both scans missed it. The v467 source scan looks for ${WEEKS_PER_CYCLE}
+   interpolations, and this was a hard-coded 6; the v458 literal scan has an
+   arm for "after week N" and this is "after N weeks", the other word order.
+   For a five-day athlete a block really takes eight calendar weeks. */
+{
+  const re = await page.evaluate(() => {
+    const o = {}, days = STATE.profile.days;
+    const note = () => { go('program');
+      return ((document.querySelector('#v-program .note.info') || {}).textContent || ''); };
+    STATE.profile.days = [0, 1, 2, 3, 4, 5, 6]; o.sevenBlock = blockWeeks(); o.seven = note();
+    STATE.profile.days = [1, 2, 4, 5, 6]; o.fiveBlock = blockWeeks(); o.five = note();
+    STATE.profile.days = days;
+    return o;
+  });
+  s.eq('guard: the two schedules really give different block lengths',
+    re.sevenBlock + '/' + re.fiveBlock, '6/8', JSON.stringify([re.sevenBlock, re.fiveBlock]));
+  s.ok('the re-test cadence tells a seven-day athlete six weeks',
+    /After 6 weeks you re-test/.test(re.seven), re.seven.slice(-90));
+  s.ok('and a five-day athlete eight — it asks the athlete, not the constant',
+    /After 8 weeks you re-test/.test(re.five), re.five.slice(-90));
+}
+
+/* ---- what may vary with the SCHEDULE, and what may not ------------------
+   The class check for v467-v470. Four rounds ran on one confusion: a PROGRAM
+   week is a piece of the plan and a CALENDAR week is real time, and only the
+   second depends on how often the athlete trains. Each round fixed one
+   sentence; this pins the property underneath all four.
+
+   Measured across every tab and pane: exactly TWO screens in the app change
+   when the schedule does — the Program tab's calendar duration (54 weeks at
+   seven a week, 76 at five) and the Progress "This week" denominator, which
+   appears twice in the list because that tab's default pane is Summary. The
+   spoken brief is identical by design after v468 and v469, which is the whole
+   point of those rounds.
+
+   ALLOWLISTED BOTH WAYS, the v390 shape: a surface that STARTS varying fails
+   (that is v468's defect — the brief spoke the calendar duration), and a listed
+   one that STOPS varying fails too (that is v467's, if the subtitle were
+   hardcoded back). Neither direction is catchable by the other.
+
+   A CONTROL RUN excludes anything that is merely unstable: the seven-day sweep
+   runs twice, and a surface that differs from itself is dropped before the
+   comparison — otherwise a randomly-picked meal would read as a schedule
+   difference. */
+{
+  const sched = await page.evaluate(() => {
+    const nums = t => (String(t).match(/\b\d[\d,.]*\b/g) || []).join(' ');
+    const sweep = days => {
+      const keepD = STATE.profile.days, keepP = STATE.progressPtr;
+      STATE.profile.days = days; STATE.progressPtr = 20; normalizeState();
+      const out = {};
+      const grab = (name, fn) => { fn(); const v = document.querySelector('.view.active');
+        out[name] = nums(v ? v.innerText : ''); };
+      /* Every sub-pane is reset first: a pane left set by the previous sweep
+         makes the same TAB render a different screen, which reads as a
+         schedule difference and is not one. */
+      go('today'); setTodayTab('brief'); go('progress'); setProgressTab('summary');
+      try { setRefTab('food'); } catch (e) {}
+      ['today', 'program', 'progress', 'fuel', 'ref', 'guide'].forEach(t => grab(t, () => go(t)));
+      ['brief', 'warmup', 'workout', 'cooldown'].forEach(p => grab('today:' + p, () => { go('today'); setTodayTab(p); }));
+      ['summary', 'body', 'strength', 'awards'].forEach(p => grab('prog:' + p, () => { go('progress'); setProgressTab(p); }));
+      out['spoken brief'] = nums(briefSegments().map(x => x.say).join(' '));
+      STATE.profile.days = keepD; STATE.progressPtr = keepP; normalizeState();
+      return out;
+    };
+    const SEVEN = [0, 1, 2, 3, 4, 5, 6], FIVE = [1, 2, 4, 5, 6];
+    const a = sweep(SEVEN), b = sweep(FIVE), a2 = sweep(SEVEN);
+    const keys = Object.keys(a);
+    const unstable = keys.filter(k => a[k] !== a2[k]);
+    const differs = keys.filter(k => unstable.indexOf(k) < 0 && a[k] !== b[k]).sort();
+    const o = { keys: keys.length, unstable, differs };
+    STATE.profile.days = SEVEN; normalizeState(); o.sevenTarget = weeklyTarget(); o.sevenWeeks = programWeeks();
+    STATE.profile.days = FIVE; normalizeState(); o.fiveTarget = weeklyTarget(); o.fiveWeeks = programWeeks();
+    return o;
+  });
+  /* GUARDS: without these the whole block passes on a sweep that visited
+     nothing, or on two schedules that are the same program. */
+  s.ok('guard: the sweep visited every tab and pane', sched.keys >= 15, JSON.stringify({ keys: sched.keys }));
+  s.eq('guard: the two schedules really are different programs',
+    sched.sevenTarget + '/' + sched.sevenWeeks + ' vs ' + sched.fiveTarget + '/' + sched.fiveWeeks,
+    '7/54 vs 5/76', JSON.stringify(sched));
+  s.ok('guard: and almost nothing is merely unstable between two identical sweeps',
+    sched.unstable.length <= 2, JSON.stringify(sched.unstable));
+
+  /* Three entries, TWO screens: the Progress tab's default pane IS Summary, so
+     the "This week" tile is counted once as the tab and once as the pane. */
+  s.eq('exactly two screens change with the schedule, and both should',
+    sched.differs.join(', '), 'prog:summary, program, progress', JSON.stringify(sched));
+  /* Named so a failure says WHICH half broke. The brief is the one v468 and
+     v469 took OFF this list, and it must stay off it. */
+  s.ok('the spoken brief is identical on both schedules',
+    sched.differs.indexOf('spoken brief') < 0, JSON.stringify(sched.differs));
+  s.ok('the Program tab still varies — its figure is a calendar duration',
+    sched.differs.indexOf('program') >= 0, JSON.stringify(sched.differs));
+}
+
+/* ---- v467: the elapsed claims ask the athlete, not the constant ----------
+   A rendered check cannot see a consumer that reverts to WEEKS_PER_CYCLE on a
+   seven-day athlete, where the two agree — and the drop sheet is built inside
+   commitAssessment(), which no check can open without a real re-test. So the
+   four elapsed sites are pinned on the SOURCE. None of these strings appears in
+   a comment; a comment that quoted one would be counted, and the fix for that
+   is to reword the prose, never to weaken the check. */
+{
+  const src = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const n = t => src.split(t).length - 1;
+  s.eq('guard: the source really is the app', n('function blockWeeks()'), 1, src.length);
+  s.eq('the re-test hero asks the athlete', n('About ${blockWeeks()} weeks done'), 1);
+  s.eq('so does "more than training normally moves in"', n('moves in ${blockWeeks()} weeks'), 1);
+  s.eq('and both halves of the off-day warning',
+    n('next ${blockWeeks()} weeks') + n('${blockWeeks()} weeks of work'), 2);
+  s.eq('and no elapsed claim states the constant by hand',
+    n('${WEEKS_PER_CYCLE} weeks done') + n('moves in ${WEEKS_PER_CYCLE} weeks')
+    + n('next ${WEEKS_PER_CYCLE} weeks') + n('${WEEKS_PER_CYCLE} weeks of work'), 0);
+}
+
 /* ---- "Meal ideas" must land on meals, not an empty tab -------------------
    Regression from v245: removing Fuel's plan card orphaned openMealPlan(),
    which still scrolled to a #mealplan anchor that no longer existed. Its own

@@ -18040,6 +18040,356 @@ runs suites 23 and 09, and the missing-asset check lives in 01 and 12. **A
 mutation result is scoped to the suites the driver actually runs** — a red
 baseline in one suite says nothing about a driver that never opens it.
 
+## A block is six PROGRAM weeks, and nobody takes six weeks over it (v467)
+
+v348 measured it and wrote the rule down: **378 sessions is 54 weeks only at
+SEVEN a week, the wizard's own floor is FIVE, and a program length restated as
+a CALENDAR duration is the defect.** It fixed the whole-programme figure, and
+v354 fixed the header chip and the Full Tour badge.
+
+**Every per-BLOCK restatement was left behind** — including the one in the same
+sentence as the figure v348 had just fixed:
+
+> 378 sessions in **9 blocks of 6 weeks** — about **76 weeks** at your 5
+> sessions a week.
+
+**9 x 6 is 54, not 76.** One line, two units both called "weeks", and numbers
+that do not multiply. That is v450's *screen argued with itself*, on the tab
+that describes the programme.
+
+Measured on the reporting athlete's own five-day schedule:
+
+| | at 7 a week | at 5 a week |
+|---|---|---|
+| the whole programme | 54 weeks | **76** |
+| **one block** | 6 weeks | **8.4** |
+| what the re-test screen said | *"6 weeks done"* | ***"6 weeks done"*** |
+
+**The two athletes got byte-identical copy**, which is what kept it invisible.
+The five-day athlete is told he finished a six-week block after eight and a
+half weeks — v354's *"Complete · 1 year"* exactly, one screen down.
+
+### The discriminator is elapsed time against structure
+
+That is v348's own rule, and applying it is what stops this becoming "derive
+everything":
+
+| the sentence | reads as | fixed |
+|---|---|---|
+| *"9 blocks of 6 weeks — about 76 weeks"* | both, contradicting | yes |
+| *"6 weeks done — let's re-measure"* | elapsed | yes |
+| *"You've completed a full 6-week block"* | elapsed | yes |
+| *"more than training normally moves in 6 weeks"* | elapsed | yes |
+| *"sets every target for the next 6 weeks"* | elapsed | yes |
+| the **badge** *"Finish a 6-week block"* | the block's NAME | **left** |
+| the final-week note, *"the highest load of the 6-week block"* | the block's NAME | **left** |
+| *"re-test after each 6-week block"* | cadence, by name | **left** |
+
+Both structural sites are pinned as **floors**, so a fix that derived
+everything fails there.
+
+### The subtitle now multiplies, and every unit is named once
+
+> 9 blocks of 42 **sessions** — 378 in all, about 76 **weeks** at your 5
+> sessions a week. **The first block** is core & abs, then a full-body split.
+
+Sessions are what a block actually contains, so the reader can check the
+arithmetic. And the phase clause used to say *"Weeks 1–6 are core & abs"* —
+PROGRAM weeks, in a sentence whose other week figure is calendar weeks. It
+names the block instead, which needs no unit at all.
+
+**The re-test note says what was completed rather than how long it took**:
+*"a full block — 42 sessions"*. That figure is true at any pace.
+
+### blockWeeks() is DERIVED from programWeeks(), and that is the whole design
+
+Two copies of that arithmetic is two places for it to drift, which is the
+defect this round is about. `Math.round(programWeeks()/TOTAL_CYCLES)` gives 6 /
+7 / 8 at seven, six and five sessions a week.
+
+**A per-block figure computed independently is EQUIVALENT and was measured
+rather than assumed.** `Math.round(SESSIONS_PER_CYCLE/weeklyTarget())` agrees
+with the derived form at every pace from one to seven sessions a week — so no
+check can catch that substitution, and the reason to derive is drift rather
+than a difference anyone can see today.
+
+**And a per-block figure must never be printed beside the whole-programme one.**
+Rounding means 9 x 8 is 72 against a stated 76; both are prefixed *about*, and
+after this round no screen shows both. The subtitle carries the programme
+figure and no per-block week count at all.
+
+### Pin the VALUE, not the identity — caught in my own check
+
+The first version asserted `blockWeeks()` equals
+`round(programWeeks()/TOTAL_CYCLES)`, which is the implementation compared to
+itself: a mutant moving both sides together passes. Three schedules give three
+different answers, so **6, 7 and 8 are pinned as literals** and the derivation
+is a second, honestly-labelled assertion.
+
+### The elapsed sites are pinned on the SOURCE
+
+A rendered check cannot see a consumer that reverts to `WEEKS_PER_CYCLE` on a
+**seven-day athlete, where the two agree** — and the drop sheet is built inside
+`commitAssessment()`, which no check can open without driving a real re-test.
+So all four read `blockWeeks()` by source assertion, with the mirror assertion
+that no elapsed claim states the constant by hand. None of those strings
+appears in a comment; a comment that quoted one would be counted, and the fix
+for that is to reword the prose, never to weaken the check.
+
+### Two probe errors, both rules already in this file
+
+- **`reassessIntroHTML()` takes the cycle** and my first probe passed none, so
+  it rendered *"Cycle NaN · re-test"* and looked like a live defect. Driven
+  through `reassessGate()` it is correct. *Confirm the control's real shape
+  before believing the result* — fourteenth time.
+- **`weekLabel()` does not exist.** The final-week note is built by
+  `_overloadNoteInner(sess)`, which needs a real session in the last week of a
+  block. The check builds one and **guards that it really is week 6**, or the
+  floor is read off the wrong week and proves nothing.
+
+### And a computed-class sweep that came back clean
+
+Run first, because v465 swept **static** class names and a computed one
+(`class="note ${w.down?'ok':'info'}"`) is invisible to that. Every class token
+in the file, literal and computed: **169 used, and the only four with no CSS
+rule are the three marker classes v465 already recorded plus one dead-but-
+harmless name.**
+
+**The first version reported three more and all three were the detector.**
+`'male'`, `'female'` and `'omnivore'` are values being **compared**
+(`n.sex==='male'?'on':''`), not class names — so the scan takes only the result
+side of a ternary now, and carries both guards: it must see a real computed
+class name and must NOT see a compared operand. *A detector that can match
+ordinary app content is not measuring what you named* — the eighth entry.
+
+### And the harness trap I had just re-read
+
+The mutation driver was piped through `tail -40`, which buffers until the
+process exits — so a run in progress reported **no output at all** and looked
+dead. This file already says a driver writes to a log file and is never piped
+through `tail`. Reading the rule is not the same as following it.
+
+### The escaped mutant was a page-wide search, again
+
+The over-eager twin that made the **badge** derive its own length walked
+straight through the floor written for it. The check was
+`ACHIEVEMENTS.some(...)` — so with the `block` badge mutated to *"Finish a
+8-week block"*, its untouched sibling `blocks3` still carried *"6-week block"*
+and satisfied the search.
+
+**Scope the assertion to where the change was made.** Both badges are named and
+both are read now, with a guard that both descriptions were really found — and
+seeded against either badge the mutant fails by name.
+
+Nine mutants, all caught.
+
+## Two units are both called "week", in one spoken sentence (v468)
+
+The greeting the coach **reads aloud** every morning said:
+
+> Here is your brief for today — week 12, day 3 of your 76-week build.
+
+`wkNum` is a **program week** — a position in the plan, 1..54, the same figure
+the Progress tile prints as `Week 12 /54` and the header chip prints bare.
+`programWeeks()` is a **calendar duration** and depends on the schedule: 54
+weeks at seven a week, **76** at the wizard's five-day floor. Joined by *"of"*,
+they read as one scale.
+
+Measured on a five-day athlete standing on the LAST session of the program:
+
+| | says |
+|---|---|
+| Progress tile, on screen | `Week 54 /54` — finished |
+| the coach, aloud | ***"week 54 of your 76-week build"*** |
+
+**Twenty-two weeks that do not exist**, on the last day of the plan, spoken —
+which v315's rule makes the worst place for it. A seven-day athlete hears
+`54 of 54` and is correct, so the two athletes got copy that differed only in
+the number, which is what kept it invisible: the v467 signature exactly.
+
+**v457 was right that the duration must be DERIVED** — *"your one-year build"*
+was false for everyone below seven a week. It put the derived figure beside a
+program-week ordinal, which is where the two scales met. **A position in the
+plan takes the STRUCTURAL total**, so both halves are program weeks and the
+brief agrees with the tile the athlete can look at. The calendar duration is
+not lost: it is on the Program tab, where it stands alone and can say what pace
+it assumes. Same rule as v467's *"a per-block figure must never be printed
+beside the whole-programme one"* — **one unit per sentence.**
+
+**The class has exactly one member, and that was swept rather than assumed.**
+Seven sites compute `(cycle*WEEKS_PER_CYCLE)+week`; six print a bare `Week N`
+with no denominator, the Progress tile pairs it with the structural total, and
+only the brief paired it with a calendar one.
+
+### The check that pinned the old wording, and the one that re-derived the tile
+
+v457's own block asserted *"the spoken brief names the 76-week program of a
+five-day athlete"* — the implementation, not the requirement — so it **failed
+on correct code**. Re-aimed rather than deleted, because its real subject
+survives: the duration must still derive from the schedule, and it is now
+asserted where it lives, on the Program tab. Sixth time a check has held old
+behaviour rather than caught a defect.
+
+**And the first version of the new check computed the tile's total itself**
+(`WEEKS_PER_CYCLE*TOTAL_CYCLES`), which is not an agreement test at all — a
+mutant that pointed the TILE at `programWeeks()` would have walked straight
+through. It reads the rendered tile off Progress ▸ Summary now, **found by its
+label rather than by position** (v288), and the mutant fails by name.
+
+**Two guards, because an agreement between two numbers is satisfied by two
+wrong ones**: the two schedules really are different programs (54 against 76),
+and the tile really printed a total to compare against.
+
+Six mutants, all caught, including the three over-eager twins: the day number
+dropped, the total dropped, and the fix applied to the Program tab instead
+(which satisfies every assertion about the brief and loses the honest duration).
+
+## A plan slot is not a calendar day (v469)
+
+Found by auditing v468 an hour after it shipped — the fourteenth round running
+where the best finding was in the round immediately before, and the seventh in
+a row where it was in my own new code. v468 fixed the WEEK half of that
+sentence and left the other coordinate alone:
+
+> Here is your brief for today — week 3 of 54, **day 7**.
+
+A program week holds `SESSIONS_PER_WEEK` slots, and **the app calls them
+SESSIONS everywhere it counts them** — *"378 sessions"* on the Program tab, its
+own progress bar reading `N/378 sessions`, the calendar grid. Exactly one
+sentence in the app called a slot a **day**, and a day is a calendar unit.
+
+Measured:
+
+| trains | one PROGRAM week spans | the coach said |
+|---|---|---|
+| 7 a week | 7 calendar days | `day 7` — correct |
+| **5 a week** (the wizard's floor) | **9.8 calendar days** | ***`day 7`*** |
+
+So *"day 7"* is spoken about **ten days** after *"day 1"* of the same week —
+and a week with seven days in it is a week that athlete does not train. Same
+signature as v467 and v468: the seven-day athlete's copy is right and everyone
+else gets the same words with a unit that is not theirs.
+
+**The sweep said one athlete-facing member and it was WRONG — see v470.** It
+grepped `Day ${...}` and `day <digit>`, and the Program calendar's label is
+`DAY ${d+1}` — all caps, with an expression in it, so both patterns missed 42
+cells. Every other `Day N` in the app really is a calendar day (the baseline
+hero's *"Day 1"*) or a reference-menu day, and `dayInWeek` is a field name.
+
+**The floor is that it still says WHICH slot.** An over-eager fix that dropped
+the second coordinate leaves a position with half of itself, and the mutant
+that does it is caught by exactly that check.
+
+**The guard is the whole finding**: a five-day athlete's program week really is
+longer than a calendar one (9.8 against 7). Without it, *"never calls a slot a
+day"* is satisfied on a schedule where the two words agree.
+
+### And two comments defining the model described it as a calendar
+
+`SESSIONS` and `PHASE2_SESSIONS` are the two rotations the whole program is
+built from, and both were introduced as *"7 days a week"* — the same confusion,
+in the code that defines it.
+
+`PHASE2_SESSIONS` carried a second one: *"Phase 2 (**week 13** onward)"*. That
+was true when `PHASE1_CYCLES` was **2** and has been off by a whole block ever
+since — at 1 the split opens on program **week 7**. A boundary written by hand
+beside the constant that decides it is the class v460 swept out of `sw.js`, one
+file over, and v467's own subtitle had the same shape (*"Weeks 1–6 are core &
+abs"*). Both comments now describe the structure rather than restating a number
+that moves.
+
+Five mutants, all caught, including the two over-eager twins: the slot
+coordinate dropped, and the week coordinate dropped.
+
+## The grid said DAY, and "you are here" was a colour (v470)
+
+v469 fixed the SPOKEN slot word and **claimed the class had one athlete-facing
+member. It had two.** The sweep grepped `Day ${...}` and `day <digit>`; the
+Program calendar's label is `DAY ${d+1}` — **all caps, with an expression in
+it** — so both patterns walked past **42 cells**, on the tab whose whole job is
+showing the plan.
+
+At the wizard's five-day floor one program week spans **9.8 calendar days**, so
+`DAY 7` is a day that athlete's week does not have.
+
+**"SESSION 1" is the app's own word and does not fit.** Measured at 320px: the
+label box is **53px** and the text is **59px**, so it wraps to two lines.
+`1 OF 7` is **33px**, and it states the total the old label never carried. The
+total is read from `SESSIONS_PER_WEEK` rather than written out — and because
+that constant IS 7 today, a hand-written `1 OF 7` renders byte-identically, so
+**only a source assertion can catch it.** That mutant escaped every rendered
+check first, which is v322's and v368's lesson landing a third time.
+
+### "You are here" was the one fact with no text behind it
+
+A **done** cell has carried `✓` since it was written. The **current** cell had a
+border and a glow and nothing else — so on a grid of 42 identical-looking cells,
+the single thing the athlete opens that tab for was the only state conveyed by
+colour alone. `▶` marks it on the glass, and `currentTab()` — the helper the
+bottom nav and every picker already use — says it to a screen reader.
+
+**The colour-only class was swept first and came back otherwise clean.** All 20
+`color:${cond?a:b}` sites carry a sign, an arrow, a number pair or a word; the
+skill-tree rows already carry `▶` **and** the words *"you are here"*. This cell
+was the one exception.
+
+### And a third phrasing of the block length, missed by both scans
+
+*"After 6 weeks you re-test"* — a hand-written elapsed claim, and for a
+five-day athlete a block really takes **eight** calendar weeks. v467's source
+scan looks for `${WEEKS_PER_CYCLE}` **interpolations** and this was a literal;
+v458's literal scan has an arm for `after week N` and this is `after N weeks`,
+**the other word order**. It was found by reading the rendered tab, not by
+scanning for a pattern already known — the same way the strength chart's
+*"after week 6"* was found. The new arm goes into the one scan, never a second
+one beside it.
+
+*"Weeks 2–6 raise reps"* three lines above is deliberately left: it is a
+PROGRAM-week range under a grid whose own headers read `Week 1`..`Week 6`, so
+it is structural and correct, and the scan's arm is anchored at `Weeks 1–` for
+exactly that reason.
+
+### The escaped mutants
+
+Nine seeded, two escaped, both weak checks:
+
+- **The hand-written slot total** — equivalent on today's data, caught only by
+  the source assertion above.
+- **The current cell's icon replaced by `▶`.** The floor read
+  `curIco.length > 0 && curIco !== '✓'`, and `▶` satisfies both. It compares
+  against the session's OWN icon from the data now, with a guard that the icon
+  is neither the tick nor the marker.
+
+Both floors matter because the over-eager fix here is real: marking the current
+cell by eating its icon is what `done` already does, and it would cost the
+athlete the one glyph that says WHICH session is next.
+
+### And the class the four rounds opened is now pinned
+
+v467-v470 each fixed one sentence. The property underneath all four is:
+**only a CALENDAR figure may change when the schedule does.** Measured across
+every tab and pane, at seven sessions a week against five, exactly **two
+screens** differ — the Program tab's duration (54 against 76) and the Progress
+*"This week"* denominator. **The spoken brief is identical, which is precisely
+what v468 and v469 were for.**
+
+**Allowlisted BOTH WAYS**, the v390 shape, because neither direction catches the
+other: a screen that STARTS varying is v468's defect (the brief spoke the
+calendar duration), and a listed one that STOPS varying is v467's (the subtitle
+hardcoded back). Seeded both — and the mutant that hardcodes the *Progress*
+tile's weekly target is caught by **this check and nothing else**, which is what
+it earns its keep for.
+
+**A CONTROL RUN is what makes it honest.** The seven-day sweep runs twice and
+any surface that differs from itself is dropped before the comparison —
+otherwise a randomly-picked meal reads as a schedule difference. Guards pin that
+the sweep visited every pane, that the two schedules really are different
+programs, and that almost nothing was excluded as unstable.
+
+**And two entries are one screen**: the Progress tab's default pane IS Summary,
+so the same tile is counted as the tab and as the pane. Recorded rather than
+special-cased, because a reader of the expected list would otherwise wonder.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

@@ -4678,13 +4678,41 @@ export default async function run() {
   {
     const r = await page.evaluate(() => {
       const o = {};
-      const days = STATE.profile.days;
+      const days = STATE.profile.days, keepPtr = STATE.progressPtr;
       const seg = () => (briefSegments().find(s => /brief$/i.test(s.title)) || {}).say || '';
+      /* The LAST session of the program is where the two scales are furthest
+         apart, and it is the case a five-day athlete really reaches. */
+      STATE.progressPtr = SESSIONS_PER_CYCLE * TOTAL_CYCLES - 1;
+      /* READ THE TILE OFF THE SCREEN, never re-derive it: the subject here is
+         that the spoken figure AGREES with the one the athlete can look at, and
+         a check that computes the total itself passes on a tile that has drifted.
+         Found by label rather than by position — v288's rule. */
+      const tile = () => {
+        go('progress'); setProgressTab('summary');
+        const st = [...document.querySelectorAll('#v-progress .stat')]
+          .find(e => /^week/i.test(((e.querySelector('.l') || {}).textContent || '').trim()));
+        const txt = st ? (st.querySelector('.n') || {}).textContent || '' : '';
+        const m = /(\d+)\s*\/\s*(\d+)/.exec(txt);
+        return { raw: txt.trim(), n: m ? +m[1] : null, of: m ? +m[2] : null };
+      };
+      /* The subtitle is built inside renderProgram(), so it is READ OFF THE
+         SCREEN rather than from a helper that does not exist. */
+      const keepTab = TAB;
+      const sub = () => { go('program'); const e = document.querySelector('#v-program .vsub'); return e ? e.textContent : ''; };
       STATE.profile.days = [0, 1, 2, 3, 4, 5, 6];
-      o.sevenTarget = weeklyTarget(); o.sevenWeeks = programWeeks(); o.seven = seg();
+      o.sevenTarget = weeklyTarget(); o.sevenWeeks = programWeeks();
+      o.seven = seg(); o.sevenTile = tile(); o.sevenSub = sub();
       STATE.profile.days = [1, 2, 4, 5, 6];
-      o.fiveTarget = weeklyTarget(); o.fiveWeeks = programWeeks(); o.five = seg();
-      STATE.profile.days = days;
+      o.fiveTarget = weeklyTarget(); o.fiveWeeks = programWeeks();
+      o.five = seg(); o.fiveTile = tile(); o.fiveSub = sub();
+      o.perWeekSlots = SESSIONS_PER_WEEK;
+      /* How many CALENDAR days one PROGRAM week spans, at each schedule — the
+         whole reason "day" was the wrong word. */
+      STATE.profile.days = [1, 2, 4, 5, 6];
+      o.fiveSpan = +((SESSIONS_PER_WEEK / weeklyTarget()) * 7).toFixed(1);
+      STATE.profile.days = [0, 1, 2, 3, 4, 5, 6];
+      o.sevenSpan = +((SESSIONS_PER_WEEK / weeklyTarget()) * 7).toFixed(1);
+      STATE.profile.days = days; STATE.progressPtr = keepPtr; go(keepTab);
       return o;
     });
     /* GUARDS: the two schedules really are different programs, or every
@@ -4692,14 +4720,60 @@ export default async function run() {
     t.eq('guard: seven days a week really is 54 weeks', r.sevenWeeks, 54, JSON.stringify(r));
     t.eq('guard: and five days a week really is 76', r.fiveWeeks, 76, JSON.stringify(r));
     t.ok('guard: the greeting segment was found at all', r.seven.length > 40, r.seven.slice(0, 80));
+    t.eq('guard: both athletes stand on the last PROGRAM week of the plan',
+      r.sevenTile.n + '/' + r.fiveTile.n, '54/54', JSON.stringify([r.sevenTile, r.fiveTile]));
+    t.eq('guard: and the Progress tile really printed a total to compare against',
+      r.sevenTile.of + '/' + r.fiveTile.of, '54/54', JSON.stringify([r.sevenTile, r.fiveTile]));
 
-    t.ok('the spoken brief names the 54-week program of a seven-day athlete',
-      /\b54-week build\b/.test(r.seven), r.seven.slice(0, 140));
-    t.ok('and the 76-week program of a five-day athlete — it tracks the schedule',
-      /\b76-week build\b/.test(r.five), r.five.slice(0, 140));
-    /* THE FLOOR the fix exists for: never a hand-written year. */
+    /* TWO UNITS ARE BOTH CALLED "WEEK" (v468). wkNum is a POSITION IN THE PLAN
+       (1..54, what the Progress tile prints); programWeeks() is a CALENDAR
+       duration that depends on the schedule (54 at seven a week, 76 at five).
+       The greeting held one of each, joined by "of", so a five-day athlete on
+       the LAST session of the program was told "week 54 of your 76-week build"
+       — twenty-two weeks that do not exist, SPOKEN.
+
+       v457 was right that the duration must derive rather than be hand-written;
+       it put the derived figure beside a program-week ordinal. So the subject
+       here is now the AGREEMENT: the spoken total is the structural one, and it
+       is the same figure the athlete can look at on Progress. The duration is
+       still asserted to derive — on the Program tab, where it stands alone. */
+    const spokeOf = s => { const m = /week\s+\d+\s+of\s+(\d+)/i.exec(s); return m ? +m[1] : null; };
+    t.eq('the spoken week total is the STRUCTURAL 54 for a seven-day athlete',
+      spokeOf(r.seven), r.sevenTile.of, r.seven.slice(0, 140));
+    t.eq('and the same 54 for a five-day athlete — a position in the plan, not a calendar',
+      spokeOf(r.five), r.fiveTile.of, r.five.slice(0, 140));
+    t.ok('so the brief never speaks the five-day athlete a 76-week total',
+      !/\b76\b/.test(r.five), r.five.slice(0, 140));
+    /* AND THE SLOT WAS NAMED "DAY" (v469) — the same confusion one word over.
+       A program week holds SESSIONS_PER_WEEK slots and the app calls them
+       SESSIONS everywhere it counts them ("378 sessions" on the Program tab and
+       on its own progress bar). Only this sentence called a slot a day, and a
+       day is a calendar unit: measured, at the wizard's five-day floor a program
+       week spans 9.8 calendar days, so "day 7" was spoken about ten days after
+       "day 1" of the same week — and a week with seven days in it is a week that
+       athlete does not train.
+
+       The floor is that it still says WHICH slot: an over-eager fix that dropped
+       the second coordinate leaves a position with half of itself. */
+    t.eq('guard: a five-day athlete\'s PROGRAM week really is longer than a calendar one',
+      r.fiveSpan > 7 && r.sevenSpan === 7, true, JSON.stringify([r.fiveSpan, r.sevenSpan]));
+    t.ok('the brief names the slot as a SESSION, with the structural total',
+      new RegExp('session\\s+\\d+\\s+of\\s+' + r.perWeekSlots, 'i').test(r.five), r.five.slice(0, 140));
+    t.ok('and never calls a plan slot a day — that is a calendar word',
+      !/\bday\s+\d+/i.test(r.five), r.five.slice(0, 140));
+    t.ok('and it still says which slot within the week', /\bsession\s+\d+/i.test(r.five), r.five.slice(0, 140));
+
+    /* THE FLOOR v457 exists for: the CALENDAR duration still derives from the
+       schedule, and is never a hand-written year. It lives on the Program tab,
+       so that is where it is asserted — a fix that moved the structural total
+       into the subtitle would satisfy every assertion above. */
+    t.ok('guard: the Program subtitle really rendered', r.sevenSub.length > 60, r.sevenSub.slice(0, 200));
+    t.ok('the Program tab still tells a seven-day athlete 54 weeks',
+      /about 54 weeks/.test(r.sevenSub), r.sevenSub.slice(0, 200));
+    t.ok('and a five-day athlete 76 — the duration tracks the schedule',
+      /about 76 weeks/.test(r.fiveSub), r.fiveSub.slice(0, 200));
     t.ok('and never claims a year to the athlete who takes seventeen months',
-      !/one-year|year-long|year build/i.test(r.five), r.five.slice(0, 140));
+      !/one-year|year-long|year build/i.test(r.five + ' ' + r.fiveSub), r.five.slice(0, 140));
 
     /* A COUNT THAT CAN BE ONE NEEDS ITS OWN PLURAL. prescribe() gives a
        'dynamic' region movement a SINGLE timed round, and 74 of the

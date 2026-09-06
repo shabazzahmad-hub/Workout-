@@ -11204,7 +11204,12 @@ export default async function () {
       R.firstBootWeekly = weeklyTarget();
       go('program');
       R.firstBootProg = document.querySelector('.view.active').innerText.slice(0, 200);
-      R.guardProgramBuilt = /sessions in \d+ blocks/.test(R.firstBootProg);
+      /* The guard's job is that a PROGRAM was built rather than the baseline
+         gate, so it must not pin the subtitle's wording — v467 rewrote that
+         sentence and this failed on correct code. "sessions a week" is the
+         pace clause, which only a built program has and which every wording
+         of it carries. */
+      R.guardProgramBuilt = /sessions? a week/.test(R.firstBootProg);
 
       /* FLOOR: a real schedule still reads as itself */
       STATE.profile.days = [1, 2, 4, 5, 6]; normalizeState();

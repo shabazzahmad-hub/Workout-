@@ -1852,7 +1852,9 @@ const LADDERS = {
   legPowerL:  ['jumpsquat','splitjump','broadjump'],
   hiitFinL:   ['jumpingjack','tuckjump','burpee','count8','burpeetuck','atomicpushup'],
 };
-// Phase 1 (the first PHASE1_CYCLES block) — core/abs/HIIT program, 7 days a week.
+// Phase 1 (the first PHASE1_CYCLES blocks) — core/abs/HIIT. SESSIONS_PER_WEEK
+// slots to a program week; how many CALENDAR days that spans is the athlete's
+// own schedule, so this list is a rotation of sessions and not a week of days.
 const SESSIONS = [
   {key:'anterior', name:'Core Crusher', icon:'🔥', focus:'Abs, deep core & anti-extension',
    slots:['plankL','hollowL','lowerL','dynL'], finisher:'cardioFinL'},
@@ -1869,7 +1871,11 @@ const SESSIONS = [
   {key:'stability', name:'Core Stability', icon:'🧘', focus:'Control, holds & rotation — active-recovery core',
    slots:['plankL','sideL','hollowL','rotL'], finisher:'finisherL'},
 ];
-// Phase 2 (week 13 onward) — full-body split, 7 days a week; core trained every session.
+// Phase 2 (from block PHASE1_CYCLES+1 onward) — full-body split; core trained
+// every session. The old comment said "week 13 onward", which was true when
+// PHASE1_CYCLES was 2 and has been off by a whole block since: at 1 it opens on
+// program week 7. A boundary written by hand beside the constant that decides
+// it is the class v460 swept out of sw.js, one file over.
 const PHASE2_SESSIONS = [
   {key:'push', name:'Push Day', icon:'💥', focus:'Chest, shoulders & triceps + core',
    slots:['chestL','shoulderL','tricepL','lowerL'], finisher:'cardioFinL'},
@@ -1995,7 +2001,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='466';
+const APP_VERSION='470';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2365,6 +2371,18 @@ const TOTAL_CYCLES=9;    // nine blocks: Phase 1 then the full-body split
 function programWeeks(){
   try{const t=Math.max(1,weeklyTarget());
     return Math.ceil((SESSIONS_PER_CYCLE*TOTAL_CYCLES)/t);}catch(e){return WEEKS_PER_CYCLE*TOTAL_CYCLES;}
+}
+/* WEEKS_PER_CYCLE is a count of PROGRAM weeks — SESSIONS_PER_WEEK sessions each
+   — and a block only takes that many CALENDAR weeks at seven sessions a week.
+   The wizard's floor is five, where a block is 8.4 weeks. v348 measured exactly
+   this for the whole programme and fixed the total; every per-BLOCK restatement
+   was left behind, including the one in the same sentence.
+
+   DERIVED FROM programWeeks() RATHER THAN FROM THE PACE AGAIN, so a change to
+   one moves both — two copies of that arithmetic is two places for it to drift,
+   which is what this round is about. */
+function blockWeeks(){
+  try{return Math.max(1,Math.round(programWeeks()/TOTAL_CYCLES));}catch(e){return WEEKS_PER_CYCLE;}
 }
 /* The legal timeframes, in one place. The label rule already existed as two
    hand-written copies — the quiz picker and the Fuel pacing note — which is
@@ -4591,8 +4609,8 @@ function baselineIntroHTML(){
 function reassessIntroHTML(cycle){
   const prev=cycle===1?STATE.baseline:STATE.reassess[cycle-1];
   return `
-  <div class="hero oblique"><div class="htop"><div><div class="hlbl">Cycle ${cycle+1} · re-test</div><h1>Progress Check</h1><div class="hmeta">${WEEKS_PER_CYCLE} weeks done — let's re-measure</div></div><div class="hicon">📈</div></div></div>
-  <div class="note fire">You've completed a full ${WEEKS_PER_CYCLE}-week block. Re-take the ${TESTS.length} tests so the next block scales from your <b>new, stronger</b> numbers — this is what keeps results coming all year.</div>
+  <div class="hero oblique"><div class="htop"><div><div class="hlbl">Cycle ${cycle+1} · re-test</div><h1>Progress Check</h1><div class="hmeta">About ${blockWeeks()} weeks done — let's re-measure</div></div><div class="hicon">📈</div></div></div>
+  <div class="note fire">You've completed a full block — ${SESSIONS_PER_CYCLE} sessions. Re-take the ${TESTS.length} tests so the next block scales from your <b>new, stronger</b> numbers — this is what keeps results coming all year.</div>
   <div class="card pad"><h3>Last result</h3>
     <div class="kv"><span>Core Score</span><b>${((v)=>v==null?'not tested':v+'/100')(scoreVal(prev))}</b></div>
     <div class="kv"><span>Level</span><b>${_ve((prev&&prev.level)||'—')}</b></div>
@@ -10602,9 +10620,9 @@ function finishAssessment(){
     assessState._pending={a,rec};
     openSheet(`
       <h3>That is a big drop — worth a look</h3>
-      <div class="note warn"><b>Your score went from ${drop.prevScore} to ${drop.score}</b> — down ${drop.pct}%. That is more than training normally moves in ${WEEKS_PER_CYCLE} weeks, so it is usually the day rather than the body: short sleep, under-fuelled, a cold coming on, or testing late at night.
+      <div class="note warn"><b>Your score went from ${drop.prevScore} to ${drop.score}</b> — down ${drop.pct}%. That is more than training normally moves in ${blockWeeks()} weeks, so it is usually the day rather than the body: short sleep, under-fuelled, a cold coming on, or testing late at night.
       ${drop.worse.length?`<div class="tiny muted" style="margin-top:8px">Biggest changes: ${drop.worse.slice(0,3).map(w=>_ve(w.name)+' '+w.was+'→'+w.now+(w.unit==='time'?'s':'')).join(' · ')}</div>`:''}</div>
-      <div class="note info" style="margin-top:0"><b>Why it matters:</b> these numbers set every target for the next ${WEEKS_PER_CYCLE} weeks. Locking in an off day means ${WEEKS_PER_CYCLE} weeks of work that is too easy.</div>
+      <div class="note info" style="margin-top:0"><b>Why it matters:</b> these numbers set every target for the next ${blockWeeks()} weeks. Locking in an off day means ${blockWeeks()} weeks of work that is too easy.</div>
       <button class="btn primary" onclick="discardRetest()">It was an off day — keep my old numbers</button>
       <button class="btn ghost" style="margin-top:8px" onclick="confirmRetest()">No, this is where I am now</button>
       <div class="tiny muted" style="margin-top:10px">Coming back from a layoff, illness or injury? Then the lower numbers are real — take the second option and the programme will rebuild from here.</div>
@@ -11160,7 +11178,7 @@ function briefSegments(){
   const sess=buildSession(_tp);
   const _bDone=todayDone(), _bPain=todayStoppedForPain(), _bOver=_bDone||_bPain;
   const wkNum=(sess.cycle*WEEKS_PER_CYCLE)+sess.week;
-  const dayNum=((sess.pos&&sess.pos.dayInWeek)||0)+1;
+  const sessNum=((sess.pos&&sess.pos.dayInWeek)||0)+1;
   const vol=sessionVolume(sess);
   const name=athleteName();
   const who=name?(' '+name):'';
@@ -11170,15 +11188,36 @@ function briefSegments(){
      "Good evening" — one card, two answers, from the same clock. */
   const _gt=_briefGreet();
   const _briefTitle=/evening/i.test(_gt)?'Evening brief':(/afternoon/i.test(_gt)?'Afternoon brief':'Morning brief');
-  /* "your one-year build" was a hand-written duration beside the constant that
-     answers it — v348's own defect, on the one surface v348 and v354 did not
-     reach. 378 sessions is 54 weeks at SEVEN a week and the wizard's floor is
-     FIVE, so a five-day athlete is on 76 weeks: 17 months, not 12. And it is
-     SPOKEN, which v315's rule makes the worst place for it — an athlete cannot
-     double-check a figure they only ever hear. programWeeks() already derives
-     it from weeklyTarget(); the header chip has read it since v348. */
+  /* TWO UNITS ARE BOTH CALLED "WEEK", AND THIS SENTENCE HELD ONE OF EACH.
+     wkNum is a PROGRAM week — a position in the plan, 1..54, the same figure
+     the Progress ▸ Summary tile prints as "Week N /54" and the header chip
+     prints bare. programWeeks() is a CALENDAR duration, and it depends on how
+     often the athlete trains: 54 weeks at seven a week, 76 at the wizard's
+     five-day floor. Joined by "of", they read as one scale. Measured on a
+     five-day athlete standing on the LAST session of the program: the screen
+     said "Week 54 /54" and the coach said "week 54 of your 76-week build" —
+     twenty-two weeks that do not exist, spoken, which v315's rule makes the
+     worst place for it.
+
+     v457 was right that the duration must be derived rather than written by
+     hand ("your one-year build" was false for everyone below seven a week).
+     It put the derived figure next to a program-week ordinal, which is where
+     the two scales met. A position in the plan takes the STRUCTURAL total, so
+     both halves are program weeks and the brief agrees with the tile the
+     athlete can look at. The calendar duration is not lost — it is on the
+     Program tab, where it stands alone and can say what pace it assumes.
+
+     AND THE SLOT WAS NAMED "DAY", which is the same confusion one word over.
+     A program week holds SESSIONS_PER_WEEK slots, and the app calls them
+     sessions everywhere it counts them — "378 sessions" on the Program tab,
+     "N/378 sessions" on its own progress bar, the calendar grid. Only this
+     sentence called a slot a day, and a day is a calendar unit: at the
+     wizard's five-day floor a program week spans about 9.8 calendar days, so
+     "day 7" is spoken ten days after "day 1" of the same week, and a week
+     that has seven days in it is a week this athlete does not train. It is
+     the app's own unit now, so nothing here names a calendar at all. */
   segs.push({icon:'🎖️',title:_briefTitle,
-    say:`${_gt}${who}. This is ${ADVISOR.short}, your coach. Here is your brief for today — week ${wkNum}, day ${dayNum} of your ${programWeeks()}-week build. Let's walk the plan.`});
+    say:`${_gt}${who}. This is ${ADVISOR.short}, your coach. Here is your brief for today — week ${wkNum} of ${WEEKS_PER_CYCLE*TOTAL_CYCLES}, session ${sessNum} of ${SESSIONS_PER_WEEK}. Let's walk the plan.`});
   // 2 — mission / transformation
   const goalW=STATE.profile.goalWeightLb, goalBF=STATE.profile.goalBodyFat, kg=latestWeightKg();
   const bf=(goalBF>0)?`, and body fat under ${goalBF} percent`:'';
@@ -13539,7 +13578,7 @@ function renderProgram(){
      makes the number checkable — without it a reader has no way to tell a
      right number from a wrong one. */
   const _pw=programWeeks(),_wt=weeklyTarget();
-  let h=`<h2 class="vtitle">Your Program</h2><div class="vsub">${SESSIONS_PER_CYCLE*TOTAL_CYCLES} sessions in ${TOTAL_CYCLES} blocks of ${WEEKS_PER_CYCLE} weeks — about <b>${_pw} weeks</b> at your ${_wt} session${_wt===1?'':'s'} a week. Weeks 1–${PHASE1_CYCLES*WEEKS_PER_CYCLE} are core &amp; abs, then a full-body split. The load climbs every week.</div>`;
+  let h=`<h2 class="vtitle">Your Program</h2><div class="vsub">${TOTAL_CYCLES} blocks of ${SESSIONS_PER_CYCLE} sessions — ${SESSIONS_PER_CYCLE*TOTAL_CYCLES} in all, about <b>${_pw} weeks</b> at your ${_wt} session${_wt===1?'':'s'} a week. ${PHASE1_CYCLES===1?'The first block is':'The first '+PHASE1_CYCLES+' blocks are'} core &amp; abs, then a full-body split. The load climbs every week.</div>`;
   h+=programVsGoalHTML();
   /* The alternate-session tiles used to sit here. They are choices about TODAY —
      "not the planned session, something else instead" — and Program is the
@@ -13573,13 +13612,32 @@ function renderProgram(){
         const fx=bs.main&&bs.main.find(m=>m.focus);
         tag=`<div class="tiny muted" style="margin-top:2px">${n} moves${fx&&EX[fx.exId]?' · '+EX[fx.exId].name.split(' ')[0]:''}</div>`;
       }catch(e){}
-      h+=`<button class="calday ${isDone?'done':''} ${isCur?'cur':''}" onclick="previewSession(${ptr})">
-        <div class="wd">DAY ${d+1}</div><div class="ico">${isDone?'✓':s.icon}</div><div class="nm">${s.name.split(' ')[0]}</div>${tag}
+      /* THE CELL IS A PLAN SLOT, NOT A CALENDAR DAY. v469 fixed the spoken
+         greeting and claimed the class had one athlete-facing member; it had
+         two, and this is the one a sweep for "Day ${...}" and "day <digit>"
+         could not see, because the label is ALL CAPS with an expression in it.
+         42 cells said DAY 1..DAY 7, and at the wizard's five-day floor one
+         program week spans 9.8 calendar days — so "DAY 7" is a day this
+         athlete's week does not have.
+
+         "SESSION 1" is the app's own word and does not fit: measured at 320px
+         the label box is 53px and the text is 59px, so it wraps to two lines.
+         "1 OF 7" is 33px, states the position AND the total the old label never
+         carried, and names no unit it would have to get right. The total is
+         read from SESSIONS_PER_WEEK rather than written out.
+
+         AND "YOU ARE HERE" WAS A COLOUR. A done cell has always carried ✓; the
+         current cell had a border and a glow and nothing else, so the one fact
+         the athlete opens this tab for was the only one with no text behind it.
+         ▶ marks it on the glass and aria-current says it to a screen reader —
+         the same helper the bottom nav and every picker already use. */
+      h+=`<button class="calday ${isDone?'done':''} ${isCur?'cur':''}"${currentTab(isCur)} onclick="previewSession(${ptr})">
+        <div class="wd">${isCur?'▶ ':''}${d+1} OF ${SESSIONS_PER_WEEK}</div><div class="ico">${isDone?'✓':s.icon}</div><div class="nm">${s.name.split(' ')[0]}</div>${tag}
       </button>`;
     }
     h+=`</div>`;
   }
-  h+=`<div class="note info" style="margin-top:16px"><b>How progression works:</b> Week 1 sets your baseline volumes. Weeks 2–6 raise reps &amp; hold times, unlock harder variations, and add a set in the peak weeks. The app also reads how each week <i>felt</i> and auto-adjusts. After 6 weeks you re-test, and everything scales up from your new numbers.</div>`;
+  h+=`<div class="note info" style="margin-top:16px"><b>How progression works:</b> Week 1 sets your baseline volumes. Weeks 2–6 raise reps &amp; hold times, unlock harder variations, and add a set in the peak weeks. The app also reads how each week <i>felt</i> and auto-adjusts. After ${blockWeeks()} weeks you re-test, and everything scales up from your new numbers.</div>`;
   h+=skillTreesHTML();
   v.innerHTML=h;
 }
