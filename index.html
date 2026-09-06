@@ -4819,7 +4819,7 @@ function todayWorkoutHTML(){
 }
 /* Reference answers "look something up", and it holds two libraries that have
    nothing to do with each other: what to eat, and how to move. One long scroll
-   with a food list on top buried 138 movements below it. */
+   with a food list on top buried the whole movement library below it. */
 let REF_TAB='food';
 const REF_TABS=[['food','🍽️ Food'],['moves','🏋️ Moves']];
 /* MEMBERSHIP, not truthiness — this reaches innerHTML through the strip. */
@@ -21100,7 +21100,7 @@ function _recipePlanHTML(anchor){
   return h;
 }
 
-/* The exercise library — 138 movements, grouped by region and filtered to the
+/* The exercise library — every movement, grouped by region and filtered to the
    gear the athlete actually owns. It used to be the THIRD section of the
    Settings tab, above the settings themselves, which is a reference work filed
    under "change my preferences". Reference is the look-it-up tab; this is the

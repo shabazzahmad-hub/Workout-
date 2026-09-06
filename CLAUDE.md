@@ -17758,6 +17758,23 @@ separate reason already recorded: the precache tiers are parsed by pulling every
 quoted asset name out of `sw.js`, comments included, so an illustrative path
 declares an asset that does not exist and CI goes red.
 
+### The same class in index.html, and why it gets no check
+
+The comment above the exercise-library renderer said **"138 movements"**. There
+are **197** — a present-tense claim, 43% low. Its neighbour said the food list
+buried *"138 movements"* below it. Both now describe the shape, and the SCREEN
+itself was already deriving `${libKeys.length}`, so nothing an athlete reads was
+ever wrong.
+
+**No scan was added for `index.html`, deliberately.** Most numbers in its
+comments are RECORDED MEASUREMENTS — *"measured at 306 sessions"*, *"40
+entries"*, *"0 of 400 circuits"* — and those are the point of the comment, not
+a claim about the present. A regex cannot tell a measurement from a claim, and
+an unhonest check is worse than none: this file's own rule is to read the
+mutant, or the check, back before believing it. The `sw.js` scan is narrow
+enough to be honest because that file's four counts were all present-tense
+claims about its own structure.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
