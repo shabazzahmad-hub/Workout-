@@ -18270,9 +18270,11 @@ and a week with seven days in it is a week that athlete does not train. Same
 signature as v467 and v468: the seven-day athlete's copy is right and everyone
 else gets the same words with a unit that is not theirs.
 
-**The class was swept and it has one athlete-facing member.** Every other
-`Day N` in the app is a real calendar day (the baseline hero's *"Day 1"*) or a
-reference-menu day. `dayInWeek` is a field name, not copy.
+**The sweep said one athlete-facing member and it was WRONG — see v470.** It
+grepped `Day ${...}` and `day <digit>`, and the Program calendar's label is
+`DAY ${d+1}` — all caps, with an expression in it, so both patterns missed 42
+cells. Every other `Day N` in the app really is a calendar day (the baseline
+hero's *"Day 1"*) or a reference-menu day, and `dayInWeek` is a field name.
 
 **The floor is that it still says WHICH slot.** An over-eager fix that dropped
 the second coordinate leaves a position with half of itself, and the mutant
@@ -18298,6 +18300,69 @@ that moves.
 
 Five mutants, all caught, including the two over-eager twins: the slot
 coordinate dropped, and the week coordinate dropped.
+
+## The grid said DAY, and "you are here" was a colour (v470)
+
+v469 fixed the SPOKEN slot word and **claimed the class had one athlete-facing
+member. It had two.** The sweep grepped `Day ${...}` and `day <digit>`; the
+Program calendar's label is `DAY ${d+1}` — **all caps, with an expression in
+it** — so both patterns walked past **42 cells**, on the tab whose whole job is
+showing the plan.
+
+At the wizard's five-day floor one program week spans **9.8 calendar days**, so
+`DAY 7` is a day that athlete's week does not have.
+
+**"SESSION 1" is the app's own word and does not fit.** Measured at 320px: the
+label box is **53px** and the text is **59px**, so it wraps to two lines.
+`1 OF 7` is **33px**, and it states the total the old label never carried. The
+total is read from `SESSIONS_PER_WEEK` rather than written out — and because
+that constant IS 7 today, a hand-written `1 OF 7` renders byte-identically, so
+**only a source assertion can catch it.** That mutant escaped every rendered
+check first, which is v322's and v368's lesson landing a third time.
+
+### "You are here" was the one fact with no text behind it
+
+A **done** cell has carried `✓` since it was written. The **current** cell had a
+border and a glow and nothing else — so on a grid of 42 identical-looking cells,
+the single thing the athlete opens that tab for was the only state conveyed by
+colour alone. `▶` marks it on the glass, and `currentTab()` — the helper the
+bottom nav and every picker already use — says it to a screen reader.
+
+**The colour-only class was swept first and came back otherwise clean.** All 20
+`color:${cond?a:b}` sites carry a sign, an arrow, a number pair or a word; the
+skill-tree rows already carry `▶` **and** the words *"you are here"*. This cell
+was the one exception.
+
+### And a third phrasing of the block length, missed by both scans
+
+*"After 6 weeks you re-test"* — a hand-written elapsed claim, and for a
+five-day athlete a block really takes **eight** calendar weeks. v467's source
+scan looks for `${WEEKS_PER_CYCLE}` **interpolations** and this was a literal;
+v458's literal scan has an arm for `after week N` and this is `after N weeks`,
+**the other word order**. It was found by reading the rendered tab, not by
+scanning for a pattern already known — the same way the strength chart's
+*"after week 6"* was found. The new arm goes into the one scan, never a second
+one beside it.
+
+*"Weeks 2–6 raise reps"* three lines above is deliberately left: it is a
+PROGRAM-week range under a grid whose own headers read `Week 1`..`Week 6`, so
+it is structural and correct, and the scan's arm is anchored at `Weeks 1–` for
+exactly that reason.
+
+### The escaped mutants
+
+Nine seeded, two escaped, both weak checks:
+
+- **The hand-written slot total** — equivalent on today's data, caught only by
+  the source assertion above.
+- **The current cell's icon replaced by `▶`.** The floor read
+  `curIco.length > 0 && curIco !== '✓'`, and `▶` satisfies both. It compares
+  against the session's OWN icon from the data now, with a guard that the icon
+  is neither the tick nor the marker.
+
+Both floors matter because the over-eager fix here is real: marking the current
+cell by eating its icon is what `done` already does, and it would cost the
+athlete the one glyph that says WHICH session is next.
 
 ## Rendering
 

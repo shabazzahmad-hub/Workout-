@@ -2001,7 +2001,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='469';
+const APP_VERSION='470';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -13612,13 +13612,32 @@ function renderProgram(){
         const fx=bs.main&&bs.main.find(m=>m.focus);
         tag=`<div class="tiny muted" style="margin-top:2px">${n} moves${fx&&EX[fx.exId]?' · '+EX[fx.exId].name.split(' ')[0]:''}</div>`;
       }catch(e){}
-      h+=`<button class="calday ${isDone?'done':''} ${isCur?'cur':''}" onclick="previewSession(${ptr})">
-        <div class="wd">DAY ${d+1}</div><div class="ico">${isDone?'✓':s.icon}</div><div class="nm">${s.name.split(' ')[0]}</div>${tag}
+      /* THE CELL IS A PLAN SLOT, NOT A CALENDAR DAY. v469 fixed the spoken
+         greeting and claimed the class had one athlete-facing member; it had
+         two, and this is the one a sweep for "Day ${...}" and "day <digit>"
+         could not see, because the label is ALL CAPS with an expression in it.
+         42 cells said DAY 1..DAY 7, and at the wizard's five-day floor one
+         program week spans 9.8 calendar days — so "DAY 7" is a day this
+         athlete's week does not have.
+
+         "SESSION 1" is the app's own word and does not fit: measured at 320px
+         the label box is 53px and the text is 59px, so it wraps to two lines.
+         "1 OF 7" is 33px, states the position AND the total the old label never
+         carried, and names no unit it would have to get right. The total is
+         read from SESSIONS_PER_WEEK rather than written out.
+
+         AND "YOU ARE HERE" WAS A COLOUR. A done cell has always carried ✓; the
+         current cell had a border and a glow and nothing else, so the one fact
+         the athlete opens this tab for was the only one with no text behind it.
+         ▶ marks it on the glass and aria-current says it to a screen reader —
+         the same helper the bottom nav and every picker already use. */
+      h+=`<button class="calday ${isDone?'done':''} ${isCur?'cur':''}"${currentTab(isCur)} onclick="previewSession(${ptr})">
+        <div class="wd">${isCur?'▶ ':''}${d+1} OF ${SESSIONS_PER_WEEK}</div><div class="ico">${isDone?'✓':s.icon}</div><div class="nm">${s.name.split(' ')[0]}</div>${tag}
       </button>`;
     }
     h+=`</div>`;
   }
-  h+=`<div class="note info" style="margin-top:16px"><b>How progression works:</b> Week 1 sets your baseline volumes. Weeks 2–6 raise reps &amp; hold times, unlock harder variations, and add a set in the peak weeks. The app also reads how each week <i>felt</i> and auto-adjusts. After 6 weeks you re-test, and everything scales up from your new numbers.</div>`;
+  h+=`<div class="note info" style="margin-top:16px"><b>How progression works:</b> Week 1 sets your baseline volumes. Weeks 2–6 raise reps &amp; hold times, unlock harder variations, and add a set in the peak weeks. The app also reads how each week <i>felt</i> and auto-adjusts. After ${blockWeeks()} weeks you re-test, and everything scales up from your new numbers.</div>`;
   h+=skillTreesHTML();
   v.innerHTML=h;
 }

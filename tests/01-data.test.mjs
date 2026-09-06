@@ -775,6 +775,11 @@ export default async function run() {
     const W = '(?:\\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)';
     const BLOCKLEN = new RegExp([
       W + '[- ]week blocks?', W + ' weeks? done', 'after week ' + W,
+      /* "After 6 weeks you re-test" — the OTHER word order, and it slipped past
+         both scans: v467's looks for ${WEEKS_PER_CYCLE} interpolations and this
+         was a hard-coded digit, while "after week N" is a different sentence.
+         Found by reading the rendered Program tab, not by scanning. */
+      'after ' + W + ' weeks',
       'next ' + W + ' weeks', 'moves in ' + W + ' weeks', 'means ' + W + ' weeks',
       'Weeks 1[\\u2013-]\\d+'
     ].join('|'), 'g');
@@ -793,6 +798,7 @@ export default async function run() {
          statement about the regex. Every phrasing that has been found by hand is
          planted here, and a sentence that merely mentions weeks is not. */
       probeCatches: ('a 6-week block. eight-week blocks. 6 weeks done. after week 7. '
+        + 'after 6 weeks you re-test. '
         + 'the next six weeks. moves in six weeks. means six weeks of work. Weeks 1-6 are core.')
         .match(BLOCKLEN) || [],
       probeQuiet: ('spot-reduction is not real and neither is a six-week six-pack. '
@@ -811,7 +817,7 @@ export default async function run() {
   });
   t.ok('guard: the scan read the app, not a stub', blockLen.isApp, blockLen);
   t.eq('guard: the scan catches every phrasing that has been found by hand',
-    blockLen.probeCatches.length, 8, JSON.stringify(blockLen.probeCatches));
+    blockLen.probeCatches.length, 9, JSON.stringify(blockLen.probeCatches));
   t.eq('guard: and stays quiet on a week count that is not the block length',
     blockLen.probeQuiet.join(', '), '', JSON.stringify(blockLen.probeQuiet));
   t.ok('guard: and the block really is more than one week', blockLen.weeks > 1, blockLen);

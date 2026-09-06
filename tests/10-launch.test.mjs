@@ -778,6 +778,117 @@ const { browser, page, errors } = await launch(port);
   await pb.close();
 }
 
+/* ---- the Program grid: a plan slot, and "you are here" (v470) -----------
+   v469 fixed the SPOKEN slot word and claimed the class had one athlete-facing
+   member. It had two. A sweep for "Day ${...}" and "day <digit>" cannot see an
+   ALL-CAPS label with an expression in it, so 42 calendar cells went on saying
+   DAY 1..DAY 7 — and at the wizard's five-day floor one program week spans 9.8
+   calendar days, so "DAY 7" is a day that athlete's week does not have.
+
+   "SESSION 1" is the app's own word and does not fit: measured at 320px the
+   label box is 53px and the text is 59px, so it wraps. "1 OF 7" is 33px and
+   states the total the old label never carried.
+
+   AND "YOU ARE HERE" WAS A COLOUR. A done cell has always carried ✓; the
+   current cell had a border and a glow and nothing else — the one fact the
+   athlete opens this tab for was the only one with no text behind it. */
+{
+  const cal = await page.evaluate(() => {
+    const o = {}, days = STATE.profile.days, ptr = STATE.progressPtr, logs = STATE.logs;
+    STATE.profile.days = [1, 2, 3, 4, 5];
+    STATE.progressPtr = 9;
+    STATE.logs = {}; for (let p = 0; p < 9; p++) STATE.logs[p] = { done: true, date: todayISO() };
+    normalizeState(); go('program');
+    const cells = [...document.querySelectorAll('#v-program .calday')];
+    const wd = e => ((e.querySelector('.wd') || {}).textContent || '').trim();
+    const ico = e => ((e.querySelector('.ico') || {}).textContent || '').trim();
+    const cur = cells.find(e => e.classList.contains('cur'));
+    const done = cells.find(e => e.classList.contains('done'));
+    const soon = cells.find(e => !e.classList.contains('cur') && !e.classList.contains('done'));
+    o.cells = cells.length;
+    o.slots = SESSIONS_PER_WEEK;
+    /* How many CALENDAR days one PROGRAM week spans — the whole reason "DAY"
+       was the wrong word. */
+    o.spanFive = +((SESSIONS_PER_WEEK / weeklyTarget()) * 7).toFixed(1);
+    o.labels = cells.slice(0, SESSIONS_PER_WEEK).map(wd);
+    o.saysDay = cells.filter(e => /\bdays?\b/i.test(wd(e))).length;
+    /* The label must not wrap: the cell is 53px wide at the narrowest phone. */
+    o.wrapped = cells.filter(e => e.querySelector('.wd').getBoundingClientRect().height > 16).length;
+    o.curLabel = wd(cur); o.curIco = ico(cur);
+    /* The session's OWN icon, from the data — a mutant that replaced the icon
+       with the ▶ marker satisfied "not empty and not a tick" and walked
+       through. The current cell must keep the icon its session actually has. */
+    o.curSessIco = (posOf(STATE.progressPtr).session || {}).icon || '';
+    o.doneIco = ico(done); o.soonLabel = wd(soon); o.soonIco = ico(soon);
+    o.ariaCur = cells.filter(e => e.getAttribute('aria-current')).length;
+    o.ariaIsCur = cur.getAttribute('aria-current') === 'true';
+    o.marked = cells.filter(e => /▶/.test(wd(e))).length;
+    STATE.profile.days = days; STATE.progressPtr = ptr; STATE.logs = logs; normalizeState();
+    return o;
+  });
+  /* GUARDS: without these, "no cell says day" passes on a grid that rendered
+     nothing, and on a schedule where the two words happen to agree. */
+  s.eq('guard: the whole block really rendered', cal.cells, 42, JSON.stringify(cal).slice(0, 200));
+  s.ok('guard: a five-day athlete\'s program week really is longer than a calendar one',
+    cal.spanFive > 7, JSON.stringify({ span: cal.spanFive }));
+
+  s.eq('no calendar cell calls a plan slot a day', cal.saysDay, 0, cal.labels.join(' '));
+  s.eq('every cell names its position out of the week\'s slots',
+    cal.labels.join(' '),
+    Array.from({ length: cal.slots }, (_, i) => (i + 1) + ' OF ' + cal.slots).join(' ')
+      .replace('1 OF ' + cal.slots, '1 OF ' + cal.slots), cal.labels.join(' '));
+  s.eq('and the label fits the narrowest phone without wrapping', cal.wrapped, 0, JSON.stringify(cal.labels));
+
+  /* "You are here" in TEXT, not only in a border. */
+  s.ok('the current cell is marked on the glass', /▶/.test(cal.curLabel), cal.curLabel);
+  s.eq('and exactly one cell is', cal.marked, 1, JSON.stringify(cal));
+  s.ok('and it says so to a screen reader', cal.ariaIsCur, cal.ariaIsCur);
+  s.eq('and no other cell claims to be current', cal.ariaCur, 1, JSON.stringify(cal));
+  /* FLOORS: an over-eager marker on every cell, or one that ate the states the
+     grid already had, satisfies every assertion above. */
+  s.eq('a finished session still shows its tick', cal.doneIco, '✓', JSON.stringify(cal));
+  /* THE SLOT TOTAL MUST BE READ, NOT RESTATED. SESSIONS_PER_WEEK is 7, so a
+     hand-written "1 OF 7" renders byte-identically and no rendered check can
+     see it — only the source can. Same escape v322 and v368 both recorded. */
+  {
+    const src = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const n = t => src.split(t).length - 1;
+    s.eq('guard: the source really is the app', n('function previewSession('), 1, src.length);
+    s.eq('the cell label reads the slot count rather than restating it',
+      n('${d+1} OF ${SESSIONS_PER_WEEK}'), 1);
+  }
+  s.ok('a session not yet reached carries no marker',
+    !/▶/.test(cal.soonLabel) && cal.soonIco !== '✓', JSON.stringify(cal));
+  s.eq('and the current cell keeps its own session icon',
+    cal.curIco, cal.curSessIco, JSON.stringify(cal));
+  s.ok('guard: that icon is a real one, not the tick or the marker',
+    cal.curSessIco.length > 0 && cal.curSessIco !== '✓' && cal.curSessIco !== '▶',
+    JSON.stringify({ ico: cal.curSessIco }));
+}
+
+/* ---- "After N weeks you re-test" is ELAPSED (v470) -----------------------
+   Both scans missed it. The v467 source scan looks for ${WEEKS_PER_CYCLE}
+   interpolations, and this was a hard-coded 6; the v458 literal scan has an
+   arm for "after week N" and this is "after N weeks", the other word order.
+   For a five-day athlete a block really takes eight calendar weeks. */
+{
+  const re = await page.evaluate(() => {
+    const o = {}, days = STATE.profile.days;
+    const note = () => { go('program');
+      return ((document.querySelector('#v-program .note.info') || {}).textContent || ''); };
+    STATE.profile.days = [0, 1, 2, 3, 4, 5, 6]; o.sevenBlock = blockWeeks(); o.seven = note();
+    STATE.profile.days = [1, 2, 4, 5, 6]; o.fiveBlock = blockWeeks(); o.five = note();
+    STATE.profile.days = days;
+    return o;
+  });
+  s.eq('guard: the two schedules really give different block lengths',
+    re.sevenBlock + '/' + re.fiveBlock, '6/8', JSON.stringify([re.sevenBlock, re.fiveBlock]));
+  s.ok('the re-test cadence tells a seven-day athlete six weeks',
+    /After 6 weeks you re-test/.test(re.seven), re.seven.slice(-90));
+  s.ok('and a five-day athlete eight — it asks the athlete, not the constant',
+    /After 8 weeks you re-test/.test(re.five), re.five.slice(-90));
+}
+
 /* ---- v467: the elapsed claims ask the athlete, not the constant ----------
    A rendered check cannot see a consumer that reverts to WEEKS_PER_CYCLE on a
    seven-day athlete, where the two agree — and the drop sheet is built inside
