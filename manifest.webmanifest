@@ -1,7 +1,7 @@
 {
   "name": "CoreForge — Full-Body Workout",
   "short_name": "CoreForge",
-  "description": "A 378-session full-body training program — abs and core first, then progressive full-body strength, calisthenics and HIIT. Day-one baseline assessment builds an auto-generated plan that gets harder every week and self-saves your progress. Offline-ready, installs to your home screen.",
+  "description": "A 378-session full-body training program — abs and core first, then progressive full-body strength, calisthenics and HIIT. Day-one baseline assessment builds an auto-generated plan that scales to your own test scores, with a lighter week built into every block, and self-saves your progress. Offline-ready, installs to your home screen.",
   "lang": "en",
   "start_url": "./index.html",
   "scope": "./",

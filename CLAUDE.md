@@ -18698,6 +18698,82 @@ The ratio is the point, and it is the argument for the guards:
   structural figure holds (378 sessions, 42 a block, the Progress week tile).
   The one sentence that did not move was the finding.
 
+## The store blurb said the plan gets harder every week (v474)
+
+Found by auditing v473 an hour after it shipped — the fifteenth round running
+where the best finding was in the round immediately before.
+
+v473 fixed the **duration** claim in both static blurbs and widened the
+detector to cover weeks as well as years and months. It left a **frequency**
+claim standing in one of them. The manifest said the plan
+
+> gets harder every week
+
+and week 6 of every block is a **scheduled deload**. Measured over whole weeks,
+because total volume is not comparable across session types:
+
+| block 1 | units | block 2 | units |
+|---|---|---|---|
+| week 4 | 3,149 | week 4 | 2,788 |
+| week 5 | 3,436 | week 5 | 2,551 |
+| **week 6 — deload** | **2,091** | **week 6 — deload** | **1,570** |
+
+A **39% cut, by design**, which the app then names on screen (v372). So the
+blurb contradicted the app's own design — and the like-for-like anchored
+movement stops climbing too: the push-up target sits flat at 3x30 for four
+weeks running once it reaches its own `repCap`.
+
+**A rendered-copy sweep cannot see it.** v355 and v391 both swept every promise
+sentence off the real screens and both came back clean; a `<meta>` tag and a
+manifest are on no screen at all. Same lesson v473 recorded one clause away —
+a sweep aimed at one shape leaves the same defect alive in another.
+
+**The replacement turns the deload into what it is**: *"scales to your own test
+scores, with a lighter week built into every block"*. That sentence is itself a
+claim, so the guard below is what enforces it — the rule this file states about
+grepping for the code behind a promise, applied to the fix rather than to the
+defect.
+
+**THE GUARD IS THE FINDING, and it is measured rather than asserted.** The
+check builds week 5 and week 6 of a real block and requires `deloadOn()` true
+at the last week, false at the one before, and the whole week's work materially
+lower. Without it the ban is a statement about a regex. The mutant that deletes
+the scheduled deload from the engine fails exactly there.
+
+Two arms, each about a cadence the app itself contradicts — work that RISES on
+a fixed cadence, and training EVERY DAY (the wizard floors at five). Each is
+proven to catch its own shape and proven quiet on the truthful sentence that
+replaced it.
+
+### The check read one field of a file with ten
+
+The blurb rule has always read `manifest.description` alone. The manifest
+carries **nine more** strings a store listing and an install prompt show: the
+name, the short name, three screenshot labels and three shortcut names. All
+three arms now sweep every one of them, with a guard that the sweep really
+found nine.
+
+**Nothing is wrong today, and the one string that reads like a frequency claim
+was MEASURED rather than argued.** *"Today's session, built for you every day"*
+— on a day the athlete has picked off, `isTrainingDay()` is **false** and Today
+still builds a full live session with a Start button. The label is true, so it
+is left alone. A screenshot label is not required to name the session count
+either: a shortcut name has no room for one.
+
+Eight mutants, all caught by name.
+
+### And two harness rules paid again in one round
+
+- **Do not edit the tree a suite is reading.** The full suite was running in the
+  background when suite 01 was edited, so whichever version it imported is not
+  the version being shipped. The run was stopped and restarted rather than
+  trusted — a suite result is only meaningful against the tree it measured.
+- **`pkill -f "tests/run.mjs"` killed the shell that ran it**, exit 144, because
+  that shell's own command line contains the string — so the rest of the
+  compound command never ran and the mutation copy was never refreshed. This
+  file already records the trap for `pkill -f` and for `pgrep -f`. Kill by PID,
+  and skip your own.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
