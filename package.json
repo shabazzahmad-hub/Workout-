@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "CoreForge — offline PWA. A 54-week calisthenics and core program.",
+  "description": "CoreForge — offline PWA. A 378-session calisthenics and core program.",
   "scripts": {
     "test": "node tests/run.mjs",
     "check": "node tests/check-syntax.mjs"

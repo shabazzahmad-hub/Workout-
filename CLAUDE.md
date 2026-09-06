@@ -18848,6 +18848,89 @@ caught by READING, which is how v344's was found.
 
 Eight mutants, seven caught by name.
 
+## The document whose whole job is listing what leaves the phone named half of it (v476)
+
+`privacy.html` was last touched at **v294** — the same version the store
+screenshots were. It said data leaves the device through **three** optional
+features. Measured against the app, there are **six**:
+
+| way out | shipped | named in the policy |
+|---|---|---|
+| Open Food Facts search | — | yes |
+| Gemini, a photo of food | — | yes |
+| Azure neural voice | — | yes |
+| **Gemini, a screenshot of another tracker** | **v253** | **no** |
+| **Gemini, a screenshot of your watch** | **v352** | **no** |
+| **the MICROPHONE** | **v376** | **no** |
+
+**The microphone is the one that matters, and the app already knew.** v422
+established that `SpeechRecognition` is a **remote** service — Settings says so
+in as many words, *"The recognition runs on Google's servers"* — and v423 fixed
+the in-app sentence that had claimed otherwise. **Its own comment calls a false
+privacy claim "the worst kind of promise in UI text with no code behind it"**,
+and the document carrying the strongest version of that promise was never
+touched. Fixing one instance is not fixing the class, and the class is four
+documents wide.
+
+### The strongest wording was on the screen where consent is formed
+
+`privacyNoteHTML()` is the first-run note, and it said:
+
+> **Skip all three and nothing ever leaves the phone.**
+
+Voice commands need **no API key**, so they appear on no key screen and are not
+one of the three. An athlete who turned them on was told, on the setup screen,
+that nothing leaves — while audio went to a cloud service. That note's own
+comment names the reason it matters: *"somebody reading the first-run screen has
+already been given an absolute assurance by then, and that is where consent is
+formed."*
+
+### Neither sweep this repo already runs could have found it
+
+- **A rendered-copy sweep judges the sentence it can see, not the capability
+  list it cannot.** v355 and v391 both read every promise off the real screens
+  and both came back clean.
+- **An outbound-HOST scan cannot see it either.** `SpeechRecognition` is a
+  platform API with **no URL anywhere in the file** — measured: the only hosts
+  in `index.html` are Open Food Facts, Gemini, the Azure SDK CDN, and three
+  links the athlete taps.
+
+So the list is **derived from the SOURCE** — each capability proved present by
+its own marker — and every document that makes the promise must name every
+member. A seventh needs a row; the guard makes a renamed marker fail loudly
+rather than pass in silence.
+
+### The age floor was two documents wide
+
+Both legal pages said *"intended for users aged 16 and older"*. `AGE_MIN` is
+**13**. The document moves to match the code rather than the other way round —
+v446's rule that the non-destructive direction is the one that cannot refuse a
+figure the app already stores, and narrowing the app would be a product decision
+made by accident. Both pages are pinned against `AGE_MIN`, because **fixing
+either alone leaves the class alive**.
+
+### The count drifted three ways inside its own fix
+
+The policy stated the number of exceptions in **three** places. Two were
+updated and the third — *"the three explicit, opt-in actions listed"* — was
+not, in the same edit. That is v397's class landing on the round written to
+close it.
+
+**One count now, in the heading, checked against its own bullet list**, and the
+rule forbids a second sentence stating one. A number written by hand beside the
+list that holds it drifts; a number checked against that list cannot.
+
+### And a third registry blurb nobody had read
+
+`package.json`'s description still said *"a **54-week** calisthenics and core
+program"* — the claim v473 fixed in the `<meta>` tag and the manifest, in the
+one blurb npm and GitHub show. The sweep read two files and there are three.
+**A sweep is only as wide as the surface it enumerates**, for the fourth round
+running.
+
+**And `p8.mjs`, a leftover probe script, was tracked in the repo** against this
+file's own rule to delete them and leave `git status` clean.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
