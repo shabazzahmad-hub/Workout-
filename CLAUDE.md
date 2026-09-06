@@ -17812,6 +17812,42 @@ the NEXT literal — so it reported `exId` on registries that use `ex` and vice
 versa. **Confirm the control's real shape before believing the result**,
 thirteenth time.
 
+## A local computed and never read (v462)
+
+`const gate=reassessGate();` sat in `commitSession()` and **nothing read it**.
+`reassessGate()` is pure, so nothing was lost — what was lost is the reader's
+time: the commit READS as though it gates on the re-test, and it does not. Six
+more of the same shape, all harmless and all misleading:
+
+| function | dead local |
+|---|---|
+| `exCardHTML()` | a set count the card renders from `setsArr` instead |
+| `loadProgression()` | an `EX` lookup |
+| `readinessSlump()` | a `nut()` call — the function reads `STATE.readiness` |
+| `renderFuel()` | a habit count, beside a comment about a DIFFERENT count |
+| `saveTDEE()` | today's date |
+| `quickFinish()` | a `QUICKIES` lookup |
+
+**The shape is worth a check for a reason none of these seven had**: a value
+computed FOR THE SCREEN and never rendered is the same pattern, and that one is
+a real defect.
+
+### The scan was wrong twice before it was right, both ways
+
+- **Blanking string bodies reported 370 dead locals.** Most of this app's values
+  are consumed inside a **template literal**, so a scan that strips strings
+  deletes the use and keeps the declaration. v453 recorded exactly this for
+  top-level constants; it lands the same way one scope down.
+- **A SPREAD is a use.** `...lead` puts a dot before the name, so a plain
+  property-access lookbehind reads it as `obj.lead` — and the scan reported
+  `focusBonus()`'s two LIVE variables, the trouble-zone list among them, as
+  dead. That is the function this file already records as having had genuinely
+  dead input, so a false positive there is the most expensive kind.
+
+Both faults are pinned as guards on synthetic sources: the scan must see a local
+nothing reads, and must NOT see one used through a spread or inside a template
+literal. Restoring `const gate` fails by name with the function and the line.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

@@ -2101,6 +2101,80 @@ export default async function run() {
   t.eq('and the validator is clean again once every pool is restored',
     poolRule.cleanAfter, 0, poolRule);
 
+
+  /* ---- a local computed and never read ------------------------------------
+     `const gate=reassessGate();` sat in commitSession() and nothing read it, so
+     the commit READ as though it gated on the re-test and did not. Six more
+     like it: a set count in the exercise card, an EX lookup in
+     loadProgression(), a nut() call in readinessSlump() that reads
+     STATE.readiness instead, a habit count in renderFuel(), a date in
+     saveTDEE() and a QUICKIES lookup in quickFinish(). None was athlete-visible;
+     all seven misled a reader, and the shape also catches the real defect —
+     a value computed for the screen and never rendered.
+
+     Run in NODE against the file: no page needed, and the page-side scan cannot
+     see a declaration's scope anyway. */
+  {
+    const src = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    let big = '', bigAt = 0;
+    for (const m of src.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g))
+      if (m[1].length > big.length) { big = m[1]; bigAt = m.index; }
+    /* Comments go, STRINGS STAY. Most of this app's values are consumed inside a
+       template literal, and blanking string bodies reported 370 dead locals —
+       every one of them a variable the markup uses. */
+    const noComm = code => {
+      let out = '', i = 0, st = null;
+      while (i < code.length) {
+        const c = code[i], nx = code[i + 1];
+        if (!st) {
+          if (c === '/' && nx === '*') { const j = code.indexOf('*/', i + 2); out += ' '.repeat((j < 0 ? code.length : j + 2) - i); i = j < 0 ? code.length : j + 2; continue; }
+          if (c === '/' && nx === '/') { const j = code.indexOf('\n', i); out += ' '.repeat((j < 0 ? code.length : j) - i); i = j < 0 ? code.length : j; continue; }
+          if (c === '"' || c === "'" || c === '`') st = c;
+          out += c; i++; continue;
+        }
+        if (c === '\\') { out += code.slice(i, i + 2); i += 2; continue; }
+        if (c === st) st = null;
+        out += c; i++;
+      }
+      return out;
+    };
+    /* A SPREAD IS A USE. `...lead` puts a dot before the name, so a plain
+       property-access lookbehind reads it as `obj.lead` and misses it — which
+       reported focusBonus()'s two live variables as dead. */
+    const scan = body => {
+      const b = body.replace(/\.\.\./g, '   ');
+      const out = [];
+      for (const dm of b.matchAll(/\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=/g)) {
+        const v = dm[1];
+        const uses = (b.match(new RegExp('(?<![.\\w$])' + v.replace(/\$/g, '\\$') + '(?![\\w$])', 'g')) || []).length;
+        if (uses === 1) out.push(v);
+      }
+      return out;
+    };
+    const clean = noComm(big);
+    const found = [];
+    let fnCount = 0;
+    for (const fm of clean.matchAll(/^(?:async\s+)?function\s+([A-Za-z0-9_$]+)\s*\(/gm)) {
+      const open = clean.indexOf('{', fm.index + fm[0].length - 1);
+      if (open < 0) continue;
+      let d = 0, j = open;
+      for (; j < clean.length; j++) { if (clean[j] === '{') d++; else if (clean[j] === '}' && --d === 0) break; }
+      fnCount++;
+      scan(clean.slice(open, j + 1)).forEach(v =>
+        found.push(fm[1] + '(): ' + v + ' @' + (src.slice(0, bigAt + open).split('\n').length)));
+    }
+    t.ok('guard: the dead-local scan walked the whole roster', fnCount > 900,
+      JSON.stringify({ functions: fnCount }));
+    const probeDead = scan('{ const gate = reassessGate(); go("today"); }');
+    const probeSpread = scan('{ const lead = [1]; const p = [...lead, 2]; use(p); }');
+    const probeTpl = scan('{ const n = 3; return `there are ${n} of them`; }');
+    t.eq('guard: it sees a local nothing reads', probeDead.join(), 'gate');
+    t.eq('guard: and a SPREAD counts as a use', probeSpread.join(), '');
+    t.eq('guard: and so does a template literal', probeTpl.join(), '');
+    t.eq('no local is computed and never read', found.join('; '), '',
+      JSON.stringify(found.slice(0, 8)));
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }
