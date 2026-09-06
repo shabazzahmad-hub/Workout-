@@ -1977,7 +1977,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='459';
+const APP_VERSION='460';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -14580,7 +14580,7 @@ function openGrocery(){
   const items=[...seen.values()].sort((a,b)=>a.localeCompare(b));
   openSheet(`
     <h3>🛒 Grocery list</h3>
-    <div class="tiny muted" style="margin-bottom:10px">${_ve(dietLabel())} · from today's ${recs.length} meals · tap to check off</div>
+    <div class="tiny muted" style="margin-bottom:10px">${_ve(dietLabel())} · from today's ${plural(recs.length,'meal')} · tap to check off</div>
     <div class="card pad">${items.map(x=>`<label class="kv" style="cursor:pointer;border-top:1px solid var(--line)"><span>${_ve(x)}</span><input type="checkbox" onchange="this.closest('label').style.opacity=this.checked?.4:1" style="width:20px;height:20px;flex:0 0 auto"></label>`).join('')}</div>
     <button class="btn primary" style="margin-top:12px" onclick="closeSheet()">Done</button>
   `);

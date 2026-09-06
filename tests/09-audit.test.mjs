@@ -4822,6 +4822,41 @@ export default async function run() {
       JSON.stringify({ surfaces: rend.surfaces }));
     t.eq('no rendered surface says "1 <plural>" either', rend.hits.length, 0,
       JSON.stringify(rend.hits.slice(0, 3)));
+
+    /* THE THIRD MEMBER, and the sweep above could not see it: the grocery sheet
+       was not in its list, and the seeded athlete is not on a restricted diet.
+       A vegan avoiding soy, tree nuts, peanuts and gluten is an ORDINARY athlete
+       (v287 measured that combination), and only lunch survives the filter — so
+       the sheet read "from today's 1 meals". A sweep is only as wide as the
+       surface it enumerates. */
+    const groc = await page.evaluate(() => {
+      /* The field is nutrition.PLAN. An earlier version of this block nulled
+         `mealPlan`, which does not exist — so the cached restricted plan was
+         never rebuilt and the omnivore floor read one meal too. */
+      const keep = { d: STATE.nutrition.diet, a: STATE.nutrition.allergens, p: STATE.nutrition.plan };
+      const read = () => { openGrocery(); const t = (document.querySelector('#sheet') || {}).innerText || ''; closeSheet(); return t; };
+      STATE.nutrition.diet = 'vegan';
+      STATE.nutrition.allergens = ['soy', 'treenut', 'peanut', 'gluten'];
+      STATE.nutrition.plan = null;
+      const count = () => currentMealPlan().meals.map(recipeById).filter(Boolean).length;
+      const n1 = count();
+      const one = read();
+      STATE.nutrition.diet = 'omnivore'; STATE.nutrition.allergens = [];
+      STATE.nutrition.plan = null;
+      const n2 = count();
+      const many = read();
+      STATE.nutrition.diet = keep.d; STATE.nutrition.allergens = keep.a;
+      STATE.nutrition.plan = keep.p;
+      return { n1, n2, one: one.slice(0, 90), many: many.slice(0, 90) };
+    });
+    t.eq('guard: the restricted diet really leaves one meal on the plan', groc.n1, 1,
+      JSON.stringify(groc));
+    t.ok('guard: and an ordinary diet leaves several', groc.n2 > 1, JSON.stringify(groc));
+    t.ok('the grocery sheet says "1 meal", not "1 meals"',
+      /1 meal\b/.test(groc.one) && !/1 meals\b/.test(groc.one), groc.one);
+    /* THE FLOOR: a fix that dropped the s would say "3 meal". */
+    t.ok('and several meals keep the plural', new RegExp(groc.n2 + ' meals\\b').test(groc.many),
+      groc.many);
   }
 
   await browser.close();

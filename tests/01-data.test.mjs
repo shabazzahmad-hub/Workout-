@@ -865,10 +865,25 @@ export default async function run() {
         if (say.length) out.bad.push(mn + '.' + key + ': "' + d + '" -> ' + say.join('; '));
       });
     });
+    /* THE OPS BENCHMARKS ARE THE SAME SHAPE AND WERE NOT IN THE SWEEP — an
+       array rather than a map, so a scan written over five maps could not see
+       them. Each one states its round count in prose beside the `rounds` the
+       player actually runs. */
+    (typeof OPS !== 'undefined' ? OPS : []).forEach(o => {
+      const d = String(o.desc || '');
+      if (!d) return;
+      out.checked++;
+      const m = d.match(/(\d+)\s*rounds?\b/i);
+      if (m && o.rounds && +m[1] !== o.rounds)
+        out.bad.push('OPS.' + o.id + ': "' + d + '" -> count ' + m[1] + ' vs rounds=' + o.rounds);
+    });
+    out.opsSeen = (typeof OPS !== 'undefined' ? OPS : []).length;
     return out;
   });
   /* The guard is what makes an empty `bad` list mean anything: a sweep that
      matched no descriptions at all would report clean on nothing. */
+  t.ok('guard: the ops benchmarks were in the sweep', fmtProse.opsSeen >= 4,
+    JSON.stringify({ ops: fmtProse.opsSeen }));
   t.ok('guard: the sweep read real format descriptions', fmtProse.checked >= 15,
     JSON.stringify({ checked: fmtProse.checked }));
   t.eq('no format description contradicts its own work, rest or round count',

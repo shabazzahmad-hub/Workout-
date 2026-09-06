@@ -17681,6 +17681,45 @@ app content is not measuring what you named*, after `/true/` matching *truest*,
 excluded by name, and the guard now pins that sentence as one the detector must
 stay quiet on.
 
+## The third member, on a surface no sweep had opened (v460)
+
+v459 fixed the two plural sites it could see — the spoken brief and the
+session-history row — and swept every tab and pane with one of every record
+seeded. It came back clean and it was **not complete**.
+
+`openGrocery()` is not a tab, and the seeded athlete is not on a restricted
+diet. A **vegan avoiding soy, tree nuts, peanuts and gluten** is an ordinary
+athlete — v287 measured that exact combination — and only lunch survives the
+recipe filter, so the sheet read:
+
+> 🛒 Grocery list · Vegan · **from today's 1 meals** · tap to check off
+
+*A sweep is only as wide as the surface it enumerates*, and this one needed two
+things the last sweep had neither of: the sheet in its list, and the state that
+makes the count 1.
+
+**The floor is an omnivore's plan**, which must still say *"3 meals"* — a fix
+that dropped the `s` unconditionally passes every assertion about the restricted
+case and is caught there.
+
+### And the benchmarks were an ARRAY, so the description sweep never saw them
+
+v397's sweep compares a format's prose against its own numbers across **five
+maps**. `OPS` is an **array**, so `Object.keys(maps)` could not reach it — and
+every one of its four entries states a round count in prose (*"5 rounds for
+time"*) beside the `rounds` the player runs. They agree today; the sweep now
+includes them, with a guard that it really read four, and a seeded
+`desc:'6 rounds'` beside `rounds:5` fails by name.
+
+### And the check itself nulled a field that does not exist
+
+The floor read *"1 meal"* for an omnivore too, and the reason was the check:
+the stored plan is `nutrition.plan`, not `mealPlan`, so nulling the invented
+name left the cached restricted plan in place and `currentMealPlan()` returned
+it unchanged. **Confirm the control's real shape before believing the result** —
+twelfth time in this file, and the first where the wrong name made a FLOOR look
+like a defect rather than the other way round.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
