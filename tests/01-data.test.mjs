@@ -1965,6 +1965,22 @@ export default async function run() {
     t.ok('guard: the page carries a description meta tag', !!metaM, String(!!metaM));
     const blurbs = [['manifest', mf.description || ''], ['meta', metaM ? metaM[1] : '']];
 
+    /* AND THE CHECK READ ONE FIELD OF A FILE WITH TEN (v474). The blurb rule
+       has always read mf.description alone, while the manifest carries nine
+       more strings a store listing and an install prompt show: the name, the
+       short name, three screenshot labels and three shortcut names. A sweep is
+       only as wide as the surface it enumerates.
+       Nothing is wrong today. The one string that reads like a frequency claim
+       — "Today's session, built for you every day" — was MEASURED rather than
+       argued: on a day the athlete has picked off, isTrainingDay() is false and
+       Today still builds a full live session with a Start button. It is true. */
+    const storeText = [['manifest name', mf.name || ''], ['manifest short_name', mf.short_name || '']]
+      .concat((mf.screenshots || []).map((x, i) => ['screenshot label ' + (i + 1), x.label || '']))
+      .concat((mf.shortcuts || []).flatMap((x, i) => [
+        ['shortcut name ' + (i + 1), x.name || ''], ['shortcut short_name ' + (i + 1), x.short_name || '']]));
+    t.ok('guard: the sweep really reads every store-facing manifest string',
+      storeText.length >= 9 && storeText.every(([, v]) => v.length > 0), String(storeText.length));
+
     const total = await page.evaluate(() => SESSIONS_PER_CYCLE * TOTAL_CYCLES);
     t.eq('guard: the program really is 378 sessions', total, 378, String(total));
 
@@ -1994,6 +2010,83 @@ export default async function run() {
       DUR.test('gets you there in 9 months'), 'blind to months');
     t.ok('guard: the scan stays quiet on a blurb with no duration in it',
       !DUR.test('a 378-session home training program with a baseline assessment'), 'over-eager');
+
+    /* AND A FREQUENCY CLAIM IS THE SAME DEFECT ONE CLAUSE OVER (v474).
+       v473 fixed the DURATION claim in both blurbs and left a frequency claim
+       standing in one: the manifest said the plan "gets harder every week".
+       Measured over whole weeks, block 1 runs 3149 -> 3436 -> 2091, because
+       week 6 of every block is a scheduled deload — a 39% cut, by design, and
+       the app names it on screen. So the blurb contradicted the app's own
+       design, in the one kind of copy no rendered-surface sweep can reach.
+
+       Two arms, each about a cadence the app itself contradicts: work that
+       RISES on a fixed cadence, and training EVERY DAY (the wizard floors at
+       five). The guard below measures the deload rather than asserting it —
+       without that, the ban is a statement about a regex. */
+    const RISE = /\b(?:harder|heavier|tougher|more|increases?|climbs?|rises?|progresses?)\s+(?:\w+\s+){0,2}every\s+(?:week|day|session|workout|time)\b/i;
+    const DAILY = /\b(?:train|trains|training|work\s*out|workouts?|exercise)\w*\s+every\s+(?:single\s+)?day\b/i;
+    blurbs.forEach(([where, txt]) => {
+      t.ok('the ' + where + ' blurb claims no fixed rate of progression',
+        !RISE.test(txt), txt.slice(0, 200));
+      t.ok('and the ' + where + ' blurb does not claim training every day',
+        !DAILY.test(txt), txt.slice(0, 200));
+    });
+
+    /* THE GUARD IS THE FINDING: the app really does schedule a lighter week,
+       so the banned sentence really was false. Measured over the WHOLE week,
+       because total volume is not comparable across session types. */
+    const dl = await page.evaluate(() => {
+      const wk = (c, w) => { let u = 0;
+        for (let d = 0; d < SESSIONS_PER_WEEK; d++) {
+          const s = buildSession((c * SESSIONS_PER_CYCLE) + ((w - 1) * SESSIONS_PER_WEEK) + d);
+          [...s.main, s.finisher].forEach(m => { if (m) u += (m.sets || 0) * (m.target || 0); });
+        }
+        return u; };
+      const rows = [];
+      for (let c = 0; c < TOTAL_CYCLES; c++) {
+        const last = (c * SESSIONS_PER_CYCLE) + ((WEEKS_PER_CYCLE - 1) * SESSIONS_PER_WEEK);
+        rows.push({ block: c + 1,
+          isDeload: deloadOn(posOf(last)) === true,
+          beforeIsNot: deloadOn(posOf(last - SESSIONS_PER_WEEK)) === false,
+          five: wk(c, WEEKS_PER_CYCLE - 1), six: wk(c, WEEKS_PER_CYCLE) });
+      }
+      return { rows, blocks: TOTAL_CYCLES };
+    });
+    /* THE SENTENCE SAYS "EVERY BLOCK", SO THE GUARD WALKS EVERY BLOCK. Measured:
+       the drop runs 33-41% across all nine. A guard that proved it for block 1
+       alone would leave the copy claiming more than the check backs, which is
+       the class this round is about. */
+    t.eq('guard: the sweep walked every block', dl.rows.length, dl.blocks, String(dl.rows.length));
+    const noDeload = dl.rows.filter(r => !r.isDeload).map(r => r.block);
+    t.eq('guard: the last week of EVERY block really is a scheduled deload', noDeload.length, 0, JSON.stringify(noDeload));
+    const beforeBad = dl.rows.filter(r => !r.beforeIsNot).map(r => r.block);
+    t.eq('guard: the week before it is not, in every block', beforeBad.length, 0, JSON.stringify(beforeBad));
+    const noEase = dl.rows.filter(r => !(r.six > 0 && r.five > 0 && r.six < r.five * 0.85))
+      .map(r => ({ b: r.block, five: r.five, six: r.six }));
+    t.eq('guard: the whole week really eases in every block, so "harder every week" was false',
+      noEase.length, 0, JSON.stringify(noEase));
+
+    /* FLOORS: each arm proven to catch its own shape, and proven quiet on the
+       truthful sentence that replaced it and on a plain description. */
+    t.ok('guard: the scan reports a rising-cadence claim when there is one',
+      RISE.test('an auto-generated plan that gets harder every week'), 'blind to the rise');
+    t.ok('guard: it catches the same claim worded another way',
+      RISE.test('the load increases every session'), 'blind to the rise');
+    t.ok('guard: the scan reports a train-every-day claim when there is one',
+      DAILY.test('a session to train every day of the week'), 'blind to daily');
+    t.ok('guard: the scan stays quiet on the lighter-week sentence',
+      !RISE.test('with a lighter week built into every block'), 'over-eager');
+    t.ok('guard: the scan stays quiet on an ordinary description',
+      !RISE.test('progressive full-body strength, calisthenics and HIIT') &&
+      !DAILY.test('progressive full-body strength, calisthenics and HIIT'), 'over-eager');
+
+    /* The same three arms over the rest of the manifest. No session count is
+       required of these — a shortcut name has no room for one. */
+    storeText.forEach(([where, txt]) => {
+      t.ok('the ' + where + ' claims no fixed duration in time', !DUR.test(txt), txt.slice(0, 120));
+      t.ok('the ' + where + ' claims no fixed rate of progression', !RISE.test(txt), txt.slice(0, 120));
+      t.ok('the ' + where + ' does not claim training every day', !DAILY.test(txt), txt.slice(0, 120));
+    });
   }
 
   /* ---- every hand-written pool names a real movement (v441) --------------
