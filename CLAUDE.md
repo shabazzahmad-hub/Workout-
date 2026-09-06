@@ -17720,6 +17720,44 @@ it unchanged. **Confirm the control's real shape before believing the result** �
 twelfth time in this file, and the first where the wrong name made a FLOOR look
 like a defect rather than the other way round.
 
+## Four counts in the worker's own prose, all stale (v460)
+
+`sw.js` is 379 lines and every one of them is load-bearing. Four of its comments
+stated a number, and every one had drifted as the library grew:
+
+| the comment said | measured |
+|---|---|
+| *"await all **191 assets** — about 11 MB"* | **250** in the tiers |
+| *"the **nine** baseline tests"* | **ten** since v252 — and the same file says *"Burpees arrived as the tenth test"* **fourteen lines below** |
+| *"the **thirteen** .mp4 files"* | **17** |
+| *"~**180** sequential cache lookups"* | one per file in the pack |
+
+Nothing here reaches an athlete, and that is the whole difference: in
+athlete-facing copy this class produced a **wrong published military standard**
+(v397); in a comment it costs the next reader instead. It cost one here — the
+counts had to be measured before the file could be trusted.
+
+**The fix is to stop stating them, not to update them.** A number beside a list
+that grows will be stale again next round; the comments describe the shape now.
+
+### The detector was wrong in both directions before it was right
+
+- It forbade `N MB` and flagged the **2 MB install budget** — a fixed constant,
+  not a count of anything. *A detector that matches ordinary prose is not
+  measuring what you named*, seventh entry.
+- It required the noun immediately after the number, so it **could not see
+  "the nine BASELINE tests"** — the very defect it was written for. Up to two
+  intervening words are allowed now, and the guard pins both shapes.
+- And my own new comment explaining the rule said *"declaring **two assets**
+  that do not exist"*, which the rule forbids. **Reword the prose, never weaken
+  the check** — eighth time, and the second where the offending comment was the
+  one describing the rule.
+
+**And an example FILE PATH must never appear in that file's prose**, for a
+separate reason already recorded: the precache tiers are parsed by pulling every
+quoted asset name out of `sw.js`, comments included, so an illustrative path
+declares an asset that does not exist and CI goes red.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
