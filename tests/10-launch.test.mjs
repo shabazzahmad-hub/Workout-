@@ -889,6 +889,80 @@ const { browser, page, errors } = await launch(port);
     /After 8 weeks you re-test/.test(re.five), re.five.slice(-90));
 }
 
+/* ---- what may vary with the SCHEDULE, and what may not ------------------
+   The class check for v467-v470. Four rounds ran on one confusion: a PROGRAM
+   week is a piece of the plan and a CALENDAR week is real time, and only the
+   second depends on how often the athlete trains. Each round fixed one
+   sentence; this pins the property underneath all four.
+
+   Measured across every tab and pane: exactly TWO screens in the app change
+   when the schedule does — the Program tab's calendar duration (54 weeks at
+   seven a week, 76 at five) and the Progress "This week" denominator, which
+   appears twice in the list because that tab's default pane is Summary. The
+   spoken brief is identical by design after v468 and v469, which is the whole
+   point of those rounds.
+
+   ALLOWLISTED BOTH WAYS, the v390 shape: a surface that STARTS varying fails
+   (that is v468's defect — the brief spoke the calendar duration), and a listed
+   one that STOPS varying fails too (that is v467's, if the subtitle were
+   hardcoded back). Neither direction is catchable by the other.
+
+   A CONTROL RUN excludes anything that is merely unstable: the seven-day sweep
+   runs twice, and a surface that differs from itself is dropped before the
+   comparison — otherwise a randomly-picked meal would read as a schedule
+   difference. */
+{
+  const sched = await page.evaluate(() => {
+    const nums = t => (String(t).match(/\b\d[\d,.]*\b/g) || []).join(' ');
+    const sweep = days => {
+      const keepD = STATE.profile.days, keepP = STATE.progressPtr;
+      STATE.profile.days = days; STATE.progressPtr = 20; normalizeState();
+      const out = {};
+      const grab = (name, fn) => { fn(); const v = document.querySelector('.view.active');
+        out[name] = nums(v ? v.innerText : ''); };
+      /* Every sub-pane is reset first: a pane left set by the previous sweep
+         makes the same TAB render a different screen, which reads as a
+         schedule difference and is not one. */
+      go('today'); setTodayTab('brief'); go('progress'); setProgressTab('summary');
+      try { setRefTab('food'); } catch (e) {}
+      ['today', 'program', 'progress', 'fuel', 'ref', 'guide'].forEach(t => grab(t, () => go(t)));
+      ['brief', 'warmup', 'workout', 'cooldown'].forEach(p => grab('today:' + p, () => { go('today'); setTodayTab(p); }));
+      ['summary', 'body', 'strength', 'awards'].forEach(p => grab('prog:' + p, () => { go('progress'); setProgressTab(p); }));
+      out['spoken brief'] = nums(briefSegments().map(x => x.say).join(' '));
+      STATE.profile.days = keepD; STATE.progressPtr = keepP; normalizeState();
+      return out;
+    };
+    const SEVEN = [0, 1, 2, 3, 4, 5, 6], FIVE = [1, 2, 4, 5, 6];
+    const a = sweep(SEVEN), b = sweep(FIVE), a2 = sweep(SEVEN);
+    const keys = Object.keys(a);
+    const unstable = keys.filter(k => a[k] !== a2[k]);
+    const differs = keys.filter(k => unstable.indexOf(k) < 0 && a[k] !== b[k]).sort();
+    const o = { keys: keys.length, unstable, differs };
+    STATE.profile.days = SEVEN; normalizeState(); o.sevenTarget = weeklyTarget(); o.sevenWeeks = programWeeks();
+    STATE.profile.days = FIVE; normalizeState(); o.fiveTarget = weeklyTarget(); o.fiveWeeks = programWeeks();
+    return o;
+  });
+  /* GUARDS: without these the whole block passes on a sweep that visited
+     nothing, or on two schedules that are the same program. */
+  s.ok('guard: the sweep visited every tab and pane', sched.keys >= 15, JSON.stringify({ keys: sched.keys }));
+  s.eq('guard: the two schedules really are different programs',
+    sched.sevenTarget + '/' + sched.sevenWeeks + ' vs ' + sched.fiveTarget + '/' + sched.fiveWeeks,
+    '7/54 vs 5/76', JSON.stringify(sched));
+  s.ok('guard: and almost nothing is merely unstable between two identical sweeps',
+    sched.unstable.length <= 2, JSON.stringify(sched.unstable));
+
+  /* Three entries, TWO screens: the Progress tab's default pane IS Summary, so
+     the "This week" tile is counted once as the tab and once as the pane. */
+  s.eq('exactly two screens change with the schedule, and both should',
+    sched.differs.join(', '), 'prog:summary, program, progress', JSON.stringify(sched));
+  /* Named so a failure says WHICH half broke. The brief is the one v468 and
+     v469 took OFF this list, and it must stay off it. */
+  s.ok('the spoken brief is identical on both schedules',
+    sched.differs.indexOf('spoken brief') < 0, JSON.stringify(sched.differs));
+  s.ok('the Program tab still varies — its figure is a calendar duration',
+    sched.differs.indexOf('program') >= 0, JSON.stringify(sched.differs));
+}
+
 /* ---- v467: the elapsed claims ask the athlete, not the constant ----------
    A rendered check cannot see a consumer that reverts to WEEKS_PER_CYCLE on a
    seven-day athlete, where the two agree — and the drop sheet is built inside

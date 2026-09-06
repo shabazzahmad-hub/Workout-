@@ -18364,6 +18364,32 @@ Both floors matter because the over-eager fix here is real: marking the current
 cell by eating its icon is what `done` already does, and it would cost the
 athlete the one glyph that says WHICH session is next.
 
+### And the class the four rounds opened is now pinned
+
+v467-v470 each fixed one sentence. The property underneath all four is:
+**only a CALENDAR figure may change when the schedule does.** Measured across
+every tab and pane, at seven sessions a week against five, exactly **two
+screens** differ — the Program tab's duration (54 against 76) and the Progress
+*"This week"* denominator. **The spoken brief is identical, which is precisely
+what v468 and v469 were for.**
+
+**Allowlisted BOTH WAYS**, the v390 shape, because neither direction catches the
+other: a screen that STARTS varying is v468's defect (the brief spoke the
+calendar duration), and a listed one that STOPS varying is v467's (the subtitle
+hardcoded back). Seeded both — and the mutant that hardcodes the *Progress*
+tile's weekly target is caught by **this check and nothing else**, which is what
+it earns its keep for.
+
+**A CONTROL RUN is what makes it honest.** The seven-day sweep runs twice and
+any surface that differs from itself is dropped before the comparison —
+otherwise a randomly-picked meal reads as a schedule difference. Guards pin that
+the sweep visited every pane, that the two schedules really are different
+programs, and that almost nothing was excluded as unstable.
+
+**And two entries are one screen**: the Progress tab's default pane IS Summary,
+so the same tile is counted as the tab and as the pane. Recorded rather than
+special-cased, because a reader of the expected list would otherwise wonder.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
