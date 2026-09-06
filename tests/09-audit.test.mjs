@@ -5220,6 +5220,90 @@ export default async function run() {
     await ctx.close();
   }
 
+
+  /* ---- a heading must not promise what its own card denies (v473) --------
+     Settings carried, as a section label:
+
+         See results in 6 weeks
+
+     and four lines below it, in bold, inside the SAME card:
+
+         neither is a six-week six-pack
+
+     The card then gives two real figures and NEITHER is six weeks: the tape
+     moves in 3-4 weeks, and visible abs is 6-9 months. So the heading was
+     wrong in both directions at once, depending on which result you read it
+     as — it OVERSTATED the wait for the number the app tells you to watch and
+     UNDERSTATED the wait for the thing "see results" most naturally means.
+
+     The number was ambiguous the way v467 records, too: 6 is WEEKS_PER_CYCLE,
+     a PROGRAM week, and a five-day athlete takes EIGHT calendar weeks over one
+     block. Measured: it was the ONLY section label in the app stating a
+     timeframe by hand — every other one derives it or names a real rolling
+     window ("Last 7 days").
+
+     Both halves are pinned. Deleting the honest note would resolve the
+     contradiction in the direction that costs the athlete the truth, and it
+     satisfies every assertion about the heading. */
+  {
+    const ctx = await tzb.newContext();
+    const pg = await ctx.newPage();
+    await pg.goto(`http://127.0.0.1:${port}/index.html`);
+    await waitForBoot(pg);
+    await seedAthlete(pg);
+    const r = await pg.evaluate(() => {
+      go('guide');
+      const v = document.getElementById('v-guide');
+      const strip = h => h.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+      const labels = [...v.querySelectorAll('.section-label')].map(e => (e.textContent || '').trim());
+      // the card that carries the honest note, found by the note rather than by position
+      const note = [...v.querySelectorAll('.note')].map(e => strip(e.innerHTML))
+        .find(x => /six-week six-pack/i.test(x)) || '';
+      const card = note ? (() => {
+        const el = [...v.querySelectorAll('.card')].find(c => /six-week six-pack/i.test(c.innerHTML));
+        return el ? strip(el.innerHTML) : '';
+      })() : '';
+      // the heading immediately above that card
+      const cardEl = [...v.querySelectorAll('.card')].find(c => /six-week six-pack/i.test(c.innerHTML));
+      let head = '';
+      if (cardEl) { let p = cardEl.previousElementSibling;
+        while (p && !p.classList.contains('section-label')) p = p.previousElementSibling;
+        head = p ? (p.textContent || '').trim() : ''; }
+      // every section label on the tab, and whether any states a timeframe by hand
+      const TF = /\b\d+\s*(?:week|weeks|day|days|month|months|year|years)\b/i;
+      const timed = labels.filter(l => TF.test(l) && !/^last \d+ days?$/i.test(l));
+      return { labels, head, note, card, timed,
+               wkPerCycle: WEEKS_PER_CYCLE, blockAtFive: (() => {
+                 const keep = STATE.profile.days.slice();
+                 STATE.profile.days = [1, 2, 4, 5, 6];
+                 const b = blockWeeks(); STATE.profile.days = keep; return b; })() };
+    });
+
+    t.ok('guard: the Settings tab really rendered its section labels', r.labels.length >= 4, String(r.labels.length));
+    t.ok('guard: the honest note is on the card being checked', /six-week six-pack/i.test(r.note), r.note.slice(0, 90));
+    t.eq('guard: a block really is 6 PROGRAM weeks', r.wkPerCycle, 6, String(r.wkPerCycle));
+    t.eq('guard: and takes 8 CALENDAR weeks at the wizard floor of five a week', r.blockAtFive, 8, String(r.blockAtFive));
+
+    t.ok('the heading above the honest note promises no timeframe of its own',
+      !!r.head && !/\b\d+\s*(?:week|weeks|day|days|month|months|year|years)\b/i.test(r.head), r.head);
+    t.ok('and it does not say "see results in"',
+      !/see results in/i.test(r.head), r.head);
+    /* FLOORS: the card keeps both real figures, and keeps the sentence that
+       makes the heading honest. An over-eager fix that deleted the note
+       satisfies every assertion above. */
+    t.ok('FLOOR: the card still says a six-week six-pack is not real',
+      /six-week six-pack/i.test(r.card), r.card.slice(0, 120));
+    t.ok('FLOOR: and still gives the figure it tells you to watch — the tape, in 3-4 weeks',
+      /tape to move in 3.4 weeks/i.test(r.card), r.card.slice(0, 200));
+    t.ok('FLOOR: and still gives the honest figure for visible abs — 6-9 months',
+      /6.9 months/i.test(r.card), r.card.slice(0, 200));
+    /* And the CLASS, not the instance: no section label anywhere on the tab
+       states a timeframe by hand. "Last 7 days" is a real rolling window and
+       is named as the one exception. */
+    t.eq('no section label on Settings states a timeframe by hand', r.timed.length, 0, r.timed.join(' | '));
+    await ctx.close();
+  }
+
   await tzb.close();
 
   srv.close();

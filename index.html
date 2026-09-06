@@ -20,7 +20,7 @@
 <link rel="icon" href="icon-192-v2.png">
 <link rel="apple-touch-icon" href="icon-180-apple.png">
 <link rel="manifest" href="manifest.webmanifest">
-<meta name="description" content="CoreForge — a home training program that starts with 6 weeks of core, abs and HIIT for a flat stomach and no love handles, then expands into full-body strength (chest, back, shoulders, arms, legs) plus HIIT. Baseline assessment, week-to-week progression, self-saving. Offline-ready, installs to your home screen.">
+<meta name="description" content="CoreForge — a 378-session home training program. Abs, core and HIIT first for a flat stomach and no love handles, then full-body strength (chest, back, shoulders, arms, legs) plus HIIT. Baseline assessment, progressive overload, self-saving. Offline-ready, installs to your home screen.">
 <title>CoreForge — 1-Year Full-Body Program</title>
 <style>
   /* Self-hosted Archivo (variable, latin subset) — bundled so the app renders in
@@ -591,8 +591,10 @@
    - Baseline assessment (day 1) -> Core Score + level + personal maxes
    - Auto-generated program, progressive overload week-to-week
    - Auto-regulating: adapts next week from how hard sessions felt
-   - 9 six-week blocks: abs/core/HIIT (weeks 1-6) then full-body strength
-   - Re-assessment each 6-week block -> keeps scaling for the whole program
+   - 9 blocks of 42 sessions: abs/core/HIIT for block 1, then full-body
+     strength (a block is 6 PROGRAM weeks of 7 slots; how many CALENDAR
+     weeks that takes is blockWeeks(), 6 at seven a week and 8 at five)
+   - Re-assessment each block -> keeps scaling for the whole program
    - Self-saving: localStorage + IndexedDB mirror + persistent storage
    ========================================================================= */
 
@@ -2006,7 +2008,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='472';
+const APP_VERSION='473';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -22638,7 +22640,17 @@ function renderGuide(){
     <button class="btn primary" onclick="openProfileEdit()">✎ Edit my profile &amp; goals</button>
   </div>`;
   // results guidance
-  h+=`<div class="section-label">See results in 6 weeks</div>
+  /* THE HEADING PROMISED A DATE THE CARD BELOW IT DENIES. Four lines under
+   "See results in 6 weeks" the same card says, in bold, "neither is a
+   six-week six-pack" — and then gives two real figures, neither of which
+   is six weeks: the tape moves in 3-4 weeks, and visible abs is 6-9
+   months. So the heading was wrong in BOTH directions at once, depending
+   on which result you read it as, and it was the only section label in
+   the app stating a timeframe by hand. The number was also ambiguous in
+   the way v467 records: 6 is WEEKS_PER_CYCLE, a PROGRAM week, and a
+   five-day athlete takes 8 calendar weeks over one. The label now names
+   the topic and the card keeps the two honest figures. */
+h+=`<div class="section-label">What changes, and when</div>
   <div class="card pad">
     <p class="sm" style="margin-top:0"><b>The muscle:</b> this program builds and strengthens your abs, obliques and deep core fast — you'll feel real strength and tightness within 2–3 weeks, and your waist measurement should start dropping.</p>
     <p class="sm"><b>The look:</b> visible abs = strong core muscle <i>plus</i> lower body fat. To reveal what you're building:</p>
