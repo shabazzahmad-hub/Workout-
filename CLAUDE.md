@@ -17547,6 +17547,24 @@ control's real shape before believing the result.**
 control one surface ignores — it is gated on `settings.weeklyOn!==false`, exactly
 as the card and the push are. **Read the condition before believing it.**
 
+### Two drivers armed on one directory, by a session that resumed
+
+`chain456.sh` was written to run five mutation drivers in sequence because the
+per-round waiter shells looked dead. **Five of them were alive** — one per round,
+each still blocked on `grep -qE "^done$" mutNNN.log` from before the context was
+compacted. So the moment the running driver finished, the old waiter and the new
+chain would both have started `mut452.py` **on the same directory**, which is the
+one thing this file already forbids: each restores its own clean file over the
+other's seed, and every result after that is void.
+
+The rule was one driver per directory. **The corollary is that a resumed session
+must ENUMERATE and kill every stale waiter before arming a new chain** — a
+sleeping `bash -c` waiting on a log file is not visible in the mutation logs and
+looks like nothing at all. `ps -eo pid,args` shows them; kill by PID.
+
+And a mutation copy needs `node_modules` — `find . -maxdepth 1 -type f` copies
+every file in the root, which is v428's lesson, and copies no directory at all.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
