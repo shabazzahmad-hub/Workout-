@@ -18390,6 +18390,88 @@ programs, and that almost nothing was excluded as unstable.
 so the same tile is counted as the tab and as the pane. Recorded rather than
 special-cased, because a reader of the expected list would otherwise wonder.
 
+## "Your history stays saved" was true of the logs and not the measurements (v471)
+
+v208 fixed that sentence once: `restartProgram()` used to clear `STATE.logs`,
+so twelve sessions, a streak and a lit heatmap all went to zero beside a confirm
+promising they would not. The fix was to ARCHIVE the run into `STATE.runs` and
+have every lifetime counter read both. **It archived the logs and deleted the
+measurements**, and nobody came back — the one-instance fix this file keeps
+recording.
+
+Measured on an athlete with a January baseline and two re-tests:
+
+| | before | after a restart |
+|---|---|---|
+| `assessSeries()` | **3 points** | **0** |
+| the STRENGTH TRENDS section | rendered | **gone** |
+| `scoreHistory` | 3 rows | 3 rows (nothing plots them here) |
+
+Four months of measured plank, push-up, pull and squat numbers, deleted by one
+confirm. **The confirm does warn that the BASELINE goes** — that is true and is
+the point of a fresh block. It says nothing about the history of every max the
+athlete has ever recorded, and *"your history stays saved"* is the sentence
+directly beside it.
+
+**ONLY THE CHART READS THE ARCHIVE, and that is the whole design.**
+`currentMaxes()`, `levelOf()` and every prescription path still see an athlete
+with no baseline, so the re-test the confirm promises is real rather than a
+formality. Measured after the fix: the plank max the engine uses drops from the
+archived **100** back to the estimated **40**, the built session shrinks with
+it, and Today opens on the baseline gate. Two over-eager mutants — keeping the
+baseline live, and copying the archived one back into the live slot — each fail
+four of those floors.
+
+**NO SORT, deliberately.** Runs are appended in order and a baseline always
+precedes its own block's re-tests, so the list is chronological by construction
+— and a record whose junk date the boot repair dropped has no key to sort on,
+which a date sort would silently put first.
+
+**Archive on a baseline ALONE, not only on logged sessions.** An athlete who
+measured themselves and restarted before training would otherwise lose the one
+thing they had recorded, which is the same reasoning the existing comment gives
+for archiving part-finished runs.
+
+### The archived copies take the same repair, because the runs repair is a SPREAD
+
+That is v418's finding — *the archived run is the twin nobody scrubs* — and
+this round would have created it fresh: the archived date and score reach
+`lineChart()` through `assessSeries()` exactly as the live ones do, and v417
+measured what an unrepaired one there costs (a non-string threw inside the
+render and Progress died permanently; a string was interpolated unescaped and
+arbitrary script RAN). `_runRecords()` is one walk, asked by BOTH `_lvFix` and
+`_maxFix`, so neither can be taught about the archive and the other forgotten.
+
+### The mutant that was caught by a THROW
+
+Dropping the measurements from the archive left `STATE.runs[0].baseline`
+undefined, and the scrub section three lines later dereferenced it — so the run
+went red reporting *"the test file itself threw"* rather than naming a check.
+Still a catch, and **red is not enough, it has to say what**. A guard sits
+immediately before the first dereference now and returns the partial result;
+seeded again, the same mutant fails **ten checks by name**.
+
+Eight mutants, all caught.
+
+### Two sweeps that came back clean beside it
+
+- **Every writer that changes STATE without saving.** 53 zero-arg writers
+  driven, 16 changed STATE, and the only four that did not reach storage
+  (`syncProteinHabit`, `syncWaterHabit`, `syncDerivedHabits`, `noteGoalPhase`)
+  are helpers whose every caller saves — read one by one. The deficit clock set
+  at boot **does** persist, driven across a real reload rather than reasoned.
+- **Every screen after a restart.** 14 panes, no `NaN`, no `undefined`, no
+  `Invalid Date`, no throw; 40 logs archived into one run with the lifetime
+  count still reading 40.
+
+**And four probe errors in one afternoon, all the same rule.** `_shredStart`
+lives on `profile`, not `nutrition`, so the first clock probe read `null` and
+reported a defect that was not there. A phase-label regex stopped at the `·`
+and reported *"Phase 1"* where the app says *"Phase 1 · Core & Abs"*. A
+caller-scan's brace matching over-ran and attributed `askActual` to `_ve`. And
+`fmtTime` past an hour prints `61:01` rather than `1:01:01` — unusual, not
+wrong. **Confirm the control's real shape before believing the result.**
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

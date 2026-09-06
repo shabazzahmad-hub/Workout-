@@ -909,6 +909,97 @@ export default async function run() {
     t.eq('while the finished run is archived, not deleted', restart.runsArchived, 1, restart);
     t.ok('with its logged sessions kept', restart.archivedRowsKept > 0, restart);
 
+    /* ---- the measurements are archived too, not deleted (v471) ----------
+       v208 fixed "your history stays saved" for the LOGS and left the baseline
+       and the re-tests behind — the one-instance fix this file keeps
+       recording. Measured on an athlete with a January baseline and two
+       re-tests: assessSeries() went from 3 points to 0 and the whole STRENGTH
+       TRENDS section vanished, taking four months of measured plank, push-up,
+       pull and squat numbers with it.
+
+       The confirm warns that the BASELINE goes, which is true and is the point
+       of a fresh block. It says nothing about the history of every max the
+       athlete has ever recorded, and "your history stays saved" is the
+       sentence directly beside it. */
+    const arch = await page.evaluate(() => {
+      window.confirm = () => true;
+      const mk = (d, sc, mx) => ({ date: d, score: sc, level: 'Advanced', testCount: 10, subs: {}, maxes: mx });
+      const M = { plank: 100, push: 30, pull: 12, squat: 40, side: 60, hollow: 45, lower: 20, dyn: 40, power: 18, stamina: 15 };
+      const M2 = { plank: 140, push: 45, pull: 20, squat: 60, side: 80, hollow: 65, lower: 32, dyn: 56, power: 26, stamina: 23 };
+      STATE.baseline = mk('2026-01-05', 70, M);
+      STATE.reassess = { 0: mk('2026-03-05', 80, M2) };
+      STATE.runs = []; STATE.progressPtr = 40; STATE.logs = {};
+      for (let p = 0; p < 40; p++) STATE.logs[p] = { done: true, date: todayISO() };
+      normalizeState();
+      const pane = () => { go('progress'); setProgressTab('strength');
+        return (document.querySelector('#v-progress').innerText || '').replace(/\s+/g, ' '); };
+      const o = {};
+      o.before = { points: assessSeries().length, trends: /STRENGTH TRENDS/i.test(pane()),
+        maxes: JSON.stringify(currentMaxes()) };
+      restartProgram();
+      o.after = { points: assessSeries().length, trends: /STRENGTH TRENDS/i.test(pane()),
+        maxes: JSON.stringify(currentMaxes()),
+        baselineNull: STATE.baseline === null,
+        liveReassess: Object.keys(STATE.reassess || {}).length,
+        runs: (STATE.runs || []).length,
+        archivedBaseline: !!(STATE.runs[0] || {}).baseline,
+        archivedReassess: Object.keys(((STATE.runs[0] || {}).reassess) || {}).length };
+      /* The block still opens on the baseline gate — the re-test is real. */
+      go('today'); setTodayTab('brief');
+      o.after.gate = /Baseline Test/i.test(document.querySelector('#v-today').innerText || '');
+      /* A record inside an archived run is repaired by the SAME walk as a live
+         one: the runs repair is a SPREAD, which is v418's finding.
+         GUARD BEFORE THE FIRST DEREFERENCE: the mutant that drops the
+         measurements from the archive leaves nothing here, and every line
+         below threw — the run went red without naming which check found it,
+         which this repo's own rule says is not enough. */
+      if (!(STATE.runs[0] && STATE.runs[0].baseline && STATE.runs[0].baseline.maxes)) {
+        o.scrub = { date: false, score: false, plank: false, kept: null, missing: true };
+        o.baselineOnly = { runs: 0, archived: false, missing: true };
+        return o;
+      }
+      STATE.runs[0].baseline.date = '<img src=x onerror="window.__pwn=1">';
+      STATE.runs[0].baseline.score = 99999;
+      STATE.runs[0].baseline.maxes.plank = 999999;
+      normalizeState();
+      const b = STATE.runs[0].baseline;
+      o.scrub = { date: b.date === undefined, score: b.score === undefined, plank: b.maxes.plank === undefined,
+        kept: b.maxes.push };
+      /* A baseline with NO logged sessions is still worth archiving. */
+      STATE.runs = []; STATE.logs = {}; STATE.baseline = mk('2026-06-01', 75, M); STATE.reassess = {};
+      restartProgram();
+      o.baselineOnly = { runs: (STATE.runs || []).length, archived: !!(STATE.runs[0] || {}).baseline };
+      return o;
+    });
+    /* GUARDS: the history has to be there before losing it can mean anything. */
+    t.eq('guard: the athlete really had three measured points', arch.before.points, 2, JSON.stringify(arch));
+    t.ok('guard: and the strength chart really rendered', arch.before.trends, JSON.stringify(arch.before));
+
+    t.eq('a restart KEEPS every measured point on the strength chart',
+      arch.after.points, arch.before.points, JSON.stringify(arch));
+    t.ok('so the chart is still on the screen afterwards', arch.after.trends, JSON.stringify(arch.after));
+    t.ok('the finished run carries its baseline into the archive', arch.after.archivedBaseline, JSON.stringify(arch.after));
+    t.eq('and its re-tests with it', arch.after.archivedReassess, 1, JSON.stringify(arch.after));
+
+    /* THE FLOORS. Only the CHART reads the archive: the new block must start
+       with nothing measured, or the re-test the confirm promises is a
+       formality and the athlete is prescribed off last block's numbers. */
+    t.ok('the new block still has no live baseline', arch.after.baselineNull, JSON.stringify(arch.after));
+    t.eq('and no live re-tests', arch.after.liveReassess, 0, JSON.stringify(arch.after));
+    t.ok('Today still opens on the baseline gate', arch.after.gate, JSON.stringify(arch.after));
+    t.ok('and the prescription falls back to the ESTIMATE, not the archived maxes',
+      arch.after.maxes !== arch.before.maxes && !/\b100\b/.test(arch.after.maxes),
+      JSON.stringify({ before: arch.before.maxes, after: arch.after.maxes }));
+
+    /* The archived copies take the same repair as the live ones. */
+    t.ok('a junk date inside an archived record is scrubbed', arch.scrub.date, JSON.stringify(arch.scrub));
+    t.ok('so is an out-of-band score', arch.scrub.score, JSON.stringify(arch.scrub));
+    t.ok('and an out-of-band max', arch.scrub.plank, JSON.stringify(arch.scrub));
+    t.eq('while a real max beside it survives', arch.scrub.kept, 30, JSON.stringify(arch.scrub));
+
+    t.eq('a baseline with no logged sessions is archived too', arch.baselineOnly.runs, 1, JSON.stringify(arch.baselineOnly));
+    t.ok('and carries the measurement', arch.baselineOnly.archived, JSON.stringify(arch.baselineOnly));
+
     /* restartProgram() nulls the baseline, so every block after this one would
        render the assessment gate instead of a workout. Each block builds the
        state it asserts on — and a block that DESTROYS shared state has to put

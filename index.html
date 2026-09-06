@@ -2001,7 +2001,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='470';
+const APP_VERSION='471';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4665,10 +4665,30 @@ function restartProgram(){
      an athlete is least able to re-create — was dropped on the floor by a
      confirm that says "Your history stays saved". `sessions` still counts only
      completed ones, because that is what every lifetime counter means by it. */
+  /* THE MEASUREMENTS GO INTO THE ARCHIVE TOO, and until v471 they were simply
+     deleted. v208 fixed "your history stays saved" for the LOGS and left the
+     baseline and the re-tests behind — the same one-instance fix this file
+     keeps recording. Measured on an athlete with a January baseline and two
+     re-tests: assessSeries() went from 3 points to 0 and the whole STRENGTH
+     TRENDS section vanished, taking four months of measured plank, push-up,
+     pull and squat numbers with it. The confirm warns that the BASELINE goes,
+     which is true and is the point of a fresh block; it says nothing about the
+     history of every max the athlete has ever recorded, and "your history
+     stays saved" is the sentence directly beside it.
+
+     ONLY THE CHART READS THE ARCHIVE. currentMaxes(), levelOf() and every
+     prescription path still see a fresh athlete with no baseline, which is
+     what makes the re-test real — see the floors in suite 09. */
   const _done=Object.values(STATE.logs||{}).filter(l=>l&&l.done).length;
-  if(Object.keys(STATE.logs||{}).length>0){
+  const _hadReassess=STATE.reassess&&typeof STATE.reassess==='object'&&Object.keys(STATE.reassess).length>0;
+  /* Archive on a baseline alone, not only on logged sessions: an athlete who
+     measured themselves and restarted before training would otherwise lose the
+     one thing they had recorded — the same reasoning the comment above gives
+     for archiving part-finished runs. */
+  if(Object.keys(STATE.logs||{}).length>0||STATE.baseline||_hadReassess){
     if(!Array.isArray(STATE.runs))STATE.runs=[];
-    STATE.runs.push({endedAt:todayISO(),sessions:_done,logs:STATE.logs});
+    STATE.runs.push({endedAt:todayISO(),sessions:_done,logs:STATE.logs,
+      baseline:STATE.baseline||null,reassess:STATE.reassess||{}});
   }
   STATE.logs={};
   STATE.baseline=null;STATE.reassess={};STATE.progressPtr=0;STATE.weekFeel={};STATE.swaps={};
@@ -17999,6 +18019,25 @@ let strengthSel='plank';
 function setStrengthMetric(k){strengthSel=k;renderProgress();}
 function assessSeries(){
   const list=[];
+  /* ARCHIVED RUNS FIRST. restartProgram() moves the finished run into
+     STATE.runs, and until v471 the baseline and the re-tests inside it were
+     deleted rather than archived — so a restart erased the athlete's whole
+     strength history while the confirm beside it said "your history stays
+     saved". allDoneLogs() has spanned both for the lifetime counters since
+     v208; this is the same walk for the same reason.
+
+     NO SORT, deliberately: runs are appended in order and a baseline always
+     precedes its own block's re-tests, so the list is chronological by
+     construction — and a record whose junk date the boot repair dropped has no
+     key to sort on, which a date sort would silently put first. */
+  const _push=r=>{if(r&&r.maxes&&!r.deferred)list.push({date:r.date,maxes:r.maxes,subs:r.subs});};
+  (Array.isArray(STATE.runs)?STATE.runs:[]).forEach(run=>{
+    if(!run||typeof run!=='object')return;
+    _push(run.baseline);
+    const ra=run.reassess;
+    if(ra&&typeof ra==='object'&&!Array.isArray(ra))
+      Object.keys(ra).map(Number).sort((a,b)=>a-b).forEach(k=>_push(ra[k]));
+  });
   /* `subs` travels WITH the maxes. It was left behind here on the first
      attempt, so every metric read as "measured on a different movement" and
      the trend withheld a verdict on all of them — a marker that lives only in
@@ -23633,6 +23672,17 @@ function normalizeState(){
      over it would satisfy an "did the athlete measure a level?" test for ever,
      which is the voicePitch trap. `!== undefined` because absent is the
      contract, and a stored null is a junk key that travels in a backup. */
+  /* Every assessment record inside an archived run, flat — asked by both
+     repairs so neither can be taught about the archive and the other forgotten.
+     Guarded end to end because STATE.runs is whatever an import handed us. */
+  const _runRecords=()=>{const out=[];
+    (Array.isArray(STATE.runs)?STATE.runs:[]).forEach(r=>{
+      if(!r||typeof r!=='object')return;
+      if(r.baseline&&typeof r.baseline==='object')out.push(r.baseline);
+      const ra=r.reassess;
+      if(ra&&typeof ra==='object'&&!Array.isArray(ra))
+        Object.keys(ra).forEach(k=>{if(ra[k]&&typeof ra[k]==='object')out.push(ra[k]);});});
+    return out;};
   {const _lvFix=o=>{if(!o||typeof o!=='object')return;
      /* score and testCount, on the same three records and by the same walk.
         PRESENT-ONLY: an absent score is a real answer — skipBaseline() writes
@@ -23663,7 +23713,14 @@ function normalizeState(){
    _lvFix(STATE.baseline);
    if(STATE.reassess&&typeof STATE.reassess==='object'&&!Array.isArray(STATE.reassess))
      Object.keys(STATE.reassess).forEach(k=>_lvFix(STATE.reassess[k]));
-   if(Array.isArray(STATE.scoreHistory))STATE.scoreHistory.forEach(_lvFix);}
+   if(Array.isArray(STATE.scoreHistory))STATE.scoreHistory.forEach(_lvFix);
+   /* THE ARCHIVED COPIES GET THE SAME WALK. v471 put the baseline and the
+      re-tests into STATE.runs, and the runs repair is a SPREAD — v418's
+      finding, that an archived run is the twin nobody scrubs. Their dates and
+      scores reach lineChart() through assessSeries() exactly as the live ones
+      do, so they take the identical repair rather than a second one beside
+      it. */
+   _runRecords().forEach(_lvFix);}
   /* Both halves of a record, because the engine reads `maxes` and the finish
      screen reads `results` — bounding one would leave the app prescribing from
      the estimate while printing 99999 as the athlete's result, which is the
@@ -23677,7 +23734,8 @@ function normalizeState(){
          if(v===null)delete m[k]; else m[k]=v;});});};
    _maxFix(STATE.baseline);
    if(STATE.reassess&&typeof STATE.reassess==='object'&&!Array.isArray(STATE.reassess))
-     Object.keys(STATE.reassess).forEach(k=>_maxFix(STATE.reassess[k]));}
+     Object.keys(STATE.reassess).forEach(k=>_maxFix(STATE.reassess[k]));
+   _runRecords().forEach(_maxFix);}
   if(!Array.isArray(STATE.scoreHistory))STATE.scoreHistory=[];
   /* `typeof [] === 'object'`, so a bare typeof test lets an ARRAY through —
      and both of these are keyed maps, never lists. The archived-runs repair
