@@ -1995,7 +1995,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='467';
+const APP_VERSION='468';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -11182,15 +11182,26 @@ function briefSegments(){
      "Good evening" — one card, two answers, from the same clock. */
   const _gt=_briefGreet();
   const _briefTitle=/evening/i.test(_gt)?'Evening brief':(/afternoon/i.test(_gt)?'Afternoon brief':'Morning brief');
-  /* "your one-year build" was a hand-written duration beside the constant that
-     answers it — v348's own defect, on the one surface v348 and v354 did not
-     reach. 378 sessions is 54 weeks at SEVEN a week and the wizard's floor is
-     FIVE, so a five-day athlete is on 76 weeks: 17 months, not 12. And it is
-     SPOKEN, which v315's rule makes the worst place for it — an athlete cannot
-     double-check a figure they only ever hear. programWeeks() already derives
-     it from weeklyTarget(); the header chip has read it since v348. */
+  /* TWO UNITS ARE BOTH CALLED "WEEK", AND THIS SENTENCE HELD ONE OF EACH.
+     wkNum is a PROGRAM week — a position in the plan, 1..54, the same figure
+     the Progress ▸ Summary tile prints as "Week N /54" and the header chip
+     prints bare. programWeeks() is a CALENDAR duration, and it depends on how
+     often the athlete trains: 54 weeks at seven a week, 76 at the wizard's
+     five-day floor. Joined by "of", they read as one scale. Measured on a
+     five-day athlete standing on the LAST session of the program: the screen
+     said "Week 54 /54" and the coach said "week 54 of your 76-week build" —
+     twenty-two weeks that do not exist, spoken, which v315's rule makes the
+     worst place for it.
+
+     v457 was right that the duration must be derived rather than written by
+     hand ("your one-year build" was false for everyone below seven a week).
+     It put the derived figure next to a program-week ordinal, which is where
+     the two scales met. A position in the plan takes the STRUCTURAL total, so
+     both halves are program weeks and the brief agrees with the tile the
+     athlete can look at. The calendar duration is not lost — it is on the
+     Program tab, where it stands alone and can say what pace it assumes. */
   segs.push({icon:'🎖️',title:_briefTitle,
-    say:`${_gt}${who}. This is ${ADVISOR.short}, your coach. Here is your brief for today — week ${wkNum}, day ${dayNum} of your ${programWeeks()}-week build. Let's walk the plan.`});
+    say:`${_gt}${who}. This is ${ADVISOR.short}, your coach. Here is your brief for today — week ${wkNum} of ${WEEKS_PER_CYCLE*TOTAL_CYCLES}, day ${dayNum}. Let's walk the plan.`});
   // 2 — mission / transformation
   const goalW=STATE.profile.goalWeightLb, goalBF=STATE.profile.goalBodyFat, kg=latestWeightKg();
   const bf=(goalBF>0)?`, and body fat under ${goalBF} percent`:'';

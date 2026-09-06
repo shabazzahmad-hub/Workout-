@@ -18183,6 +18183,67 @@ seeded against either badge the mutant fails by name.
 
 Nine mutants, all caught.
 
+## Two units are both called "week", in one spoken sentence (v468)
+
+The greeting the coach **reads aloud** every morning said:
+
+> Here is your brief for today — week 12, day 3 of your 76-week build.
+
+`wkNum` is a **program week** — a position in the plan, 1..54, the same figure
+the Progress tile prints as `Week 12 /54` and the header chip prints bare.
+`programWeeks()` is a **calendar duration** and depends on the schedule: 54
+weeks at seven a week, **76** at the wizard's five-day floor. Joined by *"of"*,
+they read as one scale.
+
+Measured on a five-day athlete standing on the LAST session of the program:
+
+| | says |
+|---|---|
+| Progress tile, on screen | `Week 54 /54` — finished |
+| the coach, aloud | ***"week 54 of your 76-week build"*** |
+
+**Twenty-two weeks that do not exist**, on the last day of the plan, spoken —
+which v315's rule makes the worst place for it. A seven-day athlete hears
+`54 of 54` and is correct, so the two athletes got copy that differed only in
+the number, which is what kept it invisible: the v467 signature exactly.
+
+**v457 was right that the duration must be DERIVED** — *"your one-year build"*
+was false for everyone below seven a week. It put the derived figure beside a
+program-week ordinal, which is where the two scales met. **A position in the
+plan takes the STRUCTURAL total**, so both halves are program weeks and the
+brief agrees with the tile the athlete can look at. The calendar duration is
+not lost: it is on the Program tab, where it stands alone and can say what pace
+it assumes. Same rule as v467's *"a per-block figure must never be printed
+beside the whole-programme one"* — **one unit per sentence.**
+
+**The class has exactly one member, and that was swept rather than assumed.**
+Seven sites compute `(cycle*WEEKS_PER_CYCLE)+week`; six print a bare `Week N`
+with no denominator, the Progress tile pairs it with the structural total, and
+only the brief paired it with a calendar one.
+
+### The check that pinned the old wording, and the one that re-derived the tile
+
+v457's own block asserted *"the spoken brief names the 76-week program of a
+five-day athlete"* — the implementation, not the requirement — so it **failed
+on correct code**. Re-aimed rather than deleted, because its real subject
+survives: the duration must still derive from the schedule, and it is now
+asserted where it lives, on the Program tab. Sixth time a check has held old
+behaviour rather than caught a defect.
+
+**And the first version of the new check computed the tile's total itself**
+(`WEEKS_PER_CYCLE*TOTAL_CYCLES`), which is not an agreement test at all — a
+mutant that pointed the TILE at `programWeeks()` would have walked straight
+through. It reads the rendered tile off Progress ▸ Summary now, **found by its
+label rather than by position** (v288), and the mutant fails by name.
+
+**Two guards, because an agreement between two numbers is satisfied by two
+wrong ones**: the two schedules really are different programs (54 against 76),
+and the tile really printed a total to compare against.
+
+Six mutants, all caught, including the three over-eager twins: the day number
+dropped, the total dropped, and the fix applied to the Program tab instead
+(which satisfies every assertion about the brief and loses the honest duration).
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
