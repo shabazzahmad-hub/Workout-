@@ -12796,13 +12796,22 @@ export default async function () {
 
       /* FLOOR: a one-set movement still ticks after its one set, its label
          carries no set counter, and Play must not UNtick a movement that was
-         already checked off. */
-      q.items[3].target = 1; q.items[3].rest = 1; q.items[3].sets = 1;
-      quickState.done[3] = true;
-      quickPlay(3);
+         already checked off.
+
+         THE FIXTURE MOVED AND THE RULE DID NOT. This drove item 3 -- Side
+         Plank -- forced to one set, and v481 made that a shape the app cannot
+         produce: quickSets() rounds a PER-SIDE movement to an even count, so
+         the label correctly read "Side Plank \u00b7 set 1 of 2". Complete the
+         record; do not weaken the rule. Item 1 is two-sided, and the guard
+         below pins that it stays two-sided rather than drifting back. */
+      o.singleIsPerSide = sidePerSet(quickExId(q.items[1].exId));
+      o.perSideForcedToOne = quickSets({ exId: q.items[3].exId, sets: 1 });
+      q.items[1].target = 1; q.items[1].rest = 1; q.items[1].sets = 1;
+      quickState.done[1] = true;
+      quickPlay(1);
       o.labelSingle = (document.querySelector('#sheet .tt') || {}).textContent;
       await new Promise(r => setTimeout(r, 9000));
-      o.singleStillDone = !!quickState.done[3];
+      o.singleStillDone = !!quickState.done[1];
 
       q.items.forEach((it, i) => { it.target = keep[i].t; it.rest = keep[i].r; it.sets = keep[i].s; });
       closeSheet();
@@ -12830,6 +12839,9 @@ export default async function () {
     t.eq('its second set is named as such', run.repLabel2, run.names[2] + ' · set 2 of 2', run);
     t.ok('and the last one ticks it', run.repDoneAfterSet2, run);
 
+    t.ok('guard: the one-set floor drives a TWO-SIDED movement', !run.singleIsPerSide, run);
+    t.eq('and a per-side movement cannot be forced to a single set',
+      run.perSideForcedToOne, 2, run);
     t.ok('FLOOR: a one-set movement carries no set counter',
       !/set \d+ of/.test(run.labelSingle || ''), run);
     t.ok('FLOOR: Play never unticks a movement it just finished', run.singleStillDone, run);
