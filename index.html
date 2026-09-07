@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='481';
+const APP_VERSION='482';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -8290,6 +8290,12 @@ function plEnterRest(dur,type){
     </div>
     ${voiceCmdHintHTML()}`;
   plS('#plNum',fmtTime(PLAYER.remain));plS('#plSub','REST');plRingSet(1);
+  /* ARM ON THE PHASE CHANGE. This screen PROMISES the word, and the microphone
+     was opened by the 2 s heartbeat alone -- so the promise was on the glass
+     over a closed microphone for up to a beat at the start of every rest, and
+     the same again after each silence. Same call playerToggle() already makes:
+     on the tap, not up to a heartbeat later. */
+  try{voiceCmdSync();}catch(e){}
   if(PLAYER.running)PLAYER.tid=setInterval(plTickRest,1000);else plS('#plToggle','Resume');
 }
 function plTickRest(){
@@ -8734,6 +8740,20 @@ const VOICE_ECHO_MAX_MS=8000;
    One blip is not a diagnosis; a run of them is. */
 const VOICE_NET_STRIKES=3;
 let _vrec=null,_vrWant=false,_vrSpokeAt=0,_vrSpeakSince=0,_vrNetFails=0,_vrDown='';
+/* WHETHER THE MICROPHONE ACTUALLY OPENED. r.start() was called and its answer
+   was never observed: no onstart handler existed, so a recogniser that never
+   came up left _vrec non-null, voiceCmdSync() saw an armed microphone and never
+   retried, and the rest screen went on promising the word. That is the corpse
+   v422 fixed on the RESTART, at the first start instead.
+   Chrome ends recognition on every silence, so `live` drops constantly and is
+   the wrong thing to render off; `everLive` is what says the microphone has
+   really worked at least once this session, and it does not flicker. */
+let _vrLive=false,_vrEverLive=false;
+/* A restart Chrome refuses comes back in its own beat, not on the guard's.
+   Measured on a silent rest with the 2 s heartbeat as the only retry: the
+   microphone was CLOSED for 884, 1134 and 882 ms after each silence -- through
+   the one phase the word exists for. */
+const VOICE_RESTART_MS=300;
 function voiceCmdSupported(){try{return !!(window.SpeechRecognition||window.webkitSpeechRecognition);}catch(e){return false;}}
 /* Absent means the athlete has not chosen. A default here would make the
    "has the athlete turned this on?" test true for everybody forever, which is
@@ -8812,6 +8832,7 @@ function voiceCmdNote(){
   if(!voiceCmdOn())return '';
   if(d==='offline')return 'Speech recognition runs on Google\u2019s servers, so it needs a connection. This phone is offline, so the word cannot be heard right now \u2014 every other part of the session works.';
   if(d==='net')return 'The speech service could not be reached, so the word is not being listened for. It tries again next session.';
+  if(d==='mic')return 'The microphone could not be opened \u2014 another app may be using it. Close it and turn this off and on again.';
   return '';
 }
 /* One reader, so the rest screen and Settings cannot promise different things. */
@@ -8825,7 +8846,14 @@ function voiceCmdHintInner(){
      the button beside this line already says Resume. */
   if(!voiceCmdActionable())return '';
   const n=voiceCmdNote();
-  return '\u{1F399}\uFE0F '+(n?_ve(n):'Say \u201Ccontinue\u201D to start the next set');
+  if(n)return '\u{1F399}\uFE0F '+_ve(n);
+  /* A PROMISE IN UI TEXT IS A SPECIFICATION, and this one had no code behind
+     it: the line read the same whether the recogniser had opened or had never
+     started at all. everLive rather than live, because Chrome ends on every
+     silence and a line that flickered through the rest would be worse than the
+     defect. */
+  return '\u{1F399}\uFE0F '+(_vrEverLive?'Say \u201Ccontinue\u201D to start the next set'
+    :'Starting the microphone\u2026');
 }
 /* The container is ALWAYS rendered, empty or not, so a stand-down mid-rest has
    something to write into. An empty div with no margin has no height. */
@@ -8867,6 +8895,7 @@ function voiceCmdStart(){
     const C=window.SpeechRecognition||window.webkitSpeechRecognition;
     const r=new C();
     r.continuous=true;r.interimResults=true;r.lang='en-US';
+    r.onstart=()=>{_vrLive=true;if(!_vrEverLive){_vrEverLive=true;}voiceCmdRepaint();};
     r.onresult=(e)=>{try{_vrNetFails=0;for(let i=e.resultIndex;i<e.results.length;i++)voiceCmdHeard(e.results[i][0].transcript);}catch(_e){}};
     r.onerror=(e)=>{
       const err=e&&e.error;
@@ -8890,10 +8919,23 @@ function voiceCmdStart(){
         _vrWant=false;_vrec=null;
         if(_vrDown!=='net'){_vrDown='net';toast('Voice command could not reach the speech service',4000);}
         voiceCmdRepaint();
+        return;
+      }
+      /* NO MICROPHONE TO CAPTURE FROM -- another app holds it, or the device
+         has none. It had NO branch at all, so onend restarted it for ever with
+         nothing on screen: the same silent loop v422 measured one error code
+         over. Not turned off, because it is transient and the athlete's own
+         choice; the retrying stops and the app says which of the two it is. */
+      if(err==='audio-capture'){
+        if(++_vrNetFails<VOICE_NET_STRIKES)return;
+        _vrWant=false;_vrec=null;
+        if(_vrDown!=='mic'){_vrDown='mic';toast('Voice command could not open the microphone',4000);}
+        voiceCmdRepaint();
       }
     };
     // Chrome ends recognition after a silence; keep it up while a session is open
     r.onend=()=>{
+      _vrLive=false;
       if(!_vrWant||!_vrec){_vrec=null;return;}
       /* A RESTART THAT THROWS MUST NOT LEAVE A CORPSE. voiceCmdSync() re-arms
          only while _vrec is null, so swallowing the throw and keeping the dead
@@ -8901,7 +8943,14 @@ function voiceCmdStart(){
          nothing on screen — measured: zero recognisers listening and no further
          start attempts, whatever the heartbeat did. Drop it and let the next
          beat build a fresh one. */
-      try{_vrec.start();}catch(e){_vrec=null;}
+      try{_vrec.start();}
+      catch(e){
+        /* Chrome refuses a restart that comes too soon after its own end, and
+           leaving it to the 2 s heartbeat is a measured ~1 s hole every
+           silence. Drop the corpse and come back in a beat of its own. */
+        _vrec=null;
+        setTimeout(()=>{try{voiceCmdSync();}catch(_e){}},VOICE_RESTART_MS);
+      }
     };
     _vrec=r;_vrWant=true;
     r.start();
@@ -8924,7 +8973,7 @@ function voiceCmdSync(){
      clear here rather than needing an 'online' listener: the next session tries
      again from scratch, which is what an athlete who has walked back into
      signal expects. */
-  if(!open){_vrNetFails=0;_vrDown='';}
+  if(!open){_vrNetFails=0;_vrDown='';_vrEverLive=false;}
   /* THE MICROPHONE OPENS WHERE THE WORD CAN ACT, NOT FOR THE WHOLE SESSION.
      Arming on "a session is open" left it streaming audio to a cloud service
      through every working set — measured open in ready, work AND rest — while

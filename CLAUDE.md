@@ -19285,6 +19285,77 @@ forced even (fails the two-sided floors), every per-side movement pinned at 2
 DOWN, and the validator rule disabled.
 
 
+## The rest screen promised the word over a closed microphone (v482)
+
+Reported: *"me just saying continue ... that is not happening."*
+
+`plEnterRest()` renders `voiceCmdHintHTML()` — **"Say 'continue' to start the
+next set"** — and armed nothing. v423 moved the microphone off the whole
+session and onto the phases where the word can act, and left the **2 s
+heartbeat as its only opener**. Measured on a real rest, driven through
+`playerSetDone()`:
+
+| | before | after |
+|---|---|---|
+| microphone open when the rest screen appears | **0** | **1** |
+| closed after each Chrome silence-end | **884 / 1134 / 882 ms** | **314 / 315 / 234** |
+
+So the promise was on the glass over a closed microphone at the start of every
+rest, and again after each silence — through the one phase the word exists
+for. `plEnterRest()` calls `voiceCmdSync()` now, the same call `playerToggle()`
+already makes for the same stated reason: **on the tap, not up to a heartbeat
+later.**
+
+### r.start() was called and its answer was never observed
+
+**There was no `onstart` handler.** A recogniser that never came up left
+`_vrec` non-null, `voiceCmdSync()` saw an armed microphone and never retried,
+and the line kept promising — the corpse v422 fixed on the RESTART, at the
+first start instead.
+
+`_vrEverLive` is what the hint reads, **not** `_vrLive`: Chrome ends
+recognition on every silence, so a line rendered off the live flag would
+flicker through the whole rest, which is worse than the defect. It is cleared
+when nothing is open, so a phone whose microphone has since broken is not
+promised the word on the strength of a rest that worked an hour ago — and the
+mutant that lets it survive the session is caught by exactly that case.
+
+### audio-capture had no branch at all
+
+`onerror` handled `not-allowed` and `network`. **`audio-capture` — another app
+holding the microphone, or a device with none — fell through to `onend`, which
+restarted it for ever with nothing on screen.** That is v422's silent loop, one
+error code over. It stands down after the same strikes and says which of the
+two it is; it does **not** turn the switch off, because it is transient and the
+switch is the athlete's choice. The over-eager mutant that treats it like
+`not-allowed` is caught by that floor.
+
+### The fixture was incomplete, for the fifth time
+
+Seven checks went red, and **every one was a fake recogniser whose `start()`
+never fired `onstart`** — a shape no real browser produces. Adding the one line
+the real API guarantees turned them green. **Complete the record; do not weaken
+the rule**, after v321's `subs:{}`, v420's missing `rest`, v425's hand-set
+`secs` and v481's one-set Side Plank.
+
+### The guard counted a variable nothing increments
+
+The silence check asserted *"it comes back with no heartbeat"* against a
+`window.__beats` counter **nothing ever incremented**, while the app's own 2 s
+guard interval ran underneath it. So the mutant that removed the prompt restart
+walked straight through: `plGuardTick()` brought the microphone back inside the
+wait. A self-comparing guard, of the kind v344 records — the case now **stops
+`_plGuard`**, so only the restart path itself can answer.
+
+**And the existing block could not have found any of this**, because it
+hand-sets `PLAYER.phase='rest'`. A hand-set phase never runs `plEnterRest()` at
+all, which is where the promise is rendered and where the arming was missing.
+Every case here drives a real rest.
+
+Eight mutants, all caught, including the two over-eager twins: a busy
+microphone turning the switch off, and a hint that never promises the word.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

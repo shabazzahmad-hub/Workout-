@@ -5075,17 +5075,36 @@ export default async function () {
   {
     const r = await page.evaluate(async () => {
       const R = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      /* THE SCREEN NAMES THE WORD ONLY ONCE THE MICROPHONE HAS ACTUALLY
+         STARTED (v482) -- a promise over a recogniser that never came up is
+         the defect that round fixed. This browser has no microphone and no
+         speech service, so the REAL recogniser never fires onstart and the
+         line correctly reads "Starting the microphone...". The subject here is
+         the healthy phone, so model one: a fake that signals its own start,
+         the way the real API guarantees. */
+      class OkRec {
+        constructor(){ this._on = false; }
+        start(){ this._on = true; if (this.onstart) this.onstart(); }
+        stop(){ if (this._on) { this._on = false; if (this.onend) this.onend(); } }
+        abort(){ this.stop(); }
+      }
+      const realRec = window.SpeechRecognition;
+      window.SpeechRecognition = OkRec;
       STATE.onboarded = true; STATE.progressPtr = 8; save();
       STATE.settings.voiceCmd = true; save();
       openPlayer(); await wait(200);
       PLAYER.i = 0; PLAYER.s = 0; plClear(); plEnterRest(60, 'set');
+      R.everLive = _vrEverLive;
       R.on = document.getElementById('plBody').textContent;
       STATE.settings.voiceCmd = false; save();
       plClear(); plEnterRest(60, 'set');
       R.off = document.getElementById('plBody').textContent;
       playerTeardown(); await wait(200);
+      voiceCmdStop(); _vrEverLive = false;
+      if (realRec) window.SpeechRecognition = realRec; else delete window.SpeechRecognition;
       return R;
     });
+    t.ok('guard: the microphone really came up on this rest', r.everLive, JSON.stringify(r).slice(0, 200));
     t.ok('the rest screen says which word starts the next set', /continue/i.test(r.on), r.on.slice(0, 160));
     t.ok('floor: and says nothing about it when the setting is off', !/say .continue/i.test(r.off), r.off.slice(0, 160));
   }
