@@ -19038,6 +19038,38 @@ rule the library does not have would be exactly the mistake this file records
 about bypassing the app's own predicate, so the note names the movement and
 points at the control instead. Recorded rather than fixed.
 
+### The mutation run: 21 seeded, 20 caught by name, 1 equivalent
+
+Six of the twenty are the over-eager twins, and **every one of them was caught
+by a floor rather than by the check the fix was written for** — which is the
+whole reason the floors exist:
+
+| the wrong fix | the floor that caught it |
+|---|---|
+| lowback copied on as a blanket family flag | the flag it must NOT take |
+| the endurance half always reporting a swap | the clean athlete is told nothing |
+| the strength filter dropping every movement | the no-kit athlete still gets a block |
+| strength-first built with no endurance block | both halves are present |
+| only the suggested format offered | the chooser offers all three |
+| the Alternator given rests | nothing is scheduled off |
+
+**M5 is EQUIVALENT, and it was measured rather than argued.** It removes the
+first `jointRisky()` from `concEndurance()`'s `ok()` — and the line below asks
+the identical question about the identical movement, because `SPACE_SWAP` has
+no entry for `bike`, `ruck`, `skip`, `jumpingjack` or `steadyrun`. Measured
+across 5 movements x 16 flag combinations x a tight room on and off:
+
+| | |
+|---|---|
+| cases compared | **160** |
+| differences between the two versions | **0** |
+| times `spaceSwap()` moved a cardio movement | **0 of 160** |
+
+So no check can catch it. It is kept as intent — the correct test the day
+`SPACE_SWAP` gains a cardio entry — and recorded here rather than papered over
+with a check that cannot fail, the same call as `swapStillValid()`'s
+`exKnown()` line, `capLog()`'s membership test and `athleteName()`'s `typeof`.
+
 ### The photo, and a fifth datapoint for the no-press rule
 
 Correct on the **first attempt**, and it fits the pattern exactly: no press in
