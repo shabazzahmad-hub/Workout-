@@ -3360,6 +3360,22 @@ export default async function run() {
       };
       mk(false); setProgressTab('summary'); go('progress');
       o.legacyRender = countBuilds(() => render());
+      /* ---- AND THE SUB-TAB PATH, WHICH THIS BLOCK NEVER DROVE (v480) ------
+         setProgressTab() calls renderProgress() directly, so before
+         withItemsMemo() the three lifetime walks each rebuilt every legacy
+         session with no memo at all. The check above drives render(), which is
+         exactly why the gap survived it. Measured on 300 legacy logs:
+
+           go('progress')             301 builds,   0 repeats,  84.5 ms
+           setProgressTab('summary')  901 builds, 600 repeats, 234.0 ms
+           after the fix              301 builds,   0 repeats,  76.7 ms  */
+      o.legacySubtab = countBuilds(() => setProgressTab('summary'));
+      o.subtabMemoDropped = _itemsMemo === null;
+      /* RE-ENTRANT: the paint that OPENED the memo owns the drop. Without that
+         an inner renderProgress() under render() clears the outer memo, and
+         every reader after it in the same paint rebuilds from scratch. */
+      _itemsMemo = new Map(); renderProgress();
+      o.reentrantHeld = _itemsMemo instanceof Map; _itemsMemo = null;
       /* The same three readers with the memo dead and alive, so the saving is
          measured rather than inferred from a wall clock. */
       o.noMemo = countBuilds(() => { _itemsMemo = null; totalVolume(); totalTUT(); estCalories(); });
@@ -3445,6 +3461,15 @@ export default async function run() {
       /* …and that holds through a whole Progress render, not just the three
          readers called by hand. */
       t.eq('a Progress render builds no session twice', pm.legacyRender.dupes, 0);
+      /* guard: the sub-tab paint really does walk every legacy session, or
+         "no repeats" is satisfied by a paint that rebuilt nothing at all. */
+      t.ok('guard: a sub-tab tap rebuilds all 40 legacy sessions',
+        pm.legacySubtab.distinct >= 40, pm.legacySubtab);
+      /* THE PAYLOAD: the sub-tab tap is a paint like any other. */
+      t.eq('a Progress SUB-TAB tap builds no session twice', pm.legacySubtab.dupes, 0);
+      t.ok('and its memo does not outlive that paint either', pm.subtabMemoDropped, pm);
+      t.ok('an inner renderProgress() leaves the outer paint memo alone',
+        pm.reentrantHeld, pm);
       /* FLOOR: and a log carrying its items is not rebuilt at all — the only
          session built during a modern render is today's own. */
       t.ok('a log carrying its item list is never rebuilt',

@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='479';
+const APP_VERSION='480';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -13928,7 +13928,12 @@ function previewSession(ptr){
 }
 
 /* ============================ PROGRESS VIEW ============================ */
-function renderProgress(){
+/* THE ONE RENDERER THAT WALKS EVERY LOG, so it opens the memo itself rather
+   than trusting its caller to. Eleven call sites reach it and only render()
+   carried a memo; under render() this is a no-op, because withItemsMemo() is
+   re-entrant. */
+function renderProgress(){return withItemsMemo(_renderProgressPaint);}
+function _renderProgressPaint(){
   const v=$('#v-progress');
   const unit=STATE.profile.unit;
   let h=`<h2 class="vtitle">Progress</h2><div class="vsub">Everything auto-saved on this device.</div>`;
@@ -22686,6 +22691,26 @@ function homeSummaryHTML(){
    makes it safe to do to lifetime totals. */
 let _itemsMemo=null;
 function _clearItemsMemo(){_itemsMemo=null;}
+/* ONE MEMO PER PAINT, AND EVERY PAINT CAN ASK FOR IT.
+   render() opened the memo and dropped it, and the four sub-tab setters do not
+   go through render() -- setProgressTab() calls renderProgress() directly, so
+   the lifetime walk ran with no memo at all. v335's own check drives render(),
+   which is exactly why the gap survived it.
+
+   Measured on 300 legacy logs (written before v335, so they carry no items and
+   must be rebuilt from the engine):
+
+     go('progress')              301 builds, 0 repeats,  84.5 ms
+     setProgressTab('summary')   901 builds, 600 repeats, 234 ms
+
+   RE-ENTRANT, so an inner caller under render() never drops the outer memo
+   early -- the paint that OPENED it is the paint that owns it. That is what
+   lets renderProgress() ask unconditionally without knowing who called it. */
+function withItemsMemo(fn){
+  if(_itemsMemo)return fn();
+  _itemsMemo=new Map();
+  try{return fn();}finally{_clearItemsMemo();}
+}
 function logItemsFor(p,l){
   /* Two guards mean two checks. The scrub above keeps a BACKUP clean; this is
      the one that stands in front of every consumer — sessionStats(),
