@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='478';
+const APP_VERSION='479';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -9178,7 +9178,19 @@ function concEndurance(){
        because every other picking path asks it. The region re-check is what
        keeps that safe: if the map ever gains an entry that leaves the cardio
        region, this drops to the next mode rather than running a twenty-minute
-       plank under an endurance heading. */
+       plank under an endurance heading.
+
+       AND THAT IS WHY THE FIRST jointRisky() IS UNCATCHABLE, measured rather
+       than assumed. SPACE_SWAP has no entry for bike, ruck, skip, jumpingjack
+       or steadyrun, so spaceSwap() returns what it was given — measured, 0
+       times moved across 160 cases (5 movements x 16 flag combinations x a
+       tight room on and off). The line below therefore asks the identical
+       question about the identical movement, so removing the one above changes
+       nothing: 0 differences in those same 160 cases. The guard beside it
+       supplies the answer, which is the shape swapStillValid(), capLog() and
+       athleteName() already record. It is kept as intent — it is the correct
+       test the day SPACE_SWAP gains a cardio entry — and recorded as
+       uncatchable rather than papered over with a check that cannot fail. */
     const ok=k=>{
       if(!k||!EX[k]||!hasGearFor(k)||jointRisky(k,lims))return null;
       const sp=spaceSwap(k);
