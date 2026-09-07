@@ -19124,6 +19124,70 @@ last set of the last strength item, calls `plAfterSet()`, and requires a real
 240-second rest phase followed by the aerobic block — and that a bonus session
 leaves the programme's own resume point alone.
 
+## The memo was scoped to render(), and a sub-tab tap is not render() (v480)
+
+v335 gave `logItemsFor()` a render-scoped memo — a small store of the sessions
+rebuilt during one paint — because a log written before v335 carries no `items`
+and has to be rebuilt from the engine to be counted at all, and Progress walks
+every session **three times**: `totalVolume()`, and `totalTUTSplit()` twice,
+since `totalTUT()` and `estCalories()` each ask for it.
+
+`render()` opened it and dropped it in a `finally`. **`setProgressTab()` calls
+`renderProgress()` directly and never goes through `render()`**, so the lifetime
+walk ran with no memo at all. Measured on 300 legacy logs:
+
+| the route in | builds | repeats | ms |
+|---|---|---|---|
+| `go('progress')` — through `render()` | 301 | **0** | 84.5 |
+| **`setProgressTab('summary')`** | **901** | **600** | **234.0** |
+| the same tap after the fix | 301 | 0 | **76.7** |
+
+**v335's own check drives `render()`, which is exactly why the gap survived
+it.** A memo whose only opener is the router is a memo that covers the routes
+somebody thought of.
+
+**The helper is RE-ENTRANT, and that is what lets the renderer ask
+unconditionally.** `withItemsMemo(fn)` opens a memo only if one is not already
+open, and drops it only if this call opened it — so the paint that OPENED it
+owns the drop, and an inner `renderProgress()` under `render()` is a no-op.
+Without that line the inner call clears the outer paint's memo and every reader
+after it rebuilds from scratch, which is worse than the defect.
+
+**It is asked for by `renderProgress()` rather than by the four sub-tab
+setters.** Eleven call sites reach that renderer and it is the one that walks
+every log, so one edit covers every route in — including a future one. The
+other panes were measured and left alone: `setProgressTab('body')` builds **0**
+sessions, and `renderToday()`/`renderRef()` never walk the lifetime logs.
+
+**Who this reaches, stated rather than implied.** Only an athlete whose sessions
+were logged before v335 — anything since carries `items`, and the phone in use
+is on v396. Measured on current logs, before and after: **1 build, 0 repeats,
+2-3 ms**, unchanged.
+
+### The floor that makes a cache over lifetime totals acceptable, and the one that was zeroes
+
+Every lifetime figure must be identical with the memo live and dead — v335's own
+rule. **My first probe's version of that floor was two zeroes agreeing**: the
+legacy logs it seeded carried `ex:{}`, so the totals were `{reps:0,hold:0,sets:0}`
+and the comparison proved nothing. The shipped check reuses suite 09's own
+seeder, which writes real `ex` data, and guards that the totals are real figures.
+
+**And the guard is that the sub-tab paint really walks every legacy session** —
+`distinct >= 40` — or "no repeats" is satisfied by a paint that rebuilt nothing.
+
+### The mutant that broke the parse tested nothing
+
+The first M1 deleted the `function _renderProgressPaint(){` line and left its
+body inside `renderProgress()`, so the file gained an unbalanced brace and the
+suite reported *"the test file itself threw"* rather than naming a check. That
+is v286's lesson: **a mutant that breaks the parse tests nothing.** Re-seeded as
+the faithful revert — `renderProgress()` calling the paint without the memo —
+it is caught by name, on the payload check written for it.
+
+Five mutants, all caught by name, including the two over-eager twins: a memo
+that is always freshly opened (so an inner call steals the outer paint) and one
+that stores nothing at all.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
