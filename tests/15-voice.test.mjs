@@ -1928,6 +1928,140 @@ export default async function run() {
       r.readsTheQuota, JSON.stringify(r));
   }
 
+  /* ---- ONE SHUFFLE BAG, and the phrase picker now asks it ---------------
+     Reported: "the voice is repeating the same phrases for every exercise over
+     and over again". motivateLine() drew at RANDOM with only a "not the same as
+     last time" guard, which is not the same as dealing every line once.
+     Measured on the real app before the fix, one session of 39 during-lines
+     from a pool of 14: the most-heard line landed 5-8 times across five runs
+     and a line went unheard on two of them. A bag caps it at ceil(39/14)=3. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {};
+      const p = COACHES.find(c => c.id === 'drill');
+      out.pool = p ? p.during.length : 0;
+      out.draws = 39;
+      STATE.settings.coach = 'drill';
+      const seen = {};
+      for (let i = 0; i < 39; i++) { const l = motivateLine('during', true); seen[l] = (seen[l] || 0) + 1; }
+      const c = Object.values(seen);
+      out.distinct = c.length; out.mostHeard = Math.max.apply(null, c);
+      /* THE KEY CARRIES THE PERSONA. Keyed by kind alone, a bag dealt for one
+         coach is dealt on against the next coach's pool the moment Auto
+         rotates — so the second coach never gets a full pass of its own.
+         THE TWO POOLS MUST BE THE SAME SIZE. _bagNext() rebuilds whenever the
+         count changes, so a second coach with a different pool gets a fresh bag
+         either way and the mutant is invisible — which is how it escaped the
+         first version of this check. `relentless` is the one other coach whose
+         `during` pool is also 14. */
+      const q = COACHES.find(x => x.id === 'relentless');
+      out.otherPool = q ? q.during.length : -1;
+      let full = 0;
+      for (let trial = 0; trial < 20; trial++) {
+        Object.keys(_bags).forEach(k => { if (k.indexOf('line|') === 0) delete _bags[k]; });
+        STATE.settings.coach = 'drill';
+        for (let i = 0; i < 7; i++) motivateLine('during', true);   // part-spend one bag
+        STATE.settings.coach = q.id;
+        const s2 = {};
+        for (let i = 0; i < q.during.length; i++) s2[motivateLine('during', true)] = 1;
+        if (Object.keys(s2).length === q.during.length) full++;
+      }
+      out.fullPasses = full;
+      /* The seam guard, exercised DIRECTLY. Over one boundary a missing guard
+         collides only 1 time in n, so a single seam cannot tell them apart.
+         With a pool of two, every adjacent pair that matches IS a seam repeat:
+         the guard makes that exactly 0, and its absence makes it about half. */
+      delete _bags['probe|seam'];
+      const seq = []; for (let i = 0; i < 40; i++) seq.push(_bagNext('probe|seam', 2));
+      let rep = 0; for (let i = 1; i < seq.length; i++) if (seq[i] === seq[i - 1]) rep++;
+      out.seamRepeats = rep; out.seamDraws = seq.length;
+      /* FLOOR: the coach rotation this bag was hoisted out of is unchanged.
+         EACH BLOCK BUILDS THE STATE IT ASSERTS ON — earlier blocks in this file
+         have already drawn coaches, so a bag part-way through spans two passes
+         and reads as 31 distinct on correct code. Start from a fresh bag. */
+      STATE.settings.coach = 'auto';
+      delete _bags['coach'];
+      out.bagWasReset = !_bags['coach'];
+      const a = []; for (let i = 0; i < 38; i++) a.push(rollAutoPersona());
+      const b = []; for (let i = 0; i < 38; i++) b.push(rollAutoPersona());
+      out.rot1 = new Set(a).size; out.rot2 = new Set(b).size;
+      out.seamOk = a[37] !== b[0];
+      /* The helper is consulted from two narrow branches, so its own contract
+         is pinned rather than only its effects. */
+      out.bagOne = _bagNext('probe|one', 1);
+      out.bagOneAgain = _bagNext('probe|one', 1);
+      out.bagNone = _bagNext('probe|none', 0);
+      return out;
+    });
+    t.ok('GUARD: a session really draws more lines than the pool holds',
+      r.pool > 1 && r.draws > r.pool, JSON.stringify(r));
+    t.eq('every line in the pool is heard once a session', r.distinct, r.pool);
+    t.ok('and no line is heard more than its fair share',
+      r.mostHeard <= Math.ceil(r.draws / r.pool), JSON.stringify(r));
+    t.ok('GUARD: the second coach\'s pool is the same size, so a shared bag is reused rather than rebuilt',
+      r.otherPool === r.pool, JSON.stringify(r));
+    t.eq('a second coach gets a full pass of its OWN pool, every time',
+      r.fullPasses, 20);
+    t.ok('GUARD: the seam probe really ran 40 draws', r.seamDraws === 40, JSON.stringify(r));
+    t.eq('and no bag opens on the item the last one closed with',
+      r.seamRepeats, 0);
+    t.ok('GUARD: the rotation bag started empty', r.bagWasReset, JSON.stringify(r));
+    t.eq('FLOOR: the coach rotation still deals all 38', r.rot1, 38);
+    t.eq('FLOOR: and all 38 again in the next bag', r.rot2, 38);
+    t.ok('FLOOR: with no repeat across the seam', r.seamOk, JSON.stringify(r));
+    t.eq('a pool of one deals that one, every time', r.bagOne, 0);
+    t.eq('and again rather than running dry', r.bagOneAgain, 0);
+    t.eq('an empty pool asks for nothing', r.bagNone, -1);
+  }
+
+  /* ---- the picker listed bare names, so a new voice pack was unfindable --
+     "I did download a package with a male voice but I do not know how you seek
+     that voice." assignCoachVoices() already sorts the phone's voices into a
+     male set and a female set by reading the NAME; the picker printed the name
+     alone. It asks _FEMALE_RE, the same predicate the assignment asks. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {};
+      const fake = [
+        { name: 'Karen', lang: 'en-AU' },
+        { name: 'Daniel', lang: 'en-GB' },
+        { name: 'Nimbus Pro', lang: 'en-US' }
+      ];
+      /* Fake the SOURCE, not the cache: openCoachVoices() re-reads getVoices()
+         through primeVoice(), which would overwrite an assigned COACH_VOICES. */
+      speechSynthesis.getVoices = () => fake;
+      loadCoachVoices();
+      out.poolN = englishVoicePool().length;
+      const html = voiceOptionsHTML();
+      out.female = /Karen[^<]*·[^<]*female/.test(html);
+      out.male = /Daniel[^<]*·[^<]*male/.test(html);
+      /* An unknown name lands in the male set by default, which is what the
+         assignment does with it — so that is what the label must say. */
+      out.unknownReadsMale = /Nimbus Pro[^<]*·[^<]*male/.test(html);
+      openCoachVoices();
+      const sheet = document.getElementById('sheet');
+      const txt = sheet ? sheet.innerHTML : '';
+      out.rows = (txt.match(/data-cv=/g) || []).length;
+      out.perCoachLabelled = /Daniel · male/.test(txt);
+      closeSheet();
+      const g = document.getElementById('v-guide');
+      out.saysItIsAGuess = /worked out from the voice's name/.test(g ? g.innerHTML : '');
+      out.saysHowToRefresh = /Voice check/.test(g ? g.innerHTML : '');
+      return out;
+    });
+    t.ok('GUARD: the phone handed over a voice list to label', r.poolN === 3, JSON.stringify(r));
+    t.ok('a name the app knows as female says so', r.female, JSON.stringify(r));
+    t.ok('a name it treats as male says so', r.male, JSON.stringify(r));
+    t.ok('and a name it has never seen reads as male, which is what it does with it',
+      r.unknownReadsMale, JSON.stringify(r));
+    t.eq('GUARD: the per-coach sheet rendered a row for every coach', r.rows, 38);
+    t.ok('the per-coach rows carry the same label', r.perCoachLabelled, JSON.stringify(r));
+    t.ok('FLOOR: the copy says the label is worked out from the name',
+      r.saysItIsAGuess, JSON.stringify(r));
+    t.ok('FLOOR: and points at the refresh for a pack added since the page opened',
+      r.saysHowToRefresh, JSON.stringify(r));
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
