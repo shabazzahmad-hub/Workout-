@@ -1070,6 +1070,14 @@ export default async function run() {
       return { reason: voiceCmdDownReason(), starts: window.__vr2.starts };
     });
     const on = await install();
+    /* THE APP'S OWN 2 s HEARTBEAT RE-ARMS THE MICROPHONE, and on a loaded
+       runner it wins the race to do so — so the check's own voiceCmdSync()
+       below finds it already armed, opens nothing, and "newStarts" reads 0 on
+       code that is perfectly correct. Measured deterministically rather than
+       re-run: with the guard live, a 0 ms pause gives 1 and a 2.5 s pause
+       gives 0; with it stopped, 2.5 s gives 1. Only the restart path may
+       answer here — the same fix v423 needed one block away. */
+    await page.evaluate(() => { try { clearInterval(_plGuard); _plGuard = null; } catch (e) {} });
     await ctx.setOffline(true);
     await page.waitForFunction(() => navigator.onLine === false, null, { timeout: 5000 });
     const off = await page.evaluate(async () => {
@@ -1082,12 +1090,15 @@ export default async function run() {
     await ctx.setOffline(false);
     await page.waitForFunction(() => navigator.onLine === true, null, { timeout: 5000 });
     const back = await page.evaluate(async () => {
-      const before = window.__vr2.starts;
+      /* Sampled BEFORE the sync — reading it afterwards reports the recogniser
+         this very call just armed, which is true whatever the heartbeat did. */
+      const before = window.__vr2.starts, vrecBefore = !!_vrec, guard = !!_plGuard;
       voiceCmdSync(); await new Promise(z => setTimeout(z, 20));
       const out = { reason: voiceCmdDownReason(), newStarts: window.__vr2.starts - before,
-                    hint: voiceCmdHintHTML() };
+                    vrecBefore, guard, hint: voiceCmdHintHTML() };
       STATE.settings.voiceCmd = false; _vrDown = ''; _vrNetFails = 0;
       voiceCmdStop(); playerQuit(); delete window.SpeechRecognition; save();
+      try { plGuardOn(); } catch (e) {}   // each block puts back what it broke
       return out;
     });
     t.eq('guard: online, there is nothing to explain', on.reason, '');
@@ -1098,6 +1109,8 @@ export default async function run() {
     t.ok('and Settings says the same thing', /needs a connection/.test(off.note), off);
     t.ok('FLOOR: the athlete’s switch is left where they put it', off.stillOn, off);
     t.eq('back in signal it clears itself', back.reason, '');
+    t.ok('guard: only this block\'s own sync could have re-armed it',
+      back.vrecBefore === false && back.guard === false, JSON.stringify(back));
     t.eq('and the microphone re-arms', back.newStarts, 1);
     t.ok('with the plain hint again', /Say/.test(back.hint), back);
   }
@@ -1637,6 +1650,282 @@ export default async function run() {
     t.ok('FLOOR: a microphone that is merely busy does not turn the switch off',
       rq.switchStillOn, JSON.stringify(rq));
     t.ok('FLOOR: but a REFUSED one still does', !rq.switchOffAfterRefusal, JSON.stringify(rq));
+  }
+
+
+  /* ---- v483: a voice for ONE coach ---------------------------------------
+     The Settings picker is all-or-nothing by design — one voice for all 38 —
+     so an athlete who installs a voice pack and wants THAT coach on it had no
+     way to say so, and the round-robin decides by list order rather than by
+     anything they can steer.
+     Everything is driven through the real route: speechSynthesis.getVoices()
+     reports the pack, so loadCoachVoices() picks it up exactly as a phone
+     would, and the voice is read back off the utterance _deviceSpeak() builds
+     rather than off the helper. Calling the helper is not driving the route. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {}, realGet = speechSynthesis.getVoices.bind(speechSynthesis),
+            realName = STATE.settings.voiceName;
+      const fakes = ['Daniel', 'Alex', 'Fred', 'Samantha', 'Karen']
+        .map(n => ({ name: n, lang: 'en-US' }));
+      speechSynthesis.getVoices = () => fakes;
+      loadCoachVoices();
+      /* GUARD: without more than one usable voice every reading below is two
+         names that happen to agree. */
+      o.poolN = englishVoicePool().length;
+
+      const wrestle = COACHES.find(c => c.id === 'wrestle');
+      const drill = COACHES.find(c => c.id === 'drill');
+      o.autoWrestle = (COACH_VOICE_MAP['wrestle'] || {}).name || null;
+      const target = fakes.map(v => v.name).find(n => n !== o.autoWrestle);
+      o.target = target;
+      o.targetDiffers = target !== o.autoWrestle;
+
+      const RealU = window.SpeechSynthesisUtterance;
+      const realSpeak = speechSynthesis.speak.bind(speechSynthesis);
+      let last = null;
+      window.SpeechSynthesisUtterance = function (txt) { this.text = txt; };
+      speechSynthesis.speak = u => { last = u.voice ? u.voice.name : null; };
+      const voiceOf = p => { last = null; _deviceSpeak('x', p); return last; };
+
+      delete STATE.settings.coachVoices; STATE.settings.voiceName = '';
+      o.beforeWrestle = voiceOf(wrestle);
+
+      o.setOk = setCoachOwnVoice('wrestle', target);
+      o.afterWrestle = voiceOf(wrestle);
+      o.afterDrill = voiceOf(drill);              // FLOOR: nobody else moves
+
+      /* The per-coach pick is the MOST SPECIFIC choice, so it outranks the
+         global one — and everybody else still obeys the global one. */
+      STATE.settings.voiceName = (target === 'Karen') ? 'Samantha' : 'Karen';
+      o.globalName = STATE.settings.voiceName;
+      o.wrestleUnderGlobal = voiceOf(wrestle);
+      o.drillUnderGlobal = voiceOf(drill);
+      STATE.settings.voiceName = '';
+
+      /* A name this phone no longer offers reads as NO choice, not a broken
+         one — voice packs get uninstalled, and a stale name must not mute a
+         coach. */
+      STATE.settings.coachVoices = { wrestle: 'A Voice This Phone Does Not Have' };
+      o.staleWrestle = voiceOf(wrestle);
+
+      /* MEMBERSHIP on both halves, at the writer. */
+      delete STATE.settings.coachVoices;
+      o.junkCoachRefused = setCoachOwnVoice('not-a-coach', target) === false
+        && STATE.settings.coachVoices === undefined;
+      o.junkVoiceRefused = setCoachOwnVoice('wrestle', 'nope') === false
+        && STATE.settings.coachVoices === undefined;
+
+      /* ABSENT STAYS ABSENT: set then clear leaves no key, so an athlete who
+         has never used this gains nothing that travels in a backup. */
+      setCoachOwnVoice('wrestle', target);
+      setCoachOwnVoice('wrestle', '');
+      o.absentAfterClear = STATE.settings.coachVoices === undefined;
+
+      /* Two guards mean two checks: the boot repair, with no writer in front
+         of it, because importData() writes STATE directly. */
+      STATE.settings.coachVoices = { wrestle: target, 'not-a-coach': target, drill: 42 };
+      normalizeState();
+      o.repaired = JSON.stringify(STATE.settings.coachVoices || null);
+      STATE.settings.coachVoices = 'a string';
+      normalizeState();
+      o.stringGone = STATE.settings.coachVoices === undefined;
+      STATE.settings.coachVoices = ['Alex'];
+      normalizeState();
+      o.arrayGone = STATE.settings.coachVoices === undefined;
+      /* A name this phone does not currently offer SURVIVES the boot: the
+         voice list is often not loaded yet at boot, and dropping it there
+         would erase the athlete's choice on a launch that simply started
+         cold. The stale case is answered at the READ site instead. */
+      STATE.settings.coachVoices = { wrestle: 'Some Uninstalled Voice' };
+      normalizeState();
+      o.staleSurvivesBoot = (STATE.settings.coachVoices || {}).wrestle === 'Some Uninstalled Voice';
+
+      window.SpeechSynthesisUtterance = RealU; speechSynthesis.speak = realSpeak;
+
+      /* The sheet, opened the way the athlete opens it. */
+      delete STATE.settings.coachVoices;
+      setCoachOwnVoice('wrestle', target);
+      openCoachVoices();
+      const sh = document.querySelector('#sheet');
+      o.rows = sh.querySelectorAll('[data-cv]').length;
+      o.coaches = COACHES.length;
+      const sel = sh.querySelector('[data-cv="wrestle"] select');
+      o.sheetShowsPick = sel ? sel.value : null;
+      o.optionCount = sel ? sel.options.length : 0;
+      /* "Auto" on its own says nothing about what you are choosing between. */
+      o.autoNamed = /Auto · /.test(sh.innerHTML);
+      o.labelled = !!sh.querySelector('[data-cv="wrestle"] select[aria-label]');
+
+      /* Drive the CONTROL, not the setter. */
+      sel.value = 'Fred';
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+      o.afterTap = (sh.querySelector('[data-cv="wrestle"] select') || {}).value;
+      o.storedAfterTap = (STATE.settings.coachVoices || {}).wrestle;
+
+      const btn = [...sh.querySelectorAll('button')].find(b => /back on Auto/.test(b.textContent));
+      o.resetBtn = !!btn; if (btn) btn.click();
+      o.clearedAll = STATE.settings.coachVoices === undefined;
+      o.resetGoneWhenNoneSet = !/back on Auto/.test(sh.innerHTML);
+      closeSheet();
+
+      /* FLOOR: a phone that has not handed over its list says so rather than
+         rendering 38 rows with nothing in them. */
+      speechSynthesis.getVoices = () => [];
+      loadCoachVoices();
+      o.noListNote = /has not handed over its voice list/.test(coachVoiceSheetHTML());
+
+      /* And Settings carries the way in. */
+      speechSynthesis.getVoices = realGet; loadCoachVoices();
+      STATE.settings.voiceName = realName;
+      go('guide');
+      o.settingsOffersIt = /openCoachVoices\(\)/.test(document.querySelector('#v-guide').innerHTML);
+      return o;
+    });
+    t.ok('GUARD: this browser reports more than one English voice',
+      r.poolN >= 2, JSON.stringify(r));
+    t.ok('GUARD: the chosen voice is not the one Auto already gave that coach',
+      r.targetDiffers, JSON.stringify(r));
+    t.ok('a coach can be given its own device voice', r.setOk, JSON.stringify(r));
+    t.eq('and speaks in it, through the real speak path', r.afterWrestle, r.target);
+    t.ok('FLOOR: every other coach keeps the voice Auto gave it',
+      r.afterDrill === r.autoWrestle && r.beforeWrestle === r.autoWrestle, JSON.stringify(r));
+    t.eq('the per-coach pick outranks the single voice in Settings',
+      r.wrestleUnderGlobal, r.target);
+    t.ok('FLOOR: and every other coach still obeys that single voice',
+      r.drillUnderGlobal === r.globalName, JSON.stringify(r));
+    t.eq('a voice this phone no longer offers reads as Auto, not as silence',
+      r.staleWrestle, r.autoWrestle);
+    t.ok('the writer refuses an id that is not a coach', r.junkCoachRefused, JSON.stringify(r));
+    t.ok('and a name that is not a voice on this phone', r.junkVoiceRefused, JSON.stringify(r));
+    t.ok('absent stays absent — set then cleared leaves no key at all',
+      r.absentAfterClear, JSON.stringify(r));
+    t.eq('the boot repair keeps the real pick and drops the junk key and value',
+      r.repaired, JSON.stringify({ wrestle: r.target }));
+    t.ok('a string where the map belongs is dropped', r.stringGone, JSON.stringify(r));
+    t.ok('and an array, which is also an object', r.arrayGone, JSON.stringify(r));
+    t.ok('FLOOR: a name this phone has not loaded yet survives the boot',
+      r.staleSurvivesBoot, JSON.stringify(r));
+    t.eq('the sheet carries one row per coach', r.rows, r.coaches);
+    t.ok('with more than one coach on it', r.coaches > 1, JSON.stringify(r));
+    t.eq('the row shows the voice that coach is set to', r.sheetShowsPick, r.target);
+    t.ok('and offers Auto plus every voice this phone has',
+      r.optionCount === r.poolN + 1, JSON.stringify(r));
+    t.ok('Auto names the voice it would use, rather than saying only "Auto"',
+      r.autoNamed, JSON.stringify(r));
+    t.ok('every row select carries an accessible name', r.labelled, JSON.stringify(r));
+    t.ok('tapping the control stores the choice and repaints in place',
+      r.afterTap === 'Fred' && r.storedAfterTap === 'Fred', JSON.stringify(r));
+    t.ok('one tap puts every coach back on Auto', r.resetBtn && r.clearedAll, JSON.stringify(r));
+    t.ok('and that offer is gone once nothing is set', r.resetGoneWhenNoneSet, JSON.stringify(r));
+    t.ok('FLOOR: a phone with no voice list says so rather than showing empty rows',
+      r.noListNote, JSON.stringify(r));
+    t.ok('Settings carries the way in', r.settingsOffersIt, JSON.stringify(r));
+  }
+
+  /* ---- v483: a premium voice that has stopped working says so -------------
+     coachSpeak() falls back to the device voice and says nothing, so the
+     athlete hears a different voice with the switch still reading On — a
+     promise in UI text with no code behind it. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {}, realOn = STATE.settings.neuralOn, realKey = STATE.settings.azureKey;
+      STATE.settings.neuralOn = true; _neuralFails = 0; _neuralFailMsg = '';
+      o.strikes = NEURAL_FAIL_STRIKES;
+      o.quietAtZero = neuralDownHTML() === '';
+      _neuralFails = NEURAL_FAIL_STRIKES - 1;
+      o.quietUnderStrikes = neuralDownHTML() === '';
+      _neuralFails = NEURAL_FAIL_STRIKES;
+      const gen = neuralDownHTML();
+      o.firesAtStrikes = /not answering/.test(gen);
+      o.namesTheCount = new RegExp(NEURAL_FAIL_STRIKES + ' tries failed').test(gen);
+      o.offersSwitch = /useDeviceVoices\(\)/.test(gen);
+      o.genericCause = /expired trial key/.test(gen);
+      _neuralFailMsg = 'Quota exceeded for this month (403)';
+      const q = neuralDownHTML();
+      o.quotaNamed = /free monthly allowance/.test(q) && /do not have to take it/.test(q);
+      STATE.settings.neuralOn = false;
+      o.silentWhenOff = neuralDownHTML() === '';
+      STATE.settings.neuralOn = true; _neuralFails = 9;
+      useDeviceVoices();
+      o.turnedOff = STATE.settings.neuralOn === false;
+      o.countCleared = _neuralFails === 0;
+      o.silentAfter = neuralDownHTML() === '';
+      o.neuralOffMeansDevice = neuralReady() === false;
+      STATE.settings.neuralOn = true; STATE.settings.azureKey = 'x'.repeat(32);
+      _neuralFails = NEURAL_FAIL_STRIKES;
+      go('guide');
+      o.onSettings = /not answering/.test(document.querySelector('#v-guide').innerHTML);
+      _neuralFails = 0; _neuralFailMsg = '';
+      STATE.settings.neuralOn = realOn; STATE.settings.azureKey = realKey;
+      return o;
+    });
+    t.ok('a working premium voice says nothing at all', r.quietAtZero, JSON.stringify(r));
+    t.ok('and one or two failures still say nothing — a note that always fires is noise',
+      r.quietUnderStrikes, JSON.stringify(r));
+    t.ok('it speaks up once the failures reach the strike count',
+      r.firesAtStrikes, JSON.stringify(r));
+    t.ok('naming how many tries failed', r.namesTheCount, JSON.stringify(r));
+    t.ok('and it names the free monthly allowance when that is what the error says',
+      r.quotaNamed, JSON.stringify(r));
+    t.ok('otherwise it names the causes it cannot tell apart',
+      r.genericCause, JSON.stringify(r));
+    t.ok('with one tap to the built-in voices', r.offersSwitch, JSON.stringify(r));
+    t.ok('that tap turns the premium voices off', r.turnedOff, JSON.stringify(r));
+    t.ok('and the coaches then use this phone own voices',
+      r.neuralOffMeansDevice, JSON.stringify(r));
+    t.ok('the note goes once it is off', r.countCleared && r.silentAfter, JSON.stringify(r));
+    t.ok('FLOOR: with the switch off it never fires, however many tries failed',
+      r.silentWhenOff, JSON.stringify(r));
+    t.ok('and it reaches the Settings tab, not only its own helper',
+      r.onSettings, JSON.stringify(r));
+  }
+
+  /* A REAL FAILURE, DRIVEN. Every assertion above sets the counter by hand, so
+     a neuralSpeak() that never counted a failure would walk straight through
+     all of them — calling the helper is not driving the route, in my own
+     checks. This one rejects the synth the way an exhausted quota does and
+     reads the counter, the message and the fallback back. */
+  {
+    const r = await page.evaluate(async () => {
+      const o = {}, realOn = STATE.settings.neuralOn, realKey = STATE.settings.azureKey,
+            realRegion = STATE.settings.azureRegion, realSyn = _sdkSynthesize;
+      STATE.settings.neuralOn = true;
+      STATE.settings.azureKey = 'x'.repeat(32);
+      STATE.settings.azureRegion = 'eastus';
+      _neuralFails = 0; _neuralFailMsg = '';
+      o.available = neuralAvailable();          // GUARD: the route is reachable
+      _sdkSynthesize = () => Promise.reject(new Error('Quota exceeded (403)'));
+      let fellBack = 0;
+      o.tookIt = neuralSpeak('one', COACHES[0], () => { fellBack++; });
+      await new Promise(z => setTimeout(z, 40));
+      o.countedOne = _neuralFails;
+      o.fellBackOnce = fellBack;
+      o.msgKept = /403/.test(_neuralFailMsg || '');
+      o.quietAtOne = neuralDownHTML() === '';
+      neuralSpeak('two', COACHES[0], () => { fellBack++; });
+      await new Promise(z => setTimeout(z, 40));
+      neuralSpeak('three', COACHES[0], () => { fellBack++; });
+      await new Promise(z => setTimeout(z, 40));
+      o.countedThree = _neuralFails;
+      o.speaksUp = /not answering/.test(neuralDownHTML());
+      o.readsTheQuota = /free monthly allowance/.test(neuralDownHTML());
+      _sdkSynthesize = realSyn; _neuralFails = 0; _neuralFailMsg = '';
+      STATE.settings.neuralOn = realOn; STATE.settings.azureKey = realKey;
+      STATE.settings.azureRegion = realRegion;
+      return o;
+    });
+    t.ok('GUARD: the premium path is actually reachable in this case',
+      r.available && r.tookIt, JSON.stringify(r));
+    t.eq('a real failure is counted', r.countedOne, 1);
+    t.ok('and the coach still speaks, in this phone own voice',
+      r.fellBackOnce === 1, JSON.stringify(r));
+    t.ok('the error is kept, so the note can name the cause', r.msgKept, JSON.stringify(r));
+    t.ok('one failure still says nothing', r.quietAtOne, JSON.stringify(r));
+    t.eq('three real failures reach the strike count', r.countedThree, 3);
+    t.ok('and the note then speaks up', r.speaksUp, JSON.stringify(r));
+    t.ok('naming the monthly allowance, read off the real error',
+      r.readsTheQuota, JSON.stringify(r));
   }
 
   srv.close();

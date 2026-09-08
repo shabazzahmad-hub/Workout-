@@ -19356,6 +19356,104 @@ Eight mutants, all caught, including the two over-eager twins: a busy
 microphone turning the switch off, and a hint that never promises the word.
 
 
+## The picker was all-or-nothing, so one coach could never differ (v483)
+
+Asked for after installing a male voice pack: *"how can I get the wrestling
+coach voice on my phone permanently?"*
+
+The Settings picker sets **`settings.voiceName`, which `coachVoiceFor()`
+returns for EVERY coach** — by design, and v302 added a warning saying so.
+Underneath it `assignCoachVoices()` splits the phone's English voices into a
+male bucket and a female bucket **by NAME** and hands them round in list order.
+So a new voice pack does reach the cast, and **which coach gets it is decided
+by array position** — nothing the athlete can steer.
+
+`settings.coachVoices` maps a coach id to a device voice name, and it is the
+**most specific choice the athlete can make, so it outranks the global pick** —
+the same call a hand-set protein target makes over the calculation. Measured
+through the real speak path, with a global pick of *Karen* also set:
+
+| | before | after |
+|---|---|---|
+| the wrestling coach | Daniel (Auto) | **Alex** — the chosen one |
+| every other coach | Daniel (Auto) | **Karen** — still the global pick |
+
+**Absent means Auto, and the map is deleted once it is empty.** A field created
+for every athlete is a field in every backup, and a diff on a settled state
+fires *"we repaired your data"* at somebody who has never used the feature.
+
+### `_deviceSpeak()` held a second copy of the override rule
+
+```js
+const manualV=!!STATE.settings.voiceName, …
+const v=(p&&!manualV)?coachVoiceFor(p):COACH_V;
+```
+
+That is `coachVoiceFor()`'s own **first branch, restated at the call site** —
+byte-identical while the global pick was the only override, and it would have
+**swallowed the per-coach pick outright** for any athlete who had also picked a
+global voice. `_hypeDeviceSpeak()` one function below already asked the helper
+and nothing else. *One of a pair guarded and its twin not*, on a read rather
+than on a repair, and it collapses to `coachVoiceFor(p)` because that helper
+returns `COACH_V` for a missing persona anyway.
+
+### A stale name survives the BOOT and reads as Auto at the READ site
+
+The two doors take **opposite** answers here, and the asymmetry is the point.
+
+- **The boot repair keeps a name this phone does not currently offer.** The
+  voice list is routinely not loaded when `normalizeState()` runs — headless
+  Chromium reports **zero voices**, and a real phone reports them
+  asynchronously through `voiceschanged` — so dropping it there would erase the
+  athlete's choice on a launch that merely started cold.
+- **`coachVoicePick()` reads a name the phone no longer has as NO choice**, not
+  as a broken one. Voice packs get uninstalled, and a stale name must never
+  mute a coach.
+
+So the repair enforces the SHAPE (an object, a coach id, a non-empty string)
+and the reader enforces AVAILABILITY. A check pins both, and the boot half is
+driven with no writer in front of it, because `importData()` writes `STATE`
+directly.
+
+### Fake the SOURCE, not the cache
+
+The first probe assigned `COACH_VOICES` directly — the pattern suite 15
+already uses for `voiceCheckHTML()`, which reads that array and nothing else —
+and the sheet came back with **0 rows on 38 coaches**. `openCoachVoices()`
+calls `primeVoice()` → `loadCoachVoices()`, which **re-reads
+`speechSynthesis.getVoices()` and overwrote the fake list with the headless
+browser's empty one**. Stubbing `getVoices()` instead makes the whole route
+real: 38 rows, six options each, the pick selected.
+
+**A fake that the route under test refreshes is not a fake.** Same family as
+*calling the helper is not driving the route*, one layer down — the route was
+driven and it rebuilt the state the probe had planted.
+
+## A premium voice that stops working is silent by design (v483)
+
+Asked in the same breath: *"the voices from Azure stopped working ... they want
+me to upgrade and pay."*
+
+`coachSpeak()` tries `neuralSpeak()` and falls back to `_deviceSpeak()` on any
+failure. The catch was a `console.warn` and nothing else — so the coaches
+changed voice mid-session with **the switch still reading On and nothing on
+screen**. That is a promise in UI text with no code behind it, on the one
+feature the athlete pays for.
+
+`neuralDownHTML()` names it after three failures, reads the error to tell a
+**quota** wall from a connection or key problem, and offers one tap to the
+built-in voices.
+
+**It is NOT automatic**, and that is v422's call one service over: the switch is
+the athlete's choice, and a monthly allowance that resets is not a reason to
+turn their setting off for them. **The strike count is what keeps it from being
+noise** — a working key says nothing, and one or two failures say nothing.
+
+**Turning it off needs no fallback code at all**, which is what makes the fix
+cheap: `neuralReady()` false → `neuralAvailable()` false → `neuralSpeak()`
+returns false → `coachSpeak()` uses the device voice. That path has existed
+since the feature shipped and is what every offline session already takes.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
